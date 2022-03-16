@@ -47,13 +47,34 @@ HDDMonitor::HDDMonitor(const rclcpp::NodeOptions & options)
   getHDDParams();
 
   updater_.setHardwareID(hostname_);
-  updater_.add("HDD Temperature", this, &HDDMonitor::checkTemp);
+  updater_.add("HDD Temperature", this, &HDDMonitor::checkSMARTTemperature);
+  updater_.add("HDD PowerOnHours", this, &HDDMonitor::checkSMARTPowerOnHours);
+  updater_.add("HDD TotalWritten", this, &HDDMonitor::checkSMARTTotalWritten);
   updater_.add("HDD Usage", this, &HDDMonitor::checkUsage);
+
+  for (uint32_t i = 0; i < static_cast<uint32_t>(HDDSMARTInfoItem::SIZE); i++) {
+    is_up_to_date_[i] = false;
+  }
 }
 
 void HDDMonitor::update() { updater_.force_update(); }
 
-void HDDMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
+void HDDMonitor::checkSMARTTemperature(diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  checkSMART(stat, HDDSMARTInfoItem::TEMPERATURE);
+}
+
+void HDDMonitor::checkSMARTPowerOnHours(diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  checkSMART(stat, HDDSMARTInfoItem::POWER_ON_HOURS);
+}
+
+void HDDMonitor::checkSMARTTotalWritten(diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  checkSMART(stat, HDDSMARTInfoItem::TOTAL_WRITTEN);
+}
+
+void HDDMonitor::checkSMART(diagnostic_updater::DiagnosticStatusWrapper & stat, HDDSMARTInfoItem item)
 {
   // Remember start time to measure elapsed time
   const auto t_start = SystemMonitorUtility::startMeasurement();
@@ -63,89 +84,8 @@ void HDDMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
     return;
   }
 
-  // Create a new socket
-  int sock = socket(AF_INET, SOCK_STREAM, 0);
-  if (sock < 0) {
-    stat.summary(DiagStatus::ERROR, "socket error");
-    stat.add("socket", strerror(errno));
-    return;
-  }
-
-  // Specify the receiving timeouts until reporting an error
-  struct timeval tv;
-  tv.tv_sec = 10;
-  tv.tv_usec = 0;
-  int ret = setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "setsockopt error");
-    stat.add("setsockopt", strerror(errno));
-    close(sock);
-    return;
-  }
-
-  // Connect the socket referred to by the file descriptor
-  sockaddr_in addr;
-  memset(&addr, 0, sizeof(sockaddr_in));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(hdd_reader_port_);
-  addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  ret = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
-  if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "connect error");
-    stat.add("connect", strerror(errno));
-    close(sock);
-    return;
-  }
-
-  std::ostringstream oss;
-  boost::archive::text_oarchive oa(oss);
-  oa & hdd_devices_;
-
-  // Write list of devices to FD
-  ret = write(sock, oss.str().c_str(), oss.str().length());
-  if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "write error");
-    stat.add("write", strerror(errno));
-    RCLCPP_ERROR(get_logger(), "write error");
-    close(sock);
-    return;
-  }
-
-  // Receive messages from a socket
-  char buf[1024] = "";
-  ret = recv(sock, buf, sizeof(buf) - 1, 0);
-  if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "recv error");
-    stat.add("recv", strerror(errno));
-    close(sock);
-    return;
-  }
-  // No data received
-  if (ret == 0) {
-    stat.summary(DiagStatus::ERROR, "recv error");
-    stat.add("recv", "No data received");
-    close(sock);
-    return;
-  }
-
-  // Close the file descriptor FD
-  ret = close(sock);
-  if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "close error");
-    stat.add("close", strerror(errno));
-    return;
-  }
-
-  // Restore HDD information list
-  HDDInfoList list;
-
-  try {
-    std::istringstream iss(buf);
-    boost::archive::text_iarchive oa(iss);
-    oa >> list;
-  } catch (const std::exception & e) {
-    stat.summary(DiagStatus::ERROR, "recv error");
-    stat.add("recv", e.what());
+  // Update HDD information
+  if (!updateHDDInfoList(item, stat)) {
     return;
   }
 
@@ -156,8 +96,8 @@ void HDDMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
 
   for (auto itr = hdd_params_.begin(); itr != hdd_params_.end(); ++itr, ++index) {
     // Retrieve HDD information
-    auto hdd_itr = list.find(itr->second.device_);
-    if (hdd_itr == list.end()) {
+    auto hdd_itr = hdd_info_list_.find(itr->second.device_);
+    if (hdd_itr == hdd_info_list_.end()) {
       stat.add(fmt::format("HDD {}: status", index), "hdd_reader error");
       stat.add(fmt::format("HDD {}: name", index), itr->first.c_str());
       stat.add(fmt::format("HDD {}: hdd_reader", index), strerror(ENOENT));
@@ -173,20 +113,53 @@ void HDDMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
       continue;
     }
 
-    float temp = static_cast<float>(hdd_itr->second.temp_);
-
-    level = DiagStatus::OK;
-    if (temp >= itr->second.temp_error_) {
-      level = DiagStatus::ERROR;
-    } else if (temp >= itr->second.temp_warn_) {
-      level = DiagStatus::WARN;
-    }
-
-    stat.add(fmt::format("HDD {}: status", index), temp_dict_.at(level));
+    stat.add(fmt::format("HDD {}: status", index), smart_dicts_[static_cast<uint32_t>(item)].at(level));
     stat.add(fmt::format("HDD {}: name", index), itr->second.device_.c_str());
     stat.add(fmt::format("HDD {}: model", index), hdd_itr->second.model_.c_str());
     stat.add(fmt::format("HDD {}: serial", index), hdd_itr->second.serial_.c_str());
-    stat.addf(fmt::format("HDD {}: temperature", index), "%.1f DegC", temp);
+    switch (item) {
+      case HDDSMARTInfoItem::TEMPERATURE:
+        {
+          float temp = static_cast<float>(hdd_itr->second.temp_);
+
+          level = DiagStatus::OK;
+          if (temp >= itr->second.temp_error_) {
+            level = DiagStatus::ERROR;
+          } else if (temp >= itr->second.temp_warn_) {
+            level = DiagStatus::WARN;
+          }
+          stat.addf(fmt::format("HDD {}: temperature", index), "%.1f DegC", temp);
+        }
+        break;
+      case HDDSMARTInfoItem::POWER_ON_HOURS:
+        {
+          int64_t power_on_hours = static_cast<int64_t>(hdd_itr->second.power_on_hours_);
+
+          level = DiagStatus::OK;
+          if (power_on_hours >= itr->second.power_on_hours_error_) {
+            level = DiagStatus::ERROR;
+          } else if (power_on_hours >= itr->second.power_on_hours_warn_) {
+            level = DiagStatus::WARN;
+          }
+          stat.addf(fmt::format("HDD {}: power on hours", index), "%u Hours", hdd_itr->second.power_on_hours_);
+        }
+        break;
+      case HDDSMARTInfoItem::TOTAL_WRITTEN:
+        {
+          int64_t total_written = static_cast<int64_t>(hdd_itr->second.total_written_);
+
+          level = DiagStatus::OK;
+          if (total_written >= itr->second.total_written_error_) {
+            level = DiagStatus::ERROR;
+          } else if (total_written >= itr->second.total_written_warn_) {
+            level = DiagStatus::WARN;
+          }
+          stat.addf(fmt::format("HDD {}: total written", index), "%u", hdd_itr->second.total_written_);
+        }
+        break;
+      default:
+        break;
+    }
 
     whole_level = std::max(whole_level, level);
   }
@@ -194,7 +167,7 @@ void HDDMonitor::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & stat)
   if (!error_str.empty()) {
     stat.summary(DiagStatus::ERROR, error_str);
   } else {
-    stat.summary(whole_level, temp_dict_.at(whole_level));
+    stat.summary(whole_level, smart_dicts_[static_cast<uint32_t>(item)].at(whole_level));
   }
 
   // Measure elapsed time since start time and report
@@ -312,12 +285,26 @@ void HDDMonitor::getHDDParams()
     HDDParam param;
     param.temp_warn_ = declare_parameter<float>(prefix + ".temp_warn");
     param.temp_error_ = declare_parameter<float>(prefix + ".temp_error");
+    param.power_on_hours_warn_ = declare_parameter<int>(prefix + ".power_on_hours_warn");
+    param.power_on_hours_error_ = declare_parameter<int>(prefix + ".power_on_hours_error");
+    param.total_written_safety_factor_ = declare_parameter<float>(prefix + ".total_written_safety_factor");
+    int total_written_warn_org = declare_parameter<int>(prefix + ".total_written_warn");
+    param.total_written_warn_ =
+      static_cast<int>(total_written_warn_org * (1.0f - param.total_written_safety_factor_));
+    int total_written_error_org = declare_parameter<int>(prefix + ".total_written_error");
+    param.total_written_error_ =
+      static_cast<int>(total_written_error_org * (1.0f - param.total_written_safety_factor_));
     param.free_warn_ = declare_parameter<int>(prefix + ".free_warn");
     param.free_error_ = declare_parameter<int>(prefix + ".free_error");
 
-    // Remove index number for passing device name to hdd-reader
-    const std::regex pattern("\\d+$");
-    param.device_ = std::regex_replace(device_name, pattern, "");
+    // Remove index number of partition for passing device name to hdd-reader
+    if (boost::starts_with(device_name, "/dev/sd")) {
+      const std::regex pattern("\\d+$");
+      param.device_ = std::regex_replace(device_name, pattern, "");
+    } else {
+      const std::regex pattern("(\\d+).*");
+      param.device_ = std::regex_replace(device_name, pattern, "$1");
+    }
     hdd_params_[device_name] = param;
 
     hdd_devices_.push_back(param.device_);
@@ -346,6 +333,120 @@ std::string HDDMonitor::getDeviceFromMountPoint(const std::string & mount_point)
   }
 
   return ret;
+}
+
+bool HDDMonitor::updateHDDInfoList(HDDSMARTInfoItem item, diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  static uint32_t size = static_cast<uint32_t>(HDDSMARTInfoItem::SIZE);
+  uint32_t item_index = static_cast<uint32_t>(item);
+  if (item_index >= size) {
+    stat.summary(DiagStatus::ERROR, "invalid S.M.A.R.T. information");
+    return false;
+  }
+
+  // Connect to HDD reader if the item is out of date
+  if (!is_up_to_date_[item_index]) {
+    if (!getHDDInfoListFromHDDReader(stat)) {
+      return false;
+    }
+    // Set flags of all item to up to date
+    for (uint32_t i = 0; i < size; i++) {
+      is_up_to_date_[i] = true;
+    }
+  }
+
+  // Set flag of the item to out of date
+  is_up_to_date_[item_index] = false;
+  return true;
+}
+
+bool HDDMonitor::getHDDInfoListFromHDDReader(diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  // Create a new socket
+  int sock = socket(AF_INET, SOCK_STREAM, 0);
+  if (sock < 0) {
+    stat.summary(DiagStatus::ERROR, "socket error");
+    stat.add("socket", strerror(errno));
+    return false;
+  }
+
+  // Specify the receiving timeouts until reporting an error
+  struct timeval tv;
+  tv.tv_sec = 10;
+  tv.tv_usec = 0;
+  int ret = setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  if (ret < 0) {
+    stat.summary(DiagStatus::ERROR, "setsockopt error");
+    stat.add("setsockopt", strerror(errno));
+    close(sock);
+    return false;
+  }
+
+  // Connect the socket referred to by the file descriptor
+  sockaddr_in addr;
+  memset(&addr, 0, sizeof(sockaddr_in));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(hdd_reader_port_);
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  ret = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
+  if (ret < 0) {
+    stat.summary(DiagStatus::ERROR, "connect error");
+    stat.add("connect", strerror(errno));
+    close(sock);
+    return false;
+  }
+
+  std::ostringstream oss;
+  boost::archive::text_oarchive oa(oss);
+  oa & hdd_devices_;
+
+  // Write list of devices to FD
+  ret = write(sock, oss.str().c_str(), oss.str().length());
+  if (ret < 0) {
+    stat.summary(DiagStatus::ERROR, "write error");
+    stat.add("write", strerror(errno));
+    RCLCPP_ERROR(get_logger(), "write error");
+    close(sock);
+    return false;
+  }
+
+  // Receive messages from a socket
+  char buf[1024] = "";
+  ret = recv(sock, buf, sizeof(buf) - 1, 0);
+  if (ret < 0) {
+    stat.summary(DiagStatus::ERROR, "recv error");
+    stat.add("recv", strerror(errno));
+    close(sock);
+    return false;
+  }
+  // No data received
+  if (ret == 0) {
+    stat.summary(DiagStatus::ERROR, "recv error");
+    stat.add("recv", "No data received");
+    close(sock);
+    return false;
+  }
+
+  // Close the file descriptor FD
+  ret = close(sock);
+  if (ret < 0) {
+    stat.summary(DiagStatus::ERROR, "close error");
+    stat.add("close", strerror(errno));
+    return false;
+  }
+
+  // Restore HDD information list
+  try {
+    std::istringstream iss(buf);
+    boost::archive::text_iarchive oa(iss);
+    oa >> hdd_info_list_;
+  } catch (const std::exception & e) {
+    stat.summary(DiagStatus::ERROR, "recv error");
+    stat.add("recv", e.what());
+    return false;
+  }
+
+  return true;
 }
 
 #include <rclcpp_components/register_node_macro.hpp>

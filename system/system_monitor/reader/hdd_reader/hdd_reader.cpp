@@ -282,12 +282,29 @@ int get_ata_SMARTData(int fd, HDDInfo * info)
     return errno;
   }
 
-  // Retrieve C2h Enclosure Temperature
+  std::bitset<static_cast<uint8_t>(ATAAttributeIDs::SIZE)> found_flag;
+  // Retrieve S.M.A.R.T. Informations
   for (int i = 0; i < 30; ++i) {
-    if (data.attribute_entry_[i].attribute_id_ == 0xC2) {
-      info->temp_ = static_cast<uint8_t>(data.attribute_entry_[i].data_);
-      return EXIT_SUCCESS;
+    switch (data.attribute_entry_[i].attribute_id_) {
+      case 0xC2:    // Temperature - Device Internal
+        info->temp_ = static_cast<uint8_t>(data.attribute_entry_[i].data_);
+        found_flag.set(static_cast<uint8_t>(ATAAttributeIDs::TEMPERATURE));
+        break;
+      case 0x09:    // Power-on Hours Count
+        info->power_on_hours_ = data.attribute_entry_[i].data_;
+        found_flag.set(static_cast<uint8_t>(ATAAttributeIDs::POWER_ON_HOURS));
+        break;
+      case 0xF1:    // Total LBAs Written
+        info->total_written_ = data.attribute_entry_[i].data_;
+        found_flag.set(static_cast<uint8_t>(ATAAttributeIDs::TOTAL_WRITTEN));
+        break;
+      default:
+        break;
     }
+  }
+
+  if (found_flag.all()) {
+    return EXIT_SUCCESS;
   }
 
   return ENOENT;
@@ -347,15 +364,15 @@ int get_nvme_identify(int fd, HDDInfo * info)
 int get_nvme_SMARTData(int fd, HDDInfo * info)
 {
   nvme_admin_cmd cmd{};
-  char data[4]{};  // 1 Dword (get byte 0 to 3)
+  unsigned char data[144]{};    // 36 Dword (get byte 0 to 143)
 
   // The Get Log Page command returns a data buffer containing the log page requested
   cmd.opcode = 0x02;            // Get Log Page
   cmd.nsid = 0xFFFFFFFF;        // Global log page
   cmd.addr = (uint64_t)data;    // memory address of data
   cmd.data_len = sizeof(data);  // length of data
-  cmd.cdw10 = 0x00010002;       // Bit 27:16 Number of Dwords (NUMD) = 001h (1 Dword)
-                                // - Minimum necessary size to obtain a temperature
+  cmd.cdw10 = 0x00240002;       // Bit 27:16 Number of Dwords (NUMD) = 024h (36 Dword)
+                                // - Minimum necessary size to obtain S.M.A.R.T. informations
                                 // Bit 07:00 = 02h (SMART / Health Information)
 
   // send Admin Command to device
@@ -368,6 +385,18 @@ int get_nvme_SMARTData(int fd, HDDInfo * info)
   // Convert kelvin to celsius
   unsigned int temperature = ((data[2] << 8) | data[1]) - 273;
   info->temp_ = static_cast<uint8_t>(temperature);
+
+  // Bytes 63:48 Data Units Written
+  // This value is reported in thousands
+  // (i.e., a value of 1 corresponds to 1,000 units of 512 bytes written)
+  // and is rounded up
+  // (e.g., one indicates that the number of 512 byte data units written
+  // is from 1 to 1,000, three indicates that the number of 512 byte data
+  // units written is from 2,001 to 3,000)
+  info->total_written_ = *(reinterpret_cast<uint64_t*>(&data[48]));
+
+  // Bytes 143:128 Power On Hours
+  info->power_on_hours_ = *(reinterpret_cast<uint64_t*>(&data[128]));
 
   return EXIT_SUCCESS;
 }
