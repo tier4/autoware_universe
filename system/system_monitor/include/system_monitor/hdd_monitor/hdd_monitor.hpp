@@ -152,7 +152,7 @@ protected:
 
   /**
    * @brief update HDD information list
-   * @param [in] item S.M.A.R.T. infromation item to get
+   * @param [in] item S.M.A.R.T. information item to get
    * @param [out] stat diagnostic message passed directly to diagnostic publish calls
    * @return true if succeeds, false if error occurs
    */
@@ -181,7 +181,7 @@ protected:
    * @brief HDD SMART status messages
    */
   const std::map<int, const char *> smart_dicts_[static_cast<uint32_t>(HDDSMARTInfoItem::SIZE)] = {
-    // temparature
+    // temperature
     {{DiagStatus::OK, "OK"}, {DiagStatus::WARN, "hot"}, {DiagStatus::ERROR, "critical hot"}},
     // power on hours
     {{DiagStatus::OK, "OK"},
