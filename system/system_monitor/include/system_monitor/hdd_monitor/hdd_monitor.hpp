@@ -173,7 +173,6 @@ protected:
   std::map<std::string, HDDParam> hdd_params_;  //!< @brief list of error and warning levels
   std::vector<std::string> hdd_devices_;        //!< @brief list of devices
   bool is_up_to_date_[static_cast<uint32_t>(HDDSMARTInfoItem::SIZE)];
-                                                //!< @brief whether S.M.A.R.T. information items are up to date
   //!< @brief whether S.M.A.R.T. information items are up to date
   HDDInfoList hdd_info_list_;  //!< @brief list of HDD information
 
