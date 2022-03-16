@@ -135,9 +135,7 @@ void HDDMonitor::checkSMART(
         int64_t power_on_hours = static_cast<int64_t>(hdd_itr->second.power_on_hours_);
 
         level = DiagStatus::OK;
-        if (power_on_hours >= itr->second.power_on_hours_error_) {
-          level = DiagStatus::ERROR;
-        } else if (power_on_hours >= itr->second.power_on_hours_warn_) {
+        if (power_on_hours >= itr->second.power_on_hours_warn_) {
           level = DiagStatus::WARN;
         }
         stat.addf(
@@ -148,9 +146,7 @@ void HDDMonitor::checkSMART(
         int64_t total_data_written = static_cast<int64_t>(hdd_itr->second.total_data_written_);
 
         level = DiagStatus::OK;
-        if (total_data_written >= itr->second.total_data_written_error_) {
-          level = DiagStatus::ERROR;
-        } else if (total_data_written >= itr->second.total_data_written_warn_) {
+        if (total_data_written >= itr->second.total_data_written_warn_) {
           level = DiagStatus::WARN;
         }
         stat.addf(
@@ -285,15 +281,11 @@ void HDDMonitor::getHDDParams()
     param.temp_warn_ = declare_parameter<float>(prefix + ".temp_warn");
     param.temp_error_ = declare_parameter<float>(prefix + ".temp_error");
     param.power_on_hours_warn_ = declare_parameter<int>(prefix + ".power_on_hours_warn");
-    param.power_on_hours_error_ = declare_parameter<int>(prefix + ".power_on_hours_error");
     param.total_data_written_safety_factor_ =
       declare_parameter<float>(prefix + ".total_data_written_safety_factor");
     int total_data_written_warn_org = declare_parameter<int>(prefix + ".total_data_written_warn");
     param.total_data_written_warn_ =
       static_cast<int>(total_data_written_warn_org * (1.0f - param.total_data_written_safety_factor_));
-    int total_data_written_error_org = declare_parameter<int>(prefix + ".total_data_written_error");
-    param.total_data_written_error_ =
-      static_cast<int>(total_data_written_error_org * (1.0f - param.total_data_written_safety_factor_));
     param.free_warn_ = declare_parameter<int>(prefix + ".free_warn");
     param.free_error_ = declare_parameter<int>(prefix + ".free_error");
 

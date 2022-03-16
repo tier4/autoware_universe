@@ -37,9 +37,7 @@ struct HDDParam
   float temp_warn_;                         //!< @brief HDD temperature(DegC) to generate warning
   float temp_error_;                        //!< @brief HDD temperature(DegC) to generate error
   int power_on_hours_warn_;                 //!< @brief HDD power on hours to generate warning
-  int power_on_hours_error_;                //!< @brief HDD power on hours to generate error
   int total_data_written_warn_;             //!< @brief HDD total written data to generate warning
-  int total_data_written_error_;            //!< @brief HDD total written data to generate error
   float total_data_written_safety_factor_;  //!< @brief safety factor of HDD total written data
   int free_warn_;                           //!< @brief HDD free space(MB) to generate warning
   int free_error_;                          //!< @brief HDD free space(MB) to generate error
@@ -47,10 +45,8 @@ struct HDDParam
   HDDParam()
   : temp_warn_(55.0),
     temp_error_(70.0),
-    power_on_hours_warn_(2700000),
-    power_on_hours_error_(3000000),
-    total_data_written_warn_(4423680),
-    total_data_written_error_(4915200),
+    power_on_hours_warn_(3000000),
+    total_data_written_warn_(4915200),
     total_data_written_safety_factor_(0.05),
     free_warn_(5120),
     free_error_(100)
@@ -184,12 +180,12 @@ protected:
     {{DiagStatus::OK, "OK"}, {DiagStatus::WARN, "hot"}, {DiagStatus::ERROR, "critical hot"}},
     // power on hours
     {{DiagStatus::OK, "OK"},
-     {DiagStatus::WARN, "long-time operation"},
-     {DiagStatus::ERROR, "critical long-time operation"}},
-    // total written units
+     {DiagStatus::WARN, "lifetime limit"},
+     {DiagStatus::ERROR, "unused"}},
+    // total data written
     {{DiagStatus::OK, "OK"},
-     {DiagStatus::WARN, "written a lot"},
-     {DiagStatus::ERROR, "written quite a lot"}},
+     {DiagStatus::WARN, "warranty period"},
+     {DiagStatus::ERROR, "unused"}},
   };
 
   /**
