@@ -33,29 +33,35 @@
  */
 struct HDDParam
 {
-  std::string device_;                  //!< @brief device
-  float temp_warn_;                     //!< @brief HDD temperature(DegC) to generate warning
-  float temp_error_;                    //!< @brief HDD temperature(DegC) to generate error
-  int power_on_hours_warn_;             //!< @brief HDD power on hours to generate warning
-  int power_on_hours_error_;            //!< @brief HDD power on hours to generate error
-  int total_written_warn_;              //!< @brief HDD total written data to generate warning
-  int total_written_error_;             //!< @brief HDD total written data to generate error
-  float total_written_safety_factor_;   //!< @brief safety factor of HDD total written data
-  int free_warn_;                       //!< @brief HDD free space(MB) to generate warning
-  int free_error_;                      //!< @brief HDD free space(MB) to generate error
+  std::string device_;                 //!< @brief device
+  float temp_warn_;                    //!< @brief HDD temperature(DegC) to generate warning
+  float temp_error_;                   //!< @brief HDD temperature(DegC) to generate error
+  int power_on_hours_warn_;            //!< @brief HDD power on hours to generate warning
+  int power_on_hours_error_;           //!< @brief HDD power on hours to generate error
+  int total_written_warn_;             //!< @brief HDD total written data to generate warning
+  int total_written_error_;            //!< @brief HDD total written data to generate error
+  float total_written_safety_factor_;  //!< @brief safety factor of HDD total written data
+  int free_warn_;                      //!< @brief HDD free space(MB) to generate warning
+  int free_error_;                     //!< @brief HDD free space(MB) to generate error
 
-  HDDParam() : temp_warn_(55.0), temp_error_(70.0),
-               power_on_hours_warn_(2700000), power_on_hours_error_(3000000),
-               total_written_warn_(4423680), total_written_error_(4915200),
-               total_written_safety_factor_(0.05),
-               free_warn_(5120), free_error_(100) {}
+  HDDParam()
+  : temp_warn_(55.0),
+    temp_error_(70.0),
+    power_on_hours_warn_(2700000),
+    power_on_hours_error_(3000000),
+    total_written_warn_(4423680),
+    total_written_error_(4915200),
+    total_written_safety_factor_(0.05),
+    free_warn_(5120),
+    free_error_(100)
+  {
+  }
 };
 
 /**
  * @brief SMART information items to check
  */
-enum class HDDSMARTInfoItem : uint32_t
-{
+enum class HDDSMARTInfoItem : uint32_t {
   TEMPERATURE = 0,
   POWER_ON_HOURS = 1,
   TOTAL_WRITTEN = 2,
@@ -85,7 +91,8 @@ protected:
    * @note NOLINT syntax is needed since diagnostic_updater asks for a non-const reference
    * to pass diagnostic message updated in this function to diagnostic publish calls.
    */
-  void checkSMARTTemperature(diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
+  void checkSMARTTemperature(
+    diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
 
   /**
    * @brief check HDD power on hours
@@ -93,7 +100,8 @@ protected:
    * @note NOLINT syntax is needed since diagnostic_updater asks for a non-const reference
    * to pass diagnostic message updated in this function to diagnostic publish calls.
    */
-  void checkSMARTPowerOnHours(diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
+  void checkSMARTPowerOnHours(
+    diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
 
   /**
    * @brief check HDD total written
@@ -101,7 +109,8 @@ protected:
    * @note NOLINT syntax is needed since diagnostic_updater asks for a non-const reference
    * to pass diagnostic message updated in this function to diagnostic publish calls.
    */
-  void checkSMARTTotalWritten(diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
+  void checkSMARTTotalWritten(
+    diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
 
   /**
    * @brief check S.M.A.R.T. information
@@ -109,7 +118,9 @@ protected:
    * @note NOLINT syntax is needed since diagnostic_updater asks for a non-const reference
    * to pass diagnostic message updated in this function to diagnostic publish calls.
    */
-  void checkSMART(diagnostic_updater::DiagnosticStatusWrapper & stat, HDDSMARTInfoItem item);  // NOLINT(runtime/references)
+  void checkSMART(
+    diagnostic_updater::DiagnosticStatusWrapper & stat,
+    HDDSMARTInfoItem item);  // NOLINT(runtime/references)
 
   /**
    * @brief check HDD usage
@@ -163,19 +174,23 @@ protected:
   std::vector<std::string> hdd_devices_;        //!< @brief list of devices
   bool is_up_to_date_[static_cast<uint32_t>(HDDSMARTInfoItem::SIZE)];
                                                 //!< @brief whether S.M.A.R.T. information items are up to date
-  HDDInfoList hdd_info_list_;                   //!< @brief list of HDD information
+  //!< @brief whether S.M.A.R.T. information items are up to date
+  HDDInfoList hdd_info_list_;  //!< @brief list of HDD information
 
   /**
    * @brief HDD SMART status messages
    */
-  const std::map<int, const char *>
-    smart_dicts_[static_cast<uint32_t>(HDDSMARTInfoItem::SIZE)] = {
+  const std::map<int, const char *> smart_dicts_[static_cast<uint32_t>(HDDSMARTInfoItem::SIZE)] = {
     // temparature
     {{DiagStatus::OK, "OK"}, {DiagStatus::WARN, "hot"}, {DiagStatus::ERROR, "critical hot"}},
     // power on hours
-    {{DiagStatus::OK, "OK"}, {DiagStatus::WARN, "long-time operation"}, {DiagStatus::ERROR, "critical long-time operation"}},
+    {{DiagStatus::OK, "OK"},
+     {DiagStatus::WARN, "long-time operation"},
+     {DiagStatus::ERROR, "critical long-time operation"}},
     // total written units
-    {{DiagStatus::OK, "OK"}, {DiagStatus::WARN, "written a lot"}, {DiagStatus::ERROR, "written quite a lot"}},
+    {{DiagStatus::OK, "OK"},
+     {DiagStatus::WARN, "written a lot"},
+     {DiagStatus::ERROR, "written quite a lot"}},
   };
 
   /**

@@ -74,7 +74,8 @@ void HDDMonitor::checkSMARTTotalWritten(diagnostic_updater::DiagnosticStatusWrap
   checkSMART(stat, HDDSMARTInfoItem::TOTAL_WRITTEN);
 }
 
-void HDDMonitor::checkSMART(diagnostic_updater::DiagnosticStatusWrapper & stat, HDDSMARTInfoItem item)
+void HDDMonitor::checkSMART(
+  diagnostic_updater::DiagnosticStatusWrapper & stat, HDDSMARTInfoItem item)
 {
   // Remember start time to measure elapsed time
   const auto t_start = SystemMonitorUtility::startMeasurement();
@@ -113,50 +114,48 @@ void HDDMonitor::checkSMART(diagnostic_updater::DiagnosticStatusWrapper & stat, 
       continue;
     }
 
-    stat.add(fmt::format("HDD {}: status", index), smart_dicts_[static_cast<uint32_t>(item)].at(level));
+    stat.add(
+      fmt::format("HDD {}: status", index), smart_dicts_[static_cast<uint32_t>(item)].at(level));
     stat.add(fmt::format("HDD {}: name", index), itr->second.device_.c_str());
     stat.add(fmt::format("HDD {}: model", index), hdd_itr->second.model_.c_str());
     stat.add(fmt::format("HDD {}: serial", index), hdd_itr->second.serial_.c_str());
     switch (item) {
-      case HDDSMARTInfoItem::TEMPERATURE:
-        {
-          float temp = static_cast<float>(hdd_itr->second.temp_);
+      case HDDSMARTInfoItem::TEMPERATURE: {
+        float temp = static_cast<float>(hdd_itr->second.temp_);
 
-          level = DiagStatus::OK;
-          if (temp >= itr->second.temp_error_) {
-            level = DiagStatus::ERROR;
-          } else if (temp >= itr->second.temp_warn_) {
-            level = DiagStatus::WARN;
-          }
-          stat.addf(fmt::format("HDD {}: temperature", index), "%.1f DegC", temp);
+        level = DiagStatus::OK;
+        if (temp >= itr->second.temp_error_) {
+          level = DiagStatus::ERROR;
+        } else if (temp >= itr->second.temp_warn_) {
+          level = DiagStatus::WARN;
         }
-        break;
-      case HDDSMARTInfoItem::POWER_ON_HOURS:
-        {
-          int64_t power_on_hours = static_cast<int64_t>(hdd_itr->second.power_on_hours_);
+        stat.addf(fmt::format("HDD {}: temperature", index), "%.1f DegC", temp);
+      } break;
+      case HDDSMARTInfoItem::POWER_ON_HOURS: {
+        int64_t power_on_hours = static_cast<int64_t>(hdd_itr->second.power_on_hours_);
 
-          level = DiagStatus::OK;
-          if (power_on_hours >= itr->second.power_on_hours_error_) {
-            level = DiagStatus::ERROR;
-          } else if (power_on_hours >= itr->second.power_on_hours_warn_) {
-            level = DiagStatus::WARN;
-          }
-          stat.addf(fmt::format("HDD {}: power on hours", index), "%u Hours", hdd_itr->second.power_on_hours_);
+        level = DiagStatus::OK;
+        if (power_on_hours >= itr->second.power_on_hours_error_) {
+          level = DiagStatus::ERROR;
+        } else if (power_on_hours >= itr->second.power_on_hours_warn_) {
+          level = DiagStatus::WARN;
         }
-        break;
-      case HDDSMARTInfoItem::TOTAL_WRITTEN:
-        {
-          int64_t total_written = static_cast<int64_t>(hdd_itr->second.total_written_);
+        stat.addf(
+          fmt::format("HDD {}: power on hours", index), "%u Hours",
+          hdd_itr->second.power_on_hours_);
+      } break;
+      case HDDSMARTInfoItem::TOTAL_WRITTEN: {
+        int64_t total_written = static_cast<int64_t>(hdd_itr->second.total_written_);
 
-          level = DiagStatus::OK;
-          if (total_written >= itr->second.total_written_error_) {
-            level = DiagStatus::ERROR;
-          } else if (total_written >= itr->second.total_written_warn_) {
-            level = DiagStatus::WARN;
-          }
-          stat.addf(fmt::format("HDD {}: total written", index), "%u", hdd_itr->second.total_written_);
+        level = DiagStatus::OK;
+        if (total_written >= itr->second.total_written_error_) {
+          level = DiagStatus::ERROR;
+        } else if (total_written >= itr->second.total_written_warn_) {
+          level = DiagStatus::WARN;
         }
-        break;
+        stat.addf(
+          fmt::format("HDD {}: total written", index), "%u", hdd_itr->second.total_written_);
+      } break;
       default:
         break;
     }
@@ -287,7 +286,8 @@ void HDDMonitor::getHDDParams()
     param.temp_error_ = declare_parameter<float>(prefix + ".temp_error");
     param.power_on_hours_warn_ = declare_parameter<int>(prefix + ".power_on_hours_warn");
     param.power_on_hours_error_ = declare_parameter<int>(prefix + ".power_on_hours_error");
-    param.total_written_safety_factor_ = declare_parameter<float>(prefix + ".total_written_safety_factor");
+    param.total_written_safety_factor_ =
+      declare_parameter<float>(prefix + ".total_written_safety_factor");
     int total_written_warn_org = declare_parameter<int>(prefix + ".total_written_warn");
     param.total_written_warn_ =
       static_cast<int>(total_written_warn_org * (1.0f - param.total_written_safety_factor_));
@@ -335,7 +335,8 @@ std::string HDDMonitor::getDeviceFromMountPoint(const std::string & mount_point)
   return ret;
 }
 
-bool HDDMonitor::updateHDDInfoList(HDDSMARTInfoItem item, diagnostic_updater::DiagnosticStatusWrapper & stat)
+bool HDDMonitor::updateHDDInfoList(
+  HDDSMARTInfoItem item, diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   static uint32_t size = static_cast<uint32_t>(HDDSMARTInfoItem::SIZE);
   uint32_t item_index = static_cast<uint32_t>(item);

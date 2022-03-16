@@ -30,7 +30,7 @@ This is an approach to limit its functionality, however, the functionality can b
 ### [ATA]
 
 | Purpose                      | Name                 | Length               |
-| ---------------------------  | -------------------- | -------------------- |
+| ---------------------------- | -------------------- | -------------------- |
 | Model number, Serial number  | IDENTIFY DEVICE data | 256 words(512 bytes) |
 | HDD temperature, life of HDD | SMART READ DATA      | 256 words(512 bytes) |
 
@@ -44,7 +44,7 @@ For details please see the documents below.<br>
 ### [NVMe]
 
 | Purpose                      | Name                               | Length              |
-| ---------------------------  | ---------------------------------- | ------------------- |
+| ---------------------------- | ---------------------------------- | ------------------- |
 | Model number, Serial number  | Identify Controller data structure | 4096 bytes          |
 | HDD temperature, life of HDD | SMART / Health Information         | 36 Dword(144 bytes) |
 

@@ -36,13 +36,13 @@
 
 <b>[values]</b>
 
-| key                       | value (example)                                          |
-| ------------------------- | -------------------------------------------------------- |
-| HDD [0-9]: status         | OK / long-time operation / critical long-time operation  |
-| HDD [0-9]: name           | /dev/nvme0                                               |
-| HDD [0-9]: model          | PHISON PS5012-E12S-512G                                  |
-| HDD [0-9]: serial         | FB590709182505050767                                     |
-| HDD [0-9]: power on hours | 4834 Hours                                               |
+| key                       | value (example)                                         |
+| ------------------------- | ------------------------------------------------------- |
+| HDD [0-9]: status         | OK / long-time operation / critical long-time operation |
+| HDD [0-9]: name           | /dev/nvme0                                              |
+| HDD [0-9]: model          | PHISON PS5012-E12S-512G                                 |
+| HDD [0-9]: serial         | FB590709182505050767                                    |
+| HDD [0-9]: power on hours | 4834 Hours                                              |
 
 ## <u>HDD TotalWritten</u>
 

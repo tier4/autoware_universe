@@ -286,15 +286,15 @@ int get_ata_SMARTData(int fd, HDDInfo * info)
   // Retrieve S.M.A.R.T. Informations
   for (int i = 0; i < 30; ++i) {
     switch (data.attribute_entry_[i].attribute_id_) {
-      case 0xC2:    // Temperature - Device Internal
+      case 0xC2:  // Temperature - Device Internal
         info->temp_ = static_cast<uint8_t>(data.attribute_entry_[i].data_);
         found_flag.set(static_cast<uint8_t>(ATAAttributeIDs::TEMPERATURE));
         break;
-      case 0x09:    // Power-on Hours Count
+      case 0x09:  // Power-on Hours Count
         info->power_on_hours_ = data.attribute_entry_[i].data_;
         found_flag.set(static_cast<uint8_t>(ATAAttributeIDs::POWER_ON_HOURS));
         break;
-      case 0xF1:    // Total LBAs Written
+      case 0xF1:  // Total LBAs Written
         info->total_written_ = data.attribute_entry_[i].data_;
         found_flag.set(static_cast<uint8_t>(ATAAttributeIDs::TOTAL_WRITTEN));
         break;
@@ -364,7 +364,7 @@ int get_nvme_identify(int fd, HDDInfo * info)
 int get_nvme_SMARTData(int fd, HDDInfo * info)
 {
   nvme_admin_cmd cmd{};
-  unsigned char data[144]{};    // 36 Dword (get byte 0 to 143)
+  unsigned char data[144]{};  // 36 Dword (get byte 0 to 143)
 
   // The Get Log Page command returns a data buffer containing the log page requested
   cmd.opcode = 0x02;            // Get Log Page
@@ -393,10 +393,10 @@ int get_nvme_SMARTData(int fd, HDDInfo * info)
   // (e.g., one indicates that the number of 512 byte data units written
   // is from 1 to 1,000, three indicates that the number of 512 byte data
   // units written is from 2,001 to 3,000)
-  info->total_written_ = *(reinterpret_cast<uint64_t*>(&data[48]));
+  info->total_written_ = *(reinterpret_cast<uint64_t *>(&data[48]));
 
   // Bytes 143:128 Power On Hours
-  info->power_on_hours_ = *(reinterpret_cast<uint64_t*>(&data[128]));
+  info->power_on_hours_ = *(reinterpret_cast<uint64_t *>(&data[128]));
 
   return EXIT_SUCCESS;
 }
