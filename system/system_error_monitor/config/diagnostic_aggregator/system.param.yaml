@@ -140,10 +140,10 @@
                   contains: [": HDD PowerOnHours"]
                   timeout: 3.0
 
-                total_written:
+                total_data_written:
                   type: diagnostic_aggregator/GenericAnalyzer
-                  path: total_written
-                  contains: [": HDD TotalWritten"]
+                  path: total_data_written
+                  contains: [": HDD TotalDataWritten"]
                   timeout: 3.0
 
                 usage:

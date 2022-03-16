@@ -44,9 +44,9 @@
 | HDD [0-9]: serial         | FB590709182505050767                                    |
 | HDD [0-9]: power on hours | 4834 Hours                                              |
 
-## <u>HDD TotalWritten</u>
+## <u>HDD TotalDataWritten</u>
 
-/diagnostics/hdd_monitor: HDD TotalWritten
+/diagnostics/hdd_monitor: HDD TotalDataWritten
 
 <b>[summary]</b>
 

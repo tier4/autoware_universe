@@ -34,7 +34,7 @@
 enum class ATAAttributeIDs : uint8_t {
   TEMPERATURE = 0,
   POWER_ON_HOURS = 1,
-  TOTAL_WRITTEN = 2,
+  TOTAL_DATA_WRITTEN = 2,
   SIZE
 };
 
@@ -49,8 +49,8 @@ struct HDDInfo
   uint8_t temp_;        //!< @brief temperature(DegC)
   // Lowest byte of the raw value contains the exact temperature value (Celsius degrees)
   // in S.M.A.R.T. information.
-  uint64_t power_on_hours_;  //!< @brief power on hours count
-  uint64_t total_written_;   //!< @brief total written data
+  uint64_t power_on_hours_;       //!< @brief power on hours count
+  uint64_t total_data_written_;   //!< @brief total written data
 
   /**
    * @brief Load or save data members.
@@ -67,7 +67,7 @@ struct HDDInfo
     ar & serial_;
     ar & temp_;
     ar & power_on_hours_;
-    ar & total_written_;
+    ar & total_data_written_;
   }
 };
 

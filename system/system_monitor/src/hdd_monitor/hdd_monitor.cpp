@@ -49,7 +49,7 @@ HDDMonitor::HDDMonitor(const rclcpp::NodeOptions & options)
   updater_.setHardwareID(hostname_);
   updater_.add("HDD Temperature", this, &HDDMonitor::checkSMARTTemperature);
   updater_.add("HDD PowerOnHours", this, &HDDMonitor::checkSMARTPowerOnHours);
-  updater_.add("HDD TotalWritten", this, &HDDMonitor::checkSMARTTotalWritten);
+  updater_.add("HDD TotalDataWritten", this, &HDDMonitor::checkSMARTTotalDataWritten);
   updater_.add("HDD Usage", this, &HDDMonitor::checkUsage);
 
   for (uint32_t i = 0; i < static_cast<uint32_t>(HDDSMARTInfoItem::SIZE); i++) {
@@ -69,9 +69,9 @@ void HDDMonitor::checkSMARTPowerOnHours(diagnostic_updater::DiagnosticStatusWrap
   checkSMART(stat, HDDSMARTInfoItem::POWER_ON_HOURS);
 }
 
-void HDDMonitor::checkSMARTTotalWritten(diagnostic_updater::DiagnosticStatusWrapper & stat)
+void HDDMonitor::checkSMARTTotalDataWritten(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
-  checkSMART(stat, HDDSMARTInfoItem::TOTAL_WRITTEN);
+  checkSMART(stat, HDDSMARTInfoItem::TOTAL_DATA_WRITTEN);
 }
 
 void HDDMonitor::checkSMART(
@@ -144,17 +144,17 @@ void HDDMonitor::checkSMART(
           fmt::format("HDD {}: power on hours", index), "%u Hours",
           hdd_itr->second.power_on_hours_);
       } break;
-      case HDDSMARTInfoItem::TOTAL_WRITTEN: {
-        int64_t total_written = static_cast<int64_t>(hdd_itr->second.total_written_);
+      case HDDSMARTInfoItem::TOTAL_DATA_WRITTEN: {
+        int64_t total_data_written = static_cast<int64_t>(hdd_itr->second.total_data_written_);
 
         level = DiagStatus::OK;
-        if (total_written >= itr->second.total_written_error_) {
+        if (total_data_written >= itr->second.total_data_written_error_) {
           level = DiagStatus::ERROR;
-        } else if (total_written >= itr->second.total_written_warn_) {
+        } else if (total_data_written >= itr->second.total_data_written_warn_) {
           level = DiagStatus::WARN;
         }
         stat.addf(
-          fmt::format("HDD {}: total written", index), "%u", hdd_itr->second.total_written_);
+          fmt::format("HDD {}: total written", index), "%u", hdd_itr->second.total_data_written_);
       } break;
       default:
         break;
@@ -286,14 +286,14 @@ void HDDMonitor::getHDDParams()
     param.temp_error_ = declare_parameter<float>(prefix + ".temp_error");
     param.power_on_hours_warn_ = declare_parameter<int>(prefix + ".power_on_hours_warn");
     param.power_on_hours_error_ = declare_parameter<int>(prefix + ".power_on_hours_error");
-    param.total_written_safety_factor_ =
-      declare_parameter<float>(prefix + ".total_written_safety_factor");
-    int total_written_warn_org = declare_parameter<int>(prefix + ".total_written_warn");
-    param.total_written_warn_ =
-      static_cast<int>(total_written_warn_org * (1.0f - param.total_written_safety_factor_));
-    int total_written_error_org = declare_parameter<int>(prefix + ".total_written_error");
-    param.total_written_error_ =
-      static_cast<int>(total_written_error_org * (1.0f - param.total_written_safety_factor_));
+    param.total_data_written_safety_factor_ =
+      declare_parameter<float>(prefix + ".total_data_written_safety_factor");
+    int total_data_written_warn_org = declare_parameter<int>(prefix + ".total_data_written_warn");
+    param.total_data_written_warn_ =
+      static_cast<int>(total_data_written_warn_org * (1.0f - param.total_data_written_safety_factor_));
+    int total_data_written_error_org = declare_parameter<int>(prefix + ".total_data_written_error");
+    param.total_data_written_error_ =
+      static_cast<int>(total_data_written_error_org * (1.0f - param.total_data_written_safety_factor_));
     param.free_warn_ = declare_parameter<int>(prefix + ".free_warn");
     param.free_error_ = declare_parameter<int>(prefix + ".free_error");
 

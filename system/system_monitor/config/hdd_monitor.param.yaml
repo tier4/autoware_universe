@@ -9,8 +9,8 @@
         temp_error: 70.0
         power_on_hours_warn: 2700000
         power_on_hours_error: 3000000
-        total_written_warn: 4423680   # =150TB*0.9 (1unit=32MB)
-        total_written_error: 4915200  # =150TB (1unit=32MB)
-        total_written_safety_factor: 0.05
+        total_data_written_warn: 4423680   # =150TB*0.9 (1unit=32MB)
+        total_data_written_error: 4915200  # =150TB (1unit=32MB)
+        total_data_written_safety_factor: 0.05
         free_warn: 5120 # MB(8hour)
         free_error: 100 # MB(last 1 minute)

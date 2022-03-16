@@ -295,8 +295,8 @@ int get_ata_SMARTData(int fd, HDDInfo * info)
         found_flag.set(static_cast<uint8_t>(ATAAttributeIDs::POWER_ON_HOURS));
         break;
       case 0xF1:  // Total LBAs Written
-        info->total_written_ = data.attribute_entry_[i].data_;
-        found_flag.set(static_cast<uint8_t>(ATAAttributeIDs::TOTAL_WRITTEN));
+        info->total_data_written_ = data.attribute_entry_[i].data_;
+        found_flag.set(static_cast<uint8_t>(ATAAttributeIDs::TOTAL_DATA_WRITTEN));
         break;
       default:
         break;
@@ -393,7 +393,7 @@ int get_nvme_SMARTData(int fd, HDDInfo * info)
   // (e.g., one indicates that the number of 512 byte data units written
   // is from 1 to 1,000, three indicates that the number of 512 byte data
   // units written is from 2,001 to 3,000)
-  info->total_written_ = *(reinterpret_cast<uint64_t *>(&data[48]));
+  info->total_data_written_ = *(reinterpret_cast<uint64_t *>(&data[48]));
 
   // Bytes 143:128 Power On Hours
   info->power_on_hours_ = *(reinterpret_cast<uint64_t *>(&data[128]));

@@ -33,25 +33,25 @@
  */
 struct HDDParam
 {
-  std::string device_;                 //!< @brief device
-  float temp_warn_;                    //!< @brief HDD temperature(DegC) to generate warning
-  float temp_error_;                   //!< @brief HDD temperature(DegC) to generate error
-  int power_on_hours_warn_;            //!< @brief HDD power on hours to generate warning
-  int power_on_hours_error_;           //!< @brief HDD power on hours to generate error
-  int total_written_warn_;             //!< @brief HDD total written data to generate warning
-  int total_written_error_;            //!< @brief HDD total written data to generate error
-  float total_written_safety_factor_;  //!< @brief safety factor of HDD total written data
-  int free_warn_;                      //!< @brief HDD free space(MB) to generate warning
-  int free_error_;                     //!< @brief HDD free space(MB) to generate error
+  std::string device_;                      //!< @brief device
+  float temp_warn_;                         //!< @brief HDD temperature(DegC) to generate warning
+  float temp_error_;                        //!< @brief HDD temperature(DegC) to generate error
+  int power_on_hours_warn_;                 //!< @brief HDD power on hours to generate warning
+  int power_on_hours_error_;                //!< @brief HDD power on hours to generate error
+  int total_data_written_warn_;             //!< @brief HDD total written data to generate warning
+  int total_data_written_error_;            //!< @brief HDD total written data to generate error
+  float total_data_written_safety_factor_;  //!< @brief safety factor of HDD total written data
+  int free_warn_;                           //!< @brief HDD free space(MB) to generate warning
+  int free_error_;                          //!< @brief HDD free space(MB) to generate error
 
   HDDParam()
   : temp_warn_(55.0),
     temp_error_(70.0),
     power_on_hours_warn_(2700000),
     power_on_hours_error_(3000000),
-    total_written_warn_(4423680),
-    total_written_error_(4915200),
-    total_written_safety_factor_(0.05),
+    total_data_written_warn_(4423680),
+    total_data_written_error_(4915200),
+    total_data_written_safety_factor_(0.05),
     free_warn_(5120),
     free_error_(100)
   {
@@ -64,7 +64,7 @@ struct HDDParam
 enum class HDDSMARTInfoItem : uint32_t {
   TEMPERATURE = 0,
   POWER_ON_HOURS = 1,
-  TOTAL_WRITTEN = 2,
+  TOTAL_DATA_WRITTEN = 2,
   SIZE
 };
 
@@ -104,12 +104,12 @@ protected:
     diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
 
   /**
-   * @brief check HDD total written
+   * @brief check HDD total data written
    * @param [out] stat diagnostic message passed directly to diagnostic publish calls
    * @note NOLINT syntax is needed since diagnostic_updater asks for a non-const reference
    * to pass diagnostic message updated in this function to diagnostic publish calls.
    */
-  void checkSMARTTotalWritten(
+  void checkSMARTTotalDataWritten(
     diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
 
   /**
