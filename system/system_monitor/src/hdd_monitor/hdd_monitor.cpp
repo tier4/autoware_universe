@@ -290,8 +290,8 @@ void HDDMonitor::getHDDParams()
       declare_parameter<float>(prefix + ".total_data_written_safety_factor", 0.05f);
     int total_data_written_warn_org =
       declare_parameter<int>(prefix + ".total_data_written_warn", 4915200);
-    param.total_data_written_warn_ =
-      static_cast<int>(total_data_written_warn_org * (1.0f - param.total_data_written_safety_factor_));
+    param.total_data_written_warn_ = static_cast<int>(
+      total_data_written_warn_org * (1.0f - param.total_data_written_safety_factor_));
     param.free_warn_ = declare_parameter<int>(prefix + ".free_warn", 5120);
     param.free_error_ = declare_parameter<int>(prefix + ".free_error", 100);
 

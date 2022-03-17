@@ -161,7 +161,7 @@ protected:
   std::vector<std::string> hdd_devices_;        //!< @brief list of devices
   //!< @brief diagnostic of connection
   diagnostic_updater::DiagnosticStatusWrapper connect_diag_;
-  HDDInfoList hdd_info_list_;                   //!< @brief list of HDD information
+  HDDInfoList hdd_info_list_;  //!< @brief list of HDD information
 
   /**
    * @brief HDD SMART status messages
@@ -170,13 +170,9 @@ protected:
     // temperature
     {{DiagStatus::OK, "OK"}, {DiagStatus::WARN, "hot"}, {DiagStatus::ERROR, "critical hot"}},
     // power on hours
-    {{DiagStatus::OK, "OK"},
-     {DiagStatus::WARN, "lifetime limit"},
-     {DiagStatus::ERROR, "unused"}},
+    {{DiagStatus::OK, "OK"}, {DiagStatus::WARN, "lifetime limit"}, {DiagStatus::ERROR, "unused"}},
     // total data written
-    {{DiagStatus::OK, "OK"},
-     {DiagStatus::WARN, "warranty period"},
-     {DiagStatus::ERROR, "unused"}},
+    {{DiagStatus::OK, "OK"}, {DiagStatus::WARN, "warranty period"}, {DiagStatus::ERROR, "unused"}},
   };
 
   /**

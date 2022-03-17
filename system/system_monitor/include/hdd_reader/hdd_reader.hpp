@@ -49,8 +49,8 @@ struct HDDInfo
   uint8_t temp_;        //!< @brief temperature(DegC)
   // Lowest byte of the raw value contains the exact temperature value (Celsius degrees)
   // in S.M.A.R.T. information.
-  uint64_t power_on_hours_;       //!< @brief power on hours count
-  uint64_t total_data_written_;   //!< @brief total written data
+  uint64_t power_on_hours_;      //!< @brief power on hours count
+  uint64_t total_data_written_;  //!< @brief total written data
 
   /**
    * @brief Load or save data members.
