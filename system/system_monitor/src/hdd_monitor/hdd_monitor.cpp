@@ -42,6 +42,8 @@ HDDMonitor::HDDMonitor(const rclcpp::NodeOptions & options)
   updater_(this),
   hdd_reader_port_(declare_parameter<int>("hdd_reader_port", 7635))
 {
+  using namespace std::literals::chrono_literals;
+
   gethostname(hostname_, sizeof(hostname_));
 
   getHDDParams();
@@ -52,12 +54,11 @@ HDDMonitor::HDDMonitor(const rclcpp::NodeOptions & options)
   updater_.add("HDD TotalDataWritten", this, &HDDMonitor::checkSMARTTotalDataWritten);
   updater_.add("HDD Usage", this, &HDDMonitor::checkUsage);
 
-  for (uint32_t i = 0; i < static_cast<uint32_t>(HDDSMARTInfoItem::SIZE); i++) {
-    is_up_to_date_[i] = false;
-  }
-}
+  // get HDD information from HDD reader for the first time
+  updateHDDInfoList();
 
-void HDDMonitor::update() { updater_.force_update(); }
+  timer_ = rclcpp::create_timer(this, get_clock(), 1s, std::bind(&HDDMonitor::onTimer, this));
+}
 
 void HDDMonitor::checkSMARTTemperature(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
@@ -85,8 +86,12 @@ void HDDMonitor::checkSMART(
     return;
   }
 
-  // Update HDD information
-  if (!updateHDDInfoList(item, stat)) {
+  // Return error if connection diagnostic indicates error
+  if (connect_diag_.level != DiagStatus::OK) {
+    stat.summary(connect_diag_.level, connect_diag_.message);
+    for (const auto & e : connect_diag_.values) {
+      stat.add(e.key, e.value);
+    }
     return;
   }
 
@@ -327,40 +332,20 @@ std::string HDDMonitor::getDeviceFromMountPoint(const std::string & mount_point)
   return ret;
 }
 
-bool HDDMonitor::updateHDDInfoList(
-  HDDSMARTInfoItem item, diagnostic_updater::DiagnosticStatusWrapper & stat)
+void HDDMonitor::onTimer() { updateHDDInfoList(); }
+
+void HDDMonitor::updateHDDInfoList()
 {
-  static uint32_t size = static_cast<uint32_t>(HDDSMARTInfoItem::SIZE);
-  uint32_t item_index = static_cast<uint32_t>(item);
-  if (item_index >= size) {
-    stat.summary(DiagStatus::ERROR, "invalid S.M.A.R.T. information");
-    return false;
-  }
+  // Clear diagnostic of connection
+  connect_diag_.clear();
+  connect_diag_.clearSummary();
 
-  // Connect to HDD reader if the item is out of date
-  if (!is_up_to_date_[item_index]) {
-    if (!getHDDInfoListFromHDDReader(stat)) {
-      return false;
-    }
-    // Set flags of all item to up to date
-    for (uint32_t i = 0; i < size; i++) {
-      is_up_to_date_[i] = true;
-    }
-  }
-
-  // Set flag of the item to out of date
-  is_up_to_date_[item_index] = false;
-  return true;
-}
-
-bool HDDMonitor::getHDDInfoListFromHDDReader(diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
   // Create a new socket
   int sock = socket(AF_INET, SOCK_STREAM, 0);
   if (sock < 0) {
-    stat.summary(DiagStatus::ERROR, "socket error");
-    stat.add("socket", strerror(errno));
-    return false;
+    connect_diag_.summary(DiagStatus::ERROR, "socket error");
+    connect_diag_.add("socket", strerror(errno));
+    return;
   }
 
   // Specify the receiving timeouts until reporting an error
@@ -369,10 +354,10 @@ bool HDDMonitor::getHDDInfoListFromHDDReader(diagnostic_updater::DiagnosticStatu
   tv.tv_usec = 0;
   int ret = setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
   if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "setsockopt error");
-    stat.add("setsockopt", strerror(errno));
+    connect_diag_.summary(DiagStatus::ERROR, "setsockopt error");
+    connect_diag_.add("setsockopt", strerror(errno));
     close(sock);
-    return false;
+    return;
   }
 
   // Connect the socket referred to by the file descriptor
@@ -383,10 +368,10 @@ bool HDDMonitor::getHDDInfoListFromHDDReader(diagnostic_updater::DiagnosticStatu
   addr.sin_addr.s_addr = htonl(INADDR_ANY);
   ret = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
   if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "connect error");
-    stat.add("connect", strerror(errno));
+    connect_diag_.summary(DiagStatus::ERROR, "connect error");
+    connect_diag_.add("connect", strerror(errno));
     close(sock);
-    return false;
+    return;
   }
 
   std::ostringstream oss;
@@ -396,36 +381,36 @@ bool HDDMonitor::getHDDInfoListFromHDDReader(diagnostic_updater::DiagnosticStatu
   // Write list of devices to FD
   ret = write(sock, oss.str().c_str(), oss.str().length());
   if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "write error");
-    stat.add("write", strerror(errno));
+    connect_diag_.summary(DiagStatus::ERROR, "write error");
+    connect_diag_.add("write", strerror(errno));
     RCLCPP_ERROR(get_logger(), "write error");
     close(sock);
-    return false;
+    return;
   }
 
   // Receive messages from a socket
   char buf[1024] = "";
   ret = recv(sock, buf, sizeof(buf) - 1, 0);
   if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "recv error");
-    stat.add("recv", strerror(errno));
+    connect_diag_.summary(DiagStatus::ERROR, "recv error");
+    connect_diag_.add("recv", strerror(errno));
     close(sock);
-    return false;
+    return;
   }
   // No data received
   if (ret == 0) {
-    stat.summary(DiagStatus::ERROR, "recv error");
-    stat.add("recv", "No data received");
+    connect_diag_.summary(DiagStatus::ERROR, "recv error");
+    connect_diag_.add("recv", "No data received");
     close(sock);
-    return false;
+    return;
   }
 
   // Close the file descriptor FD
   ret = close(sock);
   if (ret < 0) {
-    stat.summary(DiagStatus::ERROR, "close error");
-    stat.add("close", strerror(errno));
-    return false;
+    connect_diag_.summary(DiagStatus::ERROR, "close error");
+    connect_diag_.add("close", strerror(errno));
+    return;
   }
 
   // Restore HDD information list
@@ -434,12 +419,10 @@ bool HDDMonitor::getHDDInfoListFromHDDReader(diagnostic_updater::DiagnosticStatu
     boost::archive::text_iarchive oa(iss);
     oa >> hdd_info_list_;
   } catch (const std::exception & e) {
-    stat.summary(DiagStatus::ERROR, "recv error");
-    stat.add("recv", e.what());
-    return false;
+    connect_diag_.summary(DiagStatus::ERROR, "recv error");
+    connect_diag_.add("recv", e.what());
+    return;
   }
-
-  return true;
 }
 
 #include <rclcpp_components/register_node_macro.hpp>

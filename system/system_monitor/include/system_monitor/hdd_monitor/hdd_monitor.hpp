@@ -73,11 +73,6 @@ public:
    */
   explicit HDDMonitor(const rclcpp::NodeOptions & options);
 
-  /**
-   * @brief Update the diagnostic state.
-   */
-  void update();
-
 protected:
   using DiagStatus = diagnostic_msgs::msg::DiagnosticStatus;
 
@@ -147,30 +142,26 @@ protected:
   std::string getDeviceFromMountPoint(const std::string & mount_point);
 
   /**
-   * @brief update HDD information list
-   * @param [in] item S.M.A.R.T. information item to get
-   * @param [out] stat diagnostic message passed directly to diagnostic publish calls
-   * @return true if succeeds, false if error occurs
+   * @brief timer callback
    */
-  bool updateHDDInfoList(HDDSMARTInfoItem item, diagnostic_updater::DiagnosticStatusWrapper & stat);
+  void onTimer();
 
   /**
-   * @brief get HDD information list from HDD reader
-   * @param [out] stat diagnostic message passed directly to diagnostic publish calls
-   * @return true if succeeds, false if error occurs
+   * @brief update HDD information list
    */
-  bool getHDDInfoListFromHDDReader(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  void updateHDDInfoList();
 
   diagnostic_updater::Updater updater_;  //!< @brief Updater class which advertises to /diagnostics
+  rclcpp::TimerBase::SharedPtr timer_;   //!< @brief timer to get HDD information from HDDReader
 
   char hostname_[HOST_NAME_MAX + 1];  //!< @brief host name
 
   int hdd_reader_port_;                         //!< @brief port number to connect to hdd_reader
   std::map<std::string, HDDParam> hdd_params_;  //!< @brief list of error and warning levels
   std::vector<std::string> hdd_devices_;        //!< @brief list of devices
-  bool is_up_to_date_[static_cast<uint32_t>(HDDSMARTInfoItem::SIZE)];
-  //!< @brief whether S.M.A.R.T. information items are up to date
-  HDDInfoList hdd_info_list_;  //!< @brief list of HDD information
+  //!< @brief diagnostic of connection
+  diagnostic_updater::DiagnosticStatusWrapper connect_diag_;
+  HDDInfoList hdd_info_list_;                   //!< @brief list of HDD information
 
   /**
    * @brief HDD SMART status messages
