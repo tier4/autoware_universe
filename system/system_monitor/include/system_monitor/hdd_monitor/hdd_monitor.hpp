@@ -37,8 +37,8 @@ struct HDDParam
   float temp_warn_;                         //!< @brief HDD temperature(DegC) to generate warning
   float temp_error_;                        //!< @brief HDD temperature(DegC) to generate error
   int power_on_hours_warn_;                 //!< @brief HDD power on hours to generate warning
-  int total_data_written_warn_;             //!< @brief HDD total written data to generate warning
-  float total_data_written_safety_factor_;  //!< @brief safety factor of HDD total written data
+  int total_data_written_warn_;             //!< @brief HDD total data written to generate warning
+  float total_data_written_safety_factor_;  //!< @brief safety factor of HDD total data written
   int free_warn_;                           //!< @brief HDD free space(MB) to generate warning
   int free_error_;                          //!< @brief HDD free space(MB) to generate error
 
@@ -158,7 +158,7 @@ protected:
 
   int hdd_reader_port_;                         //!< @brief port number to connect to hdd_reader
   std::map<std::string, HDDParam> hdd_params_;  //!< @brief list of error and warning levels
-  std::vector<std::string> hdd_devices_;        //!< @brief list of devices
+  std::vector<HDDDevice> hdd_devices_;          //!< @brief list of devices
   //!< @brief diagnostic of connection
   diagnostic_updater::DiagnosticStatusWrapper connect_diag_;
   HDDInfoList hdd_info_list_;  //!< @brief list of HDD information

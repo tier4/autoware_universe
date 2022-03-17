@@ -99,6 +99,8 @@ void HDDMonitor::checkSMART(
   int whole_level = DiagStatus::OK;
   int index = 0;
   std::string error_str = "";
+  std::string key_str = "";
+  std::string val_str = "";
 
   for (auto itr = hdd_params_.begin(); itr != hdd_params_.end(); ++itr, ++index) {
     // Retrieve HDD information
@@ -119,11 +121,6 @@ void HDDMonitor::checkSMART(
       continue;
     }
 
-    stat.add(
-      fmt::format("HDD {}: status", index), smart_dicts_[static_cast<uint32_t>(item)].at(level));
-    stat.add(fmt::format("HDD {}: name", index), itr->second.device_.c_str());
-    stat.add(fmt::format("HDD {}: model", index), hdd_itr->second.model_.c_str());
-    stat.add(fmt::format("HDD {}: serial", index), hdd_itr->second.serial_.c_str());
     switch (item) {
       case HDDSMARTInfoItem::TEMPERATURE: {
         float temp = static_cast<float>(hdd_itr->second.temp_);
@@ -134,7 +131,8 @@ void HDDMonitor::checkSMART(
         } else if (temp >= itr->second.temp_warn_) {
           level = DiagStatus::WARN;
         }
-        stat.addf(fmt::format("HDD {}: temperature", index), "%.1f DegC", temp);
+        key_str = fmt::format("HDD {}: temperature", index);
+        val_str = fmt::format("{:.1f} DegC", temp);
       } break;
       case HDDSMARTInfoItem::POWER_ON_HOURS: {
         int64_t power_on_hours = static_cast<int64_t>(hdd_itr->second.power_on_hours_);
@@ -143,9 +141,8 @@ void HDDMonitor::checkSMART(
         if (power_on_hours >= itr->second.power_on_hours_warn_) {
           level = DiagStatus::WARN;
         }
-        stat.addf(
-          fmt::format("HDD {}: power on hours", index), "%u Hours",
-          hdd_itr->second.power_on_hours_);
+        key_str = fmt::format("HDD {}: power on hours", index);
+        val_str = fmt::format("{} Hours", hdd_itr->second.power_on_hours_);
       } break;
       case HDDSMARTInfoItem::TOTAL_DATA_WRITTEN: {
         int64_t total_data_written = static_cast<int64_t>(hdd_itr->second.total_data_written_);
@@ -154,12 +151,23 @@ void HDDMonitor::checkSMART(
         if (total_data_written >= itr->second.total_data_written_warn_) {
           level = DiagStatus::WARN;
         }
-        stat.addf(
-          fmt::format("HDD {}: total written", index), "%u", hdd_itr->second.total_data_written_);
+        key_str = fmt::format("HDD {}: total data written", index);
+        if (hdd_itr->second.is_valid_total_data_written_) {
+          val_str = fmt::format("{}", hdd_itr->second.total_data_written_);
+        } else {
+          val_str = "not available";
+        }
       } break;
       default:
         break;
     }
+
+    stat.add(
+      fmt::format("HDD {}: status", index), smart_dicts_[static_cast<uint32_t>(item)].at(level));
+    stat.add(fmt::format("HDD {}: name", index), itr->second.device_.c_str());
+    stat.add(fmt::format("HDD {}: model", index), hdd_itr->second.model_.c_str());
+    stat.add(fmt::format("HDD {}: serial", index), hdd_itr->second.serial_.c_str());
+    stat.addf(key_str, val_str.c_str());
 
     whole_level = std::max(whole_level, level);
   }
@@ -305,7 +313,11 @@ void HDDMonitor::getHDDParams()
     }
     hdd_params_[device_name] = param;
 
-    hdd_devices_.push_back(param.device_);
+    HDDDevice device;
+    device.name_ = param.device_;
+    device.total_data_written_attribute_id_ = static_cast<uint8_t>(
+      declare_parameter<int>(prefix + ".total_data_written_attribute_id", 0xF1));
+    hdd_devices_.push_back(device);
   }
 }
 
