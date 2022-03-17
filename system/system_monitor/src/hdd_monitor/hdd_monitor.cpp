@@ -274,7 +274,7 @@ void HDDMonitor::getHDDParams()
   const auto num_disks = this->declare_parameter("num_disks", 0);
   for (auto i = 0; i < num_disks; ++i) {
     const auto prefix = "disks.disk" + std::to_string(i);
-    const auto name = declare_parameter<std::string>(prefix + ".name");
+    const auto name = declare_parameter<std::string>(prefix + ".name", "/");
 
     // Get device name from mount point
     const auto device_name = getDeviceFromMountPoint(name);
@@ -283,16 +283,17 @@ void HDDMonitor::getHDDParams()
     }
 
     HDDParam param;
-    param.temp_warn_ = declare_parameter<float>(prefix + ".temp_warn");
-    param.temp_error_ = declare_parameter<float>(prefix + ".temp_error");
-    param.power_on_hours_warn_ = declare_parameter<int>(prefix + ".power_on_hours_warn");
+    param.temp_warn_ = declare_parameter<float>(prefix + ".temp_warn", 55.0f);
+    param.temp_error_ = declare_parameter<float>(prefix + ".temp_error", 70.0f);
+    param.power_on_hours_warn_ = declare_parameter<int>(prefix + ".power_on_hours_warn", 3000000);
     param.total_data_written_safety_factor_ =
-      declare_parameter<float>(prefix + ".total_data_written_safety_factor");
-    int total_data_written_warn_org = declare_parameter<int>(prefix + ".total_data_written_warn");
+      declare_parameter<float>(prefix + ".total_data_written_safety_factor", 0.05f);
+    int total_data_written_warn_org =
+      declare_parameter<int>(prefix + ".total_data_written_warn", 4915200);
     param.total_data_written_warn_ =
       static_cast<int>(total_data_written_warn_org * (1.0f - param.total_data_written_safety_factor_));
-    param.free_warn_ = declare_parameter<int>(prefix + ".free_warn");
-    param.free_error_ = declare_parameter<int>(prefix + ".free_error");
+    param.free_warn_ = declare_parameter<int>(prefix + ".free_warn", 5120);
+    param.free_error_ = declare_parameter<int>(prefix + ".free_error", 100);
 
     // Remove index number of partition for passing device name to hdd-reader
     if (boost::starts_with(device_name, "/dev/sd")) {
