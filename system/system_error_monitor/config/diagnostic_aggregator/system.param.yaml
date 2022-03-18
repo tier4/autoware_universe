@@ -132,6 +132,18 @@
                   contains: [": HDD Temperature"]
                   timeout: 3.0
 
+                power_on_hours:
+                  type: diagnostic_aggregator/GenericAnalyzer
+                  path: power_on_hours
+                  contains: [": HDD PowerOnHours"]
+                  timeout: 3.0
+
+                total_data_written:
+                  type: diagnostic_aggregator/GenericAnalyzer
+                  path: total_data_written
+                  contains: [": HDD TotalDataWritten"]
+                  timeout: 3.0
+
                 usage:
                   type: diagnostic_aggregator/GenericAnalyzer
                   path: usage
