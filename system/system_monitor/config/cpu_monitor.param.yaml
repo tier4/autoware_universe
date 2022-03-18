@@ -3,6 +3,6 @@
     usage_warn: 0.96
     usage_error: 1.00
     usage_warn_count: 2
-    usage_error_count: 2
+    usage_error_count: 1
     usage_avg: true
     msr_reader_port: 7634
