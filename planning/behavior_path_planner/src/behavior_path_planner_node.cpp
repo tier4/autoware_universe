@@ -455,13 +455,21 @@ void BehaviorPathPlannerNode::run()
   // update planner data
   updateCurrentPose();
 
+  // NOTE: planner_data must not be referenced for multithreading
+  const auto planner_data = planner_data_;
+  mutex_.unlock();
+
   // run behavior planner
-  const auto output = bt_manager_->run(planner_data_);
+  const auto output = bt_manager_->run(planner_data);
 
   // path handling
   const auto path = getPath(output);
   const auto path_candidate = getPathCandidate(output);
+
+  // update planner data
+  mutex_.lock();  // for planner_data_
   planner_data_->prev_output_path = path;
+  mutex_.unlock();
 
   auto clipped_path = modifyPathForSmoothGoalConnection(*path);
   clipPathLength(clipped_path);
@@ -485,7 +493,7 @@ void BehaviorPathPlannerNode::run()
       hazard_signal.command = output.turn_signal_info.hazard_signal.command;
     } else {
       turn_signal = turn_signal_decider_.getTurnSignal(
-        *path, planner_data_->self_pose->pose, *(planner_data_->route_handler),
+        *path, planner_data->self_pose->pose, *(planner_data->route_handler),
         output.turn_signal_info.turn_signal, output.turn_signal_info.signal_distance);
       hazard_signal.command = HazardLightsCommand::DISABLE;
     }
@@ -500,6 +508,7 @@ void BehaviorPathPlannerNode::run()
 
   publishDebugMarker(bt_manager_->getDebugMarkers());
 
+  mutex_.unlock();
   RCLCPP_DEBUG(get_logger(), "----- behavior path planner end -----\n\n");
 }
 
