@@ -427,10 +427,13 @@ BehaviorTreeManagerParam BehaviorPathPlannerNode::getBehaviorTreeManagerParam()
 void BehaviorPathPlannerNode::waitForData()
 {
   // wait until mandatory data is ready
+  mutex_pd_.lock();  // for planner_data_
   while (!planner_data_->route_handler->isHandlerReady() && rclcpp::ok()) {
+    mutex_pd_.unlock();
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "waiting for route to be ready");
     rclcpp::spin_some(this->get_node_base_interface());
     rclcpp::Rate(100).sleep();
+    mutex_pd_.lock();
   }
 
   while (rclcpp::ok()) {
@@ -442,22 +445,25 @@ void BehaviorPathPlannerNode::waitForData()
       "waiting for vehicle pose, vehicle_velocity, and obstacles");
     rclcpp::spin_some(this->get_node_base_interface());
     rclcpp::Rate(100).sleep();
+    mutex_pd_.lock();
   }
 
   self_pose_listener_.waitForFirstPose();
   planner_data_->self_pose = self_pose_listener_.getCurrentPose();
+  mutex_pd_.unlock();
 }
 
 void BehaviorPathPlannerNode::run()
 {
   RCLCPP_DEBUG(get_logger(), "----- BehaviorPathPlannerNode start -----");
+  mutex_pd_.lock();  // for planner_data_
 
   // update planner data
   planner_data_->self_pose = self_pose_listener_.getCurrentPose();
 
   // NOTE: planner_data must not be referenced for multithreading
   const auto planner_data = planner_data_;
-  mutex_.unlock();
+  mutex_pd_.unlock();
 
   // run behavior planner
   const auto output = bt_manager_->run(planner_data);
@@ -467,9 +473,9 @@ void BehaviorPathPlannerNode::run()
   const auto path_candidate = getPathCandidate(output, planner_data);
 
   // update planner data
-  mutex_.lock();  // for planner_data_
+  mutex_pd_.lock();  // for planner_data_
   planner_data_->prev_output_path = path;
-  mutex_.unlock();
+  mutex_pd_.unlock();
 
   auto clipped_path = modifyPathForSmoothGoalConnection(*path);
   clipPathLength(clipped_path);
@@ -623,20 +629,24 @@ void BehaviorPathPlannerNode::publishDebugMarker(const std::vector<MarkerArray> 
 
 void BehaviorPathPlannerNode::onVelocity(const Odometry::ConstSharedPtr msg)
 {
+  std::lock_guard<std::mutex> lock(mutex_pd_);
   planner_data_->self_odometry = msg;
 }
 void BehaviorPathPlannerNode::onPerception(const PredictedObjects::ConstSharedPtr msg)
 {
+  std::lock_guard<std::mutex> lock(mutex_pd_);
   planner_data_->dynamic_object = msg;
 }
 void BehaviorPathPlannerNode::onExternalApproval(const ApprovalMsg::ConstSharedPtr msg)
 {
+  std::lock_guard<std::mutex> lock(mutex_pd_);
   planner_data_->approval.is_approved.data = msg->approval;
   // TODO(wep21): Replace msg stamp after {stamp: now} is implemented in ros2 topic pub
   planner_data_->approval.is_approved.stamp = this->now();
 }
 void BehaviorPathPlannerNode::onForceApproval(const PathChangeModule::ConstSharedPtr msg)
 {
+  std::lock_guard<std::mutex> lock(mutex_pd_);
   auto getModuleName = [](PathChangeModuleId module) {
     if (module.type == PathChangeModuleId::FORCE_LANE_CHANGE) {
       return "ForceLaneChange";
@@ -649,10 +659,12 @@ void BehaviorPathPlannerNode::onForceApproval(const PathChangeModule::ConstShare
 }
 void BehaviorPathPlannerNode::onMap(const HADMapBin::ConstSharedPtr msg)
 {
+  std::lock_guard<std::mutex> lock(mutex_pd_);
   planner_data_->route_handler->setMap(*msg);
 }
 void BehaviorPathPlannerNode::onRoute(const HADMapRoute::ConstSharedPtr msg)
 {
+  std::lock_guard<std::mutex> lock(mutex_pd_);
   const bool is_first_time = !(planner_data_->route_handler->isHandlerReady());
 
   planner_data_->route_handler->setRoute(*msg);
