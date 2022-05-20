@@ -158,16 +158,16 @@
                   type: diagnostic_aggregator/GenericAnalyzer
                   path: high_load
                   contains: [": High-load"]
-                  timeout: 3.0
+                  timeout: 10.0
 
                 high_mem:
                   type: diagnostic_aggregator/GenericAnalyzer
                   path: high_mem
                   contains: [": High-mem"]
-                  timeout: 3.0
+                  timeout: 10.0
 
                 tasks_summary:
                   type: diagnostic_aggregator/GenericAnalyzer
                   path: tasks_summary
                   contains: [": Tasks Summary"]
-                  timeout: 3.0
+                  timeout: 10.0
