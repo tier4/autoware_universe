@@ -21,7 +21,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <tier4_autoware_utils/ros/self_pose_listener.hpp>
 
-#include <autoware_auto_control_msgs/msg/ackermann_lateral_command.hpp>
+#include <autoware_auto_control_msgs/msg/ackermann_control_command.hpp>
 #include <autoware_auto_planning_msgs/msg/trajectory.hpp>
 #include <autoware_auto_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -33,72 +33,78 @@
 
 namespace control_performance_analysis
 {
-using autoware_auto_control_msgs::msg::AckermannLateralCommand;
-using autoware_auto_planning_msgs::msg::Trajectory;
-using autoware_auto_vehicle_msgs::msg::SteeringReport;
-using control_performance_analysis::msg::ErrorStamped;
-using geometry_msgs::msg::PoseStamped;
-using nav_msgs::msg::Odometry;
+	using autoware_auto_control_msgs::msg::AckermannControlCommand;
+	using autoware_auto_planning_msgs::msg::Trajectory;
+	using autoware_auto_vehicle_msgs::msg::SteeringReport;
+	using control_performance_analysis::msg::ErrorStamped;
+	using geometry_msgs::msg::PoseStamped;
+	using nav_msgs::msg::Odometry;
 
 // Parameters Struct
-struct Param
-{
-  // Global parameters
-  double wheel_base;
-  double curvature_interval_length;
+	struct Param
+		{
+		// Global parameters
+		double wheel_base;
+		double curvature_interval_length;
 
-  // Control Method Parameters
-  double control_period;
-};
+		// Control Method Parameters
+		double control_period;
+		};
 
-class ControlPerformanceAnalysisNode : public rclcpp::Node
-{
-public:
-  explicit ControlPerformanceAnalysisNode(const rclcpp::NodeOptions & node_options);
+	class ControlPerformanceAnalysisNode : public rclcpp::Node
+		{
+	public:
+		explicit ControlPerformanceAnalysisNode(const rclcpp::NodeOptions& node_options);
 
-private:
-  // Subscribers and Local Variable Assignment
-  rclcpp::Subscription<Trajectory>::SharedPtr sub_trajectory_;  // subscribe to trajectory
-  rclcpp::Subscription<AckermannLateralCommand>::SharedPtr
-    sub_control_steering_;                                  // subscribe to steering control value
-  rclcpp::Subscription<Odometry>::SharedPtr sub_velocity_;  // subscribe to velocity
-  rclcpp::Subscription<SteeringReport>::SharedPtr sub_vehicle_steering_;
+	private:
+		// Subscribers and Local Variable Assignment
+		rclcpp::Subscription<Trajectory>::SharedPtr     sub_trajectory_;  // subscribe to trajectory
+		rclcpp::Subscription<AckermannControlCommand>::SharedPtr
+		                                                sub_control_steering_;                                  // subscribe to steering control value
+		rclcpp::Subscription<Odometry>::SharedPtr       sub_velocity_;  // subscribe to velocity
+		rclcpp::Subscription<SteeringReport>::SharedPtr sub_vehicle_steering_;
 
-  // Self Pose listener.
-  tier4_autoware_utils::SelfPoseListener self_pose_listener_{this};  // subscribe to pose listener.
+		// Self Pose listener.
+		tier4_autoware_utils::SelfPoseListener self_pose_listener_{ this };  // subscribe to pose listener.
 
-  // Publishers
-  rclcpp::Publisher<ErrorStamped>::SharedPtr pub_error_msg_;  // publish error message
+		// Publishers
+		rclcpp::Publisher<ErrorStamped>::SharedPtr pub_error_msg_;  // publish error message
 
-  // Node Methods
-  bool isDataReady() const;  // check if data arrive
-  static bool isValidTrajectory(const Trajectory & traj);
-  boost::optional<TargetPerformanceMsgVars> computeTargetPerformanceMsgVars() const;
+		// Node Methods
+		bool isDataReady() const;  // check if data arrive
+		static bool isValidTrajectory(const Trajectory& traj);
 
-  // Callback Methods
-  void onTrajectory(const Trajectory::ConstSharedPtr msg);
-  void publishErrorMsg(const TargetPerformanceMsgVars & control_performance_vars);
-  void onControlRaw(const AckermannLateralCommand::ConstSharedPtr control_msg);
-  void onVecSteeringMeasured(const SteeringReport::ConstSharedPtr meas_steer_msg);
-  void onVelocity(const Odometry::ConstSharedPtr msg);
+		boost::optional <TargetPerformanceMsgVars> computeTargetPerformanceMsgVars() const;
 
-  // Timer - To Publish In Control Period
-  rclcpp::TimerBase::SharedPtr timer_publish_;
-  void onTimer();
+		// Callback Methods
+		void onTrajectory(const Trajectory::ConstSharedPtr msg);
 
-  // Parameters
-  Param param_{};  // wheelbase, control period and feedback coefficients.
+		void publishErrorMsg(const TargetPerformanceMsgVars& control_performance_vars);
 
-  // Subscriber Parameters
-  Trajectory::ConstSharedPtr current_trajectory_ptr_;  // ConstPtr to local traj.
-  AckermannLateralCommand::ConstSharedPtr current_control_msg_ptr_;
-  SteeringReport::ConstSharedPtr current_vec_steering_msg_ptr_;
-  Odometry::ConstSharedPtr current_odom_ptr_;
-  PoseStamped::ConstSharedPtr current_pose_;  // pose of the vehicle, x, y, heading
+		void onControlRaw(const AckermannControlCommand::ConstSharedPtr control_msg);
 
-  // Algorithm
-  std::unique_ptr<ControlPerformanceAnalysisCore> control_performance_core_ptr_;
-};
+		void onVecSteeringMeasured(const SteeringReport::ConstSharedPtr meas_steer_msg);
+
+		void onVelocity(const Odometry::ConstSharedPtr msg);
+
+		// Timer - To Publish In Control Period
+		rclcpp::TimerBase::SharedPtr timer_publish_;
+
+		void onTimer();
+
+		// Parameters
+		Param param_{};  // wheelbase, control period and feedback coefficients.
+
+		// Subscriber Parameters
+		Trajectory::ConstSharedPtr              current_trajectory_ptr_;  // ConstPtr to local traj.
+		AckermannControlCommand::ConstSharedPtr current_control_msg_ptr_;
+		SteeringReport::ConstSharedPtr          current_vec_steering_msg_ptr_;
+		Odometry::ConstSharedPtr                current_odom_ptr_;
+		PoseStamped::ConstSharedPtr             current_pose_;  // pose of the vehicle, x, y, heading
+
+		// Algorithm
+		std::unique_ptr <ControlPerformanceAnalysisCore> control_performance_core_ptr_;
+		};
 }  // namespace control_performance_analysis
 
 #endif  // CONTROL_PERFORMANCE_ANALYSIS__CONTROL_PERFORMANCE_ANALYSIS_NODE_HPP_

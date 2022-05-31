@@ -21,178 +21,191 @@
 #include <memory>
 #include <utility>
 
+
 namespace
 {
-using control_performance_analysis::TargetPerformanceMsgVars;
-using control_performance_analysis::msg::ErrorStamped;
+	using control_performance_analysis::TargetPerformanceMsgVars;
+	using control_performance_analysis::msg::ErrorStamped;
 
-ErrorStamped createPerformanceMsgVars(const TargetPerformanceMsgVars & target_performance_vars)
-{
-  ErrorStamped error_msgs{};
+	ErrorStamped createPerformanceMsgVars(const TargetPerformanceMsgVars& target_performance_vars)
+	{
+		ErrorStamped error_msgs{};
 
-  error_msgs.error.lateral_error = target_performance_vars.lateral_error;
-  error_msgs.error.heading_error = target_performance_vars.heading_error;
-  error_msgs.error.control_effort_energy = target_performance_vars.control_effort_energy;
-  error_msgs.error.error_energy = target_performance_vars.error_energy;
-  error_msgs.error.value_approximation = target_performance_vars.value_approximation;
-  error_msgs.error.curvature_estimate = target_performance_vars.curvature_estimate;
-  error_msgs.error.curvature_estimate_pp = target_performance_vars.curvature_estimate_pp;
-  error_msgs.error.lateral_error_velocity = target_performance_vars.lateral_error_velocity;
-  error_msgs.error.lateral_error_acceleration = target_performance_vars.lateral_error_acceleration;
+		error_msgs.error.lateral_error              = target_performance_vars.lateral_error;
+		error_msgs.error.heading_error              = target_performance_vars.heading_error;
+		error_msgs.error.control_effort_energy      = target_performance_vars.control_effort_energy;
+		error_msgs.error.error_energy               = target_performance_vars.error_energy;
+		error_msgs.error.value_approximation        = target_performance_vars.value_approximation;
+		error_msgs.error.curvature_estimate         = target_performance_vars.curvature_estimate;
+		error_msgs.error.curvature_estimate_pp      = target_performance_vars.curvature_estimate_pp;
+		error_msgs.error.lateral_error_velocity     = target_performance_vars.lateral_error_velocity;
+		error_msgs.error.lateral_error_acceleration = target_performance_vars.lateral_error_acceleration;
 
-  return error_msgs;
-}
+		return error_msgs;
+	}
 }  // namespace
 
 namespace control_performance_analysis
 {
-using vehicle_info_util::VehicleInfoUtil;
+	using vehicle_info_util::VehicleInfoUtil;
 
-ControlPerformanceAnalysisNode::ControlPerformanceAnalysisNode(
-  const rclcpp::NodeOptions & node_options)
-: Node("control_performance_analysis", node_options)
-{
-  using std::placeholders::_1;
+	ControlPerformanceAnalysisNode::ControlPerformanceAnalysisNode(
+			const rclcpp::NodeOptions& node_options)
+			: Node("control_performance_analysis", node_options)
+	{
+		using std::placeholders::_1;
 
-  // Implement Reading Global and Local Variables.
-  const auto vehicle_info = VehicleInfoUtil(*this).getVehicleInfo();
-  param_.wheel_base = vehicle_info.wheel_base_m;
+		// Implement Reading Global and Local Variables.
+		const auto vehicle_info = VehicleInfoUtil(*this).getVehicleInfo();
+		param_.wheel_base = vehicle_info.wheel_base_m;
 
-  // Node Parameters.
-  param_.control_period = declare_parameter("control_period", 0.033);
-  param_.curvature_interval_length = declare_parameter("curvature_interval_length", 10.0);
+		// Node Parameters.
+		param_.control_period            = declare_parameter("control_period", 0.033);
+		param_.curvature_interval_length = declare_parameter("curvature_interval_length", 10.0);
 
-  // Prepare error computation class with the wheelbase parameter.
-  control_performance_core_ptr_ = std::make_unique<ControlPerformanceAnalysisCore>(
-    param_.wheel_base, param_.curvature_interval_length);
+		// Prepare error computation class with the wheelbase parameter.
+		control_performance_core_ptr_ = std::make_unique<ControlPerformanceAnalysisCore>(
+				param_.wheel_base, param_.curvature_interval_length);
 
-  // Subscribers.
-  sub_trajectory_ = create_subscription<Trajectory>(
-    "~/input/reference_trajectory", 1,
-    std::bind(&ControlPerformanceAnalysisNode::onTrajectory, this, _1));
+		// Subscribers.
+		sub_trajectory_ = create_subscription<Trajectory>(
+				"~/input/reference_trajectory", 1,
+				std::bind(&ControlPerformanceAnalysisNode::onTrajectory, this, _1));
 
-  sub_control_steering_ = create_subscription<AckermannLateralCommand>(
-    "~/input/control_raw", 1, std::bind(&ControlPerformanceAnalysisNode::onControlRaw, this, _1));
+		sub_control_steering_ = create_subscription<AckermannControlCommand>(
+				"~/input/control_raw", 1, std::bind(&ControlPerformanceAnalysisNode::onControlRaw, this, _1));
 
-  sub_vehicle_steering_ = create_subscription<SteeringReport>(
-    "~/input/measured_steering", 1,
-    std::bind(&ControlPerformanceAnalysisNode::onVecSteeringMeasured, this, _1));
+		sub_vehicle_steering_ = create_subscription<SteeringReport>(
+				"~/input/measured_steering", 1,
+				std::bind(&ControlPerformanceAnalysisNode::onVecSteeringMeasured, this, _1));
 
-  sub_velocity_ = create_subscription<Odometry>(
-    "~/input/odometry", 1, std::bind(&ControlPerformanceAnalysisNode::onVelocity, this, _1));
+		sub_velocity_ = create_subscription<Odometry>(
+				"~/input/current_odometry", 1, std::bind(&ControlPerformanceAnalysisNode::onVelocity, this, _1));
 
-  // Publishers
-  pub_error_msg_ = create_publisher<ErrorStamped>("~/output/error_stamped", 1);
+		// Publishers
+		pub_error_msg_ = create_publisher<ErrorStamped>("~/output/error_stamped", 1);
 
-  // Timer
-  {
-    const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::duration<double>(param_.control_period));
-    timer_publish_ = rclcpp::create_timer(
-      this, get_clock(), period_ns, std::bind(&ControlPerformanceAnalysisNode::onTimer, this));
-  }
+		// Timer
+		{
+			const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::duration<double>(param_.control_period));
+			timer_publish_ = rclcpp::create_timer(
+					this, get_clock(), period_ns, std::bind(&ControlPerformanceAnalysisNode::onTimer, this));
+		}
 
-  // Wait for first self pose
-  self_pose_listener_.waitForFirstPose();
-}
+		// Wait for first self pose
+		self_pose_listener_.waitForFirstPose();
+	}
 
-void ControlPerformanceAnalysisNode::onTrajectory(const Trajectory::ConstSharedPtr msg)
-{
-  if (msg->points.size() < 3) {
-    RCLCPP_DEBUG(get_logger(), "received path size < 3, is not sufficient.");
-    return;
-  }
+	void ControlPerformanceAnalysisNode::onTrajectory(const Trajectory::ConstSharedPtr msg)
+	{
+		if (msg->points.size() < 3)
+		{
+			RCLCPP_DEBUG(get_logger(), "received path size < 3, is not sufficient.");
+			return;
+		}
 
-  if (!isValidTrajectory(*msg)) {
-    RCLCPP_ERROR(get_logger(), "Trajectory is invalid!, stop computing.");
-    return;
-  }
+		if (!isValidTrajectory(*msg))
+		{
+			RCLCPP_ERROR(get_logger(), "Trajectory is invalid!, stop computing.");
+			return;
+		}
 
-  current_trajectory_ptr_ = msg;
-}
+		current_trajectory_ptr_ = msg;
+	}
 
-void ControlPerformanceAnalysisNode::onControlRaw(
-  const AckermannLateralCommand::ConstSharedPtr control_msg)
-{
-  if (!control_msg) {
-    RCLCPP_ERROR(get_logger(), "steering signal has not been received yet ...");
-    return;
-  }
-  current_control_msg_ptr_ = control_msg;
-}
+	void ControlPerformanceAnalysisNode::onControlRaw(
+			const AckermannControlCommand::ConstSharedPtr control_msg)
+	{
+		if (!control_msg)
+		{
 
-void ControlPerformanceAnalysisNode::onVecSteeringMeasured(
-  const SteeringReport::ConstSharedPtr meas_steer_msg)
-{
-  if (!meas_steer_msg) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 1000, "waiting for vehicle measured steering message ...");
-    return;
-  }
-  current_vec_steering_msg_ptr_ = meas_steer_msg;
-}
+			RCLCPP_WARN_THROTTLE(
+					get_logger(), *get_clock(), 1000, "steering signal has not been received yet ...");
+			return;
+		}
+		current_control_msg_ptr_ = control_msg;
+	}
 
-void ControlPerformanceAnalysisNode::onVelocity(const Odometry::ConstSharedPtr msg)
-{
-  current_odom_ptr_ = msg;
-}
+	void ControlPerformanceAnalysisNode::onVecSteeringMeasured(
+			const SteeringReport::ConstSharedPtr meas_steer_msg)
+	{
+		if (!meas_steer_msg)
+		{
+			RCLCPP_WARN_THROTTLE(
+					get_logger(), *get_clock(), 1000, "waiting for vehicle measured steering message ...");
+			return;
+		}
+		current_vec_steering_msg_ptr_ = meas_steer_msg;
+	}
 
-void ControlPerformanceAnalysisNode::onTimer()
-{
-  // Read and Update Current Pose updating  var:current_pose_.
-  current_pose_ = self_pose_listener_.getCurrentPose();
+	void ControlPerformanceAnalysisNode::onVelocity(const Odometry::ConstSharedPtr msg)
+	{
+		current_odom_ptr_ = msg;
+	}
 
-  // Check Data Stream
-  if (!isDataReady()) {
-    // Publish Here
-    return;
-  }
+	void ControlPerformanceAnalysisNode::onTimer()
+	{
+		// Read and Update Current Pose updating  var:current_pose_.
+		current_pose_ = self_pose_listener_.getCurrentPose();
 
-  // Compute Control Performance Variables.
-  auto performanceVars = computeTargetPerformanceMsgVars();
-  if (!performanceVars) {
-    RCLCPP_ERROR(get_logger(), "steering signal has not been received yet ...");
-    return;
-  }
+		// Check Data Stream
+		if (!isDataReady())
+		{
+			// Publish Here
+			return;
+		}
 
-  // If successful publish.
-  publishErrorMsg(*performanceVars);
-}
+		// Compute Control Performance Variables.
+		auto performanceVars = computeTargetPerformanceMsgVars();
+		if (!performanceVars)
+		{
+			RCLCPP_ERROR(get_logger(), "steering signal has not been received yet ...");
+			return;
+		}
 
-void ControlPerformanceAnalysisNode::publishErrorMsg(
-  const TargetPerformanceMsgVars & control_performance_vars)
-{
-  control_performance_analysis::ErrorStamped error_msgs =
-    createPerformanceMsgVars(control_performance_vars);
+		// If successful publish.
+		publishErrorMsg(*performanceVars);
+	}
 
-  pub_error_msg_->publish(error_msgs);
-}
+	void ControlPerformanceAnalysisNode::publishErrorMsg(
+			const TargetPerformanceMsgVars& control_performance_vars)
+	{
+		control_performance_analysis::ErrorStamped error_msgs =
+				                                           createPerformanceMsgVars(control_performance_vars);
 
-bool ControlPerformanceAnalysisNode::isDataReady() const
-{
-  rclcpp::Clock clock{RCL_ROS_TIME};
-  if (!current_pose_) {
-    RCLCPP_WARN_THROTTLE(get_logger(), clock, 1000, "waiting for current_pose ...");
-    return false;
-  }
+		pub_error_msg_->publish(error_msgs);
+	}
 
-  if (!current_trajectory_ptr_) {
-    RCLCPP_WARN_THROTTLE(get_logger(), clock, 1000, "waiting for trajectory ... ");
-    return false;
-  }
+	bool ControlPerformanceAnalysisNode::isDataReady() const
+	{
+		rclcpp::Clock clock{ RCL_ROS_TIME };
+		if (!current_pose_)
+		{
+			RCLCPP_WARN_THROTTLE(get_logger(), clock, 1000, "waiting for current_pose ...");
+			return false;
+		}
 
-  if (!current_odom_ptr_) {
-    RCLCPP_WARN_THROTTLE(get_logger(), clock, 1000, "waiting for current_odom ...");
-    return false;
-  }
+		if (!current_trajectory_ptr_)
+		{
+			RCLCPP_WARN_THROTTLE(get_logger(), clock, 1000, "waiting for trajectory ... ");
+			return false;
+		}
 
-  if (!current_control_msg_ptr_) {
-    RCLCPP_WARN_THROTTLE(get_logger(), clock, 1000, "waiting for current_control_steering_val ...");
-    return false;
-  }
+		if (!current_odom_ptr_)
+		{
+			RCLCPP_WARN_THROTTLE(get_logger(), clock, 1000, "waiting for current_odom ...");
+			return false;
+		}
 
-  return true;
-}
+		if (!current_control_msg_ptr_)
+		{
+			RCLCPP_WARN_THROTTLE(get_logger(), clock, 1000, "waiting for current_control_steering_val ...");
+			return false;
+		}
+
+		return true;
+	}
 
 /*
  *  - Pass trajectory and current pose to control_performance_analysis -> setCurrentPose()
@@ -201,56 +214,63 @@ bool ControlPerformanceAnalysisNode::isDataReady() const
  *                                                               -> computePerformanceVars
  * */
 
-boost::optional<TargetPerformanceMsgVars>
-ControlPerformanceAnalysisNode::computeTargetPerformanceMsgVars() const
-{
-  // Set trajectory and current pose of controller_performance_core.
-  control_performance_core_ptr_->setCurrentWaypoints(*current_trajectory_ptr_);
-  control_performance_core_ptr_->setCurrentPose(current_pose_->pose);
-  control_performance_core_ptr_->setCurrentVelocities(current_odom_ptr_->twist.twist);
-  control_performance_core_ptr_->setCurrentControlValue(*current_control_msg_ptr_);
+	boost::optional <TargetPerformanceMsgVars>
+	ControlPerformanceAnalysisNode::computeTargetPerformanceMsgVars() const
+	{
+		// Set trajectory and current pose of controller_performance_core.
+		control_performance_core_ptr_->setCurrentWaypoints(*current_trajectory_ptr_);
+		control_performance_core_ptr_->setCurrentPose(current_pose_->pose);
+		control_performance_core_ptr_->setCurrentVelocities(current_odom_ptr_->twist.twist);
+		control_performance_core_ptr_->setCurrentControlValue(*current_control_msg_ptr_);
 
-  // Find the index of the next waypoint.
-  std::pair<bool, int32_t> prev_closest_wp_pose_idx =
-    control_performance_core_ptr_->findClosestPrevWayPointIdx_path_direction();
+		// Find the index of the next waypoint.
+		std::pair<bool, int32_t> prev_closest_wp_pose_idx =
+				                         control_performance_core_ptr_->findClosestPrevWayPointIdx_path_direction();
 
-  if (!prev_closest_wp_pose_idx.first) {
-    RCLCPP_ERROR(get_logger(), "Cannot find closest waypoint");
-    return {};
-  }
+		if (!prev_closest_wp_pose_idx.first)
+		{
+			RCLCPP_ERROR(get_logger(), "Cannot find closest waypoint");
+			return {};
+		}
 
-  // Compute control performance values.
-  const std::pair<bool, TargetPerformanceMsgVars> target_performance_vars =
-    control_performance_core_ptr_->getPerformanceVars();
+		// Compute control performance values.
+		const std::pair<bool, TargetPerformanceMsgVars> target_performance_vars =
+				                                                control_performance_core_ptr_->getPerformanceVars();
 
-  if (!target_performance_vars.first) {
-    RCLCPP_ERROR(get_logger(), "Cannot compute control performance vars ...");
-    return {};
-  }
+		if (!target_performance_vars.first)
+		{
+			RCLCPP_ERROR(get_logger(), "Cannot compute control performance vars ...");
+			return {};
+		}
 
-  return target_performance_vars.second;
-}
+		return target_performance_vars.second;
+	}
 
-bool ControlPerformanceAnalysisNode::isValidTrajectory(const Trajectory & traj)
-{
-  bool check_condition = std::all_of(traj.points.cbegin(), traj.points.cend(), [](auto point) {
-    const auto & p = point.pose.position;
-    const auto & o = point.pose.orientation;
-    const auto & t = point.longitudinal_velocity_mps;
-    const auto & a = point.acceleration_mps2;
+	bool ControlPerformanceAnalysisNode::isValidTrajectory(const Trajectory& traj)
+	{
+		bool check_condition = std::all_of(traj.points.cbegin(), traj.points.cend(), [](auto point)
+		{
+			const auto& p = point.pose.position;
+			const auto& o = point.pose.orientation;
+			const auto& t = point.longitudinal_velocity_mps;
+			const auto& a = point.acceleration_mps2;
 
-    if (
-      !isfinite(p.x) || !isfinite(p.y) || !isfinite(p.z) || !isfinite(o.x) || !isfinite(o.y) ||
-      !isfinite(o.z) || !isfinite(o.w) || !isfinite(t) || !isfinite(a)) {
-      return false;
-    } else {
-      return true;
-    }
-  });
+			if (
+					!isfinite(p.x) || !isfinite(p.y) || !isfinite(p.z) || !isfinite(o.x) || !isfinite(o.y) ||
+					!isfinite(o.z) || !isfinite(o.w) || !isfinite(t) || !isfinite(a))
+			{
+				return false;
+			}
+			else
+			{
+				return true;
+			}
+		});
 
-  return check_condition;
-}
+		return check_condition;
+	}
 }  // namespace control_performance_analysis
 
 #include <rclcpp_components/register_node_macro.hpp>
+
 RCLCPP_COMPONENTS_REGISTER_NODE(control_performance_analysis::ControlPerformanceAnalysisNode)
