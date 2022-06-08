@@ -463,6 +463,8 @@ void BehaviorPathPlannerNode::waitForData()
     if (planner_data_->dynamic_object && planner_data_->self_odometry) {
       break;
     }
+
+    mutex_pd_.unlock();
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "waiting for vehicle pose, vehicle_velocity, and obstacles");
