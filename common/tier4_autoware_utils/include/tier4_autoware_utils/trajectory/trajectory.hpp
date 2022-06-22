@@ -131,7 +131,7 @@ double calcLongitudinalOffsetToSegment(
   const Eigen::Vector3d target_vec{p_target.x - p_front.x, p_target.y - p_front.y, 0};
 
   if (segment_vec.norm() == 0.0) {
-    throw std::runtime_error("Same points are given.");
+    std::cerr<< "Same points are given." <<std::endl;
   }
 
   return segment_vec.dot(target_vec) / segment_vec.norm();
