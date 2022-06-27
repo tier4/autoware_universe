@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
+
   <name>tier4_state_rviz_plugin</name>
   <version>0.0.0</version>
   <description>The autoware state rviz plugin package</description>
@@ -26,4 +27,5 @@
     <build_type>ament_cmake</build_type>
     <rviz plugin="${prefix}/plugins/plugin_description.xml"/>
   </export>
+
 </package>

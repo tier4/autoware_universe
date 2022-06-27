@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
+
   <name>tier4_simulated_clock_rviz_plugin</name>
   <version>0.0.1</version>
   <description>Rviz plugin to publish and control the /clock topic</description>
@@ -22,4 +23,5 @@
     <build_type>ament_cmake</build_type>
     <rviz plugin="${prefix}/plugins/plugin_description.xml"/>
   </export>
+
 </package>

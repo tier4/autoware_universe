@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
+
   <name>tier4_datetime_rviz_plugin</name>
   <version>0.0.0</version>
   <description>The tier4_datetime_rviz_plugin package</description>
@@ -21,4 +22,5 @@
     <build_type>ament_cmake</build_type>
     <rviz plugin="${prefix}/plugins/plugin_description.xml"/>
   </export>
+
 </package>
