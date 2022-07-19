@@ -516,18 +516,19 @@ void ObstacleCruisePlannerNode::onTrajectory(const Trajectory::ConstSharedPtr ms
 
   // Get Target Obstacles
   DebugData debug_data;
-  const bool is_driving_forward = motion_utils::isDrivingForwardWithTwist(msg->points);
   const auto target_obstacles = getTargetObstacles(
     *msg, current_pose_ptr->pose, current_twist_ptr_->twist.linear.x, debug_data);
 
   // create data for stop
-  const auto stop_data = createStopData(*msg, current_pose_ptr->pose, target_obstacles);
+  const auto stop_data =
+    createStopData(*msg, current_pose_ptr->pose, target_obstacles);
 
   // stop planning
   const auto stop_traj = planner_ptr_->generateStopTrajectory(stop_data, debug_data);
 
   // create data for cruise
-  const auto cruise_data = createCruiseData(stop_traj, current_pose_ptr->pose, target_obstacles);
+  const auto cruise_data =
+    createCruiseData(stop_traj, current_pose_ptr->pose, target_obstacles);
 
   // cruise planning
   boost::optional<VelocityLimit> vel_limit;
@@ -579,6 +580,7 @@ ObstacleCruisePlannerData ObstacleCruisePlannerNode::createStopData(
   planner_data.current_vel = current_vel;
   planner_data.current_acc = current_accel;
   for (const auto & obstacle : obstacles) {
+    // consider all target obstacles when driving backward
     if (obstacle.has_stopped) {
       planner_data.target_obstacles.push_back(obstacle);
     }
@@ -630,8 +632,8 @@ std::vector<TargetObstacle> ObstacleCruisePlannerNode::getTargetObstacles(
 {
   stop_watch_.tic(__func__);
 
-  const auto target_obstacles =
-    filterObstacles(*in_objects_ptr_, trajectory, current_pose, current_vel, debug_data);
+  const auto target_obstacles = filterObstacles(
+    *in_objects_ptr_, trajectory, current_pose, current_vel, debug_data);
 
   // print calculation time
   const double calculation_time = stop_watch_.toc(__func__);
@@ -658,7 +660,8 @@ bool ObstacleCruisePlannerNode::isFrontCollideObstacle(
 
 std::vector<TargetObstacle> ObstacleCruisePlannerNode::filterObstacles(
   const PredictedObjects & predicted_objects, const Trajectory & traj,
-  const geometry_msgs::msg::Pose & current_pose, const double current_vel, DebugData & debug_data)
+  const geometry_msgs::msg::Pose & current_pose, const double current_vel,
+  DebugData & debug_data)
 {
   const auto current_time = now();
   const auto time_stamp = rclcpp::Time(predicted_objects.header.stamp);
@@ -956,12 +959,11 @@ geometry_msgs::msg::Point ObstacleCruisePlannerNode::calcNearestCollisionPoint(
   std::array<geometry_msgs::msg::Point, 2> segment_points;
   if (first_within_idx == 0) {
     const auto & traj_front_pose = decimated_traj.points.at(0).pose;
-    segment_points.at(0) = traj_front_pose.position;
-
     const auto front_pos = tier4_autoware_utils::calcOffsetPose(
                              traj_front_pose, vehicle_info_.max_longitudinal_offset_m, 0.0, 0.0)
                              .position;
-    segment_points.at(1) = front_pos;
+      segment_points.at(0) = traj_front_pose.position;
+      segment_points.at(1) = front_pos;
   } else {
     const size_t seg_idx = first_within_idx - 1;
     segment_points.at(0) = decimated_traj.points.at(seg_idx).pose.position;
@@ -1002,7 +1004,7 @@ double ObstacleCruisePlannerNode::calcCollisionTimeMargin(
       motion_utils::calcSignedArcLength(
         decimated_traj.points, current_pose.position, nearest_collision_point) -
       vehicle_info_.max_longitudinal_offset_m;
-    return dist_from_ego_to_obstacle / std::max(1e-6, current_vel);
+    return dist_from_ego_to_obstacle / std::max(1e-6, std::abs(current_vel));
   }();
 
   const double time_to_obstacle_getting_out = [&]() {
