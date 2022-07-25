@@ -26,6 +26,9 @@
 
 namespace behavior_velocity_planner
 {
+
+using autoware_auto_planning_msgs::msg::PathWithLaneId;
+
 class StopLineModuleManager : public SceneModuleManagerInterface
 {
 public:
@@ -35,10 +38,11 @@ public:
 
 private:
   StopLineModule::PlannerParam planner_param_;
-  void launchNewModules(const autoware_auto_planning_msgs::msg::PathWithLaneId & path) override;
+
+  void launchNewModules(const PathWithLaneId & path) override;
 
   std::function<bool(const std::shared_ptr<SceneModuleInterface> &)> getModuleExpiredFunction(
-    const autoware_auto_planning_msgs::msg::PathWithLaneId & path) override;
+    const PathWithLaneId & path) override;
 };
 }  // namespace behavior_velocity_planner
 
