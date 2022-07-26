@@ -99,7 +99,7 @@ private:
   PlannerParam planner_param_;
 
   // Debug
-  mutable DebugData debug_data_;
+  DebugData debug_data_;
 };
 }  // namespace behavior_velocity_planner
 
