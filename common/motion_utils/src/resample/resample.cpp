@@ -86,18 +86,14 @@ std::vector<geometry_msgs::msg::Pose> resamplePath(
     resampled_points.at(i) = pose;
   }
 
-  // Insert Orientation
-  for (size_t i = 0; i < resampled_points.size() - 1; ++i) {
-    const auto & src_point = resampled_points.at(i).position;
-    const auto & dst_point = resampled_points.at(i + 1).position;
-    const double pitch = tier4_autoware_utils::calcElevationAngle(src_point, dst_point);
-    const double yaw = tier4_autoware_utils::calcAzimuthAngle(src_point, dst_point);
-    resampled_points.at(i).orientation =
-      tier4_autoware_utils::createQuaternionFromRPY(0.0, pitch, yaw);
-    if (i == resampled_points.size() - 2) {
-      // Terminal Orientation is same as the point before it
-      resampled_points.at(i + 1).orientation = resampled_points.at(i).orientation;
-    }
+  const bool is_driving_forward =
+    tier4_autoware_utils::isDrivingForward(points.at(0), points.at(1));
+  motion_utils::insertOrientation(resampled_points, is_driving_forward);
+
+  // Initial orientation is depend on the initial value of the resampled_arclength
+  // when backward driving
+  if (!is_driving_forward && resampled_arclength.front() < 1e-3) {
+    resampled_points.at(0).orientation = points.at(0).orientation;
   }
 
   return resampled_points;
