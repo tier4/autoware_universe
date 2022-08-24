@@ -105,8 +105,6 @@ public:
   bool checkPathWillLeaveLane(
     const lanelet::ConstLanelets & lanelets, const PathWithLaneId & path) const;
 
-  vehicle_info_util::VehicleInfo vehicle_info_public_;
-
 private:
   Param param_;
   std::shared_ptr<vehicle_info_util::VehicleInfo> vehicle_info_ptr_;
