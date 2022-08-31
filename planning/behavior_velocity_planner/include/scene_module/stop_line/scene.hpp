@@ -15,6 +15,7 @@
 #ifndef SCENE_MODULE__STOP_LINE__SCENE_HPP_
 #define SCENE_MODULE__STOP_LINE__SCENE_HPP_
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -68,8 +69,8 @@ public:
   struct PlannerParam
   {
     double stop_margin;
-    double stop_check_dist;
     double stop_duration_sec;
+    double hold_stop_margin_distance;
     bool use_initialization_stop_line_state;
   };
 
@@ -87,25 +88,13 @@ public:
 
 private:
   int64_t module_id_;
+  std::shared_ptr<const rclcpp::Time> stopped_time_;
 
   geometry_msgs::msg::Point getCenterOfStopLine(const lanelet::ConstLineString3d & stop_line);
 
   boost::optional<StopLineModule::SegmentIndexWithPoint2d> findCollision(
     const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const LineString2d & stop_line,
     const SearchRangeIndex & search_index);
-
-  boost::optional<StopLineModule::SegmentIndexWithOffset> findOffsetSegment(
-    const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
-    const StopLineModule::SegmentIndexWithPoint2d & collision);
-
-  boost::optional<StopLineModule::SegmentIndexWithPose> calcStopPose(
-    const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
-    const boost::optional<StopLineModule::SegmentIndexWithOffset> & offset_segment);
-
-  autoware_auto_planning_msgs::msg::PathWithLaneId insertStopPose(
-    const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
-    const StopLineModule::SegmentIndexWithPose & insert_index_with_pose,
-    tier4_planning_msgs::msg::StopReason * stop_reason);
 
   lanelet::ConstLineString3d stop_line_;
   int64_t lane_id_;
