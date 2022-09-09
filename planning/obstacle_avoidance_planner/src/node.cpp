@@ -800,11 +800,13 @@ void ObstacleAvoidancePlanner::onPath(const Path::SharedPtr path_ptr)
   planner_data.ego_vel = current_twist_ptr_->twist.linear.x;
   planner_data.objects = objects_ptr_->objects;
 
+  // create debug data
   debug_data_ = DebugData();
   debug_data_.init(
     is_showing_calculation_time_, mpt_visualize_sampling_num_, planner_data.ego_pose,
     mpt_param_.vehicle_circle_radiuses, mpt_param_.vehicle_circle_longitudinal_offsets);
 
+  // generate trajectory
   const auto output_traj_msg = generateTrajectory(planner_data);
 
   // publish debug data
@@ -858,7 +860,8 @@ std::vector<TrajectoryPoint> ObstacleAvoidancePlanner::generateOptimizedTrajecto
 
   // check if optimization is required or not.
   // NOTE: previous trajectories information will be reset in some cases.
-  const bool is_replan_required = replan_checker_->isReplanRequired(planner_data, now());
+  const bool is_replan_required =
+    replan_checker_->isReplanRequired(planner_data, now(), prev_mpt_trajs_ptr_);
   if (!is_replan_required) {
     return getPrevOptimizedTrajectory(path.points);
   }

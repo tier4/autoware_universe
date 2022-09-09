@@ -16,6 +16,7 @@
 #define OBSTACLE_AVOIDANCE_PLANNER__REPLAN_CHECKER_HPP_
 
 #include "obstacle_avoidance_planner/common_structs.hpp"
+#include "obstacle_avoidance_planner/mpt_optimizer.hpp"
 #include "obstacle_avoidance_planner/utils/utils.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -37,7 +38,9 @@ public:
     rclcpp::Node & node, const double ego_nearest_dist_threshold,
     const double ego_nearest_yaw_threshold);
   void onParam(const std::vector<rclcpp::Parameter> & parameters);
-  bool isReplanRequired(const PlannerData & planner_data, const rclcpp::Time & current_time);
+  bool isReplanRequired(
+    const PlannerData & planner_data, const rclcpp::Time & current_time,
+    const std::shared_ptr<MPTTrajs> prev_mpt_trajs_ptr);
   bool isResetOptimizationRequired();
 
 private:
