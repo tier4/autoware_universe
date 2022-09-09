@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 
+// TODO(murooka) check if velocity is updated while optimization is skipped.
+
 namespace
 {
 std::tuple<std::vector<double>, std::vector<double>> calcVehicleCirclesInfo(
@@ -776,7 +778,8 @@ void ObstacleAvoidancePlanner::resetPlanning()
 
 void ObstacleAvoidancePlanner::resetPrevOptimization()
 {
-  prev_optimal_trajs_ptr_ = nullptr;
+  prev_eb_traj_ptr_ = nullptr;
+  prev_mpt_trajs_ptr_ = nullptr;
   eb_solved_count_ = 0;
 }
 
@@ -857,10 +860,7 @@ std::vector<TrajectoryPoint> ObstacleAvoidancePlanner::generateOptimizedTrajecto
   // NOTE: previous trajectories information will be reset in some cases.
   const bool is_replan_required = replan_checker_->isReplanRequired(planner_data, now());
   if (!is_replan_required) {
-    if (prev_optimal_trajs_ptr_) {
-      return prev_optimal_trajs_ptr_->model_predictive_trajectory;
-    }
-    return points_utils::convertToTrajectoryPoints(path.points);
+    return getPrevOptimizedTrajectory(path.points);
   }
 
   const bool reset_prev_optimization_required = replan_checker_->isResetOptimizationRequired();
@@ -873,29 +873,24 @@ std::vector<TrajectoryPoint> ObstacleAvoidancePlanner::generateOptimizedTrajecto
     enable_avoidance_, path, planner_data.objects, traj_param_, debug_data_);
 
   // calculate trajectory with EB and MPT
-  auto optimal_trajs = optimizeTrajectory(planner_data, cv_maps);
+  auto mpt_traj = optimizeTrajectory(planner_data, cv_maps);
 
   // calculate velocity
   // NOTE: Velocity is not considered in optimization.
-  calcVelocity(path.points, optimal_trajs.model_predictive_trajectory);
+  calcVelocity(path.points, mpt_traj);
 
   // insert 0 velocity when trajectory is over drivable area
   if (is_stopping_if_outside_drivable_area_) {
-    insertZeroVelocityOutsideDrivableArea(
-      planner_data, optimal_trajs.model_predictive_trajectory, cv_maps);
+    insertZeroVelocityOutsideDrivableArea(planner_data, mpt_traj, cv_maps);
   }
 
-  publishDebugDataInOptimization(planner_data, optimal_trajs.model_predictive_trajectory);
-
-  // make previous trajectories
-  prev_optimal_trajs_ptr_ =
-    std::make_unique<Trajectories>(makePrevTrajectories(path.points, optimal_trajs, planner_data));
+  publishDebugDataInOptimization(planner_data, mpt_traj);
 
   debug_data_.msg_stream << "  " << __func__ << ":= " << stop_watch_.toc(__func__) << " [ms]\n";
-  return optimal_trajs.model_predictive_trajectory;
+  return mpt_traj;
 }
 
-Trajectories ObstacleAvoidancePlanner::optimizeTrajectory(
+std::vector<TrajectoryPoint> ObstacleAvoidancePlanner::optimizeTrajectory(
   const PlannerData & planner_data, const CVMaps & cv_maps)
 {
   stop_watch_.tic(__func__);
@@ -903,23 +898,19 @@ Trajectories ObstacleAvoidancePlanner::optimizeTrajectory(
   const auto & p = planner_data;
 
   if (skip_optimization_) {
-    const auto traj = points_utils::convertToTrajectoryPoints(p.path.points);
-    Trajectories trajs;
-    trajs.smoothed_trajectory = traj;
-    trajs.model_predictive_trajectory = traj;
-    return trajs;
+    return points_utils::convertToTrajectoryPoints(p.path.points);
   }
 
   // EB: smooth trajectory if enable_pre_smoothing is true
   const auto eb_traj = [&]() -> boost::optional<std::vector<TrajectoryPoint>> {
     if (enable_pre_smoothing_) {
       return eb_path_optimizer_ptr_->getEBTrajectory(
-        p.ego_pose, p.path, prev_optimal_trajs_ptr_, p.ego_vel, debug_data_);
+        p.ego_pose, p.path, prev_eb_traj_ptr_, p.ego_vel, debug_data_);
     }
     return points_utils::convertToTrajectoryPoints(p.path.points);
   }();
   if (!eb_traj) {
-    return getPrevTrajs(p.path.points);
+    return getPrevOptimizedTrajectory(p.path.points);
   }
 
   // EB has to be solved twice before solving MPT with fixed points
@@ -928,25 +919,23 @@ Trajectories ObstacleAvoidancePlanner::optimizeTrajectory(
   if (eb_solved_count_ < 2) {
     eb_solved_count_++;
 
-    if (prev_optimal_trajs_ptr_) {
-      prev_optimal_trajs_ptr_->model_predictive_trajectory.clear();
-      prev_optimal_trajs_ptr_->mpt_ref_points.clear();
+    if (prev_mpt_trajs_ptr_) {
+      prev_mpt_trajs_ptr_->mpt.clear();
+      prev_mpt_trajs_ptr_->ref_points.clear();
     }
   }
 
   // MPT: optimize trajectory to be kinematically feasible and collision free
   const auto mpt_trajs = mpt_optimizer_ptr_->getModelPredictiveTrajectory(
-    enable_avoidance_, eb_traj.get(), p.path.points, prev_optimal_trajs_ptr_, cv_maps, p.ego_pose,
+    enable_avoidance_, eb_traj.get(), p.path.points, prev_mpt_trajs_ptr_, cv_maps, p.ego_pose,
     p.ego_vel, debug_data_);
   if (!mpt_trajs) {
-    return getPrevTrajs(p.path.points);
+    return getPrevOptimizedTrajectory(p.path.points);
   }
 
-  // make trajectories, which has all optimized trajectories information
-  Trajectories trajs;
-  trajs.smoothed_trajectory = eb_traj.get();
-  trajs.mpt_ref_points = mpt_trajs.get().ref_points;
-  trajs.model_predictive_trajectory = mpt_trajs.get().mpt;
+  // make prev trajectories
+  prev_eb_traj_ptr_ = std::make_shared<std::vector<TrajectoryPoint>>(eb_traj.get());
+  prev_mpt_trajs_ptr_ = std::make_shared<MPTTrajs>(mpt_trajs.get());
 
   // debug data
   debug_data_.mpt_traj = mpt_trajs.get().mpt;
@@ -954,21 +943,17 @@ Trajectories ObstacleAvoidancePlanner::optimizeTrajectory(
   debug_data_.eb_traj = eb_traj.get();
 
   debug_data_.msg_stream << "    " << __func__ << ":= " << stop_watch_.toc(__func__) << " [ms]\n";
-  return trajs;
+
+  return mpt_trajs->mpt;
 }
 
-Trajectories ObstacleAvoidancePlanner::getPrevTrajs(
+std::vector<TrajectoryPoint> ObstacleAvoidancePlanner::getPrevOptimizedTrajectory(
   const std::vector<PathPoint> & path_points) const
 {
-  if (prev_optimal_trajs_ptr_) {
-    return *prev_optimal_trajs_ptr_;
+  if (prev_mpt_trajs_ptr_) {
+    return prev_mpt_trajs_ptr_->mpt;
   }
-
-  const auto traj = points_utils::convertToTrajectoryPoints(path_points);
-  Trajectories trajs;
-  trajs.smoothed_trajectory = traj;
-  trajs.model_predictive_trajectory = traj;
-  return trajs;
+  return points_utils::convertToTrajectoryPoints(path_points);
 }
 
 void ObstacleAvoidancePlanner::calcVelocity(
@@ -1084,26 +1069,6 @@ void ObstacleAvoidancePlanner::publishDebugDataInOptimization(
   }
 
   debug_data_.msg_stream << "    " << __func__ << ":= " << stop_watch_.toc(__func__) << " [ms]\n";
-}
-
-Trajectories ObstacleAvoidancePlanner::makePrevTrajectories(
-  const std::vector<PathPoint> & path_points, const Trajectories & trajs,
-  const PlannerData & planner_data)
-{
-  stop_watch_.tic(__func__);
-
-  const auto post_processed_smoothed_traj =
-    generatePostProcessedTrajectory(path_points, trajs.smoothed_trajectory, planner_data);
-
-  // TODO(murooka) generatePoseProcessedTrajectory may be too large
-  Trajectories trajectories;
-  trajectories.smoothed_trajectory = post_processed_smoothed_traj;
-  trajectories.mpt_ref_points = trajs.mpt_ref_points;
-  trajectories.model_predictive_trajectory = trajs.model_predictive_trajectory;
-
-  debug_data_.msg_stream << "    " << __func__ << ":= " << stop_watch_.toc(__func__) << " [ms]\n";
-
-  return trajectories;
 }
 
 std::vector<TrajectoryPoint> ObstacleAvoidancePlanner::generatePostProcessedTrajectory(

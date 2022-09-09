@@ -202,8 +202,8 @@ private:
   std::unique_ptr<PredictedObjects> objects_ptr_;
 
   // variables for previous information
-  std::unique_ptr<geometry_msgs::msg::Pose> prev_ego_pose_ptr_;
-  std::unique_ptr<Trajectories> prev_optimal_trajs_ptr_;
+  std::shared_ptr<MPTTrajs> prev_mpt_trajs_ptr_;
+  std::shared_ptr<std::vector<TrajectoryPoint>> prev_eb_traj_ptr_;
 
   tier4_autoware_utils::SelfPoseListener self_pose_listener_{this};
 
@@ -243,15 +243,15 @@ private:
   void resetPlanning();
   void resetPrevOptimization();
 
-  std::vector<TrajectoryPoint> getPrevOptimizationTrajectory() const;
-
   std::vector<TrajectoryPoint> generateOptimizedTrajectory(const PlannerData & planner_data);
 
   Trajectory generateTrajectory(const PlannerData & planner_data);
 
-  Trajectories optimizeTrajectory(const PlannerData & planner_data, const CVMaps & cv_maps);
+  std::vector<TrajectoryPoint> optimizeTrajectory(
+    const PlannerData & planner_data, const CVMaps & cv_maps);
 
-  Trajectories getPrevTrajs(const std::vector<PathPoint> & path_points) const;
+  std::vector<TrajectoryPoint> getPrevOptimizedTrajectory(
+    const std::vector<PathPoint> & path_points) const;
 
   void calcVelocity(
     const std::vector<PathPoint> & path_points, std::vector<TrajectoryPoint> & traj_points) const;
@@ -262,10 +262,6 @@ private:
 
   void publishDebugDataInOptimization(
     const PlannerData & planner_data, const std::vector<TrajectoryPoint> & traj_points);
-
-  Trajectories makePrevTrajectories(
-    const std::vector<PathPoint> & path_points, const Trajectories & trajs,
-    const PlannerData & planner_data);
 
   std::vector<TrajectoryPoint> generatePostProcessedTrajectory(
     const std::vector<PathPoint> & path_points,
