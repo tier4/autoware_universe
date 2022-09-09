@@ -184,6 +184,12 @@ private:
     std::vector<int> ignored_outside_obstacle_types;
     // obstacle hold
     double stop_obstacle_hold_time_threshold;
+    // prediction resampling
+    double prediction_resampling_time_interval;
+    double prediction_resampling_time_horizon;
+    // goal extension
+    double goal_extension_length;
+    double goal_extension_interval;
   };
   ObstacleFilteringParam obstacle_filtering_param_;
 
