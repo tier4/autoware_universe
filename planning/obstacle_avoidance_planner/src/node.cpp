@@ -164,21 +164,6 @@ Trajectory createTrajectory(
 
   return traj;
 }
-
-std::vector<TrajectoryPoint> resampleTrajectoryPoints(
-  const std::vector<TrajectoryPoint> & traj_points, const double interval)
-{
-  const auto traj = motion_utils::convertToTrajectory(traj_points);
-  const auto resampled_traj = motion_utils::resampleTrajectory(traj, interval);
-
-  // convert Trajectory to std::vector<TrajectoryPoint>
-  std::vector<TrajectoryPoint> resampled_traj_points;
-  for (const auto & point : resampled_traj.points) {
-    resampled_traj_points.push_back(point);
-  }
-
-  return resampled_traj_points;
-}
 }  // namespace
 
 ObstacleAvoidancePlanner::ObstacleAvoidancePlanner(const rclcpp::NodeOptions & node_options)
@@ -473,15 +458,6 @@ ObstacleAvoidancePlanner::ObstacleAvoidancePlanner(const rclcpp::NodeOptions & n
       declare_parameter<double>("advanced.mpt.weight.terminal_path_yaw_error_weight");
   }
 
-  {  // replan
-    max_path_shape_change_dist_for_replan_ =
-      declare_parameter<double>("replan.max_path_shape_change_dist");
-    max_ego_moving_dist_for_replan_ =
-      declare_parameter<double>("replan.max_ego_moving_dist_for_replan");
-    max_delta_time_sec_for_replan_ =
-      declare_parameter<double>("replan.max_delta_time_sec_for_replan");
-  }
-
   // TODO(murooka) tune this param when avoiding with obstacle_avoidance_planner
   traj_param_.center_line_width = vehicle_param_.width;
 
@@ -490,6 +466,8 @@ ObstacleAvoidancePlanner::ObstacleAvoidancePlanner(const rclcpp::NodeOptions & n
     std::bind(&ObstacleAvoidancePlanner::onParam, this, std::placeholders::_1));
 
   resetPlanning();
+  replan_checker_ = std::make_shared<ReplanChecker>(
+    *this, traj_param_.ego_nearest_dist_threshold, traj_param_.ego_nearest_yaw_threshold);
 
   self_pose_listener_.waitForFirstPose();
 }
@@ -752,16 +730,10 @@ rcl_interfaces::msg::SetParametersResult ObstacleAvoidancePlanner::onParam(
       mpt_param_.terminal_path_yaw_error_weight);
   }
 
-  {  // replan
-    updateParam<double>(
-      parameters, "replan.max_path_shape_change_dist", max_path_shape_change_dist_for_replan_);
-    updateParam<double>(
-      parameters, "replan.max_ego_moving_dist_for_replan", max_ego_moving_dist_for_replan_);
-    updateParam<double>(
-      parameters, "replan.max_delta_time_sec_for_replan", max_delta_time_sec_for_replan_);
-  }
-
   resetPlanning();
+
+  // update parameters for replan checker
+  replan_checker_->onParam(parameters);
 
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
@@ -799,7 +771,6 @@ void ObstacleAvoidancePlanner::resetPlanning()
   mpt_optimizer_ptr_ =
     std::make_unique<MPTOptimizer>(is_showing_debug_info_, traj_param_, vehicle_param_, mpt_param_);
 
-  prev_path_points_ptr_ = nullptr;
   resetPrevOptimization();
 }
 
@@ -845,10 +816,6 @@ void ObstacleAvoidancePlanner::onPath(const Path::SharedPtr path_ptr)
     debug_msg_pub_->publish(debug_msg_msg);
   }
 
-  // make previous variables
-  prev_path_points_ptr_ = std::make_unique<std::vector<PathPoint>>(path_ptr->points);
-  prev_ego_pose_ptr_ = std::make_unique<geometry_msgs::msg::Pose>(planner_data.ego_pose);
-
   traj_pub_->publish(output_traj_msg);
 }
 
@@ -884,21 +851,22 @@ std::vector<TrajectoryPoint> ObstacleAvoidancePlanner::generateOptimizedTrajecto
 {
   stop_watch_.tic(__func__);
 
-  if (reset_prev_optimization_) {
-    resetPrevOptimization();
-  }
-
   const auto & path = planner_data.path;
 
-  // return prev trajectory if replan is not required
-  if (!checkReplan(planner_data)) {
+  // check if optimization is required or not.
+  // NOTE: previous trajectories information will be reset in some cases.
+  const bool is_replan_required = replan_checker_->isReplanRequired(planner_data, now());
+  if (!is_replan_required) {
     if (prev_optimal_trajs_ptr_) {
       return prev_optimal_trajs_ptr_->model_predictive_trajectory;
     }
-
     return points_utils::convertToTrajectoryPoints(path.points);
   }
-  prev_replanned_time_ptr_ = std::make_unique<rclcpp::Time>(this->now());
+
+  const bool reset_prev_optimization_required = replan_checker_->isResetOptimizationRequired();
+  if (reset_prev_optimization_ || reset_prev_optimization_required) {
+    resetPrevOptimization();
+  }
 
   // create clearance maps
   const CVMaps cv_maps = costmap_generator_ptr_->getMaps(
@@ -925,145 +893,6 @@ std::vector<TrajectoryPoint> ObstacleAvoidancePlanner::generateOptimizedTrajecto
 
   debug_data_.msg_stream << "  " << __func__ << ":= " << stop_watch_.toc(__func__) << " [ms]\n";
   return optimal_trajs.model_predictive_trajectory;
-}
-
-// check if optimization is required or not.
-// NOTE: previous trajectories information will be reset as well in some cases.
-bool ObstacleAvoidancePlanner::checkReplan(const PlannerData & planner_data)
-{
-  const auto & p = planner_data;
-
-  if (
-    !prev_ego_pose_ptr_ || !prev_replanned_time_ptr_ || !prev_path_points_ptr_ ||
-    !prev_optimal_trajs_ptr_) {
-    return true;
-  }
-
-  if (prev_optimal_trajs_ptr_->model_predictive_trajectory.empty()) {
-    RCLCPP_INFO(
-      get_logger(),
-      "Replan with resetting optimization since previous optimized trajectory is empty.");
-    resetPrevOptimization();
-    return true;
-  }
-
-  if (isPathShapeChanged(p)) {
-    RCLCPP_INFO(get_logger(), "Replan with resetting optimization since path shape was changed.");
-    resetPrevOptimization();
-    return true;
-  }
-
-  if (isPathGoalChanged(planner_data)) {
-    RCLCPP_INFO(get_logger(), "Replan with resetting optimization since path goal was changed.");
-    resetPrevOptimization();
-    return true;
-  }
-
-  // For when ego pose is lost or new ego pose is designated in simulation
-  const double delta_dist =
-    tier4_autoware_utils::calcDistance2d(p.ego_pose, prev_ego_pose_ptr_->position);
-  if (delta_dist > max_ego_moving_dist_for_replan_) {
-    RCLCPP_INFO(
-      get_logger(),
-      "Replan with resetting optimization since current ego pose is far from previous ego pose.");
-    resetPrevOptimization();
-    return true;
-  }
-
-  // For when ego pose moves far from trajectory
-  if (!isEgoNearToPrevTrajectory(p.ego_pose)) {
-    RCLCPP_INFO(
-      get_logger(),
-      "Replan with resetting optimization since valid nearest trajectory point from ego was not "
-      "found.");
-    resetPrevOptimization();
-    return true;
-  }
-
-  const double delta_time_sec = (this->now() - *prev_replanned_time_ptr_).seconds();
-  if (delta_time_sec > max_delta_time_sec_for_replan_) {
-    return true;
-  }
-  return false;
-}
-
-bool ObstacleAvoidancePlanner::isPathShapeChanged(const PlannerData & planner_data)
-{
-  if (!prev_path_points_ptr_) {
-    return true;
-  }
-
-  const auto & p = planner_data;
-
-  const double max_mpt_length =
-    traj_param_.num_sampling_points * mpt_param_.delta_arc_length_for_mpt_points;
-
-  // truncate prev points from ego pose to fixed end points
-  const auto prev_begin_idx = findEgoNearestIndex(*prev_path_points_ptr_, p.ego_pose);
-  const auto truncated_prev_points =
-    points_utils::clipForwardPoints(*prev_path_points_ptr_, prev_begin_idx, max_mpt_length);
-
-  // truncate points from ego pose to fixed end points
-  const auto begin_idx = findEgoNearestIndex(p.path.points, p.ego_pose);
-  const auto truncated_points =
-    points_utils::clipForwardPoints(p.path.points, begin_idx, max_mpt_length);
-
-  // guard for lateral offset
-  if (truncated_prev_points.size() < 2 || truncated_points.size() < 2) {
-    return false;
-  }
-
-  // calculate lateral deviations between truncated path_points and prev_path_points
-  for (const auto & prev_point : truncated_prev_points) {
-    const double dist =
-      std::abs(motion_utils::calcLateralOffset(truncated_points, prev_point.pose.position));
-    if (dist > max_path_shape_change_dist_for_replan_) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool ObstacleAvoidancePlanner::isPathGoalChanged(const PlannerData & planner_data)
-{
-  const auto & p = planner_data;
-
-  if (prev_path_points_ptr_) {
-    return true;
-  }
-
-  constexpr double min_vel = 1e-3;
-  if (std::abs(p.ego_vel) > min_vel) {
-    return false;
-  }
-
-  // NOTE: Path may be cropped and does not contain the goal.
-  // Therefore we set a large value to distance threshold.
-  constexpr double max_goal_moving_dist = 1.0;
-  const double goal_moving_dist =
-    tier4_autoware_utils::calcDistance2d(p.path.points.back(), prev_path_points_ptr_->back());
-  if (goal_moving_dist < max_goal_moving_dist) {
-    return false;
-  }
-
-  return true;
-}
-
-bool ObstacleAvoidancePlanner::isEgoNearToPrevTrajectory(const geometry_msgs::msg::Pose & ego_pose)
-{
-  const auto & traj_points = prev_optimal_trajs_ptr_->model_predictive_trajectory;
-
-  const auto resampled_traj_points =
-    resampleTrajectoryPoints(traj_points, traj_param_.delta_arc_length_for_trajectory);
-  const auto opt_nearest_idx = motion_utils::findNearestIndex(
-    resampled_traj_points, ego_pose, traj_param_.delta_dist_threshold_for_closest_point,
-    traj_param_.delta_yaw_threshold_for_closest_point);
-
-  if (!opt_nearest_idx) {
-    return false;
-  }
-  return true;
 }
 
 Trajectories ObstacleAvoidancePlanner::optimizeTrajectory(
