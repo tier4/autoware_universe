@@ -65,8 +65,6 @@ public:
   void setMap(const HADMapBin & map_msg);
   void setRoute(const HADMapRoute & route_msg);
   void setRouteLanelets(const lanelet::ConstLanelets & path_lanelets);
-  void setPullOverGoalPose(
-    const lanelet::ConstLanelet target_lane, const double vehicle_width, const double margin);
 
   // const methods
 
@@ -91,7 +89,6 @@ public:
   // for goal
   bool isInGoalRouteSection(const lanelet::ConstLanelet & lanelet) const;
   Pose getGoalPose() const;
-  Pose getPullOverGoalPose() const;
   lanelet::Id getGoalLaneId() const;
   bool getGoalLanelet(lanelet::ConstLanelet * goal_lanelet) const;
   std::vector<lanelet::ConstLanelet> getLanesBeforePose(
@@ -232,7 +229,7 @@ public:
     const double backward_distance = std::numeric_limits<double>::max(),
     const double forward_distance = std::numeric_limits<double>::max()) const;
   lanelet::ConstLanelets getShoulderLaneletSequence(
-    const lanelet::ConstLanelet & lanelet, const Pose & current_pose,
+    const lanelet::ConstLanelet & lanelet, const Pose & pose,
     const double backward_distance = std::numeric_limits<double>::max(),
     const double forward_distance = std::numeric_limits<double>::max()) const;
   lanelet::ConstLanelets getCheckTargetLanesFromPath(
@@ -249,7 +246,8 @@ public:
   bool getLaneChangeTarget(
     const lanelet::ConstLanelets & lanelets, lanelet::ConstLanelet * target_lanelet) const;
   bool getPullOverTarget(
-    const lanelet::ConstLanelets & lanelets, lanelet::ConstLanelet * target_lanelet) const;
+    const lanelet::ConstLanelets & lanelets, const Pose & goal_pose,
+    lanelet::ConstLanelet * target_lanelet) const;
   bool getPullOutStartLane(
     const lanelet::ConstLanelets & lanelets, const Pose & pose, const double vehicle_width,
     lanelet::ConstLanelet * target_lanelet) const;
@@ -269,7 +267,6 @@ private:
   lanelet::ConstLanelets start_lanelets_;
   lanelet::ConstLanelets goal_lanelets_;
   lanelet::ConstLanelets shoulder_lanelets_;
-  Pose pull_over_goal_pose_;
   HADMapRoute route_msg_;
 
   rclcpp::Logger logger_{rclcpp::get_logger("route_handler")};
