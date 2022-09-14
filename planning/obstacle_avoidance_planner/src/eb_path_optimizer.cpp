@@ -171,13 +171,17 @@ EBPathOptimizer::getOptimizedTrajectory(
 
   const auto traj_points =
     calculateTrajectory(padded_interpolated_points, rectangles.get(), farthest_idx, debug_data_ptr);
+  if (!traj_points) {
+    return boost::none;
+  }
 
   debug_data_ptr->msg_stream << "        " << __func__ << ":= " << stop_watch_.toc(__func__)
                              << " [ms]\n";
-  return traj_points;
+  return traj_points.get();
 }
 
-std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> EBPathOptimizer::calculateTrajectory(
+boost::optional<std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>>
+EBPathOptimizer::calculateTrajectory(
   const std::vector<geometry_msgs::msg::Point> & padded_interpolated_points,
   const std::vector<ConstrainRectangle> & constrain_rectangles, const int farthest_idx,
   std::shared_ptr<DebugData> debug_data_ptr)
@@ -188,10 +192,13 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> EBPathOptimizer::
   updateConstrain(padded_interpolated_points, constrain_rectangles);
 
   // solve QP and get optimized trajectory
-  std::vector<double> optimized_points = solveQP();
+  boost::optional<std::vector<double>> optimized_points = solveQP();
+  if (!optimized_points) {
+    return boost::none;
+  }
 
   const auto traj_points =
-    convertOptimizedPointsToTrajectory(optimized_points, constrain_rectangles, farthest_idx);
+    convertOptimizedPointsToTrajectory(optimized_points.get(), constrain_rectangles, farthest_idx);
 
   if (debug_data_ptr) {
     debug_data_ptr->msg_stream << "          " << __func__ << ":= " << stop_watch_.toc(__func__)
@@ -200,15 +207,19 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> EBPathOptimizer::
   return traj_points;
 }
 
-std::vector<double> EBPathOptimizer::solveQP()
+boost::optional<std::vector<double>> EBPathOptimizer::solveQP()
 {
   osqp_solver_ptr_->updateEpsRel(qp_param_.eps_rel);
   osqp_solver_ptr_->updateEpsAbs(qp_param_.eps_abs);
 
   const auto result = osqp_solver_ptr_->optimize();
   const auto optimized_points = std::get<0>(result);
+  const auto status = std::get<3>(result);
+  if (status != 1) {
+    return boost::none;
+  }
 
-  utils::logOSQPSolutionStatus(std::get<3>(result));
+  utils::logOSQPSolutionStatus(status);
 
   return optimized_points;
 }

@@ -164,9 +164,10 @@ private:
   CandidatePoints getDefaultCandidatePoints(
     const std::vector<autoware_auto_planning_msgs::msg::PathPoint> & path_points);
 
-  std::vector<double> solveQP();
+  boost::optional<std::vector<double>> solveQP();
 
-  std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> calculateTrajectory(
+  boost::optional<std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>>
+  calculateTrajectory(
     const std::vector<geometry_msgs::msg::Point> & padded_interpolated_points,
     const std::vector<ConstrainRectangle> & constrain_rectangles, const int farthest_idx,
     std::shared_ptr<DebugData> debug_data_ptr);
