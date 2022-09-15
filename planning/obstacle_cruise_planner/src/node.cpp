@@ -59,12 +59,13 @@ Trajectory trimTrajectoryFrom(const Trajectory & input, const double nearest_idx
 }
 
 bool isFrontObstacle(
-  const Trajectory & traj, const size_t ego_idx, const geometry_msgs::msg::Point & obj_pos)
+  const std::vector<TrajectoryPoint> & traj_points, const size_t ego_idx,
+  const geometry_msgs::msg::Point & obj_pos)
 {
-  size_t obj_idx = motion_utils::findNearestSegmentIndex(traj.points, obj_pos);
+  size_t obj_idx = motion_utils::findNearestSegmentIndex(traj_points, obj_pos);
 
   const double ego_to_obj_distance =
-    motion_utils::calcSignedArcLength(traj.points, ego_idx, obj_idx);
+    motion_utils::calcSignedArcLength(traj_points, ego_idx, obj_idx);
 
   if (ego_to_obj_distance < 0) {
     return false;
@@ -640,6 +641,21 @@ std::vector<TargetObstacle> ObstacleCruisePlannerNode::getTargetObstacles(
   return target_obstacles;
 }
 
+bool ObstacleCruisePlannerNode::isFrontCollideObstacle(
+  const Trajectory & traj, const geometry_msgs::msg::Pose current_pose,
+  const geometry_msgs::msg::Pose & object_pose, const size_t first_collision_idx)
+{
+  const size_t ego_idx = findExtendedNearestIndex(
+    traj, current_pose, nearest_dist_deviation_threshold_, nearest_yaw_deviation_threshold_);
+
+  if (ego_idx >= first_collision_idx) return false;
+
+  const std::vector<TrajectoryPoint> traj_to_collision_points{
+    traj.points.begin(), traj.points.begin() + first_collision_idx};
+
+  return isFrontObstacle(traj_to_collision_points, ego_idx, object_pose.position);
+}
+
 std::vector<TargetObstacle> ObstacleCruisePlannerNode::filterObstacles(
   const PredictedObjects & predicted_objects, const Trajectory & traj,
   const geometry_msgs::msg::Pose & current_pose, const double current_vel, DebugData & debug_data)
@@ -682,7 +698,8 @@ std::vector<TargetObstacle> ObstacleCruisePlannerNode::filterObstacles(
     const auto & object_velocity =
       predicted_object.kinematics.initial_twist_with_covariance.twist.linear.x;
 
-    const bool is_front_obstacle = isFrontObstacle(traj, ego_idx, object_pose.position);
+    const bool is_front_obstacle = isFrontObstacle(
+      motion_utils::convertToTrajectoryPointArray(traj), ego_idx, object_pose.position);
     if (!is_front_obstacle) {
       RCLCPP_INFO_EXPRESSION(
         get_logger(), is_showing_debug_info_,
@@ -714,10 +731,11 @@ std::vector<TargetObstacle> ObstacleCruisePlannerNode::filterObstacles(
 
     // precise detection area filtering with polygons
     geometry_msgs::msg::Point nearest_collision_point;
+    size_t collision_index;
     if (first_within_idx) {  // obstacles inside the trajectory
       // calculate nearest collision point
-      nearest_collision_point =
-        calcNearestCollisionPoint(first_within_idx.get(), collision_points, decimated_traj);
+      nearest_collision_point = calcNearestCollisionPoint(
+        first_within_idx.get(), collision_points, decimated_traj, collision_index);
       debug_data.collision_points.push_back(nearest_collision_point);
 
       const bool is_angle_aligned = isAngleAlignedWithTrajectory(
@@ -795,8 +813,16 @@ std::vector<TargetObstacle> ObstacleCruisePlannerNode::filterObstacles(
         continue;
       }
 
+      size_t collision_index;
       nearest_collision_point = calcNearestCollisionPoint(
-        collision_traj_poly_idx.get(), future_collision_points, decimated_traj);
+        collision_traj_poly_idx.get(), future_collision_points, decimated_traj, collision_index);
+
+      // Ignore obstacles behind the ego vehicle.
+      // Note: Only using isFrontObstacle(), behind obstacles cannot be filtered
+      // properly when the trajectory is crossing or overlapping.
+      if (!isFrontCollideObstacle(decimated_traj, current_pose, object_pose, collision_index)) {
+        continue;
+      }
       debug_data.collision_points.push_back(nearest_collision_point);
     }
 
@@ -925,7 +951,7 @@ void ObstacleCruisePlannerNode::checkConsistency(
 
 geometry_msgs::msg::Point ObstacleCruisePlannerNode::calcNearestCollisionPoint(
   const size_t & first_within_idx, const std::vector<geometry_msgs::msg::Point> & collision_points,
-  const Trajectory & decimated_traj)
+  const Trajectory & decimated_traj, size_t & collision_index)
 {
   std::array<geometry_msgs::msg::Point, 2> segment_points;
   if (first_within_idx == 0) {
@@ -954,6 +980,7 @@ geometry_msgs::msg::Point ObstacleCruisePlannerNode::calcNearestCollisionPoint(
     }
   }
 
+  collision_index = min_idx;
   return collision_points.at(min_idx);
 }
 
