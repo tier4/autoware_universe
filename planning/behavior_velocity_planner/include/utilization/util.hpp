@@ -313,36 +313,37 @@ std::vector<T> concatVector(const std::vector<T> & vec1, const std::vector<T> & 
   return concat_vec;
 }
 
+boost::optional<int64_t> getNearestLaneId(
+  const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
+  const lanelet::LaneletMapPtr lanelet_map, const geometry_msgs::msg::Pose & current_pose,
+  boost::optional<size_t> & nearest_segment_idx);
+
+std::vector<int64_t> getSortedLaneIdsFromPath(const PathWithLaneId & path);
+
+// return the set of lane_ids in the path after base_lane_id
+std::vector<int64_t> getSubsequentLaneIdsSetOnPath(
+  const PathWithLaneId & path, int64_t base_lane_id);
+
 template <class T>
 std::unordered_map<typename std::shared_ptr<const T>, lanelet::ConstLanelet> getRegElemMapOnPath(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
   const lanelet::LaneletMapPtr lanelet_map, const geometry_msgs::msg::Pose & current_pose)
 {
   std::unordered_map<typename std::shared_ptr<const T>, lanelet::ConstLanelet> reg_elem_map_on_path;
-  std::set<int64_t> unique_lane_ids;
-  auto nearest_segment_idx = tier4_autoware_utils::findNearestSegmentIndex(
-    path.points, current_pose, std::numeric_limits<double>::max(), M_PI_2);
 
   // Add current lane id
-  lanelet::ConstLanelets current_lanes;
-  if (
-    lanelet::utils::query::getCurrentLanelets(
-      lanelet::utils::query::laneletLayer(lanelet_map), current_pose, &current_lanes) &&
-    nearest_segment_idx) {
-    for (const auto & ll : current_lanes) {
-      if (
-        ll.id() == path.points.at(*nearest_segment_idx).lane_ids.at(0) ||
-        ll.id() == path.points.at(*nearest_segment_idx + 1).lane_ids.at(0)) {
-        unique_lane_ids.insert(ll.id());
-      }
-    }
-  }
+  boost::optional<size_t> nearest_segment_idx;
+  const auto nearest_lane_id =
+    getNearestLaneId(path, lanelet_map, current_pose, nearest_segment_idx);
 
-  // Add forward path lane_id
-  const size_t start_idx = *nearest_segment_idx ? *nearest_segment_idx + 1 : 0;
-  for (size_t i = start_idx; i < path.points.size(); i++) {
-    unique_lane_ids.insert(
-      path.points.at(i).lane_ids.at(0));  // should we iterate ids? keep as it was.
+  std::vector<int64_t> unique_lane_ids;
+  if (nearest_lane_id) {
+    // Add subsequent lane_ids from nearest lane_id
+    unique_lane_ids = behavior_velocity_planner::planning_utils::getSubsequentLaneIdsSetOnPath(
+      path, *nearest_lane_id);
+  } else {
+    // Add all lane_ids in path
+    unique_lane_ids = behavior_velocity_planner::planning_utils::getSortedLaneIdsFromPath(path);
   }
 
   for (const auto lane_id : unique_lane_ids) {
