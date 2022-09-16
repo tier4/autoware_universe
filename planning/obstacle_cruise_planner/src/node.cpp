@@ -642,18 +642,17 @@ std::vector<TargetObstacle> ObstacleCruisePlannerNode::getTargetObstacles(
 }
 
 bool ObstacleCruisePlannerNode::isFrontCollideObstacle(
-  const Trajectory & traj, const geometry_msgs::msg::Pose current_pose,
-  const geometry_msgs::msg::Pose & object_pose, const size_t first_collision_idx)
+  const Trajectory & traj, const PredictedObject & object, const size_t first_collision_idx)
 {
-  const size_t ego_idx = findExtendedNearestIndex(
-    traj, current_pose, nearest_dist_deviation_threshold_, nearest_yaw_deviation_threshold_);
+  const auto object_pose = object.kinematics.initial_pose_with_covariance.pose;
+  const auto obj_idx = motion_utils::findNearestIndex(traj.points, object_pose.position);
 
-  if (ego_idx >= first_collision_idx) return false;
+  const double obj_to_col_points_distance =
+    motion_utils::calcSignedArcLength(traj.points, obj_idx, first_collision_idx);
+  const double obj_max_length = calcObjectMaxLength(object.shape);
 
-  const std::vector<TrajectoryPoint> traj_to_collision_points{
-    traj.points.begin(), traj.points.begin() + first_collision_idx};
-
-  return isFrontObstacle(traj_to_collision_points, ego_idx, object_pose.position);
+  // If the object is far in front of the collision point, the object is behind the ego.
+  return obj_to_col_points_distance > -obj_max_length;
 }
 
 std::vector<TargetObstacle> ObstacleCruisePlannerNode::filterObstacles(
@@ -820,7 +819,7 @@ std::vector<TargetObstacle> ObstacleCruisePlannerNode::filterObstacles(
       // Ignore obstacles behind the ego vehicle.
       // Note: Only using isFrontObstacle(), behind obstacles cannot be filtered
       // properly when the trajectory is crossing or overlapping.
-      if (!isFrontCollideObstacle(decimated_traj, current_pose, object_pose, collision_index)) {
+      if (!isFrontCollideObstacle(decimated_traj, predicted_object, collision_index)) {
         continue;
       }
       debug_data.collision_points.push_back(nearest_collision_point);
