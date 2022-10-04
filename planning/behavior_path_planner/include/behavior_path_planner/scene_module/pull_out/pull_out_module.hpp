@@ -95,7 +95,6 @@ private:
   std::unique_ptr<rclcpp::Time> last_pull_out_start_update_time_;
 
   std::shared_ptr<PullOutPlannerBase> getCurrentPlanner() const;
-  lanelet::ConstLanelets getCurrentLanes() const;
   PathWithLaneId getFullPath() const;
   ParallelParkingParameters getGeometricPullOutParameters() const;
   std::vector<Pose> searchBackedPoses();
