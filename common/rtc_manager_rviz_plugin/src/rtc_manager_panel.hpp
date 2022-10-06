@@ -36,11 +36,9 @@
 // autoware
 #include <tier4_rtc_msgs/msg/command.hpp>
 #include <tier4_rtc_msgs/msg/cooperate_command.hpp>
-#include <tier4_rtc_msgs/msg/cooperate_response.hpp>
 #include <tier4_rtc_msgs/msg/cooperate_status.hpp>
 #include <tier4_rtc_msgs/msg/cooperate_status_array.hpp>
 #include <tier4_rtc_msgs/msg/module.hpp>
-#include <tier4_rtc_msgs/srv/auto_mode.hpp>
 #include <tier4_rtc_msgs/srv/cooperate_commands.hpp>
 #endif
 
@@ -52,25 +50,8 @@ using tier4_rtc_msgs::msg::CooperateResponse;
 using tier4_rtc_msgs::msg::CooperateStatus;
 using tier4_rtc_msgs::msg::CooperateStatusArray;
 using tier4_rtc_msgs::msg::Module;
-using tier4_rtc_msgs::srv::AutoMode;
 using tier4_rtc_msgs::srv::CooperateCommands;
 using unique_identifier_msgs::msg::UUID;
-
-struct RTCAutoMode : public QObject
-{
-  Q_OBJECT
-
-public Q_SLOTS:
-  void onChangeToAutoMode();
-  void onChangeToManualMode();
-
-public:
-  std::string module_name;
-  QPushButton * auto_module_button_ptr;
-  QPushButton * manual_module_button_ptr;
-  QLabel * auto_manual_mode_label;
-  rclcpp::Client<AutoMode>::SharedPtr enable_auto_mode_cli;
-};
 
 class RTCManagerPanel : public rviz_common::Panel
 {
@@ -81,18 +62,12 @@ public:
 
 protected:
   void onRTCStatus(const CooperateStatusArray::ConstSharedPtr msg);
-  void onEnableService(
-    const AutoMode::Request::SharedPtr request, const AutoMode::Response::SharedPtr response) const;
 
   rclcpp::Node::SharedPtr raw_node_;
   rclcpp::Subscription<CooperateStatusArray>::SharedPtr sub_rtc_status_;
   rclcpp::Client<CooperateCommands>::SharedPtr client_rtc_commands_;
-  rclcpp::Client<AutoMode>::SharedPtr enable_auto_mode_cli_;
-  std::vector<RTCAutoMode *> auto_modes_;
-  std::string enable_auto_mode_namespace_ = "/planning/enable_auto_mode";
   QTableWidget * rtc_table_;
-  QTableWidget * auto_mode_table_;
-  size_t column_size_ = {7};
+  size_t column_size_ = {5};
 };
 
 }  // namespace rviz_plugins
