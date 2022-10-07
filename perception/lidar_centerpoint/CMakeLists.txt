@@ -107,12 +107,12 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
   endfunction()
 
   # default model
-  download(v1 pts_voxel_encoder_default.onnx 410f730c537968cb27fbd70c941849a8)
-  download(v1 pts_backbone_neck_head_default.onnx e97c165c7877222c0e27e44409a07517)
+  download(pts_voxel_encoder_default.onnx 410f730c537968cb27fbd70c941849a8)
+  download(pts_backbone_neck_head_default.onnx e97c165c7877222c0e27e44409a07517)
 
   # aip_x2 model
-  download(v1 pts_voxel_encoder_aip_x2.onnx 3ae5e9efd7b2ed12115e6f0b28cac58d)
-  download(v1 pts_backbone_neck_head_aip_x2.onnx 6a406a19e05660677c162486ab332de8)
+  download(pts_voxel_encoder_aip_x2.onnx 3ae5e9efd7b2ed12115e6f0b28cac58d)
+  download(pts_backbone_neck_head_aip_x2.onnx 6a406a19e05660677c162486ab332de8)
 
   find_package(ament_cmake_auto REQUIRED)
   ament_auto_find_build_dependencies()
