@@ -51,6 +51,7 @@ target_compile_options(${LATERAL_CONTROLLER_LIB} PRIVATE -Wno-error=old-style-ca
 set(LONGITUDINAL_CONTROLLER_LIB longitudinal_controller_lib)
 set(LONGITUDINAL_CONTROLLER_LIB_SRC
   src/pid_longitudinal_controller.cpp
+  src/constant_velocity_controller.cpp
   src/pid.cpp
   src/smooth_stop.cpp
   src/longitudinal_controller_utils.cpp
@@ -59,6 +60,7 @@ set(LONGITUDINAL_CONTROLLER_LIB_SRC
 set(LONGITUDINAL_CONTROLLER_LIB_HEADERS
   include/trajectory_follower/longitudinal_controller_base.hpp
   include/trajectory_follower/pid_longitudinal_controller.hpp
+  include/trajectory_follower/constant_velocity_controller.hpp
   include/trajectory_follower/sync_data.hpp
   include/trajectory_follower/input_data.hpp
   include/trajectory_follower/debug_values.hpp

@@ -18,6 +18,7 @@
 #include "motion_common/trajectory_common.hpp"
 #include "pure_pursuit/pure_pursuit_lateral_controller.hpp"
 #include "time_utils/time_utils.hpp"
+#include "trajectory_follower/constant_velocity_controller.hpp"
 #include "trajectory_follower/mpc_lateral_controller.hpp"
 #include "trajectory_follower/pid_longitudinal_controller.hpp"
 
@@ -66,6 +67,11 @@ Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("control
         std::make_shared<trajectory_follower::PidLongitudinalController>(*this);
       break;
     }
+    case LongitudinalControllerMode::CONSTANT: {
+      longitudinal_controller_ =
+        std::make_shared<trajectory_follower::ConstantVelocityController>(*this);
+      break;
+    }
     default:
       throw std::domain_error("[LongitudinalController] invalid algorithm");
   }
@@ -101,6 +107,7 @@ Controller::LongitudinalControllerMode Controller::getLongitudinalControllerMode
   const std::string & controller_mode) const
 {
   if (controller_mode == "pid") return LongitudinalControllerMode::PID;
+  if (controller_mode == "constant") return LongitudinalControllerMode::CONSTANT;
 
   return LongitudinalControllerMode::INVALID;
 }
