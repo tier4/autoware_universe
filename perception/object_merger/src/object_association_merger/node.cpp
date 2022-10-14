@@ -15,6 +15,7 @@
 #include "object_association_merger/node.hpp"
 
 #include "object_association_merger/utils/utils.hpp"
+#include "perception_utils/perception_utils.hpp"
 #include "tier4_autoware_utils/tier4_autoware_utils.hpp"
 
 #include <boost/optional.hpp>
@@ -30,66 +31,38 @@ using Label = autoware_auto_perception_msgs::msg::ObjectClassification;
 
 namespace
 {
-boost::optional<geometry_msgs::msg::Transform> getTransform(
-  const tf2_ros::Buffer & tf_buffer, const std::string & source_frame_id,
-  const std::string & target_frame_id, const rclcpp::Time & time)
-{
-  try {
-    geometry_msgs::msg::TransformStamped self_transform_stamped;
-    self_transform_stamped = tf_buffer.lookupTransform(
-      /*target*/ target_frame_id, /*src*/ source_frame_id, time,
-      rclcpp::Duration::from_seconds(0.5));
-    return self_transform_stamped.transform;
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN_STREAM(rclcpp::get_logger("object_association_merger"), ex.what());
-    return boost::none;
-  }
-}
-
-bool transformDetectedObjects(
-  const autoware_auto_perception_msgs::msg::DetectedObjects & input_msg,
-  const std::string & target_frame_id, const tf2_ros::Buffer & tf_buffer,
-  autoware_auto_perception_msgs::msg::DetectedObjects & output_msg)
-{
-  output_msg = input_msg;
-
-  /* transform to world coordinate */
-  if (input_msg.header.frame_id != target_frame_id) {
-    output_msg.header.frame_id = target_frame_id;
-    tf2::Transform tf_target2objects_world;
-    tf2::Transform tf_target2objects;
-    tf2::Transform tf_objects_world2objects;
-    {
-      const auto ros_target2objects_world =
-        getTransform(tf_buffer, input_msg.header.frame_id, target_frame_id, input_msg.header.stamp);
-      if (!ros_target2objects_world) {
-        return false;
-      }
-      tf2::fromMsg(*ros_target2objects_world, tf_target2objects_world);
-    }
-    for (auto & object : output_msg.objects) {
-      tf2::fromMsg(object.kinematics.pose_with_covariance.pose, tf_objects_world2objects);
-      tf_target2objects = tf_target2objects_world * tf_objects_world2objects;
-      tf2::toMsg(tf_target2objects, object.kinematics.pose_with_covariance.pose);
-      // TODO(yukkysaito) transform covariance
-    }
-  }
-  return true;
-}
-
 bool isUnknownObjectOverlapped(
   const autoware_auto_perception_msgs::msg::DetectedObject & unknown_object,
   const autoware_auto_perception_msgs::msg::DetectedObject & known_object,
-  const double precision_threshold, const double recall_threshold)
+  const double precision_threshold, const double recall_threshold,
+  std::map<int, double> distance_threshold_map, const double generalized_iou_threshold)
 {
-  constexpr double sq_distance_threshold = std::pow(5.0, 2.0);
+  const double distance_threshold =
+    distance_threshold_map.at(perception_utils::getHighestProbLabel(known_object.classification));
+  const double sq_distance_threshold = std::pow(distance_threshold, 2.0);
   const double sq_distance = tier4_autoware_utils::calcSquaredDistance2d(
     unknown_object.kinematics.pose_with_covariance.pose,
     known_object.kinematics.pose_with_covariance.pose);
   if (sq_distance_threshold < sq_distance) return false;
-  const auto precision = utils::get2dPrecision(unknown_object, known_object);
-  const auto recall = utils::get2dRecall(unknown_object, known_object);
-  return precision > precision_threshold || recall > recall_threshold;
+  const auto precision = perception_utils::get2dPrecision(unknown_object, known_object);
+  const auto recall = perception_utils::get2dRecall(unknown_object, known_object);
+  const auto generalized_iou = perception_utils::get2dGeneralizedIoU(unknown_object, known_object);
+  return precision > precision_threshold || recall > recall_threshold ||
+         generalized_iou > generalized_iou_threshold;
+}
+}  // namespace
+
+namespace
+{
+std::map<int, double> convertListToClassMap(const std::vector<double> & distance_threshold_list)
+{
+  std::map<int /*class label*/, double /*distance_threshold*/> distance_threshold_map;
+  int class_label = 0;
+  for (const auto & distance_threshold : distance_threshold_list) {
+    distance_threshold_map.insert(std::make_pair(class_label, distance_threshold));
+    class_label++;
+  }
+  return distance_threshold_map;
 }
 }  // namespace
 
@@ -115,9 +88,19 @@ ObjectAssociationMergerNode::ObjectAssociationMergerNode(const rclcpp::NodeOptio
   remove_overlapped_unknown_objects_ =
     declare_parameter<bool>("remove_overlapped_unknown_objects", true);
   overlapped_judge_param_.precision_threshold =
-    declare_parameter<double>("precision_threshold_to_judge_overlapped", 0.4);
+    declare_parameter<double>("precision_threshold_to_judge_overlapped");
   overlapped_judge_param_.recall_threshold =
     declare_parameter<double>("recall_threshold_to_judge_overlapped", 0.5);
+  overlapped_judge_param_.generalized_iou_threshold =
+    declare_parameter<double>("generalized_iou_threshold");
+
+  // get distance_threshold_map from distance_threshold_list
+  /** TODO(Shin-kyoto):
+   *  this implementation assumes index of vector shows class_label.
+   *  if param supports map, refactor this code.
+   */
+  overlapped_judge_param_.distance_threshold_map =
+    convertListToClassMap(declare_parameter<std::vector<double>>("distance_threshold_list"));
 
   const auto tmp = this->declare_parameter<std::vector<int64_t>>("can_assign_matrix");
   const std::vector<int> can_assign_matrix(tmp.begin(), tmp.end());
@@ -140,9 +123,9 @@ void ObjectAssociationMergerNode::objectsCallback(
   /* transform to base_link coordinate */
   autoware_auto_perception_msgs::msg::DetectedObjects transformed_objects0, transformed_objects1;
   if (
-    !transformDetectedObjects(
+    !perception_utils::transformObjects(
       *input_objects0_msg, base_link_frame_id_, tf_buffer_, transformed_objects0) ||
-    !transformDetectedObjects(
+    !perception_utils::transformObjects(
       *input_objects1_msg, base_link_frame_id_, tf_buffer_, transformed_objects1)) {
     return;
   }
@@ -185,7 +168,7 @@ void ObjectAssociationMergerNode::objectsCallback(
     unknown_objects.reserve(output_msg.objects.size());
     known_objects.reserve(output_msg.objects.size());
     for (const auto & object : output_msg.objects) {
-      if (utils::getHighestProbLabel(object.classification) == Label::UNKNOWN) {
+      if (perception_utils::getHighestProbLabel(object.classification) == Label::UNKNOWN) {
         unknown_objects.push_back(object);
       } else {
         known_objects.push_back(object);
@@ -198,7 +181,9 @@ void ObjectAssociationMergerNode::objectsCallback(
       for (const auto & known_object : known_objects) {
         if (isUnknownObjectOverlapped(
               unknown_object, known_object, overlapped_judge_param_.precision_threshold,
-              overlapped_judge_param_.recall_threshold)) {
+              overlapped_judge_param_.recall_threshold,
+              overlapped_judge_param_.distance_threshold_map,
+              overlapped_judge_param_.generalized_iou_threshold)) {
           is_overlapped = true;
           break;
         }
