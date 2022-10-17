@@ -520,15 +520,13 @@ void ObstacleCruisePlannerNode::onTrajectory(const Trajectory::ConstSharedPtr ms
     *msg, current_pose_ptr->pose, current_twist_ptr_->twist.linear.x, debug_data);
 
   // create data for stop
-  const auto stop_data =
-    createStopData(*msg, current_pose_ptr->pose, target_obstacles);
+  const auto stop_data = createStopData(*msg, current_pose_ptr->pose, target_obstacles);
 
   // stop planning
   const auto stop_traj = planner_ptr_->generateStopTrajectory(stop_data, debug_data);
 
   // create data for cruise
-  const auto cruise_data =
-    createCruiseData(stop_traj, current_pose_ptr->pose, target_obstacles);
+  const auto cruise_data = createCruiseData(stop_traj, current_pose_ptr->pose, target_obstacles);
 
   // cruise planning
   boost::optional<VelocityLimit> vel_limit;
@@ -632,8 +630,8 @@ std::vector<TargetObstacle> ObstacleCruisePlannerNode::getTargetObstacles(
 {
   stop_watch_.tic(__func__);
 
-  const auto target_obstacles = filterObstacles(
-    *in_objects_ptr_, trajectory, current_pose, current_vel, debug_data);
+  const auto target_obstacles =
+    filterObstacles(*in_objects_ptr_, trajectory, current_pose, current_vel, debug_data);
 
   // print calculation time
   const double calculation_time = stop_watch_.toc(__func__);
@@ -660,8 +658,7 @@ bool ObstacleCruisePlannerNode::isFrontCollideObstacle(
 
 std::vector<TargetObstacle> ObstacleCruisePlannerNode::filterObstacles(
   const PredictedObjects & predicted_objects, const Trajectory & traj,
-  const geometry_msgs::msg::Pose & current_pose, const double current_vel,
-  DebugData & debug_data)
+  const geometry_msgs::msg::Pose & current_pose, const double current_vel, DebugData & debug_data)
 {
   const auto current_time = now();
   const auto time_stamp = rclcpp::Time(predicted_objects.header.stamp);
@@ -962,8 +959,8 @@ geometry_msgs::msg::Point ObstacleCruisePlannerNode::calcNearestCollisionPoint(
     const auto front_pos = tier4_autoware_utils::calcOffsetPose(
                              traj_front_pose, vehicle_info_.max_longitudinal_offset_m, 0.0, 0.0)
                              .position;
-      segment_points.at(0) = traj_front_pose.position;
-      segment_points.at(1) = front_pos;
+    segment_points.at(0) = traj_front_pose.position;
+    segment_points.at(1) = front_pos;
   } else {
     const size_t seg_idx = first_within_idx - 1;
     segment_points.at(0) = decimated_traj.points.at(seg_idx).pose.position;
