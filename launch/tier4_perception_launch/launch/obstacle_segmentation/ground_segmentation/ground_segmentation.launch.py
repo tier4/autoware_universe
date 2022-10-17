@@ -57,8 +57,6 @@ class GroundSegmentationPipeline:
         p["max_longitudinal_offset"] = p["front_overhang"] + p["wheel_base"]
         p["min_lateral_offset"] = -(p["wheel_tread"] / 2.0 + p["right_overhang"])
         p["max_lateral_offset"] = p["wheel_tread"] / 2.0 + p["left_overhang"]
-        p["min_height_offset"] = 0.0
-        p["max_height_offset"] = p["vehicle_height"]
         return p
 
     def get_vehicle_mirror_info(self):
@@ -82,8 +80,6 @@ class GroundSegmentationPipeline:
                     {
                         "input_frame": LaunchConfiguration("base_frame"),
                         "output_frame": LaunchConfiguration("base_frame"),
-                        "min_z": self.vehicle_info["min_height_offset"],
-                        "max_z": self.vehicle_info["max_height_offset"],
                     },
                     self.ground_segmentation_param[f"{lidar_name}_crop_box_filter"]["parameters"],
                 ],
@@ -216,8 +212,6 @@ class GroundSegmentationPipeline:
                     {
                         "input_frame": LaunchConfiguration("base_frame"),
                         "output_frame": LaunchConfiguration("base_frame"),
-                        "min_z": self.vehicle_info["min_height_offset"],
-                        "max_z": self.vehicle_info["max_height_offset"],
                     },
                     self.ground_segmentation_param["common_crop_box_filter"]["parameters"],
                 ],
@@ -239,6 +233,8 @@ class GroundSegmentationPipeline:
                 parameters=[
                     self.ground_segmentation_param["common_ground_filter"]["parameters"],
                     self.vehicle_info,
+                    {"input_frame": "base_link"},
+                    {"output_frame": "base_link"},
                 ],
                 extra_arguments=[
                     {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
