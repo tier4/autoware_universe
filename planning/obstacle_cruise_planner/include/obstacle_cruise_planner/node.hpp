@@ -83,7 +83,8 @@ private:
     const double current_vel, DebugData & debug_data);
   std::vector<TargetObstacle> filterObstacles(
     const PredictedObjects & predicted_objects, const Trajectory & traj,
-    const geometry_msgs::msg::Pose & current_pose, const double current_vel, DebugData & debug_data);
+    const geometry_msgs::msg::Pose & current_pose, const double current_vel,
+    DebugData & debug_data);
   void updateHasStopped(std::vector<TargetObstacle> & target_obstacles);
   void checkConsistency(
     const rclcpp::Time & current_time, const PredictedObjects & predicted_objects,
