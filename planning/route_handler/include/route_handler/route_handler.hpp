@@ -246,12 +246,12 @@ public:
     bool use_exact = true) const;
   bool getLaneChangeTarget(
     const lanelet::ConstLanelets & lanelets, lanelet::ConstLanelet * target_lanelet) const;
-  bool getPullOverTarget(
+  static bool getPullOverTarget(
     const lanelet::ConstLanelets & lanelets, const Pose & goal_pose,
-    lanelet::ConstLanelet * target_lanelet) const;
-  bool getPullOutStartLane(
+    lanelet::ConstLanelet * target_lanelet);
+  static bool getPullOutStartLane(
     const lanelet::ConstLanelets & lanelets, const Pose & pose, const double vehicle_width,
-    lanelet::ConstLanelet * target_lanelet) const;
+    lanelet::ConstLanelet * target_lanelet);
   double getLaneChangeableDistance(
     const Pose & current_pose, const LaneChangeDirection & direction) const;
   lanelet::ConstPolygon3d getIntersectionAreaById(const lanelet::Id id) const;
