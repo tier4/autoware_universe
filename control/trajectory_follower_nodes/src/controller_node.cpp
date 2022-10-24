@@ -18,6 +18,7 @@
 #include "motion_common/trajectory_common.hpp"
 #include "pure_pursuit/pure_pursuit_lateral_controller.hpp"
 #include "time_utils/time_utils.hpp"
+#include "trajectory_follower/constant_acceleration_controller.hpp"
 #include "trajectory_follower/mpc_lateral_controller.hpp"
 #include "trajectory_follower/pid_longitudinal_controller.hpp"
 
@@ -59,11 +60,16 @@ Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("control
   }
 
   const auto longitudinal_controller_mode =
-    getLongitudinalControllerMode(declare_parameter("longitudinal_controller_mode", "pid"));
+    getLongitudinalControllerMode(declare_parameter("longitudinal_controller_mode", "constant"));
   switch (longitudinal_controller_mode) {
     case LongitudinalControllerMode::PID: {
       longitudinal_controller_ =
         std::make_shared<trajectory_follower::PidLongitudinalController>(*this);
+      break;
+    }
+    case LongitudinalControllerMode::CONSTANT: {
+      longitudinal_controller_ =
+        std::make_shared<trajectory_follower::ConstantAccelController>(*this);
       break;
     }
     default:
@@ -101,6 +107,7 @@ Controller::LongitudinalControllerMode Controller::getLongitudinalControllerMode
   const std::string & controller_mode) const
 {
   if (controller_mode == "pid") return LongitudinalControllerMode::PID;
+  if (controller_mode == "constant") return LongitudinalControllerMode::CONSTANT;
 
   return LongitudinalControllerMode::INVALID;
 }

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_FOLLOWER_NODES__CONTROLLER_NODE_HPP_
-#define TRAJECTORY_FOLLOWER_NODES__CONTROLLER_NODE_HPP_
+#ifndef TRAJECTORY_FOLLOWER__CONSTANT_ACCELERATION_CONTROLLER_HPP_
+#define TRAJECTORY_FOLLOWER__CONSTANT_ACCELERATION_CONTROLLER_HPP_
 
 #include "eigen3/Eigen/Core"
 #include "eigen3/Eigen/Geometry"
@@ -24,7 +24,6 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 #include "trajectory_follower/debug_values.hpp"
-#include "trajectory_follower/lateral_controller_base.hpp"
 #include "trajectory_follower/longitudinal_controller_base.hpp"
 #include "trajectory_follower/longitudinal_controller_utils.hpp"
 #include "trajectory_follower/lowpass_filter.hpp"
@@ -32,7 +31,6 @@
 #include "trajectory_follower/smooth_stop.hpp"
 #include "vehicle_info_util/vehicle_info_util.hpp"
 
-#include "autoware_auto_control_msgs/msg/ackermann_control_command.hpp"
 #include "autoware_auto_control_msgs/msg/longitudinal_command.hpp"
 #include "autoware_auto_planning_msgs/msg/trajectory.hpp"
 #include "autoware_auto_system_msgs/msg/float32_multi_array_diagnostic.hpp"
@@ -40,7 +38,9 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "tf2_msgs/msg/tf_message.hpp"
+#include "tier4_debug_msgs/msg/float32_stamped.hpp"
 
+#include <deque>
 #include <memory>
 #include <string>
 #include <utility>
@@ -52,65 +52,52 @@ namespace motion
 {
 namespace control
 {
-using trajectory_follower::LateralOutput;
-using trajectory_follower::LongitudinalOutput;
-namespace trajectory_follower_nodes
+namespace trajectory_follower
 {
 using autoware::common::types::bool8_t;
 using autoware::common::types::float64_t;
+using tier4_debug_msgs::msg::Float32Stamped;
 namespace trajectory_follower = ::autoware::motion::control::trajectory_follower;
 namespace motion_common = ::autoware::motion::motion_common;
 
-/// \classController
+/// \class ConstantAccelController
 /// \brief The node class used for generating longitudinal control commands (velocity/acceleration)
-class TRAJECTORY_FOLLOWER_PUBLIC Controller : public rclcpp::Node
+class TRAJECTORY_FOLLOWER_PUBLIC ConstantAccelController : public LongitudinalControllerBase
 {
 public:
-  explicit Controller(const rclcpp::NodeOptions & node_options);
-  virtual ~Controller() {}
+  explicit ConstantAccelController(rclcpp::Node & node);
 
 private:
-  rclcpp::TimerBase::SharedPtr timer_control_;
-  trajectory_follower::InputData input_data_;
-  double timeout_thr_sec_;
-  boost::optional<LongitudinalOutput> longitudinal_output_{boost::none};
-  boost::optional<LateralOutput> lateral_output_{boost::none};
+  rclcpp::Node * node_;
+  // ros variables
+  rclcpp::Publisher<autoware_auto_system_msgs::msg::Float32MultiArrayDiagnostic>::SharedPtr
+    m_pub_slope;
+  rclcpp::Publisher<autoware_auto_system_msgs::msg::Float32MultiArrayDiagnostic>::SharedPtr
+    m_pub_debug;
 
-  std::shared_ptr<trajectory_follower::LongitudinalControllerBase> longitudinal_controller_;
-  std::shared_ptr<trajectory_follower::LateralControllerBase> lateral_controller_;
+  rclcpp::Subscription<Float32Stamped>::SharedPtr m_sub_test_acceleration;
 
-  rclcpp::Subscription<autoware_auto_planning_msgs::msg::Trajectory>::SharedPtr sub_ref_path_;
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odometry_;
-  rclcpp::Subscription<autoware_auto_vehicle_msgs::msg::SteeringReport>::SharedPtr sub_steering_;
-  rclcpp::Publisher<autoware_auto_control_msgs::msg::AckermannControlCommand>::SharedPtr
-    control_cmd_pub_;
+  // control state
+  enum class ControlState { DRIVE = 0, STOPPING, STOPPED, EMERGENCY };
+  ControlState m_control_state{ControlState::STOPPED};
 
-  enum class LateralControllerMode {
-    INVALID = 0,
-    MPC = 1,
-    PURE_PURSUIT = 2,
-  };
-  enum class LongitudinalControllerMode {
-    INVALID = 0,
-    PID = 1,
-    CONSTANT = 2,
-  };
+  // control period
+  float64_t m_longitudinal_ctrl_period;
+  Float32Stamped::SharedPtr test_acc;
 
   /**
    * @brief compute control command, and publish periodically
    */
-  void callbackTimerControl();
-  void onTrajectory(const autoware_auto_planning_msgs::msg::Trajectory::SharedPtr);
-  void onOdometry(const nav_msgs::msg::Odometry::SharedPtr msg);
-  void onSteering(const autoware_auto_vehicle_msgs::msg::SteeringReport::SharedPtr msg);
-  bool isTimeOut();
-  LateralControllerMode getLateralControllerMode(const std::string & algorithm_name) const;
-  LongitudinalControllerMode getLongitudinalControllerMode(
-    const std::string & algorithm_name) const;
+  boost::optional<LongitudinalOutput> run() override;
+
+  /**
+   * @brief set input data like current odometry and trajectory.
+   */
+  void setInputData([[maybe_unused]] InputData const & input_data) {}
 };
-}  // namespace trajectory_follower_nodes
+}  // namespace trajectory_follower
 }  // namespace control
 }  // namespace motion
 }  // namespace autoware
 
-#endif  // TRAJECTORY_FOLLOWER_NODES__CONTROLLER_NODE_HPP_
+#endif  // TRAJECTORY_FOLLOWER__CONSTANT_ACCELERATION_CONTROLLER_HPP_
