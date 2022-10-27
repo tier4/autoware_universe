@@ -109,6 +109,17 @@ public:
   }
 
   void setParameters(const LaneChangeParameters & parameters);
+  void lockRTCCommand() override
+  {
+    rtc_interface_left_.lockCommandUpdate();
+    rtc_interface_right_.lockCommandUpdate();
+  }
+
+  void unlockRTCCommand() override
+  {
+    rtc_interface_left_.unlockCommandUpdate();
+    rtc_interface_right_.unlockCommandUpdate();
+  }
 
 private:
   LaneChangeParameters parameters_;
