@@ -953,7 +953,7 @@ geometry_msgs::msg::Point ObstacleCruisePlannerNode::calcNearestCollisionPoint(
   const size_t & first_within_idx, const std::vector<geometry_msgs::msg::Point> & collision_points,
   const Trajectory & decimated_traj, size_t & collision_index)
 {
-  std::array<geometry_msgs::msg::Point, 2> segment_points;
+  std::vector<geometry_msgs::msg::Point> segment_points(2);
   if (first_within_idx == 0) {
     const auto & traj_front_pose = decimated_traj.points.at(0).pose;
     const auto front_pos = tier4_autoware_utils::calcOffsetPose(
