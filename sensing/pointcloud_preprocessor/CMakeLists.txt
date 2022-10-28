@@ -41,7 +41,6 @@ ament_target_dependencies(pointcloud_preprocessor_filter_base
 )
 
 ament_auto_add_library(pointcloud_preprocessor_filter SHARED
-  src/utility/utilities.cpp
   src/concatenate_data/concatenate_data_nodelet.cpp
   src/crop_box_filter/crop_box_filter_nodelet.cpp
   src/downsample_filter/voxel_grid_downsample_filter_nodelet.cpp
