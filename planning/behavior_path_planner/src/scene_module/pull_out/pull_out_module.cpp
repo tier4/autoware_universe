@@ -554,7 +554,7 @@ TurnSignalInfo PullOutModule::calcTurnSignalInfo(const Pose start_pose, const Po
   }
 
   // calculate distance to pull_out end on target lanes
-  const auto current_lanes = getCurrentLanes();
+  const auto current_lanes = util::getExtendedCurrentLanes(planner_data_);
   const auto arc_position_current_pose =
     lanelet::utils::getArcCoordinates(current_lanes, planner_data_->self_pose->pose);
   const auto arc_position_pull_out_end = lanelet::utils::getArcCoordinates(current_lanes, end_pose);
