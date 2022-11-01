@@ -30,9 +30,12 @@ B_PED_SPD = "brake_pedal_speed"
 PITCH = "pitch"
 JERK = "jerk"
 STEER = "steer"
+A_CMD = "acceleration_cmd"
+A_STAT = "final_accel"
 
 # config of accel / brake map
 VEL_LIST = np.array([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50])  # km
+ACC_CMD_LIST = np.array([-3.0, -2.5, -2.0, -1.5, -1.2, -0.9, -0.6, -0.3, 0.0, 1.0, 1.5, 2.0])
 PEDAL_LIST = np.array(
     [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
 )
@@ -41,4 +44,7 @@ VEL_MAX = VEL_LIST[-1]
 VEL_SPAN = (VEL_MAX - VEL_MIN) / (len(VEL_LIST) - 1)
 PEDAL_MIN = PEDAL_LIST[0]
 PEDAL_MAX = PEDAL_LIST[-1]
+A_MIN = ACC_CMD_LIST[0]
+A_MAX = ACC_CMD_LIST[-1]
+A_SPAN = (A_MAX - A_MIN) / (len(ACC_CMD_LIST) - 1)
 PEDAL_SPAN = (PEDAL_MAX - PEDAL_MIN) / (len(PEDAL_LIST) - 1)

@@ -8,6 +8,10 @@ ament_auto_add_executable(accel_brake_map_calibrator
   src/accel_brake_map_calibrator_node.cpp
   src/main.cpp
 )
+
+ament_auto_add_executable(acceleration_map_calibrator
+  src/acceleration_map_calibrator_node.cpp
+)
 ament_target_dependencies(accel_brake_map_calibrator)
 
 install(
@@ -20,9 +24,11 @@ install(
   scripts/delay_estimator.py
   scripts/plotter.py
   scripts/view_statistics.py
+  scripts/view_statistics_acc.py
   scripts/calc_utils.py
   scripts/csv_reader.py
   scripts/log_analyzer.py
+  scripts/view_plot_acc_cmd.py
   scripts/view_plot.py
   scripts/new_accel_brake_map_server.py
   test/plot_csv_client_node.py
