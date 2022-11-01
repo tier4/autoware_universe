@@ -70,7 +70,7 @@ class ViewPlot(Node):
         self.cr = CSVReader(log_file, csv_type="file")
 
         # remove unused_data
-        #self.csv_data = self.cr.removeUnusedData(
+        # self.csv_data = self.cr.removeUnusedData(
         #    min_vel_thr, max_steer_thr, max_pitch_thr)
 
         # get statistics array

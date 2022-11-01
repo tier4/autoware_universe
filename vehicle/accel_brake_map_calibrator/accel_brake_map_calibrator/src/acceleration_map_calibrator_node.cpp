@@ -360,8 +360,7 @@ void AccelBrakeMapCalibrator::timerCallbackOutputCSV()
   // check file existence
   std::ifstream af(output_accel_file_);
   if (!af.is_open()) {
-    RCLCPP_WARN(
-      rclcpp::get_logger("accel_brake_map_calibrator"), "Accel Cmd map does not exist");
+    RCLCPP_WARN(rclcpp::get_logger("accel_brake_map_calibrator"), "Accel Cmd map does not exist");
     return;
   }
 
