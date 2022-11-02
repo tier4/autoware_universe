@@ -185,7 +185,7 @@ ObjectDataArray AvoidanceModule::calcAvoidanceTargetObjects(
   // This is because y axis is positive on the left.
   const auto expanded_lanelets = lanelet::utils::getExpandedLanelets(
     current_lanes, parameters_->detection_area_left_expand_dist,
-    parameters_->detection_area_right_expand_dist * (-1.0));
+    parameters_->detection_area_right_expand_dist);
   const auto lane_filtered_objects_index =
     util::filterObjectIndicesByLanelets(objects_candidate, expanded_lanelets);
 
