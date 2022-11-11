@@ -45,13 +45,18 @@ int insertPoint(
   if (!planning_utils::calcClosestIndex(*inout_path, in_pose, closest_idx, dist_thr, angle_thr)) {
     return -1;
   }
+  // vector.insert(i) inserts element on the left side of v[i]
+  // the velocity need to be zero order hold(from prior point)
   int insert_idx = closest_idx;
-  if (isAheadOf(in_pose, inout_path->points.at(closest_idx).point.pose)) {
+  autoware_auto_planning_msgs::msg::PathPointWithLaneId inserted_point =
+    inout_path->points.at(closest_idx);
+  if (planning_utils::isAheadOf(in_pose, inout_path->points.at(closest_idx).point.pose)) {
     ++insert_idx;
+  } else {
+    // copy with velocity from prior point
+    const size_t prior_ind = closest_idx > 0 ? closest_idx - 1 : 0;
+    inserted_point = inout_path->points.at(prior_ind);
   }
-
-  autoware_auto_planning_msgs::msg::PathPointWithLaneId inserted_point;
-  inserted_point = inout_path->points.at(closest_idx);
   inserted_point.point.pose = in_pose;
 
   auto it = inout_path->points.begin() + insert_idx;
