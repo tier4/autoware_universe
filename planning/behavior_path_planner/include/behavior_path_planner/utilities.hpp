@@ -292,8 +292,13 @@ std::uint8_t getHighestProbLabel(const std::vector<ObjectClassification> & class
 
 lanelet::ConstLanelets getCurrentLanes(const std::shared_ptr<const PlannerData> & planner_data);
 
+lanelet::ConstLanelets extendLanes(
+  const std::shared_ptr<RouteHandler> route_handler, const lanelet::ConstLanelets & lanes);
+
 lanelet::ConstLanelets getExtendedCurrentLanes(
   const std::shared_ptr<const PlannerData> & planner_data);
+
+bool checkPathRelativeAngle(const PathWithLaneId & path, const double angle_threshold);
 
 }  // namespace util
 }  // namespace behavior_path_planner
