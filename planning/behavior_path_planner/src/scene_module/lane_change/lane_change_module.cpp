@@ -420,7 +420,11 @@ bool LaneChangeModule::isValidPath(const PathWithLaneId & path) const
   lanes.reserve(status_.current_lanes.size() + status_.lane_change_lanes.size());
   lanes.insert(lanes.end(), status_.current_lanes.begin(), status_.current_lanes.end());
   lanes.insert(lanes.end(), status_.lane_change_lanes.begin(), status_.lane_change_lanes.end());
-  if (lane_departure_checker_.checkPathWillLeaveLane(lanes, path)) {
+
+  const auto & route_handler = planner_data_->route_handler;
+  const auto extened_lanes = util::extendLanes(route_handler, lanes);
+
+  if (lane_departure_checker_.checkPathWillLeaveLane(extened_lanes, path)) {
     RCLCPP_WARN_STREAM_THROTTLE(getLogger(), *clock_, 1000, "path is out of lanes");
     return false;
   }
