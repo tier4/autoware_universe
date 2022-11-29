@@ -184,6 +184,15 @@ PredictedObjects filterObjectsByVelocity(
   const PredictedObjects & objects, double min_v, double max_v);
 
 // drivable area generation
+lanelet::ConstLanelets transformToLanelets(const DrivableLanes & drivable_lanes);
+lanelet::ConstLanelets transformToLanelets(const std::vector<DrivableLanes> & drivable_lanes);
+boost::optional<lanelet::ConstLanelet> getRightLanelet(
+  const lanelet::ConstLanelet & current_lane, const lanelet::ConstLanelets & shoulder_lanes);
+boost::optional<lanelet::ConstLanelet> getLeftLanelet(
+  const lanelet::ConstLanelet & current_lane, const lanelet::ConstLanelets & shoulder_lanes);
+std::vector<DrivableLanes> generateDrivableLanes(const lanelet::ConstLanelets & current_lanes);
+std::vector<DrivableLanes> generateDrivableLanesWithShoulderLanes(
+  const lanelet::ConstLanelets & current_lanes, const lanelet::ConstLanelets & shoulder_lanes);
 
 void occupancyGridToImage(const OccupancyGrid & occupancy_grid, cv::Mat * cv_image);
 
@@ -195,6 +204,10 @@ cv::Point toCVPoint(
 OccupancyGrid generateDrivableArea(
   const PathWithLaneId & path, const lanelet::ConstLanelets & lanes, const double resolution,
   const double vehicle_length, const std::shared_ptr<const PlannerData> planner_data);
+
+std::vector<DrivableLanes> expandLanelets(
+  const std::vector<DrivableLanes> & drivable_lanes, const double left_bound_offset,
+  const double right_bound_offset, const std::vector<std::string> & types_to_skip = {});
 
 lanelet::ConstLineStrings3d getDrivableAreaForAllSharedLinestringLanelets(
   const std::shared_ptr<const PlannerData> & planner_data);

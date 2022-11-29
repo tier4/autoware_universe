@@ -415,16 +415,18 @@ bool LaneChangeModule::isSafe() const { return status_.is_safe; }
 
 bool LaneChangeModule::isValidPath(const PathWithLaneId & path) const
 {
-  // check lane departure
   const auto & route_handler = planner_data_->route_handler;
-  lanelet::ConstLanelets lanes;
-  const auto extened_curr_lanes = util::extendLanes(route_handler, status_.current_lanes);
-  const auto extened_lc_lanes = util::extendLanes(route_handler, status_.lane_change_lanes);
-  lanes.reserve(extened_curr_lanes.size() + extened_lc_lanes.size());
-  lanes.insert(lanes.end(), extened_curr_lanes.begin(), extened_curr_lanes.end());
-  lanes.insert(lanes.end(), extened_lc_lanes.begin(), extened_lc_lanes.end());
+  const auto drivable_area_left_bound_offset = 0.5;
+  const auto drivable_area_right_bound_offset = 0.5;
 
-  if (lane_departure_checker_.checkPathWillLeaveLane(lanes, path)) {
+  // check lane departure
+  const auto drivable_lanes = lane_change_utils::generateDrivableLanes(
+    *route_handler, util::extendLanes(route_handler, status_.current_lanes),
+    util::extendLanes(route_handler, status_.lane_change_lanes));
+  const auto expanded_lanes = util::expandLanelets(
+    drivable_lanes, drivable_area_left_bound_offset, drivable_area_right_bound_offset);
+  const auto lanelets = util::transformToLanelets(expanded_lanes);
+  if (lane_departure_checker_.checkPathWillLeaveLane(lanelets, path)) {
     RCLCPP_WARN_STREAM_THROTTLE(getLogger(), *clock_, 1000, "path is out of lanes");
     return false;
   }
