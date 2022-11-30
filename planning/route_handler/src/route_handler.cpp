@@ -771,6 +771,12 @@ bool RouteHandler::getClosestLaneletWithinRoute(
   return lanelet::utils::query::getClosestLanelet(route_lanelets_, search_pose, closest_lanelet);
 }
 
+lanelet::ConstLanelets RouteHandler::getPreviousLanelets(
+  const lanelet::ConstLanelet & lanelet) const
+{
+  return routing_graph_ptr_->previous(lanelet);
+}
+
 bool RouteHandler::getNextLaneletWithinRoute(
   const lanelet::ConstLanelet & lanelet, lanelet::ConstLanelet * next_lanelet) const
 {

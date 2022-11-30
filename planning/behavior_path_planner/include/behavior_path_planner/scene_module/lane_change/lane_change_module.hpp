@@ -18,6 +18,7 @@
 #include "behavior_path_planner/scene_module/lane_change/lane_change_path.hpp"
 #include "behavior_path_planner/scene_module/scene_module_interface.hpp"
 #include "behavior_path_planner/utilities.hpp"
+#include "lane_departure_checker/lane_departure_checker.hpp"
 
 #include <lanelet2_extension/utility/message_conversion.hpp>
 #include <lanelet2_extension/utility/utilities.hpp>
@@ -37,6 +38,7 @@
 namespace behavior_path_planner
 {
 using autoware_auto_planning_msgs::msg::PathWithLaneId;
+using lane_departure_checker::LaneDepartureChecker;
 
 struct LaneChangeParameters
 {
@@ -125,6 +127,7 @@ private:
   LaneChangeParameters parameters_;
   LaneChangeStatus status_;
   PathShifter path_shifter_;
+  LaneDepartureChecker lane_departure_checker_;
 
   double lane_change_lane_length_{200.0};
   double check_distance_{100.0};
@@ -185,6 +188,7 @@ private:
 
   bool isSafe() const;
   bool isLaneBlocked(const lanelet::ConstLanelets & lanes) const;
+  bool isValidPath(const PathWithLaneId & path) const;
   bool isNearEndOfLane() const;
   bool isCurrentSpeedLow() const;
   bool isAbortConditionSatisfied() const;

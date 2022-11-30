@@ -75,6 +75,9 @@ bool hasEnoughDistance(
   const bool isInGoalRouteSection, const Pose & goal_pose,
   const lanelet::routing::RoutingGraphContainer & overall_graphs);
 bool isObjectFront(const Pose & ego_pose, const Pose & obj_pose);
+std::vector<DrivableLanes> generateDrivableLanes(
+  const RouteHandler & route_handler, const lanelet::ConstLanelets & current_lanes,
+  const lanelet::ConstLanelets & lane_change_lanes);
 }  // namespace lane_change_utils
 }  // namespace behavior_path_planner
 
