@@ -44,7 +44,6 @@ LaneChangeModule::LaneChangeModule(
   uuid_left_{generateUUID()},
   uuid_right_{generateUUID()}
 {
-  lane_departure_checker_.setVehicleInfo(vehicle_info_util::VehicleInfoUtil(node).getVehicleInfo());
 }
 
 BehaviorModuleOutput LaneChangeModule::run()
@@ -426,9 +425,20 @@ bool LaneChangeModule::isValidPath(const PathWithLaneId & path) const
   const auto expanded_lanes = util::expandLanelets(
     drivable_lanes, drivable_area_left_bound_offset, drivable_area_right_bound_offset);
   const auto lanelets = util::transformToLanelets(expanded_lanes);
-  if (lane_departure_checker_.checkPathWillLeaveLane(lanelets, path)) {
-    RCLCPP_WARN_STREAM_THROTTLE(getLogger(), *clock_, 1000, "path is out of lanes");
-    return false;
+
+  // check path points are in any lanelets
+  for (const auto & point : path.points) {
+    bool is_in_lanelet = false;
+    for (const auto & lanelet : lanelets) {
+      if (lanelet::utils::isInLanelet(point.point.pose, lanelet)) {
+        is_in_lanelet = true;
+        break;
+      }
+    }
+    if (!is_in_lanelet) {
+      RCLCPP_WARN_STREAM_THROTTLE(getLogger(), *clock_, 1000, "path is out of lanes");
+      return false;
+    }
   }
 
   // check relative angle
