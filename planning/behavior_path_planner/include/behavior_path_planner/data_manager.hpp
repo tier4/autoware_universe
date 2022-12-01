@@ -61,13 +61,6 @@ struct Approval
   ModuleNameStamped is_force_approved{};
 };
 
-struct DrivableLanes
-{
-  lanelet::ConstLanelet right_lane;
-  lanelet::ConstLanelet left_lane;
-  lanelet::ConstLanelets middle_lanes;
-};
-
 struct PlannerData
 {
   PoseStamped::ConstSharedPtr self_pose{};

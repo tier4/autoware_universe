@@ -1066,107 +1066,6 @@ bool containsGoal(const lanelet::ConstLanelets & lanes, const lanelet::Id & goal
   return false;
 }
 
-lanelet::ConstLanelets transformToLanelets(const DrivableLanes & drivable_lanes)
-{
-  lanelet::ConstLanelets lanes;
-
-  const auto has_same_lane = [&](const auto & lane) {
-    if (lanes.empty()) return false;
-    const auto has_same = [&](const auto & ll) { return ll.id() == lane.id(); };
-    return std::find_if(lanes.begin(), lanes.end(), has_same) != lanes.end();
-  };
-
-  lanes.push_back(drivable_lanes.right_lane);
-  if (!has_same_lane(drivable_lanes.left_lane)) {
-    lanes.push_back(drivable_lanes.left_lane);
-  }
-
-  for (const auto & ml : drivable_lanes.middle_lanes) {
-    if (!has_same_lane(ml)) {
-      lanes.push_back(ml);
-    }
-  }
-
-  return lanes;
-}
-
-lanelet::ConstLanelets transformToLanelets(const std::vector<DrivableLanes> & drivable_lanes)
-{
-  lanelet::ConstLanelets lanes;
-
-  for (const auto & drivable_lane : drivable_lanes) {
-    const auto transformed_lane = transformToLanelets(drivable_lane);
-    lanes.insert(lanes.end(), transformed_lane.begin(), transformed_lane.end());
-  }
-
-  return lanes;
-}
-
-boost::optional<lanelet::ConstLanelet> getRightLanelet(
-  const lanelet::ConstLanelet & current_lane, const lanelet::ConstLanelets & shoulder_lanes)
-{
-  for (const auto & shoulder_lane : shoulder_lanes) {
-    if (shoulder_lane.leftBound().id() == current_lane.rightBound().id()) {
-      return shoulder_lane;
-    }
-  }
-
-  return {};
-}
-
-boost::optional<lanelet::ConstLanelet> getLeftLanelet(
-  const lanelet::ConstLanelet & current_lane, const lanelet::ConstLanelets & shoulder_lanes)
-{
-  for (const auto & shoulder_lane : shoulder_lanes) {
-    if (shoulder_lane.rightBound().id() == current_lane.leftBound().id()) {
-      return shoulder_lane;
-    }
-  }
-
-  return {};
-}
-
-std::vector<DrivableLanes> generateDrivableLanes(const lanelet::ConstLanelets & lanes)
-{
-  std::vector<DrivableLanes> drivable_lanes(lanes.size());
-  for (size_t i = 0; i < lanes.size(); ++i) {
-    drivable_lanes.at(i).left_lane = lanes.at(i);
-    drivable_lanes.at(i).right_lane = lanes.at(i);
-  }
-  return drivable_lanes;
-}
-
-std::vector<DrivableLanes> generateDrivableLanesWithShoulderLanes(
-  const lanelet::ConstLanelets & current_lanes, const lanelet::ConstLanelets & shoulder_lanes)
-{
-  std::vector<DrivableLanes> drivable_lanes;
-  for (const auto & current_lane : current_lanes) {
-    DrivableLanes drivable_lane;
-
-    const auto right_lane = getRightLanelet(current_lane, shoulder_lanes);
-    const auto left_lane = getLeftLanelet(current_lane, shoulder_lanes);
-
-    if (right_lane && left_lane) {
-      drivable_lane.right_lane = *right_lane;
-      drivable_lane.left_lane = *left_lane;
-      drivable_lane.middle_lanes.push_back(current_lane);
-    } else if (right_lane) {
-      drivable_lane.right_lane = *right_lane;
-      drivable_lane.left_lane = current_lane;
-    } else if (left_lane) {
-      drivable_lane.right_lane = current_lane;
-      drivable_lane.left_lane = *left_lane;
-    } else {
-      drivable_lane.right_lane = current_lane;
-      drivable_lane.left_lane = current_lane;
-    }
-
-    drivable_lanes.push_back(drivable_lane);
-  }
-
-  return drivable_lanes;
-}
-
 // input lanes must be in sequence
 // NOTE: lanes in the path argument is used to calculate the size of the drivable area to cover
 // designated forward and backward length by getPathScope function.
@@ -1750,44 +1649,6 @@ lanelet::ConstLineStrings3d getDrivableAreaForAllSharedLinestringLanelets(
   return linestring_shared;
 }
 
-std::vector<DrivableLanes> expandLanelets(
-  const std::vector<DrivableLanes> & drivable_lanes, const double left_bound_offset,
-  const double right_bound_offset, const std::vector<std::string> & types_to_skip)
-{
-  if (left_bound_offset == 0.0 && right_bound_offset == 0.0) return drivable_lanes;
-
-  std::vector<DrivableLanes> expanded_drivable_lanes{};
-  expanded_drivable_lanes.reserve(drivable_lanes.size());
-  for (const auto & lanes : drivable_lanes) {
-    const std::string l_type =
-      lanes.left_lane.leftBound().attributeOr(lanelet::AttributeName::Type, "none");
-    const std::string r_type =
-      lanes.right_lane.rightBound().attributeOr(lanelet::AttributeName::Type, "none");
-
-    const bool l_skip =
-      std::find(types_to_skip.begin(), types_to_skip.end(), l_type) != types_to_skip.end();
-    const bool r_skip =
-      std::find(types_to_skip.begin(), types_to_skip.end(), r_type) != types_to_skip.end();
-    const double l_offset = l_skip ? 0.0 : left_bound_offset;
-    const double r_offset = r_skip ? 0.0 : -right_bound_offset;
-
-    DrivableLanes expanded_lanes;
-    if (lanes.left_lane.id() == lanes.right_lane.id()) {
-      expanded_lanes.left_lane =
-        lanelet::utils::getExpandedLanelet(lanes.left_lane, l_offset, r_offset);
-      expanded_lanes.right_lane =
-        lanelet::utils::getExpandedLanelet(lanes.right_lane, l_offset, r_offset);
-    } else {
-      expanded_lanes.left_lane = lanelet::utils::getExpandedLanelet(lanes.left_lane, l_offset, 0.0);
-      expanded_lanes.right_lane =
-        lanelet::utils::getExpandedLanelet(lanes.right_lane, 0.0, r_offset);
-    }
-    expanded_lanes.middle_lanes = lanes.middle_lanes;
-    expanded_drivable_lanes.push_back(expanded_lanes);
-  }
-  return expanded_drivable_lanes;
-}
-
 PredictedObjects filterObjectsByVelocity(const PredictedObjects & objects, double lim_v)
 {
   return filterObjectsByVelocity(objects, -lim_v, lim_v);
@@ -2073,33 +1934,12 @@ lanelet::ConstLanelets getCurrentLanes(const std::shared_ptr<const PlannerData> 
     common_parameters.forward_path_length);
 }
 
-lanelet::ConstLanelets extendLanes(
-  const std::shared_ptr<RouteHandler> route_handler, const lanelet::ConstLanelets & lanes)
-{
-  auto extended_lanes = lanes;
-
-  // Add next lane
-  const auto next_lanes = route_handler->getNextLanelets(extended_lanes.back());
-  if (!next_lanes.empty()) {
-    extended_lanes.push_back(next_lanes.front());
-  }
-
-  // Add previous lane
-  const auto prev_lanes = route_handler->getPreviousLanelets(extended_lanes.front());
-  if (!prev_lanes.empty()) {
-    extended_lanes.insert(extended_lanes.begin(), prev_lanes.front());
-  }
-
-  return extended_lanes;
-}
-
 lanelet::ConstLanelets getExtendedCurrentLanes(
   const std::shared_ptr<const PlannerData> & planner_data)
 {
   const auto & route_handler = planner_data->route_handler;
   const auto current_pose = planner_data->self_pose->pose;
   const auto common_parameters = planner_data->parameters;
-  const auto routing_graph_ptr = route_handler->getRoutingGraphPtr();
 
   lanelet::ConstLanelet current_lane;
   if (!route_handler->getClosestLaneletWithinRoute(current_pose, &current_lane)) {
@@ -2110,56 +1950,25 @@ lanelet::ConstLanelets getExtendedCurrentLanes(
   }
 
   // For current_lanes with desired length
-  const auto current_lanes = route_handler->getLaneletSequence(
+  auto current_lanes = route_handler->getLaneletSequence(
     current_lane, current_pose, common_parameters.backward_path_length,
     common_parameters.forward_path_length);
 
-  return extendLanes(route_handler, current_lanes);
-}
-
-bool checkPathRelativeAngle(const PathWithLaneId & path, const double angle_threshold)
-{
-  // We need at least three points to compute relative angle
-  constexpr size_t relative_angle_points_num = 3;
-  if (path.points.size() < relative_angle_points_num) {
-    return true;
+  // Add next_lanes
+  const auto next_lanes = route_handler->getNextLanelets(current_lanes.back());
+  if (!next_lanes.empty()) {
+    // TODO(kosuke55) which lane should be added?
+    current_lanes.push_back(next_lanes.front());
   }
 
-  for (size_t p1_id = 0; p1_id <= path.points.size() - relative_angle_points_num; ++p1_id) {
-    // Get Point1
-    const auto & p1 = path.points.at(p1_id).point.pose.position;
-
-    // Get Point2
-    const auto & p2 = path.points.at(p1_id + 1).point.pose.position;
-
-    // Get Point3
-    const auto & p3 = path.points.at(p1_id + 2).point.pose.position;
-
-    // ignore invert driving direction
-    if (
-      path.points.at(p1_id).point.longitudinal_velocity_mps < 0 ||
-      path.points.at(p1_id + 1).point.longitudinal_velocity_mps < 0 ||
-      path.points.at(p1_id + 2).point.longitudinal_velocity_mps < 0) {
-      continue;
-    }
-
-    // convert to p1 coordinate
-    const double x3 = p3.x - p1.x;
-    const double x2 = p2.x - p1.x;
-    const double y3 = p3.y - p1.y;
-    const double y2 = p2.y - p1.y;
-
-    // calculate relative angle of vector p3 based on p1p2 vector
-    const double th = std::atan2(y2, x2);
-    const double th2 =
-      std::atan2(-x3 * std::sin(th) + y3 * std::cos(th), x3 * std::cos(th) + y3 * std::sin(th));
-    if (std::abs(th2) > angle_threshold) {
-      // invalid angle
-      return false;
-    }
+  // Add prev_lane
+  lanelet::ConstLanelets prev_lanes;
+  if (route_handler->getPreviousLaneletsWithinRoute(current_lanes.front(), &prev_lanes)) {
+    // TODO(kosuke55) which lane should be added?
+    current_lanes.insert(current_lanes.begin(), 0, prev_lanes.front());
   }
 
-  return true;
+  return current_lanes;
 }
 
 }  // namespace util

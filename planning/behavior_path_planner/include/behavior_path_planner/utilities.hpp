@@ -184,15 +184,6 @@ PredictedObjects filterObjectsByVelocity(
   const PredictedObjects & objects, double min_v, double max_v);
 
 // drivable area generation
-lanelet::ConstLanelets transformToLanelets(const DrivableLanes & drivable_lanes);
-lanelet::ConstLanelets transformToLanelets(const std::vector<DrivableLanes> & drivable_lanes);
-boost::optional<lanelet::ConstLanelet> getRightLanelet(
-  const lanelet::ConstLanelet & current_lane, const lanelet::ConstLanelets & shoulder_lanes);
-boost::optional<lanelet::ConstLanelet> getLeftLanelet(
-  const lanelet::ConstLanelet & current_lane, const lanelet::ConstLanelets & shoulder_lanes);
-std::vector<DrivableLanes> generateDrivableLanes(const lanelet::ConstLanelets & current_lanes);
-std::vector<DrivableLanes> generateDrivableLanesWithShoulderLanes(
-  const lanelet::ConstLanelets & current_lanes, const lanelet::ConstLanelets & shoulder_lanes);
 
 void occupancyGridToImage(const OccupancyGrid & occupancy_grid, cv::Mat * cv_image);
 
@@ -204,10 +195,6 @@ cv::Point toCVPoint(
 OccupancyGrid generateDrivableArea(
   const PathWithLaneId & path, const lanelet::ConstLanelets & lanes, const double resolution,
   const double vehicle_length, const std::shared_ptr<const PlannerData> planner_data);
-
-std::vector<DrivableLanes> expandLanelets(
-  const std::vector<DrivableLanes> & drivable_lanes, const double left_bound_offset,
-  const double right_bound_offset, const std::vector<std::string> & types_to_skip = {});
 
 lanelet::ConstLineStrings3d getDrivableAreaForAllSharedLinestringLanelets(
   const std::shared_ptr<const PlannerData> & planner_data);
@@ -305,13 +292,8 @@ std::uint8_t getHighestProbLabel(const std::vector<ObjectClassification> & class
 
 lanelet::ConstLanelets getCurrentLanes(const std::shared_ptr<const PlannerData> & planner_data);
 
-lanelet::ConstLanelets extendLanes(
-  const std::shared_ptr<RouteHandler> route_handler, const lanelet::ConstLanelets & lanes);
-
 lanelet::ConstLanelets getExtendedCurrentLanes(
   const std::shared_ptr<const PlannerData> & planner_data);
-
-bool checkPathRelativeAngle(const PathWithLaneId & path, const double angle_threshold);
 
 }  // namespace util
 }  // namespace behavior_path_planner

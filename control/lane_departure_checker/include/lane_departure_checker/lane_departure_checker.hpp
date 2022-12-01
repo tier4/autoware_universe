@@ -102,8 +102,7 @@ public:
     vehicle_info_ptr_ = std::make_shared<vehicle_info_util::VehicleInfo>(vehicle_info);
   }
 
-  bool checkPathWillLeaveLane(
-    const lanelet::ConstLanelets & lanelets, const PathWithLaneId & path) const;
+  bool checkPathWillLeaveLane(const lanelet::ConstLanelets & lanelets, const PathWithLaneId & path);
 
   vehicle_info_util::VehicleInfo vehicle_info_public_;
 
@@ -123,7 +122,7 @@ private:
   std::vector<LinearRing2d> createVehicleFootprints(
     const geometry_msgs::msg::PoseWithCovariance & covariance, const TrajectoryPoints & trajectory,
     const Param & param);
-  std::vector<LinearRing2d> createVehicleFootprints(const PathWithLaneId & path) const;
+  std::vector<LinearRing2d> createVehicleFootprints(const PathWithLaneId & path);
 
   static std::vector<LinearRing2d> createVehiclePassingAreas(
     const std::vector<LinearRing2d> & vehicle_footprints);
