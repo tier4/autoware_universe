@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "simple_planning_simulator/vehicle_model/sim_model_with_converter.hpp"
+
 #include "raw_vehicle_cmd_converter/csv_loader.hpp"
 
 #include "autoware_auto_vehicle_msgs/msg/gear_command.hpp"
@@ -104,8 +105,13 @@ Eigen::VectorXd SimModelWithConverter::calcModel(
   d_state(IDX::YAW) = vel * std::tan(steer) / wheelbase_;
   d_state(IDX::VX) = acc;
   d_state(IDX::STEER) = steer_rate;
-  double converted_acc=acc_des;
-  acc_map_.getAcceleration(acc_des,acc,converted_acc);
+  double converted_acc = acc_des;
+  if (!acc_map_.acceleration_map_.empty()) {
+    std::cerr << "prev acc: " << converted_acc << std::endl;
+    acc_map_.getAcceleration(acc_des, vel, converted_acc);
+    std::cerr << "after acc: " << converted_acc << std::endl;
+  } else {
+  }
   d_state(IDX::ACCX) = -(acc - converted_acc) / acc_time_constant_;
 
   return d_state;
@@ -129,6 +135,7 @@ void SimModelWithConverter::updateStateWithGear(
       state(IDX::X) = prev_state(IDX::X);
       state(IDX::Y) = prev_state(IDX::Y);
       state(IDX::YAW) = prev_state(IDX::YAW);
+      state(IDX::ACCX) = (state(IDX::VX) - prev_state(IDX::VX)) / std::max(dt, 1.0e-5);
     }
   } else if (gear == GearCommand::REVERSE || gear == GearCommand::REVERSE_2) {
     if (state(IDX::VX) > 0.0) {
@@ -136,18 +143,19 @@ void SimModelWithConverter::updateStateWithGear(
       state(IDX::X) = prev_state(IDX::X);
       state(IDX::Y) = prev_state(IDX::Y);
       state(IDX::YAW) = prev_state(IDX::YAW);
+      state(IDX::ACCX) = (state(IDX::VX) - prev_state(IDX::VX)) / std::max(dt, 1.0e-5);
     }
   } else if (gear == GearCommand::PARK) {
     state(IDX::VX) = 0.0;
     state(IDX::X) = prev_state(IDX::X);
     state(IDX::Y) = prev_state(IDX::Y);
     state(IDX::YAW) = prev_state(IDX::YAW);
+    state(IDX::ACCX) = (state(IDX::VX) - prev_state(IDX::VX)) / std::max(dt, 1.0e-5);
   } else {
     state(IDX::VX) = 0.0;
     state(IDX::X) = prev_state(IDX::X);
     state(IDX::Y) = prev_state(IDX::Y);
     state(IDX::YAW) = prev_state(IDX::YAW);
+    state(IDX::ACCX) = (state(IDX::VX) - prev_state(IDX::VX)) / std::max(dt, 1.0e-5);
   }
-
-  state(IDX::ACCX) = (state(IDX::VX) - prev_state(IDX::VX)) / std::max(dt, 1.0e-5);
 }

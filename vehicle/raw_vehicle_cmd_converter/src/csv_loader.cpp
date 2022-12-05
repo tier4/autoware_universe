@@ -45,9 +45,9 @@ bool CSVLoader::readCSV(Table & result, const char delim)
       result.push_back(tokens);
     }
   }
-  if (!validateData(result, csv_path_)) {
-    return false;
-  }
+  // if (!validateData(result, csv_path_)) {
+  //   return false;
+  // }
   return true;
 }
 

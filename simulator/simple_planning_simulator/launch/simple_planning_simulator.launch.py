@@ -38,7 +38,7 @@ def launch_setup(context, *args, **kwargs):
     with open(simulator_model_param_path, "r") as f:
         simulator_model_param = yaml.safe_load(f)["/**"]["ros__parameters"]
     simulator_acc_param_path = LaunchConfiguration("acceleration_param_file").perform(context)
-    print("ERROR"+simulator_acc_param_path)
+    print("ERROR" + simulator_acc_param_path)
 
     simple_planning_simulator_node = Node(
         package="simple_planning_simulator",
@@ -130,7 +130,7 @@ def generate_launch_description():
         [
             FindPackageShare("simple_planning_simulator"),
             "/param/acceleration_map.csv",
-        ]
+        ],
     )
 
     return launch.LaunchDescription(launch_arguments + [OpaqueFunction(function=launch_setup)])

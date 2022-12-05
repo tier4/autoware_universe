@@ -215,20 +215,23 @@ void SimplePlanningSimulator::initialize_vehicle_model()
     vehicle_model_ptr_ = std::make_shared<SimModelDelaySteerVel>(
       vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, wheelbase, timer_sampling_time_ms_ / 1000.0,
       vel_time_delay, vel_time_constant, steer_time_delay, steer_time_constant);
-  } else if (vehicle_model_type_str == "DELAY_STEER_ACC") {
+  } else if (vehicle_model_type_str == "") {
     vehicle_model_type_ = VehicleModelType::DELAY_STEER_ACC;
     vehicle_model_ptr_ = std::make_shared<SimModelDelaySteerAcc>(
       vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, wheelbase, timer_sampling_time_ms_ / 1000.0,
       acc_time_delay, acc_time_constant, steer_time_delay, steer_time_constant);
-  } else if (vehicle_model_type_str == "DELAY_STEER_ACC_GEARED") {
+  } else if (vehicle_model_type_str == "") {
     vehicle_model_type_ = VehicleModelType::DELAY_STEER_ACC_GEARED;
     vehicle_model_ptr_ = std::make_shared<SimModelDelaySteerAccGeared>(
       vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, wheelbase, timer_sampling_time_ms_ / 1000.0,
       acc_time_delay, acc_time_constant, steer_time_delay, steer_time_constant);
   } else if (vehicle_model_type_str == "DELAY_CONVERTER") {
     vehicle_model_type_ = VehicleModelType::DELAY_CONVERTER;
-    const std::string acceleration_map_path =
-      declare_parameter("acceleration_map_path", std::string(""));
+    // TODO consider way to give acceleration map path better way
+    const std::string acceleration_map_path = declare_parameter(
+      "acceleration_map_path",
+      std::string("$HOME/workspace/xx1_v0.5.0/src/autoware/universe/simulator/"
+                  "simple_planning_simulator/param/acceleration_map.csv"));
     vehicle_model_ptr_ = std::make_shared<SimModelWithConverter>(
       vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, wheelbase, timer_sampling_time_ms_ / 1000.0,
       acc_time_delay, acc_time_constant, steer_time_delay, steer_time_constant,
@@ -364,8 +367,7 @@ void SimplePlanningSimulator::set_input(const AckermannControlCommand & cmd)
   } else if (  // NOLINT
     vehicle_model_type_ == VehicleModelType::IDEAL_STEER_ACC_GEARED ||
     vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC_GEARED ||
-    vehicle_model_type_ == VehicleModelType::DELAY_CONVERTER
-    ) {
+    vehicle_model_type_ == VehicleModelType::DELAY_CONVERTER) {
     input << acc, steer;
   }
   vehicle_model_ptr_->setInput(input);
@@ -452,7 +454,7 @@ void SimplePlanningSimulator::set_initial_state(const Pose & pose, const Twist &
     state << x, y, yaw, vx, steer;
   } else if (  // NOLINT
     vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC ||
-    vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC_GEARED||
+    vehicle_model_type_ == VehicleModelType::DELAY_STEER_ACC_GEARED ||
     vehicle_model_type_ == VehicleModelType::DELAY_CONVERTER) {
     state << x, y, yaw, vx, steer, accx;
   }
