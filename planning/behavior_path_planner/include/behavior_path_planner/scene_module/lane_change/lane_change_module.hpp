@@ -185,6 +185,7 @@ private:
 
   bool isSafe() const;
   bool isLaneBlocked(const lanelet::ConstLanelets & lanes) const;
+  bool isValidPath(const PathWithLaneId & path) const;
   bool isNearEndOfLane() const;
   bool isCurrentSpeedLow() const;
   bool isAbortConditionSatisfied() const;

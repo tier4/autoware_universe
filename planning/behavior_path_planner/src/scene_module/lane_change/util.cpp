@@ -172,6 +172,11 @@ std::vector<LaneChangePath> getLaneChangePaths(
           target_lanelets, reference_path1.points.back().point.pose);
       double s_start = lane_change_start_arc_position.length;
       double s_end = s_start + straight_distance + lane_change_distance + forward_path_length;
+      if (route_handler.isInGoalRouteSection(target_lanelets.back())) {
+        const auto goal_arc_coordinates =
+          lanelet::utils::getArcCoordinates(target_lanelets, route_handler.getGoalPose());
+        s_end = std::min(s_end, goal_arc_coordinates.length);
+      }
       target_lane_reference_path = route_handler.getCenterLinePath(target_lanelets, s_start, s_end);
     }
 
@@ -496,6 +501,50 @@ bool isObjectFront(const Pose & ego_pose, const Pose & obj_pose)
   tf2::toMsg(tf_map2ego.inverse() * tf_map2obj, obj_from_ego);
 
   return obj_from_ego.position.x > 0;
+}
+
+std::vector<DrivableLanes> generateDrivableLanes(
+  const RouteHandler & route_handler, const lanelet::ConstLanelets & current_lanes,
+  const lanelet::ConstLanelets & lane_change_lanes)
+{
+  size_t current_lc_idx = 0;
+  std::vector<DrivableLanes> drivable_lanes(current_lanes.size());
+  for (size_t i = 0; i < current_lanes.size(); ++i) {
+    const auto & current_lane = current_lanes.at(i);
+    drivable_lanes.at(i).left_lane = current_lane;
+    drivable_lanes.at(i).right_lane = current_lane;
+
+    const auto left_lane = route_handler.getLeftLanelet(current_lane);
+    const auto right_lane = route_handler.getRightLanelet(current_lane);
+    if (!left_lane && !right_lane) {
+      continue;
+    }
+
+    for (size_t lc_idx = current_lc_idx; lc_idx < lane_change_lanes.size(); ++lc_idx) {
+      const auto & lc_lane = lane_change_lanes.at(lc_idx);
+      if (left_lane && lc_lane.id() == left_lane->id()) {
+        drivable_lanes.at(i).left_lane = lc_lane;
+        current_lc_idx = lc_idx;
+        break;
+      }
+
+      if (right_lane && lc_lane.id() == right_lane->id()) {
+        drivable_lanes.at(i).right_lane = lc_lane;
+        current_lc_idx = lc_idx;
+        break;
+      }
+    }
+  }
+
+  for (size_t i = current_lc_idx + 1; i < lane_change_lanes.size(); ++i) {
+    const auto & lc_lane = lane_change_lanes.at(i);
+    DrivableLanes drivable_lane;
+    drivable_lane.left_lane = lc_lane;
+    drivable_lane.right_lane = lc_lane;
+    drivable_lanes.push_back(drivable_lane);
+  }
+
+  return drivable_lanes;
 }
 
 }  // namespace lane_change_utils

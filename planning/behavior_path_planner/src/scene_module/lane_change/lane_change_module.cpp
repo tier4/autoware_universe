@@ -52,6 +52,12 @@ BehaviorModuleOutput LaneChangeModule::run()
   current_state_ = BT::NodeStatus::RUNNING;
   is_activated_ = isActivated();
   const auto output = plan();
+
+  if (!isSafe()) {
+    current_state_ = BT::NodeStatus::SUCCESS;  // for breaking loop
+    return output;
+  }
+
   const auto turn_signal_info = output.turn_signal_info;
   if (turn_signal_info.turn_signal.command == TurnIndicatorsCommand::ENABLE_LEFT) {
     waitApprovalLeft(turn_signal_info.signal_distance);
@@ -77,7 +83,7 @@ void LaneChangeModule::onExit()
 {
   clearWaitingApproval();
   removeRTCStatus();
-  current_state_ = BT::NodeStatus::IDLE;
+  current_state_ = BT::NodeStatus::SUCCESS;
   RCLCPP_DEBUG(getLogger(), "LANE_CHANGE onExit");
 }
 
@@ -122,6 +128,11 @@ bool LaneChangeModule::isExecutionReady() const
 BT::NodeStatus LaneChangeModule::updateState()
 {
   RCLCPP_DEBUG(getLogger(), "LANE_CHANGE updateState");
+  if (!isSafe()) {
+    current_state_ = BT::NodeStatus::SUCCESS;
+    return current_state_;
+  }
+
   if (isAbortConditionSatisfied()) {
     if (isNearEndOfLane() && isCurrentSpeedLow()) {
       current_state_ = BT::NodeStatus::RUNNING;
@@ -143,6 +154,10 @@ BehaviorModuleOutput LaneChangeModule::plan()
 {
   constexpr double RESAMPLE_INTERVAL = 1.0;
   auto path = util::resamplePathWithSpline(status_.lane_change_path.path, RESAMPLE_INTERVAL);
+  if (!isValidPath(path)) {
+    status_.is_safe = false;
+    return BehaviorModuleOutput{};
+  }
   // Generate drivable area
   {
     const auto common_parameters = planner_data_->parameters;
@@ -396,6 +411,44 @@ std::pair<bool, bool> LaneChangeModule::getSafePath(
 }
 
 bool LaneChangeModule::isSafe() const { return status_.is_safe; }
+
+bool LaneChangeModule::isValidPath(const PathWithLaneId & path) const
+{
+  const auto & route_handler = planner_data_->route_handler;
+  const auto drivable_area_left_bound_offset = 0.5;
+  const auto drivable_area_right_bound_offset = 0.5;
+
+  // check lane departure
+  const auto drivable_lanes = lane_change_utils::generateDrivableLanes(
+    *route_handler, util::extendLanes(route_handler, status_.current_lanes),
+    util::extendLanes(route_handler, status_.lane_change_lanes));
+  const auto expanded_lanes = util::expandLanelets(
+    drivable_lanes, drivable_area_left_bound_offset, drivable_area_right_bound_offset);
+  const auto lanelets = util::transformToLanelets(expanded_lanes);
+
+  // check path points are in any lanelets
+  for (const auto & point : path.points) {
+    bool is_in_lanelet = false;
+    for (const auto & lanelet : lanelets) {
+      if (lanelet::utils::isInLanelet(point.point.pose, lanelet)) {
+        is_in_lanelet = true;
+        break;
+      }
+    }
+    if (!is_in_lanelet) {
+      RCLCPP_WARN_STREAM_THROTTLE(getLogger(), *clock_, 1000, "path is out of lanes");
+      return false;
+    }
+  }
+
+  // check relative angle
+  if (!util::checkPathRelativeAngle(path, M_PI)) {
+    RCLCPP_WARN_STREAM_THROTTLE(getLogger(), *clock_, 1000, "path relative angle is invalid");
+    return false;
+  }
+
+  return true;
+}
 
 bool LaneChangeModule::isNearEndOfLane() const
 {
