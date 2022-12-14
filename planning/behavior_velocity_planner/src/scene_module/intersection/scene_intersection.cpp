@@ -78,7 +78,6 @@ bool IntersectionModule::modifyPathVelocity(
   const StateMachine::State current_state = state_machine_.getState();
 
   debug_data_ = DebugData();
-  debug_data_.path_raw = *path;
 
   *stop_reason =
     planning_utils::initializeStopReason(tier4_planning_msgs::msg::StopReason::INTERSECTION);
