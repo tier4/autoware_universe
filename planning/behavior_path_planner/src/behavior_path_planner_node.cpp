@@ -607,7 +607,11 @@ void BehaviorPathPlannerNode::run()
   // update planner data
   planner_data_->self_pose = self_pose_listener_.getCurrentPose();
 
-  const auto planner_data = planner_data_;
+  const auto planner_data = std::make_shared<PlannerData>(*planner_data_);
+
+  // unlock planner data
+  mutex_pd_.unlock();
+
   // run behavior planner
   const auto output = bt_manager_->run(planner_data);
 
@@ -616,7 +620,6 @@ void BehaviorPathPlannerNode::run()
 
   // update planner data
   planner_data_->prev_output_path = path;
-  mutex_pd_.unlock();
 
   const size_t target_idx = findEgoIndex(path->points);
   util::clipPathLength(*path, target_idx, planner_data_->parameters);
