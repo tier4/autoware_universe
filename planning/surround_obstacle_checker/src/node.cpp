@@ -27,10 +27,10 @@
 #include <string>
 
 #define EIGEN_MPL2_ONLY
+#include "tier4_autoware_utils/geometry/geometry.hpp"
+
 #include <Eigen/Core>
 #include <Eigen/Geometry>
-
-#include "tier4_autoware_utils/geometry/geometry.hpp"
 
 SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptions & node_options)
 : Node("surround_obstacle_checker_node", node_options),
@@ -400,7 +400,7 @@ Polygon2d SurroundObstacleCheckerNode::createSelfPolygon()
 Polygon2d SurroundObstacleCheckerNode::createObjPolygon(
   const geometry_msgs::msg::Pose & pose, const geometry_msgs::msg::Vector3 & size)
 {
-  auto createPoint32 = [](const double x, const double y, const double z){
+  auto createPoint32 = [](const double x, const double y, const double z) {
     geometry_msgs::msg::Point32 p;
     p.x = x;
     p.y = y;
