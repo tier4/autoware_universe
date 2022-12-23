@@ -394,6 +394,7 @@ Polygon2d SurroundObstacleCheckerNode::createSelfPolygon()
   poly.outer().push_back(Point2d(front, right));
   poly.outer().push_back(Point2d(rear, right));
   poly.outer().push_back(Point2d(rear, left));
+  bg::correct(ego_polygon);
   return poly;
 }
 
