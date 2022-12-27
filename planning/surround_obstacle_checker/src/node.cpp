@@ -27,6 +27,8 @@
 #include <string>
 
 #define EIGEN_MPL2_ONLY
+#include "tier4_autoware_utils/geometry/geometry.hpp"
+
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
@@ -388,65 +390,54 @@ Polygon2d SurroundObstacleCheckerNode::createSelfPolygon()
   const double right = vehicle_info_.min_lateral_offset_m;
 
   Polygon2d poly;
-  boost::geometry::exterior_ring(poly) = boost::assign::list_of<Point2d>(front, left)(front, right)(
-    rear, right)(rear, left)(front, left);
+  poly.outer().push_back(Point2d(front, left));
+  poly.outer().push_back(Point2d(front, right));
+  poly.outer().push_back(Point2d(rear, right));
+  poly.outer().push_back(Point2d(rear, left));
+  boost::geometry::correct(poly);
   return poly;
 }
 
 Polygon2d SurroundObstacleCheckerNode::createObjPolygon(
   const geometry_msgs::msg::Pose & pose, const geometry_msgs::msg::Vector3 & size)
 {
+  auto createPoint32 = [](const double x, const double y, const double z) {
+    geometry_msgs::msg::Point32 p;
+    p.x = x;
+    p.y = y;
+    p.z = z;
+    return p;
+  };
+
   // rename
-  const double x = pose.position.x;
-  const double y = pose.position.y;
   const double h = size.x;
   const double w = size.y;
-  const double yaw = tf2::getYaw(pose.orientation);
 
   // create base polygon
-  Polygon2d obj_poly;
-  boost::geometry::exterior_ring(obj_poly) = boost::assign::list_of<Point2d>(h / 2.0, w / 2.0)(
-    -h / 2.0, w / 2.0)(-h / 2.0, -w / 2.0)(h / 2.0, -w / 2.0)(h / 2.0, w / 2.0);
+  geometry_msgs::msg::Polygon polygon{};
+  polygon.points.push_back(createPoint32(h, -w, 0.0));
+  polygon.points.push_back(createPoint32(h, w, 0.0));
+  polygon.points.push_back(createPoint32(-h, w, 0.0));
+  polygon.points.push_back(createPoint32(-h, -w, 0.0));
 
-  // rotate polygon(yaw)
-  boost::geometry::strategy::transform::rotate_transformer<boost::geometry::radian, double, 2, 2>
-    rotate(-yaw);  // anti-clockwise -> :clockwise rotation
-  Polygon2d rotate_obj_poly;
-  boost::geometry::transform(obj_poly, rotate_obj_poly, rotate);
-
-  // translate polygon(x, y)
-  boost::geometry::strategy::transform::translate_transformer<double, 2, 2> translate(x, y);
-  Polygon2d translate_obj_poly;
-  boost::geometry::transform(rotate_obj_poly, translate_obj_poly, translate);
-  return translate_obj_poly;
+  return createObjPolygon(pose, polygon);
 }
 
 Polygon2d SurroundObstacleCheckerNode::createObjPolygon(
   const geometry_msgs::msg::Pose & pose, const geometry_msgs::msg::Polygon & footprint)
 {
-  // rename
-  const double x = pose.position.x;
-  const double y = pose.position.y;
-  const double yaw = tf2::getYaw(pose.orientation);
+  geometry_msgs::msg::Polygon transformed_polygon{};
+  geometry_msgs::msg::TransformStamped geometry_tf{};
+  geometry_tf.transform = tier4_autoware_utils::pose2transform(pose);
+  tf2::doTransform(footprint, transformed_polygon, geometry_tf);
 
-  // create base polygon
-  Polygon2d obj_poly;
-  for (const auto point : footprint.points) {
-    const Point2d point2d(point.x, point.y);
-    obj_poly.outer().push_back(point2d);
+  Polygon2d object_polygon;
+  for (const auto & p : transformed_polygon.points) {
+    object_polygon.outer().push_back(Point2d(p.x, p.y));
   }
 
-  // rotate polygon(yaw)
-  boost::geometry::strategy::transform::rotate_transformer<boost::geometry::radian, double, 2, 2>
-    rotate(-yaw);  // anti-clockwise -> :clockwise rotation
-  Polygon2d rotate_obj_poly;
-  boost::geometry::transform(obj_poly, rotate_obj_poly, rotate);
-
-  // translate polygon(x, y)
-  boost::geometry::strategy::transform::translate_transformer<double, 2, 2> translate(x, y);
-  Polygon2d translate_obj_poly;
-  boost::geometry::transform(rotate_obj_poly, translate_obj_poly, translate);
-  return translate_obj_poly;
+  boost::geometry::correct(object_polygon);
+  return object_polygon;
 }
 
 diagnostic_msgs::msg::DiagnosticStatus SurroundObstacleCheckerNode::makeStopReasonDiag(
