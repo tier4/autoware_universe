@@ -107,9 +107,7 @@ Eigen::VectorXd SimModelWithConverter::calcModel(
   d_state(IDX::STEER) = steer_rate;
   double converted_acc = acc_des;
   if (!acc_map_.acceleration_map_.empty()) {
-    std::cerr << "prev acc: " << converted_acc << std::endl;
     acc_map_.getAcceleration(acc_des, vel, converted_acc);
-    std::cerr << "after acc: " << converted_acc << std::endl;
   } else {
   }
   d_state(IDX::ACCX) = -(acc - converted_acc) / acc_time_constant_;

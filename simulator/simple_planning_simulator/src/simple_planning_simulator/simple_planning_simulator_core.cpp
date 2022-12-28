@@ -184,7 +184,7 @@ SimplePlanningSimulator::SimplePlanningSimulator(const rclcpp::NodeOptions & opt
 
 void SimplePlanningSimulator::initialize_vehicle_model()
 {
-  const auto vehicle_model_type_str = declare_parameter("vehicle_model_type", "IDEAL_STEER_VEL");
+  const auto vehicle_model_type_str = "DELAY_CONVERTER"; //declare_parameter("vehicle_model_type", "IDEAL_STEER_VEL");
 
   RCLCPP_INFO(this->get_logger(), "vehicle_model_type = %s", vehicle_model_type_str.c_str());
 
