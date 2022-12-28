@@ -62,8 +62,8 @@ GoalCandidates GoalSearcher::search(const Pose & original_goal_pose)
     route_handler->getCenterLinePath(pull_over_lanes, s_start, s_end),
     parameters_.goal_search_interval);
 
-  const auto shoulder_lane_objects =
-    util::filterObjectsByLanelets(*(planner_data_->dynamic_object), pull_over_lanes);
+  const auto [shoulder_lane_objects, others] =
+    util::separateObjectsByLanelets(*(planner_data_->dynamic_object), pull_over_lanes);
 
   std::vector<Pose> original_search_poses{};  // for search area visualizing
   size_t goal_id = 0;
