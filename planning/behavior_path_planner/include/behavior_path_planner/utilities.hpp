@@ -320,10 +320,6 @@ std::pair<std::vector<size_t>, std::vector<size_t>> separateObjectIndicesByLanel
 std::pair<PredictedObjects, PredictedObjects> separateObjectsByLanelets(
   const PredictedObjects & objects, const lanelet::ConstLanelets & target_lanelets);
 
-std::vector<size_t> filterObjectsIndicesByPath(
-  const PredictedObjects & objects, const std::vector<size_t> & object_indices,
-  const PathWithLaneId & ego_path, const double vehicle_width);
-
 PredictedObjects filterObjectsByVelocity(const PredictedObjects & objects, double lim_v);
 
 PredictedObjects filterObjectsByVelocity(

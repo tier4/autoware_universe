@@ -720,30 +720,6 @@ std::vector<double> calcObjectsDistanceToPath(
   return distance_array;
 }
 
-std::vector<size_t> filterObjectsIndicesByPath(
-  const PredictedObjects & objects, const std::vector<size_t> & object_indices,
-  const PathWithLaneId & ego_path, const double vehicle_width)
-{
-  std::vector<size_t> indices;
-  const auto ego_path_point_array = convertToGeometryPointArray(ego_path);
-  for (const auto & i : object_indices) {
-    Polygon2d obj_polygon;
-    if (!calcObjectPolygon(objects.objects.at(i), &obj_polygon)) {
-      continue;
-    }
-    LineString2d ego_path_line;
-    ego_path_line.reserve(ego_path_point_array.size());
-    for (const auto & ego_path_point : ego_path_point_array) {
-      boost::geometry::append(ego_path_line, Point2d(ego_path_point.x, ego_path_point.y));
-    }
-    const double distance = boost::geometry::distance(obj_polygon, ego_path_line);
-    if (distance < vehicle_width) {
-      indices.push_back(i);
-    }
-  }
-  return indices;
-}
-
 PathWithLaneId removeOverlappingPoints(const PathWithLaneId & input_path)
 {
   PathWithLaneId filtered_path;
