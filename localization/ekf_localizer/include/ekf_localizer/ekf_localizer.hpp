@@ -18,6 +18,7 @@
 #include <kalman_filter/kalman_filter.hpp>
 #include <kalman_filter/time_delay_kalman_filter.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_srvs/srv/set_bool.hpp>
 #include <tier4_autoware_utils/geometry/geometry.hpp>
 #include <tier4_autoware_utils/system/stop_watch.hpp>
 
@@ -81,6 +82,9 @@ private:
   //!< @brief last predict time
   std::shared_ptr<const rclcpp::Time> last_predict_time_;
 
+  //!< @brief trigger_node service
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr service_trigger_node_;
+
   //!< @brief timer to send transform
   rclcpp::TimerBase::SharedPtr timer_tf_;
   //!< @brief tf broadcaster
@@ -127,6 +131,8 @@ private:
   double proc_cov_yaw_bias_d_;  //!< @brief  discrete yaw bias process noise
   double proc_cov_vx_d_;        //!< @brief  discrete process noise in d_vx=0
   double proc_cov_wz_d_;        //!< @brief  discrete process noise in d_wz=0
+
+  bool is_activated_;
 
   enum IDX {
     X = 0,
@@ -240,6 +246,13 @@ private:
    * @brief for debug
    */
   void showCurrentX();
+
+  /**
+   * @brief trigger node
+   */
+  void serviceTriggerNode(
+    const std_srvs::srv::SetBool::Request::SharedPtr req,
+    std_srvs::srv::SetBool::Response::SharedPtr res);
 
   tier4_autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch_;
 

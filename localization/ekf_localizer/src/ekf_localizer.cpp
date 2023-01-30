@@ -69,6 +69,8 @@ EKFLocalizer::EKFLocalizer(const std::string & node_name, const rclcpp::NodeOpti
   proc_cov_yaw_d_ = std::pow(proc_stddev_yaw_c_ * ekf_dt_, 2.0);
   proc_cov_yaw_bias_d_ = std::pow(proc_stddev_yaw_bias_c_ * ekf_dt_, 2.0);
 
+  is_activated_ = false;
+
   /* initialize ros system */
   auto period_control_ns =
     std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(ekf_dt_));
@@ -97,6 +99,11 @@ EKFLocalizer::EKFLocalizer(const std::string & node_name, const rclcpp::NodeOpti
     "in_pose_with_covariance", 1, std::bind(&EKFLocalizer::callbackPoseWithCovariance, this, _1));
   sub_twist_with_cov_ = create_subscription<geometry_msgs::msg::TwistWithCovarianceStamped>(
     "in_twist_with_covariance", 1, std::bind(&EKFLocalizer::callbackTwistWithCovariance, this, _1));
+  service_trigger_node_ = create_service<std_srvs::srv::SetBool>(
+    "trigger_node_srv",
+    std::bind(
+      &EKFLocalizer::serviceTriggerNode, this, std::placeholders::_1, std::placeholders::_2),
+    rclcpp::ServicesQoS().get_rmw_qos_profile());
 
   dim_x_ex_ = dim_x_ * extend_state_step_;
 
@@ -138,6 +145,12 @@ void EKFLocalizer::updatePredictFrequency()
  */
 void EKFLocalizer::timerCallback()
 {
+  if (!is_activated_) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+      "The node is not activated. Provide initial pose to pose_initializer");
+    return;
+  }
+
   DEBUG_INFO(get_logger(), "========================= timer called =========================");
 
   /* update predict frequency with measured timer rate */
@@ -221,6 +234,10 @@ void EKFLocalizer::setCurrentResult()
  */
 void EKFLocalizer::timerTFCallback()
 {
+  if (!is_activated_) {
+    return;
+  }
+
   if (current_ekf_pose_.header.frame_id == "") {
     return;
   }
@@ -307,7 +324,7 @@ void EKFLocalizer::callbackInitialPose(
 
   ekf_.init(X, P, extend_state_step_);
 
-  current_pose_ptr_ = nullptr;
+  is_activated_ = true;
 }
 
 /*
@@ -316,6 +333,7 @@ void EKFLocalizer::callbackInitialPose(
 void EKFLocalizer::callbackPoseWithCovariance(
   geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
 {
+  if (!is_activated_) return;
   geometry_msgs::msg::PoseStamped pose;
   pose.header = msg->header;
   pose.pose = msg->pose.pose;
@@ -733,4 +751,23 @@ void EKFLocalizer::publishEstimateResult()
 double EKFLocalizer::normalizeYaw(const double & yaw) const
 {
   return std::atan2(std::sin(yaw), std::cos(yaw));
+}
+
+
+/**
+ * @brief trigger node
+ */
+void EKFLocalizer::serviceTriggerNode(
+  const std_srvs::srv::SetBool::Request::SharedPtr req,
+  std_srvs::srv::SetBool::Response::SharedPtr res)
+{
+  if (req->data) {
+    current_pose_ptr_ = nullptr;
+    current_twist_ptr_ = nullptr;
+    is_activated_ = true;
+  } else {
+    is_activated_ = false;
+  }
+  res->success = true;
+  return;
 }
