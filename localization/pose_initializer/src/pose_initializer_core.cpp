@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "pose_initializer/pose_initializer_core.hpp"
+#include "pose_initializer/localization_trigger_module.hpp"
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -107,7 +108,11 @@ PoseInitializer::PoseInitializer()
       "service/initialize_pose_auto", std::bind(
                                         &PoseInitializer::serviceInitializePoseAuto, this,
                                         std::placeholders::_1, std::placeholders::_2));
+
+  localization_trigger_ = std::make_unique<LocalizationTriggerModule>(this);
 }
+
+PoseInitializer::~PoseInitializer() = default;
 
 void PoseInitializer::callbackMapPoints(
   sensor_msgs::msg::PointCloud2::ConstSharedPtr map_points_msg_ptr)
@@ -218,6 +223,11 @@ bool PoseInitializer::callAlignServiceAndPublishResult(
     RCLCPP_ERROR(get_logger(), "Did not receive response for previous NDT Align Server call");
     return false;
   }
+
+  if (localization_trigger_) {
+    localization_trigger_->deactivate();
+  }
+
   auto req = std::make_shared<tier4_localization_msgs::srv::PoseWithCovarianceStamped::Request>();
   req->pose_with_covariance = *input_pose_msg;
   req->seq = ++request_id_;
@@ -238,6 +248,10 @@ bool PoseInitializer::callAlignServiceAndPublishResult(
   pose_with_cov.pose.covariance = output_pose_covariance_;
   initial_pose_pub_->publish(pose_with_cov);
   enable_gnss_callback_ = false;
+
+  if (localization_trigger_) {
+    localization_trigger_->activate();
+  }
 
   return true;
 }

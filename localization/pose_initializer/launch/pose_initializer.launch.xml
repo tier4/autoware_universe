@@ -9,6 +9,8 @@
     <remap from="ndt_align_srv" to="/localization/pose_estimator/ndt_align_srv"/>
     <remap from="service/initialize_pose" to="/localization/util/initialize_pose"/>
     <remap from="service/initialize_pose_auto" to="/localization/util/initialize_pose_auto"/>
+    <remap from="ekf_trigger_node" to="/localization/pose_estimator/trigger_node"/>
+    <remap from="ndt_trigger_node" to="/localization/pose_twist_fusion_filter/trigger_node"/>
 
     <param from="$(var config_file)"/>
     <param name="enable_gnss_callback" value="true"/>

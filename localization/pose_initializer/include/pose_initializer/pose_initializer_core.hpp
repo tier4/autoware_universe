@@ -32,10 +32,13 @@
 #include <memory>
 #include <string>
 
+class LocalizationTriggerModule;
+
 class PoseInitializer : public rclcpp::Node
 {
 public:
   PoseInitializer();
+  ~PoseInitializer() override;
 
 private:
   void callbackMapPoints(sensor_msgs::msg::PointCloud2::ConstSharedPtr map_points_msg_ptr);
@@ -95,6 +98,8 @@ private:
   std::array<double, 36> gnss_particle_covariance_;
   std::array<double, 36> service_particle_covariance_;
   std::array<double, 36> output_pose_covariance_;
+
+  std::unique_ptr<LocalizationTriggerModule> localization_trigger_;
 };
 
 #endif  // POSE_INITIALIZER__POSE_INITIALIZER_CORE_HPP_

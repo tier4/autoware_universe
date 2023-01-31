@@ -19,6 +19,7 @@ ament_auto_find_build_dependencies()
 ament_auto_add_executable(pose_initializer
   src/pose_initializer_node.cpp
   src/pose_initializer_core.cpp
+  src/localization_trigger_module.cpp
 )
 target_link_libraries(pose_initializer ${PCL_LIBRARIES})
 
