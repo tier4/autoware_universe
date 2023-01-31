@@ -11,6 +11,7 @@
     <remap from="service/initialize_pose_auto" to="/localization/util/initialize_pose_auto"/>
     <remap from="ekf_trigger_node" to="/localization/pose_estimator/trigger_node"/>
     <remap from="ndt_trigger_node" to="/localization/pose_twist_fusion_filter/trigger_node"/>
+    <remap from="client_partial_map_load" to="/map/get_partial_pointcloud_map"/>
 
     <param from="$(var config_file)"/>
     <param name="enable_gnss_callback" value="true"/>

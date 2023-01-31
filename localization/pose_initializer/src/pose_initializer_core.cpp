@@ -75,9 +75,7 @@ PoseInitializer::PoseInitializer()
   initial_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "initialpose", 10,
     std::bind(&PoseInitializer::callbackInitialPose, this, std::placeholders::_1));
-  map_points_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "pointcloud_map", rclcpp::QoS{1}.transient_local(),
-    std::bind(&PoseInitializer::callbackMapPoints, this, std::placeholders::_1));
+
   gnss_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "gnss_pose_cov", 1,
     std::bind(&PoseInitializer::callbackGNSSPoseCov, this, std::placeholders::_1));
@@ -110,6 +108,23 @@ PoseInitializer::PoseInitializer()
                                         std::placeholders::_1, std::placeholders::_2));
 
   localization_trigger_ = std::make_unique<LocalizationTriggerModule>(this);
+
+  enable_partial_map_load_ = declare_parameter<bool>("enable_partial_map_load", false);
+  if (!enable_partial_map_load_) {
+    map_points_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      "pointcloud_map", rclcpp::QoS{1}.transient_local(),
+      std::bind(&PoseInitializer::callbackMapPoints, this, std::placeholders::_1));
+  } else {
+    callback_group_service_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    cli_get_partial_pcd_ = create_client<autoware_map_msgs::srv::GetPartialPointCloudMap>(
+      "client_partial_map_load", rmw_qos_profile_default, callback_group_service_);
+    while (!cli_get_partial_pcd_->wait_for_service(std::chrono::seconds(1)) && rclcpp::ok()) {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "Cannot find partial map loading interface. Please check the setting in "
+        "pointcloud_map_loader to see if the interface is enabled.");
+    }
+  }
 }
 
 PoseInitializer::~PoseInitializer() = default;
@@ -194,6 +209,10 @@ bool PoseInitializer::getHeight(
     input_pose_msg.pose.pose.position.x, input_pose_msg.pose.pose.position.y,
     input_pose_msg.pose.pose.position.z);
 
+  if (enable_partial_map_load_) {
+    get_partial_point_cloud_map(input_pose_msg.pose.pose.position);
+  }
+
   if (map_ptr_) {
     tf2::Transform transform;
     try {
@@ -254,4 +273,47 @@ bool PoseInitializer::callAlignServiceAndPublishResult(
   }
 
   return true;
+}
+
+void PoseInitializer::get_partial_point_cloud_map(const geometry_msgs::msg::Point & point)
+{
+  if (!cli_get_partial_pcd_) {
+    throw std::runtime_error{"Partial map loading in pointcloud_map_loader is not enabled"};
+  }
+  const auto req = std::make_shared<autoware_map_msgs::srv::GetPartialPointCloudMap::Request>();
+  req->area.center = point;
+  req->area.radius = 50;
+
+  RCLCPP_INFO(this->get_logger(), "Send request to map_loader");
+  auto res{cli_get_partial_pcd_->async_send_request(
+    req, [](rclcpp::Client<autoware_map_msgs::srv::GetPartialPointCloudMap>::SharedFuture) {})};
+
+  std::future_status status = res.wait_for(std::chrono::seconds(0));
+  while (status != std::future_status::ready) {
+    RCLCPP_INFO(this->get_logger(), "waiting response");
+    if (!rclcpp::ok()) {
+      return;
+    }
+    status = res.wait_for(std::chrono::seconds(1));
+  }
+
+  RCLCPP_INFO(
+    this->get_logger(), "Loaded partial pcd map from map_loader (grid size: %d)",
+    static_cast<int>(res.get()->new_pointcloud_with_ids.size()));
+
+  sensor_msgs::msg::PointCloud2 pcd_msg;
+  for (const auto & pcd_with_id : res.get()->new_pointcloud_with_ids) {
+    if (pcd_msg.width == 0) {
+      pcd_msg = pcd_with_id.pointcloud;
+    } else {
+      pcd_msg.width += pcd_with_id.pointcloud.width;
+      pcd_msg.row_step += pcd_with_id.pointcloud.row_step;
+      pcd_msg.data.insert(
+        pcd_msg.data.end(), pcd_with_id.pointcloud.data.begin(), pcd_with_id.pointcloud.data.end());
+    }
+  }
+
+  map_frame_ = res.get()->header.frame_id;
+  map_ptr_ = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::fromROSMsg(pcd_msg, *map_ptr_);
 }

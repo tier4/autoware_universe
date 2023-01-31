@@ -18,6 +18,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <tier4_api_utils/tier4_api_utils.hpp>
 
+#include <autoware_map_msgs/srv/get_partial_point_cloud_map.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tier4_external_api_msgs/srv/initialize_pose_auto.hpp>
@@ -100,6 +101,11 @@ private:
   std::array<double, 36> output_pose_covariance_;
 
   std::unique_ptr<LocalizationTriggerModule> localization_trigger_;
+  rclcpp::Client<autoware_map_msgs::srv::GetPartialPointCloudMap>::SharedPtr cli_get_partial_pcd_;
+  bool enable_partial_map_load_;
+  rclcpp::CallbackGroup::SharedPtr callback_group_service_;
+  void get_partial_point_cloud_map(const geometry_msgs::msg::Point & point);
+
 };
 
 #endif  // POSE_INITIALIZER__POSE_INITIALIZER_CORE_HPP_
