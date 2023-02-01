@@ -373,9 +373,14 @@ std::pair<bool, bool> ExternalRequestLaneChangeModule::getSafePath(
 
   if (!lane_change_lanes.empty()) {
     // find candidate paths
+
+    // in external request lane change,
+    // do not sample trajectories with multiple accelerations to reduce computational cost
+    auto ext_lc_parameters = *parameters_;
+    ext_lc_parameters.lane_change_sampling_num = 1;
     const auto lane_change_paths = lane_change_utils::getLaneChangePaths(
       *route_handler, current_lanes, lane_change_lanes, current_pose, current_twist,
-      common_parameters, *parameters_);
+      common_parameters, ext_lc_parameters);
 
     // get lanes used for detection
     lanelet::ConstLanelets check_lanes;
