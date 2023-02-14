@@ -17,14 +17,8 @@
 #include <pcl/filters/voxel_grid.h>
 #include <tf2/utils.h>
 
-#ifdef ROS_DISTRO_GALACTIC
-#include <tf2_eigen/tf2_eigen.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#else
-#include <tf2_eigen/tf2_eigen.hpp>
-
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#endif
+#include <tf2_eigen/tf2_eigen.h>
 
 namespace autoware::motion::control::autonomous_emergency_braking
 {
@@ -397,9 +391,12 @@ void AEB::generateEgoPath(
   // create path
   path.resize(predicted_traj.points.size());
   for (size_t i = 0; i < predicted_traj.points.size(); ++i) {
-    geometry_msgs::msg::Pose map_pose;
-    tf2::doTransform(predicted_traj.points.at(i).pose, map_pose, transform_stamped);
-    path.at(i) = map_pose;
+    geometry_msgs::msg::PoseStamped original_pose;
+    original_pose.pose = predicted_traj.points.at(i).pose;
+    original_pose.header = predicted_traj.header;
+    geometry_msgs::msg::PoseStamped map_pose;
+    tf2::doTransform(original_pose, map_pose, transform_stamped);
+    path.at(i) = map_pose.pose;
   }
 
   // create polygon
@@ -455,9 +452,13 @@ void AEB::addMarker(
   path_marker.points.resize(path.size());
   for (size_t i = 0; i < path.size(); ++i) {
     const auto & pose = path.at(i);
-    geometry_msgs::msg::Pose map_pose;
-    tf2::doTransform(pose, map_pose, transform_stamped);
-    path_marker.points.at(i) = map_pose.position;
+    geometry_msgs::msg::PoseStamped original_pose;
+    original_pose.pose = pose;
+    original_pose.header.frame_id = "base_link";
+    original_pose.header.stamp = current_time;
+    geometry_msgs::msg::PoseStamped map_pose;
+    tf2::doTransform(original_pose, map_pose, transform_stamped);
+    path_marker.points.at(i) = map_pose.pose.position;
   }
   debug_markers.markers.push_back(path_marker);
 
@@ -472,12 +473,20 @@ void AEB::addMarker(
       const auto curr_point = tier4_autoware_utils::createPoint(boost_cp.x(), boost_cp.y(), 0.0);
       const auto next_point = tier4_autoware_utils::createPoint(boost_np.x(), boost_np.y(), 0.0);
 
-      geometry_msgs::msg::Point map_curr_point;
-      geometry_msgs::msg::Point map_next_point;
-      tf2::doTransform(curr_point, map_curr_point, transform_stamped);
-      tf2::doTransform(next_point, map_next_point, transform_stamped);
-      polygon_marker.points.push_back(map_curr_point);
-      polygon_marker.points.push_back(map_next_point);
+      geometry_msgs::msg::PointStamped original_curr_point;
+      original_curr_point.header.frame_id = "base_link";
+      original_curr_point.header.stamp = current_time;
+      original_curr_point.point = curr_point;
+      geometry_msgs::msg::PointStamped original_next_point;
+      original_next_point.header.frame_id = "base_link";
+      original_next_point.header.stamp = current_time;
+      original_next_point.point = next_point;
+      geometry_msgs::msg::PointStamped map_curr_point;
+      geometry_msgs::msg::PointStamped map_next_point;
+      tf2::doTransform(original_curr_point, map_curr_point, transform_stamped);
+      tf2::doTransform(original_next_point, map_next_point, transform_stamped);
+      polygon_marker.points.push_back(map_curr_point.point);
+      polygon_marker.points.push_back(map_next_point.point);
     }
   }
   debug_markers.markers.push_back(polygon_marker);

@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.14)
 project(autonomous_emergency_braking)
 
-find_package(autoware_cmake REQUIRED)
-autoware_package()
+#find_package(autoware_cmake REQUIRED)
+#autoware_package()
+find_package(ament_cmake_auto REQUIRED)
+ament_auto_find_build_dependencies()
 
 set(AEB_NODE ${PROJECT_NAME}_node)
 ament_auto_add_library(${AEB_NODE} SHARED
