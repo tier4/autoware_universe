@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
   <arg name="launch_system_monitor" default="true" description="launch system monitor"/>
+  <arg name="launch_dummy_diag_publisher" description="launch dummy diag publisher"/>
   <arg name="run_mode" default="online" description="options: online, planning_simulation"/>
   <arg name="sensor_model" description="sensor model name"/>
   <arg name="tier4_system_launch_param_path" default="$(find-pkg-share tier4_system_launch)/config" description="tier4_system_launch parameter path"/>
 
   <let name="sensor_launch_pkg" value="$(find-pkg-share $(var sensor_model)_launch)"/>
+
+  <!-- Dummy Diag Publisher -->
+  <arg name="launch_rqt_reconfigure" default="false"/>
+  <arg name="launch_rqt_runtime_monitor" default="false"/>
+  <arg name="launch_rqt_robot_monitor" default="false"/>
+  <arg name="launch_rqt_runtime_monitor_err" default="false"/>
 
   <group>
     <push-ros-namespace namespace="/system"/>
@@ -68,5 +75,17 @@
         <arg name="config_file" value="$(var config_file)"/>
       </include>
     </group>
+  </group>
+
+  <!-- Dummy Diag Publisher -->
+  <group if="$(var launch_dummy_diag_publisher)">
+    <include file="$(find-pkg-share dummy_diag_publisher)/launch/dummy_diag_publisher.launch.xml">
+      <arg name="config_file" value="$(var dummy_diag_publisher_param_path)"/>
+      <arg name="extra_config_file_sensor" value="$(var sensor_launch_pkg)/config/dummy_diag_publisher/sensor_kit.param.yaml"/>
+      <arg name="launch_rqt_reconfigure" value="$(var launch_rqt_reconfigure)"/>
+      <arg name="launch_rqt_runtime_monitor" value="$(var launch_rqt_runtime_monitor)"/>
+      <arg name="launch_rqt_robot_monitor" value="$(var launch_rqt_robot_monitor)"/>
+      <arg name="launch_rqt_runtime_monitor_err" value="$(var launch_rqt_runtime_monitor_err)"/>
+    </include>
   </group>
 </launch>
