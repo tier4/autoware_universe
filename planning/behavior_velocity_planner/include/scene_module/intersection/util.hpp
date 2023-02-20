@@ -29,6 +29,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -42,9 +43,10 @@ std::optional<size_t> insertPoint(
   const geometry_msgs::msg::Pose & in_pose,
   autoware_auto_planning_msgs::msg::PathWithLaneId * inout_path);
 
-bool hasLaneId(const autoware_auto_planning_msgs::msg::PathPointWithLaneId & p, const int id);
-std::optional<std::pair<size_t, size_t>> findLaneIdInterval(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & p, const int lane_id);
+bool hasLaneIds(
+  const autoware_auto_planning_msgs::msg::PathPointWithLaneId & p, const std::set<int> & ids);
+std::optional<std::pair<size_t, size_t>> findLaneIdsInterval(
+  const autoware_auto_planning_msgs::msg::PathWithLaneId & p, const std::set<int> & ids);
 std::optional<size_t> getDuplicatedPointIdx(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
   const geometry_msgs::msg::Point & point);
@@ -75,7 +77,8 @@ struct StopLineIdx
  * @return nullopt if path is not intersecting with detection areas
  */
 std::pair<std::optional<size_t>, std::optional<StopLineIdx>> generateStopLine(
-  const int lane_id, const std::vector<lanelet::CompoundPolygon3d> & detection_areas,
+  const int lane_id, const std::set<int> & assoc_ids,
+  const std::vector<lanelet::CompoundPolygon3d> & detection_areas,
   const std::vector<lanelet::CompoundPolygon3d> & conflicting_areas,
   const std::shared_ptr<const PlannerData> & planner_data, const double stop_line_margin,
   const double keep_detection_line_margin, const bool use_stuck_stopline,
@@ -93,8 +96,7 @@ std::pair<std::optional<size_t>, std::optional<StopLineIdx>> generateStopLine(
  */
 std::optional<size_t> getFirstPointInsidePolygons(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const size_t lane_interval_start,
-  const size_t lane_interval_end, const int lane_id,
-  const std::vector<lanelet::CompoundPolygon3d> & polygons);
+  const size_t lane_interval_end, const std::vector<lanelet::CompoundPolygon3d> & polygons);
 
 /**
  * @brief Get stop point from map if exists

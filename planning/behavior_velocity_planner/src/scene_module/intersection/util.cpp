@@ -68,24 +68,29 @@ std::optional<size_t> insertPoint(
   return insert_idx;
 }
 
-bool hasLaneId(const autoware_auto_planning_msgs::msg::PathPointWithLaneId & p, const int id)
+bool hasLaneIds(
+  const autoware_auto_planning_msgs::msg::PathPointWithLaneId & p, const std::set<int> & ids)
 {
   for (const auto & pid : p.lane_ids) {
-    if (pid == id) {
+    if (ids.find(pid) != ids.end()) {
       return true;
     }
   }
   return false;
 }
 
-std::optional<std::pair<size_t, size_t>> findLaneIdInterval(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & p, const int lane_id)
+std::optional<std::pair<size_t, size_t>> findLaneIdsInterval(
+  const autoware_auto_planning_msgs::msg::PathWithLaneId & p, const std::set<int> & ids)
 {
   bool found = false;
   size_t start = 0;
   size_t end = p.points.size() > 0 ? p.points.size() - 1 : 0;
+  if (start == end) {
+    // there is only one point in the path
+    return std::nullopt;
+  }
   for (size_t i = 0; i < p.points.size(); ++i) {
-    if (hasLaneId(p.points.at(i), lane_id)) {
+    if (hasLaneIds(p.points.at(i), ids)) {
       if (!found) {
         // found interval for the first time
         found = true;
@@ -119,8 +124,7 @@ std::optional<size_t> getDuplicatedPointIdx(
 
 std::optional<size_t> getFirstPointInsidePolygons(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const size_t lane_interval_start,
-  const size_t lane_interval_end, [[maybe_unused]] const int lane_id,
-  const std::vector<lanelet::CompoundPolygon3d> & polygons)
+  const size_t lane_interval_end, const std::vector<lanelet::CompoundPolygon3d> & polygons)
 {
   std::optional<size_t> first_idx_inside_lanelet = std::nullopt;
   for (size_t i = lane_interval_start; i <= lane_interval_end; ++i) {
@@ -142,7 +146,8 @@ std::optional<size_t> getFirstPointInsidePolygons(
 }
 
 std::pair<std::optional<size_t>, std::optional<StopLineIdx>> generateStopLine(
-  const int lane_id, const std::vector<lanelet::CompoundPolygon3d> & detection_areas,
+  const int lane_id, const std::set<int> & assoc_ids,
+  const std::vector<lanelet::CompoundPolygon3d> & detection_areas,
   const std::vector<lanelet::CompoundPolygon3d> & conflicting_areas,
   const std::shared_ptr<const PlannerData> & planner_data, const double stop_line_margin,
   const double keep_detection_line_margin, const bool use_stuck_stopline,
@@ -184,7 +189,7 @@ std::pair<std::optional<size_t>, std::optional<StopLineIdx>> generateStopLine(
     std::ceil(planner_data->vehicle_info_.max_longitudinal_offset_m / interval);
   const int pass_judge_idx_dist = std::ceil(pass_judge_line_dist / interval);
 
-  const auto lane_interval_ip_opt = util::findLaneIdInterval(path_ip, lane_id);
+  const auto lane_interval_ip_opt = util::findLaneIdsInterval(path_ip, assoc_ids);
   if (!lane_interval_ip_opt.has_value()) {
     RCLCPP_WARN(logger, "Path has no interval on intersection lane %d", lane_id);
     return {std::nullopt, std::nullopt};
@@ -198,7 +203,7 @@ std::pair<std::optional<size_t>, std::optional<StopLineIdx>> generateStopLine(
     stuck_stop_line_idx_ip = lane_interval_ip_start;
   } else {
     const auto stuck_stop_line_idx_ip_opt = util::getFirstPointInsidePolygons(
-      path_ip, lane_interval_ip_start, lane_interval_ip_end, lane_id, conflicting_areas);
+      path_ip, lane_interval_ip_start, lane_interval_ip_end, conflicting_areas);
     if (!stuck_stop_line_idx_ip_opt.has_value()) {
       RCLCPP_DEBUG(
         logger,
@@ -248,7 +253,7 @@ std::pair<std::optional<size_t>, std::optional<StopLineIdx>> generateStopLine(
   } else {
     // find the index of the first point that intersects with detection_areas
     const auto first_inside_detection_idx_ip_opt = getFirstPointInsidePolygons(
-      path_ip, lane_interval_ip_start, lane_interval_ip_end, lane_id, detection_areas);
+      path_ip, lane_interval_ip_start, lane_interval_ip_end, detection_areas);
     // if path is not intersecting with detection_area, skip
     if (!first_inside_detection_idx_ip_opt.has_value()) {
       RCLCPP_DEBUG(

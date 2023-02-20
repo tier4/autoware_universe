@@ -130,13 +130,12 @@ visualization_msgs::msg::MarkerArray IntersectionModule::createDebugMarkerArray(
 
   appendMarkerArray(
     debug::createPolygonMarkerArray(
-      debug_data_.ego_lane_polygon, "ego_lane", lane_id_, now, 0.3, 0.0, 0.0, 0.0, 0.3, 0.7),
-    &debug_marker_array);
-
-  appendMarkerArray(
-    debug::createPolygonMarkerArray(
       debug_data_.stuck_vehicle_detect_area, "stuck_vehicle_detect_area", lane_id_, now, 0.3, 0.0,
       0.0, 0.0, 0.5, 0.5),
+    &debug_marker_array, now);
+
+  appendMarkerArray(
+    createLaneletPolygonsMarkerArray({debug_data_.ego_lane}, "ego_lane", lane_id_, 1, 0.647, 0.0),
     &debug_marker_array, now);
 
   appendMarkerArray(
@@ -189,22 +188,15 @@ visualization_msgs::msg::MarkerArray IntersectionModule::createVirtualWallMarker
   visualization_msgs::msg::MarkerArray wall_marker;
 
   const auto now = this->clock_->now();
-  const auto state = state_machine_.getState();
 
   if (debug_data_.stop_required) {
     appendMarkerArray(
       motion_utils::createStopVirtualWallMarker(
         debug_data_.stop_wall_pose, "intersection", now, module_id_),
       &wall_marker, now);
-  } else if (state == StateMachine::State::STOP) {
-    appendMarkerArray(
-      motion_utils::createStopVirtualWallMarker(
-        debug_data_.slow_wall_pose, "intersection", now, module_id_),
-      &wall_marker, now);
   }
   return wall_marker;
 }
-
 visualization_msgs::msg::MarkerArray MergeFromPrivateRoadModule::createDebugMarkerArray()
 {
   visualization_msgs::msg::MarkerArray debug_marker_array;

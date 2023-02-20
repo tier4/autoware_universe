@@ -35,9 +35,9 @@ namespace bg = boost::geometry;
 MergeFromPrivateRoadModule::MergeFromPrivateRoadModule(
   const int64_t module_id, const int64_t lane_id,
   [[maybe_unused]] std::shared_ptr<const PlannerData> planner_data,
-  const PlannerParam & planner_param, const rclcpp::Logger logger,
+  const PlannerParam & planner_param, const std::set<int> & assoc_ids, const rclcpp::Logger logger,
   const rclcpp::Clock::SharedPtr clock)
-: SceneModuleInterface(module_id, logger, clock), lane_id_(lane_id)
+: SceneModuleInterface(module_id, logger, clock), lane_id_(lane_id), assoc_ids_(assoc_ids)
 {
   velocity_factor_.init(VelocityFactor::MERGE);
   planner_param_ = planner_param;
@@ -81,9 +81,9 @@ bool MergeFromPrivateRoadModule::modifyPathVelocity(PathWithLaneId * path, StopR
   const auto private_path =
     extractPathNearExitOfPrivateRoad(*path, planner_data_->vehicle_info_.vehicle_length_m);
   const auto [stuck_line_idx_opt, stop_lines_idx_opt] = util::generateStopLine(
-    lane_id_, detection_area, conflicting_area, planner_data_, planner_param_.stop_line_margin,
-    0.0 /* unnecessary in merge_from_private */, false /* same */, path, *path,
-    logger_.get_child("util"), clock_);
+    lane_id_, assoc_ids_, detection_area, conflicting_area, planner_data_,
+    planner_param_.stop_line_margin, 0.0 /* unnecessary in merge_from_private */, false /* same */,
+    path, *path, logger_.get_child("util"), clock_);
   if (!stop_lines_idx_opt.has_value()) {
     RCLCPP_WARN_SKIPFIRST_THROTTLE(logger_, *clock_, 1000 /* ms */, "setStopLineIdx fail");
     return false;
