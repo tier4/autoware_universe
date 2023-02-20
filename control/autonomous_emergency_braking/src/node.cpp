@@ -268,7 +268,7 @@ bool AEB::checkCollision()
   // step4. transform predicted trajectory from control module
   Path predicted_path;
   std::vector<Polygon2d> predicted_polys;
-  if (use_predicted_path_ && predicted_traj_ptr) {
+  if (use_predicted_path_ && predicted_traj_ptr && !predicted_traj_ptr->points.empty()) {
     constexpr double color_r = 0.0;
     constexpr double color_g = 100.0 / 256.0;
     constexpr double color_b = 0.0;
@@ -340,6 +340,7 @@ void AEB::generateEgoPath(
   constexpr double epsilon = 1e-6;
   const double & dt = prediction_time_interval_;
   const double & horizon = prediction_time_horizon_;
+  std::cerr << "ego_path" << std::endl;
   for (double t = 0.0; t < horizon + epsilon; t += dt) {
     curr_x = curr_x + curr_v * std::cos(curr_yaw) * dt;
     curr_y = curr_y + curr_v * std::sin(curr_yaw) * dt;
@@ -351,6 +352,8 @@ void AEB::generateEgoPath(
       continue;
     }
     path.push_back(current_pose);
+    std::cerr << "x[" << t << "]: " << curr_x << std::endl;
+    std::cerr << "y[" << t << "]: " << curr_y << std::endl;
   }
 
   // If path is shorter than minimum path length
@@ -384,23 +387,26 @@ void AEB::generateEgoPath(
       "base_link", predicted_traj.header.frame_id, predicted_traj.header.stamp,
       rclcpp::Duration::from_seconds(0.5));
   } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(get_logger(), "[AEB] Failed to look up transform from base_link to map");
+    RCLCPP_ERROR_STREAM(get_logger(), "[AEB] Failed to look up transform to base_link");
     return;
   }
 
   // create path
+  std::cerr << "mpc path" << std::endl;
   path.resize(predicted_traj.points.size());
   for (size_t i = 0; i < predicted_traj.points.size(); ++i) {
-    geometry_msgs::msg::PoseStamped original_pose;
-    original_pose.pose = predicted_traj.points.at(i).pose;
-    original_pose.header = predicted_traj.header;
     geometry_msgs::msg::PoseStamped map_pose;
-    tf2::doTransform(original_pose, map_pose, transform_stamped);
-    path.at(i) = map_pose.pose;
+    map_pose.pose = predicted_traj.points.at(i).pose;
+    map_pose.header = predicted_traj.header;
+    geometry_msgs::msg::PoseStamped bl_pose;
+    tf2::doTransform(map_pose, bl_pose, transform_stamped);
+    path.at(i) = bl_pose.pose;
+    std::cerr << "x[" << i << "]: " << bl_pose.pose.position.x << std::endl;
+    std::cerr << "y[" << i << "]: " << bl_pose.pose.position.y << std::endl;
   }
 
   // create polygon
-  polygons.resize(path.size());
+  polygons.resize(path.size()-1);
   for (size_t i = 0; i < path.size() - 1; ++i) {
     polygons.at(i) = createPolygon(path.at(i), path.at(i + 1), vehicle_info_, expand_width_);
   }
