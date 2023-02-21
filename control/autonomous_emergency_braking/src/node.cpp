@@ -98,6 +98,9 @@ AEB::AEB(const rclcpp::NodeOptions & node_options)
     "~/input/predicted_trajectory", rclcpp::QoS{1},
     std::bind(&AEB::onPredictedTrajectory, this, std::placeholders::_1));
 
+  sub_control_mode_report_ = this->create_subscription<ControlModeReport>(
+    "/vehicle/status/control_mode", rclcpp::QoS{1}, std::bind(&AEB::onControlModeReport, this, std::placeholders::_1));
+
   // Publisher
   pub_obstacle_pointcloud_ =
     this->create_publisher<sensor_msgs::msg::PointCloud2>("~/debug/obstacle_pointcloud", 1);
@@ -144,6 +147,11 @@ void AEB::onPredictedTrajectory(
   const autoware_auto_planning_msgs::msg::Trajectory::ConstSharedPtr input_msg)
 {
   predicted_traj_ptr_ = input_msg;
+}
+
+void AEB::onControlModeReport(const ControlModeReport::ConstSharedPtr input_msg)
+{
+  control_mode_report_ptr_ = input_msg;
 }
 
 void AEB::onPointCloud(const PointCloud2::ConstSharedPtr input_msg)
@@ -232,6 +240,14 @@ void AEB::onCheckCollision(DiagnosticStatusWrapper & stat)
 
 bool AEB::checkCollision()
 {
+  // step0. check control mode (if not autonomous driving mode we do not activate aeb)
+  if (control_mode_report_ptr_ && control_mode_report_ptr_->mode != ControlModeReport::AUTONOMOUS) {
+    return false;
+  }
+  if(control_mode_report_ptr_ && control_mode_report_ptr_->mode==ControlModeReport::AUTONOMOUS) {
+    std::cerr << "autonomous control_mode: " << control_mode_report_ptr_->stamp.sec << std::endl;
+  }
+
   // step1. check data
   if (!isDataReady()) {
     return false;

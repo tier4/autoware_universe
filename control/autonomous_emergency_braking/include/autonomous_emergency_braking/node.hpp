@@ -22,6 +22,7 @@
 
 #include <autoware_auto_planning_msgs/msg/trajectory.hpp>
 #include <autoware_auto_vehicle_msgs/msg/velocity_report.hpp>
+#include "autoware_auto_vehicle_msgs/msg/control_mode_report.hpp"
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -51,6 +52,7 @@ namespace autoware::motion::control::autonomous_emergency_braking
 
 using autoware_auto_planning_msgs::msg::Trajectory;
 using autoware_auto_vehicle_msgs::msg::VelocityReport;
+using autoware_auto_vehicle_msgs::msg::ControlModeReport;
 using nav_msgs::msg::Odometry;
 using sensor_msgs::msg::Imu;
 using sensor_msgs::msg::PointCloud2;
@@ -81,6 +83,7 @@ public:
   rclcpp::Subscription<Odometry>::SharedPtr sub_odometry_;
   rclcpp::Subscription<Imu>::SharedPtr sub_imu_;
   rclcpp::Subscription<Trajectory>::SharedPtr sub_predicted_traj_;
+  rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_report_;
 
   // publisher
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_obstacle_pointcloud_;
@@ -96,6 +99,7 @@ public:
   void onImu(const Imu::ConstSharedPtr input_msg);
   void onTimer();
   void onPredictedTrajectory(const Trajectory::ConstSharedPtr input_msg);
+  void onControlModeReport(const ControlModeReport::ConstSharedPtr input_msg);
 
   bool isDataReady();
 
@@ -123,6 +127,7 @@ public:
   Odometry::ConstSharedPtr odometry_ptr_{nullptr};
   Imu::ConstSharedPtr imu_ptr_{nullptr};
   Trajectory::ConstSharedPtr predicted_traj_ptr_{nullptr};
+  ControlModeReport::ConstSharedPtr control_mode_report_ptr_{nullptr};
 
   tf2_ros::Buffer tf_buffer_{get_clock()};
   tf2_ros::TransformListener tf_listener_{tf_buffer_};
