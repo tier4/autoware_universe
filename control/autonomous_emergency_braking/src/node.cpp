@@ -340,7 +340,6 @@ void AEB::generateEgoPath(
   constexpr double epsilon = 1e-6;
   const double & dt = prediction_time_interval_;
   const double & horizon = prediction_time_horizon_;
-  std::cerr << "ego_path" << std::endl;
   for (double t = 0.0; t < horizon + epsilon; t += dt) {
     curr_x = curr_x + curr_v * std::cos(curr_yaw) * dt;
     curr_y = curr_y + curr_v * std::sin(curr_yaw) * dt;
@@ -352,8 +351,6 @@ void AEB::generateEgoPath(
       continue;
     }
     path.push_back(current_pose);
-    std::cerr << "x[" << t << "]: " << curr_x << std::endl;
-    std::cerr << "y[" << t << "]: " << curr_y << std::endl;
   }
 
   // If path is shorter than minimum path length
@@ -392,7 +389,6 @@ void AEB::generateEgoPath(
   }
 
   // create path
-  std::cerr << "mpc path" << std::endl;
   path.resize(predicted_traj.points.size());
   for (size_t i = 0; i < predicted_traj.points.size(); ++i) {
     geometry_msgs::msg::PoseStamped map_pose;
@@ -401,8 +397,6 @@ void AEB::generateEgoPath(
     geometry_msgs::msg::PoseStamped bl_pose;
     tf2::doTransform(map_pose, bl_pose, transform_stamped);
     path.at(i) = bl_pose.pose;
-    std::cerr << "x[" << i << "]: " << bl_pose.pose.position.x << std::endl;
-    std::cerr << "y[" << i << "]: " << bl_pose.pose.position.y << std::endl;
   }
 
   // create polygon

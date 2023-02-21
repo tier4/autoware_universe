@@ -248,7 +248,7 @@ bool8_t convertToMPCTrajectory(
   for (const autoware_auto_planning_msgs::msg::TrajectoryPoint & p : input.points) {
     const float64_t x = p.pose.position.x;
     const float64_t y = p.pose.position.y;
-    const float64_t z = 0.0;
+    const float64_t z = p.pose.position.z;
     const float64_t yaw = ::motion::motion_common::to_angle(p.pose.orientation);
     const float64_t vx = p.longitudinal_velocity_mps;
     const float64_t k = 0.0;

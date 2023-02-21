@@ -36,13 +36,13 @@ AutowareTrajectoryFootprintDisplay::AutowareTrajectoryFootprintDisplay()
     "Color", QColor(230, 230, 50), "", property_trajectory_footprint_view_,
     SLOT(updateVisualization()), this);
   property_vehicle_length_ = new rviz_common::properties::FloatProperty(
-    "Vehicle Length", 4.77, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()),
+    "Vehicle Length", 2.665, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()),
     this);
   property_vehicle_width_ = new rviz_common::properties::FloatProperty(
-    "Vehicle Width", 1.83, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()),
+    "Vehicle Width", 1.1, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()),
     this);
   property_rear_overhang_ = new rviz_common::properties::FloatProperty(
-    "Rear Overhang", 1.03, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()),
+    "Rear Overhang", 0.375, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()),
     this);
   property_vehicle_length_->setMin(0.0);
   property_vehicle_width_->setMin(0.0);
