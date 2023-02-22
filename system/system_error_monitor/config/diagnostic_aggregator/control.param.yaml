@@ -72,6 +72,21 @@
                       contains: ["external_cmd_selector: heartbeat"]
                       timeout: 1.0
 
+            external_command_converter:
+              type: diagnostic_aggregator/AnalyzerGroup
+              path: external_command_converter
+              analyzers:
+                node_alive_monitoring:
+                  type: diagnostic_aggregator/AnalyzerGroup
+                  path: node_alive_monitoring
+                  analyzers:
+                    heartbeat:
+                      type: diagnostic_aggregator/GenericAnalyzer
+                      path: heartbeat
+                      contains: ["external_cmd_converter: heartbeat"]
+                      timeout: 1.0
+
+
             local_external_control:
               type: diagnostic_aggregator/AnalyzerGroup
               path: local_external_control
@@ -84,18 +99,4 @@
                       type: diagnostic_aggregator/GenericAnalyzer
                       path: joy_controller_connection
                       contains: [": joy_controller_connection"]
-                      timeout: 1.0
-
-            remote_external_control:
-              type: diagnostic_aggregator/AnalyzerGroup
-              path: remote_external_control
-              analyzers:
-                network_connection:
-                  type: diagnostic_aggregator/AnalyzerGroup
-                  path: network_connection
-                  analyzers:
-                    remote_control_topic_status:
-                      type: diagnostic_aggregator/GenericAnalyzer
-                      path: remote_control_topic_status
-                      contains: [": remote_control_topic_status"]
                       timeout: 1.0
