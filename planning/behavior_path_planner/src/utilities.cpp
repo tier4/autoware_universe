@@ -1345,7 +1345,6 @@ std::vector<DrivableLanes> cutOverlappedLanes(
 size_t findNearestSegmentIndex(
   const std::vector<geometry_msgs::msg::Pose> & points, const geometry_msgs::msg::Pose & pose,
   const double dist_threshold, const double yaw_threshold)
->>>>>>> 7f0138c3 (feat(behavior_path_planner, obstacle_avoidance_planner): add new drivable area (#2472))
 {
   const auto nearest_idx =
     motion_utils::findNearestSegmentIndex(points, pose, dist_threshold, yaw_threshold);
