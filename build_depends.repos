@@ -7,7 +7,7 @@ repositories:
   core/common:
     type: git
     url: https://github.com/autowarefoundation/autoware_common.git
-    version: 1f36fa7579edbe2ed41f745a0ee029a427e468fe
+    version: d95da5d4c3f262259c6e40a0bdc1399c0fdf612f
   core/autoware:
     type: git
     url: https://github.com/autowarefoundation/autoware.core.git
