@@ -15,8 +15,8 @@ repositories:
   # universe
   universe/tier4_autoware_msgs:
     type: git
-    url: https://github.com/tier4/AutowareArchitectureProposal_msgs.git # TODO(Tier IV): Rename to tier4/tier4_autoware_msgs
-    version: tier4/universe
+    url: https://github.com/tier4/tier4_autoware_msgs.git
+    version: a624d255107fa724cf90967c5dcc09463b1d1c73
   universe/vendor/grid_map:
     type: git
     url: https://github.com/ANYbotics/grid_map.git

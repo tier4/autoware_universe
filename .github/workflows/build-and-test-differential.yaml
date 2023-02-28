@@ -6,7 +6,7 @@ on:
 jobs:
   build-and-test-differential:
     runs-on: ubuntu-latest
-    container: ghcr.io/autowarefoundation/autoware-universe:latest
+    container: ghcr.io/autowarefoundation/autoware-universe:galactic-latest
     steps:
       - name: Cancel previous runs
         uses: styfle/cancel-workflow-action@0.9.1
@@ -25,20 +25,22 @@ jobs:
 
       - name: Build
         if: ${{ steps.get-modified-packages.outputs.modified-packages != '' }}
-        uses: autowarefoundation/autoware-github-actions/colcon-build@v1
+        uses: autowarefoundation/autoware-github-actions/colcon-build@a7cc2c1ce6052f395e5800a0fb6e6221421bf30a
         with:
           rosdistro: galactic
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
           build-depends-repos: build_depends.repos
+          include-eol-distros: true
 
       - name: Test
         id: test
         if: ${{ steps.get-modified-packages.outputs.modified-packages != '' }}
-        uses: autowarefoundation/autoware-github-actions/colcon-test@v1
+        uses: autowarefoundation/autoware-github-actions/colcon-test@a7cc2c1ce6052f395e5800a0fb6e6221421bf30a
         with:
           rosdistro: galactic
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
           build-depends-repos: build_depends.repos
+          include-eol-distros: true
 
       - name: Upload coverage to CodeCov
         if: ${{ steps.test.outputs.coverage-report-files != '' }}
@@ -68,9 +70,10 @@ jobs:
 
       - name: Run clang-tidy
         if: ${{ steps.get-modified-packages.outputs.modified-packages != '' }}
-        uses: autowarefoundation/autoware-github-actions/clang-tidy@v1
+        uses: autowarefoundation/autoware-github-actions/clang-tidy@a7cc2c1ce6052f395e5800a0fb6e6221421bf30a
         with:
           rosdistro: galactic
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
           clang-tidy-config-url: https://raw.githubusercontent.com/autowarefoundation/autoware/main/.clang-tidy
           build-depends-repos: build_depends.repos
+          include-eol-distros: true

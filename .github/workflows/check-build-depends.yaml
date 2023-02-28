@@ -8,7 +8,7 @@ on:
 jobs:
   check-build-depends:
     runs-on: ubuntu-latest
-    container: ghcr.io/autowarefoundation/autoware-universe:latest
+    container: ghcr.io/autowarefoundation/autoware-universe:galactic-latest
     steps:
       - name: Cancel previous runs
         uses: styfle/cancel-workflow-action@0.9.1
@@ -24,8 +24,9 @@ jobs:
         uses: autowarefoundation/autoware-github-actions/get-self-packages@v1
 
       - name: Build
-        uses: autowarefoundation/autoware-github-actions/colcon-build@v1
+        uses: autowarefoundation/autoware-github-actions/colcon-build@a7cc2c1ce6052f395e5800a0fb6e6221421bf30a
         with:
           rosdistro: galactic
           target-packages: ${{ steps.get-self-packages.outputs.self-packages }}
           build-depends-repos: build_depends.repos
+          include-eol-distros: true
