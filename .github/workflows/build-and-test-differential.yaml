@@ -30,6 +30,7 @@ jobs:
           rosdistro: galactic
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
           build-depends-repos: build_depends.repos
+          include-eol-distros: true
 
       - name: Test
         id: test
