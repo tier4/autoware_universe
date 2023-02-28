@@ -69,7 +69,6 @@ protected:
   QPushButton * engage_button_ptr_;
 
   bool current_engage_;
-  bool test_;
 };
 
 }  // namespace rviz_plugins
