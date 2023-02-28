@@ -1412,7 +1412,7 @@ ObstacleAvoidancePlanner::alignVelocity(
     -> std::pair<
       std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>, boost::optional<size_t>> {
     const auto opt_path_zero_vel_idx = tier4_autoware_utils::searchZeroVelocityIndex(path_points);
-    if (opt_path_zero_vel_idx) {
+    if (opt_path_zero_vel_idx && 1 < fine_traj_points.size()) {
       const auto & zero_vel_path_point = path_points.at(opt_path_zero_vel_idx.get());
       const auto opt_traj_seg_idx = tier4_autoware_utils::findNearestSegmentIndex(
         fine_traj_points, zero_vel_path_point.pose, std::numeric_limits<double>::max(),
