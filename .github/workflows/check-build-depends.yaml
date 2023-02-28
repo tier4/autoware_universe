@@ -24,7 +24,7 @@ jobs:
         uses: autowarefoundation/autoware-github-actions/get-self-packages@v1
 
       - name: Build
-        uses: autowarefoundation/autoware-github-actions/colcon-build@feat/colcon_build
+        uses: autowarefoundation/autoware-github-actions/colcon-build@a7cc2c1ce6052f395e5800a0fb6e6221421bf30a
         with:
           rosdistro: galactic
           target-packages: ${{ steps.get-self-packages.outputs.self-packages }}
