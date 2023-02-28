@@ -23,6 +23,38 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <vector>
+
+namespace
+{
+template <class T>
+std::vector<geometry_msgs::msg::Point> removeOverlapPoints(const T & points, const size_t & idx)
+{
+  std::vector<geometry_msgs::msg::Point> dst;
+
+  for (const auto & pt : points) {
+    dst.push_back(tier4_autoware_utils::getPoint(pt));
+  }
+
+  if (points.empty()) {
+    return dst;
+  }
+
+  constexpr double eps = 1.0E-08;
+  size_t i = idx;
+  while (i != dst.size() - 1) {
+    const auto p = tier4_autoware_utils::getPoint(dst.at(i));
+    const auto p_next = tier4_autoware_utils::getPoint(dst.at(i + 1));
+    const Eigen::Vector3d v{p_next.x - p.x, p_next.y - p.y, 0.0};
+    if (v.norm() < eps) {
+      dst.erase(dst.begin() + i + 1);
+    } else {
+      ++i;
+    }
+  }
+  return dst;
+}
+}  // namespace
 
 namespace tier4_autoware_utils
 {
@@ -38,7 +70,12 @@ template <class T>
 boost::optional<size_t> searchZeroVelocityIndex(
   const T & points_with_twist, const size_t src_idx, const size_t dst_idx)
 {
-  validateNonEmpty(points_with_twist);
+  try {
+    validateNonEmpty(points_with_twist);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
 
   constexpr double epsilon = 1e-3;
   for (size_t i = src_idx; i < dst_idx; ++i) {
@@ -80,7 +117,12 @@ boost::optional<size_t> findNearestIndex(
   const double max_dist = std::numeric_limits<double>::max(),
   const double max_yaw = std::numeric_limits<double>::max())
 {
-  validateNonEmpty(points);
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
 
   const double max_squared_dist = max_dist * max_dist;
 
@@ -120,19 +162,45 @@ boost::optional<size_t> findNearestIndex(
  */
 template <class T>
 double calcLongitudinalOffsetToSegment(
-  const T & points, const size_t seg_idx, const geometry_msgs::msg::Point & p_target)
+  const T & points, const size_t seg_idx, const geometry_msgs::msg::Point & p_target,
+  const bool throw_exception = false)
 {
-  validateNonEmpty(points);
+  if (seg_idx >= points.size() - 1) {
+    const std::out_of_range e("Segment index is invalid.");
+    if (throw_exception) {
+      throw e;
+    }
+    std::cerr << e.what() << std::endl;
+    return std::nan("");
+  }
 
-  const auto p_front = getPoint(points.at(seg_idx));
-  const auto p_back = getPoint(points.at(seg_idx + 1));
+  const auto overlap_removed_points = removeOverlapPoints(points, seg_idx);
+
+  if (throw_exception) {
+    validateNonEmpty(overlap_removed_points);
+  } else {
+    try {
+      validateNonEmpty(overlap_removed_points);
+    } catch (const std::exception & e) {
+      std::cerr << e.what() << std::endl;
+      return std::nan("");
+    }
+  }
+
+  if (seg_idx >= overlap_removed_points.size() - 1) {
+    const std::runtime_error e("Same points are given.");
+    if (throw_exception) {
+      throw e;
+    }
+    std::cerr << e.what() << std::endl;
+    return std::nan("");
+  }
+
+  const auto p_front = getPoint(overlap_removed_points.at(seg_idx));
+  const auto p_back = getPoint(overlap_removed_points.at(seg_idx + 1));
 
   const Eigen::Vector3d segment_vec{p_back.x - p_front.x, p_back.y - p_front.y, 0};
   const Eigen::Vector3d target_vec{p_target.x - p_front.x, p_target.y - p_front.y, 0};
-
-  if (segment_vec.norm() == 0.0) {
-    throw std::runtime_error("Same points are given.");
-  }
 
   return segment_vec.dot(target_vec) / segment_vec.norm();
 }
@@ -212,21 +280,38 @@ boost::optional<size_t> findNearestSegmentIndex(
  * @return length (unsigned)
  */
 template <class T>
-double calcLateralOffset(const T & points, const geometry_msgs::msg::Point & p_target)
+double calcLateralOffset(
+  const T & points, const geometry_msgs::msg::Point & p_target, const bool throw_exception = false)
 {
-  validateNonEmpty(points);
+  const auto overlap_removed_points = removeOverlapPoints(points, 0);
 
-  const size_t seg_idx = findNearestSegmentIndex(points, p_target);
+  if (throw_exception) {
+    validateNonEmpty(overlap_removed_points);
+  } else {
+    try {
+      validateNonEmpty(overlap_removed_points);
+    } catch (const std::exception & e) {
+      std::cerr << e.what() << std::endl;
+      return std::nan("");
+    }
+  }
 
-  const auto p_front = getPoint(points.at(seg_idx));
-  const auto p_back = getPoint(points.at(seg_idx + 1));
+  if (overlap_removed_points.size() == 1) {
+    const std::runtime_error e("Same points are given.");
+    if (throw_exception) {
+      throw e;
+    }
+    std::cerr << e.what() << std::endl;
+    return std::nan("");
+  }
+
+  const size_t seg_idx = findNearestSegmentIndex(overlap_removed_points, p_target);
+
+  const auto p_front = getPoint(overlap_removed_points.at(seg_idx));
+  const auto p_back = getPoint(overlap_removed_points.at(seg_idx + 1));
 
   const Eigen::Vector3d segment_vec{p_back.x - p_front.x, p_back.y - p_front.y, 0.0};
   const Eigen::Vector3d target_vec{p_target.x - p_front.x, p_target.y - p_front.y, 0.0};
-
-  if (segment_vec.norm() == 0.0) {
-    throw std::runtime_error("Same points are given.");
-  }
 
   const Eigen::Vector3d cross_vec = segment_vec.cross(target_vec);
   return cross_vec(2) / segment_vec.norm();
@@ -238,7 +323,12 @@ double calcLateralOffset(const T & points, const geometry_msgs::msg::Point & p_t
 template <class T>
 double calcSignedArcLength(const T & points, const size_t src_idx, const size_t dst_idx)
 {
-  validateNonEmpty(points);
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return 0.0;
+  }
 
   if (src_idx > dst_idx) {
     return -calcSignedArcLength(points, dst_idx, src_idx);
@@ -258,7 +348,12 @@ template <class T>
 double calcSignedArcLength(
   const T & points, const geometry_msgs::msg::Point & src_point, const size_t & dst_idx)
 {
-  validateNonEmpty(points);
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return 0.0;
+  }
 
   const size_t src_seg_idx = findNearestSegmentIndex(points, src_point);
 
@@ -276,7 +371,12 @@ template <class T>
 double calcSignedArcLength(
   const T & points, const size_t src_idx, const geometry_msgs::msg::Point & dst_point)
 {
-  validateNonEmpty(points);
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return 0.0;
+  }
 
   return -calcSignedArcLength(points, dst_point, src_idx);
 }
@@ -289,7 +389,12 @@ double calcSignedArcLength(
   const T & points, const geometry_msgs::msg::Point & src_point,
   const geometry_msgs::msg::Point & dst_point)
 {
-  validateNonEmpty(points);
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return 0.0;
+  }
 
   const size_t src_seg_idx = findNearestSegmentIndex(points, src_point);
   const size_t dst_seg_idx = findNearestSegmentIndex(points, dst_point);
@@ -313,7 +418,12 @@ boost::optional<double> calcSignedArcLength(
   const double max_dist = std::numeric_limits<double>::max(),
   const double max_yaw = std::numeric_limits<double>::max())
 {
-  validateNonEmpty(points);
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
 
   const auto src_seg_idx = findNearestSegmentIndex(points, src_pose, max_dist, max_yaw);
   if (!src_seg_idx) {
@@ -337,7 +447,12 @@ boost::optional<double> calcSignedArcLength(
 template <class T>
 double calcArcLength(const T & points)
 {
-  validateNonEmpty(points);
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return 0.0;
+  }
 
   return calcSignedArcLength(points, 0, points.size() - 1);
 }
