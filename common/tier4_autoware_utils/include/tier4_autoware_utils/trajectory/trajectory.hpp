@@ -47,7 +47,7 @@ std::vector<geometry_msgs::msg::Point> removeOverlapPoints(const T & points, con
     const auto p_next = tier4_autoware_utils::getPoint(dst.at(i + 1));
     const Eigen::Vector3d v{p_next.x - p.x, p_next.y - p.y, 0.0};
     if (v.norm() < eps) {
-      dst.erase(dst.begin() + i + 1);
+      dst.erase(dst.begin() + static_cast<int32_t>(i) + 1);
     } else {
       ++i;
     }

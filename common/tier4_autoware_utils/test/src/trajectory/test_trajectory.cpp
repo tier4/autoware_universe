@@ -107,7 +107,7 @@ TEST(trajectory, searchZeroVelocityIndex)
   using tier4_autoware_utils::searchZeroVelocityIndex;
 
   // Empty
-  EXPECT_THROW(searchZeroVelocityIndex(Trajectory{}.points), std::invalid_argument);
+  EXPECT_FALSE(searchZeroVelocityIndex(Trajectory{}.points));
 
   // No zero velocity point
   {
@@ -229,8 +229,7 @@ TEST(trajectory, findNearestIndex_Pose_NoThreshold)
   const auto traj = generateTestTrajectory<Trajectory>(10, 1.0);
 
   // Empty
-  EXPECT_THROW(
-    findNearestIndex(Trajectory{}.points, geometry_msgs::msg::Pose{}, {}), std::invalid_argument);
+  EXPECT_FALSE(findNearestIndex(Trajectory{}.points, geometry_msgs::msg::Pose{}, {}));
 
   // Start point
   EXPECT_EQ(*findNearestIndex(traj.points, createPose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)), 0U);
@@ -343,26 +342,30 @@ TEST(trajectory, calcLongitudinalOffsetToSegment_StraightTrajectory)
   using tier4_autoware_utils::calcLongitudinalOffsetToSegment;
 
   const auto traj = generateTestTrajectory<Trajectory>(10, 1.0);
+  const bool throw_exception = true;
 
   // Empty
   EXPECT_THROW(
-    calcLongitudinalOffsetToSegment(Trajectory{}.points, {}, geometry_msgs::msg::Point{}),
+    calcLongitudinalOffsetToSegment(
+      Trajectory{}.points, {}, geometry_msgs::msg::Point{}, throw_exception),
     std::invalid_argument);
 
   // Out of range
   EXPECT_THROW(
-    calcLongitudinalOffsetToSegment(traj.points, -1, geometry_msgs::msg::Point{}),
+    calcLongitudinalOffsetToSegment(traj.points, -1, geometry_msgs::msg::Point{}, throw_exception),
     std::out_of_range);
   EXPECT_THROW(
     calcLongitudinalOffsetToSegment(
-      traj.points, traj.points.size() - 1, geometry_msgs::msg::Point{}),
+      traj.points, traj.points.size() - 1, geometry_msgs::msg::Point{}, throw_exception),
     std::out_of_range);
 
   // Same close points in trajectory
   {
     const auto invalid_traj = generateTestTrajectory<Trajectory>(10, 0.0);
     const auto p = createPoint(3.0, 0.0, 0.0);
-    EXPECT_THROW(calcLongitudinalOffsetToSegment(invalid_traj.points, 3, p), std::runtime_error);
+    EXPECT_THROW(
+      calcLongitudinalOffsetToSegment(invalid_traj.points, 3, p, throw_exception),
+      std::runtime_error);
   }
 
   // Same point
@@ -401,23 +404,26 @@ TEST(trajectory, calcLateralOffset)
   using tier4_autoware_utils::calcLateralOffset;
 
   const auto traj = generateTestTrajectory<Trajectory>(10, 1.0);
+  const bool throw_exception = true;
 
   // Empty
   EXPECT_THROW(
-    calcLateralOffset(Trajectory{}.points, geometry_msgs::msg::Point{}), std::invalid_argument);
+    calcLateralOffset(Trajectory{}.points, geometry_msgs::msg::Point{}, throw_exception),
+    std::invalid_argument);
 
   // Trajectory size is 1
   {
     const auto one_point_traj = generateTestTrajectory<Trajectory>(1, 1.0);
     EXPECT_THROW(
-      calcLateralOffset(one_point_traj.points, geometry_msgs::msg::Point{}), std::out_of_range);
+      calcLateralOffset(one_point_traj.points, geometry_msgs::msg::Point{}, throw_exception),
+      std::runtime_error);
   }
 
   // Same close points in trajectory
   {
     const auto invalid_traj = generateTestTrajectory<Trajectory>(10, 0.0);
     const auto p = createPoint(3.0, 0.0, 0.0);
-    EXPECT_THROW(calcLateralOffset(invalid_traj.points, p), std::runtime_error);
+    EXPECT_THROW(calcLateralOffset(invalid_traj.points, p, throw_exception), std::runtime_error);
   }
 
   // Point on trajectory
@@ -452,7 +458,7 @@ TEST(trajectory, calcSignedArcLengthFromIndexToIndex)
   const auto traj = generateTestTrajectory<Trajectory>(10, 1.0);
 
   // Empty
-  EXPECT_THROW(calcSignedArcLength(Trajectory{}.points, {}, {}), std::invalid_argument);
+  EXPECT_DOUBLE_EQ(calcSignedArcLength(Trajectory{}.points, {}, {}), 0.0);
 
   // Out of range
   EXPECT_THROW(calcSignedArcLength(traj.points, -1, 1), std::out_of_range);
@@ -475,7 +481,7 @@ TEST(trajectory, calcSignedArcLengthFromPointToIndex)
   const auto traj = generateTestTrajectory<Trajectory>(10, 1.0);
 
   // Empty
-  EXPECT_THROW(calcSignedArcLength(Trajectory{}.points, {}, {}), std::invalid_argument);
+  EXPECT_DOUBLE_EQ(calcSignedArcLength(Trajectory{}.points, {}, {}), 0.0);
 
   // Same point
   EXPECT_NEAR(calcSignedArcLength(traj.points, createPoint(3.0, 0.0, 0.0), 3), 0, epsilon);
@@ -504,7 +510,7 @@ TEST(trajectory, calcSignedArcLengthFromIndexToPoint)
   const auto traj = generateTestTrajectory<Trajectory>(10, 1.0);
 
   // Empty
-  EXPECT_THROW(calcSignedArcLength(Trajectory{}.points, {}, {}), std::invalid_argument);
+  EXPECT_DOUBLE_EQ(calcSignedArcLength(Trajectory{}.points, {}, {}), 0.0);
 
   // Same point
   EXPECT_NEAR(calcSignedArcLength(traj.points, 3, createPoint(3.0, 0.0, 0.0)), 0, epsilon);
@@ -533,7 +539,7 @@ TEST(trajectory, calcSignedArcLengthFromPointToPoint)
   const auto traj = generateTestTrajectory<Trajectory>(10, 1.0);
 
   // Empty
-  EXPECT_THROW(calcSignedArcLength(Trajectory{}.points, {}, {}), std::invalid_argument);
+  EXPECT_DOUBLE_EQ(calcSignedArcLength(Trajectory{}.points, {}, {}), 0.0);
 
   // Same point
   {
@@ -596,7 +602,7 @@ TEST(trajectory, calcArcLength)
   const auto traj = generateTestTrajectory<Trajectory>(10, 1.0);
 
   // Empty
-  EXPECT_THROW(calcArcLength(Trajectory{}.points), std::invalid_argument);
+  EXPECT_DOUBLE_EQ(calcArcLength(Trajectory{}.points), 0.0);
 
   // Whole Length
   EXPECT_NEAR(calcArcLength(traj.points), 9.0, epsilon);
