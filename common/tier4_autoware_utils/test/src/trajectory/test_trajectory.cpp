@@ -415,7 +415,8 @@ TEST(trajectory, calcLateralOffset)
   {
     const auto one_point_traj = generateTestTrajectory<Trajectory>(1, 1.0);
     EXPECT_THROW(
-      calcLateralOffset(one_point_traj.points, geometry_msgs::msg::Point{}), std::out_of_range);
+      calcLateralOffset(one_point_traj.points, geometry_msgs::msg::Point{}, throw_exception),
+      std::runtime_error);
   }
 
   // Same close points in trajectory
