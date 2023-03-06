@@ -121,7 +121,7 @@ bool IntersectionModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
 
   /* get adjacent lanelets */
   const auto adjacent_lanelets =
-    util::extendedAdjacentDirectionLanes(lanelet_map_ptr, routing_graph_ptr, assigned_lanelet);
+    planning_utils::getConstLaneletsFromIds(lanelet_map_ptr, assoc_ids_);
   debug_data_.adjacent_area = util::getPolygon3dFromLanelets(adjacent_lanelets);
 
   /* set stop lines for base_link */

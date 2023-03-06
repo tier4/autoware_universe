@@ -164,18 +164,6 @@ std::pair<std::optional<size_t>, std::optional<StopLineIdx>> generateStopLine(
   const double pass_judge_line_dist = planning_utils::calcJudgeLineDistWithJerkLimit(
     current_vel, current_acc, max_acc, max_jerk, delay_response_time);
 
-  // first inside lane idx
-  const auto first_inside_lane_it =
-    std::find_if(original_path->points.begin(), original_path->points.end(), [&](const auto & p) {
-      return std::find(p.lane_ids.begin(), p.lane_ids.end(), lane_id) != p.lane_ids.end();
-    });
-  if (first_inside_lane_it == original_path->points.end()) {
-    RCLCPP_ERROR(logger, "No points on intersection lane %d", lane_id);
-    return {std::nullopt, std::nullopt};
-  }
-  const size_t first_inside_lane_idx =
-    std::distance(original_path->points.begin(), first_inside_lane_it);
-
   /* spline interpolation */
   constexpr double interval = 0.2;
   autoware_auto_planning_msgs::msg::PathWithLaneId path_ip;
@@ -239,7 +227,6 @@ std::pair<std::optional<size_t>, std::optional<StopLineIdx>> generateStopLine(
 
   /* generate stop points */
   util::StopLineIdx idxs;
-  idxs.first_inside_lane = first_inside_lane_idx;
 
   // If a stop_line tag is defined on lanelet_map, use it.
   // else generate a stop_line behind the intersection of path and detection area
