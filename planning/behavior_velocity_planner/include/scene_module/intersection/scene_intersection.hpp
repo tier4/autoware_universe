@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -47,7 +48,6 @@ public:
   {
     bool stop_required;
 
-    geometry_msgs::msg::Pose slow_wall_pose;
     geometry_msgs::msg::Pose stop_wall_pose;
     geometry_msgs::msg::Pose stop_point_pose;
     geometry_msgs::msg::Pose judge_point_pose;
@@ -58,6 +58,7 @@ public:
     std::vector<lanelet::ConstLanelet> intersection_detection_lanelets;
     std::vector<lanelet::CompoundPolygon3d> detection_area;
     geometry_msgs::msg::Polygon intersection_area;
+    lanelet::CompoundPolygon3d ego_lane;
     std::vector<lanelet::CompoundPolygon3d> adjacent_area;
     autoware_auto_perception_msgs::msg::PredictedObjects conflicting_targets;
     autoware_auto_perception_msgs::msg::PredictedObjects stuck_targets;
@@ -99,8 +100,8 @@ public:
 
   IntersectionModule(
     const int64_t module_id, const int64_t lane_id, std::shared_ptr<const PlannerData> planner_data,
-    const PlannerParam & planner_param, const rclcpp::Logger logger,
-    const rclcpp::Clock::SharedPtr clock);
+    const PlannerParam & planner_param, const std::set<int> & assoc_ids,
+    const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock);
 
   /**
    * @brief plan go-stop velocity at traffic crossing with collision check between reference path
@@ -111,14 +112,19 @@ public:
   visualization_msgs::msg::MarkerArray createDebugMarkerArray() override;
   visualization_msgs::msg::MarkerArray createVirtualWallMarkerArray() override;
 
+  const std::set<int> & getAssocIds() const { return assoc_ids_; }
+
 private:
-  int64_t lane_id_;
+  const int64_t lane_id_;
   std::string turn_direction_;
   bool has_traffic_light_;
   bool is_go_out_;
 
   // Parameter
   PlannerParam planner_param_;
+  // for an intersection lane l1, its associative lanes are those that share same parent lanelet and
+  // have same turn_direction
+  const std::set<int> assoc_ids_;
 
   /**
    * @brief check collision for all lanelet area & predicted objects (call checkPathCollision() as
@@ -137,9 +143,10 @@ private:
     const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
     const lanelet::ConstLanelets & detection_area_lanelets,
     const lanelet::ConstLanelets & adjacent_lanelets,
-    const std::optional<Polygon2d> & intersection_area,
+    const std::optional<Polygon2d> & intersection_area, const lanelet::ConstLanelet & ego_lane,
+    const lanelet::ConstLanelets & ego_lane_with_next_lane,
     const autoware_auto_perception_msgs::msg::PredictedObjects::ConstSharedPtr objects_ptr,
-    const int closest_idx, const Polygon2d & stuck_vehicle_detect_area);
+    const int closest_idx);
 
   /**
    * @brief Check if there is a stopped vehicle on the ego-lane.
@@ -163,10 +170,9 @@ private:
    * @param ignore_dist     ignore distance from the start point of the ego-intersection lane
    * @return generated polygon
    */
-  Polygon2d generateEgoIntersectionLanePolygon(
-    lanelet::LaneletMapConstPtr lanelet_map_ptr,
-    const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const int closest_idx,
-    const double extra_dist, const double ignore_dist) const;
+  Polygon2d generateStuckVehicleDetectAreaPolygon(
+    const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
+    const lanelet::ConstLanelets & ego_lane_with_next_lane, const int closest_idx) const;
 
   /**
    * @brief Modify objects predicted path. remove path point if the time exceeds timer_thr.
@@ -185,8 +191,7 @@ private:
    * @return calculated time [s]
    */
   TimeDistanceArray calcIntersectionPassingTime(
-    const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const int closest_idx,
-    const int objective_lane_id) const;
+    const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const int closest_idx) const;
 
   /**
    * @brief check if the object has a target type for collision check
@@ -223,14 +228,11 @@ private:
     const double margin = 0);
 
   /**
-   * @brief Get lanes including ego lanelet and next lanelet
-   * @param lanelet_map_ptr lanelet map
-   * @param path            ego-car lane
-   * @return ego lanelet and next lanelet
+   * @brief Get path polygon of intersection part and next lane part
+   * @return trimmed path polygon
    */
   lanelet::ConstLanelets getEgoLaneWithNextLane(
-    lanelet::LaneletMapConstPtr lanelet_map_ptr,
-    const autoware_auto_planning_msgs::msg::PathWithLaneId & path) const;
+    const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const double width) const;
 
   /**
    * @brief Calculate distance between closest path point and intersection lanelet along path
