@@ -60,6 +60,8 @@ Module getModuleType(const std::string & module_name)
     module.type = Module::PULL_OVER;
   } else if (module_name == "pull_out") {
     module.type = Module::PULL_OUT;
+  } else if (module_name == "bus_stop") {
+    module.type = Module::BUS_STOP;
   }
   return module;
 }

@@ -81,6 +81,8 @@
   <depend>tier4_v2x_msgs</depend>
   <depend>vehicle_info_util</depend>
   <depend>visualization_msgs</depend>
+  <depend>autoware_adapi_v1_msgs</depend>
+  <depend>signal_processing</depend>
 
   <test_depend>ament_cmake_ros</test_depend>
   <test_depend>ament_lint_auto</test_depend>

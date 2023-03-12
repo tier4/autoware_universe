@@ -35,6 +35,7 @@
 
 // Scene modules
 #include <scene_module/blind_spot/manager.hpp>
+#include <scene_module/bus_stop/manager.hpp>
 #include <scene_module/crosswalk/manager.hpp>
 #include <scene_module/detection_area/manager.hpp>
 #include <scene_module/intersection/manager.hpp>
@@ -191,6 +192,9 @@ BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptio
   }
   if (this->declare_parameter("launch_virtual_traffic_light", true)) {
     planner_manager_.launchSceneModule(std::make_shared<VirtualTrafficLightModuleManager>(*this));
+  }
+  if (this->declare_parameter("launch_bus_stop", true)) {
+    planner_manager_.launchSceneModule(std::make_shared<bus_stop::BusStopModuleManager>(*this));
   }
   // this module requires all the stop line.Therefore this modules should be placed at the bottom.
   if (this->declare_parameter("launch_no_stopping_area", true)) {
