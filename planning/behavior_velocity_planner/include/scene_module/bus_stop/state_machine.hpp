@@ -42,12 +42,11 @@ public:
   struct StateParam
   {
     double turn_signal_blinking_duration;
-    double keep_stopping_duration;
   };
 
   struct StateInput
   {
-    bool is_safe_velocty;
+    bool is_safe_velocity;
     bool is_obstacle_on_the_side;
   };
 

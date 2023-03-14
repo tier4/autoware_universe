@@ -76,7 +76,7 @@ void StateMachine::updateState(const StateInput & state_input, rclcpp::Clock & c
     }
 
     // keep READY state if velocity of the approaching obstacle is not safe
-    if (!state_input.is_safe_velocty) {
+    if (!state_input.is_safe_velocity) {
       return;
     }
 
