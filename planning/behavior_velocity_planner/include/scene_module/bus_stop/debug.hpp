@@ -52,6 +52,8 @@ public:
   std::vector<geometry_msgs::msg::Pose> stop_poses;
   geometry_msgs::msg::Point nearest_point;
   std::shared_ptr<double> base_link2front;
+  bool is_obstacle_on_the_side;
+  bool is_safe_velocity;
 
 private:
   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_predicted_velocity_;

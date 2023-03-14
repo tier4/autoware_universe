@@ -338,7 +338,6 @@ bool BusStopModule::modifyPathVelocity(
   // use the first path point as base pose
   const auto nearest_point_with_dist =
     findLongitudinalForwardPoint(obstacle_points, path->points.at(0).point.pose);
-  debug_data_->nearest_point = nearest_point_with_dist.first;
 
   // update buffer and calculate predicted velocity from nearest obstacle point
   PointWithDistStamped point_with_dist = createPointWithDist(
@@ -365,6 +364,9 @@ bool BusStopModule::modifyPathVelocity(
     debug_data_->pushPredictedVelLpfKmph(velocity_buffer_lpf_.back() * 3.6);
     debug_data_->publishDebugValue();
   }
+  debug_data_->nearest_point = nearest_point_with_dist.first;
+  debug_data_->is_safe_velocity = is_safe_velocity;
+  debug_data_->is_obstacle_on_the_side = is_obstacle_on_the_side;
   if (is_obstacle_on_the_side) {
     RCLCPP_DEBUG_STREAM(rclcpp::get_logger("debug"), "obstacle is on the side of the vehicle");
   }
@@ -568,9 +570,19 @@ visualization_msgs::msg::MarkerArray BusStopModule::createDebugMarkerArray()
   if (!debug_data_->stop_poses.empty()) {
     appendMarkerArray(createCorrespondenceMarkerArray(bus_stop_reg_elem_, now), &debug_marker, now);
 
+    const auto marker_color = [&] {
+      if (!debug_data_->is_safe_velocity || debug_data_->is_obstacle_on_the_side) {
+        // RED
+        return createMarkerColor(1.0, 0, 0, 0.999);
+      } else {
+        // YELLOW
+        return createMarkerColor(1.0, 1.0, 0, 0.999);
+      }
+    };
+
     auto nearest_obstacle_marker = createDefaultMarker(
       "map", now, "nearest_obstacle", module_id_, visualization_msgs::msg::Marker::SPHERE,
-      createMarkerScale(0.6, 0.6, 0.6), createMarkerColor(1.0, 0, 0, 0.999));
+      createMarkerScale(0.6, 0.6, 0.6), marker_color());
     nearest_obstacle_marker.pose.position = debug_data_->nearest_point;
     nearest_obstacle_marker.lifetime = rclcpp::Duration::from_seconds(0.3);
     debug_marker.markers.emplace_back(nearest_obstacle_marker);
