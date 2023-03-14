@@ -25,6 +25,7 @@ DebugData::DebugData(rclcpp::Node & node) : node_(node)
     node_.create_publisher<Float32Stamped>("~/debug/bus_stop/predicted_vel_kmph", 1);
   pub_predicted_velocity_lpf_ =
     node_.create_publisher<Float32Stamped>("~/debug/bus_stop/predicted_vel_lpf_kmph", 1);
+  pub_safe_vel_count_ = node_.create_publisher<Int32Stamped>("~/debug/bus_stop/safe_vel_count", 1);
 }
 
 void DebugData::pushPredictedVelKmph(const double predicted_vel_kmph)
@@ -45,10 +46,17 @@ void DebugData::pushPredictedVelLpfKmph(const double predicted_vel_lpf_kmph)
   predicted_vel_lpf_kmph_ = predicted_vel_kmph_lpf_msg;
 }
 
+void DebugData::pushSafeVelCount(const size_t safe_vel_count)
+{
+  save_vel_count_.data = safe_vel_count;
+  save_vel_count_.stamp = node_.now();
+}
+
 void DebugData::publishDebugValue()
 {
   pub_predicted_velocity_->publish(predicted_vel_kmph_);
   pub_predicted_velocity_lpf_->publish(predicted_vel_lpf_kmph_);
+  pub_safe_vel_count_->publish(save_vel_count_);
 }
 
 void DebugData::clearDebugData() { stop_poses.clear(); }

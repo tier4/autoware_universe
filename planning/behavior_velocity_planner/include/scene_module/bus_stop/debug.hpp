@@ -22,6 +22,7 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tier4_debug_msgs/msg/float32_stamped.hpp>
+#include <tier4_debug_msgs/msg/int32_stamped.hpp>
 
 #include <memory>
 #include <vector>
@@ -35,6 +36,7 @@ using tier4_autoware_utils::createDefaultMarker;
 using tier4_autoware_utils::createMarkerColor;
 using tier4_autoware_utils::createMarkerScale;
 using tier4_debug_msgs::msg::Float32Stamped;
+using tier4_debug_msgs::msg::Int32Stamped;
 
 class DebugData
 {
@@ -44,6 +46,7 @@ public:
   void publishDebugValue();
   void pushPredictedVelKmph(const double predicted_vel_kmph);
   void pushPredictedVelLpfKmph(const double predicted_vel_lpf_kmph);
+  void pushSafeVelCount(const size_t safe_vel_count);
   void clearDebugData();
 
   std::vector<geometry_msgs::msg::Pose> stop_poses;
@@ -53,11 +56,13 @@ public:
 private:
   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_predicted_velocity_;
   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_predicted_velocity_lpf_;
+  rclcpp::Publisher<Int32Stamped>::SharedPtr pub_safe_vel_count_;
 
   rclcpp::Node & node_;
 
   Float32Stamped predicted_vel_kmph_;
   Float32Stamped predicted_vel_lpf_kmph_;
+  Int32Stamped save_vel_count_;
 };
 
 }  // namespace bus_stop

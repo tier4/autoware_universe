@@ -515,7 +515,7 @@ void BusStopModule::updatePointsBuffer(const BusStopModule::PointWithDistStamped
 
 bool BusStopModule::judgeSafetyFromObstacleVelocity(const std::deque<double> & velocity_buffer)
 {
-  if (velocity_buffer.size() < planner_param_.buffer_size) {
+  if (velocity_buffer.empty()) {
     return false;
   }
 
@@ -525,6 +525,8 @@ bool BusStopModule::judgeSafetyFromObstacleVelocity(const std::deque<double> & v
     velocity_buffer.cbegin(), velocity_buffer.cend(),
     [safe_vel_mps](const double velocity) -> bool { return velocity < safe_vel_mps; });
   RCLCPP_DEBUG_STREAM(rclcpp::get_logger("debug"), "safe_vel_count: " << safe_vel_count);
+  debug_data_->pushSafeVelCount(safe_vel_count);
+
   if (safe_vel_count >= planner_param_.num_safe_vel_threshold) {
     return true;
   }
