@@ -77,7 +77,6 @@ void StateMachine::updateState(const StateInput & state_input, rclcpp::Clock & c
 
     // keep READY state if velocity of the approaching obstacle is not safe
     if (!state_input.is_safe_velocty) {
-      // last_obstacle_detection_time_ = std::make_shared<const rclcpp::Time>(clock.now());
       return;
     }
 
@@ -85,18 +84,6 @@ void StateMachine::updateState(const StateInput & state_input, rclcpp::Clock & c
     if (state_input.is_obstacle_on_the_side) {
       return;
     }
-
-    // time_from_turn_signal > threshold && obstacle velocity is safe
-    // keep stopping for a certain time after the obstacle is detected
-    // if (last_obstacle_detection_time_) {
-    //   const auto time_from_last_detection = clock.now() - *last_obstacle_detection_time_;
-    //   RCLCPP_DEBUG_STREAM(
-    //     rclcpp::get_logger("debug"),
-    //     "time from last detection: " << time_from_last_detection.seconds());
-    //   if (time_from_last_detection.seconds() < state_param_.keep_stopping_duration) {
-    //     return;
-    //   }
-    // }
 
     state_ = State::GO;
     return;
