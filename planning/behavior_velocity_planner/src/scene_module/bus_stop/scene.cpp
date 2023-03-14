@@ -363,9 +363,11 @@ bool BusStopModule::modifyPathVelocity(
   RCLCPP_DEBUG_STREAM(rclcpp::get_logger("debug"), "longitudinal dist: " << point_with_dist.dist);
   RCLCPP_DEBUG_STREAM(
     rclcpp::get_logger("debug"), "current_state: " << toStringState(current_state));
-  debug_data_->pushPredictedVelKmph(velocity_buffer_.back() * 3.6);
-  debug_data_->pushPredictedVelLpfKmph(velocity_buffer_lpf_.back() * 3.6);
-  debug_data_->publishDebugValue();
+  if (!velocity_buffer_.empty() && !velocity_buffer_lpf_.empty()) {
+    debug_data_->pushPredictedVelKmph(velocity_buffer_.back() * 3.6);
+    debug_data_->pushPredictedVelLpfKmph(velocity_buffer_lpf_.back() * 3.6);
+    debug_data_->publishDebugValue();
+  }
 
   // calculate stop point for the stop line
   const auto path_idx_with_pose = calcStopPoint(*path);
