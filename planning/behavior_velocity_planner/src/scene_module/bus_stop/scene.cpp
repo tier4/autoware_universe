@@ -591,14 +591,14 @@ visualization_msgs::msg::MarkerArray BusStopModule::createDebugMarkerArray()
 
     auto nearest_obstacle_marker = createDefaultMarker(
       "map", now, "nearest_obstacle", module_id_, visualization_msgs::msg::Marker::SPHERE,
-      createMarkerScale(0.6, 0.6, 0.6), marker_color());
+      createMarkerScale(1.0, 1.0, 1.0), marker_color());
     nearest_obstacle_marker.pose.position = debug_data_->nearest_point;
     nearest_obstacle_marker.lifetime = rclcpp::Duration::from_seconds(0.3);
     debug_marker.markers.emplace_back(nearest_obstacle_marker);
 
     auto obstacle_vel_text = createDefaultMarker(
       "map", now, "obstacle_velocity", module_id_,
-      visualization_msgs::msg::Marker::TEXT_VIEW_FACING, createMarkerScale(0.8, 0.8, 0.8),
+      visualization_msgs::msg::Marker::TEXT_VIEW_FACING, createMarkerScale(1.0, 1.0, 1.0),
       createMarkerColor(1.0, 1.0, 1.0, 0.999));
     obstacle_vel_text.pose.position = debug_data_->nearest_point;
     obstacle_vel_text.lifetime = rclcpp::Duration::from_seconds(0.3);
