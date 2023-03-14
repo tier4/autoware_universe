@@ -291,6 +291,14 @@ void pushDataToBuffer(const T & data, const size_t max_size, std::deque<T> & buf
     buffer.pop_front();
   }
 }
+
+std::string createText(const double vel, const std::string & suffix)
+{
+  std::stringstream sstream;
+  sstream << std::setprecision(3) << vel << suffix;
+
+  return sstream.str();
+}
 }  // namespace
 
 BusStopModule::BusStopModule(
@@ -360,6 +368,7 @@ bool BusStopModule::modifyPathVelocity(
   RCLCPP_DEBUG_STREAM(
     rclcpp::get_logger("debug"), "current_state: " << toStringState(current_state));
   if (!velocity_buffer_.empty() && !velocity_buffer_lpf_.empty()) {
+    debug_data_->predicted_vel_kmph = velocity_buffer_lpf_.back() * 3.6;
     debug_data_->pushPredictedVelKmph(velocity_buffer_.back() * 3.6);
     debug_data_->pushPredictedVelLpfKmph(velocity_buffer_lpf_.back() * 3.6);
     debug_data_->publishDebugValue();
@@ -586,6 +595,15 @@ visualization_msgs::msg::MarkerArray BusStopModule::createDebugMarkerArray()
     nearest_obstacle_marker.pose.position = debug_data_->nearest_point;
     nearest_obstacle_marker.lifetime = rclcpp::Duration::from_seconds(0.3);
     debug_marker.markers.emplace_back(nearest_obstacle_marker);
+
+    auto obstacle_vel_text = createDefaultMarker(
+      "map", now, "obstacle_velocity", module_id_,
+      visualization_msgs::msg::Marker::TEXT_VIEW_FACING, createMarkerScale(0.8, 0.8, 0.8),
+      createMarkerColor(1.0, 1.0, 1.0, 0.999));
+    obstacle_vel_text.pose.position = debug_data_->nearest_point;
+    obstacle_vel_text.lifetime = rclcpp::Duration::from_seconds(0.3);
+    obstacle_vel_text.text = createText(debug_data_->predicted_vel_kmph, "[km/h]");
+    debug_marker.markers.emplace_back(obstacle_vel_text);
   }
 
   return debug_marker;

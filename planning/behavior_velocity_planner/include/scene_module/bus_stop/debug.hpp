@@ -54,6 +54,7 @@ public:
   std::shared_ptr<double> base_link2front;
   bool is_obstacle_on_the_side;
   bool is_safe_velocity;
+  double predicted_vel_kmph;
 
 private:
   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_predicted_velocity_;
