@@ -498,6 +498,14 @@ void BusStopModule::updatePointsBuffer(const BusStopModule::PointWithDistStamped
   const auto points_buffer_size = points_buffer_.size();
   const auto & p1 = points_buffer_.at(points_buffer_size - 2);
   const auto & p2 = points_buffer_.at(points_buffer_size - 1);
+
+  // if subscribed points are the same data as previous one,
+  // skip calculating predicted velocity and use previous one
+  if (p1.stamp == p2.stamp) {
+    RCLCPP_DEBUG_STREAM(rclcpp::get_logger("debug"), "same points are subscribed");
+    return;
+  }
+
   const double predicted_vel = calcPredictedVelocityFromTwoPoint(p1, p2);
   pushDataToBuffer(predicted_vel, planner_param_.buffer_size, velocity_buffer_);
 
