@@ -141,8 +141,7 @@ PathWithLaneId LaneFollowingModule::getReferencePath() const
     drivable_lanes, parameters_.drivable_area_left_bound_offset,
     parameters_.drivable_area_right_bound_offset);
 
-  reference_path.drivable_area = util::generateDrivableArea(
-    reference_path, expanded_lanes, p.drivable_area_resolution, p.vehicle_length, planner_data_);
+  util::generateDrivableArea(reference_path, expanded_lanes, p.vehicle_length, planner_data_);
 
   return reference_path;
 }
