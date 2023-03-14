@@ -64,7 +64,7 @@ private:
 
   Float32Stamped predicted_vel_kmph_;
   Float32Stamped predicted_vel_lpf_kmph_;
-  Int32Stamped save_vel_count_;
+  Int32Stamped safe_vel_count_;
 };
 
 }  // namespace bus_stop

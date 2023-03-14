@@ -48,15 +48,15 @@ void DebugData::pushPredictedVelLpfKmph(const double predicted_vel_lpf_kmph)
 
 void DebugData::pushSafeVelCount(const size_t safe_vel_count)
 {
-  save_vel_count_.data = safe_vel_count;
-  save_vel_count_.stamp = node_.now();
+  safe_vel_count_.data = safe_vel_count;
+  safe_vel_count_.stamp = node_.now();
 }
 
 void DebugData::publishDebugValue()
 {
   pub_predicted_velocity_->publish(predicted_vel_kmph_);
   pub_predicted_velocity_lpf_->publish(predicted_vel_lpf_kmph_);
-  pub_safe_vel_count_->publish(save_vel_count_);
+  pub_safe_vel_count_->publish(safe_vel_count_);
 }
 
 void DebugData::clearDebugData() { stop_poses.clear(); }
