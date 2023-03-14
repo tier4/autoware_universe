@@ -346,13 +346,8 @@ bool BusStopModule::modifyPathVelocity(
     planner_data_->no_ground_pointcloud->header.stamp);
   updatePointsBuffer(point_with_dist);
 
-  bool is_safe_velocity;
-  if (planner_param_.use_lpf) {
-    is_safe_velocity = judgeSafetyFromObstacleVelocity(velocity_buffer_lpf_);
-  } else {
-    is_safe_velocity = judgeSafetyFromObstacleVelocity(velocity_buffer_);
-  }
-
+  // judge the condition to decide the state
+  const bool is_safe_velocity = judgeSafetyFromObstacleVelocity(velocity_buffer_lpf_);
   const bool is_obstacle_on_the_side = judgeIfObstacleOnTheSide(points_buffer_);
 
   // update and current state
