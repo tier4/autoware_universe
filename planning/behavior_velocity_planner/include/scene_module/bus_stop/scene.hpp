@@ -60,7 +60,6 @@ public:
   struct PlannerParam
   {
     size_t buffer_size;
-    bool use_lpf;
     double lpf_gain;
     double safe_obstacle_vel_threshold_kmph;
     size_t num_safe_vel_threshold;
