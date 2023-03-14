@@ -353,8 +353,10 @@ bool BusStopModule::modifyPathVelocity(
     is_safe_velocity = judgeSafetyFromObstacleVelocity(velocity_buffer_);
   }
 
+  const bool is_obstacle_on_the_side = judgeIfObstacleOnTheSide(points_buffer_);
+
   // update and current state
-  state_machine_->updateState({is_safe_velocity}, *clock_);
+  state_machine_->updateState({is_safe_velocity, is_obstacle_on_the_side}, *clock_);
   const auto current_state = state_machine_->getCurrentState();
 
   //! debug
@@ -367,6 +369,9 @@ bool BusStopModule::modifyPathVelocity(
     debug_data_->pushPredictedVelKmph(velocity_buffer_.back() * 3.6);
     debug_data_->pushPredictedVelLpfKmph(velocity_buffer_lpf_.back() * 3.6);
     debug_data_->publishDebugValue();
+  }
+  if (is_obstacle_on_the_side) {
+    RCLCPP_DEBUG_STREAM(rclcpp::get_logger("debug"), "obstacle is on the side of the vehicle");
   }
 
   // calculate stop point for the stop line
@@ -532,6 +537,25 @@ bool BusStopModule::judgeSafetyFromObstacleVelocity(const std::deque<double> & v
   }
 
   return false;
+}
+
+bool BusStopModule::judgeIfObstacleOnTheSide(const std::deque<PointWithDistStamped> & points_buffer)
+{
+  // there are no obstacles
+  if (points_buffer_.empty()) {
+    return false;
+  }
+
+  const auto & latest_detected_point = points_buffer.back().point;
+  const auto & base_link_pose = planner_data_->current_pose.pose;
+  const auto ego_rear_pose = tier4_autoware_utils::calcOffsetPose(
+    base_link_pose, -planner_data_->vehicle_info_.rear_overhang_m, 0, 0);
+  const auto longitudinal_deviation_from_ego_rear =
+    tier4_autoware_utils::calcLongitudinalDeviation(ego_rear_pose, latest_detected_point);
+
+  // if the value is positive, that means latest_detected_point is ahead of the ego_rear_pose
+  const bool target_is_on_the_side = longitudinal_deviation_from_ego_rear > 0;
+  return target_is_on_the_side;
 }
 
 bool BusStopModule::isRTCActivated(const double stop_distance, const bool safe)

@@ -93,6 +93,7 @@ private:
   double calcPredictedVelocity();
   double calcPredictedVelocityLpf();
   bool judgeSafetyFromObstacleVelocity(const std::deque<double> & velocity_buffer);
+  bool judgeIfObstacleOnTheSide(const std::deque<PointWithDistStamped> & points_buffer);
   bool isRTCActivated(const double stop_distance, const bool safe);
 
   // Lane id

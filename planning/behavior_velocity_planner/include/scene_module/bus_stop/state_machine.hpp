@@ -48,6 +48,7 @@ public:
   struct StateInput
   {
     bool is_safe_velocty;
+    bool is_obstacle_on_the_side;
   };
 
   explicit StateMachine(rclcpp::Node & node, const StateParam & state_param);

@@ -75,9 +75,14 @@ void StateMachine::updateState(const StateInput & state_input, rclcpp::Clock & c
       return;
     }
 
+    // keep READY state if velocity of the approaching obstacle is not safe
     if (!state_input.is_safe_velocty) {
-      // keep READY state because velocity of the approaching obstacle is not safe
       // last_obstacle_detection_time_ = std::make_shared<const rclcpp::Time>(clock.now());
+      return;
+    }
+
+    // keep READY state if the obstacle is on the side of the ego vehicle
+    if (state_input.is_obstacle_on_the_side) {
       return;
     }
 
