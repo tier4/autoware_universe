@@ -19,6 +19,8 @@
 
 #include <autoware_auto_vehicle_msgs/msg/hazard_lights_command.hpp>
 
+namespace hazard_lights_selector
+{
 using autoware_auto_vehicle_msgs::msg::HazardLightsCommand;
 
 class HazardLightsSelectorNode : public rclcpp::Node
@@ -26,14 +28,24 @@ class HazardLightsSelectorNode : public rclcpp::Node
 public:
   explicit HazardLightsSelectorNode(const rclcpp::NodeOptions & node_options);
 
-  struct NodeParam
-  {
-  };
 
 private:
+  // Subscriber
+  rclcpp::Subscription<HazardLightsCommand>::SharedPtr sub_hazard_lights_cmd_from_path_planner_;
+  rclcpp::Subscription<HazardLightsCommand>::SharedPtr sub_hazard_lights_cmd_from_mrm_operator_;
 
-  // Parameters
-  NodeParam node_param_{};
+  void onHazardLightsCommandFromPathPlanner(HazardLightsCommand::ConstSharedPtr msg);
+  void onHazardLightsCommandFromMrmOperator(HazardLightsCommand::ConstSharedPtr msg);
+
+  // Publisher
+  rclcpp::Publisher<HazardLightsCommand>::SharedPtr pub_hazard_lights_cmd_;
+
+  void publishHazardLightsCommand() const;
+
+  // Timer
+  rclcpp::TimerBase::SharedPtr timer_;
+
 };
+}  // namespace hazard_lights_selector
 
 #endif  // HAZARD_LIGHTS_SELECTOR__HAZARD_LIGHTS_SELECTOR_NODE_HPP_
