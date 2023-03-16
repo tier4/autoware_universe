@@ -25,11 +25,19 @@ using autoware_auto_vehicle_msgs::msg::HazardLightsCommand;
 
 class HazardLightsSelectorNode : public rclcpp::Node
 {
+struct Parameters
+{
+  int update_rate;  // [Hz]
+};
+
 public:
   explicit HazardLightsSelectorNode(const rclcpp::NodeOptions & node_options);
 
 
 private:
+  // Parameter
+  Parameters params_;
+
   // Subscriber
   rclcpp::Subscription<HazardLightsCommand>::SharedPtr sub_hazard_lights_cmd_from_path_planner_;
   rclcpp::Subscription<HazardLightsCommand>::SharedPtr sub_hazard_lights_cmd_from_mrm_operator_;
@@ -44,6 +52,13 @@ private:
 
   // Timer
   rclcpp::TimerBase::SharedPtr timer_;
+
+  void onTimer();
+
+  // State
+  HazardLightsCommand current_hazard_lights_cmd_;
+  HazardLightsCommand::ConstSharedPtr hazard_lights_command_from_path_planner_;
+  HazardLightsCommand::ConstSharedPtr hazard_lights_command_from_mrm_operator_;
 
 };
 }  // namespace hazard_lights_selector
