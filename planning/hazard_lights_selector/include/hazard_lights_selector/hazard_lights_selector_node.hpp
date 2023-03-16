@@ -56,10 +56,8 @@ private:
   void onTimer();
 
   // State
-  HazardLightsCommand current_hazard_lights_cmd_;
   HazardLightsCommand::ConstSharedPtr hazard_lights_command_from_path_planner_;
   HazardLightsCommand::ConstSharedPtr hazard_lights_command_from_mrm_operator_;
-
 };
 }  // namespace hazard_lights_selector
 

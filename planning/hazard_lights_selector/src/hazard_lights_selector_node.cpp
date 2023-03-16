@@ -40,9 +40,6 @@ HazardLightsSelectorNode::HazardLightsSelectorNode(const rclcpp::NodeOptions & n
   const auto update_period_ns = rclcpp::Rate(params_.update_rate).period();
   timer_ = rclcpp::create_timer(
     this, get_clock(), update_period_ns, std::bind(&HazardLightsSelectorNode::onTimer, this));
-
-  // State
-  current_hazard_lights_cmd_.command = HazardLightsCommand::DISABLE;
 }
 
 void HazardLightsSelectorNode::onHazardLightsCommandFromPathPlanner(HazardLightsCommand::ConstSharedPtr msg)
