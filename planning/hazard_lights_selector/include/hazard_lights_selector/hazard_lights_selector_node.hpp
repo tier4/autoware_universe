@@ -33,7 +33,6 @@ struct Parameters
 public:
   explicit HazardLightsSelectorNode(const rclcpp::NodeOptions & node_options);
 
-
 private:
   // Parameter
   Parameters params_;
