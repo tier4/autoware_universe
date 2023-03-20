@@ -14,9 +14,6 @@
 
 #include "autonomous_emergency_braking/node.hpp"
 
-#include <motion_utils/trajectory/trajectory.hpp>
-#include <tier4_autoware_utils/tier4_autoware_utils.hpp>
-
 #include <pcl/filters/voxel_grid.h>
 #include <tf2/utils.h>
 
@@ -323,7 +320,7 @@ bool AEB::hasCollision(
     const double rss_dist = current_v * t + (current_v * current_v) / (2 * std::fabs(a_ego_min_)) -
                             obj_v * obj_v / (2 * std::fabs(a_obj_min_)) + longitudinal_offset_;
     const double dist_ego_to_object =
-      motion_utils::calcSignedArcLength(ego_path, current_p, obj.position) -
+      tier4_autoware_utils::calcSignedArcLength(ego_path, current_p, obj.position) -
       vehicle_info_.max_longitudinal_offset_m;
     if (dist_ego_to_object < rss_dist) {
       // collision happens
@@ -367,7 +364,7 @@ void AEB::generateEgoPath(
   }
 
   // If path is shorter than minimum path length
-  while (motion_utils::calcArcLength(path) < min_generated_path_length_) {
+  while (tier4_autoware_utils::calcArcLength(path) < min_generated_path_length_) {
     curr_x = curr_x + curr_v * std::cos(curr_yaw) * dt;
     curr_y = curr_y + curr_v * std::sin(curr_yaw) * dt;
     curr_yaw = curr_yaw + curr_w * dt;
@@ -427,7 +424,7 @@ void AEB::createObjectData(
     obj.position = tier4_autoware_utils::createPoint(point.x, point.y, point.z);
     obj.velocity = 0.0;
     const Point2d obj_point(point.x, point.y);
-    const double lat_dist = motion_utils::calcLateralOffset(ego_path, obj.position);
+    const double lat_dist = tier4_autoware_utils::calcLateralOffset(ego_path, obj.position);
     if (lat_dist > 5.0) {
       continue;
     }
