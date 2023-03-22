@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef IMU_ANOMALY_MONITOR__IMU_ANOMALY_MONITOR_HPP_
-#define IMU_ANOMALY_MONITOR__IMU_ANOMALY_MONITOR_HPP_
+#ifndef IMU_MONITOR__IMU_MONITOR_HPP_
+#define IMU_MONITOR__IMU_MONITOR_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 #include <tf2/utils.h>
@@ -21,7 +21,6 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
-#include <kalman_filter/kalman_filter.hpp>
 #include "autoware_auto_vehicle_msgs/msg/velocity_report.hpp"
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
@@ -33,6 +32,8 @@
 #include <string>
 #include <vector>
 
+namespace imu_monitor
+{
 
 class KalmanFilter1d
 {
@@ -93,6 +94,7 @@ public:
 private:
   void on_twist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr msg);
   void on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg);
+  void check_yaw_rate(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
     twist_sub_;
@@ -100,21 +102,24 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr
     imu_sub_;
 
-  rclcpp::Publisher<tier4_debug_msgs::msg::Float32Stamped>::SharedPtr imu_yaw_rate_pub_;
-  rclcpp::Publisher<tier4_debug_msgs::msg::Float32Stamped>::SharedPtr vehicle_yaw_rate_pub_;
-
   std::shared_ptr<tier4_autoware_utils::TransformListener> transform_listener_;
 
-  diagnostic_updater::Updater updater_;
 
   std::string frame_id_;
-  double stddev_vx_;
-  double stddev_wz_;
-  std::array<double, 36> twist_covariance_;
+  double yaw_rate_diff_threshold_;
+
+  geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr twist_ptr_;
+  sensor_msgs::msg::Imu::ConstSharedPtr imu_ptr_;
+
+  double imu_yaw_rate_;
+  double twist_yaw_rate_;
 
   KalmanFilter1d imu_filter_;
   KalmanFilter1d twist_filter_;
-  bool first_observation_{true}; 
-};
 
-#endif  // IMU_ANOMALY_MONITOR__IMU_ANOMALY_MONITOR_HPP_
+  diagnostic_updater::Updater updater_;
+
+};
+} //namespace imu_monitor
+
+#endif  // IMU_MONITOR__IMU_MONITOR_HPP_

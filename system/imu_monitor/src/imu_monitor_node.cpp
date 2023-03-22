@@ -17,7 +17,7 @@
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<ImuMonitor>();
+  auto node = std::make_shared<imu_monitor::ImuMonitor>();
   rclcpp::spin(node);
   rclcpp::shutdown();
 

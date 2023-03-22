@@ -15,12 +15,15 @@
 #include "imu_monitor/imu_monitor.hpp"
 #include "tier4_autoware_utils/ros/msg_covariance.hpp"
 
+namespace imu_monitor
+{
+
 
 ImuMonitor::ImuMonitor() : Node("imu_monitor"), updater_(this)
 {
   // set covariance value for twist with covariance msg
-  stddev_vx_ = declare_parameter("velocity_stddev_xx", 0.2);
-  stddev_wz_ = declare_parameter("angular_velocity_stddev_zz", 0.1);
+  // stddev_vx_ = declare_parameter("velocity_stddev_xx", 0.2);
+  yaw_rate_diff_threshold_ = declare_parameter("yaw_rate_diff_threshold", 0.07);
   frame_id_ = declare_parameter("frame_id", "base_link");
 
   twist_sub_ = create_subscription<geometry_msgs::msg::TwistWithCovarianceStamped>(
@@ -31,20 +34,14 @@ ImuMonitor::ImuMonitor() : Node("imu_monitor"), updater_(this)
     "~/input/imu", rclcpp::QoS{100},
     std::bind(&ImuMonitor::on_imu, this, std::placeholders::_1));
 
-  imu_yaw_rate_pub_ = create_publisher<tier4_debug_msgs::msg::Float32Stamped>(
-    "imu_yaw_rate", rclcpp::QoS{10});
-
-  vehicle_yaw_rate_pub_ = create_publisher<tier4_debug_msgs::msg::Float32Stamped>(
-    "vehicle_yaw_rate", rclcpp::QoS{10});
-
   transform_listener_ = std::make_shared<tier4_autoware_utils::TransformListener>(this);
 
-  imu_filter_.set_proc_dev(0.01);
+  imu_filter_.set_proc_dev(0.1);
   twist_filter_.set_proc_dev(0.1);
 
   // Diagnostics Updater
-  updater_.setHardwareID("imu_anomaly_checker");
-  updater_.add("imu_status", this, &CollisionCheckerNode::checkCollision);
+  updater_.setHardwareID("imu_monitor");
+  updater_.add("yaw_rate_status", this, &ImuMonitor::check_yaw_rate);
   updater_.setPeriod(0.1);
 }
 
@@ -56,18 +53,19 @@ void ImuMonitor::on_twist(
     return;
   }
 
+  twist_ptr_ = msg;
+
   using COV_IDX = tier4_autoware_utils::xyzrpy_covariance_index::XYZRPY_COV_IDX;
-  twist_filter_.update(msg->twist.twist.angular.z, msg->twist.covariance[COV_IDX::YAW_YAW], msg->header.stamp);
-  const double yaw_rate = twist_filter_.get_x();
+  twist_filter_.update(twist_ptr_->twist.twist.angular.z, twist_ptr_->twist.covariance[COV_IDX::YAW_YAW], twist_ptr_->header.stamp);
+  twist_yaw_rate_ = twist_filter_.get_x();
 
   auto yaw_rate_msg = std::make_unique<tier4_debug_msgs::msg::Float32Stamped>();
   yaw_rate_msg->stamp = this->now();
-  yaw_rate_msg->data = yaw_rate;
+  yaw_rate_msg->data = twist_yaw_rate_;
   vehicle_yaw_rate_pub_->publish(std::move(yaw_rate_msg));
 }
 
-void ImuMonitor::on_imu(
-  const sensor_msgs::msg::Imu::ConstSharedPtr msg)
+void ImuMonitor::on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
 {
   auto imu_frame_ = msg->header.frame_id;
   geometry_msgs::msg::TransformStamped::ConstSharedPtr tf2_imu_link_to_base_link =
@@ -78,18 +76,47 @@ void ImuMonitor::on_imu(
       (imu_frame_).c_str());
     return;
   }
+  imu_ptr_ = msg;
 
   geometry_msgs::msg::Vector3Stamped angular_velocity;
-  angular_velocity.vector = msg->angular_velocity;
+  angular_velocity.vector = imu_ptr_->angular_velocity;
 
   geometry_msgs::msg::Vector3Stamped transformed_angular_velocity;
   tf2::doTransform(angular_velocity, transformed_angular_velocity, *tf2_imu_link_to_base_link);
 
-  imu_filter_.update(transformed_angular_velocity.vector.z, msg->angular_velocity_covariance[8], msg->header.stamp);
-  auto yaw_rate = imu_filter_.get_x();
+  imu_filter_.update(transformed_angular_velocity.vector.z, imu_ptr_->angular_velocity_covariance[8], imu_ptr_->header.stamp);
+  imu_yaw_rate_ = imu_filter_.get_x();
 
   auto yaw_rate_msg = std::make_unique<tier4_debug_msgs::msg::Float32Stamped>();
   yaw_rate_msg->stamp = this->now();
-  yaw_rate_msg->data = yaw_rate;
+  yaw_rate_msg->data = imu_yaw_rate_;
   imu_yaw_rate_pub_->publish(std::move(yaw_rate_msg));
 }
+
+void ImuMonitor::check_yaw_rate(diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  if (!twist_ptr_) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000 /* ms */, "waiting for twist info...");
+    return;
+  }
+
+  if (!imu_ptr_) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000 /* ms */, "waiting for imu info...");
+    return;
+  }
+
+  diagnostic_msgs::msg::DiagnosticStatus status;
+  if (std::abs(imu_yaw_rate_ - twist_yaw_rate_) > yaw_rate_diff_threshold_) {
+    status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    status.message = "The yaw_rate deviation is large";
+  } else {
+    status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  }
+  stat.addf("yaw rate from imu", "%lf", imu_yaw_rate_);
+  stat.addf("yaw rate from twist", "%lf", twist_yaw_rate_);
+  stat.summary(status.level, status.message);
+}
+
+}  //namespace imu_monitor
