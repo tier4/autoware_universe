@@ -1,0 +1,9 @@
+<launch>
+  <arg name="config_file" default="$(find-pkg-share imu_anomaly_monitor)/config/imu_anomaly_monitor.param.yaml"/>
+
+  <node pkg="imu_anomaly_monitor" exec="imu_anomaly_monitor" name="imu_anomaly_monitor_node" output="screen">
+    <!-- <param from="$(var config_file)"/> -->
+    <remap from="~/input/velocity_status" to="/vehicle/status/velocity_status"/>
+    <remap from="~/input/imu" to="/sensing/imu/tamagawa/imu_raw"/>
+  </node>
+</launch>
