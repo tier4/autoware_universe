@@ -1,5 +1,4 @@
 /**:
   ros__parameters:
-    velocity_stddev_xx: 0.2  # [m/s]
-    angular_velocity_stddev_zz: 0.1  # [rad/s]
+    yaw_rate_diff_threshold: 0.07  # [rad/s]
     frame_id: base_link
