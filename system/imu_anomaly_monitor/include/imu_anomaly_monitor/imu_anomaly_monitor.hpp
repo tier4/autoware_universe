@@ -19,6 +19,7 @@
 #include <tf2/utils.h>
 #include <tier4_autoware_utils/ros/transform_listener.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 
 #include <kalman_filter/kalman_filter.hpp>
 #include "autoware_auto_vehicle_msgs/msg/velocity_report.hpp"
@@ -90,11 +91,11 @@ public:
   ~ImuAnomalyMonitor() = default;
 
 private:
-  void on_velocity_report(const autoware_auto_vehicle_msgs::msg::VelocityReport::ConstSharedPtr msg);
+  void on_twist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr msg);
   void on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg);
 
-  rclcpp::Subscription<autoware_auto_vehicle_msgs::msg::VelocityReport>::SharedPtr
-    vehicle_report_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
+    twist_sub_;
 
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr
     imu_sub_;
@@ -110,7 +111,7 @@ private:
   std::array<double, 36> twist_covariance_;
 
   KalmanFilter1d imu_filter_;
-  KalmanFilter1d vehicle_filter_;
+  KalmanFilter1d twist_filter_;
   bool first_observation_{true}; 
 };
 
