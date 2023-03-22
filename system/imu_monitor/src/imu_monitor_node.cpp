@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <imu_anomaly_monitor/imu_anomaly_monitor.hpp>
+#include <imu_monitor/imu_monitor.hpp>
 
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<ImuAnomalyMonitor>();
+  auto node = std::make_shared<ImuMonitor>();
   rclcpp::spin(node);
   rclcpp::shutdown();
 

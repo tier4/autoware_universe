@@ -1,4 +1,4 @@
-// Copyright 2021 TierIV
+// Copyright 2023 TierIV
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "imu_anomaly_monitor/imu_anomaly_monitor.hpp"
+#include "imu_monitor/imu_monitor.hpp"
 #include "tier4_autoware_utils/ros/msg_covariance.hpp"
-#include <eigen3/Eigen/Core>
 
 
-ImuAnomalyMonitor::ImuAnomalyMonitor() : Node("imu_anomaly_monitor")
+ImuMonitor::ImuMonitor() : Node("imu_monitor"), updater_(this)
 {
   // set covariance value for twist with covariance msg
   stddev_vx_ = declare_parameter("velocity_stddev_xx", 0.2);
@@ -26,11 +25,11 @@ ImuAnomalyMonitor::ImuAnomalyMonitor() : Node("imu_anomaly_monitor")
 
   twist_sub_ = create_subscription<geometry_msgs::msg::TwistWithCovarianceStamped>(
     "~/input/twist", rclcpp::QoS{100},
-    std::bind(&ImuAnomalyMonitor::on_twist, this, std::placeholders::_1));
+    std::bind(&ImuMonitor::on_twist, this, std::placeholders::_1));
 
   imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
     "~/input/imu", rclcpp::QoS{100},
-    std::bind(&ImuAnomalyMonitor::on_imu, this, std::placeholders::_1));
+    std::bind(&ImuMonitor::on_imu, this, std::placeholders::_1));
 
   imu_yaw_rate_pub_ = create_publisher<tier4_debug_msgs::msg::Float32Stamped>(
     "imu_yaw_rate", rclcpp::QoS{10});
@@ -42,9 +41,14 @@ ImuAnomalyMonitor::ImuAnomalyMonitor() : Node("imu_anomaly_monitor")
 
   imu_filter_.set_proc_dev(0.01);
   twist_filter_.set_proc_dev(0.1);
+
+  // Diagnostics Updater
+  updater_.setHardwareID("imu_anomaly_checker");
+  updater_.add("imu_status", this, &CollisionCheckerNode::checkCollision);
+  updater_.setPeriod(0.1);
 }
 
-void ImuAnomalyMonitor::on_twist(
+void ImuMonitor::on_twist(
   const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr msg)
 {
   if (msg->header.frame_id != frame_id_) {
@@ -62,7 +66,7 @@ void ImuAnomalyMonitor::on_twist(
   vehicle_yaw_rate_pub_->publish(std::move(yaw_rate_msg));
 }
 
-void ImuAnomalyMonitor::on_imu(
+void ImuMonitor::on_imu(
   const sensor_msgs::msg::Imu::ConstSharedPtr msg)
 {
   auto imu_frame_ = msg->header.frame_id;

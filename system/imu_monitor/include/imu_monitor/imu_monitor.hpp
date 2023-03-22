@@ -20,7 +20,7 @@
 #include <tier4_autoware_utils/ros/transform_listener.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
-
+#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <kalman_filter/kalman_filter.hpp>
 #include "autoware_auto_vehicle_msgs/msg/velocity_report.hpp"
 #include <geometry_msgs/msg/twist_stamped.hpp>
@@ -84,11 +84,11 @@ private:
   rclcpp::Time latest_time_;
 };
 
-class ImuAnomalyMonitor : public rclcpp::Node
+class ImuMonitor : public rclcpp::Node
 {
 public:
-  ImuAnomalyMonitor();
-  ~ImuAnomalyMonitor() = default;
+  ImuMonitor();
+  ~ImuMonitor() = default;
 
 private:
   void on_twist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr msg);
@@ -104,6 +104,8 @@ private:
   rclcpp::Publisher<tier4_debug_msgs::msg::Float32Stamped>::SharedPtr vehicle_yaw_rate_pub_;
 
   std::shared_ptr<tier4_autoware_utils::TransformListener> transform_listener_;
+
+  diagnostic_updater::Updater updater_;
 
   std::string frame_id_;
   double stddev_vx_;
