@@ -22,8 +22,6 @@ namespace imu_monitor
 ImuMonitor::ImuMonitor(const rclcpp::NodeOptions & node_options)
 : Node("imu_monitor", node_options), updater_(this)
 {
-  // set covariance value for twist with covariance msg
-  // stddev_vx_ = declare_parameter("velocity_stddev_xx", 0.2);
   yaw_rate_diff_threshold_ = declare_parameter("yaw_rate_diff_threshold", 0.07);
   frame_id_ = declare_parameter("frame_id", "base_link");
 
