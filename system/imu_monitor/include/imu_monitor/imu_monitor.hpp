@@ -88,7 +88,7 @@ private:
 class ImuMonitor : public rclcpp::Node
 {
 public:
-  ImuMonitor();
+  ImuMonitor(const rclcpp::NodeOptions & node_options);
   ~ImuMonitor() = default;
 
 private:

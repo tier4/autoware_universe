@@ -19,7 +19,8 @@ namespace imu_monitor
 {
 
 
-ImuMonitor::ImuMonitor() : Node("imu_monitor"), updater_(this)
+ImuMonitor::ImuMonitor(const rclcpp::NodeOptions & node_options)
+: Node("imu_monitor", node_options), updater_(this)
 {
   // set covariance value for twist with covariance msg
   // stddev_vx_ = declare_parameter("velocity_stddev_xx", 0.2);
@@ -58,11 +59,6 @@ void ImuMonitor::on_twist(
   using COV_IDX = tier4_autoware_utils::xyzrpy_covariance_index::XYZRPY_COV_IDX;
   twist_filter_.update(twist_ptr_->twist.twist.angular.z, twist_ptr_->twist.covariance[COV_IDX::YAW_YAW], twist_ptr_->header.stamp);
   twist_yaw_rate_ = twist_filter_.get_x();
-
-  auto yaw_rate_msg = std::make_unique<tier4_debug_msgs::msg::Float32Stamped>();
-  yaw_rate_msg->stamp = this->now();
-  yaw_rate_msg->data = twist_yaw_rate_;
-  vehicle_yaw_rate_pub_->publish(std::move(yaw_rate_msg));
 }
 
 void ImuMonitor::on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
@@ -86,11 +82,6 @@ void ImuMonitor::on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
 
   imu_filter_.update(transformed_angular_velocity.vector.z, imu_ptr_->angular_velocity_covariance[8], imu_ptr_->header.stamp);
   imu_yaw_rate_ = imu_filter_.get_x();
-
-  auto yaw_rate_msg = std::make_unique<tier4_debug_msgs::msg::Float32Stamped>();
-  yaw_rate_msg->stamp = this->now();
-  yaw_rate_msg->data = imu_yaw_rate_;
-  imu_yaw_rate_pub_->publish(std::move(yaw_rate_msg));
 }
 
 void ImuMonitor::check_yaw_rate(diagnostic_updater::DiagnosticStatusWrapper & stat)
@@ -120,3 +111,6 @@ void ImuMonitor::check_yaw_rate(diagnostic_updater::DiagnosticStatusWrapper & st
 }
 
 }  //namespace imu_monitor
+
+#include <rclcpp_components/register_node_macro.hpp>
+RCLCPP_COMPONENTS_REGISTER_NODE(imu_monitor::ImuMonitor)
