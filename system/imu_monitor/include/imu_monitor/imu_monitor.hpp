@@ -15,22 +15,19 @@
 #ifndef IMU_MONITOR__IMU_MONITOR_HPP_
 #define IMU_MONITOR__IMU_MONITOR_HPP_
 
-#include <rclcpp/rclcpp.hpp>
-#include <tf2/utils.h>
-#include <tier4_autoware_utils/ros/transform_listener.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
-#include "autoware_auto_vehicle_msgs/msg/velocity_report.hpp"
+#include <rclcpp/rclcpp.hpp>
+#include <tier4_autoware_utils/ros/transform_listener.hpp>
+
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
-#include <tier4_debug_msgs/msg/float32_stamped.hpp>
+#include <tf2/utils.h>
 
-#include <array>
+#include <memory>
 #include <string>
-#include <vector>
 
 namespace imu_monitor
 {
@@ -88,7 +85,7 @@ private:
 class ImuMonitor : public rclcpp::Node
 {
 public:
-  ImuMonitor(const rclcpp::NodeOptions & node_options);
+  explicit ImuMonitor(const rclcpp::NodeOptions & node_options);
   ~ImuMonitor() = default;
 
 private:
@@ -96,14 +93,11 @@ private:
   void on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg);
   void check_yaw_rate(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
-  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
-    twist_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_sub_;
 
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr
-    imu_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
 
   std::shared_ptr<tier4_autoware_utils::TransformListener> transform_listener_;
-
 
   std::string frame_id_;
   double yaw_rate_diff_threshold_;
@@ -118,8 +112,7 @@ private:
   KalmanFilter1d twist_filter_;
 
   diagnostic_updater::Updater updater_;
-
 };
-} //namespace imu_monitor
+}  // namespace imu_monitor
 
 #endif  // IMU_MONITOR__IMU_MONITOR_HPP_

@@ -13,11 +13,11 @@
 // limitations under the License.
 
 #include "imu_monitor/imu_monitor.hpp"
+
 #include "tier4_autoware_utils/ros/msg_covariance.hpp"
 
 namespace imu_monitor
 {
-
 
 ImuMonitor::ImuMonitor(const rclcpp::NodeOptions & node_options)
 : Node("imu_monitor", node_options), updater_(this)
@@ -32,8 +32,7 @@ ImuMonitor::ImuMonitor(const rclcpp::NodeOptions & node_options)
     std::bind(&ImuMonitor::on_twist, this, std::placeholders::_1));
 
   imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-    "~/input/imu", rclcpp::QoS{100},
-    std::bind(&ImuMonitor::on_imu, this, std::placeholders::_1));
+    "~/input/imu", rclcpp::QoS{100}, std::bind(&ImuMonitor::on_imu, this, std::placeholders::_1));
 
   transform_listener_ = std::make_shared<tier4_autoware_utils::TransformListener>(this);
 
@@ -46,8 +45,7 @@ ImuMonitor::ImuMonitor(const rclcpp::NodeOptions & node_options)
   updater_.setPeriod(0.1);
 }
 
-void ImuMonitor::on_twist(
-  const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr msg)
+void ImuMonitor::on_twist(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr msg)
 {
   if (msg->header.frame_id != frame_id_) {
     RCLCPP_WARN(get_logger(), "frame_id is not base_link.");
@@ -57,7 +55,9 @@ void ImuMonitor::on_twist(
   twist_ptr_ = msg;
 
   using COV_IDX = tier4_autoware_utils::xyzrpy_covariance_index::XYZRPY_COV_IDX;
-  twist_filter_.update(twist_ptr_->twist.twist.angular.z, twist_ptr_->twist.covariance[COV_IDX::YAW_YAW], twist_ptr_->header.stamp);
+  twist_filter_.update(
+    twist_ptr_->twist.twist.angular.z, twist_ptr_->twist.covariance[COV_IDX::YAW_YAW],
+    twist_ptr_->header.stamp);
   twist_yaw_rate_ = twist_filter_.get_x();
 }
 
@@ -68,8 +68,7 @@ void ImuMonitor::on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
     transform_listener_->getLatestTransform(imu_frame_, frame_id_);
   if (!tf2_imu_link_to_base_link) {
     RCLCPP_ERROR(
-      this->get_logger(), "Please publish TF %s to %s", frame_id_.c_str(),
-      (imu_frame_).c_str());
+      this->get_logger(), "Please publish TF %s to %s", frame_id_.c_str(), (imu_frame_).c_str());
     return;
   }
   imu_ptr_ = msg;
@@ -80,7 +79,9 @@ void ImuMonitor::on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
   geometry_msgs::msg::Vector3Stamped transformed_angular_velocity;
   tf2::doTransform(angular_velocity, transformed_angular_velocity, *tf2_imu_link_to_base_link);
 
-  imu_filter_.update(transformed_angular_velocity.vector.z, imu_ptr_->angular_velocity_covariance[8], imu_ptr_->header.stamp);
+  imu_filter_.update(
+    transformed_angular_velocity.vector.z, imu_ptr_->angular_velocity_covariance[8],
+    imu_ptr_->header.stamp);
   imu_yaw_rate_ = imu_filter_.get_x();
 }
 
@@ -110,7 +111,7 @@ void ImuMonitor::check_yaw_rate(diagnostic_updater::DiagnosticStatusWrapper & st
   stat.summary(status.level, status.message);
 }
 
-}  //namespace imu_monitor
+}  // namespace imu_monitor
 
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(imu_monitor::ImuMonitor)
