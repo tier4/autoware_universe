@@ -33,8 +33,8 @@ HazardLightsSelectorNode::HazardLightsSelectorNode(const rclcpp::NodeOptions & n
     std::bind(&HazardLightsSelectorNode::onHazardLightsCommandFromMrmOperator, this, _1));
 
   // Publisher
-  pub_hazard_lights_cmd_ = this->create_publisher<HazardLightsCommand>(
-    "~/output/hazard_lights_cmd", 1);
+  pub_hazard_lights_cmd_ =
+    this->create_publisher<HazardLightsCommand>("~/output/hazard_lights_cmd", 1);
 
   // Timer
   const auto update_period_ns = rclcpp::Rate(params_.update_rate).period();
@@ -42,12 +42,14 @@ HazardLightsSelectorNode::HazardLightsSelectorNode(const rclcpp::NodeOptions & n
     this, get_clock(), update_period_ns, std::bind(&HazardLightsSelectorNode::onTimer, this));
 }
 
-void HazardLightsSelectorNode::onHazardLightsCommandFromPathPlanner(HazardLightsCommand::ConstSharedPtr msg)
+void HazardLightsSelectorNode::onHazardLightsCommandFromPathPlanner(
+  HazardLightsCommand::ConstSharedPtr msg)
 {
   hazard_lights_command_from_path_planner_ = msg;
 }
 
-void HazardLightsSelectorNode::onHazardLightsCommandFromMrmOperator(HazardLightsCommand::ConstSharedPtr msg)
+void HazardLightsSelectorNode::onHazardLightsCommandFromMrmOperator(
+  HazardLightsCommand::ConstSharedPtr msg)
 {
   hazard_lights_command_from_mrm_operator_ = msg;
 }

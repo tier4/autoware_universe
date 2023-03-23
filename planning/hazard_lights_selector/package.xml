@@ -14,9 +14,9 @@
 
   <build_depend>autoware_cmake</build_depend>
 
+  <depend>autoware_auto_vehicle_msgs</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
-  <depend>autoware_auto_vehicle_msgs</depend>
 
   <exec_depend>ros2cli</exec_depend>
   <exec_depend>topic_tools</exec_depend>

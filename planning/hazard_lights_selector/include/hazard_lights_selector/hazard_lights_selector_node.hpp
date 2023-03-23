@@ -25,10 +25,10 @@ using autoware_auto_vehicle_msgs::msg::HazardLightsCommand;
 
 class HazardLightsSelectorNode : public rclcpp::Node
 {
-struct Parameters
-{
-  int update_rate;  // [Hz]
-};
+  struct Parameters
+  {
+    int update_rate;  // [Hz]
+  };
 
 public:
   explicit HazardLightsSelectorNode(const rclcpp::NodeOptions & node_options);

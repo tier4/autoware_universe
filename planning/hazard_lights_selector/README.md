@@ -3,6 +3,7 @@
 ## Purpose
 
 ## Inner-workings / Algorithms
+
 <!-- Write how this package works. Flowcharts and figures are great. Add sub-sections as you like.
 
 Example:
