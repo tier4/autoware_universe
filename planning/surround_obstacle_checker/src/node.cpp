@@ -195,8 +195,7 @@ SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptio
 
 void SurroundObstacleCheckerNode::onTimer()
 {
-  if (!odometry_ptr_)
-  {
+  if (!odometry_ptr_) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000 /* ms */, "waiting for current velocity...");
     return;
