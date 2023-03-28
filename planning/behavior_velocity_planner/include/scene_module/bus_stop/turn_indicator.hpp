@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef SCENE_MODULE__BUS_STOP_TURN_INDICATOR_HPP_
-#define SCENE_MODULE__BUS_STOP_TURN_INDICATOR_HPP_
+#ifndef SCENE_MODULE__BUS_STOP__TURN_INDICATOR_HPP_
+#define SCENE_MODULE__BUS_STOP__TURN_INDICATOR_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -40,4 +40,4 @@ private:
 
 }  // namespace behavior_velocity_planner
 
-#endif  // SCENE_MODULE__BUS_STOP_TURN_INDICATOR_HPP_
+#endif  // SCENE_MODULE__BUS_STOP__TURN_INDICATOR_HPP_
