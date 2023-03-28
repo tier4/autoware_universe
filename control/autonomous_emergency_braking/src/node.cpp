@@ -26,6 +26,36 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
 
+namespace tf2
+{
+template <>
+inline void doTransform(
+  const geometry_msgs::msg::Pose & t_in, geometry_msgs::msg::Pose & t_out,
+  const geometry_msgs::msg::TransformStamped & transform)
+{
+  KDL::Vector v(t_in.position.x, t_in.position.y, t_in.position.z);
+  KDL::Rotation r = KDL::Rotation::Quaternion(
+    t_in.orientation.x, t_in.orientation.y, t_in.orientation.z, t_in.orientation.w);
+
+  KDL::Frame v_out = gmTransformToKDL(transform) * KDL::Frame(r, v);
+  t_out.position.x = v_out.p[0];
+  t_out.position.y = v_out.p[1];
+  t_out.position.z = v_out.p[2];
+  v_out.M.GetQuaternion(
+    t_out.orientation.x, t_out.orientation.y, t_out.orientation.z, t_out.orientation.w);
+}
+
+template <>
+inline void doTransform(
+  const geometry_msgs::msg::Point & t_in, geometry_msgs::msg::Point & t_out,
+  const geometry_msgs::msg::TransformStamped & transform)
+{
+  KDL::Vector v_out = gmTransformToKDL(transform) * KDL::Vector(t_in.x, t_in.y, t_in.z);
+  t_out.x = v_out[0];
+  t_out.y = v_out[1];
+  t_out.z = v_out[2];
+}
+}  // namespace tf2
 namespace autoware::motion::control::autonomous_emergency_braking
 {
 using diagnostic_msgs::msg::DiagnosticStatus;
