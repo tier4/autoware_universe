@@ -14,7 +14,6 @@
               contains: [": sensing_topic_status"]
               timeout: 1.0
 
-
         performance_monitoring:
           type: diagnostic_aggregator/AnalyzerGroup
           path: performance_monitoring
@@ -31,8 +30,22 @@
               contains: [": visibility_validation"]
               timeout: 1.0
 
+        lidar:
+          type: diagnostic_aggregator/AnalyzerGroup
+          path: lidar
+          analyzers:
             blockage:
               type: diagnostic_aggregator/GenericAnalyzer
               path: blockage
               contains: [": blockage_validation"]
+              timeout: 1.0
+
+        pyrocan:
+          type: diagnostic_aggregator/AnalyzerGroup
+          path: pyrocan
+          analyzers:
+            temperature:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: temperature
+              contains: [": temperature status"]
               timeout: 1.0
