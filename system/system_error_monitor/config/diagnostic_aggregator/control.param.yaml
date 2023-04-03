@@ -85,18 +85,3 @@
                       path: heartbeat
                       contains: ["external_cmd_converter: heartbeat"]
                       timeout: 1.0
-
-
-            local_external_control:
-              type: diagnostic_aggregator/AnalyzerGroup
-              path: local_external_control
-              analyzers:
-                device_connection:
-                  type: diagnostic_aggregator/AnalyzerGroup
-                  path: device_connection
-                  analyzers:
-                    joy_controller_connection:
-                      type: diagnostic_aggregator/GenericAnalyzer
-                      path: joy_controller_connection
-                      contains: [": joy_controller_connection"]
-                      timeout: 1.0

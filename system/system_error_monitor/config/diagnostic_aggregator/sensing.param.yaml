@@ -4,6 +4,17 @@
       type: diagnostic_aggregator/AnalyzerGroup
       path: sensing
       analyzers:
+        node_alive_monitoring:
+          type: diagnostic_aggregator/AnalyzerGroup
+          path: node_alive_monitoring
+          analyzers:
+            topic_status:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: topic_status
+              contains: [": sensing_topic_status"]
+              timeout: 1.0
+
+
         performance_monitoring:
           type: diagnostic_aggregator/AnalyzerGroup
           path: performance_monitoring
@@ -12,4 +23,16 @@
               type: diagnostic_aggregator/GenericAnalyzer
               path: concat_status
               contains: [": concat_status"]
+              timeout: 1.0
+
+             visibility:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: visibility
+              contains: [": visibility_validation"]
+              timeout: 1.0
+
+            blockage:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: blockage
+              contains: [": blockage_validation"]
               timeout: 1.0
