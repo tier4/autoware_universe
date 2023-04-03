@@ -111,6 +111,12 @@
                   path: usage
                   contains: [": Memory Usage"]
                   timeout: 3.0
+                ecc:
+                  type: diagnostic_aggregator/GenericAnalyzer
+                  path: ecc
+                  contains: [": Memory ECC"]
+                  timeout: 3.0
+
 
             network:
               type: diagnostic_aggregator/AnalyzerGroup
