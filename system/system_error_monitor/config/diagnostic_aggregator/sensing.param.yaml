@@ -47,5 +47,5 @@
             temperature:
               type: diagnostic_aggregator/GenericAnalyzer
               path: temperature
-              contains: [": temperature status"]
+              contains: [": temperature_status"]
               timeout: 1.0
