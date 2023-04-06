@@ -14,9 +14,11 @@
 
   <build_depend>autoware_cmake</build_depend>
 
+  <depend>autoware_adapi_v1_msgs</depend>
   <depend>autoware_auto_perception_msgs</depend>
   <depend>autoware_auto_tf2</depend>
   <depend>diagnostic_msgs</depend>
+  <depend>diagnostic_updater</depend>
   <depend>eigen</depend>
   <depend>libpcl-all-dev</depend>
   <depend>pcl_conversions</depend>

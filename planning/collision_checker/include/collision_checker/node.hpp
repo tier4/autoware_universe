@@ -20,6 +20,7 @@
 #include <tier4_autoware_utils/tier4_autoware_utils.hpp>
 #include <vehicle_info_util/vehicle_info_util.hpp>
 
+#include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_auto_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_auto_planning_msgs/msg/trajectory.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -35,7 +36,7 @@
 
 namespace collision_checker
 {
-
+using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_auto_perception_msgs::msg::PredictedObjects;
 using autoware_auto_perception_msgs::msg::Shape;
 using vehicle_info_util::VehicleInfo;
@@ -61,6 +62,8 @@ private:
 
   void onDynamicObjects(const PredictedObjects::ConstSharedPtr msg);
 
+  void onOperationMode(const OperationModeState::ConstSharedPtr msg);
+
   // void onOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
 
   boost::optional<Obstacle> getNearestObstacle() const;
@@ -81,6 +84,7 @@ private:
   // publisher and subscriber
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pointcloud_;
   rclcpp::Subscription<PredictedObjects>::SharedPtr sub_dynamic_objects_;
+  rclcpp::Subscription<OperationModeState>::SharedPtr sub_operation_mode_;
 
   // parameter
   NodeParam node_param_;
@@ -89,6 +93,7 @@ private:
   // data
   sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud_ptr_;
   PredictedObjects::ConstSharedPtr object_ptr_;
+  OperationModeState::ConstSharedPtr operation_mode_ptr_;
 
   // Diagnostic Updater
   diagnostic_updater::Updater updater_;

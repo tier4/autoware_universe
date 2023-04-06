@@ -134,6 +134,10 @@ CollisionCheckerNode::CollisionCheckerNode(const rclcpp::NodeOptions & node_opti
     "~/input/objects", 1,
     std::bind(&CollisionCheckerNode::onDynamicObjects, this, std::placeholders::_1));
 
+  sub_operation_mode_ = this->create_subscription<autoware_adapi_v1_msgs::msg::OperationModeState>(
+    "/api/operation_mode/state", rclcpp::QoS{1}.transient_local(),
+    std::bind(&CollisionCheckerNode::onOperationMode, this, std::placeholders::_1));
+
   // Diagnostics Updater
   updater_.setHardwareID("collision_checker");
   updater_.add("collision_check", this, &CollisionCheckerNode::checkCollision);
@@ -154,13 +158,19 @@ void CollisionCheckerNode::checkCollision(diagnostic_updater::DiagnosticStatusWr
     return;
   }
 
+  if (!operation_mode_ptr_) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000 /* ms */, "waiting for operation mode info...");
+    return;
+  }
+
   const auto nearest_obstacle = getNearestObstacle();
 
   const auto is_obstacle_found =
     !nearest_obstacle ? false : nearest_obstacle.get().first < node_param_.collision_distance;
 
   diagnostic_msgs::msg::DiagnosticStatus status;
-  if (is_obstacle_found) {
+  if (operation_mode_ptr_->mode == OperationModeState::AUTONOMOUS && is_obstacle_found) {
     status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     status.message = "collision detected";
     stat.addf("Distance to nearest neighbor object", "%lf", nearest_obstacle.get().first);
@@ -179,6 +189,11 @@ void CollisionCheckerNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
 void CollisionCheckerNode::onDynamicObjects(const PredictedObjects::ConstSharedPtr msg)
 {
   object_ptr_ = msg;
+}
+
+void CollisionCheckerNode::onOperationMode(const OperationModeState::ConstSharedPtr msg)
+{
+  operation_mode_ptr_ = msg;
 }
 
 boost::optional<Obstacle> CollisionCheckerNode::getNearestObstacle() const
