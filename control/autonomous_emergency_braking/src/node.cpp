@@ -16,9 +16,8 @@
 
 #include <pcl/filters/voxel_grid.h>
 #include <tf2/utils.h>
-
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_eigen/tf2_eigen.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 namespace autoware::motion::control::autonomous_emergency_braking
 {
@@ -99,7 +98,8 @@ AEB::AEB(const rclcpp::NodeOptions & node_options)
     std::bind(&AEB::onPredictedTrajectory, this, std::placeholders::_1));
 
   sub_control_mode_report_ = this->create_subscription<ControlModeReport>(
-    "/vehicle/status/control_mode", rclcpp::QoS{1}, std::bind(&AEB::onControlModeReport, this, std::placeholders::_1));
+    "/vehicle/status/control_mode", rclcpp::QoS{1},
+    std::bind(&AEB::onControlModeReport, this, std::placeholders::_1));
 
   // Publisher
   pub_obstacle_pointcloud_ =
@@ -244,7 +244,7 @@ bool AEB::checkCollision()
   if (control_mode_report_ptr_ && control_mode_report_ptr_->mode != ControlModeReport::AUTONOMOUS) {
     return false;
   }
-  if(control_mode_report_ptr_ && control_mode_report_ptr_->mode==ControlModeReport::AUTONOMOUS) {
+  if (control_mode_report_ptr_ && control_mode_report_ptr_->mode == ControlModeReport::AUTONOMOUS) {
     std::cerr << "autonomous control_mode: " << control_mode_report_ptr_->stamp.sec << std::endl;
   }
 
@@ -416,7 +416,7 @@ void AEB::generateEgoPath(
   }
 
   // create polygon
-  polygons.resize(path.size()-1);
+  polygons.resize(path.size() - 1);
   for (size_t i = 0; i < path.size() - 1; ++i) {
     polygons.at(i) = createPolygon(path.at(i), path.at(i + 1), vehicle_info_, expand_width_);
   }

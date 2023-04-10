@@ -18,20 +18,19 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tier4_autoware_utils/tier4_autoware_utils.hpp>
+#include <tier4_autoware_utils/trajectory/trajectory.hpp>
 #include <vehicle_info_util/vehicle_info_util.hpp>
 
+#include "autoware_auto_vehicle_msgs/msg/control_mode_report.hpp"
 #include <autoware_auto_planning_msgs/msg/trajectory.hpp>
 #include <autoware_auto_vehicle_msgs/msg/velocity_report.hpp>
-#include "autoware_auto_vehicle_msgs/msg/control_mode_report.hpp"
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker.hpp>
-#include <geometry_msgs/msg/pose.hpp>
-#include <geometry_msgs/msg/transform_stamped.hpp>
-
-#include <tier4_autoware_utils/trajectory/trajectory.hpp>
-#include <tier4_autoware_utils/tier4_autoware_utils.hpp>
 
 #include <boost/optional.hpp>
 
@@ -51,8 +50,8 @@ namespace autoware::motion::control::autonomous_emergency_braking
 {
 
 using autoware_auto_planning_msgs::msg::Trajectory;
-using autoware_auto_vehicle_msgs::msg::VelocityReport;
 using autoware_auto_vehicle_msgs::msg::ControlModeReport;
+using autoware_auto_vehicle_msgs::msg::VelocityReport;
 using nav_msgs::msg::Odometry;
 using sensor_msgs::msg::Imu;
 using sensor_msgs::msg::PointCloud2;

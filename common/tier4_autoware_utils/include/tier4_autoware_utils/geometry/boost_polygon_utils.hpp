@@ -31,5 +31,4 @@ Polygon2d inverseClockwise(const Polygon2d & polygon);
 
 }  // namespace tier4_autoware_utils
 
-
-#endif
+#endif  // TIER4_AUTOWARE_UTILS__GEOMETRY__BOOST_POLYGON_UTILS_HPP_

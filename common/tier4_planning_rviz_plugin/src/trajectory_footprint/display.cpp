@@ -39,8 +39,7 @@ AutowareTrajectoryFootprintDisplay::AutowareTrajectoryFootprintDisplay()
     "Vehicle Length", 2.665, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()),
     this);
   property_vehicle_width_ = new rviz_common::properties::FloatProperty(
-    "Vehicle Width", 1.1, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()),
-    this);
+    "Vehicle Width", 1.1, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()), this);
   property_rear_overhang_ = new rviz_common::properties::FloatProperty(
     "Rear Overhang", 0.375, "", property_trajectory_footprint_view_, SLOT(updateVehicleInfo()),
     this);
