@@ -111,6 +111,12 @@
                   path: usage
                   contains: [": Memory Usage"]
                   timeout: 3.0
+                ecc:
+                  type: diagnostic_aggregator/GenericAnalyzer
+                  path: ecc
+                  contains: [": Memory ECC"]
+                  timeout: 3.0
+
 
             network:
               type: diagnostic_aggregator/AnalyzerGroup
@@ -156,30 +162,6 @@
                   contains: [": HDD RecoveredError"]
                   timeout: 3.0
 
-                read_data_rate:
-                  type: diagnostic_aggregator/GenericAnalyzer
-                  path: read_data_rate
-                  contains: [": HDD ReadDataRate"]
-                  timeout: 3.0
-
-                write_data_rate:
-                  type: diagnostic_aggregator/GenericAnalyzer
-                  path: write_data_rate
-                  contains: [": HDD WriteDataRate"]
-                  timeout: 3.0
-
-                read_iops:
-                  type: diagnostic_aggregator/GenericAnalyzer
-                  path: read_iops
-                  contains: [": HDD ReadIOPS"]
-                  timeout: 3.0
-
-                write_iops:
-                  type: diagnostic_aggregator/GenericAnalyzer
-                  path: write_iops
-                  contains: [": HDD WriteIOPS"]
-                  timeout: 3.0
-
                 usage:
                   type: diagnostic_aggregator/GenericAnalyzer
                   path: usage
@@ -203,6 +185,34 @@
                   path: connection
                   contains: [": HDD Connection"]
                   timeout: 3.0
+
+                load_monitoring:
+                  type: diagnostic_aggregator/AnalyzerGroup
+                  path: load
+                  analyzers:
+                    read_data_rate:
+                      type: diagnostic_aggregator/GenericAnalyzer
+                      path: read_data_rate
+                      contains: [": HDD ReadDataRate"]
+                      timeout: 3.0
+
+                    write_data_rate:
+                      type: diagnostic_aggregator/GenericAnalyzer
+                      path: write_data_rate
+                      contains: [": HDD WriteDataRate"]
+                      timeout: 3.0
+
+                    read_iops:
+                      type: diagnostic_aggregator/GenericAnalyzer
+                      path: read_iops
+                      contains: [": HDD ReadIOPS"]
+                      timeout: 3.0
+
+                    write_iops:
+                      type: diagnostic_aggregator/GenericAnalyzer
+                      path: write_iops
+                      contains: [": HDD WriteIOPS"]
+                      timeout: 3.0
 
             process:
               type: diagnostic_aggregator/AnalyzerGroup
