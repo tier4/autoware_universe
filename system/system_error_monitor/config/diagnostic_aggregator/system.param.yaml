@@ -188,7 +188,7 @@
 
                 load_monitoring:
                   type: diagnostic_aggregator/AnalyzerGroup
-                  path: load
+                  path: load_monitoring
                   analyzers:
                     read_data_rate:
                       type: diagnostic_aggregator/GenericAnalyzer
