@@ -353,11 +353,9 @@ bool BusStopModule::modifyPathVelocity(
   const auto current_state = state_machine_->getCurrentState();
 
   //! debug
-  RCLCPP_DEBUG_STREAM(
-    rclcpp::get_logger("debug"), "obstacle points size: " << obstacle_points.size());
-  RCLCPP_DEBUG_STREAM(rclcpp::get_logger("debug"), "longitudinal dist: " << point_with_dist.dist);
-  RCLCPP_DEBUG_STREAM(
-    rclcpp::get_logger("debug"), "current_state: " << toStringState(current_state));
+  RCLCPP_DEBUG_STREAM(logger_, "obstacle points size: " << obstacle_points.size());
+  RCLCPP_DEBUG_STREAM(logger_, "longitudinal dist: " << point_with_dist.dist);
+  RCLCPP_DEBUG_STREAM(logger_, "current_state: " << toStringState(current_state));
   if (!velocity_buffer_.empty() && !velocity_buffer_lpf_.empty()) {
     debug_data_->predicted_vel_kmph = velocity_buffer_lpf_.back() * 3.6;
     debug_data_->pushPredictedVelKmph(velocity_buffer_.back() * 3.6);
@@ -368,13 +366,13 @@ bool BusStopModule::modifyPathVelocity(
   debug_data_->is_safe_velocity = is_safe_velocity;
   debug_data_->is_obstacle_on_the_side = is_obstacle_on_the_side;
   if (is_obstacle_on_the_side) {
-    RCLCPP_DEBUG_STREAM(rclcpp::get_logger("debug"), "obstacle is on the side of the vehicle");
+    RCLCPP_DEBUG_STREAM(logger_, "obstacle is on the side of the vehicle");
   }
 
   // calculate stop point for the stop line
   const auto path_idx_with_pose = calcStopPoint(*path);
   if (!path_idx_with_pose) {
-    RCLCPP_WARN_STREAM(rclcpp::get_logger("debug"), "failed to calculate stop point.");
+    RCLCPP_WARN_STREAM(logger_, "failed to calculate stop point.");
     return true;
   }
   const auto stop_dist = calcStopDistance(*path, *path_idx_with_pose);
@@ -504,7 +502,7 @@ void BusStopModule::updatePointsBuffer(const BusStopModule::PointWithDistStamped
   // if subscribed points are the same data as previous one,
   // skip calculating predicted velocity and use previous one
   if (p1.stamp == p2.stamp) {
-    RCLCPP_DEBUG_STREAM(rclcpp::get_logger("debug"), "same points are subscribed");
+    RCLCPP_DEBUG_STREAM(logger_, "same points are subscribed");
     return;
   }
 
@@ -526,7 +524,7 @@ bool BusStopModule::judgeSafetyFromObstacleVelocity(const std::deque<double> & v
   const size_t safe_vel_count = std::count_if(
     velocity_buffer.cbegin(), velocity_buffer.cend(),
     [safe_vel_mps](const double velocity) -> bool { return velocity < safe_vel_mps; });
-  RCLCPP_DEBUG_STREAM(rclcpp::get_logger("debug"), "safe_vel_count: " << safe_vel_count);
+  RCLCPP_DEBUG_STREAM(logger_, "safe_vel_count: " << safe_vel_count);
   debug_data_->pushSafeVelCount(safe_vel_count);
 
   if (safe_vel_count >= planner_param_.num_safe_vel_threshold) {
