@@ -314,15 +314,6 @@ BusStopModule::BusStopModule(
   state_machine_ = std::make_shared<StateMachine>(node, planner_param.state_param);
   lpf_ = std::make_shared<LowpassFilter1d>(planner_param.lpf_gain);
   debug_data_ = std::make_shared<DebugData>(node);
-
-  RCLCPP_INFO_STREAM(rclcpp::get_logger("debug"), "lpf_gain: " << planner_param_.lpf_gain);
-
-  //! debug
-  // change log level for debugging
-  const auto result = rcutils_logging_set_logger_level("debug", RCUTILS_LOG_SEVERITY_DEBUG);
-  if (result == RCUTILS_RET_ERROR) {
-    RCLCPP_WARN_STREAM(rclcpp::get_logger("debug"), "failed to set logger level.");
-  }
 }
 
 bool BusStopModule::modifyPathVelocity(
