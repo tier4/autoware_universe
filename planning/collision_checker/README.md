@@ -34,7 +34,7 @@ In this function, it calculates the minimum distance between the polygon of ego 
 
 | Name           | Type                                    | Description |
 | -------------- | --------------------------------------- | ----------- |
-| `/diagnostics` | `diagnostic_msgs::msg::DiagnosticArray` | Diagnotics  |
+| `/diagnostics` | `diagnostic_msgs::msg::DiagnosticArray` | Diagnostics |
 
 ## Parameters
 
