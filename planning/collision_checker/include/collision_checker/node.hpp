@@ -64,8 +64,6 @@ private:
 
   void onOperationMode(const OperationModeState::ConstSharedPtr msg);
 
-  // void onOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
-
   boost::optional<Obstacle> getNearestObstacle() const;
 
   boost::optional<Obstacle> getNearestObstacleByPointCloud() const;
