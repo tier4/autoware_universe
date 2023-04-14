@@ -45,3 +45,13 @@
                   path: trajectory_relative_angle_validation
                   contains: [": trajectory_relative_angle_validation"]
                   timeout: 1.0
+
+        collision_check:
+          type: diagnostic_aggregator/AnalyzerGroup
+          path: collision_check
+          analyzers:
+            collision_check:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: collision_check
+              contains: [": collision_check"]
+              timeout: 1.0
