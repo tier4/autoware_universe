@@ -13,6 +13,11 @@
               path: topic_status
               contains: [": localization_topic_status"]
               timeout: 1.0
+            tf_status:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: tf_status
+              contains: [": localization_tf_status"]
+              timeout: 1.0
 
         performance_monitoring:
           type: diagnostic_aggregator/AnalyzerGroup
@@ -28,4 +33,10 @@
               type: diagnostic_aggregator/GenericAnalyzer
               path: localization_accuracy
               contains: [": localization_accuracy"]
+              timeout: 1.0
+
+            localization_accuracy_lateral_direction:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: localization_accuracy
+              contains: [": localization_accuracy_lateral_direction"]
               timeout: 1.0
