@@ -1,0 +1,9 @@
+<launch>
+  <arg name="config_file" default="$(find-pkg-share imu_monitor)/config/imu_monitor.param.yaml"/>
+
+  <node pkg="imu_monitor" exec="imu_monitor_node" name="imu_monitor" output="screen">
+    <param from="$(var config_file)"/>
+    <remap from="~/input/twist" to="/sensing/vehicle_velocity_converter/twist_with_covariance"/>
+    <remap from="~/input/imu" to="/sensing/imu/imu_data"/>
+  </node>
+</launch>

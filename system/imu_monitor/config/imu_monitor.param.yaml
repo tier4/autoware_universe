@@ -1,0 +1,4 @@
+/**:
+  ros__parameters:
+    yaw_rate_diff_threshold: 0.07  # [rad/s]
+    frame_id: base_link
