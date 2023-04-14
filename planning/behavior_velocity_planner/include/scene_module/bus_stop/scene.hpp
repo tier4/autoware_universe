@@ -73,7 +73,6 @@ public:
     rclcpp::Time stamp;
   };
 
-public:
   BusStopModule(
     const int64_t module_id, const int64_t lane_id,
     const lanelet::autoware::BusStop & bus_stop_reg_elem, const PlannerParam & planner_param,
