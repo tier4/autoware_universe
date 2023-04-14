@@ -30,27 +30,7 @@ void TurnIndicator::setTurnSignal(const TurnIndicatorsCommand & turn_signal)
 void TurnIndicator::setTurnSignal(const uint8_t turn_signal, const rclcpp::Time & time)
 {
   turn_signal_.stamp = time;
-  switch (turn_signal) {
-    case 0:
-      turn_signal_.command = TurnIndicatorsCommand::NO_COMMAND;
-      break;
-
-    case 1:
-      turn_signal_.command = TurnIndicatorsCommand::DISABLE;
-      break;
-
-    case 2:
-      turn_signal_.command = TurnIndicatorsCommand::ENABLE_LEFT;
-      break;
-
-    case 3:
-      turn_signal_.command = TurnIndicatorsCommand::ENABLE_RIGHT;
-      break;
-
-    default:
-      turn_signal_.command = TurnIndicatorsCommand::NO_COMMAND;
-      break;
-  }
+  turn_signal_.command = turn_signal;
 }
 
 void TurnIndicator::publish() { pub_turn_indicator_->publish(turn_signal_); }
