@@ -42,6 +42,8 @@ BusStopModuleManager::BusStopModuleManager(rclcpp::Node & node)
     node.declare_parameter<double>(ns + ".safe_obstacle_vel_threshold_kmph");
   planner_param_.num_safe_vel_threshold =
     node.declare_parameter<int64_t>(ns + ".num_safe_vel_threshold");
+  planner_param_.stop_margin_from_stop_line =
+    node.declare_parameter<double>(ns + ".stop_margin_from_stop_line");
 }
 
 void BusStopModuleManager::launchNewModules(

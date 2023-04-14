@@ -440,11 +440,9 @@ boost::optional<PathIndexWithPose> BusStopModule::calcStopPoint(const PathWithLa
   const auto stop_line = getStopLineGeometry2d();
 
   // Get stop point
-  // In this module, the ego vehicle want to keep stopping at the first stop position
-  // set the stop_margin so that the ego vehicle don't approach the stop line
-  const double stop_margin = 3.0;
   const auto stop_point = arc_lane_utils::createTargetPoint(
-    path, stop_line, lane_id_, stop_margin, planner_data_->vehicle_info_.max_longitudinal_offset_m);
+    path, stop_line, lane_id_, planner_param_.stop_margin_from_stop_line,
+    planner_data_->vehicle_info_.max_longitudinal_offset_m);
 
   return stop_point;
 }

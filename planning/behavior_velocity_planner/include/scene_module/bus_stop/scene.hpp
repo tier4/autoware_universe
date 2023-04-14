@@ -63,6 +63,7 @@ public:
     double lpf_gain;
     double safe_obstacle_vel_threshold_kmph;
     size_t num_safe_vel_threshold;
+    double stop_margin_from_stop_line;
     StateMachine::StateParam state_param;
   };
 
