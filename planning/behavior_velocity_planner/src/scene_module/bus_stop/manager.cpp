@@ -34,13 +34,14 @@ BusStopModuleManager::BusStopModuleManager(rclcpp::Node & node)
 : SceneModuleManagerInterfaceWithRTC(node, getModuleName()), node_(node)
 {
   const std::string ns(getModuleName());
-  planner_param_.buffer_size = node.declare_parameter(ns + ".buffer_size", 10);
-  planner_param_.lpf_gain = node.declare_parameter(ns + ".lpf_gain", 0.9);
+  planner_param_.buffer_size = node.declare_parameter<int64_t>(ns + ".buffer_size");
+  planner_param_.lpf_gain = node.declare_parameter<double>(ns + ".lpf_gain");
   planner_param_.state_param.turn_signal_blinking_duration =
-    node.declare_parameter(ns + ".turn_signal_blinking_duration", 3.0);
+    node.declare_parameter<double>(ns + ".turn_signal_blinking_duration");
   planner_param_.safe_obstacle_vel_threshold_kmph =
-    node.declare_parameter(ns + ".safe_obstacle_vel_threshold_kmph", 3.0);
-  planner_param_.num_safe_vel_threshold = node.declare_parameter(ns + ".num_safe_vel_threshold", 7);
+    node.declare_parameter<double>(ns + ".safe_obstacle_vel_threshold_kmph");
+  planner_param_.num_safe_vel_threshold =
+    node.declare_parameter<int64_t>(ns + ".num_safe_vel_threshold");
 }
 
 void BusStopModuleManager::launchNewModules(
