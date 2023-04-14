@@ -28,7 +28,6 @@ namespace behavior_velocity_planner
 namespace bus_stop
 {
 using autoware_adapi_v1_msgs::msg::OperationModeState;
-using tier4_autoware_utils::kmph2mps;
 
 class StateMachine
 {
