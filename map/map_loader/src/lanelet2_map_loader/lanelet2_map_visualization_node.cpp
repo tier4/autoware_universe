@@ -107,6 +107,8 @@ void Lanelet2MapVisualizationNode::onMapBin(
     lanelet::utils::query::autowareTrafficLights(all_lanelets);
   std::vector<lanelet::DetectionAreaConstPtr> da_reg_elems =
     lanelet::utils::query::detectionAreas(all_lanelets);
+  std::vector<lanelet::BusStopConstPtr> bs_reg_elems =
+    lanelet::utils::query::busStops(all_lanelets);
   std::vector<lanelet::NoStoppingAreaConstPtr> no_reg_elems =
     lanelet::utils::query::noStoppingAreas(all_lanelets);
   lanelet::ConstLineStrings3d parking_spaces =
@@ -122,8 +124,9 @@ void Lanelet2MapVisualizationNode::onMapBin(
 
   std_msgs::msg::ColorRGBA cl_road, cl_shoulder, cl_cross, cl_partitions, cl_pedestrian_markings,
     cl_ll_borders, cl_shoulder_borders, cl_stoplines, cl_trafficlights, cl_detection_areas,
-    cl_parking_lots, cl_parking_spaces, cl_lanelet_id, cl_obstacle_polygons, cl_no_stopping_areas,
-    cl_no_obstacle_segmentation_area, cl_no_obstacle_segmentation_area_for_run_out;
+    cl_bus_stops, cl_parking_lots, cl_parking_spaces, cl_lanelet_id, cl_obstacle_polygons,
+    cl_no_stopping_areas, cl_no_obstacle_segmentation_area,
+    cl_no_obstacle_segmentation_area_for_run_out;
   setColor(&cl_road, 0.27, 0.27, 0.27, 0.999);
   setColor(&cl_shoulder, 0.15, 0.15, 0.15, 0.999);
   setColor(&cl_cross, 0.27, 0.3, 0.27, 0.5);
@@ -134,6 +137,7 @@ void Lanelet2MapVisualizationNode::onMapBin(
   setColor(&cl_stoplines, 0.5, 0.5, 0.5, 0.999);
   setColor(&cl_trafficlights, 0.5, 0.5, 0.5, 0.8);
   setColor(&cl_detection_areas, 0.27, 0.27, 0.37, 0.5);
+  setColor(&cl_bus_stops, 1.0, 0.5, 0.0, 0.2);
   setColor(&cl_no_stopping_areas, 0.37, 0.37, 0.37, 0.5);
   setColor(&cl_obstacle_polygons, 0.4, 0.27, 0.27, 0.5);
   setColor(&cl_parking_lots, 0.5, 0.5, 0.0, 0.3);
@@ -170,6 +174,8 @@ void Lanelet2MapVisualizationNode::onMapBin(
   insertMarkerArray(
     &map_marker_array,
     lanelet::visualization::detectionAreasAsMarkerArray(da_reg_elems, cl_detection_areas));
+  insertMarkerArray(
+    &map_marker_array, lanelet::visualization::busStopsAsMarkerArray(bs_reg_elems, cl_bus_stops));
   insertMarkerArray(
     &map_marker_array,
     lanelet::visualization::noStoppingAreasAsMarkerArray(no_reg_elems, cl_no_stopping_areas));

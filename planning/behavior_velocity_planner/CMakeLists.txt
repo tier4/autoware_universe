@@ -22,6 +22,7 @@ set(scene_modules
   virtual_traffic_light
   occlusion_spot
   run_out
+  bus_stop
 )
 
 foreach(scene_module IN LISTS scene_modules)
@@ -40,10 +41,10 @@ ament_auto_add_library(behavior_velocity_planner SHARED
 
 target_include_directories(behavior_velocity_planner
   SYSTEM PUBLIC
-    ${BOOST_INCLUDE_DIRS}
-    ${PCL_INCLUDE_DIRS}
-    ${tf2_geometry_msgs_INCLUDE_DIRS}
-    ${EIGEN3_INCLUDE_DIR}
+  ${BOOST_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
+  ${tf2_geometry_msgs_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
 )
 
 ament_target_dependencies(behavior_velocity_planner
