@@ -35,7 +35,6 @@ namespace behavior_velocity_planner
 namespace bus_stop
 {
 namespace bg = boost::geometry;
-using motion_utils::calcLongitudinalOffsetPose;
 using motion_utils::calcSignedArcLength;
 using tier4_autoware_utils::calcLongitudinalDeviation;
 
