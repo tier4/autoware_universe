@@ -17,7 +17,7 @@ This module compares the yaw rate obtained from the IMU with that obtained from 
 
 | Name           | Type                                    | Description |
 | -------------- | --------------------------------------- | ----------- |
-| `/diagnostics` | `diagnostic_msgs::msg::DiagnosticArray` | Diagnotics  |
+| `/diagnostics` | `diagnostic_msgs::msg::DiagnosticArray` | Diagnostics |
 
 ## Parameters
 
