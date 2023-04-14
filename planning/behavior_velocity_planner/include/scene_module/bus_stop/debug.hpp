@@ -42,7 +42,7 @@ class DebugData
 {
 public:
   explicit DebugData(rclcpp::Node & node);
-  ~DebugData() {}
+  ~DebugData() = default;
   void publishDebugValue();
   void pushPredictedVelKmph(const double predicted_vel_kmph);
   void pushPredictedVelLpfKmph(const double predicted_vel_lpf_kmph);

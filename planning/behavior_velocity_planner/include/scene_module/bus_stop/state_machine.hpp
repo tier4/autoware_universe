@@ -51,7 +51,7 @@ public:
   };
 
   explicit StateMachine(rclcpp::Node & node, const StateParam & state_param);
-  ~StateMachine() {}
+  ~StateMachine() = default;
   State getCurrentState() const { return state_; }
   void updateState(const StateInput & state_input, rclcpp::Clock & clock);
 

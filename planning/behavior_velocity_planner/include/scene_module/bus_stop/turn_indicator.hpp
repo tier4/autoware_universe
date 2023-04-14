@@ -26,7 +26,7 @@ class TurnIndicator
 {
 public:
   explicit TurnIndicator(rclcpp::Node & node);
-  ~TurnIndicator() {}
+  ~TurnIndicator() = default;
 
   void setTurnSignal(const TurnIndicatorsCommand & turn_signal);
   void setTurnSignal(const uint8_t turn_signal, const rclcpp::Time & time);
