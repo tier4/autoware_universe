@@ -49,7 +49,7 @@
               path: temperature
               contains: [": temperature_status"]
               timeout: 1.0
-  
+
         emergency_vehicle:
           type: diagnostic_aggregator/AnalyzerGroup
           path: emergency_vehicle
