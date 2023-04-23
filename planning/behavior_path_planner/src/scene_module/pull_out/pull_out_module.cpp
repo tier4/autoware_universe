@@ -201,6 +201,8 @@ BehaviorModuleOutput PullOutModule::plan()
   const auto target_drivable_lanes = getNonOverlappingExpandedLanes(path, status_.lanes);
   utils::generateDrivableArea(
     path, target_drivable_lanes, planner_data_->parameters.vehicle_length, planner_data_);
+  output.drivable_area_info.drivable_lanes = utils::combineDrivableLanes(
+    getPreviousModuleOutput().drivable_area_info.drivable_lanes, target_drivable_lanes);
 
   output.path = std::make_shared<PathWithLaneId>(path);
   output.reference_path = getPreviousModuleOutput().reference_path;
@@ -319,6 +321,9 @@ BehaviorModuleOutput PullOutModule::planWaitingApproval()
   for (auto & p : stop_path.points) {
     p.point.longitudinal_velocity_mps = 0.0;
   }
+
+  output.drivable_area_info.drivable_lanes = utils::combineDrivableLanes(
+    getPreviousModuleOutput().drivable_area_info.drivable_lanes, expanded_lanes);
 
   output.path = std::make_shared<PathWithLaneId>(stop_path);
   output.reference_path = getPreviousModuleOutput().reference_path;
@@ -522,8 +527,11 @@ PathWithLaneId PullOutModule::generateStopPath() const
 
   // generate drivable area
   const auto target_drivable_lanes = getNonOverlappingExpandedLanes(path, status_.lanes);
+
+  // generate drivable area info
   utils::generateDrivableArea(
     path, target_drivable_lanes, planner_data_->parameters.vehicle_length, planner_data_);
+  // TODO(murooka) use output
 
   return path;
 }

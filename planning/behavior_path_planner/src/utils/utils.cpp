@@ -1806,12 +1806,13 @@ BehaviorModuleOutput getReferencePath(
     shorten_lanes, dp.drivable_area_left_bound_offset, dp.drivable_area_right_bound_offset,
     dp.drivable_area_types_to_skip);
 
+  // for old architecture
   generateDrivableArea(reference_path, expanded_lanes, p.vehicle_length, planner_data);
 
   BehaviorModuleOutput output;
   output.path = std::make_shared<PathWithLaneId>(reference_path);
   output.reference_path = std::make_shared<PathWithLaneId>(reference_path);
-  output.drivable_lanes = drivable_lanes;
+  output.drivable_area_info.drivable_lanes = drivable_lanes;
 
   return output;
 }

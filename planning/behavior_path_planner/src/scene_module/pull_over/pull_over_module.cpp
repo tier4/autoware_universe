@@ -625,6 +625,10 @@ BehaviorModuleOutput PullOverModule::plan()
   }
 
   BehaviorModuleOutput output;
+  // TODO(murooka)
+  // output.drivable_area_info.drivable_lanes = utils::combineDrivableLanes(
+  //   getPreviousModuleOutput().drivable_area_info.drivable_lanes, expanded_lanes);
+
   if (status_.is_safe) {
     // safe: use pull over path
     status_.stop_pose.reset();

@@ -89,11 +89,9 @@ void setStartData(
 Polygon2d createEnvelopePolygon(
   const ObjectData & object_data, const Pose & closest_pose, const double envelope_buffer);
 
-void generateDrivableArea(
-  PathWithLaneId & path, const std::vector<DrivableLanes> & lanes,
-  const std::shared_ptr<const PlannerData> planner_data,
-  const std::shared_ptr<AvoidanceParameters> & parameters, const ObjectDataArray & objects,
-  const double vehicle_length, const bool enable_bound_clipping, const bool disable_path_update);
+std::vector<tier4_autoware_utils::Polygon2d> generateObstaclePolygonsForDrivableArea(
+  const ObjectDataArray & objects, const std::shared_ptr<AvoidanceParameters> & parameters,
+  const double vehicle_width);
 
 double getLongitudinalVelocity(const Pose & p_ref, const Pose & p_target, const double v);
 

@@ -47,56 +47,74 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
   std::for_each(
     manager_ptrs_.begin(), manager_ptrs_.end(), [&data](const auto & m) { m->setData(data); });
 
-  while (rclcpp::ok()) {
-    /**
-     * STEP1: get approved modules' output
-     */
-    const auto approved_modules_output = runApprovedModules(data);
+  auto result_output = [&]() {
+    while (rclcpp::ok()) {
+      /**
+       * STEP1: get approved modules' output
+       */
+      const auto approved_modules_output = runApprovedModules(data);
 
-    /**
-     * STEP2: check modules that need to be launched
-     */
-    const auto request_modules = getRequestModules(approved_modules_output);
+      /**
+       * STEP2: check modules that need to be launched
+       */
+      const auto request_modules = getRequestModules(approved_modules_output);
 
-    /**
-     * STEP3: if there is no module that need to be launched, return approved modules' output
-     */
-    if (request_modules.empty()) {
-      processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
-      return approved_modules_output;
+      /**
+       * STEP3: if there is no module that need to be launched, return approved modules' output
+       */
+      if (request_modules.empty()) {
+        processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
+        return approved_modules_output;
+      }
+
+      /**
+       * STEP4: if there is module that should be launched, execute the module
+       */
+      const auto [highest_priority_module, candidate_modules_output] =
+        runRequestModules(request_modules, data, approved_modules_output);
+      if (!highest_priority_module) {
+        processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
+        return approved_modules_output;
+      }
+
+      /**
+       * STEP5: if the candidate module's modification is NOT approved yet, return the result.
+       * NOTE: the result is output of the candidate module, but the output path don't contains path
+       * shape modification that needs approval. On the other hand, it could include velocity
+       * profile modification.
+       */
+      if (highest_priority_module->isWaitingApproval()) {
+        processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
+        return candidate_modules_output;
+      }
+
+      /**
+       * STEP6: if the candidate module is approved, push the module into approved_module_ptrs_
+       */
+      addApprovedModule(highest_priority_module);
+      clearCandidateModules();
     }
+    return BehaviorModuleOutput{};
+  }();
 
-    /**
-     * STEP4: if there is module that should be launched, execute the module
-     */
-    const auto [highest_priority_module, candidate_modules_output] =
-      runRequestModules(request_modules, data, approved_modules_output);
-    if (!highest_priority_module) {
-      processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
-      return approved_modules_output;
-    }
+  const auto shorten_lanes =
+    utils::cutOverlappedLanes(*result_output.path, result_output.drivable_area_info.drivable_lanes);
+  const auto extended_lanes = utils::expandLanelets(
+    shorten_lanes, result_output.drivable_area_info.left_drivable_margin,
+    result_output.drivable_area_info.right_drivable_margin, {"road_border"});
 
-    /**
-     * STEP5: if the candidate module's modification is NOT approved yet, return the result.
-     * NOTE: the result is output of the candidate module, but the output path don't contains path
-     * shape modification that needs approval. On the other hand, it could include velocity profile
-     * modification.
-     */
-    if (highest_priority_module->isWaitingApproval()) {
-      processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
-      return candidate_modules_output;
-    }
+  std::cerr << result_output.drivable_area_info.drivable_lanes.size() << " " << shorten_lanes.size()
+            << " " << extended_lanes.size() << std::endl;
 
-    /**
-     * STEP6: if the candidate module is approved, push the module into approved_module_ptrs_
-     */
-    addApprovedModule(highest_priority_module);
-    clearCandidateModules();
-  }
+  // TODO(murooka)
+  // parameters_->drivable_area_types_to_skip);
+  utils::generateDrivableArea(
+    *result_output.path, extended_lanes, data->parameters.vehicle_length, data);
 
-  processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
+  std::cerr << result_output.path->right_bound.size() << " "
+            << result_output.path->left_bound.size() << std::endl;
 
-  return {};
+  return result_output;
 }
 
 std::vector<SceneModulePtr> PlannerManager::getRequestModules(
@@ -358,12 +376,16 @@ BehaviorModuleOutput PlannerManager::runApprovedModules(const std::shared_ptr<Pl
   std::unordered_map<std::string, BehaviorModuleOutput> results;
 
   BehaviorModuleOutput output = getReferencePath(data);
+  // TODO(murooka) is this correct?
+  const auto current_lanes = utils::getCurrentLanes(data);
+  output.drivable_area_info.drivable_lanes = utils::generateDrivableLanes(current_lanes);
   results.emplace("root", output);
 
   /**
    * execute all approved modules.
    */
   std::for_each(approved_module_ptrs_.begin(), approved_module_ptrs_.end(), [&](const auto & m) {
+    std::cerr << m->name() << std::endl;
     output = run(m, data, output);
     results.emplace(m->name(), output);
   });
@@ -427,6 +449,18 @@ BehaviorModuleOutput PlannerManager::runApprovedModules(const std::shared_ptr<Pl
 
   // convert reverse iterator -> iterator
   const auto success_itr = std::prev(not_success_itr).base() - 1;
+
+  utils::generateDrivableArea(
+    *approved_modules_output.path, approved_modules_output.drivable_area_info.drivable_lanes,
+    data->parameters.vehicle_length, data);
+  // TODO(murooka) expandLanelets
+  // TODO(murooka) remove obstacle from drivable area
+
+  //   PathWithLaneId & path, const std::vector<DrivableLanes> & lanes,
+  //   const std::shared_ptr<const PlannerData> planner_data,
+  //   const std::shared_ptr<AvoidanceParameters> & parameters, const ObjectDataArray & objects,
+  //   const double vehicle_length, const bool enable_bound_clipping, const bool
+  //   disable_path_update)
 
   /**
    * there is no succeeded module. return.

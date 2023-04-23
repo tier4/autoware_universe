@@ -76,6 +76,14 @@ struct DrivableLanes
   lanelet::ConstLanelets middle_lanes;
 };
 
+struct DrivableAreaInfo
+{
+  std::vector<DrivableLanes> drivable_lanes;
+  std::vector<tier4_autoware_utils::Polygon2d> obstacle_polys;
+  double left_drivable_margin;   // temporary only for pull over/out and sideshift
+  double right_drivable_margin;  // temporary only for pull over/out and sideshift
+};
+
 struct TurnSignalInfo
 {
   TurnSignalInfo()
@@ -108,8 +116,9 @@ struct BehaviorModuleOutput
 
   std::optional<PoseWithUuidStamped> modified_goal{};
 
-  // drivable lanes
-  std::vector<DrivableLanes> drivable_lanes;
+  // drivable area info to create drivable area
+  // NOTE: Drivable area in the path is generated at last from drivable_area_info.
+  DrivableAreaInfo drivable_area_info;
 };
 
 struct CandidateOutput

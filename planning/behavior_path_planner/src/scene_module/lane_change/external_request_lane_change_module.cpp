@@ -631,6 +631,12 @@ void ExternalRequestLaneChangeModule::extendOutputDrivableArea(BehaviorModuleOut
     drivable_lanes, dp.drivable_area_left_bound_offset, dp.drivable_area_right_bound_offset,
     dp.drivable_area_types_to_skip);
 
+  // for new architecture
+  output.drivable_area_info.drivable_lanes = output.drivable_area_info.drivable_lanes =
+    utils::combineDrivableLanes(
+      getPreviousModuleOutput().drivable_area_info.drivable_lanes, expanded_lanes);
+
+  // for old architecture
   utils::generateDrivableArea(
     *output.path, expanded_lanes, common_parameters.vehicle_length, planner_data_);
 }

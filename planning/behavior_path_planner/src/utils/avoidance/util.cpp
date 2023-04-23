@@ -70,6 +70,7 @@ geometry_msgs::msg::Polygon toMsg(const tier4_autoware_utils::Polygon2d & polygo
   return ret;
 }
 
+/*
 boost::optional<geometry_msgs::msg::Point> intersect(
   const geometry_msgs::msg::Point & p1, const geometry_msgs::msg::Point & p2,
   const geometry_msgs::msg::Point & p3, const geometry_msgs::msg::Point & p4)
@@ -371,6 +372,7 @@ std::vector<Point> updateBoundary(
   }
   return updated_bound;
 }
+*/
 }  // namespace
 
 bool isOnRight(const ObjectData & obj)
@@ -574,23 +576,16 @@ Polygon2d createEnvelopePolygon(
   return expanded_polygon;
 }
 
-void generateDrivableArea(
-  PathWithLaneId & path, const std::vector<DrivableLanes> & lanes,
-  const std::shared_ptr<const PlannerData> planner_data,
-  const std::shared_ptr<AvoidanceParameters> & parameters, const ObjectDataArray & objects,
-  const double vehicle_length, const bool enable_bound_clipping, const bool disable_path_update)
+std::vector<tier4_autoware_utils::Polygon2d> generateObstaclePolygonsForDrivableArea(
+  const ObjectDataArray & objects, const std::shared_ptr<AvoidanceParameters> & parameters,
+  const double vehicle_width)
 {
-  utils::generateDrivableArea(path, lanes, vehicle_length, planner_data);
-  if (objects.empty() || !enable_bound_clipping) {
-    return;
-  }
+  std::vector<tier4_autoware_utils::Polygon2d> obj_polys;
 
-  std::vector<std::vector<PolygonPoint>> right_polygons;
-  std::vector<std::vector<PolygonPoint>> left_polygons;
   for (const auto & object : objects) {
     // If avoidance is executed by both behavior and motion, only non-avoidable object will be
     // extracted from the drivable area.
-    if (!disable_path_update) {
+    if (!parameters->disable_path_update) {
       if (object.is_avoidable) {
         continue;
       }
@@ -605,62 +600,103 @@ void generateDrivableArea(
     const auto object_parameter = parameters->object_parameters.at(t);
 
     // generate obstacle polygon
-    const auto & obj_pose = object.object.kinematics.initial_pose_with_covariance.pose;
-    const double diff_poly_buffer = object.avoid_margin.get() -
-                                    object_parameter.envelope_buffer_margin -
-                                    planner_data->parameters.vehicle_width / 2.0;
+    const double diff_poly_buffer =
+      object.avoid_margin.get() - object_parameter.envelope_buffer_margin - vehicle_width / 2.0;
     const auto obj_poly =
       tier4_autoware_utils::expandPolygon(object.envelope_poly, diff_poly_buffer);
-
-    // get edge points of the object
-    const size_t nearest_path_idx = motion_utils::findNearestIndex(
-      path.points, obj_pose.position);  // to get z for object polygon
-    std::vector<Point> edge_points;
-    for (size_t i = 0; i < obj_poly.outer().size() - 1;
-         ++i) {  // NOTE: There is a duplicated points
-      edge_points.push_back(tier4_autoware_utils::createPoint(
-        obj_poly.outer().at(i).x(), obj_poly.outer().at(i).y(),
-        path.points.at(nearest_path_idx).point.pose.position.z));
-    }
-
-    // get a boundary that we have to change
-    const double lat_dist_to_path = motion_utils::calcLateralOffset(path.points, obj_pose.position);
-    const bool is_object_right = lat_dist_to_path < 0.0;
-    const auto & bound = is_object_right ? path.right_bound : path.left_bound;
-
-    // get polygon points inside the bounds
-    const auto inside_polygon = getPolygonPointsInsideBounds(bound, edge_points, is_object_right);
-    if (!inside_polygon.empty()) {
-      if (is_object_right) {
-        right_polygons.push_back(inside_polygon);
-      } else {
-        left_polygons.push_back(inside_polygon);
-      }
-    }
+    obj_polys.push_back(obj_poly);
   }
-
-  for (size_t i = 0; i < 2; ++i) {  // for loop for right and left
-    const bool is_object_right = (i == 0);
-    const auto & polygons = is_object_right ? right_polygons : left_polygons;
-    if (polygons.empty()) {
-      continue;
-    }
-
-    // concatenate polygons if they are longitudinal overlapped.
-    auto unique_polygons = concatenatePolygons(polygons);
-
-    // sort bounds longitudinally
-    std::sort(
-      unique_polygons.begin(), unique_polygons.end(),
-      [](const std::vector<PolygonPoint> & p1, const std::vector<PolygonPoint> & p2) {
-        return p2.front().is_after(p1.front());
-      });
-
-    // update boundary
-    auto & bound = is_object_right ? path.right_bound : path.left_bound;
-    bound = updateBoundary(bound, unique_polygons);
-  }
+  return obj_polys;
 }
+
+// TODO(murooka) move obstacle area removal to the utils::generateDrivableArea
+// void generateDrivableArea(
+//   PathWithLaneId & path, const std::vector<DrivableLanes> & lanes,
+//   const std::shared_ptr<const PlannerData> planner_data,
+//   const std::shared_ptr<AvoidanceParameters> & parameters, const ObjectDataArray & objects,
+//   const double vehicle_length, const bool enable_bound_clipping, const bool disable_path_update)
+// {
+//   utils::generateDrivableArea(path, lanes, vehicle_length, planner_data);
+//   if (objects.empty() || !enable_bound_clipping) {
+//     return;
+//   }
+//
+//   std::vector<std::vector<PolygonPoint>> right_polygons;
+//   std::vector<std::vector<PolygonPoint>> left_polygons;
+//   for (const auto & object : objects) {
+//     // If avoidance is executed by both behavior and motion, only non-avoidable object will be
+//     // extracted from the drivable area.
+//     if (!disable_path_update) {
+//       if (object.is_avoidable) {
+//         continue;
+//       }
+//     }
+//
+//     // check if avoid marin is calculated
+//     if (!object.avoid_margin) {
+//       continue;
+//     }
+//
+//     const auto t = utils::getHighestProbLabel(object.object.classification);
+//     const auto object_parameter = parameters->object_parameters.at(t);
+//
+//     // generate obstacle polygon
+//     const auto & obj_pose = object.object.kinematics.initial_pose_with_covariance.pose;
+//     const double diff_poly_buffer = object.avoid_margin.get() -
+//                                     object_parameter.envelope_buffer_margin -
+//                                     planner_data->parameters.vehicle_width / 2.0;
+//     const auto obj_poly =
+//       tier4_autoware_utils::expandPolygon(object.envelope_poly, diff_poly_buffer);
+//
+//     // get edge points of the object
+//     const size_t nearest_path_idx = motion_utils::findNearestIndex(
+//       path.points, obj_pose.position);  // to get z for object polygon
+//     std::vector<Point> edge_points;
+//     for (size_t i = 0; i < obj_poly.outer().size() - 1;
+//          ++i) {  // NOTE: There is a duplicated points
+//       edge_points.push_back(tier4_autoware_utils::createPoint(
+//         obj_poly.outer().at(i).x(), obj_poly.outer().at(i).y(),
+//         path.points.at(nearest_path_idx).point.pose.position.z));
+//     }
+//
+//     // get a boundary that we have to change
+//     const double lat_dist_to_path = motion_utils::calcLateralOffset(path.points,
+//     obj_pose.position); const bool is_object_right = lat_dist_to_path < 0.0; const auto & bound =
+//     is_object_right ? path.right_bound : path.left_bound;
+//
+//     // get polygon points inside the bounds
+//     const auto inside_polygon = getPolygonPointsInsideBounds(bound, edge_points,
+//     is_object_right); if (!inside_polygon.empty()) {
+//       if (is_object_right) {
+//         right_polygons.push_back(inside_polygon);
+//       } else {
+//         left_polygons.push_back(inside_polygon);
+//       }
+//     }
+//   }
+//
+//   for (size_t i = 0; i < 2; ++i) {  // for loop for right and left
+//     const bool is_object_right = (i == 0);
+//     const auto & polygons = is_object_right ? right_polygons : left_polygons;
+//     if (polygons.empty()) {
+//       continue;
+//     }
+//
+//     // concatenate polygons if they are longitudinal overlapped.
+//     auto unique_polygons = concatenatePolygons(polygons);
+//
+//     // sort bounds longitudinally
+//     std::sort(
+//       unique_polygons.begin(), unique_polygons.end(),
+//       [](const std::vector<PolygonPoint> & p1, const std::vector<PolygonPoint> & p2) {
+//         return p2.front().is_after(p1.front());
+//       });
+//
+//     // update boundary
+//     auto & bound = is_object_right ? path.right_bound : path.left_bound;
+//     bound = updateBoundary(bound, unique_polygons);
+//   }
+// }
 
 double getLongitudinalVelocity(const Pose & p_ref, const Pose & p_target, const double v)
 {
