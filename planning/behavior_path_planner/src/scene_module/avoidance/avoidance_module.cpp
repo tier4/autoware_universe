@@ -2513,11 +2513,6 @@ void AvoidanceModule::generateExtendedDrivableArea(BehaviorModuleOutput & output
     drivable_lanes.push_back(current_drivable_lanes);
   }
 
-  {  // for old architecture
-    utils::generateDrivableArea(
-      *output.path, drivable_lanes, planner_data_->parameters.vehicle_length, planner_data_);
-  }
-
   {  // for new architecture
     // generate drivable lanes
     output.drivable_area_info.drivable_lanes = utils::combineDrivableLanes(
@@ -2525,6 +2520,13 @@ void AvoidanceModule::generateExtendedDrivableArea(BehaviorModuleOutput & output
     // generate obstacle polygons
     output.drivable_area_info.obstacle_polys = generateObstaclePolygonsForDrivableArea(
       avoidance_data_.target_objects, parameters_, planner_data_->parameters.vehicle_width / 2.0);
+  }
+
+  {  // for old architecture
+    utils::generateDrivableArea(
+      *output.path, drivable_lanes, planner_data_->parameters.vehicle_length, planner_data_);
+
+    // TODO(murooka) remove obstacles from drivable area
   }
 }
 
