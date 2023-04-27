@@ -76,6 +76,6 @@
                   analyzers:
                     heartbeat:
                       type: diagnostic_aggregator/GenericAnalyzer
-                      path: heartbeat
-                      contains: ["external_cmd_converter: heartbeat"]
+                      path: remote_control_topic_status
+                      contains: [": remote_control_topic_status"]
                       timeout: 1.0
