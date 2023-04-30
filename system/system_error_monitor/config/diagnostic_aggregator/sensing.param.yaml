@@ -14,31 +14,29 @@
               contains: [": sensing_topic_status"]
               timeout: 1.0
 
-        performance_monitoring:
-          type: diagnostic_aggregator/AnalyzerGroup
-          path: performance_monitoring
-          analyzers:
-            concat_status:
-              type: diagnostic_aggregator/GenericAnalyzer
-              path: concat_status
-              contains: [": concat_status"]
-              timeout: 1.0
-
         lidar:
           type: diagnostic_aggregator/AnalyzerGroup
           path: lidar
           analyzers:
-            blockage:
-              type: diagnostic_aggregator/GenericAnalyzer
-              path: blockage
-              contains: [": blockage_validation"]
-              timeout: 1.0
-
-            visibility:
-              type: diagnostic_aggregator/GenericAnalyzer
-              path: visibility
-              contains: [": visibility_validation"]
-              timeout: 1.0
+            performance_monitoring:
+              type: diagnostic_aggregator/AnalyzerGroup
+              path: performance_monitoring
+              analyzers:
+                blockage:
+                  type: diagnostic_aggregator/GenericAnalyzer
+                  path: blockage
+                  contains: [": blockage_validation"]
+                  timeout: 1.0
+                visibility:
+                  type: diagnostic_aggregator/GenericAnalyzer
+                  path: visibility
+                  contains: ["left_upper: visibility_validation"]
+                  timeout: 1.0
+                concat_status:
+                  type: diagnostic_aggregator/GenericAnalyzer
+                  path: concat_status
+                  contains: [": concat_status"]
+                  timeout: 1.0
 
         pyrocan:
           type: diagnostic_aggregator/AnalyzerGroup
