@@ -119,13 +119,9 @@ BehaviorModuleOutput NormalLaneChange::generateOutput()
   output.reference_path = std::make_shared<PathWithLaneId>(getReferencePath());
   output.turn_signal_info = updateOutputTurnSignal();
 
-  if (!prev_turn_signal_info_) {
-    return output;
-  }
-
   const auto current_seg_idx = planner_data_->findEgoSegmentIndex(output.path->points);
   output.turn_signal_info = planner_data_->turn_signal_decider.use_prior_turn_signal(
-    *output.path, getEgoPose(), current_seg_idx, *prev_turn_signal_info_, output.turn_signal_info,
+    *output.path, getEgoPose(), current_seg_idx, prev_turn_signal_info_, output.turn_signal_info,
     planner_data_->parameters.ego_nearest_dist_threshold,
     planner_data_->parameters.ego_nearest_yaw_threshold);
 
@@ -146,12 +142,8 @@ void NormalLaneChange::extendOutputDrivableArea(BehaviorModuleOutput & output)
   // for new architecture
   DrivableAreaInfo current_drivable_area_info;
   current_drivable_area_info.drivable_lanes = expanded_lanes;
-  if (prev_drivable_area_info_) {
-    output.drivable_area_info =
-      utils::combineDrivableAreaInfo(current_drivable_area_info, *prev_drivable_area_info_);
-  } else {
-    output.drivable_area_info = current_drivable_area_info;
-  }
+  output.drivable_area_info =
+    utils::combineDrivableAreaInfo(current_drivable_area_info, prev_drivable_area_info_);
 
   // for old architecture
   utils::generateDrivableArea(
@@ -196,7 +188,7 @@ TurnSignalInfo NormalLaneChange::updateOutputTurnSignal()
 
 lanelet::ConstLanelets NormalLaneChange::getCurrentLanes() const
 {
-  return utils::getCurrentLanesFromPath(*prev_module_reference_path_, planner_data_);
+  return utils::getCurrentLanesFromPath(prev_module_reference_path_, planner_data_);
 }
 
 lanelet::ConstLanelets NormalLaneChange::getLaneChangeLanes(
@@ -663,7 +655,7 @@ std::vector<DrivableLanes> NormalLaneChange::getDrivableLanes() const
 {
   const auto drivable_lanes = utils::lane_change::generateDrivableLanes(
     *getRouteHandler(), status_.current_lanes, status_.lane_change_lanes);
-  return utils::combineDrivableLanes(prev_drivable_area_info_->drivable_lanes, drivable_lanes);
+  return utils::combineDrivableLanes(prev_drivable_area_info_.drivable_lanes, drivable_lanes);
 }
 
 PathSafetyStatus NormalLaneChange::isApprovedPathSafe() const
