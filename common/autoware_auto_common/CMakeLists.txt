@@ -66,7 +66,11 @@ if(BUILD_TESTING)
   autoware_set_compile_options(${TEST_COMMON})
   target_compile_options(${TEST_COMMON} PRIVATE -Wno-sign-conversion)
   target_include_directories(${TEST_COMMON} PRIVATE include)
-  ament_target_dependencies(${TEST_COMMON} builtin_interfaces Eigen3)
+  ament_target_dependencies(${TEST_COMMON}
+    builtin_interfaces
+    Eigen3
+    geometry_msgs
+  )
 endif()
 
 # Ament Exporting
