@@ -38,6 +38,7 @@ if(BUILD_TESTING)
     "autoware_auto_geometry_msgs"
     "geometry_msgs"
     "tf2"
+    "tf2_geometry_msgs"
     "tf2_ros"
 )
 endif()
