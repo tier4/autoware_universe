@@ -29,7 +29,8 @@
 
 #include <tf2/transform_datatypes.h>
 #include <tf2/utils.h>
-#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <memory>
 #include <utility>
