@@ -6,7 +6,7 @@ on:
 jobs:
   build-and-test-differential:
     runs-on: ubuntu-latest
-    container: ghcr.io/autowarefoundation/autoware-universe:galactic-latest
+    container: ghcr.io/autowarefoundation/autoware-universe:latest
     steps:
       - name: Cancel previous runs
         uses: styfle/cancel-workflow-action@0.9.1
@@ -27,7 +27,7 @@ jobs:
         if: ${{ steps.get-modified-packages.outputs.modified-packages != '' }}
         uses: autowarefoundation/autoware-github-actions/colcon-build@a7cc2c1ce6052f395e5800a0fb6e6221421bf30a
         with:
-          rosdistro: galactic
+          rosdistro: humble
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
           build-depends-repos: build_depends.repos
           include-eol-distros: true
@@ -37,7 +37,7 @@ jobs:
         if: ${{ steps.get-modified-packages.outputs.modified-packages != '' }}
         uses: autowarefoundation/autoware-github-actions/colcon-test@a7cc2c1ce6052f395e5800a0fb6e6221421bf30a
         with:
-          rosdistro: galactic
+          rosdistro: humble
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
           build-depends-repos: build_depends.repos
           include-eol-distros: true
@@ -53,7 +53,7 @@ jobs:
 
   clang-tidy-differential:
     runs-on: ubuntu-latest
-    container: ros:galactic
+    container: ros:humble
     needs: build-and-test-differential
     steps:
       - name: Check out repository
@@ -72,7 +72,7 @@ jobs:
         if: ${{ steps.get-modified-packages.outputs.modified-packages != '' }}
         uses: autowarefoundation/autoware-github-actions/clang-tidy@a7cc2c1ce6052f395e5800a0fb6e6221421bf30a
         with:
-          rosdistro: galactic
+          rosdistro: humble
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
           clang-tidy-config-url: https://raw.githubusercontent.com/autowarefoundation/autoware/main/.clang-tidy
           build-depends-repos: build_depends.repos

@@ -26,7 +26,7 @@ jobs:
         if: ${{ steps.get-self-packages.outputs.self-packages != '' }}
         uses: autowarefoundation/autoware-github-actions/colcon-build@v1
         with:
-          rosdistro: galactic
+          rosdistro: humble
           target-packages: ${{ steps.get-self-packages.outputs.self-packages }}
           build-depends-repos: build_depends.repos
 
@@ -35,7 +35,7 @@ jobs:
         id: test
         uses: autowarefoundation/autoware-github-actions/colcon-test@v1
         with:
-          rosdistro: galactic
+          rosdistro: humble
           target-packages: ${{ steps.get-self-packages.outputs.self-packages }}
           build-depends-repos: build_depends.repos
 
