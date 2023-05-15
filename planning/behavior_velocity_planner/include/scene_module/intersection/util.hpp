@@ -19,8 +19,7 @@
 #include <scene_module/intersection/scene_intersection.hpp>
 
 #include <geometry_msgs/msg/point.hpp>
-
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <memory>
 #include <string>
