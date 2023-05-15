@@ -45,6 +45,11 @@ ament_auto_add_library(shape_estimation_lib SHARED
 
 ament_target_dependencies(shape_estimation_lib ${SHAPE_ESTIMATION_DEPENDENCIES})
 
+target_include_directories(shape_estimation_lib
+  SYSTEM PUBLIC
+    "${PCL_INCLUDE_DIRS}"
+)
+
 ament_auto_add_library(shape_estimation_node SHARED
   src/node.cpp
 )
