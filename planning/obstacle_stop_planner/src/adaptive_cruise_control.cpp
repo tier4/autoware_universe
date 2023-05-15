@@ -14,6 +14,8 @@
 
 #include "obstacle_stop_planner/adaptive_cruise_control.hpp"
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
 #include <boost/algorithm/clamp.hpp>
 #include <boost/assert.hpp>
 #include <boost/assign/list_of.hpp>
@@ -665,7 +667,7 @@ double AdaptiveCruiseController::getMedianVel(const std::vector<nav_msgs::msg::O
   }
 
   std::vector<double> raw_vel_que;
-  for (const auto vel : vel_que) {
+  for (const auto & vel : vel_que) {
     raw_vel_que.emplace_back(vel.twist.twist.linear.x);
   }
 
