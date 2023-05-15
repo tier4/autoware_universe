@@ -67,6 +67,11 @@ target_include_directories(scene_module_lib
     $<INSTALL_INTERFACE:include>
 )
 
+target_include_directories(scene_module_lib
+  SYSTEM PUBLIC
+    ${PCL_INCLUDE_DIRS}
+)
+
 ament_target_dependencies(scene_module_lib ${BEHAVIOR_VELOCITY_PLANNER_DEPENDENCIES})
 
 

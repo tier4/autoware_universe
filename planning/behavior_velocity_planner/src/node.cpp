@@ -23,7 +23,7 @@
 
 #include <lanelet2_routing/Route.h>
 #include <pcl/common/transforms.h>
-#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_eigen/tf2_eigenhpp>
 
 #include <functional>
 #include <memory>

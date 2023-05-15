@@ -16,7 +16,7 @@
 #include <tier4_autoware_utils/trajectory/trajectory.hpp>
 #include <utilization/util.hpp>
 
-#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_eigen/tf2_eigenhpp>
 
 #include <algorithm>
 #include <memory>
