@@ -14,6 +14,8 @@
 
 #include "obstacle_stop_planner/adaptive_cruise_control.hpp"
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
 #include <boost/algorithm/clamp.hpp>
 #include <boost/assert.hpp>
 #include <boost/assign/list_of.hpp>
@@ -21,8 +23,6 @@
 #include <boost/geometry.hpp>
 #include <boost/geometry/geometries/linestring.hpp>
 #include <boost/geometry/geometries/point_xy.hpp>
-
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <algorithm>
 #include <limits>
