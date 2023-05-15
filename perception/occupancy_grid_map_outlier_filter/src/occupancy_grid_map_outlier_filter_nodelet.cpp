@@ -15,13 +15,13 @@
 #include "occupancy_grid_map_outlier_filter/occupancy_grid_map_outlier_filter_nodelet.hpp"
 
 #include <pcl_ros/transforms.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
 #include <tier4_autoware_utils/tier4_autoware_utils.hpp>
 
 #include <boost/optional.hpp>
 
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_eigen/tf2_eigen.h>
 
 #include <algorithm>
 #include <memory>
@@ -103,7 +103,7 @@ RadiusSearch2dfilter::RadiusSearch2dfilter(rclcpp::Node & node)
     node.declare_parameter("radius_search_2d_filter.min_points_and_distance_ratio", 400.0f);
   min_points_ = node.declare_parameter("radius_search_2d_filter.min_points", 4);
   max_points_ = node.declare_parameter("radius_search_2d_filter.max_points", 70);
-  kd_tree_ = boost::make_shared<pcl::search::KdTree<pcl::PointXY>>(false);
+  kd_tree_ = pcl::make_shared<pcl::search::KdTree<pcl::PointXY>>(false);
 }
 
 void RadiusSearch2dfilter::filter(
