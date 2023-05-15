@@ -16,6 +16,8 @@
 #include "simple_planning_simulator/simple_planning_simulator_core.hpp"
 #include "tf2/utils.h"
 
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+
 #include <memory>
 
 using autoware_auto_control_msgs::msg::AckermannControlCommand;
@@ -272,5 +274,5 @@ const std::string VEHICLE_MODEL_LIST[] = {
   "DELAY_STEER_ACC_GEARED",
 };
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
   TestForEachVehicleModel, TestSimplePlanningSimulator, ::testing::ValuesIn(VEHICLE_MODEL_LIST));
