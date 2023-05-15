@@ -14,8 +14,9 @@
 
 #include "pose_initializer/pose_initializer_core.hpp"
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <algorithm>
 #include <chrono>
@@ -190,7 +191,7 @@ bool PoseInitializer::getHeight(
     input_pose_msg.pose.pose.position.z);
 
   if (map_ptr_) {
-    tf2::Transform transform;
+    tf2::Transform transform{tf2::Quaternion{}, tf2::Vector3{}};
     try {
       const auto stamped = tf2_buffer_.lookupTransform(map_frame_, fixed_frame, tf2::TimePointZero);
       tf2::fromMsg(stamped.transform, transform);
