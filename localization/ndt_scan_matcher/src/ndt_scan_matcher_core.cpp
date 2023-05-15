@@ -23,7 +23,6 @@
 #include <tier4_autoware_utils/geometry/geometry.hpp>
 #include <tier4_autoware_utils/ros/marker_helper.hpp>
 
-#include <boost/shared_ptr.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 
