@@ -398,7 +398,7 @@ PathWithLaneId NormalLaneChange::getPrepareSegment(
     return PathWithLaneId();
   }
 
-  auto prepare_segment = *prev_module_path_;
+  auto prepare_segment = prev_module_path_;
   const size_t current_seg_idx = motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
     prepare_segment.points, getEgoPose(), 3.0, 1.0);
   utils::clipPathLength(prepare_segment, current_seg_idx, prepare_length, backward_path_length);
