@@ -376,7 +376,8 @@ bool BusStopModule::modifyPathVelocity(
   }
   const auto stop_dist = calcStopDistance(*path, *path_idx_with_pose);
   const auto & stop_pose = path_idx_with_pose->second;
-  const auto & base_link_pose = planner_data_->current_pose.pose;
+  const auto virtual_wall_pose = tier4_autoware_utils::calcOffsetPose(
+    stop_pose, planner_param_.stop_margin_from_stop_line, 0, 0);
 
   if (current_state == State::STOP) {
     // if RTC is activated, do not insert zero velocity and go
@@ -386,8 +387,8 @@ bool BusStopModule::modifyPathVelocity(
 
     planning_utils::insertStopPoint(stop_pose.position, *path);
 
-    // create virtual wall at the head of the ego vehicle
-    debug_data_->stop_poses.push_back(base_link_pose);
+    // create virtual wall at the stop point
+    debug_data_->stop_poses.push_back(virtual_wall_pose);
 
     return true;
   }
@@ -400,8 +401,8 @@ bool BusStopModule::modifyPathVelocity(
 
     planning_utils::insertStopPoint(stop_pose.position, *path);
 
-    // create virtual wall at the head of the ego vehicle
-    debug_data_->stop_poses.push_back(base_link_pose);
+    // create virtual wall at the stop point
+    debug_data_->stop_poses.push_back(virtual_wall_pose);
 
     // Set Turn Indicator
     turn_indicator_->setTurnSignal(TurnIndicatorsCommand::ENABLE_RIGHT, clock_->now());
@@ -418,8 +419,8 @@ bool BusStopModule::modifyPathVelocity(
 
     planning_utils::insertStopPoint(stop_pose.position, *path);
 
-    // create virtual wall at the head of the ego vehicle
-    debug_data_->stop_poses.push_back(base_link_pose);
+    // create virtual wall at the stop point
+    debug_data_->stop_poses.push_back(virtual_wall_pose);
 
     return true;
   }
