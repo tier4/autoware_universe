@@ -33,6 +33,33 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+namespace tier4_autoware_utils
+{
+template <typename PointT>
+void transformPointCloud(
+  const pcl::PointCloud<PointT> & cloud_in, pcl::PointCloud<PointT> & cloud_out,
+  const Eigen::Matrix<float, 4, 4> & transform)
+{
+  if (cloud_in.empty() || cloud_in.width == 0) {
+    RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
+  } else {
+    pcl::transformPointCloud(cloud_in, cloud_out, transform);
+  }
+}
+
+template <typename PointT>
+void transformPointCloud(
+  const pcl::PointCloud<PointT> & cloud_in, pcl::PointCloud<PointT> & cloud_out,
+  const Eigen::Affine3f & transform)
+{
+  if (cloud_in.empty() || cloud_in.width == 0) {
+    RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
+  } else {
+    pcl::transformPointCloud(cloud_in, cloud_out, transform);
+  }
+}
+}  // namespace tier4_autoware_utils
+
 SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptions & node_options)
 : Node("surround_obstacle_checker_node", node_options),
   tf_buffer_(this->get_clock()),
@@ -269,7 +296,7 @@ void SurroundObstacleCheckerNode::getNearestObstacleByPointCloud(
   Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.transform).cast<float>();
   pcl::PointCloud<pcl::PointXYZ> pcl;
   pcl::fromROSMsg(*pointcloud_ptr_, pcl);
-  pcl::transformPointCloud(pcl, pcl, isometry);
+  tier4_autoware_utils::transformPointCloud(pcl, pcl, isometry);
   for (const auto & p : pcl) {
     // create boost point
     Point2d boost_p(p.x, p.y);

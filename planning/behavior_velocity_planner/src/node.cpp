@@ -39,6 +39,33 @@
 #include <scene_module/traffic_light/manager.hpp>
 #include <scene_module/virtual_traffic_light/manager.hpp>
 
+namespace tier4_autoware_utils
+{
+template <typename PointT>
+void transformPointCloud(
+  const pcl::PointCloud<PointT> & cloud_in, pcl::PointCloud<PointT> & cloud_out,
+  const Eigen::Matrix<float, 4, 4> & transform)
+{
+  if (cloud_in.empty() || cloud_in.width == 0) {
+    RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
+  } else {
+    pcl::transformPointCloud(cloud_in, cloud_out, transform);
+  }
+}
+
+template <typename PointT>
+void transformPointCloud(
+  const pcl::PointCloud<PointT> & cloud_in, pcl::PointCloud<PointT> & cloud_out,
+  const Eigen::Affine3f & transform)
+{
+  if (cloud_in.empty() || cloud_in.width == 0) {
+    RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
+  } else {
+    pcl::transformPointCloud(cloud_in, cloud_out, transform);
+  }
+}
+}  // namespace tier4_autoware_utils
+
 namespace
 {
 rclcpp::SubscriptionOptions createSubscriptionOptions(rclcpp::Node * node_ptr)
@@ -258,7 +285,7 @@ void BehaviorVelocityPlannerNode::onNoGroundPointCloud(
 
   Eigen::Affine3f affine = tf2::transformToEigen(transform.transform).cast<float>();
   pcl::PointCloud<pcl::PointXYZ>::Ptr pc_transformed(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::transformPointCloud(pc, *pc_transformed, affine);
+  tier4_autoware_utils::transformPointCloud(pc, *pc_transformed, affine);
 
   {
     std::lock_guard<std::mutex> lock(mutex_);

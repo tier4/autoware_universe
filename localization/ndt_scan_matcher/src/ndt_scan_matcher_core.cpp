@@ -31,6 +31,33 @@
 #include <iomanip>
 #include <thread>
 
+namespace tier4_autoware_utils
+{
+template <typename PointT>
+void transformPointCloud(
+  const pcl::PointCloud<PointT> & cloud_in, pcl::PointCloud<PointT> & cloud_out,
+  const Eigen::Matrix<float, 4, 4> & transform)
+{
+  if (cloud_in.empty() || cloud_in.width == 0) {
+    RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
+  } else {
+    pcl::transformPointCloud(cloud_in, cloud_out, transform);
+  }
+}
+
+template <typename PointT>
+void transformPointCloud(
+  const pcl::PointCloud<PointT> & cloud_in, pcl::PointCloud<PointT> & cloud_out,
+  const Eigen::Affine3f & transform)
+{
+  if (cloud_in.empty() || cloud_in.width == 0) {
+    RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
+  } else {
+    pcl::transformPointCloud(cloud_in, cloud_out, transform);
+  }
+}
+}  // namespace tier4_autoware_utils
+
 tier4_debug_msgs::msg::Float32Stamped makeFloat32Stamped(
   const builtin_interfaces::msg::Time & stamp, const float data)
 {
@@ -442,7 +469,7 @@ void NDTScanMatcher::callbackSensorPoints(
   const Eigen::Matrix4f base_to_sensor_matrix = base_to_sensor_affine.matrix().cast<float>();
   pcl::shared_ptr<pcl::PointCloud<PointSource>> sensor_points_baselinkTF_ptr(
     new pcl::PointCloud<PointSource>);
-  pcl::transformPointCloud(
+  tier4_autoware_utils::transformPointCloud(
     *sensor_points_sensorTF_ptr, *sensor_points_baselinkTF_ptr, base_to_sensor_matrix);
   ndt_ptr_->setInputSource(sensor_points_baselinkTF_ptr);
 
@@ -609,7 +636,7 @@ void NDTScanMatcher::callbackSensorPoints(
   publishTF(ndt_base_frame_, result_pose_stamped_msg);
 
   auto sensor_points_mapTF_ptr = std::make_shared<pcl::PointCloud<PointSource>>();
-  pcl::transformPointCloud(
+  tier4_autoware_utils::transformPointCloud(
     *sensor_points_baselinkTF_ptr, *sensor_points_mapTF_ptr, result_pose_matrix);
   sensor_msgs::msg::PointCloud2 sensor_points_mapTF_msg;
   pcl::toROSMsg(*sensor_points_mapTF_ptr, sensor_points_mapTF_msg);
@@ -719,7 +746,7 @@ geometry_msgs::msg::PoseWithCovarianceStamped NDTScanMatcher::alignUsingMonteCar
 
     auto sensor_points_mapTF_ptr = std::make_shared<pcl::PointCloud<PointSource>>();
     const auto sensor_points_baselinkTF_ptr = ndt_ptr->getInputSource();
-    pcl::transformPointCloud(
+    tier4_autoware_utils::transformPointCloud(
       *sensor_points_baselinkTF_ptr, *sensor_points_mapTF_ptr, result_pose_matrix);
     sensor_msgs::msg::PointCloud2 sensor_points_mapTF_msg;
     pcl::toROSMsg(*sensor_points_mapTF_ptr, sensor_points_mapTF_msg);
