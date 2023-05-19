@@ -914,6 +914,12 @@ void filterTargetObjects(
         data.other_objects.push_back(o);
         continue;
       }
+
+      if (std::abs(shift_length) < parameters->lateral_execution_threshold) {
+        o.reason = "LessThanExecutionThreshold";
+        data.other_objects.push_back(o);
+        continue;
+      }
     }
 
     // for non vehicle type object
