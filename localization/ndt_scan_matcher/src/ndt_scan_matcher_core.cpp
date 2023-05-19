@@ -426,7 +426,8 @@ void NDTScanMatcher::callbackSensorPoints(
   sensor_msgs::msg::PointCloud2::ConstSharedPtr sensor_points_sensorTF_msg_ptr)
 {
   if (sensor_points_sensorTF_msg_ptr->data.empty()) {
-    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Empty sensor points!");
+    RCLCPP_WARN_STREAM_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000, "Empty sensor points!");
     return;
   }
 
