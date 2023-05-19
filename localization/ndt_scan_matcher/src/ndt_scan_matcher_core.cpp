@@ -39,7 +39,7 @@ void transformPointCloud(
   const Eigen::Matrix<float, 4, 4> & transform)
 {
   if (cloud_in.empty() || cloud_in.width == 0) {
-    RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
+    // RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
   } else {
     pcl::transformPointCloud(cloud_in, cloud_out, transform);
   }
@@ -51,7 +51,7 @@ void transformPointCloud(
   const Eigen::Affine3f & transform)
 {
   if (cloud_in.empty() || cloud_in.width == 0) {
-    RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
+    // RCLCPP_WARN(rclcpp::get_logger("transformPointCloud"), "input point cloud is empty!");
   } else {
     pcl::transformPointCloud(cloud_in, cloud_out, transform);
   }
