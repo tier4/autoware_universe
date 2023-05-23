@@ -593,7 +593,8 @@ void AvoidanceModule::updateEgoBehavior(const AvoidancePlanningData & data, Shif
     case AvoidanceState::YIELD: {
       insertYieldVelocity(path);
       insertWaitPoint(parameters_->use_constraints_for_decel, path);
-      removeRegisteredShiftLines();
+      initRTCStatus();
+      unlockNewModuleLaunch();
       break;
     }
     case AvoidanceState::AVOID_PATH_NOT_READY: {
