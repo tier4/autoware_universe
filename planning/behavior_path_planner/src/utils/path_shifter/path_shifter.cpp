@@ -271,6 +271,28 @@ std::pair<std::vector<double>, std::vector<double>> PathShifter::getBaseLengthsW
   return std::pair{base_lon, base_lat};
 }
 
+std::pair<std::vector<double>, std::vector<double>> PathShifter::getBaseLengthsWithoutAccelLimit(
+  const double arclength, const double shift_length, const double velocity,
+  const double longitudinal_acc, const double total_time, const bool offset_back) const
+{
+  const auto & s = arclength;
+  const auto & l = shift_length;
+  const auto & v0 = velocity;
+  const auto & a = longitudinal_acc;
+  const auto & T = total_time;
+  const double t = T / 4;
+
+  const double s1 = std::min(v0 * t + 0.5 * a * t * t, s);
+  const double v1 = v0 + a * t;
+  const double s2 = std::min(s1 + 2 * v1 * t + 2 * a * t * t, s);
+  std::vector<double> base_lon = {0.0, s1, s2, s};
+  std::vector<double> base_lat = {0.0, 1.0 / 12.0 * l, 11.0 / 12.0 * l, l};
+
+  if (!offset_back) std::reverse(base_lat.begin(), base_lat.end());
+
+  return std::pair{base_lon, base_lat};
+}
+
 std::pair<std::vector<double>, std::vector<double>> PathShifter::calcBaseLengths(
   const double arclength, const double shift_length, const bool offset_back) const
 {
@@ -311,12 +333,22 @@ std::pair<std::vector<double>, std::vector<double>> PathShifter::calcBaseLengths
   const auto ta2_tj = ta * ta * tj;
   const auto ta_tj2 = ta * tj * tj;
 
-  const auto s1 = tj * speed;
-  const auto s2 = s1 + ta * speed;
-  const auto s3 = s2 + tj * speed;  // = s4
-  const auto s5 = s3 + tj * speed;
-  const auto s6 = s5 + ta * speed;
-  const auto s7 = s6 + tj * speed;
+  const auto s1 = std::min(tj * v0 + 0.5 * a * tj * tj, S);
+  const auto v1 = v0 + a * tj;
+
+  const auto s2 = std::min(s1 + ta * v1 + 0.5 * a * ta * ta, S);
+  const auto v2 = v1 + a * ta;
+
+  const auto s3 = std::min(s2 + tj * v2 + 0.5 * a * tj * tj, S);  // = s4
+  const auto v3 = v2 + a * tj;
+
+  const auto s5 = std::min(s3 + tj * v3 + 0.5 * a * tj * tj, S);
+  const auto v5 = v3 + a * tj;
+
+  const auto s6 = std::min(s5 + ta * v5 + 0.5 * a * ta * ta, S);
+  const auto v6 = v5 + a * ta;
+
+  const auto s7 = std::min(s6 + tj * v6 + 0.5 * a * tj * tj, S);
 
   const auto sign = shift_length > 0.0 ? 1.0 : -1.0;
   const auto l1 = sign * (1.0 / 6.0 * jerk * tj3);
