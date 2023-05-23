@@ -4,6 +4,14 @@ project(behavior_velocity_planner)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(PCL REQUIRED)
+
+include_directories(
+  include
+  SYSTEM
+  ${PCL_INCLUDE_DIRS}
+)
+
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/node.cpp
   src/planner_manager.cpp
@@ -21,6 +29,7 @@ if(BUILD_TESTING)
   target_link_libraries(test_${PROJECT_NAME}
     gtest_main
     ${PROJECT_NAME}
+    ${PCL_LIBRARIES}
   )
   target_include_directories(test_${PROJECT_NAME} PRIVATE src)
 endif()
