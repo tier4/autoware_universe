@@ -59,7 +59,7 @@
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
-#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
 #include <algorithm>
 namespace
@@ -158,7 +158,6 @@ void OccupancyGridMap::updateWithPointCloud(
   const PointCloud2 & raw_pointcloud, const PointCloud2 & obstacle_pointcloud,
   const Pose & robot_pose)
 {
-  constexpr double ep = 0.001;
   constexpr double min_angle = tier4_autoware_utils::deg2rad(-180.0);
   constexpr double max_angle = tier4_autoware_utils::deg2rad(180.0);
   constexpr double angle_increment = tier4_autoware_utils::deg2rad(0.1);
@@ -302,7 +301,6 @@ void OccupancyGridMap::updateWithPointCloud(
   for (size_t bin_index = 0; bin_index < obstacle_pointcloud_angle_bins.size(); ++bin_index) {
     auto & obstacle_pointcloud_angle_bin = obstacle_pointcloud_angle_bins.at(bin_index);
     auto & raw_pointcloud_angle_bin = raw_pointcloud_angle_bins.at(bin_index);
-    auto raw_distance_iter = raw_pointcloud_angle_bin.begin();
     for (size_t dist_index = 0; dist_index < obstacle_pointcloud_angle_bin.size(); ++dist_index) {
       const auto & source = obstacle_pointcloud_angle_bin.at(dist_index);
       setCellValue(source.wx, source.wy, occupancy_cost_value::LETHAL_OBSTACLE);
