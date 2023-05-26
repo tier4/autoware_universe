@@ -56,11 +56,9 @@ inline void doTransform(
   t_out.z = v_out[2];
 }
 
-template<>
-inline
-void doTransform(
-  const geometry_msgs::msg::Vector3 & t_in,
-  geometry_msgs::msg::Vector3 & t_out,
+template <>
+inline void doTransform(
+  const geometry_msgs::msg::Vector3 & t_in, geometry_msgs::msg::Vector3 & t_out,
   const geometry_msgs::msg::TransformStamped & transform)
 {
   KDL::Vector v_out = gmTransformToKDL(transform).M * KDL::Vector(t_in.x, t_in.y, t_in.z);
@@ -69,8 +67,7 @@ void doTransform(
   t_out.z = v_out[2];
 }
 
-inline
-geometry_msgs::msg::Vector3 toMsg(const tf2::Vector3 & in)
+inline geometry_msgs::msg::Vector3 toMsg(const tf2::Vector3 & in)
 {
   geometry_msgs::msg::Vector3 out;
   out.x = in.getX();
