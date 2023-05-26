@@ -1,17 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 project(behavior_path_planner)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-endif()
+find_package(autoware_cmake REQUIRED)
+autoware_package()
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
 find_package(OpenCV REQUIRED)
 
 ament_auto_add_library(behavior_path_planner_node SHARED
@@ -46,8 +38,6 @@ rclcpp_components_register_node(behavior_path_planner_node
 )
 
 if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
   ament_add_ros_isolated_gmock(test_${PROJECT_NAME}_utilities
     test/input.cpp
     test/test_utilities.cpp
