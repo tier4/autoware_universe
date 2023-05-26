@@ -55,6 +55,29 @@ inline void doTransform(
   t_out.y = v_out[1];
   t_out.z = v_out[2];
 }
+
+template<>
+inline
+void doTransform(
+  const geometry_msgs::msg::Vector3 & t_in,
+  geometry_msgs::msg::Vector3 & t_out,
+  const geometry_msgs::msg::TransformStamped & transform)
+{
+  KDL::Vector v_out = gmTransformToKDL(transform).M * KDL::Vector(t_in.x, t_in.y, t_in.z);
+  t_out.x = v_out[0];
+  t_out.y = v_out[1];
+  t_out.z = v_out[2];
+}
+
+inline
+geometry_msgs::msg::Vector3 toMsg(const tf2::Vector3 & in)
+{
+  geometry_msgs::msg::Vector3 out;
+  out.x = in.getX();
+  out.y = in.getY();
+  out.z = in.getZ();
+  return out;
+}
 }  // namespace tf2
 namespace autoware::motion::control::autonomous_emergency_braking
 {
