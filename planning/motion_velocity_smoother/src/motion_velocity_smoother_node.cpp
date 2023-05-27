@@ -129,6 +129,44 @@ MotionVelocitySmootherNode::MotionVelocitySmootherNode(const rclcpp::NodeOptions
   pub_velocity_limit_->publish(max_vel_msg);
 
   clock_ = get_clock();
+
+  // Diagnostics
+  setupDiagnosticUpdater();
+}
+
+void MotionVelocitySmootherNode::setupDiagnosticUpdater()
+{
+  diagnostic_updater_.setHardwareID("smoother");
+  if (node_param_.enable_diagnostics_when_smoothing_failure) {
+    diagnostic_updater_.add("smoother_errors", this, &MotionVelocitySmootherNode::checkSmootherErrors);
+  }
+  diagnostic_updater_.setPeriod(0.1);
+}
+
+void MotionVelocitySmootherNode::checkSmootherErrors(diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  diagnostic_msgs::msg::DiagnosticStatus status;
+  status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  status.message = "OK";
+
+  // guard
+  if (current_odometry_ptr_ == nullptr) {
+    return;
+  }
+
+  if (current_odometry_ptr_->twist.twist.linear.x < 1e-3) {
+    failure_to_apply_smoother_ = false;
+  }
+
+  if (failure_to_apply_smoother_) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000 /*ms*/, "Failure to apply smoother");
+    status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    status.message = "Failure to apply smoother";
+  }
+
+  RCLCPP_INFO(get_logger(), "failure_to_apply_smoother_: %d", failure_to_apply_smoother_);
+
+  stat.summary(status);
 }
 
 rcl_interfaces::msg::SetParametersResult MotionVelocitySmootherNode::onParameter(
@@ -160,6 +198,7 @@ rcl_interfaces::msg::SetParametersResult MotionVelocitySmootherNode::onParameter
     update_param("stop_dist_to_prohibit_engage", p.stop_dist_to_prohibit_engage);
     update_param("ego_nearest_dist_threshold", p.ego_nearest_dist_threshold);
     update_param("ego_nearest_yaw_threshold", p.ego_nearest_yaw_threshold);
+    update_param("enable_diagnostics_when_smoothing_failure", p.enable_diagnostics_when_smoothing_failure);
   }
 
   {
@@ -274,6 +313,8 @@ void MotionVelocitySmootherNode::initCommonParam()
   p.post_resample_param.sparse_min_interval_distance =
     declare_parameter("post_sparse_min_interval_distance", 1.0);
   p.algorithm_type = getAlgorithmType(declare_parameter("algorithm_type", "JerkFiltered"));
+  p.enable_diagnostics_when_smoothing_failure =
+    declare_parameter("enable_diagnostics_when_smoothing_failure", 0.0);
 }
 
 void MotionVelocitySmootherNode::publishTrajectory(const TrajectoryPoints & trajectory) const
@@ -484,7 +525,7 @@ void MotionVelocitySmootherNode::updateDataForExternalVelocityLimit()
 }
 
 TrajectoryPoints MotionVelocitySmootherNode::calcTrajectoryVelocity(
-  const TrajectoryPoints & traj_input) const
+  const TrajectoryPoints & traj_input)
 {
   TrajectoryPoints output{};  // velocity is optimized by qp solver
 
@@ -531,7 +572,7 @@ TrajectoryPoints MotionVelocitySmootherNode::calcTrajectoryVelocity(
 
 bool MotionVelocitySmootherNode::smoothVelocity(
   const TrajectoryPoints & input, const size_t input_closest,
-  TrajectoryPoints & traj_smoothed) const
+  TrajectoryPoints & traj_smoothed)
 {
   // Calculate initial motion for smoothing
   const auto [initial_motion, type] = calcInitialMotion(input, input_closest);
@@ -579,6 +620,10 @@ bool MotionVelocitySmootherNode::smoothVelocity(
   if (!smoother_->apply(
         initial_motion.vel, initial_motion.acc, clipped, traj_smoothed, debug_trajectories)) {
     RCLCPP_WARN(get_logger(), "Fail to solve optimization.");
+    if (node_param_.enable_diagnostics_when_smoothing_failure) {
+      failure_to_apply_smoother_ = 1.0;
+      diagnostic_updater_.force_update();
+    }
   }
 
   // Set 0 velocity after input-stop-point

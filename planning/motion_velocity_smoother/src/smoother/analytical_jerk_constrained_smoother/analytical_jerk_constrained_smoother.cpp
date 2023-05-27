@@ -199,7 +199,7 @@ bool AnalyticalJerkConstrainedSmoother::apply(
         applyMaxVelocity(0.0, bwd_start_index, filtered_trajectory.size() - 1, filtered_trajectory);
         output = filtered_trajectory;
         RCLCPP_DEBUG(logger_, "-------------------- Finish --------------------");
-        return true;
+        return false;
       }
       applyMaxVelocity(decel_target_vel, bwd_start_index, decel_target_index, reference_trajectory);
       RCLCPP_DEBUG(logger_, "Apply forward jerk filter from: %ld", bwd_start_index);
