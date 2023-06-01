@@ -76,6 +76,25 @@ void pushUniqueVector(T & base_vector, const T & additional_vector)
 {
   base_vector.insert(base_vector.end(), additional_vector.begin(), additional_vector.end());
 }
+
+bool isDrivingSameLane(
+  const lanelet::ConstLanelets & previous_lanes, const lanelet::ConstLanelets & current_lanes)
+{
+  std::multiset<lanelet::Id> prev_ids{};
+  std::multiset<lanelet::Id> curr_ids{};
+  std::multiset<lanelet::Id> same_ids{};
+
+  std::for_each(
+    previous_lanes.begin(), previous_lanes.end(), [&](const auto & l) { prev_ids.insert(l.id()); });
+  std::for_each(
+    current_lanes.begin(), current_lanes.end(), [&](const auto & l) { curr_ids.insert(l.id()); });
+
+  std::set_intersection(
+    prev_ids.begin(), prev_ids.end(), curr_ids.begin(), curr_ids.end(),
+    std::inserter(same_ids, same_ids.end()));
+
+  return !same_ids.empty();
+}
 }  // namespace
 
 #ifdef USE_OLD_ARCHITECTURE
@@ -164,9 +183,15 @@ ModuleStatus AvoidanceModule::updateState()
     current_state_ = ModuleStatus::RUNNING;
   }
 
+  if (!isDrivingSameLane(prev_driving_lanes_, avoidance_data_.current_lanelets)) {
+    RCLCPP_WARN_THROTTLE(getLogger(), *clock_, 500, "previous module lane is updated.");
+    current_state_ = ModuleStatus::SUCCESS;
+  }
+
   DEBUG_PRINT(
     "is_plan_running = %d, has_avoidance_target = %d", is_plan_running, has_avoidance_target);
 
+  prev_driving_lanes_ = avoidance_data_.current_lanelets;
   return current_state_;
 }
 
@@ -3125,6 +3150,10 @@ void AvoidanceModule::updateData()
   if (prev_reference_.points.empty()) {
     prev_reference_ = *getPreviousModuleOutput().path;
   }
+  if (prev_driving_lanes_.empty()) {
+    prev_driving_lanes_ =
+      utils::getCurrentLanesFromPath(*getPreviousModuleOutput().reference_path, planner_data_);
+  }
 #endif
 
   debug_data_ = DebugData();
@@ -3181,6 +3210,7 @@ void AvoidanceModule::initVariables()
   prev_output_ = ShiftedPath();
   prev_linear_shift_path_ = ShiftedPath();
   prev_reference_ = PathWithLaneId();
+  prev_driving_lanes_.clear();
   path_shifter_ = PathShifter{};
 
   debug_data_ = DebugData();
@@ -3366,8 +3396,7 @@ void AvoidanceModule::updateDebugMarker(
   add(createOtherObjectsMarkerArray(data.other_objects, std::string("NotNeedAvoidance")));
 
   add(makeOverhangToRoadShoulderMarkerArray(data.target_objects, "overhang"));
-  add(createOverhangFurthestLineStringMarkerArray(
-    debug.bounds, "farthest_linestring_from_overhang", 1.0, 0.0, 1.0));
+  add(createOverhangFurthestLineStringMarkerArray(debug.bounds, "bounds", 1.0, 0.0, 1.0));
 
   add(createUnsafeObjectsMarkerArray(debug.unsafe_objects, "unsafe_objects"));
 
