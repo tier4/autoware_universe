@@ -128,6 +128,11 @@ void ElevationMapLoaderNode::publish()
     pcl::toROSMsg(*elevation_map_cloud_ptr, elevation_map_cloud_msg);
     pub_elevation_map_cloud_->publish(elevation_map_cloud_msg);
   }
+
+  data_manager_.reset();
+  sub_pointcloud_map_.reset();
+  sub_map_hash_.reset();
+  sub_vector_map_.reset();
 }
 
 void ElevationMapLoaderNode::onMapHash(
@@ -179,6 +184,7 @@ void ElevationMapLoaderNode::createElevationMap()
       pcl::make_shared<grid_map::GridMapPclLoader>(grid_map_logger);
     grid_map_pcl_loader->loadParameters(param_file_path_);
     grid_map_pcl_loader->setInputCloud(data_manager_.map_pcl_ptr_);
+    data_manager_.map_pcl_ptr_.reset();
     createElevationMapFromPointcloud(grid_map_pcl_loader);
     elevation_map_ = grid_map_pcl_loader->getGridMap();
   }

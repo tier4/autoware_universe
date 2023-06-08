@@ -49,6 +49,11 @@ public:
       return static_cast<bool>(elevation_map_path_) && static_cast<bool>(map_pcl_ptr_);
     }
   }
+  void reset() {
+    lanelet_map_ptr_.reset();
+    map_pcl_ptr_.reset();
+    elevation_map_path_.reset();
+  }
   std::unique_ptr<std::filesystem::path> elevation_map_path_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr map_pcl_ptr_;
   lanelet::LaneletMapPtr lanelet_map_ptr_;
