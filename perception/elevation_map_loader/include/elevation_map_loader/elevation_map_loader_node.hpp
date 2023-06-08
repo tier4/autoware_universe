@@ -49,7 +49,8 @@ public:
       return static_cast<bool>(elevation_map_path_) && static_cast<bool>(map_pcl_ptr_);
     }
   }
-  void reset() {
+  void reset()
+  {
     lanelet_map_ptr_.reset();
     map_pcl_ptr_.reset();
     elevation_map_path_.reset();
