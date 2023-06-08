@@ -417,7 +417,7 @@ ModuleStatus GoalPlannerModule::updateState()
     current_state_ = ModuleStatus::SUCCESS;
   }
 
-  // pull_out module will be run when setting new goal, so not need finishing pull_over module.
+  // start_planner module will be run when setting new goal, so not need finishing pull_over module.
   // Finishing it causes wrong lane_following path generation.
   return current_state_;
 }
