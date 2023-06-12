@@ -79,9 +79,9 @@ if(BUILD_TESTING)
   ament_add_gtest(utilities-test test/src/test_utilities.cpp)
   target_link_libraries(utilities-test lanelet2_extension_lib)
   target_include_directories(utilities-test
-  SYSTEM PRIVATE
-    ${lanelet2_core_INCLUDE_DIRECTORIES}
-)
+    SYSTEM PRIVATE
+      ${lanelet2_core_INCLUDE_DIRECTORIES}
+  )
 endif()
 
 ament_auto_package()
