@@ -576,9 +576,7 @@ void AvoidanceModule::updateEgoBehavior(const AvoidancePlanningData & data, Shif
     case AvoidanceState::YIELD: {
       insertYieldVelocity(path);
       insertWaitPoint(parameters_->use_constraints_for_decel, path);
-      initRTCStatus();
-      removeAllRegisteredShiftPoints(path_shifter_);
-      unlockNewModuleLaunch();
+      removeRegisteredShiftLines();
       break;
     }
     case AvoidanceState::AVOID_PATH_NOT_READY: {
@@ -2819,7 +2817,7 @@ BehaviorModuleOutput AvoidanceModule::plan()
 
   // post processing
   {
-    postProcess(path_shifter_);  // remove old shift points
+    postProcess();  // remove old shift points
     prev_output_ = avoidance_path;
     prev_linear_shift_path_ = utils::avoidance::toShiftedPath(avoidance_data_.reference_path);
     path_shifter_.generate(&prev_linear_shift_path_, true, SHIFT_TYPE::LINEAR);
@@ -3085,7 +3083,7 @@ AvoidLineArray AvoidanceModule::findNewShiftLine(
     // this value should be larger than -eps consider path shifter calculation error.
     const double eps = 0.01;
     if (candidate.start_longitudinal < -eps) {
-      continue;
+      break;
     }
 
     // TODO(Horibe): this code prohibits the changes on ego pose. Think later.
