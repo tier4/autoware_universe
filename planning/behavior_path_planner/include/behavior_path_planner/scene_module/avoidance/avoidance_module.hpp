@@ -311,17 +311,34 @@ private:
 
   void insertYieldVelocity(ShiftedPath & shifted_path) const;
 
-  void removeAllRegisteredShiftPoints(PathShifter & path_shifter)
+  /**
+   * @brief reset registered shift lines.
+   * @details reset only when the base offset is zero. Otherwise, sudden steering will be caused;
+   */
+  void removeRegisteredShiftLines()
   {
+    constexpr double THRESHOLD = 0.1;
+    if (std::abs(path_shifter_.getBaseOffset()) > THRESHOLD) {
+      RCLCPP_INFO(getLogger(), "base offset is not zero. can't reset registered shift lines.");
+      return;
+    }
+
+    initRTCStatus();
+    unlockNewModuleLaunch();
+
     current_raw_shift_lines_.clear();
     registered_raw_shift_lines_.clear();
-    path_shifter.setShiftLines(ShiftLineArray{});
+    path_shifter_.setShiftLines(ShiftLineArray{});
   }
 
-  void postProcess(PathShifter & path_shifter) const
+  /**
+   * @brief remove behind shift lines.
+   * @param path shifter.
+   */
+  void postProcess()
   {
-    const size_t nearest_idx = planner_data_->findEgoIndex(path_shifter.getReferencePath().points);
-    path_shifter.removeBehindShiftLineAndSetBaseOffset(nearest_idx);
+    const size_t idx = planner_data_->findEgoIndex(path_shifter_.getReferencePath().points);
+    path_shifter_.removeBehindShiftLineAndSetBaseOffset(idx);
   }
 
   boost::optional<double> getFeasibleDecelDistance(const double target_velocity) const;
