@@ -130,7 +130,7 @@ private:
     double ego_nearest_dist_threshold;    // for ego's closest index calculation
     double ego_nearest_yaw_threshold;     // for ego's closest index calculation
 
-    double enable_diagnostics_when_smoothing_failure;  // 0: DISABLE, 1: ENABLE
+    bool enable_diagnostics_when_smoothing_failure;
 
     resampling::ResampleParam post_resample_param;
     AlgorithmType algorithm_type;  // Option : JerkFiltered, Linf, L2

@@ -198,7 +198,6 @@ rcl_interfaces::msg::SetParametersResult MotionVelocitySmootherNode::onParameter
     update_param("stop_dist_to_prohibit_engage", p.stop_dist_to_prohibit_engage);
     update_param("ego_nearest_dist_threshold", p.ego_nearest_dist_threshold);
     update_param("ego_nearest_yaw_threshold", p.ego_nearest_yaw_threshold);
-    update_param("enable_diagnostics_when_smoothing_failure", p.enable_diagnostics_when_smoothing_failure);
   }
 
   {
@@ -314,7 +313,7 @@ void MotionVelocitySmootherNode::initCommonParam()
     declare_parameter("post_sparse_min_interval_distance", 1.0);
   p.algorithm_type = getAlgorithmType(declare_parameter("algorithm_type", "JerkFiltered"));
   p.enable_diagnostics_when_smoothing_failure =
-    declare_parameter("enable_diagnostics_when_smoothing_failure", 0.0);
+    declare_parameter("enable_diagnostics_when_smoothing_failure", false);
 }
 
 void MotionVelocitySmootherNode::publishTrajectory(const TrajectoryPoints & trajectory) const
