@@ -50,6 +50,11 @@ TEST(PlanningModuleInterfaceTest, testPlanningInterfaceWithVariousTrajectoryInpu
   test_manager->publishOdometry(test_target_node, "/localization/kinematic_state");
   test_manager->publishMaxVelocity(
     test_target_node, "motion_velocity_smoother/input/external_velocity_limit_mps");
+  test_manager->publishOperationModeState(
+    test_target_node, "motion_velocity_smoother/input/operation_mode_state");
+  test_manager->publishAcceleration(
+    test_target_node, "motion_velocity_smoother/input/acceleration");
+}
 
   // set subscriber for test_target_node
   test_manager->setTrajectorySubscriber("motion_velocity_smoother/output/trajectory");
