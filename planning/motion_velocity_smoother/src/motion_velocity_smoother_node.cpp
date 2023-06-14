@@ -620,7 +620,7 @@ bool MotionVelocitySmootherNode::smoothVelocity(
         initial_motion.vel, initial_motion.acc, clipped, traj_smoothed, debug_trajectories)) {
     RCLCPP_WARN(get_logger(), "Fail to solve optimization.");
     if (node_param_.enable_diagnostics_when_smoothing_failure) {
-      failure_to_apply_smoother_ = 1.0;
+      failure_to_apply_smoother_ = true;
       diagnostic_updater_.force_update();
     }
   }
