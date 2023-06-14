@@ -164,8 +164,6 @@ void MotionVelocitySmootherNode::checkSmootherErrors(diagnostic_updater::Diagnos
     status.message = "Failure to apply smoother";
   }
 
-  RCLCPP_INFO(get_logger(), "failure_to_apply_smoother_: %d", failure_to_apply_smoother_);
-
   stat.summary(status);
 }
 
