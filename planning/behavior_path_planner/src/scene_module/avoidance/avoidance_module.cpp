@@ -2796,7 +2796,7 @@ BehaviorModuleOutput AvoidanceModule::plan()
 
   // post processing
   {
-    postProcess(path_shifter_);  // remove old shift points
+    postProcess();  // remove old shift points
   }
 
   // set previous data
