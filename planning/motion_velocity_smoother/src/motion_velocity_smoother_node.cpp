@@ -138,12 +138,14 @@ void MotionVelocitySmootherNode::setupDiagnosticUpdater()
 {
   diagnostic_updater_.setHardwareID("smoother");
   if (node_param_.enable_diagnostics_when_smoothing_failure) {
-    diagnostic_updater_.add("smoother_errors", this, &MotionVelocitySmootherNode::checkSmootherErrors);
+    diagnostic_updater_.add(
+      "smoother_errors", this, &MotionVelocitySmootherNode::checkSmootherErrors);
   }
   diagnostic_updater_.setPeriod(0.1);
 }
 
-void MotionVelocitySmootherNode::checkSmootherErrors(diagnostic_updater::DiagnosticStatusWrapper & stat)
+void MotionVelocitySmootherNode::checkSmootherErrors(
+  diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   diagnostic_msgs::msg::DiagnosticStatus status;
   status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
@@ -568,8 +570,7 @@ TrajectoryPoints MotionVelocitySmootherNode::calcTrajectoryVelocity(
 }
 
 bool MotionVelocitySmootherNode::smoothVelocity(
-  const TrajectoryPoints & input, const size_t input_closest,
-  TrajectoryPoints & traj_smoothed)
+  const TrajectoryPoints & input, const size_t input_closest, TrajectoryPoints & traj_smoothed)
 {
   // Calculate initial motion for smoothing
   const auto [initial_motion, type] = calcInitialMotion(input, input_closest);

@@ -15,7 +15,6 @@
 #ifndef MOTION_VELOCITY_SMOOTHER__MOTION_VELOCITY_SMOOTHER_NODE_HPP_
 #define MOTION_VELOCITY_SMOOTHER__MOTION_VELOCITY_SMOOTHER_NODE_HPP_
 
-#include <diagnostic_updater/diagnostic_updater.hpp>
 #include "motion_utils/trajectory/tmp_conversion.hpp"
 #include "motion_utils/trajectory/trajectory.hpp"
 #include "motion_velocity_smoother/resample.hpp"
@@ -33,6 +32,8 @@
 #include "tier4_autoware_utils/math/unit_conversion.hpp"
 #include "tier4_autoware_utils/ros/self_pose_listener.hpp"
 #include "tier4_autoware_utils/system/stop_watch.hpp"
+
+#include <diagnostic_updater/diagnostic_updater.hpp>
 
 #include "autoware_auto_planning_msgs/msg/trajectory.hpp"
 #include "autoware_auto_planning_msgs/msg/trajectory_point.hpp"
@@ -186,8 +187,7 @@ private:
   TrajectoryPoints calcTrajectoryVelocity(const TrajectoryPoints & traj_input);
 
   bool smoothVelocity(
-    const TrajectoryPoints & input, const size_t input_closest,
-    TrajectoryPoints & traj_smoothed);
+    const TrajectoryPoints & input, const size_t input_closest, TrajectoryPoints & traj_smoothed);
 
   std::pair<Motion, InitializeType> calcInitialMotion(
     const TrajectoryPoints & input_traj, const size_t input_closest) const;
