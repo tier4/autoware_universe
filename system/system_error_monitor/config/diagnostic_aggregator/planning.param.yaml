@@ -55,3 +55,13 @@
               path: collision_check
               contains: [": collision_check"]
               timeout: 1.0
+
+        smoother_errors:
+          type: diagnostic_aggregator/AnalyzerGroup
+          path: smoother_errors
+          analyzers:
+            smoother_errors:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: smoother_errors
+              contains: [": smoother_errors"]
+              timeout: 1.0

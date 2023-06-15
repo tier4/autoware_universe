@@ -50,3 +50,6 @@
 
     # system
     over_stop_velocity_warn_thr: 1.389  # used to check if the optimization exceeds the input velocity on the stop point
+
+    # diagnostics
+    enable_diagnostics_when_smoothing_failure: false

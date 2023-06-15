@@ -33,6 +33,8 @@
 #include "tier4_autoware_utils/ros/self_pose_listener.hpp"
 #include "tier4_autoware_utils/system/stop_watch.hpp"
 
+#include <diagnostic_updater/diagnostic_updater.hpp>
+
 #include "autoware_auto_planning_msgs/msg/trajectory.hpp"
 #include "autoware_auto_planning_msgs/msg/trajectory_point.hpp"
 #include "nav_msgs/msg/odometry.hpp"
@@ -129,6 +131,8 @@ private:
     double ego_nearest_dist_threshold;    // for ego's closest index calculation
     double ego_nearest_yaw_threshold;     // for ego's closest index calculation
 
+    bool enable_diagnostics_when_smoothing_failure;
+
     resampling::ResampleParam post_resample_param;
     AlgorithmType algorithm_type;  // Option : JerkFiltered, Linf, L2
   } node_param_{};
@@ -180,11 +184,10 @@ private:
 
   AlgorithmType getAlgorithmType(const std::string & algorithm_name) const;
 
-  TrajectoryPoints calcTrajectoryVelocity(const TrajectoryPoints & traj_input) const;
+  TrajectoryPoints calcTrajectoryVelocity(const TrajectoryPoints & traj_input);
 
   bool smoothVelocity(
-    const TrajectoryPoints & input, const size_t input_closest,
-    TrajectoryPoints & traj_smoothed) const;
+    const TrajectoryPoints & input, const size_t input_closest, TrajectoryPoints & traj_smoothed);
 
   std::pair<Motion, InitializeType> calcInitialMotion(
     const TrajectoryPoints & input_traj, const size_t input_closest) const;
@@ -242,6 +245,13 @@ private:
   bool isReverse(const TrajectoryPoints & points) const;
   void flipVelocity(TrajectoryPoints & points) const;
   void publishStopWatchTime();
+
+  // diagnostics
+  diagnostic_updater::Updater diagnostic_updater_{this};
+  bool failure_to_apply_smoother_{false};
+
+  void setupDiagnosticUpdater();
+  void checkSmootherErrors(diagnostic_updater::DiagnosticStatusWrapper & stat);
 };
 }  // namespace motion_velocity_smoother
 
