@@ -191,8 +191,25 @@ ModuleStatus AvoidanceModule::updateState()
   DEBUG_PRINT(
     "is_plan_running = %d, has_avoidance_target = %d", is_plan_running, has_avoidance_target);
 
-  prev_driving_lanes_ = avoidance_data_.current_lanelets;
-  return current_state_;
+  if (!is_plan_running && !has_avoidance_target) {
+    return ModuleStatus::SUCCESS;
+  }
+
+  if (
+    !has_avoidance_target && parameters_->enable_update_path_when_object_is_gone &&
+    !isAvoidanceManeuverRunning()) {
+    // if dynamic objects are removed on path, change current state to reset path
+    return ModuleStatus::SUCCESS;
+  }
+
+#ifdef USE_OLD_ARCHITECTURE
+  return ModuleStatus::RUNNING;
+#else
+  if (is_plan_running || current_state_ == ModuleStatus::RUNNING) {
+    return ModuleStatus::RUNNING;
+  }
+  return ModuleStatus::IDLE;
+#endif
 }
 
 bool AvoidanceModule::isAvoidancePlanRunning() const
