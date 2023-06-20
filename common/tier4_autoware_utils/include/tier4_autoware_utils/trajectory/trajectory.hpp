@@ -456,6 +456,120 @@ double calcArcLength(const T & points)
 
   return calcSignedArcLength(points, 0, points.size() - 1);
 }
+
+/**
+ * @brief calculate the point offset from source point index along the trajectory (or path) (points
+ * container)
+ * @param points points of trajectory, path, ...
+ * @param src_idx index of source point
+ * @param offset length of offset from source point
+ * @param set_orientation_from_position_direction set orientation by spherical interpolation if
+ * false
+ * @return offset pose
+ */
+template <class T>
+inline boost::optional<geometry_msgs::msg::Pose> calcLongitudinalOffsetPose(
+  const T & points, const size_t src_idx, const double offset,
+  const bool set_orientation_from_position_direction = true, const bool throw_exception = false)
+{
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  if (points.size() - 1 < src_idx) {
+    const auto e = std::out_of_range("Invalid source index");
+    if (throw_exception) {
+      throw e;
+    }
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  if (points.size() == 1) {
+    return {};
+  }
+
+  if (src_idx + 1 == points.size() && offset == 0.0) {
+    return tier4_autoware_utils::getPose(points.at(src_idx));
+  }
+
+  if (offset < 0.0) {
+    auto reverse_points = points;
+    std::reverse(reverse_points.begin(), reverse_points.end());
+
+    double dist_sum = 0.0;
+
+    for (size_t i = reverse_points.size() - src_idx - 1; i < reverse_points.size() - 1; ++i) {
+      const auto & p_front = reverse_points.at(i);
+      const auto & p_back = reverse_points.at(i + 1);
+
+      const auto dist_segment = tier4_autoware_utils::calcDistance2d(p_front, p_back);
+      dist_sum += dist_segment;
+
+      const auto dist_res = -offset - dist_sum;
+      if (dist_res <= 0.0) {
+        return tier4_autoware_utils::calcInterpolatedPose(
+          p_back, p_front, std::abs(dist_res / dist_segment),
+          set_orientation_from_position_direction);
+      }
+    }
+  } else {
+    double dist_sum = 0.0;
+
+    for (size_t i = src_idx; i < points.size() - 1; ++i) {
+      const auto & p_front = points.at(i);
+      const auto & p_back = points.at(i + 1);
+
+      const auto dist_segment = tier4_autoware_utils::calcDistance2d(p_front, p_back);
+      dist_sum += dist_segment;
+
+      const auto dist_res = offset - dist_sum;
+      if (dist_res <= 0.0) {
+        return tier4_autoware_utils::calcInterpolatedPose(
+          p_front, p_back, 1.0 - std::abs(dist_res / dist_segment),
+          set_orientation_from_position_direction);
+      }
+    }
+  }
+
+  // not found (out of range)
+  return {};
+}
+
+/**
+ * @brief calculate the point offset from source point along the trajectory (or path) (points
+ * container)
+ * @param points points of trajectory, path, ...
+ * @param src_point source point
+ * @param offset length of offset from source point
+ * @param set_orientation_from_position_direction set orientation by spherical interpolation if
+ * false
+ * @return offset pase
+ */
+template <class T>
+inline boost::optional<geometry_msgs::msg::Pose> calcLongitudinalOffsetPose(
+  const T & points, const geometry_msgs::msg::Point & src_point, const double offset,
+  const bool set_orientation_from_position_direction = true)
+{
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  const size_t src_seg_idx = findNearestSegmentIndex(points, src_point);
+  const double signed_length_src_offset =
+    calcLongitudinalOffsetToSegment(points, src_seg_idx, src_point);
+
+  return calcLongitudinalOffsetPose(
+    points, src_seg_idx, offset + signed_length_src_offset,
+    set_orientation_from_position_direction);
+}
+
 }  // namespace tier4_autoware_utils
 
 #endif  // TIER4_AUTOWARE_UTILS__TRAJECTORY__TRAJECTORY_HPP_
