@@ -191,7 +191,13 @@ ModuleStatus DynamicAvoidanceModule::updateState()
     current_state_ = ModuleStatus::RUNNING;
   }
 
-  return current_state_;
+#ifndef USE_OLD_ARCHITECTURE
+  if (!isActivated() || isWaitingApproval()) {
+    return ModuleStatus::IDLE;
+  }
+#endif
+
+  return ModuleStatus::RUNNING;
 }
 
 BehaviorModuleOutput DynamicAvoidanceModule::plan()

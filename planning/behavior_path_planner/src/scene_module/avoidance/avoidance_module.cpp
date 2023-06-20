@@ -194,7 +194,15 @@ ModuleStatus AvoidanceModule::updateState()
   }
 
   helper_.setPreviousDrivingLanes(avoidance_data_.current_lanelets);
+
+#ifdef USE_OLD_ARCHITECTURE
   return ModuleStatus::RUNNING;
+#else
+  if (is_plan_running || current_state_ == ModuleStatus::RUNNING) {
+    return ModuleStatus::RUNNING;
+  }
+  return ModuleStatus::IDLE;
+#endif
 }
 
 bool AvoidanceModule::isAvoidancePlanRunning() const
@@ -583,7 +591,8 @@ void AvoidanceModule::updateEgoBehavior(const AvoidancePlanningData & data, Shif
     case AvoidanceState::YIELD: {
       insertYieldVelocity(path);
       insertWaitPoint(parameters_->use_constraints_for_decel, path);
-      removeRegisteredShiftLines();
+      initRTCStatus();
+      unlockNewModuleLaunch();
       break;
     }
     case AvoidanceState::AVOID_PATH_NOT_READY: {
@@ -2630,7 +2639,7 @@ BehaviorModuleOutput AvoidanceModule::planWaitingApproval()
     [](const auto & o) { return !o.is_avoidable; });
 
   const auto candidate = planCandidate();
-  if (!avoidance_data_.safe_new_sl.empty()) {
+  if (!avoidance_data_.unapproved_raw_sl.empty()) {
     updateCandidateRTCStatus(candidate);
     waitApproval();
   } else if (all_unavoidable) {
