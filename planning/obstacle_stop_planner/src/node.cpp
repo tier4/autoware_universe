@@ -35,8 +35,8 @@
 
 namespace motion_planning
 {
-using motion_utils::calcLongitudinalOffsetPose;
-using motion_utils::findNearestSegmentIndex;
+using tier4_autoware_utils::calcLongitudinalOffsetPose;
+using tier4_autoware_utils::findNearestSegmentIndex;
 using tier4_autoware_utils::calcAzimuthAngle;
 using tier4_autoware_utils::calcDistance2d;
 using tier4_autoware_utils::calcSignedArcLength;
