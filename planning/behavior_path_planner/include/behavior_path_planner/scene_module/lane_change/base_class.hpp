@@ -206,8 +206,6 @@ protected:
   virtual lanelet::ConstLanelets getLaneChangeLanes(
     const lanelet::ConstLanelets & current_lanes, Direction direction) const = 0;
 
-  std::string getModuleTypeStr() const { return std::string{magic_enum::enum_name(type_)}; }
-
   LaneChangeStatus status_{};
   PathShifter path_shifter_{};
 
