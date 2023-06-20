@@ -15,6 +15,12 @@ rclcpp_components_register_node(mission_planner_node
   EXECUTABLE mission_planner
 )
 
+get_target_property(lanelet2_core_INCLUDE_DIRECTORIES lanelet2_core::lanelet2_core INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(mission_planner_node
+  SYSTEM PRIVATE
+    ${lanelet2_core_INCLUDE_DIRECTORIES}
+)
+
 ament_auto_add_library(goal_pose_visualizer_node SHARED
   src/goal_pose_visualizer/goal_pose_visualizer.cpp
 )
