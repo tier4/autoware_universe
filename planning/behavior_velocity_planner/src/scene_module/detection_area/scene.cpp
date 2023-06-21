@@ -250,8 +250,6 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path, StopReason *
     stop_pose = ego_pos_on_path.get();
   }
 
-  setDistance(stop_dist);
-
   // Check state
   if (canClearStopState()) {
     state_ = State::GO;
