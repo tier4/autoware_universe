@@ -47,6 +47,16 @@ bool isTargetObjectFront(
   return false;
 }
 
+bool isTargetObjectFront(
+  const PathWithLaneId & path, const geometry_msgs::msg::Pose & ego_pose,
+  const vehicle_info_util::VehicleInfo & vehicle_info, const geometry_msgs::msg::Pose & obj_pose)
+{
+  const double base_to_front = vehicle_info.max_longitudinal_offset_m;
+  const auto ego_point =
+    tier4_autoware_utils::calcOffsetPose(ego_pose, base_to_front, 0.0, 0.0).position;
+  return motion_utils::isTargetPointFront(path.points, ego_point, obj_pose.position);
+}
+
 Polygon2d createExtendedPolygon(
   const Pose & base_link_pose, const vehicle_info_util::VehicleInfo & vehicle_info,
   const double lon_length, const double lat_margin)
@@ -117,6 +127,17 @@ Polygon2d createExtendedPolygon(
            : tier4_autoware_utils::inverseClockwise(polygon);
 }
 
+double calcMaxDistFromPoseToPolygonPoint(const Pose & pose, const Polygon2d & polygon)
+{
+  double max_dist = 0.0;
+  for (const auto & poly_point : polygon.outer()) {
+    const auto point = tier4_autoware_utils::createPoint(poly_point.x(), poly_point.y(), 0.0);
+    const auto dist = tier4_autoware_utils::calcDistance2d(point, pose);
+    max_dist = std::max(max_dist, dist);
+  }
+  return max_dist;
+}
+
 double calcRssDistance(
   const double front_object_velocity, const double rear_object_velocity,
   const double front_object_deceleration, const double rear_object_deceleration,
@@ -180,18 +201,12 @@ bool isSafeInLaneletCollisionCheck(
     const auto obj_polygon = tier4_autoware_utils::toPolygon2d(*obj_pose, target_object.shape);
     const auto & ego_pose = interpolated_ego.at(i).first;
     const auto & ego_polygon = interpolated_ego.at(i).second;
-
-    // check overlap
     debug.ego_polygon = ego_polygon;
     debug.obj_polygon = obj_polygon;
-    if (boost::geometry::overlaps(ego_polygon, obj_polygon)) {
-      debug.failed_reason = "overlap_polygon";
-      return false;
-    }
 
     // compute which one is at the front of the other
     const bool is_object_front =
-      isTargetObjectFront(path, ego_pose, common_parameters.vehicle_info, obj_polygon);
+      isTargetObjectFront(path, ego_pose, common_parameters.vehicle_info, *obj_pose);
     const auto & [front_object_velocity, rear_object_velocity] =
       is_object_front ? std::make_pair(object_velocity, ego_velocity)
                       : std::make_pair(ego_velocity, object_velocity);
@@ -208,6 +223,22 @@ bool isSafeInLaneletCollisionCheck(
     const auto & lon_offset = std::max(rss_dist, min_lon_length);
     const auto & ego_vehicle_info = common_parameters.vehicle_info;
     const auto & lat_margin = common_parameters.lateral_distance_max_threshold;
+
+    // rough collision check for reduction of computational cost.
+    const auto ego_poly_max_dist_from_pose =
+      calcMaxDistFromPoseToPolygonPoint(ego_pose, ego_polygon);
+    const auto obj_poly_max_dist_from_pose =
+      calcMaxDistFromPoseToPolygonPoint(*obj_pose, obj_polygon);
+    const auto rough_distance =
+      ego_poly_max_dist_from_pose + obj_poly_max_dist_from_pose + lon_offset + lat_margin;
+    const auto is_near_ego_and_obj =
+      tier4_autoware_utils::calcDistance2d(ego_pose, *obj_pose) < rough_distance;
+
+    if (!is_near_ego_and_obj) {
+      continue;
+    }
+
+    // detail collision check
     const auto & extended_ego_polygon =
       is_object_front ? createExtendedPolygon(ego_pose, ego_vehicle_info, lon_offset, lat_margin)
                       : ego_polygon;
@@ -268,7 +299,7 @@ bool isSafeInFreeSpaceCollisionCheck(
 
     // compute which one is at the front of the other
     const bool is_object_front =
-      isTargetObjectFront(path, ego_pose, common_parameters.vehicle_info, obj_polygon);
+      isTargetObjectFront(path, ego_pose, common_parameters.vehicle_info, obj_pose);
     const auto & [front_object_velocity, rear_object_velocity] =
       is_object_front ? std::make_pair(object_velocity, ego_velocity)
                       : std::make_pair(ego_velocity, object_velocity);
@@ -301,7 +332,7 @@ bool isSafeInFreeSpaceCollisionCheck(
       debug.failed_reason = "overlap_extended_polygon";
       return false;
     }
-  }
-  return true;
+    }
+    return true;
 }
 }  // namespace behavior_path_planner::utils::safety_check
