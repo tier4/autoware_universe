@@ -190,7 +190,6 @@ inline void setLongitudinalVelocity(
   p.longitudinal_velocity_mps = velocity;
 }
 
-
 inline geometry_msgs::msg::Point createPoint(const double x, const double y, const double z)
 {
   geometry_msgs::msg::Point p;
