@@ -21,6 +21,12 @@ rclcpp_components_register_node(scenario_selector_node
   EXECUTABLE scenario_selector
 )
 
+get_target_property(lanelet2_core_INCLUDE_DIRECTORIES lanelet2_core::lanelet2_core INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(scenario_selector_node
+  SYSTEM PRIVATE
+    ${lanelet2_core_INCLUDE_DIRECTORIES}
+)
+
 ament_auto_package(INSTALL_TO_SHARE
   launch
 )
