@@ -109,6 +109,88 @@ inline geometry_msgs::msg::Pose getPose(const autoware_auto_planning_msgs::msg::
   return p.pose;
 }
 
+template <class T>
+double getLongitudinalVelocity([[maybe_unused]] const T & p)
+{
+  static_assert(sizeof(T) == 0, "Only specializations of getVelocity can be used.");
+  throw std::logic_error("Only specializations of getVelocity can be used.");
+}
+
+template <>
+inline double getLongitudinalVelocity(const autoware_auto_planning_msgs::msg::PathPoint & p)
+{
+  return p.longitudinal_velocity_mps;
+}
+
+template <>
+inline double getLongitudinalVelocity(const autoware_auto_planning_msgs::msg::TrajectoryPoint & p)
+{
+  return p.longitudinal_velocity_mps;
+}
+
+template <class T>
+void setPose([[maybe_unused]] const geometry_msgs::msg::Pose & pose, [[maybe_unused]] T & p)
+{
+  static_assert(sizeof(T) == 0, "Only specializations of getPose can be used.");
+  throw std::logic_error("Only specializations of getPose can be used.");
+}
+
+template <>
+inline void setPose(const geometry_msgs::msg::Pose & pose, geometry_msgs::msg::Pose & p)
+{
+  p = pose;
+}
+
+template <>
+inline void setPose(const geometry_msgs::msg::Pose & pose, geometry_msgs::msg::PoseStamped & p)
+{
+  p.pose = pose;
+}
+
+template <>
+inline void setPose(
+  const geometry_msgs::msg::Pose & pose, autoware_auto_planning_msgs::msg::PathPoint & p)
+{
+  p.pose = pose;
+}
+
+template <>
+inline void setPose(
+  const geometry_msgs::msg::Pose & pose, autoware_auto_planning_msgs::msg::TrajectoryPoint & p)
+{
+  p.pose = pose;
+}
+
+template <class T>
+inline void setOrientation(const geometry_msgs::msg::Quaternion & orientation, T & p)
+{
+  auto pose = getPose(p);
+  pose.orientation = orientation;
+  setPose(pose, p);
+}
+
+template <class T>
+void setLongitudinalVelocity([[maybe_unused]] const double velocity, [[maybe_unused]] T & p)
+{
+  static_assert(sizeof(T) == 0, "Only specializations of getLongitudinalVelocity can be used.");
+  throw std::logic_error("Only specializations of getLongitudinalVelocity can be used.");
+}
+
+template <>
+inline void setLongitudinalVelocity(
+  const double velocity, autoware_auto_planning_msgs::msg::TrajectoryPoint & p)
+{
+  p.longitudinal_velocity_mps = velocity;
+}
+
+template <>
+inline void setLongitudinalVelocity(
+  const double velocity, autoware_auto_planning_msgs::msg::PathPoint & p)
+{
+  p.longitudinal_velocity_mps = velocity;
+}
+
+
 inline geometry_msgs::msg::Point createPoint(const double x, const double y, const double z)
 {
   geometry_msgs::msg::Point p;
