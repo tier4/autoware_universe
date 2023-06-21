@@ -406,6 +406,15 @@ inline double calcCurvature(
   return 2.0 * ((p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)) / denominator;
 }
 
+template <class Pose1, class Pose2>
+bool isDrivingForward(const Pose1 & src_pose, const Pose2 & dst_pose)
+{
+  // check the first point direction
+  const double src_yaw = tf2::getYaw(getPose(src_pose).orientation);
+  const double pose_direction_yaw = calcAzimuthAngle(getPoint(src_pose), getPoint(dst_pose));
+  return std::fabs(normalizeRadian(src_yaw - pose_direction_yaw)) < pi / 2.0;
+}
+
 /**
  * @brief Calculate offset pose. The offset values are defined in the local coordinate of the input
  * pose.
