@@ -274,14 +274,6 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path, StopReason *
     }
   }
 
-  // Get stop point
-  const auto stop_point = createTargetPoint(original_path, stop_line, planner_param_.stop_margin);
-  if (!stop_point) {
-    return true;
-  }
-
-  const auto & stop_pose = stop_point->second;
-
   // Ignore objects detected after stop_line if not in STOP state
   if (state_ != State::STOP && isOverLine(original_path, self_pose, stop_point->second)) {
     return true;
