@@ -26,9 +26,9 @@ namespace behavior_velocity_planner
 {
 namespace bg = boost::geometry;
 using motion_utils::calcLongitudinalOffsetPose;
-using tier4_autoware_utils::calcSignedArcLength;
 using motion_utils::findNearestSegmentIndex;
 using motion_utils::insertTargetPoint;
+using tier4_autoware_utils::calcSignedArcLength;
 
 namespace
 {
