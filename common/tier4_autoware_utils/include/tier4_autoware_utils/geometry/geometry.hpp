@@ -21,6 +21,8 @@
 
 #define EIGEN_MPL2_ONLY
 #include "tier4_autoware_utils/geometry/boost_geometry.hpp"
+#include "tier4_autoware_utils/math/constants.hpp"
+#include "tier4_autoware_utils/math/normalization.hpp"
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
