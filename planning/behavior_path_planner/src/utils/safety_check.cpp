@@ -332,7 +332,7 @@ bool isSafeInFreeSpaceCollisionCheck(
       debug.failed_reason = "overlap_extended_polygon";
       return false;
     }
-    }
-    return true;
+  }
+  return true;
 }
 }  // namespace behavior_path_planner::utils::safety_check
