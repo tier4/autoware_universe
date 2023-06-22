@@ -328,6 +328,12 @@ std::vector<T> concatVector(const std::vector<T> & vec1, const std::vector<T> & 
   concat_vec.insert(std::end(concat_vec), std::begin(vec2), std::end(vec2));
   return concat_vec;
 }
+
+boost::optional<geometry_msgs::msg::Pose> insertStopPoint(
+  const geometry_msgs::msg::Point & stop_point, PathWithLaneId & output);
+boost::optional<geometry_msgs::msg::Pose> insertStopPoint(
+  const geometry_msgs::msg::Point & stop_point, const size_t stop_seg_idx, PathWithLaneId & output);
+
 }  // namespace planning_utils
 }  // namespace behavior_velocity_planner
 

@@ -590,5 +590,32 @@ LineString2d extendLine(
   return {
     {(p1 - length * t).x(), (p1 - length * t).y()}, {(p2 + length * t).x(), (p2 + length * t).y()}};
 }
+
+// TODO(murooka): remove this function for u-turn and crossing-path
+boost::optional<geometry_msgs::msg::Pose> insertStopPoint(
+  const geometry_msgs::msg::Point & stop_point, PathWithLaneId & output)
+{
+  const size_t base_idx = motion_utils::findNearestSegmentIndex(output.points, stop_point);
+  const auto insert_idx = motion_utils::insertStopPoint(base_idx, stop_point, output.points);
+
+  if (!insert_idx) {
+    return {};
+  }
+
+  return tier4_autoware_utils::getPose(output.points.at(insert_idx.get()));
+}
+
+boost::optional<geometry_msgs::msg::Pose> insertStopPoint(
+  const geometry_msgs::msg::Point & stop_point, const size_t stop_seg_idx, PathWithLaneId & output)
+{
+  const auto insert_idx = motion_utils::insertStopPoint(stop_seg_idx, stop_point, output.points);
+
+  if (!insert_idx) {
+    return {};
+  }
+
+  return tier4_autoware_utils::getPose(output.points.at(insert_idx.get()));
+}
+
 }  // namespace planning_utils
 }  // namespace behavior_velocity_planner
