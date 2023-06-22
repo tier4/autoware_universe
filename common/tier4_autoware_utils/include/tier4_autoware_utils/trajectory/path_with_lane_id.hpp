@@ -108,6 +108,6 @@ inline size_t findNearestSegmentIndexFromLaneId(
 autoware_auto_planning_msgs::msg::PathWithLaneId convertToRearWheelCenter(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const double rear_to_cog,
   const bool enable_last_point_compensation = true);
-}  // namespace motion_utils
+}  // namespace tier4_autoware_utils
 
 #endif  // TIER4_AUTOWARE_UTILS__TRAJECTORY__PATH_WITH_LANE_ID_HPP_
