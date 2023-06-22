@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <motion_utils/motion_utils.hpp>
+#include <tier4_autoware_utils/tier4_autoware_utils.hpp>
 #include <scene_module/stop_line/scene.hpp>
 #include <utilization/util.hpp>
 
@@ -25,7 +25,7 @@
 namespace behavior_velocity_planner
 {
 
-using motion_utils::createStopVirtualWallMarker;
+using tier4_autoware_utils::createStopVirtualWallMarker;
 using tier4_autoware_utils::appendMarkerArray;
 using tier4_autoware_utils::createDefaultMarker;
 using tier4_autoware_utils::createMarkerColor;
