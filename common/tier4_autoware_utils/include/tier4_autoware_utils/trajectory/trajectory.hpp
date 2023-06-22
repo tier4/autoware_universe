@@ -1159,7 +1159,7 @@ boost::optional<size_t> insertStopPoint(
   const double overlap_threshold = 1e-3)
 {
   const auto insert_idx =
-    motion_utils::insertTargetPoint(stop_seg_idx, stop_point, points_with_twist, overlap_threshold);
+    tier4_autoware_utils::insertTargetPoint(stop_seg_idx, stop_point, points_with_twist, overlap_threshold);
 
   if (!insert_idx) {
     return boost::none;
@@ -1499,13 +1499,13 @@ boost::optional<double> calcDistanceToForwardStopPoint(
   }
 
   const auto nearest_segment_idx =
-    motion_utils::findNearestSegmentIndex(points_with_twist, pose, max_dist, max_yaw);
+    tier4_autoware_utils::findNearestSegmentIndex(points_with_twist, pose, max_dist, max_yaw);
 
   if (!nearest_segment_idx) {
     return boost::none;
   }
 
-  const auto stop_idx = motion_utils::searchZeroVelocityIndex(
+  const auto stop_idx = tier4_autoware_utils::searchZeroVelocityIndex(
     points_with_twist, *nearest_segment_idx + 1, points_with_twist.size());
 
   if (!stop_idx) {
@@ -1530,7 +1530,7 @@ T cropForwardPoints(
   }
 
   double sum_length =
-    -motion_utils::calcLongitudinalOffsetToSegment(points, target_seg_idx, target_pos);
+    -tier4_autoware_utils::calcLongitudinalOffsetToSegment(points, target_seg_idx, target_pos);
   for (size_t i = target_seg_idx + 1; i < points.size(); ++i) {
     sum_length += tier4_autoware_utils::calcDistance2d(points.at(i), points.at(i - 1));
     if (forward_length < sum_length) {
@@ -1554,7 +1554,7 @@ T cropBackwardPoints(
   }
 
   double sum_length =
-    -motion_utils::calcLongitudinalOffsetToSegment(points, target_seg_idx, target_pos);
+    -tier4_autoware_utils::calcLongitudinalOffsetToSegment(points, target_seg_idx, target_pos);
   for (int i = target_seg_idx; 0 < i; --i) {
     sum_length -= tier4_autoware_utils::calcDistance2d(points.at(i), points.at(i - 1));
     if (sum_length < -backward_length) {
