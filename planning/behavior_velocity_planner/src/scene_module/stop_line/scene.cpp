@@ -238,7 +238,7 @@ bool StopLineModule::modifyPathVelocity(
   const size_t stop_line_seg_idx = planning_utils::calcSegmentIndexFromPointIndex(
     path->points, stop_pose.position, stop_point_idx);
   const size_t current_seg_idx = findEgoSegmentIndex(path->points);
-  const double signed_arc_dist_to_stop_point = motion_utils::calcSignedArcLength(
+  const double signed_arc_dist_to_stop_point = tier4_autoware_utils::calcSignedArcLength(
     path->points, planner_data_->current_pose.pose.position, current_seg_idx, stop_pose.position,
     stop_line_seg_idx);
   switch (state_) {
@@ -278,7 +278,7 @@ bool StopLineModule::modifyPathVelocity(
 
     case State::STOPPED: {
       // Change state after vehicle departure
-      const auto stopped_pose = motion_utils::calcLongitudinalOffsetPose(
+      const auto stopped_pose = tier4_autoware_utils::calcLongitudinalOffsetPose(
         path->points, planner_data_->current_pose.pose.position, 0.0);
 
       if (!stopped_pose) {
