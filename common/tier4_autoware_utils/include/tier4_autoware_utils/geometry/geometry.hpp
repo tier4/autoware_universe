@@ -21,6 +21,8 @@
 
 #define EIGEN_MPL2_ONLY
 #include "tier4_autoware_utils/geometry/boost_geometry.hpp"
+#include "tier4_autoware_utils/math/constants.hpp"
+#include "tier4_autoware_utils/math/normalization.hpp"
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -32,6 +34,8 @@
 #include <geometry_msgs/msg/quaternion.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include <tf2/utils.h>
 
 namespace tier4_autoware_utils
 {
@@ -107,6 +111,87 @@ template <>
 inline geometry_msgs::msg::Pose getPose(const autoware_auto_planning_msgs::msg::TrajectoryPoint & p)
 {
   return p.pose;
+}
+
+template <class T>
+double getLongitudinalVelocity([[maybe_unused]] const T & p)
+{
+  static_assert(sizeof(T) == 0, "Only specializations of getVelocity can be used.");
+  throw std::logic_error("Only specializations of getVelocity can be used.");
+}
+
+template <>
+inline double getLongitudinalVelocity(const autoware_auto_planning_msgs::msg::PathPoint & p)
+{
+  return p.longitudinal_velocity_mps;
+}
+
+template <>
+inline double getLongitudinalVelocity(const autoware_auto_planning_msgs::msg::TrajectoryPoint & p)
+{
+  return p.longitudinal_velocity_mps;
+}
+
+template <class T>
+void setPose([[maybe_unused]] const geometry_msgs::msg::Pose & pose, [[maybe_unused]] T & p)
+{
+  static_assert(sizeof(T) == 0, "Only specializations of getPose can be used.");
+  throw std::logic_error("Only specializations of getPose can be used.");
+}
+
+template <>
+inline void setPose(const geometry_msgs::msg::Pose & pose, geometry_msgs::msg::Pose & p)
+{
+  p = pose;
+}
+
+template <>
+inline void setPose(const geometry_msgs::msg::Pose & pose, geometry_msgs::msg::PoseStamped & p)
+{
+  p.pose = pose;
+}
+
+template <>
+inline void setPose(
+  const geometry_msgs::msg::Pose & pose, autoware_auto_planning_msgs::msg::PathPoint & p)
+{
+  p.pose = pose;
+}
+
+template <>
+inline void setPose(
+  const geometry_msgs::msg::Pose & pose, autoware_auto_planning_msgs::msg::TrajectoryPoint & p)
+{
+  p.pose = pose;
+}
+
+template <class T>
+inline void setOrientation(const geometry_msgs::msg::Quaternion & orientation, T & p)
+{
+  auto pose = getPose(p);
+  pose.orientation = orientation;
+  setPose(pose, p);
+}
+
+template <class T>
+void setLongitudinalVelocity([[maybe_unused]] const double velocity, [[maybe_unused]] T & p)
+{
+  static_assert(sizeof(T) == 0, "Only specializations of getLongitudinalVelocity can be used.");
+  throw std::logic_error("Only specializations of getLongitudinalVelocity can be used.");
+}
+
+template <>
+inline void setLongitudinalVelocity(
+  const double velocity, autoware_auto_planning_msgs::msg::TrajectoryPoint & p)
+{
+  p.longitudinal_velocity_mps = velocity;
+}
+
+template <>
+inline void setLongitudinalVelocity(
+  const double velocity, autoware_auto_planning_msgs::msg::PathPoint & p)
+{
+  p.longitudinal_velocity_mps = velocity;
 }
 
 inline geometry_msgs::msg::Point createPoint(const double x, const double y, const double z)
@@ -323,6 +408,15 @@ inline double calcCurvature(
     throw std::runtime_error("points are too close for curvature calculation.");
   }
   return 2.0 * ((p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)) / denominator;
+}
+
+template <class Pose1, class Pose2>
+bool isDrivingForward(const Pose1 & src_pose, const Pose2 & dst_pose)
+{
+  // check the first point direction
+  const double src_yaw = tf2::getYaw(getPose(src_pose).orientation);
+  const double pose_direction_yaw = calcAzimuthAngle(getPoint(src_pose), getPoint(dst_pose));
+  return std::fabs(normalizeRadian(src_yaw - pose_direction_yaw)) < pi / 2.0;
 }
 
 /**
