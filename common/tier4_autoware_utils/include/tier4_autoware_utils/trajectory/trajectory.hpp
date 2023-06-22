@@ -1158,8 +1158,8 @@ boost::optional<size_t> insertStopPoint(
   const size_t stop_seg_idx, const geometry_msgs::msg::Point & stop_point, T & points_with_twist,
   const double overlap_threshold = 1e-3)
 {
-  const auto insert_idx =
-    tier4_autoware_utils::insertTargetPoint(stop_seg_idx, stop_point, points_with_twist, overlap_threshold);
+  const auto insert_idx = tier4_autoware_utils::insertTargetPoint(
+    stop_seg_idx, stop_point, points_with_twist, overlap_threshold);
 
   if (!insert_idx) {
     return boost::none;
