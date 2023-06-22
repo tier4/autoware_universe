@@ -458,6 +458,185 @@ double calcArcLength(const T & points)
 }
 
 /**
+ * @brief calculate curvature through points container.
+ * The method used for calculating the curvature is using 3 consecutive points through the points
+ * container. Then the curvature is the reciprocal of the radius of the circle that passes through
+ * these three points.
+ * @details more details here : https://en.wikipedia.org/wiki/Menger_curvature
+ * @param points points of trajectory, path, ...
+ * @return calculated curvature container through points container
+ */
+template <class T>
+inline std::vector<double> calcCurvature(const T & points)
+{
+  std::vector<double> curvature_vec(points.size());
+
+  for (size_t i = 1; i < points.size() - 1; ++i) {
+    const auto p1 = tier4_autoware_utils::getPoint(points.at(i - 1));
+    const auto p2 = tier4_autoware_utils::getPoint(points.at(i));
+    const auto p3 = tier4_autoware_utils::getPoint(points.at(i + 1));
+    curvature_vec.at(i) = (tier4_autoware_utils::calcCurvature(p1, p2, p3));
+  }
+  curvature_vec.at(0) = curvature_vec.at(1);
+  curvature_vec.at(curvature_vec.size() - 1) = curvature_vec.at(curvature_vec.size() - 2);
+
+  return curvature_vec;
+}
+
+/**
+ * @brief calculate curvature through points container and length of 2d distance for segment used
+ * for curvature calculation. The method used for calculating the curvature is using 3 consecutive
+ * points through the points container. Then the curvature is the reciprocal of the radius of the
+ * circle that passes through these three points. Then length of 2D distance of these points is
+ * calculated
+ * @param points points of trajectory, path, ...
+ * @return Container of pairs, calculated curvature and length of 2D distance for segment used for
+ * curvature calculation
+ */
+template <class T>
+inline std::vector<std::pair<double, double>> calcCurvatureAndArcLength(const T & points)
+{
+  // Note that arclength is for the segment, not the sum.
+  std::vector<std::pair<double, double>> curvature_arc_length_vec;
+  curvature_arc_length_vec.push_back(std::pair(0.0, 0.0));
+  for (size_t i = 1; i < points.size() - 1; ++i) {
+    const auto p1 = tier4_autoware_utils::getPoint(points.at(i - 1));
+    const auto p2 = tier4_autoware_utils::getPoint(points.at(i));
+    const auto p3 = tier4_autoware_utils::getPoint(points.at(i + 1));
+    const double curvature = tier4_autoware_utils::calcCurvature(p1, p2, p3);
+    const double arc_length = tier4_autoware_utils::calcDistance2d(points.at(i - 1), points.at(i)) +
+                              tier4_autoware_utils::calcDistance2d(points.at(i), points.at(i + 1));
+    curvature_arc_length_vec.push_back(std::pair(curvature, arc_length));
+  }
+  curvature_arc_length_vec.push_back(std::pair(0.0, 0.0));
+
+  return curvature_arc_length_vec;
+}
+
+/**
+ * @brief calculate length of 2D distance between given start point index in points container and
+ * first point in container with zero longitudinal velocity
+ * @param points_with_twist points of trajectory, path, ... (with velocity)
+ * @return Length of 2D distance between start point index in points container and first point in
+ * container with zero longitudinal velocity
+ */
+template <class T>
+boost::optional<double> calcDistanceToForwardStopPoint(
+  const T & points_with_twist, const size_t src_idx = 0)
+{
+  try {
+    validateNonEmpty(points_with_twist);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  const auto closest_stop_idx =
+    searchZeroVelocityIndex(points_with_twist, src_idx, points_with_twist.size());
+  if (!closest_stop_idx) {
+    return boost::none;
+  }
+
+  return std::max(0.0, calcSignedArcLength(points_with_twist, src_idx, *closest_stop_idx));
+}
+
+/**
+ * @brief calculate the point offset from source point index along the trajectory (or path) (points
+ * container)
+ * @param points points of trajectory, path, ...
+ * @param src_idx index of source point
+ * @param offset length of offset from source point
+ * @param throw_exception flag to enable/disable exception throwing
+ * @return offset point
+ */
+template <class T>
+inline boost::optional<geometry_msgs::msg::Point> calcLongitudinalOffsetPoint(
+  const T & points, const size_t src_idx, const double offset, const bool throw_exception = false)
+{
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  if (points.size() - 1 < src_idx) {
+    const auto e = std::out_of_range("Invalid source index");
+    if (throw_exception) {
+      throw e;
+    }
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  if (points.size() == 1) {
+    return {};
+  }
+
+  if (src_idx + 1 == points.size() && offset == 0.0) {
+    return tier4_autoware_utils::getPoint(points.at(src_idx));
+  }
+
+  if (offset < 0.0) {
+    auto reverse_points = points;
+    std::reverse(reverse_points.begin(), reverse_points.end());
+    return calcLongitudinalOffsetPoint(
+      reverse_points, reverse_points.size() - src_idx - 1, -offset);
+  }
+
+  double dist_sum = 0.0;
+
+  for (size_t i = src_idx; i < points.size() - 1; ++i) {
+    const auto & p_front = points.at(i);
+    const auto & p_back = points.at(i + 1);
+
+    const auto dist_segment = tier4_autoware_utils::calcDistance2d(p_front, p_back);
+    dist_sum += dist_segment;
+
+    const auto dist_res = offset - dist_sum;
+    if (dist_res <= 0.0) {
+      return tier4_autoware_utils::calcInterpolatedPoint(
+        p_back, p_front, std::abs(dist_res / dist_segment));
+    }
+  }
+
+  // not found (out of range)
+  return {};
+}
+
+/**
+ * @brief calculate the point offset from source point along the trajectory (or path) (points
+ * container)
+ * @param points points of trajectory, path, ...
+ * @param src_point source point
+ * @param offset length of offset from source point
+ * @return offset point
+ */
+template <class T>
+inline boost::optional<geometry_msgs::msg::Point> calcLongitudinalOffsetPoint(
+  const T & points, const geometry_msgs::msg::Point & src_point, const double offset)
+{
+  try {
+    validateNonEmpty(points);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  if (offset < 0.0) {
+    auto reverse_points = points;
+    std::reverse(reverse_points.begin(), reverse_points.end());
+    return calcLongitudinalOffsetPoint(reverse_points, src_point, -offset);
+  }
+
+  const size_t src_seg_idx = findNearestSegmentIndex(points, src_point);
+  const double signed_length_src_offset =
+    calcLongitudinalOffsetToSegment(points, src_seg_idx, src_point);
+
+  return calcLongitudinalOffsetPoint(points, src_seg_idx, offset + signed_length_src_offset);
+}
+
+/**
  * @brief calculate the point offset from source point index along the trajectory (or path) (points
  * container)
  * @param points points of trajectory, path, ...
