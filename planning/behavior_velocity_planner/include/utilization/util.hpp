@@ -79,6 +79,43 @@ using BasicPolygons2d = std::vector<lanelet::BasicPolygon2d>;
 using Polygons2d = std::vector<Polygon2d>;
 namespace planning_utils
 {
+template <class T>
+size_t calcPointIndexFromSegmentIndex(
+  const std::vector<T> & points, const geometry_msgs::msg::Point & point, const size_t seg_idx)
+{
+  const size_t prev_point_idx = seg_idx;
+  const size_t next_point_idx = seg_idx + 1;
+
+  const double prev_dist = tier4_autoware_utils::calcDistance2d(point, points.at(prev_point_idx));
+  const double next_dist = tier4_autoware_utils::calcDistance2d(point, points.at(next_point_idx));
+
+  if (prev_dist < next_dist) {
+    return prev_point_idx;
+  }
+  return next_point_idx;
+}
+
+template <class T>
+size_t calcSegmentIndexFromPointIndex(
+  const std::vector<T> & points, const geometry_msgs::msg::Point & point, const size_t idx)
+{
+  if (idx == 0) {
+    return 0;
+  }
+  if (idx == points.size() - 1) {
+    return idx - 1;
+  }
+  if (points.size() < 3) {
+    return 0;
+  }
+
+  const double offset_to_seg = motion_utils::calcLongitudinalOffsetToSegment(points, idx, point);
+  if (0 < offset_to_seg) {
+    return idx;
+  }
+  return idx - 1;
+}
+
 using geometry_msgs::msg::Pose;
 inline geometry_msgs::msg::Point getPoint(const geometry_msgs::msg::Point & p) { return p; }
 inline geometry_msgs::msg::Point getPoint(const geometry_msgs::msg::Pose & p) { return p.position; }
