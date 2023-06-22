@@ -584,17 +584,17 @@ void VirtualTrafficLightModule::insertStopVelocityAtStopLine(
   } else {
     const auto & ego_pos = planner_data_->current_pose.pose.position;
     const auto stop_distance =
-      motion_utils::calcSignedArcLength(path->points, ego_pos, collision.get().point) + offset;
+      tier4_autoware_utils::calcSignedArcLength(path->points, ego_pos, collision.get().point) + offset;
     const auto is_stopped = planner_data_->isVehicleStopped();
 
     if (stop_distance < planner_param_.hold_stop_margin_distance && is_stopped) {
       SegmentIndexWithPoint new_collision;
       const auto ego_pos_on_path =
-        motion_utils::calcLongitudinalOffsetPoint(path->points, ego_pos, 0.0);
+        tier4_autoware_utils::calcLongitudinalOffsetPoint(path->points, ego_pos, 0.0);
 
       if (ego_pos_on_path) {
         new_collision.point = ego_pos_on_path.get();
-        new_collision.index = motion_utils::findNearestSegmentIndex(path->points, ego_pos);
+        new_collision.index = tier4_autoware_utils::findNearestSegmentIndex(path->points, ego_pos);
         insertStopVelocityAtCollision(new_collision, 0.0, path);
       }
 
