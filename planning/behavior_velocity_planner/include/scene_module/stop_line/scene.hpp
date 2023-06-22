@@ -48,6 +48,7 @@ public:
   {
     double base_link2front;
     boost::optional<geometry_msgs::msg::Pose> stop_pose;
+    LineString2d search_stopline;
   };
 
   struct PlannerParam
