@@ -96,6 +96,20 @@ private:
     const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const LineString2d & stop_line,
     const SearchRangeIndex & search_index);
 
+
+  boost::optional<StopLineModule::SegmentIndexWithOffset> findOffsetSegment(	
+    const autoware_auto_planning_msgs::msg::PathWithLaneId & path,	
+    const StopLineModule::SegmentIndexWithPoint2d & collision);	
+
+  boost::optional<StopLineModule::SegmentIndexWithPose> calcStopPose(	
+    const autoware_auto_planning_msgs::msg::PathWithLaneId & path,	
+    const boost::optional<StopLineModule::SegmentIndexWithOffset> & offset_segment);	
+
+  autoware_auto_planning_msgs::msg::PathWithLaneId insertStopPose(	
+    const autoware_auto_planning_msgs::msg::PathWithLaneId & path,	
+    const StopLineModule::SegmentIndexWithPose & insert_index_with_pose,	
+    tier4_planning_msgs::msg::StopReason * stop_reason);	
+
   lanelet::ConstLineString3d stop_line_;
   int64_t lane_id_;
   State state_;
