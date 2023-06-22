@@ -109,7 +109,7 @@ size_t calcSegmentIndexFromPointIndex(
     return 0;
   }
 
-  const double offset_to_seg = motion_utils::calcLongitudinalOffsetToSegment(points, idx, point);
+  const double offset_to_seg = tier4_autoware_utils::calcLongitudinalOffsetToSegment(points, idx, point);
   if (0 < offset_to_seg) {
     return idx;
   }
