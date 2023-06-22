@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-namespace motion_utils
+namespace tier4_autoware_utils
 {
 inline boost::optional<std::pair<size_t, size_t>> getPathIndexRangeWithLaneId(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const int64_t target_lane_id)
