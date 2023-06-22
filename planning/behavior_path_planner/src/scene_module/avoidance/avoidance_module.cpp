@@ -776,6 +776,8 @@ AvoidLineArray AvoidanceModule::calcRawShiftLinesFromObjects(
   const auto & base_link2front = planner_data_->parameters.base_link2front;
   const auto & base_link2rear = planner_data_->parameters.base_link2rear;
 
+  const auto is_forward_object = [](const auto & object) { return object.longitudinal > 0.0; };
+
   AvoidLineArray avoid_lines;
   std::vector<AvoidanceDebugMsg> avoidance_debug_msg_array;
   avoidance_debug_msg_array.reserve(data.target_objects.size());
@@ -797,7 +799,7 @@ AvoidLineArray AvoidanceModule::calcRawShiftLinesFromObjects(
       avoidance_debug_array_false_and_push_back(AvoidanceDebugFactor::INSUFFICIENT_LATERAL_MARGIN);
       o.reason = AvoidanceDebugFactor::INSUFFICIENT_LATERAL_MARGIN;
       debug.unavoidable_objects.push_back(o);
-      if (o.avoid_required) {
+      if (o.avoid_required && is_forward_object(o)) {
         break;
       } else {
         continue;
@@ -810,7 +812,7 @@ AvoidLineArray AvoidanceModule::calcRawShiftLinesFromObjects(
       avoidance_debug_array_false_and_push_back(AvoidanceDebugFactor::SAME_DIRECTION_SHIFT);
       o.reason = AvoidanceDebugFactor::SAME_DIRECTION_SHIFT;
       debug.unavoidable_objects.push_back(o);
-      if (o.avoid_required) {
+      if (o.avoid_required && is_forward_object(o)) {
         break;
       } else {
         continue;
@@ -850,7 +852,7 @@ AvoidLineArray AvoidanceModule::calcRawShiftLinesFromObjects(
         if (!data.avoiding_now) {
           o.reason = AvoidanceDebugFactor::REMAINING_DISTANCE_LESS_THAN_ZERO;
           debug.unavoidable_objects.push_back(o);
-          if (o.avoid_required) {
+          if (o.avoid_required && is_forward_object(o)) {
             break;
           } else {
             continue;
@@ -868,7 +870,7 @@ AvoidLineArray AvoidanceModule::calcRawShiftLinesFromObjects(
         if (!data.avoiding_now) {
           o.reason = AvoidanceDebugFactor::TOO_LARGE_JERK;
           debug.unavoidable_objects.push_back(o);
-          if (o.avoid_required) {
+          if (o.avoid_required && is_forward_object(o)) {
             break;
           } else {
             continue;
