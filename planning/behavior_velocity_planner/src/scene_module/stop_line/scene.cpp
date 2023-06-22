@@ -27,10 +27,10 @@ using Point = bg::model::d2::point_xy<double>;
 using Line = bg::model::linestring<Point>;
 using tier4_autoware_utils::calcLongitudinalOffsetPose;
 using tier4_autoware_utils::calcSignedArcLength;
-using tier4_autoware_utils::insertTargetPoint;
 using tier4_autoware_utils::createPoint;
 using tier4_autoware_utils::getPoint;
 using tier4_autoware_utils::getPose;
+using tier4_autoware_utils::insertTargetPoint;
 
 namespace
 {

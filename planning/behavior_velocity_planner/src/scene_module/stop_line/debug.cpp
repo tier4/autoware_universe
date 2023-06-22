@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <tier4_autoware_utils/tier4_autoware_utils.hpp>
 #include <scene_module/stop_line/scene.hpp>
+#include <tier4_autoware_utils/tier4_autoware_utils.hpp>
 #include <utilization/util.hpp>
 
 #ifdef ROS_DISTRO_GALACTIC
@@ -25,12 +25,12 @@
 namespace behavior_velocity_planner
 {
 
-using tier4_autoware_utils::createStopVirtualWallMarker;
 using tier4_autoware_utils::appendMarkerArray;
 using tier4_autoware_utils::createDefaultMarker;
 using tier4_autoware_utils::createMarkerColor;
 using tier4_autoware_utils::createMarkerScale;
 using tier4_autoware_utils::createPoint;
+using tier4_autoware_utils::createStopVirtualWallMarker;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
