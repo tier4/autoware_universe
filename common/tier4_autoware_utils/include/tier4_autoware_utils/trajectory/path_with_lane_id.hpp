@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MOTION_UTILS__TRAJECTORY__PATH_WITH_LANE_ID_HPP_
-#define MOTION_UTILS__TRAJECTORY__PATH_WITH_LANE_ID_HPP_
+#ifndef TIER4_AUTOWARE_UTILS__TRAJECTORY__PATH_WITH_LANE_ID_HPP_
+#define TIER4_AUTOWARE_UTILS__TRAJECTORY__PATH_WITH_LANE_ID_HPP_
 
 #include "motion_utils/trajectory/trajectory.hpp"
 #include "tier4_autoware_utils/geometry/path_with_lane_id_geometry.hpp"
@@ -110,4 +110,4 @@ autoware_auto_planning_msgs::msg::PathWithLaneId convertToRearWheelCenter(
   const bool enable_last_point_compensation = true);
 }  // namespace motion_utils
 
-#endif  // MOTION_UTILS__TRAJECTORY__PATH_WITH_LANE_ID_HPP_
+#endif  // TIER4_AUTOWARE_UTILS__TRAJECTORY__PATH_WITH_LANE_ID_HPP_
