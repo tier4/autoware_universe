@@ -18,6 +18,7 @@
 #include "tier4_autoware_utils/geometry/boost_geometry.hpp"
 #include "tier4_autoware_utils/geometry/boost_polygon_utils.hpp"
 #include "tier4_autoware_utils/geometry/geometry.hpp"
+#include "tier4_autoware_utils/geometry/path_with_lane_id_geometry.hpp"
 #include "tier4_autoware_utils/geometry/pose_deviation.hpp"
 #include "tier4_autoware_utils/math/constants.hpp"
 #include "tier4_autoware_utils/math/normalization.hpp"
@@ -33,6 +34,7 @@
 #include "tier4_autoware_utils/ros/update_param.hpp"
 #include "tier4_autoware_utils/ros/wait_for_param.hpp"
 #include "tier4_autoware_utils/system/stop_watch.hpp"
+#include "tier4_autoware_utils/trajectory/path_with_lane_id.hpp"
 #include "tier4_autoware_utils/trajectory/trajectory.hpp"
 
 #endif  // TIER4_AUTOWARE_UTILS__TIER4_AUTOWARE_UTILS_HPP_
