@@ -71,12 +71,31 @@ struct PointWithSearchRangeIndex
   SearchRangeIndex index;
 };
 
+using BasicPolygons2d = std::vector<lanelet::BasicPolygon2d>;
+using Polygons2d = std::vector<Polygon2d>;
 using Point2d = boost::geometry::model::d2::point_xy<double>;
+using autoware_auto_perception_msgs::msg::PredictedObject;
+using autoware_auto_perception_msgs::msg::PredictedObjects;
+using autoware_auto_perception_msgs::msg::Shape;
+using autoware_auto_planning_msgs::msg::Path;
 using autoware_auto_planning_msgs::msg::PathPoint;
 using autoware_auto_planning_msgs::msg::PathPointWithLaneId;
 using autoware_auto_planning_msgs::msg::PathWithLaneId;
-using BasicPolygons2d = std::vector<lanelet::BasicPolygon2d>;
-using Polygons2d = std::vector<Polygon2d>;
+using autoware_auto_planning_msgs::msg::Trajectory;
+using tier4_autoware_utils::calcAzimuthAngle;
+using tier4_autoware_utils::calcDistance2d;
+using tier4_autoware_utils::calcLongitudinalOffsetToSegment;
+using tier4_autoware_utils::calcOffsetPose;
+using tier4_autoware_utils::calcSignedArcLength;
+using tier4_autoware_utils::calcSquaredDistance2d;
+using tier4_autoware_utils::createQuaternionFromYaw;
+using tier4_autoware_utils::findNearestIndex;
+using tier4_autoware_utils::findNearestSegmentIndex;
+using tier4_autoware_utils::getPoint;
+using tier4_autoware_utils::validateNonEmpty;
+using tier4_planning_msgs::msg::StopFactor;
+using tier4_planning_msgs::msg::StopReason;
+
 namespace planning_utils
 {
 using geometry_msgs::msg::Pose;
