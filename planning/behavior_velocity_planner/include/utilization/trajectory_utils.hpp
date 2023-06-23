@@ -85,6 +85,46 @@ inline Quaternion lerpOrientation(
   return tf2::toMsg(q_interpolated);
 }
 
+/**
+ * @brief apply linear interpolation to trajectory point that is nearest to a certain point
+ * @param [in] points trajectory points
+ * @param [in] point Interpolated point is nearest to this point.
+ */
+template <class T>
+boost::optional<TrajectoryPointWithIdx> getLerpTrajectoryPointWithIdx(
+  const T & points, const geometry_msgs::msg::Point & point)
+{
+  TrajectoryPoint interpolated_point;
+  const size_t nearest_seg_idx = motion_utils::findNearestSegmentIndex(points, point);
+  const double len_to_interpolated =
+    motion_utils::calcLongitudinalOffsetToSegment(points, nearest_seg_idx, point);
+  const double len_segment =
+    motion_utils::calcSignedArcLength(points, nearest_seg_idx, nearest_seg_idx + 1);
+  const double ratio = len_to_interpolated / len_segment;
+  if (ratio <= 0.0 || 1.0 <= ratio) return boost::none;
+  const double interpolate_ratio = std::clamp(ratio, 0.0, 1.0);
+  {
+    const size_t i = nearest_seg_idx;
+    const auto & pos0 = points.at(i).pose.position;
+    const auto & pos1 = points.at(i + 1).pose.position;
+    interpolated_point.pose.position.x = interpolation::lerp(pos0.x, pos1.x, interpolate_ratio);
+    interpolated_point.pose.position.y = interpolation::lerp(pos0.y, pos1.y, interpolate_ratio);
+    interpolated_point.pose.position.z = interpolation::lerp(pos0.z, pos1.z, interpolate_ratio);
+    interpolated_point.pose.orientation = lerpOrientation(
+      points.at(i).pose.orientation, points.at(i + 1).pose.orientation, interpolate_ratio);
+    interpolated_point.longitudinal_velocity_mps = interpolation::lerp(
+      points.at(i).longitudinal_velocity_mps, points.at(i + 1).longitudinal_velocity_mps,
+      interpolate_ratio);
+    interpolated_point.lateral_velocity_mps = interpolation::lerp(
+      points.at(i).lateral_velocity_mps, points.at(i + 1).lateral_velocity_mps, interpolate_ratio);
+    interpolated_point.acceleration_mps2 = interpolation::lerp(
+      points.at(i).acceleration_mps2, points.at(i + 1).acceleration_mps2, interpolate_ratio);
+    interpolated_point.heading_rate_rps = interpolation::lerp(
+      points.at(i).heading_rate_rps, points.at(i + 1).heading_rate_rps, interpolate_ratio);
+  }
+  return std::make_pair(interpolated_point, nearest_seg_idx);
+}
+
 //! smooth path point with lane id starts from ego position on path to the path end
 inline bool smoothPath(
   const PathWithLaneId & in_path, PathWithLaneId & out_path,
