@@ -81,7 +81,7 @@ protected:
   size_t findEgoSegmentIndex(const std::vector<T> & points) const
   {
     const auto & p = planner_data_;
-    return motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
+    return tier4_autoware_utils::findFirstNearestSegmentIndexWithSoftConstraints(
       points, p->current_pose.pose, p->ego_nearest_dist_threshold, p->ego_nearest_yaw_threshold);
   }
 
@@ -89,7 +89,7 @@ protected:
   size_t findEgoIndex(const std::vector<T> & points) const
   {
     const auto & p = planner_data_;
-    return motion_utils::findFirstNearestIndexWithSoftConstraints(
+    return tier4_autoware_utils::findFirstNearestIndexWithSoftConstraints(
       points, p->current_pose.pose, p->ego_nearest_dist_threshold, p->ego_nearest_yaw_threshold);
   }
 };
@@ -210,7 +210,7 @@ protected:
   size_t findEgoSegmentIndex(const std::vector<T> & points) const
   {
     const auto & p = planner_data_;
-    return motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
+    return tier4_autoware_utils::findFirstNearestSegmentIndexWithSoftConstraints(
       points, p->current_pose.pose, p->ego_nearest_dist_threshold, p->ego_nearest_yaw_threshold);
   }
 
@@ -219,7 +219,7 @@ protected:
     const std::vector<T> & points, const geometry_msgs::msg::Pose & ego_pose) const
   {
     const auto & p = planner_data_;
-    return motion_utils::findFirstNearestIndexWithSoftConstraints(
+    return tier4_autoware_utils::findFirstNearestIndexWithSoftConstraints(
       points, p->current_pose.pose, p->ego_nearest_dist_threshold, p->ego_nearest_yaw_threshold);
   }
 

@@ -95,11 +95,11 @@ boost::optional<TrajectoryPointWithIdx> getLerpTrajectoryPointWithIdx(
   const T & points, const geometry_msgs::msg::Point & point)
 {
   TrajectoryPoint interpolated_point;
-  const size_t nearest_seg_idx = motion_utils::findNearestSegmentIndex(points, point);
+  const size_t nearest_seg_idx = tier4_autoware_utils::findNearestSegmentIndex(points, point);
   const double len_to_interpolated =
-    motion_utils::calcLongitudinalOffsetToSegment(points, nearest_seg_idx, point);
+    tier4_autoware_utils::calcLongitudinalOffsetToSegment(points, nearest_seg_idx, point);
   const double len_segment =
-    motion_utils::calcSignedArcLength(points, nearest_seg_idx, nearest_seg_idx + 1);
+    tier4_autoware_utils::calcSignedArcLength(points, nearest_seg_idx, nearest_seg_idx + 1);
   const double ratio = len_to_interpolated / len_segment;
   if (ratio <= 0.0 || 1.0 <= ratio) return boost::none;
   const double interpolate_ratio = std::clamp(ratio, 0.0, 1.0);
@@ -166,7 +166,7 @@ inline bool smoothPath(
   }
   // Resample trajectory with ego-velocity based interval distances
   auto traj_resampled = smoother->resampleTrajectory(traj_with_ego_point_on_path, v0, nearest_idx);
-  const auto traj_resampled_closest = motion_utils::findFirstNearestIndexWithSoftConstraints(
+  const auto traj_resampled_closest = tier4_autoware_utils::findFirstNearestIndexWithSoftConstraints(
     *traj_resampled, current_pose, planner_data->ego_nearest_dist_threshold,
     planner_data->ego_nearest_yaw_threshold);
   std::vector<TrajectoryPoints> debug_trajectories;

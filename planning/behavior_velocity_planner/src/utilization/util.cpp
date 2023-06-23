@@ -595,8 +595,8 @@ LineString2d extendLine(
 boost::optional<geometry_msgs::msg::Pose> insertStopPoint(
   const geometry_msgs::msg::Point & stop_point, PathWithLaneId & output)
 {
-  const size_t base_idx = motion_utils::findNearestSegmentIndex(output.points, stop_point);
-  const auto insert_idx = motion_utils::insertStopPoint(base_idx, stop_point, output.points);
+  const size_t base_idx = tier4_autoware_utils::findNearestSegmentIndex(output.points, stop_point);
+  const auto insert_idx = tier4_autoware_utils::insertStopPoint(base_idx, stop_point, output.points);
 
   if (!insert_idx) {
     return {};
@@ -608,7 +608,7 @@ boost::optional<geometry_msgs::msg::Pose> insertStopPoint(
 boost::optional<geometry_msgs::msg::Pose> insertStopPoint(
   const geometry_msgs::msg::Point & stop_point, const size_t stop_seg_idx, PathWithLaneId & output)
 {
-  const auto insert_idx = motion_utils::insertStopPoint(stop_seg_idx, stop_point, output.points);
+  const auto insert_idx = tier4_autoware_utils::insertStopPoint(stop_seg_idx, stop_point, output.points);
 
   if (!insert_idx) {
     return {};
