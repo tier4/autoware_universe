@@ -15,6 +15,7 @@
 #ifndef SCENE_MODULE__STOP_LINE__SCENE_HPP_
 #define SCENE_MODULE__STOP_LINE__SCENE_HPP_
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -68,8 +69,8 @@ public:
   struct PlannerParam
   {
     double stop_margin;
-    double stop_check_dist;
     double stop_duration_sec;
+    double hold_stop_margin_distance;
     bool use_initialization_stop_line_state;
   };
 
@@ -87,6 +88,7 @@ public:
 
 private:
   int64_t module_id_;
+  std::shared_ptr<const rclcpp::Time> stopped_time_;
 
   geometry_msgs::msg::Point getCenterOfStopLine(const lanelet::ConstLineString3d & stop_line);
 
