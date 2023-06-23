@@ -1038,6 +1038,631 @@ inline boost::optional<size_t> insertTargetPoint(
   return insertTargetPoint(
     *nearest_segment_idx, insert_point_length + offset_length, points, overlap_threshold);
 }
+
+/**
+ * @brief Insert stop point from the source segment index
+ * @param src_segment_idx start segment index on the trajectory
+ * @param distance_to_stop_point distance to stop point from the source index
+ * @param points_with_twist output points of trajectory, path, ... (with velocity)
+ * @param overlap_threshold distance threshold, used to check if the inserted point is between start
+ * and end of nominated segment to be added in.
+ * @return index of stop point
+ */
+template <class T>
+inline boost::optional<size_t> insertStopPoint(
+  const size_t src_segment_idx, const double distance_to_stop_point, T & points_with_twist,
+  const double overlap_threshold = 1e-3)
+{
+  validateNonEmpty(points_with_twist);
+
+  if (distance_to_stop_point < 0.0 || src_segment_idx >= points_with_twist.size() - 1) {
+    return boost::none;
+  }
+
+  const auto stop_idx = insertTargetPoint(
+    src_segment_idx, distance_to_stop_point, points_with_twist, overlap_threshold);
+  if (!stop_idx) {
+    return boost::none;
+  }
+
+  for (size_t i = *stop_idx; i < points_with_twist.size(); ++i) {
+    tier4_autoware_utils::setLongitudinalVelocity(0.0, points_with_twist.at(i));
+  }
+
+  return stop_idx;
+}
+
+/**
+ * @brief Insert stop point from the front point of the path
+ * @param distance_to_stop_point distance to stop point from the front point of the path
+ * @param points_with_twist output points of trajectory, path, ... (with velocity)
+ * @param overlap_threshold distance threshold, used to check if the inserted point is between start
+ * and end of nominated segment to be added in.
+ * @return index of stop point
+ */
+template <class T>
+inline boost::optional<size_t> insertStopPoint(
+  const double distance_to_stop_point, T & points_with_twist, const double overlap_threshold = 1e-3)
+{
+  validateNonEmpty(points_with_twist);
+
+  if (distance_to_stop_point < 0.0) {
+    return boost::none;
+  }
+
+  double accumulated_length = 0;
+  for (size_t i = 0; i < points_with_twist.size() - 1; ++i) {
+    const auto curr_pose = tier4_autoware_utils::getPose(points_with_twist.at(i));
+    const auto next_pose = tier4_autoware_utils::getPose(points_with_twist.at(i + 1));
+    const double length = tier4_autoware_utils::calcDistance2d(curr_pose, next_pose);
+    if (accumulated_length + length + overlap_threshold > distance_to_stop_point) {
+      const double insert_length = distance_to_stop_point - accumulated_length;
+      return insertStopPoint(i, insert_length, points_with_twist, overlap_threshold);
+    }
+    accumulated_length += length;
+  }
+
+  return boost::none;
+}
+
+/**
+ * @brief Insert Stop point from the source pose
+ * @param src_pose source pose
+ * @param distance_to_stop_point  distance to stop point from the src point
+ * @param points_with_twist output points of trajectory, path, ... (with velocity)
+ * @param max_dist max distance, used to search for nearest segment index in points container to the
+ * given source pose
+ * @param max_yaw max yaw, used to search for nearest segment index in points container to the given
+ * source pose
+ * @param overlap_threshold distance threshold, used to check if the inserted point is between start
+ * and end of nominated segment to be added in.
+ * @return index of stop point
+ */
+template <class T>
+inline boost::optional<size_t> insertStopPoint(
+  const geometry_msgs::msg::Pose & src_pose, const double distance_to_stop_point,
+  T & points_with_twist, const double max_dist = std::numeric_limits<double>::max(),
+  const double max_yaw = std::numeric_limits<double>::max(), const double overlap_threshold = 1e-3)
+{
+  validateNonEmpty(points_with_twist);
+
+  if (distance_to_stop_point < 0.0) {
+    return boost::none;
+  }
+
+  const auto stop_idx = insertTargetPoint(
+    src_pose, distance_to_stop_point, points_with_twist, max_dist, max_yaw, overlap_threshold);
+
+  if (!stop_idx) {
+    return boost::none;
+  }
+
+  for (size_t i = *stop_idx; i < points_with_twist.size(); ++i) {
+    tier4_autoware_utils::setLongitudinalVelocity(0.0, points_with_twist.at(i));
+  }
+
+  return stop_idx;
+}
+
+/**
+ * @brief Insert Stop point that is in the stop segment index
+ * @param stop_seg_idx segment index of the stop pose
+ * @param stop_point stop point
+ * @param points_with_twist output points of trajectory, path, ... (with velocity)
+ * @param overlap_threshold distance threshold, used to check if the inserted point is between start
+ * and end of nominated segment to be added in.
+ * @return index of stop point
+ */
+template <class T>
+boost::optional<size_t> insertStopPoint(
+  const size_t stop_seg_idx, const geometry_msgs::msg::Point & stop_point, T & points_with_twist,
+  const double overlap_threshold = 1e-3)
+{
+  const auto insert_idx = tier4_autoware_utils::insertTargetPoint(
+    stop_seg_idx, stop_point, points_with_twist, overlap_threshold);
+
+  if (!insert_idx) {
+    return boost::none;
+  }
+
+  for (size_t i = insert_idx.get(); i < points_with_twist.size(); ++i) {
+    tier4_autoware_utils::setLongitudinalVelocity(0.0, points_with_twist.at(i));
+  }
+
+  return insert_idx;
+}
+
+/**
+ * @brief Insert deceleration point from the source pose
+ * @param src_point source point
+ * @param distance_to_decel_point  distance to deceleration point from the src point
+ * @param velocity velocity of stop point
+ * @param points_with_twist output points of trajectory, path, ... (with velocity)
+ */
+template <class T>
+boost::optional<size_t> insertDecelPoint(
+  const geometry_msgs::msg::Point & src_point, const double distance_to_decel_point,
+  const double velocity, T & points_with_twist)
+{
+  const auto decel_point =
+    calcLongitudinalOffsetPoint(points_with_twist, src_point, distance_to_decel_point);
+
+  if (!decel_point) {
+    return {};
+  }
+
+  const auto seg_idx = findNearestSegmentIndex(points_with_twist, decel_point.get());
+  const auto insert_idx = insertTargetPoint(seg_idx, decel_point.get(), points_with_twist);
+
+  if (!insert_idx) {
+    return {};
+  }
+
+  for (size_t i = insert_idx.get(); i < points_with_twist.size(); ++i) {
+    const auto & original_velocity =
+      tier4_autoware_utils::getLongitudinalVelocity(points_with_twist.at(i));
+    tier4_autoware_utils::setLongitudinalVelocity(
+      std::min(original_velocity, velocity), points_with_twist.at(i));
+  }
+
+  return insert_idx;
+}
+
+/**
+ * @brief Insert orientation to each point in points container (trajectory, path, ...)
+ * @param points points of trajectory, path, ... (input / output)
+ * @param is_driving_forward  flag indicating the order of points is forward or backward
+ */
+template <class T>
+void insertOrientation(T & points, const bool is_driving_forward)
+{
+  if (is_driving_forward) {
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+      const auto & src_point = tier4_autoware_utils::getPoint(points.at(i));
+      const auto & dst_point = tier4_autoware_utils::getPoint(points.at(i + 1));
+      const double pitch = tier4_autoware_utils::calcElevationAngle(src_point, dst_point);
+      const double yaw = tier4_autoware_utils::calcAzimuthAngle(src_point, dst_point);
+      tier4_autoware_utils::setOrientation(
+        tier4_autoware_utils::createQuaternionFromRPY(0.0, pitch, yaw), points.at(i));
+      if (i == points.size() - 2) {
+        // Terminal orientation is same as the point before it
+        tier4_autoware_utils::setOrientation(
+          tier4_autoware_utils::getPose(points.at(i)).orientation, points.at(i + 1));
+      }
+    }
+  } else {
+    for (size_t i = points.size() - 1; i >= 1; --i) {
+      const auto & src_point = tier4_autoware_utils::getPoint(points.at(i));
+      const auto & dst_point = tier4_autoware_utils::getPoint(points.at(i - 1));
+      const double pitch = tier4_autoware_utils::calcElevationAngle(src_point, dst_point);
+      const double yaw = tier4_autoware_utils::calcAzimuthAngle(src_point, dst_point);
+      tier4_autoware_utils::setOrientation(
+        tier4_autoware_utils::createQuaternionFromRPY(0.0, pitch, yaw), points.at(i));
+    }
+    // Initial orientation is same as the point after it
+    tier4_autoware_utils::setOrientation(
+      tier4_autoware_utils::getPose(points.at(1)).orientation, points.at(0));
+  }
+}
+
+/**
+ * @brief Remove points with invalid orientation differences from a given points container
+ * (trajectory, path, ...)
+ * @param points Points of trajectory, path, or other point container (input / output)
+ * @param max_yaw_diff Maximum acceptable yaw angle difference between two consecutive points in
+ * radians (default: M_PI_2)
+ */
+template <class T>
+void removeInvalidOrientationPoints(T & points, const double max_yaw_diff = M_PI_2)
+{
+  for (size_t i = 1; i < points.size();) {
+    const double yaw1 = tf2::getYaw(tier4_autoware_utils::getPose(points.at(i - 1)).orientation);
+    const double yaw2 = tf2::getYaw(tier4_autoware_utils::getPose(points.at(i)).orientation);
+
+    if (max_yaw_diff < std::abs(tier4_autoware_utils::normalizeRadian(yaw1 - yaw2))) {
+      points.erase(points.begin() + i);
+    } else {
+      ++i;
+    }
+  }
+}
+
+/**
+ * @brief calculate length of 2D distance between two points, specified by start point and end
+ * point with their segment indices in points container
+ * @param points points of trajectory, path, ...
+ * @param src_point start point
+ * @param src_seg_idx index of start point segment
+ * @param dst_point end point
+ * @param dst_seg_idx index of end point segment
+ * @return length of distance between two points.
+ * Length is positive if destination point is greater that source point (i.e. after it in
+ * trajectory, path, ...) and negative otherwise.
+ */
+template <class T>
+double calcSignedArcLength(
+  const T & points, const geometry_msgs::msg::Point & src_point, const size_t src_seg_idx,
+  const geometry_msgs::msg::Point & dst_point, const size_t dst_seg_idx)
+{
+  validateNonEmpty(points);
+
+  const double signed_length_on_traj = calcSignedArcLength(points, src_seg_idx, dst_seg_idx);
+  const double signed_length_src_offset =
+    calcLongitudinalOffsetToSegment(points, src_seg_idx, src_point);
+  const double signed_length_dst_offset =
+    calcLongitudinalOffsetToSegment(points, dst_seg_idx, dst_point);
+
+  return signed_length_on_traj - signed_length_src_offset + signed_length_dst_offset;
+}
+
+/**
+ * @brief calculate length of 2D distance between two points, specified by start point and its
+ * segment index in points container and end point index in points container
+ * @param points points of trajectory, path, ...
+ * @param src_point start point
+ * @param src_seg_idx index of start point segment
+ * @param dst_idx index of end point
+ * @return length of distance between two points
+ * Length is positive if destination point associated to dst_idx is greater that source point (i.e.
+ * after it in trajectory, path, ...) and negative otherwise.
+ */
+template <class T>
+double calcSignedArcLength(
+  const T & points, const geometry_msgs::msg::Point & src_point, const size_t src_seg_idx,
+  const size_t dst_idx)
+{
+  validateNonEmpty(points);
+
+  const double signed_length_on_traj = calcSignedArcLength(points, src_seg_idx, dst_idx);
+  const double signed_length_src_offset =
+    calcLongitudinalOffsetToSegment(points, src_seg_idx, src_point);
+
+  return signed_length_on_traj - signed_length_src_offset;
+}
+
+/**
+ * @brief calculate length of 2D distance between two points, specified by start point index in
+ * points container and end point and its segment index in points container
+ * @param points points of trajectory, path, ...
+ * @param src_idx index of start point start point
+ * @param dst_point end point
+ * @param dst_seg_idx index of end point segment
+ * @return length of distance between two points
+ * Length is positive if destination point is greater that source point associated to src_idx (i.e.
+ * after it in trajectory, path, ...) and negative otherwise.
+ */
+template <class T>
+double calcSignedArcLength(
+  const T & points, const size_t src_idx, const geometry_msgs::msg::Point & dst_point,
+  const size_t dst_seg_idx)
+{
+  validateNonEmpty(points);
+
+  const double signed_length_on_traj = calcSignedArcLength(points, src_idx, dst_seg_idx);
+  const double signed_length_dst_offset =
+    calcLongitudinalOffsetToSegment(points, dst_seg_idx, dst_point);
+
+  return signed_length_on_traj + signed_length_dst_offset;
+}
+
+/**
+ * @brief find first nearest point index through points container for a given pose with soft
+ * distance and yaw constraints. Finding nearest point is determined by looping through the points
+ * container, and finding the nearest point to the given pose in terms of squared 2D distance and
+ * yaw deviation. The index of the point with minimum distance and yaw deviation comparing to the
+ * given pose will be returned.
+ * @param points points of trajectory, path, ...
+ * @param pose given pose
+ * @param dist_threshold distance threshold used for searching for first nearest index to given pose
+ * @param yaw_threshold yaw threshold used for searching for first nearest index to given pose
+ * @return index of nearest point (index or none if not found)
+ */
+template <class T>
+size_t findFirstNearestIndexWithSoftConstraints(
+  const T & points, const geometry_msgs::msg::Pose & pose,
+  const double dist_threshold = std::numeric_limits<double>::max(),
+  const double yaw_threshold = std::numeric_limits<double>::max())
+{
+  validateNonEmpty(points);
+
+  {  // with dist and yaw thresholds
+    const double squared_dist_threshold = dist_threshold * dist_threshold;
+    double min_squared_dist = std::numeric_limits<double>::max();
+    size_t min_idx = 0;
+    bool is_within_constraints = false;
+    for (size_t i = 0; i < points.size(); ++i) {
+      const auto squared_dist =
+        tier4_autoware_utils::calcSquaredDistance2d(points.at(i), pose.position);
+      const auto yaw =
+        tier4_autoware_utils::calcYawDeviation(tier4_autoware_utils::getPose(points.at(i)), pose);
+
+      if (squared_dist_threshold < squared_dist || yaw_threshold < std::abs(yaw)) {
+        if (is_within_constraints) {
+          break;
+        } else {
+          continue;
+        }
+      }
+
+      if (min_squared_dist <= squared_dist) {
+        continue;
+      }
+
+      min_squared_dist = squared_dist;
+      min_idx = i;
+      is_within_constraints = true;
+    }
+
+    // nearest index is found
+    if (is_within_constraints) {
+      return min_idx;
+    }
+  }
+
+  {  // with dist threshold
+    const double squared_dist_threshold = dist_threshold * dist_threshold;
+    double min_squared_dist = std::numeric_limits<double>::max();
+    size_t min_idx = 0;
+    bool is_within_constraints = false;
+    for (size_t i = 0; i < points.size(); ++i) {
+      const auto squared_dist =
+        tier4_autoware_utils::calcSquaredDistance2d(points.at(i), pose.position);
+
+      if (squared_dist_threshold < squared_dist) {
+        if (is_within_constraints) {
+          break;
+        } else {
+          continue;
+        }
+      }
+
+      if (min_squared_dist <= squared_dist) {
+        continue;
+      }
+
+      min_squared_dist = squared_dist;
+      min_idx = i;
+      is_within_constraints = true;
+    }
+
+    // nearest index is found
+    if (is_within_constraints) {
+      return min_idx;
+    }
+  }
+
+  // without any threshold
+  return findNearestIndex(points, pose.position);
+}
+
+/**
+ * @brief find nearest segment index to pose with soft constraints
+ * Segment is straight path between two continuous points of trajectory
+ * When pose is on a trajectory point whose index is nearest_idx, return nearest_idx - 1
+ * @param points points of trajectory, path, ..
+ * @param pose pose to which to find nearest segment index
+ * @param dist_threshold distance threshold used for searching for first nearest index to given pose
+ * @param yaw_threshold yaw threshold used for searching for first nearest index to given pose
+ * @return nearest index
+ */
+template <class T>
+size_t findFirstNearestSegmentIndexWithSoftConstraints(
+  const T & points, const geometry_msgs::msg::Pose & pose,
+  const double dist_threshold = std::numeric_limits<double>::max(),
+  const double yaw_threshold = std::numeric_limits<double>::max())
+{
+  // find first nearest index with soft constraints (not segment index)
+  const size_t nearest_idx =
+    findFirstNearestIndexWithSoftConstraints(points, pose, dist_threshold, yaw_threshold);
+
+  // calculate segment index
+  if (nearest_idx == 0) {
+    return 0;
+  }
+  if (nearest_idx == points.size() - 1) {
+    return points.size() - 2;
+  }
+
+  const double signed_length = calcLongitudinalOffsetToSegment(points, nearest_idx, pose.position);
+
+  if (signed_length <= 0) {
+    return nearest_idx - 1;
+  }
+
+  return nearest_idx;
+}
+
+/**
+ * @brief calculate the point offset from source point along the trajectory (or path)
+ * @brief calculate length of 2D distance between given pose and first point in container with zero
+ * longitudinal velocity
+ * @param points_with_twist points of trajectory, path, ... (with velocity)
+ * @param pose given pose to start the distance calculation from
+ * @param max_dist max distance, used to search for nearest segment index in points container to the
+ * given pose
+ * @param max_yaw max yaw, used to search for nearest segment index in points container to the given
+ * pose
+ * @return Length of 2D distance between given pose and first point in container with zero
+ * longitudinal velocity
+ */
+template <class T>
+boost::optional<double> calcDistanceToForwardStopPoint(
+  const T & points_with_twist, const geometry_msgs::msg::Pose & pose,
+  const double max_dist = std::numeric_limits<double>::max(),
+  const double max_yaw = std::numeric_limits<double>::max())
+{
+  try {
+    validateNonEmpty(points_with_twist);
+  } catch (const std::exception & e) {
+    std::cerr << e.what() << std::endl;
+    return {};
+  }
+
+  const auto nearest_segment_idx =
+    tier4_autoware_utils::findNearestSegmentIndex(points_with_twist, pose, max_dist, max_yaw);
+
+  if (!nearest_segment_idx) {
+    return boost::none;
+  }
+
+  const auto stop_idx = tier4_autoware_utils::searchZeroVelocityIndex(
+    points_with_twist, *nearest_segment_idx + 1, points_with_twist.size());
+
+  if (!stop_idx) {
+    return boost::none;
+  }
+
+  const auto closest_stop_dist =
+    calcSignedArcLength(points_with_twist, pose.position, *nearest_segment_idx, *stop_idx);
+
+  return std::max(0.0, closest_stop_dist);
+}
+
+// NOTE: Points after forward length from the point will be cropped
+//       forward_length is assumed to be positive.
+template <typename T>
+T cropForwardPoints(
+  const T & points, const geometry_msgs::msg::Point & target_pos, const size_t target_seg_idx,
+  const double forward_length)
+{
+  if (points.empty()) {
+    return T{};
+  }
+
+  double sum_length =
+    -tier4_autoware_utils::calcLongitudinalOffsetToSegment(points, target_seg_idx, target_pos);
+  for (size_t i = target_seg_idx + 1; i < points.size(); ++i) {
+    sum_length += tier4_autoware_utils::calcDistance2d(points.at(i), points.at(i - 1));
+    if (forward_length < sum_length) {
+      const size_t end_idx = i;
+      return T{points.begin(), points.begin() + end_idx};
+    }
+  }
+
+  return points;
+}
+
+// NOTE: Points before backward length from the point will be cropped
+//       backward_length is assumed to be positive.
+template <typename T>
+T cropBackwardPoints(
+  const T & points, const geometry_msgs::msg::Point & target_pos, const size_t target_seg_idx,
+  const double backward_length)
+{
+  if (points.empty()) {
+    return T{};
+  }
+
+  double sum_length =
+    -tier4_autoware_utils::calcLongitudinalOffsetToSegment(points, target_seg_idx, target_pos);
+  for (int i = target_seg_idx; 0 < i; --i) {
+    sum_length -= tier4_autoware_utils::calcDistance2d(points.at(i), points.at(i - 1));
+    if (sum_length < -backward_length) {
+      const size_t begin_idx = i;
+      return T{points.begin() + begin_idx, points.end()};
+    }
+  }
+
+  return points;
+}
+
+template <typename T>
+T cropPoints(
+  const T & points, const geometry_msgs::msg::Point & target_pos, const size_t target_seg_idx,
+  const double forward_length, const double backward_length)
+{
+  if (points.empty()) {
+    return T{};
+  }
+
+  // NOTE: Cropping forward must be done first in order to keep target_seg_idx.
+  const auto cropped_forward_points =
+    cropForwardPoints(points, target_pos, target_seg_idx, forward_length);
+
+  const size_t modified_target_seg_idx =
+    std::min(target_seg_idx, cropped_forward_points.size() - 2);
+  const auto cropped_points = cropBackwardPoints(
+    cropped_forward_points, target_pos, modified_target_seg_idx, backward_length);
+
+  if (cropped_points.size() < 2) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("obstacle_avoidance_planner.trajectory_utils"),
+      ". Return original points since cropped_points size is less than 2.");
+    return points;
+  }
+
+  return cropped_points;
+}
+
+/**
+ * @brief Calculate the angle of the input pose with respect to the nearest trajectory segment.
+ * The function gets the nearest segment index between the points of the trajectory and the given
+ * pose's position, then calculates the azimuth angle of that segment and compares it to the yaw of
+ * the input pose. The segment is a straight path between two continuous points of the trajectory.
+ * @param points Points of the trajectory, path, ...
+ * @param pose Input pose with position and orientation (yaw)
+ * @param throw_exception Flag to enable/disable exception throwing
+ * @return Angle with respect to the trajectory segment (signed) in radians
+ */
+template <class T>
+double calcYawDeviation(
+  const T & points, const geometry_msgs::msg::Pose & pose, const bool throw_exception = false)
+{
+  const auto overlap_removed_points = removeOverlapPoints(points, 0);
+
+  if (throw_exception) {
+    validateNonEmpty(overlap_removed_points);
+  } else {
+    try {
+      validateNonEmpty(overlap_removed_points);
+    } catch (const std::exception & e) {
+      std::cerr << e.what() << std::endl;
+      return 0.0;
+    }
+  }
+
+  if (overlap_removed_points.size() <= 1) {
+    const std::runtime_error e("points size is less than 2");
+    if (throw_exception) {
+      throw e;
+    }
+    std::cerr << e.what() << std::endl;
+    return 0.0;
+  }
+
+  const size_t seg_idx = findNearestSegmentIndex(overlap_removed_points, pose.position);
+
+  const double path_yaw = tier4_autoware_utils::calcAzimuthAngle(
+    tier4_autoware_utils::getPoint(overlap_removed_points.at(seg_idx)),
+    tier4_autoware_utils::getPoint(overlap_removed_points.at(seg_idx + 1)));
+  const double pose_yaw = tf2::getYaw(pose.orientation);
+
+  return tier4_autoware_utils::normalizeRadian(pose_yaw - path_yaw);
+}
+
+/**
+ * @brief Check if the given target point is in front of the based pose from the trajectory.
+ * if the points is empty, the function returns false
+ * @param points Points of the trajectory, path, ...
+ * @param base_point Base point
+ * @param target_point Target point
+ * @param threshold threshold for judging front point
+ * @return true if the target pose is in front of the base pose
+ */
+template <class T>
+bool isTargetPointFront(
+  const T & points, const geometry_msgs::msg::Point & base_point,
+  const geometry_msgs::msg::Point & target_point, const double threshold = 0.0)
+{
+  if (points.empty()) {
+    return false;
+  }
+
+  const double s_base = calcSignedArcLength(points, 0, base_point);
+  const double s_target = calcSignedArcLength(points, 0, target_point);
+
+  return s_target - s_base > threshold;
+}
 }  // namespace tier4_autoware_utils
 
 #endif  // TIER4_AUTOWARE_UTILS__TRAJECTORY__TRAJECTORY_HPP_
