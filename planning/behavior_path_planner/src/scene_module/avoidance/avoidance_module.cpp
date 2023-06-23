@@ -175,14 +175,25 @@ ModuleStatus AvoidanceModule::updateState()
   const auto is_plan_running = isAvoidancePlanRunning();
   const bool has_avoidance_target = !data.target_objects.empty();
 
-  if (!isDrivingSameLane(helper_.getPreviousDrivingLanes(), data.current_lanelets)) {
-    RCLCPP_WARN_THROTTLE(getLogger(), *clock_, 500, "previous module lane is updated.");
-    current_state_ = ModuleStatus::SUCCESS;
-  }
-
   const auto idx = planner_data_->findEgoIndex(data.reference_path.points);
   if (idx == data.reference_path.points.size() - 1) {
     arrived_path_end_ = true;
+  }
+
+  if (!is_plan_running && !has_avoidance_target) {
+    current_state_ = ModuleStatus::SUCCESS;
+  } else if (
+    !has_avoidance_target && parameters_->enable_update_path_when_object_is_gone &&
+    !isAvoidanceManeuverRunning()) {
+    // if dynamic objects are removed on path, change current state to reset path
+    current_state_ = ModuleStatus::SUCCESS;
+  } else {
+    current_state_ = is_plan_running ? ModuleStatus::RUNNING : ModuleStatus::IDLE;
+  }
+
+  if (!isDrivingSameLane(helper_.getPreviousDrivingLanes(), data.current_lanelets)) {
+    RCLCPP_WARN_THROTTLE(getLogger(), *clock_, 500, "previous module lane is updated.");
+    return ModuleStatus::SUCCESS;
   }
 
   constexpr double THRESHOLD = 1.0;
@@ -192,6 +203,8 @@ ModuleStatus AvoidanceModule::updateState()
     RCLCPP_WARN_THROTTLE(getLogger(), *clock_, 500, "reach path end point. exit avoidance module.");
     return ModuleStatus::SUCCESS;
   }
+
+  helper_.setPreviousDrivingLanes(data.current_lanelets);
 
   DEBUG_PRINT(
     "is_plan_running = %d, has_avoidance_target = %d", is_plan_running, has_avoidance_target);
@@ -206,8 +219,6 @@ ModuleStatus AvoidanceModule::updateState()
     // if dynamic objects are removed on path, change current state to reset path
     return ModuleStatus::SUCCESS;
   }
-
-  helper_.setPreviousDrivingLanes(avoidance_data_.current_lanelets);
 
 #ifdef USE_OLD_ARCHITECTURE
   return ModuleStatus::RUNNING;
