@@ -36,11 +36,53 @@
 namespace behavior_velocity_planner
 {
 namespace bg = boost::geometry;
+
+namespace
+{
+geometry_msgs::msg::Point convertToGeomPoint(const Point2d & p)
+{
+  geometry_msgs::msg::Point geom_p;
+  geom_p.x = p.x();
+  geom_p.y = p.y();
+
+  return geom_p;
+}
+
+geometry_msgs::msg::Point operator+(
+  const geometry_msgs::msg::Point & p1, const geometry_msgs::msg::Point & p2)
+{
+  geometry_msgs::msg::Point p;
+  p.x = p1.x + p2.x;
+  p.y = p1.y + p2.y;
+  p.z = p1.z + p2.z;
+
+  return p;
+}
+
+[[maybe_unused]] geometry_msgs::msg::Point operator*(
+  const geometry_msgs::msg::Point & p, const double v)
+{
+  geometry_msgs::msg::Point multiplied_p;
+  multiplied_p.x = p.x * v;
+  multiplied_p.y = p.y * v;
+  multiplied_p.z = p.z * v;
+
+  return multiplied_p;
+}
+
+[[maybe_unused]] geometry_msgs::msg::Point operator*(
+  const double v, const geometry_msgs::msg::Point & p)
+{
+  return p * v;
+}
+}  // namespace
+
 namespace arc_lane_utils
 {
-using PathIndexWithPose = std::pair<size_t, geometry_msgs::msg::Pose>;  // front index, pose
-using PathIndexWithPoint2d = std::pair<size_t, Point2d>;                // front index, point2d
-using PathIndexWithOffset = std::pair<size_t, double>;                  // front index, offset
+using PathIndexWithPose = std::pair<size_t, geometry_msgs::msg::Pose>;    // front index, pose
+using PathIndexWithPoint2d = std::pair<size_t, Point2d>;                  // front index, point2d
+using PathIndexWithPoint = std::pair<size_t, geometry_msgs::msg::Point>;  // front index, point2d
+using PathIndexWithOffset = std::pair<size_t, double>;                    // front index, offset
 
 inline double calcSignedDistance(
   const geometry_msgs::msg::Pose & p1, const geometry_msgs::msg::Point & p2)
@@ -51,6 +93,31 @@ inline double calcSignedDistance(
   return basecoords_p2.x() >= 0 ? basecoords_p2.norm() : -basecoords_p2.norm();
 }
 
+// calculate one collision point between the line (from p1 to p2) and the line (from p3 to p4)
+inline boost::optional<geometry_msgs::msg::Point> checkCollision(
+  const geometry_msgs::msg::Point & p1, const geometry_msgs::msg::Point & p2,
+  const geometry_msgs::msg::Point & p3, const geometry_msgs::msg::Point & p4)
+{
+  const double det = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
+
+  if (det == 0.0) {
+    // collision is not one point.
+    return boost::none;
+  }
+
+  const double t1 = ((p4.y - p3.y) * (p4.x - p1.x) - (p4.x - p3.x) * (p4.y - p1.y)) / det;
+  const double t2 = ((p2.x - p1.x) * (p4.y - p1.y) - (p2.y - p1.y) * (p4.x - p1.x)) / det;
+
+  // check collision is outside the segment line
+  if (t1 < 0.0 || 1.0 < t1 || t2 < 0.0 || 1.0 < t2) {
+    return boost::none;
+  }
+
+  return p1 * (1.0 - t1) + p2 * t1;
+}
+
+// This function is old.
+// TODO: remove this function after apply #1648 to detection area
 inline boost::optional<Point2d> getNearestCollisionPoint(
   const LineString2d & stop_line, const LineString2d & path_segment)
 {
@@ -77,6 +144,50 @@ inline boost::optional<Point2d> getNearestCollisionPoint(
   return collision_points.at(min_idx);
 }
 
+template <class T>
+boost::optional<PathIndexWithPoint> findCollisionSegment(
+  const T & path, const geometry_msgs::msg::Point & stop_line_p1,
+  const geometry_msgs::msg::Point & stop_line_p2, const size_t target_lane_id)
+{
+  for (size_t i = 0; i < path.points.size() - 1; ++i) {
+    const auto & prev_lane_ids = path.points.at(i).lane_ids;
+    const auto & next_lane_ids = path.points.at(i + 1).lane_ids;
+
+    const bool is_target_lane_in_prev_lane =
+      std::find(prev_lane_ids.begin(), prev_lane_ids.end(), target_lane_id) != prev_lane_ids.end();
+    const bool is_target_lane_in_next_lane =
+      std::find(next_lane_ids.begin(), next_lane_ids.end(), target_lane_id) != next_lane_ids.end();
+    if (!is_target_lane_in_prev_lane && !is_target_lane_in_next_lane) {
+      continue;
+    }
+
+    const auto & p1 =
+      tier4_autoware_utils::getPoint(path.points.at(i));  // Point before collision point
+    const auto & p2 =
+      tier4_autoware_utils::getPoint(path.points.at(i + 1));  // Point after collision point
+
+    const auto collision_point = checkCollision(p1, p2, stop_line_p1, stop_line_p2);
+
+    if (collision_point) {
+      return std::make_pair(i, collision_point.get());
+    }
+  }
+
+  return {};
+}
+
+template <class T>
+boost::optional<PathIndexWithPoint> findCollisionSegment(
+  const T & path, const LineString2d & stop_line, const size_t target_lane_id)
+{
+  const auto stop_line_p1 = convertToGeomPoint(stop_line.at(0));
+  const auto stop_line_p2 = convertToGeomPoint(stop_line.at(1));
+
+  return findCollisionSegment(path, stop_line_p1, stop_line_p2, target_lane_id);
+}
+
+// This function is old.
+// TODO: remove this function after apply #1648 to detection area & no stopping area
 template <class T>
 boost::optional<PathIndexWithPoint2d> findCollisionSegment(
   const T & path, const LineString2d & stop_line)
@@ -136,6 +247,28 @@ boost::optional<PathIndexWithOffset> findBackwardOffsetSegment(
 
 template <class T>
 boost::optional<PathIndexWithOffset> findOffsetSegment(
+  const T & path, const PathIndexWithPoint & collision_segment, const double offset_length)
+{
+  const size_t collision_idx = collision_segment.first;
+  const auto & collision_point = collision_segment.second;
+
+  if (offset_length >= 0) {
+    return findForwardOffsetSegment(
+      path, collision_idx,
+      offset_length +
+        tier4_autoware_utils::calcDistance2d(path.points.at(collision_idx), collision_point));
+  }
+
+  return findBackwardOffsetSegment(
+    path, collision_idx + 1,
+    -offset_length +
+      tier4_autoware_utils::calcDistance2d(path.points.at(collision_idx + 1), collision_point));
+}
+
+// This function is old.
+// TODO: remove this function after apply #1648 to detection area & no stopping area & vtl
+template <class T>
+boost::optional<PathIndexWithOffset> findOffsetSegment(
   const T & path, const PathIndexWithPoint2d & collision_segment, const double offset_length)
 {
   const size_t collision_idx = collision_segment.first;
@@ -181,6 +314,29 @@ geometry_msgs::msg::Pose calcTargetPose(const T & path, const PathIndexWithOffse
   return target_pose;
 }
 
+inline boost::optional<PathIndexWithPose> createTargetPoint(
+  const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const LineString2d & stop_line,
+  const size_t lane_id, const double margin, const double vehicle_offset)
+{
+  // Find collision segment
+  const auto collision_segment = findCollisionSegment(path, stop_line, lane_id);
+  if (!collision_segment) {
+    // No collision
+    return {};
+  }
+  // Calculate offset length from stop line
+  // Use '-' to make the positive direction is forward
+  const double offset_length = -(margin + vehicle_offset);
+  // Find offset segment
+  const auto offset_segment = findOffsetSegment(path, *collision_segment, offset_length);
+  if (!offset_segment) {
+    // No enough path length
+    return {};
+  }
+  const auto target_pose = calcTargetPose(path, *offset_segment);
+  const auto front_idx = offset_segment->first;
+  return std::make_pair(front_idx, target_pose);
+}
 }  // namespace arc_lane_utils
 }  // namespace behavior_velocity_planner
 
