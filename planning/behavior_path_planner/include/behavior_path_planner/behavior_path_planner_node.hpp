@@ -231,10 +231,8 @@ private:
   /**
    * @brief publish debug messages
    */
-#ifdef USE_OLD_ARCHITECTURE
   void publishSceneModuleDebugMsg(
     const std::shared_ptr<SceneModuleVisitor> & debug_messages_data_ptr);
-#endif
 
   /**
    * @brief publish path candidate
