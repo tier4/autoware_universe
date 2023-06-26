@@ -110,6 +110,54 @@ bool isTargetObjectType(
   return parameters->object_parameters.at(t).enable;
 }
 
+bool isVehicleTypeObject(const ObjectData & object)
+{
+  const auto t = utils::getHighestProbLabel(object.object.classification);
+
+  if (t == ObjectClassification::UNKNOWN) {
+    return false;
+  }
+
+  if (t == ObjectClassification::PEDESTRIAN) {
+    return false;
+  }
+
+  if (t == ObjectClassification::BICYCLE) {
+    return false;
+  }
+
+  return true;
+}
+
+bool isWithinCrosswalk(
+  const ObjectData & object,
+  const std::shared_ptr<const lanelet::routing::RoutingGraphContainer> & overall_graphs)
+{
+  using Point = boost::geometry::model::d2::point_xy<double>;
+
+  const auto & p = object.object.kinematics.initial_pose_with_covariance.pose.position;
+  const Point p_object{p.x, p.y};
+
+  // get conflicting crosswalk crosswalk
+  constexpr int PEDESTRIAN_GRAPH_ID = 1;
+  const auto conflicts =
+    overall_graphs->conflictingInGraph(object.overhang_lanelet, PEDESTRIAN_GRAPH_ID);
+
+  constexpr double THRESHOLD = 2.0;
+  for (const auto & crosswalk : conflicts) {
+    auto polygon = crosswalk.polygon2d().basicPolygon();
+
+    boost::geometry::correct(polygon);
+
+    // ignore objects around the crosswalk
+    if (boost::geometry::distance(p_object, polygon) < THRESHOLD) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 double calcShiftLength(
   const bool & is_object_on_right, const double & overhang_dist, const double & avoid_margin)
 {
@@ -519,9 +567,12 @@ void fillObjectMovingTime(
   ObjectData & object_data, ObjectDataArray & stopped_objects,
   const std::shared_ptr<AvoidanceParameters> & parameters)
 {
+  const auto t = utils::getHighestProbLabel(object_data.object.classification);
+  const auto object_parameter = parameters->object_parameters.at(t);
+
   const auto & object_vel =
     object_data.object.kinematics.initial_twist_with_covariance.twist.linear.x;
-  const auto is_faster_than_threshold = object_vel > parameters->threshold_speed_object_is_stopped;
+  const auto is_faster_than_threshold = object_vel > object_parameter.moving_speed_threshold;
 
   const auto id = object_data.object.object_id;
   const auto same_id_obj = std::find_if(
@@ -558,9 +609,73 @@ void fillObjectMovingTime(
   object_data.move_time = (now - same_id_obj->last_stop).seconds();
   object_data.stop_time = 0.0;
 
-  if (object_data.move_time > parameters->threshold_time_object_is_moving) {
+  if (object_data.move_time > object_parameter.moving_time_threshold) {
     stopped_objects.erase(same_id_obj);
   }
+}
+
+void fillAvoidanceNecessity(
+  ObjectData & object_data, const ObjectDataArray & registered_objects, const double vehicle_width,
+  const std::shared_ptr<AvoidanceParameters> & parameters)
+{
+  const auto t = utils::getHighestProbLabel(object_data.object.classification);
+  const auto object_parameter = parameters->object_parameters.at(t);
+  const auto safety_margin =
+    0.5 * vehicle_width + object_parameter.safety_buffer_lateral * object_data.distance_factor;
+
+  const auto check_necessity = [&](const auto hysteresis_factor) {
+    return (isOnRight(object_data) &&
+            std::abs(object_data.overhang_dist) < safety_margin * hysteresis_factor) ||
+           (!isOnRight(object_data) &&
+            object_data.overhang_dist < safety_margin * hysteresis_factor);
+  };
+
+  const auto id = object_data.object.object_id;
+  const auto same_id_obj = std::find_if(
+    registered_objects.begin(), registered_objects.end(),
+    [&id](const auto & o) { return o.object.object_id == id; });
+
+  // First time
+  if (same_id_obj == registered_objects.end()) {
+    object_data.avoid_required = check_necessity(1.0);
+    return;
+  }
+
+  // FALSE -> FALSE or FALSE -> TRUE
+  if (!same_id_obj->avoid_required) {
+    object_data.avoid_required = check_necessity(1.0);
+    return;
+  }
+
+  // TRUE -> ? (check with hysteresis factor)
+  object_data.avoid_required = check_necessity(parameters->safety_check_hysteresis_factor);
+}
+
+void fillObjectStoppableJudge(
+  ObjectData & object_data, const ObjectDataArray & registered_objects,
+  const double feasible_stop_distance, const std::shared_ptr<AvoidanceParameters> & parameters)
+{
+  if (!parameters->use_constraints_for_decel) {
+    object_data.is_stoppable = true;
+  }
+
+  const auto id = object_data.object.object_id;
+  const auto same_id_obj = std::find_if(
+    registered_objects.begin(), registered_objects.end(),
+    [&id](const auto & o) { return o.object.object_id == id; });
+
+  const auto is_stoppable = object_data.to_stop_line > feasible_stop_distance;
+  if (is_stoppable) {
+    object_data.is_stoppable = true;
+    return;
+  }
+
+  if (same_id_obj == registered_objects.end()) {
+    object_data.is_stoppable = false;
+    return;
+  }
+
+  object_data.is_stoppable = same_id_obj->is_stoppable;
 }
 
 void updateRegisteredObject(
@@ -685,11 +800,15 @@ void filterTargetObjects(
     const auto object_parameter = parameters->object_parameters.at(t);
 
     if (!isTargetObjectType(o.object, parameters)) {
+      o.reason = AvoidanceDebugFactor::OBJECT_IS_NOT_TYPE;
       data.other_objects.push_back(o);
       continue;
     }
 
-    if (o.move_time > parameters->threshold_time_object_is_moving) {
+    // if following condition are satisfied, ignored the objects as moving objects.
+    // 1. speed is higher than threshold.
+    // 2. keep that speed longer than the time threshold.
+    if (o.move_time > object_parameter.moving_time_threshold) {
       o.reason = AvoidanceDebugFactor::MOVING_OBJECT;
       data.other_objects.push_back(o);
       continue;
@@ -795,7 +914,31 @@ void filterTargetObjects(
         data.other_objects.push_back(o);
         continue;
       }
+
+      if (std::abs(shift_length) < parameters->lateral_execution_threshold) {
+        o.reason = "LessThanExecutionThreshold";
+        data.other_objects.push_back(o);
+        continue;
+      }
     }
+
+    // for non vehicle type object
+    if (!isVehicleTypeObject(o)) {
+      if (isWithinCrosswalk(o, rh->getOverallGraphPtr())) {
+        // avoidance module ignore pedestrian and bicycle around crosswalk
+        o.reason = "CrosswalkUser";
+        data.other_objects.push_back(o);
+      } else {
+        // if there is no crosswalk near the object, avoidance module avoids pedestrian and bicycle
+        // no matter how it is shifted.
+        o.last_seen = now;
+        o.avoid_margin = avoid_margin;
+        data.target_objects.push_back(o);
+      }
+      continue;
+    }
+
+    // from here condition check for vehicle type objects.
 
     const auto stop_time_longer_than_threshold =
       o.stop_time > parameters->threshold_time_force_avoidance_for_stopped_vehicle;
