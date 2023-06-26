@@ -65,8 +65,8 @@ target_include_directories(dummy_perception_publisher_node
     $<INSTALL_INTERFACE:include>)
 
 # For using message definitions from the same package
-rosidl_target_interfaces(dummy_perception_publisher_node
-  ${PROJECT_NAME} "rosidl_typesupport_cpp")
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(dummy_perception_publisher_node "${cpp_typesupport_target}")
 
 # PCL dependencies – `ament_target_dependencies` doesn't respect the
 # components/modules selected above and only links in `common` ,so we need
