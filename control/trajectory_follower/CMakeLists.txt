@@ -94,7 +94,6 @@ if(BUILD_TESTING)
   # Unit tests
   set(TEST_LAT_SOURCES
     test/test_mpc.cpp
-    test/test_mpc_trajectory.cpp
     test/test_mpc_utils.cpp
     test/test_interpolate.cpp
     test/test_lowpass_filter.cpp
@@ -105,7 +104,6 @@ if(BUILD_TESTING)
   target_link_libraries(${TEST_LATERAL_CONTROLLER_EXE} ${LATERAL_CONTROLLER_LIB})
 
   set(TEST_LON_SOURCES
-    test/test_debug_values.cpp
     test/test_pid.cpp
     test/test_smooth_stop.cpp
     test/test_longitudinal_controller_utils.cpp
