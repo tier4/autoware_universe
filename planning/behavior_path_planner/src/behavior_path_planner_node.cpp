@@ -1050,7 +1050,11 @@ StartPlannerParameters BehaviorPathPlannerNode::getStartPlannerParam()
   p.th_arrived_distance = declare_parameter<double>(ns + "th_arrived_distance");
   p.th_stopped_velocity = declare_parameter<double>(ns + "th_stopped_velocity");
   p.th_stopped_time = declare_parameter<double>(ns + "th_stopped_time");
-  p.th_blinker_on_lateral_offset = declare_parameter<double>(ns + "th_blinker_on_lateral_offset");
+  p.th_turn_signal_on_lateral_offset =
+    declare_parameter<double>(ns + "th_turn_signal_on_lateral_offset");
+  p.intersection_search_length = declare_parameter<double>(ns + "intersection_search_length");
+  p.length_ratio_for_turn_signal_deactivation_near_intersection =
+    declare_parameter<double>(ns + "length_ratio_for_turn_signal_deactivation_near_intersection");
   p.collision_check_margin = declare_parameter<double>(ns + "collision_check_margin");
   p.collision_check_distance_from_end =
     declare_parameter<double>(ns + "collision_check_distance_from_end");
@@ -1215,7 +1219,10 @@ void BehaviorPathPlannerNode::run()
   }
 
 #ifndef USE_OLD_ARCHITECTURE
-  if (planner_data_->operation_mode->mode != OperationModeState::AUTONOMOUS) {
+  const auto controlled_by_autoware_autonomously =
+    planner_data_->operation_mode->mode == OperationModeState::AUTONOMOUS &&
+    planner_data_->operation_mode->is_autoware_control_enabled;
+  if (!controlled_by_autoware_autonomously) {
     planner_manager_->resetRootLanelet(planner_data_);
   }
 #endif

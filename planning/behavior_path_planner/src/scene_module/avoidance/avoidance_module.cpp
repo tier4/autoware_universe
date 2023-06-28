@@ -117,14 +117,6 @@ bool AvoidanceModule::isExecutionRequested() const
 {
   DEBUG_PRINT("AVOIDANCE isExecutionRequested");
 
-#ifndef USE_OLD_ARCHITECTURE
-  const auto is_driving_forward =
-    motion_utils::isDrivingForward(getPreviousModuleOutput().path->points);
-  if (!is_driving_forward || !(*is_driving_forward)) {
-    return false;
-  }
-#endif
-
   if (current_state_ == ModuleStatus::RUNNING) {
     return true;
   }
@@ -689,8 +681,7 @@ void AvoidanceModule::updateEgoBehavior(const AvoidancePlanningData & data, Shif
     case AvoidanceState::YIELD: {
       insertYieldVelocity(path);
       insertWaitPoint(parameters_->use_constraints_for_decel, path);
-      initRTCStatus();
-      unlockNewModuleLaunch();
+      removeRegisteredShiftLines();
       break;
     }
     case AvoidanceState::AVOID_PATH_NOT_READY: {
@@ -897,6 +888,7 @@ AvoidLineArray AvoidanceModule::calcRawShiftLinesFromObjects(
   for (auto & o : data.target_objects) {
     if (!o.avoid_margin) {
       o.reason = AvoidanceDebugFactor::INSUFFICIENT_LATERAL_MARGIN;
+      debug.unavoidable_objects.push_back(o);
       if (o.avoid_required && is_forward_object(o)) {
         break;
       } else {
@@ -908,6 +900,7 @@ AvoidLineArray AvoidanceModule::calcRawShiftLinesFromObjects(
     const auto shift_length = helper_.getShiftLength(o, is_object_on_right, o.avoid_margin.get());
     if (utils::avoidance::isSameDirectionShift(is_object_on_right, shift_length)) {
       o.reason = AvoidanceDebugFactor::SAME_DIRECTION_SHIFT;
+      debug.unavoidable_objects.push_back(o);
       if (o.avoid_required && is_forward_object(o)) {
         break;
       } else {
@@ -945,6 +938,7 @@ AvoidLineArray AvoidanceModule::calcRawShiftLinesFromObjects(
         // is not zero.
         if (!data.avoiding_now) {
           o.reason = AvoidanceDebugFactor::REMAINING_DISTANCE_LESS_THAN_ZERO;
+          debug.unavoidable_objects.push_back(o);
           if (o.avoid_required && is_forward_object(o)) {
             break;
           } else {
@@ -959,6 +953,7 @@ AvoidLineArray AvoidanceModule::calcRawShiftLinesFromObjects(
       if (required_jerk > parameters_->max_lateral_jerk) {
         if (!data.avoiding_now) {
           o.reason = AvoidanceDebugFactor::TOO_LARGE_JERK;
+          debug.unavoidable_objects.push_back(o);
           if (o.avoid_required && is_forward_object(o)) {
             break;
           } else {
@@ -3065,7 +3060,7 @@ TurnSignalInfo AvoidanceModule::calcTurnSignalInfo(const ShiftedPath & path) con
   }
 
   // compute blinker start idx and end idx
-  const size_t blinker_start_idx = [&]() {
+  size_t blinker_start_idx = [&]() {
     for (size_t idx = start_idx; idx <= end_idx; ++idx) {
       const double current_shift_length = path.shift_length.at(idx);
       if (current_shift_length > 0.1) {
@@ -3074,7 +3069,13 @@ TurnSignalInfo AvoidanceModule::calcTurnSignalInfo(const ShiftedPath & path) con
     }
     return start_idx;
   }();
-  const size_t blinker_end_idx = end_idx;
+  size_t blinker_end_idx = end_idx;
+
+  // prevent invalid access for out-of-range
+  blinker_start_idx =
+    std::min(std::max(std::size_t(0), blinker_start_idx), path.path.points.size() - 1);
+  blinker_end_idx =
+    std::min(std::max(blinker_start_idx, blinker_end_idx), path.path.points.size() - 1);
 
   const auto blinker_start_pose = path.path.points.at(blinker_start_idx).point.pose;
   const auto blinker_end_pose = path.path.points.at(blinker_end_idx).point.pose;

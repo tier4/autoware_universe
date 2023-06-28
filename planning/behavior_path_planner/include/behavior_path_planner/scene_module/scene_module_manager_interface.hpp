@@ -49,12 +49,12 @@ public:
     clock_(*node->get_clock()),
     logger_(node->get_logger().get_child(name)),
     name_(name),
-    max_module_num_(config.max_module_size),
-    priority_(config.priority),
     enable_simultaneous_execution_as_approved_module_(
       config.enable_simultaneous_execution_as_approved_module),
     enable_simultaneous_execution_as_candidate_module_(
-      config.enable_simultaneous_execution_as_candidate_module)
+      config.enable_simultaneous_execution_as_candidate_module),
+    max_module_num_(config.max_module_size),
+    priority_(config.priority)
   {
     for (const auto & rtc_type : rtc_types) {
       const auto snake_case_name = utils::convertToSnakeCase(name);
@@ -279,14 +279,14 @@ protected:
 
   std::unordered_map<std::string, std::shared_ptr<RTCInterface>> rtc_interface_ptr_map_;
 
+  bool enable_simultaneous_execution_as_approved_module_{false};
+
+  bool enable_simultaneous_execution_as_candidate_module_{false};
+
 private:
   size_t max_module_num_;
 
   size_t priority_;
-
-  bool enable_simultaneous_execution_as_approved_module_{false};
-
-  bool enable_simultaneous_execution_as_candidate_module_{false};
 };
 
 }  // namespace behavior_path_planner
