@@ -53,6 +53,8 @@ void DynamicAvoidanceModuleManager::updateModuleParams(
     updateParam<int>(
       parameters, ns + "successive_num_to_entry_dynamic_avoidance_condition",
       p->successive_num_to_entry_dynamic_avoidance_condition);
+    updateParam<double>(
+      parameters, ns + "min_obj_lat_offset_to_ego_path", p->min_obj_lat_offset_to_ego_path);
   }
 
   {  // drivable_area_generation

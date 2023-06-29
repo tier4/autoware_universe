@@ -723,6 +723,8 @@ DynamicAvoidanceParameters BehaviorPathPlannerNode::getDynamicAvoidanceParam()
     p.min_obstacle_vel = declare_parameter<double>(ns + "min_obstacle_vel");
     p.successive_num_to_entry_dynamic_avoidance_condition =
       declare_parameter<int>(ns + "successive_num_to_entry_dynamic_avoidance_condition");
+    p.min_obj_lat_offset_to_ego_path =
+      declare_parameter<double>(ns + "min_obj_lat_offset_to_ego_path");
   }
 
   {  // drivable_area_generation
