@@ -1401,7 +1401,8 @@ void MPTOptimizer::calcBounds(
                                          mpt_param_.soft_clearance_from_road +
                                          mpt_param_.extra_desired_clearance_from_road;
   */
-  const double min_soft_road_clearance = vehicle_param_.width / 2.0;
+  const double min_soft_road_clearance =
+    vehicle_param_.width / 2.0 + mpt_param_.soft_clearance_from_road;
 
   // search bounds candidate for each ref points
   debug_data.bounds_candidates.clear();
