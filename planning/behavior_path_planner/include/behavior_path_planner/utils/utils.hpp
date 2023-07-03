@@ -107,11 +107,6 @@ struct FrenetPoint
 };
 
 // data conversions
-PredictedPath convertToPredictedPath(
-  const PathWithLaneId & path, const Twist & vehicle_twist, const Pose & pose,
-  const size_t nearest_seg_idx, const double duration, const double resolution,
-  const double prepare_time, const double acceleration);
-
 template <class T>
 FrenetPoint convertToFrenetPoint(
   const T & points, const Point & search_point_geom, const size_t seg_idx)
@@ -309,6 +304,10 @@ bool isEgoOutOfRoute(
   const Pose & self_pose, const std::optional<PoseWithUuidStamped> & modified_goal,
   const std::shared_ptr<RouteHandler> & route_handler);
 
+bool isEgoWithinOriginalLane(
+  const lanelet::ConstLanelets & current_lanes, const Pose & current_pose,
+  const BehaviorPathPlannerParameters & common_param);
+
 // path management
 
 // TODO(Horibe) There is a similar function in route_handler. Check.
@@ -337,7 +336,7 @@ PathWithLaneId getCenterLinePathFromRootLanelet(
 PathWithLaneId getCenterLinePath(
   const RouteHandler & route_handler, const lanelet::ConstLanelets & lanelet_sequence,
   const Pose & pose, const double backward_path_length, const double forward_path_length,
-  const BehaviorPathPlannerParameters & parameter, const double optional_length = 0.0);
+  const BehaviorPathPlannerParameters & parameter);
 
 PathWithLaneId setDecelerationVelocity(
   const RouteHandler & route_handler, const PathWithLaneId & input,
@@ -400,6 +399,15 @@ void makeBoundLongitudinallyMonotonic(PathWithLaneId & path, const bool is_bound
 std::optional<lanelet::Polygon3d> getPolygonByPoint(
   const std::shared_ptr<RouteHandler> & route_handler, const lanelet::ConstPoint3d & point,
   const std::string & polygon_name);
+
+bool isParkedObject(
+  const PathWithLaneId & path, const RouteHandler & route_handler, const PredictedObject & object,
+  const double object_check_min_road_shoulder_width, const double object_shiftable_ratio_threshold,
+  const double static_object_velocity_threshold = 1.0);
+
+bool isParkedObject(
+  const lanelet::ConstLanelet & closest_lanelet, const lanelet::BasicLineString2d & boundary,
+  const PredictedObject & object, const double buffer_to_bound, const double ratio_threshold);
 }  // namespace behavior_path_planner::utils
 
 #endif  // BEHAVIOR_PATH_PLANNER__UTILS__UTILS_HPP_

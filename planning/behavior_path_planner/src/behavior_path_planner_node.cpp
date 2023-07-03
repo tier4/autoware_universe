@@ -408,6 +408,8 @@ BehaviorPathPlannerParameters BehaviorPathPlannerNode::getCommonParam()
     std::min(p.minimum_lane_changing_velocity, p.max_acc * p.lane_change_prepare_duration);
   p.minimum_prepare_length =
     0.5 * p.max_acc * p.lane_change_prepare_duration * p.lane_change_prepare_duration;
+  p.lane_change_finish_judge_buffer =
+    declare_parameter<double>("lane_change.lane_change_finish_judge_buffer");
 
   // lateral acceleration map for lane change
   const auto lateral_acc_velocity =
@@ -543,6 +545,8 @@ AvoidanceParameters BehaviorPathPlannerNode::getAvoidanceParam()
       declare_parameter<bool>(ns + "enable_force_avoidance_for_stopped_vehicle");
     p.enable_safety_check = declare_parameter<bool>(ns + "enable_safety_check");
     p.enable_yield_maneuver = declare_parameter<bool>(ns + "enable_yield_maneuver");
+    p.enable_yield_maneuver_during_shifting =
+      declare_parameter<bool>(ns + "enable_yield_maneuver_during_shifting");
     p.disable_path_update = declare_parameter<bool>(ns + "disable_path_update");
     p.use_hatched_road_markings = declare_parameter<bool>(ns + "use_hatched_road_markings");
     p.publish_debug_marker = declare_parameter<bool>(ns + "publish_debug_marker");
@@ -553,33 +557,39 @@ AvoidanceParameters BehaviorPathPlannerNode::getAvoidanceParam()
   {
     const auto get_object_param = [&](std::string && ns) {
       ObjectParameter param{};
-      param.enable = declare_parameter<bool>("avoidance.target_object." + ns + "enable");
-      param.envelope_buffer_margin =
-        declare_parameter<double>("avoidance.target_object." + ns + "envelope_buffer_margin");
-      param.safety_buffer_lateral =
-        declare_parameter<double>("avoidance.target_object." + ns + "safety_buffer_lateral");
+      param.enable = declare_parameter<bool>(ns + "enable");
+      param.moving_speed_threshold = declare_parameter<double>(ns + "moving_speed_threshold");
+      param.moving_time_threshold = declare_parameter<double>(ns + "moving_time_threshold");
+      param.max_expand_ratio = declare_parameter<double>(ns + "max_expand_ratio");
+      param.envelope_buffer_margin = declare_parameter<double>(ns + "envelope_buffer_margin");
+      param.avoid_margin_lateral = declare_parameter<double>(ns + "avoid_margin_lateral");
+      param.safety_buffer_lateral = declare_parameter<double>(ns + "safety_buffer_lateral");
       param.safety_buffer_longitudinal =
-        declare_parameter<double>("avoidance.target_object." + ns + "safety_buffer_longitudinal");
+        declare_parameter<double>(ns + "safety_buffer_longitudinal");
       return param;
     };
 
-    p.object_parameters.emplace(ObjectClassification::MOTORCYCLE, get_object_param("motorcycle."));
-    p.object_parameters.emplace(ObjectClassification::CAR, get_object_param("car."));
-    p.object_parameters.emplace(ObjectClassification::TRUCK, get_object_param("truck."));
-    p.object_parameters.emplace(ObjectClassification::TRAILER, get_object_param("trailer."));
-    p.object_parameters.emplace(ObjectClassification::BUS, get_object_param("bus."));
-    p.object_parameters.emplace(ObjectClassification::PEDESTRIAN, get_object_param("pedestrian."));
-    p.object_parameters.emplace(ObjectClassification::BICYCLE, get_object_param("bicycle."));
-    p.object_parameters.emplace(ObjectClassification::UNKNOWN, get_object_param("unknown."));
+    const std::string ns = "avoidance.target_object.";
+    p.object_parameters.emplace(
+      ObjectClassification::MOTORCYCLE, get_object_param(ns + "motorcycle."));
+    p.object_parameters.emplace(ObjectClassification::CAR, get_object_param(ns + "car."));
+    p.object_parameters.emplace(ObjectClassification::TRUCK, get_object_param(ns + "truck."));
+    p.object_parameters.emplace(ObjectClassification::TRAILER, get_object_param(ns + "trailer."));
+    p.object_parameters.emplace(ObjectClassification::BUS, get_object_param(ns + "bus."));
+    p.object_parameters.emplace(
+      ObjectClassification::PEDESTRIAN, get_object_param(ns + "pedestrian."));
+    p.object_parameters.emplace(ObjectClassification::BICYCLE, get_object_param(ns + "bicycle."));
+    p.object_parameters.emplace(ObjectClassification::UNKNOWN, get_object_param(ns + "unknown."));
+
+    p.lower_distance_for_polygon_expansion =
+      declare_parameter<double>(ns + "lower_distance_for_polygon_expansion");
+    p.upper_distance_for_polygon_expansion =
+      declare_parameter<double>(ns + "upper_distance_for_polygon_expansion");
   }
 
   // target filtering
   {
     std::string ns = "avoidance.target_filtering.";
-    p.threshold_speed_object_is_stopped =
-      declare_parameter<double>(ns + "threshold_speed_object_is_stopped");
-    p.threshold_time_object_is_moving =
-      declare_parameter<double>(ns + "threshold_time_object_is_moving");
     p.threshold_time_force_avoidance_for_stopped_vehicle =
       declare_parameter<double>(ns + "threshold_time_force_avoidance_for_stopped_vehicle");
     p.object_ignore_distance_traffic_light =
@@ -616,9 +626,10 @@ AvoidanceParameters BehaviorPathPlannerNode::getAvoidanceParam()
   // avoidance maneuver (lateral)
   {
     std::string ns = "avoidance.avoidance.lateral.";
-    p.lateral_collision_margin = declare_parameter<double>(ns + "lateral_collision_margin");
     p.road_shoulder_safety_margin = declare_parameter<double>(ns + "road_shoulder_safety_margin");
     p.lateral_execution_threshold = declare_parameter<double>(ns + "lateral_execution_threshold");
+    p.lateral_small_shift_threshold =
+      declare_parameter<double>(ns + "lateral_small_shift_threshold");
     p.max_right_shift_length = declare_parameter<double>(ns + "max_right_shift_length");
     p.max_left_shift_length = declare_parameter<double>(ns + "max_left_shift_length");
   }
@@ -710,16 +721,32 @@ DynamicAvoidanceParameters BehaviorPathPlannerNode::getDynamicAvoidanceParam()
     p.avoid_motorcycle = declare_parameter<bool>(ns + "motorcycle");
     p.avoid_pedestrian = declare_parameter<bool>(ns + "pedestrian");
     p.min_obstacle_vel = declare_parameter<double>(ns + "min_obstacle_vel");
+    p.successive_num_to_entry_dynamic_avoidance_condition =
+      declare_parameter<int>(ns + "successive_num_to_entry_dynamic_avoidance_condition");
+    p.min_obj_lat_offset_to_ego_path =
+      declare_parameter<double>(ns + "min_obj_lat_offset_to_ego_path");
   }
 
   {  // drivable_area_generation
     std::string ns = "dynamic_avoidance.drivable_area_generation.";
     p.lat_offset_from_obstacle = declare_parameter<double>(ns + "lat_offset_from_obstacle");
-    p.time_to_avoid_same_directional_object =
-      declare_parameter<double>(ns + "time_to_avoid_same_directional_object");
-    p.time_to_avoid_opposite_directional_object =
-      declare_parameter<double>(ns + "time_to_avoid_opposite_directional_object");
     p.max_lat_offset_to_avoid = declare_parameter<double>(ns + "max_lat_offset_to_avoid");
+
+    p.max_time_to_collision_overtaking_object =
+      declare_parameter<double>(ns + "overtaking_object.max_time_to_collision");
+    p.start_duration_to_avoid_overtaking_object =
+      declare_parameter<double>(ns + "overtaking_object.start_duration_to_avoid");
+    p.end_duration_to_avoid_overtaking_object =
+      declare_parameter<double>(ns + "overtaking_object.end_duration_to_avoid");
+    p.duration_to_hold_avoidance_overtaking_object =
+      declare_parameter<double>(ns + "overtaking_object.duration_to_hold_avoidance");
+
+    p.max_time_to_collision_oncoming_object =
+      declare_parameter<double>(ns + "oncoming_object.max_time_to_collision");
+    p.start_duration_to_avoid_oncoming_object =
+      declare_parameter<double>(ns + "oncoming_object.start_duration_to_avoid");
+    p.end_duration_to_avoid_oncoming_object =
+      declare_parameter<double>(ns + "oncoming_object.end_duration_to_avoid");
   }
 
   return p;
@@ -732,13 +759,27 @@ LaneChangeParameters BehaviorPathPlannerNode::getLaneChangeParam()
 
   // trajectory generation
   p.backward_lane_length = declare_parameter<double>(parameter("backward_lane_length"));
-  p.lane_change_finish_judge_buffer =
-    declare_parameter<double>(parameter("lane_change_finish_judge_buffer"));
   p.prediction_time_resolution = declare_parameter<double>(parameter("prediction_time_resolution"));
   p.longitudinal_acc_sampling_num =
     declare_parameter<int>(parameter("longitudinal_acceleration_sampling_num"));
   p.lateral_acc_sampling_num =
     declare_parameter<int>(parameter("lateral_acceleration_sampling_num"));
+
+  // parked vehicle detection
+  p.object_check_min_road_shoulder_width =
+    declare_parameter<double>(parameter("object_check_min_road_shoulder_width"));
+  p.object_shiftable_ratio_threshold =
+    declare_parameter<double>(parameter("object_shiftable_ratio_threshold"));
+
+  // turn signal
+  p.min_length_for_turn_signal_activation =
+    declare_parameter<double>(parameter("min_length_for_turn_signal_activation"));
+  p.length_ratio_for_turn_signal_deactivation =
+    declare_parameter<double>(parameter("length_ratio_for_turn_signal_deactivation"));
+
+  // acceleration
+  p.min_longitudinal_acc = declare_parameter<double>(parameter("min_longitudinal_acc"));
+  p.max_longitudinal_acc = declare_parameter<double>(parameter("max_longitudinal_acc"));
 
   // collision check
   p.enable_prepare_segment_collision_check =
@@ -792,15 +833,6 @@ LaneChangeParameters BehaviorPathPlannerNode::getLaneChangeParam()
       get_logger(), "abort_delta_time: " << p.abort_delta_time << ", is too short.\n"
                                          << "Terminating the program...");
     exit(EXIT_FAILURE);
-  }
-
-  const auto lc_buffer =
-    this->get_parameter("lane_change.backward_length_buffer_for_end_of_lane").get_value<double>();
-  if (lc_buffer < p.lane_change_finish_judge_buffer + 1.0) {
-    p.lane_change_finish_judge_buffer = lc_buffer - 1;
-    RCLCPP_WARN_STREAM(
-      get_logger(), "lane change buffer is less than finish buffer. Modifying the value to "
-                      << p.lane_change_finish_judge_buffer << "....");
   }
 
   return p;
@@ -1245,6 +1277,7 @@ void BehaviorPathPlannerNode::run()
   publishPathCandidate(bt_manager_->getSceneModules(), planner_data_);
   publishSceneModuleDebugMsg(bt_manager_->getAllSceneModuleDebugMsgData());
 #else
+  publishSceneModuleDebugMsg(planner_manager_->getDebugMsg());
   publishPathCandidate(planner_manager_->getSceneModuleManagers(), planner_data_);
   publishPathReference(planner_manager_->getSceneModuleManagers(), planner_data_);
   stop_reason_publisher_->publish(planner_manager_->getStopReasons());
@@ -1366,7 +1399,6 @@ void BehaviorPathPlannerNode::publish_bounds(const PathWithLaneId & path)
   bound_publisher_->publish(msg);
 }
 
-#ifdef USE_OLD_ARCHITECTURE
 void BehaviorPathPlannerNode::publishSceneModuleDebugMsg(
   const std::shared_ptr<SceneModuleVisitor> & debug_messages_data_ptr)
 {
@@ -1380,7 +1412,6 @@ void BehaviorPathPlannerNode::publishSceneModuleDebugMsg(
     debug_lane_change_msg_array_publisher_->publish(*lane_change_debug_message);
   }
 }
-#endif
 
 #ifdef USE_OLD_ARCHITECTURE
 void BehaviorPathPlannerNode::publishPathCandidate(
