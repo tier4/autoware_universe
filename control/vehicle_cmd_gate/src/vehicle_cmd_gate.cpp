@@ -51,6 +51,9 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
   rclcpp::QoS durable_qos{1};
   durable_qos.transient_local();
 
+  // Stop Checker
+  vehicle_stop_checker_ = std::make_unique<VehicleStopChecker>(this);
+
   // Publisher
   vehicle_cmd_emergency_pub_ =
     create_publisher<VehicleEmergencyStamped>("output/vehicle_cmd_emergency", durable_qos);
@@ -143,6 +146,7 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
     declare_parameter<double>("external_emergency_stop_heartbeat_timeout");
   stop_hold_acceleration_ = declare_parameter<double>("stop_hold_acceleration");
   emergency_acceleration_ = declare_parameter<double>("emergency_acceleration");
+  stop_check_duration_ = declare_parameter<double>("stop_check_duration");
 
   // Vehicle Parameter
   const auto vehicle_info = vehicle_info_util::VehicleInfoUtil(*this).getVehicleInfo();
@@ -409,6 +413,7 @@ void VehicleCmdGate::publishControlCommands(const Commands & commands)
   // Publish commands
   vehicle_cmd_emergency_pub_->publish(vehicle_cmd_emergency);
   control_cmd_pub_->publish(filtered_commands.control);
+  pause_->publish();
 
   // Save ControlCmd to steering angle when disengaged
   prev_control_cmd_ = filtered_commands.control;
@@ -480,6 +485,9 @@ AckermannControlCommand VehicleCmdGate::filterControlCommand(const AckermannCont
   AckermannControlCommand out = in;
   const double dt = getDt();
   const auto mode = current_operation_mode_;
+  const auto current_status_cmd = getActualStatusAsCommand();
+  const auto ego_is_stopped = vehicle_stop_checker_->isVehicleStopped(stop_check_duration_);
+  const auto input_cmd_is_stopping = in.longitudinal.acceleration < 0.0;
 
   // Apply transition_filter when transiting from MANUAL to AUTO.
   if (mode.is_in_transition) {
@@ -491,8 +499,7 @@ AckermannControlCommand VehicleCmdGate::filterControlCommand(const AckermannCont
   // set prev value for both to keep consistency over switching:
   // Actual steer, vel, acc should be considered in manual mode to prevent sudden motion when
   // switching from manual to autonomous
-  auto prev_values =
-    (mode.mode == OperationModeState::AUTONOMOUS) ? out : getActualStatusAsCommand();
+  auto prev_values = (mode.mode == OperationModeState::AUTONOMOUS) ? out : current_status_cmd;
 
   // TODO(Horibe): To prevent sudden acceleration/deceleration when switching from manual to
   // autonomous, the filter should be applied for actual speed and acceleration during manual
@@ -503,6 +510,14 @@ AckermannControlCommand VehicleCmdGate::filterControlCommand(const AckermannCont
   // supposed to stop. Until the appropriate handling will be done, previous value is used for the
   // filter in manual mode.
   prev_values.longitudinal = out.longitudinal;  // TODO(Horibe): to be removed
+
+  // When ego is stopped and the input command is stopping,
+  // use the actual vehicle longitudinal state for the next filtering
+  // this is to prevent the jerk limits being applied on the "stop acceleration"
+  // which may be negative and cause delays when restarting the vehicle.
+  if (ego_is_stopped && input_cmd_is_stopping) {
+    prev_values.longitudinal = current_status_cmd.longitudinal;
+  }
 
   filter_.setPrevCmd(prev_values);
   filter_on_transition_.setPrevCmd(prev_values);
