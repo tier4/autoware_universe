@@ -92,6 +92,7 @@ private:
   enum class LongitudinalControllerMode {
     INVALID = 0,
     PID = 1,
+    CONSTANT = 2,
   };
 
   /**
