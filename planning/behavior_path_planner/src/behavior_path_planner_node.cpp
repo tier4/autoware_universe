@@ -621,6 +621,7 @@ AvoidanceParameters BehaviorPathPlannerNode::getAvoidanceParam()
     p.safety_check_accel_for_rss = declare_parameter<double>(ns + "safety_check_accel_for_rss");
     p.safety_check_hysteresis_factor =
       declare_parameter<double>(ns + "safety_check_hysteresis_factor");
+    p.safety_check_ego_offset = declare_parameter<double>(ns + "safety_check_ego_offset");
   }
 
   // avoidance maneuver (lateral)
