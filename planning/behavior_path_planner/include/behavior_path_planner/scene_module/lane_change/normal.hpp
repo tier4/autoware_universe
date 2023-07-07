@@ -55,8 +55,6 @@ public:
 
   void extendOutputDrivableArea(BehaviorModuleOutput & output) override;
 
-  void insertStopPoint(PathWithLaneId & path) override;
-
   PathWithLaneId getReferencePath() const override;
 
   void resetParameters() override;
