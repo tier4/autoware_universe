@@ -643,6 +643,8 @@ AvoidanceParameters BehaviorPathPlannerNode::getAvoidanceParam()
     p.min_avoidance_distance = declare_parameter<double>(ns + "min_avoidance_distance");
     p.min_nominal_avoidance_speed = declare_parameter<double>(ns + "min_nominal_avoidance_speed");
     p.min_sharp_avoidance_speed = declare_parameter<double>(ns + "min_sharp_avoidance_speed");
+    p.min_slow_down_speed = declare_parameter<double>(ns + "min_slow_down_speed");
+    p.buf_slow_down_speed = declare_parameter<double>(ns + "buf_slow_down_speed");
   }
 
   // yield
@@ -656,6 +658,7 @@ AvoidanceParameters BehaviorPathPlannerNode::getAvoidanceParam()
     std::string ns = "avoidance.stop.";
     p.stop_min_distance = declare_parameter<double>(ns + "min_distance");
     p.stop_max_distance = declare_parameter<double>(ns + "max_distance");
+    p.stop_buffer = declare_parameter<double>(ns + "stop_buffer");
   }
 
   // constraints
