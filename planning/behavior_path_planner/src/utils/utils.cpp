@@ -2576,23 +2576,32 @@ std::uint8_t getHighestProbLabel(const std::vector<ObjectClassification> & class
   return label;
 }
 
-lanelet::ConstLanelets getCurrentLanes(const std::shared_ptr<const PlannerData> & planner_data)
+lanelet::ConstLanelets getCurrentLanes(
+  const std::shared_ptr<const PlannerData> & planner_data, const double backward_path_length,
+  const double forward_path_length)
 {
   const auto & route_handler = planner_data->route_handler;
   const auto current_pose = planner_data->self_odometry->pose.pose;
-  const auto & common_parameters = planner_data->parameters;
 
   lanelet::ConstLanelet current_lane;
   if (!route_handler->getClosestLaneletWithinRoute(current_pose, &current_lane)) {
-    // RCLCPP_ERROR(getLogger(), "failed to find closest lanelet within route!!!");
-    std::cerr << "failed to find closest lanelet within route!!!" << std::endl;
+    auto clock{rclcpp::Clock{RCL_ROS_TIME}};
+    RCLCPP_ERROR_STREAM_THROTTLE(
+      rclcpp::get_logger("behavior_path_planner").get_child("utils"), clock, 1000,
+      "failed to find closest lanelet within route!!!");
     return {};  // TODO(Horibe) what should be returned?
   }
 
   // For current_lanes with desired length
   return route_handler->getLaneletSequence(
-    current_lane, current_pose, common_parameters.backward_path_length,
-    common_parameters.forward_path_length);
+    current_lane, current_pose, backward_path_length, forward_path_length);
+}
+
+lanelet::ConstLanelets getCurrentLanes(const std::shared_ptr<const PlannerData> & planner_data)
+{
+  const auto & common_parameters = planner_data->parameters;
+  return getCurrentLanes(
+    planner_data, common_parameters.backward_path_length, common_parameters.forward_path_length);
 }
 
 lanelet::ConstLanelets getCurrentLanesFromPath(
@@ -2621,7 +2630,7 @@ lanelet::ConstLanelets getCurrentLanesFromPath(
     current_lane, current_pose, p.backward_path_length, p.forward_path_length);
 }
 
-lanelet::ConstLanelets extendLanes(
+lanelet::ConstLanelets extendNextLane(
   const std::shared_ptr<RouteHandler> route_handler, const lanelet::ConstLanelets & lanes)
 {
   auto extended_lanes = lanes;
@@ -2632,6 +2641,14 @@ lanelet::ConstLanelets extendLanes(
     extended_lanes.push_back(next_lanes.front());
   }
 
+  return extended_lanes;
+}
+
+lanelet::ConstLanelets extendPrevLane(
+  const std::shared_ptr<RouteHandler> route_handler, const lanelet::ConstLanelets & lanes)
+{
+  auto extended_lanes = lanes;
+
   // Add previous lane
   const auto prev_lanes = route_handler->getPreviousLanelets(extended_lanes.front());
   if (!prev_lanes.empty()) {
@@ -2639,6 +2656,47 @@ lanelet::ConstLanelets extendLanes(
   }
 
   return extended_lanes;
+}
+
+lanelet::ConstLanelets extendLanes(
+  const std::shared_ptr<RouteHandler> route_handler, const lanelet::ConstLanelets & lanes)
+{
+  auto extended_lanes = extendNextLane(route_handler, lanes);
+  extended_lanes = extendPrevLane(route_handler, extended_lanes);
+
+  return extended_lanes;
+}
+
+lanelet::ConstLanelets getExtendedCurrentLanes(
+  const std::shared_ptr<const PlannerData> & planner_data, const double backward_length,
+  const double forward_length)
+{
+  auto lanes = getCurrentLanes(planner_data);
+
+  double forward_length_sum = 0.0;
+  double backward_length_sum = 0.0;
+
+  while (backward_length_sum < backward_length) {
+    auto extended_lanes = extendPrevLane(planner_data->route_handler, lanes);
+    if (extended_lanes.size() > lanes.size()) {
+      backward_length_sum += lanelet::utils::getLaneletLength2d(extended_lanes.front());
+    } else {
+      break;  // no more previous lanes to add
+    }
+    lanes = extended_lanes;
+  }
+
+  while (forward_length_sum < forward_length) {
+    auto extended_lanes = extendNextLane(planner_data->route_handler, lanes);
+    if (extended_lanes.size() > lanes.size()) {
+      forward_length_sum += lanelet::utils::getLaneletLength2d(extended_lanes.back());
+    } else {
+      break;  // no more next lanes to add
+    }
+    lanes = extended_lanes;
+  }
+
+  return lanes;
 }
 
 lanelet::ConstLanelets getExtendedCurrentLanes(
