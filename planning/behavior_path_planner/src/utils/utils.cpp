@@ -2518,22 +2518,6 @@ BehaviorModuleOutput getReferencePath(
     *route_handler, current_lanes_with_backward_margin, current_pose, backward_length,
     p.forward_path_length, p);
 
-  // Set stop point for lane change
-  if (route_handler->getNumLaneToPreferredLane(current_lanes_with_backward_margin.back()) != 0) {
-    const auto shift_intervals =
-      route_handler->getLateralIntervalsToPreferredLane(current_lanes_with_backward_margin.back());
-    const double lane_change_buffer = utils::calcMinimumLaneChangeLength(p, shift_intervals, 0.0);
-    const double length_to_dead_end = utils::getDistanceToEndOfLane(
-      reference_path.points.back().point.pose, current_lanes_with_backward_margin);
-    constexpr double stop_point_buffer{1.0};
-    const auto stopping_distance = std::max(
-      motion_utils::calcArcLength(reference_path.points) -
-        (lane_change_buffer + stop_point_buffer - length_to_dead_end),
-      0.0);
-
-    const auto stop_point = utils::insertStopPoint(stopping_distance, reference_path);
-  }
-
   // clip backward length
   // NOTE: In order to keep backward_path_length at least, resampling interval is added to the
   // backward.
