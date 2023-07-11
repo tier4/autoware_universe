@@ -83,7 +83,7 @@ void ShiftDecider::updateCurrentShiftCmd()
     } else if (control_cmd_->longitudinal.speed < -vel_threshold) {
       shift_cmd_.command = GearCommand::REVERSE;
     } else {
-      shift_cmd_.command = current_gear_ptr_->report;
+      shift_cmd_.command = prev_shift_command;
     }
   } else {
     if (autoware_state_->state == AutowareState::ARRIVED_GOAL && park_on_goal_) {
@@ -92,6 +92,7 @@ void ShiftDecider::updateCurrentShiftCmd()
       shift_cmd_.command = current_gear_ptr_->report;
     }
   }
+  prev_shift_command = shift_cmd_.command;
 }
 
 void ShiftDecider::initTimer(double period_s)
