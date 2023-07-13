@@ -1074,6 +1074,7 @@ StartPlannerParameters BehaviorPathPlannerNode::getStartPlannerParam()
   p.lateral_jerk = declare_parameter<double>(ns + "lateral_jerk");
   p.maximum_lateral_acc = declare_parameter<double>(ns + "maximum_lateral_acc");
   p.minimum_lateral_acc = declare_parameter<double>(ns + "minimum_lateral_acc");
+  p.maximum_curvature = declare_parameter<double>(ns + "maximum_curvature");
   p.deceleration_interval = declare_parameter<double>(ns + "deceleration_interval");
   // geometric pull out
   p.enable_geometric_pull_out = declare_parameter<bool>(ns + "enable_geometric_pull_out");
