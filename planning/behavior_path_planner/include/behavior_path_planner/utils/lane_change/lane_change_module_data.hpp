@@ -27,6 +27,51 @@
 namespace behavior_path_planner
 {
 
+struct PoseWithVelocity
+{
+  Pose pose;
+  double velocity;
+
+  PoseWithVelocity(const Pose & pose, const double velocity) : pose(pose), velocity(velocity) {}
+};
+
+struct PoseWithVelocityStamped : public PoseWithVelocity
+{
+  double time;
+
+  PoseWithVelocityStamped(const double time, const Pose & pose, const double velocity)
+  : PoseWithVelocity(pose, velocity), time(time)
+  {
+  }
+};
+
+struct PoseWithVelocityAndPolygonStamped : public PoseWithVelocityStamped
+{
+  Polygon2d poly;
+
+  PoseWithVelocityAndPolygonStamped(
+    const double time, const Pose & pose, const double velocity, const Polygon2d & poly)
+  : PoseWithVelocityStamped(time, pose, velocity), poly(poly)
+  {
+  }
+};
+
+struct PredictedPathWithPolygon
+{
+  float confidence;
+  std::vector<PoseWithVelocityAndPolygonStamped> path;
+};
+
+struct ExtendedPredictedObject
+{
+  unique_identifier_msgs::msg::UUID uuid;
+  geometry_msgs::msg::PoseWithCovariance initial_pose;
+  geometry_msgs::msg::TwistWithCovariance initial_twist;
+  geometry_msgs::msg::AccelWithCovariance initial_acceleration;
+  autoware_auto_perception_msgs::msg::Shape shape;
+  std::vector<PredictedPathWithPolygon> predicted_paths;
+};
+
 struct LaneChangeCancelParameters
 {
   bool enable_on_prepare_phase{true};
@@ -106,6 +151,13 @@ struct LaneChangeTargetObjectIndices
   std::vector<size_t> current_lane{};
   std::vector<size_t> target_lane{};
   std::vector<size_t> other_lane{};
+};
+
+struct LaneChangeTargetObjects
+{
+  std::vector<ExtendedPredictedObject> current_lane{};
+  std::vector<ExtendedPredictedObject> target_lane{};
+  std::vector<ExtendedPredictedObject> other_lane{};
 };
 
 enum class LaneChangeModuleType {
