@@ -66,43 +66,36 @@ using Vector3 = geometry_msgs::msg::Vector3;
 
 struct ObjectData
 {
-  rclcpp::Time stamp;
   geometry_msgs::msg::Point position;
   double velocity{0.0};
-  double rss{0.0};
-  double distance_to_object{0.0};
 };
 
-class CollisionDataKeeper
+struct CollisionData
 {
-public:
-  explicit CollisionDataKeeper(rclcpp::Clock::SharedPtr clock) { clock_ = clock; }
+  ObjectData object;
+  double rss{0.0};
+  double distance_ego_to_object{0.0};
+  Path ego_path;
+  bool is_initialized{false};
 
-  void setTimeout(const double timeout_sec) { timeout_sec_ = timeout_sec; }
-
-  bool checkExpired()
+  void reset()
   {
-    if (data_ && (clock_->now() - data_->stamp).seconds() > timeout_sec_) {
-      data_.reset();
-    }
-    return (data_ == nullptr);
+    object = ObjectData();
+    rss = 0.0;
+    distance_ego_to_object = 0.0;
+    is_initialized = false;
   }
 
-  void update(const ObjectData & data) { data_.reset(new ObjectData(data)); }
-
-  ObjectData get()
+  void set(
+    const ObjectData & a_object, const double a_rss, const double a_distance_ego_to_object,
+    const Path & a_ego_path)
   {
-    if (data_) {
-      return *data_;
-    } else {
-      return ObjectData();
-    }
+    object = a_object;
+    rss = a_rss;
+    distance_ego_to_object = a_distance_ego_to_object;
+    ego_path = a_ego_path;
+    is_initialized = true;
   }
-
-private:
-  std::unique_ptr<ObjectData> data_;
-  double timeout_sec_{0.0};
-  rclcpp::Clock::SharedPtr clock_;
 };
 
 class AEB : public rclcpp::Node
@@ -139,20 +132,17 @@ public:
   bool checkCollision(MarkerArray & debug_markers);
   bool hasCollision(
     const double current_v, const Path & ego_path, const std::vector<ObjectData> & objects);
+  bool hasCollisionWithPrevious(const Path & ego_path, const std::vector<ObjectData> & objects);
+  void generateEgoPath(const double curr_v, const double curr_w, Path & path);
+  void generateEgoPath(const Trajectory & predicted_traj, Path & path);
+  std::vector<Polygon2d> generateEgoPolygons(const Path & path);
 
-  void generateEgoPath(
-    const double curr_v, const double curr_w, Path & path, std::vector<Polygon2d> & polygons);
-  void generateEgoPath(
-    const Trajectory & predicted_traj, Path & path, std::vector<Polygon2d> & polygons);
-  void createObjectData(
-    const Path & ego_path, const std::vector<Polygon2d> & ego_polys, const rclcpp::Time & stamp,
-    std::vector<ObjectData> & objects);
+  void createObjectData(const Path & ego_path, std::vector<ObjectData> & objects);
 
   void addMarker(
-    const rclcpp::Time & current_time, const Path & path, const std::vector<Polygon2d> & polygons,
-    const std::vector<ObjectData> & objects, const double color_r, const double color_g,
-    const double color_b, const double color_a, const std::string & ns,
-    MarkerArray & debug_markers);
+    const rclcpp::Time & current_time, const Path & path, const std::vector<ObjectData> & objects,
+    const double color_r, const double color_g, const double color_b, const double color_a,
+    const std::string & ns, MarkerArray & debug_markers);
 
   void addCollisionMarker(const ObjectData & data, MarkerArray & debug_markers);
 
@@ -185,7 +175,7 @@ public:
   double a_obj_min_;
   double prediction_time_horizon_;
   double prediction_time_interval_;
-  CollisionDataKeeper collision_data_keeper_;
+  CollisionData collision_data_;
 };
 }  // namespace autoware::motion::control::autonomous_emergency_braking
 
