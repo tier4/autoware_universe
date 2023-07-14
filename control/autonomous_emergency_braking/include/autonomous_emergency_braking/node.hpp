@@ -66,7 +66,6 @@ using Vector3 = geometry_msgs::msg::Vector3;
 
 struct ObjectData
 {
-  rclcpp::Time stamp;
   geometry_msgs::msg::Point position;
   double velocity{0.0};
 };
