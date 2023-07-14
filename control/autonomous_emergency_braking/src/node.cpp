@@ -446,7 +446,7 @@ void AEB::generateEgoPath(
 }
 
 void AEB::generateEgoPath(
-  const Trajectory & predicted_traj, Path & path, std::vector<Polygon2d> & polygons)
+  const Trajectory & predicted_traj, Path & path, std::vector<tier4_autoware_utils::Polygon2d> & polygons)
 {
   geometry_msgs::msg::TransformStamped transform_stamped{};
   try {
@@ -471,11 +471,11 @@ void AEB::generateEgoPath(
 }
 
 void AEB::createObjectData(
-  const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
+  const Path & ego_path, const std::vector<tier4_autoware_utils::Polygon2d> & ego_polys,
   std::vector<ObjectData> & objects)
 {
   // check if the predicted path has valid number of points
-  if (ego_path.size() < 2) {
+  if (ego_path.size() < 2 || ego_polys.empty()) {
     return;
   }
 

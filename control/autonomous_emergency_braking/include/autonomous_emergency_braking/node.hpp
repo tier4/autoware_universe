@@ -66,6 +66,7 @@ using Vector3 = geometry_msgs::msg::Vector3;
 
 struct ObjectData
 {
+  rclcpp::Time stamp;
   geometry_msgs::msg::Point position;
   double velocity{0.0};
 };
@@ -144,7 +145,7 @@ public:
   std::vector<Polygon2d> generateEgoPolygon(const Path & path);
   void createObjectData(
     const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
-    std::vector<ObjectData> & objects);
+    std::vector<ObjectData> & objects, const rclcpp::Time & stamp);
 
   void addMarker(
     const rclcpp::Time & current_time, const Path & path, const std::vector<Polygon2d> & polygons,
