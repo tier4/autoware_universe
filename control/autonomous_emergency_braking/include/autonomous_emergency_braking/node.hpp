@@ -144,7 +144,7 @@ public:
   std::vector<Polygon2d> generateEgoPolygon(const Path & path);
   void createObjectData(
     const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
-    std::vector<ObjectData> & objects, const rclcpp::Time & stamp);
+    std::vector<ObjectData> & objects);
 
   void addMarker(
     const rclcpp::Time & current_time, const Path & path, const std::vector<Polygon2d> & polygons,
