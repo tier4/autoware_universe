@@ -76,6 +76,7 @@ struct CollisionData
   double rss{0.0};
   double distance_ego_to_object{0.0};
   Path ego_path;
+  std::vector<Polygon2d> ego_polys;
   bool is_initialized{false};
 
   void reset()
@@ -83,17 +84,20 @@ struct CollisionData
     object = ObjectData();
     rss = 0.0;
     distance_ego_to_object = 0.0;
+    ego_path = {};
+    ego_polys = {};
     is_initialized = false;
   }
 
   void set(
     const ObjectData & a_object, const double a_rss, const double a_distance_ego_to_object,
-    const Path & a_ego_path)
+    const Path & a_ego_path, const std::vector<Polygon2d> & a_ego_polys)
   {
     object = a_object;
     rss = a_rss;
     distance_ego_to_object = a_distance_ego_to_object;
     ego_path = a_ego_path;
+    ego_polys = a_ego_polys;
     is_initialized = true;
   }
 };
@@ -131,18 +135,23 @@ public:
   void onCheckCollision(DiagnosticStatusWrapper & stat);
   bool checkCollision(MarkerArray & debug_markers);
   bool hasCollision(
-    const double current_v, const Path & ego_path, const std::vector<ObjectData> & objects);
+    const double current_v, const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
+    const std::vector<ObjectData> & objects);
   bool hasCollisionWithPrevious(const Path & ego_path, const std::vector<ObjectData> & objects);
-  void generateEgoPath(const double curr_v, const double curr_w, Path & path);
-  void generateEgoPath(const Trajectory & predicted_traj, Path & path);
-  std::vector<Polygon2d> generateEgoPolygons(const Path & path);
+  void generateEgoPath(
+    const double curr_v, const double curr_w, Path & path, std::vector<Polygon2d> & polygons);
+  void generateEgoPath(
+    const Trajectory & predicted_traj, Path & path, std::vector<Polygon2d> & polygons);
 
-  void createObjectData(const Path & ego_path, std::vector<ObjectData> & objects);
+  void createObjectData(
+    const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
+    std::vector<ObjectData> & objects);
 
   void addMarker(
-    const rclcpp::Time & current_time, const Path & path, const std::vector<ObjectData> & objects,
-    const double color_r, const double color_g, const double color_b, const double color_a,
-    const std::string & ns, MarkerArray & debug_markers);
+    const rclcpp::Time & current_time, const Path & path, const std::vector<Polygon2d> & polygons,
+    const std::vector<ObjectData> & objects, const double color_r, const double color_g,
+    const double color_b, const double color_a, const std::string & ns,
+    MarkerArray & debug_markers);
 
   void addCollisionMarker(const ObjectData & data, MarkerArray & debug_markers);
 

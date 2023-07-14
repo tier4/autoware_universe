@@ -286,41 +286,45 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
   bool has_collision_ego = false;
   if (use_imu_path_) {
     Path ego_path;
+    std::vector<Polygon2d> ego_polys;
     const double current_w = angular_velocity_ptr_->z;
     constexpr double color_r = 0.0 / 256.0;
     constexpr double color_g = 148.0 / 256.0;
     constexpr double color_b = 205.0 / 256.0;
     constexpr double color_a = 0.999;
     const auto current_time = get_clock()->now();
-    generateEgoPath(current_v, current_w, ego_path);
+    generateEgoPath(current_v, current_w, ego_path, ego_polys);
 
     std::vector<ObjectData> objects;
-    createObjectData(ego_path, objects);
-    has_collision_ego = hasCollision(current_v, ego_path, objects);
+    createObjectData(ego_path, ego_polys, objects);
+    has_collision_ego = hasCollision(current_v, ego_path, ego_polys, objects);
 
     std::string ns = "ego";
     addMarker(
-      current_time, ego_path, objects, color_r, color_g, color_b, color_a, ns, debug_markers);
+      current_time, ego_path, ego_polys, objects, color_r, color_g, color_b, color_a, ns,
+      debug_markers);
   }
 
   // step4. transform predicted trajectory from control module
   bool has_collision_predicted = false;
   if (use_predicted_trajectory_) {
     Path predicted_path;
+    std::vector<Polygon2d> predicted_polys;
     const auto predicted_traj_ptr = predicted_traj_ptr_;
     constexpr double color_r = 0.0;
     constexpr double color_g = 100.0 / 256.0;
     constexpr double color_b = 0.0;
     constexpr double color_a = 0.999;
     const auto current_time = predicted_traj_ptr->header.stamp;
-    generateEgoPath(*predicted_traj_ptr, predicted_path);
+    generateEgoPath(*predicted_traj_ptr, predicted_path, predicted_polys);
     std::vector<ObjectData> objects;
-    createObjectData(predicted_path, objects);
-    has_collision_predicted = hasCollision(current_v, predicted_path, objects);
+    createObjectData(predicted_path, predicted_polys, objects);
+    has_collision_predicted = hasCollision(current_v, predicted_path, predicted_polys, objects);
 
     std::string ns = "predicted";
     addMarker(
-      current_time, predicted_path, objects, color_r, color_g, color_b, color_a, ns, debug_markers);
+      current_time, predicted_path, predicted_polys, objects, color_r, color_g, color_b, color_a,
+      ns, debug_markers);
   }
 
   // step5. re collision desicion with previous collision data
@@ -332,20 +336,21 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     constexpr double color_a = 0.999;
     const auto current_time = this->now();
     std::vector<ObjectData> objects;
-    createObjectData(collision_data_.ego_path, objects);
+    createObjectData(collision_data_.ego_path, collision_data_.ego_polys, objects);
     has_collision_previous = hasCollisionWithPrevious(collision_data_.ego_path, objects);
 
     std::string ns = "previous";
     addMarker(
-      current_time, collision_data_.ego_path, objects, color_r, color_g, color_b, color_a, ns,
-      debug_markers);
+      current_time, collision_data_.ego_path, collision_data_.ego_polys, objects, color_r, color_g,
+      color_b, color_a, ns, debug_markers);
   }
 
   return has_collision_ego || has_collision_predicted || has_collision_previous;
 }
 
 bool AEB::hasCollision(
-  const double current_v, const Path & ego_path, const std::vector<ObjectData> & objects)
+  const double current_v, const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
+  const std::vector<ObjectData> & objects)
 {
   // calculate RSS
   const auto current_p = tier4_autoware_utils::createPoint(0.0, 0.0, 0.0);
@@ -361,7 +366,7 @@ bool AEB::hasCollision(
     // The distance between ego and object is shorter than RSS distance
     if (dist_ego_to_object < rss_dist) {
       // collision happens
-      collision_data_.set(obj, rss_dist, dist_ego_to_object, ego_path);
+      collision_data_.set(obj, rss_dist, dist_ego_to_object, ego_path, ego_polys);
       return true;
     }
   }
@@ -390,7 +395,8 @@ bool AEB::hasCollisionWithPrevious(const Path & ego_path, const std::vector<Obje
   return false;
 }
 
-void AEB::generateEgoPath(const double curr_v, const double curr_w, Path & path)
+void AEB::generateEgoPath(
+  const double curr_v, const double curr_w, Path & path, std::vector<Polygon2d> & polygons)
 {
   double curr_x = 0.0;
   double curr_y = 0.0;
@@ -434,9 +440,16 @@ void AEB::generateEgoPath(const double curr_v, const double curr_w, Path & path)
     }
     path.push_back(current_pose);
   }
+
+  // create polygon
+  polygons.resize(path.size());
+  for (size_t i = 0; i < path.size() - 1; ++i) {
+    polygons.at(i) = createPolygon(path.at(i), path.at(i + 1), vehicle_info_, expand_width_);
+  }
 }
 
-void AEB::generateEgoPath(const Trajectory & predicted_traj, Path & path)
+void AEB::generateEgoPath(
+  const Trajectory & predicted_traj, Path & path, std::vector<Polygon2d> & polygons)
 {
   geometry_msgs::msg::TransformStamped transform_stamped{};
   try {
@@ -455,28 +468,22 @@ void AEB::generateEgoPath(const Trajectory & predicted_traj, Path & path)
     tf2::doTransform(predicted_traj.points.at(i).pose, map_pose, transform_stamped);
     path.at(i) = map_pose;
   }
-}
 
-std::vector<Polygon2d> AEB::generateEgoPolygons(const Path & path)
-{
-  std::vector<Polygon2d> polygons;
   // create polygon
   polygons.resize(path.size());
   for (size_t i = 0; i < path.size() - 1; ++i) {
     polygons.at(i) = createPolygon(path.at(i), path.at(i + 1), vehicle_info_, expand_width_);
   }
-
-  return polygons;
 }
 
-void AEB::createObjectData(const Path & ego_path, std::vector<ObjectData> & objects)
+void AEB::createObjectData(
+  const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
+  std::vector<ObjectData> & objects)
 {
   // check if the predicted path has valid number of points
   if (ego_path.size() < 2) {
     return;
   }
-
-  const auto ego_polys = generateEgoPolygons(ego_path);
 
   PointCloud::Ptr obstacle_points_ptr(new PointCloud);
   pcl::fromROSMsg(*obstacle_ros_pointcloud_ptr_, *obstacle_points_ptr);
@@ -503,9 +510,9 @@ void AEB::createObjectData(const Path & ego_path, std::vector<ObjectData> & obje
 }
 
 void AEB::addMarker(
-  const rclcpp::Time & current_time, const Path & path, const std::vector<ObjectData> & objects,
-  const double color_r, const double color_g, const double color_b, const double color_a,
-  const std::string & ns, MarkerArray & debug_markers)
+  const rclcpp::Time & current_time, const Path & path, const std::vector<Polygon2d> & polygons,
+  const std::vector<ObjectData> & objects, const double color_r, const double color_g,
+  const double color_b, const double color_a, const std::string & ns, MarkerArray & debug_markers)
 {
   auto path_marker = tier4_autoware_utils::createDefaultMarker(
     "base_link", current_time, ns + "_path", 0L, Marker::LINE_STRIP,
@@ -521,7 +528,6 @@ void AEB::addMarker(
     "base_link", current_time, ns + "_polygon", 0, Marker::LINE_LIST,
     tier4_autoware_utils::createMarkerScale(0.03, 0.0, 0.0),
     tier4_autoware_utils::createMarkerColor(color_r, color_g, color_b, color_a));
-  const auto polygons = generateEgoPolygons(path);
   for (const auto & poly : polygons) {
     for (size_t dp_idx = 0; dp_idx < poly.outer().size(); ++dp_idx) {
       const auto & boost_cp = poly.outer().at(dp_idx);
