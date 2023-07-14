@@ -135,14 +135,13 @@ public:
   void onCheckCollision(DiagnosticStatusWrapper & stat);
   bool checkCollision(MarkerArray & debug_markers);
   bool hasCollision(
-    const double current_v, const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
-    const std::vector<ObjectData> & objects);
+    const double current_v, const Path & ego_path, const std::vector<ObjectData> & objects);
   bool hasCollisionWithPrevious(const Path & ego_path, const std::vector<ObjectData> & objects);
   void generateEgoPath(
     const double curr_v, const double curr_w, Path & path, std::vector<Polygon2d> & polygons);
   void generateEgoPath(
     const Trajectory & predicted_traj, Path & path, std::vector<Polygon2d> & polygons);
-
+  std::vector<Polygon2d> generateEgoPolygon(const Path & path);
   void createObjectData(
     const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
     std::vector<ObjectData> & objects);

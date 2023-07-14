@@ -297,7 +297,7 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
 
     std::vector<ObjectData> objects;
     createObjectData(ego_path, ego_polys, objects);
-    has_collision_ego = hasCollision(current_v, ego_path, ego_polys, objects);
+    has_collision_ego = hasCollision(current_v, ego_path, objects);
 
     std::string ns = "ego";
     addMarker(
@@ -319,7 +319,7 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     generateEgoPath(*predicted_traj_ptr, predicted_path, predicted_polys);
     std::vector<ObjectData> objects;
     createObjectData(predicted_path, predicted_polys, objects);
-    has_collision_predicted = hasCollision(current_v, predicted_path, predicted_polys, objects);
+    has_collision_predicted = hasCollision(current_v, predicted_path, objects);
 
     std::string ns = "predicted";
     addMarker(
@@ -349,8 +349,7 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
 }
 
 bool AEB::hasCollision(
-  const double current_v, const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
-  const std::vector<ObjectData> & objects)
+  const double current_v, const Path & ego_path, const std::vector<ObjectData> & objects)
 {
   // calculate RSS
   const auto current_p = tier4_autoware_utils::createPoint(0.0, 0.0, 0.0);
@@ -366,7 +365,8 @@ bool AEB::hasCollision(
     // The distance between ego and object is shorter than RSS distance
     if (dist_ego_to_object < rss_dist) {
       // collision happens
-      collision_data_.set(obj, rss_dist, dist_ego_to_object, ego_path, ego_polys);
+      collision_data_.set(
+        obj, rss_dist, dist_ego_to_object, ego_path, generateEgoPolygon(ego_path));
       return true;
     }
   }
@@ -442,10 +442,7 @@ void AEB::generateEgoPath(
   }
 
   // create polygon
-  polygons.resize(path.size());
-  for (size_t i = 0; i < path.size() - 1; ++i) {
-    polygons.at(i) = createPolygon(path.at(i), path.at(i + 1), vehicle_info_, expand_width_);
-  }
+  polygons = generateEgoPolygon(path);
 }
 
 void AEB::generateEgoPath(
@@ -470,10 +467,7 @@ void AEB::generateEgoPath(
   }
 
   // create polygon
-  polygons.resize(path.size());
-  for (size_t i = 0; i < path.size() - 1; ++i) {
-    polygons.at(i) = createPolygon(path.at(i), path.at(i + 1), vehicle_info_, expand_width_);
-  }
+  polygons = generateEgoPolygon(path);
 }
 
 void AEB::createObjectData(
@@ -507,6 +501,16 @@ void AEB::createObjectData(
       }
     }
   }
+}
+
+std::vector<Polygon2d> AEB::generateEgoPolygon(const Path & path)
+{
+  std::vector<Polygon2d> polygons;
+  polygons.resize(path.size());
+  for (size_t i = 0; i < path.size() - 1; ++i) {
+    polygons.at(i) = createPolygon(path.at(i), path.at(i + 1), vehicle_info_, expand_width_);
+  }
+  return polygons;
 }
 
 void AEB::addMarker(
