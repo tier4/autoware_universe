@@ -151,7 +151,8 @@ void PlannerManager::generateCombinedDrivableArea(
   } else if (di.is_already_expanded) {
     // for single side shift
     utils::generateDrivableArea(
-      *output.path, di.drivable_lanes, false, data->parameters.vehicle_length, data, is_driving_forward);
+      *output.path, di.drivable_lanes, false, data->parameters.vehicle_length, data,
+      is_driving_forward);
   } else {
     const auto shorten_lanes = utils::cutOverlappedLanes(*output.path, di.drivable_lanes);
 
