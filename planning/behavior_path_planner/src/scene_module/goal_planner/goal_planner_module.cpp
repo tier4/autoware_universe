@@ -130,7 +130,6 @@ void GoalPlannerModule::resetStatus()
   pull_over_path_candidates_.clear();
   closest_start_pose_.reset();
   goal_candidates_.clear();
-  prev_goal_id_.reset();
 }
 
 // This function is needed for waiting for planner_data_
@@ -296,7 +295,7 @@ bool GoalPlannerModule::isExecutionRequested() const
       return lanelet::utils::isInLanelet(goal_pose, current_lane);
     });
 
-  // check that goal is in current neghibor shoulder lane
+  // check that goal is in current neighbor shoulder lane
   const bool goal_is_in_current_shoulder_lanes = std::invoke([&]() {
     lanelet::ConstLanelet neighbor_shoulder_lane{};
     for (const auto & lane : current_lanes) {
@@ -633,7 +632,6 @@ void GoalPlannerModule::setOutput(BehaviorModuleOutput & output)
   setDrivableAreaInfo(output);
 
   setModifiedGoal(output);
-  prev_goal_id_ = modified_goal_pose_->id;
 
   // set hazard and turn signal
   if (status_.has_decided_path) {
@@ -689,11 +687,8 @@ void GoalPlannerModule::setDrivableAreaInfo(BehaviorModuleOutput & output) const
 
 void GoalPlannerModule::setModifiedGoal(BehaviorModuleOutput & output) const
 {
-  // set the modified goal only when it is updated
   const auto & route_handler = planner_data_->route_handler;
-  const bool has_changed_goal =
-    modified_goal_pose_ && (!prev_goal_id_ || *prev_goal_id_ != modified_goal_pose_->id);
-  if (status_.is_safe && has_changed_goal) {
+  if (status_.is_safe) {
     PoseWithUuidStamped modified_goal{};
     modified_goal.uuid = route_handler->getRouteUuid();
     modified_goal.pose = modified_goal_pose_->goal_pose;
