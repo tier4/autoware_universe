@@ -278,7 +278,9 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
 
   // step2. re collision desicion with previous collision data
   bool has_collision_previous = false;
-  RCLCPP_INFO(this->get_logger(), "collision is initialized: %s", (collision_data_.is_initialized ? "True": "False"));
+  RCLCPP_INFO(
+    this->get_logger(), "collision is initialized: %s",
+    (collision_data_.is_initialized ? "True" : "False"));
   if (collision_data_.is_initialized) {
     constexpr double color_r = 100.0 / 256.0;
     constexpr double color_g = 0.0;
