@@ -66,6 +66,7 @@ using Vector3 = geometry_msgs::msg::Vector3;
 
 struct ObjectData
 {
+  rclcpp::Time stamp;
   geometry_msgs::msg::Point position;
   double velocity{0.0};
 };
@@ -143,7 +144,7 @@ public:
     const Trajectory & predicted_traj, Path & path, std::vector<Polygon2d> & polygons);
   std::vector<Polygon2d> generateEgoPolygon(const Path & path);
   void createObjectData(
-    const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
+    const Path & ego_path, const std::vector<Polygon2d> & ego_polys, const rclcpp::Time & stamp,
     std::vector<ObjectData> & objects);
 
   void addMarker(

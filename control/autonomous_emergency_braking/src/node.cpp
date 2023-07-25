@@ -285,9 +285,9 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     constexpr double color_g = 0.0;
     constexpr double color_b = 0.0;
     constexpr double color_a = 0.999;
-    const auto current_time = this->now();
+    const auto rentcur_time = this->now();
     std::vector<ObjectData> objects;
-    createObjectData(collision_data_.ego_path, collision_data_.ego_polys, objects);
+    createObjectData(collision_data_.ego_path, collision_data_.ego_polys, current_time, objects);
     bool has_collision_previous = hasCollisionWithPrevious(collision_data_.ego_path, objects);
 
     std::string ns = "previous";
@@ -318,7 +318,7 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     generateEgoPath(current_v, current_w, ego_path, ego_polys);
 
     std::vector<ObjectData> objects;
-    createObjectData(ego_path, ego_polys, objects);
+    createObjectData(ego_path, ego_polys, current_time, objects);
     has_collision_ego = hasCollision(current_v, ego_path, objects);
 
     std::string ns = "ego";
@@ -340,7 +340,7 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     const auto current_time = predicted_traj_ptr->header.stamp;
     generateEgoPath(*predicted_traj_ptr, predicted_path, predicted_polys);
     std::vector<ObjectData> objects;
-    createObjectData(predicted_path, predicted_polys, objects);
+    createObjectData(predicted_path, predicted_polys, current_time, objects);
     has_collision_predicted = hasCollision(current_v, predicted_path, objects);
 
     std::string ns = "predicted";
@@ -478,7 +478,7 @@ void AEB::generateEgoPath(
 }
 
 void AEB::createObjectData(
-  const Path & ego_path, const std::vector<tier4_autoware_utils::Polygon2d> & ego_polys,
+  const Path & ego_path, const std::vector<tier4_autoware_utils::Polygon2d> & ego_polys, const rclcpp::Time & stamp,
   std::vector<ObjectData> & objects)
 {
   // check if the predicted path has valid number of points
@@ -491,6 +491,7 @@ void AEB::createObjectData(
   for (const auto & point : obstacle_points_ptr->points) {
     ObjectData obj;
     obj.position = tier4_autoware_utils::createPoint(point.x, point.y, point.z);
+    obj.stamp = stamp;
     obj.velocity = 0.0;
     const Point2d obj_point(point.x, point.y);
 
@@ -564,7 +565,7 @@ void AEB::addMarker(
 void AEB::addCollisionMarker(const ObjectData & data, MarkerArray & debug_markers)
 {
   auto point_marker = tier4_autoware_utils::createDefaultMarker(
-    "base_link", this->now(), "collision_point", 0, Marker::SPHERE,
+    "base_link", data.stamp, "collision_point", 0, Marker::SPHERE,
     tier4_autoware_utils::createMarkerScale(0.3, 0.3, 0.3),
     tier4_autoware_utils::createMarkerColor(1.0, 0.0, 0.0, 0.3));
   point_marker.pose.position = data.position;
