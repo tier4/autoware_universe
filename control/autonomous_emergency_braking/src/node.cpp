@@ -285,7 +285,7 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     constexpr double color_g = 0.0;
     constexpr double color_b = 0.0;
     constexpr double color_a = 0.999;
-    const auto rentcur_time = this->now();
+    const auto current_time = this->now();
     std::vector<ObjectData> objects;
     createObjectData(collision_data_.ego_path, collision_data_.ego_polys, current_time, objects);
     bool has_collision_previous = hasCollisionWithPrevious(collision_data_.ego_path, objects);
