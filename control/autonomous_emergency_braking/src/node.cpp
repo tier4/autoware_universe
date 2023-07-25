@@ -490,8 +490,8 @@ void AEB::createObjectData(
   pcl::fromROSMsg(*obstacle_ros_pointcloud_ptr_, *obstacle_points_ptr);
   for (const auto & point : obstacle_points_ptr->points) {
     ObjectData obj;
-    obj.position = tier4_autoware_utils::createPoint(point.x, point.y, point.z);
     obj.stamp = stamp;
+    obj.position = tier4_autoware_utils::createPoint(point.x, point.y, point.z);
     obj.velocity = 0.0;
     const Point2d obj_point(point.x, point.y);
 
