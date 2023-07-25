@@ -304,7 +304,7 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     return false;
   }
 
-  // step3.1. create ego path based on sensor data
+  // step4. create ego path based on sensor data
   bool has_collision_ego = false;
   if (use_imu_path_) {
     Path ego_path;
@@ -327,7 +327,7 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
       debug_markers);
   }
 
-  // step3.2. transform predicted trajectory from control module
+  // step5. transform predicted trajectory from control module
   bool has_collision_predicted = false;
   if (use_predicted_trajectory_) {
     Path predicted_path;
