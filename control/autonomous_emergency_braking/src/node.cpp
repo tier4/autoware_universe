@@ -277,7 +277,6 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
   }
 
   // step2. if previous collision data exists, collision decision again
-  bool has_collision_previous = false;
   RCLCPP_INFO(
     this->get_logger(), "collision is initialized: %s",
     (collision_data_.is_initialized ? "True" : "False"));
@@ -289,64 +288,68 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     const auto current_time = this->now();
     std::vector<ObjectData> objects;
     createObjectData(collision_data_.ego_path, collision_data_.ego_polys, objects);
-    has_collision_previous = hasCollisionWithPrevious(collision_data_.ego_path, objects);
+    bool has_collision_previous = hasCollisionWithPrevious(collision_data_.ego_path, objects);
 
     std::string ns = "previous";
     addMarker(
       current_time, collision_data_.ego_path, collision_data_.ego_polys, objects, color_r, color_g,
       color_b, color_a, ns, debug_markers);
+
+    return has_collision_previous;
   }
 
   // step3. create velocity data check if the vehicle stops or not
   const double current_v = current_velocity_ptr_->longitudinal_velocity;
-  bool has_collision_ego = false;
-  bool has_collision_predicted = false;
-  if (current_v > 0.1) {
-    // step3.1. create ego path based on sensor data
-    if (use_imu_path_) {
-      Path ego_path;
-      std::vector<Polygon2d> ego_polys;
-      const double current_w = angular_velocity_ptr_->z;
-      constexpr double color_r = 0.0 / 256.0;
-      constexpr double color_g = 148.0 / 256.0;
-      constexpr double color_b = 205.0 / 256.0;
-      constexpr double color_a = 0.999;
-      const auto current_time = get_clock()->now();
-      generateEgoPath(current_v, current_w, ego_path, ego_polys);
-
-      std::vector<ObjectData> objects;
-      createObjectData(ego_path, ego_polys, objects);
-      has_collision_ego = hasCollision(current_v, ego_path, objects);
-
-      std::string ns = "ego";
-      addMarker(
-        current_time, ego_path, ego_polys, objects, color_r, color_g, color_b, color_a, ns,
-        debug_markers);
-    }
-
-    // step3.2. transform predicted trajectory from control module
-    if (use_predicted_trajectory_) {
-      Path predicted_path;
-      std::vector<Polygon2d> predicted_polys;
-      const auto predicted_traj_ptr = predicted_traj_ptr_;
-      constexpr double color_r = 0.0;
-      constexpr double color_g = 100.0 / 256.0;
-      constexpr double color_b = 0.0;
-      constexpr double color_a = 0.999;
-      const auto current_time = predicted_traj_ptr->header.stamp;
-      generateEgoPath(*predicted_traj_ptr, predicted_path, predicted_polys);
-      std::vector<ObjectData> objects;
-      createObjectData(predicted_path, predicted_polys, objects);
-      has_collision_predicted = hasCollision(current_v, predicted_path, objects);
-
-      std::string ns = "predicted";
-      addMarker(
-        current_time, predicted_path, predicted_polys, objects, color_r, color_g, color_b, color_a,
-        ns, debug_markers);
-    }
+  if (current_v < 0.1) {
+    return false;
   }
 
-  return has_collision_ego || has_collision_predicted || has_collision_previous;
+  // step3.1. create ego path based on sensor data
+  bool has_collision_ego = false;
+  if (use_imu_path_) {
+    Path ego_path;
+    std::vector<Polygon2d> ego_polys;
+    const double current_w = angular_velocity_ptr_->z;
+    constexpr double color_r = 0.0 / 256.0;
+    constexpr double color_g = 148.0 / 256.0;
+    constexpr double color_b = 205.0 / 256.0;
+    constexpr double color_a = 0.999;
+    const auto current_time = get_clock()->now();
+    generateEgoPath(current_v, current_w, ego_path, ego_polys);
+
+    std::vector<ObjectData> objects;
+    createObjectData(ego_path, ego_polys, objects);
+    has_collision_ego = hasCollision(current_v, ego_path, objects);
+
+    std::string ns = "ego";
+    addMarker(
+      current_time, ego_path, ego_polys, objects, color_r, color_g, color_b, color_a, ns,
+      debug_markers);
+  }
+
+  // step3.2. transform predicted trajectory from control module
+  bool has_collision_predicted = false;
+  if (use_predicted_trajectory_) {
+    Path predicted_path;
+    std::vector<Polygon2d> predicted_polys;
+    const auto predicted_traj_ptr = predicted_traj_ptr_;
+    constexpr double color_r = 0.0;
+    constexpr double color_g = 100.0 / 256.0;
+    constexpr double color_b = 0.0;
+    constexpr double color_a = 0.999;
+    const auto current_time = predicted_traj_ptr->header.stamp;
+    generateEgoPath(*predicted_traj_ptr, predicted_path, predicted_polys);
+    std::vector<ObjectData> objects;
+    createObjectData(predicted_path, predicted_polys, objects);
+    has_collision_predicted = hasCollision(current_v, predicted_path, objects);
+
+    std::string ns = "predicted";
+    addMarker(
+      current_time, predicted_path, predicted_polys, objects, color_r, color_g, color_b, color_a,
+      ns, debug_markers);
+  }
+
+  return has_collision_ego || has_collision_predicted;
 }
 
 bool AEB::hasCollision(
