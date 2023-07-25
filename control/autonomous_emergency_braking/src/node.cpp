@@ -390,7 +390,9 @@ bool AEB::hasCollisionWithPrevious(const Path & ego_path, const std::vector<Obje
       vehicle_info_.max_longitudinal_offset_m;
 
     // The distance between ego and object is shorter than distance + hysteresis( 0.1[m] )
-    RCLCPP_INFO(this->get_logger(), "dist: %lf, recoded: %lf", dist_ego_to_object, collision_data_.distance_ego_to_object);
+    RCLCPP_INFO(
+      this->get_logger(), "dist: %lf, recoded: %lf", dist_ego_to_object,
+      collision_data_.distance_ego_to_object);
     if (dist_ego_to_object < collision_data_.distance_ego_to_object + 0.1) {
       // collision still happens
       return true;
