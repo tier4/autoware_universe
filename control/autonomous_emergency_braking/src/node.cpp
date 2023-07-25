@@ -478,8 +478,8 @@ void AEB::generateEgoPath(
 }
 
 void AEB::createObjectData(
-  const Path & ego_path, const std::vector<tier4_autoware_utils::Polygon2d> & ego_polys, const rclcpp::Time & stamp,
-  std::vector<ObjectData> & objects)
+  const Path & ego_path, const std::vector<tier4_autoware_utils::Polygon2d> & ego_polys,
+  const rclcpp::Time & stamp, std::vector<ObjectData> & objects)
 {
   // check if the predicted path has valid number of points
   if (ego_path.size() < 2 || ego_polys.empty()) {
