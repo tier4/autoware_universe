@@ -276,7 +276,7 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     return false;
   }
 
-  // step2. re collision desicion with previous collision data
+  // step2. if previous collision data exists, collision decision again
   bool has_collision_previous = false;
   RCLCPP_INFO(
     this->get_logger(), "collision is initialized: %s",
