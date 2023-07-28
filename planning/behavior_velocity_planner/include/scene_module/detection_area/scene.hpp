@@ -62,7 +62,8 @@ public:
 
 public:
   DetectionAreaModule(
-    const int64_t module_id, const size_t lane_id, const lanelet::autoware::DetectionArea & detection_area_reg_elem,
+    const int64_t module_id, const size_t lane_id,
+    const lanelet::autoware::DetectionArea & detection_area_reg_elem,
     const PlannerParam & planner_param, const rclcpp::Logger logger,
     const rclcpp::Clock::SharedPtr clock);
 
