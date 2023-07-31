@@ -503,7 +503,8 @@ ObstacleStopPlannerNode::ObstacleStopPlannerNode(const rclcpp::NodeOptions & nod
   acc_controller_ = std::make_unique<motion_planning::AdaptiveCruiseController>(
     this, i.vehicle_width_m, i.vehicle_length_m, i.max_longitudinal_offset_m);
   debug_ptr_ = std::make_shared<ObstacleStopPlannerDebugNode>(this, i.max_longitudinal_offset_m);
-  last_detection_time_ = this->now();
+  last_detect_time_slowdown_point_ = this->now();
+  last_detect_time_collision_point_ = this->now();
 
   // Publishers
   path_pub_ = this->create_publisher<Trajectory>("~/output/trajectory", 1);
@@ -632,8 +633,9 @@ void ObstacleStopPlannerNode::pathCallback(const Trajectory::ConstSharedPtr inpu
     current_vel, stop_param);
 
   const auto no_slow_down_section = !planner_data.slow_down_require && !latest_slow_down_section_;
-  const auto no_hunting = (rclcpp::Time(input_msg->header.stamp) - last_detection_time_).seconds() >
-                          node_param_.hunting_threshold;
+  const auto no_hunting =
+    (rclcpp::Time(input_msg->header.stamp) - last_detect_time_slowdown_point_).seconds() >
+    node_param_.hunting_threshold;
   if (node_param_.enable_slow_down && no_slow_down_section && set_velocity_limit_ && no_hunting) {
     resetExternalVelocityLimit(current_acc, current_vel);
   }
@@ -702,6 +704,8 @@ void ObstacleStopPlannerNode::searchObstacle(
         debug_ptr_->pushObstaclePoint(planner_data.nearest_slow_down_point, PointType::SlowDown);
         debug_ptr_->pushPolygon(
           one_step_move_slow_down_range_polygon, p_front.position.z, PolygonType::SlowDown);
+
+        last_detect_time_slowdown_point_ = trajectory_header.stamp;
       }
 
     } else {
@@ -742,6 +746,10 @@ void ObstacleStopPlannerNode::searchObstacle(
           planner_data.nearest_collision_point_time, object_ptr, current_velocity_ptr,
           &planner_data.stop_require, &output, trajectory_header);
 
+        if (planner_data.stop_require) {
+          last_detect_time_collision_point_ = trajectory_header.stamp;
+        }
+
         break;
       }
     }
@@ -753,6 +761,9 @@ void ObstacleStopPlannerNode::insertVelocity(
   const std_msgs::msg::Header & trajectory_header, const VehicleInfo & vehicle_info,
   const double current_acc, const double current_vel, const StopParam & stop_param)
 {
+  const auto no_hunting_collision_point = 
+  (rclcpp::Time(trajectory_header.stamp) - last_detect_time_collision_point_).seconds() > 
+  node_param_.hunting_threshold;
   if (planner_data.stop_require) {
     // insert stop point
     const auto traj_end_idx = output.size() - 1;
@@ -769,8 +780,18 @@ void ObstacleStopPlannerNode::insertVelocity(
         index_with_dist_remain.get().first, output, index_with_dist_remain.get().second,
         stop_param);
       insertStopPoint(stop_point, output, planner_data.stop_reason_diag);
+      latest_stop_point_ = stop_point;
+    }
+  } else if (!no_hunting_collision_point) {
+    if (latest_stop_point_) {
+      insertStopPoint(latest_stop_point_.get(), output, planner_data.stop_reason_diag);
+      debug_ptr_->pushPose(getPose(latest_stop_point_.get().point), PoseType::Stop);
     }
   }
+
+  const auto no_hunting_slowdown_point =
+    (rclcpp::Time(trajectory_header.stamp) - last_detect_time_slowdown_point_).seconds() >
+    node_param_.hunting_threshold;
 
   if (planner_data.slow_down_require) {
     // insert slow down point
@@ -796,16 +817,20 @@ void ObstacleStopPlannerNode::insertVelocity(
         current_vel);
 
       if (
-        !latest_slow_down_section_ &&
-        dist_baselink_to_obstacle + index_with_dist_remain.get().second <
-          vehicle_info.max_longitudinal_offset_m) {
+        (!latest_slow_down_section_ &&
+         dist_baselink_to_obstacle + index_with_dist_remain.get().second <
+           vehicle_info.max_longitudinal_offset_m) ||
+        !no_hunting_slowdown_point) {
         latest_slow_down_section_ = slow_down_section;
       }
 
       insertSlowDownSection(slow_down_section, output);
     }
 
-    last_detection_time_ = trajectory_header.stamp;
+  } else if (!no_hunting_slowdown_point) {
+    if (latest_slow_down_section_) {
+      insertSlowDownSection(latest_slow_down_section_.get(), output);
+    }
   }
 
   if (node_param_.enable_slow_down && latest_slow_down_section_) {
@@ -831,7 +856,7 @@ void ObstacleStopPlannerNode::insertVelocity(
         set_velocity_limit_ ? std::numeric_limits<double>::max() : slow_down_param_.slow_down_vel;
 
       insertSlowDownSection(slow_down_section, output);
-    } else {
+    } else if (no_hunting_slowdown_point) {
       latest_slow_down_section_ = {};
     }
   }
