@@ -57,6 +57,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 namespace motion_planning
@@ -91,6 +92,17 @@ struct SlowDownSection
   double velocity;
 };
 
+struct ObstacleWithDetectionTime
+{
+  explicit ObstacleWithDetectionTime(const rclcpp::Time & t, pcl::PointXYZ & p)
+  : detection_time(t), point(p)
+  {
+  }
+
+  rclcpp::Time detection_time;
+  pcl::PointXYZ point;
+};
+
 class ObstacleStopPlannerNode : public rclcpp::Node
 {
 public:
@@ -101,7 +113,7 @@ public:
     bool enable_slow_down;         // set True, slow down for obstacle beside the path
     double max_velocity;           // max velocity [m/s]
     double lowpass_gain;           // smoothing calculated current acceleration [-]
-    double hunting_threshold;      // keep slow down or stop state if obstacle vanished [s]
+    double chattering_threshold;   // keep slow down or stop state if obstacle vanished [s]
     double max_yaw_deviation_rad;  // maximum ego yaw deviation from trajectory [rad] (measures
                                    // against overlapping lanes)
   };
@@ -184,14 +196,12 @@ private:
   std::unique_ptr<motion_planning::AdaptiveCruiseController> acc_controller_;
   std::shared_ptr<ObstacleStopPlannerDebugNode> debug_ptr_;
   std::shared_ptr<LowpassFilter1d> lpf_acc_{nullptr};
-  boost::optional<StopPoint> latest_stop_point_{boost::none};
   boost::optional<SlowDownSection> latest_slow_down_section_{boost::none};
+  std::vector<ObstacleWithDetectionTime> obstacle_history_{};
   tf2_ros::Buffer tf_buffer_{get_clock()};
   tf2_ros::TransformListener tf_listener_{tf_buffer_};
   sensor_msgs::msg::PointCloud2::SharedPtr obstacle_ros_pointcloud_ptr_{nullptr};
   PredictedObjects::ConstSharedPtr object_ptr_{nullptr};
-    rclcpp::Time last_detect_time_collision_point_;
-  rclcpp::Time last_detect_time_slowdown_point_;
 
   nav_msgs::msg::Odometry::ConstSharedPtr current_velocity_ptr_{nullptr};
   nav_msgs::msg::Odometry::ConstSharedPtr prev_velocity_ptr_{nullptr};
@@ -307,6 +317,31 @@ private:
 
   void publishDebugData(
     const PlannerData & planner_data, const double current_acc, const double current_vel);
+
+  void updateObstacleHistory(const rclcpp::Time & now)
+  {
+    for (auto itr = obstacle_history_.begin(); itr != obstacle_history_.end();) {
+      const auto expired = (now - itr->detection_time).seconds() > node_param_.chattering_threshold;
+
+      if (expired) {
+        itr = obstacle_history_.erase(itr);
+        continue;
+      }
+
+      itr++;
+    }
+  }
+
+  PointCloud::Ptr getOldPointCloudPtr() const
+  {
+    PointCloud::Ptr ret(new PointCloud);
+
+    for (const auto & p : obstacle_history_) {
+      ret->push_back(p.point);
+    }
+
+    return ret;
+  }
 };
 }  // namespace motion_planning
 
