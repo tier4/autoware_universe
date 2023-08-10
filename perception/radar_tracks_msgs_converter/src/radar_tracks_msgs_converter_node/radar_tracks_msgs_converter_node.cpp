@@ -216,7 +216,7 @@ DetectedObjects RadarTracksMsgsConverterNode::convertRadarTrackToDetectedObjects
         kinematics.twist_with_covariance.twist.linear.y += odometry_data_->twist.twist.linear.y;
         kinematics.twist_with_covariance.twist.linear.z += odometry_data_->twist.twist.linear.z;
       } else {
-        RCLCPP_INFO(get_logger(), "Odometry data is not coming");
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "Odometry data is not coming");
       }
     }
 
@@ -303,7 +303,7 @@ TrackedObjects RadarTracksMsgsConverterNode::convertRadarTrackToTrackedObjects()
         kinematics.twist_with_covariance.twist.linear.y += odometry_data_->twist.twist.linear.y;
         kinematics.twist_with_covariance.twist.linear.z += odometry_data_->twist.twist.linear.z;
       } else {
-        RCLCPP_INFO(get_logger(), "Odometry data is not coming");
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "Odometry data is not coming");
       }
     }
 
