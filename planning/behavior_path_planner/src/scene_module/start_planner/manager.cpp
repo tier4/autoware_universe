@@ -46,48 +46,27 @@ void StartPlannerModuleManager::updateModuleParams(
 
 bool StartPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
 {
-  if (observers_.empty()) {
-    return enable_simultaneous_execution_as_approved_module_;
-  }
-
-  const auto checker = [this](const SceneModuleObserver & observer) {
-    if (observer.expired()) {
-      return enable_simultaneous_execution_as_approved_module_;
-    }
-
-    const auto start_planner_ptr = std::dynamic_pointer_cast<StartPlannerModule>(observer.lock());
-
+  const auto checker = [this](const auto & module) {
     // Currently simultaneous execution with other modules is not supported while backward driving
-    if (!start_planner_ptr->isBackFinished()) {
+    if (!module->isBackFinished()) {
       return false;
     }
-
-    return enable_simultaneous_execution_as_approved_module_;
+    return enable_simultaneous_execution_as_candidate_module_;
   };
 
-  return std::all_of(observers_.begin(), observers_.end(), checker);
+  return std::all_of(registered_modules_.begin(), registered_modules_.end(), checker);
 }
 
 bool StartPlannerModuleManager::isSimultaneousExecutableAsCandidateModule() const
 {
-  if (observers_.empty()) {
-    return enable_simultaneous_execution_as_candidate_module_;
-  }
-
-  const auto checker = [this](const SceneModuleObserver & observer) {
-    if (observer.expired()) {
-      return enable_simultaneous_execution_as_candidate_module_;
-    }
-
-    const auto start_planner_ptr = std::dynamic_pointer_cast<StartPlannerModule>(observer.lock());
-
+  const auto checker = [this](const auto & module) {
     // Currently simultaneous execution with other modules is not supported while backward driving
-    if (!start_planner_ptr->isBackFinished()) {
+    if (!module->isBackFinished()) {
       return false;
     }
     return enable_simultaneous_execution_as_candidate_module_;
   };
 
-  return std::all_of(observers_.begin(), observers_.end(), checker);
+  return std::all_of(registered_modules_.begin(), registered_modules_.end(), checker);
 }
 }  // namespace behavior_path_planner

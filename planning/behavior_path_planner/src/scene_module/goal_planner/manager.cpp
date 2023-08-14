@@ -52,59 +52,23 @@ void GoalPlannerModuleManager::updateModuleParams(
 // because only minor path refinements are made for fixed goals
 bool GoalPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
 {
-  if (observers_.empty()) {
-    if (!goal_planner_utils::isAllowedGoalModificaition(
-          planner_data_->route_handler, left_side_parking_)) {
-      return true;
-    }
-
-    return enable_simultaneous_execution_as_approved_module_;
+  if (!goal_planner_utils::isAllowedGoalModificaition(
+        planner_data_->route_handler, left_side_parking_)) {
+    return true;
   }
 
-  const auto checker = [this](const SceneModuleObserver & observer) {
-    if (observer.expired()) {
-      return enable_simultaneous_execution_as_approved_module_;
-    }
-
-    const auto goal_planner_module = std::dynamic_pointer_cast<GoalPlannerModule>(observer.lock());
-    if (!goal_planner_utils::isAllowedGoalModificaition(
-          planner_data_->route_handler, left_side_parking_)) {
-      return true;
-    }
-
-    return enable_simultaneous_execution_as_approved_module_;
-  };
-
-  return std::all_of(observers_.begin(), observers_.end(), checker);
+  return enable_simultaneous_execution_as_approved_module_;
 }
 
 // enable SimultaneousExecutable whenever goal modification is not allowed
 // because only minor path refinements are made for fixed goals
 bool GoalPlannerModuleManager::isSimultaneousExecutableAsCandidateModule() const
 {
-  if (observers_.empty()) {
-    if (!goal_planner_utils::isAllowedGoalModificaition(
-          planner_data_->route_handler, left_side_parking_)) {
-      return true;
-    }
-
-    return enable_simultaneous_execution_as_candidate_module_;
+  if (!goal_planner_utils::isAllowedGoalModificaition(
+        planner_data_->route_handler, left_side_parking_)) {
+    return true;
   }
 
-  const auto checker = [this](const SceneModuleObserver & observer) {
-    if (observer.expired()) {
-      return enable_simultaneous_execution_as_candidate_module_;
-    }
-
-    if (!goal_planner_utils::isAllowedGoalModificaition(
-          planner_data_->route_handler, left_side_parking_)) {
-      return true;
-    }
-
-    return enable_simultaneous_execution_as_candidate_module_;
-  };
-
-  return std::all_of(observers_.begin(), observers_.end(), checker);
-}
-
+  return enable_simultaneous_execution_as_candidate_module_;
+};
 }  // namespace behavior_path_planner

@@ -104,7 +104,7 @@ public:
   {
   }
 
-  bool isBackFinished() const { return status_.back_finished; };
+  bool isBackFinished() const { return status_.back_finished; }
 
 private:
   std::shared_ptr<StartPlannerParameters> parameters_;
