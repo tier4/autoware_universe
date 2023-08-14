@@ -52,7 +52,7 @@ void GoalPlannerModuleManager::updateModuleParams(
 // because only minor path refinements are made for fixed goals
 bool GoalPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
 {
-  if (!goal_planner_utils::isAllowedGoalModificaition(
+  if (!goal_planner_utils::isAllowedGoalModification(
         planner_data_->route_handler, left_side_parking_)) {
     return true;
   }
@@ -64,7 +64,7 @@ bool GoalPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
 // because only minor path refinements are made for fixed goals
 bool GoalPlannerModuleManager::isSimultaneousExecutableAsCandidateModule() const
 {
-  if (!goal_planner_utils::isAllowedGoalModificaition(
+  if (!goal_planner_utils::isAllowedGoalModification(
         planner_data_->route_handler, left_side_parking_)) {
     return true;
   }

@@ -181,7 +181,7 @@ MarkerArray createGoalCandidatesMarkerArray(
   return marker_array;
 }
 
-bool isAllowedGoalModificaition(
+bool isAllowedGoalModification(
   const std::shared_ptr<RouteHandler> & route_handler, const bool left_side_parking)
 {
   return route_handler->isAllowedGoalModification() ||
