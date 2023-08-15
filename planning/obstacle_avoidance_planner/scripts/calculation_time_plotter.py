@@ -99,7 +99,13 @@ if __name__ == "__main__":
         "-f",
         "--functions",
         type=str,
-        default="onPath, getModelPredictiveTrajectory, getEBTrajectory",
+        default="onPath, calcReferencePoints, calcOptimizedSteerAngles, publishDebugMarkerOfOptimization",
+    )
+    parser.add_argument(
+        "-d",
+        "--depth",
+        type=float,
+        default=500,
     )
     args = parser.parse_args()
 
