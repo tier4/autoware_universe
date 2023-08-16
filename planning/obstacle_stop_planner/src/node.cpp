@@ -703,7 +703,6 @@ void ObstacleStopPlannerNode::searchObstacle(
         debug_ptr_->pushObstaclePoint(planner_data.nearest_slow_down_point, PointType::SlowDown);
         debug_ptr_->pushPolygon(
           one_step_move_slow_down_range_polygon, p_front.position.z, PolygonType::SlowDown);
-
       }
 
     } else {
@@ -740,7 +739,7 @@ void ObstacleStopPlannerNode::searchObstacle(
       }
     }
   }
-    for (size_t i = 0; i < decimate_trajectory.size() - 1; ++i) {
+  for (size_t i = 0; i < decimate_trajectory.size() - 1; ++i) {
     // create one step circle center for vehicle
     const auto & p_front = decimate_trajectory.at(i).pose;
     const auto & p_back = decimate_trajectory.at(i + 1).pose;
@@ -748,7 +747,7 @@ void ObstacleStopPlannerNode::searchObstacle(
     const Point2d prev_center_point(prev_center_pose.position.x, prev_center_pose.position.y);
     const auto next_center_pose = getVehicleCenterFromBase(p_back, vehicle_info);
     const Point2d next_center_point(next_center_pose.position.x, next_center_pose.position.y);
-        std::vector<cv::Point2d> one_step_move_vehicle_polygon;
+    std::vector<cv::Point2d> one_step_move_vehicle_polygon;
     // create one step polygon for vehicle
     createOneStepPolygon(
       p_front, p_back, one_step_move_vehicle_polygon, vehicle_info, stop_param.lateral_margin);
@@ -773,7 +772,7 @@ void ObstacleStopPlannerNode::searchObstacle(
       debug_ptr_->pushObstaclePoint(planner_data.nearest_collision_point, PointType::Stop);
       debug_ptr_->pushPolygon(
         one_step_move_vehicle_polygon, p_front.position.z, PolygonType::Collision);
-        
+
       planner_data.stop_require = planner_data.found_collision_points;
       mutex_.lock();
       const auto object_ptr = object_ptr_;
@@ -791,9 +790,9 @@ void ObstacleStopPlannerNode::searchObstacle(
       }
 
       break;
-      }
     }
   }
+}
 }
 
 void ObstacleStopPlannerNode::insertVelocity(
@@ -855,7 +854,6 @@ void ObstacleStopPlannerNode::insertVelocity(
 
       insertSlowDownSection(slow_down_section, output);
     }
-
   }
 
   if (node_param_.enable_slow_down && latest_slow_down_section_) {
