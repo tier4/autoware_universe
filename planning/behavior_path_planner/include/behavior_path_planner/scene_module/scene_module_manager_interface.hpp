@@ -49,13 +49,13 @@ public:
     clock_(*node->get_clock()),
     logger_(node->get_logger().get_child(name)),
     name_(name),
-    enable_rtc_(config.enable_rtc),
-    max_module_num_(config.max_module_size),
-    priority_(config.priority),
     enable_simultaneous_execution_as_approved_module_(
       config.enable_simultaneous_execution_as_approved_module),
     enable_simultaneous_execution_as_candidate_module_(
-      config.enable_simultaneous_execution_as_candidate_module)
+      config.enable_simultaneous_execution_as_candidate_module),
+    enable_rtc_(config.enable_rtc),
+    max_module_num_(config.max_module_size),
+    priority_(config.priority)
   {
     for (const auto & rtc_type : rtc_types) {
       const auto snake_case_name = utils::convertToSnakeCase(name);
@@ -96,10 +96,6 @@ public:
   void registerNewModule(
     const SceneModulePtr & module_ptr, const BehaviorModuleOutput & previous_module_output)
   {
-    module_ptr->setIsSimultaneousExecutableAsApprovedModule(
-      enable_simultaneous_execution_as_approved_module_);
-    module_ptr->setIsSimultaneousExecutableAsCandidateModule(
-      enable_simultaneous_execution_as_candidate_module_);
     module_ptr->setData(planner_data_);
     module_ptr->setPreviousModuleOutput(previous_module_output);
     module_ptr->onEntry();
@@ -205,28 +201,14 @@ public:
 
   bool canLaunchNewModule() const { return registered_modules_.size() < max_module_num_; }
 
-  bool isSimultaneousExecutableAsApprovedModule() const
+  virtual bool isSimultaneousExecutableAsApprovedModule() const
   {
-    if (registered_modules_.empty()) {
-      return enable_simultaneous_execution_as_approved_module_;
-    }
-
-    return std::all_of(
-      registered_modules_.begin(), registered_modules_.end(), [](const SceneModulePtr & module) {
-        return module->isSimultaneousExecutableAsApprovedModule();
-      });
+    return enable_simultaneous_execution_as_approved_module_;
   }
 
-  bool isSimultaneousExecutableAsCandidateModule() const
+  virtual bool isSimultaneousExecutableAsCandidateModule() const
   {
-    if (registered_modules_.empty()) {
-      return enable_simultaneous_execution_as_candidate_module_;
-    }
-
-    return std::all_of(
-      registered_modules_.begin(), registered_modules_.end(), [](const SceneModulePtr & module) {
-        return module->isSimultaneousExecutableAsCandidateModule();
-      });
+    return enable_simultaneous_execution_as_candidate_module_;
   }
 
   void setData(const std::shared_ptr<PlannerData> & planner_data) { planner_data_ = planner_data; }
@@ -281,16 +263,16 @@ protected:
 
   std::unordered_map<std::string, std::shared_ptr<RTCInterface>> rtc_interface_ptr_map_;
 
+  bool enable_simultaneous_execution_as_approved_module_{false};
+
+  bool enable_simultaneous_execution_as_candidate_module_{false};
+
 private:
   bool enable_rtc_;
 
   size_t max_module_num_;
 
   size_t priority_;
-
-  bool enable_simultaneous_execution_as_approved_module_{false};
-
-  bool enable_simultaneous_execution_as_candidate_module_{false};
 };
 
 }  // namespace behavior_path_planner

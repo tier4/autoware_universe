@@ -104,6 +104,8 @@ public:
   {
   }
 
+  bool isBackFinished() const { return status_.back_finished; }
+
 private:
   std::shared_ptr<StartPlannerParameters> parameters_;
   vehicle_info_util::VehicleInfo vehicle_info_;

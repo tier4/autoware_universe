@@ -14,6 +14,9 @@
 
 #include "behavior_path_planner/scene_module/goal_planner/manager.hpp"
 
+#include "behavior_path_planner/utils/goal_planner/util.hpp"
+
+#include <lanelet2_extension/utility/utilities.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -28,6 +31,7 @@ GoalPlannerModuleManager::GoalPlannerModuleManager(
   const std::shared_ptr<GoalPlannerParameters> & parameters)
 : SceneModuleManagerInterface(node, name, config, {""}), parameters_{parameters}
 {
+  left_side_parking_ = parameters_->parking_policy == ParkingPolicy::LEFT_SIDE;
 }
 
 void GoalPlannerModuleManager::updateModuleParams(
@@ -44,4 +48,27 @@ void GoalPlannerModuleManager::updateModuleParams(
   });
 }
 
+// enable SimultaneousExecutable whenever goal modification is not allowed
+// because only minor path refinements are made for fixed goals
+bool GoalPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
+{
+  if (!goal_planner_utils::isAllowedGoalModification(
+        planner_data_->route_handler, left_side_parking_)) {
+    return true;
+  }
+
+  return enable_simultaneous_execution_as_approved_module_;
+}
+
+// enable SimultaneousExecutable whenever goal modification is not allowed
+// because only minor path refinements are made for fixed goals
+bool GoalPlannerModuleManager::isSimultaneousExecutableAsCandidateModule() const
+{
+  if (!goal_planner_utils::isAllowedGoalModification(
+        planner_data_->route_handler, left_side_parking_)) {
+    return true;
+  }
+
+  return enable_simultaneous_execution_as_candidate_module_;
+};
 }  // namespace behavior_path_planner
