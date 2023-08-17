@@ -132,7 +132,6 @@ BehaviorModuleOutput NormalLaneChange::generateOutput()
 
 void NormalLaneChange::extendOutputDrivableArea(BehaviorModuleOutput & output)
 {
-  const auto & common_parameters = planner_data_->parameters;
   const auto & dp = planner_data_->drivable_area_expansion_parameters;
 
   const auto drivable_lanes = getDrivableLanes();
@@ -146,10 +145,6 @@ void NormalLaneChange::extendOutputDrivableArea(BehaviorModuleOutput & output)
   current_drivable_area_info.drivable_lanes = expanded_lanes;
   output.drivable_area_info =
     utils::combineDrivableAreaInfo(current_drivable_area_info, prev_drivable_area_info_);
-
-  // for old architecture
-  utils::generateDrivableArea(
-    *output.path, expanded_lanes, false, common_parameters.vehicle_length, planner_data_);
 }
 
 void NormalLaneChange::insertStopPoint(PathWithLaneId & path)
@@ -1059,16 +1054,6 @@ PathWithLaneId NormalLaneChangeBT::getReferencePath() const
   reference_path = utils::setDecelerationVelocity(
     *route_handler, reference_path, current_lanes, common_parameters.lane_change_prepare_duration,
     lane_change_buffer);
-
-  const auto & dp = planner_data_->drivable_area_expansion_parameters;
-
-  const auto drivable_lanes = utils::generateDrivableLanes(current_lanes);
-  const auto shorten_lanes = utils::cutOverlappedLanes(reference_path, drivable_lanes);
-  const auto expanded_lanes = utils::expandLanelets(
-    shorten_lanes, dp.drivable_area_left_bound_offset, dp.drivable_area_right_bound_offset,
-    dp.drivable_area_types_to_skip);
-  utils::generateDrivableArea(
-    reference_path, expanded_lanes, false, common_parameters.vehicle_length, planner_data_);
 
   return reference_path;
 }
