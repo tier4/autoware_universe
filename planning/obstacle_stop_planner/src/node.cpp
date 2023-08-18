@@ -42,6 +42,8 @@ using tier4_autoware_utils::createPoint;
 using tier4_autoware_utils::findNearestIndex;
 using tier4_autoware_utils::getRPY;
 
+using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
+
 namespace
 {
 rclcpp::SubscriptionOptions createSubscriptionOptions(rclcpp::Node * node_ptr)
@@ -750,7 +752,7 @@ void ObstacleStopPlannerNode::searchObstacle(
     std::vector<cv::Point2d> one_step_move_vehicle_polygon;
     // create one step polygon for vehicle
     createOneStepPolygon(
-      p_front, p_back, one_step_move_vehicle_polygon, vehicle_info, stop_param.lateral_margin);
+      p_front, p_back, one_step_move_vehicle_polygon, vehicle_info, stop_param.expand_stop_range);
     debug_ptr_->pushPolygon(
       one_step_move_vehicle_polygon, decimate_trajectory.at(i).pose.position.z,
       PolygonType::Vehicle);
@@ -774,10 +776,6 @@ void ObstacleStopPlannerNode::searchObstacle(
         one_step_move_vehicle_polygon, p_front.position.z, PolygonType::Collision);
 
       planner_data.stop_require = planner_data.found_collision_points;
-      mutex_.lock();
-      const auto object_ptr = object_ptr_;
-      const auto current_velocity_ptr = current_velocity_ptr_;
-      mutex_.unlock();
 
       acc_controller_->insertAdaptiveCruiseVelocity(
         decimate_trajectory, planner_data.decimate_trajectory_collision_index,
@@ -793,11 +791,10 @@ void ObstacleStopPlannerNode::searchObstacle(
     }
   }
 }
-}
 
 void ObstacleStopPlannerNode::insertVelocity(
   TrajectoryPoints & output, PlannerData & planner_data,
-  [[maybe_unused]] const Header & trajectory_header, const VehicleInfo & vehicle_info,
+  [[maybe_unused]]const std_msgs::msg::Header & trajectory_header, const VehicleInfo & vehicle_info,
   const double current_acc, const double current_vel, const StopParam & stop_param)
 {
   if (planner_data.stop_require) {
@@ -818,10 +815,6 @@ void ObstacleStopPlannerNode::insertVelocity(
       insertStopPoint(stop_point, output, planner_data.stop_reason_diag);
     }
   }
-
-  const auto no_hunting_slowdown_point =
-    (rclcpp::Time(trajectory_header.stamp) - last_detect_time_slowdown_point_).seconds() >
-    node_param_.hunting_threshold;
 
   if (planner_data.slow_down_require) {
     // insert slow down point

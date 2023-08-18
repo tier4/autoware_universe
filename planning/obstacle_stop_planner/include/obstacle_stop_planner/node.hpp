@@ -77,6 +77,8 @@ using tier4_planning_msgs::msg::VelocityLimit;
 using tier4_planning_msgs::msg::VelocityLimitClearCommand;
 using vehicle_info_util::VehicleInfo;
 
+using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
+
 struct StopPoint
 {
   TrajectoryPoint point{};
