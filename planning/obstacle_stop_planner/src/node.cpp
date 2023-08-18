@@ -794,8 +794,9 @@ void ObstacleStopPlannerNode::searchObstacle(
 
 void ObstacleStopPlannerNode::insertVelocity(
   TrajectoryPoints & output, PlannerData & planner_data,
-  [[maybe_unused]]const std_msgs::msg::Header & trajectory_header, const VehicleInfo & vehicle_info,
-  const double current_acc, const double current_vel, const StopParam & stop_param)
+  [[maybe_unused]] const std_msgs::msg::Header & trajectory_header,
+  const VehicleInfo & vehicle_info, const double current_acc, const double current_vel,
+  const StopParam & stop_param)
 {
   if (planner_data.stop_require) {
     // insert stop point
