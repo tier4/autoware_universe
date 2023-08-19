@@ -117,6 +117,7 @@ public:
   void onParam(const std::vector<rclcpp::Parameter> & parameters);
 
   double getTrajectoryLength() const;
+  double getDeltaArcLength() const;
   int getNumberOfPoints() const;
 
 private:
@@ -236,6 +237,7 @@ private:
   // previous data
   int prev_mat_n_ = 0;
   int prev_mat_m_ = 0;
+  int prev_solution_status_ = 0;
   std::shared_ptr<std::vector<ReferencePoint>> prev_ref_points_ptr_{nullptr};
 
   void updateVehicleCircles();
@@ -293,7 +295,7 @@ private:
     const std::vector<ReferencePoint> & ref_points) const;
 
   std::optional<std::vector<TrajectoryPoint>> calcMPTPoints(
-    std::vector<ReferencePoint> & ref_points, const Eigen::VectorXd & U,
+    std::vector<ReferencePoint> & ref_points, const Eigen::VectorXd & optimized_variables,
     const StateEquationGenerator::Matrix & mpt_matrix) const;
 
   void publishDebugTrajectories(
