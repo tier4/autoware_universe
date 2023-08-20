@@ -28,9 +28,9 @@
       <composable_node pkg="system_monitor" plugin="HddMonitor" name="hdd_monitor">
         <param from="$(var hdd_monitor_config_file)"/>
       </composable_node>
-      <composable_node pkg="system_monitor" plugin="GPUMonitor" name="gpu_monitor">
-        <param from="$(var gpu_monitor_config_file)"/>
-      </composable_node>
+      <!-- <composable_node pkg="system_monitor" plugin="GPUMonitor" name="gpu_monitor"> -->
+      <!--   <param from="$(var gpu_monitor_config_file)"/> -->
+      <!-- </composable_node> -->
       <composable_node pkg="system_monitor" plugin="VoltageMonitor" name="voltage_monitor">
         <param from="$(var voltage_monitor_config_file)"/>
       </composable_node>
