@@ -33,6 +33,7 @@ PlannerManager::PlannerManager(rclcpp::Node & node, const bool verbose)
   verbose_{verbose}
 {
   processing_time_.emplace("total_time", 0.0);
+  processing_time_.emplace("common_process", 0.0);
 }
 
 BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & data)
@@ -88,7 +89,6 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
        * STEP3: if there is no module that need to be launched, return approved modules' output
        */
       if (request_modules.empty()) {
-        processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
         return approved_modules_output;
       }
 
@@ -98,7 +98,6 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
       const auto [highest_priority_module, candidate_modules_output] =
         runRequestModules(request_modules, data, approved_modules_output);
       if (!highest_priority_module) {
-        processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
         return approved_modules_output;
       }
 
@@ -109,7 +108,6 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
        * profile modification.
        */
       if (highest_priority_module->isWaitingApproval()) {
-        processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
         return candidate_modules_output;
       }
 
@@ -125,6 +123,8 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
 
   generateCombinedDrivableArea(result_output, data);
 
+  processing_time_.at("total_time") = stop_watch_.toc("total_time", true);
+
   return result_output;
 }
 
@@ -133,8 +133,11 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
 void PlannerManager::generateCombinedDrivableArea(
   BehaviorModuleOutput & output, const std::shared_ptr<PlannerData> & data) const
 {
+  stop_watch_.tic("common_process");
+
   if (!output.path || output.path->points.empty()) {
     RCLCPP_ERROR_STREAM(logger_, "[generateCombinedDrivableArea] Output path is empty!");
+    processing_time_.at("common_process") += stop_watch_.toc("common_process", true);
     return;
   }
 
@@ -168,6 +171,8 @@ void PlannerManager::generateCombinedDrivableArea(
 
   // extract obstacles from drivable area
   utils::extractObstaclesFromDrivableArea(*output.path, di.obstacles);
+
+  processing_time_.at("common_process") += stop_watch_.toc("common_process", true);
 }
 
 std::vector<SceneModulePtr> PlannerManager::getRequestModules(
@@ -429,7 +434,9 @@ BehaviorModuleOutput PlannerManager::runApprovedModules(const std::shared_ptr<Pl
   const bool has_any_running_candidate_module = hasAnyRunningCandidateModule();
 
   std::unordered_map<std::string, BehaviorModuleOutput> results;
+  stop_watch_.tic("common_process");
   BehaviorModuleOutput output = getReferencePath(data);
+  processing_time_.at("common_process") += stop_watch_.toc("common_process", true);
   results.emplace("root", output);
 
   /**
