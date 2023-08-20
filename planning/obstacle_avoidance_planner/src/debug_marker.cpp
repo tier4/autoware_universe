@@ -333,16 +333,11 @@ visualization_msgs::msg::MarkerArray getPointsTextMarkerArray(
 
 MarkerArray getDebugMarker(
   const DebugData & debug_data, const std::vector<TrajectoryPoint> & optimized_points,
-  const vehicle_info_util::VehicleInfo & vehicle_info)
+  const vehicle_info_util::VehicleInfo & vehicle_info, const bool publish_extra_marker)
 {
   MarkerArray marker_array;
 
-  // mpt footprints
-  appendMarkerArray(
-    getFootprintsMarkerArray(optimized_points, vehicle_info, debug_data.mpt_visualize_sampling_num),
-    &marker_array);
-
-  // bounds lines
+  // bounds line
   appendMarkerArray(
     getBoundsLineMarkerArray(debug_data.ref_points, vehicle_info.vehicle_width_m), &marker_array);
 
@@ -352,13 +347,6 @@ MarkerArray getDebugMarker(
       debug_data.ref_points, vehicle_info.vehicle_width_m, debug_data.mpt_visualize_sampling_num),
     &marker_array);
 
-  // vehicle circle line
-  appendMarkerArray(
-    getVehicleCircleLinesMarkerArray(
-      debug_data.ref_points, debug_data.vehicle_circle_longitudinal_offsets,
-      vehicle_info.vehicle_width_m, debug_data.mpt_visualize_sampling_num, "vehicle_circle_lines"),
-    &marker_array);
-
   // current vehicle circles
   appendMarkerArray(
     getCurrentVehicleCirclesMarkerArray(
@@ -366,16 +354,34 @@ MarkerArray getDebugMarker(
       debug_data.vehicle_circle_radiuses, "current_vehicle_circles", 1.0, 0.3, 0.3),
     &marker_array);
 
-  // vehicle circles
-  appendMarkerArray(
-    getVehicleCirclesMarkerArray(
-      optimized_points, debug_data.vehicle_circle_longitudinal_offsets,
-      debug_data.vehicle_circle_radiuses, debug_data.mpt_visualize_sampling_num, "vehicle_circles",
-      1.0, 0.3, 0.3),
-    &marker_array);
+  // NOTE: Default debug marker is limited for less calculation time
+  //       Circles visualization is comparatively heavy.
+  if (publish_extra_marker) {
+    // vehicle circles
+    appendMarkerArray(
+      getVehicleCirclesMarkerArray(
+        optimized_points, debug_data.vehicle_circle_longitudinal_offsets,
+        debug_data.vehicle_circle_radiuses, debug_data.mpt_visualize_sampling_num,
+        "vehicle_circles", 1.0, 0.3, 0.3),
+      &marker_array);
 
-  // debug text
-  appendMarkerArray(getPointsTextMarkerArray(debug_data.ref_points), &marker_array);
+    // mpt footprints
+    appendMarkerArray(
+      getFootprintsMarkerArray(
+        optimized_points, vehicle_info, debug_data.mpt_visualize_sampling_num),
+      &marker_array);
+
+    // vehicle circle line
+    appendMarkerArray(
+      getVehicleCircleLinesMarkerArray(
+        debug_data.ref_points, debug_data.vehicle_circle_longitudinal_offsets,
+        vehicle_info.vehicle_width_m, debug_data.mpt_visualize_sampling_num,
+        "vehicle_circle_lines"),
+      &marker_array);
+
+    // debug text
+    appendMarkerArray(getPointsTextMarkerArray(debug_data.ref_points), &marker_array);
+  }
 
   return marker_array;
 }
