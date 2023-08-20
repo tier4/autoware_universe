@@ -318,7 +318,9 @@ bool GoalPlannerModule::isExecutionRequested() const
   const double self_to_goal_arc_length =
     utils::getSignedDistance(current_pose, goal_pose, current_lanes);
   const double request_length =
-    allow_goal_modification_ ? calcModuleRequestLength() : parameters_->minimum_request_length;
+    goal_planner_utils::isAllowedGoalModification(route_handler, left_side_parking_)
+      ? calcModuleRequestLength()
+      : parameters_->minimum_request_length;
   if (self_to_goal_arc_length < 0.0 || self_to_goal_arc_length > request_length) {
     // if current position is far from goal or behind goal, do not execute goal_planner
     return false;
@@ -327,7 +329,7 @@ bool GoalPlannerModule::isExecutionRequested() const
   // if goal modification is not allowed
   // 1) goal_pose is in current_lanes, plan path to the original fixed goal
   // 2) goal_pose is NOT in current_lanes, do not execute goal_planner
-  if (!allow_goal_modification_) {
+  if (!goal_planner_utils::isAllowedGoalModification(route_handler, left_side_parking_)) {
     return goal_is_in_current_lanes;
   }
 
@@ -413,7 +415,10 @@ Pose GoalPlannerModule::calcRefinedGoal(const Pose & goal_pose) const
 ModuleStatus GoalPlannerModule::updateState()
 {
   // finish module only when the goal is fixed
-  if (!allow_goal_modification_ && hasFinishedGoalPlanner()) {
+  if (
+    !goal_planner_utils::isAllowedGoalModification(
+      planner_data_->route_handler, left_side_parking_) &&
+    hasFinishedGoalPlanner()) {
     return ModuleStatus::SUCCESS;
   }
 
@@ -510,7 +515,7 @@ void GoalPlannerModule::generateGoalCandidates()
   // calculate goal candidates
   const Pose goal_pose = route_handler->getGoalPose();
   refined_goal_pose_ = calcRefinedGoal(goal_pose);
-  if (allow_goal_modification_) {
+  if (goal_planner_utils::isAllowedGoalModification(route_handler, left_side_parking_)) {
     goal_searcher_->setPlannerData(planner_data_);
     goal_candidates_ = goal_searcher_->search(refined_goal_pose_);
   } else {
@@ -525,13 +530,10 @@ BehaviorModuleOutput GoalPlannerModule::plan()
 {
   generateGoalCandidates();
 
-  if (allow_goal_modification_) {
+  if (goal_planner_utils::isAllowedGoalModification(
+        planner_data_->route_handler, left_side_parking_)) {
     return planWithGoalModification();
   } else {
-    // for fixed goals, only minor path refinements are made,
-    // so other modules are always allowed to run.
-    setIsSimultaneousExecutableAsApprovedModule(true);
-    setIsSimultaneousExecutableAsCandidateModule(true);
     fixed_goal_planner_->setPreviousModuleOutput(getPreviousModuleOutput());
     return fixed_goal_planner_->plan(planner_data_);
   }
@@ -602,9 +604,6 @@ void GoalPlannerModule::selectSafePullOverPath()
   for (auto & path : status_.pull_over_path->partial_paths) {
     const size_t ego_idx = planner_data_->findEgoIndex(path.points);
     utils::clipPathLength(path, ego_idx, planner_data_->parameters);
-    const auto target_drivable_lanes = getNonOverlappingExpandedLanes(path, status_.lanes);
-    utils::generateDrivableArea(
-      path, target_drivable_lanes, false, planner_data_->parameters.vehicle_length, planner_data_);
   }
 }
 
@@ -845,13 +844,10 @@ BehaviorModuleOutput GoalPlannerModule::planWithGoalModification()
 
 BehaviorModuleOutput GoalPlannerModule::planWaitingApproval()
 {
-  if (allow_goal_modification_) {
+  if (goal_planner_utils::isAllowedGoalModification(
+        planner_data_->route_handler, left_side_parking_)) {
     return planWaitingApprovalWithGoalModification();
   } else {
-    // for fixed goals, only minor path refinements are made,
-    // so other modules are always allowed to run.
-    setIsSimultaneousExecutableAsApprovedModule(true);
-    setIsSimultaneousExecutableAsCandidateModule(true);
     fixed_goal_planner_->setPreviousModuleOutput(getPreviousModuleOutput());
     return fixed_goal_planner_->plan(planner_data_);
   }
@@ -992,12 +988,6 @@ PathWithLaneId GoalPlannerModule::generateStopPath()
     }
   }
 
-  // generate drivable area
-  const auto drivable_lanes = utils::generateDrivableLanes(status_.current_lanes);
-  const auto target_drivable_lanes = getNonOverlappingExpandedLanes(reference_path, drivable_lanes);
-  utils::generateDrivableArea(
-    reference_path, target_drivable_lanes, false, common_parameters.vehicle_length, planner_data_);
-
   return reference_path;
 }
 
@@ -1026,12 +1016,6 @@ PathWithLaneId GoalPlannerModule::generateFeasibleStopPath()
   if (stop_idx) {
     status_.stop_pose = stop_path.points.at(*stop_idx).point.pose;
   }
-
-  // generate drivable area
-  const auto drivable_lanes = utils::generateDrivableLanes(status_.current_lanes);
-  const auto target_drivable_lanes = getNonOverlappingExpandedLanes(stop_path, drivable_lanes);
-  utils::generateDrivableArea(
-    stop_path, target_drivable_lanes, false, common_parameters.vehicle_length, planner_data_);
 
   return stop_path;
 }
@@ -1440,7 +1424,8 @@ void GoalPlannerModule::setDebugData()
     tier4_autoware_utils::appendMarkerArray(added, &debug_marker_);
   };
 
-  if (allow_goal_modification_) {
+  if (goal_planner_utils::isAllowedGoalModification(
+        planner_data_->route_handler, left_side_parking_)) {
     // Visualize pull over areas
     const auto color = status_.has_decided_path ? createMarkerColor(1.0, 1.0, 0.0, 0.999)  // yellow
                                                 : createMarkerColor(0.0, 1.0, 0.0, 0.999);  // green
