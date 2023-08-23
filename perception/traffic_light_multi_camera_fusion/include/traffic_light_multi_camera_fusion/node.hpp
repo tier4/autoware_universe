@@ -93,7 +93,7 @@ private:
     const std::map<IdType, FusionRecord> & grouped_record_map, NewSignalArrayType & msg_out);
 
   void groupFusion(
-    std::map<IdType, FusionRecord> & fusioned_record_map,
+    const std::map<IdType, FusionRecord> & fusioned_record_map,
     std::map<IdType, FusionRecord> & grouped_record_map);
 
   typedef mf::sync_policies::ExactTime<CamInfoType, RoiArrayType, SignalArrayType> ExactSyncPolicy;
@@ -113,7 +113,7 @@ private:
   /*
   the mappping from traffic light id (instance id) to regulatory element id (group id)
   */
-  std::map<lanelet::Id, lanelet::Id> traffic_light_id_to_regulatory_ele_id_;
+  std::map<lanelet::Id, std::vector<lanelet::Id>> traffic_light_id_to_regulatory_ele_id_;
   /*
   save record arrays by increasing timestamp order.
   use multiset in case there are multiple cameras publishing images at exactly the same time
