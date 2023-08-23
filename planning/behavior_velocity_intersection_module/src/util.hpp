@@ -56,9 +56,8 @@ std::optional<std::pair<size_t, size_t>> findLaneIdsInterval(
 IntersectionLanelets getObjectiveLanelets(
   lanelet::LaneletMapConstPtr lanelet_map_ptr, lanelet::routing::RoutingGraphPtr routing_graph_ptr,
   const lanelet::ConstLanelet assigned_lanelet, const lanelet::ConstLanelets & lanelets_on_path,
-  const std::set<int> & associative_ids, const InterpolatedPathInfo & interpolated_path_info,
-  const double detection_area_length, const double occlusion_detection_area_length,
-  const bool tl_arrow_solid_on = false);
+  const std::set<int> & associative_ids, const double detection_area_length,
+  const double occlusion_detection_area_length);
 
 /**
  * @brief Generate a stop line for stuck vehicle
@@ -126,10 +125,6 @@ std::optional<InterpolatedPathInfo> generateInterpolatedPath(
 geometry_msgs::msg::Pose getObjectPoseWithVelocityDirection(
   const autoware_auto_perception_msgs::msg::PredictedObjectKinematics & obj_state);
 
-lanelet::ConstLanelets getEgoLaneWithNextLane(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
-  const std::set<int> & associative_ids, const double width);
-
 bool checkStuckVehicleInIntersection(
   const autoware_auto_perception_msgs::msg::PredictedObjects::ConstSharedPtr objects_ptr,
   const Polygon2d & stuck_vehicle_detect_area, const double stuck_vehicle_vel_thr,
@@ -158,6 +153,11 @@ TimeDistanceArray calcIntersectionPassingTime(
 double calcDistanceUntilIntersectionLanelet(
   const lanelet::ConstLanelet & assigned_lanelet,
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const size_t closest_idx);
+
+std::optional<PathLanelets> generatePathLanelets(
+  const lanelet::ConstLanelets & lanelets_on_path,
+  const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
+  const std::set<int> & associative_ids, const size_t closest_idx, const double width);
 
 }  // namespace util
 }  // namespace behavior_velocity_planner
