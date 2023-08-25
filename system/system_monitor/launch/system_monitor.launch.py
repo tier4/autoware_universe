@@ -86,16 +86,18 @@ def launch_setup(context, *args, **kwargs):
             process_monitor_config,
         ],
     )
-    with open(LaunchConfiguration("gpu_monitor_config_file").perform(context), "r") as f:
-        gpu_monitor_config = yaml.safe_load(f)["/**"]["ros__parameters"]
-    gpu_monitor = ComposableNode(
-        package="system_monitor",
-        plugin="GPUMonitor",
-        name="gpu_monitor",
-        parameters=[
-            gpu_monitor_config,
-        ],
-    )
+
+    # Disable due to NVML error
+    # with open(LaunchConfiguration("gpu_monitor_config_file").perform(context), "r") as f:
+    #     gpu_monitor_config = yaml.safe_load(f)["/**"]["ros__parameters"]
+    # gpu_monitor = ComposableNode(
+    #     package="system_monitor",
+    #     plugin="GPUMonitor",
+    #     name="gpu_monitor",
+    #     parameters=[
+    #         gpu_monitor_config,
+    #     ],
+    # )
 
     # set container to run all required components in the same process
     container = ComposableNodeContainer(
@@ -110,7 +112,7 @@ def launch_setup(context, *args, **kwargs):
             net_monitor,
             ntp_monitor,
             process_monitor,
-            gpu_monitor,
+            # gpu_monitor,
         ],
         output="screen",
     )

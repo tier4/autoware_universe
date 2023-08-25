@@ -68,33 +68,34 @@
                   contains: [": CPU Load Average"]
                   timeout: 3.0
 
-            gpu:
-              type: diagnostic_aggregator/AnalyzerGroup
-              path: gpu
-              analyzers:
-                temperature:
-                  type: diagnostic_aggregator/GenericAnalyzer
-                  path: temperature
-                  contains: [": GPU Temperature"]
-                  timeout: 3.0
+            # Disable due to NVML error
+            # gpu:
+            #   type: diagnostic_aggregator/AnalyzerGroup
+            #   path: gpu
+            #   analyzers:
+            #     temperature:
+            #       type: diagnostic_aggregator/GenericAnalyzer
+            #       path: temperature
+            #       contains: [": GPU Temperature"]
+            #       timeout: 3.0
 
-                usage:
-                  type: diagnostic_aggregator/GenericAnalyzer
-                  path: gpu_usage
-                  contains: [": GPU Usage"]
-                  timeout: 3.0
+            #     usage:
+            #       type: diagnostic_aggregator/GenericAnalyzer
+            #       path: gpu_usage
+            #       contains: [": GPU Usage"]
+            #       timeout: 3.0
 
-                memory_usage:
-                  type: diagnostic_aggregator/GenericAnalyzer
-                  path: memory_usage
-                  contains: [": GPU Memory Usage"]
-                  timeout: 3.0
+            #     memory_usage:
+            #       type: diagnostic_aggregator/GenericAnalyzer
+            #       path: memory_usage
+            #       contains: [": GPU Memory Usage"]
+            #       timeout: 3.0
 
-                thermal_throttling:
-                  type: diagnostic_aggregator/GenericAnalyzer
-                  path: thermal_throttling
-                  contains: [": GPU Thermal Throttling"]
-                  timeout: 3.0
+            #     thermal_throttling:
+            #       type: diagnostic_aggregator/GenericAnalyzer
+            #       path: thermal_throttling
+            #       contains: [": GPU Thermal Throttling"]
+            #       timeout: 3.0
 
             memory:
               type: diagnostic_aggregator/AnalyzerGroup
