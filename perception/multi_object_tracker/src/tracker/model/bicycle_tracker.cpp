@@ -55,7 +55,7 @@ BicycleTracker::BicycleTracker(
   float q_stddev_y = 0.6;                                     // [m/s]
   float q_stddev_yaw = tier4_autoware_utils::deg2rad(10);     // [rad/s]
   float q_stddev_vx = tier4_autoware_utils::kmph2mps(10);     // [m/(s*s)]
-  float q_stddev_slip = tier4_autoware_utils::deg2rad(25);    // [rad/(s*s)]
+  float q_stddev_slip = tier4_autoware_utils::deg2rad(15);    // [rad/(s*s)]
   float r_stddev_x = 0.6;                                     // [m]
   float r_stddev_y = 0.4;                                     // [m]
   float r_stddev_yaw = tier4_autoware_utils::deg2rad(30);     // [rad]
@@ -135,7 +135,7 @@ BicycleTracker::BicycleTracker(
   ekf_.init(X, P);
 
   // Set lf, lr
-  double point_ratio = 0.5;  // comes to front if larger
+  double point_ratio = 0.2;  // under steered if smaller than 0.5
   lf_ = bounding_box_.length * point_ratio;
   lr_ = bounding_box_.length * (1.0 - point_ratio);
 }
