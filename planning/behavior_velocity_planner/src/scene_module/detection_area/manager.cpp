@@ -28,22 +28,24 @@ namespace behavior_velocity_planner
 {
 namespace
 {
-std::vector<lanelet::DetectionAreaConstPtr> getDetectionAreaRegElemsOnPath(
+using DetectionAreaWithLaneId = std::pair<lanelet::DetectionAreaConstPtr, int64_t>;
+
+std::vector<DetectionAreaWithLaneId> getDetectionAreaRegElemsOnPath(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
   const lanelet::LaneletMapPtr lanelet_map)
 {
-  std::vector<lanelet::DetectionAreaConstPtr> detection_area_reg_elems;
+  std::vector<DetectionAreaWithLaneId> detection_areas_with_lane_id;
 
   for (const auto & p : path.points) {
     const auto lane_id = p.lane_ids.at(0);
     const auto ll = lanelet_map->laneletLayer.get(lane_id);
     const auto detection_areas = ll.regulatoryElementsAs<const lanelet::autoware::DetectionArea>();
     for (const auto & detection_area : detection_areas) {
-      detection_area_reg_elems.push_back(detection_area);
+      detection_areas_with_lane_id.push_back(std::make_pair(detection_area, lane_id));
     }
   }
 
-  return detection_area_reg_elems;
+  return detection_areas_with_lane_id;
 }
 
 std::set<int64_t> getDetectionAreaIdSetOnPath(
@@ -52,7 +54,7 @@ std::set<int64_t> getDetectionAreaIdSetOnPath(
 {
   std::set<int64_t> detection_area_id_set;
   for (const auto & detection_area : getDetectionAreaRegElemsOnPath(path, lanelet_map)) {
-    detection_area_id_set.insert(detection_area->id());
+    detection_area_id_set.insert(detection_area.first->id());
   }
   return detection_area_id_set;
 }
@@ -72,14 +74,15 @@ DetectionAreaModuleManager::DetectionAreaModuleManager(rclcpp::Node & node)
 void DetectionAreaModuleManager::launchNewModules(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path)
 {
-  for (const auto & detection_area :
+  for (const auto & detection_area_with_lane_id :
        getDetectionAreaRegElemsOnPath(path, planner_data_->route_handler_->getLaneletMapPtr())) {
     // Use lanelet_id to unregister module when the route is changed
-    const auto module_id = detection_area->id();
+    const auto module_id = detection_area_with_lane_id.first->id();
+    const auto lane_id = detection_area_with_lane_id.second;
     if (!isModuleRegistered(module_id)) {
       registerModule(std::make_shared<DetectionAreaModule>(
-        module_id, *detection_area, planner_param_, logger_.get_child("detection_area_module"),
-        clock_));
+        module_id, lane_id, *(detection_area_with_lane_id.first), planner_param_,
+        logger_.get_child("detection_area_module"), clock_));
     }
   }
 }
