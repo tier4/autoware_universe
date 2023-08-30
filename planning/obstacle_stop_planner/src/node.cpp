@@ -840,12 +840,6 @@ void ObstacleStopPlannerNode::insertVelocity(
         index_with_dist_remain.get().second, dist_baselink_to_obstacle, vehicle_info, current_acc,
         current_vel);
 
-      if (
-        !latest_slow_down_section_ &&
-        dist_baselink_to_obstacle + index_with_dist_remain.get().second <
-          vehicle_info.max_longitudinal_offset_m) {
-      }
-
       insertSlowDownSection(slow_down_section, output);
     }
   }
