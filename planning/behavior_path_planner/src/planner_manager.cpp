@@ -445,6 +445,17 @@ BehaviorModuleOutput PlannerManager::runApprovedModules(const std::shared_ptr<Pl
   BehaviorModuleOutput output = getReferencePath(data);
   results.emplace("root", output);
 
+  if (approved_module_ptrs_.empty()) {
+    return output;
+  }
+
+  // move modules whose keep last flag is true to end of the approved_module_ptrs_.
+  {
+    std::sort(approved_module_ptrs_.begin(), approved_module_ptrs_.end(), [this](auto a, auto b) {
+      return !getManager(a)->isKeepLast() && getManager(b)->isKeepLast();
+    });
+  }
+
   /**
    * execute all approved modules.
    */
@@ -461,22 +472,32 @@ BehaviorModuleOutput PlannerManager::runApprovedModules(const std::shared_ptr<Pl
    * candidate_module_ptrs_.
    */
   {
-    const auto waiting_approval_modules = [](const auto & m) { return m->isWaitingApproval(); };
+    const auto not_keep_last_module = std::find_if(
+      approved_module_ptrs_.rbegin(), approved_module_ptrs_.rend(),
+      [this](const auto & m) { return !getManager(m)->isKeepLast(); });
 
-    const auto itr = std::find_if(
-      approved_module_ptrs_.begin(), approved_module_ptrs_.end(), waiting_approval_modules);
+    // convert reverse iterator -> iterator
+    const auto begin_itr = not_keep_last_module != approved_module_ptrs_.rend()
+                             ? std::next(not_keep_last_module).base()
+                             : approved_module_ptrs_.begin();
 
-    if (itr != approved_module_ptrs_.end()) {
+    const auto waiting_approval_modules_itr = std::find_if(
+      begin_itr, approved_module_ptrs_.end(),
+      [](const auto & m) { return m->isWaitingApproval(); });
+
+    if (waiting_approval_modules_itr != approved_module_ptrs_.end()) {
       clearCandidateModules();
-      candidate_module_ptrs_.push_back(*itr);
+      candidate_module_ptrs_.push_back(*waiting_approval_modules_itr);
+
+      debug_info_.emplace_back(
+        *waiting_approval_modules_itr, Action::MOVE, "Back To Waiting Approval");
 
       std::for_each(
-        std::next(itr), approved_module_ptrs_.end(), [this](auto & m) { deleteExpiredModules(m); });
+        waiting_approval_modules_itr, approved_module_ptrs_.end(),
+        [&results](const auto & m) { results.erase(m->name()); });
 
-      debug_info_.emplace_back(*itr, Action::MOVE, "Back To Waiting Approval");
+      approved_module_ptrs_.erase(waiting_approval_modules_itr);
     }
-
-    approved_module_ptrs_.erase(itr, approved_module_ptrs_.end());
   }
 
   /**
@@ -506,12 +527,15 @@ BehaviorModuleOutput PlannerManager::runApprovedModules(const std::shared_ptr<Pl
   /**
    * use the last module's output as approved modules planning result.
    */
-  const auto output_module_name = approved_module_ptrs_.back()->name();
-  const auto approved_modules_output = [&output_module_name, &results]() {
-    if (results.count(output_module_name) == 0) {
-      return results.at("root");
+  const auto approved_modules_output = [&results, this]() {
+    const auto itr = std::find_if(
+      approved_module_ptrs_.rbegin(), approved_module_ptrs_.rend(),
+      [&results](const auto & m) { return results.count(m->name()) != 0; });
+
+    if (itr != approved_module_ptrs_.rend()) {
+      return results.at((*itr)->name());
     }
-    return results.at(output_module_name);
+    return results.at("root");
   }();
 
   const auto not_success_itr = std::find_if(
