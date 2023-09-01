@@ -58,6 +58,7 @@ OutOfLaneModuleManager::OutOfLaneModuleManager(rclcpp::Node & node)
     node.declare_parameter<double>(ns + ".action.slowdown.distance_threshold");
   pp.stop_dist_threshold = node.declare_parameter<double>(ns + ".action.stop.distance_threshold");
 
+  pp.ego_min_velocity = node.declare_parameter<double>(ns + ".ego.min_assumed_velocity");
   pp.extra_front_offset = node.declare_parameter<double>(ns + ".ego.extra_front_offset");
   pp.extra_rear_offset = node.declare_parameter<double>(ns + ".ego.extra_rear_offset");
   pp.extra_left_offset = node.declare_parameter<double>(ns + ".ego.extra_left_offset");
