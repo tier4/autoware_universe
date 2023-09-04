@@ -47,7 +47,7 @@ This function checks if the relative angle at point1 generated from point2 and 3
 | :------------------------ | :------- | :------------------------------------ | :------------ |
 | `error_interval`          | `double` | Error Interval Distance Threshold [m] | 100.0         |
 | `error_curvature`         | `double` | Error Curvature Threshold             | 1.0           |
-| `error_sharp_angle`       | `double` | Error Sharp Angle Threshold           | $\pi$/4       |
+| `error_sharp_angle`       | `double` | Error Sharp Angle Threshold           | 2.0           |
 | `ignore_too_close_points` | `double` | Ignore Too Close Distance Threshold   | 0.005         |
 
 ## Visualization
