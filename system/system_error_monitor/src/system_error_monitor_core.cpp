@@ -214,8 +214,8 @@ bool ignoreModules(
   const DiagConfig & required_module)
 {
   using autoware_auto_system_msgs::msg::AutowareState;
-  using tier4_control_msgs::msg::GateMode;
   using autoware_auto_vehicle_msgs::msg::ControlModeReport;
+  using tier4_control_msgs::msg::GateMode;
 
   const auto is_planning_ignore_state =
     (autoware_state.state == AutowareState::INITIALIZING) ||
@@ -223,16 +223,15 @@ bool ignoreModules(
     (autoware_state.state == AutowareState::PLANNING) ||
     (autoware_state.state == AutowareState::FINALIZING);
 
-  const auto ignore_module = (required_module.name == "/autoware/planning/node_alive_monitoring" ||
-                              required_module.name == "/autoware/control/autonomous_driving/node_alive_monitoring");
+  const auto ignore_module =
+    (required_module.name == "/autoware/planning/node_alive_monitoring" ||
+     required_module.name == "/autoware/control/autonomous_driving/node_alive_monitoring");
 
-  if (ignore_module &&
-      is_planning_ignore_state) {
+  if (ignore_module && is_planning_ignore_state) {
     return true;
   }
 
   return false;
-  
 }
 }  // namespace
 
@@ -487,9 +486,10 @@ void AutowareErrorMonitor::onTimer()
   // current_mode_ = current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO
   //                   ? KeyName::autonomous_driving
   //                   : KeyName::external_control;
-  current_mode_ = control_mode_->mode == autoware_auto_vehicle_msgs::msg::ControlModeReport::AUTONOMOUS
-                    ? KeyName::autonomous_driving
-                    : KeyName::manual_control;
+  current_mode_ =
+    control_mode_->mode == autoware_auto_vehicle_msgs::msg::ControlModeReport::AUTONOMOUS
+      ? KeyName::autonomous_driving
+      : KeyName::manual_control;
 
   updateHazardStatus();
   publishHazardStatus(hazard_status_);
@@ -517,7 +517,7 @@ uint8_t AutowareErrorMonitor::getHazardLevel(
   using autoware_auto_system_msgs::msg::HazardStatus;
 
   if (isOverLevel(diag_level, required_module.spf_at)) {
-    if(ignoreModules(*autoware_state_, required_module)){
+    if (ignoreModules(*autoware_state_, required_module)) {
       return HazardStatus::NO_FAULT;
     }
     return HazardStatus::SINGLE_POINT_FAULT;
