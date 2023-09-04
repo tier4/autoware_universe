@@ -34,7 +34,7 @@ jobs:
       - name: Print warning for invalid branch name
         if: ${{ inputs.target_branch  == 'tier4/main' }}
         run: |
-            echo This action cannot be performed on 'tier4/main' branch
+          echo This action cannot be performed on 'tier4/main' branch
 
       - name: Run sync-branches
         if: ${{ inputs.target_branch  != 'tier4/main' }}
