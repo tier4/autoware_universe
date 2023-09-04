@@ -51,13 +51,12 @@ void AutowareStateMonitorNode::checkTopicStatus(
   std::lock_guard<std::mutex> lock(lock_state_input_);
   const auto & topic_stats = state_input_.topic_stats;
 
-  std::string msg;
   // OK
   for (const auto & topic_config : topic_stats.ok_list) {
     if (topic_config.module != module_name) {
       continue;
     }
-    msg = "OK";
+
     stat.add(fmt::format("{} status", topic_config.name), "OK");
   }
 
@@ -68,7 +67,7 @@ void AutowareStateMonitorNode::checkTopicStatus(
     }
 
     stat.add(fmt::format("{} status", topic_config.name), "Not Received");
-    msg = "Error(Not Received)";
+
     level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
   }
 
@@ -86,7 +85,6 @@ void AutowareStateMonitorNode::checkTopicStatus(
     stat.addf(fmt::format("{} warn_rate", name), "%.2f [Hz]", topic_config.warn_rate);
     stat.addf(fmt::format("{} measured_rate", name), "%.2f [Hz]", topic_rate);
 
-    msg = "Warn";
     level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
   }
 
@@ -105,19 +103,18 @@ void AutowareStateMonitorNode::checkTopicStatus(
     stat.addf(fmt::format("{} checked_time", name), "%.2f [s]", topic_stats.checked_time.seconds());
     stat.addf(fmt::format("{} last_received_time", name), "%.2f [s]", last_received_time.seconds());
 
-    msg = "Error(Timeout)";
     level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
   }
 
-  // // Create message
-  // std::string msg;
-  // if (level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
-  //   msg = "OK";
-  // } else if (level == diagnostic_msgs::msg::DiagnosticStatus::WARN) {
-  //   msg = "Warn";
-  // } else if (level == diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
-  //   msg = "Error";
-  // }
+  // Create message
+  std::string msg;
+  if (level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
+    msg = "OK";
+  } else if (level == diagnostic_msgs::msg::DiagnosticStatus::WARN) {
+    msg = "Warn";
+  } else if (level == diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
+    msg = "Error";
+  }
 
   stat.summary(level, msg);
 }
@@ -129,7 +126,7 @@ void AutowareStateMonitorNode::checkTFStatus(
 
   std::lock_guard<std::mutex> lock(lock_state_input_);
   const auto & tf_stats = state_input_.tf_stats;
-  std::string msg;
+
   // OK
   for (const auto & tf_config : tf_stats.ok_list) {
     if (tf_config.module != module_name) {
@@ -138,7 +135,6 @@ void AutowareStateMonitorNode::checkTFStatus(
 
     const auto name = fmt::format("{}2{}", tf_config.from, tf_config.to);
     stat.add(fmt::format("{} status", name), "OK");
-    msg="OK";
   }
 
   // Check tf received
@@ -151,7 +147,6 @@ void AutowareStateMonitorNode::checkTFStatus(
     stat.add(fmt::format("{} status", name), "Not Received");
 
     level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-    msg="Error(Not Received)";
   }
 
   // Check tf timeout
@@ -170,18 +165,17 @@ void AutowareStateMonitorNode::checkTFStatus(
     stat.addf(fmt::format("{} last_received_time", name), "%.2f [s]", last_received_time.seconds());
 
     level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-    msg="Error(TimeOut)";
   }
 
   // Create message
-  // std::string msg;
-  // if (level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
-  //   msg = "OK";
-  // } else if (level == diagnostic_msgs::msg::DiagnosticStatus::WARN) {
-  //   msg = "Warn";
-  // } else if (level == diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
-  //   msg = "Error";
-  // }
+  std::string msg;
+  if (level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
+    msg = "OK";
+  } else if (level == diagnostic_msgs::msg::DiagnosticStatus::WARN) {
+    msg = "Warn";
+  } else if (level == diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
+    msg = "Error";
+  }
 
   stat.summary(level, msg);
 }

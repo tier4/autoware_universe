@@ -123,28 +123,22 @@ void TopicStateMonitorNode::checkTopicStatus(diagnostic_updater::DiagnosticStatu
   stat.addf("topic", "%s", param_.topic.c_str());
 
   // Judge level
-  std::string msg;
   int8_t level = DiagnosticStatus::OK;
   if (topic_status == TopicStatus::Ok) {
     level = DiagnosticStatus::OK;
     stat.add("status", "OK");
-    msg = "OK";
   } else if (topic_status == TopicStatus::NotReceived) {
     level = DiagnosticStatus::ERROR;
     stat.add("status", "NotReceived");
-    msg = "Error(NotReceived)";
   } else if (topic_status == TopicStatus::WarnRate) {
     level = DiagnosticStatus::WARN;
     stat.add("status", "WarnRate");
-    msg = "Warn";
   } else if (topic_status == TopicStatus::ErrorRate) {
     level = DiagnosticStatus::ERROR;
     stat.add("status", "ErrorRate");
-    msg = "Error(ErrorRate)";
   } else if (topic_status == TopicStatus::Timeout) {
     level = DiagnosticStatus::ERROR;
     stat.add("status", "Timeout");
-    msg = "Error(Timeout)";
   }
 
   // Add key-value
@@ -154,6 +148,16 @@ void TopicStateMonitorNode::checkTopicStatus(diagnostic_updater::DiagnosticStatu
   stat.addf("measured_rate", "%.2f [Hz]", topic_rate);
   stat.addf("now", "%.2f [s]", this->now().seconds());
   stat.addf("last_message_time", "%.2f [s]", last_message_time.seconds());
+
+  // Create message
+  std::string msg;
+  if (level == DiagnosticStatus::OK) {
+    msg = "OK";
+  } else if (level == DiagnosticStatus::WARN) {
+    msg = "Warn";
+  } else if (level == DiagnosticStatus::ERROR) {
+    msg = "Error";
+  }
 
   // Add summary
   stat.summary(level, msg);
