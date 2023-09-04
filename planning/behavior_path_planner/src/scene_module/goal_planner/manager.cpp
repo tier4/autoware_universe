@@ -48,10 +48,26 @@ void GoalPlannerModuleManager::updateModuleParams(
   });
 }
 
-// enable SimultaneousExecutable whenever goal modification is not allowed
-// because only minor path refinements are made for fixed goals
+bool GoalPlannerModuleManager::isAlwaysExecutableModule() const
+{
+  // enable AlwaysExecutable whenever goal modification is not allowed
+  // because only minor path refinements are made for fixed goals
+  if (!goal_planner_utils::isAllowedGoalModification(
+        planner_data_->route_handler, left_side_parking_)) {
+    return true;
+  }
+
+  return false;
+}
+
 bool GoalPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
 {
+  if (isAlwaysExecutableModule()) {
+    return true;
+  }
+
+  // enable SimultaneousExecutable whenever goal modification is not allowed
+  // because only minor path refinements are made for fixed goals
   if (!goal_planner_utils::isAllowedGoalModification(
         planner_data_->route_handler, left_side_parking_)) {
     return true;
@@ -64,6 +80,12 @@ bool GoalPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
 // because only minor path refinements are made for fixed goals
 bool GoalPlannerModuleManager::isSimultaneousExecutableAsCandidateModule() const
 {
+  if (isAlwaysExecutableModule()) {
+    return true;
+  }
+
+  // enable SimultaneousExecutable whenever goal modification is not allowed
+  // because only minor path refinements are made for fixed goals
   if (!goal_planner_utils::isAllowedGoalModification(
         planner_data_->route_handler, left_side_parking_)) {
     return true;
