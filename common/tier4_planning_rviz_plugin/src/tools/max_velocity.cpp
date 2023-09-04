@@ -19,7 +19,6 @@
 #include <rviz_common/uniform_string_stream.hpp>
 
 #include <OgreHardwarePixelBuffer.h>
-#include <X11/Xlib.h>
 
 #include <algorithm>
 #include <iomanip>
@@ -29,28 +28,20 @@ namespace rviz_plugins
 {
 MaxVelocityDisplay::MaxVelocityDisplay()
 {
-  const Screen * screen_info = DefaultScreenOfDisplay(XOpenDisplay(NULL));
-
-  constexpr float hight_4k = 2160.0;
-  const float scale = static_cast<float>(screen_info->height) / hight_4k;
-  const int left = static_cast<int>(std::round(595 * scale));
-  const int top = static_cast<int>(std::round(280 * scale));
-  const int length = static_cast<int>(std::round(96 * scale));
-
   property_topic_name_ = new rviz_common::properties::StringProperty(
     "Topic", "/planning/scenario_planning/current_max_velocity",
     "The topic on which to publish max velocity.", this, SLOT(updateTopic()), this);
   property_text_color_ = new rviz_common::properties::ColorProperty(
     "Text Color", QColor(255, 255, 255), "text color", this, SLOT(updateVisualization()), this);
   property_left_ = new rviz_common::properties::IntProperty(
-    "Left", left, "Left of the plotter window", this, SLOT(updateVisualization()), this);
+    "Left", 128, "Left of the plotter window", this, SLOT(updateVisualization()), this);
   property_left_->setMin(0);
   property_top_ = new rviz_common::properties::IntProperty(
-    "Top", top, "Top of the plotter window", this, SLOT(updateVisualization()));
+    "Top", 128, "Top of the plotter window", this, SLOT(updateVisualization()));
   property_top_->setMin(0);
 
   property_length_ = new rviz_common::properties::IntProperty(
-    "Length", length, "Length of the plotter window", this, SLOT(updateVisualization()), this);
+    "Length", 96, "Length of the plotter window", this, SLOT(updateVisualization()), this);
   property_length_->setMin(10);
   property_value_scale_ = new rviz_common::properties::FloatProperty(
     "Value Scale", 1.0 / 4.0, "Value scale", this, SLOT(updateVisualization()), this);
