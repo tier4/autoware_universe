@@ -857,7 +857,6 @@ GoalPlannerParameters BehaviorPathPlannerNode::getGoalPlannerParam()
   // general params
   {
     std::string ns = "goal_planner.";
-    p.minimum_request_length = declare_parameter<double>(ns + "minimum_request_length");
     p.th_stopped_velocity = declare_parameter<double>(ns + "th_stopped_velocity");
     p.th_arrived_distance = declare_parameter<double>(ns + "th_arrived_distance");
     p.th_stopped_time = declare_parameter<double>(ns + "th_stopped_time");
@@ -915,6 +914,7 @@ GoalPlannerParameters BehaviorPathPlannerNode::getGoalPlannerParam()
     std::string ns = "goal_planner.pull_over.";
     p.pull_over_velocity = declare_parameter<double>(ns + "pull_over_velocity");
     p.pull_over_minimum_velocity = declare_parameter<double>(ns + "pull_over_minimum_velocity");
+    p.pull_over_minimum_request_length = declare_parameter<double>(ns + "minimum_request_length");
     p.decide_path_distance = declare_parameter<double>(ns + "decide_path_distance");
     p.maximum_deceleration = declare_parameter<double>(ns + "maximum_deceleration");
     p.maximum_jerk = declare_parameter<double>(ns + "maximum_jerk");
