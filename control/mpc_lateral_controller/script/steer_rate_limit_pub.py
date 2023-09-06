@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from autoware_auto_control_msgs.msg import AckermannControlCommand
-from autoware_localization_msgs.msg import KinematicState
+from nav_msgs.msg import Odometry
 from time import sleep
 import numpy as np
 
@@ -11,7 +11,7 @@ class ArrayPublisherNode(Node):
         super().__init__('steer_rate_limit_publisher')
         self.publisher_ = self.create_publisher(AckermannControlCommand, 'steer_rate_limit', 1)
 
-        self.subscription = self.create_subscription(KinematicState, 'ego_velocity', self.ego_velocity_callback, 1)
+        self.subscription = self.create_subscription(Odometry, '/localization/kinematic_state', self.ego_velocity_callback, 1)
 
 
         # Define arrays
@@ -30,13 +30,13 @@ class ArrayPublisherNode(Node):
         self.direction = 1 # 1 for forward, -1 for backward
 
     def ego_velocity_callback(self, msg):
-        self.ego_velocity = msg.twist_with_covariance.twist.twist.linear.x
+        self.ego_velocity = msg.twist.twist.linear.x
 
     def publish_array(self):
         msg = AckermannControlCommand()
         msg.lateral.steering_tire_rotation_rate = self.stere_rate_dps[self.index] * 3.1415 / 180.0 * self.direction
         msg.longitudinal.speed = self.vel[self.index]
-        msg.lateral.steering_tire_angle = np.interp(self.ego_velocity, self.vel, self.stere_rate_dps) * 3.1415 / 180.0 * self.direction
+        msg.lateral.steering_tire_angle = np.interp(self.ego_velocity, self.vel, self.stere_rate_dps) * 3.1415 / 180.0
         self.publisher_.publish(msg)
 
         # Update index and check direction
