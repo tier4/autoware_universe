@@ -8,7 +8,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - { dispatch-repo: "pilot-auto.x1.eve", version: "beta/v0.3.**" }
+          - { dispatch-repo: pilot-auto.x1.eve, version: beta/v0.3.** }
     outputs:
       dispatch-repo: ${{ steps.search-dispatch-repo.outputs.value }}
     steps:
