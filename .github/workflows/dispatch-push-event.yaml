@@ -1,8 +1,6 @@
 name: dispatch-push-event
 on:
   push:
-    branches:
-      - beta/**
 
 jobs:
   search-dispatch-repo:
