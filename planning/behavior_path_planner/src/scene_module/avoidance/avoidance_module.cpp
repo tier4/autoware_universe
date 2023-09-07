@@ -1948,6 +1948,7 @@ bool AvoidanceModule::isSafePath(
         return false;
       }
     }
+    marker_utils::updateCollisionCheckDebugMap(debug.collision_check, current_debug_data, true);
   }
 
   safe_count_++;
