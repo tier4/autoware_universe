@@ -585,9 +585,9 @@ AckermannControlCommand VehicleCmdGate::filterControlCommand(const AckermannCont
   is_filter_activated_pub_->publish(is_filter_activated);
   filter_activated_marker_pub_->publish(createMarkerArray(is_filter_activated));
 
-
+  filter_.debug_array_.stamp = now();
   debug_array_pub_->publish(filter_.debug_array_);
-
+  filter_.debug_array_.data.clear();
 
   return out;
 }

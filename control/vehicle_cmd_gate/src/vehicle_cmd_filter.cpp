@@ -132,8 +132,8 @@ void VehicleCmdFilter::limitLateralWithLatAcc(
 void VehicleCmdFilter::limitLateralWithLatJerk(
   const double dt, AckermannControlCommand & input) const
 {
-  double curr_latacc = calcLatAcc(input);
-  double prev_latacc = calcLatAcc(prev_cmd_);
+  double curr_latacc = calcLatAcc(input, current_speed_);
+  double prev_latacc = calcLatAcc(prev_cmd_, current_speed_);
 
   debug_array_.data.push_back(dt);  // [0]
   debug_array_.data.push_back(input.lateral.steering_tire_angle);  // [1]
@@ -156,14 +156,14 @@ void VehicleCmdFilter::limitLateralWithLatJerk(
   debug_array_.data.push_back(latacc_min);  // [9]
 
   if (curr_latacc > latacc_max) {
-    input.lateral.steering_tire_angle = calcSteerFromLatacc(input.longitudinal.speed, latacc_max);
+    input.lateral.steering_tire_angle = calcSteerFromLatacc(current_speed_, latacc_max);
   } else if (curr_latacc < latacc_min) {
-    input.lateral.steering_tire_angle = calcSteerFromLatacc(input.longitudinal.speed, latacc_min);
+    input.lateral.steering_tire_angle = calcSteerFromLatacc(current_speed_, latacc_min);
   }
 
   debug_array_.data.push_back(input.lateral.steering_tire_angle);  // [10]
 
-  double filtered_latacc = calcLatAcc(input);
+  double filtered_latacc = calcLatAcc(input, current_speed_);
   debug_info_.after.lat_jerk = (filtered_latacc - prev_latacc) / std::max(1.0e-10, dt);
   debug_array_.data.push_back(filtered_latacc);  // [11]
 
@@ -235,6 +235,11 @@ double VehicleCmdFilter::calcSteerFromLatacc(const double v, const double latacc
 double VehicleCmdFilter::calcLatAcc(const AckermannControlCommand & cmd) const
 {
   double v = cmd.longitudinal.speed;
+  return v * v * std::tan(cmd.lateral.steering_tire_angle) / param_.wheel_base;
+}
+
+double VehicleCmdFilter::calcLatAcc(const AckermannControlCommand & cmd, const double v) const
+{
   return v * v * std::tan(cmd.lateral.steering_tire_angle) / param_.wheel_base;
 }
 
