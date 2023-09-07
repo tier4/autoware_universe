@@ -33,6 +33,7 @@ jobs:
           app_id: ${{ secrets.INTERNAL_APP_ID }}
           private_key: ${{ secrets.INTERNAL_PRIVATE_KEY }}
 
+      # 注意: workflow_dispatchで指定するブランチはmain固定となっているため、dispatch-repoのmainブランチにupdate-beta-branch.yamlが存在することが前提条件。
       - name: Dispatch the update-beta-branch workflow
         run: |
           curl -L \
