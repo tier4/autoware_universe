@@ -33,7 +33,7 @@ jobs:
           app_id: ${{ secrets.INTERNAL_APP_ID }}
           private_key: ${{ secrets.INTERNAL_PRIVATE_KEY }}
 
-      - name: Workflow Dispatch with curl command
+      - name: Dispatch the update-beta-branch workflow 
         run: |
           curl -L \
           -X POST \
