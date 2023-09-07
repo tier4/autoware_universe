@@ -18,6 +18,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <vehicle_cmd_gate/msg/is_filter_activated.hpp>
 
+#include <tier4_debug_msgs/msg/float64_multi_array_stamped.hpp>
+
 #include <autoware_auto_control_msgs/msg/ackermann_control_command.hpp>
 
 #include <vector>
@@ -27,6 +29,8 @@ namespace vehicle_cmd_gate
 using autoware_auto_control_msgs::msg::AckermannControlCommand;
 using vehicle_cmd_gate::msg::IsFilterActivated;
 using LimitArray = std::vector<double>;
+using LimitArray = std::vector<double>;
+using tier4_debug_msgs::msg::Float64MultiArrayStamped;
 
 struct VehicleCmdFilterParam
 {
@@ -88,6 +92,7 @@ public:
   AckermannControlCommand getPrevCmd() { return prev_cmd_; }
 
   mutable VehicleCmdFilterDebugInfo debug_info_;
+  mutable Float64MultiArrayStamped debug_array_;
 
 private:
   VehicleCmdFilterParam param_;

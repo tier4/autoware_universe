@@ -45,12 +45,14 @@
 #include <tier4_system_msgs/msg/mrm_behavior_status.hpp>
 #include <tier4_vehicle_msgs/msg/vehicle_emergency_stamped.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <tier4_debug_msgs/msg/float64_multi_array_stamped.hpp>
 
 #include <memory>
 
 namespace vehicle_cmd_gate
 {
 
+using tier4_debug_msgs::msg::Float64MultiArrayStamped;
 using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_auto_control_msgs::msg::AckermannControlCommand;
@@ -105,6 +107,7 @@ private:
   rclcpp::Publisher<OperationModeState>::SharedPtr operation_mode_pub_;
   rclcpp::Publisher<IsFilterActivated>::SharedPtr is_filter_activated_pub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr filter_activated_marker_pub_;
+  rclcpp::Publisher<Float64MultiArrayStamped>::SharedPtr debug_array_pub_;
 
   // Subscription
   rclcpp::Subscription<Heartbeat>::SharedPtr external_emergency_stop_heartbeat_sub_;

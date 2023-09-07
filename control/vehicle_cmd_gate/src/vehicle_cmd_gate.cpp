@@ -77,6 +77,8 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
     create_publisher<IsFilterActivated>("~/is_filter_activated", durable_qos);
   filter_activated_marker_pub_ =
     create_publisher<MarkerArray>("~/is_filter_activated/marker", durable_qos);
+debug_array_pub_ =
+    create_publisher<Float64MultiArrayStamped>("~/debug_array", durable_qos);
 
   // Subscriber
   external_emergency_stop_heartbeat_sub_ = create_subscription<Heartbeat>(
@@ -547,8 +549,9 @@ AckermannControlCommand VehicleCmdGate::filterControlCommand(const AckermannCont
   // set prev value for both to keep consistency over switching:
   // Actual steer, vel, acc should be considered in manual mode to prevent sudden motion when
   // switching from manual to autonomous
-  const auto in_autonomous =
-    (mode.mode == OperationModeState::AUTONOMOUS && mode.is_autoware_control_enabled);
+  // const auto in_autonomous =
+  //   (mode.mode == OperationModeState::AUTONOMOUS && mode.is_autoware_control_enabled);
+  const auto in_autonomous = mode.is_autoware_control_enabled;
   auto prev_values = in_autonomous ? out : current_status_cmd;
 
   if (ego_is_stopped) {
@@ -582,6 +585,8 @@ AckermannControlCommand VehicleCmdGate::filterControlCommand(const AckermannCont
   is_filter_activated_pub_->publish(is_filter_activated);
   filter_activated_marker_pub_->publish(createMarkerArray(is_filter_activated));
 
+
+  debug_array_pub_->publish(filter_.debug_array_);
 
 
   return out;
