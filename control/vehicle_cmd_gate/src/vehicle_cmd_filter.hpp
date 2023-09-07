@@ -39,6 +39,20 @@ struct VehicleCmdFilterParam
   LimitArray lat_jerk_lim;
   LimitArray actual_steer_diff_lim;
 };
+
+struct VehicleCmdFilterDebugInfo
+{
+  struct Info{
+    double lat_acc;
+    double lat_jerk;
+    double lon_acc;
+    double lon_jerk;
+  };
+  Info limit;
+  Info before;
+  Info after;
+};
+
 class VehicleCmdFilter
 {
 public:
@@ -72,6 +86,8 @@ public:
     const double tol = 1.0e-3);
 
   AckermannControlCommand getPrevCmd() { return prev_cmd_; }
+
+  mutable VehicleCmdFilterDebugInfo debug_info_;
 
 private:
   VehicleCmdFilterParam param_;

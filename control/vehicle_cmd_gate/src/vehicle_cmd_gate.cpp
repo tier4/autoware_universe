@@ -564,9 +564,25 @@ AckermannControlCommand VehicleCmdGate::filterControlCommand(const AckermannCont
   filter_.setPrevCmd(prev_values);
   filter_on_transition_.setPrevCmd(prev_values);
 
+  const auto debug = filter_.debug_info_;
+  is_filter_activated.limit_lon_acc = debug.limit.lon_acc;
+  is_filter_activated.limit_lon_jerk = debug.limit.lon_jerk;
+  is_filter_activated.limit_lat_acc = debug.limit.lat_acc;
+  is_filter_activated.limit_lat_jerk = debug.limit.lat_jerk;
+  is_filter_activated.before_lon_acc = debug.before.lon_acc;
+  is_filter_activated.before_lon_jerk = debug.before.lon_jerk;
+  is_filter_activated.before_lat_acc = debug.before.lat_acc;
+  is_filter_activated.before_lat_jerk = debug.before.lat_jerk;
+  is_filter_activated.after_lon_acc = debug.after.lon_acc;
+  is_filter_activated.after_lon_jerk = debug.after.lon_jerk;
+  is_filter_activated.after_lat_acc = debug.after.lat_acc;
+  is_filter_activated.after_lat_jerk = debug.after.lat_jerk;
+
   is_filter_activated.stamp = now();
   is_filter_activated_pub_->publish(is_filter_activated);
   filter_activated_marker_pub_->publish(createMarkerArray(is_filter_activated));
+
+
 
   return out;
 }

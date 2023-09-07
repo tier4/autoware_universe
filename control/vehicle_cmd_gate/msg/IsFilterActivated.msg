@@ -8,3 +8,19 @@ bool is_activated_on_steering_rate
 bool is_activated_on_speed
 bool is_activated_on_acceleration
 bool is_activated_on_jerk
+
+
+float64 limit_lon_acc
+float64 limit_lon_jerk
+float64 limit_lat_acc
+float64 limit_lat_jerk
+
+float64 before_lon_acc
+float64 before_lon_jerk
+float64 before_lat_acc
+float64 before_lat_jerk
+
+float64 after_lon_acc
+float64 after_lon_jerk
+float64 after_lat_acc
+float64 after_lat_jerk

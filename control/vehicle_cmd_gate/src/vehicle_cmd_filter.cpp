@@ -88,8 +88,12 @@ void VehicleCmdFilter::limitLongitudinalWithAcc(
   const double dt, AckermannControlCommand & input) const
 {
   const auto lon_acc_lim = getLonAccLim();
+  debug_info_.limit.lon_acc = lon_acc_lim;
+
+  debug_info_.before.lon_acc = input.longitudinal.acceleration ;
   input.longitudinal.acceleration = std::max(
     std::min(static_cast<double>(input.longitudinal.acceleration), lon_acc_lim), -lon_acc_lim);
+  debug_info_.after.lon_acc = input.longitudinal.acceleration;
   input.longitudinal.speed =
     limitDiff(input.longitudinal.speed, prev_cmd_.longitudinal.speed, lon_acc_lim * dt);
 }
@@ -98,8 +102,12 @@ void VehicleCmdFilter::VehicleCmdFilter::limitLongitudinalWithJerk(
   const double dt, AckermannControlCommand & input) const
 {
   const auto lon_jerk_lim = getLonJerkLim();
+  debug_info_.limit.lon_jerk = lon_jerk_lim;
+
+  debug_info_.before.lon_jerk = (input.longitudinal.acceleration - prev_cmd_.longitudinal.acceleration) / std::max(1.0e-10, dt);
   input.longitudinal.acceleration = limitDiff(
     input.longitudinal.acceleration, prev_cmd_.longitudinal.acceleration, lon_jerk_lim * dt);
+  debug_info_.after.lon_jerk = (input.longitudinal.acceleration - prev_cmd_.longitudinal.acceleration) / std::max(1.0e-10, dt);
   input.longitudinal.jerk =
     std::clamp(static_cast<double>(input.longitudinal.jerk), -lon_jerk_lim, lon_jerk_lim);
 }
@@ -108,14 +116,17 @@ void VehicleCmdFilter::limitLateralWithLatAcc(
   [[maybe_unused]] const double dt, AckermannControlCommand & input) const
 {
   const auto lat_acc_lim = getLatAccLim();
+  debug_info_.limit.lat_acc = lat_acc_lim;
 
   double latacc = calcLatAcc(input);
+  debug_info_.before.lat_acc = latacc;
   if (std::fabs(latacc) > lat_acc_lim) {
     double v_sq =
       std::max(static_cast<double>(input.longitudinal.speed * input.longitudinal.speed), 0.001);
     double steer_lim = std::atan(lat_acc_lim * param_.wheel_base / v_sq);
     input.lateral.steering_tire_angle = latacc > 0.0 ? steer_lim : -steer_lim;
   }
+  debug_info_.after.lat_acc = calcLatAcc(input);
 }
 
 void VehicleCmdFilter::limitLateralWithLatJerk(
@@ -125,6 +136,9 @@ void VehicleCmdFilter::limitLateralWithLatJerk(
   double prev_latacc = calcLatAcc(prev_cmd_);
 
   const auto lat_jerk_lim = getLatJerkLim();
+  debug_info_.limit.lat_jerk = lat_jerk_lim;
+
+  debug_info_.before.lat_jerk = (curr_latacc - prev_latacc) / std::max(1.0e-10, dt);
 
   const double latacc_max = prev_latacc + lat_jerk_lim * dt;
   const double latacc_min = prev_latacc - lat_jerk_lim * dt;
@@ -134,6 +148,10 @@ void VehicleCmdFilter::limitLateralWithLatJerk(
   } else if (curr_latacc < latacc_min) {
     input.lateral.steering_tire_angle = calcSteerFromLatacc(input.longitudinal.speed, latacc_min);
   }
+
+  double filtered_latacc = calcLatAcc(input);
+  debug_info_.after.lat_jerk = (filtered_latacc - prev_latacc) / std::max(1.0e-10, dt);
+
 }
 
 void VehicleCmdFilter::limitActualSteerDiff(
