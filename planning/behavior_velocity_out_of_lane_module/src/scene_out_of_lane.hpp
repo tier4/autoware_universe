@@ -60,10 +60,11 @@ protected:
 /// @brief calculate points along the path where we want ego to slowdown/stop
 /// @param ego_data ego data (path, velocity, etc)
 /// @param decisions decisions (before which point to stop, what lane to avoid entering, etc)
+/// @param non_stop_lanes lanes that ego should not overlap while stopped (used with the "strict" option)
 /// @param params parameters
 /// @return precise points to insert in the path
 std::vector<SlowdownToInsert> calculate_slowdown_points(
-  const EgoData & ego_data, const std::vector<Slowdown> & decisions, PlannerParam params);
+  const EgoData & ego_data, const std::vector<Slowdown> & decisions, const lanelet::ConstLanelets & non_stop_lanes, PlannerParam params);
 
 }  // namespace behavior_velocity_planner::out_of_lane
 

@@ -348,11 +348,10 @@ std::optional<Slowdown> calculate_decision(
 {
   std::optional<Slowdown> decision;
   if (should_not_enter(range, inputs, params, logger)) {
-    const auto stop_before_range = params.strict ? find_most_preceding_range(range, inputs) : range;
     decision.emplace();
     decision->target_path_idx = inputs.ego_data.first_path_idx +
-                                stop_before_range.entering_path_idx;  // add offset from curr pose
-    decision->lane_to_avoid = stop_before_range.lane;
+                                range.entering_path_idx;  // add offset from curr pose
+    decision->lane_to_avoid = range.lane;
     const auto ego_dist_to_range = distance_along_path(inputs.ego_data, range.entering_path_idx);
     set_decision_velocity(decision, ego_dist_to_range, params);
   }
