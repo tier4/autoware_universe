@@ -203,6 +203,7 @@ def launch_setup(context, *args, **kwargs):
             motion_velocity_smoother_param,
             behavior_velocity_smoother_type_param,
         ],
+        arguments=['--ros-args', '--log-level', 'debug', '--log-level', 'rcl:=INFO'],
         prefix="konsole -e gdb -ex run --args",
         # extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
     )
