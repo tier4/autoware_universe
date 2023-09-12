@@ -14,6 +14,7 @@
 
 #include "scene_out_of_lane.hpp"
 
+#include "calculate_slowdown_points.hpp"
 #include "debug.hpp"
 #include "decisions.hpp"
 #include "filter_predicted_objects.hpp"
@@ -110,23 +111,26 @@ bool OutOfLaneModule::modifyPathVelocity(
   auto decisions = calculate_decisions(inputs, params_, logger_);
   const auto calculate_decisions_us = stopwatch.toc("calculate_decisions");
   stopwatch.tic("calc_slowdown_points");
-  const auto points_to_insert =
-    calculate_slowdown_points(ego_data, decisions, other_lanelets, params_);
-  debug_data_.slowdowns = points_to_insert;
+  const auto point_to_insert = calculate_slowdown_point(ego_data, decisions, params_);
   const auto calc_slowdown_points_us = stopwatch.toc("calc_slowdown_points");
   stopwatch.tic("insert_slowdown_points");
-  for (const auto & point : points_to_insert) {
-    auto path_idx = point.slowdown.target_path_idx;
-    planning_utils::insertVelocity(*path, point.point, point.slowdown.velocity, path_idx);
-    if (point.slowdown.velocity == 0.0) {
+  debug_data_.slowdowns.clear();
+  if (point_to_insert) {
+    debug_data_.slowdowns = {*point_to_insert};
+    auto path_idx = motion_utils::findNearestSegmentIndex(
+      path->points, point_to_insert->point.point.pose.position);
+    planning_utils::insertVelocity(
+      *path, point_to_insert->point, point_to_insert->slowdown.velocity, path_idx,
+      params_.precision);
+    if (point_to_insert->slowdown.velocity == 0.0) {
       tier4_planning_msgs::msg::StopFactor stop_factor;
-      stop_factor.stop_pose = point.point.point.pose;
+      stop_factor.stop_pose = point_to_insert->point.point.pose;
       stop_factor.dist_to_stop_pose = motion_utils::calcSignedArcLength(
-        ego_data.path.points, ego_data.pose.position, point.point.point.pose.position);
+        ego_data.path.points, ego_data.pose.position, point_to_insert->point.point.pose.position);
       planning_utils::appendStopReason(stop_factor, stop_reason);
     }
     velocity_factor_.set(
-      path->points, planner_data_->current_odometry->pose, point.point.point.pose,
+      path->points, planner_data_->current_odometry->pose, point_to_insert->point.point.pose,
       VelocityFactor::UNKNOWN);
   }
   const auto insert_slowdown_points_us = stopwatch.toc("insert_slowdown_points");
@@ -177,76 +181,6 @@ motion_utils::VirtualWalls OutOfLaneModule::createVirtualWalls()
     virtual_walls.push_back(wall);
   }
   return virtual_walls;
-}
-
-std::vector<SlowdownToInsert> calculate_slowdown_points(
-  const EgoData & ego_data, const std::vector<Slowdown> & decisions,
-  const lanelet::ConstLanelets & non_stop_lanes, PlannerParam params)
-{
-  std::vector<SlowdownToInsert> to_insert;
-  params.extra_front_offset += params.dist_buffer;
-  const auto base_footprint = make_base_footprint(params);
-
-  const auto first_arc_length =
-    motion_utils::calcSignedArcLength(ego_data.path.points, 0, ego_data.first_path_idx);
-
-  const auto can_decel = [&](const auto dist_ahead_of_ego, const auto target_vel) {
-    const auto acc_to_target_vel =
-      (ego_data.velocity * ego_data.velocity - target_vel * target_vel) / (2 * dist_ahead_of_ego);
-    return acc_to_target_vel < std::abs(ego_data.max_decel);
-  };
-  const auto insert_decision = [&](const auto & path_point, const auto & decision) -> bool {
-    const auto dist_ahead_of_ego = motion_utils::calcSignedArcLength(
-      ego_data.path.points, ego_data.pose.position, path_point.point.pose.position);
-    if (!params.skip_if_over_max_decel || can_decel(dist_ahead_of_ego, decision.velocity)) {
-      to_insert.push_back({decision, path_point});
-      return true;
-    }
-    return false;
-  };
-  const auto insert_interpolated_decision =
-    [&](const auto & path_point, const auto & decision) -> bool {
-    auto interpolated_point = path_point;
-    const auto overlapping_arc_length =
-      motion_utils::calcSignedArcLength(ego_data.path.points, 0, decision.target_path_idx);
-    constexpr auto precision = 0.1;  // 10cm
-    lanelet::BasicPolygons2d lanes_to_avoid;
-    if (params.strict)
-      for (const auto & l : non_stop_lanes) lanes_to_avoid.push_back(l.polygon2d().basicPolygon());
-    else
-      lanes_to_avoid.push_back(decision.lane_to_avoid.polygon2d().basicPolygon());
-    for (auto arc_length = overlapping_arc_length - precision; arc_length > first_arc_length;
-         arc_length -= precision) {
-      // TODO(Maxime): binary search
-      interpolated_point.point.pose =
-        motion_utils::calcInterpolatedPose(ego_data.path.points, arc_length);
-      auto is_overlap =
-        std::any_of(lanes_to_avoid.begin(), lanes_to_avoid.end(), [&](const auto & l) {
-          return boost::geometry::overlaps(
-            project_to_pose(base_footprint, interpolated_point.point.pose), l);
-        });
-      if (!is_overlap) return insert_decision(path_point, decision);
-    }
-    return false;
-  };
-  for (const auto & decision : decisions) {
-    const auto & path_point = ego_data.path.points[decision.target_path_idx];
-    const auto decision_is_at_beginning_of_path =
-      decision.target_path_idx == ego_data.first_path_idx;
-    bool inserted = false;
-    if (false && decision_is_at_beginning_of_path) {
-      inserted = insert_decision(path_point, decision);
-    } else {
-      inserted = insert_interpolated_decision(path_point, decision);
-      // if no valid point found, fallback to using the previous index (known to not overlap)
-      std::cout << "/!\\ Inserted ? " << inserted << std::endl;
-      if (!inserted)
-        inserted = insert_decision(ego_data.path.points[decision.target_path_idx], decision);
-    }
-    // only insert the first (i.e., lowest arc length) decision
-    if (inserted) break;
-  }
-  return to_insert;
 }
 
 }  // namespace behavior_velocity_planner::out_of_lane
