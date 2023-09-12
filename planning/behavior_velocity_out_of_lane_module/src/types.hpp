@@ -135,7 +135,7 @@ struct OtherLane
 /// @brief data related to the ego vehicle
 struct EgoData
 {
-  autoware_auto_planning_msgs::msg::PathWithLaneId * path{};
+  autoware_auto_planning_msgs::msg::PathWithLaneId path{};
   size_t first_path_idx{};
   double velocity{};   // [m/s]
   double max_decel{};  // [m/s²]

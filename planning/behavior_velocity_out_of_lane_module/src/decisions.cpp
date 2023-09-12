@@ -27,7 +27,7 @@ namespace behavior_velocity_planner::out_of_lane
 double distance_along_path(const EgoData & ego_data, const size_t target_idx)
 {
   return motion_utils::calcSignedArcLength(
-    ego_data.path->points, ego_data.pose.position, ego_data.first_path_idx + target_idx);
+    ego_data.path.points, ego_data.pose.position, ego_data.first_path_idx + target_idx);
 }
 
 double time_along_path(const EgoData & ego_data, const size_t target_idx, const double min_velocity)
@@ -35,7 +35,7 @@ double time_along_path(const EgoData & ego_data, const size_t target_idx, const 
   const auto dist = distance_along_path(ego_data, target_idx);
   const auto v = std::max(
     std::max(ego_data.velocity, min_velocity),
-    ego_data.path->points[ego_data.first_path_idx + target_idx].point.longitudinal_velocity_mps *
+    ego_data.path.points[ego_data.first_path_idx + target_idx].point.longitudinal_velocity_mps *
       0.5);
   return dist / v;
 }
