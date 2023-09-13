@@ -20,6 +20,12 @@ rclcpp_components_register_node(traffic_light_map_based_detector
   EXECUTABLE traffic_light_map_based_detector_node
 )
 
+get_target_property(lanelet2_core_INCLUDE_DIRECTORIES lanelet2_core::lanelet2_core INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(traffic_light_map_based_detector
+  SYSTEM PRIVATE
+    ${lanelet2_core_INCLUDE_DIRECTORIES}
+)
+
 ament_auto_package(INSTALL_TO_SHARE
   launch
   config

@@ -22,6 +22,12 @@ rclcpp_components_register_node(map_based_prediction_node
   EXECUTABLE map_based_prediction
 )
 
+get_target_property(lanelet2_core_INCLUDE_DIRECTORIES lanelet2_core::lanelet2_core INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(map_based_prediction_node
+  SYSTEM PRIVATE
+    ${lanelet2_core_INCLUDE_DIRECTORIES}
+)
+
 ament_auto_package(
   INSTALL_TO_SHARE
   config

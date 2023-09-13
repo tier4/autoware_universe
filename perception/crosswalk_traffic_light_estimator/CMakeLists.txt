@@ -19,6 +19,12 @@ rclcpp_components_register_node(crosswalk_traffic_light_estimator
   EXECUTABLE crosswalk_traffic_light_estimator_node
 )
 
+get_target_property(lanelet2_core_INCLUDE_DIRECTORIES lanelet2_core::lanelet2_core INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(crosswalk_traffic_light_estimator
+  SYSTEM PRIVATE
+    ${lanelet2_core_INCLUDE_DIRECTORIES}
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
