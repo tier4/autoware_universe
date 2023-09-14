@@ -118,7 +118,8 @@ bool OutOfLaneModule::modifyPathVelocity(
   if (point_to_insert) {
     debug_data_.slowdowns = {*point_to_insert};
     auto path_idx = motion_utils::findNearestSegmentIndex(
-      path->points, point_to_insert->point.point.pose.position);
+                      path->points, point_to_insert->point.point.pose.position) +
+                    1;
     planning_utils::insertVelocity(
       *path, point_to_insert->point, point_to_insert->slowdown.velocity, path_idx,
       params_.precision);
