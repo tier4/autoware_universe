@@ -39,7 +39,7 @@ std::vector<PathPointWithLaneId> crop_and_resample(
   // crop
   const auto crop_seg_idx = motion_utils::findNearestSegmentIndex(points, crop_pose.position);
   const auto cropped_points = motion_utils::cropPoints(
-    points, crop_pose.position, crop_seg_idx + 1, params.max_path_arc_length,
+    points, crop_pose.position, crop_seg_idx, params.max_path_arc_length,
     params.max_path_arc_length - crop_distance);
   // resample
   PathWithLaneId cropped_path;
