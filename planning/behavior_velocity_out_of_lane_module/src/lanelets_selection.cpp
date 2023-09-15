@@ -67,7 +67,7 @@ lanelet::ConstLanelets calculate_other_lanelets(
     return false;
   };
   for (const auto & ll : lanelets_within_range) {
-    if(std::string(ll.second.attributeOr(lanelet::AttributeName::Subtype, "none")) != "road")
+    if (std::string(ll.second.attributeOr(lanelet::AttributeName::Subtype, "none")) != "road")
       continue;
     const auto is_path_lanelet = contains_lanelet(path_lanelets, ll.second.id());
     const auto is_ignored_lanelet = contains_lanelet(ignored_lanelets, ll.second.id());
