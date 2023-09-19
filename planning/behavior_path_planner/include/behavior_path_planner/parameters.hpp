@@ -37,6 +37,8 @@ struct BehaviorPathPlannerParameters
   double turn_light_on_threshold_dis_long;
   double turn_light_on_threshold_time;
 
+  double path_interval;
+
   // vehicle info
   double wheel_base;
   double front_overhang;
