@@ -39,6 +39,7 @@ struct StartPlannerParameters
   double th_stopped_velocity;
   double th_stopped_time;
   double th_turn_signal_on_lateral_offset;
+  double th_distance_to_middle_of_the_road;
   double intersection_search_length;
   double length_ratio_for_turn_signal_deactivation_near_intersection;
   double collision_check_margin;
