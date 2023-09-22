@@ -134,7 +134,7 @@ bool MergeFromPrivateRoadModule::modifyPathVelocity(PathWithLaneId * path, StopR
     const double signed_arc_dist_to_stop_point = motion_utils::calcSignedArcLength(
       path->points, current_pose.position, path->points.at(stop_line_idx).point.pose.position);
 
-    constexpr double distance_threshold = 2.0;
+    constexpr double distance_threshold = 0.1;
     if (
       signed_arc_dist_to_stop_point < distance_threshold &&
       planner_data_->isVehicleStopped(planner_param_.stop_duration_sec)) {
