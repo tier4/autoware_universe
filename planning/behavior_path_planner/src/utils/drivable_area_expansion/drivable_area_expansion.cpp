@@ -26,6 +26,15 @@
 
 #include <boost/geometry.hpp>
 
+// for writing the svg file
+#include <fstream>
+#include <iostream>
+// for the geometry types
+#include <tier4_autoware_utils/geometry/geometry.hpp>
+// for the svg mapper
+#include <boost/geometry/io/svg/svg_mapper.hpp>
+#include <boost/geometry/io/svg/write.hpp>
+
 namespace drivable_area_expansion
 {
 
@@ -56,6 +65,22 @@ void expandDrivableArea(
   const lanelet::ConstLanelets & path_lanes)
 {
   if (path.points.empty() || path.left_bound.empty() || path.right_bound.empty()) return;
+
+  // Declare a stream and an SVG mapper
+  std::ofstream svg1("/home/mclement/Pictures/DA_before.svg");  // /!\ CHANGE PATH
+  boost::geometry::svg_mapper<tier4_autoware_utils::Point2d> before(svg1, 400, 400);
+  // Declare a stream and an SVG mapper
+  std::ofstream svg2("/home/mclement/Pictures/DA_after.svg");  // /!\ CHANGE PATH
+  boost::geometry::svg_mapper<tier4_autoware_utils::Point2d> after(svg2, 400, 400);
+
+  linestring_t left_ls;
+  linestring_t right_ls;
+  for (const auto & p : path.left_bound) left_ls.emplace_back(p.x, p.y);
+  for (const auto & p : path.right_bound) right_ls.emplace_back(p.x, p.y);
+  before.add(left_ls);
+  before.add(right_ls);
+  before.map(left_ls, "fill-opacity:0.3;fill:red;stroke:red;stroke-width:2");
+  before.map(right_ls, "fill-opacity:0.3;fill:red;stroke:red;stroke-width:2");
 
   tier4_autoware_utils::StopWatch<std::chrono::milliseconds> stopwatch;
   const auto & params = planner_data->drivable_area_expansion_parameters;
@@ -126,6 +151,15 @@ void expandDrivableArea(
     std::printf("\tupdate: %2.2fms\n", update_duration);
     std::cout << std::endl;
   }
+
+  left_ls.clear();
+  right_ls.clear();
+  for (const auto & p : path.left_bound) left_ls.emplace_back(p.x, p.y);
+  for (const auto & p : path.right_bound) right_ls.emplace_back(p.x, p.y);
+  after.add(left_ls);
+  after.add(right_ls);
+  after.map(left_ls, "fill-opacity:0.3;fill:red;stroke:red;stroke-width:2");
+  after.map(right_ls, "fill-opacity:0.3;fill:red;stroke:red;stroke-width:2");
 }
 
 point_t convert_point(const Point & p)
