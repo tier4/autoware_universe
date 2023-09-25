@@ -90,12 +90,14 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
     "/localization/kinematic_state", rclcpp::QoS(1),
     std::bind(&MissionPlanner::on_odometry, this, std::placeholders::_1));
 
-  auto qos_transient_local = rclcpp::QoS{1}.transient_local();
-  vector_map_subscriber_ = create_subscription<HADMapBin>(
-    "input/vector_map", qos_transient_local,
-    std::bind(&MissionPlanner::onMap, this, std::placeholders::_1));
-
   const auto durable_qos = rclcpp::QoS(1).transient_local();
+  vector_map_subscriber_ = create_subscription<HADMapBin>(
+    "input/vector_map", durable_qos,
+    std::bind(&MissionPlanner::onMap, this, std::placeholders::_1));
+  sub_modified_goal_ = create_subscription<PoseWithUuidStamped>(
+    "input/modified_goal", durable_qos,
+    std::bind(&MissionPlanner::on_modified_goal, this, std::placeholders::_1));
+
   pub_marker_ = create_publisher<MarkerArray>("debug/route_marker", durable_qos);
 
   const auto adaptor = component_interface_utils::NodeAdaptor(this);
@@ -110,7 +112,6 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
   adaptor.init_srv(srv_change_route_points_, this, &MissionPlanner::on_change_route_points);
   adaptor.init_srv(srv_set_mrm_route_, this, &MissionPlanner::on_set_mrm_route);
   adaptor.init_srv(srv_clear_mrm_route_, this, &MissionPlanner::on_clear_mrm_route);
-  adaptor.init_sub(sub_modified_goal_, this, &MissionPlanner::on_modified_goal);
 
   change_state(RouteState::Message::UNSET);
 }

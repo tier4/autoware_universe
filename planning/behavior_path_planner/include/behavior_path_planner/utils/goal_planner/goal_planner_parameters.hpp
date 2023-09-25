@@ -17,6 +17,7 @@
 #define BEHAVIOR_PATH_PLANNER__UTILS__GOAL_PLANNER__GOAL_PLANNER_PARAMETERS_HPP_
 
 #include "behavior_path_planner/utils/geometric_parallel_parking/geometric_parallel_parking.hpp"
+#include "behavior_path_planner/utils/path_safety_checker/path_safety_checker_parameters.hpp"
 
 #include <freespace_planning_algorithms/abstract_algorithm.hpp>
 #include <freespace_planning_algorithms/astar_search.hpp>
@@ -40,7 +41,6 @@ enum class ParkingPolicy {
 struct GoalPlannerParameters
 {
   // general  params
-  double minimum_request_length;
   double th_arrived_distance;
   double th_stopped_velocity;
   double th_stopped_time;
@@ -59,8 +59,9 @@ struct GoalPlannerParameters
   double margin_from_boundary;
 
   // occupancy grid map
-  bool use_occupancy_grid;
-  bool use_occupancy_grid_for_longitudinal_margin;
+  bool use_occupancy_grid_for_goal_search;
+  bool use_occupancy_grid_for_goal_longitudinal_margin;
+  bool use_occupancy_grid_for_path_collision_check;
   double occupancy_grid_collision_check_margin;
   int theta_size;
   int obstacle_threshold;
@@ -69,8 +70,10 @@ struct GoalPlannerParameters
   bool use_object_recognition;
   double object_recognition_collision_check_margin;
   double object_recognition_collision_check_max_extra_stopping_margin;
+  double th_moving_object_velocity;
 
   // pull over general params
+  double pull_over_minimum_request_length;
   double pull_over_velocity;
   double pull_over_minimum_velocity;
   double decide_path_distance;
@@ -98,6 +101,18 @@ struct GoalPlannerParameters
   PlannerCommonParam freespace_parking_common_parameters;
   AstarParam astar_parameters;
   RRTStarParam rrt_star_parameters;
+
+  // stop condition
+  double maximum_deceleration_for_stop;
+  double maximum_jerk_for_stop;
+
+  // hysteresis parameter
+  double hysteresis_factor_expand_rate;
+
+  // path safety checker
+  utils::path_safety_checker::EgoPredictedPathParams ego_predicted_path_params;
+  utils::path_safety_checker::ObjectsFilteringParams objects_filtering_params;
+  utils::path_safety_checker::SafetyCheckParams safety_check_params;
 
   // debug
   bool print_debug_info;

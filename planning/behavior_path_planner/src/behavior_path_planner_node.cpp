@@ -66,7 +66,9 @@ BehaviorPathPlannerNode::BehaviorPathPlannerNode(const rclcpp::NodeOptions & nod
   turn_signal_publisher_ =
     create_publisher<TurnIndicatorsCommand>("~/output/turn_indicators_cmd", 1);
   hazard_signal_publisher_ = create_publisher<HazardLightsCommand>("~/output/hazard_lights_cmd", 1);
-  modified_goal_publisher_ = create_publisher<PoseWithUuidStamped>("~/output/modified_goal", 1);
+  const auto durable_qos = rclcpp::QoS(1).transient_local();
+  modified_goal_publisher_ =
+    create_publisher<PoseWithUuidStamped>("~/output/modified_goal", durable_qos);
   stop_reason_publisher_ = create_publisher<StopReasonArray>("~/output/stop_reasons", 1);
   debug_avoidance_msg_array_publisher_ =
     create_publisher<AvoidanceDebugMsgArray>("~/debug/avoidance_debug_message_array", 1);
@@ -282,6 +284,7 @@ BehaviorPathPlannerParameters BehaviorPathPlannerNode::getCommonParam()
       declare_parameter<bool>(ns + "enable_simultaneous_execution_as_approved_module");
     config.enable_simultaneous_execution_as_candidate_module =
       declare_parameter<bool>(ns + "enable_simultaneous_execution_as_candidate_module");
+    config.keep_last = declare_parameter<bool>(ns + "keep_last");
     config.priority = declare_parameter<int>(ns + "priority");
     config.max_module_size = declare_parameter<int>(ns + "max_module_size");
     return config;
@@ -390,23 +393,6 @@ BehaviorPathPlannerParameters BehaviorPathPlannerNode::getCommonParam()
   p.visualize_maximum_drivable_area = declare_parameter<bool>("visualize_maximum_drivable_area");
   p.ego_nearest_dist_threshold = declare_parameter<double>("ego_nearest_dist_threshold");
   p.ego_nearest_yaw_threshold = declare_parameter<double>("ego_nearest_yaw_threshold");
-
-  p.lateral_distance_max_threshold = declare_parameter<double>("lateral_distance_max_threshold");
-  p.longitudinal_distance_min_threshold =
-    declare_parameter<double>("longitudinal_distance_min_threshold");
-  p.longitudinal_velocity_delta_time =
-    declare_parameter<double>("longitudinal_velocity_delta_time");
-
-  p.expected_front_deceleration = declare_parameter<double>("expected_front_deceleration");
-  p.expected_rear_deceleration = declare_parameter<double>("expected_rear_deceleration");
-
-  p.expected_front_deceleration_for_abort =
-    declare_parameter<double>("expected_front_deceleration_for_abort");
-  p.expected_rear_deceleration_for_abort =
-    declare_parameter<double>("expected_rear_deceleration_for_abort");
-
-  p.rear_vehicle_reaction_time = declare_parameter<double>("rear_vehicle_reaction_time");
-  p.rear_vehicle_safety_time_margin = declare_parameter<double>("rear_vehicle_safety_time_margin");
 
   if (p.backward_length_buffer_for_end_of_lane < 1.0) {
     RCLCPP_WARN_STREAM(

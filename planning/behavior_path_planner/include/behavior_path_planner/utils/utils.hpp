@@ -320,8 +320,8 @@ PathPointWithLaneId insertStopPoint(const double length, PathWithLaneId & path);
 double getSignedDistanceFromBoundary(
   const lanelet::ConstLanelets & shoulder_lanelets, const Pose & pose, const bool left_side);
 std::optional<double> getSignedDistanceFromBoundary(
-  const lanelet::ConstLanelets & shoulder_lanelets, const LinearRing2d & footprint,
-  const Pose & vehicle_pose, const bool left_side);
+  const lanelet::ConstLanelets & lanelets, const double vehicle_width, const double base_link2front,
+  const double base_link2rear, const Pose & vehicle_pose, const bool left_side);
 
 // misc
 
@@ -412,6 +412,22 @@ std::optional<lanelet::Polygon3d> getPolygonByPoint(
 
 lanelet::ConstLanelets combineLanelets(
   const lanelet::ConstLanelets & base_lanes, const lanelet::ConstLanelets & added_lanes);
+
+/**
+ * @brief removeInverseOrderPathPoints function
+ *
+ * This function is designed to handle a situation that can arise when shifting paths on a curve,
+ * where the positions of the path points may become inverted (i.e., a point further along the path
+ * comes to be located before an earlier point). It corrects for this by using the function
+ * tier4_autoware_utils::isDrivingForward(p1, p2) to check if each pair of adjacent points is in
+ * the correct order (with the second point being 'forward' of the first). Any points which fail
+ * this test are omitted from the returned PathWithLaneId.
+ *
+ * @param path A path with points possibly in incorrect order.
+ * @return Returns a new PathWithLaneId that has all points in the correct order.
+ */
+PathWithLaneId removeInverseOrderPathPoints(const PathWithLaneId & path);
+
 }  // namespace behavior_path_planner::utils
 
 #endif  // BEHAVIOR_PATH_PLANNER__UTILS__UTILS_HPP_

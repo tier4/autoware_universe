@@ -40,6 +40,8 @@ public:
 
   void updateModuleParams(const std::vector<rclcpp::Parameter> & parameters) override;
 
+  bool isAlwaysExecutableModule() const override;
+
   bool isSimultaneousExecutableAsApprovedModule() const override;
 
   bool isSimultaneousExecutableAsCandidateModule() const override;
@@ -48,7 +50,6 @@ private:
   std::shared_ptr<GoalPlannerParameters> parameters_;
 
   std::vector<std::shared_ptr<GoalPlannerModule>> registered_modules_;
-  bool left_side_parking_;
 };
 
 }  // namespace behavior_path_planner

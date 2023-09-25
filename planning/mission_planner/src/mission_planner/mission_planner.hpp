@@ -72,8 +72,10 @@ private:
 
   rclcpp::Subscription<Odometry>::SharedPtr sub_odometry_;
   rclcpp::Subscription<HADMapBin>::SharedPtr vector_map_subscriber_;
+  rclcpp::Subscription<PoseWithUuidStamped>::SharedPtr sub_modified_goal_;
   Odometry::ConstSharedPtr odometry_;
   void on_odometry(const Odometry::ConstSharedPtr msg);
+  void on_modified_goal(const PoseWithUuidStamped::ConstSharedPtr msg);
 
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_marker_;
   void clear_route();
@@ -124,8 +126,6 @@ private:
   HADMapBin::ConstSharedPtr map_ptr_{nullptr};
   void onMap(const HADMapBin::ConstSharedPtr msg);
 
-  component_interface_utils::Subscription<ModifiedGoal>::SharedPtr sub_modified_goal_;
-  void on_modified_goal(const ModifiedGoal::Message::ConstSharedPtr msg);
   void on_change_route(
     const SetRoute::Service::Request::SharedPtr req,
     const SetRoute::Service::Response::SharedPtr res);
