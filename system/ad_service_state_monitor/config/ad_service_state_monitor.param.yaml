@@ -79,7 +79,7 @@
           warn_rate: 5.0
           type: "autoware_auto_perception_msgs/msg/PredictedObjects"
           # This topic could have two different types depending on the launch flags used.
-          # The implementation of subscriptions in ROS 2 does not allow for multiple types
+          # The implementation of subscriptions in ROS2 does not allow for multiple types
           # to be defined for a topic. By default this is set to not use have features.
           # type: ["tier4_perception_msgs/msg/DynamicObjectArray", "tier4_perception_msgs/msg/DynamicObjectWithFeatureArray"]
 
