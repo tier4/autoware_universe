@@ -80,37 +80,13 @@ class PointcloudMapFilterPipeline:
 
     def create_compare_map_pipeline(self):
         components = []
-        down_sample_topic = (
-            "/perception/obstacle_segmentation/pointcloud_map_filtered/downsampled/pointcloud"
-        )
-        components.append(
-            ComposableNode(
-                package="pointcloud_preprocessor",
-                plugin="pointcloud_preprocessor::ApproximateDownsampleFilterComponent",
-                name="voxel_grid_downsample_filter",
-                remappings=[
-                    ("input", LaunchConfiguration("input_topic")),
-                    ("output", down_sample_topic),
-                ],
-                parameters=[
-                    {
-                        "voxel_size_x": self.voxel_size,
-                        "voxel_size_y": self.voxel_size,
-                        "voxel_size_z": self.voxel_size,
-                    }
-                ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
-            ),
-        )
         components.append(
             ComposableNode(
                 package="compare_map_segmentation",
                 plugin="compare_map_segmentation::VoxelBasedCompareMapFilterComponent",
                 name="voxel_based_compare_map_filter",
                 remappings=[
-                    ("input", down_sample_topic),
+                    ("input", LaunchConfiguration("input_topic")),
                     ("map", "/map/pointcloud_map"),
                     ("output", LaunchConfiguration("output_topic")),
                     ("map_loader_service", "/map/get_differential_pointcloud_map"),
