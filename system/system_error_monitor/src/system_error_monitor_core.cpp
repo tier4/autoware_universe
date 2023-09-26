@@ -459,13 +459,12 @@ void AutowareErrorMonitor::onTimer()
     return;
   }
 
-  // current_mode_ = current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO
-  //                   ? KeyName::autonomous_driving
-  //                   : KeyName::external_control;
-  current_mode_ =
-    control_mode_->mode == autoware_auto_vehicle_msgs::msg::ControlModeReport::AUTONOMOUS
-      ? KeyName::autonomous_driving
-      : KeyName::manual_control;
+  current_mode_ = current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO
+                    ? KeyName::autonomous_driving
+                    : KeyName::external_control;
+  if(current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO  && control_mode_->mode == autoware_auto_vehicle_msgs::msg::ControlModeReport::MANUAL){
+    current_mode_ = KeyName::manual_control;
+  }
 
   updateHazardStatus();
   publishHazardStatus(hazard_status_);
