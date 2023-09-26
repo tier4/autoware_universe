@@ -88,7 +88,7 @@ void GyroBiasEstimator::update_diagnostics(diagnostic_updater::DiagnosticStatusW
     stat.add("gyro_bias_z_for_imu_corrector", gyro_bias_.value().z);
     stat.add("estimated_gyro_bias_x", gyro_bias_.value().x - angular_velocity_offset_x_);
     stat.add("estimated_gyro_bias_y", gyro_bias_.value().y - angular_velocity_offset_y_);
-    stat.add("estimated_gyro_bias_z", gyro_bias_.value().z - angular_velocity_offset_z_);        
+    stat.add("estimated_gyro_bias_z", gyro_bias_.value().z - angular_velocity_offset_z_);
     // Validation
     const bool is_bias_small_enough =
       std::abs(gyro_bias_.value().x - angular_velocity_offset_x_) < gyro_bias_threshold_ &&
