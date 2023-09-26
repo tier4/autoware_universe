@@ -462,7 +462,9 @@ void AutowareErrorMonitor::onTimer()
   current_mode_ = current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO
                     ? KeyName::autonomous_driving
                     : KeyName::external_control;
-  if(current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO  && control_mode_->mode == autoware_auto_vehicle_msgs::msg::ControlModeReport::MANUAL){
+  if (
+    current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO &&
+    control_mode_->mode == autoware_auto_vehicle_msgs::msg::ControlModeReport::MANUAL) {
     current_mode_ = KeyName::manual_control;
   }
 
