@@ -139,8 +139,12 @@ MpcLateralController::MpcLateralController(rclcpp::Node & node) : node_{&node}
 
   declareMPCparameters();
 
-  /* get parameter updates */
+  /* topic subscription */
   using std::placeholders::_1;
+  sub_control_ = node_->create_subscription<Float32MultiArrayStamped>(
+    "/debug_control", rclcpp::QoS{1}, std::bind(&MpcLateralController::onDebugControl, this, _1));
+
+  /* get parameter updates */
   m_set_param_res = node_->add_on_set_parameters_callback(
     std::bind(&MpcLateralController::paramCallback, this, _1));
 
@@ -298,7 +302,36 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   }
 
   m_ctrl_cmd_prev = ctrl_cmd;
-  return createLateralOutput(ctrl_cmd, is_mpc_solved);
+  auto output = createLateralOutput(ctrl_cmd, is_mpc_solved);
+
+  if (debug_control_) {
+    output = getDebugLateralOutput(output);
+  }
+
+  return output;
+}
+
+trajectory_follower::LateralOutput MpcLateralController::getDebugLateralOutput(
+  const trajectory_follower::LateralOutput & input)
+{
+  const static float MAX_TIME = 2.0;
+  const static float MAX_STEER = 0.4;  // 0.4rad; 22deg
+  const auto control_time = std::clamp(debug_control_->data.at(0), 0.0f, MAX_TIME);
+  const auto steer = std::clamp(debug_control_->data.at(1), -MAX_STEER, MAX_STEER);
+
+  const auto diff_time = (node_->now() - debug_control_->stamp).seconds();
+  if (diff_time > control_time) {
+    // no additional control
+    return input;
+  }
+
+  RCLCPP_ERROR_STREAM(
+    rclcpp::get_logger("mpc_debug"), "control_time: " << control_time << ", steer: " << steer);
+
+  auto output = input;
+  output.control_cmd.steering_tire_angle = steer;
+
+  return output;
 }
 
 bool MpcLateralController::isSteerConverged(const AckermannLateralCommand & cmd) const

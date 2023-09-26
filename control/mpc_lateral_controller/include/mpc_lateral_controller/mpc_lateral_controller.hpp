@@ -62,6 +62,13 @@ private:
   rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr m_pub_debug_values;
   rclcpp::Publisher<Float32Stamped>::SharedPtr m_pub_steer_offset;
 
+  // debug
+  Float32MultiArrayStamped::SharedPtr debug_control_;
+  rclcpp::Subscription<Float32MultiArrayStamped>::SharedPtr sub_control_;
+  trajectory_follower::LateralOutput getDebugLateralOutput(
+    const trajectory_follower::LateralOutput & input);
+  void onDebugControl(const Float32MultiArrayStamped::SharedPtr msg) { debug_control_ = msg; };
+
   //!< @brief parameters for path smoothing
   TrajectoryFilteringParam m_trajectory_filtering_param;
 
