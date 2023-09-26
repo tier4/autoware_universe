@@ -209,30 +209,6 @@ int isInNoFaultCondition(
   return false;
 }
 
-bool ignoreModules(
-  const autoware_auto_system_msgs::msg::AutowareState & autoware_state,
-  const DiagConfig & required_module)
-{
-  using autoware_auto_system_msgs::msg::AutowareState;
-  using autoware_auto_vehicle_msgs::msg::ControlModeReport;
-  using tier4_control_msgs::msg::GateMode;
-
-  const auto is_planning_ignore_state =
-    (autoware_state.state == AutowareState::INITIALIZING) ||
-    (autoware_state.state == AutowareState::WAITING_FOR_ROUTE) ||
-    (autoware_state.state == AutowareState::PLANNING) ||
-    (autoware_state.state == AutowareState::FINALIZING);
-
-  const auto ignore_module =
-    (required_module.name == "/autoware/planning/node_alive_monitoring" ||
-     required_module.name == "/autoware/control/autonomous_driving/node_alive_monitoring");
-
-  if (ignore_module && is_planning_ignore_state) {
-    return true;
-  }
-
-  return false;
-}
 }  // namespace
 
 AutowareErrorMonitor::AutowareErrorMonitor()
@@ -517,9 +493,6 @@ uint8_t AutowareErrorMonitor::getHazardLevel(
   using autoware_auto_system_msgs::msg::HazardStatus;
 
   if (isOverLevel(diag_level, required_module.spf_at)) {
-    if (ignoreModules(*autoware_state_, required_module)) {
-      return HazardStatus::NO_FAULT;
-    }
     return HazardStatus::SINGLE_POINT_FAULT;
   }
   if (isOverLevel(diag_level, required_module.lf_at)) {
