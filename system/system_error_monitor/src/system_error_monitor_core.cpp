@@ -208,7 +208,6 @@ int isInNoFaultCondition(
 
   return false;
 }
-
 }  // namespace
 
 AutowareErrorMonitor::AutowareErrorMonitor()
