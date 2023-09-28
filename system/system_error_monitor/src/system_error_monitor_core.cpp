@@ -338,23 +338,22 @@ void AutowareErrorMonitor::loadRequiredModules(const std::string & key)
     std::string auto_recovery_approval_str;
     this->get_parameter_or(auto_recovery_key, auto_recovery_approval_str, std::string("true"));
 
-    const auto before_planning_control_ignore_key = module_name_with_prefix +
-                                                    std::string(".before_planning_control_ignore");
+    const auto before_planning_control_ignore_key =
+      module_name_with_prefix + std::string(".before_planning_control_ignore");
     std::string before_planning_control_ignore_str;
     this->get_parameter_or(
-      before_planning_control_ignore_key, before_planning_control_ignore_str,
-      std::string("false"));
+      before_planning_control_ignore_key, before_planning_control_ignore_str, std::string("false"));
 
     // Convert auto_recovery_approval_str to bool
     bool auto_recovery_approval{};
     std::istringstream(auto_recovery_approval_str) >> std::boolalpha >> auto_recovery_approval;
 
     bool before_planning_control_ignore{};
-    std::istringstream(before_planning_control_ignore_str) >>
-      std::boolalpha >> before_planning_control_ignore;
+    std::istringstream(before_planning_control_ignore_str) >> std::boolalpha >>
+      before_planning_control_ignore;
 
-    required_modules.push_back({param_module, sf_at, lf_at, spf_at, auto_recovery_approval,
-                                before_planning_control_ignore});
+    required_modules.push_back(
+      {param_module, sf_at, lf_at, spf_at, auto_recovery_approval, before_planning_control_ignore});
   }
 
   required_modules_map_.insert(std::make_pair(key, required_modules));
@@ -516,7 +515,7 @@ uint8_t AutowareErrorMonitor::getHazardLevel(
   using autoware_auto_system_msgs::msg::HazardStatus;
 
   if (isOverLevel(diag_level, required_module.spf_at)) {
-    if(ignoreBeforePlanningControl(*autoware_state_, required_module)){
+    if (ignoreBeforePlanningControl(*autoware_state_, required_module)) {
       return HazardStatus::NO_FAULT;
     }
     return HazardStatus::SINGLE_POINT_FAULT;
@@ -672,8 +671,6 @@ bool AutowareErrorMonitor::canAutoRecovery() const
   }
   return true;
 }
-
-
 
 bool AutowareErrorMonitor::isEmergencyHoldingRequired() const
 {
