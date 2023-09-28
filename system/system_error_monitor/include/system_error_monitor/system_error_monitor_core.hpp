@@ -48,7 +48,7 @@ struct DiagConfig
   std::string lf_at;
   std::string spf_at;
   bool auto_recovery;
-  bool before_planning_control_ignore;
+  bool ignore_until_waiting_for_route;
 };
 
 using RequiredModules = std::vector<DiagConfig>;

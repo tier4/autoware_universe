@@ -220,7 +220,7 @@ bool ignoreBeforePlanningControl(
     (autoware_state.state == AutowareState::WAITING_FOR_ROUTE) ||
     (autoware_state.state == AutowareState::PLANNING);
 
-  if (is_in_autonomous_ignore_state && required_module.before_planning_control_ignore) {
+  if (is_in_autonomous_ignore_state && required_module.ignore_until_waiting_for_route) {
     return true;
   }
   return false;
@@ -338,22 +338,22 @@ void AutowareErrorMonitor::loadRequiredModules(const std::string & key)
     std::string auto_recovery_approval_str;
     this->get_parameter_or(auto_recovery_key, auto_recovery_approval_str, std::string("true"));
 
-    const auto before_planning_control_ignore_key =
-      module_name_with_prefix + std::string(".before_planning_control_ignore");
-    std::string before_planning_control_ignore_str;
+    const auto ignore_until_waiting_for_route_key =
+      module_name_with_prefix + std::string(".ignore_until_waiting_for_route");
+    std::string ignore_until_waiting_for_route_str;
     this->get_parameter_or(
-      before_planning_control_ignore_key, before_planning_control_ignore_str, std::string("false"));
+      ignore_until_waiting_for_route_key, ignore_until_waiting_for_route_str, std::string("false"));
 
     // Convert auto_recovery_approval_str to bool
     bool auto_recovery_approval{};
     std::istringstream(auto_recovery_approval_str) >> std::boolalpha >> auto_recovery_approval;
 
-    bool before_planning_control_ignore{};
-    std::istringstream(before_planning_control_ignore_str) >> std::boolalpha >>
-      before_planning_control_ignore;
+    bool ignore_until_waiting_for_route{};
+    std::istringstream(ignore_until_waiting_for_route_str) >> std::boolalpha >>
+      ignore_until_waiting_for_route;
 
     required_modules.push_back(
-      {param_module, sf_at, lf_at, spf_at, auto_recovery_approval, before_planning_control_ignore});
+      {param_module, sf_at, lf_at, spf_at, auto_recovery_approval, ignore_until_waiting_for_route});
   }
 
   required_modules_map_.insert(std::make_pair(key, required_modules));
