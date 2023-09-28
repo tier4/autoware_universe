@@ -208,7 +208,7 @@ int isInNoFaultCondition(
 
   return false;
 }
-bool ignoreBeforePlanningControl(
+bool ignoreUntilWaitingForRoute(
   const autoware_auto_system_msgs::msg::AutowareState & autoware_state,
   const DiagConfig & required_module)
 {
@@ -217,8 +217,7 @@ bool ignoreBeforePlanningControl(
 
   const auto is_in_autonomous_ignore_state =
     (autoware_state.state == AutowareState::INITIALIZING) ||
-    (autoware_state.state == AutowareState::WAITING_FOR_ROUTE) ||
-    (autoware_state.state == AutowareState::PLANNING);
+    (autoware_state.state == AutowareState::WAITING_FOR_ROUTE);
 
   if (is_in_autonomous_ignore_state && required_module.ignore_until_waiting_for_route) {
     return true;
