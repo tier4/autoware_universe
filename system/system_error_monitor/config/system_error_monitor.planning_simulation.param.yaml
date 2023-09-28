@@ -4,7 +4,7 @@
 #   lf_at: diag level where it becomes Latent Fault
 #   spf_at: diag level where it becomes Single Point Fault
 #   auto_recovery: Determines whether the system will automatically recover when it recovers from an error.
-#
+#   before_planning_control_ignore: Determines whether the system will ignore the error before planning and control for when initializing and wait for route.
 # Note:
 # empty-value for sf_at, lf_at and spf_at is "none"
 # default values are:
