@@ -12,6 +12,7 @@
 #   lf_at: "warn"
 #   spf_at: "error"
 #   auto_recovery: "true"
+#   before_planning_control_ignore: "false"
 ---
 /**:
   ros__parameters:
