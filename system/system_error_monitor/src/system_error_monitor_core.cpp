@@ -520,7 +520,7 @@ uint8_t AutowareErrorMonitor::getHazardLevel(
   using autoware_auto_system_msgs::msg::HazardStatus;
 
   if (isOverLevel(diag_level, required_module.spf_at)) {
-    if (ignoreBeforePlanningControl(*autoware_state_, required_module)) {
+    if (ignoreUntilWaitingForRoute(*autoware_state_, required_module)) {
       return HazardStatus::NO_FAULT;
     }
     return HazardStatus::SINGLE_POINT_FAULT;
