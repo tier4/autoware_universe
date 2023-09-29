@@ -57,6 +57,7 @@ struct KeyName
 {
   static constexpr const char * autonomous_driving = "autonomous_driving";
   static constexpr const char * external_control = "external_control";
+  static constexpr const char * manual_control = "manual_control";
 };
 
 class AutowareErrorMonitor : public rclcpp::Node

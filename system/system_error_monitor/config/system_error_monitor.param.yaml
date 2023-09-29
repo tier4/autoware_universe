@@ -42,6 +42,15 @@
 
         /autoware/vehicle/node_alive_monitoring: default
 
+      manual_control:
+        /autoware/control/control_command_gate/node_alive_monitoring: default
+        /autoware/control/autonomous_emergency_braking/performance_monitoring/emergency_stop: { sf_at: "none", lf_at: "warn", spf_at: "error", auto_recovery: "false"}
+
+        /autoware/system/node_alive_monitoring: default
+        /autoware/system/emergency_stop_operation: default
+
+        /autoware/vehicle/node_alive_monitoring: default
+
       external_control:
         /autoware/control/control_command_gate/node_alive_monitoring: default
         /autoware/control/autonomous_emergency_braking/performance_monitoring/emergency_stop: { sf_at: "none", lf_at: "warn", spf_at: "error", auto_recovery: "false"}
