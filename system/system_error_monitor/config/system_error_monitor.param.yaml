@@ -4,7 +4,7 @@
 #   lf_at: diag level where it becomes Latent Fault
 #   spf_at: diag level where it becomes Single Point Fault
 #   auto_recovery: Determines whether the system will automatically recover when it recovers from an error.
-#   ignore_until_waiting_for_route: Determines whether the system will ignore the error before planning and control until waiting for route.
+#   ignore_until_waiting_for_route: Determines whether the system will ignore the module until waiting for route.
 # Note:
 # empty-value for sf_at, lf_at and spf_at is "none"
 # default values are:
