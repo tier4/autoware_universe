@@ -206,6 +206,11 @@ def launch_setup(context, *args, **kwargs):
         ],
         # extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
         prefix="konsole -e gdb -ex run --args",
+        arguments=[
+            "--ros-args",
+            "--log-level",
+            "planning.scenario_planning.lane_driving.behavior_planning.behavior_velocity_planner.out_of_lane_module:=debug",
+        ],
     )
 
     container = ComposableNodeContainer(
