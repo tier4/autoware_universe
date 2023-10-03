@@ -120,19 +120,20 @@ struct Overlap
 /// @brief range along the path where ego overlaps another lane
 struct OverlapRange
 {
-  lanelet::ConstLanelet lane;
+  lanelet::ConstLanelet lane{};
   size_t entering_path_idx{};
   size_t exiting_path_idx{};
-  lanelet::BasicPoint2d entering_point;  // pose of the overlapping point closest along the lane
-  lanelet::BasicPoint2d exiting_point;   // pose of the overlapping point furthest along the lane
-  double inside_distance{};              // [m] how much ego footprint enters the lane
+  lanelet::BasicPoint2d entering_point{};  // pose of the overlapping point closest along the lane
+  lanelet::BasicPoint2d exiting_point{};   // pose of the overlapping point furthest along the lane
+  double inside_distance{};                // [m] how much ego footprint enters the lane
+  std::optional<Slowdown> decision{};
+  bool is_critical = false;
   mutable struct
   {
-    std::vector<Overlap> overlaps;
-    std::optional<Slowdown> decision;
-    RangeTimes times;
+    std::vector<Overlap> overlaps{};
+    RangeTimes times{};
     std::optional<autoware_auto_perception_msgs::msg::PredictedObject> object{};
-  } debug;
+  } debug{};
 };
 using OverlapRanges = std::vector<OverlapRange>;
 /// @brief representation of a lane and its current overlap range
@@ -141,8 +142,8 @@ struct OtherLane
   bool range_is_open = false;
   RangeBound first_range_bound{};
   RangeBound last_range_bound{};
-  lanelet::ConstLanelet lanelet;
-  lanelet::BasicPolygon2d polygon;
+  lanelet::ConstLanelet lanelet{};
+  lanelet::BasicPolygon2d polygon{};
 
   explicit OtherLane(lanelet::ConstLanelet ll) : lanelet(std::move(ll))
   {
@@ -172,13 +173,13 @@ struct EgoData
   size_t first_path_idx{};
   double velocity{};   // [m/s]
   double max_decel{};  // [m/s²]
-  geometry_msgs::msg::Pose pose;
+  geometry_msgs::msg::Pose pose{};
+  lanelet::BasicPolygon2d current_footprint{};
 };
 
 /// @brief data needed to make decisions
 struct DecisionInputs
 {
-  OverlapRanges ranges{};
   EgoData ego_data;
   autoware_auto_perception_msgs::msg::PredictedObjects objects{};
   std::shared_ptr<route_handler::RouteHandler> route_handler{};

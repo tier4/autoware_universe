@@ -75,16 +75,6 @@ std::optional<std::pair<double, double>> object_time_to_range(
 /// @param [in] logger ros logger
 bool will_collide_on_range(
   const RangeTimes & range_times, const PlannerParam & params, const rclcpp::Logger & logger);
-/// @brief check whether we should avoid entering the given range
-/// @param [in] range the range to check
-/// @param [in] inputs information used to take decisions (ranges, ego and objects data, route
-/// handler, lanelets)
-/// @param [in] params parameters
-/// @param [in] logger ros logger
-/// @return return true if we should avoid entering the range
-bool should_not_enter(
-  const OverlapRange & range, const DecisionInputs & inputs, const PlannerParam & params,
-  const rclcpp::Logger & logger);
 /// @brief set the velocity of a decision (or unset it) based on the distance away from the range
 /// @param [out] decision decision to update (either set its velocity or unset the decision)
 /// @param [in] distance distance between ego and the range corresponding to the decision
@@ -97,18 +87,17 @@ void set_decision_velocity(
 /// handler, lanelets)
 /// @param [in] params parameters
 /// @param [in] logger ros logger
-/// @return return an optional decision to slowdown or stop
-std::optional<Slowdown> calculate_decision(
-  const OverlapRange & range, const DecisionInputs & inputs, const PlannerParam & params,
+void calculate_decision(
+  OverlapRange & range, const DecisionInputs & inputs, const PlannerParam & params,
   const rclcpp::Logger & logger);
-/// @brief calculate decisions to slowdown or stop before some overlapping ranges
+/// @brief calculate decisions to slowdown or stop before for the given overlapping ranges
 /// @param [in] inputs information used to take decisions (ranges, ego and objects data, route
 /// handler, lanelets)
 /// @param [in] params parameters
 /// @param [in] logger ros logger
-/// @return return the calculated decisions to slowdown or stop
-std::vector<Slowdown> calculate_decisions(
-  const DecisionInputs & inputs, const PlannerParam & params, const rclcpp::Logger & logger);
+void calculate_decisions(
+  std::vector<OverlapRange> & ranges, const DecisionInputs & inputs, const PlannerParam & params,
+  const rclcpp::Logger & logger);
 }  // namespace behavior_velocity_planner::out_of_lane
 
 #endif  // DECISIONS_HPP_

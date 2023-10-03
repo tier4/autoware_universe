@@ -78,7 +78,8 @@ bool OutOfLaneModule::modifyPathVelocity(PathWithLaneId * path, StopReason * sto
   ego_data.velocity = planner_data_->current_velocity->twist.linear.x;
   ego_data.max_decel = -planner_data_->max_stop_acceleration_threshold;
   stopwatch.tic("calculate_path_footprints");
-  const auto current_ego_footprint = calculate_current_ego_footprint(ego_data, params_, true);
+  ego_data.current_footprint = calculate_current_ego_footprint(ego_data, params_, true);
+  debug_data_.current_footprint = ego_data.current_footprint;
   const auto path_footprints = calculate_path_footprints(ego_data, params_);
   const auto calculate_path_footprints_us = stopwatch.toc("calculate_path_footprints");
   // Calculate lanelets to ignore and consider
@@ -98,10 +99,10 @@ bool OutOfLaneModule::modifyPathVelocity(PathWithLaneId * path, StopReason * sto
   debug_data_.first_path_idx = ego_data.first_path_idx;
 
   if (params_.skip_if_already_overlapping) {
-    debug_data_.current_footprint = current_ego_footprint;
     const auto overlapped_lanelet_it =
       std::find_if(other_lanelets.begin(), other_lanelets.end(), [&](const auto & ll) {
-        return boost::geometry::intersects(ll.polygon2d().basicPolygon(), current_ego_footprint);
+        return boost::geometry::intersects(
+          ll.polygon2d().basicPolygon(), ego_data.current_footprint);
       });
     if (overlapped_lanelet_it != other_lanelets.end()) {
       debug_data_.current_overlapped_lanelets.push_back(*overlapped_lanelet_it);
@@ -111,7 +112,7 @@ bool OutOfLaneModule::modifyPathVelocity(PathWithLaneId * path, StopReason * sto
   }
   // Calculate overlapping ranges
   stopwatch.tic("calculate_overlapping_ranges");
-  const auto ranges =
+  auto ranges =  // these are already sorted by increasing arc length along the path
     calculate_overlapping_ranges(path_footprints, path_lanelets, other_lanelets, params_);
   prev_overlapping_path_points_.clear();
   for (const auto & range : ranges)
@@ -121,20 +122,18 @@ bool OutOfLaneModule::modifyPathVelocity(PathWithLaneId * path, StopReason * sto
   // Calculate stop and slowdown points
   stopwatch.tic("calculate_decisions");
   DecisionInputs inputs;
-  inputs.ranges = ranges;
   inputs.ego_data = ego_data;
   inputs.objects = filter_predicted_objects(*planner_data_->predicted_objects, ego_data, params_);
   inputs.route_handler = planner_data_->route_handler_;
   inputs.lanelets = other_lanelets;
-  const auto decisions = calculate_decisions(inputs, params_, logger_);
+  calculate_decisions(ranges, inputs, params_, logger_);
   const auto calculate_decisions_us = stopwatch.toc("calculate_decisions");
   stopwatch.tic("calc_slowdown_points");
   if (  // reset the previous inserted point if the timer expired
     prev_inserted_point_ &&
     (clock_->now() - prev_inserted_point_time_).seconds() > params_.min_decision_duration)
     prev_inserted_point_.reset();
-  auto point_to_insert =
-    calculate_slowdown_point(ego_data, decisions, prev_inserted_point_, params_);
+  auto point_to_insert = calculate_slowdown_point(ego_data, ranges, prev_inserted_point_, params_);
   const auto calc_slowdown_points_us = stopwatch.toc("calc_slowdown_points");
   stopwatch.tic("insert_slowdown_points");
   debug_data_.slowdowns.clear();
@@ -164,11 +163,9 @@ bool OutOfLaneModule::modifyPathVelocity(PathWithLaneId * path, StopReason * sto
     velocity_factor_.set(
       path->points, planner_data_->current_odometry->pose, point_to_insert->point.point.pose,
       VelocityFactor::UNKNOWN);
-  } else if (!decisions.empty()) {
-    RCLCPP_WARN(logger_, "Could not insert stop point (would violate max deceleration limits)");
   }
   const auto insert_slowdown_points_us = stopwatch.toc("insert_slowdown_points");
-  debug_data_.ranges = inputs.ranges;
+  debug_data_.ranges = ranges;
 
   const auto total_time_us = stopwatch.toc();
   RCLCPP_DEBUG(
@@ -215,8 +212,9 @@ motion_utils::VirtualWalls OutOfLaneModule::createVirtualWalls()
   motion_utils::VirtualWall wall;
   wall.text = "out_of_lane";
   wall.longitudinal_offset = params_.front_offset;
-  wall.style = motion_utils::VirtualWallType::slowdown;
   for (const auto & slowdown : debug_data_.slowdowns) {
+    wall.style = slowdown.slowdown.velocity == 0.0 ? motion_utils::VirtualWallType::stop
+                                                   : motion_utils::VirtualWallType::slowdown;
     wall.pose = slowdown.point.point.pose;
     virtual_walls.push_back(wall);
   }

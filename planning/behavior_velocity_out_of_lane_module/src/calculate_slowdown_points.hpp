@@ -72,30 +72,41 @@ std::optional<PathPointWithLaneId> calculate_last_in_lane_pose(
       boost::geometry::overlaps(
         interpolated_footprint,
         prev_slowdown_point->slowdown.lane_to_avoid.polygon2d().basicPolygon());
-    if (respect_decel_limit && !is_overlap_lane && !is_overlap_extra_lane)
+    if (respect_decel_limit && !is_overlap_lane && !is_overlap_extra_lane) {
       return interpolated_point;
+    }
   }
   return std::nullopt;
 }
 
 /// @brief calculate the slowdown point to insert in the path
 /// @param ego_data ego data (path, velocity, etc)
-/// @param decisions decision (before which point to stop, what lane to avoid entering, etc)
+/// @param ranges ranges sorted by increasing arc length
 /// @param prev_slowdown_point previously calculated slowdown point
 /// @param params parameters
 /// @return optional slowdown point to insert in the path
 std::optional<SlowdownToInsert> calculate_slowdown_point(
-  const EgoData & ego_data, const std::vector<Slowdown> & decisions,
+  const EgoData & ego_data, const OverlapRanges & ranges,
   const std::optional<SlowdownToInsert> prev_slowdown_point, PlannerParam params)
 {
   params.extra_front_offset += params.dist_buffer;
   const auto base_footprint = make_base_footprint(params);
 
-  // search for the first slowdown decision for which a stop point can be inserted
-  for (const auto & decision : decisions) {
-    const auto last_in_lane_pose =
-      calculate_last_in_lane_pose(ego_data, decision, base_footprint, prev_slowdown_point, params);
-    if (last_in_lane_pose) return SlowdownToInsert{decision, *last_in_lane_pose};
+  // search for the first critical slowdown decision for which a stop point can be inserted
+  for (const auto & range : ranges) {
+    if (range.decision && range.is_critical) {
+      const auto last_in_lane_pose = calculate_last_in_lane_pose(
+        ego_data, *range.decision, base_footprint, prev_slowdown_point, params);
+      if (last_in_lane_pose) return SlowdownToInsert{*range.decision, *last_in_lane_pose};
+    }
+  }
+  // no critical overlap ? stop at the first non critical one
+  for (const auto & range : ranges) {
+    if (range.decision && !range.is_critical) {
+      const auto last_in_lane_pose = calculate_last_in_lane_pose(
+        ego_data, *range.decision, base_footprint, prev_slowdown_point, params);
+      if (last_in_lane_pose) return SlowdownToInsert{*range.decision, *last_in_lane_pose};
+    }
   }
   return std::nullopt;
 }

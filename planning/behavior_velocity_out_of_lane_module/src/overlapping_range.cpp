@@ -119,6 +119,9 @@ OverlapRanges calculate_overlapping_ranges(
       calculate_overlapping_ranges(path_footprints, path_lanelets, lanelet, params);
     ranges.insert(ranges.end(), lanelet_ranges.begin(), lanelet_ranges.end());
   }
+  std::sort(ranges.begin(), ranges.end(), [&](const auto & r1, const auto & r2) {
+    return r1.entering_path_idx < r2.entering_path_idx;
+  });
   return ranges;
 }
 

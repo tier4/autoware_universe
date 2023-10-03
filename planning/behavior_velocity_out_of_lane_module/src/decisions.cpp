@@ -275,10 +275,12 @@ bool will_collide_on_range(
          (params.mode == "ttc" && ttc_condition(range_times, params, logger));
 }
 
-bool should_not_enter(
-  const OverlapRange & range, const DecisionInputs & inputs, const PlannerParam & params,
+void calculate_decision(
+  OverlapRange & range, const DecisionInputs & inputs, const PlannerParam & params,
   const rclcpp::Logger & logger)
 {
+  // an overlap is critical if ego could completely block some dynamic object (based on lane width)
+  bool will_collide = false;
   RangeTimes range_times{};
   range_times.ego.enter_time =
     time_along_path(inputs.ego_data, range.entering_path_idx, params.ego_min_velocity);
@@ -308,11 +310,23 @@ bool should_not_enter(
     if (will_collide_on_range(range_times, params, logger)) {
       range.debug.times = range_times;
       range.debug.object = object;
-      return true;
+      will_collide = true;
+      const auto remaining_lane_width =
+        boost::geometry::distance(
+          range.lane.leftBound2d().basicLineString(), range.lane.rightBound2d().basicLineString()) -
+        range.inside_distance - object.shape.dimensions.y;
+      range.is_critical = remaining_lane_width < params.dist_buffer;
     }
   }
   range.debug.times = range_times;
-  return false;
+  if (will_collide) {
+    range.decision.emplace();
+    range.decision->target_path_idx =
+      inputs.ego_data.first_path_idx + range.entering_path_idx;  // add offset from curr pose
+    range.decision->lane_to_avoid = range.lane;
+    const auto ego_dist_to_range = distance_along_path(inputs.ego_data, range.entering_path_idx);
+    set_decision_velocity(range.decision, ego_dist_to_range, params);
+  }
 }
 
 void set_decision_velocity(
@@ -327,33 +341,14 @@ void set_decision_velocity(
   }
 }
 
-std::optional<Slowdown> calculate_decision(
-  const OverlapRange & range, const DecisionInputs & inputs, const PlannerParam & params,
+void calculate_decisions(
+  OverlapRanges & ranges, const DecisionInputs & inputs, const PlannerParam & params,
   const rclcpp::Logger & logger)
 {
-  std::optional<Slowdown> decision;
-  if (should_not_enter(range, inputs, params, logger)) {
-    decision.emplace();
-    decision->target_path_idx =
-      inputs.ego_data.first_path_idx + range.entering_path_idx;  // add offset from curr pose
-    decision->lane_to_avoid = range.lane;
-    const auto ego_dist_to_range = distance_along_path(inputs.ego_data, range.entering_path_idx);
-    set_decision_velocity(decision, ego_dist_to_range, params);
-  }
-  return decision;
-}
-
-std::vector<Slowdown> calculate_decisions(
-  const DecisionInputs & inputs, const PlannerParam & params, const rclcpp::Logger & logger)
-{
-  std::vector<Slowdown> decisions;
-  for (const auto & range : inputs.ranges) {
+  for (auto & range : ranges) {
     if (range.entering_path_idx == 0UL) continue;  // skip if we already entered the range
-    const auto optional_decision = calculate_decision(range, inputs, params, logger);
-    range.debug.decision = optional_decision;
-    if (optional_decision) decisions.push_back(*optional_decision);
+    calculate_decision(range, inputs, params, logger);
   }
-  return decisions;
 }
 
 }  // namespace behavior_velocity_planner::out_of_lane

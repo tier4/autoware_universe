@@ -116,8 +116,12 @@ void add_range_markers(
 {
   auto debug_marker = get_base_marker();
   debug_marker.ns = "ranges";
-  debug_marker.color = tier4_autoware_utils::createMarkerColor(0.2, 0.9, 0.1, 0.5);
+  debug_marker.scale.x = 0.5;
   for (const auto & range : ranges) {
+    if (range.is_critical)
+      debug_marker.color = tier4_autoware_utils::createMarkerColor(0.8, 0.9, 0.1, 0.5);
+    else
+      debug_marker.color = tier4_autoware_utils::createMarkerColor(0.2, 0.9, 0.1, 0.5);
     debug_marker.points.clear();
     debug_marker.points.push_back(
       path.points[first_ego_idx + range.entering_path_idx].point.pose.position);
@@ -146,7 +150,7 @@ void add_range_markers(
   debug_marker.points.clear();
   for (const auto & range : ranges) {
     debug_marker.type = debug_marker.LINE_STRIP;
-    if (range.debug.decision) {
+    if (range.decision) {
       debug_marker.points.push_back(tier4_autoware_utils::createMarkerPosition(
         range.entering_point.x(), range.entering_point.y(), z));
       debug_marker.points.push_back(
