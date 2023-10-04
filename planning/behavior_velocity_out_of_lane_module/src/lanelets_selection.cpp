@@ -42,6 +42,27 @@ lanelet::ConstLanelets calculate_ignored_lanelets(
     const auto is_path_lanelet = contains_lanelet(path_lanelets, l.second.id());
     if (!is_path_lanelet) ignored_lanelets.push_back(l.second);
   }
+  // ignore lanelets that are already overlapped
+  const lanelet::BasicPoint2d ego_point(ego_data.pose.position.x, ego_data.pose.position.y);
+  const auto lanelets_under_ego = lanelet::geometry::findWithin2d(
+    route_handler.getLaneletMapPtr()->laneletLayer, ego_point,
+    std::max({params.left_offset, params.right_offset, params.front_offset, params.rear_offset}));
+  for (const auto & l : lanelets_under_ego) {
+    if (!contains_lanelet(ignored_lanelets, l.second.id())) {
+      const auto is_already_overlapped =
+        boost::geometry::intersects(
+          ego_data.current_footprint, l.second.leftBound2d().basicLineString()) ||
+        boost::geometry::intersects(
+          ego_data.current_footprint, l.second.rightBound2d().basicLineString());
+      if (is_already_overlapped) {
+        ignored_lanelets.push_back(l.second);
+        for (const auto & following : route_handler.getRoutingGraphPtr()->following(l.second))
+          ignored_lanelets.push_back(following);
+        for (const auto & preceding : route_handler.getRoutingGraphPtr()->previous(l.second))
+          ignored_lanelets.push_back(preceding);
+      }
+    }
+  }
   return ignored_lanelets;
 }
 
@@ -72,14 +93,7 @@ lanelet::ConstLanelets calculate_other_lanelets(
       continue;
     const auto is_path_lanelet = contains_lanelet(path_lanelets, ll.second.id());
     const auto is_ignored_lanelet = contains_lanelet(ignored_lanelets, ll.second.id());
-    const auto is_already_overlapped =
-      boost::geometry::intersects(
-        ego_data.current_footprint, ll.second.leftBound2d().basicLineString()) ||
-      boost::geometry::intersects(
-        ego_data.current_footprint, ll.second.rightBound2d().basicLineString());
-    if (
-      !is_path_lanelet && !is_ignored_lanelet && !is_overlapped_by_path_lanelets(ll.second) &&
-      !is_already_overlapped)
+    if (!is_path_lanelet && !is_ignored_lanelet && !is_overlapped_by_path_lanelets(ll.second))
       other_lanelets.push_back(ll.second);
   }
   return other_lanelets;
