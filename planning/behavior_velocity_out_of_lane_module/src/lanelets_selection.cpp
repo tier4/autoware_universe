@@ -72,7 +72,14 @@ lanelet::ConstLanelets calculate_other_lanelets(
       continue;
     const auto is_path_lanelet = contains_lanelet(path_lanelets, ll.second.id());
     const auto is_ignored_lanelet = contains_lanelet(ignored_lanelets, ll.second.id());
-    if (!is_path_lanelet && !is_ignored_lanelet && !is_overlapped_by_path_lanelets(ll.second))
+    const auto is_already_overlapped =
+      boost::geometry::intersects(
+        ego_data.current_footprint, ll.second.leftBound2d().basicLineString()) ||
+      boost::geometry::intersects(
+        ego_data.current_footprint, ll.second.rightBound2d().basicLineString());
+    if (
+      !is_path_lanelet && !is_ignored_lanelet && !is_overlapped_by_path_lanelets(ll.second) &&
+      !is_already_overlapped)
       other_lanelets.push_back(ll.second);
   }
   return other_lanelets;
