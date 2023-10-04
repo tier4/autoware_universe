@@ -479,10 +479,12 @@ void BehaviorPathPlannerNode::run()
 
   // path handling
   const auto path = getPath(output);
+  const auto resampled_path = std::make_shared<PathWithLaneId>(
+    util::resamplePathWithSpline(*path, planner_data_->parameters.path_interval));
   const auto path_candidate = getPathCandidate(output);
-  planner_data_->prev_output_path = path;
+  planner_data_->prev_output_path = resampled_path;
 
-  auto clipped_path = modifyPathForSmoothGoalConnection(*path);
+  auto clipped_path = modifyPathForSmoothGoalConnection(*resampled_path);
   clipPathLength(clipped_path);
 
   if (!clipped_path.points.empty()) {
@@ -493,7 +495,7 @@ void BehaviorPathPlannerNode::run()
   path_candidate_publisher_->publish(util::toPath(*path_candidate));
 
   // debug_path_publisher_->publish(util::toPath(path));
-  debug_drivable_area_publisher_->publish(path->drivable_area);
+  debug_drivable_area_publisher_->publish(resampled_path->drivable_area);
 
   // for turn signal
   {
@@ -537,9 +539,7 @@ PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPath(const BehaviorModuleO
   RCLCPP_DEBUG(
     get_logger(), "BehaviorTreeManager: output is %s.", bt_output.path ? "FOUND" : "NOT FOUND");
 
-  const auto resampled_path =
-    util::resamplePathWithSpline(*path, planner_data_->parameters.path_interval);
-  return std::make_shared<PathWithLaneId>(resampled_path);
+  return path;
 }
 
 PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPathCandidate(
