@@ -90,10 +90,6 @@ IntersectionModule::IntersectionModule(
     occlusion_stop_state_machine_.setMarginTime(planner_param_.occlusion.stop_release_margin_time);
     occlusion_stop_state_machine_.setState(StateMachine::State::GO);
   }
-  {
-    stuck_private_area_timeout_.setMarginTime(planner_param_.stuck_vehicle.timeout_private_area);
-    stuck_private_area_timeout_.setState(StateMachine::State::STOP);
-  }
 
   decision_state_pub_ =
     node_.create_publisher<std_msgs::msg::String>("~/debug/intersection/decision_state", 1);
@@ -789,20 +785,9 @@ IntersectionModule::DecisionResult IntersectionModule::modifyPathVelocityDetail(
     checkStuckVehicle(planner_data_, ego_lane_with_next_lane, *path, intersection_stop_lines);
 
   if (stuck_detected) {
-    const double dist_stopline = motion_utils::calcSignedArcLength(
-      path->points, path->points.at(closest_idx).point.pose.position,
-      path->points.at(stuck_stop_line_idx).point.pose.position);
-    const bool approached_stop_line =
-      (std::fabs(dist_stopline) < planner_param_.common.stop_overshoot_margin);
-    const bool is_stopped = planner_data_->isVehicleStopped();
-    if (is_stopped && approached_stop_line) {
-      stuck_private_area_timeout_.setStateWithMarginTime(
-        StateMachine::State::GO, logger_.get_child("stuck_private_area_timeout"), *clock_);
-    }
-    const bool timeout =
-      (is_private_area_ && stuck_private_area_timeout_.getState() == StateMachine::State::GO);
-    if (!timeout) {
-      is_peeking_ = false;
+    if (is_private_area_ && planner_param_.stuck_vehicle.enable_private_area_stuck_disregard) {
+      ;  // do nothing (in order to archive correspondence to awf-main)
+    } else {
       return IntersectionModule::StuckStop{
         stuck_stop_line_idx, !first_attention_area.has_value(), intersection_stop_lines};
     }

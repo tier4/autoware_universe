@@ -74,6 +74,7 @@ public:
       bool enable_front_car_decel_prediction;  //! flag for using above feature
       */
       double timeout_private_area;
+      bool enable_private_area_stuck_disregard;
     } stuck_vehicle;
     struct CollisionDetection
     {
@@ -231,7 +232,6 @@ private:
 
   // for stuck vehicle detection
   const bool is_private_area_;
-  StateMachine stuck_private_area_timeout_;
 
   // for RTC
   const UUID occlusion_uuid_;
