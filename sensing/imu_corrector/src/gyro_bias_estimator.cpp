@@ -105,6 +105,11 @@ void GyroBiasEstimator::update_diagnostics(diagnostic_updater::DiagnosticStatusW
         "Gyro bias may be incorrect. Please calibrate IMU and reflect the result in "
         "imu_corrector. You may also use the output of gyro_bias_estimator.");
       stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "WARN");
+      RCLCPP_WARN(
+        get_logger(), "gyro_bias_x: %lf, gyro_bias_y: %lf, gyro_bias_z: %lf",
+        (gyro_bias_.value().x - angular_velocity_offset_x_),
+        (gyro_bias_.value().y - angular_velocity_offset_y_),
+        (gyro_bias_.value().z - angular_velocity_offset_z_));
     }
   }
 }
