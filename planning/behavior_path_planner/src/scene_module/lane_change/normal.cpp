@@ -877,6 +877,10 @@ bool NormalLaneChange::getLaneChangePaths(
   const auto target_neighbor_preferred_lane_poly_2d =
     lanelet::utils::to2D(target_neighbor_preferred_lane_poly).basicPolygon();
 
+  if (target_neighbor_preferred_lane_poly_2d.empty()) {
+    return false;
+  }
+
   const auto target_objects = getTargetObjects(current_lanes, target_lanes);
 
   candidate_paths->reserve(longitudinal_acc_sampling_values.size() * lateral_acc_sampling_num);
