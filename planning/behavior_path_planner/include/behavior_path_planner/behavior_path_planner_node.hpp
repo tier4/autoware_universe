@@ -51,6 +51,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace behavior_path_planner
 {
