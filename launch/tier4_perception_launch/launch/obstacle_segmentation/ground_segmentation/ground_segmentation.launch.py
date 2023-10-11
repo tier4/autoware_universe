@@ -225,14 +225,36 @@ class GroundSegmentationPipeline:
                 ],
             )
         )
-
+        components.append(
+            ComposableNode(
+                package="pointcloud_preprocessor",
+                plugin="pointcloud_preprocessor::VoxelGridDownsampleFilterComponent",
+                name="voxel_grid_downsample_filter",
+                remappings=[
+                    ("input", "range_cropped/pointcloud"),
+                    ("output", "range_cropped/downsampled/pointcloud"),
+                ],
+                parameters=[
+                    {
+                        "input_frame": LaunchConfiguration("base_frame"),
+                        "output_frame": LaunchConfiguration("base_frame"),
+                        "voxel_size_x": LaunchConfiguration("voxel_size"),
+                        "voxel_size_y": LaunchConfiguration("voxel_size"),
+                        "voxel_size_z": LaunchConfiguration("voxel_size"),
+                    }
+                ],
+                extra_arguments=[
+                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
+                ],
+            )
+        )
         components.append(
             ComposableNode(
                 package="ground_segmentation",
                 plugin=self.ground_segmentation_param["common_ground_filter"]["plugin"],
                 name="common_ground_filter",
                 remappings=[
-                    ("input", "range_cropped/pointcloud"),
+                    ("input", "range_cropped/downsampled/pointcloud"),
                     ("output", output_topic),
                 ],
                 parameters=[
@@ -521,6 +543,7 @@ def generate_launch_description():
     add_launch_arg("use_pointcloud_container", "False")
     add_launch_arg("container_name", "perception_pipeline_container")
     add_launch_arg("input/pointcloud", "/sensing/lidar/concatenated/pointcloud")
+    add_launch_arg("voxel_size", "0.1")
 
     set_container_executable = SetLaunchConfiguration(
         "container_executable",
