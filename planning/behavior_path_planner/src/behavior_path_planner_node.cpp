@@ -478,10 +478,7 @@ void BehaviorPathPlannerNode::run()
   const auto output = bt_manager_->run(planner_data_);
 
   // path handling
-  const auto paths = getPath(output);
-  const auto path = paths.first;
-  const auto original_path = paths.second;
-
+  const auto path = getPath(output);
   const auto path_candidate = getPathCandidate(output);
   planner_data_->prev_output_path = path;
 
@@ -507,7 +504,7 @@ void BehaviorPathPlannerNode::run()
       hazard_signal.command = output.turn_signal_info.hazard_signal.command;
     } else {
       turn_signal = turn_signal_decider_.getTurnSignal(
-        *original_path, planner_data_->self_pose->pose, *(planner_data_->route_handler),
+        *path, planner_data_->self_pose->pose, *(planner_data_->route_handler),
         output.turn_signal_info.turn_signal, output.turn_signal_info.signal_distance);
       hazard_signal.command = HazardLightsCommand::DISABLE;
     }
@@ -530,9 +527,7 @@ void BehaviorPathPlannerNode::run()
   RCLCPP_DEBUG(get_logger(), "----- behavior path planner end -----\n\n");
 }
 
-// output: spline interpolated path, original path
-std::pair<PathWithLaneId::SharedPtr, PathWithLaneId::SharedPtr> BehaviorPathPlannerNode::getPath(
-  const BehaviorModuleOutput & bt_output)
+PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPath(const BehaviorModuleOutput & bt_output)
 {
   // TODO(Horibe) do some error handling when path is not available.
 
@@ -544,7 +539,7 @@ std::pair<PathWithLaneId::SharedPtr, PathWithLaneId::SharedPtr> BehaviorPathPlan
 
   const auto resampled_path =
     util::resamplePathWithSpline(*path, planner_data_->parameters.path_interval);
-  return std::make_pair(std::make_shared<PathWithLaneId>(resampled_path), path);
+  return std::make_shared<PathWithLaneId>(resampled_path);
 }
 
 PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPathCandidate(
