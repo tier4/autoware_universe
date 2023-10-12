@@ -91,10 +91,17 @@ PathWithLaneId resamplePathWithSpline(const PathWithLaneId & path, double interv
 {
   const auto base_points = calcPathArcLengthArray(path);
   auto sampling_points = tier4_autoware_utils::arange(0.0, base_points.back(), interval);
-  sampling_points.insert(sampling_points.end(), base_points.begin(), base_points.end());
+
+  constexpr double epsilon = 0.01;
+  for (const auto & b : base_points) {
+    const auto is_almost_same_value = std::find_if(
+      sampling_points.begin(), sampling_points.end(),
+      [&](const auto v) { return std::abs(v - b) < epsilon; });
+    if (is_almost_same_value == sampling_points.end()) {
+      sampling_points.push_back(b);
+    }
+  }
   std::sort(sampling_points.begin(), sampling_points.end());
-  sampling_points.erase(
-    std::unique(sampling_points.begin(), sampling_points.end()), sampling_points.end());
 
   if (base_points.empty() || sampling_points.empty()) {
     return path;
