@@ -139,9 +139,9 @@ PathWithLaneId resamplePathWithSpline(const PathWithLaneId & path, double interv
   //
   size_t base_idx{0};
   for (size_t i = 0; i < resampled_path.points.size(); ++i) {
-    while (base_idx < base_points.size() - 1 && (
-             (sampling_points.at(i) > base_points.at(base_idx)) ||
-           (sampling_points.at(i) - base_points.at(base_idx)) > 1e-3)) {
+    while (base_idx < base_points.size() - 1 &&
+           ((sampling_points.at(i) > base_points.at(base_idx)) ||
+            (sampling_points.at(i) - base_points.at(base_idx)) > 1e-3)) {
       ++base_idx;
     }
     size_t ref_idx = std::max(static_cast<int>(base_idx), 0);
