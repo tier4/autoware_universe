@@ -359,7 +359,8 @@ bool DetectionAreaModule::isOverLine(
 {
   const PointWithSearchRangeIndex src_point_with_search_range_index =
     planning_utils::findFirstNearSearchRangeIndex(path.points, self_pose.position);
-  const PointWithSearchRangeIndex dst_point_with_search_range_index = {line_pose.position, planning_utils::getPathIndexRangeIncludeLaneId(path, lane_id_)};
+  const PointWithSearchRangeIndex dst_point_with_search_range_index = {
+    line_pose.position, planning_utils::getPathIndexRangeIncludeLaneId(path, lane_id_)};
 
   return planning_utils::calcSignedArcLengthWithSearchIndex(
            path.points, src_point_with_search_range_index, dst_point_with_search_range_index) < 0;
