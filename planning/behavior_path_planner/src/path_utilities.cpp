@@ -90,7 +90,18 @@ double calcPathArcLength(const PathWithLaneId & path, size_t start, size_t end)
 PathWithLaneId resamplePathWithSpline(const PathWithLaneId & path, double interval)
 {
   const auto base_points = calcPathArcLengthArray(path);
-  const auto sampling_points = tier4_autoware_utils::arange(0.0, base_points.back(), interval);
+  auto sampling_points = tier4_autoware_utils::arange(0.0, base_points.back(), interval);
+
+  constexpr double epsilon = 0.01;
+  for (const auto & b : base_points) {
+    const auto is_almost_same_value = std::find_if(
+      sampling_points.begin(), sampling_points.end(),
+      [&](const auto v) { return std::abs(v - b) < epsilon; });
+    if (is_almost_same_value == sampling_points.end()) {
+      sampling_points.push_back(b);
+    }
+  }
+  std::sort(sampling_points.begin(), sampling_points.end());
 
   if (base_points.empty() || sampling_points.empty()) {
     return path;
@@ -122,22 +133,25 @@ PathWithLaneId resamplePathWithSpline(const PathWithLaneId & path, double interv
 
   // For LaneIds, Type, Twist
   //
-  // ------|----|----|----|----|----|----|-------> resampled
-  //      [0]  [1]  [2]  [3]  [4]  [5]  [6]
+  // ------|----|----|----|----|----|----|----|--------> resampled
+  //      [0]  [1]  [2]  [3]  [4]  [5]  [6]  [7]
   //
-  // --------|---------------|----------|---------> base
-  //        [0]             [1]        [2]
+  // ------|---------------|----------|-------|---> base
+  //      [0]             [1]        [2]     [3]
   //
-  // resampled[0~3] = base[0]
-  // resampled[4~5] = base[1]
-  // resampled[6] = base[2]
+  // resampled[0] = base[0]
+  // resampled[1~3] = base[1]
+  // resampled[4~5] = base[2]
+  // resampled[6~7] = base[3]
   //
   size_t base_idx{0};
   for (size_t i = 0; i < resampled_path.points.size(); ++i) {
-    while (base_idx < base_points.size() - 1 && sampling_points.at(i) > base_points.at(base_idx)) {
+    while (base_idx < base_points.size() - 1 &&
+           ((sampling_points.at(i) > base_points.at(base_idx)) ||
+            (sampling_points.at(i) - base_points.at(base_idx)) > 1e-3)) {
       ++base_idx;
     }
-    size_t ref_idx = std::max(static_cast<int>(base_idx) - 1, 0);
+    size_t ref_idx = std::max(static_cast<int>(base_idx), 0);
     if (i == resampled_path.points.size() - 1) {
       ref_idx = base_points.size() - 1;  // for last point
     }
