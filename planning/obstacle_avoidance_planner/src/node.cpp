@@ -1093,6 +1093,9 @@ void ObstacleAvoidancePlanner::calcVelocity(
   const std::vector<autoware_auto_planning_msgs::msg::PathPoint> & path_points,
   std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> & traj_points) const
 {
+  if (path_points.size() < 2) {
+    return;
+  }
   for (size_t i = 0; i < traj_points.size(); i++) {
     const size_t nearest_seg_idx = [&]() {
       const auto opt_seg_idx = tier4_autoware_utils::findNearestSegmentIndex(

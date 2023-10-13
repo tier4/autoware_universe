@@ -26,29 +26,6 @@
 #include <string>
 #include <vector>
 
-namespace tier4_autoware_utils
-{
-template <class T>
-double calcLateralOffset(
-  const T & points, const geometry_msgs::msg::Point & p_target, const size_t seg_idx)
-{
-  validateNonEmpty(points);
-
-  const auto p_front = getPoint(points.at(seg_idx));
-  const auto p_back = getPoint(points.at(seg_idx + 1));
-
-  const Eigen::Vector3d segment_vec{p_back.x - p_front.x, p_back.y - p_front.y, 0.0};
-  const Eigen::Vector3d target_vec{p_target.x - p_front.x, p_target.y - p_front.y, 0.0};
-
-  if (segment_vec.norm() == 0.0) {
-    throw std::runtime_error("Same points are given.");
-  }
-
-  const Eigen::Vector3d cross_vec = segment_vec.cross(target_vec);
-  return cross_vec(2) / segment_vec.norm();
-}
-}  // namespace tier4_autoware_utils
-
 namespace drivable_area_utils
 {
 double quantize(const double val, const double resolution)
