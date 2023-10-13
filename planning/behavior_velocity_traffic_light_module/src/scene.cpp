@@ -34,6 +34,36 @@
 #include <utility>
 #include <vector>
 
+#define debug(var)                                                      \
+  do {                                                                  \
+    std::cerr << __func__ << ": " << __LINE__ << ", " << #var << " : "; \
+    view(var);                                                          \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T> > & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                                                                         \
+  {                                                                                    \
+    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
+  }
+
 namespace behavior_velocity_planner
 {
 namespace bg = boost::geometry;
@@ -213,8 +243,14 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
     input_path.points, self_pose->pose.position, stop_line_point_msg);
   setDistance(signed_arc_length_to_stop_point);
 
+  // line();
+  // RCLCPP_INFO(logger_, "\nstate_: State::%s", (state_ == State::APPROACH) ? "APPROACH" :
+  // "GO_OUT"); RCLCPP_INFO(logger_, "\nis_prev_state_stop_ is: %s", is_prev_state_stop_ ? "true" :
+  // "false"); RCLCPP_INFO(logger_, "\nis_activated: %s", isActivated() ? "true" : "false");
+
   // Check state
   if (state_ == State::APPROACH) {
+    // line();
     // Move to go out state if ego vehicle over deadline.
     constexpr double signed_deadline_length = -2.0;
     if (signed_arc_length_to_stop_point < signed_deadline_length) {
@@ -223,14 +259,44 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
       return true;
     }
 
+    // line();
+    // RCLCPP_INFO(
+    //   logger_, "\nstate_: State::%s", (state_ == State::APPROACH) ? "APPROACH" : "GO_OUT");
+    // RCLCPP_INFO(logger_, "\nis_prev_state_stop_ is: %s", is_prev_state_stop_ ? "true" : "false");
+    // RCLCPP_INFO(logger_, "\nis_activated: %s", isActivated() ? "true" : "false");
+
     first_ref_stop_path_point_index_ = stop_line_point_idx;
+
+    double time_remained_allowed_to_go_ahead = 4.0;
 
     // Check if stop is coming.
     setSafe(!isStopSignal());
+
     if (isActivated()) {
-      is_prev_state_stop_ = false;
-      return true;
+      const bool do_conject_by_v2i =
+        planner_param_.enable_conjecture_by_v2i &&
+        time_remained_allowed_to_go_ahead <= planner_param_.time_duration_to_conject_by_v2i;
+      if (do_conject_by_v2i) {
+        const double reachable_distance =
+          planner_data_->current_velocity->twist.linear.x * time_remained_allowed_to_go_ahead;
+        if (reachable_distance < signed_arc_length_to_stop_point) {
+          *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
+          is_prev_state_stop_ = true;
+        }
+      } else {
+        is_prev_state_stop_ = false;
+        return true;
+      }
     }
+
+    // double time_to_red = planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
+    // debug(time_to_red);
+
+    // line();
+    // RCLCPP_INFO(
+    //   logger_, "\nstate_: State::%s", (state_ == State::APPROACH) ? "APPROACH" : "GO_OUT");
+    // RCLCPP_INFO(logger_, "\nis_prev_state_stop_ is: %s", is_prev_state_stop_ ? "true" : "false");
+    // RCLCPP_INFO(logger_, "\nis_activated: %s", isActivated() ? "true" : "false");
 
     // Decide whether to stop or pass even if a stop signal is received.
     if (!isPassthrough(signed_arc_length_to_stop_point)) {
@@ -250,7 +316,6 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
     }
     return true;
   }
-
   return false;
 }
 
@@ -284,7 +349,6 @@ bool TrafficLightModule::isPassthrough(const double & signed_arc_length) const
   const double max_acc = planner_data_->max_stop_acceleration_threshold;
   const double max_jerk = planner_data_->max_stop_jerk_threshold;
   const double delay_response_time = planner_data_->delay_response_time;
-
   const double reachable_distance =
     planner_data_->current_velocity->twist.linear.x * planner_param_.yellow_lamp_period;
 
@@ -375,7 +439,6 @@ bool TrafficLightModule::findValidTrafficSignal(TrafficSignal & valid_traffic_si
       "time diff: " << (clock_->now() - traffic_signal_stamped->stamp).seconds());
     return false;
   }
-
   valid_traffic_signal = traffic_signal_stamped->signal;
   return true;
 }

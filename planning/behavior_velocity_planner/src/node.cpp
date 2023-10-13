@@ -35,6 +35,36 @@
 #include <memory>
 #include <vector>
 
+#define debug(var)                                                      \
+  do {                                                                  \
+    std::cerr << __func__ << ": " << __LINE__ << ", " << #var << " : "; \
+    view(var);                                                          \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T>> & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                                                                         \
+  {                                                                                    \
+    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
+  }
+
 namespace
 {
 rclcpp::SubscriptionOptions createSubscriptionOptions(rclcpp::Node * node_ptr)
@@ -102,6 +132,11 @@ BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptio
     this->create_subscription<autoware_perception_msgs::msg::TrafficSignalArray>(
       "~/input/traffic_signals", 1,
       std::bind(&BehaviorVelocityPlannerNode::onTrafficSignals, this, _1),
+      createSubscriptionOptions(this));
+  sub_traffic_signals_raw_v2i_ =
+    this->create_subscription<jpn_signal_v2i_msgs::msg::TrafficLightInfo>(
+      "~/input/traffic_signals_raw_v2i", 1,
+      std::bind(&BehaviorVelocityPlannerNode::onTrafficSignalsRawV2I, this, _1),
       createSubscriptionOptions(this));
   sub_external_velocity_limit_ = this->create_subscription<VelocityLimit>(
     "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local(),
@@ -298,6 +333,27 @@ void BehaviorVelocityPlannerNode::onTrafficSignals(
     traffic_signal.stamp = msg->stamp;
     traffic_signal.signal = signal;
     planner_data_.traffic_light_id_map[signal.traffic_signal_id] = traffic_signal;
+  }
+}
+
+void BehaviorVelocityPlannerNode::onTrafficSignalsRawV2I(
+  const jpn_signal_v2i_msgs::msg::TrafficLightInfo::ConstSharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  line();
+
+  for (const auto & car_light : msg->car_lights) {
+    for (const auto & state : car_light.states) {
+      planner_data_.traffic_light_time_to_red_id_map[state.traffic_signal_id] =
+        car_light.min_rest_time;  // msg->min_rest_time_to_red;
+
+      size_t set_id = state.traffic_signal_id;
+      size_t set_value = car_light.min_rest_time;
+
+      debug(set_id);
+      debug(set_value);
+    }
   }
 }
 

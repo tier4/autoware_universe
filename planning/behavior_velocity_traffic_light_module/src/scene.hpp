@@ -61,6 +61,8 @@ public:
     double tl_state_timeout;
     double yellow_lamp_period;
     bool enable_pass_judge;
+    bool enable_conjecture_by_v2i;
+    double time_duration_to_conject_by_v2i;
   };
 
 public:
