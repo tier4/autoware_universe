@@ -50,6 +50,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace behavior_path_planner
@@ -136,7 +137,8 @@ private:
   /**
    * @brief extract path from behavior tree output
    */
-  PathWithLaneId::SharedPtr getPath(const BehaviorModuleOutput & bt_out);
+  std::pair<PathWithLaneId::SharedPtr, PathWithLaneId::SharedPtr> getPath(
+    const BehaviorModuleOutput & bt_out);
 
   /**
    * @brief extract path candidate from behavior tree output
