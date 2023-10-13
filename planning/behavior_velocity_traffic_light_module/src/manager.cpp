@@ -45,6 +45,8 @@ TrafficLightModuleManager::TrafficLightModuleManager(rclcpp::Node & node)
     getOrDeclareParameter<bool>(node, ns + ".enable_conjecture_by_v2i");
   planner_param_.time_duration_to_conject_by_v2i =
     getOrDeclareParameter<double>(node, ns + ".time_duration_to_conject_by_v2i");
+  planner_param_.last_time_allowed_to_pass_by_v2i =
+    getOrDeclareParameter<double>(node, ns + ".last_time_allowed_to_pass_by_v2i");
 
   pub_tl_state_ = node.create_publisher<autoware_perception_msgs::msg::TrafficSignal>(
     "~/output/traffic_signal", 1);

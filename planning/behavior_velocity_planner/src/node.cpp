@@ -328,6 +328,8 @@ void BehaviorVelocityPlannerNode::onTrafficSignals(
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
+  // RCLCPP_WARN(get_logger(), "329");
+
   for (const auto & signal : msg->signals) {
     TrafficSignalStamped traffic_signal;
     traffic_signal.stamp = msg->stamp;
@@ -341,18 +343,17 @@ void BehaviorVelocityPlannerNode::onTrafficSignalsRawV2I(
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  line();
+  // RCLCPP_WARN(get_logger(), "344");
 
   for (const auto & car_light : msg->car_lights) {
     for (const auto & state : car_light.states) {
       planner_data_.traffic_light_time_to_red_id_map[state.traffic_signal_id] =
-        car_light.min_rest_time;  // msg->min_rest_time_to_red;
+        car_light.min_rest_time_to_red;
+      // size_t set_id = state.traffic_signal_id;
+      // double set_value = car_light.min_rest_time;
 
-      size_t set_id = state.traffic_signal_id;
-      size_t set_value = car_light.min_rest_time;
-
-      debug(set_id);
-      debug(set_value);
+      // debug(set_id);
+      // debug(set_value);
     }
   }
 }

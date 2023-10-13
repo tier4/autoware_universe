@@ -267,30 +267,44 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
 
     first_ref_stop_path_point_index_ = stop_line_point_idx;
 
-    double time_remained_allowed_to_go_ahead = 4.0;
-
     // Check if stop is coming.
     setSafe(!isStopSignal());
+
+    const double rest_time_to_red_signal =
+      planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
+    const double rest_time_to_go_ahead_allowed =
+      rest_time_to_red_signal - planner_param_.last_time_allowed_to_pass_by_v2i;
+    debug(rest_time_to_red_signal);
 
     if (isActivated()) {
       const bool do_conject_by_v2i =
         planner_param_.enable_conjecture_by_v2i &&
-        time_remained_allowed_to_go_ahead <= planner_param_.time_duration_to_conject_by_v2i;
+        rest_time_to_go_ahead_allowed <= planner_param_.time_duration_to_conject_by_v2i &&
+        rest_time_to_go_ahead_allowed > 1e-6;
+
+      RCLCPP_INFO(logger_, "\ndo_conject_by_v2i: %s, ", do_conject_by_v2i ? "true" : "false");
+      // RCLCPP_INFO(logger_, "rest_time_allowed_to_go_ahead: %5f", rest_time_to_go_ahead_allowed);
+
       if (do_conject_by_v2i) {
         const double reachable_distance =
-          planner_data_->current_velocity->twist.linear.x * time_remained_allowed_to_go_ahead;
+          planner_data_->current_velocity->twist.linear.x * rest_time_to_go_ahead_allowed;
+
+        debug(signed_arc_length_t2.0o_stop_point);
+        debug(reachable_distance);
+
         if (reachable_distance < signed_arc_length_to_stop_point) {
+          line();
           *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
           is_prev_state_stop_ = true;
+        } else {
+          is_prev_state_stop_ = false;
+          return true;
         }
       } else {
         is_prev_state_stop_ = false;
         return true;
       }
     }
-
-    // double time_to_red = planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
-    // debug(time_to_red);
 
     // line();
     // RCLCPP_INFO(
