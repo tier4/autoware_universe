@@ -53,6 +53,10 @@ template <typename T>
 boost::optional<geometry_msgs::msg::Pose> lerpPose(
   const T & points, const geometry_msgs::msg::Point & target_pos, const size_t closest_seg_idx)
 {
+  if (points.size() < 2) {
+    return {};
+  }
+
   constexpr double epsilon = 1e-6;
 
   const double closest_to_target_dist =
@@ -94,6 +98,10 @@ template <typename T>
 double lerpTwistX(
   const T & points, const geometry_msgs::msg::Point & target_pos, const size_t closest_seg_idx)
 {
+  if (points.size() < 2) {
+    return 0.0;
+  }
+
   constexpr double epsilon = 1e-6;
 
   const double closest_to_target_dist =
@@ -116,6 +124,10 @@ template <typename T>
 double lerpPoseZ(
   const T & points, const geometry_msgs::msg::Point & target_pos, const size_t closest_seg_idx)
 {
+  if (points.size() < 2) {
+    return 0.0;
+  }
+
   constexpr double epsilon = 1e-6;
 
   const double closest_to_target_dist =
