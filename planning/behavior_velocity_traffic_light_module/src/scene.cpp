@@ -289,7 +289,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
         const double reachable_distance =
           planner_data_->current_velocity->twist.linear.x * rest_time_to_go_ahead_allowed;
 
-        debug(signed_arc_length_t2.0o_stop_point);
+        debug(signed_arc_length_t2 .0o_stop_point);
         debug(reachable_distance);
 
         if (reachable_distance < signed_arc_length_to_stop_point) {

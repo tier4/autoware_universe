@@ -25,13 +25,11 @@
 #include <autoware_auto_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_auto_planning_msgs/msg/path.hpp>
 #include <autoware_auto_planning_msgs/msg/path_with_lane_id.hpp>
+#include <jpn_signal_v2i_msgs/msg/extra_traffic_signal.hpp>
+#include <jpn_signal_v2i_msgs/msg/traffic_light_info.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <jpn_signal_v2i_msgs/msg/traffic_light_info.hpp>
-#include <jpn_signal_v2i_msgs/msg/extra_traffic_signal.hpp>
-
-
 #include <tier4_api_msgs/msg/crosswalk_status.hpp>
 #include <tier4_api_msgs/msg/intersection_status.hpp>
 #include <tier4_planning_msgs/msg/velocity_limit.hpp>
