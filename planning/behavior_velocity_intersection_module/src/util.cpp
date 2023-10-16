@@ -415,12 +415,14 @@ std::optional<IntersectionStopLines> generateIntersectionStopLines(
     intersection_stop_lines_temp.occlusion_peeking_stop_line =
       intersection_stop_lines_temp.default_stop_line;
   }
+  /*
   if (
     intersection_stop_lines_temp.occlusion_peeking_stop_line >
     intersection_stop_lines_temp.pass_judge_line) {
     intersection_stop_lines_temp.pass_judge_line =
       intersection_stop_lines_temp.occlusion_peeking_stop_line;
   }
+  */
 
   IntersectionStopLines intersection_stop_lines;
   intersection_stop_lines.closest_idx = intersection_stop_lines_temp.closest_idx;

@@ -1079,13 +1079,15 @@ IntersectionModule::DecisionResult IntersectionModule::modifyPathVelocityDetail(
   const bool keep_detection =
     (vel_norm < planner_param_.collision_detection.keep_detection_vel_thr);
   const bool was_safe = std::holds_alternative<IntersectionModule::Safe>(prev_decision_result_);
+  const bool enable_sudden_stop = true;
   // if ego is over the pass judge line and not stopped
   if (is_over_default_stop_line && !is_over_pass_judge_line && keep_detection) {
     RCLCPP_DEBUG(
       logger_, "is_over_default_stop_line && !is_over_pass_judge_line && keep_detection");
     // do nothing
   } else if (
-    (was_safe && is_over_default_stop_line && is_over_pass_judge_line && is_go_out_) ||
+    (was_safe && (is_over_default_stop_line || enable_sudden_stop) && is_over_pass_judge_line &&
+     is_go_out_) ||
     is_permanent_go_) {
     // is_go_out_: previous RTC approval
     // activated_: current RTC approval
