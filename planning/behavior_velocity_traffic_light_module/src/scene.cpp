@@ -265,14 +265,14 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
     debug(rest_time_to_red_signal);
 
     if (isActivated()) {
-      const bool do_conject_by_v2i =
+      const bool do_conjecture_by_v2i =
         planner_param_.enable_conjecture_by_v2i &&
-        rest_time_to_go_ahead_allowed <= planner_param_.time_duration_to_conject_by_v2i &&
+        rest_time_to_go_ahead_allowed <= planner_param_.time_duration_to_conjecture_by_v2i &&
         rest_time_to_go_ahead_allowed > 1e-6;
 
-      RCLCPP_INFO(logger_, "\ndo_conject_by_v2i: %s, ", do_conject_by_v2i ? "true" : "false");
+      RCLCPP_INFO(logger_, "\ndo_conjecture_by_v2i: %s, ", do_conjecture_by_v2i ? "true" : "false");
 
-      if (do_conject_by_v2i) {
+      if (do_conjecture_by_v2i) {
         const double reachable_distance =
           planner_data_->current_velocity->twist.linear.x * rest_time_to_go_ahead_allowed;
 

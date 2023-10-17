@@ -62,7 +62,7 @@ public:
     double yellow_lamp_period;
     bool enable_pass_judge;
     bool enable_conjecture_by_v2i;
-    double time_duration_to_conject_by_v2i;
+    double time_duration_to_conjecture_by_v2i;
     double last_time_allowed_to_pass_by_v2i;
   };
 

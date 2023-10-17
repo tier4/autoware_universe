@@ -43,8 +43,8 @@ TrafficLightModuleManager::TrafficLightModuleManager(rclcpp::Node & node)
     getOrDeclareParameter<double>(node, ns + ".yellow_lamp_period");
   planner_param_.enable_conjecture_by_v2i =
     getOrDeclareParameter<bool>(node, ns + ".enable_conjecture_by_v2i");
-  planner_param_.time_duration_to_conject_by_v2i =
-    getOrDeclareParameter<double>(node, ns + ".time_duration_to_conject_by_v2i");
+  planner_param_.time_duration_to_conjecture_by_v2i =
+    getOrDeclareParameter<double>(node, ns + ".time_duration_to_conjecture_by_v2i");
   planner_param_.last_time_allowed_to_pass_by_v2i =
     getOrDeclareParameter<double>(node, ns + ".last_time_allowed_to_pass_by_v2i");
 
