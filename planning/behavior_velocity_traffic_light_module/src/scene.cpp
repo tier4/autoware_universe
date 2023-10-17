@@ -261,20 +261,21 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
     const double rest_time_to_red_signal =
       planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
     const double rest_time_to_go_ahead_allowed =
-      rest_time_to_red_signal - planner_param_.last_time_allowed_to_pass_by_v2i;
+      rest_time_to_red_signal - planner_param_.v2i_last_time_allowed_to_pass;
     debug(rest_time_to_red_signal);
 
     if (isActivated()) {
       const bool do_conjecture_by_v2i =
-        planner_param_.enable_conjecture_by_v2i &&
-        rest_time_to_go_ahead_allowed <= planner_param_.time_duration_to_conjecture_by_v2i &&
+        planner_param_.v2i_enable_conjecture &&
+        rest_time_to_go_ahead_allowed <= planner_param_.v2i_time_duration_to_conjecture &&
         rest_time_to_go_ahead_allowed > 1e-6;
 
       RCLCPP_INFO(logger_, "\ndo_conjecture_by_v2i: %s, ", do_conjecture_by_v2i ? "true" : "false");
 
       if (do_conjecture_by_v2i) {
-        const double reachable_distance =
-          planner_data_->current_velocity->twist.linear.x * rest_time_to_go_ahead_allowed;
+        const double assumed_velocity = std::max(
+          planner_data_->current_velocity->twist.linear.x, planner_param_.v2i_min_assumed_velocity);
+        const double reachable_distance = assumed_velocity * rest_time_to_go_ahead_allowed;
 
         // debug(signed_arc_length_to_stop_point);
         // debug(reachable_distance);
