@@ -12,4 +12,3 @@
         last_time_allowed_to_pass: 2.0 # # relative time against at the time of turn to red
         time_duration_to_conjecture: 15.0 # against at the time of turn to red
         min_assumed_velocity: 1.0 # [m/s] minimum velocity used to calculate the enter and exit times
-
