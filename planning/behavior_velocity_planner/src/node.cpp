@@ -35,36 +35,6 @@
 #include <memory>
 #include <vector>
 
-#define debug(var)                                                      \
-  do {                                                                  \
-    std::cerr << __func__ << ": " << __LINE__ << ", " << #var << " : "; \
-    view(var);                                                          \
-  } while (0)
-template <typename T>
-void view(T e)
-{
-  std::cerr << e << std::endl;
-}
-template <typename T>
-void view(const std::vector<T> & v)
-{
-  for (const auto & e : v) {
-    std::cerr << e << " ";
-  }
-  std::cerr << std::endl;
-}
-template <typename T>
-void view(const std::vector<std::vector<T>> & vv)
-{
-  for (const auto & v : vv) {
-    view(v);
-  }
-}
-#define line()                                                                         \
-  {                                                                                    \
-    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
-  }
-
 namespace
 {
 rclcpp::SubscriptionOptions createSubscriptionOptions(rclcpp::Node * node_ptr)
@@ -328,8 +298,6 @@ void BehaviorVelocityPlannerNode::onTrafficSignals(
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  // RCLCPP_WARN(get_logger(), "329");
-
   for (const auto & signal : msg->signals) {
     TrafficSignalStamped traffic_signal;
     traffic_signal.stamp = msg->stamp;
@@ -343,17 +311,10 @@ void BehaviorVelocityPlannerNode::onTrafficSignalsRawV2I(
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  // RCLCPP_WARN(get_logger(), "344");
-
   for (const auto & car_light : msg->car_lights) {
     for (const auto & state : car_light.states) {
       planner_data_.traffic_light_time_to_red_id_map[state.traffic_signal_id] =
         car_light.min_rest_time_to_red;
-      // size_t set_id = state.traffic_signal_id;
-      // double set_value = car_light.min_rest_time;
-
-      // debug(set_id);
-      // debug(set_value);
     }
   }
 }

@@ -243,14 +243,8 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
     input_path.points, self_pose->pose.position, stop_line_point_msg);
   setDistance(signed_arc_length_to_stop_point);
 
-  // line();
-  // RCLCPP_INFO(logger_, "\nstate_: State::%s", (state_ == State::APPROACH) ? "APPROACH" :
-  // "GO_OUT"); RCLCPP_INFO(logger_, "\nis_prev_state_stop_ is: %s", is_prev_state_stop_ ? "true" :
-  // "false"); RCLCPP_INFO(logger_, "\nis_activated: %s", isActivated() ? "true" : "false");
-
   // Check state
   if (state_ == State::APPROACH) {
-    // line();
     // Move to go out state if ego vehicle over deadline.
     constexpr double signed_deadline_length = -2.0;
     if (signed_arc_length_to_stop_point < signed_deadline_length) {
@@ -258,12 +252,6 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
       state_ = State::GO_OUT;
       return true;
     }
-
-    // line();
-    // RCLCPP_INFO(
-    //   logger_, "\nstate_: State::%s", (state_ == State::APPROACH) ? "APPROACH" : "GO_OUT");
-    // RCLCPP_INFO(logger_, "\nis_prev_state_stop_ is: %s", is_prev_state_stop_ ? "true" : "false");
-    // RCLCPP_INFO(logger_, "\nis_activated: %s", isActivated() ? "true" : "false");
 
     first_ref_stop_path_point_index_ = stop_line_point_idx;
 
@@ -283,14 +271,13 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
         rest_time_to_go_ahead_allowed > 1e-6;
 
       RCLCPP_INFO(logger_, "\ndo_conject_by_v2i: %s, ", do_conject_by_v2i ? "true" : "false");
-      // RCLCPP_INFO(logger_, "rest_time_allowed_to_go_ahead: %5f", rest_time_to_go_ahead_allowed);
 
       if (do_conject_by_v2i) {
         const double reachable_distance =
           planner_data_->current_velocity->twist.linear.x * rest_time_to_go_ahead_allowed;
 
-        debug(signed_arc_length_t2 .0o_stop_point);
-        debug(reachable_distance);
+        // debug(signed_arc_length_to_stop_point);
+        // debug(reachable_distance);
 
         if (reachable_distance < signed_arc_length_to_stop_point) {
           line();
@@ -305,12 +292,6 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
         return true;
       }
     }
-
-    // line();
-    // RCLCPP_INFO(
-    //   logger_, "\nstate_: State::%s", (state_ == State::APPROACH) ? "APPROACH" : "GO_OUT");
-    // RCLCPP_INFO(logger_, "\nis_prev_state_stop_ is: %s", is_prev_state_stop_ ? "true" : "false");
-    // RCLCPP_INFO(logger_, "\nis_activated: %s", isActivated() ? "true" : "false");
 
     // Decide whether to stop or pass even if a stop signal is received.
     if (!isPassthrough(signed_arc_length_to_stop_point)) {
