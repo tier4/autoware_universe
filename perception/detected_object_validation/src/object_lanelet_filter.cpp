@@ -69,6 +69,7 @@ void ObjectLaneletFilterNode::mapCallback(
   lanelet::utils::conversion::fromBinMsg(*map_msg, lanelet_map_ptr_);
   const lanelet::ConstLanelets all_lanelets = lanelet::utils::query::laneletLayer(lanelet_map_ptr_);
   road_lanelets_ = lanelet::utils::query::roadLanelets(all_lanelets);
+  shoulder_lanelets_ = lanelet::utils::query::shoulderLanelets(all_lanelets);
 }
 
 void ObjectLaneletFilterNode::objectCallback(
@@ -94,7 +95,10 @@ void ObjectLaneletFilterNode::objectCallback(
   // calculate convex hull
   const auto convex_hull = getConvexHull(transformed_objects);
   // get intersected lanelets
-  lanelet::ConstLanelets intersected_lanelets = getIntersectedLanelets(convex_hull, road_lanelets_);
+  lanelet::ConstLanelets intersected_road_lanelets =
+    getIntersectedLanelets(convex_hull, road_lanelets_);
+  lanelet::ConstLanelets intersected_shoulder_lanelets =
+    getIntersectedLanelets(convex_hull, shoulder_lanelets_);
 
   // filtering process
   for (size_t index = 0; index < transformed_objects.objects.size(); ++index) {
