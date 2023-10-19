@@ -255,49 +255,21 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
 
     first_ref_stop_path_point_index_ = stop_line_point_idx;
 
-    // Check if stop is coming.
-    setSafe(!isStopSignal());
-
     const double rest_time_to_red_signal =
       planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
+    debug(rest_time_to_red_signal);
     const double rest_time_to_go_ahead_allowed =
       rest_time_to_red_signal - planner_param_.v2i_last_time_allowed_to_pass;
-    debug(rest_time_to_red_signal);
 
-    if (isActivated()) {
-      const bool do_conjecture_by_v2i =
-        planner_param_.v2i_enable_conjecture &&
-        rest_time_to_go_ahead_allowed <= planner_param_.v2i_time_duration_to_conjecture &&
-        rest_time_to_go_ahead_allowed > 1e-6;
-
-      RCLCPP_INFO(logger_, "\ndo_conjecture_by_v2i: %s, ", do_conjecture_by_v2i ? "true" : "false");
-
-      if (do_conjecture_by_v2i) {
-        const double assumed_velocity = std::max(
-          planner_data_->current_velocity->twist.linear.x, planner_param_.v2i_min_assumed_velocity);
-        const double reachable_distance = assumed_velocity * rest_time_to_go_ahead_allowed;
-
-        // debug(signed_arc_length_to_stop_point);
-        // debug(reachable_distance);
-
-        if (reachable_distance < signed_arc_length_to_stop_point) {
-          line();
-          *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
-          is_prev_state_stop_ = true;
-        } else {
-          is_prev_state_stop_ = false;
-          return true;
-        }
-      } else {
-        is_prev_state_stop_ = false;
-        return true;
+    const double ego_v = planner_data_->current_velocity->twist.linear.x;
+    if (ego_v >= 0.5) {
+      if (ego_v * rest_time_to_go_ahead_allowed <= signed_arc_length_to_stop_point) {
+        *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
       }
-    }
-
-    // Decide whether to stop or pass even if a stop signal is received.
-    if (!isPassthrough(signed_arc_length_to_stop_point)) {
-      *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
-      is_prev_state_stop_ = true;
+    } else {
+      if (rest_time_to_go_ahead_allowed < 5.0) {
+        *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
+      }
     }
     return true;
   } else if (state_ == State::GO_OUT) {
@@ -340,7 +312,7 @@ bool TrafficLightModule::updateTrafficSignal()
   return true;
 }
 
-bool TrafficLightModule::isPassthrough(const double & signed_arc_length) const
+bool TrafficLightModule::isPassthrough(const double & signed_arc_length) const //unused in the V2I temporary implimentation
 {
   const double max_acc = planner_data_->max_stop_acceleration_threshold;
   const double max_jerk = planner_data_->max_stop_jerk_threshold;
