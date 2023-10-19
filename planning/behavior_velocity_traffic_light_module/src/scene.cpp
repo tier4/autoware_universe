@@ -227,9 +227,11 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
 
     const double rest_time_to_red_signal =
       planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
-    
-    // RCLCPP_DEBUG(logger_, "rest time to the next signal turn to red: %2.2f", rest_time_to_red_signal);
-    RCLCPP_INFO(logger_, "rest time to the next signal turn to red: %2.2f", rest_time_to_red_signal);
+
+    // RCLCPP_DEBUG(logger_, "rest time to the next signal turn to red: %2.2f",
+    // rest_time_to_red_signal);
+    RCLCPP_INFO(
+      logger_, "rest time to the next signal turn to red: %2.2f", rest_time_to_red_signal);
 
     const double rest_time_to_go_ahead_allowed =
       rest_time_to_red_signal - planner_param_.v2i_last_time_allowed_to_pass;
