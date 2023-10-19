@@ -8,7 +8,6 @@
       enable_rtc: true # If set to true, the scene modules require approval from the rtc (request to cooperate) function. If set to false, the modules can be executed without requiring rtc approval
 
       v2i:
-        enable_conjecture: true
         last_time_allowed_to_pass: 2.0 # # relative time against at the time of turn to red
-        time_duration_to_conjecture: 15.0 # against at the time of turn to red
-        min_assumed_velocity: 1.0 # [m/s] minimum velocity used to calculate the enter and exit times
+        velocity_threshold: 0.5 # change the decision logic whether the current velocity is faster or not
+        required_time_to departure: 5.0

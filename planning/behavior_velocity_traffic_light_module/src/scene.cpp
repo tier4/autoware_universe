@@ -262,12 +262,12 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
       rest_time_to_red_signal - planner_param_.v2i_last_time_allowed_to_pass;
 
     const double ego_v = planner_data_->current_velocity->twist.linear.x;
-    if (ego_v >= 0.5) {
+    if (ego_v >= planner_param_.v2i_velocity_threshold) {
       if (ego_v * rest_time_to_go_ahead_allowed <= signed_arc_length_to_stop_point) {
         *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
       }
     } else {
-      if (rest_time_to_go_ahead_allowed < 5.0) {
+      if (rest_time_to_go_ahead_allowed < planner_param_.v2i_required_time_to_departure) {
         *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
       }
     }
@@ -312,7 +312,8 @@ bool TrafficLightModule::updateTrafficSignal()
   return true;
 }
 
-bool TrafficLightModule::isPassthrough(const double & signed_arc_length) const //unused in the V2I temporary implimentation
+bool TrafficLightModule::isPassthrough(
+  const double & signed_arc_length) const  // unused in the V2I temporary implimentation
 {
   const double max_acc = planner_data_->max_stop_acceleration_threshold;
   const double max_jerk = planner_data_->max_stop_jerk_threshold;

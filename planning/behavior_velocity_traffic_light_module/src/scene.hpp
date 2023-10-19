@@ -61,10 +61,9 @@ public:
     double tl_state_timeout;
     double yellow_lamp_period;
     bool enable_pass_judge;
-    bool v2i_enable_conjecture;
     double v2i_last_time_allowed_to_pass;
-    double v2i_time_duration_to_conjecture;
-    double v2i_min_assumed_velocity;
+    double v2i_velocity_threshold;
+    double v2i_required_time_to_departure;
   };
 
 public:

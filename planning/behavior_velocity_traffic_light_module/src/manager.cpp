@@ -41,14 +41,12 @@ TrafficLightModuleManager::TrafficLightModuleManager(rclcpp::Node & node)
   planner_param_.enable_pass_judge = getOrDeclareParameter<bool>(node, ns + ".enable_pass_judge");
   planner_param_.yellow_lamp_period =
     getOrDeclareParameter<double>(node, ns + ".yellow_lamp_period");
-  planner_param_.v2i_enable_conjecture =
-    getOrDeclareParameter<bool>(node, ns + ".v2i.enable_conjecture");
-  planner_param_.v2i_time_duration_to_conjecture =
-    getOrDeclareParameter<double>(node, ns + ".v2i.time_duration_to_conjecture");
   planner_param_.v2i_last_time_allowed_to_pass =
     getOrDeclareParameter<double>(node, ns + ".v2i.last_time_allowed_to_pass");
-  planner_param_.v2i_min_assumed_velocity =
-    getOrDeclareParameter<double>(node, ns + ".v2i.min_assumed_velocity");
+  planner_param_.v2i_velocity_threshold =
+    getOrDeclareParameter<double>(node, ns + ".v2i.velocity_threshold");
+  planner_param_.v2i_required_time_to_departure =
+    getOrDeclareParameter<double>(node, ns + ".v2i.required_time_to departure");
 
   pub_tl_state_ = node.create_publisher<autoware_perception_msgs::msg::TrafficSignal>(
     "~/output/traffic_signal", 1);
