@@ -51,6 +51,7 @@
 #include <map>
 #include <memory>
 #include <vector>
+#include <limits>
 
 namespace behavior_velocity_planner
 {
