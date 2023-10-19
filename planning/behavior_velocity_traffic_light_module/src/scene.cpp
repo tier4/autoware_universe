@@ -34,36 +34,6 @@
 #include <utility>
 #include <vector>
 
-#define debug(var)                                                      \
-  do {                                                                  \
-    std::cerr << __func__ << ": " << __LINE__ << ", " << #var << " : "; \
-    view(var);                                                          \
-  } while (0)
-template <typename T>
-void view(T e)
-{
-  std::cerr << e << std::endl;
-}
-template <typename T>
-void view(const std::vector<T> & v)
-{
-  for (const auto & e : v) {
-    std::cerr << e << " ";
-  }
-  std::cerr << std::endl;
-}
-template <typename T>
-void view(const std::vector<std::vector<T> > & vv)
-{
-  for (const auto & v : vv) {
-    view(v);
-  }
-}
-#define line()                                                                         \
-  {                                                                                    \
-    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
-  }
-
 namespace behavior_velocity_planner
 {
 namespace bg = boost::geometry;
@@ -257,7 +227,10 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
 
     const double rest_time_to_red_signal =
       planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
-    debug(rest_time_to_red_signal);
+    
+    // RCLCPP_DEBUG(logger_, "rest time to the next signal turn to red: %2.2f", rest_time_to_red_signal);
+    RCLCPP_INFO(logger_, "rest time to the next signal turn to red: %2.2f", rest_time_to_red_signal);
+
     const double rest_time_to_go_ahead_allowed =
       rest_time_to_red_signal - planner_param_.v2i_last_time_allowed_to_pass;
 
