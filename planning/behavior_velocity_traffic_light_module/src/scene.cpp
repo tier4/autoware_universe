@@ -227,22 +227,30 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
 
     const double rest_time_to_red_signal =
       planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
-
-    // RCLCPP_DEBUG(logger_, "rest time to the next signal turn to red: %2.2f",
-    // rest_time_to_red_signal);
-    RCLCPP_INFO(
-      logger_, "rest time to the next signal turn to red: %2.2f", rest_time_to_red_signal);
-
-    const double rest_time_to_go_ahead_allowed =
+    const double rest_time_allowed_to_go_ahead =
       rest_time_to_red_signal - planner_param_.v2i_last_time_allowed_to_pass;
+
+    RCLCPP_DEBUG(
+      logger_, "\nrest_time_allowed_to_go_ahead: %2.2f = %2.2f - %2.2f",
+      rest_time_allowed_to_go_ahead, rest_time_to_red_signal,
+      planner_param_.v2i_last_time_allowed_to_pass);
 
     const double ego_v = planner_data_->current_velocity->twist.linear.x;
     if (ego_v >= planner_param_.v2i_velocity_threshold) {
-      if (ego_v * rest_time_to_go_ahead_allowed <= signed_arc_length_to_stop_point) {
+      RCLCPP_DEBUG(
+        logger_, "\nego moves enough fast %2.2f > %2.2f", ego_v,
+        planner_param_.v2i_velocity_threshold);
+      if (ego_v * rest_time_allowed_to_go_ahead <= signed_arc_length_to_stop_point) {
+        RCLCPP_DEBUG(
+          logger_, "\nplan to stop because ego will not reach %2.2f <= %2.2f",
+          ego_v * rest_time_allowed_to_go_ahead, signed_arc_length_to_stop_point);
         *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
       }
     } else {
-      if (rest_time_to_go_ahead_allowed < planner_param_.v2i_required_time_to_departure) {
+      if (rest_time_allowed_to_go_ahead < planner_param_.v2i_required_time_to_departure) {
+        RCLCPP_DEBUG(
+          logger_, "\nplan to stop because there is enough rest time to depature %2.2f < %2.2f",
+          rest_time_allowed_to_go_ahead, planner_param_.v2i_required_time_to_departure);
         *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
       }
     }

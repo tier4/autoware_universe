@@ -10,4 +10,4 @@
       v2i:
         last_time_allowed_to_pass: 2.0 # # relative time against at the time of turn to red
         velocity_threshold: 0.5 # change the decision logic whether the current velocity is faster or not
-        required_time_to departure: 5.0
+        required_time_to departure: 3.0
