@@ -221,7 +221,7 @@ void AEB::onPointCloud(const PointCloud2::ConstSharedPtr input_msg)
   obstacle_ros_pointcloud_ptr_ = std::make_shared<PointCloud2>();
   pcl::toROSMsg(*no_height_filtered_pointcloud_ptr, *obstacle_ros_pointcloud_ptr_);
   obstacle_ros_pointcloud_ptr_->header = input_msg->header;
-  pub_obstacle_pointcloud_->publish(*obstacle_ros_pointcloud_ptr_);
+  // pub_obstacle_pointcloud_->publish(*obstacle_ros_pointcloud_ptr_);
 }
 
 bool AEB::isDataReady()
