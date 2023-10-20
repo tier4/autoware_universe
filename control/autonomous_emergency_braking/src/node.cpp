@@ -446,6 +446,10 @@ void AEB::generateEgoPath(
     geometry_msgs::msg::Pose map_pose;
     tf2::doTransform(predicted_traj.points.at(i).pose, map_pose, transform_stamped);
     path.at(i) = map_pose;
+
+    if (i * prediction_time_interval_ > prediction_time_horizon_) {
+      break;
+    }
   }
 
   // create polygon
