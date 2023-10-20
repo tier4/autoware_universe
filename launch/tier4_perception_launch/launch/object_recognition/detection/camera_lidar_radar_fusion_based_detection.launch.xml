@@ -148,7 +148,7 @@
       </include>
     </group>
 
-    <group>
+    <group if="$(var use_detection_by_tracker)">
       <include file="$(find-pkg-share shape_estimation)/launch/shape_estimation.launch.xml">
         <arg name="input/objects" value="clusters"/>
         <arg name="output/objects" value="objects_with_feature"/>
