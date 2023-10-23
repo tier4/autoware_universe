@@ -609,7 +609,7 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
     }
     // ---------------
 
-    if (keep_stopped_condition || current_vel < 0.0) {
+    if (keep_stopped_condition || (control_data.shift == Shift::Forward && current_vel < 0.0)) {
       return changeState(ControlState::STOPPED);
     }
     if (departure_condition_from_stopped) {
