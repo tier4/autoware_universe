@@ -478,7 +478,7 @@ void AutowareErrorMonitor::onTimer()
     }
     return;
   }
-  // If the processing load is high during AutowareState INITIALZING,add a disable function to avoid
+  // If the processing load is high during AutowareState INITIALIZING,add a disable function to avoid
   // Emergencies in isDataHeartbeatTimeout().
   if (isDataHeartbeatTimeout()) {
     if ((autoware_state_->state == autoware_auto_system_msgs::msg::AutowareState::INITIALIZING)) {
