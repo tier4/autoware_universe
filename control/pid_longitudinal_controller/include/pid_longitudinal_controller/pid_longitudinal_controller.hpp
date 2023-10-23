@@ -364,6 +364,8 @@ private:
   double applyVelocityFeedback(
     const Motion target_motion, const double dt, const double current_vel, const Shift & shift);
 
+  double applySlidingDownFeedback(const double current_vel) const;
+
   /**
    * @brief update variables for debugging about pitch
    * @param [in] pitch current pitch of the vehicle (filtered)
