@@ -478,8 +478,8 @@ void AutowareErrorMonitor::onTimer()
     }
     return;
   }
-  // If the processing load is high during AutowareState INITIALIZING,add a disable function to
-  // avoid Emergencies in isDataHeartbeatTimeout().
+  // Heartbeat in AutowareState,diag_array times out during AutowareState INITIALIZING due to high processing load,add a disable function to
+  // avoid Emergencies in isDataHeartbeatTimeout() in AutowareState INITIALIZING.
   if (isDataHeartbeatTimeout()) {
     if ((autoware_state_->state == autoware_auto_system_msgs::msg::AutowareState::INITIALIZING)) {
       RCLCPP_WARN_THROTTLE(
