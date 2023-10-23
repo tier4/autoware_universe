@@ -483,7 +483,7 @@ void AutowareErrorMonitor::onTimer()
     if ((autoware_state_->state == autoware_auto_system_msgs::msg::AutowareState::INITIALIZING)) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), std::chrono::milliseconds(1000).count(),
-        "ignore hartbeat timeout in initializing state");
+        "ignore heartbeat timeout in initializing state");
       return;
     }
     updateTimeoutHazardStatus();
