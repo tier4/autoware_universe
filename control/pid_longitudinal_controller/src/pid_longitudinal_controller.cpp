@@ -669,7 +669,7 @@ PidLongitudinalController::Motion PidLongitudinalController::calcCtrlCmd(
 
     const double vel_feedback_acc =
       applyVelocityFeedback(target_motion, control_data.dt, pred_vel_in_target, control_data.shift);
-    const double sliding_down_feedback_acc = applySlidingDownFeedback(current_vel);
+    const double sliding_down_feedback_acc = applySlidingDownFeedback(current_vel, control_data);
     raw_ctrl_cmd.acc = vel_feedback_acc + sliding_down_feedback_acc;
 
     RCLCPP_DEBUG(
@@ -986,7 +986,8 @@ double PidLongitudinalController::applyVelocityFeedback(
   return feedback_acc;
 }
 
-double PidLongitudinalController::applySlidingDownFeedback(const double current_vel) const
+double PidLongitudinalController::applySlidingDownFeedback(
+  const double current_vel, const ControlData & control_data) const
 {
   if (control_data.shift != Shift::Forward || 0.0 < current_vel) {
     return 0.0;

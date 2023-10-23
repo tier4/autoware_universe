@@ -364,7 +364,7 @@ private:
   double applyVelocityFeedback(
     const Motion target_motion, const double dt, const double current_vel, const Shift & shift);
 
-  double applySlidingDownFeedback(const double current_vel) const;
+  double applySlidingDownFeedback(const double current_vel, const ControlData & control_data) const;
 
   /**
    * @brief update variables for debugging about pitch
