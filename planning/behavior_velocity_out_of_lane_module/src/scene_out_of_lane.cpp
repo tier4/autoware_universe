@@ -31,6 +31,8 @@
 
 #include <lanelet2_core/geometry/LaneletMap.h>
 
+#include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -50,6 +52,88 @@ OutOfLaneModule::OutOfLaneModule(
   velocity_factor_.init(VelocityFactor::UNKNOWN);
 }
 
+inline double point_to_line_distance(const Point2d & p, const Point2d & p1, const Point2d & p2)
+{
+  const Point2d p2_vec = {p2.x() - p1.x(), p2.y() - p1.y()};
+  const Point2d p_vec = {p.x() - p1.x(), p.y() - p1.y()};
+
+  const auto cross = p2_vec.x() * p_vec.y() - p2_vec.y() * p_vec.x();
+  const auto dist_sign = cross < 0.0 ? -1.0 : 1.0;
+
+  const auto c1 = boost::geometry::dot_product(p_vec, p2_vec);
+  const auto c2 = boost::geometry::dot_product(p2_vec, p2_vec);
+  const auto projection = p1 + (p2_vec * c1 / c2);
+  const auto projection_point = Point2d{projection.x(), projection.y()};
+  return boost::geometry::distance(p, projection_point) * dist_sign;
+}
+
+std::vector<PathPointWithLaneId> reuse_previous_path_points(
+  const PathWithLaneId & path, const std::vector<PathPointWithLaneId> & prev_path_points,
+  const geometry_msgs::msg::Point & ego_point, const PlannerParam & params)
+{
+  LineString2d path_ls;
+  for (const auto & p : path.points)
+    path_ls.emplace_back(p.point.pose.position.x, p.point.pose.position.y);
+  /*TODO(Maxime): param */
+  constexpr auto max_deviation = 0.5;
+  constexpr auto resample_interval = 0.5;
+  const auto max_arc_length = std::max(params.slow_dist_threshold, params.stop_dist_threshold);
+  std::vector<PathPointWithLaneId> cropped_points;
+  const auto ego_is_behind =
+    prev_path_points.size() > 1 &&
+    motion_utils::calcLongitudinalOffsetToSegment(prev_path_points, 0, ego_point) < 0.0;
+  const auto ego_is_far = !prev_path_points.empty() && tier4_autoware_utils::calcDistance2d(
+                                                         ego_point, prev_path_points.front()) < 0.0;
+  if (!ego_is_behind && !ego_is_far && prev_path_points.size() > 1) {
+    const auto first_idx =
+      motion_utils::findNearestSegmentIndex(prev_path_points, path.points.front().point.pose);
+    const auto deviation =
+      motion_utils::calcLateralOffset(prev_path_points, path.points.front().point.pose.position);
+    if (first_idx && deviation < max_deviation) {
+      for (auto idx = *first_idx; idx < prev_path_points.size(); ++idx) {
+        double lateral_offset = std::numeric_limits<double>::max();
+        for (auto segment_idx = 0LU; segment_idx + 1 < path_ls.size(); ++segment_idx) {
+          const auto distance = point_to_line_distance(
+            Point2d(
+              prev_path_points[idx].point.pose.position.x,
+              prev_path_points[idx].point.pose.position.y),
+            path_ls[segment_idx], path_ls[segment_idx + 1]);
+          lateral_offset = std::min(distance, lateral_offset);
+        }
+        if (lateral_offset > max_deviation) break;
+        cropped_points.push_back(prev_path_points[idx]);
+      }
+    }
+  }
+  if (cropped_points.empty()) {
+    const auto resampled_path_points =
+      motion_utils::resamplePath(path, resample_interval, true, true, false).points;
+    const auto cropped_path =
+      max_arc_length <= 0.0
+        ? resampled_path_points
+        : motion_utils::cropForwardPoints(
+            resampled_path_points, resampled_path_points.front().point.pose.position, 0,
+            max_arc_length);
+    for (const auto & p : cropped_path) cropped_points.push_back(p);
+  } else {
+    const auto initial_arc_length = motion_utils::calcArcLength(cropped_points);
+    const auto max_path_arc_length = motion_utils::calcArcLength(path.points);
+    const auto first_arc_length = motion_utils::calcSignedArcLength(
+      path.points, path.points.front().point.pose.position,
+      cropped_points.back().point.pose.position);
+    for (auto arc_length = first_arc_length + resample_interval;
+         (max_arc_length <= 0.0 ||
+          initial_arc_length + (arc_length - first_arc_length) <= max_arc_length) &&
+         arc_length <= max_path_arc_length;
+         arc_length += resample_interval) {
+      cropped_points.push_back(cropped_points.back());
+      cropped_points.back().point.pose =
+        motion_utils::calcInterpolatedPose(path.points, arc_length);
+    }
+  }
+  return motion_utils::removeOverlapPoints(cropped_points);
+}
+
 bool OutOfLaneModule::modifyPathVelocity(PathWithLaneId * path, StopReason * stop_reason)
 {
   debug_data_.reset_data();
@@ -59,10 +143,13 @@ bool OutOfLaneModule::modifyPathVelocity(PathWithLaneId * path, StopReason * sto
   stopwatch.tic();
   EgoData ego_data;
   ego_data.pose = planner_data_->current_odometry->pose;
-  ego_data.path.points = path->points;
+  ego_data.path.points =
+    reuse_previous_path_points(*path, prev_path_points_, ego_data.pose.position, params_);
+  prev_path_points_ = ego_data.path.points;
+
   ego_data.first_path_idx =
     motion_utils::findNearestSegmentIndex(ego_data.path.points, ego_data.pose.position);
-  motion_utils::removeOverlapPoints(ego_data.path.points);
+  std::printf("1st path index = %lu\n", ego_data.first_path_idx);
   ego_data.velocity = planner_data_->current_velocity->twist.linear.x;
   ego_data.max_decel = -planner_data_->max_stop_acceleration_threshold;
   stopwatch.tic("calculate_path_footprints");
@@ -146,6 +233,9 @@ bool OutOfLaneModule::modifyPathVelocity(PathWithLaneId * path, StopReason * sto
       path->points, 0LU, prev_inserted_point_->point.point.pose.position);
     prev_inserted_point_->point.point.pose =
       motion_utils::calcInterpolatedPose(path->points, insert_arc_length);
+    // update the target path idx
+    prev_inserted_point_->slowdown.target_path_idx = motion_utils::findNearestSegmentIndex(
+      ego_data.path.points, prev_inserted_point_->point.point.pose.position);
     point_to_insert = prev_inserted_point_;
   }
   if (point_to_insert) {

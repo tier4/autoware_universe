@@ -50,6 +50,7 @@ public:
 private:
   PlannerParam params_;
 
+  std::vector<PathPointWithLaneId> prev_path_points_{};
   std::optional<SlowdownToInsert> prev_inserted_point_{};
   rclcpp::Time prev_inserted_point_time_{};
 
