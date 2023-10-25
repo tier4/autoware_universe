@@ -249,7 +249,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
     } else {
       if (rest_time_allowed_to_go_ahead < planner_param_.v2i_required_time_to_departure) {
         RCLCPP_DEBUG(
-          logger_, "\nplan to stop because there is enough rest time to depature %2.2f < %2.2f",
+          logger_, "\nplan to stop because there is enough rest time to departure %2.2f < %2.2f",
           rest_time_allowed_to_go_ahead, planner_param_.v2i_required_time_to_departure);
         *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
       }
