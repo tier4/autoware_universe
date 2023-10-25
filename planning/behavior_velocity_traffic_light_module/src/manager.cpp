@@ -46,7 +46,7 @@ TrafficLightModuleManager::TrafficLightModuleManager(rclcpp::Node & node)
   planner_param_.v2i_velocity_threshold =
     getOrDeclareParameter<double>(node, ns + ".v2i.velocity_threshold");
   planner_param_.v2i_required_time_to_departure =
-    getOrDeclareParameter<double>(node, ns + ".v2i.required_time_to departure");
+    getOrDeclareParameter<double>(node, ns + ".v2i.required_time_to_departure");
 
   pub_tl_state_ = node.create_publisher<autoware_perception_msgs::msg::TrafficSignal>(
     "~/output/traffic_signal", 1);
