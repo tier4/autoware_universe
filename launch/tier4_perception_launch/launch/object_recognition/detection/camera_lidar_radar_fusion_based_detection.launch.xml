@@ -77,7 +77,7 @@
       <arg name="filter/velocity_threshold" value="3.0"/>
       <arg name="split/velocity_threshold" value="4.5"/>
       <arg name="split_range" value="70.0"/>
-      <arg name="clustering/angle_threshold" value="0.174"/>
+      <arg name="clustering/angle_threshold" value="0.522"/>
       <arg name="clustering/distance_threshold" value="10.0"/>
       <arg name="clustering/velocity_threshold" value="4.0"/>
     </include>
