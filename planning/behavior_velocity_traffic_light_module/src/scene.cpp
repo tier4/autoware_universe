@@ -296,7 +296,7 @@ bool TrafficLightModule::updateTrafficSignal()
 }
 
 bool TrafficLightModule::isPassthrough(
-  const double & signed_arc_length) const  // unused in the V2I temporary imprementation
+  const double & signed_arc_length) const  // unused in the V2I temporary implimentation
 {
   const double max_acc = planner_data_->max_stop_acceleration_threshold;
   const double max_jerk = planner_data_->max_stop_jerk_threshold;
