@@ -243,15 +243,20 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
       }
       return true;
     }
+
+    // Check if stop is coming.
     setSafe(!isStopSignal());
     if (isActivated()) {
       is_prev_state_stop_ = false;
       return true;
     }
+    // Decide whether to stop or pass even if a stop signal is received.
     if (!isPassthrough(signed_arc_length_to_stop_point)) {
       *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
       is_prev_state_stop_ = true;
     }
+    return true;
+
   } else if (state_ == State::GO_OUT) {
     // Initialize if vehicle is far from stop_line
     constexpr bool use_initialization_after_start = true;
@@ -264,6 +269,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
     }
     return true;
   }
+
   return false;
 }
 
@@ -297,6 +303,7 @@ bool TrafficLightModule::isPassthrough(const double & signed_arc_length) const
   const double max_acc = planner_data_->max_stop_acceleration_threshold;
   const double max_jerk = planner_data_->max_stop_jerk_threshold;
   const double delay_response_time = planner_data_->delay_response_time;
+
   const double reachable_distance =
     planner_data_->current_velocity->twist.linear.x * planner_param_.yellow_lamp_period;
 
@@ -387,6 +394,7 @@ bool TrafficLightModule::findValidTrafficSignal(TrafficSignal & valid_traffic_si
       "time diff: " << (clock_->now() - traffic_signal_stamped->stamp).seconds());
     return false;
   }
+
   valid_traffic_signal = traffic_signal_stamped->signal;
   return true;
 }
