@@ -141,12 +141,14 @@ struct PlannerData
     }
     return std::make_shared<TrafficSignalStamped>(traffic_light_id_map.at(id));
   }
-  double getRestTimeToRedSignal(const int id) const
+
+  std::optional<double> getRestTimeToRedSignal(const int id) const
   {
-    if (traffic_light_time_to_red_id_map.count(id) == 0) {
-      return std::numeric_limits<double>::max();
+    try {
+      return traffic_light_time_to_red_id_map.at(id);
+    } catch (std::out_of_range &) {
+      return std::nullopt;
     }
-    return traffic_light_time_to_red_id_map.at(id);
   }
 };
 }  // namespace behavior_velocity_planner

@@ -225,36 +225,33 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
 
     first_ref_stop_path_point_index_ = stop_line_point_idx;
 
-    const double rest_time_to_red_signal =
+    const std::optional<double> rest_time_to_red_signal =
       planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
-    const double rest_time_allowed_to_go_ahead =
-      rest_time_to_red_signal - planner_param_.v2i_last_time_allowed_to_pass;
+    if (planner_param_.v2i_use_rest_time && rest_time_to_red_signal) {
+      const double rest_time_allowed_to_go_ahead =
+        rest_time_to_red_signal.value() - planner_param_.v2i_last_time_allowed_to_pass;
 
-    RCLCPP_DEBUG(
-      logger_, "\nrest_time_allowed_to_go_ahead: %2.2f = %2.2f - %2.2f",
-      rest_time_allowed_to_go_ahead, rest_time_to_red_signal,
-      planner_param_.v2i_last_time_allowed_to_pass);
-
-    const double ego_v = planner_data_->current_velocity->twist.linear.x;
-    if (ego_v >= planner_param_.v2i_velocity_threshold) {
-      RCLCPP_DEBUG(
-        logger_, "\nego moves enough fast %2.2f > %2.2f", ego_v,
-        planner_param_.v2i_velocity_threshold);
-      if (ego_v * rest_time_allowed_to_go_ahead <= signed_arc_length_to_stop_point) {
-        RCLCPP_DEBUG(
-          logger_, "\nplan to stop because ego will not reach %2.2f <= %2.2f",
-          ego_v * rest_time_allowed_to_go_ahead, signed_arc_length_to_stop_point);
-        *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
+      const double ego_v = planner_data_->current_velocity->twist.linear.x;
+      if (ego_v >= planner_param_.v2i_velocity_threshold) {
+        if (ego_v * rest_time_allowed_to_go_ahead <= signed_arc_length_to_stop_point) {
+          *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
+        }
+      } else {
+        if (rest_time_allowed_to_go_ahead < planner_param_.v2i_required_time_to_departure) {
+          *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
+        }
       }
-    } else {
-      if (rest_time_allowed_to_go_ahead < planner_param_.v2i_required_time_to_departure) {
-        RCLCPP_DEBUG(
-          logger_, "\nplan to stop because there is enough rest time to departure %2.2f < %2.2f",
-          rest_time_allowed_to_go_ahead, planner_param_.v2i_required_time_to_departure);
-        *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
-      }
+      return true;
     }
-    return true;
+    setSafe(!isStopSignal());
+    if (isActivated()) {
+      is_prev_state_stop_ = false;
+      return true;
+    }
+    if (!isPassthrough(signed_arc_length_to_stop_point)) {
+      *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
+      is_prev_state_stop_ = true;
+    }
   } else if (state_ == State::GO_OUT) {
     // Initialize if vehicle is far from stop_line
     constexpr bool use_initialization_after_start = true;
@@ -295,8 +292,7 @@ bool TrafficLightModule::updateTrafficSignal()
   return true;
 }
 
-bool TrafficLightModule::isPassthrough(
-  const double & signed_arc_length) const  // unused in the V2I temporary implementation
+bool TrafficLightModule::isPassthrough(const double & signed_arc_length) const
 {
   const double max_acc = planner_data_->max_stop_acceleration_threshold;
   const double max_jerk = planner_data_->max_stop_jerk_threshold;

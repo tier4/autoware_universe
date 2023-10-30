@@ -41,6 +41,7 @@ TrafficLightModuleManager::TrafficLightModuleManager(rclcpp::Node & node)
   planner_param_.enable_pass_judge = getOrDeclareParameter<bool>(node, ns + ".enable_pass_judge");
   planner_param_.yellow_lamp_period =
     getOrDeclareParameter<double>(node, ns + ".yellow_lamp_period");
+  planner_param_.v2i_use_rest_time = getOrDeclareParameter<bool>(node, ns + ".v2i.use_rest_time");
   planner_param_.v2i_last_time_allowed_to_pass =
     getOrDeclareParameter<double>(node, ns + ".v2i.last_time_allowed_to_pass");
   planner_param_.v2i_velocity_threshold =
