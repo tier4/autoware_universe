@@ -250,13 +250,13 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
       is_prev_state_stop_ = false;
       return true;
     }
+
     // Decide whether to stop or pass even if a stop signal is received.
     if (!isPassthrough(signed_arc_length_to_stop_point)) {
       *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
       is_prev_state_stop_ = true;
     }
     return true;
-
   } else if (state_ == State::GO_OUT) {
     // Initialize if vehicle is far from stop_line
     constexpr bool use_initialization_after_start = true;
