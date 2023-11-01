@@ -115,7 +115,15 @@ public:
       } absence_traffic_light;
       double attention_lane_crop_curvature_threshold;
       double attention_lane_curvature_calculation_ds;
+      double static_occlusion_with_traffic_light_timeout;
     } occlusion;
+  };
+
+  enum OcclusionType {
+    NOT_OCCLUDED,
+    STATICALLY_OCCLUDED,
+    DYNAMICALLY_OCCLUDED,
+    RTC_OCCLUDED,  // actual occlusion does not exist, only disapproved by RTC
   };
 
   struct Indecisive
@@ -141,6 +149,7 @@ public:
     size_t first_stop_line_idx{0};
     size_t occlusion_stop_line_idx{0};
   };
+  // A state peeking to occlusion limit line in the presence of traffic light
   struct PeekingTowardOcclusion
   {
     // NOTE: if intersection_occlusion is disapproved externally through RTC,
@@ -151,7 +160,12 @@ public:
     size_t collision_stop_line_idx{0};
     size_t first_attention_stop_line_idx{0};
     size_t occlusion_stop_line_idx{0};
+    // if null, it is dynamic occlusion and shows up intersection_occlusion(dyn)
+    // if valid, it contains the remaining time to release the static occlusion stuck and shows up
+    // intersection_occlusion(x.y)
+    std::optional<double> static_occlusion_timeout{std::nullopt};
   };
+  // A state detecting both collision and occlusion in the presence of traffic light
   struct OccludedCollisionStop
   {
     bool is_actually_occlusion_cleared{false};
@@ -160,6 +174,9 @@ public:
     size_t collision_stop_line_idx{0};
     size_t first_attention_stop_line_idx{0};
     size_t occlusion_stop_line_idx{0};
+    // if null, it is dynamic occlusion and shows up intersection_occlusion(dyn)
+    // if valid, it contains the remaining time to release the static occlusion stuck
+    std::optional<double> static_occlusion_timeout{std::nullopt};
   };
   struct OccludedAbsenceTrafficLight
   {
@@ -227,23 +244,25 @@ private:
   const std::string turn_direction_;
   const bool has_traffic_light_;
 
-  bool is_go_out_ = false;
-  bool is_permanent_go_ = false;
-  DecisionResult prev_decision_result_;
+  bool is_go_out_{false};
+  bool is_permanent_go_{false};
+  DecisionResult prev_decision_result_{Indecisive{""}};
+  OcclusionType prev_occlusion_status_;
 
   // Parameter
   PlannerParam planner_param_;
 
-  std::optional<util::IntersectionLanelets> intersection_lanelets_;
+  std::optional<util::IntersectionLanelets> intersection_lanelets_{std::nullopt};
 
   // for occlusion detection
   const bool enable_occlusion_detection_;
-  std::optional<std::vector<util::DescritizedLane>> occlusion_attention_divisions_;
-  // OcclusionState prev_occlusion_state_ = OcclusionState::NONE;
+  std::optional<std::vector<lanelet::ConstLineString3d>> occlusion_attention_divisions_{
+    std::nullopt};
   StateMachine collision_state_machine_;     //! for stable collision checking
   StateMachine before_creep_state_machine_;  //! for two phase stop
   StateMachine occlusion_stop_state_machine_;
   StateMachine temporal_stop_before_attention_state_machine_;
+  StateMachine static_occlusion_timeout_state_machine_;
 
   // NOTE: uuid_ is base member
 
@@ -253,11 +272,11 @@ private:
 
   // for RTC
   const UUID occlusion_uuid_;
-  bool occlusion_safety_ = true;
-  double occlusion_stop_distance_;
-  bool occlusion_activated_ = true;
+  bool occlusion_safety_{true};
+  double occlusion_stop_distance_{0.0};
+  bool occlusion_activated_{true};
   // for first stop in two-phase stop
-  bool occlusion_first_stop_required_ = false;
+  bool occlusion_first_stop_required_{false};
 
   void initializeRTCStatus();
   void prepareRTCStatus(
@@ -269,26 +288,23 @@ private:
     const std::shared_ptr<const PlannerData> & planner_data,
     const util::PathLanelets & path_lanelets);
 
-  autoware_auto_perception_msgs::msg::PredictedObjects filterTargetObjects(
-    const lanelet::ConstLanelets & attention_area_lanelets,
-    const lanelet::ConstLanelets & adjacent_lanelets,
+  util::TargetObjects generateTargetObjects(
+    const util::IntersectionLanelets & intersection_lanelets,
     const std::optional<Polygon2d> & intersection_area) const;
 
   bool checkCollision(
     const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
-    const autoware_auto_perception_msgs::msg::PredictedObjects & target_objects,
-    const util::PathLanelets & path_lanelets, const int closest_idx, const double time_delay,
-    const bool tl_arrow_solid_on);
+    util::TargetObjects * target_objects, const util::PathLanelets & path_lanelets,
+    const int closest_idx, const double time_delay, const bool tl_arrow_solid_on);
 
-  bool isOcclusionCleared(
+  OcclusionType getOcclusionStatus(
     const nav_msgs::msg::OccupancyGrid & occ_grid,
     const std::vector<lanelet::CompoundPolygon3d> & attention_areas,
     const lanelet::ConstLanelets & adjacent_lanelets,
     const lanelet::CompoundPolygon3d & first_attention_area,
     const util::InterpolatedPathInfo & interpolated_path_info,
-    const std::vector<util::DescritizedLane> & lane_divisions,
-    const std::vector<autoware_auto_perception_msgs::msg::PredictedObject> &
-      parked_attention_objects,
+    const std::vector<lanelet::ConstLineString3d> & lane_divisions,
+    const util::TargetObjects & target_objects, const geometry_msgs::msg::Pose & current_pose,
     const double occlusion_dist_thr);
 
   /*

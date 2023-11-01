@@ -586,11 +586,39 @@ ObjectClassification::_label_type changeLabelForPrediction(
   }
 }
 
+void replaceObjectYawWithLaneletsYaw(
+  const LaneletsData & current_lanelets, TrackedObject & transformed_object)
+{
+  // return if no lanelet is found
+  if (current_lanelets.empty()) return;
+  auto & pose_with_cov = transformed_object.kinematics.pose_with_covariance;
+  // for each lanelet, calc lanelet angle and calculate mean angle
+  double sum_x = 0.0;
+  double sum_y = 0.0;
+  for (const auto & current_lanelet : current_lanelets) {
+    const auto lanelet_angle =
+      lanelet::utils::getLaneletAngle(current_lanelet.lanelet, pose_with_cov.pose.position);
+    sum_x += std::cos(lanelet_angle);
+    sum_y += std::sin(lanelet_angle);
+  }
+  const double mean_yaw_angle = std::atan2(sum_y, sum_x);
+  double roll, pitch, yaw;
+  tf2::Quaternion original_quaternion;
+  tf2::fromMsg(pose_with_cov.pose.orientation, original_quaternion);
+  tf2::Matrix3x3(original_quaternion).getRPY(roll, pitch, yaw);
+  tf2::Quaternion filtered_quaternion;
+  filtered_quaternion.setRPY(roll, pitch, mean_yaw_angle);
+  pose_with_cov.pose.orientation = tf2::toMsg(filtered_quaternion);
+}
+
+
 MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_options)
 : Node("map_based_prediction", node_options), debug_accumulated_time_(0.0)
 {
   enable_delay_compensation_ = declare_parameter<bool>("enable_delay_compensation");
   prediction_time_horizon_ = declare_parameter<double>("prediction_time_horizon");
+  lateral_control_time_horizon_ =
+    declare_parameter<double>("lateral_control_time_horizon");  // [s] for lateral control point
   prediction_sampling_time_interval_ = declare_parameter<double>("prediction_sampling_delta_time");
   min_velocity_for_map_based_prediction_ =
     declare_parameter<double>("min_velocity_for_map_based_prediction");
@@ -635,7 +663,8 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     declare_parameter<double>("prediction_time_horizon_rate_for_validate_shoulder_lane_length");
 
   path_generator_ = std::make_shared<PathGenerator>(
-    prediction_time_horizon_, prediction_sampling_time_interval_, min_crosswalk_user_velocity_);
+    prediction_time_horizon_, lateral_control_time_horizon_, prediction_sampling_time_interval_,
+    min_crosswalk_user_velocity_);
 
   sub_objects_ = this->create_subscription<TrackedObjects>(
     "/perception/object_recognition/tracking/objects", 1,
@@ -820,11 +849,19 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
         getDebugMarker(object, max_prob_path->maneuver, debug_markers.markers.size());
       debug_markers.markers.push_back(debug_marker);
 
+      // Fix object angle if its orientation unreliable (e.g. far object by radar sensor)
+      // This prevent bending predicted path
+      TrackedObject yaw_fixed_transformed_object = transformed_object;
+      if (
+        transformed_object.kinematics.orientation_availability ==
+        autoware_auto_perception_msgs::msg::TrackedObjectKinematics::UNAVAILABLE) {
+        replaceObjectYawWithLaneletsYaw(current_lanelets, yaw_fixed_transformed_object);
+      }
       // Generate Predicted Path
       std::vector<PredictedPath> predicted_paths;
       for (const auto & ref_path : ref_paths) {
         PredictedPath predicted_path =
-          path_generator_->generatePathForOnLaneVehicle(transformed_object, ref_path.path);
+          path_generator_->generatePathForOnLaneVehicle(yaw_fixed_transformed_object, ref_path.path);
         if (predicted_path.path.empty()) {
           continue;
         }
