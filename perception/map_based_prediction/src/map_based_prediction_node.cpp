@@ -611,7 +611,6 @@ void replaceObjectYawWithLaneletsYaw(
   pose_with_cov.pose.orientation = tf2::toMsg(filtered_quaternion);
 }
 
-
 MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_options)
 : Node("map_based_prediction", node_options), debug_accumulated_time_(0.0)
 {
@@ -860,8 +859,8 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
       // Generate Predicted Path
       std::vector<PredictedPath> predicted_paths;
       for (const auto & ref_path : ref_paths) {
-        PredictedPath predicted_path =
-          path_generator_->generatePathForOnLaneVehicle(yaw_fixed_transformed_object, ref_path.path);
+        PredictedPath predicted_path = path_generator_->generatePathForOnLaneVehicle(
+          yaw_fixed_transformed_object, ref_path.path);
         if (predicted_path.path.empty()) {
           continue;
         }
