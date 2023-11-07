@@ -2956,11 +2956,19 @@ void AvoidanceModule::insertReturnDeadLine(
     return;
   }
 
+  // Consider the difference in path length between the shifted path and original path (the path
+  // that is shifted inward has a shorter distance to the end of the path than the other one.)
+  const auto & to_reference_path_end = data.arclength_from_ego.back();
+  const auto to_shifted_path_end = calcSignedArcLength(
+    shifted_path.path.points, getEgoPosition(), shifted_path.path.points.size() - 1);
+  const auto buffer = std::max(0.0, to_shifted_path_end - to_reference_path_end);
+
   const auto min_return_distance = helper_.getMinAvoidanceDistance(shift_length);
 
   const auto to_goal = calcSignedArcLength(
     shifted_path.path.points, getEgoPosition(), shifted_path.path.points.size() - 1);
-  const auto to_stop_line = to_goal - min_return_distance - parameters_->remain_buffer_distance;
+  const auto to_stop_line =
+    to_goal - min_return_distance - parameters_->remain_buffer_distance - buffer;
 
   // If we don't need to consider deceleration constraints, insert a deceleration point
   // and return immediately
