@@ -59,9 +59,9 @@ std::size_t VoxelGenerator::pointsToVoxels(
       point[1] = point_current.y();
       point[2] = point_current.z();
       point[3] = time_lag;
-      for (std::size_t i = 1; i <= config_.class_size_; i++) {
-        point[3 + i] = (*class_iter == i) ? 1 : 0;
-      }
+      // decode the class value back to one-hot binary and assign it to point
+      std::fill(point.begin() + 4, point.end(), 0);
+      point[4 + *class_iter] = 1;
 
       out_of_range = false;
       for (std::size_t di = 0; di < config_.point_dim_size_; di++) {
