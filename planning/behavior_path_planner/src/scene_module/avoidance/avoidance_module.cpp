@@ -85,6 +85,11 @@ bool isBestEffort(const std::string & policy)
 {
   return policy == "best_effort";
 }
+
+bool perManeuver(const std::string & policy)
+{
+  return policy == "maneuver";
+}
 }  // namespace
 
 AvoidanceModule::AvoidanceModule(
@@ -2316,9 +2321,18 @@ AvoidLineArray AvoidanceModule::findNewShiftLine(const AvoidLineArray & candidat
       break;
     }
 
-    if (!is_ignore_shift(candidate)) {
-      return get_subsequent_shift(i);
+    if (is_ignore_shift(candidate)) {
+      continue;
     }
+
+    if (perManeuver(parameters_->policy_approval)) {
+      debug.step4_new_shift_line = shift_lines;
+      return shift_lines;
+    }
+
+    const auto new_shift_lines = get_subsequent_shift(i);
+    debug.step4_new_shift_line = new_shift_lines;
+    return new_shift_lines;
   }
 
   DEBUG_PRINT("No new shift point exists.");
