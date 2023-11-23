@@ -1,0 +1,28 @@
+<launch>
+
+  <arg name="param_file_path" default="$(find-pkg-share gnss_area_filter)/config/gnss_area_filter.param.yaml" />
+  <arg name="input_lanelet2_map_bin_topic" default="/map/vector_map" />
+  <arg name="input_pose_with_covariance_topic" default="/localization/pose_twist_fusion_filter/biased_pose_with_covariance" />
+  <node pkg="gnss_area_filter" exec="gnss_area_filter" name="gnss_area_filter">
+    <remap from="input_lanelet2_map_bin_topic" to="$(var input_lanelet2_map_bin_topic)" />
+    <remap from="input_pose_with_covariance_topic" to="$(var input_pose_with_covariance_topic)" />
+
+    <param from="$(var param_file_path)" />
+  </node>
+
+  <node pkg="pose_switcher" name="pose_switcher" exec="pose_switcher" output="screen">
+    <remap from="gnss_pose" to="/localization/pose_estimator/eagleye/pose_with_covariance"/>
+    <remap from="lidar_pose" to="/localization/pose_estimator/ndt_scan_matcher/pose_with_covariance"/>
+    <remap from="selected_pose" to="/localization/pose_estimator/pose_with_covariance"/>
+    <param name="error_2d_threshold" value="0.3"/> <!-- [m] -->
+    <param name="error_yaw_threshold" value="1.0"/> <!-- [deg] -->
+    <param name="judge_switching_ealpsed_time_threshold" value="1.0"/> <!-- [s] -->
+  </node>
+
+  <node pkg="pointcloud_relay" name="pointcloud_relay" exec="pointcloud_relay_node">
+    <!-- <remap from="input_pointcloud_topic" to="/points_raw"/>
+    <remap from="output_pointcloud_topic" to="/points_raw_relayed"/>
+    <param name="localization_type" value="ndt_scan_matcher"/> -->
+  </node>
+
+</launch>
