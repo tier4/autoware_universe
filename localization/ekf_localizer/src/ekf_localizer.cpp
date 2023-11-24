@@ -60,7 +60,8 @@ EKFLocalizer::EKFLocalizer(const std::string & node_name, const rclcpp::NodeOpti
   proc_cov_wz_d_ = std::pow(params_.proc_stddev_wz_c * ekf_dt_, 2.0);
   proc_cov_yaw_d_ = std::pow(params_.proc_stddev_yaw_c * ekf_dt_, 2.0);
 
-  is_activated_ = false;
+  // is_activated_ = false;
+  is_activated_ = true; // The EKF in this autoware.universe requires NDT initialization. Therefore, this modification is necessary to use GNSS/IMU.
 
   /* initialize ros system */
   timer_control_ = rclcpp::create_timer(
