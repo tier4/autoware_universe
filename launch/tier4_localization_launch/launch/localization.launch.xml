@@ -36,7 +36,8 @@
     </group>
   </group>
 
-
-  <include file="$(find-pkg-share tier4_localization_launch)/launch/switching.launch.xml">
-  </include>
+  <group if="$(eval &quot;'$(var pose_source)'=='ndt_and_eagleye'&quot;)">
+    <include file="$(find-pkg-share tier4_localization_launch)/launch/switching.launch.xml">
+    </include>
+  </group>
 </launch>

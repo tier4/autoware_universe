@@ -20,9 +20,6 @@
   </node>
 
   <node pkg="pointcloud_relay" name="pointcloud_relay" exec="pointcloud_relay_node">
-    <!-- <remap from="input_pointcloud_topic" to="/points_raw"/>
-    <remap from="output_pointcloud_topic" to="/points_raw_relayed"/>
-    <param name="localization_type" value="ndt_scan_matcher"/> -->
   </node>
 
 </launch>
