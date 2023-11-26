@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <launch>
+  <arg name="output_pose_with_covariance_topic" default="/localization/pose_estimator/pose_with_covariance_TMP"/>
   <group>
     <include file="$(find-pkg-share ndt_scan_matcher)/launch/ndt_scan_matcher.launch.xml">
       <arg name="input_map_points_topic" value="/map/pointcloud_map"/>
@@ -7,8 +8,7 @@
       <arg name="input_initial_pose_topic" value="/localization/pose_twist_fusion_filter/biased_pose_with_covariance"/>
 
       <arg name="output_pose_topic" value="/localization/pose_estimator/pose"/>
-      <arg name="output_pose_with_covariance_topic" value="/localization/pose_estimator/pose_with_covariance"/>
-      <!-- <arg name="output_pose_with_covariance_topic" value="/localization/pose_estimator/ndt_scan_matcher/pose_with_covariance"/> -->
+      <arg name="output_pose_with_covariance_topic" value="$(var output_pose_with_covariance_topic)"/>
 
       <arg name="param_file" value="$(var ndt_scan_matcher_param_path)"/>
     </include>
