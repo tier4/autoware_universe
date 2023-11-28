@@ -76,7 +76,7 @@ bool isOnRight(const ObjectData & obj)
   return obj.lateral < 0.0;
 }
 
-bool isTargetObjectType(
+bool isAvoidanceTargetObjectType(
   const PredictedObject & object, const std::shared_ptr<AvoidanceParameters> & parameters)
 {
   const auto object_type = utils::getHighestProbLabel(object.classification);
@@ -85,7 +85,19 @@ bool isTargetObjectType(
     return false;
   }
 
-  return parameters->object_parameters.at(object_type).is_target;
+  return parameters->object_parameters.at(object_type).is_avoidance_target;
+}
+
+bool isSafetyCheckTargetObjectType(
+  const PredictedObject & object, const std::shared_ptr<AvoidanceParameters> & parameters)
+{
+  const auto object_type = utils::getHighestProbLabel(object.classification);
+
+  if (parameters->object_parameters.count(object_type) == 0) {
+    return false;
+  }
+
+  return parameters->object_parameters.at(object_type).is_safety_check_target;
 }
 
 bool isVehicleTypeObject(const ObjectData & object)
@@ -854,7 +866,7 @@ void filterTargetObjects(
     const auto object_type = utils::getHighestProbLabel(o.object.classification);
     const auto object_parameter = parameters->object_parameters.at(object_type);
 
-    if (!isTargetObjectType(o.object, parameters)) {
+    if (!isAvoidanceTargetObjectType(o.object, parameters)) {
       o.reason = AvoidanceDebugFactor::OBJECT_IS_NOT_TYPE;
       data.other_objects.push_back(o);
       continue;
@@ -1458,8 +1470,10 @@ std::vector<ExtendedPredictedObject> getSafetyCheckTargetObjects(
 
   const auto append_target_objects = [&](const auto & check_lanes, const auto & objects) {
     std::for_each(objects.begin(), objects.end(), [&](const auto & object) {
-      if (isCentroidWithinLanelets(object.object, check_lanes)) {
-        target_objects.push_back(utils::avoidance::transform(object.object, p));
+      if (isSafetyCheckTargetObjectType(object.object, parameters)) {
+        if (isCentroidWithinLanelets(object.object, check_lanes)) {
+          target_objects.push_back(utils::avoidance::transform(object.object, p));
+        }
       }
     });
   };
