@@ -3,7 +3,8 @@
   <arg name="output_pose_with_cov_name" default="/localization/pose_estimator/pose_with_covariance"/>
   <node pkg="eagleye_fix2pose" name="fix2pose_node" exec="fix2pose">
     <!-- /eagleye/fix or  /GNSS/fix(GNSS pose only mode)-->
-    <remap from="eagleye/fix" to="/sensing/gnss/septentrio/nav_sat_fix"/>
+    <!-- <remap from="eagleye/fix" to="/sensing/gnss/septentrio/nav_sat_fix"/> -->
+    <remap from="eagleye/fix" to="/sensing/gnss/septentrio/reliable_nav_sat_fix"/>
     <remap from="eagleye/pose_with_covariance" to="$(var output_pose_with_cov_name)"/>
     <!-- plane rectangular coordinate number -->
     <param name="plane" value="7"/>

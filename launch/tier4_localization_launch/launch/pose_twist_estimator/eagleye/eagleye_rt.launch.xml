@@ -136,6 +136,12 @@
         <param from="$(var eagleye_param_path)"/>
         <param name="yaml_file" value="$(var eagleye_param_path)"/>
       </node>
+      <node pkg="eagleye_rt" name="rtkfix_plane_validation" exec="rtkfix_plane_validation">
+            <param from="$(var eagleye_param_path)"/>
+            <param name="yaml_file" value="$(var eagleye_param_path)"/>
+            <remap from="gnss/fix" to="/sensing/gnss/septentrio/nav_sat_fix"/>
+            <remap from="gnss/reliable_rtkfix" to="/sensing/gnss/septentrio/reliable_nav_sat_fix"/>
+      </node>
     </group>
 
     <node pkg="eagleye_rt" name="monitor" exec="monitor">
