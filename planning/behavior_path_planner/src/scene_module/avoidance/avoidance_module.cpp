@@ -2326,12 +2326,10 @@ AvoidLineArray AvoidanceModule::findNewShiftLine(const AvoidLineArray & candidat
     }
 
     if (perManeuver(parameters_->policy_approval)) {
-      debug.step4_new_shift_line = shift_lines;
-      return shift_lines;
+      return candidates;
     }
 
     const auto new_shift_lines = get_subsequent_shift(i);
-    debug.step4_new_shift_line = new_shift_lines;
     return new_shift_lines;
   }
 
