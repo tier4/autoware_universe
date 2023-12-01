@@ -40,14 +40,14 @@
       <param from="$(var eagleye_param_path)"/>
       <param name="yaml_file" value="$(var eagleye_param_path)"/>
     </node>
-    <node pkg="eagleye_rt" name="yaw_rate_offset_node_1st" exec="yaw_rate_offset" args="1st">
+    <!-- <node pkg="eagleye_rt" name="yaw_rate_offset_node_1st" exec="yaw_rate_offset" args="1st">
       <param from="$(var eagleye_param_path)"/>
       <param name="yaml_file" value="$(var eagleye_param_path)"/>
     </node>
     <node pkg="eagleye_rt" name="yaw_rate_offset_node_2nd" exec="yaw_rate_offset" args="2nd">
       <param from="$(var eagleye_param_path)"/>
       <param name="yaml_file" value="$(var eagleye_param_path)"/>
-    </node>
+    </node> -->
     <node pkg="eagleye_rt" name="heading_node_1st" exec="heading" args="1st" if="$(eval &quot;'$(var use_rtk_heading)'=='false'&quot;)">
       <param from="$(var eagleye_param_path)"/>
       <param name="yaml_file" value="$(var eagleye_param_path)"/>
@@ -100,7 +100,7 @@
       <param name="yaml_file" value="$(var eagleye_param_path)"/>
     </node>
     <group if="$(var use_eagleye_pose)">
-      <node pkg="eagleye_rt" name="position_node" exec="position" if="$(eval &quot;'$(var use_rtk_dead_reckoning)'=='false'&quot;)">
+      <!-- <node pkg="eagleye_rt" name="position_node" exec="position" if="$(eval &quot;'$(var use_rtk_dead_reckoning)'=='false'&quot;)">
         <param from="$(var eagleye_param_path)"/>
         <param name="yaml_file" value="$(var eagleye_param_path)"/>
       </node>
@@ -141,13 +141,13 @@
             <param name="yaml_file" value="$(var eagleye_param_path)"/>
             <remap from="gnss/fix" to="/sensing/gnss/septentrio/nav_sat_fix"/>
             <remap from="gnss/reliable_rtkfix" to="/sensing/gnss/septentrio/reliable_nav_sat_fix"/>
-      </node>
+      </node> -->
     </group>
 
-    <node pkg="eagleye_rt" name="monitor" exec="monitor">
+    <!-- <node pkg="eagleye_rt" name="monitor" exec="monitor">
       <param from="$(var eagleye_param_path)"/>
       <param name="yaml_file" value="$(var eagleye_param_path)"/>
-    </node>
+    </node> -->
     <include file="$(var directory_with_related_launches)/gnss_converter.launch.xml">
       <arg name="config_path" value="$(var eagleye_param_path)"/>
     </include>
