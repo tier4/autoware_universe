@@ -75,10 +75,10 @@
       <param from="$(var eagleye_param_path)"/>
       <param name="yaml_file" value="$(var eagleye_param_path)"/>
     </node>
-    <node pkg="eagleye_rt" name="slip_angle_node" exec="slip_angle">
+    <!-- <node pkg="eagleye_rt" name="slip_angle_node" exec="slip_angle">
       <param from="$(var eagleye_param_path)"/>
       <param name="yaml_file" value="$(var eagleye_param_path)"/>
-    </node>
+    </node> -->
     <node pkg="eagleye_rt" name="distance_node" exec="distance">
       <param from="$(var eagleye_param_path)"/>
       <param name="yaml_file" value="$(var eagleye_param_path)"/>
