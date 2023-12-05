@@ -313,7 +313,10 @@ void NDTScanMatcher::callback_sensor_points(
 {
   // mutex ndt_ptr_
   std::lock_guard<std::mutex> lock(ndt_ptr_mtx_);
-  if (sensor_points_sensorTF_msg_ptr->data.empty()) return;
+  if (sensor_points_sensorTF_msg_ptr->data.empty()) {
+    RCLCPP_INFO(get_logger(), "Points are empty.");
+    return;
+  }
 
   const auto exe_start_time = std::chrono::system_clock::now();
   const rclcpp::Time sensor_ros_time = sensor_points_sensorTF_msg_ptr->header.stamp;
