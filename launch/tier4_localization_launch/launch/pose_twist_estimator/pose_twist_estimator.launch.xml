@@ -30,7 +30,7 @@
   </group>
 
   <!-- YabLoc Launch (as pose estimator) -->
-  <group if="$(eval &quot;'$(var pose_source)'=='yabloc'&quot;)">
+  <!-- <group if="$(eval &quot;'$(var pose_source)'=='yabloc'&quot;)">
     <group>
       <push-ros-namespace namespace="pose_estimator"/>
       <include file="$(find-pkg-share tier4_localization_launch)/launch/pose_twist_estimator/yabloc.launch.xml"/>
@@ -50,7 +50,7 @@
         <include file="$(find-pkg-share automatic_pose_initializer)/launch/automatic_pose_initializer.launch.xml"/>
       </group>
     </group>
-  </group>
+  </group> -->
 
   <!-- Gyro Odometer Launch (as pose estimator) -->
   <group if="$(eval &quot;'$(var twist_source)'=='gyro_odom'&quot;)">
@@ -59,7 +59,7 @@
   </group>
 
   <!-- Eagleye Launch (as pose & twist estimator) -->
-  <group if="$(eval &quot;'$(var pose_source)'=='eagleye' and '$(var twist_source)'=='eagleye'&quot;)">
+  <!-- <group if="$(eval &quot;'$(var pose_source)'=='eagleye' and '$(var twist_source)'=='eagleye'&quot;)">
     <group>
       <push-ros-namespace namespace="pose_twist_estimator"/>
       <include file="$(find-pkg-share tier4_localization_launch)/launch/pose_twist_estimator/eagleye/eagleye_rt.launch.xml">
@@ -84,10 +84,10 @@
         <include file="$(find-pkg-share automatic_pose_initializer)/launch/automatic_pose_initializer.launch.xml"/>
       </group>
     </group>
-  </group>
+  </group> -->
 
   <!-- Eagleye Launch (as pose estimator) -->
-  <group if="$(eval &quot;'$(var pose_source)'=='eagleye' and '$(var twist_source)'!='eagleye'&quot;)">
+  <!-- <group if="$(eval &quot;'$(var pose_source)'=='eagleye' and '$(var twist_source)'!='eagleye'&quot;)">
     <group>
       <push-ros-namespace namespace="pose_estimator"/>
       <include file="$(find-pkg-share tier4_localization_launch)/launch/pose_twist_estimator/eagleye/eagleye_rt.launch.xml">
@@ -111,20 +111,20 @@
         <include file="$(find-pkg-share automatic_pose_initializer)/launch/automatic_pose_initializer.launch.xml"/>
       </group>
     </group>
-  </group>
+  </group> -->
 
   <!-- Eagleye Launch (as twist estimator) -->
-  <group if="$(eval &quot;'$(var pose_source)'!='eagleye' and '$(var twist_source)'=='eagleye'&quot;)">
+  <!-- <group if="$(eval &quot;'$(var pose_source)'!='eagleye' and '$(var twist_source)'=='eagleye'&quot;)">
     <push-ros-namespace namespace="twist_estimator"/>
     <include file="$(find-pkg-share tier4_localization_launch)/launch/pose_twist_estimator/eagleye/eagleye_rt.launch.xml">
       <arg name="output_twist_with_cov_name" value="/localization/twist_estimator/twist_with_covariance"/>
       <arg name="use_eagleye_pose" value="false"/>
       <arg name="use_eagleye_twist" value="true"/>
     </include>
-  </group>
+  </group> -->
 
   <!-- AR Tag Based Localizer (as pose estimator) -->
-  <group if="$(eval &quot;'$(var pose_source)'=='artag'&quot;)">
+  <!-- <group if="$(eval &quot;'$(var pose_source)'=='artag'&quot;)">
     <group>
       <push-ros-namespace namespace="pose_estimator"/>
       <include file="$(find-pkg-share tier4_localization_launch)/launch/pose_twist_estimator/ar_tag_based_localizer.launch.xml"/>
@@ -148,5 +148,5 @@
         <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
       </include>
     </group>
-  </group>
+  </group> -->
 </launch>
