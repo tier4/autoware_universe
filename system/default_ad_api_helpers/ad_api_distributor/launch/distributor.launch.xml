@@ -1,0 +1,3 @@
+<launch>
+  <node pkg="ad_api_distributor" exec="distributor" name="distributor"/>
+</launch>
