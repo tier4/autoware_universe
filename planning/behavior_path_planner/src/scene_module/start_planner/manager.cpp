@@ -14,6 +14,8 @@
 
 #include "behavior_path_planner/scene_module/start_planner/manager.hpp"
 
+#include "tier4_autoware_utils/ros/update_param.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -31,6 +33,7 @@ StartPlannerModuleManager::StartPlannerModuleManager(
 
   std::string ns = "start_planner.";
 
+  p.verbose = node->declare_parameter<bool>(ns + "verbose");
   p.th_arrived_distance = node->declare_parameter<double>(ns + "th_arrived_distance");
   p.th_stopped_velocity = node->declare_parameter<double>(ns + "th_stopped_velocity");
   p.th_stopped_time = node->declare_parameter<double>(ns + "th_stopped_time");
@@ -166,18 +169,20 @@ StartPlannerModuleManager::StartPlannerModuleManager(
   // EgoPredictedPath
   std::string ego_path_ns = base_ns + "ego_predicted_path.";
   {
+    p.ego_predicted_path_params.min_velocity =
+      node->declare_parameter<double>(ego_path_ns + "min_velocity");
     p.ego_predicted_path_params.acceleration =
       node->declare_parameter<double>(ego_path_ns + "acceleration");
-    p.ego_predicted_path_params.time_horizon =
-      node->declare_parameter<double>(ego_path_ns + "time_horizon");
+    p.ego_predicted_path_params.max_velocity =
+      node->declare_parameter<double>(ego_path_ns + "max_velocity");
+    p.ego_predicted_path_params.time_horizon_for_front_object =
+      node->declare_parameter<double>(ego_path_ns + "time_horizon_for_front_object");
+    p.ego_predicted_path_params.time_horizon_for_rear_object =
+      node->declare_parameter<double>(ego_path_ns + "time_horizon_for_rear_object");
     p.ego_predicted_path_params.time_resolution =
       node->declare_parameter<double>(ego_path_ns + "time_resolution");
-    p.ego_predicted_path_params.min_slow_speed =
-      node->declare_parameter<double>(ego_path_ns + "min_slow_speed");
     p.ego_predicted_path_params.delay_until_departure =
       node->declare_parameter<double>(ego_path_ns + "delay_until_departure");
-    p.ego_predicted_path_params.target_velocity =
-      node->declare_parameter<double>(ego_path_ns + "target_velocity");
   }
 
   // ObjectFilteringParams
@@ -292,46 +297,71 @@ void StartPlannerModuleManager::updateModuleParams(
 
   [[maybe_unused]] std::string ns = name_ + ".";
 
-  std::for_each(registered_modules_.begin(), registered_modules_.end(), [&](const auto & m) {
-    m->updateModuleParams(p);
+  std::for_each(observers_.begin(), observers_.end(), [&](const auto & observer) {
+    if (!observer.expired()) {
+      const auto start_planner_ptr = std::dynamic_pointer_cast<StartPlannerModule>(observer.lock());
+      if (start_planner_ptr) {
+        start_planner_ptr->updateModuleParams(p);
+      }
+    }
   });
 }
 
 bool StartPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
 {
-  const auto checker = [this](const auto & module) {
+  if (observers_.empty()) {
+    return enable_simultaneous_execution_as_approved_module_;
+  }
+
+  const auto checker = [this](const SceneModuleObserver & observer) {
+    if (observer.expired()) {
+      return enable_simultaneous_execution_as_approved_module_;
+    }
+
+    const auto start_planner_ptr = std::dynamic_pointer_cast<StartPlannerModule>(observer.lock());
+
     // Currently simultaneous execution with other modules is not supported while backward driving
-    if (!module->isBackFinished()) {
+    if (!start_planner_ptr->isDrivingForward()) {
       return false;
     }
 
     // Other modules are not needed when freespace planning
-    if (module->isFreespacePlanning()) {
+    if (start_planner_ptr->isFreespacePlanning()) {
       return false;
     }
 
     return enable_simultaneous_execution_as_approved_module_;
   };
 
-  return std::all_of(registered_modules_.begin(), registered_modules_.end(), checker);
+  return std::all_of(observers_.begin(), observers_.end(), checker);
 }
 
 bool StartPlannerModuleManager::isSimultaneousExecutableAsCandidateModule() const
 {
-  const auto checker = [this](const auto & module) {
+  if (observers_.empty()) {
+    return enable_simultaneous_execution_as_candidate_module_;
+  }
+
+  const auto checker = [this](const SceneModuleObserver & observer) {
+    if (observer.expired()) {
+      return enable_simultaneous_execution_as_candidate_module_;
+    }
+
+    const auto start_planner_ptr = std::dynamic_pointer_cast<StartPlannerModule>(observer.lock());
+
     // Currently simultaneous execution with other modules is not supported while backward driving
-    if (!module->isBackFinished()) {
+    if (start_planner_ptr->isDrivingForward()) {
       return false;
     }
 
     // Other modules are not needed when freespace planning
-    if (module->isFreespacePlanning()) {
+    if (start_planner_ptr->isFreespacePlanning()) {
       return false;
     }
 
     return enable_simultaneous_execution_as_candidate_module_;
   };
 
-  return std::all_of(registered_modules_.begin(), registered_modules_.end(), checker);
+  return std::all_of(observers_.begin(), observers_.end(), checker);
 }
 }  // namespace behavior_path_planner

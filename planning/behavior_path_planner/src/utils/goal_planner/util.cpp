@@ -14,22 +14,18 @@
 
 #include "behavior_path_planner/utils/goal_planner/util.hpp"
 
-#include "behavior_path_planner/utils/path_shifter/path_shifter.hpp"
-#include "behavior_path_planner/utils/path_utils.hpp"
-
 #include <lanelet2_extension/utility/query.hpp>
 #include <lanelet2_extension/utility/utilities.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <tier4_autoware_utils/geometry/boost_geometry.hpp>
 
 #include <boost/geometry/algorithms/dispatch/distance.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/primitives/Lanelet.h>
 #include <tf2/utils.h>
 #include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
-#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -171,7 +167,7 @@ MarkerArray createNumObjectsToAvoidTextsMarkerArray(
 }
 
 MarkerArray createGoalCandidatesMarkerArray(
-  GoalCandidates & goal_candidates, const std_msgs::msg::ColorRGBA & color)
+  const GoalCandidates & goal_candidates, const std_msgs::msg::ColorRGBA & color)
 {
   GoalCandidates safe_goal_candidates{};
   std::copy_if(

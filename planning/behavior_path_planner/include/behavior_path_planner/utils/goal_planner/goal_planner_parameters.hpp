@@ -62,18 +62,18 @@ struct GoalPlannerParameters
   double margin_from_boundary{0.0};
 
   // occupancy grid map
-  bool use_occupancy_grid_for_goal_search;
-  bool use_occupancy_grid_for_goal_longitudinal_margin;
-  bool use_occupancy_grid_for_path_collision_check;
-  double occupancy_grid_collision_check_margin;
-  int theta_size;
-  int obstacle_threshold;
+  bool use_occupancy_grid_for_goal_search{false};
+  bool use_occupancy_grid_for_goal_longitudinal_margin{false};
+  bool use_occupancy_grid_for_path_collision_check{false};
+  double occupancy_grid_collision_check_margin{0.0};
+  int theta_size{0};
+  int obstacle_threshold{0};
 
   // object recognition
-  bool use_object_recognition;
-  double object_recognition_collision_check_margin;
-  double object_recognition_collision_check_max_extra_stopping_margin;
-  double th_moving_object_velocity;
+  bool use_object_recognition{false};
+  double object_recognition_collision_check_margin{0.0};
+  double object_recognition_collision_check_max_extra_stopping_margin{0.0};
+  double th_moving_object_velocity{0.0};
 
   // pull over general params
   double pull_over_minimum_request_length{0.0};
@@ -86,41 +86,41 @@ struct GoalPlannerParameters
   std::vector<std::string> efficient_path_order{};
 
   // shift path
-  bool enable_shift_parking;
-  int shift_sampling_num;
-  double maximum_lateral_jerk;
-  double minimum_lateral_jerk;
-  double deceleration_interval;
-  double after_shift_straight_distance;
+  bool enable_shift_parking{false};
+  int shift_sampling_num{0};
+  double maximum_lateral_jerk{0.0};
+  double minimum_lateral_jerk{0.0};
+  double deceleration_interval{0.0};
+  double after_shift_straight_distance{0.0};
 
   // parallel parking
-  bool enable_arc_forward_parking;
-  bool enable_arc_backward_parking;
+  bool enable_arc_forward_parking{false};
+  bool enable_arc_backward_parking{false};
   ParallelParkingParameters parallel_parking_parameters;
 
   // freespace parking
-  bool enable_freespace_parking;
+  bool enable_freespace_parking{false};
   std::string freespace_parking_algorithm;
-  double freespace_parking_velocity;
-  double vehicle_shape_margin;
-  PlannerCommonParam freespace_parking_common_parameters;
-  AstarParam astar_parameters;
-  RRTStarParam rrt_star_parameters;
+  double freespace_parking_velocity{0.0};
+  double vehicle_shape_margin{0.0};
+  PlannerCommonParam freespace_parking_common_parameters{};
+  AstarParam astar_parameters{};
+  RRTStarParam rrt_star_parameters{};
 
   // stop condition
-  double maximum_deceleration_for_stop;
-  double maximum_jerk_for_stop;
+  double maximum_deceleration_for_stop{0.0};
+  double maximum_jerk_for_stop{0.0};
 
   // hysteresis parameter
-  double hysteresis_factor_expand_rate;
+  double hysteresis_factor_expand_rate{0.0};
 
   // path safety checker
-  utils::path_safety_checker::EgoPredictedPathParams ego_predicted_path_params;
-  utils::path_safety_checker::ObjectsFilteringParams objects_filtering_params;
-  utils::path_safety_checker::SafetyCheckParams safety_check_params;
+  utils::path_safety_checker::EgoPredictedPathParams ego_predicted_path_params{};
+  utils::path_safety_checker::ObjectsFilteringParams objects_filtering_params{};
+  utils::path_safety_checker::SafetyCheckParams safety_check_params{};
 
   // debug
-  bool print_debug_info;
+  bool print_debug_info{false};
 };
 }  // namespace behavior_path_planner
 

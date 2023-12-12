@@ -15,6 +15,7 @@
 #ifndef BEHAVIOR_PATH_PLANNER__UTILS__GOAL_PLANNER__UTIL_HPP_
 #define BEHAVIOR_PATH_PLANNER__UTILS__GOAL_PLANNER__UTIL_HPP_
 
+#include "behavior_path_planner/utils/drivable_area_expansion/static_drivable_area.hpp"
 #include "behavior_path_planner/utils/goal_planner/goal_searcher_base.hpp"
 #include "behavior_path_planner/utils/utils.hpp"
 
@@ -26,7 +27,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 
-#include <lanelet2_core/primitives/Primitive.h>
+#include <lanelet2_core/Forward.h>
 
 #include <memory>
 #include <string>
@@ -63,7 +64,7 @@ MarkerArray createPosesMarkerArray(
 MarkerArray createTextsMarkerArray(
   const std::vector<Pose> & poses, std::string && ns, const std_msgs::msg::ColorRGBA & color);
 MarkerArray createGoalCandidatesMarkerArray(
-  GoalCandidates & goal_candidates, const std_msgs::msg::ColorRGBA & color);
+  const GoalCandidates & goal_candidates, const std_msgs::msg::ColorRGBA & color);
 MarkerArray createNumObjectsToAvoidTextsMarkerArray(
   const GoalCandidates & goal_candidates, std::string && ns,
   const std_msgs::msg::ColorRGBA & color);

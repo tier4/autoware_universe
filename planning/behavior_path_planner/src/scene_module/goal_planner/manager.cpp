@@ -15,8 +15,8 @@
 #include "behavior_path_planner/scene_module/goal_planner/manager.hpp"
 
 #include "behavior_path_planner/utils/goal_planner/util.hpp"
+#include "tier4_autoware_utils/ros/update_param.hpp"
 
-#include <lanelet2_extension/utility/utilities.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -77,7 +77,7 @@ GoalPlannerModuleManager::GoalPlannerModuleManager(
 
   // occupancy grid map
   {
-    std::string ns = "goal_planner.occupancy_grid.";
+    const std::string ns = base_ns + "occupancy_grid.";
     p.use_occupancy_grid_for_goal_search =
       node->declare_parameter<bool>(ns + "use_occupancy_grid_for_goal_search");
     p.use_occupancy_grid_for_path_collision_check =
@@ -252,18 +252,20 @@ GoalPlannerModuleManager::GoalPlannerModuleManager(
   // EgoPredictedPath
   std::string ego_path_ns = path_safety_check_ns + "ego_predicted_path.";
   {
+    p.ego_predicted_path_params.min_velocity =
+      node->declare_parameter<double>(ego_path_ns + "min_velocity");
     p.ego_predicted_path_params.acceleration =
       node->declare_parameter<double>(ego_path_ns + "acceleration");
-    p.ego_predicted_path_params.time_horizon =
-      node->declare_parameter<double>(ego_path_ns + "time_horizon");
+    p.ego_predicted_path_params.max_velocity =
+      node->declare_parameter<double>(ego_path_ns + "max_velocity");
+    p.ego_predicted_path_params.time_horizon_for_front_object =
+      node->declare_parameter<double>(ego_path_ns + "time_horizon_for_front_object");
+    p.ego_predicted_path_params.time_horizon_for_rear_object =
+      node->declare_parameter<double>(ego_path_ns + "time_horizon_for_rear_object");
     p.ego_predicted_path_params.time_resolution =
       node->declare_parameter<double>(ego_path_ns + "time_resolution");
-    p.ego_predicted_path_params.min_slow_speed =
-      node->declare_parameter<double>(ego_path_ns + "min_slow_speed");
     p.ego_predicted_path_params.delay_until_departure =
       node->declare_parameter<double>(ego_path_ns + "delay_until_departure");
-    p.ego_predicted_path_params.target_velocity =
-      node->declare_parameter<double>(ego_path_ns + "target_velocity");
   }
 
   // ObjectFilteringParams
@@ -332,6 +334,9 @@ GoalPlannerModuleManager::GoalPlannerModuleManager(
   {
     p.safety_check_params.enable_safety_check =
       node->declare_parameter<bool>(safety_check_ns + "enable_safety_check");
+    p.safety_check_params.keep_unsafe_time =
+      node->declare_parameter<double>(safety_check_ns + "keep_unsafe_time");
+    p.safety_check_params.method = node->declare_parameter<std::string>(safety_check_ns + "method");
     p.safety_check_params.hysteresis_factor_expand_rate =
       node->declare_parameter<double>(safety_check_ns + "hysteresis_factor_expand_rate");
     p.safety_check_params.backward_path_length =
@@ -355,6 +360,19 @@ GoalPlannerModuleManager::GoalPlannerModuleManager(
       node->declare_parameter<double>(rss_ns + "longitudinal_distance_min_threshold");
     p.safety_check_params.rss_params.longitudinal_velocity_delta_time =
       node->declare_parameter<double>(rss_ns + "longitudinal_velocity_delta_time");
+  }
+
+  // IntegralPredictedPolygonParams
+  std::string integral_ns = safety_check_ns + "integral_predicted_polygon_params.";
+  {
+    p.safety_check_params.integral_predicted_polygon_params.forward_margin =
+      node->declare_parameter<double>(integral_ns + "forward_margin");
+    p.safety_check_params.integral_predicted_polygon_params.backward_margin =
+      node->declare_parameter<double>(integral_ns + "backward_margin");
+    p.safety_check_params.integral_predicted_polygon_params.lat_margin =
+      node->declare_parameter<double>(integral_ns + "lat_margin");
+    p.safety_check_params.integral_predicted_polygon_params.time_horizon =
+      node->declare_parameter<double>(integral_ns + "time_horizon");
   }
 
   // debug
@@ -391,8 +409,8 @@ void GoalPlannerModuleManager::updateModuleParams(
 
   [[maybe_unused]] std::string ns = name_ + ".";
 
-  std::for_each(registered_modules_.begin(), registered_modules_.end(), [&p](const auto & m) {
-    m->updateModuleParams(p);
+  std::for_each(observers_.begin(), observers_.end(), [&p](const auto & observer) {
+    if (!observer.expired()) observer.lock()->updateModuleParams(p);
   });
 }
 

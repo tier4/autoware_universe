@@ -192,7 +192,7 @@ The avoidance target should be limited to stationary objects (you should not avo
 Not only the length from the centerline, but also the length from the road shoulder is calculated and used for the filtering process. It calculates the ratio of _the actual length between the the object's center and the center line_ `shift_length` and _the maximum length the object can shift_ `shiftable_length`.
 
 $$
-l_D = l_a - \frac{width}{2} \\
+l_D = l_a - \frac{width}{2}, \\
 ratio =  \frac{l_d}{l_D}
 $$
 
@@ -201,13 +201,156 @@ $$
 - $l_a$ : distance between centerline and most left boundary.
 - $width$ : object width
 
-The closer the object is to the shoulder, the larger the value of $ratio$ (theoretical max value is 1.0), and it compares the value and `object_check_shiftable_ratio` to determine whether the object is a parked-car.
+The closer the object is to the shoulder, the larger the value of $ratio$ (theoretical max value is 1.0), and it compares the value and `object_check_shiftable_ratio` to determine whether the object is a parked-car. If the road has no road shoulders, it uses `object_check_min_road_shoulder_width` as a road shoulder width virtually.
 
 ![fig2](../image/avoidance/parked-car-detection.svg)
 
 ### Compensation for detection lost
 
 In order to prevent chattering of recognition results, once an obstacle is targeted, it is hold for a while even if it disappears. This is effective when recognition is unstable. However, since it will result in over-detection (increase a number of false-positive), it is necessary to adjust parameters according to the recognition accuracy (if `object_last_seen_threshold = 0.0`, the recognition result is 100% trusted).
+
+### Flowchart
+
+```plantuml
+@startuml
+skinparam defaultTextAlignment center
+skinparam noteTextAlignment left
+
+title object filtering flowchart
+start
+
+if(object is satisfied with common target condition ?) then (yes)
+if(vehicle can pass by the object without avoidance ?) then (yes)
+:return false;
+stop
+else (\n no)
+endif
+else (\n no)
+:return false;
+stop
+endif
+
+if(object is vehicle type ?) then (yes)
+if(object is satisfied with vehicle type target condition ?) then (yes)
+else (\n no)
+:return false;
+stop
+endif
+else (\n no)
+if(object is satisfied with non-vehicle type target condition ?) then (yes)
+else (\n no)
+:return false;
+stop
+endif
+endif
+
+#FF006C :return true;
+stop
+@enduml
+```
+
+```plantuml
+@startuml
+skinparam defaultTextAlignment center
+skinparam noteTextAlignment left
+
+title filtering flow for all types object
+start
+
+partition isSatisfiedWithCommonCondition() {
+if(object is avoidance target type ?) then (yes)
+if(object is moving more than threshold time ?) then (yes)
+:return false;
+stop
+else (\n no)
+if(object is farther than forward distance threshold ?) then (yes)
+:return false;
+stop
+else (\n no)
+If(object is farther than backward distance threshold ?) then (yes)
+:return false;
+stop
+else (\n no)
+endif
+endif
+endif
+else (\n no)
+:return false;
+stop
+endif
+#FF006C :return true;
+stop
+}
+
+@enduml
+```
+
+```plantuml
+@startuml
+skinparam defaultTextAlignment center
+skinparam noteTextAlignment left
+
+title filtering flow for vehicle type objects
+start
+
+partition isSatisfiedWithVehicleCodition() {
+if(object is force avoidance target ?) then (yes)
+#FF006C :return true;
+stop
+else (\n no)
+if(object is nearer lane centerline than threshold ?) then (yes)
+:return false;
+stop
+else (\n no)
+if(object is on same lane for ego ?) then (yes)
+if(object is shifting right or left side road shoulder more than threshold ?) then (yes)
+#FF006C :return true;
+stop
+else (\n no)
+:return false;
+stop
+endif
+else (\n no)
+if(object is in intersection ?) then (no)
+#FF006C :return true;
+stop
+else (\n yes)
+if(object pose is paralell to ego lane ?) then (no)
+#FF006C :return true;
+stop
+else (\n yes)
+:return false;
+stop
+endif
+endif
+endif
+endif
+endif
+}
+
+@enduml
+```
+
+```plantuml
+@startuml
+skinparam defaultTextAlignment center
+skinparam noteTextAlignment left
+
+title filtering flow for non-vehicle type objects
+start
+
+partition isSatisfiedWithNonVehicleCodition() {
+if(object is nearer crosswalk than threshold ?) then (yes)
+:return false;
+stop
+else (\n no)
+endif
+#FF006C :return true;
+stop
+}
+
+@enduml
+```
 
 ## Overview of algorithm for avoidance path generation
 
@@ -601,13 +744,13 @@ $$
 
 ### Avoidance cancelling maneuver
 
-If `enable_update_path_when_object_is_gone` parameter is true, Avoidance Module takes different actions according to the situations as follows:
+If `enable_cancel_maneuver` parameter is true, Avoidance Module takes different actions according to the situations as follows:
 
 - If vehicle stops: If there is any object in the path of the vehicle, the avoidance path is generated. If this object goes away while the vehicle is stopping, the avoidance path will cancelled.
 - If vehicle is in motion, but avoidance maneuver doesn't started: If there is any object in the path of the vehicle, the avoidance path is generated. If this object goes away while the vehicle is not started avoidance maneuver, the avoidance path will cancelled.
 - If vehicle is in motion, avoidance maneuver started: If there is any object in the path of the vehicle, the avoidance path is generated,but if this object goes away while the vehicle is started avoidance maneuver, the avoidance path will not cancelled.
 
-If `enable_update_path_when_object_is_gone` parameter is false, Avoidance Module doesn't revert generated avoidance path even if path objects are gone.
+If `enable_cancel_maneuver` parameter is false, Avoidance Module doesn't revert generated avoidance path even if path objects are gone.
 
 ## How to keep the consistency of the optimize-base path generation logic
 
@@ -621,15 +764,15 @@ The avoidance specific parameter configuration file can be located at `src/autow
 
 namespace: `avoidance.`
 
-| Name                                   | Unit | Type   | Description                                                                                                                         | Default value |
-| :------------------------------------- | :--- | :----- | :---------------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| resample_interval_for_planning         | [m]  | double | Path resample interval for avoidance planning path.                                                                                 | 0.3           |
-| resample_interval_for_output           | [m]  | double | Path resample interval for output path. Too short interval increases computational cost for latter modules.                         | 4.0           |
-| detection_area_right_expand_dist       | [m]  | double | Lanelet expand length for right side to find avoidance target vehicles.                                                             | 0.0           |
-| detection_area_left_expand_dist        | [m]  | double | Lanelet expand length for left side to find avoidance target vehicles.                                                              | 1.0           |
-| enable_update_path_when_object_is_gone | [-]  | bool   | Reset trajectory when avoided objects are gone. If false, shifted path points remain same even though the avoided objects are gone. | false         |
-| enable_yield_maneuver                  | [-]  | bool   | Flag to enable yield maneuver.                                                                                                      | false         |
-| enable_yield_maneuver_during_shifting  | [-]  | bool   | Flag to enable yield maneuver during shifting.                                                                                      | false         |
+| Name                                  | Unit | Type   | Description                                                                                                                         | Default value |
+| :------------------------------------ | :--- | :----- | :---------------------------------------------------------------------------------------------------------------------------------- | :------------ |
+| resample_interval_for_planning        | [m]  | double | Path resample interval for avoidance planning path.                                                                                 | 0.3           |
+| resample_interval_for_output          | [m]  | double | Path resample interval for output path. Too short interval increases computational cost for latter modules.                         | 4.0           |
+| detection_area_right_expand_dist      | [m]  | double | Lanelet expand length for right side to find avoidance target vehicles.                                                             | 0.0           |
+| detection_area_left_expand_dist       | [m]  | double | Lanelet expand length for left side to find avoidance target vehicles.                                                              | 1.0           |
+| enable_cancel_maneuver                | [-]  | bool   | Reset trajectory when avoided objects are gone. If false, shifted path points remain same even though the avoided objects are gone. | false         |
+| enable_yield_maneuver                 | [-]  | bool   | Flag to enable yield maneuver.                                                                                                      | false         |
+| enable_yield_maneuver_during_shifting | [-]  | bool   | Flag to enable yield maneuver during shifting.                                                                                      | false         |
 
 | Name                      | Unit | Type | Description                                                                                                             | Default value |
 | :------------------------ | ---- | ---- | ----------------------------------------------------------------------------------------------------------------------- | ------------- |
@@ -692,7 +835,7 @@ namespace: `avoidance.target_filtering.`
 | object_check_backward_distance                        | [m]  | double | Backward distance to search the avoidance target.                                                                                                                                                                                      | 2.0           |
 | object_check_goal_distance                            | [m]  | double | Backward distance to search the avoidance target.                                                                                                                                                                                      | 20.0          |
 | object_check_shiftable_ratio                          | [m]  | double | Vehicles around the center line within this distance will be excluded from avoidance target.                                                                                                                                           | 0.6           |
-| object_check_min_road_shoulder_width                  | [m]  | double | Vehicles around the center line within this distance will be excluded from avoidance target.                                                                                                                                           | 0.5           |
+| object_check_min_road_shoulder_width                  | [m]  | double | Width considered as a road shoulder if the lane does not have a road shoulder target.                                                                                                                                                  | 0.5           |
 | object_last_seen_threshold                            | [s]  | double | For the compensation of the detection lost. The object is registered once it is observed as an avoidance target. When the detection loses, the timer will start and the object will be un-registered when the time exceeds this limit. | 2.0           |
 
 ### Safety check parameters
@@ -822,7 +965,7 @@ Developers can see what is going on in each process by visualizing all the avoid
 
 ![fig1](../image/avoidance/avoidance-debug-marker.png)
 
-To enable the debug marker, execute `ros2 param set /planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner avoidance.output_debug_marker true` (no restart is needed) or simply set the `output_debug_marker` to `true` in the `avoidance.param.yaml` for permanent effect (restart is needed). Then add the marker `/planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner/debug/avoidance` in `rviz2`.
+To enable the debug marker, execute `ros2 param set /planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner avoidance.publish_debug_marker true` (no restart is needed) or simply set the `publish_debug_marker` to `true` in the `avoidance.param.yaml` for permanent effect (restart is needed). Then add the marker `/planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner/debug/avoidance` in `rviz2`.
 
 ### Echoing debug message to find out why the objects were ignored
 

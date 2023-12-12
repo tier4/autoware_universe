@@ -25,6 +25,7 @@
 #include "behavior_path_planner/utils/lane_change/lane_change_module_data.hpp"
 #include "behavior_path_planner/utils/lane_change/lane_change_path.hpp"
 #include "behavior_path_planner/utils/path_shifter/path_shifter.hpp"
+#include "objects_of_interest_marker_interface/objects_of_interest_marker_interface.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -48,6 +49,8 @@ namespace behavior_path_planner
 using autoware_auto_planning_msgs::msg::PathWithLaneId;
 using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::Twist;
+using objects_of_interest_marker_interface::ColorName;
+using objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface;
 using tier4_planning_msgs::msg::LaneChangeDebugMsg;
 using tier4_planning_msgs::msg::LaneChangeDebugMsgArray;
 
@@ -73,7 +76,8 @@ public:
 
   bool isExecutionReady() const override;
 
-  ModuleStatus updateState() override;
+  // TODO(someone): remove this, and use base class function
+  [[deprecated]] ModuleStatus updateState() override;
 
   void updateData() override;
 
@@ -87,7 +91,7 @@ public:
 
   void acceptVisitor(const std::shared_ptr<SceneModuleVisitor> & visitor) const override;
 
-  void updateModuleParams(const std::shared_ptr<LaneChangeParameters> & parameters);
+  void updateModuleParams(const std::any & parameters) override;
 
   void setData(const std::shared_ptr<const PlannerData> & data) override;
 
@@ -96,16 +100,48 @@ public:
   TurnSignalInfo getCurrentTurnSignalInfo(
     const PathWithLaneId & path, const TurnSignalInfo & original_turn_signal_info);
 
+  // TODO(someone): remove this, and use base class function
+  [[deprecated]] BehaviorModuleOutput run() override
+  {
+    updateData();
+
+    if (!isWaitingApproval()) {
+      return plan();
+    }
+
+    // module is waiting approval. Check it.
+    if (isActivated()) {
+      RCLCPP_DEBUG(getLogger(), "Was waiting approval, and now approved. Do plan().");
+      return plan();
+    } else {
+      RCLCPP_DEBUG(getLogger(), "keep waiting approval... Do planCandidate().");
+      return planWaitingApproval();
+    }
+  }
+
 protected:
   std::shared_ptr<LaneChangeParameters> parameters_;
 
   std::unique_ptr<LaneChangeBase> module_type_;
+
+  bool canTransitSuccessState() override { return false; }
+
+  bool canTransitFailureState() override { return false; }
+
+  bool canTransitIdleToRunningState() override { return false; }
 
   void resetPathIfAbort();
 
   void resetLaneChangeModule();
 
   void setObjectDebugVisualization() const;
+
+  void setObjectsOfInterestData(const bool is_approved);
+
+  void publishObjectsOfInterestData()
+  {
+    objects_of_interest_marker_interface_.publishMarkerArray();
+  }
 
   void updateSteeringFactorPtr(const BehaviorModuleOutput & output);
 
@@ -116,6 +152,7 @@ protected:
   mutable LaneChangeDebugMsgArray lane_change_debug_msg_array_;
 
   std::unique_ptr<PathWithLaneId> prev_approved_path_;
+  ObjectsOfInterestMarkerInterface objects_of_interest_marker_interface_;
 
   void clearAbortApproval() { is_abort_path_approved_ = false; }
 
