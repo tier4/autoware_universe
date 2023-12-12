@@ -48,6 +48,7 @@ struct DiagConfig
   std::string lf_at;
   std::string spf_at;
   bool auto_recovery;
+  bool ignore_until_waiting_for_route;
 };
 
 using RequiredModules = std::vector<DiagConfig>;
@@ -56,6 +57,7 @@ struct KeyName
 {
   static constexpr const char * autonomous_driving = "autonomous_driving";
   static constexpr const char * external_control = "external_control";
+  static constexpr const char * manual_control = "manual_control";
 };
 
 class AutowareErrorMonitor : public rclcpp::Node

@@ -165,6 +165,7 @@ BehaviorPathPlannerParameters BehaviorPathPlannerNode::getCommonParam()
   p.turn_light_on_threshold_dis_lat = declare_parameter("turn_light_on_threshold_dis_lat", 0.3);
   p.turn_light_on_threshold_dis_long = declare_parameter("turn_light_on_threshold_dis_long", 10.0);
   p.turn_light_on_threshold_time = declare_parameter("turn_light_on_threshold_time", 3.0);
+  p.path_interval = declare_parameter<double>("path_interval");
   p.visualize_drivable_area_for_shared_linestrings_lanelet =
     declare_parameter("visualize_drivable_area_for_shared_linestrings_lanelet", true);
 
@@ -477,7 +478,10 @@ void BehaviorPathPlannerNode::run()
   const auto output = bt_manager_->run(planner_data_);
 
   // path handling
-  const auto path = getPath(output);
+  const auto paths = getPath(output);
+  const auto path = paths.first;
+  const auto original_path = paths.second;
+
   const auto path_candidate = getPathCandidate(output);
   planner_data_->prev_output_path = path;
 
@@ -503,7 +507,7 @@ void BehaviorPathPlannerNode::run()
       hazard_signal.command = output.turn_signal_info.hazard_signal.command;
     } else {
       turn_signal = turn_signal_decider_.getTurnSignal(
-        *path, planner_data_->self_pose->pose, *(planner_data_->route_handler),
+        *original_path, planner_data_->self_pose->pose, *(planner_data_->route_handler),
         output.turn_signal_info.turn_signal, output.turn_signal_info.signal_distance);
       hazard_signal.command = HazardLightsCommand::DISABLE;
     }
@@ -526,7 +530,9 @@ void BehaviorPathPlannerNode::run()
   RCLCPP_DEBUG(get_logger(), "----- behavior path planner end -----\n\n");
 }
 
-PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPath(const BehaviorModuleOutput & bt_output)
+// output: spline interpolated path, original path
+std::pair<PathWithLaneId::SharedPtr, PathWithLaneId::SharedPtr> BehaviorPathPlannerNode::getPath(
+  const BehaviorModuleOutput & bt_output)
 {
   // TODO(Horibe) do some error handling when path is not available.
 
@@ -535,7 +541,10 @@ PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPath(const BehaviorModuleO
   path->header.stamp = this->now();
   RCLCPP_DEBUG(
     get_logger(), "BehaviorTreeManager: output is %s.", bt_output.path ? "FOUND" : "NOT FOUND");
-  return path;
+
+  const auto resampled_path =
+    util::resamplePathWithSpline(*path, planner_data_->parameters.path_interval);
+  return std::make_pair(std::make_shared<PathWithLaneId>(resampled_path), path);
 }
 
 PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPathCandidate(
