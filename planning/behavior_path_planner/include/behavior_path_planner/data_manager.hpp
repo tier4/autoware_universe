@@ -20,7 +20,6 @@
 #include "behavior_path_planner/utils/drivable_area_expansion/parameters.hpp"
 #include "motion_utils/trajectory/trajectory.hpp"
 
-#include <lanelet2_extension/regulatory_elements/Forward.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <route_handler/route_handler.hpp>
 
@@ -29,7 +28,6 @@
 #include <autoware_auto_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_auto_vehicle_msgs/msg/hazard_lights_command.hpp>
 #include <autoware_auto_vehicle_msgs/msg/turn_indicators_command.hpp>
-#include <autoware_perception_msgs/msg/traffic_signal_array.hpp>
 #include <autoware_planning_msgs/msg/pose_with_uuid_stamped.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/pose.hpp>
@@ -41,7 +39,6 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 
 #include <limits>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -54,7 +51,6 @@ using autoware_auto_perception_msgs::msg::PredictedObjects;
 using autoware_auto_planning_msgs::msg::PathWithLaneId;
 using autoware_auto_vehicle_msgs::msg::HazardLightsCommand;
 using autoware_auto_vehicle_msgs::msg::TurnIndicatorsCommand;
-using autoware_perception_msgs::msg::TrafficSignal;
 using autoware_planning_msgs::msg::PoseWithUuidStamped;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using geometry_msgs::msg::PoseStamped;
@@ -63,14 +59,7 @@ using nav_msgs::msg::Odometry;
 using route_handler::RouteHandler;
 using tier4_planning_msgs::msg::LateralOffset;
 using PlanResult = PathWithLaneId::SharedPtr;
-using lanelet::TrafficLight;
 using unique_identifier_msgs::msg::UUID;
-
-struct TrafficSignalStamped
-{
-  builtin_interfaces::msg::Time stamp;
-  TrafficSignal signal;
-};
 
 struct BoolStamped
 {
@@ -156,7 +145,6 @@ struct PlannerData
   std::optional<PoseWithUuidStamped> prev_modified_goal{};
   std::optional<UUID> prev_route_id{};
   std::shared_ptr<RouteHandler> route_handler{std::make_shared<RouteHandler>()};
-  std::map<int, TrafficSignalStamped> traffic_light_id_map;
   BehaviorPathPlannerParameters parameters{};
   drivable_area_expansion::DrivableAreaExpansionParameters drivable_area_expansion_parameters{};
 
@@ -172,21 +160,6 @@ struct PlannerData
     const auto & current_vel = self_odometry->twist.twist.linear.x;
     return turn_signal_decider.getTurnSignal(
       route_handler, path, turn_signal_info, current_pose, current_vel, parameters, debug_data);
-  }
-
-  std::optional<TrafficSignalStamped> getTrafficSignal(const int id) const
-  {
-    if (traffic_light_id_map.count(id) == 0) {
-      return std::nullopt;
-    }
-
-    const auto elapsed_time =
-      (rclcpp::Clock{RCL_ROS_TIME}.now() - traffic_light_id_map.at(id).stamp).seconds();
-    if (elapsed_time > parameters.traffic_light_signal_timeout) {
-      return std::nullopt;
-    }
-
-    return traffic_light_id_map.at(id);
   }
 
   template <class T>
