@@ -40,8 +40,7 @@ LaneChangeInterface::LaneChangeInterface(
 : SceneModuleInterface{name, node, rtc_interface_ptr_map},
   parameters_{std::move(parameters)},
   module_type_{std::move(module_type)},
-  prev_approved_path_{std::make_unique<PathWithLaneId>()},
-  objects_of_interest_marker_interface_{&node, name}
+  prev_approved_path_{std::make_unique<PathWithLaneId>()}
 {
   steering_factor_interface_ptr_ = std::make_unique<SteeringFactorInterface>(&node, name);
 }
@@ -199,9 +198,6 @@ BehaviorModuleOutput LaneChangeInterface::plan()
 
   stop_pose_ = module_type_->getStopPose();
 
-  setObjectsOfInterestData(true);
-  publishObjectsOfInterestData();
-
   updateSteeringFactorPtr(output);
   clearWaitingApproval();
 
@@ -224,8 +220,6 @@ BehaviorModuleOutput LaneChangeInterface::planWaitingApproval()
     getPreviousModuleOutput().reference_path, getPreviousModuleOutput().path);
   module_type_->updateLaneChangeStatus();
   setObjectDebugVisualization();
-  setObjectsOfInterestData(false);
-  publishObjectsOfInterestData();
 
   // change turn signal when the vehicle reaches at the end of the path for waiting lane change
   out.turn_signal_info = getCurrentTurnSignalInfo(*out.path, out.turn_signal_info);
@@ -312,18 +306,6 @@ void LaneChangeInterface::setObjectDebugVisualization() const
     add(showPredictedPath(debug_after_approval, "ego_predicted_path_after_approval"));
     add(showPolygon(debug_after_approval, "ego_and_target_polygon_relation_after_approval"));
   }
-}
-
-void LaneChangeInterface::setObjectsOfInterestData(const bool is_approved)
-{
-  const auto debug_data =
-    is_approved ? module_type_->getAfterApprovalDebugData() : module_type_->getDebugData();
-  for (const auto & [uuid, data] : debug_data) {
-    const auto color = data.is_safe ? ColorName::GREEN : ColorName::RED;
-    objects_of_interest_marker_interface_.insertObjectData(
-      data.current_obj_pose, data.obj_shape, color);
-  }
-  return;
 }
 
 std::shared_ptr<LaneChangeDebugMsgArray> LaneChangeInterface::get_debug_msg_array() const
