@@ -663,7 +663,9 @@ void ObstacleStopPlannerNode::searchObstacle(
 
   const auto now = this->now();
 
-  updateObstacleHistory(now);
+  if (current_velocity_ptr ->twist.twist.linear.x  == 0){
+    updateObstacleHistory(now);
+  }
 
   for (size_t i = 0; i < decimate_trajectory.size() - 1; ++i) {
     // create one step circle center for vehicle
