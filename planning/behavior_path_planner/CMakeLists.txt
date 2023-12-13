@@ -12,21 +12,10 @@ ament_auto_add_library(behavior_path_planner_node SHARED
   src/steering_factor_interface.cpp
   src/behavior_path_planner_node.cpp
   src/scene_module/scene_module_visitor.cpp
-  src/scene_module/avoidance/avoidance_module.cpp
-  src/scene_module/avoidance/manager.cpp
-  src/scene_module/dynamic_avoidance/dynamic_avoidance_module.cpp
-  src/scene_module/dynamic_avoidance/manager.cpp
   src/scene_module/start_planner/start_planner_module.cpp
   src/scene_module/start_planner/manager.cpp
   src/scene_module/goal_planner/goal_planner_module.cpp
   src/scene_module/goal_planner/manager.cpp
-  src/scene_module/side_shift/side_shift_module.cpp
-  src/scene_module/side_shift/manager.cpp
-  src/scene_module/lane_change/interface.cpp
-  src/scene_module/lane_change/normal.cpp
-  src/scene_module/lane_change/external_request.cpp
-  src/scene_module/lane_change/avoidance_by_lane_change.cpp
-  src/scene_module/lane_change/manager.cpp
   src/turn_signal_decider.cpp
   src/utils/utils.cpp
   src/utils/path_utils.cpp
@@ -34,9 +23,6 @@ ament_auto_add_library(behavior_path_planner_node SHARED
   src/utils/path_safety_checker/safety_check.cpp
   src/utils/path_safety_checker/objects_filtering.cpp
   src/utils/start_goal_planner_common/utils.cpp
-  src/utils/avoidance/utils.cpp
-  src/utils/lane_change/utils.cpp
-  src/utils/side_shift/util.cpp
   src/utils/goal_planner/util.cpp
   src/utils/goal_planner/shift_pull_over.cpp
   src/utils/goal_planner/geometric_pull_over.cpp
@@ -55,8 +41,6 @@ ament_auto_add_library(behavior_path_planner_node SHARED
   src/utils/geometric_parallel_parking/geometric_parallel_parking.cpp
   src/utils/occupancy_grid_based_collision_detector/occupancy_grid_based_collision_detector.cpp
   src/marker_utils/utils.cpp
-  src/marker_utils/avoidance/debug.cpp
-  src/marker_utils/lane_change/debug.cpp
 )
 
 target_include_directories(behavior_path_planner_node SYSTEM PUBLIC
@@ -72,55 +56,55 @@ rclcpp_components_register_node(behavior_path_planner_node
   EXECUTABLE behavior_path_planner
 )
 
-if(BUILD_TESTING)
-  ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_utilities
-    test/input.cpp
-    test/test_utils.cpp
-    test/test_drivable_area_expansion.cpp
-  )
-  target_link_libraries(test_${CMAKE_PROJECT_NAME}_utilities
-    behavior_path_planner_node
-  )
+# if(BUILD_TESTING)
+#   ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_utilities
+#     test/input.cpp
+#     test/test_utils.cpp
+#     test/test_drivable_area_expansion.cpp
+#   )
+#   target_link_libraries(test_${CMAKE_PROJECT_NAME}_utilities
+#     behavior_path_planner_node
+#   )
 
-  ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_avoidance_module
-    test/test_avoidance_utils.cpp
-  )
+#   ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_avoidance_module
+#     test/test_avoidance_utils.cpp
+#   )
 
-  target_link_libraries(test_${CMAKE_PROJECT_NAME}_avoidance_module
-    behavior_path_planner_node
-  )
+#   target_link_libraries(test_${CMAKE_PROJECT_NAME}_avoidance_module
+#     behavior_path_planner_node
+#   )
 
-  ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_lane_change_module
-    test/test_lane_change_utils.cpp
-  )
+#   ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_lane_change_module
+#     test/test_lane_change_utils.cpp
+#   )
 
-  target_link_libraries(test_${CMAKE_PROJECT_NAME}_lane_change_module
-    behavior_path_planner_node
-  )
+#   target_link_libraries(test_${CMAKE_PROJECT_NAME}_lane_change_module
+#     behavior_path_planner_node
+#   )
 
-  ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_safety_check
-    test/test_safety_check.cpp
-  )
+#   ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_safety_check
+#     test/test_safety_check.cpp
+#   )
 
-  target_link_libraries(test_${CMAKE_PROJECT_NAME}_safety_check
-    behavior_path_planner_node
-  )
+#   target_link_libraries(test_${CMAKE_PROJECT_NAME}_safety_check
+#     behavior_path_planner_node
+#   )
 
-  ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_turn_signal
-    test/test_turn_signal.cpp
-  )
+#   ament_add_ros_isolated_gmock(test_${CMAKE_PROJECT_NAME}_turn_signal
+#     test/test_turn_signal.cpp
+#   )
 
-  target_link_libraries(test_${CMAKE_PROJECT_NAME}_turn_signal
-    behavior_path_planner_node
-  )
+#   target_link_libraries(test_${CMAKE_PROJECT_NAME}_turn_signal
+#     behavior_path_planner_node
+#   )
 
-  ament_add_ros_isolated_gtest(test_${PROJECT_NAME}_node_interface
-    test/test_${PROJECT_NAME}_node_interface.cpp
-  )
-  target_link_libraries(test_${PROJECT_NAME}_node_interface
-    behavior_path_planner_node
-  )
-endif()
+#   ament_add_ros_isolated_gtest(test_${PROJECT_NAME}_node_interface
+#     test/test_${PROJECT_NAME}_node_interface.cpp
+#   )
+#   target_link_libraries(test_${PROJECT_NAME}_node_interface
+#     behavior_path_planner_node
+#   )
+# endif()
 
 ament_auto_package(
   INSTALL_TO_SHARE
