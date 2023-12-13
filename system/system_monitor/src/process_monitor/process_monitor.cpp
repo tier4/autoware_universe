@@ -543,7 +543,7 @@ void ProcessMonitor::onTimer()
   std::ostringstream os;
 
   // Get processes
-  bp::child c("top -bcn1 -o %CPU -w 256", bp::std_out > is_out, bp::std_err > is_err);
+  bp::child c("top -bn1 -o %CPU -w 128", bp::std_out > is_out, bp::std_err > is_err);
   c.wait();
 
   if (c.exit_code() != 0) {
