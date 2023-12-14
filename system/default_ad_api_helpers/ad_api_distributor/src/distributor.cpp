@@ -62,42 +62,69 @@ Distributor::Distributor() : Node("distributor")
 
 void Distributor::on_initialize(
   const autoware_adapi_v1_msgs::srv::InitializeLocalization::Request::SharedPtr req,
-  const autoware_adapi_v1_msgs::srv::InitializeLocalization::Response::SharedPtr)
+  const autoware_adapi_v1_msgs::srv::InitializeLocalization::Response::SharedPtr res)
 {
+  if (!cli_main_initialize_->service_is_ready() || !cli_sub_initialize_->service_is_ready()) {
+    res->status.success = false;
+    return;
+  }
   cli_main_initialize_->async_send_request(req);
   cli_sub_initialize_->async_send_request(req);
+  res->status.success = true;
 }
 
 void Distributor::on_set_route(
   const autoware_adapi_v1_msgs::srv::SetRoute::Request::SharedPtr req,
-  const autoware_adapi_v1_msgs::srv::SetRoute::Response::SharedPtr)
+  const autoware_adapi_v1_msgs::srv::SetRoute::Response::SharedPtr res)
 {
+  if (!cli_main_set_route_->service_is_ready() || !cli_sub_set_route_->service_is_ready()) {
+    res->status.success = false;
+    return;
+  }
   cli_main_set_route_->async_send_request(req);
   cli_sub_set_route_->async_send_request(req);
+  res->status.success = true;
 }
 
 void Distributor::on_clear_route(
   const autoware_adapi_v1_msgs::srv::ClearRoute::Request::SharedPtr req,
-  const autoware_adapi_v1_msgs::srv::ClearRoute::Response::SharedPtr)
+  const autoware_adapi_v1_msgs::srv::ClearRoute::Response::SharedPtr res)
 {
+  if (!cli_main_clear_route_->service_is_ready() || !cli_sub_clear_route_->service_is_ready()) {
+    res->status.success = false;
+    return;
+  }
   cli_main_clear_route_->async_send_request(req);
   cli_sub_clear_route_->async_send_request(req);
+  res->status.success = true;
 }
 
 void Distributor::on_change_to_stop(
   const autoware_adapi_v1_msgs::srv::ChangeOperationMode::Request::SharedPtr req,
-  const autoware_adapi_v1_msgs::srv::ChangeOperationMode::Response::SharedPtr)
+  const autoware_adapi_v1_msgs::srv::ChangeOperationMode::Response::SharedPtr res)
 {
+  if (!cli_main_stop_mode_->service_is_ready() || !cli_sub_stop_mode_->service_is_ready()) {
+    res->status.success = false;
+    return;
+  }
   cli_main_stop_mode_->async_send_request(req);
   cli_sub_stop_mode_->async_send_request(req);
+  res->status.success = true;
 }
 
 void Distributor::on_change_to_autonomous(
   const autoware_adapi_v1_msgs::srv::ChangeOperationMode::Request::SharedPtr req,
-  const autoware_adapi_v1_msgs::srv::ChangeOperationMode::Response::SharedPtr)
+  const autoware_adapi_v1_msgs::srv::ChangeOperationMode::Response::SharedPtr res)
 {
+  if (!cli_main_autonomous_mode_->service_is_ready() ||
+    !cli_sub_autonomous_mode_->service_is_ready())
+  {
+    res->status.success = false;
+    return;
+  }
   cli_main_autonomous_mode_->async_send_request(req);
   cli_sub_autonomous_mode_->async_send_request(req);
+  res->status.success = true;
 }
 
 }  // namespace ad_api_distributor
