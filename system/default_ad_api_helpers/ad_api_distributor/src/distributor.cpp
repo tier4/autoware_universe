@@ -34,21 +34,22 @@ Distributor::Distributor() : Node("distributor")
   srv_stop_mode_ = create_service<autoware_adapi_v1_msgs::srv::ChangeOperationMode>(
     "/api/operation_mode/change_to_stop", std::bind(&Distributor::on_change_to_stop, this, _1, _2));
   srv_autonomous_mode_ = create_service<autoware_adapi_v1_msgs::srv::ChangeOperationMode>(
-    "/api/operation_mode/change_to_autonomous", std::bind(&Distributor::on_change_to_autonomous, this, _1, _2));
+    "/api/operation_mode/change_to_autonomous",
+    std::bind(&Distributor::on_change_to_autonomous, this, _1, _2));
 
   // Client
   cli_main_initialize_ = create_client<autoware_adapi_v1_msgs::srv::InitializeLocalization>(
     "/main/api/localization/initialize");
   cli_sub_initialize_ = create_client<autoware_adapi_v1_msgs::srv::InitializeLocalization>(
     "/sub/api/localization/initialize");
-  cli_main_set_route_ = create_client<autoware_adapi_v1_msgs::srv::SetRoute>(
-    "/main/api/localization/initialize");
-  cli_sub_set_route_ = create_client<autoware_adapi_v1_msgs::srv::SetRoute>(
-    "/sub/api/localization/initialize");
-  cli_main_clear_route_ = create_client<autoware_adapi_v1_msgs::srv::ClearRoute>(
-    "/main/api/localization/initialize");
-  cli_sub_clear_route_ = create_client<autoware_adapi_v1_msgs::srv::ClearRoute>(
-    "/sub/api/localization/initialize");
+  cli_main_set_route_ =
+    create_client<autoware_adapi_v1_msgs::srv::SetRoute>("/main/api/localization/initialize");
+  cli_sub_set_route_ =
+    create_client<autoware_adapi_v1_msgs::srv::SetRoute>("/sub/api/localization/initialize");
+  cli_main_clear_route_ =
+    create_client<autoware_adapi_v1_msgs::srv::ClearRoute>("/main/api/localization/initialize");
+  cli_sub_clear_route_ =
+    create_client<autoware_adapi_v1_msgs::srv::ClearRoute>("/sub/api/localization/initialize");
   cli_main_stop_mode_ = create_client<autoware_adapi_v1_msgs::srv::ChangeOperationMode>(
     "/main/api/localization/initialize");
   cli_sub_stop_mode_ = create_client<autoware_adapi_v1_msgs::srv::ChangeOperationMode>(
