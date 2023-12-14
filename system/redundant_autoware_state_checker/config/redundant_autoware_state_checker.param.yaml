@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    states_equality_timeout: 1.0
+    update_rate_hz: 10.0
+    pose_distance_threshold: 1.0

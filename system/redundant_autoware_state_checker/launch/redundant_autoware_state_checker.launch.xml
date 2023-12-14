@@ -1,0 +1,6 @@
+<launch>
+  <arg name="config_file" default="$(find-pkg-share redundant_autoware_state_checker)/config/redundant_autoware_state_checker.param.yaml"/>
+  <node pkg="redundant_autoware_state_checker" exec="redundant_autoware_state_checker" name="redundant_autoware_state_checker"/>
+    <param from="$(var config_file)"/>
+  </node>
+</launch>

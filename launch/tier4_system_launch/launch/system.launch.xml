@@ -18,6 +18,7 @@
   <arg name="system_monitor_ntp_monitor_param_path"/>
   <arg name="system_monitor_process_monitor_param_path"/>
   <arg name="system_monitor_voltage_monitor_param_path"/>
+  <arg name="redundant_autoware_state_checker_param_path"/>
 
   <arg name="launch_system_monitor" default="true" description="launch system monitor"/>
   <arg name="launch_dummy_diag_publisher" description="launch dummy diag publisher"/>
