@@ -116,9 +116,9 @@ void Distributor::on_change_to_autonomous(
   const autoware_adapi_v1_msgs::srv::ChangeOperationMode::Request::SharedPtr req,
   const autoware_adapi_v1_msgs::srv::ChangeOperationMode::Response::SharedPtr res)
 {
-  if (!cli_main_autonomous_mode_->service_is_ready() ||
-    !cli_sub_autonomous_mode_->service_is_ready())
-  {
+  if (
+    !cli_main_autonomous_mode_->service_is_ready() ||
+    !cli_sub_autonomous_mode_->service_is_ready()) {
     res->status.success = false;
     return;
   }
