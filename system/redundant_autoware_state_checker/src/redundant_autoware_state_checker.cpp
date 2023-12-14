@@ -17,15 +17,16 @@
 namespace redundant_autoware_state_checker
 {
 
-RedundantAutowareStateChecker::RedundantAutowareStateChecker() : Node("RedundantAutowareStateChecker")
+RedundantAutowareStateChecker::RedundantAutowareStateChecker()
+: Node("RedundantAutowareStateChecker")
 {
   using std::placeholders::_1;
 
   // Params
-  states_equality_timeout =
-    this->declare_parameter("states_equality_timeout", 1.0); // 1.0s
-  update_rate_hz = this->declare_parameter<double>("update_rate_hz", 10.0); // 10hz
-  pose_distance_threshold = this->declare_parameter<double>("pose_distance_threshold", 1.0); // 1.0m
+  states_equality_timeout = this->declare_parameter("states_equality_timeout", 1.0);  // 1.0s
+  update_rate_hz = this->declare_parameter<double>("update_rate_hz", 10.0);           // 10hz
+  pose_distance_threshold =
+    this->declare_parameter<double>("pose_distance_threshold", 1.0);  // 1.0m
 
   // Publishers
   pub_diagnostic = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
@@ -35,24 +36,31 @@ RedundantAutowareStateChecker::RedundantAutowareStateChecker() : Node("Redundant
   sub_overall_mrm_state = create_subscription<autoware_adapi_v1_msgs::msg::MrmState>(
     "/supervisor/fail_safe/overall/mrm_state", rclcpp::QoS(1),
     std::bind(&RedundantAutowareStateChecker::on_mrm_state, this, _1));
-  sub_main_pose_with_covariance = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-    "/main/localization/pose_with_covariance", rclcpp::QoS(1),
-    std::bind(&RedundantAutowareStateChecker::on_main_pose_with_covariance, this, _1));
+  sub_main_pose_with_covariance =
+    create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+      "/main/localization/pose_with_covariance", rclcpp::QoS(1),
+      std::bind(&RedundantAutowareStateChecker::on_main_pose_with_covariance, this, _1));
   sub_sub_pose_with_covariance = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "/sub/localization/pose_with_covariance", rclcpp::QoS(1),
     std::bind(&RedundantAutowareStateChecker::on_sub_pose_with_covariance, this, _1));
-  sub_main_operation_mode_state = create_subscription<autoware_adapi_v1_msgs::msg::OperationModeState>(
-    "/main/api/operation_mode/state", rclcpp::QoS(1),
-    std::bind(&RedundantAutowareStateChecker::on_main_operation_mode_state, this, _1));
-  sub_sub_operation_mode_state = create_subscription<autoware_adapi_v1_msgs::msg::OperationModeState>(
-    "/sub/api/operation_mode/state", rclcpp::QoS(1),
-    std::bind(&RedundantAutowareStateChecker::on_sub_operation_mode_state, this, _1));
-  sub_main_localization_initialization_state = create_subscription<autoware_adapi_v1_msgs::msg::LocalizationInitializationState>(
-    "/main/api/localization/initialization_state", rclcpp::QoS(1),
-    std::bind(&RedundantAutowareStateChecker::on_main_localization_initialization_state, this, _1));
-  sub_sub_localization_initialization_state = create_subscription<autoware_adapi_v1_msgs::msg::LocalizationInitializationState>(
-    "/sub/api/localization/initialization_state", rclcpp::QoS(1),
-    std::bind(&RedundantAutowareStateChecker::on_sub_localization_initialization_state, this, _1));
+  sub_main_operation_mode_state =
+    create_subscription<autoware_adapi_v1_msgs::msg::OperationModeState>(
+      "/main/api/operation_mode/state", rclcpp::QoS(1),
+      std::bind(&RedundantAutowareStateChecker::on_main_operation_mode_state, this, _1));
+  sub_sub_operation_mode_state =
+    create_subscription<autoware_adapi_v1_msgs::msg::OperationModeState>(
+      "/sub/api/operation_mode/state", rclcpp::QoS(1),
+      std::bind(&RedundantAutowareStateChecker::on_sub_operation_mode_state, this, _1));
+  sub_main_localization_initialization_state =
+    create_subscription<autoware_adapi_v1_msgs::msg::LocalizationInitializationState>(
+      "/main/api/localization/initialization_state", rclcpp::QoS(1),
+      std::bind(
+        &RedundantAutowareStateChecker::on_main_localization_initialization_state, this, _1));
+  sub_sub_localization_initialization_state =
+    create_subscription<autoware_adapi_v1_msgs::msg::LocalizationInitializationState>(
+      "/sub/api/localization/initialization_state", rclcpp::QoS(1),
+      std::bind(
+        &RedundantAutowareStateChecker::on_sub_localization_initialization_state, this, _1));
   sub_main_route_state = create_subscription<autoware_adapi_v1_msgs::msg::RouteState>(
     "/main/api/routing/state", rclcpp::QoS(1),
     std::bind(&RedundantAutowareStateChecker::on_main_route_state, this, _1));
@@ -68,7 +76,8 @@ RedundantAutowareStateChecker::RedundantAutowareStateChecker() : Node("Redundant
 
   // Timer
   const auto period_ns = rclcpp::Rate(update_rate_hz).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period_ns, std::bind(&RedundantAutowareStateChecker::onTimer, this));
+  timer_ = rclcpp::create_timer(
+    this, get_clock(), period_ns, std::bind(&RedundantAutowareStateChecker::onTimer, this));
 
   // Variables
   is_autonomous = true;
@@ -82,9 +91,9 @@ RedundantAutowareStateChecker::RedundantAutowareStateChecker() : Node("Redundant
 void RedundantAutowareStateChecker::on_mrm_state(
   const autoware_adapi_v1_msgs::msg::MrmState::ConstSharedPtr msg)
 {
-  is_autonomous = (
-    msg->state == autoware_adapi_v1_msgs::msg::MrmState::NORMAL &&
-    msg->behavior == autoware_adapi_v1_msgs::msg::MrmState::NONE);
+  is_autonomous =
+    (msg->state == autoware_adapi_v1_msgs::msg::MrmState::NORMAL &&
+     msg->behavior == autoware_adapi_v1_msgs::msg::MrmState::NONE);
 }
 
 void RedundantAutowareStateChecker::on_main_pose_with_covariance(
@@ -197,9 +206,12 @@ void RedundantAutowareStateChecker::onTimer()
   if (is_equal_localization_initialization_state()) {
     last_time_localization_initialization_state_is_equal = now;
   } else {
-    if ((now - last_time_localization_initialization_state_is_equal).seconds() > states_equality_timeout) {
+    if (
+      (now - last_time_localization_initialization_state_is_equal).seconds() >
+      states_equality_timeout) {
       diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-      diag_status_msg.message += "Main and Sub ECUs' localization initialization states are different.";
+      diag_status_msg.message +=
+        "Main and Sub ECUs' localization initialization states are different.";
     }
   }
 
@@ -252,7 +264,10 @@ bool RedundantAutowareStateChecker::is_equal_operation_mode_stete()
 
   // Currently, following menbers are used to check the equality
   if (main_operation_mode_state->mode != sub_operation_mode_state->mode) return false;
-  if (main_operation_mode_state->is_autoware_control_enabled != sub_operation_mode_state->is_autoware_control_enabled) return false;
+  if (
+    main_operation_mode_state->is_autoware_control_enabled !=
+    sub_operation_mode_state->is_autoware_control_enabled)
+    return false;
 
   return true;
 }
@@ -264,7 +279,9 @@ bool RedundantAutowareStateChecker::is_equal_localization_initialization_state()
   if (!has_subscribed_sub_localization_initialization_state) return true;
 
   // Currently, following menbers are used to check the equality
-  if (main_localization_initialization_state->state != main_localization_initialization_state->state) return false;
+  if (
+    main_localization_initialization_state->state != main_localization_initialization_state->state)
+    return false;
 
   return true;
 }
@@ -293,8 +310,7 @@ bool RedundantAutowareStateChecker::is_equal_route()
   return true;
 }
 
-} // namespace redundant_autoware_state_checker
-
+}  // namespace redundant_autoware_state_checker
 
 int main(int argc, char ** argv)
 {
