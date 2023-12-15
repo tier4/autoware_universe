@@ -1,6 +1,4 @@
 <launch>
-  <arg name="hostname" default="$(env HOSTNAME default)"/>
-
   <arg name="input_operation_mode_availability" default="/system/operation_mode/availability"/>
   <arg name="input_to_can_bus" default="/j6/to_can_bus"/>
   <arg name="input_control_cmd" default="/control/command/control_cmd"/>
@@ -23,9 +21,6 @@
   <arg name="input_diagnostics_graph_supervisor" default="/diagnostics_graph/supervisor"/>
 
   <group>
-    <let name="ecu_name" if="$(eval &quot;'$(var hostname)'=='autoware'&quot;)" value="main"/>
-    <let name="ecu_name" unless="$(eval &quot;'$(var hostname)'=='autoware'&quot;)" value="sub"/>
-
     <node pkg="remapper" exec="remapper" name="remapper" output="screen">
       <!-- input -->
       <remap from="~/input/system/operation_mode/availability" to="$(var input_operation_mode_availability)"/>
