@@ -663,7 +663,7 @@ void ObstacleStopPlannerNode::searchObstacle(
 
   const auto now = this->now();
 
-  if (current_velocity_ptr->twist.twist.linear.x == 0) {
+  if (std::fabs(current_velocity_ptr->twist.twist.linear.x) < 1e-9) {
     updateObstacleHistory(now);
   }
 
