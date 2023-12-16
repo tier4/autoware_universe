@@ -193,7 +193,7 @@ void RedundantAutowareStateChecker::onTimer()
   }
 
   // Check the operation mode state equality
-  if (is_equal_operation_mode_stete()) {
+  if (is_equal_operation_mode_state()) {
     last_time_operation_mode_state_is_equal = now;
   } else {
     if ((now - last_time_operation_mode_state_is_equal).seconds() > states_equality_timeout) {
@@ -216,7 +216,7 @@ void RedundantAutowareStateChecker::onTimer()
   }
 
   // Check the route state equality
-  if (is_equal_route_stete()) {
+  if (is_equal_route_state()) {
     last_time_route_state_is_equal = now;
   } else {
     if ((now - last_time_route_state_is_equal).seconds() > states_equality_timeout) {
@@ -256,13 +256,13 @@ bool RedundantAutowareStateChecker::is_equal_pose_with_covariance()
   return true;
 }
 
-bool RedundantAutowareStateChecker::is_equal_operation_mode_stete()
+bool RedundantAutowareStateChecker::is_equal_operation_mode_state()
 {
   // If ether state is not subscribed, then assume the states are equal
   if (!has_subscribed_main_operation_mode_state) return true;
   if (!has_subscribed_sub_operation_mode_state) return true;
 
-  // Currently, following menbers are used to check the equality
+  // Currently, following members are used to check the equality
   if (main_operation_mode_state->mode != sub_operation_mode_state->mode) return false;
   if (
     main_operation_mode_state->is_autoware_control_enabled !=
@@ -278,7 +278,7 @@ bool RedundantAutowareStateChecker::is_equal_localization_initialization_state()
   if (!has_subscribed_main_localization_initialization_state) return true;
   if (!has_subscribed_sub_localization_initialization_state) return true;
 
-  // Currently, following menbers are used to check the equality
+  // Currently, following members are used to check the equality
   if (
     main_localization_initialization_state->state != main_localization_initialization_state->state)
     return false;
@@ -286,13 +286,13 @@ bool RedundantAutowareStateChecker::is_equal_localization_initialization_state()
   return true;
 }
 
-bool RedundantAutowareStateChecker::is_equal_route_stete()
+bool RedundantAutowareStateChecker::is_equal_route_state()
 {
   // If ether state is not subscribed, then assume the states are equal
   if (!has_subscribed_main_route_state) return true;
   if (!has_subscribed_sub_route_state) return true;
 
-  // Currently, following menbers are used to check the equality
+  // Currently, following members are used to check the equality
   if (main_route_state->state != sub_route_state->state) return false;
 
   return true;
@@ -304,7 +304,7 @@ bool RedundantAutowareStateChecker::is_equal_route()
   if (!has_subscribed_main_route) return true;
   if (!has_subscribed_sub_route) return true;
 
-  // Currently, following menbers are used to check the equality
+  // Currently, following members are used to check the equality
   if (main_route->data != sub_route->data) return false;
 
   return true;

@@ -117,9 +117,9 @@ private:
 
   // Functions
   bool is_equal_pose_with_covariance();
-  bool is_equal_operation_mode_stete();
+  bool is_equal_operation_mode_state();
   bool is_equal_localization_initialization_state();
-  bool is_equal_route_stete();
+  bool is_equal_route_state();
   bool is_equal_route();
 };
 
