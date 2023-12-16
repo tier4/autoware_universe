@@ -1,4 +1,5 @@
 <launch>
+  <arg name="ecu_name" default="main"/>
   <arg name="input_operation_mode_availability" default="/system/operation_mode/availability"/>
   <arg name="input_to_can_bus" default="/j6/to_can_bus"/>
   <arg name="input_control_cmd" default="/control/command/control_cmd"/>
