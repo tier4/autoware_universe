@@ -46,7 +46,7 @@ Remapper::Remapper() : Node("remapper")
     "~/input/api/routing/route", rclcpp::QoS{1}, std::bind(&Remapper::onRoute, this, _1));
   sub_autoware_state_ = create_subscription<autoware_auto_system_msgs::msg::AutowareState>(
     "~/input/autoware/state", rclcpp::QoS{1}, std::bind(&Remapper::onAutowareState, this, _1));
-  sub_controle_mode_report_ =
+  sub_control_mode_report_ =
     create_subscription<autoware_auto_vehicle_msgs::msg::ControlModeReport>(
       "~/input/vehicle/status/control_mode", rclcpp::QoS{1},
       std::bind(&Remapper::onControlModeReport, this, _1));
@@ -83,7 +83,7 @@ Remapper::Remapper() : Node("remapper")
     "~/output/api/routing/route", rclcpp::QoS{1});
   pub_autoware_state_ = create_publisher<autoware_auto_system_msgs::msg::AutowareState>(
     "~/output/autoware/state", rclcpp::QoS{1});
-  pub_controle_mode_report_ = create_publisher<autoware_auto_vehicle_msgs::msg::ControlModeReport>(
+  pub_control_mode_report_ = create_publisher<autoware_auto_vehicle_msgs::msg::ControlModeReport>(
     "~/output/vehicle/status/control_mode", rclcpp::QoS{1});
   pub_get_emergency_ = create_publisher<tier4_external_api_msgs::msg::Emergency>(
     "~/output/api/external/get/emergency", rclcpp::QoS{1});
@@ -154,7 +154,7 @@ void Remapper::onAutowareState(
 void Remapper::onControlModeReport(
   const autoware_auto_vehicle_msgs::msg::ControlModeReport::ConstSharedPtr msg)
 {
-  pub_controle_mode_report_->publish(*msg);
+  pub_control_mode_report_->publish(*msg);
 }
 
 void Remapper::onEmergency(const tier4_external_api_msgs::msg::Emergency::ConstSharedPtr msg)

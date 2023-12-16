@@ -14,7 +14,7 @@
   <!-- <arg name="input_initialization_state" default="/api/localization/initialization_state"/> -->
   <!-- <arg name="input_routing_state" default="/api/routing/state"/> -->
   <!-- <arg name="input_operation_mode_state" default="/api/operation_mode/state"/> -->
-  <arg name="input_controle_mode" default="/vehicle/status/control_mode"/>
+  <arg name="input_control_mode" default="/vehicle/status/control_mode"/>
   <arg name="input_get_emergency" default="/api/external/get/emergency"/>
   <arg name="input_mrm_state" default="/api/fail_safe/mrm_state"/>
   <arg name="input_diagnostics_graph" default="/diagnostics_graph"/>
@@ -35,7 +35,7 @@
       <remap from="~/input/api/routing/route" to="$(var input_routing_route)"/>
 
       <remap from="~/input/autoware/state" to="$(var input_autoware_state)"/>
-      <remap from="~/input/vehicle/status/control_mode" to="$(var input_controle_mode)"/>
+      <remap from="~/input/vehicle/status/control_mode" to="$(var input_control_mode)"/>
       <remap from="~/input/api/external/get/emergency" to="$(var input_get_emergency)"/>
       <remap from="~/input/api/fail_safe/mrm_state" to="$(var input_mrm_state)"/>
       <remap from="~/input/diagnostics_graph" to="$(var input_diagnostics_graph)"/>
@@ -53,7 +53,7 @@
       <remap from="~/output/api/routing/route" to="/$(var ecu_name)$(var input_routing_route)"/>
 
       <remap from="~/output/autoware/state" to="/$(var ecu_name)$(var input_autoware_state)"/>
-      <remap from="~/output/vehicle/status/control_mode" to="/$(var ecu_name)$(var input_controle_mode)"/>
+      <remap from="~/output/vehicle/status/control_mode" to="/$(var ecu_name)$(var input_control_mode)"/>
       <remap from="~/output/api/external/get/emergency" to="/$(var ecu_name)$(var input_get_emergency)"/>
       <remap from="~/output/api/fail_safe/mrm_state" to="/$(var ecu_name)$(var input_mrm_state)"/>
       <remap from="~/output/diagnostics_graph" to="/$(var ecu_name)$(var input_diagnostics_graph)"/>

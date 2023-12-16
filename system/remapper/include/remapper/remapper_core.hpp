@@ -58,7 +58,7 @@ private:
   rclcpp::Subscription<autoware_auto_system_msgs::msg::AutowareState>::SharedPtr
     sub_autoware_state_;
   rclcpp::Subscription<autoware_auto_vehicle_msgs::msg::ControlModeReport>::SharedPtr
-    sub_controle_mode_report_;
+    sub_control_mode_report_;
   rclcpp::Subscription<tier4_external_api_msgs::msg::Emergency>::SharedPtr sub_get_emergency_;
   rclcpp::Subscription<autoware_adapi_v1_msgs::msg::MrmState>::SharedPtr sub_mrm_state_;
   rclcpp::Subscription<tier4_system_msgs::msg::DiagnosticGraph>::SharedPtr sub_diagnostics_graph_;
@@ -84,7 +84,7 @@ private:
 
   rclcpp::Publisher<autoware_auto_system_msgs::msg::AutowareState>::SharedPtr pub_autoware_state_;
   rclcpp::Publisher<autoware_auto_vehicle_msgs::msg::ControlModeReport>::SharedPtr
-    pub_controle_mode_report_;
+    pub_control_mode_report_;
   rclcpp::Publisher<tier4_external_api_msgs::msg::Emergency>::SharedPtr pub_get_emergency_;
   rclcpp::Publisher<autoware_adapi_v1_msgs::msg::MrmState>::SharedPtr pub_mrm_state_;
   rclcpp::Publisher<tier4_system_msgs::msg::DiagnosticGraph>::SharedPtr pub_diagnostics_graph_;
