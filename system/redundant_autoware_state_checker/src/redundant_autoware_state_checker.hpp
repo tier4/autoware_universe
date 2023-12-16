@@ -31,7 +31,7 @@ namespace redundant_autoware_state_checker
 class RedundantAutowareStateChecker : public rclcpp::Node
 {
 public:
-  explicit RedundantAutowareStateChecker();
+  RedundantAutowareStateChecker();
 
 private:
   // Publishers

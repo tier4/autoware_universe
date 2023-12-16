@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "redundant_autoware_state_checker.hpp"
+#include <memory>
+
 
 namespace redundant_autoware_state_checker
 {
