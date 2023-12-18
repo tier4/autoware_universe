@@ -35,26 +35,26 @@ public:
 
 private:
   // Publishers
-  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr pub_diagnostic;
+  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr pub_diagnostic_;
 
   // Subscribers
-  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::MrmState>::SharedPtr sub_overall_mrm_state;
+  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::MrmState>::SharedPtr sub_overall_mrm_state_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
-    sub_main_pose_with_covariance;
+    sub_main_pose_with_covariance_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
-    sub_sub_pose_with_covariance;
+    sub_sub_pose_with_covariance_;
   rclcpp::Subscription<autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr
-    sub_main_operation_mode_state;
+    sub_main_operation_mode_state_;
   rclcpp::Subscription<autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr
-    sub_sub_operation_mode_state;
+    sub_sub_operation_mode_state_;
   rclcpp::Subscription<autoware_adapi_v1_msgs::msg::LocalizationInitializationState>::SharedPtr
-    sub_main_localization_initialization_state;
+    sub_main_localization_initialization_state_;
   rclcpp::Subscription<autoware_adapi_v1_msgs::msg::LocalizationInitializationState>::SharedPtr
-    sub_sub_localization_initialization_state;
-  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::RouteState>::SharedPtr sub_main_route_state;
-  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::RouteState>::SharedPtr sub_sub_route_state;
-  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::Route>::SharedPtr sub_main_route;
-  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::Route>::SharedPtr sub_sub_route;
+    sub_sub_localization_initialization_state_;
+  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::RouteState>::SharedPtr sub_main_route_state_;
+  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::RouteState>::SharedPtr sub_sub_route_state_;
+  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::Route>::SharedPtr sub_main_route_;
+  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::Route>::SharedPtr sub_sub_route_;
 
   // Callbacks
   void onTimer();
@@ -77,43 +77,43 @@ private:
   void on_sub_route(const autoware_adapi_v1_msgs::msg::Route::ConstSharedPtr msg);
 
   // Variables
-  bool is_autonomous;
+  bool is_autonomous_;
   rclcpp::TimerBase::SharedPtr timer_;
 
-  bool has_subscribed_main_pose_with_covariance = false;
-  bool has_subscribed_sub_pose_with_covariance = false;
-  bool has_subscribed_main_operation_mode_state = false;
-  bool has_subscribed_sub_operation_mode_state = false;
-  bool has_subscribed_main_localization_initialization_state = false;
-  bool has_subscribed_sub_localization_initialization_state = false;
-  bool has_subscribed_main_route_state = false;
-  bool has_subscribed_sub_route_state = false;
-  bool has_subscribed_main_route = false;
-  bool has_subscribed_sub_route = false;
+  bool has_subscribed_main_pose_with_covariance_ = false;
+  bool has_subscribed_sub_pose_with_covariance_ = false;
+  bool has_subscribed_main_operation_mode_state_ = false;
+  bool has_subscribed_sub_operation_mode_state_ = false;
+  bool has_subscribed_main_localization_initialization_state_ = false;
+  bool has_subscribed_sub_localization_initialization_state_ = false;
+  bool has_subscribed_main_route_state_ = false;
+  bool has_subscribed_sub_route_state_ = false;
+  bool has_subscribed_main_route_ = false;
+  bool has_subscribed_sub_route_ = false;
 
-  geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr main_pose_with_covariance;
-  geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr sub_pose_with_covariance;
-  autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr main_operation_mode_state;
-  autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr sub_operation_mode_state;
+  geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr main_pose_with_covariance_;
+  geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr sub_pose_with_covariance_;
+  autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr main_operation_mode_state_;
+  autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr sub_operation_mode_state_;
   autoware_adapi_v1_msgs::msg::LocalizationInitializationState::ConstSharedPtr
-    main_localization_initialization_state;
+    main_localization_initialization_state_;
   autoware_adapi_v1_msgs::msg::LocalizationInitializationState::ConstSharedPtr
-    sub_localization_initialization_state;
-  autoware_adapi_v1_msgs::msg::RouteState::ConstSharedPtr main_route_state;
-  autoware_adapi_v1_msgs::msg::RouteState::ConstSharedPtr sub_route_state;
-  autoware_adapi_v1_msgs::msg::Route::ConstSharedPtr main_route;
-  autoware_adapi_v1_msgs::msg::Route::ConstSharedPtr sub_route;
+    sub_localization_initialization_state_;
+  autoware_adapi_v1_msgs::msg::RouteState::ConstSharedPtr main_route_state_;
+  autoware_adapi_v1_msgs::msg::RouteState::ConstSharedPtr sub_route_state_;
+  autoware_adapi_v1_msgs::msg::Route::ConstSharedPtr main_route_;
+  autoware_adapi_v1_msgs::msg::Route::ConstSharedPtr sub_route_;
 
-  rclcpp::Time last_time_pose_with_covariance_is_equal;
-  rclcpp::Time last_time_operation_mode_state_is_equal;
-  rclcpp::Time last_time_localization_initialization_state_is_equal;
-  rclcpp::Time last_time_route_state_is_equal;
-  rclcpp::Time last_time_route_is_equal;
+  rclcpp::Time last_time_pose_with_covariance_is_equal_;
+  rclcpp::Time last_time_operation_mode_state_is_equal_;
+  rclcpp::Time last_time_localization_initialization_state_is_equal_;
+  rclcpp::Time last_time_route_state_is_equal_;
+  rclcpp::Time last_time_route_is_equal_;
 
   // Params
-  double states_equality_timeout;
-  double update_rate_hz;
-  double pose_distance_threshold;
+  double states_equality_timeout_;
+  double update_rate_hz_;
+  double pose_distance_threshold_;
 
   // Functions
   bool is_equal_pose_with_covariance();
