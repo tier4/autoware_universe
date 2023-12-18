@@ -82,7 +82,7 @@ RedundantAutowareStateChecker::RedundantAutowareStateChecker()
     this, get_clock(), period_ns, std::bind(&RedundantAutowareStateChecker::onTimer, this));
 
   // Variables
-  is_autonomous_ = true;
+  is_autonomous_ = false;
   last_time_pose_with_covariance_is_equal_ = this->now();
   last_time_operation_mode_state_is_equal_ = this->now();
   last_time_localization_initialization_state_is_equal_ = this->now();
