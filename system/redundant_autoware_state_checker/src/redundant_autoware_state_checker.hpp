@@ -121,6 +121,8 @@ private:
   bool is_equal_localization_initialization_state();
   bool is_equal_route_state();
   bool is_equal_route();
+
+  bool is_close_to_each_other(geometry_msgs::msg::Pose pose1, geometry_msgs::msg::Pose pose2);
 };
 
 }  // namespace redundant_autoware_state_checker

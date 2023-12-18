@@ -248,12 +248,7 @@ bool RedundantAutowareStateChecker::is_equal_pose_with_covariance()
   if (!has_subscribed_sub_pose_with_covariance_) return true;
 
   // Currently, Main and Sub ECUs poses are used to check the equality
-  const auto main_pose = main_pose_with_covariance_->pose.pose;
-  const auto sub_pose = sub_pose_with_covariance_->pose.pose;
-  const auto squared_distance =
-    (main_pose.position.x - sub_pose.position.x) * (main_pose.position.x - sub_pose.position.x) +
-    (main_pose.position.y - sub_pose.position.y) * (main_pose.position.y - sub_pose.position.y);
-  if (squared_distance > pose_distance_threshold_ * pose_distance_threshold_) return false;
+  if (!is_close_to_each_other(main_pose_with_covariance_->pose.pose, sub_pose_with_covariance_->pose.pose)) return false;
 
   return true;
 }
@@ -307,9 +302,17 @@ bool RedundantAutowareStateChecker::is_equal_route()
   if (!has_subscribed_sub_route_) return true;
 
   // Currently, following members are used to check the equality
-  if (main_route_->data != sub_route_->data) return false;
+  if (!is_close_to_each_other(main_route_->data[0].start, sub_route_->data[0].start)) return false;
+  if (!is_close_to_each_other(main_route_->data[0].goal, sub_route_->data[0].goal)) return false;
 
   return true;
+}
+
+bool RedundantAutowareStateChecker::is_close_to_each_other(geometry_msgs::msg::Pose pose1, geometry_msgs::msg::Pose pose2) {
+  const auto squared_distance =
+    (pose1.position.x - pose2.position.x) * (pose1.position.x - pose2.position.x) +
+    (pose1.position.y - pose2.position.y) * (pose1.position.y - pose2.position.y);
+  return squared_distance <= pose_distance_threshold_ * pose_distance_threshold_;
 }
 
 }  // namespace redundant_autoware_state_checker
