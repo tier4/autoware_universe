@@ -170,8 +170,6 @@ void RedundantAutowareStateChecker::on_sub_route(
 
 void RedundantAutowareStateChecker::onTimer()
 {
-  if (!is_autonomous_) return;
-
   const auto now = this->now();
 
   diagnostic_msgs::msg::DiagnosticArray diag_msg;
@@ -183,57 +181,61 @@ void RedundantAutowareStateChecker::onTimer()
   diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
   diag_status_msg.message = "";
 
-  // Check the pose with covariance equality
-  // Note that only this check raises WARN, not ERROR
-  if (is_equal_pose_with_covariance()) {
-    last_time_pose_with_covariance_is_equal_ = now;
-  } else {
-    if ((now - last_time_pose_with_covariance_is_equal_).seconds() > states_equality_timeout_) {
-      diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-      diag_status_msg.message += "Main and Sub ECUs' pose with covariance are different.";
-    }
-  }
+  // check the equality only when is_autonomous is true
+  if (is_autonomous_) {
 
-  // Check the operation mode state equality
-  if (is_equal_operation_mode_state()) {
-    last_time_operation_mode_state_is_equal_ = now;
-  } else {
-    if ((now - last_time_operation_mode_state_is_equal_).seconds() > states_equality_timeout_) {
-      diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-      diag_status_msg.message += "Main and Sub ECUs' operation mode states are different.";
+    // Check the pose with covariance equality
+    // Note that only this check raises WARN, not ERROR
+    if (is_equal_pose_with_covariance()) {
+      last_time_pose_with_covariance_is_equal_ = now;
+    } else {
+        if ((now - last_time_pose_with_covariance_is_equal_).seconds() > states_equality_timeout_) {
+        diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+        diag_status_msg.message += "Main and Sub ECUs' pose with covariance are different.";
+      }
     }
-  }
 
-  // Check the localization initialization state equality
-  if (is_equal_localization_initialization_state()) {
-    last_time_localization_initialization_state_is_equal_ = now;
-  } else {
-    if (
-      (now - last_time_localization_initialization_state_is_equal_).seconds() >
-      states_equality_timeout_) {
-      diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-      diag_status_msg.message +=
-        "Main and Sub ECUs' localization initialization states are different.";
+    // Check the operation mode state equality
+    if (is_equal_operation_mode_state()) {
+      last_time_operation_mode_state_is_equal_ = now;
+    } else {
+      if ((now - last_time_operation_mode_state_is_equal_).seconds() > states_equality_timeout_) {
+        diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+        diag_status_msg.message += "Main and Sub ECUs' operation mode states are different.";
+      }
     }
-  }
 
-  // Check the route state equality
-  if (is_equal_route_state()) {
-    last_time_route_state_is_equal_ = now;
-  } else {
-    if ((now - last_time_route_state_is_equal_).seconds() > states_equality_timeout_) {
-      diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-      diag_status_msg.message += "Main and Sub ECUs' route states are different.";
+    // Check the localization initialization state equality
+    if (is_equal_localization_initialization_state()) {
+      last_time_localization_initialization_state_is_equal_ = now;
+    } else {
+      if (
+        (now - last_time_localization_initialization_state_is_equal_).seconds() >
+        states_equality_timeout_) {
+        diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+        diag_status_msg.message +=
+          "Main and Sub ECUs' localization initialization states are different.";
+      }
     }
-  }
 
-  // Check the route equality
-  if (is_equal_route()) {
-    last_time_route_is_equal_ = now;
-  } else {
-    if ((now - last_time_route_is_equal_).seconds() > states_equality_timeout_) {
-      diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-      diag_status_msg.message += "Main and Sub ECUs' routes are different.";
+    // Check the route state equality
+    if (is_equal_route_state()) {
+      last_time_route_state_is_equal_ = now;
+    } else {
+      if ((now - last_time_route_state_is_equal_).seconds() > states_equality_timeout_) {
+        diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+        diag_status_msg.message += "Main and Sub ECUs' route states are different.";
+      }
+    }
+
+    // Check the route equality
+    if (is_equal_route()) {
+      last_time_route_is_equal_ = now;
+    } else {
+      if ((now - last_time_route_is_equal_).seconds() > states_equality_timeout_) {
+        diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+        diag_status_msg.message += "Main and Sub ECUs' routes are different.";
+      }
     }
   }
 
