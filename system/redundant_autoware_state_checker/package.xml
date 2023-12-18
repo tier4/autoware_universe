@@ -4,6 +4,7 @@
   <name>redundant_autoware_state_checker</name>
   <version>0.1.0</version>
   <description>The redundant_autoware_state_checker ROS 2 package</description>
+  <maintainer email="makoto.kurihara@tier4.jp">Makoto Kurihara</maintainer>
   <maintainer email="ryuta.kambe@tier4.jp">Ryuta Kambe</maintainer>
   <license>Apache License 2.0</license>
 
