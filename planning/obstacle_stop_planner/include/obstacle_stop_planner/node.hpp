@@ -320,10 +320,10 @@ private:
   void publishDebugData(
     const PlannerData & planner_data, const double current_acc, const double current_vel);
 
-  void updateObstacleHistory(const rclcpp::Time & now)
+  void updateObstacleHistory(const rclcpp::Time & now, const double chattering_threshold)
   {
     for (auto itr = obstacle_history_.begin(); itr != obstacle_history_.end();) {
-      const auto expired = (now - itr->detection_time).seconds() > node_param_.chattering_threshold;
+      const auto expired = (now - itr->detection_time).seconds() > chattering_threshold;
 
       if (expired) {
         itr = obstacle_history_.erase(itr);

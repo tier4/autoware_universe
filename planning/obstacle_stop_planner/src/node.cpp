@@ -662,10 +662,9 @@ void ObstacleStopPlannerNode::searchObstacle(
   }
 
   const auto now = this->now();
-
-  if (std::fabs(current_velocity_ptr->twist.twist.linear.x) < 1e-9) {
-    updateObstacleHistory(now);
-  }
+  const bool is_stopping = (std::fabs(current_velocity_ptr->twist.twist.linear.x) < 0.001);
+  const double history_erase_sec = (is_stopping) ? node_param_.chattering_threshold : 0.0; 
+  updateObstacleHistory(now, history_erase_sec);
 
   for (size_t i = 0; i < decimate_trajectory.size() - 1; ++i) {
     // create one step circle center for vehicle
