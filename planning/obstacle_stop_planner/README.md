@@ -39,6 +39,12 @@ When the deceleration section is inserted, the start point of the section is ins
 
 ## Modules
 
+### Common Parameter
+
+| Parameter              | Type   | Description                                                                               |
+| ---------------------- | ------ | ----------------------------------------------------------------------------------------- |
+| `chattering_threshold` | double | even if the obstacle disappears, the stop judgment continues for chattering_threshold [s] |
+
 ### Obstacle Stop Planner
 
 #### Role
