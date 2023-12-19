@@ -45,7 +45,7 @@ DynamicObstacleStopModule::DynamicObstacleStopModule(
 : SceneModuleInterface(module_id, logger, clock), params_(std::move(planner_param))
 {
   prev_stop_decision_time_ = rclcpp::Time(int64_t{0}, clock->get_clock_type());
-  velocity_factor_.init(PlanningBehavior::UNKNOWN);
+  velocity_factor_.init(VelocityFactor::UNKNOWN);
 }
 
 bool DynamicObstacleStopModule::modifyPathVelocity(PathWithLaneId * path, StopReason * stop_reason)

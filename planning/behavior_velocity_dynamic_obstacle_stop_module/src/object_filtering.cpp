@@ -18,6 +18,8 @@
 
 #include <motion_utils/trajectory/trajectory.hpp>
 
+#include <autoware_auto_planning_msgs/msg/path_point.hpp>
+
 #include <algorithm>
 #include <vector>
 
@@ -46,16 +48,17 @@ std::vector<autoware_auto_perception_msgs::msg::PredictedObject> filter_predicte
                     c.label == autoware_auto_perception_msgs::msg::ObjectClassification::BICYCLE;
            }) != o.classification.end();
   };
+  std::vector<autoware_auto_planning_msgs::msg::PathPoint> path_points;
+  for (const auto & p : ego_data.path.points) path_points.push_back(p.point);
   const auto is_in_range = [&](const auto & o) {
     const auto distance = std::abs(motion_utils::calcLateralOffset(
-      ego_data.path.points, o.kinematics.initial_pose_with_covariance.pose.position));
+      path_points, o.kinematics.initial_pose_with_covariance.pose.position));
     return distance <= params.minimum_object_distance_from_ego_path + params.ego_lateral_offset +
                          o.shape.dimensions.y / 2.0 + hysteresis;
   };
   const auto is_not_too_close = [&](const auto & o) {
     const auto obj_arc_length = motion_utils::calcSignedArcLength(
-      ego_data.path.points, ego_data.pose.position,
-      o.kinematics.initial_pose_with_covariance.pose.position);
+      path_points, ego_data.pose.position, o.kinematics.initial_pose_with_covariance.pose.position);
     return obj_arc_length > ego_data.longitudinal_offset_to_first_path_idx +
                               params.ego_longitudinal_offset + o.shape.dimensions.x / 2.0;
   };

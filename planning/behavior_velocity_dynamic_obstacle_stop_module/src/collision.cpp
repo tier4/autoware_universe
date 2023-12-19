@@ -31,7 +31,9 @@ std::optional<geometry_msgs::msg::Point> find_earliest_collision(
   const tier4_autoware_utils::MultiPolygon2d & obstacle_forward_footprints, DebugData & debug_data)
 {
   auto earliest_idx = ego_data.path_footprints.size();
-  auto earliest_arc_length = motion_utils::calcArcLength(ego_data.path.points);
+  std::vector<autoware_auto_planning_msgs::msg::PathPoint> path_points;
+  for (const auto & p : ego_data.path.points) path_points.push_back(p.point);
+  auto earliest_arc_length = motion_utils::calcArcLength(path_points);
   std::optional<geometry_msgs::msg::Point> earliest_collision_point;
   debug_data.collisions.clear();
   std::vector<BoxIndexPair> rough_collisions;
@@ -55,7 +57,7 @@ std::optional<geometry_msgs::msg::Point> find_earliest_collision(
         for (const auto & coll_p : collision_points) {
           auto p = geometry_msgs::msg::Point().set__x(coll_p.x()).set__y(coll_p.y());
           const auto arc_length =
-            motion_utils::calcSignedArcLength(ego_data.path.points, ego_data.first_path_idx, p);
+            motion_utils::calcSignedArcLength(path_points, ego_data.first_path_idx, p);
           if (arc_length < earliest_arc_length) {
             earliest_arc_length = arc_length;
             debug_data.collisions = {obstacle_footprint, ego_footprint};

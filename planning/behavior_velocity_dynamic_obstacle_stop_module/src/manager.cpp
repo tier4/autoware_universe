@@ -16,29 +16,24 @@
 
 #include "scene_dynamic_obstacle_stop.hpp"
 
-#include <tier4_autoware_utils/ros/parameter.hpp>
-
 #include <algorithm>
 
 namespace behavior_velocity_planner
 {
-using tier4_autoware_utils::getOrDeclareParameter;
-
 DynamicObstacleStopModuleManager::DynamicObstacleStopModuleManager(rclcpp::Node & node)
 : SceneModuleManagerInterface(node, getModuleName()), module_id_(0UL)
 {
   const std::string ns(getModuleName());
   auto & pp = planner_param_;
 
-  pp.extra_object_width = getOrDeclareParameter<double>(node, ns + ".extra_object_width");
-  pp.minimum_object_velocity = getOrDeclareParameter<double>(node, ns + ".minimum_object_velocity");
-  pp.stop_distance_buffer = getOrDeclareParameter<double>(node, ns + ".stop_distance_buffer");
-  pp.time_horizon = getOrDeclareParameter<double>(node, ns + ".time_horizon");
-  pp.hysteresis = getOrDeclareParameter<double>(node, ns + ".hysteresis");
-  pp.decision_duration_buffer =
-    getOrDeclareParameter<double>(node, ns + ".decision_duration_buffer");
+  pp.extra_object_width = node.declare_parameter<double>(ns + ".extra_object_width");
+  pp.minimum_object_velocity = node.declare_parameter<double>(ns + ".minimum_object_velocity");
+  pp.stop_distance_buffer = node.declare_parameter<double>(ns + ".stop_distance_buffer");
+  pp.time_horizon = node.declare_parameter<double>(ns + ".time_horizon");
+  pp.hysteresis = node.declare_parameter<double>(ns + ".hysteresis");
+  pp.decision_duration_buffer = node.declare_parameter<double>(ns + ".decision_duration_buffer");
   pp.minimum_object_distance_from_ego_path =
-    getOrDeclareParameter<double>(node, ns + ".minimum_object_distance_from_ego_path");
+    node.declare_parameter<double>(ns + ".minimum_object_distance_from_ego_path");
 
   const auto vehicle_info = vehicle_info_util::VehicleInfoUtil(node).getVehicleInfo();
   pp.ego_lateral_offset =
