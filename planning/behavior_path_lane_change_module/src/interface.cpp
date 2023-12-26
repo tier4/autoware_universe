@@ -369,10 +369,12 @@ void LaneChangeInterface::updateSteeringFactorPtr(const BehaviorModuleOutput & o
   const auto finish_distance = motion_utils::calcSignedArcLength(
     output.path.points, current_position, status.lane_change_path.info.shift_line.end.position);
 
+  const auto factor_status = module_type_->isAbortState() ? uint16_t(100) : SteeringFactor::TURNING;
+
   steering_factor_interface_ptr_->updateSteeringFactor(
     {status.lane_change_path.info.shift_line.start, status.lane_change_path.info.shift_line.end},
     {start_distance, finish_distance}, PlanningBehavior::LANE_CHANGE, steering_factor_direction,
-    SteeringFactor::TURNING, "");
+    factor_status, "");
 }
 
 void LaneChangeInterface::updateSteeringFactorPtr(
