@@ -55,6 +55,24 @@ rclcpp_components_register_node(laserscan_based_occupancy_grid_map
   EXECUTABLE laserscan_based_occupancy_grid_map_node
 )
 
+# GridMapFusionNode
+ament_auto_add_library(synchronized_grid_map_fusion SHARED
+  src/fusion/synchronized_grid_map_fusion_node.cpp
+  src/fusion/single_frame_fusion_policy.cpp
+  src/pointcloud_based_occupancy_grid_map/occupancy_grid_map_fixed.cpp
+  src/updater/occupancy_grid_map_log_odds_bayes_filter_updater.cpp
+  src/utils/utils.cpp
+)
+
+target_link_libraries(synchronized_grid_map_fusion
+  ${PCL_LIBRARIES}
+)
+
+rclcpp_components_register_node(synchronized_grid_map_fusion
+  PLUGIN "synchronized_grid_map_fusion::GridMapFusionNode"
+  EXECUTABLE synchronized_grid_map_fusion_node
+)
+
 ament_auto_package(
   INSTALL_TO_SHARE
     launch
