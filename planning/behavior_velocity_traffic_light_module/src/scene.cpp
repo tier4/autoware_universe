@@ -413,15 +413,15 @@ bool TrafficLightModule::isTrafficSignalStop(
 bool TrafficLightModule::findValidTrafficSignal(TrafficSignalStamped & valid_traffic_signal) const
 {
   // get traffic signal associated with the regulatory element id
-  const auto traffic_signal_stamped = planner_data_->getTrafficSignal(traffic_light_reg_elem_.id());
-  if (!traffic_signal_stamped) {
+  const auto traffic_signal_stamped_opt = planner_data_->getTrafficSignal(
+    traffic_light_reg_elem_.id(), true /* traffic light module keeps last observation */);
+  if (!traffic_signal_stamped_opt) {
     RCLCPP_WARN_THROTTLE(
       logger_, *clock_, 5000 /* ms */,
       "the traffic signal data associated with regulatory element id is not received");
     return false;
   }
-
-  valid_traffic_signal = *traffic_signal_stamped;
+  valid_traffic_signal = traffic_signal_stamped_opt.value();
   return true;
 }
 
