@@ -45,7 +45,7 @@ OSQPInterface::OSQPInterface(const c_float eps_abs, const bool polish)
     m_settings->eps_prim_inf = 1.0E-4;
     m_settings->eps_dual_inf = 1.0E-4;
     m_settings->warm_start = true;
-    m_settings->max_iter = 4000;
+    m_settings->max_iter = 12000;
     m_settings->verbose = false;
     m_settings->polish = polish;
   }
