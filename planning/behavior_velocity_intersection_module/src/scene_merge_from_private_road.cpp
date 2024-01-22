@@ -24,6 +24,7 @@
 
 #include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
+#include <lanelet2_routing/RoutingGraph.h>
 
 #include <algorithm>
 #include <limits>
@@ -51,7 +52,7 @@ MergeFromPrivateRoadModule::MergeFromPrivateRoadModule(
 
 static std::optional<lanelet::ConstLanelet> getFirstConflictingLanelet(
   const lanelet::ConstLanelets & conflicting_lanelets,
-  const util::InterpolatedPathInfo & interpolated_path_info,
+  const intersection::InterpolatedPathInfo & interpolated_path_info,
   const tier4_autoware_utils::LinearRing2d & footprint, const double vehicle_length)
 {
   const auto & path_ip = interpolated_path_info.path;
@@ -122,9 +123,9 @@ bool MergeFromPrivateRoadModule::modifyPathVelocity(PathWithLaneId * path, StopR
   }
   const auto first_conflicting_lanelet = first_conflicting_lanelet_.value();
 
-  const auto first_conflicting_idx_opt = getFirstPointInsidePolygonByFootprint(
-    first_conflicting_lanelet.polygon3d(), interpolated_path_info, local_footprint,
-    planner_data_->vehicle_info_.max_longitudinal_offset_m);
+  const double baselink2front = planner_data_->vehicle_info_.max_longitudinal_offset_m;
+  const auto first_conflicting_idx_opt = util::getFirstPointInsidePolygonByFootprint(
+    first_conflicting_lanelet.polygon3d(), interpolated_path_info, local_footprint, baselink2front);
   if (!first_conflicting_idx_opt) {
     return false;
   }
