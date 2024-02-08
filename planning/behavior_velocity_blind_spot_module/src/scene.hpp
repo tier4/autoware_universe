@@ -25,13 +25,12 @@
 #include <autoware_auto_planning_msgs/msg/path_with_lane_id.hpp>
 #include <geometry_msgs/msg/point.hpp>
 
-#include <boost/optional.hpp>
-
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_routing/RoutingGraph.h>
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace behavior_velocity_planner
@@ -40,6 +39,8 @@ struct BlindSpotPolygons
 {
   std::vector<lanelet::CompoundPolygon3d> conflict_areas;
   std::vector<lanelet::CompoundPolygon3d> detection_areas;
+  std::vector<lanelet::CompoundPolygon3d> opposite_conflict_areas;
+  std::vector<lanelet::CompoundPolygon3d> opposite_detection_areas;
 };
 
 class BlindSpotModule : public SceneModuleInterface
@@ -52,8 +53,10 @@ public:
     geometry_msgs::msg::Pose virtual_wall_pose;
     geometry_msgs::msg::Pose stop_point_pose;
     geometry_msgs::msg::Pose judge_point_pose;
-    std::vector<lanelet::CompoundPolygon3d> conflict_areas_for_blind_spot;
-    std::vector<lanelet::CompoundPolygon3d> detection_areas_for_blind_spot;
+    std::vector<lanelet::CompoundPolygon3d> conflict_areas;
+    std::vector<lanelet::CompoundPolygon3d> detection_areas;
+    std::vector<lanelet::CompoundPolygon3d> opposite_conflict_areas;
+    std::vector<lanelet::CompoundPolygon3d> opposite_detection_areas;
     autoware_auto_perception_msgs::msg::PredictedObjects conflicting_targets;
   };
 
@@ -69,6 +72,7 @@ public:
     double threshold_yaw_diff;   //! threshold of yaw difference between ego and target object
     double
       adjacent_extend_width;  //! the width of extended detection/conflict area on adjacent lane
+    double opposite_adjacent_extend_width;
   };
 
   BlindSpotModule(
@@ -120,6 +124,8 @@ private:
 
   lanelet::ConstLanelet generateExtendedAdjacentLanelet(
     const lanelet::ConstLanelet lanelet, const TurnDirection direction) const;
+  lanelet::ConstLanelet generateExtendedOppositeAdjacentLanelet(
+    const lanelet::ConstLanelet lanelet, const TurnDirection direction) const;
 
   /**
    * @brief Make blind spot areas. Narrow area is made from closest path point to stop line index.
@@ -128,7 +134,7 @@ private:
    * @param closest_idx closest path point index from ego car in path points
    * @return Blind spot polygons
    */
-  boost::optional<BlindSpotPolygons> generateBlindSpotPolygons(
+  std::optional<BlindSpotPolygons> generateBlindSpotPolygons(
     lanelet::LaneletMapConstPtr lanelet_map_ptr,
     lanelet::routing::RoutingGraphPtr routing_graph_ptr,
     const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const int closest_idx,
@@ -171,9 +177,9 @@ private:
    * @param pass_judge_line_idx  generated pass judge line index
    * @return false when generation failed
    */
-  bool generateStopLine(
+  std::optional<std::pair<size_t, size_t>> generateStopLine(
     const lanelet::ConstLanelets straight_lanelets,
-    autoware_auto_planning_msgs::msg::PathWithLaneId * path, int * stop_line_idx) const;
+    autoware_auto_planning_msgs::msg::PathWithLaneId * path) const;
 
   /**
    * @brief Insert a point to target path
@@ -192,7 +198,7 @@ private:
    * @param lanelets target lanelets
    * @return path point index
    */
-  boost::optional<int> getFirstPointConflictingLanelets(
+  std::optional<int> getFirstPointConflictingLanelets(
     const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
     const lanelet::ConstLanelets & lanelets) const;
 
@@ -201,14 +207,14 @@ private:
    * @param lane_id lane id of objective lanelet
    * @return end point of lanelet
    */
-  boost::optional<geometry_msgs::msg::Pose> getStartPointFromLaneLet(const int lane_id) const;
+  std::optional<geometry_msgs::msg::Pose> getStartPointFromLaneLet(const lanelet::Id lane_id) const;
 
   /**
    * @brief get straight lanelets in intersection
    */
   lanelet::ConstLanelets getStraightLanelets(
     lanelet::LaneletMapConstPtr lanelet_map_ptr,
-    lanelet::routing::RoutingGraphPtr routing_graph_ptr, const int lane_id);
+    lanelet::routing::RoutingGraphPtr routing_graph_ptr, const lanelet::Id lane_id);
 
   /**
    * @brief Modify objects predicted path. remove path point if the time exceeds timer_thr.

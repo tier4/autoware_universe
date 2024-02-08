@@ -78,7 +78,7 @@ class GroundSegmentationPipeline:
                 plugin="pointcloud_preprocessor::CropBoxFilterComponent",
                 name=f"{lidar_name}_crop_box_filter",
                 remappings=[
-                    ("input", f"/sensing/lidar/{lidar_name}/outlier_filtered/pointcloud"),
+                    ("input", f"/sensing/lidar/{lidar_name}/pointcloud"),
                     ("output", f"{lidar_name}/range_cropped/pointcloud"),
                 ],
                 parameters=[
@@ -122,12 +122,16 @@ class GroundSegmentationPipeline:
                 plugin="pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent",
                 name="concatenate_data",
                 namespace="plane_fitting",
-                remappings=[("output", "concatenated/pointcloud")],
+                remappings=[
+                    ("~/input/odom", "/localization/kinematic_state"),
+                    ("output", "concatenated/pointcloud"),
+                ],
                 parameters=[
                     {
                         "input_topics": self.ground_segmentation_param["ransac_input_topics"],
                         "output_frame": LaunchConfiguration("base_frame"),
                         "timeout_sec": 1.0,
+                        "input_twist_topic_type": "odom",
                     }
                 ],
                 extra_arguments=[
@@ -432,11 +436,15 @@ class GroundSegmentationPipeline:
             package="pointcloud_preprocessor",
             plugin="pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent",
             name="concatenate_data",
-            remappings=[("output", output_topic)],
+            remappings=[
+                ("~/input/odom", "/localization/kinematic_state"),
+                ("output", output_topic),
+            ],
             parameters=[
                 {
                     "input_topics": input_topics,
                     "output_frame": LaunchConfiguration("base_frame"),
+                    "input_twist_topic_type": "odom",
                 }
             ],
             extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
@@ -448,11 +456,15 @@ class GroundSegmentationPipeline:
             package="pointcloud_preprocessor",
             plugin="pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent",
             name="concatenate_no_ground_data",
-            remappings=[("output", output_topic)],
+            remappings=[
+                ("~/input/odom", "/localization/kinematic_state"),
+                ("output", output_topic),
+            ],
             parameters=[
                 {
                     "input_topics": input_topics,
                     "output_frame": LaunchConfiguration("base_frame"),
+                    "input_twist_topic_type": "odom",
                 }
             ],
             extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
@@ -493,7 +505,7 @@ def launch_setup(context, *args, **kwargs):
             )
         )
     individual_container = ComposableNodeContainer(
-        name=LaunchConfiguration("container_name"),
+        name=LaunchConfiguration("individual_container_name"),
         namespace="",
         package="rclcpp_components",
         executable=LaunchConfiguration("container_executable"),
@@ -503,7 +515,7 @@ def launch_setup(context, *args, **kwargs):
     )
     pointcloud_container_loader = LoadComposableNodes(
         composable_node_descriptions=components,
-        target_container=LaunchConfiguration("container_name"),
+        target_container=LaunchConfiguration("pointcloud_container_name"),
         condition=IfCondition(LaunchConfiguration("use_pointcloud_container")),
     )
     return [individual_container, pointcloud_container_loader]
@@ -519,7 +531,8 @@ def generate_launch_description():
     add_launch_arg("use_multithread", "False")
     add_launch_arg("use_intra_process", "True")
     add_launch_arg("use_pointcloud_container", "False")
-    add_launch_arg("container_name", "perception_pipeline_container")
+    add_launch_arg("pointcloud_container_name", "pointcloud_container")
+    add_launch_arg("individual_container_name", "ground_segmentation_container")
     add_launch_arg("input/pointcloud", "/sensing/lidar/concatenated/pointcloud")
 
     set_container_executable = SetLaunchConfiguration(

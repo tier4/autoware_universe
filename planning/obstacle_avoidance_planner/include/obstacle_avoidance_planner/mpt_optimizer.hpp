@@ -22,7 +22,7 @@
 #include "obstacle_avoidance_planner/state_equation_generator.hpp"
 #include "obstacle_avoidance_planner/type_alias.hpp"
 #include "osqp_interface/osqp_interface.hpp"
-#include "tier4_autoware_utils/tier4_autoware_utils.hpp"
+#include "tier4_autoware_utils/geometry/geometry.hpp"
 #include "vehicle_info_util/vehicle_info_util.hpp"
 
 #include <Eigen/Core>
@@ -109,8 +109,7 @@ public:
     const std::shared_ptr<DebugData> debug_data_ptr,
     const std::shared_ptr<TimeKeeper> time_keeper_ptr);
 
-  std::vector<TrajectoryPoint> optimizeTrajectory(
-    const PlannerData & planner_data, const std::vector<TrajectoryPoint> & smoothed_points);
+  std::vector<TrajectoryPoint> optimizeTrajectory(const PlannerData & planner_data);
   std::optional<std::vector<TrajectoryPoint>> getPrevOptimizedTrajectoryPoints() const;
 
   void initialize(const bool enable_debug_info, const TrajectoryParam & traj_param);

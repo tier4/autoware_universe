@@ -15,13 +15,13 @@
 #ifndef OBSTACLE_AVOIDANCE_PLANNER__NODE_HPP_
 #define OBSTACLE_AVOIDANCE_PLANNER__NODE_HPP_
 
-#include "motion_utils/motion_utils.hpp"
+#include "motion_utils/trajectory/trajectory.hpp"
 #include "obstacle_avoidance_planner/common_structs.hpp"
 #include "obstacle_avoidance_planner/mpt_optimizer.hpp"
 #include "obstacle_avoidance_planner/replan_checker.hpp"
 #include "obstacle_avoidance_planner/type_alias.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "tier4_autoware_utils/tier4_autoware_utils.hpp"
+#include "tier4_autoware_utils/ros/logger_level_configure.hpp"
 #include "vehicle_info_util/vehicle_info_util.hpp"
 
 #include <algorithm>
@@ -37,6 +37,11 @@ class ObstacleAvoidancePlanner : public rclcpp::Node
 public:
   explicit ObstacleAvoidancePlanner(const rclcpp::NodeOptions & node_options);
 
+  // NOTE: This is for the static_centerline_optimizer package which utilizes the following
+  // instance.
+  std::shared_ptr<MPTOptimizer> getMPTOptimizer() const { return mpt_optimizer_ptr_; }
+
+  // private:
 protected:  // for the static_centerline_optimizer package
   // TODO(murooka) move this node to common
   class DrivingDirectionChecker
@@ -45,7 +50,7 @@ protected:  // for the static_centerline_optimizer package
     bool isDrivingForward(const std::vector<PathPoint> & path_points)
     {
       const auto is_driving_forward = motion_utils::isDrivingForward(path_points);
-      is_driving_forward_ = is_driving_forward ? is_driving_forward.get() : is_driving_forward_;
+      is_driving_forward_ = is_driving_forward ? is_driving_forward.value() : is_driving_forward_;
       return is_driving_forward_;
     }
 
@@ -90,7 +95,8 @@ protected:  // for the static_centerline_optimizer package
   // debug publisher
   rclcpp::Publisher<Trajectory>::SharedPtr debug_extended_traj_pub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr debug_markers_pub_;
-  rclcpp::Publisher<StringStamped>::SharedPtr debug_calculation_time_pub_;
+  rclcpp::Publisher<StringStamped>::SharedPtr debug_calculation_time_str_pub_;
+  rclcpp::Publisher<Float64Stamped>::SharedPtr debug_calculation_time_float_pub_;
 
   // parameter callback
   rcl_interfaces::msg::SetParametersResult onParam(
@@ -128,6 +134,8 @@ protected:  // for the static_centerline_optimizer package
 
 private:
   double vehicle_stop_margin_outside_drivable_area_;
+
+  std::unique_ptr<tier4_autoware_utils::LoggerLevelConfigure> logger_configure_;
 };
 }  // namespace obstacle_avoidance_planner
 

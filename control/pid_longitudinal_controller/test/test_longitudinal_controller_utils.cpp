@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "gtest/gtest.h"
+#include "interpolation/spherical_linear_interpolation.hpp"
+#include "motion_utils/trajectory/conversion.hpp"
 #include "pid_longitudinal_controller/longitudinal_controller_utils.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 
@@ -156,33 +158,6 @@ TEST(TestLongitudinalControllerUtils, getPitchByTraj)
   EXPECT_DOUBLE_EQ(
     std::abs(longitudinal_utils::getPitchByTraj(traj, closest_idx, wheel_base)),
     std::atan2(0.5, 1));
-}
-
-TEST(TestLongitudinalControllerUtils, calcElevationAngle)
-{
-  using autoware_auto_planning_msgs::msg::TrajectoryPoint;
-  TrajectoryPoint p_from;
-  p_from.pose.position.x = 0.0;
-  p_from.pose.position.y = 0.0;
-  TrajectoryPoint p_to;
-  p_to.pose.position.x = 1.0;
-  p_to.pose.position.y = 0.0;
-  EXPECT_DOUBLE_EQ(longitudinal_utils::calcElevationAngle(p_from, p_to), 0.0);
-  p_to.pose.position.x = 1.0;
-  p_to.pose.position.z = 1.0;
-  EXPECT_DOUBLE_EQ(longitudinal_utils::calcElevationAngle(p_from, p_to), -M_PI_4);
-  p_to.pose.position.x = -1.0;
-  p_to.pose.position.z = 1.0;
-  EXPECT_DOUBLE_EQ(longitudinal_utils::calcElevationAngle(p_from, p_to), -M_PI_4);
-  p_to.pose.position.x = 0.0;
-  p_to.pose.position.z = 1.0;
-  EXPECT_DOUBLE_EQ(longitudinal_utils::calcElevationAngle(p_from, p_to), -M_PI_2);
-  p_to.pose.position.x = 1.0;
-  p_to.pose.position.z = -1.0;
-  EXPECT_DOUBLE_EQ(longitudinal_utils::calcElevationAngle(p_from, p_to), M_PI_4);
-  p_to.pose.position.x = -1.0;
-  p_to.pose.position.z = -1.0;
-  EXPECT_DOUBLE_EQ(longitudinal_utils::calcElevationAngle(p_from, p_to), M_PI_4);
 }
 
 TEST(TestLongitudinalControllerUtils, calcPoseAfterTimeDelay)
@@ -330,7 +305,7 @@ TEST(TestLongitudinalControllerUtils, lerpOrientation)
   o_to.setRPY(M_PI_4, M_PI_4, M_PI_4);
 
   ratio = 0.0;
-  result = longitudinal_utils::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
+  result = interpolation::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
   tf2::convert(result, o_result);
   tf2::Matrix3x3(o_result).getRPY(roll, pitch, yaw);
   EXPECT_DOUBLE_EQ(roll, 0.0);
@@ -338,7 +313,7 @@ TEST(TestLongitudinalControllerUtils, lerpOrientation)
   EXPECT_DOUBLE_EQ(yaw, 0.0);
 
   ratio = 1.0;
-  result = longitudinal_utils::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
+  result = interpolation::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
   tf2::convert(result, o_result);
   tf2::Matrix3x3(o_result).getRPY(roll, pitch, yaw);
   EXPECT_DOUBLE_EQ(roll, M_PI_4);
@@ -347,7 +322,7 @@ TEST(TestLongitudinalControllerUtils, lerpOrientation)
 
   ratio = 0.5;
   o_to.setRPY(M_PI_4, 0.0, 0.0);
-  result = longitudinal_utils::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
+  result = interpolation::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
   tf2::convert(result, o_result);
   tf2::Matrix3x3(o_result).getRPY(roll, pitch, yaw);
   EXPECT_DOUBLE_EQ(roll, M_PI_4 / 2);
@@ -355,7 +330,7 @@ TEST(TestLongitudinalControllerUtils, lerpOrientation)
   EXPECT_DOUBLE_EQ(yaw, 0.0);
 
   o_to.setRPY(0.0, M_PI_4, 0.0);
-  result = longitudinal_utils::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
+  result = interpolation::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
   tf2::convert(result, o_result);
   tf2::Matrix3x3(o_result).getRPY(roll, pitch, yaw);
   EXPECT_DOUBLE_EQ(roll, 0.0);
@@ -363,7 +338,7 @@ TEST(TestLongitudinalControllerUtils, lerpOrientation)
   EXPECT_DOUBLE_EQ(yaw, 0.0);
 
   o_to.setRPY(0.0, 0.0, M_PI_4);
-  result = longitudinal_utils::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
+  result = interpolation::lerpOrientation(tf2::toMsg(o_from), tf2::toMsg(o_to), ratio);
   tf2::convert(result, o_result);
   tf2::Matrix3x3(o_result).getRPY(roll, pitch, yaw);
   EXPECT_DOUBLE_EQ(roll, 0.0);

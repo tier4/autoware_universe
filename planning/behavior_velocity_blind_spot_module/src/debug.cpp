@@ -16,7 +16,12 @@
 
 #include <behavior_velocity_planner_common/utilization/debug.hpp>
 #include <behavior_velocity_planner_common/utilization/util.hpp>
-#include <motion_utils/motion_utils.hpp>
+#include <motion_utils/marker/virtual_wall_marker_creator.hpp>
+#include <tier4_autoware_utils/ros/marker_helper.hpp>
+
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include <tf2/utils.h>
 
 #include <string>
 
@@ -140,14 +145,12 @@ visualization_msgs::msg::MarkerArray BlindSpotModule::createDebugMarkerArray()
 
   appendMarkerArray(
     createLaneletPolygonsMarkerArray(
-      debug_data_.conflict_areas_for_blind_spot, "conflict_area_for_blind_spot", module_id_, 0.0,
-      0.5, 0.5),
+      debug_data_.conflict_areas, "conflict_area", module_id_, 0.0, 0.5, 0.5),
     &debug_marker_array, now);
 
   appendMarkerArray(
     createLaneletPolygonsMarkerArray(
-      debug_data_.detection_areas_for_blind_spot, "detection_area_for_blind_spot", module_id_, 0.5,
-      0.0, 0.0),
+      debug_data_.detection_areas, "detection_area", module_id_, 0.5, 0.0, 0.0),
     &debug_marker_array, now);
 
   appendMarkerArray(

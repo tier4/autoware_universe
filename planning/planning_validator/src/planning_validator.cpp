@@ -17,7 +17,7 @@
 #include "planning_validator/utils.hpp"
 
 #include <motion_utils/trajectory/trajectory.hpp>
-#include <tier4_autoware_utils/tier4_autoware_utils.hpp>
+#include <tier4_autoware_utils/geometry/geometry.hpp>
 
 #include <memory>
 #include <string>
@@ -41,14 +41,13 @@ PlanningValidator::PlanningValidator(const rclcpp::NodeOptions & options)
   pub_traj_ = create_publisher<Trajectory>("~/output/trajectory", 1);
   pub_status_ = create_publisher<PlanningValidatorStatus>("~/output/validation_status", 1);
   pub_markers_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/output/markers", 1);
+  pub_processing_time_ms_ = create_publisher<Float64Stamped>("~/debug/processing_time_ms", 1);
 
   debug_pose_publisher_ = std::make_shared<PlanningValidatorDebugMarkerPublisher>(this);
 
   setupParameters();
 
-  if (publish_diag_) {
-    setupDiag();
-  }
+  logger_configure_ = std::make_unique<tier4_autoware_utils::LoggerLevelConfigure>(this);
 }
 
 void PlanningValidator::setupParameters()
@@ -109,39 +108,43 @@ void PlanningValidator::setStatus(
 
 void PlanningValidator::setupDiag()
 {
+  diag_updater_ = std::make_shared<Updater>(this);
   auto & d = diag_updater_;
-  d.setHardwareID("planning_validator");
+  d->setHardwareID("planning_validator");
 
   std::string ns = "trajectory_validation_";
-  d.add(ns + "finite", [&](auto & stat) {
+  d->add(ns + "size", [&](auto & stat) {
+    setStatus(stat, validation_status_.is_valid_size, "invalid trajectory size is found");
+  });
+  d->add(ns + "finite", [&](auto & stat) {
     setStatus(stat, validation_status_.is_valid_finite_value, "infinite value is found");
   });
-  d.add(ns + "interval", [&](auto & stat) {
+  d->add(ns + "interval", [&](auto & stat) {
     setStatus(stat, validation_status_.is_valid_interval, "points interval is too long");
   });
-  d.add(ns + "relative_angle", [&](auto & stat) {
+  d->add(ns + "relative_angle", [&](auto & stat) {
     setStatus(stat, validation_status_.is_valid_relative_angle, "relative angle is too large");
   });
-  d.add(ns + "curvature", [&](auto & stat) {
+  d->add(ns + "curvature", [&](auto & stat) {
     setStatus(stat, validation_status_.is_valid_curvature, "curvature is too large");
   });
-  d.add(ns + "lateral_acceleration", [&](auto & stat) {
+  d->add(ns + "lateral_acceleration", [&](auto & stat) {
     setStatus(stat, validation_status_.is_valid_lateral_acc, "lateral acceleration is too large");
   });
-  d.add(ns + "acceleration", [&](auto & stat) {
+  d->add(ns + "acceleration", [&](auto & stat) {
     setStatus(stat, validation_status_.is_valid_longitudinal_max_acc, "acceleration is too large");
   });
-  d.add(ns + "deceleration", [&](auto & stat) {
+  d->add(ns + "deceleration", [&](auto & stat) {
     setStatus(stat, validation_status_.is_valid_longitudinal_min_acc, "deceleration is too large");
   });
-  d.add(ns + "steering", [&](auto & stat) {
+  d->add(ns + "steering", [&](auto & stat) {
     setStatus(stat, validation_status_.is_valid_steering, "expected steering is too large");
   });
-  d.add(ns + "steering_rate", [&](auto & stat) {
+  d->add(ns + "steering_rate", [&](auto & stat) {
     setStatus(
       stat, validation_status_.is_valid_steering_rate, "expected steering rate is too large");
   });
-  d.add(ns + "velocity_deviation", [&](auto & stat) {
+  d->add(ns + "velocity_deviation", [&](auto & stat) {
     setStatus(
       stat, validation_status_.is_valid_velocity_deviation, "velocity deviation is too large");
   });
@@ -165,19 +168,26 @@ bool PlanningValidator::isDataReady()
 
 void PlanningValidator::onTrajectory(const Trajectory::ConstSharedPtr msg)
 {
+  stop_watch_.tic(__func__);
+
   current_trajectory_ = msg;
 
   if (!isDataReady()) return;
+
+  if (publish_diag_ && !diag_updater_) {
+    setupDiag();  // run setup after all data is ready.
+  }
 
   debug_pose_publisher_->clearMarkers();
 
   validate(*current_trajectory_);
 
-  diag_updater_.force_update();
+  diag_updater_->force_update();
 
   publishTrajectory();
 
   // for debug
+  publishProcessingTime(stop_watch_.toc(__func__));
   publishDebugInfo();
   displayStatus();
 }
@@ -220,6 +230,14 @@ void PlanningValidator::publishTrajectory()
   return;
 }
 
+void PlanningValidator::publishProcessingTime(const double processing_time_ms)
+{
+  Float64Stamped msg{};
+  msg.stamp = this->now();
+  msg.data = processing_time_ms;
+  pub_processing_time_ms_->publish(msg);
+}
+
 void PlanningValidator::publishDebugInfo()
 {
   validation_status_.stamp = get_clock()->now();
@@ -236,14 +254,26 @@ void PlanningValidator::publishDebugInfo()
 
 void PlanningValidator::validate(const Trajectory & trajectory)
 {
-  if (trajectory.points.size() < 2) {
-    RCLCPP_ERROR(get_logger(), "trajectory size is less than 2. Cannot validate.");
-    return;
-  }
-
   auto & s = validation_status_;
 
+  const auto terminateValidation = [&](const auto & ss) {
+    RCLCPP_ERROR_STREAM(get_logger(), ss);
+    s.invalid_count += 1;
+  };
+
+  s.is_valid_size = checkValidSize(trajectory);
+  if (!s.is_valid_size) {
+    return terminateValidation(
+      "trajectory has invalid point size (" + std::to_string(trajectory.points.size()) +
+      "). Stop validation process, raise an error.");
+  }
+
   s.is_valid_finite_value = checkValidFiniteValue(trajectory);
+  if (!s.is_valid_finite_value) {
+    return terminateValidation(
+      "trajectory has invalid value (NaN, Inf, etc). Stop validation process, raise an error.");
+  }
+
   s.is_valid_interval = checkValidInterval(trajectory);
   s.is_valid_lateral_acc = checkValidLateralAcceleration(trajectory);
   s.is_valid_longitudinal_max_acc = checkValidMaxLongitudinalAcceleration(trajectory);
@@ -262,6 +292,11 @@ void PlanningValidator::validate(const Trajectory & trajectory)
   s.is_valid_steering_rate = checkValidSteeringRate(resampled);
 
   s.invalid_count = isAllValid(s) ? 0 : s.invalid_count + 1;
+}
+
+bool PlanningValidator::checkValidSize(const Trajectory & trajectory) const
+{
+  return trajectory.points.size() >= 2;
 }
 
 bool PlanningValidator::checkValidFiniteValue(const Trajectory & trajectory)
@@ -412,12 +447,13 @@ bool PlanningValidator::checkValidDistanceDeviation(const Trajectory & trajector
   return true;
 }
 
-bool PlanningValidator::isAllValid(const PlanningValidatorStatus & s)
+bool PlanningValidator::isAllValid(const PlanningValidatorStatus & s) const
 {
-  return s.is_valid_finite_value && s.is_valid_interval && s.is_valid_relative_angle &&
-         s.is_valid_curvature && s.is_valid_lateral_acc && s.is_valid_longitudinal_max_acc &&
-         s.is_valid_longitudinal_min_acc && s.is_valid_steering && s.is_valid_steering_rate &&
-         s.is_valid_velocity_deviation && s.is_valid_distance_deviation;
+  return s.is_valid_size && s.is_valid_finite_value && s.is_valid_interval &&
+         s.is_valid_relative_angle && s.is_valid_curvature && s.is_valid_lateral_acc &&
+         s.is_valid_longitudinal_max_acc && s.is_valid_longitudinal_min_acc &&
+         s.is_valid_steering && s.is_valid_steering_rate && s.is_valid_velocity_deviation &&
+         s.is_valid_distance_deviation;
 }
 
 void PlanningValidator::displayStatus()
@@ -432,6 +468,7 @@ void PlanningValidator::displayStatus()
 
   const auto & s = validation_status_;
 
+  warn(s.is_valid_size, "planning trajectory size is invalid, too small.");
   warn(s.is_valid_curvature, "planning trajectory curvature is too large!!");
   warn(s.is_valid_distance_deviation, "planning trajectory is too far from ego!!");
   warn(s.is_valid_finite_value, "planning trajectory has invalid value!!");
