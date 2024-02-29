@@ -79,7 +79,6 @@ std::optional<PullOutPath> ShiftPullOut::plan(const Pose & start_pose, const Pos
         shift_path.points.begin() + pull_out_end_idx + 1);
     }
 
-
     // check lane departure
     // The method for lane departure checking verifies if the footprint of each point on the path is
     // contained within a lanelet using `boost::geometry::within`, which incurs a high computational
