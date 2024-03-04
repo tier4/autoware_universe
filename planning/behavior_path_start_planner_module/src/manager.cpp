@@ -341,7 +341,6 @@ void StartPlannerModuleManager::updateModuleParams(
     updateParam<double>(parameters, ns + "th_arrived_distance", p->th_arrived_distance);
     updateParam<double>(parameters, ns + "th_stopped_velocity", p->th_stopped_velocity);
     updateParam<double>(parameters, ns + "th_stopped_time", p->th_stopped_time);
-    updateParam<double>(parameters, ns + "prepare_time_before_start", p->prepare_time_before_start);
     updateParam<double>(
       parameters, ns + "th_turn_signal_on_lateral_offset", p->th_turn_signal_on_lateral_offset);
     updateParam<double>(
@@ -664,7 +663,7 @@ void StartPlannerModuleManager::updateModuleParams(
         parameters, obj_types_ns + "check_pedestrian",
         p->surround_moving_obstacles_type_to_check.check_pedestrian);
     }
-  });
+  };
 }
 
 bool StartPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
