@@ -663,7 +663,7 @@ void StartPlannerModuleManager::updateModuleParams(
         parameters, obj_types_ns + "check_pedestrian",
         p->surround_moving_obstacles_type_to_check.check_pedestrian);
     }
-  };
+  }
 }
 
 bool StartPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
