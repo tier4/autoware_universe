@@ -16,7 +16,13 @@ ament_auto_add_library(tier4_autoware_utils SHARED
   src/ros/marker_helper.cpp
   src/ros/logger_level_configure.cpp
   src/system/backtrace.cpp
+  src/system/assert.cpp
 )
+
+option(ENABLE_ASSERT_ABORT "Option to enable assert abort" ON)
+if(ENABLE_ASSERT_ABORT)
+  target_compile_definitions(tier4_autoware_utils PUBLIC ENABLE_ASSERT_ABORT)
+endif()
 
 if(BUILD_TESTING)
   find_package(ament_cmake_ros REQUIRED)

@@ -20,6 +20,7 @@
 #include "motion_utils/resample/resample_utils.hpp"
 #include "motion_utils/trajectory/trajectory.hpp"
 #include "tier4_autoware_utils/geometry/geometry.hpp"
+#include "tier4_autoware_utils/system/assert.hpp"
 
 namespace motion_utils
 {
@@ -28,6 +29,7 @@ std::vector<geometry_msgs::msg::Point> resamplePointVector(
   const std::vector<double> & resampled_arclength, const bool use_akima_spline_for_xy,
   const bool use_lerp_for_z)
 {
+  ASSERT(false);
   // validate arguments
   if (!resample_utils::validate_arguments(points, resampled_arclength)) {
     return points;
