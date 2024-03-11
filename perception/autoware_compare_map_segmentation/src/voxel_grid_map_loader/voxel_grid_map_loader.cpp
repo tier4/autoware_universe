@@ -236,7 +236,7 @@ bool VoxelGridMapLoader::is_in_voxel(
   if (voxel_index != -1) {  // not empty voxel
     const double dist_x = map->points.at(voxel_index).x - target_point.x;
     const double dist_y = map->points.at(voxel_index).y - target_point.y;
-    const double dist_z = map->points.at(voxel_index).z - target_point.z;
+    const double dist_z = map->points.at(voxel_index).z - target_point.z - 0.1;
     // check if the point is inside the distance threshold voxel
     if (
       std::abs(dist_x) < distance_threshold && std::abs(dist_y) < distance_threshold &&
