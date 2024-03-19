@@ -42,11 +42,13 @@ ShapeEstimationNode::ShapeEstimationNode(const rclcpp::NodeOptions & node_option
     "input", rclcpp::QoS{1}, std::bind(&ShapeEstimationNode::callback, this, _1));
 
   pub_ = create_publisher<DetectedObjectsWithFeature>("objects", rclcpp::QoS{1});
-  bool use_corrector = declare_parameter("use_corrector", true);
-  bool use_filter = declare_parameter("use_filter", true);
-  use_vehicle_reference_yaw_ = declare_parameter("use_vehicle_reference_yaw", true);
-  use_vehicle_reference_shape_size_ = declare_parameter("use_vehicle_reference_shape_size", true);
-  bool use_boost_bbox_optimizer = declare_parameter("use_boost_bbox_optimizer", false);
+  bool use_corrector = declare_parameter<bool>("use_corrector");
+  bool use_filter = declare_parameter<bool>("use_filter");
+  use_vehicle_reference_yaw_ = declare_parameter<bool>("use_vehicle_reference_yaw");
+  use_vehicle_reference_shape_size_ = declare_parameter<bool>("use_vehicle_reference_shape_size");
+  bool use_boost_bbox_optimizer = declare_parameter<bool>("use_boost_bbox_optimizer");
+  fix_filtered_objects_label_to_unknown_ =
+    declare_parameter<bool>("fix_filtered_objects_label_to_unknown");
   RCLCPP_INFO(this->get_logger(), "using boost shape estimation : %d", use_boost_bbox_optimizer);
   estimator_ =
     std::make_unique<ShapeEstimator>(use_corrector, use_filter, use_boost_bbox_optimizer);
@@ -96,12 +98,15 @@ void ShapeEstimationNode::callback(const DetectedObjectsWithFeature::ConstShared
     const bool estimated_success = estimator_->estimateShapeAndPose(
       label, *cluster, ref_yaw_info, ref_shape_size_info, shape, pose);
 
-    // If the shape estimation fails, ignore it.
-    if (!estimated_success) {
+    // If the shape estimation fails, change to Unknown object.
+    if (!fix_filtered_objects_label_to_unknown_ && !estimated_success) {
       continue;
     }
-
     output_msg.feature_objects.push_back(feature_object);
+    if (!estimated_success) {
+      output_msg.feature_objects.back().object.classification.front().label = Label::UNKNOWN;
+    }
+
     output_msg.feature_objects.back().object.shape = shape;
     output_msg.feature_objects.back().object.kinematics.pose_with_covariance.pose = pose;
   }
