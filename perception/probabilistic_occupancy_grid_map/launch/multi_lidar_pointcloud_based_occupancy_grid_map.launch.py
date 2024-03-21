@@ -112,7 +112,12 @@ def launch_setup(context, *args, **kwargs):
     gridmap_generation_composable_nodes = []
 
     number_of_nodes = len(fusion_config["raw_pointcloud_topics"])
-    print(number_of_nodes)
+    print(
+        "launching multi_lidar_pointcloud_based occupancy grid map",
+        number_of_nodes,
+        "nodes in the container named",
+        LaunchConfiguration("pointcloud_container_name").perform(context),
+    )
 
     for i in range(number_of_nodes):
         # load parameter file
@@ -151,7 +156,7 @@ def launch_setup(context, *args, **kwargs):
 
     # 3. launch setting
     occupancy_grid_map_container = ComposableNodeContainer(
-        name=LaunchConfiguration("container_name"),
+        name=LaunchConfiguration("pointcloud_container_name"),
         namespace="",
         package="rclcpp_components",
         executable=LaunchConfiguration("container_executable"),
@@ -162,7 +167,7 @@ def launch_setup(context, *args, **kwargs):
 
     load_composable_nodes = LoadComposableNodes(
         composable_node_descriptions=gridmap_generation_composable_nodes + gridmap_fusion_node,
-        target_container=LaunchConfiguration("container_name"),
+        target_container=LaunchConfiguration("pointcloud_container_name"),
         condition=IfCondition(LaunchConfiguration("use_pointcloud_container")),
     )
 
@@ -190,7 +195,7 @@ def generate_launch_description():
             add_launch_arg("use_multithread", "false"),
             add_launch_arg("use_intra_process", "true"),
             add_launch_arg("use_pointcloud_container", "false"),
-            add_launch_arg("container_name", "occupancy_grid_map_container"),
+            add_launch_arg("pointcloud_container_name", "occupancy_grid_map_container"),
             add_launch_arg("input/obstacle_pointcloud", "no_ground/oneshot/pointcloud"),
             add_launch_arg("output", "occupancy_grid"),
             add_launch_arg(
