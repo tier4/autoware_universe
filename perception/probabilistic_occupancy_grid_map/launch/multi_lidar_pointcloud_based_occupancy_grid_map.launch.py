@@ -48,7 +48,6 @@ def fusion_config_sanity_check(fusion_config: dict):
     listed_param_names = [
         "raw_pointcloud_topics",
         "fusion_input_ogm_topics",
-        # "each_ogm_sensor_frames",
         "input_ogm_reliabilities",
     ]
     param_length_list = []
