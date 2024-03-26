@@ -37,6 +37,9 @@
 #include <autoware_auto_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_auto_vehicle_msgs/msg/hazard_lights_command.hpp>
 
+#include <lanelet2_core/Forward.h>
+
+#include <atomic>
 #include <deque>
 #include <limits>
 #include <memory>
@@ -452,9 +455,8 @@ private:
   void setDrivableAreaInfo(BehaviorModuleOutput & output) const;
 
   // output setter
-  void setOutput(BehaviorModuleOutput & output) const;
-  void setStopPath(BehaviorModuleOutput & output) const;
-  void updatePreviousData(const BehaviorModuleOutput & output);
+  void setOutput(BehaviorModuleOutput & output);
+  void updatePreviousData();
 
   /**
    * @brief Sets a stop path in the current path based on safety conditions and previous paths.
@@ -467,10 +469,11 @@ private:
    */
   void setStopPathFromCurrentPath(BehaviorModuleOutput & output) const;
   void setModifiedGoal(BehaviorModuleOutput & output) const;
-  void setTurnSignalInfo(BehaviorModuleOutput & output) const;
+  void setTurnSignalInfo(BehaviorModuleOutput & output);
 
   // new turn signal
-  TurnSignalInfo calcTurnSignalInfo() const;
+  TurnSignalInfo calcTurnSignalInfo();
+  std::optional<lanelet::Id> ignore_signal_{std::nullopt};
 
   std::optional<BehaviorModuleOutput> last_previous_module_output_{};
   bool hasPreviousModulePathShapeChanged() const;
