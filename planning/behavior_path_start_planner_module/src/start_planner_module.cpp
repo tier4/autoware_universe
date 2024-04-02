@@ -1314,11 +1314,8 @@ lanelet::ConstLanelets StartPlannerModule::createDepartureCheckLanes() const
   return departure_check_lanes;
 }
 
-void StartPlannerModule::setDebugData()
+void StartPlannerModule::setDebugData() const
 {
-  using lanelet::visualization::laneletsAsTriangleMarkerArray;
-  using marker_utils::addFootprintMarker;
-  using marker_utils::createFootprintMarkerArray;
   using marker_utils::createObjectsMarkerArray;
   using marker_utils::createPathMarkerArray;
   using marker_utils::createPoseMarkerArray;
