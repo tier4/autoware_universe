@@ -92,8 +92,8 @@ std::optional<PullOutPath> ShiftPullOut::plan(const Pose & start_pose, const Pos
           return shift_path.points.size() - 1;
         }
       });
-      path_start_to_end.points.insert(
-        path_start_to_end.points.begin(), shift_path.points.begin() + pull_out_start_idx,
+      path_shift_start_to_end.points.insert(
+        path_shift_start_to_end.points.begin(), shift_path.points.begin() + pull_out_start_idx,
         shift_path.points.begin() + collision_check_end_idx + 1);
     }
 
