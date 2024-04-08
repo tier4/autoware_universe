@@ -315,6 +315,10 @@ bool BehaviorPathPlannerNode::isDataReady()
     return missing("operation_mode");
   }
 
+  if (!planner_data_->occupancy_grid) {
+    return missing("occupancy_grid");
+  }
+
   return true;
 }
 
