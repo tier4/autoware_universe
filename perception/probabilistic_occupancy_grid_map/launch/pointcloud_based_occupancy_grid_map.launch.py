@@ -102,13 +102,13 @@ def launch_setup(context, *args, **kwargs):
                 (
                     "~/input/obstacle_pointcloud",
                     LaunchConfiguration("input/obstacle_pointcloud")
-                    if downsample_input_pointcloud
+                    if not downsample_input_pointcloud
                     else "/perception/obstacle_segmentation/downsample/pointcloud",
                 ),
                 (
                     "~/input/raw_pointcloud",
                     LaunchConfiguration("input/raw_pointcloud")
-                    if downsample_input_pointcloud
+                    if not downsample_input_pointcloud
                     else "/sensing/lidar/concatenated/downsample/pointcloud",
                 ),
                 ("~/output/occupancy_grid_map", LaunchConfiguration("output")),
