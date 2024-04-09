@@ -162,9 +162,16 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw(
   // Filter obstacle pointcloud by raw pointcloud
   PointCloud2 filtered_obstacle_pc_common{};
   if (filter_obstacle_pointcloud_by_raw_pointcloud_) {
-    if (!utils::extractApproximateCommonPointCloud(
-          filtered_obstacle_pc, filtered_raw_pc, 0.1f, filtered_obstacle_pc_common)) {
-      filtered_obstacle_pc_common = filtered_obstacle_pc;
+    const bool use_exact_common_pointcloud = true;
+    const bool success_to_filter =
+      use_exact_common_pointcloud
+        ? utils::extractCommonPointCloud(
+            filtered_obstacle_pc, filtered_raw_pc, filtered_obstacle_pc_common)
+        : utils::extractApproximateCommonPointCloud(
+            filtered_obstacle_pc, filtered_raw_pc, 0.15f, filtered_obstacle_pc_common);
+    if (!success_to_filter) {
+      // RCLCPP_WARN_STREAM(get_logger(), "pointcloud filtering is failed in
+      // filter_obstacle_pointcloud_by_raw_pointcloud.");
     }
   } else {
     filtered_obstacle_pc_common = filtered_obstacle_pc;
@@ -190,8 +197,13 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw(
   occupancy_grid_map_ptr_->updateOrigin(
     gridmap_origin.position.x - occupancy_grid_map_ptr_->getSizeInMetersX() / 2,
     gridmap_origin.position.y - occupancy_grid_map_ptr_->getSizeInMetersY() / 2);
-  occupancy_grid_map_ptr_->updateWithPointCloud(
-    filtered_raw_pc, filtered_obstacle_pc_common, robot_pose, scan_origin);
+  // check the raw/obstacle pointcloud size
+  if (filtered_raw_pc.data.size() == 0 || filtered_obstacle_pc_common.data.size() == 0) {
+    RCLCPP_WARN_STREAM(get_logger(), "pointcloud size is 0");
+  } else {
+    occupancy_grid_map_ptr_->updateWithPointCloud(
+      filtered_raw_pc, filtered_obstacle_pc_common, robot_pose, scan_origin);
+  }
 
   if (enable_single_frame_mode_) {
     // publish
