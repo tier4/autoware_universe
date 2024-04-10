@@ -451,8 +451,8 @@ void MrmHandler::updateMrmState()
 
   // Get mode
   const bool is_vehicle_auto_mode = control_mode_->mode == ControlModeReport::AUTONOMOUS;
-  const bool is_operation_mode_auto_mode = operation_mode_state_->mode ==
-                                           autoware_adapi_v1_msgs::msg::OperationModeState::AUTONOMOUS;
+  const bool is_operation_mode_auto_mode =
+    operation_mode_state_->mode == autoware_adapi_v1_msgs::msg::OperationModeState::AUTONOMOUS;
 
   // State Machine
   if (mrm_state_.state == MrmState::NORMAL) {
