@@ -16,6 +16,7 @@
 
 #include "motion_utils/resample/resample.hpp"
 #include "motion_utils/trajectory/tmp_conversion.hpp"
+#include "motion_utils/trajectory/trajectory.hpp"
 #include "object_recognition_utils/predicted_path_utils.hpp"
 #include "obstacle_cruise_planner/polygon_utils.hpp"
 #include "obstacle_cruise_planner/utils.hpp"
@@ -23,10 +24,54 @@
 #include "tier4_autoware_utils/ros/marker_helper.hpp"
 #include "tier4_autoware_utils/ros/update_param.hpp"
 
+#include <lanelet2_extension/utility/message_conversion.hpp>
+#include <lanelet2_extension/utility/query.hpp>
+#include <lanelet2_extension/utility/utilities.hpp>
+#include <tier4_autoware_utils/geometry/boost_polygon_utils.hpp>
+
 #include <boost/format.hpp>
+#include <boost/geometry/algorithms/correct.hpp>
+#include <boost/geometry/algorithms/intersects.hpp>
+
+#include <lanelet2_core/geometry/LineString.h>
+#include <lanelet2_core/geometry/Polygon.h>
 
 #include <algorithm>
 #include <chrono>
+
+#define debug(var)                                                     \
+  do {                                                                 \
+    std::cerr << __LINE__ << ", " << __func__ << ", " << #var << ": "; \
+    view(var);                                                         \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T>> & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                                              \
+  {                                                         \
+    std::cerr << __LINE__ << ", " << __func__ << std::endl; \
+  }
+#define line_with_file()                                                               \
+  {                                                                                    \
+    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
+  }
 
 namespace
 {
@@ -275,6 +320,14 @@ ObstacleCruisePlannerNode::BehaviorDeterminationParam::BehaviorDeterminationPara
     "behavior_determination.consider_current_pose.enable_to_consider_current_pose");
   time_to_convergence = node.declare_parameter<double>(
     "behavior_determination.consider_current_pose.time_to_convergence");
+  work_as_pseudo_occulusion = node.declare_parameter<bool>(
+    "behavior_determination.slow_down.pseudo_occulusion.enable_function");
+  if (work_as_pseudo_occulusion) {
+    max_obj_vel_for_pseudo_occulusion = node.declare_parameter<double>(
+      "behavior_determination.slow_down.pseudo_occulusion.max_obj_vel");
+    focus_intersections_for_pseudo_occulusion = node.declare_parameter<std::vector<lanelet::Id>>(
+      "behavior_determination.slow_down.pseudo_occulusion.focus_intersections");
+  }
 }
 
 void ObstacleCruisePlannerNode::BehaviorDeterminationParam::onParam(
@@ -335,6 +388,17 @@ void ObstacleCruisePlannerNode::BehaviorDeterminationParam::onParam(
   tier4_autoware_utils::updateParam<double>(
     parameters, "behavior_determination.consider_current_pose.time_to_convergence",
     time_to_convergence);
+  tier4_autoware_utils::updateParam<bool>(
+    parameters, "behavior_determination.slow_down.pseudo_occulusion.enable_function",
+    work_as_pseudo_occulusion);
+  if (work_as_pseudo_occulusion) {
+    tier4_autoware_utils::updateParam<double>(
+      parameters, "behavior_determination.slow_down.pseudo_occulusion.max_obj_vel",
+      max_obj_vel_for_pseudo_occulusion);
+    tier4_autoware_utils::updateParam<std::vector<lanelet::Id>>(
+      parameters, "behavior_determination.slow_down.pseudo_occulusion.focus_intersections",
+      focus_intersections_for_pseudo_occulusion);
+  }
 }
 
 ObstacleCruisePlannerNode::ObstacleCruisePlannerNode(const rclcpp::NodeOptions & node_options)
@@ -357,6 +421,9 @@ ObstacleCruisePlannerNode::ObstacleCruisePlannerNode(const rclcpp::NodeOptions &
   acc_sub_ = create_subscription<AccelWithCovarianceStamped>(
     "~/input/acceleration", rclcpp::QoS{1},
     [this](const AccelWithCovarianceStamped::ConstSharedPtr msg) { ego_accel_ptr_ = msg; });
+  lanelet_map_sub_ = create_subscription<HADMapBin>(
+    "~/input/vector_map", rclcpp::QoS(10).transient_local(),
+    [this](const HADMapBin::ConstSharedPtr msg) { vector_map_ptr_ = msg; });
 
   // publisher
   trajectory_pub_ = create_publisher<Trajectory>("~/output/trajectory", 1);
@@ -486,9 +553,11 @@ void ObstacleCruisePlannerNode::onTrajectory(const Trajectory::ConstSharedPtr ms
   const auto traj_points = motion_utils::convertToTrajectoryPointArray(*msg);
 
   // check if subscribed variables are ready
-  if (traj_points.empty() || !ego_odom_ptr_ || !ego_accel_ptr_ || !objects_ptr_) {
+  if (
+    traj_points.empty() || !ego_odom_ptr_ || !ego_accel_ptr_ || !objects_ptr_ || !vector_map_ptr_) {
     return;
   }
+  route_handler_ = std::make_shared<route_handler::RouteHandler>(*vector_map_ptr_);
 
   stop_watch_.tic(__func__);
   *debug_data_ptr_ = DebugData();
@@ -1127,6 +1196,42 @@ std::optional<SlowDownObstacle> ObstacleCruisePlannerNode::createSlowDownObstacl
     RCLCPP_INFO_EXPRESSION(
       get_logger(), enable_debug_info_,
       "[SlowDown] Ignore obstacle (%s) since there is no collision point", object_id.c_str());
+    return std::nullopt;
+  }
+
+  const auto is_occulusion_object = [&]() {
+    if (
+      std::hypot(obstacle.twist.linear.x, obstacle.twist.linear.y) >
+      behavior_determination_param_.max_obj_vel_for_pseudo_occulusion + 1e-6) {
+      line();
+      return false;
+    }
+
+    if (motion_utils::calcLateralOffset(traj_points, obstacle.pose.position) > 0.0) {
+      line();
+      return true;
+    }
+
+    for (const auto & id :
+         behavior_determination_param_.focus_intersections_for_pseudo_occulusion) {
+      if (id == 0) {
+        continue;
+      }
+      const auto intersection_poly =
+        lanelet::utils::to2D(route_handler_->getLaneletMapPtr()->polygonLayer.get(id))
+          .basicPolygon();
+      if (
+        boost::geometry::within(obstacle_poly, intersection_poly) ||
+        boost::geometry::intersects(obstacle_poly, intersection_poly)) {
+        line();
+        return true;
+      }
+    }
+    line();
+    return false;
+  };
+
+  if (behavior_determination_param_.work_as_pseudo_occulusion && !is_occulusion_object()) {
     return std::nullopt;
   }
 

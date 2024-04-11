@@ -125,6 +125,7 @@
           <remap from="~/input/odometry" to="/localization/kinematic_state"/>
           <remap from="~/input/acceleration" to="/localization/acceleration"/>
           <remap from="~/input/objects" to="/perception/object_recognition/objects"/>
+          <remap from="~/input/vector_map" to="/map/vector_map"/>
           <remap from="~/output/trajectory" to="$(var interface_output_topic)"/>
           <remap from="~/output/stop_reasons" to="/planning/scenario_planning/status/stop_reasons"/>
           <remap from="~/output/velocity_limit" to="/planning/scenario_planning/max_velocity_candidates"/>
@@ -174,6 +175,7 @@
           <remap from="~/input/odometry" to="/localization/kinematic_state"/>
           <remap from="~/input/acceleration" to="/localization/acceleration"/>
           <remap from="~/input/objects" to="/perception/object_recognition/objects"/>
+          <remap from="~/input/vector_map" to="/map/vector_map"/>
           <remap from="~/output/trajectory" to="obstacle_cruise/trajectory"/>
           <remap from="~/output/stop_reasons" to="/planning/scenario_planning/status/stop_reasons"/>
           <remap from="~/output/velocity_limit" to="/planning/scenario_planning/max_velocity_candidates"/>
@@ -198,6 +200,7 @@
           <remap from="~/input/odometry" to="/localization/kinematic_state"/>
           <remap from="~/input/acceleration" to="/localization/acceleration"/>
           <remap from="~/input/objects" to="/perception/object_recognition/objects"/>
+          <remap from="~/input/vector_map" to="/map/vector_map"/>
           <remap from="~/output/trajectory" to="$(var interface_output_topic)"/>
           <remap from="~/output/stop_reasons" to="/planning/scenario_planning/status/stop_reasons"/>
           <remap from="~/output/velocity_limit" to="/planning/scenario_planning/max_velocity_candidates"/>
