@@ -190,7 +190,7 @@
         </composable_node>
       </load_composable_node>
     </group>
-    
+
     <!-- Second Obstacle Cruise (pseudo occlusion)-->
     <group if="$(eval &quot;'$(var motion_stop_planner_type)' == 'obstacle_cruise_planner_with_pseudo_occlusion'&quot;)">
       <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
