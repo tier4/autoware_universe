@@ -27,51 +27,16 @@
 #include <lanelet2_extension/utility/message_conversion.hpp>
 #include <lanelet2_extension/utility/query.hpp>
 #include <lanelet2_extension/utility/utilities.hpp>
-#include <tier4_autoware_utils/geometry/boost_polygon_utils.hpp>
 
 #include <boost/format.hpp>
-#include <boost/geometry/algorithms/correct.hpp>
 #include <boost/geometry/algorithms/intersects.hpp>
+#include <boost/geometry/algorithms/within.hpp>
 
 #include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/geometry/Polygon.h>
 
 #include <algorithm>
 #include <chrono>
-
-#define debug(var)                                                     \
-  do {                                                                 \
-    std::cerr << __LINE__ << ", " << __func__ << ", " << #var << ": "; \
-    view(var);                                                         \
-  } while (0)
-template <typename T>
-void view(T e)
-{
-  std::cerr << e << std::endl;
-}
-template <typename T>
-void view(const std::vector<T> & v)
-{
-  for (const auto & e : v) {
-    std::cerr << e << " ";
-  }
-  std::cerr << std::endl;
-}
-template <typename T>
-void view(const std::vector<std::vector<T>> & vv)
-{
-  for (const auto & v : vv) {
-    view(v);
-  }
-}
-#define line()                                              \
-  {                                                         \
-    std::cerr << __LINE__ << ", " << __func__ << std::endl; \
-  }
-#define line_with_file()                                                               \
-  {                                                                                    \
-    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
-  }
 
 namespace
 {
@@ -320,13 +285,13 @@ ObstacleCruisePlannerNode::BehaviorDeterminationParam::BehaviorDeterminationPara
     "behavior_determination.consider_current_pose.enable_to_consider_current_pose");
   time_to_convergence = node.declare_parameter<double>(
     "behavior_determination.consider_current_pose.time_to_convergence");
-  work_as_pseudo_occulusion = node.declare_parameter<bool>(
-    "behavior_determination.slow_down.pseudo_occulusion.enable_function");
-  if (work_as_pseudo_occulusion) {
-    max_obj_vel_for_pseudo_occulusion = node.declare_parameter<double>(
-      "behavior_determination.slow_down.pseudo_occulusion.max_obj_vel");
-    focus_intersections_for_pseudo_occulusion = node.declare_parameter<std::vector<lanelet::Id>>(
-      "behavior_determination.slow_down.pseudo_occulusion.focus_intersections");
+  work_as_pseudo_occlusion = node.declare_parameter<bool>(
+    "behavior_determination.slow_down.pseudo_occlusion.enable_function");
+  if (work_as_pseudo_occlusion) {
+    max_obj_vel_for_pseudo_occlusion = node.declare_parameter<double>(
+      "behavior_determination.slow_down.pseudo_occlusion.max_obj_vel");
+    focus_intersections_for_pseudo_occlusion = node.declare_parameter<std::vector<lanelet::Id>>(
+      "behavior_determination.slow_down.pseudo_occlusion.focus_intersections");
   }
 }
 
@@ -389,15 +354,15 @@ void ObstacleCruisePlannerNode::BehaviorDeterminationParam::onParam(
     parameters, "behavior_determination.consider_current_pose.time_to_convergence",
     time_to_convergence);
   tier4_autoware_utils::updateParam<bool>(
-    parameters, "behavior_determination.slow_down.pseudo_occulusion.enable_function",
-    work_as_pseudo_occulusion);
-  if (work_as_pseudo_occulusion) {
+    parameters, "behavior_determination.slow_down.pseudo_occlusion.enable_function",
+    work_as_pseudo_occlusion);
+  if (work_as_pseudo_occlusion) {
     tier4_autoware_utils::updateParam<double>(
-      parameters, "behavior_determination.slow_down.pseudo_occulusion.max_obj_vel",
-      max_obj_vel_for_pseudo_occulusion);
+      parameters, "behavior_determination.slow_down.pseudo_occlusion.max_obj_vel",
+      max_obj_vel_for_pseudo_occlusion);
     tier4_autoware_utils::updateParam<std::vector<lanelet::Id>>(
-      parameters, "behavior_determination.slow_down.pseudo_occulusion.focus_intersections",
-      focus_intersections_for_pseudo_occulusion);
+      parameters, "behavior_determination.slow_down.pseudo_occlusion.focus_intersections",
+      focus_intersections_for_pseudo_occlusion);
   }
 }
 
@@ -1199,21 +1164,18 @@ std::optional<SlowDownObstacle> ObstacleCruisePlannerNode::createSlowDownObstacl
     return std::nullopt;
   }
 
-  const auto is_occulusion_object = [&]() {
+  const auto is_occlusion_object = [&]() {
     if (
       std::hypot(obstacle.twist.linear.x, obstacle.twist.linear.y) >
-      behavior_determination_param_.max_obj_vel_for_pseudo_occulusion + 1e-6) {
-      line();
+      behavior_determination_param_.max_obj_vel_for_pseudo_occlusion + 1e-6) {
       return false;
     }
 
     if (motion_utils::calcLateralOffset(traj_points, obstacle.pose.position) > 0.0) {
-      line();
       return true;
     }
 
-    for (const auto & id :
-         behavior_determination_param_.focus_intersections_for_pseudo_occulusion) {
+    for (const auto & id : behavior_determination_param_.focus_intersections_for_pseudo_occlusion) {
       if (id == 0) {
         continue;
       }
@@ -1223,15 +1185,13 @@ std::optional<SlowDownObstacle> ObstacleCruisePlannerNode::createSlowDownObstacl
       if (
         boost::geometry::within(obstacle_poly, intersection_poly) ||
         boost::geometry::intersects(obstacle_poly, intersection_poly)) {
-        line();
         return true;
       }
     }
-    line();
     return false;
   };
 
-  if (behavior_determination_param_.work_as_pseudo_occulusion && !is_occulusion_object()) {
+  if (behavior_determination_param_.work_as_pseudo_occlusion && !is_occlusion_object()) {
     return std::nullopt;
   }
 

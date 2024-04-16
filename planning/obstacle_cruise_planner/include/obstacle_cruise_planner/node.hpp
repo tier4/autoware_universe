@@ -203,9 +203,9 @@ private:
     // consideration for the current ego pose
     bool enable_to_consider_current_pose{false};
     double time_to_convergence{1.5};
-    bool work_as_pseudo_occulusion{false};
-    double max_obj_vel_for_pseudo_occulusion{0.0};
-    std::vector<lanelet::Id> focus_intersections_for_pseudo_occulusion{};
+    bool work_as_pseudo_occlusion{false};
+    double max_obj_vel_for_pseudo_occlusion{0.0};
+    std::vector<lanelet::Id> focus_intersections_for_pseudo_occlusion{};
   };
   BehaviorDeterminationParam behavior_determination_param_;
 
