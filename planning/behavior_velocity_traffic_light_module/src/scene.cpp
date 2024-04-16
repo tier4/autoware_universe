@@ -247,7 +247,11 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
     if (planner_param_.v2i_use_rest_time && is_time_to_red_signal_available && !is_stop_required) {
       if (!canPassStopLineBeforeRed(*rest_time_to_red_signal, signed_arc_length_to_stop_point)) {
         *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
+        is_prev_state_stop_ = true;
+        return true;
       }
+
+      is_prev_state_stop_ = false;
       return true;
     }
 
