@@ -216,7 +216,6 @@
       </load_composable_node>
     </group>
 
-
     <group if="$(eval &quot;'$(var motion_stop_planner_type)' == 'none'&quot;)">
       <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
         <composable_node pkg="topic_tools" plugin="topic_tools::RelayNode" name="obstacle_stop_relay" namespace="">
