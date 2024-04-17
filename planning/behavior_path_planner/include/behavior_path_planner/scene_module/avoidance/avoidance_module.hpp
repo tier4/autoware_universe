@@ -473,7 +473,10 @@ private:
    * @param avoidance path.
    * @return turn signal command.
    */
-  TurnSignalInfo calcTurnSignalInfo(const ShiftedPath & path) const;
+  TurnSignalInfo calcTurnSignalInfo(
+    const ShiftedPath & path, const ShiftLine & shift_line, const double current_shift_length,
+    const AvoidancePlanningData & data,
+    const std::shared_ptr<const PlannerData> & planner_data) const;
 
   // TODO(murooka) judge when and which way to extend drivable area. current implementation is keep
   // extending during avoidance module

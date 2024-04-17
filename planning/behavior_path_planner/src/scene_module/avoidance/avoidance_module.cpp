@@ -94,6 +94,98 @@ bool isDrivingSameLane(
 
   return !same_ids.empty();
 }
+
+bool existShiftSideLane(
+  const double start_shift_length, const double end_shift_length, const bool no_left_lanes,
+  const bool no_right_lanes)
+{
+  constexpr double THRESHOLD = 0.1;
+  const auto relative_shift_length = end_shift_length - start_shift_length;
+
+  const auto avoid_shift =
+    std::abs(start_shift_length) < THRESHOLD && std::abs(end_shift_length) > THRESHOLD;
+  if (avoid_shift) {
+    // Left avoid. But there is no adjacent lane. No need blinker.
+    if (relative_shift_length > 0.0 && no_left_lanes) {
+      return false;
+    }
+
+    // Right avoid. But there is no adjacent lane. No need blinker.
+    if (relative_shift_length < 0.0 && no_right_lanes) {
+      return false;
+    }
+  }
+
+  const auto return_shift =
+    std::abs(start_shift_length) > THRESHOLD && std::abs(end_shift_length) < THRESHOLD;
+  if (return_shift) {
+    // Right return. But there is no adjacent lane. No need blinker.
+    if (relative_shift_length > 0.0 && no_right_lanes) {
+      return false;
+    }
+
+    // Left return. But there is no adjacent lane. No need blinker.
+    if (relative_shift_length < 0.0 && no_left_lanes) {
+      return false;
+    }
+  }
+
+  const auto left_middle_shift = start_shift_length > THRESHOLD && end_shift_length > THRESHOLD;
+  if (left_middle_shift) {
+    // Left avoid. But there is no adjacent lane. No need blinker.
+    if (relative_shift_length > 0.0 && no_left_lanes) {
+      return false;
+    }
+
+    // Left return. But there is no adjacent lane. No need blinker.
+    if (relative_shift_length < 0.0 && no_left_lanes) {
+      return false;
+    }
+  }
+
+  const auto right_middle_shift = start_shift_length < THRESHOLD && end_shift_length < THRESHOLD;
+  if (right_middle_shift) {
+    // Right avoid. But there is no adjacent lane. No need blinker.
+    if (relative_shift_length < 0.0 && no_right_lanes) {
+      return false;
+    }
+
+    // Left avoid. But there is no adjacent lane. No need blinker.
+    if (relative_shift_length > 0.0 && no_right_lanes) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool straddleRoadBound(
+  const ShiftedPath & path, const ShiftLine & shift_line, const lanelet::ConstLanelets & lanes,
+  const vehicle_info_util::VehicleInfo & vehicle_info)
+{
+  using boost::geometry::intersects;
+  using tier4_autoware_utils::pose2transform;
+  using tier4_autoware_utils::transformVector;
+
+  const auto footprint = vehicle_info.createFootprint();
+
+  for (const auto & lane : lanes) {
+    for (size_t i = shift_line.start_idx; i < shift_line.end_idx; ++i) {
+      const auto transform = pose2transform(path.path.points.at(i).point.pose);
+      const auto shifted_vehicle_footprint = transformVector(footprint, transform);
+
+      if (intersects(lane.leftBound2d().basicLineString(), shifted_vehicle_footprint)) {
+        return true;
+      }
+
+      if (intersects(lane.rightBound2d().basicLineString(), shifted_vehicle_footprint)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 }  // namespace
 
 #ifdef USE_OLD_ARCHITECTURE
@@ -2565,55 +2657,63 @@ BehaviorModuleOutput AvoidanceModule::plan()
   }
 
   // generate path with shift points that have been inserted.
-  auto avoidance_path = generateAvoidancePath(path_shifter_);
-  debug_data_.output_shift = avoidance_path.shift_length;
+  ShiftedPath linear_shift_path = utils::avoidance::toShiftedPath(data.reference_path);
+  ShiftedPath spline_shift_path = utils::avoidance::toShiftedPath(data.reference_path);
+  const auto success_spline_path_generation =
+    path_shifter_.generate(&spline_shift_path, true, SHIFT_TYPE::SPLINE);
+  const auto success_linear_path_generation =
+    path_shifter_.generate(&linear_shift_path, true, SHIFT_TYPE::LINEAR);
+
+  // set previous data
+  if (success_spline_path_generation && success_linear_path_generation) {
+    helper_.setPreviousLinearShiftPath(linear_shift_path);
+    helper_.setPreviousSplineShiftPath(spline_shift_path);
+    helper_.setPreviousReferencePath(path_shifter_.getReferencePath());
+  } else {
+    spline_shift_path = helper_.getPreviousSplineShiftPath();
+  }
 
   // modify max speed to prevent acceleration in avoidance maneuver.
-  modifyPathVelocityToPreventAccelerationOnAvoidance(avoidance_path);
+  modifyPathVelocityToPreventAccelerationOnAvoidance(spline_shift_path);
 
   // post processing
   {
     postProcess();  // remove old shift points
   }
 
-  // set previous data
-  {
-    ShiftedPath linear_shift_path = utils::avoidance::toShiftedPath(data.reference_path);
-    path_shifter_.generate(&linear_shift_path, true, SHIFT_TYPE::LINEAR);
-    helper_.setPreviousLinearShiftPath(linear_shift_path);
-    helper_.setPreviousSplineShiftPath(avoidance_path);
-    helper_.setPreviousReferencePath(data.reference_path);
-  }
-
   BehaviorModuleOutput output;
 
   // turn signal info
-  {
+  if (path_shifter_.getShiftLines().empty()) {
+    output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
+  } else {
     const auto original_signal = getPreviousModuleOutput().turn_signal_info;
-    const auto new_signal = calcTurnSignalInfo(avoidance_path);
-    const auto current_seg_idx = planner_data_->findEgoSegmentIndex(avoidance_path.path.points);
+    const auto new_signal = calcTurnSignalInfo(
+      linear_shift_path, path_shifter_.getShiftLines().front(), helper_.getEgoShift(),
+      avoidance_data_, planner_data_);
+    const auto current_seg_idx = planner_data_->findEgoSegmentIndex(spline_shift_path.path.points);
     output.turn_signal_info = planner_data_->turn_signal_decider.use_prior_turn_signal(
-      avoidance_path.path, getEgoPose(), current_seg_idx, original_signal, new_signal,
+      spline_shift_path.path, getEgoPose(), current_seg_idx, original_signal, new_signal,
       planner_data_->parameters.ego_nearest_dist_threshold,
       planner_data_->parameters.ego_nearest_yaw_threshold);
   }
 
   // sparse resampling for computational cost
   {
-    avoidance_path.path =
-      utils::resamplePathWithSpline(avoidance_path.path, parameters_->resample_interval_for_output);
+    spline_shift_path.path = utils::resamplePathWithSpline(
+      spline_shift_path.path, parameters_->resample_interval_for_output);
   }
 
   avoidance_data_.state = updateEgoState(data);
 
   // update output data
   {
-    updateEgoBehavior(data, avoidance_path);
+    updateEgoBehavior(data, spline_shift_path);
     updateInfoMarker(avoidance_data_);
     updateDebugMarker(avoidance_data_, path_shifter_, debug_data_);
   }
 
-  output.path = std::make_shared<PathWithLaneId>(avoidance_path.path);
+  output.path = std::make_shared<PathWithLaneId>(spline_shift_path.path);
   output.reference_path = getPreviousModuleOutput().reference_path;
   path_reference_ = getPreviousModuleOutput().reference_path;
 
@@ -2623,7 +2723,7 @@ BehaviorModuleOutput AvoidanceModule::plan()
   // Drivable area generation.
   generateExtendedDrivableArea(output);
 
-  updateRegisteredRTCStatus(avoidance_path.path);
+  updateRegisteredRTCStatus(spline_shift_path.path);
 
   return output;
 }
@@ -3012,86 +3112,98 @@ void AvoidanceModule::initRTCStatus()
   candidate_uuid_ = generateUUID();
 }
 
-TurnSignalInfo AvoidanceModule::calcTurnSignalInfo(const ShiftedPath & path) const
+TurnSignalInfo AvoidanceModule::calcTurnSignalInfo(
+  const ShiftedPath & path, const ShiftLine & shift_line, const double current_shift_length,
+  const AvoidancePlanningData & data, const std::shared_ptr<const PlannerData> & planner_data) const
 {
-  const auto shift_lines = path_shifter_.getShiftLines();
-  if (shift_lines.empty()) {
+  constexpr double THRESHOLD = 0.1;
+  const auto & p = planner_data->parameters;
+  const auto & rh = planner_data->route_handler;
+  const auto & ego_pose = planner_data->self_odometry->pose.pose;
+  const auto & ego_speed = planner_data->self_odometry->twist.twist.linear.x;
+
+  if (shift_line.start_idx + 1 > path.shift_length.size()) {
+    RCLCPP_WARN(rclcpp::get_logger(__func__), "index inconsistency.");
     return {};
   }
 
-  const auto front_shift_line = shift_lines.front();
-  const size_t start_idx = front_shift_line.start_idx;
-  const size_t end_idx = front_shift_line.end_idx;
+  if (shift_line.start_idx + 1 > path.path.points.size()) {
+    RCLCPP_WARN(rclcpp::get_logger(__func__), "index inconsistency.");
+    return {};
+  }
 
-  const auto current_shift_length = helper_.getEgoShift();
-  const double start_shift_length = path.shift_length.at(start_idx);
-  const double end_shift_length = path.shift_length.at(end_idx);
-  const double segment_shift_length = end_shift_length - start_shift_length;
+  if (shift_line.end_idx + 1 > path.shift_length.size()) {
+    RCLCPP_WARN(rclcpp::get_logger(__func__), "index inconsistency.");
+    return {};
+  }
 
-  const double turn_signal_shift_length_threshold =
-    planner_data_->parameters.turn_signal_shift_length_threshold;
-  const double turn_signal_search_time = planner_data_->parameters.turn_signal_search_time;
-  const double turn_signal_minimum_search_distance =
-    planner_data_->parameters.turn_signal_minimum_search_distance;
+  if (shift_line.end_idx + 1 > path.path.points.size()) {
+    RCLCPP_WARN(rclcpp::get_logger(__func__), "index inconsistency.");
+    return {};
+  }
+
+  const auto start_shift_length = path.shift_length.at(shift_line.start_idx);
+  const auto end_shift_length = path.shift_length.at(shift_line.end_idx);
+  const auto relative_shift_length = end_shift_length - start_shift_length;
 
   // If shift length is shorter than the threshold, it does not need to turn on blinkers
-  if (std::fabs(segment_shift_length) < turn_signal_shift_length_threshold) {
+  if (std::fabs(relative_shift_length) < p.turn_signal_shift_length_threshold) {
     return {};
   }
 
   // If the vehicle does not shift anymore, we turn off the blinker
-  if (std::fabs(end_shift_length - current_shift_length) < 0.1) {
+  if (std::fabs(path.shift_length.at(shift_line.end_idx) - current_shift_length) < THRESHOLD) {
     return {};
   }
 
-  // compute blinker start idx and end idx
-  const size_t blinker_start_idx = [&]() {
-    for (size_t idx = start_idx; idx <= end_idx; ++idx) {
-      const double current_shift_length = path.shift_length.at(idx);
-      if (current_shift_length > 0.1) {
-        return idx;
-      }
-    }
-    return start_idx;
-  }();
-  const size_t blinker_end_idx = end_idx;
+  const auto get_command = [](const auto & shift_length) {
+    return shift_length > 0.0 ? TurnIndicatorsCommand::ENABLE_LEFT
+                              : TurnIndicatorsCommand::ENABLE_RIGHT;
+  };
 
-  const auto blinker_start_pose = path.path.points.at(blinker_start_idx).point.pose;
-  const auto blinker_end_pose = path.path.points.at(blinker_end_idx).point.pose;
-
-  const double ego_vehicle_offset =
-    planner_data_->parameters.vehicle_info.max_longitudinal_offset_m;
   const auto signal_prepare_distance =
-    std::max(getEgoSpeed() * turn_signal_search_time, turn_signal_minimum_search_distance);
+    std::max(ego_speed * p.turn_signal_search_time, p.turn_signal_minimum_search_distance);
   const auto ego_front_to_shift_start =
-    calcSignedArcLength(path.path.points, getEgoPosition(), blinker_start_pose.position) -
-    ego_vehicle_offset;
+    calcSignedArcLength(path.path.points, ego_pose.position, shift_line.start_idx) -
+    p.vehicle_info.max_longitudinal_offset_m;
 
   if (signal_prepare_distance < ego_front_to_shift_start) {
     return {};
   }
 
-  bool turn_signal_on_swerving = planner_data_->parameters.turn_signal_on_swerving;
+  const auto blinker_start_pose = path.path.points.at(shift_line.start_idx).point.pose;
+  const auto blinker_end_pose = path.path.points.at(shift_line.end_idx).point.pose;
+  const auto get_start_pose = [&](const auto & ego_to_shift_start) {
+    return ego_to_shift_start ? ego_pose : blinker_start_pose;
+  };
 
   TurnSignalInfo turn_signal_info{};
-  if (turn_signal_on_swerving) {
-    if (segment_shift_length > 0.0) {
-      turn_signal_info.turn_signal.command = TurnIndicatorsCommand::ENABLE_LEFT;
-    } else {
-      turn_signal_info.turn_signal.command = TurnIndicatorsCommand::ENABLE_RIGHT;
-    }
-  } else {
-    turn_signal_info.turn_signal.command = TurnIndicatorsCommand::DISABLE;
-  }
-
-  if (ego_front_to_shift_start > 0.0) {
-    turn_signal_info.desired_start_point = planner_data_->self_odometry->pose.pose;
-  } else {
-    turn_signal_info.desired_start_point = blinker_start_pose;
-  }
+  turn_signal_info.desired_start_point = get_start_pose(ego_front_to_shift_start);
   turn_signal_info.desired_end_point = blinker_end_pose;
   turn_signal_info.required_start_point = blinker_start_pose;
   turn_signal_info.required_end_point = blinker_end_pose;
+  turn_signal_info.turn_signal.command = get_command(relative_shift_length);
+
+  if (!p.turn_signal_on_swerving) {
+    return turn_signal_info;
+  }
+
+  lanelet::ConstLanelet lanelet;
+  if (!rh->getClosestLaneletWithinRoute(shift_line.end, &lanelet)) {
+    return {};
+  }
+
+  const auto left_lanelets = rh->getAllLeftSharedLinestringLanelets(lanelet, true, true);
+  const auto right_lanelets = rh->getAllRightSharedLinestringLanelets(lanelet, true, true);
+
+  if (!existShiftSideLane(
+        start_shift_length, end_shift_length, left_lanelets.empty(), right_lanelets.empty())) {
+    return {};
+  }
+
+  if (!straddleRoadBound(path, shift_line, data.current_lanelets, p.vehicle_info)) {
+    return {};
+  }
 
   return turn_signal_info;
 }
