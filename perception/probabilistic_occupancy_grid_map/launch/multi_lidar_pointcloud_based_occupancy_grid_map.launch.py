@@ -135,6 +135,14 @@ def get_downsample_preprocess_nodes(voxel_size: float, raw_pointcloud_topics: li
         "voxel_size": voxel_size,
     }
     nodes.append(get_downsample_filter_node(obstacle_settings))
+    raw_settings = {
+        "plugin": "pointcloud_preprocessor::ApproximateDownsampleFilterComponent",
+        "node_name": "obstacle_pc_downsample_filter",
+        "input_topic": LaunchConfiguration("input/obstacle_pointcloud"),
+        "output_topic": "/perception/obstacle_segmentation/downsample/pointcloud",
+        "voxel_size": voxel_size,
+    }
+    nodes.append(get_downsample_filter_node(raw_settings))
     return nodes
 
 
