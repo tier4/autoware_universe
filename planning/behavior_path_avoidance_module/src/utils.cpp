@@ -662,13 +662,15 @@ bool isNeverAvoidanceTarget(
   if (object.is_within_intersection) {
     if (object.behavior == ObjectData::Behavior::NONE) {
       object.reason = "ParallelToEgoLane";
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object belongs to ego lane. never avoid it.");
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace), "object belongs to ego lane. never avoid it.");
       return true;
     }
 
     if (object.behavior == ObjectData::Behavior::MERGING) {
       object.reason = "MergingToEgoLane";
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object belongs to ego lane. never avoid it.");
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace), "object belongs to ego lane. never avoid it.");
       return true;
     }
   }
@@ -720,7 +722,8 @@ bool isNeverAvoidanceTarget(
       planner_data->route_handler->getLeftLanelet(object.overhang_lanelet, true, false);
     if (right_lane.has_value() && left_lane.has_value()) {
       object.reason = AvoidanceDebugFactor::NOT_PARKING_OBJECT;
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object isn't on the edge lane. never avoid it.");
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace), "object isn't on the edge lane. never avoid it.");
       return true;
     }
   }
@@ -728,7 +731,8 @@ bool isNeverAvoidanceTarget(
   if (isCloseToStopFactor(object, data, planner_data, parameters)) {
     if (object.is_on_ego_lane && !object.is_parked) {
       object.reason = AvoidanceDebugFactor::NOT_PARKING_OBJECT;
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object is close to stop factor. never avoid it.");
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace), "object is close to stop factor. never avoid it.");
       return true;
     }
   }
@@ -743,12 +747,12 @@ bool isObviousAvoidanceTarget(
 {
   if (!object.is_within_intersection) {
     if (object.is_parked && object.behavior == ObjectData::Behavior::NONE) {
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object is obvious parked vehicle.");
+      RCLCPP_DEBUG(rclcpp::get_logger(logger_namespace), "object is obvious parked vehicle.");
       return true;
     }
 
     if (!object.is_on_ego_lane && object.behavior == ObjectData::Behavior::NONE) {
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object is adjacent vehicle.");
+      RCLCPP_DEBUG(rclcpp::get_logger(logger_namespace), "object is adjacent vehicle.");
       return true;
     }
   }
@@ -2323,8 +2327,7 @@ DrivableLanes generateExpandedDrivableLanes(
         }
         if (i == max_recursive_search_num - 1) {
           RCLCPP_ERROR(
-            rclcpp::get_logger("behavior_path_planner").get_child("avoidance"),
-            "Drivable area expansion reaches max iteration.");
+            rclcpp::get_logger(logger_namespace), "Drivable area expansion reaches max iteration.");
         }
       }
     };

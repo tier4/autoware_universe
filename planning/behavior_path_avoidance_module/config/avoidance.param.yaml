@@ -294,4 +294,3 @@
       # for debug
       debug:
         marker: false
-        console: false
