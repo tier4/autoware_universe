@@ -70,7 +70,7 @@ inline void validateKeys(
     throw std::invalid_argument(
       "The size of points is less than 2. base_keys.size() = " + std::to_string(query_keys.size()));
   }
-  
+
   // when indices are not sorted
   if (!isIncreasing(base_keys) || !isNotDecreasing(query_keys)) {
     throw std::invalid_argument("Either base_keys or query_keys is not sorted.");
