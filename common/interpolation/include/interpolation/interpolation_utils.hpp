@@ -68,7 +68,8 @@ inline void validateKeys(
   // when size of vectors are less than 2
   if (query_keys.size() < 2) {
     throw std::invalid_argument(
-      "The size of points is less than 2. query_keys.size() = " + std::to_string(query_keys.size()));
+      "The size of points is less than 2. query_keys.size() = " +
+      std::to_string(query_keys.size()));
   }
 
   // when indices are not sorted
