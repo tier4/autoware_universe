@@ -406,7 +406,7 @@ void NormalLaneChange::insertStopPoint(
 
 PathWithLaneId NormalLaneChange::getReferencePath() const
 {
-  return utils::getCenterLinePathFromRootLanelet(
+  return utils::getCenterLinePathFromLanelet(
     status_.lane_change_path.info.target_lanes.front(), planner_data_);
 }
 
