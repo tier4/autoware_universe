@@ -342,7 +342,7 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
   if (new_s.empty()) {
     return std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>{};
   }
-  
+
   const auto monotonic_base_yaw = convertEulerAngleToMonotonic(base_yaw);
 
   // spline interpolation
