@@ -510,33 +510,41 @@ bool isParkedVehicle(
 
   bool is_left_side_parked_vehicle = false;
   if (!isOnRight(object)) {
-    auto [object_shiftable_distance, sub_type] = [&]() {
-      const auto most_left_road_lanelet =
-        route_handler->getMostLeftLanelet(object.overhang_lanelet);
-      const auto most_left_lanelet_candidates =
-        route_handler->getLaneletMapPtr()->laneletLayer.findUsages(
-          most_left_road_lanelet.leftBound());
-
-      lanelet::ConstLanelet most_left_lanelet = most_left_road_lanelet;
-      const lanelet::Attribute sub_type =
-        most_left_lanelet.attribute(lanelet::AttributeName::Subtype);
-
-      for (const auto & ll : most_left_lanelet_candidates) {
-        const lanelet::Attribute sub_type = ll.attribute(lanelet::AttributeName::Subtype);
-        if (sub_type.value() == "road_shoulder") {
-          most_left_lanelet = ll;
-        }
+    const auto most_left_lanelet = [&]() {
+      auto same_direction_lane =
+        route_handler->getMostLeftLanelet(object.overhang_lanelet, true, true);
+      const lanelet::Attribute & sub_type =
+        same_direction_lane.attribute(lanelet::AttributeName::Subtype);
+      if (sub_type == "road_shoulder") {
+        return same_direction_lane;
       }
 
-      const auto center_to_left_boundary = distance2d(
-        to2D(most_left_lanelet.leftBound().basicLineString()),
-        to2D(toLaneletPoint(centerline_pos)).basicPoint());
+      const auto opposite_lanes = route_handler->getLeftOppositeLanelets(same_direction_lane);
+      if (opposite_lanes.empty()) {
+        return same_direction_lane;
+      }
 
-      return std::make_pair(
-        center_to_left_boundary - 0.5 * object.object.shape.dimensions.y, sub_type);
+      return static_cast<lanelet::ConstLanelet>(opposite_lanes.front().invert());
     }();
 
-    if (sub_type.value() != "road_shoulder") {
+    const auto center_to_left_boundary = distance2d(
+      to2D(most_left_lanelet.leftBound().basicLineString()),
+      to2D(toLaneletPoint(centerline_pos)).basicPoint());
+
+    double object_shiftable_distance =
+      center_to_left_boundary - 0.5 * object.object.shape.dimensions.y;
+
+    const lanelet::Attribute & sub_type =
+      most_left_lanelet.attribute(lanelet::AttributeName::Subtype);
+    if (sub_type == "road_shoulder") {
+      // assuming it's parked vehicle if its CoG is within road shoulder lanelet.
+      if (boost::geometry::within(
+            to2D(toLaneletPoint(object_pos)).basicPoint(),
+            most_left_lanelet.polygon2d().basicPolygon())) {
+        return true;
+      }
+    } else {
+      // assuming there is 0.5m road shoulder even if it's not defined explicitly in HDMap.
       object_shiftable_distance += parameters->object_check_min_road_shoulder_width;
     }
 
@@ -550,33 +558,41 @@ bool isParkedVehicle(
 
   bool is_right_side_parked_vehicle = false;
   if (isOnRight(object)) {
-    auto [object_shiftable_distance, sub_type] = [&]() {
-      const auto most_right_road_lanelet =
-        route_handler->getMostRightLanelet(object.overhang_lanelet);
-      const auto most_right_lanelet_candidates =
-        route_handler->getLaneletMapPtr()->laneletLayer.findUsages(
-          most_right_road_lanelet.rightBound());
-
-      lanelet::ConstLanelet most_right_lanelet = most_right_road_lanelet;
-      const lanelet::Attribute sub_type =
-        most_right_lanelet.attribute(lanelet::AttributeName::Subtype);
-
-      for (const auto & ll : most_right_lanelet_candidates) {
-        const lanelet::Attribute sub_type = ll.attribute(lanelet::AttributeName::Subtype);
-        if (sub_type.value() == "road_shoulder") {
-          most_right_lanelet = ll;
-        }
+    const auto most_right_lanelet = [&]() {
+      auto same_direction_lane =
+        route_handler->getMostRightLanelet(object.overhang_lanelet, true, true);
+      const lanelet::Attribute & sub_type =
+        same_direction_lane.attribute(lanelet::AttributeName::Subtype);
+      if (sub_type == "road_shoulder") {
+        return same_direction_lane;
       }
 
-      const auto center_to_right_boundary = distance2d(
-        to2D(most_right_lanelet.rightBound().basicLineString()),
-        to2D(toLaneletPoint(centerline_pos)).basicPoint());
+      const auto opposite_lanes = route_handler->getRightOppositeLanelets(same_direction_lane);
+      if (opposite_lanes.empty()) {
+        return same_direction_lane;
+      }
 
-      return std::make_pair(
-        center_to_right_boundary - 0.5 * object.object.shape.dimensions.y, sub_type);
+      return static_cast<lanelet::ConstLanelet>(opposite_lanes.front().invert());
     }();
 
-    if (sub_type.value() != "road_shoulder") {
+    const auto center_to_right_boundary = distance2d(
+      to2D(most_right_lanelet.rightBound().basicLineString()),
+      to2D(toLaneletPoint(centerline_pos)).basicPoint());
+
+    double object_shiftable_distance =
+      center_to_right_boundary - 0.5 * object.object.shape.dimensions.y;
+
+    const lanelet::Attribute & sub_type =
+      most_right_lanelet.attribute(lanelet::AttributeName::Subtype);
+    if (sub_type == "road_shoulder") {
+      // assuming it's parked vehicle if its CoG is within road shoulder lanelet.
+      if (boost::geometry::within(
+            to2D(toLaneletPoint(object_pos)).basicPoint(),
+            most_right_lanelet.polygon2d().basicPolygon())) {
+        return true;
+      }
+    } else {
+      // assuming there is 0.5m road shoulder even if it's not defined explicitly in HDMap.
       object_shiftable_distance += parameters->object_check_min_road_shoulder_width;
     }
 
@@ -643,25 +659,58 @@ bool isNeverAvoidanceTarget(
   const std::shared_ptr<const PlannerData> & planner_data,
   const std::shared_ptr<AvoidanceParameters> & parameters)
 {
-  const auto & object_pose = object.object.kinematics.initial_pose_with_covariance.pose;
-  const auto is_moving_distance_longer_than_threshold =
-    tier4_autoware_utils::calcDistance2d(object.init_pose, object_pose) >
-    parameters->distance_threshold_for_ambiguous_vehicle;
-  if (is_moving_distance_longer_than_threshold) {
-    object.reason = AvoidanceDebugFactor::MOVING_OBJECT;
-    return true;
-  }
-
   if (object.is_within_intersection) {
     if (object.behavior == ObjectData::Behavior::NONE) {
       object.reason = "ParallelToEgoLane";
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object belongs to ego lane. never avoid it.");
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace), "object belongs to ego lane. never avoid it.");
       return true;
     }
 
     if (object.behavior == ObjectData::Behavior::MERGING) {
       object.reason = "MergingToEgoLane";
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object belongs to ego lane. never avoid it.");
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace), "object belongs to ego lane. never avoid it.");
+      return true;
+    }
+  }
+
+  if (object.behavior == ObjectData::Behavior::MERGING) {
+    object.reason = "MergingToEgoLane";
+    if (
+      isOnRight(object) && !object.is_parked &&
+      object.overhang_points.front().first > parameters->th_overhang_distance) {
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace),
+        "merging vehicle. but overhang distance is larger than threshold.");
+      return true;
+    }
+    if (
+      !isOnRight(object) && !object.is_parked &&
+      object.overhang_points.front().first < -1.0 * parameters->th_overhang_distance) {
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace),
+        "merging vehicle. but overhang distance is larger than threshold.");
+      return true;
+    }
+  }
+
+  if (object.behavior == ObjectData::Behavior::DEVIATING) {
+    object.reason = "DeviatingFromEgoLane";
+    if (
+      isOnRight(object) && !object.is_parked &&
+      object.overhang_points.front().first > parameters->th_overhang_distance) {
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace),
+        "deviating vehicle. but overhang distance is larger than threshold.");
+      return true;
+    }
+    if (
+      !isOnRight(object) && !object.is_parked &&
+      object.overhang_points.front().first < -1.0 * parameters->th_overhang_distance) {
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace),
+        "deviating vehicle. but overhang distance is larger than threshold.");
       return true;
     }
   }
@@ -673,7 +722,8 @@ bool isNeverAvoidanceTarget(
       planner_data->route_handler->getLeftLanelet(object.overhang_lanelet, true, false);
     if (right_lane.has_value() && left_lane.has_value()) {
       object.reason = AvoidanceDebugFactor::NOT_PARKING_OBJECT;
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object isn't on the edge lane. never avoid it.");
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace), "object isn't on the edge lane. never avoid it.");
       return true;
     }
   }
@@ -681,7 +731,8 @@ bool isNeverAvoidanceTarget(
   if (isCloseToStopFactor(object, data, planner_data, parameters)) {
     if (object.is_on_ego_lane && !object.is_parked) {
       object.reason = AvoidanceDebugFactor::NOT_PARKING_OBJECT;
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object is close to stop factor. never avoid it.");
+      RCLCPP_DEBUG(
+        rclcpp::get_logger(logger_namespace), "object is close to stop factor. never avoid it.");
       return true;
     }
   }
@@ -696,12 +747,12 @@ bool isObviousAvoidanceTarget(
 {
   if (!object.is_within_intersection) {
     if (object.is_parked && object.behavior == ObjectData::Behavior::NONE) {
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object is obvious parked vehicle.");
+      RCLCPP_DEBUG(rclcpp::get_logger(logger_namespace), "object is obvious parked vehicle.");
       return true;
     }
 
     if (!object.is_on_ego_lane && object.behavior == ObjectData::Behavior::NONE) {
-      RCLCPP_DEBUG(rclcpp::get_logger(__func__), "object is adjacent vehicle.");
+      RCLCPP_DEBUG(rclcpp::get_logger(logger_namespace), "object is adjacent vehicle.");
       return true;
     }
   }
@@ -840,6 +891,15 @@ bool isSatisfiedWithVehicleCondition(
     return false;
   }
 
+  const auto & current_pose = object.object.kinematics.initial_pose_with_covariance.pose;
+  const auto is_moving_distance_longer_than_threshold =
+    calcDistance2d(object.init_pose, current_pose) >
+    parameters->distance_threshold_for_ambiguous_vehicle;
+  if (is_moving_distance_longer_than_threshold) {
+    object.reason = "AmbiguousStoppedVehicle";
+    return false;
+  }
+
   if (object.is_within_intersection) {
     if (object.behavior == ObjectData::Behavior::DEVIATING) {
       object.reason = "AmbiguousStoppedVehicle(wait-and-see)";
@@ -906,9 +966,9 @@ std::optional<double> getAvoidMargin(
                                 object_parameter.lateral_soft_margin + 0.5 * vehicle_width;
   const auto min_avoid_margin = lateral_hard_margin + 0.5 * vehicle_width;
   const auto soft_lateral_distance_limit =
-    object.to_road_shoulder_distance - parameters->soft_road_shoulder_margin - 0.5 * vehicle_width;
+    object.to_road_shoulder_distance - parameters->soft_drivable_bound_margin - 0.5 * vehicle_width;
   const auto hard_lateral_distance_limit =
-    object.to_road_shoulder_distance - parameters->hard_road_shoulder_margin - 0.5 * vehicle_width;
+    object.to_road_shoulder_distance - parameters->hard_drivable_bound_margin - 0.5 * vehicle_width;
 
   // Step1. check avoidable or not.
   if (hard_lateral_distance_limit < min_avoid_margin) {
@@ -1472,6 +1532,7 @@ void fillObjectMovingTime(
     object_data.last_stop = now;
     object_data.move_time = 0.0;
     if (is_new_object) {
+      object_data.init_pose = object_data.object.kinematics.initial_pose_with_covariance.pose;
       object_data.stop_time = 0.0;
       object_data.last_move = now;
       stopped_objects.push_back(object_data);
@@ -1480,11 +1541,13 @@ void fillObjectMovingTime(
       same_id_obj->last_stop = now;
       same_id_obj->move_time = 0.0;
       object_data.stop_time = same_id_obj->stop_time;
+      object_data.init_pose = same_id_obj->init_pose;
     }
     return;
   }
 
   if (is_new_object) {
+    object_data.init_pose = object_data.object.kinematics.initial_pose_with_covariance.pose;
     object_data.move_time = std::numeric_limits<double>::infinity();
     object_data.stop_time = 0.0;
     object_data.last_move = now;
@@ -1494,6 +1557,7 @@ void fillObjectMovingTime(
   object_data.last_stop = same_id_obj->last_stop;
   object_data.move_time = (now - same_id_obj->last_stop).seconds();
   object_data.stop_time = 0.0;
+  object_data.init_pose = object_data.object.kinematics.initial_pose_with_covariance.pose;
 
   if (object_data.move_time > object_parameter.moving_time_threshold) {
     stopped_objects.erase(same_id_obj);
@@ -1538,22 +1602,6 @@ void fillAvoidanceNecessity(
 
   // TRUE -> ? (check with hysteresis factor)
   object_data.avoid_required = check_necessity(parameters->hysteresis_factor_expand_rate);
-}
-
-void fillInitialPose(ObjectData & object_data, ObjectDataArray & detected_objects)
-{
-  const auto id = object_data.object.object_id;
-  const auto same_id_obj = std::find_if(
-    detected_objects.begin(), detected_objects.end(),
-    [&id](const auto & o) { return o.object.object_id == id; });
-
-  if (same_id_obj != detected_objects.end()) {
-    object_data.init_pose = same_id_obj->init_pose;
-    return;
-  }
-
-  object_data.init_pose = object_data.object.kinematics.initial_pose_with_covariance.pose;
-  detected_objects.push_back(object_data);
 }
 
 void fillObjectStoppableJudge(
@@ -2279,8 +2327,7 @@ DrivableLanes generateExpandedDrivableLanes(
         }
         if (i == max_recursive_search_num - 1) {
           RCLCPP_ERROR(
-            rclcpp::get_logger("behavior_path_planner").get_child("avoidance"),
-            "Drivable area expansion reaches max iteration.");
+            rclcpp::get_logger(logger_namespace), "Drivable area expansion reaches max iteration.");
         }
       }
     };
