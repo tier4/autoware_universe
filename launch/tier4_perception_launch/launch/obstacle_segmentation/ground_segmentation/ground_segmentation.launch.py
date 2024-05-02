@@ -445,6 +445,12 @@ class GroundSegmentationPipeline:
                     "input_topics": input_topics,
                     "output_frame": LaunchConfiguration("base_frame"),
                     "input_twist_topic_type": "odom",
+                    "input_offset": [
+                        0.05,
+                        0.025,
+                        0.01,
+                    ],  # in case concat inputs: common_ground_filter, front_lower, left_upper case
+                    "timeout_sec": 0.095,
                 }
             ],
             extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
