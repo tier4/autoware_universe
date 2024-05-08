@@ -346,27 +346,31 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
   const auto monotonic_base_yaw = convertEulerAngleToMonotonic(base_yaw);
 
   // spline interpolation
-  const auto interpolated_x = interpolation::slerp(base_s, base_x, new_s);
-  const auto interpolated_y = interpolation::slerp(base_s, base_y, new_s);
-  const auto interpolated_yaw = interpolation::slerp(base_s, monotonic_base_yaw, new_s);
+  try {
+    const auto interpolated_x = interpolation::slerp(base_s, base_x, new_s);
+    const auto interpolated_y = interpolation::slerp(base_s, base_y, new_s);
+    const auto interpolated_yaw = interpolation::slerp(base_s, monotonic_base_yaw, new_s);
 
-  for (size_t i = 0; i < interpolated_x.size(); i++) {
-    if (std::isnan(interpolated_x[i]) || std::isnan(interpolated_y[i])) {
-      return std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>{};
+    for (size_t i = 0; i < interpolated_x.size(); i++) {
+      if (std::isnan(interpolated_x[i]) || std::isnan(interpolated_y[i])) {
+        return std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>{};
+      }
     }
-  }
 
-  std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolated_points;
-  for (size_t i = 0; i < interpolated_x.size(); i++) {
-    autoware_auto_planning_msgs::msg::TrajectoryPoint point;
-    point.pose.position.x = interpolated_x[i];
-    point.pose.position.y = interpolated_y[i];
-    point.pose.orientation = tier4_autoware_utils::createQuaternionFromYaw(
-      tier4_autoware_utils::normalizeRadian(interpolated_yaw[i]));
-    interpolated_points.push_back(point);
-  }
+    std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolated_points;
+    for (size_t i = 0; i < interpolated_x.size(); i++) {
+      autoware_auto_planning_msgs::msg::TrajectoryPoint point;
+      point.pose.position.x = interpolated_x[i];
+      point.pose.position.y = interpolated_y[i];
+      point.pose.orientation = tier4_autoware_utils::createQuaternionFromYaw(
+        tier4_autoware_utils::normalizeRadian(interpolated_yaw[i]));
+      interpolated_points.push_back(point);
+    }
 
-  return interpolated_points;
+    return interpolated_points;
+  } catch (const std::invalid_argument & e) {
+    return std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>{};
+  }
 }
 
 std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> getInterpolatedTrajectoryPoints(
