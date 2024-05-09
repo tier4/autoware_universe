@@ -343,6 +343,7 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
   const auto monotonic_base_yaw = convertEulerAngleToMonotonic(base_yaw);
 
   // spline interpolation
+  std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolated_points;
   try {
     const auto interpolated_x = interpolation::slerp(base_s, base_x, new_s);
     const auto interpolated_y = interpolation::slerp(base_s, base_y, new_s);
@@ -354,7 +355,6 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
       }
     }
 
-    std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolated_points;
     for (size_t i = 0; i < interpolated_x.size(); i++) {
       autoware_auto_planning_msgs::msg::TrajectoryPoint point;
       point.pose.position.x = interpolated_x[i];
@@ -364,10 +364,10 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
       interpolated_points.push_back(point);
     }
 
-    return interpolated_points;
   } catch (const std::invalid_argument & e) {
     return std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>{};
   }
+  return interpolated_points;
 }
 
 std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> getInterpolatedTrajectoryPoints(
