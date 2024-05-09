@@ -344,7 +344,6 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
 
   // spline interpolation
   std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolated_points;
-  auto clock = rclcpp::Clock{RCL_ROS_TIME};
   try {
     const auto interpolated_x = interpolation::slerp(base_s, base_x, new_s);
     const auto interpolated_y = interpolation::slerp(base_s, base_y, new_s);
@@ -366,7 +365,7 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
     }
 
   } catch (const std::invalid_argument & e) {
-    RCLCPP_WARN_THROTTLE(rclcpp::get_logger("util"), clock, 1000, "%s", e.what());
+    RCLCPP_DEBUG(rclcpp::get_logger("util"), clock, 1000, "%s", e.what());
     return std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>{};
   }
   return interpolated_points;
