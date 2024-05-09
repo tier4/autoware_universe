@@ -339,9 +339,6 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
   for (double i = 0.0; i < base_s.back() - 1e-6; i += resolution) {
     new_s.push_back(i);
   }
-  if (new_s.empty()) {
-    return std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>{};
-  }
 
   const auto monotonic_base_yaw = convertEulerAngleToMonotonic(base_yaw);
 
