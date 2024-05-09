@@ -145,7 +145,7 @@ private:
   AccelWithCovarianceStamped::ConstSharedPtr ego_accel_ptr_{nullptr};
   HADMapBin::ConstSharedPtr vector_map_ptr_{nullptr};
 
-  std::shared_ptr<route_handler::RouteHandler> route_handler_;
+  std::unique_ptr<route_handler::RouteHandler> route_handler_;
 
   // Vehicle Parameters
   VehicleInfo vehicle_info_;

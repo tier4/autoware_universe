@@ -515,6 +515,7 @@ rcl_interfaces::msg::SetParametersResult ObstacleCruisePlannerNode::onParam(
 
 void ObstacleCruisePlannerNode::onTrajectory(const Trajectory::ConstSharedPtr msg)
 {
+  stop_watch_.tic(__func__);
   const auto traj_points = motion_utils::convertToTrajectoryPointArray(*msg);
 
   // check if subscribed variables are ready
@@ -522,9 +523,10 @@ void ObstacleCruisePlannerNode::onTrajectory(const Trajectory::ConstSharedPtr ms
     traj_points.empty() || !ego_odom_ptr_ || !ego_accel_ptr_ || !objects_ptr_ || !vector_map_ptr_) {
     return;
   }
-  route_handler_ = std::make_shared<route_handler::RouteHandler>(*vector_map_ptr_);
+  if (route_handler_ == nullptr) {
+    route_handler_ = std::make_unique<route_handler::RouteHandler>(*vector_map_ptr_);
+  }
 
-  stop_watch_.tic(__func__);
   *debug_data_ptr_ = DebugData();
 
   const auto is_driving_forward = motion_utils::isDrivingForwardWithTwist(traj_points);
