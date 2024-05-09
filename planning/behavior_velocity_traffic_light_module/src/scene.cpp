@@ -233,26 +233,30 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
 
     const bool is_unknown_signal = isUnknownSignal(looking_tl_state_);
     const bool is_signal_timed_out = isTrafficSignalTimedOut();
+    const bool is_stop_signal = isStopSignal();
+    const bool is_stop_required = is_unknown_signal || is_signal_timed_out || is_stop_signal;
 
     // Decide if stop or proceed using the remaining time to red signal
     // If the upcoming traffic signal color is unknown or timed out, do not use the time to red and
     // stop for the traffic signal
     const auto rest_time_to_red_signal =
       planner_data_->getRestTimeToRedSignal(traffic_light_reg_elem_.id());
-    const bool is_stop_required = is_unknown_signal || is_signal_timed_out;
+    const bool is_time_to_red_signal_available =
+      (rest_time_to_red_signal.has_value() && !isDataTimeout(rest_time_to_red_signal->stamp));
 
-    if (planner_param_.v2i_use_rest_time && rest_time_to_red_signal && !is_stop_required) {
+    if (planner_param_.v2i_use_rest_time && is_time_to_red_signal_available && !is_stop_required) {
       if (!canPassStopLineBeforeRed(*rest_time_to_red_signal, signed_arc_length_to_stop_point)) {
         *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
+        is_prev_state_stop_ = true;
+        return true;
       }
+
+      is_prev_state_stop_ = false;
       return true;
     }
 
-    // Check if stop is coming.
-    const bool is_stop_signal = isStopSignal();
-
     // Update stop signal received time
-    if (is_stop_signal || is_unknown_signal || is_signal_timed_out) {
+    if (is_stop_required) {
       if (!stop_signal_received_time_ptr_) {
         stop_signal_received_time_ptr_ = std::make_unique<Time>(clock_->now());
       }
@@ -266,7 +270,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
         ? std::max((clock_->now() - *stop_signal_received_time_ptr_).seconds(), 0.0)
         : 0.0;
     const bool to_be_stopped =
-      is_stop_signal && (is_prev_state_stop_ || time_diff > planner_param_.stop_time_hysteresis);
+      is_stop_required && (is_prev_state_stop_ || time_diff > planner_param_.stop_time_hysteresis);
 
     setSafe(!to_be_stopped);
     if (isActivated()) {
@@ -517,10 +521,6 @@ bool TrafficLightModule::canPassStopLineBeforeRed(
   const TrafficSignalTimeToRedStamped & time_to_red_signal,
   const double distance_to_stop_line) const
 {
-  if (isDataTimeout(time_to_red_signal.stamp)) {
-    return false;
-  }
-
   const double rest_time_allowed_to_go_ahead =
     time_to_red_signal.time_to_red - planner_param_.v2i_last_time_allowed_to_pass;
 
