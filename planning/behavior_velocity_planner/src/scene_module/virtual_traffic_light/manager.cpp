@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "tier4_autoware_utils/geometry/boost_geometry.hpp"
+
+#include <lanelet2_extension/utility/utilities.hpp>
 #include <scene_module/virtual_traffic_light/manager.hpp>
 #include <tier4_autoware_utils/math/unit_conversion.hpp>
 
@@ -81,11 +84,21 @@ VirtualTrafficLightModuleManager::VirtualTrafficLightModuleManager(rclcpp::Node 
 void VirtualTrafficLightModuleManager::launchNewModules(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path)
 {
+  tier4_autoware_utils::LineString2d ego_path_linestring;
+  for (const auto & path_point : path.points) {
+    ego_path_linestring.push_back(
+      tier4_autoware_utils::fromMsg(path_point.point.pose.position).to_2d());
+  }
+
   for (const auto & m : getRegElemMapOnPath<VirtualTrafficLight>(
          path, planner_data_->route_handler_->getLaneletMapPtr())) {
     // Use lanelet_id to unregister module when the route is changed
     const auto module_id = m.second.id();
-    if (!isModuleRegistered(module_id)) {
+    const auto stop_line =
+      lanelet::utils::to2D(m.first.get()->getStopLine().value()).basicLineString();
+    if (
+      !isModuleRegistered(module_id) &&
+      boost::geometry::intersects(ego_path_linestring, stop_line)) {
       registerModule(std::make_shared<VirtualTrafficLightModule>(
         module_id, *m.first, m.second, planner_param_,
         logger_.get_child("virtual_traffic_light_module"), clock_));
