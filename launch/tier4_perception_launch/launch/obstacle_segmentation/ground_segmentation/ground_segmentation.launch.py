@@ -434,7 +434,7 @@ class GroundSegmentationPipeline:
     def get_additional_lidars_concatenated_component(input_topics, output_topic):
         return ComposableNode(
             package="pointcloud_preprocessor",
-            plugin="pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent",
+            plugin="pointcloud_preprocessor::PointCloudConcatenationComponent",
             name="concatenate_data",
             remappings=[
                 ("~/input/odom", "/localization/kinematic_state"),
@@ -445,11 +445,6 @@ class GroundSegmentationPipeline:
                     "input_topics": input_topics,
                     "output_frame": LaunchConfiguration("base_frame"),
                     "input_twist_topic_type": "odom",
-                    "input_offset": [
-                        0.05,
-                        0.025,
-                        0.01,
-                    ],  # in case concat inputs: common_ground_filter, front_lower, left_upper case
                     "timeout_sec": 0.095,
                 }
             ],
