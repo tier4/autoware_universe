@@ -365,7 +365,6 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
     }
 
   } catch (const std::invalid_argument & e) {
-    RCLCPP_DEBUG(rclcpp::get_logger("util"), clock, 1000, "%s", e.what());
     return std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>{};
   }
   return interpolated_points;
