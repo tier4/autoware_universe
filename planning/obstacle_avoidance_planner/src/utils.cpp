@@ -363,7 +363,6 @@ std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint> interpolate2DTraj
         tier4_autoware_utils::normalizeRadian(interpolated_yaw[i]));
       interpolated_points.push_back(point);
     }
-
   } catch (const std::invalid_argument & e) {
     return std::vector<autoware_auto_planning_msgs::msg::TrajectoryPoint>{};
   }
