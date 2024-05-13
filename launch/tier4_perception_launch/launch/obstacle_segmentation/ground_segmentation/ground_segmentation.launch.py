@@ -449,6 +449,7 @@ class GroundSegmentationPipeline:
             ],
             extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
         )
+
     @staticmethod
     def get_single_frame_obstacle_segmentation_concatenated_component(input_topics, output_topic):
         return ComposableNode(
