@@ -437,20 +437,18 @@ class GroundSegmentationPipeline:
             plugin="pointcloud_preprocessor::PointCloudConcatenationComponent",
             name="concatenate_data",
             remappings=[
-                ("~/input/odom", "/localization/kinematic_state"),
                 ("output", output_topic),
             ],
             parameters=[
                 {
                     "input_topics": input_topics,
                     "output_frame": LaunchConfiguration("base_frame"),
-                    "input_twist_topic_type": "odom",
+                    "approximate_sync": True,
                     "timeout_sec": 0.095,
                 }
             ],
             extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
         )
-
     @staticmethod
     def get_single_frame_obstacle_segmentation_concatenated_component(input_topics, output_topic):
         return ComposableNode(
