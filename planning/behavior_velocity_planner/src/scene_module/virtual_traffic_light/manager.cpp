@@ -92,13 +92,20 @@ void VirtualTrafficLightModuleManager::launchNewModules(
 
   for (const auto & m : getRegElemMapOnPath<VirtualTrafficLight>(
          path, planner_data_->route_handler_->getLaneletMapPtr())) {
+    const auto stop_line_opt = m.first->getStopLine();
+    if (!stop_line_opt) {
+      RCLCPP_FATAL(
+        logger_, "No stop line at virtual_traffic_light_reg_elem_id = %ld, please fix the map!",
+        m.first->id());
+      continue;
+    }
+
     // Use lanelet_id to unregister module when the route is changed
     const auto module_id = m.second.id();
-    const auto stop_line =
-      lanelet::utils::to2D(m.first.get()->getStopLine().value()).basicLineString();
     if (
       !isModuleRegistered(module_id) &&
-      boost::geometry::intersects(ego_path_linestring, stop_line)) {
+      boost::geometry::intersects(
+        ego_path_linestring, lanelet::utils::to2D(stop_line_opt.value()).basicLineString())) {
       registerModule(std::make_shared<VirtualTrafficLightModule>(
         module_id, *m.first, m.second, planner_param_,
         logger_.get_child("virtual_traffic_light_module"), clock_));
