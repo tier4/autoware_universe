@@ -181,6 +181,8 @@ private:
   void timer_callback();
 
   void checkConcatStatus();
+  int concat_miss_count_{0};
+
   std::string replaceSyncTopicNamePostfix(
     const std::string & original_topic_name, const std::string & postfix);
 
