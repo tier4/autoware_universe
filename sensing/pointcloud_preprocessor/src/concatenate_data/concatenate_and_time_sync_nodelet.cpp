@@ -696,10 +696,10 @@ void PointCloudConcatenateDataSynchronizerComponent::checkConcatStatus()
     diag_status_msg.values.push_back(key_value_msg);
   }
 
-  if(not_subscribed_topic_names_.size() > 0) {
+  if (not_subscribed_topic_names_.size() > 0) {
     consecutive_concatenate_failures += 1;
-  }else{
-    consecutive_concatenate_failures = 0;    
+  } else {
+    consecutive_concatenate_failures = 0;
   }
 
   {
@@ -709,10 +709,10 @@ void PointCloudConcatenateDataSynchronizerComponent::checkConcatStatus()
     diag_status_msg.values.push_back(key_value_msg);
   }
 
-  if(consecutive_concatenate_failures > 1){
+  if (consecutive_concatenate_failures > 1) {
     diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
     diag_status_msg.message = "Some topics are not concatenated";
-  }else{
+  } else {
     diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
     diag_status_msg.message = "Concatenate all topics";
   }
@@ -722,7 +722,6 @@ void PointCloudConcatenateDataSynchronizerComponent::checkConcatStatus()
   diag_msg.status.push_back(diag_status_msg);
 
   diagnostics_pub_->publish(diag_msg);
-
 }
 }  // namespace pointcloud_preprocessor
 
