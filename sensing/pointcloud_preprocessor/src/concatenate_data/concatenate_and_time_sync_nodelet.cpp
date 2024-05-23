@@ -697,19 +697,19 @@ void PointCloudConcatenateDataSynchronizerComponent::checkConcatStatus()
   }
 
   if(not_subscribed_topic_names_.size() > 0) {
-    concat_miss_count_ += 1;
+    consecutive_concatenate_failures += 1;
   }else{
-    concat_miss_count_ = 0;    
+    consecutive_concatenate_failures = 0;    
   }
 
   {
     diagnostic_msgs::msg::KeyValue key_value_msg;
-    key_value_msg.key = "miss_count";
-    key_value_msg.value = std::to_string(concat_miss_count_);
+    key_value_msg.key = "consecutiveConcatenateFailures";
+    key_value_msg.value = std::to_string(consecutive_concatenate_failures_);
     diag_status_msg.values.push_back(key_value_msg);
   }
 
-  if(concat_miss_count_ > 2){
+  if(consecutive_concatenate_failures > 1){
     diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
     diag_status_msg.message = "Some topics are not concatenated";
   }else{
