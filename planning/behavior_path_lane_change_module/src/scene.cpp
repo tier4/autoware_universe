@@ -1451,28 +1451,6 @@ PathSafetyStatus NormalLaneChange::isApprovedPathSafe() const
   return safety_status;
 }
 
-PathSafetyStatus NormalLaneChange::evaluateApprovedPathWithUnsafeHysteresis(
-  PathSafetyStatus approved_path_safety_status)
-{
-  if (!approved_path_safety_status.is_safe) {
-    ++unsafe_hysteresis_count_;
-    RCLCPP_DEBUG(
-      logger_, "%s: Increasing hysteresis count to %d.", __func__, unsafe_hysteresis_count_);
-  } else {
-    if (unsafe_hysteresis_count_ > 0) {
-      RCLCPP_DEBUG(logger_, "%s: Lane change is now SAFE. Resetting hysteresis count.", __func__);
-    }
-    unsafe_hysteresis_count_ = 0;
-  }
-  if (unsafe_hysteresis_count_ > lane_change_parameters_->cancel.unsafe_hysteresis_threshold) {
-    RCLCPP_DEBUG(
-      logger_, "%s: hysteresis count exceed threshold. lane change is now %s", __func__,
-      (approved_path_safety_status.is_safe ? "safe" : "UNSAFE"));
-    return approved_path_safety_status;
-  }
-  return {};
-}
-
 bool NormalLaneChange::isValidPath(const PathWithLaneId & path) const
 {
   const auto & route_handler = planner_data_->route_handler;

@@ -456,7 +456,8 @@ private:
 
   // output setter
   void setOutput(BehaviorModuleOutput & output);
-  void updatePreviousData();
+  void setStopPath(BehaviorModuleOutput & output) const;
+  void updatePreviousData(const BehaviorModuleOutput & output);
 
   /**
    * @brief Sets a stop path in the current path based on safety conditions and previous paths.
