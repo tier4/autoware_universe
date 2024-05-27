@@ -46,6 +46,7 @@
 
 #include <algorithm>
 #include <any>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -183,6 +184,10 @@ public:
   void onExit()
   {
     RCLCPP_DEBUG(getLogger(), "%s %s", name_.c_str(), __func__);
+
+    if (getCurrentStatus() == ModuleStatus::SUCCESS) {
+      updateRTCStatusForSuccess();
+    }
 
     clearWaitingApproval();
     removeRTCStatus();
@@ -506,6 +511,17 @@ protected:
         ptr->updateCooperateStatus(
           uuid_map_.at(module_name), isExecutionReady(), start_distance, finish_distance,
           clock_->now());
+      }
+    }
+  }
+
+  void updateRTCStatusForSuccess()
+  {
+    for (const auto & [module_name, ptr] : rtc_interface_ptr_map_) {
+      if (ptr) {
+        ptr->updateCooperateStatus(
+          uuid_map_.at(module_name), true, State::SUCCEEDED, std::numeric_limits<double>::lowest(),
+          std::numeric_limits<double>::lowest(), clock_->now());
       }
     }
   }
