@@ -52,7 +52,7 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "multi_object_tracker::MultiObjectTracker"
+  PLUGIN "MultiObjectTracker"
   EXECUTABLE ${PROJECT_NAME}_node
 )
 
