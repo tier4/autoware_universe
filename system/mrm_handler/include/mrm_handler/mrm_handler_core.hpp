@@ -54,6 +54,7 @@ struct Param
   bool is_mrm_recoverable;
   bool use_parking_after_stopped;
   bool use_pull_over;
+  bool use_pull_over_after_stopped;
   bool use_comfortable_stop;
   HazardLampPolicy turning_hazard_on{};
 };
