@@ -19,6 +19,7 @@
 
 #include <lanelet2_extension/utility/message_conversion.hpp>
 #include <lanelet2_extension/utility/query.hpp>
+#include <lanelet2_extension/utility/utilities.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tier4_autoware_utils/geometry/geometry.hpp>
 
@@ -52,17 +53,34 @@ private:
 
   lanelet::LaneletMapPtr lanelet_map_ptr_;
   lanelet::ConstLanelets road_lanelets_;
+  lanelet::ConstLanelets shoulder_lanelets_;
   std::string lanelet_frame_id_;
 
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
 
   utils::FilterTargetLabel filter_target_;
+  struct FilterSettings
+  {
+    bool polygon_overlap_filter;
+    bool lanelet_direction_filter;
+    double lanelet_direction_filter_velocity_yaw_threshold;
+    double lanelet_direction_filter_object_speed_threshold;
+  } filter_settings_;
 
+  bool filterObject(
+    const autoware_auto_perception_msgs::msg::DetectedObject & transformed_object,
+    const autoware_auto_perception_msgs::msg::DetectedObject & input_object,
+    const lanelet::ConstLanelets & intersected_road_lanelets,
+    const lanelet::ConstLanelets & intersected_shoulder_lanelets,
+    autoware_auto_perception_msgs::msg::DetectedObjects & output_object_msg);
   LinearRing2d getConvexHull(const autoware_auto_perception_msgs::msg::DetectedObjects &);
   lanelet::ConstLanelets getIntersectedLanelets(
     const LinearRing2d &, const lanelet::ConstLanelets &);
   bool isPolygonOverlapLanelets(const Polygon2d &, const lanelet::ConstLanelets &);
+  bool isSameDirectionWithLanelets(
+    const lanelet::ConstLanelets & lanelets,
+    const autoware_auto_perception_msgs::msg::DetectedObject & object);
   geometry_msgs::msg::Polygon setFootprint(
     const autoware_auto_perception_msgs::msg::DetectedObject &);
 };
