@@ -273,6 +273,8 @@ ObstacleCruisePlannerNode::BehaviorDeterminationParam::BehaviorDeterminationPara
     node.declare_parameter<double>("behavior_determination.stop.max_lat_margin");
   max_lat_margin_for_stop_against_unknown =
     node.declare_parameter<double>("behavior_determination.stop.max_lat_margin_against_unknown");
+  max_lat_margin_for_stop_against_unknown_height_threshold = node.declare_parameter<double>(
+    "behavior_determination.stop.max_lat_margin_against_unknown_height_threshold");
   max_lat_margin_for_cruise =
     node.declare_parameter<double>("behavior_determination.cruise.max_lat_margin");
   max_lat_margin_for_slow_down =
@@ -339,6 +341,9 @@ void ObstacleCruisePlannerNode::BehaviorDeterminationParam::onParam(
   tier4_autoware_utils::updateParam<double>(
     parameters, "behavior_determination.stop.max_lat_margin_against_unknown",
     max_lat_margin_for_stop_against_unknown);
+  tier4_autoware_utils::updateParam<double>(
+    parameters, "behavior_determination.stop.max_lat_margin_against_unknown_height_threshold",
+    max_lat_margin_for_stop_against_unknown_height_threshold);
   tier4_autoware_utils::updateParam<double>(
     parameters, "behavior_determination.cruise.max_lat_margin", max_lat_margin_for_cruise);
   tier4_autoware_utils::updateParam<double>(
@@ -1016,7 +1021,8 @@ std::optional<StopObstacle> ObstacleCruisePlannerNode::createStopObstacle(
   }
 
   const double max_lat_margin_for_stop =
-    (obstacle.classification.label == ObjectClassification::UNKNOWN)
+    (obstacle.classification.label == ObjectClassification::UNKNOWN &&
+     obstacle.shape.dimensions.z < p.max_lat_margin_for_stop_against_unknown_height_threshold)
       ? p.max_lat_margin_for_stop_against_unknown
       : p.max_lat_margin_for_stop;
 
