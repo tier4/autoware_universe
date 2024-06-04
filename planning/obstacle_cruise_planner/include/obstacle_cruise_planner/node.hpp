@@ -196,6 +196,7 @@ private:
     // max lateral margin
     double max_lat_margin_for_stop;
     double max_lat_margin_for_stop_against_unknown;
+    double max_lat_margin_for_stop_against_unknown_height_threshold;
     double max_lat_margin_for_cruise;
     double max_lat_margin_for_slow_down;
     double lat_hysteresis_margin_for_slow_down;
