@@ -313,7 +313,6 @@ inline void convertConvexHullToBoundingBox(
 
   // look for bounding box boundary
   for (size_t i = 0; i < input_object.shape.footprint.points.size(); ++i) {
-
     const double foot_x = input_object.shape.footprint.points.at(i).x;
     const double foot_y = input_object.shape.footprint.points.at(i).y;
     max_x = std::max(max_x, foot_x);
