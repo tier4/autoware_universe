@@ -32,7 +32,8 @@ MrmHandler::MrmHandler() : Node("mrm_handler")
   param_.is_mrm_recoverable = declare_parameter<bool>("is_mrm_recoverable", true);
   param_.use_parking_after_stopped = declare_parameter<bool>("use_parking_after_stopped", false);
   param_.use_pull_over = declare_parameter<bool>("use_pull_over", false);
-  param_.use_pull_over_after_stopped = declare_parameter<bool>("use_pull_over_after_stopped", false);
+  param_.use_pull_over_after_stopped =
+    declare_parameter<bool>("use_pull_over_after_stopped", false);
   param_.use_comfortable_stop = declare_parameter<bool>("use_comfortable_stop", false);
   param_.turning_hazard_on.emergency = declare_parameter<bool>("turning_hazard_on.emergency", true);
 
@@ -461,8 +462,7 @@ void MrmHandler::updateMrmState()
     // NORMAL
     if (is_vehicle_auto_mode && is_operation_mode_auto_mode && is_emergency) {
       transitionTo(MrmState::MRM_OPERATING);
-      if (!param_.is_mrm_recoverable)
-        is_mrm_holding_ = true;
+      if (!param_.is_mrm_recoverable) is_mrm_holding_ = true;
       return;
     }
   } else {
