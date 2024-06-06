@@ -73,8 +73,11 @@ MotionVelocitySmootherNode::MotionVelocitySmootherNode(const rclcpp::NodeOptions
     "~/input/operation_mode_state", 1,
     [this](const OperationModeState::ConstSharedPtr msg) { operation_mode_ = *msg; });
 
-  srv_force_acceleration_ = create_service<SetBool>("~/adjust_common_param", std::bind(&MotionVelocitySmootherNode::onForceAcceleration, this, _1, _2));
-  srv_slow_driving_ = create_service<SetBool>("~/slow_driving", std::bind(&MotionVelocitySmootherNode::onSlowDriving, this, _1, _2));
+  srv_force_acceleration_ = create_service<SetBool>(
+    "~/adjust_common_param",
+    std::bind(&MotionVelocitySmootherNode::onForceAcceleration, this, _1, _2));
+  srv_slow_driving_ = create_service<SetBool>(
+    "~/slow_driving", std::bind(&MotionVelocitySmootherNode::onSlowDriving, this, _1, _2));
   force_acceleration_mode_ = false;
 
   // parameter update
@@ -197,9 +200,11 @@ rcl_interfaces::msg::SetParametersResult MotionVelocitySmootherNode::onParameter
 
     update_param("force_acceleration.max_acc", p.force_acceleration_param.max_acceleration);
     update_param("force_acceleration.max_jerk", p.force_acceleration_param.max_jerk);
-    update_param("force_acceleration.max_lateral_acc", p.force_acceleration_param.max_lateral_acceleration);
+    update_param(
+      "force_acceleration.max_lateral_acc", p.force_acceleration_param.max_lateral_acceleration);
     update_param("force_acceleration.engage_velocity", p.force_acceleration_param.engage_velocity);
-    update_param("force_acceleration.engage_acceleration", p.force_acceleration_param.engage_acceleration);
+    update_param(
+      "force_acceleration.engage_acceleration", p.force_acceleration_param.engage_acceleration);
   }
 
   {
@@ -320,11 +325,15 @@ void MotionVelocitySmootherNode::initCommonParam()
   p.plan_from_ego_speed_on_manual_mode =
     declare_parameter<bool>("plan_from_ego_speed_on_manual_mode");
 
-  p.force_acceleration_param.max_acceleration = declare_parameter<double>("force_acceleration.max_acc");
+  p.force_acceleration_param.max_acceleration =
+    declare_parameter<double>("force_acceleration.max_acc");
   p.force_acceleration_param.max_jerk = declare_parameter<double>("force_acceleration.max_jerk");
-  p.force_acceleration_param.max_lateral_acceleration = declare_parameter<double>("force_acceleration.max_lateral_acc");
-  p.force_acceleration_param.engage_velocity = declare_parameter<double>("force_acceleration.engage_velocity");
-  p.force_acceleration_param.engage_acceleration = declare_parameter<double>("force_acceleration.engage_acceleration");
+  p.force_acceleration_param.max_lateral_acceleration =
+    declare_parameter<double>("force_acceleration.max_lateral_acc");
+  p.force_acceleration_param.engage_velocity =
+    declare_parameter<double>("force_acceleration.engage_velocity");
+  p.force_acceleration_param.engage_acceleration =
+    declare_parameter<double>("force_acceleration.engage_acceleration");
 }
 
 void MotionVelocitySmootherNode::publishTrajectory(const TrajectoryPoints & trajectory) const
@@ -1117,39 +1126,40 @@ TrajectoryPoint MotionVelocitySmootherNode::calcProjectedTrajectoryPointFromEgo(
   return calcProjectedTrajectoryPoint(trajectory, current_odometry_ptr_->pose.pose);
 }
 
-void MotionVelocitySmootherNode::onForceAcceleration(const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response)
+void MotionVelocitySmootherNode::onForceAcceleration(
+  const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response)
 {
   std::string message = "defualt";
 
-  if(request->data && !force_acceleration_mode_){
+  if (request->data && !force_acceleration_mode_) {
     RCLCPP_INFO(get_logger(), "Force acceleration is activated");
     smoother_->setMaxAccel(get_parameter("force_acceleration.max_acc").as_double());
     smoother_->setMaxJerk(get_parameter("force_acceleration.max_jerk").as_double());
     smoother_->setMaxLatAccel(get_parameter("force_acceleration.max_lateral_acc").as_double());
-    node_param_.force_acceleration_param.engage_velocity = get_parameter("force_acceleration.engage_velocity").as_double();
-    node_param_.force_acceleration_param.engage_acceleration = get_parameter("force_acceleration.engage_acceleration").as_double();
+    node_param_.engage_velocity = get_parameter("force_acceleration.engage_velocity").as_double();
+    node_param_.engage_acceleration =
+      get_parameter("force_acceleration.engage_acceleration").as_double();
 
     force_acceleration_mode_ = true;
     message = "Trigger force acceleration";
-  }
-  else if(!request->data && force_acceleration_mode_){
+  } else if (!request->data && force_acceleration_mode_) {
     RCLCPP_INFO(get_logger(), "Force accelration is deactivated");
     smoother_->setMaxAccel(get_parameter("normal.max_acc").as_double());
     smoother_->setMaxJerk(get_parameter("normal.max_jerk").as_double());
     smoother_->setMaxLatAccel(get_parameter("max_lateral_accel").as_double());
 
-    node_param_.force_acceleration_param.engage_velocity = get_parameter("engage_velocity").as_double();
-    node_param_.force_acceleration_param.engage_acceleration = get_parameter("engage_acceleration").as_double();
+    node_param_.engage_velocity = get_parameter("engage_velocity").as_double();
+    node_param_.engage_acceleration = get_parameter("engage_acceleration").as_double();
 
     force_acceleration_mode_ = false;
     message = "Trigger normal acceleration";
   }
 
   response->success = true;
-
 }
 
-void MotionVelocitySmootherNode::onSlowDriving(const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response)
+void MotionVelocitySmootherNode::onSlowDriving(
+  const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response)
 {
   const std::string message = request->data ? "Slow driving" : "Default";
 

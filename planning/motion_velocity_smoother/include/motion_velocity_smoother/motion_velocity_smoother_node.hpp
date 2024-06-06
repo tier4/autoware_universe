@@ -132,7 +132,7 @@ private:
     NORMAL = 3,
   };
 
-    struct ForceAccelerationParam
+  struct ForceAccelerationParam
   {
     double max_acceleration;
     double max_jerk;
@@ -257,9 +257,11 @@ private:
 
   // parameter handling
   void initCommonParam();
-  void onForceAcceleration(const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response);
+  void onForceAcceleration(
+    const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response);
   bool force_acceleration_mode_;
-  void onSlowDriving(const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response);
+  void onSlowDriving(
+    const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response);
 
   // debug
   tier4_autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch_;
