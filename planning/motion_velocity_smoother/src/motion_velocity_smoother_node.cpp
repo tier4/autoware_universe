@@ -1129,7 +1129,7 @@ TrajectoryPoint MotionVelocitySmootherNode::calcProjectedTrajectoryPointFromEgo(
 void MotionVelocitySmootherNode::onForceAcceleration(
   const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response)
 {
-  std::string message = "defualt";
+  std::string message = "default";
 
   if (request->data && !force_acceleration_mode_) {
     RCLCPP_INFO(get_logger(), "Force acceleration is activated");
