@@ -153,7 +153,7 @@ class PointcloudMapFilterPipeline:
                 extra_arguments=[
                     {"use_intra_process_comms": False},
                 ],
-        )
+            )
         )
         return components
 
