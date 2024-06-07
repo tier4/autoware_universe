@@ -1143,7 +1143,7 @@ void MotionVelocitySmootherNode::onForceAcceleration(
     force_acceleration_mode_ = true;
     message = "Trigger force acceleration";
   } else if (!request->data && force_acceleration_mode_) {
-    RCLCPP_INFO(get_logger(), "Force accelration is deactivated");
+    RCLCPP_INFO(get_logger(), "Force acceleration is deactivated");
     smoother_->setMaxAccel(get_parameter("normal.max_acc").as_double());
     smoother_->setMaxJerk(get_parameter("normal.max_jerk").as_double());
     smoother_->setMaxLatAccel(get_parameter("max_lateral_accel").as_double());
