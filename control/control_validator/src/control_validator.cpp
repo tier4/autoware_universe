@@ -177,7 +177,6 @@ void ControlValidator::validate(const Trajectory & predicted_trajectory)
 bool ControlValidator::checkValidMaxDistanceDeviation(const Trajectory & predicted_trajectory)
 {
   if (current_kinematics_->twist.twist.linear.x < validation_params_.min_velocity_for_checking) {
-    RCLCPP_INFO(get_logger(), "Current velocity is too low. Skip.");
     return true;
   }
 
