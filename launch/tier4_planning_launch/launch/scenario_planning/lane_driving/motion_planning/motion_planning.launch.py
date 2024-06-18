@@ -146,6 +146,56 @@ def launch_setup(context, *args, **kwargs):
         extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
     )
 
+    # motion velocity planner
+    with open(LaunchConfiguration("motion_velocity_planner_param_path").perform(context), "r") as f:
+        motion_velocity_planner_param = yaml.safe_load(f)["/**"]["ros__parameters"]
+    with open(
+        LaunchConfiguration("motion_velocity_smoother_param_path").perform(context), "r"
+    ) as f:
+        motion_velocity_smoother_param = yaml.safe_load(f)["/**"]["ros__parameters"]
+    with open(
+        LaunchConfiguration("behavior_velocity_smoother_type_param_path").perform(context), "r"
+    ) as f:
+        behavior_velocity_smoother_type_param = yaml.safe_load(f)["/**"]["ros__parameters"]
+    with open(
+        LaunchConfiguration("motion_velocity_planner_out_of_lane_module_param_path").perform(
+            context
+        ),
+        "r",
+    ) as f:
+        out_of_lane_param = yaml.safe_load(f)["/**"]["ros__parameters"]
+    motion_velocity_planner_component = ComposableNode(
+        package="autoware_motion_velocity_planner_node",
+        plugin="autoware::motion_velocity_planner::MotionVelocityPlannerNode",
+        name="motion_velocity_planner",
+        namespace="",
+        remappings=[
+            ("~/input/trajectory", "obstacle_avoidance_planner/trajectory"),
+            ("~/input/dynamic_objects", "/perception/object_recognition/objects"),
+            ("~/input/occupancy_grid", "/perception/occupancy_grid_map/map"),
+            ("~/input/vector_map", "/map/vector_map"),
+            ("~/output/trajectory", "motion_velocity_planner/trajectory"),
+            ("~/input/vehicle_odometry", "/localization/kinematic_state"),
+            ("~/input/accel", "/localization/acceleration"),
+            ("~/input/no_ground_pointcloud", "/perception/obstacle_segmentation/pointcloud"),
+            ("~/input/traffic_signals", "/perception/traffic_light_recognition/traffic_signals"),
+            ("~/input/virtual_traffic_light_states", "/perception/virtual_traffic_light_states"),
+            ("~/input/occupancy_grid", "/perception/occupancy_grid_map/map"),
+            ("~/output/stop_reasons", "/planning/scenario_planning/status/stop_reasons"),
+            ("~/output/velocity_factors", "/planning/velocity_factors/motion_velocity_planner"),
+        ],
+        parameters=[
+            motion_velocity_planner_param,
+            vehicle_info_param,
+            nearest_search_param,
+            common_param,
+            motion_velocity_smoother_param,
+            behavior_velocity_smoother_type_param,
+            out_of_lane_param,
+        ],
+        extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
+    )
+
     # surround obstacle checker
     with open(
         LaunchConfiguration("surround_obstacle_checker_param_path").perform(context), "r"
@@ -206,7 +256,7 @@ def launch_setup(context, *args, **kwargs):
             ),
             ("~/input/objects", "/perception/object_recognition/objects"),
             ("~/input/odometry", "/localization/kinematic_state"),
-            ("~/input/trajectory", "obstacle_velocity_limiter/trajectory"),
+            ("~/input/trajectory", "motion_velocity_planner/trajectory"),
         ],
         parameters=[
             nearest_search_param,
@@ -227,7 +277,7 @@ def launch_setup(context, *args, **kwargs):
         name="obstacle_cruise_planner",
         namespace="",
         remappings=[
-            ("~/input/trajectory", "obstacle_velocity_limiter/trajectory"),
+            ("~/input/trajectory", "motion_velocity_planner/trajectory"),
             ("~/input/odometry", "/localization/kinematic_state"),
             ("~/input/acceleration", "/localization/acceleration"),
             ("~/input/objects", "/perception/object_recognition/objects"),
@@ -250,7 +300,7 @@ def launch_setup(context, *args, **kwargs):
         name="obstacle_cruise_planner_relay",
         namespace="",
         parameters=[
-            {"input_topic": "obstacle_velocity_limiter/trajectory"},
+            {"input_topic": "motion_velocity_planner/trajectory"},
             {"output_topic": "/planning/scenario_planning/lane_driving/trajectory"},
             {"type": "autoware_auto_planning_msgs/msg/Trajectory"},
         ],
@@ -263,6 +313,7 @@ def launch_setup(context, *args, **kwargs):
         package="rclcpp_components",
         executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=[
+            motion_velocity_planner_component,
             obstacle_velocity_limiter_component,
         ],
     )

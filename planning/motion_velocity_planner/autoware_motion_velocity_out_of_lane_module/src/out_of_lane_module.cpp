@@ -267,9 +267,9 @@ VelocityPlanningResult OutOfLaneModule::plan(
                                 ego_data.velocity > 0.1;
     const auto status = is_approaching ? motion_utils::VelocityFactor::APPROACHING
                                        : motion_utils::VelocityFactor::STOPPED;
-    velocity_factor_interface_.set(
-      ego_trajectory_points, ego_data.pose, point_to_insert->point.pose, status, "out_of_lane");
-    result.velocity_factor = velocity_factor_interface_.get();
+    // velocity_factor_interface_.set(
+    //   ego_trajectory_points, ego_data.pose, point_to_insert->point.pose, status, "out_of_lane");
+    // result.velocity_factor = velocity_factor_interface_.get();
   } else if (!decisions.empty()) {
     RCLCPP_WARN(logger_, "Could not insert stop point (would violate max deceleration limits)");
   }

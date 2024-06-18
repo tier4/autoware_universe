@@ -131,7 +131,6 @@ MotionVelocityPlannerNode::MotionVelocityPlannerNode(const rclcpp::NodeOptions &
     std::bind(&MotionVelocityPlannerNode::on_set_param, this, std::placeholders::_1));
 
   logger_configure_ = std::make_unique<tier4_autoware_utils::LoggerLevelConfigure>(this);
-  published_time_publisher_ = std::make_unique<tier4_autoware_utils::PublishedTimePublisher>(this);
 }
 
 void MotionVelocityPlannerNode::on_load_plugin(
@@ -323,8 +322,6 @@ void MotionVelocityPlannerNode::on_trajectory(
   lk.unlock();
 
   trajectory_pub_->publish(output_trajectory_msg);
-  published_time_publisher_->publish_if_subscribed(
-    trajectory_pub_, output_trajectory_msg.header.stamp);
 }
 
 void MotionVelocityPlannerNode::insert_stop(
