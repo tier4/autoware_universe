@@ -23,6 +23,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <tier4_autoware_utils/ros/logger_level_configure.hpp>
 
+#include <autoware_adapi_v1_msgs/msg/velocity_factor_array.hpp>
 #include <autoware_auto_mapping_msgs/msg/had_map_bin.hpp>
 #include <autoware_auto_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_auto_planning_msgs/msg/trajectory.hpp>

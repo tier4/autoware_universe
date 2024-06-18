@@ -154,7 +154,7 @@ def launch_setup(context, *args, **kwargs):
     ) as f:
         motion_velocity_smoother_param = yaml.safe_load(f)["/**"]["ros__parameters"]
     with open(
-        LaunchConfiguration("behavior_velocity_smoother_type_param_path").perform(context), "r"
+        LaunchConfiguration("motion_velocity_smoother_type_param_path").perform(context), "r"
     ) as f:
         behavior_velocity_smoother_type_param = yaml.safe_load(f)["/**"]["ros__parameters"]
     with open(

@@ -50,7 +50,6 @@ void OutOfLaneModule::init(rclcpp::Node & node, const std::string & module_name)
   logger_ = node.get_logger();
   clock_ = node.get_clock();
   init_parameters(node);
-  velocity_factor_interface_.init(motion_utils::VelocityFactor::ROUTE_OBSTACLE);
 
   debug_publisher_ =
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/debug_markers", 1);
@@ -265,11 +264,13 @@ VelocityPlanningResult OutOfLaneModule::plan(
                                   ego_trajectory_points, ego_data.pose.position,
                                   point_to_insert->point.pose.position) > 0.1 &&
                                 ego_data.velocity > 0.1;
-    const auto status = is_approaching ? motion_utils::VelocityFactor::APPROACHING
-                                       : motion_utils::VelocityFactor::STOPPED;
-    // velocity_factor_interface_.set(
-    //   ego_trajectory_points, ego_data.pose, point_to_insert->point.pose, status, "out_of_lane");
-    // result.velocity_factor = velocity_factor_interface_.get();
+    const auto status =
+      is_approaching ? result.velocity_factor->APPROACHING : result.velocity_factor->STOPPED;
+    result.velocity_factor.emplace();
+    result.velocity_factor->pose = point_to_insert->point.pose;
+    result.velocity_factor->status = status;
+    result.velocity_factor->type = result.velocity_factor->ROUTE_OBSTACLE;
+    result.velocity_factor->detail = "out_of_lane";
   } else if (!decisions.empty()) {
     RCLCPP_WARN(logger_, "Could not insert stop point (would violate max deceleration limits)");
   }
