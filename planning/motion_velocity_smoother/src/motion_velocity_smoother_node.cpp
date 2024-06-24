@@ -1180,14 +1180,13 @@ void MotionVelocitySmootherNode::onSlowDriving(
   const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response)
 {
   std::string message = "default";
-  if (request->data) {
+  if (request->data && force_slow_driving_mode_ == ForceSlowDrivingType::DEACTIVATED) {
     RCLCPP_INFO(get_logger(), "Force slow driving is activated");
     
-    if(force_slow_driving_mode_ == ForceSlowDrivingType::DEACTIVATED)
-      force_slow_driving_mode_ = ForceSlowDrivingType::READY;
+    force_slow_driving_mode_ = ForceSlowDrivingType::READY;
 
     message = "Activated force slow drving";
-  } else {
+  } else if(!request->data) {
     RCLCPP_INFO(get_logger(), "Force slow driving is deactivated");
     force_slow_driving_mode_ = ForceSlowDrivingType::DEACTIVATED;
     message = "Deactivated force slow driving";
