@@ -17,7 +17,6 @@
 #define COMMON__CONVERTER__UDP_RECEIVER_HPP_
 
 #include <errno.h>
-#include <string>
 #include <fcntl.h>
 #include <netdb.h>
 #include <sys/socket.h>
@@ -28,6 +27,7 @@
 #include <functional>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 
 namespace leader_election_converter
 {

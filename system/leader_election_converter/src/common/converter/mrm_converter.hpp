@@ -28,9 +28,6 @@
 #include <string>
 #include <thread>
 
-#include "udp_sender.hpp"
-#include "udp_receiver.hpp"
-
 namespace leader_election_converter
 {
 

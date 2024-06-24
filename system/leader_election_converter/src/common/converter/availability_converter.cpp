@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <string>
-#include <memory>
 #include "availability_converter.hpp"
 
 #include "rclcpp/rclcpp.hpp"
+
+#include <memory>
+#include <string>
 
 namespace leader_election_converter
 {

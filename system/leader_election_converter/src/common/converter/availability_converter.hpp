@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__AVAILABILITY_CONVERTER_HPP_
-#define COMMON__AVAILABILITY_CONVERTER_HPP_
+#ifndef COMMON__CONVERTER__AVAILABILITY_CONVERTER_HPP_
+#define COMMON__CONVERTER__AVAILABILITY_CONVERTER_HPP_
+
+#include "udp_sender.hpp"
+
+#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_auto_vehicle_msgs/msg/control_mode_report.hpp>
 #include <tier4_system_msgs/msg/operation_mode_availability.hpp>
 
-#include <rclcpp/rclcpp.hpp>
-#include <string>
 #include <memory>
-
-#include "udp_sender.hpp"
-
+#include <string>
 
 namespace leader_election_converter
 {
