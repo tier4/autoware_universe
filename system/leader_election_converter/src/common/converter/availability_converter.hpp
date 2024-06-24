@@ -19,6 +19,8 @@
 #include <tier4_system_msgs/msg/operation_mode_availability.hpp>
 
 #include <rclcpp/rclcpp.hpp>
+#include <string>
+#include <memory>
 
 #include "udp_sender.hpp"
 
@@ -41,10 +43,8 @@ struct Availability
 
 class AvailabilityConverter
 {
-
 public:
-  AvailabilityConverter(rclcpp::Node * node);
-  ~AvailabilityConverter() = default;
+  explicit AvailabilityConverter(rclcpp::Node * node);
 
   void setUdpSender(const std::string & dest_ip, const std::string & dest_port);
   void setSubscriber();

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string>
+
 #include "leader_election_converter.hpp"
 
 namespace leader_election_converter

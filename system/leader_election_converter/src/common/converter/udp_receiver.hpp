@@ -26,6 +26,7 @@
 #include <functional>
 #include <fcntl.h>
 #include <errno.h>
+#include <string>
 
 
 namespace leader_election_converter

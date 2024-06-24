@@ -21,6 +21,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <thread>
 #include <atomic>
+#include <memory>
+#include <string>
 
 #include "udp_sender.hpp"
 #include "udp_receiver.hpp"
@@ -43,7 +45,7 @@ typedef struct MrmRequest
 class MrmConverter
 {
 public:
-  MrmConverter(rclcpp::Node * node);
+  explicit MrmConverter(rclcpp::Node * node);
   ~MrmConverter();
 
   void setUdpSender(const std::string & dest_ip, const std::string & dest_port);

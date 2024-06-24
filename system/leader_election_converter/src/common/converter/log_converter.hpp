@@ -23,6 +23,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <thread>
 #include <atomic>
+#include <memory>
+#include <string>
 
 #include "udp_sender.hpp"
 #include "udp_receiver.hpp"
@@ -56,7 +58,7 @@ typedef struct ElectionStatus
 class LogConverter
 {
 public:
-  LogConverter(rclcpp::Node * node);
+  explicit LogConverter(rclcpp::Node * node);
   ~LogConverter();
 
   void setUdpElectionCommunicatioinReceiver(const std::string & src_ip, const std::string & src_port);

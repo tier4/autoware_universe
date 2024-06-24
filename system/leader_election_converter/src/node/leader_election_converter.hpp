@@ -17,6 +17,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <memory>
+#include <string>
+
 #include "availability_converter.hpp"
 #include "mrm_converter.hpp"
 #include "log_converter.hpp"

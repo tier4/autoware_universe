@@ -22,6 +22,7 @@
 #include <netdb.h>
 #include <stdexcept>
 #include <unistd.h>
+#include <string>
 
 
 namespace leader_election_converter
