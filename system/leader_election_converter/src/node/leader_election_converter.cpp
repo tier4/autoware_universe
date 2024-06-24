@@ -23,34 +23,35 @@ LeaderElectionConverter::LeaderElectionConverter(const rclcpp::NodeOptions & nod
   mrm_converter_(this),
   log_converter_(this)
 {
-    availability_dest_ip_ = declare_parameter<std::string>("availability_dest_ip");
-    availability_dest_port_ = declare_parameter<std::string>("availability_dest_port");
-    mrm_state_dest_ip_ = declare_parameter<std::string>("mrm_state_dest_ip");
-    mrm_state_dest_port_ = declare_parameter<std::string>("mrm_state_dest_port");
-    mrm_request_src_ip_ = declare_parameter<std::string>("mrm_request_src_ip");
-    mrm_request_src_port_ = declare_parameter<std::string>("mrm_request_src_port");
-    election_communication_src_ip_ = declare_parameter<std::string>("election_communication_src_ip");
-    election_communication_src_port_ = declare_parameter<std::string>("election_communication_src_port");
-    election_status_src_ip_ = declare_parameter<std::string>("election_status_src_ip");
-    election_status_src_port_ = declare_parameter<std::string>("election_status_src_port");
+  availability_dest_ip_ = declare_parameter<std::string>("availability_dest_ip");
+  availability_dest_port_ = declare_parameter<std::string>("availability_dest_port");
+  mrm_state_dest_ip_ = declare_parameter<std::string>("mrm_state_dest_ip");
+  mrm_state_dest_port_ = declare_parameter<std::string>("mrm_state_dest_port");
+  mrm_request_src_ip_ = declare_parameter<std::string>("mrm_request_src_ip");
+  mrm_request_src_port_ = declare_parameter<std::string>("mrm_request_src_port");
+  election_communication_src_ip_ = declare_parameter<std::string>("election_communication_src_ip");
+  election_communication_src_port_ =
+    declare_parameter<std::string>("election_communication_src_port");
+  election_status_src_ip_ = declare_parameter<std::string>("election_status_src_ip");
+  election_status_src_port_ = declare_parameter<std::string>("election_status_src_port");
 
-    // convert udp packets of availability to topics
-    availability_converter_.setUdpSender(availability_dest_ip_, availability_dest_port_);
-    availability_converter_.setSubscriber();
+  // convert udp packets of availability to topics
+  availability_converter_.setUdpSender(availability_dest_ip_, availability_dest_port_);
+  availability_converter_.setSubscriber();
 
-    // convert topics of mrm state to udp packets
-    mrm_converter_.setUdpSender(mrm_state_dest_ip_, mrm_state_dest_port_);
-    mrm_converter_.setSubscriber();
+  // convert topics of mrm state to udp packets
+  mrm_converter_.setUdpSender(mrm_state_dest_ip_, mrm_state_dest_port_);
+  mrm_converter_.setSubscriber();
 
-    // convert udp packets of mrm request to topics
-    mrm_converter_.setPublisher();
-    mrm_converter_.setUdpReceiver(mrm_request_src_ip_, mrm_request_src_port_);
+  // convert udp packets of mrm request to topics
+  mrm_converter_.setPublisher();
+  mrm_converter_.setUdpReceiver(mrm_request_src_ip_, mrm_request_src_port_);
 
-
-    // convert udp packets of election info to topics
-    log_converter_.setPublisher();
-    log_converter_.setUdpElectionCommunicatioinReceiver(election_communication_src_ip_, election_communication_src_port_);
-    log_converter_.setUdpElectionStatusReceiver(election_status_src_ip_, election_status_src_port_);
+  // convert udp packets of election info to topics
+  log_converter_.setPublisher();
+  log_converter_.setUdpElectionCommunicatioinReceiver(
+    election_communication_src_ip_, election_communication_src_port_);
+  log_converter_.setUdpElectionStatusReceiver(election_status_src_ip_, election_status_src_port_);
 }
 
 }  // namespace leader_election_converter

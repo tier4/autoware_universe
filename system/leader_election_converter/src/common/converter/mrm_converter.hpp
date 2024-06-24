@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__MRM_CONVERTER_HPP_
-#define COMMON__MRM_CONVERTER_HPP_
+#ifndef COMMON__CONVERTER__MRM_CONVERTER_HPP_
+#define COMMON__CONVERTER__MRM_CONVERTER_HPP_
 
-#include <tier4_system_msgs/msg/mrm_state.hpp>
-#include <tier4_system_msgs/msg/mrm_behavior.hpp>
+#include "udp_receiver.hpp"
+#include "udp_sender.hpp"
 
 #include <rclcpp/rclcpp.hpp>
-#include <thread>
+
+#include <tier4_system_msgs/msg/mrm_behavior.hpp>
+#include <tier4_system_msgs/msg/mrm_state.hpp>
+
 #include <atomic>
-
-#include "udp_sender.hpp"
-#include "udp_receiver.hpp"
-
+#include <thread>
 
 namespace leader_election_converter
 {
@@ -69,4 +69,4 @@ private:
 
 }  // namespace leader_election_converter
 
-#endif  // COMMON__MRM_CONVERTER_HPP_
+#endif  // COMMON__CONVERTER__MRM_CONVERTER_HPP_

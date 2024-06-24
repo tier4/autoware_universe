@@ -15,11 +15,13 @@
 #ifndef NODE__LEADER_ELECTION_CONVERTER_HPP_
 #define NODE__LEADER_ELECTION_CONVERTER_HPP_
 
-#include <rclcpp/rclcpp.hpp>
-#include <memory>
 #include "availability_converter.hpp"
-#include "mrm_converter.hpp"
 #include "log_converter.hpp"
+#include "mrm_converter.hpp"
+
+#include <rclcpp/rclcpp.hpp>
+
+#include <memory>
 
 namespace leader_election_converter
 {
@@ -33,7 +35,7 @@ private:
   std::string availability_dest_ip_;
   std::string availability_dest_port_;
   std::string mrm_state_dest_ip_;
-  std::string mrm_state_dest_port_; 
+  std::string mrm_state_dest_port_;
   std::string mrm_request_src_ip_;
   std::string mrm_request_src_port_;
   std::string election_communication_src_ip_;

@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "rclcpp/rclcpp.hpp"
 #include "mrm_converter.hpp"
+
+#include "rclcpp/rclcpp.hpp"
 
 namespace leader_election_converter
 {
 
-MrmConverter::MrmConverter(rclcpp::Node * node)
-: node_(node),
-is_udp_receiver_running_(true)
+MrmConverter::MrmConverter(rclcpp::Node * node) : node_(node), is_udp_receiver_running_(true)
 {
 }
 
@@ -46,7 +45,8 @@ void MrmConverter::setUdpReceiver(const std::string & src_ip, const std::string 
 void MrmConverter::startUdpReceiver(const std::string & src_ip, const std::string & src_port)
 {
   try {
-    udp_mrm_request_receiver_ = std::make_unique<UdpReceiver<MrmRequest>>(src_ip, src_port, std::bind(&MrmConverter::convertToTopic, this, std::placeholders::_1));
+    udp_mrm_request_receiver_ = std::make_unique<UdpReceiver<MrmRequest>>(
+      src_ip, src_port, std::bind(&MrmConverter::convertToTopic, this, std::placeholders::_1));
     while (is_udp_receiver_running_) {
       udp_mrm_request_receiver_->receive();
     }
@@ -63,8 +63,8 @@ void MrmConverter::setSubscriber()
   options.callback_group = callback_group_;
 
   sub_mrm_state_ = node_->create_subscription<tier4_system_msgs::msg::MrmState>(
-    "~/input/mrm_state", qos,
-    std::bind(&MrmConverter::convertToUdp, this, std::placeholders::_1), options);
+    "~/input/mrm_state", qos, std::bind(&MrmConverter::convertToUdp, this, std::placeholders::_1),
+    options);
 }
 
 void MrmConverter::setPublisher()
@@ -73,7 +73,8 @@ void MrmConverter::setPublisher()
     "~/output/mrm_request", rclcpp::QoS{1});
 }
 
-void MrmConverter::convertToUdp(const tier4_system_msgs::msg::MrmState::ConstSharedPtr mrm_state_msg)
+void MrmConverter::convertToUdp(
+  const tier4_system_msgs::msg::MrmState::ConstSharedPtr mrm_state_msg)
 {
   MrmState mrm_state;
   mrm_state.state = mrm_state_msg->state;

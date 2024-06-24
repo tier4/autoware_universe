@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "rclcpp/rclcpp.hpp"
 #include "log_converter.hpp"
+
+#include "rclcpp/rclcpp.hpp"
 
 namespace leader_election_converter
 {
 
 LogConverter::LogConverter(rclcpp::Node * node)
-: node_(node),
-is_election_comunication_running_(true),
-is_election_status_running_(true)
-{}
+: node_(node), is_election_comunication_running_(true), is_election_status_running_(true)
+{
+}
 
 LogConverter::~LogConverter()
 {
@@ -38,15 +38,20 @@ LogConverter::~LogConverter()
   }
 }
 
-void LogConverter::setUdpElectionCommunicatioinReceiver(const std::string & src_ip, const std::string & src_port)
+void LogConverter::setUdpElectionCommunicatioinReceiver(
+  const std::string & src_ip, const std::string & src_port)
 {
-  udp_election_comunication_thread_ = std::thread(&LogConverter::startUdpElectionCommunicationReceiver, this, src_ip, src_port);
+  udp_election_comunication_thread_ =
+    std::thread(&LogConverter::startUdpElectionCommunicationReceiver, this, src_ip, src_port);
 }
 
-void LogConverter::startUdpElectionCommunicationReceiver(const std::string & src_ip, const std::string & src_port)
+void LogConverter::startUdpElectionCommunicationReceiver(
+  const std::string & src_ip, const std::string & src_port)
 {
   try {
-    udp_election_comunication_receiver_ = std::make_unique<UdpReceiver<ElectionCommunication>>(src_ip, src_port, std::bind(&LogConverter::convertElectionCommunicationToTopic, this, std::placeholders::_1));
+    udp_election_comunication_receiver_ = std::make_unique<UdpReceiver<ElectionCommunication>>(
+      src_ip, src_port,
+      std::bind(&LogConverter::convertElectionCommunicationToTopic, this, std::placeholders::_1));
     while (is_election_comunication_running_) {
       udp_election_comunication_receiver_->receive();
     }
@@ -55,15 +60,20 @@ void LogConverter::startUdpElectionCommunicationReceiver(const std::string & src
   }
 }
 
-void LogConverter::setUdpElectionStatusReceiver(const std::string & src_ip, const std::string & src_port)
+void LogConverter::setUdpElectionStatusReceiver(
+  const std::string & src_ip, const std::string & src_port)
 {
-  udp_election_status_thread_ = std::thread(&LogConverter::startUdpElectionStatusReceiver, this, src_ip, src_port);
+  udp_election_status_thread_ =
+    std::thread(&LogConverter::startUdpElectionStatusReceiver, this, src_ip, src_port);
 }
 
-void LogConverter::startUdpElectionStatusReceiver(const std::string & src_ip, const std::string & src_port)
+void LogConverter::startUdpElectionStatusReceiver(
+  const std::string & src_ip, const std::string & src_port)
 {
   try {
-    udp_election_status_receiver_ = std::make_unique<UdpReceiver<ElectionStatus>>(src_ip, src_port, std::bind(&LogConverter::convertElectionStatusToTopic, this, std::placeholders::_1));
+    udp_election_status_receiver_ = std::make_unique<UdpReceiver<ElectionStatus>>(
+      src_ip, src_port,
+      std::bind(&LogConverter::convertElectionStatusToTopic, this, std::placeholders::_1));
     while (is_election_status_running_) {
       udp_election_status_receiver_->receive();
     }
@@ -74,8 +84,9 @@ void LogConverter::startUdpElectionStatusReceiver(const std::string & src_ip, co
 
 void LogConverter::setPublisher()
 {
-  pub_election_comunication_ = node_->create_publisher<tier4_system_msgs::msg::ElectionCommunication>(
-    "~/output/election_communication", rclcpp::QoS{1});
+  pub_election_comunication_ =
+    node_->create_publisher<tier4_system_msgs::msg::ElectionCommunication>(
+      "~/output/election_communication", rclcpp::QoS{1});
   pub_election_status_ = node_->create_publisher<tier4_system_msgs::msg::ElectionStatus>(
     "~/output/election_status", rclcpp::QoS{1});
   pub_over_all_mrm_state_ = node_->create_publisher<autoware_adapi_v1_msgs::msg::MrmState>(
