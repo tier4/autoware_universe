@@ -15,10 +15,6 @@
 #ifndef NODE__LEADER_ELECTION_CONVERTER_HPP_
 #define NODE__LEADER_ELECTION_CONVERTER_HPP_
 
-#include <rclcpp/rclcpp.hpp>
-#include <memory>
-#include <string>
-
 #include "availability_converter.hpp"
 #include "log_converter.hpp"
 #include "mrm_converter.hpp"
@@ -26,6 +22,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
+#include <string>
 
 namespace leader_election_converter
 {

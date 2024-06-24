@@ -19,11 +19,11 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <string>
 
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 
 namespace leader_election_converter
 {
