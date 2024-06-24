@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string>
+#include <memory>
+
+#include "rclcpp/rclcpp.hpp"
 #include "log_converter.hpp"
 
 #include "rclcpp/rclcpp.hpp"
-
-#include <memory>
-#include <string>
 
 namespace leader_election_converter
 {
@@ -41,7 +42,7 @@ LogConverter::~LogConverter()
   }
 }
 
-void LogConverter::setUdpElectionCommunicatioinReceiver(
+void LogConverter::setUdpElectionCommunicationReceiver(
   const std::string & src_ip, const std::string & src_port)
 {
   udp_election_communication_thread_ =

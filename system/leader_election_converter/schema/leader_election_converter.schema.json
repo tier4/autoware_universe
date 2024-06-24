@@ -38,12 +38,12 @@
         },
         "election_communication_src_ip": {
           "type": "string",
-          "description": "IP address of the source of electioin_communication",
+          "description": "IP address of the source of election_communication",
           "default": "127.0.0.1"
         },
         "election_communication_src_port": {
           "type": "string",
-          "description": "Port of the source of electioin_communication",
+          "description": "Port of the source of election_communication",
           "default": "9003"
         },
         "election_status_src_ip": {

@@ -16,7 +16,7 @@ The availability converter subscribes `/system/operation_mode/availability` and 
 | subscriber     | `/vehicle/status/mrm_state`           | `autoware_auto_vehicle_msgs/msg/ControlModeReport` | Ego control mode.             |
 | udp sender     | none                                  | `struct Availability`                              | Combination of the above two. |
 
-## mrm converte
+## mrm converter
 
 The mrm converter subscribes `/system/fail_safe/mrm_state` into a structure called `MrmState` and sends it as a UDP packet.
 In addition, it receives a udp packet`MrmState` and publish `/system/mrm_request`.
