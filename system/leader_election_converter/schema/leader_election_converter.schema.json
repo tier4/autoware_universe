@@ -8,12 +8,12 @@
       "properties": {
         "availability_dest_ip": {
           "type": "string",
-          "description": "IP address of the destination of avaialability",
+          "description": "IP address of the destination of availability",
           "default": "127.0.0.1"
         },
         "availability_dest_port": {
           "type": "string",
-          "description": "Port of the destination of avaialability",
+          "description": "Port of the destination of availability",
           "default": "9000"
         },
         "mrm_state_dest_ip": {

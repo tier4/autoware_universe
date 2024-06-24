@@ -1,5 +1,5 @@
 <launch>
-  <arg name="param_file" default="$(find-pkg-share leader_election_converter)/config/leader_electioin_converter.param.yaml"/>
+  <arg name="param_file" default="$(find-pkg-share leader_election_converter)/config/leader_election_converter.param.yaml"/>
   <arg name="input_control_mode" default="/vehicle/status/control_mode"/>
   <arg name="input_operation_mode_availability" default="/system/operation_mode/availability"/>
   <arg name="input_mrm_state" default="/system/fail_safe/mrm_state"/>

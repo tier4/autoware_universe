@@ -51,7 +51,7 @@ LeaderElectionConverter::LeaderElectionConverter(const rclcpp::NodeOptions & nod
 
   // convert udp packets of election info to topics
   log_converter_.setPublisher();
-  log_converter_.setUdpElectionCommunicatioinReceiver(
+  log_converter_.setUdpElectionCommunicationReceiver(
     election_communication_src_ip_, election_communication_src_port_);
   log_converter_.setUdpElectionStatusReceiver(election_status_src_ip_, election_status_src_port_);
 }

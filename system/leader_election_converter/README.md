@@ -39,11 +39,11 @@ The log　converter receive udp packets into a structure called `ElectionCommuni
 
 | Interface Type | Interface Name                         | Data Type                                     | Description                     |
 | -------------- | -------------------------------------- | --------------------------------------------- | ------------------------------- |
-| udp receiver   | none                                   | `struct ElectionCommunication`                | messages amoung election nodes. |
+| udp receiver   | none                                   | `struct ElectionCommunication`                | messages among election nodes. |
 | udp receiver   | none                                   | `struct ElectionStatus`                       | Leader Election status.         |
-| publisher      | `/system/election/communication`       | `tier4_system_msgs/msg/ElectionCommunication` | messages amoung election nodes. |
+| publisher      | `/system/election/communication`       | `tier4_system_msgs/msg/ElectionCommunication` | messages among election nodes. |
 | publisher      | `/system/election/status`              | `tier4_system_msgs/msg/MrmState`              | Leader Election status.         |
-| publisher      | `/system/fail_safe/over_all/mrm_state` | `autoware_adapi_v1_msgs/msg/mrm_state`        | System-wode MRM status.         |
+| publisher      | `/system/fail_safe/over_all/mrm_state` | `autoware_adapi_v1_msgs/msg/mrm_state`        | System-wide MRM status.         |
 
 ## Parameters
 

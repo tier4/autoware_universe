@@ -64,7 +64,7 @@ public:
   explicit LogConverter(rclcpp::Node * node);
   ~LogConverter();
 
-  void setUdpElectionCommunicatioinReceiver(
+  void setUdpElectionCommunicationReceiver(
     const std::string & src_ip, const std::string & src_port);
   void setUdpElectionStatusReceiver(const std::string & src_ip, const std::string & src_port);
   void setPublisher();
@@ -77,16 +77,16 @@ private:
   void convertElectionStatusToTopic(const ElectionStatus & status);
 
   rclcpp::Node * node_;
-  std::unique_ptr<UdpReceiver<ElectionCommunication>> udp_election_comunication_receiver_;
+  std::unique_ptr<UdpReceiver<ElectionCommunication>> udp_election_communication_receiver_;
   std::unique_ptr<UdpReceiver<ElectionStatus>> udp_election_status_receiver_;
   rclcpp::Publisher<tier4_system_msgs::msg::ElectionCommunication>::SharedPtr
-    pub_election_comunication_;
+    pub_election_communication_;
   rclcpp::Publisher<tier4_system_msgs::msg::ElectionStatus>::SharedPtr pub_election_status_;
   rclcpp::Publisher<autoware_adapi_v1_msgs::msg::MrmState>::SharedPtr pub_over_all_mrm_state_;
 
-  std::thread udp_election_comunication_thread_;
+  std::thread udp_election_communication_thread_;
   std::thread udp_election_status_thread_;
-  std::atomic<bool> is_election_comunication_running_;
+  std::atomic<bool> is_election_communication_running_;
   std::atomic<bool> is_election_status_running_;
 };
 

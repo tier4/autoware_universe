@@ -24,18 +24,18 @@ namespace leader_election_converter
 {
 
 LogConverter::LogConverter(rclcpp::Node * node)
-: node_(node), is_election_comunication_running_(true), is_election_status_running_(true)
+: node_(node), is_election_communication_running_(true), is_election_status_running_(true)
 {
 }
 
 LogConverter::~LogConverter()
 {
-  is_election_comunication_running_ = false;
-  udp_election_comunication_receiver_->~UdpReceiver();
+  is_election_communication_running_ = false;
+  udp_election_communication_receiver_->~UdpReceiver();
   is_election_status_running_ = false;
   udp_election_status_receiver_->~UdpReceiver();
-  if (udp_election_comunication_thread_.joinable()) {
-    udp_election_comunication_thread_.join();
+  if (udp_election_communication_thread_.joinable()) {
+    udp_election_communication_thread_.join();
   }
   if (udp_election_status_thread_.joinable()) {
     udp_election_status_thread_.join();
@@ -45,7 +45,7 @@ LogConverter::~LogConverter()
 void LogConverter::setUdpElectionCommunicatioinReceiver(
   const std::string & src_ip, const std::string & src_port)
 {
-  udp_election_comunication_thread_ =
+  udp_election_communication_thread_ =
     std::thread(&LogConverter::startUdpElectionCommunicationReceiver, this, src_ip, src_port);
 }
 
@@ -53,11 +53,11 @@ void LogConverter::startUdpElectionCommunicationReceiver(
   const std::string & src_ip, const std::string & src_port)
 {
   try {
-    udp_election_comunication_receiver_ = std::make_unique<UdpReceiver<ElectionCommunication>>(
+    udp_election_communication_receiver_ = std::make_unique<UdpReceiver<ElectionCommunication>>(
       src_ip, src_port,
       std::bind(&LogConverter::convertElectionCommunicationToTopic, this, std::placeholders::_1));
-    while (is_election_comunication_running_) {
-      udp_election_comunication_receiver_->receive();
+    while (is_election_communication_running_) {
+      udp_election_communication_receiver_->receive();
     }
   } catch (const std::exception & e) {
     RCLCPP_ERROR(node_->get_logger(), "Error in UDP receiver thread: %s", e.what());
@@ -88,7 +88,7 @@ void LogConverter::startUdpElectionStatusReceiver(
 
 void LogConverter::setPublisher()
 {
-  pub_election_comunication_ =
+  pub_election_communication_ =
     node_->create_publisher<tier4_system_msgs::msg::ElectionCommunication>(
       "~/output/election_communication", rclcpp::QoS{1});
   pub_election_status_ = node_->create_publisher<tier4_system_msgs::msg::ElectionStatus>(
@@ -107,7 +107,7 @@ void LogConverter::convertElectionCommunicationToTopic(const ElectionCommunicati
   msg.link = (node_msg.msg >> 24) & 0xFF;
   msg.heartbeat = (node_msg.msg >> 56) & 0x0F;
   msg.checksum = (node_msg.msg >> 60) & 0x0F;
-  pub_election_comunication_->publish(msg);
+  pub_election_communication_->publish(msg);
 }
 
 void LogConverter::convertElectionStatusToTopic(const ElectionStatus & status)
