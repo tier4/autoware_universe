@@ -13,48 +13,49 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__UDP_RECEIVER_HPP_
-#define COMMON__UDP_RECEIVER_HPP_
+#ifndef COMMON__CONVERTER__UDP_RECEIVER_HPP_
+#define COMMON__CONVERTER__UDP_RECEIVER_HPP_
 
-#include <iostream>
-#include <cstring>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <stdexcept>
-#include <unistd.h>
-#include <functional>
-#include <fcntl.h>
 #include <errno.h>
 #include <string>
+#include <fcntl.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 
+#include <cstring>
+#include <functional>
+#include <iostream>
+#include <stdexcept>
 
 namespace leader_election_converter
 {
-  
-template<typename T>
+
+template <typename T>
 class UdpReceiver
 {
 public:
-  using CallbackType = std::function<void(const T&)>;
+  using CallbackType = std::function<void(const T &)>;
   UdpReceiver(const std::string & ip, const std::string & port);
   UdpReceiver(const std::string & ip, const std::string & port, CallbackType callback);
   UdpReceiver(const std::string & ip, const std::string & port, bool is_non_blocking);
-  UdpReceiver(const std::string & ip, const std::string & port, bool is_non_blocking, CallbackType callback);
+  UdpReceiver(
+    const std::string & ip, const std::string & port, bool is_non_blocking, CallbackType callback);
   ~UdpReceiver();
 
-  bool receive(T & data); // for non callback
-  void receive(); // for callback
+  bool receive(T & data);  // for non callback
+  void receive();          // for callback
 
 private:
   int socketfd_;
-  struct addrinfo *res_;
+  struct addrinfo * res_;
   CallbackType callback_;
 
   void setCallback(CallbackType callback);
 };
 
-template<typename T>
+template <typename T>
 UdpReceiver<T>::UdpReceiver(const std::string & ip, const std::string & port)
 {
   struct addrinfo hints;
@@ -79,14 +80,14 @@ UdpReceiver<T>::UdpReceiver(const std::string & ip, const std::string & port)
   }
 }
 
-template<typename T>
+template <typename T>
 UdpReceiver<T>::UdpReceiver(const std::string & ip, const std::string & port, CallbackType callback)
 : UdpReceiver(ip, port)
 {
   setCallback(callback);
 }
 
-template<typename T>
+template <typename T>
 UdpReceiver<T>::UdpReceiver(const std::string & ip, const std::string & port, bool is_non_blocking)
 : UdpReceiver(ip, port)
 {
@@ -99,14 +100,15 @@ UdpReceiver<T>::UdpReceiver(const std::string & ip, const std::string & port, bo
   }
 }
 
-template<typename T>
-UdpReceiver<T>::UdpReceiver(const std::string & ip, const std::string & port, bool is_non_blocking, CallbackType callback)
+template <typename T>
+UdpReceiver<T>::UdpReceiver(
+  const std::string & ip, const std::string & port, bool is_non_blocking, CallbackType callback)
 : UdpReceiver(ip, port, is_non_blocking)
 {
   setCallback(callback);
 }
 
-template<typename T>
+template <typename T>
 UdpReceiver<T>::~UdpReceiver()
 {
   shutdown(socketfd_, SHUT_RDWR);
@@ -114,13 +116,13 @@ UdpReceiver<T>::~UdpReceiver()
   close(socketfd_);
 }
 
-template<typename T>
+template <typename T>
 void UdpReceiver<T>::setCallback(CallbackType callback)
 {
   callback_ = callback;
 }
 
-template<typename T>
+template <typename T>
 bool UdpReceiver<T>::receive(T & data)
 {
   struct sockaddr_storage addr;
@@ -135,7 +137,7 @@ bool UdpReceiver<T>::receive(T & data)
   return true;
 }
 
-template<typename T>
+template <typename T>
 void UdpReceiver<T>::receive()
 {
   T data;
@@ -146,4 +148,4 @@ void UdpReceiver<T>::receive()
 
 }  // namespace leader_election_converter
 
-#endif  // COMMON__UDP_RECEIVER_HPP_
+#endif  // COMMON__CONVERTER__UDP_RECEIVER_HPP_

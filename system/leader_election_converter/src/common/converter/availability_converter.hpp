@@ -48,18 +48,20 @@ public:
 
   void setUdpSender(const std::string & dest_ip, const std::string & dest_port);
   void setSubscriber();
-  void convertToUdp(const tier4_system_msgs::msg::OperationModeAvailability::ConstSharedPtr availability_msg);
+  void convertToUdp(
+    const tier4_system_msgs::msg::OperationModeAvailability::ConstSharedPtr availability_msg);
 
 private:
-    rclcpp::Node * node_;
-    std::unique_ptr<UdpSender<Availability>> udp_availability_sender_;
-    rclcpp::CallbackGroup::SharedPtr availability_callback_group_;
-    rclcpp::CallbackGroup::SharedPtr control_mode_callback_group_;
-    rclcpp::Subscription<autoware_auto_vehicle_msgs::msg::ControlModeReport>::SharedPtr sub_control_mode_;
-    rclcpp::Subscription<tier4_system_msgs::msg::OperationModeAvailability>::SharedPtr sub_operation_mode_availability_;
-    
+  rclcpp::Node * node_;
+  std::unique_ptr<UdpSender<Availability>> udp_availability_sender_;
+  rclcpp::CallbackGroup::SharedPtr availability_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr control_mode_callback_group_;
+  rclcpp::Subscription<autoware_auto_vehicle_msgs::msg::ControlModeReport>::SharedPtr
+    sub_control_mode_;
+  rclcpp::Subscription<tier4_system_msgs::msg::OperationModeAvailability>::SharedPtr
+    sub_operation_mode_availability_;
 };
 
 }  // namespace leader_election_converter
 
-#endif  // COMMON__AVAILABILITY_CONVERTER_HPP_
+#endif  // COMMON__CONVERTER__AVAILABILITY_CONVERTER_HPP_

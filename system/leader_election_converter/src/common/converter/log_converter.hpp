@@ -12,23 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__LOG_CONVERTER_HPP_
-#define COMMON__LOG_CONVERTER_HPP_
+#ifndef COMMON__CONVERTER__LOG_CONVERTER_HPP_
+#define COMMON__CONVERTER__LOG_CONVERTER_HPP_
 
+#include "udp_receiver.hpp"
+#include "udp_sender.hpp"
+
+#include <rclcpp/rclcpp.hpp>
+
+#include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 #include <tier4_system_msgs/msg/election_communication.hpp>
 #include <tier4_system_msgs/msg/election_status.hpp>
 #include <tier4_system_msgs/msg/mrm_state.hpp>
-#include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 
-#include <rclcpp/rclcpp.hpp>
-#include <thread>
 #include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "udp_sender.hpp"
 #include "udp_receiver.hpp"
-
 
 namespace leader_election_converter
 {
@@ -61,12 +64,14 @@ public:
   explicit LogConverter(rclcpp::Node * node);
   ~LogConverter();
 
-  void setUdpElectionCommunicatioinReceiver(const std::string & src_ip, const std::string & src_port);
+  void setUdpElectionCommunicatioinReceiver(
+    const std::string & src_ip, const std::string & src_port);
   void setUdpElectionStatusReceiver(const std::string & src_ip, const std::string & src_port);
   void setPublisher();
 
 private:
-  void startUdpElectionCommunicationReceiver(const std::string & src_ip, const std::string & src_port);
+  void startUdpElectionCommunicationReceiver(
+    const std::string & src_ip, const std::string & src_port);
   void startUdpElectionStatusReceiver(const std::string & src_ip, const std::string & src_port);
   void convertElectionCommunicationToTopic(const ElectionCommunication & node_msg);
   void convertElectionStatusToTopic(const ElectionStatus & status);
@@ -74,7 +79,8 @@ private:
   rclcpp::Node * node_;
   std::unique_ptr<UdpReceiver<ElectionCommunication>> udp_election_comunication_receiver_;
   std::unique_ptr<UdpReceiver<ElectionStatus>> udp_election_status_receiver_;
-  rclcpp::Publisher<tier4_system_msgs::msg::ElectionCommunication>::SharedPtr pub_election_comunication_;
+  rclcpp::Publisher<tier4_system_msgs::msg::ElectionCommunication>::SharedPtr
+    pub_election_comunication_;
   rclcpp::Publisher<tier4_system_msgs::msg::ElectionStatus>::SharedPtr pub_election_status_;
   rclcpp::Publisher<autoware_adapi_v1_msgs::msg::MrmState>::SharedPtr pub_over_all_mrm_state_;
 
@@ -86,4 +92,4 @@ private:
 
 }  // namespace leader_election_converter
 
-#endif  // COMMON__LOG_CONVERTER_HPP_
+#endif  // COMMON__CONVERTER__LOG_CONVERTER_HPP_

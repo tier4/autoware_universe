@@ -14,15 +14,16 @@
 
 #include <string>
 #include <memory>
+#include "availability_converter.hpp"
 
 #include "rclcpp/rclcpp.hpp"
-#include "availability_converter.hpp"
 
 namespace leader_election_converter
 {
 
-AvailabilityConverter::AvailabilityConverter(rclcpp::Node * node)
-: node_(node) {}
+AvailabilityConverter::AvailabilityConverter(rclcpp::Node * node) : node_(node)
+{
+}
 
 void AvailabilityConverter::setUdpSender(const std::string & dest_ip, const std::string & dest_port)
 {
@@ -32,22 +33,27 @@ void AvailabilityConverter::setUdpSender(const std::string & dest_ip, const std:
 void AvailabilityConverter::setSubscriber()
 {
   const auto qos = rclcpp::QoS(1).transient_local();
-  availability_callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  availability_callback_group_ =
+    node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions availability_options = rclcpp::SubscriptionOptions();
   availability_options.callback_group = availability_callback_group_;
 
-  control_mode_callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive, false);
+  control_mode_callback_group_ =
+    node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive, false);
   rclcpp::SubscriptionOptions control_mode_options = rclcpp::SubscriptionOptions();
-  control_mode_options.callback_group = control_mode_callback_group_; 
-  auto not_executed_callback = []([[maybe_unused]] const typename autoware_auto_vehicle_msgs::msg::ControlModeReport::ConstSharedPtr msg) {};
+  control_mode_options.callback_group = control_mode_callback_group_;
+  auto not_executed_callback = []([[maybe_unused]] const typename autoware_auto_vehicle_msgs::msg::
+                                    ControlModeReport::ConstSharedPtr msg) {};
 
-  sub_operation_mode_availability_ = node_->create_subscription<tier4_system_msgs::msg::OperationModeAvailability>(
-    "~/input/operation_mode_availability", qos,
-    std::bind(&AvailabilityConverter::convertToUdp, this, std::placeholders::_1), availability_options);
+  sub_operation_mode_availability_ =
+    node_->create_subscription<tier4_system_msgs::msg::OperationModeAvailability>(
+      "~/input/operation_mode_availability", qos,
+      std::bind(&AvailabilityConverter::convertToUdp, this, std::placeholders::_1),
+      availability_options);
 
-  sub_control_mode_ = node_->create_subscription<autoware_auto_vehicle_msgs::msg::ControlModeReport>(
-    "~/input/control_mode", qos, not_executed_callback, control_mode_options);
-  
+  sub_control_mode_ =
+    node_->create_subscription<autoware_auto_vehicle_msgs::msg::ControlModeReport>(
+      "~/input/control_mode", qos, not_executed_callback, control_mode_options);
 }
 
 void AvailabilityConverter::convertToUdp(

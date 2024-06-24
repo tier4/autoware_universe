@@ -12,23 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__UDP_SENDER_HPP_
-#define COMMON__UDP_SENDER_HPP_
+#ifndef COMMON__CONVERTER__UDP_SENDER_HPP_
+#define COMMON__CONVERTER__UDP_SENDER_HPP_
 
-#include <iostream>
-#include <cstring>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <netdb.h>
-#include <stdexcept>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <string>
 
+#include <cstring>
+#include <iostream>
+#include <stdexcept>
 
 namespace leader_election_converter
 {
-  
-template<typename T>
+
+template <typename T>
 class UdpSender
 {
 public:
@@ -39,10 +39,10 @@ public:
 
 private:
   int socketfd_;
-  struct addrinfo *res_;
+  struct addrinfo * res_;
 };
 
-template<typename T>
+template <typename T>
 UdpSender<T>::UdpSender(const std::string & ip, const std::string & port)
 {
   struct addrinfo hints;
@@ -61,7 +61,7 @@ UdpSender<T>::UdpSender(const std::string & ip, const std::string & port)
   }
 }
 
-template<typename T>
+template <typename T>
 UdpSender<T>::~UdpSender()
 {
   shutdown(socketfd_, SHUT_RDWR);
@@ -69,7 +69,7 @@ UdpSender<T>::~UdpSender()
   close(socketfd_);
 }
 
-template<typename T>
+template <typename T>
 void UdpSender<T>::send(const T & data)
 {
   if (sendto(socketfd_, &data, sizeof(T), 0, res_->ai_addr, res_->ai_addrlen) < 0) {
@@ -77,7 +77,6 @@ void UdpSender<T>::send(const T & data)
   }
 }
 
-}  // namespace leader_election_converterl
+}  // namespace leader_election_converter
 
-
-#endif  // COMMON__UDP_SENDER_HPP_
+#endif  // COMMON__CONVERTER__UDP_SENDER_HPP_
