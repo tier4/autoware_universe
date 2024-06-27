@@ -46,8 +46,8 @@ typedef struct ElectionStatus
   tier4_system_msgs::msg::MrmBehavior::_type_type behavior;
   tier4_system_msgs::msg::ElectionStatus::_election_start_count_type election_start_count;
   tier4_system_msgs::msg::ElectionStatus::_in_election_type in_election;
-  tier4_system_msgs::msg::ElectionStatus::_is_received_availability_type is_received_availability;
-  tier4_system_msgs::msg::ElectionStatus::_is_received_mrm_state_type is_received_mrm_state;
+  tier4_system_msgs::msg::ElectionStatus::_has_received_availability_type has_received_availability;
+  tier4_system_msgs::msg::ElectionStatus::_has_received_mrm_state_type has_received_mrm_state;
   tier4_system_msgs::msg::ElectionStatus::_is_autoware_emergency_type is_autoware_emergency;
   tier4_system_msgs::msg::ElectionStatus::_is_main_ecu_connected_type is_main_ecu_connected;
   tier4_system_msgs::msg::ElectionStatus::_is_sub_ecu_connected_type is_sub_ecu_connected;

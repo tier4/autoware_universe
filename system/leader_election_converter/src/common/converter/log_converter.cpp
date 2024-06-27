@@ -121,8 +121,8 @@ void LogConverter::convertElectionStatusToTopic(const ElectionStatus & status)
   election_status.mrm_state.behavior.type = status.behavior;
   election_status.election_start_count = status.election_start_count;
   election_status.in_election = status.in_election;
-  election_status.is_received_availability = status.is_received_availability;
-  election_status.is_received_mrm_state = status.is_received_mrm_state;
+  election_status.has_received_availability = status.has_received_availability;
+  election_status.has_received_mrm_state = status.has_received_mrm_state;
   election_status.is_autoware_emergency = status.is_autoware_emergency;
   election_status.is_main_ecu_connected = status.is_main_ecu_connected;
   election_status.is_sub_ecu_connected = status.is_sub_ecu_connected;
