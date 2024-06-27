@@ -7,11 +7,10 @@
   <arg name="config_file" default="$(find-pkg-share control_cmd_switcher)/config/control_cmd_switcher.yaml"/>
 
   <!-- mrm_handler -->
-  <node pkg="control_cmd_switcher" exec="control_cmd_switcher" name="control_cmd_switcher_node" output="screen">
+  <node pkg="control_cmd_switcher" exec="control_cmd_switcher_node" name="control_cmd_switcher" output="screen">
     <remap from="~/input/main/control_cmd" to="$(var input_main_control_cmd)"/>
     <remap from="~/input/sub/control_cmd" to="$(var input_sub_control_cmd)"/>
     <remap from="~/input/election/status" to="$(var input_election_status)"/>
     <remap from="~/output/control_cmd" to="$(var output_control_cmd)"/>
-    <param from="$(var config_file)"/>
   </node>
 </launch>
