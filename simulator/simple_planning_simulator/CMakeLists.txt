@@ -29,6 +29,12 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTABLE ${PROJECT_NAME}_exe
 )
 
+install(PROGRAMS
+  tool/rely_trajectry.py
+  DESTINATION lib/${PROJECT_NAME}
+  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
+)
+
 if(BUILD_TESTING)
   ament_add_ros_isolated_gtest(test_simple_planning_simulator
     test/test_simple_planning_simulator.cpp
