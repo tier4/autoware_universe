@@ -24,10 +24,12 @@ TrajectoryRepeater::TrajectoryRepeater(const rclcpp::NodeOptions & node_options)
 
   // Subscriber
   sub_trajectory_ = create_subscription<autoware_auto_planning_msgs::msg::Trajectory>(
-    "~/input/trajectory", 10, std::bind(&TrajectoryRepeater::onTrajectory, this, std::placeholders::_1));
+    "~/input/trajectory", 10,
+    std::bind(&TrajectoryRepeater::onTrajectory, this, std::placeholders::_1));
 
   // Publisher
-  pub_trajectory_ = create_publisher<autoware_auto_planning_msgs::msg::Trajectory>("~/output/trajectory", 10);
+  pub_trajectory_ =
+    create_publisher<autoware_auto_planning_msgs::msg::Trajectory>("~/output/trajectory", 10);
 
   // Service
 
@@ -35,15 +37,16 @@ TrajectoryRepeater::TrajectoryRepeater(const rclcpp::NodeOptions & node_options)
 
   // Timer
   using namespace std::literals::chrono_literals;
-  timer_ = rclcpp::create_timer(this, get_clock(), 100ms, std::bind(&TrajectoryRepeater::onTimer, this));
+  timer_ =
+    rclcpp::create_timer(this, get_clock(), 100ms, std::bind(&TrajectoryRepeater::onTimer, this));
 
   // State
 
   // Diagnostics
-
 }
 
-void TrajectoryRepeater::onTrajectory(const autoware_auto_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
+void TrajectoryRepeater::onTrajectory(
+  const autoware_auto_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
 {
   last_trajectory_ = msg;
 }
@@ -54,7 +57,7 @@ void TrajectoryRepeater::onTimer()
     RCLCPP_DEBUG(get_logger(), "No trajectory received");
     return;
   }
-  
+
   pub_trajectory_->publish(*last_trajectory_);
 }
 
