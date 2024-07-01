@@ -12,33 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_REPEATER_HPP_
-#define TRAJECTORY_REPEATER_HPP_
+#ifndef DUMMY_OPERATION_MODE_PUBLISHER__DUMMY_OPERATION_MODE_PUBLISHER_HPP_
+#define DUMMY_OPERATION_MODE_PUBLISHER__DUMMY_OPERATION_MODE_PUBLISHER_HPP_
 
 // include
 #include <rclcpp/rclcpp.hpp>
 
-#include <autoware_auto_planning_msgs/msg/trajectory.hpp>
+#include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 
-namespace trajectory_repeater
+
+namespace dummy_operation_mode_publisher
 {
 
-class TrajectoryRepeater : public rclcpp::Node
+class DummyOperationModePublisher : public rclcpp::Node
 {
 public:
-  explicit TrajectoryRepeater(const rclcpp::NodeOptions & node_options);
-  ~TrajectoryRepeater() = default;
+  explicit DummyOperationModePublisher(const rclcpp::NodeOptions & node_options);
+  ~DummyOperationModePublisher() = default;
 
 private:
   // Parameter
 
   // Subscriber
-  rclcpp::Subscription<autoware_auto_planning_msgs::msg::Trajectory>::SharedPtr sub_trajectory_;
-
-  void onTrajectory(const autoware_auto_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
 
   // Publisher
-  rclcpp::Publisher<autoware_auto_planning_msgs::msg::Trajectory>::SharedPtr pub_trajectory_;
+  rclcpp::Publisher<autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr pub_operation_mode_state_;
 
   // Service
 
@@ -50,10 +48,10 @@ private:
   void onTimer();
 
   // State
-  autoware_auto_planning_msgs::msg::Trajectory::ConstSharedPtr last_trajectory_;
 
   // Diagnostics
-};
-}  // namespace trajectory_repeater
 
-#endif  // TRAJECTORY_REPEATER_HPP_
+};
+}  // namespace dummy_operation_mode_publisher
+
+#endif  // DUMMY_OPERATION_MODE_PUBLISHER__DUMMY_OPERATION_MODE_PUBLISHER_HPP_

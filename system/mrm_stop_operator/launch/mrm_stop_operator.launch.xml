@@ -1,0 +1,11 @@
+<launch>
+  <arg name="mrm_stop_operator_param_path" default="$(find-pkg-share mrm_stop_operator)/config/mrm_stop_operator.param.yaml"/>
+
+  <node pkg="mrm_stop_operator" exec="mrm_stop_operator_node" name="mrm_stop_operator" output="screen">
+    <param from="$(var mrm_stop_operator_param_path)"/>
+    
+    <remap from="~/input/mrm_request" to="/system/mrm_request"/>
+    <remap from="~/output/velocity_limit" to="/planning/scenario_planning/max_velocity_candidates"/>
+    <remap from="~/output/velocity_limit_clear_command" to="/planning/scenario_planning/clear_velocity_limit"/>
+  </node>
+</launch>
