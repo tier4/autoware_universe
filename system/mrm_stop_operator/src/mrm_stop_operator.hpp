@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MRM_STOP_OPERATOR__MRM_STOP_OPERATOR_HPP_
-#define MRM_STOP_OPERATOR__MRM_STOP_OPERATOR_HPP_
+#ifndef MRM_STOP_OPERATOR_HPP_
+#define MRM_STOP_OPERATOR_HPP_
 
 // include
 #include <rclcpp/rclcpp.hpp>
@@ -51,7 +51,8 @@ private:
 
   // Publisher
   rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimit>::SharedPtr pub_velocity_limit_;
-  rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>::SharedPtr pub_velocity_limit_clear_command_;
+  rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>::SharedPtr
+    pub_velocity_limit_clear_command_;
 
   // Service
 
@@ -61,12 +62,11 @@ private:
 
   // State
   tier4_system_msgs::msg::MrmBehavior last_mrm_request_;
-  
+
   void initState();
 
   // Diagnostics
-
 };
 }  // namespace mrm_stop_operator
 
-#endif  // MRM_STOP_OPERATOR__MRM_STOP_OPERATOR_HPP_
+#endif  // MRM_STOP_OPERATOR_HPP_

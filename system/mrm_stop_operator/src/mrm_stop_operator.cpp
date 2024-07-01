@@ -33,8 +33,9 @@ MrmStopOperator::MrmStopOperator(const rclcpp::NodeOptions & node_options)
   // Publisher
   pub_velocity_limit_ = create_publisher<tier4_planning_msgs::msg::VelocityLimit>(
     "~/output/velocity_limit", rclcpp::QoS{10}.transient_local());
-  pub_velocity_limit_clear_command_ = create_publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>(
-    "~/output/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local());
+  pub_velocity_limit_clear_command_ =
+    create_publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>(
+      "~/output/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local());
 
   // Timer
 
@@ -48,13 +49,13 @@ MrmStopOperator::MrmStopOperator(const rclcpp::NodeOptions & node_options)
   initState();
 
   // Diagnostics
-
 }
 
 void MrmStopOperator::onMrmRequest(const tier4_system_msgs::msg::MrmBehavior::ConstSharedPtr msg)
 {
-  if (msg->type == tier4_system_msgs::msg::MrmBehavior::COMFORTABLE_STOP &&
-      last_mrm_request_.type != tier4_system_msgs::msg::MrmBehavior::COMFORTABLE_STOP) {
+  if (
+    msg->type == tier4_system_msgs::msg::MrmBehavior::COMFORTABLE_STOP &&
+    last_mrm_request_.type != tier4_system_msgs::msg::MrmBehavior::COMFORTABLE_STOP) {
     tier4_planning_msgs::msg::VelocityLimit velocity_limit;
     velocity_limit.stamp = this->now();
     velocity_limit.max_velocity = 0.0;
@@ -64,7 +65,7 @@ void MrmStopOperator::onMrmRequest(const tier4_system_msgs::msg::MrmBehavior::Co
     velocity_limit.constraints.min_jerk = params_.min_jerk;
     velocity_limit.sender = "mrm_stop_operator";
     pub_velocity_limit_->publish(velocity_limit);
-    
+
     last_mrm_request_ = *msg;
   }
 }

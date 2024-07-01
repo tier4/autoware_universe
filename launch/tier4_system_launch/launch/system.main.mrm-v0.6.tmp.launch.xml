@@ -160,7 +160,7 @@
     <include file="$(find-pkg-share control_cmd_switcher)/launch/control_cmd_switcher.launch.xml"/>
   </group>
 
-    <!-- Leader Election Converter-->
+  <!-- Leader Election Converter-->
   <group>
     <include file="$(find-pkg-share leader_election_converter)/launch/leader_election_converter.launch.xml"/>
   </group>
@@ -187,6 +187,4 @@
       <arg name="timeout" value=""/>
     </include> -->
   </group>
-
-
 </launch>
