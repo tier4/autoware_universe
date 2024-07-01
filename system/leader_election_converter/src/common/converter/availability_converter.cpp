@@ -75,8 +75,7 @@ void AvailabilityConverter::convertToUdp(
     availability.pull_over = availability_msg->pull_over;
     udp_availability_sender_->send(availability);
   } else {
-    RCLCPP_ERROR_THROTTLE(
-      node_->get_logger(), *node->get_clock(), 5000, "Failed to take control mode report");
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000, "Failed to take control mode report");
   }
 }
 
