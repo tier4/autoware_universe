@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef DUMMY_OPERATION_MODE_PUBLISHER__DUMMY_OPERATION_MODE_PUBLISHER_HPP_
-#define DUMMY_OPERATION_MODE_PUBLISHER__DUMMY_OPERATION_MODE_PUBLISHER_HPP_
+#ifndef DUMMY_OPERATION_MODE_PUBLISHER_HPP_
+#define DUMMY_OPERATION_MODE_PUBLISHER_HPP_
 
 // include
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
-
 
 namespace dummy_operation_mode_publisher
 {
@@ -36,7 +35,8 @@ private:
   // Subscriber
 
   // Publisher
-  rclcpp::Publisher<autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr pub_operation_mode_state_;
+  rclcpp::Publisher<autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr
+    pub_operation_mode_state_;
 
   // Service
 
@@ -50,8 +50,7 @@ private:
   // State
 
   // Diagnostics
-
 };
 }  // namespace dummy_operation_mode_publisher
 
-#endif  // DUMMY_OPERATION_MODE_PUBLISHER__DUMMY_OPERATION_MODE_PUBLISHER_HPP_
+#endif  // DUMMY_OPERATION_MODE_PUBLISHER_HPP_
