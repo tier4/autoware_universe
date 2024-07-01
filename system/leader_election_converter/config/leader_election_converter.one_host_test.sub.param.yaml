@@ -1,0 +1,12 @@
+/**:
+  ros__parameters:
+    availability_dest_ip: "127.0.0.1"
+    availability_dest_port: "9010"
+    mrm_state_dest_ip: "127.0.0.1"
+    mrm_state_dest_port: "9011"
+    mrm_request_src_ip: "127.0.0.1"
+    mrm_request_src_port: "9012"
+    election_communication_src_ip: "127.0.0.1"
+    election_communication_src_port: "9013"
+    election_status_src_ip: "127.0.0.1"
+    election_status_src_port: "9014"
