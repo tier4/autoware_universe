@@ -3,6 +3,6 @@
 
   <node pkg="trajectory_repeater" exec="trajectory_repeater_node" name="trajectory_repeater" output="screen">
     <remap from="~/input/trajectory" to="/main/planning/scenario_planning/trajectory"/>
-    <remap from="~/output/trajectory" to="/planning/scenario_planning/trajectory"/>
+    <remap from="~/output/trajectory" to="/planning/trajectory_repeater/trajectory"/>
   </node>
 </launch>
