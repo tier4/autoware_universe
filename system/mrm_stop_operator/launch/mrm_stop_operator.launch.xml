@@ -1,11 +1,18 @@
 <launch>
   <arg name="mrm_stop_operator_param_path" default="$(find-pkg-share mrm_stop_operator)/config/mrm_stop_operator.param.yaml"/>
+  <arg name="input_mrm_request" default="/system/mrm_request"/>
+  <arg name="input_odometry" default="/localization/kinematic_state"/>
+  <arg name="output_max_velocity" default="/planning/scenario_planning/max_velocity_candidates"/>
+  <arg name="output_max_velocity_clear_command" default="/planning/scenario_planning/clear_velocity_limit"/>
+  <arg name="output_mrm_state" default="/system/fail_safe/mrm_state"/>
 
   <node pkg="mrm_stop_operator" exec="mrm_stop_operator_node" name="mrm_stop_operator" output="screen">
     <param from="$(var mrm_stop_operator_param_path)"/>
 
-    <remap from="~/input/mrm_request" to="/system/mrm_request"/>
-    <remap from="~/output/velocity_limit" to="/planning/scenario_planning/max_velocity_candidates"/>
-    <remap from="~/output/velocity_limit_clear_command" to="/planning/scenario_planning/clear_velocity_limit"/>
+    <remap from="~/input/mrm_request" to="$(var input_mrm_request)"/>
+    <remap from="~/input/odometry" to="$(var input_odometry)"/>
+    <remap from="~/output/velocity_limit" to="$(var output_max_velocity)"/>
+    <remap from="~/output/velocity_limit_clear_command" to="$(var output_max_velocity_clear_command)"/>
+    <remap from="~/output/mrm_state" to="$(var output_mrm_state)"/>
   </node>
 </launch>

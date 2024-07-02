@@ -21,6 +21,8 @@
 #include <tier4_planning_msgs/msg/velocity_limit.hpp>
 #include <tier4_planning_msgs/msg/velocity_limit_clear_command.hpp>
 #include <tier4_system_msgs/msg/mrm_behavior.hpp>
+#include <tier4_system_msgs/msg/mrm_state.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 
 namespace mrm_stop_operator
 {
@@ -44,6 +46,7 @@ private:
 
   // Subscriber
   rclcpp::Subscription<tier4_system_msgs::msg::MrmBehavior>::SharedPtr sub_mrm_request_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
 
   void onMrmRequest(const tier4_system_msgs::msg::MrmBehavior::ConstSharedPtr msg);
 
@@ -53,17 +56,23 @@ private:
   rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimit>::SharedPtr pub_velocity_limit_;
   rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>::SharedPtr
     pub_velocity_limit_clear_command_;
-
+  rclcpp::Publisher<tier4_system_msgs::msg::MrmState>::SharedPtr pub_mrm_state_;
   // Service
 
   // Client
 
   // Timer
+  rclcpp::TimerBase::SharedPtr timer_;
+
+  rclcpp::CallbackGroup::SharedPtr sub_odm_group_;
 
   // State
   tier4_system_msgs::msg::MrmBehavior last_mrm_request_;
+  tier4_system_msgs::msg::MrmState current_mrm_state_;
 
   void initState();
+  void onTimer();
+  bool isStopped();
 
   // Diagnostics
 };

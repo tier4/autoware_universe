@@ -30,14 +30,29 @@ MrmStopOperator::MrmStopOperator(const rclcpp::NodeOptions & node_options)
     "~/input/mrm_request", 10,
     std::bind(&MrmStopOperator::onMrmRequest, this, std::placeholders::_1));
 
+  sub_odm_group_ =
+    create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive, false);
+  rclcpp::SubscriptionOptions odm_options = rclcpp::SubscriptionOptions();
+  odm_options.callback_group = sub_odm_group_;
+  auto not_executed_callback = []([[maybe_unused]] const typename nav_msgs::msg::Odometry::ConstSharedPtr msg) {};
+  sub_odom_ = create_subscription<nav_msgs::msg::Odometry>(
+    "~/input/odometry", 10, not_executed_callback, odm_options);
+
   // Publisher
   pub_velocity_limit_ = create_publisher<tier4_planning_msgs::msg::VelocityLimit>(
     "~/output/velocity_limit", rclcpp::QoS{10}.transient_local());
   pub_velocity_limit_clear_command_ =
     create_publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>(
       "~/output/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local());
+  pub_mrm_state_ =
+    create_publisher<tier4_system_msgs::msg::MrmState>(
+      "~/output/mrm_state", rclcpp::QoS{1}.transient_local());
+  
 
   // Timer
+  const auto update_period_ns = rclcpp::Rate(10).period();
+  timer_ = rclcpp::create_timer(
+    this, get_clock(), update_period_ns, std::bind(&MrmStopOperator::onTimer, this));
 
   // Service
 
@@ -67,12 +82,45 @@ void MrmStopOperator::onMrmRequest(const tier4_system_msgs::msg::MrmBehavior::Co
     pub_velocity_limit_->publish(velocity_limit);
 
     last_mrm_request_ = *msg;
+    current_mrm_state_.behavior = *msg;
+    current_mrm_state_.state = tier4_system_msgs::msg::MrmState::MRM_OPERATING;
   }
 }
 
 void MrmStopOperator::initState()
 {
   last_mrm_request_.type = tier4_system_msgs::msg::MrmBehavior::NONE;
+  current_mrm_state_.state = tier4_system_msgs::msg::MrmState::NORMAL;
+  current_mrm_state_.behavior.type = tier4_system_msgs::msg::MrmBehavior::NONE;
+}
+
+void MrmStopOperator::onTimer()
+{ 
+  if (current_mrm_state_.state == tier4_system_msgs::msg::MrmState::MRM_OPERATING) {
+    if (current_mrm_state_.behavior.type == tier4_system_msgs::msg::MrmBehavior::COMFORTABLE_STOP) {
+      if (isStopped()) {
+        current_mrm_state_.state = tier4_system_msgs::msg::MrmState::MRM_SUCCEEDED;
+      } else {
+        // nothing to do
+      }
+    } else {
+      //TODO
+    }
+  }
+}
+
+bool MrmStopOperator::isStopped()
+{
+  constexpr auto th_stopped_velocity = 0.001;
+  auto current_odom  = std::make_shared<nav_msgs::msg::Odometry>();
+  rclcpp::MessageInfo message_info;
+
+  const bool success = sub_odom_->take(*current_odom, message_info);
+  if (success) {
+    return current_odom->twist.twist.linear.x < th_stopped_velocity;
+  } else {
+    return false;
+  }
 }
 
 }  // namespace mrm_stop_operator
