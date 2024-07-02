@@ -346,6 +346,25 @@ void PlanningEvaluatorNode::onOdometry(const Odometry::ConstSharedPtr odometry_m
 {
   ego_state_ptr_ = odometry_msg;
   metrics_calculator_.setEgoPose(odometry_msg->pose.pose);
+  {
+    DiagnosticArray metrics_msg;
+    metrics_msg.header.stamp = now();
+
+    getRouteData();
+    if (route_handler_.isHandlerReady() && ego_state_ptr_) {
+      metrics_msg.status.push_back(generateLaneletDiagnosticStatus());
+    }
+
+    const auto acc = accel_sub_.takeData();
+
+    if (acc && ego_state_ptr_) {
+      metrics_msg.status.push_back(generateKinematicStateDiagnosticStatus(*acc));
+    }
+
+    if (!metrics_msg.status.empty()) {
+      metrics_pub_->publish(metrics_msg);
+    }
+  }
 
   if (modified_goal_ptr_) {
     publishModifiedGoalDeviationMetrics();

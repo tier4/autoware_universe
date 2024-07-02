@@ -21,11 +21,15 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 
+#include <autoware/route_handler/route_handler.hpp>
+#include <autoware/universe_utils/ros/polling_subscriber.hpp>
+
 #include "autoware_perception_msgs/msg/predicted_objects.hpp"
 #include "autoware_planning_msgs/msg/pose_with_uuid_stamped.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "autoware_planning_msgs/msg/trajectory_point.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
+#include "geometry_msgs/msg/accel_with_covariance_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <diagnostic_msgs/msg/detail/diagnostic_status__struct.hpp>
@@ -45,6 +49,9 @@ using autoware_planning_msgs::msg::TrajectoryPoint;
 using diagnostic_msgs::msg::DiagnosticArray;
 using diagnostic_msgs::msg::DiagnosticStatus;
 using nav_msgs::msg::Odometry;
+using LaneletMapBin = autoware_map_msgs::msg::LaneletMapBin;
+using autoware_planning_msgs::msg::LaneletRoute;
+using geometry_msgs::msg::AccelWithCovarianceStamped;
 /**
  * @brief Node for planning evaluation
  */
@@ -139,10 +146,17 @@ private:
   rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
   rclcpp::Subscription<PoseWithUuidStamped>::SharedPtr modified_goal_sub_;
   rclcpp::Subscription<Odometry>::SharedPtr odom_sub_;
+  autoware::universe_utils::InterProcessPollingSubscriber<LaneletRoute> route_subscriber_{
+    this, "~/input/route", rclcpp::QoS{1}.transient_local()};
+  autoware::universe_utils::InterProcessPollingSubscriber<LaneletMapBin> vector_map_subscriber_{
+    this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
+  autoware::universe_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> accel_sub_{
+    this, "~/input/acceleration"};
 
   rclcpp::Publisher<DiagnosticArray>::SharedPtr metrics_pub_;
   std::shared_ptr<tf2_ros::TransformListener> transform_listener_{nullptr};
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  autoware::route_handler::RouteHandler route_handler_;
 
   // Parameters
   std::string output_file_str_;
