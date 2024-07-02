@@ -25,12 +25,13 @@
 // Autoware
 #include <tier4_autoware_utils/ros/update_param.hpp>
 
-#include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_auto_vehicle_msgs/msg/control_mode_report.hpp>
 #include <autoware_auto_vehicle_msgs/msg/gear_command.hpp>
 #include <autoware_auto_vehicle_msgs/msg/hazard_lights_command.hpp>
+#include <tier4_system_msgs/msg/mrm_behavior.hpp>
 #include <tier4_system_msgs/msg/mrm_behavior_status.hpp>
+#include <tier4_system_msgs/msg/mrm_state.hpp>
 #include <tier4_system_msgs/msg/operation_mode_availability.hpp>
 #include <tier4_system_msgs/srv/operate_mrm.hpp>
 
@@ -117,9 +118,9 @@ private:
   void publishHazardCmd();
   void publishGearCmd();
 
-  rclcpp::Publisher<autoware_adapi_v1_msgs::msg::MrmState>::SharedPtr pub_mrm_state_;
+  rclcpp::Publisher<tier4_system_msgs::msg::MrmState>::SharedPtr pub_mrm_state_;
 
-  autoware_adapi_v1_msgs::msg::MrmState mrm_state_;
+  tier4_system_msgs::msg::MrmState mrm_state_;
   void publishMrmState();
 
   // parameter callback
@@ -136,7 +137,7 @@ private:
   rclcpp::Client<tier4_system_msgs::srv::OperateMrm>::SharedPtr client_mrm_emergency_stop_;
 
   bool requestMrmBehavior(
-    const autoware_adapi_v1_msgs::msg::MrmState::_behavior_type & mrm_behavior,
+    const tier4_system_msgs::msg::MrmBehavior::_type_type & mrm_behavior,
     RequestType request_type) const;
   void logMrmCallingResult(
     const tier4_system_msgs::srv::OperateMrm::Response & result, const std::string & behavior,
@@ -164,7 +165,7 @@ private:
   void updateMrmState();
   void operateMrm();
   void handleFailedRequest();
-  autoware_adapi_v1_msgs::msg::MrmState::_behavior_type getCurrentMrmBehavior();
+  tier4_system_msgs::msg::MrmBehavior::_type_type getCurrentMrmBehavior();
   bool isStopped();
   bool isEmergency() const;
   bool isArrivedAtGoal();
