@@ -33,7 +33,7 @@ void AvailabilityConverter::setUdpSender(const std::string & dest_ip, const std:
 
 void AvailabilityConverter::setSubscriber()
 {
-  const auto qos = rclcpp::QoS(1).transient_local();
+  const auto qos = rclcpp::QoS(1);
   availability_callback_group_ =
     node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions availability_options = rclcpp::SubscriptionOptions();
@@ -75,7 +75,8 @@ void AvailabilityConverter::convertToUdp(
     availability.pull_over = availability_msg->pull_over;
     udp_availability_sender_->send(availability);
   } else {
-    RCLCPP_ERROR(node_->get_logger(), "Failed to take control mode report");
+    RCLCPP_ERROR_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), 5000, "Failed to take control mode report");
   }
 }
 
