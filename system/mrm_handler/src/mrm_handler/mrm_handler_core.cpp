@@ -227,9 +227,9 @@ void MrmHandler::publishMrmState()
 
 void MrmHandler::operateMrm()
 {
-  using tier4_system_msgs::msg::MrmState;
   using tier4_system_msgs::msg::MrmBehavior;
-
+  using tier4_system_msgs::msg::MrmState;
+  
   if (mrm_state_.state == MrmState::NORMAL) {
     // Cancel MRM behavior when returning to NORMAL state
     const auto current_mrm_behavior = MrmBehavior::NONE;
@@ -271,8 +271,8 @@ void MrmHandler::operateMrm()
 
 void MrmHandler::handleFailedRequest()
 {
-  using tier4_system_msgs::msg::MrmState;
   using tier4_system_msgs::msg::MrmBehavior;
+  using tier4_system_msgs::msg::MrmState;
 
   if (requestMrmBehavior(MrmBehavior::EMERGENCY_STOP, CALL)) {
     if (mrm_state_.state != MrmState::MRM_OPERATING) transitionTo(MrmState::MRM_OPERATING);
@@ -286,8 +286,8 @@ bool MrmHandler::requestMrmBehavior(
   const tier4_system_msgs::msg::MrmBehavior::_type_type & mrm_behavior,
   RequestType request_type) const
 {
-  using tier4_system_msgs::msg::MrmState;
   using tier4_system_msgs::msg::MrmBehavior;
+  using tier4_system_msgs::msg::MrmState;
 
   auto request = std::make_shared<tier4_system_msgs::srv::OperateMrm::Request>();
   if (request_type == RequestType::CALL) {
@@ -522,8 +522,8 @@ void MrmHandler::updateMrmState()
 
 tier4_system_msgs::msg::MrmBehavior::_type_type MrmHandler::getCurrentMrmBehavior()
 {
-  using tier4_system_msgs::msg::MrmState;
   using tier4_system_msgs::msg::MrmBehavior;
+  using tier4_system_msgs::msg::MrmState;
   using tier4_system_msgs::msg::OperationModeAvailability;
 
   // State machine
