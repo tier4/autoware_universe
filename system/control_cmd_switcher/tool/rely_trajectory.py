@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 
-import rclpy
-from rclpy.node import Node
-from autoware_auto_planning_msgs.msg import Trajectory
 import threading
 
-class RelayTrajectoryNode(Node):
+from autoware_auto_planning_msgs.msg import Trajectory
+import rclpy
+from rclpy.node import Node
 
+
+class RelayTrajectoryNode(Node):
     def __init__(self):
-        super().__init__('relay_trajectory')
+        super().__init__("relay_trajectory")
         self.subscription = self.create_subscription(
-            Trajectory,
-            '/tmp/planning/scenario_planning/trajectory',
-            self.listener_callback,
-            10)
-        self.publisher = self.create_publisher(Trajectory, '/planning/scenario_planning/trajectory', 10)
+            Trajectory, "/tmp/planning/scenario_planning/trajectory", self.listener_callback, 10
+        )
+        self.publisher = self.create_publisher(
+            Trajectory, "/planning/scenario_planning/trajectory", 10
+        )
         self.running = True
 
     def listener_callback(self, msg):
@@ -29,7 +30,7 @@ def main(args=None):
         nonlocal node
         while True:
             user_input = input("Enter 'y' to stop publishing: ")
-            if user_input.lower() == 'y':
+            if user_input.lower() == "y":
                 node.running = False
                 print("Publishing stopped.")
                 break
@@ -43,5 +44,6 @@ def main(args=None):
     node.destroy_node()
     rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

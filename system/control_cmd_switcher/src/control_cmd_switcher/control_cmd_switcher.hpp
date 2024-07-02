@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CONTROL_SWITCHER__CONTROL_CMD_SWITCHER_HPP_
-#define CONTROL_SWITCHER__CONTROL_CMD_SWITCHER_HPP_
+#ifndef CONTROL_CMD_SWITCHER__CONTROL_CMD_SWITCHER_HPP_
+#define CONTROL_CMD_SWITCHER__CONTROL_CMD_SWITCHER_HPP_
 
 // Core
+#include <atomic>
 #include <memory>
 #include <string>
-#include <atomic>
-
 
 // Autoware
 #include <autoware_auto_control_msgs/msg/ackermann_control_command.hpp>
@@ -28,28 +27,29 @@
 // ROS 2 core
 #include <rclcpp/rclcpp.hpp>
 
-
 class ControlCmdSwitcher : public rclcpp::Node
 {
 public:
   explicit ControlCmdSwitcher(const rclcpp::NodeOptions & node_options);
 
 private:
-
   // Subscribers
-  rclcpp::Subscription<autoware_auto_control_msgs::msg::AckermannControlCommand>::SharedPtr sub_main_control_cmd_;
-  rclcpp::Subscription<autoware_auto_control_msgs::msg::AckermannControlCommand>::SharedPtr sub_sub_control_cmd_;
+  rclcpp::Subscription<autoware_auto_control_msgs::msg::AckermannControlCommand>::SharedPtr
+    sub_main_control_cmd_;
+  rclcpp::Subscription<autoware_auto_control_msgs::msg::AckermannControlCommand>::SharedPtr
+    sub_sub_control_cmd_;
   rclcpp::Subscription<tier4_system_msgs::msg::ElectionStatus>::SharedPtr sub_election_status;
-  void onMainControlCmd(const autoware_auto_control_msgs::msg::AckermannControlCommand::ConstSharedPtr msg);
-  void onSubControlCmd(const autoware_auto_control_msgs::msg::AckermannControlCommand::ConstSharedPtr msg);
+  void onMainControlCmd(
+    const autoware_auto_control_msgs::msg::AckermannControlCommand::ConstSharedPtr msg);
+  void onSubControlCmd(
+    const autoware_auto_control_msgs::msg::AckermannControlCommand::ConstSharedPtr msg);
   void onElectionStatus(const tier4_system_msgs::msg::ElectionStatus::ConstSharedPtr msg);
 
-
   // Publisher
-  rclcpp::Publisher<autoware_auto_control_msgs::msg::AckermannControlCommand>::SharedPtr pub_control_cmd_;
-
+  rclcpp::Publisher<autoware_auto_control_msgs::msg::AckermannControlCommand>::SharedPtr
+    pub_control_cmd_;
 
   std::atomic<bool> use_main_control_cmd_;
 };
 
-#endif  // CONTROL_SWITCHER__CONTROL_SWITCHER_HPP_
+#endif  // CONTROL_CMD_SWITCHER__CONTROL_CMD_SWITCHER_HPP_
