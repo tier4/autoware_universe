@@ -99,7 +99,7 @@ MrmHandler::MrmHandler() : Node("mrm_handler")
   mrm_state_.behavior.type = tier4_system_msgs::msg::MrmBehavior::NONE;
   is_operation_mode_availability_timeout = false;
 
-  // Timera
+  // Timer
   const auto update_period_ns = rclcpp::Rate(param_.update_rate).period();
   timer_ = rclcpp::create_timer(
     this, get_clock(), update_period_ns, std::bind(&MrmHandler::onTimer, this));
