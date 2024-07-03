@@ -137,7 +137,7 @@ private:
   /**
    * @brief extract path from behavior tree output
    */
-  std::pair<PathWithLaneId::SharedPtr, PathWithLaneId::SharedPtr> getPath(
+  PathWithLaneId::SharedPtr getPath(
     const BehaviorModuleOutput & bt_out);
 
   /**

@@ -478,14 +478,14 @@ void BehaviorPathPlannerNode::run()
   const auto output = bt_manager_->run(planner_data_);
 
   // path handling
-  const auto paths = getPath(output);
-  const auto path = paths.first;
-  const auto original_path = paths.second;
+  const auto original_path = getPath(output);
 
   const auto path_candidate = getPathCandidate(output);
-  planner_data_->prev_output_path = path;
+  planner_data_->prev_output_path = original_path;
 
+  const auto path = original_path;
   auto clipped_path = modifyPathForSmoothGoalConnection(*path);
+  clipped_path = util::resamplePathWithSpline(clipped_path, planner_data_->parameters.path_interval);
   clipPathLength(clipped_path);
 
   if (!clipped_path.points.empty()) {
@@ -531,7 +531,7 @@ void BehaviorPathPlannerNode::run()
 }
 
 // output: spline interpolated path, original path
-std::pair<PathWithLaneId::SharedPtr, PathWithLaneId::SharedPtr> BehaviorPathPlannerNode::getPath(
+PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPath(
   const BehaviorModuleOutput & bt_output)
 {
   // TODO(Horibe) do some error handling when path is not available.
@@ -542,9 +542,7 @@ std::pair<PathWithLaneId::SharedPtr, PathWithLaneId::SharedPtr> BehaviorPathPlan
   RCLCPP_DEBUG(
     get_logger(), "BehaviorTreeManager: output is %s.", bt_output.path ? "FOUND" : "NOT FOUND");
 
-  const auto resampled_path =
-    util::resamplePathWithSpline(*path, planner_data_->parameters.path_interval);
-  return std::make_pair(std::make_shared<PathWithLaneId>(resampled_path), path);
+  return path;
 }
 
 PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPathCandidate(
