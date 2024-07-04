@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <!-- Parameter files -->
+  <arg name="component_state_monitor_topic_path"/>
+  <arg name="emergency_handler_param_path"/>
+  <arg name="duplicated_node_checker_param_path"/>
+  <arg name="mrm_comfortable_stop_operator_param_path"/>
+  <arg name="mrm_emergency_stop_operator_param_path"/>
+  <arg name="hazard_lights_selector_param_path"/>
+  <arg name="dummy_diag_publisher_param_path"/>
+  <arg name="system_monitor_cpu_monitor_param_path"/>
+  <arg name="system_monitor_gpu_monitor_param_path"/>
+  <arg name="system_monitor_hdd_monitor_param_path"/>
+  <arg name="system_monitor_mem_monitor_param_path"/>
+  <arg name="system_monitor_net_monitor_param_path"/>
+  <arg name="system_monitor_ntp_monitor_param_path"/>
+  <arg name="system_monitor_process_monitor_param_path"/>
+  <arg name="system_monitor_voltage_monitor_param_path"/>
+
+  <arg name="launch_system_monitor" default="true" description="launch system monitor"/>
+  <arg name="launch_dummy_diag_publisher" description="launch dummy diag publisher"/>
+  <arg name="run_mode" default="online" description="options: online, logging_simulation, planning_simulation"/>
+  <arg name="sensor_model" description="sensor model name"/>
+
+  <arg name="use_diagnostic_graph" default="false" description="use diagnostic graph packages"/>
+  <arg name="mrm_handler_param_path" if="$(var use_diagnostic_graph)"/>
+  <arg name="diagnostic_graph_aggregator_param_path" if="$(var use_diagnostic_graph)"/>
+  <arg name="diagnostic_graph_aggregator_graph_path" if="$(var use_diagnostic_graph)"/>
+  <arg name="diagnostic_graph_aggregator_planning_simulator_graph_path" if="$(var use_diagnostic_graph)"/>
+
+  <let name="sensor_launch_pkg" value="$(find-pkg-share $(var sensor_model)_launch)"/>
+
+  <!-- Dummy Diag Publisher -->
+  <arg name="launch_rqt_reconfigure" default="false"/>
+  <arg name="launch_rqt_runtime_monitor" default="false"/>
+  <arg name="launch_rqt_robot_monitor" default="false"/>
+  <arg name="launch_rqt_runtime_monitor_err" default="false"/>
+
+  <group>
+    <push-ros-namespace namespace="/system"/>
+
+    <!-- System Monitor -->
+    <group if="$(var launch_system_monitor)">
+      <push-ros-namespace namespace="system_monitor"/>
+      <include file="$(find-pkg-share system_monitor)/launch/system_monitor.launch.xml">
+        <arg name="cpu_monitor_config_file" value="$(var system_monitor_cpu_monitor_param_path)"/>
+        <arg name="gpu_monitor_config_file" value="$(var system_monitor_gpu_monitor_param_path)"/>
+        <arg name="hdd_monitor_config_file" value="$(var system_monitor_hdd_monitor_param_path)"/>
+        <arg name="mem_monitor_config_file" value="$(var system_monitor_mem_monitor_param_path)"/>
+        <arg name="net_monitor_config_file" value="$(var system_monitor_net_monitor_param_path)"/>
+        <arg name="ntp_monitor_config_file" value="$(var system_monitor_ntp_monitor_param_path)"/>
+        <arg name="process_monitor_config_file" value="$(var system_monitor_process_monitor_param_path)"/>
+        <arg name="voltage_monitor_config_file" value="$(var system_monitor_voltage_monitor_param_path)"/>
+      </include>
+    </group>
+
+    <!-- Service Log Checker -->
+    <group>
+      <include file="$(find-pkg-share component_interface_tools)/launch/service_log_checker.launch.xml"/>
+    </group>
+
+    <!-- Component State Monitor -->
+    <group>
+      <include file="$(find-pkg-share component_state_monitor)/launch/component_state_monitor.launch.py">
+        <arg name="mode" value="$(var run_mode)"/>
+        <arg name="file" value="$(var component_state_monitor_topic_path)"/>
+      </include>
+    </group>
+
+    <!-- Error Monitor -->
+    <group unless="$(var use_diagnostic_graph)">
+      <let name="config_file" value="$(var system_error_monitor_param_path)" if="$(eval &quot;'$(var run_mode)'=='online'&quot;)"/>
+      <let name="config_file" value="$(var system_error_monitor_param_path)" if="$(eval &quot;'$(var run_mode)'=='logging_simulation'&quot;)"/>
+      <let name="config_file" value="$(var system_error_monitor_planning_simulator_param_path)" if="$(eval &quot;'$(var run_mode)'=='planning_simulation'&quot;)"/>
+      <include file="$(find-pkg-share system_error_monitor)/launch/system_error_monitor.launch.xml">
+        <arg name="config_file" value="$(var config_file)"/>
+        <arg name="extra_agg_config_file_sensing" value="$(var sensor_launch_pkg)/config/diagnostic_aggregator/sensor_kit.param.yaml"/>
+        <arg name="extra_agg_config_file_system" value="$(var diagnostic_aggregator_system_param_path)"/>
+        <arg name="extra_agg_config_file_vehicle" value="$(var diagnostic_aggregator_vehicle_param_path)"/>
+        <arg name="use_emergency_hold" value="false"/>
+      </include>
+    </group>
+
+    <!-- Emergency Handler -->
+    <group unless="$(var use_diagnostic_graph)">
+      <include file="$(find-pkg-share emergency_handler)/launch/emergency_handler.launch.xml">
+        <arg name="config_file" value="$(var emergency_handler_param_path)"/>
+      </include>
+    </group>
+
+    <group>
+      <include file="$(find-pkg-share duplicated_node_checker)/launch/duplicated_node_checker.launch.xml">
+        <arg name="config_file" value="$(var duplicated_node_checker_param_path)"/>
+      </include>
+    </group>
+
+    <!-- MRM Operator -->
+    <group>
+      <include file="$(find-pkg-share mrm_comfortable_stop_operator)/launch/mrm_comfortable_stop_operator.launch.py">
+        <arg name="config_file" value="$(var mrm_comfortable_stop_operator_param_path)"/>
+      </include>
+    </group>
+    <group>
+      <include file="$(find-pkg-share mrm_emergency_stop_operator)/launch/mrm_emergency_stop_operator.launch.py">
+        <arg name="config_file" value="$(var mrm_emergency_stop_operator_param_path)"/>
+      </include>
+    </group>
+    <!-- <group>
+      <include file="$(find-pkg-share mrm_pull_over_manager)/launch/mrm_pull_over_manager.launch.xml"/>
+    </group>
+    <group>
+      <include file="$(find-pkg-share emergency_goal_manager)/launch/emergency_goal_manager.launch.xml"/>
+    </group> -->
+
+    <!-- MRM Handler -->
+    <group if="$(var use_diagnostic_graph)">
+      <include file="$(find-pkg-share mrm_handler)/launch/mrm_handler.launch.xml">
+        <arg name="config_file" value="$(var mrm_handler_param_path)"/>
+        <arg name="output_mrm_state" value="/system/fail_safe/mrm_state/tmp"/>
+      </include>
+    </group>
+
+    <!-- Diagnostic Graph Aggregator -->
+    <group if="$(var use_diagnostic_graph)">
+      <let name="graph_file" value="$(var diagnostic_graph_aggregator_graph_path)" if="$(eval &quot;'$(var run_mode)'=='online'&quot;)"/>
+      <let name="graph_file" value="$(var diagnostic_graph_aggregator_graph_path)" if="$(eval &quot;'$(var run_mode)'=='logging_simulation'&quot;)"/>
+      <let name="graph_file" value="$(var diagnostic_graph_aggregator_planning_simulator_graph_path)" if="$(eval &quot;'$(var run_mode)'=='planning_simulation'&quot;)"/>
+      <include file="$(find-pkg-share diagnostic_graph_aggregator)/launch/aggregator.launch.xml">
+        <arg name="param_file" value="$(var diagnostic_graph_aggregator_param_path)"/>
+        <arg name="graph_file" value="$(var graph_file)"/>
+      </include>
+    </group>
+
+    <!-- Hazard Status Converter -->
+    <group if="$(var use_diagnostic_graph)">
+      <include file="$(find-pkg-share hazard_status_converter)/launch/hazard_status_converter.launch.xml"/>
+    </group>
+  </group>
+
+  <!-- hazard selector -->
+  <group>
+    <include file="$(find-pkg-share hazard_lights_selector)/launch/hazard_lights_selector.launch.xml">
+      <arg name="param_path" value="$(var hazard_lights_selector_param_path)"/>
+    </include>
+  </group>
+
+  <!-- Dummy Diag Publisher -->
+  <group if="$(var launch_dummy_diag_publisher)">
+    <include file="$(find-pkg-share dummy_diag_publisher)/launch/dummy_diag_publisher.launch.xml">
+      <arg name="config_file" value="$(var dummy_diag_publisher_param_path)"/>
+      <arg name="extra_config_file_sensor" value="$(var sensor_launch_pkg)/config/dummy_diag_publisher/sensor_kit.param.yaml"/>
+      <arg name="launch_rqt_reconfigure" value="$(var launch_rqt_reconfigure)"/>
+      <arg name="launch_rqt_runtime_monitor" value="$(var launch_rqt_runtime_monitor)"/>
+      <arg name="launch_rqt_robot_monitor" value="$(var launch_rqt_robot_monitor)"/>
+      <arg name="launch_rqt_runtime_monitor_err" value="$(var launch_rqt_runtime_monitor_err)"/>
+    </include>
+  </group>
+
+  <!-- Control Cmd Switcher for MRMv0.6 one host test-->
+  <group>
+    <include file="$(find-pkg-share control_cmd_switcher)/launch/control_cmd_switcher.launch.xml"/>
+  </group>
+
+  <!-- Leader Election Converter-->
+  <group>
+    <include file="$(find-pkg-share leader_election_converter)/launch/leader_election_converter.launch.xml">
+      <arg name="param_file" value="$(find-pkg-share autoware_launch)/config/system/leader_election_converter/leader_election_converter.param.yaml"/>
+      <arg name="input_mrm_state" value="/system/fail_safe/mrm_state/tmp"/>
+    </include>
+  </group>
+
+  <!-- topic state monitor for MRMv0.6 one host test-->
+  <group>
+    <include file="$(find-pkg-share topic_state_monitor)/launch/topic_state_monitor.launch.xml">
+      <arg name="node_name_suffix" value="scenario_planning_trajectory"/>
+      <arg name="topic" value="/planning/scenario_planning/trajectory"/>
+      <arg name="topic_type" value="autoware_auto_planning_msgs/msg/Trajectory"/>
+      <arg name="diag_name" value="publish_to_sub_status"/>
+      <arg name="warn_rate" value="5.0"/>
+      <arg name="error_rate" value="1.0"/>
+      <arg name="timeout" value="1.0"/>
+    </include>
+
+    <!-- <include file="$(find-pkg-share topic_state_monitor)/launch/topic_state_monitor.launch.xml">
+      <arg name="node_name_suffix" value="pose_estimator_pose_with_covariance"/>
+      <arg name="topic" value="	/localization/pose_estimator/pose_with_covariance"/>
+      <arg name="topic_type" value="geometry_msgs/msg/PoseWithCovarianceStamped"/>
+      <arg name="diag_name" value="publish_to_sub_status"/>
+      <arg name="warn_rate" value=""/>
+      <arg name="error_rate" value=""/>
+      <arg name="timeout" value=""/>
+    </include> -->
+  </group>
+</launch>
