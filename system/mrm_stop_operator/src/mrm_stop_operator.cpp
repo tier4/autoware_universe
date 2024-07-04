@@ -30,11 +30,11 @@ MrmStopOperator::MrmStopOperator(const rclcpp::NodeOptions & node_options)
     "~/input/mrm_request", 10,
     std::bind(&MrmStopOperator::onMrmRequest, this, std::placeholders::_1));
 
-  sub_velocity_group_ =
-    create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive, false);
+  sub_velocity_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive, false);
   rclcpp::SubscriptionOptions velocity_options = rclcpp::SubscriptionOptions();
   velocity_options.callback_group = sub_velocity_group_;
-  auto not_executed_callback = []([[maybe_unused]] const typename autoware_auto_vehicle_msgs::msg::VelocityReport::ConstSharedPtr msg) {};
+  auto not_executed_callback = []([[maybe_unused]] const typename autoware_auto_vehicle_msgs::msg::
+                                    VelocityReport::ConstSharedPtr msg) {};
   sub_velocity_ = create_subscription<autoware_auto_vehicle_msgs::msg::VelocityReport>(
     "~/input/velocity", 10, not_executed_callback, velocity_options);
 
@@ -45,9 +45,7 @@ MrmStopOperator::MrmStopOperator(const rclcpp::NodeOptions & node_options)
     create_publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>(
       "~/output/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local());
   pub_mrm_state_ =
-    create_publisher<tier4_system_msgs::msg::MrmState>(
-      "~/output/mrm_state", rclcpp::QoS{1});
-  
+    create_publisher<tier4_system_msgs::msg::MrmState>("~/output/mrm_state", rclcpp::QoS{1});
 
   // Timer
   const auto update_period_ns = rclcpp::Rate(10).period();
@@ -95,7 +93,7 @@ void MrmStopOperator::initState()
 }
 
 void MrmStopOperator::onTimer()
-{ 
+{
   if (current_mrm_state_.state == tier4_system_msgs::msg::MrmState::MRM_OPERATING) {
     if (current_mrm_state_.behavior.type == tier4_system_msgs::msg::MrmBehavior::COMFORTABLE_STOP) {
       if (isStopped()) {
@@ -104,7 +102,7 @@ void MrmStopOperator::onTimer()
         // nothing to do
       }
     } else {
-      //TODO
+      // TODO
     }
   }
   current_mrm_state_.stamp = this->now();
@@ -114,7 +112,7 @@ void MrmStopOperator::onTimer()
 bool MrmStopOperator::isStopped()
 {
   constexpr auto th_stopped_velocity = 0.001;
-  auto current_velocity  = std::make_shared<autoware_auto_vehicle_msgs::msg::VelocityReport>();
+  auto current_velocity = std::make_shared<autoware_auto_vehicle_msgs::msg::VelocityReport>();
   rclcpp::MessageInfo message_info;
 
   const bool success = sub_velocity_->take(*current_velocity, message_info);
