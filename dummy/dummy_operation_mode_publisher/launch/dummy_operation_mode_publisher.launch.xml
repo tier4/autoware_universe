@@ -1,0 +1,7 @@
+<launch>
+  <arg name="dummy_operation_mode_publisher_param_path" default="$(find-pkg-share dummy_operation_mode_publisher)/config/dummy_operation_mode_publisher.param.yaml"/>
+
+  <node pkg="dummy_operation_mode_publisher" exec="dummy_operation_mode_publisher_node" name="dummy_operation_mode_publisher" output="screen">
+    <remap from="~/output/operation_mode_state" to="/system/operation_mode/state"/>
+  </node>
+</launch>
