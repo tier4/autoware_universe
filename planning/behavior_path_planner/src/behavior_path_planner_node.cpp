@@ -485,7 +485,8 @@ void BehaviorPathPlannerNode::run()
 
   const auto path = original_path;
   auto clipped_path = modifyPathForSmoothGoalConnection(*path);
-  clipped_path = util::resamplePathWithSpline(clipped_path, planner_data_->parameters.path_interval);
+  clipped_path =
+    util::resamplePathWithSpline(clipped_path, planner_data_->parameters.path_interval);
   clipPathLength(clipped_path);
 
   if (!clipped_path.points.empty()) {
@@ -531,8 +532,7 @@ void BehaviorPathPlannerNode::run()
 }
 
 // output: spline interpolated path, original path
-PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPath(
-  const BehaviorModuleOutput & bt_output)
+PathWithLaneId::SharedPtr BehaviorPathPlannerNode::getPath(const BehaviorModuleOutput & bt_output)
 {
   // TODO(Horibe) do some error handling when path is not available.
 
