@@ -1,0 +1,18 @@
+<launch>
+  <arg name="input_main_control_cmd" default="/main/control/command/control_cmd"/>
+  <arg name="input_sub_control_cmd" default="/sub/control/command/control_cmd"/>
+  <arg name="input_election_status_main" default="/system/election/status"/>
+  <arg name="input_election_status_sub" default="/sub/system/election/status"/>
+  <arg name="output_control_cmd" default="/control/command/control_cmd"/>
+
+  <arg name="config_file" default="$(find-pkg-share control_cmd_switcher)/config/control_cmd_switcher.yaml"/>
+
+  <!-- mrm_handler -->
+  <node pkg="control_cmd_switcher" exec="control_cmd_switcher_node" name="control_cmd_switcher" output="screen">
+    <remap from="~/input/main/control_cmd" to="$(var input_main_control_cmd)"/>
+    <remap from="~/input/sub/control_cmd" to="$(var input_sub_control_cmd)"/>
+    <remap from="~/input/election/status/main" to="$(var input_election_status_main)"/>
+    <remap from="~/input/election/status/sub" to="$(var input_election_status_sub)"/>
+    <remap from="~/output/control_cmd" to="$(var output_control_cmd)"/>
+  </node>
+</launch>
