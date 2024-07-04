@@ -34,12 +34,12 @@ DummyOperationModePublisher::DummyOperationModePublisher(const rclcpp::NodeOptio
 
   // Timer
   using namespace std::literals::chrono_literals;
-  timer_ = rclcpp::create_timer(this, get_clock(), 1s, std::bind(&DummyOperationModePublisher::onTimer, this));
+  timer_ = rclcpp::create_timer(
+    this, get_clock(), 1s, std::bind(&DummyOperationModePublisher::onTimer, this));
 
   // State
 
   // Diagnostics
-
 }
 
 void DummyOperationModePublisher::onTimer()
