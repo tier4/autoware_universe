@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    min_acceleration: -4.0  # min acceleration for sub ecu mrm stop [m/s^2]
+    max_jerk: 5.0           # max jerk for sub ecu mrm stop [m/s^3]
+    min_jerk: -5.0          # min jerk for sub ecu mrm stop [m/s^3]
