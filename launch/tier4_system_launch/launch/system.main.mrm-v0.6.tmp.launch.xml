@@ -164,6 +164,7 @@
     <!-- Leader Election Converter-->
   <group>
     <include file="$(find-pkg-share leader_election_converter)/launch/leader_election_converter.launch.xml">
+      <arg name="param_file" value="$(find-pkg-share autoware_launch)/config/system/leader_election_converter/leader_election_converter.param.yaml"/>
       <arg name="input_mrm_state" value="/system/fail_safe/mrm_state/tmp"/>
     </include>
   </group>
