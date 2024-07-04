@@ -46,7 +46,7 @@ MrmStopOperator::MrmStopOperator(const rclcpp::NodeOptions & node_options)
       "~/output/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local());
   pub_mrm_state_ =
     create_publisher<tier4_system_msgs::msg::MrmState>(
-      "~/output/mrm_state", rclcpp::QoS{1}.transient_local());
+      "~/output/mrm_state", rclcpp::QoS{1});
   
 
   // Timer
