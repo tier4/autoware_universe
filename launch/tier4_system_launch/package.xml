@@ -12,7 +12,11 @@
   <buildtool_depend>autoware_cmake</buildtool_depend>
 
   <exec_depend>component_state_monitor</exec_depend>
+  <exec_depend>control_cmd_switcher</exec_depend>
+  <exec_depend>control_cmd_switcher</exec_depend>
   <exec_depend>emergency_handler</exec_depend>
+  <exec_depend>leader_election_converter</exec_depend>
+  <exec_depend>leader_election_converter</exec_depend>
   <exec_depend>system_error_monitor</exec_depend>
   <exec_depend>system_monitor</exec_depend>
 
