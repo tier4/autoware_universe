@@ -66,7 +66,7 @@ void ControlCmdSwitcher::onSubControlCmd(
 
 void ControlCmdSwitcher::onElectionStatus(
   const tier4_system_msgs::msg::ElectionStatus::ConstSharedPtr msg)
-{ 
+{
   if (msg->election_start_count <= 0) return;
   if (msg->in_election) return;
   if (((msg->path_info >> 3) & 0x01) == 1) {
