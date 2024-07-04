@@ -161,7 +161,7 @@
     <include file="$(find-pkg-share control_cmd_switcher)/launch/control_cmd_switcher.launch.xml"/>
   </group>
 
-    <!-- Leader Election Converter-->
+  <!-- Leader Election Converter-->
   <group>
     <include file="$(find-pkg-share leader_election_converter)/launch/leader_election_converter.launch.xml">
       <arg name="param_file" value="$(find-pkg-share autoware_launch)/config/system/leader_election_converter/leader_election_converter.param.yaml"/>
