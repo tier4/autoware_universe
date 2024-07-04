@@ -60,7 +60,7 @@ void MrmConverter::startUdpReceiver(const std::string & src_ip, const std::strin
 
 void MrmConverter::setSubscriber()
 {
-  const auto qos = rclcpp::QoS(1).transient_local();
+  const auto qos = rclcpp::QoS(1);
   callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions options;
   options.callback_group = callback_group_;
