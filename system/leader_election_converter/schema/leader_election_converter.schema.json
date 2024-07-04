@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for leader election converter",
+  "type": "object",
+  "definitions": {
+    "leader_election_converter": {
+      "type": "object",
+      "properties": {
+        "availability_dest_ip": {
+          "type": "string",
+          "description": "IP address of the destination of availability",
+          "default": "127.0.0.1"
+        },
+        "availability_dest_port": {
+          "type": "string",
+          "description": "Port of the destination of availability",
+          "default": "9000"
+        },
+        "mrm_state_dest_ip": {
+          "type": "string",
+          "description": "IP address of the destination of mrm_state",
+          "default": "127.0.0.1"
+        },
+        "mrm_state_dest_port": {
+          "type": "string",
+          "description": "Port of the destination of mrm_state",
+          "default": "9001"
+        },
+        "mrm_request_src_ip": {
+          "type": "string",
+          "description": "IP address of the source of mrm_request",
+          "default": "127.0.0.1"
+        },
+        "mrm_request_src_port": {
+          "type": "string",
+          "description": "Port of the source of mrm_request",
+          "default": "9002"
+        },
+        "election_communication_src_ip": {
+          "type": "string",
+          "description": "IP address of the source of election_communication",
+          "default": "127.0.0.1"
+        },
+        "election_communication_src_port": {
+          "type": "string",
+          "description": "Port of the source of election_communication",
+          "default": "9003"
+        },
+        "election_status_src_ip": {
+          "type": "string",
+          "description": "IP address of the source of election_status",
+          "default": "127.0.0.1"
+        },
+        "election_status_src_port": {
+          "type": "string",
+          "description": "Port of the source of election_status",
+          "default": "9004"
+        }
+      },
+      "required": [
+        "availability_dest_ip",
+        "availability_dest_port",
+        "mrm_state_dest_ip",
+        "mrm_state_dest_port",
+        "mrm_request_src_ip",
+        "mrm_request_src_port",
+        "election_communication_src_ip",
+        "election_communication_src_port",
+        "election_status_src_ip",
+        "election_status_src_port"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "$ref": "#/definitions/leader_election_converter"
+        }
+      },
+      "required": ["ros__parameters"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["/**"],
+  "additionalProperties": false
+}
