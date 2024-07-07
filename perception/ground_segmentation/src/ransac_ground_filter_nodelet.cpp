@@ -102,9 +102,7 @@ RANSACGroundFilterComponent::RANSACGroundFilterComponent(const rclcpp::NodeOptio
     unit_vec_ = Eigen::Vector3d::UnitX();
   } else if (unit_axis_ == "y") {
     unit_vec_ = Eigen::Vector3d::UnitY();
-  } else if (unit_axis_ == "z") {
-    unit_vec_ = Eigen::Vector3d::UnitZ();
-  } else {
+  } else {  // including (unit_axis_ == "z")
     unit_vec_ = Eigen::Vector3d::UnitZ();
   }
 
@@ -294,12 +292,13 @@ void RANSACGroundFilterComponent::filter(
   no_ground_cloud_msg_ptr->header = input->header;
   no_ground_cloud_msg_ptr->fields = input->fields;
   no_ground_cloud_msg_ptr->point_step = point_step;
+  no_ground_cloud_msg_ptr->data.resize(input->data.size());
   size_t output_size = 0;
   // use not downsampled pointcloud for extract pointcloud that higher than height threshold
   for (size_t global_size = 0; global_size < input->data.size(); global_size += point_step) {
-    float x = *reinterpret_cast<float *>(input->data[global_size + x_offset]);
-    float y = *reinterpret_cast<float *>(input->data[global_size + y_offset]);
-    float z = *reinterpret_cast<float *>(input->data[global_size + z_offset]);
+    float x = *reinterpret_cast<const float *>(&input->data[global_size + x_offset]);
+    float y = *reinterpret_cast<const float *>(&input->data[global_size + y_offset]);
+    float z = *reinterpret_cast<const float *>(&input->data[global_size + z_offset]);
     const Eigen::Vector3d transformed_point = plane_affine.inverse() * Eigen::Vector3d(x, y, z);
     if (std::abs(transformed_point.z()) > height_threshold_) {
       std::memcpy(
@@ -384,9 +383,7 @@ rcl_interfaces::msg::SetParametersResult RANSACGroundFilterComponent::paramCallb
       unit_vec_ = Eigen::Vector3d::UnitX();
     } else if (unit_axis_ == "y") {
       unit_vec_ = Eigen::Vector3d::UnitY();
-    } else if (unit_axis_ == "z") {
-      unit_vec_ = Eigen::Vector3d::UnitZ();
-    } else {
+    } else {  // including (unit_axis_ == "z")
       unit_vec_ = Eigen::Vector3d::UnitZ();
     }
     RCLCPP_DEBUG(get_logger(), "Setting unit_axis to: %s.", unit_axis_.c_str());
