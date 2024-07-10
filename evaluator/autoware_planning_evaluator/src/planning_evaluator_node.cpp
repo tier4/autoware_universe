@@ -14,8 +14,16 @@
 
 #include "autoware/planning_evaluator/planning_evaluator_node.hpp"
 
+#include "autoware/evaluator_utils/evaluator_utils.hpp"
+
+#include <autoware_lanelet2_extension/utility/query.hpp>
+#include <autoware_lanelet2_extension/utility/utilities.hpp>
+
+#include <diagnostic_msgs/msg/detail/diagnostic_status__struct.hpp>
+
 #include "boost/lexical_cast.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -63,6 +71,9 @@ PlanningEvaluatorNode::PlanningEvaluatorNode(const rclcpp::NodeOptions & node_op
   output_file_str_ = declare_parameter<std::string>("output_file");
   ego_frame_str_ = declare_parameter<std::string>("ego_frame");
 
+  planning_diag_sub_ = create_subscription<DiagnosticArray>(
+    "~/input/diagnostics", 1, std::bind(&PlanningEvaluatorNode::onDiagnostics, this, _1));
+
   // List of metrics to calculate and publish
   metrics_pub_ = create_publisher<DiagnosticArray>("~/metrics", 1);
   for (const std::string & selected_metric :
@@ -105,6 +116,121 @@ PlanningEvaluatorNode::~PlanningEvaluatorNode()
   }
 }
 
+void PlanningEvaluatorNode::onDiagnostics(const DiagnosticArray::ConstSharedPtr diag_msg)
+{
+  // add target diagnostics to the queue and remove old ones
+  for (const auto & function : target_functions_) {
+    autoware::evaluator_utils::updateDiagnosticQueue(*diag_msg, function, now(), diag_queue_);
+  }
+}
+
+DiagnosticStatus PlanningEvaluatorNode::generateDiagnosticEvaluationStatus(
+  const DiagnosticStatus & diag)
+{
+  DiagnosticStatus status;
+  status.name = diag.name;
+
+  const auto it = std::find_if(diag.values.begin(), diag.values.end(), [](const auto & key_value) {
+    return key_value.key.find("decision") != std::string::npos;
+  });
+  const bool found = it != diag.values.end();
+  status.level = (found) ? status.OK : status.ERROR;
+  status.values.push_back((found) ? *it : diagnostic_msgs::msg::KeyValue{});
+  return status;
+}
+
+void PlanningEvaluatorNode::getRouteData()
+{
+  // route
+  {
+    const auto msg = route_subscriber_.takeNewData();
+    if (msg) {
+      if (msg->segments.empty()) {
+        RCLCPP_ERROR(get_logger(), "input route is empty. ignored");
+      } else {
+        route_handler_.setRoute(*msg);
+      }
+    }
+  }
+
+  // map
+  {
+    const auto msg = vector_map_subscriber_.takeNewData();
+    if (msg) {
+      route_handler_.setMap(*msg);
+    }
+  }
+}
+
+DiagnosticStatus PlanningEvaluatorNode::generateLaneletDiagnosticStatus(
+  const Odometry::ConstSharedPtr ego_state_ptr)
+{
+  const auto & ego_pose = ego_state_ptr->pose.pose;
+  const auto current_lanelets = [&]() {
+    lanelet::ConstLanelet closest_route_lanelet;
+    route_handler_.getClosestLaneletWithinRoute(ego_pose, &closest_route_lanelet);
+    const auto shoulder_lanelets = route_handler_.getShoulderLaneletsAtPose(ego_pose);
+    lanelet::ConstLanelets closest_lanelets{closest_route_lanelet};
+    closest_lanelets.insert(
+      closest_lanelets.end(), shoulder_lanelets.begin(), shoulder_lanelets.end());
+    return closest_lanelets;
+  }();
+  const auto arc_coordinates = lanelet::utils::getArcCoordinates(current_lanelets, ego_pose);
+  lanelet::ConstLanelet current_lane;
+  lanelet::utils::query::getClosestLanelet(current_lanelets, ego_pose, &current_lane);
+
+  DiagnosticStatus status;
+  status.name = "ego_lane_info";
+  status.level = status.OK;
+  diagnostic_msgs::msg::KeyValue key_value;
+  key_value.key = "lane_id";
+  key_value.value = std::to_string(current_lane.id());
+  status.values.push_back(key_value);
+  key_value.key = "s";
+  key_value.value = std::to_string(arc_coordinates.length);
+  status.values.push_back(key_value);
+  key_value.key = "t";
+  key_value.value = std::to_string(arc_coordinates.distance);
+  status.values.push_back(key_value);
+  return status;
+}
+
+DiagnosticStatus PlanningEvaluatorNode::generateKinematicStateDiagnosticStatus(
+  const AccelWithCovarianceStamped & accel_stamped, const Odometry::ConstSharedPtr ego_state_ptr)
+{
+  DiagnosticStatus status;
+  status.name = "kinematic_state";
+  status.level = status.OK;
+  diagnostic_msgs::msg::KeyValue key_value;
+  key_value.key = "vel";
+  key_value.value = std::to_string(ego_state_ptr->twist.twist.linear.x);
+  status.values.push_back(key_value);
+  key_value.key = "acc";
+  const auto & acc = accel_stamped.accel.accel.linear.x;
+  key_value.value = std::to_string(acc);
+  status.values.push_back(key_value);
+  key_value.key = "jerk";
+  const auto jerk = [&]() {
+    if (!prev_acc_stamped_.has_value()) {
+      prev_acc_stamped_ = accel_stamped;
+      return 0.0;
+    }
+    const auto t = static_cast<double>(accel_stamped.header.stamp.sec) +
+                   static_cast<double>(accel_stamped.header.stamp.nanosec) * 1e-9;
+    const auto prev_t = static_cast<double>(prev_acc_stamped_.value().header.stamp.sec) +
+                        static_cast<double>(prev_acc_stamped_.value().header.stamp.nanosec) * 1e-9;
+    const auto dt = t - prev_t;
+    if (dt < std::numeric_limits<double>::epsilon()) return 0.0;
+
+    const auto prev_acc = prev_acc_stamped_.value().accel.accel.linear.x;
+    prev_acc_stamped_ = accel_stamped;
+    return (acc - prev_acc) / dt;
+  }();
+  key_value.value = std::to_string(jerk);
+  status.values.push_back(key_value);
+  return status;
+}
+
 DiagnosticStatus PlanningEvaluatorNode::generateDiagnosticStatus(
   const Metric & metric, const Stat<double> & metric_stat) const
 {
@@ -126,7 +252,55 @@ DiagnosticStatus PlanningEvaluatorNode::generateDiagnosticStatus(
 
 void PlanningEvaluatorNode::onTrajectory(const Trajectory::ConstSharedPtr traj_msg)
 {
-  if (!ego_state_ptr_) {
+  metrics_msg_.header.stamp = now();
+
+  const auto ego_state_ptr = odometry_sub_.takeData();
+  onOdometry(ego_state_ptr);
+  {
+    const auto objects_msg = objects_sub_.takeData();
+    onObjects(objects_msg);
+  }
+
+  {
+    const auto ref_traj_msg = ref_sub_.takeData();
+    onReferenceTrajectory(ref_traj_msg);
+  }
+
+  {
+    const auto traj_msg = traj_sub_.takeData();
+    onTrajectory(traj_msg, ego_state_ptr);
+  }
+  {
+    const auto modified_goal_msg = modified_goal_sub_.takeData();
+    onModifiedGoal(modified_goal_msg, ego_state_ptr);
+  }
+
+  {
+    // generate decision diagnostics from input diagnostics
+    for (const auto & function : target_functions_) {
+      const auto it = std::find_if(
+        diag_queue_.begin(), diag_queue_.end(),
+        [&function](const std::pair<diagnostic_msgs::msg::DiagnosticStatus, rclcpp::Time> & p) {
+          return p.first.name.find(function) != std::string::npos;
+        });
+      if (it == diag_queue_.end()) {
+        continue;
+      }
+      // generate each decision diagnostics
+      metrics_msg_.status.push_back(generateDiagnosticEvaluationStatus(it->first));
+    }
+  }
+
+  if (!metrics_msg_.status.empty()) {
+    metrics_pub_->publish(metrics_msg_);
+  }
+  metrics_msg_ = DiagnosticArray{};
+}
+
+void PlanningEvaluatorNode::onTrajectory(
+  const Trajectory::ConstSharedPtr traj_msg, const Odometry::ConstSharedPtr ego_state_ptr)
+{
+  if (!ego_state_ptr || !traj_msg) {
     return;
   }
 

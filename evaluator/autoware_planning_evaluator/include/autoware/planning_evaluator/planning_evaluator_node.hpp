@@ -27,13 +27,15 @@
 #include "autoware_planning_msgs/msg/trajectory_point.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <diagnostic_msgs/msg/detail/diagnostic_status__struct.hpp>
 
 #include <array>
 #include <deque>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
-
 namespace planning_diagnostics
 {
 using autoware_perception_msgs::msg::PredictedObjects;
@@ -83,14 +85,53 @@ public:
   void onModifiedGoal(const PoseWithUuidStamped::ConstSharedPtr modified_goal_msg);
 
   /**
+   * @brief obtain diagnostics information
+   */
+  void onDiagnostics(const DiagnosticArray::ConstSharedPtr diag_msg);
+
+  /**
    * @brief publish the given metric statistic
    */
   DiagnosticStatus generateDiagnosticStatus(
     const Metric & metric, const Stat<double> & metric_stat) const;
 
+  /**
+   * @brief publish current ego lane info
+   */
+  DiagnosticStatus generateDiagnosticEvaluationStatus(const DiagnosticStatus & diag);
+
+  /**
+   * @brief publish current ego lane info
+   */
+  DiagnosticStatus generateLaneletDiagnosticStatus(const Odometry::ConstSharedPtr ego_state_ptr);
+
+  /**
+   * @brief publish current ego kinematic state
+   */
+  DiagnosticStatus generateKinematicStateDiagnosticStatus(
+    const AccelWithCovarianceStamped & accel_stamped, const Odometry::ConstSharedPtr ego_state_ptr);
+
 private:
   static bool isFinite(const TrajectoryPoint & p);
-  void publishModifiedGoalDeviationMetrics();
+
+  /**
+   * @brief update route handler data
+   */
+  void getRouteData();
+
+  /**
+   * @brief fetch data and publish diagnostics
+   */
+  void onTimer();
+
+  /**
+   * @brief fetch topic data
+   */
+  void fetchData();
+  // The diagnostics cycle is faster than timer, and each node publishes diagnostic separately.
+  // takeData() in onTimer() with a polling subscriber will miss a topic, so save all topics with
+  // onDiagnostics().
+  rclcpp::Subscription<DiagnosticArray>::SharedPtr planning_diag_sub_;
 
   // ROS
   rclcpp::Subscription<Trajectory>::SharedPtr traj_sub_;
@@ -114,8 +155,11 @@ private:
   std::deque<rclcpp::Time> stamps_;
   std::array<std::deque<Stat<double>>, static_cast<size_t>(Metric::SIZE)> metric_stats_;
 
-  Odometry::ConstSharedPtr ego_state_ptr_;
-  PoseWithUuidStamped::ConstSharedPtr modified_goal_ptr_;
+  rclcpp::TimerBase::SharedPtr timer_;
+  // queue for diagnostics and time stamp
+  std::deque<std::pair<DiagnosticStatus, rclcpp::Time>> diag_queue_;
+  const std::vector<std::string> target_functions_ = {"obstacle_cruise_planner"};
+  std::optional<AccelWithCovarianceStamped> prev_acc_stamped_{std::nullopt};
 };
 }  // namespace planning_diagnostics
 
