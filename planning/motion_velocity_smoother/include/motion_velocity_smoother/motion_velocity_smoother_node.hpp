@@ -132,7 +132,7 @@ private:
     NORMAL = 3,
   };
 
-  enum class ForceSlowDrivingType{
+  enum class ForceSlowDrivingType {
     DEACTIVATED = 0,
     READY = 1,
     ACTIVATED = 2,

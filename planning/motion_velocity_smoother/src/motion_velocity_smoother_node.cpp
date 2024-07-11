@@ -508,8 +508,11 @@ void MotionVelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstShar
     flipVelocity(input_points);
   }
 
-  double vel_threshold = get_parameter("force_slow_driving.velocity").as_double();
-  if (force_slow_driving_mode_ == ForceSlowDrivingType::READY && current_odometry_ptr_->twist.twist.linear.x < vel_threshold) {
+  // Only activate slow driving when velocity is below threshold
+  double slow_driving_vel_threshold = get_parameter("force_slow_driving.velocity").as_double();
+  if (
+    force_slow_driving_mode_ == ForceSlowDrivingType::READY &&
+    current_odometry_ptr_->twist.twist.linear.x < slow_driving_vel_threshold) {
     force_slow_driving_mode_ = ForceSlowDrivingType::ACTIVATED;
   }
 
@@ -599,10 +602,9 @@ TrajectoryPoints MotionVelocitySmootherNode::calcTrajectoryVelocity(
   applyStopApproachingVelocity(traj_extracted);
 
   // Apply force slow driving if activated
-  double vel_threshold = get_parameter("force_slow_driving.velocity").as_double();
-  if(force_slow_driving_mode_ == ForceSlowDrivingType::ACTIVATED){
+  if (force_slow_driving_mode_ == ForceSlowDrivingType::ACTIVATED) {
     for (auto & tp : traj_extracted) {
-      tp.longitudinal_velocity_mps = vel_threshold;
+      tp.longitudinal_velocity_mps = get_parameter("force_slow_driving.velocity").as_double();
     }
   }
 
@@ -1181,13 +1183,10 @@ void MotionVelocitySmootherNode::onSlowDriving(
 {
   std::string message = "default";
   if (request->data && force_slow_driving_mode_ == ForceSlowDrivingType::DEACTIVATED) {
-    RCLCPP_INFO(get_logger(), "Force slow driving is activated");
-    
     force_slow_driving_mode_ = ForceSlowDrivingType::READY;
 
     message = "Activated force slow drving";
-  } else if(!request->data) {
-    RCLCPP_INFO(get_logger(), "Force slow driving is deactivated");
+  } else if (!request->data) {
     force_slow_driving_mode_ = ForceSlowDrivingType::DEACTIVATED;
     message = "Deactivated force slow driving";
   }
