@@ -31,8 +31,6 @@
 
 namespace centerpoint
 {
-static constexpr size_t CAPACITY_POINT = 2000000;
-
 class NetworkParam
 {
 public:
