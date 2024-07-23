@@ -991,14 +991,14 @@ bool passParkedObject(
     route_handler.getCenterLinePath(current_lanes, 0.0, std::numeric_limits<double>::max());
 
   if (objects.empty() || path.points.empty() || current_lane_path.points.empty()) {
-    return false;
+    return true;
   }
 
   const auto leading_obj_idx = getLeadingStaticObjectIdx(
     route_handler, lane_change_path, objects, object_check_min_road_shoulder_width,
     object_shiftable_ratio_threshold);
   if (!leading_obj_idx) {
-    return false;
+    return true;
   }
 
   const auto & leading_obj = objects.at(*leading_obj_idx);
@@ -1006,7 +1006,7 @@ bool passParkedObject(
   const auto leading_obj_poly =
     tier4_autoware_utils::toPolygon2d(leading_obj.initial_pose.pose, leading_obj.shape);
   if (leading_obj_poly.outer().empty()) {
-    return false;
+    return true;
   }
 
   const auto & current_path_end = current_lane_path.points.back().point.pose.position;
@@ -1028,10 +1028,10 @@ bool passParkedObject(
   if (min_dist_to_end_of_current_lane > minimum_lane_change_length) {
     debug.second.unsafe_reason = "delay lane change";
     utils::path_safety_checker::updateCollisionCheckDebugMap(object_debug, debug, false);
-    return true;
+    return false;
   }
 
-  return false;
+  return true;
 }
 
 std::optional<size_t> getLeadingStaticObjectIdx(

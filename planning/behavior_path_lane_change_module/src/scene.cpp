@@ -1375,7 +1375,7 @@ bool NormalLaneChange::getLaneChangePaths(
         std::vector<ExtendedPredictedObject> filtered_objects =
           filterObjectsInTargetLane(target_objects, target_lanes);
         if (
-          !is_stuck && utils::lane_change::passParkedObject(
+          !is_stuck && !utils::lane_change::passParkedObject(
                          route_handler, *candidate_path, filtered_objects, lane_change_buffer,
                          is_goal_in_route, *lane_change_parameters_, object_debug_)) {
           debug_print(
@@ -1417,6 +1417,24 @@ PathSafetyStatus NormalLaneChange::isApprovedPathSafe() const
 
   CollisionCheckDebugMap debug_data;
   const bool is_stuck = isVehicleStuck(current_lanes);
+
+  const auto & route_handler = *getRouteHandler();
+  const auto & lc_param = *lane_change_parameters_;
+
+  const auto min_lc_length = utils::lane_change::calcMinimumLaneChangeLength(
+    *lane_change_parameters_,
+    route_handler.getLateralIntervalsToPreferredLane(current_lanes.back()));
+  const auto is_goal_in_route = route_handler.isInGoalRouteSection(current_lanes.back());
+
+  const auto has_passed_parked_objects = utils::lane_change::passParkedObject(
+    route_handler, path, target_objects.target_lane, min_lc_length, is_goal_in_route, lc_param,
+    debug_data);
+
+  if (!has_passed_parked_objects) {
+    RCLCPP_DEBUG(logger_, "Lane change has been delayed.");
+    return {false, false};
+  }
+
   const auto safety_status = isLaneChangePathSafe(
     path, target_objects, lane_change_parameters_->rss_params_for_abort, is_stuck, debug_data);
   {
