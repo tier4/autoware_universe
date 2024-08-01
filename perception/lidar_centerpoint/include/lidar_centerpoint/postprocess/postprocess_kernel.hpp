@@ -19,7 +19,6 @@
 #include "cuda_runtime_api.h"
 #include "lidar_centerpoint/centerpoint_config.hpp"
 #include "lidar_centerpoint/utils.hpp"
-#include "thrust/device_vector.h"
 
 #include <vector>
 
@@ -37,8 +36,6 @@ public:
 
 private:
   CenterPointConfig config_;
-  thrust::device_vector<Box3D> boxes3d_d_;
-  thrust::device_vector<float> yaw_norm_thresholds_d_;
 };
 
 }  // namespace centerpoint
