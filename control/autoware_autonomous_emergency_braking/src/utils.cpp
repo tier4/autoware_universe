@@ -16,13 +16,13 @@
 
 namespace autoware::motion::control::autonomous_emergency_braking::utils
 {
-using autoware::universe_utils::Polygon2d;
-using autoware_perception_msgs::msg::PredictedObject;
-using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_auto_perception_msgs::msg::PredictedObject;
+using autoware_auto_perception_msgs::msg::PredictedObjects;
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::TransformStamped;
 using geometry_msgs::msg::Vector3;
+using tier4_autoware_utils::Polygon2d;
 
 PredictedObject transformObjectFrame(
   const PredictedObject & input, geometry_msgs::msg::TransformStamped & transform_stamped)
@@ -47,7 +47,7 @@ PredictedObject transformObjectFrame(
 }
 
 Polygon2d convertPolygonObjectToGeometryPolygon(
-  const Pose & current_pose, const autoware_perception_msgs::msg::Shape & obj_shape)
+  const Pose & current_pose, const autoware_auto_perception_msgs::msg::Shape & obj_shape)
 {
   if (obj_shape.footprint.points.empty()) {
     return {};
@@ -69,7 +69,7 @@ Polygon2d convertPolygonObjectToGeometryPolygon(
 }
 
 Polygon2d convertCylindricalObjectToGeometryPolygon(
-  const Pose & current_pose, const autoware_perception_msgs::msg::Shape & obj_shape)
+  const Pose & current_pose, const autoware_auto_perception_msgs::msg::Shape & obj_shape)
 {
   Polygon2d object_polygon;
 
@@ -133,15 +133,15 @@ Polygon2d convertBoundingBoxObjectToGeometryPolygon(
 Polygon2d convertObjToPolygon(const PredictedObject & obj)
 {
   Polygon2d object_polygon{};
-  if (obj.shape.type == autoware_perception_msgs::msg::Shape::CYLINDER) {
+  if (obj.shape.type == autoware_auto_perception_msgs::msg::Shape::CYLINDER) {
     object_polygon = utils::convertCylindricalObjectToGeometryPolygon(
       obj.kinematics.initial_pose_with_covariance.pose, obj.shape);
-  } else if (obj.shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
+  } else if (obj.shape.type == autoware_auto_perception_msgs::msg::Shape::BOUNDING_BOX) {
     const double & length_m = obj.shape.dimensions.x / 2;
     const double & width_m = obj.shape.dimensions.y / 2;
     object_polygon = utils::convertBoundingBoxObjectToGeometryPolygon(
       obj.kinematics.initial_pose_with_covariance.pose, length_m, length_m, width_m);
-  } else if (obj.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
+  } else if (obj.shape.type == autoware_auto_perception_msgs::msg::Shape::POLYGON) {
     object_polygon = utils::convertPolygonObjectToGeometryPolygon(
       obj.kinematics.initial_pose_with_covariance.pose, obj.shape);
   } else {

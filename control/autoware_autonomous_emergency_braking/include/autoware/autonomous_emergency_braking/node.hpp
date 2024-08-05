@@ -15,24 +15,21 @@
 #ifndef AUTOWARE__AUTONOMOUS_EMERGENCY_BRAKING__NODE_HPP_
 #define AUTOWARE__AUTONOMOUS_EMERGENCY_BRAKING__NODE_HPP_
 
-#include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware/universe_utils/geometry/geometry.hpp>
-#include <autoware/universe_utils/ros/polling_subscriber.hpp>
-#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tier4_autoware_utils/tier4_autoware_utils.hpp>
+#include <vehicle_info_util/vehicle_info_util.hpp>
 
-#include <autoware_perception_msgs/msg/predicted_objects.hpp>
-#include <autoware_planning_msgs/msg/trajectory.hpp>
-#include <autoware_system_msgs/msg/autoware_state.hpp>
-#include <autoware_vehicle_msgs/msg/velocity_report.hpp>
+#include <autoware_auto_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_auto_planning_msgs/msg/trajectory.hpp>
+#include <autoware_auto_system_msgs/msg/autoware_state.hpp>
+#include <autoware_auto_vehicle_msgs/msg/velocity_report.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <boost/optional.hpp>
 
@@ -53,23 +50,23 @@
 namespace autoware::motion::control::autonomous_emergency_braking
 {
 
-using autoware_planning_msgs::msg::Trajectory;
-using autoware_system_msgs::msg::AutowareState;
-using autoware_vehicle_msgs::msg::VelocityReport;
+using autoware_auto_planning_msgs::msg::Trajectory;
+using autoware_auto_system_msgs::msg::AutowareState;
+using autoware_auto_vehicle_msgs::msg::VelocityReport;
 using nav_msgs::msg::Odometry;
 using sensor_msgs::msg::Imu;
 using sensor_msgs::msg::PointCloud2;
 using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
-using autoware::universe_utils::Polygon2d;
-using autoware::vehicle_info_utils::VehicleInfo;
 using diagnostic_updater::DiagnosticStatusWrapper;
 using diagnostic_updater::Updater;
+using tier4_autoware_utils::Polygon2d;
+using vehicle_info_util::VehicleInfo;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 using Path = std::vector<geometry_msgs::msg::Pose>;
 using Vector3 = geometry_msgs::msg::Vector3;
-using autoware_perception_msgs::msg::PredictedObject;
-using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_auto_perception_msgs::msg::PredictedObject;
+using autoware_auto_perception_msgs::msg::PredictedObjects;
 
 /**
  * @brief Struct to store object data
@@ -276,7 +273,7 @@ public:
       const double p_vel = p_dist / p_dt;
 
       const auto nearest_idx =
-        autoware::motion_utils::findNearestIndex(path, nearest_collision_point);
+        tier4_autoware_utils::findNearestIndex(path, nearest_collision_point);
       const auto & nearest_path_pose = path.at(nearest_idx);
       // When the ego moves backwards, the direction of movement axis is reversed
       const auto & traj_yaw = (current_ego_speed > 0.0)
