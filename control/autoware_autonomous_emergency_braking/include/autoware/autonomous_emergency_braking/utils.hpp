@@ -15,9 +15,9 @@
 #ifndef AUTOWARE__AUTONOMOUS_EMERGENCY_BRAKING__UTILS_HPP_
 #define AUTOWARE__AUTONOMOUS_EMERGENCY_BRAKING__UTILS_HPP_
 
-#include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <tier4_autoware_utils/tier4_autoware_utils.hpp>
 
-#include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_auto_perception_msgs/msg/predicted_objects.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
@@ -35,12 +35,12 @@
 
 namespace autoware::motion::control::autonomous_emergency_braking::utils
 {
-using autoware::universe_utils::Polygon2d;
-using autoware_perception_msgs::msg::PredictedObject;
-using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_auto_perception_msgs::msg::PredictedObject;
+using autoware_auto_perception_msgs::msg::PredictedObjects;
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::TransformStamped;
+using tier4_autoware_utils::Polygon2d;
 
 /**
  * @brief Apply a transform to a predicted object
@@ -56,7 +56,7 @@ PredictedObject transformObjectFrame(
  * @param obj_shape the object's shape
  */
 Polygon2d convertPolygonObjectToGeometryPolygon(
-  const Pose & current_pose, const autoware_perception_msgs::msg::Shape & obj_shape);
+  const Pose & current_pose, const autoware_auto_perception_msgs::msg::Shape & obj_shape);
 
 /**
  * @brief Get the predicted objects cylindrical shape as a geometry polygon
@@ -64,7 +64,7 @@ Polygon2d convertPolygonObjectToGeometryPolygon(
  * @param obj_shape the object's shape
  */
 Polygon2d convertCylindricalObjectToGeometryPolygon(
-  const Pose & current_pose, const autoware_perception_msgs::msg::Shape & obj_shape);
+  const Pose & current_pose, const autoware_auto_perception_msgs::msg::Shape & obj_shape);
 
 /**
  * @brief Get the predicted objects bounding box shape as a geometry polygon

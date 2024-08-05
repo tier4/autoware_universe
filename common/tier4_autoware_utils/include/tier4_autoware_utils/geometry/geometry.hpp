@@ -343,6 +343,27 @@ inline geometry_msgs::msg::Pose calcOffsetPose(
   tf2::toMsg(tf_pose * tf_offset, pose);
   return pose;
 }
+
+/**
+ * @brief Calculate offset pose. The offset values are defined in the local coordinate of the input
+ * pose.
+ */
+inline geometry_msgs::msg::Pose calcOffsetPose(
+  const geometry_msgs::msg::Pose & p, const double x, const double y, const double z,
+  const double yaw)
+{
+  geometry_msgs::msg::Pose pose;
+  geometry_msgs::msg::Transform transform;
+  transform.translation = createTranslation(x, y, z);
+  transform.rotation = createQuaternionFromYaw(yaw);
+  tf2::Transform tf_pose;
+  tf2::Transform tf_offset;
+  tf2::fromMsg(transform, tf_offset);
+  tf2::fromMsg(p, tf_pose);
+  tf2::toMsg(tf_pose * tf_offset, pose);
+  return pose;
+}
+
 }  // namespace tier4_autoware_utils
 
 #endif  // TIER4_AUTOWARE_UTILS__GEOMETRY__GEOMETRY_HPP_

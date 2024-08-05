@@ -19,20 +19,16 @@
   <test_depend>autoware_lint_common</test_depend>
   <test_depend>autoware_test_utils</test_depend>
 
-  <depend>autoware_control_msgs</depend>
-  <depend>autoware_motion_utils</depend>
-  <depend>autoware_planning_msgs</depend>
-  <depend>autoware_pointcloud_preprocessor</depend>
-  <depend>autoware_system_msgs</depend>
-  <depend>autoware_test_utils</depend>
-  <depend>autoware_universe_utils</depend>
-  <depend>autoware_vehicle_info_utils</depend>
-  <depend>autoware_vehicle_msgs</depend>
+  <depend>autoware_auto_perception_msgs</depend>
+  <depend>autoware_auto_control_msgs</depend>
+  <depend>autoware_auto_system_msgs</depend>
+  <depend>autoware_auto_vehicle_msgs</depend>
   <depend>diagnostic_updater</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>pcl_conversions</depend>
   <depend>pcl_ros</depend>
+  <depend>pointcloud_preprocessor</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
@@ -41,6 +37,8 @@
   <depend>tf2_eigen</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>tf2_ros</depend>
+  <depend>tier4_autoware_utils</depend>
+  <depend>vehicle_info_util</depend>
   <depend>visualization_msgs</depend>
 
   <export>

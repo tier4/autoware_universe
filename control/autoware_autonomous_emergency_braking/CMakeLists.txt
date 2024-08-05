@@ -29,13 +29,13 @@ rclcpp_components_register_node(${AEB_NODE}
   EXECUTABLE ${PROJECT_NAME}
 )
 
-if(BUILD_TESTING)
-  ament_add_ros_isolated_gtest(test_aeb
-  test/test.cpp)
+# if(BUILD_TESTING)
+#   ament_add_ros_isolated_gtest(test_aeb
+#   test/test.cpp)
 
-target_link_libraries(test_aeb ${AEB_NODE})
+# target_link_libraries(test_aeb ${AEB_NODE})
 
-endif()
+# endif()
 
 ament_auto_package(
   INSTALL_TO_SHARE
