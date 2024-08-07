@@ -15,9 +15,8 @@
 #ifndef AUTOWARE__CONTROL_EVALUATOR__METRICS__DEVIATION_METRICS_HPP_
 #define AUTOWARE__CONTROL_EVALUATOR__METRICS__DEVIATION_METRICS_HPP_
 
-#include <autoware_planning_msgs/msg/trajectory_point.hpp>
-
-#include <#include "autoware_auto_planning_msgs/msg/trajectory.hpp">
+#include "autoware_auto_planning_msgs/msg/trajectory_point.hpp"
+#include "autoware_auto_planning_msgs/msg/trajectory.hpp"
 
 namespace control_diagnostics
 {

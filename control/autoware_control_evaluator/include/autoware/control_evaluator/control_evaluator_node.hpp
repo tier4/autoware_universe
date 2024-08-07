@@ -22,7 +22,7 @@
 #include <tier4_autoware_utils/tier4_autoware_utils.hpp>
 
 #include "geometry_msgs/msg/accel_with_covariance_stamped.hpp"
-#include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <autoware_auto_planning_msgs/msg/route.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 

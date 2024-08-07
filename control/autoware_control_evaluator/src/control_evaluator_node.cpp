@@ -92,7 +92,7 @@ DiagnosticStatus ControlEvaluatorNode::generateLaneletDiagnosticStatus(const Pos
   const auto current_lanelets = [&]() {
     lanelet::ConstLanelet closest_route_lanelet;
     route_handler_.getClosestLaneletWithinRoute(ego_pose, &closest_route_lanelet);
-    const auto shoulder_lanelets = route_handler_.getShoulderLaneletsAtPose(ego_pose);
+    const auto shoulder_lanelets = route_handler_.getShoulderLanelets();
     lanelet::ConstLanelets closest_lanelets{closest_route_lanelet};
     closest_lanelets.insert(
       closest_lanelets.end(), shoulder_lanelets.begin(), shoulder_lanelets.end());
