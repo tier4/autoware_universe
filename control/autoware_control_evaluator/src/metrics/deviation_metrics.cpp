@@ -14,15 +14,15 @@
 
 #include "autoware/control_evaluator/metrics/deviation_metrics.hpp"
 
-#include "autoware/universe_utils/geometry/geometry.hpp"
-#include "autoware/universe_utils/geometry/pose_deviation.hpp"
+#include "tier4_autoware_utils/geometry/geometry.hpp"
+#include "tier4_autoware_utils/geometry/pose_deviation.hpp"
 #include "tier4_autoware_utils/trajectory/trajectory.hpp"
 
 namespace control_diagnostics
 {
 namespace metrics
 {
-using autoware_planning_msgs::msg::Trajectory;
+using autoware_auto_planning_msgs::msg::Trajectory;
 
 double calcLateralDeviation(const Trajectory & traj, const Point & point)
 {
