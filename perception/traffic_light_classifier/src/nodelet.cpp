@@ -88,6 +88,7 @@ void TrafficLightClassifierNodelet::imageRoiCallback(
   if (input_rois_msg->rois.empty()) {
     output_msg.header = input_image_msg->header;
     traffic_signal_array_pub_->publish(output_msg);
+    return;
   }
 
   cv_bridge::CvImagePtr cv_ptr;
