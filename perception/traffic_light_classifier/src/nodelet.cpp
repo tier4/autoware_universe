@@ -84,8 +84,10 @@ void TrafficLightClassifierNodelet::imageRoiCallback(
   if (classifier_ptr_.use_count() == 0) {
     return;
   }
+  tier4_perception_msgs::msg::TrafficLightArray output_msg;
   if (input_rois_msg->rois.empty()) {
-    return;
+    output_msg.header = input_image_msg->header;
+    traffic_signal_array_pub_->publish(output_msg);
   }
 
   cv_bridge::CvImagePtr cv_ptr;
@@ -97,7 +99,6 @@ void TrafficLightClassifierNodelet::imageRoiCallback(
       input_image_msg->encoding.c_str());
   }
 
-  tier4_perception_msgs::msg::TrafficLightArray output_msg;
   output_msg.signals.resize(input_rois_msg->rois.size());
 
   std::vector<cv::Mat> images;
