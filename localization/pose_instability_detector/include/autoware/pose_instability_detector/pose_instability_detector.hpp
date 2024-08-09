@@ -81,6 +81,7 @@ private:
 
   // parameters
   const double timer_period_;  // [sec]
+  bool use_ndt_pose_;
 
   const double heading_velocity_maximum_;                 // [m/s]
   const double heading_velocity_scale_factor_tolerance_;  // [%]
@@ -97,6 +98,7 @@ private:
   // variables
   std::optional<Odometry> latest_odometry_ = std::nullopt;
   std::optional<Odometry> prev_odometry_ = std::nullopt;
+  std::optional<PoseWithCovariance> latest_ndt_pose_ = std::nullopt;
   std::deque<TwistWithCovarianceStamped> twist_buffer_;
 };
 

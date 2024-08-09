@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     timer_period: 0.5                             # [sec]
-    subscription_type: "odometry"     # select from "pose_with_covariance" or "odometry"
+    comparison_target: "pose_with_covariance"     # select from "pose_with_covariance" or "odometry"
 
     heading_velocity_maximum: 2.778               # [m/s]
     heading_velocity_scale_factor_tolerance: 3.0  # [%]

@@ -44,21 +44,25 @@ PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & opt
     this->declare_parameter<double>("pose_estimator_angular_tolerance"))
 {
   // Define subscription type
-  std::string subscription_type = this->declare_parameter<std::string>("subscription_type");
+  std::string comparison_target = this->declare_parameter<std::string>("comparison_target");
 
   // Define subscribers, publishers and a timer.
-  if(subscription_type == "odometry") {
-    odometry_sub_ = this->create_subscription<Odometry>(
-      "~/input/odometry", 10,
-      std::bind(&PoseInstabilityDetector::callback_odometry, this, std::placeholders::_1));
-  } else if (subscription_type == "pose_with_covariance") {
-    pose_with_covarince_sub_ = this->create_subscription<PoseWithCovariance>(
-      "~/input/pose", 10,
-      std::bind(&PoseInstabilityDetector::callback_pose, this, std::placeholders::_1));
-    RCLCPP_INFO(this->get_logger(), "Create subscriber");
+  if (comparison_target == "odometry") {
+    use_ndt_pose_ = false;
+  } else if (comparison_target == "pose_with_covariance") {
+    use_ndt_pose_ = true;
   } else {
-    RCLCPP_ERROR(this->get_logger(), "Invalid subscription type!: %s", subscription_type.c_str());
+    RCLCPP_ERROR(this->get_logger(), "Invalid subscription type!: %s", comparison_target.c_str());
+    rclcpp::shutdown();
   }
+
+  odometry_sub_ = this->create_subscription<Odometry>(
+    "~/input/odometry", 10,
+    std::bind(&PoseInstabilityDetector::callback_odometry, this, std::placeholders::_1));
+
+  pose_with_covarince_sub_ = this->create_subscription<PoseWithCovariance>(
+    "~/input/pose", 10,
+    std::bind(&PoseInstabilityDetector::callback_pose, this, std::placeholders::_1));
 
   twist_sub_ = this->create_subscription<TwistWithCovarianceStamped>(
     "~/input/twist", 10,
@@ -79,19 +83,7 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
 
 void PoseInstabilityDetector::callback_pose(PoseWithCovariance::ConstSharedPtr pose_msg_ptr)
 {
-  //RCLCPP_INFO(this->get_logger(), "Pose Callback start");
-  /*
-  std::optional<Odometry> temp_odometry = std::nullopt;
-  temp_odometry->header = pose_msg_ptr->header;
-  temp_odometry->child_frame_id = "base_link";
-  temp_odometry->pose = pose_msg_ptr->pose;
-  latest_odometry_ = temp_odometry;
-  */
-  latest_odometry_ = Odometry();
-  latest_odometry_->header = pose_msg_ptr->header;
-  latest_odometry_->child_frame_id = "base_link";
-  latest_odometry_->pose = pose_msg_ptr->pose;
-  //RCLCPP_INFO(this->get_logger(), "Pose Callback done");
+  latest_ndt_pose_ = *pose_msg_ptr;
 }
 
 void PoseInstabilityDetector::callback_twist(
@@ -106,6 +98,9 @@ void PoseInstabilityDetector::callback_timer()
   if (latest_odometry_ == std::nullopt) {
     return;
   }
+  if (latest_ndt_pose_ == std::nullopt) {
+    return;
+  }
   if (prev_odometry_ == std::nullopt) {
     prev_odometry_ = latest_odometry_;
     return;
@@ -117,9 +112,12 @@ void PoseInstabilityDetector::callback_timer()
   }
 
   // time variables
-  const rclcpp::Time latest_odometry_time = rclcpp::Time(latest_odometry_->header.stamp);
   const rclcpp::Time prev_odometry_time = rclcpp::Time(prev_odometry_->header.stamp);
-
+  const rclcpp::Time latest_pose_time =
+    use_ndt_pose_ ?
+    rclcpp::Time(latest_ndt_pose_->header.stamp) :
+    rclcpp::Time(latest_odometry_->header.stamp);
+  
   // define lambda function to convert quaternion to rpy
   auto quat_to_rpy = [](const Quaternion & quat) {
     tf2::Quaternion tf2_quat(quat.x, quat.y, quat.z, quat.w);
@@ -146,25 +144,28 @@ void PoseInstabilityDetector::callback_timer()
   prev_pose->pose = prev_odometry_->pose.pose;
 
   Pose::SharedPtr dr_pose = std::make_shared<Pose>();
-  dead_reckon(prev_pose, latest_odometry_time, twist_buffer_, dr_pose);
+  dead_reckon(prev_pose, latest_pose_time, twist_buffer_, dr_pose);
 
   // compare dead reckoning pose and latest_odometry_
-  const Pose latest_ekf_pose = latest_odometry_->pose.pose;
-  const Pose ekf_to_dr = inverseTransformPose(*dr_pose, latest_ekf_pose);
-  const geometry_msgs::msg::Point pos = ekf_to_dr.position;
-  const auto [ang_x, ang_y, ang_z] = quat_to_rpy(ekf_to_dr.orientation);
+  const Pose latest_pose = 
+    use_ndt_pose_ ? 
+    latest_ndt_pose_->pose.pose :
+    latest_odometry_->pose.pose;
+  const Pose comparison_target_to_dr = inverseTransformPose(*dr_pose, latest_pose);
+  const geometry_msgs::msg::Point pos = comparison_target_to_dr.position;
+  const auto [ang_x, ang_y, ang_z] = quat_to_rpy(comparison_target_to_dr.orientation);
   const std::vector<double> values = {pos.x, pos.y, pos.z, ang_x, ang_y, ang_z};
 
   // publish diff_pose for debug
   PoseStamped diff_pose;
-  diff_pose.header.stamp = latest_odometry_time;
+  diff_pose.header.stamp = latest_pose_time;
   diff_pose.header.frame_id = "base_link";
-  diff_pose.pose = ekf_to_dr;
+  diff_pose.pose = comparison_target_to_dr;
   diff_pose_pub_->publish(diff_pose);
 
   // publish diagnostics
   ThresholdValues threshold_values =
-    calculate_threshold((latest_odometry_time - prev_odometry_time).seconds());
+    calculate_threshold((latest_pose_time - prev_odometry_time).seconds());
 
   const std::vector<double> thresholds = {threshold_values.position_x, threshold_values.position_y,
                                           threshold_values.position_z, threshold_values.angle_x,
@@ -196,7 +197,7 @@ void PoseInstabilityDetector::callback_timer()
   status.message = (all_ok ? "OK" : "WARN");
 
   DiagnosticArray diagnostics;
-  diagnostics.header.stamp = latest_odometry_time;
+  diagnostics.header.stamp = latest_pose_time;
   diagnostics.status.emplace_back(status);
   diagnostics_pub_->publish(diagnostics);
 
