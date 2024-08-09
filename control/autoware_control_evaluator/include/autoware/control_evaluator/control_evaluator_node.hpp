@@ -25,6 +25,7 @@
 #include <autoware_auto_planning_msgs/msg/route.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 #include <deque>
 #include <optional>
@@ -44,6 +45,8 @@ using nav_msgs::msg::Odometry;
 using LaneletMapBin = autoware_auto_mapping_msgs::msg::HADMapBin;
 using LaneletRoute = autoware_auto_planning_msgs::msg::HADMapRoute;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
+using sensor_msgs::msg::Imu;
+
 
 /**
  * @brief Node for control evaluation
@@ -62,7 +65,7 @@ public:
   DiagnosticStatus generateAEBDiagnosticStatus(const DiagnosticStatus & diag);
   DiagnosticStatus generateLaneletDiagnosticStatus(const Pose & ego_pose) const;
   DiagnosticStatus generateKinematicStateDiagnosticStatus(
-    const Odometry & odom, const AccelWithCovarianceStamped & accel_stamped);
+    const Odometry & odom, const Imu & imu);
 
   void onDiagnostics(const DiagnosticArray::ConstSharedPtr diag_msg);
   void onTimer();
@@ -75,8 +78,10 @@ private:
 
   autoware::universe_utils::InterProcessPollingSubscriber<Odometry> odometry_sub_{
     this, "~/input/odometry"};
-  autoware::universe_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> accel_sub_{
-    this, "~/input/acceleration"};
+  // autoware::universe_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> accel_sub_{
+  //   this, "~/input/acceleration"};
+  autoware::universe_utils::InterProcessPollingSubscriber<Imu> imu_sub_{
+    this, "~/input/imu"};
   autoware::universe_utils::InterProcessPollingSubscriber<Trajectory> traj_sub_{
     this, "~/input/trajectory"};
   autoware::universe_utils::InterProcessPollingSubscriber<
@@ -101,7 +106,7 @@ private:
 
   route_handler::RouteHandler route_handler_;
   rclcpp::TimerBase::SharedPtr timer_;
-  std::optional<AccelWithCovarianceStamped> prev_acc_stamped_{std::nullopt};
+  std::optional<Imu> prev_imu_{std::nullopt};
 };
 }  // namespace control_diagnostics
 

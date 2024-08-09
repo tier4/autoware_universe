@@ -119,7 +119,7 @@ DiagnosticStatus ControlEvaluatorNode::generateLaneletDiagnosticStatus(const Pos
 }
 
 DiagnosticStatus ControlEvaluatorNode::generateKinematicStateDiagnosticStatus(
-  const Odometry & odom, const AccelWithCovarianceStamped & accel_stamped)
+  const Odometry & odom, const Imu & imu)
 {
   DiagnosticStatus status;
   status.name = "kinematic_state";
@@ -129,24 +129,24 @@ DiagnosticStatus ControlEvaluatorNode::generateKinematicStateDiagnosticStatus(
   key_value.value = std::to_string(odom.twist.twist.linear.x);
   status.values.push_back(key_value);
   key_value.key = "acc";
-  const auto & acc = accel_stamped.accel.accel.linear.x;
+  const auto & acc = imu.linear_acceleration.x;
   key_value.value = std::to_string(acc);
   status.values.push_back(key_value);
   key_value.key = "jerk";
   const auto jerk = [&]() {
-    if (!prev_acc_stamped_.has_value()) {
-      prev_acc_stamped_ = accel_stamped;
+    if (!prev_imu_.has_value()) {
+      prev_imu_ = imu;
       return 0.0;
     }
-    const auto t = static_cast<double>(accel_stamped.header.stamp.sec) +
-                   static_cast<double>(accel_stamped.header.stamp.nanosec) * 1e-9;
-    const auto prev_t = static_cast<double>(prev_acc_stamped_.value().header.stamp.sec) +
-                        static_cast<double>(prev_acc_stamped_.value().header.stamp.nanosec) * 1e-9;
+    const auto t = static_cast<double>(imu.header.stamp.sec) +
+                   static_cast<double>(imu.header.stamp.nanosec) * 1e-9;
+    const auto prev_t = static_cast<double>(prev_imu_.value().header.stamp.sec) +
+                        static_cast<double>(prev_imu_.value().header.stamp.nanosec) * 1e-9;
     const auto dt = t - prev_t;
     if (dt < std::numeric_limits<double>::epsilon()) return 0.0;
 
-    const auto prev_acc = prev_acc_stamped_.value().accel.accel.linear.x;
-    prev_acc_stamped_ = accel_stamped;
+    const auto prev_acc = prev_imu_.value().linear_acceleration.x;
+    prev_imu_ = imu;
     return (acc - prev_acc) / dt;
   }();
   key_value.value = std::to_string(jerk);
@@ -191,7 +191,8 @@ void ControlEvaluatorNode::onTimer()
   DiagnosticArray metrics_msg;
   const auto traj = traj_sub_.takeData();
   const auto odom = odometry_sub_.takeData();
-  const auto acc = accel_sub_.takeData();
+  // const auto acc = accel_sub_.takeData();
+  const auto imu = imu_sub_.takeData();
 
   // generate decision diagnostics from input diagnostics
   for (const auto & function : target_functions_) {
@@ -224,8 +225,8 @@ void ControlEvaluatorNode::onTimer()
     metrics_msg.status.push_back(generateLaneletDiagnosticStatus(ego_pose));
   }
 
-  if (odom && acc) {
-    metrics_msg.status.push_back(generateKinematicStateDiagnosticStatus(*odom, *acc));
+  if (odom && imu) {
+    metrics_msg.status.push_back(generateKinematicStateDiagnosticStatus(*odom, *imu));
   }
 
   metrics_msg.header.stamp = now();
