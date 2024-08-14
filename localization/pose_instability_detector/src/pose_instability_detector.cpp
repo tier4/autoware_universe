@@ -26,6 +26,7 @@
 PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & options)
 : rclcpp::Node("pose_instability_detector", options),
   timer_period_(this->declare_parameter<double>("timer_period")),
+  window_length_(this->declare_parameter<double>("window_length")),
   heading_velocity_maximum_(this->declare_parameter<double>("heading_velocity_maximum")),
   heading_velocity_scale_factor_tolerance_(
     this->declare_parameter<double>("heading_velocity_scale_factor_tolerance")),
@@ -68,9 +69,11 @@ PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & opt
     "~/input/twist", 10,
     std::bind(&PoseInstabilityDetector::callback_twist, this, std::placeholders::_1));
 
+  /*
   timer_ = rclcpp::create_timer(
     this, this->get_clock(), std::chrono::duration<double>(timer_period_),
     std::bind(&PoseInstabilityDetector::callback_timer, this));
+  */
 
   diff_pose_pub_ = this->create_publisher<PoseStamped>("~/debug/diff_pose", 10);
   diagnostics_pub_ = this->create_publisher<DiagnosticArray>("/diagnostics", 10);
@@ -79,6 +82,90 @@ PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & opt
 void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometry_msg_ptr)
 {
   latest_odometry_ = *odometry_msg_ptr;
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Odometry Callback");
+
+  if (use_ndt_pose_) {
+    return;
+  }
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Odometry Mode");
+
+  PoseStamped current_pose = PoseStamped();
+  current_pose.header = latest_odometry_->header;
+  current_pose.pose = latest_odometry_->pose.pose;
+  rclcpp::Time current_pose_time = rclcpp::Time(current_pose.header.stamp);
+  updatePoseBuffer(current_pose);
+
+  rclcpp::Time one_step_back_time = rclcpp::Time(current_pose.header.stamp) - rclcpp::Duration::from_seconds(window_length_);
+  std::optional<PoseStamped> one_step_back_pose = getPoseAt(one_step_back_time);
+
+  if(one_step_back_pose == std::nullopt) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "pose was nullopt");
+    return;
+  }
+
+  // delete twist data older than prev_odometry_ (but preserve the one right before prev_odometry_)
+  while (twist_buffer_.size() > 1) {
+    if (rclcpp::Time(twist_buffer_[1].header.stamp) < one_step_back_time) {
+      twist_buffer_.pop_front();
+    } else {
+      break;
+    }
+  }
+
+  PoseStamped::SharedPtr one_step_back_pose_ptr = std::make_shared<PoseStamped>(one_step_back_pose.value());
+  Pose::SharedPtr dr_pose_ptr = std::make_shared<Pose>();
+  dead_reckon(one_step_back_pose_ptr, current_pose_time, twist_buffer_, dr_pose_ptr);
+
+  const Pose comparison_target_to_dr = inverseTransformPose(*dr_pose_ptr, current_pose.pose);
+  const geometry_msgs::msg::Point pos = comparison_target_to_dr.position;
+  const auto [ang_x, ang_y, ang_z] = quatToRPY(comparison_target_to_dr.orientation);
+  const std::vector<double> values = {pos.x, pos.y, pos.z, ang_x, ang_y, ang_z};
+
+  // publish diff_pose for debug
+  PoseStamped diff_pose;
+  diff_pose.header.stamp = current_pose_time;
+  diff_pose.header.frame_id = "base_link";
+  diff_pose.pose = comparison_target_to_dr;
+  diff_pose_pub_->publish(diff_pose);
+
+  // publish diagnostics
+  ThresholdValues threshold_values =
+    calculate_threshold((current_pose_time - one_step_back_time).seconds());
+
+  const std::vector<double> thresholds = {threshold_values.position_x, threshold_values.position_y,
+                                          threshold_values.position_z, threshold_values.angle_x,
+                                          threshold_values.angle_y,    threshold_values.angle_z};
+
+  const std::vector<std::string> labels = {"diff_position_x", "diff_position_y", "diff_position_z",
+                                           "diff_angle_x",    "diff_angle_y",    "diff_angle_z"};
+
+  DiagnosticStatus status;
+  status.name = "localization: pose_instability_detector";
+  status.hardware_id = this->get_name();
+  bool all_ok = true;
+
+  for (size_t i = 0; i < values.size(); ++i) {
+    const bool ok = (std::abs(values[i]) < thresholds[i]);
+    all_ok &= ok;
+    diagnostic_msgs::msg::KeyValue kv;
+    kv.key = labels[i] + ":threshold";
+    kv.value = std::to_string(thresholds[i]);
+    status.values.push_back(kv);
+    kv.key = labels[i] + ":value";
+    kv.value = std::to_string(values[i]);
+    status.values.push_back(kv);
+    kv.key = labels[i] + ":status";
+    kv.value = (ok ? "OK" : "WARN");
+    status.values.push_back(kv);
+  }
+  status.level = (all_ok ? DiagnosticStatus::OK : DiagnosticStatus::WARN);
+  status.message = (all_ok ? "OK" : "WARN");
+
+  DiagnosticArray diagnostics;
+  diagnostics.header.stamp = current_pose_time;
+  diagnostics.status.emplace_back(status);
+  diagnostics_pub_->publish(diagnostics);
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Publication finished");
 }
 
 void PoseInstabilityDetector::callback_pose(PoseWithCovariance::ConstSharedPtr pose_msg_ptr)
@@ -92,6 +179,7 @@ void PoseInstabilityDetector::callback_twist(
   twist_buffer_.push_back(*twist_msg_ptr);
 }
 
+/*
 void PoseInstabilityDetector::callback_timer()
 {
   // odometry callback and timer callback has to be called at least once
@@ -204,6 +292,7 @@ void PoseInstabilityDetector::callback_timer()
   // prepare for next loop
   prev_odometry_ = latest_odometry_;
 }
+*/
 
 PoseInstabilityDetector::ThresholdValues PoseInstabilityDetector::calculate_threshold(
   double interval_sec) const
@@ -453,6 +542,64 @@ PoseInstabilityDetector::Pose PoseInstabilityDetector::inverseTransformPose
   return result_pose;
 }
 
+void PoseInstabilityDetector::updatePoseBuffer(const PoseStamped & pose)
+{
+  // Add new pose
+  pose_buffer_.push_back(pose);
+
+  // Discard old poses
+  const rclcpp::Time latest_time = rclcpp::Time(pose.header.stamp);
+  while (!pose_buffer_.empty()){
+    rclcpp::Time pose_time = pose_buffer_.front().header.stamp;
+    double age = (latest_time - pose_time).seconds();
+
+    if (age <= window_length_ * 1.5) {
+      break;
+    }
+
+    pose_buffer_.pop_front();
+  }
+}
+
+std::optional<PoseInstabilityDetector::PoseStamped> PoseInstabilityDetector::getPoseAt(const rclcpp::Time & target_time){
+  if (pose_buffer_.empty()){
+    RCLCPP_INFO(this->get_logger(), "pose_buffer_ doesn't have poses!");
+    return std::nullopt;
+  }
+
+  if(target_time < rclcpp::Time(pose_buffer_.front().header.stamp) ||
+     rclcpp::Time(pose_buffer_.back().header.stamp) < target_time){
+    RCLCPP_INFO(this->get_logger(), "target_time must be within the pose_buffer_!");
+    return std::nullopt;
+  } 
+
+  std::optional<PoseStamped> closest_pose = std::nullopt;
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "pose_buffer size is %ld", pose_buffer_.size());
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "target_time = %ld,  oldest_time = %ld", target_time.nanoseconds(), rclcpp::Time(pose_buffer_.front().header.stamp).nanoseconds());
+  for (size_t i = 1; i < pose_buffer_.size(); i++){
+    if(target_time < rclcpp::Time(pose_buffer_[i].header.stamp)) {
+      if ((rclcpp::Time(pose_buffer_[i].header.stamp) - target_time).seconds() < (target_time - rclcpp::Time(pose_buffer_[i-1].header.stamp)).seconds()) {
+        closest_pose = pose_buffer_[i];
+      } else {
+        closest_pose = pose_buffer_[i-1];
+      }
+      break;
+    }
+  }
+
+  return closest_pose;
+}
+
+std::tuple<double, double, double> PoseInstabilityDetector::quatToRPY(const Quaternion & quat)
+{
+    tf2::Quaternion tf2_quat(quat.x, quat.y, quat.z, quat.w);
+    tf2::Matrix3x3 mat(tf2_quat);
+    double roll{};
+    double pitch{};
+    double yaw{};
+    mat.getRPY(roll, pitch, yaw);
+    return std::make_tuple(roll, pitch, yaw);
+}
 
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(PoseInstabilityDetector)

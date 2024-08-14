@@ -61,13 +61,19 @@ private:
   void callback_odometry(Odometry::ConstSharedPtr odometry_msg_ptr);
   void callback_pose(PoseWithCovariance::ConstSharedPtr pose_msg_ptr);
   void callback_twist(TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr);
-  void callback_timer();
+  //void callback_timer();
 
   static std::deque<TwistWithCovarianceStamped> clip_out_necessary_twist(
     const std::deque<TwistWithCovarianceStamped> & twist_buffer, const rclcpp::Time & start_time,
     const rclcpp::Time & end_time);
 
   Pose inverseTransformPose(const Pose & pose, const Pose & transform_pose);
+
+  void updatePoseBuffer(const PoseStamped & pose);
+
+  std::optional<PoseStamped> getPoseAt(const rclcpp::Time & target_time);
+
+  std::tuple<double, double, double> quatToRPY(const Quaternion & quat);
 
   // subscribers and timer
   rclcpp::Subscription<Odometry>::SharedPtr odometry_sub_;
@@ -81,6 +87,7 @@ private:
 
   // parameters
   const double timer_period_;  // [sec]
+  const double window_length_; // [sec]
   bool use_ndt_pose_;
 
   const double heading_velocity_maximum_;                 // [m/s]
@@ -100,6 +107,7 @@ private:
   std::optional<Odometry> prev_odometry_ = std::nullopt;
   std::optional<PoseWithCovariance> latest_ndt_pose_ = std::nullopt;
   std::deque<TwistWithCovarianceStamped> twist_buffer_;
+  std::deque<PoseStamped> pose_buffer_;
 };
 
 #endif  // AUTOWARE__POSE_INSTABILITY_DETECTOR__POSE_INSTABILITY_DETECTOR_HPP_
