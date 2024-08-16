@@ -25,7 +25,7 @@ In addition, it receives a udp packet`MrmState` and publish `/system/mrm_request
 
 | Interface Type | Interface Name                 | Data Type                           | Description              |
 | -------------- | ------------------------------ | ----------------------------------- | ------------------------ |
-| subscriber     | `/system/fail_safe/mrm_state`  | `tier4_system_msgs/msg/MrmState`    | MRM status of each ECU.  |
+| subscriber     | `/system/fail_safe/mrm_state`  | `autoware_adapi_v1_msgs/msg/MrmState`    | MRM status of each ECU.  |
 | udp sender     | none                           | `struct MrmState`                   | Same as above.           |
 | publisher      | `/system/election/mrm_request` | `tier4_system_msgs/msg/MrmBehavior` | Request of MRM behavior. |
 | udp receiver   | none                           | `struct MrmRequest`                 | Same as above.           |
