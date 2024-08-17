@@ -20,8 +20,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <tier4_system_msgs/msg/mrm_behavior.hpp>
 #include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
+#include <tier4_system_msgs/msg/mrm_behavior.hpp>
 
 #include <atomic>
 #include <memory>
