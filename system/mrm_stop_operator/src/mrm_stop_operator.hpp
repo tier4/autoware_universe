@@ -18,11 +18,11 @@
 // include
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 #include <autoware_auto_vehicle_msgs/msg/velocity_report.hpp>
 #include <tier4_planning_msgs/msg/velocity_limit.hpp>
 #include <tier4_planning_msgs/msg/velocity_limit_clear_command.hpp>
 #include <tier4_system_msgs/msg/mrm_behavior.hpp>
-#include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 
 namespace mrm_stop_operator
 {
