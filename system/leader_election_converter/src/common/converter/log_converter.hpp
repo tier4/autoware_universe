@@ -23,7 +23,6 @@
 #include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 #include <tier4_system_msgs/msg/election_communication.hpp>
 #include <tier4_system_msgs/msg/election_status.hpp>
-#include <tier4_system_msgs/msg/mrm_state.hpp>
 
 #include <atomic>
 #include <memory>
