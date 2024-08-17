@@ -116,7 +116,7 @@
     <group if="$(var use_diagnostic_graph)">
       <include file="$(find-pkg-share mrm_handler)/launch/mrm_handler.launch.xml">
         <arg name="config_file" value="$(var mrm_handler_param_path)"/>
-        <arg name="output_mrm_state" value="/system/fail_safe/mrm_state/tmp"/>
+        <arg name="output_mrm_state" value="/system/fail_safe/mrm_state"/>
       </include>
     </group>
 
@@ -165,7 +165,7 @@
   <group>
     <include file="$(find-pkg-share leader_election_converter)/launch/leader_election_converter.launch.xml">
       <arg name="param_file" value="$(find-pkg-share autoware_launch)/config/system/leader_election_converter/leader_election_converter.param.yaml"/>
-      <arg name="input_mrm_state" value="/system/fail_safe/mrm_state/tmp"/>
+      <arg name="input_mrm_state" value="/system/fail_safe/mrm_state"/>
     </include>
   </group>
 
