@@ -45,7 +45,7 @@ MrmStopOperator::MrmStopOperator(const rclcpp::NodeOptions & node_options)
     create_publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>(
       "~/output/velocity_limit_clear_command", rclcpp::QoS{10}.transient_local());
   pub_mrm_state_ =
-    create_publisher<tier4_system_msgs::msg::MrmState>("~/output/mrm_state", rclcpp::QoS{1});
+    create_publisher<autoware_adapi_v1_msgs::msg::MrmState>("~/output/mrm_state", rclcpp::QoS{1});
 
   // Timer
   const auto update_period_ns = rclcpp::Rate(10).period();
@@ -80,24 +80,24 @@ void MrmStopOperator::onMrmRequest(const tier4_system_msgs::msg::MrmBehavior::Co
     pub_velocity_limit_->publish(velocity_limit);
 
     last_mrm_request_ = *msg;
-    current_mrm_state_.behavior = *msg;
-    current_mrm_state_.state = tier4_system_msgs::msg::MrmState::MRM_OPERATING;
+    current_mrm_state_.behavior = msg->type;
+    current_mrm_state_.state = autoware_adapi_v1_msgs::msg::MrmState::MRM_OPERATING;
   }
 }
 
 void MrmStopOperator::initState()
 {
   last_mrm_request_.type = tier4_system_msgs::msg::MrmBehavior::NONE;
-  current_mrm_state_.state = tier4_system_msgs::msg::MrmState::NORMAL;
-  current_mrm_state_.behavior.type = tier4_system_msgs::msg::MrmBehavior::NONE;
+  current_mrm_state_.state = autoware_adapi_v1_msgs::msg::MrmState::NORMAL;
+  current_mrm_state_.behavior = autoware_adapi_v1_msgs::msg::MrmState::NONE;
 }
 
 void MrmStopOperator::onTimer()
 {
-  if (current_mrm_state_.state == tier4_system_msgs::msg::MrmState::MRM_OPERATING) {
-    if (current_mrm_state_.behavior.type == tier4_system_msgs::msg::MrmBehavior::COMFORTABLE_STOP) {
+  if (current_mrm_state_.state == autoware_adapi_v1_msgs::msg::MrmState::MRM_OPERATING) {
+    if (current_mrm_state_.behavior == autoware_adapi_v1_msgs::msg::MrmState::COMFORTABLE_STOP) {
       if (isStopped()) {
-        current_mrm_state_.state = tier4_system_msgs::msg::MrmState::MRM_SUCCEEDED;
+        current_mrm_state_.state = autoware_adapi_v1_msgs::msg::MrmState::MRM_SUCCEEDED;
       } else {
         // nothing to do
       }
