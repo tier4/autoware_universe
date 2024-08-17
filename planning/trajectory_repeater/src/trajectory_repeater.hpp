@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TRAJECTORY_REPEATER__TRAJECTORY_REPEATER_HPP_
-#define TRAJECTORY_REPEATER__TRAJECTORY_REPEATER_HPP_
+#ifndef TRAJECTORY_REPEATER_HPP_
+#define TRAJECTORY_REPEATER_HPP_
 
 // include
 #include <rclcpp/rclcpp.hpp>
@@ -46,15 +46,14 @@ private:
 
   // Timer
   rclcpp::TimerBase::SharedPtr timer_;
-  
+
   void onTimer();
 
   // State
   autoware_auto_planning_msgs::msg::Trajectory::ConstSharedPtr last_trajectory_;
 
   // Diagnostics
-
 };
 }  // namespace trajectory_repeater
 
-#endif  // TRAJECTORY_REPEATER__TRAJECTORY_REPEATER_HPP_
+#endif  // TRAJECTORY_REPEATER_HPP_

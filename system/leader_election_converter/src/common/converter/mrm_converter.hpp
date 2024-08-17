@@ -20,8 +20,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 #include <tier4_system_msgs/msg/mrm_behavior.hpp>
-#include <tier4_system_msgs/msg/mrm_state.hpp>
 
 #include <atomic>
 #include <memory>
@@ -33,8 +33,8 @@ namespace leader_election_converter
 
 typedef struct MrmState
 {
-  tier4_system_msgs::msg::MrmState::_state_type state;
-  tier4_system_msgs::msg::MrmBehavior::_type_type behavior;
+  autoware_adapi_v1_msgs::msg::MrmState::_state_type state;
+  autoware_adapi_v1_msgs::msg::MrmState::_behavior_type behavior;
 } MrmState;
 
 typedef struct MrmRequest
@@ -55,14 +55,14 @@ public:
 
 private:
   void startUdpReceiver(const std::string & src_ip, const std::string & src_port);
-  void convertToUdp(const tier4_system_msgs::msg::MrmState::ConstSharedPtr mrm_state_msg);
+  void convertToUdp(const autoware_adapi_v1_msgs::msg::MrmState::ConstSharedPtr mrm_state_msg);
   void convertToTopic(const MrmRequest & mrm_request);
 
   rclcpp::Node * node_;
   std::unique_ptr<UdpSender<MrmState>> udp_mrm_state_sender_;
   std::unique_ptr<UdpReceiver<MrmRequest>> udp_mrm_request_receiver_;
   rclcpp::CallbackGroup::SharedPtr callback_group_;
-  rclcpp::Subscription<tier4_system_msgs::msg::MrmState>::SharedPtr sub_mrm_state_;
+  rclcpp::Subscription<autoware_adapi_v1_msgs::msg::MrmState>::SharedPtr sub_mrm_state_;
   rclcpp::Publisher<tier4_system_msgs::msg::MrmBehavior>::SharedPtr pub_mrm_request_;
 
   std::thread udp_receiver_thread_;

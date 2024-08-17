@@ -65,7 +65,7 @@ void MrmConverter::setSubscriber()
   rclcpp::SubscriptionOptions options;
   options.callback_group = callback_group_;
 
-  sub_mrm_state_ = node_->create_subscription<tier4_system_msgs::msg::MrmState>(
+  sub_mrm_state_ = node_->create_subscription<autoware_adapi_v1_msgs::msg::MrmState>(
     "~/input/mrm_state", qos, std::bind(&MrmConverter::convertToUdp, this, std::placeholders::_1),
     options);
 }
@@ -77,11 +77,11 @@ void MrmConverter::setPublisher()
 }
 
 void MrmConverter::convertToUdp(
-  const tier4_system_msgs::msg::MrmState::ConstSharedPtr mrm_state_msg)
+  const autoware_adapi_v1_msgs::msg::MrmState::ConstSharedPtr mrm_state_msg)
 {
   MrmState mrm_state;
   mrm_state.state = mrm_state_msg->state;
-  mrm_state.behavior = mrm_state_msg->behavior.type;
+  mrm_state.behavior = mrm_state_msg->behavior;
 
   udp_mrm_state_sender_->send(mrm_state);
 }
