@@ -81,7 +81,10 @@ public:
     dev_ = dev_ + proc_dev_x_d;
 
     // Update step
-    double kalman_gain = dev_ / (dev_ + obs_dev);
+    double kalman_gain = 1.0;
+    if (dev_ + obs_dev != 0) {
+      kalman_gain = dev_ / (dev_ + obs_dev);
+    }
     x_ = x_ + kalman_gain * (obs - x_);
     dev_ = (1 - kalman_gain) * dev_;
 
