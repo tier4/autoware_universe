@@ -329,11 +329,14 @@ void MotionVelocitySmootherNode::onExternalVelocityLimit(const VelocityLimit::Co
 void MotionVelocitySmootherNode::calcExternalVelocityLimit()
 {
   if (!external_velocity_limit_ptr_) {
+    RCLCPP_INFO(get_logger(), "external velocity limit pointer is empty");
     return;
   }
 
+  RCLCPP_INFO(get_logger(), "external velocity limit pointer exist!!!");
   // sender
   external_velocity_limit_.sender = external_velocity_limit_ptr_->sender;
+  RCLCPP_INFO(get_logger(), "external velocity limit sender: %s", external_velocity_limit_.sender.c_str());
 
   // on the first time, apply directly
   if (prev_output_.empty() || !current_closest_point_from_prev_output_) {
@@ -434,12 +437,14 @@ bool MotionVelocitySmootherNode::checkData() const
 void MotionVelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstSharedPtr msg)
 {
   RCLCPP_DEBUG(get_logger(), "========================= run start =========================");
+  RCLCPP_INFO(get_logger(), "===== on Current Trajectory start =====");
   stop_watch_.tic();
 
   base_traj_raw_ptr_ = msg;
 
   // guard
   if (!checkData()) {
+    RCLCPP_INFO(get_logger(), "Data is not ready.");
     return;
   }
 
@@ -455,11 +460,14 @@ void MotionVelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstShar
 
   // calculate prev closest point
   if (!prev_output_.empty()) {
+    RCLCPP_INFO(get_logger(), "calculate current closest point from prev output");
     current_closest_point_from_prev_output_ = calcProjectedTrajectoryPointFromEgo(prev_output_);
   }
 
   // calculate distance to insert external velocity limit
+  RCLCPP_INFO(get_logger(), "calc external velocity limit");
   calcExternalVelocityLimit();
+  RCLCPP_INFO(get_logger(), "update data for external velcoity limit");
   updateDataForExternalVelocityLimit();
 
   // ignore current external velocity limit next time
