@@ -61,7 +61,6 @@ private:
   void callback_odometry(Odometry::ConstSharedPtr odometry_msg_ptr);
   void callback_pose(PoseWithCovariance::ConstSharedPtr pose_msg_ptr);
   void callback_twist(TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr);
-  //void callback_timer();
 
   static std::deque<TwistWithCovarianceStamped> clip_out_necessary_twist(
     const std::deque<TwistWithCovarianceStamped> & twist_buffer, const rclcpp::Time & start_time,
@@ -79,14 +78,12 @@ private:
   rclcpp::Subscription<Odometry>::SharedPtr odometry_sub_;
   rclcpp::Subscription<PoseWithCovariance>::SharedPtr pose_with_covarince_sub_;
   rclcpp::Subscription<TwistWithCovarianceStamped>::SharedPtr twist_sub_;
-  rclcpp::TimerBase::SharedPtr timer_;
 
   // publisher
   rclcpp::Publisher<PoseStamped>::SharedPtr diff_pose_pub_;
   rclcpp::Publisher<DiagnosticArray>::SharedPtr diagnostics_pub_;
 
   // parameters
-  const double timer_period_;  // [sec]
   const double window_length_; // [sec]
   bool use_ndt_pose_;
 

@@ -1,6 +1,5 @@
 /**:
   ros__parameters:
-    timer_period: 0.5                             # [sec]
     window_length: 0.5                            # [sec]
     comparison_target: "odometry"     # select from "pose_with_covariance" or "odometry"
 

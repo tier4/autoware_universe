@@ -25,7 +25,6 @@
 
 PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & options)
 : rclcpp::Node("pose_instability_detector", options),
-  timer_period_(this->declare_parameter<double>("timer_period")),
   window_length_(this->declare_parameter<double>("window_length")),
   heading_velocity_maximum_(this->declare_parameter<double>("heading_velocity_maximum")),
   heading_velocity_scale_factor_tolerance_(
@@ -47,7 +46,7 @@ PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & opt
   // Define subscription type
   std::string comparison_target = this->declare_parameter<std::string>("comparison_target");
 
-  // Define subscribers, publishers and a timer.
+  // Define subscribers and publishers
   if (comparison_target == "odometry") {
     use_ndt_pose_ = false;
   } else if (comparison_target == "pose_with_covariance") {
@@ -68,12 +67,6 @@ PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & opt
   twist_sub_ = this->create_subscription<TwistWithCovarianceStamped>(
     "~/input/twist", 10,
     std::bind(&PoseInstabilityDetector::callback_twist, this, std::placeholders::_1));
-
-  /*
-  timer_ = rclcpp::create_timer(
-    this, this->get_clock(), std::chrono::duration<double>(timer_period_),
-    std::bind(&PoseInstabilityDetector::callback_timer, this));
-  */
 
   diff_pose_pub_ = this->create_publisher<PoseStamped>("~/debug/diff_pose", 10);
   diagnostics_pub_ = this->create_publisher<DiagnosticArray>("/diagnostics", 10);
@@ -183,121 +176,6 @@ void PoseInstabilityDetector::callback_twist(
 {
   twist_buffer_.push_back(*twist_msg_ptr);
 }
-
-/*
-void PoseInstabilityDetector::callback_timer()
-{
-  // odometry callback and timer callback has to be called at least once
-  if (latest_odometry_ == std::nullopt) {
-    return;
-  }
-  if (latest_ndt_pose_ == std::nullopt) {
-    return;
-  }
-  if (prev_odometry_ == std::nullopt) {
-    prev_odometry_ = latest_odometry_;
-    return;
-  }
-
-  // twist callback has to be called at least once
-  if (twist_buffer_.empty()) {
-    return;
-  }
-
-  // time variables
-  const rclcpp::Time prev_odometry_time = rclcpp::Time(prev_odometry_->header.stamp);
-  const rclcpp::Time latest_pose_time =
-    use_ndt_pose_ ?
-    rclcpp::Time(latest_ndt_pose_->header.stamp) :
-    rclcpp::Time(latest_odometry_->header.stamp);
-  
-  // define lambda function to convert quaternion to rpy
-  auto quat_to_rpy = [](const Quaternion & quat) {
-    tf2::Quaternion tf2_quat(quat.x, quat.y, quat.z, quat.w);
-    tf2::Matrix3x3 mat(tf2_quat);
-    double roll{};
-    double pitch{};
-    double yaw{};
-    mat.getRPY(roll, pitch, yaw);
-    return std::make_tuple(roll, pitch, yaw);
-  };
-
-  // delete twist data older than prev_odometry_ (but preserve the one right before prev_odometry_)
-  while (twist_buffer_.size() > 1) {
-    if (rclcpp::Time(twist_buffer_[1].header.stamp) < prev_odometry_time) {
-      twist_buffer_.pop_front();
-    } else {
-      break;
-    }
-  }
-
-  // dead reckoning from prev_odometry_ to latest_odometry_
-  PoseStamped::SharedPtr prev_pose = std::make_shared<PoseStamped>();
-  prev_pose->header = prev_odometry_->header;
-  prev_pose->pose = prev_odometry_->pose.pose;
-
-  Pose::SharedPtr dr_pose = std::make_shared<Pose>();
-  dead_reckon(prev_pose, latest_pose_time, twist_buffer_, dr_pose);
-
-  // compare dead reckoning pose and latest_odometry_
-  const Pose latest_pose = 
-    use_ndt_pose_ ? 
-    latest_ndt_pose_->pose.pose :
-    latest_odometry_->pose.pose;
-  const Pose comparison_target_to_dr = inverseTransformPose(*dr_pose, latest_pose);
-  const geometry_msgs::msg::Point pos = comparison_target_to_dr.position;
-  const auto [ang_x, ang_y, ang_z] = quat_to_rpy(comparison_target_to_dr.orientation);
-  const std::vector<double> values = {pos.x, pos.y, pos.z, ang_x, ang_y, ang_z};
-
-  // publish diff_pose for debug
-  PoseStamped diff_pose;
-  diff_pose.header.stamp = latest_pose_time;
-  diff_pose.header.frame_id = "base_link";
-  diff_pose.pose = comparison_target_to_dr;
-  diff_pose_pub_->publish(diff_pose);
-
-  // publish diagnostics
-  ThresholdValues threshold_values =
-    calculate_threshold((latest_pose_time - prev_odometry_time).seconds());
-
-  const std::vector<double> thresholds = {threshold_values.position_x, threshold_values.position_y,
-                                          threshold_values.position_z, threshold_values.angle_x,
-                                          threshold_values.angle_y,    threshold_values.angle_z};
-
-  const std::vector<std::string> labels = {"diff_position_x", "diff_position_y", "diff_position_z",
-                                           "diff_angle_x",    "diff_angle_y",    "diff_angle_z"};
-
-  DiagnosticStatus status;
-  status.name = "localization: pose_instability_detector";
-  status.hardware_id = this->get_name();
-  bool all_ok = true;
-
-  for (size_t i = 0; i < values.size(); ++i) {
-    const bool ok = (std::abs(values[i]) < thresholds[i]);
-    all_ok &= ok;
-    diagnostic_msgs::msg::KeyValue kv;
-    kv.key = labels[i] + ":threshold";
-    kv.value = std::to_string(thresholds[i]);
-    status.values.push_back(kv);
-    kv.key = labels[i] + ":value";
-    kv.value = std::to_string(values[i]);
-    status.values.push_back(kv);
-    kv.key = labels[i] + ":status";
-    kv.value = (ok ? "OK" : "WARN");
-    status.values.push_back(kv);
-  }
-  status.level = (all_ok ? DiagnosticStatus::OK : DiagnosticStatus::WARN);
-  status.message = (all_ok ? "OK" : "WARN");
-
-  DiagnosticArray diagnostics;
-  diagnostics.header.stamp = latest_pose_time;
-  diagnostics.status.emplace_back(status);
-  diagnostics_pub_->publish(diagnostics);
-
-  // prepare for next loop
-  prev_odometry_ = latest_odometry_;
-}
-*/
 
 PoseInstabilityDetector::ThresholdValues PoseInstabilityDetector::calculate_threshold(
   double interval_sec) const
