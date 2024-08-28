@@ -87,6 +87,11 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
   if (use_ndt_pose_) {
     return;
   }
+
+  if (twist_buffer_.empty()) {
+    return;
+  }
+
   RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Odometry Mode");
 
   PoseStamped current_pose = PoseStamped();
@@ -103,7 +108,7 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
     return;
   }
 
-  // delete twist data older than prev_odometry_ (but preserve the one right before prev_odometry_)
+  // delete twist data older than one_step_back_pose (but preserve the one right before one_step_back_pose)
   while (twist_buffer_.size() > 1) {
     if (rclcpp::Time(twist_buffer_[1].header.stamp) < one_step_back_time) {
       twist_buffer_.pop_front();
@@ -442,7 +447,6 @@ PoseInstabilityDetector::clip_out_necessary_twist(
   // get iterator to the element that is right before start_time (if it does not exist, start_it =
   // twist_buffer.begin())
   auto start_it = twist_buffer.begin();
-
   for (auto it = twist_buffer.begin(); it != twist_buffer.end(); ++it) {
     if (rclcpp::Time(it->header.stamp) > start_time) {
       break;
