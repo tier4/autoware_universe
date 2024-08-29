@@ -86,6 +86,7 @@ private:
   // parameters
   const double window_length_; // [sec]
   bool use_ndt_pose_;
+  bool output_x_y_yaw_only_;
 
   const double heading_velocity_maximum_;                 // [m/s]
   const double heading_velocity_scale_factor_tolerance_;  // [%]

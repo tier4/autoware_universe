@@ -26,6 +26,7 @@
 PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & options)
 : rclcpp::Node("pose_instability_detector", options),
   window_length_(this->declare_parameter<double>("window_length")),
+  output_x_y_yaw_only_(this->declare_parameter<bool>("output_x_y_yaw_only")),
   heading_velocity_maximum_(this->declare_parameter<double>("heading_velocity_maximum")),
   heading_velocity_scale_factor_tolerance_(
     this->declare_parameter<double>("heading_velocity_scale_factor_tolerance")),
@@ -75,7 +76,6 @@ PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & opt
 void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometry_msg_ptr)
 {
   latest_odometry_ = *odometry_msg_ptr;
-  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Odometry Callback");
 
   if (use_ndt_pose_) {
     return;
@@ -84,8 +84,6 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
   if (twist_buffer_.empty()) {
     return;
   }
-
-  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Odometry Mode");
 
   PoseStamped current_pose = PoseStamped();
   current_pose.header = latest_odometry_->header;
@@ -117,7 +115,9 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
   const Pose comparison_target_to_dr = inverseTransformPose(*dr_pose_ptr, current_pose.pose);
   const geometry_msgs::msg::Point pos = comparison_target_to_dr.position;
   const auto [ang_x, ang_y, ang_z] = quatToRPY(comparison_target_to_dr.orientation);
-  const std::vector<double> values = {pos.x, pos.y, pos.z, ang_x, ang_y, ang_z};
+  std::vector<double> values;
+  std::vector<double> thresholds;
+  std::vector<std::string> labels;
 
   // publish diff_pose for debug
   PoseStamped diff_pose;
@@ -130,12 +130,20 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
   ThresholdValues threshold_values =
     calculate_threshold((current_pose_time - one_step_back_time).seconds());
 
-  const std::vector<double> thresholds = {threshold_values.position_x, threshold_values.position_y,
-                                          threshold_values.position_z, threshold_values.angle_x,
-                                          threshold_values.angle_y,    threshold_values.angle_z};
+  if (output_x_y_yaw_only_) {
+    values = {pos.x, pos.y, ang_z};
+    thresholds = {threshold_values.position_x, threshold_values.position_y,
+                  threshold_values.angle_z};
+    labels = {"diff_position_x", "diff_position_y", "diff_angle_z"};
+  } else {
+    values = {pos.x, pos.y, pos.z, ang_x, ang_y, ang_z};
+    thresholds = {threshold_values.position_x, threshold_values.position_y,
+                  threshold_values.position_z, threshold_values.angle_x,
+                  threshold_values.angle_y,    threshold_values.angle_z};
+    labels = {"diff_position_x", "diff_position_y", "diff_position_z",
+              "diff_angle_x",    "diff_angle_y",    "diff_angle_z"};
+  }
 
-  const std::vector<std::string> labels = {"diff_position_x", "diff_position_y", "diff_position_z",
-                                           "diff_angle_x",    "diff_angle_y",    "diff_angle_z"};
 
   DiagnosticStatus status;
   status.name = "localization: pose_instability_detector";
@@ -163,7 +171,6 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
   diagnostics.header.stamp = current_pose_time;
   diagnostics.status.emplace_back(status);
   diagnostics_pub_->publish(diagnostics);
-  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Publication finished");
 }
 
 void PoseInstabilityDetector::callback_pose(PoseWithCovariance::ConstSharedPtr pose_msg_ptr)
@@ -456,8 +463,6 @@ std::optional<PoseInstabilityDetector::PoseStamped> PoseInstabilityDetector::get
   } 
 
   std::optional<PoseStamped> closest_pose = std::nullopt;
-  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "pose_buffer size is %ld", pose_buffer_.size());
-  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "target_time = %ld,  oldest_time = %ld", target_time.nanoseconds(), rclcpp::Time(pose_buffer_.front().header.stamp).nanoseconds());
   for (size_t i = 1; i < pose_buffer_.size(); i++){
     if(target_time < rclcpp::Time(pose_buffer_[i].header.stamp)) {
       if ((rclcpp::Time(pose_buffer_[i].header.stamp) - target_time).seconds() < (target_time - rclcpp::Time(pose_buffer_[i-1].header.stamp)).seconds()) {
