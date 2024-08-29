@@ -69,9 +69,13 @@ boost::optional<Point2d> getNearestCollisionPoint(
 }
 
 boost::optional<PathIndexWithPoint2d> findCollisionSegment(
-  const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const LineString2d & stop_line)
+  const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const LineString2d & stop_line,
+  const SearchRangeIndex & search_index)
 {
-  for (size_t i = 0; i < path.points.size() - 1; ++i) {
+  const auto min_search_index = std::max(static_cast<size_t>(0), search_index.min_idx);
+  const auto max_search_index = std::min(search_index.max_idx, path.points.size() - 1);
+
+  for (size_t i = min_search_index; i < max_search_index; ++i) {
     const auto & p1 = path.points.at(i).point.pose.position;      // Point before collision point
     const auto & p2 = path.points.at(i + 1).point.pose.position;  // Point after collision point
 
@@ -186,13 +190,15 @@ geometry_msgs::msg::Pose calcTargetPose(
 }  // namespace
 
 DetectionAreaModule::DetectionAreaModule(
-  const int64_t module_id, const lanelet::autoware::DetectionArea & detection_area_reg_elem,
+  const int64_t module_id, const size_t lane_id,
+  const lanelet::autoware::DetectionArea & detection_area_reg_elem,
   const PlannerParam & planner_param, const rclcpp::Logger logger,
   const rclcpp::Clock::SharedPtr clock)
 : SceneModuleInterface(module_id, logger, clock),
   detection_area_reg_elem_(detection_area_reg_elem),
   state_(State::GO),
-  planner_param_(planner_param)
+  planner_param_(planner_param),
+  lane_id_(lane_id)
 {
 }
 
@@ -351,8 +357,13 @@ bool DetectionAreaModule::isOverLine(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
   const geometry_msgs::msg::Pose & self_pose, const geometry_msgs::msg::Pose & line_pose) const
 {
-  return tier4_autoware_utils::calcSignedArcLength(
-           path.points, self_pose.position, line_pose.position) < 0;
+  const PointWithSearchRangeIndex src_point_with_search_range_index =
+    planning_utils::findFirstNearSearchRangeIndex(path.points, self_pose.position);
+  const PointWithSearchRangeIndex dst_point_with_search_range_index = {
+    line_pose.position, planning_utils::getPathIndexRangeIncludeLaneId(path, lane_id_)};
+
+  return planning_utils::calcSignedArcLengthWithSearchIndex(
+           path.points, src_point_with_search_range_index, dst_point_with_search_range_index) < 0;
 }
 
 bool DetectionAreaModule::hasEnoughBrakingDistance(
@@ -392,8 +403,10 @@ boost::optional<PathIndexWithPose> DetectionAreaModule::createTargetPoint(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path, const LineString2d & stop_line,
   const double margin) const
 {
+  const auto dst_search_range = planning_utils::getPathIndexRangeIncludeLaneId(path, lane_id_);
+
   // Find collision segment
-  const auto collision_segment = findCollisionSegment(path, stop_line);
+  const auto collision_segment = findCollisionSegment(path, stop_line, dst_search_range);
   if (!collision_segment) {
     // No collision
     return {};
