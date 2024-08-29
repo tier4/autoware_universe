@@ -701,7 +701,7 @@ void PointCloudConcatenateDataSynchronizerComponent::checkConcatStatus()
     diag_status_msg.values.push_back(key_value_msg);
   }
 
-  if (consecutive_concatenate_failures > 1) {
+  if (consecutive_concatenate_failures > 2) {
     diag_status_msg.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
     diag_status_msg.message = "Some topics are not concatenated";
   } else {
