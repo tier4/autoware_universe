@@ -3,5 +3,6 @@
 
   <node pkg="dummy_operation_mode_publisher" exec="dummy_operation_mode_publisher_node" name="dummy_operation_mode_publisher" output="screen">
     <remap from="~/output/operation_mode_state" to="/system/operation_mode/state"/>
+    <remap from="~/output/operation_mode_state_adapi" to="/api/operation_mode/state"/>
   </node>
 </launch>

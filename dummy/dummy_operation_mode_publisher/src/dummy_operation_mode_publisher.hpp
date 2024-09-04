@@ -37,6 +37,8 @@ private:
   // Publisher
   rclcpp::Publisher<autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr
     pub_operation_mode_state_;
+  rclcpp::Publisher<autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr
+    pub_operation_mode_state_adapi_;
 
   // Service
 

@@ -27,6 +27,8 @@ DummyOperationModePublisher::DummyOperationModePublisher(const rclcpp::NodeOptio
   // Publisher
   pub_operation_mode_state_ = create_publisher<autoware_adapi_v1_msgs::msg::OperationModeState>(
     "~/output/operation_mode_state", 10);
+  pub_operation_mode_state_adapi_ = create_publisher<autoware_adapi_v1_msgs::msg::OperationModeState>(
+    "~/output/operation_mode_state_adapi", 10);
 
   // Service
 
@@ -55,6 +57,7 @@ void DummyOperationModePublisher::onTimer()
   msg.is_remote_mode_available = true;
 
   pub_operation_mode_state_->publish(msg);
+  pub_operation_mode_state_adapi_->publish(msg);
 }
 
 }  // namespace dummy_operation_mode_publisher
