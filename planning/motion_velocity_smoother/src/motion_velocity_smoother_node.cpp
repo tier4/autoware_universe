@@ -336,7 +336,8 @@ void MotionVelocitySmootherNode::calcExternalVelocityLimit()
   RCLCPP_INFO(get_logger(), "external velocity limit pointer exist!!!");
   // sender
   external_velocity_limit_.sender = external_velocity_limit_ptr_->sender;
-  RCLCPP_INFO(get_logger(), "external velocity limit sender: %s", external_velocity_limit_.sender.c_str());
+  RCLCPP_INFO(
+    get_logger(), "external velocity limit sender: %s", external_velocity_limit_.sender.c_str());
 
   // on the first time, apply directly
   if (prev_output_.empty() || !current_closest_point_from_prev_output_) {
@@ -378,7 +379,8 @@ void MotionVelocitySmootherNode::calcExternalVelocityLimit()
         external_velocity_limit_ptr_->use_constraints ? cstr.max_jerk : smoother_->getMaxJerk();
       const auto j_min =
         external_velocity_limit_ptr_->use_constraints ? cstr.min_jerk : smoother_->getMinJerk();
-      RCLCPP_INFO(get_logger(), "constraints: a_min = %f, j_max = %f, j_min = %f", a_min, j_max, j_min);
+      RCLCPP_INFO(
+        get_logger(), "constraints: a_min = %f, j_max = %f, j_min = %f", a_min, j_max, j_min);
 
       // If the closest acceleration is positive, velocity will increase
       // until the acceleration becomes zero
@@ -388,7 +390,8 @@ void MotionVelocitySmootherNode::calcExternalVelocityLimit()
       } else {
         max_velocity_with_deceleration_ = v0;
       }
-      RCLCPP_INFO(get_logger(), "max_velocity_with_deceleration = %f", max_velocity_with_deceleration_);
+      RCLCPP_INFO(
+        get_logger(), "max_velocity_with_deceleration = %f", max_velocity_with_deceleration_);
 
       if (external_velocity_limit_ptr_->max_velocity < max_velocity_with_deceleration_) {
         // TODO(mkuri) If v0 < external_velocity_limit_ptr_->max_velocity <
@@ -409,11 +412,13 @@ void MotionVelocitySmootherNode::calcExternalVelocityLimit()
           RCLCPP_WARN(get_logger(), "Stop distance calculation failed!");
         }
         external_velocity_limit_.dist = stop_dist + margin;
-        RCLCPP_INFO(get_logger(), "external velocity limit dist = %f", external_velocity_limit_.dist);
+        RCLCPP_INFO(
+          get_logger(), "external velocity limit dist = %f", external_velocity_limit_.dist);
       } else {
         max_velocity_with_deceleration_ = external_velocity_limit_ptr_->max_velocity;
         external_velocity_limit_.dist = 0.0;
-        RCLCPP_INFO(get_logger(), "external velocity limit dist = %f", external_velocity_limit_.dist);
+        RCLCPP_INFO(
+          get_logger(), "external velocity limit dist = %f", external_velocity_limit_.dist);
       }
     }
   }
@@ -910,7 +915,8 @@ void MotionVelocitySmootherNode::applyExternalVelocityLimit(TrajectoryPoints & t
   // apply external velocity limit from the inserted point
   trajectory_utils::applyMaximumVelocityLimit(
     *inserted_index, traj.size(), external_velocity_limit_.velocity, traj);
-  RCLCPP_INFO(get_logger(), "apply external velocity limit: dist = %f, vel = %f",
+  RCLCPP_INFO(
+    get_logger(), "apply external velocity limit: dist = %f, vel = %f",
     external_velocity_limit_.dist, external_velocity_limit_.velocity);
 
   // create virtual wall
