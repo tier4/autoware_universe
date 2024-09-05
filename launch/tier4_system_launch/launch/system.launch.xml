@@ -156,7 +156,7 @@
     </include>
   </group>
 
-  <!-- Dummy Diag Publisher -->
+  <!-- System Recover Operator -->
     <group if="$(var launch_system_recover_operator)">
       <node pkg="diagnostic_graph_aggregator" exec="recovery" name="recovery"/>
     </group>
