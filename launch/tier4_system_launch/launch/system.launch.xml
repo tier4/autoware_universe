@@ -19,6 +19,7 @@
 
   <arg name="launch_system_monitor" default="true" description="launch system monitor"/>
   <arg name="launch_dummy_diag_publisher" description="launch dummy diag publisher"/>
+  <arg name="launch_system_recover_operator" default="false" description="launch recover operator"/>
   <arg name="run_mode" default="online" description="options: online, logging_simulation, planning_simulation"/>
   <arg name="sensor_model" description="sensor model name"/>
 
@@ -154,4 +155,9 @@
       <arg name="launch_rqt_runtime_monitor_err" value="$(var launch_rqt_runtime_monitor_err)"/>
     </include>
   </group>
+
+  <!-- Dummy Diag Publisher -->
+    <group if="$(var launch_system_recover_operator)">
+      <node pkg="diagnostic_graph_aggregator" exec="recovery" name="recovery"/>
+    </group>
 </launch>
