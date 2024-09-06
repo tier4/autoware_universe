@@ -106,7 +106,8 @@ private:
     const tier4_system_msgs::msg::MrmBehaviorStatus::ConstSharedPtr msg);
   void onOperationModeState(
     const autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr msg);
-  void onRecoverMrm(const std_srvs::srv::Trigger::Request::SharedPtr,
+  void onRecoverMrm(
+    const std_srvs::srv::Trigger::Request::SharedPtr,
     const std_srvs::srv::Trigger::Response::SharedPtr response);
 
   // Publisher
@@ -138,7 +139,7 @@ private:
   rclcpp::CallbackGroup::SharedPtr client_mrm_emergency_stop_group_;
   rclcpp::Client<tier4_system_msgs::srv::OperateMrm>::SharedPtr client_mrm_emergency_stop_;
 
-  //Services
+  // Services
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr service_recover_mrm_;
 
   bool requestMrmBehavior(

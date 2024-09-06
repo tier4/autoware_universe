@@ -89,8 +89,7 @@ MrmHandler::MrmHandler() : Node("mrm_handler")
   // Services
   service_recover_mrm_ = create_service<std_srvs::srv::Trigger>(
     "/system/clear_mrm",
-    std::bind(
-      &MrmHandler::onRecoverMrm, this, std::placeholders::_1, std::placeholders::_2),
+    std::bind(&MrmHandler::onRecoverMrm, this, std::placeholders::_1, std::placeholders::_2),
     rmw_qos_profile_services_default);
 
   // Initialize
