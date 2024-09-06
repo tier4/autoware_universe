@@ -39,38 +39,49 @@ RecoveryNode::RecoveryNode() : Node("recovery")
 
   fatal_error_ = false;
   mrm_occur_ = false;
+  autonomous_available_ = false;
+  mrm_by_fatal_error_ = false;
 }
 
 void RecoveryNode::on_graph(const DiagnosticGraph::ConstSharedPtr msg)
 {
-  bool autonomous_available = false;
   for (const auto & node : msg->nodes) {
     if (node.status.name == "/autoware/modes/autonomous") {
-      autonomous_available = node.status.level == DiagnosticStatus::OK;
+      autonomous_available_ = node.status.level == DiagnosticStatus::OK;
     }
     // aggregate non-recoverable error
     if (node.status.name == "/autoware/fatal_error/autonomous_available") {
       if (node.status.level != DiagnosticStatus::OK){
         fatal_error_ = true;
+      } else {
+        fatal_error_ = false;
       }
     }
   }
 
-  // 1. Not emergency
-  // 2. Non-recovoerable errors have not happened
-  // 3. on MRM
-  if (autonomous_available && !fatal_error_ && mrm_occur_){
-    clear_mrm();
-  }
 }
 
 void RecoveryNode::on_aw_state(const AutowareState::ConstSharedPtr msg){
-  if (msg->state != AutowareState::DRIVING)
-    fatal_error_ = false;
+  auto_driving_ = msg->state == AutowareState::DRIVING;
 }
 
 void RecoveryNode::on_mrm_state(const MrmState::ConstSharedPtr msg){
+  // set flag if mrm happened by fatal error
+  if (msg->state != MrmState::NORMAL && fatal_error_){
+    mrm_by_fatal_error_ = true;
+  }
+  // reset flag if recoverd (transition from mrm to normal)
+  if (mrm_occur_ && msg->state == MrmState::NORMAL){
+    mrm_by_fatal_error_ = false;
+  }
   mrm_occur_ = msg->state != MrmState::NORMAL;
+  // 1. Not emergency
+  // 2. Non-recovoerable MRM have not happened
+  // 3. on MRM
+  // 4. on autonomous driving
+  if (autonomous_available_ && !mrm_by_fatal_error_ && mrm_occur_ && auto_driving_){
+    clear_mrm();
+  }
 }
 
 void RecoveryNode::clear_mrm(){

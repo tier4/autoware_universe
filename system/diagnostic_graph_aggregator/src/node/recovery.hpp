@@ -45,7 +45,10 @@ private:
   using MrmState = autoware_adapi_v1_msgs::msg::MrmState;
 
   bool fatal_error_;
+  bool autonomous_available_;
   bool mrm_occur_;
+  bool auto_driving_;
+  bool mrm_by_fatal_error_;
   rclcpp::Subscription<DiagnosticGraph>::SharedPtr sub_graph_;
   rclcpp::Subscription<AutowareState>::SharedPtr sub_aw_state_;
   rclcpp::Subscription<MrmState>::SharedPtr sub_mrm_state_;
