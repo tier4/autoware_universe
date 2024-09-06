@@ -62,10 +62,6 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
 {
   latest_odometry_ = *odometry_msg_ptr;
 
-  if (twist_buffer_.empty()) {
-    return;
-  }
-
   PoseStamped current_pose = PoseStamped();
   current_pose.header = latest_odometry_->header;
   current_pose.pose = latest_odometry_->pose.pose;
@@ -87,6 +83,12 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
     } else {
       break;
     }
+  }
+
+  // If twist_buffer_ is empty OR the latest twist is too old, skip the following.
+  double latest_twist_age = (current_pose_time - rclcpp::Time(twist_buffer_.back().header.stamp)).seconds();
+  if (twist_buffer_.empty() || latest_twist_age > window_length_ * 1.5) {
+    return;
   }
 
   PoseStamped::SharedPtr one_step_back_pose_ptr = std::make_shared<PoseStamped>(one_step_back_pose.value());
