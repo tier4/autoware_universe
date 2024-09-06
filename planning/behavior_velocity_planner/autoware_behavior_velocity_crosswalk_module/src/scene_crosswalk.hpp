@@ -352,6 +352,10 @@ private:
     const PathWithLaneId & ego_path,
     const geometry_msgs::msg::Point & first_path_point_on_crosswalk) const;
 
+  std::optional<geometry_msgs::msg::Pose> calcStopPose(
+    const PathWithLaneId & ego_path, double dist_nearest_cp,
+    const std::optional<geometry_msgs::msg::Pose> & default_stop_pose_opt);
+
   std::optional<StopFactor> checkStopForCrosswalkUsers(
     const PathWithLaneId & ego_path, const PathWithLaneId & sparse_resample_path,
     const geometry_msgs::msg::Point & first_path_point_on_crosswalk,
@@ -417,7 +421,7 @@ private:
     const std::pair<double, double> & crosswalk_attention_range) const;
 
   void updateObjectState(
-    const std::optional<double> dist_ego_to_stop_opt, const PathWithLaneId & sparse_resample_path,
+    const double dist_ego_to_stop, const PathWithLaneId & sparse_resample_path,
     const std::pair<double, double> & crosswalk_attention_range, const Polygon2d & attention_area);
 
   bool isRedSignalForPedestrians() const;

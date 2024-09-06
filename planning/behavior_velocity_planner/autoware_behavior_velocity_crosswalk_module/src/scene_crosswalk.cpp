@@ -318,26 +318,7 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
   const geometry_msgs::msg::Point & last_path_point_on_crosswalk,
   const std::optional<geometry_msgs::msg::Pose> & default_stop_pose_opt)
 {
-  struct StopCandidate
-  {
-    geometry_msgs::msg::Pose pose;
-    double dist;
-  };
-
   const auto & ego_pos = planner_data_->current_odometry->pose.position;
-  const double ego_vel = planner_data_->current_velocity->twist.linear.x;
-  const double ego_acc = planner_data_->current_acceleration->accel.accel.linear.x;
-
-  const auto base_link2front = planner_data_->vehicle_info_.max_longitudinal_offset_m;
-
-  const auto default_stop_opt = [&]() -> std::optional<StopCandidate> {
-    if (!default_stop_pose_opt.has_value()) {
-      return std::nullopt;
-    }
-    const double dist =
-      calcSignedArcLength(ego_path.points, ego_pos, default_stop_pose_opt->position);
-    return StopCandidate{default_stop_pose_opt.value(), dist};
-  }();
 
   // Calculate attention range for crosswalk
   const auto crosswalk_attention_range = getAttentionRange(
@@ -347,14 +328,12 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
   const auto attention_area = getAttentionArea(sparse_resample_path, crosswalk_attention_range);
 
   // Update object state
+  const double dist_default_stop =
+    default_stop_pose_opt.has_value()
+      ? calcSignedArcLength(ego_path.points, ego_pos, default_stop_pose_opt->position)
+      : std::numeric_limits<double>::max();
   updateObjectState(
-    default_stop_opt.has_value() ? std::optional<double>(default_stop_opt->dist) : std::nullopt,
-    sparse_resample_path, crosswalk_attention_range, attention_area);
-
-  // Check if ego moves forward enough to ignore yield.
-  const auto & p = planner_param_;
-  const double dist_ego2crosswalk =
-    calcSignedArcLength(ego_path.points, ego_pos, first_path_point_on_crosswalk);
+    dist_default_stop, sparse_resample_path, crosswalk_attention_range, attention_area);
 
   // Check pedestrian for stop
   // NOTE: first stop point and its minimum distance from ego to stop
@@ -394,9 +373,42 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
     return {};
   }
 
+  const auto decided_stop_pose_opt =
+    calcStopPose(ego_path, dist_nearest_cp.value(), default_stop_pose_opt);
+  if (!decided_stop_pose_opt.has_value()) {
+    return {};
+  }
+  return createStopFactor(decided_stop_pose_opt.value(), stop_factor_points);
+}
+
+std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
+  const PathWithLaneId & ego_path, double dist_nearest_cp,
+  const std::optional<geometry_msgs::msg::Pose> & default_stop_pose_opt)
+{
+  struct StopCandidate
+  {
+    geometry_msgs::msg::Pose pose;
+    double dist;
+  };
+
+  const auto & p = planner_param_;
+  const auto base_link2front = planner_data_->vehicle_info_.max_longitudinal_offset_m;
+  const auto & ego_pos = planner_data_->current_odometry->pose.position;
+  const double ego_vel = planner_data_->current_velocity->twist.linear.x;
+  const double ego_acc = planner_data_->current_acceleration->accel.accel.linear.x;
+
+  const auto default_stop_opt = [&]() -> std::optional<StopCandidate> {
+    if (!default_stop_pose_opt.has_value()) {
+      return std::nullopt;
+    }
+    const double dist =
+      calcSignedArcLength(ego_path.points, ego_pos, default_stop_pose_opt->position);
+    return StopCandidate{default_stop_pose_opt.value(), dist};
+  }();
+
   const auto ped_stop_limit = [&]() -> std::optional<StopCandidate> {
     const double dist =
-      dist_nearest_cp.value() - base_link2front - planner_param_.stop_distance_from_object;
+      dist_nearest_cp - base_link2front - planner_param_.stop_distance_from_object;
     const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist);
     if (!pose_opt.has_value()) {
       return std::nullopt;
@@ -404,13 +416,13 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
     return StopCandidate{pose_opt.value(), dist};
   }();
   if (!ped_stop_limit.has_value()) {
-    return {};
+    return std::nullopt;
   }
 
   const auto without_acc_stop = [&]() -> std::optional<StopCandidate> {
     const auto ped_stop_pref_opt = [&]() -> std::optional<StopCandidate> {
       const double dist =
-        dist_nearest_cp.value() - base_link2front - planner_param_.stop_distance_from_object;
+        dist_nearest_cp - base_link2front - planner_param_.stop_distance_from_object;
       const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist);
       if (!pose_opt.has_value()) {
         return std::nullopt;
@@ -429,7 +441,7 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
     }
   }();
   if (!without_acc_stop.has_value()) {
-    return {};
+    return std::nullopt;
   }
 
   const auto weak_brk_stop = [&]() -> std::optional<StopCandidate> {
@@ -446,16 +458,15 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
     return StopCandidate{pose_opt.value(), dist_opt.value()};
   }();
   if (!weak_brk_stop.has_value()) {
-    return {};
+    return std::nullopt;
   }
- 
-  const auto decided_stop_opt = [&]() {
+  const auto decided_stop_pos = [&]() {
     if (weak_brk_stop->dist < without_acc_stop->dist) {
-      return without_acc_stop;
+      return without_acc_stop.value();
     } else if (weak_brk_stop->dist < ped_stop_limit->dist) {
-      return weak_brk_stop;
+      return weak_brk_stop.value();
     } else {
-      return ped_stop_limit;
+      return ped_stop_limit.value();
     }
   }();
 
@@ -465,10 +476,11 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
       p.min_jerk_for_no_stop_decision);
     return strong_brk_dist_opt ? strong_brk_dist_opt.value() : 0.0;
   }();
-  if (!decided_stop_opt.has_value() || decided_stop_opt->dist < strong_brk_dist) {
-    return {};
+  if (decided_stop_pos.dist < strong_brk_dist) {
+    return std::nullopt;
   }
-  createStopFactor(decided_stop_opt->pose, stop_factor_points);
+
+  return std::make_optional(decided_stop_pos.pose);
 }
 
 std::pair<double, double> CrosswalkModule::getAttentionRange(
@@ -1110,8 +1122,7 @@ std::optional<StopFactor> CrosswalkModule::getNearestStopFactor(
 }
 
 void CrosswalkModule::updateObjectState(
-  const std::optional<double> dist_ego_to_default_stop_opt,
-  const PathWithLaneId & sparse_resample_path,
+  const double dist_ego_to_stop, const PathWithLaneId & sparse_resample_path,
   const std::pair<double, double> & crosswalk_attention_range, const Polygon2d & attention_area)
 {
   const auto & objects_ptr = planner_data_->predicted_objects;
@@ -1122,9 +1133,7 @@ void CrosswalkModule::updateObjectState(
 
   // Check if ego is yielding
   const bool is_ego_yielding = [&]() {
-    const auto has_reached_stop_point =
-      dist_ego_to_default_stop_opt.has_value() &&
-      dist_ego_to_default_stop_opt.value() < planner_param_.stop_position_threshold;
+    const auto has_reached_stop_point = dist_ego_to_stop < planner_param_.stop_position_threshold;
 
     return planner_data_->isVehicleStopped(planner_param_.timeout_ego_stop_for_yield) &&
            has_reached_stop_point;
