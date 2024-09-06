@@ -69,6 +69,12 @@ MrmHandler::MrmHandler(const rclcpp::NodeOptions & options) : Node("mrm_handler"
     "~/output/mrm/emergency_stop/operate", rmw_qos_profile_services_default,
     client_mrm_emergency_stop_group_);
 
+  // Services
+  service_recover_mrm_ = create_service<std_srvs::srv::Trigger>(
+    "/system/clear_mrm",
+    std::bind(&MrmHandler::onRecoverMrm, this, std::placeholders::_1, std::placeholders::_2),
+    rmw_qos_profile_services_default);
+
   // Initialize
   mrm_state_.stamp = this->now();
   mrm_state_.state = autoware_adapi_v1_msgs::msg::MrmState::NORMAL;
@@ -580,6 +586,18 @@ bool MrmHandler::isArrivedAtGoal()
   auto state = sub_operation_mode_state_.takeData();
   if (state == nullptr) return false;
   return state->mode == OperationModeState::STOP;
+}
+
+void MrmHandler::onRecoverMrm(
+  const std_srvs::srv::Trigger::Request::SharedPtr,
+  const std_srvs::srv::Trigger::Response::SharedPtr response)
+{
+  if (!param_.is_mrm_recoverable) {
+    is_mrm_holding_ = false;
+    response->success = true;
+  } else {
+    response->success = false;
+  }
 }
 
 #include <rclcpp_components/register_node_macro.hpp>
