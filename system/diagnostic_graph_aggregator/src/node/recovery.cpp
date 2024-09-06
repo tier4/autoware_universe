@@ -19,22 +19,6 @@
 namespace diagnostic_graph_aggregator
 {
 
-std::string level_to_string(DiagnosticLevel level)
-{
-  switch (level) {
-    case DiagnosticStatus::OK:
-      return "OK";
-    case DiagnosticStatus::WARN:
-      return "WARN";
-    case DiagnosticStatus::ERROR:
-      return "ERROR";
-    case DiagnosticStatus::STALE:
-      return "STALE";
-  }
-  return "UNKNOWN";
-}
-
-
 RecoveryNode::RecoveryNode() : Node("recovery")
 {
   using std::placeholders::_1;
@@ -92,20 +76,22 @@ void RecoveryNode::on_mrm_state(const MrmState::ConstSharedPtr msg){
 void RecoveryNode::clear_mrm(){
   const auto req = std::make_shared<std_srvs::srv::Trigger::Request>();
 
-  if (!srv_clear_mrm_->service_is_ready()) {
-    throw component_interface_utils::ServiceUnready("MRM clear server is not ready.");
-  }
   auto logger = get_logger();
+  if (!srv_clear_mrm_->service_is_ready()) {
+    RCLCPP_ERROR(logger, "MRM clear server is not ready.");
+    return;
+  }
   RCLCPP_INFO(logger, "Recover MRM automatically.");
   auto res = srv_clear_mrm_->async_send_request(req);
   std::future_status status = res.wait_for(std::chrono::milliseconds(50));
   if(status == std::future_status::timeout)
   {
+    RCLCPP_INFO(logger, "Service timeout");
     return;
   }
   if (!res.get()->success) {
     RCLCPP_INFO(logger, "Recovering MRM failed.");
-    throw component_interface_utils::NoEffectWarning("MRM clear server is not available.");
+    return;
   }
   RCLCPP_INFO(logger, "Recovering MRM succeed.");
 }
