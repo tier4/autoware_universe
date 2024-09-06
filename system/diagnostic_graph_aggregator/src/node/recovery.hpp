@@ -20,11 +20,12 @@
 #include <rclcpp/rclcpp.hpp>
 
 // Autoware
+#include <component_interface_utils/rclcpp.hpp>
+
+#include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
+#include <autoware_auto_system_msgs/msg/autoware_state.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
-#include <component_interface_utils/rclcpp.hpp>
-#include <autoware_auto_system_msgs/msg/autoware_state.hpp>
-#include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 
 #include <functional>
 #include <map>  // Use map for sorting keys.
@@ -64,7 +65,6 @@ private:
   void on_mrm_state(const MrmState::ConstSharedPtr msg);
 
   void clear_mrm();
-
 };
 
 }  // namespace diagnostic_graph_aggregator

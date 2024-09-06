@@ -27,15 +27,17 @@ RecoveryNode::RecoveryNode() : Node("recovery")
   const auto qos_mrm_state = rclcpp::QoS(1);
 
   const auto callback_graph = std::bind(&RecoveryNode::on_graph, this, _1);
-  sub_graph_ = create_subscription<DiagnosticGraph>("/diagnostics_graph", qos_graph, callback_graph);
+  sub_graph_ =
+    create_subscription<DiagnosticGraph>("/diagnostics_graph", qos_graph, callback_graph);
   const auto callback_aw_state = std::bind(&RecoveryNode::on_aw_state, this, _1);
-  sub_aw_state_ = create_subscription<AutowareState>("/autoware/state", qos_aw_state, callback_aw_state);
+  sub_aw_state_ =
+    create_subscription<AutowareState>("/autoware/state", qos_aw_state, callback_aw_state);
   const auto callback_mrm_state = std::bind(&RecoveryNode::on_mrm_state, this, _1);
-  sub_mrm_state_ = create_subscription<MrmState>("/system/fail_safe/mrm_state",
-    qos_mrm_state, callback_mrm_state);
+  sub_mrm_state_ =
+    create_subscription<MrmState>("/system/fail_safe/mrm_state", qos_mrm_state, callback_mrm_state);
   callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  srv_clear_mrm_ =  create_client<std_srvs::srv::Trigger>("/system/clear_mrm",
-    rmw_qos_profile_services_default, callback_group_);
+  srv_clear_mrm_ = create_client<std_srvs::srv::Trigger>(
+    "/system/clear_mrm", rmw_qos_profile_services_default, callback_group_);
 
   fatal_error_ = false;
   mrm_occur_ = false;
@@ -51,27 +53,28 @@ void RecoveryNode::on_graph(const DiagnosticGraph::ConstSharedPtr msg)
     }
     // aggregate non-recoverable error
     if (node.status.name == "/autoware/fatal_error/autonomous_available") {
-      if (node.status.level != DiagnosticStatus::OK){
+      if (node.status.level != DiagnosticStatus::OK) {
         fatal_error_ = true;
       } else {
         fatal_error_ = false;
       }
     }
   }
-
 }
 
-void RecoveryNode::on_aw_state(const AutowareState::ConstSharedPtr msg){
+void RecoveryNode::on_aw_state(const AutowareState::ConstSharedPtr msg)
+{
   auto_driving_ = msg->state == AutowareState::DRIVING;
 }
 
-void RecoveryNode::on_mrm_state(const MrmState::ConstSharedPtr msg){
+void RecoveryNode::on_mrm_state(const MrmState::ConstSharedPtr msg)
+{
   // set flag if mrm happened by fatal error
-  if (msg->state != MrmState::NORMAL && fatal_error_){
+  if (msg->state != MrmState::NORMAL && fatal_error_) {
     mrm_by_fatal_error_ = true;
   }
   // reset flag if recoverd (transition from mrm to normal)
-  if (mrm_occur_ && msg->state == MrmState::NORMAL){
+  if (mrm_occur_ && msg->state == MrmState::NORMAL) {
     mrm_by_fatal_error_ = false;
   }
   mrm_occur_ = msg->state != MrmState::NORMAL;
@@ -79,12 +82,13 @@ void RecoveryNode::on_mrm_state(const MrmState::ConstSharedPtr msg){
   // 2. Non-recovoerable MRM have not happened
   // 3. on MRM
   // 4. on autonomous driving
-  if (autonomous_available_ && !mrm_by_fatal_error_ && mrm_occur_ && auto_driving_){
+  if (autonomous_available_ && !mrm_by_fatal_error_ && mrm_occur_ && auto_driving_) {
     clear_mrm();
   }
 }
 
-void RecoveryNode::clear_mrm(){
+void RecoveryNode::clear_mrm()
+{
   const auto req = std::make_shared<std_srvs::srv::Trigger::Request>();
 
   auto logger = get_logger();
@@ -95,8 +99,7 @@ void RecoveryNode::clear_mrm(){
   RCLCPP_INFO(logger, "Recover MRM automatically.");
   auto res = srv_clear_mrm_->async_send_request(req);
   std::future_status status = res.wait_for(std::chrono::milliseconds(50));
-  if(status == std::future_status::timeout)
-  {
+  if (status == std::future_status::timeout) {
     RCLCPP_INFO(logger, "Service timeout");
     return;
   }
