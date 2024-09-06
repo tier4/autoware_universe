@@ -44,26 +44,11 @@ PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & opt
   pose_estimator_angular_tolerance_(
     this->declare_parameter<double>("pose_estimator_angular_tolerance"))
 {
-  // Define subscription type
-  std::string comparison_target = this->declare_parameter<std::string>("comparison_target");
-
   // Define subscribers and publishers
-  if (comparison_target == "odometry") {
-    use_ndt_pose_ = false;
-  } else if (comparison_target == "pose_with_covariance") {
-    use_ndt_pose_ = true;
-  } else {
-    RCLCPP_ERROR(this->get_logger(), "Invalid subscription type!: %s", comparison_target.c_str());
-    rclcpp::shutdown();
-  }
 
   odometry_sub_ = this->create_subscription<Odometry>(
     "~/input/odometry", 10,
     std::bind(&PoseInstabilityDetector::callback_odometry, this, std::placeholders::_1));
-
-  pose_with_covarince_sub_ = this->create_subscription<PoseWithCovariance>(
-    "~/input/pose", 10,
-    std::bind(&PoseInstabilityDetector::callback_pose, this, std::placeholders::_1));
 
   twist_sub_ = this->create_subscription<TwistWithCovarianceStamped>(
     "~/input/twist", 10,
@@ -76,10 +61,6 @@ PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & opt
 void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometry_msg_ptr)
 {
   latest_odometry_ = *odometry_msg_ptr;
-
-  if (use_ndt_pose_) {
-    return;
-  }
 
   if (twist_buffer_.empty()) {
     return;
@@ -171,11 +152,6 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
   diagnostics.header.stamp = current_pose_time;
   diagnostics.status.emplace_back(status);
   diagnostics_pub_->publish(diagnostics);
-}
-
-void PoseInstabilityDetector::callback_pose(PoseWithCovariance::ConstSharedPtr pose_msg_ptr)
-{
-  latest_ndt_pose_ = *pose_msg_ptr;
 }
 
 void PoseInstabilityDetector::callback_twist(

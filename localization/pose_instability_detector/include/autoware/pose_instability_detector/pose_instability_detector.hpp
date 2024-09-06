@@ -59,7 +59,6 @@ public:
 
 private:
   void callback_odometry(Odometry::ConstSharedPtr odometry_msg_ptr);
-  void callback_pose(PoseWithCovariance::ConstSharedPtr pose_msg_ptr);
   void callback_twist(TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr);
 
   static std::deque<TwistWithCovarianceStamped> clip_out_necessary_twist(
@@ -85,7 +84,6 @@ private:
 
   // parameters
   const double window_length_; // [sec]
-  bool use_ndt_pose_;
   bool output_x_y_yaw_only_;
 
   const double heading_velocity_maximum_;                 // [m/s]
@@ -103,7 +101,6 @@ private:
   // variables
   std::optional<Odometry> latest_odometry_ = std::nullopt;
   std::optional<Odometry> prev_odometry_ = std::nullopt;
-  std::optional<PoseWithCovariance> latest_ndt_pose_ = std::nullopt;
   std::deque<TwistWithCovarianceStamped> twist_buffer_;
   std::deque<PoseStamped> pose_buffer_;
 };

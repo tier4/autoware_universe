@@ -1,7 +1,6 @@
 /**:
   ros__parameters:
     window_length: 0.5                            # [sec]
-    comparison_target: "odometry"     # select from "pose_with_covariance" or "odometry"
 
     output_x_y_yaw_only: true                     # true/false
 
