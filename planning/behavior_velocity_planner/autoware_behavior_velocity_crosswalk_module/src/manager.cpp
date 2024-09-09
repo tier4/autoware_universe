@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+
+
 namespace autoware::behavior_velocity_planner
 {
 
@@ -57,9 +59,9 @@ CrosswalkModuleManager::CrosswalkModuleManager(rclcpp::Node & node)
     getOrDeclareParameter<double>(node, ns + ".stop_position.far_object_threshold");
   cp.stop_position_threshold =
     getOrDeclareParameter<double>(node, ns + ".stop_position.stop_position_threshold");
-  cp.min_acc_prefered = getOrDeclareParameter<double>(node, ns + ".stop_position.min_acc_preferd");
+  cp.min_acc_prefered = getOrDeclareParameter<double>(node, ns + ".stop_position.min_acc_prefered");
   cp.min_jerk_prefered =
-    getOrDeclareParameter<double>(node, ns + ".stop_position.min_jerk_preferd");
+    getOrDeclareParameter<double>(node, ns + ".stop_position.min_jerk_prefered");
 
   // param for restart suppression
   cp.min_dist_to_stop_for_restart_suppression =
