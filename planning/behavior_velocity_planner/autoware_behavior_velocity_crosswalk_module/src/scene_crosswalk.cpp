@@ -398,37 +398,29 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
   const double ego_acc = planner_data_->current_acceleration->accel.accel.linear.x;
 
   const auto default_stop_opt = [&]() -> std::optional<StopCandidate> {
-    if (!default_stop_pose_opt.has_value()) {
-      return std::nullopt;
-    }
-    const double dist =
-      calcSignedArcLength(ego_path.points, ego_pos, default_stop_pose_opt->position);
-    return StopCandidate{default_stop_pose_opt.value(), dist};
+    if (!default_stop_pose_opt.has_value()) return std::nullopt;
+    return StopCandidate{
+      default_stop_pose_opt.value(),
+      calcSignedArcLength(ego_path.points, ego_pos, default_stop_pose_opt->position)};
   }();
 
-  const auto ped_stop_limit = [&]() -> std::optional<StopCandidate> {
+  const auto ped_stop_pref_opt = [&]() -> std::optional<StopCandidate> {
     const double dist =
-      dist_nearest_cp - base_link2front - planner_param_.stop_distance_from_object;
+      dist_nearest_cp - base_link2front - planner_param_.stop_distance_from_object_preferd;
     const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist);
-    if (!pose_opt.has_value()) {
-      return std::nullopt;
-    }
+    if (!pose_opt.has_value()) return std::nullopt;
     return StopCandidate{pose_opt.value(), dist};
   }();
-  if (!ped_stop_limit.has_value()) {
-    return std::nullopt;
-  }
+
+  const auto ped_stop_limit_opt = [&]() -> std::optional<StopCandidate> {
+    const double dist =
+      dist_nearest_cp - base_link2front - planner_param_.stop_distance_from_object_limit;
+    const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist);
+    if (!pose_opt.has_value()) return std::nullopt;
+    return StopCandidate{pose_opt.value(), dist};
+  }();
 
   const auto without_acc_stop = [&]() -> std::optional<StopCandidate> {
-    const auto ped_stop_pref_opt = [&]() -> std::optional<StopCandidate> {
-      const double dist =
-        dist_nearest_cp - base_link2front - planner_param_.stop_distance_from_object;
-      const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist);
-      if (!pose_opt.has_value()) {
-        return std::nullopt;
-      }
-      return StopCandidate{pose_opt.value(), dist};
-    }();
     if (!ped_stop_pref_opt.has_value()) {
       // RCLCPP_DEBUG(logger_, "Failure to calculate stop_pose agaist a pedestrian with margin.");
       return std::nullopt;
@@ -440,33 +432,28 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
       return ped_stop_pref_opt;
     }
   }();
-  if (!without_acc_stop.has_value()) {
-    return std::nullopt;
-  }
+  if (!without_acc_stop.has_value()) return std::nullopt;
 
   const auto weak_brk_stop = [&]() -> std::optional<StopCandidate> {
     const auto dist_opt = autoware::motion_utils::calcDecelDistWithJerkAndAccConstraints(
-      ego_vel, 0.0, ego_acc, p.min_acc_for_no_stop_decision, p.max_jerk_for_no_stop_decision,
-      p.min_jerk_for_no_stop_decision);
-    if (!dist_opt.has_value()) {
-      return std::nullopt;
-    }
+      ego_vel, 0.0, ego_acc, p.min_acc_prefered, 10.0, p.min_jerk_prefered);
+    if (!dist_opt.has_value()) return std::nullopt;
     const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist_opt.value());
-    if (!pose_opt.has_value()) {
-      return std::nullopt;
-    }
+    if (!pose_opt.has_value()) return std::nullopt;
     return StopCandidate{pose_opt.value(), dist_opt.value()};
   }();
   if (!weak_brk_stop.has_value()) {
+    // RCLCPP_DEBUG(logger_, "Failure to calculate stop_pose agaist a pedestrian with margin.");
     return std::nullopt;
   }
-  const auto decided_stop_pos = [&]() {
+
+  const auto selected_stop = [&]() {
     if (weak_brk_stop->dist < without_acc_stop->dist) {
       return without_acc_stop.value();
-    } else if (weak_brk_stop->dist < ped_stop_limit->dist) {
+    } else if (weak_brk_stop->dist < ped_stop_limit_opt->dist) {
       return weak_brk_stop.value();
     } else {
-      return ped_stop_limit.value();
+      return ped_stop_limit_opt.value();
     }
   }();
 
@@ -476,11 +463,12 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
       p.min_jerk_for_no_stop_decision);
     return strong_brk_dist_opt ? strong_brk_dist_opt.value() : 0.0;
   }();
-  if (decided_stop_pos.dist < strong_brk_dist) {
+  if (selected_stop.dist < strong_brk_dist) {
+    // RCLCPP_DEBUG(logger_, "Failure to calculate stop_pose agaist a pedestrian with margin.");
     return std::nullopt;
   }
 
-  return std::make_optional(decided_stop_pos.pose);
+  return std::make_optional(selected_stop.pose);
 }
 
 std::pair<double, double> CrosswalkModule::getAttentionRange(

@@ -113,9 +113,13 @@ public:
     bool show_processing_time;
     // param for stop position
     double stop_distance_from_object;
+    double stop_distance_from_object_preferd;
+    double stop_distance_from_object_limit;
     double stop_distance_from_crosswalk;
     double far_object_threshold;
     double stop_position_threshold;
+    double min_acc_prefered;
+    double min_jerk_prefered;
     // param for restart suppression
     double min_dist_to_stop_for_restart_suppression;
     double max_dist_to_stop_for_restart_suppression;
