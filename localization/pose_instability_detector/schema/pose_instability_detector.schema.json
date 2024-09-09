@@ -6,11 +6,16 @@
     "pose_instability_detector_node": {
       "type": "object",
       "properties": {
-        "timer_period": {
+        "window_length": {
           "type": "number",
           "default": 0.5,
           "exclusiveMinimum": 0,
-          "description": "The period of timer_callback (sec)."
+          "description": "How many seconds before to start dead reckoning (sec)"
+        },
+        "output_x_y_yaw_only": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to output diff_x, diff_y, diff_yaw only"
         },
         "heading_velocity_maximum": {
           "type": "number",
