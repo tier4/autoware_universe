@@ -16,6 +16,7 @@
 #define IMAGE_PROJECTION_BASED_FUSION__SEGMENTATION_POINTCLOUD_FUSION__NODE_HPP_
 
 #include "image_projection_based_fusion/fusion_node.hpp"
+
 #include <image_transport/image_transport.hpp>
 
 #include <string>
