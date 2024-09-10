@@ -117,7 +117,8 @@ public:
     double far_object_threshold;
     double stop_position_threshold;
     // param for restart suppression
-    double dist_to_stop_for_restart_suppression;
+    double min_dist_to_stop_for_restart_suppression;
+    double max_dist_to_stop_for_restart_suppression;
     // param for ego velocity
     float min_slow_down_velocity;
     double max_slow_down_jerk;
@@ -407,7 +408,8 @@ private:
   static geometry_msgs::msg::Polygon createVehiclePolygon(
     const vehicle_info_util::VehicleInfo & vehicle_info);
 
-  bool checkRestartSuppression(const std::optional<StopFactor> & stop_factor);
+  bool checkRestartSuppression(
+    const PathWithLaneId & ego_path, const std::optional<StopFactor> & stop_factor) const;
 
   void recordTime(const int step_num)
   {
