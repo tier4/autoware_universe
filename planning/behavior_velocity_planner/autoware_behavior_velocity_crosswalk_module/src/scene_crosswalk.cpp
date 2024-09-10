@@ -38,36 +38,6 @@
 #include <tuple>
 #include <vector>
 
-#define debug(var)                                                      \
-  do {                                                                  \
-    std::cerr << __func__ << ": " << __LINE__ << ", " << #var << " : "; \
-    view(var);                                                          \
-  } while (0)
-template <typename T>
-void view(T e)
-{
-  std::cerr << e << std::endl;
-}
-template <typename T>
-void view(const std::vector<T> & v)
-{
-  for (const auto & e : v) {
-    std::cerr << e << " ";
-  }
-  std::cerr << std::endl;
-}
-template <typename T>
-void view(const std::vector<std::vector<T>> & vv)
-{
-  for (const auto & v : vv) {
-    view(v);
-  }
-}
-#define line()                                                                         \
-  {                                                                                    \
-    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
-  }
-
 namespace autoware::behavior_velocity_planner
 {
 namespace bg = boost::geometry;
@@ -424,7 +394,7 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
   const auto & p = planner_param_;
   const auto base_link2front = planner_data_->vehicle_info_.max_longitudinal_offset_m;
   const auto & ego_pos = planner_data_->current_odometry->pose.position;
-  const double ego_vel = planner_data_->current_velocity->twist.linear.x;
+  const double ego_vel_non_nega = std::max(0.0, planner_data_->current_velocity->twist.linear.x);
   const double ego_acc = planner_data_->current_acceleration->accel.accel.linear.x;
 
   const auto default_stop_opt = [&]() -> std::optional<StopCandidate> {
@@ -444,9 +414,10 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
 
   const auto without_acc_stop_opt = [&]() -> std::optional<StopCandidate> {
     if (!ped_stop_pref_opt.has_value()) {
+      RCLCPP_WARN(
+        logger_,
+        "Failure to calculate stop_pose agaist the nearest pedestrian with a prefered margin.");
       return std::nullopt;
-      // RCLCPP_DEBUG(logger_, "Failure to calculate stop_pose agaist a pedestrian with margin.");
-      // return weak_brk_stop; だめ limitへのアプローチからオーバーランする
     } else if (
       default_stop_opt.has_value() && ped_stop_pref_opt->dist > default_stop_opt->dist &&
       ped_stop_pref_opt->dist < default_stop_opt->dist + planner_param_.far_object_threshold) {
@@ -455,7 +426,6 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
       return ped_stop_pref_opt;
     }
   }();
-  // if (!without_acc_stop_opt.has_value()) return std::nullopt;
 
   const auto ped_stop_limit = [&]() -> std::optional<StopCandidate> {
     const double dist =
@@ -464,22 +434,28 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
     if (!pose_opt.has_value()) return std::nullopt;
     return StopCandidate{pose_opt.value(), dist};
   }();
-  if (!ped_stop_limit.has_value()) return std::nullopt;
+  if (!ped_stop_limit.has_value()) {
+    RCLCPP_WARN(
+      logger_,
+      "Failure to calculate stop_pose agaist the nearest pedestrian with a limit margin. "
+      "Stop will be canceled.");
+    return std::nullopt;
+  }
 
   const auto weak_brk_stop = [&]() -> std::optional<StopCandidate> {
     const auto dist_opt = autoware::motion_utils::calcDecelDistWithJerkAndAccConstraints(
-      ego_vel, 0.0, ego_acc, p.min_acc_prefered, 1.0, p.min_jerk_prefered);
+      ego_vel_non_nega, 0.0, ego_acc, p.min_acc_prefered, 10.0, p.min_jerk_prefered);
     if (!dist_opt.has_value()) return std::nullopt;
     const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist_opt.value());
     if (!pose_opt.has_value()) return std::nullopt;
     return StopCandidate{pose_opt.value(), dist_opt.value()};
   }();
-  if (!weak_brk_stop.has_value()) return std::nullopt;
+  if (!weak_brk_stop.has_value()) {
+    RCLCPP_ERROR(logger_, "Failure to calculate braking distance. Stop will be canceled.");
+    return std::nullopt;
+  }
 
   const auto selected_stop = [&]() {
-    // debug(weak_brk_stop->dist);
-    // debug(without_acc_stop_opt->dist);
-    // debug(ped_stop_limit->dist);
     if (without_acc_stop_opt.has_value() && weak_brk_stop->dist < without_acc_stop_opt->dist) {
       return without_acc_stop_opt.value();
     } else if (weak_brk_stop->dist < ped_stop_limit->dist) {
@@ -491,12 +467,17 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
 
   const double strong_brk_dist = [&]() {
     const auto strong_brk_dist_opt = autoware::motion_utils::calcDecelDistWithJerkAndAccConstraints(
-      ego_vel, 0.0, ego_acc, p.min_acc_for_no_stop_decision, p.max_jerk_for_no_stop_decision,
-      p.min_jerk_for_no_stop_decision);
+      ego_vel_non_nega, 0.0, ego_acc, p.min_acc_for_no_stop_decision,
+      p.max_jerk_for_no_stop_decision, p.min_jerk_for_no_stop_decision);
     return strong_brk_dist_opt ? strong_brk_dist_opt.value() : 0.0;
   }();
-  if (selected_stop.dist < strong_brk_dist) {
-    // RCLCPP_DEBUG(logger_, "Failure to calculate stop_pose agaist a pedestrian with margin.");
+  if (selected_stop.dist < strong_brk_dist + p.offset_length_for_no_stop_decision) {
+    RCLCPP_INFO(
+      logger_,
+      "Abandon to stop. "
+      "Can not stop against the nearest pedestrian with a specified deceleration. "
+      "dist to stop: %f, braking distance: %f",
+      selected_stop.dist, strong_brk_dist);
     return std::nullopt;
   }
 

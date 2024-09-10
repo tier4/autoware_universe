@@ -148,6 +148,7 @@ public:
     double min_acc_for_no_stop_decision;
     double max_jerk_for_no_stop_decision;
     double min_jerk_for_no_stop_decision;
+    double offset_length_for_no_stop_decision;
     double stop_object_velocity;
     double min_object_velocity;
     bool disable_yield_for_new_stopped_object;

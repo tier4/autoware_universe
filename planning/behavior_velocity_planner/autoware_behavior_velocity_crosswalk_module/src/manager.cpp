@@ -115,6 +115,8 @@ CrosswalkModuleManager::CrosswalkModuleManager(rclcpp::Node & node)
     getOrDeclareParameter<double>(node, ns + ".pass_judge.no_stop_decision.max_jerk");
   cp.min_jerk_for_no_stop_decision =
     getOrDeclareParameter<double>(node, ns + ".pass_judge.no_stop_decision.min_jerk");
+  cp.offset_length_for_no_stop_decision =
+    getOrDeclareParameter<double>(node, ns + ".pass_judge.no_stop_decision.offset_length");
   cp.stop_object_velocity =
     getOrDeclareParameter<double>(node, ns + ".pass_judge.stop_object_velocity_threshold");
   cp.min_object_velocity =
