@@ -198,7 +198,7 @@ CrosswalkModule::CrosswalkModule(
   collision_info_pub_ =
     node.create_publisher<tier4_debug_msgs::msg::StringStamped>("~/debug/collision_info", 1);
 
-  vehicle_stop_checker_ = std::make_unique<autoware::motion_utils::VehicleStopChecker>(&node);
+  vehicle_stop_checker_ = std::make_unique<motion_utils::VehicleStopChecker>(&node);
 }
 
 bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path, StopReason * stop_reason)
