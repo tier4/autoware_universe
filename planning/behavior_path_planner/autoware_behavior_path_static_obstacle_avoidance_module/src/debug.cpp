@@ -658,6 +658,7 @@ MarkerArray createDebugMarkerArray(
     addObjects(data.other_objects, ObjectInfo::DEVIATING_FROM_EGO_LANE);
     addObjects(data.other_objects, ObjectInfo::UNSTABLE_OBJECT);
     addObjects(data.other_objects, ObjectInfo::AMBIGUOUS_STOPPED_VEHICLE);
+    addObjects(data.other_objects, ObjectInfo::INVALID_SHIFT_LINE);
   }
 
   // shift line pre-process
