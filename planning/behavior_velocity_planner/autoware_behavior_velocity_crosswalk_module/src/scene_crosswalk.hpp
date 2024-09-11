@@ -113,13 +113,13 @@ public:
     bool show_processing_time;
     // param for stop position
     double stop_distance_from_object;
-    double stop_distance_from_object_preferd;
+    double stop_distance_from_object_preferred;
     double stop_distance_from_object_limit;
     double stop_distance_from_crosswalk;
     double far_object_threshold;
     double stop_position_threshold;
-    double min_acc_prefered;
-    double min_jerk_prefered;
+    double min_acc_preferred;
+    double min_jerk_preferred;
     // param for restart suppression
     double min_dist_to_stop_for_restart_suppression;
     double max_dist_to_stop_for_restart_suppression;
@@ -148,7 +148,7 @@ public:
     double min_acc_for_no_stop_decision;
     double max_jerk_for_no_stop_decision;
     double min_jerk_for_no_stop_decision;
-    double offset_length_for_no_stop_decision;
+    double overrun_threshold_length_for_no_stop_decision;
     double stop_object_velocity;
     double min_object_velocity;
     bool disable_yield_for_new_stopped_object;

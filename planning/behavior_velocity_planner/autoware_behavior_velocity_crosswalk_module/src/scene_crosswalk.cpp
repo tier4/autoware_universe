@@ -328,6 +328,7 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
   const auto attention_area = getAttentionArea(sparse_resample_path, crosswalk_attention_range);
 
   // Update object state
+  // This exceptional handling should be done in update(), but is compromised by history
   const double dist_default_stop =
     default_stop_pose_opt.has_value()
       ? calcSignedArcLength(ego_path.points, ego_pos, default_stop_pose_opt->position)
@@ -345,28 +346,36 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
   const std::optional<double> ego_crosswalk_passage_direction =
     findEgoPassageDirectionAlongPath(sparse_resample_path);
   for (const auto & object : object_info_manager_.getObject()) {
+    const auto & collision_point_opt = object.collision_point;
     if (!object.collision_point || object.collision_state != CollisionState::YIELD) {
-      continue;
-    }
-    const auto & collision_point = object.collision_point.value();
-
-    if (
-      isVehicleType(object.classification) && ego_crosswalk_passage_direction &&
-      collision_point.crosswalk_passage_direction) {
-      const double direction_diff = autoware::universe_utils::normalizeRadian(
-        collision_point.crosswalk_passage_direction.value() -
-        ego_crosswalk_passage_direction.value());
-      if (std::fabs(direction_diff) < planner_param_.vehicle_object_cross_angle_threshold) {
+      if (collision_point_opt) {
+        continue;
+        const auto & collision_point = collision_point_opt.value();
+      }
+      const auto & collision_state = object.collision_state;
+      const auto & collision_point = object.collision_point.value();
+      if (collision_state != CollisionState::YIELD) {
         continue;
       }
-    }
 
-    stop_factor_points.push_back(object.position);
+      if (
+        isVehicleType(object.classification) && ego_crosswalk_passage_direction &&
+        collision_point.crosswalk_passage_direction) {
+        const double direction_diff = autoware::universe_utils::normalizeRadian(
+          collision_point.crosswalk_passage_direction.value() -
+          ego_crosswalk_passage_direction.value());
+        if (std::fabs(direction_diff) < planner_param_.vehicle_object_cross_angle_threshold) {
+          continue;
+        }
+      }
 
-    const auto dist_ego2cp =
-      calcSignedArcLength(sparse_resample_path.points, ego_pos, collision_point.collision_point);
-    if (!dist_nearest_cp || dist_ego2cp < dist_nearest_cp) {
-      dist_nearest_cp = dist_ego2cp;
+      stop_factor_points.push_back(object.position);
+
+      const auto dist_ego2cp =
+        calcSignedArcLength(sparse_resample_path.points, ego_pos, collision_point.collision_point);
+      if (!dist_nearest_cp || dist_ego2cp < dist_nearest_cp) {
+        dist_nearest_cp = dist_ego2cp;
+      }
     }
   }
   if (!dist_nearest_cp) {
@@ -406,17 +415,15 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
 
   const auto ped_stop_pref_opt = [&]() -> std::optional<StopCandidate> {
     const double dist =
-      dist_nearest_cp - base_link2front - planner_param_.stop_distance_from_object_preferd;
+      dist_nearest_cp - base_link2front - planner_param_.stop_distance_from_object_preferred;
     const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist);
     if (!pose_opt.has_value()) return std::nullopt;
     return StopCandidate{pose_opt.value(), dist};
   }();
 
-  const auto without_acc_stop_opt = [&]() -> std::optional<StopCandidate> {
+  const auto without_acc_pref_stop_opt = [&]() -> std::optional<StopCandidate> {
     if (!ped_stop_pref_opt.has_value()) {
-      RCLCPP_WARN(
-        logger_,
-        "Failure to calculate stop_pose agaist the nearest pedestrian with a prefered margin.");
+      RCLCPP_INFO(logger_, "Failure to calculate pref_stop.");
       return std::nullopt;
     } else if (
       default_stop_opt.has_value() && ped_stop_pref_opt->dist > default_stop_opt->dist &&
@@ -437,14 +444,14 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
   if (!ped_stop_limit.has_value()) {
     RCLCPP_WARN(
       logger_,
-      "Failure to calculate stop_pose agaist the nearest pedestrian with a limit margin. "
-      "Stop will be canceled.");
+      "Stop is canceled. "
+      "Failure to calculate stop_pose agaist the nearest pedestrian with a limit margin.");
     return std::nullopt;
   }
 
   const auto weak_brk_stop = [&]() -> std::optional<StopCandidate> {
     const auto dist_opt = autoware::motion_utils::calcDecelDistWithJerkAndAccConstraints(
-      ego_vel_non_nega, 0.0, ego_acc, p.min_acc_prefered, 10.0, p.min_jerk_prefered);
+      ego_vel_non_nega, 0.0, ego_acc, p.min_acc_preferred, 10.0, p.min_jerk_preferred);
     if (!dist_opt.has_value()) return std::nullopt;
     const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist_opt.value());
     if (!pose_opt.has_value()) return std::nullopt;
@@ -456,8 +463,10 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
   }
 
   const auto selected_stop = [&]() {
-    if (without_acc_stop_opt.has_value() && weak_brk_stop->dist < without_acc_stop_opt->dist) {
-      return without_acc_stop_opt.value();
+    if (
+      without_acc_pref_stop_opt.has_value() &&
+      weak_brk_stop->dist < without_acc_pref_stop_opt->dist) {
+      return without_acc_pref_stop_opt.value();
     } else if (weak_brk_stop->dist < ped_stop_limit->dist) {
       return weak_brk_stop.value();
     } else {
@@ -468,10 +477,10 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
   const double strong_brk_dist = [&]() {
     const auto strong_brk_dist_opt = autoware::motion_utils::calcDecelDistWithJerkAndAccConstraints(
       ego_vel_non_nega, 0.0, ego_acc, p.min_acc_for_no_stop_decision,
-      p.max_jerk_for_no_stop_decision, p.min_jerk_for_no_stop_decision);
+      10.0, p.min_jerk_for_no_stop_decision);
     return strong_brk_dist_opt ? strong_brk_dist_opt.value() : 0.0;
   }();
-  if (selected_stop.dist < strong_brk_dist + p.offset_length_for_no_stop_decision) {
+  if (selected_stop.dist < strong_brk_dist + p.overrun_threshold_length_for_no_stop_decision) {
     RCLCPP_INFO(
       logger_,
       "Abandon to stop. "
