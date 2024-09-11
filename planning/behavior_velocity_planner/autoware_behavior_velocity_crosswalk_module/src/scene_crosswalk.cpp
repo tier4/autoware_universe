@@ -480,7 +480,7 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
       10.0, p.min_jerk_for_no_stop_decision);
     return strong_brk_dist_opt ? strong_brk_dist_opt.value() : 0.0;
   }();
-  if (selected_stop.dist < strong_brk_dist + p.overrun_threshold_length_for_no_stop_decision) {
+  if (selected_stop.dist < strong_brk_dist - p.overrun_threshold_length_for_no_stop_decision) {
     RCLCPP_INFO(
       logger_,
       "Abandon to stop. "
