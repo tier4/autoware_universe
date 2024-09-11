@@ -112,7 +112,6 @@ public:
   {
     bool show_processing_time;
     // param for stop position
-    double stop_distance_from_object;
     double stop_distance_from_object_preferred;
     double stop_distance_from_object_limit;
     double stop_distance_from_crosswalk;
@@ -144,9 +143,7 @@ public:
     std::vector<double> ego_pass_later_margin_y;
     double ego_pass_later_additional_margin;
     double ego_min_assumed_speed;
-    double max_offset_to_crosswalk_for_yield;
     double min_acc_for_no_stop_decision;
-    double max_jerk_for_no_stop_decision;
     double min_jerk_for_no_stop_decision;
     double overrun_threshold_length_for_no_stop_decision;
     double stop_object_velocity;
