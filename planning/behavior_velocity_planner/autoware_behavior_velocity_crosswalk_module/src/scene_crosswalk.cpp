@@ -476,8 +476,8 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
 
   const double strong_brk_dist = [&]() {
     const auto strong_brk_dist_opt = autoware::motion_utils::calcDecelDistWithJerkAndAccConstraints(
-      ego_vel_non_nega, 0.0, ego_acc, p.min_acc_for_no_stop_decision,
-      10.0, p.min_jerk_for_no_stop_decision);
+      ego_vel_non_nega, 0.0, ego_acc, p.min_acc_for_no_stop_decision, 10.0,
+      p.min_jerk_for_no_stop_decision);
     return strong_brk_dist_opt ? strong_brk_dist_opt.value() : 0.0;
   }();
   if (selected_stop.dist < strong_brk_dist - p.overrun_threshold_length_for_no_stop_decision) {
