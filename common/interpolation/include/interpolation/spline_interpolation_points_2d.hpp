@@ -16,6 +16,9 @@
 #define INTERPOLATION__SPLINE_INTERPOLATION_POINTS_2D_HPP_
 
 #include "interpolation/spline_interpolation.hpp"
+#include "tier4_autoware_utils/geometry/geometry.hpp"
+
+#include <geometry_msgs/msg/point.hpp>
 
 #include <vector>
 
