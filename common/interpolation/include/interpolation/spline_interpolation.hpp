@@ -15,35 +15,13 @@
 #ifndef INTERPOLATION__SPLINE_INTERPOLATION_HPP_
 #define INTERPOLATION__SPLINE_INTERPOLATION_HPP_
 
-#include "interpolation/interpolation_utils.hpp"
-#include "tier4_autoware_utils/geometry/geometry.hpp"
+#include <Eigen/Dense>
 
-#include <algorithm>
 #include <cmath>
-#include <iostream>
-#include <numeric>
 #include <vector>
 
 namespace interpolation
 {
-// NOTE: X(s) = a_i (s - s_i)^3 + b_i (s - s_i)^2 + c_i (s - s_i) + d_i : (i = 0, 1, ... N-1)
-struct MultiSplineCoef
-{
-  MultiSplineCoef() = default;
-
-  explicit MultiSplineCoef(const size_t num_spline)
-  {
-    a.resize(num_spline);
-    b.resize(num_spline);
-    c.resize(num_spline);
-    d.resize(num_spline);
-  }
-
-  std::vector<double> a;
-  std::vector<double> b;
-  std::vector<double> c;
-  std::vector<double> d;
-};
 
 // static spline interpolation functions
 std::vector<double> slerp(
@@ -84,8 +62,14 @@ public:
   std::vector<double> getSplineInterpolatedDiffValues(const std::vector<double> & query_keys) const;
 
 private:
+  Eigen::VectorXd a_;
+  Eigen::VectorXd b_;
+  Eigen::VectorXd c_;
+  Eigen::VectorXd d_;
+
   std::vector<double> base_keys_;
-  interpolation::MultiSplineCoef multi_spline_coef_;
+
+  Eigen::Index get_index(double key) const;
 };
 
 #endif  // INTERPOLATION__SPLINE_INTERPOLATION_HPP_
