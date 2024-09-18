@@ -83,7 +83,7 @@ private:
   rclcpp::Publisher<DiagnosticArray>::SharedPtr diagnostics_pub_;
 
   // parameters
-  const double window_length_; // [sec]
+  const double window_length_;  // [sec]
   bool output_x_y_yaw_only_;
 
   const double heading_velocity_maximum_;                 // [m/s]

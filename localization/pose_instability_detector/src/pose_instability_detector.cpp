@@ -68,15 +68,17 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
   rclcpp::Time current_pose_time = rclcpp::Time(current_pose.header.stamp);
   updatePoseBuffer(current_pose);
 
-  rclcpp::Time one_step_back_time = rclcpp::Time(current_pose.header.stamp) - rclcpp::Duration::from_seconds(window_length_);
+  rclcpp::Time one_step_back_time =
+    rclcpp::Time(current_pose.header.stamp) - rclcpp::Duration::from_seconds(window_length_);
   std::optional<PoseStamped> one_step_back_pose = getPoseAt(one_step_back_time);
 
-  if(one_step_back_pose == std::nullopt) {
+  if (one_step_back_pose == std::nullopt) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "pose was nullopt");
     return;
   }
 
-  // delete twist data older than one_step_back_pose (but preserve the one right before one_step_back_pose)
+  // delete twist data older than one_step_back_pose (but preserve the one right before
+  // one_step_back_pose)
   while (twist_buffer_.size() > 1) {
     if (rclcpp::Time(twist_buffer_[1].header.stamp) < one_step_back_time) {
       twist_buffer_.pop_front();
@@ -86,12 +88,14 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
   }
 
   // If twist_buffer_ is empty OR the latest twist is too old, skip the following.
-  double latest_twist_age = (current_pose_time - rclcpp::Time(twist_buffer_.back().header.stamp)).seconds();
+  double latest_twist_age =
+    (current_pose_time - rclcpp::Time(twist_buffer_.back().header.stamp)).seconds();
   if (twist_buffer_.empty() || latest_twist_age > window_length_ * 1.5) {
     return;
   }
 
-  PoseStamped::SharedPtr one_step_back_pose_ptr = std::make_shared<PoseStamped>(one_step_back_pose.value());
+  PoseStamped::SharedPtr one_step_back_pose_ptr =
+    std::make_shared<PoseStamped>(one_step_back_pose.value());
   Pose::SharedPtr dr_pose_ptr = std::make_shared<Pose>();
   dead_reckon(one_step_back_pose_ptr, current_pose_time, twist_buffer_, dr_pose_ptr);
 
@@ -115,8 +119,8 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
 
   if (output_x_y_yaw_only_) {
     values = {pos.x, pos.y, ang_z};
-    thresholds = {threshold_values.position_x, threshold_values.position_y,
-                  threshold_values.angle_z};
+    thresholds = {
+      threshold_values.position_x, threshold_values.position_y, threshold_values.angle_z};
     labels = {"diff_position_x", "diff_position_y", "diff_angle_z"};
   } else {
     values = {pos.x, pos.y, pos.z, ang_x, ang_y, ang_z};
@@ -126,7 +130,6 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
     labels = {"diff_position_x", "diff_position_y", "diff_position_z",
               "diff_angle_x",    "diff_angle_y",    "diff_angle_z"};
   }
-
 
   DiagnosticStatus status;
   status.name = "localization: pose_instability_detector";
@@ -394,8 +397,8 @@ PoseInstabilityDetector::clip_out_necessary_twist(
   return result_deque;
 }
 
-PoseInstabilityDetector::Pose PoseInstabilityDetector::inverseTransformPose
-  (const Pose & pose, const Pose & transform_pose)
+PoseInstabilityDetector::Pose PoseInstabilityDetector::inverseTransformPose(
+  const Pose & pose, const Pose & transform_pose)
 {
   tf2::Transform transform;
   tf2::convert(transform_pose, transform);
@@ -416,7 +419,7 @@ void PoseInstabilityDetector::updatePoseBuffer(const PoseStamped & pose)
 
   // Discard old poses
   const rclcpp::Time latest_time = rclcpp::Time(pose.header.stamp);
-  while (!pose_buffer_.empty()){
+  while (!pose_buffer_.empty()) {
     rclcpp::Time pose_time = pose_buffer_.front().header.stamp;
     double age = (latest_time - pose_time).seconds();
 
@@ -428,25 +431,30 @@ void PoseInstabilityDetector::updatePoseBuffer(const PoseStamped & pose)
   }
 }
 
-std::optional<PoseInstabilityDetector::PoseStamped> PoseInstabilityDetector::getPoseAt(const rclcpp::Time & target_time){
-  if (pose_buffer_.empty()){
+std::optional<PoseInstabilityDetector::PoseStamped> PoseInstabilityDetector::getPoseAt(
+  const rclcpp::Time & target_time)
+{
+  if (pose_buffer_.empty()) {
     RCLCPP_INFO(this->get_logger(), "pose_buffer_ doesn't have poses!");
     return std::nullopt;
   }
 
-  if(target_time < rclcpp::Time(pose_buffer_.front().header.stamp) ||
-     rclcpp::Time(pose_buffer_.back().header.stamp) < target_time){
+  if (
+    target_time < rclcpp::Time(pose_buffer_.front().header.stamp) ||
+    rclcpp::Time(pose_buffer_.back().header.stamp) < target_time) {
     RCLCPP_INFO(this->get_logger(), "target_time must be within the pose_buffer_!");
     return std::nullopt;
-  } 
+  }
 
   std::optional<PoseStamped> closest_pose = std::nullopt;
-  for (size_t i = 1; i < pose_buffer_.size(); i++){
-    if(target_time < rclcpp::Time(pose_buffer_[i].header.stamp)) {
-      if ((rclcpp::Time(pose_buffer_[i].header.stamp) - target_time).seconds() < (target_time - rclcpp::Time(pose_buffer_[i-1].header.stamp)).seconds()) {
+  for (size_t i = 1; i < pose_buffer_.size(); i++) {
+    if (target_time < rclcpp::Time(pose_buffer_[i].header.stamp)) {
+      if (
+        (rclcpp::Time(pose_buffer_[i].header.stamp) - target_time).seconds() <
+        (target_time - rclcpp::Time(pose_buffer_[i - 1].header.stamp)).seconds()) {
         closest_pose = pose_buffer_[i];
       } else {
-        closest_pose = pose_buffer_[i-1];
+        closest_pose = pose_buffer_[i - 1];
       }
       break;
     }
@@ -457,13 +465,13 @@ std::optional<PoseInstabilityDetector::PoseStamped> PoseInstabilityDetector::get
 
 std::tuple<double, double, double> PoseInstabilityDetector::quatToRPY(const Quaternion & quat)
 {
-    tf2::Quaternion tf2_quat(quat.x, quat.y, quat.z, quat.w);
-    tf2::Matrix3x3 mat(tf2_quat);
-    double roll{};
-    double pitch{};
-    double yaw{};
-    mat.getRPY(roll, pitch, yaw);
-    return std::make_tuple(roll, pitch, yaw);
+  tf2::Quaternion tf2_quat(quat.x, quat.y, quat.z, quat.w);
+  tf2::Matrix3x3 mat(tf2_quat);
+  double roll{};
+  double pitch{};
+  double yaw{};
+  mat.getRPY(roll, pitch, yaw);
+  return std::make_tuple(roll, pitch, yaw);
 }
 
 #include <rclcpp_components/register_node_macro.hpp>
