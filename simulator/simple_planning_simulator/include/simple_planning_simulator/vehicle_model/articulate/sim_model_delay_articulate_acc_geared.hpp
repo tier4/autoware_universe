@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef SIMPLE_PLANNING_SIMULATOR__VEHICLE_MODEL__ARTICULATE__SIM_MODEL_DELAY_ARTICULATE_ACC_GEARED_HPP_
-#define SIMPLE_PLANNING_SIMULATOR__VEHICLE_MODEL__ARTICULATE__SIM_MODEL_DELAY_ARTICULATE_ACC_GEARED_HPP_
+#ifndef SIMPLE_PLANNING_SIMULATOR__VEHICLE_MODEL__SIM_MODEL_DELAY_ARTICULATE_ACC_GEARED_HPP_
+#define SIMPLE_PLANNING_SIMULATOR__VEHICLE_MODEL__SIM_MODEL_DELAY_ARTICULATE_ACC_GEARED_HPP_
 
 #include "simple_planning_simulator/vehicle_model/sim_model_interface.hpp"
 
@@ -33,8 +33,7 @@ public:
    * @param [in] steer_lim steering limit [rad]
    * @param [in] vx_rate_lim acceleration limit [m/ss]
    * @param [in] steer_rate_lim steering angular velocity limit [rad/ss]
-   * @param [in] front_wheelbase vehicle front wheelbase length [m]
-   * @param [in] rear_wheelbase vehicle rear wheelbase length [m]
+   * @param [in] wheelbase vehicle wheelbase length [m]
    * @param [in] dt delta time information to set input buffer for delay
    * @param [in] acc_delay time delay for accel command [s]
    * @param [in] acc_time_constant time constant for 1D model of accel dynamics
@@ -78,8 +77,8 @@ private:
   const double vx_rate_lim_;      //!< @brief acceleration limit [m/ss]
   const double steer_lim_;        //!< @brief steering limit [rad]
   const double steer_rate_lim_;   //!< @brief steering angular velocity limit [rad/s]
-  const double front_wheelbase_;  //!< @brief vehicle front wheelbase length [m]
-  const double rear_wheelbase_;   //!< @brief vehicle rear wheelbase length [m]
+  const double front_wheelbase_;  //!< @brief front wheelbase length [m]
+  const double rear_wheelbase_;   //!< @brief rear wheelbase length [m]
 
   std::deque<double> acc_input_queue_;       //!< @brief buffer for accel command
   std::deque<double> steer_input_queue_;     //!< @brief buffer for steering command
@@ -92,7 +91,7 @@ private:
   const double debug_acc_scaling_factor_;    //!< @brief scaling factor for accel command
   const double debug_steer_scaling_factor_;  //!< @brief scaling factor for steering command
 
-  double state_steer_rate_;
+  double state_steer_rate_;  //!< @brief steering angular velocity [rad/s]
 
   /**
    * @brief set queue buffer for input command
@@ -136,7 +135,7 @@ private:
   double getWz() override;
 
   /**
-   * @brief get vehicle steering(=articulation) angle
+   * @brief get vehicle steering angle
    */
   double getSteer() override;
 
@@ -147,7 +146,7 @@ private:
   void update(const double & dt) override;
 
   /**
-   * @brief calculate derivative of states with time delay steering(=articulation) model
+   * @brief calculate derivative of states with time delay steering model
    * @param [in] state current model state
    * @param [in] input input vector to model
    */
@@ -165,4 +164,4 @@ private:
     const double dt);
 };
 
-#endif  // SIMPLE_PLANNING_SIMULATOR__VEHICLE_MODEL__ARTICULATE__SIM_MODEL_DELAY_ARTICULATE_ACC_GEARED_HPP_
+#endif  // SIMPLE_PLANNING_SIMULATOR__VEHICLE_MODEL__SIM_MODEL_DELAY_ARTICULATE_ACC_GEARED_HPP_

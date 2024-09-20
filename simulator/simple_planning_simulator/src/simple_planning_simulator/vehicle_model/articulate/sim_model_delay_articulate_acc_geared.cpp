@@ -70,11 +70,11 @@ double SimModelDelayArticulateAccGeared::getAx()
 double SimModelDelayArticulateAccGeared::getWz()
 {
   const double steer = state_(IDX::STEER);
-  const double c_steer = std::cos(steer);
-  const double pseudo_wheelbase = front_wheelbase_ * c_steer + rear_wheelbase_;
+  const double front_wheelbase_lon = front_wheelbase_ * std::cos(steer);
+  const double pseudo_wheelbase = front_wheelbase_lon + rear_wheelbase_;
 
   return state_(IDX::VX) * std::sin(steer) / pseudo_wheelbase -
-         state_steer_rate_ * front_wheelbase_ * c_steer / pseudo_wheelbase;
+         state_steer_rate_ * front_wheelbase_lon / pseudo_wheelbase;
 }
 double SimModelDelayArticulateAccGeared::getSteer()
 {
@@ -140,17 +140,18 @@ Eigen::VectorXd SimModelDelayArticulateAccGeared::calcModel(
       return 0.0;
     }
   });
-  state_steer_rate_ =
+  double state_steer_rate_ =
     sat(-steer_diff_with_dead_band / steer_time_constant_, steer_rate_lim_, -steer_rate_lim_);
 
-  const double c_steer = std::cos(steer);
-  const double pseudo_wheelbase = front_wheelbase_ * c_steer + rear_wheelbase_;
+  const double front_wheelbase_lon = front_wheelbase_ * std::cos(steer);
+  const double pseudo_wheelbase = front_wheelbase_lon + rear_wheelbase_;
 
   Eigen::VectorXd d_state = Eigen::VectorXd::Zero(dim_x_);
   d_state(IDX::X) = vel * cos(yaw);
   d_state(IDX::Y) = vel * sin(yaw);
   d_state(IDX::YAW) = vel * std::sin(steer) / pseudo_wheelbase -
-                      state_steer_rate_ * front_wheelbase_ * c_steer / pseudo_wheelbase;
+                      state_steer_rate_ * front_wheelbase_lon / pseudo_wheelbase;
+  d_state(IDX::VX) = acc;
   d_state(IDX::STEER) = state_steer_rate_;
   d_state(IDX::ACCX) = -(acc - acc_des) / acc_time_constant_;
 
