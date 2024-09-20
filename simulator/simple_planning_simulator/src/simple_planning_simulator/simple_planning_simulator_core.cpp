@@ -234,7 +234,7 @@ void SimplePlanningSimulator::initialize_vehicle_model()
   const double debug_steer_scaling_factor = declare_parameter("debug_steer_scaling_factor", 1.0);
   const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
   const double wheelbase = vehicle_info.wheel_base_m;
-  // const double rear_wheelbase_ratio = declare_parameter("rear_wheelbase_ratio", 1.0);
+  const double rear_wheelbase_ratio = declare_parameter("rear_wheelbase_ratio", 1.0);
 
   std::vector<std::string> model_module_paths = declare_parameter<std::vector<std::string>>(
     "model_module_paths", std::vector<std::string>({""}));
@@ -299,12 +299,12 @@ void SimplePlanningSimulator::initialize_vehicle_model()
       timer_sampling_time_ms_ / 1000.0, model_module_paths, model_param_paths, model_class_names);
 
   } else if (vehicle_model_type_str == "DELAY_ARTICULATE_ACC_GEARED") {
-    // const double front_wheelbase = wheelbase * (1.0 - rear_wheelbase_ratio);
-    // const double rear_wheelbase = wheelbase * rear_wheelbase_ratio;
+    const double front_wheelbase = wheelbase * (1.0 - rear_wheelbase_ratio);
+    const double rear_wheelbase = wheelbase * rear_wheelbase_ratio;
 
     vehicle_model_type_ = VehicleModelType::DELAY_ARTICULATE_ACC_GEARED;
     vehicle_model_ptr_ = std::make_shared<SimModelDelayArticulateAccGeared>(
-      vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, wheelbase * 0.5, wheelbase * 0.5,
+      vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, front_wheelbase, rear_wheelbase,
       timer_sampling_time_ms_ / 1000.0, acc_time_delay, acc_time_constant, steer_time_delay,
       steer_time_constant, steer_dead_band, steer_bias, debug_acc_scaling_factor,
       debug_steer_scaling_factor);
