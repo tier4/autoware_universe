@@ -92,7 +92,7 @@ public:
    */
   void calculateReferenceInput(Eigen::MatrixXd & u_ref) override;
 
-  std::string modelName() override { return "kinematics"; };
+  std::string modelName() override { return "adt_kinematics"; };
 
   MPCTrajectory calculatePredictedTrajectoryInWorldCoordinate(
     const Eigen::MatrixXd & a_d, const Eigen::MatrixXd & b_d, const Eigen::MatrixXd & c_d,
