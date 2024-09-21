@@ -17,6 +17,7 @@
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
 #include "autoware/mpc_lateral_controller/qp_solver/qp_solver_osqp.hpp"
 #include "autoware/mpc_lateral_controller/qp_solver/qp_solver_unconstraint_fast.hpp"
+#include "autoware/mpc_lateral_controller/vehicle_model/vehicle_model_adt_kinematics.hpp"
 #include "autoware/mpc_lateral_controller/vehicle_model/vehicle_model_bicycle_dynamics.hpp"
 #include "autoware/mpc_lateral_controller/vehicle_model/vehicle_model_bicycle_kinematics.hpp"
 #include "autoware/mpc_lateral_controller/vehicle_model/vehicle_model_bicycle_kinematics_no_delay.hpp"
@@ -186,6 +187,16 @@ std::shared_ptr<VehicleModelInterface> MpcLateralController::createVehicleModel(
     // vehicle_model_ptr is only assigned in ctor, so parameter value have to be passed at init time
     vehicle_model_ptr =
       std::make_shared<DynamicsBicycleModel>(wheelbase, mass_fl, mass_fr, mass_rl, mass_rr, cf, cr);
+    return vehicle_model_ptr;
+  }
+
+  if (vehicle_model_type == "adt_kinematics") {
+    const double rear_wheelbase_ratio =
+      node.declare_parameter<double>("vehicle.rear_wheelbase_ratio", 0.747);
+    const double front_wheelbase = wheelbase * (1.0 - rear_wheelbase_ratio);
+    const double rear_wheelbase = wheelbase * rear_wheelbase_ratio;
+    vehicle_model_ptr =
+      std::make_shared<KinematicsAdtModel>(front_wheelbase, rear_wheelbase, steer_lim, steer_tau);
     return vehicle_model_ptr;
   }
 
