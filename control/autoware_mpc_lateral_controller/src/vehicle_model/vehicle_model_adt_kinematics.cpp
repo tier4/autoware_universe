@@ -40,9 +40,9 @@ void KinematicsAdtModel::calculateDiscreteMatrix(
 
   /* Linearize delta around delta_r (reference delta) */
   const double curvature_squared = m_curvature * m_curvature;
-  double delta_r = std::atan(
-    (1.0 - std::sqrt(m_wheelbase_squared_diff * curvature_squared + 1.0)) /
-    (m_wheelbase_diff * m_curvature));
+  double delta_r = 2.0 * std::atan(
+                           (1.0 - std::sqrt(m_wheelbase_squared_diff * curvature_squared + 1.0)) /
+                           (m_wheelbase_diff * m_curvature));
   if (std::abs(delta_r) >= m_steer_lim) {
     delta_r = m_steer_lim * static_cast<double>(sign(delta_r));
   }
