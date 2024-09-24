@@ -14,12 +14,14 @@
 
 /*
  *    Representation
+ * k      : curvature
  * e      : lateral error
  * th     : heading angle error
  * steer  : steering angle
  * steer_d: desired steering angle (input)
  * v      : velocity
- * W      : wheelbase length
+ * Wf     : front wheelbase length
+ * Wr     : rear wheelbase length
  * tau    : time constant for steering dynamics
  *
  *    State & Input
@@ -32,9 +34,12 @@
  * dx3/dt = -(x3 - u) / tau
  *
  *    Linearized model around reference point (v = v_r, th = th_r, steer = steer_r)
- *         [0,  vr,                   0]       [    0]       [                           0]
- * dx/dt = [0,   0, vr/W/cos(steer_r)^2] * x + [    0] * u + [-vr*steer_r/W/cos(steer_r)^2]
- *         [0,   0,               1/tau]       [1/tau]       [                           0]
+ *         [0,  vr,       0]       [    0]       [                    0]
+ * dx/dt = [0,   0,       B] * x + [    0] * u + [-vr*k + A - B*steer_r]
+ *         [0,   0,  -1/tau]       [1/tau]       [                    0]
+ *
+ * where A = vr * sin(steer_r) / (Wf + Wr * cos(steer_r))
+ *       B = A_(steer_r) = vr * (Wf * cos(steer_r) + Wr) / (Wf + Wr * cos(steer_r))^2
  *
  */
 
