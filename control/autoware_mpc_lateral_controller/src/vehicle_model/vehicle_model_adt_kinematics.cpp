@@ -22,7 +22,9 @@ KinematicsAdtModel::KinematicsAdtModel(
   const double front_wheelbase, const double rear_wheelbase, const double steer_lim,
   const double steer_tau)
 : VehicleModelInterface(
-    /* dim_x */ 3, /* dim_u */ 1, /* dim_y */ 2, front_wheelbase + rear_wheelbase)
+    /* dim_x */ 3, /* dim_u */ 1, /* dim_y */ 2, front_wheelbase + rear_wheelbase),
+  m_wheelbase_diff(front_wheelbase - rear_wheelbase),
+  m_wheelbase_squared_diff(rear_wheelbase * rear_wheelbase - front_wheelbase * front_wheelbase)
 {
   m_front_wheelbase = front_wheelbase;
   m_rear_wheelbase = rear_wheelbase;
@@ -37,27 +39,34 @@ void KinematicsAdtModel::calculateDiscreteMatrix(
   auto sign = [](double x) { return (x > 0.0) - (x < 0.0); };
 
   /* Linearize delta around delta_r (reference delta) */
-  double delta_r = atan(m_wheelbase * m_curvature);
+  const double curvature_squared = m_curvature * m_curvature;
+  double delta_r = std::atan(
+    (1.0 - std::sqrt(m_wheelbase_squared_diff * curvature_squared + 1.0)) /
+    (m_wheelbase_diff * m_curvature));
   if (std::abs(delta_r) >= m_steer_lim) {
     delta_r = m_steer_lim * static_cast<double>(sign(delta_r));
   }
-  double cos_delta_r_squared_inv = 1 / (cos(delta_r) * cos(delta_r));
+
   double velocity = m_velocity;
   if (std::abs(m_velocity) < 1e-04) {
     velocity = 1e-04 * (m_velocity >= 0 ? 1 : -1);
   }
 
-  a_d << 0.0, velocity, 0.0, 0.0, 0.0, velocity / m_wheelbase * cos_delta_r_squared_inv, 0.0, 0.0,
-    -1.0 / m_steer_tau;
+  const double front_wheelbase_c_rear_wheelbase_inv =
+    1.0 / (m_front_wheelbase + m_rear_wheelbase * cos(delta_r));
+
+  const double turning_velocity = velocity * sin(delta_r) * front_wheelbase_c_rear_wheelbase_inv;
+  const double pd_turning_velocity =
+    velocity * (m_front_wheelbase * cos(delta_r) + m_rear_wheelbase) *
+    front_wheelbase_c_rear_wheelbase_inv * front_wheelbase_c_rear_wheelbase_inv;
+
+  a_d << 0.0, velocity, 0.0, 0.0, 0.0, pd_turning_velocity, 0.0, 0.0, -1.0 / m_steer_tau;
 
   b_d << 0.0, 0.0, 1.0 / m_steer_tau;
 
   c_d << 1.0, 0.0, 0.0, 0.0, 1.0, 0.0;
 
-  w_d << 0.0,
-    -velocity * m_curvature +
-      velocity / m_wheelbase * (tan(delta_r) - delta_r * cos_delta_r_squared_inv),
-    0.0;
+  w_d << 0.0, -velocity * m_curvature + turning_velocity - pd_turning_velocity * delta_r, 0.0;
 
   // bilinear discretization for ZOH system
   // no discretization is needed for Cd
@@ -108,7 +117,8 @@ MPCTrajectory KinematicsAdtModel::calculatePredictedTrajectoryInWorldCoordinate(
     Eigen::VectorXd dstate = Eigen::VectorXd::Zero(4);
     dstate(0) = velocity * std::cos(yaw);
     dstate(1) = velocity * std::sin(yaw);
-    dstate(2) = velocity * std::tan(steer) / m_wheelbase;
+    dstate(2) =
+      velocity * std::sin(steer) / (m_front_wheelbase + m_rear_wheelbase * std::cos(steer));
     dstate(3) = -(steer - desired_steer) / m_steer_tau;
 
     // Note: don't do "return state_w + dstate * dt", which does not work due to the lazy evaluation

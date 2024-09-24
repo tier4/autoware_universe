@@ -109,6 +109,9 @@ private:
   double m_rear_wheelbase;   //!< @brief rear wheelbase length [m]
   double m_steer_lim;        //!< @brief steering angle limit [rad]
   double m_steer_tau;        //!< @brief steering time constant for 1d-model [s]
+
+  const double m_wheelbase_diff;
+  const double m_wheelbase_squared_diff;
 };
 }  // namespace autoware::motion::control::mpc_lateral_controller
 #endif  // AUTOWARE__MPC_LATERAL_CONTROLLER__VEHICLE_MODEL__VEHICLE_MODEL_ADT_KINEMATICS_HPP_
