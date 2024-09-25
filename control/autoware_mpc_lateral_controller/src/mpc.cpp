@@ -337,6 +337,8 @@ VectorXd MPC::getInitialState(const MPCData & data)
     x0 << lat_err, dlat, yaw_err, dyaw;
     RCLCPP_DEBUG(m_logger, "(before lpf) dot_lat_err = %f, dot_yaw_err = %f", dlat, dyaw);
     RCLCPP_DEBUG(m_logger, "(after lpf) dot_lat_err = %f, dot_yaw_err = %f", dlat, dyaw);
+  } else if (vehicle_model == "adt_kinematics") {
+    x0 << lat_err, yaw_err, steer;
   } else {
     RCLCPP_ERROR(m_logger, "vehicle_model_type is undefined");
   }
@@ -711,7 +713,8 @@ double MPC::calcDesiredSteeringRate(
   const MPCMatrix & mpc_matrix, const MatrixXd & x0, const MatrixXd & Uex, const double u_filtered,
   const float current_steer, const double predict_dt) const
 {
-  if (m_vehicle_model_ptr->modelName() != "kinematics") {
+  std::string model = m_vehicle_model_ptr->modelName();
+  if (model != "kinematics" && model != "adt_kinematics") {
     // not supported yet. Use old implementation.
     return (u_filtered - current_steer) / predict_dt;
   }
