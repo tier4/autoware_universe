@@ -75,7 +75,6 @@ private:
 
   // subscribers and timer
   rclcpp::Subscription<Odometry>::SharedPtr odometry_sub_;
-  rclcpp::Subscription<PoseWithCovariance>::SharedPtr pose_with_covarince_sub_;
   rclcpp::Subscription<TwistWithCovarianceStamped>::SharedPtr twist_sub_;
 
   // publisher
