@@ -19,7 +19,7 @@
         },
         "heading_velocity_maximum": {
           "type": "number",
-          "default": 16.667,
+          "default": 2.778,
           "minimum": 0.0,
           "description": "The maximum of heading velocity (m/s)."
         },
@@ -73,7 +73,8 @@
         }
       },
       "required": [
-        "timer_period",
+        "window_length",
+        "output_x_y_yaw_only",
         "heading_velocity_maximum",
         "heading_velocity_scale_factor_tolerance",
         "angular_velocity_maximum",
