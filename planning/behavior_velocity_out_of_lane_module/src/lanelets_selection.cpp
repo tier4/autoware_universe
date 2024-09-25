@@ -94,8 +94,8 @@ lanelet::ConstLanelets calculate_ignored_lanelets(
     if (!is_path_lanelet) ignored_lanelets.push_back(l.second);
   }
   // ignore lanelets beyond the last path pose
-  const auto beyond =
-    planning_utils::calculateOffsetPoint2d(ego_data.path.points.back().point.pose, params.front_offset, 0.0);
+  const auto beyond = planning_utils::calculateOffsetPoint2d(
+    ego_data.path.points.back().point.pose, params.front_offset, 0.0);
   const lanelet::BasicPoint2d beyond_point(beyond.x(), beyond.y());
   const auto beyond_lanelets = lanelet::geometry::findWithin2d(
     route_handler.getLaneletMapPtr()->laneletLayer, beyond_point, 0.0);
