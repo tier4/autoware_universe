@@ -4,7 +4,7 @@
 #   lf_at: diag level where it becomes Latent Fault
 #   spf_at: diag level where it becomes Single Point Fault
 #   auto_recovery: Determines whether the system will automatically recover when it recovers from an error.
-#
+#   ignore_until_waiting_for_route: Determines whether the system will ignore the module until waiting for route.
 # Note:
 # empty-value for sf_at, lf_at and spf_at is "none"
 # default values are:
@@ -12,6 +12,7 @@
 #   lf_at: "warn"
 #   spf_at: "error"
 #   auto_recovery: "true"
+#   ignore_until_waiting_for_route: "false"
 ---
 /**:
   ros__parameters:
@@ -38,6 +39,15 @@
         /autoware/system/node_alive_monitoring: default
         /autoware/system/emergency_stop_operation: default
         /autoware/system/resource_monitoring: { sf_at: "warn", lf_at: "none", spf_at: "none" }
+
+        /autoware/vehicle/node_alive_monitoring: default
+
+      manual_control:
+        /autoware/control/control_command_gate/node_alive_monitoring: default
+        /autoware/control/autonomous_emergency_braking/performance_monitoring/emergency_stop: { sf_at: "none", lf_at: "warn", spf_at: "error", auto_recovery: "false"}
+
+        /autoware/system/node_alive_monitoring: default
+        /autoware/system/emergency_stop_operation: default
 
         /autoware/vehicle/node_alive_monitoring: default
 

@@ -208,6 +208,22 @@ int isInNoFaultCondition(
 
   return false;
 }
+bool ignoreUntilWaitingForRoute(
+  const autoware_auto_system_msgs::msg::AutowareState & autoware_state,
+  const DiagConfig & required_module)
+{
+  using autoware_auto_system_msgs::msg::AutowareState;
+  using tier4_control_msgs::msg::GateMode;
+
+  const auto is_in_autonomous_ignore_state =
+    (autoware_state.state == AutowareState::INITIALIZING) ||
+    (autoware_state.state == AutowareState::WAITING_FOR_ROUTE);
+
+  if (is_in_autonomous_ignore_state && required_module.ignore_until_waiting_for_route) {
+    return true;
+  }
+  return false;
+}
 }  // namespace
 
 AutowareErrorMonitor::AutowareErrorMonitor()
@@ -232,6 +248,7 @@ AutowareErrorMonitor::AutowareErrorMonitor()
 
   loadRequiredModules(KeyName::autonomous_driving);
   loadRequiredModules(KeyName::external_control);
+  loadRequiredModules(KeyName::manual_control);
 
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -321,11 +338,22 @@ void AutowareErrorMonitor::loadRequiredModules(const std::string & key)
     std::string auto_recovery_approval_str;
     this->get_parameter_or(auto_recovery_key, auto_recovery_approval_str, std::string("true"));
 
+    const auto ignore_until_waiting_for_route_key =
+      module_name_with_prefix + std::string(".ignore_until_waiting_for_route");
+    std::string ignore_until_waiting_for_route_str;
+    this->get_parameter_or(
+      ignore_until_waiting_for_route_key, ignore_until_waiting_for_route_str, std::string("false"));
+
     // Convert auto_recovery_approval_str to bool
     bool auto_recovery_approval{};
     std::istringstream(auto_recovery_approval_str) >> std::boolalpha >> auto_recovery_approval;
 
-    required_modules.push_back({param_module, sf_at, lf_at, spf_at, auto_recovery_approval});
+    bool ignore_until_waiting_for_route{};
+    std::istringstream(ignore_until_waiting_for_route_str) >> std::boolalpha >>
+      ignore_until_waiting_for_route;
+
+    required_modules.push_back(
+      {param_module, sf_at, lf_at, spf_at, auto_recovery_approval, ignore_until_waiting_for_route});
   }
 
   required_modules_map_.insert(std::make_pair(key, required_modules));
@@ -450,8 +478,16 @@ void AutowareErrorMonitor::onTimer()
     }
     return;
   }
-
+  // Heartbeat in AutowareState,diag_array times out during AutowareState INITIALIZING due to high
+  // processing load,add a disable function to avoid Emergencies in isDataHeartbeatTimeout() in
+  // AutowareState INITIALIZING.
   if (isDataHeartbeatTimeout()) {
+    if ((autoware_state_->state == autoware_auto_system_msgs::msg::AutowareState::INITIALIZING)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), std::chrono::milliseconds(1000).count(),
+        "ignore heartbeat timeout in initializing state");
+      return;
+    }
     updateTimeoutHazardStatus();
     publishHazardStatus(hazard_status_);
     return;
@@ -460,6 +496,11 @@ void AutowareErrorMonitor::onTimer()
   current_mode_ = current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO
                     ? KeyName::autonomous_driving
                     : KeyName::external_control;
+  if (
+    current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO &&
+    control_mode_->mode == autoware_auto_vehicle_msgs::msg::ControlModeReport::MANUAL) {
+    current_mode_ = KeyName::manual_control;
+  }
 
   updateHazardStatus();
   publishHazardStatus(hazard_status_);
@@ -487,6 +528,9 @@ uint8_t AutowareErrorMonitor::getHazardLevel(
   using autoware_auto_system_msgs::msg::HazardStatus;
 
   if (isOverLevel(diag_level, required_module.spf_at)) {
+    if (ignoreUntilWaitingForRoute(*autoware_state_, required_module)) {
+      return HazardStatus::NO_FAULT;
+    }
     return HazardStatus::SINGLE_POINT_FAULT;
   }
   if (isOverLevel(diag_level, required_module.lf_at)) {
