@@ -106,6 +106,7 @@ autoware_vehicle_msgs::msg::HazardLightsCommand EmergencyHandler::createHazardCm
   } else {
     msg.command = HazardLightsCommand::NO_COMMAND;
   }
+  msg.stamp = this->now();
   return msg;
 }
 
