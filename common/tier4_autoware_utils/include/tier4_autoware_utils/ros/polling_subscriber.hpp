@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef AUTOWARE__UNIVERSE_UTILS__ROS__POLLING_SUBSCRIBER_HPP_
-#define AUTOWARE__UNIVERSE_UTILS__ROS__POLLING_SUBSCRIBER_HPP_
+#ifndef TIER4_AUTOWARE_UTILS__ROS__POLLING_SUBSCRIBER_HPP_
+#define TIER4_AUTOWARE_UTILS__ROS__POLLING_SUBSCRIBER_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -250,4 +250,4 @@ std::vector<typename MessageT::ConstSharedPtr> All<MessageT>::takeData()
 
 }  // namespace autoware::universe_utils
 
-#endif  // AUTOWARE__UNIVERSE_UTILS__ROS__POLLING_SUBSCRIBER_HPP_
+#endif  // TIER4_AUTOWARE_UTILS__ROS__POLLING_SUBSCRIBER_HPP_
