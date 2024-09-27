@@ -29,3 +29,15 @@
               path: localization_accuracy
               contains: [": localization_accuracy"]
               timeout: 1.0
+
+            lane_departure_risk:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: lane_departure_risk
+              contains: [": lane_departure_risk"]
+              timeout: 0.3
+
+            stopline_overrun_risk:
+              type: diagnostic_aggregator/GenericAnalyzer
+              path: stopline_overrun_risk
+              contains: [": stopline_overrun_risk"]
+              timeout: 0.3
