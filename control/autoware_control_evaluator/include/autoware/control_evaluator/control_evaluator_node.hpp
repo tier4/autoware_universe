@@ -47,7 +47,6 @@ using LaneletRoute = autoware_auto_planning_msgs::msg::HADMapRoute;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using sensor_msgs::msg::Imu;
 
-
 /**
  * @brief Node for control evaluation
  */
@@ -64,8 +63,7 @@ public:
 
   DiagnosticStatus generateAEBDiagnosticStatus(const DiagnosticStatus & diag);
   DiagnosticStatus generateLaneletDiagnosticStatus(const Pose & ego_pose) const;
-  DiagnosticStatus generateKinematicStateDiagnosticStatus(
-    const Odometry & odom, const Imu & imu);
+  DiagnosticStatus generateKinematicStateDiagnosticStatus(const Odometry & odom, const Imu & imu);
 
   void onDiagnostics(const DiagnosticArray::ConstSharedPtr diag_msg);
   void onTimer();
@@ -80,8 +78,7 @@ private:
     this, "~/input/odometry"};
   // autoware::universe_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> accel_sub_{
   //   this, "~/input/acceleration"};
-  autoware::universe_utils::InterProcessPollingSubscriber<Imu> imu_sub_{
-    this, "~/input/imu"};
+  autoware::universe_utils::InterProcessPollingSubscriber<Imu> imu_sub_{this, "~/input/imu"};
   autoware::universe_utils::InterProcessPollingSubscriber<Trajectory> traj_sub_{
     this, "~/input/trajectory"};
   autoware::universe_utils::InterProcessPollingSubscriber<
