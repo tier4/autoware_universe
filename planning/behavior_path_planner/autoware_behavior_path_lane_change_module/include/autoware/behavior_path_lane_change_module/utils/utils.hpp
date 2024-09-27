@@ -141,17 +141,6 @@ std::vector<DrivableLanes> generateDrivableLanes(
 
 double getLateralShift(const LaneChangePath & path);
 
-bool hasEnoughLengthToLaneChangeAfterAbort(
-  const std::shared_ptr<RouteHandler> & route_handler, const lanelet::ConstLanelets & current_lanes,
-  const Pose & curent_pose, const double abort_return_dist,
-  const LaneChangeParameters & lane_change_parameters, const Direction direction);
-
-double calcLateralBufferForFiltering(const double vehicle_width, const double lateral_buffer = 0.0);
-
-double calcLateralBufferForFiltering(const double vehicle_width, const double lateral_buffer);
-
-std::string getStrDirection(const std::string & name, const Direction direction);
-
 CandidateOutput assignToCandidate(
   const LaneChangePath & lane_change_path, const Point & ego_position);
 std::optional<lanelet::ConstLanelet> getLaneChangeTargetLane(

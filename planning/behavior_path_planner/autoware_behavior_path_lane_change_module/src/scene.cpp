@@ -2034,9 +2034,21 @@ bool NormalLaneChange::calcAbortPath()
     return false;
   }
 
-  if (!utils::lane_change::hasEnoughLengthToLaneChangeAfterAbort(
-        route_handler, reference_lanelets, current_pose, abort_return_dist,
-        *lane_change_parameters_, direction)) {
+  const auto dist_to_terminal_start = std::invoke([&]() {
+    const auto dist_to_terminal_end = calculation::calc_dist_from_pose_to_terminal_end(
+      common_data_ptr_, get_current_lanes(), common_data_ptr_->get_ego_pose());
+    const auto min_lc_length = utils::lane_change::calcMinimumLaneChangeLength(
+      route_handler, get_current_lanes().back(), *common_data_ptr_->lc_param_ptr,
+      common_data_ptr_->direction);
+    return dist_to_terminal_end - min_lc_length;
+  });
+
+  const auto enough_abort_dist =
+    abort_start_dist + abort_return_dist +
+      calculation::calc_stopping_distance(common_data_ptr_->lc_param_ptr) <=
+    dist_to_terminal_start;
+
+  if (!enough_abort_dist) {
     RCLCPP_ERROR(logger_, "insufficient distance to abort.");
     return false;
   }
