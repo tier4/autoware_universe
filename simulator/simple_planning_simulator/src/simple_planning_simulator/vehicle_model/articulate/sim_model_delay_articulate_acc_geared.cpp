@@ -22,7 +22,8 @@ SimModelDelayArticulateAccGeared::SimModelDelayArticulateAccGeared(
   double vx_lim, double steer_lim, double vx_rate_lim, double steer_rate_lim,
   double front_wheelbase, double rear_wheelbase, double dt, double acc_delay,
   double acc_time_constant, double steer_delay, double steer_time_constant, double steer_dead_band,
-  double steer_bias, double debug_acc_scaling_factor, double debug_steer_scaling_factor)
+  double steer_bias, double rear_slip_coeff, double debug_acc_scaling_factor,
+  double debug_steer_scaling_factor)
 : SimModelInterface(6 /* dim x */, 2 /* dim u */),
   MIN_TIME_CONSTANT(0.03),
   vx_lim_(vx_lim),
@@ -37,6 +38,7 @@ SimModelDelayArticulateAccGeared::SimModelDelayArticulateAccGeared(
   steer_time_constant_(std::max(steer_time_constant, MIN_TIME_CONSTANT)),
   steer_dead_band_(steer_dead_band),
   steer_bias_(steer_bias),
+  rear_slip_coeff_(rear_slip_coeff),
   debug_acc_scaling_factor_(std::max(debug_acc_scaling_factor, 0.0)),
   debug_steer_scaling_factor_(std::max(debug_steer_scaling_factor, 0.0))
 {
@@ -72,7 +74,8 @@ double SimModelDelayArticulateAccGeared::getWz()
   const double steer = state_(IDX::STEER);
   const double c_steer = std::cos(steer);
 
-  return (state_(IDX::VX) * std::sin(steer) - state_steer_rate_ * front_wheelbase_ * c_steer) /
+  return (state_(IDX::VX) * std::sin(steer) -
+          state_steer_rate_ * front_wheelbase_ * c_steer * rear_slip_coeff_) /
          (front_wheelbase_ + rear_wheelbase_ * c_steer);
 }
 double SimModelDelayArticulateAccGeared::getSteer()
@@ -147,8 +150,9 @@ Eigen::VectorXd SimModelDelayArticulateAccGeared::calcModel(
   Eigen::VectorXd d_state = Eigen::VectorXd::Zero(dim_x_);
   d_state(IDX::X) = vel * cos(yaw);
   d_state(IDX::Y) = vel * sin(yaw);
-  d_state(IDX::YAW) = (vel * std::sin(steer) - state_steer_rate_ * front_wheelbase_ * c_steer) /
-                      (front_wheelbase_ + rear_wheelbase_ * c_steer);
+  d_state(IDX::YAW) =
+    (vel * std::sin(steer) - state_steer_rate_ * front_wheelbase_ * c_steer * rear_slip_coeff_) /
+    (front_wheelbase_ + rear_wheelbase_ * c_steer);
   d_state(IDX::VX) = acc;
   d_state(IDX::STEER) = state_steer_rate_;
   d_state(IDX::ACCX) = -(acc - acc_des) / acc_time_constant_;

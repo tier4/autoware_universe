@@ -229,6 +229,7 @@ void SimplePlanningSimulator::initialize_vehicle_model()
   const double steer_time_constant = declare_parameter("steer_time_constant", 0.27);
   const double steer_dead_band = declare_parameter("steer_dead_band", 0.0);
   const double steer_bias = declare_parameter("steer_bias", 0.0);
+  const double rear_slip_coeff = declare_parameter("rear_slip_coeff", 1.0);
 
   const double debug_acc_scaling_factor = declare_parameter("debug_acc_scaling_factor", 1.0);
   const double debug_steer_scaling_factor = declare_parameter("debug_steer_scaling_factor", 1.0);
@@ -306,7 +307,7 @@ void SimplePlanningSimulator::initialize_vehicle_model()
     vehicle_model_ptr_ = std::make_shared<SimModelDelayArticulateAccGeared>(
       vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, front_wheelbase, rear_wheelbase,
       timer_sampling_time_ms_ / 1000.0, acc_time_delay, acc_time_constant, steer_time_delay,
-      steer_time_constant, steer_dead_band, steer_bias, debug_acc_scaling_factor,
+      steer_time_constant, steer_dead_band, steer_bias, rear_slip_coeff, debug_acc_scaling_factor,
       debug_steer_scaling_factor);
   } else {
     throw std::invalid_argument("Invalid vehicle_model_type: " + vehicle_model_type_str);

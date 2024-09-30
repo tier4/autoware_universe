@@ -48,8 +48,8 @@ public:
     double vx_lim, double steer_lim, double vx_rate_lim, double steer_rate_lim,
     double front_wheelbase, double rear_wheelbase, double dt, double acc_delay,
     double acc_time_constant, double steer_delay, double steer_time_constant,
-    double steer_dead_band, double steer_bias, double debug_acc_scaling_factor,
-    double debug_steer_scaling_factor);
+    double steer_dead_band, double steer_bias, double rear_slip_coeff,
+    double debug_acc_scaling_factor, double debug_steer_scaling_factor);
 
   /**
    * @brief default destructor
@@ -88,6 +88,7 @@ private:
   const double steer_time_constant_;         //!< @brief time constant for steering dynamics
   const double steer_dead_band_;             //!< @brief dead band for steering angle [rad]
   const double steer_bias_;                  //!< @brief steering angle bias [rad]
+  const double rear_slip_coeff_;             //!< @brief rear slip coefficient
   const double debug_acc_scaling_factor_;    //!< @brief scaling factor for accel command
   const double debug_steer_scaling_factor_;  //!< @brief scaling factor for steering command
 
