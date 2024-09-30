@@ -141,13 +141,7 @@ MarkerArray createLaneletPolygonMarkerArray(
 MarkerArray createNumObjectsToAvoidTextsMarkerArray(
   const GoalCandidates & goal_candidates, std::string && ns,
   const std_msgs::msg::ColorRGBA & color);
-std::string makePathPriorityDebugMessage(
-  const std::vector<size_t> & sorted_path_indices,
-  const std::vector<PullOverPath> & pull_over_path_candidates,
-  const std::map<size_t, size_t> & goal_id_to_index, const GoalCandidates & goal_candidates,
-  const std::map<size_t, double> & path_id_to_rough_margin_map,
-  const std::function<bool(const PullOverPath &)> & isSoftMargin,
-  const std::function<bool(const PullOverPath &)> & isHighCurvature);
+
 /**
  * @brief combine two points
  * @param points lane points
