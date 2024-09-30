@@ -219,7 +219,8 @@ std::vector<LinearRing2d> LaneDepartureChecker::createVehicleFootprints(
   const Param & param)
 {
   // Calculate longitudinal and lateral margin based on covariance
-  const auto margin = calcFootprintMargin(covariance, param.footprint_margin_scale) + param.footprint_extra_margin;
+  const auto margin =
+    calcFootprintMargin(covariance, param.footprint_margin_scale) + param.footprint_extra_margin;
 
   // Create vehicle footprint in base_link coordinate
   const auto local_vehicle_footprint = createVehicleFootprint(*vehicle_info_ptr_, margin);
