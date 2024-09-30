@@ -1492,6 +1492,8 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsOutput()
     return getPreviousModuleOutput();
   }
 
+  const bool is_freespace =
+    thread_safe_data_.getPullOverPlannerType() == PullOverPlannerType::FREESPACE;
   if (
     hasNotDecidedPath(
       planner_data_, occupancy_grid_map_, *parameters_, ego_predicted_path_params_,
@@ -1540,6 +1542,7 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsOutput()
 
   // return to lane parking if it is possible
   if (
+    is_freespace &&
     thread_safe_data_.getPullOverPlannerType() == PullOverPlannerType::FREESPACE &&
     canReturnToLaneParking()) {
     thread_safe_data_.set_pull_over_path(thread_safe_data_.get_lane_parking_pull_over_path());
