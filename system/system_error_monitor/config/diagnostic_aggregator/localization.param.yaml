@@ -30,14 +30,14 @@
               contains: [": localization_accuracy"]
               timeout: 1.0
 
-            lane_departure_risk:
+            potential_lane_departure:
               type: diagnostic_aggregator/GenericAnalyzer
-              path: lane_departure_risk
-              contains: [": lane_departure_risk"]
+              path: potential_lane_departure
+              contains: [": potential_lane_departure"]
               timeout: 0.3
 
-            stopline_overrun_risk:
+            potential_stopline_overrun:
               type: diagnostic_aggregator/GenericAnalyzer
-              path: stopline_overrun_risk
-              contains: [": stopline_overrun_risk"]
+              path: potential_stopline_overrun
+              contains: [": potential_stopline_overrun"]
               timeout: 0.3
