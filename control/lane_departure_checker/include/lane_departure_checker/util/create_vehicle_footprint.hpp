@@ -89,4 +89,9 @@ inline FootprintMargin calcFootprintMargin(
   return FootprintMargin{Cov_xy_vehicle(0, 0) * scale, Cov_xy_vehicle(1, 1) * scale};
 }
 
+inline FootprintMargin operator+(FootprintMargin fm, const double margin)
+{
+  return FootprintMargin{fm.lon + margin, fm.lat + margin};
+}
+
 #endif  // LANE_DEPARTURE_CHECKER__UTIL__CREATE_VEHICLE_FOOTPRINT_HPP_
