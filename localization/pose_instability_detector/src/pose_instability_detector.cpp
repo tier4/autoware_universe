@@ -88,9 +88,12 @@ void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometr
   }
 
   // If twist_buffer_ is empty OR the latest twist is too old, skip the following.
+  if (twist_buffer_.empty()) {
+    return;
+  }
   double latest_twist_age =
     (current_pose_time - rclcpp::Time(twist_buffer_.back().header.stamp)).seconds();
-  if (twist_buffer_.empty() || latest_twist_age > window_length_ * 1.5) {
+  if (latest_twist_age > window_length_ * 1.5) {
     return;
   }
 
