@@ -631,6 +631,9 @@ std::optional<Path> AEB::generateEgoPath(const Trajectory & predicted_traj)
 std::vector<Polygon2d> AEB::generatePathFootprint(
   const Path & path, const double extra_width_margin)
 {
+  if (path.empty()) {
+    return {};
+  }
   std::vector<Polygon2d> polygons;
   for (size_t i = 0; i < path.size() - 1; ++i) {
     polygons.push_back(
@@ -643,7 +646,7 @@ void AEB::createObjectDataUsingPredictedObjects(
   const Path & ego_path, const std::vector<Polygon2d> & ego_polys,
   std::vector<ObjectData> & object_data_vector)
 {
-  if (predicted_objects_ptr_->objects.empty()) return;
+  if (predicted_objects_ptr_->objects.empty() || ego_polys.empty()) return;
 
   const double current_ego_speed = current_velocity_ptr_->longitudinal_velocity;
   const auto & objects = predicted_objects_ptr_->objects;
@@ -814,6 +817,9 @@ void AEB::createObjectDataUsingPointCloudClusters(
 void AEB::cropPointCloudWithEgoFootprintPath(
   const std::vector<Polygon2d> & ego_polys, pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_objects)
 {
+  if (ego_polys.empty()) {
+    return;
+  }
   PointCloud::Ptr full_points_ptr(new PointCloud);
   pcl::fromROSMsg(*obstacle_ros_pointcloud_ptr_, *full_points_ptr);
   // Create a Point cloud with the points of the ego footprint
