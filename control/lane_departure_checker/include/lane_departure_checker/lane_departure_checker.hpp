@@ -50,6 +50,7 @@ using TrajectoryPoints = std::vector<TrajectoryPoint>;
 struct Param
 {
   double footprint_margin_scale;
+  double footprint_extra_margin;
   double resample_interval;
   double max_deceleration;
   double delay_time;
