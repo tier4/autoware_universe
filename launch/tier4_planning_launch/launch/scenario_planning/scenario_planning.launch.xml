@@ -4,15 +4,15 @@
   <!-- scenario selector -->
   <group>
     <include file="$(find-pkg-share autoware_scenario_selector)/launch/scenario_selector.launch.xml">
-      <arg name="input_lane_driving_trajectory" value="/planning/scenario_planning/lane_driving/trajectory"/>
-      <arg name="input_parking_trajectory" value="/planning/scenario_planning/parking/trajectory"/>
+      <arg name="input_lane_driving_trajectory" value="/planning/$(var scenario_planning_namespace)/lane_driving/trajectory"/>
+      <arg name="input_parking_trajectory" value="/planning/$(var scenario_planning_namespace)/parking/trajectory"/>
       <arg name="input_lanelet_map" value="/map/vector_map"/>
       <arg name="input_route" value="/planning/mission_planning/route"/>
       <arg name="input_odometry" value="/localization/kinematic_state"/>
       <arg name="input_operation_mode_state" value="/system/operation_mode/state"/>
-      <arg name="output_scenario" value="/planning/scenario_planning/scenario"/>
-      <arg name="output_trajectory" value="/planning/scenario_planning/scenario_selector/trajectory"/>
-      <arg name="is_parking_completed" value="/planning/scenario_planning/parking/is_completed"/>
+      <arg name="output_scenario" value="/planning/$(var scenario_planning_namespace)/scenario"/>
+      <arg name="output_trajectory" value="/planning/$(var scenario_planning_namespace)/scenario_selector/trajectory"/>
+      <arg name="is_parking_completed" value="/planning/$(var scenario_planning_namespace)/parking/is_completed"/>
     </include>
   </group>
 
@@ -36,13 +36,13 @@
           <param from="$(var velocity_smoother_type_param_path)"/>
 
           <param name="publish_debug_trajs" value="false"/>
-          <remap from="~/input/trajectory" to="/planning/scenario_planning/scenario_selector/trajectory"/>
-          <remap from="~/output/trajectory" to="/planning/scenario_planning/velocity_smoother/trajectory"/>
+          <remap from="~/input/trajectory" to="/planning/$(var scenario_planning_namespace)/scenario_selector/trajectory"/>
+          <remap from="~/output/trajectory" to="/planning/$(var scenario_planning_namespace)/velocity_smoother/trajectory"/>
 
-          <remap from="~/input/external_velocity_limit_mps" to="/planning/scenario_planning/max_velocity"/>
+          <remap from="~/input/external_velocity_limit_mps" to="/planning/$(var scenario_planning_namespace)/max_velocity"/>
           <remap from="~/input/acceleration" to="/localization/acceleration"/>
           <remap from="~/input/operation_mode_state" to="/system/operation_mode/state"/>
-          <remap from="~/output/current_velocity_limit_mps" to="/planning/scenario_planning/current_max_velocity"/>
+          <remap from="~/output/current_velocity_limit_mps" to="/planning/$(var scenario_planning_namespace)/current_max_velocity"/>
         </composable_node>
         <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component" namespace=""/>
       </node_container>
