@@ -477,7 +477,7 @@ std::vector<TrajectoryPoint> MPTOptimizer::optimizeTrajectory(
     RCLCPP_WARN(
       logger_,
       "Try to return the previous optimized_trajectory as exceptional behavior, "
-      "but this failure also. Then retrun path_smoother output.");
+      "but this failure also. Then return path_smoother output.");
     return smoothed_points;
   };
 
