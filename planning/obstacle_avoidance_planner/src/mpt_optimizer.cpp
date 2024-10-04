@@ -505,14 +505,14 @@ std::vector<TrajectoryPoint> MPTOptimizer::optimizeTrajectory(
   const auto optimized_variables = calcOptimizedSteerAngles(ref_points, obj_mat, const_mat);
   if (!optimized_variables) {
     RCLCPP_WARN(logger_, "return std::nullopt since could not solve qp");
-    return get_prev_optimized_traj_points();
+    return smoothed_points;
   }
 
   // 7. convert to points with validation
   const auto mpt_traj_points = calcMPTPoints(ref_points, *optimized_variables, mpt_mat);
   if (!mpt_traj_points) {
     RCLCPP_WARN(logger_, "return std::nullopt since lateral or yaw error is too large.");
-    return smoothed_points;
+    return get_prev_optimized_traj_points();
   }
 
   // 8. publish trajectories for debug
