@@ -40,6 +40,7 @@ VelocitySmootherNode::VelocitySmootherNode(const rclcpp::NodeOptions & node_opti
   diagnostics_interface_(std::make_unique<DiagnosticsInterface>(this, "velocity_smoother"))
 {
   using std::placeholders::_1;
+  using std::placeholders::_2;
 
   // set common params
   const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -65,6 +66,13 @@ VelocitySmootherNode::VelocitySmootherNode(const rclcpp::NodeOptions & node_opti
   pub_dist_to_stopline_ = create_publisher<Float32Stamped>("~/distance_to_stopline", 1);
   sub_current_trajectory_ = create_subscription<Trajectory>(
     "~/input/trajectory", 1, std::bind(&VelocitySmootherNode::onCurrentTrajectory, this, _1));
+
+  srv_force_acceleration_ = create_service<SetBool>(
+    "~/adjust_common_param", std::bind(&VelocitySmootherNode::onForceAcceleration, this, _1, _2));
+  srv_slow_driving_ = create_service<SetBool>(
+    "~/slow_driving", std::bind(&VelocitySmootherNode::onSlowDriving, this, _1, _2));
+  force_acceleration_mode_ = false;
+  force_slow_driving_mode_ = ForceSlowDrivingType::DEACTIVATED;
 
   // parameter update
   set_param_res_ =
@@ -197,6 +205,15 @@ rcl_interfaces::msg::SetParametersResult VelocitySmootherNode::onParameter(
     update_param("ego_nearest_dist_threshold", p.ego_nearest_dist_threshold);
     update_param("ego_nearest_yaw_threshold", p.ego_nearest_yaw_threshold);
     update_param_bool("plan_from_ego_speed_on_manual_mode", p.plan_from_ego_speed_on_manual_mode);
+
+    update_param("force_acceleration.max_acc", p.force_acceleration_param.max_acceleration);
+    update_param("force_acceleration.max_jerk", p.force_acceleration_param.max_jerk);
+    update_param(
+      "force_acceleration.max_lateral_acc", p.force_acceleration_param.max_lateral_acceleration);
+    update_param("force_acceleration.engage_velocity", p.force_acceleration_param.engage_velocity);
+    update_param(
+      "force_acceleration.engage_acceleration", p.force_acceleration_param.engage_acceleration);
+    update_param("force_slow_driving.velocity", p.force_slow_driving_velocity);
   }
 
   {
@@ -317,6 +334,18 @@ void VelocitySmootherNode::initCommonParam()
 
   p.plan_from_ego_speed_on_manual_mode =
     declare_parameter<bool>("plan_from_ego_speed_on_manual_mode");
+
+  p.force_acceleration_param.max_acceleration =
+    declare_parameter<double>("force_acceleration.max_acc");
+  p.force_acceleration_param.max_jerk = declare_parameter<double>("force_acceleration.max_jerk");
+  p.force_acceleration_param.max_lateral_acceleration =
+    declare_parameter<double>("force_acceleration.max_lateral_acc");
+  p.force_acceleration_param.engage_velocity =
+    declare_parameter<double>("force_acceleration.engage_velocity");
+  p.force_acceleration_param.engage_acceleration =
+    declare_parameter<double>("force_acceleration.engage_acceleration");
+
+  p.force_slow_driving_velocity = declare_parameter<double>("force_slow_driving.velocity");
 }
 
 void VelocitySmootherNode::publishTrajectory(const TrajectoryPoints & trajectory) const
@@ -503,6 +532,14 @@ void VelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstSharedPtr 
     flipVelocity(input_points);
   }
 
+  // Only activate slow driving when velocity is below threshold
+  double slow_driving_vel_threshold = get_parameter("force_slow_driving.velocity").as_double();
+  if (
+    force_slow_driving_mode_ == ForceSlowDrivingType::READY &&
+    current_odometry_ptr_->twist.twist.linear.x < slow_driving_vel_threshold) {
+    force_slow_driving_mode_ = ForceSlowDrivingType::ACTIVATED;
+  }
+
   const auto output = calcTrajectoryVelocity(input_points);
   if (output.empty()) {
     RCLCPP_WARN(get_logger(), "Output Point is empty");
@@ -595,6 +632,13 @@ TrajectoryPoints VelocitySmootherNode::calcTrajectoryVelocity(
 
   // Apply velocity to approach stop point
   applyStopApproachingVelocity(traj_extracted);
+
+  // Apply force slow driving if activated
+  if (force_slow_driving_mode_ == ForceSlowDrivingType::ACTIVATED) {
+    for (auto & tp : traj_extracted) {
+      tp.longitudinal_velocity_mps = get_parameter("force_slow_driving.velocity").as_double();
+    }
+  }
 
   // Debug
   if (publish_debug_trajs_) {
@@ -1153,6 +1197,54 @@ TrajectoryPoint VelocitySmootherNode::calcProjectedTrajectoryPointFromEgo(
   const TrajectoryPoints & trajectory) const
 {
   return calcProjectedTrajectoryPoint(trajectory, current_odometry_ptr_->pose.pose);
+}
+
+void VelocitySmootherNode::onForceAcceleration(
+  const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response)
+{
+  std::string message = "default";
+
+  if (request->data && !force_acceleration_mode_) {
+    RCLCPP_INFO(get_logger(), "Force acceleration is activated");
+    smoother_->setMaxAccel(get_parameter("force_acceleration.max_acc").as_double());
+    smoother_->setMaxJerk(get_parameter("force_acceleration.max_jerk").as_double());
+    node_param_.engage_velocity = get_parameter("force_acceleration.engage_velocity").as_double();
+    node_param_.engage_acceleration =
+      get_parameter("force_acceleration.engage_acceleration").as_double();
+
+    force_acceleration_mode_ = true;
+    message = "Trigger force acceleration";
+  } else if (!request->data && force_acceleration_mode_) {
+    RCLCPP_INFO(get_logger(), "Force acceleration is deactivated");
+    smoother_->setMaxAccel(get_parameter("normal.max_acc").as_double());
+    smoother_->setMaxJerk(get_parameter("normal.max_jerk").as_double());
+
+    node_param_.engage_velocity = get_parameter("engage_velocity").as_double();
+    node_param_.engage_acceleration = get_parameter("engage_acceleration").as_double();
+
+    force_acceleration_mode_ = false;
+    message = "Trigger normal acceleration";
+  }
+
+  response->success = true;
+  response->message = message;
+}
+
+void VelocitySmootherNode::onSlowDriving(
+  const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response)
+{
+  std::string message = "default";
+  if (request->data && force_slow_driving_mode_ == ForceSlowDrivingType::DEACTIVATED) {
+    force_slow_driving_mode_ = ForceSlowDrivingType::READY;
+
+    message = "Activated force slow driving";
+  } else if (!request->data) {
+    force_slow_driving_mode_ = ForceSlowDrivingType::DEACTIVATED;
+    message = "Deactivated force slow driving";
+  }
+
+  response->success = true;
+  response->message = message;
 }
 
 }  // namespace autoware::velocity_smoother
