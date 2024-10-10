@@ -289,5 +289,15 @@ bool isWithinTurnDirectionLanes(const lanelet::ConstLanelet & lanelet, const Pol
 double calcPhaseLength(
   const double velocity, const double maximum_velocity, const double acceleration,
   const double time);
+
+double get_min_dist_to_current_lanes_obj(
+  const LaneChangeTargetObjects & filtered_objects, const BehaviorPathPlannerParameters & bpp_param,
+  const LaneChangeParameters & lc_param, const double dist_to_target_lane_start, const Pose & pose,
+  const PathWithLaneId & path);
+
+bool has_blocking_target_object_for_stopping(
+  const lanelet::ConstLanelets & target_lanes, const LaneChangeTargetObjects & filtered_objects,
+  const LaneChangeParameters & lc_param, const double stop_arc_length, const Pose & ego_pose,
+  const PathWithLaneId & path);
 }  // namespace behavior_path_planner::utils::lane_change
 #endif  // BEHAVIOR_PATH_LANE_CHANGE_MODULE__UTILS__UTILS_HPP_
