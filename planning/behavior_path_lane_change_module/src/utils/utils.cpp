@@ -1256,7 +1256,7 @@ double get_min_dist_to_current_lanes_obj(
       const auto p_fp = tier4_autoware_utils::toMsg(polygon_p.to_3d());
       const auto lateral_fp = motion_utils::calcLateralOffset(path_points, p_fp);
 
-      // ignore if the point is around the ego path
+      // ignore if the point is not on ego path
       if (std::abs(lateral_fp) > (bpp_param.vehicle_width / 2)) {
         continue;
       }
