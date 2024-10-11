@@ -412,13 +412,16 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
       if (collision_state != CollisionState::YIELD) {
         continue;
       }
+
       if (
         isVehicleType(object.classification) && ego_crosswalk_passage_direction &&
         collision_point.crosswalk_passage_direction) {
-        const double direction_diff = autoware::universe_utils::normalizeRadian(
+        double direction_diff = std::abs(std::fmod(
           collision_point.crosswalk_passage_direction.value() -
-          ego_crosswalk_passage_direction.value());
-        if (std::fabs(direction_diff) < planner_param_.vehicle_object_cross_angle_threshold) {
+            ego_crosswalk_passage_direction.value(),
+          M_PI_2));
+        direction_diff = std::min(direction_diff, M_PI_2 - direction_diff);
+        if (direction_diff < planner_param_.vehicle_object_cross_angle_threshold) {
           continue;
         }
       }
@@ -646,8 +649,8 @@ std::pair<double, double> CrosswalkModule::clampAttentionRangeByNeighborCrosswal
 std::optional<double> CrosswalkModule::findEgoPassageDirectionAlongPath(
   const PathWithLaneId & path) const
 {
-  auto findIntersectPoint = [&](const lanelet::ConstLineString3d line)
-    -> std::optional<std::pair<size_t, geometry_msgs::msg::Point>> {
+  auto findIntersectPoint =
+    [&](const lanelet::ConstLineString3d line) -> std::optional<geometry_msgs::msg::Point> {
     const auto line_start =
       autoware::universe_utils::createPoint(line.front().x(), line.front().y(), line.front().z());
     const auto line_end =
@@ -658,21 +661,19 @@ std::optional<double> CrosswalkModule::findEgoPassageDirectionAlongPath(
       if (const auto intersect =
             autoware::universe_utils::intersect(line_start, line_end, start, end);
           intersect.has_value()) {
-        return std::make_optional(std::make_pair(i, intersect.value()));
+        return intersect;
       }
     }
     return std::nullopt;
   };
-  const auto intersect_pt1 = findIntersectPoint(crosswalk_.leftBound());
-  const auto intersect_pt2 = findIntersectPoint(crosswalk_.rightBound());
+  const auto pt1 = findIntersectPoint(crosswalk_.leftBound());
+  const auto pt2 = findIntersectPoint(crosswalk_.rightBound());
 
-  if (!intersect_pt1 || !intersect_pt2) {
+  if (!pt1 || !pt2) {
     return std::nullopt;
   }
-  const auto idx1 = intersect_pt1.value().first, idx2 = intersect_pt2.value().first;
-  const auto & front = idx1 > idx2 ? intersect_pt2.value().second : intersect_pt1.value().second;
-  const auto & back = idx1 > idx2 ? intersect_pt1.value().second : intersect_pt2.value().second;
-  return std::atan2(back.y - front.y, back.x - front.x);
+
+  return std::atan2(pt2->y - pt1->y, pt2->x - pt1->x);
 }
 
 std::optional<double> CrosswalkModule::findObjectPassageDirectionAlongVehicleLane(
