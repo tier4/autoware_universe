@@ -1268,7 +1268,7 @@ double get_min_dist_to_current_lanes_obj(
   return min_dist_to_obj;
 }
 
-bool has_blocking_target_object_for_stopping(
+bool has_blocking_target_object(
   const lanelet::ConstLanelets & target_lanes, const LaneChangeTargetObjects & filtered_objects,
   const LaneChangeParameters & lc_param, const double stop_arc_length, const Pose & ego_pose,
   const PathWithLaneId & path)
@@ -1277,30 +1277,31 @@ bool has_blocking_target_object_for_stopping(
     lanelet::utils::combineLaneletsShape(target_lanes).polygon2d().basicPolygon();
   return std::any_of(
     filtered_objects.target_lane.begin(), filtered_objects.target_lane.end(),
-    [&](const ExtendedPredictedObject & o) {
-      const auto v = std::abs(o.initial_twist.twist.linear.x);
+    [&](const auto & object) {
+      const auto v = std::abs(object.initial_twist.twist.linear.x);
       if (v > lc_param.stop_velocity_threshold) {
         return false;
       }
 
       const auto arc_length_to_ego =
         motion_utils::calcSignedArcLength(
-          path.points, ego_pose.position, o.initial_pose.pose.position) -
-        (o.shape.dimensions.x / 2);
+          path.points, ego_pose.position, object.initial_pose.pose.position) -
+        (object.shape.dimensions.x / 2);
 
       if (arc_length_to_ego < 0.0) {
         return false;
       }
 
-      const auto obj_poly = tier4_autoware_utils::toPolygon2d(o.initial_pose.pose, o.shape);
+      const auto obj_poly =
+        tier4_autoware_utils::toPolygon2d(object.initial_pose.pose, object.shape);
       // filtered_objects includes objects out of target lanes, so filter them out
       if (boost::geometry::disjoint(obj_poly, target_lane_poly)) {
         return false;
       }
 
       const auto arc_length_to_target_lane_obj = motion_utils::calcSignedArcLength(
-        path.points, path.points.front().point.pose.position, o.initial_pose.pose.position);
-      const auto width_margin = o.shape.dimensions.x / 2;
+        path.points, path.points.front().point.pose.position, object.initial_pose.pose.position);
+      const auto width_margin = object.shape.dimensions.x / 2;
       return (arc_length_to_target_lane_obj - width_margin) >= stop_arc_length;
     });
 }
