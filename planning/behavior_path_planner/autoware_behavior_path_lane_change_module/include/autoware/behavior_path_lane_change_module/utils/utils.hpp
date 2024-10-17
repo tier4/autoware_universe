@@ -84,13 +84,8 @@ std::vector<int64_t> replaceWithSortedIds(
 
 std::vector<std::vector<int64_t>> get_sorted_lane_ids(const CommonDataPtr & common_data_ptr);
 
-lanelet::ConstLanelets getTargetPreferredLanes(
+lanelet::ConstLanelets get_target_neighbor_lanes(
   const RouteHandler & route_handler, const lanelet::ConstLanelets & current_lanes,
-  const lanelet::ConstLanelets & target_lanes, const Direction & direction,
-  const LaneChangeModuleType & type);
-
-lanelet::ConstLanelets getTargetNeighborLanes(
-  const RouteHandler & route_handler, const lanelet::ConstLanelets & target_lanes,
   const LaneChangeModuleType & type);
 
 bool isPathInLanelets(
