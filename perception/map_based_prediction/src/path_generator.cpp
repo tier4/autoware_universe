@@ -345,8 +345,8 @@ PosePath PathGenerator::interpolateReferencePath(
     geometry_msgs::msg::Pose interpolated_pose;
     const auto current_point =
       tier4_autoware_utils::createPoint(lerp_ref_path_x.at(i), lerp_ref_path_y.at(i), 0.0);
-    const auto next_point = tier4_autoware_utils::createPoint(
-      lerp_ref_path_x.at(i + 1), lerp_ref_path_y.at(i + 1), 0.0);
+    const auto next_point =
+      tier4_autoware_utils::createPoint(lerp_ref_path_x.at(i + 1), lerp_ref_path_y.at(i + 1), 0.0);
     const double yaw = tier4_autoware_utils::calcAzimuthAngle(current_point, next_point);
     interpolated_pose.position = tier4_autoware_utils::createPoint(
       lerp_ref_path_x.at(i), lerp_ref_path_y.at(i), lerp_ref_path_z.at(i));
@@ -356,7 +356,6 @@ PosePath PathGenerator::interpolateReferencePath(
   interpolated_path.back().position = tier4_autoware_utils::createPoint(
     lerp_ref_path_x.back(), lerp_ref_path_y.back(), lerp_ref_path_z.back());
   interpolated_path.back().orientation = interpolated_path.at(interpolate_num - 2).orientation;
-
 
   return interpolated_path;
 }
