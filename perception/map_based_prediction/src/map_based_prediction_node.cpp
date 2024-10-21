@@ -828,6 +828,7 @@ void MapBasedPredictionNode::mapCallback(const HADMapBin::ConstSharedPtr msg)
   lanelet_map_ptr_ = std::make_shared<lanelet::LaneletMap>();
   lanelet::utils::conversion::fromBinMsg(
     *msg, lanelet_map_ptr_, &traffic_rules_ptr_, &routing_graph_ptr_);
+  lru_cache_of_convert_path_type_.clear();  // clear cache
   RCLCPP_INFO(get_logger(), "[Map Based Prediction]: Map is loaded");
 
   const auto all_lanelets = lanelet::utils::query::laneletLayer(lanelet_map_ptr_);
@@ -1994,6 +1995,10 @@ ManeuverProbability MapBasedPredictionNode::calculateManeuverProbability(
 std::vector<PosePath> MapBasedPredictionNode::convertPathType(
   const lanelet::routing::LaneletPaths & paths)
 {
+  if (lru_cache_of_convert_path_type_.contains(paths)) {
+    return *lru_cache_of_convert_path_type_.get(paths);
+  }
+
   std::vector<PosePath> converted_paths;
   for (const auto & path : paths) {
     PosePath converted_path;
@@ -2077,6 +2082,7 @@ std::vector<PosePath> MapBasedPredictionNode::convertPathType(
     converted_paths.push_back(resampled_converted_path);
   }
 
+  lru_cache_of_convert_path_type_.put(paths, converted_paths);
   return converted_paths;
 }
 
