@@ -31,6 +31,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <lanelet2_core/Forward.h>
+#include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_routing/Forward.h>
 #include <lanelet2_traffic_rules/TrafficRules.h>
 
@@ -131,6 +132,9 @@ private:
 
   // Crosswalk Entry Points
   lanelet::ConstLanelets crosswalks_;
+
+  // Fences
+  lanelet::LaneletMapUPtr fence_layer_{nullptr};
 
   // Parameters
   bool enable_delay_compensation_;
