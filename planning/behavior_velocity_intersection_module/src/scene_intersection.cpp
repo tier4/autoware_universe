@@ -1352,6 +1352,10 @@ IntersectionModule::PassJudgeStatus IntersectionModule::isOverPassJudgeLinesStat
         std::get<intersection::OccludedAbsenceTrafficLight>(prev_decision_result_);
       return !state.collision_detected;
     }
+    if (std::holds_alternative<intersection::FullyPrioritized>(prev_decision_result_)) {
+      const auto & prev_decision = std::get<intersection::FullyPrioritized>(prev_decision_result_);
+      return !prev_decision.collision_detected;
+    }
     return false;
   }();
 
