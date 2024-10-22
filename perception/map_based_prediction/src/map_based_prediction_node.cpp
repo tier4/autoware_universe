@@ -1635,6 +1635,15 @@ std::vector<PredictedRefPath> MapBasedPredictionNode::getPredictedReferencePath(
         if (!unconnected_lanelets.empty()) {
           return unconnected_lanelets.front();
         }
+        // search side of the next lanelet
+        const lanelet::ConstLanelets next_lanelet = routing_graph_ptr_->following(lanelet);
+        if (!next_lanelet.empty()) {
+          const auto next = get_left ? routing_graph_ptr_->left(next_lanelet.front())
+                                     : routing_graph_ptr_->right(next_lanelet.front());
+          if (!!next) {
+            return *next;
+          }
+        }
       }
 
       // if no candidate lanelet found, return empty
