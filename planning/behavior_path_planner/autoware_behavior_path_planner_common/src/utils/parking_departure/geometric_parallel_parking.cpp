@@ -120,11 +120,11 @@ std::vector<PathWithLaneId> GeometricParallelParking::generatePullOverPaths(
   std::vector<PathWithLaneId> arc_paths;
   if (false) {
     const double L_min = 2.0;
-    auto arc_paths = planOneTrialClothoid(
+    arc_paths = planOneTrialClothoid(
       start_pose, goal_pose, R_E_far, L_min, road_lanes, shoulder_lanes, is_forward, left_side_parking,
       end_pose_offset, lane_departure_margin, arc_path_interval, {});
   } else {
-    auto arc_paths = planOneTrial(
+    arc_paths = planOneTrial(
       start_pose, goal_pose, R_E_far, road_lanes, shoulder_lanes, is_forward, left_side_parking,
       end_pose_offset, lane_departure_margin, arc_path_interval, {});
   }
