@@ -264,6 +264,8 @@ void MultiObjectTracker::onMeasurement(
     (*itr)->predict(measurement_time);
   }
 
+  data_association_->objectFilter(transformed_objects);
+
   /* global nearest neighbor */
   std::unordered_map<int, int> direct_assignment, reverse_assignment;
   Eigen::MatrixXd score_matrix = data_association_->calcScoreMatrix(

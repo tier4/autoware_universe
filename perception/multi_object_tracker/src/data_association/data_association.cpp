@@ -146,6 +146,37 @@ void DataAssociation::assign(
   }
 }
 
+void DataAssociation::objectFilter(
+  autoware_auto_perception_msgs::msg::DetectedObjects & measurements) const
+{
+  using Label = autoware_auto_perception_msgs::msg::ObjectClassification;
+
+  for (auto & measurement_object : measurements.objects) {
+    auto & obj_class_list = measurement_object.classification;
+    const std::uint8_t measurement_label =
+      object_recognition_utils::getHighestProbLabel(obj_class_list);
+    bool passed_gate = true;
+    const double max_area = max_area_matrix_(measurement_label, measurement_label);
+    const double min_area = min_area_matrix_(measurement_label, measurement_label);
+    const double area = tier4_autoware_utils::getArea(measurement_object.shape);
+    if (area < min_area || max_area < area) passed_gate = false;
+
+    //
+    if (!passed_gate) {
+      // change top-rate label to unknown, step back the existing labels
+      constexpr float RATE_REDUCED = 0.3f;
+      constexpr float RATE_OVERWRITE = 0.7f;
+      for (auto & obj_class : obj_class_list) {
+        obj_class.probability *= RATE_REDUCED;
+      }
+      Label new_obj_class;
+      new_obj_class.label = Label::UNKNOWN;
+      new_obj_class.probability = RATE_OVERWRITE;
+      obj_class_list.emplace_back(new_obj_class);
+    }
+  }
+}
+
 Eigen::MatrixXd DataAssociation::calcScoreMatrix(
   const autoware_auto_perception_msgs::msg::DetectedObjects & measurements,
   const std::list<std::shared_ptr<Tracker>> & trackers)
@@ -178,13 +209,6 @@ Eigen::MatrixXd DataAssociation::calcScoreMatrix(
         // dist gate
         if (passed_gate) {
           if (max_dist < dist) passed_gate = false;
-        }
-        // area gate
-        if (passed_gate) {
-          const double max_area = max_area_matrix_(tracker_label, measurement_label);
-          const double min_area = min_area_matrix_(tracker_label, measurement_label);
-          const double area = tier4_autoware_utils::getArea(measurement_object.shape);
-          if (area < min_area || max_area < area) passed_gate = false;
         }
         // angle gate
         if (passed_gate) {
