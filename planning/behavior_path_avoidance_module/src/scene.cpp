@@ -1505,11 +1505,6 @@ void AvoidanceModule::insertReturnDeadLine(
 {
   const auto & data = avoid_data_;
 
-  if (data.new_shift_line.empty()) {
-    RCLCPP_WARN(getLogger(), "module doesn't have return shift line.");
-    return;
-  }
-
   if (data.to_return_point > planner_data_->parameters.forward_path_length) {
     RCLCPP_DEBUG(getLogger(), "return dead line is far enough.");
     return;
@@ -1519,6 +1514,11 @@ void AvoidanceModule::insertReturnDeadLine(
 
   if (std::abs(shift_length) < 1e-3) {
     RCLCPP_DEBUG(getLogger(), "don't have to consider return shift.");
+    return;
+  }
+
+  if (data.new_shift_line.empty()) {
+    RCLCPP_WARN(getLogger(), "module doesn't have return shift line.");
     return;
   }
 
