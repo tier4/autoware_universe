@@ -16,8 +16,8 @@
 
 #include "autoware/evaluator_utils/evaluator_utils.hpp"
 
-#include <autoware_lanelet2_extension/utility/query.hpp>
-#include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <lanelet2_extension/utility/query.hpp>
+#include <lanelet2_extension/utility/utilities.hpp>
 
 #include <algorithm>
 #include <limits>
