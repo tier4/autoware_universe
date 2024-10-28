@@ -334,9 +334,9 @@ public:
   autoware::universe_utils::InterProcessPollingSubscriber<Imu> sub_imu_{this, "~/input/imu"};
   autoware::universe_utils::InterProcessPollingSubscriber<Trajectory> sub_predicted_traj_{
     this, "~/input/predicted_trajectory"};
-  autoware_universe_utils::InterProcessPollingSubscriber<PredictedObjects> predicted_objects_sub_{
+  autoware::universe_utils::InterProcessPollingSubscriber<PredictedObjects> predicted_objects_sub_{
     this, "~/input/objects"};
-  autoware_universe_utils::InterProcessPollingSubscriber<AutowareState> sub_autoware_state_{
+  autoware::universe_utils::InterProcessPollingSubscriber<AutowareState> sub_autoware_state_{
     this, "/autoware/state"};
   // publisher
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_obstacle_pointcloud_;
