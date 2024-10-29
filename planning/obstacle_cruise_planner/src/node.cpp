@@ -452,7 +452,6 @@ ObstacleCruisePlannerNode::ObstacleCruisePlannerNode(const rclcpp::NodeOptions &
       enable_approaching_on_curve_, additional_safe_distance_margin_on_curve_,
       min_safe_distance_margin_on_curve_, suppress_sudden_obstacle_stop_, limit_margin_for_unknown_,
       preffered_acc_for_unknown_);
-
   }
 
   {  // stop/cruise/slow down obstacle type

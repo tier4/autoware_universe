@@ -323,7 +323,6 @@ std::vector<TrajectoryPoint> PlannerInterface::generateStopTrajectory(
             planner_data.ego_vel, longitudinal_info_.limit_max_accel,
             stop_param_.getParam(stop_obstacle.classification).sudden_object_acc_threshold),
           stop_param_.getParam(stop_obstacle.classification).sudden_object_dist_threshold);
-
         if (candidate_zero_vel_dist > distance_to_judge_suddenness) {
           return longitudinal_info_.limit_min_accel;
         }
