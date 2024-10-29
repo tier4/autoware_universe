@@ -214,6 +214,15 @@ PredictedPath PathGenerator::generatePolynomialPath(
   terminal_point.d_vel = 0.0;
   terminal_point.d_acc = 0.0;
 
+  // if the object is behind of the reference path adjust the lateral_time_horizon_ to reach the
+  // start of the reference path
+  double lateral_duration_adjusted = lateral_time_horizon_;
+  if (current_point.s < 0.0) {
+    const double distance_to_start = -current_point.s;
+    const double duration_to_reach = distance_to_start / terminal_point.s_vel;
+    lateral_duration_adjusted = std::max(lateral_duration_adjusted, duration_to_reach);
+  }
+
   // calculate terminal d position, based on backlash width
   {
     if (backlash_width < 0.01 /*m*/) {
@@ -223,7 +232,7 @@ PredictedPath PathGenerator::generatePolynomialPath(
     } else {
       const double return_width = path_width / 2.0;  // [m]
       const double current_momentum_d =
-        current_point.d + 0.5 * current_point.d_vel * lateral_time_horizon_;
+        current_point.d + 0.5 * current_point.d_vel * lateral_duration_adjusted;
       const double momentum_d_abs = std::abs(current_momentum_d);
 
       if (momentum_d_abs < backlash_width) {
