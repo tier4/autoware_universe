@@ -263,6 +263,9 @@ std::vector<TrajectoryPoint> PlannerInterface::generateStopTrajectory(
   std::optional<double> determined_zero_vel_dist{};
   std::optional<double> determined_desired_margin{};
 
+  const double limit_margin_for_unknown = 3.0;
+  const double preffered_acc_for_unknown = -3.0;
+
   const auto closest_stop_obstacles =
     obstacle_cruise_utils::getClosestStopObstacles(stop_obstacles);
   for (const auto & stop_obstacle : closest_stop_obstacles) {
@@ -300,6 +303,19 @@ std::vector<TrajectoryPoint> PlannerInterface::generateStopTrajectory(
 
     // calc stop point against the obstacle
     double candidate_zero_vel_dist = std::max(0.0, dist_to_collide_on_ref_traj - desired_margin);
+    if (stop_obstacle.classification.label == ObjectClassification::UNKNOWN) {
+      const double pref_acc_stop_dist =
+        motion_utils::calcSignedArcLength(
+          planner_data.traj_points, 0, planner_data.ego_pose.position) +
+        calcMinimumDistanceToStop(
+          planner_data.ego_vel, longitudinal_info_.limit_max_accel, preffered_acc_for_unknown);
+      const double liimit_margin_stop_dist =
+        std::max(0.0, dist_to_collide_on_ref_traj - limit_margin_for_unknown);
+      if (pref_acc_stop_dist > candidate_zero_vel_dist) {
+        candidate_zero_vel_dist = std::min(pref_acc_stop_dist, liimit_margin_stop_dist);
+      }
+    }
+
     if (suppress_sudden_obstacle_stop_) {
       const auto acceptable_stop_acc = [&]() -> std::optional<double> {
         if (stop_param_.getParamType(stop_obstacle.classification) == "default") {
@@ -310,6 +326,7 @@ std::vector<TrajectoryPoint> PlannerInterface::generateStopTrajectory(
             planner_data.ego_vel, longitudinal_info_.limit_max_accel,
             stop_param_.getParam(stop_obstacle.classification).sudden_object_acc_threshold),
           stop_param_.getParam(stop_obstacle.classification).sudden_object_dist_threshold);
+
         if (candidate_zero_vel_dist > distance_to_judge_suddenness) {
           return longitudinal_info_.limit_min_accel;
         }
