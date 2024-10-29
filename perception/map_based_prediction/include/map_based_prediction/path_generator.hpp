@@ -22,7 +22,11 @@
 #include <autoware_auto_perception_msgs/msg/tracked_objects.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/quaternion.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include <tf2/LinearMath/Quaternion.h>
 
 #include <memory>
 #include <utility>
@@ -91,7 +95,7 @@ public:
   PredictedPath generatePathForOffLaneVehicle(const TrackedObject & object);
 
   PredictedPath generatePathForOnLaneVehicle(
-    const TrackedObject & object, const PosePath & ref_paths);
+    const TrackedObject & object, const PosePath & ref_path, const double path_width = 0.0);
 
   PredictedPath generatePathForCrosswalkUser(
     const TrackedObject & object, const CrosswalkEdgePoints & reachable_crosswalk) const;
@@ -109,23 +113,34 @@ private:
   // Member functions
   PredictedPath generateStraightPath(const TrackedObject & object) const;
 
-  PredictedPath generatePolynomialPath(const TrackedObject & object, const PosePath & ref_path);
+  PredictedPath generatePolynomialPath(
+    const TrackedObject & object, const PosePath & ref_path, const double path_width,
+    const double backlash_width) const;
 
   FrenetPath generateFrenetPath(
-    const FrenetPoint & current_point, const FrenetPoint & target_point, const double max_length);
+    const FrenetPoint & current_point, const FrenetPoint & target_point,
+    const double max_length) const;
   Eigen::Vector3d calcLatCoefficients(
-    const FrenetPoint & current_point, const FrenetPoint & target_point, const double T);
+    const FrenetPoint & current_point, const FrenetPoint & target_point, const double T) const;
   Eigen::Vector2d calcLonCoefficients(
-    const FrenetPoint & current_point, const FrenetPoint & target_point, const double T);
+    const FrenetPoint & current_point, const FrenetPoint & target_point, const double T) const;
+
+  std::vector<double> interpolationLerp(
+    const std::vector<double> & base_keys, const std::vector<double> & base_values,
+    const std::vector<double> & query_keys) const;
+  std::vector<tf2::Quaternion> interpolationLerp(
+    const std::vector<double> & base_keys, const std::vector<tf2::Quaternion> & base_values,
+    const std::vector<double> & query_keys) const;
 
   PosePath interpolateReferencePath(
-    const PosePath & base_path, const FrenetPath & frenet_predicted_path);
+    const PosePath & base_path, const FrenetPath & frenet_predicted_path) const;
 
   PredictedPath convertToPredictedPath(
     const TrackedObject & object, const FrenetPath & frenet_predicted_path,
-    const PosePath & ref_path);
+    const PosePath & ref_path) const;
 
-  FrenetPoint getFrenetPoint(const TrackedObject & object, const PosePath & ref_path);
+  FrenetPoint getFrenetPoint(
+    const TrackedObject & object, const geometry_msgs::msg::Pose & ref_pose) const;
 };
 }  // namespace map_based_prediction
 
