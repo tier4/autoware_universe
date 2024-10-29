@@ -66,7 +66,7 @@ public:
     const double min_behavior_stop_margin, const double enable_approaching_on_curve,
     const double additional_safe_distance_margin_on_curve,
     const double min_safe_distance_margin_on_curve, const bool suppress_sudden_obstacle_stop,
-    const double limit_margin_for_unknown, const double preffered_acc_for_unknown)
+    const double limit_margin_for_unknown, const double preferred_acc_for_unknown)
   {
     enable_debug_info_ = enable_debug_info;
     enable_calculation_time_info_ = enable_calculation_time_info;
@@ -76,7 +76,7 @@ public:
     min_safe_distance_margin_on_curve_ = min_safe_distance_margin_on_curve;
     suppress_sudden_obstacle_stop_ = suppress_sudden_obstacle_stop;
     limit_margin_for_unknown_ = limit_margin_for_unknown;
-    preffered_acc_for_unknown_ = preffered_acc_for_unknown;
+    preferred_acc_for_unknown_ = preferred_acc_for_unknown;
   }
 
   std::vector<TrajectoryPoint> generateStopTrajectory(
@@ -127,7 +127,7 @@ protected:
   double min_safe_distance_margin_on_curve_;
   bool suppress_sudden_obstacle_stop_;
   double limit_margin_for_unknown_;
-  double preffered_acc_for_unknown_;
+  double preferred_acc_for_unknown_;
 
   // stop watch
   tier4_autoware_utils::StopWatch<

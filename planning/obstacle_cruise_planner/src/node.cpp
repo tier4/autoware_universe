@@ -446,12 +446,12 @@ ObstacleCruisePlannerNode::ObstacleCruisePlannerNode(const rclcpp::NodeOptions &
     suppress_sudden_obstacle_stop_ =
       declare_parameter<bool>("common.suppress_sudden_obstacle_stop");
     limit_margin_for_unknown_ = declare_parameter<double>("stop.limit_margin_for_unknown");
-    preffered_acc_for_unknown_ = declare_parameter<double>("stop.preffered_acc_for_unknown");
+    preferred_acc_for_unknown_ = declare_parameter<double>("stop.preferred_acc_for_unknown");
     planner_ptr_->setParam(
       enable_debug_info_, enable_calculation_time_info_, min_behavior_stop_margin_,
       enable_approaching_on_curve_, additional_safe_distance_margin_on_curve_,
       min_safe_distance_margin_on_curve_, suppress_sudden_obstacle_stop_, limit_margin_for_unknown_,
-      preffered_acc_for_unknown_);
+      preferred_acc_for_unknown_);
   }
 
   {  // stop/cruise/slow down obstacle type
@@ -502,13 +502,13 @@ rcl_interfaces::msg::SetParametersResult ObstacleCruisePlannerNode::onParam(
   tier4_autoware_utils::updateParam<double>(
     parameters, "stop.limit_margin_for_unknown", limit_margin_for_unknown_);
   tier4_autoware_utils::updateParam<double>(
-    parameters, "stop.preffered_acc_for_unknown", preffered_acc_for_unknown_);
+    parameters, "stop.preferred_acc_for_unknown", preferred_acc_for_unknown_);
 
   planner_ptr_->setParam(
     enable_debug_info_, enable_calculation_time_info_, min_behavior_stop_margin_,
     enable_approaching_on_curve_, additional_safe_distance_margin_on_curve_,
     min_safe_distance_margin_on_curve_, suppress_sudden_obstacle_stop_, limit_margin_for_unknown_,
-    preffered_acc_for_unknown_);
+    preferred_acc_for_unknown_);
 
   tier4_autoware_utils::updateParam<bool>(
     parameters, "common.enable_slow_down_planning", enable_slow_down_planning_);
