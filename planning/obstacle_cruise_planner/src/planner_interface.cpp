@@ -306,10 +306,10 @@ std::vector<TrajectoryPoint> PlannerInterface::generateStopTrajectory(
           planner_data.traj_points, 0, planner_data.ego_pose.position) +
         calcMinimumDistanceToStop(
           planner_data.ego_vel, longitudinal_info_.limit_max_accel, preferred_acc_for_unknown_);
-      const double liimit_margin_stop_dist =
+      const double limit_margin_stop_dist =
         std::max(0.0, dist_to_collide_on_ref_traj - limit_margin_for_unknown_);
       if (pref_acc_stop_dist > candidate_zero_vel_dist) {
-        candidate_zero_vel_dist = std::min(pref_acc_stop_dist, liimit_margin_stop_dist);
+        candidate_zero_vel_dist = std::min(pref_acc_stop_dist, limit_margin_stop_dist);
       }
     }
 
