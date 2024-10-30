@@ -29,15 +29,3 @@
               path: localization_accuracy
               contains: [": localization_accuracy"]
               timeout: 1.0
-
-            potential_lane_departure:
-              type: diagnostic_aggregator/GenericAnalyzer
-              path: potential_lane_departure
-              contains: [": potential_lane_departure"]
-              timeout: 0.3
-
-            potential_stopline_overrun:
-              type: diagnostic_aggregator/GenericAnalyzer
-              path: potential_stopline_overrun
-              contains: [": potential_stopline_overrun"]
-              timeout: 0.3
