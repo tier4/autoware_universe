@@ -174,6 +174,8 @@ void TrackerDebugger::startMeasurementTime(const rclcpp::Time & measurement_head
 
 MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
 : rclcpp::Node("multi_object_tracker", node_options),
+  last_published_time_(this->now()),
+  last_updated_time_(this->now()),
   tf_buffer_(this->get_clock()),
   tf_listener_(tf_buffer_)
 {
@@ -196,11 +198,15 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
     this->get_node_base_interface(), this->get_node_timers_interface());
   tf_buffer_.setCreateTimerInterface(cti);
 
-  // Create ROS time based timer
+  // Create ROS time based timer.
+  // If the delay compensation is enabled, the timer is used to publish the output at the correct
+  // time.
   if (enable_delay_compensation) {
-    const auto period_ns = rclcpp::Rate(publish_rate).period();
+    publisher_period_ = 1.0 / publish_rate;    // [s]
+    constexpr double timer_multiplier = 10.0;  // 10 times frequent for publish timing check
+    const auto timer_period = rclcpp::Rate(publish_rate * timer_multiplier).period();
     publish_timer_ = rclcpp::create_timer(
-      this, get_clock(), period_ns, std::bind(&MultiObjectTracker::onTimer, this));
+      this, get_clock(), timer_period, std::bind(&MultiObjectTracker::onTimer, this));
   }
 
   const auto tmp = this->declare_parameter<std::vector<int64_t>>("can_assign_matrix");
@@ -236,6 +242,8 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
 void MultiObjectTracker::onMeasurement(
   const autoware_auto_perception_msgs::msg::DetectedObjects::ConstSharedPtr input_objects_msg)
 {
+  last_updated_time_ = this->now();
+
   /* keep the latest input stamp and check transform*/
   debugger_->startMeasurementTime(rclcpp::Time(input_objects_msg->header.stamp));
   const auto self_transform = getTransformAnonymous(
@@ -277,7 +285,7 @@ void MultiObjectTracker::onMeasurement(
   }
 
   /* life cycle check */
-  checkTrackerLifeCycle(list_tracker_, measurement_time, *self_transform);
+  checkTrackerLifeCycle(list_tracker_, measurement_time);
   /* sanitize trackers */
   sanitizeTracker(list_tracker_, measurement_time);
 
@@ -326,14 +334,28 @@ std::shared_ptr<Tracker> MultiObjectTracker::createNewTracker(
 void MultiObjectTracker::onTimer()
 {
   rclcpp::Time current_time = this->now();
-  const auto self_transform =
-    getTransformAnonymous(tf_buffer_, world_frame_id_, "base_link", current_time);
-  if (!self_transform) {
+
+  // ensure minimum interval: room for the next process(prediction)
+  const double minimum_publish_interval = publisher_period_ * minimum_publish_interval_ratio;
+  const auto elapsed_time = (current_time - last_published_time_).seconds();
+  if (elapsed_time < minimum_publish_interval) {
+    return;
+  }
+
+  // if there was update after publishing, publish new messages
+  bool should_publish = last_published_time_ < last_updated_time_;
+
+  // if there was no update, publish if the elapsed time is longer than the maximum publish latency
+  // in this case, it will perform extrapolate/remove old objects
+  const double maximum_publish_interval = publisher_period_ * maximum_publish_interval_ratio;
+  should_publish = should_publish || elapsed_time > maximum_publish_interval;
+
+  if (!should_publish) {
     return;
   }
 
   /* life cycle check */
-  checkTrackerLifeCycle(list_tracker_, current_time, *self_transform);
+  checkTrackerLifeCycle(list_tracker_, current_time);
   /* sanitize trackers */
   sanitizeTracker(list_tracker_, current_time);
 
@@ -342,8 +364,7 @@ void MultiObjectTracker::onTimer()
 }
 
 void MultiObjectTracker::checkTrackerLifeCycle(
-  std::list<std::shared_ptr<Tracker>> & list_tracker, const rclcpp::Time & time,
-  [[maybe_unused]] const geometry_msgs::msg::Transform & self_transform)
+  std::list<std::shared_ptr<Tracker>> & list_tracker, const rclcpp::Time & time)
 {
   /* params */
   constexpr float max_elapsed_time = 1.0;
@@ -463,6 +484,9 @@ void MultiObjectTracker::publish(const rclcpp::Time & time)
 
   // Publish
   tracked_objects_pub_->publish(output_msg);
+
+  // Update last published time
+  last_published_time_ = this->now();
 
   // Debugger Publish if enabled
   debugger_->publishProcessingTime();

@@ -14,6 +14,7 @@
 
 #include "map_based_prediction/map_based_prediction_node.hpp"
 
+#include <autoware_utils/autoware_utils.hpp>
 #include <interpolation/linear_interpolation.hpp>
 #include <lanelet2_extension/utility/message_conversion.hpp>
 #include <lanelet2_extension/utility/query.hpp>
@@ -33,6 +34,7 @@
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/Lanelet.h>
+#include <lanelet2_core/geometry/LaneletMap.h>
 #include <lanelet2_core/geometry/Point.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <tf2/utils.h>
@@ -359,24 +361,31 @@ CrosswalkEdgePoints getCrosswalkEdgePoints(const lanelet::ConstLanelet & crosswa
                              back_center_point,  r_p_back,  l_p_back};
 }
 
-bool withinLanelet(
-  const TrackedObject & object, const lanelet::ConstLanelet & lanelet,
-  const bool use_yaw_information = false, const float yaw_threshold = 0.6)
+bool withinRoadLanelet(
+  const TrackedObject & object,
+  const std::vector<std::pair<double, lanelet::Lanelet>> & surrounding_lanelets_with_dist,
+  const bool use_yaw_information = false)
 {
-  using Point = boost::geometry::model::d2::point_xy<double>;
+  for (const auto & [dist, lanelet] : surrounding_lanelets_with_dist) {
+    if (lanelet.hasAttribute(lanelet::AttributeName::Subtype)) {
+      lanelet::Attribute attr = lanelet.attribute(lanelet::AttributeName::Subtype);
+      if (
+        attr.value() == lanelet::AttributeValueString::Crosswalk ||
+        attr.value() == lanelet::AttributeValueString::Walkway) {
+        continue;
+      }
+    }
 
-  const auto & obj_pos = object.kinematics.pose_with_covariance.pose.position;
-  const Point p_object{obj_pos.x, obj_pos.y};
-
-  auto polygon = lanelet.polygon2d().basicPolygon();
-  boost::geometry::correct(polygon);
-  bool with_in_polygon = boost::geometry::within(p_object, polygon);
-
-  if (!use_yaw_information) return with_in_polygon;
-
-  // use yaw angle to compare
-  const double abs_yaw_diff = calcAbsYawDiffBetweenLaneletAndObject(object, lanelet);
-  if (abs_yaw_diff < yaw_threshold) return with_in_polygon;
+    constexpr float yaw_threshold = 0.6;
+    bool within_lanelet = std::abs(dist) < 1e-5;
+    if (use_yaw_information) {
+      within_lanelet =
+        within_lanelet && calcAbsYawDiffBetweenLaneletAndObject(object, lanelet) < yaw_threshold;
+    }
+    if (within_lanelet) {
+      return true;
+    }
+  }
 
   return false;
 }
@@ -385,38 +394,19 @@ bool withinRoadLanelet(
   const TrackedObject & object, const lanelet::LaneletMapPtr & lanelet_map_ptr,
   const bool use_yaw_information = false)
 {
-  using Point = boost::geometry::model::d2::point_xy<double>;
-
   const auto & obj_pos = object.kinematics.pose_with_covariance.pose.position;
-  const Point p_object{obj_pos.x, obj_pos.y};
-
   lanelet::BasicPoint2d search_point(obj_pos.x, obj_pos.y);
   // nearest lanelet
   constexpr double search_radius = 10.0;  // [m]
-  const auto surrounding_lanelets =
-    lanelet::geometry::findNearest(lanelet_map_ptr->laneletLayer, search_point, search_radius);
+  const auto surrounding_lanelets_with_dist =
+    lanelet::geometry::findWithin2d(lanelet_map_ptr->laneletLayer, search_point, search_radius);
 
-  for (const auto & lanelet : surrounding_lanelets) {
-    if (lanelet.second.hasAttribute(lanelet::AttributeName::Subtype)) {
-      lanelet::Attribute attr = lanelet.second.attribute(lanelet::AttributeName::Subtype);
-      if (
-        attr.value() == lanelet::AttributeValueString::Crosswalk ||
-        attr.value() == lanelet::AttributeValueString::Walkway) {
-        continue;
-      }
-    }
-
-    if (withinLanelet(object, lanelet.second, use_yaw_information)) {
-      return true;
-    }
-  }
-
-  return false;
+  return withinRoadLanelet(object, surrounding_lanelets_with_dist, use_yaw_information);
 }
 
 boost::optional<CrosswalkEdgePoints> isReachableCrosswalkEdgePoints(
-  const TrackedObject & object, const lanelet::ConstLanelet & target_crosswalk,
-  const CrosswalkEdgePoints & edge_points, const lanelet::LaneletMapPtr & lanelet_map_ptr,
+  const TrackedObject & object, const lanelet::ConstLanelets & surrounding_lanelets,
+  const lanelet::ConstLanelets & surrounding_crosswalks, const CrosswalkEdgePoints & edge_points,
   const double time_horizon, const double min_object_vel)
 {
   using Point = boost::geometry::model::d2::point_xy<double>;
@@ -424,11 +414,6 @@ boost::optional<CrosswalkEdgePoints> isReachableCrosswalkEdgePoints(
   const auto & obj_pos = object.kinematics.pose_with_covariance.pose.position;
   const auto & obj_vel = object.kinematics.twist_with_covariance.twist.linear;
   const auto yaw = tier4_autoware_utils::getRPY(object.kinematics.pose_with_covariance.pose).z;
-
-  lanelet::BasicPoint2d obj_pos_as_lanelet(obj_pos.x, obj_pos.y);
-  if (boost::geometry::within(obj_pos_as_lanelet, target_crosswalk.polygon2d().basicPolygon())) {
-    return {};
-  }
 
   const auto & p1 = edge_points.front_center_point;
   const auto & p2 = edge_points.back_center_point;
@@ -446,17 +431,12 @@ boost::optional<CrosswalkEdgePoints> isReachableCrosswalkEdgePoints(
   const auto estimated_velocity = std::hypot(obj_vel.x, obj_vel.y);
   const auto is_stop_object = estimated_velocity < stop_velocity_th;
   const auto velocity = std::max(min_object_vel, estimated_velocity);
-  const auto surrounding_lanelets = lanelet::geometry::findNearest(
-    lanelet_map_ptr->laneletLayer, obj_pos_as_lanelet, time_horizon * velocity);
 
-  const auto isAcrossAnyRoad = [&surrounding_lanelets](const Point & p_src, const Point & p_dst) {
-    const auto withinAnyCrosswalk = [&surrounding_lanelets](const Point & p) {
-      for (const auto & lanelet : surrounding_lanelets) {
-        const lanelet::Attribute attr = lanelet.second.attribute(lanelet::AttributeName::Subtype);
-        if (
-          (attr.value() == lanelet::AttributeValueString::Crosswalk ||
-           attr.value() == lanelet::AttributeValueString::Walkway) &&
-          boost::geometry::within(p, lanelet.second.polygon2d().basicPolygon())) {
+  const auto isAcrossAnyRoad = [&surrounding_lanelets, &surrounding_crosswalks](
+                                 const Point & p_src, const Point & p_dst) {
+    const auto withinAnyCrosswalk = [&surrounding_crosswalks](const Point & p) {
+      for (const auto & crosswalk : surrounding_crosswalks) {
+        if (boost::geometry::within(p, crosswalk.polygon2d().basicPolygon())) {
           return true;
         }
       }
@@ -475,14 +455,13 @@ boost::optional<CrosswalkEdgePoints> isReachableCrosswalkEdgePoints(
     std::vector<Point> points_of_intersect;
     const boost::geometry::model::linestring<Point> line{p_src, p_dst};
     for (const auto & lanelet : surrounding_lanelets) {
-      const lanelet::Attribute attr = lanelet.second.attribute(lanelet::AttributeName::Subtype);
+      const lanelet::Attribute attr = lanelet.attribute(lanelet::AttributeName::Subtype);
       if (attr.value() != lanelet::AttributeValueString::Road) {
         continue;
       }
 
       std::vector<Point> tmp_intersects;
-      boost::geometry::intersection(
-        line, lanelet.second.polygon2d().basicPolygon(), tmp_intersects);
+      boost::geometry::intersection(line, lanelet.polygon2d().basicPolygon(), tmp_intersects);
       for (const auto & p : tmp_intersects) {
         if (isExist(p, points_of_intersect) || withinAnyCrosswalk(p)) {
           continue;
@@ -828,6 +807,7 @@ void MapBasedPredictionNode::mapCallback(const HADMapBin::ConstSharedPtr msg)
   lanelet_map_ptr_ = std::make_shared<lanelet::LaneletMap>();
   lanelet::utils::conversion::fromBinMsg(
     *msg, lanelet_map_ptr_, &traffic_rules_ptr_, &routing_graph_ptr_);
+  lru_cache_of_convert_path_type_.clear();  // clear cache
   RCLCPP_INFO(get_logger(), "[Map Based Prediction]: Map is loaded");
 
   const auto all_lanelets = lanelet::utils::query::laneletLayer(lanelet_map_ptr_);
@@ -835,6 +815,16 @@ void MapBasedPredictionNode::mapCallback(const HADMapBin::ConstSharedPtr msg)
   const auto walkways = lanelet::utils::query::walkwayLanelets(all_lanelets);
   crosswalks_.insert(crosswalks_.end(), crosswalks.begin(), crosswalks.end());
   crosswalks_.insert(crosswalks_.end(), walkways.begin(), walkways.end());
+
+  lanelet::LineStrings3d fences;
+  for (const auto & linestring : lanelet_map_ptr_->lineStringLayer) {
+    if (const std::string type = linestring.attributeOr(lanelet::AttributeName::Type, "none");
+        type == "fence") {
+      fences.push_back(lanelet::LineString3d(
+        std::const_pointer_cast<lanelet::LineStringData>(linestring.constData())));
+    }
+  }
+  fence_layer_ = lanelet::utils::createMap(fences);
 }
 
 void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPtr in_objects)
@@ -842,23 +832,6 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   stop_watch_.tic();
   // Guard for map pointer and frame transformation
   if (!lanelet_map_ptr_) {
-    return;
-  }
-
-  auto world2map_transform = transform_listener_.getTransform(
-    "map",                        // target
-    in_objects->header.frame_id,  // src
-    in_objects->header.stamp, rclcpp::Duration::from_seconds(0.1));
-  auto map2world_transform = transform_listener_.getTransform(
-    in_objects->header.frame_id,  // target
-    "map",                        // src
-    in_objects->header.stamp, rclcpp::Duration::from_seconds(0.1));
-  auto debug_map2lidar_transform = transform_listener_.getTransform(
-    "base_link",  // target
-    "map",        // src
-    rclcpp::Time(), rclcpp::Duration::from_seconds(0.1));
-
-  if (!world2map_transform || !map2world_transform || !debug_map2lidar_transform) {
     return;
   }
 
@@ -874,12 +847,24 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   // result debug
   visualization_msgs::msg::MarkerArray debug_markers;
 
+  // get world to map transform
+  geometry_msgs::msg::TransformStamped::ConstSharedPtr world2map_transform;
+
+  bool is_object_not_in_map_frame = in_objects->header.frame_id != "map";
+  if (is_object_not_in_map_frame) {
+    world2map_transform = transform_listener_.getTransform(
+      "map",                        // target
+      in_objects->header.frame_id,  // src
+      in_objects->header.stamp, rclcpp::Duration::from_seconds(0.1));
+    if (!world2map_transform) return;
+  }
+
   for (const auto & object : in_objects->objects) {
     std::string object_id = tier4_autoware_utils::toHexString(object.object_id);
     TrackedObject transformed_object = object;
 
     // transform object frame if it's based on map frame
-    if (in_objects->header.frame_id != "map") {
+    if (is_object_not_in_map_frame) {
       geometry_msgs::msg::PoseStamped pose_in_map;
       geometry_msgs::msg::PoseStamped pose_orig;
       pose_orig.pose = object.kinematics.pose_with_covariance.pose;
@@ -950,7 +935,7 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
         // If predicted reference path is empty, assume this object is out of the lane
         if (ref_paths.empty()) {
           PredictedPath predicted_path =
-            path_generator_->generatePathForLowSpeedVehicle(transformed_object);
+            path_generator_->generatePathForOffLaneVehicle(transformed_object);
           predicted_path.confidence = 1.0;
           if (predicted_path.path.empty()) break;
 
@@ -982,7 +967,7 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
         std::vector<PredictedPath> predicted_paths;
         for (const auto & ref_path : ref_paths) {
           PredictedPath predicted_path = path_generator_->generatePathForOnLaneVehicle(
-            yaw_fixed_transformed_object, ref_path.path);
+            yaw_fixed_transformed_object, ref_path.path, ref_path.width);
           if (predicted_path.path.empty()) {
             continue;
           }
@@ -1031,10 +1016,13 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
 bool MapBasedPredictionNode::doesPathCrossAnyFence(const PredictedPath & predicted_path)
 {
-  const lanelet::ConstLineStrings3d & all_fences =
-    lanelet::utils::query::getAllFences(lanelet_map_ptr_);
-  for (const auto & fence_line : all_fences) {
-    if (doesPathCrossFence(predicted_path, fence_line)) {
+  lanelet::BasicLineString2d predicted_path_ls;
+  for (const auto & p : predicted_path.path)
+    predicted_path_ls.emplace_back(p.position.x, p.position.y);
+  const auto candidates =
+    fence_layer_->lineStringLayer.search(lanelet::geometry::boundingBox2d(predicted_path_ls));
+  for (const auto & candidate : candidates) {
+    if (doesPathCrossFence(predicted_path, candidate)) {
       return true;
     }
   }
@@ -1081,10 +1069,26 @@ PredictedObject MapBasedPredictionNode::getPredictedObjectAsCrosswalkUser(
   }
 
   boost::optional<lanelet::ConstLanelet> crossing_crosswalk{boost::none};
-  for (const auto & crosswalk : crosswalks_) {
-    if (withinLanelet(object, crosswalk)) {
-      crossing_crosswalk = crosswalk;
-      break;
+  const auto & obj_pos = object.kinematics.pose_with_covariance.pose.position;
+  const auto & obj_vel = object.kinematics.twist_with_covariance.twist.linear;
+  const auto estimated_velocity = std::hypot(obj_vel.x, obj_vel.y);
+  const auto velocity = std::max(min_crosswalk_user_velocity_, estimated_velocity);
+  const auto surrounding_lanelets_with_dist = lanelet::geometry::findWithin2d(
+    lanelet_map_ptr_->laneletLayer, lanelet::BasicPoint2d{obj_pos.x, obj_pos.y},
+    prediction_time_horizon_ * velocity);
+  lanelet::ConstLanelets surrounding_lanelets;
+  lanelet::ConstLanelets surrounding_crosswalks;
+  for (const auto & [dist, lanelet] : surrounding_lanelets_with_dist) {
+    surrounding_lanelets.push_back(lanelet);
+    const auto attr = lanelet.attribute(lanelet::AttributeName::Subtype);
+    if (
+      attr.value() == lanelet::AttributeValueString::Crosswalk ||
+      attr.value() == lanelet::AttributeValueString::Walkway) {
+      const auto & crosswalk = lanelet;
+      surrounding_crosswalks.push_back(crosswalk);
+      if (std::abs(dist) < 1e-5) {
+        crossing_crosswalk = crosswalk;
+      }
     }
   }
 
@@ -1114,7 +1118,7 @@ PredictedObject MapBasedPredictionNode::getPredictedObjectAsCrosswalkUser(
 
     // If the object is not crossing the crosswalk, in the road lanelets, try to find the closest
     // crosswalk and generate path to the crosswalk edge
-  } else if (withinRoadLanelet(object, lanelet_map_ptr_)) {
+  } else if (withinRoadLanelet(object, surrounding_lanelets_with_dist)) {
     lanelet::ConstLanelet closest_crosswalk{};
     const auto & obj_pose = object.kinematics.pose_with_covariance.pose;
     const auto found_closest_crosswalk =
@@ -1144,8 +1148,14 @@ PredictedObject MapBasedPredictionNode::getPredictedObjectAsCrosswalkUser(
       }
     }
   }
-  // try to find the edge points for all crosswalks and generate path to the crosswalk edge
-  for (const auto & crosswalk : crosswalks_) {
+
+  // try to find the edge points for other surrounding crosswalks and generate path to the crosswalk
+  // edge
+  for (const auto & crosswalk : surrounding_crosswalks) {
+    if (crossing_crosswalk && crossing_crosswalk.get() == crosswalk) {
+      continue;
+    }
+
     const auto edge_points = getCrosswalkEdgePoints(crosswalk);
 
     const auto reachable_first = hasPotentialToReach(
@@ -1162,7 +1172,7 @@ PredictedObject MapBasedPredictionNode::getPredictedObjectAsCrosswalkUser(
     }
 
     const auto reachable_crosswalk = isReachableCrosswalkEdgePoints(
-      object, crosswalk, edge_points, lanelet_map_ptr_, prediction_time_horizon_,
+      object, surrounding_lanelets, surrounding_crosswalks, edge_points, prediction_time_horizon_,
       min_crosswalk_user_velocity_);
 
     if (!reachable_crosswalk) {
@@ -1485,6 +1495,90 @@ void MapBasedPredictionNode::updateObjectsHistory(
   }
 }
 
+std::optional<size_t> MapBasedPredictionNode::searchProperStartingRefPathIndex(
+  const TrackedObject & object, const PosePath & pose_path) const
+{
+  bool is_position_found = false;
+  std::optional<size_t> opt_index{std::nullopt};
+  auto & index = opt_index.emplace();
+
+  // starting segment index is a segment close enough to the object
+  const auto obj_point = object.kinematics.pose_with_covariance.pose.position;
+  {
+    double min_dist_sq = std::numeric_limits<double>::max();
+    constexpr double acceptable_dist_sq = 1.0;  // [m2]
+    for (size_t i = 0; i < pose_path.size(); i++) {
+      const double dx = pose_path.at(i).position.x - obj_point.x;
+      const double dy = pose_path.at(i).position.y - obj_point.y;
+      const double dist_sq = dx * dx + dy * dy;
+      if (dist_sq < min_dist_sq) {
+        min_dist_sq = dist_sq;
+        index = i;
+      }
+      if (dist_sq < acceptable_dist_sq) {
+        break;
+      }
+    }
+  }
+
+  // calculate score that object can reach the target path smoothly, and search the
+  // starting segment index that have the best score
+  size_t idx = 0;
+  {                                                // find target segmentation index
+    constexpr double search_distance = 22.0;       // [m]
+    constexpr double yaw_diff_limit = M_PI / 3.0;  // 60 degrees
+
+    const double obj_yaw = tf2::getYaw(object.kinematics.pose_with_covariance.pose.orientation);
+    const size_t search_segment_count =
+      static_cast<size_t>(std::floor(search_distance / reference_path_resolution_));
+    const size_t search_segment_num =
+      std::min(search_segment_count, static_cast<size_t>(pose_path.size() - index));
+
+    // search for the best score, which is the smallest
+    double best_score = 1e9;  // initial value is large enough
+    for (size_t i = 0; i < search_segment_num; ++i) {
+      const auto & path_pose = pose_path.at(index + i);
+      // yaw difference
+      const double path_yaw = tf2::getYaw(path_pose.orientation);
+      const double relative_path_yaw = autoware_utils::normalize_radian(path_yaw - obj_yaw);
+      if (std::abs(relative_path_yaw) > yaw_diff_limit) {
+        continue;
+      }
+
+      const double dx = path_pose.position.x - obj_point.x;
+      const double dy = path_pose.position.y - obj_point.y;
+      const double dx_cp = std::cos(obj_yaw) * dx + std::sin(obj_yaw) * dy;
+      const double dy_cp = -std::sin(obj_yaw) * dx + std::cos(obj_yaw) * dy;
+      const double neutral_yaw = std::atan2(dy_cp, dx_cp) * 2.0;
+      const double delta_yaw = autoware_utils::normalize_radian(path_yaw - obj_yaw - neutral_yaw);
+      if (std::abs(delta_yaw) > yaw_diff_limit) {
+        continue;
+      }
+
+      // objective function score
+      constexpr double weight_ratio = 0.01;
+      double score = delta_yaw * delta_yaw + weight_ratio * neutral_yaw * neutral_yaw;
+      constexpr double acceptable_score = 1e-3;
+
+      if (score < best_score) {
+        best_score = score;
+        idx = i;
+        is_position_found = true;
+        if (score < acceptable_score) {
+          // if the score is small enough, we can break the loop
+          break;
+        }
+      }
+    }
+  }
+
+  // update starting segment index
+  index += idx;
+  index = std::clamp(index, 0ul, pose_path.size() - 1);
+
+  return is_position_found ? opt_index : std::nullopt;
+}
+
 std::vector<PredictedRefPath> MapBasedPredictionNode::getPredictedReferencePath(
   const TrackedObject & object, const LaneletsData & current_lanelets_data,
   const double object_detected_time)
@@ -1541,6 +1635,15 @@ std::vector<PredictedRefPath> MapBasedPredictionNode::getPredictedReferencePath(
         if (!unconnected_lanelets.empty()) {
           return unconnected_lanelets.front();
         }
+        // search side of the next lanelet
+        const lanelet::ConstLanelets next_lanelet = routing_graph_ptr_->following(lanelet);
+        if (!next_lanelet.empty()) {
+          const auto next = get_left ? routing_graph_ptr_->left(next_lanelet.front())
+                                     : routing_graph_ptr_->right(next_lanelet.front());
+          if (!!next) {
+            return *next;
+          }
+        }
       }
 
       // if no candidate lanelet found, return empty
@@ -1587,6 +1690,26 @@ std::vector<PredictedRefPath> MapBasedPredictionNode::getPredictedReferencePath(
     addReferencePathsLocal(left_paths, Maneuver::LEFT_LANE_CHANGE);
     addReferencePathsLocal(right_paths, Maneuver::RIGHT_LANE_CHANGE);
     addReferencePathsLocal(center_paths, Maneuver::LANE_FOLLOW);
+  }
+
+  // Step 3. Search starting point for each reference path
+  for (auto it = all_ref_paths.begin(); it != all_ref_paths.end();) {
+    auto & pose_path = it->path;
+    if (pose_path.empty()) {
+      continue;
+    }
+
+    const std::optional<size_t> opt_starting_idx =
+      searchProperStartingRefPathIndex(object, pose_path);
+
+    if (opt_starting_idx.has_value()) {
+      // Trim the reference path
+      pose_path.erase(pose_path.begin(), pose_path.begin() + opt_starting_idx.value());
+      ++it;
+    } else {
+      // Proper starting point is not found, remove the reference path
+      it = all_ref_paths.erase(it);
+    }
   }
 
   return all_ref_paths;
@@ -1912,7 +2035,8 @@ void MapBasedPredictionNode::addReferencePaths(
     for (const auto & converted_path : converted_paths) {
       PredictedRefPath predicted_path;
       predicted_path.probability = maneuver_probability.at(maneuver) * path_probability;
-      predicted_path.path = converted_path;
+      predicted_path.path = converted_path.first;
+      predicted_path.width = converted_path.second;
       predicted_path.maneuver = maneuver;
       reference_paths.push_back(predicted_path);
     }
@@ -1983,12 +2107,17 @@ ManeuverProbability MapBasedPredictionNode::calculateManeuverProbability(
   return maneuver_prob;
 }
 
-std::vector<PosePath> MapBasedPredictionNode::convertPathType(
-  const lanelet::routing::LaneletPaths & paths)
+std::vector<std::pair<PosePath, double>> MapBasedPredictionNode::convertPathType(
+  const lanelet::routing::LaneletPaths & paths) const
 {
-  std::vector<PosePath> converted_paths;
+  if (lru_cache_of_convert_path_type_.contains(paths)) {
+    return *lru_cache_of_convert_path_type_.get(paths);
+  }
+
+  std::vector<std::pair<PosePath, double>> converted_paths;
   for (const auto & path : paths) {
     PosePath converted_path;
+    double width = 10.0;  // Initialize with a large value
 
     // Insert Positions. Note that we start inserting points from previous lanelet
     if (!path.empty()) {
@@ -2008,7 +2137,13 @@ std::vector<PosePath> MapBasedPredictionNode::convertPathType(
 
           const double lane_yaw = std::atan2(
             current_p.position.y - prev_p.position.y, current_p.position.x - prev_p.position.x);
-          current_p.orientation = tier4_autoware_utils::createQuaternionFromYaw(lane_yaw);
+          const double sin_yaw_half = std::sin(lane_yaw / 2.0);
+          const double cos_yaw_half = std::cos(lane_yaw / 2.0);
+          current_p.orientation.x = 0.0;
+          current_p.orientation.y = 0.0;
+          current_p.orientation.z = sin_yaw_half;
+          current_p.orientation.w = cos_yaw_half;
+
           converted_path.push_back(current_p);
           prev_p = current_p;
         }
@@ -2039,18 +2174,39 @@ std::vector<PosePath> MapBasedPredictionNode::convertPathType(
 
         const double lane_yaw = std::atan2(
           current_p.position.y - prev_p.position.y, current_p.position.x - prev_p.position.x);
-        current_p.orientation = tier4_autoware_utils::createQuaternionFromYaw(lane_yaw);
+        const double sin_yaw_half = std::sin(lane_yaw / 2.0);
+        const double cos_yaw_half = std::cos(lane_yaw / 2.0);
+        current_p.orientation.x = 0.0;
+        current_p.orientation.y = 0.0;
+        current_p.orientation.z = sin_yaw_half;
+        current_p.orientation.w = cos_yaw_half;
+
         converted_path.push_back(current_p);
         prev_p = current_p;
       }
+
+      // Update minimum width
+      const auto left_bound = lanelet.leftBound2d();
+      const auto right_bound = lanelet.rightBound2d();
+      const double lanelet_width_front = std::hypot(
+        left_bound.front().x() - right_bound.front().x(),
+        left_bound.front().y() - right_bound.front().y());
+      width = std::min(width, lanelet_width_front);
     }
 
     // Resample Path
-    const auto resampled_converted_path =
-      motion_utils::resamplePoseVector(converted_path, reference_path_resolution_);
-    converted_paths.push_back(resampled_converted_path);
+    const bool use_akima_spline_for_xy = true;
+    const bool use_lerp_for_z = true;
+    // the options use_akima_spline_for_xy and use_lerp_for_z are set to true
+    // but the implementation of use_akima_spline_for_xy in resamplePoseVector and
+    // resamplePointVector is opposite to the options so the options are set to true to use linear
+    // interpolation for xy
+    const auto resampled_converted_path = motion_utils::resamplePoseVector(
+      converted_path, reference_path_resolution_, use_akima_spline_for_xy, use_lerp_for_z);
+    converted_paths.push_back(std::make_pair(resampled_converted_path, width));
   }
 
+  lru_cache_of_convert_path_type_.put(paths, converted_paths);
   return converted_paths;
 }
 

@@ -98,6 +98,11 @@ private:
   rclcpp::Subscription<autoware_auto_perception_msgs::msg::DetectedObjects>::SharedPtr
     detected_object_sub_;
   rclcpp::TimerBase::SharedPtr publish_timer_;  // publish timer
+  rclcpp::Time last_published_time_;
+  rclcpp::Time last_updated_time_;
+  double publisher_period_;
+  static constexpr double minimum_publish_interval_ratio = 0.85;
+  static constexpr double maximum_publish_interval_ratio = 1.05;
 
   // debugger class
   std::unique_ptr<TrackerDebugger> debugger_;
@@ -116,8 +121,7 @@ private:
   std::unique_ptr<DataAssociation> data_association_;
 
   void checkTrackerLifeCycle(
-    std::list<std::shared_ptr<Tracker>> & list_tracker, const rclcpp::Time & time,
-    const geometry_msgs::msg::Transform & self_transform);
+    std::list<std::shared_ptr<Tracker>> & list_tracker, const rclcpp::Time & time);
   void sanitizeTracker(
     std::list<std::shared_ptr<Tracker>> & list_tracker, const rclcpp::Time & time);
   std::shared_ptr<Tracker> createNewTracker(
