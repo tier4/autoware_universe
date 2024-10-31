@@ -160,7 +160,7 @@ private:
     const double A, const double L, const Pose & start_pose, const double arc_path_interval,
     const bool is_left_steering, const bool is_forward);
 
-  const bool use_clothoid_{false};
+  const bool use_clothoid_{true};
   const double integral_interval_{0.01};
 
   // debug
