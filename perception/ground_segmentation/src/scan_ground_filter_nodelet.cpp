@@ -257,8 +257,8 @@ void ScanGroundFilterComponent::checkContinuousGndGrid(
     gnd_buff_z_mean += it->avg_height;
   }
 
-  gnd_buff_radius /= static_cast<float>(gnd_grid_buffer_size_ - 1);
-  gnd_buff_z_mean /= static_cast<float>(gnd_grid_buffer_size_ - 1);
+  gnd_buff_radius /= static_cast<float>(gnd_grid_buffer_size_);
+  gnd_buff_z_mean /= static_cast<float>(gnd_grid_buffer_size_);
 
   float tmp_delta_mean_z = gnd_grids_list.back().avg_height - gnd_buff_z_mean;
   float tmp_delta_radius = gnd_grids_list.back().radius - gnd_buff_radius;
