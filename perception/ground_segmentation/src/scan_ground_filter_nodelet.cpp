@@ -404,10 +404,10 @@ void ScanGroundFilterComponent::classifyPointCloudGridScan(
       // move to new grid
       if (p->grid_id > prev_p->grid_id && ground_cluster.getAverageRadius() > 0.0) {
         // check if the prev grid have ground point cloud
-        constexpr float threshold_multiplier = 2.0f;
-        if (use_recheck_ground_cluster_) {
+        const bool is_recheck_area = ground_cluster.getAverageRadius() > grid_mode_switch_radius_;
+        if (use_recheck_ground_cluster_ && is_recheck_area) {
           recheckGroundCluster(
-            ground_cluster, non_ground_height_threshold_ * threshold_multiplier, use_lowest_point_,
+            ground_cluster, non_ground_height_threshold_, use_lowest_point_,
             out_no_ground_indices);
         }
         curr_gnd_grid.radius = ground_cluster.getAverageRadius();
