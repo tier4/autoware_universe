@@ -300,6 +300,19 @@ std::vector<TrajectoryPoint> PlannerInterface::generateStopTrajectory(
 
     // calc stop point against the obstacle
     double candidate_zero_vel_dist = std::max(0.0, dist_to_collide_on_ref_traj - desired_margin);
+    if (stop_obstacle.classification.label == ObjectClassification::UNKNOWN) {
+      const double pref_acc_stop_dist =
+        motion_utils::calcSignedArcLength(
+          planner_data.traj_points, 0, planner_data.ego_pose.position) +
+        calcMinimumDistanceToStop(
+          planner_data.ego_vel, longitudinal_info_.limit_max_accel, preferred_acc_for_unknown_);
+      const double limit_margin_stop_dist =
+        std::max(0.0, dist_to_collide_on_ref_traj - limit_margin_for_unknown_);
+      if (pref_acc_stop_dist > candidate_zero_vel_dist) {
+        candidate_zero_vel_dist = std::min(pref_acc_stop_dist, limit_margin_stop_dist);
+      }
+    }
+
     if (suppress_sudden_obstacle_stop_) {
       const auto acceptable_stop_acc = [&]() -> std::optional<double> {
         if (stop_param_.getParamType(stop_obstacle.classification) == "default") {
