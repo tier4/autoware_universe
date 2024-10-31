@@ -15,6 +15,7 @@
 #define BEHAVIOR_PATH_LANE_CHANGE_MODULE__SCENE_HPP_
 
 #include "behavior_path_lane_change_module/utils/base_class.hpp"
+#include "behavior_path_lane_change_module/utils/data_structs.hpp"
 
 #include <memory>
 #include <utility>
@@ -59,6 +60,8 @@ public:
 
   void insertStopPoint(const lanelet::ConstLanelets & lanelets, PathWithLaneId & path) override;
 
+  void insert_stop_point_on_current_lanes(PathWithLaneId & path);
+
   PathWithLaneId getReferencePath() const override;
 
   std::optional<PathWithLaneId> extendPath() override;
@@ -72,6 +75,8 @@ public:
   PathSafetyStatus isApprovedPathSafe() const override;
 
   bool isRequiredStop(const bool is_object_coming_from_rear) const override;
+  PathSafetyStatus evaluateApprovedPathWithUnsafeHysteresis(
+    PathSafetyStatus approved_path_safety_status) override;
 
   bool isNearEndOfCurrentLanes(
     const lanelet::ConstLanelets & current_lanes, const lanelet::ConstLanelets & target_lanes,
@@ -175,7 +180,7 @@ protected:
 
   std::pair<double, double> calcCurrentMinMaxAcceleration() const;
 
-  void setStopPose(const Pose & stop_pose);
+  void set_stop_pose(const double arc_length_to_stop_pose, PathWithLaneId & path);
 
   void updateStopTime();
 
