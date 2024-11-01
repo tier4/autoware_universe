@@ -160,13 +160,12 @@ void SceneModuleManagerInterface::deleteExpiredModules(
 {
   const auto isModuleExpired = getModuleExpiredFunction(path);
 
-  // Copy container to avoid iterator corruption
-  // due to scene_modules_.erase() in unregisterModule()
-  const auto copied_scene_modules = scene_modules_;
-
-  for (const auto & scene_module : copied_scene_modules) {
-    if (isModuleExpired(scene_module)) {
-      unregisterModule(scene_module);
+  auto itr = scene_modules_.begin();
+  while (itr != scene_modules_.end()) {
+    if (isModuleExpired(*itr)) {
+      itr = scene_modules_.erase(itr);
+    } else {
+      itr++;
     }
   }
 }
@@ -178,16 +177,6 @@ void SceneModuleManagerInterface::registerModule(
     logger_, "register task: module = %s, id = %lu", getModuleName(), scene_module->getModuleId());
   registered_module_id_set_.emplace(scene_module->getModuleId());
   scene_modules_.insert(scene_module);
-}
-
-void SceneModuleManagerInterface::unregisterModule(
-  const std::shared_ptr<SceneModuleInterface> & scene_module)
-{
-  RCLCPP_DEBUG(
-    logger_, "unregister task: module = %s, id = %lu", getModuleName(),
-    scene_module->getModuleId());
-  registered_module_id_set_.erase(scene_module->getModuleId());
-  scene_modules_.erase(scene_module);
 }
 
 SceneModuleManagerInterfaceWithRTC::SceneModuleManagerInterfaceWithRTC(
@@ -265,15 +254,15 @@ void SceneModuleManagerInterfaceWithRTC::deleteExpiredModules(
 {
   const auto isModuleExpired = getModuleExpiredFunction(path);
 
-  // Copy container to avoid iterator corruption
-  // due to scene_modules_.erase() in unregisterModule()
-  const auto copied_scene_modules = scene_modules_;
-
-  for (const auto & scene_module : copied_scene_modules) {
-    if (isModuleExpired(scene_module)) {
-      removeRTCStatus(getUUID(scene_module->getModuleId()));
-      removeUUID(scene_module->getModuleId());
-      unregisterModule(scene_module);
+  auto itr = scene_modules_.begin();
+  while (itr != scene_modules_.end()) {
+    if (isModuleExpired(*itr)) {
+      removeRTCStatus(getUUID((*itr)->getModuleId()));
+      removeUUID((*itr)->getModuleId());
+      registered_module_id_set_.erase((*itr)->getModuleId());
+      itr = scene_modules_.erase(itr);
+    } else {
+      itr++;
     }
   }
 }
