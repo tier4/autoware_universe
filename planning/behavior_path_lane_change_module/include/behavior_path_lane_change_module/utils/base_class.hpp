@@ -84,8 +84,6 @@ public:
 
   virtual bool isAbortState() const = 0;
 
-  virtual bool is_safe_to_try_change_lanes_at_intersection() const = 0;
-
   virtual bool isAbleToReturnCurrentLane() const = 0;
 
   virtual LaneChangePath getLaneChangePath() const = 0;

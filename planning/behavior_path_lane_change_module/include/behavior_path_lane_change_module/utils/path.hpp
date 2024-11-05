@@ -40,11 +40,10 @@ using LaneChangePaths = std::vector<LaneChangePath>;
 struct LaneChangeStatus
 {
   PathWithLaneId lane_follow_path{};
-  PathWithLaneId path_after_intersection{};
   LaneChangePath lane_change_path{};
   lanelet::ConstLanelets current_lanes{};
   lanelet::ConstLanelets target_lanes{};
-  lanelet::ConstLanelet current_lane_{};
+  lanelet::ConstLanelet current_lane{};
   std::vector<lanelet::Id> lane_follow_lane_ids{};
   std::vector<lanelet::Id> lane_change_lane_ids{};
   bool is_safe{false};
@@ -52,7 +51,7 @@ struct LaneChangeStatus
   bool is_ego_in_turn_direction_lane{false};
   bool is_ego_in_intersection{false};
   double start_distance{0.0};
-  double distance_from_prev_intersection{std::numeric_limits<double>::max()};
+  double dist_from_prev_intersection{std::numeric_limits<double>::max()};
 };
 
 }  // namespace behavior_path_planner

@@ -1306,6 +1306,16 @@ bool has_blocking_target_object(
     });
 }
 
+bool has_passed_intersection_turn_direction(
+  const LaneChangeParameters & lc_param, const LaneChangeStatus & status)
+{
+  if (status.is_ego_in_intersection && status.is_ego_in_turn_direction_lane) {
+    return false;
+  }
+
+  return status.dist_from_prev_intersection > lc_param.backward_length_from_intersection;
+}
+
 std::vector<LineString2d> get_line_string_paths(const ExtendedPredictedObject & object)
 {
   const auto transform = [](const auto & predicted_path) -> LineString2d {
@@ -1328,11 +1338,21 @@ std::vector<LineString2d> get_line_string_paths(const ExtendedPredictedObject & 
 }
 
 bool has_overtaking_turn_lane_object(
-  const lanelet::ConstLanelets & target_lanes, const lanelet::ConstLanelet & ego_current_lane,
+  const LaneChangeStatus & status, const LaneChangeParameters & lc_param,
   const ExtendedPredictedObjects & trailing_objects)
 {
+  // Note: This situation is only applicable if the ego is in a turn lane.
+  if (!has_passed_intersection_turn_direction(lc_param, status)) {
+    return true;
+  }
+
+  const auto & target_lanes = status.target_lanes;
+  const auto & ego_current_lane = status.current_lane;
+
   const auto target_lane_poly =
     lanelet::utils::combineLaneletsShape(target_lanes).polygon2d().basicPolygon();
+  // to compensate for perception issue, or if object is from behind ego, and tries to overtake,
+  // but stop all of sudden
   const auto is_overlap_with_target = [&](const LineString2d & path) {
     return !boost::geometry::disjoint(path, target_lane_poly);
   };

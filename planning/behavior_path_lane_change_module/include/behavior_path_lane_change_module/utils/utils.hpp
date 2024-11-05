@@ -340,10 +340,13 @@ bool has_blocking_target_object(
   const LaneChangeParameters & lc_param, const double stop_arc_length, const Pose & ego_pose,
   const PathWithLaneId & path);
 
+bool has_passed_intersection_turn_direction(
+  const LaneChangeParameters & lc_param, const LaneChangeStatus & status);
+
 std::vector<LineString2d> get_line_string_paths(const ExtendedPredictedObject & object);
 
 bool has_overtaking_turn_lane_object(
-  const lanelet::ConstLanelets & target_lanes, const lanelet::ConstLanelet & ego_current_lane,
+  const LaneChangeStatus & status, const LaneChangeParameters & lc_param,
   const ExtendedPredictedObjects & trailing_objects);
 }  // namespace behavior_path_planner::utils::lane_change
 #endif  // BEHAVIOR_PATH_LANE_CHANGE_MODULE__UTILS__UTILS_HPP_
