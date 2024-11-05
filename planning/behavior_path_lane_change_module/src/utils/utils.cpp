@@ -1305,4 +1305,51 @@ bool has_blocking_target_object(
       return (arc_length_to_target_lane_obj - width_margin) >= stop_arc_length;
     });
 }
+
+std::vector<LineString2d> get_line_string_paths(const ExtendedPredictedObject & object)
+{
+  const auto transform = [](const auto & predicted_path) -> LineString2d {
+    LineString2d line_string;
+    const auto & path = predicted_path.path;
+    line_string.reserve(path.size());
+    for (const auto & path_point : path) {
+      const auto point = tier4_autoware_utils::fromMsg(path_point.pose.position).to_2d();
+      line_string.push_back(point);
+    }
+
+    return line_string;
+  };
+
+  const auto paths = object.predicted_paths;
+  std::vector<LineString2d> line_strings;
+  std::transform(paths.begin(), paths.end(), std::back_inserter(line_strings), transform);
+
+  return line_strings;
+}
+
+bool has_overtaking_turn_lane_object(
+  const lanelet::ConstLanelets & target_lanes, const lanelet::ConstLanelet & ego_current_lane,
+  const ExtendedPredictedObjects & trailing_objects)
+{
+  const auto target_lane_poly =
+    lanelet::utils::combineLaneletsShape(target_lanes).polygon2d().basicPolygon();
+  const auto is_overlap_with_target = [&](const LineString2d & path) {
+    return !boost::geometry::disjoint(path, target_lane_poly);
+  };
+
+  return std::any_of(
+    trailing_objects.begin(), trailing_objects.end(), [&](const ExtendedPredictedObject & object) {
+      lanelet::ConstLanelet obj_lane;
+      const auto obj_poly =
+        tier4_autoware_utils::toPolygon2d(object.initial_pose.pose, object.shape);
+      if (!boost::geometry::disjoint(
+            obj_poly, utils::toPolygon2d(
+                        lanelet::utils::to2D(ego_current_lane.polygon2d().basicPolygon())))) {
+        return true;
+      }
+
+      const auto paths = get_line_string_paths(object);
+      return std::any_of(paths.begin(), paths.end(), is_overlap_with_target);
+    });
+}
 }  // namespace behavior_path_planner::utils::lane_change

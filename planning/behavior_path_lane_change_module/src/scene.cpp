@@ -54,6 +54,51 @@ NormalLaneChange::NormalLaneChange(
 void NormalLaneChange::updateLaneChangeStatus()
 {
   updateStopTime();
+  status_.current_lanes = getCurrentLanes();
+  if (status_.current_lanes.empty()) {
+    return;
+  }
+
+  lanelet::ConstLanelet current_lane;
+  if (!getRouteHandler()->getClosestLaneletWithinRoute(getEgoPose(), &current_lane)) {
+    RCLCPP_DEBUG(logger_, "ego's current lane not in route");
+    return;
+  }
+  status_.current_lane_ = current_lane;
+
+  const auto ego_footprint =
+    utils::lane_change::getEgoCurrentFootprint(getEgoPose(), getCommonParam().vehicle_info);
+  status_.is_ego_in_turn_direction_lane =
+    utils::lane_change::isWithinTurnDirectionLanes(current_lane, ego_footprint);
+  status_.is_ego_in_intersection =
+    utils::lane_change::isWithinIntersection(getRouteHandler(), current_lane, ego_footprint);
+
+  if (
+    status_.is_ego_in_intersection && status_.is_ego_in_turn_direction_lane &&
+    status_.path_after_intersection.points.empty()) {
+    const auto target_neighbor =
+      utils::lane_change::getTargetNeighborLanes(*getRouteHandler(), status_.current_lanes, type_);
+    status_.path_after_intersection = getRouteHandler()->getCenterLinePath(
+      target_neighbor, 0.0, std::numeric_limits<double>::max());
+    status_.distance_from_prev_intersection = 0.0;
+  }
+
+  if (
+    !status_.is_ego_in_intersection && !status_.is_ego_in_turn_direction_lane &&
+    !status_.path_after_intersection.points.empty()) {
+    status_.distance_from_prev_intersection = calcSignedArcLength(
+      status_.path_after_intersection.points,
+      status_.path_after_intersection.points.front().point.pose.position, getEgoPosition());
+  }
+
+  if (
+    !status_.is_ego_in_intersection && !status_.is_ego_in_turn_direction_lane &&
+    status_.distance_from_prev_intersection >
+      lane_change_parameters_->backward_length_from_intersection &&
+    !status_.path_after_intersection.points.empty()) {
+    status_.path_after_intersection = PathWithLaneId();
+    status_.distance_from_prev_intersection = std::numeric_limits<double>::max();
+  }
   const auto [found_valid_path, found_safe_path] = getSafePath(status_.lane_change_path);
 
   // Update status
@@ -133,6 +178,24 @@ bool NormalLaneChange::isStoppedAtRedTrafficLight() const
   return utils::traffic_light::isStoppedAtRedTrafficLightWithinDistance(
     status_.current_lanes, status_.lane_change_path.path, planner_data_,
     status_.lane_change_path.info.length.sum());
+}
+
+bool NormalLaneChange::is_safe_to_try_change_lanes_at_intersection() const
+{
+  if (debug_filtered_objects_.target_lane.empty() || status_.target_lanes.empty()) {
+    return true;
+  }
+
+  const auto has_overtaking_turn_direction_object =
+    utils::lane_change::has_overtaking_turn_lane_object(
+      status_.target_lanes, status_.current_lane_, debug_filtered_objects_.target_lane);
+
+  if (!has_overtaking_turn_direction_object) {
+    return true;
+  }
+
+  return status_.distance_from_prev_intersection >
+         lane_change_parameters_->backward_length_from_intersection;
 }
 
 LaneChangePath NormalLaneChange::getLaneChangePath() const
@@ -1371,6 +1434,18 @@ bool NormalLaneChange::getLaneChangePaths(
           continue;
         }
         candidate_paths->push_back(*candidate_path);
+
+        if (status_.is_ego_in_intersection && status_.is_ego_in_turn_direction_lane) {
+          return false;
+        }
+        if (
+          status_.distance_from_prev_intersection <
+            lane_change_parameters_->backward_length_from_intersection &&
+          utils::lane_change::has_overtaking_turn_lane_object(
+            status_.target_lanes, status_.current_lane_, target_objects.target_lane)) {
+          RCLCPP_DEBUG(logger_, "has overtaking object while ego leaves intersection");
+          return false;
+        }
 
         std::vector<ExtendedPredictedObject> filtered_objects =
           filterObjectsInTargetLane(target_objects, target_lanes);

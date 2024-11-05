@@ -120,6 +120,15 @@ ModuleStatus LaneChangeInterface::updateState()
     module_type_->evaluateApprovedPathWithUnsafeHysteresis(module_type_->isApprovedPathSafe());
 
   setObjectDebugVisualization();
+
+  if (
+    !module_type_->is_safe_to_try_change_lanes_at_intersection() &&
+    module_type_->isAbleToReturnCurrentLane()) {
+    RCLCPP_DEBUG(
+      logger_, "unsafe to try lane change at intersection but able to return to current lane");
+    return ModuleStatus::SUCCESS;
+  }
+
   if (is_safe) {
     log_warn_throttled("Lane change path is safe.");
     module_type_->toNormalState();

@@ -98,6 +98,8 @@ public:
 
   bool isStoppedAtRedTrafficLight() const override;
 
+  bool is_safe_to_try_change_lanes_at_intersection() const final;
+
 protected:
   lanelet::ConstLanelets getCurrentLanes() const override;
 

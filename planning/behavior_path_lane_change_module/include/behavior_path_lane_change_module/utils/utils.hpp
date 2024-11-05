@@ -43,6 +43,7 @@ using autoware_auto_perception_msgs::msg::PredictedObjects;
 using autoware_auto_perception_msgs::msg::PredictedPath;
 using autoware_auto_planning_msgs::msg::PathWithLaneId;
 using behavior_path_planner::utils::path_safety_checker::ExtendedPredictedObject;
+using behavior_path_planner::utils::path_safety_checker::ExtendedPredictedObjects;
 using behavior_path_planner::utils::path_safety_checker::PoseWithVelocityAndPolygonStamped;
 using behavior_path_planner::utils::path_safety_checker::PoseWithVelocityStamped;
 using behavior_path_planner::utils::path_safety_checker::PredictedPathWithPolygon;
@@ -338,5 +339,11 @@ bool has_blocking_target_object(
   const lanelet::ConstLanelets & target_lanes, const LaneChangeTargetObjects & filtered_objects,
   const LaneChangeParameters & lc_param, const double stop_arc_length, const Pose & ego_pose,
   const PathWithLaneId & path);
+
+std::vector<LineString2d> get_line_string_paths(const ExtendedPredictedObject & object);
+
+bool has_overtaking_turn_lane_object(
+  const lanelet::ConstLanelets & target_lanes, const lanelet::ConstLanelet & ego_current_lane,
+  const ExtendedPredictedObjects & trailing_objects);
 }  // namespace behavior_path_planner::utils::lane_change
 #endif  // BEHAVIOR_PATH_LANE_CHANGE_MODULE__UTILS__UTILS_HPP_
