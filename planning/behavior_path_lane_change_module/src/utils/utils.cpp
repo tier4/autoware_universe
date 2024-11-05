@@ -1342,8 +1342,8 @@ bool has_overtaking_turn_lane_object(
   const ExtendedPredictedObjects & trailing_objects)
 {
   // Note: This situation is only applicable if the ego is in a turn lane.
-  if (!has_passed_intersection_turn_direction(lc_param, status)) {
-    return true;
+  if (has_passed_intersection_turn_direction(lc_param, status)) {
+    return false;
   }
 
   const auto & target_lanes = status.target_lanes;
