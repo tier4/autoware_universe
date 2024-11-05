@@ -64,7 +64,7 @@ void NormalLaneChange::updateLaneChangeStatus()
     RCLCPP_DEBUG(logger_, "ego's current lane not in route");
     return;
   }
-  status_.current_lane_ = current_lane;
+  status_.current_lane = current_lane;
 
   const auto ego_footprint =
     utils::lane_change::getEgoCurrentFootprint(getEgoPose(), getCommonParam().vehicle_info);
