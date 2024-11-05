@@ -436,8 +436,6 @@ private:
   // Debug
   mutable DebugData debug_data_;
 
-  std::unique_ptr<motion_utils::VehicleStopChecker> vehicle_stop_checker_{nullptr};
-
   // Stop watch
   StopWatch<std::chrono::milliseconds> stop_watch_;
 
