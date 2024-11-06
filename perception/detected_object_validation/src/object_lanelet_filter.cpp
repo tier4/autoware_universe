@@ -75,6 +75,7 @@ void ObjectLaneletFilterNode::mapCallback(
   const lanelet::ConstLanelets all_lanelets = lanelet::utils::query::laneletLayer(lanelet_map_ptr_);
   road_lanelets_ = lanelet::utils::query::roadLanelets(all_lanelets);
   shoulder_lanelets_ = lanelet::utils::query::shoulderLanelets(all_lanelets);
+  crosswalk_lanelets_ = lanelet::utils::query::crosswalkLanelets(all_lanelets);
 }
 
 void ObjectLaneletFilterNode::objectCallback(
@@ -104,6 +105,9 @@ void ObjectLaneletFilterNode::objectCallback(
     getIntersectedLanelets(convex_hull, road_lanelets_);
   lanelet::ConstLanelets intersected_shoulder_lanelets =
     getIntersectedLanelets(convex_hull, shoulder_lanelets_);
+  lanelet::ConstLanelets intersected_crosswalk_lanelets =
+    getIntersectedLanelets(convex_hull, crosswalk_lanelets_);
+  
 
   // filtering process
   for (size_t index = 0; index < transformed_objects.objects.size(); ++index) {
@@ -111,7 +115,7 @@ void ObjectLaneletFilterNode::objectCallback(
     const auto & input_object = input_msg->objects.at(index);
     filterObject(
       transformed_object, input_object, intersected_road_lanelets, intersected_shoulder_lanelets,
-      output_object_msg);
+      intersected_crosswalk_lanelets, output_object_msg);
   }
   object_pub_->publish(output_object_msg);
 
@@ -130,6 +134,7 @@ bool ObjectLaneletFilterNode::filterObject(
   const autoware_auto_perception_msgs::msg::DetectedObject & input_object,
   const lanelet::ConstLanelets & intersected_road_lanelets,
   const lanelet::ConstLanelets & intersected_shoulder_lanelets,
+  const lanelet::ConstLanelets & intersected_crosswalk_lanelets,
   autoware_auto_perception_msgs::msg::DetectedObjects & output_object_msg)
 {
   const auto & label = transformed_object.classification.front().label;
@@ -139,7 +144,8 @@ bool ObjectLaneletFilterNode::filterObject(
     if (filter_settings_.polygon_overlap_filter) {
       const bool is_polygon_overlap =
         isObjectOverlapLanelets(transformed_object, intersected_road_lanelets) ||
-        isObjectOverlapLanelets(transformed_object, intersected_shoulder_lanelets);
+        isObjectOverlapLanelets(transformed_object, intersected_shoulder_lanelets) ||
+        isObjectOverlapLanelets(transformed_object, intersected_crosswalk_lanelets);
       filter_pass = filter_pass && is_polygon_overlap;
     }
 

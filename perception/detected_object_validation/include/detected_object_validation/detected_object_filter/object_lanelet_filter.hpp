@@ -56,6 +56,7 @@ private:
   lanelet::LaneletMapPtr lanelet_map_ptr_;
   lanelet::ConstLanelets road_lanelets_;
   lanelet::ConstLanelets shoulder_lanelets_;
+  lanelet::ConstLanelets crosswalk_lanelets_;
   std::string lanelet_frame_id_;
 
   tf2_ros::Buffer tf_buffer_;
@@ -75,6 +76,7 @@ private:
     const autoware_auto_perception_msgs::msg::DetectedObject & input_object,
     const lanelet::ConstLanelets & intersected_road_lanelets,
     const lanelet::ConstLanelets & intersected_shoulder_lanelets,
+    const lanelet::ConstLanelets & intersected_crosswalk_lanelets,
     autoware_auto_perception_msgs::msg::DetectedObjects & output_object_msg);
   LinearRing2d getConvexHull(const autoware_auto_perception_msgs::msg::DetectedObjects &);
   lanelet::ConstLanelets getIntersectedLanelets(
