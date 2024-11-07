@@ -120,6 +120,7 @@ ModuleStatus LaneChangeInterface::updateState()
     module_type_->evaluateApprovedPathWithUnsafeHysteresis(module_type_->isApprovedPathSafe());
 
   setObjectDebugVisualization();
+
   if (is_safe) {
     log_warn_throttled("Lane change path is safe.");
     module_type_->toNormalState();
