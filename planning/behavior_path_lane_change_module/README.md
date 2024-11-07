@@ -341,6 +341,7 @@ The following parameters are configurable in `lane_change.param.yaml`.
 | `prepare_duration`                           | [m]    | double  | The preparation time for the ego vehicle to be ready to perform lane change.                                           | 4.0                |
 | `backward_length_buffer_for_end_of_lane`     | [m]    | double  | The end of lane buffer to ensure ego vehicle has enough distance to start lane change                                  | 3.0                |
 | `backward_length_buffer_for_blocking_object` | [m]    | double  | The end of lane buffer to ensure ego vehicle has enough distance to start lane change when there is an object in front | 3.0                |
+| `backward_length_from_intersection`          | [m]    | double  | Distance threshold from the last intersection to invalidate or cancel the lane change path                             | 5.0                |
 | `lane_change_finish_judge_buffer`            | [m]    | double  | The additional buffer used to confirm lane change process completion                                                   | 3.0                |
 | `finish_judge_lateral_threshold`             | [m]    | double  | Lateral distance threshold to confirm lane change process completion                                                   | 0.2                |
 | `lane_changing_lateral_jerk`                 | [m/s3] | double  | Lateral jerk value for lane change path generation                                                                     | 0.5                |
