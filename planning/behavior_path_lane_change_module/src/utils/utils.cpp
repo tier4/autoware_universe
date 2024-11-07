@@ -1347,7 +1347,7 @@ bool has_overtaking_turn_lane_object(
   }
 
   const auto & target_lanes = status.target_lanes;
-  const auto & ego_current_lane = status.current_lane;
+  const auto & ego_current_lane = status.ego_lane;
 
   const auto target_lane_poly =
     lanelet::utils::combineLaneletsShape(target_lanes).polygon2d().basicPolygon();
