@@ -93,6 +93,7 @@ struct LaneChangeParameters
   // lane change parameters
   double backward_length_buffer_for_end_of_lane;
   double backward_length_buffer_for_blocking_object;
+  double backward_length_from_intersection{5.0};
   double lane_changing_lateral_jerk{0.5};
   double minimum_lane_changing_velocity{5.6};
   double lane_change_prepare_duration{4.0};

@@ -21,6 +21,7 @@
 
 #include <autoware_auto_planning_msgs/msg/path_with_lane_id.hpp>
 
+#include <limits>
 #include <vector>
 
 namespace behavior_path_planner
@@ -42,11 +43,15 @@ struct LaneChangeStatus
   LaneChangePath lane_change_path{};
   lanelet::ConstLanelets current_lanes{};
   lanelet::ConstLanelets target_lanes{};
+  lanelet::ConstLanelet ego_lane{};
   std::vector<lanelet::Id> lane_follow_lane_ids{};
   std::vector<lanelet::Id> lane_change_lane_ids{};
   bool is_safe{false};
   bool is_valid_path{true};
+  bool is_ego_in_turn_direction_lane{false};
+  bool is_ego_in_intersection{false};
   double start_distance{0.0};
+  double dist_from_prev_intersection{std::numeric_limits<double>::max()};
 };
 
 }  // namespace behavior_path_planner

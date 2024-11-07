@@ -186,6 +186,9 @@ protected:
 
   double getStopTime() const { return stop_time_; }
 
+  void update_dist_from_intersection();
+
+  std::vector<PathPointWithLaneId> path_after_intersection_;
   double stop_time_{0.0};
 };
 }  // namespace behavior_path_planner
