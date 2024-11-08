@@ -231,7 +231,11 @@ bool DetectionAreaModule::modifyPathVelocity(
 
   // Check state
   if (canClearStopState()) {
-    state_ = State::GO;
+    if (
+      !planner_param_.suppress_pass_judge_when_stopping ||
+      planner_data_->current_velocity->twist.linear.x > 1e-3) {
+      state_ = State::GO;
+    }
     last_obstacle_found_time_ = {};
     return true;
   }
@@ -252,7 +256,7 @@ bool DetectionAreaModule::modifyPathVelocity(
       const auto & dead_line_pose = dead_line_point->second;
       debug_data_.dead_line_poses.push_back(dead_line_pose);
 
-      if (isOverLine(original_path, self_pose, dead_line_pose)) {
+      if (isOverLine(original_path, self_pose, dead_line_pose, 0.0)) {
         RCLCPP_WARN(logger_, "[detection_area] vehicle is over dead line");
         return true;
       }
@@ -268,7 +272,10 @@ bool DetectionAreaModule::modifyPathVelocity(
   const auto & stop_pose = stop_point->second;
 
   // Ignore objects detected after stop_line if not in STOP state
-  if (state_ != State::STOP && isOverLine(original_path, self_pose, stop_pose)) {
+  if (
+    state_ != State::STOP &&
+    isOverLine(
+      original_path, self_pose, stop_pose, -planner_param_.distance_to_judge_over_stop_line)) {
     return true;
   }
 
@@ -355,7 +362,8 @@ bool DetectionAreaModule::canClearStopState() const
 
 bool DetectionAreaModule::isOverLine(
   const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
-  const geometry_msgs::msg::Pose & self_pose, const geometry_msgs::msg::Pose & line_pose) const
+  const geometry_msgs::msg::Pose & self_pose, const geometry_msgs::msg::Pose & line_pose,
+  const double margin) const
 {
   const PointWithSearchRangeIndex src_point_with_search_range_index =
     planning_utils::findFirstNearSearchRangeIndex(path.points, self_pose.position);
@@ -363,7 +371,8 @@ bool DetectionAreaModule::isOverLine(
     line_pose.position, planning_utils::getPathIndexRangeIncludeLaneId(path, lane_id_)};
 
   return planning_utils::calcSignedArcLengthWithSearchIndex(
-           path.points, src_point_with_search_range_index, dst_point_with_search_range_index) < 0;
+           path.points, src_point_with_search_range_index, dst_point_with_search_range_index) <
+         margin;
 }
 
 bool DetectionAreaModule::hasEnoughBrakingDistance(
