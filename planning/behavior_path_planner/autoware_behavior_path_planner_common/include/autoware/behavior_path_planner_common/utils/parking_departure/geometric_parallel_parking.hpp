@@ -102,6 +102,14 @@ public:
   Pose getStartPose() const { return start_pose_; }
   Pose getArcEndPose() const { return arc_end_pose_; }
 
+  std::vector<PathWithLaneId> planOneTrialClothoid(
+    const Pose & start_pose, const Pose & goal_pose, const double R_E_far, const double L_min,
+    const lanelet::ConstLanelets & road_lanes, const lanelet::ConstLanelets & shoulder_lanes,
+    const bool is_forward, const bool left_side_parking, const double end_pose_offset,
+    const double lane_departure_margin, const double arc_path_interval,
+    const std::shared_ptr<autoware::lane_departure_checker::LaneDepartureChecker> lane_departure_checker);
+  
+
 private:
   std::shared_ptr<const PlannerData> planner_data_{nullptr};
   ParallelParkingParameters parameters_{};
@@ -142,12 +150,6 @@ private:
   void setVelocityToArcPaths(
     std::vector<PathWithLaneId> & arc_paths, const double velocity, const bool set_stop_end);
 
-  std::vector<PathWithLaneId> planOneTrialClothoid(
-    const Pose & start_pose, const Pose & goal_pose, const double R_E_far, const double L_min,
-    const lanelet::ConstLanelets & road_lanes, const lanelet::ConstLanelets & shoulder_lanes,
-    const bool is_forward, const bool left_side_parking, const double end_pose_offset,
-    const double lane_departure_margin, const double arc_path_interval,
-    const std::shared_ptr<autoware::lane_departure_checker::LaneDepartureChecker> lane_departure_checker);
   std::vector<PathWithLaneId> generateClothoidalSequence(
     const double A, const double L, const double theta, const Pose & start_pose, const Pose & end_pose,
     const double arc_path_interval,
@@ -161,7 +163,7 @@ private:
     const bool is_left_steering, const bool is_forward);
 
   const bool use_clothoid_{true};
-  const double integral_interval_{0.01};
+  const double integral_interval_{0.001};
 
   // debug
   Pose Cr_{};
