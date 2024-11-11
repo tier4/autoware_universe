@@ -185,8 +185,6 @@ protected:
 
   void registerModule(const std::shared_ptr<SceneModuleInterface> & scene_module);
 
-  void unregisterModule(const std::shared_ptr<SceneModuleInterface> & scene_module);
-
   size_t findEgoSegmentIndex(
     const std::vector<autoware_auto_planning_msgs::msg::PathPointWithLaneId> & points) const;
 

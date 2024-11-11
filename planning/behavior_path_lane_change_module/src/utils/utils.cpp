@@ -991,14 +991,14 @@ bool passParkedObject(
     route_handler.getCenterLinePath(current_lanes, 0.0, std::numeric_limits<double>::max());
 
   if (objects.empty() || path.points.empty() || current_lane_path.points.empty()) {
-    return false;
+    return true;
   }
 
   const auto leading_obj_idx = getLeadingStaticObjectIdx(
     route_handler, lane_change_path, objects, object_check_min_road_shoulder_width,
     object_shiftable_ratio_threshold);
   if (!leading_obj_idx) {
-    return false;
+    return true;
   }
 
   const auto & leading_obj = objects.at(*leading_obj_idx);
@@ -1006,7 +1006,7 @@ bool passParkedObject(
   const auto leading_obj_poly =
     tier4_autoware_utils::toPolygon2d(leading_obj.initial_pose.pose, leading_obj.shape);
   if (leading_obj_poly.outer().empty()) {
-    return false;
+    return true;
   }
 
   const auto & current_path_end = current_lane_path.points.back().point.pose.position;
@@ -1028,10 +1028,10 @@ bool passParkedObject(
   if (min_dist_to_end_of_current_lane > minimum_lane_change_length) {
     debug.second.unsafe_reason = "delay lane change";
     utils::path_safety_checker::updateCollisionCheckDebugMap(object_debug, debug, false);
-    return true;
+    return false;
   }
 
-  return false;
+  return true;
 }
 
 std::optional<size_t> getLeadingStaticObjectIdx(
@@ -1303,6 +1303,73 @@ bool has_blocking_target_object(
         path.points, path.points.front().point.pose.position, object.initial_pose.pose.position);
       const auto width_margin = object.shape.dimensions.x / 2;
       return (arc_length_to_target_lane_obj - width_margin) >= stop_arc_length;
+    });
+}
+
+bool has_passed_intersection_turn_direction(
+  const LaneChangeParameters & lc_param, const LaneChangeStatus & status)
+{
+  if (status.is_ego_in_intersection && status.is_ego_in_turn_direction_lane) {
+    return false;
+  }
+
+  return status.dist_from_prev_intersection > lc_param.backward_length_from_intersection;
+}
+
+std::vector<LineString2d> get_line_string_paths(const ExtendedPredictedObject & object)
+{
+  const auto transform = [](const auto & predicted_path) -> LineString2d {
+    LineString2d line_string;
+    const auto & path = predicted_path.path;
+    line_string.reserve(path.size());
+    for (const auto & path_point : path) {
+      const auto point = tier4_autoware_utils::fromMsg(path_point.pose.position).to_2d();
+      line_string.push_back(point);
+    }
+
+    return line_string;
+  };
+
+  const auto paths = object.predicted_paths;
+  std::vector<LineString2d> line_strings;
+  std::transform(paths.begin(), paths.end(), std::back_inserter(line_strings), transform);
+
+  return line_strings;
+}
+
+bool has_overtaking_turn_lane_object(
+  const LaneChangeStatus & status, const LaneChangeParameters & lc_param,
+  const ExtendedPredictedObjects & trailing_objects)
+{
+  // Note: This situation is only applicable if the ego is in a turn lane.
+  if (has_passed_intersection_turn_direction(lc_param, status)) {
+    return false;
+  }
+
+  const auto & target_lanes = status.target_lanes;
+  const auto & ego_current_lane = status.ego_lane;
+
+  const auto target_lane_poly =
+    lanelet::utils::combineLaneletsShape(target_lanes).polygon2d().basicPolygon();
+  // to compensate for perception issue, or if object is from behind ego, and tries to overtake,
+  // but stop all of sudden
+  const auto is_overlap_with_target = [&](const LineString2d & path) {
+    return !boost::geometry::disjoint(path, target_lane_poly);
+  };
+
+  return std::any_of(
+    trailing_objects.begin(), trailing_objects.end(), [&](const ExtendedPredictedObject & object) {
+      lanelet::ConstLanelet obj_lane;
+      const auto obj_poly =
+        tier4_autoware_utils::toPolygon2d(object.initial_pose.pose, object.shape);
+      if (!boost::geometry::disjoint(
+            obj_poly, utils::toPolygon2d(
+                        lanelet::utils::to2D(ego_current_lane.polygon2d().basicPolygon())))) {
+        return true;
+      }
+
+      const auto paths = get_line_string_paths(object);
+      return std::any_of(paths.begin(), paths.end(), is_overlap_with_target);
     });
 }
 }  // namespace behavior_path_planner::utils::lane_change

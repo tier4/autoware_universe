@@ -1517,6 +1517,16 @@ void AvoidanceModule::insertReturnDeadLine(
     return;
   }
 
+  if (data.new_shift_line.empty()) {
+    RCLCPP_WARN(getLogger(), "module doesn't have return shift line.");
+    return;
+  }
+
+  if (!helper_->isFeasible(data.new_shift_line)) {
+    RCLCPP_WARN(getLogger(), "return shift line is not feasible. do nothing..");
+    return;
+  }
+
   // Consider the difference in path length between the shifted path and original path (the path
   // that is shifted inward has a shorter distance to the end of the path than the other one.)
   const auto & to_reference_path_end = data.arclength_from_ego.back();
@@ -1527,6 +1537,10 @@ void AvoidanceModule::insertReturnDeadLine(
   const auto min_return_distance =
     helper_->getMinAvoidanceDistance(shift_length) + helper_->getMinimumPrepareDistance();
   const auto to_stop_line = data.to_return_point - min_return_distance - buffer;
+  if (to_stop_line < 0.0) {
+    RCLCPP_WARN(getLogger(), "ego overran return shift dead line. do nothing.");
+    return;
+  }
 
   // If we don't need to consider deceleration constraints, insert a deceleration point
   // and return immediately
@@ -1591,6 +1605,11 @@ void AvoidanceModule::insertWaitPoint(
   }
 
   if (helper_->isShifted()) {
+    return;
+  }
+
+  if (data.to_stop_line < 0.0) {
+    RCLCPP_WARN(getLogger(), "ego overran avoidance dead line. do nothing.");
     return;
   }
 

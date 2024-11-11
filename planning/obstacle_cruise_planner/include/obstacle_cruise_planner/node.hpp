@@ -110,6 +110,8 @@ private:
   double additional_safe_distance_margin_on_curve_;
   double min_safe_distance_margin_on_curve_;
   bool suppress_sudden_obstacle_stop_;
+  double limit_margin_for_unknown_;
+  double preferred_acc_for_unknown_;
 
   std::vector<int> stop_obstacle_types_;
   std::vector<int> inside_cruise_obstacle_types_;
