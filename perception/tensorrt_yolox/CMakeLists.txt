@@ -15,6 +15,7 @@ include(CheckLanguage)
 check_language(CUDA)
 if(CMAKE_CUDA_COMPILER)
   enable_language(CUDA)
+  find_package(autoware_type_adapters)
 else()
   message(WARNING "CUDA is not found. preprocess acceleration using CUDA will not be available.")
 endif()
@@ -32,6 +33,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 
 ament_target_dependencies(${PROJECT_NAME}
   OpenCV
+  autoware_type_adapters
 )
 
 if(CMAKE_CUDA_COMPILER)

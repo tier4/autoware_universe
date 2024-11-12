@@ -16,6 +16,7 @@
 #define TENSORRT_YOLOX__TENSORRT_YOLOX_NODE_HPP_
 
 #include "object_recognition_utils/object_recognition_utils.hpp"
+#include "type_adapters/image_container.hpp"
 
 #include <autoware/universe_utils/ros/debug_publisher.hpp>
 #include <autoware/universe_utils/system/stop_watch.hpp>
@@ -27,6 +28,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <tier4_perception_msgs/msg/detected_objects_with_feature.hpp>
+#include <tier4_perception_msgs/msg/semantic.hpp>
 #include <tier4_perception_msgs/msg/semantic.hpp>
 
 #if __has_include(<cv_bridge/cv_bridge.hpp>)
@@ -48,6 +50,7 @@ namespace tensorrt_yolox
 // cspell: ignore Semseg
 using LabelMap = std::map<int, std::string>;
 using Label = tier4_perception_msgs::msg::Semantic;
+using ImageContainer = autoware::type_adaptation::type_adapters::ImageContainer;
 class TrtYoloXNode : public rclcpp::Node
 {
   struct RoiOverlaySemsegLabel
@@ -74,12 +77,24 @@ public:
 
 private:
   void onConnect();
+  void setUpImageSubscriber();
+  bool checkInputBlocked();
+  uint32_t getNumOutputConnections();
   void onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg);
+  void onGpuImage(std::shared_ptr<ImageContainer> msg);
   bool readLabelFile(const std::string & label_path);
   void replaceLabelMap();
   void overlapSegmentByRoi(
     const tensorrt_yolox::Object & object, cv::Mat & mask, const int width, const int height);
   int mapRoiLabel2SegLabel(const int32_t roi_label_index);
+  void postInference(
+               const std_msgs::msg::Header header,
+               const tensorrt_yolox::ObjectArrays & objects,
+               const int width, const int height,
+               std::vector<cv::Mat> & masks);
+  void drawImageDetection(cv_bridge::CvImagePtr image, 
+        const tensorrt_yolox::ObjectArrays & objects,
+        const int width, const int height);
   image_transport::Publisher image_pub_;
   image_transport::Publisher mask_pub_;
 
@@ -88,6 +103,10 @@ private:
   rclcpp::Publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr objects_pub_;
 
   image_transport::Subscriber image_sub_;
+  rclcpp::Subscription<ImageContainer>::SharedPtr gpu_image_sub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr simple_image_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr simple_mask_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr simple_color_mask_pub_;
 
   rclcpp::TimerBase::SharedPtr timer_;
 
@@ -95,6 +114,9 @@ private:
   std::unique_ptr<tensorrt_yolox::TrtYoloX> trt_yolox_;
   bool is_roi_overlap_segment_;
   bool is_publish_color_mask_;
+  bool is_using_image_transport_;
+  bool type_adaptation_activated_;
+  bool is_publish_debug_rois_image_;
   float overlap_roi_score_threshold_;
   // TODO(badai-nguyen): change to function
   std::map<std::string, int> remap_roi_to_semantic_ = {
