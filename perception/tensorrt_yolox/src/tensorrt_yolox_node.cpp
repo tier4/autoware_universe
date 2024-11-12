@@ -111,7 +111,7 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
   type_adaptation_activated_ = declare_parameter<bool>("type_adaptation_activated");
   is_publish_debug_rois_image_ = declare_parameter<bool>("is_publish_debug_rois_image");
   // We don't use type adaptation when preprocessing is performed on CPU.
-  type_adaptation_activated_ = type_adaptation_activated_ && preprocess_on_gpu; 
+  type_adaptation_activated_ = type_adaptation_activated_ && preprocess_on_gpu;
   roi_overlay_segment_labels_.UNKNOWN =
     declare_parameter<bool>("roi_overlay_segment_label.UNKNOWN");
   roi_overlay_segment_labels_.CAR = declare_parameter<bool>("roi_overlay_segment_label.CAR");
@@ -149,13 +149,11 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
     mask_pub_ = image_transport::create_publisher(this, "~/out/mask");
     color_mask_pub_ = image_transport::create_publisher(this, "~/out/color_mask");
     image_pub_ = image_transport::create_publisher(this, "~/out/image");
-  }
-  else {
+  } else {
     simple_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("~/out/image", 1);
     simple_mask_pub_ = this->create_publisher<sensor_msgs::msg::Image>("~/out/mask", 1);
     simple_color_mask_pub_ = this->create_publisher<sensor_msgs::msg::Image>("~/out/color_mask", 1);
   }
-  
 
   if (declare_parameter("build_only", false)) {
     RCLCPP_INFO(this->get_logger(), "TensorRT engine file is built and exit.");
@@ -168,8 +166,7 @@ bool TrtYoloXNode::checkInputBlocked()
   bool result;
   if (type_adaptation_activated_) {
     result = (gpu_image_sub_ == nullptr) || (gpu_image_sub_->get_publisher_count() == 0);
-  }
-  else {
+  } else {
     result = !image_sub_;
   }
   return result;
@@ -179,8 +176,8 @@ void TrtYoloXNode::setUpImageSubscriber()
 {
   if (type_adaptation_activated_) {
     gpu_image_sub_ = this->create_subscription<ImageContainer>(
-            "~/in/image", rclcpp::QoS{1},
-            std::bind(&TrtYoloXNode::onGpuImage, this, std::placeholders::_1));
+      "~/in/image", rclcpp::QoS{1},
+      std::bind(&TrtYoloXNode::onGpuImage, this, std::placeholders::_1));
   } else {
     image_sub_ = image_transport::create_subscription(
       this, "~/in/image", std::bind(&TrtYoloXNode::onImage, this, std::placeholders::_1), "raw",
@@ -194,22 +191,22 @@ uint32_t TrtYoloXNode::getNumOutputConnections()
   // Image output topic conenctions
   if (is_using_image_transport_) {
     num_subscribers = image_pub_.getNumSubscribers() + mask_pub_.getNumSubscribers() +
-    color_mask_pub_.getNumSubscribers();
+                      color_mask_pub_.getNumSubscribers();
   } else {
     num_subscribers = simple_image_pub_->get_subscription_count() +
-    simple_mask_pub_->get_subscription_count() +
-    simple_color_mask_pub_->get_subscription_count();
+                      simple_mask_pub_->get_subscription_count() +
+                      simple_color_mask_pub_->get_subscription_count();
   }
   // Objects output topic connections
-  num_subscribers += objects_pub_->get_subscription_count() +
-    objects_pub_->get_intra_process_subscription_count();
+  num_subscribers +=
+    objects_pub_->get_subscription_count() + objects_pub_->get_intra_process_subscription_count();
   return num_subscribers;
 }
 
 void TrtYoloXNode::onConnect()
 {
   using std::placeholders::_1;
-  
+
   if (getNumOutputConnections() == 0) {
     image_sub_.shutdown();
     gpu_image_sub_.reset();
@@ -219,11 +216,8 @@ void TrtYoloXNode::onConnect()
 }
 
 void TrtYoloXNode::postInference(
-               const std_msgs::msg::Header header,
-               const tensorrt_yolox::ObjectArrays & objects,
-               const int width, const int height,
-               std::vector<cv::Mat> & masks
-               )
+  const std_msgs::msg::Header header, const tensorrt_yolox::ObjectArrays & objects, const int width,
+  const int height, std::vector<cv::Mat> & masks)
 {
   auto & mask = masks.at(0);
   tier4_perception_msgs::msg::DetectedObjectsWithFeature out_objects;
@@ -257,7 +251,7 @@ void TrtYoloXNode::postInference(
       std::memcpy(&out_mask_msg->data[i * step], &compressed_data.at(i).first, sizeof(uint8_t));
       std::memcpy(&out_mask_msg->data[i * step + 1], &compressed_data.at(i).second, sizeof(int));
     }
-    if (is_using_image_transport_){
+    if (is_using_image_transport_) {
       mask_pub_.publish(out_mask_msg);
     } else {
       simple_mask_pub_->publish(*out_mask_msg);
@@ -297,9 +291,9 @@ void TrtYoloXNode::postInference(
   }
 }
 
-void TrtYoloXNode::drawImageDetection(cv_bridge::CvImagePtr image_ptr, 
-                const tensorrt_yolox::ObjectArrays & objects,
-                 const int width, const int height)
+void TrtYoloXNode::drawImageDetection(
+  cv_bridge::CvImagePtr image_ptr, const tensorrt_yolox::ObjectArrays & objects, const int width,
+  const int height)
 {
   for (const auto & yolox_object : objects.at(0)) {
     const auto left = std::max(0, static_cast<int>(yolox_object.x_offset));
@@ -309,10 +303,11 @@ void TrtYoloXNode::drawImageDetection(cv_bridge::CvImagePtr image_ptr,
     const auto bottom =
       std::min(static_cast<int>(yolox_object.y_offset + yolox_object.height), height);
     cv::rectangle(
-      image_ptr->image, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(0, 0, 255), 3, 8, 0);
+      image_ptr->image, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(0, 0, 255), 3, 8,
+      0);
   }
 
-   sensor_msgs::msg::Image::SharedPtr output_image_msg_ptr = image_ptr->toImageMsg();
+  sensor_msgs::msg::Image::SharedPtr output_image_msg_ptr = image_ptr->toImageMsg();
   if (is_using_image_transport_) {
     image_pub_.publish(output_image_msg_ptr);
   } else {
@@ -323,7 +318,7 @@ void TrtYoloXNode::drawImageDetection(cv_bridge::CvImagePtr image_ptr,
 void TrtYoloXNode::onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg)
 {
   stop_watch_ptr_->toc("processing_time", true);
-  
+
   cv_bridge::CvImagePtr in_image_ptr;
   try {
     in_image_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
@@ -362,7 +357,7 @@ void TrtYoloXNode::onGpuImage(std::shared_ptr<ImageContainer> msg)
   std::vector<cv::Mat> masks = {cv::Mat(cv::Size(height, width), CV_8UC1, cv::Scalar(0))};
   std::vector<cv::Mat> color_masks = {
     cv::Mat(cv::Size(height, width), CV_8UC3, cv::Scalar(0, 0, 0))};
-  
+
   std::vector<std::shared_ptr<ImageContainer>> msgs = {msg};
   if (!trt_yolox_->doInference(msgs, objects, masks, color_masks)) {
     RCLCPP_WARN(this->get_logger(), "Fail to inference");
@@ -374,7 +369,8 @@ void TrtYoloXNode::onGpuImage(std::shared_ptr<ImageContainer> msg)
   if (is_publish_debug_rois_image_) {
     sensor_msgs::msg::Image image_msg;
     msg->get_sensor_msgs_image(image_msg);
-    cv_bridge::CvImagePtr image_ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::BGR8);
+    cv_bridge::CvImagePtr image_ptr =
+      cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::BGR8);
     drawImageDetection(image_ptr, objects, width, height);
   }
 }

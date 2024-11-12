@@ -29,7 +29,6 @@
 #include <std_msgs/msg/header.hpp>
 #include <tier4_perception_msgs/msg/detected_objects_with_feature.hpp>
 #include <tier4_perception_msgs/msg/semantic.hpp>
-#include <tier4_perception_msgs/msg/semantic.hpp>
 
 #if __has_include(<cv_bridge/cv_bridge.hpp>)
 #include <cv_bridge/cv_bridge.hpp>
@@ -88,13 +87,11 @@ private:
     const tensorrt_yolox::Object & object, cv::Mat & mask, const int width, const int height);
   int mapRoiLabel2SegLabel(const int32_t roi_label_index);
   void postInference(
-               const std_msgs::msg::Header header,
-               const tensorrt_yolox::ObjectArrays & objects,
-               const int width, const int height,
-               std::vector<cv::Mat> & masks);
-  void drawImageDetection(cv_bridge::CvImagePtr image, 
-        const tensorrt_yolox::ObjectArrays & objects,
-        const int width, const int height);
+    const std_msgs::msg::Header header, const tensorrt_yolox::ObjectArrays & objects,
+    const int width, const int height, std::vector<cv::Mat> & masks);
+  void drawImageDetection(
+    cv_bridge::CvImagePtr image, const tensorrt_yolox::ObjectArrays & objects, const int width,
+    const int height);
   image_transport::Publisher image_pub_;
   image_transport::Publisher mask_pub_;
 

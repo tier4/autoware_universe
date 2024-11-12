@@ -15,6 +15,8 @@
 #ifndef TENSORRT_YOLOX__TENSORRT_YOLOX_HPP_
 #define TENSORRT_YOLOX__TENSORRT_YOLOX_HPP_
 
+#include "type_adapters/image_container.hpp"
+
 #include <cuda_utils/cuda_unique_ptr.hpp>
 #include <cuda_utils/stream_unique_ptr.hpp>
 #include <opencv2/opencv.hpp>
@@ -24,8 +26,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "type_adapters/image_container.hpp"
 
 namespace tensorrt_yolox
 {
@@ -109,10 +109,10 @@ public:
   bool doInference(
     const std::vector<cv::Mat> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
     std::vector<cv::Mat> & color_masks);
-  
+
   bool doInference(
-    const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
-    std::vector<cv::Mat> & color_masks);
+    const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects,
+    std::vector<cv::Mat> & masks, std::vector<cv::Mat> & color_masks);
 
   /**
    * @brief run inference including pre-process and post-process
@@ -124,7 +124,8 @@ public:
     const std::vector<cv::Mat> & images, ObjectArrays & objects, const std::vector<cv::Rect> & roi);
 
   bool doInferenceWithRoi(
-    const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects, const std::vector<cv::Rect> & roi);
+    const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects,
+    const std::vector<cv::Rect> & roi);
 
   /**
    * @brief run multi-scale inference including pre-process and post-process
@@ -134,9 +135,10 @@ public:
    */
   bool doMultiScaleInference(
     const cv::Mat & image, ObjectArrays & objects, const std::vector<cv::Rect> & roi);
-  
+
   bool doMultiScaleInference(
-    const std::shared_ptr<ImageContainer> & image, ObjectArrays & objects, const std::vector<cv::Rect> & roi);
+    const std::shared_ptr<ImageContainer> & image, ObjectArrays & objects,
+    const std::vector<cv::Rect> & roi);
 
   /**
    * @brief allocate buffer for preprocess on GPU
@@ -198,7 +200,8 @@ private:
     const std::vector<cv::Mat> & images, const std::vector<cv::Rect> & rois);
 
   void preprocessWithRoiGpu(
-    const std::vector<std::shared_ptr<ImageContainer>> & images, const std::vector<cv::Rect> & rois);
+    const std::vector<std::shared_ptr<ImageContainer>> & images,
+    const std::vector<cv::Rect> & rois);
   /**
    * @brief run multi-scale preprocess including resizing, letterbox, NHWC2NCHW and toFloat on CPU
    * @param[in] images batching images
@@ -212,10 +215,12 @@ private:
    * @param[in] rois region of interest
    */
   void multiScalePreprocessGpu(const cv::Mat & image, const std::vector<cv::Rect> & rois);
-  void multiScalePreprocessGpu(const std::shared_ptr<ImageContainer> & image, const std::vector<cv::Rect> & rois);
+  void multiScalePreprocessGpu(
+    const std::shared_ptr<ImageContainer> & image, const std::vector<cv::Rect> & rois);
 
   bool multiScaleFeedforward(const cv::Mat & image, int batch_size, ObjectArrays & objects);
-  bool multiScaleFeedforward(const std::shared_ptr<ImageContainer> & image, int batch_size, ObjectArrays & objects);
+  bool multiScaleFeedforward(
+    const std::shared_ptr<ImageContainer> & image, int batch_size, ObjectArrays & objects);
 
   bool multiScaleFeedforwardAndDecode(
     const cv::Mat & images, int batch_size, ObjectArrays & objects);
@@ -223,14 +228,15 @@ private:
     const std::shared_ptr<ImageContainer> & images, int batch_size, ObjectArrays & objects);
 
   bool feedforward(const std::vector<cv::Mat> & images, ObjectArrays & objects);
-  bool feedforward(const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects);
+  bool feedforward(
+    const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects);
 
   bool feedforwardAndDecode(
     const std::vector<cv::Mat> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
     std::vector<cv::Mat> & color_masks);
   bool feedforwardAndDecode(
-    const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
-    std::vector<cv::Mat> & color_masks);
+    const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects,
+    std::vector<cv::Mat> & masks, std::vector<cv::Mat> & color_masks);
 
   void decodeOutputs(float * prob, ObjectArray & objects, float scale, cv::Size & img_size) const;
   void generateGridsAndStride(

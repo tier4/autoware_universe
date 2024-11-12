@@ -550,8 +550,8 @@ void TrtYoloX::preprocessGpu(const std::vector<std::shared_ptr<ImageContainer>> 
     // Copy into pinned memory
     CHECK_CUDA_ERROR(cudaMemcpyAsync(
       image_buf_d_.get() + index, image->cuda_mem(),
-      image->width() * image->height() * 3 * sizeof(unsigned char),
-      cudaMemcpyDeviceToDevice, images[0]->cuda_stream()->stream()));
+      image->width() * image->height() * 3 * sizeof(unsigned char), cudaMemcpyDeviceToDevice,
+      images[0]->cuda_stream()->stream()));
     b++;
 
     if (multitask_) {
@@ -578,7 +578,6 @@ void TrtYoloX::preprocessGpu(const std::vector<std::shared_ptr<ImageContainer>> 
     }
   }
 
-  
   for (uint32_t i = 0; i < batch_size; i++) {
     auto stream = images[i]->cuda_stream()->stream();
     // Preprocess on GPU
@@ -586,8 +585,6 @@ void TrtYoloX::preprocessGpu(const std::vector<std::shared_ptr<ImageContainer>> 
       input_d_.get(), images[i]->cuda_mem(), input_width, input_height, 3, images[i]->width(),
       images[i]->height(), 3, 1, static_cast<float>(norm_factor_), stream);
   }
-
-
 }
 
 void TrtYoloX::preprocess(const std::vector<cv::Mat> & images)
@@ -658,8 +655,8 @@ bool TrtYoloX::doInference(
 }
 
 bool TrtYoloX::doInference(
-  const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
-  [[maybe_unused]] std::vector<cv::Mat> & color_masks)
+  const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects,
+  std::vector<cv::Mat> & masks, [[maybe_unused]] std::vector<cv::Mat> & color_masks)
 {
   if (!trt_common_->isInitialized()) {
     return false;
@@ -998,7 +995,8 @@ bool TrtYoloX::feedforward(const std::vector<cv::Mat> & images, ObjectArrays & o
   return true;
 }
 
-bool TrtYoloX::feedforward(const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects)
+bool TrtYoloX::feedforward(
+  const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects)
 {
   std::vector<void *> buffers = {
     input_d_.get(), out_num_detections_d_.get(), out_boxes_d_.get(), out_scores_d_.get(),
@@ -1036,10 +1034,10 @@ bool TrtYoloX::feedforward(const std::vector<std::shared_ptr<ImageContainer>> & 
       const auto y1 = out_boxes[i * max_detections_ * 4 + j * 4 + 1] / scales_[i];
       const auto x2 = out_boxes[i * max_detections_ * 4 + j * 4 + 2] / scales_[i];
       const auto y2 = out_boxes[i * max_detections_ * 4 + j * 4 + 3] / scales_[i];
-      object.x_offset = std::clamp(0, static_cast<int32_t>(x1), 
-                  static_cast<int32_t>(images[i]->width()));
-      object.y_offset = std::clamp(0, static_cast<int32_t>(y1), 
-                  static_cast<int32_t>(images[i]->height()));
+      object.x_offset =
+        std::clamp(0, static_cast<int32_t>(x1), static_cast<int32_t>(images[i]->width()));
+      object.y_offset =
+        std::clamp(0, static_cast<int32_t>(y1), static_cast<int32_t>(images[i]->height()));
       object.width = static_cast<int32_t>(std::max(0.0F, x2 - x1));
       object.height = static_cast<int32_t>(std::max(0.0F, y2 - y1));
       object.score = out_scores[i * max_detections_ + j];
@@ -1050,7 +1048,6 @@ bool TrtYoloX::feedforward(const std::vector<std::shared_ptr<ImageContainer>> & 
   }
   return true;
 }
-
 
 bool TrtYoloX::feedforwardAndDecode(
   const std::vector<cv::Mat> & images, ObjectArrays & objects, std::vector<cv::Mat> & out_masks,
@@ -1122,8 +1119,8 @@ bool TrtYoloX::feedforwardAndDecode(
 }
 
 bool TrtYoloX::feedforwardAndDecode(
-  const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects, std::vector<cv::Mat> & out_masks,
-  [[maybe_unused]] std::vector<cv::Mat> & color_masks)
+  const std::vector<std::shared_ptr<ImageContainer>> & images, ObjectArrays & objects,
+  std::vector<cv::Mat> & out_masks, [[maybe_unused]] std::vector<cv::Mat> & color_masks)
 {
   std::vector<void *> buffers = {input_d_.get(), out_prob_d_.get()};
   if (multitask_) {
@@ -1139,7 +1136,8 @@ bool TrtYoloX::feedforwardAndDecode(
   if (multitask_ && !use_gpu_preprocess_) {
     CHECK_CUDA_ERROR(cudaMemcpyAsync(
       segmentation_out_prob_h_.get(), segmentation_out_prob_d_.get(),
-      sizeof(float) * segmentation_out_elem_num_, cudaMemcpyDeviceToHost, images[0]->cuda_stream()->stream()));
+      sizeof(float) * segmentation_out_elem_num_, cudaMemcpyDeviceToHost,
+      images[0]->cuda_stream()->stream()));
   }
   cudaStreamSynchronize(images[0]->cuda_stream()->stream());
   objects.clear();
@@ -1242,7 +1240,8 @@ bool TrtYoloX::multiScaleFeedforward(const cv::Mat & image, int batch_size, Obje
   return true;
 }
 
-bool TrtYoloX::multiScaleFeedforward(const std::shared_ptr<ImageContainer> & image, int batch_size, ObjectArrays & objects)
+bool TrtYoloX::multiScaleFeedforward(
+  const std::shared_ptr<ImageContainer> & image, int batch_size, ObjectArrays & objects)
 {
   std::vector<void *> buffers = {
     input_d_.get(), out_num_detections_d_.get(), out_boxes_d_.get(), out_scores_d_.get(),
@@ -1279,10 +1278,10 @@ bool TrtYoloX::multiScaleFeedforward(const std::shared_ptr<ImageContainer> & ima
       const auto y1 = out_boxes[i * max_detections_ * 4 + j * 4 + 1] / scales_[i];
       const auto x2 = out_boxes[i * max_detections_ * 4 + j * 4 + 2] / scales_[i];
       const auto y2 = out_boxes[i * max_detections_ * 4 + j * 4 + 3] / scales_[i];
-      object.x_offset = std::clamp(0, static_cast<int32_t>(x1), 
-                static_cast<int32_t>(image->width()));
-      object.y_offset = std::clamp(0, static_cast<int32_t>(y1),
-                static_cast<int32_t>( image->height()));
+      object.x_offset =
+        std::clamp(0, static_cast<int32_t>(x1), static_cast<int32_t>(image->width()));
+      object.y_offset =
+        std::clamp(0, static_cast<int32_t>(y1), static_cast<int32_t>(image->height()));
       object.width = static_cast<int32_t>(std::max(0.0F, x2 - x1));
       object.height = static_cast<int32_t>(std::max(0.0F, y2 - y1));
       object.score = out_scores[i * max_detections_ + j];
