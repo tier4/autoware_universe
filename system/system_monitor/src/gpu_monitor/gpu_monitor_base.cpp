@@ -39,8 +39,10 @@ GPUMonitorBase::GPUMonitorBase(const std::string & node_name, const rclcpp::Node
   updater_.setHardwareID(hostname_);
   updater_.add(std::string(hostname_) + ": GPU Temperature", this, &GPUMonitorBase::checkTemp);
   updater_.add(std::string(hostname_) + ": GPU Usage", this, &GPUMonitorBase::checkUsage);
-  updater_.add(std::string(hostname_) + ": GPU Memory Usage", this, &GPUMonitorBase::checkMemoryUsage);
-  updater_.add(std::string(hostname_) + ": GPU Thermal Throttling", this, &GPUMonitorBase::checkThrottling);
+  updater_.add(
+    std::string(hostname_) + ": GPU Memory Usage", this, &GPUMonitorBase::checkMemoryUsage);
+  updater_.add(
+    std::string(hostname_) + ": GPU Thermal Throttling", this, &GPUMonitorBase::checkThrottling);
   updater_.add(std::string(hostname_) + ": GPU Frequency", this, &GPUMonitorBase::checkFrequency);
 }
 
