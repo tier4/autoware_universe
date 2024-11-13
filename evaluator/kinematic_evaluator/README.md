@@ -1,7 +1,7 @@
-# Kinematic Evaluator
+# キネマティクス評価器
 
 TBD
 
-## Parameters
+## パラメータ
 
 {{json_to_markdown("evaluator/kinematic_evaluator/schema/kinematic_evaluator.schema.json")}}

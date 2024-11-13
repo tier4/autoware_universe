@@ -1,6 +1,6 @@
-# TVM Utility Artifacts
+## TVMユーティリティアーティファクト
 
-Place any test artifacts in subdirectories within this directory.
+テストアーティファクトは、このディレクトリ内のサブディレクトリ内に配置してください。
 
-e.g.:
+例:
 ./artifacts/yolo_v2_tiny
