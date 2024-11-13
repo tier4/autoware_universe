@@ -617,8 +617,8 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
   const double R_1 = std::hypot(x_C, y_C);
   const double mu = std::atan2(x_C, y_C);
   const double alpha_clotho = std::atan2(
-    std::tan(M_PI_2 + psi_clotho) - std::tan(M_PI_2 - mu),
-    1 + std::tan(M_PI_2 + psi_clotho) * std::tan(M_PI_2 - mu));
+    std::tan(psi_clotho) + std::tan(mu),
+    1 - std::tan(psi_clotho) * std::tan(mu));
 
   std::cout << "R_1 = " << R_1 << std::endl;
   std::cout << "mu = " << mu << std::endl;
@@ -750,17 +750,20 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
       is_forward);
   } else if (alpha_tot_near >= 2 * mu) { // Case B
     std::cout << "CASE: B" << std::endl;
-    const double beta = tf2::getYaw(inflection_point.orientation)-tf2::getYaw(start_pose.orientation);
-    double C_f = 0;
-    double S_f = 0;
-    for (size_t u = 0; u <= std::sqrt(beta/M_PI) ; u += integral_interval_) {
-      C_f += std::cos(M_PI_2 * std::pow(u, 2));
-      S_f += std::sin(M_PI_2 * std::pow(u, 2));
+    const double beta_1 = std::fmod(std::abs(tf2::getYaw(inflection_point.orientation)-tf2::getYaw(start_pose.orientation)), 2*M_PI);
+    std::cout << beta_1 << std::endl;
+    double C_f_1 = 0;
+    double S_f_1 = 0;
+    for (double u = 0; u <= std::sqrt(beta_1/M_PI) ; u += integral_interval_) {
+      C_f_1 += std::cos(M_PI_2 * std::pow(u, 2))*integral_interval_;
+      S_f_1 += std::sin(M_PI_2 * std::pow(u, 2))*integral_interval_;
     }
-    const double A_new = std::sqrt(1/M_PI) * std::abs( (R_1*std::sin(beta/2+mu)) / (std::cos(beta/2)*C_f + std::sin(beta/2)*S_f) );
-    const double L_new = A_new*std::sqrt(beta);
+    const double A_new_1 = std::sqrt(1/M_PI) * std::abs( (R_E_near*std::sin(beta_1/2-mu)) / (std::cos(beta_1/2)*C_f_1 + std::sin(beta_1/2)*S_f_1) );
+    const double L_new_1 = A_new_1*std::sqrt(beta_1);
+    std::cout << A_new_1 << std::endl;
+    std::cout << L_new_1 << std::endl;
     path_turn_first = generateClothoidalSequenceWithHeader(
-      A_new, L_new, 0, start_pose, inflection_point, arc_path_interval, left_side_parking,
+      A_new_1, L_new_1, 0, start_pose, inflection_point, arc_path_interval, left_side_parking,
       is_forward);
   } else { // TODO: Case C
     std::cout << "CASE: C" << std::endl;
@@ -776,17 +779,20 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
       is_forward);
   } else if (alpha_tot_near >= 2 * mu) { // Case B
     std::cout << "CASE: B" << std::endl;
-    const double beta = tf2::getYaw(inflection_point.orientation)-tf2::getYaw(start_pose.orientation);
-    double C_f = 0;
-    double S_f = 0;
-    for (size_t u = 0; u <= std::sqrt(beta/M_PI) ; u += integral_interval_) {
-      C_f += std::cos(M_PI_2 * std::pow(u, 2));
-      S_f += std::sin(M_PI_2 * std::pow(u, 2));
+    const double beta_2 = std::fmod(std::abs(tf2::getYaw(inflection_point.orientation)-tf2::getYaw(arc_end_pose.orientation)), 2*M_PI);
+    std::cout << beta_2 << std::endl;
+    double C_f_2 = 0;
+    double S_f_2 = 0;
+    for (double u = 0; u <= std::sqrt(beta_2/M_PI) ; u += integral_interval_) {
+      C_f_2 += std::cos(M_PI_2 * std::pow(u, 2))*integral_interval_;
+      S_f_2 += std::sin(M_PI_2 * std::pow(u, 2))*integral_interval_;
     }
-    const double A_new = std::sqrt(1/M_PI) * std::abs( (R_1*std::sin(beta/2+mu)) / (std::cos(beta/2)*C_f + std::sin(beta/2)*S_f) );
-    const double L_new = A_new*std::sqrt(beta);
+    const double A_new_2 = std::sqrt(1/M_PI) * std::abs( (R_1*std::sin(beta_2/2-mu)) / (std::cos(beta_2/2)*C_f_2 + std::sin(beta_2/2)*S_f_2) );
+    const double L_new_2 = A_new_2*std::sqrt(beta_2);
+    std::cout << A_new_2 << std::endl;
+    std::cout << L_new_2 << std::endl;
     path_turn_second = generateClothoidalSequenceWithHeader(
-      A_new, L_new, 0, inflection_point, arc_end_pose, arc_path_interval, !left_side_parking,
+      A_new_2, L_new_2, 0, inflection_point, arc_end_pose, arc_path_interval, !left_side_parking,
       is_forward);
   } else { // TODO: Case C
     std::cout << "CASE: C" << std::endl;
