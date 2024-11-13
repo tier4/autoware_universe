@@ -15,10 +15,10 @@
 そのため、本モジュールの名称には「動的」という言葉が使用されています。
 以下の表に、各状況に対応する回避モジュールを記載します。
 
-|                          |                         車線内での回避                         | 車線外の外側からの回避 |
-| :----------------------- | :------------------------------------------------------------------------: | :------------------------------------: |
-| 未稼働オブジェクトの回避 | Avoidance Module <br> Dynamic Avoidance Module + Obstacle Avoidance Module |            Avoidance Module            |
-| 稼働オブジェクトの回避 |            Dynamic Avoidance Module + Obstacle Avoidance Module            |     モジュールなし (開発中)      |
+|                          |                               車線内での回避                               | 車線外の外側からの回避  |
+| :----------------------- | :------------------------------------------------------------------------: | :---------------------: |
+| 未稼働オブジェクトの回避 | Avoidance Module <br> Dynamic Avoidance Module + Obstacle Avoidance Module |    Avoidance Module     |
+| 稼働オブジェクトの回避   |            Dynamic Avoidance Module + Obstacle Avoidance Module            | モジュールなし (開発中) |
 
 ## アルゴリズムのポリシー
 
@@ -118,19 +118,18 @@
 
 開発中
 
-| 名称                                                              | 単位 | 型    | 説明                                                              | デフォルト値 |
-| :--------------------------------------------------------------- | :---- | :----- | :------------------------------------------------------------------ | :------------ |
-| `target_object.car`                                             | [-]   | bool   | 車の回避フラグ                                                          | true          |
-| `target_object.truck`                                            | [-]   | bool   | トラックの回避フラグ                                                        | true          |
-| ...                                                            | [-]   | bool   | ...                                                                   | ...           |
-| `target_object.min_obstacle_vel`                                | [m/s] | double | 回避する際の最小障害物速度                                               | 1.0           |
-| `drivable_area_generation.lat_offset_from_obstacle`              | [m]   | double | 障害物からの回避用横方向オフセット                                       | 0.8           |
-| `drivable_area_generation.max_lat_offset_to_avoid`              | [m]   | double | 回避する際の最大横方向オフセット                                         | 0.5           |
-| `drivable_area_generation.overtaking_object.max_time_to_collision` | [s]   | double | タイムトゥーコリジョンを計算する際の最大値                               | 3.0           |
-| `drivable_area_generation.overtaking_object.start_duration_to_avoid` | [s]   | double | 障害物を通過する前に回避を考慮する期間                              | 4.0           |
-| `drivable_area_generation.overtaking_object.end_duration_to_avoid` | [s]   | double | 障害物を通過した後に回避を考慮する期間                            | 5.0           |
-| `drivable_area_generation.overtaking_object.duration_to_hold_avoidance` | [s]   | double | 障害物を通過した後に回避を保持する期間                            | 3.0           |
-| `drivable_area_generation.oncoming_object.max_time_to_collision`   | [s]   | double | タイムトゥーコリジョンを計算する際の最大値                               | 3.0           |
-| `drivable_area_generation.oncoming_object.start_duration_to_avoid` | [s]   | double | 障害物を通過する前に回避を考慮する期間                              | 9.0           |
-| `drivable_area_generation.oncoming_object.end_duration_to_avoid`   | [s]   | double | 障害物を通過した後に回避を考慮する期間                            | 0.0           |
-
+| 名称                                                                    | 単位  | 型     | 説明                                       | デフォルト値 |
+| :---------------------------------------------------------------------- | :---- | :----- | :----------------------------------------- | :----------- |
+| `target_object.car`                                                     | [-]   | bool   | 車の回避フラグ                             | true         |
+| `target_object.truck`                                                   | [-]   | bool   | トラックの回避フラグ                       | true         |
+| ...                                                                     | [-]   | bool   | ...                                        | ...          |
+| `target_object.min_obstacle_vel`                                        | [m/s] | double | 回避する際の最小障害物速度                 | 1.0          |
+| `drivable_area_generation.lat_offset_from_obstacle`                     | [m]   | double | 障害物からの回避用横方向オフセット         | 0.8          |
+| `drivable_area_generation.max_lat_offset_to_avoid`                      | [m]   | double | 回避する際の最大横方向オフセット           | 0.5          |
+| `drivable_area_generation.overtaking_object.max_time_to_collision`      | [s]   | double | タイムトゥーコリジョンを計算する際の最大値 | 3.0          |
+| `drivable_area_generation.overtaking_object.start_duration_to_avoid`    | [s]   | double | 障害物を通過する前に回避を考慮する期間     | 4.0          |
+| `drivable_area_generation.overtaking_object.end_duration_to_avoid`      | [s]   | double | 障害物を通過した後に回避を考慮する期間     | 5.0          |
+| `drivable_area_generation.overtaking_object.duration_to_hold_avoidance` | [s]   | double | 障害物を通過した後に回避を保持する期間     | 3.0          |
+| `drivable_area_generation.oncoming_object.max_time_to_collision`        | [s]   | double | タイムトゥーコリジョンを計算する際の最大値 | 3.0          |
+| `drivable_area_generation.oncoming_object.start_duration_to_avoid`      | [s]   | double | 障害物を通過する前に回避を考慮する期間     | 9.0          |
+| `drivable_area_generation.oncoming_object.end_duration_to_avoid`        | [s]   | double | 障害物を通過した後に回避を考慮する期間     | 0.0          |

@@ -63,16 +63,15 @@
 
 #### モジュールパラメータ
 
-| パラメータ | 型 | 説明 |
-|---|---|---|
-| `stop_margin` | double | [m] 停止点手前の余裕 |
-| `tl_state_timeout` | double | [s] 検出された信号機の結果のタイムアウト |
+| パラメータ             | 型     | 説明                                                       |
+| ---------------------- | ------ | ---------------------------------------------------------- |
+| `stop_margin`          | double | [m] 停止点手前の余裕                                       |
+| `tl_state_timeout`     | double | [s] 検出された信号機の結果のタイムアウト                   |
 | `stop_time_hysteresis` | double | [s] チャタリング防止のための停止計画の決定に関する時間閾値 |
-| `yellow_lamp_period` | double | [s] 黄色のランプ時間 |
-| `enable_pass_judge` | bool | [-] 通過判定を使用するかどうか |
+| `yellow_lamp_period`   | double | [s] 黄色のランプ時間                                       |
+| `enable_pass_judge`    | bool   | [-] 通過判定を使用するかどうか                             |
 
 #### フローチャート
-
 
 ```plantuml
 @startuml
@@ -117,4 +116,3 @@ endif
 ##### 既知の限界
 
 - 現在確認中
-

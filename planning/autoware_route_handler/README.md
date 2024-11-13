@@ -16,4 +16,3 @@
 ![lane_change_test_route](./images/lane_change_test_route.svg)
 
 - この経路は `autoware_test_utils\test_map` から取得できるマップに基づいています。
-

@@ -9,14 +9,14 @@
 
 ### 入力
 
-| 名前                                    | タイプ                                                        | 説明                                                   |
-| -------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
-| `/api/operation_mode/state`            | `autoware_adapi_v1_msgs::msg::OperationModeState`            | オペレーションモードの状態を表します                   |
-| `/api/routing/state`                   | `autoware_adapi_v1_msgs::msg::RouteState`                   | ルートの状態を表します                                |
+| 名前                                     | タイプ                                                         | 説明                                     |
+| ---------------------------------------- | -------------------------------------------------------------- | ---------------------------------------- |
+| `/api/operation_mode/state`              | `autoware_adapi_v1_msgs::msg::OperationModeState`              | オペレーションモードの状態を表します     |
+| `/api/routing/state`                     | `autoware_adapi_v1_msgs::msg::RouteState`                      | ルートの状態を表します                   |
 | `/api/localization/initialization_state` | `autoware_adapi_v1_msgs::msg::LocalizationInitializationState` | ローカリゼーション初期化の状態を表します |
-| `/api/motion/state`                    | `autoware_adapi_v1_msgs::msg::MotionState`                   | モーションの状態を表します                                |
-| `/api/autoware/get/emergency`          | `tier4_external_api_msgs::msg::Emergency`                   | 外部緊急事態の状態を表します                           |
-| `/vehicle/status/gear_status`          | `autoware_vehicle_msgs::msg::GearReport`                    | ギアの状態を表します                                    |
+| `/api/motion/state`                      | `autoware_adapi_v1_msgs::msg::MotionState`                     | モーションの状態を表します               |
+| `/api/autoware/get/emergency`            | `tier4_external_api_msgs::msg::Emergency`                      | 外部緊急事態の状態を表します             |
+| `/vehicle/status/gear_status`            | `autoware_vehicle_msgs::msg::GearReport`                       | ギアの状態を表します                     |
 
 ### 出力
 
@@ -46,16 +46,16 @@ Control層は、計画された経路に基づいて車両を制御する。こ�
 
 Autowareは、次のような主要モジュールで構成されている。
 
-* **Perception:**
-    * LIDAR Point Cloud Filter
-    * Object Detection
-    * Object Tracking
-* **Planning:**
-    * Path Planning
-    * Trajectory Generation
-* **Control:**
-    * Motion Planner
-    * Vehicle Control
+- **Perception:**
+  - LIDAR Point Cloud Filter
+  - Object Detection
+  - Object Tracking
+- **Planning:**
+  - Path Planning
+  - Trajectory Generation
+- **Control:**
+  - Motion Planner
+  - Vehicle Control
 
 **実装**
 
@@ -67,21 +67,21 @@ Autowareは、自動運転車両の開発に使用できる。研究目的でも
 
 **追加資料**
 
-* [Autoware GitHubリポジトリ](https://github.com/autowarefoundation/autoware.auto)
-* [Autowareドキュメント](https://www.autoware.org/documentation/)
+- [Autoware GitHubリポジトリ](https://github.com/autowarefoundation/autoware.auto)
+- [Autowareドキュメント](https://www.autoware.org/documentation/)
 
-| 名前                                                 | タイプ                                                 | 説明                                                 |
-| ---------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
-| `/api/operation_mode/change_to_autonomous`         | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | 自動運転モードに変更するサービス                      |
-| `/api/operation_mode/change_to_stop`               | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | 停止モードに変更するサービス                        |
-| `/api/operation_mode/change_to_local`              | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | ローカルモードに変更するサービス                      |
-| `/api/operation_mode/change_to_remote`             | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | リモートモードに変更するサービス                      |
-| `/api/operation_mode/enable_autoware_control`      | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | Autowareによる車両制御を有効にするサービス            |
-| `/api/operation_mode/disable_autoware_control`     | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | Autowareによる車両制御を無効にするサービス            |
-| `/api/routing/clear_route`                         | `autoware_adapi_v1_msgs::srv::ClearRoute`          | ルート状態をクリアするサービス                        |
-| `/api/motion/accept_start`                         | `autoware_adapi_v1_msgs::srv::AcceptStart`         | 車両の始動を受け入れるサービス                      |
-| `/api/autoware/set/emergency`                      | `tier4_external_api_msgs::srv::SetEmergency`       | 外部緊急状態を設定するサービス                        |
-| `/planning/scenario_planning/max_velocity_default` | `tier4_planning_msgs::msg::VelocityLimit`          | 車両の最大速度を設定するトピック                      |
+| 名前                                               | タイプ                                             | 説明                                       |
+| -------------------------------------------------- | -------------------------------------------------- | ------------------------------------------ |
+| `/api/operation_mode/change_to_autonomous`         | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | 自動運転モードに変更するサービス           |
+| `/api/operation_mode/change_to_stop`               | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | 停止モードに変更するサービス               |
+| `/api/operation_mode/change_to_local`              | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | ローカルモードに変更するサービス           |
+| `/api/operation_mode/change_to_remote`             | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | リモートモードに変更するサービス           |
+| `/api/operation_mode/enable_autoware_control`      | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | Autowareによる車両制御を有効にするサービス |
+| `/api/operation_mode/disable_autoware_control`     | `autoware_adapi_v1_msgs::srv::ChangeOperationMode` | Autowareによる車両制御を無効にするサービス |
+| `/api/routing/clear_route`                         | `autoware_adapi_v1_msgs::srv::ClearRoute`          | ルート状態をクリアするサービス             |
+| `/api/motion/accept_start`                         | `autoware_adapi_v1_msgs::srv::AcceptStart`         | 車両の始動を受け入れるサービス             |
+| `/api/autoware/set/emergency`                      | `tier4_external_api_msgs::srv::SetEmergency`       | 外部緊急状態を設定するサービス             |
+| `/planning/scenario_planning/max_velocity_default` | `tier4_planning_msgs::msg::VelocityLimit`          | 車両の最大速度を設定するトピック           |
 
 ## 使用方法
 
@@ -96,4 +96,3 @@ Autowareは、自動運転車両の開発に使用できる。研究目的でも
 3. 自動ボタンがアクティブ化されていれば、クリックでエンゲージできます。
 
    ![select_auto](./images/select_auto_ja.png)
-

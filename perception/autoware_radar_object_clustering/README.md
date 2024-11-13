@@ -77,7 +77,6 @@
 
 これらは以下のような `isSameObject` 関数で使用されます。
 
-
 ```cpp
 
 bool RadarObjectClusteringNode::isSameObject(
@@ -123,4 +122,3 @@ trueの場合、クラスタされたオブジェクトのラベルは`fixed_lab
 
 `is_fixed_size`は固定サイズのパラメータを使用するフラグです。
 trueの場合、クラスタされたオブジェクトのサイズは`size_x`, `size_y`, `size_z`パラメータで設定されたラベルで上書きされます。
-

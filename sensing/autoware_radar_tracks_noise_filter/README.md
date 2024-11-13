@@ -16,8 +16,8 @@ y軸しきい値フィルタでは、レーダートラックのy軸速度が`ve
 
 ## 入力
 
-| Name | Type | Description |
-|---|---|---|
+| Name             | Type                             | Description                             |
+| ---------------- | -------------------------------- | --------------------------------------- |
 | `~/input/tracks` | `radar_msgs/msg/RadarTracks.msg` | 3D 検出されたトラック(レーダートラック) |
 
 ## 出力
@@ -69,14 +69,13 @@ Autoware Planningコンポーネントに貢献するには、以下のリポジ
 
 [https://github.com/AutowareFoundation/autoware/tree/master/ros/planning](https://github.com/AutowareFoundation/autoware/tree/master/ros/planning)
 
-| 名称                       | 種類                              | 説明      |
-| -------------------------- | --------------------------------- | ---------------- |
-| `~/output/noise_tracks`    | radar_msgs/msg/RadarTracks.msg   | ノイズオブジェクト    |
-| `~/output/filtered_tracks` | radar_msgs/msg/RadarTracks.msg   | フィルタ処理されたオブジェクト |
+| 名称                       | 種類                           | 説明                           |
+| -------------------------- | ------------------------------ | ------------------------------ |
+| `~/output/noise_tracks`    | radar_msgs/msg/RadarTracks.msg | ノイズオブジェクト             |
+| `~/output/filtered_tracks` | radar_msgs/msg/RadarTracks.msg | フィルタ処理されたオブジェクト |
 
 ## パラメータ
 
-| 名前                   | タイプ   | 説明                                                                                                                         | デフォルト値 |
-| :--------------------- | :----- | :------------------------------------------------------------------------------------------------------------------------------ | :------------ |
-| `velocity_y_threshold` | double | Y軸速度の閾値 [m/s]。レーダーのトラックのY軸速度が`velocity_y_threshold`を超える場合、ノイズオブジェクトとして扱われます。 | 7.0           |
-
+| 名前                   | タイプ | 説明                                                                                                                       | デフォルト値 |
+| :--------------------- | :----- | :------------------------------------------------------------------------------------------------------------------------- | :----------- |
+| `velocity_y_threshold` | double | Y軸速度の閾値 [m/s]。レーダーのトラックのY軸速度が`velocity_y_threshold`を超える場合、ノイズオブジェクトとして扱われます。 | 7.0          |

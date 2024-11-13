@@ -14,25 +14,25 @@
 
 各フィルタのアルゴリズムの詳細については、以下のリンクを参照してください。
 
-| フィルター名                   | 説明                                                                                   | 詳細                                        |
-| ----------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------- |
+| フィルター名                  | 説明                                                                                   | 詳細                                          |
+| ----------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------- |
 | concatenate_data              | 複数の点群を購読し、それらを 1 つの点群に連結します。                                  | [link](docs/concatenate-data.md)              |
-| crop_box_filter               | 1 回の走査中に自車位置の移動によって生じた点群の歪みを補正します。                         | [link](docs/crop-box-filter.md)               |
-| distortion_corrector          | 1 回の走査中に自車位置の移動によって生じた点群の歪みを補正します。                         | [link](docs/distortion-corrector.md)          |
-| downsample_filter             | 入力点群をダウンサンプリングします。                                                     | [link](docs/downsample-filter.md)             |
+| crop_box_filter               | 1 回の走査中に自車位置の移動によって生じた点群の歪みを補正します。                     | [link](docs/crop-box-filter.md)               |
+| distortion_corrector          | 1 回の走査中に自車位置の移動によって生じた点群の歪みを補正します。                     | [link](docs/distortion-corrector.md)          |
+| downsample_filter             | 入力点群をダウンサンプリングします。                                                   | [link](docs/downsample-filter.md)             |
 | outlier_filter                | ハードウェアの問題、雨滴、小さな昆虫によって引き起こされるノイズとして点を削除します。 | [link](docs/outlier-filter.md)                |
-| passthrough_filter            | 与えられたフィールド (例: x、y、z、強度) の範囲外にある点を削除します。              | [link](docs/passthrough-filter.md)            |
-| pointcloud_accumulator        | 一定時間点群を累積します。                                                           | [link](docs/pointcloud-accumulator.md)        |
+| passthrough_filter            | 与えられたフィールド (例: x、y、z、強度) の範囲外にある点を削除します。                | [link](docs/passthrough-filter.md)            |
+| pointcloud_accumulator        | 一定時間点群を累積します。                                                             | [link](docs/pointcloud-accumulator.md)        |
 | vector_map_filter             | ベクトルマップを使用して、車線の外側の点を削除します。                                 | [link](docs/vector-map-filter.md)             |
-| vector_map_inside_area_filter | 指定されたタイプのパラメーターによって、ベクトルマップ領域内の点を削除します。             | [link](docs/vector-map-inside-area-filter.md) |
+| vector_map_inside_area_filter | 指定されたタイプのパラメーターによって、ベクトルマップ領域内の点を削除します。         | [link](docs/vector-map-inside-area-filter.md) |
 
 ## 入力 / 出力
 
 ### 入力
 
-| 名前             | タイプ                           | 説明             |
-| ---------------- | -------------------------------- | ----------------- |
-| `~/input/points` | `sensor_msgs::msg::PointCloud2` | 基準点群         |
+| 名前              | タイプ                          | 説明                 |
+| ----------------- | ------------------------------- | -------------------- |
+| `~/input/points`  | `sensor_msgs::msg::PointCloud2` | 基準点群             |
 | `~/input/indices` | `pcl_msgs::msg::Indices`        | 基準点のインデックス |
 
 ### 出力
@@ -63,7 +63,7 @@ Planningコンポーネントは、次の機能を提供します。
 
 Planningコンポーネントでは、次のアルゴリズムを使用しています。
 
-- **A*探索**: 最適経路の探索に使用されます。
+- **A\*探索**: 最適経路の探索に使用されます。
 - **Dijkstraのアルゴリズム**: 最短経路の探索に使用されます。
 - **動的計画法**: 最適化された経路の生成に使用されます。
 
@@ -101,22 +101,22 @@ Planningコンポーネントを使用する際は、以下の注意事項を考
 - Planningコンポーネントは、周囲環境が正確にマップされている場合に最も効果的です。
 - Planningコンポーネントは、悪天候や複雑な交通状況では十分に機能しない場合があります。
 
-| 名称 | タイプ | 説明 |
-|---|---|---|
+| 名称              | タイプ                          | 説明                     |
+| ----------------- | ------------------------------- | ------------------------ |
 | `~/output/points` | `sensor_msgs::msg::PointCloud2` | フィルタリング済みの点群 |
 
 ## パラメータ
 
 ### ノードパラメータ
 
-| 名称 | タイプ | デフォルト値 | 説明 |
-|---|---|---|---|
-| `input_frame` | 文字列 | "" | 入力フレームID |
-| `output_frame` | 文字列 | "" | 出力フレームID |
-| `max_queue_size` | 整数 | 5 | 入力/出力トピックの最大キューサイズ |
-| `use_indices` | ブール | false | ポイントクラウドインデックスを使用するフラグ |
-| `latched_indices` | ブール | false | ポイントクラウドインデックスをラッチするフラグ |
-| `approximate_sync` | ブール | false | 近似同期オプションを使用するフラグ |
+| 名称               | タイプ | デフォルト値 | 説明                                           |
+| ------------------ | ------ | ------------ | ---------------------------------------------- |
+| `input_frame`      | 文字列 | ""           | 入力フレームID                                 |
+| `output_frame`     | 文字列 | ""           | 出力フレームID                                 |
+| `max_queue_size`   | 整数   | 5            | 入力/出力トピックの最大キューサイズ            |
+| `use_indices`      | ブール | false        | ポイントクラウドインデックスを使用するフラグ   |
+| `latched_indices`  | ブール | false        | ポイントクラウドインデックスをラッチするフラグ |
+| `approximate_sync` | ブール | false        | 近似同期オプションを使用するフラグ             |
 
 ## 想定事項と既知の制限事項
 

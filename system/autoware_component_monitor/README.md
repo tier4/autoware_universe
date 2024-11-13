@@ -11,8 +11,8 @@
 
 ### 出力
 
-| 名称                       | タイプ                                              | 説明              |
-| -------------------------- | ------------------------------------------------- | ----------------- |
+| 名称                       | タイプ                                             | 説明                  |
+| -------------------------- | -------------------------------------------------- | --------------------- |
 | `~/component_system_usage` | `autoware_internal_msgs::msg::ResourceUsageReport` | CPU、メモリ使用量など |
 
 ## パラメーター
@@ -24,7 +24,6 @@
 ## 使用方法
 
 起動ファイルにコンポーザブルノードとして追加します。
-
 
 ```xml
 
@@ -50,7 +49,6 @@
 
 次のコマンドを実行することでパッケージをテストできます。
 
-
 ```bash
 ros2 component load <container_name> autoware_component_monitor autoware::component_monitor::ComponentMonitor -p publish_rate:=10.0 --node-namespace <namespace>
 
@@ -70,7 +68,6 @@ ros2 component load /pointcloud_container autoware_component_monitor autoware::c
 
 サンプル出力は次のとおりです。
 
-
 ```text
 top - 13:57:26 up  3:14,  1 user,  load average: 1,09, 1,10, 1,04
 Tasks:   1 total,   0 running,   1 sleeping,   0 stopped,   0 zombie
@@ -83,4 +80,3 @@ KiB Swap: 39062524 total, 39062524 free,        0 used. 45520816 avail Mem
 ```
 
 5行目の最後にある5番目、8番目のフィールド（それぞれRES、%CPU）を取得します。
-

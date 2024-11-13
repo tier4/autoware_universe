@@ -26,7 +26,6 @@
 
 以下のグラフは、車線変更の候補経路をサンプリングするプロセスを示しています。
 
-
 ```plantuml
 @startuml
 skinparam defaultTextAlignment center
@@ -92,7 +91,6 @@ stop
 
 以下の図では、有効な候補経路の生成プロセスを示しています。
 
-
 ```plantuml
 @startuml
 skinparam defaultTextAlignment center
@@ -132,7 +130,6 @@ endif
 
 準備軌道とは候補パスの中で最初で、自車位置に沿って生成される直線部分です。準備軌道の長さは、以下のように計算します。
 
-
 ```C++
 lane_change_prepare_distance = current_speed * lane_change_prepare_duration + 0.5 * deceleration * lane_change_prepare_duration^2
 ```
@@ -142,7 +139,6 @@ lane_change_prepare_distance = current_speed * lane_change_prepare_duration + 0.
 ### レーン変更の段階
 
 レーン変更の段階は、自車の現在の車線から目標の車線に移動するシフトパスで構成されています。レーン変更の段階の総距離を以下に示します。レーン変更の段階では、自車は一定速度で走行します。
-
 
 ```C++
 lane_change_prepare_velocity = std::max(current_speed + deceleration * lane_change_prepare_duration, minimum_lane_changing_velocity)
@@ -157,7 +153,6 @@ lane_changing_distance = lane_change_prepare_velocity * lane_changing_duration
 
 事前決定された縦方向加速度値は、`longitudinal_acceleration = maximum_longitudinal_acceleration` から開始されるセットと、`longitudinal_acceleration = -maximum_longitudinal_deceleration` に達するまで `longitudinal_acceleration_resolution` ずつ減少するセットです。`maximum_longitudinal_acceleration` と `maximum_longitudinal_deceleration` の両方が、`common.param` ファイルで `normal.min_acc` として定義されているように計算されます。
 
-
 ```C++
 maximum_longitudinal_acceleration = min(common_param.max_acc, lane_change_param.max_acc)
 maximum_longitudinal_deceleration = max(common_param.min_acc, lane_change_param.min_acc)
@@ -167,7 +162,6 @@ maximum_longitudinal_deceleration = max(common_param.min_acc, lane_change_param.
 
 `longitudinal_acceleration_resolution` は次によって決定されます。
 
-
 ```C++
 longitudinal_acceleration_resolution = (maximum_longitudinal_acceleration - minimum_longitudinal_acceleration) / longitudinal_acceleration_sampling_num
 ```
@@ -175,7 +169,6 @@ longitudinal_acceleration_resolution = (maximum_longitudinal_acceleration - mini
 `現在の速度` が `最低車線変更速度` より小さい場合、車両は速度を `最低車線変更速度` まで加速する必要があることに注意してください。したがって、縦加速度は正の値（減速しない）になります。
 
 グラフは縦加速度の値がサンプリングされる条件を示しています。
-
 
 ```plantuml
 @startuml
@@ -229,7 +222,6 @@ stop
 ```
 
 このドキュメントでは、縦断加速度をサンプリングするプロセスについて説明します。
-
 
 ```plantuml
 @startuml
@@ -360,7 +352,6 @@ Planningコンポーネントは、将来の機能拡張や改善のために設
 
 この範囲内で、自車位置の横加速度をサンプリングします。縦加速度のサンプリングに使用された方法と同様、横加速度の分解能 (lateral_acceleration_resolution) は以下の方法で決定されます。
 
-
 ```C++
 lateral_acceleration_resolution = (maximum_lateral_acceleration - minimum_lateral_acceleration) / lateral_acceleration_sampling_num
 ```
@@ -377,7 +368,6 @@ lateral_acceleration_resolution = (maximum_lateral_acceleration - minimum_latera
 6. 車線変更を実行するのが安全とみなされる。
 
 以下のフローチャートは、有効性チェックを示しています。
-
 
 ```plantuml
 @startuml
@@ -472,7 +462,6 @@ stop
 </div>
 
 ##### オブジェクトフィルタリング
-
 
 ```plantuml
 @startuml
@@ -619,7 +608,6 @@ stop
 
 他の車両と一緒に公道を走行する場合は、車線変更が実行できないシナリオがあります。例えば、近隣の車線に進入車両があるため、候補パスが安全でない場合が考えられます。その場合、自車位置は車線変更することができず、ゴールに到達することはできません。そのため、自車位置は特定の距離で早めに停止し、近隣の車線が安全と評価されるまで待つ必要があります。最小停止距離は、シフトの長さと車線変更の最小速度から計算できます。
 
-
 ```C++
 lane_changing_time = f(shift_length, lat_acceleration, lat_jerk)
 minimum_lane_change_distance = minimum_prepare_length + minimum_lane_changing_velocity * lane_changing_time + lane_change_finish_judge_buffer
@@ -634,7 +622,6 @@ minimum_lane_change_distance = minimum_prepare_length + minimum_lane_changing_ve
 自車の停車動作は、必要な車線変更回数、障害物の有無、および車線変更計画に関する障害物の位置など、さまざまな要素に基づいて決定されます。目的は、さまざまな交通状況に適応しながら、安全かつ効果的な車線変更を可能にする適切な停止地点を選択することです。
 
 次のフローチャートとサブセクションでは、障害物が前方にある場合に停止地点を挿入する場所の決定条件について説明します。
-
 
 ```plantuml
 @startuml
@@ -755,7 +742,6 @@ stop
 
 以下は、車線変更の中断チェックの流れを示しています。
 
-
 ```plantuml
 @startuml
 skinparam monochrome true
@@ -803,7 +789,6 @@ detach
 車線変更中は、自車減速を考慮した安全確認が実施され、`cancel.deceleration_sampling_num` 個の減速パターンの安全確認を実施し、すべての減速パターンで中止条件が満たされた場合は、車線変更がキャンセルされます。
 
 安全と危険な状態の交互によって発生する車線変更経路の振動に対する予防策として、中止またはキャンセル操作を実行する前に、ヒステリシスカウントチェックが追加で実装されています。安全でない場合は、`unsafe_hysteresis_count_` がインクリメントされ、`unsafe_hysteresis_threshold` と比較されます。これを超えると中止条件のチェックが促され、最近の安全評価を考慮に入れて決定が下されるようにします（上のフローチャートで示されています）。このメカニズムは意思決定を安定させ、一時的な安全でない状態による急激な変化を防ぎます。
-
 
 ```plantuml
 @startuml
@@ -858,7 +843,6 @@ endif
 
 車線変更完了の判定プロセスは、次の図に示します。
 
-
 ```plantuml
 @startuml
 skinparam defaultTextAlignment center
@@ -910,46 +894,46 @@ endif
 
 以下のパラメータは [lane_change.param.yaml](https://github.com/autowarefoundation/autoware_launch/blob/main/autoware_launch/config/planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner/lane_change/lane_change.param.yaml) で構成できます。
 
-| 名前 | 単位 | 型 | 説明 | デフォルト値 |
-|---|---|---|---|---|
-| `backward_lane_length` | [m] | double | 車線変更のターゲット車線を後方からチェックする長さ | 200.0 |
-| `prepare_duration` | [m] | double | 自動運転車が車線変更の準備をするための時間 | 4.0 |
-| `backward_length_buffer_for_end_of_lane` | [m] | double | 車線変更を開始するために自動運転車が十分な距離を確保するための、車線末端のバッファ | 3.0 |
-| `backward_length_buffer_for_blocking_object` | [m] | double | 車両の正面に障害物がある場合に車線変更を開始するために自動運転車が十分な距離を確保するための、車線末端のバッファ | 3.0 |
-| `backward_length_from_intersection` | [m] | double | 最後の交差点からの距離のしきい値。この距離以内では車線変更経路が無効またはキャンセルされる | 5.0 |
-| `lane_change_finish_judge_buffer` | [m] | double | 車線変更プロセスの完了を確認するために使用される追加のバッファ | 2.0 |
-| `lane_changing_lateral_jerk` | [m/s3] | double | 車線変更経路を生成するための横方向加速度値 | 0.5 |
-| `minimum_lane_changing_velocity` | [m/s] | double | 車線変更プロセス中の最小速度 | 2.78 |
-| `prediction_time_resolution` | [s] | double | 障害物の経路補間と衝突チェックのための時間分解能 | 0.5 |
-| `longitudinal_acceleration_sampling_num` | [-] | int | 縦方向加速度の影響を受ける車線変更可能な経路の数 | 3 |
-| `lateral_acceleration_sampling_num` | [-] | int | 横方向加速度の影響を受ける車線変更可能な経路の数 | 3 |
-| `object_check_min_road_shoulder_width` | [m] | double | 車線に路側帯がない場合、路側帯と見なされる幅 | 0.5 |
-| `object_shiftable_ratio_threshold` | [-] | double | 中心線からこの距離比内にある車両は、駐車車両から除外される | 0.6 |
-| `min_length_for_turn_signal_activation` | [m] | double | 自動運転車が車線変更の最小距離にこの長さまで近づいたら、ターンシグナルが有効になる | 10.0 |
-| `length_ratio_for_turn_signal_deactivation` | [-] | double | 自動運転車が車線変更の終了点にこの距離比まで近づいたら、ターンシグナルが無効になる | 0.8 |
-| `max_longitudinal_acc` | [-] | double | 車線変更の最大縦方向加速度 | 1.0 |
-| `min_longitudinal_acc` | [-] | double | 車線変更の最大縦方向減速度 | -1.0 |
-| `lateral_acceleration.velocity` | [m/s] | double | 横方向加速度計算のための基準速度（参照テーブル） | [0.0, 4.0, 10.0] |
-| `lateral_acceleration.min_values` | [m/ss] | double | 速度に対応する最小横方向加速度値（参照テーブル） | [0.4, 0.4, 0.4] |
-| `lateral_acceleration.max_values` | [m/ss] | double | 速度に対応する最大横方向加速度値（参照テーブル） | [0.65, 0.65, 0.65] |
+| 名前                                         | 単位   | 型     | 説明                                                                                                             | デフォルト値       |
+| -------------------------------------------- | ------ | ------ | ---------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `backward_lane_length`                       | [m]    | double | 車線変更のターゲット車線を後方からチェックする長さ                                                               | 200.0              |
+| `prepare_duration`                           | [m]    | double | 自動運転車が車線変更の準備をするための時間                                                                       | 4.0                |
+| `backward_length_buffer_for_end_of_lane`     | [m]    | double | 車線変更を開始するために自動運転車が十分な距離を確保するための、車線末端のバッファ                               | 3.0                |
+| `backward_length_buffer_for_blocking_object` | [m]    | double | 車両の正面に障害物がある場合に車線変更を開始するために自動運転車が十分な距離を確保するための、車線末端のバッファ | 3.0                |
+| `backward_length_from_intersection`          | [m]    | double | 最後の交差点からの距離のしきい値。この距離以内では車線変更経路が無効またはキャンセルされる                       | 5.0                |
+| `lane_change_finish_judge_buffer`            | [m]    | double | 車線変更プロセスの完了を確認するために使用される追加のバッファ                                                   | 2.0                |
+| `lane_changing_lateral_jerk`                 | [m/s3] | double | 車線変更経路を生成するための横方向加速度値                                                                       | 0.5                |
+| `minimum_lane_changing_velocity`             | [m/s]  | double | 車線変更プロセス中の最小速度                                                                                     | 2.78               |
+| `prediction_time_resolution`                 | [s]    | double | 障害物の経路補間と衝突チェックのための時間分解能                                                                 | 0.5                |
+| `longitudinal_acceleration_sampling_num`     | [-]    | int    | 縦方向加速度の影響を受ける車線変更可能な経路の数                                                                 | 3                  |
+| `lateral_acceleration_sampling_num`          | [-]    | int    | 横方向加速度の影響を受ける車線変更可能な経路の数                                                                 | 3                  |
+| `object_check_min_road_shoulder_width`       | [m]    | double | 車線に路側帯がない場合、路側帯と見なされる幅                                                                     | 0.5                |
+| `object_shiftable_ratio_threshold`           | [-]    | double | 中心線からこの距離比内にある車両は、駐車車両から除外される                                                       | 0.6                |
+| `min_length_for_turn_signal_activation`      | [m]    | double | 自動運転車が車線変更の最小距離にこの長さまで近づいたら、ターンシグナルが有効になる                               | 10.0               |
+| `length_ratio_for_turn_signal_deactivation`  | [-]    | double | 自動運転車が車線変更の終了点にこの距離比まで近づいたら、ターンシグナルが無効になる                               | 0.8                |
+| `max_longitudinal_acc`                       | [-]    | double | 車線変更の最大縦方向加速度                                                                                       | 1.0                |
+| `min_longitudinal_acc`                       | [-]    | double | 車線変更の最大縦方向減速度                                                                                       | -1.0               |
+| `lateral_acceleration.velocity`              | [m/s]  | double | 横方向加速度計算のための基準速度（参照テーブル）                                                                 | [0.0, 4.0, 10.0]   |
+| `lateral_acceleration.min_values`            | [m/ss] | double | 速度に対応する最小横方向加速度値（参照テーブル）                                                                 | [0.4, 0.4, 0.4]    |
+| `lateral_acceleration.max_values`            | [m/ss] | double | 速度に対応する最大横方向加速度値（参照テーブル）                                                                 | [0.65, 0.65, 0.65] |
 
 ### 車線変更完了判定パラメータ
 
 車線変更完了を判定するために、以下のパラメータを使用します。
 
-| 名称                                   | 単位  | タイプ   | 説明                                                                                                            | デフォルト値 |
-| :------------------------------------- | ----- | ------ | ---------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `lane_change_finish_judge_buffer`      | [m]   | double | レーン変更終了姿勢からの縦方向距離                                                                                 | 2.0           |
-| `finish_judge_lateral_threshold`       | [m]   | double | ターゲットレーンの中心線からの横方向距離。`finish_judge_lateral_angle_deviation`と併用する                       | 0.1           |
-| `finish_judge_lateral_angle_deviation` | [度] | double | ターゲットレーンの中心線に対する自車角度偏差。`finish_judge_lateral_threshold`と併用する                       | 2.0           |
+| 名称                                   | 単位 | タイプ | 説明                                                                                       | デフォルト値 |
+| :------------------------------------- | ---- | ------ | ------------------------------------------------------------------------------------------ | ------------ |
+| `lane_change_finish_judge_buffer`      | [m]  | double | レーン変更終了姿勢からの縦方向距離                                                         | 2.0          |
+| `finish_judge_lateral_threshold`       | [m]  | double | ターゲットレーンの中心線からの横方向距離。`finish_judge_lateral_angle_deviation`と併用する | 0.1          |
+| `finish_judge_lateral_angle_deviation` | [度] | double | ターゲットレーンの中心線に対する自車角度偏差。`finish_judge_lateral_threshold`と併用する   | 2.0          |
 
 ### 車線変更規制
 
-| 名称                      | 単位 | タイプ    | 説明                                                                               | デフォルト値 |
-| :------------------------- | ---- | ------- | ----------------------------------------------------------------------------------- | ------------- |
-| `regulation.crosswalk`     | [-]  | ブール値 | 横断歩道間での車線変更を許可する                                                  | true          |
-| `regulation.intersection`  | [-]  | ブール値 | 交差点間での車線変更を許可する                                                     | true          |
-| `regulation.traffic_light` | [-]  | ブール値 | 信号間での車線変更の実行を許可する                                                  | true          |
+| 名称                       | 単位 | タイプ   | 説明                               | デフォルト値 |
+| :------------------------- | ---- | -------- | ---------------------------------- | ------------ |
+| `regulation.crosswalk`     | [-]  | ブール値 | 横断歩道間での車線変更を許可する   | true         |
+| `regulation.intersection`  | [-]  | ブール値 | 交差点間での車線変更を許可する     | true         |
+| `regulation.traffic_light` | [-]  | ブール値 | 信号間での車線変更の実行を許可する | true         |
 
 ### 自車位置検出
 
@@ -957,96 +941,97 @@ endif
 
 障害物が自車を完全に包囲して動作不可能にした状態を検出します。
 
-| 名称                        | 単位  | 型   | 説明                                         | 初期値 |
-| :-------------------------- | ----- | ------ | --------------------------------------------------- | ------------- |
-| `stuck_detection.velocity`  | [m/s] | double | 自車位置の静止検出における速度しきい値  | 0.1           |
-| `stuck_detection.stop_time` | [秒]   | double | 自車位置の静止検出における停止時間しきい値 | 3.0           |
+| 名称                        | 単位  | 型     | 説明                                       | 初期値 |
+| :-------------------------- | ----- | ------ | ------------------------------------------ | ------ |
+| `stuck_detection.velocity`  | [m/s] | double | 自車位置の静止検出における速度しきい値     | 0.1    |
+| `stuck_detection.stop_time` | [秒]  | double | 自車位置の静止検出における停止時間しきい値 | 3.0    |
 
 ### 衝突チェック
 
 #### 目標オブジェクト
 
-| 名前                       | 単位 | 型      | 説明                                               | デフォルト値 |
-| :------------------------- | ---- | ------- | -------------------------------------------------- | ------------- |
-| `target_object.car`        | [-]  | boolean | 安全チェックに自動車オブジェクトを含める           | true          |
-| `target_object.truck`      | [-]  | boolean | 安全チェックにトラックオブジェクトを含める         | true          |
-| `target_object.bus`        | [-]  | boolean | 安全チェックにバスオブジェクトを含める           | true          |
-| `target_object.trailer`    | [-]  | boolean | 安全チェックにトレーラーオブジェクトを含める       | true          |
-| `target_object.unknown`    | [-]  | boolean | 安全チェックに不明オブジェクトを含める             | true          |
-| `target_object.bicycle`    | [-]  | boolean | 安全チェックに自転車オブジェクトを含める           | true          |
-| `target_object.motorcycle` | [-]  | boolean | 安全チェックにオートバイオブジェクトを含める       | true          |
-| `target_object.pedestrian` | [-]  | boolean | 安全チェックに歩行者オブジェクトを含める           | true          |
+| 名前                       | 単位 | 型      | 説明                                         | デフォルト値 |
+| :------------------------- | ---- | ------- | -------------------------------------------- | ------------ |
+| `target_object.car`        | [-]  | boolean | 安全チェックに自動車オブジェクトを含める     | true         |
+| `target_object.truck`      | [-]  | boolean | 安全チェックにトラックオブジェクトを含める   | true         |
+| `target_object.bus`        | [-]  | boolean | 安全チェックにバスオブジェクトを含める       | true         |
+| `target_object.trailer`    | [-]  | boolean | 安全チェックにトレーラーオブジェクトを含める | true         |
+| `target_object.unknown`    | [-]  | boolean | 安全チェックに不明オブジェクトを含める       | true         |
+| `target_object.bicycle`    | [-]  | boolean | 安全チェックに自転車オブジェクトを含める     | true         |
+| `target_object.motorcycle` | [-]  | boolean | 安全チェックにオートバイオブジェクトを含める | true         |
+| `target_object.pedestrian` | [-]  | boolean | 安全チェックに歩行者オブジェクトを含める     | true         |
 
 #### common
 
-| 名称                                        | 単位 | タイプ   | 説明                                                                                                                                 | デフォルト値 |
-| :---------------------------------------- | ---- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `safety_check.lane_expansion.left_offset`  | [m]  | 倍精度浮動小数点 | 検出領域の左側の境界を拡大し、以前は左側にあったオブジェクトの検出とターゲットへの登録を可能にする。   | 0.0           |
-| `safety_check.lane_expansion.right_offset` | [m]  | 倍精度浮動小数点 | 検出領域の右側の境界を拡大し、以前は右側にあったオブジェクトの検出とターゲットへの登録を可能にする。 | 0.0           |
+| 名称                                       | 単位 | タイプ           | 説明                                                                                                 | デフォルト値 |
+| :----------------------------------------- | ---- | ---------------- | ---------------------------------------------------------------------------------------------------- | ------------ |
+| `safety_check.lane_expansion.left_offset`  | [m]  | 倍精度浮動小数点 | 検出領域の左側の境界を拡大し、以前は左側にあったオブジェクトの検出とターゲットへの登録を可能にする。 | 0.0          |
+| `safety_check.lane_expansion.right_offset` | [m]  | 倍精度浮動小数点 | 検出領域の右側の境界を拡大し、以前は右側にあったオブジェクトの検出とターゲットへの登録を可能にする。 | 0.0          |
 
 #### 追加パラメータ
 
-| Name                                                    | Unit  | Type    | Description                                                                                                                                                                                             | Default value |
-| :------------------------------------------------------- | ----- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| Name                                                     | Unit  | Type    | Description                                                                                                                                                                                       | Default value |
+| :------------------------------------------------------- | ----- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
 | `enable_collision_check_for_prepare_phase.general_lanes` | [-]   | boolean | Planningコンポーネントの準備フェーズから衝突チェックを実行します（交差点など、他の設定で明示的にカバーされていない状況の場合）。`false`の場合、衝突チェックは車線変更フェーズのみで評価されます。 | false         |
-| `enable_collision_check_for_prepare_phase.intersection`  | [-]   | boolean | 自車が交差点にいる場合、準備フェーズから衝突チェックを実行します。`false`の場合、衝突チェックは車線変更フェーズのみで評価されます。                                                | true          |
-| `enable_collision_check_for_prepare_phase.turns`         | [-]   | boolean | 自車が旋回方向タグのあるLaneletにいる場合、準備フェーズから衝突チェックを実行します。`false`の場合、衝突チェックは車線変更フェーズのみで評価されます。                               | true          |
-| `prepare_phase_ignore_target_speed_thresh`               | [m/s] | double  | 設定された値より小さいオブジェクトの速度について、準備フェーズでの衝突チェックを無視します。`enable_collision_check_at_prepare_phase`が`true`である必要があります。         | 0.1           |
-| `check_objects_on_current_lanes`                         | [-]   | boolean | trueの場合、車線変更モジュールは衝突評価を実行する際、現在の車線上のオブジェクトをチェックします。                                                                                               | false         |
-| `check_objects_on_other_lanes`                           | [-]   | boolean | trueの場合、車線変更モジュールは衝突評価を実行する際、他の車線上のオブジェクトを含めます。                                                                                               | false         |
-| `use_all_predicted_path`                                 | [-]   | boolean | falseの場合、信頼度が最も高い予測パスのみを使用します。                                                                                                                                   | true          |
-| `safety_check.collision_check_yaw_diff_threshold`        | [rad] | double  | RSSベースの衝突チェックを実行する際の自車とオブジェクト間の最大ヨー角差                                                                                                             | 3.1416        |
+| `enable_collision_check_for_prepare_phase.intersection`  | [-]   | boolean | 自車が交差点にいる場合、準備フェーズから衝突チェックを実行します。`false`の場合、衝突チェックは車線変更フェーズのみで評価されます。                                                               | true          |
+| `enable_collision_check_for_prepare_phase.turns`         | [-]   | boolean | 自車が旋回方向タグのあるLaneletにいる場合、準備フェーズから衝突チェックを実行します。`false`の場合、衝突チェックは車線変更フェーズのみで評価されます。                                            | true          |
+| `prepare_phase_ignore_target_speed_thresh`               | [m/s] | double  | 設定された値より小さいオブジェクトの速度について、準備フェーズでの衝突チェックを無視します。`enable_collision_check_at_prepare_phase`が`true`である必要があります。                               | 0.1           |
+| `check_objects_on_current_lanes`                         | [-]   | boolean | trueの場合、車線変更モジュールは衝突評価を実行する際、現在の車線上のオブジェクトをチェックします。                                                                                                | false         |
+| `check_objects_on_other_lanes`                           | [-]   | boolean | trueの場合、車線変更モジュールは衝突評価を実行する際、他の車線上のオブジェクトを含めます。                                                                                                        | false         |
+| `use_all_predicted_path`                                 | [-]   | boolean | falseの場合、信頼度が最も高い予測パスのみを使用します。                                                                                                                                           | true          |
+| `safety_check.collision_check_yaw_diff_threshold`        | [rad] | double  | RSSベースの衝突チェックを実行する際の自車とオブジェクト間の最大ヨー角差                                                                                                                           | 3.1416        |
 
 #### 車線変更経路が計算中の安全性制約
 
 ```
+
 ```
 
-| 名称                                                       | 単位    | 型   | 説明                                                                                                                                                      | デフォルト値 |
-| :--------------------------------------------------------- | ------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `safety_check.execution.expected_front_deceleration`         | [m/s²] | double | 前方の車両が急ブレーキを行った場合の前方対象物の最大減速度。(\*1)                                                                                      | -1.0          |
-| `safety_check.execution.expected_rear_deceleration`          | [m/s²] | double | 後方の車両が急ブレーキを行った場合の後方対象物の最大減速度。(\*1)                                                                                        | -1.0          |
-| `safety_check.execution.rear_vehicle_reaction_time`          | [s]     | double | 前方車両の急ブレーキに気付いた時点からブレーキを踏むまでの後方車両の運転者の反応時間。                                                                  | 2.0           |
-| `safety_check.execution.rear_vehicle_safety_time_margin`     | [s]     | double | 後方車両の運転者が急ブレーキを行ったときに完全停止状態になるまでの時間バッファ。                                                                         | 1.0           |
-| `safety_check.execution.lateral_distance_max_threshold`      | [m]     | double | 2 つの対象物間の横方向距離が十分で、車線変更が安全かどうかを判断するために使用される横方向距離のしきい値。                                              | 2.0           |
-| `safety_check.execution.longitudinal_distance_min_threshold` | [m]     | double | 2 つの対象物間の縦方向距離が十分で、車線変更が安全かどうかを判断するために使用される縦方向距離のしきい値。                                            | 3.0           |
-| `safety_check.cancel.longitudinal_velocity_delta_time`       | [m]     | double | 予測された各時点での車両間の実際のギャップを計算するために使用される時間乗数（RSS 距離ではない）。                                                | 0.8           |
+| 名称                                                         | 単位   | 型     | 説明                                                                                                       | デフォルト値 |
+| :----------------------------------------------------------- | ------ | ------ | ---------------------------------------------------------------------------------------------------------- | ------------ |
+| `safety_check.execution.expected_front_deceleration`         | [m/s²] | double | 前方の車両が急ブレーキを行った場合の前方対象物の最大減速度。(\*1)                                          | -1.0         |
+| `safety_check.execution.expected_rear_deceleration`          | [m/s²] | double | 後方の車両が急ブレーキを行った場合の後方対象物の最大減速度。(\*1)                                          | -1.0         |
+| `safety_check.execution.rear_vehicle_reaction_time`          | [s]    | double | 前方車両の急ブレーキに気付いた時点からブレーキを踏むまでの後方車両の運転者の反応時間。                     | 2.0          |
+| `safety_check.execution.rear_vehicle_safety_time_margin`     | [s]    | double | 後方車両の運転者が急ブレーキを行ったときに完全停止状態になるまでの時間バッファ。                           | 1.0          |
+| `safety_check.execution.lateral_distance_max_threshold`      | [m]    | double | 2 つの対象物間の横方向距離が十分で、車線変更が安全かどうかを判断するために使用される横方向距離のしきい値。 | 2.0          |
+| `safety_check.execution.longitudinal_distance_min_threshold` | [m]    | double | 2 つの対象物間の縦方向距離が十分で、車線変更が安全かどうかを判断するために使用される縦方向距離のしきい値。 | 3.0          |
+| `safety_check.cancel.longitudinal_velocity_delta_time`       | [m]    | double | 予測された各時点での車両間の実際のギャップを計算するために使用される時間乗数（RSS 距離ではない）。         | 0.8          |
 
 #### 停止または駐車車両に対する安全制約
 
-| 名前                                                      | 単位    | 型     | 説明                                                                                                                                                    | デフォルト値 |
-| :-------------------------------------------------------- | ------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `safety_check.parked.expected_front_deceleration`         | [m/s^2] | double | 前走車が急ブレーキをかけたときの前方の物体の最大の減速度。(\*1)                                                                   | -1.0          |
-| `safety_check.parked.expected_rear_deceleration`          | [m/s^2] | double | 後続車が急ブレーキをかけたときの後方の物体の最大の減速度。(\*1)                                                                     | -2.0          |
-| `safety_check.parked.rear_vehicle_reaction_time`          | [s]     | double | 後続車のドライバーが、前走車の急ブレーキに気づいてからブレーキを踏むまでの反応時間。                                                            | 1.0           |
-| `safety_check.parked.rear_vehicle_safety_time_margin`     | [s]     | double | 後続車のドライバーが急ブレーキをかけたときに完全に停止するための時間バッファ。                                                        | 0.8           |
-| `safety_check.parked.lateral_distance_max_threshold`      | [m]     | double | 2つの物体間の横方向距離が十分かどうか、また車線変更が安全かどうかを判断するために使用される横方向距離のしきい値。                | 1.0           |
-| `safety_check.parked.longitudinal_distance_min_threshold` | [m]     | double | 2つの物体間の縦方向距離が十分かどうか、また車線変更が安全かどうかを判断するために使用される縦方向距離のしきい値。                      | 3.0           |
-| `safety_check.parked.longitudinal_velocity_delta_time`    | [m]     | double | 予測された各ポイントにおける車両間の実際のギャップを計算するために使用される時間乗数（RSS距離ではなく）。                                         | 0.8           |
+| 名前                                                      | 単位    | 型     | 説明                                                                                                              | デフォルト値 |
+| :-------------------------------------------------------- | ------- | ------ | ----------------------------------------------------------------------------------------------------------------- | ------------ |
+| `safety_check.parked.expected_front_deceleration`         | [m/s^2] | double | 前走車が急ブレーキをかけたときの前方の物体の最大の減速度。(\*1)                                                   | -1.0         |
+| `safety_check.parked.expected_rear_deceleration`          | [m/s^2] | double | 後続車が急ブレーキをかけたときの後方の物体の最大の減速度。(\*1)                                                   | -2.0         |
+| `safety_check.parked.rear_vehicle_reaction_time`          | [s]     | double | 後続車のドライバーが、前走車の急ブレーキに気づいてからブレーキを踏むまでの反応時間。                              | 1.0          |
+| `safety_check.parked.rear_vehicle_safety_time_margin`     | [s]     | double | 後続車のドライバーが急ブレーキをかけたときに完全に停止するための時間バッファ。                                    | 0.8          |
+| `safety_check.parked.lateral_distance_max_threshold`      | [m]     | double | 2つの物体間の横方向距離が十分かどうか、また車線変更が安全かどうかを判断するために使用される横方向距離のしきい値。 | 1.0          |
+| `safety_check.parked.longitudinal_distance_min_threshold` | [m]     | double | 2つの物体間の縦方向距離が十分かどうか、また車線変更が安全かどうかを判断するために使用される縦方向距離のしきい値。 | 3.0          |
+| `safety_check.parked.longitudinal_velocity_delta_time`    | [m]     | double | 予測された各ポイントにおける車両間の実際のギャップを計算するために使用される時間乗数（RSS距離ではなく）。         | 0.8          |
 
 ##### 車線変更パスのキャンセルに対するセーフティ制約
 
-| 名前 | ユニット | タイプ | 説明 | デフォルト値 |
-|---|---|---|---|---|
-| `safety_check.cancel.expected_front_deceleration` | [m/s^2] | double | 前方車両が急ブレーキをかけたときの前方車両の最大減速度。(＊1) | -1.0 |
-| `safety_check.cancel.expected_rear_deceleration` | [m/s^2] | double | 後方車両が急ブレーキをかけたときの後方車両の最大減速度。(＊1) | -2.0 |
-| `safety_check.cancel.rear_vehicle_reaction_time` | [s] | double | 前方車両の急ブレーキに気づいてブレーキを踏むまでの後方車両のドライバーの反応時間 | 1.5 |
-| `safety_check.cancel.rear_vehicle_safety_time_margin` | [s] | double | 後方車両のドライバーが急ブレーキをかけたときに完全に停止するまでの時間バッファ | 0.8 |
-| `safety_check.cancel.lateral_distance_max_threshold` | [m] | double | 2つの車両間の横距離が十分であり、車線変更が安全かどうかを判断するために使用される横距離のしきい値 | 1.0 |
-| `safety_check.cancel.longitudinal_distance_min_threshold` | [m] | double | 2つの車両間の縦距離が十分であり、車線変更が安全かどうかを判断するために使用される縦距離のしきい値 | 2.5 |
-| `safety_check.cancel.longitudinal_velocity_delta_time` | [m] | double | 各予測点での車両間の実際のギャップを計算するために使用される時間倍率（RSS距離ではない） | 0.6 |
+| 名前                                                      | ユニット | タイプ | 説明                                                                                              | デフォルト値 |
+| --------------------------------------------------------- | -------- | ------ | ------------------------------------------------------------------------------------------------- | ------------ |
+| `safety_check.cancel.expected_front_deceleration`         | [m/s^2]  | double | 前方車両が急ブレーキをかけたときの前方車両の最大減速度。(＊1)                                     | -1.0         |
+| `safety_check.cancel.expected_rear_deceleration`          | [m/s^2]  | double | 後方車両が急ブレーキをかけたときの後方車両の最大減速度。(＊1)                                     | -2.0         |
+| `safety_check.cancel.rear_vehicle_reaction_time`          | [s]      | double | 前方車両の急ブレーキに気づいてブレーキを踏むまでの後方車両のドライバーの反応時間                  | 1.5          |
+| `safety_check.cancel.rear_vehicle_safety_time_margin`     | [s]      | double | 後方車両のドライバーが急ブレーキをかけたときに完全に停止するまでの時間バッファ                    | 0.8          |
+| `safety_check.cancel.lateral_distance_max_threshold`      | [m]      | double | 2つの車両間の横距離が十分であり、車線変更が安全かどうかを判断するために使用される横距離のしきい値 | 1.0          |
+| `safety_check.cancel.longitudinal_distance_min_threshold` | [m]      | double | 2つの車両間の縦距離が十分であり、車線変更が安全かどうかを判断するために使用される縦距離のしきい値 | 2.5          |
+| `safety_check.cancel.longitudinal_velocity_delta_time`    | [m]      | double | 各予測点での車両間の実際のギャップを計算するために使用される時間倍率（RSS距離ではない）           | 0.6          |
 
 ##### 車両が動けなくなった場合にレーンチェンジパスの計算に使用​​される安全制約
 
-| 名前                                                  | 単位 | タイプ | 説明                                                                                                                                                                | デフォルト値 |
-| :---------------------------------------------------- | ----- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `safety_check.stuck.expected_front_deceleration`      | [m/s^2] | double | 前方車両が急ブレーキを実行した場合の前方オブジェクトの最大減速度。(\*1)                                                                                | -1.0          |
-| `safety_check.stuck.expected_rear_deceleration`       | [m/s^2] | double | 後方車両が急ブレーキを実行した場合の後方オブジェクトの最大減速度。(\*1)                                                                                | -1.0          |
-| `safety_check.stuck.rear_vehicle_reaction_time`       | [s] | double | 後方車両の運転手が前方の車両の急ブレーキに気付く瞬間からブレーキを踏む瞬間までの反応時間。                                                               | 2.0           |
-| `safety_check.stuck.rear_vehicle_safety_time_margin`  | [s] | double | 後方車両の運転手が急ブレーキを実行したときに完全に停止するためのタイムバッファ。                                                                                 | 1.0           |
-| `safety_check.stuck.lateral_distance_max_threshold`   | [m] | double | 2つのオブジェクト間の横方向の距離が十分かどうか、および車線変更が安全かどうかを判断するために使用される横方向距離の閾値。                           | 2.0           |
-| `safety_check.stuck.longitudinal_distance_min_threshold` | [m] | double | 2つのオブジェクト間の縦方向の距離が十分かどうか、および車線変更が安全かどうかを判断するために使用される縦方向距離の閾値。                              | 3.0           |
-| `safety_check.stuck.longitudinal_velocity_delta_time` | [m] | double | 各予測ポイントでの車両間の実際のギャップを計算するために使用される時間乗数（RSS距離ではない）。                                                         | 0.8           |
+| 名前                                                     | 単位    | タイプ | 説明                                                                                                                      | デフォルト値 |
+| :------------------------------------------------------- | ------- | ------ | ------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| `safety_check.stuck.expected_front_deceleration`         | [m/s^2] | double | 前方車両が急ブレーキを実行した場合の前方オブジェクトの最大減速度。(\*1)                                                   | -1.0         |
+| `safety_check.stuck.expected_rear_deceleration`          | [m/s^2] | double | 後方車両が急ブレーキを実行した場合の後方オブジェクトの最大減速度。(\*1)                                                   | -1.0         |
+| `safety_check.stuck.rear_vehicle_reaction_time`          | [s]     | double | 後方車両の運転手が前方の車両の急ブレーキに気付く瞬間からブレーキを踏む瞬間までの反応時間。                                | 2.0          |
+| `safety_check.stuck.rear_vehicle_safety_time_margin`     | [s]     | double | 後方車両の運転手が急ブレーキを実行したときに完全に停止するためのタイムバッファ。                                          | 1.0          |
+| `safety_check.stuck.lateral_distance_max_threshold`      | [m]     | double | 2つのオブジェクト間の横方向の距離が十分かどうか、および車線変更が安全かどうかを判断するために使用される横方向距離の閾値。 | 2.0          |
+| `safety_check.stuck.longitudinal_distance_min_threshold` | [m]     | double | 2つのオブジェクト間の縦方向の距離が十分かどうか、および車線変更が安全かどうかを判断するために使用される縦方向距離の閾値。 | 3.0          |
+| `safety_check.stuck.longitudinal_velocity_delta_time`    | [m]     | double | 各予測ポイントでの車両間の実際のギャップを計算するために使用される時間乗数（RSS距離ではない）。                           | 0.8          |
 
 (\*1) この値は負の値でなければなりません。
 
@@ -1054,29 +1039,28 @@ endif
 
 次のパラメータは `lane_change.param.yaml` で構成できます。
 
-| 名称                                   | 単位    | タイプ    | 説明                                                                                                                | デフォルト値 |
-| :------------------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `cancel.enable_on_prepare_phase`       | [-]     | boolean | レーン変更のキャンセルを許可                                                                                         | true          |
-| `cancel.enable_on_lane_changing_phase` | [-]     | boolean | レーン変更の中断を許可                                                                                         | false         |
-| `cancel.delta_time`                    | [s]     | double  | センタラインに戻るステアリングを開始するのにかかる時間                                                           | 3.0           |
-| `cancel.duration`                      | [s]     | double  | センタラインに戻るために要する時間                                                                               | 3.0           |
-| `cancel.max_lateral_jerk`              | [m/sss] | double  | 中断パスの最大横方向ジャーク                                                                                   | 1000.0        |
-| `cancel.overhang_tolerance`            | [m]     | double  | 車両ヘッドがこの許容距離を超えて車線境界を超えた場合、レーン変更のキャンセルは禁止される                   | 0.0           |
-| `cancel.unsafe_hysteresis_threshold`   | [-]     | int     | 安全と不安全の決定の間の頻繁な切り替えを防ぐのに役立つしきい値                                              | 10            |
-| `cancel.deceleration_sampling_num`     | [-]     | int     | レーン変更のキャンセルを安全にするためにチェックする 減速度パターンの数                                        | 5             |
+| 名称                                   | 単位    | タイプ  | 説明                                                                                     | デフォルト値 |
+| :------------------------------------- | ------- | ------- | ---------------------------------------------------------------------------------------- | ------------ |
+| `cancel.enable_on_prepare_phase`       | [-]     | boolean | レーン変更のキャンセルを許可                                                             | true         |
+| `cancel.enable_on_lane_changing_phase` | [-]     | boolean | レーン変更の中断を許可                                                                   | false        |
+| `cancel.delta_time`                    | [s]     | double  | センタラインに戻るステアリングを開始するのにかかる時間                                   | 3.0          |
+| `cancel.duration`                      | [s]     | double  | センタラインに戻るために要する時間                                                       | 3.0          |
+| `cancel.max_lateral_jerk`              | [m/sss] | double  | 中断パスの最大横方向ジャーク                                                             | 1000.0       |
+| `cancel.overhang_tolerance`            | [m]     | double  | 車両ヘッドがこの許容距離を超えて車線境界を超えた場合、レーン変更のキャンセルは禁止される | 0.0          |
+| `cancel.unsafe_hysteresis_threshold`   | [-]     | int     | 安全と不安全の決定の間の頻繁な切り替えを防ぐのに役立つしきい値                           | 10           |
+| `cancel.deceleration_sampling_num`     | [-]     | int     | レーン変更のキャンセルを安全にするためにチェックする 減速度パターンの数                  | 5            |
 
 ### デバッグ
 
 以下のパラメータは `lane_change.param.yaml` で設定できます。
 
-| 名称 | 単位 | タイプ | 説明 | デフォルト値 |
-| --- | --- | --- | --- | --- |
-| `publish_debug_marker` | [-] | ブール型 | デバッグマーカーの公開を設定 | `false` |
+| 名称                   | 単位 | タイプ   | 説明                         | デフォルト値 |
+| ---------------------- | ---- | -------- | ---------------------------- | ------------ |
+| `publish_debug_marker` | [-]  | ブール型 | デバッグマーカーの公開を設定 | `false`      |
 
 ## デバッグマーカーと可視化
 
 デバッグマーカーを有効にするには、（再起動は不要です）を実行します。
-
 
 ```shell
 ros2 param set /planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner lane_change.publish_debug_marker true
@@ -1087,7 +1071,6 @@ LaneChangeモジュール内の`publish_debug_marker`を`lane_change.param.yaml`
 
 次に、マーカーを追加します。
 
-
 ```shell
 /planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner/debug/lane_change_left
 ```
@@ -1097,9 +1080,11 @@ LaneChangeモジュール内の`publish_debug_marker`を`lane_change.param.yaml`
 ### 車線変更戦略
 
 #### 概要
+
 この戦略では、車両の車線変更に関する予測、決定、実行のためのコンポーネントが提供されます。戦略は、環境内のオブジェクトに関する情報を考慮して、車線変更を実施するかどうかを決定します。
 
 #### コンポーネント
+
 - **Planning Planner**
   - 車両の軌道と車線変更の実行時間に関する情報を生成します。
 - **Safety Checker**
@@ -1108,12 +1093,15 @@ LaneChangeモジュール内の`publish_debug_marker`を`lane_change.param.yaml`
   - PlannerとSafety Checkerからの情報を統合し、車線変更を実施するかどうかを決定します。
 
 ### 起動要件
+
 この戦略を起動するには、次の情報を提供する必要があります。
+
 - **自車位置**
 - **周囲の物体の情報**
 - **目標車線**
 
 ### 利用可能な情報
+
 **rviz2**で利用できる情報。
 
 ![デバッグ](./images/lane_change-debug-1.png)
@@ -1123,9 +1111,9 @@ LaneChangeモジュール内の`publish_debug_marker`を`lane_change.param.yaml`
 ![デバッグ3](./images/lane_change-debug-3.png)
 
 **提供される情報:**
+
 1. 自車と物体の関係、および安全チェック情報
 2. 最新の安全チェック位置までの自車位置（補間）
 3. オブジェクトの安全性（ポリゴンの色で表示：緑 = 安全、赤 = 安全でない）
 4. 有効な候補パス
 5. 車線変更の開始および終了位置
-

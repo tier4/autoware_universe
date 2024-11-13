@@ -28,4 +28,3 @@
 #### occupancy_grid_based_validator
 
 {{ json_to_markdown("perception/autoware_detected_object_validation/schema/occupancy_grid_based_validator.schema.json", "ja") }}
-

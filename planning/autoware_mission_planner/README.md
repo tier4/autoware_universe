@@ -19,18 +19,18 @@
 
 ### パラメーター
 
-| 名称                               | 型   | 説明                                                                                                                                                                 |
-| ---------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `map_frame`                        | 文字列 | マップのフレーム名                                                                                                                                                                         |
-| `arrival_check_angle_deg`          | double | ゴール点検の角度閾値                                                                                                                                                                  |
-| `arrival_check_distance`           | double | ゴール点検の距離閾値                                                                                                                                                                |
-| `arrival_check_duration`           | double | ゴール点検の期間閾値                                                                                                                                                               |
-| `goal_angle_threshold`             | double | ゴールの承認のための目標ポーズの最大角度                                                                                                                                                   |
-| `enable_correct_goal_pose`         | ブーリアン | 最も近いレーンレットの向きに従ってゴールポーズを修正するかどうか                                                                                                                    |
-| `reroute_time_threshold`           | double | 現在速度での経路変更ポイントまでの時間がこの閾値よりも大きい場合、経路変更が可能となる                                                                                           |
-| `minimum_reroute_length`           | double | 新しい経路を発行するための最小長                                                                                                                                                              |
-| `consider_no_drivable_lanes`       | ブーリアン | 計画に走行不可のレーンレットを考慮するかどうかのフラグ                                                                                                                            |
-| `allow_reroute_in_autonomous_mode` | ブーリアン | 自律運転モードでの経路変更を許可するフラグ。falseの場合は経路変更は失敗し、trueの場合は安全な経路変更のみが許可される                                                             |
+| 名称                               | 型         | 説明                                                                                                                  |
+| ---------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| `map_frame`                        | 文字列     | マップのフレーム名                                                                                                    |
+| `arrival_check_angle_deg`          | double     | ゴール点検の角度閾値                                                                                                  |
+| `arrival_check_distance`           | double     | ゴール点検の距離閾値                                                                                                  |
+| `arrival_check_duration`           | double     | ゴール点検の期間閾値                                                                                                  |
+| `goal_angle_threshold`             | double     | ゴールの承認のための目標ポーズの最大角度                                                                              |
+| `enable_correct_goal_pose`         | ブーリアン | 最も近いレーンレットの向きに従ってゴールポーズを修正するかどうか                                                      |
+| `reroute_time_threshold`           | double     | 現在速度での経路変更ポイントまでの時間がこの閾値よりも大きい場合、経路変更が可能となる                                |
+| `minimum_reroute_length`           | double     | 新しい経路を発行するための最小長                                                                                      |
+| `consider_no_drivable_lanes`       | ブーリアン | 計画に走行不可のレーンレットを考慮するかどうかのフラグ                                                                |
+| `allow_reroute_in_autonomous_mode` | ブーリアン | 自律運転モードでの経路変更を許可するフラグ。falseの場合は経路変更は失敗し、trueの場合は安全な経路変更のみが許可される |
 
 ### サービス
 
@@ -53,16 +53,16 @@
   - IMU/GNSS/カメラによる自車位置推定
   - SLAMによるマップ構築と局在化
 
-| Name                                                                | Type                                     | Description                                         |
-| ------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------- |
-| `/planning/mission_planning/mission_planner/clear_route`            | tier4_planning_msgs/srv/ClearRoute       | ルートクリア要求                                   |
+| Name                                                                | Type                                     | Description                                      |
+| ------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------ |
+| `/planning/mission_planning/mission_planner/clear_route`            | tier4_planning_msgs/srv/ClearRoute       | ルートクリア要求                                 |
 | `/planning/mission_planning/mission_planner/set_waypoint_route`     | tier4_planning_msgs/srv/SetWaypointRoute | レーンレットウェイポイントを伴うルート要求       |
-| `/planning/mission_planning/mission_planner/set_lanelet_route`      | tier4_planning_msgs/srv/SetLaneletRoute  | 座標ベースのウェイポイントを伴うルート要求        |
-| `/planning/mission_planning/route_selector/main/clear_route`        | tier4_planning_msgs/srv/ClearRoute       | メインルートクリア要求                                |
-| `/planning/mission_planning/route_selector/main/set_waypoint_route` | tier4_planning_msgs/srv/SetWaypointRoute | レーンレットウェイポイントを伴うメインルート要求      |
-| `/planning/mission_planning/route_selector/main/set_lanelet_route`  | tier4_planning_msgs/srv/SetLaneletRoute  | 座標ベースのウェイポイントを伴うメインルート要求    |
-| `/planning/mission_planning/route_selector/mrm/clear_route`         | tier4_planning_msgs/srv/ClearRoute       | MRMルートクリア要求                                 |
-| `/planning/mission_planning/route_selector/mrm/set_waypoint_route`  | tier4_planning_msgs/srv/SetWaypointRoute | レーンレットウェイポイントを伴うMRMルート要求      |
+| `/planning/mission_planning/mission_planner/set_lanelet_route`      | tier4_planning_msgs/srv/SetLaneletRoute  | 座標ベースのウェイポイントを伴うルート要求       |
+| `/planning/mission_planning/route_selector/main/clear_route`        | tier4_planning_msgs/srv/ClearRoute       | メインルートクリア要求                           |
+| `/planning/mission_planning/route_selector/main/set_waypoint_route` | tier4_planning_msgs/srv/SetWaypointRoute | レーンレットウェイポイントを伴うメインルート要求 |
+| `/planning/mission_planning/route_selector/main/set_lanelet_route`  | tier4_planning_msgs/srv/SetLaneletRoute  | 座標ベースのウェイポイントを伴うメインルート要求 |
+| `/planning/mission_planning/route_selector/mrm/clear_route`         | tier4_planning_msgs/srv/ClearRoute       | MRMルートクリア要求                              |
+| `/planning/mission_planning/route_selector/mrm/set_waypoint_route`  | tier4_planning_msgs/srv/SetWaypointRoute | レーンレットウェイポイントを伴うMRMルート要求    |
 | `/planning/mission_planning/route_selector/mrm/set_lanelet_route`   | tier4_planning_msgs/srv/SetLaneletRoute  | 座標ベースのウェイポイントを伴うMRMルート要求    |
 
 ### サブスクリプション
@@ -78,11 +78,11 @@
 - `/carla/ego_vehicle/sensor/camera/rgb/front/image` : CARLAエミュレータによって提供されるフロントRGBカメラの画像
 - `/carla/ego_vehicle/sensor/lidar/top/front/point_cloud` : CARLAエミュレータによって提供されるフロントLiDARの点群
 
-| 名前                         | 種類                                      | 説明            |
-| ---------------------------- | ----------------------------------------- | ---------------------- |
+| 名前                         | 種類                                      | 説明                     |
+| ---------------------------- | ----------------------------------------- | ------------------------ |
 | `input/vector_map`           | autoware_map_msgs/msg/LaneletMapBin       | Lanelet2のベクトルマップ |
-| `input/modified_goal`        | geometry_msgs/PoseWithUuidStamped         | 修正されたゴールの姿勢     |
-| `input/operation_mode_state` | autoware_adapi_v1_msgs/OperationModeState | 操作モードの状態   |
+| `input/modified_goal`        | geometry_msgs/PoseWithUuidStamped         | 修正されたゴールの姿勢   |
+| `input/operation_mode_state` | autoware_adapi_v1_msgs/OperationModeState | 操作モードの状態         |
 
 ### 資料
 
@@ -90,16 +90,16 @@
 - [Open Robotics: Autoware.Auto](https://arxiv.org/abs/2204.09611)
 - [Experimental validation of the Autoware.Auto planning module in simulated scenarios](https://arxiv.org/abs/2204.10510)
 
-| 名称                                                  | タイプ                               | 説明                                             |
-| ------------------------------------------------------ | ----------------------------------- | ------------------------------------------------ |
-| `/planning/mission_planning/state`                    | tier4_planning_msgs/msg/RouteState | ルートの状態                                     |
-| `/planning/mission_planning/route`                    | autoware_planning_msgs/LaneletRoute | ルート                                             |
-| `/planning/mission_planning/route_selector/main/state` | tier4_planning_msgs/msg/RouteState | メインルートの状態                                  |
-| `/planning/mission_planning/route_selector/main/route` | autoware_planning_msgs/LaneletRoute | メインルート                                       |
-| `/planning/mission_planning/route_selector/mrm/state`  | tier4_planning_msgs/msg/RouteState | MRMルートの状態                                   |
-| `/planning/mission_planning/route_selector/mrm/route`  | autoware_planning_msgs/LaneletRoute | MRMルート                                          |
-| `~/debug/route_marker`                                | visualization_msgs/msg/MarkerArray | デバッグ用のルートマーカー                           |
-| `~/debug/goal_footprint`                              | visualization_msgs/msg/MarkerArray | デバッグ用の目標フットプリント                       |
+| 名称                                                   | タイプ                              | 説明                           |
+| ------------------------------------------------------ | ----------------------------------- | ------------------------------ |
+| `/planning/mission_planning/state`                     | tier4_planning_msgs/msg/RouteState  | ルートの状態                   |
+| `/planning/mission_planning/route`                     | autoware_planning_msgs/LaneletRoute | ルート                         |
+| `/planning/mission_planning/route_selector/main/state` | tier4_planning_msgs/msg/RouteState  | メインルートの状態             |
+| `/planning/mission_planning/route_selector/main/route` | autoware_planning_msgs/LaneletRoute | メインルート                   |
+| `/planning/mission_planning/route_selector/mrm/state`  | tier4_planning_msgs/msg/RouteState  | MRMルートの状態                |
+| `/planning/mission_planning/route_selector/mrm/route`  | autoware_planning_msgs/LaneletRoute | MRMルート                      |
+| `~/debug/route_marker`                                 | visualization_msgs/msg/MarkerArray  | デバッグ用のルートマーカー     |
+| `~/debug/goal_footprint`                               | visualization_msgs/msg/MarkerArray  | デバッグ用の目標フットプリント |
 
 ## ルートセクション
 
@@ -129,7 +129,6 @@ Mission Planner は、与えられたゴールポーズを検証してルート�
 
 `plan route` の詳細については、次のセクションで説明します。
 
-
 ```plantuml
 @startuml
 title goal callback
@@ -155,7 +154,6 @@ stop
 ### ルートプランナー
 
 `plan route`は、自車位置と目標位置を含むチェックポイントで実行されます。
-
 
 ```plantuml
 @startuml
@@ -196,7 +194,7 @@ stop
 1. 車線変更可能な計画されたパスに対するすべての隣接車線 (右と左) が `route_lanelets` として記憶されます。
 2. 車線変更できない計画されたパスに対するすべての隣接車線 (右と左) が `candidate_lanelets` として記憶されます。
 3. 各 `candidate_lanelets` の前後車線が `route_lanelets` である場合、`candidate_lanelet` は `route_lanelets` として登録されます。
-    - これは、`candidate_lanelet` (隣接車線) が車線変更できない場合でも、`candidate_lanelet` の前後車線が `route_lanelets` であれば車線変更せずに `candidate_lanelet` を通過できるためです。
+   - これは、`candidate_lanelet` (隣接車線) が車線変更できない場合でも、`candidate_lanelet` の前後車線が `route_lanelets` であれば車線変更せずに `candidate_lanelet` を通過できるためです。
 
 `優先車線を取得` はルートハンドラーを使用して `route_lanelets` から `preferred_primitive` を抽出します。
 
@@ -237,4 +235,3 @@ MRM が路肩に停車するためのインターフェイスです。できる�
 
 - 動的オブジェクト (例: 歩行者や他の車両) や動的マップ情報 (例: 一部の車線を塞ぐ道路工事) はルート計画中に考慮されません。
 - ループルートはサポートされていません。
-

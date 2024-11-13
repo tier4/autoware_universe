@@ -21,7 +21,6 @@ Autoware を起動するときに、`pose_source:=yabloc` を引数として設�
 
 YabLoc を実行するためのコマンドの例を以下に示します。
 
-
 ```shell
 ros2 launch autoware_launch logging_simulator.launch.xml \
   map_path:=$HOME/autoware_map/sample-map-rosbag\
@@ -51,10 +50,10 @@ YabLocはこれらのセグメントを各パーティクルに変換し、そ�
 
 <img src="docs/yabloc_rviz_description.png" width=800>
 
-| index | トピック名                                                     | 説明                                                                                                                                                               |
-| ----- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | `/localization/yabloc/pf/predicted_particle_marker`            | パーティクルフィルタの粒子分布。赤い粒子は有力候補を示す。                                                                                                             |
-| 2     | `/localization/yabloc/pf/scored_cloud`                         | 3D投影線分群。色はマップとの一致度を示す。                                                                                                                         |
+| index | トピック名                                                     | 説明                                                                                                                                                            |
+| ----- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | `/localization/yabloc/pf/predicted_particle_marker`            | パーティクルフィルタの粒子分布。赤い粒子は有力候補を示す。                                                                                                      |
+| 2     | `/localization/yabloc/pf/scored_cloud`                         | 3D投影線分群。色はマップとの一致度を示す。                                                                                                                      |
 | 3     | `/localization/yabloc/image_processing/lanelet2_overlay_image` | 推定された自車位置に基づいて画像にレーンレット2（黄色の線）を重ねた画像。実際の道路標識とよく一致していれば、ローカリゼーションが正確に行われていることを示す。 |
 
 ### デバッグ用の画像トピック
@@ -63,23 +62,22 @@ YabLocはこれらのセグメントを各パーティクルに変換し、そ�
 
 <img src="docs/yabloc_image_description.png" width=800>
 
-| index | トピック名                                                              | 説明                                                                                     |
-| ----- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| 1     | `/localization/yabloc/pf/cost_map_image`                                | レーンレット2から作成されたコストマップ                                                  |
-| 2     | `/localization/yabloc/pf/match_image`                                   | 射影された線分                                                                            |
-| 3     | `/localization/yabloc/image_processing/image_with_colored_line_segment` | 分類された線分。緑色の線分は、パーティクル補正に使用されます                        |
-| 4     | `/localization/yabloc/image_processing/lanelet2_overlay_image`          | レーンレット2のオーバーレイ                                                              |
-| 5     | `/localization/yabloc/image_processing/segmented_image`                 | グラフベースのセグメンテーション結果                                                   |
+| index | トピック名                                                              | 説明                                                         |
+| ----- | ----------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 1     | `/localization/yabloc/pf/cost_map_image`                                | レーンレット2から作成されたコストマップ                      |
+| 2     | `/localization/yabloc/pf/match_image`                                   | 射影された線分                                               |
+| 3     | `/localization/yabloc/image_processing/image_with_colored_line_segment` | 分類された線分。緑色の線分は、パーティクル補正に使用されます |
+| 4     | `/localization/yabloc/image_processing/lanelet2_overlay_image`          | レーンレット2のオーバーレイ                                  |
+| 5     | `/localization/yabloc/image_processing/segmented_image`                 | グラフベースのセグメンテーション結果                         |
 
 ## 制限事項
 
 - YabLocとNDTを同時に動作させることはサポートされていません。
-   - 二つを同時に動作させることは計算コストが高くなる可能性があるためです。
-   - また、ほとんどの場合NDTはYabLocよりも優れているため、同時に動作させることのメリットは少ないです。
+  - 二つを同時に動作させることは計算コストが高くなる可能性があるためです。
+  - また、ほとんどの場合NDTはYabLocよりも優れているため、同時に動作させることのメリットは少ないです。
 - ロールとピッチの推定を行わないため、一部の認識ノードが正しく動作しない可能性があります。
 - 現在、複数のカメラはサポートされていません。将来的にはサポートされる予定です。
 - 交差点など、路面標示が少ない場所では、推定はGNSS、IMU、車両のホイールオドメトリに大きく依存します。
 - Lanelet2に路面境界または路面標示が含まれていない場合、推定は失敗する可能性があります。
 - Autowareチュートリアルで提供されているサンプルrosbagには画像が含まれていないため、YabLocで実行することはできません。
-   - YabLocの機能をテストしたい場合は、この[PR](https://github.com/autowarefoundation/autoware.universe/pull/3946)で提供されているサンプルテストデータが役立ちます。
-
+  - YabLocの機能をテストしたい場合は、この[PR](https://github.com/autowarefoundation/autoware.universe/pull/3946)で提供されているサンプルテストデータが役立ちます。

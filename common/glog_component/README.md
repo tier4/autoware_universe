@@ -8,7 +8,6 @@
 
 コンテナで `glog_component` を読み込む場合、起動ファイルは以下のようになります。
 
-
 ```py
 glog_component = ComposableNode(
     package="glog_component",
@@ -28,4 +27,3 @@ container = ComposableNodeContainer(
     ],
 )
 ```
-

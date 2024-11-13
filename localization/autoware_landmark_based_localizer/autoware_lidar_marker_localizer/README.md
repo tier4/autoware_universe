@@ -7,24 +7,26 @@
 ### `lidar_marker_localizer` ノード
 
 #### 入力
+
 - `/hesai406/points` (`PointCloud`)
-    - ヘサイ406のLiDARポイントクラウド
+  - ヘサイ406のLiDARポイントクラウド
 - `/current_pose` (`Odometry`)
-    - 自車位置
+  - 自車位置
 - `/static_map` (`StaticMap`)
-    - 静的地図（反転させた座標系）
+  - 静的地図（反転させた座標系）
 
 #### 出力
-- `/lidar_marker_localizer/output` (`Odometry`)
-    - 検出された反射器に基づく、自車位置の推定値
-- `/lidar_marker_localizer/debug` (`MarkerArray`)
-    - デバッグ用マーカー
 
-| 名前 | 型 | 説明 |
-|---|---|---|
-| `~/input/lanelet2_map` | `autoware_map_msgs::msg::HADMapBin` | lanelet2データ |
-| `~/input/pointcloud` | `sensor_msgs::msg::PointCloud2` | 点群 |
-| `~/input/ekf_pose` | `geometry_msgs::msg::PoseWithCovarianceStamped` | EKFによる自車位置 |
+- `/lidar_marker_localizer/output` (`Odometry`)
+  - 検出された反射器に基づく、自車位置の推定値
+- `/lidar_marker_localizer/debug` (`MarkerArray`)
+  - デバッグ用マーカー
+
+| 名前                   | 型                                              | 説明              |
+| ---------------------- | ----------------------------------------------- | ----------------- |
+| `~/input/lanelet2_map` | `autoware_map_msgs::msg::HADMapBin`             | lanelet2データ    |
+| `~/input/pointcloud`   | `sensor_msgs::msg::PointCloud2`                 | 点群              |
+| `~/input/ekf_pose`     | `geometry_msgs::msg::PoseWithCovarianceStamped` | EKFによる自車位置 |
 
 #### 出力
 
@@ -82,14 +84,14 @@ Autoware はオープンソースプロジェクトであり、コミュニテ�
 
 このドキュメントに記載されている情報は、正確で最新であることを目指していますが、Autoware Foundation はその正確性または完全性について保証しません。Autoware の使用は、ユーザー自身の責任において行われるものとします。
 
-| 名前                               | 種類                                               | 説明                                                               |
-| :-----------------------------------| :------------------------------------------------- | :--------------------------------------------------------------------- |
-| `~/output/pose_with_covariance`   | `geometry_msgs::msg::PoseWithCovarianceStamped`   | 推定姿勢                                                          |
-| `~/debug/pose_with_covariance`     | `geometry_msgs::msg::PoseWithCovarianceStamped`   | [デバッグトピック] 推定姿勢                                        |
-| `~/debug/marker_detected`          | `geometry_msgs::msg::PoseArray`                    | [デバッグトピック] 検出されたマーカートピック                         |
-| `~/debug/marker_mapped`            | `visualization_msgs::msg::MarkerArray`             | [デバッグトピック] Rvizで薄板として可視化するための読み込まれたランドマーク |
-| `~/debug/marker_pointcloud`        | `sensor_msgs::msg::PointCloud2`                    | 検出されたマーカーのPointCloud                                   |
-| `/diagnostics`                     | `diagnostic_msgs::msg::DiagnosticArray`          | 診断結果                                                            |
+| 名前                            | 種類                                            | 説明                                                                        |
+| :------------------------------ | :---------------------------------------------- | :-------------------------------------------------------------------------- |
+| `~/output/pose_with_covariance` | `geometry_msgs::msg::PoseWithCovarianceStamped` | 推定姿勢                                                                    |
+| `~/debug/pose_with_covariance`  | `geometry_msgs::msg::PoseWithCovarianceStamped` | [デバッグトピック] 推定姿勢                                                 |
+| `~/debug/marker_detected`       | `geometry_msgs::msg::PoseArray`                 | [デバッグトピック] 検出されたマーカートピック                               |
+| `~/debug/marker_mapped`         | `visualization_msgs::msg::MarkerArray`          | [デバッグトピック] Rvizで薄板として可視化するための読み込まれたランドマーク |
+| `~/debug/marker_pointcloud`     | `sensor_msgs::msg::PointCloud2`                 | 検出されたマーカーのPointCloud                                              |
+| `/diagnostics`                  | `diagnostic_msgs::msg::DiagnosticArray`         | 診断結果                                                                    |
 
 ## パラメータ
 
@@ -98,7 +100,6 @@ Autoware はオープンソースプロジェクトであり、コミュニテ�
 ## 起動方法
 
 Autowareを起動する際は、`pose_source`に`lidar-marker`を設定します。
-
 
 ```bash
 ros2 launch autoware_launch ... \
@@ -109,7 +110,6 @@ ros2 launch autoware_launch ... \
 ## 設計
 
 ### フローチャート
-
 
 ```plantuml
 @startuml
@@ -180,4 +180,3 @@ end group
 - [TIER IV](https://tier4.jp/en/)
 - [大成建設](https://www.taisei.co.jp/english/)
 - [Yuri Shimizu](https://github.com/YuriShimizu824)
-

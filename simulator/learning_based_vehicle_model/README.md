@@ -26,7 +26,6 @@
 
 このパッケージを使用するには、`python3`と`pybind11`をインストールする必要があります。Pythonサブモデルの唯一の仮定は、それらのインタフェースです。
 
-
 ```python
 class PythonSubmodelInterface:
 
@@ -151,7 +150,6 @@ class PythonSubmodelInterface:
 
 最初にモデルを設定する必要があります。
 
-
 ```C++
 InterconnectedModel vehicle;
 
@@ -185,7 +183,6 @@ vehicle.dtSet(dt);
 
 モデルが正しく設定された後、以下のように使用できます。
 
-
 ```C++
 // Example of an model input
 std::vector<double> vehicle_input = {0.0, 1.0}; // INPUT_NAME_1, INPUT_NAME_2
@@ -207,4 +204,3 @@ std::vector<double> next_state = vehicle.updatePyModel(vehicle_input);
 ## 関連する問題
 
 <!-- 必須 -->
-

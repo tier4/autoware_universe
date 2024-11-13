@@ -27,7 +27,6 @@
 
 ### システム構成図
 
-
 ```plantuml
 @startuml
 !theme cerulean-outline
@@ -109,7 +108,6 @@ FMS: 複数の車両が運用中で関連レーンの占有がある場合の交
 - 通信方式
 
 FMS: フリートマネジメントシステム
-
 
 ```plantuml
 @startuml
@@ -210,19 +208,19 @@ remote_controllable_traffic_light -[hidden]down-> warning_light
 
 ## 自動運転ソフトウェア パラメータ
 
-| パラメータ | 型 | 説明 |
-|---|---|---|
-| `max_delay_sec` | double | [秒] コマンドの最大許容遅延 |
-| `near_line_distance` | double | [m] 停車線を停止するために停止線までの距離のしきい値 |
-| `dead_line_margin` | double | [m] このモジュールが停止線を挿入し続けるしきい値 |
-| `hold_stop_margin_distance` | double | [m] 再起動防止のパラメータ（以降のセクションを参照） |
-| `check_timeout_after_stop_line` | bool | [-] リンクが切断されたときに停止するタイムアウトの確認 |
+| パラメータ                      | 型     | 説明                                                   |
+| ------------------------------- | ------ | ------------------------------------------------------ |
+| `max_delay_sec`                 | double | [秒] コマンドの最大許容遅延                            |
+| `near_line_distance`            | double | [m] 停車線を停止するために停止線までの距離のしきい値   |
+| `dead_line_margin`              | double | [m] このモジュールが停止線を挿入し続けるしきい値       |
+| `hold_stop_margin_distance`     | double | [m] 再起動防止のパラメータ（以降のセクションを参照）   |
+| `check_timeout_after_stop_line` | bool   | [-] リンクが切断されたときに停止するタイムアウトの確認 |
 
 #### 再始動防止
 
 車両の制御性能が低下するために、車両の動き始め時に停止するのに X メートル（例: 0.5 メートル）を要する場合、車両は停止点に近づこうとして動き始めるときは厳守すべき停止位置を超過します（例: 0.3 メートル距離）。
 
-このモジュールには、これらの余分な再始動を防止するためのパラメータ `hold_stop_margin_distance` があります。車両がモジュールの停止位置（_front_to_stop_line < hold_stop_margin_distance）から `hold_stop_margin_distance` メーター以内に停止した場合、モジュールは車両がモジュールの停止位置で既に停止していると判断し、他の要素により車両が停止した場合にも、現在の位置で停止し続けることを計画します。
+このモジュールには、これらの余分な再始動を防止するためのパラメータ `hold_stop_margin_distance` があります。車両がモジュールの停止位置（\_front_to_stop_line < hold_stop_margin_distance）から `hold_stop_margin_distance` メーター以内に停止した場合、モジュールは車両がモジュールの停止位置で既に停止していると判断し、他の要素により車両が停止した場合にも、現在の位置で停止し続けることを計画します。
 
 <figure markdown>
   ![例](docs/restart_prevention.svg){width=1000}
@@ -240,7 +238,6 @@ remote_controllable_traffic_light -[hidden]down-> warning_light
 </figure>
 
 #### フローチャート
-
 
 ```plantuml
 @startuml
@@ -302,4 +299,3 @@ $$
 #### 制限事項
 
 - 未定
-

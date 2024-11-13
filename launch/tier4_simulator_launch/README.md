@@ -10,7 +10,6 @@
 
 ## 使用方法
 
-
 ```xml
   <include file="$(find-pkg-share tier4_simulator_launch)/launch/simulator.launch.xml">
     <arg name="vehicle_info_param_file" value="VEHICLE_INFO_PARAM_FILE" />
@@ -18,5 +17,4 @@
   </include>
 ```
 
-simple\_planning\_simulator で使用されるシミュレータ モデルは、パッケージ "`VEHICLE\_MODEL`\_description" の "config/simulator\_model.param.yaml" からロードされています。
-
+simple_planning_simulator で使用されるシミュレータ モデルは、パッケージ "`VEHICLE\_MODEL`\_description" の "config/simulator_model.param.yaml" からロードされています。

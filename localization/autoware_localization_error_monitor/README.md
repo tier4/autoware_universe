@@ -16,8 +16,8 @@ autoware_localization_error_monitorは、位置推定の結果の不確かさを
 
 ### 入力
 
-| 名前         | タイプ                      | 説明         |
-| ------------ | ------------------------- | ------------------- |
+| 名前         | タイプ                    | 説明         |
+| ------------ | ------------------------- | ------------ |
 | `input/odom` | `nav_msgs::msg::Odometry` | 自車位置結果 |
 
 ### 出力
@@ -83,15 +83,14 @@ Autowareはオープンソースプロジェクトです。貢献に興味があ
 
 Autowareに関する詳細情報は、以下のリソースを参照してください。
 
-- 公式ウェブサイト: https://www.autoware.ai
-- GitHubリポジトリ: https://github.com/autowarefoundation/autoware.ai
+- 公式ウェブサイト: <https://www.autoware.ai>
+- GitHubリポジトリ: <https://github.com/autowarefoundation/autoware.ai>
 
-| 名称                   | 型                                    | 説明         |
-| ---------------------- | --------------------------------------- | ------------------- |
-| `debug/ellipse_marker` | `visualization_msgs::msg::Marker`       | 楕円マーカー      |
-| `diagnostics`          | `diagnostic_msgs::msg::DiagnosticArray` | 診断出力        |
+| 名称                   | 型                                      | 説明         |
+| ---------------------- | --------------------------------------- | ------------ |
+| `debug/ellipse_marker` | `visualization_msgs::msg::Marker`       | 楕円マーカー |
+| `diagnostics`          | `diagnostic_msgs::msg::DiagnosticArray` | 診断出力     |
 
 ## パラメータ
 
 {{ json_to_markdown("localization/autoware_localization_error_monitor/schema/localization_error_monitor.schema.json", True) }}
-

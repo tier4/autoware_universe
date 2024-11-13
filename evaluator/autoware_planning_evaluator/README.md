@@ -26,7 +26,6 @@
 
 `MetricsCalculator` は、以下の関数を呼び出すことでメトリクス統計を計算します。
 
-
 ```C++
 Stat<double> MetricsCalculator::calculate(const Metric metric, const Trajectory & traj) const;
 ```
@@ -35,7 +34,7 @@ Stat<double> MetricsCalculator::calculate(const Metric metric, const Trajectory 
 
 - `metrics/metric.hpp`: `M` を `enum`、文字列変換マップ、説明マップに追加します。
 - `metrics_calculator.cpp`: `calculate` 関数の `switch/case` ステートメントに `M` を追加します。
--  `selected_metrics` パラメータに `M` を追加します。
+- `selected_metrics` パラメータに `M` を追加します。
 
 ## 入出力
 
@@ -43,17 +42,17 @@ Stat<double> MetricsCalculator::calculate(const Metric metric, const Trajectory 
 
 **自動運転ソフトウェア ドキュメント（日本語訳）**
 
-| 名前 | 型 | 説明 |
-|---|---|---|
-| `~/input/trajectory` | `autoware_planning_msgs::msg::Trajectory` | 評価するメインのPlanning |
-| `~/input/reference_trajectory` | `autoware_planning_msgs::msg::Trajectory` | 逸脱量の測定に使用する基準Planning |
-| `~/input/objects` | `autoware_perception_msgs::msg::PredictedObjects` | 障害物 |
+| 名前                           | 型                                                | 説明                               |
+| ------------------------------ | ------------------------------------------------- | ---------------------------------- |
+| `~/input/trajectory`           | `autoware_planning_msgs::msg::Trajectory`         | 評価するメインのPlanning           |
+| `~/input/reference_trajectory` | `autoware_planning_msgs::msg::Trajectory`         | 逸脱量の測定に使用する基準Planning |
+| `~/input/objects`              | `autoware_perception_msgs::msg::PredictedObjects` | 障害物                             |
 
 ### 出力
 
 各メトリックは、メトリック名にちなんだトピックで公開されます。
 
-| 名称        | 種別                                     | 説明                                                   |
+| 名称        | 種別                                    | 説明                                                  |
 | ----------- | --------------------------------------- | ----------------------------------------------------- |
 | `~/metrics` | `diagnostic_msgs::msg::DiagnosticArray` | メトリックごとのDiagnosticStatusを持つDiagnosticArray |
 
@@ -77,4 +76,3 @@ Stat<double> MetricsCalculator::calculate(const Metric metric, const Trajectory 
 - `motion_evaluator_node`。
   - エゴの実際の動作から時間の経過に伴ってトラジェクトリを構築するノード。
   - 現在実装されているのは概念実証のみです。
-

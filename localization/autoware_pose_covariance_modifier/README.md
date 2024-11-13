@@ -51,7 +51,6 @@ GNSS システムは、共分散測定に変換できる信頼性の高い標準
 
 ローカリゼーションでは NDT ポーズのみが使用されます。GNSS ポーズは初期化にのみ使用されます。
 
-
 ```mermaid
 graph TD
     ndt_scan_matcher["ndt_scan_matcher"] --> |"/localization/pose_estimator/pose_with_covariance"| ekf_localizer["ekf_localizer"]
@@ -67,7 +66,6 @@ class ekf_localizer cl_node;
 ローカライゼーションでは、GNSSから得られる標準偏差値に応じて、NDTとGNSSの両方の姿勢が使用されます。
 
 以下に、プロセスと定義済みの閾値を示すフローチャートを示します。
-
 
 ```mermaid
 graph TD
@@ -133,19 +131,19 @@ class gnss_ndt_pose cl_output;
 
 ### サブスクライブするトピック
 
-| 名称                            | タイプ                                         | 説明                        |
-| ------------------------------- | -------------------------------------------- | --------------------------- |
-| `input_gnss_pose_with_cov_topic` | `geometry_msgs::msg::PoseWithCovarianceStamped` | GNSSポーズ入力トピック。       |
-| `input_ndt_pose_with_cov_topic`  | `geometry_msgs::msg::PoseWithCovarianceStamped` | NDTポーズ入力トピック。       |
+| 名称                             | タイプ                                          | 説明                     |
+| -------------------------------- | ----------------------------------------------- | ------------------------ |
+| `input_gnss_pose_with_cov_topic` | `geometry_msgs::msg::PoseWithCovarianceStamped` | GNSSポーズ入力トピック。 |
+| `input_ndt_pose_with_cov_topic`  | `geometry_msgs::msg::PoseWithCovarianceStamped` | NDTポーズ入力トピック。  |
 
 ### 発行トピック
 
-| 名称                                  | 型                                          | 説明                                                                                                                  |
-| ------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `output_pose_with_covariance_topic` | `geometry_msgs::msg::PoseWithCovarianceStamped` | 出力姿勢トピック。このトピックはekf_localizerパッケージで使用されます。                                          |
-| `selected_pose_type`                  | `std_msgs::msg::String`                     | このパッケージの出力でどの姿勢ソースが使用されるかを宣言します。                                                  |
-| `output/ndt_position_stddev`          | `std_msgs::msg::Float64`                    | 出力姿勢のndt位置標準偏差の平均（x-y）。enable_debug_topicsがtrueの場合にのみ公開されます。                  |
-| `output/gnss_position_stddev`         | `std_msgs::msg::Float64`                    | 出力姿勢のGNSS位置標準偏差の平均（x-y）。enable_debug_topicsがtrueの場合にのみ公開されます。                  |
+| 名称                                | 型                                              | 説明                                                                                         |
+| ----------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `output_pose_with_covariance_topic` | `geometry_msgs::msg::PoseWithCovarianceStamped` | 出力姿勢トピック。このトピックはekf_localizerパッケージで使用されます。                      |
+| `selected_pose_type`                | `std_msgs::msg::String`                         | このパッケージの出力でどの姿勢ソースが使用されるかを宣言します。                             |
+| `output/ndt_position_stddev`        | `std_msgs::msg::Float64`                        | 出力姿勢のndt位置標準偏差の平均（x-y）。enable_debug_topicsがtrueの場合にのみ公開されます。  |
+| `output/gnss_position_stddev`       | `std_msgs::msg::Float64`                        | 出力姿勢のGNSS位置標準偏差の平均（x-y）。enable_debug_topicsがtrueの場合にのみ公開されます。 |
 
 ### パラメーター
 
@@ -164,19 +162,19 @@ GNSSポーズトピックはNDTよりも高い周波数を持つ場合があり�
 入力が次の周波数を持つと仮定します。
 
 | 情報源 | 周波数 |
-| ------ | --------- |
-| GNSS   | 200 Hz    |
-| NDT    | 10 Hz     |
+| ------ | ------ |
+| GNSS   | 200 Hz |
+| NDT    | 10 Hz  |
 
 このパッケージは、モードに応じて出力のポーズを発行します。
 
 最終的な結果:
 
-| モード | 出力周波数 |
-|---|---|
-| GNSSのみ | 200 Hz |
-| GNSS + NDT | 210 Hz |
-| NDTのみ | 10 Hz |
+| モード     | 出力周波数 |
+| ---------- | ---------- |
+| GNSSのみ   | 200 Hz     |
+| GNSS + NDT | 210 Hz     |
+| NDTのみ    | 10 Hz      |
 
 ### NDT共分散値の上書き方法および時期
 
@@ -197,11 +195,11 @@ NDT共分散値は、以下の条件を満たした場合に上書きされま�
 
 オブジェクトの障害物逸脱量がvelocity逸脱量よりも著しく大きい場合、速度が0である場合でも、オブジェクトの障害物逸脱量はゼロにはなりません。
 
-| モード       | 出力、共分散                         |
-| ---------- | ------------------------------------------- |
-| GNSS のみ  | GNSS、修正なし                            |
+| モード     | 出力、共分散                      |
+| ---------- | --------------------------------- |
+| GNSS のみ  | GNSS、修正なし                    |
 | GNSS + NDT | **GNSS:** 修正なし、**NDT:** 補間 |
-| NDT のみ   | NDT、修正なし                             |
+| NDT のみ   | NDT、修正なし                     |
 
 NDT 共分散値は `GNSS + NDT` モードでのみ上書きされます。
 
@@ -223,4 +221,3 @@ NDT 共分散値は `GNSS + NDT` モードでのみ上書きされます。
 - 最終値 = `ndt_std_dev_bound_lower` + `ndt_std_dev_bound_upper` - `ndt_std_dev_target` (逆数を求める)
 
 <img width="300" src="doc/range_lerp.svg" alt="範囲から範囲への lerp アニメーション">
-

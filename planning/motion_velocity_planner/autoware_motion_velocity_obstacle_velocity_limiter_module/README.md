@@ -128,7 +128,7 @@
 
 レーンレットマップは常に障害物をチェックしていますが、他のソースはパラメーター `obstacles.dynamic_source` を使用して切り替えられます。
 
-フットプリントと交差する障害物を効率的に探すために、それらは R-ツリー ([https://www.boost.org/doc/libs/1_80_0/libs/geometry/doc/html/geometry/reference/spatial_indexes/boost__geometry__index__rtree.html](https://www.boost.org/doc/libs/1_80_0/libs/geometry/doc/html/geometry/reference/spatial_indexes/boost__geometry__index__rtree.html)) に格納されます。
+フットプリントと交差する障害物を効率的に探すために、それらは R-ツリー ([https://www.boost.org/doc/libs/1_80_0/libs/geometry/doc/html/geometry/reference/spatial_indexes/boost**geometry**index\_\_rtree.html](https://www.boost.org/doc/libs/1_80_0/libs/geometry/doc/html/geometry/reference/spatial_indexes/boost__geometry__index__rtree.html)) に格納されます。
 2 つのツリーが使用されます。1 つは障害物点用で、1 つは障害物ラインストリング用です (R-ツリーを簡素化するために、ラインストリングはセグメントに分解されます)。
 
 #### オブスタクルマスク
@@ -200,27 +200,27 @@ $velocity = \frac{dist\_to\_collision}{min\_ttc}$
 
 ## パラメータ
 
-| 名前 | 型 | 説明 |
-|---|---|---|
-| `min_ttc` | float | 各軌跡点で一定の向きと速度を想定した場合、衝突しないために必要な最低時間 [秒] |
-| `distance_buffer` | float | 障害物との必要な距離バッファ [m] |
-| `min_adjusted_velocity` | float | このノードが設定できる最小調整速度 [m/s] |
-| `max_deceleration` | float | 調整速度が発生させることができる最大減速 [m/s²] |
-| `trajectory_preprocessing.start_distance` | float | 軌道の一部 (現在の自車位置に対する相対距離) から速度を調整するコントロールの開始点 [m] |
-| `trajectory_preprocessing.max_length` | float | 速度を調整する最大距離 (`start_distance` から開始) [m] |
-| `trajectory_preprocessing.max_distance` | float | 速度を調整する最大時間 (`start_distance` から測定) [秒] |
-| `trajectory_preprocessing.downsample_factor` | int | 軌跡のダウンサンプリング係数。精度と性能のトレードオフに使用できます。 |
-| `trajectory_preprocessing.calculate_steering_angle` | bool | True の場合、軌跡メッセージの操舵角は使用されず、再計算されます。 |
-| `simulation.model` | string | シミュレーションに使用するモデル。 "particle" か "bicycle" のいずれか。 |
-| `simulation.distance_method` | string | 衝突までの距離の計算に使用するメソッド。 "exact" か "approximation" のいずれか。 |
-| `simulation.steering_offset` | float | bicycle モデルで使用する操舵の周りにオフセット。 |
-| `simulation.nb_points` | int | bicycle モデルでモーションをシミュレートするために使用するポイント数。 |
-| `obstacles.dynamic_source` | string | 障害物チェックに使用される動的障害物のソース。 "occupancy_grid"、"point_cloud"、または "static_only" (動的障害物なし) のいずれか。 |
-| `obstacles.occupancy_grid_threshold` | int | 占用グリッドでセルが障害物と見なされる値。 |
-| `obstacles.dynamic_obstacles_buffer` | float | 障害物マスク時に障害物の周りに使用するバッファ。ノイズを防ぎます。 |
-| `obstacles.dynamic_obstacles_min_vel` | float | 動的障害物をマスクする最小速度。 |
-| `obstacles.static_map_tags` | 文字列リスト | このタグを持つレーンのマップの直線は障害物として使用されます。 |
-| `obstacles.filter_envelope` | bool | 安全エンベロープを使用して動的障害物ソースをフィルタリングするかどうか。 |
+| 名前                                                | 型           | 説明                                                                                                                               |
+| --------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `min_ttc`                                           | float        | 各軌跡点で一定の向きと速度を想定した場合、衝突しないために必要な最低時間 [秒]                                                      |
+| `distance_buffer`                                   | float        | 障害物との必要な距離バッファ [m]                                                                                                   |
+| `min_adjusted_velocity`                             | float        | このノードが設定できる最小調整速度 [m/s]                                                                                           |
+| `max_deceleration`                                  | float        | 調整速度が発生させることができる最大減速 [m/s²]                                                                                    |
+| `trajectory_preprocessing.start_distance`           | float        | 軌道の一部 (現在の自車位置に対する相対距離) から速度を調整するコントロールの開始点 [m]                                             |
+| `trajectory_preprocessing.max_length`               | float        | 速度を調整する最大距離 (`start_distance` から開始) [m]                                                                             |
+| `trajectory_preprocessing.max_distance`             | float        | 速度を調整する最大時間 (`start_distance` から測定) [秒]                                                                            |
+| `trajectory_preprocessing.downsample_factor`        | int          | 軌跡のダウンサンプリング係数。精度と性能のトレードオフに使用できます。                                                             |
+| `trajectory_preprocessing.calculate_steering_angle` | bool         | True の場合、軌跡メッセージの操舵角は使用されず、再計算されます。                                                                  |
+| `simulation.model`                                  | string       | シミュレーションに使用するモデル。 "particle" か "bicycle" のいずれか。                                                            |
+| `simulation.distance_method`                        | string       | 衝突までの距離の計算に使用するメソッド。 "exact" か "approximation" のいずれか。                                                   |
+| `simulation.steering_offset`                        | float        | bicycle モデルで使用する操舵の周りにオフセット。                                                                                   |
+| `simulation.nb_points`                              | int          | bicycle モデルでモーションをシミュレートするために使用するポイント数。                                                             |
+| `obstacles.dynamic_source`                          | string       | 障害物チェックに使用される動的障害物のソース。 "occupancy_grid"、"point_cloud"、または "static_only" (動的障害物なし) のいずれか。 |
+| `obstacles.occupancy_grid_threshold`                | int          | 占用グリッドでセルが障害物と見なされる値。                                                                                         |
+| `obstacles.dynamic_obstacles_buffer`                | float        | 障害物マスク時に障害物の周りに使用するバッファ。ノイズを防ぎます。                                                                 |
+| `obstacles.dynamic_obstacles_min_vel`               | float        | 動的障害物をマスクする最小速度。                                                                                                   |
+| `obstacles.static_map_tags`                         | 文字列リスト | このタグを持つレーンのマップの直線は障害物として使用されます。                                                                     |
+| `obstacles.filter_envelope`                         | bool         | 安全エンベロープを使用して動的障害物ソースをフィルタリングするかどうか。                                                           |
 
 ## 仮定 / 制約
 
@@ -240,4 +240,3 @@ $velocity = \frac{dist\_to\_collision}{min\_ttc}$
 ## (オプション) 参照 / 外部リンク
 
 ## (オプション) 今後の拡張 / 実装されていない部分
-

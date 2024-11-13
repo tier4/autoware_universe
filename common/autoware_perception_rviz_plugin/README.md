@@ -18,52 +18,64 @@
 ### 検出された物体
 
 #### 入力タイプ
+
 - `AutowareAuto::DetectedObject`
 
 #### Visualized Result
+
 - `rviz::MarkerArray`
 
 ### LandMarks
 
 #### Input Types
+
 - `AutowareAuto::LandMark`
 
 #### Visualized Result
+
 - `rviz::MarkerArray`
 
 ### PointClouds
 
 #### Input Types
+
 - `AutowareAuto::PointCloud`
 - `AutowareAuto::LidarPointCloud`
 - `AutowareAuto::CameraPointCloud`
 - `AutowareAuto::PointCloud2`
 
 #### Visualized Result
+
 - `sensor_msgs::PointCloud2`
 
 ### TrackingObjects
 
 #### Input Types
+
 - `AutowareAuto::TrackedObject`
 
 #### Visualized Result
+
 - `rviz::MarkerArray`
 
 ### TrafficLights
 
 #### Input Types
+
 - `AutowareAuto::TrafficLight`
 
 #### Visualized Result
+
 - `rviz::MarkerArray`
 
 ### Planning (optional)
 
 #### Input Types
+
 - `AutowareAuto::Trajectory`
 
 #### Visualized Result
+
 - `rviz::MarkerArray`
 
 ## Configuration
@@ -202,8 +214,8 @@ rviz
 roslaunch autoware_perception_rviz_plugin autoware_perception_rviz_plugin.launch
 ```
 
-| 名称 | タイプ                                             | 説明            |
-| ---------- | ------------------------------------------------ | ---------------------- |
+| 名称 | タイプ                                           | 説明         |
+| ---- | ------------------------------------------------ | ------------ |
 |      | `autoware_perception_msgs::msg::DetectedObjects` | 検出結果配列 |
 
 #### 可視化結果
@@ -214,9 +226,9 @@ roslaunch autoware_perception_rviz_plugin autoware_perception_rviz_plugin.launch
 
 #### 入力タイプ
 
-| 名称 | タイプ | 説明 |
-|---|---|---|
-| | `autoware_perception_msgs::msg::TrackedObjects` | 追跡結果の配列 |
+| 名称 | タイプ                                          | 説明           |
+| ---- | ----------------------------------------------- | -------------- |
+|      | `autoware_perception_msgs::msg::TrackedObjects` | 追跡結果の配列 |
 
 #### 可視化結果
 
@@ -228,9 +240,9 @@ roslaunch autoware_perception_rviz_plugin autoware_perception_rviz_plugin.launch
 
 #### 入力タイプ
 
-| 名前 | 種別                                             | 説明                     |
-| ---- | ------------------------------------------------- | ------------------------- |
-|      | `autoware_perception_msgs::msg::PredictedObjects` | prediction結果配列       |
+| 名前 | 種別                                              | 説明               |
+| ---- | ------------------------------------------------- | ------------------ |
+|      | `autoware_perception_msgs::msg::PredictedObjects` | prediction結果配列 |
 
 #### 可視化結果
 
@@ -243,4 +255,3 @@ roslaunch autoware_perception_rviz_plugin autoware_perception_rviz_plugin.launch
 [1] <https://gitlab.com/autowarefoundation/autoware.auto/AutowareAuto/-/tree/master/src/tools/visualization/autoware_rviz_plugins>
 
 ## 今後の拡張/未実装部分
-

@@ -10,7 +10,6 @@
 
 デフォルトでは、次の `Controller` クラスのコントローラインスタンスが使用されます。
 
-
 ```plantuml
 @startuml
 package autoware_trajectory_follower_base {
@@ -93,7 +92,6 @@ InputData ..> Controller
 
 `Controller` クラスのプロセスフローは次のとおりです。
 
-
 ```cpp
 // 1. create input data
 const auto input_data = createInputData(*get_clock());
@@ -158,4 +156,3 @@ control_cmd_pub_->publish(out);
 [PlotJuggler](https://github.com/facontidavide/PlotJuggler) の設定ファイルが `config` フォルダに用意されており、読み込むとデバッグに役立つ情報を自動的に購読して視覚化できます。
 
 さらに、予測された MPC 経路が `output/lateral/predicted_trajectory` トピックに発行され、Rviz で視覚化できます。
-

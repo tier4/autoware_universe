@@ -34,8 +34,8 @@
 
 #### 入力
 
-| 名称 | タイプ | 説明 |
-|---|---|---|
+| 名称      | タイプ                                             | 説明                                           |
+| --------- | -------------------------------------------------- | ---------------------------------------------- |
 | `in/rect` | `tier4_perception_msgs/DetectedObjectsWithFeature` | 2Dバウンディングボックスを伴う検出オブジェクト |
 
 #### 自動運転ソフトウェアの日本語ドキュメント
@@ -48,44 +48,44 @@
 
 Autowareは、モジュール化されたアーキテクチャに基づいており、次の主要なコンポーネントで構成されています。
 
-* **Perception:** センサーデータからオブジェクト、道路、およびその他の環境情報を検出し、追跡します。
-* **Planning:** 自車の経路を生成し、周囲の状況に応じて最適化します。
-* **Control:** 生成された経路に従って自車を制御します。
-* **Localization:** 自車位置と姿勢を推定します。
-* **Behavior Planning:** 交通規則や社会的規範に基づいて、自車の挙動を制御します。
-* **Map:** 道路網、交通規制、およびその他の環境情報を提供します。
+- **Perception:** センサーデータからオブジェクト、道路、およびその他の環境情報を検出し、追跡します。
+- **Planning:** 自車の経路を生成し、周囲の状況に応じて最適化します。
+- **Control:** 生成された経路に従って自車を制御します。
+- **Localization:** 自車位置と姿勢を推定します。
+- **Behavior Planning:** 交通規則や社会的規範に基づいて、自車の挙動を制御します。
+- **Map:** 道路網、交通規制、およびその他の環境情報を提供します。
 
 **コンポーネント**
 
 **Perceptionコンポーネント**
 
-* カメラ感知
-* LiDAR感知
-* レーダー感知
+- カメラ感知
+- LiDAR感知
+- レーダー感知
 
 **Planningコンポーネント**
 
-* Motion Planning
-* Trajectory Planning
-* Path Tracking
+- Motion Planning
+- Trajectory Planning
+- Path Tracking
 
 **Controlコンポーネント**
 
-* ステアリング制御
-* アクセル/ブレーキ制御
-* 協調運動制御
+- ステアリング制御
+- アクセル/ブレーキ制御
+- 協調運動制御
 
 **Localizationコンポーネント**
 
-* GPS
-* IMU
-* オドメトリ
+- GPS
+- IMU
+- オドメトリ
 
 **Behavior Planningコンポーネント**
 
-* 交通信号制御
-* 歩行者横断制御
-* 車線変更制御
+- 交通信号制御
+- 歩行者横断制御
+- 車線変更制御
 
 **インターフェース**
 
@@ -95,9 +95,9 @@ Autowareコンポーネントは、ROSインターフェースを使用して相
 
 Autowareは、開発プロセスをサポートするための独自のツールを提供しています。
 
-* **Autoware.AI:** Autowareソフトウェアを構築、テスト、展開するための包括的なプラットフォーム。
-* **OpenPlanner:** プランニングアルゴリズムの開発とシミュレーションのためのツール。
-* **CARLA:** 自動運転ソフトウェアのテストのためのシミュレーター。
+- **Autoware.AI:** Autowareソフトウェアを構築、テスト、展開するための包括的なプラットフォーム。
+- **OpenPlanner:** プランニングアルゴリズムの開発とシミュレーションのためのツール。
+- **CARLA:** 自動運転ソフトウェアのテストのためのシミュレーター。
 
 **追加情報**
 
@@ -107,36 +107,36 @@ Autowareコミュニティフォーラムおよびドキュメントページか
 
 このドキュメントに記載されている情報は、Autowareプロジェクトの現在の開発状況に基づいています。将来のリリースで変更される場合があります。
 
-| 名称 | タイプ | 説明 |
-|---|---|---|
-| `out/objects` | `tier4_perception_msgs/DetectedObjectsWithFeature` | 2Dバウンディングボックスを含む検出した物体 |
-| `out/objects/debug/uuid` | `tier4_perception_msgs/DynamicObjectArray` | 各物体のユニバーサル一意識別子(UUID) |
+| 名称                     | タイプ                                             | 説明                                       |
+| ------------------------ | -------------------------------------------------- | ------------------------------------------ |
+| `out/objects`            | `tier4_perception_msgs/DetectedObjectsWithFeature` | 2Dバウンディングボックスを含む検出した物体 |
+| `out/objects/debug/uuid` | `tier4_perception_msgs/DynamicObjectArray`         | 各物体のユニバーサル一意識別子(UUID)       |
 
 ### bytetrack_visualizer
 
 #### 入力
 
-| 名称 | 型 | 説明 |
-|---|---|---|
-| `in/image` | `sensor_msgs/Image` または `sensor_msgs/CompressedImage` | オブジェクト検出を実行する入力画像 |
-| `in/rect` | `tier4_perception_msgs/DetectedObjectsWithFeature` | 2D バウンディングボックスを備えた検出オブジェクト |
-| `in/uuid` | `tier4_perception_msgs/DynamicObjectArray` | 各オブジェクトの一意の識別子 (UUID) |
-| `in/planning_status` | PlanningStatus | Planningモジュールによって計算された、自車位置と周囲の車両の状況 |
-| `out/path` | `tier4_planning_msgs/Path` | Planningモジュールによって生成された予定経路 |
-| `out/predicted_objects` | `tier4_planning_msgs/PredictedObjects` | 他の車両の予測軌跡 |
-| `out/optimized_path` | `tier4_planning_msgs/OptimizedPath` | `post resampling` と走行性改善を適用した最適化された予定経路 |
-| `out/published_objects` | `tier4_perception_msgs/PublishedObject` | Autowareが一般的なトピックに公開するオブジェクト |
-| `in/odom` | `nav_msgs/Odometry` | 自車位置と速度 |
-| `in/detected_lane` | `DetectedLaneArray` | 認識された車線 |
-| `out/optimized_pose` | `geometry_msgs/PoseStamped` | 列挙された PlanningStatus の中で「最適化された」もの |
-| `out/regular_pose` | `geometry_msgs/PoseStamped` | 列挙された PlanningStatus の中で「一般」のもの |
-| `out/emergency_pose` | `geometry_msgs/PoseStamped` | 列挙された PlanningStatus の中で「緊急」のもの |
-| `out/velocity_diff` | `geometry_msgs/Twist` | `in/odom` と `optimized_pose` の速度の差 |
-| `out/acceleration_diff` | `geometry_msgs/Twist` | `in/odom` と `optimized_pose` の加速度の差 |
-| `out/velocity_diff_with_filtered_brake` | `geometry_msgs/Twist` | フィルタリングされたブレーキをかけた `velocity_diff` |
-| `out/acceleration_diff_with_filtered_brake` | `geometry_msgs/Twist` | フィルタリングされたブレーキをかけた `acceleration_diff` |
-| `out/velocity_diff_with_filtered_gear` | `geometry_msgs/Twist` | フィルタリングされたギアをかけた `velocity_diff` |
-| `out/acceleration_diff_with_filtered_gear` | `geometry_msgs/Twist` | フィルタリングされたギアをかけた `acceleration_diff` |
+| 名称                                        | 型                                                       | 説明                                                             |
+| ------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------- |
+| `in/image`                                  | `sensor_msgs/Image` または `sensor_msgs/CompressedImage` | オブジェクト検出を実行する入力画像                               |
+| `in/rect`                                   | `tier4_perception_msgs/DetectedObjectsWithFeature`       | 2D バウンディングボックスを備えた検出オブジェクト                |
+| `in/uuid`                                   | `tier4_perception_msgs/DynamicObjectArray`               | 各オブジェクトの一意の識別子 (UUID)                              |
+| `in/planning_status`                        | PlanningStatus                                           | Planningモジュールによって計算された、自車位置と周囲の車両の状況 |
+| `out/path`                                  | `tier4_planning_msgs/Path`                               | Planningモジュールによって生成された予定経路                     |
+| `out/predicted_objects`                     | `tier4_planning_msgs/PredictedObjects`                   | 他の車両の予測軌跡                                               |
+| `out/optimized_path`                        | `tier4_planning_msgs/OptimizedPath`                      | `post resampling` と走行性改善を適用した最適化された予定経路     |
+| `out/published_objects`                     | `tier4_perception_msgs/PublishedObject`                  | Autowareが一般的なトピックに公開するオブジェクト                 |
+| `in/odom`                                   | `nav_msgs/Odometry`                                      | 自車位置と速度                                                   |
+| `in/detected_lane`                          | `DetectedLaneArray`                                      | 認識された車線                                                   |
+| `out/optimized_pose`                        | `geometry_msgs/PoseStamped`                              | 列挙された PlanningStatus の中で「最適化された」もの             |
+| `out/regular_pose`                          | `geometry_msgs/PoseStamped`                              | 列挙された PlanningStatus の中で「一般」のもの                   |
+| `out/emergency_pose`                        | `geometry_msgs/PoseStamped`                              | 列挙された PlanningStatus の中で「緊急」のもの                   |
+| `out/velocity_diff`                         | `geometry_msgs/Twist`                                    | `in/odom` と `optimized_pose` の速度の差                         |
+| `out/acceleration_diff`                     | `geometry_msgs/Twist`                                    | `in/odom` と `optimized_pose` の加速度の差                       |
+| `out/velocity_diff_with_filtered_brake`     | `geometry_msgs/Twist`                                    | フィルタリングされたブレーキをかけた `velocity_diff`             |
+| `out/acceleration_diff_with_filtered_brake` | `geometry_msgs/Twist`                                    | フィルタリングされたブレーキをかけた `acceleration_diff`         |
+| `out/velocity_diff_with_filtered_gear`      | `geometry_msgs/Twist`                                    | フィルタリングされたギアをかけた `velocity_diff`                 |
+| `out/acceleration_diff_with_filtered_gear`  | `geometry_msgs/Twist`                                    | フィルタリングされたギアをかけた `acceleration_diff`             |
 
 #### 出力
 
@@ -166,29 +166,29 @@ Autowareコミュニティフォーラムおよびドキュメントページか
 
 追従制御量は、次の形式です。
 
-* 横方向速度逸脱量（lateral velocity error）
-* 横方向加速度逸脱量（lateral acceleration error）
-* 縦方向速度逸脱量（longitudinal velocity error）
-* 縦方向加速度逸脱量（longitudinal acceleration error）
+- 横方向速度逸脱量（lateral velocity error）
+- 横方向加速度逸脱量（lateral acceleration error）
+- 縦方向速度逸脱量（longitudinal velocity error）
+- 縦方向加速度逸脱量（longitudinal acceleration error）
 
 ### パラメータ
 
 追従アルゴリズムのパラメータは、次のとおりです。
 
-* 再サンプリング間隔（resampling interval）
-* 前方検索距離（lookahead distance）
+- 再サンプリング間隔（resampling interval）
+- 前方検索距離（lookahead distance）
 
 ### 注意事項
 
 次の点に注意してください。
 
-* 追従アルゴリズムは、 planificatorによって生成された経路に依存しています。
-* 追従アルゴリズムは、車両の動的特性とは無関係です。
-* 追従アルゴリズムは、リアルタイムで動作するように設計されています。
+- 追従アルゴリズムは、 planificatorによって生成された経路に依存しています。
+- 追従アルゴリズムは、車両の動的特性とは無関係です。
+- 追従アルゴリズムは、リアルタイムで動作するように設計されています。
 
-| 名前        | タイプ                | 説明                                                             |
-| ----------- | ------------------- | ------------------------------------------------------------------- |
-| `out/image` | `sensor_msgs/Image` | 検出された境界ボックスとそのUUIDが描画された画像                    |
+| 名前        | タイプ              | 説明                                             |
+| ----------- | ------------------- | ------------------------------------------------ |
+| `out/image` | `sensor_msgs/Image` | 検出された境界ボックスとそのUUIDが描画された画像 |
 
 ## パラメータ
 
@@ -196,18 +196,17 @@ Autowareコミュニティフォーラムおよびドキュメントページか
 
 #### Planningモジュール用のパラメータ
 
-| 名前                  | タイプ | デフォルト値  | 説明                                    |
-| --------------------- | ---- | ------------- | ------------------------------------------- |
-| `track_buffer_length` | int  | 30             | トラッキングが失われたと見なされるフレーム数 |
+| 名前                  | タイプ | デフォルト値 | 説明                                         |
+| --------------------- | ------ | ------------ | -------------------------------------------- |
+| `track_buffer_length` | int    | 30           | トラッキングが失われたと見なされるフレーム数 |
 
 ### bytetrack_visualizer
 
 ※: このドキュメントはAutoware.Autoの開発ドキュメントの一部です。
 
-
-| 名称        | 種類 | デフォルト値 | 説明                                                                                     |
-| --------- | ---- | ------------- | ---------------------------------------------------------------------------------------------- |
-| `use_raw` | bool | false         | ノードが `sensor_msgs/Image` または `sensor_msgs/CompressedImage` を入力として切り替える場合のフラグ |
+| 名称      | 種類 | デフォルト値 | 説明                                                                                                 |
+| --------- | ---- | ------------ | ---------------------------------------------------------------------------------------------------- |
+| `use_raw` | bool | false        | ノードが `sensor_msgs/Image` または `sensor_msgs/CompressedImage` を入力として切り替える場合のフラグ |
 
 ## 想定/既知の制限
 
@@ -229,4 +228,3 @@ Autowareコミュニティフォーラムおよびドキュメントページか
 > 上記の著作権表示およびこの通知は、ソフトウェアのすべての複製または重要な部分に含まれる必要があります。
 >
 > ソフトウェアは明示的または黙示的に保証されることなく、「現状のまま」提供されます。商品性、特定の目的への適合性、非侵害の保証を含むがこれらに限定されない保証は含まれます。いかなる場合も、著作権者または権利者は、契約、不法行為、またはその他の行為に関連して、またはその結果、ソフトウェアまたはソフトウェアの使用または他の取り扱いから生じる請求、損害、またはその他の責任について責任を負いません。
-

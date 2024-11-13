@@ -49,7 +49,6 @@
 rosbagは[AWSIM](https://tier4.github.io/AWSIM/)によって作成されたシミュレーションデータです。
 マップは、AWSIMのドキュメンテーションページで公開されている[オリジナルマップデータ](https://github.com/tier4/AWSIM/releases/download/v1.1.0/nishishinjuku_autoware_map.zip)を編集したもので、複数の`pose_estimators`に適したものになっています。
 
-
 ```bash
 ros2 launch autoware_launch logging_simulator.launch.xml \
   map_path:=<your-map-path> \
@@ -69,8 +68,8 @@ ros2 launch autoware_launch logging_simulator.launch.xml \
 
 ### サービス
 
-| 名称              | 種類                            | 説明                           |
-| ----------------- | ------------------------------- | ------------------------------- |
+| 名称             | 種類                            | 説明                         |
+| ---------------- | ------------------------------- | ---------------------------- |
 | `/config_logger` | logging_demo::srv::ConfigLogger | ログレベルを変更するサービス |
 
 ### クライアント
@@ -99,43 +98,49 @@ ros2 launch autoware_launch logging_simulator.launch.xml \
 
 - Controller Client は Controller モジュールの Pub/Sub クライアントです。[autoware.control.command]から制御コマンドをサブスクライブし、[autoware.control.act]へメッセージをパブリッシュします。
 
-| 名称                  | タイプ                  | 説明                       |
-| --------------------- | --------------------- | --------------------------------- |
+| 名称                  | タイプ                | 説明                                |
+| --------------------- | --------------------- | ----------------------------------- |
 | `/yabloc_suspend_srv` | std_srv::srv::SetBool | Yabloc を停止または再開するサービス |
 
 ### サブスクリプション
 
 ポーズ推定アビトレーション用:
 
-| 名称                                  | 型                                          | 説明    |
-| ------------------------------------- | --------------------------------------------- | -------------- |
-| `/input/artag/image`                  | sensor_msgs::msg::Image                       | ArTag入力    |
-| `/input/yabloc/image`                 | sensor_msgs::msg::Image                       | YabLoc入力   |
+| 名称                                  | 型                                            | 説明        |
+| ------------------------------------- | --------------------------------------------- | ----------- |
+| `/input/artag/image`                  | sensor_msgs::msg::Image                       | ArTag入力   |
+| `/input/yabloc/image`                 | sensor_msgs::msg::Image                       | YabLoc入力  |
 | `/input/eagleye/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped | Eagleye出力 |
-| `/input/ndt/pointcloud`               | sensor_msgs::msg::PointCloud2                 | NDT入力      |
+| `/input/ndt/pointcloud`               | sensor_msgs::msg::PointCloud2                 | NDT入力     |
 
-## 切り替えルール：
+## 切り替えルール
 
 - **Planningモジュールの障害物認識障害：**
+
   - 監視タスクが障害物を検出し、直前のPlanningのcycleから障害物認識障害が報告された場合
   - Planningのcycle自体が障害物認識障害を出力した場合
   - 障害物が自車位置から十分近い場合、または衝突する可能性がある場合
 
 - **Planningのcycle障害：**
+
   - Planningが指定の期間内に完了しなかった場合
   - Planningが予測不可能または無効なプランを生成した場合
 
 - **走行中のPlanningの速度逸脱量：**
+
   - 走行中に planificate の速度が要求済み速度を超過した場合
   - planificate が想定以上の加速を要求した場合
 
 - **走行中のPlanningの加速度逸脱量：**
+
   - 走行中に planificate の加速度が要求済み加速度を超過した場合
 
 - **動作中のPlanningの逸脱：**
+
   - Planningが走行中に停止など、不適切な動作を要求した場合
 
 - **PlanningとConrolの異なる目標：**
+
   - PlanningがControlモジュールに、要求された目標と異なる目標を送信すると報告された場合
 
 - **`post resampling`の障害：**
@@ -143,23 +148,22 @@ ros2 launch autoware_launch logging_simulator.launch.xml \
 
 ## 自動運転ソフトウェア
 
-| 名称                               | 型                                                            | 説明                                          |
-| ----------------------------------- | ------------------------------------------------------------ | ------------------------------------------------ |
-| `/input/vector_map`                  | `autoware_map_msgs::msg::LaneletMapBin`                       | ベクターマップ                                  |
-| `/input/pose_with_covariance`         | `geometry_msgs::msg::PoseWithCovarianceStamped`              | ローカリゼーション最終出力                    |
-| `/input/initialization_state`       | `autoware_adapi_v1_msgs::msg::LocalizationInitializationState` | ローカリゼーション初期化状態                  |
+| 名称                          | 型                                                             | 説明                         |
+| ----------------------------- | -------------------------------------------------------------- | ---------------------------- |
+| `/input/vector_map`           | `autoware_map_msgs::msg::LaneletMapBin`                        | ベクターマップ               |
+| `/input/pose_with_covariance` | `geometry_msgs::msg::PoseWithCovarianceStamped`                | ローカリゼーション最終出力   |
+| `/input/initialization_state` | `autoware_adapi_v1_msgs::msg::LocalizationInitializationState` | ローカリゼーション初期化状態 |
 
 ### 論文
 
-
-| 名前                                  | タイプ                                        | 説明                                                  |
-| --------------------------------------- | -------------------------------------------- | ------------------------------------------------------- |
-| `/output/artag/image`                 | sensor_msgs::msg::Image                    | 中継されたArTag入力                                   |
-| `/output/yabloc/image`                | sensor_msgs::msg::Image                    | 中継されたYabLoc入力                                  |
-| `/output/eagleye/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped | 中継されたEagleye出力                                |
-| `/output/ndt/pointcloud`              | sensor_msgs::msg::PointCloud2              | 中継されたNDT入力                                      |
-| `/output/debug/marker_array`          | visualization_msgs::msg::MarkerArray       | [デバッグトピック] 視覚化のすべて                    |
-| `/output/debug/string`                | visualization_msgs::msg::MarkerArray       | [デバッグトピック] 現在のステータスなどのデバッグ情報 |
+| 名前                                   | タイプ                                        | 説明                                                  |
+| -------------------------------------- | --------------------------------------------- | ----------------------------------------------------- |
+| `/output/artag/image`                  | sensor_msgs::msg::Image                       | 中継されたArTag入力                                   |
+| `/output/yabloc/image`                 | sensor_msgs::msg::Image                       | 中継されたYabLoc入力                                  |
+| `/output/eagleye/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped | 中継されたEagleye出力                                 |
+| `/output/ndt/pointcloud`               | sensor_msgs::msg::PointCloud2                 | 中継されたNDT入力                                     |
+| `/output/debug/marker_array`           | visualization_msgs::msg::MarkerArray          | [デバッグトピック] 視覚化のすべて                     |
+| `/output/debug/string`                 | visualization_msgs::msg::MarkerArray          | [デバッグトピック] 現在のステータスなどのデバッグ情報 |
 
 </details>
 
@@ -168,7 +172,6 @@ ros2 launch autoware_launch logging_simulator.launch.xml \
 うまくいかない場合は、以下の方法でさらに多くの詳細情報が取得できます。
 
 > [!TIP]
-
 
 > ```bash
 > ros2 service call /localization/autoware_pose_estimator_arbiter/config_logger logging_demo/srv/ConfigLogger \
@@ -230,7 +233,6 @@ ArTag ストッパーは、ランドマークローカルライザの前にあ�
 
 ユーザーは、ランタイム引数 `pose_source` にアンダースコアの連結として `pose_estimator` 名を渡すことで、目的の `pose_estimators` を起動できます。
 
-
 ```bash
 ros2 launch autoware_launch logging_simulator.launch.xml \
   map_path:=<your-map-path> \
@@ -242,14 +244,14 @@ ros2 launch autoware_launch logging_simulator.launch.xml \
 予期しない文字列が `pose_source` に含まれていた場合でも、適切にフィルタされます。
 詳細は下記の表を参照してください。
 
-| 実行時引数 | autoware_pose_estimator_arbiterのパラメータ(pose_source) |
-| ----------- | --------------------------------------------------------- |
-| `pose_source:=ndt` | `["ndt"]` |
-| `pose_source:=nan` | `[]` |
-| `pose_source:=yabloc_ndt` | `["ndt","yabloc"]` |
-| `pose_source:=yabloc_ndt_ndt_ndt` | `["ndt","yabloc"]` |
-| `pose_source:=ndt_yabloc_eagleye` | `["ndt","yabloc","eagleye"]` |
-| `pose_source:=ndt_yabloc_nan_eagleye_artag` | `["ndt","yabloc","eagleye","artag"]` |
+| 実行時引数                                  | autoware_pose_estimator_arbiterのパラメータ(pose_source) |
+| ------------------------------------------- | -------------------------------------------------------- |
+| `pose_source:=ndt`                          | `["ndt"]`                                                |
+| `pose_source:=nan`                          | `[]`                                                     |
+| `pose_source:=yabloc_ndt`                   | `["ndt","yabloc"]`                                       |
+| `pose_source:=yabloc_ndt_ndt_ndt`           | `["ndt","yabloc"]`                                       |
+| `pose_source:=ndt_yabloc_eagleye`           | `["ndt","yabloc","eagleye"]`                             |
+| `pose_source:=ndt_yabloc_nan_eagleye_artag` | `["ndt","yabloc","eagleye","artag"]`                     |
 
 ## 切り替えルール
 
@@ -265,7 +267,6 @@ ros2 launch autoware_launch logging_simulator.launch.xml \
 ### 全てを有効にするルール
 
 これは既定で最もシンプルなルールです。このルールは、現在の状態に関係なく、すべての pose_estimator を有効にします。
-
 
 ```mermaid
 flowchart LR
@@ -292,25 +293,26 @@ flowchart LR
   自車位置推定器の組み合わせを指定するだけで、pose_initializer に適切なパラメータが自動的に与えられます。
 - **Autoware 開発者:** Autoware 開発者は、どのパラメータが割り当てられているかを知るためにこの表を参照できます。
 - **新しい自車位置推定スイッチを実装する人:**
-開発者は、この表を拡張し、pose_initializer に適切なパラメータを割り当てるように実装する必要があります。
+  開発者は、この表を拡張し、pose_initializer に適切なパラメータを割り当てるように実装する必要があります。
+
 </details>
 
-|         pose_source         | invoked initialization method | `ndt_enabled` | `yabloc_enabled` | `gnss_enabled` | `sub_gnss_pose_cov`                          |
-| :-------------------------: | ----------------------------- | ------------- | ---------------- | -------------- | -------------------------------------------- |
-|             ndt             | ndt                           | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
-|           yabloc            | yabloc                        | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
+|         pose_source         | invoked initialization method        | `ndt_enabled` | `yabloc_enabled` | `gnss_enabled` | `sub_gnss_pose_cov`                          |
+| :-------------------------: | ------------------------------------ | ------------- | ---------------- | -------------- | -------------------------------------------- |
+|             ndt             | ndt                                  | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
+|           yabloc            | yabloc                               | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
 |           eagleye           | 車両はしばらく走行する必要があります | false         | false            | true           | /localization/pose_estimator/eagleye/...     |
-|            artag            | 2D 姿勢推定（RViz）       | false         | false            | true           | /sensing/gnss/pose_with_covariance           |
-|         ndt, yabloc         | ndt                           | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
-|        ndt, eagleye         | ndt                           | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
-|         ndt, artag          | ndt                           | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
-|       yabloc, eagleye       | yabloc                        | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
-|        yabloc, artag        | yabloc                        | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
+|            artag            | 2D 姿勢推定（RViz）                  | false         | false            | true           | /sensing/gnss/pose_with_covariance           |
+|         ndt, yabloc         | ndt                                  | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
+|        ndt, eagleye         | ndt                                  | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
+|         ndt, artag          | ndt                                  | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
+|       yabloc, eagleye       | yabloc                               | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
+|        yabloc, artag        | yabloc                               | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
 |       eagleye, artag        | 車両はしばらく走行する必要があります | false         | false            | true           | /localization/pose_estimator/eagleye/pose... |
-|    ndt, yabloc, eagleye     | ndt                           | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
-|     ndt, eagleye, artag     | ndt                           | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
-|   yabloc, eagleye, artag    | yabloc                        | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
-| ndt, yabloc, eagleye, artag | ndt                           | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
+|    ndt, yabloc, eagleye     | ndt                                  | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
+|     ndt, eagleye, artag     | ndt                                  | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
+|   yabloc, eagleye, artag    | yabloc                               | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
+| ndt, yabloc, eagleye, artag | ndt                                  | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
 
 ## 今後の計画
 
@@ -335,4 +337,3 @@ pose_estimator に大量の計算を伴う時系列処理が含まれている�
 この問題は複数の pose_estimator を実現するための基本的な問題であり、この場合に提案されたアーキテクチャに関係なく発生することに注意してください。
 
 </details>
-

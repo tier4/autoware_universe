@@ -24,17 +24,17 @@
 
 行動経路プランナーには、次のシーンモジュールがあります。
 
-| 名称                       | 説明                                                                                                                                                                | 詳細                                                                       |
-| :------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- |
-| 車線追従             | このモジュールは、レーンレットの中心線から基準パスを生成します。                                                                                                              | [LINK](https://drive.google.com/file/d/1upH4p_9JUod40iEIdAQq4A2H6-52zz-l/view?usp=sharing) |
-| 静的障害物回避  | このモジュールは、回避すべきオブジェクトがある場合に回避パスを生成します。                                                                                           | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_static_obstacle_avoidance_module/README.md) |
-| 動的障害物回避 | WIP                                                                                                                                                                        | [LINK](https://github.com/ros-planning/autoware/tree/master/ros2/autoware_behavior_path_dynamic_obstacle_avoidance_module) |
-| 車線変更による回避   | このモジュールは、回避すべきオブジェクトがある場合に車線変更パスを生成します。                                                                                         | [LINK](https://drive.google.com/file/d/1k7x-4T2Yj_bJhp0-IzY12wY4gII_42Vu/view?usp=sharing) |
-| 車線変更                | このモジュールは、必要に応じて実行され、他の車両との衝突チェックが完了します。                                                                        | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_lane_change_module/README.md) |
-| 外部車線変更       | WIP                                                                                                                                                                        | [LINK](https://drive.google.com/file/d/13jDgm9Q7ELR00Gka51B_2XquH6e_61cp/view?usp=sharing) |
-| ゴールプランナー               | このモジュールは、自車が道路車線にいるときでゴールが路側車線にいるときに実行されます。自車はゴールで停止します。                                         | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_goal_planner_module/README.md) |
-| スタートプランナー              | このモジュールは、自車が停止していて、自車のフットプリントが路側車線に含まれているときに実行されます。このモジュールは、自車が道路に合流すると終了します。 | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_start_planner_module/README.md) |
-| サイドシフト                 | （リモート制御用）外部の命令に従ってパスを左または右にシフトします。                                                                                 | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_side_shift_module/README.md) |
+| 名称               | 説明                                                                                                                                                       | 詳細                                                                                                                       |
+| :----------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
+| 車線追従           | このモジュールは、レーンレットの中心線から基準パスを生成します。                                                                                           | [LINK](https://drive.google.com/file/d/1upH4p_9JUod40iEIdAQq4A2H6-52zz-l/view?usp=sharing)                                 |
+| 静的障害物回避     | このモジュールは、回避すべきオブジェクトがある場合に回避パスを生成します。                                                                                 | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_static_obstacle_avoidance_module/README.md)        |
+| 動的障害物回避     | WIP                                                                                                                                                        | [LINK](https://github.com/ros-planning/autoware/tree/master/ros2/autoware_behavior_path_dynamic_obstacle_avoidance_module) |
+| 車線変更による回避 | このモジュールは、回避すべきオブジェクトがある場合に車線変更パスを生成します。                                                                             | [LINK](https://drive.google.com/file/d/1k7x-4T2Yj_bJhp0-IzY12wY4gII_42Vu/view?usp=sharing)                                 |
+| 車線変更           | このモジュールは、必要に応じて実行され、他の車両との衝突チェックが完了します。                                                                             | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_lane_change_module/README.md)                      |
+| 外部車線変更       | WIP                                                                                                                                                        | [LINK](https://drive.google.com/file/d/13jDgm9Q7ELR00Gka51B_2XquH6e_61cp/view?usp=sharing)                                 |
+| ゴールプランナー   | このモジュールは、自車が道路車線にいるときでゴールが路側車線にいるときに実行されます。自車はゴールで停止します。                                           | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_goal_planner_module/README.md)                     |
+| スタートプランナー | このモジュールは、自車が停止していて、自車のフットプリントが路側車線に含まれているときに実行されます。このモジュールは、自車が道路に合流すると終了します。 | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_start_planner_module/README.md)                    |
+| サイドシフト       | （リモート制御用）外部の命令に従ってパスを左または右にシフトします。                                                                                       | [LINK](https://autoware.readthedocs.io/en/latest/autoware_behavior_path_side_shift_module/README.md)                       |
 
 !!! Note
 
@@ -89,32 +89,32 @@
 
 ### 入力
 
-| 名前                           | 必須? | タイプ                                                                   | 説明                                                                                                                                                                                                                                      |
-| :----------------------------- | :-------: | :----------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ~/input/odometry                   |     ○     | `nav_msgs::msg::Odometry`                                     | 自車速度                                                                                                                                                                                                                               |
-| ~/input/accel                      |     ○     | `geometry_msgs::msg::AccelWithCovarianceStamped`        | 自車加速度                                                                                                                                                                                                                           |
-| ~/input/objects                    |     ○     | `autoware_perception_msgs::msg::PredictedObjects`       | 知覚モジュールからのダイナミックオブジェクト                                                                                                                                                                                      |
-| ~/input/occupancy_grid_map         |     ○     | `nav_msgs::msg::OccupancyGrid`                          | 知覚モジュールのオキュパンシグリッドマップ。Goal Plannerモジュールでのみ使用されます。                                                                                                                                                     |
-| ~/input/traffic_signals            |     ○     | `autoware_perception_msgs::msg::TrafficLightGroupArray` | 知覚モジュールからの交通信号情報                                                                                                                                                                                                   |
-| ~/input/vector_map                 |     ○     | `autoware_map_msgs::msg::LaneletMapBin`                 | ベクタマップ情報                                                                                                                                                                                                                        |
-| ~/input/route                    |     ○     | `autoware_planning_msgs::msg::LaneletRoute`             | スタートからゴールまでの現在のルート                                                                                                                                                                                                   |
-| ~/input/scenario                 |     ○     | `tier4_planning_msgs::msg::Scenario`                    | 現在シナリオが`Scenario:LaneDriving`の場合、ビヘイビアパスプランナーを起動                                                                                                                                                            |
-| ~/input/lateral_offset           |     △     | `tier4_planning_msgs::msg::LateralOffset`               | サイドシフトをトリガするための横方向オフセット                                                                                                                                                                                              |
-| ~/system/operation_mode/state      |     ○     | `autoware_adapi_v1_msgs::msg::OperationModeState`       | 車両が自律モードにあるか、制御可能であるかどうかをPlanningモジュールに伝える<sup>[参照](https://github.com/autowarefoundation/autoware.universe/blob/main/system/autoware_default_adapi/document/operation-mode.md)</sup> |
+| 名前                          | 必須? | タイプ                                                  | 説明                                                                                                                                                                                                                      |
+| :---------------------------- | :---: | :------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ~/input/odometry              |   ○   | `nav_msgs::msg::Odometry`                               | 自車速度                                                                                                                                                                                                                  |
+| ~/input/accel                 |   ○   | `geometry_msgs::msg::AccelWithCovarianceStamped`        | 自車加速度                                                                                                                                                                                                                |
+| ~/input/objects               |   ○   | `autoware_perception_msgs::msg::PredictedObjects`       | 知覚モジュールからのダイナミックオブジェクト                                                                                                                                                                              |
+| ~/input/occupancy_grid_map    |   ○   | `nav_msgs::msg::OccupancyGrid`                          | 知覚モジュールのオキュパンシグリッドマップ。Goal Plannerモジュールでのみ使用されます。                                                                                                                                    |
+| ~/input/traffic_signals       |   ○   | `autoware_perception_msgs::msg::TrafficLightGroupArray` | 知覚モジュールからの交通信号情報                                                                                                                                                                                          |
+| ~/input/vector_map            |   ○   | `autoware_map_msgs::msg::LaneletMapBin`                 | ベクタマップ情報                                                                                                                                                                                                          |
+| ~/input/route                 |   ○   | `autoware_planning_msgs::msg::LaneletRoute`             | スタートからゴールまでの現在のルート                                                                                                                                                                                      |
+| ~/input/scenario              |   ○   | `tier4_planning_msgs::msg::Scenario`                    | 現在シナリオが`Scenario:LaneDriving`の場合、ビヘイビアパスプランナーを起動                                                                                                                                                |
+| ~/input/lateral_offset        |   △   | `tier4_planning_msgs::msg::LateralOffset`               | サイドシフトをトリガするための横方向オフセット                                                                                                                                                                            |
+| ~/system/operation_mode/state |   ○   | `autoware_adapi_v1_msgs::msg::OperationModeState`       | 車両が自律モードにあるか、制御可能であるかどうかをPlanningモジュールに伝える<sup>[参照](https://github.com/autowarefoundation/autoware.universe/blob/main/system/autoware_default_adapi/document/operation-mode.md)</sup> |
 
 - ○ 必須: このどれか1つでも存在しない場合、Planning Moduleは動作しません。
 - △ オプション: 一部のモジュールは動作しませんが、Planning Moduleは引き続き動作できます。
 
 ### 出力
 
-| 名前 | タイプ | 説明 | QoSの耐久性 |
-|---|---|---|---|
-| ~/output/path | `tier4_planning_msgs::msg::PathWithLaneId` | 各モジュールによって生成された経路 | `volatile` |
-| ~/output/turn_indicators_cmd | `autoware_vehicle_msgs::msg::TurnIndicatorsCommand` | ターンシグナルのコマンド | `volatile` |
-| ~/output/hazard_lights_cmd | `autoware_vehicle_msgs::msg::HazardLightsCommand` | ハザードランプのコマンド | `volatile` |
-| ~/output/modified_goal | `autoware_planning_msgs::msg::PoseWithUuidStamped` | 変更された目標コマンドの出力を示す | `transient_local` |
-| ~/output/stop_reasons | `tier4_planning_msgs::msg::StopReasonArray` | 自車停止の理由を説明 | `volatile` |
-| ~/output/reroute_availability | `tier4_planning_msgs::msg::RerouteAvailability` | モジュールが採用しようとしている経路。外部からの承認が得られ次第実行される | `volatile` |
+| 名前                          | タイプ                                              | 説明                                                                       | QoSの耐久性       |
+| ----------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------- | ----------------- |
+| ~/output/path                 | `tier4_planning_msgs::msg::PathWithLaneId`          | 各モジュールによって生成された経路                                         | `volatile`        |
+| ~/output/turn_indicators_cmd  | `autoware_vehicle_msgs::msg::TurnIndicatorsCommand` | ターンシグナルのコマンド                                                   | `volatile`        |
+| ~/output/hazard_lights_cmd    | `autoware_vehicle_msgs::msg::HazardLightsCommand`   | ハザードランプのコマンド                                                   | `volatile`        |
+| ~/output/modified_goal        | `autoware_planning_msgs::msg::PoseWithUuidStamped`  | 変更された目標コマンドの出力を示す                                         | `transient_local` |
+| ~/output/stop_reasons         | `tier4_planning_msgs::msg::StopReasonArray`         | 自車停止の理由を説明                                                       | `volatile`        |
+| ~/output/reroute_availability | `tier4_planning_msgs::msg::RerouteAvailability`     | モジュールが採用しようとしている経路。外部からの承認が得られ次第実行される | `volatile`        |
 
 ### デバッグ
 
@@ -179,15 +179,15 @@
 - `/localization/debug_info` トピックを subscribe し、ローカリゼーションの結果を確認します。
 - `/localization/pose` トピックを subscribe し、自車位置を取得します。
 
-| 名前 | タイプ | 説明 | QoS の永続性 |
-|---|---|---|---|
-| ~/debug/avoidance_debug_message_array | `tier4_planning_msgs::msg::AvoidanceDebugMsgArray` | Avoidance のデバッグメッセージ。Avoidance パスを生成できない理由をユーザーに通知します | `volatile` |
-| ~/debug/lane_change_debug_message_array | `tier4_planning_msgs::msg::LaneChangeDebugMsgArray` | レーン変更のデバッグメッセージ。レーン変更処理中の危険な理由をユーザーに通知します | `volatile` |
-| ~/debug/maximum_drivable_area | `visualization_msgs::msg::MarkerArray` | 最大の静的走行可能領域を表示します | `volatile` |
-| ~/debug/turn_signal_info | `visualization_msgs::msg::MarkerArray` | TBA | `volatile` |
-| ~/debug/bound | `visualization_msgs::msg::MarkerArray` | 静的走行可能領域のデバッグ | `volatile` |
-| ~/planning/path_candidate/* | `autoware_planning_msgs::msg::Path` | 承認前のパス | `volatile` |
-| ~/planning/path_reference/* | `autoware_planning_msgs::msg::Path` | 各モジュールによって生成されたリファレンスパス | `volatile` |
+| 名前                                    | タイプ                                              | 説明                                                                                   | QoS の永続性 |
+| --------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------ |
+| ~/debug/avoidance_debug_message_array   | `tier4_planning_msgs::msg::AvoidanceDebugMsgArray`  | Avoidance のデバッグメッセージ。Avoidance パスを生成できない理由をユーザーに通知します | `volatile`   |
+| ~/debug/lane_change_debug_message_array | `tier4_planning_msgs::msg::LaneChangeDebugMsgArray` | レーン変更のデバッグメッセージ。レーン変更処理中の危険な理由をユーザーに通知します     | `volatile`   |
+| ~/debug/maximum_drivable_area           | `visualization_msgs::msg::MarkerArray`              | 最大の静的走行可能領域を表示します                                                     | `volatile`   |
+| ~/debug/turn_signal_info                | `visualization_msgs::msg::MarkerArray`              | TBA                                                                                    | `volatile`   |
+| ~/debug/bound                           | `visualization_msgs::msg::MarkerArray`              | 静的走行可能領域のデバッグ                                                             | `volatile`   |
+| ~/planning/path_candidate/\*            | `autoware_planning_msgs::msg::Path`                 | 承認前のパス                                                                           | `volatile`   |
+| ~/planning/path_reference/\*            | `autoware_planning_msgs::msg::Path`                 | 各モジュールによって生成されたリファレンスパス                                         | `volatile`   |
 
 !!! note
 
@@ -207,12 +207,11 @@ Behavior Path Planning内のモジュールの有効化と無効化は、主に2
 
 `behavior_path_planner.launch.xml`ファイルは、`default_preset.yaml`に定義された設定を参照して、Behavior Path Planningのノード実行時に設定を適用するために使用します。たとえば、`behavior_path_planner.launch.xml`の`static_obstacle_avoidance.enable_module`パラメータでは、
 
-
 ```xml
 <param name="static_obstacle_avoidance.enable_module" value="$(var launch_static_obstacle_avoidance_module)"/>
 ```
 
-### `default_preset.yaml`の`launch_static_obstacle_avoidance_module`に対応する。
+### `default_preset.yaml`の`launch_static_obstacle_avoidance_module`に対応する
 
 したがって、モジュールを有効または無効にするには、`default_preset.yaml`内の対応するモジュールを`true`または`false`に設定します。これらの変更は、Autowareの次回の起動時に適用されます。
 
@@ -302,7 +301,6 @@ Behavior Path Plannerモジュールは、ターンシグナルのコマンド�
 
 [設定ファイル](https://github.com/autowarefoundation/autoware_launch/tree/main/autoware_launch/config/planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner) は、操作と管理の容易さのために階層的なディレクトリ構造で整理されています。各サブディレクトリには、そのモジュールに関連する具体的な構成ファイルが含まれています。ルートディレクトリには、プランナー全体の動作に適用される一般的な構成ファイルがあります。以下は、ディレクトリ構造とその構成ファイルの概要です。
 
-
 ```text
 behavior_path_planner
 ├── behavior_path_planner.param.yaml
@@ -326,7 +324,6 @@ behavior_path_planner
 
 同様に、[common](https://github.com/autowarefoundation/autoware_launch/tree/main/autoware_launch/config/planning/scenario_planning/common) ディレクトリには、さまざまなモジュールで使用される設定ファイルが含まれています。これらの設定ファイルは、Behavior Path Planner の機能に不可欠な共通パラメータと設定を提供します。
 
-
 ```text
 common
 ├── common.param.yaml
@@ -335,7 +332,6 @@ common
 ```
 
 [Preset](https://github.com/autowarefoundation/autoware_launch/tree/main/autoware_launch/config/planning/preset) ディレクトリには、さまざまなモジュールの動作状態を管理するための構成が含まれています。これには、システム内のモジュールの有効化や無効化を具体的に処理する `default_preset.yaml` ファイルが含まれます。
-
 
 ```text
 preset
@@ -346,4 +342,3 @@ preset
 
 1. ゴールプランナーモジュールは、他のモジュールと同時に実行できません。
 2. このモジュールはプラグインとして設計されていません。カスタムモジュールの統合は容易ではなく、ユーザーは動作パス計画メインコードの一部を変更する必要があります。
-

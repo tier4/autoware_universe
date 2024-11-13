@@ -23,8 +23,7 @@
 
 過去のオブジェクトの予測経路と実際の移動経路を比較して、**移動中のオブジェクト**の逸脱量を算出します。各オブジェクトについて、予測経路のポイントと実際の経路の対応するポイント間の平均距離を、指定された時間ステップまで計算します。言い換えると、平均変位誤差（ADE）を計算します。評価対象のオブジェクトは $T_N$ 秒前のオブジェクトで、$T_N$ は予測時間幅 $[T_1, T_2, ..., T_N]$ の最大値です。
 
-> [!NOTE]
-> $T_N$ 秒前のオブジェクトは、すべてのメトリクスで対象オブジェクトです。これは、メトリクス全体で対象オブジェクトの時間を統一するためです。
+> [!NOTE] > $T_N$ 秒前のオブジェクトは、すべてのメトリクスで対象オブジェクトです。これは、メトリクス全体で対象オブジェクトの時間を統一するためです。
 
 ![path_deviation_each_object](./images/path_deviation_each_object.drawio.svg)
 
@@ -55,9 +54,10 @@ ADE_{min} = min(ADE_j)
 \end{align}
 $$
 
-Var_{max} = max(Var_j) \\
-Var_{min} = min(Var_j)
+Var*{max} = max(Var_j) \\
+Var*{min} = min(Var_j)
 \end{align}
+
 $$
 
 - $n_{objects}$: オブジェクト数
@@ -107,10 +107,13 @@ $$
 
 指定された検出範囲内の各クラスの一意のオブジェクトの数をカウントします。全オブジェクトカウントは次のように計算されます。
 
+
 $$
+
 \begin{align}
-\text{全オブジェクトカウント (クラス、範囲)} & = \left| \bigcup_{t=0}^{T_{\text{now}}} \{ \text{uuid} \mid \text{class}(t, \text{uuid}) = C \wedge \text{position}(t, \text{uuid}) \in R \} \right|
+\text{全オブジェクトカウント (クラス、範囲)} & = \left| \bigcup*{t=0}^{T*{\text{now}}} \{ \text{uuid} \mid \text{class}(t, \text{uuid}) = C \wedge \text{position}(t, \text{uuid}) \in R \} \right|
 \end{align}
+
 $$
 
 ここで、
@@ -124,10 +127,13 @@ $$
 
 指定された検出範囲内の各クラスのオブジェクトの平均数をカウントします。この指標は、uuid を考慮せずに 1 フレームで検出されたオブジェクトの数を測定します。平均オブジェクト数は次のように計算されます。
 
+
 $$
+
 \begin{align}
-\text{平均オブジェクト数(クラス、範囲)} = \frac{1}{N} \sum_{t=0}^{T_{\text{now}}} \left| \{ \text{object} \mid \text{class}(t, \text{object}) = C \wedge \text{position}(t, \text{object}) \in R \} \right|
+\text{平均オブジェクト数(クラス、範囲)} = \frac{1}{N} \sum*{t=0}^{T*{\text{now}}} \left| \{ \text{object} \mid \text{class}(t, \text{object}) = C \wedge \text{position}(t, \text{object}) \in R \} \right|
 \end{align}
+
 $$
 
 ここで、
@@ -139,10 +145,13 @@ $$
 
 最後の `objects_count_window_seconds` において、指定された検出範囲内の各クラスのオブジェクトの平均数をカウントします。この指標は、uuid を考慮せずに 1 フレームで検出されたオブジェクトの数を測定します。区間オブジェクト数は次のように計算されます。
 
+
 $$
+
 \begin{align}
-\text{区間オブジェクト数(クラス、範囲)} = \frac{1}{W} \sum_{t=T_{\text{now}} - T_W}^{T_{\text{now}}} \left| \{ \text{object} \mid \text{class}(t, \text{object}) = C \wedge \text{position}(t, \text{object}) \in R \} \right|
+\text{区間オブジェクト数(クラス、範囲)} = \frac{1}{W} \sum*{t=T*{\text{now}} - T*W}^{T*{\text{now}}} \left| \{ \text{object} \mid \text{class}(t, \text{object}) = C \wedge \text{position}(t, \text{object}) \in R \} \right|
 \end{align}
+
 $$
 
 ここで、
@@ -190,4 +199,4 @@ $$
 - オブジェクトの分割に対するメトリクス
 - 通常は静止しているが移動するオブジェクトに対するメトリクス
 - 消滅したオブジェクトのメトリクス
-
+$$

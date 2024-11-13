@@ -14,7 +14,6 @@
 
 パラメータパスを `PACKAGE_param_path` として指定する必要があることに注意してください。指定する必要のあるパラメータパスのリストは、`perception.launch.xml` の先頭部に記載されています。
 
-
 ```xml
   <include file="$(find-pkg-share tier4_perception_launch)/launch/perception.launch.xml">
     <!-- options for mode: camera_lidar_fusion, lidar, camera -->
@@ -26,4 +25,3 @@
     ...
   </include>
 ```
-

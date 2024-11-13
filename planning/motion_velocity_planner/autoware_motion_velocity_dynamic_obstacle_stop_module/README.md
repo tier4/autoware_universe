@@ -79,15 +79,14 @@
 
 ### モジュールパラメータ
 
-| パラメーター                                   | タイプ   | 説明                                                                                                                     |
-| ---------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `extra_object_width`                          | double | [m] 検出したオブジェクト周辺の余分な幅                                                                                |
-| `minimum_object_velocity`                     | double | [m/s] この値以下の速度のオブジェクトは無視されます                                                                   |
-| `stop_distance_buffer`                        | double | [m] 停止点と衝突点の間に追加する余分な距離                                                                              |
-| `time_horizon`                                | double | [s] 衝突チェックに使用される時間的視野                                                                                  |
-| `hysteresis`                                  | double | [m] 衝突が検出されると、このヒステリシスが衝突検出に使用されます                                                       |
-| `add_stop_duration_buffer`                    | double | [s] 停止の判断が追加される前に、衝突が継続的に検出されなければならない時間                                            |
-| `remove_stop_duration_buffer`                 | double | [s] 衝突が検出されなくなってから停止の判断が削除されるまでの時間                                                     |
-| `minimum_object_distance_from_ego_trajectory` | double | [m] 衝突を考慮する場合の、自己軌跡とオブジェクトの足跡間の最小距離                                               |
-| `ignore_unavoidable_collisions`               | bool   | [-] trueの場合、停止では回避できない衝突を無視します（障害物が直進し続けると仮定した場合）                        |
-
+| パラメーター                                  | タイプ | 説明                                                                                       |
+| --------------------------------------------- | ------ | ------------------------------------------------------------------------------------------ |
+| `extra_object_width`                          | double | [m] 検出したオブジェクト周辺の余分な幅                                                     |
+| `minimum_object_velocity`                     | double | [m/s] この値以下の速度のオブジェクトは無視されます                                         |
+| `stop_distance_buffer`                        | double | [m] 停止点と衝突点の間に追加する余分な距離                                                 |
+| `time_horizon`                                | double | [s] 衝突チェックに使用される時間的視野                                                     |
+| `hysteresis`                                  | double | [m] 衝突が検出されると、このヒステリシスが衝突検出に使用されます                           |
+| `add_stop_duration_buffer`                    | double | [s] 停止の判断が追加される前に、衝突が継続的に検出されなければならない時間                 |
+| `remove_stop_duration_buffer`                 | double | [s] 衝突が検出されなくなってから停止の判断が削除されるまでの時間                           |
+| `minimum_object_distance_from_ego_trajectory` | double | [m] 衝突を考慮する場合の、自己軌跡とオブジェクトの足跡間の最小距離                         |
+| `ignore_unavoidable_collisions`               | bool   | [-] trueの場合、停止では回避できない衝突を無視します（障害物が直進し続けると仮定した場合） |

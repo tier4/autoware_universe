@@ -20,7 +20,6 @@ Autowareにおける`セグメント`は、次のような2つの連続したポ
 
 最初の関数は、距離とヨーのしきい値を使用して最近接インデックスを見つけるものです。
 
-
 ```cpp
 template <class T>
 size_t findFirstNearestIndexWithSoftConstraints(
@@ -45,7 +44,6 @@ size_t findFirstNearestIndexWithSoftConstraints(
 
 2 番目の関数は、`lane_id`であるレーンの最も近いインデックスを見付けます。
 
-
 ```cpp
 size_t findNearestIndexFromLaneId(
   const tier4_planning_msgs::msg::PathWithLaneId & path,
@@ -67,7 +65,6 @@ size_t findNearestIndexFromLaneId(
 
 したがって、実装は以下のようになります。
 
-
 ```cpp
 const size_t ego_nearest_idx = findFirstNearestIndexWithSoftConstraints(points, ego_pose, ego_nearest_dist_threshold, ego_nearest_yaw_threshold);
 const size_t ego_nearest_seg_idx = findFirstNearestIndexWithSoftConstraints(points, ego_pose, ego_nearest_dist_threshold, ego_nearest_yaw_threshold);
@@ -81,7 +78,6 @@ const size_t ego_nearest_seg_idx = findFirstNearestIndexWithSoftConstraints(poin
 したがって、動的オブジェクトではヨー閾値は考慮されるべきではありません。
 実装は次のようになります。
 
-
 ```cpp
 const size_t dynamic_obj_nearest_idx = findFirstNearestIndexWithSoftConstraints(points, dynamic_obj_pose, dynamic_obj_nearest_dist_threshold);
 const size_t dynamic_obj_nearest_seg_idx = findFirstNearestIndexWithSoftConstraints(points, dynamic_obj_pose, dynamic_obj_nearest_dist_threshold);
@@ -94,7 +90,6 @@ Laneletマップでは、交通対象は特定のレーンに属しています�
 
 実装方法は次のとおりです。
 
-
 ```cpp
 // first extract `lane_id` which the traffic object belong to.
 const size_t traffic_obj_nearest_idx = findNearestIndexFromLaneId(path_with_lane_id, traffic_obj_pos, lane_id);
@@ -106,4 +101,3 @@ const size_t traffic_obj_nearest_seg_idx = findNearestSegmentIndexFromLaneId(pat
 `trajectory.hpp` の一部テンプレート関数は、主に特定の型 (`autoware_planning_msgs::msg::PathPoint`, `autoware_planning_msgs::msg::PathPoint`, `autoware_planning_msgs::msg::TrajectoryPoint`) で使用されるため、コンパイル時間を短縮するために `extern template` 関数としてエクスポートされています。
 
 `autoware_motion_utils.hpp` ヘッダーファイルは、このファイルを直接/間接的に含むソースファイルがプリプロセスに時間がかかったため削除されました。
-

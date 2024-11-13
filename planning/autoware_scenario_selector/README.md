@@ -6,21 +6,21 @@
 
 ### 入力トピック
 
-| 名称 | タイプ | 説明 |
-|---|---|---|
-| `~input/lane_driving/trajectory` | `autoware_planning_msgs::Trajectory` | LaneDriving シナリオの軌道 |
-| `~input/parking/trajectory` | `autoware_planning_msgs::Trajectory` | Parking シナリオの軌道 |
-| `~input/lanelet_map` | `autoware_map_msgs::msg::LaneletMapBin` | |
-| `~input/route` | `autoware_planning_msgs::LaneletRoute` | ルートと目標位置 |
-| `~input/odometry` | `nav_msgs::Odometry` | 車両が停止しているかどうかを確認するため |
-| `is_parking_completed` | ブール型（ROS のパラメータとして実装） | Parking の分割された軌跡がすべて公開されているかどうか |
+| 名称                             | タイプ                                  | 説明                                                   |
+| -------------------------------- | --------------------------------------- | ------------------------------------------------------ |
+| `~input/lane_driving/trajectory` | `autoware_planning_msgs::Trajectory`    | LaneDriving シナリオの軌道                             |
+| `~input/parking/trajectory`      | `autoware_planning_msgs::Trajectory`    | Parking シナリオの軌道                                 |
+| `~input/lanelet_map`             | `autoware_map_msgs::msg::LaneletMapBin` |                                                        |
+| `~input/route`                   | `autoware_planning_msgs::LaneletRoute`  | ルートと目標位置                                       |
+| `~input/odometry`                | `nav_msgs::Odometry`                    | 車両が停止しているかどうかを確認するため               |
+| `is_parking_completed`           | ブール型（ROS のパラメータとして実装）  | Parking の分割された軌跡がすべて公開されているかどうか |
 
 ### 出力トピック
 
-| 名前                 | タイプ                                | 説明                                    |
-| -------------------- | ---------------------------------- | ---------------------------------------------- |
-| `~output/scenario`   | tier4_planning_msgs::Scenario      | 自車位置とアクティブ化されるシナリオ              |
-| `~output/trajectory` | autoware_planning_msgs::Trajectory | 通過する軌跡                                  |
+| 名前                 | タイプ                             | 説明                                 |
+| -------------------- | ---------------------------------- | ------------------------------------ |
+| `~output/scenario`   | tier4_planning_msgs::Scenario      | 自車位置とアクティブ化されるシナリオ |
+| `~output/trajectory` | autoware_planning_msgs::Trajectory | 通過する軌跡                         |
 
 ### 出力TFs
 
@@ -37,7 +37,6 @@
 {{ json_to_markdown("planning/autoware_scenario_selector/schema/scenario_selector.schema.json") }}
 
 ### フローチャート
-
 
 ```plantuml
 @startuml
@@ -70,7 +69,6 @@ endif
 stop
 @enduml
 ```
-
 
 ```plantuml
 @startuml
@@ -115,4 +113,3 @@ endif
 stop
 @enduml
 ```
-

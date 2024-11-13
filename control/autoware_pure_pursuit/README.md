@@ -17,4 +17,3 @@
 - LateralSyncData
   - ステアリングアングルの収束
 - `autoware_planning_msgs/Trajectory`: 自車に対する予測パス
-

@@ -10,13 +10,11 @@
 
 Autoware の起動後、次のコマンドで `autoware_accel_brake_map_calibrator` を実行し、自律走行を行います。注：自律走行中に同じ車両インターフェイスを使用できる場合は、手動走行でもデータを収集できます（例：ジョイスティックの使用）。
 
-
 ```sh
 ros2 launch autoware_accel_brake_map_calibrator accel_brake_map_calibrator.launch.xml rviz:=true
 ```
 
 もしrosbagファイルを使用したい場合は、以下のコマンドを実行してください。
-
 
 ```sh
 ros2 launch autoware_accel_brake_map_calibrator accel_brake_map_calibrator.launch.xml rviz:=true use_sim_time:=true
@@ -51,13 +49,12 @@ ros2 bag play <rosbag_file> --clock
 
 `accel brake map_calibrator` はキャリブレーションのステータスに応じて診断メッセージを発行します。診断タイプ `WARN` は、現在のアクセル/ブレーキマップが不正確であると推定されることを示します。この状況では、アクセル/ブレーキマップの再キャリブレーションを実行することを強くお勧めします。
 
-| 状態                   | 診断タイプ | 診断メッセージ                                 | 説明                                        |
-| ----------------------- | ---------------- | ------------------------------------------------- | -------------------------------------------- |
-| キャリブレーション不要 | `OK`             | "OK"                                             |                                            |
-| キャリブレーション必要 | `WARN`           | "アクセル/ブレーキマップのキャリブレーションが必要です。" | 現在のアクセル/ブレーキマップの精度は低いかもしれません。 |
+| 状態                   | 診断タイプ | 診断メッセージ                                            | 説明                                                      |
+| ---------------------- | ---------- | --------------------------------------------------------- | --------------------------------------------------------- |
+| キャリブレーション不要 | `OK`       | "OK"                                                      |                                                           |
+| キャリブレーション必要 | `WARN`     | "アクセル/ブレーキマップのキャリブレーションが必要です。" | 現在のアクセル/ブレーキマップの精度は低いかもしれません。 |
 
 この診断ステータスは、以下のROSトピックでも確認できます。
-
 
 ```sh
 ros2 topic echo /accel_brake_map_calibrator/output/update_suggest
@@ -89,7 +86,6 @@ ros2 topic echo /accel_brake_map_calibrator/output/update_suggest
 
 以下のコマンドで、較正で使用されたデータのプロットを表示します。各速度範囲のプロットでは、ペダルと加速度の関係が分布表示されており、ピッチ角に応じて色付けされた生のデータポイントが含まれています。
 
-
 ```sh
 ros2 run autoware_accel_brake_map_calibrator view_plot.py
 ```
@@ -104,7 +100,6 @@ ros2 run autoware_accel_brake_map_calibrator view_plot.py
 
 各地図セル内のすべてのデータについて。
 
-
 ```sh
 ros2 run autoware_accel_brake_map_calibrator view_statistics.py
 ```
@@ -112,7 +107,6 @@ ros2 run autoware_accel_brake_map_calibrator view_statistics.py
 ### キャリブレートされた加速 / ブレーキマップをいつでも保存する方法
 
 次のコマンドでいつでも加速およびブレーキマップを保存できます。
-
 
 ```sh
 ros2 service call /accel_brake_map_calibrator/update_map_dir tier4_vehicle_msgs/srv/UpdateAccelBrakeMap "path: '<accel/brake map directory>'"
@@ -122,48 +116,48 @@ AutowareでAccel_map.csv/brake_map.csvを読み込むデフォルトのディレ
 
 1.「パネル」タブをクリックして、AccelBrakeMapCalibratorButtonPanelを選択します。
 
-   ![add_panel](./media/add_panel.png)
+![add_panel](./media/add_panel.png)
 
 2.パネルを選択すると、ボタンがRVizの下部に表示されます。
 
-   ![calibrator_button_panel](./media/calibrator_button_panel.png)
+![calibrator_button_panel](./media/calibrator_button_panel.png)
 
 3.ボタンを押すと、accel /ブレーキマップが保存されます。（キャリブレーターノードが実行されていない場合など、特定の状況ではボタンを押せません。）
 
-   ![push_calibration_button](./media/push_calibration_button.png)
+![push_calibration_button](./media/push_calibration_button.png)
 
 ## パラメータ
 
 ## システムパラメータ
 
-| 名称                                 | タイプ   | 説明                                                                                                                                                                                                  | デフォルト値                                                    |
-| :-----------------------------------| :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------- |
-| update_method                         | string | マップのキャリブレーション手法を選択できます。"update_offset_each_cell" は、マップ上の各グリッドセルのオフセットを計算します。 "update_offset_total" は、マップの合計オフセットを計算します。 | "update_offset_each_cell"                                        |
-| get_pitch_method                      | string | "tf": tf からピッチを取得する、"none": ピッチ検証とピッチ補正を実行できません。                                                                                                                                     | "tf"                                                             |
-| pedal_accel_graph_output              | bool   | true の場合、ペダルアクセルのログを出力します。                                                                                                                                                            | true                                                             |
-| progress_file_output                  | bool   | true の場合、更新プロセスのログと CSV ファイルを出力します。                                                                                                                                                     | false                                                            |
-| default_map_dir                       | str    | デフォルトのマップディレクトリ                                                                                                                                                                            | [autoware_raw_vehicle_cmd_converter のディレクトリ]/data/default/ |
-| calibrated_map_dir                    | str    | キャリブレーションされたマップディレクトリ                                                                                                                                                                   | [autoware_accel_brake_map_calibrator のディレクトリ]/config/      |
-| update_hz                             | double | 更新の Hz                                                                                                                                                                                                  | 10.0                                                             |
+| 名称                     | タイプ | 説明                                                                                                                                                                                          | デフォルト値                                                      |
+| :----------------------- | :----- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------- |
+| update_method            | string | マップのキャリブレーション手法を選択できます。"update_offset_each_cell" は、マップ上の各グリッドセルのオフセットを計算します。 "update_offset_total" は、マップの合計オフセットを計算します。 | "update_offset_each_cell"                                         |
+| get_pitch_method         | string | "tf": tf からピッチを取得する、"none": ピッチ検証とピッチ補正を実行できません。                                                                                                               | "tf"                                                              |
+| pedal_accel_graph_output | bool   | true の場合、ペダルアクセルのログを出力します。                                                                                                                                               | true                                                              |
+| progress_file_output     | bool   | true の場合、更新プロセスのログと CSV ファイルを出力します。                                                                                                                                  | false                                                             |
+| default_map_dir          | str    | デフォルトのマップディレクトリ                                                                                                                                                                | [autoware_raw_vehicle_cmd_converter のディレクトリ]/data/default/ |
+| calibrated_map_dir       | str    | キャリブレーションされたマップディレクトリ                                                                                                                                                    | [autoware_accel_brake_map_calibrator のディレクトリ]/config/      |
+| update_hz                | double | 更新の Hz                                                                                                                                                                                     | 10.0                                                              |
 
 ## アルゴリズムパラメータ
 
-| 名称                     | 種別   | 説明                                                                                                                                      | デフォルト値 |
-| :----------------------- | :----- | :---------------------------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| initial_covariance       | double | 初期加速度マップの共分散 (共分散が大きいほど更新速度が向上)                                                                                 | 0.05          |
-| velocity_min_threshold   | double | これより小さい速度は更新に使用されない。                                                                                                      | 0.1           |
-| velocity_diff_threshold  | double | 速度データがこのしきい値よりグリッド参照速度 (中央値) から離れている場合、関連データは更新に使用されない。                                    | 0.556         |
-| max_steer_threshold      | double | ステアリング角度がこの値より大きい場合、関連データは更新に使用されない。                                                                        | 0.2           |
-| max_pitch_threshold      | double | ピッチ角度がこの値より大きい場合、関連データは更新に使用されない。                                                                        | 0.02          |
-| max_jerk_threshold       | double | 自車加速度から計算された自車ジャークがこの値より大きい場合、関連データは更新に使用されない。                                              | 0.7           |
-| pedal_velocity_thresh    | double | ペダル移動速度がこの値より大きい場合、関連データは更新に使用されない。                                                                    | 0.15          |
-| pedal_diff_threshold     | double | 現在ペダル値がこのしきい値より前の値から離れている場合、関連データは更新に使用されない。                                                  | 0.03          |
-| max_accel                | double | 速度ソースから計算される加速度の最大値。                                                                                                 | 5.0           |
-| min_accel                | double | 速度ソースから計算される加速度の最小値。                                                                                                 | -5.0          |
-| pedal_to_accel_delay     | double | 加速度への actuation_cmd との間の遅延時間 (更新ロジックで考慮)。                                                                           | 0.3           |
-| update_suggest_thresh    | double | RMSE 比率がこの値になる更新の提案フラグ (RMSE 比率: [新しいマップの RMSE] / [元のマップの RMSE])。                                           | 0.7           |
-| max_data_count           | int    | 視覚化用。各グリッドのデータ数がこの値になると、グリッドの色が赤になる。                                                                     | 100           |
-| accel_brake_value_source | string | 加速度/ブレーキソースとして actuation_status または actuation_command を使用するかどうか。                                                          | status        |
+| 名称                     | 種別   | 説明                                                                                                       | デフォルト値 |
+| :----------------------- | :----- | :--------------------------------------------------------------------------------------------------------- | :----------- |
+| initial_covariance       | double | 初期加速度マップの共分散 (共分散が大きいほど更新速度が向上)                                                | 0.05         |
+| velocity_min_threshold   | double | これより小さい速度は更新に使用されない。                                                                   | 0.1          |
+| velocity_diff_threshold  | double | 速度データがこのしきい値よりグリッド参照速度 (中央値) から離れている場合、関連データは更新に使用されない。 | 0.556        |
+| max_steer_threshold      | double | ステアリング角度がこの値より大きい場合、関連データは更新に使用されない。                                   | 0.2          |
+| max_pitch_threshold      | double | ピッチ角度がこの値より大きい場合、関連データは更新に使用されない。                                         | 0.02         |
+| max_jerk_threshold       | double | 自車加速度から計算された自車ジャークがこの値より大きい場合、関連データは更新に使用されない。               | 0.7          |
+| pedal_velocity_thresh    | double | ペダル移動速度がこの値より大きい場合、関連データは更新に使用されない。                                     | 0.15         |
+| pedal_diff_threshold     | double | 現在ペダル値がこのしきい値より前の値から離れている場合、関連データは更新に使用されない。                   | 0.03         |
+| max_accel                | double | 速度ソースから計算される加速度の最大値。                                                                   | 5.0          |
+| min_accel                | double | 速度ソースから計算される加速度の最小値。                                                                   | -5.0         |
+| pedal_to_accel_delay     | double | 加速度への actuation_cmd との間の遅延時間 (更新ロジックで考慮)。                                           | 0.3          |
+| update_suggest_thresh    | double | RMSE 比率がこの値になる更新の提案フラグ (RMSE 比率: [新しいマップの RMSE] / [元のマップの RMSE])。         | 0.7          |
+| max_data_count           | int    | 視覚化用。各グリッドのデータ数がこの値になると、グリッドの色が赤になる。                                   | 100          |
+| accel_brake_value_source | string | 加速度/ブレーキソースとして actuation_status または actuation_command を使用するかどうか。                 | status       |
 
 ## テストユーティリティースクリプト
 
@@ -176,7 +170,6 @@ AutowareでAccel_map.csv/brake_map.csvを読み込むデフォルトのディレ
 - actuation_cmd_publisher.py
 
 `accel/brake_tester.py`は、CLIからターゲットの加速/制動コマンドを受け取ります。ターゲット値を`actuation_cmd_publisher.py`に送信し、これが`ActuationCmd`を生成します。次のコマンドを別のターミナルで実行して、これらのスクリプトを実行でき、以下のスクリーンショットのようになります。
-
 
 ```bash
 ros2 run autoware_accel_brake_map_calibrator accel_tester.py
@@ -196,13 +189,13 @@ ros2 run autoware_accel_brake_map_calibrator actuation_cmd_publisher.py
 
 #### パラメーター
 
-| 名                   | 説明                  | デフォルト値 |
-| ---------------------- | ---------------------------- | ------------- |
-| velocity_min_threshold | 最小速度を除外     | 0.1           |
-| max_steer_threshold    | 大きなステアリング角を除外 | 0.2           |
-| max_pitch_threshold    | 大きなピッチ角を除外    | 0.02          |
-| max_jerk_threshold     | 大きなジャークを除外           | 0.7           |
-| pedal_velocity_thresh  | 大きなペダリング速度を除外 | 0.15          |
+| 名                     | 説明                       | デフォルト値 |
+| ---------------------- | -------------------------- | ------------ |
+| velocity_min_threshold | 最小速度を除外             | 0.1          |
+| max_steer_threshold    | 大きなステアリング角を除外 | 0.2          |
+| max_pitch_threshold    | 大きなピッチ角を除外       | 0.02         |
+| max_jerk_threshold     | 大きなジャークを除外       | 0.7          |
+| pedal_velocity_thresh  | 大きなペダリング速度を除外 | 0.15         |
 
 ### update_offset_each_cell
 
@@ -216,10 +209,10 @@ ros2 run autoware_accel_brake_map_calibrator actuation_cmd_publisher.py
 
 データの選択は、次のしきい値によって決定されます。
 
-| 名前 | 既定値 |
-| ------------------- | -------- |
-| velocity_diff_threshold | 0.556 |
-| pedal_diff_threshold | 0.03 |
+| 名前                    | 既定値 |
+| ----------------------- | ------ |
+| velocity_diff_threshold | 0.556  |
+| pedal_diff_threshold    | 0.03   |
 
 #### フォーミュラの更新
 
@@ -233,13 +226,13 @@ $$
 
 #### 変数
 
-| 変数名     | 記号     |
-|---|---|
-| 共分散     | $p[n-1]$   |
-| マップオフセット | $\theta[n]$ |
+| 変数名            | 記号        |
+| ----------------- | ----------- |
+| 共分散            | $p[n-1]$    |
+| マップオフセット  | $\theta[n]$ |
 | forgetting factor | $\lambda$   |
-| フィー | $x(=1)$     |
-| 測定加速度 | $y$         |
+| フィー            | $x(=1)$     |
+| 測定加速度        | $y$         |
 
 ### update_offset_four_cell_around [1]
 
@@ -262,4 +255,3 @@ RLS（再帰的最小二乗法）により、新規取得データ周囲の 4 �
 <!-- cspell: ignore Lochrie, Doljevic, Yongsoon, Yoon, IFAC -->
 
 [1] [Gabrielle Lochrie, Michael Doljevic, Mario Nona, Yongsoon Yoon, Anti-Windup Recursive Least Squares Method for Adaptive Lookup Tables with Application to Automotive Powertrain Control Systems, IFAC-PapersOnLine, Volume 54, Issue 20, 2021, Pages 840-845](https://www.sciencedirect.com/science/article/pii/S240589632102320X)
-

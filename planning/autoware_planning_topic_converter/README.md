@@ -10,7 +10,6 @@
 
 このパッケージ内のツールは、合成可能なROS 2コンポーネントノードとして提供されるので、既存のプロセスにスポーンしたり、起動ファイルから起動したり、コマンドラインから呼び出すことができます。
 
-
 ```xml
 <load_composable_node target="container_name">
   <composable_node pkg="planning_topic_converter" plugin="autoware::planning_topic_converter::PathToTrajectory" name="path_to_trajectory_converter" namespace="">
@@ -25,12 +24,11 @@
 
 ## パラメータ
 
-| 名前          | 種別    | 説明                                   |
-| :------------- | :----- | :--------------------------------------- |
-| `input_topic`  | 文字列 | 入力トピック名                             |
-| `output_topic` | 文字列 | 出力トピック名                            |
+| 名前           | 種別   | 説明           |
+| :------------- | :----- | :------------- |
+| `input_topic`  | 文字列 | 入力トピック名 |
+| `output_topic` | 文字列 | 出力トピック名 |
 
 ## 想定条件／既知の限界
 
 ## 将来的に拡張予定の部分／未実装の部分
-

@@ -8,24 +8,24 @@
 
 ### 入力
 
-| 名前                                               | タイプ                                                                 | 説明                                                                 |
-| --------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `~/input/steering`                           | `autoware_vehicle_msgs::msg::SteeringReport`         | ステアリング状態                                                         |
-| `~/input/auto/control_cmd`                         | `autoware_control_msgs::msg::Control`                 | Planningモジュールからの横方向・縦方向速度コマンド                       |
-| `~/input/auto/turn_indicators_cmd`                 | `autoware_vehicle_msgs::msg::TurnIndicatorsCommand`   | Planningモジュールからのターンインジケータコマンド                     |
-| `~/input/auto/hazard_lights_cmd`                   | `autoware_vehicle_msgs::msg::HazardLightsCommand`     | Planningモジュールからのハザードランプコマンド                         |
-| `~/input/auto/gear_cmd`                            | `autoware_vehicle_msgs::msg::GearCommand`             | Planningモジュールからのギアコマンド                                    |
-| `~/input/external/control_cmd`                     | `autoware_control_msgs::msg::Control`                 | 外部からの横方向・縦方向速度コマンド                                  |
-| `~/input/external/turn_indicators_cmd`             | `autoware_vehicle_msgs::msg::TurnIndicatorsCommand`   | 外部からのターンインジケータコマンド                                |
-| `~/input/external/hazard_lights_cmd`               | `autoware_vehicle_msgs::msg::HazardLightsCommand`     | 外部からのハザードランプコマンド                                    |
-| `~/input/external/gear_cmd`                        | `autoware_vehicle_msgs::msg::GearCommand`             | 外部からのギアコマンド                                                |
-| `~/input/external_emergency_stop_heartbeat` | `tier4_external_api_msgs::msg::Heartbeat`             | ハートビート                                                                |
-| `~/input/gate_mode`                             | `tier4_control_msgs::msg::GateMode`                   | ゲートモード (AUTO または EXTERNAL)                                       |
-| `~/input/emergency/control_cmd`                   | `autoware_control_msgs::msg::Control`                 | エマージェンシーハンドラからの横方向・縦方向速度コマンド                   |
-| `~/input/emergency/hazard_lights_cmd`             | `autoware_vehicle_msgs::msg::HazardLightsCommand`     | エマージェンシーハンドラからのハザードランプコマンド                       |
-| `~/input/emergency/gear_cmd`                      | `autoware_vehicle_msgs::msg::GearCommand`             | エマージェンシーハンドラからのギアコマンド                                |
-| `~/input/engage`                               | `autoware_vehicle_msgs::msg::Engage`                  | エンゲージ信号                                                          |
-| `~/input/operation_mode`                       | `autoware_adapi_v1_msgs::msg::OperationModeState`    | Autowareの動作モード                                                   |
+| 名前                                        | タイプ                                              | 説明                                                     |
+| ------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| `~/input/steering`                          | `autoware_vehicle_msgs::msg::SteeringReport`        | ステアリング状態                                         |
+| `~/input/auto/control_cmd`                  | `autoware_control_msgs::msg::Control`               | Planningモジュールからの横方向・縦方向速度コマンド       |
+| `~/input/auto/turn_indicators_cmd`          | `autoware_vehicle_msgs::msg::TurnIndicatorsCommand` | Planningモジュールからのターンインジケータコマンド       |
+| `~/input/auto/hazard_lights_cmd`            | `autoware_vehicle_msgs::msg::HazardLightsCommand`   | Planningモジュールからのハザードランプコマンド           |
+| `~/input/auto/gear_cmd`                     | `autoware_vehicle_msgs::msg::GearCommand`           | Planningモジュールからのギアコマンド                     |
+| `~/input/external/control_cmd`              | `autoware_control_msgs::msg::Control`               | 外部からの横方向・縦方向速度コマンド                     |
+| `~/input/external/turn_indicators_cmd`      | `autoware_vehicle_msgs::msg::TurnIndicatorsCommand` | 外部からのターンインジケータコマンド                     |
+| `~/input/external/hazard_lights_cmd`        | `autoware_vehicle_msgs::msg::HazardLightsCommand`   | 外部からのハザードランプコマンド                         |
+| `~/input/external/gear_cmd`                 | `autoware_vehicle_msgs::msg::GearCommand`           | 外部からのギアコマンド                                   |
+| `~/input/external_emergency_stop_heartbeat` | `tier4_external_api_msgs::msg::Heartbeat`           | ハートビート                                             |
+| `~/input/gate_mode`                         | `tier4_control_msgs::msg::GateMode`                 | ゲートモード (AUTO または EXTERNAL)                      |
+| `~/input/emergency/control_cmd`             | `autoware_control_msgs::msg::Control`               | エマージェンシーハンドラからの横方向・縦方向速度コマンド |
+| `~/input/emergency/hazard_lights_cmd`       | `autoware_vehicle_msgs::msg::HazardLightsCommand`   | エマージェンシーハンドラからのハザードランプコマンド     |
+| `~/input/emergency/gear_cmd`                | `autoware_vehicle_msgs::msg::GearCommand`           | エマージェンシーハンドラからのギアコマンド               |
+| `~/input/engage`                            | `autoware_vehicle_msgs::msg::Engage`                | エンゲージ信号                                           |
+| `~/input/operation_mode`                    | `autoware_adapi_v1_msgs::msg::OperationModeState`   | Autowareの動作モード                                     |
 
 ### 出力
 
@@ -107,44 +107,44 @@
 
 Autowareは、オープンソースの自動運転ソフトウェアプラットフォームです。主要な機能として上記で説明したコンポーネントを提供します。詳細については、Autowareのドキュメントを参照してください。
 
-| 名前                                   | 型                                                | 説明                                              |
-| -------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
-| `~/output/vehicle_cmd_emergency`       | `tier4_vehicle_msgs::msg::VehicleEmergencyStamped`  | コマンド内の緊急状態                                 |
-| `~/output/command/control_cmd`         | `autoware_control_msgs::msg::Control`               | 車両への横方向および縦方向速度コマンド                   |
-| `~/output/command/turn_indicators_cmd` | `autoware_vehicle_msgs::msg::TurnIndicatorsCommand` | 車両へのターンインジケータコマンド                   |
-| `~/output/command/hazard_lights_cmd`   | `autoware_vehicle_msgs::msg::HazardLightsCommand`   | 車両へのハザードランプコマンド                         |
-| `~/output/command/gear_cmd`            | `autoware_vehicle_msgs::msg::GearCommand`           | 車両へのギアコマンド                                  |
-| `~/output/gate_mode`                   | `tier4_control_msgs::msg::GateMode`                 | ゲートモード（AUTOまたはEXTERNAL）                      |
-| `~/output/engage`                      | `autoware_vehicle_msgs::msg::Engage`                | エンゲージ信号                                            |
-| `~/output/external_emergency`          | `tier4_external_api_msgs::msg::Emergency`           | 外部緊急信号                                           |
-| `~/output/operation_mode`              | `tier4_system_msgs::msg::OperationMode`             | `vehicle_cmd_gate`の現在の動作モード              |
+| 名前                                   | 型                                                  | 説明                                   |
+| -------------------------------------- | --------------------------------------------------- | -------------------------------------- |
+| `~/output/vehicle_cmd_emergency`       | `tier4_vehicle_msgs::msg::VehicleEmergencyStamped`  | コマンド内の緊急状態                   |
+| `~/output/command/control_cmd`         | `autoware_control_msgs::msg::Control`               | 車両への横方向および縦方向速度コマンド |
+| `~/output/command/turn_indicators_cmd` | `autoware_vehicle_msgs::msg::TurnIndicatorsCommand` | 車両へのターンインジケータコマンド     |
+| `~/output/command/hazard_lights_cmd`   | `autoware_vehicle_msgs::msg::HazardLightsCommand`   | 車両へのハザードランプコマンド         |
+| `~/output/command/gear_cmd`            | `autoware_vehicle_msgs::msg::GearCommand`           | 車両へのギアコマンド                   |
+| `~/output/gate_mode`                   | `tier4_control_msgs::msg::GateMode`                 | ゲートモード（AUTOまたはEXTERNAL）     |
+| `~/output/engage`                      | `autoware_vehicle_msgs::msg::Engage`                | エンゲージ信号                         |
+| `~/output/external_emergency`          | `tier4_external_api_msgs::msg::Emergency`           | 外部緊急信号                           |
+| `~/output/operation_mode`              | `tier4_system_msgs::msg::OperationMode`             | `vehicle_cmd_gate`の現在の動作モード   |
 
 ## パラメータ
 
-| パラメータ                                   | 型     | 説明                                                                                                                                                                                              |
-| ------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `update_period`                             | double   | 更新周期                                                                                                                                                                                          |
-| `use_emergency_handling`                    | bool     | エマージェンシーハンドラ使用時はtrue                                                                                                                                                              |
-| `check_external_emergency_heartbeat`        | bool     | エマージェンシーストップのハートビートを確認する場合true                                                                                                                                                |
-| `system_emergency_heartbeat_timeout`        | double   | システムエマージェンシーのタイムアウト                                                                                                                                                             |
-| `external_emergency_stop_heartbeat_timeout` | double   | 外部エマージェンシーのタイムアウト                                                                                                                                                             |
-| `filter_activated_count_threshold`          | int      | フィルタアクティベーションのしきい値                                                                                                                                                               |
-| `filter_activated_velocity_threshold`       | double   | フィルタアクティベーションの速度しきい値                                                                                                                                                             |
-| `stop_hold_acceleration`                    | double   | 車両が停止する場合の縦断加速度コマンド                                                                                                                                                         |
-| `emergency_acceleration`                    | double   | 車両がエマージェンシーで停止する場合の縦断加速度コマンド                                                                                                                                               |
-| `moderate_stop_service_acceleration`        | double   | 車両がモデレートストップサービスで停止する場合の縦断加速度コマンド                                                                                                                                         |
-| `nominal.vel_lim`                           | double   | 縦断速度の制限（自律運転モードでアクティブ化）                                                                                                                                                   |
-| `nominal.reference_speed_point`             | <double> | コントロールコマンドの制限の計算時に参照速度点として使用される速度点（自律運転モードでアクティブ化）。この配列のサイズは制限配列のサイズと同じにする必要があります。 |
-| `nominal.lon_acc_lim`                       | <double> | 縦断加速度の限界値の配列（自律運転モードでアクティブ化）                                                                                                                                             |
-| `nominal.lon_jerk_lim`                      | <double> | 縦断ジャークの限界値の配列（自律運転モードでアクティブ化）                                                                                                                                           |
-| `nominal.lat_acc_lim`                       | <double> | 横断加速度の限界値の配列（自律運転モードでアクティブ化）                                                                                                                                           |
-| `nominal.lat_jerk_lim`                      | <double> | 横断ジャークの限界値の配列（自律運転モードでアクティブ化）                                                                                                                                         |
-| `on_transition.vel_lim`                     | double   | 縦断速度の制限（トランジションモードでアクティブ化）                                                                                                                                                   |
+| パラメータ                                  | 型       | 説明                                                                                                                                                                       |
+| ------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `update_period`                             | double   | 更新周期                                                                                                                                                                   |
+| `use_emergency_handling`                    | bool     | エマージェンシーハンドラ使用時はtrue                                                                                                                                       |
+| `check_external_emergency_heartbeat`        | bool     | エマージェンシーストップのハートビートを確認する場合true                                                                                                                   |
+| `system_emergency_heartbeat_timeout`        | double   | システムエマージェンシーのタイムアウト                                                                                                                                     |
+| `external_emergency_stop_heartbeat_timeout` | double   | 外部エマージェンシーのタイムアウト                                                                                                                                         |
+| `filter_activated_count_threshold`          | int      | フィルタアクティベーションのしきい値                                                                                                                                       |
+| `filter_activated_velocity_threshold`       | double   | フィルタアクティベーションの速度しきい値                                                                                                                                   |
+| `stop_hold_acceleration`                    | double   | 車両が停止する場合の縦断加速度コマンド                                                                                                                                     |
+| `emergency_acceleration`                    | double   | 車両がエマージェンシーで停止する場合の縦断加速度コマンド                                                                                                                   |
+| `moderate_stop_service_acceleration`        | double   | 車両がモデレートストップサービスで停止する場合の縦断加速度コマンド                                                                                                         |
+| `nominal.vel_lim`                           | double   | 縦断速度の制限（自律運転モードでアクティブ化）                                                                                                                             |
+| `nominal.reference_speed_point`             | <double> | コントロールコマンドの制限の計算時に参照速度点として使用される速度点（自律運転モードでアクティブ化）。この配列のサイズは制限配列のサイズと同じにする必要があります。       |
+| `nominal.lon_acc_lim`                       | <double> | 縦断加速度の限界値の配列（自律運転モードでアクティブ化）                                                                                                                   |
+| `nominal.lon_jerk_lim`                      | <double> | 縦断ジャークの限界値の配列（自律運転モードでアクティブ化）                                                                                                                 |
+| `nominal.lat_acc_lim`                       | <double> | 横断加速度の限界値の配列（自律運転モードでアクティブ化）                                                                                                                   |
+| `nominal.lat_jerk_lim`                      | <double> | 横断ジャークの限界値の配列（自律運転モードでアクティブ化）                                                                                                                 |
+| `on_transition.vel_lim`                     | double   | 縦断速度の制限（トランジションモードでアクティブ化）                                                                                                                       |
 | `on_transition.reference_speed_point`       | <double> | コントロールコマンドの制限の計算時に参照速度点として使用される速度点（トランジションモードでアクティブ化）。この配列のサイズは制限配列のサイズと同じにする必要があります。 |
-| `on_transition.lon_acc_lim`                 | <double> | 縦断加速度の限界値の配列（トランジションモードでアクティブ化）                                                                                                                                         |
-| `on_transition.lon_jerk_lim`                | <double> | 縦断ジャークの限界値の配列（トランジションモードでアクティブ化）                                                                                                                                       |
-| `on_transition.lat_acc_lim`                 | <double> | 横断加速度の限界値の配列（トランジションモードでアクティブ化）                                                                                                                                       |
-| `on_transition.lat_jerk_lim`                | <double> | 横断ジャークの限界値の配列（トランジションモードでアクティブ化）                                                                                                                                     |
+| `on_transition.lon_acc_lim`                 | <double> | 縦断加速度の限界値の配列（トランジションモードでアクティブ化）                                                                                                             |
+| `on_transition.lon_jerk_lim`                | <double> | 縦断ジャークの限界値の配列（トランジションモードでアクティブ化）                                                                                                           |
+| `on_transition.lat_acc_lim`                 | <double> | 横断加速度の限界値の配列（トランジションモードでアクティブ化）                                                                                                             |
+| `on_transition.lat_jerk_lim`                | <double> | 横断ジャークの限界値の配列（トランジションモードでアクティブ化）                                                                                                           |
 
 ## フィルタ機能
 
@@ -171,4 +171,3 @@ Autowareは、オープンソースの自動運転ソフトウェアプラット
 
 出力コマンドのトピック: `turn_indicators_cmd`, `hazard_light` および `gear_cmd` は `gate_mode` に基づいて選択されます。
 ただし、コマンドの継続性を確保するために、モードが変更された場合でも、新しい入力コマンドのトピックが届くまでこれらのコマンドは変更されません。
-

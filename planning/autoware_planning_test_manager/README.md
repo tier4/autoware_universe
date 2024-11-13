@@ -12,16 +12,15 @@
 
 ### 通常動作の確認
 
-テスト対象ノードについて、ノードが正しく動作し、後続のノードに必要なメッセージをパブリッシュすることを確認します。これを行うには、test\_nodeに必要なメッセージをパブリッシュし、ノードの出力が出力されていることを確認します。
+テスト対象ノードについて、ノードが正しく動作し、後続のノードに必要なメッセージをパブリッシュすることを確認します。これを行うには、test_nodeに必要なメッセージをパブリッシュし、ノードの出力が出力されていることを確認します。
 
 ### 特殊な入力のロバスト性確認
 
-通常動作を確認した後、例外的な入力が与えられたときにテスト対象ノードがクラッシュしないことを確認します。これを行うには、test\_nodeから例外的な入力を提供し、ノードがクラッシュしないことを確認します。
+通常動作を確認した後、例外的な入力が与えられたときにテスト対象ノードがクラッシュしないことを確認します。これを行うには、test_nodeから例外的な入力を提供し、ノードがクラッシュしないことを確認します。
 
 （WIP）
 
 ## 使用方法
-
 
 ```cpp
 
@@ -71,18 +70,18 @@ TEST(PlanningModuleInterfaceTest, NodeTestWithExceptionTrajectory)
 
 ## 実装されたテスト
 
-| ノード                        | テスト名                                                                                 | 例外的入力 | 出力         | 例外的な入力パターン                                                             |
-| --------------------------- | ----------------------------------------------------------------------------------------- | ----------------- | -------------- | ------------------------------------------------------------------------------------- |
-| autoware_planning_validator | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                       |
-| velocity_smoother           | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                       |
-| obstacle_cruise_planner     | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                       |
-| obstacle_stop_planner       | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                       |
-| obstacle_velocity_limiter   | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                       |
-| path_optimizer              | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                       |
+| ノード                      | テスト名                                                                                  | 例外的入力        | 出力           | 例外的な入力パターン                                                          |
+| --------------------------- | ----------------------------------------------------------------------------------------- | ----------------- | -------------- | ----------------------------------------------------------------------------- |
+| autoware_planning_validator | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
+| velocity_smoother           | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
+| obstacle_cruise_planner     | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
+| obstacle_stop_planner       | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
+| obstacle_velocity_limiter   | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
+| path_optimizer              | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
 | scenario_selector           | NodeTestWithExceptionTrajectoryLaneDrivingMode NodeTestWithExceptionTrajectoryParkingMode | trajectory        | scenario       | LANEDRIVING および PARKING シナリオの空、単一ポイント、重複ポイントを含むパス |
-| freespace_planner           | NodeTestWithExceptionRoute                                                                | route             | trajectory     | 空のルート                                                                           |
-| behavior_path_planner       | NodeTestWithExceptionRoute NodeTestWithOffTrackEgoPose                                    | route             | route odometry | 空のルート オフレーン自己位置                                                     |
-| behavior_velocity_planner   | NodeTestWithExceptionPathWithLaneID                                                       | path_with_lane_id | path           | 空のパス                                                                            |
+| freespace_planner           | NodeTestWithExceptionRoute                                                                | route             | trajectory     | 空のルート                                                                    |
+| behavior_path_planner       | NodeTestWithExceptionRoute NodeTestWithOffTrackEgoPose                                    | route             | route odometry | 空のルート オフレーン自己位置                                                 |
+| behavior_velocity_planner   | NodeTestWithExceptionPathWithLaneID                                                       | path_with_lane_id | path           | 空のパス                                                                      |
 
 ## 重要な注意事項
 
@@ -91,4 +90,3 @@ TEST(PlanningModuleInterfaceTest, NodeTestWithExceptionTrajectory)
 ## 今後の拡張 / 未実装部分
 
 (WIP)
-

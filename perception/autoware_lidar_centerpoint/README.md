@@ -13,17 +13,19 @@ autoware_lidar_centerpointは、動的3Dオブジェクトを検出するため�
 ## 入出力
 
 ### 入力
+
 - LiDAR点群
 
 ### 出力
+
 - クラスID
 - Bounding Box
 - 速度ベクトル
 - 加速度ベクトル
 
-| 名称                   | タイプ                              | 説明                                  |
-| ---------------------- | ----------------------------------- | ---------------------------------------- |
-| `~/input/pointcloud` | `sensor_msgs::msg::PointCloud2` | 入力ポイントクラウド                           |
+| 名称                 | タイプ                          | 説明                 |
+| -------------------- | ------------------------------- | -------------------- |
+| `~/input/pointcloud` | `sensor_msgs::msg::PointCloud2` | 入力ポイントクラウド |
 
 ### 出力
 
@@ -47,21 +49,21 @@ autoware_lidar_centerpointは、動的3Dオブジェクトを検出するため�
 
 **評価指標:**
 
-* 各シナリオにおける目標ポイント（回避距離、停止位置、駐車位置など）からの偏差
-* 'post resampling'前のPlanning出力と'post resampling'後のPlanning出力との間の軌跡の滑らかさ
-* 車両の自車位置とPlanningが生成する軌跡との間の誤差
-* 計画された速度と加速度と、実際の速度と加速度との間の偏差
-* 計画された軌跡の曲率半径と、実際の軌跡の曲率半径との間の偏差
-* 車両周囲の障害物や他の車両を回避するために必要な回避時間
-* 車両が障害物や他の車両と衝突する可能性のある衝突時間（TTC）
+- 各シナリオにおける目標ポイント（回避距離、停止位置、駐車位置など）からの偏差
+- 'post resampling'前のPlanning出力と'post resampling'後のPlanning出力との間の軌跡の滑らかさ
+- 車両の自車位置とPlanningが生成する軌跡との間の誤差
+- 計画された速度と加速度と、実際の速度と加速度との間の偏差
+- 計画された軌跡の曲率半径と、実際の軌跡の曲率半径との間の偏差
+- 車両周囲の障害物や他の車両を回避するために必要な回避時間
+- 車両が障害物や他の車両と衝突する可能性のある衝突時間（TTC）
 
 Autoware Planningコンポーネントの性能評価には、これらのシナリオが利用できます。
 
-| 名前                     | タイプ                                                 | 説明 |
-| ------------------------ | ------------------------------------------------------ | ------ |
-| `~/output/objects`         | `autoware_perception_msgs::msg::DetectedObjects`       | 検出オブジェクト     |
-| `debug/cyclic_time_ms`     | `tier4_debug_msgs::msg::Float64Stamped`                   | サイクルタイム (msg) |
-| `debug/processing_time_ms` | `tier4_debug_msgs::msg::Float64Stamped`                   | 処理時間 (ms)       |
+| 名前                       | タイプ                                           | 説明                 |
+| -------------------------- | ------------------------------------------------ | -------------------- |
+| `~/output/objects`         | `autoware_perception_msgs::msg::DetectedObjects` | 検出オブジェクト     |
+| `debug/cyclic_time_ms`     | `tier4_debug_msgs::msg::Float64Stamped`          | サイクルタイム (msg) |
+| `debug/processing_time_ms` | `tier4_debug_msgs::msg::Float64Stamped`          | 処理時間 (ms)        |
 
 ## パラメータ
 
@@ -69,42 +71,41 @@ Autoware Planningコンポーネントの性能評価には、これらのシナ
 
 これらのパラメータはONNXファイルに関連付けられており、トレーニングフェーズ中に定義済みです。このパラメータを変更する際は、ONNXファイルも変更してください。また、ONNXファイルを更新する際は、必ずこれらの値を確認してください。
 
-| 名称                                    | タイプ         | デフォルト値                                               | 説明                                                                  |
-| --------------------------------------- | ------------ | ---------------------------------------------------------- | --------------------------------------------------------------------- |
-| `model_params.class_names`              | list[string] | ["CAR", "TRUCK", "BUS", "BICYCLE", "PEDESTRIAN"]           | モデル出力のクラス名のリスト                                         |
-| `model_params.point_feature_size`       | int          | `4`                                                       | 点群内の各ポイントのフィーチャ数                                    |
-| `model_params.max_voxel_size`           | int          | `40000`                                                   | ボクセルの最大数                                                      |
-| `model_params.point_cloud_range`        | list[double] | [-76.8, -76.8, -4.0, 76.8, 76.8, 6.0]                       | 検出範囲 [min_x, min_y, min_z, max_x, max_y, max_z] [m]               |
-| `model_params.voxel_size`               | list[double] | [0.32, 0.32, 10.0]                                          | 各ボクセルのサイズ [x, y, z] [m]                                      |
-| `model_params.downsample_factor`        | int          | `1`                                                       | 座標のダウンサンプル係数                                           |
-| `model_params.encoder_in_feature_size`  | int          | `9`                                                       | エンコーダへの入力フィーチャ数                                    |
-| `model_params.has_variance`             | bool         | `false`                                                   | モデルが各バウンディングボックスの姿勢分散と姿勢を出力する場合 `true` |
-| `model_params.has_twist`                | bool         | `false`                                                   | モデルが各バウンディングボックスの速度と姿勢を出力する場合 `true`     |
+| 名称                                   | タイプ       | デフォルト値                                     | 説明                                                                  |
+| -------------------------------------- | ------------ | ------------------------------------------------ | --------------------------------------------------------------------- |
+| `model_params.class_names`             | list[string] | ["CAR", "TRUCK", "BUS", "BICYCLE", "PEDESTRIAN"] | モデル出力のクラス名のリスト                                          |
+| `model_params.point_feature_size`      | int          | `4`                                              | 点群内の各ポイントのフィーチャ数                                      |
+| `model_params.max_voxel_size`          | int          | `40000`                                          | ボクセルの最大数                                                      |
+| `model_params.point_cloud_range`       | list[double] | [-76.8, -76.8, -4.0, 76.8, 76.8, 6.0]            | 検出範囲 [min_x, min_y, min_z, max_x, max_y, max_z] [m]               |
+| `model_params.voxel_size`              | list[double] | [0.32, 0.32, 10.0]                               | 各ボクセルのサイズ [x, y, z] [m]                                      |
+| `model_params.downsample_factor`       | int          | `1`                                              | 座標のダウンサンプル係数                                              |
+| `model_params.encoder_in_feature_size` | int          | `9`                                              | エンコーダへの入力フィーチャ数                                        |
+| `model_params.has_variance`            | bool         | `false`                                          | モデルが各バウンディングボックスの姿勢分散と姿勢を出力する場合 `true` |
+| `model_params.has_twist`               | bool         | `false`                                          | モデルが各バウンディングボックスの速度と姿勢を出力する場合 `true`     |
 
 ### コア・パラメータ
 
-| 名前                                          | タイプ    | デフォルト値   | 説明                                                            |
-| ------------------------------------------- | -------- | -------------- | ------------------------------------------------------------------ |
-| `encoder_onnx_path`                             | 文字列  | `""`           | VoxelFeatureEncoder ONNX ファイルへのパス                           |
-| `encoder_engine_path`                           | 文字列  | `""`           | VoxelFeatureEncoder TensorRT Engine ファイルへのパス                 |
-| `head_onnx_path`                               | 文字列  | `""`           | DetectionHead ONNX ファイルへのパス                                 |
-| `head_engine_path`                             | 文字列  | `""`           | DetectionHead TensorRT Engine ファイルへのパス                       |
-| `build_only`                                   | ブール  | `false`        | TensorRT エンジンファイルが作成されたらノードをシャットダウンする  |
-| `trt_precision`                               | 文字列  | `fp16`         | TensorRT 推論の精度: `fp32` または `fp16`                            |
-| `post_process_params.score_threshold`           | double  | `0.4`          | スコアが閾値未満の検出オブジェクトは無視される                    |
-| `post_process_params.yaw_norm_thresholds`       | doubleのリスト | [0.3, 0.3, 0.3, 0.3, 0.0] | Yaw ノルムの距離閾値の配列 [rad]                                   |
-| `post_process_params.iou_nms_target_class_names` | 文字列のリスト | -              | IoU ベースの非最大抑制のターゲットクラス                           |
-| `post_process_params.iou_nms_search_distance_2d` | double  | -              | 2 つ以上のオブジェクトが値よりも遠い場合、NMS は適用されない      |
-| `post_process_params.iou_nms_threshold`         | double  | -              | IoU ベースの非最大抑制の IoU 閾値                                  |
-| `post_process_params.has_twist`                 | ブール  | false          | モデルが出力値を捻じっているかどうかを示す                        |
-| `densification_params.world_frame_id`           | 文字列  | `map`          | マルチフレーム点群を統合するワールドフレーム ID                      |
-| `densification_params.num_past_frames`          | 整数    | `1`            | 現在フレームと統合する過去フレームの数                              |
+| 名前                                             | タイプ         | デフォルト値              | 説明                                                              |
+| ------------------------------------------------ | -------------- | ------------------------- | ----------------------------------------------------------------- |
+| `encoder_onnx_path`                              | 文字列         | `""`                      | VoxelFeatureEncoder ONNX ファイルへのパス                         |
+| `encoder_engine_path`                            | 文字列         | `""`                      | VoxelFeatureEncoder TensorRT Engine ファイルへのパス              |
+| `head_onnx_path`                                 | 文字列         | `""`                      | DetectionHead ONNX ファイルへのパス                               |
+| `head_engine_path`                               | 文字列         | `""`                      | DetectionHead TensorRT Engine ファイルへのパス                    |
+| `build_only`                                     | ブール         | `false`                   | TensorRT エンジンファイルが作成されたらノードをシャットダウンする |
+| `trt_precision`                                  | 文字列         | `fp16`                    | TensorRT 推論の精度: `fp32` または `fp16`                         |
+| `post_process_params.score_threshold`            | double         | `0.4`                     | スコアが閾値未満の検出オブジェクトは無視される                    |
+| `post_process_params.yaw_norm_thresholds`        | doubleのリスト | [0.3, 0.3, 0.3, 0.3, 0.0] | Yaw ノルムの距離閾値の配列 [rad]                                  |
+| `post_process_params.iou_nms_target_class_names` | 文字列のリスト | -                         | IoU ベースの非最大抑制のターゲットクラス                          |
+| `post_process_params.iou_nms_search_distance_2d` | double         | -                         | 2 つ以上のオブジェクトが値よりも遠い場合、NMS は適用されない      |
+| `post_process_params.iou_nms_threshold`          | double         | -                         | IoU ベースの非最大抑制の IoU 閾値                                 |
+| `post_process_params.has_twist`                  | ブール         | false                     | モデルが出力値を捻じっているかどうかを示す                        |
+| `densification_params.world_frame_id`            | 文字列         | `map`                     | マルチフレーム点群を統合するワールドフレーム ID                   |
+| `densification_params.num_past_frames`           | 整数           | `1`                       | 現在フレームと統合する過去フレームの数                            |
 
 ### `build_only` オプション
 
 `autoware_lidar_centerpoint` ノードには、ONNX ファイルから TensorRT エンジンファイルを構築するための `build_only` オプションがあります。
 Autoware Universe の `.param.yaml` ファイル内のすべての ROS パラメータを移動することが好ましいですが、`build_only` オプションは現時点では `.param.yaml` ファイルに移動されていません。これは、構築をプリタスクとして実行するためのフラグとして使用されることがあるためです。次のコマンドで実行できます。
-
 
 ```bash
 ros2 launch autoware_lidar_centerpoint lidar_centerpoint.launch.xml model_name:=centerpoint_tiny model_path:=/home/autoware/autoware_data/lidar_centerpoint model_param_path:=$(ros2 pkg prefix autoware_lidar_centerpoint --share)/config/centerpoint_tiny.param.yaml build_only:=true
@@ -138,7 +139,6 @@ ros2 launch autoware_lidar_centerpoint lidar_centerpoint.launch.xml model_name:=
 
 **ステップ2.** conda仮想環境を作成してアクティブにします
 
-
 ```bash
 conda create --name train-centerpoint python=3.8 -y
 conda activate train-centerpoint
@@ -148,7 +148,6 @@ conda activate train-centerpoint
 
 PyTorch がインストール済みで、Autoware の要件である CUDA 11.6 に対応していることを確認してください。
 
-
 ```bash
 conda install pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.6 -c pytorch -c nvidia
 ```
@@ -156,7 +155,6 @@ conda install pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.6 -c pytorch -
 #### mmdetection3dのインストール
 
 **ステップ 1.** MIMを使用してMMEngine、MMCV、MMDetectionをインストールします。
-
 
 ```bash
 pip install -U openmim
@@ -171,7 +169,6 @@ mmdetection3d リポジトリをフォークし、いくつかの貴重な機能
 特に、PointPillar z ボクセルの特徴量の入力を省略できるようにし、元の論文との互換性を保ちました。
 さらに、追加機能として PyTorch から ONNX へのコンバーターと T4 形式のリーダーを統合しました。
 
-
 ```bash
 git clone https://github.com/autowarefoundation/mmdetection3d.git
 cd mmdetection3d
@@ -184,13 +181,11 @@ pip install -v -e .
 
 mmdetection3dレポジトリのフォークをクローンする
 
-
 ```bash
 git clone https://github.com/autowarefoundation/mmdetection3d.git
 ```
 
 以下のコマンドを実行して Docker イメージを構築します。
-
 
 ```bash
 cd mmdetection3d
@@ -198,7 +193,6 @@ docker build -t mmdetection3d -f docker/Dockerfile .
 ```
 
 Dockerコンテナを実行する:
-
 
 ```bash
 docker run --gpus all --shm-size=8g -it -v {DATA_DIR}:/mmdetection3d/data mmdetection3d
@@ -212,13 +206,11 @@ docker run --gpus all --shm-size=8g -it -v {DATA_DIR}:/mmdetection3d/data mmdete
 
 **手順 2.** データセットフォルダにシンボリックリンクを作成する
 
-
 ```bash
 ln -s /path/to/nuscenes/dataset/ /path/to/mmdetection3d/data/nuscenes/
 ```
 
 **ステップ 3.** NuScenesデータを実行して準備:
-
 
 ```bash
 cd mmdetection3d
@@ -236,7 +228,6 @@ CenterPoint モデルは、設定ファイル内のさまざまなパラメー�
 
 #### トレーニングの開始
 
-
 ```bash
 python tools/train.py projects/AutowareCenterPoint/configs/centerpoint_custom.py --work-dir ./work_dirs/centerpoint_custom
 ```
@@ -247,7 +238,6 @@ python tools/train.py projects/AutowareCenterPoint/configs/centerpoint_custom.py
 1 x Velodyne VLS128、4 x Velodyne VLP16、1 x Robosense RS Bpearl。このデータセットは600のLiDARフレームを含んでおり、5つの異なるクラス、6905台の車、3951人の歩行者、75人の自転車乗り、162台のバス、326台のトラックの3Dアノテーションが含まれています。サンプル・データセットでは、フレームは2秒ごとに2フレームずつアノテーションされます。このデータセットは、モデルの学習、評価、微調整など、幅広い目的に使用できます。T4フォーマットで構成されています。
 
 ##### サンプル・データセットのダウンロード
-
 
 ```bash
 wget https://autoware-files.s3.us-west-2.amazonaws.com/dataset/lidar_detection_sample_dataset.tar.gz
@@ -263,13 +253,11 @@ ln -s /PATH/TO/DATASET/ /PATH/TO/mmdetection3d/data/tier4_dataset/
 
 データセットは T4Dataset 仕様に従ってフォーマットされており、「sample_dataset」をそのバージョンの 1 つとして指定します。
 
-
 ```bash
 python tools/create_data.py T4Dataset --root-path data/sample_dataset/ --out-dir data/sample_dataset/ --extra-tag T4Dataset --version sample_dataset --annotation-hz 2
 ```
 
 評価を実行する
-
 
 ```bash
 python tools/test.py projects/AutowareCenterPoint/configs/centerpoint_custom_test.py /PATH/OF/THE/CHECKPOINT  --task lidar_det
@@ -283,7 +271,6 @@ python tools/test.py projects/AutowareCenterPoint/configs/centerpoint_custom_tes
 
 autoware_lidar_centerpointの実装では、ONNXモデルを2つ入力として必要とします。ボクセルエンコーダーとCenterPointモデルのバックボーン・ネック・ヘッドなど、ネットワークの他の側面は外部的に実装されています。mmdetection3dリポジトリのフォークの下で、CenterPointモデルをAutoware互換のONNX形式に変換するスクリプトを用意しました。これは `mmdetection3d/projects/AutowareCenterPoint` ファイルにあります。
 
-
 ```bash
 python projects/AutowareCenterPoint/centerpoint_onnx_converter.py --cfg projects/AutowareCenterPoint/configs/centerpoint_custom.py --ckpt work_dirs/centerpoint_custom/YOUR_BEST_MODEL.pth --work-dir ./work_dirs/onnx_models
 ```
@@ -291,7 +278,6 @@ python projects/AutowareCenterPoint/centerpoint_onnx_converter.py --cfg projects
 #### カスタムモデルの設定ファイルを生成
 
 autoware_lidar_centerpointノードの設定ファイルディレクトリ内に**centerpoint_custom.param.yaml**という新しい設定ファイルを作成する。トレーニング設定ファイルに従ってpoint_cloud_range、point_feature_size、voxel_sizeなどの設定ファイルのパラメータを設定する。
-
 
 ```yaml
 /**:
@@ -313,7 +299,6 @@ autoware_lidar_centerpointノードの設定ファイルディレクトリ内に
 
 #### lidar_centerpoint ノードの起動
 
-
 ```bash
 cd /YOUR/AUTOWARE/PATH/Autoware
 source install/setup.bash
@@ -324,17 +309,17 @@ ros2 launch autoware_lidar_centerpoint lidar_centerpoint.launch.xml  model_name:
 
 #### v1 (2022/07/06)
 
-| 名称                | URL                                                                                                       | 説明                                                                                                                                 |
-| ------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `centerpoint`        | [pts_voxel_encoder][v1-encoder-centerpoint] <br> [pts_backbone_neck_head][v1-head-centerpoint]            | このパッケージの実装の制限のため、1 つの変更があります。`PillarFeatureNet` の `num_filters=[32, 32]` |
-| `centerpoint_tiny`    | [pts_voxel_encoder][v1-encoder-centerpoint-tiny] <br> [pts_backbone_neck_head][v1-head-centerpoint-tiny] | `v0`の`default`と同じモデル                                                                                                           |
+| 名称               | URL                                                                                                      | 説明                                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `centerpoint`      | [pts_voxel_encoder][v1-encoder-centerpoint] <br> [pts_backbone_neck_head][v1-head-centerpoint]           | このパッケージの実装の制限のため、1 つの変更があります。`PillarFeatureNet` の `num_filters=[32, 32]` |
+| `centerpoint_tiny` | [pts_voxel_encoder][v1-encoder-centerpoint-tiny] <br> [pts_backbone_neck_head][v1-head-centerpoint-tiny] | `v0`の`default`と同じモデル                                                                          |
 
 以下の変更はこの[構成](https://github.com/tianweiy/CenterPoint/blob/v0.2/configs/waymo/pp/waymo_centerpoint_pp_two_pfn_stride1_3x.py)と比較されています。
 
 #### v0 (2021/12/03)
 
-| 名前      | URL                                                                                   | 説明                                                                                                                                            |
-| --------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 名前      | URL                                                                                    | 説明                                                                                                                                |
+| --------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `default` | [pts_voxel_encoder][v0-encoder-default] <br> [pts_backbone_neck_head][v0-head-default] | オリジナルのCenterPointアーキテクチャから変更が2つある(`PillarFeatureNet`の`num_filters=[32]`と`RPN`の`ds_layer_strides=[2, 2, 2]`) |
 
 ## (省略可能) エラー検出と処理
@@ -447,4 +432,3 @@ Autowareのアーキテクチャは、主に以下のようなコンポーネン
 このインタラクションにより、Autowareは周囲を感知し、安全で効率的な経路を生成し、車両を制御することができ、自動運転の実現に不可欠です。
 
 このドキュメントでは、Autowareのアーキテクチャの詳細について説明します。また、コンポーネントのインタラクションと、それらが自動運転システム全体にどのように寄与するかについても説明します。
-

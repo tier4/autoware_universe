@@ -104,7 +104,6 @@
 
 以下のフローチャートは、`canTransitSuccessState` 関数における意思決定プロセスを示しています。
 
-
 ```plantuml
 @startuml
 @startuml
@@ -210,24 +209,24 @@ endif
 
 ![priority_order](./images/priority_order.drawio.svg)
 
-** 優先順位 **
+**優先順位**
 
 `PriorityOrder` は、各要素が開始姿勢候補のインデックスを表す `size_t` インデックスとプランナータイプで構成されるペアのベクトルとして定義されます。 PriorityOrder ベクトルは先頭から順次処理され、ベクトルの先頭にリストされたペアがプルアウトパスの生成で優先されます。
 
-##### ** `efficient_path` **
+##### **`efficient_path`**
 
 `search_priority` が `efficient_path` に設定され、`shift_pull_out` を優先する場合、`PriorityOrder` 配列は `shift_pull_out` がすべての開始姿勢候補にグループ化された後、次のプランナータイプに移行するように設定されます。この優先順位は配列の順序に反映され、`shift_pull_out` が `geometric_pull_out` の前にリストされています。
 
-| インデックス | Plan手法 |
-|---|---|
-| 0 | shift_pull_out |
-| 1 | shift_pull_out |
-| ... | ... |
-| N | shift_pull_out |
-| 0 | geometric_pull_out |
-| 1 | geometric_pull_out |
-| ... | ... |
-| N | geometric_pull_out |
+| インデックス | Plan手法           |
+| ------------ | ------------------ |
+| 0            | shift_pull_out     |
+| 1            | shift_pull_out     |
+| ...          | ...                |
+| N            | shift_pull_out     |
+| 0            | geometric_pull_out |
+| 1            | geometric_pull_out |
+| ...          | ...                |
+| N            | geometric_pull_out |
 
 この手法では、`geometric_pull_out` に進む前に、`shift_pull_out` が適切である可能性が高い状況で効率的である可能性のある `shift_pull_out` ですべて候補を試すことを優先します。
 
@@ -236,14 +235,14 @@ endif
 `search_priority` が `short_back_distance` に設定されている場合、アレイは各スタートポーズ候補のプランナタイプを交互に使用して、前の候補が成功した場合に車両が後方移動する距離を最小化できます。
 
 | Index | Planningコンポーネント |
-| ----- | -------------------- |
-| 0     | shift_pull_out      |
-| 0     | geometric_pull_out   |
-| 1     | shift_pull_out      |
-| 1     | geometric_pull_out   |
-| ...   | ...                  |
-| N     | shift_pull_out      |
-| N     | geometric_pull_out   |
+| ----- | ---------------------- |
+| 0     | shift_pull_out         |
+| 0     | geometric_pull_out     |
+| 1     | shift_pull_out         |
+| 1     | geometric_pull_out     |
+| ...   | ...                    |
+| N     | shift_pull_out         |
+| N     | geometric_pull_out     |
 
 この順番付けは、後退距離を最小化することが優先される場合に有益であり、各プランナーに最も近い可能な開始位置で成功する平等な機会を与えます。
 
@@ -254,7 +253,6 @@ endif
 - **衝突確認実行範囲**: 動的物体との衝突に対する安全確認は、各機動の開始点と終了点間の定義された境界内で行われ、自車位置が自分の後方から来る動的物体の進行を妨げたり、妨害したりしないことを保証します。
 
 - **衝突対応ポリシー**: 生成されたパス上の動的物体との衝突が検出されると、出発前に衝突検出が発生した場合、モジュール非アクティブ決定が登録されます。車両がすでに動き始めた場合、制動制約内で実行可能であり、後続車両が自車と車線境界の隙間を通過できる場合に限り、停止を試みます。
-
 
 ```plantuml
 @startuml
@@ -306,7 +304,6 @@ stop
 
 ## 設計
 
-
 ```plantuml
 @startuml
 package start_planner{
@@ -350,28 +347,26 @@ PullOutPath --o PullOutPlannerBase
 
 ## Planningコンポーネントの一般パラメータ
 
-
-
-| パラメータ名                                                | 単位 | 型   | 説明                                                                                                                                                                                             | デフォルト値 |
-| :------------------------------------------------------- | :---- | :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------- |
-| th_arrived_distance                                       | [m]   | double | 到達後経路終了距離のしきい値                                                                                                                                                             | 1.0                  |
-| th_stopped_velocity                                       | [m/s] | double | 到達後経路終了速度のしきい値                                                                                                                                                             | 0.01                 |
-| th_stopped_time                                           | [s]   | double | 到達後経路終了時間のしきい値                                                                                                                                                              | 1.0                  |
-| th_distance_to_middle_of_the_road                       | [m]   | double | 車両が道路の中間点にいるかどうかを判断するための距離のしきい値                                                                                                                                   | 0.1                  |
-| collision_check_margins                                 | [m]   | double | 障害物衝突チェックマージンのリスト                                                                                                                                                             | [2.0, 1.0, 0.5, 0.1] |
-| shift_collision_check_distance_from_end                   | [m]   | double | 衝突チェック距離の終端からのシフト終端姿勢                                                                                                                                                           | -10.0                |
-| geometric_collision_check_distance_from_end              | [m]   | double | 衝突チェック距離の終端幾何学的終端姿勢                                                                                                                                                              | 0.0                  |
-| collision_check_margin_from_front_object                  | [m]   | double | 前方の対象からの衝突チェックマージン                                                                                                                                                              | 5.0                  |
-| skip_rear_vehicle_check                                   | -     | bool   | 後続車両チェックをスキップするフラグ（後続車両チェックは、自動運転車が後続車両の進行を妨げているときに安全チェックをスキップして出発を続行するために実行される）                   | false                |
-| extra_width_margin_for_rear_obstacle                    | [m]   | double | 自動運転車が路肩車線から車線に合流する間に、後方の障害物が自動運転車を追い抜くことができるかどうかを判断するときに、認知される後方の障害物の幅に追加される追加幅                   | 0.5                  |
-| object_types_to_check_for_path_generation.check_car     | -     | bool   | getPathGen用車検フラグ                                                                                                                                                                    | true                 |
-| object_types_to_check_for_path_generation.check_truck    | -     | bool   | getPathGen用トラック検査フラグ                                                                                                                                                                 | true                 |
-| object_types_to_check_for_path_generation.check_bus      | -     | bool   | getPathGen用バス検査フラグ                                                                                                                                                                    | true                 |
-| object_types_to_check_for_path_generation.check_bicycle | -     | bool   | getPathGen用自転車検査フラグ                                                                                                                                                                | true                 |
-| object_types_to_check_for_path_generation.check_motorcycle | -     | bool   | getPathGen用オートバイ検査フラグ                                                                                                                                                              | true                 |
-| object_types_to_check_for_path_generation.check_pedestrian | -     | bool   | getPathGen用歩行者検査フラグ                                                                                                                                                              | true                 |
-| object_types_to_check_for_path_generation.check_unknown   | -     | bool   | getPathGen用障害物検査フラグ                                                                                                                                                                  | true                 |
-| center_line_path_interval                                | [m]   | double | 参照中心線経路ポイント間隔                                                                                                                                                                   | 1.0                  |
+| パラメータ名                                               | 単位  | 型     | 説明                                                                                                                                                             | デフォルト値         |
+| :--------------------------------------------------------- | :---- | :----- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------- |
+| th_arrived_distance                                        | [m]   | double | 到達後経路終了距離のしきい値                                                                                                                                     | 1.0                  |
+| th_stopped_velocity                                        | [m/s] | double | 到達後経路終了速度のしきい値                                                                                                                                     | 0.01                 |
+| th_stopped_time                                            | [s]   | double | 到達後経路終了時間のしきい値                                                                                                                                     | 1.0                  |
+| th_distance_to_middle_of_the_road                          | [m]   | double | 車両が道路の中間点にいるかどうかを判断するための距離のしきい値                                                                                                   | 0.1                  |
+| collision_check_margins                                    | [m]   | double | 障害物衝突チェックマージンのリスト                                                                                                                               | [2.0, 1.0, 0.5, 0.1] |
+| shift_collision_check_distance_from_end                    | [m]   | double | 衝突チェック距離の終端からのシフト終端姿勢                                                                                                                       | -10.0                |
+| geometric_collision_check_distance_from_end                | [m]   | double | 衝突チェック距離の終端幾何学的終端姿勢                                                                                                                           | 0.0                  |
+| collision_check_margin_from_front_object                   | [m]   | double | 前方の対象からの衝突チェックマージン                                                                                                                             | 5.0                  |
+| skip_rear_vehicle_check                                    | -     | bool   | 後続車両チェックをスキップするフラグ（後続車両チェックは、自動運転車が後続車両の進行を妨げているときに安全チェックをスキップして出発を続行するために実行される） | false                |
+| extra_width_margin_for_rear_obstacle                       | [m]   | double | 自動運転車が路肩車線から車線に合流する間に、後方の障害物が自動運転車を追い抜くことができるかどうかを判断するときに、認知される後方の障害物の幅に追加される追加幅 | 0.5                  |
+| object_types_to_check_for_path_generation.check_car        | -     | bool   | getPathGen用車検フラグ                                                                                                                                           | true                 |
+| object_types_to_check_for_path_generation.check_truck      | -     | bool   | getPathGen用トラック検査フラグ                                                                                                                                   | true                 |
+| object_types_to_check_for_path_generation.check_bus        | -     | bool   | getPathGen用バス検査フラグ                                                                                                                                       | true                 |
+| object_types_to_check_for_path_generation.check_bicycle    | -     | bool   | getPathGen用自転車検査フラグ                                                                                                                                     | true                 |
+| object_types_to_check_for_path_generation.check_motorcycle | -     | bool   | getPathGen用オートバイ検査フラグ                                                                                                                                 | true                 |
+| object_types_to_check_for_path_generation.check_pedestrian | -     | bool   | getPathGen用歩行者検査フラグ                                                                                                                                     | true                 |
+| object_types_to_check_for_path_generation.check_unknown    | -     | bool   | getPathGen用障害物検査フラグ                                                                                                                                     | true                 |
+| center_line_path_interval                                  | [m]   | double | 参照中心線経路ポイント間隔                                                                                                                                       | 1.0                  |
 
 ### **自車速度計画**
 
@@ -387,71 +382,71 @@ PullOutPath --o PullOutPlannerBase
 
 `stop_condition` のパラメータは停止条件の基準を定義します。
 
-| 名称                             | 単位  | 型     | 説明                                 | デフォルト値 |
-| :------------------------------- | :----- | :------ | :--------------------------------------- | :---------- |
-| `maximum_deceleration_for_stop` | [m/s^2] | double | 停止時の最大減速度                       | 1.0          |
-| `maximum_jerk_for_stop`          | [m/s^3] | double | 停止時の最大ジャーク                       | 1.0          |
+| 名称                            | 単位    | 型     | 説明                 | デフォルト値 |
+| :------------------------------ | :------ | :----- | :------------------- | :----------- |
+| `maximum_deceleration_for_stop` | [m/s^2] | double | 停止時の最大減速度   | 1.0          |
+| `maximum_jerk_for_stop`         | [m/s^3] | double | 停止時の最大ジャーク | 1.0          |
 
 ### 自車予測経路パラメータ
 
 `path_safety_check.ego_predicted_path` のパラメータは、自車予測経路特性を指定します。
 
-| 名称                          | 単位    | 型    | 説明                                              | デフォルト値 |
-| :---------------------------- | :------ | :----- | :------------------------------------------------- | :------------ |
-| min_velocity                  | [m/s]   | double | 自車位置の予測経路の最小速度                 | 0.0           |
-| acceleration                  | [m/s^2] | double | 自車位置の予測経路の加速度                   | 1.0           |
-| max_velocity                  | [m/s]   | double | 自車位置の予測経路の最大速度                 | 1.0           |
-| time_horizon_for_front_object | [s]     | double | 先方物体の予測時間幅                          | 10.0          |
-| time_horizon_for_rear_object  | [s]     | double | 後方物体の予測時間幅                          | 10.0          |
-| time_resolution               | [s]     | double | 自車位置の予測経路の時間分解能               | 0.5           |
-| delay_until_departure         | [s]     | double | 自車が発進するまでの遅延時間                 | 1.0           |
+| 名称                          | 単位    | 型     | 説明                           | デフォルト値 |
+| :---------------------------- | :------ | :----- | :----------------------------- | :----------- |
+| min_velocity                  | [m/s]   | double | 自車位置の予測経路の最小速度   | 0.0          |
+| acceleration                  | [m/s^2] | double | 自車位置の予測経路の加速度     | 1.0          |
+| max_velocity                  | [m/s]   | double | 自車位置の予測経路の最大速度   | 1.0          |
+| time_horizon_for_front_object | [s]     | double | 先方物体の予測時間幅           | 10.0         |
+| time_horizon_for_rear_object  | [s]     | double | 後方物体の予測時間幅           | 10.0         |
+| time_resolution               | [s]     | double | 自車位置の予測経路の時間分解能 | 0.5          |
+| delay_until_departure         | [s]     | double | 自車が発進するまでの遅延時間   | 1.0          |
 
 ### ターゲットオブジェクトフィルタリングのパラメーター
 
 `target_filtering` のパラメーターは、セーフティチェックのためのターゲットオブジェクトのフィルタリングに関連しています。
 
-| Name                                            | 単位 | タイプ   | 説明                                                                      | デフォルト値 |
-| :---------------------------------------------- | :---- | :----- | :-------------------------------------------------------------------------- | :------------ |
-| safety_check_time_horizon                       | [秒]  | 倍精度 | 自車と動的オブジェクトの予測パスの時間範囲                                | 5.0           |
-| safety_check_time_resolution                    | [秒]  | 倍精度 | 自車と動的オブジェクトの予測パスの時間解像度                              | 1.0           |
-| object_check_forward_distance                   | [m]   | 倍精度 | 物体検出の前方距離                                                         | 10.0          |
-| object_check_backward_distance                  | [m]   | 倍精度 | 物体検出の後方距離                                                        | 100.0         |
-| ignore_object_velocity_threshold                | [m/秒] | 倍精度 | 物体が無視される速度しきい値                                              | 1.0           |
-| object_types_to_check.check_car                 | -     | ブール | 車を検査するためのフラグ                                                  | true          |
-| object_types_to_check.check_truck               | -     | ブール | トラックを検査するためのフラグ                                              | true          |
-| object_types_to_check.check_bus                 | -     | ブール | バスを検査するためのフラグ                                                | true          |
-| object_types_to_check.check_trailer             | -     | ブール | トレーラーを検査するためのフラグ                                           | true          |
-| object_types_to_check.check_bicycle             | -     | ブール | 自転車を検査するためのフラグ                                             | true          |
-| object_types_to_check.check_motorcycle          | -     | ブール | オートバイを検査するためのフラグ                                          | true          |
-| object_types_to_check.check_pedestrian          | -     | ブール | 歩行者を検査するためのフラグ                                            | true          |
-| object_types_to_check.check_unknown             | -     | ブール | 不明なタイプのオブジェクトを検査するためのフラグ                            | false         |
-| object_lane_configuration.check_current_lane    | -     | ブール | 現在の車線を検査するためのフラグ                                        | true          |
-| object_lane_configuration.check_right_side_lane | -     | ブール | 右側の車線を検査するためのフラグ                                         | true          |
-| object_lane_configuration.check_left_side_lane  | -     | ブール | 左側の車線を検査するためのフラグ                                        | true          |
-| object_lane_configuration.check_shoulder_lane   | -     | ブール | 路肩を検査するためのフラグ                                              | true          |
-| object_lane_configuration.check_other_lane      | -     | ブール | 他の車線を検査するためのフラグ                                          | false         |
-| include_opposite_lane                           | -     | ブール | 反対車線を検査に含めるフラグ                                            | false         |
-| invert_opposite_lane                            | -     | ブール | 反対車線の検査を反転するフラグ                                          | false         |
-| check_all_predicted_path                        | -     | ブール | すべての予測パスを検査するためのフラグ                                  | true          |
-| use_all_predicted_path                          | -     | ブール | すべての予測パスを使用するためのフラグ                                  | true          |
-| use_predicted_path_outside_lanelet              | -     | ブール | 車線外側の予測パスを使用するためのフラグ                               | false         |
+| Name                                            | 単位   | タイプ | 説明                                             | デフォルト値 |
+| :---------------------------------------------- | :----- | :----- | :----------------------------------------------- | :----------- |
+| safety_check_time_horizon                       | [秒]   | 倍精度 | 自車と動的オブジェクトの予測パスの時間範囲       | 5.0          |
+| safety_check_time_resolution                    | [秒]   | 倍精度 | 自車と動的オブジェクトの予測パスの時間解像度     | 1.0          |
+| object_check_forward_distance                   | [m]    | 倍精度 | 物体検出の前方距離                               | 10.0         |
+| object_check_backward_distance                  | [m]    | 倍精度 | 物体検出の後方距離                               | 100.0        |
+| ignore_object_velocity_threshold                | [m/秒] | 倍精度 | 物体が無視される速度しきい値                     | 1.0          |
+| object_types_to_check.check_car                 | -      | ブール | 車を検査するためのフラグ                         | true         |
+| object_types_to_check.check_truck               | -      | ブール | トラックを検査するためのフラグ                   | true         |
+| object_types_to_check.check_bus                 | -      | ブール | バスを検査するためのフラグ                       | true         |
+| object_types_to_check.check_trailer             | -      | ブール | トレーラーを検査するためのフラグ                 | true         |
+| object_types_to_check.check_bicycle             | -      | ブール | 自転車を検査するためのフラグ                     | true         |
+| object_types_to_check.check_motorcycle          | -      | ブール | オートバイを検査するためのフラグ                 | true         |
+| object_types_to_check.check_pedestrian          | -      | ブール | 歩行者を検査するためのフラグ                     | true         |
+| object_types_to_check.check_unknown             | -      | ブール | 不明なタイプのオブジェクトを検査するためのフラグ | false        |
+| object_lane_configuration.check_current_lane    | -      | ブール | 現在の車線を検査するためのフラグ                 | true         |
+| object_lane_configuration.check_right_side_lane | -      | ブール | 右側の車線を検査するためのフラグ                 | true         |
+| object_lane_configuration.check_left_side_lane  | -      | ブール | 左側の車線を検査するためのフラグ                 | true         |
+| object_lane_configuration.check_shoulder_lane   | -      | ブール | 路肩を検査するためのフラグ                       | true         |
+| object_lane_configuration.check_other_lane      | -      | ブール | 他の車線を検査するためのフラグ                   | false        |
+| include_opposite_lane                           | -      | ブール | 反対車線を検査に含めるフラグ                     | false        |
+| invert_opposite_lane                            | -      | ブール | 反対車線の検査を反転するフラグ                   | false        |
+| check_all_predicted_path                        | -      | ブール | すべての予測パスを検査するためのフラグ           | true         |
+| use_all_predicted_path                          | -      | ブール | すべての予測パスを使用するためのフラグ           | true         |
+| use_predicted_path_outside_lanelet              | -      | ブール | 車線外側の予測パスを使用するためのフラグ         | false        |
 
 ### 安全確認パラメータ
 
 `safety_check_params` のパラメータは、安全確認の設定を定義しています。
 
-| 名称                                         | 単位 | タイプ | 説明                                                                                                | デフォルト値 |
-| :------------------------------------------- | :--- | :----- | :----------------------------------------------------------------------------------------------- | :------------ |
-| enable_safety_check                          | -    | bool   | セーフティチェックを有効にするフラグ                                                           | true          |
-| check_all_predicted_path                   | -    | bool   | 予測パスをすべてチェックするフラグ                                                           | true          |
-| publish_debug_marker                         | -    | bool   | デバッグマーカーを発行するフラグ                                                            | false         |
-| rss_params.rear_vehicle_reaction_time        | [s]  | double | 後続車の反応時間                                                                              | 2.0           |
-| rss_params.rear_vehicle_safety_time_margin   | [s]  | double | 後続車のセーフティタイムマージン                                                          | 1.0           |
-| rss_params.lateral_distance_max_threshold    | [m]  | double | 最大横方向距離のしきい値                                                                    | 2.0           |
-| rss_params.longitudinal_distance_min_threshold | [m]  | double | 最小縦方向距離のしきい値                                                                    | 3.0           |
-| rss_params.longitudinal_velocity_delta_time  | [s]  | double | 縦速度のデルタ時間                                                                        | 0.8           |
-| hysteresis_factor_expand_rate                | -    | double | ヒステリシスの拡張/縮小率                                                                  | 1.0           |
-| collision_check_yaw_diff_threshold           | -    | double | RSSベースのコリジョンチェックの実行時にEgoとオブジェクト間の最大ヨー差                   | 1.578         |
+| 名称                                           | 単位 | タイプ | 説明                                                                   | デフォルト値 |
+| :--------------------------------------------- | :--- | :----- | :--------------------------------------------------------------------- | :----------- |
+| enable_safety_check                            | -    | bool   | セーフティチェックを有効にするフラグ                                   | true         |
+| check_all_predicted_path                       | -    | bool   | 予測パスをすべてチェックするフラグ                                     | true         |
+| publish_debug_marker                           | -    | bool   | デバッグマーカーを発行するフラグ                                       | false        |
+| rss_params.rear_vehicle_reaction_time          | [s]  | double | 後続車の反応時間                                                       | 2.0          |
+| rss_params.rear_vehicle_safety_time_margin     | [s]  | double | 後続車のセーフティタイムマージン                                       | 1.0          |
+| rss_params.lateral_distance_max_threshold      | [m]  | double | 最大横方向距離のしきい値                                               | 2.0          |
+| rss_params.longitudinal_distance_min_threshold | [m]  | double | 最小縦方向距離のしきい値                                               | 3.0          |
+| rss_params.longitudinal_velocity_delta_time    | [s]  | double | 縦速度のデルタ時間                                                     | 0.8          |
+| hysteresis_factor_expand_rate                  | -    | double | ヒステリシスの拡張/縮小率                                              | 1.0          |
+| collision_check_yaw_diff_threshold             | -    | double | RSSベースのコリジョンチェックの実行時にEgoとオブジェクト間の最大ヨー差 | 1.578        |
 
 ## **経路生成**
 
@@ -473,18 +468,18 @@ PullOutPath --o PullOutPlannerBase
 
 #### Shift Pull Outのパラメーター
 
-| 名称                                             | 単位   | タイプ   | 説明                                                                                                                                                                                                                                                                                                                                                                                                                                                           | デフォルト値 |
-| :----------------------------------------------- | :----- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| enable_shift_pull_out                            | [-]    | bool   | Shift pull out を有効にするかどうか                                                                                                                                                                                                                                                                                                                                                                                                                                      | true          |
-| check_shift_path_lane_departure                | [-]    | bool   | Shift path の車両逸脱量をチェックするかどうか                                                                                                                                                                                                                                                                                                                                                                                                                                  | true          |
-| allow_check_shift_path_lane_departure_override | [-]    | bool   | エゴビークルの現在の位置がすでに車両逸脱中である場合に、車両逸脱のチェックを上書き/キャンセルするフラグ                                                                                                                                                                                                                                                                                                                                                                                                   | false         |
-| shift_pull_out_velocity                        | [m/s]  | double | Shift pull out の速度                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 2.0           |
-| pull_out_sampling_num                          | [-]    | int    | 横方向加速度の最小値から最大値の範囲内でサンプリングする回数                                                                                                                                                                                                                                                                                                                                                                                                                                      | 4             |
-| maximum_lateral_jerk                           | [m/s3] | double | 最大横方向加速度                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 2.0           |
-| minimum_lateral_jerk                           | [m/s3] | double | 最小横方向加速度                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 0.1           |
-| minimum_shift_pull_out_distance                | [m]    | double | 最小 Shift pull out 距離。計算された pull out 距離がこれよりも短かった場合、Path 生成にこれを用いる。                                                                                                                                                                                                                                                                                                                                      | 0.0           |
-| maximum_curvature                              | [1/m]  | double | 最大曲率。Shift pull out 距離を、参照パスが直線で、2 つの近似弧でシフトされたものと仮定して、この最大曲率から計算する。シフトパスまたは曲線内の曲率は考慮されない。                                                                                                                                                                                                                                                                    | 0.07          |
-| end_pose_curvature_threshold                   | [1/m]  | double | Shift pull out 距離を計算するために使用される曲率の閾値。シフトのエンドポーズは、シフトのエンドポーズの曲率がこの値未満になるように前方にシフトされる。これは、エンドポーズが曲線上にある場合に生成されたパスに大きな曲率が発生するのを防ぐためである。閾値以下の曲率を持つシフトのエンドポーズが見つからない場合、Shift pull out 距離は特定の距離を越えた地点のうち、最も曲率が低い地点までの距離として使用される。 | 0.01          |
+| 名称                                           | 単位   | タイプ | 説明                                                                                                                                                                                                                                                                                                                                                                                                                 | デフォルト値 |
+| :--------------------------------------------- | :----- | :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------- |
+| enable_shift_pull_out                          | [-]    | bool   | Shift pull out を有効にするかどうか                                                                                                                                                                                                                                                                                                                                                                                  | true         |
+| check_shift_path_lane_departure                | [-]    | bool   | Shift path の車両逸脱量をチェックするかどうか                                                                                                                                                                                                                                                                                                                                                                        | true         |
+| allow_check_shift_path_lane_departure_override | [-]    | bool   | エゴビークルの現在の位置がすでに車両逸脱中である場合に、車両逸脱のチェックを上書き/キャンセルするフラグ                                                                                                                                                                                                                                                                                                              | false        |
+| shift_pull_out_velocity                        | [m/s]  | double | Shift pull out の速度                                                                                                                                                                                                                                                                                                                                                                                                | 2.0          |
+| pull_out_sampling_num                          | [-]    | int    | 横方向加速度の最小値から最大値の範囲内でサンプリングする回数                                                                                                                                                                                                                                                                                                                                                         | 4            |
+| maximum_lateral_jerk                           | [m/s3] | double | 最大横方向加速度                                                                                                                                                                                                                                                                                                                                                                                                     | 2.0          |
+| minimum_lateral_jerk                           | [m/s3] | double | 最小横方向加速度                                                                                                                                                                                                                                                                                                                                                                                                     | 0.1          |
+| minimum_shift_pull_out_distance                | [m]    | double | 最小 Shift pull out 距離。計算された pull out 距離がこれよりも短かった場合、Path 生成にこれを用いる。                                                                                                                                                                                                                                                                                                                | 0.0          |
+| maximum_curvature                              | [1/m]  | double | 最大曲率。Shift pull out 距離を、参照パスが直線で、2 つの近似弧でシフトされたものと仮定して、この最大曲率から計算する。シフトパスまたは曲線内の曲率は考慮されない。                                                                                                                                                                                                                                                  | 0.07         |
+| end_pose_curvature_threshold                   | [1/m]  | double | Shift pull out 距離を計算するために使用される曲率の閾値。シフトのエンドポーズは、シフトのエンドポーズの曲率がこの値未満になるように前方にシフトされる。これは、エンドポーズが曲線上にある場合に生成されたパスに大きな曲率が発生するのを防ぐためである。閾値以下の曲率を持つシフトのエンドポーズが見つからない場合、Shift pull out 距離は特定の距離を越えた地点のうち、最も曲率が低い地点までの距離として使用される。 | 0.01         |
 
 ### **geometric pull out**
 
@@ -497,14 +492,14 @@ PullOutPath --o PullOutPlannerBase
 
 #### geometric pull out のパラメータ
 
-| 名称                                   | 単位 | タイプ | 説明                                                                                                                                                         | デフォルト値 |
-| :-------------------------------------- | :---- | :----- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| enable_geometric_pull_out              | [-]   | bool   | ジオメトリプルアウトを有効にするフラグ                                                                                                                       | true          |
-| divide_pull_out_path                   | [-]   | bool   | 円弧パスを分割するフラグ。曲率が連続ではないため、パスは分割されていると想定されます。ただし、出発中に停止が必要です。 | false         |
-| geometric_pull_out_velocity            | [m/s] | double | ジオメトリプルアウトの速度                                                                                                                                  | 1.0           |
-| lane_departure_margin                  | [m]   | double | 右側車線を逸脱する際の許容範囲                                                                                                                          | 0.2           |
-| lane_departure_check_expansion_margin | [m]   | double | 車線逸脱チェック時の自車Footprintの拡大マージン                                                                                                               | 0.0           |
-| pull_out_max_steer_angle               | [rad] | double | パス生成における最大操舵角                                                                                                                                 | 0.26          |
+| 名称                                  | 単位  | タイプ | 説明                                                                                                                   | デフォルト値 |
+| :------------------------------------ | :---- | :----- | :--------------------------------------------------------------------------------------------------------------------- | :----------- |
+| enable_geometric_pull_out             | [-]   | bool   | ジオメトリプルアウトを有効にするフラグ                                                                                 | true         |
+| divide_pull_out_path                  | [-]   | bool   | 円弧パスを分割するフラグ。曲率が連続ではないため、パスは分割されていると想定されます。ただし、出発中に停止が必要です。 | false        |
+| geometric_pull_out_velocity           | [m/s] | double | ジオメトリプルアウトの速度                                                                                             | 1.0          |
+| lane_departure_margin                 | [m]   | double | 右側車線を逸脱する際の許容範囲                                                                                         | 0.2          |
+| lane_departure_check_expansion_margin | [m]   | double | 車線逸脱チェック時の自車Footprintの拡大マージン                                                                        | 0.0          |
+| pull_out_max_steer_angle              | [rad] | double | パス生成における最大操舵角                                                                                             | 0.26         |
 
 ## **後退引き出し始点の検索**
 
@@ -516,14 +511,14 @@ PullOutPath --o PullOutPlannerBase
 
 ### **後退引き出し開始点検索のパラメータ**
 
-| 名前                        | 単位 | タイプ   | 説明                                                                                                                                                                        | デフォルト値 |
-| :-------------------------- | :--- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------- |
-| enable_back                 | [-]  | bool   | 開始点として後方検索するかどうか                                                                                                                                    | true         |
-| search_priority             | [-]  | string | `efficient_path`の場合、後方距離が長くても効率的な経路を使用する。 `short_back_distance`の場合、後方距離が短い経路を使用 | efficient_path |
-| max_back_distance           | [m]  | double | 後方距離の最大値                                                                                                                                                    | 30.0         |
-| backward_search_resolution    | [m]  | double | 後方引き出し開始点の検索間隔                                                                                                                                          | 2.0          |
-| backward_path_update_duration | [s]  | double | 後方引き出し開始点の検索時間間隔。これにより、後方走行と引き出しのチャッタリングを防ぐことができる                                                    | 3.0          |
-| ignore_distance_from_lane_end | [m]  | double | シフト開始位置から側道レーンの終了までの距離がこの値より小さい場合、この開始位置の候補は無視される                                                          | 15.0         |
+| 名前                          | 単位 | タイプ | 説明                                                                                                                     | デフォルト値   |
+| :---------------------------- | :--- | :----- | :----------------------------------------------------------------------------------------------------------------------- | :------------- |
+| enable_back                   | [-]  | bool   | 開始点として後方検索するかどうか                                                                                         | true           |
+| search_priority               | [-]  | string | `efficient_path`の場合、後方距離が長くても効率的な経路を使用する。 `short_back_distance`の場合、後方距離が短い経路を使用 | efficient_path |
+| max_back_distance             | [m]  | double | 後方距離の最大値                                                                                                         | 30.0           |
+| backward_search_resolution    | [m]  | double | 後方引き出し開始点の検索間隔                                                                                             | 2.0            |
+| backward_path_update_duration | [s]  | double | 後方引き出し開始点の検索時間間隔。これにより、後方走行と引き出しのチャッタリングを防ぐことができる                       | 3.0            |
+| ignore_distance_from_lane_end | [m]  | double | シフト開始位置から側道レーンの終了までの距離がこの値より小さい場合、この開始位置の候補は無視される                       | 15.0           |
 
 ### **フリースペースでの引き出し**
 
@@ -540,12 +535,11 @@ PullOutPath --o PullOutPlannerBase
 
 #### フリースペース駐車のパラメータ
 
-| 名前                           | 単位 | 型       | 説明 | デフォルト値 |
-| :----------------------------- | :--- | :------- | :------------------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| enable_freespace_planner       | [-]  | ブール   | 車両が走行する車線に障害物があり、車両が立ち往生した際に実行するフリースペースプルのフラグを有効にします | true          |
-| end_pose_search_start_distance | [m]  | 倍精度 | 自車からfreespace_pull_outのドライビングレーンで終端点の検索を開始する地点までの距離 | 20.0          |
-| end_pose_search_end_distance   | [m]  | 倍精度 | 自車からfreespace_pull_outのドライビングレーンで終端点の検索を終了する地点までの距離 | 30.0          |
-| end_pose_search_interval       | [m]  | 倍精度 | freespace_pull_outのドライビングレーンで終端点を検索する間隔 | 2.0           |
+| 名前                           | 単位 | 型     | 説明                                                                                                     | デフォルト値 |
+| :----------------------------- | :--- | :----- | :------------------------------------------------------------------------------------------------------- | :----------- |
+| enable_freespace_planner       | [-]  | ブール | 車両が走行する車線に障害物があり、車両が立ち往生した際に実行するフリースペースプルのフラグを有効にします | true         |
+| end_pose_search_start_distance | [m]  | 倍精度 | 自車からfreespace_pull_outのドライビングレーンで終端点の検索を開始する地点までの距離                     | 20.0         |
+| end_pose_search_end_distance   | [m]  | 倍精度 | 自車からfreespace_pull_outのドライビングレーンで終端点の検索を終了する地点までの距離                     | 30.0         |
+| end_pose_search_interval       | [m]  | 倍精度 | freespace_pull_outのドライビングレーンで終端点を検索する間隔                                             | 2.0          |
 
 その他の詳細は [freespace_planner](../autoware_freespace_planner/README.md) を参照してください。
-

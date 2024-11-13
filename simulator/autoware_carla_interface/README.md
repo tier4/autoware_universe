@@ -86,7 +86,6 @@
 
 ### ビルド
 
-
 ```bash
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 ```
@@ -94,7 +93,6 @@ colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 ### 実行
 
 1. carlaを実行し、マップを変更し、必要に応じてオブジェクトを生成する
-
 
    ```bash
    cd CARLA
@@ -104,10 +102,11 @@ colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 ## 2. rosノードの実行
 
 ```bash
-$ roslaunch autoware ai_node.launch
+roslaunch autoware ai_node.launch
 ```
 
 `Autoware`を起動すると、以下のノードが実行されます。
+
 - `Planning` コンポーネント
 - `localization` コンポーネント
 - `visualization` コンポーネント
@@ -152,10 +151,9 @@ $ roslaunch autoware ai_node.launch
 /path_offset
 ```
 
-
-   ```bash
-   ros2 launch autoware_launch e2e_simulator.launch.xml map_path:=$HOME/autoware_map/Town01 vehicle_model:=sample_vehicle sensor_model:=awsim_sensor_kit simulator_type:=carla carla_map:=Town01
-   ```
+```bash
+ros2 launch autoware_launch e2e_simulator.launch.xml map_path:=$HOME/autoware_map/Town01 vehicle_model:=sample_vehicle sensor_model:=awsim_sensor_kit simulator_type:=carla carla_map:=Town01
+```
 
 ### 内部メカニズム / アルゴリズム
 
@@ -169,29 +167,29 @@ Autowareからの自動運転車の指令は、`autoware_raw_vehicle_cmd_convert
 
 すべての主要パラメータは、`autoware_carla_interface.launch.xml`で設定できます。
 
-| 名称                       | タイプ | デフォルト値                                                                                  | 説明                                                                                                                                                                                                                  |
-| -------------------------- | ------ | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `host`                     | 文字列 | "localhost"                                                                                    | CARLA サーバーのホスト名                                                                                                                                                                                                  |
-| `port`                     | 整数   | "2000"                                                                                       | CARLA サーバーのポート番号                                                                                                                                                                                             |
-| `timeout`                  | 整数   | 20                                                                                           | CARLA クライアントのタイムアウト                                                                                                                                                                                    |
-| `ego_vehicle_role_name`    | 文字列 | "ego_vehicle"                                                                                  | 自車ロールの名称                                                                                                                                                                                                |
-| `vehicle_type`             | 文字列 | "vehicle.toyota.prius"                                                                           | スポーンさせる車両のブループリント ID。車両のブループリント ID は [CARLA ブループリント ID](https://carla.readthedocs.io/en/latest/catalogue_vehicles/) で見つけることができる                       |
-| `spawn_point`              | 文字列 | なし                                                                                        | 自車をスポーンさせる座標（なしの場合はランダム）。形式 = [x, y, z, roll, pitch, yaw]                                                                                                                                     |
-| `carla_map`                | 文字列 | "Town01"                                                                                     | CARLA にロードするマップの名称                                                                                                                                                                                    |
-| `sync_mode`                | ブール | True                                                                                           | CARLA に同期モードを設定するためのブールフラグ                                                                                                                                                                       |
-| `fixed_delta_seconds`      | double | 0.05                                                                                           | シミュレーションのタイムステップ（クライアント FPS に関連付けられている）                                                                                                                                             |
-| `objects_definition_file`  | 文字列 | "$(find-pkg-share autoware_carla_interface)/objects.json"                                     | CARLA でセンサーをスポーンするために使用されるセンサーパラメーターファイル                                                                                                                                        |
-| `use_traffic_manager`      | ブール | True                                                                                           | CARLA にトラフィックマネージャーを設定するためのブールフラグ                                                                                                                                                                   |
-| `max_real_delta_seconds`   | double | 0.05                                                                                           | `fixed_delta_seconds` よりもシミュレーション速度を制限するためのパラメーター                                                                                                                                             |
-| `config_file`              | 文字列 | "$(find-pkg-share autoware_carla_interface)/raw_vehicle_cmd_converter.param.yaml"           | `autoware_raw_vehicle_cmd_converter` で使用される制御マッピングファイル。現在の制御は CARLA の `vehicle.toyota.prius` ブループリント ID に基づいてキャリブレーションされている。車両タイプを変更する場合は再キャリブレーションが必要になる可能性がある |
+| 名称                      | タイプ | デフォルト値                                                                      | 説明                                                                                                                                                                                                                                                   |
+| ------------------------- | ------ | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `host`                    | 文字列 | "localhost"                                                                       | CARLA サーバーのホスト名                                                                                                                                                                                                                               |
+| `port`                    | 整数   | "2000"                                                                            | CARLA サーバーのポート番号                                                                                                                                                                                                                             |
+| `timeout`                 | 整数   | 20                                                                                | CARLA クライアントのタイムアウト                                                                                                                                                                                                                       |
+| `ego_vehicle_role_name`   | 文字列 | "ego_vehicle"                                                                     | 自車ロールの名称                                                                                                                                                                                                                                       |
+| `vehicle_type`            | 文字列 | "vehicle.toyota.prius"                                                            | スポーンさせる車両のブループリント ID。車両のブループリント ID は [CARLA ブループリント ID](https://carla.readthedocs.io/en/latest/catalogue_vehicles/) で見つけることができる                                                                         |
+| `spawn_point`             | 文字列 | なし                                                                              | 自車をスポーンさせる座標（なしの場合はランダム）。形式 = [x, y, z, roll, pitch, yaw]                                                                                                                                                                   |
+| `carla_map`               | 文字列 | "Town01"                                                                          | CARLA にロードするマップの名称                                                                                                                                                                                                                         |
+| `sync_mode`               | ブール | True                                                                              | CARLA に同期モードを設定するためのブールフラグ                                                                                                                                                                                                         |
+| `fixed_delta_seconds`     | double | 0.05                                                                              | シミュレーションのタイムステップ（クライアント FPS に関連付けられている）                                                                                                                                                                              |
+| `objects_definition_file` | 文字列 | "$(find-pkg-share autoware_carla_interface)/objects.json"                         | CARLA でセンサーをスポーンするために使用されるセンサーパラメーターファイル                                                                                                                                                                             |
+| `use_traffic_manager`     | ブール | True                                                                              | CARLA にトラフィックマネージャーを設定するためのブールフラグ                                                                                                                                                                                           |
+| `max_real_delta_seconds`  | double | 0.05                                                                              | `fixed_delta_seconds` よりもシミュレーション速度を制限するためのパラメーター                                                                                                                                                                           |
+| `config_file`             | 文字列 | "$(find-pkg-share autoware_carla_interface)/raw_vehicle_cmd_converter.param.yaml" | `autoware_raw_vehicle_cmd_converter` で使用される制御マッピングファイル。現在の制御は CARLA の `vehicle.toyota.prius` ブループリント ID に基づいてキャリブレーションされている。車両タイプを変更する場合は再キャリブレーションが必要になる可能性がある |
 
 ### センサーの構成可能なパラメータ
 
 以下のパラメータは `carla_ros.py` で構成できます。
 
-| 名称                      | タイプ | デフォルト値                                                                          | 説明                                                                                                                                                                                                                       |
-| ------------------------- | ---- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `self.sensor_frequencies` | dict | {"top": 11, "left": 11, "right": 11, "camera": 11, "imu": 50, "status": 50, "pose": 2} | (line 67) 前回の公開以降の時間間隔を計算し、この間隔が、所定の頻度を超過しないために必要な最小限度を満たしているかどうかを確認します。これは ROS の公開頻度のみ影響し、CARLA のセンサーの更新には影響しません。 |
+| 名称                      | タイプ | デフォルト値                                                                           | 説明                                                                                                                                                                                                            |
+| ------------------------- | ------ | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `self.sensor_frequencies` | dict   | {"top": 11, "left": 11, "right": 11, "camera": 11, "imu": 50, "status": 50, "pose": 2} | (line 67) 前回の公開以降の時間間隔を計算し、この間隔が、所定の頻度を超過しないために必要な最小限度を満たしているかどうかを確認します。これは ROS の公開頻度のみ影響し、CARLA のセンサーの更新には影響しません。 |
 
 - CARLAセンサーパラメータは`config/objects.json`で設定できます。
   - CARLAで設定可能なパラメータの詳細については、[Carla Ref Sensor](https://carla.readthedocs.io/en/latest/ref_sensors/)で説明されています。
@@ -202,7 +200,6 @@ Autowareからの自動運転車の指令は、`autoware_raw_vehicle_cmd_convert
 
 1. **クライアント接続**:
 
-
    ```python
    client = carla.Client(self.local_host, self.port)
    client.set_timeout(self.timeout)
@@ -212,7 +209,6 @@ Autowareからの自動運転車の指令は、`autoware_raw_vehicle_cmd_convert
 
    `carla_map`パラメータに従って、マップをCARLAワールドにロード。
 
-
    ```python
    client.load_world(self.map_name)
    self.world = client.get_world()
@@ -221,7 +217,6 @@ Autowareからの自動運転車の指令は、`autoware_raw_vehicle_cmd_convert
 3. **自車生成**:
 
    車両は `vehicle_type`, `spawn_point`, `agent_role_name` のパラメーターに従って生成されます。
-
 
    ```python
    spawn_point = carla.Transform()
@@ -266,4 +261,3 @@ Carla シミュレータ ([Carla Lanelet2 Maps](https://bitbucket.org/carla-simu
   - センサーは現在、Autoware センサーキットと同じ場所に配置されるように自動的に設定されていません。現在の回避策は、各センサーの新しいフレームを (0, 0, 0, 0, 0, 0) 座標 (base_link に相対的) で作成し、各センサーを新しいフレームにアタッチすることです (`autoware_carla_interface.launch.xml` 行 28)。この回避策は非常に限定的で制約があります。センサーキットが変更されると、センサーの場所は正しくアタッチされません。
 - 信号認識。
   - 現在、CARLA の HDmap には、Autoware が信号認識を行うために必要な信号に関する情報がありません。
-

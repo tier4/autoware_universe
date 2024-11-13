@@ -16,8 +16,8 @@
 
 ### 入力
 
-| 名称       | 型                | 説明     |
-| ---------- | ------------------- | --------------- |
+| 名称       | 型                  | 説明     |
+| ---------- | ------------------- | -------- |
 | `in/image` | `sensor_msgs/Image` | 入力画像 |
 
 ### 出力
@@ -28,39 +28,39 @@ Autowareは、オープンソース自動運転ソフトウェアスタックで
 
 **Planningコンポーネント**
 
-* **Path Planning:** 目的地までの経路を生成します。
-* **Speed Planning:** 経路上の最適速度プロファイルを作成します。
-* **Trajectory Planning:** 経路と速度プロファイルを組み合わせた、車両の軌跡を生成します。
+- **Path Planning:** 目的地までの経路を生成します。
+- **Speed Planning:** 経路上の最適速度プロファイルを作成します。
+- **Trajectory Planning:** 経路と速度プロファイルを組み合わせた、車両の軌跡を生成します。
 
 **Perceptionコンポーネント**
 
-* **Localization:** 自車位置と周囲環境の地図を特定します。
-* **Object Detection:** 周囲の車両、歩行者、障害物を検出します。
-* **Obstacle Tracking:** 時間とともに動いている物体を追跡します。
+- **Localization:** 自車位置と周囲環境の地図を特定します。
+- **Object Detection:** 周囲の車両、歩行者、障害物を検出します。
+- **Obstacle Tracking:** 時間とともに動いている物体を追跡します。
 
 **Controlコンポーネント**
 
-* **Longitudinal Control:** 車両の速度を制御します。
-* **Lateral Control:** 車両の向きを制御します。
-* **Model Predictive Control (MPC):** 車両の挙動を予測し、最適な制御入力を決定します。
+- **Longitudinal Control:** 車両の速度を制御します。
+- **Lateral Control:** 車両の向きを制御します。
+- **Model Predictive Control (MPC):** 車両の挙動を予測し、最適な制御入力を決定します。
 
 **Drivingポリシー**
 
-* **Lane Keeping Assist:** 車両が車線内を維持するのに役立ちます。
-* **Adaptive Cruise Control:** 前方車両との安全な間隔を維持します。
-* **Collision Avoidance:** 衝突の可能性を検出し、回避策を実行します。
+- **Lane Keeping Assist:** 車両が車線内を維持するのに役立ちます。
+- **Adaptive Cruise Control:** 前方車両との安全な間隔を維持します。
+- **Collision Avoidance:** 衝突の可能性を検出し、回避策を実行します。
 
 **安全機能**
 
-* **Velocity Violation Check:** `post resampling`による速度逸脱量を確認します。
-* **Acceleration Violation Check:** 加速度逸脱量を確認します。
-* **Obstacle Proximity Check:** 障害物との近接性を監視します。
+- **Velocity Violation Check:** `post resampling`による速度逸脱量を確認します。
+- **Acceleration Violation Check:** 加速度逸脱量を確認します。
+- **Obstacle Proximity Check:** 障害物との近接性を監視します。
 
-| 名称             | タイプ                                                | 説明                                                           |
-| ---------------- | ----------------------------------------------------- | -------------------------------------------------------------------- |
-| `out/objects`    | `tier4_perception_msgs/DetectedObjectsWithFeature` | 2Dバウンディングボックス付きの検出オブジェクト                         |
-| `out/image`      | `sensor_msgs/Image`                                | 視覚化のための2Dバウンディングボックス付きのイメージ                    |
-| `out/mask`       | `sensor_msgs/Image`                                | セマンティックセグメンテーションマスク                                |
+| 名称             | タイプ                                             | 説明                                                                 |
+| ---------------- | -------------------------------------------------- | -------------------------------------------------------------------- |
+| `out/objects`    | `tier4_perception_msgs/DetectedObjectsWithFeature` | 2Dバウンディングボックス付きの検出オブジェクト                       |
+| `out/image`      | `sensor_msgs/Image`                                | 視覚化のための2Dバウンディングボックス付きのイメージ                 |
+| `out/mask`       | `sensor_msgs/Image`                                | セマンティックセグメンテーションマスク                               |
 | `out/color_mask` | `sensor_msgs/Image`                                | 視覚化のためのセマンティックセグメンテーションマスクの色付けイメージ |
 
 ## パラメータ
@@ -84,23 +84,23 @@ Autowareは、オープンソース自動運転ソフトウェアスタックで
 セマンティックセグメンテーションマスクは、各ピクセルが次のクラスのいずれかのインデックスであるグレースケール画像です。
 
 | インデックス | シマンティック名 |
-|---|---|
-| 0     | 道路 |
-| 1     | 建物 |
-| 2     | 壁 |
-| 3     | 障害物 |
-| 4     | 交通信号 |
-| 5     | 交通標識 |
-| 6     | 歩行者 |
-| 7     | 車両 |
-| 8     | 自転車 |
-| 9     | 道路 |
-| 10    | 歩道 |
-| 11    | 道路ペイント |
-| 12    | 側石 |
-| 13    | 交差点（その他） |
-| 14    | 草木 |
-| 15    | 空 |
+| ------------ | ---------------- |
+| 0            | 道路             |
+| 1            | 建物             |
+| 2            | 壁               |
+| 3            | 障害物           |
+| 4            | 交通信号         |
+| 5            | 交通標識         |
+| 6            | 歩行者           |
+| 7            | 車両             |
+| 8            | 自転車           |
+| 9            | 道路             |
+| 10           | 歩道             |
+| 11           | 道路ペイント     |
+| 12           | 側石             |
+| 13           | 交差点（その他） |
+| 14           | 草木             |
+| 15           | 空               |
 
 ## Onnxモデル
 
@@ -140,8 +140,6 @@ PyTorchの`pth`フォーマットで保存されたユーザー独自のモデ�
 
 1. 依存関係をインストール
 
-
-
    ```shell
    git clone git@github.com:Megvii-BaseDetection/YOLOX.git
    cd YOLOX
@@ -149,7 +147,6 @@ PyTorchの`pth`フォーマットで保存されたユーザー独自のモデ�
    ```
 
 2. pth を ONNX に変換する
-
 
    ```shell
    python3 tools/export_onnx.py \
@@ -162,7 +159,6 @@ PyTorchの`pth`フォーマットで保存されたユーザー独自のモデ�
 
 1. 依存関係のインストール
 
-
    ```shell
    git clone git@github.com:Megvii-BaseDetection/YOLOX.git
    cd YOLOX
@@ -171,7 +167,6 @@ PyTorchの`pth`フォーマットで保存されたユーザー独自のモデ�
    ```
 
 2. pth を ONNX に変換する
-
 
    ```shell
    python3 tools/export_onnx.py \
@@ -182,7 +177,6 @@ PyTorchの`pth`フォーマットで保存されたユーザー独自のモデ�
    ```
 
 3. YOLOX の最後に `EfficientNMS_TRT` を埋め込む
-
 
    ```shell
    yolox_onnx_modifier YOUR_YOLOX.onnx -o YOUR_YOLOX_WITH_NMS.onnx
@@ -200,4 +194,3 @@ env準備プロセスの際に、サンプルラベルファイル（`label.txt`
 - <https://github.com/Megvii-BaseDetection/YOLOX>
 - <https://github.com/wep21/yolox_onnx_modifier>
 - <https://github.com/tier4/trt-yoloXP>
-

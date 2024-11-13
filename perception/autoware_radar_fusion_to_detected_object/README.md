@@ -77,7 +77,7 @@ LiDAR ベースの検出オブジェクトとレーダー速度のヨーの差�
 **速度推定におけるトップターゲット値レーダーデータのツイスト係数**
 レーダーポイントクラウドを使用している場合、ターゲット値は振幅です。レーダーオブジェクトを使用している場合、ターゲット値は確率です。
 
-### 固定オブジェクト情報の**パラメータ
+### 固定オブジェクト情報の\*\*パラメータ
 
 - `convert_doppler_to_twist` (bool)
   - デフォルトパラメータは false です。
@@ -105,7 +105,6 @@ LiDAR ベースの検出オブジェクトとレーダー速度のヨーの差�
   - m: 3D 検出からのオブジェクトの数。
 
 ### 実行方法
-
 
 ```sh
 ros2 launch autoware_radar_fusion_to_detected_object radar_object_to_detected_object.launch.xml
@@ -138,4 +137,3 @@ ros2 launch autoware_radar_fusion_to_detected_object radar_object_to_detected_ob
 ## radar_scan_fusion_to_detected_objectインターフェイス（未定）
 
 未実装
-

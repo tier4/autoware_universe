@@ -15,10 +15,10 @@
 
 ### 入力
 
-| 名称 | タイプ | 説明 |
-|---|---|---|
-| `/map/map_projector_info` | `tier4_map_msgs::msg::MapProjectorInfo` | 地図投影情報 |
-| `~/input/fix` | `sensor_msgs::msg::NavSatFix` | GNSS状態メッセージ |
+| 名称                           | タイプ                                                  | 説明                                                                                                     |
+| ------------------------------ | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `/map/map_projector_info`      | `tier4_map_msgs::msg::MapProjectorInfo`                 | 地図投影情報                                                                                             |
+| `~/input/fix`                  | `sensor_msgs::msg::NavSatFix`                           | GNSS状態メッセージ                                                                                       |
 | `~/input/autoware_orientation` | `autoware_sensing_msgs::msg::GnssInsOrientationStamped` | 姿勢 [詳細はこちら](https://github.com/autowarefoundation/autoware_msgs/tree/main/autoware_sensing_msgs) |
 
 ### アウトプット
@@ -56,11 +56,11 @@ Path Planning モジュールの制御フローは次のとおりです。
 5. 加減速軌道を計算します。
 6. 車輌を制御します。
 
-| 名前                     | タイプ                                            | 説明                                                       |
-| ------------------------ | ----------------------------------------------- | ------------------------------------------------------------ |
-| `~/output/pose`          | `geometry_msgs::msg::PoseStamped`               | GNSS センシングデータから計算された自車位置                        |
+| 名前                     | タイプ                                          | 説明                                                          |
+| ------------------------ | ----------------------------------------------- | ------------------------------------------------------------- |
+| `~/output/pose`          | `geometry_msgs::msg::PoseStamped`               | GNSS センシングデータから計算された自車位置                   |
 | `~/output/gnss_pose_cov` | `geometry_msgs::msg::PoseWithCovarianceStamped` | GNSS センシングデータから計算された、共分散行列を含む自車位置 |
-| `~/output/gnss_fixed`    | `tier4_debug_msgs::msg::BoolStamped`            | GNSS 固定ステータス                                          |
+| `~/output/gnss_fixed`    | `tier4_debug_msgs::msg::BoolStamped`            | GNSS 固定ステータス                                           |
 
 ## パラメータ
 
@@ -77,4 +77,3 @@ Path Planning モジュールの制御フローは次のとおりです。
 ## (オプション) 参照/外部リンク
 
 ## (オプション) 将来の拡張/未実装部分
-

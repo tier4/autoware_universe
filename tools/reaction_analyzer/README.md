@@ -40,7 +40,6 @@ reaction analyzerパッケージの主な目的は、ROSベースの自動運転
 
 - 次の`reaction_chain`リストで、計画ノードと制御ノードのみを定義する必要があります。デフォルトのパラメータで、次のコマンドでテストを開始できます。
 
-
 ```bash
 ros2 launch reaction_analyzer reaction_analyzer.launch.xml running_mode:=planning_control vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit map_path:=[MAP_PATH]
 ```
@@ -53,7 +52,6 @@ ros2 launch reaction_analyzer reaction_analyzer.launch.xml running_mode:=plannin
   リンクは [こちら](https://drive.google.com/drive/folders/1eJMEdt4WbU-W6MPXlNTkIhZtwpof0HcO?usp=sharing)。
 - zip ファイルを展開し、`.db3` ファイルのパスをパラメーター `path_bag_without_object` と `path_bag_with_object` に設定します。
 - 以下のコマンドでテストを開始できます。
-
 
 ```bash
 ros2 launch reaction_analyzer reaction_analyzer.launch.xml running_mode:=perception_planning vehicle_model:=sample_vehicle sensor_model:=awsim_labs_sensor_kit map_path:=[MAP_PATH]
@@ -82,7 +80,6 @@ ros2 launch reaction_analyzer reaction_analyzer.launch.xml running_mode:=percept
 - AWSIM 環境を実行します。AWSIM のチュートリアルは [こちら](https://autowarefoundation.github.io/AWSIM/main/GettingStarted/QuickStartDemo/) からご覧いただけます。
 - 次のコマンドで e2e_simulator を実行します。
 
-
 ```bash
 ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehicle sensor_model:=awsim_labs_sensor_kit map_path:=[MAP_PATH]
 ```
@@ -99,7 +96,6 @@ ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehic
 **注：`initialization_pose` は `planning_control` モードでのみ有効です。**
 
 - パラメータが記録された後、テスト用の ROS バッグを記録する必要があります。ROS バッグを記録するには、次のコマンドを使用できます。
-
 
 ```bash
 ros2 bag record --all
@@ -121,30 +117,30 @@ ros2 bag record --all
 
 ## パラメータ
 
-| 名称                                                                          | タイプ   | 説明                                                                                                                                        |
-| ----------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `timer_period`                                                                | double | [s] メイン処理タイマーのピリオド。                                                                                                                |
-| `test_iteration`                                                              | int    | テストの繰り返し回数。                                                                                                                          |
-| `output_file_path`                                                           | string | テスト結果と統計情報を格納するディレクトリパス。                                                                                              |
-| `spawn_time_after_init`                                                      | double | [s] オブジェクトをスポーンする前の初期化後のタイムディレイ。 `perception_planning` モードでのみ有効。                                         |
-| `spawn_distance_threshold`                                                   | double | [m] オブジェクトスポーンの距離しきい値。 `planning_control` モードでのみ有効。                                                               |
-| `poses.initialization_pose`                                                  | struct | 車両の初期姿勢で `x`, `y`, `z`, `roll`, `pitch`, `yaw` フィールドを含む。 `planning_control` モードでのみ有効。                            |
+| 名称                                                                         | タイプ | 説明                                                                                                                                 |
+| ---------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `timer_period`                                                               | double | [s] メイン処理タイマーのピリオド。                                                                                                   |
+| `test_iteration`                                                             | int    | テストの繰り返し回数。                                                                                                               |
+| `output_file_path`                                                           | string | テスト結果と統計情報を格納するディレクトリパス。                                                                                     |
+| `spawn_time_after_init`                                                      | double | [s] オブジェクトをスポーンする前の初期化後のタイムディレイ。 `perception_planning` モードでのみ有効。                                |
+| `spawn_distance_threshold`                                                   | double | [m] オブジェクトスポーンの距離しきい値。 `planning_control` モードでのみ有効。                                                       |
+| `poses.initialization_pose`                                                  | struct | 車両の初期姿勢で `x`, `y`, `z`, `roll`, `pitch`, `yaw` フィールドを含む。 `planning_control` モードでのみ有効。                      |
 | `poses.entity_params`                                                        | struct | エンティティ（障害物など）のパラメータで `x`, `y`, `z`, `roll`, `pitch`, `yaw`, `x_dimension`, `y_dimension`, `z_dimension` を含む。 |
-| `poses.goal_pose`                                                            | struct | 車両のゴール姿勢で `x`, `y`, `z`, `roll`, `pitch`, `yaw` フィールドを含む。                                                              |
-| `topic_publisher.path_bag_without_object`                                    | string | オブジェクトなしの ROS バッグファイルへのパス。 `perception_planning` モードでのみ有効。                                                  |
-| `topic_publisher.path_bag_with_object`                                       | string | オブジェクトありの ROS バッグファイルへのパス。 `perception_planning` モードでのみ有効。                                                   |
-| `topic_publisher.spawned_pointcloud_sampling_distance`                       | double | [m] スポーンされたオブジェクトの点群のサンプリング距離。 `planning_control` モードでのみ有効。                                             |
-| `topic_publisher.dummy_perception_publisher_period`                          | double | [s] ダミー知覚データの公開周期。 `planning_control` モードのみ有効。                                                                     |
-| `topic_publisher.pointcloud_publisher.pointcloud_publisher_type`             | string | PointCloud2 メッセージの公開方法を定義します。上記で説明したモード。                                                                       |
-| `topic_publisher.pointcloud_publisher.pointcloud_publisher_period`           | double | [s] PointCloud2 メッセージの公開周期。                                                                                             |
-| `topic_publisher.pointcloud_publisher.publish_only_pointcloud_with_object`   | bool   | デフォルトは false。オブジェクトのある点群メッセージのみを公開します。                                                                     |
-| `reaction_params.first_brake_params.debug_control_commands`                  | bool   | デバッグ公開フラグ。                                                                                                                        |
-| `reaction_params.first_brake_params.control_cmd_buffer_time_interval`        | double | [s] 制御コマンドのバッファー処理のタイムインターバル。                                                                                   |
-| `reaction_params.first_brake_params.min_number_descending_order_control_cmd` | int    | ブレーキトリガーの降順制御コマンドの最小数。                                                                                             |
-| `reaction_params.first_brake_params.min_jerk_for_brake_cmd`                  | double | [m/s³] ブレーキコマンドを発行するための最小ジャーク値。                                                                                      |
-| `reaction_params.search_zero_vel_params.max_looking_distance`                | double | [m] 軌道上でゼロ速度を探すための最大探索距離。                                                                                             |
-| `reaction_params.search_entity_params.search_radius`                         | double | [m] スポーンされたエンティティの検索半径。自己位置とエンティティ位置間の距離。                                                               |
-| `reaction_chain`                                                             | struct | トピックとそのトピックのメッセージタイプを持つノードのリスト。                                                                               |
+| `poses.goal_pose`                                                            | struct | 車両のゴール姿勢で `x`, `y`, `z`, `roll`, `pitch`, `yaw` フィールドを含む。                                                          |
+| `topic_publisher.path_bag_without_object`                                    | string | オブジェクトなしの ROS バッグファイルへのパス。 `perception_planning` モードでのみ有効。                                             |
+| `topic_publisher.path_bag_with_object`                                       | string | オブジェクトありの ROS バッグファイルへのパス。 `perception_planning` モードでのみ有効。                                             |
+| `topic_publisher.spawned_pointcloud_sampling_distance`                       | double | [m] スポーンされたオブジェクトの点群のサンプリング距離。 `planning_control` モードでのみ有効。                                       |
+| `topic_publisher.dummy_perception_publisher_period`                          | double | [s] ダミー知覚データの公開周期。 `planning_control` モードのみ有効。                                                                 |
+| `topic_publisher.pointcloud_publisher.pointcloud_publisher_type`             | string | PointCloud2 メッセージの公開方法を定義します。上記で説明したモード。                                                                 |
+| `topic_publisher.pointcloud_publisher.pointcloud_publisher_period`           | double | [s] PointCloud2 メッセージの公開周期。                                                                                               |
+| `topic_publisher.pointcloud_publisher.publish_only_pointcloud_with_object`   | bool   | デフォルトは false。オブジェクトのある点群メッセージのみを公開します。                                                               |
+| `reaction_params.first_brake_params.debug_control_commands`                  | bool   | デバッグ公開フラグ。                                                                                                                 |
+| `reaction_params.first_brake_params.control_cmd_buffer_time_interval`        | double | [s] 制御コマンドのバッファー処理のタイムインターバル。                                                                               |
+| `reaction_params.first_brake_params.min_number_descending_order_control_cmd` | int    | ブレーキトリガーの降順制御コマンドの最小数。                                                                                         |
+| `reaction_params.first_brake_params.min_jerk_for_brake_cmd`                  | double | [m/s³] ブレーキコマンドを発行するための最小ジャーク値。                                                                              |
+| `reaction_params.search_zero_vel_params.max_looking_distance`                | double | [m] 軌道上でゼロ速度を探すための最大探索距離。                                                                                       |
+| `reaction_params.search_entity_params.search_radius`                         | double | [m] スポーンされたエンティティの検索半径。自己位置とエンティティ位置間の距離。                                                       |
+| `reaction_chain`                                                             | struct | トピックとそのトピックのメッセージタイプを持つノードのリスト。                                                                       |
 
 ## 制限
 
@@ -181,4 +177,3 @@ ros2 bag record --all
 ## 将来の改善点
 
 - 反応分析は、より多くの反応タイプを追加することで改善できます。現在サポートしているのは `FIRST_BRAKE`、`SEARCH_ZERO_VEL`、`SEARCH_ENTITY` だけです。メッセージ タイプごとに反応タイプを追加することで拡張できます。
-

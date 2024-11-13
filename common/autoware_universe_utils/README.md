@@ -16,7 +16,6 @@
 
 ##### コンストラクタ
 
-
 ```cpp
 template <typename... Reporters>
 explicit TimeKeeper(Reporters... reporters);
@@ -59,7 +58,6 @@ explicit TimeKeeper(Reporters... reporters);
 
 - 以下に示すように、`start_track`と`end_track`を使用して時間測定を開始および終了できます。
 
-
   ```cpp
   time_keeper.start_track("example_function");
   // Your function code here
@@ -69,7 +67,6 @@ explicit TimeKeeper(Reporters... reporters);
 - 安全性と適切な追跡を確保するために、`ScopedTimeTrack`の使用を推奨します。
 
 ##### 例
-
 
 ```cpp
 #include <rclcpp/rclcpp.hpp>
@@ -143,7 +140,6 @@ int main(int argc, char ** argv)
 
 - 出力（コンソール）
 
-
   ```text
   ==========================
   func_a (6.243ms) : This is a comment for func_a
@@ -152,7 +148,6 @@ int main(int argc, char ** argv)
   ```
 
 - 出力 (`ros2 topic echo /processing_time`)
-
 
   ```text
   ---
@@ -182,7 +177,6 @@ int main(int argc, char ** argv)
 
 ##### コンストラクタ
 
-
 ```cpp
 ScopedTimeTrack(const std::string & func_name, TimeKeeper & time_keeper);
 ```
@@ -192,10 +186,8 @@ ScopedTimeTrack(const std::string & func_name, TimeKeeper & time_keeper);
 
 ##### デストラクター
 
-
 ```cpp
 ~ScopedTimeTrack();
 ```
 
 - `ScopedTimeTrack`オブジェクトを破壊し、関数の追跡を終了します。
-

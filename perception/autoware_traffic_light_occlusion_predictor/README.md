@@ -12,26 +12,25 @@
 
 ## 入力トピック
 
-| 名前                 | タイプ                                             | 説明              |
-| -------------------- | ------------------------------------------------ | ------------------- |
-| `~input/vector_map`  | `autoware_map_msgs::msg::LaneletMapBin`           | vector map           |
+| 名前                 | タイプ                                           | 説明                     |
+| -------------------- | ------------------------------------------------ | ------------------------ |
+| `~input/vector_map`  | `autoware_map_msgs::msg::LaneletMapBin`          | vector map               |
 | `~/input/rois`       | `autoware_perception_msgs::TrafficLightRoiArray` | traffic light detections |
-| `~input/camera_info` | `sensor_msgs::CameraInfo`                        | target camera parameter |
-| `~/input/cloud`      | `sensor_msgs::PointCloud2`                       | LiDAR point cloud      |
+| `~input/camera_info` | `sensor_msgs::CameraInfo`                        | target camera parameter  |
+| `~/input/cloud`      | `sensor_msgs::PointCloud2`                       | LiDAR point cloud        |
 
 ## 出力トピック
 
-| 名称                 | タイプ                                                   | 説明                  |
-| -------------------- | ------------------------------------------------------- | ---------------------------- |
-| `~/output/occlusion` | autoware_perception_msgs::TrafficLightOcclusionArray | 各ROIの遮蔽率            |
+| 名称                 | タイプ                                               | 説明          |
+| -------------------- | ---------------------------------------------------- | ------------- |
+| `~/output/occlusion` | autoware_perception_msgs::TrafficLightOcclusionArray | 各ROIの遮蔽率 |
 
 ## ノードパラメーター
 
-| パラメータ                            | 型   | 説明                                                                   |
-| ------------------------------------ | ------ | ----------------------------------------------------------------------- |
-| `azimuth_occlusion_resolution_deg`   | double | LiDARポイントクラ​​ウドの方位分解能 (度)                               |
-| `elevation_occlusion_resolution_deg` | double | LiDARポイントクラ​​ウドの仰角分解能 (度)                                |
-| `max_valid_pt_dist`                  | double | この距離内のポイントは計算に使用される                               |
-| `max_image_cloud_delay`              | double | LiDARポイントクラ​​ウドとカメラ画像の最大遅延                         |
-| `max_wait_t`                         | double | LiDARポイントクラ​​ウドを待機する最大時間                            |
-
+| パラメータ                           | 型     | 説明                                          |
+| ------------------------------------ | ------ | --------------------------------------------- |
+| `azimuth_occlusion_resolution_deg`   | double | LiDARポイントクラ​​ウドの方位分解能 (度)      |
+| `elevation_occlusion_resolution_deg` | double | LiDARポイントクラ​​ウドの仰角分解能 (度)      |
+| `max_valid_pt_dist`                  | double | この距離内のポイントは計算に使用される        |
+| `max_image_cloud_delay`              | double | LiDARポイントクラ​​ウドとカメラ画像の最大遅延 |
+| `max_wait_t`                         | double | LiDARポイントクラ​​ウドを待機する最大時間     |

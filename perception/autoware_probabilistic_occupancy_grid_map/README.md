@@ -34,7 +34,6 @@
 
 - pointcloud_based_occupancy_grid_map method
 
-
 ```yaml
 # downsampled raw and obstacle pointcloud
 /perception/occupancy_grid_map/obstacle/downsample/pointcloud
@@ -47,10 +46,10 @@
 
 ### 特徴
 
-* 複数のLiDARからのポイントクラウドデータを統合
-* LiDARの視差を補正して、より正確なポイントクラウドを生成
-* ノイズや異常値を除去して、高品質なポイントクラウドを生成
-* `post resampling`を使用して、ポイントクラウドの密度のばらつきを削減
+- 複数のLiDARからのポイントクラウドデータを統合
+- LiDARの視差を補正して、より正確なポイントクラウドを生成
+- ノイズや異常値を除去して、高品質なポイントクラウドを生成
+- `post resampling`を使用して、ポイントクラウドの密度のばらつきを削減
 
 ### 使用法
 
@@ -64,11 +63,10 @@
 
 `multi_lidar_pointcloud_based_point_cloud`モジュールは、次の出力を生成します。
 
-* 高品質で濃密なポイントクラウド
-* 各LiDARの点の距離逸脱量
-* 各LiDARの点の速度逸脱量
-* 各LiDARの点の加速度逸脱量
-
+- 高品質で濃密なポイントクラウド
+- 各LiDARの点の距離逸脱量
+- 各LiDARの点の速度逸脱量
+- 各LiDARの点の加速度逸脱量
 
 ```yaml
 # downsampled raw and obstacle pointcloud
@@ -81,7 +79,6 @@
 このパッケージは `gtest` を使用するユニットテストを提供します。
 以下のコマンドでテストを実行できます。
 
-
 ```bash
 colcon test --packages-select autoware_probabilistic_occupancy_grid_map --event-handlers console_direct+
 ```
@@ -92,4 +89,3 @@ colcon test --packages-select autoware_probabilistic_occupancy_grid_map --event-
 - ユーティリティ関数のユニットテスト
 - オキュパンシグリッドマップ結合関数のユニットテスト
 - ポイントクラウドベースオキュパンシグリッドマップの入出力テスト
-

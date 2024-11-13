@@ -12,64 +12,69 @@
 
 ### サービス
 
-| 名前                      | タイプ                                                 | 説明                  |
-| -------------------------- | ---------------------------------------------------- | ----------------------- |
-| `/localization/initialize` | tier4_localization_msgs::srv::InitializeLocalization | APIからの初期位置       |
+| 名前                       | タイプ                                               | 説明              |
+| -------------------------- | ---------------------------------------------------- | ----------------- |
+| `/localization/initialize` | tier4_localization_msgs::srv::InitializeLocalization | APIからの初期位置 |
 
 ### クライアント
 
-| 名称                                       | タイプ                                                   | 説明                       |
-| --------------------------------------- | --------------------------------------------------------- | ------------------------- |
-| `/localization/pose_estimator/ndt_align_srv` | tier4_localization_msgs::srv::PoseWithCovarianceStamped | 位推定サービス            |
+| 名称                                         | タイプ                                                  | 説明           |
+| -------------------------------------------- | ------------------------------------------------------- | -------------- |
+| `/localization/pose_estimator/ndt_align_srv` | tier4_localization_msgs::srv::PoseWithCovarianceStamped | 位推定サービス |
 
 ### サブスクリプション
 
-
-
-| 名称 | タイプ | 説明 |
-|---|---|---|
-| `/sensing/gnss/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped | GNSSから取得した自車位置 |
-| `/sensing/vehicle_velocity_converter/twist_with_covariance` | geometry_msgs::msg::TwistStamped | 停止確認用の速度 |
+| 名称                                                        | タイプ                                        | 説明                     |
+| ----------------------------------------------------------- | --------------------------------------------- | ------------------------ |
+| `/sensing/gnss/pose_with_covariance`                        | geometry_msgs::msg::PoseWithCovarianceStamped | GNSSから取得した自車位置 |
+| `/sensing/vehicle_velocity_converter/twist_with_covariance` | geometry_msgs::msg::TwistStamped              | 停止確認用の速度         |
 
 ### 論文
 
 ### Autoware の技術スタック
+
 Autoware は、自動運転車両の開発と実装のためのオープンソースソフトウェアプラットフォームです。以下に、主なコンポーネントとモジュールをリストします。
 
 #### Planning
-* **Motion Planning:** 車両の安全で効率的な経路を生成します。
-* **Behavior Planning:** 車両の挙動を決定し、障害物回避や速度調整を行います。
+
+- **Motion Planning:** 車両の安全で効率的な経路を生成します。
+- **Behavior Planning:** 車両の挙動を決定し、障害物回避や速度調整を行います。
 
 #### Perception
-* **Object Detection (2D/3D):** センサーからのデータを使用して、車両周辺の物体（歩行者、車両、障害物など）を検出します。
-* **Lane Detection:** カメラ画像を使用して、道路上の車線を検出します。
-* **Free Space Estimation:** 車両周辺の走行可能な領域を推定します。
+
+- **Object Detection (2D/3D):** センサーからのデータを使用して、車両周辺の物体（歩行者、車両、障害物など）を検出します。
+- **Lane Detection:** カメラ画像を使用して、道路上の車線を検出します。
+- **Free Space Estimation:** 車両周辺の走行可能な領域を推定します。
 
 #### Control
-* **Longitudinal Control:** 車両の縦方向運動（加速度、減速度）を制御します。
-* **Lateral Control:** 車両の横方向運動（ステアリング）を制御します。
-* **Path Tracking:** 生成されたパスに従って車両を誘導します。
+
+- **Longitudinal Control:** 車両の縦方向運動（加速度、減速度）を制御します。
+- **Lateral Control:** 車両の横方向運動（ステアリング）を制御します。
+- **Path Tracking:** 生成されたパスに従って車両を誘導します。
 
 #### Localization
-* **Odometry:** IMUやGNSSなどのセンサーを使用して、自車位置を推定します。
-* **Mapping:** 環境の地図を作成し、自車位置をローカライズするために使用します。
-* **Loop Closure Detection:** 地図内のループを検出し、ローカライゼーションの精度を向上させます。
+
+- **Odometry:** IMUやGNSSなどのセンサーを使用して、自車位置を推定します。
+- **Mapping:** 環境の地図を作成し、自車位置をローカライズするために使用します。
+- **Loop Closure Detection:** 地図内のループを検出し、ローカライゼーションの精度を向上させます。
 
 #### Sensor Interface
-* **Sensor Fusion:** 複数のセンサーからのデータを統合し、より正確で堅牢な認識情報を作成します。
-* **'Post Resampling' Sensor Fusion:** センサーデータの処理を最適化して、リアルタイムパフォーマンスを向上させます。
+
+- **Sensor Fusion:** 複数のセンサーからのデータを統合し、より正確で堅牢な認識情報を作成します。
+- **'Post Resampling' Sensor Fusion:** センサーデータの処理を最適化して、リアルタイムパフォーマンスを向上させます。
 
 #### Software Architecture
-* **ROS 2:** Autoware のコアアーキテクチャとして使用される、堅牢でスケーラブルなミドルウェア。
-* **DDS:** データをリアルタイムで配信するための高性能ミドルウェア。
-* **Python:** スクリプティングや構成に使用されます。
-* **C++:** リアルタイムコンポーネントやカーネルモジュールに使用されます。
 
-| 名称                                 | 型                                                         | 説明                 |
-| ------------------------------------ | ------------------------------------------------------------ | --------------------------- |
-| `/localization/initialization_state` | autoware_adapi_v1_msgs::msg::LocalizationInitializationState | 位相初期化状態   |
+- **ROS 2:** Autoware のコアアーキテクチャとして使用される、堅牢でスケーラブルなミドルウェア。
+- **DDS:** データをリアルタイムで配信するための高性能ミドルウェア。
+- **Python:** スクリプティングや構成に使用されます。
+- **C++:** リアルタイムコンポーネントやカーネルモジュールに使用されます。
+
+| 名称                                 | 型                                                           | 説明                   |
+| ------------------------------------ | ------------------------------------------------------------ | ---------------------- |
+| `/localization/initialization_state` | autoware_adapi_v1_msgs::msg::LocalizationInitializationState | 位相初期化状態         |
 | `/initialpose3d`                     | geometry_msgs::msg::PoseWithCovarianceStamped                | 計算された自車初期位相 |
-| `/diagnostics`                       | diagnostic_msgs::msg::DiagnosticArray                        | 診断                 |
+| `/diagnostics`                       | diagnostic_msgs::msg::DiagnosticArray                        | 診断                   |
 
 ## 診断
 
@@ -89,7 +94,6 @@ Autoware は、自動運転車両の開発と実装のためのオープンソ�
 
 ### GNSS推定位置の使用
 
-
 ```bash
 ros2 service call /localization/initialize tier4_localization_msgs/srv/InitializeLocalization
 ```
@@ -97,7 +101,6 @@ ros2 service call /localization/initialize tier4_localization_msgs/srv/Initializ
 GNSS 推定位置は初期推測として使用され、局所化アルゴリズムは自動的にさらに正確な位置を推定します。
 
 ### 入力位置の使用
-
 
 ```bash
 ros2 service call /localization/initialize tier4_localization_msgs/srv/InitializeLocalization "
@@ -124,7 +127,6 @@ method: 0
 
 ### 直接的な初期位置セット
 
-
 ```bash
 ros2 service call /localization/initialize tier4_localization_msgs/srv/InitializeLocalization "
 pose_with_covariance:
@@ -150,7 +152,6 @@ method: 1
 
 ### Via ros2 トピックの送信
 
-
 ```bash
 ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped "
 header:
@@ -171,4 +172,3 @@ pose:
 
 「initialpose (rviz から)」と同じ動作をします。
 [ad_api_adaptors](https://github.com/autowarefoundation/autoware.universe/tree/main/system/default_ad_api_helpers/ad_api_adaptors) によって position.z と共分散が上書きされるため、それらを入力する必要はありません。
-

@@ -11,4 +11,3 @@
 
 - [DiagGraph](./include/diagnostic_graph_utils/graph.hpp)
 - [DiagGraphSubscription](./include/diagnostic_graph_utils/subscription.hpp)
-

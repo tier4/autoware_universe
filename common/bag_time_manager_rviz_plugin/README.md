@@ -24,4 +24,3 @@ TBD
 
 - Pause/Resume: クロックを一時停止/再開します。
 - ApplyRate: クロックのレートを適用します。
-

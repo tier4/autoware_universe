@@ -12,7 +12,6 @@
 
 `*.launch.xml` に次のように含めることで、`vehicle.launch.xml` を使用できます。
 
-
 ```xml
   <arg name="vehicle_model" default="sample_vehicle" description="vehicle model name"/>
   <arg name="sensor_model" default="sample_sensor_kit" description="sensor model name"/>
@@ -29,11 +28,9 @@
 
 例)
 
-
 ```xml
 <let name="vehicle_model_pkg" value="$(find-pkg-share $(var vehicle_model)_description)"/>
 ```
-
 
 ```xml
 <arg name="config_dir" default="$(find-pkg-share individual_params)/config/$(var vehicle_id)/$(var sensor_model)"/>
@@ -43,15 +40,14 @@
 
 ### 引数
 
-| 名称          | タイプ   | 説明        | デフォルト |
-| ------------- | ------ | ------------------ | ------- |
-| sensor_model  | 文字列 | センサーモデル名  | 空文字      |
-| vehicle_model | 文字列 | 車両モデル名 | 空文字      |
+| 名称          | タイプ | 説明             | デフォルト |
+| ------------- | ------ | ---------------- | ---------- |
+| sensor_model  | 文字列 | センサーモデル名 | 空文字     |
+| vehicle_model | 文字列 | 車両モデル名     | 空文字     |
 
 ### 使用方法
 
 `*.launch.xml`に次のように記述できます。
-
 
 ```xml
   <arg name="vehicle_model" default="sample_vehicle" description="vehicle model name"/>
@@ -63,4 +59,3 @@
   </node>
 
 ```
-

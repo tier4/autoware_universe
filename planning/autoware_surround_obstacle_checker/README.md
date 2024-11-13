@@ -8,7 +8,6 @@
 
 ### フローチャート
 
-
 ```plantuml
 @startuml
 
@@ -81,13 +80,13 @@ stop
 ### 入力
 ```
 
-| 名前                                         | 種類                                              | 説明                                                          |
-| ------------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------- |
-| `/perception/obstacle_segmentation/pointcloud` | `sensor_msgs::msg::PointCloud2`                   | 自車が停止または回避すべき障害物の点群                         |
-| `/perception/object_recognition/objects`      | `autoware_perception_msgs::msg::PredictedObjects` | 動的オブジェクト                                              |
-| `/localization/kinematic_state`              | `nav_msgs::msg::Odometry`                         | 現在のひねり                                                   |
-| `/tf`                                         | `tf2_msgs::msg::TFMessage`                        | TF                                                              |
-| `/tf_static`                                  | `tf2_msgs::msg::TFMessage`                        | 静的TF                                                          |
+| 名前                                           | 種類                                              | 説明                                   |
+| ---------------------------------------------- | ------------------------------------------------- | -------------------------------------- |
+| `/perception/obstacle_segmentation/pointcloud` | `sensor_msgs::msg::PointCloud2`                   | 自車が停止または回避すべき障害物の点群 |
+| `/perception/object_recognition/objects`       | `autoware_perception_msgs::msg::PredictedObjects` | 動的オブジェクト                       |
+| `/localization/kinematic_state`                | `nav_msgs::msg::Odometry`                         | 現在のひねり                           |
+| `/tf`                                          | `tf2_msgs::msg::TFMessage`                        | TF                                     |
+| `/tf_static`                                   | `tf2_msgs::msg::TFMessage`                        | 静的TF                                 |
 
 ### 出力
 
@@ -143,35 +142,34 @@ Controlモジュールは、以下の機能を担当します。
 
 Autoware Stacは、オープンソース自動運転ソフトウェアスタックであり、ここで説明したアーキテクチャに基づいています。Autoware Stacは、Perception、Planning、Controlモジュールを提供し、自動運転車の開発を簡素化します。
 
-| 名前                                    | 型                                                  | 説明                                                                           |
-| --------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `~/output/velocity_limit_clear_command` | `tier4_planning_msgs::msg::VelocityLimitClearCommand` | 速度制限クリアコマンド                                                          |
-| `~/output/max_velocity`                 | `tier4_planning_msgs::msg::VelocityLimit`             | 速度制限コマンド                                                                |
-| `~/output/no_start_reason`              | `diagnostic_msgs::msg::DiagnosticStatus`              | スタート不可理由                                                                       |
-| `~/output/stop_reasons`                 | `tier4_planning_msgs::msg::StopReasonArray`           | 停止理由                                                                          |
-| `~/debug/marker`                        | `visualization_msgs::msg::MarkerArray`                | 可視化用マーカー                                                                  |
-| `~/debug/footprint`                     | `geometry_msgs::msg::PolygonStamped`                  | 自車ベースフットプリント（可視化用）                                            |
-| `~/debug/footprint_offset`              | `geometry_msgs::msg::PolygonStamped`                  | `surround_check_distance`オフセット付き自車フットプリント（可視化用）           |
+| 名前                                    | 型                                                    | 説明                                                                          |
+| --------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `~/output/velocity_limit_clear_command` | `tier4_planning_msgs::msg::VelocityLimitClearCommand` | 速度制限クリアコマンド                                                        |
+| `~/output/max_velocity`                 | `tier4_planning_msgs::msg::VelocityLimit`             | 速度制限コマンド                                                              |
+| `~/output/no_start_reason`              | `diagnostic_msgs::msg::DiagnosticStatus`              | スタート不可理由                                                              |
+| `~/output/stop_reasons`                 | `tier4_planning_msgs::msg::StopReasonArray`           | 停止理由                                                                      |
+| `~/debug/marker`                        | `visualization_msgs::msg::MarkerArray`                | 可視化用マーカー                                                              |
+| `~/debug/footprint`                     | `geometry_msgs::msg::PolygonStamped`                  | 自車ベースフットプリント（可視化用）                                          |
+| `~/debug/footprint_offset`              | `geometry_msgs::msg::PolygonStamped`                  | `surround_check_distance`オフセット付き自車フットプリント（可視化用）         |
 | `~/debug/footprint_recover_offset`      | `geometry_msgs::msg::PolygonStamped`                  | `surround_check_recover_distance`オフセット付き自車フットプリント（可視化用） |
 
 ## パラメータ
 
 {{ json_to_markdown("planning/autoware_surround_obstacle_checker/schema/surround_obstacle_checker.schema.json") }}
 
-| 名前                                  | タイプ     | 説明                                                                                                                                                  | デフォルト値                                 |
-| :----------------------------------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------- |
-| `enable_check`                       | `bool`   | 対象オブジェクトを障害物チェックのターゲットに含めてよいかどうかを示します。                                                                                  | オブジェクト: `true`、点群: `false`       |
-| `surround_check_front_distance`      | `bool`   | この前方距離内にオブジェクトまたは点群がある場合は、"exist-surrounding-obstacle"ステータスに遷移します。[m]                                               | 0.5                                          |
-| `surround_check_side_distance`       | `double` | この側面距離内にオブジェクトまたは点群がある場合は、"exist-surrounding-obstacle"ステータスに遷移します。[m]                                            | 0.5                                          |
-| `surround_check_back_distance`       | `double` | この後方距離内にオブジェクトまたは点群がある場合は、"exist-surrounding-obstacle"ステータスに遷移します。[m]                                            | 0.5                                          |
-| `surround_check_hysteresis_distance` | `double` | `surround_check_xxx_distance`プラスこの追加距離内にオブジェクトが存在しない場合、"non-surrounding-obstacle"ステータスに遷移します。[m]           | 0.3                                          |
-| `state_clear_time`                   | `double` | 停止状態を解除するためのしきい値[s]                                                                                                                   | 2.0                                          |
-| `stop_state_ego_speed`               | `double` | 自己車両が停止したかどうかをチェックするためのしきい値[m/s]                                                                                                 | 0.1                                          |
-| `stop_state_entry_duration_time`     | `double` | 自己車両が停止したかどうかをチェックするためのしきい値[s]                                                                                                 | 0.1                                          |
-| `publish_debug_footprints`           | `bool`   | オフセットあり/なしで車両のフットプリントを公開します。                                                                                                 | `true`                                       |
+| 名前                                 | タイプ   | 説明                                                                                                                                   | デフォルト値                        |
+| :----------------------------------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------- |
+| `enable_check`                       | `bool`   | 対象オブジェクトを障害物チェックのターゲットに含めてよいかどうかを示します。                                                           | オブジェクト: `true`、点群: `false` |
+| `surround_check_front_distance`      | `bool`   | この前方距離内にオブジェクトまたは点群がある場合は、"exist-surrounding-obstacle"ステータスに遷移します。[m]                            | 0.5                                 |
+| `surround_check_side_distance`       | `double` | この側面距離内にオブジェクトまたは点群がある場合は、"exist-surrounding-obstacle"ステータスに遷移します。[m]                            | 0.5                                 |
+| `surround_check_back_distance`       | `double` | この後方距離内にオブジェクトまたは点群がある場合は、"exist-surrounding-obstacle"ステータスに遷移します。[m]                            | 0.5                                 |
+| `surround_check_hysteresis_distance` | `double` | `surround_check_xxx_distance`プラスこの追加距離内にオブジェクトが存在しない場合、"non-surrounding-obstacle"ステータスに遷移します。[m] | 0.3                                 |
+| `state_clear_time`                   | `double` | 停止状態を解除するためのしきい値[s]                                                                                                    | 2.0                                 |
+| `stop_state_ego_speed`               | `double` | 自己車両が停止したかどうかをチェックするためのしきい値[m/s]                                                                            | 0.1                                 |
+| `stop_state_entry_duration_time`     | `double` | 自己車両が停止したかどうかをチェックするためのしきい値[s]                                                                              | 0.1                                 |
+| `publish_debug_footprints`           | `bool`   | オフセットあり/なしで車両のフットプリントを公開します。                                                                                | `true`                              |
 
 ## 想定事項/既知の制限事項
 
 停止計画を実行するには、障害物の点群データを取得する必要があります。
 したがって、障害物が死角にある場合は停止計画を実行しません。
-

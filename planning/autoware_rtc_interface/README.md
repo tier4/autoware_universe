@@ -8,7 +8,6 @@ RTCインタフェースは、ビヘイビアプランニングモジュール�
 
 ### 使用例
 
-
 ```c++
 // Generate instance (in this example, "intersection" is selected)
 autoware::rtc_interface::RTCInterface rtc_interface(node, "intersection");
@@ -51,7 +50,6 @@ rtc_interface.removeCooperateStatus(uuid);
 
 ### RTCInterface (コンストラクター)
 
-
 ```c++
 autoware::rtc_interface::RTCInterface(rclcpp::Node & node, const std::string & name);
 ```
@@ -73,8 +71,6 @@ autoware::rtc_interface::RTCInterface(rclcpp::Node & node, const std::string & n
 
 ### publishCooperateStatus
 
-
-
 ```c++
 autoware::rtc_interface::publishCooperateStatus(const rclcpp::Time & stamp)
 ```
@@ -92,7 +88,6 @@ autoware::rtc_interface::publishCooperateStatus(const rclcpp::Time & stamp)
 なし
 
 ### updateCooperateStatus
-
 
 ```c++
 autoware::rtc_interface::updateCooperateStatus(const unique_identifier_msgs::msg::UUID & uuid, const bool safe, const double start_distance, const double finish_distance, const rclcpp::Time & stamp)
@@ -117,7 +112,6 @@ autoware::rtc_interface::updateCooperateStatus(const unique_identifier_msgs::msg
 
 ### removeCooperateStatus
 
-
 ```c++
 autoware::rtc_interface::removeCooperateStatus(const unique_identifier_msgs::msg::UUID & uuid)
 ```
@@ -136,7 +130,6 @@ autoware::rtc_interface::removeCooperateStatus(const unique_identifier_msgs::msg
 
 ### clearCooperateStatus
 
-
 ```c++
 autoware::rtc_interface::clearCooperateStatus()
 ```
@@ -154,7 +147,6 @@ autoware::rtc_interface::clearCooperateStatus()
 なし
 
 ### isActivated
-
 
 ```c++
 autoware::rtc_interface::isActivated(const unique_identifier_msgs::msg::UUID & uuid)
@@ -175,7 +167,6 @@ autoware::rtc_interface::isActivated(const unique_identifier_msgs::msg::UUID & u
 それ以外の場合は、`false` を返します。
 
 ### isRegistered
-
 
 ```c++
 autoware::rtc_interface::isRegistered(const unique_identifier_msgs::msg::UUID & uuid)
@@ -200,4 +191,3 @@ RTCインターフェース用の[RTC Replayer](https://autowarefoundation.githu
 ## 想定/既知の制限
 
 ## 将来の拡張/未実装の部分
-

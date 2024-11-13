@@ -74,11 +74,11 @@
 
 これらのパラメータは、以下の表に示すように ROS パラメータで変更できます。
 
-| 設定名                                              | デフォルト値 |
-| ---------------------------------------------------- | ------------- |
-| `レーン変更検出の距離閾値`                          | `1.0` [m]     |
-| `レーン変更検出の時間閾値`                          | `5.0` [s]     |
-| `レーン変更検出用速度のカットオフ周波数`             | `0.1` [Hz]    |
+| 設定名                                   | デフォルト値 |
+| ---------------------------------------- | ------------ |
+| `レーン変更検出の距離閾値`               | `1.0` [m]    |
+| `レーン変更検出の時間閾値`               | `5.0` [s]    |
+| `レーン変更検出用速度のカットオフ周波数` | `0.1` [Hz]   |
 
 #### しきい値パラメータの調整
 
@@ -102,9 +102,9 @@ $$
 
 参考までに、横方向速度の計算方法を示します。
 
-| 横速度計算手法                           | 式                           | 説明                                                                                                                                                                                                                               |
-| ------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [**適用**済み] 横距離のタイムデリバティブ             | $\dfrac{\Delta d_{lat}}{\Delta t}$ | 現在、この手法は曲がりくねった道路に対処するために使用されています。この時間微分は容易にノイズを生じるため、低域通過フィルターも使用して速度を滑らかにしています。                                                      |
+| 横速度計算手法                                | 式                                 | 説明                                                                                                                                                                                         |
+| --------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [**適用**済み] 横距離のタイムデリバティブ     | $\dfrac{\Delta d_{lat}}{\Delta t}$ | 現在、この手法は曲がりくねった道路に対処するために使用されています。この時間微分は容易にノイズを生じるため、低域通過フィルターも使用して速度を滑らかにしています。                           |
 | [適用なし] オブジェクトの速度の横方向への投影 | $v_{obj} \sin(\theta)$             | 通常、オブジェクトの速度は横距離のタイムデリバティブよりもノイズが少なくなります。ただし、車線とオブジェクトの方向のヨー角差 $\theta$ が時々不連続になるため、この手法を採用しませんでした。 |
 
 現在、ローパスフィルターを使用した高階メソッドで横速度を算出しています。
@@ -136,10 +136,10 @@ $$
 
 Rosparam で以下の表に示すパラメータを変更できます。
 
-| パラメータ名                              | デフォルト値 |
-| ---------------------------------------- | ------------ |
+| パラメータ名                             | デフォルト値   |
+| ---------------------------------------- | -------------- |
 | `check_lateral_acceleration_constraints` | `false` [bool] |
-| `max_lateral_accel`                      | `2.0` [m/s^2] |
+| `max_lateral_accel`                      | `2.0` [m/s^2]  |
 | `min_acceleration_before_curve`          | `-2.0` [m/s^2] |
 
 ## 自動車加速度を使用した経路予測（障害車両用）
@@ -172,7 +172,7 @@ $\ x(t) = x*{t0} + (v*{t0} + a*{t0} \* (1/\lambda)) \cdot t + a*{t0}(1/λ^2)(e^{
 
 次の表の`rosparam`でこれらのパラメータを変更できます。
 
-| パラメータ名                           | デフォルト値  |
+| パラメータ名                         | デフォルト値   |
 | ------------------------------------ | -------------- |
 | `use_vehicle_acceleration`           | `false` [bool] |
 | `acceleration_exponential_half_life` | `2.5` [s]      |
@@ -209,11 +209,11 @@ $\ x(t) = x*{t0} + (v*{t0} + a*{t0} \* (1/\lambda)) \cdot t + a*{t0}(1/λ^2)(e^{
 
 ### 入力
 
-| 名称                                                    | 型                                                    | 説明                                                  |
-| ------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------- |
-| `~/perception/object_recognition/tracking/objects`      | `autoware_perception_msgs::msg::TrackedObjects`         | 予測パスを持たない追跡オブジェクト。                  |
-| `~/vector_map`                                          | `autoware_map_msgs::msg::LaneletMapBin`                 | Lanelet2 Mapのバイナリデータ。                          |
-| `~/perception/traffic_light_recognition/traffic_signals` | `autoware_perception_msgs::msg::TrafficLightGroupArray` | 対応する信号機の再配列された情報。                      |
+| 名称                                                     | 型                                                      | 説明                                 |
+| -------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------ |
+| `~/perception/object_recognition/tracking/objects`       | `autoware_perception_msgs::msg::TrackedObjects`         | 予測パスを持たない追跡オブジェクト。 |
+| `~/vector_map`                                           | `autoware_map_msgs::msg::LaneletMapBin`                 | Lanelet2 Mapのバイナリデータ。       |
+| `~/perception/traffic_light_recognition/traffic_signals` | `autoware_perception_msgs::msg::TrafficLightGroupArray` | 対応する信号機の再配列された情報。   |
 
 ### 自動運転ソフトウェアに関するドキュメント
 
@@ -298,32 +298,32 @@ Autowareのアップデートにより、最新の機能、バグ修正、セキ
 
 Troubleshootingガイドには、一般的な問題の解決手順が記載されています。診断、ログ分析、デバッグの手順を提供します。
 
-| 名称                         | 型                                              | 説明                                                                                 |
-| ---------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 名称                         | 型                                                | 説明                                                                                      |
+| ---------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `~/input/objects`            | `autoware_perception_msgs::msg::TrackedObjects`   | 検知物体。デフォルトは `/perception/object_recognition/tracking/objects` に設定されている |
-| `~/output/objects`           | `autoware_perception_msgs::msg::PredictedObjects` | 予測経路付き検知物体                                                                 |
-| `~/objects_path_markers`     | `visualization_msgs::msg::MarkerArray`            | 可視化用のマーカー                                                                   |
-| `~/debug/processing_time_ms` | `std_msgs::msg::Float64`                          | このモジュールの処理時間                                                             |
-| `~/debug/cyclic_time_ms`     | `std_msgs::msg::Float64`                          | このモジュールの周期時間                                                               |
+| `~/output/objects`           | `autoware_perception_msgs::msg::PredictedObjects` | 予測経路付き検知物体                                                                      |
+| `~/objects_path_markers`     | `visualization_msgs::msg::MarkerArray`            | 可視化用のマーカー                                                                        |
+| `~/debug/processing_time_ms` | `std_msgs::msg::Float64`                          | このモジュールの処理時間                                                                  |
+| `~/debug/cyclic_time_ms`     | `std_msgs::msg::Float64`                          | このモジュールの周期時間                                                                  |
 
 ## パラメータ
 
-| パラメータ | 単位 | タイプ | 説明 |
-|---|---|---|---|
-| `enable_delay_compensation` | [-] | bool | 物体の位置に対する時間遅延補正を有効にするためのフラグ |
-| `prediction_time_horizon` | [秒] | double | 予測 경로의 예측 시간 지속 기간 |
-| `lateral_control_time_horizon` | [秒] | double | 예측 경로가 기준 경로(대부분 차선 중심)에 도달하는 시간 지속 기간 |
-| `prediction_sampling_delta_time` | [秒] | double | 예측 경로에서 포인트의 샘플링 시간 |
-| `min_velocity_for_map_based_prediction` | [m/s] | double | 이 값보다 높은 속도의 물체에 지도 기반 예측 적용 |
-| `min_crosswalk_user_velocity` | [m/s] | double | 보행자의 속도를 계산할 때 사용되는 최소 속도 |
-| `max_crosswalk_user_delta_yaw_threshold_for_lanelet` | [라디안] | double | 보행자와 차로 간의 최대 요우 각도 차이를 보행자 경로 예측에 사용 |
-| `dist_threshold_for_searching_lanelet` | [m] | double | 물체가 속하는 차로를 검색하는 데 사용되는 각도 임계값 |
-| `delta_yaw_threshold_for_searching_lanelet` | [라디안] | double | 물체가 속하는 차로를 검색하는 데 사용되는 각도 임계값 |
-| `sigma_lateral_offset` | [m] | double | 물체의 측면 위치에 대한 표준 편차 |
-| `sigma_yaw_angle_deg` | [도] | double | 물체의 요우 각도에 대한 표준 편차 |
-| `object_buffer_time_length` | [초] | double | 물체의 정보를 저장하는 객체 이력의 시간 범위 |
-| `history_time_length` | [초] | double | 예측에 사용되는 객체 정보의 시간 범위 |
-| `prediction_time_horizon_rate_for_validate_shoulder_lane_length` | [-] | double | 예측 경로 길이가 차선 길이를 초과하면 예측 경로 비활성화. 이 매개변수는 예측 경로 길이를 제어 |
+| パラメータ                                                       | 単位     | タイプ | 説明                                                                                          |
+| ---------------------------------------------------------------- | -------- | ------ | --------------------------------------------------------------------------------------------- |
+| `enable_delay_compensation`                                      | [-]      | bool   | 物体の位置に対する時間遅延補正を有効にするためのフラグ                                        |
+| `prediction_time_horizon`                                        | [秒]     | double | 予測 경로의 예측 시간 지속 기간                                                               |
+| `lateral_control_time_horizon`                                   | [秒]     | double | 예측 경로가 기준 경로(대부분 차선 중심)에 도달하는 시간 지속 기간                             |
+| `prediction_sampling_delta_time`                                 | [秒]     | double | 예측 경로에서 포인트의 샘플링 시간                                                            |
+| `min_velocity_for_map_based_prediction`                          | [m/s]    | double | 이 값보다 높은 속도의 물체에 지도 기반 예측 적용                                              |
+| `min_crosswalk_user_velocity`                                    | [m/s]    | double | 보행자의 속도를 계산할 때 사용되는 최소 속도                                                  |
+| `max_crosswalk_user_delta_yaw_threshold_for_lanelet`             | [라디안] | double | 보행자와 차로 간의 최대 요우 각도 차이를 보행자 경로 예측에 사용                              |
+| `dist_threshold_for_searching_lanelet`                           | [m]      | double | 물체가 속하는 차로를 검색하는 데 사용되는 각도 임계값                                         |
+| `delta_yaw_threshold_for_searching_lanelet`                      | [라디안] | double | 물체가 속하는 차로를 검색하는 데 사용되는 각도 임계값                                         |
+| `sigma_lateral_offset`                                           | [m]      | double | 물체의 측면 위치에 대한 표준 편차                                                             |
+| `sigma_yaw_angle_deg`                                            | [도]     | double | 물체의 요우 각도에 대한 표준 편차                                                             |
+| `object_buffer_time_length`                                      | [초]     | double | 물체의 정보를 저장하는 객체 이력의 시간 범위                                                  |
+| `history_time_length`                                            | [초]     | double | 예측에 사용되는 객체 정보의 시간 범위                                                         |
+| `prediction_time_horizon_rate_for_validate_shoulder_lane_length` | [-]      | double | 예측 경로 길이가 차선 길이를 초과하면 예측 경로 비활성화. 이 매개변수는 예측 경로 길이를 제어 |
 
 ## 前提条件/既知の制限
 
@@ -341,4 +341,3 @@ Troubleshootingガイドには、一般的な問題の解決手順が記載さ�
 
 1. M. Werling, J. Ziegler, S. Kammel, and S. Thrun, “Optimal trajectory generation for dynamic street scenario in a frenet frame,” IEEE International Conference on Robotics and Automation, Anchorage, Alaska, USA, May 2010.
 2. A. Houenou, P. Bonnifait, V. Cherfaoui, and Wen Yao, “Vehicle trajectory prediction based on motion model and maneuver recognition,” in 2013 IEEE/RSJ International Conference on Intelligent Robots and Systems. IEEE, nov 2013, pp. 4363-4369.
-

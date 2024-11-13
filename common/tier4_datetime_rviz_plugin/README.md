@@ -14,4 +14,3 @@ TBD。
    ![select_panel](./images/select_panels.png)
 2. tier4_datetime_rviz_plugin/AutowareDateTimePanelを選択して、OKを押します。
    ![select_datetime_plugin](./images/select_datetime_plugin.png)
-

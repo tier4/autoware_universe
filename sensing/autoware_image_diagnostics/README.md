@@ -22,9 +22,9 @@
 
 ### 入力
 
-| 名称              | 型                      | 説明 |
-| ----------------- | ------------------------- | ----------- |
-| `input/raw_image` | `sensor_msgs::msg::Image` | 生画像   |
+| 名称              | 型                        | 説明   |
+| ----------------- | ------------------------- | ------ |
+| `input/raw_image` | `sensor_msgs::msg::Image` | 生画像 |
 
 ### 出力
 
@@ -131,13 +131,13 @@ Autowareは継続的に開発されており、以下を含む機能の向上が
 - より堅牢な障害物検出
 - より効率的な経路計画
 
-| 名前                                | タイプ                                    | 説明                                |
-| ----------------------------------- | --------------------------------------- | ------------------------------------- |
-| `image_diag/debug/gray_image`       | `sensor_msgs::msg::Image`               | グレー画像                            |
-| `image_diag/debug/dft_image`        | `sensor_msgs::msg::Image`               | 離散フーリエ変換画像                |
-| `image_diag/debug/diag_block_image` | `sensor_msgs::msg::Image`               | 各ブロック状態のカラー化             |
-| `image_diag/image_state_diag`       | `tier4_debug_msgs::msg::Int32Stamped`   | 画像診断のステータス値              |
-| `/diagnostics`                      | `diagnostic_msgs::msg::DiagnosticArray` | 診断                                |
+| 名前                                | タイプ                                  | 説明                     |
+| ----------------------------------- | --------------------------------------- | ------------------------ |
+| `image_diag/debug/gray_image`       | `sensor_msgs::msg::Image`               | グレー画像               |
+| `image_diag/debug/dft_image`        | `sensor_msgs::msg::Image`               | 離散フーリエ変換画像     |
+| `image_diag/debug/diag_block_image` | `sensor_msgs::msg::Image`               | 各ブロック状態のカラー化 |
+| `image_diag/image_state_diag`       | `tier4_debug_msgs::msg::Int32Stamped`   | 画像診断のステータス値   |
+| `/diagnostics`                      | `diagnostic_msgs::msg::DiagnosticArray` | 診断                     |
 
 ## パラメータ
 
@@ -156,4 +156,3 @@ Autowareは継続的に開発されており、以下を含む機能の向上が
 - 降雨や埃などの、より具体的な画像の歪み / 遮蔽タイプを検討する。
 
 - 光学的な観点からの霧や雨による視界の悪化を検討する
-

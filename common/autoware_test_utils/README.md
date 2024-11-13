@@ -45,7 +45,6 @@ road_shouldersレーンレットマップは、次のようなroad_shoulderタ�
 
 planning_simulatorを次のように簡単に起動できます。
 
-
 ```bash
 ros2 launch autoware_test_utils psim_road_shoulder.launch.xml vehicle_model:=<> sensor_model:=<> use_sim_time:=true
 ```
@@ -64,7 +63,6 @@ ros2 launch autoware_test_utils psim_road_shoulder.launch.xml vehicle_model:=<> 
 
 次のようにして簡単にplanning_simulatorを起動できます
 
-
 ```bash
 ros2 launch autoware_test_utils psim_intersection.launch.xml vehicle_model:=<> sensor_model:=<> use_sim_time:=true
 ```
@@ -79,19 +77,16 @@ ros2 launch autoware_test_utils psim_intersection.launch.xml vehicle_model:=<> s
 
 [PR説明](https://github.com/autowarefoundation/autoware.universe/pull/9207)で提示されているように、ユーザーはテストマップ上でPlanning Simulationを実行中にシーンのスナップショットをyamlファイルに保存することができます。
 
-
 ```bash
 ros2 launch autoware_test_utils psim_road_shoulder.launch.xml vehicle_model:=<vehicle-model> sensor_model:=<sensor-model>
 ros2 launch autoware_test_utils psim_intersection.launch.xml vehicle_model:=<vehicle-model> sensor_model:=<sensor-model>
 ```
-
 
 ```bash
 ros2 service call /autoware_test_utils/topic_snapshot_saver std_srvs/srv/Empty \{\}
 ```
 
 トピックを保存するトピックのリストとフィールド名は、`config/sample_topic_snapshot.yaml` で指定されています。
-
 
 ```yaml
 # setting
@@ -107,4 +102,3 @@ self_odometry:
 ```
 
 各フィールドは、`autoware_test_utils/mock_data_parser.hpp` で定義された関数を使用して ROS メッセージタイプに解析できます。
-

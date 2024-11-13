@@ -194,36 +194,36 @@ AEB モジュールは、自動運転車両が後退している場合にも衝�
 
 ## パラメータ
 
-| Name                               | 単位   | タイプ   | 説明                                                                                                                                                                                                 | デフォルト値 |
-| :--------------------------------- | :----- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| publish_debug_markers              | [なし] | ブール   | デバッグマーカーを発行するフラグ                                                                                                                                                               | true          |
-| publish_debug_pointcloud           | [なし] | ブール   | デバッグに使用されるポイントクラウドを発行するフラグ                                                                                                                                              | false         |
-| use_predicted_trajectory           | [なし] | ブール   | コントロールモジュールからの予測パスの使用フラグ                                                                                                                                                  | true          |
-| use_imu_path                       | [なし] | ブール   | センサーデータによって生成された予測パスの使用フラグ                                                                                                                                                 | true          |
-| use_object_velocity_calculation    | [なし] | ブール   | オブジェクト速度計算の使用フラグ。 `false` に設定すると、オブジェクト速度は 0 [m/s] に設定されます。                                                                                            | true          |
-| check_autoware_state               | [なし] | ブール   | Autoware ステートチェックの有効/無効フラグ。 `false` に設定すると、エゴ車が AUTONOMOUS ステートにない場合でも AEB モジュールは動作します。                                       | true          |
-| detection_range_min_height         | [m]    | 倍精度   | 誤検出によるゴーストブレーキを回避するために使用される検出範囲の最小高さ                                                                                                                              | 0.0           |
-| detection_range_max_height_margin  | [m]    | 倍精度   | 誤検出によるゴーストブレーキを回避するために使用される検出範囲の最大高さのマージン。 `detection_range_max_height = vehicle_height + detection_range_max_height_margin` | 0.0           |
-| voxel_grid_x                       | [m]    | 倍精度   | ボクセルグリッドフィルタの X 軸ダウンサンプリングパラメータ                                                                                                                                        | 0.05          |
-| voxel_grid_y                       | [m]    | 倍精度   | ボクセルグリッドフィルタの Y 軸ダウンサンプリングパラメータ                                                                                                                                        | 0.05          |
-| voxel_grid_z                       | [m]    | 倍精度   | ボクセルグリッドフィルタの Z 軸ダウンサンプリングパラメータ                                                                                                                                        | 減速         |
-| cluster tolerance                  | [m]    | 倍精度   | 2 つの点の間に許容可能な最大距離。それ以下の距離では、同じクラスタの一部とみなされます。                                                                                                    | 0.15          |
-| cluster_minimum_height             | [m]    | 倍精度   | クラスタ内の少なくとも 1 つの点が衝突対象の可能性のあるクラスタに含まれるために、この値よりも高くする必要があります。                                                                       | 0.1           |
-| minimum_cluster_size               | [なし] | 整数    | 対象の障害物として考慮されるためには、クラスタに必要最低限のポイント数                                                                                                                              | 10            |
-| maximum_cluster_size               | [なし] | 整数    | 対象の障害物として考慮されるためには、クラスタに含まれる最大ポイント数                                                                                                                            | 10000         |
-| min_generated_imu_path_length      | [m]    | 倍精度   | センサーによって生成された予測パスの最小距離                                                                                                                                                      | 0.5           |
-| max_generated_imu_path_length      | [m]    | 倍精度   | センサーによって生成された予測パスの最大距離                                                                                                                                                      | 10.0          |
-| expand_width                       | [m]    | 倍精度   | 衝突チェック時のエゴ車両の拡張幅                                                                                                                                                            | 0.1           |
-| longitudinal_offset                | [m]    | 倍精度   | 衝突チェック時の縦方向オフセット距離                                                                                                                                                         | 2.0           |
-| t_response                         | [s]    | 倍精度   | エゴ車が前方の車両を検知してから減速を開始するまでの反応時間                                                                                                                                   | 1.0           |
-| a_ego_min                          | [m/ss] | 倍精度   | エゴ車両の最大減速度                                                                                                                                                                          | -3.0          |
-| a_obj_min                          | [m/ss] | 倍精度   | オブジェクトの最大減速度                                                                                                                                                                          | -3.0          |
-| imu_prediction_time_horizon        | [s]    | 倍精度   | センサーによって生成された予測パスの時間範囲                                                                                                                                                   | 1.5           |
-| imu_prediction_time_interval       | [s]    | 倍精度   | センサーによって生成された予測パスの時間間隔                                                                                                                                                   | Planning       |
-| mpc_prediction_time_horizon        | [s]    | 倍精度   | mpc によって生成された予測パスの時間範囲                                                                                                                                                      | 1.5           |
-| mpc_prediction_time_interval       | [s]    | 倍精度   | mpc によって生成された予測パスの時間間隔                                                                                                                                                      | 0.1           |
-| aeb_hz                             | [なし] | 倍精度   | AEBが1秒間に動作する頻度                                                                                                                                                                  | 10            |
-| speed_calculation_expansion_margin | [m]    | 倍精度   | 開始速度計算時のエゴ車両の拡張幅                                                                                                                                                            | 0.1           |
+| Name                               | 単位   | タイプ | 説明                                                                                                                                                                   | デフォルト値 |
+| :--------------------------------- | :----- | :----- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------- |
+| publish_debug_markers              | [なし] | ブール | デバッグマーカーを発行するフラグ                                                                                                                                       | true         |
+| publish_debug_pointcloud           | [なし] | ブール | デバッグに使用されるポイントクラウドを発行するフラグ                                                                                                                   | false        |
+| use_predicted_trajectory           | [なし] | ブール | コントロールモジュールからの予測パスの使用フラグ                                                                                                                       | true         |
+| use_imu_path                       | [なし] | ブール | センサーデータによって生成された予測パスの使用フラグ                                                                                                                   | true         |
+| use_object_velocity_calculation    | [なし] | ブール | オブジェクト速度計算の使用フラグ。 `false` に設定すると、オブジェクト速度は 0 [m/s] に設定されます。                                                                   | true         |
+| check_autoware_state               | [なし] | ブール | Autoware ステートチェックの有効/無効フラグ。 `false` に設定すると、エゴ車が AUTONOMOUS ステートにない場合でも AEB モジュールは動作します。                             | true         |
+| detection_range_min_height         | [m]    | 倍精度 | 誤検出によるゴーストブレーキを回避するために使用される検出範囲の最小高さ                                                                                               | 0.0          |
+| detection_range_max_height_margin  | [m]    | 倍精度 | 誤検出によるゴーストブレーキを回避するために使用される検出範囲の最大高さのマージン。 `detection_range_max_height = vehicle_height + detection_range_max_height_margin` | 0.0          |
+| voxel_grid_x                       | [m]    | 倍精度 | ボクセルグリッドフィルタの X 軸ダウンサンプリングパラメータ                                                                                                            | 0.05         |
+| voxel_grid_y                       | [m]    | 倍精度 | ボクセルグリッドフィルタの Y 軸ダウンサンプリングパラメータ                                                                                                            | 0.05         |
+| voxel_grid_z                       | [m]    | 倍精度 | ボクセルグリッドフィルタの Z 軸ダウンサンプリングパラメータ                                                                                                            | 減速         |
+| cluster tolerance                  | [m]    | 倍精度 | 2 つの点の間に許容可能な最大距離。それ以下の距離では、同じクラスタの一部とみなされます。                                                                               | 0.15         |
+| cluster_minimum_height             | [m]    | 倍精度 | クラスタ内の少なくとも 1 つの点が衝突対象の可能性のあるクラスタに含まれるために、この値よりも高くする必要があります。                                                  | 0.1          |
+| minimum_cluster_size               | [なし] | 整数   | 対象の障害物として考慮されるためには、クラスタに必要最低限のポイント数                                                                                                 | 10           |
+| maximum_cluster_size               | [なし] | 整数   | 対象の障害物として考慮されるためには、クラスタに含まれる最大ポイント数                                                                                                 | 10000        |
+| min_generated_imu_path_length      | [m]    | 倍精度 | センサーによって生成された予測パスの最小距離                                                                                                                           | 0.5          |
+| max_generated_imu_path_length      | [m]    | 倍精度 | センサーによって生成された予測パスの最大距離                                                                                                                           | 10.0         |
+| expand_width                       | [m]    | 倍精度 | 衝突チェック時のエゴ車両の拡張幅                                                                                                                                       | 0.1          |
+| longitudinal_offset                | [m]    | 倍精度 | 衝突チェック時の縦方向オフセット距離                                                                                                                                   | 2.0          |
+| t_response                         | [s]    | 倍精度 | エゴ車が前方の車両を検知してから減速を開始するまでの反応時間                                                                                                           | 1.0          |
+| a_ego_min                          | [m/ss] | 倍精度 | エゴ車両の最大減速度                                                                                                                                                   | -3.0         |
+| a_obj_min                          | [m/ss] | 倍精度 | オブジェクトの最大減速度                                                                                                                                               | -3.0         |
+| imu_prediction_time_horizon        | [s]    | 倍精度 | センサーによって生成された予測パスの時間範囲                                                                                                                           | 1.5          |
+| imu_prediction_time_interval       | [s]    | 倍精度 | センサーによって生成された予測パスの時間間隔                                                                                                                           | Planning     |
+| mpc_prediction_time_horizon        | [s]    | 倍精度 | mpc によって生成された予測パスの時間範囲                                                                                                                               | 1.5          |
+| mpc_prediction_time_interval       | [s]    | 倍精度 | mpc によって生成された予測パスの時間間隔                                                                                                                               | 0.1          |
+| aeb_hz                             | [なし] | 倍精度 | AEBが1秒間に動作する頻度                                                                                                                                               | 10           |
+| speed_calculation_expansion_margin | [m]    | 倍精度 | 開始速度計算時のエゴ車両の拡張幅                                                                                                                                       | 0.1          |
 
 ## 制約事項
 
@@ -236,4 +236,3 @@ AEB モジュールは、自動運転車両が後退している場合にも衝�
 - センサーデータから作成された予測経路の精度は、自車に搭載されたセンサーの精度に依存します。
 
 ![aeb_range](./image/range.drawio.svg)
-

@@ -14,7 +14,6 @@
 
 `PACKAGE_param_path` としてパラメータパスを設定する必要があります。設定するパラメータパスのリストは `planning.launch.xml` の先頭に記載されています。
 
-
 ```xml
 <include file="$(find-pkg-share tier4_control_launch)/launch/control.launch.py">
   <!-- options for lateral_controller_mode: mpc_follower, pure_pursuit -->
@@ -29,4 +28,3 @@
 ## 注釈
 
 処理負荷を削減するため、ROS 2における[Component](https://docs.ros.org/en/galactic/Concepts/About-Composition.html)の機能（ROS 1におけるNodeletに類似）を使用します。
-

@@ -6,8 +6,8 @@
 
 1. 必要な横方向オフセット入力を受信します。
 2. 次の条件下で`requested_lateral_offset_`を更新します。
-  a. 最後の更新時刻が経過したか確認します。
-  b. 必要な横方向オフセット値が前の値と異なることを確認します。
+   a. 最後の更新時刻が経過したか確認します。
+   b. 必要な横方向オフセット値が前の値と異なることを確認します。
 3. 側方シフトモジュールのステータスがSHIFTINGステータスの場合は、シフトポイントをパスに挿入します。
 
 `requested_lateral_offset_`は最新の値で常に更新され、キューに入れられないことに注意してください。
@@ -26,7 +26,6 @@
 </figure>
 
 ## フローチャート
-
 
 ```plantuml
 @startuml
@@ -50,7 +49,6 @@ else ( false)
 stop
 @enduml
 ```
-
 
 ```plantuml
 @startuml
@@ -77,7 +75,6 @@ endif
 stop
 @enduml
 ```
-
 
 ```plantuml
 @startuml
@@ -116,4 +113,3 @@ partition updateState {
 
 @enduml
 ```
-

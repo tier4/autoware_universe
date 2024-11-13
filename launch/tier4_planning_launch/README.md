@@ -12,7 +12,6 @@
 
 パラメータのパスを`PACKAGE_param_path`として指定する必要があることに注意してください。指定する必要のあるパラメータのパスは`planning.launch.xml`の先頭で記載されています。
 
-
 ```xml
 <include file="$(find-pkg-share tier4_planning_launch)/launch/planning.launch.xml">
   <!-- Parameter files -->
@@ -21,4 +20,3 @@
   ...
 </include>
 ```
-

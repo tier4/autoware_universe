@@ -22,8 +22,8 @@ autoware_euclidean_cluster は、オブジェクトを分類するために点�
 
 ### 入力
 
-| 名前    | タイプ                            | 説明      |
-| ------- | ------------------------------- | ----------- |
+| 名前    | タイプ                          | 説明     |
+| ------- | ------------------------------- | -------- |
 | `input` | `sensor_msgs::msg::PointCloud2` | 入力点群 |
 
 ### 出力
@@ -69,10 +69,10 @@ Planningモジュールは、以下の技術的詳細を備えています。
 
 Planningモジュールは、Autowareソフトウェアスタックの一部です。
 
-| 名              | タイプ                                                   | 説明                                              |
-| ---------------- | --------------------------------------------------------- | --------------------------------------------------- |
-| `output`         | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | クラスタ点群                                        |
-| `debug/clusters` | `sensor_msgs::msg::PointCloud2`                          | 可視化のための着色済みクラスタ点群                  |
+| 名               | タイプ                                                   | 説明                               |
+| ---------------- | -------------------------------------------------------- | ---------------------------------- |
+| `output`         | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | クラスタ点群                       |
+| `debug/clusters` | `sensor_msgs::msg::PointCloud2`                          | 可視化のための着色済みクラスタ点群 |
 
 ## パラメータ
 
@@ -80,12 +80,12 @@ Planningモジュールは、Autowareソフトウェアスタックの一部で�
 
 #### euclidean_cluster
 
-| 名称 | タイプ | 説明 |
-| ---- | ---- | ----------------------------------------------------- |
-| `use_height` | ブール | クラスタリングに point.z を使用 |
-| `min_cluster_size` | 整数 | クラスターが有効と見なされるために必要な最小のポイント数 |
-| `max_cluster_size` | 整数 | クラスターが有効と見なされるために必要な最大のポイント数 |
-| `tolerance` | 浮動小数点 | L2 ユークリッド空間における尺度としての空間クラスター許容範囲 |
+| 名称               | タイプ     | 説明                                                          |
+| ------------------ | ---------- | ------------------------------------------------------------- |
+| `use_height`       | ブール     | クラスタリングに point.z を使用                               |
+| `min_cluster_size` | 整数       | クラスターが有効と見なされるために必要な最小のポイント数      |
+| `max_cluster_size` | 整数       | クラスターが有効と見なされるために必要な最大のポイント数      |
+| `tolerance`        | 浮動小数点 | L2 ユークリッド空間における尺度としての空間クラスター許容範囲 |
 
 #### voxel_grid_based_euclidean_cluster
 
@@ -93,30 +93,30 @@ Planningモジュールは、Autowareソフトウェアスタックの一部で�
 
 **サブスクライブするトピック**
 
-* `/points_raw`: 入力点群
+- `/points_raw`: 入力点群
 
 **パブリッシュするトピック**
 
-* `/voxel_grid_based_euclidean_cluster/output`: クラスタリングされた点群
+- `/voxel_grid_based_euclidean_cluster/output`: クラスタリングされた点群
 
 **パラメータ**
 
-* **voxel_leaf_size:** クラスタリングに使用するボクセルサイズ[m]
-* **euclidean_cluster_tolerance:** クラスタリングに使用するユークリッド距離公差[m]
-* **min_cluster_size:** クラスタとして認識されるためにクラスタに含まれる必要のある最小ポイント数
-* **max_cluster_size:** 1つのクラスタに含まれることができる最大ポイント数
-* **post resampling:** 点群をサンプルするのかどうか (True/False)
-* **sample_size:** サンプルするポイントの数。`post resampling` が True の場合にのみ使用されます。
-* **target_frame:** クラスタリングされた点群の目標フレーム。`current pose` または `sensor` のいずれか。
+- **voxel_leaf_size:** クラスタリングに使用するボクセルサイズ[m]
+- **euclidean_cluster_tolerance:** クラスタリングに使用するユークリッド距離公差[m]
+- **min_cluster_size:** クラスタとして認識されるためにクラスタに含まれる必要のある最小ポイント数
+- **max_cluster_size:** 1つのクラスタに含まれることができる最大ポイント数
+- **post resampling:** 点群をサンプルするのかどうか (True/False)
+- **sample_size:** サンプルするポイントの数。`post resampling` が True の場合にのみ使用されます。
+- **target_frame:** クラスタリングされた点群の目標フレーム。`current pose` または `sensor` のいずれか。
 
-| 名称                            | 型      | 説明                                                                                                 |
-| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------ |
-| `use_height`                     | bool      | クラスタリングに point.z を使用する                                                                 |
-| `min_cluster_size`               | int       | 有効とみなされるためにクラスタが必要とする最小点の数                                                |
-| `max_cluster_size`               | int       | 有効とみなされるためにクラスタが必要とする最大点の数                                                |
-| `tolerance`                      | float      | L2 ユークリッド空間の指標としての空間クラスタ許容誤差                                            |
-| `voxel_leaf_size`                | float      | x と y のボクセルリーフサイズ                                                                      |
-| `min_points_number_per_voxel`    | int       | ボクセルに必要な最低点の数                                                                        |
+| 名称                          | 型    | 説明                                                  |
+| ----------------------------- | ----- | ----------------------------------------------------- |
+| `use_height`                  | bool  | クラスタリングに point.z を使用する                   |
+| `min_cluster_size`            | int   | 有効とみなされるためにクラスタが必要とする最小点の数  |
+| `max_cluster_size`            | int   | 有効とみなされるためにクラスタが必要とする最大点の数  |
+| `tolerance`                   | float | L2 ユークリッド空間の指標としての空間クラスタ許容誤差 |
+| `voxel_leaf_size`             | float | x と y のボクセルリーフサイズ                         |
+| `min_points_number_per_voxel` | int   | ボクセルに必要な最低点の数                            |
 
 ## 想定/既知の制限
 
@@ -161,4 +161,3 @@ Planningモジュールは、Autowareソフトウェアスタックの一部で�
 ## (省略可) 今後の拡張機能/未実装部分
 
 `voxel_grid_based_euclidean_cluster`の`use_height`オプションはまだ実装されていません。
-

@@ -55,13 +55,13 @@ HDマップ上に定義されている `intersection_area` は、交差点全体
 
 次の表は、**例**として、信号のない交差点の各レーンに `yield_lane` を設定する方法を示しています。幾何学的/トポロジ的な方法で交差点レーンのセットの一意の信号位相グループを決定する方法は明らかでないため、`yield_lane` を手動で設定する必要があります。信号機のある直進レーンは、通常他のすべてのレーンよりも優先順位が高いため、レーンの検出がされないように特別に処理されます。したがって、RightOfWay の設定は必要ありません。
 
-| 進路と優先道路の関係 | 交差点での減速車線（信号有り）                                                       | 交差点での減速車線（信号無し）                    |
-| ---------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| 直進                   | 減速車線を設定する必要はない（このケースは特殊）                                      | 同相車の対向車線                                  |
-| 左折（左ハンドル車）   | 反相車の対抗車線と対向車線の同相車の右側から対抗する車線                              | 同相車の対向車線の右側の車線                      |
-| 右折（左ハンドル車）   | 反相車の対抗車線                                                                 | 減速車線を設定しない                                |
-| 左折（右ハンドル車）   | 反相車の対抗車線                                                                 | 減速車線を設定しない                                |
-| 右折（右ハンドル車）   | 反相車の対抗車線と対向車線の同相車の右側から対抗する車線                              | 同相車の対向車線の左側の車線                      |
+| 進路と優先道路の関係 | 交差点での減速車線（信号有り）                           | 交差点での減速車線（信号無し） |
+| -------------------- | -------------------------------------------------------- | ------------------------------ |
+| 直進                 | 減速車線を設定する必要はない（このケースは特殊）         | 同相車の対向車線               |
+| 左折（左ハンドル車） | 反相車の対抗車線と対向車線の同相車の右側から対抗する車線 | 同相車の対向車線の右側の車線   |
+| 右折（左ハンドル車） | 反相車の対抗車線                                         | 減速車線を設定しない           |
+| 左折（右ハンドル車） | 反相車の対抗車線                                         | 減速車線を設定しない           |
+| 右折（右ハンドル車） | 反相車の対抗車線と対向車線の同相車の右側から対抗する車線 | 同相車の対向車線の左側の車線   |
 
 この設定は、次の `attention_area` 設定を提供します。
 
@@ -108,18 +108,17 @@ HDマップ上に定義されている `intersection_area` は、交差点全体
 
 シーンに応じて、いくつかの動作があります。
 
-| 挙動             | シーン                                                                                            | アクション                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 安全             | 自車が遮蔽と衝突を検出しない                                                           | 自車が交差点を通過する                                                        |
-| 停止維持         | 交差点の出口が渋滞によって塞がれている                                                    | 自車が交差点または注意領域の境界手前で停止する                               |
-| 譲歩による停止     | 他の車両が自車に道を譲るために停車する                                                         | 自車が交差点または注意領域の境界手前で停止する                               |
-| 遮蔽なし衝突停止 | 自車が遮蔽を検出しないが衝突を検出する                                                    | 自車がデフォルトの停止線で停止する                                               |
-| 遮蔽範囲前に待機する | 交差点への進入時に自車が遮蔽を検出する                                                      | 自車が最初にデフォルトの停止線で停止する                                       |
-| 遮蔽のほうを伺う     | 自車が遮蔽を検出し、視野内では衝突を検出しない（遮蔽範囲前に待機した後）                | 自車が注意領域の境界にゆっくりと接近する                                   |
-| 遮蔽により衝突停止 | 自車が遮蔽と衝突の両方を検出する（遮蔽範囲前に待機した後）                              | 自車が直ちに停止する                                                          |
-| 完全優先          | 自車が赤/矢印信号によって完全に優先されている                                                | 自車は交差点内でまだ走行中の車両のみを考慮する。遮蔽は無視される                |
-| 通過判断線通過     | 自車がすでに注意領域内にある、または注意領域の境界手前で停止できないことを検出している | 自車は衝突/遮蔽を検出せず、交差点を通過する                                    |
-
+| 挙動                 | シーン                                                                                 | アクション                                                       |
+| -------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 安全                 | 自車が遮蔽と衝突を検出しない                                                           | 自車が交差点を通過する                                           |
+| 停止維持             | 交差点の出口が渋滞によって塞がれている                                                 | 自車が交差点または注意領域の境界手前で停止する                   |
+| 譲歩による停止       | 他の車両が自車に道を譲るために停車する                                                 | 自車が交差点または注意領域の境界手前で停止する                   |
+| 遮蔽なし衝突停止     | 自車が遮蔽を検出しないが衝突を検出する                                                 | 自車がデフォルトの停止線で停止する                               |
+| 遮蔽範囲前に待機する | 交差点への進入時に自車が遮蔽を検出する                                                 | 自車が最初にデフォルトの停止線で停止する                         |
+| 遮蔽のほうを伺う     | 自車が遮蔽を検出し、視野内では衝突を検出しない（遮蔽範囲前に待機した後）               | 自車が注意領域の境界にゆっくりと接近する                         |
+| 遮蔽により衝突停止   | 自車が遮蔽と衝突の両方を検出する（遮蔽範囲前に待機した後）                             | 自車が直ちに停止する                                             |
+| 完全優先             | 自車が赤/矢印信号によって完全に優先されている                                          | 自車は交差点内でまだ走行中の車両のみを考慮する。遮蔽は無視される |
+| 通過判断線通過       | 自車がすでに注意領域内にある、または注意領域の境界手前で停止できないことを検出している | 自車は衝突/遮蔽を検出せず、交差点を通過する                      |
 
 ```plantuml
 @startuml
@@ -212,7 +211,6 @@ OccludedCollisionStop --> PeekingTowardOcclusion: IF not collision detected
 
 現在、交差点モジュールは`motion_velocity_smoother`機能を使用して、縦方向/横方向の制約の下で交差点レーンに沿ったエゴの速度プロファイルを正確に計算しています。フラグ`collision_detection.velocity_profile.use_upstream`がtrueの場合、元々のパスのターゲット速度プロファイルが使用されます。そうでない場合、ターゲット速度は`collision.velocity_profile.default_velocity`に設定されます。軌跡平滑化処理では、エゴの軌跡ポイントで/その前のターゲット速度は、エゴの現在の速度に設定されます。滑らかにされた軌跡はその後、現在のエゴの位置から経路上の各軌跡ポイントへの到着時間を示す（時間、距離）の配列に変換されます。レーンIDを`debug.ttc`に追加して実行することでこの配列を視覚化できます。
 
-
 ```bash
 ros2 run behavior_velocity_intersection_module ttc.py --lane_id <lane_id>
 ```
@@ -228,9 +226,9 @@ ros2 run behavior_velocity_intersection_module ttc.py --lane_id <lane_id>
 
 ## オクルージョン検出
 
-フラグ `occlusion.enable` が true の場合、このモジュールは `occlusion.occlusion_attention_area_length` までの注目範囲の視野 (FOV) が十分にあるかどうかを確認します。FOV が十分にクリアでない場合、ego は最初に `occlusion.temporal_stop_time_before_peeking` の間 default_stopline で短時間停止し、その後オクルージョン_ピーキング_ストップラインにゆっくりと進みます。`occlusion.creep_during_peeking.enable` が true の場合、`occlusion.creep_during_peeking.creep_velocity` がオクルージョン_ピーキング_ストップラインまで挿入されます。そうでない場合、停止線のみが挿入されます。
+フラグ `occlusion.enable` が true の場合、このモジュールは `occlusion.occlusion_attention_area_length` までの注目範囲の視野 (FOV) が十分にあるかどうかを確認します。FOV が十分にクリアでない場合、ego は最初に `occlusion.temporal_stop_time_before_peeking` の間 default*stopline で短時間停止し、その後オクルージョン*ピーキング*ストップラインにゆっくりと進みます。`occlusion.creep_during_peeking.enable` が true の場合、`occlusion.creep_during_peeking.creep_velocity` がオクルージョン*ピーキング\_ストップラインまで挿入されます。そうでない場合、停止線のみが挿入されます。
 
-忍び寄っている間に衝突が検出された場合、このモジュールはすぐに ego の前に停止線を追加し、FOV が十分にクリアになると交差点_オクルージョン壁は消えます。オクルージョンがクリアされ、衝突が検出されなかった場合、ego は交差点を通過します。
+忍び寄っている間に衝突が検出された場合、このモジュールはすぐに ego の前に停止線を追加し、FOV が十分にクリアになると交差点\_オクルージョン壁は消えます。オクルージョンがクリアされ、衝突が検出されなかった場合、ego は交差点を通過します。
 
 オクルージョンは、オクルージョン注目範囲（通常注目範囲と部分的に同じ）と占有グリッドマップの不明セルとの共通領域として検出されます。占有グリッドマップは `occlusion.denoise_kernel` のウィンドウサイズを使用して形態学を用いてノイズを除去されます。オクルージョン注目範囲のレーンは直線ストリングに離散化され、それらを使用して、下の図のように各セルがレーンに沿った ego パスの距離を表すグリッドを生成します。
 
@@ -240,9 +238,9 @@ ros2 run behavior_velocity_intersection_module ttc.py --lane_id <lane_id>
 
 ### 信号機のある交差点でのオクルージョンソースの推定
 
-信号機のある交差点では、ego と最も近いオクルージョンセルとの間に物体があるかどうかをチェックすることで、オクルージョンの所在推定が行われます。オクルージョンが何らかの物体によって引き起こされていると推定される間 (動的にオクルージョンされる)、交差点_ウォールは常に表示されます。ego と最も近いオクルージョンセルとの間に物体が見つからない場合（静的にオクルージョンされる）、ego は `occlusion.static_occlusion_with_traffic_light_timeout` の期間と `occlusion.occlusion_detection_hold_time` の期間停止した後、意図的にオクルージョンを無視してスタックを回避します。
+信号機のある交差点では、ego と最も近いオクルージョンセルとの間に物体があるかどうかをチェックすることで、オクルージョンの所在推定が行われます。オクルージョンが何らかの物体によって引き起こされていると推定される間 (動的にオクルージョンされる)、交差点\_ウォールは常に表示されます。ego と最も近いオクルージョンセルとの間に物体が見つからない場合（静的にオクルージョンされる）、ego は `occlusion.static_occlusion_with_traffic_light_timeout` の期間と `occlusion.occlusion_detection_hold_time` の期間停止した後、意図的にオクルージョンを無視してスタックを回避します。
 
-残り時間は交差点_オクルージョン仮想ウォールに視覚化されます。
+残り時間は交差点\_オクルージョン仮想ウォールに視覚化されます。
 
 ![static-occlusion-timeout](./docs/static-occlusion-timeout.png)
 
@@ -252,7 +250,7 @@ ros2 run behavior_velocity_intersection_module ttc.py --lane_id <lane_id>
 
 ![occlusion_detection](./docs/occlusion-without-tl.drawio.svg)
 
-ego が進んでいる間、黄色の交差点_ウォールが ego の前に表示されます。
+ego が進んでいる間、黄色の交差点\_ウォールが ego の前に表示されます。
 
 ![occlusion-wo-tl-creeping](./docs/occlusion-wo-tl-creeping.png)
 
@@ -262,11 +260,11 @@ ego が進んでいる間、黄色の交差点_ウォールが ego の前に表�
 
 TTC パラメータは信号機の色や形状によって次のように変化します。
 
-| 交通信号色 | ttc(開始)                                                               | ttc(終了)                                                               |
-| ------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| GREEN               | `collision_detection.not_prioritized.collision_start_margin`           | `collision_detection.not_prioritized.collision_end_margin`             |
-| AMBER               | `collision_detection.partially_prioritized.collision_start_end_margin` | `collision_detection.partially_prioritized.collision_start_end_margin` |
-| RED / Arrow         | `collision_detection.fully_prioritized.collision_start_end_margin`     | `collision_detection.fully_prioritized.collision_start_end_margin`     |
+| 交通信号色  | ttc(開始)                                                              | ttc(終了)                                                              |
+| ----------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| GREEN       | `collision_detection.not_prioritized.collision_start_margin`           | `collision_detection.not_prioritized.collision_end_margin`             |
+| AMBER       | `collision_detection.partially_prioritized.collision_start_end_margin` | `collision_detection.partially_prioritized.collision_start_end_margin` |
+| RED / Arrow | `collision_detection.fully_prioritized.collision_start_end_margin`     | `collision_detection.fully_prioritized.collision_start_end_margin`     |
 
 ### グリーンスロー中での譲り
 
@@ -292,10 +290,10 @@ TTC パラメータは信号機の色や形状によって次のように変化�
 
 1. 車両は、停止する場合、少なくとも制動距離分、無保護領域の境界線より手前でブレーキを開始する必要がある
 2. 車両は、走行する場合、十分な制動距離マージンで先行車両を認識し、安全性を事前に確認する必要がある
-  1. そして、安全の判断は絶対に確実であり、将来の予測期間にわたって有効である必要がある。そのため、安全条件は、自分車が無保護領域内を走行している間、常に満たされる必要があります。
-3. (TODO): 制限された検出範囲/速度追跡性能を考慮すると、完璧に安全な判断を事前に下すことはほとんど不可能であるため、交差点モジュールは、安全上の判断が次の理由により後に "裏切られた" 場合に、リスク回避的加速速度プロファイルの計画と/または横方向加速度制限の緩和を行う必要があります。
-  1. 状況がその後に危険になった場合、主に速度追跡が過小評価されたか、またはオブジェクトが TTC マージンを超えて加速したため
-  2. 状況がその後に危険になった場合、主にオブジェクトが突然どこからともなく検出されたため
+3. そして、安全の判断は絶対に確実であり、将来の予測期間にわたって有効である必要がある。そのため、安全条件は、自分車が無保護領域内を走行している間、常に満たされる必要があります。
+4. (TODO): 制限された検出範囲/速度追跡性能を考慮すると、完璧に安全な判断を事前に下すことはほとんど不可能であるため、交差点モジュールは、安全上の判断が次の理由により後に "裏切られた" 場合に、リスク回避的加速速度プロファイルの計画と/または横方向加速度制限の緩和を行う必要があります。
+5. 状況がその後に危険になった場合、主に速度追跡が過小評価されたか、またはオブジェクトが TTC マージンを超えて加速したため
+6. 状況がその後に危険になった場合、主にオブジェクトが突然どこからともなく検出されたため
 
 $$
 \dfrac{v_{\mathrm{ego}}^{2}}{2a_{\mathrm{max}}} + v_{\mathrm{ego}} * t_{\mathrm{delay}}
@@ -303,28 +301,28 @@ $$
 
 によって得られる制動距離分、無保護領域の境界線より手前の位置をパス判定線と呼び、自分車がこの位置を通過する前に安全上の判断が行われなければなりません。自分車はこれ以上停車しなくなるからです。
 
-1st_pass_判定線は最初の先行レーンより手前にあり、複数の先行レーンがある交差点では、2nd_pass_判定線は制動距離分、最初の注意レーンのセンターラインより手前の位置として定義されます。1st/2nd_pass_判定線は次の図で示されています。
+1st*pass*判定線は最初の先行レーンより手前にあり、複数の先行レーンがある交差点では、2nd*pass*判定線は制動距離分、最初の注意レーンのセンターラインより手前の位置として定義されます。1st/2nd*pass*判定線は次の図で示されています。
 
 ![pass-judge-line](./docs/pass-judge-line.drawio.svg)
 
 交差点モジュールは次の場合に走行を指示します。
 
 - 自分車がデフォルト・ストップラインを越えている場合 (または `common.enable_pass_judge_before_default_stopline` が true の場合)
-- 自分車が 1st_pass_判定線を越えている場合
+- 自分車が 1st*pass*判定線を越えている場合
 - 自分車が以前に SAFE と判断されている場合
-- (自分車が 2nd_pass_判定線を越えている場合、または自分車が 1st と 2nd のパス判定線の間にあるが、最も可能性の高い衝突が 1st の注意レーンで発生すると予想される場合)
+- (自分車が 2nd*pass*判定線を越えている場合、または自分車が 1st と 2nd のパス判定線の間にあるが、最も可能性の高い衝突が 1st の注意レーンで発生すると予想される場合)
 
 以下の場合は、停止するか停止判断を継続すると予想されるためです。
 
 1. 自分車がデフォルト・ストップラインより前で `common.enable_pass_judge_before_default_stopline` が false の場合
-  1. 理由: デフォルト・ストップラインはマップ上に定義されており、尊重する必要があります
-2. 自分車が 1st_pass_判定線より前
-  1. 理由: 制動距離マージンが十分にある
-3. 自分車は以前に UNSAFE と判断されました
-  1. 理由: 自分車は現在停止しようとしており、減速中に 1st_pass_判定線を越えたとしても、衝突が検出されたら停止判断を続ける必要があります
-4. (自分車は 1st と 2nd のパス判定線の間で、最も可能性の高い衝突が 2nd の注意レーンで発生すると予想される)
+1. 理由: デフォルト・ストップラインはマップ上に定義されており、尊重する必要があります
+1. 自分車が 1st*pass*判定線より前
+1. 理由: 制動距離マージンが十分にある
+1. 自分車は以前に UNSAFE と判断されました
+1. 理由: 自分車は現在停止しようとしており、減速中に 1st*pass*判定線を越えたとしても、衝突が検出されたら停止判断を続ける必要があります
+1. (自分車は 1st と 2nd のパス判定線の間で、最も可能性の高い衝突が 2nd の注意レーンで発生すると予想される)
 
-3 番目の条件では、自分車が衝突検出のために停止しようとしている場合、無保護領域にオーバーシュートして停止する可能性があります。これは、自分車が減速中に 1st_pass_判定線を越えた場合でも UNSAFE 判断が行われたままで、停止判断を続ける必要があるためです。
+3 番目の条件では、自分車が衝突検出のために停止しようとしている場合、無保護領域にオーバーシュートして停止する可能性があります。これは、自分車が減速中に 1st*pass*判定線を越えた場合でも UNSAFE 判断が行われたままで、停止判断を続ける必要があるためです。
 
 交差点の4番目の条件では、2番目の注意車線が交わる交差点で、自車が1番目のpass_judge_lineを超えたとしても、2番目の注意車線で最も衝突が起こりそうな場合は、交差点モジュールは停止するように指示します。
 
@@ -337,7 +335,6 @@ $$
 ![data-structure](./docs/data-structure.drawio.svg)
 
 ### `IntersectionLanelets`
-
 
 ```plantuml
 @startuml
@@ -364,7 +361,6 @@ entity IntersectionLanelets {
 ### `IntersectionStopLines`
 
 各停止線は、補間されたパス点から生成され、正確な位置を取得します。
-
 
 ```plantuml
 @startuml
@@ -394,7 +390,6 @@ entity IntersectionStopLines {
 
 `TargetObject` は、対象物、その所属車線、および対応する停止線情報を保持します。
 
-
 ```plantuml
 @startuml
 entity TargetObject {
@@ -414,29 +409,29 @@ entity TargetObject {
 
 ### 共通
 
-| パラメータ                                 | タイプ | 説明 |
-| ------------------------------------------- | ------ | ---------------------------------------- |
-| `.attention_area_length`                     | double | [m] 物体検出範囲                       |
-| `.attention_area_margin`                     | double | [m] アテンションエリアの幅の拡張マージン |
-| `.attention_area_angle_threshold`            | double | [rad] 検出オブジェクトと車線の角度差の閾値 |
-| `.use_intersection_area`                     | bool   | [-] 衝突検出に交差領域を使用するフラグ |
-| `.default_stopline_margin`                   | double | [m] 停止線手前マージン                    |
-| `.stopline_overshoot_margin`                 | double | [m] 停止線への進入マージン                  |
-| `.max_accel`                                 | double | [m/ss] 停止時の最大加速度                |
-| `.max_jerk`                                  | double | [m/sss] 停止時の最大ジャーク             |
-| `.delay_response_time`                       | double | [s] 停止前のアクション遅延時間            |
+| パラメータ                                   | タイプ | 説明                                                                          |
+| -------------------------------------------- | ------ | ----------------------------------------------------------------------------- |
+| `.attention_area_length`                     | double | [m] 物体検出範囲                                                              |
+| `.attention_area_margin`                     | double | [m] アテンションエリアの幅の拡張マージン                                      |
+| `.attention_area_angle_threshold`            | double | [rad] 検出オブジェクトと車線の角度差の閾値                                    |
+| `.use_intersection_area`                     | bool   | [-] 衝突検出に交差領域を使用するフラグ                                        |
+| `.default_stopline_margin`                   | double | [m] 停止線手前マージン                                                        |
+| `.stopline_overshoot_margin`                 | double | [m] 停止線への進入マージン                                                    |
+| `.max_accel`                                 | double | [m/ss] 停止時の最大加速度                                                     |
+| `.max_jerk`                                  | double | [m/sss] 停止時の最大ジャーク                                                  |
+| `.delay_response_time`                       | double | [s] 停止前のアクション遅延時間                                                |
 | `.enable_pass_judge_before_default_stopline` | bool   | [-] ego が pass_judge_line を超えていても default_stopline で停止しないフラグ |
 
 ### stuck_vehicle/yield_stuck
 
 自動車が駐車されたり、故障したりして動けなくなっている車両に遭遇した場合の対処法を定義する。
 
-| パラメータ | 型 | 説明 |
-|---|---|---|
-| `stuck_vehicle.turn_direction` | - | [-] 自動停止車両検出のための turn_direction 指定 |
-| `stuck_vehicle.stuck_vehicle_detect_dist` | double | [m] 自動停止車両検出のための交差点出口からの方向 |
-| `stuck_vehicle.stuck_vehicle_velocity_threshold` | double | [m/s] 自動停止車両検出のための速度しきい値 |
-| `yield_stuck.distance_threshold` | double | [m/s] 自車経路に沿って停止車両から ego まで距離しきい値 |
+| パラメータ                                       | 型     | 説明                                                    |
+| ------------------------------------------------ | ------ | ------------------------------------------------------- |
+| `stuck_vehicle.turn_direction`                   | -      | [-] 自動停止車両検出のための turn_direction 指定        |
+| `stuck_vehicle.stuck_vehicle_detect_dist`        | double | [m] 自動停止車両検出のための交差点出口からの方向        |
+| `stuck_vehicle.stuck_vehicle_velocity_threshold` | double | [m/s] 自動停止車両検出のための速度しきい値              |
+| `yield_stuck.distance_threshold`                 | double | [m/s] 自車経路に沿って停止車両から ego まで距離しきい値 |
 
 ### 衝突検出
 
@@ -445,42 +440,42 @@ entity TargetObject {
 衝突は、自車および周囲のオブジェクトの間の距離が一定のしきい値を下回った場合に検出されます。
 検出された衝突は、`post resampling`によって調整されます。
 
-| パラメータ | 種類 | 説明 |
-|---|---|---|
-| `.consider_wrong_direction_vehicle` | bool | [-] 逆走車両を検出するためのフラグ |
-| `.collision_detection_hold_time` | double | [s] 衝突検出のホールド時間 |
-| `.min_predicted_path_confidence` | double | [-] 衝突検出に使用される予測パスの最小信頼値 |
-| `.keep_detection_velocity_threshold` | double | [s] パスジャッジラインを通過するまでの衝突検出を継続するための自車速度閾値 |
-| `.velocity_profile.use_upstream` | bool | [-] 上流モジュールで計画された速度プロファイルを使用するためのフラグ |
-| `.velocity_profile.minimum_upstream_velocity` | double | [m/s] ゼロ除算を回避するための上流速度プロファイルの最小速度 |
-| `.velocity_profile.default_velocity` | double | [m/s] use_upstreamがfalseの場合の一定速度プロファイル |
-| `.velocity_profile.minimum_default_velocity` | double | [m/s] ゼロ除算を回避するためのデフォルト速度プロファイルの最小速度 |
-| `.yield_on_green_traffic_light` | - | [-] [説明](#yield-on-green) |
-| `.ignore_amber_traffic_light` | - | [-] [説明](#skip-on-amber) |
-| `.ignore_on_red_traffic_light` | - | [-] [説明](#skip-on-red) |
+| パラメータ                                    | 種類   | 説明                                                                       |
+| --------------------------------------------- | ------ | -------------------------------------------------------------------------- |
+| `.consider_wrong_direction_vehicle`           | bool   | [-] 逆走車両を検出するためのフラグ                                         |
+| `.collision_detection_hold_time`              | double | [s] 衝突検出のホールド時間                                                 |
+| `.min_predicted_path_confidence`              | double | [-] 衝突検出に使用される予測パスの最小信頼値                               |
+| `.keep_detection_velocity_threshold`          | double | [s] パスジャッジラインを通過するまでの衝突検出を継続するための自車速度閾値 |
+| `.velocity_profile.use_upstream`              | bool   | [-] 上流モジュールで計画された速度プロファイルを使用するためのフラグ       |
+| `.velocity_profile.minimum_upstream_velocity` | double | [m/s] ゼロ除算を回避するための上流速度プロファイルの最小速度               |
+| `.velocity_profile.default_velocity`          | double | [m/s] use_upstreamがfalseの場合の一定速度プロファイル                      |
+| `.velocity_profile.minimum_default_velocity`  | double | [m/s] ゼロ除算を回避するためのデフォルト速度プロファイルの最小速度         |
+| `.yield_on_green_traffic_light`               | -      | [-] [説明](#yield-on-green)                                                |
+| `.ignore_amber_traffic_light`                 | -      | [-] [説明](#skip-on-amber)                                                 |
+| `.ignore_on_red_traffic_light`                | -      | [-] [説明](#skip-on-red)                                                   |
 
 ### 閉塞
 
-| パラメータ                                     | 型     | 説明                                                                                         |
-| --------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `.enable`                                     | bool     | [-] オクルージョン検出を計算するフラグ                                                         |
-| `.occlusion_attention_area_length`            | double   | [m] オクルージョン検出のための注目領域の長さ                                                   |
-| `.free_space_max`                             | int      | [-] オクルージョンとして扱うために、占有グリッドセルの最大値                                      |
-| `.occupied_min`                               | int      | [-] オクルージョンとして扱うために、占有グリッドセルの最小値                                      |
-| `.denoise_kernel`                             | double   | [m] 生の占有グリッドを前処理するための形態学的ウィンドウサイズ                               |
-| `.attention_lane_crop_curvature_threshold`    | double   | [m] レーンの曲線部を切り取るための曲率のしきい値                                              |
-| `.attention_lane_crop_curvature_ds`           | double   | [m] レーンの曲率を計算するためのセンターラインの離散化間隔                                 |
-| `.creep_during_peeking.enable`              | bool     | [-] 交差点のオクルージョン停止線にピーキング中に `creep_velocity` を挿入するためのフラグ       |
-| `.creep_during_peeking.creep_velocity`        | double   | [m/s] 交差点のオクルージョン停止線にピーキング中に使用するコマンド速度                          |
-| `.peeking_offset`                            | double   | [m] ピーキング中のオクルージョンのために、車両前面を注意領域にオフセットする距離                  |
-| `.occlusion_required_clearance_distance`     | double   | [m] エゴパスからの最寄りのオクルージョンセルまでの距離のしきい値                               |
-| `.possible_object_bbox`                       | [double] | [m] オクルージョンポリゴンが十分に小さいかどうかを確認するための最小バウンディングボックスサイズ |
-| `.ignore_parked_vehicle_speed_threshold`      | double   | [m/s] 駐車車両の確認のための速度しきい値                                                    |
-| `.occlusion_detection_hold_time`              | double   | [s] オクルージョン検出のホールド時間                                                            |
-| `.temporal_stop_time_before_peeking`          | double   | [s] ピーキングを開始する前に、`default_stopline` でのタイムスタンプの停止時間              |
-| `.temporal_stop_before_attention_area`        | bool     | [-] `attention_area` にピーキングする前に、`first_attention_stopline` で一時停止するフラグ |
-| `.creep_velocity_without_traffic_light`      | double   | [m/s] `occlusion_wo_tl_pass_judge_line` へのクリープ速度                                      |
-| `.static_occlusion_with_traffic_light_timeout` | double   | [s] 交通信号のある交差点での静的オクルージョンを無視するためのタイムアウトの期間                  |
+| パラメータ                                     | 型       | 説明                                                                                             |
+| ---------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `.enable`                                      | bool     | [-] オクルージョン検出を計算するフラグ                                                           |
+| `.occlusion_attention_area_length`             | double   | [m] オクルージョン検出のための注目領域の長さ                                                     |
+| `.free_space_max`                              | int      | [-] オクルージョンとして扱うために、占有グリッドセルの最大値                                     |
+| `.occupied_min`                                | int      | [-] オクルージョンとして扱うために、占有グリッドセルの最小値                                     |
+| `.denoise_kernel`                              | double   | [m] 生の占有グリッドを前処理するための形態学的ウィンドウサイズ                                   |
+| `.attention_lane_crop_curvature_threshold`     | double   | [m] レーンの曲線部を切り取るための曲率のしきい値                                                 |
+| `.attention_lane_crop_curvature_ds`            | double   | [m] レーンの曲率を計算するためのセンターラインの離散化間隔                                       |
+| `.creep_during_peeking.enable`                 | bool     | [-] 交差点のオクルージョン停止線にピーキング中に `creep_velocity` を挿入するためのフラグ         |
+| `.creep_during_peeking.creep_velocity`         | double   | [m/s] 交差点のオクルージョン停止線にピーキング中に使用するコマンド速度                           |
+| `.peeking_offset`                              | double   | [m] ピーキング中のオクルージョンのために、車両前面を注意領域にオフセットする距離                 |
+| `.occlusion_required_clearance_distance`       | double   | [m] エゴパスからの最寄りのオクルージョンセルまでの距離のしきい値                                 |
+| `.possible_object_bbox`                        | [double] | [m] オクルージョンポリゴンが十分に小さいかどうかを確認するための最小バウンディングボックスサイズ |
+| `.ignore_parked_vehicle_speed_threshold`       | double   | [m/s] 駐車車両の確認のための速度しきい値                                                         |
+| `.occlusion_detection_hold_time`               | double   | [s] オクルージョン検出のホールド時間                                                             |
+| `.temporal_stop_time_before_peeking`           | double   | [s] ピーキングを開始する前に、`default_stopline` でのタイムスタンプの停止時間                    |
+| `.temporal_stop_before_attention_area`         | bool     | [-] `attention_area` にピーキングする前に、`first_attention_stopline` で一時停止するフラグ       |
+| `.creep_velocity_without_traffic_light`        | double   | [m/s] `occlusion_wo_tl_pass_judge_line` へのクリープ速度                                         |
+| `.static_occlusion_with_traffic_light_timeout` | double   | [s] 交通信号のある交差点での静的オクルージョンを無視するためのタイムアウトの期間                 |
 
 ## トラブルシューティング
 
@@ -533,7 +528,6 @@ laserscan_based_occupancy_grid_map は 2D 方式で不自然な UNKNOWN セル�
 
 実車または [AWSIM](https://tier4.github.io/AWSIM/) などのエンドツーエンドシミュレータでは、次の pointcloud_based_occupancy_grid_map 設定を強くお勧めします。
 
-
 ```yaml
 scan_origin_frame: "velodyne_top"
 
@@ -548,7 +542,6 @@ OccupancyGridMapProjectiveBlindSpot:
 ## フローチャート
 
 作業中
-
 
 ```plantuml
 @startuml
@@ -648,8 +641,8 @@ stop
 - 自車線に「private」タグが付けられている
 - 自車線は、他の非私有レーンレットと衝突している
 
-| パラメータ                               | 型   | 説明                     |
-| ------------------------------------------ | ------ | ------------------------ |
+| パラメータ                                  | 型     | 説明                     |
+| ------------------------------------------- | ------ | ------------------------ |
 | `merge_from_private_road/stop_duration_sec` | double | 状態変更のマージンタイム |
 
 ### 既知の問題
@@ -667,4 +660,3 @@ stop
 - 複雑な交差点
 
 ![intersection_test](./docs/intersection_test_map.png)
-

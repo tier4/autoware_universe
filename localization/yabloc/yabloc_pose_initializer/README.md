@@ -8,7 +8,6 @@
 
 手動でモデルをダウンロードして解凍するには、次の手順を実行します。
 
-
 ```bash
 $ mkdir -p ~/autoware_data/yabloc_pose_initializer/
 $ wget -P ~/autoware_data/yabloc_pose_initializer/ \
@@ -44,6 +43,7 @@ $ tar xzf ~/autoware_data/yabloc_pose_initializer/resources.tar.gz -C ~/autoware
 - このノードは、ADAPIの要求に応じ、カメラを使用して初期位置を推定します。
 
 #### 入力
+
 - `/planning/scenario_planning/current_pose`：自車位置
 - `/planning/scenario_planning/autoware/config/mission`：ミッション設定
 - `/localization/hdmap`：HDマップ
@@ -55,13 +55,14 @@ $ tar xzf ~/autoware_data/yabloc_pose_initializer/resources.tar.gz -C ~/autoware
 - `/planning/scenario_planning/current_frame_id`：現在のフレームID
 
 #### 出力
+
 - `/planning/scenario_planning/autoware/initial_pose`：初期位置推定結果
 
-| 名称                | 型                                  | 説明                      |
-| ------------------- | ------------------------------------ | -------------------------- |
-| `input/camera_info` | `sensor_msgs::msg::CameraInfo`          | 非歪みカメラ情報          |
-| `input/image_raw`   | `sensor_msgs::msg::Image`               | 非歪みカメラ画像          |
-| `input/vector_map`  | `autoware_map_msgs::msg::LaneletMapBin` | ベクターマップ              |
+| 名称                | 型                                      | 説明             |
+| ------------------- | --------------------------------------- | ---------------- |
+| `input/camera_info` | `sensor_msgs::msg::CameraInfo`          | 非歪みカメラ情報 |
+| `input/image_raw`   | `sensor_msgs::msg::Image`               | 非歪みカメラ画像 |
+| `input/vector_map`  | `autoware_map_msgs::msg::LaneletMapBin` | ベクターマップ   |
 
 #### 出力
 
@@ -121,8 +122,8 @@ Perceptionモジュールは、カメラ、レーダー、LiDARなどのセン�
 
 検証および検証モジュールは、Autowareシステムの安全性、信頼性、およびパフォーマンスを評価するためのツールと手順を提供します。
 
-| 名                  | 型                                   | 説明             |
-| ------------------- | -------------------------------------- | ----------------------- |
+| 名                  | 型                                     | 説明         |
+| ------------------- | -------------------------------------- | ------------ |
 | `output/candidates` | `visualization_msgs::msg::MarkerArray` | 初期姿勢候補 |
 
 ### パラメータ
@@ -131,7 +132,6 @@ Perceptionモジュールは、カメラ、レーダー、LiDARなどのセン�
 
 ### サービス
 
-| 名前                     | タイプ                                                          | 説明                                |
-| ------------------------ | -------------------------------------------------------------- | ------------------------------------- |
-| `yabloc_align_srv`       | `tier4_localization_msgs::srv::PoseWithCovarianceStamped` | 初期姿勢推定リクエスト              |
-
+| 名前               | タイプ                                                    | 説明                   |
+| ------------------ | --------------------------------------------------------- | ---------------------- |
+| `yabloc_align_srv` | `tier4_localization_msgs::srv::PoseWithCovarianceStamped` | 初期姿勢推定リクエスト |

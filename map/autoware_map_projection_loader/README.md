@@ -13,7 +13,6 @@
 
 `map_path` ディレクトリに `map_projector_info.yaml` という名前の YAML ファイルを用意する必要があります。 `pointcloud_map_metadata.yaml` については、`map_loader` の Readme を参照してください。
 
-
 ```bash
 sample-map-rosbag
 ├── lanelet2_map.osm
@@ -27,8 +26,6 @@ sample-map-rosbag
 ![node_diagram](docs/map_projector_type.svg)
 
 ### ローカル座標を使用
-
-
 
 ```yaml
 # map_projector_info.yaml
@@ -48,7 +45,6 @@ projector_type: local
 
 MGRSを使用する場合は、MGRSグリッドも指定してください。
 
-
 ```yaml
 # map_projector_info.yaml
 projector_type: MGRS
@@ -64,7 +60,6 @@ mgrs_grid: 54SUE
 
 ローカルカートシャンUTMを使用する場合は、マップの原点も指定してください。
 
-
 ```yaml
 # map_projector_info.yaml
 projector_type: LocalCartesianUTM
@@ -79,7 +74,6 @@ map_origin:
 
 TransverseMercator投影を使用する場合は、マップ原点も指定してください。
 
-
 ```yaml
 # map_projector_info.yaml
 projector_type: TransverseMercator
@@ -92,11 +86,10 @@ map_origin:
 
 ## 送信トピック
 
-- `~/map_projector_info` (tier4\_map\_msgs/MapProjectorInfo): このトピックは、マッププロジェクターの定義情報を示します。
+- `~/map_projector_info` (tier4_map_msgs/MapProjectorInfo): このトピックは、マッププロジェクターの定義情報を示します。
 
 ## パラメーター
 
 これらのパラメーターは起動引数から渡されると想定されており、`map_projection_loader.param.yaml`に直接書き込むことを推奨しません。
 
 {{ json_to_markdown("map/autoware_map_projection_loader/schema/map_projection_loader.schema.json") }}
-

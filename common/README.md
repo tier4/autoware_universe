@@ -14,4 +14,3 @@ Autoware.Universe Commonフォルダは他のAutowareコンポーネントで使
 
 1. `autoware_universe_utils`
 2. `autoware_motion_utils`
-

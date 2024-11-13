@@ -10,10 +10,12 @@
 ## 入出力
 
 ### 入力
+
 - `/diff_poses`: 車両の過去の `post resampling` ポーズ順序（ジオリファレンス済み）
 - `/current_pose`: 車両の自車位置と姿勢（ジオリファレンス済み）
 
 ### 出力
+
 - `/twist`: 速度
 - `/linear_x`: `twist.linear.x` の値
 - `/linear_y`: `twist.linear.y` の値
@@ -29,8 +31,8 @@
 - `/acceleration_error_rot`: 回転加速度逸脱量
 - `/filtered_velocity`: フィルタリングされた速度
 
-| 名称 | 種別 | 説明 |
-|---|---|---|
+| 名称 | 種別                            | 説明                           |
+| ---- | ------------------------------- | ------------------------------ |
 | pose | geometry_msgs::msg::PoseStamped | 速度計算に使用する姿勢のソース |
 
 ## 自動運転ソフトウェアドキュメント
@@ -122,11 +124,11 @@ Autowareシステムは、以下の指標を使用して評価されます。
 - 加速度逸脱量
 - 速度逸脱量
 
-| 名前      | 種類                                  | 説明                                      |
-| --------- | ------------------------------------- | --------------------------------------------- |
+| 名前      | 種類                                  | 説明                                   |
+| --------- | ------------------------------------- | -------------------------------------- |
 | twist     | geometry_msgs::msg::TwistStamped      | 入力された姿勢履歴から計算した捻り率。 |
-| linear_x  | tier4_debug_msgs::msg::Float32Stamped | 出力捻り率の線形 x フィールド。            |
-| angular_z | tier4_debug_msgs::msg::Float32Stamped | 出力捻り率の角速度 z フィールド。          |
+| linear_x  | tier4_debug_msgs::msg::Float32Stamped | 出力捻り率の線形 x フィールド。        |
+| angular_z | tier4_debug_msgs::msg::Float32Stamped | 出力捻り率の角速度 z フィールド。      |
 
 ## パラメータ
 
@@ -135,4 +137,3 @@ Autowareシステムは、以下の指標を使用して評価されます。
 ## 仮定 / 既知の制約
 
 なし
-

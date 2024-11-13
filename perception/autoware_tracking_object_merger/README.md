@@ -46,11 +46,11 @@
 
 トラックレットの入力センサー状態に応じて、異なるルールでトラックレット状態を更新します。
 
-| ステート/優先度             | 1番目 | 2番目 | 3番目 |
-| -------------------------- | ------ | ----- | ------ |
-| キネマティクス（速度以外） | LiDAR  | レーダー | カメラ |
-| 前方速度                   | レーダー  | LiDAR | カメラ |
-| オブジェクト分類           | カメラ | LiDAR | レーダー |
+| ステート/優先度            | 1番目    | 2番目    | 3番目    |
+| -------------------------- | -------- | -------- | -------- |
+| キネマティクス（速度以外） | LiDAR    | レーダー | カメラ   |
+| 前方速度                   | レーダー | LiDAR    | カメラ   |
+| オブジェクト分類           | カメラ   | LiDAR    | レーダー |
 
 #### トラックレットマネジメント
 
@@ -66,7 +66,6 @@
 
 これらのパラメーターは`config/decorative_tracker_merger.param.yaml`で設定できます。
 
-
 ```yaml
 tracker_state_parameter:
   remove_probability_threshold: 0.3
@@ -80,23 +79,23 @@ tracker_state_parameter:
 
 #### 入力/パラメータ
 
-| トピック名                      | メッセージタイプ                               | 説明                                                                           |
-| ------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| トピック名                      | メッセージタイプ                           | 説明                                                                   |
+| ------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------- |
 | `~input/main_object`            | `autoware_perception_msgs::TrackedObjects` | 主要な追跡対象。この主要な対象のスタンプで出力がパブリッシュされます。 |
-| `~input/sub_object`             | `autoware_perception_msgs::TrackedObjects` | サブ追跡対象。                                                                 |
-| `output/object`                 | `autoware_perception_msgs::TrackedObjects` | マージされた追跡対象。                                                              |
-| `debug/interpolated_sub_object` | `autoware_perception_msgs::TrackedObjects` | 補間されたサブ追跡対象。                                                    |
+| `~input/sub_object`             | `autoware_perception_msgs::TrackedObjects` | サブ追跡対象。                                                         |
+| `output/object`                 | `autoware_perception_msgs::TrackedObjects` | マージされた追跡対象。                                                 |
+| `debug/interpolated_sub_object` | `autoware_perception_msgs::TrackedObjects` | 補間されたサブ追跡対象。                                               |
 
 デフォルトパラメータは [config/decorative_tracker_merger.param.yaml](./config/decorative_tracker_merger.param.yaml) に設定されています。
 
-| パラメーター名                | 説明                                                                                                                                                              | デフォルト値 |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `base_link_frame_id`          | ベースリンクフレームID。追跡対象の変換に使用されます。                                                                                                                | "base_link"   |
-| `time_sync_threshold`         | 時間同期しきい値。2つの追跡対象の差が小さければ、それらは同一対象とみなされます。                                                                                               | 0.05          |
-| `sub_object_timeout_sec`      | サブオブジェクトタイムアウト。サブオブジェクトがこの時間更新されなければ、存在しないとみなされます。                                                                                | 0.5           |
-| `main_sensor_type`            | メインセンサータイプ。主な追跡対象を判別するために使用します。                                                                                                              | "lidar"       |
-| `sub_sensor_type`             | サブセンサータイプ。サブ追跡対象を判別するために使用します。                                                                                                              | "radar"       |
-| `tracker_state_parameter`     | トラッカー状態パラメーター。トラッキングに使用されます。                                                                                                                          |               |
+| パラメーター名            | 説明                                                                                                 | デフォルト値 |
+| ------------------------- | ---------------------------------------------------------------------------------------------------- | ------------ |
+| `base_link_frame_id`      | ベースリンクフレームID。追跡対象の変換に使用されます。                                               | "base_link"  |
+| `time_sync_threshold`     | 時間同期しきい値。2つの追跡対象の差が小さければ、それらは同一対象とみなされます。                    | 0.05         |
+| `sub_object_timeout_sec`  | サブオブジェクトタイムアウト。サブオブジェクトがこの時間更新されなければ、存在しないとみなされます。 | 0.5          |
+| `main_sensor_type`        | メインセンサータイプ。主な追跡対象を判別するために使用します。                                       | "lidar"      |
+| `sub_sensor_type`         | サブセンサータイプ。サブ追跡対象を判別するために使用します。                                         | "radar"      |
+| `tracker_state_parameter` | トラッカー状態パラメーター。トラッキングに使用されます。                                             |              |
 
 - `tracker_state_parameter` の詳細については、[Tracklet Management](#tracklet-management) で説明しています。
 
@@ -113,4 +112,3 @@ tracker_state_parameter:
 ### equivalent_tracker_merger
 
 これは今後の予定です。
-

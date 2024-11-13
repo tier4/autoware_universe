@@ -12,7 +12,6 @@
 
 `sensing.launch.xml` を使用するには、`*.launch.xml` に以下のように含めることができます。
 
-
 ```xml
   <include file="$(find-pkg-share tier4_sensing_launch)/launch/sensing.launch.xml">
     <arg name="launch_driver" value="true"/>
@@ -25,7 +24,6 @@
 ## 起動画構成
 
 このパッケージは、`launch`で指定されたセンサーモデルのセンサー設定を見つけます。
-
 
 ```bash
 launch/
@@ -44,8 +42,6 @@ launch/
 
 例）
 
-
 ```xml
 <include file="$(find-pkg-share tier4_sensing_launch)/launch/$(var sensor_model)/lidar.launch.xml">
 ```
-

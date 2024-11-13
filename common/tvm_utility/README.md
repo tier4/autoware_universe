@@ -16,7 +16,6 @@ TVMベースの機械学習推論パイプラインを構築するために役�
 
 パイプラインの各ステージには、入力データをパラメータとして取得し、出力データを返す`schedule`関数があります。パイプラインオブジェクトが作成されると、`pipeline.schedule`が呼び出されてパイプラインが実行されます。
 
-
 ```{cpp}
 int main() {
    create_subscription<sensor_msgs::msg::PointCloud2>("points_raw",
@@ -49,7 +48,6 @@ int main() {
 
 関数を活用するパッケージのソースディレクトリの構造は次のとおりです。
 
-
 ```{text}
 .
 ├── data
@@ -67,7 +65,6 @@ int main() {
 他の `deploy_*` ファイルは、パッケージの `share` ディレクトリの下の「models/${MODEL_NAME}/」にインストールされます。
 
 他のモデルファイルはパッケージフォルダの下の autoware_data フォルダ内に、次の構造を使用して格納する必要があります。
-
 
 ```{text}
 $HOME/autoware_data
@@ -124,4 +121,4 @@ $HOME/autoware_data
 ## 関連する問題
 
 <https://github.com/autowarefoundation/autoware/discussions/2557>
-
+```

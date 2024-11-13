@@ -14,7 +14,6 @@
 
 `PACKAGE_param_path` としてパラメータパスを提供する必要があることに注意してください。提供する必要があるパラメータパスのリストは、`map.launch.xml` の最上部に記載されています。
 
-
 ```xml
 <arg name="map_path" description="point cloud and lanelet2 map directory path"/>
 <arg name="lanelet2_map_file" default="lanelet2_map.osm" description="lanelet2 map file name"/>
@@ -34,4 +33,3 @@
 ## 注釈
 
 処理負荷を軽減するために、ROS 2 の [Component](https://docs.ros.org/en/galactic/Concepts/About-Composition.html) 機能を使用しています（ROS 1 の Nodelet と同様）。
-

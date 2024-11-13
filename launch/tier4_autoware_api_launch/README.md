@@ -12,7 +12,6 @@
 
 `autoware_api.launch.xml`を使用するには、以下のように`*.launch.xml`に含めることができます。
 
-
 ```xml
   <include file="$(find-pkg-share tier4_autoware_api_launch)/launch/autoware_api.launch.xml"/>
 ```
@@ -20,4 +19,3 @@
 ## 注意
 
 処理負荷を軽減するため、ROS 2 の [Component](https://docs.ros.org/en/galactic/Concepts/About-Composition.html) 機能（ROS 1 の Nodelet に類似）を使用しています。
-

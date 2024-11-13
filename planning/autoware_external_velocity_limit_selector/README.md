@@ -36,6 +36,7 @@ WIP
 -->
 
 ## 入力
+
 ```
 #!cpp
   // API から受信した速度制限
@@ -48,178 +49,227 @@ WIP
   geometry_msgs::PoseStamped current_pose;
 ```
 
-| 名称                                                   | タイプ                                            | 説明                                         |
-| ------------------------------------------------------ | ------------------------------------------------ | -------------------------------------------- |
-| `~input/velocity_limit_from_api`                     | tier4_planning_msgs::VelocityLimit              | APIからの速度制限                           |
-| `~input/velocity_limit_from_internal`                | tier4_planning_msgs::VelocityLimit              | Autoware内部モジュールからの速度制限       |
+| 名称                                                | タイプ                                         | 説明                                               |
+| --------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------- |
+| `~input/velocity_limit_from_api`                    | tier4_planning_msgs::VelocityLimit             | APIからの速度制限                                  |
+| `~input/velocity_limit_from_internal`               | tier4_planning_msgs::VelocityLimit             | Autoware内部モジュールからの速度制限               |
 | `~input/velocity_limit_clear_command_from_internal` | tier4_planning_msgs::VelocityLimitClearCommand | Autoware内部モジュールからの速度制限クリアコマンド |
 
 ## 出力
 
 **Global Path Plan**
-* グローバルパス計画
+
+- グローバルパス計画
 
 **Local Trajectory Plan**
-* ローカルトラジェクトリピュラン
+
+- ローカルトラジェクトリピュラン
 
 **Planning**
-* Planning
+
+- Planning
 
 **Map Matching**
-* マップマッチング
+
+- マップマッチング
 
 **Autoware API**
-* Autoware API
+
+- Autoware API
 
 **Behavior Planning**
-* 行動計画
+
+- 行動計画
 
 **Motion Planning**
-* モーション計画
+
+- モーション計画
 
 **Control**
-* 制御
+
+- 制御
 
 **Perception**
-* 知覚
+
+- 知覚
 
 **Vehicle Dynamics**
-* 車両運動力学
+
+- 車両運動力学
 
 **Sensor**
-* センサー
+
+- センサー
 
 **Localization**
-* ローカライズ
+
+- ローカライズ
 
 **Post Processing**
-* ポスト処理
+
+- ポスト処理
 
 **Planning**
-* Planning
+
+- Planning
 
 **Plotting**
-* プロッティング
+
+- プロッティング
 
 **Best Trajectory Search**
-* 最適トラジェクトリサーチ
+
+- 最適トラジェクトリサーチ
 
 **Clustering**
-* クラスタリング
+
+- クラスタリング
 
 **Clustering Parameters**
-* クラスタリングパラメータ
+
+- クラスタリングパラメータ
 
 **Post-resampling**
-* `post-resampling`
+
+- `post-resampling`
 
 **Downsampling**
-* ダウンサンプリング
+
+- ダウンサンプリング
 
 **Interpolation**
-* 補間
+
+- 補間
 
 **Velocity Violation Threshold**
-* 速度逸脱量閾値
+
+- 速度逸脱量閾値
 
 **Acceleration Violation Threshold**
-* 加速度逸脱量閾値
+
+- 加速度逸脱量閾値
 
 **Jerk Violation Threshold**
-* ジャーク逸脱量閾値
+
+- ジャーク逸脱量閾値
 
 **Snap Violation Threshold**
-* スナップ逸脱量閾値
+
+- スナップ逸脱量閾値
 
 **Path Smoothing**
-* パススムージング
+
+- パススムージング
 
 **Uniform B-Spline Smoothing**
-* Uniform B-Splineスムーージング
+
+- Uniform B-Splineスムーージング
 
 **LSF Smoothing**
-* LSFスムージング
+
+- LSFスムージング
 
 **Self-Motion Smoothing**
-* 自車運動スムージング
+
+- 自車運動スムージング
 
 **Generate Trajectory**
-* トラジェクトリ生成
+
+- トラジェクトリ生成
 
 **Generate Path**
-* パス生成
+
+- パス生成
 
 **Generate Sim Trajectories**
-* シミュレーション用トラジェクトリ生成
+
+- シミュレーション用トラジェクトリ生成
 
 **Publish Drive Trajectory**
-* 駆動用トラジェクトリ発行
+
+- 駆動用トラジェクトリ発行
 
 **Publish Planning Visualization**
-* Planningビジュアライゼーション発行
+
+- Planningビジュアライゼーション発行
 
 **Publish Trajectory**
-* トラジェクトリ発行
+
+- トラジェクトリ発行
 
 **Publishing**
-* 発行
+
+- 発行
 
 **Publish Pose**
-* 自車位置発行
+
+- 自車位置発行
 
 **Publish Stop Trajectory**
-* 停止用トラジェクトリ発行
+
+- 停止用トラジェクトリ発行
 
 **Publish Turn Signal**
-* 方向指示器発行
+
+- 方向指示器発行
 
 **Publish Vehicle State**
-* 車両状態発行
+
+- 車両状態発行
 
 **Subscribe Map**
-* マップ購読
+
+- マップ購読
 
 **Subscribe Pose**
-* 自車位置購読
+
+- 自車位置購読
 
 **Subscribe Stop Sign**
-* 停止標識購読
+
+- 停止標識購読
 
 **Subscription**
-* 購読
+
+- 購読
 
 **Target Planning**
-* ターゲットPlanning
+
+- ターゲットPlanning
 
 **Trajectory Converter**
-* トラジェクトリコンバータ
+
+- トラジェクトリコンバータ
 
 **Trajectory Optimization**
-* トラジェクトリ最適化
+
+- トラジェクトリ最適化
 
 **Twist2D**
-* Twist2D
+
+- Twist2D
 
 **Vehicle Model**
-* 車両モデル
 
-| 名前                   | 型                               | 説明                                         |
-| ---------------------- | ---------------------------------- | ------------------------------------------------ |
+- 車両モデル
+
+| 名前                   | 型                                 | 説明                                         |
+| ---------------------- | ---------------------------------- | -------------------------------------------- |
 | `~output/max_velocity` | tier4_planning_msgs::VelocityLimit | 自車位置における最も厳格な速度制限の最新情報 |
 
 ## パラメータ
 
-| パラメーター         | タイプ   | 説明                                 |
-| ----------------- | ------ | --------------------------------------- |
-| `max_velocity`    | double | デフォルト最大速度 [m/s]                 |
-| `normal.min_acc`  | double | 最小加速度 [m/ss]                       |
-| `normal.max_acc`  | double | 最大加速度 [m/ss]                       |
-| `normal.min_jerk` | double | 最小ジャーク [m/sss]                     |
-| `normal.max_jerk` | double | 最大ジャーク [m/sss]                     |
-| `limit.min_acc`   | double | 守られるべき最小加速度 [m/ss]           |
-| `limit.max_acc`   | double | 守られるべき最大加速度 [m/ss]           |
-| `limit.min_jerk`  | double | 守られるべき最小ジャーク [m/sss]         |
-| `limit.max_jerk`  | double | 守られるべき最大ジャーク [m/sss]         |
+| パラメーター      | タイプ | 説明                             |
+| ----------------- | ------ | -------------------------------- |
+| `max_velocity`    | double | デフォルト最大速度 [m/s]         |
+| `normal.min_acc`  | double | 最小加速度 [m/ss]                |
+| `normal.max_acc`  | double | 最大加速度 [m/ss]                |
+| `normal.min_jerk` | double | 最小ジャーク [m/sss]             |
+| `normal.max_jerk` | double | 最大ジャーク [m/sss]             |
+| `limit.min_acc`   | double | 守られるべき最小加速度 [m/ss]    |
+| `limit.max_acc`   | double | 守られるべき最大加速度 [m/ss]    |
+| `limit.min_jerk`  | double | 守られるべき最小ジャーク [m/sss] |
+| `limit.max_jerk`  | double | 守られるべき最大ジャーク [m/sss] |
 
 ## 仮定 / 既知の制限事項
 
@@ -269,4 +319,3 @@ WIP
   現在、このパッケージはチャタリング障害物を適切に処理できません。これを改善するために、認識レイヤーにいくつかの確率的フィルタを追加することを計画しています。
   また、グローバルであるべきいくつかのパラメータがあります（例：車両サイズ、最大操舵角など）。これらはリファクタリングされ、グローバルパラメータとして定義されるため、さまざまなノード間で同じパラメータを共有できます。
 -->
-

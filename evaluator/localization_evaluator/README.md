@@ -5,4 +5,3 @@
 ## パラメーター
 
 {{ json_to_markdown("evaluator/localization_evaluator/schema/localization_evaluator.schema.json", "ja") }}
-

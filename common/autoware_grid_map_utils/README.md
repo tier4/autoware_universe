@@ -46,4 +46,3 @@
 
 - <https://ja.wikipedia.org/wiki/%E8%B5%B0%E6%9F%A5%E7%B7%9A%E3%82%A2%E3%83%AB%E3%82%B4%E3%83%AA%E3%82%B6%E3%83%B3>
 - <https://web.cs.ucdavis.edu/~ma/ECS175_S00/Notes/0411_b.pdf>
-

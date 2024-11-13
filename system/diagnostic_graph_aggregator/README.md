@@ -39,23 +39,23 @@ MRMでは、このノードは専用のメッセージに最上位の機能単�
 
 ## インターフェイス
 
-| インターフェイス種別 | インターフェイス名 | データ型 | 説明 |
-|---|---|---|---|
-| サブスクリプション | `/diagnostics` | `diagnostic_msgs/msg/DiagnosticArray` | 診断入力 |
-| パブリッシャー | `/diagnostics_graph/unknowns` | `diagnostic_msgs/msg/DiagnosticArray` | グラフに含まれない診断 |
-| パブリッシャー | `/diagnostics_graph/struct` | `tier4_system_msgs/msg/DiagGraphStruct` | 診断グラフ（静的部分） |
-| パブリッシャー | `/diagnostics_graph/status` | `tier4_system_msgs/msg/DiagGraphStatus` | 診断グラフ（動的部分） |
-| パブリッシャー | `/system/operation_mode/availability` | `tier4_system_msgs/msg/OperationModeAvailability` | オペレーションモードの可用性 |
+| インターフェイス種別 | インターフェイス名                    | データ型                                          | 説明                         |
+| -------------------- | ------------------------------------- | ------------------------------------------------- | ---------------------------- |
+| サブスクリプション   | `/diagnostics`                        | `diagnostic_msgs/msg/DiagnosticArray`             | 診断入力                     |
+| パブリッシャー       | `/diagnostics_graph/unknowns`         | `diagnostic_msgs/msg/DiagnosticArray`             | グラフに含まれない診断       |
+| パブリッシャー       | `/diagnostics_graph/struct`           | `tier4_system_msgs/msg/DiagGraphStruct`           | 診断グラフ（静的部分）       |
+| パブリッシャー       | `/diagnostics_graph/status`           | `tier4_system_msgs/msg/DiagGraphStatus`           | 診断グラフ（動的部分）       |
+| パブリッシャー       | `/system/operation_mode/availability` | `tier4_system_msgs/msg/OperationModeAvailability` | オペレーションモードの可用性 |
 
 ## パラメータ
 
-| パラメータ名 | データ型 | 説明 |
-|---|---|---|
-| `graph_file` | `string` | コンフィグファイルのパス |
-| `rate` | `double` | 集計とトピック公開のレート |
-| `input_qos_depth` | `uint` | 入力配列トピックのQoS深度 |
-| `graph_qos_depth` | `uint` | 出力グラフトピックのQoS深度 |
-| `use_operation_mode_availability` | `bool` | 運転モード利用可能パブリッシャーを使用する |
+| パラメータ名                      | データ型 | 説明                                       |
+| --------------------------------- | -------- | ------------------------------------------ |
+| `graph_file`                      | `string` | コンフィグファイルのパス                   |
+| `rate`                            | `double` | 集計とトピック公開のレート                 |
+| `input_qos_depth`                 | `uint`   | 入力配列トピックのQoS深度                  |
+| `graph_qos_depth`                 | `uint`   | 出力グラフトピックのQoS深度                |
+| `use_operation_mode_availability` | `bool`   | 運転モード利用可能パブリッシャーを使用する |
 
 ## 例
 
@@ -65,7 +65,6 @@ MRMでは、このノードは専用のメッセージに最上位の機能単�
 - [module1.yaml](./example/graph/module1.yaml)
 - [module2.yaml](./example/graph/module2.yaml)
 
-
 ```bash
 ros2 launch diagnostic_graph_aggregator example-main.launch.xml
 ```
@@ -73,7 +72,6 @@ ros2 launch diagnostic_graph_aggregator example-main.launch.xml
 シミュレーションではハードウェアチェックを無効化することで、グラフを部分的に編集して再利用できます。
 
 - [edit.yaml](./example/graph/edit.yaml)
-
 
 ```bash
 ros2 launch diagnostic_graph_aggregator example-edit.launch.xml
@@ -90,4 +88,3 @@ ros2 launch diagnostic_graph_aggregator example-edit.launch.xml
 - [path](./doc/format/path.md)
 - [unit](./doc/format/unit.md)
 - [edit](./doc/format/edit.md)
-

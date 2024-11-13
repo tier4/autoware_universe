@@ -57,7 +57,6 @@
 このパラメータは、タイムアウト判定のしきい値です。
 `input_topics` の最初のトピックと入力トピックの時差がこのパラメータを超えると、トピックのオブジェクトは出力オブジェクトにマージされません。
 
-
 ```cpp
   for (size_t i = 0; i < input_topic_size; i++) {
     double time_diff = rclcpp::Time(objects_data_.at(i)->header.stamp).seconds() -
@@ -74,7 +73,6 @@
 このパラメータは、入力トピックの名前です。
 たとえば、このパッケージをレーダーオブジェクトに使用する場合、
 
-
 ```yaml
 input_topics:
   [
@@ -89,4 +87,3 @@ input_topics:
 
 config yaml ファイル内で設定できます。
 現時点では、時間差は `input_topics` の最初のトピックと入力トピック間のヘッダー時間で計算されるため、検出する最も重要なオブジェクトは `input_topics` リストの最初の部分に設定する必要があります。
-

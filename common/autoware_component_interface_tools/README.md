@@ -5,4 +5,3 @@
 ## service_log_checker
 
 `component_interface_utils`のサービスログを監視し、レスポンスステータスがエラーかどうかを表示します。
-

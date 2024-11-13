@@ -30,7 +30,6 @@
 
 ![algorithm](docs/radar_crossing_objects_noise_filter.drawio.svg)
 
-
 ```cpp
   // If velocity of an object is rather than the velocity_threshold,
   // and crossing_yaw is near to vertical
@@ -71,4 +70,3 @@
 
 このパラメーターは、フィルタリングする速度のしきい値です。オブジェクトの速度がこのパラメーターより大きい場合、ノイズオブジェクトの候補となります。言い換えると、オブジェクトの速度がこのパラメーターより小さい場合は、フィルタリングされたオブジェクトです。
 このパラメーターを小さく設定すると、より多くのオブジェクトがノイズと見なされます。詳細については、アルゴリズムの章を参照してください。
-

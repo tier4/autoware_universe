@@ -16,7 +16,6 @@
 
 さらに、`PACKAGE_param_path`としてパラメータのパスを提供する必要があります。提供する必要のあるパラメータパスのリストは、`localization.launch.xml`の先頭に記載されています。
 
-
 ```xml
   <include file="$(find-pkg-share tier4_localization_launch)/launch/localization.launch.xml">
     <!-- Localization methods -->
@@ -29,4 +28,3 @@
     ...
   </include>
 ```
-

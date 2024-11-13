@@ -4,4 +4,3 @@
 
 例:
 ./artifacts/yolo_v2_tiny
-

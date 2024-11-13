@@ -12,7 +12,6 @@
 
 パラメータパスを `PACKAGE_param_path` として指定する必要があります。必要となるパラメータパスのリストは `system.launch.xml` の先頭に記述されています。
 
-
 ```xml
   <include file="$(find-pkg-share tier4_system_launch)/launch/system.launch.xml">
     <arg name="run_mode" value="online"/>
@@ -24,4 +23,3 @@
     ...
   </include>
 ```
-

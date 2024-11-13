@@ -25,9 +25,9 @@
 
 ### 入力
 
-| 名前            | 型                                             | 説明      |
+| 名前          | 型                                               | 説明       |
 | ------------- | ------------------------------------------------ | ---------- |
-| `~/input`     | `autoware_perception_msgs::msg::DetectedObjects` | 検出物体 |
+| `~/input`     | `autoware_perception_msgs::msg::DetectedObjects` | 検出物体   |
 | `/vector/map` | `autoware_map_msgs::msg::LaneletMapBin`          | 地図データ |
 
 ### 出力
@@ -38,19 +38,19 @@
 
 Planning モジュールは、次のような機能を提供します。
 
-* 感知データからの動的障害物の検出
-* 自車位置に基づく周囲環境のマップ構築
-* 目標速度とステアリングの計算
+- 感知データからの動的障害物の検出
+- 自車位置に基づく周囲環境のマップ構築
+- 目標速度とステアリングの計算
 
 ### Planning アーキテクチャ
 
 Planning モジュールは、以下のコンポーネントで構成されています。
 
-* **Perception:** ダイナミック障害物を検出します。
-* **Map:** 自車位置に基づいて周囲環境のマップを構築します。
-* **Motion Planning:** 目標速度と軌跡を計算します。
-* **Speed Planning:** 目標速度を決定します。
-* **Decision Making:** 感知データとマップ情報を統合し、パスを生成します。
+- **Perception:** ダイナミック障害物を検出します。
+- **Map:** 自車位置に基づいて周囲環境のマップを構築します。
+- **Motion Planning:** 目標速度と軌跡を計算します。
+- **Speed Planning:** 目標速度を決定します。
+- **Decision Making:** 感知データとマップ情報を統合し、パスを生成します。
 
 ### Planning パイプライン
 
@@ -62,7 +62,7 @@ Planning パイプラインは、以下の手順で構成されています。
 4. **軌跡生成:** 障害物を回避する軌跡が生成されます。
 5. **パス生成:** 軌跡からパスが生成されます。
 
-| 名前       | タイプ                                            | 説明     |
+| 名前       | タイプ                                          | 説明     |
 | ---------- | ----------------------------------------------- | -------- |
 | `~/output` | `autoware_perception_msgs::msg::TrackedObjects` | 追跡対象 |
 
@@ -70,27 +70,27 @@ Planning パイプラインは、以下の手順で構成されています。
 
 ### ノードパラメータ
 
-| 名前 | タイプ | デフォルト値 | 説明 |
-| ------ | ------ | --------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `publish_rate` | double | 10.0 | 出力メッセージをパブリッシュするレート |
-| `world_frame_id` | string | "map" | ワールド座標系のフレームID |
-| `enable_delay_compensation` | bool | false | ディレイ補正を有効にするかどうか。`True`に設定すると、出力トピックは`publish_rate`でタイマーによりパブリッシュされます。 |
-| `tracking_config_directory` | string | "./config/tracking/" | トラッキング設定ファイルを含むディレクトリ |
-| `enable_logging` | bool | false | ロギングを有効にするかどうか |
-| `logging_file_path` | string | "/tmp/association_log.json" | ログを書き込むファイルのパス |
-| `tracker_lifetime` | double | 1.0 | トラッカーの有効期間（秒） |
-| `use_distance_based_noise_filtering` | bool | true | 距離ベースのフィルタリングを使用するかどうか |
-| `minimum_range_threshold` | double | 70.0 | フィルタリングの最小距離しきい値（メートル） |
-| `use_map_based_noise_filtering` | bool | true | マップベースのフィルタリングを使用するかどうか |
-| `max_distance_from_lane` | double | 5.0 | フィルタリングのためのレーンからの最大距離（メートル） |
-| `max_angle_diff_from_lane` | double | 0.785398 | フィルタリングのためのレーンからの最大角度差（ラジアン） |
-| `max_lateral_velocity` | double | 5.0 | フィルタリングのための最大側方速度（m/s） |
-| `can_assign_matrix` | array | | データアソシエーションアルゴリズムで使用される整数配列 |
-| `max_dist_matrix` | array | | データアソシエーションアルゴリズムで使用されるdouble配列 |
-| `max_area_matrix` | array | | データアソシエーションアルゴリズムで使用されるdouble配列 |
-| `min_area_matrix` | array | | データアソシエーションアルゴリズムで使用されるdouble配列 |
-| `max_rad_matrix` | array | | データアソシエーションアルゴリズムで使用されるdouble配列 |
-| `min_iou_matrix` | array | | データアソシエーションアルゴリズムで使用されるdouble配列 |
+| 名前                                 | タイプ | デフォルト値                | 説明                                                                                                                     |
+| ------------------------------------ | ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `publish_rate`                       | double | 10.0                        | 出力メッセージをパブリッシュするレート                                                                                   |
+| `world_frame_id`                     | string | "map"                       | ワールド座標系のフレームID                                                                                               |
+| `enable_delay_compensation`          | bool   | false                       | ディレイ補正を有効にするかどうか。`True`に設定すると、出力トピックは`publish_rate`でタイマーによりパブリッシュされます。 |
+| `tracking_config_directory`          | string | "./config/tracking/"        | トラッキング設定ファイルを含むディレクトリ                                                                               |
+| `enable_logging`                     | bool   | false                       | ロギングを有効にするかどうか                                                                                             |
+| `logging_file_path`                  | string | "/tmp/association_log.json" | ログを書き込むファイルのパス                                                                                             |
+| `tracker_lifetime`                   | double | 1.0                         | トラッカーの有効期間（秒）                                                                                               |
+| `use_distance_based_noise_filtering` | bool   | true                        | 距離ベースのフィルタリングを使用するかどうか                                                                             |
+| `minimum_range_threshold`            | double | 70.0                        | フィルタリングの最小距離しきい値（メートル）                                                                             |
+| `use_map_based_noise_filtering`      | bool   | true                        | マップベースのフィルタリングを使用するかどうか                                                                           |
+| `max_distance_from_lane`             | double | 5.0                         | フィルタリングのためのレーンからの最大距離（メートル）                                                                   |
+| `max_angle_diff_from_lane`           | double | 0.785398                    | フィルタリングのためのレーンからの最大角度差（ラジアン）                                                                 |
+| `max_lateral_velocity`               | double | 5.0                         | フィルタリングのための最大側方速度（m/s）                                                                                |
+| `can_assign_matrix`                  | array  |                             | データアソシエーションアルゴリズムで使用される整数配列                                                                   |
+| `max_dist_matrix`                    | array  |                             | データアソシエーションアルゴリズムで使用されるdouble配列                                                                 |
+| `max_area_matrix`                    | array  |                             | データアソシエーションアルゴリズムで使用されるdouble配列                                                                 |
+| `min_area_matrix`                    | array  |                             | データアソシエーションアルゴリズムで使用されるdouble配列                                                                 |
+| `max_rad_matrix`                     | array  |                             | データアソシエーションアルゴリズムで使用されるdouble配列                                                                 |
+| `min_iou_matrix`                     | array  |                             | データアソシエーションアルゴリズムで使用されるdouble配列                                                                 |
 
 ## トラッカーのパラメータ
 
@@ -120,4 +120,3 @@ Planning パイプラインは、以下の手順で構成されています。
 ## (省略可) 将来の拡張機能/未実装部分
 
 <!-- 将来的には、このパッケージの計画中の拡張機能や未実装の部分について詳細を追加できます。 -->
-

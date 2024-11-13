@@ -25,13 +25,13 @@
 最適化されたセンターラインは、ベクターマップビルダーの操作から生成できます。
 
 次のコマンドで`<vehicle_model>`を指定して実行できます。
+
 ```bash
 # path planning server
 rosrun autoware_path_optimizer path_optimizer_node <vehicle_model> --api_path /autoware_path_optimizer/path_optimizer
 # http server to connect path planning server and Vector Map Builder
 rosrun autoware_path_optimizer center_line_generator_node
 ```
-
 
 ```sh
 ros2 launch autoware_static_centerline_generator run_planning_server.launch.xml vehicle_model:=<vehicle-model>
@@ -48,7 +48,6 @@ FYI、HTTPサーバのポートIDはデフォルトで4010です。
 - `<start-lanelet-id>`
 - `<end-lanelet-id>`
 - `<vehicle-model>`
-
 
 ```sh
 ros2 launch autoware_static_centerline_generator static_centerline_generator.launch.xml run_backgrond:=false lanelet2_input_file_path:=<input-osm-path> lanelet2_output_file_path:=<output-osm-path> start_lanelet_id:=<start-lane-id> end_lanelet_id:=<end-lane-id> vehicle_model:=<vehicle-model>
@@ -80,4 +79,3 @@ ros2 launch autoware_static_centerline_generator static_centerline_generator.lau
 - 距離が 0.1 [m] 未満の場合: 赤
 - 距離が 0.2 [m] 未満の場合: 緑
 - 距離が 0.3 [m] 未満の場合: 青
-

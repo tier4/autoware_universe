@@ -72,7 +72,6 @@
 
 次の例では、パスの各点を取得して 2 倍にします。つまり、速度を複製します。すべてのビヘイビア速度モジュールが実行された後、Velocity Smoother がパス速度をさらに変更することに注意してください。
 
-
 ```cpp
 bool TemplateModule::modifyPathVelocity(
   [[maybe_unused]] PathWithLaneId * path, [[maybe_unused]] StopReason * stop_reason)
@@ -84,4 +83,3 @@ bool TemplateModule::modifyPathVelocity(
   return false;
 }
 ```
-

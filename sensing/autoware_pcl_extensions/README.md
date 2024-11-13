@@ -33,4 +33,3 @@
 [1] <https://pointclouds.org/documentation/tutorials/voxel_grid.html>
 
 ## （省略可）将来の拡張 / 実装されていない部分
-

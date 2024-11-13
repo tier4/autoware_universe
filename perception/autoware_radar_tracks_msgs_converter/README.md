@@ -19,15 +19,15 @@ Autoware はレーダーオブジェクト入力データとして [radar_msgs/m
 ラベル ID は以下のように定義されています。
 
 |            | レーダートラック | Autoware |
-| ---------- | ---------- | -------- |
-| UNKNOWN    | 32000      | 0        |
-| CAR        | 32001      | 1        |
-| TRUCK      | 32002      | 2        |
-| BUS        | 32003      | 3        |
-| TRAILER    | 32004      | 4        |
-| MOTORCYCLE | 32005      | 5        |
-| BICYCLE    | 32006      | 6        |
-| PEDESTRIAN | 32007      | 7        |
+| ---------- | ---------------- | -------- |
+| UNKNOWN    | 32000            | 0        |
+| CAR        | 32001            | 1        |
+| TRUCK      | 32002            | 2        |
+| BUS        | 32003            | 3        |
+| TRAILER    | 32004            | 4        |
+| MOTORCYCLE | 32005            | 5        |
+| BICYCLE    | 32006            | 6        |
+| PEDESTRIAN | 32007            | 7        |
 
 追加のベンダー固有分類は、32000 から [radar_msgs/msg/RadarTrack.msg](https://github.com/ros-perception/radar_msgs/blob/ros2/msg/RadarTrack.msg) で許可されています。
 Autoware オブジェクト ラベルは [ObjectClassification](https://github.com/autowarefoundation/autoware_msgs/tree/main/autoware_perception_msgs/msg/ObjectClassification.msg) で定義されています。
@@ -86,4 +86,3 @@ Autoware オブジェクト ラベルは [ObjectClassification](https://github.c
 
 このパラメーターはフラグ `is_stationary` を決定するしきい値です。
 速度がこのパラメーターよりも低い場合、DetectedObject のフラグ `is_stationary` は `true` に設定され、静的オブジェクトとして扱われます。
-

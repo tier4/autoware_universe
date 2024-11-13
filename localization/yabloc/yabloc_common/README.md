@@ -15,10 +15,10 @@
 
 #### 入力
 
-| 名称               | 種別                                   | 説明                                 |
-| ------------------ | -------------------------------------- | ----------------------------------- |
-| `input/vector_map` | `autoware_map_msgs::msg::LaneletMapBin` | ベクタマップ                           |
-| `input/pose`       | `geometry_msgs::msg::PoseStamped`       | 自車位置                              |
+| 名称               | 種別                                    | 説明         |
+| ------------------ | --------------------------------------- | ------------ |
+| `input/vector_map` | `autoware_map_msgs::msg::LaneletMapBin` | ベクタマップ |
+| `input/pose`       | `geometry_msgs::msg::PoseStamped`       | 自車位置     |
 
 #### 出力
 
@@ -82,13 +82,13 @@
 このソフトウェアは開発中のソフトウェアであり、すべての状況で確実に機能するわけではありません。自動運転中は常に周囲に注意を払い、必要に応じて手動操作を行ってください。
 ```
 
-| 名称                   | タイプ                                 | 説明                                                                     |
-| ----------------------- | ------------------------------------- | ------------------------------------------------------------------------------- |
+| 名称                    | タイプ                             | 説明                                                                       |
+| ----------------------- | ---------------------------------- | -------------------------------------------------------------------------- |
 | `output/ground`         | `std_msgs::msg::Float32MultiArray` | 推定された路面パラメーター。x、y、z、normal_x、normal_y、normal_z を含む。 |
-| `output/ground_markers` | `visualization_msgs::msg::Marker`  | 推定された路面の状態の可視化                                                 |
-| `output/ground_status`  | `std_msgs::msg::String`            | 路面状態の推定状態のログ                                                  |
-| `output/height`         | `std_msgs::msg::Float32`           | 高度                                                                        |
-| `output/near_cloud`     | `sensor_msgs::msg::PointCloud2`    | Lanelet2 から抽出され、路面の傾斜推定に使用される点群                         |
+| `output/ground_markers` | `visualization_msgs::msg::Marker`  | 推定された路面の状態の可視化                                               |
+| `output/ground_status`  | `std_msgs::msg::String`            | 路面状態の推定状態のログ                                                   |
+| `output/height`         | `std_msgs::msg::Float32`           | 高度                                                                       |
+| `output/near_cloud`     | `sensor_msgs::msg::PointCloud2`    | Lanelet2 から抽出され、路面の傾斜推定に使用される点群                      |
 
 ### パラメーター
 
@@ -104,8 +104,8 @@
 
 #### 入力
 
-| 名称 | タイプ | 説明 |
-|---|---|---|
+| 名称               | タイプ                                  | 説明         |
+| ------------------ | --------------------------------------- | ------------ |
 | `input/vector_map` | `autoware_map_msgs::msg::LaneletMapBin` | vectorマップ |
 
 #### 出力
@@ -136,38 +136,37 @@ Planningコンポーネントは、次のサブコンポーネントで構成さ
 
 Planningコンポーネントは、次の機能を実行します。
 
-* Perceptionによって提供される環境情報を使用して、安全な経路を計画します。
-* Predictionによって提供される物体の動き予測を使用して、計画された経路に沿った衝突の可能性を評価します。
-* 車両の速度、加速度逸脱量、操舵逸脱量などの制約を考慮して、実行可能な挙動を生成します。
+- Perceptionによって提供される環境情報を使用して、安全な経路を計画します。
+- Predictionによって提供される物体の動き予測を使用して、計画された経路に沿った衝突の可能性を評価します。
+- 車両の速度、加速度逸脱量、操舵逸脱量などの制約を考慮して、実行可能な挙動を生成します。
 
 **Planningコンポーネントの入力**
 
 Planningコンポーネントの入力には、次のものが含まれます。
 
-* 自車位置
-* Perceptionによって提供される環境データ
-* Predictionによって提供される物体の動き予測
-* 車両の制限事項
+- 自車位置
+- Perceptionによって提供される環境データ
+- Predictionによって提供される物体の動き予測
+- 車両の制限事項
 
 **Planningコンポーネントの出力**
 
 Planningコンポーネントの出力には、次のものが含まれます。
 
-* 安全な経路
-* 車両の加速、減速、操舵の挙動
+- 安全な経路
+- 車両の加速、減速、操舵の挙動
 
 **追加のリソース**
 
-* [Autoware 公式ドキュメント](https://docs.autoware.org/)
+- [Autoware 公式ドキュメント](https://docs.autoware.org/)
 
-| 名称                       | タイプ                               | 説明                                 |
-| -------------------------- | ------------------------------------- | -------------------------------------- |
+| 名称                       | タイプ                                 | 説明                                             |
+| -------------------------- | -------------------------------------- | ------------------------------------------------ |
 | `output/ll2_bounding_box`  | `sensor_msgs::msg::PointCloud2`        | レーンレット2 から抽出したバウンディングボックス |
-| `output/ll2_road_marking`  | `sensor_msgs::msg::PointCloud2`        | レーンレット2 から抽出した路面標示 |
-| `output/ll2_sign_board`    | `sensor_msgs::msg::PointCloud2`        | レーンレット2 から抽出した標識 |
-| `output/sign_board_marker` | `visualization_msgs::msg::MarkerArray` | 可視化された標識                |
+| `output/ll2_road_marking`  | `sensor_msgs::msg::PointCloud2`        | レーンレット2 から抽出した路面標示               |
+| `output/ll2_sign_board`    | `sensor_msgs::msg::PointCloud2`        | レーンレット2 から抽出した標識                   |
+| `output/sign_board_marker` | `visualization_msgs::msg::MarkerArray` | 可視化された標識                                 |
 
 ### パラメータ
 
 {{ json_to_markdown("localization/yabloc/yabloc_common/schema/ll2_decomposer.schema.json") }}
-

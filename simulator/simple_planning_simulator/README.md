@@ -40,17 +40,17 @@
 
 ### コモンパラメーター
 
-| 名称                  | タイプ   | 説明                                                                                                                                              | デフォルト値        |
-| :-------------------- | :----- | :-------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------- |
-| simulated_frame_id    | 文字列 | 出力tf内のchild_frame_idに設定 | "base_link"          |
-| origin_frame_id       | 文字列 | 出力tf内のframe_idに設定               | "odom"               |
+| 名称                  | タイプ | 説明                                                                                                                                   | デフォルト値         |
+| :-------------------- | :----- | :------------------------------------------------------------------------------------------------------------------------------------- | :------------------- |
+| simulated_frame_id    | 文字列 | 出力tf内のchild_frame_idに設定                                                                                                         | "base_link"          |
+| origin_frame_id       | 文字列 | 出力tf内のframe_idに設定                                                                                                               | "odom"               |
 | initialize_source     | 文字列 | "ORIGIN"の場合は、初期姿勢が(0, 0, 0)に設定され、"INITIAL_POSE_TOPIC"の場合は、ノードが`input/initialpose`トピックが発行されるまで待機 | "INITIAL_POSE_TOPIC" |
-| add_measurement_noise | ブール | trueの場合、シミュレーション結果にガウスノイズが加えられる | true                 |
-| pos_noise_stddev      | double | 位置ノイズの標準偏差                                                                                                                              | 0.01                 |
-| rpy_noise_stddev      | double | オイラー角ノイズの標準偏差                                                                                                                            | 0.0001               |
-| vel_noise_stddev      | double | 速度ノイズの標準偏差                                                                                                                              | 0.0                  |
-| angvel_noise_stddev   | double | 角速度ノイズの標準偏差                                                                                                                            | 0.0                  |
-| steer_noise_stddev    | double | ステアリング角ノイズの標準偏差                                                                                                                        | 0.0001               |
+| add_measurement_noise | ブール | trueの場合、シミュレーション結果にガウスノイズが加えられる                                                                             | true                 |
+| pos_noise_stddev      | double | 位置ノイズの標準偏差                                                                                                                   | 0.01                 |
+| rpy_noise_stddev      | double | オイラー角ノイズの標準偏差                                                                                                             | 0.0001               |
+| vel_noise_stddev      | double | 速度ノイズの標準偏差                                                                                                                   | 0.0                  |
+| angvel_noise_stddev   | double | 角速度ノイズの標準偏差                                                                                                                 | 0.0                  |
+| steer_noise_stddev    | double | ステアリング角ノイズの標準偏差                                                                                                         | 0.0001               |
 
 ### 車両モデルのパラメータ
 
@@ -71,33 +71,32 @@
 
 次の表は、どのモデルがどのパラメータに対応するかを示しています。モデル名は省略形で書かれています（例: IDEAL_STEER_VEL = I_ST_V）。
 
-| 名称                       | 型   | 説明                                                                                                  | I_ST_V | I_ST_A | I_ST_A_G | D_ST_V | D_ST_A | D_ST_A_G | D_ST_A_G_WO_FG | D_ST_M_ACC_G | L_S_V | デフォルト値 | 単位    |
-| :------------------------- | :----- | :------------------------------------------------------------------------------------------------------ | :----- | :----- | :------- | :----- | :----- | :------- | :------------- | :----------- | :---- | :------------ | :------ |
-| acc_time_delay             | double | 加速度入力のデッドタイム                                                                                 | x      | x      | x        | x      | o      | o        | o              | o            | x     | 0.1           | [s]     |
-| steer_time_delay           | double | ステアリング入力のデッドタイム                                                                             | x      | x      | x        | o      | o      | o        | o              | o            | x     | 0.24          | [s]     |
-| vel_time_delay             | double | 速度入力のデッドタイム                                                                                 | x      | x      | x        | o      | x      | x        | x              | x            | x     | 0.25          | [s]     |
-| acc_time_constant          | double | 1次の加速度動特性の時間定数                                                                              | x      | x      | x        | x      | o      | o        | o              | o            | x     | 0.1           | [s]     |
-| steer_time_constant        | double | 1次のステアリング動特性の時間定数                                                                          | x      | x      | x        | o      | o      | o        | o              | o            | x     | 0.27          | [s]     |
-| steer_dead_band            | double | ステアリング角のデッドバンド                                                                               | x      | x      | x        | o      | o      | o        | o              | x            | x     | 0.0           | [rad]   |
-| vel_time_constant          | double | 1次の速度動特性の時間定数                                                                              | x      | x      | x        | o      | x      | x        | x              | x            | x     | 0.5           | [s]     |
-| vel_lim                    | double | 速度の上限                                                                                          | x      | x      | x        | o      | o      | o        | o              | o            | x     | 50.0          | [m/s]   |
-| vel_rate_lim               | double | 加速度の上限                                                                                          | x      | x      | x        | o      | o      | o        | o              | o            | x     | 7.0           | [m/ss]  |
-| steer_lim                  | double | ステアリング角の上限                                                                                    | x      | x      | x        | o      | o      | o        | o              | o            | x     | 1.0           | [rad]   |
-| steer_rate_lim             | double | ステアリング角変化率の上限                                                                              | x      | x      | x        | o      | o      | o        | o              | o            | x     | 5.0           | [rad/s] |
-| steer_bias                 | double | ステアリング角のバイアス                                                                                | x      | x      | x        | o      | o      | o        | o              | o            | x     | 0.0           | [rad]   |
-| debug_acc_scaling_factor   | double | 加速度コマンドのスケーリング係数                                                                          | x      | x      | x        | x      | o      | o        | o              | x            | x     | 1.0           | [-]     |
-| debug_steer_scaling_factor | double | ステアリングコマンドのスケーリング係数                                                                          | x      | x      | x        | x      | o      | o        | o              | x            | x     | 1.0           | [-]     |
-| acceleration_map_path      | string | 速度と理想的な加速度を実際の加速度に変換するためのCSVファイルのパス                               | x      | x      | x        | x      | x      | x        | x              | o            | x     | -             | [-]     |
-| model_module_paths         | string | モデルを実装するPythonモジュールのパス                                                                   | x      | x      | x        | x      | x      | x        | x              | x            | o     | -             | [-]     |
-| model_param_paths          | string | モデルパラメータが格納されているファイルのパス（パラメータファイルが必要ない場合は空文字列可） | x      | x      | x        | x      | x      | x        | x              | x            | o     | -             | [-]     |
-| model_class_names          | string | モデルを実装するクラスの名前                                                                            | x      | x      | x        | x      | x      | x        | x              | x            | o     | -             | [-]     |
+| 名称                       | 型     | 説明                                                                                           | I_ST_V | I_ST_A | I_ST_A_G | D_ST_V | D_ST_A | D_ST_A_G | D_ST_A_G_WO_FG | D_ST_M_ACC_G | L_S_V | デフォルト値 | 単位    |
+| :------------------------- | :----- | :--------------------------------------------------------------------------------------------- | :----- | :----- | :------- | :----- | :----- | :------- | :------------- | :----------- | :---- | :----------- | :------ |
+| acc_time_delay             | double | 加速度入力のデッドタイム                                                                       | x      | x      | x        | x      | o      | o        | o              | o            | x     | 0.1          | [s]     |
+| steer_time_delay           | double | ステアリング入力のデッドタイム                                                                 | x      | x      | x        | o      | o      | o        | o              | o            | x     | 0.24         | [s]     |
+| vel_time_delay             | double | 速度入力のデッドタイム                                                                         | x      | x      | x        | o      | x      | x        | x              | x            | x     | 0.25         | [s]     |
+| acc_time_constant          | double | 1次の加速度動特性の時間定数                                                                    | x      | x      | x        | x      | o      | o        | o              | o            | x     | 0.1          | [s]     |
+| steer_time_constant        | double | 1次のステアリング動特性の時間定数                                                              | x      | x      | x        | o      | o      | o        | o              | o            | x     | 0.27         | [s]     |
+| steer_dead_band            | double | ステアリング角のデッドバンド                                                                   | x      | x      | x        | o      | o      | o        | o              | x            | x     | 0.0          | [rad]   |
+| vel_time_constant          | double | 1次の速度動特性の時間定数                                                                      | x      | x      | x        | o      | x      | x        | x              | x            | x     | 0.5          | [s]     |
+| vel_lim                    | double | 速度の上限                                                                                     | x      | x      | x        | o      | o      | o        | o              | o            | x     | 50.0         | [m/s]   |
+| vel_rate_lim               | double | 加速度の上限                                                                                   | x      | x      | x        | o      | o      | o        | o              | o            | x     | 7.0          | [m/ss]  |
+| steer_lim                  | double | ステアリング角の上限                                                                           | x      | x      | x        | o      | o      | o        | o              | o            | x     | 1.0          | [rad]   |
+| steer_rate_lim             | double | ステアリング角変化率の上限                                                                     | x      | x      | x        | o      | o      | o        | o              | o            | x     | 5.0          | [rad/s] |
+| steer_bias                 | double | ステアリング角のバイアス                                                                       | x      | x      | x        | o      | o      | o        | o              | o            | x     | 0.0          | [rad]   |
+| debug_acc_scaling_factor   | double | 加速度コマンドのスケーリング係数                                                               | x      | x      | x        | x      | o      | o        | o              | x            | x     | 1.0          | [-]     |
+| debug_steer_scaling_factor | double | ステアリングコマンドのスケーリング係数                                                         | x      | x      | x        | x      | o      | o        | o              | x            | x     | 1.0          | [-]     |
+| acceleration_map_path      | string | 速度と理想的な加速度を実際の加速度に変換するためのCSVファイルのパス                            | x      | x      | x        | x      | x      | x        | x              | o            | x     | -            | [-]     |
+| model_module_paths         | string | モデルを実装するPythonモジュールのパス                                                         | x      | x      | x        | x      | x      | x        | x              | x            | o     | -            | [-]     |
+| model_param_paths          | string | モデルパラメータが格納されているファイルのパス（パラメータファイルが必要ない場合は空文字列可） | x      | x      | x        | x      | x      | x        | x              | x            | o     | -            | [-]     |
+| model_class_names          | string | モデルを実装するクラスの名前                                                                   | x      | x      | x        | x      | x      | x        | x              | x            | o     | -            | [-]     |
 
 _注意:_ パラメータ`model_module_paths`、`model_param_paths`、および`model_class_names`は同じ長にする必要があります。
 
 `acceleration_map`は`DELAY_STEER_MAP_ACC_GEARED`のみに使用され、垂直軸に加速コマンド、水平軸に自車速度を表示します。各セルはシミュレータの運動計算で実際に使用される変換された加速コマンドを表しています。中間値は線形補間されます。
 
 `acceleration_map.csv`の例
-
 
 ```csv
 default,  0.00,  1.39,  2.78,  4.17,  5.56,  6.94,  8.33,  9.72, 11.11, 12.50, 13.89, 15.28, 16.67
@@ -130,31 +129,30 @@ convert_steer_cmd_method には、「vgr」と「steer_map」の 2 つのオプ�
 
 ![vgr_sim](./media/vgr_sim.drawio.svg)
 
-
 ```yaml
 
 ```
 
 ACTUATION_CMDで使用するパラメータは次のとおりです。
 
-| 名前                     | 型   | 説明                                                                                                                                                              | 単位 |
-| :----------------------- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--- |
-| accel_time_delay         | double | 加速度入力のデッドタイム                                                                                                                                     | [秒]  |
-| accel_time_constant      | double | 1 次加速度動特性のタイムコンスタント                                                                                                                     | [秒]  |
-| brake_time_delay         | double | ブレーキ入力のデッドタイム                                                                                                                                            | [秒]  |
-| brake_time_constant      | double | 1 次ブレーキ動特性のタイムコンスタント                                                                                                                            | [秒]  |
-| convert_accel_cmd        | bool   | true の場合、コマンドは加速度作動値に変換されて送信されると想定され、シミュレータ内で加速度値に戻されます。                                      | [-]  |
-| convert_brake_cmd        | bool   | true の場合、コマンドはブレーキ作動値に変換されて送信されると想定され、シミュレータ内で加速度値に戻されます。                                      | [-]  |
-| convert_steer_cmd        | bool   | true の場合、コマンドは操舵作動値に変換されて送信されると想定され、シミュレータ内で操舵速度値に戻されます。                                    | [-]  |
-| convert_steer_cmd_method | bool   | 操舵コマンドを変換する方法。「vgr」と「steer_map」から選択できます。                                                                                     | [-]  |
-| vgr_coef_a               | double | 可変ギア比の係数 a の値                                                                                                                                | [-]  |
-| vgr_coef_b               | double | 可変ギア比の係数 b の値                                                                                                                                | [-]  |
-| vgr_coef_c               | double | 可変ギア比の係数 c の値                                                                                                                                | [-]  |
-| enable_pub_steer         | bool   | ステアリングタイヤ角を公開するかどうか。false の場合、actuation_status から他のノード（例: raw_vehicle_cmd_converter）で変換され、公開される必要があります。 | [-]
+| 名前                     | 型     | 説明                                                                                                                                                         | 単位 |
+| :----------------------- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- | :--- |
+| accel_time_delay         | double | 加速度入力のデッドタイム                                                                                                                                     | [秒] |
+| accel_time_constant      | double | 1 次加速度動特性のタイムコンスタント                                                                                                                         | [秒] |
+| brake_time_delay         | double | ブレーキ入力のデッドタイム                                                                                                                                   | [秒] |
+| brake_time_constant      | double | 1 次ブレーキ動特性のタイムコンスタント                                                                                                                       | [秒] |
+| convert_accel_cmd        | bool   | true の場合、コマンドは加速度作動値に変換されて送信されると想定され、シミュレータ内で加速度値に戻されます。                                                  | [-]  |
+| convert_brake_cmd        | bool   | true の場合、コマンドはブレーキ作動値に変換されて送信されると想定され、シミュレータ内で加速度値に戻されます。                                                | [-]  |
+| convert_steer_cmd        | bool   | true の場合、コマンドは操舵作動値に変換されて送信されると想定され、シミュレータ内で操舵速度値に戻されます。                                                  | [-]  |
+| convert_steer_cmd_method | bool   | 操舵コマンドを変換する方法。「vgr」と「steer_map」から選択できます。                                                                                         | [-]  |
+| vgr_coef_a               | double | 可変ギア比の係数 a の値                                                                                                                                      | [-]  |
+| vgr_coef_b               | double | 可変ギア比の係数 b の値                                                                                                                                      | [-]  |
+| vgr_coef_c               | double | 可変ギア比の係数 c の値                                                                                                                                      | [-]  |
+| enable_pub_steer         | bool   | ステアリングタイヤ角を公開するかどうか。false の場合、actuation_status から他のノード（例: raw_vehicle_cmd_converter）で変換され、公開される必要があります。 | [-]  |
 
 <!-- deadzone_delta_steer | double | ステアリング・ダイナミクスにおけるデッドゾーン | x | x | x | o | o | 0.0 | [rad] | | -->
 
-_注意_: ステアリング・ダイナミクス/速度・加速度ダイナミクスは、_遅延_モデルにおけるデッドタイムを持った1次システムでモデリングされています。_時定数_の定義は、ステップ応答が最終値の63%に上昇するまでの時間です。_デッドタイム_は、制御入力に対する応答の遅延です。
+_注意_: ステアリング・ダイナミクス/速度・加速度ダイナミクスは、*遅延*モデルにおけるデッドタイムを持った1次システムでモデリングされています。*時定数*の定義は、ステップ応答が最終値の63%に上昇するまでの時間です。*デッドタイム*は、制御入力に対する応答の遅延です。
 
 ### LEARNED_STEER_VELモデルの例
 
@@ -163,7 +161,6 @@ _注意_: ステアリング・ダイナミクス/速度・加速度ダイナミ
 1. 基本的なPythonモデルを含む[ライブラリ](https://github.com/atomyks/control_analysis_pipeline/tree/v0.1_autoware)をインストールします (ブランチ: `v0.1_autoware`)
 
 2. `src/vehicle/sample_vehicle_launch/sample_vehicle_description/config/simulator_model.param.yaml`ファイルの`vehicle_model_type`を`LEARNED_STEER_VEL`に設定します。同じファイルで、次のパラメータを設定します。これらのモデルはテスト用であり、パラメータファイルは必要ありません。
-
 
 ```yaml
 model_module_paths:
@@ -212,6 +209,5 @@ Autoware.AI で最初に開発されました。以下のリンクを参照し�
 
 ## 今後の拡張/未実装の部分
 
- - 車両モデルの精度の向上 (例: ステアリングデッドゾーンとスリップ挙動の追加)
- - 擬似点群または擬似認識結果を出力するモジュールとの連携
-
+- 車両モデルの精度の向上 (例: ステアリングデッドゾーンとスリップ挙動の追加)
+- 擬似点群または擬似認識結果を出力するモジュールとの連携

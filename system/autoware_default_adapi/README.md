@@ -24,7 +24,6 @@
 
 これは、自律モードへの遷移条件を確認するためのデバッグスクリプトです。
 
-
 ```bash
 $ ros2 run autoware_default_adapi guide.py
 
@@ -35,4 +34,3 @@ The vehicle is ready. Please change the operation mode to autonomous.
 The vehicle is driving autonomously.
 The vehicle has reached the goal of the route. Please reset a route.
 ```
-

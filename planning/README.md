@@ -29,7 +29,6 @@ Planning コンポーネントの **モジュール** は、ソフトウェア�
 
 [起動ファイル](https://github.com/autowarefoundation/autoware.universe/tree/main/launch/tier4_planning_launch/launch/scenario_planning/lane_driving) は、`default_preset.yaml` で定義された設定を参照して、動作経路プランナーのノードが実行されているときに構成を適用します。
 
-
 ```xml
 <param name="avoidance.enable_module" value="$(var launch_avoidance_module)"/>
 ```
@@ -46,7 +45,6 @@ launch_avoidance_module から `default_preset.yaml` に対応。
 
 - デフォルトパラメータ `default_preset.yaml` ファイルにモジュールを追加します。例:
 
-
 ```yaml
 - arg:
   name: launch_intersection_module
@@ -54,7 +52,6 @@ launch_avoidance_module から `default_preset.yaml` に対応。
 ```
 
 - モジュールを [launcher](https://github.com/autowarefoundation/autoware.universe/tree/main/launch/tier4_planning_launch/launch/scenario_planning) に統合します。例: [behavior_planning.launch.xml](https://github.com/autowarefoundation/autoware.universe/blob/main/launch/tier4_planning_launch/launch/scenario_planning/lane_driving/behavior_planning/behavior_planning.launch.xml)
-
 
 ```xml
 <arg name="launch_intersection_module" default="true"/>
@@ -69,13 +66,11 @@ launch_avoidance_module から `default_preset.yaml` に対応。
 - 適用可能な場合、パラメータフォルダを適切な既存のパラメータフォルダ内に配置します。たとえば、次のような[交差点モジュールのパラメータ](https://github.com/autowarefoundation/autoware_launch/blob/main/autoware_launch/config/planning/scenario_planning/lane_driving/behavior_planning/behavior_velocity_planner/intersection.param.yaml)は[behavior_velocity_planner](https://github.com/autowarefoundation/autoware_launch/tree/main/autoware_launch/config/planning/scenario_planning/lane_driving/behavior_planning/behavior_velocity_planner)内にあります。
 - [tier4_planning_component.launch.xml](https://github.com/autowarefoundation/autoware_launch/blob/main/autoware_launch/launch/components/tier4_planning_component.launch.xml)に、パラメータのパスを挿入します。たとえば、次のような`behavior_velocity_planner_intersection_module_param_path`を使用します。
 
-
 ```xml
 <arg name="behavior_velocity_planner_intersection_module_param_path" value="$(var behavior_velocity_config_path)/intersection.param.yaml"/>
 ```
 
 - 対応するランチャー内でパラメータパスの変数を定義します。たとえば、[behavior_planning.launch.xml](https://github.com/autowarefoundation/autoware.universe/blob/04aa54bf5fb0c88e70198ca74b9ac343cc3457bf/launch/tier4_planning_launch/launch/scenario_planning/lane_driving/behavior_planning/behavior_planning.launch.xml#L191)
-
 
 ```xml
 <param from="$(var behavior_velocity_planner_intersection_module_param_path)"/>
@@ -116,7 +111,6 @@ Planning Component の [Motion Velocity Smoother](./autoware_velocity_smoother/R
 
 Y. 清水、T. 堀部、F. 渡辺、加藤正樹、"[自律移動体のジャーク制約速度計画: 線形計画法アプローチ](https://arxiv.org/abs/2202.10029)"、2022 年国際ロボット工学および自動化会議 (ICRA)
 
-
 ```tex
 @inproceedings{shimizu2022,
   author={Shimizu, Yutaka and Horibe, Takamasa and Watanabe, Fumiya and Kato, Shinpei},
@@ -126,4 +120,3 @@ Y. 清水、T. 堀部、F. 渡辺、加藤正樹、"[自律移動体のジャー
   pages={5814-5820},
   doi={10.1109/ICRA46639.2022.9812155}}
 ```
-

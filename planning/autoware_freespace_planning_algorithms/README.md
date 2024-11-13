@@ -32,13 +32,12 @@ A\* -> informed RRT\* -> RRT。ほとんどの場合において、informed RRT\
 
 - このパッケージ内のすべてのプランニングアルゴリズムクラスは、`AbstractPlanningAlgorithm`クラスを継承する必要があります。必要に応じて、仮想関数をオーバーライドしてください。
 - すべてのアルゴリズムは`nav_msgs::OccupancyGrid`タイプのコストマップを使用する必要があります。
-したがって、`AbstractPlanningAlgorithm`クラスは主に、コストマップを使用した衝突チェック、グリッドベースのインデックス作成、コストマップに関連する座標変換を実装します。
+  したがって、`AbstractPlanningAlgorithm`クラスは主に、コストマップを使用した衝突チェック、グリッドベースのインデックス作成、コストマップに関連する座標変換を実装します。
 - すべてのアルゴリズムは、`PlannerCommonParam`タイプの構造とアルゴリズム固有タイプの構造の両方をコンストラクタの入力として受け取る必要があります。たとえば、`AstarSearch`クラスのコンストラクタは、`PlannerCommonParam`と`AstarParam`の両方を受け取ります。
 
 ## スタンドアロンテストと可視化の実行
 
 パッケージをros-testでビルドし、テストを実行します。
-
 
 ```sh
 colcon build --packages-select autoware_freespace_planning_algorithms
@@ -87,4 +86,3 @@ Python モジュールへの拡張の実装があります。
 は [pyReedsShepp](https://github.com/ghliu/pyReedsShepp) から取得されています。
 `pyReedsShepp` の実装も [ompl](https://github.com/ompl/ompl) のコードを大いに基にしていることに注意してください。
 `pyReedsShepp` と `ompl` はどちらも 3 項 BSD ライセンスで配布されています。
-

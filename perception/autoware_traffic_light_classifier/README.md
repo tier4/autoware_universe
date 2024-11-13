@@ -18,64 +18,64 @@ traffic_light_classifierは、交通信号機の周囲をトリミングした�
 
 **モジュール**
 
-* **Local Planning**
-  * 自車位置の追跡
-  * 障害物検出
-  * 経路生成
-  * 'post resampling' 軌跡生成
-* **Behavior Planning**
-  * 経路追従制御
-  * 速度計画
-  * 車線維持
-* **Path Planning**
-  * ダイナミック経路生成
-  * 障害物回避
+- **Local Planning**
+  - 自車位置の追跡
+  - 障害物検出
+  - 経路生成
+  - 'post resampling' 軌跡生成
+- **Behavior Planning**
+  - 経路追従制御
+  - 速度計画
+  - 車線維持
+- **Path Planning**
+  - ダイナミック経路生成
+  - 障害物回避
 
 **センシングコンポーネント**
 
-* **LiDAR**
-  * 3D نقطه群データの取得
-  * 障害物検出
-* **カメラ**
-  * 視覚データの取得
-  * レーンマーカー検出
-  * 交通標識認識
-* **IMU (慣性計測装置)**
-  * 加速度や角速度の測定
-  * 自車位置の推定
+- **LiDAR**
+  - 3D نقطه群データの取得
+  - 障害物検出
+- **カメラ**
+  - 視覚データの取得
+  - レーンマーカー検出
+  - 交通標識認識
+- **IMU (慣性計測装置)**
+  - 加速度や角速度の測定
+  - 自車位置の推定
 
 **制御コンポーネント**
 
-* **Longitudinal Controller**
-  * 車両速度の制御
-  * 加速度逸脱量を最小化
-* **Lateral Controller**
-  * 車両ヨーの制御
-  * 車線逸脱量を最小化
+- **Longitudinal Controller**
+  - 車両速度の制御
+  - 加速度逸脱量を最小化
+- **Lateral Controller**
+  - 車両ヨーの制御
+  - 車線逸脱量を最小化
 
 **Autoware**
 
 Autoware は自動運転ソフトウェアのオープンソースプラットフォームです。主要なモジュールには以下が含まれます。
 
-* **Perception**
-  * センサーデータの処理と融合
-  * 障害物認識と分類
-* **Fusion**
-  * ローカライゼーション、マッピング、トラッキング
-  * 環境の動的モデルの構築
-* **Control**
-  * 車両の制御とガイダンス
-  * PATH と BEHAVIOR Planner の実装
+- **Perception**
+  - センサーデータの処理と融合
+  - 障害物認識と分類
+- **Fusion**
+  - ローカライゼーション、マッピング、トラッキング
+  - 環境の動的モデルの構築
+- **Control**
+  - 車両の制御とガイダンス
+  - PATH と BEHAVIOR Planner の実装
 
 **評価方法**
 
-* **シミュレーションパフォーマンス**
-  * レーン逸脱量、クラッシュ回避数
-* **実世界パフォーマンス**
-  * テスト走行における速度逸脱量、加減速逸脱量
-* **主要性能指標 (KPI)**
-  * 時間あたりの走行距離
-  * 介入率
+- **シミュレーションパフォーマンス**
+  - レーン逸脱量、クラッシュ回避数
+- **実世界パフォーマンス**
+  - テスト走行における速度逸脱量、加減速逸脱量
+- **主要性能指標 (KPI)**
+  - 時間あたりの走行距離
+  - 介入率
 
 ### hsv_classifier
 
@@ -96,9 +96,9 @@ Autoware は自動運転ソフトウェアのオープンソースプラット�
 
 ### 入力
 
-| Name            | Type                                                  | Description            |
-| --------------- | ------------------------------------------------------- | ---------------------- |
-| `~/input/image` | `sensor_msgs::msg::Image`                            | 入力画像            |
+| Name            | Type                                               | Description |
+| --------------- | -------------------------------------------------- | ----------- |
+| `~/input/image` | `sensor_msgs::msg::Image`                          | 入力画像    |
 | `~/input/rois`  | `tier4_perception_msgs::msg::TrafficLightRoiArray` | 信号機のroi |
 
 ### 出力
@@ -108,8 +108,9 @@ Autoware は自動運転ソフトウェアのオープンソースプラット�
 #### Planningのアルゴリズム
 
 Planningは、複数のPlanningモジュールで構成されています。
-* **TrajectoryGenerator** プランニング可能な軌道を生成します。
-* **Planner** 軌道の評価および最適化を実施します。
+
+- **TrajectoryGenerator** プランニング可能な軌道を生成します。
+- **Planner** 軌道の評価および最適化を実施します。
 
 #### モデル予測制御 (MPC)
 
@@ -127,9 +128,9 @@ MPCのアルゴリズムは次の手順で行われます:
 
 Planningでは、MPCを使用して、以下のタスクを実行します:
 
-* **経路追従:** 目標経路に沿った軌道を生成します。
-* **障害物回避:** 障害物を回避するための軌道を生成します。
-* **速度制御:** 目標速度を維持するための制御入力を計算します。
+- **経路追従:** 目標経路に沿った軌道を生成します。
+- **障害物回避:** 障害物を回避するための軌道を生成します。
+- **速度制御:** 目標速度を維持するための制御入力を計算します。
 
 MPCのPlanningにおける主要な利点は、他の車両や障害物などの障害物を考慮して、将来のシステム挙動を予測できることです。これにより、Planningはリアルタイムで安全かつ効率的な軌道を作成できます。
 
@@ -137,42 +138,42 @@ MPCのPlanningにおける主要な利点は、他の車両や障害物などの
 
 MPCのAutowareにおける実装では、以下を使用しています:
 
-* **コスト関数:** 位置逸脱量、速度逸脱量、加速度逸脱量の最小化
-* **最適化器:** 'post resampling`を備えたquadprog
-* **制御入力:** ステアリング角、加速度
+- **コスト関数:** 位置逸脱量、速度逸脱量、加速度逸脱量の最小化
+- **最適化器:** 'post resampling`を備えたquadprog
+- **制御入力:** ステアリング角、加速度
 
 #### 参考資料
 
-* [Autoware Foundation Planning](https://github.com/autowarefoundation/autoware.auto/tree/master/ros/autoware/core/planning_with_mpc)
-* [Model Predictive Control Theory and Design](https://link.springer.com/book/10.1007/978-0-89838-330-2)
+- [Autoware Foundation Planning](https://github.com/autowarefoundation/autoware.auto/tree/master/ros/autoware/core/planning_with_mpc)
+- [Model Predictive Control Theory and Design](https://link.springer.com/book/10.1007/978-0-89838-330-2)
 
-| 名前 | 種類 | 説明 |
-|---|---|---|
-| `~/output/traffic_signals` | `tier4_perception_msgs::msg::TrafficLightArray` | 分類済み信号 |
-| `~/output/debug/image` | `sensor_msgs::msg::Image` | デバッグ用画像 |
+| 名前                       | 種類                                            | 説明           |
+| -------------------------- | ----------------------------------------------- | -------------- |
+| `~/output/traffic_signals` | `tier4_perception_msgs::msg::TrafficLightArray` | 分類済み信号   |
+| `~/output/debug/image`     | `sensor_msgs::msg::Image`                       | デバッグ用画像 |
 
 ## パラメータ
 
 ### ノードパラメータ
 
-| 名前 | タイプ | 説明 |
-|---|---|---|
-| `classifier_type` | int | 値が `1` の場合、cnn_classifier が使用されます。 |
-| `data_path` | str | packages データおよびアーティファクトのディレクトリパス |
-| `backlight_threshold` | float | 強度がこの値を超えた場合、対応する RoI で UNKNOWN で上書きします。この値がはるかに大きい場合、ノードは過酷な逆光状況でのみ上書きするということに注意してください。したがって、この機能を使用しない場合は、この値を `1.0` に設定してください。この値は `[0.0, 1.0]` にできます。上書きされた信号の信頼性は `0.0` に設定されます。 |
+| 名前                  | タイプ | 説明                                                                                                                                                                                                                                                                                                                             |
+| --------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `classifier_type`     | int    | 値が `1` の場合、cnn_classifier が使用されます。                                                                                                                                                                                                                                                                                 |
+| `data_path`           | str    | packages データおよびアーティファクトのディレクトリパス                                                                                                                                                                                                                                                                          |
+| `backlight_threshold` | float  | 強度がこの値を超えた場合、対応する RoI で UNKNOWN で上書きします。この値がはるかに大きい場合、ノードは過酷な逆光状況でのみ上書きするということに注意してください。したがって、この機能を使用しない場合は、この値を `1.0` に設定してください。この値は `[0.0, 1.0]` にできます。上書きされた信号の信頼性は `0.0` に設定されます。 |
 
 ### コアパラメータ
 
 #### cnn_classifier
 
-| 名称                    | タイプ            | 説明                          |
-| ----------------------- | --------------- | ------------------------------------ |
-| `classifier_label_path` | str             | モデルファイルのパス               |
-| `classifier_model_path` | str             | ラベルファイルのパス               |
+| 名称                    | タイプ          | 説明                             |
+| ----------------------- | --------------- | -------------------------------- |
+| `classifier_label_path` | str             | モデルファイルのパス             |
+| `classifier_model_path` | str             | ラベルファイルのパス             |
 | `classifier_precision`  | str             | TensorRT精度、`fp16`または`int8` |
-| `classifier_mean`       | vector\<double> | 3チャネル入力画像の平均           |
-| `classifier_std`        | vector\<double> | 3チャネル入力画像の標準偏差            |
-| `apply_softmax`         | bool            | ソフトマックスを適用するかどうか         |
+| `classifier_mean`       | vector\<double> | 3チャネル入力画像の平均          |
+| `classifier_std`        | vector\<double> | 3チャネル入力画像の標準偏差      |
+| `apply_softmax`         | bool            | ソフトマックスを適用するかどうか |
 
 #### hsv_classifier
 
@@ -184,20 +185,20 @@ MPCのAutowareにおける実装では、以下を使用しています:
 
 **入力:**
 
-* `PointCloud`: 障害物のPointCloudデータ
-* `CameraInfo`: カメラの内部および外部パラメータ
+- `PointCloud`: 障害物のPointCloudデータ
+- `CameraInfo`: カメラの内部および外部パラメータ
 
 **出力:**
 
-* `ClassifiedPointCloud`: HSV色相に基づいて分類された障害物のPointCloudデータ
+- `ClassifiedPointCloud`: HSV色相に基づいて分類された障害物のPointCloudデータ
 
 ### パラメータ
 
-| パラメータ | 説明 | デフォルト値 |
-|---|---|---|
-| `hue_threshold`: HSV色相の閾値 (度) | 30 |
-| `saturation_threshold`: HSV彩度の閾値 | 0.1 |
-| `value_threshold`: HSV明度の閾値 | 0.1 |
+| パラメータ                                                          | 説明 | デフォルト値 |
+| ------------------------------------------------------------------- | ---- | ------------ |
+| `hue_threshold`: HSV色相の閾値 (度)                                 | 30   |
+| `saturation_threshold`: HSV彩度の閾値                               | 0.1  |
+| `value_threshold`: HSV明度の閾値                                    | 0.1  |
 | `post resampling`: ポストリサンプリングフィルターを使用するかどうか | True |
 
 ### アルゴリズム
@@ -206,30 +207,30 @@ MPCのAutowareにおける実装では、以下を使用しています:
 
 ### 注意事項
 
-* この分類器は単一のカメラからのデータだけを使用することに注意してください。より堅牢な障害物検出を行うには、複数のカメラからのデータを使用する必要があります。
-* パラメータは特定のシーンやライティング条件に応じて調整する必要があります。
-* この分類器は、距離情報を使用しません。そのため、障害物が自車位置に近いか遠いかを区別できません。
+- この分類器は単一のカメラからのデータだけを使用することに注意してください。より堅牢な障害物検出を行うには、複数のカメラからのデータを使用する必要があります。
+- パラメータは特定のシーンやライティング条件に応じて調整する必要があります。
+- この分類器は、距離情報を使用しません。そのため、障害物が自車位置に近いか遠いかを区別できません。
 
-| 名 | 型 | 説明 |
-|---|---|---|
-| `green_min_h` | int | 緑色の最小色相 |
-| `green_min_s` | int | 緑色の最小彩度 |
-| `green_min_v` | int | 緑色の最小明度 |
-| `green_max_h` | int | 緑色の最大色相 |
-| `green_max_s` | int | 緑色の最大彩度 |
-| `green_max_v` | int | 緑色の最大明度 |
+| 名             | 型  | 説明           |
+| -------------- | --- | -------------- |
+| `green_min_h`  | int | 緑色の最小色相 |
+| `green_min_s`  | int | 緑色の最小彩度 |
+| `green_min_v`  | int | 緑色の最小明度 |
+| `green_max_h`  | int | 緑色の最大色相 |
+| `green_max_s`  | int | 緑色の最大彩度 |
+| `green_max_v`  | int | 緑色の最大明度 |
 | `yellow_min_h` | int | 黄色の最小色相 |
 | `yellow_min_s` | int | 黄色の最小彩度 |
 | `yellow_min_v` | int | 黄色の最小明度 |
 | `yellow_max_h` | int | 黄色の最大色相 |
 | `yellow_max_s` | int | 黄色の最大彩度 |
 | `yellow_max_v` | int | 黄色の最大明度 |
-| `red_min_h` | int | 赤色の最小色相 |
-| `red_min_s` | int | 赤色の最小彩度 |
-| `red_min_v` | int | 赤色の最小明度 |
-| `red_max_h` | int | 赤色の最大色相 |
-| `red_max_s` | int | 赤色の最大彩度 |
-| `red_max_v` | int | 赤色の最大明度 |
+| `red_min_h`    | int | 赤色の最小色相 |
+| `red_min_s`    | int | 赤色の最小彩度 |
+| `red_min_v`    | int | 赤色の最小明度 |
+| `red_max_h`    | int | 赤色の最大色相 |
+| `red_max_s`    | int | 赤色の最大彩度 |
+| `red_max_v`    | int | 赤色の最大明度 |
 
 ## 交通信号機分類器モデルのトレーニング
 
@@ -246,7 +247,6 @@ Autoware は交通信号機の分類のためのトレーニング手順を示�
 #### カスタムデータセットの使用
 
 交通信号機分類器をトレーニングするには、各サブフォルダーが異なるクラスを表す、構造化されたサブフォルダー形式を採用します。以下に示すのは、データセット構造の例です。
-
 
 ```python
 DATASET_ROOT
@@ -287,7 +287,6 @@ DATASET_ROOT
 
 **ステップ 2.** conda仮想環境を作成してアクティベートします
 
-
 ```bash
 conda create --name tl-classifier python=3.8 -y
 conda activate tl-classifier
@@ -297,7 +296,6 @@ conda activate tl-classifier
 
 CUDA 11.6と互換性のあるPyTorchをインストールしてください。これは、現在のAutowareの要件です。
 
-
 ```bash
 conda install pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.6 -c pytorch -c nvidia
 ```
@@ -305,7 +303,6 @@ conda install pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.6 -c pytorch -
 #### mmlab/mmpretrain のインストール
 
 **手順 1.** mmpretrain をソースからインストール
-
 
 ```bash
 cd ~/
@@ -325,13 +322,11 @@ MMPretrainは構成ファイルによって制御されるトレーニングス�
 
 `configs`フォルダ内で使用するモデルの構成ファイルを作成します。
 
-
 ```bash
 touch ~/mmpretrain/configs/mobilenet_v2/mobilenet-v2_8xb32_custom.py
 ```
 
 好みのテキストエディターでコンフィグレーションファイルを開き、提供されたコンテンツのコピーを作成してください。データセットのパスに合わせて **data_root** 変数を調整します。モデル、データセット、スケジューラーのコンフィグレーションパラメーターは、好みに合わせてカスタマイズできます。
-
 
 ```python
 # Inherit model, schedule and default_runtime from base model
@@ -422,7 +417,6 @@ test_evaluator = val_evaluator
 
 #### トレーニングの開始
 
-
 ```bash
 cd ~/mmpretrain
 python tools/train.py configs/mobilenet_v2/mobilenet-v2_8xb32_custom.py
@@ -436,7 +430,6 @@ python tools/train.py configs/mobilenet_v2/mobilenet-v2_8xb32_custom.py
 
 「mmdeploy」ツールセットは、トレーニングされたモデルをさまざまなターゲットデバイスにデプロイするように設計されています。
 その機能により、PyTorchモデルをONNX形式にシームレスに変換できます。
-
 
 ```bash
 # Activate your conda environment
@@ -460,7 +453,6 @@ git clone -b main https://github.com/open-mmlab/mmdeploy.git
 ```
 
 #### PyTorchモデルをONNXモデルに変換する
-
 
 ```bash
 cd ~/mmdeploy
@@ -530,4 +522,3 @@ ONNXモデルを入手したら、起動ファイルで定義されているパ�
   現在、このパッケージはチャタリング障害物を適切に処理できません。知覚レイヤーに確率フィルタを追加して改善する予定です。
   また、グローバルにすべきパラメータがいくつかあります（例：車両サイズ、最大ステアリングなど）。これらはリファクタリングされてグローバルパラメータとして定義されるため、異なるノード間で同じパラメータを共有できます。
 -->
-

@@ -56,9 +56,9 @@ longitudinal_controllerは、フィードフォワード / フィードバック
 
 倾斜情報には2つの情報源があり、パラメータによって切り替えることができます。
 
-  - 傾斜角から現在の勾配を計算します
-  - 長所: 容易に入手可能
-  - 短所: 車両の振動の影響により、正確な勾配情報を抽出できません
+- 傾斜角から現在の勾配を計算します
+- 長所: 容易に入手可能
+- 短所: 車両の振動の影響により、正確な勾配情報を抽出できません
 - 軌道の Z 座標
   - ターゲット軌跡における前輪と後輪位置の Z 座標の差から道路勾配を計算します
   - 長所: 経路の Z 座標が適切に維持されている場合、ピッチ情報よりも正確
@@ -116,11 +116,12 @@ longitudinal_controllerは、フィードフォワード / フィードバック
   - 傾斜角から現在の勾配を計算します
 
 ## 軌道の Z 座標
-  - ターゲット軌道の前輪と後輪位置の Z 座標の差から道路勾配を計算
-  - 長所: 経路の Z 座標が適切に維持されていれば、ピッチ情報よりも正確
-  - 長所: (まだ実装されていない) 遅延補正と組み合わせて使用できる
-  - 短所: 高精細マップの Z 座標が必要
-  - 短所: (現時点では) フリースペースプランニングに対応していない
+
+- ターゲット軌道の前輪と後輪位置の Z 座標の差から道路勾配を計算
+- 長所: 経路の Z 座標が適切に維持されていれば、ピッチ情報よりも正確
+- 長所: (まだ実装されていない) 遅延補正と組み合わせて使用できる
+- 短所: 高精細マップの Z 座標が必要
+- 短所: (現時点では) フリースペースプランニングに対応していない
 
 ## 前提 / 制限事項
 
@@ -161,57 +162,57 @@ longitudinal_controllerは、フィードフォワード / フィードバック
 
 `param/lateral_controller_defaults.param.yaml` で定義されている既定のパラメータは、時速 40 km 未満の運転のために AutonomouStuff Lexus RX 450h に調整されています。
 
-| 名称                        | 型   | 説明                                                                                                                                                                             | デフォルト値 |
-| :-------------------------- | :----- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| `delay_compensation_time` | double | 縦制御の遅延 [s]                                                                                                                                                      | 0.17          |
-| `enable_smooth_stop`        | bool   | STOPPING への遷移を有効にするフラグ                                                                                                                                                   | true          |
-| `enable_overshoot_emergency` | bool   | `emergency_state_overshoot_stop_dist` で指定された距離でエゴが停止線を超えた場合に EMERGENCY への遷移を有効にするフラグ | true          |
-| `enable_large_tracking_error_emergency` | bool   | 軌道とエゴの姿勢の大きなずれにより、最も近い軌跡ポイントの検索が失敗した場合に EMERGENCY への遷移を有効にするフラグ | true          |
-| `enable_slope_compensation` | bool   | 勾配補正のための出力加速度を変更するフラグ。勾配角のソースはエゴの姿勢または軌道の角度から選択できます。 `use_trajectory_for_pitch_calculation` を参照してください。 | true          |
-| `enable_brake_keeping_before_stop` | bool   | エゴが停止する前の DRIVE 状態中に特定の加速度を維持するフラグ。 [ブレーキの維持](#brake-keeping) を参照 | false         |
-| `enable_keep_stopped_until_steer_convergence` | bool   | ステアが収束するまで停止状態を維持するフラグ                                                                                                                         | true          |
-| `max_acc`                  | double | 出力加速度の最大値 [m/s^2]                                                                                                                                                | 3.0           |
-| `min_acc`                  | double | 出力加速度の最小値 [m/s^2]                                                                                                                                                | -5.0          |
-| `max_jerk`                 | double | 出力加速度のジャークの最大値 [m/s^3]                                                                                                                                        | 2.0           |
-| `min_jerk`                 | double | 出力加速度のジャークの最小値 [m/s^3]                                                                                                                                        | -5.0          |
-| `use_trajectory_for_pitch_calculation` | bool   | true の場合、勾配は軌跡の z レベルから推定されます。それ以外の場合は、エゴの姿勢のピッチ角が使用されます。                                                                             | false         |
-| `lpf_pitch_gain`            | double | ピッチ推定用のローパスフィルターのゲイン                                                                                                                                            | 0.95          |
-| `max_pitch_rad`             | double | 推定ピッチの最大値 [rad]                                                                                                                                                      | 0.1           |
-| `min_pitch_rad`             | double | 推定ピッチの最小値 [rad]                                                                                                                                                      | -0.1          |
+| 名称                                          | 型     | 説明                                                                                                                                                                 | デフォルト値 |
+| :-------------------------------------------- | :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------- |
+| `delay_compensation_time`                     | double | 縦制御の遅延 [s]                                                                                                                                                     | 0.17         |
+| `enable_smooth_stop`                          | bool   | STOPPING への遷移を有効にするフラグ                                                                                                                                  | true         |
+| `enable_overshoot_emergency`                  | bool   | `emergency_state_overshoot_stop_dist` で指定された距離でエゴが停止線を超えた場合に EMERGENCY への遷移を有効にするフラグ                                              | true         |
+| `enable_large_tracking_error_emergency`       | bool   | 軌道とエゴの姿勢の大きなずれにより、最も近い軌跡ポイントの検索が失敗した場合に EMERGENCY への遷移を有効にするフラグ                                                  | true         |
+| `enable_slope_compensation`                   | bool   | 勾配補正のための出力加速度を変更するフラグ。勾配角のソースはエゴの姿勢または軌道の角度から選択できます。 `use_trajectory_for_pitch_calculation` を参照してください。 | true         |
+| `enable_brake_keeping_before_stop`            | bool   | エゴが停止する前の DRIVE 状態中に特定の加速度を維持するフラグ。 [ブレーキの維持](#brake-keeping) を参照                                                              | false        |
+| `enable_keep_stopped_until_steer_convergence` | bool   | ステアが収束するまで停止状態を維持するフラグ                                                                                                                         | true         |
+| `max_acc`                                     | double | 出力加速度の最大値 [m/s^2]                                                                                                                                           | 3.0          |
+| `min_acc`                                     | double | 出力加速度の最小値 [m/s^2]                                                                                                                                           | -5.0         |
+| `max_jerk`                                    | double | 出力加速度のジャークの最大値 [m/s^3]                                                                                                                                 | 2.0          |
+| `min_jerk`                                    | double | 出力加速度のジャークの最小値 [m/s^3]                                                                                                                                 | -5.0         |
+| `use_trajectory_for_pitch_calculation`        | bool   | true の場合、勾配は軌跡の z レベルから推定されます。それ以外の場合は、エゴの姿勢のピッチ角が使用されます。                                                           | false        |
+| `lpf_pitch_gain`                              | double | ピッチ推定用のローパスフィルターのゲイン                                                                                                                             | 0.95         |
+| `max_pitch_rad`                               | double | 推定ピッチの最大値 [rad]                                                                                                                                             | 0.1          |
+| `min_pitch_rad`                               | double | 推定ピッチの最小値 [rad]                                                                                                                                             | -0.1         |
 
 ### 状態遷移
 
-| 名称                               | タイプ | 説明                                                                                                                                                               | デフォルト値 |
-| :---------------------------------- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| drive_state_stop_dist               | double | 停止位置までの距離が`drive_state_stop_dist` + `drive_state_offset_stop_dist` [m]を超えると、DRIVE状態に移行します。                                  | 0.5           |
-| drive_state_offset_stop_dist        | double | 停止位置までの距離が`drive_state_stop_dist` + `drive_state_offset_stop_dist` [m]を超えると、DRIVE状態に移行します。                                  | 1.0           |
-| stopping_state_stop_dist            | double | 停止位置までの距離が`stopping_state_stop_dist` [m]未満になるとSTOPPING状態に移行します。                                                              | 0.5           |
-| stopped_state_entry_vel             | double | STOPPED状態への遷移時の自車速度のしきい値 [m/s]                                                                                                       | 0.01          |
-| stopped_state_entry_acc             | double | STOPPED状態への遷移時の自車加速度のしきい値 [m/s^2]                                                                                                     | 0.1           |
-| emergency_state_overshoot_stop_dist | double | `enable_overshoot_emergency`が真の場合、自車が停止位置から`emergency_state_overshoot_stop_dist`メートル先にあるとEMERGENCY状態に移行します。 [m] | 1.5           |
-| emergency_state_traj_trans_dev      | double | 自車位置が最寄りの軌跡ポイントから`emergency_state_traj_tran_dev`メートル離れているとEMERGENCY状態に移行します。 [m]                             | 3.0           |
-| emergency_state_traj_rot_dev        | double | 自車の方位が最寄りの軌跡ポイントの方位から`emergency_state_traj_rot_dev`ラジアン離れているとEMERGENCY状態に移行します。 [rad]                     | 0.784         |
+| 名称                                | タイプ | 説明                                                                                                                                             | デフォルト値 |
+| :---------------------------------- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------- | :----------- |
+| drive_state_stop_dist               | double | 停止位置までの距離が`drive_state_stop_dist` + `drive_state_offset_stop_dist` [m]を超えると、DRIVE状態に移行します。                              | 0.5          |
+| drive_state_offset_stop_dist        | double | 停止位置までの距離が`drive_state_stop_dist` + `drive_state_offset_stop_dist` [m]を超えると、DRIVE状態に移行します。                              | 1.0          |
+| stopping_state_stop_dist            | double | 停止位置までの距離が`stopping_state_stop_dist` [m]未満になるとSTOPPING状態に移行します。                                                         | 0.5          |
+| stopped_state_entry_vel             | double | STOPPED状態への遷移時の自車速度のしきい値 [m/s]                                                                                                  | 0.01         |
+| stopped_state_entry_acc             | double | STOPPED状態への遷移時の自車加速度のしきい値 [m/s^2]                                                                                              | 0.1          |
+| emergency_state_overshoot_stop_dist | double | `enable_overshoot_emergency`が真の場合、自車が停止位置から`emergency_state_overshoot_stop_dist`メートル先にあるとEMERGENCY状態に移行します。 [m] | 1.5          |
+| emergency_state_traj_trans_dev      | double | 自車位置が最寄りの軌跡ポイントから`emergency_state_traj_tran_dev`メートル離れているとEMERGENCY状態に移行します。 [m]                             | 3.0          |
+| emergency_state_traj_rot_dev        | double | 自車の方位が最寄りの軌跡ポイントの方位から`emergency_state_traj_rot_dev`ラジアン離れているとEMERGENCY状態に移行します。 [rad]                    | 0.784        |
 
 ### DRIVE パラメータ
 
-| 名称                                  | 型   | 説明                                                                                                                                                       | デフォルト値 |
-| :------------------------------------ | :----- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| kp                                    | double | Longitudinal制御のPゲイン                                                                                                                                      | 1.0           |
-| ki                                    | double | Longitudinal制御のIゲイン                                                                                                                                      | 0.1           |
-| kd                                    | double | Longitudinal制御のDゲイン                                                                                                                                      | 0.0           |
-| max_out                               | double | DRIVE状態におけるPID出力加速度の最大値[m/s²]                                                                                                              | 1.0           |
-| min_out                               | double | DRIVE状態におけるPID出力加速度の最小値[m/s²]                                                                                                              | -1.0          |
-| max_p_effort                          | double | Pゲインにおける加速度の最大値                                                                                                                              | 1.0           |
-| min_p_effort                          | double | Pゲインにおける加速度の最小値                                                                                                                              | -1.0          |
-| max_i_effort                          | double | Iゲインにおける加速度の最大値                                                                                                                              | 0.3           |
-| min_i_effort                          | double | Iゲインにおける加速度の最小値                                                                                                                              | -0.3          |
-| max_d_effort                          | double | Dゲインにおける加速度の最大値                                                                                                                              | 0.0           |
-| min_d_effort                          | double | Dゲインにおける加速度の最小値                                                                                                                              | 0.0           |
-| lpf_vel_error_gain                    | double | 速度誤差のローパスフィルタのゲイン                                                                                                                           | 0.9           |
-| enable_integration_at_low_speed       | bool   | 車両速度が`current_vel_threshold_pid_integration`未満の場合に、加速度誤差の積分を有効にするか否か                                                                          | false         |
-| current_vel_threshold_pid_integration | double | 現在の速度の絶対値がこのパラメータより大きい場合にのみ、I項に対して速度誤差を積分します。 [m/s]                                                              | 0.5           |
-| time_threshold_before_pid_integration | double | PID誤差の積分を有効にするまでに車両の無移動が経過する必要がある時間。 [s]                                                                                  | 5.0           |
-| brake_keeping_acc                     | double | `enable_brake_keeping_before_stop`が真の場合、自我が停止する前にDRIVE状態中に特定の加速度が維持されます [m/s²] [ブレーキキープ](#brake-keeping)を参照 | 0.2           |
+| 名称                                  | 型     | 説明                                                                                                                                                  | デフォルト値 |
+| :------------------------------------ | :----- | :---------------------------------------------------------------------------------------------------------------------------------------------------- | :----------- |
+| kp                                    | double | Longitudinal制御のPゲイン                                                                                                                             | 1.0          |
+| ki                                    | double | Longitudinal制御のIゲイン                                                                                                                             | 0.1          |
+| kd                                    | double | Longitudinal制御のDゲイン                                                                                                                             | 0.0          |
+| max_out                               | double | DRIVE状態におけるPID出力加速度の最大値[m/s²]                                                                                                          | 1.0          |
+| min_out                               | double | DRIVE状態におけるPID出力加速度の最小値[m/s²]                                                                                                          | -1.0         |
+| max_p_effort                          | double | Pゲインにおける加速度の最大値                                                                                                                         | 1.0          |
+| min_p_effort                          | double | Pゲインにおける加速度の最小値                                                                                                                         | -1.0         |
+| max_i_effort                          | double | Iゲインにおける加速度の最大値                                                                                                                         | 0.3          |
+| min_i_effort                          | double | Iゲインにおける加速度の最小値                                                                                                                         | -0.3         |
+| max_d_effort                          | double | Dゲインにおける加速度の最大値                                                                                                                         | 0.0          |
+| min_d_effort                          | double | Dゲインにおける加速度の最小値                                                                                                                         | 0.0          |
+| lpf_vel_error_gain                    | double | 速度誤差のローパスフィルタのゲイン                                                                                                                    | 0.9          |
+| enable_integration_at_low_speed       | bool   | 車両速度が`current_vel_threshold_pid_integration`未満の場合に、加速度誤差の積分を有効にするか否か                                                     | false        |
+| current_vel_threshold_pid_integration | double | 現在の速度の絶対値がこのパラメータより大きい場合にのみ、I項に対して速度誤差を積分します。 [m/s]                                                       | 0.5          |
+| time_threshold_before_pid_integration | double | PID誤差の積分を有効にするまでに車両の無移動が経過する必要がある時間。 [s]                                                                             | 5.0          |
+| brake_keeping_acc                     | double | `enable_brake_keeping_before_stop`が真の場合、自我が停止する前にDRIVE状態中に特定の加速度が維持されます [m/s²] [ブレーキキープ](#brake-keeping)を参照 | 0.2          |
 
 ### STOPPING パラメーター（スムーズストップ）
 
@@ -221,19 +222,19 @@ longitudinal_controllerは、フィードフォワード / フィードバック
 車両がある一定時間停止しなかったり、停止位置を何メートルか超えた場合は、すぐに停止するための弱い加速度（`weak_stop_acc`）が生成されます。
 車両がまだ走っている場合は、すぐに停止するための強い加速度（`strong_stop_acc`）が生成されます。
 
-| 名前                        | タイプ   | 説明                                                                                                                       | デフォルト値 |
-| :--------------------------- | :----- | :-------------------------------------------------------------------------------------------------------------------------- | :------------ |
-| smooth_stop_max_strong_acc   | double | 最大強加速 [m/s^2]                                                                                                         | -0.5          |
-| smooth_stop_min_strong_acc   | double | 最小強加速 [m/s^2]                                                                                                         | -0.8          |
-| smooth_stop_weak_acc         | double | 弱加速 [m/s^2]                                                                                                             | -0.3          |
-| smooth_stop_weak_stop_acc    | double | 弱停止加速 [m/s^2]                                                                                                          | -0.8          |
-| smooth_stop_strong_stop_acc  | double | 自車が停止ポイントから `smooth_stop_strong_stop_dist` メートル離れたときに出力される強加速 [m/s^2] | -3.4          |
-| smooth_stop_max_fast_vel     | double | 自車が高速走行中とみなす、最大の高速限界速度 [m/s]。高速走行中とみなされると、強加速が出力されます。 | 0.5           |
-| smooth_stop_min_running_vel  | double | 自車が走行中とみなす、最低走行速度 [m/s]                                                                                | 0.01          |
-| smooth_stop_min_running_acc  | double | 自車が走行中とみなす、最低走行加速度 [m/s^2]                                                                              | 0.01          |
-| smooth_stop_weak_stop_time   | double | 弱加速を出力する最大時間 [s]。時間を超えると強加速が出力されます。                                                       | 0.8           |
-| smooth_stop_weak_stop_dist   | double | 自車が停止ポイントから `smooth_stop_weak_stop_dist` メートルの距離にあるとき、弱加速が出力されます [m]                   | -0.3          |
-| smooth_stop_strong_stop_dist | double | 自車が停止ポイントから `smooth_stop_strong_stop_dist` メートルの距離にあるとき、強加速が出力されます [m]                  | -0.5          |
+| 名前                         | タイプ | 説明                                                                                                     | デフォルト値 |
+| :--------------------------- | :----- | :------------------------------------------------------------------------------------------------------- | :----------- |
+| smooth_stop_max_strong_acc   | double | 最大強加速 [m/s^2]                                                                                       | -0.5         |
+| smooth_stop_min_strong_acc   | double | 最小強加速 [m/s^2]                                                                                       | -0.8         |
+| smooth_stop_weak_acc         | double | 弱加速 [m/s^2]                                                                                           | -0.3         |
+| smooth_stop_weak_stop_acc    | double | 弱停止加速 [m/s^2]                                                                                       | -0.8         |
+| smooth_stop_strong_stop_acc  | double | 自車が停止ポイントから `smooth_stop_strong_stop_dist` メートル離れたときに出力される強加速 [m/s^2]       | -3.4         |
+| smooth_stop_max_fast_vel     | double | 自車が高速走行中とみなす、最大の高速限界速度 [m/s]。高速走行中とみなされると、強加速が出力されます。     | 0.5          |
+| smooth_stop_min_running_vel  | double | 自車が走行中とみなす、最低走行速度 [m/s]                                                                 | 0.01         |
+| smooth_stop_min_running_acc  | double | 自車が走行中とみなす、最低走行加速度 [m/s^2]                                                             | 0.01         |
+| smooth_stop_weak_stop_time   | double | 弱加速を出力する最大時間 [s]。時間を超えると強加速が出力されます。                                       | 0.8          |
+| smooth_stop_weak_stop_dist   | double | 自車が停止ポイントから `smooth_stop_weak_stop_dist` メートルの距離にあるとき、弱加速が出力されます [m]   | -0.3         |
+| smooth_stop_strong_stop_dist | double | 自車が停止ポイントから `smooth_stop_strong_stop_dist` メートルの距離にあるとき、強加速が出力されます [m] | -0.5         |
 
 ### STOPPED パラメーター
 
@@ -241,23 +242,22 @@ longitudinal_controllerは、フィードフォワード / フィードバック
 そのため、`stopped_acc` には、車両に最大のブレーキを適用することを可能にする値を設定する必要があります。
 `stopped_acc` が十分に低いと、急勾配で滑落する可能性があります。
 
-| Name         | Type   | Description                                                                        | Default value |
-| :----------- | :----- | :----------------------------------------------------------------------------------- | :------------ |
-| stopped_vel  | double | STOPPED状態における目標速度 [m/s]                                               | 0.0           |
-| stopped_acc  | double | STOPPED状態における目標加速度 [m/s^2]                                             | -3.4          |
-| stopped_jerk | double | STOPPED状態における目標ジャーク [m/s^3]                                            | -5.0          |
+| Name         | Type   | Description                             | Default value |
+| :----------- | :----- | :-------------------------------------- | :------------ |
+| stopped_vel  | double | STOPPED状態における目標速度 [m/s]       | 0.0           |
+| stopped_acc  | double | STOPPED状態における目標加速度 [m/s^2]   | -3.4          |
+| stopped_jerk | double | STOPPED状態における目標ジャーク [m/s^3] | -5.0          |
 
 ### EMERGENCYパラメータ
 
-| 名称           | タイプ   | 説明                                       | デフォルト値 |
-| :------------- | :----- | :------------------------------------------------ | :------------ |
-| emergency_vel  | 倍精度浮動小数点 | EMERGENCY状態での目標速度 [m/s]          | 0.0           |
-| emergency_acc  | 倍精度浮動小数点 | EMERGENCY状態での目標加速度 [m/s^2] | -5.0          |
-| emergency_jerk | 倍精度浮動小数点 | EMERGENCY状態での目標ジャーク [m/s^3]         | -3.0          |
+| 名称           | タイプ           | 説明                                  | デフォルト値 |
+| :------------- | :--------------- | :------------------------------------ | :----------- |
+| emergency_vel  | 倍精度浮動小数点 | EMERGENCY状態での目標速度 [m/s]       | 0.0          |
+| emergency_acc  | 倍精度浮動小数点 | EMERGENCY状態での目標加速度 [m/s^2]   | -5.0         |
+| emergency_jerk | 倍精度浮動小数点 | EMERGENCY状態での目標ジャーク [m/s^3] | -3.0         |
 
 ## 参考文献 / 外部リンク
 
 ## 今後の拡張 / 未実装の部分
 
 ## 関連する課題
-

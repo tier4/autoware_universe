@@ -120,4 +120,3 @@
   - `max_lateral_acceleration`: 最大横加速度 (m/s²)
   - `max_steer_acceleration`: 最大操舵角加速度 (m/s²)
   - `max_steer_angle_rate`: 最大操舵角速度 (rad/s)
-
