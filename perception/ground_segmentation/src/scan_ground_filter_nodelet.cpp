@@ -257,8 +257,8 @@ void ScanGroundFilterComponent::checkContinuousGndGrid(
     gnd_buff_z_mean += it->avg_height;
   }
 
-  gnd_buff_radius /= static_cast<float>(gnd_grid_buffer_size_ - 1);
-  gnd_buff_z_mean /= static_cast<float>(gnd_grid_buffer_size_ - 1);
+  gnd_buff_radius /= static_cast<float>(gnd_grid_buffer_size_);
+  gnd_buff_z_mean /= static_cast<float>(gnd_grid_buffer_size_);
 
   float tmp_delta_mean_z = gnd_grids_list.back().avg_height - gnd_buff_z_mean;
   float tmp_delta_radius = gnd_grids_list.back().radius - gnd_buff_radius;
@@ -404,7 +404,8 @@ void ScanGroundFilterComponent::classifyPointCloudGridScan(
       // move to new grid
       if (p->grid_id > prev_p->grid_id && ground_cluster.getAverageRadius() > 0.0) {
         // check if the prev grid have ground point cloud
-        if (use_recheck_ground_cluster_) {
+        const bool is_recheck_area = ground_cluster.getAverageRadius() > grid_mode_switch_radius_;
+        if (use_recheck_ground_cluster_ && is_recheck_area) {
           recheckGroundCluster(
             ground_cluster, non_ground_height_threshold_, use_lowest_point_, out_no_ground_indices);
         }
