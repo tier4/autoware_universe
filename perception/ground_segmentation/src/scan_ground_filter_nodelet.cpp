@@ -407,8 +407,7 @@ void ScanGroundFilterComponent::classifyPointCloudGridScan(
         const bool is_recheck_area = ground_cluster.getAverageRadius() > grid_mode_switch_radius_;
         if (use_recheck_ground_cluster_ && is_recheck_area) {
           recheckGroundCluster(
-            ground_cluster, non_ground_height_threshold_, use_lowest_point_,
-            out_no_ground_indices);
+            ground_cluster, non_ground_height_threshold_, use_lowest_point_, out_no_ground_indices);
         }
         curr_gnd_grid.radius = ground_cluster.getAverageRadius();
         curr_gnd_grid.avg_height = ground_cluster.getAverageHeight();
