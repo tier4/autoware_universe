@@ -43,9 +43,6 @@ CompareElevationMapFilterComponent::CompareElevationMapFilterComponent(
   layer_name_ = declare_parameter<std::string>("map_layer_name");
   height_diff_thresh_ = declare_parameter<float>("height_diff_thresh");
   map_frame_ = declare_parameter<std::string>("map_frame");
-  std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent(): layer_name_: " << layer_name_ << std::endl;
-  std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent(): height_diff_thresh_: " << height_diff_thresh_ << std::endl;
-  std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent(): map_frame_: " << map_frame_ << std::endl;
 
   rclcpp::QoS durable_qos{1};
   durable_qos.transient_local();
@@ -76,10 +73,8 @@ void CompareElevationMapFilterComponent::filter(
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_input(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_output(new pcl::PointCloud<pcl::PointXYZ>);
   std::string output_frame = map_frame_;
-  std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent::filter(): map_frame_: " << map_frame_ << std::endl;
 
   output_frame = elevation_map_.getFrameId();
-  std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent::filter(): elevation_map_.getFrameId(): " << elevation_map_.getFrameId() << std::endl;
   elevation_map_.setTimestamp(input->header.stamp.nanosec);
   pcl::fromROSMsg(*input, *pcl_input);
   pcl_output->points.reserve(pcl_input->points.size());
@@ -89,11 +84,8 @@ void CompareElevationMapFilterComponent::filter(
         layer_name_, grid_map::Position(point.x, point.y),
         grid_map::InterpolationMethods::INTER_LINEAR);
       const float height_diff = point.z - elevation_value;
-      std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent::filter(): elevation_value: " << elevation_value << std::endl;
-      std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent::filter(): height_diff: " << height_diff << std::endl;
       if (height_diff > height_diff_thresh_) {
         pcl_output->points.push_back(point);
-        std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent::filter(): pcl_output->points.push_back(point);" << std::endl;
       }
     }
   }
@@ -101,8 +93,6 @@ void CompareElevationMapFilterComponent::filter(
   pcl::toROSMsg(*pcl_output, output);
   output.header.stamp = input->header.stamp;
   output.header.frame_id = output_frame;
-  std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent::filter(): output.header.stamp: " << output.header.stamp << std::endl;
-  std::cout << "## compare_map_segmentation CompareElevationMapFilterComponent::filter(): output.header.frame_id: " << output.header.frame_id << std::endl;
 }
 }  // namespace compare_map_segmentation
 

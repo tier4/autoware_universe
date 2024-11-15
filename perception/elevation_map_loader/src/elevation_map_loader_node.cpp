@@ -361,7 +361,7 @@ void ElevationMapLoaderNode::inpaintElevationMap(const float radius)
   elevation_map_.add("inpaint_mask", 0.0);
 
   elevation_map_.setBasicLayers(std::vector<std::string>());
-  std::cout << "## elevation_map_loader inpaintElevationMap(): lane_filter_.use_lane_filter_: " << lane_filter_.use_lane_filter_ << std::endl;
+ lane_filter_.use_lane_filter_ << std::endl;
   if (lane_filter_.use_lane_filter_) {
     for (const auto & lanelet : lane_filter_.road_lanelets_) {
       auto lane_polygon = lanelet.polygon2d().basicPolygon();
@@ -386,7 +386,6 @@ void ElevationMapLoaderNode::inpaintElevationMap(const float radius)
       for (autoware::grid_map_utils::PolygonIterator iterator(elevation_map_, polygon);
            !iterator.isPastEnd(); ++iterator) {
         if (!elevation_map_.isValid(*iterator, layer_name_)) {
-          std::cout << "## elevation_map_loader inpaintElevationMap(): !elevation_map_.isValid(*iterator, layer_name_)" << std::endl;
           elevation_map_.at("inpaint_mask", *iterator) = 1.0;
         }
       }
@@ -394,7 +393,6 @@ void ElevationMapLoaderNode::inpaintElevationMap(const float radius)
   } else {
     for (grid_map::GridMapIterator iterator(elevation_map_); !iterator.isPastEnd(); ++iterator) {
       if (!elevation_map_.isValid(*iterator, layer_name_)) {
-        std::cout << "## elevation_map_loader inpaintElevationMap(): !elevation_map_.isValid(*iterator, layer_name_)" << std::endl;
         elevation_map_.at("inpaint_mask", *iterator) = 1.0;
       }
     }
@@ -404,8 +402,6 @@ void ElevationMapLoaderNode::inpaintElevationMap(const float radius)
   cv::Mat filled_image;
   const float min_value = elevation_map_.get(layer_name_).minCoeffOfFinites();
   const float max_value = elevation_map_.get(layer_name_).maxCoeffOfFinites();
-  std::cout << "## elevation_map_loader inpaintElevationMap(): min_value: " << min_value << std::endl;
-  std::cout << "## elevation_map_loader inpaintElevationMap(): max_value: " << max_value << std::endl;
 
   grid_map::GridMapCvConverter::toImage<unsigned char, 3>(
     elevation_map_, layer_name_, CV_8UC3, min_value, max_value, original_image);
@@ -413,7 +409,6 @@ void ElevationMapLoaderNode::inpaintElevationMap(const float radius)
     elevation_map_, "inpaint_mask", CV_8UC1, mask);
 
   const float radius_in_pixels = radius / elevation_map_.getResolution();
-  std::cout << "## elevation_map_loader inpaintElevationMap(): radius_in_pixels: " << radius_in_pixels << std::endl;
   cv::inpaint(original_image, mask, filled_image, radius_in_pixels, cv::INPAINT_NS);
 
   grid_map::GridMapCvConverter::addLayerFromImage<unsigned char, 3>(
