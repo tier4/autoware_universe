@@ -548,10 +548,12 @@ void TrtYoloX::preprocessGpu(const std::vector<std::shared_ptr<ImageContainer>> 
     }
     int index = b * image->width() * image->height() * 3;
     // Copy into pinned memory
+    // synchroize the stream
+    cudaStreamSynchronize(image->cuda_stream()->stream());
     CHECK_CUDA_ERROR(cudaMemcpyAsync(
       image_buf_d_.get() + index, image->cuda_mem(),
       image->width() * image->height() * 3 * sizeof(unsigned char), cudaMemcpyDeviceToDevice,
-      images[0]->cuda_stream()->stream()));
+      *stream_));
     b++;
 
     if (multitask_) {
@@ -578,13 +580,10 @@ void TrtYoloX::preprocessGpu(const std::vector<std::shared_ptr<ImageContainer>> 
     }
   }
 
-  for (uint32_t i = 0; i < batch_size; i++) {
-    auto stream = images[i]->cuda_stream()->stream();
-    // Preprocess on GPU
-    resize_bilinear_letterbox_nhwc_to_nchw32_batch_gpu(
-      input_d_.get(), images[i]->cuda_mem(), input_width, input_height, 3, images[i]->width(),
-      images[i]->height(), 3, 1, static_cast<float>(norm_factor_), stream);
-  }
+  // Preprocess on GPU
+  resize_bilinear_letterbox_nhwc_to_nchw32_batch_gpu(
+    input_d_.get(), image_buf_d_.get(), input_width, input_height, 3, images[0]->width(),
+    images[0]->height(), 3, batch_size, static_cast<float>(norm_factor_), *stream_);
 }
 
 void TrtYoloX::preprocess(const std::vector<cv::Mat> & images)
@@ -1001,8 +1000,8 @@ bool TrtYoloX::feedforward(
   std::vector<void *> buffers = {
     input_d_.get(), out_num_detections_d_.get(), out_boxes_d_.get(), out_scores_d_.get(),
     out_classes_d_.get()};
-
-  trt_common_->enqueueV2(buffers.data(), images[0]->cuda_stream()->stream(), nullptr);
+  
+  trt_common_->enqueueV2(buffers.data(), *stream_, nullptr);
 
   const auto batch_size = images.size();
   auto out_num_detections = std::make_unique<int32_t[]>(batch_size);
@@ -1012,17 +1011,17 @@ bool TrtYoloX::feedforward(
 
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     out_num_detections.get(), out_num_detections_d_.get(), sizeof(int32_t) * batch_size,
-    cudaMemcpyDeviceToHost, images[0]->cuda_stream()->stream()));
+    cudaMemcpyDeviceToHost, *stream_));
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     out_boxes.get(), out_boxes_d_.get(), sizeof(float) * 4 * batch_size * max_detections_,
-    cudaMemcpyDeviceToHost, images[0]->cuda_stream()->stream()));
+    cudaMemcpyDeviceToHost, *stream_));
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     out_scores.get(), out_scores_d_.get(), sizeof(float) * batch_size * max_detections_,
-    cudaMemcpyDeviceToHost, images[0]->cuda_stream()->stream()));
+    cudaMemcpyDeviceToHost, *stream_));
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     out_classes.get(), out_classes_d_.get(), sizeof(int32_t) * batch_size * max_detections_,
-    cudaMemcpyDeviceToHost, images[0]->cuda_stream()->stream()));
-  cudaStreamSynchronize(images[0]->cuda_stream()->stream());
+    cudaMemcpyDeviceToHost, *stream_));
+  cudaStreamSynchronize(*stream_);
   objects.clear();
   for (size_t i = 0; i < batch_size; ++i) {
     const size_t num_detection = static_cast<size_t>(out_num_detections[i]);

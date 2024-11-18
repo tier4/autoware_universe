@@ -176,7 +176,7 @@ void TrtYoloXNode::setUpImageSubscriber()
 {
   if (type_adaptation_activated_) {
     gpu_image_sub_ = this->create_subscription<ImageContainer>(
-      "~/in/image", rclcpp::QoS{1},
+      "~/in/image", rclcpp::QoS(1).best_effort().durability_volatile(),
       std::bind(&TrtYoloXNode::onGpuImage, this, std::placeholders::_1));
   } else {
     image_sub_ = image_transport::create_subscription(
@@ -346,7 +346,7 @@ void TrtYoloXNode::onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg)
   }
 }
 
-void TrtYoloXNode::onGpuImage(std::shared_ptr<ImageContainer> msg)
+void TrtYoloXNode::onGpuImage(const std::shared_ptr<ImageContainer> msg)
 {
   stop_watch_ptr_->toc("processing_time", true);
 

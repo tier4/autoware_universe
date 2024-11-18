@@ -80,7 +80,7 @@ private:
   bool checkInputBlocked();
   uint32_t getNumOutputConnections();
   void onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg);
-  void onGpuImage(std::shared_ptr<ImageContainer> msg);
+  void onGpuImage(const std::shared_ptr<ImageContainer> msg);
   bool readLabelFile(const std::string & label_path);
   void replaceLabelMap();
   void overlapSegmentByRoi(
