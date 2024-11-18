@@ -181,12 +181,13 @@ protected:
   bool has_collision_with_decel_patterns(
     const LaneChangePath & lane_change_path, const ExtendedPredictedObjects & objects,
     const size_t deceleration_sampling_num, const RSSparams & rss_param,
-    CollisionCheckDebugMap & debug_data) const;
+    const bool check_prepare_phase, CollisionCheckDebugMap & debug_data) const;
 
   bool is_collided(
-    const PathWithLaneId & lane_change_path, const ExtendedPredictedObject & obj,
+    const LaneChangePath & lane_change_path, const ExtendedPredictedObject & obj,
     const std::vector<PoseWithVelocityStamped> & ego_predicted_path,
-    const RSSparams & selected_rss_param, CollisionCheckDebugMap & debug_data) const;
+    const RSSparams & selected_rss_param, const bool check_prepare_phase,
+    CollisionCheckDebugMap & debug_data) const;
 
   //! @brief Check if the ego vehicle is in stuck by a stationary obstacle.
   //! @param obstacle_check_distance Distance to check ahead for any objects that might be
