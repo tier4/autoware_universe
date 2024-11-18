@@ -1000,7 +1000,7 @@ bool TrtYoloX::feedforward(
   std::vector<void *> buffers = {
     input_d_.get(), out_num_detections_d_.get(), out_boxes_d_.get(), out_scores_d_.get(),
     out_classes_d_.get()};
-  
+
   trt_common_->enqueueV2(buffers.data(), *stream_, nullptr);
 
   const auto batch_size = images.size();
