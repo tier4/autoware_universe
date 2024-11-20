@@ -622,6 +622,7 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
 
   std::cout << "R_1 = " << R_1 << std::endl;
   std::cout << "mu = " << mu << std::endl;
+  std::cout << "alpha_clotho = " << alpha_clotho << std::endl;
 
   const double mu_offset = (left_side_parking ^ is_forward) ? -mu : mu;
 
@@ -643,17 +644,21 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
   const Point self_point_goal_coords =
     inverseTransformPoint(start_pose_dummy.position, arc_end_pose_dummy);
 
-  const double alpha =
-    left_side_parking
-      ? M_PI_2 - psi + std::asin((self_point_goal_coords.y - C_far_goal_coords.y) / d_C_far_Einit)
-      : M_PI_2 + psi - std::asin((self_point_goal_coords.y - C_far_goal_coords.y) / d_C_far_Einit);
+  double alpha;
+  if (is_forward) {
+    alpha = left_side_parking ? M_PI_2 + psi + std::asin((self_point_goal_coords.y - C_far_goal_coords.y) / d_C_far_Einit)
+                              : M_PI_2 - psi - std::asin((self_point_goal_coords.y - C_far_goal_coords.y) / d_C_far_Einit);
+  } else {
+    alpha = left_side_parking ? M_PI_2 - psi + std::asin((self_point_goal_coords.y - C_far_goal_coords.y) / d_C_far_Einit)
+                              : M_PI_2 + psi - std::asin((self_point_goal_coords.y - C_far_goal_coords.y) / d_C_far_Einit);
+  }
 
   const double R_E_near =
     (std::pow(d_C_far_Einit, 2) - std::pow(R_1, 2)) / (2 * (R_1 + d_C_far_Einit * std::cos(alpha)));
 
   std::cout << "R_E_near = " << R_E_near << std::endl;
 
-  if (R_E_near <= 0) {
+  if (R_E_near <= R_1) {
     std::cerr << "============================ 1" << std::endl;
     return std::vector<PathWithLaneId>{};
   }
@@ -705,26 +710,27 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
     std::acos(
       (std::pow(R_E_near, 2) + std::pow(R_E_near + R_1, 2) - std::pow(d_C_far_Einit, 2)) /
       (2 * R_E_near * (R_E_near + R_1)));
-  const double alpha_tot_far = alpha_tot_near + psi;
-  std::cout << alpha_tot_near << std::endl;
+  const double alpha_tot_far = (left_side_parking ^ is_forward) ? alpha_tot_near - psi : alpha_tot_near + psi;
+  std::cout << "alpha_tot_near = " << alpha_tot_near << std::endl;
+  std::cout << "alpha_tot_far = " << alpha_tot_far << std::endl;
 
   Pose inflection_point;
   if (is_forward) {
     inflection_point =
       left_side_parking ? calcOffsetPose(
-                            start_pose_dummy, R_E_near * std::sin(alpha_tot_near),
-                            R_E_near * (1-std::cos(alpha_tot_near)), 0, alpha_tot_near + mu_offset)
+                            arc_end_pose_dummy, -R_1 * std::sin(alpha_tot_far),
+                            -R_1 * (1-std::cos(alpha_tot_far)), 0, alpha_tot_far + mu_offset)
                         : calcOffsetPose(
-                            start_pose_dummy, R_E_near * std::sin(alpha_tot_near),
-                            -R_E_near * (1-std::cos(alpha_tot_near)), 0, -alpha_tot_near + mu_offset);
+                            arc_end_pose_dummy, -R_1 * std::sin(alpha_tot_far),
+                            R_1 * (1-std::cos(alpha_tot_far)), 0, -alpha_tot_far + mu_offset);
   } else {
     inflection_point =
       left_side_parking ? calcOffsetPose(
-                            start_pose_dummy, -R_E_near * std::sin(alpha_tot_near),
-                            R_E_near * (1-std::cos(alpha_tot_near)), 0, -alpha_tot_near + mu_offset)
+                            arc_end_pose_dummy, R_1 * std::sin(alpha_tot_far),
+                            -R_1 * (1-std::cos(alpha_tot_far)), 0, -alpha_tot_far + mu_offset)
                         : calcOffsetPose(
-                            start_pose_dummy, -R_E_near * std::sin(alpha_tot_near),
-                            -R_E_near * (1-std::cos(alpha_tot_near)), 0, alpha_tot_near + mu_offset);
+                            arc_end_pose_dummy, R_1 * std::sin(alpha_tot_far),
+                            R_1 * (1-std::cos(alpha_tot_far)), 0, alpha_tot_far + mu_offset);
   }
   std::cout << "inflection point" << inflection_point.position.x << ", " << inflection_point.position.y << ", " << tf2::getYaw(inflection_point.orientation) << std::endl;
 
@@ -767,6 +773,7 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
       is_forward);
   } else { // TODO: Case C
     std::cout << "CASE: C" << std::endl;
+    return std::vector<PathWithLaneId>{};
     // pass;  
   }
 
@@ -796,6 +803,7 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
       is_forward);
   } else { // TODO: Case C
     std::cout << "CASE: C" << std::endl;
+    return std::vector<PathWithLaneId>{};
     // pass;
   }
 
