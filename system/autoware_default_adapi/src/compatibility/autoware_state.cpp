@@ -17,6 +17,40 @@
 #include <string>
 #include <vector>
 
+#define debug(var)                                                     \
+  do {                                                                 \
+    std::cerr << __LINE__ << ", " << __func__ << ", " << #var << ": "; \
+    view(var);                                                         \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T> > & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                                              \
+  {                                                         \
+    std::cerr << __LINE__ << ", " << __func__ << std::endl; \
+  }
+#define line_with_file()                                                               \
+  {                                                                                    \
+    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
+  }
+
 namespace autoware::default_adapi
 {
 
@@ -62,6 +96,7 @@ void AutowareStateNode::on_localization(const LocalizationState::ConstSharedPtr 
 }
 void AutowareStateNode::on_routing(const RoutingState::ConstSharedPtr msg)
 {
+  std::cerr << "AutowareStateNode::on_routing" << std::endl;
   routing_state_ = *msg;
 }
 void AutowareStateNode::on_operation_mode(const OperationModeState::ConstSharedPtr msg)
@@ -79,6 +114,7 @@ void AutowareStateNode::on_shutdown(
 
 void AutowareStateNode::on_timer()
 {
+  // std::cerr << "AutowareStateNode::on_timer()" << std::endl;
   const auto convert_state = [this]() {
     if (launch_state_ == LaunchState::Finalizing) {
       return AutowareState::FINALIZING;
@@ -117,7 +153,7 @@ void AutowareStateNode::on_timer()
 
   // Update launch state.
   if (launch_state_ == LaunchState::Initializing) {
-    bool is_initialized = true;
+    line() bool is_initialized = true;
     for (const auto & state : component_states_) {
       is_initialized &= state;
     }
@@ -128,8 +164,10 @@ void AutowareStateNode::on_timer()
 
   // Update routing state to reproduce old logic.
   if (routing_state_.state == RoutingState::ARRIVED) {
+    line();
     const auto duration = now() - rclcpp::Time(routing_state_.stamp);
     if (2.0 < duration.seconds()) {
+      line();
       routing_state_.state = RoutingState::UNSET;
     }
   }

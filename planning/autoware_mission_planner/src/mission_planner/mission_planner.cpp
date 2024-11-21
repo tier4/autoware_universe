@@ -29,6 +29,40 @@
 #include <algorithm>
 #include <utility>
 
+#define debug(var)                                                     \
+  do {                                                                 \
+    std::cerr << __LINE__ << ", " << __func__ << ", " << #var << ": "; \
+    view(var);                                                         \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T>> & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                                              \
+  {                                                         \
+    std::cerr << __LINE__ << ", " << __func__ << std::endl; \
+  }
+#define line_with_file()                                                               \
+  {                                                                                    \
+    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
+  }
+
 namespace autoware::mission_planner
 {
 
@@ -101,6 +135,8 @@ void MissionPlanner::check_initialization()
   auto logger = get_logger();
   auto clock = *get_clock();
 
+  RCLCPP_INFO_THROTTLE(logger, clock, 5000, "MissionPlanner::check_initialization()");
+
   if (!planner_->ready()) {
     RCLCPP_INFO_THROTTLE(logger, clock, 5000, "waiting lanelet map... Route API is not ready.");
     return;
@@ -111,7 +147,7 @@ void MissionPlanner::check_initialization()
   }
 
   // All data is ready. Now API is available.
-  RCLCPP_DEBUG(logger, "Route API is ready.");
+  RCLCPP_INFO(logger, "Route API is ready.");
   change_state(RouteState::UNSET);
 
   // Stop timer callback.
@@ -284,6 +320,8 @@ void MissionPlanner::on_set_lanelet_route(
 void MissionPlanner::on_set_waypoint_route(
   const SetWaypointRoute::Request::SharedPtr req, const SetWaypointRoute::Response::SharedPtr res)
 {
+  line();
+
   using ResponseCode = autoware_adapi_v1_msgs::srv::SetRoutePoints::Response;
   const auto is_reroute = state_.state == RouteState::SET;
 
@@ -335,12 +373,16 @@ void MissionPlanner::on_set_waypoint_route(
       ResponseCode::ERROR_REROUTE_FAILED, "New route is not safe. Reroute failed.");
   }
 
+  line();
   change_route(route);
+  line();
   change_state(RouteState::SET);
+  line();
   res->status.success = true;
 
   publish_pose_log(odometry_->pose.pose, "initial");
   publish_pose_log(req->goal_pose, "goal");
+  line();
 }
 
 void MissionPlanner::change_route()
@@ -356,6 +398,8 @@ void MissionPlanner::change_route()
 
 void MissionPlanner::change_route(const LaneletRoute & route)
 {
+  line();
+
   PoseWithUuidStamped goal;
   goal.header = route.header;
   goal.pose = route.goal_pose;
@@ -367,6 +411,7 @@ void MissionPlanner::change_route(const LaneletRoute & route)
 
   pub_route_->publish(route);
   pub_marker_->publish(planner_->visualize(route));
+  line();
 }
 
 void MissionPlanner::cancel_route()
