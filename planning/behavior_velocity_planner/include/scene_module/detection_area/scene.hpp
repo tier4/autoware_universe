@@ -58,6 +58,8 @@ public:
     double dead_line_margin;
     bool use_pass_judge_line;
     double state_clear_time;
+    double distance_to_judge_over_stop_line;
+    bool suppress_pass_judge_when_stopping;
   };
 
 public:
@@ -82,7 +84,8 @@ private:
 
   bool isOverLine(
     const autoware_auto_planning_msgs::msg::PathWithLaneId & path,
-    const geometry_msgs::msg::Pose & self_pose, const geometry_msgs::msg::Pose & line_pose) const;
+    const geometry_msgs::msg::Pose & self_pose, const geometry_msgs::msg::Pose & line_pose,
+    const double margin) const;
 
   bool hasEnoughBrakingDistance(
     const geometry_msgs::msg::Pose & self_pose, const geometry_msgs::msg::Pose & line_pose) const;
