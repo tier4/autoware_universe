@@ -41,6 +41,15 @@
 #include <limits>
 #include <vector>
 
+
+#define debug(var)  do{std::cerr << __LINE__ << ", " << __func__ << ", " << #var << ": ";view(var);}while(0)
+template<typename T> void view(T e){std::cerr << e << std::endl;}
+template<typename T> void view(const std::vector<T>& v){for(const auto& e : v){ std::cerr << e << " "; } std::cerr << std::endl;}
+template<typename T> void view(const std::vector<std::vector<T> >& vv){ for(const auto& v : vv){ view(v); } }
+#define line() {std::cerr <<  __LINE__ << ", " << __func__ << std::endl; }
+#define line_with_file() {std::cerr << "(" << __FILE__ <<  ") " << __func__ << ": " << __LINE__ << std::endl; }
+
+
 namespace autoware::mission_planner::lanelet2
 {
 
@@ -375,7 +384,9 @@ geometry_msgs::msg::Pose DefaultPlanner::refine_goal_height(
 
 void DefaultPlanner::updateRoute(const PlannerPlugin::LaneletRoute & route)
 {
+  line();
   route_handler_.setRoute(route);
+  line();
 }
 
 void DefaultPlanner::clearRoute()

@@ -43,6 +43,40 @@
 #include <unordered_set>
 #include <vector>
 
+#define debug(var)                                                     \
+  do {                                                                 \
+    std::cerr << __LINE__ << ", " << __func__ << ", " << #var << ": "; \
+    view(var);                                                         \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T> > & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                                              \
+  {                                                         \
+    std::cerr << __LINE__ << ", " << __func__ << std::endl; \
+  }
+#define line_with_file()                                                               \
+  {                                                                                    \
+    std::cerr << "(" << __FILE__ << ") " << __func__ << ": " << __LINE__ << std::endl; \
+  }
+
 namespace autoware::route_handler
 {
 namespace
@@ -235,20 +269,27 @@ bool RouteHandler::isRouteLooped(const RouteSections & route_sections)
 
 void RouteHandler::setRoute(const LaneletRoute & route_msg)
 {
+  line();
+
   if (!isRouteLooped(route_msg.segments)) {
     // if get not modified route but new route, reset original start pose
     if (!route_ptr_ || route_ptr_->uuid != route_msg.uuid) {
+      line();
+
       original_start_pose_ = route_msg.start_pose;
       original_goal_pose_ = route_msg.goal_pose;
     }
     route_ptr_ = std::make_shared<LaneletRoute>(route_msg);
     is_handler_ready_ = false;
     setLaneletsFromRouteMsg();
+    line();
   } else {
     RCLCPP_ERROR(
       logger_,
       "Loop detected within route! Currently, no loop is allowed for route! Using previous route");
   }
+
+  line();
 }
 
 bool RouteHandler::isHandlerReady() const

@@ -245,9 +245,18 @@ void MissionPlanner::on_modified_goal(const PoseWithUuidStamped::ConstSharedPtr 
 void MissionPlanner::on_clear_route(
   const ClearRoute::Request::SharedPtr, const ClearRoute::Response::SharedPtr res)
 {
+  line();
+  using ResponseCode = autoware_adapi_v1_msgs::srv::SetRoutePoints::Response;
+
+  if (state_.state != RouteState::UNSET && state_.state != RouteState::SET) {
+    throw service_utils::ServiceException(
+      ResponseCode::ERROR_INVALID_STATE, "The route cannot be clear in the current state.");
+  }
+
   change_route();
   change_state(RouteState::UNSET);
   res->status.success = true;
+  line();
 }
 
 void MissionPlanner::on_set_lanelet_route(
