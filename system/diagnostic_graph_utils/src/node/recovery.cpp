@@ -74,13 +74,13 @@ void RecoveryNode::on_mrm_state(const MrmState::ConstSharedPtr msg)
   if (msg->state != MrmState::NORMAL && fatal_error_) {
     mrm_by_fatal_error_ = true;
   }
-  // reset flag if recoverd (transition from mrm to normal)
+  // reset flag if recovered (transition from mrm to normal)
   if (mrm_occur_ && msg->state == MrmState::NORMAL) {
     mrm_by_fatal_error_ = false;
   }
   mrm_occur_ = msg->state != MrmState::NORMAL;
   // 1. Not emergency
-  // 2. Non-recovoerable MRM have not happened
+  // 2. Non-recoverable MRM have not happened
   // 3. on MRM
   // 4. on autonomous driving
   if (autonomous_available_ && !mrm_by_fatal_error_ && mrm_occur_ && auto_driving_) {
