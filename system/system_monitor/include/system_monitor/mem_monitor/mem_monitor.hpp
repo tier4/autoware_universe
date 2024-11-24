@@ -22,9 +22,14 @@
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
 
+#include <boost/process.hpp>
+
 #include <climits>
 #include <map>
 #include <string>
+#include <unordered_map>
+
+namespace bp = boost::process;
 
 class MemMonitor : public rclcpp::Node
 {
@@ -53,6 +58,41 @@ protected:
     diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
 
   /**
+   * @brief check Swap usage
+   * @param @param [out] stat diagnostic message passed directly to diagnostic publish calls
+   * @note NOLINT syntax is needed since diagnostic_updater asks for a non-const reference
+   * to pass diagnostic message updated in this function to diagnostic publish calls.
+   */
+  void checkSwapUsage(
+    diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
+
+  /**
+   * @brief check Memory ECC
+   * @param [out] stat diagnostic message passed directly to diagnostic publish calls
+   */
+  void checkEcc(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
+  /**
+   * @brief read /proc/meminfo
+   */
+  void readMemInfo(std::unordered_map<std::string, size_t> & memInfo);
+
+  /**
+   * @brief call readMemInfo and calculate memory usage
+   */
+  std::string readUsage(std::map<std::string, size_t> & map);
+
+  /**
+   * @brief execute edac-util command
+   */
+  std::string executeEdacUtil(std::string & output, std::string & pipe2_error_str);
+
+  /**
+   * @brief Timer callback to execute read infomation about usages and ecc
+   */
+  void onTimer();
+
+  /**
    * @brief get human-readable output for memory size
    * @param [in] str size with bytes
    * @return human-readable output
@@ -63,7 +103,30 @@ protected:
 
   char hostname_[HOST_NAME_MAX + 1];  //!< @brief host name
 
-  size_t available_size_;  //!< @brief Memory available size to generate error
+  size_t available_size_;   //!< @brief Memory available size to generate error
+  int usage_timeout_;       //!< @brief Timeout duration for executing readUsage
+  int ecc_timeout_;         //!< @brief Timeout duration for executing edac-util command
+  float swap_usage_warn_;   //!< @brief Swap usage(%) to generate warning
+  float swap_usage_error_;  //!< @brief Swap usage(%) to generate error
+
+  rclcpp::TimerBase::SharedPtr
+    timer_;  //!< @brief Timer to execute readUsage and edac-utils command
+  rclcpp::CallbackGroup::SharedPtr timer_callback_group_;  //!< @brief Callback Group
+
+  std::mutex usage_mutex_;                   //!< @brief Mutex for output from /proc/meminfo
+  std::string usage_error_str_;              //!< @brief Error string
+  std::map<std::string, size_t> usage_map_;  //!< @brief Output of /proc/meminfo
+  double usage_elapsed_ms_;                  //!< @brief Execution time of readUsage
+  std::mutex usage_timeout_mutex_;  //!< @brief Mutex regarding timeout for executing readUsage
+
+  std::mutex ecc_mutex_;             //!< @brief Mutex for output from edac-util command
+  std::string ecc_error_str_;        //!< @brief Error string
+  std::string ecc_pipe2_error_str_;  //!< @brief Error string regarding pipe2 function call
+  std::string ecc_output_;           //!< @brief Output of edac-util command
+  double ecc_elapsed_ms_;            //!< @brief Execution time of edac-util command
+  std::mutex
+    ecc_timeout_mutex_;  //!< @brief Mutex regarding timeout for executing edac-util command
+  bool use_edac_util_;   //!< @brief Available to use edac-util command or not
 
   /**
    * @brief Memory usage status messages

@@ -1,3 +1,7 @@
 /**:
   ros__parameters:
     available_size: 1024 # MB
+    usage_timeout: 5 # sec
+    ecc_timeout: 5 # sec
+    swap_usage_warn: 0.25 # %
+    swap_usage_error: 0.75 # %
