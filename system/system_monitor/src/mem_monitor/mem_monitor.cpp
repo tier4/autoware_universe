@@ -63,10 +63,7 @@ MemMonitor::MemMonitor(const rclcpp::NodeOptions & options)
   }
 }
 
-void MemMonitor::update()
-{
-  updater_.force_update(); 
-}
+void MemMonitor::update() { updater_.force_update(); }
 
 void MemMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
@@ -143,7 +140,7 @@ void MemMonitor::checkSwapUsage(diagnostic_updater::DiagnosticStatusWrapper & st
   const auto swap_usage = (map["Swap: total"] > 0) ? static_cast<double>(map["Swap: used"]) /
                                                        static_cast<double>(map["Swap: total"])
                                                    : 0.0;
-   int level = DiagStatus::OK;
+  int level = DiagStatus::OK;
 
   if (swap_usage >= swap_usage_error_) {
     level = std::max(level, static_cast<int>(DiagStatus::ERROR));
