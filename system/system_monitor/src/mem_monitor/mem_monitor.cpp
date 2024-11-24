@@ -63,7 +63,10 @@ MemMonitor::MemMonitor(const rclcpp::NodeOptions & options)
   }
 }
 
-void MemMonitor::update() { updater_.force_update(); }
+void MemMonitor::update()
+{
+  updater_.force_update(); 
+}
 
 void MemMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
@@ -137,8 +140,10 @@ void MemMonitor::checkSwapUsage(diagnostic_updater::DiagnosticStatusWrapper & st
   }
 
   // Check if Swap Usage
-  const auto swap_usage = static_cast<double>(map["Swap: usage"]) / 1e+2;
-  int level = DiagStatus::OK;
+  const auto swap_usage = (map["Swap: total"] > 0) ? static_cast<double>(map["Swap: used"]) /
+                                                       static_cast<double>(map["Swap: total"])
+                                                   : 0.0;
+   int level = DiagStatus::OK;
 
   if (swap_usage >= swap_usage_error_) {
     level = std::max(level, static_cast<int>(DiagStatus::ERROR));
@@ -146,7 +151,7 @@ void MemMonitor::checkSwapUsage(diagnostic_updater::DiagnosticStatusWrapper & st
     level = std::max(level, static_cast<int>(DiagStatus::WARN));
   }
 
-  stat.addf("Swap: usage", "%.2f%%", static_cast<double>(map["Swap: usage"]));
+  stat.addf("Swap: usage", "%.2f%%", swap_usage * 1e+2);
   stat.add("Swap: total", toHumanReadable(std::to_string(map["Swap: total"])));
   stat.add("Swap: used", toHumanReadable(std::to_string(map["Swap: used"])));
   stat.add("Swap: free", toHumanReadable(std::to_string(map["Swap: free"])));
@@ -300,7 +305,6 @@ std::string MemMonitor::readUsage(std::map<std::string, size_t> & map)
   map["Swap: total"] = swap_total;
   map["Swap: used"] = swap_used;
   map["Swap: free"] = swap_free;
-  map["Swap: usage"] = (swap_total > 0) ? static_cast<double>(swap_used) / swap_total * 1e+2 : 0.0;
 
   size_t total_total = mem_total + swap_total;
   size_t total_used = mem_used + swap_used;
