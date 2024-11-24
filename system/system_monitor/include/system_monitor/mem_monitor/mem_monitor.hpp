@@ -58,6 +58,15 @@ protected:
     diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
 
   /**
+   * @brief check Swap usage
+   * @param @param [out] stat diagnostic message passed directly to diagnostic publish calls
+   * @note NOLINT syntax is needed since diagnostic_updater asks for a non-const reference
+   * to pass diagnostic message updated in this function to diagnostic publish calls.
+   */
+  void checkSwapUsage(
+    diagnostic_updater::DiagnosticStatusWrapper & stat);  // NOLINT(runtime/references)
+
+  /**
    * @brief check Memory ECC
    * @param [out] stat diagnostic message passed directly to diagnostic publish calls
    */
@@ -97,6 +106,8 @@ protected:
   size_t available_size_;  //!< @brief Memory available size to generate error
   int usage_timeout_;      //!< @brief Timeout duration for executing readUsage
   int ecc_timeout_;        //!< @brief Timeout duration for executing edac-util command
+  float swap_usage_warn_;       //!< @brief Swap usage(%) to generate warning
+  float swap_usage_error_;      //!< @brief Swap usage(%) to generate error
 
   rclcpp::TimerBase::SharedPtr
     timer_;  //!< @brief Timer to execute readUsage and edac-utils command

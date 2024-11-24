@@ -38,6 +38,8 @@ MemMonitor::MemMonitor(const rclcpp::NodeOptions & options)
   available_size_(declare_parameter<int>("available_size", 1024) * 1024 * 1024),
   usage_timeout_(declare_parameter<int>("usage_timeout", 5)),
   ecc_timeout_(declare_parameter<int>("ecc_timeout", 5)),
+  swap_usage_warn_(declare_parameter<float>("swap_usage_warn", 0.25)),
+  swap_usage_error_(declare_parameter<float>("swap_usage_error", 0.75)),
   usage_elapsed_ms_(0.0),
   ecc_elapsed_ms_(0.0),
   use_edac_util_(false)
@@ -47,6 +49,7 @@ MemMonitor::MemMonitor(const rclcpp::NodeOptions & options)
   gethostname(hostname_, sizeof(hostname_));
   updater_.setHardwareID(hostname_);
   updater_.add("Memory Usage", this, &MemMonitor::checkUsage);
+  updater_.add("Swap Usage", this, &MemMonitor::checkSwapUsage);
 
   // Start timer to execute checkUsage and checkEcc
   timer_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -102,6 +105,54 @@ void MemMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
       stat.add(itr->first, toHumanReadable(std::to_string(itr->second)));
     }
   }
+
+  if (level == DiagStatus::ERROR) {
+    stat.summary(level, usage_dict_.at(level));
+  } else if (elapsed_ms == 0.0) {
+    stat.summary(DiagStatus::WARN, "do not execute readUsage yet");
+  } else if (elapsed_ms > usage_timeout_ * 1000) {
+    stat.summary(DiagStatus::WARN, "readUsage timeout expired");
+  } else {
+    stat.summary(level, usage_dict_.at(level));
+  }
+
+  stat.addf("execution time", "%f ms", elapsed_ms);
+}
+
+void MemMonitor::checkSwapUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
+{
+  std::string error_str;
+  std::map<std::string, size_t> map;
+  double elapsed_ms;
+
+  // thread-safe copy
+  {
+    std::lock_guard<std::mutex> lock(usage_mutex_);
+    error_str = usage_error_str_;
+    map = usage_map_;
+    elapsed_ms = usage_elapsed_ms_;
+  }
+
+  if (!error_str.empty()) {
+    stat.summary(DiagStatus::ERROR, "readUsage error");
+    stat.add("readUsage", error_str);
+    return;
+  }
+
+  // Check if Swap Usage
+  const auto swap_usage = static_cast<double>(map["Swap: usage"]) / 1e+2;
+  int level = DiagStatus::OK;
+
+  if (swap_usage >= swap_usage_error_) {
+    level = std::max(level, static_cast<int>(DiagStatus::ERROR));
+  } else if (swap_usage >= swap_usage_warn_) {
+    level = std::max(level, static_cast<int>(DiagStatus::WARN));
+  }
+
+  stat.addf("Swap: usage", "%.2f%%", static_cast<double>(map["Swap: usage"]));
+  stat.add("Swap: total", toHumanReadable(std::to_string(map["Swap: total"])));
+  stat.add("Swap: used", toHumanReadable(std::to_string(map["Swap: used"])));
+  stat.add("Swap: free", toHumanReadable(std::to_string(map["Swap: free"])));
 
   if (level == DiagStatus::ERROR) {
     stat.summary(level, usage_dict_.at(level));
@@ -252,6 +303,7 @@ std::string MemMonitor::readUsage(std::map<std::string, size_t> & map)
   map["Swap: total"] = swap_total;
   map["Swap: used"] = swap_used;
   map["Swap: free"] = swap_free;
+  map["Swap: usage"] = (swap_total > 0) ? static_cast<double>(swap_used) / swap_total * 1e+2 : 0.0;
 
   size_t total_total = mem_total + swap_total;
   size_t total_used = mem_used + swap_used;
