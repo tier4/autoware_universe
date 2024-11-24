@@ -63,10 +63,7 @@ MemMonitor::MemMonitor(const rclcpp::NodeOptions & options)
   }
 }
 
-void MemMonitor::update()
-{
-  updater_.force_update();
-}
+void MemMonitor::update() { updater_.force_update(); }
 
 void MemMonitor::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {

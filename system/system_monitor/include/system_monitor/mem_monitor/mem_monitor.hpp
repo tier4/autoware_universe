@@ -103,11 +103,11 @@ protected:
 
   char hostname_[HOST_NAME_MAX + 1];  //!< @brief host name
 
-  size_t available_size_;  //!< @brief Memory available size to generate error
-  int usage_timeout_;      //!< @brief Timeout duration for executing readUsage
-  int ecc_timeout_;        //!< @brief Timeout duration for executing edac-util command
-  float swap_usage_warn_;       //!< @brief Swap usage(%) to generate warning
-  float swap_usage_error_;      //!< @brief Swap usage(%) to generate error
+  size_t available_size_;   //!< @brief Memory available size to generate error
+  int usage_timeout_;       //!< @brief Timeout duration for executing readUsage
+  int ecc_timeout_;         //!< @brief Timeout duration for executing edac-util command
+  float swap_usage_warn_;   //!< @brief Swap usage(%) to generate warning
+  float swap_usage_error_;  //!< @brief Swap usage(%) to generate error
 
   rclcpp::TimerBase::SharedPtr
     timer_;  //!< @brief Timer to execute readUsage and edac-utils command
