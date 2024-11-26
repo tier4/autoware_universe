@@ -86,6 +86,8 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include "agnocast.hpp"
+
 namespace autoware::pointcloud_preprocessor
 {
 using autoware_point_types::PointXYZIRC;
@@ -133,7 +135,7 @@ private:
   std::set<std::string> not_subscribed_topic_names_;
 
   /** \brief A vector of subscriber. */
-  std::vector<rclcpp::Subscription<PointCloud2>::SharedPtr> filters_;
+  std::vector<std::shared_ptr<agnocast::Subscription<PointCloud2>>> filters_;
 
   rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr sub_twist_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
@@ -175,7 +177,7 @@ private:
     sensor_msgs::msg::PointCloud2::SharedPtr & output_ptr);
   void setPeriod(const int64_t new_period);
   void cloud_callback(
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_ptr,
+    const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> input_ptr,
     const std::string & topic_name);
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
