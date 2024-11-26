@@ -364,7 +364,7 @@ bool autoware::pointcloud_preprocessor::Filter::convert_output_costly(PointCloud
     auto cloud_transformed = std::make_unique<PointCloud2>();
 
     if (!managed_tf_buffer_->transformPointcloud(
-          tf_input_orig_frame_, *output, *cloud_transformed)) {
+          tf_input_orig_frame_, output, *cloud_transformed)) {
       return false;
     }
 
