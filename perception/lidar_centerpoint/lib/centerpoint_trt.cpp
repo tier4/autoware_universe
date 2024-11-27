@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 namespace centerpoint
 {
@@ -56,7 +57,19 @@ CenterPointTRT::CenterPointTRT(
 
   initPtr();
 
+  initPriorityMap();
+
   cudaStreamCreate(&stream_);
+}
+
+void CenterPointTRT::initPriorityMap()
+{
+  // initialize priority map
+  for (unsigned int i = 0; i < mask_size_; ++i) {
+    priority_map_[i] = i;
+  }
+  // shuffle
+  std::random_shuffle(priority_map_.begin(), priority_map_.end());
 }
 
 CenterPointTRT::~CenterPointTRT()
@@ -85,6 +98,7 @@ void CenterPointTRT::initPtr()
 
   // host
   points_.resize(CAPACITY_POINT * config_.point_feature_size_);
+  priority_map_.resize(mask_size_);
 
   // device
   voxels_d_ = cuda::make_unique<float[]>(voxels_size_);
@@ -102,6 +116,7 @@ void CenterPointTRT::initPtr()
   points_d_ = cuda::make_unique<float[]>(CAPACITY_POINT * config_.point_feature_size_);
   voxels_buffer_d_ = cuda::make_unique<float[]>(voxels_buffer_size_);
   mask_d_ = cuda::make_unique<unsigned int[]>(mask_size_);
+  priority_map_d_ = cuda::make_unique<unsigned int[]>(mask_size_);
   num_voxels_d_ = cuda::make_unique<unsigned int[]>(1);
 }
 
@@ -138,6 +153,9 @@ bool CenterPointTRT::preprocess(
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     points_d_.get(), points_.data(), count * config_.point_feature_size_ * sizeof(float),
     cudaMemcpyHostToDevice, stream_));
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    priority_map_d_.get(), priority_map_.data(), mask_size_ * sizeof(unsigned int),
+    cudaMemcpyHostToDevice, stream_));
   CHECK_CUDA_ERROR(cudaMemsetAsync(num_voxels_d_.get(), 0, sizeof(unsigned int), stream_));
   CHECK_CUDA_ERROR(
     cudaMemsetAsync(voxels_buffer_d_.get(), 0, voxels_buffer_size_ * sizeof(float), stream_));
@@ -155,9 +173,9 @@ bool CenterPointTRT::preprocess(
     mask_d_.get(), voxels_buffer_d_.get(), stream_));
 
   CHECK_CUDA_ERROR(generateBaseFeatures_launch(
-    mask_d_.get(), voxels_buffer_d_.get(), config_.grid_size_y_, config_.grid_size_x_,
-    config_.max_voxel_size_, num_voxels_d_.get(), voxels_d_.get(), num_points_per_voxel_d_.get(),
-    coordinates_d_.get(), stream_));
+    mask_d_.get(), priority_map_d_.get(), voxels_buffer_d_.get(), config_.grid_size_y_,
+    config_.grid_size_x_, config_.max_voxel_size_, num_voxels_d_.get(), voxels_d_.get(),
+    num_points_per_voxel_d_.get(), coordinates_d_.get(), stream_));
 
   CHECK_CUDA_ERROR(generateFeatures_launch(
     voxels_d_.get(), num_points_per_voxel_d_.get(), coordinates_d_.get(), num_voxels_d_.get(),
