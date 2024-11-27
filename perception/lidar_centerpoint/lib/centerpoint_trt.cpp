@@ -65,7 +65,7 @@ CenterPointTRT::CenterPointTRT(
 void CenterPointTRT::initPriorityMap()
 {
   // initialize priority score map
-  std::vector<std::pair<float, unsigned int>> priority_map;
+  std::vector<std::pair<float, unsigned int>> priority_score_map;
 
   // assign priority score map
   for (unsigned int i = 0; i < mask_size_; ++i) {
@@ -77,23 +77,23 @@ void CenterPointTRT::initPriorityMap()
     const float pos_x = x * config_.voxel_size_x_ - offset_x;
     const float pos_y = y * config_.voxel_size_y_ - offset_y;
 
-    float dist = std::abs(pos_x * pos_y);
+    float score = -std::abs(pos_x * pos_y);
 
-    const float score = std::exp(-dist / 10.0);
-    priority_map.push_back(std::make_pair(score, i));
+
+    priority_score_map.push_back(std::make_pair(score, i));
   }
 
   // sort priority map and assign to the priority_map_
   for (unsigned int i = 0; i < mask_size_; ++i) {
   }
   std::sort(
-    priority_map.begin(), priority_map.end(),
+    priority_score_map.begin(), priority_score_map.end(),
     [](const std::pair<float, unsigned int> & a, const std::pair<float, unsigned int> & b) {
       return a.first > b.first;
     });
 
   for (unsigned int i = 0; i < mask_size_; ++i) {
-    priority_map_[i] = priority_map[i].second;
+    priority_map_[i] = priority_score_map[i].second;
   }
 }
 
