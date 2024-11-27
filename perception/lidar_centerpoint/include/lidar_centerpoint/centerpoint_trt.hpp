@@ -69,7 +69,7 @@ public:
 
 protected:
   void initPtr();
-  
+
   void initPriorityMap();
 
   virtual bool preprocess(

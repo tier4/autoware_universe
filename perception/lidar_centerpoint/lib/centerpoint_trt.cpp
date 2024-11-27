@@ -19,11 +19,11 @@
 #include <lidar_centerpoint/network/scatter_kernel.hpp>
 #include <lidar_centerpoint/preprocess/preprocess_kernel.hpp>
 
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
-#include <algorithm>
 
 namespace centerpoint
 {
@@ -64,12 +64,37 @@ CenterPointTRT::CenterPointTRT(
 
 void CenterPointTRT::initPriorityMap()
 {
-  // initialize priority map
+  // initialize priority score map
+  std::vector<std::pair<float, unsigned int>> priority_map;
+
+  // assign priority score map
   for (unsigned int i = 0; i < mask_size_; ++i) {
-    priority_map_[i] = i;
+    const int x = i % config_.grid_size_x_ - config_.grid_size_x_ / 2;
+    const int y = i / config_.grid_size_x_ - config_.grid_size_y_ / 2;
+
+    const float offset_x = 15.0f;
+    const float offset_y = 0.0f;
+    const float pos_x = x * config_.voxel_size_x_ - offset_x;
+    const float pos_y = y * config_.voxel_size_y_ - offset_y;
+
+    float dist = std::abs(pos_x * pos_y);
+
+    const float score = std::exp(-dist / 10.0);
+    priority_map.push_back(std::make_pair(score, i));
   }
-  // shuffle
-  std::random_shuffle(priority_map_.begin(), priority_map_.end());
+
+  // sort priority map and assign to the priority_map_
+  for (unsigned int i = 0; i < mask_size_; ++i) {
+  }
+  std::sort(
+    priority_map.begin(), priority_map.end(),
+    [](const std::pair<float, unsigned int> & a, const std::pair<float, unsigned int> & b) {
+      return a.first > b.first;
+    });
+
+  for (unsigned int i = 0; i < mask_size_; ++i) {
+    priority_map_[i] = priority_map[i].second;
+  }
 }
 
 CenterPointTRT::~CenterPointTRT()
