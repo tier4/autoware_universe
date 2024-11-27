@@ -57,7 +57,6 @@ std::optional<PullOverPath> GeometricPullOver::plan(
     *route_handler, left_side_parking_, parameters_.backward_goal_search_length,
     parameters_.forward_goal_search_length);
   if (road_lanes.empty() || pull_over_lanes.empty()) {
-    std::cout << "---1" << std::endl;
     return {};
   }
 
@@ -70,7 +69,6 @@ std::optional<PullOverPath> GeometricPullOver::plan(
   const bool found_valid_path =
     planner_.planPullOver(goal_pose, road_lanes, pull_over_lanes, is_forward_, left_side_parking_);
   if (!found_valid_path) {
-    std::cout << "---7" << std::endl;
     return {};
   }
 
@@ -80,7 +78,6 @@ std::optional<PullOverPath> GeometricPullOver::plan(
 
   // check lane departure with road and shoulder lanes
   if (lane_departure_checker_.checkPathWillLeaveLane(lanes, arc_path)) {
-    std::cout << "---3" << std::endl;
     return {};
   }
 
@@ -88,10 +85,8 @@ std::optional<PullOverPath> GeometricPullOver::plan(
     getPlannerType(), id, planner_.getPaths(), planner_.getStartPose(), modified_goal_pose,
     planner_.getPairsTerminalVelocityAndAccel());
   if (!pull_over_path_opt) {
-    std::cout << "---4" << std::endl;
     return {};
   }
-  std::cout << "---return path" << std::endl;
   return pull_over_path_opt.value();
 }
 }  // namespace autoware::behavior_path_planner
