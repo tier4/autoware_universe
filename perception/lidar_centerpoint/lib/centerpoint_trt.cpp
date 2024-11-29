@@ -72,13 +72,15 @@ void CenterPointTRT::initPriorityMap()
     const int x = i % config_.grid_size_x_ - config_.grid_size_x_ / 2;
     const int y = i / config_.grid_size_x_ - config_.grid_size_y_ / 2;
 
-    const float offset_x = 15.0f;
-    const float offset_y = 0.0f;
-    const float pos_x = x * config_.voxel_size_x_ - offset_x;
-    const float pos_y = y * config_.voxel_size_y_ - offset_y;
-
-    float score = -std::abs(pos_x * pos_y);
-
+    const float pos_x = x * config_.voxel_size_x_;
+    const float pos_y = y * config_.voxel_size_y_;
+    
+    // cross section area, weighted to the front by sigmoid function
+    float score_a = abs((pos_x - 15.0) * pos_y) * ( 1/(1+exp(pos_x*0.3)) + 1.0);
+    // ellipse area in the front
+    float score_b = sqrt((pos_x-150)*(pos_x-150) + pos_y*pos_y) + sqrt((pos_x-10)*(pos_x-10) + pos_y*pos_y) - 50;
+    // total score with weight
+    float score = -score_a - score_b * 15;
 
     priority_score_map.push_back(std::make_pair(score, i));
   }
