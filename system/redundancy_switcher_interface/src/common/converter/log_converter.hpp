@@ -29,7 +29,7 @@
 #include <string>
 #include <thread>
 
-namespace leader_election_converter
+namespace redundancy_switcher_interface
 {
 
 typedef struct ElectionCommunication
@@ -41,8 +41,7 @@ typedef struct ElectionStatus
 {
   tier4_system_msgs::msg::ElectionStatus::_leader_id_type leader_id;
   tier4_system_msgs::msg::ElectionStatus::_path_info_type path_info;
-  tier4_system_msgs::msg::MrmState::_state_type state;
-  tier4_system_msgs::msg::MrmBehavior::_type_type behavior;
+  tier4_system_msgs::msg::ElectionStatus::_mrm_state_type mrm_state;
   tier4_system_msgs::msg::ElectionStatus::_election_start_count_type election_start_count;
   tier4_system_msgs::msg::ElectionStatus::_in_election_type in_election;
   tier4_system_msgs::msg::ElectionStatus::_has_received_availability_type has_received_availability;
@@ -86,6 +85,6 @@ private:
   std::atomic<bool> is_election_status_running_;
 };
 
-}  // namespace leader_election_converter
+}  // namespace redundancy_switcher_interface
 
 #endif  // COMMON__CONVERTER__LOG_CONVERTER_HPP_

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NODE__LEADER_ELECTION_CONVERTER_HPP_
-#define NODE__LEADER_ELECTION_CONVERTER_HPP_
+#ifndef NODE__REDUNDANCY_SWITCHER_INTERFACE_HPP_
+#define NODE__REDUNDANCY_SWITCHER_INTERFACE_HPP_
 
 #include "availability_converter.hpp"
 #include "log_converter.hpp"
@@ -24,13 +24,13 @@
 #include <memory>
 #include <string>
 
-namespace leader_election_converter
+namespace redundancy_switcher_interface
 {
 
-class LeaderElectionConverter : public rclcpp::Node
+class RedundancySwitcherInterface : public rclcpp::Node
 {
 public:
-  explicit LeaderElectionConverter(const rclcpp::NodeOptions & node_options);
+  explicit RedundancySwitcherInterface(const rclcpp::NodeOptions & node_options);
 
 private:
   std::string availability_dest_ip_;
@@ -49,6 +49,6 @@ private:
   LogConverter log_converter_;
 };
 
-}  // namespace leader_election_converter
+}  // namespace redundancy_switcher_interface
 
-#endif  // NODE__LEADER_ELECTION_CONVERTER_HPP_
+#endif  // NODE__REDUNDANCY_SWITCHER_INTERFACE_HPP_

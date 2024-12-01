@@ -1,9 +1,9 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Parameters for leader election converter",
+  "title": "Parameters for redundancy switcher interface",
   "type": "object",
   "definitions": {
-    "leader_election_converter": {
+    "redundancy_switcher_interface": {
       "type": "object",
       "properties": {
         "availability_dest_ip": {
@@ -77,7 +77,7 @@
       "type": "object",
       "properties": {
         "ros__parameters": {
-          "$ref": "#/definitions/leader_election_converter"
+          "$ref": "#/definitions/redundancy_switcher_interface"
         }
       },
       "required": ["ros__parameters"],

@@ -161,10 +161,10 @@
     <include file="$(find-pkg-share control_cmd_switcher)/launch/control_cmd_switcher.launch.xml"/>
   </group>
 
-  <!-- Leader Election Converter-->
+  <!-- Redundancy Switcher Interface-->
   <group>
-    <include file="$(find-pkg-share leader_election_converter)/launch/leader_election_converter.launch.xml">
-      <arg name="param_file" value="$(find-pkg-share autoware_launch)/config/system/leader_election_converter/leader_election_converter.param.yaml"/>
+    <include file="$(find-pkg-share redundancy_switcher_interface)/launch/redundancy_switcher_interface.launch.xml">
+      <arg name="param_file" value="$(find-pkg-share autoware_launch)/config/system/redundancy_switcher_interface/redundancy_switcher_interface.param.yaml"/>
       <arg name="input_mrm_state" value="/system/fail_safe/mrm_state"/>
     </include>
   </group>

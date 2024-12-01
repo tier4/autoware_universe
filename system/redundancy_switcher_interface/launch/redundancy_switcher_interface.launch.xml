@@ -1,5 +1,5 @@
 <launch>
-  <arg name="param_file" default="$(find-pkg-share leader_election_converter)/config/leader_election_converter.param.yaml"/>
+  <arg name="param_file" default="$(find-pkg-share redundancy_switcher_interface)/config/redundancy_switcher_interface.param.yaml"/>
   <arg name="input_control_mode" default="/vehicle/status/control_mode"/>
   <arg name="input_operation_mode_availability" default="/system/operation_mode/availability"/>
   <arg name="input_mrm_state" default="/system/fail_safe/mrm_state"/>
@@ -7,7 +7,7 @@
   <arg name="output_over_all_mrm_state" default="/system/fail_safe/over_all/mrm_state"/>
   <arg name="output_election_communication" default="/system/election/communication"/>
   <arg name="output_election_status" default="/system/election/status"/>
-  <node pkg="leader_election_converter" exec="leader_election_converter_node">
+  <node pkg="redundancy_switcher_interface" exec="redundancy_switcher_interface_node">
     <param from="$(var param_file)"/>
     <remap from="~/input/control_mode" to="$(var input_control_mode)"/>
     <remap from="~/input/operation_mode_availability" to="$(var input_operation_mode_availability)"/>

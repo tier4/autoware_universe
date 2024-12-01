@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(leader_election_converter)
+project(redundancy_switcher_interface)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
@@ -15,14 +15,14 @@ target_include_directories(common_converter PRIVATE
 )
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
-  src/node/leader_election_converter.cpp
+  src/node/redundancy_switcher_interface.cpp
 )
 target_include_directories(${PROJECT_NAME} PRIVATE src/common/converter)
 
 target_link_libraries(${PROJECT_NAME} common_converter)
 
 rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "leader_election_converter::LeaderElectionConverter"
+  PLUGIN "redundancy_switcher_interface::RedundancySwitcherInterface"
   EXECUTABLE ${PROJECT_NAME}_node
   EXECUTOR MultiThreadedExecutor
 )

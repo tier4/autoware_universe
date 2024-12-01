@@ -28,7 +28,7 @@
 #include <string>
 #include <thread>
 
-namespace leader_election_converter
+namespace redundancy_switcher_interface
 {
 
 typedef struct MrmState
@@ -69,6 +69,6 @@ private:
   std::atomic<bool> is_udp_receiver_running_;
 };
 
-}  // namespace leader_election_converter
+}  // namespace redundancy_switcher_interface
 
 #endif  // COMMON__CONVERTER__MRM_CONVERTER_HPP_

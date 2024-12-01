@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 
-namespace leader_election_converter
+namespace redundancy_switcher_interface
 {
 
 LogConverter::LogConverter(rclcpp::Node * node)
@@ -103,7 +103,8 @@ void LogConverter::convertElectionCommunicationToTopic(const ElectionCommunicati
   msg.node_id = (node_msg.msg >> 8) & 0xFF;
   msg.type = node_msg.msg & 0xFF;
   msg.term = (node_msg.msg >> 16) & 0xFF;
-  msg.link = (node_msg.msg >> 24) & 0xFF;
+  msg.path = (node_msg.msg >> 24) & 0x0F;
+  msg.link = (node_msg.msg >> 28) & 0x0F;
   msg.heartbeat = (node_msg.msg >> 56) & 0x0F;
   msg.checksum = (node_msg.msg >> 60) & 0x0F;
   pub_election_communication_->publish(msg);
@@ -112,13 +113,13 @@ void LogConverter::convertElectionCommunicationToTopic(const ElectionCommunicati
 void LogConverter::convertElectionStatusToTopic(const ElectionStatus & status)
 {
   tier4_system_msgs::msg::ElectionStatus election_status;
-  autoware_adapi_v1_msgs::msg::MrmState mrm_status;
+  autoware_adapi_v1_msgs::msg::MrmState mrm_state;
 
   election_status.stamp = node_->now();
   election_status.leader_id = status.leader_id;
   election_status.path_info = status.path_info;
-  election_status.mrm_state.state = status.state;
-  election_status.mrm_state.behavior.type = status.behavior;
+  election_status.mrm_state.state = status.mrm_state.state;
+  election_status.mrm_state.behavior = status.mrm_state.behavior;
   election_status.election_start_count = status.election_start_count;
   election_status.in_election = status.in_election;
   election_status.has_received_availability = status.has_received_availability;
@@ -130,10 +131,10 @@ void LogConverter::convertElectionStatusToTopic(const ElectionStatus & status)
   election_status.is_sub_vcu_connected = status.is_sub_vcu_connected;
   pub_election_status_->publish(election_status);
 
-  mrm_status.stamp = node_->now();
-  mrm_status.state = status.state;
-  mrm_status.behavior = status.behavior;
-  pub_over_all_mrm_state_->publish(mrm_status);
+  mrm_state.stamp = node_->now();
+  mrm_state.state = status.mrm_state.state;
+  mrm_state.behavior = mrm_state.behavior;
+  pub_over_all_mrm_state_->publish(mrm_state);
 }
 
-}  // namespace leader_election_converter
+}  // namespace redundancy_switcher_interface

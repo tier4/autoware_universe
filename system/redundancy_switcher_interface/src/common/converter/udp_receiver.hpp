@@ -29,7 +29,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace leader_election_converter
+namespace redundancy_switcher_interface
 {
 
 template <typename T>
@@ -146,6 +146,6 @@ void UdpReceiver<T>::receive()
   }
 }
 
-}  // namespace leader_election_converter
+}  // namespace redundancy_switcher_interface
 
 #endif  // COMMON__CONVERTER__UDP_RECEIVER_HPP_

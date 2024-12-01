@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "leader_election_converter.hpp"
+#include "redundancy_switcher_interface.hpp"
 
 #include <string>
 
-namespace leader_election_converter
+namespace redundancy_switcher_interface
 {
 
-LeaderElectionConverter::LeaderElectionConverter(const rclcpp::NodeOptions & node_options)
-: Node("leader_election_converter", node_options),
+RedundancySwitcherInterface::RedundancySwitcherInterface(const rclcpp::NodeOptions & node_options)
+: Node("redundancy_switcher_interface", node_options),
   availability_converter_(this),
   mrm_converter_(this),
   log_converter_(this)
@@ -56,7 +56,7 @@ LeaderElectionConverter::LeaderElectionConverter(const rclcpp::NodeOptions & nod
   log_converter_.setUdpElectionStatusReceiver(election_status_src_ip_, election_status_src_port_);
 }
 
-}  // namespace leader_election_converter
+}  // namespace redundancy_switcher_interface
 
 #include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(leader_election_converter::LeaderElectionConverter)
+RCLCPP_COMPONENTS_REGISTER_NODE(redundancy_switcher_interface::RedundancySwitcherInterface)

@@ -25,7 +25,7 @@
 #include <memory>
 #include <string>
 
-namespace leader_election_converter
+namespace redundancy_switcher_interface
 {
 
 struct Availability
@@ -62,6 +62,6 @@ private:
     sub_operation_mode_availability_;
 };
 
-}  // namespace leader_election_converter
+}  // namespace redundancy_switcher_interface
 
 #endif  // COMMON__CONVERTER__AVAILABILITY_CONVERTER_HPP_

@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 
-namespace leader_election_converter
+namespace redundancy_switcher_interface
 {
 
 AvailabilityConverter::AvailabilityConverter(rclcpp::Node * node) : node_(node)
@@ -80,4 +80,4 @@ void AvailabilityConverter::convertToUdp(
   }
 }
 
-}  // namespace leader_election_converter
+}  // namespace redundancy_switcher_interface

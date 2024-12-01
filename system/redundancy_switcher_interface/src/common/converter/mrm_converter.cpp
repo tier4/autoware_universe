@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 
-namespace leader_election_converter
+namespace redundancy_switcher_interface
 {
 
 MrmConverter::MrmConverter(rclcpp::Node * node) : node_(node), is_udp_receiver_running_(true)
@@ -95,4 +95,4 @@ void MrmConverter::convertToTopic(const MrmRequest & mrm_request)
   pub_mrm_request_->publish(mrm_request_msg);
 }
 
-}  // namespace leader_election_converter
+}  // namespace redundancy_switcher_interface

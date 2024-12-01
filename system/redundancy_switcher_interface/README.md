@@ -1,8 +1,8 @@
-# leader_election_converter
+# redundancy_switcher_interface
 
 ## Overview
 
-The leader election converter node is responsible for relaying UDP packets and ROS2 topics between the leader_election invoked by systemd and Autoware executed on ROS2.
+The redundancy switcher interface node is responsible for relaying UDP packets and ROS2 topics between the redundancy_switcher invoked by systemd and Autoware executed on ROS2.
 
 ## availability converter
 
@@ -42,9 +42,9 @@ The log　converter receive udp packets into a structure called `ElectionCommuni
 | udp receiver   | none                                   | `struct ElectionCommunication`                | messages among election nodes. |
 | udp receiver   | none                                   | `struct ElectionStatus`                       | Leader Election status.        |
 | publisher      | `/system/election/communication`       | `tier4_system_msgs/msg/ElectionCommunication` | messages among election nodes. |
-| publisher      | `/system/election/status`              | `tier4_system_msgs/msg/MrmState`              | Leader Election status.        |
+| publisher      | `/system/election/status`              | `autoware_adapi_v1_msgs/msg/MrmState`              | Leader Election status.        |
 | publisher      | `/system/fail_safe/over_all/mrm_state` | `autoware_adapi_v1_msgs/msg/mrm_state`        | System-wide MRM status.        |
 
 ## Parameters
 
-{{ json_to_markdown("system/leader_election_converter/schema/leader_election_converter.schema.json") }}
+{{ json_to_markdown("system/redundancy_switcher_interface/schema/redundancy_switcher_interface.schema.json") }}
