@@ -10,9 +10,10 @@
 
 ## 使用方法
 
-`perception.launch.xml` を使用するには、次のように `*.launch.xml` に含めます。
+`*.launch.xml` に次のように含めることで `perception.launch.xml` を使用できます。
 
-パラメータパスを `PACKAGE_param_path` として指定する必要があることに注意してください。指定する必要のあるパラメータパスのリストは、`perception.launch.xml` の先頭部に記載されています。
+パラメータパスを `PACKAGE_param_path` として提供する必要があることに注意してください。提供すべきパラメータパスの一覧は `perception.launch.xml` の先頭に記載されています。
+
 
 ```xml
   <include file="$(find-pkg-share tier4_perception_launch)/launch/perception.launch.xml">
@@ -25,3 +26,4 @@
     ...
   </include>
 ```
+

@@ -1,91 +1,78 @@
-# autoware_ground_segmentation
+## autoware_ground_segmentation
 
 ## 目的
 
-`autoware_ground_segmentation`は、入力ポイントクラウドから地上の点を削除するノードです。
+`autoware_ground_segmentation`は、入力された点群から地上の点を取り除くノードです。
 
-## 内部処理 / アルゴリズム
+## 仕組み / アルゴリズム
 
-各地面セグメンテーションアルゴリズムの詳細な説明は、次のリンクを参照してください。
+各地面セグメンテーションアルゴリズムの詳細な説明は、以下のリンクを参照してください。
 
-| フィルタの名称         | 説明                                                                | 詳細                                   |
-| ---------------------- | ------------------------------------------------------------------- | -------------------------------------- |
-| `ray_ground_filter`    | 放射状に並んだ点の幾何学的関係に基づいて地面を取り除く方法          | [リンク](docs/ray-ground-filter.md)    |
-| `scan_ground_filter`   | `ray_ground_filter`とほぼ同じ方法だが、パフォーマンスがわずかに向上 | [リンク](docs/scan-ground-filter.md)   |
-| `ransac_ground_filter` | 平面に対して地上の近似を行うことで地面を取り除く方法                | [リンク](docs/ransac-ground-filter.md) |
+| フィルター名          | 説明                                                                                                    | 詳細                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| ray_ground_filter    | 放射上で直線上に並んだ点間の幾何学的関係に基づいて地面を除去する方法 | [リンク](docs/ray-ground-filter.md)      |
+| scan_ground_filter   | `ray_ground_filter`とほぼ同じ方法だが、パフォーマンスをわずかに向上 | [リンク](docs/scan-ground-filter.md)     |
+| ransac_ground_filter | 地面を平面に近似することで地面を除去する方法                                     | [リンク](docs/ransac-ground-filter.md) |
 
 ## 入出力
 
 ### 入力
 
-| 名前              | タイプ                          | 説明             |
-| ----------------- | ------------------------------- | ---------------- |
-| `~/input/points`  | `sensor_msgs::msg::PointCloud2` | 基準点           |
-| `~/input/indices` | `pcl_msgs::msg::Indices`        | 基準インデックス |
+| 名称              | 型                            | 説明       |
+| ----------------- | ------------------------------- | ----------------- |
+| `~/input/points`  | `sensor_msgs::msg::PointCloud2` | リファレンスポイント  |
+| `~/input/indices` | `pcl_msgs::msg::Indices`        | リファレンスインデックス |
 
-### 自動運転ソフトウェアドキュメント
+### 出力
 
-**Planning** コンポーネントは、**HAD Map** と**localization** による**current pose** 情報を使用して、周囲の環境を認識し、安全で快適な経路を決定します。
+このセクションでは、Autoware.Auto Autonomous Valet Parking Planning / Motion Planning フレームワークのアーキテクチャについて説明します。
 
-**Planning** コンポーネントには、次の主要モジュールが含まれます。
+アーキテクチャは、次のコンポーネントで構成されています。
 
-- **Trajectory Planner**：**HAD Map** と**localization** データを使用して、車両の安全で効率的な経路を生成します。
-- **Path Smoother**：**Trajectory Planner** によって生成された経路を滑らかにし、車両の快適性を向上させます。
-- **Speed Planner**：**Trajectory Planner** と**Path Smoother** によって生成された経路に基づいて、車両の速度プロファイルを決定します。
+* **Plan Evaluator:**
+    * `post resampling`されたパスを評価し、点数を付けます。
+    * 各パスには、スコアが関連付けられています。
+* **Trajectory Optimizer:**
+    * 特定の経路に対して、最適な制御入力を生成します。
+    * 制御入力は、加速度と角速度として表されます。
+* **Path Planning:**
+    * 環境マップを使用して、パスを生成します。
+    * パスの形状は、点と曲線で表現されます。
+* **Smoother:**
+    * パスを滑らかにし、車の動力学的制約を考慮に入れます。
+* **Collision Checker:**
+    * パスと環境との衝突を確認します。
+    * 衝突が検出されると、パスは廃棄されます。
+* **Map:**
+    * 環境を表現します。
+    * 地図には、道路、障害物、標識などの情報が含まれます。
+* **Current Pose:**
+    * 車の現在の位置と向きを表現します。
+    * Current Poseは、Planning / Motion Planningの重要な入力です。
 
-**Perception** コンポーネントは、**HAD Map** と**localization** 情報を組み合わせて、障害物やその他の車両などの周囲の環境を認識します。
-
-**Perception** コンポーネントには、次の主要モジュールが含まれます。
-
-- **Object Detector**: LiDAR、カメラ、レーダーから収集されたデータを処理して、物体や障害物を検出します。
-- **Obstacle Estimator**: 検出された物体の速度と加速度を推定します。
-- **Localizer**: 物体の位置と姿勢を**localization** 情報との関連付けを支援します。
-
-**Control** コンポーネントは、**Planning** と**Perception** コンポーネントから提供される情報を使用して、車両を安全かつ効率的に制御します。
-
-**Control** コンポーネントには、次の主要モジュールが含まれます：
-
-- **Lateral Control**: ステアリングを制御して、車両が**Trajectory Planner** によって生成された経路に沿って走行できるようにします。
-- **Longitudinal Control**: ブレーキとアクセルを制御して、車両の速度と加速度が**Speed Planner** によって決定されたプロファイルに従うようにします。
-
-**HAD Map** は、高精度な地図データを提供し、**Planning** コンポーネントと**Perception** コンポーネントが周囲の環境を正確に認識できるようにします。
-
-**Autoware** の**Localization** コンポーネントは、**HAD Map** を利用して、車両の**current pose** と姿勢を決定します。
-
-**Autoware** の**Visualization** コンポーネントは、**Planning**、**Perception**、**Control** コンポーネントによって生成された情報をユーザーに表示します。
-
-### 考慮事項
-
-**Planning** コンポーネントは、次の考慮事項を考慮します。
-
-- **Collision Avoidance**: 車両が障害物や他の車両と衝突しないようにします。
-- **Velocity Violation**: 車両の速度が許容範囲を超えないようにします。
-- **Acceleration Violation**: 車両の加速度が許容範囲を超えないようにします。
-- **Path 'post resampling'**: **Path Smoother** によって生成された経路が**Trajectory Planner** によって生成された経路を正確に表していることを確認します。
-- **Vehicle Dynamics**: 車両の運動特性を考慮して、安全で快適な走行を確保します。
-
-| 名称              | 型                              | 説明                     |
-| ----------------- | ------------------------------- | ------------------------ |
-| `~/output/points` | `sensor_msgs::msg::PointCloud2` | フィルタリングされた点群 |
+| Name              | Type                            | Description     |
+| ----------------- | ------------------------------- | --------------- |
+| `~/output/points` | `sensor_msgs::msg::PointCloud2` | フィルタされた点群 |
 
 ## パラメータ
 
-### ノードのパラメータ
+### ノードパラメータ
 
-| 名前                 | 型     | デフォルト値 | 説明                                             |
-| -------------------- | ------ | ------------ | ------------------------------------------------ |
-| `input_frame`        | 文字列 | " "          | 入力フレーム ID                                  |
-| `output_frame`       | 文字列 | " "          | 出力フレーム ID                                  |
-| `has_static_tf_only` | ブール | false        | TF を一度だけリスンするフラグ                    |
-| `max_queue_size`     | 整数   | 5            | 入力/出力トピックの最大キューサイズ              |
-| `use_indices`        | ブール | false        | ポイントクラウドのインデックスを使用するフラグ   |
-| `latched_indices`    | ブール | false        | ポイントクラウドのインデックスをラッチするフラグ |
-| `approximate_sync`   | ブール | false        | 近似同期オプションを使用するフラグ               |
+| 名前                  | タイプ   | デフォルト値 | 説明                               |
+| --------------------- | ------ | ------------- | -------------------------------------- |
+| `input_frame`          | 文字列 | " "           | 入力フレーム ID                      |
+| `output_frame`         | 文字列 | " "           | 出力フレーム ID                     |
+| `has_static_tf_only`   | ブール   | false         | TF を一度だけリッスンするフラグ      |
+| `max_queue_size`       | 整数    | 5             | 入力/出力トピックの最大キューサイズ |
+| `use_indices`          | ブール   | false         | ポイントクラウドのインデックスを使用 |
+| `latched_indices`      | ブール   | false         | ポイントクラウドのインデックスをラッチ |
+| `approximate_sync`     | ブール   | false         | 近似同期オプションを使用           |
 
-## 前提 / 制限事項
+## 仮定/既知の制限
 
-`autoware::pointcloud_preprocessor::Filter`は、[この問題](https://github.com/ros-perception/perception_pcl/issues/9)のため、pcl_perception [1]に基づいて実装されています。
+`autoware::pointcloud_preprocessor::Filter` は [この問題](https://github.com/ros-perception/perception_pcl/issues/9) のため、pcl_perception [1] に基づいて実装されています。
 
 ## 参考文献/外部リンク
 
 [1] <https://github.com/ros-perception/perception_pcl/blob/ros2/pcl_ros/src/pcl_ros/filters/filter.cpp>
+

@@ -1,3 +1,4 @@
-# Behavior Velocity Planner (共通)
+# Behavior Velocity Planner Common
 
-このパッケージはライブラリとして共通関数を提供し、`behavior_velocity_planner` ノードとモジュールで使用されます。
+このパッケージは、`behavior_velocity_planner`ノードとモジュールで使用されるライブラリとしての共通関数を提供します。
+

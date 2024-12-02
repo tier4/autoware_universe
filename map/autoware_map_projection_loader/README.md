@@ -1,17 +1,18 @@
 # autoware_map_projection_loader
 
-## 特徴
+## 機能
 
-`autoware_map_projection_loader` は、Autoware が動作する座標系を定義する `map_projector_info` をパブリッシュする役割を持ちます。
-これは、特に座標を地図（ジオイド）から局所座標に変換する場合、またはその逆を行う場合に必要です。
+`autoware_map_projection_loader` は、Autoware が動作している座標のタイプを定義する `map_projector_info` を公開する役割を担っています。
+これは、とりわけ、グローバル (地球楕円体) 座標からローカル座標、またはその逆への変換を行う場合に必要となる情報です。
 
-- `map_projector_info_path` が存在する場合、このノードはそれをロードしてそれに応じて地図投影情報をパブリッシュします。
-- `map_projector_info_path` が存在しない場合、ノードはあなたが `MGRS` 投影タイプを使用していることを想定し、代わりにレーンレット 2 マップをロードして MGRS グリッドを抽出します。
-  - **非推奨の警告: レーンレット 2 マップを使用するこのインターフェイスは推奨されません。代わりに YAML ファイルを準備してください。**
+- `map_projector_info_path` が存在する場合、このノードはこのパスから情報を読み込んで、それに応じて地図投影情報を公開します。
+- `map_projector_info_path` が存在しない場合、このノードは `MGRS` 投影を使用していると想定して、代わりに lanelet2 マップを読み込んで、MGRS グリッドを抽出します。
+  - **非推奨** この lanelet2 マップを使用するインターフェイスは推奨されません。代わりに YAML ファイルを用意してください。
 
-## 地図投影情報ファイルの仕様
+## 地図投影者情報ファイル仕様
 
-`map_path` ディレクトリに `map_projector_info.yaml` という名前の YAML ファイルを用意する必要があります。 `pointcloud_map_metadata.yaml` については、`map_loader` の Readme を参照してください。
+`map_path` ディレクトリの下に `map_projector_info.yaml` という YAML ファイルを用意する必要があります。 `pointcloud_map_metadata.yaml` については、`autoware_map_loader` の README を参照してください。
+
 
 ```bash
 sample-map-rosbag
@@ -21,29 +22,31 @@ sample-map-rosbag
 └── pointcloud_map_metadata.yaml
 ```
 
-緯度経度からXYZ座標系への変換は、次の図に示すように3種類あります。各プロジェクタータイプに必要なパラメータの詳細については、以下を参照してください。
+緯度経度からXYZ座標系への変換には、次の図に示すように3つのタイプがあります。各プロジェクタタイプの必須パラメータの詳細については、以下を参照してください。
 
 ![node_diagram](docs/map_projector_type.svg)
 
-### ローカル座標を使用
+### ローカル座標の使用
+
 
 ```yaml
 # map_projector_info.yaml
 projector_type: local
 ```
 
-#### 制限事項
+#### 制限
 
-経度と緯度を必要とする機能は利用できなくなります。
+緯度と経度を必要とする機能は利用できなくなります。
 
-現在、利用できないことが判明している機能は次のとおりです。
+現在、利用できないことが確認されている機能は次のとおりです。
 
-- GNSS局所化
-- ADAPIを使用した経度と緯度での自車位置の送信
+- GNSS ローカリゼーション
+- ADAPIを使用して緯度と経度で自車位置を送信する
 
 ### MGRSの使用
 
 MGRSを使用する場合は、MGRSグリッドも指定してください。
+
 
 ```yaml
 # map_projector_info.yaml
@@ -52,13 +55,14 @@ vertical_datum: WGS84
 mgrs_grid: 54SUE
 ```
 
-#### 制限
+#### 制限事項
 
-2つ以上のMGRSグリッドにまたがるマップでは使用できません。単一のMGRSグリッドの範囲内でのみ使用してください。
+1 つの MGRS グリッドにまたがるマップでは使用できません。1 つの MGRS グリッドの範囲内のみで使用してください。
 
-### LocalCartesianUTMを使用する場合
+### `LocalCartesianUTM` の使用
 
-ローカルカートシャンUTMを使用する場合は、マップの原点も指定してください。
+ローカルデカルト UTM を使用する場合は、マップ原点も指定してください。
+
 
 ```yaml
 # map_projector_info.yaml
@@ -70,9 +74,10 @@ map_origin:
   altitude: 0.0 # [m]
 ```
 
-#### TransverseMercatorの使用
+### 横メルカトル投影方式の使用
 
-TransverseMercator投影を使用する場合は、マップ原点も指定してください。
+横メルカトル投影方式を使用する場合、地図の原点を指定してください。
+
 
 ```yaml
 # map_projector_info.yaml
@@ -84,12 +89,97 @@ map_origin:
   altitude: 0.0 # [m]
 ```
 
-## 送信トピック
+## 発行トピック
 
-- `~/map_projector_info` (tier4_map_msgs/MapProjectorInfo): このトピックは、マッププロジェクターの定義情報を示します。
+- `~/map_projector_info` (tier4_map_msgs/MapProjectorInfo) : このトピックは、マッププロジェクター情報の定義を示します
 
-## パラメーター
+## パラメータ
 
-これらのパラメーターは起動引数から渡されると想定されており、`map_projection_loader.param.yaml`に直接書き込むことを推奨しません。
+これらのパラメータは起動引数から渡されると想定されており、`map_projection_loader.param.yaml`に直接書き込むことは推奨されていません。
 
-{{ json_to_markdown("map/autoware_map_projection_loader/schema/map_projection_loader.schema.json") }}
+```json
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Autoware map projection loader parameter",
+  "description": "Map projector schema for autoware",
+  "type": "object",
+  "properties": {
+    "base_frame_id": {
+      "type": "string",
+      "default": "map",
+      "description": "base frame id"
+    },
+    "frame_id": {
+      "type": "string",
+      "default": "projection",
+      "description": "projection frame id"
+    },
+    "linear_velocity_threshold": {
+      "type": "number",
+      "default": 1,
+      "minimum": 0,
+      "description": "minimum linear velocity of vehicle for project"
+    },
+    "angular_velocity_threshold": {
+      "type": "number",
+      "default": 0.5,
+      "minimum": 0,
+      "description": "minimum angular velocity of vehicle for project"
+    },
+    "resample_period": {
+      "type": "number",
+      "default": 1,
+      "minimum": 0,
+      "description": "when vehicle: linear velocity < linear_velocity_threshold or angular velocity > angular_velocity_threshold, project only within `resample_period`"
+    },
+    "resample_distance": {
+      "type": "number",
+      "default": 5,
+      "minimum": 0,
+      "description": "when vehicle: linear velocity < linear_velocity_threshold or angular velocity > angular_velocity_threshold, project only when displacement from `post resampling` position is more than this"
+    },
+    "publish_interval": {
+      "type": "number",
+      "default": 0.1,
+      "minimum": 0,
+      "description": "publish projected map interval"
+    },
+    "debug_mode": {
+      "type": "boolean",
+      "default": false,
+      "description": "enable debug logging"
+    },
+    "publish_projected_lane": {
+      "type": "boolean",
+      "default": true,
+      "description": "publish projected lane or not"
+    },
+    "publish_projected_road": {
+      "type": "boolean",
+      "default": true,
+      "description": "publish projected road or not"
+    },
+    "collision_detection": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable/Disable collision detection. Requires the following collision detection parameter"
+        },
+        "distance": {
+          "type": "number",
+          "default": 5.0,
+          "description": "Collision detection distance in meter"
+        },
+        "cyclone_dist": {
+          "type": "number",
+          "default": 10.0,
+          "description": "Considering the Planning cycli (ie. prediction horizon) into account for collision check"
+        }
+      }
+    }
+  }
+}
+```
+

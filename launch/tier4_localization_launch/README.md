@@ -4,17 +4,18 @@
 
 ![tier4_localization_launch](./localization_launch.drawio.svg)
 
-## パッケージ依存関係
+## パッケージの依存関係
 
 `package.xml`の`<exec_depend>`を参照してください。
 
-## 使用方法
+## 使用
 
-`localization.launch.xml`を他の`launch`ファイルに次のように含めます。
+他のlaunchファイルに`localization.launch.xml`を以下のようにインクルードします。
 
-`pose_source`と`twist_source`を指定して、位置推定または速度推定のロカライゼーション方式を選択できます。
+`pose_estimator`または`twist_estimator`として起動するローカライゼーション内のどのメソッドを選択するかを`pose_source`と`twist_source`を指定して選択できます。
 
-さらに、`PACKAGE_param_path`としてパラメータのパスを提供する必要があります。提供する必要のあるパラメータパスのリストは、`localization.launch.xml`の先頭に記載されています。
+さらに、パラメーターパスを`PACKAGE_param_path`として指定する必要があります。指定する必要のあるパラメーターパスのリストは`localization.launch.xml`の先頭部分に記載されています。
+
 
 ```xml
   <include file="$(find-pkg-share tier4_localization_launch)/launch/localization.launch.xml">
@@ -28,3 +29,4 @@
     ...
   </include>
 ```
+

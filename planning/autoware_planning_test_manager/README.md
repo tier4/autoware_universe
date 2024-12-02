@@ -1,26 +1,27 @@
-# Autoware Planningテストマネージャ
+# Autoware Planning Test Manager
 
 ## 背景
 
-異常な経路や大幅に乖離した自車位置などの例外的な入力がPlanningモジュール内の各ノードに与えられると、ノードはそのような入力を処理できない場合があり、クラッシュすることがあります。その結果、ノードのクラッシュをデバッグするには、時間がかかる場合があります。例えば、空の軌道が入力として与えられ、実装時に予想されていなかった場合、変更の統合時、シナリオテスト時、またはシステムが実際の車両で動作している間に、ノードは対処されていない例外的な入力によってクラッシュする可能性があります。
+プランニングモジュールの各ノードでは、異常な経路や自車位置が大きく逸脱するなど、想定外の入力が与えられると、ノードはそのような入力に対応できずにクラッシュする可能性があります。その結果、ノードクラッシュのデバッグには時間がかかる場合があります。たとえば、空の軌跡が入力として与えられ、実装時にそれが予想されていなかった場合、PRマージ時、シナリオテスト時、またはシステムが実際の車両で実行中に、処理されない例外入力によりノードがクラッシュする可能性があります。
 
 ## 目的
 
-例外的な入力を受信したときにノードが正しく動作することを保証するためのテストを実装するためのユーティリティを提供することが目的です。このユーティリティを利用して例外的な入力のテストを実装することにより、PRをマージする前に例外的な入力の対策を要求することで、システムを実際に実行したときにのみ発見されるバグを減らすことが目的です。
+例外的な入力が受信されたときにノードが正しく動作することを保証するテストを実装するためのユーティリティを提供することです。このユーティリティを利用して例外的な入力のテストを実装することで、PRマージ前に例外的な入力に対する対策を要求することで、システムを実際に実行するときにのみ発見されるバグを削減することを目的としています。
 
 ## 機能
 
 ### 通常動作の確認
 
-テスト対象ノードについて、ノードが正しく動作し、後続のノードに必要なメッセージをパブリッシュすることを確認します。これを行うには、test_nodeに必要なメッセージをパブリッシュし、ノードの出力が出力されていることを確認します。
+テスト対象ノードに対して、ノードが正しく動作し、後続のノードに必要なメッセージを公開していることを確認します。これを行うには、test_node が必要なメッセージを公開し、ノードの出力が公開されていることを確認します。
 
-### 特殊な入力のロバスト性確認
+### 特殊入力に対する堅牢性の確認
 
-通常動作を確認した後、例外的な入力が与えられたときにテスト対象ノードがクラッシュしないことを確認します。これを行うには、test_nodeから例外的な入力を提供し、ノードがクラッシュしないことを確認します。
+正常動作を確認した後、テスト対象ノードが例外的な入力を与えられてもクラッシュしないことを確認します。これを行うには、test_node から例外的な入力を提供し、ノードがクラッシュしないことを確認します。
 
-（WIP）
+（未完了）
 
 ## 使用方法
+
 
 ```cpp
 
@@ -68,25 +69,26 @@ TEST(PlanningModuleInterfaceTest, NodeTestWithExceptionTrajectory)
 }
 ```
 
-## 実装されたテスト
+## 実施中のテスト
 
-| ノード                      | テスト名                                                                                  | 例外的入力        | 出力           | 例外的な入力パターン                                                          |
-| --------------------------- | ----------------------------------------------------------------------------------------- | ----------------- | -------------- | ----------------------------------------------------------------------------- |
-| autoware_planning_validator | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
-| velocity_smoother           | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
-| obstacle_cruise_planner     | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
-| obstacle_stop_planner       | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
-| obstacle_velocity_limiter   | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
-| path_optimizer              | NodeTestWithExceptionTrajectory                                                           | trajectory        | trajectory     | 空、単一ポイント、重複ポイントを含むパス                                      |
-| scenario_selector           | NodeTestWithExceptionTrajectoryLaneDrivingMode NodeTestWithExceptionTrajectoryParkingMode | trajectory        | scenario       | LANEDRIVING および PARKING シナリオの空、単一ポイント、重複ポイントを含むパス |
-| freespace_planner           | NodeTestWithExceptionRoute                                                                | route             | trajectory     | 空のルート                                                                    |
-| behavior_path_planner       | NodeTestWithExceptionRoute NodeTestWithOffTrackEgoPose                                    | route             | route odometry | 空のルート オフレーン自己位置                                                 |
-| behavior_velocity_planner   | NodeTestWithExceptionPathWithLaneID                                                       | path_with_lane_id | path           | 空のパス                                                                      |
+| ノード                        | テスト名                                                                                | 特殊入力 | 出力         | 特殊入力パターン                                                             |
+| --------------------------- | ----------------------------------------------------------------------------------------- | --------- | ------------ | ------------------------------------------------------------------------------------- |
+| autoware_planning_validator | NodeTestWithExceptionTrajectory                                                           | trajectory | trajectory     | 空、単一ポイント、重複ポイントを持つパス                                       |
+| velocity_smoother           | NodeTestWithExceptionTrajectory                                                           | trajectory | trajectory     | 空、単一ポイント、重複ポイントを持つパス                                       |
+| obstacle_cruise_planner     | NodeTestWithExceptionTrajectory                                                           | trajectory | trajectory     | 空、単一ポイント、重複ポイントを持つパス                                       |
+| obstacle_stop_planner       | NodeTestWithExceptionTrajectory                                                           | trajectory | trajectory     | 空、単一ポイント、重複ポイントを持つパス                                       |
+| obstacle_velocity_limiter   | NodeTestWithExceptionTrajectory                                                           | trajectory | trajectory     | 空、単一ポイント、重複ポイントを持つパス                                       |
+| path_optimizer              | NodeTestWithExceptionTrajectory                                                           | trajectory | trajectory     | 空、単一ポイント、重複ポイントを持つパス                                       |
+| scenario_selector           | NodeTestWithExceptionTrajectoryLaneDrivingMode NodeTestWithExceptionTrajectoryParkingMode | trajectory | scenario       | 空、単一ポイント、重複ポイントを持つパス（シナリオ:LANEDRIVINGとPARKING） |
+| freespace_planner           | NodeTestWithExceptionRoute                                                                | route       | trajectory     | 空のルート                                                                            |
+| behavior_path_planner       | NodeTestWithExceptionRoute NodeTestWithOffTrackEgoPose                                    | route       | route odometry | 空のルート、オフレーン自車位置                                                   |
+| behavior_velocity_planner   | NodeTestWithExceptionPathWithLaneID                                                       | path_with_l | path           | 空のパス                                                                            |
 
-## 重要な注意事項
+## 重要な注意点
 
-テストの実行中、ノードを起動すると、パラメータはパッケージ内のパラメータファイルからロードされます。そのため、パラメータを追加する場合は、ノード起動時にパラメータファイルからパラメータを取得する場合にパラメータが不足してノードが起動できなくなるのを防ぐため、対象のノードパッケージ内のパラメータファイルに必要なパラメータを追加する必要があります。
+テストの実行中にノードを起動すると、パラメーターは各パッケージ内のパラメーターファイルから読み込まれます。そのため、パラメーターを追加する場合、ノード起動時にパラメーターファイルからパラメーターを取得できない場合にノードが起動できなくなることを防ぐため、対象のノードパッケージ内のパラメーターファイルに必要なパラメーターを追加する必要があります。
 
 ## 今後の拡張 / 未実装部分
 
-(WIP)
+（未定）
+

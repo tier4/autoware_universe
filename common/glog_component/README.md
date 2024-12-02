@@ -1,12 +1,13 @@
 # glog_component
 
-このパッケージは、glog（Google ロギングライブラリ）機能を ros2 コンポーネントライブラリとして提供します。これを使用して、コンテナで glog 機能を動的に読み込みます。
+本パッケージは、ros2コンポーネントライブラリとしてglog（googleロギングライブラリ）の機能を提供します。これを使用してコンテナでglog機能を動的ロードします。
 
-詳細な機能については [glog github](https://github.com/google/glog) を参照してください。
+機能の詳細については、[glog github](https://github.com/google/glog)を参照してください。
 
-## 例
+## 使用例
 
-コンテナで `glog_component` を読み込む場合、起動ファイルは以下のようになります。
+コンテナで`glog_component`をロードする場合、以下のようにlaunchファイルを設定できます。
+
 
 ```py
 glog_component = ComposableNode(
@@ -27,3 +28,4 @@ container = ComposableNodeContainer(
     ],
 )
 ```
+

@@ -1,30 +1,31 @@
 # 学習済みモデル
 
-これは、`simple_planning_simulator`パッケージで使用される、Python学習済みモデルの設計ドキュメントです。
+これは `simple_planning_simulator` パッケージで使用される Python 学習済みモデルの設計ドキュメントです。
 
-## 目的/ユースケース
+## 目的/ ユースケース
 
-<!-- 必須 -->
-<!-- 考慮事項:
-    - この機能を実装した理由は? -->
+<!-- Required -->
+<!-- Things to consider:
+    - Why did we implement this feature? -->
 
-このライブラリは、PythonのモデルとPSIM（C++）のインタフェースを作成します。複雑なC++の実装をせずにPython学習済みモデルをPSIMに迅速に展開するために使用されます。
+このライブラリは Python のモデルと PSIM (C++) のインターフェイスを作成します。複雑な C++ 実装を必要とせずに、学習した Python モデルを PSIM に素早くデプロイするために使用されます。
 
 ## 設計
 
-<!-- 必須 -->
-<!-- 考慮事項:
-    - どのように機能するのか -->
+<!-- Required -->
+<!-- Things to consider:
+    - How does it work? -->
 
-このパッケージのアイデアは、シミュレーションに使用したいモデルが複数のサブモデル（例：ステアリングモデル、駆動モデル、車両運動学など）で構成されていることです。これらのサブモデルはPythonで実装されており、トレーニング可能です。各サブモデルには、すべての入出力用文字列名が用意されており、それらを使用してモデルを自動的に接続します（下の画像を参照）。これにより、サブモデルを簡単に切り替えて、シミュレータをよりカスタマイズできます。
+このパッケージの背後にある考え方は、シミュレーションに使用したいモデルが、複数のサブモデル (例: ステアリングモデル、ドライブモデル、車両運動学など) で構成されていることです。これらのサブモデルは Python で実装されており、トレーニング可能です。各サブモデルは、すべての入力/出力の文字列名を持ち、それを使用してモデルの相互接続を自動的に作成します (下の画像を参照)。これにより、サブモデルを簡単に切り替えてシミュレーターをより詳細にカスタマイズできます。
 
-![py_model_interface](./image/python_model_interface.png "PyModelインタフェース")
+![py_model_interface](./image/python_model_interface.png "PyModel インターフェイス")
 
-## 仮定/既知の制限
+## 想定事項 / 制約事項
 
-<!-- 必須 -->
+<!-- Required -->
 
-このパッケージを使用するには、`python3`と`pybind11`をインストールする必要があります。Pythonサブモデルの唯一の仮定は、それらのインタフェースです。
+このパッケージを使用するには `python3` と `pybind11` をインストールする必要があります。Python サブモデルの唯一の想定事項は、それらのインターフェイスです。
+
 
 ```python
 class PythonSubmodelInterface:
@@ -74,15 +75,15 @@ class PythonSubmodelInterface:
 
 <!-- Required -->
 <!-- Things to consider:
-    - パッケージ / API の使用方法 -->
+    - How do you use the package / API? -->
 
-車両モデルを正常に作成するには、`InterconnectedModel` クラスを適切に設定する必要があります。
+車載モデルを正しく作成するには、InterconnectedModel クラスを正しくセットアップする必要があります。
 
-### `InterconnectedModel` クラス
+### InterconnectedModel クラス
 
 #### `コンストラクタ`
 
-コンストラクタは引数を受け取りません。
+コンストラクタは引数を取りません。
 
 #### `void addSubmodel(std::tuple<std::string, std::string, std::string> model_descriptor)`
 
@@ -90,9 +91,9 @@ class PythonSubmodelInterface:
 
 入力:
 
-- `model_descriptor`: 使用するモデルを示します。モデル記述子は 3 つの文字列を含みます。
+- model_descriptor: 使用するモデルを記述します。モデル記述子には 3 つの文字列が含まれます。
   - 最初の文字列は、モデルが実装されている Python モジュールのパスです。
-  - 2 番目の文字列は、モデルのパラメータが格納されているファイルのパスです。
+  - 2 番目の文字列は、モデルパラメータが格納されているファイルへのパスです。
   - 3 番目の文字列は、モデルを実装するクラスの名前です。
 
 出力:
@@ -101,12 +102,12 @@ class PythonSubmodelInterface:
 
 #### `void generateConnections(std::vector<char *> in_names, std::vector<char*> out_names)`
 
-サブモデルとモデルの入力/出力の接続を生成します。
+サブモデルとモデルの入力/出力との間の接続を生成します。
 
 入力:
 
-- `in_names`: モデルのすべての入力の文字列名（順序あり）。
-- `out_names`: モデルのすべての出力の文字列名（順序あり）。
+- in_names: すべてのモデル入力の文字列名（順番）。
+- out_names: すべてのモデル出力の文字列名（順番）。
 
 出力:
 
@@ -118,7 +119,7 @@ class PythonSubmodelInterface:
 
 入力:
 
-- `new_state`: モデルの新しい状態。
+- new_state: モデルの新しい状態。
 
 出力:
 
@@ -126,7 +127,7 @@ class PythonSubmodelInterface:
 
 #### `std::vector<double> updatePyModel(std::vector<double> psim_input)`
 
-すべてのサブモデルの次状態を計算して、モデルの次状態を計算します。
+すべてのサブモデルの次の状態を計算して、モデルの次の状態を計算します。
 
 - psim_input: モデルへの入力。
 
@@ -136,19 +137,20 @@ class PythonSubmodelInterface:
 
 #### `dtSet(double dt)`
 
-モデルの時間ステップを設定します。
+モデルのタイムステップを設定します。
 
 入力:
 
-- dt: 時間ステップ
+- dt: タイムステップ
 
 出力:
 
 - なし
 
-### 例
+### 使用例
 
-最初にモデルを設定する必要があります。
+まず、モデルを設定する必要があります。
+
 
 ```C++
 InterconnectedModel vehicle;
@@ -181,7 +183,8 @@ vehicle.generateConnections(input_names, state_names);
 vehicle.dtSet(dt);
 ```
 
-モデルが正しく設定された後、以下のように使用できます。
+モデルの正しい設定が済んだら、以下のようにして使用できます。
+
 
 ```C++
 // Example of an model input
@@ -197,10 +200,11 @@ vehicle.initState(current_state);
 std::vector<double> next_state = vehicle.updatePyModel(vehicle_input);
 ```
 
-## 参考文献 / 外部リンク
+## 参照 / 外部リンク
 
-<!-- オプション -->
+<!-- Optional -->
 
-## 関連する問題
+## 関連課題
 
-<!-- 必須 -->
+<!-- Required -->
+

@@ -1,18 +1,18 @@
 ## 車線逸脱チェッカー
 
-**車線逸脱チェッカー**は、車両が軌跡に従っているかどうかを確認します。軌跡に従っていない場合、`diagnostic_updater`を介してステータスを報告します。
+**車線逸脱チェッカー** は、車両が経路に従っているかどうかを確認します。経路に従っていない場合は、`diagnostic_updater` でステータスを報告します。
 
-## 機能
+## 特徴
 
-このパッケージには、次の機能が含まれています。
+このパッケージには、以下の機能が含まれます。
 
-- **車線逸脱**: 制御モジュールからの出力（予測軌跡）に基づいて、自車位置が車線境界から逸脱するかどうかを確認します。
-- **軌跡逸脱**: 自車位置が軌跡から逸脱していないかどうかを確認します。横方向、縦方向、偏揺角方向の逸脱を確認します。
-- **路肩逸脱**: 制御の出力から生成された自車のフットプリントが路肩を越えて伸びているかどうかを確認します。
+- **車線逸脱:** 制御モジュールからの出力（予測経路）に基づいて、自車位置が車線境界から逸脱する可能性があるかどうかを確認します。
+- **経路逸脱:** 自車位置が経路から逸脱していないかどうかを確認します。横方向、縦方向、ヨー方向の逸脱を確認します。
+- **路側逸脱:** 制御の出力から生成された自車の足跡が、路側境界を超えるかどうかを確認します。
 
-## 内部機能 / アルゴリズム
+## 内部動作 / アルゴリズム
 
-### 共分散によってフットプリントを拡張する方法
+### 共分散による足跡の拡張方法
 
 1. 車両座標系における誤差楕円（共分散）の標準偏差を計算します。
 
@@ -40,9 +40,9 @@
    \end{align}
    $$
 
-   2. `post resampling`に展開する縦方向の長さは、$Cov_{vehicle}(0,0)$における$x_{vehicle}$の周辺分布に対応します。同様に、横方向の長さは$Cov_{vehicle}(1,1)$における$x_{vehicle}$の周辺分布に対応します。Wikipediaの参照 [こちら](https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Marginal_distributions)。
+   2. 拡張する縦方向の長さは、`Cov_{vehicle}(0,0)` で表される $x_{vehicle}$ の周辺分布に対応します。同様に、横方向の長さは `Cov_{vehicle}(1,1)` で表されます。Wikipedia の参考 [こちら](https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Marginal_distributions)。
 
-2. `footprint_margin_scale`を乗じた標準偏差に基づいてフットプリントを拡張します。
+2. 標準偏差に `footprint_margin_scale` を乗算した値に基づいて足跡を拡張します。
 
 ## インターフェイス
 
@@ -56,7 +56,7 @@
 
 ### 出力
 
-- [`diagnostic_updater`] lane_departure : 自車位置が車線から逸脱した場合に診断レベルを更新します。
+- [`diagnostic_updater`] lane_departure : 自車位置が車線から逸脱したときに診断レベルを更新します。
 
 ## パラメータ
 
@@ -64,55 +64,181 @@
 
 #### 一般パラメータ
 
-| 名称                       | 型     | 説明                                                                                                     | デフォルト値 |
-| :------------------------- | :----- | :------------------------------------------------------------------------------------------------------- | :----------- |
-| will_out_of_lane_checker   | bool   | 自車フットプリントが車線から逸脱するかどうかのチェッカーを有効にする                                     | True         |
-| out_of_lane_checker        | bool   | 自車フットプリントが車線外にあるかどうかをチェッカーを有効にする                                         | True         |
-| boundary_departure_checker | bool   | 自車フットプリントがboundary_types_to_detectで指定された境界から逸脱するかどうかのチェッカーを有効にする | False        |
-| update_rate                | double | パブリッシュする頻度 [Hz]                                                                                | 10.0         |
-| visualize_lanelet          | bool   | レーンレットを視覚化するフラグ                                                                           | False        |
+| 名前                        | タイプ | 説明                                                                                                | デフォルト値 |
+| :-------------------------- | :----- | :---------------------------------------------------------------------------------------------------- | :------------ |
+| will_out_of_lane_checker   | ブール | 自車フットプリントがレーンから逸脱するかどうかを確認するチェッカーを有効化                           | True          |
+| out_of_lane_checker        | ブール | 自車フットプリントがレーンから逸脱しているかどうかを確認するチェッカーを有効化                     | True          |
+| boundary_departure_checker | ブール | boundary_types_to_detectで指定された境界から自車フットプリントが逸脱するかどうかを確認するチェッカーを有効化 | False         |
+| update_rate                | double | 公開する周波数 [Hz]                                                                                   | 10.0          |
+| visualize_lanelet          | ブール | レーンレットを視覚化するためのフラグ                                                                    | False         |
 
-#### 車線逸脱のためのパラメータ
+#### 車線逸脱の各種パラメータ
 
-| 名前                        | タイプ | 説明                                       | デフォルト値 |
-| --------------------------- | ------ | ------------------------------------------ | ------------ |
-| `include_right_lanes`       | ブール | 境界に右のレーンレットを含めるかどうか     | `False`      |
-| `include_left_lanes`        | ブール | 境界に左のレーンレットを含めるかどうか     | `False`      |
-| `include_opposite_lanes`    | ブール | 境界に対向のレーンレットを含めるかどうか   | `False`      |
-| `include_conflicting_lanes` | ブール | 境界に交差するレーンレットを含めるかどうか | `False`      |
+#### Lane Departure Adaptive Integral Controller 
 
-#### 路側逸脱 パラメータ
+このパラメータは、車線逸脱整合積分コントローラのゲインと積分時間定数を指定します。
 
-- `# (m)`: 路側逸脱開始のしきい値 `'post resampling'` 距離（メートル）
-- `# (rad)`: 路側逸脱開始のしきい値 `'post resampling'` 曲率（ラジアン）
-- `# (m)`: `'post resampling'` 路側逸脱中の vehicle `'post resampling'` の速度（メートル）
-- `# (s)`: `'post resampling'` 路側逸脱中の vehicle `'post resampling'` の経過時間（秒）
-- `#`: `'post resampling'` 路側逸脱開始時の自車位置における heading 偏差（ラジアン）
-- `# (m)`: `'post resampling'` 路側逸脱開始時の自車位置における lateral offset（メートル）
-- `#`: `'post resampling'` 路側逸脱開始時の vehicle `'post resampling'` の速度（メートル/秒）
-- `# (m^2/s)`: `'post resampling'` 路側逸脱中の vehicle `'post resampling'` の acceleration 逸脱量（平方メートル/秒）
-- `# (m^2/s)`: `'post resampling'` 路側逸脱中の vehicle `'post resampling'` の velocity 逸脱量（平方メートル/秒）
-- `# (m^2/s)`: 路側逸脱中の vehicle `'post resampling'` の heading 逸脱量（平方メートル/秒）
-- `# (m)`: `'post resampling'` 路側逸脱終了時の vehicle `'post resampling'` の速度（メートル/秒）
-- `#`: `'post resampling'` 路側逸脱終了時の自車位置における heading 偏差
-- `# (s)`: `'post resampling'` 路側逸脱終了時の vehicle `'post resampling'` の経過時間
-- `# (cm)`: 静止時の vehicle `'post resampling'` の steering wheel angle（センチメートル）
-- `# (m)`: 静止時の vehicle `'post resampling'` の lateral offset（メートル）
-- `#`: 静止時の vehicle `'post resampling'` の速度（メートル/秒）
+```markdown
+lbc_steer_ki: 0.02
+lbc_steer_kp: 0.02
+lbc_steer_tau: 0.2
+```
 
-| 名称                     | タイプ                     | 説明                                                  | デフォルト値  |
-| :----------------------- | :------------------------- | :---------------------------------------------------- | :------------ |
-| boundary_types_to_detect | std::vector\<std::string\> | boundary_departure_checkerで検出するline_stringタイプ | [road_border] |
+#### Planning
 
-### 主要パラメータ
+これらのパラメータは、レーンキープアシストのPlanning(Plan View)モジュールにおける車線逸脱検出とアシストに関連します。
 
-| 名称                       | 種類 | 説明                                                                   | デフォルト値 |
-| :------------------------- | :--- | :--------------------------------------------------------------------- | :----------- |
-| footprint_margin_scale     | 数値 | footprintマージンを拡張する係数。標準偏差に1を乗算                     | 1.0          |
-| footprint_extra_margin     | 数値 | footprintマージンを拡張する係数。 レーン逸脱のチェック時               | 0.0          |
-| resample_interval          | 数値 | trajectoryを再サンプリングする際のポイント間の最小ユークリッド距離 (m) | 0.3          |
-| max_deceleration           | 数値 | 制動距離を計算する際の最大減速度                                       | 2.8          |
-| delay_time                 | 数値 | 制動距離を計算する際のブレーキ作動までの遅延時間 (秒)                  | 1.3          |
-| max_lateral_deviation      | 数値 | 車両座標系における最大横方向逸脱距離 (m)                               | 2.0          |
-| max_longitudinal_deviation | 数値 | 車両座標系における最大縦方向逸脱距離 (m)                               | 2.0          |
-| max_yaw_deviation_deg      | 数値 | trajectoryからの自己車両の最大ヨー逸脱角度 (度)                        | 60.0         |
+```markdown
+lka_look_ahead_distance: 20.0
+lka_safety_distance: 3.0
+lka_deviation_distance_thres: 1.0
+```
+
+#### LIDAR
+
+これらのパラメータは、LIDARセンサーからのデータ処理に関するものです。
+
+```markdown
+max_lidar_collisions_per_point: 10
+max_lidar_collisions_per_cluster: 20
+max_lidar_collisions_dist: 0.5
+```
+
+#### Cone Detection
+
+これらのパラメータは、コーン検出の精度と速度に関連します。
+
+```markdown
+cone_height_threshold: 0.1
+cone_radius_threshold: 0.3
+cone_angle_tolerance: 10.0
+cone_detection_range: 30
+cone_detect_point_num_threshold: 10
+cone_detect_point_rate_threshold: 0.5
+```
+
+#### Lane Detection
+
+これらのパラメータは、レーザーセンサーからのデータに基づいてレーンの検出と追跡の精度と速度に関連します。
+
+```markdown
+num_lane_candidate_lines: 10
+num_lane_candidates_for_lane_detection: 8
+max_num_detected_lane_lines: 3
+lane_candidate_min_detection_dist: 3.0
+lane_candidate_max_detection_angle: 2.0
+lane_detect_range: 20.0
+lane_length_threshold: 3.0
+lane_mark_length_threshold_internal: 0.8
+lane_mark_length_threshold_external: 2.0
+lane_mark_length_threshold_external_wide: 3.0
+lateral_offset_thres_internal: 0.2
+```
+
+| 名称                      | 型 | 説明                                       | デフォルト値 |
+| :------------------------ | :--- | :------------------------------------------------ | :------------ |
+| include_right_lanes       | bool | 境界に右側のレーンレットを含めるフラグ       | False         |
+| include_left_lanes        | bool | 境界に左側のレーンレットを含めるフラグ        | False         |
+| include_opposite_lanes    | bool | 境界に反対側のレーンレットを含めるフラグ    | False         |
+| include_conflicting_lanes | bool | 境界に競合するレーンレットを含めるフラグ | False         |
+
+#### 車線逸脱防止の設定
+
+## Road Obstacle Filter
+
+### `threshold_obstacle_corner_distance`
+
+障害物と車両のコーナーの間隔の閾値。
+この値を超えると、障害物として認識されます。
+
+### `threshold_obstacle_corner_angle`
+
+障害物と車両のコーナーの角度の閾値。
+この値を超えると、障害物が車両の前方にあります。
+
+### `threshold_obstacle_length`
+
+障害物の長さの閾値。
+この値を超えると、障害物が長い障害物と認識されます。
+
+## Prediction Module
+
+### `max_prediction_distance`
+
+予測距離の最大値。
+
+### `duration_to_predict`
+
+予測する持続時間。
+
+## Planning Component
+
+### `min_radius`
+
+最小曲率半径。
+
+### `max_acceleration`
+
+加速度の最大値。
+
+### `max_deceleration`
+
+減速度の最大値。
+
+### `max_lateral_jerk`
+
+横加速度の最大値。
+
+## Optional Filters
+
+### `speed_inv_time`
+
+速度に反比例する時間。
+
+### `speed_time`
+
+速度に比例する時間。
+
+### `enable_post_resampling`
+
+再サンプリング後の有効化。
+
+### `enable_resample`
+
+再サンプリングの有効化。
+
+### `smoothing_gain`
+
+平滑化のゲイン。
+
+### `gradient_filter_length`
+
+勾配フィルタの長さ。
+
+## Autoware Specific Parameters
+
+### `enable_yaw_rate_constraint`
+
+ヨーレート制約の有効化。
+
+### `max_yaw_rate`
+
+最大ヨーレート。
+
+| 名前                     | タイプ                       | 説明                                                 | デフォルト値 |
+| :----------------------- | :------------------------- | :---------------------------------------------------------- | :------------ |
+| boundary_types_to_detect | std::vector\<std::string\> |boundary_departure_checker で検出する line_string タイプ | [road_border] |
+
+### コアパラメータ
+
+| 名前                       | タイプ   | 説明                                                                                                | デフォルト値 |
+| :------------------------- | :----- | :---------------------------------------------------------------------------------------------------- | :------------ |
+| footprint_margin_scale     | double | フットプリントの余白を拡張する係数。標準偏差に 1 を乗算。                                                  | 1.0           |
+| footprint_extra_margin     | double | 車線逸脱をチェックするときのフットプリントの余白を拡張する係数。                                       | 0.0           |
+| resample_interval          | double | 軌跡をリサンプルするときの点間の最小ユークリッド距離 [m]。                                         | 0.3           |
+| max_deceleration           | double | ブレーキ距離を計算するときの最大減速度。                                                            | 2.8           |
+| delay_time                 | double | ブレーキを動作させるのにかかる遅延時間 [秒]。                                                           | 1.3           |
+| max_lateral_deviation      | double | 車両座標系の最大横偏差 [m]。                                                                      | 2.0           |
+| max_longitudinal_deviation | double | 車両座標系の最大縦偏差 [m]。                                                                      | 2.0           |
+| max_yaw_deviation_deg      | double | 軌跡からの自身のヨー偏差の最大値 [度]。                                                            | 60.0          |
+

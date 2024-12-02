@@ -1,92 +1,85 @@
-## 自動運転ソフトウェアドキュメント
-
 # vehicle_velocity_converter
 
 ## 目的
 
-このパッケージは、autoware_vehicle_msgs::msg::VehicleReportメッセージを、ジャイロオドメーターノード用にgeometry_msgs::msg::TwistWithCovarianceStampedに変換します。
+このパッケージは、autoware_vehicle_msgs::msg::VehicleReportメッセージをgyro odometerノードのgeometry_msgs::msg::TwistWithCovarianceStampedに変換します。
 
 ## 入出力
 
 ### 入力
 
-| 名称              | タイプ                                      | 説明     |
-| ----------------- | ------------------------------------------- | -------- |
-| `velocity_status` | `autoware_vehicle_msgs::msg::VehicleReport` | 車両速度 |
+| 名称              | 種類                                        | 説明      |
+| ----------------- | ------------------------------------------- | ---------------- |
+| velocity_status | `autoware_vehicle_msgs::msg::VehicleReport` | 車両速度 |
 
 ### 出力
 
 **自動運転ソフトウェア**
 
-**概要**
+**目的**
 
-このドキュメントでは、自動運転ソフトウェアのアーキテクチャとモジュールについて説明します。
-
-**アーキテクチャ**
-
-ソフトウェアは以下で構成されています。
-
-- **Perception:** センサーからのデータを処理し、周囲環境に関する情報を抽出します。
-- **Planning:** 車両の経路を計画し、障害物回避を行います。
-- **Control:** Planningモジュールからの入力を基に車両を制御します。
-- **Localization:** 自車位置を推定します。
+このドキュメントでは、自動運転ソフトウェアアーキテクチャの全体的な概要を示します。
 
 **モジュール**
 
-**Perceptionモジュール**
+**Perception**
 
-- **カメラモジュール:** カメラからの画像を処理し、物体検出、セマンティックセグメンテーション、奥行き推定を行います。
-- **Lidarモジュール:** Lidarからの点群を処理し、物体検出、地形マッピング、3次元再構築を行います。
-- **レーダーモジュール:** レーダーからの反射を処理し、物体検出、速度推定、追跡を行います。
+* センサーデータの取得と解析
+* 周囲環境の地図作成
+* 物体検出と追跡
 
-**Planningモジュール**
+**Planning**
 
-- **Motion Planning:** 障害物回避、経路最適化、軌跡生成を行います。
-- **Behavior Planning:** 車両の速度、加速度、旋回角を決定します。
+* **Planning Optimizer**
+    * 安全かつ効率的な経路計画
+* **Path Planner**
+    * 自車および周囲の車両の挙動予測に基づく経路生成
+* **Collision Checker**
+    * 障害物との衝突の可能性検出
 
-**Controlモジュール**
+**Control**
 
-- **横方向制御:** ステアリングシステムを制御し、指定された軌跡に従います。
-- **縦方向制御:** 加減速システムを制御し、指定された速度と加速度に従います。
+* **Lateral Controller**
+    * ステアリング制御
+* **Longitudinal Controller**
+    * 加減速制御
+* **Vehicle Interface**
+    * 車両への指令送信
 
-**Localizationモジュール**
+**Localization**
 
-- **GPSとIMUモジュール:** GPSとIMUからのデータを融合して、自車位置を推定します。
-- **Lidarと地図モジュール:** Lidar点群と地図データをマッチングさせて、自車位置を推定します。
+* 自車位置と姿勢の推定
+* 慣性センサー、GPS、ビジョンデータの統合
 
-**処理フロー**
+**Mapping**
 
-1. Perceptionモジュールは、周囲環境の情報を生成します。
-2. Planningモジュールは、Perceptionモジュールの情報に基づいて車両の経路を計画します。
-3. Controlモジュールは、Planningモジュールの情報に基づいて車両を制御します。
-4. Localizationモジュールは、自車位置を継続的に推定します。
+* 環境地図の構築と更新
+* 高精度な位置決めとナビゲーション
 
-**パフォーマンス測定**
+**Post Resampling**
 
-ソフトウェアのパフォーマンスは以下のメトリクスで測定されます。
+* センサーデータのダウンサンプル後の再サンプル処理
+* リアルタイムパフォーマンスの向上
 
-- **経路逸脱量:** Planningモジュールの計画経路と実際の車両経路の差異。
-- **速度逸脱量:** Controlモジュールの制御速度と目標速度の差異。
-- **加速度逸脱量:** Controlモジュールの制御加速度と目標加速度の差異。
-- **自車位置推定誤差:** Localizationモジュールの推定自車位置と実際の自車位置の差異。
+**通信**
 
-**Autowareとの統合**
+* 他車両やインフラストラクチャとの情報共有
+* V2XおよびITSのサポート
 
-このソフトウェアは、Autowareオープンソース自動運転プラットフォームと統合できます。
+**Autoware Stack**
 
-**追加情報**
+このソフトウェアアーキテクチャは、Autoware Foundationによって開発されたAutoware Stackに基づいています。Autoware Stackは、自動運転ソフトウェアのオープンソースプラットフォームです。
 
-詳細については、GitHubリポジトリを参照してください。
-
-| 名称                    | 型                                               | 説明                                          |
-| ----------------------- | ------------------------------------------------ | --------------------------------------------- |
-| `twist_with_covariance` | `geometry_msgs::msg::TwistWithCovarianceStamped` | `VehicleReport`から変換した共分散付きツイスト |
+| 名称                    | タイプ                                             | 説明                                             |
+| ----------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| `twist_with_covariance` | `geometry_msgs::msg::TwistWithCovarianceStamped` | VehicleReportから変換された共分散付きtwist |
 
 ## パラメータ
 
-| 名前                         | タイプ | 説明                            |
-| ---------------------------- | ------ | ------------------------------- |
-| `speed_scale_factor`         | double | 速度スケール係数（理想値: 1.0） |
-| `frame_id`                   | string | 出力メッセージのフレーム ID     |
-| `velocity_stddev_xx`         | double | vx の標準偏差                   |
-| `angular_velocity_stddev_zz` | double | ヨーレートの標準偏差            |
+| 名称                         | タイプ   | 説明                                          |
+| ---------------------------- | ------ | ---------------------------------------------- |
+| `speed_scale_factor`         | double | 速度スケールファクター（推奨値は1.0）       |
+| `frame_id`                   | string | 出力メッセージのフレームID                      |
+| `velocity_stddev_xx`         | double | vxの標準偏差                                  |
+| `angular_velocity_stddev_zz` | double | ヨーレートの標準偏差                           |
+

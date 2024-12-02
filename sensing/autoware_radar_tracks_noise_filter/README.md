@@ -1,81 +1,91 @@
-## autoware_radar_tracks_noise_filter
+# autoware_radar_tracks_noise_filter
 
-このパッケージには、`radar_msgs/msg/RadarTrack`用のレーダーオブジェクトフィルタモジュールが含まれています。
-このパッケージは、レーダートラック内のノイズオブジェクトを除去することができます。
+このパッケージには、`radar_msgs/msg/RadarTrack`用レーダーオブジェクトフィルタモジュールが含まれています。
+このパッケージは、RadarTracks内のノイズオブジェクトをフィルタリングできます。
 
 ## アルゴリズム
 
-このパッケージのコアアルゴリズムは、`RadarTrackCrossingNoiseFilterNode::isNoise()` 関数です。
-詳細は、関数とそのパラメータを参照してください。
+このパッケージのコアアルゴリズムは`RadarTrackCrossingNoiseFilterNode::isNoise()`関数です。
+詳細は関数とそのパラメータを参照してください。
 
-- Y軸しきい値
+- Y軸のしきい値
 
-レーダーはx軸速度をドップラー速度として検出できますが、y軸速度は検出できません。
-一部のレーダーはデバイス内部でy軸速度を推定できますが、精度が低い場合があります。
-y軸しきい値フィルタでは、レーダートラックのy軸速度が`velocity_y_threshold`より大きい場合、ノイズオブジェクトとして処理されます。
+レーダーはドップラー速度としてx軸速度を検出できますが、y軸速度を検出することはできません。
+一部のレーダーはデバイス内にy軸速度を推定できますが、精度が劣る場合があります。
+y軸しきい値フィルタでは、RadarTrackのy軸速度が`velocity_y_threshold`を超える場合、ノイズオブジェクトとして扱います。
 
 ## 入力
 
-| Name             | Type                             | Description                             |
-| ---------------- | -------------------------------- | --------------------------------------- |
-| `~/input/tracks` | `radar_msgs/msg/RadarTracks.msg` | 3D 検出されたトラック(レーダートラック) |
+| 名前            | タイプ                           | 説明                  |
+| ---------------- | ------------------------------- | --------------------- |
+| `~/input/tracks` | radar_msgs/msg/RadarTracks.msg   | 3D検出された軌跡       |
 
-## 出力
+## アウトプット
 
-このドキュメントは、AutowareオペレーティングシステムのPlanningコンポーネントの設計について記載しています。
+このモジュールは、自動運転システム向けのPlanningコンポーネントを提供します。Planningモジュールは、一次元経路生成（``1D Path Generation``）、二次元経路生成（``2D Path Generation``）、経路追従（``Path Following``）などの機能を提供します。
 
-### Planningの概要
+### Planningモジュールの機能
 
-Planningコンポーネントは、自車位置に基づいて、目的地までの安全な経路を生成します。この経路は、速度、加速度、およびステアリング角の制限に従って生成されます。
+* 安全性の高い一次元経路の生成
+* 交通状況や交通規制を考慮した二次元経路の生成
+* 車両の自車位置をリアルタイムで考慮した経路の追従
+* 経路追従中の障害物検知と回避
+* 制御コマンドの出力
 
-### 機能
+### Planningモジュールのインターフェース
 
-Planningコンポーネントには、以下のような機能があります。
+Planningモジュールは、次のインターフェースを介して他のAutowareコンポーネントと通信します。
 
-- 目的地までの経路を生成する。
-- velocity逸脱量、acceleration逸脱量、ステアリング角逸脱量を考慮した安全な経路を生成する。
-- `post resampling`を実行して、経路上の潜在的な障害物を避ける。
-- 経路をNavigationコンポーネントに提供する。
+* `Input:`
+    * センサーデータ
+    * 自車位置
+    * 交通状況
+* `Output:`
+    * 制御コマンド
+    * 経路情報
 
-### アーキテクチャ
+### Planningモジュールの構成
 
-Planningコンポーネントは、次のモジュールで構成されています。
+Planningモジュールは、次のサブモジュールで構成されています。
 
-- **Path Planner:** 自車位置に基づいて安全な経路を生成する。
-- **Trajectory Planner:** velocity逸脱量、acceleration逸脱量、ステアリング角逸脱量を考慮した安全な経路を生成する。
-- **Obstacle Avoidance:** `post resampling`を実行して、経路上の潜在的な障害物を避ける。
-- **Route Planner:** Navigationコンポーネントに経路を提供する。
+* `1D Path Generation:` 一次元経路生成モジュール
+* `2D Path Generation:` 二次元経路生成モジュール
+* `Path Following:` 経路追従モジュール
+* `Obstacle Detection and Avoidance:` 障害物検知と回避モジュール
 
-### 使用方法
+### Planningモジュールの使用方法
 
-Planningコンポーネントを使用するには、次の手順に従ってください。
+Planningモジュールを使用するには、次の手順に従います。
 
-1. 目的地を指定します。
-2. Planningコンポーネントを起動します。
-3. Planningコンポーネントが経路を生成するのを待ちます。
-4. 経路が生成されたら、Navigationコンポーネントに渡します。
+1. PlanningモジュールをAutowareシステムに統合します。
+2. Planningモジュールに必要な設定を行います。
+3. Planningモジュールを実行します。
 
-### 制限事項
+### Planningモジュールの設定
 
-Planningコンポーネントには、以下のような制限があります。
+Planningモジュールの設定は、`config.yaml`ファイルで行います。設定ファイルには、次のパラメータが含まれます。
 
-- 障害物を検出できません。
-- 動的な障害物に対応できません。
-- 高速道路での運転に対応していません。
+* `1D Path Generation:` 一次元経路生成モジュールのパラメータ
+* `2D Path Generation:` 二次元経路生成モジュールのパラメータ
+* `Path Following:` 経路追従モジュールの設定
+* `Obstacle Detection and Avoidance:` 障害物検知と回避モジュールの設定
 
-### 貢献
+### Planningモジュールの実行
 
-Autoware Planningコンポーネントに貢献するには、以下のリポジトリを参照してください。
+Planningモジュールを実行するには、次のコマンドを使用します。
 
-[https://github.com/AutowareFoundation/autoware/tree/master/ros/planning](https://github.com/AutowareFoundation/autoware/tree/master/ros/planning)
+```
+$ roslaunch autoware_planning planning.launch
+```
 
-| 名称                       | 種類                           | 説明                           |
-| -------------------------- | ------------------------------ | ------------------------------ |
-| `~/output/noise_tracks`    | radar_msgs/msg/RadarTracks.msg | ノイズオブジェクト             |
-| `~/output/filtered_tracks` | radar_msgs/msg/RadarTracks.msg | フィルタ処理されたオブジェクト |
+| 名称                       | 種類                           | 説明      |
+| -------------------------- | ------------------------------ | --------- |
+| `~/output/noise_tracks`    | radar_msgs/msg/RadarTracks.msg | ノイズオブジェクト    |
+| `~/output/filtered_tracks` | radar_msgs/msg/RadarTracks.msg | フィルタリングされたオブジェクト |
 
 ## パラメータ
 
-| 名前                   | タイプ | 説明                                                                                                                       | デフォルト値 |
-| :--------------------- | :----- | :------------------------------------------------------------------------------------------------------------------------- | :----------- |
-| `velocity_y_threshold` | double | Y軸速度の閾値 [m/s]。レーダーのトラックのY軸速度が`velocity_y_threshold`を超える場合、ノイズオブジェクトとして扱われます。 | 7.0          |
+| 名前                   | 型   | 説明                                                                                                                              | デフォルト値 |
+| :--------------------- | :----- | :------------------------------------------------------------------------------------------------------------------------------------ | :------------ |
+| `velocity_y_threshold` | double | Y軸速度しきい値 [m/s]。RadarTrack の Y 軸速度が `velocity_y_threshold` を超える場合、ノイズオブジェクトとして処理されます。 | 7.0           |
+

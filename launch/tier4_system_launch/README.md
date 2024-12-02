@@ -4,13 +4,14 @@
 
 ![tier4_system_launch](./system_launch.drawio.svg)
 
-## パッケージ依存
+## パッケージの依存関係
 
-`package.xml` に含まれる `<exec_depend>` を参照してください。
+`package.xml` の `<exec_depend>` を参照してください。
 
-## 使い方
+## 使用方法
 
-パラメータパスを `PACKAGE_param_path` として指定する必要があります。必要となるパラメータパスのリストは `system.launch.xml` の先頭に記述されています。
+パラメーターパスを `PACKAGE_param_path` として提供する必要があることに注意してください。提供する必要があるパラメーターパスのリストは `system.launch.xml` の先頭部に記載されています。
+
 
 ```xml
   <include file="$(find-pkg-share tier4_system_launch)/launch/system.launch.xml">
@@ -23,3 +24,4 @@
     ...
   </include>
 ```
+

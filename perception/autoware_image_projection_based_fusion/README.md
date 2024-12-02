@@ -2,116 +2,62 @@
 
 ## 目的
 
-`autoware_image_projection_based_fusion`は、イメージと3Dポイントクラウドまたは障害物（バウンディングボックス、クラスタ、またはセグメンテーション）から検出された障害物（バウンディングボックスまたはセグメンテーション）をフュージョンするためのパッケージです。
+`autoware_image_projection_based_fusion` は、画像と 3D 点群から検出された障害物（バウンディングボックスまたはセグメンテーション）をフュージョンするパッケージです。
 
-## 処理内容 / アルゴリズム
+## 内部動作 / アルゴリズム
 
 ### 同期アルゴリズム
 
 #### マッチング
 
-各カメラとLiDARのオフセットはそのシャッタータイミングによって設定されています。
-タイムスタンプにオフセットを適用した後、ポイントクラウドトピックのタイムスタンプとROIメッセージ間のインターバルがマッチングの閾値よりも小さい場合、2つのメッセージはマッチングされます。
+各カメラとライダー間のオフセットは、シャッタータイミングに基づいて設定されます。
+タイムスタンプにオフセットを適用した後、点群トピックのタイムスタンプと ROI メッセージ間のインターバルが一致しきい値未満の場合、2 つのメッセージは一致します。
 
 ![roi_sync_image1](./docs/images/roi_sync_1.png)
 
-Autoware.universeのTIER IV Robotaxiでの現在のデフォルト値は次のとおりです。
-
-- input_offset_ms: [61.67、111.67、45.0、28.33、78.33、95.0]
+TIER IV Robotaxi の autoware.universe の現在のデフォルト値は次のとおりです。
+- input_offset_ms: [61.67, 111.67, 45.0, 28.33, 78.33, 95.0]
 - match_threshold_ms: 30.0
 
 #### フュージョンとタイマー
 
 ![roi_sync_image2](./docs/images/roi_sync_2.png)
 
-メッセージのサブスクリプションステータスは「O」で示されます。
+メッセージのサブスクリプションステータスには「O」が付けられます。
 
-1. あるポイントクラウドメッセージが以下の条件を満たしてサブスクライブされる場合、
+1. 次の条件下で点群メッセージがサブスクライブされた場合:
 
-(a). a camera image is matched
-(b). a timer starts counting to the pre-configured timeout value.
+|                     | pointcloud | roi msg 1 | roi msg 2 | roi msg 3 |
+| :-----------------: | :--------: | :-------: | :-------: | :-------: |
+| サブスクリプションステータス |            |     O     |     O     |     O     |
 
-2. if a camera image is matched, the timer resets.
+roi メッセージが一致する場合、それらを結合し、ポイントクラウド メッセージのポストプロセスを行います。一致しない場合、一致した roi メッセージを結合してポイントクラウドをキャッシュします。
 
-3. if the timer expires, the sign is reset to 'X' and the subscription will be terminated.
+2.以下条件下でポイントクラウド メッセージをサブスクライブする場合:
 
-### Communication
+|                       | 点群 | roiメッセージ1 | roiメッセージ2 | roiメッセージ3 |
+| :--------------------: | :---------: | :-------------: | :-------------: | :-------------: |
+| サブスクリプショステータス |                |          O       |          O       |                |
 
-#### Sensor independence
+roi msg とマッチングできる場合は、それらを融合して点群をキャッシュします。
 
-The fusion module can works only with pointcloud data if image data is not available, or only with image data if pointcloud data is not available.
+3.以下の条件下で点群メッセージがサブスクライブされた場合:
 
-#### No need to share coordinate frame
+|                     | pointcloud | roi msg 1 | roi msg 2 | roi msg 3 |
+| :--------------: | :--------: | :-------: | :-------: | :-------: |
+| 登録ステータス |     参     |     参    |     参    |          |
 
-The fusion module works on `post resampling` pointcloud and Bird's-eye-view (BEV) camera image.
-The fusion module does not have to share the coordinate frame with the sensors, because each sensor has its own T(leader -> subject) transform.
+roi msg 3 が次の pointcloud メッセージの到着、またはタイムアウトが発生する前にサブスク ライブされた場合、一致したら融合を行い、一致しなかった場合は次の roi msg 3 を待ちます。
+roi msg 3 が次の pointcloud メッセージの到着、またはタイムアウトが発生する前にサブスク ライブされない場合、pointcloud メッセージをそのまま後処理します。
 
-#### Sensor timing management
-
-Sensor timing is managed by the ROI sync module.
-It is required for each Planning sensor to have its own topics for ROI and data.
-
-### Integration with Planning
-
-The fusion module has no strong dependency on the Planning module.
-The Planning module can get all the necessary information from the fused messages.
-
-## Installation
-
-source code directory: `autoware/autoware/core/autoware_image_projection_based_fusion`
-
-## Usage
-
-### Required stack
-
-- ROS
-- autoware_can_msgs
-- autoware_perception_msgs
-- autoware_planning_msgs
-- cv_bridge
-- octomap_ros
-
-### Example
-
-tum_slayer_1/base_linkへ変換されたcamera1のCameraInfoと、fusion_imageのサブスクライバを起動します。
-
-```bash
-roslaunch autoware_image_projection_based_fusion fusion.launch image_topic:=/camera1/front_left/compressed image_info_frame_id:=/base_link output_topic:=/fusion_image fusion_node_name:=fused_image
-```
-
-|                              | pointcloud | roi msg 1 | roi msg 2 | roi msg 3 |
-| :--------------------------: | :--------: | :-------: | :-------: | :-------: |
-| サブスクリプションステータス |            |    有     |    有     |    有     |
-
-roi msgsにマッチング可能な場合はそれらを融合してポイントクラウドメッセージを処理します。
-それ以外の場合はマッチングしたroi msgsを融合してポイントクラウドをキャッシュします。
-
-2.次の条件下でポイントクラウドメッセージにサブスクライブした場合：
-
-|          | pointcloud | roi msg 1 | roi msg 2 | roi msg 3 |
-| :------: | :--------: | :-------: | :-------: | :-------: |
-| 受信状態 |            |     O     |     O     |           |
-
-1. ROI メッセージが照合できる場合、それらを融合し、点群をキャッシュします。
-
-2. 以下条件下で点群メッセージが購読された場合:
-
-|                        | pointcloud | roi msg 1 | roi msg 2 | roi msg 3 |
-| :--------------------: | :--------: | :-------: | :-------: | :-------: |
-| サブスクリプション状態 |     ○      |     ○     |     ○     |
-
-roi msg 3 が次のポイントクラウドメッセージの受信またはタイムアウト前にサブスクライブされている場合は、一致した場合に融合し、そうでなければ次の roi msg 3 を待ちます。
-
-roi msg 3 が次のポイントクラウドメッセージの受信またはタイムアウト前にサブスクライブされていない場合は、そのままポイントクラウドメッセージを事後処理します。
-
-タイムアウトのしきい値は、事後処理時間に応じて設定する必要があります。
-たとえば、事後処理時間が約50ミリ秒の場合、タイムアウトのしきい値は50ミリ秒未満に設定する必要があり、全体の処理時間が100ミリ秒未満になるようにする必要があります。
-Autoware.universe での現在のデフォルト値：XX1: - timeout_ms: 50.0
+タイムアウトのしきい値は後処理時間に応じて設定する必要があります。
+たとえば、後処理時間が約 50 ミリ秒の場合は、タイムアウトのしきい値を 50 ミリ秒未満に設定して、全体の処理時間を 100 ミリ秒未満にする必要があります。
+autoware.universe での現在の XX1 のデフォルト値: - timeout_ms: 50.0
 
 #### `build_only` オプション
 
-`pointpainting_fusion` ノードには、ONNX ファイルから TensorRT エンジンファイルを構築するための `build_only` オプションがあります。
-Autoware Universe の `.param.yaml` ファイルのすべての ROS パラメータを移動させることが好まれますが、`build_only` オプションはプレタスクとしてビルドを実行するためのフラグとして使用される可能性があるため、今のところ `.param.yaml` ファイルには移動されていません。次のコマンドで実行できます。
+`pointpainting_fusion` ノードには、ONNX ファイルから TensorRT エンジン ファイルを構築する `build only` オプションがあります。Autoware Universe の `.param.yaml` ファイル内のすべての ROS パラメータを移動するのが望ましいですが、`build_only` オプションは現時点では `.param.yaml` ファイルには移動されていません。これは、タスクの前の段階としてビルドを実行するためのフラグとして使用される可能性があるためです。以下のコマンドで実行できます。
+
 
 ```bash
 ros2 launch autoware_image_projection_based_fusion pointpainting_fusion.launch.xml model_name:=pointpainting model_path:=/home/autoware/autoware_data/image_projection_based_fusion model_param_path:=$(ros2 pkg prefix autoware_image_projection_based_fusion --share)/config/pointpainting.param.yaml build_only:=true
@@ -119,13 +65,14 @@ ros2 launch autoware_image_projection_based_fusion pointpainting_fusion.launch.x
 
 #### 制限事項
 
-rclcpp::TimerBase таймерは for ループを break できないため、roi メッセージを中間に融合するときに時間が切れた場合でも、すべてのメッセージが融合されるまでプログラムは実行されます。
+rclcpp::TimerBase タイマーは for ループを中断できません。そのため、真ん中で roi メッセージを融合するときに時間が切れても、すべてのメッセージが融合されるまでプログラムは実行されます。
 
-### 各融合アルゴリズムの詳細な説明は次のリンクにあります
+### 各融合アルゴリズムの詳細については、次のリンクを参照してください
 
-| フュージョン名               | 説明                                                                        | 詳細                                           |
-| ---------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------- |
-| `roi_cluster_fusion`         | 2Dオブジェクト検出器のROIから、クラスタの分類ラベルを上書き                 | [リンク](./docs/roi-cluster-fusion.md)         |
-| `roi_detected_object_fusion` | 2Dオブジェクト検出器のROIから、検出オブジェクトの分類ラベルを上書き         | [リンク](./docs/roi-detected-object-fusion.md) |
-| `pointpainting_fusion`       | 2Dオブジェクト検出器のROIで点群にペイントし、3Dオブジェクト検出器にフィード | [リンク](./docs/pointpainting-fusion.md)       |
-| `roi_pointcloud_fusion`      | 2Dオブジェクト検出器のROIと点群を照合し、ラベル不明のオブジェクトを検出     | [リンク](./docs/roi-pointcloud-fusion.md)      |
+| フュージョン名            | 説明                                                                                      | 詳細                                       |
+| ------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| roi_cluster_fusion         | 2Dオブジェクト検出器のROIによってクラスタの分類ラベルを上書きします。         | [link](./docs/roi-cluster-fusion.md)         |
+| roi_detected_object_fusion | 2Dオブジェクト検出器のROIによって検出されたオブジェクトの分類ラベルを上書きします。 | [link](./docs/roi-detected-object-fusion.md) |
+| pointpainting_fusion       | 2Dオブジェクト検出器のROIで点群にペイントし、3Dオブジェクト検出器に入力します。 | [link](./docs/pointpainting-fusion.md)       |
+| roi_pointcloud_fusion      | 2Dオブジェクト検出器のROIと点群をマッチングして、未知のラベルのオブジェクトを検出します | [link](./docs/roi-pointcloud-fusion.md)      |
+

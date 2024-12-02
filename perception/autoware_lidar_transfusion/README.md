@@ -1,12 +1,14 @@
-# autoware_lidar_transfusion
+## 自動運転ソフトウェアに関するドキュメント
+
+## autoware_lidar_transfusion
 
 ## 目的
 
-`autoware_lidar_transfusion`パッケージは、LiDARデータ(x, y, z、強度)に基づく3Dオブジェクト検出に使用されます。
+`autoware_lidar_transfusion`パッケージは、LiDARデータ（x、y、z、強度）に基づく3D物体検出に使用されます。
 
-## 内部動作/アルゴリズム
+## 内部の仕組み/アルゴリズム
 
-実装は[1]のTransFusionの作業に基づいています。データ処理とネットワーク推論にはTensorRTライブラリを使用しています。
+実装はTransFusion [1]の取り組みに基づいています。TensorRTライブラリを使用してデータ処理とネットワーク推論を実行します。
 
 モデルは<https://github.com/open-mmlab/mmdetection3d>を使用してトレーニングしました。
 
@@ -14,122 +16,60 @@
 
 ### 入力
 
-| 名称                 | タイプ                          | 説明       |
-| -------------------- | ------------------------------- | ---------- |
-| `~/input/pointcloud` | `sensor_msgs::msg::PointCloud2` | 入力点群。 |
+| 名前                 | タイプ                            | 説明       |
+| -------------------- | ------------------------------- | ----------------- |
+| `~/input/pointcloud` | `sensor_msgs::msg::PointCloud2` | 入力された点群. |
 
 ### 出力
 
-**自己位置推定モジュール**
+**自動運転ソフトウェア向けのAutoware**
 
-**目的:**
+**はじめに**
 
-- センサーからのセンサデータから自己位置を推定する。
-- Planningモジュールに自己位置を提供する。
+Autowareは、オープンソースの自動運転ソフトウェアプラットフォームです。センシング、Planning、制御機能を含む、自動運転に必要なコンポーネントを提供します。
 
-**入力:**
+**Planningコンポーネント**
 
-- IMUデータ
-- GNSSデータ
-- オドメトリデータ
-- カメラ画像（オプション）
+* **経路計画**：目的地までの経路を生成します。
+* **動作計画**：経路上の障害物や他の交通参加者を回避する動作を生成します。
+* **'Post Resampling'**：Planning結果をセンサーデータの更新に合わせて適応します。
 
-**出力:**
+**Perceptionコンポーネント**
 
-- 自車位置
-- 自己位置の不確かさ
+* **レーダー**：車両や歩行者の検出に使用されます。
+* **ライダー**：車両や障害物の3D形状を検出します。
+* **カメラ**：交通標識や車線マーキングの認識に使用されます。
 
-**アルゴリズム:**
+**制御コンポーネント**
 
-自己位置推定モジュールは、次のステップで動作します。
+* **運転制御**：車両の加速、制動、ステアリングを制御します。
+* **車両安定制御**：車両の安定性を維持します。
 
-1. IMU、GNSS、オドメトリデータの統合。
-2. カメラ画像（使用可能な場合）を使用した自己位置の強化。
-3. エKFまたはPFを使用して自己位置と不確かさを推定する。
+**ナビゲーションコンポーネント**
 
-**障害検出モジュール**
+* **自車位置推定**：車両の現在位置と姿勢を推定します。
+* **地図**：周囲環境の正確な表現を提供します。
 
-**目的:**
+**ツール**
 
-- センサーからのデータを処理し、エゴカーの周囲の障害物を検出する。
-- Planningモジュールに障害物の情報を提供する。
+* **開発シミュレータ**：自動運転システムのテストと開発に使用されます。
+* **デバッグインターフェース**：システムの動作を監視し、デバッグに使用されます。
 
-**入力:**
+**ライセンス**
 
-- レーダーデータ
-- カメラ画像
-- LIDARデータ
+AutowareはApacheライセンスバージョン2.0でライセンスされています。
 
-**出力:**
-
-- 障害物の位置と形状
-- 障害物の速度と加速度
-
-**アルゴリズム:**
-
-障害検出モジュールは、次のアルゴリズムを使用して障害物を検出します。
-
-- **点群処理:** LIDARデータを使用して点群を作成します。
-- **クラスタリング:** 点群をクラスタ（障害物）にグループ化します。
-- **分類:** カメラ画像とレーダーデータを使用して、クラスタを障害物として分類します。
-
-**Planningモジュール**
-
-**目的:**
-
-- 自車位置と障害物の情報に基づき、経路を計画し、次のような制御コマンドを生成する。
-- ステアリング角
-- アクセル/ブレーキコマンド
-
-**入力:**
-
-- 自車位置
-- 障害物の情報
-- 地図データ
-
-**出力:**
-
-- 制御コマンド
-
-**アルゴリズム:**
-
-Planningモジュールは、次のアルゴリズムを使用して経路を計画し、制御コマンドを生成します。
-
-- **空間探索法:** 次の目的地までの可能な経路を探索します。
-- **コスト関数:** 各経路のコストを計算し、障害物逸脱量、速度逸脱量、加速度逸脱量を考慮します。
-- **最適化アルゴリズム:** コストが最小となる経路を選択します。
-- \*\*'post resampling'` による経路の平滑化。
-
-**制御モジュール**
-
-**目的:**
-
-- Planningモジュールから生成された制御コマンドを実行する。
-- ステアリングシステムと動力伝達システムを制御する。
-
-**入力:**
-
-- 制御コマンド
-
-**出力:**
-
-- 車両の運動（ステアリング角、速度、加速度）
-
-**アルゴリズム:**
-
-制御モジュールは、PID制御器または状態フィードバックコントローラを使用して制御コマンドを実行します。
-
-| 名称                                   | タイプ                                           | 説明                      |
-| -------------------------------------- | ------------------------------------------------ | ------------------------- |
-| `/output/objects`                      | `autoware_perception_msgs::msg::DetectedObjects` | 検出されたオブジェクト    |
-| `debug/cyclic_time_ms`                 | `tier4_debug_msgs::msg::Float64Stamped`          | サイクル時間 (ms)         |
+| 名                                   | 型                                             | 説明                 |
+| -------------------------------------- | ------------------------------------------------ | --------------------------- |
+| `~/output/objects`                     | `autoware_perception_msgs::msg::DetectedObjects` | 検出されたオブジェクト |
+| `debug/cyclic_time_ms`                 | `tier4_debug_msgs::msg::Float64Stamped`          | サイクル時間 (ms)           |
 | `debug/pipeline_latency_ms`            | `tier4_debug_msgs::msg::Float64Stamped`          | パイプライン遅延時間 (ms) |
-| `debug/processing_time/preprocess_ms`  | `tier4_debug_msgs::msg::Float64Stamped`          | 前処理時間 (ms)           |
-| `debug/processing_time/inference_ms`   | `tier4_debug_msgs::msg::Float64Stamped`          | 推論時間 (ms)             |
-| `debug/processing_time/postprocess_ms` | `tier4_debug_msgs::msg::Float64Stamped`          | 後処理時間 (ms)           |
-| `debug/processing_time/total_ms`       | `tier4_debug_msgs::msg::Float64Stamped`          | 総処理時間 (ms)           |
+| `debug/processing_time/preprocess_ms`  | `tier4_debug_msgs::msg::Float64Stamped`          | 前処理 (ms)            |
+| `debug/processing_time/inference_ms`   | `tier4_debug_msgs::msg::Float64Stamped`          | 推論時間 (ms)        |
+| `debug/processing_time/postprocess_ms` | `tier4_debug_msgs::msg::Float64Stamped`          | post resampling処理時間 (ms) |
+| `debug/processing_time/total_ms`       | `tier4_debug_msgs::msg::Float64Stamped`          | 処理時間合計 (ms) |
 
-## パラメーター
+## パラメータ
 
 ### TransFusionノード
 
@@ -145,8 +85,9 @@ Planningモジュールは、次のアルゴリズムを使用して経路を計
 
 ### `build_only`オプション
 
-`autoware_lidar_transfusion`ノードには、ONNXファイルからTensorRTエンジンファイルを構築するための`build_only`オプションがあります。
-Autoware Universeの`.param.yaml`ファイルにすべてのROSパラメータを移動することが望ましいですが、`build_only`オプションは現在`.param.yaml`ファイルに移動されていません。これは、ビルドを事前タスクとして実行するためのフラグとして使用される可能性があるためです。次のコマンドで実行できます。
+`autoware_lidar_transfusion`ノードには、ONNXファイルからTensorRTエンジンファイルを作成するための`build_only`オプションがあります。
+Autoware Universeの`.param.yaml`ファイル内のROSパラメータをすべて移動することが望ましいものの、`build_only`オプションは、ビルドを事前タスクとして実行するためのフラグとして使用できる可能性があるため、現時点では`.param.yaml`ファイルには移動されていません。次のコマンドで実行できます。
+
 
 ```bash
 ros2 launch autoware_lidar_transfusion lidar_transfusion.launch.xml build_only:=true
@@ -154,15 +95,17 @@ ros2 launch autoware_lidar_transfusion lidar_transfusion.launch.xml build_only:=
 
 ### `log_level` オプション
 
-`autoware_lidar_transfusion` のデフォルトのログ重要度レベルは `info` です。デバッグの目的では、開発者は `log_level` パラメータを使用して重要度のレベルを下げることができます:
+`autoware_lidar_transfusion` のデフォルトのログ出力重大度は `info` です。デバッグの目的で、開発者は `log_level` パラメータを使用して重大度を下げることができます。
+
 
 ```bash
 ros2 launch autoware_lidar_transfusion lidar_transfusion.launch.xml log_level:=debug
 ```
 
-## 仮定 / 公知の制限
+## 仮定 / 制限事項
 
-このライブラリは、生のクラウドデータ (バイト) で動作します。入力ポイントクラウドメッセージのフォーマットは次のとおりであると想定されます。
+このライブラリは、生クラウドデータ（バイト）で動作します。入力点群メッセージには次の形式があることが想定されています:
+
 
 ```python
 [
@@ -173,46 +116,47 @@ ros2 launch autoware_lidar_transfusion lidar_transfusion.launch.xml log_level:=d
 ]
 ```
 
-この入力には、他のフィールドが含まれる場合もあります。表示されている形式は必要な最小限です。
-デバッグの目的で、次のシンプルなコマンドを使用してポイントクラウド・トピックを検証することができます。
+この入力に別のフィールドが含まれる場合があります。表示される形式が最低限必要です。
+デバッグの目的のために、シンプルなコマンドを使用してポイントクラウドのトピックを検証できます。
+
 
 ```bash
 ros2 topic echo <input_topic> --field fields
 ```
 
-## 学習済みモデル
+## トレーニングされたモデル
 
-以下のリンクをクリックすると、学習済みモデルのonnx形式をダウンロードできます。
+下のリンクをクリックして、トレーニングされたモデルのonnx形式をダウンロードできます。
 
 - TransFusion: [transfusion.onnx](https://awf.ml.dev.web.auto/perception/models/transfusion/t4xx1_90m/v2/transfusion.onnx)
 
-このモデルは、TIER IV社内データベース（約 11,000 個のLiDARフレーム）で 50 エポックの学習を行いました。
+このモデルは50エポックにわたってTIER IVの社内データベース（約11k個のLiDARフレーム）でトレーニングされました。
 
-### 更新履歴
+### Changelog
 
-## (任意) エラー検出と処理
+## （オプション）エラーの検出と処理
 
-<!-- エラーを検出し、回復する方法を記載します。
+<!-- エラーの検出方法とその回復方法をご記入ください。
 
 例:
-  このパッケージは最大 20 個の障害物に対応できます。障害物が多い場合、このノードは機能を放棄し、診断エラーを発生させます。
+  このパッケージでは最大で20個の障害物を処理できます。障害物がそれ以上検出された場合、このノードは処理を放棄し、診断エラーを発生させます。
 -->
 
-## (任意) パフォーマンス特性評価
+## （オプション）性能特性
 
-<!-- 複雑度などパフォーマンス情報を記載します。ボトルネックとならない場合は、不要です。
+<!-- 複雑さなどの性能情報を記述します。ボトルネックにならない場合は不要です。
 
 例:
-  ### 複雑度
+  ### 複雑さ
 
-  このアルゴリズムは O(N) です。
+  このアルゴリズムの複雑さはO(N)です。
 
   ### 処理時間
 
   ...
 -->
 
-## 参考文献/外部リンク
+## 参考資料/外部リンク
 
 [1] Xuyang Bai, Zeyu Hu, Xinge Zhu, Qingqiu Huang, Yilun Chen, Hongbo Fu and Chiew-Lan Tai. "TransFusion: Robust LiDAR-Camera Fusion for 3D Object Detection with Transformers." arXiv preprint arXiv:2203.11496 (2022). <!-- cspell:disable-line -->
 
@@ -224,11 +168,12 @@ ros2 topic echo <input_topic> --field fields
 
 [5] <https://www.nuscenes.org/nuscenes>
 
-## (任意) 将来の拡張機能/未実装部分
+## （オプション）今後の拡張 / 未実装の部分
 
-<!-- このパッケージの将来の拡張機能を記載します。
+<!-- このパッケージの今後の拡張をご記入ください。
 
 例:
-  現在、このパッケージは揺れる障害物を適切に処理できません。この問題を改善するために、知覚レイヤーに確率フィルターを追加する予定です。
-  また、グローバル化する必要があるパラメータがいくつかあります（例: 車両サイズ、最大ステアリングなど）。これらはリファクタリングされてグローバルパラメータとして定義されるため、異なるノード間で同じパラメータを共有できます。
+  現在、このパッケージではチャタリング障害物を適切に処理できません。パーセプションレイヤーに確率的フィルターを追加して改善する予定です。
+  また、グローバルにするべきパラメータがいくつかあります（例: 車両サイズ、最大操舵角度など）。これらはリファクタリングされてグローバルパラメータとして定義されるため、異なるノード間で同じパラメータを共有できます。
 -->
+

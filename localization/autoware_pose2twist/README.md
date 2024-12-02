@@ -2,138 +2,75 @@
 
 ## 目的
 
-この `autoware_pose2twist` は入力された履歴ポーズから速度を計算します。このノードは計算されたツイストに加えて、デバッグを簡素化するために浮動小数点メッセージとして直線 x 成分と角度 z 成分を出力します。
+この`autoware_pose2twist`は、入力された姿勢の履歴から速度を計算します。計算されたツイストに加え、このノードは、デバッグを簡素化するために、線形x成分と角加速度z成分をfloatメッセージとして出力します。
 
-`twist.linear.x` は `sqrt(dx * dx + dy * dy + dz * dz) / dt` で計算され、`y` フィールドと `z` フィールドの値は 0 になります。
-`twist.angular` は各フィールドについて `relative_rotation_vector / dt` で計算されます。
+`twist.linear.x`は、`sqrt(dx * dx + dy * dy + dz * dz) / dt`として計算され、`y`と`z`フィールドの値は0です。
+`twist.angular`は、各フィールドに対して`relative_rotation_vector / dt`として計算されます。
 
 ## 入出力
 
 ### 入力
 
-- `/diff_poses`: 車両の過去の `post resampling` ポーズ順序（ジオリファレンス済み）
-- `/current_pose`: 車両の自車位置と姿勢（ジオリファレンス済み）
+| 名 | 型 | 説明 |
+| -- | -- | -- |
+| pose | geometry_msgs::msg::PoseStamped | 速度の計算に使用されるポーズのソース |
 
-### 出力
+## 自動運転ソフトウェアのアーキテクチャ
 
-- `/twist`: 速度
-- `/linear_x`: `twist.linear.x` の値
-- `/linear_y`: `twist.linear.y` の値
-- `/linear_z`: `twist.linear.z` の値
-- `/angular_x`: `twist.angular.x` の値
-- `/angular_y`: `twist.angular.y` の値
-- `/angular_z`: `twist.angular.z` の値
-- `/velocity_error`: 速度エラー
-- `/velocity_error_tran`: 平行移動速度逸脱量
-- `/velocity_error_rot`: 回転速度逸脱量
-- `/acceleration_error`: 加速度エラー
-- `/acceleration_error_tran`: 平行移動加速度逸脱量
-- `/acceleration_error_rot`: 回転加速度逸脱量
-- `/filtered_velocity`: フィルタリングされた速度
+### 概要
 
-| 名称 | 種別                            | 説明                           |
-| ---- | ------------------------------- | ------------------------------ |
-| pose | geometry_msgs::msg::PoseStamped | 速度計算に使用する姿勢のソース |
+このドキュメントでは、Autoware's自動運転ソフトウェアのアーキテクチャについて説明します。このソフトウェアは、Perception（認識）、Planning（計画）、Control（制御）の3つの主要コンポーネントで構成されています。
 
-## 自動運転ソフトウェアドキュメント
+### Perceptionコンポーネント
 
-### Planningモジュール
+Perceptionコンポーネントは、センサデータから周囲環境を認識します。次のタスクを行います。
 
-#### VehicleBehaviorPrediction（車両挙動予測）
+- オブジェクト検出
+- 車線検出
+- 交通標識検出
 
-VehicleBehaviorPredictionコンポーネントは、他の車両の挙動を予測します。この情報は、Planningコンポーネントによって、自車位置の決定と回避経路の生成に使用されます。
+### Planningコンポーネント
 
-VehicleBehaviorPredictionコンポーネントは、入力として、以下のデータを使用します。
+Planningコンポーネントは、Perceptionモジュールから提供された情報に基づいて、車両の経路と速度を計画します。次のタスクを行います。
 
-- LiDARとレーダーからの検出結果
-- センサーの不確実性
-- 道路ネットワーク情報
+- パス計画
+- 速度計画
 
-VehicleBehaviorPredictionコンポーネントは、以下のアルゴリズムを使用して、他の車両の挙動を予測します。
+### Controlコンポーネント
 
-- Kalmanフィルター
-- 粒子フィルター
-- 深層学習
+Controlコンポーネントは、Planningモジュールから提供された計画に基づいて、車両のステアリング、加速、ブレーキを制御します。次のタスクを行います。
 
-#### Planning（経路計画）
+- ステアリング制御
+- 加速制御
+- ブレーキ制御
 
-Planningコンポーネントは、自車位置を決定し、回避経路を生成します。この情報は、Controlコンポーネントによって、車両の制御に使用されます。
+### データフロー
 
-Planningコンポーネントは、入力として、以下のデータを使用します。
+Perception、Planning、Controlコンポーネント間のデータフローを以下に示します。
 
-- VehicleBehaviorPredictionコンポーネントからの予測車両挙動
-- 自車位置
-- 道路ネットワーク情報
+1. Perceptionコンポーネントは、周囲環境の認識結果をPlanningコンポーネントに送信します。
+2. Planningコンポーネントは、Perceptionコンポーネントのデータに基づいて計画を作成し、Controlコンポーネントに送信します。
+3. Controlコンポーネントは、Planningコンポーネントの計画に基づいて車両を制御します。
 
-Planningコンポーネントは、以下のアルゴリズムを使用して、自車位置を決定し、回避経路を生成します。
+### その他のコンポーネント
 
-- 動的計画法
-- グラフ探索
-- 最適化
+自動運転ソフトウェアには、上記3つの主要コンポーネントに加えて、以下のコンポーネントも含まれます。
 
-### Controlモジュール
+- **Map Managementコンポーネント:** HDマップを管理します。
+- **Localizationコンポーネント:** 自車位置を推定します。
+- **Vehicle Interfaceコンポーネント:** 車載コンピュータと車両の通信を処理します。
 
-#### LongitudinalControl（縦方向制御）
-
-LongitudinalControlコンポーネントは、車両の縦方向の動き（速度と加速度）を制御します。この情報は、ブレーキ、アクセル、ギアの制御に使用されます。
-
-LongitudinalControlコンポーネントは、入力として、以下のデータを使用します。
-
-- Planningコンポーネントからの自車位置
-- 車両の速度と加速度
-- 障害物検出結果
-
-LongitudinalControlコンポーネントは、以下のアルゴリズムを使用して、車両の縦方向の動きを制御します。
-
-- PID制御
-- モデル予測制御
-
-#### LateralControl（横方向制御）
-
-LateralControlコンポーネントは、車両の横方向の動き（操舵角）を制御します。この情報は、ステアリングシステムの制御に使用されます。
-
-LateralControlコンポーネントは、入力として、以下のデータを使用します。
-
-- Planningコンポーネントからの自車位置
-- 車両の速度と加速度
-- 障害物検出結果
-
-LateralControlコンポーネントは、以下のアルゴリズムを使用して、車両の横方向の動きを制御します。
-
-- PID制御
-- モデル予測制御
-
-### システムインテグレーション
-
-Autowareシステムは、以下のコンポーネントで構成されています。
-
-- Planningモジュール
-- Controlモジュール
-- センサーインターフェース
-- システムモニター
-
-これらのコンポーネントは、CANバスを介して相互に通信します。
-
-### 評価
-
-Autowareシステムは、以下の指標を使用して評価されます。
-
-- 到達率
-- 衝突回数
-- `post resampling`経路逸脱量
-- 加速度逸脱量
-- 速度逸脱量
-
-| 名前      | 種類                                  | 説明                                   |
-| --------- | ------------------------------------- | -------------------------------------- |
-| twist     | geometry_msgs::msg::TwistStamped      | 入力された姿勢履歴から計算した捻り率。 |
-| linear_x  | tier4_debug_msgs::msg::Float32Stamped | 出力捻り率の線形 x フィールド。        |
-| angular_z | tier4_debug_msgs::msg::Float32Stamped | 出力捻り率の角速度 z フィールド。      |
+| 名前 | タイプ | 説明 |
+|---|---|---|
+| twist | geometry_msgs::msg::TwistStamped | 入力ポーズ履歴から計算されたツイスト |
+| linear_x | tier4_debug_msgs::msg::Float32Stamped | 出力ツイストの linear-x フィールド |
+| angular_z | tier4_debug_msgs::msg::Float32Stamped | 出力ツイストの angular-z フィールド |
 
 ## パラメータ
 
-なし
+なし。
 
-## 仮定 / 既知の制約
+## 想定 / 留意事項
 
-なし
+なし。
+

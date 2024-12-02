@@ -1,5 +1,6 @@
 # autoware_localization_util
 
-`autoware_localization_util` はローカライゼーション用のユーティリティパッケージです。
+`autoware_localization_util`はローカリゼーションユーティリティパッケージです。
 
-このパッケージにはノードはなく、ライブラリのみです。
+このパッケージはノードを含まず、ライブラリのみです。
+

@@ -1,37 +1,38 @@
-## 検知領域
+## 検出エリア
 
 ### 役割
 
-地図上に定義された検知領域で点群が検知された場合、設定された地点で停止するプランニングが実行されます。
+マップ上に定義された検出エリアで点群が検出された場合、あらかじめ設定された地点で停止計画が実行されます。
 
 ![brief](./docs/detection_area.svg)
 
-### 稼働タイミング
+### 起動タイミング
 
-このモジュールは、対象レーン上に検知領域が存在する場合に稼働します。
+このモジュールは、対象車線上に検出エリアがある場合に起動されます。
 
-### モジュールパラメータ
+### モジュールのパラメータ
 
-| パラメータ                          | 型     | 説明                                                                                 |
-| ----------------------------------- | ------ | ------------------------------------------------------------------------------------ |
-| `use_dead_line`                     | 論理型 | [-] デッドラインを使用するかどうか                                                   |
-| `use_pass_judge_line`               | 論理型 | [-] 通過判定ラインを使用するかどうか                                                 |
-| `state_clear_time`                  | double | [s] オブジェクトが一定時間検出されず、車両が停止している場合、STOPPED 状態に遷移する |
-| `stop_margin`                       | double | [m] 車両が停止線前に停止しようとするマージン                                         |
-| `dead_line_margin`                  | double | [m] 後続車が自車と衝突するかどうかを無視するしきい値                                 |
-| `hold_stop_margin_distance`         | double | [m] 再始動防止のための設定 (アルゴリズム セクションを参照)                           |
-| `distance_to_judge_over_stop_line`  | double | [m] 停止線を越えたことを判定するためのパラメータ                                     |
-| `suppress_pass_judge_when_stopping` | 論理型 | [m] 停止時に通過判定を抑制するためのパラメータ                                       |
+| パラメータ | タイプ | 説明 |
+|---|---|---|
+| `use_dead_line` | bool | [-] デッドラインを使用するかどうか |
+| `use_pass_judge_line` | bool | [-] パスジャッジラインを使用するかどうか |
+| `state_clear_time` | double | [s] 車両が特定の時間に停止し、障害物が存在しない場合、STOPPED 状態に移行 |
+| `stop_margin` | double | [m] 車両が停止線手前で停止しようとするマージン |
+| `dead_line_margin` | double | [m] 走行車両が自車に衝突するかどうかを無視するしきい値 |
+| `hold_stop_margin_distance` | double | [m] 再始動防止のパラメータ（アルゴリズムのセクションを参照） |
+| `distance_to_judge_over_stop_line` | double | [m] 停止線を越えたと判断するパラメータ |
+| `suppress_pass_judge_when_stopping` | bool | [m] 停止時のパスジャッジを抑制するパラメータ |
 
-### 内部動作/アルゴリズム
+### 内部構成 / アルゴリズム
 
-1. マップ情報から検出領域と停止線を取得し、検出領域に点群があることを確認する
-2. 停止線から前方 l[m] に停止点を挿入する
-3. 車両が最大減速度で停止可能な点に通過判定点を挿入する
-4. 自車位置が通過判定点前方にいる場合、停止線後方に速度をゼロに設定する
-5. 自車位置が通過判定点をすでに通過している場合、停止せずに通過する
+1. 地図情報から検出エリアと停止線を取得し、検出エリアに点群があることを確認する
+2. 停止線の前に停止地点 l[m] を挿入する
+3. 車両が最大減速度で停止できる地点に通過判断地点を挿入する
+4. 自車が通過判断地点の前にある場合、停止線の後ろの速度を 0 に設定する
+5. 自車がすでに通過判断地点を通過している場合は、停止せずに通過する。
 
 #### フローチャート
+
 
 ```plantuml
 @startuml
@@ -95,21 +96,22 @@ stop
 
 #### 再始動防止
 
-車両制御性能が低いため、動き始めたら0.5メートルなどの距離（Xメートル）が必要な場合、車両は停止地点を超えて進み、停止寸前の地点（例：0.3メートル先）に近づくため、厳守する必要があります。
+車両の制御性能が低い場合、車両の始動から停止までXメートル（例：0.5メートル）が必要になる場合、車両は停止位置を超過してしまい、停車位置付近（例：0.3メートル離れている）に近づくために厳守する必要があります。
 
-このモジュールには、このような重複する再始動を防ぐためのパラメーター「hold_stop_margin_distance」があります。車両がモジュール停止位置（\_front_to_stop_line < hold_stop_margin_distance）から「hold_stop_margin_distance」メートル以内で停止した場合、車両はモジュールの停止位置で停止していると判断し、車両が他の要因で停止した場合でも現在の位置で停止を続けることを計画します。
+このモジュールには、これらの余分な再始動を防ぐためのパラメータ`hold_stop_margin_distance`があります。車両がモジュールの停止位置から`hold_stop_margin_distance`メートル以内（\_front_to_stop_line < hold_stop_margin_distance）で停止している場合、モジュールは車両がすでにモジュールの停止位置で停止していると判断し、車両が他の要因で停止している場合でも現在の位置で停止し続けます。
 
 <figure markdown>
-  ![例](restart_prevention.svg){width=1000}
-  <figcaption>パラメーター</figcaption>
+  ![example](restart_prevention.svg){width=1000}
+  <figcaption>パラメータ</figcaption>
 </figure>
 
 <figure markdown>
-  ![例](restart.svg){width=1000}
+  ![example](restart.svg){width=1000}
   <figcaption>hold_stop_margin_distanceの外側</figcaption>
 </figure>
 
 <figure markdown>
-  ![例](keep_stopping.svg){width=1000}
+  ![example](keep_stopping.svg){width=1000}
   <figcaption>hold_stop_margin_distanceの内側</figcaption>
 </figure>
+

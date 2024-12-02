@@ -1,28 +1,29 @@
 # autoware_default_adapi
 
-## メモ
+## 注意
 
-サービスを中継するコンポーネントは、マルチスレッドエグゼキューターによって実行される必要があります。
+サービスをリレーするコンポーネントは、Multi-Threaded Executor によって実行される必要があります。
 
-## 機能
+## 特徴
 
-このパッケージは既定実装の AD API です。
+このパッケージはデフォルト実装の AD API です。
 
-- [Autoware 状態 (後方互換性)](document/autoware-state.md)
+- [autoware のステータス（後方互換性）](document/autoware-state.md)
 - [フェイルセーフ](document/fail-safe.md)
 - [インターフェイス](document/interface.md)
-- [局在](document/localization.md)
-- [運動](document/motion.md)
-- [運転モード](document/operation-mode.md)
-- [経路](document/routing.md)
+- [ローカリゼーション](document/localization.md)
+- [モーション](document/motion.md)
+- [オペレーションモード](document/operation-mode.md)
+- [ルーティング](document/routing.md)
 
 ## Web サーバースクリプト
 
-これは、HTTP を使用して API を呼び出すためのサンプルです。
+これは、HTTP を使用して API を呼び出すサンプルです。
 
 ## ガイドメッセージスクリプト
 
-これは、自律モードへの遷移条件を確認するためのデバッグスクリプトです。
+これは、自律運転モードへの移行条件をチェックするためのデバッグスクリプトです。
+
 
 ```bash
 $ ros2 run autoware_default_adapi guide.py
@@ -34,3 +35,4 @@ The vehicle is ready. Please change the operation mode to autonomous.
 The vehicle is driving autonomously.
 The vehicle has reached the goal of the route. Please reset a route.
 ```
+

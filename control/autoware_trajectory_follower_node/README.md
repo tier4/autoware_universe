@@ -1,14 +1,15 @@
-# 軌道追随ノード
+# Trajectory Follower ノード
 
 ## 目的
 
-与えられた軌道に従う制御コマンドを生成します。
+与えられたトラジェクトリに従う制御コマンドを生成します。
 
 ## 設計
 
-これは、[autoware_trajectory_follower_base](../autoware_trajectory_follower_base/README.md#trajectory-follower) パッケージから派生したコントローラクラスで実装された機能のノードです。これにはこれらの機能のインスタンスがあり、それらに計算を実行するための入力データを渡し、制御コマンドをパブリッシュします。
+これは [autoware_trajectory_follower_base](../autoware_trajectory_follower_base/README.md#trajectory-follower) パッケージから派生したコントローラクラスに実装された機能のノードです。計算を実行するためにこれらの機能のインスタンスを持ち、入力データを与え、制御コマンドを公開します。
 
-デフォルトでは、次の `Controller` クラスのコントローラインスタンスが使用されます。
+デフォルトでは、次のような `Controller` クラスを持つコントローラインスタンスが使用されます。
+
 
 ```plantuml
 @startuml
@@ -90,7 +91,8 @@ InputData ..> Controller
 @enduml
 ```
 
-`Controller` クラスのプロセスフローは次のとおりです。
+`Controller`クラスのプロセスフローは次のとおりです。
+
 
 ```cpp
 // 1. create input data
@@ -118,41 +120,42 @@ lateral_controller_->sync(lon_out.sync_data);
 control_cmd_pub_->publish(out);
 ```
 
-自動運転ソフトウェアに関するドキュメント
+停止時にステアリングコンバージェンスに関する情報を縦方向コントローラに提供すると、次のパラメータが `true` の場合に停止時にステアリングを制御できます。
 
-ステアリングの収束に関する情報を縦方向制御器に提供すると、次のパラメータが `true` の場合に停止中でもステアリングを制御できます。
-
-- 横方向制御器
+- 横方向コントローラ
   - `keep_steer_control_until_converged`
-- 縦方向制御器
+- 縦方向コントローラ
   - `enable_keep_stopped_until_steer_convergence`
 
-### 入出力 / API
+### 入力/出力/API
 
 #### 入力
 
-- `autoware_planning_msgs/Trajectory` : 追跡する基準経路
+- `autoware_planning_msgs/Trajectory` : 追従するリファレンストラジェクトリ
 - `nav_msgs/Odometry`: 現在のオドメトリ
 - `autoware_vehicle_msgs/SteeringReport` 現在のステアリング
 
 #### 出力
 
-- `autoware_control_msgs/Control`: 横方向および縦方向のコマンドを含むメッセージ
+- `autoware_control_msgs/Control`: 横方向と縦方向の両方のコマンドを含むメッセージ
+- `autoware_control_msgs/ControlHorizon`: 横方向と縦方向の両方のホライゾンコマンドを含むメッセージ。これはデフォルトでは公開されていません。これを使用することで、車両制御のパフォーマンスが向上し、デフォルトをオンにすることで、実験的なトピックとして使用できます。
 
 #### パラメータ
 
-- `ctrl_period`: 制御コマンドの発行周期
-- `timeout_thr_sec`: 入力メッセージが破棄されるまでの期間（秒）
-  - 各コントローラから横方向および縦方向のコマンドを受け取ると、次の2つの条件が満たされた場合に `Control` を発行します。
-    1. コマンドの両方が受信された。
-    2. 最新に受信したコマンドが `timeout_thr_sec` で定義された時間よりも古くない。
+- `ctrl_period`: コントロールコマンドの公開周期
+- `timeout_thr_sec`: 入力メッセージが破棄されるまでの秒数。
+  - ノードが各コントローラから横方向と縦方向のコマンドを受信するたびに、次の 2 つの条件が満たされている場合に `Control` が公開されます。
+    1. 両方のコマンドが受信されている。
+    2. 最後を受信したコマンドが `timeout_thr_sec` で定義された値よりも古くない。
 - `lateral_controller_mode`: `mpc` または `pure_pursuit`
-  - （現在は縦方向制御器には `PID` のみを使用）
+  - (現在は縦方向コントローラには `PID` のみ)
+- `enable_control_cmd_horizon_pub`: `ControlHorizon` を公開するかどうか (デフォルト: false)
 
 ## デバッグ
 
-横方向および縦方向の制御器によるデバッグ情報は、`tier4_debug_msgs/Float32MultiArrayStamped` メッセージを使用して発行されます。
+デバッグ情報は、横方向と縦方向のコントローラから `tier4_debug_msgs/Float32MultiArrayStamped` メッセージを使用して公開されます。
 
-[PlotJuggler](https://github.com/facontidavide/PlotJuggler) の設定ファイルが `config` フォルダに用意されており、読み込むとデバッグに役立つ情報を自動的に購読して視覚化できます。
+[PlotJuggler](https://github.com/facontidavide/PlotJuggler) の設定ファイルは `config` フォルダに用意されています。ロードすると、自動的にデバッグに役立つ情報をサブスクライブして視覚化できます。
 
-さらに、予測された MPC 経路が `output/lateral/predicted_trajectory` トピックに発行され、Rviz で視覚化できます。
+さらに、予測された MPC トラジェクトリはトピック `output/lateral/predicted_trajectory` に公開され、Rviz で視覚化できます。
+

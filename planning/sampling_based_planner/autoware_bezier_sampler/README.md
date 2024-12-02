@@ -1,3 +1,4 @@
-## ベジエサンプラー
+# Bézier サンプラー
 
-このドキュメントでは、ベジエ曲線とその生成に関する実装について説明します。サンプリング戦略は [IEEE](https://ieeexplore.ieee.org/document/8932495) に掲載された論文に従っています。
+`<https://ieeexplore.ieee.org/document/8932495>` のサンプリング戦略に従った、ベジエ曲線とその生成の実装
+

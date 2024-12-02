@@ -1,16 +1,8 @@
-# マークダウン形式で書かれた自動運転ソフトウェアに関するドキュメントの日本語訳
+## スマート MPC Trajectory Follower
 
-<p align="center">
-  <a href="https://proxima-ai-tech.com/">
-    <img width="500px" src="./images/proxima_logo.png">
-  </a>
-</p>
+スマート MPC（Model Predictive Control）は、モデル予測制御と機械学習を組み合わせた制御アルゴリズムです。モデル予測制御の強みを継承しながら、データ駆動手法を用いて機械学習でそのモデリングの難しさを解決しています。
 
-## スマート MPC トレジャクサリー追従
-
-スマート MPC (Model Predictive Control) は、モデル予測制御と機械学習を組み合わせた制御アルゴリズムです。モデル予測制御の利点を継承すると同時に、機械学習を利用したデータドリブン手法でモデリングの難しさを解決します。
-
-この技術により、環境データの収集が可能な限り、実装コストの高いモデル予測制御を比較的容易に運用できます。
+この技術により、実装に時間のかかるモデル予測制御を、データ収集環境さえ整えば比較的手軽に扱うことが可能となります。
 
 <p align="center">
   <a href="https://youtu.be/j7bgK8m4-zg?si=p3ipJQy_p-5AJHOP)">
@@ -18,49 +10,51 @@
   </a>
 </p>
 
-## 提供されている機能
+## 提供される機能
 
-このパッケージは、パス追従制御向けのスマート MPC ロジックと、学習および評価の仕組みを提供します。これらの機能を以下に示します。
+このパッケージでは、経路追従制御向けのスマート MPC ロジック、および学習・評価メカニズムが提供されています。これらの機能を以下に示します。
 
-### iLQR/MPPI ベースのトレジャクサリー追従制御
+### iLQR/MPPI ベースの経路追従制御
 
-制御モードは "ilqr"、"mppi"、"mppi_ilqr" から選択でき、[mpc_param.yaml](./autoware_smart_mpc_trajectory_follower/param/mpc_param.yaml) の `mpc_parameter:system:mode` として設定できます。
-"mppi_ilqr" モードでは、iLQR の初期値が MPPI ソリューションによって与えられます。
+制御モードは「ilqr」、「mppi」、または「mppi_ilqr」から選択できます。[mpc_param.yaml](./autoware_smart_mpc_trajectory_follower/param/mpc_param.yaml)の`mpc_parameter:system:mode`に設定できます。「mppi_ilqr」モードでは、iLQR の初期値は MPPI ソリューションによって与えられます。
 
-> [!注意]
-> デフォルト設定では、"mppi" モードのパフォーマンスがサンプル数の不足により制限されます。この問題は、GPU サポートを導入する継続的な作業によって解決されています。
+> [!NOTE]
+> デフォルト設定では、「mppi」モードのパフォーマンスはサンプル数が不足しているため制限されています。この問題は、GPU サポートを導入するための進行中の作業で対処されています。
 
 シミュレーションを実行するには、次のコマンドを実行します。
+
 
 ```bash
 ros2 launch autoware_launch planning_simulator.launch.xml map_path:=$HOME/autoware_map/sample-map-planning vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit trajectory_follower_mode:=smart_mpc_trajectory_follower
 ```
 
 [!NOTE]
+[nominal_param.yaml](./autoware_smart_mpc_trajectory_follower/param/nominal_param.yaml)で設定した公称モデルで実行する場合は、[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml)で`trained_model_parameter:control_application:use_trained_model`を「false」に設定します。トレーニングされたモデルを使用して実行するには、`trained_model_parameter:control_application:use_trained_model`を「true」に設定しますが、トレーニングされたモデルは次の手順に従って生成する必要があります。
 
-> 名目モデルの[nominal_param.yaml](./autoware_smart_mpc_trajectory_follower/param/nominal_param.yaml)が設定されている場合は、[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml)の`trained_model_parameter:control_application:use_trained_model`を`false`に設定してください。学習済みモデルを使用して実行するには、`trained_model_parameter:control_application:use_trained_model`を`true`に設定しますが、学習済みモデルは次の手順に従って生成する必要があります。
+### トレーニングされたモデルのトレーニングと制御への反映
 
-### モデルの学習と制御への反映
+トレーニングデータを取得するには、autowareを起動し、走行を実行し、次のコマンドでrosbagデータを記録します。
 
-学習データを収集するには、autowareを起動して、走行を行い、次のコマンドでrosbagデータを記録します。
 
 ```bash
 ros2 bag record /localization/kinematic_state /localization/acceleration /vehicle/status/steering_status /control/command/control_cmd /control/trajectory_follower/control_cmd /control/trajectory_follower/lane_departure_checker_node/debug/deviation/lateral /control/trajectory_follower/lane_departure_checker_node/debug/deviation/yaw /system/operation_mode/state /vehicle/status/control_mode /sensing/imu/imu_data /debug_mpc_x_des /debug_mpc_y_des /debug_mpc_v_des /debug_mpc_yaw_des /debug_mpc_acc_des /debug_mpc_steer_des /debug_mpc_X_des_converted /debug_mpc_x_current /debug_mpc_error_prediction /debug_mpc_max_trajectory_err /debug_mpc_emergency_stop_mode /debug_mpc_goal_stop_mode /debug_mpc_total_ctrl_time /debug_mpc_calc_u_opt_time
 ```
 
-rosbagのディレクトリに[rosbag2.bash](./autoware_smart_mpc_trajectory_follower/training_and_data_check/rosbag2.bash)を移動させて、ディレクトリで下記コマンドを実行します
+上記の recording の rosbag ディレクトリに `rosbag2.bash`（`./autoware_smart_mpc_trajectory_follower/training_and_data_check/rosbag2.bash`）を移動し、ディレクトリ上で以下のコマンドを実行します。
+
 
 ```bash
 bash rosbag2.bash
 ```
 
-rosbagデータをCSV形式に変換してモデルをトレーニングします。
+この機能は、rosbagデータをモデルのトレーニング用のCSV形式に変換します。
 
 > [!NOTE]
-> 実行時に大量の端末が自動的に開きますが、rosbagデータの変換が完了すると自動的に閉じられます。
-> このプロセスを開始してからすべての端末が閉じられるまで、Autowareは実行しないでください。
+> 実行時に多数のターミナルが自動的に開きますが、rosbagデータの変換が完了すると自動的に閉じます。
+> このプロセスを開始してからすべてのターミナルが閉じるまでの間は、Autowareを実行しないでください。
 
-代わりに、Python環境で次のコマンドを実行することで同様の結果を得ることができます。
+代わりに、Python環境で以下のコマンドを実行すると、同じ結果が得られます:
+
 
 ```python
 from autoware_smart_mpc_trajectory_follower.training_and_data_check import train_drive_NN_model
@@ -68,14 +62,14 @@ model_trainer = train_drive_NN_model.train_drive_NN_model()
 model_trainer.transform_rosbag_to_csv(rosbag_dir)
 ```
 
-`rosbag_dir` は rosbag ディレクトリを表します。
-この時、`rosbag_dir` 内のすべての CSV ファイルは最初に自動的に削除されます。
+ここで、`rosbag_dir`はrosbagディレクトリを表しています。現時点では、`rosbag_dir`内のすべてのCSVファイルは最初に自動的に削除されます。
 
-モデルのトレーニングの方法について説明します。
-[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml) の `trained_model_parameter:memory_for_training:use_memory_for_training` が `true` に設定されている場合、LSTM を含むモデルに対するトレーニングが行われ、`false` に設定されている場合、LSTM を含まないモデルに対するトレーニングが行われます。
-LSTM を使用すると、セル状態および隠れ状態は履歴時系列データに基づいて更新され、予測に反映されます。
+次に、モデルのトレーニング方法について説明します。
+[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml)内の`trained_model_parameter:memory_for_training:use_memory_for_training`が`true`に設定されている場合、トレーニングはLSTMを含むモデルに対して実行され、`false`に設定されている場合はトレーニングはLSTMを含まないモデルに対して実行されます。
+LSTMを使用する場合、セル状態と隠れ状態は時系列時系列データに基づいて更新され、予測に反映されます。
 
-トレーニングと検証に使用される rosbag ディレクトリのパス (`dir_0`、`dir_1`、`dir_2`、`dir_val_0`、`dir_val_1`、`dir_val_2`...) と、モデルを保存するディレクトリ (`save_dir`) から、Python 環境で次のようにモデルを保存できます。
+トレーニングと検証に使用されるrosbagディレクトリのパス、`dir_0`、`dir_1`、`dir_2`、...、`dir_val_0`、`dir_val_1`、`dir_val_2`、...モデルを保存するディレクトリ`save_dir`にモデルを保存できます。Python環境では次のようにします。
+
 
 ```python
 from autoware_smart_mpc_trajectory_follower.training_and_data_check import train_drive_NN_model
@@ -92,30 +86,33 @@ model_trainer.get_trained_model()
 model_trainer.save_models(save_dir)
 ```
 
-`add_mode`が指定されなかった場合、または検証データが追加されなかった場合、トレーニングデータはトレーニングおよび検証に使用するために分割されます。
+`add_mode`が指定されていない場合、または検証データが追加されていない場合、トレーニングデータはトレーニングと検証に使用するために分割されます。
 
-多項式回帰の実行後は、次のとおり、NNを残差でトレーニングできます。
+多項式回帰を実行した後、NNは次のように残差に基づいてトレーニングできます。
+
 
 ```python
 model_trainer.get_trained_model(use_polynomial_reg=True)
 ```
 
-> [!NOTE]
-> デフォルト設定では、回帰はいくつかの事前に選択された多項式によって実行されます。
-> `get_trained_model` の引数として `use_selected_polynomial=False` が設定されている場合、`deg` 引数によって使用される多項式の最大次数を設定できます。
+>[!NOTE]
+>既定の設定では、回帰は複数の事前に選択された多項式によって実行されます。
+> `get_trained_model` の引数として `use_selected_polynomial=False` が設定されている場合、 `deg` 引数により、使用される多項式の最大次数を設定できます。
 
-NN モデルが使用されず、多項式回帰のみが実行される場合は、次のコマンドを実行します:
+多項式回帰のみが実行され、NN モデルが使用されていない場合は、次のコマンドを実行します:
+
 
 ```python
 model_trainer.get_trained_model(use_polynomial_reg=True,force_NN_model_to_zero=True)
 ```
 
-`model_for_test_drive.pth`と`polynomial_reg_info.npz`を`save_dir`からホームディレクトリに移動し、Trained Modelの反映のため、[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml)内の`trained_model_parameter:control_application:use_trained_model`を `true` に設定します。
+`model_for_test_drive.pth`および`polynomial_reg_info.npz`を`save_dir`に保存し、ホームディレクトリに設定し、[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml)の`trained_model_parameter:control_application:use_trained_model`を`true`に設定して、制御されたトレーニングモデルを反映させます。
 
-### 性能評価
+### パフォーマンス評価
 
-ここではサンプル車両のホイールベースが2.79 mであるところ、コントローラ側に2.0 mという誤った値を入力した場合の適応性能の検証を例として示します。
-コントローラに2.0 mのホイールベースを与えるため、[nominal_param.yaml](./autoware_smart_mpc_trajectory_follower/param/nominal_param.yaml)の`nominal_parameter:vehicle_info:wheel_base`の値を2.0に設定し、次のコマンドを実行します。
+ここでは、一例として、サンプル車両のホイールベースが2.79mであるときに、不適切な値2.0mがコントローラー側に与えられたときの適応性能の検証について説明します。
+コントローラーにホイールベースとして2.0mを与えるには、[nominal_param.yaml](./autoware_smart_mpc_trajectory_follower/param/nominal_param.yaml)の`nominal_parameter:vehicle_info:wheel_base`の値を2.0に設定し、次のコマンドを実行します。
+
 
 ```bash
 python3 -m smart_mpc_trajectory_follower.clear_pycache
@@ -123,17 +120,18 @@ python3 -m smart_mpc_trajectory_follower.clear_pycache
 
 #### Autoware でのテスト
 
-トレーニング前に公称モデルで Autoware に対する制御テストを実行するには、[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml) 内の `trained_model_parameter:control_application:use_trained_model` が `false` であることを確認し、「iLQR/MPPI に基づく Trajectory 以下の制御」で説明した方法で Autoware を起動します。今回は、次のルートをテストに使用します。
+トレーニング前に Autoware において公称モデルによる制御テストを実行するには、[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml) 内の `trained_model_parameter:control_application:use_trained_model` が `false` になっていることを確認し、「iLQR/MPPI に基づく軌道追従制御」の説明どおりに Autoware を起動します。今回は、以下のルートがテストに使用されます。
 
-<p><img src="images/test_route.png" width=712px></p>
+<p><img src="images/test_route.png" width=712pix></p>
 
-ROS バッグを記録し、ROS バッグを記録し、「モデルのトレーニングと制御への反映」で説明した方法でモデルをトレーニングし、生成されたファイル `model_for_test_drive.pth` と `polynomial_reg_info.npz` をホームディレクトリに移動します。サンプルモデルは [trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml) 内の `trained_model_parameter:memory_for_training:use_memory_for_training` が `true` に設定された条件下で動作します。[sample_models/wheel_base_changed](./sample_models/wheel_base_changed/) から取得できます。
+rosbag を記録して、「モデルのトレーニングと制御への反映」の説明に従ってモデルをトレーニングし、生成されたファイル `model_for_test_drive.pth` と `polynomial_reg_info.npz` をホームディレクトリに移動します。[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml) 内の `trained_model_parameter:memory_for_training:use_memory_for_training` が `true` に設定されている条件で機能するサンプルモデルは、[sample_models/wheel_base_changed](./sample_models/wheel_base_changed/) で入手できます。
 
 > [!NOTE]
-> トレーニングに使用されるデータは少量ですが、簡略化するために、このデータ量でどの程度のパフォーマンスが向上するかを確認します。
+> トレーニングに使用されたデータは小さいですが、単純化のために、この量のデータでどれくらいのパフォーマンスが向上できるかを確認します。
 
-ここで取得したトレーニング済みモデルを使用して制御するには、`trained_model_parameter:control_application:use_trained_model` を `true` に設定し、同様に Autoware を起動し、同じルートで ROS バッグを記録しながら走行します。
-走行が完了したら、「モデルのトレーニングと制御への反映」で説明した方法を使用して ROS バッグファイルを CSV 形式に変換します。`control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/training_and_data_check/data_checker.ipynb` で `lateral_error_visualize` 関数を公称の ROS バッグファイル `rosbag_nominal` とトレーニング済み ROS バッグファイル `rosbag_trained` に対して実行すると、次のように横方向偏差のグラフを取得できます。
+ここで取得したトレーニング済みモデルを使用して制御するには、`trained_model_parameter:control_application:use_trained_model` を `true` に設定し、同様に Autoware を起動して、rosbag を記録しながら同じルートを走行します。
+走行が完了した後、rosbag ファイルを「モデルのトレーニングと制御への反映」の説明に従って CSV 形式に変換します。`control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/training_and_data_check/data_checker.ipynb` 内の `lateral_error_visualize` 関数を、公称モデルの rosbag ファイル `rosbag_nominal` およびトレーニングモデルの rosbag ファイル `rosbag_trained` に対して、以下のように実行すると、2 つのモデルの横方向偏差のグラフが得られます。
+
 
 ```python
 lateral_error_visualize(dir_name=rosbag_nominal,ylim=[-1.2,1.2])
@@ -147,27 +145,23 @@ lateral_error_visualize(dir_name=rosbag_trained,ylim=[-1.2,1.2])
     <img src="images/lateral_error_trained_model.png">
 </div>
 
-#### Pythonシミュレータでのテスト
+#### Pythonシミュレーターでのテスト
 
-まず、Pythonシミュレータでホイールベースを2.79 mにするには、次のファイルを作成し、名前を`sim_setting.json`にして`control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator`に保存します。
+最初に、Pythonシミュレーターでホイールベースを2.79 mにするには、次のファイルを作成して、`control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator` に `sim_setting.json` という名前で保存します:
 
-```
-{
-  "wheelbase": 2.79
-}
-```
 
 ```json
 { "wheel_base": 2.79 }
 ```
 
-次に、`control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator` に移動した後、以下のコマンドを実行してパイソンシミュレータ上でスラローム走行をノミナル制御を使用してテストします。
+次に、`control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator` に移動した後、次のコマンドを実行して基準制御によるパイロンスラローム走行を Python シミュレータでテストします。
+
 
 ```bash
 python3 run_python_simulator.py nominal_test
 ```
 
-運転の結果は `test_python_nominal_sim` に格納されます。
+走行結果は`test_python_nominal_sim`に保存されます。
 
 以下の結果が得られました。
 
@@ -175,17 +169,18 @@ python3 run_python_simulator.py nominal_test
     <img src="images/python_sim_lateral_error_nominal_model_wheel_base.png" width="712px">
 </p>
 
-最上段の中央は横方向逸脱量を表します。
+上段の真ん中は横方向の偏差を表します。
 
-純粋追従の制御下で、8の字走行データを使用してトレーニングを実行するには、以下のコマンドを実行します。
+フィギュアイエイト走行データをピュアパーシュートの制御下で行われるよう、trainingを実行するには、次のコマンドを実行します。
 
-得られたモデルに基づく8の字走行と運転を使用してトレーニングを実行するには、以下のコマンドを実行します。
+フィギュアイエイトの走行と取得されたモデルに基づく走行を使用して、trainingを実行するには、次のコマンドを実行します。
+
 
 ```bash
 python3 run_python_simulator.py
 ```
 
-運転の結果は `test_python_trined_sim` に格納されています。
+Drivingの結果は `test_python_trined_sim` に保存されます。
 
 [trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml) の `trained_model_parameter:memory_for_training:use_memory_for_training` が `true` に設定された場合、以下の結果が得られました。
 
@@ -199,65 +194,68 @@ python3 run_python_simulator.py
     <img src="images/python_sim_lateral_error_trained_model_wheel_base.png" width="712px">
 </p>
 
-横方向偏差が大幅に改善されていることがわかります。
-ただし、LSTM の有無による運転の違いはあまり明らかではありません。
+横偏差が大幅に改善されたことがわかります。
+ただし、LSTMの有無によるDrivingの違いはあまり明らかではありません。
 
-違いを明確にするために、例として `steer_time_delay` などのパラメータを試行できます。
+違いを確認するために、たとえば `steer_time_delay` などのパラメータを試すことができます。
 
-まず、公称モデル設定の値をデフォルト値に戻すために、[nominal_param.yaml](./autoware_smart_mpc_trajectory_follower/param/nominal_param.yaml) の `nominal_parameter:vehicle_info:wheel_base` の値を 2.79 に設定して、次のコマンドを実行します。
+最初に、ノミナルモデル設定をデフォルト値に復元するには、[nominal_param.yaml](./autoware_smart_mpc_trajectory_follower/param/nominal_param.yaml) の `nominal_parameter:vehicle_info:wheel_base` の値を 2.79 に設定し、次のコマンドを実行します。
+
 
 ```bash
 python3 -m smart_mpc_trajectory_follower.clear_pycache
 ```
 
-次に、`sim_setting.json` を次のように修正します:
+次に、`sim_setting.json` を次のように修正します。
+
 
 ```json
 { "steer_time_delay": 1.01 }
 ```
 
-このように、`steer_time_delay` を 1.01 秒に設定して実験を実施します。
+この方法により、`steer_time_delay` が 1.01 秒に設定されたときに実験の実行が行われます。
 
-公称モデルを使用した走行の結果は次のとおりです。
+公称モデルを使用した運転の結果は以下のとおりです。
 
 <p style="text-align: center;">
     <img src="images/python_sim_lateral_error_nominal_model_steer_time_delay.png" width="712px">
 </p>
 
-LSTM を使用した学習済みモデルを使用した走行の結果は次のとおりです。
+LSTM でトレーニングされたモデルを使用した運転の結果は以下のとおりです。
 
 <p style="text-align: center;">
     <img src="images/python_sim_lateral_error_trained_model_lstm_steer_time_delay.png" width="712px">
 </p>
 
-LSTM を使用しない学習済みモデルを使用した走行の結果は次のとおりです。
+LSTM なしでトレーニングされたモデルを使用した運転の結果は以下のとおりです。
 
 <p style="text-align: center;">
     <img src="images/python_sim_lateral_error_trained_model_steer_time_delay.png" width="712px">
 </p>
 
-LSTM を含むモデルを使用したパフォーマンスは、含まないモデルを使用したパフォーマンスよりも大幅に良好であることがわかります。
+LSTM を含むモデルが、含まないモデルよりも性能が大幅に向上していることがわかります。
 
 Python シミュレータに渡すことができるパラメータは次のとおりです。
 
-| パラメータ               | 型           | 説明                                                                                                                                                                                                                                |
-| ------------------------ | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
-| steer_bias               | 浮動         | ステアリングバイアス [rad]                                                                                                                                                                                                          |
-| steer_rate_lim           | 浮動         | ステアリングレートの制限 [rad/s]                                                                                                                                                                                                    |
-| vel_rate_lim             | 浮動         | 加速度制限 [m/s^2]                                                                                                                                                                                                                  |
-| wheel_base               | 浮動         | ホイールベース [m]                                                                                                                                                                                                                  | :   |
-| steer_dead_band          | 浮動         | ステアリングデッドバンド [rad]                                                                                                                                                                                                      |
-| adaptive_gear_ratio_coef | リスト[浮動] | タイヤ角からステアリングホイール角への速度依存ギア比に関する情報を指定する 6 個の長さを持つフローティングポイントのリスト                                                                                                           |
-| acc_time_delay           | 浮動         | 加速度遅延時間 [s]                                                                                                                                                                                                                  |
-| steer_time_delay         | 浮動         | ステアリング遅延時間 [s]                                                                                                                                                                                                            |
-| acc_time_constant        | 浮動         | 加速度時定数 [s]                                                                                                                                                                                                                    |
-| steer_time_constant      | 浮動         | ステアリング時定数 [s]                                                                                                                                                                                                              |
-| accel_map_scale          | 浮動         | 加速度入力値から実際の加速度の実現への対応する歪みを拡大するパラメータ。 <br>対応情報は `control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator/accel_map.csv` に格納されています。 |
-| acc_scaling              | 浮動         | 加速度スケーリング                                                                                                                                                                                                                  |
-| steer_scaling            | 浮動         | ステアリングスケーリング                                                                                                                                                                                                            |
-| vehicle_type             | 整数         | 0 から 4 までの値を取ります。 <br>各車両タイプについては以下で説明します。                                                                                                                                                          |
+| パラメータ                | タイプ        | 説明                                                                                                                                                                                                                                                                                  |
+| ------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| steer_bias               | float       | ステアリング バイアス [rad]                                                                                                                                                                                                                                                                             |
+| steer_rate_lim           | float       | ステアリング レート リミット [rad/s]                                                                                                                                                                                                                                                                     |
+| vel_rate_lim             | float       | 加速度リミット [m/s^2]                                                                                                                                                                                                                                                                   |
+| wheel_base               | float       | ホイール ベース [m]                                                                                                                                                                                                                                                                               |
+| steer_dead_band          | float       | ステアリング デッドバンド [rad]                                                                                                                                                                                                                                                                        |
+| adaptive_gear_ratio_coef | list[float] | タイヤ角度からステアリング ホイール角度への速度依存ギアレンジ情報を指定する長さ 6 のフロートのリスト。                                                                                                                                                                    |
+| acc_time_delay           | float       | 加速度遅延 [s]                                                                                                                                                                                                                                                                  |
+| steer_time_delay         | float       | ステアリング遅延 [s]                                                                                                                                                                                                                                                                         |
+| acc_time_constant        | float       | 加速度時定数 [s]                                                                                                                                                                                                                                                               |
+| steer_time_constant      | float       | ステアリング時定数 [s]                                                                                                                                                                                                                                                                      |
+| accel_map_scale          | float       | `control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator/accel_map.csv` に対応情報が格納され、加速度入力値から実際の加速度実現値への歪みを拡大するパラメーター。 |
+| acc_scaling              | float       | 加速度スケーリング                                                                                                                                                                                                                                                                         |
+| steer_scaling            | float       | ステアリング スケーリング                                                                                                                                                                                                                                                                                |
+| vehicle_type             | int         | 事前に設計された車両タイプに対して 0 ～ 4 の値を取ります。<br> 各車両タイプの説明を以下に示します。                                                                                                                                                                              |
 
-例えば、シミュレーション側に0.01 [rad]のステア係数バイアスと0.001 [rad]のステアデッドバンドを与える場合は、`sim_setting.json`を次のように編集します。
+例えば、シミュレータ側にステアバイアス0.01 [rad]、ステアデッドバンド0.001 [rad]を与える場合、`sim_setting.json`を次のように編集します。
+
 
 ```json
 { "steer_bias": 0.01, "steer_dead_band": 0.001 }
@@ -265,188 +263,184 @@ Python シミュレータに渡すことができるパラメータは次のと�
 
 ##### vehicle_type_0
 
-この車両タイプは、コントローラーで使用される既定の車両タイプと一致します。
+この車両タイプは、制御で使用される既定の車両タイプと一致します。
 
-## 自動運転ソフトウェアのパラメータ設定
-
-| パラメータ               | 値   |
-| ------------------------ | ---- |
-| ホイールベース           | 2.79 |
-| 加速度応答遅れ時間       | 0.1  |
-| ステアリング応答遅れ時間 | 0.27 |
-| 加速度応答時間定数       | 0.1  |
-| ステアリング応答時間定数 | 0.24 |
-| 加速度スケーリング       | 1.0  |
+| パラメータ             | 値 |
+| ---------------------- | ---- |
+| wheel_base             | 2.79 |
+| acc_time_delay         | 0.1  |
+| steer_time_delay       | 0.27 |
+| acc_time_constant     | 0.1  |
+| steer_time_constant   | 0.24 |
+| acc_scaling            | 1.0  |
 
 ##### vehicle_type_1
 
-このvehicle typeは大型バスを想定しています。
+この車種は大型バスを想定しています。
 
-## 自動運転ソフトウェアに関するドキュメントの翻訳
-
-### パラメータ
-
-| パラメータ             | 値   |
-| ---------------------- | ---- |
-| ホイールベース         | 4.76 |
-| 加速度タイム遅延       | 1.0  |
-| ステアリングタイム遅延 | 1.0  |
-| 加速度タイム定数       | 1.0  |
-| ステアリングタイム定数 | 1.0  |
-| 加速度スケーリング     | 0.2  |
+| パラメータ           | 値 |
+| ------------------- | ----- |
+| ホイルベース        | 4.76  |
+| ACC時間遅れ        | 1.0   |
+| ステアリング時間遅れ | 1.0   |
+| ACC時定数          | 1.0   |
+| ステアリング時定数  | 1.0   |
+| ACCスケーリング     | 0.2   |
 
 ##### vehicle_type_2
 
-この車両タイプは、小型バスを想定しています。
+この車両タイプは、小型バス向けです。
 
-| パラメータ               | 値   |
-| ------------------------ | ---- |
-| ホイールベース           | 4.76 |
-| 加速度遅延時間           | 0.5  |
-| 操舵遅延時間             | 0.5  |
-| 加速度タイムコンスタント | 0.5  |
-| 操舵タイムコンスタント   | 0.5  |
-| 加速度スケーリング       | 0.5  |
+| パラメータ               | 値 |
+| ------------------------ | --- |
+| ホイールベース          | 4.76 |
+| 速度制御系時間遅延          | 0.5 |
+| 旋回制御系時間遅延        | 0.5 |
+| 速度制御系時定数            | 0.5 |
+| 旋回制御系時定数            | 0.5 |
+| 速度制御系ゲイン              | 0.5 |
 
 ##### vehicle_type_3
 
-この車両種は小型車両を想定しています。
+この車両タイプは小型車両を想定しています。
 
-## 自動運転ソフトウェア
+| パラメータ           | 値 |
+| ------------------- | ----- |
+| ホイールベース          | 1.335 |
+| 加速度タイムディレイ      | 0.3   |
+| ステアリングタイムディレイ    | 0.3   |
+| 加速度タイムコンスタント   | 0.3   |
+| ステアリングタイムコンスタント | 0.3   |
+| 加速度スケーリング         | 1.5   |
 
-### パラメータ
-
-| パラメータ         | 値    |
-| ------------------ | ----- |
-| ホイーベース       | 1.335 |
-| 加速度時間遅延     | 0.3   |
-| 操舵時間遅延       | 0.3   |
-| 加速度時間定数     | 0.3   |
-| 操舵時間定数       | 0.3   |
-| 加速度スケーリング | 1.5   |
-
-##### vehicle_type_4
+##### véhicule_type_4
 
 この車両タイプは小型ロボット向けです。
 
-| パラメータ           | 値    |
-| -------------------- | ----- |
-| ホイールベース       | 0.395 |
-| 加速遅延時間         | 0.2   |
-| ステアリング遅延時間 | 0.2   |
-| 加速時間定数         | 0.2   |
-| ステアリング時間定数 | 0.2   |
-| 加速度スケーリング   | 1.0   |
+| パラメータ           | 値 |
+| --------------------- | ---- |
+| wheel_base          | 0.395 |
+| acc_time_delay      | 0.2   |
+| steer_time_delay    | 0.2   |
+| acc_time_constant   | 0.2   |
+| steer_time_constant | 0.2   |
+| acc_scaling         | 1.0   |
 
-#### Pythonシミュレーターでの自動テスト
+#### Pythonシミュレータでの自動テスト
 
-ここでは、シミュレーション側にモデルパラメータの事前定義された範囲を提供し、制御側に定数モデルパラメータを提供することで、適応性能をテストする方法について説明します。
+ここで、制御側に一定のモデルパラメータが与えられている間、シミュレーション側にあらかじめ定義された範囲のモデルパラメータを与えることで、適応性能をテストする方法について説明します。
 
-[run_sim.py](./autoware_smart_mpc_trajectory_follower/python_simulator/run_sim.py)で設定されたパラメータ変更範囲内で走行実験を実行するには、`control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator`に移動し、次のコマンドを実行します。
+たとえば、[run_sim.py](./autoware_smart_mpc_trajectory_follower/python_simulator/run_sim.py)で設定されたパラメータ変更範囲内で運転実験を実行するには、`control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator`に移動し、次のコマンドを実行します。
+
 
 ```bash
 python3 run_sim.py --param_name steer_bias
 ```
 
-実験手順はステアバイアスについて説明しましたが、他のパラメーターでも同様の方法を使用できます。
+ステア・バイアスの実験手順を以下に示します。同じ手法を他のパラメータにも使用できます。
 
-一度に制限値以外のすべてのパラメーターのテストを実行するには、次のコマンドを実行します:
+制限を除くすべてのパラメータのテストを実行するには、次のコマンドを実行します。
+
 
 ```bash
 python3 run_auto_test.py
 ```
 
-Auto_testの実行結果を`auto_test`ディレクトリに保存しています。
-実行が完了したら、[plot_auto_test_result.ipynb](./autoware_smart_mpc_trajectory_follower/python_simulator/plot_auto_test_result.ipynb)を実行して次の結果を取得してください。
+テスト結果は `auto_test` ディレクトリに格納されています。
+実行が完了すると、[plot_auto_test_result.ipynb](./autoware_smart_mpc_trajectory_follower/python_simulator/plot_auto_test_result.ipynb) を実行することで以下の結果を得ることができます。
 
 <p style="text-align: center;">
     <img src="images/proxima_test_result_with_lstm.png" width="712px">
 </p>
 
-オレンジの線は純粋追従のフィギュラエイト走行を使用してトレーニングされた中間モデルを示しており、青い線は中間モデルとフィギュラエイト走行の両方からのデータを使用してトレーニングされた最終モデルを示しています。
-ほとんどの場合、十分な性能が得られますが、大型バスを想定した`vehicle_type_1`では、横方向逸脱量はおよそ2 mで、納得のいくものではありません。
+オレンジの線は8の字走行による純粋追求を使用して学習した中間モデルを表しており、青い線は中間モデルと8の字走行の両方からのデータを使用して学習した最終モデルを表しています。
+ほとんどの場合で十分な性能が得られていますが、大型バスを想定している `vehicle_type_1` については、横方向の逸脱が約2m程度生じていることが確認されており、十分ではありません。
 
-`run_sim.py`で次のパラメータを設定できます。
+`run_sim.py` では以下のパラメータを設定できます:
 
-| パラメータ                | 型                 | 説明                                                                                                                                                                                                                       |
-| ------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| USE_TRAINED_MODEL_DIFF    | bool               | トレーニングされたモデルの導関数が制御に反映されるか?                                                                                                                                                                      |
-| DATA_COLLECTION_MODE      | DataCollectionMode | どの方式でトレーニングデータを収集するか <br> "DataCollectionMode.ff": フィードフォワード入力で直線走行 <br> "DataCollectionMode.pp": ピュアパーシュート制御で8の字走行 <br> "DataCollectionMode.mpc": mpcでスラローム走行 |
-| USE_POLYNOMIAL_REGRESSION | bool               | NNの前に多項式回帰を実行するか?                                                                                                                                                                                            |
-| USE_SELECTED_POLYNOMIAL   | bool               | USE_POLYNOMIAL_REGRESSIONがTrueの場合、あらかじめ選択された多項式のみを使用して多項式回帰を実行する。 <br> 多項式の選択は、車両の公称モデルに基づくいくつかパラメータのシフトを吸収できるように意図されている。            |
+| パラメーター | 型 | 説明 |
+|---|---|---|
+| USE_TRAINED_MODEL_DIFF | bool | 学習済みモデルの微分を制御に反映するか |
+| DATA_COLLECTION_MODE | DataCollectionMode | 学習データの収集に使用される方法 <br> "DataCollectionMode.ff": フィードフォワード入力を用いた直線走行 <br> "DataCollectionMode.pp": ピュアパースート制御を用いた8の字走行 <br> "DataCollectionMode.mpc": mpcを用いたスラローム走行 |
+| USE_POLYNOMIAL_REGRESSION | bool | NNの前処理として多項式回帰を実行するか |
+| USE_SELECTED_POLYNOMIAL | bool | USE_POLYNOMIAL_REGRESSION がTrueの場合、事前選択された一部の多項式のみを使用して多項式回帰を実行する。<br> 多項式の選択は、車両の公称モデルに基づいて、パラメーターシフトの一部を吸収できることを目的としている。 |
+| FORCE_NN_MODEL_TO_ZERO | bool | NNモデルをゼロに強制するか（つまり、NNモデルの寄与を消去するか）。<br> USE_POLYNOMIAL_REGRESSIONがTrueの場合、FORCE_MODEL_TO_ZEROをTrueに設定すると、制御が多項式回帰の結果のみを反映し、NNモデルは使用しなくなる。 |
+| FIT_INTERCEPT | bool | 多項式回帰にバイアスを含めるか。<br> Falseの場合、一次以上の多項式で回帰を実行する。 |
+| USE_INTERCEPT | bool | バイアスを含む多項式回帰を実行した場合、結果として得られたバイアス情報を採用するか破棄するか。<br> FIT_INTERCEPTがTrueの場合にのみ意味を持つ。<br> Falseの場合、バイアスを含む多項式回帰でバイアスを破棄し、NNモデルがバイアステームを除去できると期待される。 |
 
-> [!注意] > `run_sim.py` を実行すると、`run_sim.py` で設定された `use_trained_model_diff` が [trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml) で設定された `trained_model_parameter:control_application:use_trained_model_diff` より優先されます。
+```markdown
+[!NOTE]
+`run_sim.py`が実行されると、`run_sim.py`で設定された`use_trained_model_diff`は、[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml)で設定された`trained_model_parameter:control_application:use_trained_model_diff`よりも優先されます。
 
-#### Pure Pursuit の走行データのカーネル密度推定
+#### ピュア・パーシュート走行データのカーネル密度推定
 
-Pure Pursuit 走行から取得したデータの分布は、カーネル密度推定を使用して表示できます。これを行うには、[density_estimation.ipynb](./autoware_smart_mpc_trajectory_follower/python_simulator/density_estimation.ipynb) を実行します。
+ピュア・パーシュート走行から得られたデータの分布は、カーネル密度推定を使用して表示できます。これを行うには、[density_estimation.ipynb](./autoware_smart_mpc_trajectory_follower/python_simulator/density_estimation.ipynb)を実行します。
 
-密度推定の最小値と走行結果の横方向逸脱の相関関係は低くなっています。横方向逸脱値をより適切に予測するスカラー指標を開発中です。
+密度推定の最小値と走行結果の横方向偏差との相関は低いです。横方向偏差の値をより適切に予測するスカラーインジケーターを現在開発中です。
 
-## 公称パラメータの変更とその再ロード
+## 公称パラメータの変更とその再読み込み
 
-車両モデルの公称パラメータは、[nominal_param.yaml](./autoware_smart_mpc_trajectory_follower/param/nominal_param.yaml) ファイルを編集することで変更できます。
-公称パラメータを変更した後、次のコマンドを実行してキャッシュを削除する必要があります。
-
-```bash
-rm ~/.cache/autoware/autoware_smart_mpc_trajectory_follower/params/
+車両モデルの公称パラメータは、ファイル[nominal_param.yaml](./autoware_smart_mpc_trajectory_follower/param/nominal_param.yaml)を編集することで変更できます。
+公称パラメータを変更したら、以下のコマンドを実行してキャッシュを削除する必要があります。
 ```
+
 
 ```bash
 python3 -m smart_mpc_trajectory_follower.clear_pycache
 ```
 
-**通常パラメータは次のとおりです。**
+標準パラメータには、次に示すものがあります。
 
-| パラメータ                                       | 型    | 説明                       |
-| ------------------------------------------------ | ----- | -------------------------- |
-| nominal_parameter:vehicle_info:wheel_base        | float | ホイールベース [m]         |
-| nominal_parameter:acceleration:acc_time_delay    | float | 加速度タイム遅延 [s]       |
-| nominal_parameter:acceleration:acc_time_constant | float | 加速度タイム定数 [s]       |
-| nominal_parameter:steering:steer_time_delay      | float | ステアリングタイム遅延 [s] |
-| nominal_parameter:steering:steer_time_constant   | float | ステアリングタイム定数 [s] |
+| パラメータ | 型 | 説明 |
+|---|---|---|
+| `nominal_parameter:vehicle_info:wheel_base` | float | ホイールベース [m] |
+| `nominal_parameter:acceleration:acc_time_delay` | float | 加速時間遅延 [s] |
+| `nominal_parameter:acceleration:acc_time_constant` | float | 加速時間定数 [s] |
+| `nominal_parameter:steering:steer_time_delay` | float | 操舵時間遅延 [s] |
+| `nominal_parameter:steering:steer_time_constant` | float | 操舵時間定数 [s] |
 
-## コントロールパラメータの変更と再読み込み
+## 制御パラメータの変更とその再読み込み
 
-制御パラメータは、ファイル[mpc_param.yaml](./autoware_smart_mpc_trajectory_follower/param/mpc_param.yaml)と[trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml)を変更することで変更できます。
-パラメータの変更はAutowareを再起動することで反映できますが、次のコマンドを使用することでAutowareを実行中のまま反映できます。
+制御パラメータはファイル [mpc_param.yaml](./autoware_smart_mpc_trajectory_follower/param/mpc_param.yaml) と [trained_model_param.yaml](./autoware_smart_mpc_trajectory_follower/param/trained_model_param.yaml) を編集して変更できます。Autoware を再起動することでパラメータの変更を反映できますが、次のコマンドにより Autoware を実行したまま変更を行うことができます。
+
 
 ```bash
 ros2 topic pub /pympc_reload_mpc_param_trigger std_msgs/msg/String "data: ''" --once
 ```
 
-主な制御パラメータは次のとおりです。
+制御パラメータにおける主要なパラメータは以下の通りです。
 
 ### `mpc_param.yaml`
 
-| パラメータ                                 | 型          | 説明                                                                                                                                                         |
-| ------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| mpc_parameter:system:mode                  | str         | 制御モード <br>"ilqr": iLQRモード <br>"mppi": MPPIモード <br>"mppi_ilqr": iLQRの初期値はMPPIソリューションによって与えられる                                 |
-| mpc_parameter:cost_parameters:Q            | list[float] | 状態のステージコスト <br>長さ8のリスト、順に: 直線偏差、横方向偏差、速度偏差、偏航角偏差、加速度偏差、ステア偏差、加速度入力偏差、ステア入力偏差のコスト重み |
-| mpc_parameter:cost_parameters:Q_c          | list[float] | 状態の次のtiming_Q_cに相当するhorizon内のコスト <br>リストの構成要素の対応はQの場合と同じ                                                                    |
-| mpc_parameter:cost_parameters:Q_f          | list[float] | 状態の終端コスト <br>リストの構成要素の対応はQの場合と同じ                                                                                                   |
-| mpc_parameter:cost_parameters:R            | list[float] | 長さ2のリスト、R[0]は加速度入力値の変化率のコストの重み、R[1]はステア入力値の変化率のコストの重み                                                            |
-| mpc_parameter:mpc_setting:timing_Q_c       | list[int]   | 状態のステージコストがQ_cに設定されるhorizon番号                                                                                                             |
-| mpc_parameter:compensation:acc_fb_decay    | float       | MPC外部のコンペンセータの観測された加速度値と予測加速度値の間の誤差を積分する際の減哀係数                                                                    |
-| mpc_parameter:compensation:acc_fb_gain     | float       | 加速度補償のゲイン                                                                                                                                           |
-| mpc_parameter:compensation:max_error_acc   | float       | 最大加速度補償 (m/s^2)                                                                                                                                       |
-| mpc_parameter:compensation:steer_fb_decay  | float       | MPC外部のコンペンセータにおける観測ステアリング値と予測ステアリング値の間の誤差を積分する際の減衰係数                                                        |
-| mpc_parameter:compensation:steer_fb_gain   | float       | ステアリング補償のゲイン                                                                                                                                     |
-| mpc_parameter:compensation:max_error_steer | float       | 最大ステアリング補償 (rad)                                                                                                                                   |
+| パラメータ                                               | 型        | 説明                                                                                                                                                                                                                                       |
+| -------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| mpc_parameter:system:mode                                | str         | 制御モード <br>"ilqr": iLQR モード <br>"mppi": MPPI モード <br>"mppi_ilqr": iLQR の初期値は MPPI ソリューションによって指定される |
+| mpc_parameter:cost_parameters:Q                            | list[float] | 状態のステージコスト <br>長さ 8 のリストで、順番に: 直進偏差、横方向偏差、速度偏差、ヨー角偏差、加速度偏差、ステアリング偏差、加速度入力偏差、ステアリング入力偏差のコスト重み |
+| mpc_parameter:cost_parameters:Q_c                            | list[float] | 状態のタイミング Q_c に対応する地平上のコスト <br>リストのコンポーネントの対応関係は Q と同じ |
+| mpc_parameter:cost_parameters:Q_f                            | list[float] | 状態のターミネーションコスト <br>リストのコンポーネントの対応関係は Q と同じ |
+| mpc_parameter:cost_parameters:R                            | list[float] | 長さ 2 のリストで、R[0] は加速度入力値の変化率のコストの重みであり、R[1] はステアリング入力値の変化率のコストの重みである |
+| mpc_parameter:mpc_setting:timing_Q_c                         | list[int]   | 状態のステージコストが Q_c に設定されるような地平の数 |
+| mpc_parameter:compensation:acc_fb_decay                    | float       | MPC 外部のコンペンセータにおける観測加速度値と予測加速度値の誤差を積分する減衰係数 |
+| mpc_parameter:compensation:acc_fb_gain                       | float       | 加速度補償のゲイン |
+| mpc_parameter:compensation:max_error_acc                      | float       | 最大加速度補償 (m/s^2) |
+| mpc_parameter:compensation:steer_fb_decay                    | float       | MPC 外部のコンペンセータにおける観測ステアリング値と予測ステアリング値の誤差を積分する減衰係数 |
+| mpc_parameter:compensation:steer_fb_gain                      | float       | ステアリング補償のゲイン |
+| mpc_parameter:compensation:max_error_steer                    | float       | 最大ステアリング補償 (rad) |
 
 ### `trained_model_param.yaml`
 
-| パラメータ                                                          | 型   | 説明                                                                                                                                                                                                                 |
-| ------------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| trained_model_parameter:control_application:use_trained_model       | bool | 学習済みモデルが制御に反映されるかどうかを示します。                                                                                                                                                                 |
-| trained_model_parameter:control_application:use_trained_model_diff  | bool | 学習済みモデルの微分値が制御に反映されるかどうかを示します。 <br> use_trained_modelがTrueの場合にのみ意味があり、Falseの場合は、運動の方程式の微分には公称モデルが使用され、学習済みモデルは予測にのみ使用されます。 |
-| trained_model_parameter:memory_for_training:use_memory_for_training | bool | 学習のためにLSTMを含むモデルを使用するかどうかを示します。                                                                                                                                                           |
-| trained_model_parameter:memory_for_training:use_memory_diff         | bool | LSTMの前時点でのセル状態および隠れ状態に対する微分が制御に反映されるかどうかを示します。                                                                                                                             |
+| パラメータ | 型 | 説明 |
+|---|---|---|
+| `trained_model_parameter:control_application:use_trained_model` | bool | 学習されたモデルを制御に反映させるかどうか |
+| `trained_model_parameter:control_application:use_trained_model_diff` | bool | 学習されたモデルの微分を制御に反映させるかどうか <br> `use_trained_model` が True の場合にのみ意味を持ち、False の場合は、動力学の微分には公称モデルが使用され、学習されたモデルは予測のみに使用されます |
+| `trained_model_parameter:memory_for_training:use_memory_for_training` | bool | 学習用に LSTM を含むモデルを使用するかどうか |
+| `trained_model_parameter:memory_for_training:use_memory_diff` | bool | LSTM の以前の時刻におけるセル状態と隠れ状態に対する微分を制御に反映させるかどうか |
 
-## 減速停止モードの解除要求
+## 停止モードを解除する要求
 
-予測軌跡がターゲット軌跡から大きく逸脱した場合、システムは減速停止モードに入り、車両は停止します。
-減速停止モードをキャンセルして車両を走行可能にするには、次のコマンドを実行します。
+予測した経路が目標の経路から大きく逸脱すると、システムは停止モードに入り、車両は動作を停止します。
+停止モードを解除し、車両を再度走行可能にするには、次のコマンドを実行します:
+
 
 ```bash
 ros2 topic pub /pympc_stop_mode_reset_request std_msgs/msg/String "data: ''" --once
@@ -454,10 +448,11 @@ ros2 topic pub /pympc_stop_mode_reset_request std_msgs/msg/String "data: ''" --o
 
 ## 制限事項
 
-- 初期位置/姿勢が目標から大きく離れている場合は開始できない可能性があります。
+- 初期位置/姿勢がターゲットから大きく離れている場合は開始できない場合があります。
 
-- 最初の制御の開始時に numba 関数をコンパイルするまで、Plannin の終了まで少し時間がかかる場合があります。
+- 最初の制御の開始時に、Planningコンポーネント/モジュールでnumba関数をコンパイルするまでしばらく時間がかかる場合があります。
 
-- ゴール付近の停止動作では、制御が別の簡単な制御則に切り替わります。結果として、停止動作はゴール付近を除いて機能しない場合があります。加速度マップが大幅にシフトしている場合も停止は困難です。
+- 目標近くの停止動作では、当社の制御が別の簡単な制御則に切り替わります。その結果、停止動作は目標近くでなければ動作しない場合があります。加速度マップが大幅にシフトすると、停止も困難になります。
 
-- `vehicle_type_1` のように大型バス向けに想定されているように、ダイナミクスが公称モデルから大きく逸脱している場合、うまく制御できない可能性があります。
+- 重量級バスに使用される`vehicle_type_1`のように、ダイナミクスが公称モデルから大きく逸脱している場合は、制御がうまくいかない場合があります。
+

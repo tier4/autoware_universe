@@ -1,18 +1,19 @@
-# ルーハンドラ
+# route handler
 
-`route_handler` は、レイレットマップで走行経路を計算するためのライブラリです。
+`route_handler`はレーンレットマップで運転ルートを計算するためのライブラリです。
 
-## ユニットテスト
+## 単体テスト
 
-ユニットテストは `autoware_test_utils` パッケージに依存します。
-`autoware_test_utils` は、ユニットテストの作成を簡素化するいくつかの共通関数を提供するライブラリです。
+単体テストは`autoware_test_utils`パッケージに依存しています。
+`autoware_test_utils`は単体テストの作成を簡素化するためにいくつかの一般的な関数を提供するライブラリです。
 
 ![route_handler_test](./images/route_handler_test.svg)
 
-既定では、テストを作成するために経路ファイルが必要です。以下は、ユニットテストで使用される経路を示しています。
+デフォルトでは、テストを作成するためにrouteファイルが必要です。以下は単体テストで使用されるルートを示しています。
 
-### レーンチェンジテスト経路
+### レーンチェンジテストルート
 
 ![lane_change_test_route](./images/lane_change_test_route.svg)
 
-- この経路は `autoware_test_utils\test_map` から取得できるマップに基づいています。
+- ルートは`autoware_test_utils\test_map`から取得できるマップに基づいています。
+

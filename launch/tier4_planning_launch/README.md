@@ -1,16 +1,17 @@
 # tier4_planning_launch
 
-## 構成
+## 構造
 
 ![tier4_planning_launch](./planning_launch.drawio.svg)
 
-## パッケージの依存関係
+## パッケージ依存関係
 
-`package.xml`の`<exec_depend>`を参照してください。
+`package.xml` 内の `<exec_depend>` を参照してください。
 
-## 用法
+## 使用方法
 
-パラメータのパスを`PACKAGE_param_path`として指定する必要があることに注意してください。指定する必要のあるパラメータのパスは`planning.launch.xml`の先頭で記載されています。
+パラメータパスを `PACKAGE_param_path` として提供する必要があることに注意してください。提供する必要があるパラメータパスのリストは `planning.launch.xml` の最上部に記載されています。
+
 
 ```xml
 <include file="$(find-pkg-share tier4_planning_launch)/launch/planning.launch.xml">
@@ -20,3 +21,4 @@
   ...
 </include>
 ```
+

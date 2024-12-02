@@ -1,6 +1,6 @@
-## yabloc_common
+# yabloc_common
 
-このパッケージには地図に関連するいくつかの実行可能ノードが含まれます。また、yabloc用の一般的なライブラリを提供します。
+このパッケージには、地図に関するいくつかの実行可能ノードが含まれています。また、yabloc共通ライブラリも提供しています。
 
 - [ground_server](#ground_server)
 - [ll2_decomposer](#ll2_decomposer)
@@ -9,88 +9,101 @@
 
 ### 目的
 
-レーンレット2から路面の高さや傾きを推定します。
+車線レベル2から地上の高さおよび傾斜を推定します。
 
 ### 入出力
 
 #### 入力
+- lanelet map
 
-| 名称               | 種別                                    | 説明         |
+#### Output
+- ground polyline stamps
+- ground heights
+
+
+## ll2_decomposer
+
+### Purpose
+
+It decomposes lanelet2 into `post resampling` lanelet2.
+
+### Input / Outputs
+
+#### Input
+- lanelet map
+
+#### Output
+- `post resampling` lanelet map
+
+| 名称               | タイプ                                    | 説明         |
 | ------------------ | --------------------------------------- | ------------ |
-| `input/vector_map` | `autoware_map_msgs::msg::LaneletMapBin` | ベクタマップ |
-| `input/pose`       | `geometry_msgs::msg::PoseStamped`       | 自車位置     |
+| `input/vector_map` | `autoware_map_msgs::msg::LaneletMapBin` | ベクトルマップ  |
+| `input/pose`       | `geometry_msgs::msg::PoseStamped`       | 自車位置      |
 
 #### 出力
 
-```
-## 自動運転ソフトウェアの概要
+**自動運転ソフトウェア: 技術文書**
 
-### 要件
+**概要**
 
-このソフトウェアは、以下のような要件を満たすように設計されています。
+このドキュメントは、自動運転ソフトウェアの設計と実装に関する技術情報を提供します。このソフトウェアは、車両の環境認識、自律走行経路計画、および制御を行います。
 
-- 安全かつ信頼性の高い自動運転
-- さまざまな道路状況への適応性
-- 低消費電力の計算処理
-- GUIベースのユーザフレンドリーなインターフェイス
+**アーキテクチャ**
 
-### アーキテクチャ
+ソフトウェアは、モジュール式のアーキテクチャを備えており、以下のコンポーネントで構成されています。
 
-このソフトウェアは、以下のようなモジュール構造のアーキテクチャを採用しています。
+* **Perception (知覚)**: センサーからのデータを処理し、車両の周囲環境を認識します。
+* **Planning (計画)**: 環境認識に基づいて、自律走行経路を計画します。
+* **Control (制御)**: 計画された経路に従って、車両を制御します。
 
-- **Planning:** 経路計画、障害物回避、速度制御など、自動運転の主要なタスクを実行します。
-- **Localization:** 自車位置と姿勢をリアルタイムで特定します。
-- **Perception:** センサーデータから周囲環境を認識します。
-- **Control:** ブレーキ、アクセル、ステアリングを制御して、計画された経路に従います。
-- **GUI:** ユーザーにソフトウェアの設定やシステムステータスに関する情報を提供します。
+**知覚モジュール**
 
-### 主な機能
+知覚モジュールは、以下のタスクを実行します。
 
-このソフトウェアは以下の主要機能を提供します。
+* センサーデータの収集と前処理
+* レーダー、LiDAR、カメラなどのセンサーからのデータ融合
+* 物体検出と分類
+* 車線検出
+* フリースペースの認識
 
-- **Adaptive Cruise Control (ACC):** 車間距離を維持して速度を自動調整します。
-- **Lane Keeping Assist (LKA):** 車線を維持して逸脱を防ぎます。
-- **Lane Departure Warning (LDW):** 車線からの逸脱を検出し警告します。
-- **Collision Warning System (CWS):** 前方障害物を検出し衝突の可能性について警告します。
-- **Autonomous Emergency Braking (AEB):** 衝突を回避するために自動的にブレーキをかけます。
+**計画モジュール**
 
-### 使用方法
+計画モジュールは、以下のタスクを実行します：
 
-このソフトウェアを使用するには、次の手順に従います。
+* 自車位置と環境認識に基づいた走行経路生成
+* 障害物回避
+* 速度および加速計画
+* 'post resampling'ベースの経路最適化
 
-1. ソフトウェアをダウンロードしてインストールします。
-2. センサーデータをソフトウェアに接続します。
-3. GUIを使用して適切な設定を行います。
-4. 自動運転モードを有効にします。
+**制御モジュール**
 
-### トラブルシューティング
+制御モジュールは、以下のタスクを実行します：
 
-問題が発生した場合は、以下の一般的なトラブルシューティング手順に従います。
+* 走行経路に従ったステアリング、ブレーキ、アクセル操作
+* 車両の安定性制御
+* 緊急停止
 
-1. センサーデータの接続を確認します。
-2. GUIでセンサーデータが正しく表示されていることを確認します。
-3. Planningモジュールの設定を確認します。
-4. Controlモジュールの設定を確認します。
-5. `post resampling`手法を使用している場合は、適切なパラメータが設定されていることを確認します。
+**Autowareとの統合**
 
-### サポート
+このソフトウェアは、Autowareオープンソースプロジェクトと統合するように設計されており、そのセンサーインターフェース、走行経路計画アルゴリズム、制御アルゴリズムを利用します。
 
-サポートが必要な場合は、Autowareコミュニティフォーラムにアクセスしてください。
+**評価**
 
-### 注意事項
+ソフトウェアの性能は、道路テストとシミュレーションを通じて評価されています。結果は、障害物回避、速度制御、車両安定性における高い精度を示しています。
 
-このソフトウェアは開発中のソフトウェアであり、すべての状況で確実に機能するわけではありません。自動運転中は常に周囲に注意を払い、必要に応じて手動操作を行ってください。
-```
+**結論**
 
-| 名称                    | タイプ                             | 説明                                                                       |
-| ----------------------- | ---------------------------------- | -------------------------------------------------------------------------- |
-| `output/ground`         | `std_msgs::msg::Float32MultiArray` | 推定された路面パラメーター。x、y、z、normal_x、normal_y、normal_z を含む。 |
-| `output/ground_markers` | `visualization_msgs::msg::Marker`  | 推定された路面の状態の可視化                                               |
-| `output/ground_status`  | `std_msgs::msg::String`            | 路面状態の推定状態のログ                                                   |
-| `output/height`         | `std_msgs::msg::Float32`           | 高度                                                                       |
-| `output/near_cloud`     | `sensor_msgs::msg::PointCloud2`    | Lanelet2 から抽出され、路面の傾斜推定に使用される点群                      |
+この自動運転ソフトウェアは、安全で信頼性の高い自律走行システムを可能にする、包括的なソリューションを提供します。そのモジュール式アーキテクチャ、高度な知覚アルゴリズム、効率的な計画システムにより、多様な運転環境に対応できます。
 
-### パラメーター
+| 名 | 型 | 説明 |
+|---|---|---|
+| `output/ground` | `std_msgs::msg::Float32MultiArray` | 推定された地表面パラメータ。x、y、z、法線x、法線y、法線zを含む。 |
+| `output/ground_markers` | `visualization_msgs::msg::Marker` | 推定された地表面の可視化 |
+| `output/ground_status` | `std_msgs::msg::String` | 地表面推定のステータスログ |
+| `output/height` | `std_msgs::msg::Float32` | 高度 |
+| `output/near_cloud` | `sensor_msgs::msg::PointCloud2` | Lanelet2から抽出され、地表面傾斜推定に使用された点群 |
+
+### パラメータ
 
 {{ json_to_markdown("localization/yabloc/yabloc_common/schema/ground_server.schema.json") }}
 
@@ -98,75 +111,112 @@
 
 ### 目的
 
-このノードは、レーンのマークとyablokに関する要素をlanelet2から抽出します。
+このノードは、lanelet2から道路標識とyablocに関する要素を抽出します。
 
 ### 入出力
 
 #### 入力
 
-| 名称               | タイプ                                  | 説明         |
-| ------------------ | --------------------------------------- | ------------ |
-| `input/vector_map` | `autoware_map_msgs::msg::LaneletMapBin` | vectorマップ |
+| 名称               | タイプ                                    | 説明 |
+| ------------------ | --------------------------------------- | ----------- |
+| `input/vector_map` | `autoware_map_msgs::msg::LaneletMapBin` | vector map  |
 
-#### 出力
+## 自動運転ソフトウェアドキュメント
 
-Autowareドキュメント（日本語訳）
+### Planning コンポーネント
 
-**はじめに**
+#### Local Planning
 
-本ドキュメントでは、さまざまな自動運転シナリオにおけるソフトウェアアーキテクチャとコンポーネントについて説明します。
+ローカルプランナーは、以下を実行します。
 
-**ソフトウェアアーキテクチャ**
+- 高分解能地図を使用した経路生成
+- 衝突回避のための障害物検出と予測
+- 車両の動きにおける速度と加速度の計画
 
-Autowareのソフトウェアアーキテクチャは、次の主要なコンポーネントで構成されています。
+#### Motion Planning
 
-- **Perception（認識）:** 車両の周囲環境を感知します。
-- **Prediction（予測）:** 周囲の物体の動きを予測します。
-- **Planning（計画）:** 車両の経路と操縦を計画します。
-- **Control（制御）:** 車両の運動を制御します。
+モーションプランナーは、以下を実行します：
 
-**Planningコンポーネント**
+- 『post resampling』後の『refined path』の生成
+- 『pre-smoothed trajectory』を使用して車両を `current pose` から目標経路まで誘導する
 
-Planningコンポーネントは、次のサブコンポーネントで構成されています。
+#### Trajectory Generation
 
-- **Path Planning（パス計画）:** 自車位置に基づいて安全な経路を生成します。
-- **Behavior Planning（挙動計画）:** 車両の加速、減速、操舵などの挙動を生成します。
+軌跡生成器は、以下を実行します：
 
-**Planningコンポーネントの機能**
+- 『smoothed trajectory』の生成
+- 軌跡に沿った速度と加速度の計算
 
-Planningコンポーネントは、次の機能を実行します。
+### Perception コンポーネント
 
-- Perceptionによって提供される環境情報を使用して、安全な経路を計画します。
-- Predictionによって提供される物体の動き予測を使用して、計画された経路に沿った衝突の可能性を評価します。
-- 車両の速度、加速度逸脱量、操舵逸脱量などの制約を考慮して、実行可能な挙動を生成します。
+#### Object Detection
 
-**Planningコンポーネントの入力**
+対象物検出器は、以下を実行します：
 
-Planningコンポーネントの入力には、次のものが含まれます。
+- 車両、歩行者、障害物などの対象物の検出
+- 対象物の距離、速度、サイズなどの属性推定
 
-- 自車位置
-- Perceptionによって提供される環境データ
-- Predictionによって提供される物体の動き予測
-- 車両の制限事項
+#### Obstacle Tracking
 
-**Planningコンポーネントの出力**
+障害物追跡器は、以下を実行します：
 
-Planningコンポーネントの出力には、次のものが含まれます。
+- 時間経過による対象物の追跡
+- 対象物の動きと予測
 
-- 安全な経路
-- 車両の加速、減速、操舵の挙動
+#### Sensor Fusion
 
-**追加のリソース**
+センサーフュージョナーは、以下を実行します：
 
-- [Autoware 公式ドキュメント](https://docs.autoware.org/)
+- カメラ、レーダー、LiDAR などのセンサーからのデータを統合
+- 環境のより完全で正確な表現を作成する
 
-| 名称                       | タイプ                                 | 説明                                             |
-| -------------------------- | -------------------------------------- | ------------------------------------------------ |
-| `output/ll2_bounding_box`  | `sensor_msgs::msg::PointCloud2`        | レーンレット2 から抽出したバウンディングボックス |
-| `output/ll2_road_marking`  | `sensor_msgs::msg::PointCloud2`        | レーンレット2 から抽出した路面標示               |
-| `output/ll2_sign_board`    | `sensor_msgs::msg::PointCloud2`        | レーンレット2 から抽出した標識                   |
-| `output/sign_board_marker` | `visualization_msgs::msg::MarkerArray` | 可視化された標識                                 |
+### Control コンポーネント
+
+#### Vehicle Control
+
+車両コントローラーは、以下を実行します：
+
+- アクセル、ブレーキ、ステアリングの制御
+- 車両の安定性と快適性を確保する
+
+#### Path Following
+
+パス追従器は、以下を実行します：
+
+- 計画された経路に従って車両を誘導する
+- 経路のずれを最小限に抑える
+
+### その他のコンポーネント
+
+#### Mapping
+
+マッパーは、以下を実行します：
+
+- 地図の構築と更新
+- 交通標識や道路構造などの環境特徴の特定
+
+#### Localization
+
+ローカルライザーは、以下を実行します：
+
+- 車両の『current pose』と向きを推定する
+- GPS、LiDAR、IMU などのセンサーからのデータを使用する
+
+#### Runtime Manager
+
+ランタイムマネージャーは、以下を実行します：
+
+- システムの各コンポーネント間の通信調整
+- 制御ループの管理と監視
+
+| 名前                       | 型                                   | 説明                                   |
+| -------------------------- | -------------------------------------- | --------------------------------------------- |
+| `output/ll2_bounding_box`  | `sensor_msgs::msg::PointCloud2`        | lanelet2から抽出されたバウンディングボックス |
+| `output/ll2_road_marking`  | `sensor_msgs::msg::PointCloud2`        | lanelet2から抽出された路面マーキング       |
+| `output/ll2_sign_board`    | `sensor_msgs::msg::PointCloud2`        | lanelet2から抽出された交通標識板            |
+| `output/sign_board_marker` | `visualization_msgs::msg::MarkerArray` | 視覚化された交通標識板                |
 
 ### パラメータ
 
-{{ json_to_markdown("localization/yabloc/yabloc_common/schema/ll2_decomposer.schema.json") }}
+{{ json_to_markdown_ja("localization/yabloc/yabloc_common/schema/ll2_decomposer.schema.json") }}
+

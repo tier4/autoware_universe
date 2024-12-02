@@ -1,12 +1,12 @@
-## autoware_universe_utils
+# autoware_universe_utils
 
 ## 目的
 
-このパッケージには、他のパッケージで一般的に使用される関数が多数含まれているため、必要に応じて参照してください。
+このパッケージには他のパッケージで一般的に使用される関数が多数含まれています。必要に応じてそれらを参照してください。
 
 ## 開発者向け
 
-プリプロセスに時間がかかるため、`autoware_universe_utils.hpp` ヘッダーファイルは削除されました。
+`autoware_universe_utils.hpp` ヘッダーファイルは、このファイルを直接または間接的にインクルードするソースファイルの前処理に時間がかかるため、削除されました。
 
 ## `autoware::universe_utils`
 
@@ -16,47 +16,49 @@
 
 ##### コンストラクタ
 
+
 ```cpp
 template <typename... Reporters>
 explicit TimeKeeper(Reporters... reporters);
 ```
 
-- `TimeKeeper`をリポーターのリストで初期化します。
+- `TimeKeeper` の初期化にリポーターのリストを使用。
 
 ##### メソッド
 
 - `void add_reporter(std::ostream * os);`
 
-  - `ostream`に出力処理時間をレポートするリポーターを追加します。
-  - `os`: `ostream`オブジェクトへのポインタ。
+  - 処理時間を `ostream` に出力するためのリポーターを追加。
+  - `os`: `ostream` オブジェクトへのポインタ。
 
 - `void add_reporter(rclcpp::Publisher<ProcessingTimeDetail>::SharedPtr publisher);`
 
-  - 処理時間を`rclcpp`パブリッシャーにパブリッシュするリポーターを追加します。
-  - `publisher`: `rclcpp`パブリッシャーへの共有ポインタ。
+  - 処理時間を `rclcpp` パブリッシャーへ発行するためのリポーターを追加。
+  - `publisher`: `rclcpp` パブリッシャーの共有ポインタ。
 
 - `void add_reporter(rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher);`
 
-  - 処理時間を`std_msgs::msg::String`を使用した`rclcpp`パブリッシャーにパブリッシュするリポーターを追加します。
-  - `publisher`: `rclcpp`パブリッシャーへの共有ポインタ。
+  - 処理時間を `std_msgs::msg::String` を持つ `rclcpp` パブリッシャーへ発行するためのリポーターを追加。
+  - `publisher`: `rclcpp` パブリッシャーの共有ポインタ。
 
 - `void start_track(const std::string & func_name);`
 
-  - 関数の処理時間を追跡し始めます。
-  - `func_name`: 追跡する関数の名前。
+  - 関数の処理時間の追跡を開始。
+  - `func_name`: 追跡対象の関数の名前。
 
 - `void end_track(const std::string & func_name);`
 
-  - 関数の処理時間の追跡を終了します。
+  - 関数の処理時間の追跡を終了。
   - `func_name`: 追跡を終了する関数の名前。
 
 - `void comment(const std::string & comment);`
-  - 追跡中の現在の関数にコメントを追加します。
+  - 追跡中の現在の関数に対してコメントを追加。
   - `comment`: 追加するコメント。
 
-##### 注釈
+##### 注意
 
-- 以下に示すように、`start_track`と`end_track`を使用して時間測定を開始および終了できます。
+- 処理時間の測定は、以下のように `start_track` と `end_track` を使用して開始および終了できます。
+
 
   ```cpp
   time_keeper.start_track("example_function");
@@ -64,9 +66,10 @@ explicit TimeKeeper(Reporters... reporters);
   time_keeper.end_track("example_function");
   ```
 
-- 安全性と適切な追跡を確保するために、`ScopedTimeTrack`の使用を推奨します。
+- 安全性と適切な追跡を確保するために、`ScopedTimeTrack` の使用が推奨されます。
 
 ##### 例
+
 
 ```cpp
 #include <rclcpp/rclcpp.hpp>
@@ -138,7 +141,10 @@ int main(int argc, char ** argv)
 }
 ```
 
-- 出力（コンソール）
+## 自動運転ソフトウェアのドキュメント
+
+### 出力 (コンソール)
+
 
   ```text
   ==========================
@@ -147,7 +153,8 @@ int main(int argc, char ** argv)
           └── func_c (3.055ms) : This is a comment for func_c
   ```
 
-- 出力 (`ros2 topic echo /processing_time`)
+- 出力（`ros2 topic echo /processing_time`）
+
 
   ```text
   ---
@@ -173,21 +180,24 @@ int main(int argc, char ** argv)
 
 ##### 説明
 
-スコープ内の関数の処理時間を自動的に追跡するためのクラスです。
+スコープ内で関数の処理時間を自動的に追跡するためのクラスです。
 
 ##### コンストラクタ
+
 
 ```cpp
 ScopedTimeTrack(const std::string & func_name, TimeKeeper & time_keeper);
 ```
 
-- `func_name`: 追跡する関数の名前。
-- `time_keeper`: `TimeKeeper` オブジェクトへの参照。
+- `func_name`: 追跡される関数の名前
+- `time_keeper`: `TimeKeeper`オブジェクトへの参照
 
-##### デストラクター
+##### デストラクタ
+
 
 ```cpp
 ~ScopedTimeTrack();
 ```
 
-- `ScopedTimeTrack`オブジェクトを破壊し、関数の追跡を終了します。
+- `ScopedTimeTrack` オブジェクトを破棄し、関数の追跡を終了します。
+

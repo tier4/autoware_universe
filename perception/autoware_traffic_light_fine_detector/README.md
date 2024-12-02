@@ -1,95 +1,103 @@
+---
+
 # traffic_light_fine_detector
 
 ## 目的
 
-YoloX-sを利用した交通信号灯検出用パッケージです。
+YoloX-sを使用した信号機検出パッケージです。
 
 ## トレーニング情報
 
-### 事前トレーニングされたモデル
+### 事前トレーニング済みモデル
 
-このモデルは [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) をベースにしており、事前トレーニングされたモデルは [こちら](https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.pth) からダウンロードできます。
+モデルは[YOLOX](https://github.com/Megvii-BaseDetection/YOLOX)に基づいており、事前トレーニング済みモデルは[ここから](https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_s.pth)ダウンロードできます。
 
 ### トレーニングデータ
 
-このモデルは、日本における TIER IV の約 17,000 枚の内部交通信号灯画像でファインチューニングが行われました。
+このモデルは約17,000枚の日本の信号機画像で微調整されています。
 
-### トレーニング済みの ONNX モデル
+### トレーニングされたOnnxモデル
 
-以下の手順を使用して ONNX ファイルをダウンロードできます。詳細については [autoware-documentation](https://github.com/autowarefoundation/autoware-documentation/blob/main/docs/models/index.md) を参照してください。
+この手順に従ってONNXファイルを使用できます。詳しくは[autoware-documentation](https://github.com/autowarefoundation/autoware-documentation/blob/main/docs/models/index.md)をご覧ください。
 
-## 内部仕様 / アルゴリズム
+## 仕組み / アルゴリズム
 
-カメラ画像と `map_based_detection` ノードによって検出されたグローバル ROI アレイに基づき、CNN ベースの検出方法によって非常に正確な交通信号灯検出が可能になります。
+カメラ画像とmap_based_detectionノードによって検出されたグローバルROIアレイに基づき、CNNベースの検出方法によって非常に正確な信号機の検出が実現します。
 
 ## 入出力
 
 ### 入力
 
-| 名前            | 型                                                 | 説明                                                    |
-| --------------- | -------------------------------------------------- | ------------------------------------------------------- |
-| `~/input/image` | `sensor_msgs/Image`                                | フルサイズカメラ画像                                    |
-| `~/input/rois`  | `tier4_perception_msgs::msg::TrafficLightRoiArray` | map_based_detectorで検出されたROIの配列                 |
-| `~/expect/rois` | `tier4_perception_msgs::msg::TrafficLightRoiArray` | オフセットのないmap_based_detectorで検出されたROIの配列 |
+| 名前            | タイプ                                               | 説明                                                           |
+| --------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| `~/input/image` | `sensor_msgs/Image`                                | フルサイズのカメラ画像                                           |
+| `~/input/rois`  | `tier4_perception_msgs::msg::TrafficLightRoiArray` | `map_based_detector` によって検出された ROI の配列                |
+| `~/expect/rois` | `tier4_perception_msgs::msg::TrafficLightRoiArray` | オフセットのない `map_based_detector` によって検出された ROI の配列 |
 
 ### 出力
 
-**自動運転ソフトウェア**
+**用途**
 
-**概要**
+このドキュメントは、AutowareのPlan/Control スタックの技術的な詳細を記載しています。
 
-このドキュメントでは、AutowareのPlanningコンポーネント/モジュールの動作について説明します。Planningは、Perceptionから受信した認識データを処理し、将来の経路を計画します。
+**ターゲット読者**
 
-**動作**
+AutowareのPlan/Controlスタックの設計、運用、またはメンテナンスに関わる技術者。
 
-Planningコンポーネントは、次のステップに従って動作します。
+**ドキュメント構造**
 
-1. **認識データの受信:** Perceptionコンポーネントから、障害物、走行可能な領域、交通標識などの認識データを受信します。
-2. **ローカルパス計画:** 受信した認識データを使用して、自車位置周辺のローカルパスを生成します。
-3. **グローバルパス計画:** ローカルパスをグローバルパスに拡張し、目的地までの中長期的な経路を作成します。
-4. **再サンプル:** 生成されたパスを調整し、'post resampling'を実行して滑らかで実行可能なパスにします。
-5. **Planningの決定:** velocity逸脱量、acceleration逸脱量、操舵角など、Planningの決定を計算します。
-6. **Controlへの送信:** 計算されたPlanningの決定をControlコンポーネントに送信します。
+このドキュメントは、以下のセクションで構成されています。
 
-**機能**
+* **概要**
+* **Planコンポーネント**
+  * トラジェクトリ生成
+  * 障害物検出
+  * 経路計画
+* **Controlコンポーネント**
+  * Motion Planning
+  * Vehicle Kinematics
+* **統合**
+* **使用のヒント**
+* **既知の問題**
 
-Planningコンポーネントには、次の機能があります。
+**ライセンス**
 
-- 障害物回避のためのリアルタイムパス計画
-- 交通規則の遵守
-- 速度と加速度の最適化
-- 複数のパスオプションの生成
-- 高速道路と都市部の両方での動作
+このドキュメントは、Apache 2.0ライセンスの条件に基づいてライセンスされています。
 
-| 名                    | 型                                                 | 説明               |
-| --------------------- | -------------------------------------------------- | ------------------ |
-| `~/output/rois`       | `tier4_perception_msgs::msg::TrafficLightRoiArray` | 検出された正確な枠 |
+**免責事項**
+
+このドキュメントの情報は、「現状のまま」提供されており、いかなる種類の保証もありません。
+
+| 名称                  | タイプ                                               | 説明                  |
+| --------------------- | -------------------------------------------------- | ---------------------------- |
+| `~/output/rois`       | `tier4_perception_msgs::msg::TrafficLightRoiArray` | 検出した正確なroi   |
 | `~/debug/exe_time_ms` | `tier4_debug_msgs::msg::Float32Stamped`            | 推論にかかった時間 |
 
 ## パラメータ
 
 ### コアパラメータ
 
-| 名称                         | 種類   | デフォルト値 | 説明                                                             |
-| ---------------------------- | ------ | ------------ | ---------------------------------------------------------------- |
-| `fine_detector_score_thresh` | double | 0.3          | オブジェクトスコアがこの値未満の場合、オブジェクトは無視されます |
-| `fine_detector_nms_thresh`   | double | 0.65         | Non-Maximum Suppressionを実行するためのIoU閾値                   |
+| 名称 | 型 | デフォルト値 | 説明 |
+|---|---|---|---|
+| `fine_detector_score_thresh` | double | 0.3 | オブジェクトスコアがこの値より低い場合、オブジェクトは無視されます。 |
+| `fine_detector_nms_thresh` | double | 0.65 | Non-Maximum Suppressionを実行するためのIoUしきい値 |
 
 ### ノードパラメータ
 
-| 名前                       | 型     | 初期値                      | 説明                                                     |
-| -------------------------- | ------ | --------------------------- | -------------------------------------------------------- |
-| `data_path`                | 文字列 | "$(env HOME)/autoware_data" | パッケージのデータとアーティファクトのディレクトリパス   |
-| `fine_detector_model_path` | 文字列 | ""                          | Yoloモデルのonnxファイル名                               |
-| `fine_detector_label_path` | 文字列 | ""                          | 検出されたオブジェクトのラベル名を記載したラベルファイル |
-| `fine_detector_precision`  | 文字列 | "fp32"                      | 推論モード: "fp32", "fp16"                               |
-| `approximate_sync`         | ブール | false                       | 近似同期ポリシーを使用するかどうかを指定するフラグ       |
-| `gpu_id`                   | 整数   | 0                           | CUDA GPUデバイスを選択するためのID                       |
+| Name                        | Type    | Default Value               | Description                                                          |
+| ---------------------------- | ------- | --------------------------- | --------------------------------------------------------------------- |
+| `data_path`                  | string  | "$(env HOME)/autoware_data" | パッケージのデータとアーティファクトのディレクトリパス             |
+| `fine_detector_model_path`   | string  | ""                          | YOLOモデルのonnxファイル名                                      |
+| `fine_detector_label_path`   | string  | ""                          | 検出されたオブジェクトに書かれたラベル名を持つラベルファイル       |
+| `fine_detector_precision`    | string  | "fp32"                      | 推論モード: "fp32", "fp16"                                         |
+| `approximate_sync`           | bool    | false                       | 近似同期ポリシーを使用するかどうかフラグ                           |
+| `gpu_id`                     | integer | 0                           | CUDA GPUデバイスを選択するためのID                                 |
 
-## 仮定 / 既知の制限
+## 前提条件/既知の制約
 
 ## 参照リポジトリ
 
 YOLOX GitHub リポジトリ
 
 - <https://github.com/Megvii-BaseDetection/YOLOX>
+

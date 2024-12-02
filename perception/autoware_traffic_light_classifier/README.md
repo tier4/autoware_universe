@@ -2,251 +2,218 @@
 
 ## 目的
 
-traffic_light_classifierは、交通信号機の周囲をトリミングした画像を使用して、交通信号機ラベルを分類するパッケージです。このパッケージには、`cnn_classifier`と`hsv_classifier`という2つの分類モデルがあります。
+traffic_light_classifierは、交通信号機周辺の切り抜き画像を使用して交通信号機のラベルを分類するパッケージです。このパッケージには、以下の2つの分類器モデルがあります。`cnn_classifier`と`hsv_classifier`
 
 ## 内部動作/アルゴリズム
 
 ### cnn_classifier
 
 交通信号機のラベルは、EfficientNet-b1またはMobileNet-v2によって分類されます。
-完全に、日本の交通信号の83400（トレーニング用58600、評価用14800、テスト用10000）TIER IV社内イメージを使用して微調整しました。
-モデルの情報は次のとおりです。
+ティアフォー社内の日本国内交通信号機の画像83,400枚（58,600枚をトレーニング用、14,800枚を評価用、10,000枚をテスト用）を使用して微調整を行いました。
+各モデルの情報は次のとおりです。
 
-## 自動運転ソフトウェアのドキュメント
-
-**Planning コンポーネント**
-
-**モジュール**
-
-- **Local Planning**
-  - 自車位置の追跡
-  - 障害物検出
-  - 経路生成
-  - 'post resampling' 軌跡生成
-- **Behavior Planning**
-  - 経路追従制御
-  - 速度計画
-  - 車線維持
-- **Path Planning**
-  - ダイナミック経路生成
-  - 障害物回避
-
-**センシングコンポーネント**
-
-- **LiDAR**
-  - 3D نقطه群データの取得
-  - 障害物検出
-- **カメラ**
-  - 視覚データの取得
-  - レーンマーカー検出
-  - 交通標識認識
-- **IMU (慣性計測装置)**
-  - 加速度や角速度の測定
-  - 自車位置の推定
-
-**制御コンポーネント**
-
-- **Longitudinal Controller**
-  - 車両速度の制御
-  - 加速度逸脱量を最小化
-- **Lateral Controller**
-  - 車両ヨーの制御
-  - 車線逸脱量を最小化
-
-**Autoware**
-
-Autoware は自動運転ソフトウェアのオープンソースプラットフォームです。主要なモジュールには以下が含まれます。
-
-- **Perception**
-  - センサーデータの処理と融合
-  - 障害物認識と分類
-- **Fusion**
-  - ローカライゼーション、マッピング、トラッキング
-  - 環境の動的モデルの構築
-- **Control**
-  - 車両の制御とガイダンス
-  - PATH と BEHAVIOR Planner の実装
-
-**評価方法**
-
-- **シミュレーションパフォーマンス**
-  - レーン逸脱量、クラッシュ回避数
-- **実世界パフォーマンス**
-  - テスト走行における速度逸脱量、加減速逸脱量
-- **主要性能指標 (KPI)**
-  - 時間あたりの走行距離
-  - 介入率
+| 名称            | 入力サイズ | テスト精度 |
+| --------------- | ---------- | ------------- |
+| EfficientNet-b1 | 128 x 128  | 99.76%        |
+| MobileNet-v2    | 224 x 224  | 99.81%        |
 
 ### hsv_classifier
 
-信号機の色（緑、黄、赤）はHSVモデルで分類します。
+信号機の色（緑、黄、赤）の分類はHSVモデルで行われます。
 
 ### ラベルについて
 
-メッセージタイプは、[ウィーン条約](https://ja.wikipedia.org/wiki/%E3%83%AF%E3%82%A4%E3%83%B3%E5%90%88%E7%B4%84%E7%B4%A0%E9%81%93%E3%81%BE%E3%81%97%E3%82%87%E3%81%86%E8%B7%AF%E4%BA%A4%E8%A8%80%E3%81%B8%E3%81%AE%E9%95%B7%E7%B5%90%E3%81%A8%E7%94%BB%E5%93%81%E3%81%AE%E5%90%88%E7%B4%84%E7%B4%A0%E9%81%93)で提案されている統一された道路標識に準拠するように設計されています。このアイデアは[Autoware.Auto](https://gitlab.com/autowarefoundation/autoware.auto/autoware_auto_msgs/-/merge_requests/16)でも提案されています。
+メッセージのタイプは、[ビエンナ条約](https://en.wikipedia.org/wiki/Vienna_Convention_on_Road_Signs_and_Signals#Traffic_lights)で提案された統一道路標識に準拠するように設計されています。このアイデアは[Autoware.Auto](https://gitlab.com/autowarefoundation/autoware.auto/autoware_auto_msgs/-/merge_requests/16)でも提案されています。
 
-ノードが受信するラベルの命名規則があります。信号機1つは、カンマで区切られた次の文字列で表されます。`color1-shape1, color2-shape2` .
+ノードが受け取るラベルの命名規則があります。1つの信号機は、コンマで区切られた次の文字列で表されます。`color1-shape1, color2-shape2`。
 
-例えば、単純な赤と赤十字の信号機ラベルは "red-circle, red-cross" と表現する必要があります。
+たとえば、シンプルな赤と赤十字の信号機のラベルは「red-circle, red-cross」と表現する必要があります。
 
-これらの色と形状は、以下の通りメッセージに割り当てられます:
+これらの色と形状はメッセージに次のように割り当てられます。
 ![TrafficLightDataStructure.jpg](./image/TrafficLightDataStructure.jpg)
 
 ## 入出力
 
 ### 入力
 
-| Name            | Type                                               | Description |
-| --------------- | -------------------------------------------------- | ----------- |
-| `~/input/image` | `sensor_msgs::msg::Image`                          | 入力画像    |
-| `~/input/rois`  | `tier4_perception_msgs::msg::TrafficLightRoiArray` | 信号機のroi |
+| 名前                | タイプ                                            | 説明           |
+| -------------------- | -------------------------------------------------- | --------------- |
+| `~/input/image`       | `sensor_msgs::msg::Image`                         | 入力画像          |
+| `~/input/rois`        | `tier4_perception_msgs::msg::TrafficLightRoiArray` | 交通信号のRoI |
 
 ### 出力
 
-このドキュメントは、[Autoware](https://github.com/autowarefoundation/autoware.auto/blob/master/docs/en/planning_with_mpc/planning_with_mpc.md)のPlanningコンポーネントにおけるModel Predictive Control (MPC)のアルゴリズムの概要を説明します。
+障害物回避モジュールは、Autoware.Auto の Planning コンポーネントの一部です。障害物を検出して回避経路を生成し、それを Planning コンポーネントに引き渡します。
 
-#### Planningのアルゴリズム
+**機能:**
 
-Planningは、複数のPlanningモジュールで構成されています。
+* センサデータから障害物を検出
+* 障害物特性（種類、形状、サイズ、速度）を推定
+* 自車位置と障害物位置から回避経路を生成
+* 回避経路を最適化（安全性、滑らかさ、実行可能性）
 
-- **TrajectoryGenerator** プランニング可能な軌道を生成します。
-- **Planner** 軌道の評価および最適化を実施します。
+**アーキテクチャ:**
 
-#### モデル予測制御 (MPC)
+* **感知モジュール:** 障害物を検出し、特性を抽出します。
+* **計画モジュール:** 回避経路を生成し、最適化します。
 
-MPCは、Planningで使用される最適化アルゴリズムです。MPCでは、現在の状態からの一連の制御入力を計算し、将来のシステム挙動を最適化します。
+**インターフェース:**
 
-MPCのアルゴリズムは次の手順で行われます:
+* **入力:**
+    * センサデータ（レーダー、LiDAR）
+    * 自車位置
+* **出力:**
+    * 回避経路
 
-1. **問題の設定:** プランニングモジュールから、自車位置、障害物、目標状態などの情報を取得します。
-2. **コスト関数の設定:** 目標状態への追従、衝突回避、経路逸脱などの目的を反映するコスト関数を定義します。
-3. **最適化:** コスト関数の最小化を目的とする最適化問題を解きます。
-4. **制御入力の生成:** 最適化の結果から、最初の制御入力を生成します。
-5. **計画の再計算:** 制御入力が適用されると、自車位置が変化します。MPCは、変化した自車位置に基づいて計画を再計算します。
+**主なアルゴリズム:**
 
-#### PlanningにおけるMPC
+* **'post resampling' ベースの障害物検出**
+* **拡張カルマンフィルタ**を使用した障害物特性推定
+* **動的計画法**を使用した回避経路生成
+* **微分進化**を使用した回避経路最適化
 
-Planningでは、MPCを使用して、以下のタスクを実行します:
-
-- **経路追従:** 目標経路に沿った軌道を生成します。
-- **障害物回避:** 障害物を回避するための軌道を生成します。
-- **速度制御:** 目標速度を維持するための制御入力を計算します。
-
-MPCのPlanningにおける主要な利点は、他の車両や障害物などの障害物を考慮して、将来のシステム挙動を予測できることです。これにより、Planningはリアルタイムで安全かつ効率的な軌道を作成できます。
-
-#### 実装の詳細
-
-MPCのAutowareにおける実装では、以下を使用しています:
-
-- **コスト関数:** 位置逸脱量、速度逸脱量、加速度逸脱量の最小化
-- **最適化器:** 'post resampling`を備えたquadprog
-- **制御入力:** ステアリング角、加速度
-
-#### 参考資料
-
-- [Autoware Foundation Planning](https://github.com/autowarefoundation/autoware.auto/tree/master/ros/autoware/core/planning_with_mpc)
-- [Model Predictive Control Theory and Design](https://link.springer.com/book/10.1007/978-0-89838-330-2)
-
-| 名前                       | 種類                                            | 説明           |
-| -------------------------- | ----------------------------------------------- | -------------- |
-| `~/output/traffic_signals` | `tier4_perception_msgs::msg::TrafficLightArray` | 分類済み信号   |
-| `~/output/debug/image`     | `sensor_msgs::msg::Image`                       | デバッグ用画像 |
+| 名前                      | タイプ                                        | 説明                                 |
+| ------------------------- | --------------------------------------------- | ------------------------------------ |
+| `~/output/traffic_signals` | `tier4_perception_msgs::msg::TrafficLightArray` | 分類された信号                      |
+| `~/output/debug/image`     | `sensor_msgs::msg::Image`                       | デバッグ用画像                      |
 
 ## パラメータ
 
 ### ノードパラメータ
 
-| 名前                  | タイプ | 説明                                                                                                                                                                                                                                                                                                                             |
-| --------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `classifier_type`     | int    | 値が `1` の場合、cnn_classifier が使用されます。                                                                                                                                                                                                                                                                                 |
-| `data_path`           | str    | packages データおよびアーティファクトのディレクトリパス                                                                                                                                                                                                                                                                          |
-| `backlight_threshold` | float  | 強度がこの値を超えた場合、対応する RoI で UNKNOWN で上書きします。この値がはるかに大きい場合、ノードは過酷な逆光状況でのみ上書きするということに注意してください。したがって、この機能を使用しない場合は、この値を `1.0` に設定してください。この値は `[0.0, 1.0]` にできます。上書きされた信号の信頼性は `0.0` に設定されます。 |
+| 名称                  | タイプ  | 説明                                                                                                                                                                                                                                                                                                                                                |
+| --------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `classifier_type`     | int   | 値が `1` の場合、cnn_classifier が使用されます                                                                                                                                                                                                                                                                                                                |
+| `data_path`           | str   | パッケージデータとアーティファクトディレクトリのパス                                                                                                                                                                                                                                                                                                                 |
+| `backlight_threshold` | float | 強度がこれを超えた場合、それに対応する RoI に UNKNOWN が上書きされます。この値が著しく大きい場合、ノードは強い逆光時のみ上書きを行います。したがって、この機能を使用したくない場合は、この値を `1.0` に設定してください。値は `[0.0, 1.0]` です。上書きされる信号の信頼性は `0.0` に設定されます。 |
 
 ### コアパラメータ
 
-#### cnn_classifier
+#### cnn分類器
 
-| 名称                    | タイプ          | 説明                             |
-| ----------------------- | --------------- | -------------------------------- |
-| `classifier_label_path` | str             | モデルファイルのパス             |
-| `classifier_model_path` | str             | ラベルファイルのパス             |
-| `classifier_precision`  | str             | TensorRT精度、`fp16`または`int8` |
-| `classifier_mean`       | vector\<double> | 3チャネル入力画像の平均          |
-| `classifier_std`        | vector\<double> | 3チャネル入力画像の標準偏差      |
-| `apply_softmax`         | bool            | ソフトマックスを適用するかどうか |
+| 名前                    | 種類            | 説明                          |
+| ----------------------- | --------------- | ------------------------------------ |
+| `classifier_label_path` | 文字列             | モデルファイルへのパス               |
+| `classifier_model_path` | 文字列             | ラベルファイルへのパス               |
+| `classifier_precision`  | 文字列             | TensorRT精度の`fp16`または`int8` |
+| `classifier_mean`       | 倍精度浮動小数点型ベクトル | 3チャンネル入力画像の平均           |
+| `classifier_std`        | 倍精度浮動小数点型ベクトル | 3チャンネル入力画像の標準偏差            |
+| `apply_softmax`         | 論理値            | ソフトマックスを適用するか         |
 
 #### hsv_classifier
 
-## HSV カラーベース分類器
+| 名前         | 型 | 説明                                           |
+| ------------ | --- | ---------------------------------------------- |
+| `green_min_h` | int | 緑色の最小色相                                  |
+| `green_min_s` | int | 緑色の最小彩度                                  |
+| `green_min_v` | int | 緑色の最小値（輝度）                            |
+| `green_max_h` | int | 緑色の最大色相                                  |
+| `green_max_s` | int | 緑色の最大彩度                                  |
+| `green_max_v` | int | 緑色の最大値（輝度）                            |
+| `yellow_min_h` | int | 黄色の最小色相                                 |
+| `yellow_min_s` | int | 黄色の最小彩度                                 |
+| `yellow_min_v` | int | 黄色の最小値（輝度）                           |
+| `yellow_max_h` | int | 黄色の最大色相                                 |
+| `yellow_max_s` | int | 黄色の最大彩度                                 |
+| `yellow_max_v` | int | 黄色の最大値（輝度）                           |
+| `red_min_h` | int | 赤色の最小色相                                  |
+| `red_min_s` | int | 赤色の最小彩度                                  |
+| `red_min_v` | int | 赤色の最小値（輝度）                            |
+| `red_max_h` | int | 赤色の最大色相                                  |
+| `red_max_s` | int | 赤色の最大彩度                                  |
+| `red_max_v` | int | 赤色の最大値（輝度）                            |
 
-このコンポーネントは、Hue, Saturation, Value（HSV）カラー空間を使用して障害物を分類します。これにより、セグメンテーションのフィルタリングや、Planningコンポーネントに対する追加的な入力として使用できます。
-
-### 入出力
-
-**入力:**
-
-- `PointCloud`: 障害物のPointCloudデータ
-- `CameraInfo`: カメラの内部および外部パラメータ
-
-**出力:**
-
-- `ClassifiedPointCloud`: HSV色相に基づいて分類された障害物のPointCloudデータ
-
-### パラメータ
-
-| パラメータ                                                          | 説明 | デフォルト値 |
-| ------------------------------------------------------------------- | ---- | ------------ |
-| `hue_threshold`: HSV色相の閾値 (度)                                 | 30   |
-| `saturation_threshold`: HSV彩度の閾値                               | 0.1  |
-| `value_threshold`: HSV明度の閾値                                    | 0.1  |
-| `post resampling`: ポストリサンプリングフィルターを使用するかどうか | True |
-
-### アルゴリズム
-
-このコンポーネントは、各点のHSV色相、彩度、明度を計算し、指定されたしきい値と比較します。指定されたしきい値を超える点は、障害物として分類されます。
-
-### 注意事項
-
-- この分類器は単一のカメラからのデータだけを使用することに注意してください。より堅牢な障害物検出を行うには、複数のカメラからのデータを使用する必要があります。
-- パラメータは特定のシーンやライティング条件に応じて調整する必要があります。
-- この分類器は、距離情報を使用しません。そのため、障害物が自車位置に近いか遠いかを区別できません。
-
-| 名             | 型  | 説明           |
-| -------------- | --- | -------------- |
-| `green_min_h`  | int | 緑色の最小色相 |
-| `green_min_s`  | int | 緑色の最小彩度 |
-| `green_min_v`  | int | 緑色の最小明度 |
-| `green_max_h`  | int | 緑色の最大色相 |
-| `green_max_s`  | int | 緑色の最大彩度 |
-| `green_max_v`  | int | 緑色の最大明度 |
-| `yellow_min_h` | int | 黄色の最小色相 |
-| `yellow_min_s` | int | 黄色の最小彩度 |
-| `yellow_min_v` | int | 黄色の最小明度 |
-| `yellow_max_h` | int | 黄色の最大色相 |
-| `yellow_max_s` | int | 黄色の最大彩度 |
-| `yellow_max_v` | int | 黄色の最大明度 |
-| `red_min_h`    | int | 赤色の最小色相 |
-| `red_min_s`    | int | 赤色の最小彩度 |
-| `red_min_v`    | int | 赤色の最小明度 |
-| `red_max_h`    | int | 赤色の最大色相 |
-| `red_max_s`    | int | 赤色の最大彩度 |
-| `red_max_v`    | int | 赤色の最大明度 |
-
-## 交通信号機分類器モデルのトレーニング
+## 信号機分類器モデルのトレーニング
 
 ### 概要
 
-このガイドでは、**[mmlab/mmpretrain](https://github.com/open-mmlab/mmpretrain)** リポジトリを使用して交通信号機分類器モデルをトレーニングし、**[mmlab/mmdeploy](https://github.com/open-mmlab/mmdeploy)** を使用して展開する方法に関する詳細な手順を説明します。独自のデータセットを使用して独自の交通信号機分類器モデルを作成する場合は、以下に示す手順に従ってください。
+このガイドでは、**[mmlab/mmpretrain](https://github.com/open-mmlab/mmpretrain)** リポジトリを使用して信号機分類器モデルをトレーニングし、**[mmlab/mmdeploy](https://github.com/open-mmlab/mmdeploy)**を使用して展開するための詳細な手順を説明します。独自のデータセットを使用してカスタム信号機分類器モデルを作成する場合は、以下の手順に従ってください。
 
-### データの準備
+### データ準備
 
-#### サンプルデータセットの使用
+#### サンプルデータセットを使用する
 
-Autoware は交通信号機の分類のためのトレーニング手順を示すサンプルデータセットを提供しています。このデータセットは、赤、緑、黄色のラベルに分類された 1045 枚の画像で構成されています。このサンプルデータセットを使用するには、**[リンク](https://autoware-files.s3.us-west-2.amazonaws.com/dataset/traffic_light_sample_dataset.tar.gz)** からダウンロードして、選択した指定フォルダーに解凍してください。
+Autowareは、信号機分類のトレーニング手順を説明するサンプルデータセットを提供しています。このデータセットは、赤、緑、黄色の3つのラベルに分類された1045枚の画像で構成されています。このサンプルデータセットを使用するには、**[リンク](https://autoware-files.s3.us-west-2.amazonaws.com/dataset/traffic_light_sample_dataset.tar.gz)**からダウンロードし、任意の指定されたフォルダに解凍してください。
 
-#### カスタムデータセットの使用
+#### カスタムデータセットを使用する
 
-交通信号機分類器をトレーニングするには、各サブフォルダーが異なるクラスを表す、構造化されたサブフォルダー形式を採用します。以下に示すのは、データセット構造の例です。
+信号機分類器をトレーニングするには、各サブフォルダが異なるクラスを表すように構造化されたサブフォルダ形式を使用します。以下は、データセット構造の例です。
+```
+└─── dataset
+    └─── class1
+        └─── img1.jpg
+        └─── img2.jpg
+    └─── class2
+        └─── img1.jpg
+        └─── img2.jpg
+    └─── class3
+        └─── img1.jpg
+        └─── img2.jpg
+```
+```
+└─── dataset
+    └─── red
+        └─── img1.jpg
+        └─── img2.jpg
+    └─── green
+        └─── img1.jpg
+        └─── img2.jpg
+    └─── yellow
+        └─── img1.jpg
+        └─── img2.jpg
+```
+
+### Model Training
+
+To train a traffic light classifier model, follow these steps:
+
+1. Clone the **[mmlab/mmpretrain](https://github.com/open-mmlab/mmpretrain)** repository.
+2. Install the required dependencies.
+3. Prepare the training dataset by following the instructions in [Using Sample Dataset](#use-sample-dataset) or [Using Your Custom Dataset](#use-your-custom-dataset).
+4. Specify the following training parameters in the provided `config` files:
+    - Dataset path
+    - Output directory
+    - Number of epochs
+    - Batch size
+    - Learning rate
+5. Train the model using the following command:
+```
+mmtrain config.py [--options] [args...]
+```
+
+### Model Deployment
+
+To deploy the trained model using **[mmdeploy](https://github.com/open-mmlab/mmdeploy)**, follow these steps:
+
+1. Clone the **[mmlab/mmdeploy](https://github.com/open-mmlab/mmdeploy)** repository.
+2. Install the required dependencies.
+3. Convert the trained model to a deployable format using `mmdeploy`:
+```
+mmdeploy model convert --config config.yml --model model.pth --output output.bin
+```
+4. Integrate the deployed model into your `Planning` component/module.
+
+### Post-processing for Traffic Light Detection
+
+The model will return class probabilities. To determine the detected traffic light color from these probabilities, the following steps are carried out:
+
+1. Use a predefined threshold (usually 0.5) to determine the most likely class.
+2. If the most likely class is 'red', 'green', or 'yellow', that color is considered the detected color.
+3. If the most likely class is 'other', the detected color is considered unknown.
+
+### Validation
+
+To evaluate the performance of the trained model, use a validation dataset that is not part of the training set. The validation dataset should contain a representative sample of the types of traffic lights that the model will encounter in real-world scenarios. Calculate the accuracy of the model by comparing the predicted traffic light colors to the ground truth labels.
+
+### Additional Information
+
+- If you encounter any issues during the training or deployment process, please refer to the documentation on the **[mmlab/mmpretrain](https://github.com/open-mmlab/mmpretrain)** and **[mmlab/mmdeploy](https://github.com/open-mmlab/mmdeploy)** repositories.
+- For further guidance on integrating the deployed model, consult the Autoware documentation or seek assistance from the Autoware community.
+
+### 変更履歴
+
+- 2023-03-13: リリース
+
 
 ```python
 DATASET_ROOT
@@ -281,28 +248,29 @@ DATASET_ROOT
 
 #### 前提条件
 
-<!-- cspell:ignore Miniconda -->
+**手順 1.** 公式ウェブサイトから Miniconda をダウンロードしてインストールする ([こちら](https://mmpretrain.readthedocs.io/en/latest/get_started.html))
 
-**ステップ 1.** [公式ウェブサイト](https://mmpretrain.readthedocs.io/en/latest/get_started.html)からMinicondaをダウンロードしてインストールします。
+**手順 2.** conda 仮想環境を作成してアクティベートする
 
-**ステップ 2.** conda仮想環境を作成してアクティベートします
 
 ```bash
 conda create --name tl-classifier python=3.8 -y
 conda activate tl-classifier
 ```
 
-**手順 3.** PyTorchのインストール
+**ステップ 3.** PyTorch のインストール
 
-CUDA 11.6と互換性のあるPyTorchをインストールしてください。これは、現在のAutowareの要件です。
+PyTorch をインストールしてください。CUDA 11.6 と互換性のあるバージョンである必要があります。これは、現在の Autoware の必要条件です。
+
 
 ```bash
 conda install pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.6 -c pytorch -c nvidia
 ```
 
-#### mmlab/mmpretrain のインストール
+#### mmlab/mmpretrainをインストールする
 
-**手順 1.** mmpretrain をソースからインストール
+**ステップ1.** mmpretrainをソースからインストールする
+
 
 ```bash
 cd ~/
@@ -313,20 +281,22 @@ pip install -U openmim && mim install -e .
 
 ### トレーニング
 
-MMPretrainは構成ファイルによって制御されるトレーニングスクリプトを提供します。
-継承デザインパターンを利用することで、構成ファイルとしてPythonファイルを使用してトレーニングスクリプトを簡単に調整できます。
+MMPretrain には、コンフィギュレーションファイルによって制御されるトレーニングスクリプトが用意されています。
+継承設計パターンを利用すると、Python ファイルをコンフィギュレーションファイルとして使用して、トレーニングスクリプトを簡単にカスタマイズできます。
 
-この例では、MobileNetV2モデルを使ったトレーニングステップを示しますが、EfficientNetV2、EfficientNetV3、ResNetなど、別の分類モデルを使用する柔軟性があります。
+この例では、MobileNetV2 モデルでトレーニング手順を紹介しますが、EfficientNetV2、EfficientNetV3、ResNet などの他の分類モデルを使用することもできます。
 
-#### 構成ファイルの作成
+#### コンフィギュレーションファイルの作成
 
-`configs`フォルダ内で使用するモデルの構成ファイルを作成します。
+`configs` フォルダー内に、好みのモデルのコンフィギュレーションファイルを生成します。
+
 
 ```bash
 touch ~/mmpretrain/configs/mobilenet_v2/mobilenet-v2_8xb32_custom.py
 ```
 
-好みのテキストエディターでコンフィグレーションファイルを開き、提供されたコンテンツのコピーを作成してください。データセットのパスに合わせて **data_root** 変数を調整します。モデル、データセット、スケジューラーのコンフィグレーションパラメーターは、好みに合わせてカスタマイズできます。
+テキストエディタでお好みの設定ファイルを開き、提供されたコンテンツのコピーを作成します。**data_root** バリアブルをデータセットのパスに変更します。モデル、データセット、スケジューラの設定パラメータはお好みのものに変更してカスタマイズできます。
+
 
 ```python
 # Inherit model, schedule and default_runtime from base model
@@ -415,21 +385,23 @@ test_evaluator = val_evaluator
 
 ```
 
-#### トレーニングの開始
+#### トレーニングを開始する
+
 
 ```bash
 cd ~/mmpretrain
 python tools/train.py configs/mobilenet_v2/mobilenet-v2_8xb32_custom.py
 ```
 
-トレーニングログと重みは、`work_dirs/mobilenet-v2_8xb32_custom` フォルダに保存されます。
+トレーニングログと重みは `work_dirs/mobilenet-v2_8xb32_custom` フォルダに保存されます。
 
-### PyTorchモデルからONNXモデルへの変換
+### PyTorchモデルからONNXモデルへ変換
 
 #### mmdeployのインストール
 
-「mmdeploy」ツールセットは、トレーニングされたモデルをさまざまなターゲットデバイスにデプロイするように設計されています。
+'mmdeploy' ツールセットは、トレーニング済みモデルをさまざまなターゲットデバイスに展開するために設計されています。
 その機能により、PyTorchモデルをONNX形式にシームレスに変換できます。
+
 
 ```bash
 # Activate your conda environment
@@ -452,7 +424,8 @@ cd ~/
 git clone -b main https://github.com/open-mmlab/mmdeploy.git
 ```
 
-#### PyTorchモデルをONNXモデルに変換する
+#### PyTorchモデルからONNXモデルへの変換
+
 
 ```bash
 cd ~/mmdeploy
@@ -468,57 +441,57 @@ python tools/deploy.py \
 --work-dir mmdeploy_model/mobilenet_v2
 ```
 
-## ONNXモデル変換
+変換後の ONNX モデルは `mmdeploy/mmdeploy_model/mobilenet_v2` フォルダに保存されます。
 
-変換されたONNXモデルは、`mmdeploy/mmdeploy_model/mobilenet_v2`フォルダに保存されます。
+onnx モデルを入手したら、起動ファイル (例: `model_file_path`, `label_file_path`, `input_h`, `input_w` ) で定義されたパラメータを更新します。
+[tier4_perception_msgs::msg::TrafficLightElement](https://github.com/tier4/tier4_autoware_msgs/blob/tier4/universe/tier4_perception_msgs/msg/traffic_light/TrafficLightElement.msg) で定義されているラベルのみサポートすることに注意してください。
 
-ONNXモデルを入手したら、起動ファイルで定義されているパラメータ（例：`model_file_path`、`label_file_path`、`input_h`、`input_w`など）を更新します。[tier4_perception_msgs::msg::TrafficLightElement](https://github.com/tier4/tier4_autoware_msgs/blob/tier4/universe/tier4_perception_msgs/msg/traffic_light/TrafficLightElement.msg)で定義されているラベルのみサポートすることに注意してください。
+## 仮定 / 既知の制限
 
-## 仮定/既知の制限
-
-<!-- 実装の仮定と制約事項を記述してください。
+<!-- 実装の仮定と制限を記載します。
 
 例:
-  このアルゴリズムは障害物が動かないことを前提としています。そのため、障害物の回避を開始した後に障害物が急激に動いた場合、衝突する可能性があります。
-  また、このアルゴリズムはブラインドスポットを考慮しません。一般に、センシング性能の限界により近すぎる障害物は見えないため、障害物に対する十分なマージンをとってください。
+  このアルゴリズムは障害物が動かないことを前提としています。そのため、車両が障害物の回避を開始した後、障害物が急速に動いた場合は、車両が障害物と衝突する可能性があります。
+  また、このアルゴリズムは死角を考慮しません。一般的に、検知性能の限界により近すぎる障害物が表示されないため、障害物との間に十分な余白を確保してください。
 -->
 
-## (オプション) エラー検出および処理
+## (オプション) エラーの検出と処理
 
-<!-- エラーを検出する方法と、それらから回復する方法を記述してください。
+<!-- エラーを検出する方法と、それらから回復する方法を記載します。
 
 例:
-  このパッケージは、最大20個の障害物を処理できます。それ以上の障害物が検出された場合、このノードは失敗し、診断エラーを引き起こします。
+  このパッケージでは、最大 20 個の障害物を処理できます。障害物がさらに見つかった場合、このノードは処理を放棄し、診断エラーを発生させます。
 -->
 
 ## (オプション) パフォーマンス特性
 
-<!-- 複雑さなどのパフォーマンス情報を記述します。ボトルネックにならない場合は、必要ありません。
+<!-- 複雑さなどのパフォーマンス情報を記載します。ボトルネックにならない場合は、不要です。
 
 例:
 
-### 複雑さ
+  ### 複雑さ
 
-このアルゴリズムはO（N）です。
+  このアルゴリズムは O(N) です。
 
-### 処理時間
+  ### 処理時間
 
-...
+  ...
 -->
 
 <!-- cspell:ignore Mingxing, Quoc, PMLR -->
 
-## 参照/外部リンク
+## リファレンス/外部リンク
 
-[1] M. Sandler、A. Howard、M. Zhu、A. Zhmoginov、L. Chen、「MobileNetV2：逆残差と線形ボトルネック」、2018 IEEE/CVFコンピュータビジョンアンドパターン認識会議、ソルトレイクシティ、ユタ州、2018年、pp。 4510-4520、doi：10.1109/CVPR.2018.00474。
+[1] M. Sandler, A. Howard, M. Zhu, A. Zhmoginov and L. Chen, "MobileNetV2: Inverted Residuals and Linear Bottlenecks," 2018 IEEE/CVF Conference on Computer Vision and Pattern Recognition, Salt Lake City, UT, 2018, pp. 4510-4520, doi: 10.1109/CVPR.2018.00474.
 
-[2] タン、ミングシン、クオック・レ。「EfficientNet：畳み込みニューラルネットワークのモデルスケーリングを再考する」。機械学習に関する国際会議。PMLR、2019年。
+[2] Tan, Mingxing, and Quoc Le. "EfficientNet: Rethinking model scaling for convolutional neural networks." International conference on machine learning. PMLR, 2019.
 
-## (オプション) 将来の拡張/未実装部分
+## (オプション) 将来の拡張 / 未実装部分
 
-<!-- このパッケージの将来の拡張を記述します。
+<!-- このパッケージの将来の拡張を記載します。
 
 例:
-  現在、このパッケージはチャタリング障害物を適切に処理できません。知覚レイヤーに確率フィルタを追加して改善する予定です。
-  また、グローバルにすべきパラメータがいくつかあります（例：車両サイズ、最大ステアリングなど）。これらはリファクタリングされてグローバルパラメータとして定義されるため、異なるノード間で同じパラメータを共有できます。
+  現在、このパッケージはチャタリング障害物をうまく処理できません。知覚層に確率フィルタを追加して、改善することを計画しています。
+  また、グローバルにするべきパラメータがいくつかあります (例: 車両サイズ、最大ステアリングなど)。これらはリファクタリングされ、グローバルパラメータとして定義されるため、異なるノード間で同じパラメータを共有できます。
 -->
+

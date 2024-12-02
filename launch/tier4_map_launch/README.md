@@ -4,15 +4,16 @@
 
 ![tier4_map_launch](./map_launch.drawio.svg)
 
-## パッケージ依存関係
+## パッケージ依存
 
-`<exec_depend>`を参照してください。
+`<package.xml>` の`<exec_depend>` を参照してください。
 
 ## 使用法
 
-`*.launch.xml` で以下のように記載して `map.launch.py` を使用できます。
+`map.launch.py` を使用するには、次のように `*.launch.xml` に含めることができます。
 
-`PACKAGE_param_path` としてパラメータパスを提供する必要があることに注意してください。提供する必要があるパラメータパスのリストは、`map.launch.xml` の最上部に記載されています。
+`PACKAGE_param_path` としてパラメータのパスを指定する必要があることに注意してください。指定する必要のあるパラメータパスのリストは、`map.launch.xml` の先頭に記載されています。
+
 
 ```xml
 <arg name="map_path" description="point cloud and lanelet2 map directory path"/>
@@ -32,4 +33,5 @@
 
 ## 注釈
 
-処理負荷を軽減するために、ROS 2 の [Component](https://docs.ros.org/en/galactic/Concepts/About-Composition.html) 機能を使用しています（ROS 1 の Nodelet と同様）。
+処理負荷を軽減するため、[コンポーネント](https://docs.ros.org/en/galactic/Concepts/About-Composition.html)機能をROS 2で使用します（ROS 1のNodeletに近い）
+

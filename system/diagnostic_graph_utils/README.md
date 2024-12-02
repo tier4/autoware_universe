@@ -1,13 +1,14 @@
-# diagnostic_graph_utils
+## Diagnostic Graph Utils
 
-本パッケージは、[diagnostic_graph_aggregator](../diagnostic_graph_aggregator/README.md)が公開する診断グラフに対するユーティリティです。
+このパッケージは、[diagnostic_graph_aggregator](../diagnostic_graph_aggregator/README.md) によって公開される診断グラフ用のユーティリティです。
 
-## ROSノード
+## ROS ノード
 
-- [dump](./doc/node/dump_ja.md)
-- [converter](./doc/node/converter_ja.md)
+- [dump](./doc/node/dump.md)
+- [converter](./doc/node/converter.md)
 
-## C++ライブラリ
+## C++ ライブラリ
 
 - [DiagGraph](./include/diagnostic_graph_utils/graph.hpp)
 - [DiagGraphSubscription](./include/diagnostic_graph_utils/subscription.hpp)
+

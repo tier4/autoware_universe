@@ -1,3 +1,2 @@
-# autoware_adapi_specs
+404: 見つかりません
 
-このパッケージは、Autoware AD APIの仕様です。

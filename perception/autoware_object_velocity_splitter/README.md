@@ -1,9 +1,8 @@
 # autoware_object_velocity_splitter
 
-このパッケージには、[autoware_perception_msgs/msg/DetectedObject](https://github.com/autowarefoundation/autoware_msgs/tree/main/autoware_perception_msgs/msg/DetectedObject.idl)用のオブジェクトフィルタモジュールが含まれています。
-このパッケージは、オブジェクトの速度によって DetectedObjects を2つのメッセージに分割できます。
+このパッケージには、[autoware_perception_msgs/msg/DetectedObject](https://github.com/autowarefoundation/autoware_msgs/tree/main/autoware_perception_msgs/msg/DetectedObject.idl)用のオブジェクトフィルタモジュールが含まれています。このパッケージでは、オブジェクトの速度でDetectedObjectsを2つのメッセージに分割できます。
 
-## インターフェース
+## インターフェイス
 
 ### 入力
 
@@ -22,4 +21,5 @@
 - `velocity_threshold` (double) [m/s]
   - デフォルトパラメータは3.0
 
-このパラメータはオブジェクトを分割するための速度しきい値です
+このパラメータは、オブジェクトを分割するための速度しきい値です
+

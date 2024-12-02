@@ -1,27 +1,27 @@
-## Autoware_freespace_planner
+# `autoware_freespace_planner`
 
-## freespace_planner_node
+## `freespace_planner_node`
 
-`freespace_planner_node`は、静的/動的障害物のある空間でトラジェクトリを計画するグローバルパスプランナノードです。このノードは現在、`freespace_planning_algorithms`パッケージのハイブリッドA\*検索アルゴリズムに基づいています。rrt\*などの他のアルゴリズムも追加され、将来的には選択可能になります。
+`freespace_planner_node` は、静的/動的障害物のある空間内での経路を計画するグローバルパスプランナーノードです。このノードは現在、`freespace_planning_algorithms` パッケージのハイブリッド A\* 検索アルゴリズムに基づいています。rrt\* などの他のアルゴリズムも追加され、将来選択できるようになります。
 
-**注意**
-トラジェクトリ追従の制約により、出力トラジェクトリは単一方向のパスのみを含むように分割されます。つまり、出力トラジェクトリは前進と後進の両方のトラジェクトリを同時に含みません。
+**注記**
+軌跡追従の制約により、出力軌跡は一方向のパスのみを含めるように分割されます。言い換えると、出力軌跡には、前方と後方の軌跡が同時に含まれません。
 
 ### 入力トピック
 
-| 名称                    | タイプ                        | 説明                                                       |
-| ----------------------- | ----------------------------- | ---------------------------------------------------------- |
-| `~input/route`          | autoware_planning_msgs::Route | ルートとゴールポーズ                                       |
-| `~input/occupancy_grid` | nav_msgs::OccupancyGrid       | 走行可能な領域のコストマップ                               |
-| `~input/odometry`       | nav_msgs::Odometry            | 車両速度（車両の停止状態をチェックするために使用する）     |
-| `~input/scenario`       | tier4_planning_msgs::Scenario | ノードをアクティベートするためのアクティベートするシナリオ |
+| 名前                    | 型                          | 説明                                                 |
+| ----------------------- | ----------------------------- | -------------------------------------------------------- |
+| `~input/route`          | autoware_planning_msgs::Route | ルートと目標位置                                     |
+| `~input/occupancy_grid` | nav_msgs::OccupancyGrid       | 走行可能な領域のコストマップ                             |
+| `~input/odometry`       | nav_msgs::Odometry            | 車両速度（車両停止のチェック用）                       |
+| `~input/scenario`       | tier4_planning_msgs::Scenario | アクティブにするシナリオ（ノードの起動用）              |
 
 ### 出力トピック
 
-| 名称                 | タイプ                             | 説明                                       |
-| -------------------- | ---------------------------------- | ------------------------------------------ |
-| `~output/trajectory` | autoware_planning_msgs::Trajectory | 追従する軌道                               |
-| `is_completed`       | bool (rosパラメータとして実装)     | すべての分割された軌道が公開されたかどうか |
+| 名前                  | 型                                | 説明                                               |
+| -------------------- | ---------------------------------- | --------------------------------------------------- |
+| `~output/trajectory`  | autoware_planning_msgs::Trajectory | 走行すべき軌跡                                        |
+| `is_completed`        | bool (rosparamとして実装)           | すべての分割された軌跡がパブリッシュされたかどうか |
 
 ### 出力TF
 
@@ -29,74 +29,75 @@
 
 ### 起動方法
 
-1. `freespace_planner.launch` にリマッピング情報を書き込むか、`roslaunch` を実行するときに引数を追加します。
+1. `freespace_planner.launch` にリマッピング情報を記載するか、`roslaunch` 実行時に引数を追加する
 2. `roslaunch freespace_planner freespace_planner.launch`
 
-### パラメータ
+### パラメーター
 
 {{json_to_markdown("planning/autoware_freespace_planner/schema/freespace_planner.schema.json")}}
 
-#### ノードパラメータ
+#### ノードパラメーター
 
-| パラメータ                   | 型             | 説明                                                                   |
-| ---------------------------- | -------------- | ---------------------------------------------------------------------- |
-| `planning_algorithms`        | 文字列         | ノードで使用されるアルゴリズム                                         |
-| `vehicle_shape_margin_m`     | 浮動小数       | 計画アルゴリズムのコリジョンマージン                                   |
-| `update_rate`                | 倍精度浮動小数 | タイマーの更新レート                                                   |
-| `waypoints_velocity`         | 倍精度浮動小数 | 出力軌道の速度（現時点では定速のみをサポート）                         |
-| `th_arrived_distance_m`      | 倍精度浮動小数 | 車両が軌道のエンドポイントに到着したかどうかをチェックするしきい値距離 |
-| `th_stopped_time_sec`        | 倍精度浮動小数 | 車両が停止しているかどうかをチェックするしきい値時間                   |
-| `th_stopped_velocity_mps`    | 倍精度浮動小数 | 車両が停止しているかどうかをチェックするしきい値速度                   |
-| `th_course_out_distance_m`   | 倍精度浮動小数 | 車両がコースから外れたかどうかをチェックするしきい値距離               |
-| `th_obstacle_time_sec`       | 倍精度浮動小数 | 障害物が軌道上にあるかどうかをチェックするしきい値時間                 |
-| `vehicle_shape_margin_m`     | 倍精度浮動小数 | 車両マージン                                                           |
-| `replan_when_obstacle_found` | ブール         | 障害物が軌道上で見つかったときに再計画するかどうか                     |
-| `replan_when_course_out`     | ブール         | 車両がコースから外れたときに再計画するかどうか                         |
+| パラメータ                    | タイプ   | 説明                                                                     |
+| ---------------------------- | ------ | ------------------------------------------------------------------------------- |
+| `planning_algorithms`        | 文字列 | ノードで使用されるアルゴリズム                                                     |
+| `vehicle_shape_margin_m`     | 浮動小数点 | Planningアルゴリズムでの衝突マージン                                          |
+| `update_rate`                | 倍精度浮動小数点数 | タイマーの更新レート                                                             |
+| `waypoints_velocity`         | 倍精度浮動小数点数 | 出力軌跡の速度（現在、定速度のみサポートされています）  |
+| `th_arrived_distance_m`      | 倍精度浮動小数点数 | 車両が軌跡の終点に到着したかどうかを確認するための閾値距離 |
+| `th_stopped_time_sec`        | 倍精度浮動小数点数 | 車両が停止しているかどうかを確認するための閾値時間                                   |
+| `th_stopped_velocity_mps`    | 倍精度浮動小数点数 | 車両が停止しているかどうかを確認するための閾値速度                               |
+| `th_course_out_distance_m`   | 倍精度浮動小数点数 | 車両がコースアウトしているかどうかを確認するための閾値距離                         |
+| `th_obstacle_time_sec`       | 倍精度浮動小数点数 | 軌跡上に障害物があるかどうかを確認するための閾値時間                        |
+| `vehicle_shape_margin_m`     | 倍精度浮動小数点数 | 車両の余裕                                                                          |
+| `replan_when_obstacle_found` | ブール   | 軌跡上に障害物が見つかったときに再計画するか                                                   |
+| `replan_when_course_out`     | ブール   | 車両がコースアウトしたときに再計画するか                                |
 
-#### Planner の共通パラメータ
+#### Planner共通パラメータ
 
-| パラメータ                | 種類 | 説明                                     |
-| ------------------------- | ---- | ---------------------------------------- |
-| `time_limit`              | 数値 | Planning の時間制限                      |
-| `maximum_turning_ratio`   | 数値 | 使用可能な実際の旋回範囲に対する最大比   |
-| `turning_steps`           | 数値 | 旋回範囲内の旋回ステップ数               |
-| `theta_size`              | 数値 | 角度の離散化の数                         |
-| `lateral_goal_range`      | 数値 | 横位置の目標範囲                         |
-| `longitudinal_goal_range` | 数値 | 縦位置の目標範囲                         |
-| `angle_goal_range`        | 数値 | 角度の目標範囲                           |
-| `curve_weight`            | 数値 | 曲線操作に対する追加コスト係数           |
-| `reverse_weight`          | 数値 | バック動作に対する追加コスト係数         |
-| `direction_change_weight` | 数値 | 方向変更に対する追加コスト係数           |
-| `obstacle_threshold`      | 数値 | 特定のグリッドを障害物と見なすための閾値 |
+| パラメータ                 | タイプ   | 説明                                          |
+| ------------------------- | ------ | ----------------------------------------------- |
+| `time_limit`              | double | Planningの時間制限                            |
+| `maximum_turning_ratio`   | double | カーブに実際に使う最大範囲比                  |
+| `turning_steps`           | double | カーブ範囲内のターンステップ数              |
+| `theta_size`              | double | 角度の離散化の数                              |
+| `lateral_goal_range`      | double | 横方向位置のゴール範囲                        |
+| `longitudinal_goal_range` | double | 縦方向位置のゴール範囲                       |
+| `angle_goal_range`        | double | 角度のゴール範囲                              |
+| `curve_weight`            | double | カーブするアクションに対する追加コスト係数     |
+| `reverse_weight`          | double | 後退するアクションに対する追加コスト係数     |
+| `direction_change_weight` | double | 進行方向の切り替えに対する追加コスト係数   |
+| `obstacle_threshold`      | double | グリッドを障害物とみなすしきい値              |
 
-#### A\* 探索パラメータ
+#### A\* サーチパラメータ
 
-| パラメーター                | タイプ | 説明                                                 |
-| --------------------------- | ------ | ---------------------------------------------------- |
-| `search_method`             | 文字列 | 検索方法、スタートからゴールへまたはその逆方向       |
-| `only_behind_solutions`     | ブール | ソリューションをゴールの後ろに制限するかどうか       |
-| `use_back`                  | ブール | 後方軌道を使用するかどうか                           |
-| `adapt_expansion_distance`  | ブール | 環境に基づいて展開距離を適応する場合                 |
-| `expansion_distance`        | double | ノード遷移の展開距離                                 |
-| `near_goal_distance`        | double | ゴール近傍距離のしきい値                             |
-| `distance_heuristic_weight` | double | ノードのコストを推定するためのヒューリスティック重み |
-| `smoothness_weight`         | double | 曲率の変化に対するコストファクター                   |
-| `obstacle_distance_weight`  | double | 障害物までの距離に対するコストファクター             |
-| `goal_lat_distance_weight`  | double | ゴールからの横方向距離に対するコストファクター       |
+| パラメータ                  | 型   | 説明                                                |
+| --------------------------- | ------ | ------------------------------------------------------ |
+| `search_method`             | 文字列 | 検索方式（スタートからゴール、またはその逆）       |
+| `only_behind_solutions`     | ブール値 | 解をゴールの背後限定するかどうか                   |
+| `use_back`                  | ブール値 | 後方軌跡を使用するかどうか                         |
+| `adapt_expansion_distance`  | ブール値 | trueの場合、環境に基づいて展開距離を調整する      |
+| `expansion_distance`        | 2倍精度浮動小数点型 | ノード遷移の展開長さ                                |
+| `near_goal_distance`        | 2倍精度浮動小数点型 | ゴール近接距離しきい値                                |
+| `distance_heuristic_weight` | 2倍精度浮動小数点型 | ノードコストを推定するためのヒューリスティック重み |
+| `smoothness_weight`         | 2倍精度浮動小数点型 | 曲率変化のコストファクター                            |
+| `obstacle_distance_weight`  | 2倍精度浮動小数点型 | 障害物までの距離のコストファクター                  |
+| `goal_lat_distance_weight`  | 2倍精度浮動小数点型 | ゴールからの横方向距離のコストファクター            |
 
-#### RRT\*探索パラメータ
+#### RRT\* の探索パラメータ
 
 <!-- cspell:ignore Gammell -->
 
-| パラメーター            | 型     | 説明                                                                                 |
-| ----------------------- | ------ | ------------------------------------------------------------------------------------ |
-| `max planning time`     | double | 最大計画時間 [msec] (`enable_update` が `true` の場合にのみ使用)                     |
-| `enable_update`         | bool   | `max_planning time` が経過するまで実現可能なソリューションが見つかった後の更新の有無 |
-| `use_informed_sampling` | bool   | Informed RRT\*（Gammell et al.）の使用                                               |
-| `neighbor_radius`       | double | RRT\*アルゴリズムの近傍半径                                                          |
-| `margin`                | double | RRT\*アルゴリズムにおけるパスの衝突チェックで確保される安全マージン                  |
+| パラメータ | タイプ | 説明 |
+| ----------------------- | ------ | ---------------------------------------------------------------------------- |
+| `max planning time` | double | 最大プランニング時間 [msec] (`enable_update` が`true`に設定されている場合のみ使用) |
+| `enable_update` | bool | feasibleなソリューションが見つかるまで、`max_planning time` が経過するまで更新するかどうか |
+| `use_informed_sampling` | bool | 情報に基づく RRT* (Gammell et al. による) を使用する |
+| `neighbor_radius` | double | RRT* アルゴリズムの近傍半径 |
+| `margin` | double | RRT* アルゴリズムの経路の衝突チェックで確保される安全マージン |
 
 ### フローチャート
+
 
 ```plantuml
 @startuml
@@ -136,3 +137,4 @@ endif
 stop
 @enduml
 ```
+

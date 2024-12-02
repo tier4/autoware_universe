@@ -1,194 +1,140 @@
-# autoware クラスターマージャー
+# autoware クラスタ マージャ
 
 ## 目的
 
-autoware_cluster_mergerは、特徴種別ごとにより検出された対象をポイントクラスタとしてマージするためのパッケージです。
+autoware_cluster_merger は、特徴タイプを持つ検出オブジェクトとしてポイントクラウド クラスタをマージするためのパッケージです。
 
-## 内部動作/アルゴリズム
+## 内部処理 / アルゴリズム
 
-マージされたトピックのクラスタは、入力トピックのクラスタから単純に連結されます。
+マージされたトピックのクラスタは、単に入力トピックのクラスタから連結されます。
 
 ## 入出力
 
 ### 入力
 
-| 名称             | タイプ                                                   | 説明               |
-| ---------------- | -------------------------------------------------------- | ------------------ |
-| `input/cluster0` | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | pointcloudクラスタ |
-| `input/cluster1` | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | pointcloudクラスタ |
+| 名称             | 種類                                                     | 説明         |
+| ---------------- | -------------------------------------------------------- | ------------------- |
+| `input/cluster0` | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | 点群クラスタ |
+| `input/cluster1` | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | 点群クラスタ |
 
 ### 出力
 
-**自律運転ソフトウェア**
+**Autoware**自動運転ソフトウェアの概要
 
-**Autoware**
+**はじめに**
 
-**Planning**モジュールは、自律運転車両の安全で効率的な経路と速度計画を担当します。**Planning**には、**BEV Planner**、**Maneuver Planner**、**Path Planner**の3つの主要コンポーネントがあります。
+**Autoware**は、自動運転車両を開発するためのオープンソースソフトウェアプラットフォームです。このドキュメントでは、**Autoware**システムのアーキテクチャと主要コンポーネントについて説明します。
 
-**BEV Planner**
+**アーキテクチャ**
 
-- 障害物検出および分類
-- 静的障害物と動的障害物のトラッキング
-- **Planning**領域内のフリースペースの推定
+**Autoware**アーキテクチャは、以下の中核コンポーネントに基づいています。
 
-**Maneuver Planner**
+- **Perception (認識)**: センサーデータから環境を認識する。
+- **Planning (計画)**: 走行経路を計画する。
+- **Control (制御)**: 車両を制御する。
 
-- 自車位置を考慮した**Planning**領域内のマニューバの生成
-- 交通規則と安全要件を遵守するマニューバの選定
-- 経路候補の生成
+**主要コンポーネント**
 
-**Path Planner**
+**Perception (認識)**
 
-- マニューバから最適経路を生成
-- 経路の滑らかさと安全性を確保する最適化
-- 車両の動的制限を考慮した経路の生成
+- **Lanelet2 Map:** 交通インフラとルールを記述。
+- **Object Detector:** 歩行者、車両、その他の物体を検出。
+- **Camera Projector:** カメラ画像を3D空間に投影。
 
-**追従モード**
+**Planning (計画)**
 
-追従モードでは、**Planning**モジュールは前走車を監視し、次のタスクを実行します。
+- **Planning Cost Function:** 走行経路の候補を評価。
+- **Dynamic Obstacle Avoidance:** 動的障害物を回避。
+- **Local Planning:** 自車位置周辺の走行経路を計画。
 
-- 前走車の速度と相対位置の追跡
-- 安全な車間距離の維持
-- `post resampling`を使用して経路を更新し、前走車の挙動の変化に対応
+**Control (制御)**
 
-**経路計画モード**
+- **Model Predictive Control (MPC):** 車両の運動を最適化。
+- **Vehicle Interface:** 車両の各種機能と通信。
+- **Controller Parameters:** 制御パラメータの調整
 
-経路計画モードでは、**Planning**モジュールは、指定された目的地までの経路を生成します。このモードでは、次のタスクが実行されます。
+**その他コンポーネント**
 
-- ナビゲーションデータからの経路候補の生成
-- 障害物や交通規制を考慮した経路の選択
-- 衝突の回避と車両の安全を確保する経路の最適化
+- **Sensor Fusion:** 複数のセンサーデータを統合。
+- **Localization:** 自車位置と姿勢の推定。
+- **Traffic Light Detector:** 信号機を検出。
 
-**エラー処理**
+**データフロー**
 
-**Planning**モジュールは、さまざまなエラーを検出して処理します。これらのエラーには以下が含まれます。
+**Autoware**アーキテクチャでは、データはPerception、Planning、Controlコンポーネント間で以下のように流れます。
 
-- 障害物との衝突
-- velocity逸脱量
-- acceleration逸脱量
-- など
+1. センサーデータがPerceptionモジュールに送信されます。
+2. Perceptionモジュールは環境を認識し、結果をPlanningモジュールに送信します。
+3. Planningモジュールは走行経路を計画し、結果をControlモジュールに送信します。
+4. Controlモジュールは車両を制御します。
 
-| 名前              | タイプ                                                   | 説明                 |
-| ----------------- | -------------------------------------------------------- | -------------------- |
-| `output/clusters` | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | マージされたクラスタ |
+**進捗状況と将来の計画**
+
+**Autoware**は現在活発に開発されており、絶えず改善されています。将来の計画には以下が含まれます。
+
+- Planningモジュールの強化
+- Controlモジュールの最適化
+- 新機能の追加
+
+**貢献**
+
+**Autoware**コミュニティはオープンソースに誇りを持っています。コントリビューターは、新しい機能、バグフィックス、ドキュメントの改善を歓迎します。
+
+**リソース**
+
+- [Autoware GitHubリポジトリ](https://github.com/autowarefoundation/autoware.auto)
+- [Autowareドキュメント](https://docs.autoware.io/)
+- [Autowareコミュニティフォーラム](https://forum.autoware.io/)
+
+| 名前              | タイプ                                                         | 説明                                                              |
+| ----------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `output/clusters` | `tier4_perception_msgs::msg::DetectedObjectsWithFeature` | マージしたクラスタ                                                 |
 
 ## パラメータ
 
-| 名称              | タイプ | 説明                            | デフォルト値  |
-| :---------------- | :----- | :------------------------------ | :------------ |
-| `output_frame_id` | 文字列 | 出力トピックのheader frame_id。 | **base_link** |
+| 名前              | タイプ   | 説明                          | デフォルト値 |
+| :---------------- | :----- | :----------------------------------- | :------------ |
+| `output_frame_id` | 文字列 | 出力トピックのヘッダ frame_id | base_link     |
 
-<!-- Write what you plan to improve or implement in the future.
+## 前提条件と既知の限界
 
-Example:
-  - This algorithm doesn't care about traffic signs. We need to implement it ASAP.
-  - This algorithm is hard-coded for only one car. We need to make it robust to multiple cars.
--->
-
-## (Optional) Tuning
-
-<!-- Write tunable parameters and their effects to adjust the behavior.
-
-Example:
-  ### Tunable parameters
-
-  - `param_name`: this parameter controls ...
--->
-
-## (Optional) Collaborators
-
-<!-- Write people who helped you implemented this algorithm.
-
-Example:
-  - A: responsible for implementation.
-  - B: responsible for requirement definition.
--->
-
-## (Optional) TODOs
-
-<!-- Write what is not complete yet.
-
-Example:
-  - TODO: write tests.
-  - TODO: clean up error handling.
--->
-
-## (Optional) Contributing
-
-<!-- Write how to contribute to improve/fix this algorithm.
-
-Example:
-  - This algorithm is still in experimental phase. If you want to contribute, contact A.
--->
-
-## (Optional) Implementation details
-
-<!-- Write your implementation details if necessary.
-
-Example:
-  - This algorithm contains followings:
-    - Path generator
-    - Trajectory generator
-    - Controller
--->
-
-## (Optional) Dependencies
-
-<!-- Write dependencies.
-
-Example:
-  - This algorithm depends on ...
--->
-
-## (Optional) Releases
-
-<!-- Write released versions and changes.
-
-Example:
-  - 1.0.0: initial release.
-  - 1.1.0: fix bug XYZ.
--->
-
----
-
-## 仮定 / 既知の制限
-
-<!-- 実装における仮定と制約を記述します。
+<!-- 実装に関する前提条件と制限事項を記述します。
 
 例:
-  このアルゴリズムは障害物が動かないと仮定しています。したがって、車両が障害物を回避し始めた後に障害物が急激に移動すると、衝突する可能性があります。
-  また、このアルゴリズムは死角を考慮していません。一般に、検知性能の限界により近すぎる障害物は見えないため、障害物に対して十分な余裕を取ってください。
+  このアルゴリズムは障害物が動かないと想定しているため、車両が障害物を回避し始めてから障害物が急速に動いた場合は、障害物と衝突する可能性があります。
+  また、このアルゴリズムは死角を考慮しません。一般に、検出性能の限界により、近すぎる障害物は認識できないため、障害物との間に十分な余裕を持たせてください。
 -->
 
-## (任意) エラーの検出と処理
+## (オプション) エラー検出と処理
 
-<!-- エラーを検出する方法と回復する方法を記述します。
+<!-- エラーの検出方法と、エラーからの回復方法を記述します。
 
 例:
-  このパッケージは最大 20 個の障害物を処理できます。それ以上の障害物が検出された場合、このノードは処理を中止し、診断エラーを発生させます。
+  このパッケージは最大20個の障害物を処理できます。それ以上の障害物が見つかった場合、このノードは処理を放棄して診断エラーを発生させます。
 -->
 
-## (任意) パフォーマンスの特性評価
+## (オプション) パフォーマンス特性
 
-<!-- 複雑さなどのパフォーマンス情報を記述します。ボトルネックにならない場合は必要ありません。
+<!-- 複雑さなどのパフォーマンス情報を記述します。ボトルネックにならない場合は、不要です。
 
 例:
   ### 複雑さ
 
-  このアルゴリズムは O(N) です。
+  このアルゴリズムの計算量はO(N)です。
 
   ### 処理時間
 
   ...
 -->
 
-## (任意) レファレンス/外部リンク
+## (オプション) 参照/外部リンク
 
-<!-- 実装時に参照したリンクを記述します。
+<!-- 実装時に参考にしたリンクを記述します。
 
 例:
   [1] {link_to_a_thesis}
   [2] {link_to_an_issue}
 -->
 
-## (任意) 将来の拡張機能 / 未実装部分
+## (オプション) 将来の拡張/未実装部分
+

@@ -2,27 +2,28 @@
 
 ## 概要
 
-このノードは、地理参照された姿勢トピックを購読し、マップフレーム内の姿勢を公開するシンプルなノードです。
+このノードは、地理参照された姿勢トピックをサブスクライブして、マップフレーム内の姿勢をパブリッシュするシンプルなノードです。
 
-## 購読トピック
+## サブスクライブされるトピック
 
-| 名前                      | タイプ                                               | 説明                     |
-| ------------------------- | ---------------------------------------------------- | ------------------------ |
-| `input_geo_pose`          | `geographic_msgs::msg::GeoPoseWithCovarianceStamped` | 地理参照された位置       |
-| `/map/map_projector_info` | `tier4_map_msgs::msg::MapProjectedObjectInfo`        | マッププロジェクター情報 |
+| 名前                      | タイプ                                                     | 説明         |
+| ------------------------- | --------------------------------------------------------- | ---------------- |
+| `input_geo_pose`          | `geographic_msgs::msg::GeoPoseWithCovarianceStamped` | 地理参照された位置 |
+| `/map/map_projector_info` | `tier4_map_msgs::msg::MapProjectedObjectInfo`        | マップ投影情報  |
 
-## 公開トピック
+## パブリッシュされるトピック
 
-| 名称          | 型                                              | 説明                     |
-| ------------- | ----------------------------------------------- | ------------------------ |
-| `output_pose` | `geometry_msgs::msg::PoseWithCovarianceStamped` | マップフレーム内のポーズ |
-| `/tf`         | `tf2_msgs::msg::TFMessage`                      | 親リンクと子リンク間のtf |
+| 名称          | 型                                            | 説明                           |
+| ------------- | ----------------------------------------------- | ------------------------------------- |
+| `output_pose` | `geometry_msgs::msg::PoseWithCovarianceStamped` | マップ座標系における自車位置                     |
+| `/tf`         | `tf2_msgs::msg::TFMessage`                      | 親リンクから子リンクへの変換                       |
 
 ## パラメータ
 
-{{ json_to_markdown("localization/autoware_geo_pose_projector/schema/geo_pose_projector.schema.json") }}
+{{ json_to_markdown("localization/autoware_geo_pose_projector/schema/geo_pose_projector_ja.schema.json") }}
 
-## 制限事項
+## 制約事項
 
-使用する投影タイプによっては、共分散を変換できない可能性があります。入力トピックの共分散は、対角行列として(緯度、経度、高度)で表されます。
-現在、x軸を東向き、y軸を北向きと想定しています。そのため、この仮定が破られると、特に緯度と経度の共分散が異なる場合は、変換が正しく処理されない可能性があります。
+使用する投影の種類によっては、共分散の変換が正しくない場合があります。入力トピックの共分散は、(緯度、経度、高度)で対角行列として表されます。
+現在、x軸を東方向で、y軸を北方向と仮定しています。そのため、この仮定が破綻すると、特に緯度と経度の共分散が異なる場合、変換が正しくない可能性があります。
+

@@ -1,36 +1,36 @@
-# autoware_pose_estimator_arbiter
+## autoware_pose_estimator_arbiter
 
-目次:
+目的:
 
 - [概要](#概要)
 - [インターフェース](#インターフェース)
 - [アーキテクチャ](#アーキテクチャ)
 - [起動方法](#起動方法)
-- [切替ルール](#切替ルール)
+- [切り替えルール](#切り替えルール)
 - [姿勢初期化](#姿勢初期化)
-- [今後の予定](#今後の予定)
+- [将来の計画](#将来の計画)
 
 ## 概要
 
-本パッケージは複数の姿勢推定器を起動し、状況に応じて特定の姿勢推定器を停止または再開する機能を提供します。
-暫定的な切替ルールが用意されており、将来的にはさまざまなルールに対応できるようになります。
+このパッケージは、複数の姿勢推定器を起動し、状況に応じて特定の姿勢推定器を停止または再開する機能を提供します。
+仮の切り替えルールを提供しており、将来的にはさまざまなルールに適応できます。
 
-他の実装方法に関するアイデアについては、[このディスカッション](https://github.com/orgs/autowarefoundation/discussions/3878)を参照してください。
+実装に関する他のアイデアについては、[このディスカッション](https://github.com/orgs/autowarefoundation/discussions/3878)を参照してください。
 
-### 停止/再開メカニズムが必要な理由
+### なぜ停止/再開メカニズムが必要ですか?
 
-起動ファイルを編集することで複数の`pose_estimators`を起動し、カルマンフィルタを使用してそれらを融合することは可能です。
-ただし、このアプローチは計算コストがかかるため推奨されません。
+起動ファイルを変更することで、複数のpose_estimatorsを起動し、それらをカルマンフィルタを使用して融合することができます。
+ただし、これは計算コストが高いため、好まれません。
 
-特に、NDTとYabLocは計算集約的であり、同時に実行することは推奨されません。
-また、両方を同時に有効にしても、どちらかが悪い出力を出すとカルマンフィルタに影響が出る可能性があります。
+特に、NDTとYabLocは計算集約的で、同時実行は推奨されません。
+また、両方を同時にアクティブにしても、その1つから誤った出力が供給されたときにカルマンフィルタが影響を受ける可能性があります。
 
-> [!NOTE]
-> 現在のところ、**すべての`pose_estimators`を常に有効にするルールのみが実装されています。**
-> ユーザーが独自のルールで`pose_estimator`を切り替える場合は、example_ruleを参照して新しいルールを追加する必要があります。
-> [example_rule](example_rule/README.md)には、ルールを実装するためのリファレンスとして使用できるソースコードがあります。
+> [!注意]
+> 現在、**すべてのpose_estimatorsを常に有効にするルールのみが実装されています。**
+> ユーザーが独自ルールでpose_estimatorを切り替えたい場合は、example_ruleを参照して新しいルールを追加する必要があります。
+> [example_rule](example_rule/README.md)には、ルール実装の参照として使用できるソースコードが含まれています。
 
-### サポートされる`pose_estimators`
+### サポートされるpose_estimators
 
 - [ndt_scan_matcher](https://github.com/autowarefoundation/autoware.universe/tree/main/localization/autoware_ndt_scan_matcher)
 - [eagleye](https://autowarefoundation.github.io/autoware-documentation/main/how-to-guides/integrating-autoware/launch-autoware/localization/eagleye/)
@@ -39,15 +39,16 @@
 
 ### デモンストレーション
 
-以下のビデオでは、4つの異なる姿勢推定器の切り替えの様子を説明しています。
+次の動画は、4つのさまざまな姿勢推定器の切り替えを示しています。
 
 <div><video controls src="https://github.com/autowarefoundation/autoware.universe/assets/24854875/d4d48be4-748e-4ffc-bde2-d498911ed3a1" muted="false" width="800"></video></div>
 
-ユーザーは、以下のデータと起動コマンドを使用して、このデモンストレーションを再現できます。
+ユーザーは、以下のデータと起動コマンドを使用してデモンストレーションを再現できます。
 
-[サンプルデータ(rosbagおよびマップ)](https://drive.google.com/file/d/1ZNlkyCtwe04iKFREdeZ5xuMU_jWpwM3W/view)
-rosbagは[AWSIM](https://tier4.github.io/AWSIM/)によって作成されたシミュレーションデータです。
-マップは、AWSIMのドキュメンテーションページで公開されている[オリジナルマップデータ](https://github.com/tier4/AWSIM/releases/download/v1.1.0/nishishinjuku_autoware_map.zip)を編集したもので、複数の`pose_estimators`に適したものになっています。
+[サンプルデータ（rosbagと地図）](https://drive.google.com/file/d/1ZNlkyCtwe04iKFREdeZ5xuMU_jWpwM3W/view)
+rosbagは、[AWSIM](https://tier4.github.io/AWSIM/)によって作成されたシミュレーションデータです。
+マップは、AWSIMドキュメントページで公開された[元のマップデータ](https://github.com/tier4/AWSIM/releases/download/v1.1.0/nishishinjuku_autoware_map.zip)を編集したもので、複数のpose_estimatorsに適したものとなっています。
+
 
 ```bash
 ros2 launch autoware_launch logging_simulator.launch.xml \
@@ -57,121 +58,71 @@ ros2 launch autoware_launch logging_simulator.launch.xml \
   pose_source:=ndt_yabloc_artag_eagleye
 ```
 
-## インターフェース
+## インターフェイス
 
 <details>
 <summary>詳細を表示</summary>
 
-### パラメーター
+### パラメータ
 
-パラメーターはありません。
+パラメータはありません。
 
 ### サービス
 
-| 名称             | 種類                            | 説明                         |
-| ---------------- | ------------------------------- | ---------------------------- |
+| 名称             | 種別                            | 説明                     |
+| ---------------- | ------------------------------- | ------------------------------- |
 | `/config_logger` | logging_demo::srv::ConfigLogger | ログレベルを変更するサービス |
 
-### クライアント
+### クライント
 
-**Autoware の Perception Client**
+- ROS service: /planning/get_trajectory_status
+- ROS topic: /planning/status
 
-- Perception Client は Perception モジュールの Pub/Sub クライアントです。[autoware.perception]からセンサーの topic にサブスクライブし、[autoware.perception.output]へメッセージをパブリッシュします。
 
-**Autoware Local Map Client**
-
-- Local Map Client は Local Map モジュールの Pub/Sub クライアントです。[autoware.localization.map]から現在の地図をサブスクライブし、[autoware.localization.current_map]へメッセージをパブリッシュします。
-
-**Autoware Reference Path Client**
-
-- Reference Path Client は Reference Path モジュールの Pub/Sub クライアントです。[autoware.planning.trajectory]からリファレンスパスをサブスクライブし、[autoware.control.path]へメッセージをパブリッシュします。
-
-**Autoware Obstacle Avoidance Client**
-
-- Obstacle Avoidance Client は Obstacle Avoidance モジュールの Pub/Sub クライアントです。[autoware.perception.object]から認識された障害物をサブスクライブし、[autoware.control.prediction]へメッセージをパブリッシュします。
-
-**Autoware Planner Client**
-
-- Planner Client は Planning モジュールの Pub/Sub クライアントです。[autoware.perception.object], [autoware.planning.trajectory], [autoware.localization.current_map], [autoware.control.prediction]からメッセージをサブスクライブし、[autoware.control.command]へメッセージをパブリッシュします。
-
-**Autoware Controller Client**
-
-- Controller Client は Controller モジュールの Pub/Sub クライアントです。[autoware.control.command]から制御コマンドをサブスクライブし、[autoware.control.act]へメッセージをパブリッシュします。
-
-| 名称                  | タイプ                | 説明                                |
-| --------------------- | --------------------- | ----------------------------------- |
-| `/yabloc_suspend_srv` | std_srv::srv::SetBool | Yabloc を停止または再開するサービス |
+| 名称                  | タイプ                  | 説明                       |
+| --------------------- | --------------------- | --------------------------------- |
+| `/yabloc_suspend_srv` | `std_srv::srv::SetBool` | yablocを停止または再起動するためのサービス |
 
 ### サブスクリプション
 
-ポーズ推定アビトレーション用:
+ポーズ推定器アービトレーション用:
 
-| 名称                                  | 型                                            | 説明        |
-| ------------------------------------- | --------------------------------------------- | ----------- |
-| `/input/artag/image`                  | sensor_msgs::msg::Image                       | ArTag入力   |
-| `/input/yabloc/image`                 | sensor_msgs::msg::Image                       | YabLoc入力  |
+| 名前 | 種類 | 説明 |
+|---|---|---|
+| `/input/artag/image` | sensor_msgs::msg::Image | ArTag入力 |
+| `/input/yabloc/image` | sensor_msgs::msg::Image | YabLoc入力 |
 | `/input/eagleye/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped | Eagleye出力 |
-| `/input/ndt/pointcloud`               | sensor_msgs::msg::PointCloud2                 | NDT入力     |
+| `/input/ndt/pointcloud` | sensor_msgs::msg::PointCloud2 | NDT入力 |
 
-## 切り替えルール
+**切り替えルール：**
 
-- **Planningモジュールの障害物認識障害：**
-
-  - 監視タスクが障害物を検出し、直前のPlanningのcycleから障害物認識障害が報告された場合
-  - Planningのcycle自体が障害物認識障害を出力した場合
-  - 障害物が自車位置から十分近い場合、または衝突する可能性がある場合
-
-- **Planningのcycle障害：**
-
-  - Planningが指定の期間内に完了しなかった場合
-  - Planningが予測不可能または無効なプランを生成した場合
-
-- **走行中のPlanningの速度逸脱量：**
-
-  - 走行中に planificate の速度が要求済み速度を超過した場合
-  - planificate が想定以上の加速を要求した場合
-
-- **走行中のPlanningの加速度逸脱量：**
-
-  - 走行中に planificate の加速度が要求済み加速度を超過した場合
-
-- **動作中のPlanningの逸脱：**
-
-  - Planningが走行中に停止など、不適切な動作を要求した場合
-
-- **PlanningとConrolの異なる目標：**
-
-  - PlanningがControlモジュールに、要求された目標と異なる目標を送信すると報告された場合
-
-- **`post resampling`の障害：**
-  - PlanningモジュールがPlanning target pathを再サンプリングした後に、障害物を認識した場合
-
-## 自動運転ソフトウェア
-
-| 名称                          | 型                                                             | 説明                         |
-| ----------------------------- | -------------------------------------------------------------- | ---------------------------- |
-| `/input/vector_map`           | `autoware_map_msgs::msg::LaneletMapBin`                        | ベクターマップ               |
-| `/input/pose_with_covariance` | `geometry_msgs::msg::PoseWithCovarianceStamped`                | ローカリゼーション最終出力   |
-| `/input/initialization_state` | `autoware_adapi_v1_msgs::msg::LocalizationInitializationState` | ローカリゼーション初期化状態 |
+| 名称                          | タイプ                                                         | 説明                       |
+| ----------------------------- | ------------------------------------------------------------ | --------------------------------- |
+| `/input/vector_map`           | autoware_map_msgs::msg::LaneletMapBin                        | vector map                        |
+| `/input/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped                | localization final output         |
+| `/input/initialization_state` | autoware_adapi_v1_msgs::msg::LocalizationInitializationState | localization initialization state |
 
 ### 論文
 
-| 名前                                   | タイプ                                        | 説明                                                  |
-| -------------------------------------- | --------------------------------------------- | ----------------------------------------------------- |
-| `/output/artag/image`                  | sensor_msgs::msg::Image                       | 中継されたArTag入力                                   |
-| `/output/yabloc/image`                 | sensor_msgs::msg::Image                       | 中継されたYabLoc入力                                  |
-| `/output/eagleye/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped | 中継されたEagleye出力                                 |
-| `/output/ndt/pointcloud`               | sensor_msgs::msg::PointCloud2                 | 中継されたNDT入力                                     |
-| `/output/debug/marker_array`           | visualization_msgs::msg::MarkerArray          | [デバッグトピック] 視覚化のすべて                     |
-| `/output/debug/string`                 | visualization_msgs::msg::MarkerArray          | [デバッグトピック] 現在のステータスなどのデバッグ情報 |
+'post resampling` 推定器は、[確率ロボティクス](https://www.cs.ox.ac.uk/people/kyprianos.kourousis/pub/rothnie2012kld.pdf)に説明があります。
 
-</details>
+| 名前                                 | タイプ                                        | 説明                                                  |
+| ------------------------------------- | ------------------------------------------- | ---------------------------------------------------------- |
+| `/output/artag/image`                  | sensor_msgs::msg::Image                     | リレーされた ArTag 入力                                    |
+| `/output/yabloc/image`                 | sensor_msgs::msg::Image                     | リレーされた YabLoc 入力                                 |
+| `/output/eagleye/pose_with_covariance` | geometry_msgs::msg::PoseWithCovarianceStamped | リレーされた Eagleye 出力                                 |
+| `/output/ndt/pointcloud`               | sensor_msgs::msg::PointCloud2                 | リレーされた NDT 入力                                  |
+| `/output/debug/marker_array`           | visualization_msgs::msg::MarkerArray          | [デバッグトピック] 視覚化のためのすべて                    |
+| `/output/debug/string`                 | visualization_msgs::msg::MarkerArray          | [デバッグトピック] 現在の状態などのデバッグ情報          |
 
+```markdown
 ## トラブルシューティング
 
-うまくいかない場合は、以下の方法でさらに多くの詳細情報が取得できます。
+動作しないと思われる場合は、以下の方法で追加情報を取得できます。
 
 > [!TIP]
+```
+
 
 > ```bash
 > ros2 service call /localization/autoware_pose_estimator_arbiter/config_logger logging_demo/srv/ConfigLogger \
@@ -181,57 +132,59 @@ ros2 launch autoware_launch logging_simulator.launch.xml \
 ## アーキテクチャ
 
 <details>
-<summary>詳細を表示するにはクリックしてください</summary>
+<summary>詳細を表示する</summary>
 
-### 単一のポーズ推定器を実行する場合
+### 1つのポーズ推定器の実行の場合
 
-各 `pose_estimator` が単独で実行されているとき、このパッケージは何も行いません。
-次の図は、NDT、YabLoc Eagleye、および AR-Tag が個別に実行されているときのノード構成を示しています。
+各 `pose_estimator` が単独で実行されるとき、このパッケージは何もしません。
+次の図は、NDT、YabLoc Eagleye、AR-Tagが独立して実行されるときのノード構成を示しています。
 
 <img src="./media/single_pose_estimator.drawio.svg" alt="drawing" width="600"/>
 
-### 複数のポーズ推定器を実行する場合
+### 複数のポーズ推定器の実行の場合
 
-複数の `pose_estimators` を実行すると、`autoware_pose_estimator_arbiter` が実行されます。
-これは各 `pose_estimator` に対応する **切り替えルール** と **ストッパー** で構成されています。
+複数の `pose_estimator` を実行すると、`autoware_pose_estimator_arbiter` が実行されます。
+これには、各 `pose_estimator` に対応する **切り替えルール** と **ストッパー** が含まれます。
 
-- ストッパーは、入出力の中継やサスペンドサービスのリクエストを行うことで、`pose_estimator` のアクティビティを制御します。
+- ストッパーは、入出力を中継したり、中断サービスを要求したりして、`pose_estimator` のアクティビティを制御します。
 - 切り替えルールは、使用する `pose_estimator` を決定します。
 
-インスタンス化されるストッパーと切り替えルールは、起動時のランタイム引数によって決まります。
+インスタンス化するストッパーと切り替えルールは、スタートアップ時のランタイム引数によって異なります。
 
-次の図は、すべての `pose_estimators` が同時に実行されているときのノード構成を示しています。
+次の図は、すべての `pose_estimator` が同時に実行されるときのノード構成を示しています。
 
 <img src="./media/architecture.drawio.svg" alt="drawing" width="800"/>
 
 - **NDT**
 
-NDT ストッパーは、ポイントクラウドプリプロセッサの前方にトピックを中継します。
+NDT ストッパーは、ポイントクラウドプリプロセッサの前面にあるトピックを中継します。
 
 - **YabLoc**
 
-YabLoc ストッパーは、イメージプリプロセッサのフロントエンドに入力イメージトピックを中継します。
-YabLoc には、タイマーで動作するパーティクルフィルタプロセスが含まれており、イメージトピックがストリーミングされていない場合でも、パーティクル予測プロセスは引き続き動作します。
-これを解決するために、YabLoc ストッパーには、YabLoc を明示的に停止および再開するためのサービスクライアントも含まれています。
+YabLoc ストッパーは、画像プリプロセッサのフロントエンドにある入力画像トピックを中継します。
+YabLoc には、タイマーで動作する粒子フィルタプロセスが含まれており、画像トピックがストリーミングされていない場合でも、粒子の予測プロセスは引き続き動作します。
+これを解決するために、YabLoc ストッパーには、YabLoc を明示的に停止および再開するためのサービスクライアントもあります。
 
 - **Eagleye**
 
-Eagleye ストッパーは、Eagleye 推定プロセスのバックエンドで Eagleye の出力ポーズトピックを中継します。
-Eagleye は内部で時系列処理を実行し、入力ストリームの停止はできません。
-さらに、Eagleye の推定プロセスは、大きな負荷なしに連続して実行できるほど軽量であるため、中継はバックエンドに挿入されます。
+Eagleye ストッパーは、Eagleye の推定処理のバックエンドにある Eagleye の出力ポーズトピックを中継します。
+Eagleye は内部で時系列処理を実行するため、入力ストリームを停止できません。
+さらに、Eagleye の推定プロセスは継続的に実行しても大きな負荷をかけずに済むほど軽量であるため、リレーはバックエンドに挿入されます。
 
 - **ArTag**
 
-ArTag ストッパーは、ランドマークローカルライザの前にあるイメージトピックを中継します。
+ArTag ストッパーは、ランドマークローカルライザの前面にある画像トピックを中継します。
 
 </details>
 
 ## 起動方法
 
 <details>
-<summary>詳細を表示するにはクリックしてください</summary>
+<summary>詳細を表示する</summary>
 
-ユーザーは、ランタイム引数 `pose_source` にアンダースコアの連結として `pose_estimator` 名を渡すことで、目的の `pose_estimators` を起動できます。
+ユーザーは、ランタイム引数 `pose_source` としてアンダースコアで連結された `pose_estimator` 名を指定することで、目的の `pose_estimator` を起動できます。
+</details>
+
 
 ```bash
 ros2 launch autoware_launch logging_simulator.launch.xml \
@@ -241,32 +194,32 @@ ros2 launch autoware_launch logging_simulator.launch.xml \
   pose_source:=ndt_yabloc_artag_eagleye
 ```
 
-予期しない文字列が `pose_source` に含まれていた場合でも、適切にフィルタされます。
-詳細は下記の表を参照してください。
+たとえ `pose_source` に想定外の文字列が含まれていても、適切にフィルタリングされます。
+詳細は以下の表を参照してください。
 
-| 実行時引数                                  | autoware_pose_estimator_arbiterのパラメータ(pose_source) |
-| ------------------------------------------- | -------------------------------------------------------- |
-| `pose_source:=ndt`                          | `["ndt"]`                                                |
-| `pose_source:=nan`                          | `[]`                                                     |
-| `pose_source:=yabloc_ndt`                   | `["ndt","yabloc"]`                                       |
-| `pose_source:=yabloc_ndt_ndt_ndt`           | `["ndt","yabloc"]`                                       |
-| `pose_source:=ndt_yabloc_eagleye`           | `["ndt","yabloc","eagleye"]`                             |
-| `pose_source:=ndt_yabloc_nan_eagleye_artag` | `["ndt","yabloc","eagleye","artag"]`                     |
+| 与えられたランタイム引数 | 解析された autoware_pose_estimator_arbiter のパラメータ (pose_sources) |
+| ----------------------- | ----------------------------------------------------------------- |
+| `pose_source:=ndt` | `["ndt"]` |
+| `pose_source:=nan` | `[]` |
+| `pose_source:=yabloc_ndt` | `["ndt","yabloc"]` |
+| `pose_source:=yabloc_ndt_ndt_ndt` | `["ndt","yabloc"]` |
+| `pose_source:=ndt_yabloc_eagleye` | `["ndt","yabloc","eagleye"]` |
+| `pose_source:=ndt_yabloc_nan_eagleye_artag` | `["ndt","yabloc","eagleye","artag"]` |
 
 ## 切り替えルール
 
 <details>
 <summary>詳細を表示</summary>
 
-現在は **ルールが 1 つのみ** (`enable_all_rule`) 実装されています。
-将来は複数のルールが実装され、ユーザーがルールを選択できるようになります。
+現在は、**1 つのルール** (`enable_all_rule`) のみ実装されています。将来は、複数のルールを実装する予定であり、ユーザーはルールを選択できるようになります。
 
-> [!ヒント]
-> ルールを拡張するためのプリセットが用意されています。ルールを拡張したい場合は、[example_rule](./example_rule/README.md) を参照してください。
+> [!TIP]
+> ルールを拡張するためのプリセットがあります。ルールを拡張する場合は、[example_rule](./example_rule/README.md) を参照してください。
 
-### 全てを有効にするルール
+### すべて有効にするルール
 
-これは既定で最もシンプルなルールです。このルールは、現在の状態に関係なく、すべての pose_estimator を有効にします。
+これはデフォルトかつ最も簡単なルールです。このルールは、現在の状態に関係なくすべての pose_estimators を有効にします。
+
 
 ```mermaid
 flowchart LR
@@ -274,66 +227,60 @@ flowchart LR
   A --whatever --> _A[enable all pose_estimators]
 ```
 
-</details>
+## 姿勢初期化
 
-## 自車位置初期化
-
-複数の pose_estimators を使用する場合、`pose_initializer` に渡すパラメータを適切に調整する必要があります。
+複数の pose_estimators を使用する場合、`pose_initializer` に渡されるパラメータを適切に調整する必要があります。
 
 <details>
-<summary>クリックして詳細を表示</summary>
+<summary>クリックで詳細を表示</summary>
 
-次の表は、初期の自車位置推定法を示すランタイム引数 "pose_source" および pose_initialization ノードに渡す必要があるパラメータに基づいています。
-アプリケーションを複雑になりすぎないように、NDT が使用可能な場合は常に NDT が使用されるようにプライオリティが確立されます。
-(`ndt_enabled` と `yabloc_enabled` の両方が `true` の場合にのみ、pose_initializer は NDT ベースの初期自車位置推定を実行します）。
+次の表は、run time 引数 "pose_source" に基づいており、初期姿勢推定法の種類と pose_initialization ノードに提供する必要があるパラメータを示しています。アプリケーションを複雑にしすぎないように、NDT が使用可能な場合は常に NDT が使用されるように優先順位が設定されています。（pose_initializer は `ndt_enabled` と `yabloc_enabled` が両方 `true` の場合にのみ NDT ベースの初期姿勢推定を実行します）。
 
 この表の使い方は、3 つの観点から説明されています。
 
-- **Autoware ユーザー:** Autoware ユーザーはこの表を参照する必要はありません。
-  自車位置推定器の組み合わせを指定するだけで、pose_initializer に適切なパラメータが自動的に与えられます。
+- **Autoware ユーザー:** Autoware ユーザーはこの表を参照する必要はありません。姿勢推定器の必要な組み合わせを指定するだけで、適切なパラメータが pose_initializer に自動的に提供されます。
 - **Autoware 開発者:** Autoware 開発者は、どのパラメータが割り当てられているかを知るためにこの表を参照できます。
-- **新しい自車位置推定スイッチを実装する人:**
-  開発者は、この表を拡張し、pose_initializer に適切なパラメータを割り当てるように実装する必要があります。
-
+- **新しい姿勢推定器の切り替えを実装している開発者:** 開発者はこの表を拡張し、適切なパラメータを pose_initializer に割り当てる必要があります。
 </details>
 
-|         pose_source         | invoked initialization method        | `ndt_enabled` | `yabloc_enabled` | `gnss_enabled` | `sub_gnss_pose_cov`                          |
-| :-------------------------: | ------------------------------------ | ------------- | ---------------- | -------------- | -------------------------------------------- |
-|             ndt             | ndt                                  | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
-|           yabloc            | yabloc                               | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
-|           eagleye           | 車両はしばらく走行する必要があります | false         | false            | true           | /localization/pose_estimator/eagleye/...     |
-|            artag            | 2D 姿勢推定（RViz）                  | false         | false            | true           | /sensing/gnss/pose_with_covariance           |
-|         ndt, yabloc         | ndt                                  | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
-|        ndt, eagleye         | ndt                                  | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
-|         ndt, artag          | ndt                                  | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
-|       yabloc, eagleye       | yabloc                               | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
-|        yabloc, artag        | yabloc                               | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
-|       eagleye, artag        | 車両はしばらく走行する必要があります | false         | false            | true           | /localization/pose_estimator/eagleye/pose... |
-|    ndt, yabloc, eagleye     | ndt                                  | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
-|     ndt, eagleye, artag     | ndt                                  | true          | false            | true           | /sensing/gnss/pose_with_covariance           |
-|   yabloc, eagleye, artag    | yabloc                               | false         | true             | true           | /sensing/gnss/pose_with_covariance           |
-| ndt, yabloc, eagleye, artag | ndt                                  | true          | true             | true           | /sensing/gnss/pose_with_covariance           |
+|         `pose_source`         |    `invoked initialization method`    |         `ndt_enabled`         |         `yabloc_enabled`         |         `gnss_enabled`         |          `sub_gnss_pose_cov`           |
+| :-------------------------: | :------------------------------------: | :--------------------------: | :----------------------------: | :--------------------------: | :----------------------------------------: |
+|             `ndt`             |             `ndt`             |           `true`            |           `false`            |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|           `yabloc`            |           `yabloc`            |           `false`           |           `true`             |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|           `eagleye`           |           `vehicle needs run for a while` |           `false`           |           `false`            |           `true`            | `/localization/pose_estimator/eagleye/...` |
+|            `artag`            |         `2D Pose Estimate (RViz)`         |           `false`           |           `false`            |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|         `ndt`, `yabloc`         |             `ndt`             |           `true`            |           `true`             |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|        `ndt`, `eagleye`         |             `ndt`             |           `true`            |           `false`            |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|         `ndt`, `artag`          |             `ndt`             |           `true`            |           `false`            |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|       `yabloc`, `eagleye`       |           `yabloc`            |           `false`           |           `true`             |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|        `yabloc`, `artag`        |           `yabloc`            |           `false`           |           `true`             |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|       `eagleye`, `artag`        |           `vehicle needs run for a while` |           `false`           |           `false`            |           `true`            | `/localization/pose_estimator/eagleye/pose...` |
+|    `ndt`, `yabloc`, `eagleye`     |             `ndt`             |           `true`            |           `true`             |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|     `ndt`, `eagleye`, `artag`     |             `ndt`             |           `true`            |           `false`            |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+|   `yabloc`, `eagleye`, `artag`    |           `yabloc`            |           `false`           |           `true`             |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
+| `ndt`, `yabloc`, `eagleye`, `artag` |             `ndt`             |           `true`            |           `true`             |           `true`            |    `/sensing/gnss/pose_with_covariance`    |
 
-## 今後の計画
+## 今後の予定
 
 <details>
 <summary>詳細を表示</summary>
 
-### 段階的な切り替え
+### 漸次切り替え
 
-今後、このパッケージでは、オン/オフの切り替えだけでなく、50% NDT と 50% YabLoc などの低周波動作のためのメカニズムも提供します。
+将来、このパッケージは単なるオン/オフ切り替えだけでなく、50% NDT と 50% YabLoc などの低周波動作のためのメカニズムを提供します。
 
-### 今後追加される pose_estimators 用の stopper
+### 今後追加される pose_estimator のストッパー
 
-基本的な戦略は、その pose_estimator の入力または出力トピックをリレーすることでオン/オフの切り替えを実現することです。
-pose_estimator に大量の計算を伴う時系列処理が含まれている場合、トピックリレーだけで一時停止して再開することはできません。
+基本的な戦略は、その pose_estimator の入力または出力トピックを中継することでオン/オフ切り替えを実現することです。
+pose_estimator が大量の計算を伴う時系列処理を含む場合、トピックの中継だけでポーズと再開をすることは不可能です。
 
-このような場合、一般的に適用可能なソリューションはないかもしれませんが、次の方法が役立つ場合があります。
+そのような場合、一般的に適用可能な解決策はないかもしれませんが、以下の方法が役立つ可能性があります。
 
-1. YabLoc の場合に示されているように、時系列処理を完全に停止して**再初期化**する。
-2. `localization/kinematic_state` を購読して**状態を更新し続け**、推定が中断しないようにする（アクティブな pose_estimator の出力を利用する）。
-3. 複数の pose_estimator は、その特定の pose_estimator を**サポートしない**。
+1. YabLoc の場合に見られるように、時系列処理を完全に停止して**再初期化**します。
+2. `localization/kinematic_state` を subscribe して**状態を更新し続けます**。これにより、推定が中断しないようにします（アクティブな pose_estimator の出力に依存します）。
+3. 複数の pose_estimator は、その特定の pose_estimator を**サポートしません**。
 
-この問題は複数の pose_estimator を実現するための基本的な問題であり、この場合に提案されたアーキテクチャに関係なく発生することに注意してください。
+この問題は複数の pose_estimator を実現するための根本的な問題であることに注意してください。この場合に提案されたアーキテクチャに関係なく発生します。
 
 </details>
+

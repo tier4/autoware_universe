@@ -1,31 +1,32 @@
-# 側方シフト設計
+# 横ずれ設計
 
-（リモート制御用）外部の指示に従って経路を左右にシフトします。
+（リモート制御用）外部からの指示に従って経路を左または右にシフトします。
 
-## 側方シフトモジュール処理の概要
+## Side Shiftモジュールプロセスの概要
 
-1. 必要な横方向オフセット入力を受信します。
-2. 次の条件下で`requested_lateral_offset_`を更新します。
-   a. 最後の更新時刻が経過したか確認します。
-   b. 必要な横方向オフセット値が前の値と異なることを確認します。
-3. 側方シフトモジュールのステータスがSHIFTINGステータスの場合は、シフトポイントをパスに挿入します。
+1. 必要な横ずれオフセット入力を受信する。
+2. 以下の条件を満たす場合に`requested_lateral_offset_`を更新する。
+    a. 最後の更新時刻が経過しているかどうかを確認する。
+    b. 必要な横ずれオフセット値が前の値と異なっていることを確認する。
+3. Side ShiftモジュールのステータスがSHIFTINGステータスでなければ、シフトポイントをパスに挿入する。
 
-`requested_lateral_offset_`は最新の値で常に更新され、キューに入れられないことに注意してください。
+`requested_lateral_offset_`は最新の値で継続的に更新され、キューに入れられないことに注意してください。
 
-## 側方シフトのステータス
+## Side Shiftのステータス
 
-側方シフトには3つの異なるステータスがあります。SHIFTINGステータスの間はパスを更新できないことに注意してください。
+Side Shiftには3つの異なるステータスがあります。SHIFTINGステータス中はパスを更新できないことに注意してください。
 
 1. BEFORE_SHIFT：シフトの準備。
-2. SHIFTING：現在シフト処理中。
+2. SHIFTING：現在シフト中です。
 3. AFTER_SHIFT：シフト完了。
 
 <figure markdown>
   ![case1](images/side_shift_status.drawio.svg){width=1000}
-  <figcaption>側方シフトのステータス</figcaption>
+  <figcaption>side shiftステータス</figcaption>
 </figure>
 
 ## フローチャート
+
 
 ```plantuml
 @startuml
@@ -49,6 +50,7 @@ else ( false)
 stop
 @enduml
 ```
+
 
 ```plantuml
 @startuml
@@ -75,6 +77,7 @@ endif
 stop
 @enduml
 ```
+
 
 ```plantuml
 @startuml
@@ -113,3 +116,4 @@ partition updateState {
 
 @enduml
 ```
+

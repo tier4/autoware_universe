@@ -1,85 +1,75 @@
 # yabloc_monitor
 
-YabLoc モニターは YabLoc Localization システムの状態を監視するノードです。YabLoc Localization システムの状態を監視し、その状態を診断として発行するラッパーノードです。
+YabLoc Monitorは、YabLoc Localizationシステムのステータスを監視するノードです。YabLoc Localizationシステムのステータスを監視し、ステータスを診断として公開するラッパーノードです。
 
 ## 機能
 
 ### 可用性
 
-このノードは、YabLoc の最終出力姿勢を監視して YabLoc の可用性を検証します。
+このノードは、YabLocの最終的な出力ポーズを監視して、YabLocの可用性を検証します。
 
 ### その他
 
-追加予定です。
+追加予定
 
-## インターフェイス
+## インターフェース
 
 ### 入力
 
-| 名前                  | 型                          | 説明                 |
-| --------------------- | --------------------------- | -------------------- |
-| `~/input/yabloc_pose` | `geometry_msgs/PoseStamped` | YabLocの最終出力姿勢 |
+| 名前                  | タイプ                        | 説明                     |
+| --------------------- | --------------------------- | ------------------------------- |
+| `~/input/yabloc_pose` | `geometry_msgs/PoseStamped` | YabLoc の最終出力位置 |
 
-### 出力
+## 自動運転ソフトウェア
 
-この文書は、AutowareのPath PlanningモジュールのためのPythonリファレンスガイドです。
+**Table of Contents**
 
-**目的**
+- [概要](#概要)
+- [入力](#入力)
+- [処理](#処理)
+- [出力](#出力)
+- [依存関係](#依存関係)
+- [パラメータ](#パラメータ)
 
-本ドキュメントの目的は、Path Planningモジュールの各クラス、関数、定数に関して、その意味と使用方法を明確にすることです。
+**概要**
 
-**前提条件**
+本ドキュメントでは、Autowareの中心的なコンポーネントである自動運転ソフトウェアについて説明します。このソフトウェアは、センサーデータを使用して周囲の環境を認識し、それに基づいて走行経路を計画し、車両を制御します。
 
-読者は、Pythonプログラミング言語、モジュール性、およびオブジェクト指向プログラミングの概念に精通している必要があります。また、Autowareフレームワークの基本的な理解も有益です。
+**入力**
 
-**構成**
+* センサーデータ (レーダー、LiDAR、カメラ)
+* 自車位置と姿勢
+* 高解像度地図
 
-このドキュメントは、次のセクションで構成されています。
+**処理**
 
-- **モジュール**
-- **クラス**
-- **関数**
-- **定数**
-- **付録**
+自動運転ソフトウェアは、次の処理を行います。
 
-**モジュール**
+* **センサフュージョン:** センサーデータの統合と処理を行い、周囲環境の正確な表現を作成します。
+* **オブジェクト検出と追跡:** 環境内の車両、歩行者、その他のオブジェクトを検出し、追跡します。
+* **Planning:** 高解像度地図とオブジェクト検出結果を使用して走行経路を計画します。
+* **制御:** 計画された走行経路に従って、車両のアクセル、ブレーキ、ステアリングを制御します。
 
-Path Planningモジュールは、`autoware.planning`モジュール内に格納されています。このモジュールには、パス計画アルゴリズム、軌跡生成機能、および障害物回避ルーチンを実装するクラスと関数が含まれています。
+**出力**
 
-**クラス**
+* 車両の制御コマンド
+* 周囲環境のMap representation
+* オブジェクト検出と追跡の結果
 
-Path Planningモジュールには、次の主要なクラスが含まれています。
+**依存関係**
 
-- **Planner:** Planningアルゴリズムのベースクラス
-- **TrajectoryGenerator:** 軌跡を生成するクラス
-- **ObstacleAvoidance:** 障害物を回避するためのルーチンをカプセル化するクラス
+* Autoware Platform
+* ROS（Robot Operating System）
 
-**関数**
+**パラメータ**
 
-Path Planningモジュールには、次の主要な関数が含まれています。
+* **'post resampling' 時の最大オブジェクト数:** 検出後に保存するオブジェクトの最大数
 
-- `plan_path(current_pose, goal_pose, obstacles)`: 与えられた自車位置、ゴール位置、および障害物を基にパスを計画する
-- `generate_trajectory(path, velocity, acceleration)`: 与えられたパス、速度、および加速度に基づいて軌跡を生成する
-- `avoid_obstacles(trajectory, obstacles)`: 与えられた軌跡と障害物を基に障害物を回避する
-
-**定数**
-
-Path Planningモジュールには、次の主要な定数が含まれています。
-
-- `MAX_VELOCITY`: 最適速度
-- `MAX_ACCELERATION`: 最大加速度
-- `MIN_DISTANCE_TO_OBSTACLE`: 障害物に対する最小安全距離
-
-**付録**
-
-付録には、Path Planningモジュールの使用方法に関する追加情報が含まれています。
-
-- `post resampling`処理に関するセクションを含んでいます。
-
-| Name           | Type                              | Description  |
-| -------------- | --------------------------------- | ------------ |
-| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | 診断結果出力 |
+| 名前           | タイプ                               | 説明         |
+| -------------- | ----------------------------------- | ------------------- |
+| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | Diagnosticsの出力 |
 
 ### パラメータ
 
-{{ json_to_markdown("localization/yabloc/yabloc_monitor/schema/yabloc_monitor.schema.json", "ja") }}
+{{ json_to_markdown("localization/yabloc/yabloc_monitor/schema/yabloc_monitor_jp.schema.json") }}
+

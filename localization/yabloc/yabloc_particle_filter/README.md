@@ -1,6 +1,6 @@
-## yabLoc_particle_filter
+# yabLoc_particle_filter
 
-このパッケージには、パーティクルフィルタに関連する実行可能ノードが含まれています。
+このパッケージにはパーティクルフィルタ関連の実行可能ノードがいくつか含まれています。
 
 - [particle_predictor](#particle_predictor)
 - [gnss_particle_corrector](#gnss_particle_corrector)
@@ -10,145 +10,59 @@
 
 ### 目的
 
-- このノードは、パーティクルの予測更新と再サンプリングを実行します。
-- それは、Correctorノードによって決定されるパーティクルの重みを遡及的に反映します。
+- このノードはパーティクルの予測更新と再サンプリングを実行します。
+- コレクタノードによって決定された粒子の重みを遡って反映します。
 
-### 入出力
-
-#### 入力
-
-- `/localization/particle_cloud/sample` (ParticleCloud)
-
-#### 出力
-
-- `/localization/particle_cloud/prediction_sample` (ParticleCloud)
-- `/localization/particle_cloud/prediction_weight` (ParticleWeightArray)
-
-### パラメータ
-
-| パラメータ               | 説明                                                | 型     | デフォルト |
-| ------------------------ | --------------------------------------------------- | ------ | ---------- |
-| `resampling`             | 仮説の再サンプリングを実行するかどうか              | bool   | true       |
-| `resampling_threshold`   | 仮説が再サンプリングされる前の重みの最小しきい値    | double | 0.001      |
-| `min_num_particles`      | 再サンプリング後の最小パーティクル数                | int    | 100        |
-| `max_num_particles`      | 再サンプリング後の最大パーティクル数                | int    | 10000      |
-| `temporal_variance`      | `'post resampling'`仮説の生成に対する時系列的な分散 | double | 0.0        |
-| `translational_variance` | `'post resampling'`仮説の生成に対する並進的な分散   | double | 0.0        |
-| `rotational_variance`    | `'post resampling'`仮説の生成に対する回転的な分散   | double | 0.0        |
-
-## gnss_particle_corrector
-
-### 目的
-
-- このノードは、GNSS測定値に基づいてパーティクルの重みを修正します。
-
-### 入出力
+### 入力 / 出力
 
 #### 入力
 
-- `/localization/particle_cloud/ground_truth` (ParticleCloud)
-- `/localization/particle_cloud/prediction_sample` (ParticleCloud)
-- `/localization/gnss/odometry` (Odometry)
+| 名前 | タイプ | 説明 |
+|---|---|---|
+| `input/initialpose` | `geometry_msgs::msg::PoseWithCovarianceStamped` | パーティクルの初期位置を指定する |
+| `input/twist_with_covariance` | `geometry_msgs::msg::TwistWithCovarianceStamped` | 予測更新の線速度と角速度 |
+| `input/height` | `std_msgs::msg::Float32` | 地上高 |
+| `input/weighted_particles` | `yabloc_particle_filter::msg::ParticleArray` | 補正ノードで重み付けされたパーティクル |
 
 #### 出力
 
-- `/localization/particle_cloud/correction_weight` (ParticleWeightArray)
+Autowareで利用可能な安全パラメータのリストは次のとおりです。
 
-### パラメータ
+* **車間距離パラメータ**
+    * `min_following_distance` (`[m]`)：Autowareが維持しようとする前方の車両との最小距離
+    * `min_following_distance_max_speed` (`[m]`)：`min_following_distance`パラメータを最大速度として適用する速度しきい値
+    * `time_headway` (`[sec]`)：周囲車両に対する適切な車間距離を計算するためにAutowareが使用する時間間隔
+* **横方向安全距離パラメータ**
+    * `min_lateral_offset` (`[m]`)：障害物に対してAutowareが維持しようとする最小横方向オフセット
+    * `min_lateral_offset_max_speed` (`[m]`)：`min_lateral_offset`パラメータを最大速度として適用する速度しきい値
+* **速度パラメーター**
+    * `max_speed` (`[km/h]`)：Autowareトラジェク\トリージェネレーターが生成するトラック可能な最大速度
+    * `max_accel` (`[m/s^2]`)：車両に入力できる最大加速度
+    * `max_decel` (`[m/s^2]`)：車両に入力できる最大減速度
+    * `search_speed` (`[km/h]`)：経路計画を実行するときにAutowareが使用する検索速度（経路計画参照）
+* **経路計画パラメーター**
+    * `max_path_points`：経路計画モジュールが1つのパスに収容できる最大経路ポイント数
+    * `smoothing_factor`：経路計画モジュールが生成するパスを滑らかにするために使用する平滑化係数
+* **障害物検出パラメータ**
+    * `min_detection_height` (`[m]`)：障害物検出が有効になる最小高さ
+* **Planningパラメータ**
+    * `lanechange_frequency` (`[m]`)：Autowareが車線変更を実行する頻度
+    * `min_lanechange_speed` (`[km/h]`)：Autowareが車線変更を実行する最小速度
+    * `lane_change_check_distance` (`[m]`)：Autowareが前方の車線変更の可能性をチェックし始める距離
+    * `safe_stop_distance` (`[m]`)：Autowareが進行中の軌跡を停止するために必要な最小の安全距離
+* **制御パラメータ**
+    * `brake_decel_rate` (`[m/s^2]`)：自動運転システムが自律ブレーキを実行するために使用する減速度率
+* **その他**
+    * `debug_mode`：デバッグモードを有効にするかどうかを制御します (`[bool]`)
+    * `post resampling`：経路計画後処理を有効にするかどうかを制御します (`[bool]`)
 
-| パラメータ          | 説明                       | 型     | デフォルト    |
-| ------------------- | -------------------------- | ------ | ------------- |
-| `gnss_model`        | GNSSの測定モデル           | string | `'gnss_sim'`  |
-| `gnss_device_model` | 使用するGNSSデバイスモデル | string | `'ublox_f9p'` |
-| `gnss_max_age`      | GNSS測定値の最大許容時間   | double | 1.0           |
-
-## camera_particle_corrector
-
-### 目的
-
-- このノードは、カメラ測定値に基づいてパーティクルの重みを修正します。
-
-### 入出力
-
-#### 入力
-
-- `/ localization / particle_cloud / ground_truth` (ParticleCloud)
-- `/ localization / particle_cloud / prediction_sample` (ParticleCloud)
-- `/localization/camera/detection` (DetectionArray)
-
-#### 出力
-
-- `/localization/particle_cloud/correction_weight` (ParticleWeightArray)
-
-### パラメータ
-
-| パラメータ                     | 説明                                         | 型     | デフォルト         |
-| ------------------------------ | -------------------------------------------- | ------ | ------------------ |
-| `camera_model`                 | カメラの測定モデル                           | string | `'camera_sim'`     |
-| `camera_device_model`          | 使用するカメラデバイスモデル                 | string | `'realsense_d435'` |
-| `camera_max_age`               | カメラ測定値の最大許容時間                   | double | 1.0                |
-| `detection_distance_threshold` | 検出とパーティクルの位置の距離の最大しきい値 | double | 1.0                |
-
-| 名前                          | 種類                                             | 説明                                         |
-| ----------------------------- | ------------------------------------------------ | -------------------------------------------- |
-| `input/initialpose`           | `geometry_msgs::msg::PoseWithCovarianceStamped`  | パーティクルの初期位置を指定                 |
-| `input/twist_with_covariance` | `geometry_msgs::msg::TwistWithCovarianceStamped` | 予測更新の線速度と角速度                     |
-| `input/height`                | `std_msgs::msg::Float32`                         | 地形高                                       |
-| `input/weighted_particles`    | `yabloc_particle_filter::msg::ParticleArray`     | 補正ノードによって重み付けされたパーティクル |
-
-#### 出力
-
-**自動運転ソフトウェア**
-
-Autowareの自動運転ソフトウェアは、Perception、Planning、Controlの3つの主要コンポーネントで構成されています。
-
-**Perception**
-
-Perceptionコンポーネントは、カメラ、LiDAR、レーダーなどのセンサーからのデータを処理し、「点群」と「カメラ画像」を生成します。これらのデータを使用して、障害物（車両、歩行者、自転車など）、道路標識、車線マーキングなどの周辺環境を認識します。
-
-**Planning**
-
-Planningコンポーネントは、Perceptionから得られたデータを基に、安全で効率的な走行経路を生成します。経路生成では、以下の要因が考慮されます。
-
-- 周囲環境の認識
-- 障害物回避
-- 車両の運動力学（速度、加速度）
-- 交通規則
-
-**Control**
-
-Controlコンポーネントは、Planningから生成された経路に従って、車両を制御します。これには、ステアリング、アクセル、ブレーキの操作が含まれます。
-
-**追加機能**
-
-- **Lane Keeping Assist (LKA):** 車線を維持するアシスタント
-- **Adaptive Cruise Control (ACC):** 前方車両との車間距離を維持するクルーズコントロール
-- **Emergency Braking:** 衝突の可能性がある場合に自動的にブレーキをかける機能
-
-**評価**
-
-Autowareの性能は、さまざまな指標を使用して評価できます。
-
-- **Planning評価:**
-  - 障害物逸脱量（velocity, acceleration）
-  - 車線逸脱量
-  - 安全距離
-- **Control評価:**
-  - 追従精度
-  - 'post resampling'精度
-  - 車両の安定性
-
-**使用例**
-
-Autowareの自動運転ソフトウェアは、自動運転車両、ロボタクシー、ラストワンマイル配送などのさまざまな用途で使用できます。
-
-| 名前                           | 内容                                            | 説明                                           |
-| ------------------------------ | ----------------------------------------------- | ---------------------------------------------- |
-| `output/pose_with_covariance`  | `geometry_msgs::msg::PoseWithCovarianceStamped` | 粒子中心と共分散                               |
-| `output/pose`                  | `geometry_msgs::msg::PoseStamped`               | 粒子中心と共分散                               |
-| `output/predicted_particles`   | `yabloc_particle_filter::msg::ParticleArray`    | 予測ノードで重み付けされた粒子                 |
-| `debug/init_marker`            | `visualization_msgs::msg::Marker`               | 初期位置のデバッグ用可視化                     |
-| `debug/particles_marker_array` | `visualization_msgs::msg::MarkerArray`          | 粒子の可視化。`visualize` が true の場合に配信 |
+| 名前 | 種類 | 説明 |
+|---|---|---|
+| output/pose_with_covariance | geometry_msgs::msg::PoseWithCovarianceStamped | 粒子のセントロイドと共分散 |
+| output/pose | geometry_msgs::msg::PoseStamped | 粒子のセントロイドと共分散 |
+| output/predicted_particles | yabloc_particle_filter::msg::ParticleArray | 予測ノードによって重み付けられた粒子 |
+| debug/init_marker | visualization_msgs::msg::Marker | 初期位置のデバッグ可視化 |
+| debug/particles_marker_array | visualization_msgs::msg::MarkerArray | 粒子の可視化（`visualize`がTrueの場合に公開） |
 
 ### パラメータ
 
@@ -156,177 +70,156 @@ Autowareの自動運転ソフトウェアは、自動運転車両、ロボタク
 
 ### サービス
 
-| 名称                 | 種類                     | 説明                           |
-| -------------------- | ------------------------ | ------------------------------ |
-| `yabloc_trigger_srv` | `std_srvs::srv::SetBool` | yabloc推定の有効化および無効化 |
+| 名称                 | タイプ                     | 説明                                           |
+| -------------------- | ------------------------ | ----------------------------------------------- |
+| `yabloc_trigger_srv` | `std_srvs::srv::SetBool` | YABLOC推定の有効化と無効化                     |
 
 ## gnss_particle_corrector
 
 ### 目的
 
-- このノードは、GNSSを使用して粒子重みを推定します。
-- 2種類の入力に対応しています。`ublox_msgs::msg::NavPVT`と`geometry_msgs::msg::PoseWithCovarianceStamped`です。
+- このノードはGNSSを使用してパーティクルの重みを推定します。
+- 以下の2つの種類の入力をサポートしています: `ublox_msgs::msg::NavPVT`と`geometry_msgs::msg::PoseWithCovarianceStamped`
 
 ### 入出力
 
 #### 入力
 
-- ublox_msgs::NavPVT：[GNSS情報](https://docs.autoware.io/en/latest/autoware.auto/msgs/ublox_msgs/message/NavPVT.html)
-- geometry_msgs::PoseWithCovarianceStamped：[自車位置](https://docs.autoware.io/en/latest/autoware.auto/msgs/geometry_msgs/message/PoseWithCovarianceStamped.html)
-
-| 名前                         | タイプ                                          | 説明                                        |
-| ---------------------------- | ----------------------------------------------- | ------------------------------------------- |
-| `input/height`               | `std_msgs::msg::Float32`                        | 地上高度                                    |
-| `input/predicted_particles`  | `yabloc_particle_filter::msg::ParticleArray`    | 推定パーティクル                            |
-| `input/pose_with_covariance` | `geometry_msgs::msg::PoseWithCovarianceStamped` | GNSS測定 (use_ublox_msgがfalseの場合に使用) |
-| `input/navpvt`               | `ublox_msgs::msg::NavPVT`                       | GNSS測定 (use_ublox_msgがtrueの場合に使用)  |
-
-**自動運転ソフトウェアの設計に関するドキュメント**
-
-**Planningコンポーネント**
-
-**状態推定と構想**
-
-- 最新の自車位置、周囲環境のステータス、予定ルートを把握するための状態推定
-- 障害物の検知、予測、および分類に基づいたパス計画の構想
-
-**動作計画**
-
-- 経路最適化と障害物回避のためのグローバルプランナー
-- 局所プランナーによるリアルタイム動作計画の生成
-
-**制御**
-
-- 車両の動的特性を考慮した制御器の設計
-- 経路追従、速度制御、障害物回避のための閉ループ制御
-
-**シミュレーションとテスト**
-
-- 仮想環境を使用した自動運転システムのシミュレーション
-- 実際のテスト走路での実車テスト
-
-**システムアーキテクチャ**
-
-- モジュール化されたソフトウェアアーキテクチャ
-- さまざまなセンサーとアクチュエーターとのインターフェース
-
-**Autowareソフトウェアスタック**
-
-- オープンソースの自動運転ソフトウェアプラットフォーム
-- Planning、制御、センシング、シミュレーションのためのモジュールを提供
-
-**主要な概念**
-
-- **'post resampling'**：状態推定後の予測された経路
-- **速度逸脱量**：目標速度からの逸脱
-- **加速度逸脱量**：目標加速度からの逸脱
-- **制御限界**：車両の物理的な制約による制御器の入出力の限界
-- **Lanelet2**：道路環境を表現するためのデータ構造
-
-| 名前                           | タイプ                                       | 説明                                                             |
-| ------------------------------ | -------------------------------------------- | ---------------------------------------------------------------- |
-| `output/weighted_particles`    | `yabloc_particle_filter::msg::ParticleArray` | 重み付けられた粒子                                               |
-| `debug/gnss_range_marker`      | `visualization_msgs::msg::MarkerArray`       | GNSS の重み分布                                                  |
-| `debug/particles_marker_array` | `visualization_msgs::msg::MarkerArray`       | 粒子のビジュアライゼーション. `visualize` が真の場合に公開される |
-
-### パラメータ
-
-{{ json_to_markdown("localization/yabloc/yabloc_particle_filter/schema/gnss_particle_corrector.schema.json") }}
-
-## camera_particle_corrector
-
-### 目的
-
-- このノードは GNSS を使用してパーティクルの重みを見積もります。
-
-### 入出力
-
-#### 入力
-
-| 名称                                  | タイプ                                       | 説明                                           |
-| ------------------------------------- | -------------------------------------------- | ---------------------------------------------- |
-| `input/predicted_particles`           | `yabloc_particle_filter::msg::ParticleArray` | 予測粒子                                       |
-| `input/ll2_bounding_box`              | `sensor_msgs::msg::PointCloud2`              | 路面標示を線分に変換したもの                   |
-| `input/ll2_road_marking`              | `sensor_msgs::msg::PointCloud2`              | 路面標示を線分に変換したもの                   |
-| `input/projected_line_segments_cloud` | `sensor_msgs::msg::PointCloud2`              | 投影線分                                       |
-| `input/pose`                          | `geometry_msgs::msg::PoseStamped`            | 自車位置周辺のエリアマップを取得するための参照 |
+| 名前                         | 型                                            | 説明                                        |
+| ---------------------------- | ----------------------------------------------- | -------------------------------------------------- |
+| `input/height`               | `std_msgs::msg::Float32`                        | 地面からの高さ                                      |
+| `input/predicted_particles`  | `yabloc_particle_filter::msg::ParticleArray`    | 予測粒                                        |
+| `input/pose_with_covariance` | `geometry_msgs::msg::PoseWithCovarianceStamped` | GNSS 測定 `use_ublox_msg` が false の場合使用 |
+| `input/navpvt`               | `ublox_msgs::msg::NavPVT`                       | GNSS 測定 `use_ublox_msg` が true の場合使用  |
 
 #### 出力
 
-Autoware Planning 2.x のモジュール開発チュートリアル
+**自動運転ソフトウェアのドキュメント**
 
-このチュートリアルでは、Planning 2.x のモジュール開発に関するエンドツーエンドのプロセスをご紹介します。必要なスキルと知識、および Planning 2.x でモジュールを開発するための推奨アプローチについて説明します。
+**要約**
 
-### 必要条件
+このドキュメントでは、Autoware自動運転ソフトウェアのアーキテクチャ、コンポーネント、およびインターフェースについて説明します。このソフトウェアは、車両に搭載されたセンサーからのデータを処理し、環境を認識し、走行の意思決定と制御を行います。
 
-- C++ の中級レベルの知識
-- ROS の基本的な知識
-- Autoware の基本的な知識
+**アーキテクチャ**
 
-### 推奨アプローチ
+Autowareのアーキテクチャはモジュール方式で設計されており、各モジュールは特定の機能を担当しています。これにより、ソフトウェアの保守性と拡張性が向上します。主なモジュールを以下に示します。
 
-Planning 2.x でモジュールを開発するには、以下の推奨アプローチに従うことをお勧めします。
+* **センサーモジュール:** センサーからのデータを処理し、生のデータを認識可能な形式に変換します。
+* **認識モジュール:** センサーデータを使用して、周囲の環境を認識します。これには、物体の検出、分類、トラッキングなどがあります。
+* **予測モジュール:** 認識された物体の動きを予測し、将来の衝突の可能性を特定します。
+* **Planningモジュール:** 予測に基づいて、車両の走行経路と速度を計画します。
+* **制御モジュール:** Planningモジュールから出された経路と速度に従って、車両の運動を制御します。
 
-1. **要件の定義:** モジュールの目的、入力、および出力について明確に定義します。
-2. **インターフェースの設計:** モジュールと外部コンポーネントとのインターフェースを設計します。
-3. **モジュールの実装:** モジュールのアルゴリズムとロジックを実装します。
-4. **テスト:** 単体テスト、統合テスト、システムテストを通じてモジュールをテストします。
-5. **ドキュメント化:** モジュールのインターフェース、実装、テストについて文書化します。
+**インターフェース**
 
-### モジュール構成
+各モジュールは、他のモジュールとデータ交換するためのインターフェースを定義しています。インターフェースは、ROS（Robot Operating System）トピックまたはサービスコールに基づいています。これにより、モジュール間の疎結合が実現し、ソフトウェアのモジュール化と再利用性が向上します。
 
-Planning 2.x のモジュールは、以下のような構成になっています。
+**センサー**
 
-- **リソース:** モジュールによって使用される設定ファイルやパラメータです。
-- **インターフェース:** モジュールと外部コンポーネントとのやり取りに使用されるクラスと関数です。
-- **アルゴリズム:** モジュールの内部ロジックを実装するコードです。
-- **テスト:** モジュールを検証するためのテストケースです。
-- **ドキュメント:** モジュールのインターフェース、実装、テストについての説明です。
+Autowareは、さまざまなセンサータイプをサポートしています。これらには、以下のものが含まれます。
 
-### モジュールの例
+* LiDAR
+* カメラ
+* レーダー
+* IMU
 
-以下に、Planning 2.x で実装されているモジュールの例をいくつか示します。
+**認識**
 
-- **Local Planner:** 自車位置から近接将来の軌道を生成します。
-- **Global Planner:** 長期的な将来の軌道を生成します。
-- **Behavior Planner:** 自車の動作を決定します。
-- **Prediction Module:** 他者の動きを予測します。
+認識モジュールは、センサーデータを使用して環境を認識します。主な認識アルゴリズムを以下に示します。
 
-### モジュール開発の手順
+* 物体検出: YOLO、Faster R-CNN
+* 物体分類: ResNet、MobileNet
+* 物体追跡: Kalmanフィルタ、Particle Filter
 
-Planning 2.x でモジュールを開発するには、以下の手順に従います。
+**予測**
 
-1. **Planning モジュールテンプレートを複製する:** Planning リポジトリからモジュールテンプレートを複製します。
-2. **モジュールに名前を付ける:** モジュールを適切な名前に変更します。
-3. **インターフェースを編集する:** モジュールのインターフェースを編集して、独自の要件に合わせます。
-4. **アルゴリズムを実装する:** モジュールのアルゴリズムを実装します。
-5. **テストを追加する:** モジュールを検証するためのテストを追加します。
-6. **リソースを追加する:** モジュールによって使用されるリソースを追加します。
-7. **ドキュメントを追加する:** モジュールのインターフェース、実装、テストについてのドキュメントを追加します。
-8. **モジュールをコンパイルしてインストールする:** モジュールをコンパイルして Autoware にインストールします。
+予測モジュールは、認識された物体の動きを予測します。主な予測アルゴリズムを以下に示します。
 
-### モジュールのメンテナンス
+* カルマンフィルタ
+* 粒子フィルタ
+* アディティブノイズモデル
 
-Planning 2.x のモジュールをメンテナンスするには、以下のベストプラクティスに従うことをお勧めします。
+**Planning**
 
-- **コードの変更を記録する:** コードの変更をコミットログに記録します。
-- **継続的な統合を使用する:** 変更があると自動的にモジュールをテストおよびビルドする継続的な統合システムを使用します。
-- **モジュールを更新する:** Planning の新しいバージョンがリリースされたら、モジュールを更新します。
+Planningモジュールは、予測に基づいて車両の走行経路と速度を計画します。主なPlanningアルゴリズムを以下に示します。
 
-### サポート
+* ダイナミックプログラミング
+* RRT（Rapidly-exploring Random Tree）
+* LQR（Linear-quadratic Regulator）
 
-Planning 2.x のモジュール開発に関するサポートについては、[Autoware フォーラム](https://forum.autoware.ai/) にアクセスしてください。
+**制御**
 
-| 名前                           | タイプ                                       | 説明                                                        |
-| ------------------------------ | -------------------------------------------- | ----------------------------------------------------------- |
-| `output/weighted_particles`    | `yabloc_particle_filter::msg::ParticleArray` | ウェイト付き粒子                                            |
-| `debug/cost_map_image`         | `sensor_msgs::msg::Image`                    | lanelet2 から生成されたコストマップ                         |
-| `debug/cost_map_range`         | `visualization_msgs::msg::MarkerArray`       | コストマップ境界                                            |
-| `debug/match_image`            | `sensor_msgs::msg::Image`                    | 投影線分画像                                                |
-| `debug/scored_cloud`           | `sensor_msgs::msg::PointCloud2`              | ウェイト付き3D線分                                          |
-| `debug/scored_post_cloud`      | `sensor_msgs::msg::PointCloud2`              | ウェイト付き3D線分（不確実なもの）                          |
-| `debug/state_string`           | `std_msgs::msg::String`                      | ノード状態を表す文字列                                      |
-| `debug/particles_marker_array` | `visualization_msgs::msg::MarkerArray`       | 粒子ビジュアライゼーション.`visualize` が True の場合に公開 |
+制御モジュールは、Planningモジュールから出された経路と速度に従って、車両の運動を制御します。主な制御アルゴリズムを以下に示します。
+
+* PID制御
+* 状態フィードバック制御
+* モデル予測制御
+
+**追加機能**
+
+Autowareは、以下の追加機能も提供しています。
+
+* レイヤー統合: センサーデータを異なるモダリティから融合して、より堅牢な認識を提供します。
+* ロкалиゼーション:車両の自車位置と姿勢を推定します。
+* 'post resampling'による高精度なセンサー校正: センサー間のオフセット補正を向上させます。
+* 安全性監視: 車両挙動を監視して、安全性を確保します。
+* HMI (Human-Machine Interface): ドライバーとの相互作用を提供します。
+
+| 名前                           | 型                                           | 説明                                                    |
+| ------------------------------ | -------------------------------------------- | --------------------------------------------------------- |
+| `output/weighted_particles`    | `yabloc_particle_filter::msg::ParticleArray` | 重み付き粒子                                            |
+| `debug/gnss_range_marker`      | `visualization_msgs::msg::MarkerArray`       | GNSS の重み分布                                          |
+| `debug/particles_marker_array` | `visualization_msgs::msg::MarkerArray`       | 粒子ビジュアライゼーション. `visualize` が true の場合に発行 |
+
+### パラメーター
+
+{{ json_to_markdown("localization/yabloc/yabloc_particle_filter/schema/gnss_particle_corrector.schema.json") }}
+
+
+## カメラパーティクルコレクタ
+
+### 目的
+- このノードはGNSSを使用してパーティクルの重みを求めます。
+
+### 入出力
+
+#### 入力
+
+| 名称                                 | タイプ                                       | 説明                                                   |
+| ----------------------------------- | ------------------------------------------ | -------------------------------------------------------- |
+| `input/predicted_particles`         | `yabloc_particle_filter::msg::ParticleArray` | 予測されたパーティクル                                   |
+| `input/ll2_bounding_box`            | `sensor_msgs::msg::PointCloud2`            | 路面マーキングをラインセグメントに変換したもの             |
+| `input/ll2_road_marking`            | `sensor_msgs::msg::PointCloud2`            | 路面マーキングをラインセグメントに変換したもの             |
+| `input/projected_line_segments_cloud` | `sensor_msgs::msg::PointCloud2`            | 投影されたラインセグメント                                |
+| `input/pose`                        | `geometry_msgs::msg::PoseStamped`          | self位置周辺のエリアマップを取得するための参照             |
+
+#### 出力
+
+**自動運転ソフトウェアの用語と定義**
+
+| 用語 | 定義 |
+|---|---|
+| Planning | 走行経路や行動を決定するモジュール |
+| Localization | 自車位置を推定するモジュール |
+| Perception | 周囲環境を認識するモジュール |
+| Control | 車両を制御するモジュール |
+| Sensor | 周囲環境を測定する装置 |
+| Actuator | 車両を制御するために使用される装置 |
+| Localization | 自車位置を推定するモジュール |
+| Autoware | オープンソースの自動運転ソフトウェアプラットフォーム |
+| `post resampling` | 走行経路最適化の再サンプルフェーズ |
+| `open space` | 走行経路内の障害物がない領域 |
+
+| 名称                           | タイプ                                           | 説明                                               |
+| ------------------------------ | ------------------------------------------------ | --------------------------------------------------------- |
+| `output/weighted_particles`    | `yabloc_particle_filter::msg::ParticleArray` | 重み付け粒子                                         |
+| `debug/cost_map_image`         | `sensor_msgs::msg::Image`                      | lanelet2から作成したコストマップ                      |
+| `debug/cost_map_range`         | `visualization_msgs::msg::MarkerArray`         | コストマップ境界                                       |
+| `debug/match_image`            | `sensor_msgs::msg::Image`                      | 投影された線分画像                                   |
+| `debug/scored_cloud`           | `sensor_msgs::msg::PointCloud2`                  | 重み付け3D線分                                        |
+| `debug/scored_post_cloud`      | `sensor_msgs::msg::PointCloud2`                  | 'post resampling'の非確実性のある重み付け3D線分       |
+| `debug/state_string`           | `std_msgs::msg::String`                        | ノードの状態を表す文字列                                |
+| `debug/particles_marker_array` | `visualization_msgs::msg::MarkerArray`         | パーティクル可視化。`visualize`がTrueの場合のみ公開される |
 
 ### パラメータ
 
@@ -334,6 +227,7 @@ Planning 2.x のモジュール開発に関するサポートについては、[
 
 ### サービス
 
-| 名           | 種類                     | 説明                 |
-| ------------ | ------------------------ | -------------------- |
-| `switch_srv` | `std_srvs::srv::SetBool` | 補正の有効化と無効化 |
+| 名前 | 型 | 説明 |
+|---|---|---|
+| `switch_srv` | `std_srvs::srv::SetBool` | 補正の有効化および無効化 |
+

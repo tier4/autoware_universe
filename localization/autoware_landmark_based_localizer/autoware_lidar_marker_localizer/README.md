@@ -1,6 +1,6 @@
-# LiDAR マーカー ローカライザー
+# LiDAR Marker Localizer
 
-**LiDARMarkerLocalizer** は、反射器を検出して位置を推定するノードです。
+**LiDARMarkerLocalizer** はリフレクター検出ベースの局所化ノードです。
 
 ## 入出力
 
@@ -8,90 +8,80 @@
 
 #### 入力
 
-- `/hesai406/points` (`PointCloud`)
-  - ヘサイ406のLiDARポイントクラウド
-- `/current_pose` (`Odometry`)
-  - 自車位置
-- `/static_map` (`StaticMap`)
-  - 静的地図（反転させた座標系）
+| 名前 | タイプ | 説明 |
+|---|---|---|
+| ~/input/lanelet2_map | autoware_map_msgs::msg::HADMapBin | lanelet2データ |
+| ~/input/pointcloud | sensor_msgs::msg::PointCloud2 | 点群 |
+| ~/input/ekf_pose | geometry_msgs::msg::PoseWithCovarianceStamped | EKFによる自車位置 |
 
-#### 出力
+## 自動運転ソフトウェアドキュメント
 
-- `/lidar_marker_localizer/output` (`Odometry`)
-  - 検出された反射器に基づく、自車位置の推定値
-- `/lidar_marker_localizer/debug` (`MarkerArray`)
-  - デバッグ用マーカー
+このドキュメントは、Autoware自動運転ソフトウェアの仕様と設計を説明します。
 
-| 名前                   | 型                                              | 説明              |
-| ---------------------- | ----------------------------------------------- | ----------------- |
-| `~/input/lanelet2_map` | `autoware_map_msgs::msg::HADMapBin`             | lanelet2データ    |
-| `~/input/pointcloud`   | `sensor_msgs::msg::PointCloud2`                 | 点群              |
-| `~/input/ekf_pose`     | `geometry_msgs::msg::PoseWithCovarianceStamped` | EKFによる自車位置 |
+### Planningモジュール
 
-#### 出力
+Planningモジュールは、環境を検出し、障害物を回避し、安全で効率的な経路を生成します。
 
-- [Autoware 自動運転ソフトウェアドキュメント](**URL** にリンク)
+### Motion Planning
 
-**はじめに**
+モーションプランニングは、障害物を回避しながら目的地までの経路を生成するプロセスです。Autowareでは、以下のアルゴリズムを使用しています。
 
-このドキュメントでは、Autoware の自動運転ソフトウェアの詳細について説明します。Autoware は、オープンソースのソフトウェアスタックであり、車が周囲環境を認識し、計画を立て、制御を行うために必要なすべてのコンポーネントが含まれています。
+- DWA：動的窓アプローチ
+- RRT：急速探索ランダム木
 
-**コンポーネント**
+### Path Planning
 
-Autoware は、以下の主要コンポーネントで構成されています。
+パスプランニングは、モーションプランを滑らかな経路に変換するプロセスです。Autowareでは、以下のアルゴリズムを使用しています。
 
-- **Perception (認識)**: センサーデータから周囲環境を認識します。
-- **Planning (計画)**: 自車の経路と操縦操作を計画します。
-- **Control (制御)**: 計画された操縦操作を車両に送信します。
-- **Localization (局所化)**: 自車位置と姿勢を特定します。
+- スプライン補完
+- 'post resampling'
 
-**機能**
+### Localization
 
-Autoware は、以下の機能を提供します。
+ローカリゼーションモジュールは、自車位置と向きを推定します。以下を使用します。
 
-- **物体検出**: 車両、歩行者、自転車などの周囲の物体を検出します。
-- **障害物検出**: レーンマーカー、ガードレールなどの障害物を検出します。
-- **経路計画**: 目的地までの安全で効率的な経路を計画します。
-- **操縦制御**: 車両の速度、操舵、ブレーキを制御します。
-- **自車位置推定**: GPS、IMU、オドメトリーを使用して自車位置を推定します。
+- GPS
+- IMU
+- オドメトリ
 
-**アーキテクチャ**
+### Perception
 
-Autoware は、モジュール式アーキテクチャに基づいています。これにより、開発者は特定のコンポーネントや機能を交換したり拡張したりできます。各コンポーネントは、他のコンポーネントとデータと情報をやり取りします。
+パーセプションモジュールは、カメラ、LiDAR、レーダーなどのセンサーから環境情報を取得します。Autowareでは、以下のアルゴリズムを使用しています。
 
-**パフォーマンス**
+- 物体検出
+- レーン検出
+- セマンティックセグメンテーション
 
-Autoware は、以下のパフォーマンス指標を満たすように設計されています。
+### Control
 
-- **検出範囲**: 200m 以上の物体検出
-- **経路計画時間**: 100ms 以内
-- **操縦制御精度**: ±0.5m の横方向逸脱量、±0.2m/s の速度逸脱量、±0.2m/s² の加速度逸脱量
-- **自車位置精度**: 1m 以内の絶対位置精度、0.1度以内の姿勢精度
+コントロールモジュールは、計画された経路に従って車両を制御します。以下を使用します。
 
-**使用例**
+- ステアリング制御
+- アクセル/ブレーキ制御
+- スタビリティ制御
 
-Autoware は、以下を含むさまざまな自動運転アプリケーションに使用できます。
+### System Architecture
 
-- **自動運転車**
-- **ロボタクシー**
-- **貨物配送車両**
+Autowareシステムは、以下のようなモジュールで構成されています。
 
-**貢献**
+- Perception
+- Localization
+- Planning
+- Control
+- Vehicle Interface
 
-Autoware はオープンソースプロジェクトであり、コミュニティからの貢献を歓迎しています。貢献方法の詳細については、Autoware の Web サイトを参照してください。
+### Conclusion
 
-**免責事項**
+Autowareは、堅牢で用途の広い自動運転ソフトウェアスタックです。障害物の回避、安全で効率的な経路生成、および車両制御を提供します。
 
-このドキュメントに記載されている情報は、正確で最新であることを目指していますが、Autoware Foundation はその正確性または完全性について保証しません。Autoware の使用は、ユーザー自身の責任において行われるものとします。
-
-| 名前                            | 種類                                            | 説明                                                                        |
-| :------------------------------ | :---------------------------------------------- | :-------------------------------------------------------------------------- |
-| `~/output/pose_with_covariance` | `geometry_msgs::msg::PoseWithCovarianceStamped` | 推定姿勢                                                                    |
-| `~/debug/pose_with_covariance`  | `geometry_msgs::msg::PoseWithCovarianceStamped` | [デバッグトピック] 推定姿勢                                                 |
-| `~/debug/marker_detected`       | `geometry_msgs::msg::PoseArray`                 | [デバッグトピック] 検出されたマーカートピック                               |
-| `~/debug/marker_mapped`         | `visualization_msgs::msg::MarkerArray`          | [デバッグトピック] Rvizで薄板として可視化するための読み込まれたランドマーク |
-| `~/debug/marker_pointcloud`     | `sensor_msgs::msg::PointCloud2`                 | 検出されたマーカーのPointCloud                                              |
-| `/diagnostics`                  | `diagnostic_msgs::msg::DiagnosticArray`         | 診断結果                                                                    |
+| Name                            | Type                                            | Description                                                        |
+| :------------------------------ | :---------------------------------------------- | :----------------------------------------------------------------- |
+| `~/output/pose_with_covariance` | `geometry_msgs::msg::PoseWithCovarianceStamped` | 自車位置                                                      |
+| `~/debug/pose_with_covariance`  | `geometry_msgs::msg::PoseWithCovarianceStamped` | [デバッグトピック] 自車位置                                       |
+| `~/debug/marker_detected`       | `geometry_msgs::msg::PoseArray`                 | [デバッグトピック] 検出されたマーカーの姿勢                       |
+| `~/debug/marker_mapped`         | `visualization_msgs::msg::MarkerArray`          | [デバッグトピック] Rvizに薄いボードとして可視化するための読み込まれたランドマーク |
+| `~/debug/marker_pointcloud`     | `sensor_msgs::msg::PointCloud2`                 | [デバッグトピック] 検出されたマーカーの点群                       |
+| `/diagnostics`                  | `diagnostic_msgs::msg::DiagnosticArray`         | 診断出力                                                        |
 
 ## パラメータ
 
@@ -99,7 +89,8 @@ Autoware はオープンソースプロジェクトであり、コミュニテ�
 
 ## 起動方法
 
-Autowareを起動する際は、`pose_source`に`lidar-marker`を設定します。
+Autowareを起動するとき、`pose_source`に`lidar-marker`を設定してください。
+
 
 ```bash
 ros2 launch autoware_launch ... \
@@ -110,6 +101,7 @@ ros2 launch autoware_launch ... \
 ## 設計
 
 ### フローチャート
+
 
 ```plantuml
 @startuml
@@ -164,19 +156,20 @@ end group
 
 ![detection_algorithm](./doc_image/detection_algorithm.png)
 
-1. LiDAR 点群を `resolution` サイズの間隔で base_link 座標系の x 軸に沿ってリング状に分割する。
-2. `intensity_pattern` に一致する強度の部分を検索する。
-3. 各リングに対して 1 と 2 の手順を実行し、一致するインデックスを蓄積し、カウントが `vote_threshold_for_detect_marker` を超える部分をマーカーとして検出する。
+1. `resolution`サイズの`x`軸の`base_link`座標系に沿って、LiDARポイントクラウドをリングに分割します。
+2. `intensity_pattern`に一致する強度の一部を見つけます。
+3. 各リングで1と2の手順を実行し、一致するインデックスを集め、カウントが`vote_threshold_for_detect_marker`を超える部分をマーカーとして検出します。
 
 ## サンプルデータセット
 
-- [サンプル rosbag と地図](https://drive.google.com/file/d/1FuGKbkWrvL_iKmtb45PO9SZl1vAaJFVG/view?usp=sharing)
+- [サンプルrosbag と map](https://drive.google.com/file/d/1FuGKbkWrvL_iKmtb45PO9SZl1vAaJFVG/view?usp=sharing)
 
-このデータセットは、国土交通省 土木研究所 大規模トンネル実験施設で取得されました。
-反射材は [大成建設](https://www.taisei.co.jp/english/) によって設置されました。
+このデータセットは、国立土木研究所の実物大トンネル実験施設で取得されました。
+反射器は[大成建設](https://www.taisei.co.jp/english/)によって設置されました。
 
 ## 協力者
 
 - [TIER IV](https://tier4.jp/en/)
 - [大成建設](https://www.taisei.co.jp/english/)
-- [Yuri Shimizu](https://github.com/YuriShimizu824)
+- [清水 優里](https://github.com/YuriShimizu824)
+

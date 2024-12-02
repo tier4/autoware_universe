@@ -6,91 +6,110 @@
 <img src="./media/diagnostics.png" width="400">
 </p>
 
-autoware_localization_error_monitorは、位置推定の結果の不確かさを監視することで位置推定のエラーを診断するためのパッケージです。
-このパッケージは次の2つの値を監視します。
+autoware_localization_error_monitor は、ローカリゼーション結果の不確かさを監視することで、ローカリゼーションエラーを診断するためのパッケージです。
+このパッケージは、次の 2 つの値を監視します。
 
-- 信頼楕円の長い半径のサイズ
-- 横方向（車体フレーム）に沿った信頼楕円のサイズ
+- 信頼領域の長い半径の大きさ
+- 横方向 (ボディーフレーム) に沿った信頼領域の大きさ
 
 ## 入出力
 
 ### 入力
 
-| 名前         | タイプ                    | 説明         |
-| ------------ | ------------------------- | ------------ |
-| `input/odom` | `nav_msgs::msg::Odometry` | 自車位置結果 |
+| 名前         | 種別                      | 説明         |
+| ------------ | ------------------------- | ------------------- |
+| `input/odom` | `nav_msgs::msg::Odometry` | ローカリゼーション結果 |
 
 ### 出力
 
-**自動運転ソフトウェアの設計**
+**自動運転ソフトウェア**
 
-**概要**
+[URL]
 
-このドキュメントは、自動運転ソフトウェアの設計の概要を説明します。以下に含まれる内容を示します。
+**目的**
 
-- アーキテクチャ
-- 主要コンポーネント
-- アルゴリズム
-- 実装
+このドキュメントは、自動運転ソフトウェアアーキテクチャの要件と設計を定義します。
 
-**アーキテクチャ**
+**内容**
 
-Autowareのアーキテクチャは、モジュラー化されたレイヤー構造に基づいています。各レイヤーは、特定のタスクを担当するモジュールで構成されます。このアーキテクチャにより、柔軟性、拡張性、保守性が向上します。
-
-**主要コンポーネント**
-
-主要コンポーネントには、以下が含まれます。
-
+- システム全体設計
 - Planningコンポーネント
 - Perceptionコンポーネント
-- Controlコンポーネント
-- Vehicle Interfaceコンポーネント
+- Vehicle Controlコンポーネント
+- Safetyコンポーネント
+- システム検証とテスト
 
-**アルゴリズム**
+**システム全体設計**
 
-Autowareは、以下を含むさまざまなアルゴリズムを使用しています。
+システム全体設計は、[図1](#図1)で示すように、以下で構成されます。
 
-- パス計画
-- トラフィック予測
-- オブジェクト検出
-- クラシフィケーション
+- Planningコンポーネント: 現在の経路を計画し、自車位置に基づいて決定を行います。
+- Perceptionコンポーネント: センサー情報を処理し、周囲環境の理解を提供します。
+- Vehicle Controlコンポーネント: 実際の車両制御を実行します。
+- Safetyコンポーネント: システムの安全性と健全性を確保します。
 
-**実装**
+**Planningコンポーネント**
 
-Autowareは、ROS (Robot Operating System) を実装しています。ROSは、ロボットソフトウェア開発のためのオープンソースのフレームワークです。このフレームワークにより、モジュールの再利用、拡張、テストが容易になります。
+Planningコンポーネントは、以下のサブコンポーネントで構成されます。
 
-**評価**
+- Trajectory Planner: 現在の経路を計算します。
+- Behavior Planner: 予想される障害物や交通状況に基づいて決定を行います。
+- Path Planner: 制約のある環境での移動用の経路を計算します。
 
-Autowareは、シミュレーションと実際の道路テストの両方で評価されています。結果は、Autowareがさまざまなシナリオで安全かつ効率的に動作することを示しています。
+**Perceptionコンポーネント**
 
-**使用例**
+Perceptionコンポーネントは、以下のサブコンポーネントで構成されます。
 
-Autowareは、以下を含むさまざまな用途で使用できます。
+- Sensor Preprocessing: センサーデータのフィルタリングと`post resampling`を行います。
+- Object Detection: 物体を識別して追跡します。
+- Scene Understanding: 周囲環境の状況を把握します。
 
-- 自動運転車
-- ロボット
-- ドローン
+**Vehicle Controlコンポーネント**
 
-**サポート**
+Vehicle Controlコンポーネントは、以下のサブコンポーネントで構成されます。
 
-Autowareは、アクティブなコミュニティによってサポートされています。コミュニティでは、ドキュメント、フォーラム、チュートリアルを介してサポートを提供しています。
+- Motion Planner: 車両の運動に関する計画を行います。
+- Vehicle Controller: 車両のステアリング、アクセル、ブレーキを制御します。
+- Vehicle Dynamics Model: 車両のダイナミクスをモデル化します。
 
-**貢献**
+**Safetyコンポーネント**
 
-Autowareはオープンソースプロジェクトです。貢献に興味がある場合は、GitHubリポジトリをご覧ください。
+Safetyコンポーネントは、以下のサブコンポーネントで構成されます。
 
-**詳細情報**
+- Safety Monitoring: システムの状態を監視し、危険な状態を検出します。
+- Safety Intervention: 危険な状態が検出されると、車両を停止または制御します。
+- Redundancy Management: システムの重要な機能の冗長性を管理します。
 
-Autowareに関する詳細情報は、以下のリソースを参照してください。
+**システム検証とテスト**
 
-- 公式ウェブサイト: <https://www.autoware.ai>
-- GitHubリポジトリ: <https://github.com/autowarefoundation/autoware.ai>
+システム検証とテストには、以下の活動が含まれます。
 
-| 名称                   | 型                                      | 説明         |
-| ---------------------- | --------------------------------------- | ------------ |
-| `debug/ellipse_marker` | `visualization_msgs::msg::Marker`       | 楕円マーカー |
-| `diagnostics`          | `diagnostic_msgs::msg::DiagnosticArray` | 診断出力     |
+- ユニットテスト
+- 統合テスト
+- シミュレーションテスト
+- 車両テスト
+
+**付録**
+
+- 用語集
+- 略語リスト
+
+**謝辞**
+
+このドキュメントの作成に貢献してくれた次の個人に感謝します。
+
+- [名前1]
+- [名前2]
+
+**著作権**
+
+このドキュメントは、Autoware Foundationの著作物です。無断転載・複製を禁じます。
+
+| 名                   | 型                                     | 説明         |
+| ---------------------- | --------------------------------------- | ------------------- |
+| `debug/ellipse_marker` | `visualization_msgs::msg::Marker`       | ellipseマーカー      |
+| `diagnostics`          | `diagnostic_msgs::msg::DiagnosticArray` | 診断出力 |
 
 ## パラメータ
 
-{{ json_to_markdown("localization/autoware_localization_error_monitor/schema/localization_error_monitor.schema.json", True) }}
+{{ json_to_markdown("localization/autoware_localization_error_monitor/schema/localization_error_monitor.schema.json") }}
