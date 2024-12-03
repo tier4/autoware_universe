@@ -145,11 +145,6 @@ public:
     const size_t max_workspace_size = (1ULL << 63));
 
   /**
-   * @brief Destroy the instance.
-   */
-  ~MTRBuilder();
-
-  /**
    * @brief Setup engine for inference. After finishing setup successfully, `isInitialized` must
    * return `true`.
    */
@@ -160,10 +155,10 @@ public:
    *
    * @return True if plugins were initialized successfully.
    */
-  bool isInitialized() const;
+  [[nodiscard]] bool isInitialized() const;
 
   // Return true if the model supports dynamic shape inference.
-  bool isDynamic() const;
+  [[nodiscard]] bool isDynamic() const;
 
   // Set binding dimensions for specified for dynamic shape inference.
   bool setBindingDimensions(int index, nvinfer1::Dims dimensions);
@@ -189,7 +184,7 @@ private:
   bool loadEngine(const std::string & filepath);
 
   // Create a cache path of engine file.
-  fs::path createEngineCachePath() const;
+  [[nodiscard]] fs::path createEngineCachePath() const;
 
   /**
    * @brief Build engine from onnx file.
