@@ -254,27 +254,36 @@ void MTRNode::callback(const TrackedObjects::ConstSharedPtr object_msg)
     return;
   }
 
+  std::cerr << "0!\n";
   const auto relative_timestamps = getRelativeTimestamps();
   AgentData agent_data(
     histories, static_cast<size_t>(sdc_index), target_indices, label_indices, relative_timestamps);
+  std::cerr << "1!\n";
 
   std::vector<PredictedTrajectory> trajectories;
   if (!model_ptr_->doInference(agent_data, *polyline_ptr_, trajectories)) {
     RCLCPP_WARN(get_logger(), "Inference failed");
     return;
   }
+  std::cerr << "2!\n";
+  std::cerr << "trajectories size " << trajectories.size() << "\n";
+  std::cerr << "object_ids " << object_ids.size() << "\n";
+  std::cerr << "object_msg_map_ " << object_msg_map_.size() << "\n";
 
   PredictedObjects output;
   output.header = object_msg->header;
   output.objects.reserve(target_indices.size());
   for (size_t i = 0; i < target_indices.size(); ++i) {
-    const auto & trajectory = trajectories.at(i);
     const auto & target_idx = target_indices.at(i);
     const auto & object_id = object_ids.at(target_idx);
+    if (object_id == EGO_ID) continue;
     const auto & object = object_msg_map_.at(object_id);
+    const auto & trajectory = trajectories.at(i);
+    std::cerr << "trajectory.get_modes().size()" << trajectory.get_modes().size() << "\n";
     auto predicted_object = generatePredictedObject(object, trajectory);
     output.objects.emplace_back(predicted_object);
   }
+  std::cerr << "3!\n";
 
   // Publish results
   pub_objects_->publish(output);
@@ -326,6 +335,7 @@ void MTRNode::onEgo(const Odometry::ConstSharedPtr ego_msg)
 bool MTRNode::convertLaneletToPolyline()
 {
   if (!lanelet_map_ptr_) {
+    std::cerr << "NO lanelet_map_ptr_\n";
     return false;
   }
 
@@ -383,6 +393,8 @@ bool MTRNode::convertLaneletToPolyline()
   }
 
   if (all_points.size() == 0) {
+    std::cerr << "all_points.size() == 0\n";
+
     return false;
   }
   polyline_ptr_ = std::make_shared<PolylineData>(
@@ -420,14 +432,20 @@ void MTRNode::updateAgentHistory(
   // TODO(ktro2828): use ego info
   std::vector<std::string> observed_ids;
   for (const auto & object : objects_msg->objects) {
+    std::cerr << "are there objects\n";
     auto label_index = getLabelIndex(object);
     if (label_index == -1) {
+      std::cerr << "skipped\n";
       continue;
     }
 
     const auto & object_id = autoware::universe_utils::toHexString(object.object_id);
     observed_ids.emplace_back(object_id);
-    object_msg_map_.emplace(object_id, object);
+    if (object_msg_map_.count(object_id) == 0) {
+      object_msg_map_.emplace(object_id, object);
+    } else {
+      object_msg_map_.at(object_id) = object;
+    }
     auto state = trackedObjectToAgentState(object, true);
 
     if (agent_history_map_.count(object_id) == 0) {
@@ -448,6 +466,9 @@ void MTRNode::updateAgentHistory(
     agent_history_map_.at(EGO_ID).update(current_time, ego_state);
   }
   observed_ids.emplace_back(EGO_ID);
+  // object_msg_map_.emplace(EGO_ID, object);
+
+  std::cerr << "agent_history_map_ finishing " << agent_history_map_.size() << "\n";
 
   // update unobserved histories with empty
   for (auto & [object_id, history] : agent_history_map_) {
@@ -470,6 +491,7 @@ AgentState MTRNode::extractNearestEgo(const float current_time) const
 std::vector<size_t> MTRNode::extractTargetAgent(const std::vector<AgentHistory> & histories)
 {
   std::vector<std::pair<size_t, float>> distances;
+  std::cerr << "histories.size() " << histories.size() << "\n";
   for (size_t i = 0; i < histories.size(); ++i) {
     const auto & history = histories.at(i);
     if (!history.is_valid_latest() || history.object_id() == EGO_ID) {
@@ -503,7 +525,7 @@ std::vector<size_t> MTRNode::extractTargetAgent(const std::vector<AgentHistory> 
     return item1.second < item2.second;
   });
 
-  constexpr size_t max_target_size = 15;  // TODO(ktro2828): use a parameter
+  constexpr size_t max_target_size = 2;  // TODO(ktro2828): use a parameter
   std::vector<size_t> target_indices;
   target_indices.reserve(max_target_size);
   for (const auto & [idx, _] : distances) {

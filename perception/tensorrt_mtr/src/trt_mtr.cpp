@@ -171,6 +171,11 @@ bool TrtMTR::preProcess(const AgentData & agent_data, const PolylineData & polyl
     agent_data.sdc_index(), d_target_index_.get(), d_label_index_.get(), d_timestamp_.get(),
     d_trajectory_.get(), d_in_trajectory_.get(), d_in_trajectory_mask_.get(), d_in_last_pos_.get(),
     stream_));
+  std::cerr << "-------------------------------\n";
+  std::cerr << "max_num_polyline_ " << max_num_polyline_ << "\n";
+  std::cerr << "num_polyline_ " << num_polyline_ << "\n";
+  std::cerr << "num_target_ " << num_target_ << "\n";
+  std::cerr << "-------------------------------\n";
 
   if (max_num_polyline_ < num_polyline_) {
     CHECK_CUDA_ERROR(polylinePreprocessWithTopkLauncher(
