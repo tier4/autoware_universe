@@ -1175,13 +1175,12 @@ bool IntersectionModule::isGreenSolidOn() const
     // this lane has no traffic light
     return false;
   }
-  const auto tl_info_opt = planner_data_->getTrafficSignal(
-    tl_id.value(), true /* traffic light module keeps last observation*/);
+  const auto tl_info_opt = planner_data_->getTrafficSignal(tl_id.value());
   if (!tl_info_opt) {
     // the info of this traffic light is not available
     return false;
   }
-  const auto & tl_info = tl_info_opt.value();
+  const auto & tl_info = *tl_info_opt;
   for (auto && tl_light : tl_info.signal.elements) {
     if (
       tl_light.color == TrafficSignalElement::GREEN &&
@@ -1208,12 +1207,11 @@ IntersectionModule::TrafficPrioritizedLevel IntersectionModule::getTrafficPriori
     // this lane has no traffic light
     return TrafficPrioritizedLevel::NOT_PRIORITIZED;
   }
-  const auto tl_info_opt = planner_data_->getTrafficSignal(
-    tl_id.value(), true /* traffic light module keeps last observation*/);
+  const auto tl_info_opt = planner_data_->getTrafficSignal(tl_id.value());
   if (!tl_info_opt) {
     return TrafficPrioritizedLevel::NOT_PRIORITIZED;
   }
-  const auto & tl_info = tl_info_opt.value();
+  const auto & tl_info = *tl_info_opt;
   bool has_amber_signal{false};
   for (auto && tl_light : tl_info.signal.elements) {
     if (tl_light.color == TrafficSignalElement::AMBER) {
