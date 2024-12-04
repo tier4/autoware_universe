@@ -22,6 +22,7 @@
 
 #include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -115,8 +116,8 @@ private:
   // Callback being invoked when the HD map topic is subscribed.
   void onMap(const HADMapBin::ConstSharedPtr map_msg);
 
-  // Callback being invoked when the Ego's odometry topic is subscribed.
-  void onEgo(const Odometry::ConstSharedPtr ego_msg);
+  // Fetch data of Ego's odometry topic.
+  bool fetchData();
 
   // Convert Lanelet to `PolylineData`.
   bool convertLaneletToPolyline();
@@ -151,7 +152,11 @@ private:
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
   rclcpp::Subscription<TrackedObjects>::SharedPtr sub_objects_;
   rclcpp::Subscription<HADMapBin>::SharedPtr sub_map_;
-  rclcpp::Subscription<Odometry>::SharedPtr sub_ego_;
+  // rclcpp::Subscription<Odometry>::SharedPtr sub_ego_;
+
+  // subscriber
+  autoware::universe_utils::InterProcessPollingSubscriber<Odometry> sub_ego_{
+    this, "/localization/kinematic_state"};
 
   // Lanelet map pointers
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;

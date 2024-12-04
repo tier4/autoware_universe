@@ -197,8 +197,6 @@ MTRNode::MTRNode(const rclcpp::NodeOptions & node_options)
   sub_map_ = create_subscription<HADMapBin>(
     "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&MTRNode::onMap, this, std::placeholders::_1));
-  sub_ego_ = create_subscription<Odometry>(
-    "~/input/ego", rclcpp::QoS{1}, std::bind(&MTRNode::onEgo, this, std::placeholders::_1));
 
   pub_objects_ = create_publisher<PredictedObjects>("~/output/objects", rclcpp::QoS{1});
 
@@ -257,6 +255,10 @@ TrackedObject MTRNode::makeEgoTrackedObject(const Odometry::ConstSharedPtr ego_m
 
 void MTRNode::callback(const TrackedObjects::ConstSharedPtr object_msg)
 {
+  if (!fetchData()) {
+    RCLCPP_WARN(get_logger(), "No ego data");
+    return;
+  }
   if (!polyline_ptr_) {
     RCLCPP_WARN(get_logger(), "No polyline");
     return;
@@ -352,8 +354,13 @@ void MTRNode::onMap(const HADMapBin::ConstSharedPtr map_msg)
   }
 }
 
-void MTRNode::onEgo(const Odometry::ConstSharedPtr ego_msg)
+bool MTRNode::fetchData()
 {
+  const Odometry::ConstSharedPtr ego_msg = sub_ego_.takeData();
+  if (!ego_msg) {
+    std::cerr << "No ego msg\n";
+    return false;
+  }
   const auto current_time = static_cast<float>(rclcpp::Time(ego_msg->header.stamp).seconds());
   const auto & position = ego_msg->pose.pose.position;
   const auto & twist = ego_msg->twist.twist;
@@ -381,6 +388,7 @@ void MTRNode::onEgo(const Odometry::ConstSharedPtr ego_msg)
   }
   // make the ego vehicle a tracked object
   ego_tracked_object_ = makeEgoTrackedObject(ego_msg);
+  return true;
 }
 
 bool MTRNode::convertLaneletToPolyline()
