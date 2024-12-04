@@ -16,6 +16,9 @@
 
 #include <lanelet2_extension/utility/message_conversion.hpp>
 
+#include <geometry_msgs/msg/detail/pose__struct.hpp>
+#include <geometry_msgs/msg/detail/twist__struct.hpp>
+#include <geometry_msgs/msg/detail/twist_with_covariance__struct.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 
@@ -205,6 +208,53 @@ MTRNode::MTRNode(const rclcpp::NodeOptions & node_options)
   }
 }
 
+TrackedObject MTRNode::makeEgoTrackedObject(const Odometry::ConstSharedPtr ego_msg) const
+{
+  auto createPoint32 =
+    [](const double x, const double y, const double z) -> geometry_msgs::msg::Point32 {
+    geometry_msgs::msg::Point32 p;
+    p.x = x;
+    p.y = y;
+    p.z = z;
+    return p;
+  };
+
+  TrackedObject output;
+  const auto ego_pose = ego_msg->pose;
+  const auto twist = ego_msg->twist;
+
+  // Classification and probability
+  {
+    output.existence_probability = 1.0;
+    ObjectClassification classification;
+    output.classification = {classification};
+  }
+
+  // Kinematics
+  {
+    output.kinematics.pose_with_covariance = ego_pose;
+    output.kinematics.twist_with_covariance = twist;
+  }
+  // Shape
+  {
+    autoware_perception_msgs::msg::Shape shape;
+    shape.dimensions.x = EGO_LENGTH;
+    shape.dimensions.y = EGO_WIDTH;
+    shape.dimensions.z = EGO_HEIGHT;
+    shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+
+    // TODO(Daniel): Should use overhang and vehicle info utils
+    geometry_msgs::msg::Point32 p;
+    shape.footprint.points.push_back(
+      createPoint32(-EGO_LENGTH / 2.0, -EGO_WIDTH / 2.0, EGO_HEIGHT));
+    shape.footprint.points.push_back(createPoint32(-EGO_LENGTH / 2.0, EGO_WIDTH / 2.0, EGO_HEIGHT));
+    shape.footprint.points.push_back(createPoint32(EGO_LENGTH / 2.0, EGO_WIDTH / 2.0, EGO_HEIGHT));
+    shape.footprint.points.push_back(createPoint32(EGO_LENGTH / 2.0, -EGO_WIDTH / 2.0, EGO_HEIGHT));
+    output.shape = shape;
+  }
+  return output;
+}
+
 void MTRNode::callback(const TrackedObjects::ConstSharedPtr object_msg)
 {
   if (!polyline_ptr_) {
@@ -276,7 +326,6 @@ void MTRNode::callback(const TrackedObjects::ConstSharedPtr object_msg)
   for (size_t i = 0; i < target_indices.size(); ++i) {
     const auto & target_idx = target_indices.at(i);
     const auto & object_id = object_ids.at(target_idx);
-    if (object_id == EGO_ID) continue;
     const auto & object = object_msg_map_.at(object_id);
     const auto & trajectory = trajectories.at(i);
     std::cerr << "trajectory.get_modes().size()" << trajectory.get_modes().size() << "\n";
@@ -330,6 +379,8 @@ void MTRNode::onEgo(const Odometry::ConstSharedPtr ego_msg)
   if (max_buffer_size < ego_states_.size()) {
     ego_states_.erase(ego_states_.begin(), ego_states_.begin());
   }
+  // make the ego vehicle a tracked object
+  ego_tracked_object_ = makeEgoTrackedObject(ego_msg);
 }
 
 bool MTRNode::convertLaneletToPolyline()
@@ -466,7 +517,7 @@ void MTRNode::updateAgentHistory(
     agent_history_map_.at(EGO_ID).update(current_time, ego_state);
   }
   observed_ids.emplace_back(EGO_ID);
-  // object_msg_map_.emplace(EGO_ID, object);
+  object_msg_map_.emplace(EGO_ID, ego_tracked_object_);
 
   std::cerr << "agent_history_map_ finishing " << agent_history_map_.size() << "\n";
 

@@ -132,6 +132,8 @@ private:
   // Extract ego state stored in the buffer which has the nearest timestamp from current timestamp.
   AgentState extractNearestEgo(const float current_time) const;
 
+  [[nodiscard]] TrackedObject makeEgoTrackedObject(const Odometry::ConstSharedPtr ego_msg) const;
+
   // Extract target agents and return corresponding indices.
   // NOTE: Extract targets in order of proximity, closest first.
   std::vector<size_t> extractTargetAgent(const std::vector<AgentHistory> & histories);
@@ -159,6 +161,7 @@ private:
   // Agent history
   std::map<std::string, AgentHistory> agent_history_map_;
   std::map<std::string, TrackedObject> object_msg_map_;
+  TrackedObject ego_tracked_object_;
 
   // Pose transform listener
   autoware::universe_utils::TransformListener transform_listener_;
