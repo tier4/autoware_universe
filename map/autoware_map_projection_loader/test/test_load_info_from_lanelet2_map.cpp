@@ -111,7 +111,7 @@ TEST(TestLoadFromLanelet2Map, LoadLocalGrid)
     autoware::map_projection_loader::load_info_from_lanelet2_map(output_path);
 
   // Check the result
-  EXPECT_EQ(projector_info.projector_type, "Local");
+  EXPECT_EQ(projector_info.projector_type, "local");
 }
 
 TEST(TestLoadFromLanelet2Map, LoadNoLocalGrid)

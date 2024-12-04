@@ -18,7 +18,6 @@ import os
 import unittest
 
 from ament_index_python import get_package_share_directory
-from autoware_map_msgs.msg import MapProjectorInfo
 import launch
 from launch import LaunchDescription
 from launch.logging import get_logger
@@ -29,6 +28,7 @@ import rclpy
 from rclpy.qos import QoSDurabilityPolicy
 from rclpy.qos import QoSHistoryPolicy
 from rclpy.qos import QoSProfile
+from tier4_map_msgs.msg import MapProjectorInfo
 import yaml
 
 logger = get_logger(__name__)

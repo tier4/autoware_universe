@@ -20,13 +20,13 @@
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 
-#include "autoware_map_msgs/msg/map_projector_info.hpp"
+#include "tier4_map_msgs/msg/map_projector_info.hpp"
 
 #include <string>
 
 namespace autoware::map_projection_loader
 {
-autoware_map_msgs::msg::MapProjectorInfo load_info_from_lanelet2_map(const std::string & filename);
+tier4_map_msgs::msg::MapProjectorInfo load_info_from_lanelet2_map(const std::string & filename);
 }  // namespace autoware::map_projection_loader
 
 #endif  // AUTOWARE__MAP_PROJECTION_LOADER__LOAD_INFO_FROM_LANELET2_MAP_HPP_
