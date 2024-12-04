@@ -14,7 +14,7 @@
   <depend>autoware_object_recognition_utils</depend>
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_tensorrt_common</depend>
-  <depend>autoware_universe__utils</depend>
+  <depend>autoware_universe_utils</depend>
   <depend>lanelet2_core</depend>
   <depend>lanelet2_extension</depend>
   <depend>lanelet2_routing</depend>
