@@ -164,7 +164,7 @@ private:
     const double A, const double L, const Pose & start_pose, const double arc_path_interval,
     const bool is_left_steering, const bool is_forward);
 
-  const double integral_interval_{0.001};
+  const double clothoid_integral_interval_{0.001};
 
   // debug
   Pose Cr_{};

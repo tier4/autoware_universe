@@ -745,9 +745,9 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
       2 * M_PI);
     double C_f_1 = 0;
     double S_f_1 = 0;
-    for (double u = 0; u <= std::sqrt(beta_1 / M_PI); u += integral_interval_) {
-      C_f_1 += std::cos(M_PI_2 * std::pow(u, 2)) * integral_interval_;
-      S_f_1 += std::sin(M_PI_2 * std::pow(u, 2)) * integral_interval_;
+    for (double u = 0; u <= std::sqrt(beta_1 / M_PI); u += clothoid_integral_interval_) {
+      C_f_1 += std::cos(M_PI_2 * std::pow(u, 2)) * clothoid_integral_interval_;
+      S_f_1 += std::sin(M_PI_2 * std::pow(u, 2)) * clothoid_integral_interval_;
     }
     const double A_new_1 =
       std::sqrt(1 / M_PI) * std::abs(
@@ -773,9 +773,9 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
       2 * M_PI);
     double C_f_2 = 0;
     double S_f_2 = 0;
-    for (double u = 0; u <= std::sqrt(beta_2 / M_PI); u += integral_interval_) {
-      C_f_2 += std::cos(M_PI_2 * std::pow(u, 2)) * integral_interval_;
-      S_f_2 += std::sin(M_PI_2 * std::pow(u, 2)) * integral_interval_;
+    for (double u = 0; u <= std::sqrt(beta_2 / M_PI); u += clothoid_integral_interval_) {
+      C_f_2 += std::cos(M_PI_2 * std::pow(u, 2)) * clothoid_integral_interval_;
+      S_f_2 += std::sin(M_PI_2 * std::pow(u, 2)) * clothoid_integral_interval_;
     }
     const double A_new_2 =
       std::sqrt(1 / M_PI) * std::abs(
@@ -1020,7 +1020,7 @@ PathWithLaneId GeometricParallelParking::generateClothoidPath(
   const bool is_left_steering, const bool is_forward)
 {
   PathWithLaneId path;
-  const int NUM_STEPS = L / integral_interval_;
+  const int NUM_STEPS = L / clothoid_integral_interval_;
 
   const auto generatePathPointFromXYYaw = [](
                                             const Pose & start_pose, const double x, const double y,
@@ -1043,10 +1043,10 @@ PathWithLaneId GeometricParallelParking::generateClothoidPath(
   path.points.push_back(generatePathPointFromXYYaw(start_pose, x, y, yaw));
 
   for (int i = 0; i <= NUM_STEPS; ++i) {
-    double curvature = i * integral_interval_ / (R * L);
-    x += integral_interval_ * std::cos(yaw);
-    y += integral_interval_ * std::sin(yaw);
-    yaw += integral_interval_ * curvature;
+    double curvature = i * clothoid_integral_interval_ / (R * L);
+    x += clothoid_integral_interval_ * std::cos(yaw);
+    y += clothoid_integral_interval_ * std::sin(yaw);
+    yaw += clothoid_integral_interval_ * curvature;
     if (std::hypot(x - x_prev, y - y_prev) > arc_path_interval) {
       x_prev = x;
       y_prev = y;
