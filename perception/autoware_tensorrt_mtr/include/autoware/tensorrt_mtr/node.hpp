@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORRT_MTR__NODE_HPP_
-#define TENSORRT_MTR__NODE_HPP_
+#ifndef AUTOWARE__TENSORRT_MTR__NODE_HPP_
+#define AUTOWARE__TENSORRT_MTR__NODE_HPP_
 
-#include "tensorrt_mtr/agent.hpp"
-#include "tensorrt_mtr/polyline.hpp"
-#include "tensorrt_mtr/trajectory.hpp"
-#include "tensorrt_mtr/trt_mtr.hpp"
+#include "autoware/tensorrt_mtr/agent.hpp"
+#include "autoware/tensorrt_mtr/polyline.hpp"
+#include "autoware/tensorrt_mtr/trajectory.hpp"
+#include "autoware/tensorrt_mtr/trt_mtr.hpp"
 
 #include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
@@ -46,7 +46,7 @@
 #include <utility>
 #include <vector>
 
-namespace trt_mtr
+namespace autoware::trt_mtr
 {
 using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::ObjectClassification;
@@ -175,5 +175,5 @@ private:
   std::vector<std::pair<float, AgentState>> ego_states_;
   std::vector<float> timestamps_;
 };  // class MTRNode
-}  // namespace trt_mtr
-#endif  // TENSORRT_MTR__NODE_HPP_
+}  // namespace autoware::trt_mtr
+#endif  // AUTOWARE__TENSORRT_MTR__NODE_HPP_

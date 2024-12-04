@@ -16,7 +16,7 @@
 
 #include "attention/trt_attn_weight_computation_kernel.hpp"
 
-namespace trt_mtr
+namespace autoware::trt_mtr
 {
 namespace
 {
@@ -204,4 +204,4 @@ nvinfer1::IPluginV2DynamicExt * AttentionWeightComputationCreator::deserializePl
   return plugin;
 }
 
-}  // namespace trt_mtr
+}  // namespace autoware::trt_mtr

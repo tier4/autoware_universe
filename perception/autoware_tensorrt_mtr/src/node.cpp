@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorrt_mtr/node.hpp"
+#include "autoware/tensorrt_mtr/node.hpp"
 
 #include <lanelet2_extension/utility/message_conversion.hpp>
 
@@ -27,7 +27,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace trt_mtr
+namespace autoware::trt_mtr
 {
 namespace
 {
@@ -639,7 +639,7 @@ PredictedObject MTRNode::generatePredictedObject(
 
   return predicted_object;
 }
-}  // namespace trt_mtr
+}  // namespace autoware::trt_mtr
 
 #include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(trt_mtr::MTRNode);
+RCLCPP_COMPONENTS_REGISTER_NODE(autoware::trt_mtr::MTRNode);

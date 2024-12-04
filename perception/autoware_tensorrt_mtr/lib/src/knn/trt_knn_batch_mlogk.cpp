@@ -19,7 +19,7 @@
 
 #include <cstring>
 
-namespace trt_mtr
+namespace autoware::trt_mtr
 {
 namespace
 {
@@ -205,4 +205,4 @@ nvinfer1::IPluginV2DynamicExt * KnnBatchMlogKCreator::deserializePlugin(
   plugin->setPluginNamespace(getPluginNamespace());
   return plugin;
 }
-}  // namespace trt_mtr
+}  // namespace autoware::trt_mtr

@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorrt_mtr/builder.hpp"
+#include "autoware/tensorrt_mtr/builder.hpp"
 
 #include <fstream>
 #include <sstream>
 
-namespace trt_mtr
+namespace autoware::trt_mtr
 {
 namespace
 {
@@ -389,4 +389,4 @@ bool MTRBuilder::enqueueV2(void ** bindings, cudaStream_t stream, cudaEvent_t * 
 {
   return context_->enqueueV2(bindings, stream, inputConsumed);
 }
-}  // namespace trt_mtr
+}  // namespace autoware::trt_mtr
