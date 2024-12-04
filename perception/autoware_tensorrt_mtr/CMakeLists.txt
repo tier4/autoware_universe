@@ -83,7 +83,7 @@ target_link_libraries(${PROJECT_NAME}_node
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}_node
-  PLUGIN "trt_mtr::MTRNode"
+  PLUGIN "autoware::trt_mtr::MTRNode"
   EXECUTABLE ${PROJECT_NAME}
 )
 
