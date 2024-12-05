@@ -5,7 +5,7 @@
 
   <!-- external interfaces -->
   <arg name="input/obstacle_pointcloud" default="pointcloud_map_filtered/pointcloud" description="Only required when 'obstacle_pointcloud'"/>
-  <arg name="input/objects" default="centerpoint/objects"/>
+  <arg name="input/objects" default="dummy"/>
   <arg name="output/objects" default="centerpoint/validation/objects"/>
 
   <!-- Validator -->
