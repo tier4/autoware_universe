@@ -236,19 +236,28 @@ TrackedObject MTRNode::makeEgoTrackedObject(const Odometry::ConstSharedPtr ego_m
   }
   // Shape
   {
-    autoware_perception_msgs::msg::Shape shape;
-    shape.dimensions.x = EGO_LENGTH;
-    shape.dimensions.y = EGO_WIDTH;
-    shape.dimensions.z = EGO_HEIGHT;
-    shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+    const auto & ego_max_long_offset = vehicle_info_.max_longitudinal_offset_m;
+    const auto & ego_rear_overhang = vehicle_info_.vehicle_height_m;
+    const auto & ego_length = vehicle_info_.vehicle_length_m;
+    const auto & ego_width = vehicle_info_.vehicle_width_m;
+    const auto & ego_height = vehicle_info_.vehicle_height_m;
 
-    // TODO(Daniel): Should use overhang and vehicle info utils
+    autoware_perception_msgs::msg::Shape shape;
+    shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+    shape.dimensions.x = ego_length;
+    shape.dimensions.y = ego_width;
+    shape.dimensions.z = ego_height;
+
+    // TODO(Daniel): Should use overhang and ego info utils
     geometry_msgs::msg::Point32 p;
     shape.footprint.points.push_back(
-      createPoint32(-EGO_LENGTH / 2.0, -EGO_WIDTH / 2.0, EGO_HEIGHT));
-    shape.footprint.points.push_back(createPoint32(-EGO_LENGTH / 2.0, EGO_WIDTH / 2.0, EGO_HEIGHT));
-    shape.footprint.points.push_back(createPoint32(EGO_LENGTH / 2.0, EGO_WIDTH / 2.0, EGO_HEIGHT));
-    shape.footprint.points.push_back(createPoint32(EGO_LENGTH / 2.0, -EGO_WIDTH / 2.0, EGO_HEIGHT));
+      createPoint32(-ego_rear_overhang, -ego_width / 2.0, ego_height));
+    shape.footprint.points.push_back(
+      createPoint32(-ego_rear_overhang, ego_width / 2.0, ego_height));
+    shape.footprint.points.push_back(
+      createPoint32(ego_max_long_offset, ego_width / 2.0, ego_height));
+    shape.footprint.points.push_back(
+      createPoint32(ego_max_long_offset, -ego_width / 2.0, ego_height));
     output.shape = shape;
   }
   return output;
@@ -374,13 +383,17 @@ bool MTRNode::fetchData()
     ay = static_cast<float>(twist.linear.y) - latest_state.second.vy() / (time_diff + 1e-10f);
   }
 
-  // TODO(ktro2828): use received ego size topic
+  const auto & ego_length = vehicle_info_.vehicle_length_m;
+  const auto & ego_width = vehicle_info_.vehicle_width_m;
+  const auto & ego_height = vehicle_info_.vehicle_height_m;
+
   ego_states_.emplace_back(
     current_time,
     AgentState(
       static_cast<float>(position.x), static_cast<float>(position.y),
-      static_cast<float>(position.z), EGO_LENGTH, EGO_WIDTH, EGO_HEIGHT, yaw,
-      static_cast<float>(twist.linear.x), static_cast<float>(twist.linear.y), ax, ay, true));
+      static_cast<float>(position.z), static_cast<float>(ego_length), static_cast<float>(ego_width),
+      static_cast<float>(ego_height), yaw, static_cast<float>(twist.linear.x),
+      static_cast<float>(twist.linear.y), ax, ay, true));
 
   constexpr size_t max_buffer_size = 100;
   if (max_buffer_size < ego_states_.size()) {

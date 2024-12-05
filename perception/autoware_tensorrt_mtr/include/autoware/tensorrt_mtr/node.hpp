@@ -25,6 +25,7 @@
 #include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
+#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/msg/detail/lanelet_map_bin__struct.hpp>
@@ -50,6 +51,7 @@
 namespace autoware::trt_mtr
 {
 using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
+using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjectKinematics;
@@ -58,17 +60,6 @@ using autoware_perception_msgs::msg::PredictedPath;
 using autoware_perception_msgs::msg::TrackedObject;
 using autoware_perception_msgs::msg::TrackedObjects;
 using nav_msgs::msg::Odometry;
-
-// TODO(ktro2828): use received ego size topic
-// wheel_base: between front wheel center and rear wheel center [m]
-// wheel_tread: between left wheel center and right wheel center [m]
-// front_overhang: between front wheel center and vehicle front [m]
-// rear_overhang: between rear wheel center and vehicle rear [m]
-// left_overhang: between left wheel center and vehicle left [m]
-// right_overhang: between right wheel center and vehicle right [m]
-constexpr float EGO_LENGTH = 4.0f;
-constexpr float EGO_WIDTH = 2.0f;
-constexpr float EGO_HEIGHT = 1.0f;
 
 class PolylineTypeMap
 {
@@ -92,7 +83,7 @@ public:
 
   // Return the ID of the corresponding label type. If specified type is not contained in map,
   // return `-1`.
-  int getTypeID(const std::string & type) const
+  [[nodiscard]] int getTypeID(const std::string & type) const
   {
     return label_map_.count(type) == 0 ? -1 : label_map_.at(type);
   }
@@ -152,9 +143,7 @@ private:
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
   rclcpp::Subscription<TrackedObjects>::SharedPtr sub_objects_;
   rclcpp::Subscription<HADMapBin>::SharedPtr sub_map_;
-  // rclcpp::Subscription<Odometry>::SharedPtr sub_ego_;
-
-  // subscriber
+  // polling subscriber
   autoware::universe_utils::InterProcessPollingSubscriber<Odometry> sub_ego_{
     this, "/localization/kinematic_state"};
 
@@ -167,6 +156,7 @@ private:
   std::map<std::string, AgentHistory> agent_history_map_;
   std::map<std::string, TrackedObject> object_msg_map_;
   TrackedObject ego_tracked_object_;
+  VehicleInfo vehicle_info_;
 
   // Pose transform listener
   autoware::universe_utils::TransformListener transform_listener_;

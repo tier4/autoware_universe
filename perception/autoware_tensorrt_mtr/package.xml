@@ -15,6 +15,7 @@
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_tensorrt_common</depend>
   <depend>autoware_universe_utils</depend>
+  <depend>autoware_vehicle_info_utils</depend>
   <depend>lanelet2_core</depend>
   <depend>lanelet2_extension</depend>
   <depend>lanelet2_routing</depend>
