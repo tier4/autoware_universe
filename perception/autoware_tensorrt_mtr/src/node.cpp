@@ -225,6 +225,7 @@ TrackedObject MTRNode::makeEgoTrackedObject(const Odometry::ConstSharedPtr ego_m
   {
     output.existence_probability = 1.0;
     ObjectClassification classification;
+    classification.label = ObjectClassification::CAR;
     output.classification = {classification};
   }
 
@@ -358,7 +359,6 @@ bool MTRNode::fetchData()
 {
   const Odometry::ConstSharedPtr ego_msg = sub_ego_.takeData();
   if (!ego_msg) {
-    std::cerr << "No ego msg\n";
     return false;
   }
   const auto current_time = static_cast<float>(rclcpp::Time(ego_msg->header.stamp).seconds());
