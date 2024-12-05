@@ -63,13 +63,19 @@ void roundInImageFrame(
     std::max(std::min(point.y, static_cast<double>(static_cast<int>(camera_info.height) - 1)), 0.0);
 }
 
-bool isInDistanceRange(
-  const tf2::Vector3 & p1, const tf2::Vector3 & p2, const double max_distance_range)
-{
-  const double sq_dist =
-    (p1.x() - p2.x()) * (p1.x() - p2.x()) + (p1.y() - p2.y()) * (p1.y() - p2.y());
-  return sq_dist < (max_distance_range * max_distance_range);
-}
+// bool isInDistanceRange(
+//   const tf2::Vector3 & p1, const tf2::Vector3 & p2, const double max_distance_range)
+// {
+//   const double sq_dist =
+//     (p1.x() - p2.x()) * (p1.x() - p2.x()) + (p1.y() - p2.y()) * (p1.y() - p2.y());
+//   return sq_dist < (max_distance_range * max_distance_range);
+// }
+
+// double distance2D(const tf2::Vector3 & p1, const tf2::Vector3 & p2)
+// {
+//   return std::sqrt((p1.x() - p2.x()) * (p1.x() - p2.x()) + (p1.y() - p2.y()) * (p1.y() -
+//   p2.y()));
+// }
 
 bool isInAngleRange(const double & tl_yaw, const double & camera_yaw, const double max_angle_range)
 {
@@ -178,6 +184,8 @@ MapBasedDetector::MapBasedDetector(const rclcpp::NodeOptions & node_options)
   expect_roi_pub_ =
     this->create_publisher<tier4_perception_msgs::msg::TrafficLightRoiArray>("~/expect/rois", 1);
   viz_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/markers", 1);
+  distance_range_pub_ =
+    this->create_publisher<tier4_debug_msgs::msg::Float32Stamped>("~/debug/distance_range", 1);
 }
 
 bool MapBasedDetector::getTransform(
@@ -274,10 +282,16 @@ void MapBasedDetector::cameraInfoCallback(
           tf_map2camera_vec, pinhole_camera_model, traffic_light, config_, rough_roi)) {
       continue;
     }
+    // crop rough roi of the traffic light to the image frame
+
     output_msg.rois.push_back(rough_roi);
     expect_roi_msg.rois.push_back(expect_roi);
   }
 
+  tier4_debug_msgs::msg::Float32Stamped distance_range_msg;
+  distance_range_msg.data = distance_range_;
+  distance_range_msg.stamp = input_msg->header.stamp;
+  distance_range_pub_->publish(distance_range_msg);
   roi_pub_->publish(output_msg);
   expect_roi_pub_->publish(expect_roi_msg);
   publishVisibleTrafficLights(
@@ -526,7 +540,11 @@ void MapBasedDetector::getVisibleTrafficLights(
     // for every possible transformation, check if the tl is visible.
     // If under any tf the tl is visible, keep it
     for (const auto & tf_map2camera : tf_map2camera_vec) {
-      if (!isInDistanceRange(tl_center, tf_map2camera.getOrigin(), config_.max_detection_range)) {
+      auto p1 = tf_map2camera.getOrigin();
+      auto p2 = tl_center;
+      double distance_range =
+        std::sqrt((p1.x() - p2.x()) * (p1.x() - p2.x()) + (p1.y() - p2.y()) * (p1.y() - p2.y()));
+      if (distance_range > config_.max_detection_range) {
         continue;
       }
 
@@ -555,6 +573,7 @@ void MapBasedDetector::getVisibleTrafficLights(
         continue;
       }
       visible_traffic_lights.push_back(traffic_light);
+      distance_range_ = distance_range;
       break;
     }
   }
