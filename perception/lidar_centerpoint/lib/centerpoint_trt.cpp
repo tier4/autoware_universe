@@ -24,6 +24,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <random>
 
 namespace centerpoint
 {
@@ -67,6 +68,10 @@ void CenterPointTRT::initPriorityMap()
   // initialize priority score map
   std::vector<std::pair<float, unsigned int>> priority_score_map;
 
+  // random number generator, but fixed seed for reproducibility
+  std::mt19937 generator(0);
+  std::normal_distribution<float> normal_distribution(0.0, 1000.0);
+
   // assign priority score map
   for (unsigned int i = 0; i < mask_size_; ++i) {
     const int x = i % config_.grid_size_x_ - config_.grid_size_x_ / 2;
@@ -81,6 +86,8 @@ void CenterPointTRT::initPriorityMap()
     float score_b = sqrt((pos_x-150)*(pos_x-150) + pos_y*pos_y) + sqrt((pos_x-10)*(pos_x-10) + pos_y*pos_y) - 50;
     // total score with weight
     float score = -score_a - score_b * 15;
+    // add random noise, normal distribution
+    score += normal_distribution(generator);
 
     priority_score_map.push_back(std::make_pair(score, i));
   }
