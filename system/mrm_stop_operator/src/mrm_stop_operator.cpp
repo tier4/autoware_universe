@@ -33,8 +33,9 @@ MrmStopOperator::MrmStopOperator(const rclcpp::NodeOptions & node_options)
   sub_velocity_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive, false);
   rclcpp::SubscriptionOptions velocity_options = rclcpp::SubscriptionOptions();
   velocity_options.callback_group = sub_velocity_group_;
-  auto not_executed_callback = []([[maybe_unused]] const typename autoware_vehicle_msgs::msg::
-                                    VelocityReport::ConstSharedPtr msg) {};
+  auto not_executed_callback =
+    []([[maybe_unused]] const typename autoware_vehicle_msgs::msg::VelocityReport::ConstSharedPtr
+         msg) {};
   sub_velocity_ = create_subscription<autoware_vehicle_msgs::msg::VelocityReport>(
     "~/input/velocity", 10, not_executed_callback, velocity_options);
 
