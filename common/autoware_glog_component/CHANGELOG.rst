@@ -8,6 +8,12 @@ Changelog for package glog_component
 * chore(glog): add initialization check (`#6792 <https://github.com/autowarefoundation/autoware.universe/issues/6792>`_)
 * Contributors: Takamasa Horibe, Yutaka Kondo
 
+Forthcoming
+-----------
+* refactor(glog_component): prefix package and namespace with autoware (`#9302 <https://github.com/tier4/autoware.universe/issues/9302>`_)
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+* Contributors: Esteve Fernandez
+
 0.26.0 (2024-04-03)
 -------------------
 * feat(glog): add glog in planning and control modules (`#4714 <https://github.com/autowarefoundation/autoware.universe/issues/4714>`_)

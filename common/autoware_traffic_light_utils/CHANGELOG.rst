@@ -16,6 +16,13 @@ Changelog for package autoware_traffic_light_utils
   Co-authored-by: beginningfan <beginning.fan@autocore.ai>
 * Contributors: Ryohsuke Mitsudome, Yutaka Kondo, kobayu858
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - common (`#9564 <https://github.com/tier4/autoware.universe/issues/9564>`_)
+* fix: fix package names in changelog files (`#9500 <https://github.com/tier4/autoware.universe/issues/9500>`_)
+* refactor(traffic_light_utils): prefix package and namespace with autoware (`#9251 <https://github.com/tier4/autoware.universe/issues/9251>`_)
+* Contributors: Esteve Fernandez, M. Fatih Cırıt
+
 0.26.0 (2024-04-03)
 -------------------
 * chore(perception modules): remove maintainer... (`#6499 <https://github.com/autowarefoundation/autoware.universe/issues/6499>`_)

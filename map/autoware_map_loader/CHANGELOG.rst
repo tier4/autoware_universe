@@ -64,6 +64,23 @@ Changelog for package autoware_map_loader
   Co-authored-by: beginningfan <beginning.fan@autocore.ai>
 * Contributors: Anh Nguyen, Esteve Fernandez, Khalil Selyan, Mamoru Sobue, Masaki Baba, Ryohsuke Mitsudome, Takayuki Murooka, Yamato Ando, Yutaka Kondo, badai nguyen, kminoda
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - map (`#9568 <https://github.com/tier4/autoware.universe/issues/9568>`_)
+* feat!: replace tier4_map_msgs with autoware_map_msgs for MapProjectorInfo (`#9392 <https://github.com/tier4/autoware.universe/issues/9392>`_)
+* fix: fix package names in changelog files (`#9500 <https://github.com/tier4/autoware.universe/issues/9500>`_)
+* refactor(map_loader)!: prefix package and namespace with autoware (`#8927 <https://github.com/tier4/autoware.universe/issues/8927>`_)
+  * make lanelet2_map_visualization independent
+  * remove unused files
+  * remove unused package
+  * fix package name
+  * add autoware\_ prefix
+  * add autoware to exec name
+  * add autoware prefix
+  * removed unnecessary dependency
+  ---------
+* Contributors: Esteve Fernandez, M. Fatih Cırıt, Masaki Baba, Ryohsuke Mitsudome
+
 0.26.0 (2024-04-03)
 -------------------
 * fix(map_loader): fix warnings with single point cloud map metadata (`#6384 <https://github.com/autowarefoundation/autoware.universe/issues/6384>`_)

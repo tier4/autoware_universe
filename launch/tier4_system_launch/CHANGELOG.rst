@@ -27,6 +27,37 @@ Changelog for package tier4_system_launch
 * feat(default_ad_api): use diagnostic graph (`#7043 <https://github.com/autowarefoundation/autoware.universe/issues/7043>`_)
 * Contributors: Ryuta Kambe, SakodaShintaro, Takagi, Isamu, Takayuki Murooka, TetsuKawa, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix(system): fixed to use autoware_component_interface_tools (`#9133 <https://github.com/tier4/autoware.universe/issues/9133>`_)
+  Fixed component_interface_tools
+* feat(system_error_monitor): remove system error monitor (`#8929 <https://github.com/tier4/autoware.universe/issues/8929>`_)
+  * feat: delete-system-error-monitor-from-autoware
+  * feat: remove unnecessary params
+  ---------
+* feat(emergency_handler): delete package (`#8917 <https://github.com/tier4/autoware.universe/issues/8917>`_)
+  * feat(emergency_handler): delete package
+* feat(processing_time_checker): add a new package (`#7957 <https://github.com/tier4/autoware.universe/issues/7957>`_)
+  * feat(processing_time_checker): add a new package
+  * fix
+  * fix
+  * update README and schema.json
+  * fix
+  * fix
+  * fix
+  ---------
+* feat(tier4_system_launch): use mrm handler by default (`#7728 <https://github.com/tier4/autoware.universe/issues/7728>`_)
+* feat(tier4_system_launch): modify diagnostic_graph_aggregator_graph argument (`#7133 <https://github.com/tier4/autoware.universe/issues/7133>`_)
+* feat(default_ad_api): use diagnostic graph (`#7043 <https://github.com/tier4/autoware.universe/issues/7043>`_)
+* Contributors: Esteve Fernandez, Ryuta Kambe, SakodaShintaro, Takagi, Isamu, Takayuki Murooka, TetsuKawa, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * chore(tier4_system_launch): add option to select graph path depending on running mode (`#6700 <https://github.com/autowarefoundation/autoware.universe/issues/6700>`_)

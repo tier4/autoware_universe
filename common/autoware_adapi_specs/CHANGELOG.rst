@@ -12,6 +12,22 @@ Changelog for package autoware_adapi_specs
   ---------
 * Contributors: Takagi, Isamu, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix: fix package names in changelog files (`#9500 <https://github.com/tier4/autoware.universe/issues/9500>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* refactor(autoware_ad_api_specs): prefix package and namespace with autoware (`#9250 <https://github.com/tier4/autoware.universe/issues/9250>`_)
+  * refactor(autoware_ad_api_specs): prefix package and namespace with autoware
+  * style(pre-commit): autofix
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * style(pre-commit): autofix
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * chore(autoware_adapi_specs): rename ad_api_specs to adapi_specs
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* Contributors: Esteve Fernandez
+
 0.26.0 (2024-04-03)
 -------------------
 * feat(default_ad_api): add door api (`#5737 <https://github.com/autowarefoundation/autoware.universe/issues/5737>`_)

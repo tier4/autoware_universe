@@ -12,6 +12,32 @@ Changelog for package tier4_traffic_light_rviz_plugin
   Co-authored-by: beginningfan <beginning.fan@autocore.ai>
 * Contributors: Ryohsuke Mitsudome, Yutaka Kondo
 
+Forthcoming
+-----------
+* refactor(map_loader)!: prefix package and namespace with autoware (`#8927 <https://github.com/tier4/autoware.universe/issues/8927>`_)
+  * make lanelet2_map_visualization independent
+  * remove unused files
+  * remove unused package
+  * fix package name
+  * add autoware\_ prefix
+  * add autoware to exec name
+  * add autoware prefix
+  * removed unnecessary dependency
+  ---------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* feat: add `autoware\_` prefix to `lanelet2_extension` (`#7640 <https://github.com/tier4/autoware.universe/issues/7640>`_)
+* feat!: replace autoware_auto_msgs with autoware_msgs for common modules (`#7239 <https://github.com/tier4/autoware.universe/issues/7239>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* Contributors: Esteve Fernandez, Masaki Baba, Ryohsuke Mitsudome, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * feat(behavior_velocity): support new traffic signal interface (`#4133 <https://github.com/autowarefoundation/autoware.universe/issues/4133>`_)

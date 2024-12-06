@@ -535,6 +535,545 @@ Changelog for package tier4_perception_launch
   fix(ground_segmentation launch): fix topic name conflict when using additional lidars
 * Contributors: Amadeusz Szymko, Esteve Fernandez, Kenzo Lobos Tsunekawa, Kosuke Takeuchi, Kotaro Uetake, Mamoru Sobue, Manato Hirabayashi, Masato Saeki, Mehmet Emin BAŞOĞLU, Ryohsuke Mitsudome, Shunsuke Miura, Taekjin LEE, Tao Zhong, Yoshi Ri, Yuki TAKAGI, Yutaka Kondo, awf-autoware-bot[bot], badai nguyen, oguzkaganozt
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* chore(tier4_perception_launch): enable to receive argument `centerpoint_model_name` from autoware_launch (`#9003 <https://github.com/tier4/autoware.universe/issues/9003>`_)
+  * enable to receive arguments
+  * adopt transfusion
+  * add lidar_detection_model_type
+  * style(pre-commit): autofix
+  * integrate all in lidar_detection_model
+  * separate name and config
+  * remove transfusion change
+  * add default config on pp and transfusion
+  * change variable name for easy to read
+  * change variable name
+  * fix condition when default model name
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(tier4_perception_launch): remove duplicated parameter declaration (`#9031 <https://github.com/tier4/autoware.universe/issues/9031>`_)
+* feat(tier4_perception_launch): enable to use multi camera on traffic light recognition (`#8676 <https://github.com/tier4/autoware.universe/issues/8676>`_)
+  * main process
+  * style(pre-commit): autofix
+  * add exception if input is invalid
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(autoware_lidar_transfusion): split config (`#8205 <https://github.com/tier4/autoware.universe/issues/8205>`_)
+  * refactor(autoware_lidar_transfusion): split config
+  * style(pre-commit): autofix
+  * chore(autoware_lidar_transfusion): bypass schema CI workflow
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Kenzo Lobos Tsunekawa <kenzo.lobos@tier4.jp>
+* fix(tier4_perception_launch): launch namespace of `detection_by_tracker` (`#8702 <https://github.com/tier4/autoware.universe/issues/8702>`_)
+  fix: namespace of detection_by_tracker do not need to have the prefix `autoware\_`
+* refactor(perception/occupancy_grid_map_outlier_filter): rework parameters (`#6745 <https://github.com/tier4/autoware.universe/issues/6745>`_)
+  * add param and schema file, edit readme
+  * .
+  * correct linter errors
+  ---------
+* fix(tier4_perception_launch): set `use_image_transport` in launch (`#8315 <https://github.com/tier4/autoware.universe/issues/8315>`_)
+  set use_image_transport in launch
+* refactor: image transport decompressor/autoware prefix (`#8197 <https://github.com/tier4/autoware.universe/issues/8197>`_)
+  * refactor: add `autoware` namespace prefix to image_transport_decompressor
+  * refactor(image_transport_decompressor): add `autoware` prefix to the package code
+  * refactor: update package name in CODEOWNER
+  * fix: merge main into the branch
+  * refactor: update packages which depend on image_transport_decompressor
+  * refactor(image_transport_decompressor): update README
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Taekjin LEE <taekjin.lee@tier4.jp>
+* refactor: traffic light arbiter/autoware prefix (`#8181 <https://github.com/tier4/autoware.universe/issues/8181>`_)
+  * refactor(traffic_light_arbiter): apply `autoware` namespace to traffic_light_arbiter
+  * refactor(traffic_light_arbiter): update the package name in CODEWONER
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(probabilistic_occupancy_grid_map, occupancy_grid_map_outlier_filter): add autoware\_ prefix to package name (`#8183 <https://github.com/tier4/autoware.universe/issues/8183>`_)
+  * chore: fix package name probabilistic occupancy grid map
+  * fix: solve launch error
+  * chore: update occupancy_grid_map_outlier_filter
+  * style(pre-commit): autofix
+  * refactor: update package name to autoware_probabilistic_occupancy_grid_map on a test
+  * refactor: rename folder of occupancy_grid_map_outlier_filter
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Taekjin LEE <taekjin.lee@tier4.jp>
+* refactor(elevation_map_loader): add package name prefix `autoware\_`, fix namespace and directory structure (`#7988 <https://github.com/tier4/autoware.universe/issues/7988>`_)
+  * refactor: add namespace, remove unused dependencies, file structure
+  chore: remove unused dependencies
+  style(pre-commit): autofix
+  * refactor: rename elevation_map_loader to autoware_elevation_map_loader
+  Rename the `elevation_map_loader` package to `autoware_elevation_map_loader` to align with the Autoware naming convention.
+  style(pre-commit): autofix
+* refactor(tensorrt_yolox)!: fix namespace and directory structure (`#7992 <https://github.com/tier4/autoware.universe/issues/7992>`_)
+  * refactor: add autoware namespace prefix to `tensorrt_yolox`
+  * refactor: apply `autoware` namespace to tensorrt_yolox
+  * chore: update CODEOWNERS
+  * fix: resolve `yolox_tiny` to work
+  ---------
+* refactor(traffic_light\_*)!: add package name prefix of autoware\_ (`#8159 <https://github.com/tier4/autoware.universe/issues/8159>`_)
+  * chore: rename traffic_light_fine_detector to autoware_traffic_light_fine_detector
+  * chore: rename traffic_light_multi_camera_fusion to autoware_traffic_light_multi_camera_fusion
+  * chore: rename traffic_light_occlusion_predictor to autoware_traffic_light_occlusion_predictor
+  * chore: rename traffic_light_classifier to autoware_traffic_light_classifier
+  * chore: rename traffic_light_map_based_detector to autoware_traffic_light_map_based_detector
+  * chore: rename traffic_light_visualization to autoware_traffic_light_visualization
+  ---------
+* refactor(lidar_apollo_instance_segmentation)!: fix namespace and directory structure (`#7995 <https://github.com/tier4/autoware.universe/issues/7995>`_)
+  * refactor: add autoware namespace prefix
+  * chore: update CODEOWNERS
+  * refactor: add `autoware` prefix
+  ---------
+* refactor(image_projection_based_fusion)!: add package name prefix of autoware\_ (`#8162 <https://github.com/tier4/autoware.universe/issues/8162>`_)
+  refactor: rename image_projection_based_fusion to autoware_image_projection_based_fusion
+* refactor(compare_map_segmentation): add package name prefix of autoware\_ (`#8005 <https://github.com/tier4/autoware.universe/issues/8005>`_)
+  * refactor(compare_map_segmentation): add package name prefix of autoware\_
+  * docs: update Readme
+  ---------
+* refactor(shape_estimation): add package name prefix of autoware\_ (`#7999 <https://github.com/tier4/autoware.universe/issues/7999>`_)
+  * refactor(shape_estimation): add package name prefix of autoware\_
+  * style(pre-commit): autofix
+  * fix: mising prefix
+  * fix: cmake
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(ground_segmentation)!: add package name prefix of autoware\_ (`#8135 <https://github.com/tier4/autoware.universe/issues/8135>`_)
+  * refactor(ground_segmentation): add package name prefix of autoware\_
+  * fix: update prefix cmake
+  ---------
+* refactor(lidar_centerpoint)!: fix namespace and directory structure (`#8049 <https://github.com/tier4/autoware.universe/issues/8049>`_)
+  * add prefix in lidar_centerpoint
+  * add .gitignore
+  * change include package name in image_projection_based fusion
+  * fix
+  * change in codeowner
+  * delete package
+  * style(pre-commit): autofix
+  * style(pre-commit): autofix
+  * solve conflict too
+  * fix include file
+  * fix typo in launch file
+  * add prefix in README
+  * fix bugs by conflict
+  * style(pre-commit): autofix
+  * change namespace from  to
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Kenzo Lobos Tsunekawa <kenzo.lobos@tier4.jp>
+* refactor(detected_object_validation)!: add package name prefix of autoware\_ (`#8122 <https://github.com/tier4/autoware.universe/issues/8122>`_)
+  refactor: rename detected_object_validation to autoware_detected_object_validation
+* refactor(detected_object_feature_remover)!: add package name prefix of autoware\_ (`#8127 <https://github.com/tier4/autoware.universe/issues/8127>`_)
+  refactor(detected_object_feature_remover): add package name prefix of autoware\_
+* refactor(pointcloud_preprocessor): prefix package and namespace with autoware (`#7983 <https://github.com/tier4/autoware.universe/issues/7983>`_)
+  * refactor(pointcloud_preprocessor)!: prefix package and namespace with autoware
+  * style(pre-commit): autofix
+  * style(pointcloud_preprocessor): suppress line length check for macros
+  * fix(pointcloud_preprocessor): missing prefix
+  * fix(pointcloud_preprocessor): missing prefix
+  * fix(pointcloud_preprocessor): missing prefix
+  * fix(pointcloud_preprocessor): missing prefix
+  * fix(pointcloud_preprocessor): missing prefix
+  * refactor(pointcloud_preprocessor): directory structure (soft)
+  * refactor(pointcloud_preprocessor): directory structure (hard)
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Kenzo Lobos Tsunekawa <kenzo.lobos@tier4.jp>
+* refactor(traffic_light_visualization): fix namespace and directory structure (`#7968 <https://github.com/tier4/autoware.universe/issues/7968>`_)
+  * feat: namespace fix and directory structure
+  * chore: Remove main.cpp and implement node by template
+  ---------
+* refactor(traffic_light_fine_detector): fix namespace and directory structure (`#7973 <https://github.com/tier4/autoware.universe/issues/7973>`_)
+  * refactor: add autoware on the namespace
+  * refactor: rename nodelet to node
+  ---------
+* refactor(lidar_transfusion)!: fix namespace and directory structure (`#8022 <https://github.com/tier4/autoware.universe/issues/8022>`_)
+  * add prefix
+  * add prefix in code owner
+  * style(pre-commit): autofix
+  * fix launcher
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Amadeusz Szymko <amadeusz.szymko.2@tier4.jp>
+  Co-authored-by: Kenzo Lobos Tsunekawa <kenzo.lobos@tier4.jp>
+* refactor(euclidean_cluster): add package name prefix of autoware\_ (`#8003 <https://github.com/tier4/autoware.universe/issues/8003>`_)
+  * refactor(euclidean_cluster): add package name prefix of autoware\_
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(traffic_light_classifier): fix namespace and directory structure (`#7970 <https://github.com/tier4/autoware.universe/issues/7970>`_)
+  * refactor: update namespace for traffic light classifier code
+  * refactor: directory structure
+  ---------
+* fix(tier4_perception_launch): delete unnecessary dependency (`#8101 <https://github.com/tier4/autoware.universe/issues/8101>`_)
+  delete cluster merger
+* refactor(multi_object_tracker)!: add package name prefix of autoware\_ (`#8083 <https://github.com/tier4/autoware.universe/issues/8083>`_)
+  * refactor: rename multi_object_tracker package to autoware_multi_object_tracker
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(autoware_tracking_object_merger): move headers to include/autoware and rename package (`#7809 <https://github.com/tier4/autoware.universe/issues/7809>`_)
+* refactor(autoware_object_merger): move headers to src and rename package (`#7804 <https://github.com/tier4/autoware.universe/issues/7804>`_)
+* refactor(detection_by_tracker): add package name prefix of autoware\_ (`#7998 <https://github.com/tier4/autoware.universe/issues/7998>`_)
+* refactor(raindrop_cluster_filter): add package name prefix of autoware\_ (`#8000 <https://github.com/tier4/autoware.universe/issues/8000>`_)
+  * refactor(raindrop_cluster_filter): add package name prefix of autoware\_
+  * fix: typo
+  ---------
+* refactor(cluster_merger): add package name prefix of autoware\_ (`#8001 <https://github.com/tier4/autoware.universe/issues/8001>`_)
+* refactor(radar)!: add package name prefix of autoware\_ (`#7892 <https://github.com/tier4/autoware.universe/issues/7892>`_)
+  * refactor: rename radar_object_tracker
+  * refactor: rename package from radar_object_tracker to autoware_radar_object_tracker
+  * refactor: rename package from radar_object_clustering to autoware_radar_object_clustering
+  * refactor: rename package from radar_fusion_to_detected_object to autoware_radar_fusion_to_detected_object
+  * refactor: rename radar_crossing_objects_noise_filter to autoware_radar_crossing_objects_noise_filter
+  * refactor: rename object_velocity_splitter to autoware_object_velocity_splitter
+  * refactor: rename object_range_splitter to autoware_object_range_splitter
+  * refactor: update readme
+  ---------
+* refactor(compare_map_segmentation)!: fix namespace and directory structure (`#7910 <https://github.com/tier4/autoware.universe/issues/7910>`_)
+  * feat: update namespace and directory structure for compare_map_segmentation code
+  * refactor: update  directory structure
+  * fix: add missing include
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* chore: add missing dependency (`#7919 <https://github.com/tier4/autoware.universe/issues/7919>`_)
+  add raindrop_cluster_filter dependency
+* feat: migrating pointcloud types (`#6996 <https://github.com/tier4/autoware.universe/issues/6996>`_)
+  * feat: changed most of sensing to the new type
+  * chore: started applying changes to the perception stack
+  * feat: confirmed operation until centerpoint
+  * feat: reverted to the original implementation of pointpainting
+  * chore: forgot to push a header
+  * feat: also implemented the changes for the subsample filters that were out of scope before
+  * fix: some point type changes were missing from the latest merge from main
+  * chore: removed unused code, added comments, and brought back a removed publish
+  * chore: replaced pointcloud_raw for pointcloud_raw_ex to avoid extra processing time in the drivers
+  * feat: added memory layout checks
+  * chore: updated documentation regarding the point types
+  * chore: added hyperlinks to the point definitions. will be valid only once the PR is merged
+  * fix: fixed compilation due to moving the utilities files to the base library
+  * chore: separated the utilities functions due to a dependency issue
+  * chore: forgot that perception also uses the filter class
+  * feature: adapted the undistortion tests to the new point type
+  ---------
+  Co-authored-by: kminoda <44218668+kminoda@users.noreply.github.com>
+  Co-authored-by: badai nguyen <94814556+badai-nguyen@users.noreply.github.com>
+* refactor(tier4_perception_launch): add maintainer to tier4_perception_launch (`#7893 <https://github.com/tier4/autoware.universe/issues/7893>`_)
+  refactor: add maintainer to tier4_perception_launch
+* feat(tier4_perception_launch): add image segmentation based pointcloud filter (`#7225 <https://github.com/tier4/autoware.universe/issues/7225>`_)
+  * feat(tier4_perception_launch): add image segmentation based pointcloud filter
+  * chore: typo
+  * fix: detection launch
+  * chore: add maintainer
+  * Revert "chore: add maintainer"
+  This reverts commit 5adfef6e9ca8196d3ba88ad574b2ba35489a5e49.
+  ---------
+* refactor(occupancy_grid_map_outlier_filter)!: fix namespace and directory structure (`#7748 <https://github.com/tier4/autoware.universe/issues/7748>`_)
+  chore: update namespace and file structure
+* refactor(ground_segmentation)!: fix namespace and directory structure (`#7744 <https://github.com/tier4/autoware.universe/issues/7744>`_)
+  * refactor: update namespace in ground_segmentation files
+  * refactor: update namespace in ground_segmentation files
+  * refactor: update ground_segmentation namespace and file structure
+  * style(pre-commit): autofix
+  * refactor: update ground_segmentation plugin names scheme
+  * refactor: update ransac tester
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(ground_segmentation): fix bug  (`#7771 <https://github.com/tier4/autoware.universe/issues/7771>`_)
+* feat(tier4_perception_launch): add missing arg use_multi_channel_tracker_merger (`#7705 <https://github.com/tier4/autoware.universe/issues/7705>`_)
+  * feat(tier4_perception_launch): add missing arg use_multi_channel_tracker_merger
+  * feat: add use_multi_channel_tracker_merger argument to simulator launch
+  This commit adds the `use_multi_channel_tracker_merger` argument to the simulator launch file. The argument is set to `false` by default. This change enables the use of the multi-channel tracker merger in the simulator.
+  ---------
+* feat(tier4_perception_launch): enable multi channel tracker merger (`#7459 <https://github.com/tier4/autoware.universe/issues/7459>`_)
+  * feat: introduce multi channel tracker merger
+  feat: separate filters
+  feat: filtering camera lidar fusion
+  fix: object validator to modular
+  fix: add missing config
+  fix: radar only mode for both fusion mode
+  fix
+  style(pre-commit): autofix
+  * fix: implement merger switching
+  * chore: move pointcloud filter from detection to filter group
+  * chore: define external and internal interfaces
+  * fix: set output of camera-lidar in absolute path
+  * chore: explicit object detection output
+  * style(pre-commit): autofix
+  * chore: update object detection input paths
+  fix radar output
+  * chore: update object detection input paths
+  * fix: radar pipeline output
+  * chore: update object detection input paths
+  This commit updates the input paths for object detection. It ensures that the correct paths are used for the detection process.
+  * style(pre-commit): autofix
+  * fix: group to avoid argument mixture
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* chore(tier4_perception_launch): perception launcher refactoring second round (`#7440 <https://github.com/tier4/autoware.universe/issues/7440>`_)
+  * feat: separate filters
+  * fix: object validator to modular
+  * chore: remove default values from subsequent launch files
+  * chore: group interfaces and junctions
+  * Revert "chore: group interfaces and junctions"
+  This reverts commit 9d723c33c260a9a0ac896bdf81c2a6ebeb981479.
+  * chore: group interfaces and junctions
+  * fix: radar input
+  * fix: remove defaults from camera inputs
+  * chore: rename camera args
+  * chore: reorder
+  * fix: remove defaults from lidar interface
+  * Add use_pointcloud_map and use_validator arguments to detection.launch.xml
+  * fix: remove default from validators and filters
+  * fix: pointcloud container node name
+  * style(pre-commit): autofix
+  * Add use_low_intensity_cluster_filter argument to launch files
+  * fix: on off detector and merger
+  * fix: radar_far/objects default
+  * fix: radar object filter parameter
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* ci(pre-commit): autoupdate (`#7499 <https://github.com/tier4/autoware.universe/issues/7499>`_)
+  Co-authored-by: M. Fatih Cırıt <mfc@leodrive.ai>
+* chore(tier4_perception_launch): perception launcher refactoring (`#7194 <https://github.com/tier4/autoware.universe/issues/7194>`_)
+  * fix: reorder object merger launchers
+  * fix: separate detection by tracker launch
+  * fix: refactor tracking launch
+  * style(pre-commit): autofix
+  * fix: input pointcloud topic names, mot input channels
+  * feat: separate filters
+  * fix: object validator to modular
+  * fix: implement filters on mergers
+  * fix lidar only mode
+  chore: simplify mode check
+  * fix: fix a bug when use_radar_tracking_fusion is fault
+  * fix: rename radar detector to filter
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(tier4_perception_launch): enable low_intensity_filter as default (`#7390 <https://github.com/tier4/autoware.universe/issues/7390>`_)
+* refactor(crosswalk_traffic_light_estimator)!: add autoware\_ prefix (`#7365 <https://github.com/tier4/autoware.universe/issues/7365>`_)
+  * add prefix
+* chore(tier4_perception_launch): rename autoware_map_based_prediction_depend (`#7395 <https://github.com/tier4/autoware.universe/issues/7395>`_)
+* refactor(map_based_prediction): prefix map based prediction (`#7391 <https://github.com/tier4/autoware.universe/issues/7391>`_)
+* feat(lidar_transfusion): add lidar_transfusion 3D detection package (`#6890 <https://github.com/tier4/autoware.universe/issues/6890>`_)
+  * feat(lidar_transfusion): add lidar_transfusion 3D detection package
+  * style(pre-commit): autofix
+  * style(lidar_transfusion): cpplint
+  * style(lidar_transfusion): cspell
+  * fix(lidar_transfusion): CUDA mem allocation & inference input
+  * style(pre-commit): autofix
+  * fix(lidar_transfusion): arrays size
+  * style(pre-commit): autofix
+  * chore(lidar_transfusion): update maintainers
+  Co-authored-by: Satoshi Tanaka <16330533+scepter914@users.noreply.github.com>
+  * fix(lidar_transfusion): array size & grid idx
+  * chore(lidar_transfusion): update maintainer email
+  * chore: added transfusion to the respective launchers
+  * refactor(lidar_transfusion): rename config
+  * refactor(lidar_transfusion): callback access specifier
+  * refactor(lidar_transfusion): pointers initialziation
+  * refactor(lidar_transfusion): change macros for constexpr
+  * refactor(lidar_transfusion): consts & uniform initialization
+  * refactor(lidar_transfusion): change to unique ptr & uniform initialization
+  * style(pre-commit): autofix
+  * refactor(lidar_transfusion): use of config params
+  * refactor(lidar_transfusion): remove unnecessary condition
+  * style(lidar_transfusion): switch naming (CPU to HOST)
+  * refactor(lidar_transfusion): remove redundant device sync
+  * style(lidar_transfusion): intensity naming
+  * feat(lidar_transfusion): full network shape validation
+  * feat(lidar_transfusion): validate objects' orientation in host processing
+  * feat(lidar_transfusion): add json schema
+  * style(pre-commit): autofix
+  * style(lidar_transfusion): affine matrix naming
+  * style(lidar_transfusion): transformed point naming
+  * refactor(lidar_transfusion): add param descriptor & arrays size check
+  * style(lidar_transfusion): affine matrix naming
+  * feat(lidar_transfusion): caching cloud input as device ptr
+  * fix(lidar_transfusion): logging
+  * chore(tier4_perception_launch): revert to centerpoint
+  * fix(lidar_transfusion): typo
+  * docs(lidar_transfusion): use hook for param description
+  * fix(lidar_transfusion): interpret eigen matrix as col major
+  * feat(lidar_transfusion): update to autware_msgs
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Kenzo Lobos Tsunekawa <kenzo.lobos@tier4.jp>
+* feat!: replace autoware_auto_msgs with autoware_msgs for launch files (`#7242 <https://github.com/tier4/autoware.universe/issues/7242>`_)
+  * feat!: replace autoware_auto_msgs with autoware_msgs for launch files
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+  * Update launch/tier4_perception_launch/launch/traffic_light_recognition/traffic_light.launch.xml
+  ---------
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+  Co-authored-by: Yukihiro Saito <yukky.saito@gmail.com>
+* feat(multi_object_tracker): multi object input (`#6820 <https://github.com/tier4/autoware.universe/issues/6820>`_)
+  * refactor: frequently used types, namespace
+  * test: multiple inputs
+  * feat: check latest measurement time
+  * feat: define input manager class
+  * feat: interval measures
+  * feat: store and sort inputs PoC
+  * chore: rename classes
+  * feat: object collector
+  * impl input manager, no subscribe
+  * fix: subscribe and trigger callback
+  * fix: subscriber and callbacks are working
+  * fix: callback object is fixed, tracker is working
+  * fix: get object time argument revise
+  * feat: back to periodic publish, analyze input latency and timings
+  * fix: enable timing debugger
+  * fix: separate object interval function
+  * feat: prepare message triggered process
+  * feat: trigger tracker by main message arrive
+  * chore: clean-up, set namespace
+  * feat: object lists with detector index
+  * feat: define input channel struct
+  * fix: define type for object list
+  * feat: add channel wise existence probability
+  * fix: relocate debugger
+  * fix: total existence logic change
+  * feat: publishing object debug info, need to fix marker id
+  * feat: indexing marker step 1
+  * fix: uuid management
+  * feat: association line fix
+  * feat: print channel names
+  * feat: association lines are color-coded
+  * fix: association debug marker bugfix
+  * style(pre-commit): autofix
+  * feat: add option for debug marker
+  * feat: skip time statistics update in case of outlier
+  * feat: auto-tune latency band
+  * feat: pre-defined channels, select on launcher
+  * feat: add input channels
+  * fix: remove marker idx map
+  * fix: to do not miss the latest message of the target stream
+  * fix: remove priority, separate timing optimization
+  * fix: time interval bug fix
+  * chore: refactoring timing state update
+  * fix: set parameters optionally
+  * feat: revise object time range logic
+  * fix: launcher to set input channels
+  * fix: exempt spell check 'pointpainting'
+  * feat: remove expected interval
+  * feat: implement spawn switch
+  * fix: remove debug messages
+  * chore: update readme
+  * fix: change tentative object topic
+  * Revert "fix: remove debug messages"
+  This reverts commit 725a49ee6c382f73b54fe50bf9077aca6049e199.
+  * fix: reset times when jumps to past
+  * fix: check if interval is negative
+  * fix: missing config, default value
+  * fix: remove debug messages
+  * fix: change no-object message level
+  * Update perception/multi_object_tracker/include/multi_object_tracker/debugger/debug_object.hpp
+  Co-authored-by: Shunsuke Miura <37187849+miursh@users.noreply.github.com>
+  * chore: Update copyright to uppercase
+  * chore: fix readme links to config files
+  * chore: move and rename uuid functions
+  * chore: fix debug topic to use node name
+  * chore: express meaning of threshold
+  * feat: revise decay rate, update function
+  * fix: define constants with explanation
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Shunsuke Miura <37187849+miursh@users.noreply.github.com>
+* feat(tier4_perception_launch): fix typo error (`#6999 <https://github.com/tier4/autoware.universe/issues/6999>`_)
+  * feat: downsample perception input pointcloud
+  * fix: add group if to switch downsample node
+  * fix: add test and exec depend
+  * Update launch/tier4_perception_launch/launch/perception.launch.xml
+  Co-authored-by: Yukihiro Saito <yukky.saito@gmail.com>
+  * chore: refactor perception.launch.xml
+  * fix: fix name
+  ---------
+  Co-authored-by: Yukihiro Saito <yukky.saito@gmail.com>
+* feat(tier4_perception_launch): downsample perception input pointcloud (`#6886 <https://github.com/tier4/autoware.universe/issues/6886>`_)
+  * feat: downsample perception input pointcloud
+  * fix: add group if to switch downsample node
+  * fix: add test and exec depend
+  * Update launch/tier4_perception_launch/launch/perception.launch.xml
+  Co-authored-by: Yukihiro Saito <yukky.saito@gmail.com>
+  * chore: refactor perception.launch.xml
+  ---------
+  Co-authored-by: Yukihiro Saito <yukky.saito@gmail.com>
+* feat: add low_intensity_cluster_filter (`#6850 <https://github.com/tier4/autoware.universe/issues/6850>`_)
+  * feat: add low_intensity_cluster_filter
+  * chore: typo
+  * fix: build test error
+  ---------
+* fix(voxel_grid_downsample_filter): add intensity field (`#6849 <https://github.com/tier4/autoware.universe/issues/6849>`_)
+  fix(downsample_filter): add intensity field
+* fix(lidar_centerpoint): add param file for centerpoint_tiny (`#6901 <https://github.com/tier4/autoware.universe/issues/6901>`_)
+* refactor(centerpoint, pointpainting): rearrange parameters for ML models and packages (`#6591 <https://github.com/tier4/autoware.universe/issues/6591>`_)
+  * refactor: lidar_centerpoint
+  * refactor: pointpainting
+  * chore: fix launch
+  * chore: fix launch
+  * chore: rearrange params
+  * fix: json-schema-check error
+  * fix: default param
+  * refactor: rename param file
+  * chore: typo
+  * fix: align centerpoint param namespace with pointpainting
+  * fix(centerpoint): add schema json
+  * fix(pointpainting): fix schema json typo
+  * style(pre-commit): autofix
+  * docs: update pointpainting fusion doc
+  * docs: update lidar centerpoint doc
+  * fix: change omp param
+  * fix:change twist and variance to model params
+  * fix: keep build_only in launch
+  * fix: schema check
+  * chore: temporary remove schema required
+  ---------
+  Co-authored-by: Kenzo Lobos Tsunekawa <kenzo.lobos@tier4.jp>
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(tier4_perception_launch): change traffic light recognition pipeline (`#6879 <https://github.com/tier4/autoware.universe/issues/6879>`_)
+  style(pre-commit): autofix
+  refactor: topic name
+* feat(perception_online_evaluator): add use_perception_online_evaluator option and disable it by default (`#6861 <https://github.com/tier4/autoware.universe/issues/6861>`_)
+* feat(lidar_centerpoint): output the covariance of pose and twist (`#6573 <https://github.com/tier4/autoware.universe/issues/6573>`_)
+  * feat: postprocess variance
+  * feat: output variance
+  * feat: add has_variance to config
+  * fix: single_inference node
+  * style(pre-commit): autofix
+  * fix: add to pointpainting param
+  * Update perception/lidar_centerpoint/src/node.cpp
+  Co-authored-by: Yoshi Ri <yoshiyoshidetteiu@gmail.com>
+  * Update perception/image_projection_based_fusion/src/pointpainting_fusion/node.cpp
+  Co-authored-by: Yoshi Ri <yoshiyoshidetteiu@gmail.com>
+  * Update perception/lidar_centerpoint/src/node.cpp
+  Co-authored-by: Yoshi Ri <yoshiyoshidetteiu@gmail.com>
+  * fix: add options
+  * fix: avoid powf
+  * Update launch/tier4_perception_launch/launch/object_recognition/detection/detector/lidar_dnn_detector.launch.xml
+  Co-authored-by: Taekjin LEE <technolojin@gmail.com>
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Yoshi Ri <yoshiyoshidetteiu@gmail.com>
+  Co-authored-by: Taekjin LEE <technolojin@gmail.com>
+* fix(ground_segmentation launch): fix topic name conflict in additional_lidars option (`#6801 <https://github.com/tier4/autoware.universe/issues/6801>`_)
+  fix(ground_segmentation launch): fix topic name conflict when using additional lidars
+* Contributors: Amadeusz Szymko, Esteve Fernandez, Kenzo Lobos Tsunekawa, Kosuke Takeuchi, Kotaro Uetake, Mamoru Sobue, Manato Hirabayashi, Masato Saeki, Mehmet Emin BAŞOĞLU, Ryohsuke Mitsudome, Shunsuke Miura, Taekjin LEE, Tao Zhong, Yoshi Ri, Yuki TAKAGI, Yutaka Kondo, awf-autoware-bot[bot], badai nguyen, oguzkaganozt
+
 0.26.0 (2024-04-03)
 -------------------
 * feat(probabilistic_occupancy_grid_map): add synchronized ogm fusion node (`#5485 <https://github.com/autowarefoundation/autoware.universe/issues/5485>`_)

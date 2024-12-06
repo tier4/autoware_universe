@@ -27,6 +27,38 @@ Changelog for package fault_injection
   Co-authored-by: Tomohito ANDO <tomohito.ando@tier4.jp>
 * Contributors: Keisuke Shima, Takayuki Murooka, Yamato Ando, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - simulator (`#9572 <https://github.com/tier4/autoware.universe/issues/9572>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* feat(system diags): rename diag of ndt scan matcher (`#6889 <https://github.com/tier4/autoware.universe/issues/6889>`_)
+  rename ndt diag
+* feat(fault injection): change for diagnostic graph aggregator (`#6750 <https://github.com/tier4/autoware.universe/issues/6750>`_)
+  * feat: change to adapt diagnostic graph aggregator
+  * Change the configuration to adapt to both system_error_monitor and diagnostic_graph_aggregator
+  * style(pre-commit): autofix
+  * pre-commit fix
+  * style(pre-commit): autofix
+  * spell check fix
+  * clang-tidy fix
+  * style(pre-commit): autofix
+  * pre-commit fix
+  * style(pre-commit): autofix
+  * fix datatype
+  * cleanup code
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Tomohito ANDO <tomohito.ando@tier4.jp>
+* Contributors: Esteve Fernandez, Keisuke Shima, M. Fatih Cırıt, Takayuki Murooka, Yamato Ando, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * refactor(localization_error_monitor): rename localization_accuracy (`#5178 <https://github.com/autowarefoundation/autoware.universe/issues/5178>`_)

@@ -38,6 +38,48 @@ Changelog for package autoware_point_types
   Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
 * Contributors: Esteve Fernandez, Kenzo Lobos Tsunekawa, Yutaka Kondo, Zulfaqar Azmi
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(autoware_point_types): prefix namespace with autoware::point_types (`#9169 <https://github.com/tier4/autoware.universe/issues/9169>`_)
+* feat: migrating pointcloud types (`#6996 <https://github.com/tier4/autoware.universe/issues/6996>`_)
+  * feat: changed most of sensing to the new type
+  * chore: started applying changes to the perception stack
+  * feat: confirmed operation until centerpoint
+  * feat: reverted to the original implementation of pointpainting
+  * chore: forgot to push a header
+  * feat: also implemented the changes for the subsample filters that were out of scope before
+  * fix: some point type changes were missing from the latest merge from main
+  * chore: removed unused code, added comments, and brought back a removed publish
+  * chore: replaced pointcloud_raw for pointcloud_raw_ex to avoid extra processing time in the drivers
+  * feat: added memory layout checks
+  * chore: updated documentation regarding the point types
+  * chore: added hyperlinks to the point definitions. will be valid only once the PR is merged
+  * fix: fixed compilation due to moving the utilities files to the base library
+  * chore: separated the utilities functions due to a dependency issue
+  * chore: forgot that perception also uses the filter class
+  * feature: adapted the undistortion tests to the new point type
+  ---------
+  Co-authored-by: kminoda <44218668+kminoda@users.noreply.github.com>
+  Co-authored-by: badai nguyen <94814556+badai-nguyen@users.noreply.github.com>
+* chore: updated maintainers for the autoware_point_types package (`#7797 <https://github.com/tier4/autoware.universe/issues/7797>`_)
+* docs(common): adding .pages file (`#7148 <https://github.com/tier4/autoware.universe/issues/7148>`_)
+  * docs(common): adding .pages file
+  * fix naming
+  * fix naming
+  * fix naming
+  * include main page plus explanation to autoware tools
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* Contributors: Esteve Fernandez, Kenzo Lobos Tsunekawa, Yutaka Kondo, Zulfaqar Azmi
+
 0.26.0 (2024-04-03)
 -------------------
 * build: mark autoware_cmake as <buildtool_depend> (`#3616 <https://github.com/autowarefoundation/autoware.universe/issues/3616>`_)

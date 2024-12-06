@@ -42,6 +42,52 @@ Changelog for package tier4_sensing_launch
   ---------
 * Contributors: Satoshi OTA, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(vehicle_info_utils)!: prefix package and namespace with autoware (`#7353 <https://github.com/tier4/autoware.universe/issues/7353>`_)
+  * chore(autoware_vehicle_info_utils): rename header
+  * chore(bpp-common): vehicle info
+  * chore(path_optimizer): vehicle info
+  * chore(velocity_smoother): vehicle info
+  * chore(bvp-common): vehicle info
+  * chore(static_centerline_generator): vehicle info
+  * chore(obstacle_cruise_planner): vehicle info
+  * chore(obstacle_velocity_limiter): vehicle info
+  * chore(mission_planner): vehicle info
+  * chore(obstacle_stop_planner): vehicle info
+  * chore(planning_validator): vehicle info
+  * chore(surround_obstacle_checker): vehicle info
+  * chore(goal_planner): vehicle info
+  * chore(start_planner): vehicle info
+  * chore(control_performance_analysis): vehicle info
+  * chore(lane_departure_checker): vehicle info
+  * chore(predicted_path_checker): vehicle info
+  * chore(vehicle_cmd_gate): vehicle info
+  * chore(obstacle_collision_checker): vehicle info
+  * chore(operation_mode_transition_manager): vehicle info
+  * chore(mpc): vehicle info
+  * chore(control): vehicle info
+  * chore(common): vehicle info
+  * chore(perception): vehicle info
+  * chore(evaluator): vehicle info
+  * chore(freespace): vehicle info
+  * chore(planning): vehicle info
+  * chore(vehicle): vehicle info
+  * chore(simulator): vehicle info
+  * chore(launch): vehicle info
+  * chore(system): vehicle info
+  * chore(sensing): vehicle info
+  * fix(autoware_joy_controller): remove unused deps
+  ---------
+* Contributors: Esteve Fernandez, Satoshi OTA, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * feat: remove use_pointcloud_container (`#6115 <https://github.com/autowarefoundation/autoware.universe/issues/6115>`_)

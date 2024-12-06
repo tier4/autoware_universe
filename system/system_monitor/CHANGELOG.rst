@@ -39,6 +39,59 @@ Changelog for package system_monitor
 * fix(system_monitor): fix warning of containerOutOfBounds (`#6927 <https://github.com/autowarefoundation/autoware.universe/issues/6927>`_)
 * Contributors: Koichi98, Kosuke Takeuchi, Ryuta Kambe, Takayuki Murooka, Yutaka Kondo, awf-autoware-bot[bot], kobayu858
 
+Forthcoming
+-----------
+* ci(pre-commit): update cpplint to 2.0.0 (`#9557 <https://github.com/tier4/autoware.universe/issues/9557>`_)
+* fix(cpplint): include what you use - system (`#9573 <https://github.com/tier4/autoware.universe/issues/9573>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* feat(system_monitor): add on/off config for network traffic monitor (`#9069 <https://github.com/tier4/autoware.universe/issues/9069>`_)
+  * feat(system_monitor): add config for network traffic monitor
+  * fix: change function name from stop to skip
+  ---------
+* feat(system_monitor): support loopback network interface (`#9067 <https://github.com/tier4/autoware.universe/issues/9067>`_)
+  * feat(system_monitor): support loopback network interface
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(system_monitor): fix variableScope (`#8448 <https://github.com/tier4/autoware.universe/issues/8448>`_)
+  fix:variableScope
+* fix(system_monitor): fix unusedStructMember (`#8401 <https://github.com/tier4/autoware.universe/issues/8401>`_)
+  * fix:unusedStructMember
+  * fix:clang format
+  * fix:clang format
+  ---------
+* fix(system_monitor): fix unreadVariable (`#8372 <https://github.com/tier4/autoware.universe/issues/8372>`_)
+  fix:unreadVariable
+* fix(system_monitor): fix shadowVariable (`#7981 <https://github.com/tier4/autoware.universe/issues/7981>`_)
+  fix:shadowVariable
+* fix(system_monitor): apply cppcheck-suppress for cstyleCast (`#7867 <https://github.com/tier4/autoware.universe/issues/7867>`_)
+  * fix(system_monitor): apply cppcheck-suppress for cstyleCast
+  * fix(system_monitor): apply cppcheck-suppress for cstyleCast
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/tier4/autoware.universe/issues/7594>`_)
+* fix(net_monitor): fix cppcheck warnings (`#7573 <https://github.com/tier4/autoware.universe/issues/7573>`_)
+  * fix unusedVariable warning
+  * fix unusedVariable warning
+  * fix variableScope warning
+  * fix unreadVariable warning
+  * fix
+  ---------
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* fix(system_monitor): fix unsignedLessThanZero warning (`#7545 <https://github.com/tier4/autoware.universe/issues/7545>`_)
+* ci(pre-commit): autoupdate (`#7499 <https://github.com/tier4/autoware.universe/issues/7499>`_)
+  Co-authored-by: M. Fatih Cırıt <mfc@leodrive.ai>
+* fix(system_monitor): fix warning of containerOutOfBounds (`#6927 <https://github.com/tier4/autoware.universe/issues/6927>`_)
+* Contributors: Esteve Fernandez, Koichi98, Kosuke Takeuchi, M. Fatih Cırıt, Ryuta Kambe, Takayuki Murooka, Yutaka Kondo, awf-autoware-bot[bot], iwatake, kobayu858
+
 0.26.0 (2024-04-03)
 -------------------
 * fix(system_monitor): move headers to a separate directory (`#5942 <https://github.com/autowarefoundation/autoware.universe/issues/5942>`_)

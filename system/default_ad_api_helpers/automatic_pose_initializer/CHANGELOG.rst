@@ -10,6 +10,31 @@ Changelog for package automatic_pose_initializer
 * feat(automatic_pose_initializer): componentize node (`#7021 <https://github.com/autowarefoundation/autoware.universe/issues/7021>`_)
 * Contributors: SakodaShintaro, Takagi, Isamu, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* refactor(autoware_ad_api_specs): prefix package and namespace with autoware (`#9250 <https://github.com/tier4/autoware.universe/issues/9250>`_)
+  * refactor(autoware_ad_api_specs): prefix package and namespace with autoware
+  * style(pre-commit): autofix
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * style(pre-commit): autofix
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * chore(autoware_adapi_specs): rename ad_api_specs to adapi_specs
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(component_interface_utils): prefix package and namespace with autoware (`#9092 <https://github.com/tier4/autoware.universe/issues/9092>`_)
+* fix(automatic_pose_initializer): fix plugin name (`#7035 <https://github.com/tier4/autoware.universe/issues/7035>`_)
+  Fixed automatic_pose_initializer plugin name
+* feat(automatic_pose_initializer): componentize node (`#7021 <https://github.com/tier4/autoware.universe/issues/7021>`_)
+* Contributors: Esteve Fernandez, SakodaShintaro, Takagi, Isamu, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * chore: update api package maintainers (`#6086 <https://github.com/autowarefoundation/autoware.universe/issues/6086>`_)

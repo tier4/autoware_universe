@@ -16,6 +16,38 @@ Changelog for package kinematic_evaluator
   Co-authored-by: beginningfan <beginning.fan@autocore.ai>
 * Contributors: Batuhan Beytekin, Ryohsuke Mitsudome, Takayuki Murooka, Yutaka Kondo, awf-autoware-bot[bot]
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - evaluator (`#9566 <https://github.com/tier4/autoware.universe/issues/9566>`_)
+* refactor(evaluators, autoware_universe_utils): rename Stat class to Accumulator and move it to autoware_universe_utils (`#9459 <https://github.com/tier4/autoware.universe/issues/9459>`_)
+  * add Accumulator class to autoware_universe_utils
+  * use Accumulator on all evaluators.
+  * pre-commit
+  * found and fixed a bug. add more tests.
+  * pre-commit
+  * Update common/autoware_universe_utils/include/autoware/universe_utils/math/accumulator.hpp
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  ---------
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+* fix(evaluator): missing dependency in evaluator components (`#9074 <https://github.com/tier4/autoware.universe/issues/9074>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(kinematic_evaluator): rework parameters (`#8199 <https://github.com/tier4/autoware.universe/issues/8199>`_)
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* ci(pre-commit): autoupdate (`#7499 <https://github.com/tier4/autoware.universe/issues/7499>`_)
+  Co-authored-by: M. Fatih Cırıt <mfc@leodrive.ai>
+* feat!: replace autoware_auto_msgs with autoware_msgs for evaluator modules (`#7241 <https://github.com/tier4/autoware.universe/issues/7241>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* Contributors: Batuhan Beytekin, Esteve Fernandez, Kem (TiankuiXian), M. Fatih Cırıt, Ryohsuke Mitsudome, Takayuki Murooka, Yutaka Kondo, awf-autoware-bot[bot], ぐるぐる
+
 0.26.0 (2024-04-03)
 -------------------
 * chore(build): remove tier4_autoware_utils.hpp evaluator/ simulator/ (`#4839 <https://github.com/autowarefoundation/autoware.universe/issues/4839>`_)

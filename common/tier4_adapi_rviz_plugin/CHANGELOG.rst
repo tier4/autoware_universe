@@ -13,6 +13,35 @@ Changelog for package tier4_adapi_rviz_plugin
 * feat(tier4_adapi_rviz_plugin): add legacy state panel (`#7494 <https://github.com/autowarefoundation/autoware.universe/issues/7494>`_)
 * Contributors: Autumn60, Khalil Selyan, Takagi, Isamu, Yutaka Kondo, kobayu858
 
+Forthcoming
+-----------
+* fix(tier4_adapi_rviz_plugin): fix clang-diagnostic-unused-lambda-capture (`#9439 <https://github.com/tier4/autoware.universe/issues/9439>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* refactor(autoware_ad_api_specs): prefix package and namespace with autoware (`#9250 <https://github.com/tier4/autoware.universe/issues/9250>`_)
+  * refactor(autoware_ad_api_specs): prefix package and namespace with autoware
+  * style(pre-commit): autofix
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * style(pre-commit): autofix
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * chore(autoware_adapi_specs): rename ad_api_specs to adapi_specs
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(component_interface_utils): prefix package and namespace with autoware (`#9092 <https://github.com/tier4/autoware.universe/issues/9092>`_)
+* style: update rviz plugin icons to match the theme (`#8868 <https://github.com/tier4/autoware.universe/issues/8868>`_)
+* fix(tier4_adapi_rviz_plugin): fix unusedFunction (`#8840 <https://github.com/tier4/autoware.universe/issues/8840>`_)
+  fix:unusedFunction
+* feat(tier4_adapi_rviz_plugin, tier4_state_rviz_plugin): set timestamp to velocity_limit msg from rviz panels (`#8548 <https://github.com/tier4/autoware.universe/issues/8548>`_)
+  set timestamp to velocity_limit msg
+* feat(tier4_adapi_rviz_plugin): add legacy state panel (`#7494 <https://github.com/tier4/autoware.universe/issues/7494>`_)
+* Contributors: Autumn60, Esteve Fernandez, Khalil Selyan, Ryuta Kambe, Takagi, Isamu, Yutaka Kondo, kobayu858
+
 0.26.0 (2024-04-03)
 -------------------
 * feat(default_ad_api): add door api (`#5737 <https://github.com/autowarefoundation/autoware.universe/issues/5737>`_)

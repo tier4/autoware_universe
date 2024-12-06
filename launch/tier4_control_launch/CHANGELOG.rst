@@ -178,6 +178,231 @@ Changelog for package tier4_control_launch
   ---------
 * Contributors: Go Sakayori, Ismet Atabay, Kosuke Takeuchi, Kyoichi Sugahara, Maxime CLEMENT, Mitsuhiro Sakamoto, SakodaShintaro, Satoshi OTA, Takayuki Murooka, Yuki TAKAGI, Yukinari Hisaki, Yutaka Kondo, Zulfaqar Azmi, danielsanchezaran, masayukiaino, mkquda
 
+Forthcoming
+-----------
+* refactor(glog_component): prefix package and namespace with autoware (`#9302 <https://github.com/tier4/autoware.universe/issues/9302>`_)
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+* feat(control_evaluator, tier4_control_launch): add a trigger to choice whether to output metrics to log folder (`#9478 <https://github.com/tier4/autoware.universe/issues/9478>`_)
+  * refactor and add output_metrics. a bug existing when psim.
+  * refactored launch file.
+  * output description
+  * add parm to launch file.
+  * move output_metrics from param config to launch file.
+  * move output_metrics from config to launch.xml
+  * fix unit test bug.
+  * fix test bug again.
+  * Update evaluator/autoware_control_evaluator/include/autoware/control_evaluator/control_evaluator_node.hpp
+  ---------
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+* feat(tier4_control_launch): use preset.yaml to control which modules to launch for control modules (`#9351 <https://github.com/tier4/autoware.universe/issues/9351>`_)
+  * update contro.launch for preset.xml
+  * update options.
+  * fix bug.
+  * rename to enable\_*
+  * check group.
+  * space.
+  * reduce num of load_composable_node.
+  * tmp save.
+  * tmp save.
+  * splite control modules' launch.
+  * final version
+  * remove on/off option for shift decider, vehicle cmd gate, and operation mode transition manager
+  * pre-commit
+  ---------
+* fix(collision_detector): skip process when odometry is not published (`#9308 <https://github.com/tier4/autoware.universe/issues/9308>`_)
+  * subscribe odometry
+  * fix precommit
+  * remove unnecessary log info
+  ---------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* feat(aeb): set global param to override autoware state check (`#9263 <https://github.com/tier4/autoware.universe/issues/9263>`_)
+  * set global param to override autoware state check
+  * change variable to be more general
+  * add comment
+  * move param to control component launch
+  * change param name to be more straightforward
+  ---------
+* feat(control_launch): add collision detector in launch (`#9214 <https://github.com/tier4/autoware.universe/issues/9214>`_)
+  add collision detector in launch
+* refactor(obstacle_collision_checker): move to autoware namespace (`#9047 <https://github.com/tier4/autoware.universe/issues/9047>`_)
+* fix(tier4_control_launch): fix aeb input predicted object topic name (`#8874 <https://github.com/tier4/autoware.universe/issues/8874>`_)
+  fix aeb input predicted object topic
+* feat(autonomous_emergency_braking): add some tests to aeb (`#8126 <https://github.com/tier4/autoware.universe/issues/8126>`_)
+  * add initial tests
+  * add more tests
+  * more tests
+  * WIP add publishing and test subscription
+  * add more tests
+  * fix lint cmake
+  * WIP tf topic
+  * Revert "WIP tf topic"
+  This reverts commit b5ef11b499e719b2cdbe0464bd7de7778de54e76.
+  * add path crop test
+  * add test for transform object
+  * add briefs
+  * delete repeated test
+  ---------
+* feat(evalautor): rename evaluator diag topics (`#8152 <https://github.com/tier4/autoware.universe/issues/8152>`_)
+  * feat(evalautor): rename evaluator diag topics
+  * perception
+  ---------
+* fix(control_launch): fix control launch control_evaluator plugin name (`#7846 <https://github.com/tier4/autoware.universe/issues/7846>`_)
+  fix control evaluator plugin name
+* refactor(tier4_control_launch): replace python launch with xml (`#7682 <https://github.com/tier4/autoware.universe/issues/7682>`_)
+  * refactor: add xml version of control launch
+  * refactor: remove python version of control launch
+  * set default value of trajectory_follower_mode
+  * fix file extension to .py
+  * fix node name
+  * add lanelet info to the metrics
+  * style(pre-commit): autofix
+  * Update launch/tier4_control_launch/launch/control.launch.xml
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  Co-authored-by: Kotaro Yoshimoto <pythagora.yoshimoto@gmail.com>
+* refactor(control_evaluator): use class naming standard and use remapped param name (`#7782 <https://github.com/tier4/autoware.universe/issues/7782>`_)
+  use class naming standard and use remapped param name
+* feat(control_evaluator): add lanelet info to the metrics (`#7765 <https://github.com/tier4/autoware.universe/issues/7765>`_)
+  * add route handler
+  * add lanelet info to diagnostic
+  * add const
+  * add kinematic state info
+  * clean
+  * remove unusde subscriptions
+  * clean
+  * add shoulder lanelets
+  * fix includes
+  ---------
+* fix(smart_mpc_trajectory_folower): fix running by adding control_state and changing msg/package_name (`#7666 <https://github.com/tier4/autoware.universe/issues/7666>`_)
+* feat(autonomous_emergency_braking): add predicted object support for aeb (`#7548 <https://github.com/tier4/autoware.universe/issues/7548>`_)
+  * add polling sub to predicted objects
+  * WIP requires changing path frame to map
+  * add parameters and reuse predicted obj speed
+  * introduce early break to reduce computation time
+  * resolve merge conflicts
+  * fix guard
+  * remove unused declaration
+  * fix include
+  * fix include issues
+  * remove inline
+  * delete unused dependencies
+  * add utils.cpp
+  * remove _ for non member variable
+  ---------
+* feat(control_evaluator): rename to include/autoware/{package_name} (`#7520 <https://github.com/tier4/autoware.universe/issues/7520>`_)
+  * feat(control_evaluator): rename to include/autoware/{package_name}
+  * fix
+  ---------
+* feat(diagnostic_converter): fix output metrics topic name and add to converter (`#7495 <https://github.com/tier4/autoware.universe/issues/7495>`_)
+* feat(control_evaluator): add deviation metrics and queue for diagnostics (`#7484 <https://github.com/tier4/autoware.universe/issues/7484>`_)
+* refactor(operation_mode_transition_manager): prefix package and namespace with autoware\_ (`#7291 <https://github.com/tier4/autoware.universe/issues/7291>`_)
+  * RT1-6682 add prefix package and namespace with autoware\_
+  * RT1-6682 fix package's description
+  ---------
+* refactor(trajectory_follower_node): trajectory follower node add autoware prefix (`#7344 <https://github.com/tier4/autoware.universe/issues/7344>`_)
+  * rename trajectory follower node package
+  * update dependencies, launch files, and README files
+  * fix formats
+  * remove autoware\_ prefix from launch arg option
+  ---------
+* refactor(shift_decider): prefix package and namespace with autoware\_ (`#7310 <https://github.com/tier4/autoware.universe/issues/7310>`_)
+  * RT1-6684 add autoware prefix and namespace
+  * RT1-6684 Revert svg
+  This reverts commit 4e0569e4796ab432c734905fb7f2106779575e29.
+  ---------
+  Co-authored-by: Takayuki Murooka <takayuki5168@gmail.com>
+* fix(tier4_control_launch, crosswalk_traffic_light_estimator): fix a mistake when adding prefixes (`#7423 <https://github.com/tier4/autoware.universe/issues/7423>`_)
+  Fixed a mistake when adding prefixes
+* refactor(external cmd converter)!: add autoware\_ prefix (`#7361 <https://github.com/tier4/autoware.universe/issues/7361>`_)
+  * add prefix to the code
+  * rename
+  * fix
+  * fix
+  * fix
+  * Update .github/CODEOWNERS
+  ---------
+  Co-authored-by: Takayuki Murooka <takayuki5168@gmail.com>
+* refactor(control_validator)!: prefix package and namespace with autoware (`#7304 <https://github.com/tier4/autoware.universe/issues/7304>`_)
+  * rename folders
+  * rename add prefix
+  * change param path
+  * fix pluggin problem
+  * fix extra prefixes
+  * change back launchers
+  * add namespace to address conflict
+  * delete stubborn file
+  ---------
+* refactor(external_cmd_selector): prefix package and namespace with au… (`#7384 <https://github.com/tier4/autoware.universe/issues/7384>`_)
+  refactor(external_cmd_selector): prefix package and namespace with autoware\_
+* chore(vehicle_cmd_gate): add prefix autoware\_ to vehicle_cmd_gate (`#7327 <https://github.com/tier4/autoware.universe/issues/7327>`_)
+  * add prefix autoware\_ to vehicle_cmd_gate package
+  * fix
+  * fix include guard
+  * fix pre-commit
+  ---------
+* feat(autonomous_emergency_braking): prefix package and namespace with autoware\_ (`#7294 <https://github.com/tier4/autoware.universe/issues/7294>`_)
+  * change package name
+  * add the prefix
+  * change option
+  * change back node name
+  * eliminate some prefixes that are not required
+  * fix node name
+  ---------
+* chore(smart_mpc_trajectory_follower): add prefix autoware\_ to smart_mpc_trajectory_follower (`#7367 <https://github.com/tier4/autoware.universe/issues/7367>`_)
+  * add prefix
+  * fix pre-commit
+  ---------
+* refactor(lane_departure_checker)!: prefix package and namespace with autoware (`#7325 <https://github.com/tier4/autoware.universe/issues/7325>`_)
+  * add prefix autoware\_ to lane_departure_checker package
+  ---------
+* feat(smart_mpc_trajectory_follower): add smart_mpc_trajectory_follower (`#6805 <https://github.com/tier4/autoware.universe/issues/6805>`_)
+  * feat(smart_mpc_trajectory_follower): add smart_mpc_trajectory_follower
+  * style(pre-commit): autofix
+  * modified control.launch.py
+  * update README.md
+  * Minor changes
+  * style(pre-commit): autofix
+  * bug fixed
+  * update README and add a comment to mpc_param.yaml
+  * minor changes
+  * add copyright
+  * mpc_param.yaml changed
+  * add note to README
+  * update according to spell check
+  * update python_simulator according to spell check
+  * update scripts according to spell check
+  * update according to spell-check-partial
+  * fixed ignored words in spell check
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Takamasa Horibe <horibe.takamasa@gmail.com>
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+* feat(control_evaluator): implement a control evaluator (`#6959 <https://github.com/tier4/autoware.universe/issues/6959>`_)
+  * add control evaluator module
+  * make the evaluator depend on messages from AEB
+  * update output msg
+  * delete extra new line
+  * update/fix details
+  * add a package mantainer
+  * Add a timer to maintain a constant rate of msg publishing
+  ---------
+* revert: "feat(logger_level_configure): make it possible to change level of container logger (`#6823 <https://github.com/tier4/autoware.universe/issues/6823>`_)" (`#6842 <https://github.com/tier4/autoware.universe/issues/6842>`_)
+  This reverts commit 51b5f830780eb69bd1a7dfe60e295773f394fd8e.
+* feat(logger_level_configure): make it possible to change level of container logger (`#6823 <https://github.com/tier4/autoware.universe/issues/6823>`_)
+  * feat(launch): add logging_demo::LoggerConfig into container
+  * fix(logger_level_reconfigure_plugin): fix yaml
+  * feat(logging_level_configure): add composable node
+  ---------
+* Contributors: Esteve Fernandez, Go Sakayori, Ismet Atabay, Kem (TiankuiXian), Kosuke Takeuchi, Kyoichi Sugahara, Maxime CLEMENT, Mitsuhiro Sakamoto, SakodaShintaro, Satoshi OTA, Takayuki Murooka, Yuki TAKAGI, Yukinari Hisaki, Yutaka Kondo, Zulfaqar Azmi, danielsanchezaran, masayukiaino, mkquda
+
 0.26.0 (2024-04-03)
 -------------------
 * feat: enable multithreading for the control container (`#6666 <https://github.com/autowarefoundation/autoware.universe/issues/6666>`_)

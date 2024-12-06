@@ -7,6 +7,19 @@ Changelog for package bag_time_manager_rviz_plugin
 * unify package.xml version to 0.37.0
 * Contributors: Yutaka Kondo
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - common (`#9564 <https://github.com/tier4/autoware.universe/issues/9564>`_)
+* fix(bag_time_manager_rviz_plugin): fix clang-diagnostic-unused-lambda-capture (`#9444 <https://github.com/tier4/autoware.universe/issues/9444>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, M. Fatih Cırıt, Ryuta Kambe, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * build(iron): remove rmw_qos_profile_t (`#3809 <https://github.com/autowarefoundation/autoware.universe/issues/3809>`_)

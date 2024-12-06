@@ -61,6 +61,99 @@ Changelog for package tier4_simulator_launch
 * feat(perception_online_evaluator): add use_perception_online_evaluator option and disable it by default (`#6861 <https://github.com/autowarefoundation/autoware.universe/issues/6861>`_)
 * Contributors: Kosuke Takeuchi, Masaki Baba, Taekjin LEE, Takayuki Murooka, Yuki TAKAGI, Yutaka Kondo
 
+Forthcoming
+-----------
+* refactor(vehicle_velocity_converter)!: prefix package and namespace with autoware (`#8967 <https://github.com/tier4/autoware.universe/issues/8967>`_)
+  * add autoware prefix
+  * fix conflict
+  ---------
+  Co-authored-by: Yamato Ando <yamato.ando@gmail.com>
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* feat(tier4_metric_msgs): apply tier4_metric_msgs for scenario_simulator_v2_adapter, control_evaluator, planning_evaluator, autonomous_emergency_braking, obstacle_cruise_planner, motion_velocity_planner, processing_time_checker (`#9180 <https://github.com/tier4/autoware.universe/issues/9180>`_)
+  * first commit
+  * fix building errs.
+  * change diagnostic messages to metric messages for publishing decision.
+  * fix bug about motion_velocity_planner
+  * change the diagnostic msg to metric msg in autoware_obstacle_cruise_planner.
+  * tmp save for planning_evaluator
+  * change the topic to which metrics published to.
+  * fix typo.
+  * remove unnesessary publishing of metrics.
+  * mke planning_evaluator publish msg of MetricArray instead of Diags.
+  * update aeb with metric type for decision.
+  * fix some bug
+  * remove autoware_evaluator_utils package.
+  * remove diagnostic_msgs dependency of planning_evaluator
+  * use metric_msgs for autoware_processing_time_checker.
+  * rewrite diagnostic_convertor to scenario_simulator_v2_adapter, supporting metric_msgs.
+  * pre-commit and fix typo
+  * publish metrics even if there is no metric in the MetricArray.
+  * modify the metric name of processing_time.
+  * update unit test for test_planning/control_evaluator
+  * manual pre-commit
+  ---------
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* chore(simple_planning_simulator): add stop_filter_param_path (`#9127 <https://github.com/tier4/autoware.universe/issues/9127>`_)
+* refactor(pose_initializer)!: prefix package and namespace with autoware (`#8701 <https://github.com/tier4/autoware.universe/issues/8701>`_)
+  * add autoware\_ prefix
+  * fix link
+  ---------
+  Co-authored-by: SakodaShintaro <shintaro.sakoda@tier4.jp>
+* feat(psim)!: preapre settings to launch localization modules on psim (`#8212 <https://github.com/tier4/autoware.universe/issues/8212>`_)
+* feat(psim)!: change a setting parameter type from bool to string (`#8331 <https://github.com/tier4/autoware.universe/issues/8331>`_)
+  * change a param type, bool to string
+  * add param description, add null tag group for the null option
+  ---------
+* feat(evalautor): rename evaluator diag topics (`#8152 <https://github.com/tier4/autoware.universe/issues/8152>`_)
+  * feat(evalautor): rename evaluator diag topics
+  * perception
+  ---------
+* refactor(elevation_map_loader): add package name prefix `autoware\_`, fix namespace and directory structure (`#7988 <https://github.com/tier4/autoware.universe/issues/7988>`_)
+  * refactor: add namespace, remove unused dependencies, file structure
+  chore: remove unused dependencies
+  style(pre-commit): autofix
+  * refactor: rename elevation_map_loader to autoware_elevation_map_loader
+  Rename the `elevation_map_loader` package to `autoware_elevation_map_loader` to align with the Autoware naming convention.
+  style(pre-commit): autofix
+* feat(simple_planning_simulator): add actuation command simulator (`#8065 <https://github.com/tier4/autoware.universe/issues/8065>`_)
+  * feat(simple_planning_simulator): add actuation command simulator
+  tmp
+  add
+  * remove unused functions
+  * common map
+  * pre-commit
+  * update readme
+  * add test
+  install test dir
+  fix test
+  * pre-commit
+  * clean up test for for scalability parameter
+  * fix typo
+  ---------
+  Co-authored-by: Takamasa Horibe <horibe.takamasa@gmail.com>
+* feat(processing_time_checker): add a new package (`#7957 <https://github.com/tier4/autoware.universe/issues/7957>`_)
+  * feat(processing_time_checker): add a new package
+  * fix
+  * fix
+  * update README and schema.json
+  * fix
+  * fix
+  * fix
+  ---------
+* feat(tier4_perception_launch): add missing arg use_multi_channel_tracker_merger (`#7705 <https://github.com/tier4/autoware.universe/issues/7705>`_)
+  * feat(tier4_perception_launch): add missing arg use_multi_channel_tracker_merger
+  * feat: add use_multi_channel_tracker_merger argument to simulator launch
+  This commit adds the `use_multi_channel_tracker_merger` argument to the simulator launch file. The argument is set to `false` by default. This change enables the use of the multi-channel tracker merger in the simulator.
+  ---------
+* feat(diagnostic_converter): fix output metrics topic name and add to converter (`#7495 <https://github.com/tier4/autoware.universe/issues/7495>`_)
+* feat(perception_online_evaluator): add use_perception_online_evaluator option and disable it by default (`#6861 <https://github.com/tier4/autoware.universe/issues/6861>`_)
+* Contributors: Esteve Fernandez, Kem (TiankuiXian), Kosuke Takeuchi, Masaki Baba, Taekjin LEE, Takayuki Murooka, Yuki TAKAGI, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * fix(pose_initializer): added "user_defined_initial_pose" to dummy localization (`#6723 <https://github.com/autowarefoundation/autoware.universe/issues/6723>`_)

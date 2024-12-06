@@ -35,6 +35,46 @@ Changelog for package yabloc_image_processing
   Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
 * Contributors: Kento Yabuuchi, Kosuke Takeuchi, Masaki Baba, Ryuta Kambe, Takayuki Murooka, Yutaka Kondo, ぐるぐる
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - localization (`#9567 <https://github.com/tier4/autoware.universe/issues/9567>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix(yabloc_image_processing): fix shadowFunction (`#7865 <https://github.com/tier4/autoware.universe/issues/7865>`_)
+  * fix(yabloc_image_processing): fix shadowFunction
+  * fix
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix: replace deprecated header in Jazzy (`#7603 <https://github.com/tier4/autoware.universe/issues/7603>`_)
+  * Use cv_bridge.hpp if available
+  * Fix image_geometry deprecated header
+  * Add comment for __has_include
+  ---------
+  Co-authored-by: Kotaro Yoshimoto <pythagora.yoshimoto@gmail.com>
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/tier4/autoware.universe/issues/7594>`_)
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* refactor(yabloc_image_processing): apply static analysis (`#7489 <https://github.com/tier4/autoware.universe/issues/7489>`_)
+  * refactor based on linter
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat(yabloc_image_processing): componentize yabloc_image_processing nodes (`#7196 <https://github.com/tier4/autoware.universe/issues/7196>`_)
+  * replace executable with component
+  * modify launch
+  * fix line_segments_overlay namespace & node_name
+  * style(pre-commit): autofix
+  * uncomment lanelet2_overlay
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* Contributors: Esteve Fernandez, Kento Yabuuchi, Kosuke Takeuchi, M. Fatih Cırıt, Masaki Baba, Ryuta Kambe, Takayuki Murooka, Yutaka Kondo, ぐるぐる
+
 0.26.0 (2024-04-03)
 -------------------
 * chore(yabloc): replace parameters by json_to_markdown in readme (`#6183 <https://github.com/autowarefoundation/autoware.universe/issues/6183>`_)

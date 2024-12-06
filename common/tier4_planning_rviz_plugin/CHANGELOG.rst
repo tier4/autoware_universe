@@ -63,6 +63,74 @@ Changelog for package tier4_planning_rviz_plugin
   fix memory leak
 * Contributors: Khalil Selyan, Kosuke Takeuchi, Ryohsuke Mitsudome, Satoshi OTA, Takayuki Murooka, Yukihiro Saito, Yutaka Kondo, beyzanurkaya, kobayu858, taisa1
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - common (`#9564 <https://github.com/tier4/autoware.universe/issues/9564>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* feat(tier4_planning_rviz_plugin): set path colors from rviz and add fade_out feature (`#8972 <https://github.com/tier4/autoware.universe/issues/8972>`_)
+  Co-authored-by: M. Fatih Cırıt <mfc@leodrive.ai>
+* style: update rviz plugin icons to match the theme (`#8868 <https://github.com/tier4/autoware.universe/issues/8868>`_)
+* fix(tier4_planning_rviz_plugin): fix unusedFunction (`#8616 <https://github.com/tier4/autoware.universe/issues/8616>`_)
+  fix:unusedFunction
+* fix(tier4_planning_rviz_plugin): fix cppcheck warning of virtualCallInConstructor (`#8377 <https://github.com/tier4/autoware.universe/issues/8377>`_)
+  fix: deal with virtualCallInConstructor warning
+  Co-authored-by: Ryuta Kambe <ryuta.kambe@tier4.jp>
+* fix(tier4_planning_rviz_plugin): fix calculation of drivable area bounds (`#7815 <https://github.com/tier4/autoware.universe/issues/7815>`_)
+  change angle condition
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/tier4/autoware.universe/issues/7594>`_)
+* refactor(motion_utils)!: add autoware prefix and include dir (`#7539 <https://github.com/tier4/autoware.universe/issues/7539>`_)
+  refactor(motion_utils): add autoware prefix and include dir
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* refactor(vehicle_info_utils)!: prefix package and namespace with autoware (`#7353 <https://github.com/tier4/autoware.universe/issues/7353>`_)
+  * chore(autoware_vehicle_info_utils): rename header
+  * chore(bpp-common): vehicle info
+  * chore(path_optimizer): vehicle info
+  * chore(velocity_smoother): vehicle info
+  * chore(bvp-common): vehicle info
+  * chore(static_centerline_generator): vehicle info
+  * chore(obstacle_cruise_planner): vehicle info
+  * chore(obstacle_velocity_limiter): vehicle info
+  * chore(mission_planner): vehicle info
+  * chore(obstacle_stop_planner): vehicle info
+  * chore(planning_validator): vehicle info
+  * chore(surround_obstacle_checker): vehicle info
+  * chore(goal_planner): vehicle info
+  * chore(start_planner): vehicle info
+  * chore(control_performance_analysis): vehicle info
+  * chore(lane_departure_checker): vehicle info
+  * chore(predicted_path_checker): vehicle info
+  * chore(vehicle_cmd_gate): vehicle info
+  * chore(obstacle_collision_checker): vehicle info
+  * chore(operation_mode_transition_manager): vehicle info
+  * chore(mpc): vehicle info
+  * chore(control): vehicle info
+  * chore(common): vehicle info
+  * chore(perception): vehicle info
+  * chore(evaluator): vehicle info
+  * chore(freespace): vehicle info
+  * chore(planning): vehicle info
+  * chore(vehicle): vehicle info
+  * chore(simulator): vehicle info
+  * chore(launch): vehicle info
+  * chore(system): vehicle info
+  * chore(sensing): vehicle info
+  * fix(autoware_joy_controller): remove unused deps
+  ---------
+* feat!: replace autoware_auto_msgs with autoware_msgs for common modules (`#7239 <https://github.com/tier4/autoware.universe/issues/7239>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* fix(tier4_planning_rviz_plugin): memory leak (`#7164 <https://github.com/tier4/autoware.universe/issues/7164>`_)
+  fix memory leak
+* Contributors: Esteve Fernandez, Khalil Selyan, Kosuke Takeuchi, M. Fatih Cırıt, Ryohsuke Mitsudome, Satoshi OTA, Takayuki Murooka, Yukihiro Saito, Yutaka Kondo, beyzanurkaya, kobayu858, taisa1
+
 0.26.0 (2024-04-03)
 -------------------
 * fix(readme): add acknowledgement for material icons in tool plugins (`#6354 <https://github.com/autowarefoundation/autoware.universe/issues/6354>`_)

@@ -16,6 +16,12 @@ Changelog for package autoware_fake_test_node
   Co-authored-by: beginningfan <beginning.fan@autocore.ai>
 * Contributors: Ryohsuke Mitsudome, Ryuta Kambe, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix: fix package names in changelog files (`#9500 <https://github.com/tier4/autoware.universe/issues/9500>`_)
+* refactor(fake_test_node): prefix package and namespace with autoware (`#9249 <https://github.com/tier4/autoware.universe/issues/9249>`_)
+* Contributors: Esteve Fernandez
+
 0.26.0 (2024-04-03)
 -------------------
 * fix(autoware_auto_common): move headers to a separate directory (`#5919 <https://github.com/autowarefoundation/autoware.universe/issues/5919>`_)

@@ -14,6 +14,25 @@ Changelog for package component_state_monitor
 * chore(component_state_monitor): relax pose_estimator_pose timeout (`#6916 <https://github.com/autowarefoundation/autoware.universe/issues/6916>`_)
 * Contributors: Ryohsuke Mitsudome, Shumpei Wakabayashi, Yamato Ando, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - system (`#9573 <https://github.com/tier4/autoware.universe/issues/9573>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* feat!: replace autoware_auto_msgs with autoware_msgs for system modules (`#7249 <https://github.com/tier4/autoware.universe/issues/7249>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* fix(componet_state_monitor): remove ndt node alive monitoring (`#6957 <https://github.com/tier4/autoware.universe/issues/6957>`_)
+  remove ndt node alive monitoring
+* chore(component_state_monitor): relax pose_estimator_pose timeout (`#6916 <https://github.com/tier4/autoware.universe/issues/6916>`_)
+* Contributors: Esteve Fernandez, M. Fatih Cırıt, Ryohsuke Mitsudome, Shumpei Wakabayashi, Yamato Ando, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * fix(component_state_monitor): change pose_estimator_pose rate (`#6563 <https://github.com/autowarefoundation/autoware.universe/issues/6563>`_)

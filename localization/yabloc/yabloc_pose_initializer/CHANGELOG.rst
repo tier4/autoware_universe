@@ -44,6 +44,56 @@ Changelog for package yabloc_pose_initializer
 * perf(yabloc): fix performance warning of iterateByValue (`#6929 <https://github.com/autowarefoundation/autoware.universe/issues/6929>`_)
 * Contributors: Kento Yabuuchi, Masaki Baba, Ryohsuke Mitsudome, RyuYamamoto, Ryuta Kambe, Yutaka Kondo, ぐるぐる
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - localization (`#9567 <https://github.com/tier4/autoware.universe/issues/9567>`_)
+* fix(yabloc_pose_initializer): include opencv as system (`#9375 <https://github.com/tier4/autoware.universe/issues/9375>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* feat(pose_initializer, ndt_scan_matcher): check initial pose result and publish diag (`#8275 <https://github.com/tier4/autoware.universe/issues/8275>`_)
+  * feat(localization): check initial pose result and publish diag
+  * fix: refactor
+  * feat: update README
+  * fix: rename reliability to reliable
+  * feat: always return true in yabloc module
+  ---------
+* refactor(yabloc_pose_initializer): apply static analysis (`#7719 <https://github.com/tier4/autoware.universe/issues/7719>`_)
+  * refactor based on linter
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat: add `autoware\_` prefix to `lanelet2_extension` (`#7640 <https://github.com/tier4/autoware.universe/issues/7640>`_)
+* fix: replace deprecated header in Jazzy (`#7603 <https://github.com/tier4/autoware.universe/issues/7603>`_)
+  * Use cv_bridge.hpp if available
+  * Fix image_geometry deprecated header
+  * Add comment for __has_include
+  ---------
+  Co-authored-by: Kotaro Yoshimoto <pythagora.yoshimoto@gmail.com>
+* feat(yabloc_pose_initializer): componentize yabloc_pose_initializer node (`#7506 <https://github.com/tier4/autoware.universe/issues/7506>`_)
+  * change the node to component
+  * remove useless node.cpp
+  * add rclcpp_components as dependency
+  ---------
+* fix(yabloc): suppress no viable conversion error (`#7299 <https://github.com/tier4/autoware.universe/issues/7299>`_)
+  * use tier4_autoware_utils instead of yabloc::Color
+  * use static_cast to convert Color to RGBA
+  * use tier4_autoware_utils instead of yabloc::Color
+  * use static_cast to convert Color to RGBA
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat!: replace autoware_auto_msgs with autoware_msgs for localization modules (`#7243 <https://github.com/tier4/autoware.universe/issues/7243>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* perf(yabloc): fix performance warning of iterateByValue (`#6929 <https://github.com/tier4/autoware.universe/issues/6929>`_)
+* Contributors: Esteve Fernandez, Kento Yabuuchi, M. Fatih Cırıt, Masaki Baba, Ryohsuke Mitsudome, RyuYamamoto, Ryuta Kambe, Yutaka Kondo, ぐるぐる
+
 0.26.0 (2024-04-03)
 -------------------
 * build(yabloc_pose_initializer): fix dependencies (`#6190 <https://github.com/autowarefoundation/autoware.universe/issues/6190>`_)

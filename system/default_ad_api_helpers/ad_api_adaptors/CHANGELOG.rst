@@ -23,6 +23,44 @@ Changelog for package ad_api_adaptors
 * feat(ad_api_adaptors): componentize nodes (`#7022 <https://github.com/autowarefoundation/autoware.universe/issues/7022>`_)
 * Contributors: Masaki Baba, Prakash Kannaiah, Takagi, Isamu, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* refactor(autoware_ad_api_specs): prefix package and namespace with autoware (`#9250 <https://github.com/tier4/autoware.universe/issues/9250>`_)
+  * refactor(autoware_ad_api_specs): prefix package and namespace with autoware
+  * style(pre-commit): autofix
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * style(pre-commit): autofix
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * chore(autoware_adapi_specs): rename ad_api to adapi
+  * chore(autoware_adapi_specs): rename ad_api_specs to adapi_specs
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(component_interface_utils): prefix package and namespace with autoware (`#9092 <https://github.com/tier4/autoware.universe/issues/9092>`_)
+* refactor(ad_api_adaptors): rework parameter (`#8796 <https://github.com/tier4/autoware.universe/issues/8796>`_)
+  * refactor(ad_api_adaptors): rework parameter
+  * <refactor(ad_api_adaptors): rework parameter>
+  * ad_api_adaptors.schema.json
+  * style(pre-commit): autofix
+  * refactor(ad_api_adaptors): rework parameter
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(map_height_fitter)!: prefix package and namespace with autoware  (`#8421 <https://github.com/tier4/autoware.universe/issues/8421>`_)
+  * add autoware\_ prefix
+  * style(pre-commit): autofix
+  * remove duplicated dependency
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: SakodaShintaro <shintaro.sakoda@tier4.jp>
+* feat(ad_api_adaptors): componentize nodes (`#7022 <https://github.com/tier4/autoware.universe/issues/7022>`_)
+* Contributors: Esteve Fernandez, Masaki Baba, Prakash Kannaiah, Takagi, Isamu, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * feat(map_height_fitter): fitting by vector_map (`#6340 <https://github.com/autowarefoundation/autoware.universe/issues/6340>`_)

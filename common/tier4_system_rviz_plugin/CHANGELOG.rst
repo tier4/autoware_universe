@@ -20,6 +20,30 @@ Changelog for package tier4_system_rviz_plugin
   Co-authored-by: beginningfan <beginning.fan@autocore.ai>
 * Contributors: Ryohsuke Mitsudome, Takayuki Murooka, TetsuKawa, Yutaka Kondo, taisa1
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* feat(system_error_monitor): remove system error monitor (`#8929 <https://github.com/tier4/autoware.universe/issues/8929>`_)
+  * feat: delete-system-error-monitor-from-autoware
+  * feat: remove unnecessary params
+  ---------
+* fix(tier4_system_rviz_plugin): fix cppcheck warning of virtualCallInConstructor (`#8378 <https://github.com/tier4/autoware.universe/issues/8378>`_)
+  fix: deal with virtualCallInConstructor warning
+  Co-authored-by: kminoda <44218668+kminoda@users.noreply.github.com>
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* feat!: replace autoware_auto_msgs with autoware_msgs for common modules (`#7239 <https://github.com/tier4/autoware.universe/issues/7239>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* Contributors: Esteve Fernandez, Ryohsuke Mitsudome, Takayuki Murooka, TetsuKawa, Yutaka Kondo, taisa1
+
 0.26.0 (2024-04-03)
 -------------------
 * feat(tier4_system_rviz_plugin): improve visualization results and logics (`#5222 <https://github.com/autowarefoundation/autoware.universe/issues/5222>`_)

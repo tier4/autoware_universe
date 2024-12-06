@@ -8,6 +8,23 @@ Changelog for package mrm_comfortable_stop_operator
 * chore(mrm_comfortable_stop_operator): remove unused main file (`#7191 <https://github.com/autowarefoundation/autoware.universe/issues/7191>`_)
 * Contributors: Takagi, Isamu, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - system (`#9573 <https://github.com/tier4/autoware.universe/issues/9573>`_)
+* feat(mrm_comfortable_stop_operator): add updateParam for mrm comfortable stop (`#9353 <https://github.com/tier4/autoware.universe/issues/9353>`_)
+  * add updateParam for mrm comfortable stop
+  * remove abs since it is not necessary
+  ---------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* chore(mrm_comfortable_stop_operator): remove unused main file (`#7191 <https://github.com/tier4/autoware.universe/issues/7191>`_)
+* Contributors: Esteve Fernandez, M. Fatih Cırıt, Takagi, Isamu, Yutaka Kondo, danielsanchezaran
+
 0.26.0 (2024-04-03)
 -------------------
 * chore(mrm_emergency_stop_operator): add a maintainer for mrm operator… (`#3489 <https://github.com/autowarefoundation/autoware.universe/issues/3489>`_)

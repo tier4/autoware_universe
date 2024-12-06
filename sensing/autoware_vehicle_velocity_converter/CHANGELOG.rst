@@ -19,6 +19,15 @@ Changelog for package vehicle_velocity_converter
   Co-authored-by: beginningfan <beginning.fan@autocore.ai>
 * Contributors: Masaki Baba, Ryohsuke Mitsudome, Yutaka Kondo
 
+Forthcoming
+-----------
+* refactor(vehicle_velocity_converter)!: prefix package and namespace with autoware (`#8967 <https://github.com/tier4/autoware.universe/issues/8967>`_)
+  * add autoware prefix
+  * fix conflict
+  ---------
+  Co-authored-by: Yamato Ando <yamato.ando@gmail.com>
+* Contributors: Masaki Baba
+
 0.26.0 (2024-04-03)
 -------------------
 * refactor(sensing-vehicle-velocity-converter): rework parameters (`#5609 <https://github.com/autowarefoundation/autoware.universe/issues/5609>`_)

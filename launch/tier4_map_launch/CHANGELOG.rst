@@ -26,6 +26,46 @@ Changelog for package tier4_map_launch
   Co-authored-by: SakodaShintaro <shintaro.sakoda@tier4.jp>
 * Contributors: Kosuke Takeuchi, Masaki Baba, Yamato Ando, Yutaka Kondo, cyn-liu, kminoda
 
+Forthcoming
+-----------
+* refactor(map_loader)!: prefix package and namespace with autoware (`#8927 <https://github.com/tier4/autoware.universe/issues/8927>`_)
+  * make lanelet2_map_visualization independent
+  * remove unused files
+  * remove unused package
+  * fix package name
+  * add autoware\_ prefix
+  * add autoware to exec name
+  * add autoware prefix
+  * removed unnecessary dependency
+  ---------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix(tier4_map_launch): remove parameter use_intra_process (`#9138 <https://github.com/tier4/autoware.universe/issues/9138>`_)
+* refactor(map_projection_loader)!: prefix package and namespace with autoware (`#8420 <https://github.com/tier4/autoware.universe/issues/8420>`_)
+  * add autoware\_ prefix
+  * add autoware\_ prefix
+  ---------
+  Co-authored-by: SakodaShintaro <shintaro.sakoda@tier4.jp>
+* fix(map_tf_genrator): fix map launch prefix (`#8598 <https://github.com/tier4/autoware.universe/issues/8598>`_)
+  fix(map_tf_geenrator): fix map launch prefix
+* refactor(map_tf_generator)!: prefix package and namespace with autoware (`#8422 <https://github.com/tier4/autoware.universe/issues/8422>`_)
+  * add autoware\_ prefix
+  * add autoware\_ prefix
+  ---------
+  Co-authored-by: SakodaShintaro <shintaro.sakoda@tier4.jp>
+* chore(localization, map): remove maintainer (`#7940 <https://github.com/tier4/autoware.universe/issues/7940>`_)
+* chore(map): udpate maintainer (`#7405 <https://github.com/tier4/autoware.universe/issues/7405>`_)
+  udpate maintainer
+* fix(tier4_map_launch): change log output (`#7289 <https://github.com/tier4/autoware.universe/issues/7289>`_)
+  change log output from screen to both
+  Co-authored-by: SakodaShintaro <shintaro.sakoda@tier4.jp>
+* Contributors: Esteve Fernandez, Kosuke Takeuchi, Masaki Baba, Yamato Ando, Yutaka Kondo, cyn-liu, kminoda
+
 0.26.0 (2024-04-03)
 -------------------
 * refactor(map_tf_generator): rework parameters (`#6233 <https://github.com/autowarefoundation/autoware.universe/issues/6233>`_)

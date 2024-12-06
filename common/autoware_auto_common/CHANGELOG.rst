@@ -12,6 +12,23 @@ Changelog for package autoware_auto_common
   fix: do not use c++20 keyword as a type alias
 * Contributors: Shumpei Wakabayashi, Yutaka Kondo, ralwing, taisa1
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(qp_interface): prefix package and namespace with autoware (`#9236 <https://github.com/tier4/autoware.universe/issues/9236>`_)
+* fix(autoware_auto_common): fix cppcheck warnings of functionStatic (`#8265 <https://github.com/tier4/autoware.universe/issues/8265>`_)
+  fix: deal with functionStatic warnings
+* fix(autoware_auto_common): nullptr_t (`#7212 <https://github.com/tier4/autoware.universe/issues/7212>`_)
+* fix: do not use c++20 char8_t keyword (`#3629 <https://github.com/tier4/autoware.universe/issues/3629>`_)
+  fix: do not use c++20 keyword as a type alias
+* Contributors: Esteve Fernandez, Shumpei Wakabayashi, Yutaka Kondo, ralwing, taisa1
+
 0.26.0 (2024-04-03)
 -------------------
 * fix(autoware_auto_common): move headers to a separate directory (`#5919 <https://github.com/autowarefoundation/autoware.universe/issues/5919>`_)

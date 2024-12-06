@@ -22,6 +22,32 @@ Changelog for package autoware_joy_controller
   ---------
 * Contributors: Kosuke Takeuchi, Maxime CLEMENT, Takayuki Murooka, Yuki TAKAGI, Yukinari Hisaki, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix(autoware_joy_controller): add virtual destructor to autoware_joy_controller (`#7760 <https://github.com/tier4/autoware.universe/issues/7760>`_)
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/tier4/autoware.universe/issues/7594>`_)
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* fix(joy_controller): check for nullptr messages (`#7540 <https://github.com/tier4/autoware.universe/issues/7540>`_)
+* refactor(control)!: refactor directory structures of the control interface nodes (`#7528 <https://github.com/tier4/autoware.universe/issues/7528>`_)
+  * external_cmd_selector
+  * joy_controller
+  ---------
+* refactor(joy_controller)!: prefix package and namespace with autoware (`#7382 <https://github.com/tier4/autoware.universe/issues/7382>`_)
+  * add prefix
+  * fix codeowner
+  * fix
+  * fix
+  ---------
+* Contributors: Esteve Fernandez, Kosuke Takeuchi, Maxime CLEMENT, Takayuki Murooka, Yuki TAKAGI, Yukinari Hisaki, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * feat: change pachage name: autoware_msgs -> tier4_msgs (`#150 <https://github.com/autowarefoundation/autoware.universe/issues/150>`_)

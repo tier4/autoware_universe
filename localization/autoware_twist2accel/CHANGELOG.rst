@@ -16,5 +16,25 @@ Changelog for package autoware_twist2accel
   Co-authored-by: SakodaShintaro <shintaro.sakoda@tier4.jp>
 * Contributors: Esteve Fernandez, Masaki Baba, Yutaka Kondo, kobayu858
 
+Forthcoming
+-----------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(signal_processing): prefix package and namespace with autoware (`#8541 <https://github.com/tier4/autoware.universe/issues/8541>`_)
+* fix(autoware_twist2accel): fix funcArgNamesDifferent (`#8391 <https://github.com/tier4/autoware.universe/issues/8391>`_)
+  fix:funcArgNamesDifferent
+* refactor(twist2accel)!: prefix package and namespace with autoware (`#8299 <https://github.com/tier4/autoware.universe/issues/8299>`_)
+  * add autoware\_ prefix
+  * add autoware\_ prefix
+  * add autoware\_ prefix
+  ---------
+  Co-authored-by: SakodaShintaro <shintaro.sakoda@tier4.jp>
+* Contributors: Esteve Fernandez, Masaki Baba, Yutaka Kondo, kobayu858
+
 0.26.0 (2024-04-03)
 -------------------

@@ -253,6 +253,272 @@ Changelog for package tier4_planning_launch
   ---------
 * Contributors: Ahmed Ebrahim, Amadeusz Szymko, Esteve Fernandez, Fumiya Watanabe, Kosuke Takeuchi, Kyoichi Sugahara, Mamoru Sobue, Maxime CLEMENT, Mitsuhiro Sakamoto, Mukunda Bharatheesha, Ryohsuke Mitsudome, Satoshi OTA, Taekjin LEE, Takayuki Murooka, Yuki TAKAGI, Yukinari Hisaki, Yutaka Kondo, badai nguyen, mkquda
 
+Forthcoming
+-----------
+* refactor(glog_component): prefix package and namespace with autoware (`#9302 <https://github.com/tier4/autoware.universe/issues/9302>`_)
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+* refactor(autoware_behavior_velocity_planner_common,autoware_behavior_velocity_planner): separate param files (`#9470 <https://github.com/tier4/autoware.universe/issues/9470>`_)
+  * refactor(autoware_behavior_velocity_planner_common,autoware_behavior_velocity_planner): separate param files
+  * Update planning/autoware_static_centerline_generator/test/test_static_centerline_generator.test.py
+  Co-authored-by: Kyoichi Sugahara <32741405+kyoichi-sugahara@users.noreply.github.com>
+  * fix
+  ---------
+  Co-authored-by: Kyoichi Sugahara <32741405+kyoichi-sugahara@users.noreply.github.com>
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix(autoware_obstacle_stop_planner): register obstacle stop planner node with autoware scoping (`#8512 <https://github.com/tier4/autoware.universe/issues/8512>`_)
+  Register node plugin with autoware scoping
+* feat(scenario_selector, freespace_planner): improve freespace planner edge case behavior (`#8348 <https://github.com/tier4/autoware.universe/issues/8348>`_)
+  * refactor free space planner subscribers
+  * implement scenario switching for edge cases
+  * fix scenario selector test
+  * implement confidence for checking if obstacle is on trajectory
+  * fix isInLane check to work for case when provided position is on lane bound
+  * update parameter schemas
+  * fix format
+  * improve near target logic
+  * use timer based implementation for obstacle check
+  ---------
+* refactor(compare_map_segmentation): add package name prefix of autoware\_ (`#8005 <https://github.com/tier4/autoware.universe/issues/8005>`_)
+  * refactor(compare_map_segmentation): add package name prefix of autoware\_
+  * docs: update Readme
+  ---------
+* refactor(pointcloud_preprocessor): prefix package and namespace with autoware (`#7983 <https://github.com/tier4/autoware.universe/issues/7983>`_)
+  * refactor(pointcloud_preprocessor)!: prefix package and namespace with autoware
+  * style(pre-commit): autofix
+  * style(pointcloud_preprocessor): suppress line length check for macros
+  * fix(pointcloud_preprocessor): missing prefix
+  * fix(pointcloud_preprocessor): missing prefix
+  * fix(pointcloud_preprocessor): missing prefix
+  * fix(pointcloud_preprocessor): missing prefix
+  * fix(pointcloud_preprocessor): missing prefix
+  * refactor(pointcloud_preprocessor): directory structure (soft)
+  * refactor(pointcloud_preprocessor): directory structure (hard)
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Kenzo Lobos Tsunekawa <kenzo.lobos@tier4.jp>
+* refactor(compare_map_segmentation)!: fix namespace and directory structure (`#7910 <https://github.com/tier4/autoware.universe/issues/7910>`_)
+  * feat: update namespace and directory structure for compare_map_segmentation code
+  * refactor: update  directory structure
+  * fix: add missing include
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(frenet_planner): fix mistake in the curvature calculation (`#7920 <https://github.com/tier4/autoware.universe/issues/7920>`_)
+* feat(obstacle_cruise_planner): support pointcloud-based obstacles (`#6907 <https://github.com/tier4/autoware.universe/issues/6907>`_)
+  * add pointcloud to obstacle properties
+  * add tf listener & pointcloud subscriber
+  * add parameters for pointcloud obstacle
+  * add type aliases
+  * convert pointcloud to obstacle
+  * add type alias
+  * add polygon conversion for pointcloud obstacle
+  * initialize twist & pose of pointcloud obstacle
+  * overload to handle both obstacle & predicted path
+  * implement ego behavior determination against pointcloud obstacles
+  * generate obstacle from point
+  * revert getCollisionIndex()
+  * generate obstacle from each point in cloud
+  * set pointcloud obstacle velocity to 0
+  * use tf buffer & listener with pointers
+  * update latest pointcloud data
+  * add topic remap
+  * remove unnecessary includes
+  * set slow down obstacle velocity to 0
+  * add flag to consider pointcloud obstacle for stopping & slowing down
+  * style(pre-commit): autofix
+  * downsample pointcloud using voxel grid
+  * change  shape type of pointcloud obstacle to polygon
+  * convert pointcloud to obstacle by clustering
+  * add parameters for clustering
+  * add max_num_points parameter to dummy object
+  * downsample pointcloud when the number of points is larger than max_num_points
+  * add max_num_points property to dummy bus
+  * add parameters for pointcloud based obstacles
+  * store pointcloud in obstacle struct
+  * change obstacle conversion method
+  * migrate previous changes to new package
+  * store necessary points only
+  * move use_pointcloud to common parameter
+  * extract necessary points from pointcloud
+  * add use_pointcloud parameter to planner interface
+  * fix obstacle conversion
+  * fix collision point determination
+  * simplify pointcloud transformation
+  * style(pre-commit): autofix
+  * fix collision point determination
+  * pick nearest stop collision point
+  * check collision for every point in cluster
+  * migrate previous changes to new files
+  * reduce diff
+  * remove use_pointcloud parameter
+  * add parameters for pointcloud filtering
+  * add autoware namespace
+  * Revert "add max_num_points parameter to dummy object"
+  This reverts commit 98bcd0856f861d23c9f7989d8128939ec0b3e27c.
+  * Revert "downsample pointcloud when the number of points is larger than max_num_points"
+  This reverts commit fb00b59d8f14cec6810e7fab12bc34d8a0c617c7.
+  * Revert "add max_num_points property to dummy bus"
+  This reverts commit 5f9e4ab5ae7d8d46521c736b1d259040121f3bc5.
+  * feat(diagnostic_graph_utils): add logging tool
+  * fix all OK
+  * feat(default_ad_api): add log when operation mode change fails
+  * get only the necessary one of object or pointcloud data
+  * addfield for obstacle source type
+  * enable simultaneous use of PredictedObjects and PointCloud
+  * separate convertToObstacles() by source type
+  * avoid using pointer
+  * reduce diff
+  * make nest shallower
+  * define vector concatenate function
+  * shorten variable names
+  * fix redundant condition
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Takagi, Isamu <isamu.takagi@tier4.jp>
+  Co-authored-by: Satoshi OTA <44889564+satoshi-ota@users.noreply.github.com>
+* refactor(autoware_obstacle_stop_planner): prefix package and namespace with autoware (`#7565 <https://github.com/tier4/autoware.universe/issues/7565>`_)
+  * refactor(autoware_obstacle_stop_planner): prefix package and namespace with autoware
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat(planning_evaluator): rename to include/autoware/{package_name} (`#7518 <https://github.com/tier4/autoware.universe/issues/7518>`_)
+  * fix
+  * fix
+  ---------
+* refactor(dynamic_obstacle_stop): move to motion_velocity_planner (`#7460 <https://github.com/tier4/autoware.universe/issues/7460>`_)
+* feat(obstacle_velocity_limiter): move to motion_velocity_planner (`#7439 <https://github.com/tier4/autoware.universe/issues/7439>`_)
+* refactor(bpp): add namespace `autoware::` (`#7437 <https://github.com/tier4/autoware.universe/issues/7437>`_)
+  * refactor: add namespace autoware::
+  * refactor(bpp-common): add namespace autoware::
+  * refactor(ablc): add namespace autoware::
+  * refactor(doa): add namespace autoware::
+  * refactor(soa): add namespace autoware::
+  * refactor(erlc): add namespace autoware::
+  * refactor(lc): add namespace autoware::
+  * refactor(ss): add namespace autoware::
+  * refactor(sp): add namespace autoware::
+  * refactor(gp): add namespace autoware::
+  * refactor(tier4_planning_launch): add namespace autoware::
+  * refactor(sbp): add namespace autoware::
+  ---------
+* refactor(behavior_path_planner): prefix autoware\_ to behavior_path_planner package (`#7433 <https://github.com/tier4/autoware.universe/issues/7433>`_)
+  * move dir
+  * fix pluginlib
+  ---------
+* refactor(obstacle_cruise_planner)!: add autoware\_ prefix (`#7419 <https://github.com/tier4/autoware.universe/issues/7419>`_)
+* refactor(behavior_path_sampling_planner_module): add autoware prefix (`#7392 <https://github.com/tier4/autoware.universe/issues/7392>`_)
+* refactor(mission_planner)!: add autoware prefix and namespace (`#7414 <https://github.com/tier4/autoware.universe/issues/7414>`_)
+  * refactor(mission_planner)!: add autoware prefix and namespace
+  * fix svg
+  ---------
+* refactor(freespace_planner)!: add autoware prefix (`#7376 <https://github.com/tier4/autoware.universe/issues/7376>`_)
+  refactor(freespace_planner)!: add autoawre prefix
+* refactor(external_cmd_selector): prefix package and namespace with au… (`#7384 <https://github.com/tier4/autoware.universe/issues/7384>`_)
+  refactor(external_cmd_selector): prefix package and namespace with autoware\_
+* refactor(scenario_selector): prefix package and namespace with autoware\_ (`#7379 <https://github.com/tier4/autoware.universe/issues/7379>`_)
+* fix(motion_planning.launch): fix input traj of obstacle_velocity_limiter (`#7386 <https://github.com/tier4/autoware.universe/issues/7386>`_)
+* refactor(out_of_lane): remove from behavior_velocity (`#7359 <https://github.com/tier4/autoware.universe/issues/7359>`_)
+* refactor(path_smoother)!: prefix package and namespace with autoware (`#7381 <https://github.com/tier4/autoware.universe/issues/7381>`_)
+  * git mv
+  * fix
+  * fix launch
+  * rever a part of prefix
+  * fix test
+  * fix
+  * fix static_centerline_optimizer
+  * fix
+  ---------
+* fix(tier4_planning_launch): unexpected modules were registered (`#7377 <https://github.com/tier4/autoware.universe/issues/7377>`_)
+* refactor(costmap_generator)!: add autoware prefix (`#7329 <https://github.com/tier4/autoware.universe/issues/7329>`_)
+  refactor(costmap_generator): add autoware prefix
+* refactor(path_optimizer, velocity_smoother)!: prefix package and namespace with autoware (`#7354 <https://github.com/tier4/autoware.universe/issues/7354>`_)
+  * chore(autoware_velocity_smoother): update namespace
+  * chore(autoware_path_optimizer): update namespace
+  ---------
+* refactor(planning_validator)!: prefix package and namespace with autoware (`#7320 <https://github.com/tier4/autoware.universe/issues/7320>`_)
+  * add autoware\_ prefix to planning_validator
+  * add prefix to package name in .pages
+  * fix link of the image
+  ---------
+* refactor(behavior_velocity_planner_common)!: prefix package and namespace with autoware (`#7314 <https://github.com/tier4/autoware.universe/issues/7314>`_)
+  * refactor(behavior_velocity_planner_common): add autoware prefix
+  * refactor(behavior_velocity_planner_common): fix run_out module
+  * refactor(behavior_velocity_planner_common): fix for autoware_behavior_velocity_walkway_module
+  * refactor(behavior_velocity_planner_common): remove unnecessary using
+  ---------
+* refactor(sampling_based_planner): add autoware prefix (`#7348 <https://github.com/tier4/autoware.universe/issues/7348>`_)
+* refactor(surround_obstacle_checker)!: prefix package and namespace with autoware (`#7298 <https://github.com/tier4/autoware.universe/issues/7298>`_)
+  * fix(autoware_surround_obstacle_checker): rename
+  * fix(autoware_surround_obstacle_checker): rename header
+  * fix(launch): update package name
+  ---------
+* refactor(autoware_velocity_walkway_module): prefix package with autoware\_ and move code to the autoware namespace (`#7153 <https://github.com/tier4/autoware.universe/issues/7153>`_)
+  * refactor(autoware_velocity_walkway_module): prefix package with autoware\_ and move code to the autoware namespace
+  * style(pre-commit): autofix
+  * fix: fix issue loading packages that have been prefixed
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* chore(autoware_planning_topic_converter): add prefix `autoware\_` (`#7296 <https://github.com/tier4/autoware.universe/issues/7296>`_)
+  chore(autoware_planning_topic_converter): rename
+* chore(autoware_external_velocity_limit_selector): add prefix `autoware\_` (`#7295 <https://github.com/tier4/autoware.universe/issues/7295>`_)
+  chore(autoware_external_velocity_limit_selector): rename
+* refactor(autoware_velocity_run_out_module): prefix package with autoware\_ and move code to the autoware namespace (`#7154 <https://github.com/tier4/autoware.universe/issues/7154>`_)
+  * refactor(autoware_velocity_run_out_module): prefix package with autoware\_ and move code to the autoware namespace
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(autoware_velocity_virtual_traffic_light_module): prefix package with autoware\_ and move code to the autoware namespace (`#7155 <https://github.com/tier4/autoware.universe/issues/7155>`_)
+* feat!: replace autoware_auto_msgs with autoware_msgs for launch files (`#7242 <https://github.com/tier4/autoware.universe/issues/7242>`_)
+  * feat!: replace autoware_auto_msgs with autoware_msgs for launch files
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+  * Update launch/tier4_perception_launch/launch/traffic_light_recognition/traffic_light.launch.xml
+  ---------
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+  Co-authored-by: Yukihiro Saito <yukky.saito@gmail.com>
+* chore(autoware_velocity_smoother, autoware_path_optimizer): rename packages (`#7202 <https://github.com/tier4/autoware.universe/issues/7202>`_)
+  * chore(autoware_path_optimizer): rename package and namespace
+  * chore(autoware_static_centerline_generator): rename package and namespace
+  * chore: update module name
+  * chore(autoware_velocity_smoother): rename package and namespace
+  * chore(tier4_planning_launch): update module name
+  * chore: update module name
+  * fix: test
+  * fix: test
+  * fix: test
+  ---------
+* chore(static_obstacle_avoidance, dynamic_obstacle_avoidance): rename avoidance package (`#7168 <https://github.com/tier4/autoware.universe/issues/7168>`_)
+  * chore(autoware_behavior_path_static_obstacle_avoidance_module): rename package and namespace
+  * chore(autoware_behavior_path_dynamic_obstacle_avoidance_module): rename package and namespace
+  * chore(tier4_planning_launch): update module name
+  * chore(rtc_interface): update module name
+  * chore(avoidance): update module param file name
+  * chore(avoidance): update schema file name
+  * fix(AbLC): fix file name
+  * docs: update module name
+  ---------
+* feat(motion_velocity_planner): add new motion velocity planning (`#7064 <https://github.com/tier4/autoware.universe/issues/7064>`_)
+* refactor(behavior_velocity_planner)!: prefix package and namespace with autoware\_ (`#6693 <https://github.com/tier4/autoware.universe/issues/6693>`_)
+* build(behavior_path_external_request_lane_change_module): prefix package and namespace with autoware\_ (`#6636 <https://github.com/tier4/autoware.universe/issues/6636>`_)
+* feat: add autoware_remaining_distance_time_calculator and overlay (`#6855 <https://github.com/tier4/autoware.universe/issues/6855>`_)
+* revert: "feat(logger_level_configure): make it possible to change level of container logger (`#6823 <https://github.com/tier4/autoware.universe/issues/6823>`_)" (`#6842 <https://github.com/tier4/autoware.universe/issues/6842>`_)
+  This reverts commit 51b5f830780eb69bd1a7dfe60e295773f394fd8e.
+* feat(logger_level_configure): make it possible to change level of container logger (`#6823 <https://github.com/tier4/autoware.universe/issues/6823>`_)
+  * feat(launch): add logging_demo::LoggerConfig into container
+  * fix(logger_level_reconfigure_plugin): fix yaml
+  * feat(logging_level_configure): add composable node
+  ---------
+* Contributors: Ahmed Ebrahim, Amadeusz Szymko, Esteve Fernandez, Fumiya Watanabe, Kosuke Takeuchi, Kyoichi Sugahara, Mamoru Sobue, Maxime CLEMENT, Mitsuhiro Sakamoto, Mukunda Bharatheesha, Ryohsuke Mitsudome, Satoshi OTA, Taekjin LEE, Takayuki Murooka, Yuki TAKAGI, Yukinari Hisaki, Yutaka Kondo, badai nguyen, mkquda
+
 0.26.0 (2024-04-03)
 -------------------
 * chore(tier4_planning_launch): set log output both (`#6685 <https://github.com/autowarefoundation/autoware.universe/issues/6685>`_)

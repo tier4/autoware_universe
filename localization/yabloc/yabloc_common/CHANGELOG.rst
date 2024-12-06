@@ -58,6 +58,69 @@ Changelog for package yabloc_common
 * chore(glog): add initialization check (`#6792 <https://github.com/autowarefoundation/autoware.universe/issues/6792>`_)
 * Contributors: Esteve Fernandez, Kento Yabuuchi, Kosuke Takeuchi, Masaki Baba, Ryohsuke Mitsudome, Ryuta Kambe, Takamasa Horibe, Takayuki Murooka, Yutaka Kondo, kobayu858, ぐるぐる
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - localization (`#9567 <https://github.com/tier4/autoware.universe/issues/9567>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(signal_processing): prefix package and namespace with autoware (`#8541 <https://github.com/tier4/autoware.universe/issues/8541>`_)
+* fix(yabloc_common): fix unusedFunction (`#8560 <https://github.com/tier4/autoware.universe/issues/8560>`_)
+  fix:unusedFunction
+* perf(yabloc_common): remove unnecessary pub/sub depth for transient_local (`#8248 <https://github.com/tier4/autoware.universe/issues/8248>`_)
+* feat: add `autoware\_` prefix to `lanelet2_extension` (`#7640 <https://github.com/tier4/autoware.universe/issues/7640>`_)
+* fix: replace deprecated header in Jazzy (`#7603 <https://github.com/tier4/autoware.universe/issues/7603>`_)
+  * Use cv_bridge.hpp if available
+  * Fix image_geometry deprecated header
+  * Add comment for __has_include
+  ---------
+  Co-authored-by: Kotaro Yoshimoto <pythagora.yoshimoto@gmail.com>
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/tier4/autoware.universe/issues/7594>`_)
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* refactor(yabloc_common): apply static analysis (`#7481 <https://github.com/tier4/autoware.universe/issues/7481>`_)
+  * refactor based on linter
+  * restore unwanted change
+  * remove unnecessary comment
+  * style(pre-commit): autofix
+  * change to const double
+  * add static cast
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(yabloc): suppress no viable conversion error (`#7299 <https://github.com/tier4/autoware.universe/issues/7299>`_)
+  * use tier4_autoware_utils instead of yabloc::Color
+  * use static_cast to convert Color to RGBA
+  * use tier4_autoware_utils instead of yabloc::Color
+  * use static_cast to convert Color to RGBA
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat!: replace autoware_auto_msgs with autoware_msgs for localization modules (`#7243 <https://github.com/tier4/autoware.universe/issues/7243>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* refactor(yabloc): use constexpr properly (`#7207 <https://github.com/tier4/autoware.universe/issues/7207>`_)
+* fix(yabloc): fix bug in capturing in lambda function (`#7208 <https://github.com/tier4/autoware.universe/issues/7208>`_)
+  * fix(yabloc): fix bug in capturing in lambda function
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat(yabloc_common): componentize yabloc_common nodes (`#7143 <https://github.com/tier4/autoware.universe/issues/7143>`_)
+  * make executables component
+  * log output changes to both
+  * style(pre-commit): autofix
+  * add default param path
+  * add glog as depend package
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* chore(glog): add initialization check (`#6792 <https://github.com/tier4/autoware.universe/issues/6792>`_)
+* Contributors: Esteve Fernandez, Kento Yabuuchi, Kosuke Takeuchi, M. Fatih Cırıt, Masaki Baba, Ryohsuke Mitsudome, Ryuta Kambe, Takamasa Horibe, Takayuki Murooka, Yutaka Kondo, kobayu858, ぐるぐる
+
 0.26.0 (2024-04-03)
 -------------------
 * chore(yabloc): replace parameters by json_to_markdown in readme (`#6183 <https://github.com/autowarefoundation/autoware.universe/issues/6183>`_)

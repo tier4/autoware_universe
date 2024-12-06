@@ -31,6 +31,44 @@ Changelog for package autoware_perception_rviz_plugin
   Co-authored-by: Yukihiro Saito <yukky.saito@gmail.com>
 * Contributors: Hayate TOBA, Nagi70, Ryohsuke Mitsudome, Ryuta Kambe, Satoshi Tanaka, Taekjin LEE, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - common (`#9564 <https://github.com/tier4/autoware.universe/issues/9564>`_)
+* fix(autoware_perception_rviz_plugin): fix orientation indication rendering fix (`#9434 <https://github.com/tier4/autoware.universe/issues/9434>`_)
+  refactor: fix orientation indication rendering fix
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix(autoware_perception_rviz_plugin): fix unusedFunction (`#8784 <https://github.com/tier4/autoware.universe/issues/8784>`_)
+  fix: unusedFunction
+* feat(autoware_perception_rviz_plugin): rviz predicted path mark as triangle (`#8536 <https://github.com/tier4/autoware.universe/issues/8536>`_)
+  * refactor: predicted path mark replace to triangle
+  * chore: clean up
+  ---------
+* fix(autoware_perception_rviz_plugin): fix passedByValue (`#8192 <https://github.com/tier4/autoware.universe/issues/8192>`_)
+  * fix: passedByValue
+  * fix:passedByValue
+  ---------
+  Co-authored-by: kobayu858 <yutaro.kobayashi@tier4.jp>
+* chore(autoware_perception_rviz_plugin): delete maintainer (`#7900 <https://github.com/tier4/autoware.universe/issues/7900>`_)
+* fix(autoware_perception_rviz_plugin): fix duplicateBranch warnings (`#7695 <https://github.com/tier4/autoware.universe/issues/7695>`_)
+  * fix(autoware_perception_rviz_plugin): fix duplicateBranch warnings
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat!: replace autoware_auto_msgs with autoware_msgs for common modules (`#7239 <https://github.com/tier4/autoware.universe/issues/7239>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* feat(autoware_auto_perception_rviz_plugin)!: rename package to autoware_perception_rviz_plugin (`#7221 <https://github.com/tier4/autoware.universe/issues/7221>`_)
+  feat(autoware_auto_perception_rviz_plugin): rename package to autoware_perception_rviz_plugin
+  Co-authored-by: Yukihiro Saito <yukky.saito@gmail.com>
+* Contributors: Esteve Fernandez, Hayate TOBA, M. Fatih Cırıt, Nagi70, Ryohsuke Mitsudome, Ryuta Kambe, Satoshi Tanaka, Taekjin LEE, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * feat: add rviz plugin packages (`#3 <https://github.com/autowarefoundation/autoware.universe/issues/3>`_)

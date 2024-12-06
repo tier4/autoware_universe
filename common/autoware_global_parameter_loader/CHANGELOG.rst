@@ -52,6 +52,11 @@ Changelog for package global_parameter_loader
   Co-authored-by: Ryohsuke Mitsudome <43976834+mitsudome-r@users.noreply.github.com>
 * Contributors: Hiroki OTA, Satoshi OTA, Yutaka Kondo, cyn-liu
 
+Forthcoming
+-----------
+* refactor(global_parameter_loader): prefix package and namespace with autoware (`#9303 <https://github.com/tier4/autoware.universe/issues/9303>`_)
+* Contributors: Esteve Fernandez
+
 0.26.0 (2024-04-03)
 -------------------
 * chore: update maintainer (`#4140 <https://github.com/autowarefoundation/autoware.universe/issues/4140>`_)

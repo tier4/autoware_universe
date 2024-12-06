@@ -23,6 +23,14 @@ Changelog for package autoware_traffic_light_recognition_marker_publisher
   Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
 * Contributors: Ryohsuke Mitsudome, Takayuki Murooka, Yutaka Kondo, Zulfaqar Azmi
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - common (`#9564 <https://github.com/tier4/autoware.universe/issues/9564>`_)
+* fix: fix package names in changelog files (`#9500 <https://github.com/tier4/autoware.universe/issues/9500>`_)
+* fix: fix missing namespaces in C++ code (`#9477 <https://github.com/tier4/autoware.universe/issues/9477>`_)
+* refactor(traffic_light_recognition_marker_publisher): prefix package and namespace with autoware (`#9305 <https://github.com/tier4/autoware.universe/issues/9305>`_)
+* Contributors: Esteve Fernandez, M. Fatih Cırıt
+
 0.26.0 (2024-04-03)
 -------------------
 * feat: add visualization node of traffic light recognition result (`#4099 <https://github.com/autowarefoundation/autoware.universe/issues/4099>`_)

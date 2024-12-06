@@ -59,6 +59,70 @@ Changelog for package yabloc_particle_filter
 * chore(glog): add initialization check (`#6792 <https://github.com/autowarefoundation/autoware.universe/issues/6792>`_)
 * Contributors: Kento Yabuuchi, Kosuke Takeuchi, Masaki Baba, Takamasa Horibe, Takayuki Murooka, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - localization (`#9567 <https://github.com/tier4/autoware.universe/issues/9567>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/tier4/autoware.universe/issues/7594>`_)
+* refactor(yabloc_particle_filter): apply static analysis (`#7519 <https://github.com/tier4/autoware.universe/issues/7519>`_)
+  * removed unused
+  * style(pre-commit): autofix
+  * removed unused
+  * Update localization/yabloc/yabloc_particle_filter/src/camera_corrector/camera_particle_corrector_core.cpp
+  change to use get_mean_pose directly
+  Co-authored-by: Kento Yabuuchi <moc.liamg.8y8@gmail.com>
+  * apply suggestion
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Kento Yabuuchi <moc.liamg.8y8@gmail.com>
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* refactor(yabloc_common): apply static analysis (`#7481 <https://github.com/tier4/autoware.universe/issues/7481>`_)
+  * refactor based on linter
+  * restore unwanted change
+  * remove unnecessary comment
+  * style(pre-commit): autofix
+  * change to const double
+  * add static cast
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat(yabloc_particle_filter): componentize yabloc_particle_filter nodes (`#7305 <https://github.com/tier4/autoware.universe/issues/7305>`_)
+  * componentize particle predictor
+  * componentize particle visualizer
+  * componentize particle correctors
+  * modify launch.xml
+  * remove unused node
+  * style(pre-commit): autofix
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Kotaro Yoshimoto <pythagora.yoshimoto@gmail.com>
+* fix(yabloc): suppress no viable conversion error (`#7299 <https://github.com/tier4/autoware.universe/issues/7299>`_)
+  * use tier4_autoware_utils instead of yabloc::Color
+  * use static_cast to convert Color to RGBA
+  * use tier4_autoware_utils instead of yabloc::Color
+  * use static_cast to convert Color to RGBA
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat(yabloc_common): componentize yabloc_common nodes (`#7143 <https://github.com/tier4/autoware.universe/issues/7143>`_)
+  * make executables component
+  * log output changes to both
+  * style(pre-commit): autofix
+  * add default param path
+  * add glog as depend package
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* chore(glog): add initialization check (`#6792 <https://github.com/tier4/autoware.universe/issues/6792>`_)
+* Contributors: Esteve Fernandez, Kento Yabuuchi, Kosuke Takeuchi, M. Fatih Cırıt, Masaki Baba, Takamasa Horibe, Takayuki Murooka, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * chore(yabloc): rework parameters (`#6170 <https://github.com/autowarefoundation/autoware.universe/issues/6170>`_)

@@ -48,6 +48,67 @@ Changelog for package tier4_state_rviz_plugin
 * feat: update autoware state panel (`#7036 <https://github.com/autowarefoundation/autoware.universe/issues/7036>`_)
 * Contributors: Autumn60, Khalil Selyan, Ryohsuke Mitsudome, Yutaka Kondo, kobayu858
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - common (`#9564 <https://github.com/tier4/autoware.universe/issues/9564>`_)
+* feat(tier4_state_rviz_plugin): check for abrupt deceleration (`#9474 <https://github.com/tier4/autoware.universe/issues/9474>`_)
+  * add abrupt deceleration checking feature to velocity steering factors panel
+  * use spin box instead of slider & change layout
+  * set minimum input to 0.0
+  * change accent color to Freak Pink
+  ---------
+* fix(factors_panel): sort by distance to stop/decel or point where it starts moving the steering (`#9346 <https://github.com/tier4/autoware.universe/issues/9346>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix: missing dependency in common components (`#9072 <https://github.com/tier4/autoware.universe/issues/9072>`_)
+* fix(tier4_state_rviz_plugin): fix unmatchedSuppression (`#8921 <https://github.com/tier4/autoware.universe/issues/8921>`_)
+  fix:unmatchedSuppression
+* style: update state panel plugin (`#8846 <https://github.com/tier4/autoware.universe/issues/8846>`_)
+* fix(tier4_state_rviz_plugin): fix unusedFunction (`#8841 <https://github.com/tier4/autoware.universe/issues/8841>`_)
+  fix:unusedFunction
+* fix(tier4_state_rviz_plugin): fix unusedFunction (`#8845 <https://github.com/tier4/autoware.universe/issues/8845>`_)
+  * fix:unusedFunction
+  * fix:unusedFunction
+  * fix:revert
+  ---------
+* fix(tier4_state_rviz_plugin): fix constVariablePointer (`#8832 <https://github.com/tier4/autoware.universe/issues/8832>`_)
+  fix:constVariablePointer
+* fix(tier4_state_rviz_plugin): fix shadowVariable (`#8831 <https://github.com/tier4/autoware.universe/issues/8831>`_)
+  * fix:shadowVariable
+  * fix:clang-format
+  ---------
+* refactor(custom_button): improve drop shadow effect (`#8781 <https://github.com/tier4/autoware.universe/issues/8781>`_)
+* fix(tier4_state_rviz_plugin): fix unmatchedSuppression (`#8658 <https://github.com/tier4/autoware.universe/issues/8658>`_)
+  fix:unmatchedSuppression
+* fix(tier4_state_rviz_plugin): fix unusedFunction (`#8608 <https://github.com/tier4/autoware.universe/issues/8608>`_)
+  * fix:unusedFunction
+  * fix:clang format
+  * fix:revert custom button
+  * fix:revert custom container
+  * fix:revert custom icon label
+  * fix:revert custom label
+  * fix:revert custom segment button
+  * fix:revert custom slider
+  * fix:revert custom toggle switch
+  * fix:revert custom label
+  * fix:add blank line
+  * fix:revert custom botton item
+  * fix:remove declaration
+  ---------
+* feat(tier4_adapi_rviz_plugin, tier4_state_rviz_plugin): set timestamp to velocity_limit msg from rviz panels (`#8548 <https://github.com/tier4/autoware.universe/issues/8548>`_)
+  set timestamp to velocity_limit msg
+* feat!: replace autoware_auto_msgs with autoware_msgs for common modules (`#7239 <https://github.com/tier4/autoware.universe/issues/7239>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* feat: update autoware state panel (`#7036 <https://github.com/tier4/autoware.universe/issues/7036>`_)
+* Contributors: Autumn60, Esteve Fernandez, Khalil Selyan, M. Fatih Cırıt, Mitsuhiro Sakamoto, Ryohsuke Mitsudome, Satoshi OTA, Yutaka Kondo, kobayu858, ぐるぐる
+
 0.26.0 (2024-04-03)
 -------------------
 * feat: add pull over to autoware_state_panel of rviz (`#6540 <https://github.com/autowarefoundation/autoware.universe/issues/6540>`_)

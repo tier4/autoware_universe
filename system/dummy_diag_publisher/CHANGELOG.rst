@@ -11,6 +11,31 @@ Changelog for package dummy_diag_publisher
 * feat(dummy_diag_publisher): componentize node (`#7190 <https://github.com/autowarefoundation/autoware.universe/issues/7190>`_)
 * Contributors: Kosuke Takeuchi, Takagi, Isamu, Takayuki Murooka, Yutaka Kondo
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - system (`#9573 <https://github.com/tier4/autoware.universe/issues/9573>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix(dummy_diag_publisher): not use diagnostic_updater and param callback (`#9257 <https://github.com/tier4/autoware.universe/issues/9257>`_)
+  * fix(dummy_diag_publisher): not use diagnostic_updater and param callback for v0.29.0 (`#1414 <https://github.com/tier4/autoware.universe/issues/1414>`_)
+  fix(dummy_diag_publisher): not use diagnostic_updater and param callback
+  Co-authored-by: h-ohta <hiroki.ota@tier4.jp>
+  * fix: resolve build error of dummy diag publisher (`#1415 <https://github.com/tier4/autoware.universe/issues/1415>`_)
+  fix merge conflict
+  ---------
+  Co-authored-by: Shohei Sakai <saka1s.jp@gmail.com>
+  Co-authored-by: h-ohta <hiroki.ota@tier4.jp>
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/tier4/autoware.universe/issues/7594>`_)
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* feat(dummy_diag_publisher): componentize node (`#7190 <https://github.com/tier4/autoware.universe/issues/7190>`_)
+* Contributors: Esteve Fernandez, Kosuke Takeuchi, M. Fatih Cırıt, Takagi, Isamu, Takayuki Murooka, Yuki TAKAGI, Yutaka Kondo
+
 0.26.0 (2024-04-03)
 -------------------
 * chore: update maintainer (`#5730 <https://github.com/autowarefoundation/autoware.universe/issues/5730>`_)

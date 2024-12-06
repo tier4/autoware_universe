@@ -108,6 +108,126 @@ Changelog for package simple_planning_simulator
   Co-authored-by: Tomas Nagy <tomas@pmc.sk>
 * Contributors: Autumn60, Dawid Moszyński, Esteve Fernandez, Go Sakayori, Kosuke Takeuchi, Maxime CLEMENT, Ryohsuke Mitsudome, Ryuta Kambe, Satoshi OTA, Takayuki Murooka, Tomas Nagy, Tomoya Kimura, Yuki TAKAGI, Yutaka Kondo, Zulfaqar Azmi
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - simulator (`#9572 <https://github.com/tier4/autoware.universe/issues/9572>`_)
+* fix(simple_planning_simulator): fix clang-diagnostic-delete-non-abstract-non-virtual-dtor (`#9448 <https://github.com/tier4/autoware.universe/issues/9448>`_)
+* feat(simple_planning_simulator): add mechanical actuaion sim model (`#9300 <https://github.com/tier4/autoware.universe/issues/9300>`_)
+  * feat(simple_planning_simulator): add mechanical actuaion sim model
+  update docs
+  * update from suggestions
+  * calc internal state using RK4 results
+  ---------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix(simple_planning_simulator): change orger of IDX in SimModelDelayS… (`#9128 <https://github.com/tier4/autoware.universe/issues/9128>`_)
+* fix(simple_planning_simulator, raw_vehicle_cmd_converter): swap row index and column index for csv loader  (`#8963 <https://github.com/tier4/autoware.universe/issues/8963>`_)
+  swap row and column
+* chore(simple_planning_simulator): remove unnecessary lines (`#8932 <https://github.com/tier4/autoware.universe/issues/8932>`_)
+  remove unnecessary semicolons
+* refactor(autoware_interpolation): prefix package and namespace with autoware (`#8088 <https://github.com/tier4/autoware.universe/issues/8088>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* fix(simple_planning_simulator): delete velocity dead band for brake (`#8685 <https://github.com/tier4/autoware.universe/issues/8685>`_)
+  * delete dead band
+* fix(simple_planning_simulator): increase test_steer_map values (`#8631 <https://github.com/tier4/autoware.universe/issues/8631>`_)
+* feat(simple_planning_simulator): print actual and expected value in test (`#8630 <https://github.com/tier4/autoware.universe/issues/8630>`_)
+* fix(simple_planning_simulator): fix dimension (`#8629 <https://github.com/tier4/autoware.universe/issues/8629>`_)
+* fix(simple_planning_simulator): fix acc output for the model sim_model_delay_steer_acc_geared_wo_fall_guard (`#8607 <https://github.com/tier4/autoware.universe/issues/8607>`_)
+  fix acceleration output
+* feat(simple_planning_simulator): add VGR sim model (`#8415 <https://github.com/tier4/autoware.universe/issues/8415>`_)
+  * feat(simple_planning_simulator): add VGR sim model
+  * Update simulator/simple_planning_simulator/test/test_simple_planning_simulator.cpp
+  * move to interface
+  * add const
+  ---------
+* feat(psim)!: preapre settings to launch localization modules on psim (`#8212 <https://github.com/tier4/autoware.universe/issues/8212>`_)
+* fix(simple_planning_simulator): fix publised acc of actuation simulator (`#8169 <https://github.com/tier4/autoware.universe/issues/8169>`_)
+* feat(simple_planning_simulator): add actuation command simulator (`#8065 <https://github.com/tier4/autoware.universe/issues/8065>`_)
+  * feat(simple_planning_simulator): add actuation command simulator
+  tmp
+  add
+  * remove unused functions
+  * common map
+  * pre-commit
+  * update readme
+  * add test
+  install test dir
+  fix test
+  * pre-commit
+  * clean up test for for scalability parameter
+  * fix typo
+  ---------
+  Co-authored-by: Takamasa Horibe <horibe.takamasa@gmail.com>
+* feat: add `autoware\_` prefix to `lanelet2_extension` (`#7640 <https://github.com/tier4/autoware.universe/issues/7640>`_)
+* feat(simple_planning_simulator): add new vehicle model with falling down (`#7651 <https://github.com/tier4/autoware.universe/issues/7651>`_)
+  * add new vehicle model
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/tier4/autoware.universe/issues/7594>`_)
+* fix(simple_planning_simulator): fix duplicateBranch warnings (`#7574 <https://github.com/tier4/autoware.universe/issues/7574>`_)
+  * fix(simple_planning_simulator): fix duplicateBranch warnings
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* refactor(motion_utils)!: add autoware prefix and include dir (`#7539 <https://github.com/tier4/autoware.universe/issues/7539>`_)
+  refactor(motion_utils): add autoware prefix and include dir
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* refactor(vehicle_info_utils)!: prefix package and namespace with autoware (`#7353 <https://github.com/tier4/autoware.universe/issues/7353>`_)
+  * chore(autoware_vehicle_info_utils): rename header
+  * chore(bpp-common): vehicle info
+  * chore(path_optimizer): vehicle info
+  * chore(velocity_smoother): vehicle info
+  * chore(bvp-common): vehicle info
+  * chore(static_centerline_generator): vehicle info
+  * chore(obstacle_cruise_planner): vehicle info
+  * chore(obstacle_velocity_limiter): vehicle info
+  * chore(mission_planner): vehicle info
+  * chore(obstacle_stop_planner): vehicle info
+  * chore(planning_validator): vehicle info
+  * chore(surround_obstacle_checker): vehicle info
+  * chore(goal_planner): vehicle info
+  * chore(start_planner): vehicle info
+  * chore(control_performance_analysis): vehicle info
+  * chore(lane_departure_checker): vehicle info
+  * chore(predicted_path_checker): vehicle info
+  * chore(vehicle_cmd_gate): vehicle info
+  * chore(obstacle_collision_checker): vehicle info
+  * chore(operation_mode_transition_manager): vehicle info
+  * chore(mpc): vehicle info
+  * chore(control): vehicle info
+  * chore(common): vehicle info
+  * chore(perception): vehicle info
+  * chore(evaluator): vehicle info
+  * chore(freespace): vehicle info
+  * chore(planning): vehicle info
+  * chore(vehicle): vehicle info
+  * chore(simulator): vehicle info
+  * chore(launch): vehicle info
+  * chore(system): vehicle info
+  * chore(sensing): vehicle info
+  * fix(autoware_joy_controller): remove unused deps
+  ---------
+* refactor(simple_planning_simulator): remove static odom tf publisher (`#7265 <https://github.com/tier4/autoware.universe/issues/7265>`_)
+* feat!: replace autoware_auto_msgs with autoware_msgs for simulator modules (`#7248 <https://github.com/tier4/autoware.universe/issues/7248>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* feat!: remove autoware_auto_tf2 package (`#7218 <https://github.com/tier4/autoware.universe/issues/7218>`_)
+  * feat!: remove autoware_auto_geometry package
+  * docs: remove autoware_auto_geometry package from docs
+  * feat!: remove autoware_auto_tf2 package
+  * fix: remove from autoware_auto_tf2 packages from docs page
+  ---------
+* chore(simple_planning_simulator): add maintainer (`#7026 <https://github.com/tier4/autoware.universe/issues/7026>`_)
+* chore(simple_planning_simulator): publish control mode before the self-position is given (`#7008 <https://github.com/tier4/autoware.universe/issues/7008>`_)
+* feat(learned_model): create package (`#6395 <https://github.com/tier4/autoware.universe/issues/6395>`_)
+  Co-authored-by: Tomas Nagy <tomas@pmc.sk>
+* Contributors: Autumn60, Dawid Moszyński, Esteve Fernandez, Go Sakayori, Kosuke Takeuchi, M. Fatih Cırıt, Maxime CLEMENT, Ryohsuke Mitsudome, Ryuta Kambe, Satoshi OTA, Takayuki Murooka, Tomas Nagy, Tomoya Kimura, Yuki TAKAGI, Yutaka Kondo, Zulfaqar Azmi
+
 0.26.0 (2024-04-03)
 -------------------
 * feat(simple_planning_simulator): add enable_road_slope_simulation param (`#5933 <https://github.com/autowarefoundation/autoware.universe/issues/5933>`_)

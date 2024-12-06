@@ -16,6 +16,27 @@ Changelog for package mrm_emergency_stop_operator
   add support for real time param reconfigure for mrm_emergency_stop
 * Contributors: Kosuke Takeuchi, Ryohsuke Mitsudome, Takayuki Murooka, Yutaka Kondo, danielsanchezaran
 
+Forthcoming
+-----------
+* fix(cpplint): include what you use - system (`#9573 <https://github.com/tier4/autoware.universe/issues/9573>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/tier4/autoware.universe/issues/7594>`_)
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/tier4/autoware.universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* feat!: replace autoware_auto_msgs with autoware_msgs for system modules (`#7249 <https://github.com/tier4/autoware.universe/issues/7249>`_)
+  Co-authored-by: Cynthia Liu <cynthia.liu@autocore.ai>
+  Co-authored-by: NorahXiong <norah.xiong@autocore.ai>
+  Co-authored-by: beginningfan <beginning.fan@autocore.ai>
+* feat(mrm_emergency_stop_operator): add support for real time param reconfigure for mrm_emergency_stop (`#6994 <https://github.com/tier4/autoware.universe/issues/6994>`_)
+  add support for real time param reconfigure for mrm_emergency_stop
+* Contributors: Esteve Fernandez, Kosuke Takeuchi, M. Fatih Cırıt, Ryohsuke Mitsudome, Takayuki Murooka, Yutaka Kondo, danielsanchezaran
+
 0.26.0 (2024-04-03)
 -------------------
 * chore(mrm_emergency_stop_operator): add a maintainer for mrm operator… (`#3489 <https://github.com/autowarefoundation/autoware.universe/issues/3489>`_)
