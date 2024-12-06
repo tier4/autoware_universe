@@ -30,6 +30,13 @@ from launch_ros.descriptions import ComposableNode
 from launch_ros.substitutions import FindPackageShare
 import yaml
 
+def get_control_cmd_topic(context):
+    is_redundant = LaunchConfiguration('launch_redundancy_system_components').perform(context)
+    system_run_mode = LaunchConfiguration('system_run_mode').perform(context)
+
+    if is_redundant.lower() == 'true' and system_run_mode.lower() == 'planning_simulation':
+        return '/main/control/command/control_cmd'
+    return '/control/command/control_cmd'
 
 def launch_setup(context, *args, **kwargs):
     with open(LaunchConfiguration("vehicle_param_file").perform(context), "r") as f:
@@ -218,7 +225,7 @@ def launch_setup(context, *args, **kwargs):
             ("input/kinematics", "/localization/kinematic_state"),
             ("input/acceleration", "/localization/acceleration"),
             ("output/vehicle_cmd_emergency", "/control/command/emergency_cmd"),
-            ("output/control_cmd", "/control/command/control_cmd"),
+            ("output/control_cmd", get_control_cmd_topic(context)),
             ("output/gear_cmd", "/control/command/gear_cmd"),
             ("output/turn_indicators_cmd", "/control/command/turn_indicators_cmd"),
             ("output/hazard_lights_cmd", "/control/command/hazard_lights_cmd"),
