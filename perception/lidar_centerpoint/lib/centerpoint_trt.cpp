@@ -63,51 +63,6 @@ CenterPointTRT::CenterPointTRT(
   cudaStreamCreate(&stream_);
 }
 
-void CenterPointTRT::initPriorityMap()
-{
-  // initialize priority score map
-  std::vector<std::pair<float, unsigned int>> priority_score_map;
-
-  // random number generator, but fixed seed for reproducibility
-  std::mt19937 generator(0);
-  std::normal_distribution<float> normal_distribution(0.0, 1.0);
-
-  // assign priority score map
-  for (unsigned int i = 0; i < mask_size_; ++i) {
-    const int x = i % config_.grid_size_x_ - config_.grid_size_x_ / 2;
-    const int y = i / config_.grid_size_x_ - config_.grid_size_y_ / 2;
-
-    const float pos_x = x * config_.voxel_size_x_;
-    const float pos_y = y * config_.voxel_size_y_;
-
-    // absolute rectangular hyperbola to focus on crosssection
-    // multiply sigmoid function to prioritize the front area
-    const float score_a = abs((pos_x - 15.0) * pos_y) * (1 / (1 + exp(pos_x * 0.3)) + 0.75);
-    // ellipse area focus on (10,0) and (150,0)
-    const float score_b = sqrt((pos_x - 150) * (pos_x - 150) + pos_y * pos_y) +
-                          sqrt((pos_x - 10) * (pos_x - 10) + pos_y * pos_y) - 140;
-    // total score with weight
-    // add noise to extend detection area in low-score area
-    const float score =
-      sqrt(score_a * 0.1 + score_b * 2.5) + normal_distribution(generator) * score_b * 0.01;
-
-    priority_score_map.push_back(std::make_pair(score, i));
-  }
-
-  // sort priority map and assign to the priority_map_
-  for (unsigned int i = 0; i < mask_size_; ++i) {
-  }
-  std::sort(
-    priority_score_map.begin(), priority_score_map.end(),
-    [](const std::pair<float, unsigned int> & a, const std::pair<float, unsigned int> & b) {
-      return a.first < b.first;
-    });
-
-  for (unsigned int i = 0; i < mask_size_; ++i) {
-    priority_map_[i] = priority_score_map[i].second;
-  }
-}
-
 CenterPointTRT::~CenterPointTRT()
 {
   if (stream_) {
@@ -154,6 +109,52 @@ void CenterPointTRT::initPtr()
   mask_d_ = cuda::make_unique<unsigned int[]>(mask_size_);
   priority_map_d_ = cuda::make_unique<unsigned int[]>(mask_size_);
   num_voxels_d_ = cuda::make_unique<unsigned int[]>(1);
+}
+
+void CenterPointTRT::initPriorityMap()
+{
+  // initialize priority score map
+  std::vector<std::pair<float, unsigned int>> priority_score_map;
+  priority_score_map.reserve(mask_size_);
+
+  // random number generator, but fixed seed for reproducibility
+  std::mt19937 generator(0);
+  std::normal_distribution<float> normal_distribution(0.0, 1.0);
+
+  // assign priority score map
+  for (unsigned int i = 0; i < mask_size_; ++i) {
+    const int x = i % config_.grid_size_x_ - config_.grid_size_x_ / 2;
+    const int y = i / config_.grid_size_x_ - config_.grid_size_y_ / 2;
+
+    const float pos_x = x * config_.voxel_size_x_;
+    const float pos_y = y * config_.voxel_size_y_;
+
+    // absolute rectangular hyperbola to focus on crosssection
+    // multiply sigmoid function to prioritize the front area
+    const float score_a = abs((pos_x - 15.0) * pos_y) * (1 / (1 + exp(pos_x * 0.3)) + 0.75);
+    // ellipse area focus on (10,0) and (150,0)
+    const float score_b = sqrt((pos_x - 150) * (pos_x - 150) + pos_y * pos_y) +
+                          sqrt((pos_x - 10) * (pos_x - 10) + pos_y * pos_y) - 140;
+    // total score with weight
+    // add noise to extend detection area in low-score area
+    const float score =
+      sqrt(score_a * 0.1 + score_b * 2.5) + normal_distribution(generator) * score_b * 0.01;
+
+    priority_score_map.push_back(std::make_pair(score, i));
+  }
+
+  // sort priority map and assign to the priority_map_
+  for (unsigned int i = 0; i < mask_size_; ++i) {
+  }
+  std::sort(
+    priority_score_map.begin(), priority_score_map.end(),
+    [](const std::pair<float, unsigned int> & a, const std::pair<float, unsigned int> & b) {
+      return a.first < b.first;
+    });
+
+  for (unsigned int i = 0; i < mask_size_; ++i) {
+    priority_map_[i] = priority_score_map[i].second;
+  }
 }
 
 bool CenterPointTRT::detect(
