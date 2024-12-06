@@ -25,8 +25,8 @@ DummyGearCmdPublisher::DummyGearCmdPublisher(const rclcpp::NodeOptions & node_op
   // Subscriber
 
   // Publisher
-  pub_gear_cmd_ = create_publisher<autoware_auto_vehicle_msgs::msg::GearCommand>(
-    "~/output/gear_cmd", 10);
+  pub_gear_cmd_ =
+    create_publisher<autoware_auto_vehicle_msgs::msg::GearCommand>("~/output/gear_cmd", 10);
 
   // Service
 
@@ -34,13 +34,12 @@ DummyGearCmdPublisher::DummyGearCmdPublisher(const rclcpp::NodeOptions & node_op
 
   // Timer
   using namespace std::literals::chrono_literals;
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), 1s, std::bind(&DummyGearCmdPublisher::onTimer, this));
+  timer_ =
+    rclcpp::create_timer(this, get_clock(), 1s, std::bind(&DummyGearCmdPublisher::onTimer, this));
 
   // State
 
   // Diagnostics
-
 }
 
 void DummyGearCmdPublisher::onTimer()

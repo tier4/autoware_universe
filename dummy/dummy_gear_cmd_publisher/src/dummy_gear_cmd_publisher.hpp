@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef DUMMY_GEAR_CMD_PUBLISHER__DUMMY_GEAR_CMD_PUBLISHER_HPP_
-#define DUMMY_GEAR_CMD_PUBLISHER__DUMMY_GEAR_CMD_PUBLISHER_HPP_
+#ifndef DUMMY_GEAR_CMD_PUBLISHER_HPP_
+#define DUMMY_GEAR_CMD_PUBLISHER_HPP_
 
 // include
-#include <autoware_auto_vehicle_msgs/msg/gear_command.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+#include <autoware_auto_vehicle_msgs/msg/gear_command.hpp>
 
 namespace dummy_gear_cmd_publisher
 {
@@ -48,8 +49,7 @@ private:
   // State
 
   // Diagnostics
-
 };
 }  // namespace dummy_gear_cmd_publisher
 
-#endif  // DUMMY_GEAR_CMD_PUBLISHER__DUMMY_GEAR_CMD_PUBLISHER_HPP_
+#endif  // DUMMY_GEAR_CMD_PUBLISHER_HPP_
