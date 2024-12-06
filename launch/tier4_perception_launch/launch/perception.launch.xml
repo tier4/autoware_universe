@@ -85,7 +85,7 @@
   <arg name="use_image_segmentation_based_filter" default="false" description="use image_segmentation_based_filter in clustering"/>
   <arg
     name="use_empty_dynamic_object_publisher"
-    default="false"
+    default="true"
     description="if use_empty_dynamic_object_publisher:=true, /perception/object_recognition/objects topic has an empty DynamicObjectArray"
   />
   <arg name="pointcloud_container_name" default="pointcloud_container"/>
