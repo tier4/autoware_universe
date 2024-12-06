@@ -10,11 +10,11 @@ The availability converter subscribes `/system/operation_mode/availability` and 
 
 ### Interface
 
-| Interface Type | Interface Name                        | Data Type                                          | Description                   |
-| -------------- | ------------------------------------- | -------------------------------------------------- | ----------------------------- |
-| subscriber     | `/system/operation_mode/availability` | `tier4_system_msgs/msg/OperationModeAvailability`  | Usable behavior of the ego.   |
-| subscriber     | `/vehicle/status/mrm_state`           | `autoware_vehicle_msgs/msg/ControlModeReport` | Ego control mode.             |
-| udp sender     | none                                  | `struct Availability`                              | Combination of the above two. |
+| Interface Type | Interface Name                        | Data Type                                         | Description                   |
+| -------------- | ------------------------------------- | ------------------------------------------------- | ----------------------------- |
+| subscriber     | `/system/operation_mode/availability` | `tier4_system_msgs/msg/OperationModeAvailability` | Usable behavior of the ego.   |
+| subscriber     | `/vehicle/status/mrm_state`           | `autoware_vehicle_msgs/msg/ControlModeReport`     | Ego control mode.             |
+| udp sender     | none                                  | `struct Availability`                             | Combination of the above two. |
 
 ## mrm converter
 
@@ -42,7 +42,7 @@ The log　converter receive udp packets into a structure called `ElectionCommuni
 | udp receiver   | none                                   | `struct ElectionCommunication`                | messages among election nodes. |
 | udp receiver   | none                                   | `struct ElectionStatus`                       | Leader Election status.        |
 | publisher      | `/system/election/communication`       | `tier4_system_msgs/msg/ElectionCommunication` | messages among election nodes. |
-| publisher      | `/system/election/status`              | `autoware_adapi_v1_msgs/msg/MrmState`              | Leader Election status.        |
+| publisher      | `/system/election/status`              | `autoware_adapi_v1_msgs/msg/MrmState`         | Leader Election status.        |
 | publisher      | `/system/fail_safe/over_all/mrm_state` | `autoware_adapi_v1_msgs/msg/mrm_state`        | System-wide MRM status.        |
 
 ## Parameters
