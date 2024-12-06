@@ -55,11 +55,15 @@ class RemapNode(Node):
         if msg.mode == 2:
             self.operation_mode_autonomous_state = True
             if self.tmp_operation_mode_autonomous_state != self.operation_mode_autonomous_state:
-                self.get_logger().info(f"Operation mode changed: {self.operation_mode_autonomous_state}")
+                self.get_logger().info(
+                    f"Operation mode changed: {self.operation_mode_autonomous_state}"
+                )
         else:
             self.operation_mode_autonomous_state = False
             if self.tmp_operation_mode_autonomous_state != self.operation_mode_autonomous_state:
-                self.get_logger().info(f"Operation mode changed: {self.operation_mode_autonomous_state}")
+                self.get_logger().info(
+                    f"Operation mode changed: {self.operation_mode_autonomous_state}"
+                )
 
     def trajectory_callback(self, msg):
         if self.autonomous_mode or self.operation_mode_autonomous_state == False:
