@@ -1,0 +1,33 @@
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package autoware_trajectory
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Forthcoming
+-----------
+* fix(cpplint): include what you use - common (`#9564 <https://github.com/tier4/autoware.universe/issues/9564>`_)
+* refactor: correct spelling (`#9528 <https://github.com/tier4/autoware.universe/issues/9528>`_)
+* fix(autoware_trajectory): autoware_trajectory bug (`#9475 <https://github.com/tier4/autoware.universe/issues/9475>`_)
+  fix autoware_trajectory bug
+* refactor(autoware_trajectory): refactor autoware_trajectory (`#9356 <https://github.com/tier4/autoware.universe/issues/9356>`_)
+* feat(behavior_velocity_stop_line): replace autoware_motion_utils to autoware_trajectory (`#9299 <https://github.com/tier4/autoware.universe/issues/9299>`_)
+  * feat(behavior_velocity_stop_line): replace autoware_motion_utils to autoware_trajectory
+  * update
+  ---------
+* feat(autoware_trajectory): change default value of min_points (`#9315 <https://github.com/tier4/autoware.universe/issues/9315>`_)
+* fix(autoware_trajectory): fix bug of autoware_trajectory (`#9314 <https://github.com/tier4/autoware.universe/issues/9314>`_)
+* feat(autoware_trajectory): change interface of InterpolatedArray (`#9264 <https://github.com/tier4/autoware.universe/issues/9264>`_)
+  change interface of InterpolateArray
+* feat(autoware_trajectory): move trajectory_container from autoware_motion_utils to a new package (`#9253 <https://github.com/tier4/autoware.universe/issues/9253>`_)
+  * create trajectory container package
+  * update
+  * update
+  * style(pre-commit): autofix
+  * update codeowner
+  * update
+  * fix cmake
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* Contributors: M. Fatih Cırıt, Yukinari Hisaki
+
+0.26.0 (2024-04-03)
+-------------------
