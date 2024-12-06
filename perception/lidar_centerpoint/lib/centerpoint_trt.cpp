@@ -87,6 +87,7 @@ void CenterPointTRT::initPriorityMap()
     const float score_b = sqrt((pos_x - 150) * (pos_x - 150) + pos_y * pos_y) +
                           sqrt((pos_x - 10) * (pos_x - 10) + pos_y * pos_y) - 140;
     // total score with weight
+    // add noise to extend detection area in low-score area
     const float score =
       sqrt(score_a * 0.1 + score_b * 2.5) + normal_distribution(generator) * score_b * 0.01;
 
