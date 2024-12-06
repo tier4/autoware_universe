@@ -1,0 +1,7 @@
+<launch>
+  <arg name="dummy_gear_cmd_publisher_param_path" default="$(find-pkg-share dummy_gear_cmd_publisher)/config/dummy_gear_cmd_publisher.param.yaml"/>
+
+  <node pkg="dummy_gear_cmd_publisher" exec="dummy_gear_cmd_publisher_node" name="dummy_gear_cmd_publisher" output="screen">
+    <remap from="~/output/gear_cmd" to="/control/command/gear_cmd"/>
+  </node>
+</launch>
