@@ -85,6 +85,24 @@ def launch_setup(context, *args, **kwargs):
                 ],
             ),
             ComposableNode(
+                package="autoware_traffic_light_signals_merger",
+                plugin="autoware::traffic_light::TrafficLightSignalsMergerNode",
+                name="traffic_light_signals_merger",
+                namespace="classification",
+                remappings=[
+                    ("input/car_signals", "classified/car/traffic_signals"),
+                    ("input/pedestrian_signals", "classified/pedestrian/traffic_signals"),
+                    (
+                        "input/expect_rois",
+                        f"/perception/traffic_light_recognition/{namespace}/detection/expect/rois",
+                    ),
+                    ("output/traffic_light_signals", "traffic_signals"),
+                ],
+                extra_arguments=[
+                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
+                ],
+            ),
+            ComposableNode(
                 package="traffic_light_visualization",
                 plugin="traffic_light::TrafficLightRoiVisualizerNodelet",
                 name="traffic_light_roi_visualizer",
@@ -156,7 +174,10 @@ def launch_setup(context, *args, **kwargs):
         condition=IfCondition(LaunchConfiguration("enable_fine_detection")),
     )
 
-    return [container, decompressor_loader, fine_detector_loader]
+    return [container,
+        # decompressor_loader,
+        # traffic_light_selector_loader,
+    ]
 
 
 def generate_launch_description():
