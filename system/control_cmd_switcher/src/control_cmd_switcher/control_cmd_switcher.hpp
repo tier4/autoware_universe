@@ -34,21 +34,16 @@ public:
 
 private:
   // Subscribers
-  rclcpp::Subscription<autoware_control_msgs::msg::Control>::SharedPtr
-    sub_main_control_cmd_;
-  rclcpp::Subscription<autoware_control_msgs::msg::Control>::SharedPtr
-    sub_sub_control_cmd_;
+  rclcpp::Subscription<autoware_control_msgs::msg::Control>::SharedPtr sub_main_control_cmd_;
+  rclcpp::Subscription<autoware_control_msgs::msg::Control>::SharedPtr sub_sub_control_cmd_;
   rclcpp::Subscription<tier4_system_msgs::msg::ElectionStatus>::SharedPtr sub_election_status_main_;
   rclcpp::Subscription<tier4_system_msgs::msg::ElectionStatus>::SharedPtr sub_election_status_sub_;
-  void onMainControlCmd(
-    const autoware_control_msgs::msg::Control::ConstSharedPtr msg);
-  void onSubControlCmd(
-    const autoware_control_msgs::msg::Control::ConstSharedPtr msg);
+  void onMainControlCmd(const autoware_control_msgs::msg::Control::ConstSharedPtr msg);
+  void onSubControlCmd(const autoware_control_msgs::msg::Control::ConstSharedPtr msg);
   void onElectionStatus(const tier4_system_msgs::msg::ElectionStatus::ConstSharedPtr msg);
 
   // Publisher
-  rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr
-    pub_control_cmd_;
+  rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr pub_control_cmd_;
 
   std::atomic<bool> use_main_control_cmd_;
 };

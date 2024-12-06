@@ -22,15 +22,13 @@ ControlCmdSwitcher::ControlCmdSwitcher(const rclcpp::NodeOptions & node_options)
 : Node("control_cmd_switcher", node_options)
 {
   // Subscriber
-  sub_main_control_cmd_ =
-    create_subscription<autoware_control_msgs::msg::Control>(
-      "~/input/main/control_cmd", rclcpp::QoS{10},
-      std::bind(&ControlCmdSwitcher::onMainControlCmd, this, std::placeholders::_1));
+  sub_main_control_cmd_ = create_subscription<autoware_control_msgs::msg::Control>(
+    "~/input/main/control_cmd", rclcpp::QoS{10},
+    std::bind(&ControlCmdSwitcher::onMainControlCmd, this, std::placeholders::_1));
 
-  sub_sub_control_cmd_ =
-    create_subscription<autoware_control_msgs::msg::Control>(
-      "~/input/sub/control_cmd", rclcpp::QoS{10},
-      std::bind(&ControlCmdSwitcher::onSubControlCmd, this, std::placeholders::_1));
+  sub_sub_control_cmd_ = create_subscription<autoware_control_msgs::msg::Control>(
+    "~/input/sub/control_cmd", rclcpp::QoS{10},
+    std::bind(&ControlCmdSwitcher::onSubControlCmd, this, std::placeholders::_1));
 
   sub_election_status_main_ = create_subscription<tier4_system_msgs::msg::ElectionStatus>(
     "~/input/election/status/main", rclcpp::QoS{10},
@@ -41,8 +39,8 @@ ControlCmdSwitcher::ControlCmdSwitcher(const rclcpp::NodeOptions & node_options)
     std::bind(&ControlCmdSwitcher::onElectionStatus, this, std::placeholders::_1));
 
   // Publisher
-  pub_control_cmd_ = create_publisher<autoware_control_msgs::msg::Control>(
-    "~/output/control_cmd", rclcpp::QoS{1});
+  pub_control_cmd_ =
+    create_publisher<autoware_control_msgs::msg::Control>("~/output/control_cmd", rclcpp::QoS{1});
 
   // Initialize
   use_main_control_cmd_ = true;
