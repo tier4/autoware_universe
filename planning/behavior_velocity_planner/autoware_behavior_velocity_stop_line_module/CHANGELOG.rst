@@ -2,8 +2,8 @@
 Changelog for package autoware_behavior_velocity_stop_line_module
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.40.0 (2024-12-09)
+-------------------
 * fix(autoware_behavior_velocity_stop_line_module): remove unused function (`#9591 <https://github.com/tier4/autoware.universe/issues/9591>`_)
 * chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/tier4/autoware.universe/issues/9587>`_)
   * chore(package.xml): bump version to 0.39.0

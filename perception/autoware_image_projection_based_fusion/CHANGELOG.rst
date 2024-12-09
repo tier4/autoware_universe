@@ -2,8 +2,8 @@
 Changelog for package autoware_image_projection_based_fusion
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.40.0 (2024-12-09)
+-------------------
 * fix(autoware_image_projection_based_fusion): detected object roi box projection fix (`#9519 <https://github.com/tier4/autoware.universe/issues/9519>`_)
   * fix: detected object roi box projection fix
   1. eliminate misuse of std::numeric_limits<double>::min()

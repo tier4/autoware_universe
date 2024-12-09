@@ -2,8 +2,8 @@
 Changelog for package autoware_multi_object_tracker
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.40.0 (2024-12-09)
+-------------------
 * chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/tier4/autoware.universe/issues/9587>`_)
   * chore(package.xml): bump version to 0.39.0
   * fix: fix ticket links in CHANGELOG.rst

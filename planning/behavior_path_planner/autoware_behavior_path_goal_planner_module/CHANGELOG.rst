@@ -2,8 +2,8 @@
 Changelog for package autoware_behavior_path_goal_planner_module
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.40.0 (2024-12-09)
+-------------------
 * fix(goal_planner): fix isStopped judgement (`#9585 <https://github.com/tier4/autoware.universe/issues/9585>`_)
   * fix(goal_planner): fix isStopped judgement
   * fix typo
