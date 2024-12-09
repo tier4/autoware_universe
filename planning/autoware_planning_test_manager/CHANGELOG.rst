@@ -2,6 +2,27 @@
 Changelog for package autoware_planning_test_manager
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/tier4/autoware.universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* fix(cpplint): include what you use - planning (`#9570 <https://github.com/tier4/autoware.universe/issues/9570>`_)
+* refactor(test_utils): return parser as optional (`#9391 <https://github.com/tier4/autoware.universe/issues/9391>`_)
+  Co-authored-by: Mamoru Sobue <hilo.soblin@gmail.com>
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* refactor(component_interface_utils): prefix package and namespace with autoware (`#9092 <https://github.com/tier4/autoware.universe/issues/9092>`_)
+* Contributors: Esteve Fernandez, M. Fatih Cırıt, Ryohsuke Mitsudome, Yutaka Kondo, Zulfaqar Azmi
+
 0.39.0 (2024-11-25)
 -------------------
 * Merge commit '6a1ddbd08bd' into release-0.39.0

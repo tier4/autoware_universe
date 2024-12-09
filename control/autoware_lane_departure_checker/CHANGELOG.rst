@@ -2,6 +2,41 @@
 Changelog for package autoware_lane_departure_checker
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/tier4/autoware.universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* ci(pre-commit): update cpplint to 2.0.0 (`#9557 <https://github.com/tier4/autoware.universe/issues/9557>`_)
+* test(lane_departure_checker): add unit test for createVehiclePassingAreas (`#9548 <https://github.com/tier4/autoware.universe/issues/9548>`_)
+  * test(lane_departure_checker): add unit tests for createVehiclePassingAreas function
+  ---------
+* refactor(lane_departure_checker): move member functions to util functions (`#9547 <https://github.com/tier4/autoware.universe/issues/9547>`_)
+  * refactor(lane_departure_checker): move member functions to util functions
+  ---------
+* fix(cpplint): include what you use - control (`#9565 <https://github.com/tier4/autoware.universe/issues/9565>`_)
+* test(lane_departure_checker): add tests for calcTrajectoryDeviation(), calcMaxSearchLengthForBoundaries() (`#9029 <https://github.com/tier4/autoware.universe/issues/9029>`_)
+  * move calcTrajectoryDeviation() to separate files
+  * move calcMaxSearchLengthForBoundaries() to separate files
+  * add tests for calcTrajectoryDeviation()
+  * add tests for calcMaxSearchLengthForBoundaries()
+  ---------
+  Co-authored-by: Kyoichi Sugahara <32741405+kyoichi-sugahara@users.noreply.github.com>
+* feat: suppress warning/error of the empty predicted trajectory by MPC (`#9373 <https://github.com/tier4/autoware.universe/issues/9373>`_)
+* feat(start_planner, lane_departure_checker): speed up by updating polygons (`#9309 <https://github.com/tier4/autoware.universe/issues/9309>`_)
+  speed up by updating polygons
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, Kyoichi Sugahara, M. Fatih Cırıt, Mitsuhiro Sakamoto, Ryohsuke Mitsudome, Takayuki Murooka, Yutaka Kondo, awf-autoware-bot[bot], danielsanchezaran
+
 0.39.0 (2024-11-25)
 -------------------
 * Merge commit '6a1ddbd08bd' into release-0.39.0

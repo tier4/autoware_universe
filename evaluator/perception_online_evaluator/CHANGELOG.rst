@@ -2,6 +2,36 @@
 Changelog for package perception_online_evaluator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/tier4/autoware.universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* fix(cpplint): include what you use - evaluator (`#9566 <https://github.com/tier4/autoware.universe/issues/9566>`_)
+* refactor(perception_online_evaluator): use tier4_metric_msgs instead of diagnostic_msgs (`#9485 <https://github.com/tier4/autoware.universe/issues/9485>`_)
+* refactor(evaluators, autoware_universe_utils): rename Stat class to Accumulator and move it to autoware_universe_utils (`#9459 <https://github.com/tier4/autoware.universe/issues/9459>`_)
+  * add Accumulator class to autoware_universe_utils
+  * use Accumulator on all evaluators.
+  * pre-commit
+  * found and fixed a bug. add more tests.
+  * pre-commit
+  * Update common/autoware_universe_utils/include/autoware/universe_utils/math/accumulator.hpp
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  ---------
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+* fix(evaluator): missing dependency in evaluator components (`#9074 <https://github.com/tier4/autoware.universe/issues/9074>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, Kem (TiankuiXian), Kotaro Uetake, M. Fatih Cırıt, Ryohsuke Mitsudome, Yutaka Kondo, ぐるぐる
+
 0.39.0 (2024-11-25)
 -------------------
 * fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/autowarefoundation/autoware.universe/issues/9304>`_)

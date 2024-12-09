@@ -2,6 +2,32 @@
 Changelog for package tier4_state_rviz_plugin
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/tier4/autoware.universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* fix(cpplint): include what you use - common (`#9564 <https://github.com/tier4/autoware.universe/issues/9564>`_)
+* feat(tier4_state_rviz_plugin): check for abrupt deceleration (`#9474 <https://github.com/tier4/autoware.universe/issues/9474>`_)
+  * add abrupt deceleration checking feature to velocity steering factors panel
+  * use spin box instead of slider & change layout
+  * set minimum input to 0.0
+  * change accent color to Freak Pink
+  ---------
+* fix(factors_panel): sort by distance to stop/decel or point where it starts moving the steering (`#9346 <https://github.com/tier4/autoware.universe/issues/9346>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* fix: missing dependency in common components (`#9072 <https://github.com/tier4/autoware.universe/issues/9072>`_)
+* Contributors: Esteve Fernandez, M. Fatih Cırıt, Mitsuhiro Sakamoto, Ryohsuke Mitsudome, Satoshi OTA, Yutaka Kondo, ぐるぐる
+
 0.39.0 (2024-11-25)
 -------------------
 * Merge commit '6a1ddbd08bd' into release-0.39.0

@@ -2,6 +2,21 @@
 Changelog for package vehicle_velocity_converter
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/tier4/autoware.universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* refactor(vehicle_velocity_converter)!: prefix package and namespace with autoware (`#8967 <https://github.com/tier4/autoware.universe/issues/8967>`_)
+  * add autoware prefix
+  * fix conflict
+  ---------
+  Co-authored-by: Yamato Ando <yamato.ando@gmail.com>
+* Contributors: Masaki Baba, Ryohsuke Mitsudome
+
 0.39.0 (2024-11-25)
 -------------------
 * fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/autowarefoundation/autoware.universe/issues/9304>`_)

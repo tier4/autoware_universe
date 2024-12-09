@@ -2,6 +2,46 @@
 Changelog for package autoware_detected_object_validation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/tier4/autoware.universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* fix(cpplint): include what you use - perception (`#9569 <https://github.com/tier4/autoware.universe/issues/9569>`_)
+* feat(object_lanelet_filter): add configurable margin for object lanel… (`#9240 <https://github.com/tier4/autoware.universe/issues/9240>`_)
+  * feat(object_lanelet_filter): add configurable margin for object lanelet filter
+  modified:   perception/autoware_detected_object_validation/src/lanelet_filter/lanelet_filter.cpp
+  * feat(object_lanelet_filter): add condition to check wheter polygon is empty in debug mode
+  * feat(object_lanelet_filter): fix cppcheck
+  * fix: brig back missing type definition
+  * feat: add stop watch for processing time in object lanelet filter
+  * feat(object_lanelet_filter): remove extra comment line
+  * feat(_object_lanelet_filter): udpate readme
+  * style(pre-commit): autofix
+  * Update perception/autoware_detected_object_validation/src/lanelet_filter/debug.cpp
+  Co-authored-by: Shintaro Tomie <58775300+Shin-kyoto@users.noreply.github.com>
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: Sebastian Zęderowski <szederowski@autonomous-systems.pl>
+  Co-authored-by: Taekjin LEE <taekjin.lee@tier4.jp>
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Shintaro Tomie <58775300+Shin-kyoto@users.noreply.github.com>
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* fix(autoware_detected_object_validation): fix bugprone-incorrect-roundings (`#9220 <https://github.com/tier4/autoware.universe/issues/9220>`_)
+  fix: bugprone-incorrect-roundings
+* fix(autoware_detected_object_validation): fix clang-diagnostic-error (`#9215 <https://github.com/tier4/autoware.universe/issues/9215>`_)
+  fix: clang-c-error
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, M. Fatih Cırıt, Ryohsuke Mitsudome, Sebastian Zęderowski, Yutaka Kondo, kobayu858
+
 0.39.0 (2024-11-25)
 -------------------
 * Merge commit '6a1ddbd08bd' into release-0.39.0

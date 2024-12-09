@@ -2,6 +2,31 @@
 Changelog for package autoware_lidar_centerpoint
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/tier4/autoware.universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* fix(cpplint): include what you use - perception (`#9569 <https://github.com/tier4/autoware.universe/issues/9569>`_)
+* fix(autoware_lidar_centerpoint): fix clang-diagnostic-delete-abstract-non-virtual-dtor (`#9515 <https://github.com/tier4/autoware.universe/issues/9515>`_)
+* feat(autoware_lidar_centerpoint): added a check to notify if we are dropping pillars (`#9488 <https://github.com/tier4/autoware.universe/issues/9488>`_)
+  * feat: added a check to notify if we are dropping pillars
+  * chore: updated text
+  * chore: throttled the message
+  ---------
+* fix(autoware_lidar_centerpoint): fix clang-diagnostic-unused-private-field (`#9471 <https://github.com/tier4/autoware.universe/issues/9471>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/tier4/autoware.universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/tier4/autoware.universe/issues/9266>`_) (`#9284 <https://github.com/tier4/autoware.universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, Kenzo Lobos Tsunekawa, M. Fatih Cırıt, Ryohsuke Mitsudome, Yutaka Kondo, kobayu858
+
 0.39.0 (2024-11-25)
 -------------------
 * fix: fix ticket links to point to https://github.com/autowarefoundation/autoware.universe (`#9304 <https://github.com/autowarefoundation/autoware.universe/issues/9304>`_)
