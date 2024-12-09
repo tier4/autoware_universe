@@ -49,6 +49,16 @@ bool position_filter(
   const geometry_msgs::msg::Point & current_pose, const double forward_distance,
   const double backward_distance);
 
+/**
+ * @brief Checks if the object classification represents a vehicle (CAR, TRUCK, BUS, TRAILER,
+ * MOTORCYCLE).
+ *
+ * @param classification The object classification to check.
+ * @return true If the classification is a vehicle type.
+ * @return false Otherwise.
+ */
+bool is_vehicle(const ObjectClassification & classification);
+
 }  // namespace autoware::behavior_path_planner::utils::path_safety_checker::filter
 
 namespace autoware::behavior_path_planner::utils::path_safety_checker
