@@ -160,18 +160,18 @@ void TrtYoloXNode::onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg)
     return;
   }
   auto & mask = masks.at(0);
-std::vector<cv::Scalar> objects_cl_map_ = {
+  std::vector<cv::Scalar> objects_cl_map_ = {
     cv::Scalar(255, 255, 255),  // White
     cv::Scalar(0, 0, 255),      // Red
-    cv::Scalar(0, 255, 0),       // Green
+    cv::Scalar(0, 255, 0),      // Green
     cv::Scalar(100, 0, 200),    // Purple
     cv::Scalar(128, 255, 0),    // Lime
     cv::Scalar(255, 255, 0),    // Yellow
     cv::Scalar(255, 0, 32),     // Pinkish red
     cv::Scalar(255, 165, 0),    // Orange
     cv::Scalar(255, 0, 255),    // Magenta
-    cv::Scalar(0, 160, 165)    // Cyan-like
-};
+    cv::Scalar(0, 160, 165)     // Cyan-like
+  };
 
   for (const auto & yolox_object : objects.at(0)) {
     tier4_perception_msgs::msg::DetectedObjectWithFeature object;
@@ -190,8 +190,8 @@ std::vector<cv::Scalar> objects_cl_map_ = {
     const auto bottom =
       std::min(static_cast<int>(object.feature.roi.y_offset + object.feature.roi.height), height);
     cv::rectangle(
-      in_image_ptr->image, cv::Point(left, top), cv::Point(right, bottom), objects_cl_map_.at(yolox_object.type), 3,
-      8, 0);
+      in_image_ptr->image, cv::Point(left, top), cv::Point(right, bottom),
+      objects_cl_map_.at(yolox_object.type), 3, 8, 0);
     // Refine mask: replacing segmentation mask by roi class
     // This should remove when the segmentation accuracy is high
     if (is_roi_overlap_segment_ && trt_yolox_->getMultitaskNum() > 0) {
