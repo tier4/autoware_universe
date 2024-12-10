@@ -197,8 +197,8 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
 
     return [
         GroupAction([PushRosNamespace(namespace), container]),
-        decompressor_loader,
-        fine_detector_loader,
+        # decompressor_loader,
+        # traffic_light_selector_loader,
     ]
 
 

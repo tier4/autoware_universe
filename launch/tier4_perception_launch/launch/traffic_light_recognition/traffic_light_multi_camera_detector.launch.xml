@@ -1,15 +1,14 @@
 <?xml version="1.0"?>
 <launch>
   <group>
-      <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light_detector.launch.xml">
-        <arg name="namespace" value="camera6"/>
-      </include>
-
+    <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light_detector.launch.xml">
+      <arg name="namespace" value="camera6"/>
+    </include>
   </group>
 
   <group>
-      <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light_detector.launch.xml">
-        <arg name="namespace" value="camera7"/>
-      </include>
+    <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light_detector.launch.xml">
+      <arg name="namespace" value="camera7"/>
+    </include>
   </group>
 </launch>
