@@ -4,6 +4,7 @@
   <arg name="input/image" default="/sensing/camera/camera0/image_rect_color"/>
   <arg name="output/objects" default="/perception/object_recognition/detection/rois0"/>
   <arg name="output/mask" default="/perception/object_recognition/detection/mask0"/>
+  <arg name="node_name" default="autoware_tensorrt_yolox_node" description="node name"/>
   <arg
     name="model_name"
     default="yolox-sPlus-opt-pseudoV2-T4-960x960-T4-seg16cls"
@@ -21,7 +22,7 @@
     <param from="$(var param_file)"/>
   </node>
 
-  <node pkg="autoware_tensorrt_yolox" exec="autoware_tensorrt_yolox_node_exe" name="tensorrt_yolox" output="screen">
+  <node pkg="autoware_tensorrt_yolox" exec="autoware_tensorrt_yolox_node_exe" name="$(var node_name)_tensorrt_yolox_node" output="screen">
     <remap from="~/in/image" to="$(var input/image)"/>
     <remap from="~/out/objects" to="$(var output/objects)"/>
     <remap from="~/out/mask" to="$(var output/mask)"/>
