@@ -95,10 +95,11 @@ __global__ void generateBaseFeatures_kernel(
   unsigned int * mask, float * voxels, int grid_y_size, int grid_x_size, int max_voxel_size,
   unsigned int * pillar_num, float * voxel_features, float * voxel_num, int * voxel_idxs)
 {
-  unsigned int voxel_idx = blockIdx.x * blockDim.x + threadIdx.x;
-  unsigned int voxel_idy = blockIdx.y * blockDim.y + threadIdx.y;
-
-  if (voxel_idx >= grid_x_size || voxel_idy >= grid_y_size) return;
+  // flip x and y to process in a row-major order
+  unsigned int voxel_idx_inverted = blockIdx.y * blockDim.y + threadIdx.y;
+  unsigned int voxel_idy = blockIdx.x * blockDim.x + threadIdx.x;
+  if (voxel_idx_inverted >= grid_x_size || voxel_idy >= grid_y_size) return;
+  unsigned int voxel_idx = grid_x_size - 1 - voxel_idx_inverted;
 
   unsigned int voxel_index = voxel_idy * grid_x_size + voxel_idx;
   unsigned int count = mask[voxel_index];
@@ -130,9 +131,10 @@ cudaError_t generateBaseFeatures_launch(
   unsigned int * pillar_num, float * voxel_features, float * voxel_num, int * voxel_idxs,
   cudaStream_t stream)
 {
+  // flip x and y to process in a row-major order
   dim3 threads = {32, 32};
   dim3 blocks = {
-    (grid_x_size + threads.x - 1) / threads.x, (grid_y_size + threads.y - 1) / threads.y};
+    (grid_y_size + threads.x - 1) / threads.x, (grid_x_size + threads.y - 1) / threads.y};
 
   generateBaseFeatures_kernel<<<blocks, threads, 0, stream>>>(
     mask, voxels, grid_y_size, grid_x_size, max_voxel_size, pillar_num, voxel_features, voxel_num,
