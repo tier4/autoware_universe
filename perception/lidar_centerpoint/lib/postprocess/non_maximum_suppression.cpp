@@ -19,6 +19,7 @@
 #include "object_recognition_utils/object_recognition_utils.hpp"
 namespace centerpoint
 {
+using Label = autoware_perception_msgs::msg::ObjectClassification;
 
 void NonMaximumSuppression::setParameters(const NMSParams & params)
 {
@@ -26,15 +27,8 @@ void NonMaximumSuppression::setParameters(const NMSParams & params)
   assert(params.iou_threshold_ >= 0.0 && params.iou_threshold_ <= 1.0);
 
   params_ = params;
+  search_distance_2d_sq_ = params.search_distance_2d_ * params.search_distance_2d_;
   target_class_mask_ = classNamesToBooleanMask(params.target_class_names_);
-}
-
-bool NonMaximumSuppression::isTargetLabel(const uint8_t label)
-{
-  if (label >= target_class_mask_.size()) {
-    return false;
-  }
-  return target_class_mask_.at(label);
 }
 
 bool NonMaximumSuppression::isTargetPairObject(
@@ -43,14 +37,14 @@ bool NonMaximumSuppression::isTargetPairObject(
   const auto label1 = object_recognition_utils::getHighestProbLabel(object1.classification);
   const auto label2 = object_recognition_utils::getHighestProbLabel(object2.classification);
 
-  if (isTargetLabel(label1) && isTargetLabel(label2)) {
-    return true;
+  // if labels are not the same, and one of them is pedestrian, do not suppress
+  if (label1 != label2 && (label1 == Label::PEDESTRIAN || label2 == Label::PEDESTRIAN)) {
+    return false;
   }
 
-  const auto search_sqr_dist_2d = params_.search_distance_2d_ * params_.search_distance_2d_;
   const auto sqr_dist_2d = autoware::universe_utils::calcSquaredDistance2d(
     object_recognition_utils::getPose(object1), object_recognition_utils::getPose(object2));
-  return sqr_dist_2d <= search_sqr_dist_2d;
+  return sqr_dist_2d <= search_distance_2d_sq_;
 }
 
 Eigen::MatrixXd NonMaximumSuppression::generateIoUMatrix(
