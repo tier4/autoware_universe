@@ -49,6 +49,7 @@ struct ParallelParkingParameters
   double forward_parking_lane_departure_margin{0.0};
   double forward_parking_path_interval{0.0};
   double forward_parking_max_steer_angle{0.0};
+  double forward_parking_steer_rate_lim{0.0};
   bool forward_parking_use_clothoid{false};
 
   // backward parking
@@ -57,6 +58,7 @@ struct ParallelParkingParameters
   double backward_parking_lane_departure_margin{0.0};
   double backward_parking_path_interval{0.0};
   double backward_parking_max_steer_angle{0.0};
+  double backward_parking_steer_rate_lim{0.0};
   bool backward_parking_use_clothoid{false};
 
   // pull_out
@@ -64,6 +66,7 @@ struct ParallelParkingParameters
   double pull_out_lane_departure_margin{0.0};
   double pull_out_arc_path_interval{0.0};
   double pull_out_max_steer_angle{0.0};
+  double pull_out_steer_rate_lim{0.0};
   bool pull_out_use_clothoid{false};
 };
 

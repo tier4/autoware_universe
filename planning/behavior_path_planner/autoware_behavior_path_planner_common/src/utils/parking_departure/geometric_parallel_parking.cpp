@@ -122,13 +122,14 @@ std::vector<PathWithLaneId> GeometricParallelParking::generatePullOverPaths(
   if (
     is_forward ? parameters_.forward_parking_use_clothoid
                : parameters_.backward_parking_use_clothoid) {
-    const double L_min = 0.1;
+    const double L_min = is_forward ? parameters_.forward_parking_velocity*(parameters_.forward_parking_max_steer_angle / parameters_.forward_parking_steer_rate_lim)
+                                    : parameters_.backward_parking_velocity*(parameters_.backward_parking_max_steer_angle / parameters_.backward_parking_steer_rate_lim);
     arc_paths = planOneTrialClothoid(
-      start_pose, goal_pose, R_E_far, L_min, road_lanes, shoulder_lanes, is_forward,
+      start_pose, goal_pose, R_E_far, L_min, road_lanes, pull_over_lanes, is_forward,
       left_side_parking, end_pose_offset, lane_departure_margin, arc_path_interval, {});
   } else {
     arc_paths = planOneTrial(
-      start_pose, goal_pose, R_E_far, road_lanes, shoulder_lanes, is_forward, left_side_parking,
+      start_pose, goal_pose, R_E_far, road_lanes, pull_over_lanes, is_forward, left_side_parking,
       end_pose_offset, lane_departure_margin, arc_path_interval, {});
   }
 
@@ -257,14 +258,14 @@ bool GeometricParallelParking::planPullOut(
     // plan reverse path of parking. end_pose <-> start_pose
     std::vector<PathWithLaneId> arc_paths;
     if (parameters_.pull_out_use_clothoid) {
-      const double L_min = 0.1;
+      const double L_min = parameters_.pull_out_velocity*(parameters_.pull_out_max_steer_angle / parameters_.pull_out_steer_rate_lim);
       arc_paths = planOneTrialClothoid(
-        *end_pose, start_pose, R_E_min_, L_min, road_lanes, shoulder_lanes, is_forward,
+        *end_pose, start_pose, R_E_min_, L_min, road_lanes, pull_over_lanes, is_forward,
         left_side_start, start_pose_offset, parameters_.pull_out_lane_departure_margin,
         parameters_.pull_out_arc_path_interval, lane_departure_checker);
     } else {
       arc_paths = planOneTrial(
-        *end_pose, start_pose, R_E_min_, road_lanes, shoulder_lanes, is_forward, left_side_start,
+        *end_pose, start_pose, R_E_min_, road_lanes, pull_over_lanes, is_forward, left_side_start,
         start_pose_offset, parameters_.pull_out_lane_departure_margin,
         parameters_.pull_out_arc_path_interval, lane_departure_checker);
     }
