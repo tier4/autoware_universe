@@ -77,9 +77,7 @@ std::optional<PullOverPath> GeometricPullOver::plan(
   const auto arc_path = planner_.getArcPath();
 
   // check lane departure with road and shoulder lanes
-  if (lane_departure_checker_.checkPathWillLeaveLane(lanes, arc_path)) {
-    return {};
-  }
+  if (lane_departure_checker_.checkPathWillLeaveLane({departure_check_lane}, arc_path)) return {};
 
   auto pull_over_path_opt = PullOverPath::create(
     getPlannerType(), id, planner_.getPaths(), planner_.getStartPose(), modified_goal_pose,
