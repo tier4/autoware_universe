@@ -128,9 +128,9 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
                 name="traffic_light_signals_merger",
                 namespace="classification",
                 remappings=[
-                    ("input/car_signals","classified/car/traffic_signals"),
+                    ("input/car_signals", "classified/car/traffic_signals"),
                     ("input/pedestrian_signals", "classified/pedestrian/traffic_signals"),
-                    ("output/traffic_light_signals","traffic_signals")
+                    ("output/traffic_light_signals", "traffic_signals"),
                 ],
                 extra_arguments=[
                     {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
