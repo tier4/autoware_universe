@@ -78,9 +78,8 @@ bool MPC::calculateMPC(
   const auto mpc_matrix = generateMPCMatrix(mpc_resampled_ref_trajectory, prediction_dt);
 
   // solve Optimization problem
-  const auto [success_opt, Uex] = executeOptimization(
-    mpc_matrix, x0_delayed, prediction_dt, mpc_resampled_ref_trajectory,
-    current_kinematics.twist.twist.linear.x);
+  const auto [success_opt, Uex] =
+    executeOptimization(mpc_matrix, x0_delayed, prediction_dt, mpc_resampled_ref_trajectory);
   if (!success_opt) {
     return fail_warn_throttle("optimization failed. Stop MPC.");
   }
@@ -564,8 +563,7 @@ MPCMatrix MPC::generateMPCMatrix(
  * [    -au_lim * dt    ] < [uN-uN-1] < [     au_lim * dt    ] (*N... DIM_U)
  */
 std::pair<bool, VectorXd> MPC::executeOptimization(
-  const MPCMatrix & m, const VectorXd & x0, const double prediction_dt, const MPCTrajectory & traj,
-  const double current_velocity)
+  const MPCMatrix & m, const VectorXd & x0, const double prediction_dt, const MPCTrajectory & traj)
 {
   VectorXd Uex;
 
@@ -598,7 +596,7 @@ std::pair<bool, VectorXd> MPC::executeOptimization(
   VectorXd ub = VectorXd::Constant(DIM_U_N, m_steer_lim);   // max steering angle
 
   // steering angle rate limit
-  VectorXd steer_rate_limits = calcSteerRateLimitOnTrajectory(traj, current_velocity);
+  VectorXd steer_rate_limits = calcSteerRateLimitOnTrajectory(traj);
   VectorXd ubA = steer_rate_limits * prediction_dt;
   VectorXd lbA = -steer_rate_limits * prediction_dt;
   ubA(0) = m_raw_steer_cmd_prev + steer_rate_limits(0) * m_ctrl_period;
@@ -750,8 +748,7 @@ double MPC::calcDesiredSteeringRate(
   return steer_rate;
 }
 
-VectorXd MPC::calcSteerRateLimitOnTrajectory(
-  const MPCTrajectory & trajectory, const double current_velocity) const
+VectorXd MPC::calcSteerRateLimitOnTrajectory(const MPCTrajectory & trajectory) const
 {
   const auto interp = [&](const auto & steer_rate_limit_map, const auto & current) {
     std::vector<double> reference, limits;
@@ -784,13 +781,6 @@ VectorXd MPC::calcSteerRateLimitOnTrajectory(
               << std::endl;
     return reference.back();
   };
-
-  // When the vehicle is stopped, a large steer rate limit is used for the dry steering.
-  constexpr double steer_rate_lim = 100.0;
-  const bool is_vehicle_stopped = std::fabs(current_velocity) < 0.01;
-  if (is_vehicle_stopped) {
-    return steer_rate_lim * VectorXd::Ones(m_param.prediction_horizon);
-  }
 
   // calculate steering rate limit
   VectorXd steer_rate_limits = VectorXd::Zero(m_param.prediction_horizon);
