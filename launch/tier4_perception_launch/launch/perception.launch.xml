@@ -66,13 +66,16 @@
   <arg name="image_raw5" default="/sensing/camera/camera5/image_raw"/>
   <arg name="camera_info5" default="/sensing/camera/camera5/camera_info"/>
   <arg name="detection_rois5" default="/perception/object_recognition/detection/rois5"/>
-  <arg name="image_raw6" default="/sensing/camera/camera6/image_raw"/>
-  <arg name="camera_info6" default="/sensing/camera/camera6/camera_info"/>
-  <arg name="detection_rois6" default="/perception/object_recognition/detection/rois6"/>
-  <arg name="image_raw7" default="/sensing/camera/camera7/image_raw"/>
-  <arg name="camera_info7" default="/sensing/camera/camera7/camera_info"/>
-  <arg name="detection_rois7" default="/perception/object_recognition/detection/rois7"/>
-  <arg name="image_number" default="6" description="choose image raw number(1-8)"/>
+  <arg name="image_raw6" default="/sensing/camera/camera8/image_raw"/>
+  <arg name="camera_info6" default="/sensing/camera/camera8/camera_info"/>
+  <arg name="detection_rois6" default="/perception/object_recognition/detection/rois8"/>
+  <arg name="image_raw7" default="/sensing/camera/camera9/image_raw"/>
+  <arg name="camera_info7" default="/sensing/camera/camera9/camera_info"/>
+  <arg name="detection_rois7" default="/perception/object_recognition/detection/rois9"/>
+  <arg name="image_raw8" default="/sensing/camera/camera10/image_raw"/>
+  <arg name="camera_info8" default="/sensing/camera/camera10/camera_info"/>
+  <arg name="detection_rois8" default="/perception/object_recognition/detection/rois10"/>
+  <arg name="image_number" default="9" description="choose image raw number"/>
   <arg name="use_vector_map" default="true" description="use vector map in prediction"/>
   <arg name="use_pointcloud_map" default="true" description="use pointcloud map in detection"/>
   <arg name="use_low_height_cropbox" default="true" description="use low height crop filter in clustering"/>
@@ -204,6 +207,8 @@
           <arg name="camera_info6" value="$(var camera_info6)"/>
           <arg name="image_raw7" value="$(var image_raw7)"/>
           <arg name="camera_info7" value="$(var camera_info7)"/>
+          <arg name="image_raw8" value="$(var image_raw8)"/>
+          <arg name="camera_info8" value="$(var camera_info8)"/>
           <arg name="image_number" value="$(var image_number)"/>
           <arg name="sync_param_path" value="$(var object_recognition_detection_fusion_sync_param_path)"/>
           <arg name="roi_cluster_fusion_param_path" value="$(var object_recognition_detection_roi_cluster_fusion_param_path)"/>
