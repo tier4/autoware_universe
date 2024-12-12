@@ -99,8 +99,7 @@ private:
   std::optional<Obstacle> getNearestObstacleByDynamicObject() const;
 
   std::optional<geometry_msgs::msg::TransformStamped> getTransform(
-    const std::string & source, const std::string & target, const rclcpp::Time & stamp,
-    double duration_sec) const;
+    const std::string & source, const std::string & target) const;
 
   bool isStopRequired(const bool is_obstacle_found, const bool is_stopped);
 
