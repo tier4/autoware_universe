@@ -40,7 +40,7 @@
       <param name="color_map_path" value=""/>
       <param name="score_threshold" value="0.35"/>
       <param name="nms_threshold" value="0.7"/>
-      <param name="precision" value="fp16"/>
+      <param name="precision" value="int8"/>
       <param name="calibration_algorithm" value="Entropy"/>
       <param name="dla_core_id" value="-1"/>
       <param name="quantize_first_layer" value="false"/>
