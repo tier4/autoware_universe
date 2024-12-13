@@ -66,14 +66,14 @@ public:
   std::vector<DetectedObject> apply(const std::vector<DetectedObject> &);
 
 private:
-  bool isTargetLabel(const std::uint8_t);
-
   bool isTargetPairObject(const DetectedObject &, const DetectedObject &);
 
   Eigen::MatrixXd generateIoUMatrix(const std::vector<DetectedObject> &);
 
   NMSParams params_{};
   std::vector<bool> target_class_mask_{};
+
+  double search_distance_2d_sq_{};
 };
 
 }  // namespace centerpoint

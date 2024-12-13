@@ -62,6 +62,19 @@ lanelet::ConstLanelets generateBetweenEgoAndExpandedPullOverLanes(
   const geometry_msgs::msg::Pose ego_pose,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double outer_road_offset,
   const double inner_road_offset);
+
+/*
+ * @brief generate polygon to extract objects
+ * @param pull_over_lanes pull over lanes
+ * @param left_side left side or right side
+ * @param outer_offset outer offset from pull over lane boundary
+ * @param inner_offset inner offset from pull over lane boundary
+ * @return polygon to extract objects
+ */
+std::optional<Polygon2d> generateObjectExtractionPolygon(
+  const lanelet::ConstLanelets & pull_over_lanes, const bool left_side, const double outer_offset,
+  const double inner_offset);
+
 PredictedObjects extractObjectsInExpandedPullOverLanes(
   const RouteHandler & route_handler, const bool left_side, const double backward_distance,
   const double forward_distance, double bound_offset, const PredictedObjects & objects);
@@ -82,12 +95,31 @@ bool isReferencePath(
 std::optional<PathWithLaneId> cropPath(const PathWithLaneId & path, const Pose & end_pose);
 PathWithLaneId cropForwardPoints(
   const PathWithLaneId & path, const size_t target_seg_idx, const double forward_length);
+
+/**
+ * @brief extend target_path by extend_length
+ * @param target_path original target path to extend
+ * @param reference_path reference path to extend
+ * @param extend_length length to extend
+ * @param remove_connected_zero_velocity flag to remove zero velocity if the last point of
+ *                                       target_path has zero velocity
+ * @return extended path
+ */
 PathWithLaneId extendPath(
-  const PathWithLaneId & prev_module_path, const PathWithLaneId & reference_path,
-  const double extend_length);
+  const PathWithLaneId & target_path, const PathWithLaneId & reference_path,
+  const double extend_length, const bool remove_connected_zero_velocity);
+/**
+ * @brief extend target_path to extend_pose
+ * @param target_path original target path to extend
+ * @param reference_path reference path to extend
+ * @param extend_pose pose to extend
+ * @param remove_connected_zero_velocity flag to remove zero velocity if the last point of
+ *                                       target_path has zero velocity
+ * @return extended path
+ */
 PathWithLaneId extendPath(
-  const PathWithLaneId & prev_module_path, const PathWithLaneId & reference_path,
-  const Pose & extend_pose);
+  const PathWithLaneId & target_path, const PathWithLaneId & reference_path,
+  const Pose & extend_pose, const bool remove_connected_zero_velocity);
 
 std::vector<Polygon2d> createPathFootPrints(
   const PathWithLaneId & path, const double base_to_front, const double base_to_rear,
@@ -109,6 +141,23 @@ MarkerArray createLaneletPolygonMarkerArray(
 MarkerArray createNumObjectsToAvoidTextsMarkerArray(
   const GoalCandidates & goal_candidates, std::string && ns,
   const std_msgs::msg::ColorRGBA & color);
+
+/**
+ * @brief combine two points
+ * @param points lane points
+ * @param points_next next lane points
+ * @return combined points
+ */
+lanelet::Points3d combineLanePoints(
+  const lanelet::Points3d & points, const lanelet::Points3d & points_next);
+/** @brief Create a lanelet that represents the departure check area.
+ * @param [in] pull_over_lanes Lanelets that the vehicle will pull over to.
+ * @param [in] route_handler RouteHandler object.
+ * @return Lanelet that goal footprints should be inside.
+ */
+lanelet::Lanelet createDepartureCheckLanelet(
+  const lanelet::ConstLanelets & pull_over_lanes, const route_handler::RouteHandler & route_handler,
+  const bool left_side_parking);
 }  // namespace autoware::behavior_path_planner::goal_planner_utils
 
 #endif  // AUTOWARE__BEHAVIOR_PATH_GOAL_PLANNER_MODULE__UTIL_HPP_

@@ -283,6 +283,10 @@ void GoalPlannerModule::onTimer()
       RCLCPP_DEBUG(getLogger(), "has deviated from last previous module path");
       return true;
     }
+    // TODO(someone): The generated path inherits the velocity of the path of the previous module.
+    // Therefore, if the velocity of the path of the previous module changes (e.g. stop points are
+    // inserted, deleted), the path should be regenerated.
+
     return false;
   });
   if (!need_update) {
@@ -455,18 +459,33 @@ void GoalPlannerModule::updateData()
 {
   universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  // extract static and dynamic objects in expanded pull over lanes
+  // extract static and dynamic objects in extraction polygon for path coliision check
   {
     const auto & p = parameters_;
     const auto & rh = *(planner_data_->route_handler);
     const auto objects = *(planner_data_->dynamic_object);
-    const auto static_target_objects =
-      goal_planner_utils::extractStaticObjectsInExpandedPullOverLanes(
-        rh, left_side_parking_, p->backward_goal_search_length, p->forward_goal_search_length,
-        p->detection_bound_offset, objects, p->th_moving_object_velocity);
-    const auto dynamic_target_objects = goal_planner_utils::extractObjectsInExpandedPullOverLanes(
-      rh, left_side_parking_, p->backward_goal_search_length, p->forward_goal_search_length,
-      p->detection_bound_offset, objects);
+    const double vehicle_width = planner_data_->parameters.vehicle_width;
+    const auto pull_over_lanes = goal_planner_utils::getPullOverLanes(
+      rh, left_side_parking_, p->backward_goal_search_length, p->forward_goal_search_length);
+    const auto objects_extraction_polygon = goal_planner_utils::generateObjectExtractionPolygon(
+      pull_over_lanes, left_side_parking_, p->detection_bound_offset,
+      p->margin_from_boundary + p->max_lateral_offset + vehicle_width);
+    if (objects_extraction_polygon.has_value()) {
+      debug_data_.objects_extraction_polygon = objects_extraction_polygon.value();
+    }
+    PredictedObjects dynamic_target_objects{};
+    for (const auto & object : objects.objects) {
+      const auto object_polygon = universe_utils::toPolygon2d(object);
+      if (
+        objects_extraction_polygon.has_value() &&
+        boost::geometry::intersects(object_polygon, objects_extraction_polygon.value())) {
+        dynamic_target_objects.objects.push_back(object);
+      }
+    }
+    const auto static_target_objects = utils::path_safety_checker::filterObjectsByVelocity(
+      dynamic_target_objects, p->th_moving_object_velocity);
+
+    // these objects are used for path collision check not for safety check
     thread_safe_data_.set_static_target_objects(static_target_objects);
     thread_safe_data_.set_dynamic_target_objects(dynamic_target_objects);
   }
@@ -577,15 +596,25 @@ bool GoalPlannerModule::isExecutionRequested() const
   const Pose & current_pose = planner_data_->self_odometry->pose.pose;
   const Pose goal_pose = route_handler->getOriginalGoalPose();
 
-  // check if goal_pose is in current_lanes.
-  lanelet::ConstLanelet current_lane{};
-  // const lanelet::ConstLanelets current_lanes = utils::getCurrentLanes(planner_data_);
+  // check if goal_pose is in current_lanes or neighboring road lanes
   const lanelet::ConstLanelets current_lanes =
     utils::getCurrentLanesFromPath(getPreviousModuleOutput().reference_path, planner_data_);
-  lanelet::utils::query::getClosestLanelet(current_lanes, current_pose, &current_lane);
-  const bool goal_is_in_current_lanes = std::any_of(
-    current_lanes.begin(), current_lanes.end(), [&](const lanelet::ConstLanelet & current_lane) {
-      return lanelet::utils::isInLanelet(goal_pose, current_lane);
+  const auto getNeighboringLane =
+    [&](const lanelet::ConstLanelet & lane) -> std::optional<lanelet::ConstLanelet> {
+    return left_side_parking_ ? route_handler->getLeftLanelet(lane, false, true)
+                              : route_handler->getRightLanelet(lane, false, true);
+  };
+  lanelet::ConstLanelets goal_check_lanes = current_lanes;
+  for (const auto & lane : current_lanes) {
+    auto neighboring_lane = getNeighboringLane(lane);
+    while (neighboring_lane) {
+      goal_check_lanes.push_back(neighboring_lane.value());
+      neighboring_lane = getNeighboringLane(neighboring_lane.value());
+    }
+  }
+  const bool goal_is_in_current_segment_lanes = std::any_of(
+    goal_check_lanes.begin(), goal_check_lanes.end(), [&](const lanelet::ConstLanelet & lane) {
+      return lanelet::utils::isInLanelet(goal_pose, lane);
     });
 
   // check that goal is in current neighbor shoulder lane
@@ -602,7 +631,7 @@ bool GoalPlannerModule::isExecutionRequested() const
 
   // if goal is not in current_lanes and current_shoulder_lanes, do not execute goal_planner,
   // because goal arc coordinates cannot be calculated.
-  if (!goal_is_in_current_lanes && !goal_is_in_current_shoulder_lanes) {
+  if (!goal_is_in_current_segment_lanes && !goal_is_in_current_shoulder_lanes) {
     return false;
   }
 
@@ -610,7 +639,7 @@ bool GoalPlannerModule::isExecutionRequested() const
   // 1) goal_pose is in current_lanes, plan path to the original fixed goal
   // 2) goal_pose is NOT in current_lanes, do not execute goal_planner
   if (!utils::isAllowedGoalModification(route_handler)) {
-    return goal_is_in_current_lanes;
+    return goal_is_in_current_segment_lanes;
   }
 
   // if goal arc coordinates can be calculated, check if goal is in request_length
@@ -632,7 +661,12 @@ bool GoalPlannerModule::isExecutionRequested() const
     parameters_->forward_goal_search_length);
   lanelet::ConstLanelet target_lane{};
   lanelet::utils::query::getClosestLanelet(pull_over_lanes, goal_pose, &target_lane);
-  if (!isCrossingPossible(current_lane, target_lane)) {
+
+  lanelet::ConstLanelet previous_module_terminal_lane{};
+  route_handler->getClosestLaneletWithinRoute(
+    getPreviousModuleOutput().path.points.back().point.pose, &previous_module_terminal_lane);
+
+  if (!isCrossingPossible(previous_module_terminal_lane, target_lane)) {
     return false;
   }
 
@@ -735,7 +769,9 @@ bool GoalPlannerModule::planFreespacePath(
 {
   GoalCandidates goal_candidates{};
   goal_candidates = thread_safe_data_.get_goal_candidates();
-  goal_searcher->update(goal_candidates, occupancy_grid_map, planner_data);
+  goal_searcher->update(
+    goal_candidates, occupancy_grid_map, planner_data,
+    thread_safe_data_.get_static_target_objects());
   thread_safe_data_.set_goal_candidates(goal_candidates);
   debug_data_.freespace_planner.num_goal_candidates = goal_candidates.size();
   debug_data_.freespace_planner.is_planning = true;
@@ -819,7 +855,7 @@ GoalCandidates GoalPlannerModule::generateGoalCandidates() const
   // calculate goal candidates
   const auto & route_handler = planner_data_->route_handler;
   if (utils::isAllowedGoalModification(route_handler)) {
-    return goal_searcher_->search(occupancy_grid_map_, planner_data_);
+    return goal_searcher_->search(planner_data_);
   }
 
   // NOTE:
@@ -1313,9 +1349,9 @@ DecidingPathStatusWithStamp GoalPlannerModule::checkDecidingPathStatus(
     // check goal pose collision
     const auto modified_goal_opt = thread_safe_data_.get_modified_goal_pose();
     if (
-      modified_goal_opt &&
-      !goal_searcher->isSafeGoalWithMarginScaleFactor(
-        modified_goal_opt.value(), hysteresis_factor, occupancy_grid_map, planner_data)) {
+      modified_goal_opt && !goal_searcher->isSafeGoalWithMarginScaleFactor(
+                             modified_goal_opt.value(), hysteresis_factor, occupancy_grid_map,
+                             planner_data, thread_safe_data_.get_static_target_objects())) {
       RCLCPP_DEBUG(getLogger(), "[DecidingPathStatus]: DECIDING->NOT_DECIDED. goal is not safe");
       return {DecidingPathStatus::NOT_DECIDED, clock_->now()};
     }
@@ -1456,6 +1492,8 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsOutput()
     return getPreviousModuleOutput();
   }
 
+  const bool is_freespace =
+    thread_safe_data_.getPullOverPlannerType() == PullOverPlannerType::FREESPACE;
   if (
     hasNotDecidedPath(
       planner_data_, occupancy_grid_map_, *parameters_, ego_predicted_path_params_,
@@ -1471,7 +1509,9 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsOutput()
 
     // update goal candidates
     auto goal_candidates = thread_safe_data_.get_goal_candidates();
-    goal_searcher_->update(goal_candidates, occupancy_grid_map_, planner_data_);
+    goal_searcher_->update(
+      goal_candidates, occupancy_grid_map_, planner_data_,
+      thread_safe_data_.get_static_target_objects());
 
     // update pull over path candidates
     const auto pull_over_path_candidates = sortPullOverPathCandidatesByGoalPriority(
@@ -1502,7 +1542,7 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsOutput()
 
   // return to lane parking if it is possible
   if (
-    thread_safe_data_.getPullOverPlannerType() == PullOverPlannerType::FREESPACE &&
+    is_freespace && thread_safe_data_.getPullOverPlannerType() == PullOverPlannerType::FREESPACE &&
     canReturnToLaneParking()) {
     thread_safe_data_.set_pull_over_path(thread_safe_data_.get_lane_parking_pull_over_path());
   }
@@ -1666,8 +1706,12 @@ PathWithLaneId GoalPlannerModule::generateStopPath() const
     const double s_end = s_current + common_parameters.forward_path_length;
     return route_handler->getCenterLinePath(current_lanes, s_start, s_end, true);
   });
+
+  // NOTE: The previous module may insert a zero velocity at the end of the path, so remove it by
+  // setting remove_connected_zero_velocity=true. Inserting a velocity of 0 into the goal is the
+  // role of the goal planner, and the intermediate zero velocity after extension is unnecessary.
   const auto extended_prev_path = goal_planner_utils::extendPath(
-    getPreviousModuleOutput().path, reference_path, common_parameters.forward_path_length);
+    getPreviousModuleOutput().path, reference_path, common_parameters.forward_path_length, true);
 
   // calculate search start offset pose from the closest goal candidate pose with
   // approximate_pull_over_distance_ ego vehicle decelerates to this position. or if no feasible
@@ -2247,14 +2291,10 @@ bool GoalPlannerModule::isCrossingPossible(
     end_lane_sequence = route_handler->getLaneletSequence(end_lane, dist, dist, false);
   }
 
-  // Lambda function to get the neighboring lanelet based on left_side_parking_
-  auto getNeighboringLane =
+  const auto getNeighboringLane =
     [&](const lanelet::ConstLanelet & lane) -> std::optional<lanelet::ConstLanelet> {
-    const auto neighboring_lane = left_side_parking_ ? route_handler->getLeftShoulderLanelet(lane)
-                                                     : route_handler->getRightShoulderLanelet(lane);
-    if (neighboring_lane) return neighboring_lane;
-    return left_side_parking_ ? route_handler->getLeftLanelet(lane)
-                              : route_handler->getRightLanelet(lane);
+    return left_side_parking_ ? route_handler->getLeftLanelet(lane, false, true)
+                              : route_handler->getRightLanelet(lane, false, true);
   };
 
   // Iterate through start_lane_sequence to find a path to end_lane_sequence
@@ -2544,6 +2584,24 @@ void GoalPlannerModule::setDebugData()
     // Visualize goal candidates
     const auto goal_candidates = thread_safe_data_.get_goal_candidates();
     add(goal_planner_utils::createGoalCandidatesMarkerArray(goal_candidates, color));
+
+    // Visualize objects extraction polygon
+    auto marker = autoware::universe_utils::createDefaultMarker(
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "objects_extraction_polygon", 0, Marker::LINE_LIST,
+      autoware::universe_utils::createMarkerScale(0.1, 0.0, 0.0),
+      autoware::universe_utils::createMarkerColor(0.0, 1.0, 1.0, 0.999));
+    const double ego_z = planner_data_->self_odometry->pose.pose.position.z;
+    for (size_t i = 0; i < debug_data_.objects_extraction_polygon.outer().size(); ++i) {
+      const auto & current_point = debug_data_.objects_extraction_polygon.outer().at(i);
+      const auto & next_point = debug_data_.objects_extraction_polygon.outer().at(
+        (i + 1) % debug_data_.objects_extraction_polygon.outer().size());
+      marker.points.push_back(
+        autoware::universe_utils::createPoint(current_point.x(), current_point.y(), ego_z));
+      marker.points.push_back(
+        autoware::universe_utils::createPoint(next_point.x(), next_point.y(), ego_z));
+    }
+
+    debug_marker_.markers.push_back(marker);
   }
 
   // Visualize previous module output

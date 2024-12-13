@@ -51,7 +51,6 @@ std::optional<PullOverPath> GeometricPullOver::plan(const Pose & goal_pose)
   if (road_lanes.empty() || pull_over_lanes.empty()) {
     return {};
   }
-  const auto lanes = utils::combineLanelets(road_lanes, pull_over_lanes);
 
   const auto & p = parallel_parking_parameters_;
   const double max_steer_angle =
@@ -65,10 +64,12 @@ std::optional<PullOverPath> GeometricPullOver::plan(const Pose & goal_pose)
     return {};
   }
 
+  const auto departure_check_lane = goal_planner_utils::createDepartureCheckLanelet(
+    pull_over_lanes, *planner_data_->route_handler, left_side_parking_);
   const auto arc_path = planner_.getArcPath();
 
   // check lane departure with road and shoulder lanes
-  if (lane_departure_checker_.checkPathWillLeaveLane(lanes, arc_path)) return {};
+  if (lane_departure_checker_.checkPathWillLeaveLane({departure_check_lane}, arc_path)) return {};
 
   PullOverPath pull_over_path{};
   pull_over_path.type = getPlannerType();
