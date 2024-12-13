@@ -13,6 +13,8 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 endif()
 
+find_package(agnocastlib REQUIRED)
+
 ### Dependencies
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
@@ -29,6 +31,11 @@ set(AD_SERVICE_STATE_MONITOR_SRC
 ament_auto_add_executable(ad_service_state_monitor
   src/ad_service_state_monitor_node/main.cpp
   ${AD_SERVICE_STATE_MONITOR_SRC}
+)
+
+ament_target_dependencies(ad_service_state_monitor agnocastlib)
+target_include_directories(ad_service_state_monitor PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
 )
 
 target_link_libraries(ad_service_state_monitor glog)

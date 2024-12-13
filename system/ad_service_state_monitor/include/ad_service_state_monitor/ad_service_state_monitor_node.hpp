@@ -30,6 +30,8 @@
 #include <autoware_auto_vehicle_msgs/msg/engage.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+
 
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -39,6 +41,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "agnocast.hpp"
 
 class AutowareStateMonitorNode : public rclcpp::Node
 {
@@ -70,6 +74,7 @@ private:
     sub_control_mode_;
   rclcpp::Subscription<autoware_auto_planning_msgs::msg::HADMapRoute>::SharedPtr sub_route_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
+  agnocast::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr map_points_sub_;
 
   void onAutowareEngage(const autoware_auto_vehicle_msgs::msg::Engage::ConstSharedPtr msg);
   void onVehicleControlMode(
@@ -80,6 +85,8 @@ private:
   // Topic Buffer
   void onTopic(
     const std::shared_ptr<rclcpp::SerializedMessage> msg, const std::string & topic_name);
+  void onTopicPointcloudMap(
+    agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> map_points_msg_ptr, const std::string & topic_name);
   void registerTopicCallback(
     const std::string & topic_name, const std::string & topic_type, const bool transient_local,
     const bool best_effort);

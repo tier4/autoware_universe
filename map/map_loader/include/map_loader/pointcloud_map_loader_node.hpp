@@ -38,6 +38,8 @@
 #include <string>
 #include <vector>
 
+#include "agnocast.hpp"
+
 class PointCloudMapLoaderNode : public rclcpp::Node
 {
 public:
@@ -45,6 +47,7 @@ public:
 
 private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pointcloud_map_;
+  agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pointcloud_map_agnocast;
 
   sensor_msgs::msg::PointCloud2 loadPCDFiles(const std::vector<std::string> & pcd_paths);
 };

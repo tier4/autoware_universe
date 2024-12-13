@@ -63,6 +63,7 @@ PointCloudMapLoaderNode::PointCloudMapLoaderNode(const rclcpp::NodeOptions & opt
   durable_qos.transient_local();
   pub_pointcloud_map_ =
     this->create_publisher<sensor_msgs::msg::PointCloud2>("output/pointcloud_map", durable_qos);
+  pub_pointcloud_map_agnocast = agnocast::create_publisher<sensor_msgs::msg::PointCloud2>("/pointcloud_map_agnocast", durable_qos);
 
   const auto pcd_paths_or_directory =
     declare_parameter("pcd_paths_or_directory", std::vector<std::string>({}));
@@ -89,6 +90,8 @@ PointCloudMapLoaderNode::PointCloudMapLoaderNode(const rclcpp::NodeOptions & opt
   }
 
   const auto pcd = loadPCDFiles(pcd_paths);
+  agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> pcd_agnocast = pub_pointcloud_map_agnocast->borrow_loaned_message();
+  *pcd_agnocast = loadPCDFiles(pcd_paths);
 
   if (pcd.width == 0) {
     RCLCPP_ERROR(get_logger(), "No PCD was loaded: pcd_paths.size() = %zu", pcd_paths.size());
@@ -96,6 +99,7 @@ PointCloudMapLoaderNode::PointCloudMapLoaderNode(const rclcpp::NodeOptions & opt
   }
 
   pub_pointcloud_map_->publish(pcd);
+  pub_pointcloud_map_agnocast->publish(std::move(pcd_agnocast));
 }
 
 sensor_msgs::msg::PointCloud2 PointCloudMapLoaderNode::loadPCDFiles(

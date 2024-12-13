@@ -75,8 +75,12 @@ PoseInitializer::PoseInitializer()
   initial_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "initialpose", 10,
     std::bind(&PoseInitializer::callbackInitialPose, this, std::placeholders::_1));
-  map_points_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "pointcloud_map", rclcpp::QoS{1}.transient_local(),
+  //map_points_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+    //"pointcloud_map", rclcpp::QoS{1}.transient_local(),
+    //std::bind(&PoseInitializer::callbackMapPoints, this, std::placeholders::_1));
+  map_points_sub_ = agnocast::create_subscription<sensor_msgs::msg::PointCloud2>(
+    get_node_base_interface(),
+    "/pointcloud_map_agnocast", rclcpp::QoS{1}.transient_local(),
     std::bind(&PoseInitializer::callbackMapPoints, this, std::placeholders::_1));
   gnss_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "gnss_pose_cov", 1,
@@ -111,8 +115,11 @@ PoseInitializer::PoseInitializer()
 }
 
 void PoseInitializer::callbackMapPoints(
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr map_points_msg_ptr)
+  //sensor_msgs::msg::PointCloud2::ConstSharedPtr map_points_msg_ptr)
+  agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> map_points_msg_ptr)
 {
+
+  RCLCPP_INFO(this->get_logger(), "pose_initializer subscribe pointcloud map ");
   std::string map_frame_ = map_points_msg_ptr->header.frame_id;
   map_ptr_ = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(*map_points_msg_ptr, *map_ptr_);

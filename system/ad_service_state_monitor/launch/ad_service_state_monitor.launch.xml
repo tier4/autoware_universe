@@ -26,6 +26,9 @@
   <arg name="disengage_on_goal" default="true"/>
 
   <node pkg="ad_service_state_monitor" exec="ad_service_state_monitor" name="ad_service_state_monitor" output="screen">
+     <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')" />
+    <env name="MEMPOOL_SIZE" value="32212254720" /> <!-- 30GB -->
+
     <remap from="input/autoware_engage" to="$(var input_autoware_engage)"/>
     <remap from="input/control_mode" to="$(var input_control_mode)"/>
     <remap from="input/route" to="$(var input_route)"/>

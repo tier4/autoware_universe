@@ -13,12 +13,20 @@ endif()
 
 find_package(PCL REQUIRED COMPONENTS io)
 
+find_package(agnocastlib REQUIRED)
+
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 ament_auto_add_library(pointcloud_map_loader_node SHARED
   src/pointcloud_map_loader/pointcloud_map_loader_node.cpp
 )
+
+ament_target_dependencies(pointcloud_map_loader_node agnocastlib)
+target_include_directories(pointcloud_map_loader_node PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
 target_link_libraries(pointcloud_map_loader_node ${PCL_LIBRARIES})
 
 target_include_directories(pointcloud_map_loader_node

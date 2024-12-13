@@ -30,6 +30,7 @@
 #include <functional>
 #include <iomanip>
 #include <thread>
+#include <stdlib.h>
 
 namespace tier4_autoware_utils
 {
@@ -238,13 +239,22 @@ NDTScanMatcher::NDTScanMatcher()
   auto main_sub_opt = rclcpp::SubscriptionOptions();
   main_sub_opt.callback_group = main_callback_group;
 
+  auto agnocast_main_sub_opt = agnocast::SubscriptionOptions();
+  agnocast_main_sub_opt.callback_group = main_callback_group;
+
   initial_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "ekf_pose_with_covariance", 100,
     std::bind(&NDTScanMatcher::callbackInitialPose, this, std::placeholders::_1),
     initial_pose_sub_opt);
-  map_points_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "pointcloud_map", rclcpp::QoS{1}.transient_local(),
-    std::bind(&NDTScanMatcher::callbackMapPoints, this, std::placeholders::_1), main_sub_opt);
+  //map_points_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+    //"pointcloud_map", rclcpp::QoS{1}.transient_local(),
+    //std::bind(&NDTScanMatcher::callbackMapPoints, this, std::placeholders::_1), main_sub_opt);
+
+  map_points_sub_ = agnocast::create_subscription<sensor_msgs::msg::PointCloud2>(
+    get_node_base_interface(),
+    "/pointcloud_map_agnocast", rclcpp::QoS{1}.transient_local(),
+    std::bind(&NDTScanMatcher::callbackMapPoints, this, std::placeholders::_1), agnocast_main_sub_opt);
+    
   sensor_points_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     "points_raw", rclcpp::SensorDataQoS().keep_last(points_queue_size),
     std::bind(&NDTScanMatcher::callbackSensorPoints, this, std::placeholders::_1), main_sub_opt);
@@ -289,6 +299,7 @@ NDTScanMatcher::NDTScanMatcher()
 
   diagnostic_thread_ = std::thread(&NDTScanMatcher::timerDiagnostic, this);
   diagnostic_thread_.detach();
+
 }
 
 void NDTScanMatcher::timerDiagnostic()
@@ -346,6 +357,8 @@ void NDTScanMatcher::serviceNDTAlign(
   const tier4_localization_msgs::srv::PoseWithCovarianceStamped::Request::SharedPtr req,
   tier4_localization_msgs::srv::PoseWithCovarianceStamped::Response::SharedPtr res)
 {
+  //std::lock_guard<std::mutex> lock(ndt_map_mtx_);
+
   // get TF from pose_frame to map_frame
   auto TF_pose_to_map_ptr = std::make_shared<geometry_msgs::msg::TransformStamped>();
   getTransform(map_frame_, req->pose_with_covariance.header.frame_id, TF_pose_to_map_ptr);
@@ -410,8 +423,13 @@ void NDTScanMatcher::callbackInitialPose(
 }
 
 void NDTScanMatcher::callbackMapPoints(
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr map_points_msg_ptr)
+  //sensor_msgs::msg::PointCloud2::ConstSharedPtr map_points_msg_ptr)
+  agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> map_points_msg_ptr)
 {
+  //std::lock_guard<std::mutex> lock(ndt_map_mtx_);
+
+  RCLCPP_INFO(this->get_logger(), "subscribe pointcloud map ");
+
   const auto trans_epsilon = ndt_ptr_->getTransformationEpsilon();
   const auto step_size = ndt_ptr_->getStepSize();
   const auto resolution = ndt_ptr_->getResolution();
@@ -452,6 +470,8 @@ void NDTScanMatcher::callbackMapPoints(
 void NDTScanMatcher::callbackSensorPoints(
   sensor_msgs::msg::PointCloud2::ConstSharedPtr sensor_points_sensorTF_msg_ptr)
 {
+  //std::lock_guard<std::mutex> lock(ndt_map_mtx_);
+
   if (sensor_points_sensorTF_msg_ptr->data.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
       this->get_logger(), *this->get_clock(), 1000, "Empty sensor points!");
@@ -461,7 +481,6 @@ void NDTScanMatcher::callbackSensorPoints(
   const auto exe_start_time = std::chrono::system_clock::now();
   // mutex Map
   std::lock_guard<std::mutex> lock(ndt_map_mtx_);
-
   const std::string & sensor_frame = sensor_points_sensorTF_msg_ptr->header.frame_id;
   const rclcpp::Time sensor_ros_time = sensor_points_sensorTF_msg_ptr->header.stamp;
 

@@ -1,7 +1,27 @@
 <launch>
   <arg name="config_file" default="$(find-pkg-share pose_initializer)/config/pose_initializer.param.yaml"/>
 
+    <!-- <node_container pkg="agnocastlib" exec="agnocast_component_container" name="pose_initializer" namespace="" output="screen"> -->
+    <!-- <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')" /> -->
+    <!-- <env name="MEMPOOL_SIZE" value="32212254720" /> --> <!-- 30GB-->
+
+    <!-- <composable_node pkg="pose_initializer" plugin="pose_initializer::PoseInitializer" name="pose_initializer" namespace=""> -->
+      <!-- <remap from="initialpose" to="/initialpose"/> -->
+      <!-- <remap from="initialpose3d" to="/initialpose3d"/> -->
+      <!-- <remap from="gnss_pose_cov" to="/sensing/gnss/pose_with_covariance"/> -->
+      <!-- <remap from="pointcloud_map" to="/map/pointcloud_map"/> -->
+      <!-- <remap from="ndt_align_srv" to="/localization/pose_estimator/ndt_align_srv"/> -->
+      <!-- <remap from="service/initialize_pose" to="/localization/util/initialize_pose"/> -->
+      <!-- <remap from="service/initialize_pose_auto" to="/localization/util/initialize_pose_auto"/> -->
+      <!-- <param from="$(var config_file)"/> -->
+      <!-- <param name="enable_gnss_callback" value="true"/> -->
+    <!-- </composable_node> -->
+  <!-- </node_container> -->
+
   <node pkg="pose_initializer" exec="pose_initializer" name="pose_initializer" output="log">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')" />
+    <env name="MEMPOOL_SIZE" value="32212254720" /> <!-- 30GB -->
+
     <remap from="initialpose" to="/initialpose"/>
     <remap from="initialpose3d" to="/initialpose3d"/>
     <remap from="gnss_pose_cov" to="/sensing/gnss/pose_with_covariance"/>

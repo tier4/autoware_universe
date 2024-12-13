@@ -293,6 +293,22 @@ void AutowareStateMonitorNode::onTopic(
   }
 }
 
+void AutowareStateMonitorNode::onTopicPointcloudMap(
+  [[maybe_unused]] agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> map_points_msg_ptr,
+  [[maybe_unused]] const std::string & topic_name)
+{
+  RCLCPP_INFO(this->get_logger(), "ad_service_state_monitor subscribe pointcloud map");
+  const auto now = this->now();
+
+  auto & buf = topic_received_time_buffer_.at("/map/pointcloud_map");
+  buf.push_back(now);
+
+  constexpr size_t topic_received_time_buffer_size = 10;
+  if (buf.size() > topic_received_time_buffer_size) {
+    buf.pop_front();
+  }
+}
+
 void AutowareStateMonitorNode::registerTopicCallback(
   const std::string & topic_name, const std::string & topic_type, const bool transient_local,
   const bool best_effort)
@@ -462,9 +478,18 @@ AutowareStateMonitorNode::AutowareStateMonitorNode()
 
   // Topic Callback
   for (const auto & topic_config : topic_configs_) {
-    registerTopicCallback(
-      topic_config.name, topic_config.type, topic_config.transient_local, topic_config.best_effort);
+    RCLCPP_INFO(this->get_logger(), "ad_service_state_monitor_node.cpp: %s", topic_config.name.c_str());
+     if (topic_config.name == "/map/pointcloud_map") {
+       // Initialize buffer
+       topic_received_time_buffer_["/map/pointcloud_map"] = {};
+       continue;
+
+     } else{
+       registerTopicCallback(
+        topic_config.name, topic_config.type, topic_config.transient_local, topic_config.best_effort);
+    }
   }
+
 
   // Subscriber
   sub_autoware_engage_ = this->create_subscription<autoware_auto_vehicle_msgs::msg::Engage>(
@@ -479,6 +504,11 @@ AutowareStateMonitorNode::AutowareStateMonitorNode()
   sub_odom_ = this->create_subscription<nav_msgs::msg::Odometry>(
     "input/odometry", 100, std::bind(&AutowareStateMonitorNode::onOdometry, this, _1),
     subscriber_option);
+
+  auto agnocast_subscriber_option = agnocast::SubscriptionOptions();
+  agnocast_subscriber_option.callback_group = callback_group_subscribers_;
+  map_points_sub_ = agnocast::create_subscription<sensor_msgs::msg::PointCloud2>(get_node_base_interface(),"/pointcloud_map_agnocast", rclcpp::QoS{1}.transient_local(), 
+    std::bind(&AutowareStateMonitorNode::onTopicPointcloudMap, this, std::placeholders::_1, "/pointcloud_map_agnocast"), agnocast_subscriber_option);
 
   // Service
   srv_shutdown_ = this->create_service<std_srvs::srv::Trigger>(

@@ -30,6 +30,9 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake_auto REQUIRED)
+
+find_package(agnocastlib REQUIRED)
+
 ament_auto_find_build_dependencies()
 
 ament_auto_add_executable(ndt_scan_matcher
@@ -37,6 +40,11 @@ ament_auto_add_executable(ndt_scan_matcher
   src/ndt_scan_matcher_node.cpp
   src/ndt_scan_matcher_core.cpp
   src/util_func.cpp
+)
+
+ament_target_dependencies(${PROJECT_NAME} agnocastlib)
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
 )
 
 if(BUILD_TESTING)

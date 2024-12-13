@@ -14,12 +14,21 @@ endif()
 ### Dependencies
 find_package(ament_cmake_auto REQUIRED)
 find_package(PCL REQUIRED)
+
+find_package(agnocastlib REQUIRED)
+
 ament_auto_find_build_dependencies()
 
 ament_auto_add_executable(pose_initializer
   src/pose_initializer_node.cpp
   src/pose_initializer_core.cpp
 )
+
+ament_target_dependencies(pose_initializer agnocastlib)
+target_include_directories(pose_initializer PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
 target_link_libraries(pose_initializer ${PCL_LIBRARIES})
 
 if(BUILD_TESTING)

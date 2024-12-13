@@ -79,9 +79,13 @@ ElevationMapLoaderNode::ElevationMapLoaderNode(const rclcpp::NodeOptions & optio
   sub_map_hash_ = create_subscription<tier4_external_api_msgs::msg::MapHash>(
     "/api/autoware/get/map/info/hash", durable_qos,
     std::bind(&ElevationMapLoaderNode::onMapHash, this, _1));
-  sub_pointcloud_map_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "input/pointcloud_map", durable_qos,
+  //sub_pointcloud_map_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+    //"input/pointcloud_map", durable_qos,
+  sub_pointcloud_map_ = agnocast::create_subscription<sensor_msgs::msg::PointCloud2>(
+    get_node_base_interface(),
+    "/pointcloud_map_agnocast", durable_qos,
     std::bind(&ElevationMapLoaderNode::onPointcloudMap, this, _1));
+
   sub_vector_map_ = this->create_subscription<autoware_auto_mapping_msgs::msg::HADMapBin>(
     "input/vector_map", durable_qos, std::bind(&ElevationMapLoaderNode::onVectorMap, this, _1));
 }
@@ -143,7 +147,8 @@ void ElevationMapLoaderNode::onMapHash(
 }
 
 void ElevationMapLoaderNode::onPointcloudMap(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud_map)
+  //const sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud_map)
+  agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> pointcloud_map)
 {
   RCLCPP_INFO(this->get_logger(), "subscribe pointcloud_map");
   {

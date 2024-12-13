@@ -21,7 +21,8 @@
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::executors::MultiThreadedExecutor executor;
+  //rclcpp::executors::MultiThreadedExecutor executor;
+  agnocast::MultiThreadedAgnocastExecutor executor;
   auto node = std::make_shared<PoseInitializer>();
   executor.add_node(node);
   executor.spin();

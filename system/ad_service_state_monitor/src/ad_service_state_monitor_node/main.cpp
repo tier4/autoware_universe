@@ -19,6 +19,7 @@
 #include <glog/logging.h>
 
 #include <memory>
+#include "agnocast.hpp"
 
 int main(int argc, char * argv[])
 {
@@ -27,9 +28,12 @@ int main(int argc, char * argv[])
 
   rclcpp::init(argc, argv);
   auto node = std::make_shared<AutowareStateMonitorNode>();
-  auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
-  executor->add_node(node);
-  executor->spin();
+  //auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+  agnocast::MultiThreadedAgnocastExecutor executor;
+  executor.add_node(node);
+  executor.spin();
+  //executor->add_node(node);
+  //executor->spin();
   rclcpp::shutdown();
 
   return 0;
