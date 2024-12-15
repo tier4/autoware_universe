@@ -78,7 +78,8 @@ std::optional<PullOverPath> BezierPullOver::plan(
 }
 
 std::vector<PullOverPath> BezierPullOver::plans(
-  [[maybe_unused]] const GoalCandidate & modified_goal_pose, [[maybe_unused]] const size_t id,
+  [[maybe_unused]] const GoalCandidate & modified_goal_pose,
+  [[maybe_unused]] const size_t initial_id,
   [[maybe_unused]] const std::shared_ptr<const PlannerData> planner_data,
   [[maybe_unused]] const BehaviorModuleOutput & upstream_module_output)
 {
@@ -103,6 +104,7 @@ std::vector<PullOverPath> BezierPullOver::plans(
 
   // find safe one from paths with different jerk
   std::vector<PullOverPath> paths;
+  auto id = initial_id;
   for (double lateral_jerk = min_jerk; lateral_jerk <= max_jerk; lateral_jerk += jerk_resolution) {
     auto pull_over_paths = generateBezierPath(
       modified_goal_pose, id, planner_data, upstream_module_output, road_lanes, pull_over_lanes,
@@ -110,23 +112,26 @@ std::vector<PullOverPath> BezierPullOver::plans(
     std::copy(
       std::make_move_iterator(pull_over_paths.begin()),
       std::make_move_iterator(pull_over_paths.end()), std::back_inserter(paths));
+    id += pull_over_paths.size();
   }
 
   return paths;
 }
 
 std::vector<PullOverPath> BezierPullOver::generateBezierPath(
-  const GoalCandidate & goal_candidate, const size_t id,
+  const GoalCandidate & goal_candidate, const size_t initial_id,
   const std::shared_ptr<const PlannerData> planner_data,
   const BehaviorModuleOutput & upstream_module_output, const lanelet::ConstLanelets & road_lanes,
   const lanelet::ConstLanelets & pull_over_lanes, const double lateral_jerk) const
 {
   const double pull_over_velocity = parameters_.pull_over_velocity;
+  const double after_shift_straight_distance = parameters_.after_shift_straight_distance;
 
   const auto & goal_pose = goal_candidate.goal_pose;
 
   // shift end pose is longitudinal offset from goal pose to improve parking angle accuracy
-  const Pose shift_end_pose = goal_pose;
+  const Pose shift_end_pose =
+    autoware::universe_utils::calcOffsetPose(goal_pose, -after_shift_straight_distance, 0, 0);
 
   // calculate lateral shift of previous module path terminal pose from road lane reference path
   const auto road_lane_reference_path_to_shift_end = utils::resamplePathWithSpline(
@@ -191,6 +196,7 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
   }
 
   std::vector<PullOverPath> bezier_paths;
+  auto id = initial_id;
   for (const auto & [v_init_coeff, v_final_coeff, acc_coeff] : params) {
     // set path shifter and generate shifted path
     PathShifter path_shifter{};
@@ -215,7 +221,7 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
     const auto from_idx = from_idx_opt.value();
     const auto to_idx = to_idx_opt.value();
     const auto span = static_cast<unsigned>(
-      std::max<int>(static_cast<int>(to_idx) - static_cast<int>(from_idx), 0));
+      std::max<int>(static_cast<int>(to_idx) - static_cast<int>(from_idx) + 1, 0));
     const auto reference_curvature =
       autoware::motion_utils::calcCurvature(processed_prev_module_path->points);
     const auto & from_pose = shifted_path.path.points[from_idx].point.pose;
@@ -226,7 +232,10 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
       reference_curvature.at(from_idx),
       tf2::getYaw(from_pose.orientation)};
     const autoware::sampler_common::State final{
-      {to_pose.position.x, to_pose.position.y}, {0.0, 0.0}, 0.0, tf2::getYaw(to_pose.orientation)};
+      {to_pose.position.x, to_pose.position.y},
+      {0.0, 0.0},
+      reference_curvature.at(to_idx),
+      tf2::getYaw(to_pose.orientation)};
     // setting the initial velocity to higher gives straight forward path (the steering does not
     // change)
     const auto bezier_path =
@@ -239,10 +248,20 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
       p.point.pose.orientation =
         universe_utils::createQuaternionFromRPY(0.0, 0.0, bezier_points[i].z());
     }
+
+    // interpolate between shift end pose to goal pose
+    for (const auto & toward_goal_straight_pose :
+         utils::interpolatePose(shift_end_pose, goal_pose, 0.5)) {
+      PathPointWithLaneId p = shifted_path.path.points.back();
+      p.point.pose = toward_goal_straight_pose;
+      shifted_path.path.points.push_back(p);
+    }
+
     shifted_path.path.points =
       autoware::motion_utils::removeOverlapPoints(shifted_path.path.points);
-
-    autoware::motion_utils::insertOrientation(shifted_path.path.points, true);
+    /* insertOrientation erases original goal pose, so not used
+      autoware::motion_utils::insertOrientation(shifted_path.path.points, true);
+    */
 
     // combine road lanes and shoulder lanes to find closest lanelet id
     const auto lanes = std::invoke([&]() -> lanelet::ConstLanelets {
@@ -326,6 +345,7 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
       continue;
     }
     bezier_paths.push_back(std::move(pull_over_path));
+    id++;
   }
 
   return bezier_paths;

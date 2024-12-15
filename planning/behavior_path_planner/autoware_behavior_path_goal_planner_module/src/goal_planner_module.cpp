@@ -416,7 +416,7 @@ void LaneParkingPlanner::onTimer()
                                     const GoalCandidate & goal_candidate) {
     if (switch_bezier_) {
       auto bezier_pull_over_paths = bezier_pull_over_planner_->plans(
-        goal_candidate, 0, local_planner_data, previous_module_output);
+        goal_candidate, path_candidates.size(), local_planner_data, upstream_module_output);
       // TODO(soblin):
       // bezier生成が遅すぎる場合，shiftベースのclosest_start_poseは保存しないといけないかも
       std::copy(
@@ -425,7 +425,7 @@ void LaneParkingPlanner::onTimer()
     } else {
       // normal pull_over
       const auto pull_over_path = planner->plan(
-        goal_candidate, path_candidates.size(), local_planner_data, previous_module_output);
+        goal_candidate, path_candidates.size(), local_planner_data, upstream_module_output);
       if (pull_over_path) {
         // calculate absolute maximum curvature of parking path(start pose to end pose) for path
         // priority
@@ -450,7 +450,7 @@ void LaneParkingPlanner::onTimer()
     is_center_line_input_path);
 
   // plan candidate paths and set them to the member variable
-  if (parameters.path_priority == "efficient_path") {
+  if (parameters_.path_priority == "efficient_path") {
     if (!switch_bezier_) {
       for (const auto & planner : pull_over_planners_) {
         // todo: temporary skip NON SHIFT planner when input path is not center line
@@ -466,7 +466,7 @@ void LaneParkingPlanner::onTimer()
         planCandidatePaths(bezier_pull_over_planner_, goal_candidate);
       }
     }
-  } else if (parameters.path_priority == "close_goal") {
+  } else if (parameters_.path_priority == "close_goal") {
     if (!switch_bezier_) {
       for (const auto & goal_candidate : goal_candidates) {
         for (const auto & planner : pull_over_planners_) {
@@ -510,13 +510,13 @@ void LaneParkingPlanner::onTimer()
       }
     }
     const double vehicle_width = local_planner_data->parameters.vehicle_width;
-    const bool left_side_parking = parameters.parking_policy == ParkingPolicy::LEFT_SIDE;
+    const bool left_side_parking = parameters_.parking_policy == ParkingPolicy::LEFT_SIDE;
     const auto pull_over_lanes = goal_planner_utils::getPullOverLanes(
       *(local_planner_data->route_handler), left_side_parking,
-      parameters.backward_goal_search_length, parameters.forward_goal_search_length);
+      parameters_.backward_goal_search_length, parameters_.forward_goal_search_length);
     const auto objects_extraction_polygon = goal_planner_utils::generateObjectExtractionPolygon(
-      pull_over_lanes, left_side_parking, parameters.detection_bound_offset,
-      parameters.margin_from_boundary + parameters.max_lateral_offset + vehicle_width);
+      pull_over_lanes, left_side_parking, parameters_.detection_bound_offset,
+      parameters_.margin_from_boundary + parameters_.max_lateral_offset + vehicle_width);
 
     PredictedObjects dynamic_target_objects{};
     for (const auto & object : local_planner_data->dynamic_object->objects) {
@@ -528,9 +528,9 @@ void LaneParkingPlanner::onTimer()
       }
     }
     const auto static_target_objects = utils::path_safety_checker::filterObjectsByVelocity(
-      dynamic_target_objects, parameters.th_moving_object_velocity);
+      dynamic_target_objects, parameters_.th_moving_object_velocity);
     sortPullOverPaths(
-      local_planner_data, parameters, path_candidates, goal_candidates, static_target_objects,
+      local_planner_data, parameters_, path_candidates, goal_candidates, static_target_objects,
       getLogger(), sorted_path_indices);
 
     // 減らす(上から100個まで)
