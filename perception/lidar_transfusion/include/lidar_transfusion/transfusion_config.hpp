@@ -64,6 +64,9 @@ public:
       voxel_y_size_ = static_cast<float>(voxel_size[1]);
       voxel_z_size_ = static_cast<float>(voxel_size[2]);
     }
+    if (num_proposals > 0) {
+      num_proposals_ = num_proposals;
+    }
     if (score_threshold > 0.0) {
       score_threshold_ = score_threshold;
     }
@@ -110,7 +113,7 @@ public:
   const std::size_t out_size_factor_{4};
   const std::size_t max_num_points_per_pillar_{points_per_voxel_};
   const std::size_t num_point_values_{4};
-  const std::size_t num_proposals_{200};
+  std::size_t num_proposals_{200};
   // the number of feature maps for pillar scatter
   const std::size_t num_feature_scatter_{pillar_feature_size_};
   // the score threshold for classification

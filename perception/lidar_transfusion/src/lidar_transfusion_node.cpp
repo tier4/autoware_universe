@@ -77,8 +77,8 @@ LidarTransfusionNode::LidarTransfusionNode(const rclcpp::NodeOptions & options)
   DensificationParam densification_param(
     densification_world_frame_id, densification_num_past_frames);
   TransfusionConfig config(
-    voxels_num, point_cloud_range, voxel_size, num_proposals, circle_nms_dist_threshold,
-    yaw_norm_thresholds, score_threshold);
+    cloud_capacity, voxels_num, point_cloud_range, voxel_size, num_proposals,
+    circle_nms_dist_threshold, yaw_norm_thresholds, score_threshold);
 
   const auto allow_remapping_by_area_matrix =
     this->declare_parameter<std::vector<int64_t>>("allow_remapping_by_area_matrix", descriptor);
