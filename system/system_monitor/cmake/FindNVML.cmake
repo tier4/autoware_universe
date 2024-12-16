@@ -20,11 +20,24 @@
 #  NVML_FOUND        - True if NVML found.
 
 if(NOT NVML_INCLUDE_DIRS)
-  find_path(NVML_INCLUDE_DIRS nvml.h PATHS /usr/local/cuda/include)
+  find_path(NVML_INCLUDE_DIRS nvml.h
+    PATHS
+      /usr/local/cuda/include
+      /usr/include
+      /usr/local/include
+  )
 endif()
 
+# NVML library
 if(NOT NVML_LIBRARIES)
-  find_library(NVML_LIBRARIES NAMES nvidia-ml)
+  find_library(NVML_LIBRARIES NAMES nvidia-ml
+    PATHS
+      /usr/lib
+      /usr/lib64
+      /usr/lib/x86_64-linux-gnu
+      /usr/local/lib
+      /usr/local/lib64
+  )
 endif()
 
 include(FindPackageHandleStandardArgs)
