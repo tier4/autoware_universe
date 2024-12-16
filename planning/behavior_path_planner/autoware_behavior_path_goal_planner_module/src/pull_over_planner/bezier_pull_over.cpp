@@ -16,10 +16,10 @@
 
 #include "autoware/behavior_path_goal_planner_module/util.hpp"
 #include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/static_drivable_area.hpp"
+#include "autoware/behavior_path_planner_common/utils/path_shifter/path_shifter.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 #include "autoware/behavior_path_planner_common/utils/utils.hpp"
 
-#include <autoware/motion_utils/trajectory/path_shift.hpp>
 #include <autoware_bezier_sampler/bezier_sampling.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 
@@ -167,7 +167,7 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
       .y;
 
   // calculate shift start pose on road lane
-  const double pull_over_distance = autoware::motion_utils::calc_longitudinal_dist_from_jerk(
+  const double pull_over_distance = PathShifter::calcLongitudinalDistFromJerk(
     shift_end_road_to_target_distance, lateral_jerk, pull_over_velocity);
   const double before_shifted_pull_over_distance = calcBeforeShiftedArcLength(
     processed_prev_module_path.value(), pull_over_distance, shift_end_road_to_target_distance);

@@ -211,9 +211,7 @@ GoalCandidates GoalSearcher::search(const std::shared_ptr<const PlannerData> & p
       // modify the goal_pose orientation so that vehicle footprint front heading is parallel to the
       // lane boundary
       const auto vehicle_front_midpoint =
-        (transformed_vehicle_footprint.at(vehicle_info_utils::VehicleInfo::FrontLeftIndex) +
-         transformed_vehicle_footprint.at(vehicle_info_utils::VehicleInfo::FrontRightIndex)) /
-        2.0;
+        (transformed_vehicle_footprint.at(0) + transformed_vehicle_footprint.at(1)) / 2.0;
       lanelet::ConstLanelet vehicle_front_closest_lanelet;
       lanelet::utils::query::getClosestLanelet(
         pull_over_lanes, search_pose, &vehicle_front_closest_lanelet);

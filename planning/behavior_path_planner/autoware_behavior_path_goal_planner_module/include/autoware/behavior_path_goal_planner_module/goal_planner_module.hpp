@@ -83,6 +83,29 @@ struct LastApprovalData
   Pose pose{};
 };
 
+// store stop_pose_ pointer with reason string
+struct PoseWithString
+{
+  std::optional<Pose> * pose;
+  std::string string;
+
+  explicit PoseWithString(std::optional<Pose> * shared_pose) : pose(shared_pose), string("") {}
+
+  void set(const Pose & new_pose, const std::string & new_string)
+  {
+    *pose = new_pose;
+    string = new_string;
+  }
+
+  void set(const std::string & new_string) { string = new_string; }
+
+  void clear()
+  {
+    pose->reset();
+    string = "";
+  }
+};
+
 struct PullOverContextData
 {
   PullOverContextData() = delete;
@@ -240,7 +263,8 @@ public:
     const std::shared_ptr<GoalPlannerParameters> & parameters,
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
-      objects_of_interest_marker_interface_ptr_map);
+      objects_of_interest_marker_interface_ptr_map,
+    std::shared_ptr<SteeringFactorInterface> & steering_factor_interface_ptr);
 
   ~GoalPlannerModule()
   {
@@ -390,6 +414,7 @@ private:
 
   // debug
   mutable GoalPlannerDebugData debug_data_;
+  mutable PoseWithString debug_stop_pose_with_info_;
 
   // goal seach
   GoalCandidates generateGoalCandidates() const;
@@ -399,10 +424,8 @@ private:
   void decelerateForTurnSignal(const Pose & stop_pose, PathWithLaneId & path) const;
   void decelerateBeforeSearchStart(
     const Pose & search_start_offset_pose, PathWithLaneId & path) const;
-  PathWithLaneId generateStopPath(
-    const PullOverContextData & context_data, const std::string & detail) const;
-  PathWithLaneId generateFeasibleStopPath(
-    const PathWithLaneId & path, const std::string & detail) const;
+  PathWithLaneId generateStopPath(const PullOverContextData & context_data) const;
+  PathWithLaneId generateFeasibleStopPath(const PathWithLaneId & path) const;
 
   void keepStoppedWithCurrentPath(
     const PullOverContextData & ctx_data, PathWithLaneId & path) const;
@@ -427,8 +450,7 @@ private:
   // plan pull over path
   BehaviorModuleOutput planPullOver(PullOverContextData & context_data);
   BehaviorModuleOutput planPullOverAsOutput(PullOverContextData & context_data);
-  BehaviorModuleOutput planPullOverAsCandidate(
-    PullOverContextData & context_data, const std::string & detail);
+  BehaviorModuleOutput planPullOverAsCandidate(PullOverContextData & context_data);
   std::optional<PullOverPath> selectPullOverPath(
     const PullOverContextData & context_data,
     const std::vector<PullOverPath> & pull_over_path_candidates,
