@@ -50,7 +50,9 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
   const int densification_num_past_frames =
     this->declare_parameter<int>("densification_params.num_past_frames");
   const std::string trt_precision = this->declare_parameter<std::string>("trt_precision");
-  const std::size_t cloud_capacity = this->declare_parameter<std::int64_t>("cloud_capacity");
+  const std::size_t cloud_capacity = this->declare_parameter<std::int64_t>(
+    "cloud_capacity", 2000000);  // NOTE(knzo25): this is a temporal hack since the launcher for
+                                 // this release does not have the corresponding parameter yet
   const std::string encoder_onnx_path = this->declare_parameter<std::string>("encoder_onnx_path");
   const std::string encoder_engine_path =
     this->declare_parameter<std::string>("encoder_engine_path");
