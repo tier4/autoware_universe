@@ -17,12 +17,9 @@
 
 // ros packages cannot be included from cuda.
 
-#include <lidar_centerpoint/utils.hpp>
+#include "lidar_centerpoint/utils.hpp"
 
-#include <autoware_perception_msgs/msg/detected_object_kinematics.hpp>
-#include <autoware_perception_msgs/msg/detected_objects.hpp>
-#include <autoware_perception_msgs/msg/object_classification.hpp>
-#include <autoware_perception_msgs/msg/shape.hpp>
+#include "autoware_perception_msgs/msg/detected_objects.hpp"
 
 #include <string>
 #include <vector>
@@ -38,7 +35,7 @@ uint8_t getSemanticType(const std::string & class_name);
 
 std::array<double, 36> convertPoseCovarianceMatrix(const Box3D & box3d);
 
-std::array<double, 36> convertTwistCovarianceMatrix(const Box3D & box3d);
+std::array<double, 36> convertTwistCovarianceMatrix(const Box3D & box3d, const float yaw);
 
 bool isCarLikeVehicleLabel(const uint8_t label);
 

@@ -122,12 +122,13 @@ TEST(TestSuite, convertPoseCovarianceMatrix)
 TEST(TestSuite, convertTwistCovarianceMatrix)
 {
   centerpoint::Box3D box3d;
-  box3d.vel_x_variance = 0.1;
+  box3d.vel_x_variance = 0.5;
   box3d.vel_y_variance = 0.2;
+  float yaw = 0;
 
-  std::array<double, 36> twist_covariance = centerpoint::convertTwistCovarianceMatrix(box3d);
+  std::array<double, 36> twist_covariance = centerpoint::convertTwistCovarianceMatrix(box3d, yaw);
 
-  EXPECT_FLOAT_EQ(twist_covariance[0], 0.1);
+  EXPECT_FLOAT_EQ(twist_covariance[0], 0.5);
   EXPECT_FLOAT_EQ(twist_covariance[7], 0.2);
 }
 

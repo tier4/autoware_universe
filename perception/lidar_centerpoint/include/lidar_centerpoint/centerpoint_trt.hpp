@@ -15,15 +15,14 @@
 #ifndef LIDAR_CENTERPOINT__CENTERPOINT_TRT_HPP_
 #define LIDAR_CENTERPOINT__CENTERPOINT_TRT_HPP_
 
-#include <lidar_centerpoint/cuda_utils.hpp>
-#include <lidar_centerpoint/network/network_trt.hpp>
-#include <lidar_centerpoint/postprocess/postprocess_kernel.hpp>
-#include <lidar_centerpoint/preprocess/voxel_generator.hpp>
+#include "lidar_centerpoint/cuda_utils.hpp"
+#include "lidar_centerpoint/network/network_trt.hpp"
+#include "lidar_centerpoint/postprocess/postprocess_kernel.hpp"
+#include "lidar_centerpoint/preprocess/voxel_generator.hpp"
+#include "pcl/point_cloud.h"
+#include "pcl/point_types.h"
 
-#include <sensor_msgs/msg/point_cloud2.hpp>
-
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
+#include "sensor_msgs/msg/point_cloud2.hpp"
 
 #include <memory>
 #include <string>
@@ -32,8 +31,6 @@
 
 namespace centerpoint
 {
-static constexpr size_t CAPACITY_POINT = 2000000;
-
 class NetworkParam
 {
 public:
@@ -105,9 +102,11 @@ protected:
   cuda::unique_ptr<float[]> head_out_rot_d_{nullptr};
   cuda::unique_ptr<float[]> head_out_vel_d_{nullptr};
   cuda::unique_ptr<float[]> points_d_{nullptr};
+  cuda::unique_ptr<float[]> points_aux_d_{nullptr};
   cuda::unique_ptr<float[]> voxels_buffer_d_{nullptr};
   cuda::unique_ptr<unsigned int[]> mask_d_{nullptr};
   cuda::unique_ptr<unsigned int[]> num_voxels_d_{nullptr};
+  cuda::unique_ptr<unsigned int[]> shuffle_indices_d_{nullptr};
 };
 
 }  // namespace centerpoint

@@ -29,6 +29,7 @@ void PostprocessKernelTest::SetUp()
 
   constexpr std::size_t class_size{5};
   constexpr std::size_t point_feature_size{4};
+  const std::size_t cloud_capacity{2000000};
   constexpr std::size_t max_voxel_size{100000000};
   const std::vector<double> point_cloud_range{-76.8, -76.8, -4.0, 76.8, 76.8, 6.0};
   const std::vector<double> voxel_size{0.32, 0.32, 10.0};
@@ -40,7 +41,7 @@ void PostprocessKernelTest::SetUp()
   constexpr bool has_variance{false};
 
   config_ptr_ = std::make_unique<centerpoint::CenterPointConfig>(
-    class_size, point_feature_size, max_voxel_size, point_cloud_range, voxel_size,
+    class_size, point_feature_size, cloud_capacity, max_voxel_size, point_cloud_range, voxel_size,
     downsample_factor, encoder_in_feature_size, score_threshold, circle_nms_dist_threshold,
     yaw_norm_thresholds, has_variance);
 
@@ -94,12 +95,12 @@ TEST_F(PostprocessKernelTest, SingleDetectionTest)
   constexpr float detection_x = 70.f;
   constexpr float detection_y = -38.4f;
   constexpr float detection_z = 1.0;
-  constexpr float detection_log_w = std::log(7.0);
-  constexpr float detection_log_l = std::log(1.0);
-  constexpr float detection_log_h = std::log(2.0);
+  const float detection_log_w = std::log(7.0);
+  const float detection_log_l = std::log(1.0);
+  const float detection_log_h = std::log(2.0);
   constexpr float detection_yaw = M_PI_4;
-  constexpr float detection_yaw_sin = std::sin(detection_yaw);
-  constexpr float detection_yaw_cos = std::sin(detection_yaw);
+  const float detection_yaw_sin = std::sin(detection_yaw);
+  const float detection_yaw_cos = std::sin(detection_yaw);
   constexpr float detection_vel_x = 5.0;
   constexpr float detection_vel_y = -5.0;
 
@@ -240,9 +241,9 @@ TEST_F(PostprocessKernelTest, CircleNMSTest)
   constexpr float detection_x = 70.f;
   constexpr float detection_y = -38.4f;
   constexpr float detection_z = 1.0;
-  constexpr float detection_log_w = std::log(7.0);
-  constexpr float detection_log_l = std::log(1.0);
-  constexpr float detection_log_h = std::log(2.0);
+  const float detection_log_w = std::log(7.0);
+  const float detection_log_l = std::log(1.0);
+  const float detection_log_h = std::log(2.0);
   constexpr float detection_yaw1_sin = 0.0;
   constexpr float detection_yaw1_cos = 1.0;
   constexpr float detection_yaw2_sin = 1.0;

@@ -14,13 +14,18 @@
 
 #include "lidar_centerpoint/centerpoint_trt.hpp"
 
-#include <autoware/universe_utils/math/constants.hpp>
-#include <lidar_centerpoint/centerpoint_config.hpp>
-#include <lidar_centerpoint/network/scatter_kernel.hpp>
-#include <lidar_centerpoint/preprocess/preprocess_kernel.hpp>
+#include "lidar_centerpoint/centerpoint_config.hpp"
+#include "lidar_centerpoint/network/scatter_kernel.hpp"
+#include "lidar_centerpoint/preprocess/preprocess_kernel.hpp"
 
+#include <autoware/universe_utils/math/constants.hpp>
+
+#include <algorithm>
+#include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -84,7 +89,7 @@ void CenterPointTRT::initPtr()
   mask_size_ = config_.grid_size_x_ * config_.grid_size_y_;
 
   // host
-  points_.resize(CAPACITY_POINT * config_.point_feature_size_);
+  points_.resize(config_.cloud_capacity_ * config_.point_feature_size_);
 
   // device
   voxels_d_ = cuda::make_unique<float[]>(voxels_size_);
@@ -99,10 +104,25 @@ void CenterPointTRT::initPtr()
   head_out_dim_d_ = cuda::make_unique<float[]>(grid_xy_size * config_.head_out_dim_size_);
   head_out_rot_d_ = cuda::make_unique<float[]>(grid_xy_size * config_.head_out_rot_size_);
   head_out_vel_d_ = cuda::make_unique<float[]>(grid_xy_size * config_.head_out_vel_size_);
-  points_d_ = cuda::make_unique<float[]>(CAPACITY_POINT * config_.point_feature_size_);
+  points_d_ = cuda::make_unique<float[]>(config_.cloud_capacity_ * config_.point_feature_size_);
   voxels_buffer_d_ = cuda::make_unique<float[]>(voxels_buffer_size_);
   mask_d_ = cuda::make_unique<unsigned int[]>(mask_size_);
   num_voxels_d_ = cuda::make_unique<unsigned int[]>(1);
+
+  points_aux_d_ = cuda::make_unique<float[]>(config_.cloud_capacity_ * config_.point_feature_size_);
+  shuffle_indices_d_ = cuda::make_unique<unsigned int[]>(config_.cloud_capacity_);
+
+  std::vector<unsigned int> indexes(config_.cloud_capacity_);
+  std::iota(indexes.begin(), indexes.end(), 0);
+
+  std::default_random_engine e(0);
+  std::shuffle(indexes.begin(), indexes.end(), e);
+
+  std::srand(std::time(nullptr));
+
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    shuffle_indices_d_.get(), indexes.data(), config_.cloud_capacity_ * sizeof(unsigned int),
+    cudaMemcpyHostToDevice, stream_));
 }
 
 bool CenterPointTRT::detect(
@@ -143,14 +163,17 @@ bool CenterPointTRT::detect(
 bool CenterPointTRT::preprocess(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg, const tf2_ros::Buffer & tf_buffer)
 {
-  bool is_success = vg_ptr_->enqueuePointCloud(input_pointcloud_msg, tf_buffer);
+  bool is_success = vg_ptr_->enqueuePointCloud(input_pointcloud_msg, tf_buffer, stream_);
   if (!is_success) {
     return false;
   }
-  const auto count = vg_ptr_->generateSweepPoints(points_);
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    points_d_.get(), points_.data(), count * config_.point_feature_size_ * sizeof(float),
-    cudaMemcpyHostToDevice, stream_));
+
+  const std::size_t count = vg_ptr_->generateSweepPoints(points_aux_d_.get(), stream_);
+  const std::size_t random_offset = std::rand() % config_.cloud_capacity_;
+  CHECK_CUDA_ERROR(shufflePoints_launch(
+    points_aux_d_.get(), shuffle_indices_d_.get(), points_d_.get(), count, config_.cloud_capacity_,
+    random_offset, stream_));
+
   CHECK_CUDA_ERROR(cudaMemsetAsync(num_voxels_d_.get(), 0, sizeof(unsigned int), stream_));
   CHECK_CUDA_ERROR(
     cudaMemsetAsync(voxels_buffer_d_.get(), 0, voxels_buffer_size_ * sizeof(float), stream_));
@@ -162,10 +185,10 @@ bool CenterPointTRT::preprocess(
     num_points_per_voxel_d_.get(), 0, config_.max_voxel_size_ * sizeof(float), stream_));
 
   CHECK_CUDA_ERROR(generateVoxels_random_launch(
-    points_d_.get(), count, config_.range_min_x_, config_.range_max_x_, config_.range_min_y_,
-    config_.range_max_y_, config_.range_min_z_, config_.range_max_z_, config_.voxel_size_x_,
-    config_.voxel_size_y_, config_.voxel_size_z_, config_.grid_size_y_, config_.grid_size_x_,
-    mask_d_.get(), voxels_buffer_d_.get(), stream_));
+    points_d_.get(), config_.cloud_capacity_, config_.range_min_x_, config_.range_max_x_,
+    config_.range_min_y_, config_.range_max_y_, config_.range_min_z_, config_.range_max_z_,
+    config_.voxel_size_x_, config_.voxel_size_y_, config_.voxel_size_z_, config_.grid_size_y_,
+    config_.grid_size_x_, mask_d_.get(), voxels_buffer_d_.get(), stream_));
 
   CHECK_CUDA_ERROR(generateBaseFeatures_launch(
     mask_d_.get(), voxels_buffer_d_.get(), config_.grid_size_y_, config_.grid_size_x_,
