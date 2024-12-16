@@ -30,5 +30,5 @@ endif()
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(NVML DEFAULT_MSG NVML_LIBRARIES NVML_INCLUDE_DIRS)
 
-message(STATUS "NVML include dir: ${NVML_INCLUDE_DIRS}")
-message(STATUS "NVML library : ${NVML_LIBRARIES}")
+message(WARNING "NVML include dir: ${NVML_INCLUDE_DIRS}")
+message(WARNING "NVML library : ${NVML_LIBRARIES}")
