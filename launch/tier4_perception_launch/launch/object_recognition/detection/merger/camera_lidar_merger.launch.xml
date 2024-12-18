@@ -67,6 +67,8 @@
       <arg name="input/rois6" value="$(var detection_rois6)"/>
       <arg name="input/camera_info7" value="$(var camera_info7)"/>
       <arg name="input/rois7" value="$(var detection_rois7)"/>
+      <arg name="input/camera_info8" value="$(var camera_info8)"/>
+      <arg name="input/rois8" value="$(var detection_rois8)"/>
       <arg name="input/rois_number" value="$(var image_number)"/>
       <arg name="input/image0" value="$(var image_raw0)"/>
       <arg name="input/image1" value="$(var image_raw1)"/>
@@ -76,6 +78,7 @@
       <arg name="input/image5" value="$(var image_raw5)"/>
       <arg name="input/image6" value="$(var image_raw6)"/>
       <arg name="input/image7" value="$(var image_raw7)"/>
+      <arg name="input/image8" value="$(var image_raw8)"/>
       <arg name="input/objects" value="$(var camera_roi_fusion/input/objects)"/>
       <arg name="output/objects" value="$(var camera_roi_fusion/output/objects)"/>
       <arg name="param_path" value="$(var roi_detected_object_fusion_param_path)"/>
