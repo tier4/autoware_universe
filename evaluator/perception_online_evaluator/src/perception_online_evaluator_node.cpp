@@ -14,12 +14,12 @@
 
 #include "perception_online_evaluator/perception_online_evaluator_node.hpp"
 
+#include "autoware/universe_utils/ros/marker_helper.hpp"
+#include "autoware/universe_utils/ros/parameter.hpp"
+#include "autoware/universe_utils/ros/update_param.hpp"
 #include "perception_online_evaluator/utils/marker_utils.hpp"
-#include "tier4_autoware_utils/ros/marker_helper.hpp"
-#include "tier4_autoware_utils/ros/parameter.hpp"
-#include "tier4_autoware_utils/ros/update_param.hpp"
 
-#include <tier4_autoware_utils/ros/uuid_helper.hpp>
+#include <autoware/universe_utils/ros/uuid_helper.hpp>
 
 #include "boost/lexical_cast.hpp"
 
@@ -43,8 +43,10 @@ PerceptionOnlineEvaluatorNode::PerceptionOnlineEvaluatorNode(
 {
   using std::placeholders::_1;
 
-  google::InitGoogleLogging("perception_online_evaluator_node");
-  google::InstallFailureSignalHandler();
+  if (!google::IsGoogleLoggingInitialized()) {
+    google::InitGoogleLogging("perception_online_evaluator_node");
+    google::InstallFailureSignalHandler();
+  }
 
   objects_sub_ = create_subscription<PredictedObjects>(
     "~/input/objects", 1, std::bind(&PerceptionOnlineEvaluatorNode::onObjects, this, _1));
@@ -67,16 +69,25 @@ void PerceptionOnlineEvaluatorNode::publishMetrics()
 
   // calculate metrics
   for (const Metric & metric : parameters_->metrics) {
-    const auto metric_stat_map = metrics_calculator_.calculate(Metric(metric));
-    if (!metric_stat_map.has_value()) {
+    const auto metric_result = metrics_calculator_.calculate(Metric(metric));
+    if (!metric_result.has_value()) {
       continue;
     }
 
-    for (const auto & [metric, stat] : metric_stat_map.value()) {
-      if (stat.count() > 0) {
-        metrics_msg.status.push_back(generateDiagnosticStatus(metric, stat));
-      }
-    }
+    std::visit(
+      [&metrics_msg, this](auto && arg) {
+        using T = std::decay_t<decltype(arg)>;
+        for (const auto & [metric, value] : arg) {
+          if constexpr (std::is_same_v<T, MetricStatMap>) {
+            if (value.count() > 0) {
+              metrics_msg.status.emplace_back(generateDiagnosticStatus(metric, value));
+            }
+          } else if constexpr (std::is_same_v<T, MetricValueMap>) {
+            metrics_msg.status.emplace_back(generateDiagnosticStatus(metric, value));
+          }
+        }
+      },
+      metric_result.value());
   }
 
   // publish metrics
@@ -109,9 +120,25 @@ DiagnosticStatus PerceptionOnlineEvaluatorNode::generateDiagnosticStatus(
   return status;
 }
 
+DiagnosticStatus PerceptionOnlineEvaluatorNode::generateDiagnosticStatus(
+  const std::string & metric, const double value) const
+{
+  DiagnosticStatus status;
+
+  status.level = status.OK;
+  status.name = metric;
+
+  diagnostic_msgs::msg::KeyValue key_value;
+  key_value.key = "metric_value";
+  key_value.value = std::to_string(value);
+  status.values.push_back(key_value);
+
+  return status;
+}
+
 void PerceptionOnlineEvaluatorNode::onObjects(const PredictedObjects::ConstSharedPtr objects_msg)
 {
-  metrics_calculator_.setPredictedObjects(*objects_msg);
+  metrics_calculator_.setPredictedObjects(*objects_msg, *tf_buffer_);
   publishMetrics();
 }
 
@@ -129,7 +156,7 @@ void PerceptionOnlineEvaluatorNode::publishDebugMarker()
     for (auto & marker : added.markers) {
       marker.lifetime = rclcpp::Duration::from_seconds(1.5);
     }
-    tier4_autoware_utils::appendMarkerArray(added, &marker);
+    autoware::universe_utils::appendMarkerArray(added, &marker);
   };
 
   const auto & p = parameters_->debug_marker_parameters;
@@ -209,61 +236,44 @@ void PerceptionOnlineEvaluatorNode::publishDebugMarker()
 rcl_interfaces::msg::SetParametersResult PerceptionOnlineEvaluatorNode::onParameter(
   const std::vector<rclcpp::Parameter> & parameters)
 {
-  using tier4_autoware_utils::updateParam;
+  using autoware::universe_utils::updateParam;
 
   auto & p = parameters_;
 
   updateParam<size_t>(parameters, "smoothing_window_size", p->smoothing_window_size);
-
-  // update metrics
-  {
-    std::vector<std::string> metrics_str;
-    updateParam<std::vector<std::string>>(parameters, "selected_metrics", metrics_str);
-    std::vector<Metric> metrics;
-    for (const std::string & selected_metric : metrics_str) {
-      const Metric metric = str_to_metric.at(selected_metric);
-      metrics.push_back(metric);
-    }
-    p->metrics = metrics;
-  }
+  updateParam<double>(parameters, "stopped_velocity_threshold", p->stopped_velocity_threshold);
+  updateParam<double>(
+    parameters, "detection_count_purge_seconds", p->detection_count_purge_seconds);
+  updateParam<double>(parameters, "objects_count_window_seconds", p->objects_count_window_seconds);
 
   // update parameters for each object class
   {
-    const auto get_object_param = [&](std::string && ns) -> std::optional<ObjectParameter> {
-      ObjectParameter param{};
-      if (updateParam<bool>(parameters, ns + "check_deviation", param.check_deviation)) {
-        return param;
-      }
-      return std::nullopt;
+    const auto update_object_param = [&p, &parameters](
+                                       const auto & semantic, const std::string & ns) {
+      auto & config = p->object_parameters.at(semantic);
+      updateParam<bool>(parameters, ns + "check_lateral_deviation", config.check_lateral_deviation);
+      updateParam<bool>(parameters, ns + "check_yaw_deviation", config.check_yaw_deviation);
+      updateParam<bool>(
+        parameters, ns + "check_predicted_path_deviation", config.check_predicted_path_deviation);
+      updateParam<bool>(parameters, ns + "check_yaw_rate", config.check_yaw_rate);
+      updateParam<bool>(
+        parameters, ns + "check_total_objects_count", config.check_total_objects_count);
+      updateParam<bool>(
+        parameters, ns + "check_average_objects_count", config.check_average_objects_count);
+      updateParam<bool>(
+        parameters, ns + "check_interval_average_objects_count",
+        config.check_interval_average_objects_count);
     };
-
     const std::string ns = "target_object.";
-    if (const auto new_param = get_object_param(ns + "car.")) {
-      p->object_parameters.at(ObjectClassification::CAR) = *new_param;
-    }
-    if (const auto new_param = get_object_param(ns + "truck.")) {
-      p->object_parameters.at(ObjectClassification::TRUCK) = *new_param;
-    }
-    if (const auto new_param = get_object_param(ns + "bus.")) {
-      p->object_parameters.at(ObjectClassification::BUS) = *new_param;
-    }
-    if (const auto new_param = get_object_param(ns + "trailer.")) {
-      p->object_parameters.at(ObjectClassification::TRAILER) = *new_param;
-    }
-    if (const auto new_param = get_object_param(ns + "bicycle.")) {
-      p->object_parameters.at(ObjectClassification::BICYCLE) = *new_param;
-    }
-    if (const auto new_param = get_object_param(ns + "motorcycle.")) {
-      p->object_parameters.at(ObjectClassification::MOTORCYCLE) = *new_param;
-    }
-    if (const auto new_param = get_object_param(ns + "pedestrian.")) {
-      p->object_parameters.at(ObjectClassification::PEDESTRIAN) = *new_param;
-    }
-    if (const auto new_param = get_object_param(ns + "unknown.")) {
-      p->object_parameters.at(ObjectClassification::UNKNOWN) = *new_param;
-    }
+    update_object_param(ObjectClassification::MOTORCYCLE, ns + "motorcycle.");
+    update_object_param(ObjectClassification::CAR, ns + "car.");
+    update_object_param(ObjectClassification::TRUCK, ns + "truck.");
+    update_object_param(ObjectClassification::TRAILER, ns + "trailer.");
+    update_object_param(ObjectClassification::BUS, ns + "bus.");
+    update_object_param(ObjectClassification::PEDESTRIAN, ns + "pedestrian.");
+    update_object_param(ObjectClassification::BICYCLE, ns + "bicycle.");
+    update_object_param(ObjectClassification::UNKNOWN, ns + "unknown.");
   }
-
   // update debug marker parameters
   {
     const std::string ns = "debug_marker.";
@@ -296,8 +306,8 @@ rcl_interfaces::msg::SetParametersResult PerceptionOnlineEvaluatorNode::onParame
 
 void PerceptionOnlineEvaluatorNode::initParameter()
 {
-  using tier4_autoware_utils::getOrDeclareParameter;
-  using tier4_autoware_utils::updateParam;
+  using autoware::universe_utils::getOrDeclareParameter;
+  using autoware::universe_utils::updateParam;
 
   auto & p = parameters_;
 
@@ -306,6 +316,14 @@ void PerceptionOnlineEvaluatorNode::initParameter()
     getOrDeclareParameter<std::vector<double>>(*this, "prediction_time_horizons");
   p->stopped_velocity_threshold =
     getOrDeclareParameter<double>(*this, "stopped_velocity_threshold");
+  p->detection_radius_list =
+    getOrDeclareParameter<std::vector<double>>(*this, "detection_radius_list");
+  p->detection_height_list =
+    getOrDeclareParameter<std::vector<double>>(*this, "detection_height_list");
+  p->detection_count_purge_seconds =
+    getOrDeclareParameter<double>(*this, "detection_count_purge_seconds");
+  p->objects_count_window_seconds =
+    getOrDeclareParameter<double>(*this, "objects_count_window_seconds");
 
   // set metrics
   const auto selected_metrics =
@@ -319,7 +337,18 @@ void PerceptionOnlineEvaluatorNode::initParameter()
   {
     const auto get_object_param = [&](std::string && ns) -> ObjectParameter {
       ObjectParameter param{};
-      param.check_deviation = getOrDeclareParameter<bool>(*this, ns + "check_deviation");
+      param.check_lateral_deviation =
+        getOrDeclareParameter<bool>(*this, ns + "check_lateral_deviation");
+      param.check_yaw_deviation = getOrDeclareParameter<bool>(*this, ns + "check_yaw_deviation");
+      param.check_predicted_path_deviation =
+        getOrDeclareParameter<bool>(*this, ns + "check_predicted_path_deviation");
+      param.check_yaw_rate = getOrDeclareParameter<bool>(*this, ns + "check_yaw_rate");
+      param.check_total_objects_count =
+        getOrDeclareParameter<bool>(*this, ns + "check_total_objects_count");
+      param.check_average_objects_count =
+        getOrDeclareParameter<bool>(*this, ns + "check_average_objects_count");
+      param.check_interval_average_objects_count =
+        getOrDeclareParameter<bool>(*this, ns + "check_interval_average_objects_count");
       return param;
     };
 

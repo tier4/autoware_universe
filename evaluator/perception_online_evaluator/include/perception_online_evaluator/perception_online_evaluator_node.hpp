@@ -22,7 +22,7 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 
-#include "autoware_auto_perception_msgs/msg/predicted_objects.hpp"
+#include "autoware_perception_msgs/msg/predicted_objects.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
@@ -35,11 +35,12 @@
 
 namespace perception_diagnostics
 {
-using autoware_auto_perception_msgs::msg::ObjectClassification;
-using autoware_auto_perception_msgs::msg::PredictedObjects;
+using autoware_perception_msgs::msg::ObjectClassification;
+using autoware_perception_msgs::msg::PredictedObjects;
 using diagnostic_msgs::msg::DiagnosticArray;
 using diagnostic_msgs::msg::DiagnosticStatus;
 using nav_msgs::msg::Odometry;
+using TFMessage = tf2_msgs::msg::TFMessage;
 
 using MarkerArray = visualization_msgs::msg::MarkerArray;
 
@@ -60,6 +61,8 @@ public:
 
   DiagnosticStatus generateDiagnosticStatus(
     const std::string metric, const Stat<double> & metric_stat) const;
+  DiagnosticStatus generateDiagnosticStatus(
+    const std::string & metric, const double metric_value) const;
 
 private:
   // Subscribers and publishers

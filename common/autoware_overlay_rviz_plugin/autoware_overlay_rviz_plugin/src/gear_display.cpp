@@ -49,30 +49,30 @@ GearDisplay::GearDisplay() : current_gear_(0)
   }
 }
 
-void GearDisplay::updateGearData(
-  const autoware_auto_vehicle_msgs::msg::GearReport::ConstSharedPtr & msg)
+void GearDisplay::updateGearData(const autoware_vehicle_msgs::msg::GearReport::ConstSharedPtr & msg)
 {
   current_gear_ = msg->report;  // Assuming msg->report contains the gear information
 }
 
-void GearDisplay::drawGearIndicator(QPainter & painter, const QRectF & backgroundRect)
+void GearDisplay::drawGearIndicator(
+  QPainter & painter, const QRectF & backgroundRect, const QColor & color, const QColor & bg_color)
 {
   // we deal with the different gears here
   std::string gearString;
   switch (current_gear_) {
-    case autoware_auto_vehicle_msgs::msg::GearReport::NEUTRAL:
+    case autoware_vehicle_msgs::msg::GearReport::NEUTRAL:
       gearString = "N";
       break;
-    case autoware_auto_vehicle_msgs::msg::GearReport::LOW:
-    case autoware_auto_vehicle_msgs::msg::GearReport::LOW_2:
+    case autoware_vehicle_msgs::msg::GearReport::LOW:
+    case autoware_vehicle_msgs::msg::GearReport::LOW_2:
       gearString = "L";
       break;
-    case autoware_auto_vehicle_msgs::msg::GearReport::NONE:
-    case autoware_auto_vehicle_msgs::msg::GearReport::PARK:
+    case autoware_vehicle_msgs::msg::GearReport::NONE:
+    case autoware_vehicle_msgs::msg::GearReport::PARK:
       gearString = "P";
       break;
-    case autoware_auto_vehicle_msgs::msg::GearReport::REVERSE:
-    case autoware_auto_vehicle_msgs::msg::GearReport::REVERSE_2:
+    case autoware_vehicle_msgs::msg::GearReport::REVERSE:
+    case autoware_vehicle_msgs::msg::GearReport::REVERSE_2:
       gearString = "R";
       break;
     // all the drive gears from DRIVE to DRIVE_16
@@ -81,18 +81,19 @@ void GearDisplay::drawGearIndicator(QPainter & painter, const QRectF & backgroun
       break;
   }
 
-  QFont gearFont("Quicksand", 16, QFont::Bold);
+  QFont gearFont("Quicksand", 12, QFont::Bold);
   painter.setFont(gearFont);
   QPen borderPen(gray);
-  borderPen.setWidth(4);
+  borderPen.setWidth(1);
   painter.setPen(borderPen);
 
-  int gearBoxSize = 30;
-  int gearX = backgroundRect.left() + 30 + gearBoxSize;
-  int gearY = backgroundRect.height() - gearBoxSize - 20;
+  double gearBoxSize = 37.5;
+  double gearX = backgroundRect.left() + 54;
+  double gearY = backgroundRect.height() / 2 - gearBoxSize / 2;
   QRect gearRect(gearX, gearY, gearBoxSize, gearBoxSize);
-  painter.setBrush(QColor(0, 0, 0, 0));
+  painter.setBrush(color);
   painter.drawRoundedRect(gearRect, 10, 10);
+  painter.setPen(bg_color);
   painter.drawText(gearRect, Qt::AlignCenter, QString::fromStdString(gearString));
 }
 

@@ -56,7 +56,7 @@
 #include <OgreQuaternion.h>
 #include <OgreRay.h>
 #include <OgreSceneNode.h>
-#include <OgreVector3.h>
+#include <OgreVector.h>
 #include <OgreViewport.h>
 #include <stdint.h>
 
@@ -226,6 +226,7 @@ void ThirdPersonViewController::updateCamera()
       distance_property_->getFloat() * CAMERA_OFFSET);
 }
 
+// cppcheck-suppress unusedFunction
 void ThirdPersonViewController::updateTargetSceneNode()
 {
   if (FramePositionTrackingViewController::getNewTransform()) {

@@ -39,15 +39,32 @@ namespace autoware_overlay_rviz_plugin
 SignalDisplay::SignalDisplay()
 {
   property_width_ = new rviz_common::properties::IntProperty(
-    "Width", 517, "Width of the overlay", this, SLOT(updateOverlaySize()));
+    "Width", 550, "Width of the overlay", this, SLOT(updateOverlaySize()));
   property_height_ = new rviz_common::properties::IntProperty(
-    "Height", 175, "Height of the overlay", this, SLOT(updateOverlaySize()));
+    "Height", 100, "Height of the overlay", this, SLOT(updateOverlaySize()));
   property_left_ = new rviz_common::properties::IntProperty(
-    "Left", 10, "Left position of the overlay", this, SLOT(updateOverlayPosition()));
+    "Left", 0, "Left position of the overlay", this, SLOT(updateOverlayPosition()));
   property_top_ = new rviz_common::properties::IntProperty(
     "Top", 10, "Top position of the overlay", this, SLOT(updateOverlayPosition()));
   property_signal_color_ = new rviz_common::properties::ColorProperty(
     "Signal Color", QColor(QString("#00E678")), "Color of the signal arrows", this,
+    SLOT(updateOverlayColor()));
+  property_handle_angle_scale_ = new rviz_common::properties::FloatProperty(
+    "Handle Angle Scale", 17.0, "Scale of the steering wheel handle angle", this,
+    SLOT(updateOverlaySize()));
+  property_background_color_ = new rviz_common::properties::ColorProperty(
+    "Background Color", QColor(0, 0, 0), "Color of the signal arrows", this,
+    SLOT(updateOverlayColor()));
+  property_background_alpha_ = new rviz_common::properties::FloatProperty(
+    "Background Alpha", 0.3, "Background Color Alpha", this, SLOT(updateOverlayColor()));
+  property_primary_color_ = new rviz_common::properties::ColorProperty(
+    "Primary Color", QColor(174, 174, 174), "Color of the signal arrows", this,
+    SLOT(updateOverlayColor()));
+  property_light_limit_color_ = new rviz_common::properties::ColorProperty(
+    "Light Traffic Color", QColor(255, 153, 153), "Color of the signal arrows", this,
+    SLOT(updateOverlayColor()));
+  property_dark_limit_color_ = new rviz_common::properties::ColorProperty(
+    "Dark Traffic Color", QColor(255, 51, 51), "Color of the signal arrows", this,
     SLOT(updateOverlayColor()));
 
   // Initialize the component displays
@@ -76,31 +93,29 @@ void SignalDisplay::onInitialize()
   auto rviz_ros_node = context_->getRosNodeAbstraction();
 
   gear_topic_property_ = std::make_unique<rviz_common::properties::RosTopicProperty>(
-    "Gear Topic Test", "/vehicle/status/gear_status", "autoware_auto_vehicle_msgs/msg/GearReport",
+    "Gear Topic Test", "/vehicle/status/gear_status", "autoware_vehicle_msgs/msg/GearReport",
     "Topic for Gear Data", this, SLOT(topic_updated_gear()));
   gear_topic_property_->initialize(rviz_ros_node);
 
   turn_signals_topic_property_ = std::make_unique<rviz_common::properties::RosTopicProperty>(
     "Turn Signals Topic", "/vehicle/status/turn_indicators_status",
-    "autoware_auto_vehicle_msgs/msg/TurnIndicatorsReport", "Topic for Turn Signals Data", this,
+    "autoware_vehicle_msgs/msg/TurnIndicatorsReport", "Topic for Turn Signals Data", this,
     SLOT(topic_updated_turn_signals()));
   turn_signals_topic_property_->initialize(rviz_ros_node);
 
   speed_topic_property_ = std::make_unique<rviz_common::properties::RosTopicProperty>(
-    "Speed Topic", "/vehicle/status/velocity_status",
-    "autoware_auto_vehicle_msgs/msg/VelocityReport", "Topic for Speed Data", this,
-    SLOT(topic_updated_speed()));
+    "Speed Topic", "/vehicle/status/velocity_status", "autoware_vehicle_msgs/msg/VelocityReport",
+    "Topic for Speed Data", this, SLOT(topic_updated_speed()));
   speed_topic_property_->initialize(rviz_ros_node);
 
   steering_topic_property_ = std::make_unique<rviz_common::properties::RosTopicProperty>(
-    "Steering Topic", "/vehicle/status/steering_status",
-    "autoware_auto_vehicle_msgs/msg/SteeringReport", "Topic for Steering Data", this,
-    SLOT(topic_updated_steering()));
+    "Steering Topic", "/vehicle/status/steering_status", "autoware_vehicle_msgs/msg/SteeringReport",
+    "Topic for Steering Data", this, SLOT(topic_updated_steering()));
   steering_topic_property_->initialize(rviz_ros_node);
 
   hazard_lights_topic_property_ = std::make_unique<rviz_common::properties::RosTopicProperty>(
     "Hazard Lights Topic", "/vehicle/status/hazard_lights_status",
-    "autoware_auto_vehicle_msgs/msg/HazardLightsReport", "Topic for Hazard Lights Data", this,
+    "autoware_vehicle_msgs/msg/HazardLightsReport", "Topic for Hazard Lights Data", this,
     SLOT(topic_updated_hazard_lights()));
   hazard_lights_topic_property_->initialize(rviz_ros_node);
 
@@ -111,67 +126,22 @@ void SignalDisplay::onInitialize()
   speed_limit_topic_property_->initialize(rviz_ros_node);
 
   traffic_topic_property_ = std::make_unique<rviz_common::properties::RosTopicProperty>(
-    "Traffic Topic", "/perception/traffic_light_recognition/traffic_signals",
-    "autoware_perception/msgs/msg/TrafficSignalArray", "Topic for Traffic Light Data", this,
+    "Traffic Topic",
+    "/planning/scenario_planning/lane_driving/behavior_planning/debug/traffic_signal",
+    "autoware_perception_msgs/msgs/msg/TrafficLightGroup", "Topic for Traffic Light Data", this,
     SLOT(topic_updated_traffic()));
   traffic_topic_property_->initialize(rviz_ros_node);
 }
 
 void SignalDisplay::setupRosSubscriptions()
 {
-  // Don't create a node, just use the one from the parent class
-  auto rviz_node_ = context_->getRosNodeAbstraction().lock()->get_raw_node();
-
-  gear_sub_ = rviz_node_->create_subscription<autoware_auto_vehicle_msgs::msg::GearReport>(
-    gear_topic_property_->getTopicStd(),
-    rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-    [this](const autoware_auto_vehicle_msgs::msg::GearReport::SharedPtr msg) {
-      updateGearData(msg);
-    });
-
-  steering_sub_ = rviz_node_->create_subscription<autoware_auto_vehicle_msgs::msg::SteeringReport>(
-    steering_topic_property_->getTopicStd(),
-    rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-    [this](const autoware_auto_vehicle_msgs::msg::SteeringReport::SharedPtr msg) {
-      updateSteeringData(msg);
-    });
-
-  speed_sub_ = rviz_node_->create_subscription<autoware_auto_vehicle_msgs::msg::VelocityReport>(
-    speed_topic_property_->getTopicStd(),
-    rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-    [this](const autoware_auto_vehicle_msgs::msg::VelocityReport::SharedPtr msg) {
-      updateSpeedData(msg);
-    });
-
-  turn_signals_sub_ =
-    rviz_node_->create_subscription<autoware_auto_vehicle_msgs::msg::TurnIndicatorsReport>(
-      turn_signals_topic_property_->getTopicStd(),
-      rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-      [this](const autoware_auto_vehicle_msgs::msg::TurnIndicatorsReport::SharedPtr msg) {
-        updateTurnSignalsData(msg);
-      });
-
-  hazard_lights_sub_ =
-    rviz_node_->create_subscription<autoware_auto_vehicle_msgs::msg::HazardLightsReport>(
-      hazard_lights_topic_property_->getTopicStd(),
-      rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-      [this](const autoware_auto_vehicle_msgs::msg::HazardLightsReport::SharedPtr msg) {
-        updateHazardLightsData(msg);
-      });
-
-  traffic_sub_ = rviz_node_->create_subscription<autoware_perception_msgs::msg::TrafficSignalArray>(
-    traffic_topic_property_->getTopicStd(),
-    rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-    [this](const autoware_perception_msgs::msg::TrafficSignalArray::SharedPtr msg) {
-      updateTrafficLightData(msg);
-    });
-
-  speed_limit_sub_ = rviz_node_->create_subscription<tier4_planning_msgs::msg::VelocityLimit>(
-    speed_limit_topic_property_->getTopicStd(),
-    rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-    [this](const tier4_planning_msgs::msg::VelocityLimit::ConstSharedPtr msg) {
-      updateSpeedLimitData(msg);
-    });
+  topic_updated_gear();
+  topic_updated_steering();
+  topic_updated_speed();
+  topic_updated_speed_limit();
+  topic_updated_turn_signals();
+  topic_updated_hazard_lights();
+  topic_updated_traffic();
 }
 
 SignalDisplay::~SignalDisplay()
@@ -237,7 +207,7 @@ void SignalDisplay::onDisable()
 }
 
 void SignalDisplay::updateTrafficLightData(
-  const autoware_perception_msgs::msg::TrafficSignalArray::ConstSharedPtr msg)
+  const autoware_perception_msgs::msg::TrafficLightGroup::ConstSharedPtr msg)
 {
   std::lock_guard<std::mutex> lock(property_mutex_);
 
@@ -258,7 +228,7 @@ void SignalDisplay::updateSpeedLimitData(
 }
 
 void SignalDisplay::updateHazardLightsData(
-  const autoware_auto_vehicle_msgs::msg::HazardLightsReport::ConstSharedPtr & msg)
+  const autoware_vehicle_msgs::msg::HazardLightsReport::ConstSharedPtr & msg)
 {
   std::lock_guard<std::mutex> lock(property_mutex_);
 
@@ -269,7 +239,7 @@ void SignalDisplay::updateHazardLightsData(
 }
 
 void SignalDisplay::updateGearData(
-  const autoware_auto_vehicle_msgs::msg::GearReport::ConstSharedPtr & msg)
+  const autoware_vehicle_msgs::msg::GearReport::ConstSharedPtr & msg)
 {
   std::lock_guard<std::mutex> lock(property_mutex_);
 
@@ -280,7 +250,7 @@ void SignalDisplay::updateGearData(
 }
 
 void SignalDisplay::updateSteeringData(
-  const autoware_auto_vehicle_msgs::msg::SteeringReport::ConstSharedPtr & msg)
+  const autoware_vehicle_msgs::msg::SteeringReport::ConstSharedPtr & msg)
 {
   std::lock_guard<std::mutex> lock(property_mutex_);
 
@@ -291,7 +261,7 @@ void SignalDisplay::updateSteeringData(
 }
 
 void SignalDisplay::updateSpeedData(
-  const autoware_auto_vehicle_msgs::msg::VelocityReport::ConstSharedPtr & msg)
+  const autoware_vehicle_msgs::msg::VelocityReport::ConstSharedPtr & msg)
 {
   std::lock_guard<std::mutex> lock(property_mutex_);
 
@@ -303,7 +273,7 @@ void SignalDisplay::updateSpeedData(
 }
 
 void SignalDisplay::updateTurnSignalsData(
-  const autoware_auto_vehicle_msgs::msg::TurnIndicatorsReport::ConstSharedPtr & msg)
+  const autoware_vehicle_msgs::msg::TurnIndicatorsReport::ConstSharedPtr & msg)
 {
   std::lock_guard<std::mutex> lock(property_mutex_);
 
@@ -324,35 +294,37 @@ void SignalDisplay::drawWidget(QImage & hud)
   QPainter painter(&hud);
   painter.setRenderHint(QPainter::Antialiasing, true);
 
-  QRectF backgroundRect(0, 0, 322, hud.height());
+  QRectF backgroundRect(0, 0, hud.width(), hud.height());
   drawHorizontalRoundedRectangle(painter, backgroundRect);
 
   // Draw components
-  if (steering_wheel_display_) {
-    steering_wheel_display_->drawSteeringWheel(painter, backgroundRect);
-  }
   if (gear_display_) {
-    gear_display_->drawGearIndicator(painter, backgroundRect);
+    gear_display_->drawGearIndicator(
+      painter, backgroundRect, property_primary_color_->getColor(),
+      property_background_color_->getColor());
   }
+
+  if (steering_wheel_display_) {
+    steering_wheel_display_->drawSteeringWheel(
+      painter, backgroundRect, property_handle_angle_scale_->getFloat());
+  }
+
   if (speed_display_) {
-    speed_display_->drawSpeedDisplay(painter, backgroundRect);
+    speed_display_->drawSpeedDisplay(painter, backgroundRect, property_primary_color_->getColor());
   }
   if (turn_signals_display_) {
     turn_signals_display_->drawArrows(painter, backgroundRect, property_signal_color_->getColor());
   }
 
-  // a 27px space between the two halves of the HUD
-
-  QRectF smallerBackgroundRect(340, 0, 190.0 / 2, hud.height());
-
-  drawVerticalRoundedRectangle(painter, smallerBackgroundRect);
-
   if (traffic_display_) {
-    traffic_display_->drawTrafficLightIndicator(painter, smallerBackgroundRect);
+    traffic_display_->drawTrafficLightIndicator(painter, backgroundRect);
   }
 
   if (speed_limit_display_) {
-    speed_limit_display_->drawSpeedLimitIndicator(painter, smallerBackgroundRect);
+    speed_limit_display_->drawSpeedLimitIndicator(
+      painter, backgroundRect, property_primary_color_->getColor(),
+      property_light_limit_color_->getColor(), property_dark_limit_color_->getColor(),
+      property_background_color_->getColor(), property_background_alpha_->getFloat());
   }
 
   painter.end();
@@ -363,9 +335,11 @@ void SignalDisplay::drawHorizontalRoundedRectangle(
 {
   painter.setRenderHint(QPainter::Antialiasing, true);
   QColor colorFromHSV;
-  colorFromHSV.setHsv(0, 0, 0);  // Hue, Saturation, Value
-  colorFromHSV.setAlphaF(0.65);  // Transparency
-
+  colorFromHSV.setHsv(
+    property_background_color_->getColor().hue(),
+    property_background_color_->getColor().saturation(),
+    property_background_color_->getColor().value());
+  colorFromHSV.setAlphaF(property_background_alpha_->getFloat());
   painter.setBrush(colorFromHSV);
 
   painter.setPen(Qt::NoPen);
@@ -376,8 +350,11 @@ void SignalDisplay::drawVerticalRoundedRectangle(QPainter & painter, const QRect
 {
   painter.setRenderHint(QPainter::Antialiasing, true);
   QColor colorFromHSV;
-  colorFromHSV.setHsv(0, 0, 0);  // Hue, Saturation, Value
-  colorFromHSV.setAlphaF(0.65);  // Transparency
+  colorFromHSV.setHsv(
+    property_background_color_->getColor().hue(),
+    property_background_color_->getColor().saturation(),
+    property_background_color_->getColor().value());
+  colorFromHSV.setAlphaF(property_background_alpha_->getFloat());
 
   painter.setBrush(colorFromHSV);
 
@@ -403,7 +380,9 @@ void SignalDisplay::updateOverlaySize()
 void SignalDisplay::updateOverlayPosition()
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  overlay_->setPosition(property_left_->getInt(), property_top_->getInt());
+  overlay_->setPosition(
+    property_left_->getInt(), property_top_->getInt(), HorizontalAlignment::CENTER,
+    VerticalAlignment::TOP);
   queueRender();
 }
 
@@ -419,12 +398,10 @@ void SignalDisplay::topic_updated_gear()
   gear_sub_.reset();
   auto rviz_ros_node = context_->getRosNodeAbstraction().lock();
   gear_sub_ =
-    rviz_ros_node->get_raw_node()->create_subscription<autoware_auto_vehicle_msgs::msg::GearReport>(
+    rviz_ros_node->get_raw_node()->create_subscription<autoware_vehicle_msgs::msg::GearReport>(
       gear_topic_property_->getTopicStd(),
       rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-      [this](const autoware_auto_vehicle_msgs::msg::GearReport::SharedPtr msg) {
-        updateGearData(msg);
-      });
+      [this](const autoware_vehicle_msgs::msg::GearReport::SharedPtr msg) { updateGearData(msg); });
 }
 
 void SignalDisplay::topic_updated_steering()
@@ -432,13 +409,13 @@ void SignalDisplay::topic_updated_steering()
   // resubscribe to the topic
   steering_sub_.reset();
   auto rviz_ros_node = context_->getRosNodeAbstraction().lock();
-  steering_sub_ = rviz_ros_node->get_raw_node()
-                    ->create_subscription<autoware_auto_vehicle_msgs::msg::SteeringReport>(
-                      steering_topic_property_->getTopicStd(),
-                      rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-                      [this](const autoware_auto_vehicle_msgs::msg::SteeringReport::SharedPtr msg) {
-                        updateSteeringData(msg);
-                      });
+  steering_sub_ =
+    rviz_ros_node->get_raw_node()->create_subscription<autoware_vehicle_msgs::msg::SteeringReport>(
+      steering_topic_property_->getTopicStd(),
+      rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
+      [this](const autoware_vehicle_msgs::msg::SteeringReport::SharedPtr msg) {
+        updateSteeringData(msg);
+      });
 }
 
 void SignalDisplay::topic_updated_speed()
@@ -446,13 +423,13 @@ void SignalDisplay::topic_updated_speed()
   // resubscribe to the topic
   speed_sub_.reset();
   auto rviz_ros_node = context_->getRosNodeAbstraction().lock();
-  speed_sub_ = rviz_ros_node->get_raw_node()
-                 ->create_subscription<autoware_auto_vehicle_msgs::msg::VelocityReport>(
-                   speed_topic_property_->getTopicStd(),
-                   rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-                   [this](const autoware_auto_vehicle_msgs::msg::VelocityReport::SharedPtr msg) {
-                     updateSpeedData(msg);
-                   });
+  speed_sub_ =
+    rviz_ros_node->get_raw_node()->create_subscription<autoware_vehicle_msgs::msg::VelocityReport>(
+      speed_topic_property_->getTopicStd(),
+      rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
+      [this](const autoware_vehicle_msgs::msg::VelocityReport::SharedPtr msg) {
+        updateSpeedData(msg);
+      });
 }
 
 void SignalDisplay::topic_updated_speed_limit()
@@ -463,7 +440,7 @@ void SignalDisplay::topic_updated_speed_limit()
   speed_limit_sub_ =
     rviz_ros_node->get_raw_node()->create_subscription<tier4_planning_msgs::msg::VelocityLimit>(
       speed_limit_topic_property_->getTopicStd(),
-      rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
+      rclcpp::QoS(rclcpp::KeepLast(10)).transient_local(),
       [this](const tier4_planning_msgs::msg::VelocityLimit::ConstSharedPtr msg) {
         updateSpeedLimitData(msg);
       });
@@ -477,10 +454,10 @@ void SignalDisplay::topic_updated_turn_signals()
 
   turn_signals_sub_ =
     rviz_ros_node->get_raw_node()
-      ->create_subscription<autoware_auto_vehicle_msgs::msg::TurnIndicatorsReport>(
+      ->create_subscription<autoware_vehicle_msgs::msg::TurnIndicatorsReport>(
         turn_signals_topic_property_->getTopicStd(),
         rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-        [this](const autoware_auto_vehicle_msgs::msg::TurnIndicatorsReport::SharedPtr msg) {
+        [this](const autoware_vehicle_msgs::msg::TurnIndicatorsReport::SharedPtr msg) {
           updateTurnSignalsData(msg);
         });
 }
@@ -493,10 +470,10 @@ void SignalDisplay::topic_updated_hazard_lights()
 
   hazard_lights_sub_ =
     rviz_ros_node->get_raw_node()
-      ->create_subscription<autoware_auto_vehicle_msgs::msg::HazardLightsReport>(
+      ->create_subscription<autoware_vehicle_msgs::msg::HazardLightsReport>(
         hazard_lights_topic_property_->getTopicStd(),
         rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-        [this](const autoware_auto_vehicle_msgs::msg::HazardLightsReport::SharedPtr msg) {
+        [this](const autoware_vehicle_msgs::msg::HazardLightsReport::SharedPtr msg) {
           updateHazardLightsData(msg);
         });
 }
@@ -506,14 +483,13 @@ void SignalDisplay::topic_updated_traffic()
   // resubscribe to the topic
   traffic_sub_.reset();
   auto rviz_ros_node = context_->getRosNodeAbstraction().lock();
-  traffic_sub_ =
-    rviz_ros_node->get_raw_node()
-      ->create_subscription<autoware_perception_msgs::msg::TrafficSignalArray>(
-        traffic_topic_property_->getTopicStd(),
-        rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
-        [this](const autoware_perception_msgs::msg::TrafficSignalArray::SharedPtr msg) {
-          updateTrafficLightData(msg);
-        });
+  traffic_sub_ = rviz_ros_node->get_raw_node()
+                   ->create_subscription<autoware_perception_msgs::msg::TrafficLightGroup>(
+                     traffic_topic_property_->getTopicStd(),
+                     rclcpp::QoS(rclcpp::KeepLast(10)).durability_volatile().reliable(),
+                     [this](const autoware_perception_msgs::msg::TrafficLightGroup::SharedPtr msg) {
+                       updateTrafficLightData(msg);
+                     });
 }
 
 }  // namespace autoware_overlay_rviz_plugin

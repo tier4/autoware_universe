@@ -17,29 +17,6 @@
 namespace traffic_light_utils
 {
 
-bool isRoiValid(
-  const tier4_perception_msgs::msg::TrafficLightRoi & roi, uint32_t width, uint32_t height)
-{
-  uint32_t x1 = roi.roi.x_offset;
-  uint32_t x2 = roi.roi.x_offset + roi.roi.width;
-  uint32_t y1 = roi.roi.y_offset;
-  uint32_t y2 = roi.roi.y_offset + roi.roi.height;
-  return roi.roi.width > 0 && roi.roi.height > 0 && x1 < width && y1 < height && x2 < width &&
-         y2 < height;
-}
-
-void setRoiInvalid(tier4_perception_msgs::msg::TrafficLightRoi & roi)
-{
-  roi.roi.height = roi.roi.width = 0;
-}
-
-bool isSignalUnknown(const tier4_perception_msgs::msg::TrafficLight & signal)
-{
-  return signal.elements.size() == 1 &&
-         signal.elements[0].shape == tier4_perception_msgs::msg::TrafficLightElement::UNKNOWN &&
-         signal.elements[0].color == tier4_perception_msgs::msg::TrafficLightElement::UNKNOWN;
-}
-
 void setSignalUnknown(tier4_perception_msgs::msg::TrafficLight & signal, float confidence)
 {
   signal.elements.resize(1);
@@ -52,11 +29,11 @@ void setSignalUnknown(tier4_perception_msgs::msg::TrafficLight & signal, float c
 }
 
 bool hasTrafficLightCircleColor(
-  const autoware_perception_msgs::msg::TrafficSignal & tl_state, const uint8_t & lamp_color)
+  const autoware_perception_msgs::msg::TrafficLightGroup & tl_state, const uint8_t & lamp_color)
 {
   const auto it_lamp =
     std::find_if(tl_state.elements.begin(), tl_state.elements.end(), [&lamp_color](const auto & x) {
-      return x.shape == autoware_perception_msgs::msg::TrafficSignalElement::CIRCLE &&
+      return x.shape == autoware_perception_msgs::msg::TrafficLightElement::CIRCLE &&
              x.color == lamp_color;
     });
 
@@ -64,7 +41,7 @@ bool hasTrafficLightCircleColor(
 }
 
 bool hasTrafficLightShape(
-  const autoware_perception_msgs::msg::TrafficSignal & tl_state, const uint8_t & lamp_shape)
+  const autoware_perception_msgs::msg::TrafficLightGroup & tl_state, const uint8_t & lamp_shape)
 {
   const auto it_lamp = std::find_if(
     tl_state.elements.begin(), tl_state.elements.end(),
@@ -75,10 +52,10 @@ bool hasTrafficLightShape(
 
 bool isTrafficSignalStop(
   const lanelet::ConstLanelet & lanelet,
-  const autoware_perception_msgs::msg::TrafficSignal & tl_state)
+  const autoware_perception_msgs::msg::TrafficLightGroup & tl_state)
 {
   if (hasTrafficLightCircleColor(
-        tl_state, autoware_perception_msgs::msg::TrafficSignalElement::GREEN)) {
+        tl_state, autoware_perception_msgs::msg::TrafficLightElement::GREEN)) {
     return false;
   }
 
@@ -90,18 +67,18 @@ bool isTrafficSignalStop(
   if (
     turn_direction == "right" &&
     hasTrafficLightShape(
-      tl_state, autoware_perception_msgs::msg::TrafficSignalElement::RIGHT_ARROW)) {
+      tl_state, autoware_perception_msgs::msg::TrafficLightElement::RIGHT_ARROW)) {
     return false;
   }
   if (
     turn_direction == "left" &&
     hasTrafficLightShape(
-      tl_state, autoware_perception_msgs::msg::TrafficSignalElement::LEFT_ARROW)) {
+      tl_state, autoware_perception_msgs::msg::TrafficLightElement::LEFT_ARROW)) {
     return false;
   }
   if (
     turn_direction == "straight" &&
-    hasTrafficLightShape(tl_state, autoware_perception_msgs::msg::TrafficSignalElement::UP_ARROW)) {
+    hasTrafficLightShape(tl_state, autoware_perception_msgs::msg::TrafficLightElement::UP_ARROW)) {
     return false;
   }
 

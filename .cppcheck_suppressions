@@ -1,0 +1,9 @@
+*:*/test/*
+
+checkersReport
+missingInclude
+missingIncludeSystem
+unmatchedSuppression
+unusedFunction
+useInitializationList
+useStlAlgorithm
