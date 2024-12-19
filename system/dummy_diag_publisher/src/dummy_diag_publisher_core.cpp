@@ -141,9 +141,8 @@ rclcpp::NodeOptions override_options(rclcpp::NodeOptions options)
 
 void DummyDiagPublisher::handleParameterSetting()
 {
-
-  param_callback_handle_ = this->add_on_set_parameters_callback(
-    [this](const std::vector<rclcpp::Parameter> & parameters) {
+  param_callback_handle_ =
+    this->add_on_set_parameters_callback([this](const std::vector<rclcpp::Parameter> & parameters) {
       rcl_interfaces::msg::SetParametersResult result;
       result.successful = true;
 
@@ -157,33 +156,36 @@ void DummyDiagPublisher::handleParameterSetting()
             auto new_status = convertStrToStatus(parameter.as_string());
             if (new_status) {
               diag.status = *new_status;
-              RCLCPP_INFO(this->get_logger(), "Updated %s status to: %s",
-                          diag.name.c_str(), parameter.as_string().c_str());
+              RCLCPP_INFO(
+                this->get_logger(), "Updated %s status to: %s", diag.name.c_str(),
+                parameter.as_string().c_str());
             } else {
               result.successful = false;
               result.reason = "Invalid status value for: " + param_name;
-              RCLCPP_WARN(this->get_logger(), "Invalid status value for %s: %s",
-                          diag.name.c_str(), parameter.as_string().c_str());
+              RCLCPP_WARN(
+                this->get_logger(), "Invalid status value for %s: %s", diag.name.c_str(),
+                parameter.as_string().c_str());
             }
           } else if (param_name == diag.name + ".is_active") {
             param_found = true;
             diag.is_active = parameter.as_bool();
-            RCLCPP_INFO(this->get_logger(), "Updated %s is_active to: %s",
-                        diag.name.c_str(), diag.is_active ? "true" : "false");
+            RCLCPP_INFO(
+              this->get_logger(), "Updated %s is_active to: %s", diag.name.c_str(),
+              diag.is_active ? "true" : "false");
           }
         }
 
         if (!param_found) {
           result.successful = false;
           result.reason = "Parameter not registered: " + parameter.get_name();
-          RCLCPP_WARN(this->get_logger(), "Attempted to set unregistered parameter: %s",
-                      parameter.get_name().c_str());
+          RCLCPP_WARN(
+            this->get_logger(), "Attempted to set unregistered parameter: %s",
+            parameter.get_name().c_str());
         }
       }
 
       return result;
-    }
-  );
+    });
 }
 
 DummyDiagPublisher::DummyDiagPublisher(const rclcpp::NodeOptions & options)
