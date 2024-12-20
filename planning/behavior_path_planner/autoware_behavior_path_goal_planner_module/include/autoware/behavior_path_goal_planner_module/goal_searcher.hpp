@@ -16,7 +16,6 @@
 #define AUTOWARE__BEHAVIOR_PATH_GOAL_PLANNER_MODULE__GOAL_SEARCHER_HPP_
 
 #include "autoware/behavior_path_goal_planner_module/goal_searcher_base.hpp"
-#include "autoware/behavior_path_planner_common/utils/occupancy_grid_based_collision_detector/occupancy_grid_based_collision_detector.hpp"
 
 #include <memory>
 #include <vector>
@@ -52,7 +51,8 @@ public:
 private:
   void countObjectsToAvoid(
     GoalCandidates & goal_candidates, const PredictedObjects & objects,
-    const std::shared_ptr<const PlannerData> & planner_data) const;
+    const std::shared_ptr<const PlannerData> & planner_data,
+    const Pose & reference_goal_pose) const;
   void createAreaPolygons(
     std::vector<Pose> original_search_poses,
     const std::shared_ptr<const PlannerData> & planner_data);
@@ -65,7 +65,6 @@ private:
     const std::shared_ptr<const PlannerData> & planner_data) const;
   BasicPolygons2d getNoParkingAreaPolygons(const lanelet::ConstLanelets & lanes) const;
   BasicPolygons2d getNoStoppingAreaPolygons(const lanelet::ConstLanelets & lanes) const;
-  bool isInAreas(const LinearRing2d & footprint, const BasicPolygons2d & areas) const;
 
   LinearRing2d vehicle_footprint_{};
   bool left_side_parking_{true};
