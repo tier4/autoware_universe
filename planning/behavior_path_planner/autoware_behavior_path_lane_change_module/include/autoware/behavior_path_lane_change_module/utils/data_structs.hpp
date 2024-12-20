@@ -326,7 +326,7 @@ struct MinMaxValue
 
 struct TransientData
 {
-  MinMaxValue acc;                   // acceleration profile for accelerating lane change path
+  MinMaxValue acc;              // acceleration profile for accelerating lane change path
   Polygon2d current_footprint;  // ego's polygon at current pose
 
   MinMaxValue lane_changing_length;  // lane changing length for a single lane change
