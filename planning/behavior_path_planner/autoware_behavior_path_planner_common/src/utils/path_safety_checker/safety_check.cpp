@@ -547,7 +547,7 @@ bool checkSafetyWithIntegralPredictedPolygon(
     CollisionCheckDebugPair debug_pair = createObjectDebug(object);
     for (const auto & path : object.predicted_paths) {
       for (const auto & pose_with_poly : path.path) {
-        if (boost::geometry::overlaps(ego_integral_polygon, pose_with_poly.poly)) {
+        if (boost::geometry::intersects(ego_integral_polygon, pose_with_poly.poly)) {
           debug_pair.second.ego_predicted_path = ego_predicted_path;  // raw path
           debug_pair.second.obj_predicted_path = path.path;           // raw path
           debug_pair.second.extended_obj_polygon = pose_with_poly.poly;
@@ -590,7 +590,7 @@ std::vector<Polygon2d> getCollidedPolygons(
   {
     debug.ego_predicted_path = predicted_ego_path;
     debug.obj_predicted_path = target_object_path.path;
-    debug.current_obj_pose = target_object.initial_pose.pose;
+    debug.current_obj_pose = target_object.initial_pose;
   }
 
   std::vector<Polygon2d> collided_polygons{};
@@ -621,15 +621,17 @@ std::vector<Polygon2d> getCollidedPolygons(
     const double yaw_difference = autoware::universe_utils::normalizeRadian(ego_yaw - object_yaw);
     if (std::abs(yaw_difference) > yaw_difference_th) continue;
 
-    // check overlap
-    if (boost::geometry::overlaps(ego_polygon, obj_polygon)) {
-      debug.unsafe_reason = "overlap_polygon";
+    // check intersects
+    if (boost::geometry::intersects(ego_polygon, obj_polygon)) {
+      if (collided_polygons.empty()) {
+        debug.unsafe_reason = "overlap_polygon";
+        debug.expected_ego_pose = ego_pose;
+        debug.expected_obj_pose = obj_pose;
+        debug.extended_ego_polygon = ego_polygon;
+        debug.extended_obj_polygon = obj_polygon;
+      }
       collided_polygons.push_back(obj_polygon);
 
-      debug.expected_ego_pose = ego_pose;
-      debug.expected_obj_pose = obj_pose;
-      debug.extended_ego_polygon = ego_polygon;
-      debug.extended_obj_polygon = obj_polygon;
       continue;
     }
 
@@ -675,16 +677,19 @@ std::vector<Polygon2d> getCollidedPolygons(
         : createExtendedPolygon(
             obj_pose, target_object.shape, lon_offset, lat_margin, is_stopped_object, debug);
 
-    // check overlap with extended polygon
-    if (boost::geometry::overlaps(extended_ego_polygon, extended_obj_polygon)) {
-      debug.unsafe_reason = "overlap_extended_polygon";
+    // check intersects with extended polygon
+    if (boost::geometry::intersects(extended_ego_polygon, extended_obj_polygon)) {
+      if (collided_polygons.empty()) {
+        debug.unsafe_reason = "overlap_extended_polygon";
+        debug.rss_longitudinal = rss_dist;
+        debug.inter_vehicle_distance = min_lon_length;
+        debug.expected_ego_pose = ego_pose;
+        debug.expected_obj_pose = obj_pose;
+        debug.extended_ego_polygon = extended_ego_polygon;
+        debug.extended_obj_polygon = extended_obj_polygon;
+        debug.is_front = is_object_front;
+      }
       collided_polygons.push_back(obj_polygon);
-
-      debug.rss_longitudinal = rss_dist;
-      debug.inter_vehicle_distance = min_lon_length;
-      debug.extended_ego_polygon = extended_ego_polygon;
-      debug.extended_obj_polygon = extended_obj_polygon;
-      debug.is_front = is_object_front;
     }
   }
 
@@ -707,11 +712,10 @@ bool checkPolygonsIntersects(
 CollisionCheckDebugPair createObjectDebug(const ExtendedPredictedObject & obj)
 {
   CollisionCheckDebug debug;
-  debug.current_obj_pose = obj.initial_pose.pose;
-  debug.extended_obj_polygon =
-    autoware::universe_utils::toPolygon2d(obj.initial_pose.pose, obj.shape);
+  debug.current_obj_pose = obj.initial_pose;
+  debug.extended_obj_polygon = autoware::universe_utils::toPolygon2d(obj.initial_pose, obj.shape);
   debug.obj_shape = obj.shape;
-  debug.current_twist = obj.initial_twist.twist;
+  debug.current_twist = obj.initial_twist;
   return {autoware::universe_utils::toBoostUUID(obj.uuid), debug};
 }
 

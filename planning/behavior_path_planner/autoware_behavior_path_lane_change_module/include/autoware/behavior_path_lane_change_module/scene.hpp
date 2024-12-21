@@ -37,6 +37,7 @@ using geometry_msgs::msg::Twist;
 using lane_change::LanesPolygon;
 using tier4_planning_msgs::msg::PathWithLaneId;
 using utils::path_safety_checker::ExtendedPredictedObjects;
+using utils::path_safety_checker::RSSparams;
 
 class NormalLaneChange : public LaneChangeBase
 {
@@ -52,6 +53,8 @@ public:
   ~NormalLaneChange() override = default;
 
   void update_lanes(const bool is_approved) final;
+
+  void update_filtered_objects() final;
 
   void updateLaneChangeStatus() override;
 
@@ -106,13 +109,17 @@ public:
 
   bool isStoppedAtRedTrafficLight() const override;
 
-  TurnSignalInfo get_current_turn_signal_info() override;
+  bool is_near_regulatory_element() const final;
+
+  TurnSignalInfo get_current_turn_signal_info() const final;
 
 protected:
   lanelet::ConstLanelets getLaneChangeLanes(
     const lanelet::ConstLanelets & current_lanes, Direction direction) const override;
 
   int getNumToPreferredLane(const lanelet::ConstLanelet & lane) const override;
+
+  TurnSignalInfo get_terminal_turn_signal_info() const final;
 
   std::vector<double> sampleLongitudinalAccValues(
     const lanelet::ConstLanelets & current_lanes,
@@ -157,9 +164,7 @@ protected:
 
   bool getLaneChangePaths(
     const lanelet::ConstLanelets & current_lanes, const lanelet::ConstLanelets & target_lanes,
-    Direction direction, LaneChangePaths * candidate_paths,
-    const utils::path_safety_checker::RSSparams rss_params, const bool is_stuck,
-    const bool check_safety = true) const override;
+    Direction direction, const bool is_stuck, LaneChangePaths * candidate_paths) const;
 
   std::optional<LaneChangePath> calcTerminalLaneChangePath(
     const lanelet::ConstLanelets & current_lanes,
@@ -171,6 +176,17 @@ protected:
     const LaneChangePath & lane_change_path,
     const lane_change::TargetObjects & collision_check_objects,
     const utils::path_safety_checker::RSSparams & rss_params,
+    const size_t deceleration_sampling_num, CollisionCheckDebugMap & debug_data) const;
+
+  bool has_collision_with_decel_patterns(
+    const LaneChangePath & lane_change_path, const ExtendedPredictedObjects & objects,
+    const size_t deceleration_sampling_num, const RSSparams & rss_param,
+    const bool check_prepare_phase, CollisionCheckDebugMap & debug_data) const;
+
+  bool is_collided(
+    const LaneChangePath & lane_change_path, const ExtendedPredictedObject & obj,
+    const std::vector<PoseWithVelocityStamped> & ego_predicted_path,
+    const RSSparams & selected_rss_param, const bool check_prepare_phase,
     CollisionCheckDebugMap & debug_data) const;
 
   //! @brief Check if the ego vehicle is in stuck by a stationary obstacle.
@@ -220,6 +236,7 @@ protected:
   }
 
   double stop_time_{0.0};
+  static constexpr double floating_err_th{1e-3};
 };
 }  // namespace autoware::behavior_path_planner
 #endif  // AUTOWARE__BEHAVIOR_PATH_LANE_CHANGE_MODULE__SCENE_HPP_
