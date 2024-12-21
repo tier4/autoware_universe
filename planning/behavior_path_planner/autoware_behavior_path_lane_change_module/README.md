@@ -11,7 +11,9 @@ The Lane Change module is activated when lane change is needed and can be safely
   - `allow_lane_change` tags is set as `true`
 - During lane change request condition
   - The ego-vehicle isn’t on a `preferred_lane`.
-  - There is neither intersection nor crosswalk on the path of the lane change
+  - The ego-vehicle isn't approaching a traffic light. (condition parameterized)
+  - The ego-vehicle isn't approaching a crosswalk. (condition parameterized)
+  - The ego-vehicle isn't approaching an intersection. (condition parameterized)
 - lane change ready condition
   - Path of the lane change does not collide with other dynamic objects (see the figure below)
   - Lane change candidate path is approved by an operator.
@@ -182,11 +184,9 @@ A candidate path is considered valid if it meets the following criteria:
 1. The distance from the ego vehicle's current position to the end of the current lanes is sufficient to perform a single lane change.
 2. The distance from the ego vehicle's current position to the goal along the current lanes is adequate to complete multiple lane changes.
 3. The distance from the ego vehicle's current position to the end of the target lanes is adequate for completing multiple lane changes.
-4. Intersection requirements are met (conditions are parameterized).
-5. Crosswalk requirements are satisfied (conditions are parameterized).
-6. Traffic light regulations are adhered to (conditions are parameterized).
-7. The lane change can be completed after passing a parked vehicle.
-8. The lane change is deemed safe to execute.
+4. The distance from the ego vehicle's current position to the next regulatory element is adequate to perform a single lane change.
+5. The lane change can be completed after passing a parked vehicle.
+6. The lane change is deemed safe to execute.
 
 The following flow chart illustrates the validity check.
 
@@ -229,43 +229,6 @@ group check for distance #LightYellow
       stop
     else (no)
     endif
-end group
-
-
-
-group evaluate on Crosswalk #LightCyan
-if (regulate_on_crosswalk and not enough length to crosswalk) then (yes)
-  if (stop time < stop time threshold\n(Related to stuck detection)) then (yes)
-    #LightPink:Reject path;
-    stop
-  else (no)
-    :Allow lane change in crosswalk;
-  endif
-else (no)
-endif
-end group
-
-group evaluate on Intersection #LightGreen
-if (regulate_on_intersection and not enough length to intersection) then (yes)
-  if (stop time < stop time threshold\n(Related to stuck detection)) then (yes)
-    #LightPink:Reject path;
-    stop
-  else (no)
-    :Allow lane change in intersection;
-  endif
-else (no)
-endif
-end group
-
-group evaluate on Traffic Light #Lavender
-if (regulate_on_traffic_light and not enough length to complete lane change before stop line) then (yes)
-  #LightPink:Reject path;
-  stop
-elseif (stopped at red traffic light within distance) then (yes)
-  #LightPink:Reject path;
-  stop
-else (no)
-endif
 end group
 
 if (ego is not stuck but parked vehicle exists in target lane) then (yes)
@@ -517,8 +480,8 @@ The function to stop by keeping a margin against forward obstacle in the previou
 
 ### Lane change regulations
 
-If you want to regulate lane change on crosswalks or intersections, the lane change module finds a lane change path excluding it includes crosswalks or intersections.
-To regulate lane change on crosswalks or intersections, change `regulation.crosswalk` or `regulation.intersection` to `true`.
+If you want to regulate lane change on crosswalks, intersections, or traffic lights, the lane change module is disabled near any of them.
+To regulate lane change on crosswalks, intersections, or traffic lights, set `regulation.crosswalk`, `regulation.intersection` or `regulation.traffic_light` to `true`.
 If the ego vehicle gets stuck, to avoid stuck, it enables lane change in crosswalk/intersection.
 If the ego vehicle stops more than `stuck_detection.stop_time` seconds, it is regarded as a stuck.
 If the ego vehicle velocity is smaller than `stuck_detection.velocity`, it is regarded as stopping.
@@ -572,6 +535,8 @@ endwhile
 detach
 @enduml
 ```
+
+During a lane change, a safety check is made in consideration of the deceleration of the ego vehicle, and a safety check is made for `cancel.deceleration_sampling_num` deceleration patterns, and the lane change will be canceled if the abort condition is satisfied for all deceleration patterns.
 
 To preventive measure for lane change path oscillations caused by alternating safe and unsafe conditions, an additional hysteresis count check is implemented before executing an abort or cancel maneuver. If unsafe, the `unsafe_hysteresis_count_` is incremented and compared against `unsafe_hysteresis_threshold`; exceeding it prompts an abort condition check, ensuring decisions are made with consideration to recent safety assessments as shown in flow chart above. This mechanism stabilizes decision-making, preventing abrupt changes due to transient unsafe conditions.
 
@@ -823,7 +788,8 @@ The following parameters are configurable in `lane_change.param.yaml`.
 | `cancel.duration`                      | [s]     | double  | The time taken to complete returning to the center line.                                                         | 3.0           |
 | `cancel.max_lateral_jerk`              | [m/sss] | double  | The maximum lateral jerk for abort path                                                                          | 1000.0        |
 | `cancel.overhang_tolerance`            | [m]     | double  | Lane change cancel is prohibited if the vehicle head exceeds the lane boundary more than this tolerance distance | 0.0           |
-| `unsafe_hysteresis_threshold`          | [-]     | int     | threshold that helps prevent frequent switching between safe and unsafe decisions                                | 10            |
+| `cancel.unsafe_hysteresis_threshold`   | [-]     | int     | threshold that helps prevent frequent switching between safe and unsafe decisions                                | 10            |
+| `cancel.deceleration_sampling_num`     | [-]     | int     | Number of deceleration patterns to check safety to cancel lane change                                            | 5             |
 
 ### Debug
 
