@@ -41,6 +41,8 @@ private:
 
   DiagUnit * auto_mode_root_;
   std::unordered_set<DiagUnit *> auto_mode_tree_;
+  bool report_only_diag_;
+  bool report_safe_fault_;
 };
 
 }  // namespace hazard_status_converter
