@@ -122,7 +122,9 @@ void Converter::on_update(DiagGraph::ConstSharedPtr graph)
   hazard.status.level = get_system_level(hazard.status);
   hazard.status.emergency = hazard.status.level == HazardStatus::SINGLE_POINT_FAULT;
   if (report_safe_fault_)
-    hazard.status.emergency &= hazard.status.level == HazardStatus::SAFE_FAULT;
+    hazard.status.emergency &=
+      (hazard.status.level == HazardStatus::SAFE_FAULT ||
+       hazard.status.level == HazardStatus::LATENT_FAULT);
   hazard.status.emergency_holding = false;
   pub_hazard_->publish(hazard);
 }
