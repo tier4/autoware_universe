@@ -41,7 +41,6 @@
 
   <!-- Hazard Status Converter -->
   <arg name="report_only_diag" default="false"/>
-  <arg name="report_safe_fault" default="false"/>
 
   <group>
     <push-ros-namespace namespace="/system"/>
@@ -126,7 +125,6 @@
     <group unless="$(var use_emergency_handler)">
       <include file="$(find-pkg-share hazard_status_converter)/launch/hazard_status_converter.launch.xml">
         <arg name="report_only_diag" value="$(var report_only_diag)"/>
-        <arg name="report_safe_fault" value="$(var report_safe_fault)"/>
       </include>
     </group>
 

@@ -29,7 +29,6 @@ Converter::Converter(const rclcpp::NodeOptions & options) : Node("converter", op
   sub_graph_.subscribe(*this, 1);
 
   report_only_diag_ = declare_parameter<bool>("report_only_diag", false);
-  report_safe_fault_ = declare_parameter<bool>("report_safe_fault", false);
 }
 
 void Converter::on_create(DiagGraph::ConstSharedPtr graph)
@@ -121,10 +120,6 @@ void Converter::on_update(DiagGraph::ConstSharedPtr graph)
   hazard.stamp = graph->updated_stamp();
   hazard.status.level = get_system_level(hazard.status);
   hazard.status.emergency = hazard.status.level == HazardStatus::SINGLE_POINT_FAULT;
-  if (report_safe_fault_)
-    hazard.status.emergency &=
-      (hazard.status.level == HazardStatus::SAFE_FAULT ||
-       hazard.status.level == HazardStatus::LATENT_FAULT);
   hazard.status.emergency_holding = false;
   pub_hazard_->publish(hazard);
 }
