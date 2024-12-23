@@ -11,11 +11,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef AUTOWARE__BEHAVIOR_PATH_LANE_CHANGE_MODULE__UTILS__DEBUG_STRUCTS_HPP_
-#define AUTOWARE__BEHAVIOR_PATH_LANE_CHANGE_MODULE__UTILS__DEBUG_STRUCTS_HPP_
+#ifndef AUTOWARE__BEHAVIOR_PATH_LANE_CHANGE_MODULE__STRUCTS__DEBUG_HPP_
+#define AUTOWARE__BEHAVIOR_PATH_LANE_CHANGE_MODULE__STRUCTS__DEBUG_HPP_
 
-#include "autoware/behavior_path_lane_change_module/utils/data_structs.hpp"
-#include "autoware/behavior_path_lane_change_module/utils/path.hpp"
+#include "autoware/behavior_path_lane_change_module/structs/data.hpp"
+#include "autoware/behavior_path_lane_change_module/structs/path.hpp"
 
 #include <autoware/behavior_path_planner_common/utils/path_safety_checker/path_safety_checker_parameters.hpp>
 
@@ -35,7 +35,7 @@ struct Debug
   LaneChangePaths valid_paths;
   CollisionCheckDebugMap collision_check_objects;
   CollisionCheckDebugMap collision_check_objects_after_approval;
-  FilteredByLanesExtendedObjects filtered_objects;
+  FilteredLanesObjects filtered_objects;
   geometry_msgs::msg::Polygon execution_area;
   geometry_msgs::msg::Pose ego_pose;
   lanelet::ConstLanelets current_lanes;
@@ -55,9 +55,11 @@ struct Debug
     collision_check_objects.clear();
     collision_check_objects_after_approval.clear();
     filtered_objects.current_lane.clear();
-    filtered_objects.target_lane_leading.clear();
     filtered_objects.target_lane_trailing.clear();
-    filtered_objects.other_lane.clear();
+    filtered_objects.target_lane_leading.moving.clear();
+    filtered_objects.target_lane_leading.stopped.clear();
+    filtered_objects.target_lane_leading.stopped_at_bound.clear();
+    filtered_objects.others.clear();
     execution_area.points.clear();
     current_lanes.clear();
     target_lanes.clear();
@@ -74,4 +76,4 @@ struct Debug
 };
 }  // namespace autoware::behavior_path_planner::lane_change
 
-#endif  // AUTOWARE__BEHAVIOR_PATH_LANE_CHANGE_MODULE__UTILS__DEBUG_STRUCTS_HPP_
+#endif  // AUTOWARE__BEHAVIOR_PATH_LANE_CHANGE_MODULE__STRUCTS__DEBUG_HPP_
