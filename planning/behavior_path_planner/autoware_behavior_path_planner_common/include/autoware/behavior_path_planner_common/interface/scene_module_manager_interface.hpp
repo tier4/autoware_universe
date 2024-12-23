@@ -327,6 +327,7 @@ protected:
     }
   }
 
+protected:
   virtual std::unique_ptr<SceneModuleInterface> createNewSceneModuleInstance() = 0;
 
   rclcpp::Node * node_ = nullptr;
