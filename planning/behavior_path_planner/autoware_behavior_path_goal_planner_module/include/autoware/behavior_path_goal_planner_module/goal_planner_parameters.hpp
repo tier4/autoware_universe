@@ -61,6 +61,12 @@ struct GoalPlannerParameters
   double ignore_distance_from_lane_start{0.0};
   double margin_from_boundary{0.0};
   double high_curvature_threshold{0.0};
+  struct BusStopArea
+  {
+    bool use_bus_stop_area{false};
+    double goal_search_interval{0.0};
+    double lateral_offset_interval{0.0};
+  } bus_stop_area;
 
   // occupancy grid map
   bool use_occupancy_grid_for_goal_search{false};
@@ -112,6 +118,11 @@ struct GoalPlannerParameters
   PlannerCommonParam freespace_parking_common_parameters{};
   AstarParam astar_parameters{};
   RRTStarParam rrt_star_parameters{};
+
+  struct BezierParking
+  {
+    double pull_over_azimuth_threshold;
+  } bezier_parking;
 
   // stop condition
   double maximum_deceleration_for_stop{0.0};
