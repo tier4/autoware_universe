@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
   <arg name="launch_vehicle_interface"/>
+  <arg name="is_main_ecu" default="true"/>
   <arg name="vehicle_model" description="vehicle model name"/>
   <arg name="sensor_model" description="sensor model name"/>
   <arg name="vehicle_id" default="$(env VEHICLE_ID default)" description="vehicle specific ID"/>
@@ -21,6 +22,7 @@
   <!-- vehicle interface -->
   <group if="$(var launch_vehicle_interface)">
     <include file="$(var vehicle_launch_pkg)/launch/vehicle_interface.launch.xml">
+      <arg name="is_main_ecu" value="$(var is_main_ecu)"/>
       <arg name="vehicle_id" value="$(var vehicle_id)"/>
       <arg name="raw_vehicle_cmd_converter_param_path" value="$(var raw_vehicle_cmd_converter_param_path)"/>
       <arg name="initial_engage_state" value="$(var initial_engage_state)"/>
