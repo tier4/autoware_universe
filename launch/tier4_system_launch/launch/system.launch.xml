@@ -39,6 +39,9 @@
   <arg name="launch_rqt_robot_monitor" default="false"/>
   <arg name="launch_rqt_runtime_monitor_err" default="false"/>
 
+  <!-- Hazard Status Converter -->
+  <arg name="report_only_diag" default="false"/>
+
   <group>
     <push-ros-namespace namespace="/system"/>
 
@@ -120,7 +123,9 @@
 
     <!-- Hazard Status Converter -->
     <group unless="$(var use_emergency_handler)">
-      <include file="$(find-pkg-share hazard_status_converter)/launch/hazard_status_converter.launch.xml"/>
+      <include file="$(find-pkg-share hazard_status_converter)/launch/hazard_status_converter.launch.xml">
+        <arg name="report_only_diag" value="$(var report_only_diag)"/>
+      </include>
     </group>
 
     <!-- MRM Handler -->
