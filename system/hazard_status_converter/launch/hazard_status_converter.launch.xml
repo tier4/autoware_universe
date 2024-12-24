@@ -1,6 +1,8 @@
 <launch>
+  <arg name="report_only_diag" default="false"/>
   <node pkg="hazard_status_converter" exec="converter" name="hazard_status_converter">
     <remap from="~/diagnostics_graph" to="/diagnostics_graph"/>
     <remap from="~/hazard_status" to="/system/emergency/hazard_status"/>
+    <param name="report_only_diag" value="$(var report_only_diag)"/>
   </node>
 </launch>
