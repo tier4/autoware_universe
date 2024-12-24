@@ -13,6 +13,7 @@
   <depend>autoware_adapi_v1_msgs</depend>
   <depend>autoware_system_msgs</depend>
   <depend>component_interface_utils</depend>
+  <depend>autoware_internal_debug_msgs</depend>
   <depend>diagnostic_msgs</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
