@@ -18,12 +18,40 @@
 
 #include <autoware_adapi_v1_msgs/msg/planning_behavior.hpp>
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace autoware::default_adapi
 {
+
+const std::map<std::uint16_t, std::uint16_t> direction_map = {
+  {PlanningFactor::SHIFT_RIGHT, SteeringFactor::RIGHT},
+  {PlanningFactor::SHIFT_LEFT, SteeringFactor::LEFT},
+  {PlanningFactor::TURN_RIGHT, SteeringFactor::RIGHT},
+  {PlanningFactor::TURN_LEFT, SteeringFactor::LEFT}};
+
+const std::map<std::string, std::string> conversion_map = {
+  {"static_obstacle_avoidance", PlanningBehavior::AVOIDANCE},
+  {"crosswalk", PlanningBehavior::CROSSWALK},
+  {"goal_planner", PlanningBehavior::GOAL_PLANNER},
+  {"intersection", PlanningBehavior::INTERSECTION},
+  {"lane_change_left", PlanningBehavior::LANE_CHANGE},
+  {"lane_change_right", PlanningBehavior::LANE_CHANGE},
+  {"merge_from_private", PlanningBehavior::MERGE},
+  {"no_stopping_area", PlanningBehavior::NO_STOPPING_AREA},
+  {"blind_spot", PlanningBehavior::REAR_CHECK},
+  {"obstacle_cruise_planner", PlanningBehavior::ROUTE_OBSTACLE},
+  {"motion_velocity_planner", PlanningBehavior::ROUTE_OBSTACLE},
+  {"walkway", PlanningBehavior::SIDEWALK},
+  {"start_planner", PlanningBehavior::START_PLANNER},
+  {"stop_line", PlanningBehavior::STOP_SIGN},
+  {"surround_obstacle_checker", PlanningBehavior::SURROUNDING_OBSTACLE},
+  {"traffic_light", PlanningBehavior::TRAFFIC_SIGNAL},
+  {"detection_area", PlanningBehavior::USER_DEFINED_DETECTION_AREA},
+  {"virtual_traffic_light", PlanningBehavior::VIRTUAL_TRAFFIC_LIGHT},
+  {"run_out", PlanningBehavior::RUN_OUT}};
 
 template <class T>
 void concat(std::vector<T> & v1, const std::vector<T> & v2)
@@ -103,6 +131,10 @@ std::vector<SteeringFactor> convert(const std::vector<PlanningFactor> & factors)
     }
 
     if (conversion_map.count(factor.module) == 0) {
+      continue;
+    }
+
+    if (direction_map.count(factor.behavior) == 0) {
       continue;
     }
 

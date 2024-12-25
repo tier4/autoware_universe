@@ -24,7 +24,6 @@
 #include <autoware_adapi_v1_msgs/msg/planning_behavior.hpp>
 #include <tier4_planning_msgs/msg/planning_factor_array.hpp>
 
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,33 +41,6 @@ using autoware_adapi_v1_msgs::msg::VelocityFactor;
 using autoware_adapi_v1_msgs::msg::VelocityFactorArray;
 using tier4_planning_msgs::msg::PlanningFactor;
 using tier4_planning_msgs::msg::PlanningFactorArray;
-
-const std::map<std::uint16_t, std::uint16_t> direction_map = {
-  {PlanningFactor::SHIFT_RIGHT, SteeringFactor::RIGHT},
-  {PlanningFactor::SHIFT_LEFT, SteeringFactor::LEFT},
-  {PlanningFactor::TURN_RIGHT, SteeringFactor::RIGHT},
-  {PlanningFactor::TURN_LEFT, SteeringFactor::LEFT}};
-
-const std::map<std::string, std::string> conversion_map = {
-  {"static_obstacle_avoidance", PlanningBehavior::AVOIDANCE},
-  {"crosswalk", PlanningBehavior::CROSSWALK},
-  {"goal_planner", PlanningBehavior::GOAL_PLANNER},
-  {"intersection", PlanningBehavior::INTERSECTION},
-  {"lane_change_left", PlanningBehavior::LANE_CHANGE},
-  {"lane_change_right", PlanningBehavior::LANE_CHANGE},
-  {"merge_from_private", PlanningBehavior::MERGE},
-  {"no_stopping_area", PlanningBehavior::NO_STOPPING_AREA},
-  {"blind_spot", PlanningBehavior::REAR_CHECK},
-  {"obstacle_cruise_planner", PlanningBehavior::ROUTE_OBSTACLE},
-  {"motion_velocity_planner", PlanningBehavior::ROUTE_OBSTACLE},
-  {"walkway", PlanningBehavior::SIDEWALK},
-  {"start_planner", PlanningBehavior::START_PLANNER},
-  {"stop_line", PlanningBehavior::STOP_SIGN},
-  {"surround_obstacle_checker", PlanningBehavior::SURROUNDING_OBSTACLE},
-  {"traffic_light", PlanningBehavior::TRAFFIC_SIGNAL},
-  {"detection_area", PlanningBehavior::USER_DEFINED_DETECTION_AREA},
-  {"virtual_traffic_light", PlanningBehavior::VIRTUAL_TRAFFIC_LIGHT},
-  {"run_out", PlanningBehavior::RUN_OUT}};
 
 class PlanningNode : public rclcpp::Node
 {
