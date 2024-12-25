@@ -33,6 +33,7 @@ const std::map<std::uint16_t, std::uint16_t> direction_map = {
   {PlanningFactor::TURN_LEFT, SteeringFactor::LEFT}};
 
 const std::map<std::string, std::string> conversion_map = {
+  {"behavior_path_planner", PlanningBehavior::INTERSECTION},
   {"static_obstacle_avoidance", PlanningBehavior::AVOIDANCE},
   {"crosswalk", PlanningBehavior::CROSSWALK},
   {"goal_planner", PlanningBehavior::GOAL_PLANNER},
@@ -204,6 +205,7 @@ PlanningNode::PlanningNode(const rclcpp::NodeOptions & options) : Node("planning
   stop_checker_ = std::make_unique<VehicleStopChecker>(this, stop_duration_ + 1.0);
 
   std::vector<std::string> factor_topics = {
+    "/planning/planning_factors/behavior_path_planner",
     "/planning/planning_factors/blind_spot",
     "/planning/planning_factors/crosswalk",
     "/planning/planning_factors/detection_area",
