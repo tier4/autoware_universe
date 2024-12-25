@@ -8,6 +8,7 @@ ament_auto_add_library(common_converter SHARED
   src/common/converter/availability_converter.cpp
   src/common/converter/mrm_converter.cpp
   src/common/converter/log_converter.cpp
+  src/common/converter/reset_converter.cpp
 )
 
 target_include_directories(common_converter PRIVATE

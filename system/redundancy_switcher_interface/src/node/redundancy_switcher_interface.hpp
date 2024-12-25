@@ -18,6 +18,7 @@
 #include "availability_converter.hpp"
 #include "log_converter.hpp"
 #include "mrm_converter.hpp"
+#include "reset_converter.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -43,10 +44,15 @@ private:
   std::string election_communication_src_port_;
   std::string election_status_src_ip_;
   std::string election_status_src_port_;
+  std::string reset_request_dest_ip_;
+  std::string reset_request_dest_port_;
+  std::string reset_response_src_ip_;
+  std::string reset_response_src_port_;
 
   AvailabilityConverter availability_converter_;
   MrmConverter mrm_converter_;
   LogConverter log_converter_;
+  ResetConverter reset_converter_;
 };
 
 }  // namespace redundancy_switcher_interface
