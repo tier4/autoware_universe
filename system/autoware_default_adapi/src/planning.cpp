@@ -283,6 +283,13 @@ void PlanningNode::on_timer()
     }
   }
 
+  for (auto & factor : steering.factors) {
+    if ((factor.status == SteeringFactor::UNKNOWN) && (!std::isnan(factor.distance.front()))) {
+      const auto is_turning = factor.distance.front() < 0.0;
+      factor.status = is_turning ? SteeringFactor::TURNING : SteeringFactor::APPROACHING;
+    }
+  }
+
   pub_velocity_factors_->publish(velocity);
   pub_steering_factors_->publish(steering);
 }
