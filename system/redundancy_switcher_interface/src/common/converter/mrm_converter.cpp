@@ -29,7 +29,7 @@ MrmConverter::MrmConverter(rclcpp::Node * node) : node_(node), is_udp_receiver_r
 MrmConverter::~MrmConverter()
 {
   is_udp_receiver_running_ = false;
-  udp_mrm_request_receiver_->~UdpReceiver();
+
   if (udp_receiver_thread_.joinable()) {
     udp_receiver_thread_.join();
   }

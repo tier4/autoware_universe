@@ -7,6 +7,7 @@
   <arg name="output_over_all_mrm_state" default="/system/fail_safe/over_all/mrm_state"/>
   <arg name="output_election_communication" default="/system/election/communication"/>
   <arg name="output_election_status" default="/system/election/status"/>
+  <arg name="service_reset" default="/system/election/reset"/>
   <node pkg="redundancy_switcher_interface" exec="redundancy_switcher_interface_node">
     <param from="$(var param_file)"/>
     <remap from="~/input/control_mode" to="$(var input_control_mode)"/>
@@ -16,5 +17,6 @@
     <remap from="~/output/over_all_mrm_state" to="$(var output_over_all_mrm_state)"/>
     <remap from="~/output/election_communication" to="$(var output_election_communication)"/>
     <remap from="~/output/election_status" to="$(var output_election_status)"/>
+    <remap from="~/service/reset" to="$(var service_reset)"/>
   </node>
 </launch>

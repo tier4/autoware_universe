@@ -44,7 +44,8 @@ public:
     const std::string & ip, const std::string & port, bool is_non_blocking, CallbackType callback);
   ~UdpReceiver();
 
-  bool receive(T & data);  // for non callback
+  bool receive(T & data, int timeout);  // for non callback and timeout
+  bool receive(T & data);           // for non callback
   void receive();          // for callback
 
 private:
@@ -53,6 +54,7 @@ private:
   CallbackType callback_;
 
   void setCallback(CallbackType callback);
+  bool has_received_udp_date(int timeout);
 };
 
 template <typename T>
@@ -123,18 +125,30 @@ void UdpReceiver<T>::setCallback(CallbackType callback)
 }
 
 template <typename T>
-bool UdpReceiver<T>::receive(T & data)
+bool UdpReceiver<T>::receive(T & data, int timeout)
 {
   struct sockaddr_storage addr;
   socklen_t addr_len = sizeof(addr);
-  ssize_t recv_size = recvfrom(socketfd_, &data, sizeof(T), 0, (struct sockaddr *)&addr, &addr_len);
-  if (recv_size < 0) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      return false;
+  memset(&addr, 0, sizeof(addr));
+
+  if (has_received_udp_date(timeout)) {
+    ssize_t recv_size = recvfrom(socketfd_, &data, sizeof(T), 0, (struct sockaddr *)&addr, &addr_len);
+    if (recv_size < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        return false;
+      }
+      throw std::runtime_error("recvfrom failed");
     }
-    throw std::runtime_error("recvfrom failed");
+    return true;
+  } else {
+    return false;
   }
-  return true;
+}
+
+template <typename T>
+bool UdpReceiver<T>::receive(T & data)
+{
+  return receive(data, 0);
 }
 
 template <typename T>
@@ -144,6 +158,21 @@ void UdpReceiver<T>::receive()
   if (receive(data) && callback_) {
     callback_(data);
   }
+}
+
+template <typename T>
+bool UdpReceiver<T>::has_received_udp_date(int timeout)
+{
+  fd_set fds;
+  FD_ZERO(&fds);
+  FD_SET(socketfd_, &fds);
+
+  struct timeval tv;
+  tv.tv_sec = 0;
+  tv.tv_usec = timeout;
+
+  int ret = select(socketfd_ + 1, &fds, NULL, NULL, &tv);
+  return ret > 0;
 }
 
 }  // namespace redundancy_switcher_interface

@@ -23,7 +23,8 @@ RedundancySwitcherInterface::RedundancySwitcherInterface(const rclcpp::NodeOptio
 : Node("redundancy_switcher_interface", node_options),
   availability_converter_(this),
   mrm_converter_(this),
-  log_converter_(this)
+  log_converter_(this),
+  reset_converter_(this)
 {
   availability_dest_ip_ = declare_parameter<std::string>("availability_dest_ip");
   availability_dest_port_ = declare_parameter<std::string>("availability_dest_port");
@@ -36,6 +37,10 @@ RedundancySwitcherInterface::RedundancySwitcherInterface(const rclcpp::NodeOptio
     declare_parameter<std::string>("election_communication_src_port");
   election_status_src_ip_ = declare_parameter<std::string>("election_status_src_ip");
   election_status_src_port_ = declare_parameter<std::string>("election_status_src_port");
+  reset_request_dest_ip_ = declare_parameter<std::string>("reset_request_dest_ip");
+  reset_request_dest_port_ = declare_parameter<std::string>("reset_request_dest_port");
+  reset_response_src_ip_ = declare_parameter<std::string>("reset_response_src_ip");
+  reset_response_src_port_ = declare_parameter<std::string>("reset_response_src_port");
 
   // convert udp packets of availability to topics
   availability_converter_.setUdpSender(availability_dest_ip_, availability_dest_port_);
@@ -54,6 +59,11 @@ RedundancySwitcherInterface::RedundancySwitcherInterface(const rclcpp::NodeOptio
   log_converter_.setUdpElectionCommunicationReceiver(
     election_communication_src_ip_, election_communication_src_port_);
   log_converter_.setUdpElectionStatusReceiver(election_status_src_ip_, election_status_src_port_);
+
+  // convert topics of reset request to udp packets
+  reset_converter_.setUdpSender(reset_request_dest_ip_, reset_request_dest_port_);
+  reset_converter_.setUdpReceiver(reset_response_src_ip_, reset_response_src_port_);
+  reset_converter_.setService();
 }
 
 }  // namespace redundancy_switcher_interface

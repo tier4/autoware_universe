@@ -30,9 +30,8 @@ LogConverter::LogConverter(rclcpp::Node * node)
 LogConverter::~LogConverter()
 {
   is_election_communication_running_ = false;
-  udp_election_communication_receiver_->~UdpReceiver();
   is_election_status_running_ = false;
-  udp_election_status_receiver_->~UdpReceiver();
+
   if (udp_election_communication_thread_.joinable()) {
     udp_election_communication_thread_.join();
   }
