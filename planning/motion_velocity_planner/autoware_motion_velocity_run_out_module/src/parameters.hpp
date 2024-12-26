@@ -1,0 +1,176 @@
+
+// Copyright 2024 TIER IV, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef PARAMETERS_HPP_
+#define PARAMETERS_HPP_
+
+#include <autoware/universe_utils/ros/parameter.hpp>
+#include <autoware/universe_utils/ros/update_param.hpp>
+#include <rclcpp/node.hpp>
+#include <rclcpp/parameter.hpp>
+
+#include <autoware_perception_msgs/msg/object_classification.hpp>
+
+#include <algorithm>
+#include <string>
+#include <vector>
+
+namespace autoware::motion_velocity_planner::run_out
+{
+struct Parameters
+{
+  double
+    max_history_duration;  // [s]  calculated as the maximum duration among all buffer parameters
+  double ego_time_interval_expansion;  // [s] time to add to the ego time interval (on both the
+                                       // start and end times)
+  double stop_on_time_buffer;   // [s] successive collision detection time required to start the
+                                // stopping decision
+  double stop_off_time_buffer;  // [s] successive non-collision detection time required to remove a
+                                // stopping decision
+  double stop_distance_buffer;  // [m] longitudinal safety distance to keep between ego and the
+                                // collision position
+  bool
+    stop_calculate_earliest_within_history;  // if true, use the earliest stop position within the
+                                             // history, otherwise the stop position is calculated
+                                             // only from the currently detected collision
+  bool keep_stop_until_object_is_gone;  // if true, once ego stopped for an object we keep the stop
+                                        // decision until the object is gone
+
+  bool enable_passing_collisions;         // If true, a collision where ego arrives first is ignored
+  double passing_collisions_time_margin;  // [s] required time margin to decide a passing_collision
+  double passing_max_overlap_duration;    // [s] the collision is not ignored if ego is predicted to
+                                          // stay on the object's path for longer than this duration
+  bool enable_deceleration_limit;  // if true, collisions are not ignored if happening within the
+                                   // minimum duration required to stop ego comfortably
+  double ego_lateral_margin;       // [m] ego footprint lateral margin
+  double ego_longitudinal_margin;  // [m] ego footprint longitudinal margin
+  double collision_time_margin;    // [s] extra time margin to determine collisions
+
+  double objects_parked_velocity_threshold;  // [m/s]
+  std::vector<std::string> objects_target_labels;
+  std::vector<std::string> objects_parked_labels;
+  bool objects_ignore_if_behind_ego;
+  bool objects_ignore_if_crossing_parked_objects;
+  bool objects_ignore_collisions_on_crosswalk;
+  bool objects_ignore_if_crossing_ego_from_behind;
+  double objects_confidence_filtering_threshold;
+  bool objects_confidence_filtering_only_use_highest;
+
+  void initialize(rclcpp::Node & node, const std::string & ns)
+  {
+    using universe_utils::getOrDeclareParameter;
+    enable_passing_collisions =
+      getOrDeclareParameter<bool>(node, ns + ".passing.enable_passing_margin");
+    passing_collisions_time_margin =
+      getOrDeclareParameter<double>(node, ns + ".passing.time_margin");
+    passing_max_overlap_duration =
+      getOrDeclareParameter<double>(node, ns + ".passing.max_overlap_duration");
+    enable_deceleration_limit =
+      getOrDeclareParameter<bool>(node, ns + ".passing.enable_deceleration_limit");
+    stop_off_time_buffer = getOrDeclareParameter<double>(node, ns + ".stop.off_time_buffer");
+    stop_on_time_buffer = getOrDeclareParameter<double>(node, ns + ".stop.on_time_buffer");
+    stop_distance_buffer = getOrDeclareParameter<double>(node, ns + ".stop.distance_buffer");
+    stop_calculate_earliest_within_history =
+      getOrDeclareParameter<bool>(node, ns + ".stop.calculate_earliest_position_within_history");
+    keep_stop_until_object_is_gone =
+      getOrDeclareParameter<bool>(node, ns + ".stop.keep_until_object_is_gone");
+    ego_lateral_margin = getOrDeclareParameter<double>(node, ns + ".ego.lateral_margin");
+    ego_longitudinal_margin = getOrDeclareParameter<double>(node, ns + ".ego.longitudinal_margin");
+    collision_time_margin = getOrDeclareParameter<double>(node, ns + ".collision_time_margin");
+    objects_ignore_if_behind_ego =
+      getOrDeclareParameter<bool>(node, ns + ".objects.ignore_if_behind_ego");
+    objects_ignore_if_crossing_parked_objects =
+      getOrDeclareParameter<bool>(node, ns + ".objects.ignore_if_crossing_parked_objects");
+    objects_ignore_if_crossing_ego_from_behind =
+      getOrDeclareParameter<bool>(node, ns + ".objects.ignore_if_crossing_ego_from_behind");
+    objects_ignore_collisions_on_crosswalk =
+      getOrDeclareParameter<bool>(node, ns + ".objects.ignore_on_crosswalk");
+    objects_parked_labels =
+      getOrDeclareParameter<std::vector<std::string>>(node, ns + ".objects.parked_labels");
+    objects_target_labels =
+      getOrDeclareParameter<std::vector<std::string>>(node, ns + ".objects.target_labels");
+    objects_confidence_filtering_threshold =
+      getOrDeclareParameter<double>(node, ns + ".objects.confidence_filtering.threshold");
+    objects_confidence_filtering_only_use_highest =
+      getOrDeclareParameter<bool>(node, ns + ".objects.confidence_filtering.only_use_highest");
+    max_history_duration = std::max(stop_off_time_buffer, stop_on_time_buffer);
+  }
+
+  void update(const std::vector<rclcpp::Parameter> & params, const std::string & ns)
+  {
+    using universe_utils::updateParam;
+    updateParam(params, ns + ".stop_on_time_buffer", stop_on_time_buffer);
+    updateParam(params, ns + ".stop_off_time_buffer", stop_off_time_buffer);
+    updateParam(params, ns + ".passing.enable_passing_margin", enable_passing_collisions);
+    updateParam(params, ns + ".passing.time_margin", passing_collisions_time_margin);
+    updateParam(params, ns + ".passing.max_overlap_duration", passing_max_overlap_duration);
+    updateParam(params, ns + ".passing.enable_deceleration_limit", enable_deceleration_limit);
+    updateParam(params, ns + ".stop_off_time_buffer", stop_off_time_buffer);
+    updateParam(params, ns + ".stop_on_time_buffer", stop_on_time_buffer);
+    updateParam(params, ns + ".stop_distance_buffer", stop_distance_buffer);
+    updateParam(
+      params, ns + ".stop.calculate_earliest_position_within_history",
+      stop_calculate_earliest_within_history);
+    updateParam(params, ns + ".stop.keep_until_object_is_gone", keep_stop_until_object_is_gone);
+    updateParam(params, ns + ".ego.lateral_margin", ego_lateral_margin);
+    updateParam(params, ns + ".ego.longitudinal_margin", ego_longitudinal_margin);
+    updateParam(params, ns + ".collision_time_margin", collision_time_margin);
+    updateParam(params, ns + ".objects.ignore_if_behind_ego", objects_ignore_if_behind_ego);
+    updateParam(
+      params, ns + ".objects.ignore_if_crossing_parked_objects",
+      objects_ignore_if_crossing_parked_objects);
+    updateParam(
+      params, ns + ".objects.ignore_if_crossing_ego_from_behind",
+      objects_ignore_if_crossing_ego_from_behind);
+    updateParam(params, ns + ".objects.parked_labels", objects_parked_labels);
+    updateParam(params, ns + ".objects.target_labels", objects_target_labels);
+    updateParam(
+      params, ns + ".objects.confidence_filtering.threshold",
+      objects_confidence_filtering_threshold);
+    updateParam(
+      params, ns + ".objects.confidence_filtering.only_use_highest",
+      objects_confidence_filtering_only_use_highest);
+    max_history_duration = std::max(stop_off_time_buffer, stop_on_time_buffer);
+  }
+
+  static std::string label_to_string(
+    const autoware_perception_msgs::msg::ObjectClassification::_label_type & label)
+  {
+    using autoware_perception_msgs::msg::ObjectClassification;
+    switch (label) {
+      case ObjectClassification::CAR:
+        return "CAR";
+      case ObjectClassification::TRUCK:
+        return "TRUCK";
+      case ObjectClassification::BICYCLE:
+        return "BICYCLE";
+      case ObjectClassification::BUS:
+        return "BUS";
+      case ObjectClassification::MOTORCYCLE:
+        return "MOTORCYCLE";
+      case ObjectClassification::PEDESTRIAN:
+        return "PEDESTRIAN";
+      case ObjectClassification::TRAILER:
+        return "TRAILER";
+      case ObjectClassification::UNKNOWN:
+        return "UNKNOWN";
+      default:
+        return "";
+    }
+  }
+};
+}  // namespace autoware::motion_velocity_planner::run_out
+
+#endif  // PARAMETERS_HPP_

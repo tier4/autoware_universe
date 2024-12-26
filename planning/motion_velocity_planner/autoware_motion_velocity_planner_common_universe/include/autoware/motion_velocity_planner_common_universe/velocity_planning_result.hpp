@@ -22,8 +22,7 @@
 #include <tier4_planning_msgs/msg/velocity_limit_clear_command.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include <string>
-#include <utility>
+#include <optional>
 #include <vector>
 
 namespace autoware::motion_velocity_planner
@@ -36,8 +35,8 @@ struct SlowdownInterval
   : from{from_}, to{to_}, velocity{vel}
   {
   }
-  geometry_msgs::msg::Point from{};
-  geometry_msgs::msg::Point to{};
+  geometry_msgs::msg::Point from;
+  geometry_msgs::msg::Point to;
   double velocity{};
 };
 struct VelocityPlanningResult

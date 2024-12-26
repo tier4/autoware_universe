@@ -19,6 +19,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/motion_velocity_planner_common_universe/collision_checker.hpp>
 #include <autoware/route_handler/route_handler.hpp>
+#include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware/velocity_smoother/smoother/smoother_base.hpp>
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
@@ -27,6 +28,7 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
+#include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
