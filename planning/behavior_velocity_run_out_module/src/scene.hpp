@@ -113,7 +113,9 @@ private:
 
   void insertStopPoint(
     const boost::optional<geometry_msgs::msg::Pose> stop_point,
-    autoware_auto_planning_msgs::msg::PathWithLaneId & path);
+    autoware_auto_planning_msgs::msg::PathWithLaneId & path,
+    const geometry_msgs::msg::Pose & current_pose, const float current_vel,
+    const float current_acc);
 
   void insertVelocityForState(
     const boost::optional<DynamicObstacle> & dynamic_obstacle, const PlannerData planner_data,
@@ -129,9 +131,9 @@ private:
     const DynamicObstacle & dynamic_obstacle, const geometry_msgs::msg::Pose & current_pose,
     const float approaching_vel, const float approach_margin, PathWithLaneId & output_path);
 
-  void applyMaxJerkLimit(
+  double calcMaxJerkLimitedVelocity(
     const geometry_msgs::msg::Pose & current_pose, const float current_vel, const float current_acc,
-    PathWithLaneId & path) const;
+    PathWithLaneId & path, const geometry_msgs::msg::Pose & stop_point) const;
 
   std::vector<DynamicObstacle> excludeObstaclesOutSideOfPartition(
     const std::vector<DynamicObstacle> & dynamic_obstacles, const PathWithLaneId & path,

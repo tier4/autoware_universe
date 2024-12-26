@@ -113,11 +113,6 @@ bool RunOutModule::modifyPathVelocity(
     insertStoppingVelocity(dynamic_obstacle, current_pose, current_vel, current_acc, *path);
   }
 
-  // apply max jerk limit if the ego can't stop with specified max jerk and acc
-  if (planner_param_.slow_down_limit.enable) {
-    applyMaxJerkLimit(current_pose, current_vel, current_acc, *path);
-  }
-
   publishDebugValue(
     trim_smoothed_path, partition_excluded_obstacles, dynamic_obstacle, current_pose);
 
@@ -585,7 +580,8 @@ boost::optional<geometry_msgs::msg::Pose> RunOutModule::calcStopPoint(
 
 void RunOutModule::insertStopPoint(
   const boost::optional<geometry_msgs::msg::Pose> stop_point,
-  autoware_auto_planning_msgs::msg::PathWithLaneId & path)
+  autoware_auto_planning_msgs::msg::PathWithLaneId & path,
+  const geometry_msgs::msg::Pose & current_pose, const float current_vel, const float current_acc)
 {
   // no stop point
   if (!stop_point) {
@@ -610,7 +606,14 @@ void RunOutModule::insertStopPoint(
   stop_point_with_lane_id = path.points.at(nearest_seg_idx);
   stop_point_with_lane_id.point.pose = *stop_point;
 
-  planning_utils::insertVelocity(path, stop_point_with_lane_id, 0.0, insert_idx);
+  double stop_point_velocity = 0.0;
+  // apply max jerk limit if the ego can't stop with specified max jerk and acc
+  if (planner_param_.slow_down_limit.enable) {
+    stop_point_velocity =
+      calcMaxJerkLimitedVelocity(current_pose, current_vel, current_acc, path, *stop_point);
+  }
+
+  planning_utils::insertVelocity(path, stop_point_with_lane_id, stop_point_velocity, insert_idx);
 }
 
 void RunOutModule::insertVelocityForState(
@@ -679,7 +682,7 @@ void RunOutModule::insertStoppingVelocity(
 {
   const auto stop_point =
     calcStopPoint(dynamic_obstacle, output_path, current_pose, current_vel, current_acc);
-  insertStopPoint(stop_point, output_path);
+  insertStopPoint(stop_point, output_path, current_pose, current_vel, current_acc);
 }
 
 void RunOutModule::insertApproachingVelocity(
@@ -719,26 +722,19 @@ void RunOutModule::insertApproachingVelocity(
   planning_utils::insertVelocity(output_path, stop_point_with_lane_id, 0.0, insert_idx_stop);
 }
 
-void RunOutModule::applyMaxJerkLimit(
+double RunOutModule::calcMaxJerkLimitedVelocity(
   const geometry_msgs::msg::Pose & current_pose, const float current_vel, const float current_acc,
-  PathWithLaneId & path) const
+  PathWithLaneId & path, const geometry_msgs::msg::Pose & stop_point) const
 {
-  const auto stop_point_idx = run_out_utils::findFirstStopPointIdx(path.points);
-  if (!stop_point_idx) {
-    return;
-  }
-
-  const auto stop_point = path.points.at(stop_point_idx.get()).point.pose.position;
   const auto dist_to_stop_point =
-    motion_utils::calcSignedArcLength(path.points, current_pose.position, stop_point);
+    motion_utils::calcSignedArcLength(path.points, current_pose.position, stop_point.position);
 
   // calculate desired velocity with limited jerk
   const auto jerk_limited_vel = planning_utils::calcDecelerationVelocityFromDistanceToTarget(
     planner_param_.slow_down_limit.max_jerk, planner_param_.slow_down_limit.max_acc, current_acc,
     current_vel, dist_to_stop_point);
 
-  // overwrite velocity with limited velocity
-  run_out_utils::insertPathVelocityFromIndex(stop_point_idx.get(), jerk_limited_vel, path.points);
+  return jerk_limited_vel;
 }
 
 std::vector<DynamicObstacle> RunOutModule::excludeObstaclesOutSideOfPartition(
