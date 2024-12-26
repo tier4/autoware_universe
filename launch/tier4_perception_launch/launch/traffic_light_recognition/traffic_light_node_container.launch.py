@@ -130,7 +130,6 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
                 remappings=[
                     ("input/car_signals", "classified/car/traffic_signals"),
                     ("input/pedestrian_signals", "classified/pedestrian/traffic_signals"),
-                    ("input/expect_rois", f"/perception/traffic_light_recognition/{namespace}/detection/expect/rois"),
                     ("output/traffic_light_signals", "traffic_signals"),
                 ],
                 extra_arguments=[
