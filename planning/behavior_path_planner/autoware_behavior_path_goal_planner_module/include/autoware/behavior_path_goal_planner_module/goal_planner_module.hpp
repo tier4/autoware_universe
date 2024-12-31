@@ -157,12 +157,12 @@ bool isOnModifiedGoal(
   const GoalPlannerParameters & parameters);
 
 bool hasPreviousModulePathShapeChanged(
-  const BehaviorModuleOutput & previous_module_output,
-  const BehaviorModuleOutput & last_previous_module_output);
+  const BehaviorModuleOutput & upstream_module_output,
+  const BehaviorModuleOutput & last_upstream_module_output);
 bool hasDeviatedFromLastPreviousModulePath(
-  const PlannerData & planner_data, const BehaviorModuleOutput & last_previous_module_output);
+  const PlannerData & planner_data, const BehaviorModuleOutput & last_upstream_module_output);
 bool hasDeviatedFromCurrentPreviousModulePath(
-  const PlannerData & planner_data, const BehaviorModuleOutput & previous_module_output);
+  const PlannerData & planner_data, const BehaviorModuleOutput & upstream_module_output);
 
 bool needPathUpdate(
   const Pose & current_pose, const double path_update_duration, const rclcpp::Time & now,
@@ -213,6 +213,7 @@ public:
   void onTimer();
 
 private:
+  const GoalPlannerParameters parameters_;
   std::mutex & mutex_;
   const std::optional<LaneParkingRequest> & request_;
   LaneParkingResponse & response_;
@@ -220,6 +221,10 @@ private:
   rclcpp::Logger logger_;
 
   std::vector<std::shared_ptr<PullOverPlannerBase>> pull_over_planners_;
+  BehaviorModuleOutput
+    original_upstream_module_output_;  //<! upstream_module_output used for generating last
+                                       // pull_over_path_candidates(only updated when new candidates
+                                       // are generated)
   std::shared_ptr<BezierPullOver> bezier_pull_over_planner_;
   const double pull_over_azimuth_threshold;
   bool switch_bezier_{false};
