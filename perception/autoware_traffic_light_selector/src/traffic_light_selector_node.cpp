@@ -49,7 +49,7 @@ bool isInsideRoughRoi(
   return false;
 }
 
-float calIou(
+float calIOU(
   const sensor_msgs::msg::RegionOfInterest & bbox1,
   const sensor_msgs::msg::RegionOfInterest & bbox2)
 {
@@ -122,7 +122,7 @@ int orOf2Images(cv::Mat & img1, cv::Mat & img2)
   return cv::countNonZero(img_or);
 }
 
-// create the overal IOU of 2 binary image
+// create the overall IOU of 2 binary image
 double getIoUOf2BinaryImages(cv::Mat & img1, cv::Mat & img2)
 {
   int and_area = andOf2Images(img1, img2);
@@ -268,7 +268,7 @@ void TrafficLightSelectorNode::objectsCallback(
         static_cast<int>(detected_roi.feature.roi.y_offset) - det_roi_shift_y, 0,
         static_cast<int>(image_height_ - detected_roi.feature.roi.height));
 
-      double iou = calIou(expect_roi.roi, detected_roi_shifted);
+      double iou = calIOU(expect_roi.roi, detected_roi_shifted);
       if (iou > max_iou) {
         max_iou = iou;
         max_iou_roi = detected_roi.feature.roi;
