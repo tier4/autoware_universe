@@ -23,7 +23,6 @@ from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer
-from launch_ros.actions import LoadComposableNodes
 from launch_ros.descriptions import ComposableNode
 from launch_ros.parameter_descriptions import ParameterFile
 
@@ -35,10 +34,6 @@ def launch_setup(context, *args, **kwargs):
             result[x] = LaunchConfiguration(x)
         return result
 
-    fine_detector_model_param = ParameterFile(
-        param_file=LaunchConfiguration("fine_detector_param_path").perform(context),
-        allow_substs=True,
-    )
     car_traffic_light_classifier_model_param = ParameterFile(
         param_file=LaunchConfiguration("car_classifier_param_path").perform(context),
         allow_substs=True,
@@ -128,56 +123,7 @@ def launch_setup(context, *args, **kwargs):
         output="both",
     )
 
-    decompressor_loader = LoadComposableNodes(
-        composable_node_descriptions=[
-            ComposableNode(
-                package="image_transport_decompressor",
-                plugin="image_preprocessor::ImageTransportDecompressor",
-                name="traffic_light_image_decompressor",
-                parameters=[{"encoding": "rgb8"}],
-                remappings=[
-                    (
-                        "~/input/compressed_image",
-                        [LaunchConfiguration("input/image"), "/compressed"],
-                    ),
-                    ("~/output/raw_image", LaunchConfiguration("input/image")),
-                ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
-            ),
-        ],
-        target_container=container,
-        condition=IfCondition(LaunchConfiguration("enable_image_decompressor")),
-    )
-
-    fine_detector_loader = LoadComposableNodes(
-        composable_node_descriptions=[
-            ComposableNode(
-                package="traffic_light_fine_detector",
-                plugin="traffic_light::TrafficLightFineDetectorNodelet",
-                name="traffic_light_fine_detector",
-                namespace="detection",
-                parameters=[fine_detector_model_param],
-                remappings=[
-                    ("~/input/image", LaunchConfiguration("input/image")),
-                    ("~/input/rois", "rough/rois"),
-                    ("~/expect/rois", "expect/rois"),
-                    ("~/output/rois", LaunchConfiguration("output/rois")),
-                ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
-            ),
-        ],
-        target_container=container,
-        condition=IfCondition(LaunchConfiguration("enable_fine_detection")),
-    )
-
-    return [container,
-        # decompressor_loader,
-        # traffic_light_selector_loader,
-    ]
+    return [GroupAction([PushRosNamespace(namespace), container])]
 
 
 def generate_launch_description():
@@ -189,29 +135,11 @@ def generate_launch_description():
             DeclareLaunchArgument(name, default_value=default_value, description=description)
         )
 
-    fine_detector_share_dir = get_package_share_directory("traffic_light_fine_detector")
-    classifier_share_dir = get_package_share_directory("traffic_light_classifier")
+    classifier_share_dir = get_package_share_directory("autoware_traffic_light_classifier")
+    add_launch_arg("all_camera_namespaces", "[camera6, camera7]")
     add_launch_arg("enable_image_decompressor", "True")
     add_launch_arg("enable_fine_detection", "True")
-    add_launch_arg("input/image", "/sensing/camera/traffic_light/image_raw")
-    add_launch_arg("output/rois", "/perception/traffic_light_recognition/rois")
-    add_launch_arg(
-        "output/traffic_signals",
-        "/perception/traffic_light_recognition/traffic_signals",
-    )
-    add_launch_arg(
-        "output/car/traffic_signals", "/perception/traffic_light_recognition/car/traffic_signals"
-    )
-    add_launch_arg(
-        "output/pedestrian/traffic_signals",
-        "/perception/traffic_light_recognition/pedestrian/traffic_signals",
-    )
-
-    # traffic_light_fine_detector
-    add_launch_arg(
-        "fine_detector_param_path",
-        os.path.join(fine_detector_share_dir, "config", "traffic_light_fine_detector.param.yaml"),
-    )
+    add_launch_arg("use_image_transport", "True")
 
     # traffic_light_classifier
     add_launch_arg(
