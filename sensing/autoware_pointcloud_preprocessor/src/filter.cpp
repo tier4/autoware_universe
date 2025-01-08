@@ -101,7 +101,9 @@ autoware::pointcloud_preprocessor::Filter::Filter(
   {
     if (use_agnocast_publish_) {
       pub_output_agnocast_ = agnocast::create_publisher<PointCloud2>(
-        this->get_node_topics_interface()->resolve_topic_name("output"), rclcpp::SensorDataQoS().keep_last(max_queue_size_));
+        get_node_base_interface(),
+        this->get_node_topics_interface()->resolve_topic_name("output"),
+        rclcpp::SensorDataQoS().keep_last(max_queue_size_));
     } else {
       rclcpp::PublisherOptions pub_options;
       pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
