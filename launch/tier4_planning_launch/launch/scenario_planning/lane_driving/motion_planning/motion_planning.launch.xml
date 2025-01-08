@@ -28,6 +28,10 @@
 
   <node_container pkg="rclcpp_components" exec="$(var container_type)" name="motion_planning_container" namespace="" args="" output="screen">
     <composable_node pkg="glog_component" plugin="GlogComponent" name="glog_component" namespace=""/>
+
+    <!-- agnocast -->
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <env name="MEMPOOL_SIZE" value="134217728" /> <!-- 128MB -->
   </node_container>
 
   <!-- path smoothing -->

@@ -260,6 +260,21 @@ protected:
   }
 
   inline bool isValid(
+    const agnocast::ipc_shared_ptr<PointCloud2> & cloud, const std::string & /*topic_name*/ = "input")
+  {
+    if (cloud->width * cloud->height * cloud->point_step != cloud->data.size()) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Invalid PointCloud (data = %zu, width = %d, height = %d, step = %d) with stamp %f, "
+        "and frame %s received!",
+        cloud->data.size(), cloud->width, cloud->height, cloud->point_step,
+        rclcpp::Time(cloud->header.stamp).seconds(), cloud->header.frame_id.c_str());
+      return false;
+    }
+    return true;
+  }
+
+  inline bool isValid(
     const PointIndicesConstPtr & /*indices*/, const std::string & /*topic_name*/ = "indices")
   {
     return true;
@@ -273,6 +288,7 @@ protected:
 
 private:
   bool use_agnocast_publish_ = false;
+  bool use_agnocast_subscribe_ = false;
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_filter_;
@@ -287,6 +303,8 @@ private:
 
   /** \brief PointCloud2 + Indices data callback. */
   void input_indices_callback(const PointCloud2ConstPtr cloud, const PointIndicesConstPtr indices);
+  void input_indices_callback_agnocast(
+    const agnocast::ipc_shared_ptr<PointCloud2> cloud, const PointIndicesConstPtr indices);
 
   /** \brief Get a matrix for conversion from the original frame to the target frame */
   bool calculate_transform_matrix(

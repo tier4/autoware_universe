@@ -141,7 +141,7 @@ def launch_setup(context, *args, **kwargs):
     components.extend(pipeline.create_pipeline())
     pointcloud_container_loader = LoadComposableNodes(
         composable_node_descriptions=components,
-        target_container=LaunchConfiguration("pointcloud_container_name"),
+        target_container=LaunchConfiguration("voxel_euclidean_container_name"),
     )
     return [pointcloud_container_loader]
 
@@ -157,6 +157,7 @@ def generate_launch_description():
     add_launch_arg("use_multithread", "False")
     add_launch_arg("use_intra_process", "True")
     add_launch_arg("pointcloud_container_name", "pointcloud_container")
+    add_launch_arg("voxel_euclidean_container_name", "voxel_euclidean_container")
     add_launch_arg("use_pointcloud_map", "true")
     set_container_executable = SetLaunchConfiguration(
         "container_executable",

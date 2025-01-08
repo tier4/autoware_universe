@@ -540,6 +540,7 @@ def launch_setup(context, *args, **kwargs):
                 context=context,
             )
         )
+
     if pipeline.use_time_series_filter:
         components.extend(
             pipeline.create_time_series_outlier_filter_components(
@@ -549,15 +550,14 @@ def launch_setup(context, *args, **kwargs):
                     else pipeline.single_frame_obstacle_seg_output
                 ),
                 output_topic=pipeline.output_topic,
-                ogm_outlier_filter_param=ParameterFile(
-                    LaunchConfiguration("ogm_outlier_filter_param_path").perform(context)
-                ),
             )
         )
+
     pointcloud_container_loader = LoadComposableNodes(
         composable_node_descriptions=components,
         target_container=LaunchConfiguration("pointcloud_container_name"),
     )
+
     return [pointcloud_container_loader]
 
 

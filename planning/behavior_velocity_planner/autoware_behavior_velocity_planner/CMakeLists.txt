@@ -3,6 +3,7 @@ project(autoware_behavior_velocity_planner)
 
 find_package(autoware_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(agnocastlib REQUIRED)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
@@ -16,6 +17,11 @@ autoware_package()
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/node.cpp
   src/planner_manager.cpp
+)
+
+ament_target_dependencies(${PROJECT_NAME}_lib agnocastlib)
+target_include_directories(${PROJECT_NAME}_lib PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}_lib

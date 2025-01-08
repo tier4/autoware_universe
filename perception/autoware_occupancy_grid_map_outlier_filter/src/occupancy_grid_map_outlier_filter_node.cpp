@@ -255,7 +255,9 @@ OccupancyGridMapOutlierFilterComponent::OccupancyGridMapOutlierFilterComponent(
   sync_ptr_->registerCallback(std::bind(
     &OccupancyGridMapOutlierFilterComponent::onOccupancyGridMapAndPointCloud2, this,
     std::placeholders::_1, std::placeholders::_2));
-  pointcloud_pub_ = create_publisher<PointCloud2>("~/output/pointcloud", rclcpp::SensorDataQoS());
+  pointcloud_pub_ = agnocast::create_publisher<PointCloud2>(
+    get_node_base_interface(), this->get_node_topics_interface()->resolve_topic_name("~/output/pointcloud"),
+    rclcpp::SensorDataQoS());
 
   /* Radius search 2d filter */
   if (use_radius_search_2d_filter) {
@@ -383,7 +385,9 @@ void OccupancyGridMapOutlierFilterComponent::onOccupancyGridMapAndPointCloud2(
   concatPointCloud2(ogm_frame_filtered_pc, ogm_frame_input_behind_pc);
   finalizePointCloud2(ogm_frame_pc, ogm_frame_filtered_pc);
 
-  auto base_link_frame_filtered_pc_ptr = std::make_unique<PointCloud2>();
+  agnocast::ipc_shared_ptr<PointCloud2> base_link_frame_filtered_pc_ptr =
+      pointcloud_pub_->borrow_loaned_message();
+
   {  // scope for the timekeeper to track the time spent on transformPointcloud
     std::unique_ptr<ScopedTimeTrack> inner_st_ptr;
     if (time_keeper_)

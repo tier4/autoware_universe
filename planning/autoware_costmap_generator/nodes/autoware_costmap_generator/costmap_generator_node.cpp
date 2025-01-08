@@ -176,9 +176,10 @@ CostmapGenerator::CostmapGenerator(const rclcpp::NodeOptions & node_options)
   using std::placeholders::_1;
   sub_objects_ = this->create_subscription<autoware_perception_msgs::msg::PredictedObjects>(
     "~/input/objects", 1, std::bind(&CostmapGenerator::onObjects, this, _1));
-  sub_points_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "~/input/points_no_ground", rclcpp::SensorDataQoS(),
-    std::bind(&CostmapGenerator::onPoints, this, _1));
+  sub_points_ = agnocast::create_subscription<sensor_msgs::msg::PointCloud2>(
+    get_node_base_interface(),
+    this->get_node_topics_interface()->resolve_topic_name("~/input/points_no_ground"),
+    rclcpp::SensorDataQoS(), std::bind(&CostmapGenerator::onPoints, this, _1));
   sub_lanelet_bin_map_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&CostmapGenerator::onLaneletMapBin, this, _1));
@@ -264,9 +265,9 @@ void CostmapGenerator::onObjects(
   objects_ = msg;
 }
 
-void CostmapGenerator::onPoints(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
+void CostmapGenerator::onPoints(agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> msg)
 {
-  points_ = msg;
+  points_ = std::move(msg);
 }
 
 void CostmapGenerator::onScenario(const tier4_planning_msgs::msg::Scenario::ConstSharedPtr msg)
@@ -359,7 +360,7 @@ void CostmapGenerator::initGridmap()
 }
 
 grid_map::Matrix CostmapGenerator::generatePointsCostmap(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & in_points)
+  const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> & in_points)
 {
   geometry_msgs::msg::TransformStamped points2costmap;
   try {

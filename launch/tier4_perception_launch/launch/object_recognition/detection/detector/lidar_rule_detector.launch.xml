@@ -2,6 +2,7 @@
 <launch>
   <!-- External interfaces -->
   <arg name="node/pointcloud_container"/>
+  <arg name="voxel_euclidean_container_name"/>
   <arg name="input/pointcloud_map/pointcloud"/>
   <arg name="input/obstacle_segmentation/pointcloud"/>
   <arg name="output/objects"/>
@@ -17,6 +18,7 @@
 
         <arg name="use_pointcloud_container" value="true"/>
         <arg name="pointcloud_container_name" value="$(var node/pointcloud_container)"/>
+        <arg name="voxel_euclidean_container_name" value="$(var voxel_euclidean_container_name)"/>
       </include>
     </group>
 

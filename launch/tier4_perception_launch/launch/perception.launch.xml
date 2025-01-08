@@ -134,6 +134,14 @@
   <arg name="common_downsample_voxel_size_y" default="0.05"/>
   <arg name="common_downsample_voxel_size_z" default="0.05"/>
 
+  <!-- Create component_container for agnocast -->
+  <arg name="voxel_euclidean_container_name" default="voxel_euclidean_container"/>
+  <node_container pkg="agnocastlib" exec="agnocast_component_container_mt" name="$(var voxel_euclidean_container_name)" namespace="" output="screen">
+    <!-- agnocast -->
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')" />
+    <env name="MEMPOOL_SIZE" value="2147483648" />  <!-- 2048MB-->
+  </node_container>
+
   <!-- Perception module -->
   <group>
     <push-ros-namespace namespace="perception"/>
@@ -226,6 +234,7 @@
           <arg name="input/camera7/rois" value="$(var detection_rois7)"/>
           <arg name="input/pointcloud" value="$(var perception_pointcloud)"/>
           <arg name="node/pointcloud_container" value="$(var pointcloud_container_name)"/>
+          <arg name="voxel_euclidean_container_name" value="$(var voxel_euclidean_container_name)"/>
           <arg name="input/radar" value="$(var input/radar)"/>
           <arg name="sync_param_path" value="$(var object_recognition_detection_fusion_sync_param_path)"/>
           <arg name="roi_cluster_fusion_param_path" value="$(var object_recognition_detection_roi_cluster_fusion_param_path)"/>

@@ -9,6 +9,7 @@ find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 find_package(PCL REQUIRED)
 find_package(OpenMP)
+find_package(agnocastlib REQUIRED)
 ament_auto_find_build_dependencies()
 
 include_directories(
@@ -29,6 +30,11 @@ target_link_libraries(${PROJECT_NAME}
   ${Boost_LIBRARIES}
   ${OpenCV_LIBRARIES}
   ${PCL_LIBRARIES}
+)
+
+ament_target_dependencies(autoware_occupancy_grid_map_outlier_filter agnocastlib)
+target_include_directories(autoware_occupancy_grid_map_outlier_filter PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
 )
 
 if(OPENMP_FOUND)

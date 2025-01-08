@@ -81,7 +81,8 @@ def launch_setup(context, *args, **kwargs):
     )
 
     target_container = (
-        LaunchConfiguration("pointcloud_container_name")
+        # HACK: Use the voxel_euclidean_container if use_pointcloud_container is true for agnocast
+        LaunchConfiguration("voxel_euclidean_container_name")
         if IfCondition(LaunchConfiguration("use_pointcloud_container")).evaluate(context)
         else container
     )
@@ -119,6 +120,7 @@ def generate_launch_description():
             add_launch_arg("use_low_height_cropbox", "false"),
             add_launch_arg("use_pointcloud_container", "false"),
             add_launch_arg("pointcloud_container_name", "pointcloud_container"),
+            add_launch_arg("voxel_euclidean_container_name", "voxel_euclidean_container"),
             add_launch_arg(
                 "voxel_grid_based_euclidean_param_path",
                 [
