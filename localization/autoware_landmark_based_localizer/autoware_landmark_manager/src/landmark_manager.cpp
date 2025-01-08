@@ -49,11 +49,11 @@ void LandmarkManager::parse_landmarks(
     const auto & v1 = vertices[1];
     const auto & v2 = vertices[2];
     const auto & v3 = vertices[3];
-    const double volume = (v1 - v0).cross(v2 - v0).dot(v3 - v0) / 6.0;
-    const double volume_threshold = 1e-3;
-    if (volume > volume_threshold) {
-      continue;
-    }
+    // const double volume = (v1 - v0).cross(v2 - v0).dot(v3 - v0) / 6.0;
+    // const double volume_threshold = 1e-3;
+    // if (volume > volume_threshold) {
+    //   continue;
+    // }
 
     // Calculate the center of the quadrilateral
     const auto center = (v0 + v1 + v2 + v3) / 4.0;
