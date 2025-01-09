@@ -212,6 +212,11 @@ void MultiObjectTracker::onTrigger()
   const bool is_objects_ready = input_manager_->getObjects(current_time, objects_list);
   if (!is_objects_ready) return;
   onMessage(objects_list);
+  // Publish without delay compensation
+  if (!publish_timer_) {
+    const auto latest_object_time = rclcpp::Time(objects_list.back().second.header.stamp);
+    checkAndPublish(latest_object_time);
+  }
 }
 
 void MultiObjectTracker::onTimer()
