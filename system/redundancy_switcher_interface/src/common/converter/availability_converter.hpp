@@ -56,8 +56,7 @@ private:
   std::unique_ptr<UdpSender<Availability>> udp_availability_sender_;
   rclcpp::CallbackGroup::SharedPtr availability_callback_group_;
   rclcpp::CallbackGroup::SharedPtr control_mode_callback_group_;
-  rclcpp::Subscription<autoware_vehicle_msgs::msg::ControlModeReport>::SharedPtr
-    sub_control_mode_;
+  rclcpp::Subscription<autoware_vehicle_msgs::msg::ControlModeReport>::SharedPtr sub_control_mode_;
   rclcpp::Subscription<tier4_system_msgs::msg::OperationModeAvailability>::SharedPtr
     sub_operation_mode_availability_;
 };

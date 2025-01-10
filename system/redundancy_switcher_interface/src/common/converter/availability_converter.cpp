@@ -43,8 +43,9 @@ void AvailabilityConverter::setSubscriber()
     node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive, false);
   rclcpp::SubscriptionOptions control_mode_options = rclcpp::SubscriptionOptions();
   control_mode_options.callback_group = control_mode_callback_group_;
-  auto not_executed_callback = []([[maybe_unused]] const typename autoware_vehicle_msgs::msg::
-                                    ControlModeReport::ConstSharedPtr msg) {};
+  auto not_executed_callback =
+    []([[maybe_unused]] const typename autoware_vehicle_msgs::msg::ControlModeReport::ConstSharedPtr
+         msg) {};
 
   sub_operation_mode_availability_ =
     node_->create_subscription<tier4_system_msgs::msg::OperationModeAvailability>(
@@ -52,9 +53,8 @@ void AvailabilityConverter::setSubscriber()
       std::bind(&AvailabilityConverter::convertToUdp, this, std::placeholders::_1),
       availability_options);
 
-  sub_control_mode_ =
-    node_->create_subscription<autoware_vehicle_msgs::msg::ControlModeReport>(
-      "~/input/control_mode", qos, not_executed_callback, control_mode_options);
+  sub_control_mode_ = node_->create_subscription<autoware_vehicle_msgs::msg::ControlModeReport>(
+    "~/input/control_mode", qos, not_executed_callback, control_mode_options);
 }
 
 void AvailabilityConverter::convertToUdp(
