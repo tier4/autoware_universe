@@ -18,7 +18,6 @@
 
 namespace mrm_stop_operator
 {
-
 MrmStopOperator::MrmStopOperator(const rclcpp::NodeOptions & node_options)
 : Node("mrm_stop_operator", node_options)
 {
@@ -122,7 +121,7 @@ void MrmStopOperator::onTimer()
       return false;
     }
   }
-
+}
 }  // namespace mrm_stop_operator
 
 #include <rclcpp_components/register_node_macro.hpp>
