@@ -104,24 +104,24 @@ void MrmStopOperator::onTimer()
       } else {
         // nothing to do
       }
+    }
+    current_mrm_state_.stamp = this->now();
+    pub_mrm_state_->publish(current_mrm_state_);
   }
-  current_mrm_state_.stamp = this->now();
-  pub_mrm_state_->publish(current_mrm_state_);
-}
 
-bool MrmStopOperator::isStopped()
-{
-  constexpr auto th_stopped_velocity = 0.001;
-  auto current_velocity = std::make_shared<autoware_vehicle_msgs::msg::VelocityReport>();
-  rclcpp::MessageInfo message_info;
+  bool MrmStopOperator::isStopped()
+  {
+    constexpr auto th_stopped_velocity = 0.001;
+    auto current_velocity = std::make_shared<autoware_vehicle_msgs::msg::VelocityReport>();
+    rclcpp::MessageInfo message_info;
 
-  const bool success = sub_velocity_->take(*current_velocity, message_info);
-  if (success) {
-    return current_velocity->longitudinal_velocity < th_stopped_velocity;
-  } else {
-    return false;
+    const bool success = sub_velocity_->take(*current_velocity, message_info);
+    if (success) {
+      return current_velocity->longitudinal_velocity < th_stopped_velocity;
+    } else {
+      return false;
+    }
   }
-}
 
 }  // namespace mrm_stop_operator
 
