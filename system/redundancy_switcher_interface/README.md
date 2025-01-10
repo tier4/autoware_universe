@@ -2,7 +2,7 @@
 
 ## Overview
 
-The redundancy switcher interface node is responsible for relaying UDP packets and ROS2 topics between the redundancy_switcher invoked by systemd and Autoware executed on ROS2.
+The redundancy switcher interface node is responsible for relaying UDP packets and ros topics between the redundancy_switcher invoked by systemd and Autoware executed on ros.
 
 ## availability converter
 
