@@ -45,8 +45,8 @@ public:
   ~UdpReceiver();
 
   bool receive(T & data, int timeout);  // for non callback and timeout
-  bool receive(T & data);           // for non callback
-  void receive();          // for callback
+  bool receive(T & data);               // for non callback
+  void receive();                       // for callback
 
 private:
   int socketfd_;
@@ -132,7 +132,8 @@ bool UdpReceiver<T>::receive(T & data, int timeout)
   memset(&addr, 0, sizeof(addr));
 
   if (has_received_udp_date(timeout)) {
-    ssize_t recv_size = recvfrom(socketfd_, &data, sizeof(T), 0, (struct sockaddr *)&addr, &addr_len);
+    ssize_t recv_size =
+      recvfrom(socketfd_, &data, sizeof(T), 0, (struct sockaddr *)&addr, &addr_len);
     if (recv_size < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         return false;
