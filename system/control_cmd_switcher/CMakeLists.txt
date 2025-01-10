@@ -14,12 +14,10 @@ rclcpp_components_register_node(${PROJECT_NAME}
 )
 
 install(PROGRAMS
-  tool/relay_trajectory.py
   DESTINATION lib/${PROJECT_NAME}
   PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
 )
 
 ament_auto_package(INSTALL_TO_SHARE
   launch
-  config
 )
