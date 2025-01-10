@@ -66,11 +66,11 @@ class RemapNode(Node):
                 )
 
     def trajectory_callback(self, msg):
-        if self.autonomous_mode or self.operation_mode_autonomous_state == False:
+        if not self.autonomous_mode or self.operation_mode_autonomous_state:
             self.pub_trajectory.publish(msg)
 
     def pose_callback(self, msg):
-        if self.autonomous_mode or self.operation_mode_autonomous_state == False:
+        if not self.autonomous_mode or self.operation_mode_autonomous_state:
             self.pub_pose_with_covariance.publish(msg)
 
     # def initialpose_callback(self, msg):
