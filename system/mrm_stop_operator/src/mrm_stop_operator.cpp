@@ -104,9 +104,6 @@ void MrmStopOperator::onTimer()
       } else {
         // nothing to do
       }
-    } else {
-      // TODO
-    }
   }
   current_mrm_state_.stamp = this->now();
   pub_mrm_state_->publish(current_mrm_state_);
