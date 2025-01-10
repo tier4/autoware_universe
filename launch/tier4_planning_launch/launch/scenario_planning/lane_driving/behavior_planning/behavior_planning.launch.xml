@@ -258,7 +258,7 @@
 
     <!-- agnocast -->
     <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
-    <env name="MEMPOOL_SIZE" value="134217728" /> <!-- 128MB -->
+    <env name="MEMPOOL_SIZE" value="1342177280" /> <!-- 1280MB -->
   </node_container>
 
   <group if="$(var launch_compare_map_pipeline)">

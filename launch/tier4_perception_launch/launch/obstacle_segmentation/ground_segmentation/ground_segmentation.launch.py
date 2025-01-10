@@ -550,6 +550,9 @@ def launch_setup(context, *args, **kwargs):
                     else pipeline.single_frame_obstacle_seg_output
                 ),
                 output_topic=pipeline.output_topic,
+                ogm_outlier_filter_param=ParameterFile(
+                    LaunchConfiguration("ogm_outlier_filter_param_path").perform(context)
+                ),
             )
         )
 
