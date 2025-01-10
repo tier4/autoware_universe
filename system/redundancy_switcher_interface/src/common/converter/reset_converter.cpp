@@ -35,13 +35,15 @@ void ResetConverter::setUdpSender(const std::string & dest_ip, const std::string
 
 void ResetConverter::setUdpReceiver(const std::string & src_ip, const std::string & src_port)
 {
-  udp_reset_response_receiver_ = std::make_unique<UdpReceiver<ResetResponse>>(src_ip, src_port, false);
+  udp_reset_response_receiver_ =
+    std::make_unique<UdpReceiver<ResetResponse>>(src_ip, src_port, false);
 }
 
 void ResetConverter::setService()
 {
   srv_reset_ = node_->create_service<autoware_adapi_v1_msgs::srv::RedundancySwitcherReset>(
-    "~/service/reset", std::bind(&ResetConverter::onResetRequest, this, std::placeholders::_1, std::placeholders::_2));
+    "~/service/reset",
+    std::bind(&ResetConverter::onResetRequest, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void ResetConverter::onResetRequest(
@@ -56,7 +58,8 @@ void ResetConverter::onResetRequest(
 
     ResetResponse udp_response;
     try {
-      bool result = udp_reset_response_receiver_->receive(udp_response, 30);;
+      bool result = udp_reset_response_receiver_->receive(udp_response, 30);
+      ;
       if (!result) {
         response->status.success = false;
         response->status.code = autoware_adapi_v1_msgs::msg::ResponseStatus::SERVICE_TIMEOUT;
@@ -72,7 +75,7 @@ void ResetConverter::onResetRequest(
         response->status.message = "Reset successfully.";
         RCLCPP_INFO(node_->get_logger(), "Reset successfully.");
       }
-    } catch (const std::exception &e) {
+    } catch (const std::exception & e) {
       response->status.success = false;
       response->status.code = autoware_adapi_v1_msgs::msg::ResponseStatus::TRANSFORM_ERROR;
       response->status.message = "Failed to receive UDP response.";

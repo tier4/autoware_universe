@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RESET__CONVERTER__RESET_CONVERTER_HPP_
-#define RESET__CONVERTER__RESET_CONVERTER_HPP_
+#ifndef COMMON__CONVERTER__RESET_CONVERTER_HPP_
+#define COMMON__CONVERTER__RESET_CONVERTER_HPP_
 
-#include "udp_sender.hpp"
 #include "udp_receiver.hpp"
+#include "udp_sender.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -60,4 +60,4 @@ private:
 
 }  // namespace redundancy_switcher_interface
 
-#endif  // RESET__CONVERTER__RESET_CONVERTER_HPP_
+#endif  // COMMON__CONVERTER__RESET_CONVERTER_HPP_
