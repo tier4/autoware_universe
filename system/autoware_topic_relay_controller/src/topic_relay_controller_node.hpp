@@ -21,6 +21,8 @@
 #include <tf2_msgs/msg/tf_message.hpp>
 #include <tier4_system_msgs/srv/change_topic_relay_control.hpp>
 
+#include <string>
+
 namespace autoware::topic_relay_controller
 {
 struct NodeParam
