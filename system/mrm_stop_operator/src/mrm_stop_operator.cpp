@@ -14,6 +14,8 @@
 
 #include "mrm_stop_operator.hpp"
 
+#include <memory>
+
 namespace mrm_stop_operator
 {
 
