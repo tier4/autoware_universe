@@ -26,9 +26,6 @@ RedundancyRelayManager::RedundancyRelayManager(const rclcpp::NodeOptions & optio
   node_param_.service_timeout_ms = declare_parameter<int>("service_timeout_ms");
 
   // Subscribers
-  sub_operation_mode_state_ = create_subscription<autoware_adapi_v1_msgs::msg::OperationModeState>(
-    "~/input/operation_mode/state", rclcpp::QoS{1},
-    std::bind(&RedundancyRelayManager::onOperationModeState, this, std::placeholders::_1));
   sub_main_election_status_ = create_subscription<tier4_system_msgs::msg::ElectionStatus>(
     "~/input/main/election/status", rclcpp::QoS{1},
     std::bind(&RedundancyRelayManager::onMainElectionStatus, this, std::placeholders::_1));
@@ -50,17 +47,14 @@ RedundancyRelayManager::RedundancyRelayManager(const rclcpp::NodeOptions & optio
       rmw_qos_profile_services_default, client_relay_pose_with_covariance_group_);
 }
 
-void RedundancyRelayManager::onOperationModeState(
-  const autoware_adapi_v1_msgs::msg::OperationModeState::SharedPtr msg)
-{
-  operation_mode_state_ = msg;
-}
-
 void RedundancyRelayManager::onMainElectionStatus(
   const tier4_system_msgs::msg::ElectionStatus::SharedPtr msg)
 {
   const auto tmp_election_status = main_election_status_;
   main_election_status_ = msg;
+
+  auto operation_mode_state = sub_operation_mode_state_.takeData();
+  if (operation_mode_state == nullptr) return;
 
   if (is_relaying_) {
     if (tmp_election_status == nullptr || operation_mode_state_ == nullptr) return;
@@ -89,6 +83,9 @@ void RedundancyRelayManager::onSubElectionStatus(
 {
   const auto tmp_election_status = sub_election_status_;
   sub_election_status_ = msg;
+
+  auto operation_mode_state = sub_operation_mode_state_.takeData();
+  if (operation_mode_state == nullptr) return;
 
   if (is_relaying_) {
     if (tmp_election_status == nullptr || operation_mode_state_ == nullptr) return;
