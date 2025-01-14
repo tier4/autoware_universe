@@ -57,8 +57,8 @@ void RedundancyRelayManager::onMainElectionStatus(
   if (operation_mode_state == nullptr) return;
 
   if (is_relaying_) {
-    if (tmp_election_status == nullptr || operation_mode_state_ == nullptr) return;
-    if (operation_mode_state_->mode != autoware_adapi_v1_msgs::msg::OperationModeState::AUTONOMOUS)
+    if (tmp_election_status == nullptr) return;
+    if (operation_mode_state->mode != autoware_adapi_v1_msgs::msg::OperationModeState::AUTONOMOUS)
       return;
     if (((msg->path_info >> 3) & 0x01) == 1 || ((tmp_election_status->path_info >> 3) & 0x01) == 0)
       return;
@@ -88,8 +88,8 @@ void RedundancyRelayManager::onSubElectionStatus(
   if (operation_mode_state == nullptr) return;
 
   if (is_relaying_) {
-    if (tmp_election_status == nullptr || operation_mode_state_ == nullptr) return;
-    if (operation_mode_state_->mode != autoware_adapi_v1_msgs::msg::OperationModeState::AUTONOMOUS)
+    if (tmp_election_status == nullptr) return;
+    if (operation_mode_state->mode != autoware_adapi_v1_msgs::msg::OperationModeState::AUTONOMOUS)
       return;
     if (((msg->path_info >> 3) & 0x01) == 1 || ((tmp_election_status->path_info >> 3) & 0x01) == 0)
       return;
