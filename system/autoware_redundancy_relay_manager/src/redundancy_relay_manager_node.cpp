@@ -15,7 +15,8 @@
 
 namespace autoware::redundancy_relay_manager
 {
-RedundancyRelayManager::RedundancyRelayManager(const rclcpp::NodeOptions & options) : Node("redundancy_relay_manager", options)
+RedundancyRelayManager::RedundancyRelayManager(const rclcpp::NodeOptions & options)
+: Node("redundancy_relay_manager", options)
 {
   // Subscribers
   sub_operation_mode_state_ = create_subscription<autoware_adapi_v1_msgs::msg::OperationModeState>(
@@ -37,7 +38,7 @@ void RedundancyRelayManager::onElectionStatus(
 {
   RCLCPP_INFO(get_logger(), "Received election state: %d", msg->path_info);
 }
-} // namespace autoware::redundancy_relay_manager
+}  // namespace autoware::redundancy_relay_manager
 
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(autoware::redundancy_relay_manager::RedundancyRelayManager)
