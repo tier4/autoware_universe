@@ -147,7 +147,9 @@ std::vector<PathWithLaneId> GeometricParallelParking::generatePullOverPaths(
   setVelocityToArcPaths(arc_paths, velocity, set_stop_end);
 
   // straight path from current to parking start
-  const auto straight_path = generateStraightPath(start_pose, road_lanes);
+  const bool set_stop_straight_end = is_forward ? !(parameters_.forward_parking_use_clothoid)
+                                                : !(parameters_.backward_parking_use_clothoid);
+  const auto straight_path = generateStraightPath(start_pose, road_lanes, set_stop_straight_end);
 
   // check the continuity of straight path and arc path
   const Pose & road_path_last_pose = straight_path.points.back().point.pose;
@@ -160,8 +162,21 @@ std::vector<PathWithLaneId> GeometricParallelParking::generatePullOverPaths(
   }
 
   // combine straight_path -> arc_path*2
-  auto paths = arc_paths;
-  paths.insert(paths.begin(), straight_path);
+  std::vector<PathWithLaneId> paths;
+  if (
+    is_forward ? parameters_.forward_parking_use_clothoid
+               : parameters_.backward_parking_use_clothoid) {
+    paths.push_back(straight_path);
+    for (const auto & path : arc_paths) {
+      for (const auto & path_point : path.points) {
+        paths.front().points.push_back(path_point);
+      }
+    }
+    paths.front().points = autoware::motion_utils::removeOverlapPoints(paths.front().points);
+  } else {
+    paths = arc_paths;
+    paths.insert(paths.begin(), straight_path);
+  }
 
   return paths;
 }
@@ -381,7 +396,7 @@ std::optional<Pose> GeometricParallelParking::calcStartPose(
 }
 
 PathWithLaneId GeometricParallelParking::generateStraightPath(
-  const Pose & start_pose, const lanelet::ConstLanelets & road_lanes)
+  const Pose & start_pose, const lanelet::ConstLanelets & road_lanes, const bool set_stop_end)
 {
   // get straight path before parking.
   const auto start_arc_position = lanelet::utils::getArcCoordinates(road_lanes, start_pose);
@@ -394,7 +409,7 @@ PathWithLaneId GeometricParallelParking::generateStraightPath(
       road_lanes, current_arc_position.length, start_arc_position.length, true),
     parameters_.center_line_path_interval);
   path.header = planner_data_->route_handler->getRouteHeader();
-  if (!path.points.empty()) {
+  if (!path.points.empty() && set_stop_end) {
     path.points.back().point.longitudinal_velocity_mps = 0;
   }
 
@@ -855,7 +870,7 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
       }
     }
   }
-  paths_.front().points = autoware::motion_utils::removeOverlapPoints(paths.front().points);
+  paths_.front().points = autoware::motion_utils::removeOverlapPoints(paths_.front().points);
 
   // set terminal velocity and acceleration(temporary implementation)
   if (is_forward) {

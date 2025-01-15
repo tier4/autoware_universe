@@ -152,7 +152,7 @@ private:
     const bool is_forward, const bool left_side_parking, const double end_pose_offset,
     const double velocity);
   PathWithLaneId generateStraightPath(
-    const Pose & start_pose, const lanelet::ConstLanelets & road_lanes);
+    const Pose & start_pose, const lanelet::ConstLanelets & road_lanes, const bool set_stop_end);
   void setVelocityToArcPaths(
     std::vector<PathWithLaneId> & arc_paths, const double velocity, const bool set_stop_end);
 
