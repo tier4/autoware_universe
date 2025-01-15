@@ -104,9 +104,9 @@ void MrmStopOperator::onTimer()
         // nothing to do
       }
     }
-    current_mrm_state_.stamp = this->now();
-    pub_mrm_state_->publish(current_mrm_state_);
   }
+  current_mrm_state_.stamp = this->now();
+  pub_mrm_state_->publish(current_mrm_state_);
 }
 
 bool MrmStopOperator::isStopped()
