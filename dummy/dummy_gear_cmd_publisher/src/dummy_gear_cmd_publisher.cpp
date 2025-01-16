@@ -26,7 +26,7 @@ DummyGearCmdPublisher::DummyGearCmdPublisher(const rclcpp::NodeOptions & node_op
 
   // Publisher
   pub_gear_cmd_ =
-    create_publisher<autoware_auto_vehicle_msgs::msg::GearCommand>("~/output/gear_cmd", 10);
+    create_publisher<autoware_vehicle_msgs::msg::GearCommand>("~/output/gear_cmd", 10);
 
   // Service
 
@@ -44,9 +44,9 @@ DummyGearCmdPublisher::DummyGearCmdPublisher(const rclcpp::NodeOptions & node_op
 
 void DummyGearCmdPublisher::onTimer()
 {
-  autoware_auto_vehicle_msgs::msg::GearCommand msg;
+  autoware_vehicle_msgs::msg::GearCommand msg;
   msg.stamp = this->now();
-  msg.command = autoware_auto_vehicle_msgs::msg::GearCommand::DRIVE;
+  msg.command = autoware_vehicle_msgs::msg::GearCommand::DRIVE;
 
   pub_gear_cmd_->publish(msg);
 }
