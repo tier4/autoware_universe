@@ -18,7 +18,7 @@
 // include
 #include <rclcpp/rclcpp.hpp>
 
-#include <autoware_auto_vehicle_msgs/msg/gear_command.hpp>
+#include <autoware_vehicle_msgs/msg/gear_command.hpp>
 
 namespace dummy_gear_cmd_publisher
 {
@@ -35,7 +35,7 @@ private:
   // Subscriber
 
   // Publisher
-  rclcpp::Publisher<autoware_auto_vehicle_msgs::msg::GearCommand>::SharedPtr pub_gear_cmd_;
+  rclcpp::Publisher<autoware_vehicle_msgs::msg::GearCommand>::SharedPtr pub_gear_cmd_;
 
   // Service
 
