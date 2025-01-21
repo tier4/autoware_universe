@@ -8,7 +8,7 @@
 
   <!-- Node -->
   <group>
-    <push-ros-namespace namespace="camera6"/>
+    <push-ros-namespace namespace="camera6/classification"/>
     <node pkg="autoware_traffic_light_signals_merger" exec="traffic_light_signals_merger_node" name="autoware_traffic_light_signals_merger_node" output="screen">
       <remap from="input/car_signals" to="$(var input/car_signals)"/>
       <remap from="input/pedestrian_signals" to="$(var input/pedestrian_signals)"/>
