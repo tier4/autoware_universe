@@ -361,7 +361,6 @@ void ElevationMapLoaderNode::inpaintElevationMap(const float radius)
   elevation_map_.add("inpaint_mask", 0.0);
 
   elevation_map_.setBasicLayers(std::vector<std::string>());
- lane_filter_.use_lane_filter_ << std::endl;
   if (lane_filter_.use_lane_filter_) {
     for (const auto & lanelet : lane_filter_.road_lanelets_) {
       auto lane_polygon = lanelet.polygon2d().basicPolygon();
