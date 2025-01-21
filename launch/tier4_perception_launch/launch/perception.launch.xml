@@ -93,6 +93,7 @@
 
   <!-- Traffic light recognition parameters -->
   <arg name="use_traffic_light_recognition" default="false"/>
+  <arg name="traffic_light_recognition/use_whole_image_for_tl_detector" default="true"/>
   <arg name="traffic_light_recognition/enable_fine_detection" default="true"/>
   <arg name="traffic_light_recognition/fusion_only" default="false"/>
   <arg name="all_traffic_light_camera" default="[camera6, camera7]" description="choose camera which use for traffic light recognition"/>
@@ -292,6 +293,7 @@
     <group if="$(var use_traffic_light_recognition)">
       <push-ros-namespace namespace="traffic_light_recognition"/>
       <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light.launch.xml">
+        <arg name="use_whole_image_for_tl_detector" value="$(var traffic_light_recognition/use_whole_image_for_tl_detector)"/>
         <arg name="enable_fine_detection" value="$(var traffic_light_recognition/enable_fine_detection)"/>
         <arg name="fusion_only" value="$(var traffic_light_recognition/fusion_only)"/>
         <arg name="all_camera_namespaces" value="$(var all_traffic_light_camera)"/>

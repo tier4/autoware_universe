@@ -11,6 +11,7 @@
   <arg name="use_crosswalk_traffic_light_estimator" default="true" description="output pedestrian's traffic light signals"/>
   <arg name="crosswalk_traffic_light_estimator_param_file" default="$(find-pkg-share autoware_crosswalk_traffic_light_estimator)/config/crosswalk_traffic_light_estimator.param.yaml"/>
   <arg name="all_camera_namespaces" default="[camera6, camera7]"/>
+  <arg name="use_whole_image_for_tl_detector" default="true"/>
 
   <!-- ML parameters -->
   <arg name="fine_detector_param_path" default="$(find-pkg-share autoware_traffic_light_fine_detector)/config/traffic_light_fine_detector.param.yaml"/>
@@ -37,12 +38,27 @@
     <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light_node_container.launch.py">
       <arg name="all_camera_namespaces" value="$(var all_camera_namespaces)"/>
       <arg name="enable_image_decompressor" value="$(var enable_image_decompressor)"/>
+      <arg name="use_whole_image_for_tl_detector" value="$(var use_whole_image_for_tl_detector)"/>
       <arg name="enable_fine_detection" value="$(var enable_fine_detection)"/>
       <arg name="use_intra_process" value="true"/>
       <arg name="use_multithread" value="true"/>
       <arg name="fine_detector_param_path" value="$(var fine_detector_param_path)"/>
       <arg name="car_classifier_param_path" value="$(var car_classifier_param_path)"/>
       <arg name="pedestrian_classifier_param_path" value="$(var pedestrian_classifier_param_path)"/>
+    </include>
+  </group>
+
+  <group if="$(var use_whole_image_for_tl_detector)">
+    <include file="$(find-pkg-share autoware_traffic_light_signals_merger)/launch/traffic_light_signals_merger.launch.xml">
+      <arg name="all_camera_namespaces" value="$(var all_camera_namespaces)"/>
+    </include>
+  </group>
+
+  <!-- traffic_light_occlusion_predictor on each camera -->
+  <group unless="$(var use_whole_image_for_tl_detector)">
+    <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light_occlusion_predictor.launch.py">
+      <arg name="all_camera_namespaces" value="$(var all_camera_namespaces)"/>
+      <arg name="input/cloud" value="$(var input/cloud)"/>
     </include>
   </group>
 

@@ -47,6 +47,8 @@
   <exec_depend>autoware_traffic_light_multi_camera_fusion</exec_depend>
   <exec_depend>autoware_traffic_light_occlusion_predictor</exec_depend>
   <exec_depend>autoware_traffic_light_visualization</exec_depend>
+  <exec_depend>autoware_traffic_light_selector</exec_depend>
+  <exec_depend>autoware_traffic_light_signal_merger</exec_depend>
   <exec_depend>pointcloud_to_laserscan</exec_depend>
   <exec_depend>topic_tools</exec_depend>
 
