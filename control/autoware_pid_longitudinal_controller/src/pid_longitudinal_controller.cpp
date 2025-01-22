@@ -263,8 +263,31 @@ rcl_interfaces::msg::SetParametersResult PidLongitudinalController::paramCallbac
     return false;
   };
 
+  auto update_param_bool = [&](const std::string & name, bool & v) {
+    auto it = std::find_if(
+      parameters.cbegin(), parameters.cend(),
+      [&name](const rclcpp::Parameter & parameter) { return parameter.get_name() == name; });
+    if (it != parameters.cend()) {
+      v = it->as_bool();
+      return true;
+    }
+    return false;
+  };
+
+  // enable flags
+  update_param_bool("enable_smooth_stop", m_enable_smooth_stop);
+  update_param_bool("enable_overshoot_emergency", m_enable_overshoot_emergency);
+  update_param_bool("enable_large_tracking_error_emergency", m_enable_large_tracking_error_emergency);
+  update_param_bool("enable_slope_compensation", m_enable_slope_compensation);
+  update_param_bool(
+    "enable_keep_stopped_until_steer_convergence", m_enable_keep_stopped_until_steer_convergence);
+  update_param_bool("enable_brake_keeping_before_stop", m_enable_brake_keeping_before_stop);
+
   // delay compensation
   update_param("delay_compensation_time", m_delay_compensation_time);
+
+  // brake keep
+  update_param("brake_keeping_acc", m_brake_keeping_acc);
 
   // state transition
   {
