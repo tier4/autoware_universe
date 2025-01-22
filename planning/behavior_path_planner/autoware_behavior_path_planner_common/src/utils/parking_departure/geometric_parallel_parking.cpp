@@ -147,8 +147,7 @@ std::vector<PathWithLaneId> GeometricParallelParking::generatePullOverPaths(
   setVelocityToArcPaths(arc_paths, velocity, set_stop_end);
 
   // straight path from current to parking start
-  const bool set_stop_straight_end = is_forward ? !(parameters_.forward_parking_use_clothoid)
-                                                : !(parameters_.backward_parking_use_clothoid);
+  const bool set_stop_straight_end = !(is_forward && parameters_.forward_parking_use_clothoid);
   const auto straight_path = generateStraightPath(start_pose, road_lanes, set_stop_straight_end);
 
   // check the continuity of straight path and arc path
