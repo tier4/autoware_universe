@@ -2,7 +2,7 @@
   <!-- Output -->
   <arg name="input/car_signals" default="classified/car/traffic_signals"/>
   <arg name="input/pedestrian_signals" default="classified/pedestrian/traffic_signals"/>
-  <arg name="output/traffic_light_signals" default="classification/traffic_signals"/>
+  <arg name="output/traffic_light_signals" default="traffic_signals"/>
 
   <!-- Node -->
   <node pkg="autoware_traffic_light_signals_merger" exec="traffic_light_signals_merger_node" name="autoware_traffic_light_signals_merger_node" output="screen">
