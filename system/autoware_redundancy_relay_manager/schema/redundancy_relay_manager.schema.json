@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for topic relay controller",
+  "type": "object",
+  "definitions": {
+    "topic_rely_controller": {
+      "type": "object",
+      "properties": {
+        "service_timeout_ms": {
+          "type": "integer",
+          "description": "Timeout for service call in milliseconds.",
+          "default": 10
+        }
+      },
+      "required": ["service_timeout_ms"],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "$ref": "#/definitions/topic_rely_controller"
+        }
+      },
+      "required": ["ros__parameters"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["/**"],
+  "additionalProperties": false
+}
