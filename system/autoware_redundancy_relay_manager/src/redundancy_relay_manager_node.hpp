@@ -56,10 +56,6 @@ private:
     client_relay_pose_with_covariance_;
 
   // Callbacks
-<<<<<<< HEAD
-  void onOperationModeState(const autoware_adapi_v1_msgs::msg::OperationModeState::SharedPtr msg);
-=======
->>>>>>> 3b4758f32c (feat: repalace polling_subscriber)
   void onMainElectionStatus(const tier4_system_msgs::msg::ElectionStatus::SharedPtr msg);
   void onSubElectionStatus(const tier4_system_msgs::msg::ElectionStatus::SharedPtr msg);
 
