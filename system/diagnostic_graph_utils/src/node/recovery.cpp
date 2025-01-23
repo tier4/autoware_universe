@@ -22,15 +22,10 @@ namespace diagnostic_graph_utils
 RecoveryNode::RecoveryNode(const rclcpp::NodeOptions & options) : Node("dump", options)
 {
   using std::placeholders::_1;
-  const auto qos_aw_state = rclcpp::QoS(1);
   const auto qos_mrm_state = rclcpp::QoS(1);
 
   sub_graph_.register_update_callback(std::bind(&RecoveryNode::on_graph_update, this, _1));
   sub_graph_.subscribe(*this, 1);
-
-  const auto callback_aw_state = std::bind(&RecoveryNode::on_aw_state, this, _1);
-  sub_aw_state_ =
-    create_subscription<AutowareState>("/autoware/state", qos_aw_state, callback_aw_state);
 
   const auto callback_mrm_state = std::bind(&RecoveryNode::on_mrm_state, this, _1);
   sub_mrm_state_ =
@@ -63,11 +58,6 @@ void RecoveryNode::on_graph_update(DiagGraph::ConstSharedPtr graph)
   }
 }
 
-void RecoveryNode::on_aw_state(const AutowareState::ConstSharedPtr msg)
-{
-  auto_driving_ = msg->state == AutowareState::DRIVING;
-}
-
 void RecoveryNode::on_mrm_state(const MrmState::ConstSharedPtr msg)
 {
   // set flag if mrm happened by fatal error
@@ -82,8 +72,7 @@ void RecoveryNode::on_mrm_state(const MrmState::ConstSharedPtr msg)
   // 1. Not emergency
   // 2. Non-recoverable MRM have not happened
   // 3. on MRM
-  // 4. on autonomous driving
-  if (autonomous_available_ && !mrm_by_fatal_error_ && mrm_occur_ && auto_driving_) {
+  if (autonomous_available_ && !mrm_by_fatal_error_ && mrm_occur_) {
     clear_mrm();
   }
 }

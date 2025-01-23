@@ -25,7 +25,6 @@
 #include <component_interface_utils/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
-#include <autoware_system_msgs/msg/autoware_state.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
@@ -44,17 +43,14 @@ public:
   explicit RecoveryNode(const rclcpp::NodeOptions & options);
 
 private:
-  using AutowareState = autoware_system_msgs::msg::AutowareState;
   using MrmState = autoware_adapi_v1_msgs::msg::MrmState;
   using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
 
   bool fatal_error_;
   bool autonomous_available_;
   bool mrm_occur_;
-  bool auto_driving_;
   bool mrm_by_fatal_error_;
   DiagGraphSubscription sub_graph_;
-  rclcpp::Subscription<AutowareState>::SharedPtr sub_aw_state_;
   rclcpp::Subscription<MrmState>::SharedPtr sub_mrm_state_;
 
   // service
@@ -64,7 +60,6 @@ private:
   rclcpp::CallbackGroup::SharedPtr callback_group_;
 
   void on_graph_update(DiagGraph::ConstSharedPtr graph);
-  void on_aw_state(const AutowareState::ConstSharedPtr msg);
   void on_mrm_state(const MrmState::ConstSharedPtr msg);
 
   void clear_mrm();
