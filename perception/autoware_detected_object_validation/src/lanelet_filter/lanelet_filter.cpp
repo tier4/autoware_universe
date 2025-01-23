@@ -103,6 +103,21 @@ void ObjectLaneletFilterNode::objectCallback(
     return;
   }
 
+  // vehicle base pose :map -> base_link
+  try {
+    auto ego_base_height = tf_buffer_
+                         .lookupTransform(
+                           lanelet_frame_id_, "base_link", transformed_objects.header.stamp,
+                           rclcpp::Duration::from_seconds(0.5))
+                         .transform.translation.z;
+
+    RCLCPP_INFO(get_logger(), "ego pose height: %f",ego_base_height);
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_ERROR_STREAM(get_logger(), "Failed to get transform: " << ex.what());
+    return;
+  }
+
+
   if (!transformed_objects.objects.empty()) {
     // calculate convex hull
     const auto convex_hull = getConvexHull(transformed_objects);
