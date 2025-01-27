@@ -27,6 +27,8 @@ Converter::Converter(const rclcpp::NodeOptions & options) : Node("converter", op
   sub_graph_.register_create_callback(std::bind(&Converter::on_create, this, _1));
   sub_graph_.register_update_callback(std::bind(&Converter::on_update, this, _1));
   sub_graph_.subscribe(*this, 1);
+
+  report_only_diag_ = declare_parameter<bool>("report_only_diag", false);
 }
 
 void Converter::on_create(DiagGraph::ConstSharedPtr graph)
@@ -93,7 +95,7 @@ void Converter::on_update(DiagGraph::ConstSharedPtr graph)
   const auto get_hazards_vector = [](HazardStatus & status, HazardLevel level) {
     if (level == HazardStatus::SINGLE_POINT_FAULT) return &status.diag_single_point_fault;
     if (level == HazardStatus::LATENT_FAULT) return &status.diag_latent_fault;
-    if (level == HazardStatus::SAFE_FAULT) return &status.diag_safe_fault;
+    if (level == HazardStatus::SAFE_FAULT) return &status.diag_latent_fault;
     if (level == HazardStatus::NO_FAULT) return &status.diag_no_fault;
     return static_cast<std::vector<DiagnosticStatus> *>(nullptr);
   };
@@ -107,6 +109,7 @@ void Converter::on_update(DiagGraph::ConstSharedPtr graph)
   HazardStatusStamped hazard;
   for (const auto & unit : graph->units()) {
     if (unit->path().empty()) continue;
+    if (report_only_diag_ && unit->type() != "diag") continue;
     const bool is_auto_tree = auto_mode_tree_.count(unit);
     const auto root_level = is_auto_tree ? auto_mode_root_->level() : DiagnosticStatus::OK;
     const auto unit_level = unit->level();
