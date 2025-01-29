@@ -199,14 +199,14 @@ void TrafficLightModuleManager::updateV2IRestTimeInfo()
   traffic_light_id_to_rest_time_map_.clear();
   for (const auto & car_light : msg->car_lights) {
     for (const auto & state : car_light.states) {
-      traffic_light_id_to_rest_time_map_[state.traffic_light_group_id] =
-        car_light.min_rest_time_to_red;
+      traffic_light_id_to_rest_time_map_[state.traffic_light_group_id] = {
+        msg->header.stamp, car_light.min_rest_time_to_red};
       traffic_light_ids.push_back(state.traffic_light_group_id);
     }
   }
 }
 
-std::optional<double> TrafficLightModuleManager::getV2IRestTimeToRedSignal(
+std::optional<TrafficSignalTimeToRedStamped> TrafficLightModuleManager::getV2IRestTimeToRedSignal(
   const lanelet::Id & id) const
 {
   const auto rest_time_to_red_signal = traffic_light_id_to_rest_time_map_.find(id);

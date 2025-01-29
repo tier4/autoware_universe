@@ -60,12 +60,13 @@ private:
 
   void updateV2IRestTimeInfo();
 
-  std::optional<double> getV2IRestTimeToRedSignal(const lanelet::Id & id) const;
+  std::optional<TrafficSignalTimeToRedStamped> getV2IRestTimeToRedSignal(
+    const lanelet::Id & id) const;
 
   // V2I
   autoware::universe_utils::InterProcessPollingSubscriber<
     jpn_signal_v2i_msgs::msg::TrafficLightInfo>::SharedPtr v2i_subscriber_;
-  std::map<lanelet::Id, double> traffic_light_id_to_rest_time_map_;
+  std::map<lanelet::Id, TrafficSignalTimeToRedStamped> traffic_light_id_to_rest_time_map_;
 
   // Debug
   rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr pub_tl_state_;

@@ -34,6 +34,13 @@
 
 namespace autoware::behavior_velocity_planner
 {
+
+struct TrafficSignalTimeToRedStamped
+{
+  builtin_interfaces::msg::Time stamp;
+  double time_to_red{};
+};
+
 class TrafficLightModule : public SceneModuleInterfaceWithRTC
 {
 public:
@@ -77,7 +84,8 @@ public:
     lanelet::ConstLanelet lane, const PlannerParam & planner_param, const rclcpp::Logger logger,
     const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<universe_utils::TimeKeeper> time_keeper,
-    const std::function<std::optional<double>(void)> & get_rest_time_to_red_signal,
+    const std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> &
+      get_rest_time_to_red_signal,
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
       planning_factor_interface);
 
@@ -110,6 +118,15 @@ private:
 
   void updateTrafficSignal();
 
+  /**
+   * @brief Handle V2I Rest Time to Red Signal
+   * @param signed_arc_length_to_stop_point signed arc length to stop point
+   * @param output_path output path
+   * @return true if V2I is handled
+   */
+  bool handleV2I(
+    const double & signed_arc_length_to_stop_point, const std::function<void()> & insert_stop_pose);
+
   // Lane id
   const int64_t lane_id_;
 
@@ -140,7 +157,7 @@ private:
   TrafficSignal looking_tl_state_;
 
   // V2I
-  std::function<std::optional<double>(void)> get_rest_time_to_red_signal_;
+  std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> get_rest_time_to_red_signal_;
 };
 }  // namespace autoware::behavior_velocity_planner
 
