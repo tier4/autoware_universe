@@ -15,6 +15,7 @@
 #ifndef SCENE_HPP_
 #define SCENE_HPP_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -63,6 +64,11 @@ public:
     double yellow_lamp_period;
     double stop_time_hysteresis;
     bool enable_pass_judge;
+    // V2I Parameter
+    bool v2i_use_rest_time;
+    double v2i_last_time_allowed_to_pass;
+    double v2i_velocity_threshold;
+    double v2i_required_time_to_departure;
   };
 
 public:
@@ -71,6 +77,7 @@ public:
     lanelet::ConstLanelet lane, const PlannerParam & planner_param, const rclcpp::Logger logger,
     const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<universe_utils::TimeKeeper> time_keeper,
+    const std::function<std::optional<double>(void)> & get_rest_time_to_red_signal,
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
       planning_factor_interface);
 
@@ -131,6 +138,9 @@ private:
 
   // Traffic Light State
   TrafficSignal looking_tl_state_;
+
+  // V2I
+  std::function<std::optional<double>(void)> get_rest_time_to_red_signal_;
 };
 }  // namespace autoware::behavior_velocity_planner
 

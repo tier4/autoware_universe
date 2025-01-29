@@ -19,6 +19,7 @@
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
+#include <rclcpp/logging.hpp>
 
 #include <boost/geometry/algorithms/distance.hpp>
 #include <boost/geometry/algorithms/intersection.hpp>
@@ -26,6 +27,7 @@
 #include <tf2/utils.h>
 
 #include <memory>
+#include <optional>
 
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_eigen/tf2_eigen.h>
@@ -45,6 +47,7 @@ TrafficLightModule::TrafficLightModule(
   lanelet::ConstLanelet lane, const PlannerParam & planner_param, const rclcpp::Logger logger,
   const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<universe_utils::TimeKeeper> time_keeper,
+  const std::function<std::optional<double>(void)> & get_rest_time_to_red_signal,
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface)
 : SceneModuleInterfaceWithRTC(lane_id, logger, clock, time_keeper, planning_factor_interface),
@@ -53,7 +56,8 @@ TrafficLightModule::TrafficLightModule(
   lane_(lane),
   state_(State::APPROACH),
   debug_data_(),
-  is_prev_state_stop_(false)
+  is_prev_state_stop_(false),
+  get_rest_time_to_red_signal_(get_rest_time_to_red_signal)
 {
   planner_param_ = planner_param;
 }
@@ -106,6 +110,33 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
     }
 
     first_ref_stop_path_point_index_ = stop_line.value().first;
+
+    // Use V2I if available
+    if (planner_param_.v2i_use_rest_time) {
+      std::optional<double> rest_time_to_red_signal = get_rest_time_to_red_signal_();
+      if (rest_time_to_red_signal.has_value()) {
+        const double rest_time_allowed_to_go_ahead =
+          rest_time_to_red_signal.value() - planner_param_.v2i_last_time_allowed_to_pass;
+        const double ego_v = planner_data_->current_velocity->twist.linear.x;
+
+        // Determine whether to stop based on velocity and time constraints
+        bool should_stop =
+          (ego_v >= planner_param_.v2i_velocity_threshold &&
+           ego_v * rest_time_allowed_to_go_ahead <= signed_arc_length_to_stop_point) ||
+          (ego_v < planner_param_.v2i_velocity_threshold &&
+           rest_time_allowed_to_go_ahead < planner_param_.v2i_required_time_to_departure);
+
+        // RTC
+        setSafe(!should_stop);
+        if (isActivated()) {
+          return true;
+        }
+        *path = insertStopPose(input_path, stop_line.value().first, stop_line.value().second);
+        return true;
+      }
+      RCLCPP_WARN(
+        logger_, "Failed to get V2I rest time to red signal. traffic_light_lane_id: %ld", lane_id_);
+    }
 
     // Check if stop is coming.
     const bool is_stop_signal = isStopSignal();
