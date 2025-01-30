@@ -114,8 +114,11 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
 
     first_ref_stop_path_point_index_ = stop_line.value().first;
 
+    // Check if stop is coming.
+    const bool is_stop_signal = isStopSignal();
+
     // Use V2I if available
-    if (planner_param_.v2i_use_rest_time) {
+    if (planner_param_.v2i_use_rest_time && !is_stop_signal) {
       bool is_v2i_handled = handleV2I(signed_arc_length_to_stop_point, [&]() {
         *path = insertStopPose(input_path, stop_line.value().first, stop_line.value().second);
       });
@@ -123,9 +126,6 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
         return true;
       }
     }
-
-    // Check if stop is coming.
-    const bool is_stop_signal = isStopSignal();
 
     // Update stop signal received time
     if (is_stop_signal) {
