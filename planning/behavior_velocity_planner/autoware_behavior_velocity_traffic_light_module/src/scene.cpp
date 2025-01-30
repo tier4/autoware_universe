@@ -352,9 +352,11 @@ bool TrafficLightModule::handleV2I(
 
   setSafe(!should_stop);
   if (isActivated()) {
+    is_prev_state_stop_ = false;
     return true;
   }
   insert_stop_pose();
+  is_prev_state_stop_ = true;
   return true;
 }
 }  // namespace autoware::behavior_velocity_planner
