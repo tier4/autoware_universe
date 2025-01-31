@@ -203,6 +203,9 @@ void TrafficLightModule::updateTrafficSignal()
   TrafficSignalStamped signal;
   if (!findValidTrafficSignal(signal)) {
     // Don't stop if it never receives traffic light topic.
+    // Reset looking_tl_state
+    looking_tl_state_.elements.clear();
+    looking_tl_state_.traffic_light_group_id = 0;
     return;
   }
 
