@@ -65,9 +65,21 @@ autoware_process_alive_monitor:
 
 ---
 
+## Unimplemented Features
+
+1. **Heartbeat Monitoring**:
+
+   - Will publish a heartbeat topic that can be monitored by `topic_state_monitor`.
+   - The `topic_state_monitor` will check the topic's publishing frequency to confirm the node is operational.
+
+2. **Diagnostic Information**:
+   - When a process death is detected, the node will publish to the `/diagnostics` topic.
+   - This feature is planned to be implemented but not yet implemented.
+
+---
+
 ## Limitations
 
 - **後で書く**: TBD.
-- **Robust Monitoring**: Works alongside systemd, supervisord, or other process supervisors for enhanced fault detection.
 
 ---
