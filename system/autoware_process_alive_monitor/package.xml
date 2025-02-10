@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>autoware_node_death_monitor</name>
+  <name>autoware_process_alive_monitor</name>
   <version>0.0.1</version>
-  <description>The node_death_monitor package</description>
+  <description>The process_alive_monitor package</description>
 
   <maintainer email="kyoichi.sugahara@tier4.jp">Kyoichi Sugahara</maintainer>
   <license>Apache License 2.0</license>

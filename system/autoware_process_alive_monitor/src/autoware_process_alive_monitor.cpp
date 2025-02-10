@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware_node_death_monitor/autoware_node_death_monitor.hpp"
+#include "autoware_process_alive_monitor/autoware_process_alive_monitor.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -22,7 +22,7 @@
 
 namespace fs = std::filesystem;
 
-namespace autoware::node_death_monitor
+namespace autoware::process_alive_monitor
 {
 
 /**
@@ -76,8 +76,8 @@ static fs::path find_latest_launch_log()
   return fs::path();
 }
 
-NodeDeathMonitor::NodeDeathMonitor(const rclcpp::NodeOptions & options)
-: Node("autoware_node_death_monitor", options)
+ProcessAliveMonitor::ProcessAliveMonitor(const rclcpp::NodeOptions & options)
+: Node("autoware_process_alive_monitor", options)
 {
   ignore_node_names_ =
     declare_parameter<std::vector<std::string>>("ignore_node_names", std::vector<std::string>{});
@@ -109,10 +109,10 @@ NodeDeathMonitor::NodeDeathMonitor(const rclcpp::NodeOptions & options)
 
   auto interval_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(check_interval_));
-  timer_ = create_wall_timer(interval_ns, std::bind(&NodeDeathMonitor::on_timer, this));
+  timer_ = create_wall_timer(interval_ns, std::bind(&ProcessAliveMonitor::on_timer, this));
 }
 
-void NodeDeathMonitor::read_launch_log_diff()
+void ProcessAliveMonitor::read_launch_log_diff()
 {
   if (launch_log_path_.empty()) {
     return;
@@ -150,7 +150,7 @@ void NodeDeathMonitor::read_launch_log_diff()
   std::streampos last_valid_pos = static_cast<std::streampos>(last_file_pos_);
 
   size_t iteration = 0;
-  while (true) {
+  while (rclcpp::ok) {
     // Check current position
     std::streampos current_pos_start = ifs.tellg();
     if (current_pos_start == std::streampos(-1)) {
@@ -200,7 +200,7 @@ void NodeDeathMonitor::read_launch_log_diff()
   }
 }
 
-void NodeDeathMonitor::parse_log_line(const std::string & line)
+void ProcessAliveMonitor::parse_log_line(const std::string & line)
 {
   const std::string target_str = "process has died";
   if (line.find(target_str) == std::string::npos) {
@@ -286,7 +286,7 @@ void NodeDeathMonitor::parse_log_line(const std::string & line)
   }
 }
 
-void NodeDeathMonitor::on_timer()
+void ProcessAliveMonitor::on_timer()
 {
   read_launch_log_diff();
 
@@ -304,7 +304,7 @@ void NodeDeathMonitor::on_timer()
   }
 }
 
-}  // namespace autoware::node_death_monitor
+}  // namespace autoware::process_alive_monitor
 
 #include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(autoware::node_death_monitor::NodeDeathMonitor)
+RCLCPP_COMPONENTS_REGISTER_NODE(autoware::process_alive_monitor::ProcessAliveMonitor)

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE_NODE_DEATH_MONITOR__AUTOWARE_NODE_DEATH_MONITOR_HPP_
-#define AUTOWARE_NODE_DEATH_MONITOR__AUTOWARE_NODE_DEATH_MONITOR_HPP_
+#ifndef AUTOWARE_PROCESS_ALIVE_MONITOR__AUTOWARE_PROCESS_ALIVE_MONITOR_HPP_
+#define AUTOWARE_PROCESS_ALIVE_MONITOR__AUTOWARE_PROCESS_ALIVE_MONITOR_HPP_
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -22,17 +22,17 @@
 #include <unordered_map>
 #include <vector>
 
-namespace autoware::node_death_monitor
+namespace autoware::process_alive_monitor
 {
 
-class NodeDeathMonitor : public rclcpp::Node
+class ProcessAliveMonitor : public rclcpp::Node
 {
 public:
   /**
-   * @brief Constructor for NodeDeathMonitor
+   * @brief Constructor for ProcessAliveMonitor
    * @param options Node options for configuration
    */
-  explicit NodeDeathMonitor(const rclcpp::NodeOptions & options);
+  explicit ProcessAliveMonitor(const rclcpp::NodeOptions & options);
 
 private:
   /**
@@ -67,6 +67,6 @@ private:
   bool enable_debug_{false};                    // Enable debug output
 };
 
-}  // namespace autoware::node_death_monitor
+}  // namespace autoware::process_alive_monitor
 
-#endif  // AUTOWARE_NODE_DEATH_MONITOR__AUTOWARE_NODE_DEATH_MONITOR_HPP_
+#endif  // AUTOWARE_PROCESS_ALIVE_MONITOR__AUTOWARE_PROCESS_ALIVE_MONITOR_HPP_

@@ -1,4 +1,4 @@
-# autoware_node_death_monitor
+# autoware_process_alive_monitor
 
 This package provides a monitoring node that detects ROS 2 node crashes by analyzing `launch.log` files, rather than subscribing to `/rosout` logs.
 
@@ -6,7 +6,7 @@ This package provides a monitoring node that detects ROS 2 node crashes by analy
 
 ## Overview
 
-- **Node name**: `autoware_node_death_monitor`
+- **Node name**: `autoware_process_alive_monitor`
 - **Monitored file**: `launch.log`
 - **Detected event**: Looks for lines containing the substring `"process has died"` and extracts the node name and exit code.
 
@@ -16,7 +16,7 @@ When a crash or unexpected shutdown occurs, `ros2 launch` typically outputs a li
 [ERROR] [node_name-1]: process has died [pid 12345, exit code 139, cmd '...']
 ```
 
-The `autoware_node_death_monitor` node continuously reads the latest `launch.log` file, detects these messages, and logs a warning or marks the node as "dead."
+The `autoware_process_alive_monitor` node continuously reads the latest `launch.log` file, detects these messages, and logs a warning or marks the node as "dead."
 
 ---
 
@@ -48,10 +48,10 @@ The `autoware_node_death_monitor` node continuously reads the latest `launch.log
 | `check_interval`    | `double`   | `1.0`             | Timer interval (seconds) for scanning the log file.        |
 | `enable_debug`      | `bool`     | `false`           | Enables debug logging for detailed output.                 |
 
-Example **`autoware_node_death_monitor.param.yaml`**:
+Example **`autoware_process_alive_monitor.param.yaml`**:
 
 ```yaml
-autoware_node_death_monitor:
+autoware_process_alive_monitor:
   ros__parameters:
     ignore_node_names:
       - rviz2
