@@ -31,6 +31,7 @@
   <depend>autoware_universe_utils</depend>
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
+  <depend>jpn_signal_v2i_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>tf2</depend>
