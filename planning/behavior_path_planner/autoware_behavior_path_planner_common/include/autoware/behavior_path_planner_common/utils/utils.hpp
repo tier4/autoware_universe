@@ -55,6 +55,8 @@ using geometry_msgs::msg::Vector3;
 using tier4_planning_msgs::msg::PathPointWithLaneId;
 using tier4_planning_msgs::msg::PathWithLaneId;
 
+static constexpr double eps = 0.01;
+
 struct PolygonPoint
 {
   geometry_msgs::msg::Point point;
@@ -103,6 +105,33 @@ FrenetPoint convertToFrenetPoint(
 }
 
 std::vector<lanelet::Id> getIds(const lanelet::ConstLanelets & lanelets);
+
+/**
+ * @brief Converts a Lanelet point to a ROS Pose message.
+ *
+ * This function converts a point from a Lanelet map to a ROS geometry_msgs::msg::Pose.
+ * It sets the position from the point and calculates the orientation (yaw) based on the target
+ * lane.
+ *
+ * @tparam LaneletPointType The type of the input point.
+ *
+ * @param[in] src_point The point to convert.
+ * @param[in] target_lane The lanelet used to determine the orientation.
+ *
+ * @return A Pose message with the position and orientation of the point.
+ */
+template <class LaneletPointType>
+Pose to_geom_msg_pose(const LaneletPointType & src_point, const lanelet::ConstLanelet & target_lane)
+{
+  const auto point = lanelet::utils::conversion::toGeomMsgPt(src_point);
+  const auto yaw = lanelet::utils::getLaneletAngle(target_lane, point);
+  geometry_msgs::msg::Pose pose;
+  pose.position = point;
+  tf2::Quaternion quat;
+  quat.setRPY(0, 0, yaw);
+  pose.orientation = tf2::toMsg(quat);
+  return pose;
+}
 
 // distance (arclength) calculation
 
@@ -241,6 +270,10 @@ bool isEgoWithinOriginalLane(
   const lanelet::ConstLanelets & current_lanes, const Pose & current_pose,
   const BehaviorPathPlannerParameters & common_param, const double outer_margin = 0.0);
 
+bool isEgoWithinOriginalLane(
+  const lanelet::BasicPolygon2d & lane_polygon, const Pose & current_pose,
+  const BehaviorPathPlannerParameters & common_param, const double outer_margin = 0.0);
+
 // path management
 
 // TODO(Horibe) There is a similar function in route_handler. Check.
@@ -249,8 +282,10 @@ std::shared_ptr<PathWithLaneId> generateCenterLinePath(
 
 PathPointWithLaneId insertStopPoint(const double length, PathWithLaneId & path);
 
+double getSignedDistanceFromLaneBoundary(
+  const lanelet::ConstLanelet & lanelet, const Point & position, const bool left_side);
 double getSignedDistanceFromBoundary(
-  const lanelet::ConstLanelets & shoulder_lanelets, const Pose & pose, const bool left_side);
+  const lanelet::ConstLanelets & lanelets, const Pose & pose, const bool left_side);
 std::optional<double> getSignedDistanceFromBoundary(
   const lanelet::ConstLanelets & lanelets, const double vehicle_width, const double base_link2front,
   const double base_link2rear, const Pose & vehicle_pose, const bool left_side);

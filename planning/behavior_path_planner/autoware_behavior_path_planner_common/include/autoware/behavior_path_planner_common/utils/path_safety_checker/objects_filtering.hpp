@@ -34,13 +34,30 @@ namespace autoware::behavior_path_planner::utils::path_safety_checker::filter
 using autoware_perception_msgs::msg::PredictedObject;
 using tier4_planning_msgs::msg::PathPointWithLaneId;
 
-bool velocity_filter(
-  const PredictedObject & object, double velocity_threshold, double max_velocity);
+/**
+ * @brief Filters object based on velocity.
+ *
+ * @param twist The twist of predicted object to filter.
+ * @param velocity_threshold Lower bound
+ * @param max_velocity Upper bound
+ * @return Returns true when the object is within a certain velocity range.
+ */
+bool velocity_filter(const Twist & object_twist, double velocity_threshold, double max_velocity);
 
 bool position_filter(
   PredictedObject & object, const std::vector<PathPointWithLaneId> & path_points,
   const geometry_msgs::msg::Point & current_pose, const double forward_distance,
   const double backward_distance);
+
+/**
+ * @brief Checks if the object classification represents a vehicle (CAR, TRUCK, BUS, TRAILER,
+ * MOTORCYCLE).
+ *
+ * @param classification The object classification to check.
+ * @return true If the classification is a vehicle type.
+ * @return false Otherwise.
+ */
+bool is_vehicle(const ObjectClassification & classification);
 
 }  // namespace autoware::behavior_path_planner::utils::path_safety_checker::filter
 
