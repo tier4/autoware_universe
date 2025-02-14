@@ -95,7 +95,7 @@ void Converter::on_update(DiagGraph::ConstSharedPtr graph)
   const auto get_hazards_vector = [](HazardStatus & status, HazardLevel level) {
     if (level == HazardStatus::SINGLE_POINT_FAULT) return &status.diag_single_point_fault;
     if (level == HazardStatus::LATENT_FAULT) return &status.diag_latent_fault;
-    if (level == HazardStatus::SAFE_FAULT) return &status.diag_latent_fault;
+    if (level == HazardStatus::SAFE_FAULT) return &status.diag_safe_fault;
     if (level == HazardStatus::NO_FAULT) return &status.diag_no_fault;
     return static_cast<std::vector<DiagnosticStatus> *>(nullptr);
   };
