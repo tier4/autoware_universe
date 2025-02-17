@@ -77,6 +77,7 @@ inline void calculate_current_footprint(
 inline bool is_on_ego_trajectory(
   const Object & object, const TrajectoryCornerFootprint & ego_trajectory)
 {
+  // TODO(Maxime): this needs to be made faster
   return boost::geometry::overlaps(object.current_footprint, ego_trajectory.front_polygon) ||
          boost::geometry::overlaps(object.current_footprint, ego_trajectory.rear_polygon);
 }

@@ -230,7 +230,7 @@ inline motion_utils::VirtualWalls create_virtual_walls(
 {
   motion_utils::VirtualWalls virtual_walls;
   motion_utils::VirtualWall wall;
-  wall.text = "run_out";
+  wall.text = "run_out (mvp)";
   wall.longitudinal_offset = front_offset;
   for (const auto & stop_point : result.stop_points) {
     wall.style = motion_utils::VirtualWallType::stop;
