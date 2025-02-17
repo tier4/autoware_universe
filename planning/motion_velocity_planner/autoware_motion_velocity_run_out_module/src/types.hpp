@@ -178,9 +178,10 @@ struct DecisionHistory
   std::deque<Decision> decisions;
   std::deque<double> times;
 
+  /// @brief remove outdated history, keeping at most one item above the max_history_duration
   void remove_outdated(const rclcpp::Time & now, const double max_history_duration)
   {
-    while (!times.empty() && (now.seconds() - times.front()) >= max_history_duration) {
+    while (times.size() > 1UL && (now.seconds() - times[1]) >= max_history_duration) {
       times.pop_front();
       decisions.pop_front();
     }
