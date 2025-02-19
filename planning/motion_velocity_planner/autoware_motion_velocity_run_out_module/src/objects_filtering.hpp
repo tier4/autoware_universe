@@ -207,7 +207,7 @@ inline void filter_predicted_paths(
 }
 
 inline std::vector<Object> prepare_dynamic_objects(
-  const std::vector<motion_velocity_planner::PlannerData::Object> & objects,
+  const std::vector<std::shared_ptr<motion_velocity_planner::PlannerData::Object>> & objects,
   const TrajectoryCornerFootprint & ego_trajectory,
   const ObjectDecisionsTracker & previous_decisions, const Parameters & params)
 {
@@ -228,7 +228,7 @@ inline std::vector<Object> prepare_dynamic_objects(
           filtered_object, previous_object_decisions, ego_rear_segment, params)) {
       continue;
     }
-    calculate_predicted_path_footprints(filtered_object, object.predicted_object, params);
+    calculate_predicted_path_footprints(filtered_object, object->predicted_object, params);
     filter_predicted_paths(filtered_object, ego_rear_segment, params);
     if (!filtered_object.corner_footprints.empty()) {
       filtered_objects.push_back(filtered_object);

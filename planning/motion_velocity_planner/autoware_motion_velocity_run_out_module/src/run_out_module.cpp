@@ -140,14 +140,15 @@ void RunOutModule::ignore_unavoidable_collision(const double time_to_stop)
 }
 
 VelocityPlanningResult RunOutModule::plan(
-  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & ego_trajectory_points,
+  [[maybe_unused]] const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> &,
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & smoothed_trajectory_points,
   const std::shared_ptr<const PlannerData> planner_data)
 {
   const auto now = clock_->now();
   time_keeper_->start_track("plan()");
   time_keeper_->start_track("calc_ego_footprint()");
   const auto ego_footprint = calculate_trajectory_corner_footprint(
-    ego_trajectory_points, planner_data->vehicle_info_, params_);
+    smoothed_trajectory_points, planner_data->vehicle_info_, params_);
   time_keeper_->end_track("calc_ego_footprint()");
   time_keeper_->start_track("filter_objects()");
   auto filtered_objects = run_out::prepare_dynamic_objects(
@@ -160,7 +161,7 @@ VelocityPlanningResult RunOutModule::plan(
   time_keeper_->end_track("calc_rtree()");
   time_keeper_->start_track("calc_collisions()");
   run_out::calculate_collisions(
-    filtered_objects, footprint_rtree, ego_trajectory_points, ignored_polygons, params_);
+    filtered_objects, footprint_rtree, smoothed_trajectory_points, ignored_polygons, params_);
   time_keeper_->end_track("calc_collisions()");
   time_keeper_->start_track("calc_decisions()");
   const auto ego_is_stopped = planner_data->current_odometry.twist.twist.linear.x < 1e-2;
@@ -169,30 +170,30 @@ VelocityPlanningResult RunOutModule::plan(
   time_keeper_->start_track("calc_slowdowns()");
   if (params_.enable_deceleration_limit) {
     ignore_unavoidable_collision(calculate_comfortable_time_to_stop(
-      ego_trajectory_points, planner_data->calculate_min_deceleration_distance(0.0)));
+      smoothed_trajectory_points, planner_data->calculate_min_deceleration_distance(0.0)));
   }
   const auto result =
-    run_out::calculate_slowdowns(decisions_tracker_, ego_trajectory_points, params_);
+    run_out::calculate_slowdowns(decisions_tracker_, smoothed_trajectory_points, params_);
   time_keeper_->end_track("calc_slowdowns()");
 
   time_keeper_->start_track("publish_debug()");
   virtual_wall_marker_creator.add_virtual_walls(run_out::create_virtual_walls(
-    result, ego_trajectory_points, planner_data->vehicle_info_.max_longitudinal_offset_m));
+    result, smoothed_trajectory_points, planner_data->vehicle_info_.max_longitudinal_offset_m));
   virtual_wall_publisher_->publish(virtual_wall_marker_creator.create_markers(now));
   debug_publisher_->publish(run_out::make_debug_footprint_markers(ego_footprint, filtered_objects));
   debug_publisher_->publish(run_out::make_debug_object_markers(filtered_objects));
   debug_publisher_->publish(run_out::make_debug_decisions_markers(decisions_tracker_));
   debug_publisher_->publish(run_out::make_debug_min_stop_marker(
-    ego_trajectory_points,
+    smoothed_trajectory_points,
     calculate_comfortable_time_to_stop(
-      ego_trajectory_points, planner_data->calculate_min_deceleration_distance(0.0))));
+      smoothed_trajectory_points, planner_data->calculate_min_deceleration_distance(0.0))));
   time_keeper_->end_track("publish_debug()");
   time_keeper_->end_track("plan()");
   diagnostic_updater_->force_update();
   autoware_planning_msgs::msg::Trajectory debug_trajectory;
   debug_trajectory.header.frame_id = "map";
   debug_trajectory.header.stamp = clock_->now();
-  debug_trajectory.points = ego_trajectory_points;
+  debug_trajectory.points = smoothed_trajectory_points;
   for (const auto & stop_point : result.stop_points) {
     const auto length = motion_utils::calcSignedArcLength(debug_trajectory.points, 0, stop_point);
     motion_utils::insertStopPoint(length, debug_trajectory.points);

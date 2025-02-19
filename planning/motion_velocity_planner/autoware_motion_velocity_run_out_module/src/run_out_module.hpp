@@ -46,7 +46,8 @@ public:
   void init_parameters(rclcpp::Node & node);
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   VelocityPlanningResult plan(
-    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & ego_trajectory_points,
+    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & raw_trajectory_points,
+    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & smoothed_trajectory_points,
     const std::shared_ptr<const PlannerData> planner_data) override;
   std::string get_module_name() const override { return module_name_; }
 
