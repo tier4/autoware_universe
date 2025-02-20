@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc. All rights reserved.
+// Copyright 2025 TIER IV, Inc. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 #include <rclcpp/duration.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
+#include <geometry_msgs/msg/detail/point__struct.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -184,6 +185,7 @@ inline MarkerArray make_debug_decisions_markers(const ObjectDecisionsTracker & d
       case pass_first_no_collision:
         return "P-|";
       case no_collision:
+      default:
         return "-|";
     }
   };
@@ -279,6 +281,57 @@ inline MarkerArray make_debug_min_stop_marker(
   markers.markers.push_back(m);
   return markers;
 }
+
+inline MarkerArray make_debug_filtering_data_marker(const FilteringData & data)
+{
+  MarkerArray markers;
+  Marker m;
+  m.header.frame_id = "map";
+  m.ns = "filtering_data_cut_predicted_paths";
+  m.type = Marker::LINE_LIST;
+  m.color = universe_utils::createMarkerColor(1.0, 0.0, 0.0, 0.75);
+  m.scale = universe_utils::createMarkerScale(0.2, 0.2, 0.2);
+  geometry_msgs::msg::Point p;
+  for (const auto & segment : data.cut_predicted_paths_segments) {
+    p.x = segment.first.x();
+    p.y = segment.first.y();
+    m.points.push_back(p);
+    p.x = segment.second.x();
+    p.y = segment.second.y();
+    m.points.push_back(p);
+  }
+  markers.markers.push_back(m);
+  m.ns = "filtering_data_ignore_pedestrians";
+  m.points.clear();
+  m.color = universe_utils::createMarkerColor(0.0, 0.0, 1.0, 0.75);
+  for (const auto & poly : data.ignore_pedestrian_polygons) {
+    for (auto i = 0UL; i + 1 < poly.size(); ++i) {
+      p.x = poly[i].x();
+      p.y = poly[i].y();
+      m.points.push_back(p);
+      p.x = poly[i + 1].x();
+      p.y = poly[i + 1].y();
+      m.points.push_back(p);
+    }
+  }
+  markers.markers.push_back(m);
+  m.ns = "filtering_data_ignore_road_objects";
+  m.points.clear();
+  m.color = universe_utils::createMarkerColor(0.0, 1.0, 0.0, 0.75);
+  for (const auto & poly : data.ignore_road_object_polygons) {
+    for (auto i = 0UL; i + 1 < poly.size(); ++i) {
+      p.x = poly[i].x();
+      p.y = poly[i].y();
+      m.points.push_back(p);
+      p.x = poly[i + 1].x();
+      p.y = poly[i + 1].y();
+      m.points.push_back(p);
+    }
+  }
+  markers.markers.push_back(m);
+  return markers;
+}
+
 }  // namespace autoware::motion_velocity_planner::run_out
 
 #endif  // DEBUG_HPP_

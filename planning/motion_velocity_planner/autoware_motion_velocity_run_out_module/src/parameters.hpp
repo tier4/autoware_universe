@@ -1,5 +1,5 @@
 
-// Copyright 2024 TIER IV, Inc. All rights reserved.
+// Copyright 2025 TIER IV, Inc. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,14 +57,17 @@ struct Parameters
   double ego_lateral_margin;       // [m] ego footprint lateral margin
   double ego_longitudinal_margin;  // [m] ego footprint longitudinal margin
   double collision_time_margin;    // [s] extra time margin to determine collisions
-
+  // object parameters
   double objects_parked_velocity_threshold;  // [m/s]
   std::vector<std::string> objects_target_labels;
   std::vector<std::string> objects_parked_labels;
   bool objects_ignore_if_behind_ego;
-  bool objects_ignore_if_crossing_parked_objects;
-  bool objects_ignore_collisions_on_crosswalk;
-  bool objects_ignore_if_crossing_ego_from_behind;
+  bool objects_ignore_if_pedestrian_on_crosswalk;
+  std::vector<std::string> objects_cut_linestring_types;
+  std::vector<std::string> objects_cut_polygon_types;
+  std::vector<std::string> objects_cut_lanelet_types;
+  bool objects_cut_if_crossing_ego_from_behind;
+  bool objects_cut_if_crossing_parked_objects;
   double objects_confidence_filtering_threshold;
   bool objects_confidence_filtering_only_use_highest;
 
@@ -90,13 +93,9 @@ struct Parameters
     ego_longitudinal_margin = getOrDeclareParameter<double>(node, ns + ".ego.longitudinal_margin");
     collision_time_margin = getOrDeclareParameter<double>(node, ns + ".collision_time_margin");
     objects_ignore_if_behind_ego =
-      getOrDeclareParameter<bool>(node, ns + ".objects.ignore_if_behind_ego");
-    objects_ignore_if_crossing_parked_objects =
-      getOrDeclareParameter<bool>(node, ns + ".objects.ignore_if_crossing_parked_objects");
-    objects_ignore_if_crossing_ego_from_behind =
-      getOrDeclareParameter<bool>(node, ns + ".objects.ignore_if_crossing_ego_from_behind");
-    objects_ignore_collisions_on_crosswalk =
-      getOrDeclareParameter<bool>(node, ns + ".objects.ignore_on_crosswalk");
+      getOrDeclareParameter<bool>(node, ns + ".objects.ignore.if_behind_ego");
+    objects_ignore_if_pedestrian_on_crosswalk =
+      getOrDeclareParameter<bool>(node, ns + ".objects.ignore.if_pedestrian_on_crosswalk");
     objects_parked_labels =
       getOrDeclareParameter<std::vector<std::string>>(node, ns + ".objects.parked_labels");
     objects_target_labels =
@@ -105,6 +104,16 @@ struct Parameters
       getOrDeclareParameter<double>(node, ns + ".objects.confidence_filtering.threshold");
     objects_confidence_filtering_only_use_highest =
       getOrDeclareParameter<bool>(node, ns + ".objects.confidence_filtering.only_use_highest");
+    objects_cut_polygon_types = getOrDeclareParameter<std::vector<std::string>>(
+      node, ns + ".objects.cut_predicted_paths.polygon_types");
+    objects_cut_linestring_types = getOrDeclareParameter<std::vector<std::string>>(
+      node, ns + ".objects.cut_predicted_paths.linestring_types");
+    objects_cut_lanelet_types = getOrDeclareParameter<std::vector<std::string>>(
+      node, ns + ".objects.cut_predicted_paths.lanelet_types");
+    objects_cut_if_crossing_parked_objects = getOrDeclareParameter<bool>(
+      node, ns + ".objects.cut_predicted_paths.if_crossing_parked_objects");
+    objects_cut_if_crossing_ego_from_behind = getOrDeclareParameter<bool>(
+      node, ns + ".objects.cut_predicted_paths.if_crossing_ego_from_behind");
     max_history_duration = std::max(stop_off_time_buffer, stop_on_time_buffer);
   }
 
@@ -127,13 +136,10 @@ struct Parameters
     updateParam(params, ns + ".ego.lateral_margin", ego_lateral_margin);
     updateParam(params, ns + ".ego.longitudinal_margin", ego_longitudinal_margin);
     updateParam(params, ns + ".collision_time_margin", collision_time_margin);
-    updateParam(params, ns + ".objects.ignore_if_behind_ego", objects_ignore_if_behind_ego);
+    updateParam(params, ns + ".objects.ignore.if_behind_ego", objects_ignore_if_behind_ego);
     updateParam(
-      params, ns + ".objects.ignore_if_crossing_parked_objects",
-      objects_ignore_if_crossing_parked_objects);
-    updateParam(
-      params, ns + ".objects.ignore_if_crossing_ego_from_behind",
-      objects_ignore_if_crossing_ego_from_behind);
+      params, ns + ".objects.ignore.if_pedestrian_on_crosswalk",
+      objects_ignore_if_pedestrian_on_crosswalk);
     updateParam(params, ns + ".objects.parked_labels", objects_parked_labels);
     updateParam(params, ns + ".objects.target_labels", objects_target_labels);
     updateParam(
@@ -142,6 +148,18 @@ struct Parameters
     updateParam(
       params, ns + ".objects.confidence_filtering.only_use_highest",
       objects_confidence_filtering_only_use_highest);
+    updateParam(
+      params, ns + ".objects.cut_predicted_paths.if_crossing_parked_objects",
+      objects_cut_if_crossing_parked_objects);
+    updateParam(
+      params, ns + ".objects.cut_predicted_paths.if_crossing_ego_from_behind",
+      objects_cut_if_crossing_ego_from_behind);
+    updateParam(
+      params, ns + ".objects.cut_predicted_paths.polygon_types", objects_cut_polygon_types);
+    updateParam(
+      params, ns + ".objects.cut_predicted_paths.lanelet_types", objects_cut_lanelet_types);
+    updateParam(
+      params, ns + ".objects.cut_predicted_paths.linestring_types", objects_cut_linestring_types);
     max_history_duration = std::max(stop_off_time_buffer, stop_on_time_buffer);
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc. All rights reserved.
+// Copyright 2025 TIER IV, Inc. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -82,8 +82,8 @@ struct FootprintIntersections
 };
 
 namespace bgi = boost::geometry::index;
-using FootprintSegmentNode = std::pair<universe_utils::Segment2d, size_t>;
-using FootprintSegmentRtree = bgi::rtree<FootprintSegmentNode, bgi::rstar<16>>;
+using SegmentNode = std::pair<universe_utils::Segment2d, size_t>;
+using SegmentRtree = bgi::rtree<SegmentNode, bgi::rstar<16>>;
 
 /// @brief represent the time interval where a vehicle overlaps the path of another vehicle
 struct TimeCollisionInterval
@@ -262,10 +262,21 @@ struct Object
   std::vector<ObjectCornerFootprint> corner_footprints;  // footprint of each predicted path
   universe_utils::Polygon2d current_footprint;
   universe_utils::Point2d position;
+  bool is_pedestrian = false;
+  bool is_road_object = false;
   bool is_on_ego_trajectory = false;
   bool has_parked_label = false;
   bool has_target_label = false;
   std::vector<Collision> collisions;  // collisions with the ego trajectory
+};
+
+/// @brief data to filter predicted paths and collisions
+struct FilteringData
+{
+  std::vector<universe_utils::LinearRing2d> ignore_pedestrian_polygons;
+  std::vector<universe_utils::LinearRing2d> ignore_road_object_polygons;
+  std::vector<universe_utils::Segment2d> cut_predicted_paths_segments;
+  SegmentRtree cut_predicted_paths_rtree;
 };
 
 }  // namespace autoware::motion_velocity_planner::run_out

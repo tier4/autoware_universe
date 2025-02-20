@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc. All rights reserved.
+// Copyright 2025 TIER IV, Inc. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,10 +15,10 @@
 #include "run_out_module.hpp"
 
 #include "collision.hpp"
-#include "collisions_filtering.hpp"
 #include "debug.hpp"
 #include "decision.hpp"
 #include "footprints.hpp"
+#include "map_data.hpp"
 #include "objects_filtering.hpp"
 #include "parameters.hpp"
 #include "slowdown.hpp"
@@ -28,6 +28,10 @@
 #include <rclcpp/duration.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <geometry_msgs/msg/detail/pose__struct.hpp>
+
+#include <lanelet2_core/primitives/BoundingBox.h>
+#include <lanelet2_core/primitives/Point.h>
 
 #include <iostream>
 #include <memory>
@@ -151,26 +155,27 @@ VelocityPlanningResult RunOutModule::plan(
     smoothed_trajectory_points, planner_data->vehicle_info_, params_);
   time_keeper_->end_track("calc_ego_footprint()");
   time_keeper_->start_track("filter_objects()");
+  const auto filtering_data = run_out::calculate_filtering_data(
+    planner_data->route_handler->getLaneletMapPtr(), ego_footprint, planner_data->objects, params_);
   auto filtered_objects = run_out::prepare_dynamic_objects(
-    planner_data->objects, ego_footprint, decisions_tracker_, params_);
+    planner_data->objects, ego_footprint, decisions_tracker_, filtering_data, params_);
   time_keeper_->end_track("filter_objects()");
-  const auto ignored_polygons =
-    run_out::prepare_ignored_polygons(planner_data->route_handler->getLaneletMapPtr(), params_);
   time_keeper_->start_track("calc_rtree()");
   const auto footprint_rtree = run_out::prepare_trajectory_footprint_rtree(ego_footprint);
   time_keeper_->end_track("calc_rtree()");
   time_keeper_->start_track("calc_collisions()");
   run_out::calculate_collisions(
-    filtered_objects, footprint_rtree, smoothed_trajectory_points, ignored_polygons, params_);
+    filtered_objects, footprint_rtree, smoothed_trajectory_points, params_);
   time_keeper_->end_track("calc_collisions()");
   time_keeper_->start_track("calc_decisions()");
   const auto ego_is_stopped = planner_data->current_odometry.twist.twist.linear.x < 1e-2;
   run_out::calculate_decisions(decisions_tracker_, filtered_objects, now, ego_is_stopped, params_);
   time_keeper_->end_track("calc_decisions()");
   time_keeper_->start_track("calc_slowdowns()");
+  const auto comfortable_time_to_stop = calculate_comfortable_time_to_stop(
+    smoothed_trajectory_points, planner_data->calculate_min_deceleration_distance(0.0));
   if (params_.enable_deceleration_limit) {
-    ignore_unavoidable_collision(calculate_comfortable_time_to_stop(
-      smoothed_trajectory_points, planner_data->calculate_min_deceleration_distance(0.0)));
+    ignore_unavoidable_collision(comfortable_time_to_stop);
   }
   const auto result =
     run_out::calculate_slowdowns(decisions_tracker_, smoothed_trajectory_points, params_);
@@ -183,10 +188,9 @@ VelocityPlanningResult RunOutModule::plan(
   debug_publisher_->publish(run_out::make_debug_footprint_markers(ego_footprint, filtered_objects));
   debug_publisher_->publish(run_out::make_debug_object_markers(filtered_objects));
   debug_publisher_->publish(run_out::make_debug_decisions_markers(decisions_tracker_));
-  debug_publisher_->publish(run_out::make_debug_min_stop_marker(
-    smoothed_trajectory_points,
-    calculate_comfortable_time_to_stop(
-      smoothed_trajectory_points, planner_data->calculate_min_deceleration_distance(0.0))));
+  debug_publisher_->publish(
+    run_out::make_debug_min_stop_marker(smoothed_trajectory_points, comfortable_time_to_stop));
+  debug_publisher_->publish(run_out::make_debug_filtering_data_marker(filtering_data));
   time_keeper_->end_track("publish_debug()");
   time_keeper_->end_track("plan()");
   diagnostic_updater_->force_update();

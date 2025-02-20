@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc. All rights reserved.
+// Copyright 2025 TIER IV, Inc. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,12 +24,14 @@
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
 #include <magic_enum.hpp>
 
+#include <autoware_perception_msgs/msg/detail/object_classification__struct.hpp>
 #include <autoware_perception_msgs/msg/detail/predicted_path__struct.hpp>
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 
 #include <boost/geometry/algorithms/correct.hpp>
+#include <boost/geometry/algorithms/detail/overlaps/interface.hpp>
 
 #include <algorithm>
 #include <string>
@@ -64,6 +66,7 @@ inline void classify(
   if (has_classification_label(predicted_object, params.objects_target_labels)) {
     object.has_target_label = true;
   }
+  object.is_pedestrian = has_classification_label(predicted_object, {"PEDESTRIAN"});
 }
 
 inline void calculate_current_footprint(
@@ -84,7 +87,8 @@ inline bool is_on_ego_trajectory(
 
 inline bool skip_object_condition(
   const Object & object, const std::optional<DecisionHistory> & prev_decisions,
-  const universe_utils::Segment2d & ego_rear_segment, const Parameters & params)
+  const universe_utils::Segment2d & ego_rear_segment, const FilteringData & filtering_data,
+  const Parameters & params)
 {
   constexpr auto skip_object = true;
   const auto rear_vector = ego_rear_segment.second - ego_rear_segment.first;
@@ -107,6 +111,20 @@ inline bool skip_object_condition(
   }
   if (!object.has_target_label) {
     return skip_object;
+  }
+  if (object.is_pedestrian) {
+    for (const auto & p : filtering_data.ignore_pedestrian_polygons) {
+      if (!boost::geometry::disjoint(p, object.position)) {
+        return skip_object;
+      }
+    }
+  }
+  if (!object.is_pedestrian) {
+    for (const auto & p : filtering_data.ignore_road_object_polygons) {
+      if (!boost::geometry::disjoint(p, object.position)) {
+        return skip_object;
+      }
+    }
   }
   return !skip_object;
 }
@@ -189,10 +207,38 @@ inline void cut_footprint_after_index(ObjectCornerFootprint & footprint, const s
 }
 
 inline void filter_predicted_paths(
-  Object & object, const universe_utils::Segment2d & ego_rear_segment, const Parameters & params)
+  Object & object, const universe_utils::Segment2d & ego_rear_segment,
+  const FilteringData & map_data, const Parameters & params)
 {
   for (auto & corner_footprint : object.corner_footprints) {
-    if (params.objects_ignore_if_crossing_ego_from_behind) {
+    bool cut = false;
+    for (auto i = 0UL; i + 1 < corner_footprint.corner_footprint.size(); ++i) {
+      for (const auto & ls :
+           {corner_footprint.corner_footprint.front_left_ls,
+            corner_footprint.corner_footprint.front_right_ls,
+            corner_footprint.corner_footprint.rear_left_ls,
+            corner_footprint.corner_footprint.rear_right_ls}) {
+        const auto & segment = universe_utils::Segment2d(ls[i], ls[i + 1]);
+        std::vector<SegmentNode> query_results;
+        map_data.cut_predicted_paths_rtree.query(
+          boost::geometry::index::intersects(segment), std::back_inserter(query_results));
+        for (const auto & candidate : query_results) {
+          if (universe_utils::intersect(
+                segment.first, segment.second, candidate.first.first, candidate.first.second)) {
+            cut = true;
+            cut_footprint_after_index(corner_footprint, i);
+            break;
+          }
+        }
+        if (cut) {
+          break;
+        }
+      }
+      if (cut) {
+        break;
+      }
+    }
+    if (params.objects_cut_if_crossing_ego_from_behind) {
       const auto first_intersecting_idx =
         get_first_intersecting_segment_idx(corner_footprint, ego_rear_segment);
       if (first_intersecting_idx) {
@@ -210,7 +256,8 @@ inline void filter_predicted_paths(
 inline std::vector<Object> prepare_dynamic_objects(
   const std::vector<std::shared_ptr<motion_velocity_planner::PlannerData::Object>> & objects,
   const TrajectoryCornerFootprint & ego_trajectory,
-  const ObjectDecisionsTracker & previous_decisions, const Parameters & params)
+  const ObjectDecisionsTracker & previous_decisions, const FilteringData & filtering_data,
+  const Parameters & params)
 {
   std::vector<Object> filtered_objects;
   const auto ego_rear_segment = ego_trajectory.get_rear_segment();
@@ -226,11 +273,11 @@ inline std::vector<Object> prepare_dynamic_objects(
     filtered_object.is_on_ego_trajectory = is_on_ego_trajectory(filtered_object, ego_trajectory);
     const auto & previous_object_decisions = previous_decisions.get(filtered_object.uuid);
     if (skip_object_condition(
-          filtered_object, previous_object_decisions, ego_rear_segment, params)) {
+          filtered_object, previous_object_decisions, ego_rear_segment, filtering_data, params)) {
       continue;
     }
     calculate_predicted_path_footprints(filtered_object, object->predicted_object, params);
-    filter_predicted_paths(filtered_object, ego_rear_segment, params);
+    filter_predicted_paths(filtered_object, ego_rear_segment, filtering_data, params);
     if (!filtered_object.corner_footprints.empty()) {
       filtered_objects.push_back(filtered_object);
     }

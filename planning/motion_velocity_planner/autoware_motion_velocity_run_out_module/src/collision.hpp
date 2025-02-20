@@ -39,11 +39,10 @@ namespace autoware::motion_velocity_planner::run_out
 {
 
 /// @brief calculate the rtree for segments of a trajectory
-inline FootprintSegmentRtree prepare_trajectory_footprint_rtree(
-  const TrajectoryCornerFootprint & footprint)
+inline SegmentRtree prepare_trajectory_footprint_rtree(const TrajectoryCornerFootprint & footprint)
 {
-  FootprintSegmentRtree rtree;
-  std::vector<FootprintSegmentNode> nodes;
+  SegmentRtree rtree;
+  std::vector<SegmentNode> nodes;
   for (const auto & ls :
        {footprint.corner_footprint.front_left_ls, footprint.corner_footprint.front_right_ls,
         footprint.corner_footprint.rear_left_ls, footprint.corner_footprint.rear_right_ls}) {
@@ -51,12 +50,12 @@ inline FootprintSegmentRtree prepare_trajectory_footprint_rtree(
       nodes.emplace_back(universe_utils::Segment2d{ls[i], ls[i + 1]}, i);
     }
   }
-  return FootprintSegmentRtree(nodes);
+  return SegmentRtree(nodes);
 }
 
 inline FootprintIntersection calculate_footprint_intersection(
   const universe_utils::Segment2d & object_segment,
-  const universe_utils::Point2d & intersection_point, const FootprintSegmentNode & ego_query_result,
+  const universe_utils::Point2d & intersection_point, const SegmentNode & ego_query_result,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & ego_trajectory,
   const std::pair<double, double> object_segment_times)
 {
@@ -90,8 +89,7 @@ inline FootprintIntersection calculate_footprint_intersection(
 
 inline std::vector<std::vector<FootprintIntersection>>
 calculate_footprint_intersections_per_predicted_path(
-  const FootprintSegmentRtree & footprint_rtree, const Object & object,
-  const universe_utils::MultiPolygon2d & ignored_polygons,
+  const SegmentRtree & footprint_rtree, const Object & object,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & ego_trajectory)
 {
   std::vector<std::vector<FootprintIntersection>> intersections_per_predicted_path;
@@ -108,18 +106,16 @@ calculate_footprint_intersections_per_predicted_path(
            }) {
         segment.first = corner_ls[i];
         segment.second = corner_ls[i + 1];
-        std::vector<FootprintSegmentNode> query_results;
+        std::vector<SegmentNode> query_results;
         footprint_rtree.query(
           boost::geometry::index::intersects(segment), std::back_inserter(query_results));
         for (const auto & query_result : query_results) {
           const auto intersection = universe_utils::intersect(
             segment.first, segment.second, query_result.first.first, query_result.first.second);
-          if (intersection && boost::geometry::disjoint(*intersection, ignored_polygons)) {
-            intersections.push_back(calculate_footprint_intersection(
-              segment, *intersection, query_result, ego_trajectory,
-              {corner_footprint.time_step * static_cast<double>(i),
-               corner_footprint.time_step * (static_cast<double>(i) + 1)}));
-          }
+          intersections.push_back(calculate_footprint_intersection(
+            segment, *intersection, query_result, ego_trajectory,
+            {corner_footprint.time_step * static_cast<double>(i),
+             corner_footprint.time_step * (static_cast<double>(i) + 1)}));
         }
       }
     }
@@ -168,14 +164,14 @@ inline Collision calculate_collision(
 }
 
 inline void calculate_collisions(
-  std::vector<Object> & objects, const run_out::FootprintSegmentRtree & ego_footprint_rtree,
+  std::vector<Object> & objects, const run_out::SegmentRtree & ego_footprint_rtree,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & ego_trajectory,
-  const universe_utils::MultiPolygon2d & ignored_polygons, const run_out::Parameters & params)
+  const run_out::Parameters & params)
 {
   for (auto & object : objects) {
     const auto intersections_per_predicted_path =
       run_out::calculate_footprint_intersections_per_predicted_path(
-        ego_footprint_rtree, object, ignored_polygons, ego_trajectory);
+        ego_footprint_rtree, object, ego_trajectory);
     for (const auto & intersections : intersections_per_predicted_path) {
       if (intersections.empty()) {
         continue;

@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,8 +31,6 @@
 #include <tier4_planning_msgs/msg/path_point_with_lane_id.hpp>
 #include <tier4_planning_msgs/msg/path_with_lane_id.hpp>
 
-#include <lanelet2_core/LaneletMap.h>
-
 #include <memory>
 #include <string>
 #include <vector>
@@ -46,7 +44,7 @@ public:
   void init_parameters(rclcpp::Node & node);
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   VelocityPlanningResult plan(
-    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & raw_trajectory_points,
+    [[maybe_unused]] const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> &,
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & smoothed_trajectory_points,
     const std::shared_ptr<const PlannerData> planner_data) override;
   std::string get_module_name() const override { return module_name_; }
