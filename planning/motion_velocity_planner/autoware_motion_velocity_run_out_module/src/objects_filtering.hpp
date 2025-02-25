@@ -163,10 +163,13 @@ inline void calculate_predicted_path_footprints(
     for (const auto & p : path.path) {
       const auto object_polygon = universe_utils::toFootprint(
         p, half_length, half_length, predicted_object.shape.dimensions.y);
-      footprint.corner_footprint.front_left_ls.push_back(object_polygon.outer()[0]);
-      footprint.corner_footprint.front_right_ls.push_back(object_polygon.outer()[1]);
-      footprint.corner_footprint.rear_right_ls.push_back(object_polygon.outer()[2]);
-      footprint.corner_footprint.rear_left_ls.push_back(object_polygon.outer()[3]);
+      footprint.corner_footprint.corner_linestrings[front_left].push_back(
+        object_polygon.outer()[0]);
+      footprint.corner_footprint.corner_linestrings[front_right].push_back(
+        object_polygon.outer()[1]);
+      footprint.corner_footprint.corner_linestrings[rear_right].push_back(
+        object_polygon.outer()[2]);
+      footprint.corner_footprint.corner_linestrings[rear_left].push_back(object_polygon.outer()[3]);
     }
     object.corner_footprints.push_back(footprint);
   }
@@ -177,8 +180,10 @@ inline std::optional<size_t> get_first_intersecting_segment_idx(
 {
   for (auto i = 0UL; i + 1 < footprint.corner_footprint.size(); ++i) {
     for (const auto & ls :
-         {footprint.corner_footprint.front_left_ls, footprint.corner_footprint.front_right_ls,
-          footprint.corner_footprint.rear_left_ls, footprint.corner_footprint.rear_right_ls}) {
+         {footprint.corner_footprint.corner_linestrings[front_left],
+          footprint.corner_footprint.corner_linestrings[front_right],
+          footprint.corner_footprint.corner_linestrings[rear_left],
+          footprint.corner_footprint.corner_linestrings[rear_right]}) {
       if (universe_utils::intersect(segment.first, segment.second, ls[i], ls[i + 1])) {
         return i;
       }
@@ -200,10 +205,10 @@ inline bool crosses_from_the_rear(
 
 inline void cut_footprint_after_index(ObjectCornerFootprint & footprint, const size_t index)
 {
-  footprint.corner_footprint.front_left_ls.resize(index);
-  footprint.corner_footprint.front_right_ls.resize(index);
-  footprint.corner_footprint.rear_left_ls.resize(index);
-  footprint.corner_footprint.rear_right_ls.resize(index);
+  footprint.corner_footprint.corner_linestrings[front_left].resize(index);
+  footprint.corner_footprint.corner_linestrings[front_right].resize(index);
+  footprint.corner_footprint.corner_linestrings[rear_left].resize(index);
+  footprint.corner_footprint.corner_linestrings[rear_right].resize(index);
 }
 
 inline void filter_predicted_paths(
@@ -213,11 +218,8 @@ inline void filter_predicted_paths(
   for (auto & corner_footprint : object.corner_footprints) {
     bool cut = false;
     for (auto i = 0UL; i + 1 < corner_footprint.corner_footprint.size(); ++i) {
-      for (const auto & ls :
-           {corner_footprint.corner_footprint.front_left_ls,
-            corner_footprint.corner_footprint.front_right_ls,
-            corner_footprint.corner_footprint.rear_left_ls,
-            corner_footprint.corner_footprint.rear_right_ls}) {
+      for (const auto & corner : {front_left, front_right, rear_left, rear_right}) {
+        const auto & ls = corner_footprint.corner_footprint.corner_linestrings[corner];
         const auto & segment = universe_utils::Segment2d(ls[i], ls[i + 1]);
         std::vector<SegmentNode> query_results;
         map_data.cut_predicted_paths_rtree.query(
@@ -243,8 +245,9 @@ inline void filter_predicted_paths(
         get_first_intersecting_segment_idx(corner_footprint, ego_rear_segment);
       if (first_intersecting_idx) {
         const auto first_intersecting_segment = universe_utils::Segment2d(
-          corner_footprint.corner_footprint.rear_left_ls[*first_intersecting_idx],
-          corner_footprint.corner_footprint.rear_left_ls[*first_intersecting_idx + 1]);
+          corner_footprint.corner_footprint.corner_linestrings[rear_left][*first_intersecting_idx],
+          corner_footprint.corner_footprint
+            .corner_linestrings[rear_left][*first_intersecting_idx + 1]);
         if (crosses_from_the_rear(first_intersecting_segment, ego_rear_segment)) {
           cut_footprint_after_index(corner_footprint, *first_intersecting_idx);
         }

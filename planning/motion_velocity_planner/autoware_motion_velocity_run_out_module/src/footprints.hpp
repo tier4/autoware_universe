@@ -30,10 +30,30 @@
 #include <Eigen/src/Geometry/Rotation2D.h>
 #include <Eigen/src/Geometry/RotationBase.h>
 
+#include <utility>
 #include <vector>
 
 namespace autoware::motion_velocity_planner::run_out
 {
+/// @brief calculate the rtree for segments of a trajectory
+inline void prepare_trajectory_footprint_rtree(TrajectoryCornerFootprint & footprint)
+{
+  SegmentRtree rtree;
+  std::vector<FootprintSegmentNode> nodes;
+  nodes.emplace_back(footprint.get_rear_segment(), std::make_pair(rear, 0UL));
+  if (footprint.corner_footprint.size() > 0UL) {
+    nodes.emplace_back(
+      footprint.get_front_segment(), std::make_pair(front, footprint.corner_footprint.size() - 1));
+  }
+  for (const auto corner : {front_left, front_right, rear_left, rear_right}) {
+    const auto & ls = footprint.corner_footprint.corner_linestrings[corner];
+    for (auto i = 0UL; i + 1 < ls.size(); ++i) {
+      nodes.emplace_back(universe_utils::Segment2d{ls[i], ls[i + 1]}, std::make_pair(corner, i));
+    }
+  }
+  footprint.rtree = FootprintSegmentRtree(nodes);
+}
+
 inline run_out::TrajectoryCornerFootprint calculate_trajectory_corner_footprint(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
   autoware::vehicle_info_utils::VehicleInfo vehicle_info, const run_out::Parameters & params)
@@ -54,14 +74,14 @@ inline run_out::TrajectoryCornerFootprint calculate_trajectory_corner_footprint(
       rotation * base_footprint[vehicle_info_utils::VehicleInfo::RearRightIndex];
     const auto rotated_rear_left_offset =
       rotation * base_footprint[vehicle_info_utils::VehicleInfo::RearLeftIndex];
-    footprint.front_left_ls.emplace_back(
+    footprint.corner_linestrings[front_left].emplace_back(
       base_link.x() + rotated_front_left_offset.x(), base_link.y() + rotated_front_left_offset.y());
-    footprint.front_right_ls.emplace_back(
+    footprint.corner_linestrings[front_right].emplace_back(
       base_link.x() + rotated_front_right_offset.x(),
       base_link.y() + rotated_front_right_offset.y());
-    footprint.rear_right_ls.emplace_back(
+    footprint.corner_linestrings[rear_right].emplace_back(
       base_link.x() + rotated_rear_right_offset.x(), base_link.y() + rotated_rear_right_offset.y());
-    footprint.rear_left_ls.emplace_back(
+    footprint.corner_linestrings[rear_left].emplace_back(
       base_link.x() + rotated_rear_left_offset.x(), base_link.y() + rotated_rear_left_offset.y());
   }
 
@@ -69,19 +89,23 @@ inline run_out::TrajectoryCornerFootprint calculate_trajectory_corner_footprint(
     return [&](const universe_utils::Point2d & p) { poly.outer().push_back(p); };
   };
   std::for_each(
-    footprint.front_left_ls.begin(), footprint.front_left_ls.end(),
+    footprint.corner_linestrings[front_left].begin(),
+    footprint.corner_linestrings[front_left].end(),
     push_to_polygon_fn(trajectory_footprint.front_polygon));
   std::for_each(
-    footprint.front_right_ls.rbegin(), footprint.front_right_ls.rend(),
+    footprint.corner_linestrings[front_right].rbegin(),
+    footprint.corner_linestrings[front_right].rend(),
     push_to_polygon_fn(trajectory_footprint.front_polygon));
   boost::geometry::correct(trajectory_footprint.front_polygon);
   std::for_each(
-    footprint.rear_left_ls.begin(), footprint.rear_left_ls.end(),
+    footprint.corner_linestrings[rear_left].begin(), footprint.corner_linestrings[rear_left].end(),
     push_to_polygon_fn(trajectory_footprint.rear_polygon));
   std::for_each(
-    footprint.rear_right_ls.rbegin(), footprint.rear_right_ls.rend(),
+    footprint.corner_linestrings[rear_right].rbegin(),
+    footprint.corner_linestrings[rear_right].rend(),
     push_to_polygon_fn(trajectory_footprint.rear_polygon));
   boost::geometry::correct(trajectory_footprint.rear_polygon);
+  prepare_trajectory_footprint_rtree(trajectory_footprint);
   return trajectory_footprint;
 }
 }  // namespace autoware::motion_velocity_planner::run_out

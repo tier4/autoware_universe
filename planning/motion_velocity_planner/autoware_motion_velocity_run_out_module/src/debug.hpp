@@ -50,25 +50,25 @@ inline MarkerArray make_debug_footprint_markers(
   m.color = universe_utils::createMarkerColor(0.0, 1.0, 0.0, 1.0);
   m.scale.x = 0.2;
   m.ns = "ego_footprint_front_left";
-  for (const auto & p : ego.corner_footprint.front_left_ls) {
+  for (const auto & p : ego.corner_footprint.corner_linestrings[front_left]) {
     m.points.push_back(universe_utils::createPoint(p.x(), p.y(), 0.0));
   }
   markers.markers.push_back(m);
   m.ns = "ego_footprint_front_right";
   m.points.clear();
-  for (const auto & p : ego.corner_footprint.front_right_ls) {
+  for (const auto & p : ego.corner_footprint.corner_linestrings[front_right]) {
     m.points.push_back(universe_utils::createPoint(p.x(), p.y(), 0.0));
   }
   markers.markers.push_back(m);
   m.ns = "ego_footprint_rear_right";
   m.points.clear();
-  for (const auto & p : ego.corner_footprint.rear_right_ls) {
+  for (const auto & p : ego.corner_footprint.corner_linestrings[rear_right]) {
     m.points.push_back(universe_utils::createPoint(p.x(), p.y(), 0.0));
   }
   markers.markers.push_back(m);
   m.ns = "ego_footprint_rear_left";
   m.points.clear();
-  for (const auto & p : ego.corner_footprint.rear_left_ls) {
+  for (const auto & p : ego.corner_footprint.corner_linestrings[rear_left]) {
     m.points.push_back(universe_utils::createPoint(p.x(), p.y(), 0.0));
   }
   markers.markers.push_back(m);
@@ -80,23 +80,27 @@ inline MarkerArray make_debug_footprint_markers(
   for (const auto & object : objects) {
     for (const auto & footprint : object.corner_footprints) {
       const auto & f = footprint.corner_footprint;
-      for (auto i = 0UL; i + 1 < f.front_left_ls.size(); ++i) {
-        m.points.push_back(
-          universe_utils::createPoint(f.front_left_ls[i].x(), f.front_left_ls[i].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(f.front_left_ls[i + 1].x(), f.front_left_ls[i + 1].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(f.front_right_ls[i].x(), f.front_right_ls[i].y(), 0.0));
+      for (auto i = 0UL; i + 1 < f.corner_linestrings[front_left].size(); ++i) {
         m.points.push_back(universe_utils::createPoint(
-          f.front_right_ls[i + 1].x(), f.front_right_ls[i + 1].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(f.rear_left_ls[i].x(), f.rear_left_ls[i].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(f.rear_left_ls[i + 1].x(), f.rear_left_ls[i + 1].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(f.rear_right_ls[i].x(), f.rear_right_ls[i].y(), 0.0));
-        m.points.push_back(
-          universe_utils::createPoint(f.rear_right_ls[i + 1].x(), f.rear_right_ls[i + 1].y(), 0.0));
+          f.corner_linestrings[front_left][i].x(), f.corner_linestrings[front_left][i].y(), 0.0));
+        m.points.push_back(universe_utils::createPoint(
+          f.corner_linestrings[front_left][i + 1].x(), f.corner_linestrings[front_left][i + 1].y(),
+          0.0));
+        m.points.push_back(universe_utils::createPoint(
+          f.corner_linestrings[front_right][i].x(), f.corner_linestrings[front_right][i].y(), 0.0));
+        m.points.push_back(universe_utils::createPoint(
+          f.corner_linestrings[front_right][i + 1].x(),
+          f.corner_linestrings[front_right][i + 1].y(), 0.0));
+        m.points.push_back(universe_utils::createPoint(
+          f.corner_linestrings[rear_left][i].x(), f.corner_linestrings[rear_left][i].y(), 0.0));
+        m.points.push_back(universe_utils::createPoint(
+          f.corner_linestrings[rear_left][i + 1].x(), f.corner_linestrings[rear_left][i + 1].y(),
+          0.0));
+        m.points.push_back(universe_utils::createPoint(
+          f.corner_linestrings[rear_right][i].x(), f.corner_linestrings[rear_right][i].y(), 0.0));
+        m.points.push_back(universe_utils::createPoint(
+          f.corner_linestrings[rear_right][i + 1].x(), f.corner_linestrings[rear_right][i + 1].y(),
+          0.0));
       }
     }
   }

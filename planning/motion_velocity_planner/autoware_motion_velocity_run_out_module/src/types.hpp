@@ -33,33 +33,28 @@
 namespace autoware::motion_velocity_planner::run_out
 {
 
+/// @brief indicates the position of an intersection with the ego footprint
+enum IntersectionPosition {
+  front_left,
+  front_right,
+  rear_left,
+  rear_right,
+  rear,
+  front,
+  inside_front_polygon,
+  inside_rear_polygon,
+  inside_both_polygons
+};
 /// @brief footprint represented by linestrings corresponding to the path of 4 footprint corners
 struct CornerFootprint
 {
-  universe_utils::LineString2d front_left_ls;
-  universe_utils::LineString2d front_right_ls;
-  universe_utils::LineString2d rear_left_ls;
-  universe_utils::LineString2d rear_right_ls;
+  std::vector<universe_utils::LineString2d> corner_linestrings{4};
 
   [[nodiscard]] size_t size() const
   {
-    return std::min(
-      {front_left_ls.size(), front_right_ls.size(), rear_left_ls.size(), rear_right_ls.size()});
+    return corner_linestrings[IntersectionPosition::front_left].size();
   }
 };
-struct TrajectoryCornerFootprint
-{
-  CornerFootprint corner_footprint;
-  universe_utils::Polygon2d front_polygon;  // polygon built from the front linestrings
-  universe_utils::Polygon2d rear_polygon;   // polygon built from the rear linestrings
-
-  /// @brief get the segment from rear left corner to rear right corner
-  [[nodiscard]] universe_utils::Segment2d get_rear_segment() const
-  {
-    return {corner_footprint.rear_left_ls.front(), corner_footprint.rear_right_ls.front()};
-  }
-};
-
 struct ObjectCornerFootprint
 {
   CornerFootprint corner_footprint;
@@ -71,6 +66,7 @@ struct FootprintIntersection
   double ego_time{};
   double object_time{};
   universe_utils::Point2d intersection;
+  IntersectionPosition position;
 };
 
 struct FootprintIntersections
@@ -84,6 +80,32 @@ struct FootprintIntersections
 namespace bgi = boost::geometry::index;
 using SegmentNode = std::pair<universe_utils::Segment2d, size_t>;
 using SegmentRtree = bgi::rtree<SegmentNode, bgi::rstar<16>>;
+using FootprintSegmentNode =
+  std::pair<universe_utils::Segment2d, std::pair<IntersectionPosition, size_t>>;
+using FootprintSegmentRtree = bgi::rtree<FootprintSegmentNode, bgi::rstar<16>>;
+
+struct TrajectoryCornerFootprint
+{
+  CornerFootprint corner_footprint;
+  universe_utils::Polygon2d front_polygon;  // polygon built from the front linestrings
+  universe_utils::Polygon2d rear_polygon;   // polygon built from the rear linestrings
+  FootprintSegmentRtree rtree;
+
+  /// @brief get the segment from rear left corner to rear right corner
+  [[nodiscard]] universe_utils::Segment2d get_rear_segment() const
+  {
+    return {
+      corner_footprint.corner_linestrings[rear_left].front(),
+      corner_footprint.corner_linestrings[rear_right].front()};
+  }
+  /// @brief get the segment from front left corner to front right corner
+  [[nodiscard]] universe_utils::Segment2d get_front_segment() const
+  {
+    return {
+      corner_footprint.corner_linestrings[front_left].front(),
+      corner_footprint.corner_linestrings[front_right].front()};
+  }
+};
 
 /// @brief represent the time interval where a vehicle overlaps the path of another vehicle
 struct TimeCollisionInterval
@@ -102,6 +124,25 @@ struct TimeCollisionInterval
     last_intersection(std::move(last_intersection_))
   {
   }
+
+  [[nodiscard]] bool precedes(const TimeCollisionInterval & o) const { return to < o.from; }
+  [[nodiscard]] bool succeeds(const TimeCollisionInterval & o) const { return from < o.to; }
+  [[nodiscard]] bool overlaps(const TimeCollisionInterval & o) const
+  {
+    return !precedes(o) && !succeeds(o);
+  };
+
+  void expand(const TimeCollisionInterval & o)
+  {
+    if (o.from < from) {
+      from = o.from;
+      first_intersection = o.first_intersection;
+    }
+    if (o.to > to) {
+      to = o.to;
+      last_intersection = o.last_intersection;
+    }
+  }
 };
 
 inline std::ostream & operator<<(std::ostream & os, const TimeCollisionInterval & i)
@@ -113,6 +154,7 @@ inline std::ostream & operator<<(std::ostream & os, const TimeCollisionInterval 
 }
 
 enum CollisionType { pass_first_no_collision, pass_first_collision, collision, no_collision };
+
 struct Collision
 {
   double enter_time_margin{};
@@ -127,15 +169,9 @@ struct Collision
     const Parameters & params)
   : ego_time_interval(ego), object_time_interval(object)
   {
-    const auto overlap = [&](const auto & i1, const auto & i2) {
-      return (i2.from <= i1.from && i1.from <= i2.to) || (i2.from <= i1.to && i1.to <= i2.to);
-    };
-    const auto collide = [&](const auto & i1, const auto & i2) {
-      return overlap(i1, i2) || overlap(i2, i1);
-    };
     // TODO(Maxime): move to collision.cpp
     if (
-      params.enable_passing_collisions && ego.from < object.from && collide(ego, object) &&
+      params.enable_passing_collisions && ego.from < object.from && ego.overlaps(object) &&
       ego.from + params.passing_collisions_time_margin < object.from &&
       ego.to - ego.from <= params.passing_max_overlap_duration) {
       type = pass_first_collision;
@@ -146,7 +182,7 @@ struct Collision
          << params.passing_collisions_time_margin << ") and ego overlap bellow max ("
          << ego.to - ego.from << " < " << params.passing_max_overlap_duration << ")";
       explanation = ss.str();
-    } else if (collide(ego, object)) {
+    } else if (ego.overlaps(object)) {
       type = collision;
       enter_time_margin = object.to - ego.from;
     } else if (ego.to < object.from) {

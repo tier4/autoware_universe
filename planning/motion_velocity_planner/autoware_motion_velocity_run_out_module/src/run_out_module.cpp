@@ -160,12 +160,9 @@ VelocityPlanningResult RunOutModule::plan(
   auto filtered_objects = run_out::prepare_dynamic_objects(
     planner_data->objects, ego_footprint, decisions_tracker_, filtering_data, params_);
   time_keeper_->end_track("filter_objects()");
-  time_keeper_->start_track("calc_rtree()");
-  const auto footprint_rtree = run_out::prepare_trajectory_footprint_rtree(ego_footprint);
-  time_keeper_->end_track("calc_rtree()");
   time_keeper_->start_track("calc_collisions()");
   run_out::calculate_collisions(
-    filtered_objects, footprint_rtree, smoothed_trajectory_points, params_);
+    filtered_objects, ego_footprint, smoothed_trajectory_points, params_);
   time_keeper_->end_track("calc_collisions()");
   time_keeper_->start_track("calc_decisions()");
   const auto ego_is_stopped = planner_data->current_odometry.twist.twist.linear.x < 1e-2;
