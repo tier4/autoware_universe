@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "graph/error.hpp"
 #include "graph/graph.hpp"
 #include "utils.hpp"
 
@@ -23,6 +22,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace autoware::diagnostic_graph_aggregator;  // NOLINT(build/namespaces)
@@ -150,3 +150,13 @@ INSTANTIATE_TEST_SUITE_P(WarnToError, GraphTest,
 );
 
 // clang-format on
+
+struct GraphTestEmptyAndOrParam
+{
+  std::string config;
+  std::pair<uint8_t, uint8_t> result;
+};
+
+class GraphTestEmptyAndOr : public testing::TestWithParam<GraphTestEmptyAndOrParam>
+{
+};
