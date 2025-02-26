@@ -129,6 +129,7 @@ struct TimeCollisionInterval
   [[nodiscard]] bool succeeds(const TimeCollisionInterval & o) const { return from > o.to; }
   [[nodiscard]] bool overlaps(const TimeCollisionInterval & o) const
   {
+    // TODO(Maxime): double check
     return !precedes(o) && !succeeds(o) && !o.precedes(*this) && !o.succeeds(*this);
   };
 
@@ -170,12 +171,6 @@ struct Collision
   : ego_time_interval(ego), object_time_interval(object)
   {
     // TODO(Maxime): move to collision.cpp
-    if(ego.from > ego.to) {
-      std::printf("WARNING | ego.from %2.2f > ego.to %2.2f\n", ego.from, ego.to);
-    }
-    if(object.from > object.to) {
-      std::printf("WARNING | object.from %2.2f > object.to %2.2f\n", object.from, object.to);
-    }
     if (
       params.enable_passing_collisions && ego.from < object.from && ego.overlaps(object) &&
       ego.from + params.passing_collisions_time_margin < object.from &&

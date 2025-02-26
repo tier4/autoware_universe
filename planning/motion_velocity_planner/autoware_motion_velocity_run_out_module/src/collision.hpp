@@ -262,12 +262,10 @@ inline std::vector<Collision> calculate_collisions(
   TimeCollisionInterval ego_combined = intervals.front().ego;
   for (const auto & interval : intervals) {
     if (interval.object.succeeds(object_combined)) {
-      std::cout << "\t" << interval.object << " succeeds " << object_combined << std::endl;
       collisions.emplace_back(ego_combined, object_combined, params);
       object_combined = interval.object;
       ego_combined = interval.ego;
     } else if (interval.object.overlaps(object_combined)) {
-      std::cout << "\t" << interval.object << " overlap " << object_combined << std::endl;
       object_combined.expand(interval.object);
       ego_combined.expand(interval.ego);
     } else {

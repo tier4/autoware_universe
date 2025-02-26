@@ -89,19 +89,20 @@ inline bool condition_to_stop(
   }
   // keep stopping for some time after the last detected collision
   if (!history.decisions.empty() && history.decisions.back().type == stop) {
-    const auto earliest_collision_it =
-      std::find_if(history.decisions.begin(), history.decisions.end(), is_collision);
-    if (earliest_collision_it == history.decisions.end()) {
+    const auto most_recent_collision_it =
+      std::find_if(history.decisions.rbegin(), history.decisions.rend(), is_collision);
+    if (most_recent_collision_it == history.decisions.rend()) {
       explanation << "removing stop since no collision in history";
       return false;
     }
-    const auto i = std::distance(history.decisions.begin(), earliest_collision_it);
+    // -1 because the reverse iterator has an offset compared to base iterator
+    const auto i = std::distance(history.decisions.begin(), most_recent_collision_it.base()) - 1;
     // TODO(Maxime): may be off by one time step
     const auto time_since_last_collision = current_time.seconds() - history.times[i];
     if (time_since_last_collision < params.stop_off_time_buffer) {
       explanation << "keeping stop since last collision found " << time_since_last_collision
                   << "s ago (" << params.stop_off_time_buffer << "s buffer)"
-                  << earliest_collision_it->type;
+                  << most_recent_collision_it->type;
       return true;
     }
     explanation << "removing stop since last collision found " << time_since_last_collision
