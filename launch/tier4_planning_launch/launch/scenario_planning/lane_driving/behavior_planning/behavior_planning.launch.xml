@@ -206,6 +206,7 @@
       <param from="$(var behavior_path_planner_lane_change_module_param_path)"/>
       <param from="$(var behavior_path_planner_goal_planner_module_param_path)"/>
       <param from="$(var behavior_path_planner_start_planner_module_param_path)"/>
+      <param from="$(var behavior_path_bidirectional_traffic_module_param_path)"/>
       <param from="$(var behavior_path_planner_sampling_planner_module_param_path)"/>
       <param from="$(var behavior_path_planner_drivable_area_expansion_param_path)"/>
       <param from="$(var behavior_path_planner_scene_module_manager_param_path)"/>
