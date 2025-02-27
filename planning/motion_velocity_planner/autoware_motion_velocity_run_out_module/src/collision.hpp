@@ -36,7 +36,6 @@
 #include <boost/geometry/algorithms/distance.hpp>
 #include <boost/geometry/algorithms/length.hpp>
 
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -235,6 +234,9 @@ inline std::vector<TimeCollisionIntervalPair> calculate_overlap_intervals(
   return overlap_intervals;
 }
 
+/// @brief calculate collisions from overlap intervals
+/// @details intervals represent the time range whene ego and an object overlap eachother's
+/// trajectories
 inline std::vector<Collision> calculate_interval_collisions(
   std::vector<TimeCollisionIntervalPair> intervals, const Parameters & params)
 {
@@ -250,15 +252,13 @@ inline std::vector<Collision> calculate_interval_collisions(
   TimeCollisionInterval object_combined = intervals.front().object;
   TimeCollisionInterval ego_combined = intervals.front().ego;
   for (const auto & interval : intervals) {
-    if (interval.object.succeeds(object_combined)) {
-      collisions.emplace_back(ego_combined, object_combined, params);
-      object_combined = interval.object;
-      ego_combined = interval.ego;
-    } else if (interval.object.overlaps(object_combined)) {
+    if (interval.object.overlaps(object_combined, params.time_overlap_tolerance)) {
       object_combined.expand(interval.object);
       ego_combined.expand(interval.ego);
     } else {
-      throw(std::runtime_error("encountered a preceding interval"));
+      collisions.emplace_back(ego_combined, object_combined, params);
+      object_combined = interval.object;
+      ego_combined = interval.ego;
     }
   }
   collisions.emplace_back(ego_combined, object_combined, params);

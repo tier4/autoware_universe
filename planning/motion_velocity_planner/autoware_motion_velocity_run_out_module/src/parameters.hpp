@@ -57,6 +57,8 @@ struct Parameters
   double ego_lateral_margin;       // [m] ego footprint lateral margin
   double ego_longitudinal_margin;  // [m] ego footprint longitudinal margin
   double collision_time_margin;    // [s] extra time margin to determine collisions
+  double time_overlap_tolerance;   // [s] when calculating overlap time intervals, intervals are
+                                  // grouped if they are separated by less than this tolerance value
   // object parameters
   std::vector<std::string> objects_target_labels;
   bool objects_ignore_if_stopped;
@@ -91,6 +93,7 @@ struct Parameters
     ego_lateral_margin = getOrDeclareParameter<double>(node, ns + ".ego.lateral_margin");
     ego_longitudinal_margin = getOrDeclareParameter<double>(node, ns + ".ego.longitudinal_margin");
     collision_time_margin = getOrDeclareParameter<double>(node, ns + ".collision_time_margin");
+    time_overlap_tolerance = getOrDeclareParameter<double>(node, ns + ".time_overlap_tolerance");
     objects_ignore_if_on_ego_trajectory =
       getOrDeclareParameter<bool>(node, ns + ".objects.ignore.if_on_ego_trajectory");
     objects_ignore_if_behind_ego =
@@ -135,6 +138,7 @@ struct Parameters
     updateParam(params, ns + ".ego.lateral_margin", ego_lateral_margin);
     updateParam(params, ns + ".ego.longitudinal_margin", ego_longitudinal_margin);
     updateParam(params, ns + ".collision_time_margin", collision_time_margin);
+    updateParam(params, ns + ".time_overlap_tolerance", time_overlap_tolerance);
     updateParam(params, ns + ".objects.ignore.if_stopped", objects_ignore_if_stopped);
     updateParam(
       params, ns + ".objects.ignore.stopped_velocity_threshold",

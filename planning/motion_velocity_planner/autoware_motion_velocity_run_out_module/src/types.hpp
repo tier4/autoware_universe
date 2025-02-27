@@ -132,12 +132,18 @@ struct TimeCollisionInterval
   {
   }
 
-  [[nodiscard]] bool precedes(const TimeCollisionInterval & o) const { return to < o.from; }
-  [[nodiscard]] bool succeeds(const TimeCollisionInterval & o) const { return from > o.to; }
-  [[nodiscard]] bool overlaps(const TimeCollisionInterval & o) const
+  [[nodiscard]] bool precedes(const TimeCollisionInterval & o, const double tolerance = 0.0) const
   {
-    // TODO(Maxime): double check
-    return !precedes(o) && !succeeds(o) && !o.precedes(*this) && !o.succeeds(*this);
+    return to + tolerance < o.from;
+  }
+  [[nodiscard]] bool succeeds(const TimeCollisionInterval & o, const double tolerance = 0.0) const
+  {
+    return from > o.to + tolerance;
+  }
+  [[nodiscard]] bool overlaps(const TimeCollisionInterval & o, const double tolerance = 0.0) const
+  {
+    return !precedes(o, tolerance) && !succeeds(o, tolerance) && !o.precedes(*this, tolerance) &&
+           !o.succeeds(*this, tolerance);
   };
 
   void expand(const TimeCollisionInterval & o)
