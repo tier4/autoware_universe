@@ -22,6 +22,8 @@
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
+#include <boost/geometry/algorithms/envelope.hpp>
+
 #include <lanelet2_core/Attribute.h>
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/BoundingBox.h>
@@ -69,7 +71,7 @@ inline FilteringData calculate_filtering_data(
       attribute == lanelet::AttributeValueString::Crosswalk) {
       universe_utils::LinearRing2d polygon;
       boost::geometry::convert(ll.polygon2d().basicPolygon(), polygon);
-      data.ignore_pedestrian_polygons.push_back(polygon);
+      data.ignore_pedestrians_polygons.push_back(polygon);
     }
   }
   const auto polygons_in_range = map_ptr->polygonLayer.search(bounding_box);
@@ -92,12 +94,43 @@ inline FilteringData calculate_filtering_data(
       }
     }
   }
-  std::vector<SegmentNode> nodes;
-  nodes.reserve(data.cut_predicted_paths_segments.size());
-  for (auto i = 0UL; i < data.cut_predicted_paths_segments.size(); ++i) {
-    nodes.emplace_back(data.cut_predicted_paths_segments[i], i);
+  if (params.objects_ignore_if_on_ego_trajectory) {
+    data.ignore_road_objects_polygons.push_back(ego_footprint.front_polygon.outer());
+    data.ignore_road_objects_polygons.push_back(ego_footprint.rear_polygon.outer());
+    data.ignore_pedestrians_polygons.push_back(ego_footprint.front_polygon.outer());
+    data.ignore_pedestrians_polygons.push_back(ego_footprint.rear_polygon.outer());
   }
-  data.cut_predicted_paths_rtree = SegmentRtree(nodes);
+
+  {
+    std::vector<SegmentNode> nodes;
+    nodes.reserve(data.cut_predicted_paths_segments.size());
+    for (auto i = 0UL; i < data.cut_predicted_paths_segments.size(); ++i) {
+      nodes.emplace_back(data.cut_predicted_paths_segments[i], i);
+    }
+    data.cut_predicted_paths_rtree = SegmentRtree(nodes);
+  }
+  {
+    std::vector<PolygonNode> nodes;
+    nodes.reserve(data.ignore_pedestrians_polygons.size());
+    for (auto i = 0UL; i < data.ignore_pedestrians_polygons.size(); ++i) {
+      nodes.emplace_back(
+        boost::geometry::return_envelope<universe_utils::Box2d>(
+          data.ignore_pedestrians_polygons[i]),
+        i);
+    }
+    data.ignore_pedestrians_rtree = PolygonRtree(nodes);
+  }
+  {
+    std::vector<PolygonNode> nodes;
+    nodes.reserve(data.ignore_road_objects_polygons.size());
+    for (auto i = 0UL; i < data.ignore_road_objects_polygons.size(); ++i) {
+      nodes.emplace_back(
+        boost::geometry::return_envelope<universe_utils::Box2d>(
+          data.ignore_pedestrians_polygons[i]),
+        i);
+    }
+    data.ignore_road_objects_rtree = PolygonRtree(nodes);
+  }
   return data;
 }
 }  // namespace autoware::motion_velocity_planner::run_out

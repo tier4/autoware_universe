@@ -60,8 +60,10 @@ inline void classify(
   Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   const Parameters & params)
 {
-  if (has_classification_label(predicted_object, params.objects_parked_labels)) {
-    object.has_parked_label = true;
+  if (
+    predicted_object.kinematics.initial_twist_with_covariance.twist.linear.x <=
+    params.objects_stopped_velocity_threshold) {
+    object.is_stopped = true;
   }
   if (has_classification_label(predicted_object, params.objects_target_labels)) {
     object.has_target_label = true;
@@ -77,14 +79,6 @@ inline void calculate_current_footprint(
     predicted_object.kinematics.initial_pose_with_covariance.pose, half_length, half_length,
     predicted_object.shape.dimensions.y);
 }
-inline bool is_on_ego_trajectory(
-  const Object & object, const TrajectoryCornerFootprint & ego_trajectory)
-{
-  // TODO(Maxime): this needs to be made faster
-  return boost::geometry::overlaps(object.current_footprint, ego_trajectory.front_polygon) ||
-         boost::geometry::overlaps(object.current_footprint, ego_trajectory.rear_polygon);
-}
-
 inline bool skip_object_condition(
   const Object & object, const std::optional<DecisionHistory> & prev_decisions,
   const universe_utils::Segment2d & ego_rear_segment, const FilteringData & filtering_data,
@@ -103,27 +97,27 @@ inline bool skip_object_condition(
     prev_decisions && (prev_decisions->decisions.back().type == stop ||
                        (prev_decisions->decisions.back().collision.has_value() &&
                         prev_decisions->decisions.back().collision->type == collision));
-  if (!is_previous_target && object.is_on_ego_trajectory) {
-    return skip_object;
+  if (is_previous_target) {
+    return !skip_object;
   }
-  if (object.has_parked_label) {
+  if (params.objects_ignore_if_stopped && object.is_stopped) {
     return skip_object;
   }
   if (!object.has_target_label) {
     return skip_object;
   }
   if (object.is_pedestrian) {
-    for (const auto & p : filtering_data.ignore_pedestrian_polygons) {
-      if (!boost::geometry::disjoint(p, object.position)) {
-        return skip_object;
-      }
+    if (!FilteringData::disjoint(
+          object.current_footprint, filtering_data.ignore_pedestrians_rtree,
+          filtering_data.ignore_pedestrians_polygons)) {
+      return skip_object;
     }
   }
   if (!object.is_pedestrian) {
-    for (const auto & p : filtering_data.ignore_road_object_polygons) {
-      if (!boost::geometry::disjoint(p, object.position)) {
-        return skip_object;
-      }
+    if (!FilteringData::disjoint(
+          object.current_footprint, filtering_data.ignore_road_objects_rtree,
+          filtering_data.ignore_road_objects_polygons)) {
+      return skip_object;
     }
   }
   return !skip_object;
@@ -273,7 +267,6 @@ inline std::vector<Object> prepare_dynamic_objects(
         .to_2d();
     classify(filtered_object, object->predicted_object, params);
     calculate_current_footprint(filtered_object, object->predicted_object);
-    filtered_object.is_on_ego_trajectory = is_on_ego_trajectory(filtered_object, ego_trajectory);
     const auto & previous_object_decisions = previous_decisions.get(filtered_object.uuid);
     if (skip_object_condition(
           filtered_object, previous_object_decisions, ego_rear_segment, filtering_data, params)) {

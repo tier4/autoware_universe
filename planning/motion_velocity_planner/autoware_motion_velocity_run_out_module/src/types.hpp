@@ -20,10 +20,14 @@
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <rclcpp/time.hpp>
 
+#include <boost/geometry.hpp>
+#include <boost/geometry/algorithms/disjoint.hpp>
+#include <boost/geometry/index/predicates.hpp>
 #include <boost/geometry/index/rtree.hpp>
 
 #include <deque>
 #include <iomanip>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -80,6 +84,8 @@ struct FootprintIntersections
 namespace bgi = boost::geometry::index;
 using SegmentNode = std::pair<universe_utils::Segment2d, size_t>;
 using SegmentRtree = bgi::rtree<SegmentNode, bgi::rstar<16>>;
+using PolygonNode = std::pair<universe_utils::Box2d, size_t>;
+using PolygonRtree = bgi::rtree<PolygonNode, bgi::rstar<16>>;
 using FootprintSegmentNode =
   std::pair<universe_utils::Segment2d, std::pair<IntersectionPosition, size_t>>;
 using FootprintSegmentRtree = bgi::rtree<FootprintSegmentNode, bgi::rstar<16>>;
@@ -302,8 +308,7 @@ struct Object
   universe_utils::Point2d position;
   bool is_pedestrian = false;
   bool is_road_object = false;
-  bool is_on_ego_trajectory = false;
-  bool has_parked_label = false;
+  bool is_stopped = false;
   bool has_target_label = false;
   std::vector<Collision> collisions;  // collisions with the ego trajectory
 };
@@ -311,10 +316,29 @@ struct Object
 /// @brief data to filter predicted paths and collisions
 struct FilteringData
 {
-  std::vector<universe_utils::LinearRing2d> ignore_pedestrian_polygons;
-  std::vector<universe_utils::LinearRing2d> ignore_road_object_polygons;
+  std::vector<universe_utils::LinearRing2d> ignore_pedestrians_polygons;
+  PolygonRtree ignore_pedestrians_rtree;
+  std::vector<universe_utils::LinearRing2d> ignore_road_objects_polygons;
+  PolygonRtree ignore_road_objects_rtree;
   std::vector<universe_utils::Segment2d> cut_predicted_paths_segments;
   SegmentRtree cut_predicted_paths_rtree;
+
+  /// @brief return true if the given geometry is disjoint from the polygons
+  template <class T>
+  static bool disjoint(
+    const T & geometry, const PolygonRtree & rtree,
+    const std::vector<universe_utils::LinearRing2d> & polygons)
+  {
+    std::vector<PolygonNode> query_results;
+    rtree.query(!bgi::disjoint(geometry), std::back_inserter(query_results));
+    for (const auto & query_result : query_results) {
+      const auto & polygon = polygons[query_result.second];
+      if (!boost::geometry::disjoint(geometry, polygon)) {
+        return false;
+      }
+    }
+    return true;
+  }
 };
 
 }  // namespace autoware::motion_velocity_planner::run_out

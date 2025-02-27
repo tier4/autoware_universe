@@ -26,7 +26,7 @@
 #include <rclcpp/duration.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
-#include <geometry_msgs/msg/detail/point__struct.hpp>
+#include <geometry_msgs/msg/point.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -308,7 +308,7 @@ inline MarkerArray make_debug_filtering_data_marker(const FilteringData & data)
   m.ns = "filtering_data_ignore_pedestrians";
   m.points.clear();
   m.color = universe_utils::createMarkerColor(0.0, 0.0, 1.0, 0.75);
-  for (const auto & poly : data.ignore_pedestrian_polygons) {
+  for (const auto & poly : data.ignore_pedestrians_polygons) {
     for (auto i = 0UL; i + 1 < poly.size(); ++i) {
       p.x = poly[i].x();
       p.y = poly[i].y();
@@ -322,7 +322,7 @@ inline MarkerArray make_debug_filtering_data_marker(const FilteringData & data)
   m.ns = "filtering_data_ignore_road_objects";
   m.points.clear();
   m.color = universe_utils::createMarkerColor(0.0, 1.0, 0.0, 0.75);
-  for (const auto & poly : data.ignore_road_object_polygons) {
+  for (const auto & poly : data.ignore_road_objects_polygons) {
     for (auto i = 0UL; i + 1 < poly.size(); ++i) {
       p.x = poly[i].x();
       p.y = poly[i].y();
