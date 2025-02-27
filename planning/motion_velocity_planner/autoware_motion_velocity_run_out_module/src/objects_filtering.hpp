@@ -244,8 +244,8 @@ inline void filter_predicted_paths(
           p3.x = candidate.first.first.x();
           p3.y = candidate.first.first.y();
           geometry_msgs::msg::Point p4;
-          p3.x = candidate.first.second.x();
-          p3.y = candidate.first.second.y();
+          p4.x = candidate.first.second.x();
+          p4.y = candidate.first.second.y();
           if (universe_utils::intersect(
                 p1, p2, p3, p4)) {
             cut = true;
