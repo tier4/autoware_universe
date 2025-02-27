@@ -1025,7 +1025,11 @@ BehaviorModuleOutput GoalPlannerModule::plan()
   }
 
   fixed_goal_planner_->setPreviousModuleOutput(getPreviousModuleOutput());
-  return fixed_goal_planner_->plan(planner_data_);
+  BehaviorModuleOutput fixed_plan = fixed_goal_planner_->plan(planner_data_);
+  if (fixed_plan.path.points.empty()) {
+      return getPreviousModuleOutput();
+  }
+  return fixed_plan;
 }
 
 void sortPullOverPaths(
