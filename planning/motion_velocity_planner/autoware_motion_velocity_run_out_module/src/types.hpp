@@ -90,6 +90,7 @@ struct TrajectoryCornerFootprint
   universe_utils::Polygon2d front_polygon;  // polygon built from the front linestrings
   universe_utils::Polygon2d rear_polygon;   // polygon built from the rear linestrings
   FootprintSegmentRtree rtree;
+  double max_longitudinal_offset;  // [m] distance between baselink and the front of the vehicle
 
   /// @brief get the segment from rear left corner to rear right corner
   [[nodiscard]] universe_utils::Segment2d get_rear_segment() const

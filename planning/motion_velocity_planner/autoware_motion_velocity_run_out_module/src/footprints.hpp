@@ -83,6 +83,7 @@ inline run_out::TrajectoryCornerFootprint calculate_trajectory_corner_footprint(
       base_link.x() + rotated_rear_right_offset.x(), base_link.y() + rotated_rear_right_offset.y());
     footprint.corner_linestrings[rear_left].emplace_back(
       base_link.x() + rotated_rear_left_offset.x(), base_link.y() + rotated_rear_left_offset.y());
+    trajectory_footprint.max_longitudinal_offset = vehicle_info.max_longitudinal_offset_m;
   }
 
   const auto push_to_polygon_fn = [](universe_utils::Polygon2d & poly) {
