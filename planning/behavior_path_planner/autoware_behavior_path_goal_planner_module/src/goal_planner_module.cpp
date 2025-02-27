@@ -2067,6 +2067,41 @@ double GoalPlannerModule::calcSignedArcLengthFromEgo(
     path.points, current_pose.position, ego_idx, pose.position, target_idx);
 }
 
+bool GoalPlannerModule::checkShoulderLaneContinuity(const lanelet::ConstLanelet & shoulder_lane) const
+{
+  const auto & route_handler = planner_data_->route_handler;
+  const auto & goal_pose = planner_data_->route_handler->getOriginalGoalPose();
+  
+  std::optional<lanelet::ConstLanelet> goal_shoulder_lane_opt = route_handler->getPullOverTarget(goal_pose);
+  
+  if (!goal_shoulder_lane_opt) {
+    RCLCPP_WARN(getLogger(), "No shoulder lane at goal pose");
+    return false;
+  }
+  
+  const auto & goal_shoulder_lane = goal_shoulder_lane_opt.value();
+  
+  if (shoulder_lane.id() == goal_shoulder_lane.id()) {
+    return true;
+  }
+  
+  const auto routing_graph = route_handler->getRoutingGraphPtr();
+  if (!routing_graph) {
+    return false;
+  }
+  
+  auto optional_route = routing_graph->getRoute(shoulder_lane, goal_shoulder_lane, 0);
+  
+  if (optional_route) {
+    return true;
+  } else {
+    RCLCPP_WARN(
+      getLogger(), "No valid route found between shoulder lanes: %ld -> %ld", 
+      shoulder_lane.id(), goal_shoulder_lane.id());
+    return false;
+  }
+}
+
 void GoalPlannerModule::deceleratePath(PullOverPath & pull_over_path) const
 {
   universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
@@ -2184,6 +2219,11 @@ bool GoalPlannerModule::isCrossingPossible(
   lanelet::ConstLanelets end_lane_sequence{};
   const bool is_shoulder_lane = route_handler->isShoulderLanelet(end_lane);
   if (is_shoulder_lane) {
+    bool is_shoulder_continuous = checkShoulderLaneContinuity(end_lane);
+    if (!is_shoulder_continuous) {
+      RCLCPP_WARN(getLogger(), "Shoulder lane is not continuous");
+      return false;
+    }
     Pose end_lane_pose{};
     end_lane_pose.orientation.w = 1.0;
     end_lane_pose.position = lanelet::utils::conversion::toGeomMsgPt(end_lane.centerline().front());
