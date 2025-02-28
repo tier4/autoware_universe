@@ -367,7 +367,7 @@ private:
 class PlannerManager
 {
 public:
-  PlannerManager(rclcpp::Node & node, const size_t max_iteration_num);
+  PlannerManager(rclcpp::Node & node);
 
   /**
    * @brief run all candidate and approved modules.

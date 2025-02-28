@@ -159,7 +159,6 @@ BehaviorPathPlannerParameters BehaviorPathPlannerNode::getCommonParam()
 {
   BehaviorPathPlannerParameters p{};
 
-  p.max_iteration_num = declare_parameter<int>("max_iteration_num");
   p.traffic_light_signal_timeout = declare_parameter<double>("traffic_light_signal_timeout");
 
   // vehicle info
