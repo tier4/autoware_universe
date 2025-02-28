@@ -206,7 +206,7 @@ public:
     });
   }
 
-  bool canLaunchNewModule() const { return observers_.size() < config_.max_module_size; }
+  bool canLaunchNewModule() const { return observers_.empty(); }
 
   virtual bool isSimultaneousExecutableAsApprovedModule() const
   {
