@@ -164,17 +164,14 @@ VelocityPlanningResult RunOutModule::plan(
     filtered_objects, ego_footprint, smoothed_trajectory_points, params_);
   time_keeper_->end_track("calc_collisions()");
   time_keeper_->start_track("calc_decisions()");
-  const auto ego_is_stopped = planner_data->current_odometry.twist.twist.linear.x < 1e-2;
-  run_out::calculate_decisions(decisions_tracker_, filtered_objects, now, ego_is_stopped, params_);
-  time_keeper_->end_track("calc_decisions()");
-  time_keeper_->start_track("calc_slowdowns()");
   const auto comfortable_time_to_stop = calculate_comfortable_time_to_stop(
     smoothed_trajectory_points, planner_data->calculate_min_deceleration_distance(0.0));
-  if (params_.enable_deceleration_limit) {
-    ignore_unavoidable_collision(comfortable_time_to_stop);
-  }
-  const auto result =
-    run_out::calculate_slowdowns(decisions_tracker_, smoothed_trajectory_points, params_);
+  run_out::calculate_decisions(
+    decisions_tracker_, filtered_objects, now, comfortable_time_to_stop, params_);
+  time_keeper_->end_track("calc_decisions()");
+  time_keeper_->start_track("calc_slowdowns()");
+  const auto result = run_out::calculate_slowdowns(
+    decisions_tracker_, smoothed_trajectory_points, *planner_data, params_);
   time_keeper_->end_track("calc_slowdowns()");
 
   time_keeper_->start_track("publish_debug()");

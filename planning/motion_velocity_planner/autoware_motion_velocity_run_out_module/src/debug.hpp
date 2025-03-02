@@ -246,6 +246,7 @@ inline motion_utils::VirtualWalls create_virtual_walls(
   }
   for (const auto & slowdown : result.slowdown_intervals) {
     wall.style = motion_utils::VirtualWallType::slowdown;
+    wall.text += " [SLOW]";
     const auto length = motion_utils::calcSignedArcLength(trajectory, 0, slowdown.from);
     wall.pose = motion_utils::calcInterpolatedPose(trajectory, length);
     wall.pose.position = slowdown.from;
