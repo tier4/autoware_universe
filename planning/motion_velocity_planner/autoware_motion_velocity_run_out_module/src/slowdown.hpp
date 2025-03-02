@@ -21,9 +21,9 @@
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
+#include <autoware/motion_velocity_planner_common/planner_data.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 
-#include <autoware_planning_msgs/msg/detail/trajectory_point__struct.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <geometry_msgs/msg/point.hpp>
 
@@ -33,6 +33,9 @@
 namespace autoware::motion_velocity_planner::run_out
 {
 /// @brief calculate the interpolated point along the trajectory at the given time from start
+/// @param trajectory ego trajectory starting from the ego pose
+/// @param time [s] requested time
+/// @return trajectory point corresponding to the given time
 inline geometry_msgs::msg::Point interpolated_point_at_time(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory, const double time)
 {
@@ -53,6 +56,11 @@ inline geometry_msgs::msg::Point interpolated_point_at_time(
     prev_it->pose.position, std::next(prev_it)->pose.position, ratio);
 }
 
+/// @brief calculate the stop for the given decision history
+/// @param [inout] history decision history
+/// @param [in] trajectory ego trajectory starting from the current ego pose
+/// @param [in] params module parameters
+/// @return stop point
 inline std::optional<geometry_msgs::msg::Point> calculate_stop_position(
   DecisionHistory & history,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
@@ -84,16 +92,61 @@ inline std::optional<geometry_msgs::msg::Point> calculate_stop_position(
   return stop_position;
 }
 
+/// @brief calculate the slowdown for the given decision history
+/// @param [inout] history decision history
+/// @param [in] trajectory ego trajectory starting from the current ego pose
+/// @param [in] planner_data planner data with deceleration limits
+/// @param [in] params module parameters
+/// @return slowdown interval (from point, to point, velocity)
+inline std::optional<SlowdownInterval> calculate_slowdown_interval(
+  DecisionHistory & history,
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
+  const PlannerData & planner_data, const Parameters & params)
+{
+  std::optional<SlowdownInterval> interval;
+  auto & current_decision = history.decisions.back();
+  if (current_decision.type == slowdown) {
+    const auto t_collision = current_decision.collision->ego_time_interval.from;
+    const auto p_collision = interpolated_point_at_time(trajectory, t_collision);
+    auto from_arc_length = motion_utils::calcSignedArcLength(trajectory, 0, p_collision) -
+                           params.preventive_slowdown_distance_buffer;
+    const auto p_slowdown =
+      motion_utils::calcInterpolatedPose(trajectory, from_arc_length).position;
+    // TODO(Maxime): add option to use decel limit (instead of comfortable decel)
+    // safe velocity that guarantees we can stop before the collision
+    const auto safe_velocity = std::sqrt(
+      2.0 * -planner_data.velocity_smoother_->getMinDecel() *
+      params.preventive_slowdown_distance_buffer);
+    // smooth velocity we can reach by smoothly decelerating to the slowdown point
+    const auto smooth_velocity = std::sqrt(
+      2.0 * -planner_data.velocity_smoother_->getMinDecel() *
+      planner_data.current_odometry.twist.twist.linear.x * from_arc_length);
+    interval.emplace(p_slowdown, p_collision, std::max({0.0, safe_velocity, smooth_velocity}));
+  }
+  return interval;
+}
+
+/// @brief calculate slowdowns for the given decisions
+/// @param [inout] decision_tracker decision history of all objects
+/// @param [in] trajectory ego trajectory starting from current pose
+/// @param [in] planner_data planner data with deceleration limits
+/// @param [in] params module parameters
+/// @return result with the calculated stop point and slowdown intervals
 inline VelocityPlanningResult calculate_slowdowns(
   ObjectDecisionsTracker & decision_tracker,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
-  const Parameters & params)
+  const PlannerData & planner_data, const Parameters & params)
 {
   VelocityPlanningResult result;
   for (auto & [object, history] : decision_tracker.history_per_object) {
     const auto stop_position = calculate_stop_position(history, trajectory, params);
     if (stop_position) {
       result.stop_points.push_back(*stop_position);
+    }
+    const auto slowdown_interval =
+      calculate_slowdown_interval(history, trajectory, planner_data, params);
+    if (slowdown_interval) {
+      result.slowdown_intervals.push_back(*slowdown_interval);
     }
   }
   return result;

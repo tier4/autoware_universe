@@ -48,6 +48,13 @@ struct Parameters
   bool keep_stop_until_object_is_gone;  // if true, once ego stopped for an object we keep the stop
                                         // decision until the object is gone
 
+  double preventive_slowdown_on_time_buffer;  // [s] successive collision detection time required to
+                                              // start the slowdown decision
+  double preventive_slowdown_off_time_buffer;  // [s] successive non-collision detection time
+                                               // required to remove the slowdown decision
+  double preventive_slowdown_distance_buffer;  // [m] longitudinal distance between the collision
+                                               // and the slowdown positions
+
   bool enable_passing_collisions;         // If true, a collision where ego arrives first is ignored
   double passing_collisions_time_margin;  // [s] required time margin to decide a passing_collision
   double passing_max_overlap_duration;    // [s] the collision is not ignored if ego is predicted to
@@ -86,6 +93,12 @@ struct Parameters
     stop_off_time_buffer = getOrDeclareParameter<double>(node, ns + ".stop.off_time_buffer");
     stop_on_time_buffer = getOrDeclareParameter<double>(node, ns + ".stop.on_time_buffer");
     stop_distance_buffer = getOrDeclareParameter<double>(node, ns + ".stop.distance_buffer");
+    preventive_slowdown_off_time_buffer =
+      getOrDeclareParameter<double>(node, ns + ".preventive_slowdown.off_time_buffer");
+    preventive_slowdown_on_time_buffer =
+      getOrDeclareParameter<double>(node, ns + ".preventive_slowdown.on_time_buffer");
+    preventive_slowdown_distance_buffer =
+      getOrDeclareParameter<double>(node, ns + ".preventive_slowdown.distance_buffer");
     stop_calculate_earliest_within_history =
       getOrDeclareParameter<bool>(node, ns + ".stop.calculate_earliest_position_within_history");
     keep_stop_until_object_is_gone =
@@ -122,15 +135,19 @@ struct Parameters
   void update(const std::vector<rclcpp::Parameter> & params, const std::string & ns)
   {
     using universe_utils::updateParam;
-    updateParam(params, ns + ".stop_on_time_buffer", stop_on_time_buffer);
-    updateParam(params, ns + ".stop_off_time_buffer", stop_off_time_buffer);
     updateParam(params, ns + ".passing.enable_passing_margin", enable_passing_collisions);
     updateParam(params, ns + ".passing.time_margin", passing_collisions_time_margin);
     updateParam(params, ns + ".passing.max_overlap_duration", passing_max_overlap_duration);
     updateParam(params, ns + ".passing.enable_deceleration_limit", enable_deceleration_limit);
-    updateParam(params, ns + ".stop_off_time_buffer", stop_off_time_buffer);
-    updateParam(params, ns + ".stop_on_time_buffer", stop_on_time_buffer);
-    updateParam(params, ns + ".stop_distance_buffer", stop_distance_buffer);
+    updateParam(
+      params, ns + ".preventive_slowdown.on_time_buffer", preventive_slowdown_on_time_buffer);
+    updateParam(
+      params, ns + ".preventive_slowdown.off_time_buffer", preventive_slowdown_off_time_buffer);
+    updateParam(
+      params, ns + ".preventive_slowdown.distance_buffer", preventive_slowdown_distance_buffer);
+    updateParam(params, ns + ".stop.on_time_buffer", stop_on_time_buffer);
+    updateParam(params, ns + ".stop.off_time_buffer", stop_off_time_buffer);
+    updateParam(params, ns + ".stop.distance_buffer", stop_distance_buffer);
     updateParam(
       params, ns + ".stop.calculate_earliest_position_within_history",
       stop_calculate_earliest_within_history);
