@@ -15,11 +15,14 @@
 #ifndef CONVERTER_HPP_
 #define CONVERTER_HPP_
 
+#include "mode_interface.hpp"
+
 #include <diagnostic_graph_utils/subscription.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_system_msgs/msg/hazard_status_stamped.hpp>
 
+#include <unordered_map>
 #include <unordered_set>
 
 namespace hazard_status_converter
@@ -39,8 +42,14 @@ private:
   diagnostic_graph_utils::DiagGraphSubscription sub_graph_;
   rclcpp::Publisher<HazardStatusStamped>::SharedPtr pub_hazard_;
 
-  DiagUnit * auto_mode_root_;
-  std::unordered_set<DiagUnit *> auto_mode_tree_;
+  struct ModeSubgraph
+  {
+    DiagUnit * root;
+    std::unordered_set<DiagUnit *> nodes;
+  };
+
+  ModeInterface mode_interface_;
+  std::unordered_map<RootModeStatus::Mode, ModeSubgraph> mode_subgraphs_;
 };
 
 }  // namespace hazard_status_converter
