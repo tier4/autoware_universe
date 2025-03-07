@@ -25,6 +25,7 @@
 #include <boost/geometry/index/predicates.hpp>
 #include <boost/geometry/index/rtree.hpp>
 
+#include <cstdint>
 #include <deque>
 #include <iomanip>
 #include <iterator>
@@ -312,9 +313,8 @@ struct Object
   std::vector<ObjectCornerFootprint> corner_footprints;  // footprint of each predicted path
   universe_utils::Polygon2d current_footprint;
   universe_utils::Point2d position;
-  bool is_pedestrian = false;
-  bool is_road_object = false;
   bool is_stopped = false;
+  uint8_t label;
   bool has_target_label = false;
   std::vector<Collision> collisions;  // collisions with the ego trajectory
 };
@@ -322,30 +322,27 @@ struct Object
 /// @brief data to filter predicted paths and collisions
 struct FilteringData
 {
-  std::vector<universe_utils::LinearRing2d> ignore_pedestrians_polygons;
-  PolygonRtree ignore_pedestrians_rtree;
-  std::vector<universe_utils::LinearRing2d> ignore_road_objects_polygons;
-  PolygonRtree ignore_road_objects_rtree;
+  std::vector<universe_utils::LinearRing2d> ignore_polygons;
+  PolygonRtree ignore_rtree;
   std::vector<universe_utils::Segment2d> cut_predicted_paths_segments;
   SegmentRtree cut_predicted_paths_rtree;
 
   /// @brief return true if the given geometry is disjoint from the polygons
   template <class T>
-  static bool disjoint(
-    const T & geometry, const PolygonRtree & rtree,
-    const std::vector<universe_utils::LinearRing2d> & polygons)
+  bool to_be_ignored(const T & geometry) const
   {
     std::vector<PolygonNode> query_results;
-    rtree.query(!bgi::disjoint(geometry), std::back_inserter(query_results));
+    ignore_rtree.query(!bgi::disjoint(geometry), std::back_inserter(query_results));
     for (const auto & query_result : query_results) {
-      const auto & polygon = polygons[query_result.second];
+      const auto & polygon = ignore_polygons[query_result.second];
       if (!boost::geometry::disjoint(geometry, polygon)) {
-        return false;
+        return true;
       }
     }
-    return true;
+    return false;
   }
 };
+using FilteringDataPerLabel = std::vector<FilteringData>;
 
 }  // namespace autoware::motion_velocity_planner::run_out
 
