@@ -367,7 +367,7 @@ void MultiObjectTracker::checkTrackerLifeCycle(
   std::list<std::shared_ptr<Tracker>> & list_tracker, const rclcpp::Time & time)
 {
   /* params */
-  constexpr float max_elapsed_time = 1.0;
+  constexpr float max_elapsed_time = 2.0;
 
   /* delete tracker */
   for (auto itr = list_tracker.begin(); itr != list_tracker.end(); ++itr) {
