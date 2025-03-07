@@ -27,6 +27,7 @@
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <rclcpp/duration.hpp>
 
+#include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/detail/pose__struct.hpp>
 
@@ -180,7 +181,8 @@ VelocityPlanningResult RunOutModule::plan(
   virtual_wall_publisher_->publish(virtual_wall_marker_creator.create_markers(now));
   debug_publisher_->publish(run_out::make_debug_markers(
     ego_footprint, filtered_objects, decisions_tracker_, smoothed_trajectory_points,
-    comfortable_time_to_stop, filtering_data));
+    comfortable_time_to_stop,
+    filtering_data[autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN]));
 
   time_keeper_->end_track("publish_debug()");
   time_keeper_->end_track("plan()");

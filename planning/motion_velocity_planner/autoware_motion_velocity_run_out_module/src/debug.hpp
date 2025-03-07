@@ -307,24 +307,10 @@ inline MarkerArray make_debug_filtering_data_marker(const FilteringData & data)
     m.points.push_back(p);
   }
   markers.markers.push_back(m);
-  m.ns = "filtering_data_ignore_pedestrians";
+  m.ns = "filtering_data_ignore_objects";
   m.points.clear();
   m.color = universe_utils::createMarkerColor(0.0, 0.0, 1.0, 0.75);
-  for (const auto & poly : data.ignore_pedestrians_polygons) {
-    for (auto i = 0UL; i + 1 < poly.size(); ++i) {
-      p.x = poly[i].x();
-      p.y = poly[i].y();
-      m.points.push_back(p);
-      p.x = poly[i + 1].x();
-      p.y = poly[i + 1].y();
-      m.points.push_back(p);
-    }
-  }
-  markers.markers.push_back(m);
-  m.ns = "filtering_data_ignore_road_objects";
-  m.points.clear();
-  m.color = universe_utils::createMarkerColor(0.0, 1.0, 0.0, 0.75);
-  for (const auto & poly : data.ignore_road_objects_polygons) {
+  for (const auto & poly : data.ignore_polygons) {
     for (auto i = 0UL; i + 1 < poly.size(); ++i) {
       p.x = poly[i].x();
       p.y = poly[i].y();
