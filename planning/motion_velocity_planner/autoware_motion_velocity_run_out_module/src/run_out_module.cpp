@@ -178,12 +178,10 @@ VelocityPlanningResult RunOutModule::plan(
   virtual_wall_marker_creator.add_virtual_walls(run_out::create_virtual_walls(
     result, smoothed_trajectory_points, planner_data->vehicle_info_.max_longitudinal_offset_m));
   virtual_wall_publisher_->publish(virtual_wall_marker_creator.create_markers(now));
-  debug_publisher_->publish(run_out::make_debug_footprint_markers(ego_footprint, filtered_objects));
-  debug_publisher_->publish(run_out::make_debug_object_markers(filtered_objects));
-  debug_publisher_->publish(run_out::make_debug_decisions_markers(decisions_tracker_));
-  debug_publisher_->publish(
-    run_out::make_debug_min_stop_marker(smoothed_trajectory_points, comfortable_time_to_stop));
-  debug_publisher_->publish(run_out::make_debug_filtering_data_marker(filtering_data));
+  debug_publisher_->publish(run_out::make_debug_markers(
+    ego_footprint, filtered_objects, decisions_tracker_, smoothed_trajectory_points,
+    comfortable_time_to_stop, filtering_data));
+
   time_keeper_->end_track("publish_debug()");
   time_keeper_->end_track("plan()");
   diagnostic_updater_->force_update();

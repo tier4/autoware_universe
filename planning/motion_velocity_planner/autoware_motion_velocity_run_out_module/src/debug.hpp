@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <iterator>
 #include <vector>
 
 namespace autoware::motion_velocity_planner::run_out
@@ -334,6 +335,26 @@ inline MarkerArray make_debug_filtering_data_marker(const FilteringData & data)
     }
   }
   markers.markers.push_back(m);
+  return markers;
+}
+
+inline MarkerArray make_debug_markers(
+  const TrajectoryCornerFootprint & ego_footprint, const std::vector<Object> & filtered_objects,
+  const ObjectDecisionsTracker & decisions_tracker,
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & smoothed_trajectory_points,
+  const double comfortable_time_to_stop, const FilteringData & filtering_data)
+{
+  MarkerArray markers;
+  const auto concat = [&](MarkerArray && a) {
+    markers.markers.insert(
+      markers.markers.end(), std::make_move_iterator(a.markers.begin()),
+      std::make_move_iterator(a.markers.end()));
+  };
+  concat(run_out::make_debug_footprint_markers(ego_footprint, filtered_objects));
+  concat(run_out::make_debug_object_markers(filtered_objects));
+  concat(run_out::make_debug_decisions_markers(decisions_tracker));
+  concat(run_out::make_debug_min_stop_marker(smoothed_trajectory_points, comfortable_time_to_stop));
+  concat(run_out::make_debug_filtering_data_marker(filtering_data));
   return markers;
 }
 
