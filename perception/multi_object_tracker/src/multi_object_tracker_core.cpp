@@ -389,7 +389,6 @@ void MultiObjectTracker::sanitizeTracker(
   /* delete collision tracker */
   for (auto itr1 = list_tracker.begin(); itr1 != list_tracker.end(); ++itr1) {
     autoware_auto_perception_msgs::msg::TrackedObject object1;
-    bool should_delete_tracker1 = false;
     (*itr1)->getTrackedObject(time, object1);
     for (auto itr2 = std::next(itr1); itr2 != list_tracker.end(); ++itr2) {
       autoware_auto_perception_msgs::msg::TrackedObject object2;
@@ -407,6 +406,7 @@ void MultiObjectTracker::sanitizeTracker(
       const auto iou = object_recognition_utils::get2dIoU(object1, object2, min_union_iou_area);
       const auto & label1 = (*itr1)->getHighestProbLabel();
       const auto & label2 = (*itr2)->getHighestProbLabel();
+      bool should_delete_tracker1 = false;
       bool should_delete_tracker2 = false;
 
       // If at least one of them is UNKNOWN, delete the one with lower IOU. Because the UNKNOWN
@@ -434,15 +434,15 @@ void MultiObjectTracker::sanitizeTracker(
           }
         }
       }
-      if (should_delete_tracker2) {
-        itr2 = list_tracker.erase(itr2);
-        --itr2;
-        break;
-      }
-    }
-    if (should_delete_tracker1) {
+
+      if (should_delete_tracker1) {
         itr1 = list_tracker.erase(itr1);
         --itr1;
+        break;
+      } else if (should_delete_tracker2) {
+        itr2 = list_tracker.erase(itr2);
+        --itr2;
+      }
     }
   }
 }
