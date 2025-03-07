@@ -45,33 +45,34 @@ namespace autoware::motion_velocity_planner::run_out
 
 /// @brief return true if the given object has a classification label matching the given label
 /// vector
-inline bool has_classification_label(
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const std::vector<std::string> & labels)
+inline uint8_t get_most_probable_classification_label(
+  const autoware_perception_msgs::msg::PredictedObject & object)
 {
+  double highest_probability = 0.0;
+  uint8_t most_probable_label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
   for (const auto & classification : object.classification) {
-    for (const auto & label : labels) {
-      if (label == Parameters::label_to_string(classification.label)) {
-        return true;
-      }
+    if (classification.probability > highest_probability) {
+      highest_probability = classification.probability;
+      most_probable_label = classification.label;
     }
   }
-  return false;
+  return most_probable_label;
 }
 
 inline void classify(
   Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   const Parameters & params)
 {
+  object.label = get_most_probable_classification_label(predicted_object);
+  object.has_target_label =
+    std::find(
+      params.objects_target_labels.begin(), params.objects_target_labels.end(),
+      Parameters::label_to_string(object.label)) != params.objects_target_labels.end();
   if (
     predicted_object.kinematics.initial_twist_with_covariance.twist.linear.x <=
-    params.objects_stopped_velocity_threshold) {
+    params.object_parameters_per_label[object.label].stopped_velocity_threshold) {
     object.is_stopped = true;
   }
-  if (has_classification_label(predicted_object, params.objects_target_labels)) {
-    object.has_target_label = true;
-  }
-  object.is_pedestrian = has_classification_label(predicted_object, {"PEDESTRIAN"});
 }
 
 inline void calculate_current_footprint(
@@ -93,7 +94,7 @@ inline bool skip_object_condition(
   const auto rear_normal = universe_utils::Point2d(-rear_vector.y(), rear_vector.x());
   const auto object_vector = object.position - ego_rear_segment.first;
   const auto is_behind_ego = rear_normal.dot(object_vector) < 0.0;
-  if (params.objects_ignore_if_behind_ego && is_behind_ego) {
+  if (params.object_parameters_per_label[object.label].ignore_if_behind_ego && is_behind_ego) {
     return skip_object;
   }
   const auto & is_previous_target =
@@ -103,42 +104,32 @@ inline bool skip_object_condition(
   if (is_previous_target) {
     return !skip_object;
   }
-  if (params.objects_ignore_if_stopped && object.is_stopped) {
+  if (params.object_parameters_per_label[object.label].ignore_if_stopped && object.is_stopped) {
     return skip_object;
   }
   if (!object.has_target_label) {
     return skip_object;
   }
-  if (object.is_pedestrian) {
-    if (!FilteringData::disjoint(
-          object.current_footprint, filtering_data.ignore_pedestrians_rtree,
-          filtering_data.ignore_pedestrians_polygons)) {
-      return skip_object;
-    }
-  }
-  if (!object.is_pedestrian) {
-    if (!FilteringData::disjoint(
-          object.current_footprint, filtering_data.ignore_road_objects_rtree,
-          filtering_data.ignore_road_objects_polygons)) {
-      return skip_object;
-    }
+  if (filtering_data.to_be_ignored(object.current_footprint)) {
+    return skip_object;
   }
   return !skip_object;
 }
 
 inline std::vector<autoware_perception_msgs::msg::PredictedPath> filter_by_confidence(
   const std::vector<autoware_perception_msgs::msg::PredictedPath> & predicted_paths,
-  const Parameters & params)
+  const uint8_t label, const Parameters & params)
 {
   std::vector<autoware_perception_msgs::msg::PredictedPath> filtered;
   auto max_confidence = 0.0f;
   for (const auto & path : predicted_paths) {
     max_confidence = std::max(max_confidence, path.confidence);
-    if (path.confidence >= params.objects_confidence_filtering_threshold) {
+    if (
+      path.confidence >= params.object_parameters_per_label[label].confidence_filtering_threshold) {
       filtered.push_back(path);
     }
   }
-  if (params.objects_confidence_filtering_only_use_highest) {
+  if (params.object_parameters_per_label[label].confidence_filtering_only_use_highest) {
     const auto new_end = std::remove_if(filtered.begin(), filtered.end(), [&](const auto & p) {
       return p.confidence != max_confidence;
     });
@@ -153,7 +144,7 @@ inline void calculate_predicted_path_footprints(
 {
   // calculate footprint
   for (const auto & path :
-       filter_by_confidence(predicted_object.kinematics.predicted_paths, params)) {
+       filter_by_confidence(predicted_object.kinematics.predicted_paths, object.label, params)) {
     ObjectCornerFootprint footprint;
     footprint.time_step = rclcpp::Duration(path.time_step).seconds();
     const auto half_length = predicted_object.shape.dimensions.x * 0.5;
@@ -261,7 +252,7 @@ inline void filter_predicted_paths(
         break;
       }
     }
-    if (params.objects_cut_if_crossing_ego_from_behind) {
+    if (params.object_parameters_per_label[object.label].cut_if_crossing_ego_from_behind) {
       const auto first_intersecting_idx =
         get_first_intersecting_segment_idx(corner_footprint, ego_rear_segment);
       if (first_intersecting_idx) {
@@ -280,7 +271,7 @@ inline void filter_predicted_paths(
 inline std::vector<Object> prepare_dynamic_objects(
   const std::vector<autoware_perception_msgs::msg::PredictedObject> & objects,
   const TrajectoryCornerFootprint & ego_trajectory,
-  const ObjectDecisionsTracker & previous_decisions, const FilteringData & filtering_data,
+  const ObjectDecisionsTracker & previous_decisions, const FilteringDataPerLabel & filtering_data,
   const Parameters & params)
 {
   std::vector<Object> filtered_objects;
@@ -296,11 +287,13 @@ inline std::vector<Object> prepare_dynamic_objects(
     calculate_current_footprint(filtered_object, object);
     const auto & previous_object_decisions = previous_decisions.get(filtered_object.uuid);
     if (skip_object_condition(
-          filtered_object, previous_object_decisions, ego_rear_segment, filtering_data, params)) {
+          filtered_object, previous_object_decisions, ego_rear_segment,
+          filtering_data[filtered_object.label], params)) {
       continue;
     }
     calculate_predicted_path_footprints(filtered_object, object, params);
-    filter_predicted_paths(filtered_object, ego_rear_segment, filtering_data, params);
+    filter_predicted_paths(
+      filtered_object, ego_rear_segment, filtering_data[filtered_object.label], params);
     if (!filtered_object.corner_footprints.empty()) {
       filtered_objects.push_back(filtered_object);
     }

@@ -42,7 +42,7 @@ universe_utils::Segment2d convert(const lanelet::Segment<T> & segment)
   return {{segment.first.x(), segment.first.y()}, {segment.second.x(), segment.second.y()}};
 }
 
-inline FilteringData calculate_filtering_data(
+inline FilteringDataPerLabel calculate_filtering_data(
   const lanelet::LaneletMapPtr & map_ptr, const TrajectoryCornerFootprint & ego_footprint,
   const std::vector<autoware_perception_msgs::msg::PredictedObject> & objects, const Parameters & params)
 {
@@ -55,54 +55,71 @@ inline FilteringData calculate_filtering_data(
     const auto p = o.kinematics.initial_pose_with_covariance.pose.position;
     bounding_box.extend(universe_utils::Point2d(p.x, p.y));
   }
-  FilteringData data;
-  data.cut_predicted_paths_segments.push_back(ego_footprint.get_rear_segment());
+  FilteringDataPerLabel data_per_label;
+  const auto all_labels = Parameters::all_labels();
+  data_per_label.resize(all_labels.size());
+  for (const auto label : all_labels) {
+    data_per_label[label].cut_predicted_paths_segments.push_back(ego_footprint.get_rear_segment());
+  }
   const auto lanelets_in_range = map_ptr->laneletLayer.search(bounding_box);
   universe_utils::Segment2d segment;
   for (const auto & ll : lanelets_in_range) {
     const auto attribute = ll.attributeOr(lanelet::AttributeName::Subtype, std::string());
-    const auto & types = params.objects_cut_polygon_types;
-    if (std::find(types.begin(), types.end(), attribute) != types.end()) {
-      for (auto i = 0UL; i < ll.polygon2d().numSegments(); ++i) {
-        data.cut_predicted_paths_segments.push_back(convert(ll.polygon2d().segment(i)));
+    for (const auto label : all_labels) {
+      auto & data = data_per_label[label];
+      const auto & params = parameters.object_parameters_per_label[label];
+      const auto & types = params.cut_polygon_types;
+      if (std::find(types.begin(), types.end(), attribute) != types.end()) {
+        for (auto i = 0UL; i < ll.polygon2d().numSegments(); ++i) {
+          data.cut_predicted_paths_segments.push_back(convert(ll.polygon2d().segment(i)));
+        }
       }
-    }
-    if (
-      params.objects_ignore_if_pedestrian_on_crosswalk &&
-      attribute == lanelet::AttributeValueString::Crosswalk) {
-      universe_utils::LinearRing2d polygon;
-      boost::geometry::convert(ll.polygon2d().basicPolygon(), polygon);
-      data.ignore_pedestrians_polygons.push_back(polygon);
+      if (params.ignore_if_on_crosswalk && attribute == lanelet::AttributeValueString::Crosswalk) {
+        universe_utils::LinearRing2d polygon;
+        boost::geometry::convert(ll.polygon2d().basicPolygon(), polygon);
+        data.ignore_polygons.push_back(polygon);
+      }
     }
   }
   const auto polygons_in_range = map_ptr->polygonLayer.search(bounding_box);
   for (const auto & p : polygons_in_range) {
     const auto attribute = p.attributeOr(lanelet::AttributeName::Subtype, std::string());
-    const auto & types = params.objects_cut_polygon_types;
-    if (std::find(types.begin(), types.end(), attribute) != types.end()) {
-      for (auto i = 0UL; i < p.numSegments(); ++i) {
-        data.cut_predicted_paths_segments.push_back(convert(p.segment(i)));
+    for (const auto label : all_labels) {
+      auto & data = data_per_label[label];
+      const auto & params = parameters.object_parameters_per_label[label];
+      const auto & types = params.cut_polygon_types;
+      if (std::find(types.begin(), types.end(), attribute) != types.end()) {
+        for (auto i = 0UL; i < p.numSegments(); ++i) {
+          data.cut_predicted_paths_segments.push_back(convert(p.segment(i)));
+        }
       }
     }
   }
   const auto linestrings_in_range = map_ptr->lineStringLayer.search(bounding_box);
   for (const auto & ls : linestrings_in_range) {
-    const auto attribute = ls.attributeOr(lanelet::AttributeName::Subtype, std::string());
-    const auto & types = params.objects_cut_linestring_types;
-    if (std::find(types.begin(), types.end(), attribute) != types.end()) {
-      for (auto i = 0UL; i < ls.numSegments(); ++i) {
-        data.cut_predicted_paths_segments.push_back(convert(ls.segment(i)));
+    for (const auto label : all_labels) {
+      auto & data = data_per_label[label];
+      const auto & params = parameters.object_parameters_per_label[label];
+      const auto attribute = ls.attributeOr(lanelet::AttributeName::Subtype, std::string());
+      const auto & types = params.cut_linestring_types;
+      if (std::find(types.begin(), types.end(), attribute) != types.end()) {
+        for (auto i = 0UL; i < ls.numSegments(); ++i) {
+          data.cut_predicted_paths_segments.push_back(convert(ls.segment(i)));
+        }
       }
     }
   }
-  if (params.objects_ignore_if_on_ego_trajectory) {
-    data.ignore_road_objects_polygons.push_back(ego_footprint.front_polygon.outer());
-    data.ignore_road_objects_polygons.push_back(ego_footprint.rear_polygon.outer());
-    data.ignore_pedestrians_polygons.push_back(ego_footprint.front_polygon.outer());
-    data.ignore_pedestrians_polygons.push_back(ego_footprint.rear_polygon.outer());
+  for (const auto label : all_labels) {
+    auto & data = data_per_label[label];
+    const auto & params = parameters.object_parameters_per_label[label];
+    if (params.ignore_if_on_ego_trajectory) {
+      data.ignore_polygons.push_back(ego_footprint.front_polygon.outer());
+      data.ignore_polygons.push_back(ego_footprint.rear_polygon.outer());
+    }
   }
 
-  {
+  for (const auto label : all_labels) {
+    auto & data = data_per_label[label];
     std::vector<SegmentNode> nodes;
     nodes.reserve(data.cut_predicted_paths_segments.size());
     for (auto i = 0UL; i < data.cut_predicted_paths_segments.size(); ++i) {
@@ -110,29 +127,17 @@ inline FilteringData calculate_filtering_data(
     }
     data.cut_predicted_paths_rtree = SegmentRtree(nodes);
   }
-  {
+  for (const auto label : all_labels) {
+    auto & data = data_per_label[label];
     std::vector<PolygonNode> nodes;
-    nodes.reserve(data.ignore_pedestrians_polygons.size());
-    for (auto i = 0UL; i < data.ignore_pedestrians_polygons.size(); ++i) {
+    nodes.reserve(data.ignore_polygons.size());
+    for (auto i = 0UL; i < data.ignore_polygons.size(); ++i) {
       nodes.emplace_back(
-        boost::geometry::return_envelope<universe_utils::Box2d>(
-          data.ignore_pedestrians_polygons[i]),
-        i);
+        boost::geometry::return_envelope<universe_utils::Box2d>(data.ignore_polygons[i]), i);
     }
-    data.ignore_pedestrians_rtree = PolygonRtree(nodes);
+    data.ignore_rtree = PolygonRtree(nodes);
   }
-  {
-    std::vector<PolygonNode> nodes;
-    nodes.reserve(data.ignore_road_objects_polygons.size());
-    for (auto i = 0UL; i < data.ignore_road_objects_polygons.size(); ++i) {
-      nodes.emplace_back(
-        boost::geometry::return_envelope<universe_utils::Box2d>(
-          data.ignore_pedestrians_polygons[i]),
-        i);
-    }
-    data.ignore_road_objects_rtree = PolygonRtree(nodes);
-  }
-  return data;
+  return data_per_label;
 }
 }  // namespace autoware::motion_velocity_planner::run_out
 

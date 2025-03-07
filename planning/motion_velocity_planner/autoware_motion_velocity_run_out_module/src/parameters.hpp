@@ -18,17 +18,34 @@
 
 #include <autoware/universe_utils/ros/parameter.hpp>
 #include <autoware/universe_utils/ros/update_param.hpp>
+#include <magic_enum.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/parameter.hpp>
 
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace autoware::motion_velocity_planner::run_out
 {
+/// @brief parameters for the filtering of the dynamic objects
+struct ObjectParameters
+{
+  bool ignore_if_stopped;
+  double stopped_velocity_threshold;
+  bool ignore_if_on_ego_trajectory;
+  bool ignore_if_behind_ego;
+  bool ignore_if_on_crosswalk;
+  std::vector<std::string> cut_linestring_types;
+  std::vector<std::string> cut_polygon_types;
+  bool cut_if_crossing_ego_from_behind;
+  double confidence_filtering_threshold;
+  bool confidence_filtering_only_use_highest;
+};
+
 struct Parameters
 {
   double
@@ -68,16 +85,21 @@ struct Parameters
                                   // grouped if they are separated by less than this tolerance value
   // object parameters
   std::vector<std::string> objects_target_labels;
-  bool objects_ignore_if_stopped;
-  double objects_stopped_velocity_threshold;
-  bool objects_ignore_if_on_ego_trajectory;
-  bool objects_ignore_if_behind_ego;
-  bool objects_ignore_if_pedestrian_on_crosswalk;
-  std::vector<std::string> objects_cut_linestring_types;
-  std::vector<std::string> objects_cut_polygon_types;
-  bool objects_cut_if_crossing_ego_from_behind;
-  double objects_confidence_filtering_threshold;
-  bool objects_confidence_filtering_only_use_highest;
+  std::vector<ObjectParameters> object_parameters_per_label;
+
+  template <class T>
+  auto get_object_parameter(
+    rclcpp::Node & node, const std::string & ns, const uint8_t object_label,
+    const std::string & param)
+  {
+    using universe_utils::getOrDeclareParameter;
+    const auto label_str = ".objects." + label_to_string(object_label);
+    try {
+      return getOrDeclareParameter<T>(node, ns + label_str + param);
+    } catch (const std::exception &) {
+      return getOrDeclareParameter<T>(node, ns + ".objects.DEFAULT" + param);
+    }
+  }
 
   void initialize(rclcpp::Node & node, const std::string & ns)
   {
@@ -107,28 +129,38 @@ struct Parameters
     ego_longitudinal_margin = getOrDeclareParameter<double>(node, ns + ".ego.longitudinal_margin");
     collision_time_margin = getOrDeclareParameter<double>(node, ns + ".collision_time_margin");
     time_overlap_tolerance = getOrDeclareParameter<double>(node, ns + ".time_overlap_tolerance");
-    objects_ignore_if_on_ego_trajectory =
-      getOrDeclareParameter<bool>(node, ns + ".objects.ignore.if_on_ego_trajectory");
-    objects_ignore_if_behind_ego =
-      getOrDeclareParameter<bool>(node, ns + ".objects.ignore.if_behind_ego");
-    objects_ignore_if_pedestrian_on_crosswalk =
-      getOrDeclareParameter<bool>(node, ns + ".objects.ignore.if_pedestrian_on_crosswalk");
-    objects_ignore_if_stopped =
-      getOrDeclareParameter<bool>(node, ns + ".objects.ignore.if_stopped");
-    objects_stopped_velocity_threshold =
-      getOrDeclareParameter<double>(node, ns + ".objects.ignore.stopped_velocity_threshold");
+
+    const auto all_object_labels = all_labels();
+    object_parameters_per_label.resize(
+      *std::max_element(all_object_labels.begin(), all_object_labels.end()) + 1);
     objects_target_labels =
       getOrDeclareParameter<std::vector<std::string>>(node, ns + ".objects.target_labels");
-    objects_confidence_filtering_threshold =
-      getOrDeclareParameter<double>(node, ns + ".objects.confidence_filtering.threshold");
-    objects_confidence_filtering_only_use_highest =
-      getOrDeclareParameter<bool>(node, ns + ".objects.confidence_filtering.only_use_highest");
-    objects_cut_polygon_types = getOrDeclareParameter<std::vector<std::string>>(
-      node, ns + ".objects.cut_predicted_paths.polygon_types");
-    objects_cut_linestring_types = getOrDeclareParameter<std::vector<std::string>>(
-      node, ns + ".objects.cut_predicted_paths.linestring_types");
-    objects_cut_if_crossing_ego_from_behind = getOrDeclareParameter<bool>(
-      node, ns + ".objects.cut_predicted_paths.if_crossing_ego_from_behind");
+    for (const auto label : all_labels()) {
+      object_parameters_per_label[label].ignore_if_on_ego_trajectory =
+        get_object_parameter<bool>(node, ns, label, ".ignore.if_on_ego_trajectory");
+      object_parameters_per_label[label].ignore_if_behind_ego =
+        get_object_parameter<bool>(node, ns, label, ".ignore.if_behind_ego");
+      object_parameters_per_label[label].ignore_if_on_crosswalk =
+        get_object_parameter<bool>(node, ns, label, ".ignore.if_on_crosswalk");
+      object_parameters_per_label[label].ignore_if_stopped =
+        get_object_parameter<bool>(node, ns, label, ".ignore.if_stopped");
+      object_parameters_per_label[label].stopped_velocity_threshold =
+        get_object_parameter<double>(node, ns, label, ".ignore.stopped_velocity_threshold");
+      object_parameters_per_label[label].confidence_filtering_threshold =
+        get_object_parameter<double>(node, ns, label, ".confidence_filtering.threshold");
+      object_parameters_per_label[label].confidence_filtering_only_use_highest =
+        get_object_parameter<bool>(node, ns, label, ".confidence_filtering.only_use_highest");
+      object_parameters_per_label[label].cut_polygon_types =
+        get_object_parameter<std::vector<std::string>>(
+          node, ns, label, ".cut_predicted_paths.polygon_types");
+      object_parameters_per_label[label].cut_linestring_types =
+        get_object_parameter<std::vector<std::string>>(
+          node, ns, label, ".cut_predicted_paths.linestring_types");
+      object_parameters_per_label[label].cut_if_crossing_ego_from_behind =
+        get_object_parameter<bool>(
+          node, ns, label, ".cut_predicted_paths.if_crossing_ego_from_behind");
+    }
+
     max_history_duration = std::max(stop_off_time_buffer, stop_on_time_buffer);
   }
 
@@ -156,30 +188,43 @@ struct Parameters
     updateParam(params, ns + ".ego.longitudinal_margin", ego_longitudinal_margin);
     updateParam(params, ns + ".collision_time_margin", collision_time_margin);
     updateParam(params, ns + ".time_overlap_tolerance", time_overlap_tolerance);
-    updateParam(params, ns + ".objects.ignore.if_stopped", objects_ignore_if_stopped);
-    updateParam(
-      params, ns + ".objects.ignore.stopped_velocity_threshold",
-      objects_stopped_velocity_threshold);
-    updateParam(
-      params, ns + ".objects.ignore.if_on_ego_trajectory", objects_ignore_if_on_ego_trajectory);
-    updateParam(params, ns + ".objects.ignore.if_behind_ego", objects_ignore_if_behind_ego);
-    updateParam(
-      params, ns + ".objects.ignore.if_pedestrian_on_crosswalk",
-      objects_ignore_if_pedestrian_on_crosswalk);
+
     updateParam(params, ns + ".objects.target_labels", objects_target_labels);
-    updateParam(
-      params, ns + ".objects.confidence_filtering.threshold",
-      objects_confidence_filtering_threshold);
-    updateParam(
-      params, ns + ".objects.confidence_filtering.only_use_highest",
-      objects_confidence_filtering_only_use_highest);
-    updateParam(
-      params, ns + ".objects.cut_predicted_paths.if_crossing_ego_from_behind",
-      objects_cut_if_crossing_ego_from_behind);
-    updateParam(
-      params, ns + ".objects.cut_predicted_paths.polygon_types", objects_cut_polygon_types);
-    updateParam(
-      params, ns + ".objects.cut_predicted_paths.linestring_types", objects_cut_linestring_types);
+
+    for (const auto label : all_labels()) {
+      const auto str = ".objects." + label_to_string(label);
+      updateParam(
+        params, ns + str + ".ignore.if_stopped",
+        object_parameters_per_label[label].ignore_if_stopped);
+      updateParam(
+        params, ns + str + ".ignore.stopped_velocity_threshold",
+        object_parameters_per_label[label].stopped_velocity_threshold);
+      updateParam(
+        params, ns + str + ".ignore.if_on_ego_trajectory",
+        object_parameters_per_label[label].ignore_if_on_ego_trajectory);
+      updateParam(
+        params, ns + ".ignore.if_behind_ego",
+        object_parameters_per_label[label].ignore_if_behind_ego);
+      updateParam(
+        params, ns + str + ".ignore.if_on_crosswalk",
+        object_parameters_per_label[label].ignore_if_on_crosswalk);
+      updateParam(
+        params, ns + str + ".confidence_filtering.threshold",
+        object_parameters_per_label[label].confidence_filtering_threshold);
+      updateParam(
+        params, ns + str + ".confidence_filtering.only_use_highest",
+        object_parameters_per_label[label].confidence_filtering_only_use_highest);
+      updateParam(
+        params, ns + str + ".cut_predicted_paths.if_crossing_ego_from_behind",
+        object_parameters_per_label[label].cut_if_crossing_ego_from_behind);
+      updateParam(
+        params, ns + str + ".cut_predicted_paths.polygon_types",
+        object_parameters_per_label[label].cut_polygon_types);
+      updateParam(
+        params, ns + str + ".cut_predicted_paths.linestring_types",
+        object_parameters_per_label[label].cut_linestring_types);
+    }
+
     max_history_duration = std::max(stop_off_time_buffer, stop_on_time_buffer);
   }
 
@@ -205,8 +250,17 @@ struct Parameters
       case ObjectClassification::UNKNOWN:
         return "UNKNOWN";
       default:
-        return "";
+        return "DEFAULT";
     }
+  }
+
+  static std::vector<uint8_t> all_labels()
+  {
+    using autoware_perception_msgs::msg::ObjectClassification;
+    return {ObjectClassification::CAR,        ObjectClassification::TRUCK,
+            ObjectClassification::BICYCLE,    ObjectClassification::BUS,
+            ObjectClassification::MOTORCYCLE, ObjectClassification::PEDESTRIAN,
+            ObjectClassification::TRAILER,    ObjectClassification::UNKNOWN};
   }
 };
 }  // namespace autoware::motion_velocity_planner::run_out
