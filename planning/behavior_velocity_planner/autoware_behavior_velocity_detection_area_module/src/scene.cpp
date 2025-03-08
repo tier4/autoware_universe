@@ -78,6 +78,7 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
   const auto stop_point = arc_lane_utils::createTargetPoint(
     original_path, stop_line, planner_param_.stop_margin,
     planner_data_->vehicle_info_.max_longitudinal_offset_m);
+
   if (!stop_point) {
     return true;
   }
@@ -110,6 +111,7 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
   // Check state
   const bool is_safe = detection_area::can_clear_stop_state(
     last_obstacle_found_time_, clock_->now(), planner_param_.state_clear_time);
+  setSafe(is_safe);
   if (is_safe) {
     last_obstacle_found_time_ = {};
     if (!planner_param_.suppress_pass_judge_when_stopping || !is_stopped) {
@@ -171,12 +173,16 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
     }
   }
 
-  // Insert stop point
-  state_ = State::STOP;
-  planning_utils::insertStopPoint(modified_stop_pose.position, modified_stop_line_seg_idx, *path);
+  setDistance(dist_from_ego_to_stop);
 
-  // For virtual wall
-  debug_data_.stop_poses.push_back(stop_point->second);
+  if (!isActivated()) {
+    // Insert stop point
+    state_ = State::STOP;
+    planning_utils::insertStopPoint(modified_stop_pose.position, modified_stop_line_seg_idx, *path);
+
+    // For virtual wall
+    debug_data_.stop_poses.push_back(stop_point->second);
+  }
 
   // Create StopReason
   {
