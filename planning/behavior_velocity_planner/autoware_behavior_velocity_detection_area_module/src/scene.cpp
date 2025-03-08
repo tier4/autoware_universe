@@ -40,7 +40,7 @@ DetectionAreaModule::DetectionAreaModule(
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface)
-: SceneModuleInterface(module_id, logger, clock, time_keeper, planning_factor_interface),
+: SceneModuleInterfaceWithRTC(module_id, logger, clock, time_keeper, planning_factor_interface),
   lane_id_(lane_id),
   detection_area_reg_elem_(detection_area_reg_elem),
   state_(State::GO),
