@@ -136,6 +136,7 @@ void DataAssociation::assign(
       ++itr;
     }
   }
+  /*
   for (auto itr = reverse_assignment.begin(); itr != reverse_assignment.end();) {
     if (src(itr->second, itr->first) < score_threshold_) {
       itr = reverse_assignment.erase(itr);
@@ -144,6 +145,7 @@ void DataAssociation::assign(
       ++itr;
     }
   }
+  */
 }
 
 Eigen::MatrixXd DataAssociation::calcScoreMatrix(
