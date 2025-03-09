@@ -78,6 +78,14 @@ public:
   visualization_msgs::msg::MarkerArray createDebugMarkerArray() override;
   autoware::motion_utils::VirtualWalls createVirtualWalls() override;
 
+protected:
+  /**
+   * @brief Return safe condition and distance to stop point. If the calculation is terminated
+   * unexpectedly, it returns std::nullopt.
+   */
+  std::optional<std::pair<bool, double>> modify_path_velocity(
+    PathWithLaneId * path, const bool overwrite_unsafe_judge = false);
+
 private:
   // Lane id
   int64_t lane_id_;

@@ -48,7 +48,8 @@ DetectionAreaModule::DetectionAreaModule(
 {
 }
 
-bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
+std::optional<std::pair<bool, double>> DetectionAreaModule::modify_path_velocity(
+  PathWithLaneId * path, const bool overwrite_unsafe_judge)
 {
   // Store original path
   const auto original_path = *path;
@@ -78,7 +79,7 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
     original_path, stop_line, planner_param_.stop_margin,
     planner_data_->vehicle_info_.max_longitudinal_offset_m);
   if (!stop_point) {
-    return true;
+    return std::nullopt;
   }
 
   const auto & stop_point_idx = stop_point->first;
@@ -99,7 +100,7 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
       calcLongitudinalOffsetPose(original_path.points, self_pose.position, 0.0);
 
     if (!ego_pos_on_path) {
-      return false;
+      return std::nullopt;
     }
 
     modified_stop_pose = ego_pos_on_path.value();
@@ -109,12 +110,12 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
   // Check state
   const bool is_safe = detection_area::can_clear_stop_state(
     last_obstacle_found_time_, clock_->now(), planner_param_.state_clear_time);
-  if (is_safe) {
+  if (is_safe || overwrite_unsafe_judge) {
     last_obstacle_found_time_ = {};
     if (!planner_param_.suppress_pass_judge_when_stopping || !is_stopped) {
       state_ = State::GO;
     }
-    return true;
+    return std::make_pair(is_safe, stop_dist);
   }
 
   // Force ignore objects after dead_line
@@ -138,7 +139,7 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
         dead_line_seg_idx);
       if (dist_from_ego_to_dead_line < 0.0) {
         RCLCPP_WARN(logger_, "[detection_area] vehicle is over dead line");
-        return true;
+        return std::make_pair(true, stop_dist);
       }
     }
   }
@@ -150,7 +151,7 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
   if (
     state_ != State::STOP &&
     dist_from_ego_to_stop < -planner_param_.distance_to_judge_over_stop_line) {
-    return true;
+    return std::make_pair(true, stop_dist);
   }
 
   // Ignore objects if braking distance is not enough
@@ -166,7 +167,7 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
       RCLCPP_WARN_THROTTLE(
         logger_, *clock_, std::chrono::milliseconds(1000).count(),
         "[detection_area] vehicle is over stop border");
-      return true;
+      return std::make_pair(true, stop_dist);
     }
   }
 
@@ -186,6 +187,12 @@ bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
       0.0 /*shift distance*/, "");
   }
 
-  return true;
+  return std::make_pair(is_safe, stop_dist);
+}
+
+bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
+{
+  const auto result = modify_path_velocity(path);
+  return result.has_value();
 }
 }  // namespace autoware::behavior_velocity_planner
