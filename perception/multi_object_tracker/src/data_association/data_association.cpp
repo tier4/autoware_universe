@@ -128,6 +128,7 @@ void DataAssociation::assign(
   // Solve
   gnn_solver_ptr_->maximizeLinearAssignment(score, &direct_assignment, &reverse_assignment);
 
+  /*
   for (auto itr = direct_assignment.begin(); itr != direct_assignment.end();) {
     if (src(itr->first, itr->second) < score_threshold_) {
       itr = direct_assignment.erase(itr);
@@ -136,7 +137,7 @@ void DataAssociation::assign(
       ++itr;
     }
   }
-  /*
+  
   for (auto itr = reverse_assignment.begin(); itr != reverse_assignment.end();) {
     if (src(itr->second, itr->first) < score_threshold_) {
       itr = reverse_assignment.erase(itr);
