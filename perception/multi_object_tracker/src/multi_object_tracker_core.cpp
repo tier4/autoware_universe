@@ -357,7 +357,7 @@ void MultiObjectTracker::onTimer()
   /* life cycle check */
   checkTrackerLifeCycle(list_tracker_, current_time);
   /* sanitize trackers */
-  sanitizeTracker(list_tracker_, current_time);
+  //sanitizeTracker(list_tracker_, current_time);
 
   // Publish
   publish(current_time);
