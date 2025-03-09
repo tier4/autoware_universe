@@ -287,7 +287,7 @@ void MultiObjectTracker::onMeasurement(
         (*tracker_itr)->getTrackedObject(time, object);
         if ((object.kinematics.pose_with_covariance.pose.position.y > -1.0) && (object.kinematics.pose_with_covariance.pose.position.y < 1.0) )
         {
-          RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "track meas update idx[%d], x[%f], y[%f]", tracker_idx, object.kinematics.pose_with_covariance.pose.position.x, object.kinematics.pose_with_covariance.pose.position.y);
+          RCLCPP_INFO(rclcpp::get_logger("multi obj tracker"), "track meas update idx[%d], x[%f], y[%f]", tracker_idx, object.kinematics.pose_with_covariance.pose.position.x, object.kinematics.pose_with_covariance.pose.position.y);
         }
 
     } else {  // not found
