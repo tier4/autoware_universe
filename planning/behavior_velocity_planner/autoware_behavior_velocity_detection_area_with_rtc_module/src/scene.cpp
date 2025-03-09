@@ -14,7 +14,10 @@
 
 #include "scene.hpp"
 
+#include <autoware/behavior_velocity_detection_area_module/utils.hpp>
+
 #include <memory>
+#include <utility>
 
 namespace autoware::behavior_velocity_planner
 {
@@ -40,7 +43,15 @@ bool DetectionAreaWithRTCModule::modifyPathVelocity(PathWithLaneId * path)
 {
   DetectionAreaModule::setPlannerData(SceneModuleInterfaceWithRTC::planner_data_);
 
-  const auto result = DetectionAreaModule::modify_path_velocity(path, isActivated());
+  const auto condition = [this](
+                           const std::shared_ptr<const rclcpp::Time> & last_obstacle_found_time,
+                           const rclcpp::Time & now, const double state_clear_time) {
+    const bool is_safe =
+      detection_area::can_clear_stop_state(last_obstacle_found_time, now, state_clear_time);
+    return std::make_pair(is_safe, isActivated());
+  };
+
+  const auto result = DetectionAreaModule::modify_path_velocity(path, condition);
   if (!result.has_value()) {
     return false;
   }
