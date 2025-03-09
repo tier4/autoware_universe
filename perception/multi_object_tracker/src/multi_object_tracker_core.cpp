@@ -287,7 +287,7 @@ void MultiObjectTracker::onMeasurement(
   /* life cycle check */
   checkTrackerLifeCycle(list_tracker_, measurement_time);
   /* sanitize trackers */
-  sanitizeTracker(list_tracker_, measurement_time);
+  //sanitizeTracker(list_tracker_, measurement_time);
 
   /* new tracker */
   for (size_t i = 0; i < transformed_objects.objects.size(); ++i) {
@@ -357,7 +357,7 @@ void MultiObjectTracker::onTimer()
   /* life cycle check */
   checkTrackerLifeCycle(list_tracker_, current_time);
   /* sanitize trackers */
-  //sanitizeTracker(list_tracker_, current_time);
+  sanitizeTracker(list_tracker_, current_time);
 
   // Publish
   publish(current_time);
