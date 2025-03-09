@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "utils.hpp"
-
 #include <autoware/behavior_velocity_detection_area_module/scene.hpp>
+#include <autoware/behavior_velocity_detection_area_module/utils.hpp>
 #include <autoware/behavior_velocity_planner_common/utilization/arc_lane_util.hpp>
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -49,7 +48,9 @@ DetectionAreaModule::DetectionAreaModule(
 }
 
 std::optional<std::pair<bool, double>> DetectionAreaModule::modify_path_velocity(
-  PathWithLaneId * path, const bool overwrite_unsafe_judge)
+  PathWithLaneId * path,
+  const std::function<std::pair<bool, bool>(
+    const std::shared_ptr<const rclcpp::Time> &, const rclcpp::Time &, const double)> & condition)
 {
   // Store original path
   const auto original_path = *path;
@@ -108,9 +109,9 @@ std::optional<std::pair<bool, double>> DetectionAreaModule::modify_path_velocity
   }
 
   // Check state
-  const bool is_safe = detection_area::can_clear_stop_state(
-    last_obstacle_found_time_, clock_->now(), planner_param_.state_clear_time);
-  if (is_safe || overwrite_unsafe_judge) {
+  const auto [is_safe, can_move] =
+    condition(last_obstacle_found_time_, clock_->now(), planner_param_.state_clear_time);
+  if (can_move) {
     last_obstacle_found_time_ = {};
     if (!planner_param_.suppress_pass_judge_when_stopping || !is_stopped) {
       state_ = State::GO;
@@ -192,7 +193,15 @@ std::optional<std::pair<bool, double>> DetectionAreaModule::modify_path_velocity
 
 bool DetectionAreaModule::modifyPathVelocity(PathWithLaneId * path)
 {
-  const auto result = modify_path_velocity(path);
+  const auto condition = [](
+                           const std::shared_ptr<const rclcpp::Time> & last_obstacle_found_time,
+                           const rclcpp::Time & now, const double state_clear_time) {
+    const bool is_safe =
+      detection_area::can_clear_stop_state(last_obstacle_found_time, now, state_clear_time);
+    return std::make_pair(is_safe, is_safe);
+  };
+
+  const auto result = modify_path_velocity(path, condition);
   return result.has_value();
 }
 }  // namespace autoware::behavior_velocity_planner

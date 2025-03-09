@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "utils.hpp"
-
+#include <autoware/behavior_velocity_detection_area_module/utils.hpp>
 #include <autoware/behavior_velocity_planner_common/utilization/arc_lane_util.hpp>
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/detection_area.hpp>

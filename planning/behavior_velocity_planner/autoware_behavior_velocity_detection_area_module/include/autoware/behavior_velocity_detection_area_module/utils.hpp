@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef UTILS_HPP_
-#define UTILS_HPP_
+#ifndef AUTOWARE__BEHAVIOR_VELOCITY_DETECTION_AREA_MODULE__UTILS_HPP_
+#define AUTOWARE__BEHAVIOR_VELOCITY_DETECTION_AREA_MODULE__UTILS_HPP_
 
 #include <autoware_lanelet2_extension/regulatory_elements/detection_area.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
@@ -68,4 +68,4 @@ bool has_enough_braking_distance(
   const double pass_judge_line_distance, const double current_velocity);
 }  // namespace autoware::behavior_velocity_planner::detection_area
 
-#endif  // UTILS_HPP_
+#endif  // AUTOWARE__BEHAVIOR_VELOCITY_DETECTION_AREA_MODULE__UTILS_HPP_

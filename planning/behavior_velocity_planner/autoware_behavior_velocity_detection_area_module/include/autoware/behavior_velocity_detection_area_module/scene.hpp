@@ -84,7 +84,10 @@ protected:
    * unexpectedly, it returns std::nullopt.
    */
   std::optional<std::pair<bool, double>> modify_path_velocity(
-    PathWithLaneId * path, const bool overwrite_unsafe_judge = false);
+    PathWithLaneId * path,
+    const std::function<std::pair<bool, bool>(
+      const std::shared_ptr<const rclcpp::Time> &, const rclcpp::Time &, const double)> &
+      condition);
 
 private:
   // Lane id
