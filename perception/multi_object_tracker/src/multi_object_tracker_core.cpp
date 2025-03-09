@@ -282,9 +282,8 @@ void MultiObjectTracker::onMeasurement(
           measurement_time, *self_transform);
 
         // dbg output
-        rclcpp::Time time;
         autoware_auto_perception_msgs::msg::TrackedObject object;
-        (*tracker_itr)->getTrackedObject(time, object);
+        (*tracker_itr)->getTrackedObject(measurement_time, object);
         if ((object.kinematics.pose_with_covariance.pose.position.y > -1.0) && (object.kinematics.pose_with_covariance.pose.position.y < 1.0) )
         {
           RCLCPP_INFO(get_logger(), "track meas update idx[%d], x[%f], y[%f]", tracker_idx, object.kinematics.pose_with_covariance.pose.position.x, object.kinematics.pose_with_covariance.pose.position.y);
