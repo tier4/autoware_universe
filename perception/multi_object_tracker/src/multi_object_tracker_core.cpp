@@ -35,6 +35,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <rclcpp_components/register_node_macro.hpp>
+#include <rclcpp/logging.hpp>
 
 using Label = autoware_auto_perception_msgs::msg::ObjectClassification;
 
@@ -279,6 +280,16 @@ void MultiObjectTracker::onMeasurement(
         ->updateWithMeasurement(
           transformed_objects.objects.at(direct_assignment.find(tracker_idx)->second),
           measurement_time, *self_transform);
+
+        // dbg output
+        rclcpp::Time time;
+        autoware_auto_perception_msgs::msg::TrackedObject object;
+        (*tracker_itr)->getTrackedObject(time, object);
+        if ((object.kinematics.pose_with_covariance.pose.position.y > -1.0) && (object.kinematics.pose_with_covariance.pose.position.y < 1.0) )
+        {
+          RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "track meas update idx[%d], x[%f], y[%f]", tracker_idx, object.kinematics.pose_with_covariance.pose.position.x, object.kinematics.pose_with_covariance.pose.position.y);
+        }
+
     } else {  // not found
       (*(tracker_itr))->updateWithoutMeasurement();
     }
