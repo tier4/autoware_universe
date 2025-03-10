@@ -3,11 +3,13 @@
   <arg name="input_topic" default="imu_raw"/>
   <arg name="output_topic" default="imu_data"/>
   <arg name="param_file" default="$(find-pkg-share imu_corrector)/config/imu_corrector.param.yaml"/>
-<!--
-  <node pkg="imu_corrector" exec="imu_corrector_node" output="both">
+
+  <!-- Add phase1_acc_trial_ecu2 control parameter -->
+  <arg name="phase1_acc_trial_ecu2" default="false" description="control components for NEDO AI accelerator experiment with 2 ECUs"/>
+
+  <node unless="$(var phase1_acc_trial_ecu2)" pkg="imu_corrector" exec="imu_corrector_node" output="both">
     <remap from="input" to="$(var input_topic)"/>
     <remap from="output" to="$(var output_topic)"/>
     <param from="$(var param_file)"/>
   </node>
--->
 </launch>
