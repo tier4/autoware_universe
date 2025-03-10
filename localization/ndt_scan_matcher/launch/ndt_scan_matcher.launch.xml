@@ -14,8 +14,9 @@
 
   <arg name="node_name" default="ndt_scan_matcher" description="Use a different name for this node"/>
 
-  <!--
-  <node pkg="ndt_scan_matcher" exec="ndt_scan_matcher_node" name="$(var node_name)" output="both">
+  <arg name="phase1_acc_trial" default="false" description="for NEDO AI 2 accelerator experiment with 2 devices"/>
+
+  <node unless="$(var phase1_acc_trial)" pkg="ndt_scan_matcher" exec="ndt_scan_matcher_node" name="$(var node_name)" output="both">
     <remap from="points_raw" to="$(var input_pointcloud)"/>
     <remap from="ekf_pose_with_covariance" to="$(var input_initial_pose_topic)"/>
     <remap from="regularization_pose_with_covariance" to="$(var input_regularization_pose_topic)"/>
@@ -28,5 +29,4 @@
 
     <param from="$(var param_file)"/>
   </node>
-  -->
 </launch>
