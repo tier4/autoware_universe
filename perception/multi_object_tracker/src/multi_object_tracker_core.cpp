@@ -279,15 +279,15 @@ void MultiObjectTracker::onMeasurement(
   int tracker_idx = 0;
   for (auto tracker_itr = list_tracker_.begin(); tracker_itr != list_tracker_.end();
        ++tracker_itr, ++tracker_idx) {
+    autoware_auto_perception_msgs::msg::TrackedObject object;
+    (*tracker_itr)->getTrackedObject(measurement_time, object);
     if (direct_assignment.find(tracker_idx) != direct_assignment.end()) {  // found
       (*(tracker_itr))
         ->updateWithMeasurement(
           transformed_objects.objects.at(direct_assignment.find(tracker_idx)->second),
           measurement_time, *self_transform);
 
-      // Modified debug output
-      autoware_auto_perception_msgs::msg::TrackedObject object;
-      (*tracker_itr)->getTrackedObject(measurement_time, object);
+
       if (object.classification.at(0).label == Label::UNKNOWN) {
           char buf[120];
           snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], t[%.3f]\n", 
@@ -299,6 +299,15 @@ void MultiObjectTracker::onMeasurement(
       }
     } else {  // not found
       (*(tracker_itr))->updateWithoutMeasurement();
+      if (object.classification.at(0).label == Label::UNKNOWN) {
+        char buf[120];
+        snprintf(buf, sizeof(buf), "track meas no update idx[%d], x[%.3f], y[%.3f], t[%.3f]\n", 
+                tracker_idx,
+                object.kinematics.pose_with_covariance.pose.position.x,
+                object.kinematics.pose_with_covariance.pose.position.y,
+                measurement_time.seconds());
+        debug_message += buf;
+      }
     }
   }
 
