@@ -302,6 +302,13 @@ void MultiObjectTracker::onMeasurement(
     }
   }
 
+  // Add assignment sizes to debug message
+  char buf[120];
+  snprintf(buf, sizeof(buf), "direct_assignment size[%zu], reverse_assignment size[%zu]\n", 
+          direct_assignment.size(), reverse_assignment.size());
+  debug_message += buf;
+
+
   // Add at the end of the function, before return
   if (!debug_message.empty()) {
     RCLCPP_INFO(get_logger(), "\nUnknown object updates:\n%s", debug_message.c_str());
