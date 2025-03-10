@@ -290,23 +290,25 @@ void MultiObjectTracker::onMeasurement(
 
       if (object.classification.at(0).label == Label::UNKNOWN) {
           char buf[120];
-          snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], t[%.3f]\n", 
+          snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], t[%.3f], cls[%d]\n", 
                   tracker_idx,
                   object.kinematics.pose_with_covariance.pose.position.x,
                   object.kinematics.pose_with_covariance.pose.position.y,
-                  measurement_time.seconds());
+                  measurement_time.seconds(),
+                  object.classification.at(0).label);
           debug_message += buf;
       }
     } else {  // not found
       (*(tracker_itr))->updateWithoutMeasurement();
       if (object.classification.at(0).label == Label::UNKNOWN) {
         char buf[120];
-        snprintf(buf, sizeof(buf), "track meas no update idx[%d], x[%.3f], y[%.3f], t[%.3f]\n", 
-                tracker_idx,
-                object.kinematics.pose_with_covariance.pose.position.x,
-                object.kinematics.pose_with_covariance.pose.position.y,
-                measurement_time.seconds());
-        debug_message += buf;
+        snprintf(buf, sizeof(buf), "track meas no update idx[%d], x[%.3f], y[%.3f], t[%.3f], cls[%d]\n", 
+                  tracker_idx,
+                  object.kinematics.pose_with_covariance.pose.position.x,
+                  object.kinematics.pose_with_covariance.pose.position.y,
+                  measurement_time.seconds(),
+                  object.classification.at(0).label);
+          debug_message += buf;
       }
     }
   }
