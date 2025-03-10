@@ -288,7 +288,6 @@ void MultiObjectTracker::onMeasurement(
       // Modified debug output
       autoware_auto_perception_msgs::msg::TrackedObject object;
       (*tracker_itr)->getTrackedObject(measurement_time, object);
-      /*
       if (object.classification.at(0).label == Label::UNKNOWN) {
           char buf[120];
           snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], t[%.3f]\n", 
@@ -298,7 +297,6 @@ void MultiObjectTracker::onMeasurement(
                   measurement_time.seconds());
           debug_message += buf;
       }
-      */
     } else {  // not found
       (*(tracker_itr))->updateWithoutMeasurement();
     }
