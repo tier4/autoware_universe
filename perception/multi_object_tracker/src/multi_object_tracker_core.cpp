@@ -289,11 +289,12 @@ void MultiObjectTracker::onMeasurement(
       (*tracker_itr)->getTrackedObject(measurement_time, object);
 
       if (object.classification.at(0).label == Label::UNKNOWN) {
-          char buf[100];
-          snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f]\n", 
+          char buf[120];
+          snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], t[%.3f]\n", 
                   tracker_idx,
                   object.kinematics.pose_with_covariance.pose.position.x,
-                  object.kinematics.pose_with_covariance.pose.position.y);
+                  object.kinematics.pose_with_covariance.pose.position.y,
+                  measurement_time.seconds());
           debug_message += buf;
       }
     } else {  // not found
@@ -392,12 +393,14 @@ void MultiObjectTracker::checkTrackerLifeCycle(
   constexpr float max_elapsed_time = 1.0;
 
   /* delete tracker */
-  for (auto itr = list_tracker.begin(); itr != list_tracker.end(); ++itr) {
+  int tracker_idx = 0;
+  for (auto itr = list_tracker.begin(); itr != list_tracker.end(); ++itr, ++tracker_idx) {
     const bool is_old = max_elapsed_time < (*itr)->getElapsedTimeFromLastUpdate(time);
     if (is_old) {
       auto erase_itr = itr;
       --itr;
       list_tracker.erase(erase_itr);
+      RCLCPP_INFO(get_logger(), "\nExpired obj id:[%d]", tracker_idx);
     }
   }
 }
