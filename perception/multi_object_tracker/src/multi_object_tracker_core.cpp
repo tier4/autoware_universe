@@ -243,6 +243,9 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
 void MultiObjectTracker::onMeasurement(
   const autoware_auto_perception_msgs::msg::DetectedObjects::ConstSharedPtr input_objects_msg)
 {
+  // Add at the beginning of the function
+  std::string debug_message = "";
+
   last_updated_time_ = this->now();
 
   /* keep the latest input stamp and check transform*/
@@ -281,17 +284,26 @@ void MultiObjectTracker::onMeasurement(
           transformed_objects.objects.at(direct_assignment.find(tracker_idx)->second),
           measurement_time, *self_transform);
 
-        // dbg output
-        autoware_auto_perception_msgs::msg::TrackedObject object;
-        (*tracker_itr)->getTrackedObject(measurement_time, object);
-        if ((object.kinematics.pose_with_covariance.pose.position.y > -1.0) && (object.kinematics.pose_with_covariance.pose.position.y < 1.0) )
-        {
-          RCLCPP_INFO(get_logger(), "track meas update idx[%d], x[%f], y[%f]", tracker_idx, object.kinematics.pose_with_covariance.pose.position.x, object.kinematics.pose_with_covariance.pose.position.y);
-        }
+      // Modified debug output
+      autoware_auto_perception_msgs::msg::TrackedObject object;
+      (*tracker_itr)->getTrackedObject(measurement_time, object);
 
+      if (object.classification.at(0).label == Label::UNKNOWN) {
+          char buf[100];
+          snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f]\n", 
+                  tracker_idx,
+                  object.kinematics.pose_with_covariance.pose.position.x,
+                  object.kinematics.pose_with_covariance.pose.position.y);
+          debug_message += buf;
+      }
     } else {  // not found
       (*(tracker_itr))->updateWithoutMeasurement();
     }
+  }
+
+  // Add at the end of the function, before return
+  if (!debug_message.empty()) {
+    RCLCPP_INFO(get_logger(), "\nUnknown object updates:\n%s", debug_message.c_str());
   }
 
   /* life cycle check */
