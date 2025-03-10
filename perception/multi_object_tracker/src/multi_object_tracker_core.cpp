@@ -39,6 +39,7 @@
 
 using Label = autoware_auto_perception_msgs::msg::ObjectClassification;
 
+
 namespace
 {
 boost::optional<geometry_msgs::msg::Transform> getTransformAnonymous(
@@ -287,7 +288,7 @@ void MultiObjectTracker::onMeasurement(
       // Modified debug output
       autoware_auto_perception_msgs::msg::TrackedObject object;
       (*tracker_itr)->getTrackedObject(measurement_time, object);
-
+      /*
       if (object.classification.at(0).label == Label::UNKNOWN) {
           char buf[120];
           snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], t[%.3f]\n", 
@@ -297,8 +298,35 @@ void MultiObjectTracker::onMeasurement(
                   measurement_time.seconds());
           debug_message += buf;
       }
+      */
     } else {  // not found
       (*(tracker_itr))->updateWithoutMeasurement();
+    }
+  }
+
+  for (size_t measurement_idx = 0; measurement_idx < transformed_objects.objects.size(); ++measurement_idx) {
+    const autoware_auto_perception_msgs::msg::DetectedObject & measurement_object = transformed_objects.objects.at(measurement_idx);
+    auto meas_tracker_idx = reverse_assignment.find(measurement_idx);
+    if (meas_tracker_idx != reverse_assignment.end()) {
+      autoware_auto_perception_msgs::msg::TrackedObject track_object;
+      char buf[200];
+      auto tracker_itr = std::next(list_tracker_.begin(), meas_tracker_idx->second);
+      (*tracker_itr)->getTrackedObject(measurement_time, track_object);
+      snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[%d], x[%.3f]->x[%.3f], y[%.3f]->y[%.3f], cls[%d]->cls[%d]\n", 
+              measurement_idx, meas_tracker_idx->second,
+              measurement_object.kinematics.pose_with_covariance.pose.position.x, track_object.kinematics.pose_with_covariance.pose.position.x,
+              measurement_object.kinematics.pose_with_covariance.pose.position.y, track_object.kinematics.pose_with_covariance.pose.position.y,
+              measurement_object.classification.at(0).label, track_object.classification.at(0).label);
+      debug_message += buf;
+    }
+    else {
+      char buf[120];
+      snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[nan], x[%.3f]->x[nan], y[%.3f]->y[nan], cls[%d]->cls[nan]\n", 
+              measurement_idx,
+              measurement_object.kinematics.pose_with_covariance.pose.position.x,
+              measurement_object.kinematics.pose_with_covariance.pose.position.y, 
+              measurement_object.classification.at(0).label);
+      debug_message += buf;
     }
   }
 
@@ -326,7 +354,10 @@ void MultiObjectTracker::onMeasurement(
     }
     std::shared_ptr<Tracker> tracker =
       createNewTracker(transformed_objects.objects.at(i), measurement_time, *self_transform);
-    if (tracker) list_tracker_.push_back(tracker);
+    if (tracker) {
+      list_tracker_.push_back(tracker);
+      RCLCPP_INFO(get_logger(), "New tracker");
+    }
   }
 
   if (publish_timer_ == nullptr) {
@@ -405,9 +436,11 @@ void MultiObjectTracker::checkTrackerLifeCycle(
     const bool is_old = max_elapsed_time < (*itr)->getElapsedTimeFromLastUpdate(time);
     if (is_old) {
       auto erase_itr = itr;
+      autoware_auto_perception_msgs::msg::TrackedObject object;
       --itr;
+      (*erase_itr)->getTrackedObject(time, object);
+      RCLCPP_INFO(get_logger(), "\nExpired obj id:[%d] time[%.3f] x[%.3f] y[%.3f]", tracker_idx, time.seconds(), object.kinematics.pose_with_covariance.pose.position.x, object.kinematics.pose_with_covariance.pose.position.y);
       list_tracker.erase(erase_itr);
-      RCLCPP_INFO(get_logger(), "\nExpired obj id:[%d] cur time[%.3f]", tracker_idx, time.seconds());
     }
   }
 }
