@@ -407,7 +407,7 @@ void MultiObjectTracker::checkTrackerLifeCycle(
       auto erase_itr = itr;
       --itr;
       list_tracker.erase(erase_itr);
-      RCLCPP_INFO(get_logger(), "\nExpired obj id:[%d]", tracker_idx);
+      RCLCPP_INFO(get_logger(), "\nExpired obj id:[%d] cur time[%.3f]", tracker_idx, time.seconds());
     }
   }
 }
