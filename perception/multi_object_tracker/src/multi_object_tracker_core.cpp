@@ -350,7 +350,7 @@ void MultiObjectTracker::onMeasurement(
   /* life cycle check */
   checkTrackerLifeCycle(list_tracker_, measurement_time);
   /* sanitize trackers */
-  //sanitizeTracker(list_tracker_, measurement_time);
+  sanitizeTracker(list_tracker_, measurement_time);
 
   /* new tracker */
   for (size_t i = 0; i < transformed_objects.objects.size(); ++i) {
@@ -490,9 +490,13 @@ void MultiObjectTracker::sanitizeTracker(
               should_delete_tracker2 = true;
             }
           } else if (label1 == Label::UNKNOWN) {
-            should_delete_tracker1 = true;
+            if ((*itr2)->getNoMeasurementCount() <= 0 ) {
+              should_delete_tracker1 = true;
+            }
           } else if (label2 == Label::UNKNOWN) {
-            should_delete_tracker2 = true;
+            if ((*itr1)->getNoMeasurementCount() <= 0 ) {
+              should_delete_tracker2 = true;
+            }
           }
         }
       } else {  // If neither is UNKNOWN, delete the one with lower IOU.
