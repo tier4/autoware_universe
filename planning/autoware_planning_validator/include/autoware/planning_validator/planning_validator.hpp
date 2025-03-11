@@ -45,6 +45,12 @@ using diagnostic_updater::DiagnosticStatusWrapper;
 using diagnostic_updater::Updater;
 using nav_msgs::msg::Odometry;
 
+struct ValidityCheck {
+  bool enable;
+  bool is_true;
+  bool use_emergency_stop;
+};
+
 struct ValidationParams
 {
   // thresholds
@@ -59,6 +65,12 @@ struct ValidationParams
   double velocity_deviation_threshold;
   double distance_deviation_threshold;
   double longitudinal_distance_deviation_threshold;
+
+  struct TrajectoryShift : ValidityCheck {
+    double lat_shift_th;
+    double forward_shift_th;
+    double backward_shift_th;
+  } trajectory_shift;
 
   // parameters
   double forward_trajectory_length_acceleration;
@@ -86,6 +98,8 @@ public:
   bool checkValidDistanceDeviation(const Trajectory & trajectory);
   bool checkValidLongitudinalDistanceDeviation(const Trajectory & trajectory);
   bool checkValidForwardTrajectoryLength(const Trajectory & trajectory);
+  bool checkValidLatency(const Trajectory & trajectory);
+  bool checkTrajectoryShift(const Trajectory & trajectory, const Trajectory & prev_trajectory);
 
 private:
   void setupDiag();
