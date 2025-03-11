@@ -419,35 +419,33 @@ void MultiObjectTracker::sanitizeTracker(
       const auto iou = object_recognition_utils::get2dIoU(object1, object2, min_union_iou_area);
       const auto & label1 = sorted_list_tracker[i]->getHighestProbLabel();
       const auto & label2 = sorted_list_tracker[j]->getHighestProbLabel();
-      bool should_delete_tracker2 = false;
+      bool delete_candidate_tracker = false;
 
       // If at least one of them is UNKNOWN, delete the one with lower IOU. Because the UNKNOWN
       // objects are not reliable.
       if (label1 == Label::UNKNOWN || label2 == Label::UNKNOWN) {
         if (min_iou_for_unknown_object < iou) {
           if (label2 == Label::UNKNOWN) {
-            /* erase only when prioritized one has a measurement or the other one doesn't */
-            if (sorted_list_tracker[i]->getNoMeasurementCount() <= 0 or 
-                sorted_list_tracker[j]->getNoMeasurementCount() > 0) {
-              should_delete_tracker2 = true;
-            }
+            delete_candidate_tracker = true;
           }
         }
       } else {  // If neither is UNKNOWN, delete the one with lower IOU.
         if (min_iou < iou) {
           /* erase only when prioritized one has a measurement */
-          if (sorted_list_tracker[i]->getNoMeasurementCount() <= 0) {
-            should_delete_tracker2 = true;
-          }
+          delete_candidate_tracker = true;
         }
       }
 
-      if (should_delete_tracker2) {
-        // Remove from original list_tracker
-        list_tracker.remove(sorted_list_tracker[j]);
-        // Remove from sorted list
-        sorted_list_tracker.erase(sorted_list_tracker.begin() + j);
-        --j;
+      if (delete_candidate_tracker) {
+        /* erase only when prioritized one has a measurement or the other one doesn't */
+        if (sorted_list_tracker[i]->getNoMeasurementCount() <= 0 or 
+            sorted_list_tracker[j]->getNoMeasurementCount() > 0) {
+          // Remove from original list_tracker
+          list_tracker.remove(sorted_list_tracker[j]);
+          // Remove from sorted list
+          sorted_list_tracker.erase(sorted_list_tracker.begin() + j);
+          --j;
+        }
       }
     }
   }
