@@ -401,10 +401,6 @@ void MultiObjectTracker::sanitizeTracker(
 
   /* delete collision tracker */
   for (size_t i = 0; i < sorted_list_tracker.size(); ++i) {
-    /* block erasing if no measurement */
-    if (sorted_list_tracker[i]->getNoMeasurementCount() > 0) {
-      continue;
-    }
     autoware_auto_perception_msgs::msg::TrackedObject object1;
     sorted_list_tracker[i]->getTrackedObject(time, object1);
     for (size_t j = i + 1; j < sorted_list_tracker.size(); ++j) {
@@ -430,7 +426,11 @@ void MultiObjectTracker::sanitizeTracker(
       if (label1 == Label::UNKNOWN || label2 == Label::UNKNOWN) {
         if (min_iou_for_unknown_object < iou) {
           if (label2 == Label::UNKNOWN) {
-            should_delete_tracker2 = true;
+            /* erase only when prioritized one has a measurement or the other one doesn't */
+            if (sorted_list_tracker[i]->getNoMeasurementCount() <= 0 or 
+                sorted_list_tracker[j]->getNoMeasurementCount() > 0) {
+              should_delete_tracker2 = true;
+            }
           }
         }
       } else {  // If neither is UNKNOWN, delete the one with lower IOU.
