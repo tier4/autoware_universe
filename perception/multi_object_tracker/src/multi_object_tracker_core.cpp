@@ -435,7 +435,10 @@ void MultiObjectTracker::sanitizeTracker(
         }
       } else {  // If neither is UNKNOWN, delete the one with lower IOU.
         if (min_iou < iou) {
-          should_delete_tracker2 = true;
+          /* erase only when prioritized one has a measurement */
+          if (sorted_list_tracker[i]->getNoMeasurementCount() <= 0) {
+            should_delete_tracker2 = true;
+          }
         }
       }
 
