@@ -20,6 +20,7 @@ The following features are supported for trajectory validation and can have thre
 - **Distance deviation** : invalid if the ego is too far from the trajectory
 - **Longitudinal distance deviation** : invalid if the trajectory is too far from ego in longitudinal direction
 - **Forward trajectory length** : invalid if the trajectory length is not enough to stop within a given deceleration
+- **Yaw difference** : invalid if the difference between the ego yaw and closest trajectory yaw is too large
 - **Trajectory Shift** : invalid if the lat./long. distance between two consecutive trajectories near the Ego exceed the thresholds.
 
 The following features are to be implemented.
@@ -125,6 +126,7 @@ The following parameters can be set for the `autoware_planning_validator`:
 | `validity_checks.deviation.enable`          | bool   | flag to enable/disable deviation validation check                            | true          |
 | `validity_checks.deviation.velocity_th`     | double | max valid velocity deviation between ego and nearest trajectory point [m/s]  | 100.0         |
 | `validity_checks.deviation.distance_th`     | double | max valid euclidean distance between ego and nearest trajectory point [m]    | 100.0         |
+| `validity_checks.deviation.yaw_th`          | double | max valid yaw deviation between ego and nearest trajectory point [rad]       | 1.5708        |
 | `validity_checks.deviation.lon_distance_th` | double | max valid longitudinal distance between ego and nearest trajectory point [m] | 2.0           |
 | `validity_checks.deviation.is_critical`     | bool   | if true, will use handling type specified for critical checks                | false         |
 

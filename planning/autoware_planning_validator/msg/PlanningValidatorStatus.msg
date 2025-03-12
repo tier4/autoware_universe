@@ -16,6 +16,7 @@ bool is_valid_distance_deviation
 bool is_valid_longitudinal_distance_deviation
 bool is_valid_forward_trajectory_length
 bool is_valid_latency
+bool is_valid_yaw_deviation
 bool is_valid_trajectory_shift
 
 # values
@@ -34,6 +35,7 @@ float64 longitudinal_distance_deviation
 float64 forward_trajectory_length_required
 float64 forward_trajectory_length_measured
 float64 latency
+float64 yaw_deviation
 float64 lateral_shift
 float64 longitudinal_shift
 

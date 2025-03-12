@@ -16,6 +16,7 @@
 #include "test_parameter.hpp"
 #include "test_planning_validator_helper.hpp"
 
+#include <autoware_utils/geometry/geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -112,13 +113,14 @@ bool hasError(const std::vector<DiagnosticArray::ConstSharedPtr> & diags, const 
 std::pair<
   std::shared_ptr<autoware::planning_validator::PlanningValidator>, std::shared_ptr<PubSubManager>>
 prepareTest(
-  const Trajectory & trajectory, const Odometry & ego_odom,
+  Trajectory trajectory, const Odometry & ego_odom,
   const AccelWithCovarianceStamped & acceleration)
 {
   auto validator = std::make_shared<PlanningValidator>(getNodeOptionsWithDefaultParams());
   auto manager = std::make_shared<PubSubManager>();
   EXPECT_GE(manager->trajectory_pub_->get_subscription_count(), 1U) << "topic is not connected.";
 
+  trajectory.header.stamp = validator->get_clock()->now();
   manager->trajectory_pub_->publish(trajectory);
   manager->kinematics_pub_->publish(ego_odom);
   manager->acceleration_pub_->publish(acceleration);
@@ -210,8 +212,8 @@ TEST(PlanningValidator, DiagCheckSize)
   const auto accel = generateDefaultAcceleration();
   runWithBadTrajectory(generateTrajectory(1.0, 1.0, 0.0, 0), odom, accel, diag_name);
   runWithBadTrajectory(generateTrajectory(1.0, 1.0, 0.0, 1), odom, accel, diag_name);
-  runWithOKTrajectory(generateTrajectory(1.0, 1.0, 0.0, 2), odom, accel);
-  runWithOKTrajectory(generateTrajectory(1.0, 1.0, 0.0, 3), odom, accel);
+  runWithOKTrajectory(generateTrajectory(1.0, 1.0, 0.0, 2), odom, accel, diag_name);
+  runWithOKTrajectory(generateTrajectory(1.0, 1.0, 0.0, 3), odom, accel, diag_name);
 }
 
 TEST(PlanningValidator, DiagCheckInterval)
@@ -552,5 +554,31 @@ TEST(PlanningValidator, DiagCheckForwardTrajectoryLength)
     const auto & p = bad_trajectory.points.at(trajectory_size - 1).pose.position;
     const auto ego_odom = generateDefaultOdometry(p.x, p.y, ego_v);
     runWithBadTrajectory(bad_trajectory, ego_odom, accel, diag_name);
+  }
+}
+
+TEST(PlanningValidator, DiagCheckYawDeviation)
+{
+  const auto diag_name = "planning_validator: trajectory_validation_yaw_deviation";
+  const auto straight_trajectory = generateTrajectory(1.0, 0.0, 0.0, 10);
+  const auto accel = generateDefaultAcceleration();
+
+  // Ego with yaw deviation smaller than threshold -> must be OK
+  {
+    auto ego_odom = generateDefaultOdometry(0.0, 0.0, 0.0);
+    for (auto yaw = 0.0; yaw <= THRESHOLD_YAW_DEVIATION; yaw += 0.1) {
+      ego_odom.pose.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+      runWithOKTrajectory(straight_trajectory, ego_odom, accel, diag_name);
+    }
+  }
+  // Ego with yaw deviation larger than threshold -> must be NG
+  {
+    auto ego_odom = generateDefaultOdometry(0.0, 0.0, 0.0);
+    for (auto yaw = THRESHOLD_YAW_DEVIATION + 1e-3; yaw < M_PI; yaw += 0.1) {
+      ego_odom.pose.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+      runWithBadTrajectory(straight_trajectory, ego_odom, accel, diag_name);
+      ego_odom.pose.pose.orientation = autoware_utils::create_quaternion_from_yaw(-yaw);
+      runWithBadTrajectory(straight_trajectory, ego_odom, accel, diag_name);
+    }
   }
 }

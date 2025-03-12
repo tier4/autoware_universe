@@ -265,6 +265,7 @@ rclcpp::NodeOptions getNodeOptionsWithDefaultParams()
     "validity_checks.deviation.distance_th", THRESHOLD_DISTANCE_DEVIATION);
   node_options.append_parameter_override(
     "validity_checks.deviation.lon_distance_th", THRESHOLD_LONGITUDINAL_DISTANCE_DEVIATION);
+  node_options.append_parameter_override("validity_checks.deviation.yaw_th", THRESHOLD_YAW_DEVIATION);
   node_options.append_parameter_override("validity_checks.deviation.is_critical", false);
 
   node_options.append_parameter_override("validity_checks.steering.enable", true);
