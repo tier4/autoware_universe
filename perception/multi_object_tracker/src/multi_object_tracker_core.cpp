@@ -508,7 +508,7 @@ void MultiObjectTracker::sanitizeTracker(
 
       if (delete_candidate_tracker) {
         /* erase only when prioritized one has later(or equal time) meas than the other one doesn't */
-        if (sorted_list_tracker[i]->getElapsedTimeFromLastUpdate() <= sorted_list_tracker[j]->getElapsedTimeFromLastUpdate()) {
+        if (sorted_list_tracker[i]->getElapsedTimeFromLastUpdate(time) <= sorted_list_tracker[j]->getElapsedTimeFromLastUpdate(time)) {
           // Remove from original list_tracker
           list_tracker.remove(sorted_list_tracker[j]);
           // Remove from sorted list
