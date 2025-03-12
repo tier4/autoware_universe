@@ -1,3 +1,7 @@
+Gion ECU 設定については↓を参照
+https://github.com/tier4/pilot-auto.xx1/tree/feature/Gion-v0.46.0
+
+---
 # Autoware Universe
 
 ## Welcome to Autoware Universe
