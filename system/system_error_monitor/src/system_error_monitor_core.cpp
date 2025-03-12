@@ -704,13 +704,13 @@ bool AutowareErrorMonitor::isEmergencyHoldingRequired() const
   }
 
   // Don't hold status during manual driving
-  const bool is_manual_driving =
-    (control_mode_->mode == autoware_auto_vehicle_msgs::msg::ControlModeReport::MANUAL);
-  const auto no_hold_condition =
-    (!params_.use_emergency_hold_in_manual_driving && is_manual_driving);
-  if (no_hold_condition) {
-    return false;
-  }
+  // const bool is_manual_driving =
+  //   (control_mode_->mode == autoware_auto_vehicle_msgs::msg::ControlModeReport::MANUAL);
+  // const auto no_hold_condition =
+  //   (!params_.use_emergency_hold_in_manual_driving && is_manual_driving);
+  // if (no_hold_condition) {
+  //   return false;
+  // }
 
   return true;
 }
