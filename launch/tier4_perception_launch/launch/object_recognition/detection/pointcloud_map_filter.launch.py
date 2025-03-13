@@ -83,6 +83,7 @@ class PointcloudMapFilterPipeline:
         down_sample_topic = (
             "/perception/obstacle_segmentation/pointcloud_map_filtered/downsampled/pointcloud"
         )
+        intermediate_topic = "/perception/obstacle_segmentation/pointcloud_map_filtered/before_area_filter/pointcloud"
         components.append(
             ComposableNode(
                 package="pointcloud_preprocessor",
@@ -112,7 +113,7 @@ class PointcloudMapFilterPipeline:
                 remappings=[
                     ("input", down_sample_topic),
                     ("map", "/map/pointcloud_map"),
-                    ("output", LaunchConfiguration("output_topic")),
+                    ("output", intermediate_topic),
                     ("map_loader_service", "/map/get_differential_pointcloud_map"),
                     ("kinematic_state", "/localization/kinematic_state"),
                 ],
@@ -126,6 +127,27 @@ class PointcloudMapFilterPipeline:
                         "map_loader_radius": self.map_loader_radius,
                         "publish_debug_pcd": self.publish_debug_pcd,
                         "input_frame": "map",
+                    }
+                ],
+                extra_arguments=[
+                    {"use_intra_process_comms": False},
+                ],
+            )
+        )
+        components.append(
+            ComposableNode(
+                package="pointcloud_preprocessor",
+                plugin="pointcloud_preprocessor::VectorMapInsideAreaFilterComponent",
+                name="vector_map_inside_area_filter",
+                remappings=[
+                    ("input/vector_map", "/map/vector_map"),
+                    ("input", intermediate_topic),
+                    ("output", LaunchConfiguration("output_topic")),
+                ],
+                parameters=[
+                    {
+                        "use_z_filter": True,
+                        "z_threshold": 0.15,
                     }
                 ],
                 extra_arguments=[
