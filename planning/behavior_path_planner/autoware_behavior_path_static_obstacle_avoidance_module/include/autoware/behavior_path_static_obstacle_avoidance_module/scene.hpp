@@ -32,7 +32,6 @@
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace autoware::behavior_path_planner
@@ -46,10 +45,15 @@ class StaticObstacleAvoidanceModule : public SceneModuleInterface
 public:
   StaticObstacleAvoidanceModule(
     const std::string & name, rclcpp::Node & node, std::shared_ptr<AvoidanceParameters> parameters,
-    const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-    std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+    const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+      rtc_interface_ptr_map,
+    std::unordered_map<
+      std::string,
+      std::shared_ptr<
+        autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
-    const std::shared_ptr<PlanningFactorInterface> & planning_factor_interface);
+    const std::shared_ptr<planning_factor_interface::PlanningFactorInterface> &
+      planning_factor_interface);
 
   CandidateOutput planCandidate() const override;
   BehaviorModuleOutput plan() override;
@@ -136,7 +140,7 @@ private:
       if (finish_distance > -1.0e-03) {
         planning_factor_interface_->add(
           start_distance, finish_distance, left_shift.start_pose, left_shift.finish_pose,
-          PlanningFactor::SHIFT_LEFT,
+          planning_factor_interface::PlanningFactor::SHIFT_LEFT,
           utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check));
       }
     }
@@ -157,7 +161,7 @@ private:
       if (finish_distance > -1.0e-03) {
         planning_factor_interface_->add(
           start_distance, finish_distance, right_shift.start_pose, right_shift.finish_pose,
-          PlanningFactor::SHIFT_RIGHT,
+          planning_factor_interface::PlanningFactor::SHIFT_RIGHT,
           utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check));
       }
     }
@@ -289,7 +293,8 @@ private:
    * @return object that has additional data.
    */
   ObjectData createObjectData(
-    const AvoidancePlanningData & data, const PredictedObject & object) const;
+    const AvoidancePlanningData & data,
+    const autoware_perception_msgs::msg::PredictedObject & object) const;
 
   /**
    * @brief fill additional data so that the module judges target objects.

@@ -77,10 +77,15 @@ lanelet::BasicLineString3d toLineString3d(const std::vector<Point> & bound)
 
 StaticObstacleAvoidanceModule::StaticObstacleAvoidanceModule(
   const std::string & name, rclcpp::Node & node, std::shared_ptr<AvoidanceParameters> parameters,
-  const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-  std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+  const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+    rtc_interface_ptr_map,
+  std::unordered_map<
+    std::string,
+    std::shared_ptr<
+      autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
     objects_of_interest_marker_interface_ptr_map,
-  const std::shared_ptr<PlanningFactorInterface> & planning_factor_interface)
+  const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface> &
+    planning_factor_interface)
 : SceneModuleInterface{name, node, rtc_interface_ptr_map, objects_of_interest_marker_interface_ptr_map, planning_factor_interface},  // NOLINT
   helper_{std::make_shared<AvoidanceHelper>(parameters)},
   parameters_{parameters},
@@ -397,7 +402,8 @@ void StaticObstacleAvoidanceModule::fillAvoidanceTargetData(ObjectDataArray & ob
 }
 
 ObjectData StaticObstacleAvoidanceModule::createObjectData(
-  const AvoidancePlanningData & data, const PredictedObject & object) const
+  const AvoidancePlanningData & data,
+  const autoware_perception_msgs::msg::PredictedObject & object) const
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   using boost::geometry::return_centroid;
@@ -1207,7 +1213,9 @@ CandidateOutput StaticObstacleAvoidanceModule::planCandidate() const
   output.finish_distance_to_path_change = sl_back.end_longitudinal;
 
   const uint16_t planning_factor_direction = std::invoke([&output]() {
-    return output.lateral_shift > 0.0 ? PlanningFactor::SHIFT_LEFT : PlanningFactor::SHIFT_RIGHT;
+    return output.lateral_shift > 0.0
+             ? autoware::planning_factor_interface::PlanningFactor::SHIFT_LEFT
+             : autoware::planning_factor_interface::PlanningFactor::SHIFT_RIGHT;
   });
 
   planning_factor_interface_->add(
@@ -1466,7 +1474,8 @@ void StaticObstacleAvoidanceModule::updateData()
 
   // update interest objects data
   for (const auto & [uuid, data] : debug_data_.collision_check) {
-    const auto color = data.is_safe ? ColorName::GREEN : ColorName::RED;
+    const auto color = data.is_safe ? objects_of_interest_marker_interface::ColorName::GREEN
+                                    : objects_of_interest_marker_interface::ColorName::RED;
     setObjectsOfInterestData(data.current_obj_pose, data.obj_shape, color);
   }
 

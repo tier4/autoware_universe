@@ -58,7 +58,8 @@ private:
   std::shared_ptr<AvoidanceHelper> avoidance_helper_;
 
   std::optional<ObjectData> createObjectData(
-    const AvoidancePlanningData & data, const PredictedObject & object) const;
+    const AvoidancePlanningData & data,
+    const autoware_perception_msgs::msg::PredictedObject & object) const;
 
   void fillAvoidanceTargetObjects(AvoidancePlanningData & data, AvoidanceDebugData & debug) const;
 

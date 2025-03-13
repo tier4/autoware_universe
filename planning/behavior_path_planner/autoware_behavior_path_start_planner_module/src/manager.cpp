@@ -428,7 +428,7 @@ bool StartPlannerModuleManager::isSimultaneousExecutableAsApprovedModule() const
     return config_.enable_simultaneous_execution_as_approved_module;
   }
 
-  const auto checker = [this](const SceneModuleObserver & observer) {
+  const auto checker = [this](const auto & observer) {
     if (observer.expired()) {
       return config_.enable_simultaneous_execution_as_approved_module;
     }
@@ -457,7 +457,7 @@ bool StartPlannerModuleManager::isSimultaneousExecutableAsCandidateModule() cons
     return config_.enable_simultaneous_execution_as_candidate_module;
   }
 
-  const auto checker = [this](const SceneModuleObserver & observer) {
+  const auto checker = [this](const auto & observer) {
     if (observer.expired()) {
       return config_.enable_simultaneous_execution_as_candidate_module;
     }

@@ -18,7 +18,6 @@
 
 #include "autoware/behavior_path_planner_common/data_manager.hpp"
 #include "autoware/behavior_path_planner_common/interface/scene_module_interface.hpp"
-#include "autoware_utils/ros/parameter.hpp"
 
 #include <rclcpp/node.hpp>
 #include <rclcpp/parameter.hpp>
@@ -26,23 +25,14 @@
 
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
-#include <cstddef>
-#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
 namespace autoware::behavior_path_planner
 {
-
-using autoware::motion_utils::createDeadLineVirtualWallMarker;
-using autoware::motion_utils::createSlowDownVirtualWallMarker;
-using autoware::motion_utils::createStopVirtualWallMarker;
-using autoware_utils::to_hex_string;
-using unique_identifier_msgs::msg::UUID;
-using SceneModulePtr = std::shared_ptr<SceneModuleInterface>;
-using SceneModuleObserver = std::weak_ptr<SceneModuleInterface>;
 
 class SceneModuleManagerInterface
 {
@@ -59,144 +49,23 @@ public:
 
   void updateIdleModuleInstance();
 
-  bool isExecutionRequested(const BehaviorModuleOutput & previous_module_output) const
-  {
-    idle_module_ptr_->setData(planner_data_);
-    idle_module_ptr_->setPreviousModuleOutput(previous_module_output);
-    idle_module_ptr_->updateData();
-
-    return idle_module_ptr_->isExecutionRequested();
-  }
+  bool isExecutionRequested(const BehaviorModuleOutput & previous_module_output) const;
 
   void registerNewModule(
-    const SceneModuleObserver & observer, const BehaviorModuleOutput & previous_module_output)
-  {
-    if (observer.expired()) {
-      return;
-    }
+    const std::weak_ptr<SceneModuleInterface> & observer,
+    const BehaviorModuleOutput & previous_module_output);
 
-    observer.lock()->setData(planner_data_);
-    observer.lock()->setPreviousModuleOutput(previous_module_output);
-    observer.lock()->getTimeKeeper()->add_reporter(this->pub_processing_time_);
-    observer.lock()->onEntry();
+  void updateObserver();
 
-    observers_.push_back(observer);
-  }
+  void publishRTCStatus();
 
-  void updateObserver()
-  {
-    const auto itr = std::remove_if(
-      observers_.begin(), observers_.end(),
-      [](const auto & observer) { return observer.expired(); });
+  void publish_planning_factors();
 
-    observers_.erase(itr, observers_.end());
-  }
+  void publishVirtualWall() const;
 
-  void publishRTCStatus()
-  {
-    for (const auto & [module_name, ptr] : rtc_interface_ptr_map_) {
-      if (ptr) {
-        ptr->removeExpiredCooperateStatus();
-        ptr->publishCooperateStatus(rclcpp::Clock(RCL_ROS_TIME).now());
-      }
-    }
-  }
+  void publishMarker() const;
 
-  void publish_planning_factors() { planning_factor_interface_->publish(); }
-
-  void publishVirtualWall() const
-  {
-    using autoware_utils::append_marker_array;
-
-    MarkerArray markers{};
-
-    const auto marker_offset = std::numeric_limits<uint8_t>::max();
-
-    uint32_t marker_id = marker_offset;
-    for (const auto & m : observers_) {
-      if (m.expired()) {
-        continue;
-      }
-
-      const std::vector<std::pair<
-        PoseWithDetailOpt, std::function<MarkerArray(
-                             const geometry_msgs::msg::Pose &, const std::string &, rclcpp::Time,
-                             uint32_t, double, const std::string &, bool)>>>
-        pose_and_func_vec = {
-          {m.lock()->getStopPose(), createStopVirtualWallMarker},
-          {m.lock()->getSlowPose(), createSlowDownVirtualWallMarker},
-          {m.lock()->getDeadPose(), createDeadLineVirtualWallMarker}};
-
-      for (const auto & [opt_pose, create_virtual_wall] : pose_and_func_vec) {
-        if (!!opt_pose) {
-          const auto detail = opt_pose.value().detail;
-          const auto text = m.lock()->name() + (detail.empty() ? "" : " (" + detail + ")");
-          const auto virtual_wall = create_virtual_wall(
-            opt_pose.value().pose, text, rclcpp::Clock().now(), marker_id, 0.0, "", true);
-          append_marker_array(virtual_wall, &markers);
-        }
-      }
-
-      const auto module_specific_wall = m.lock()->getModuleVirtualWall();
-      append_marker_array(module_specific_wall, &markers);
-
-      m.lock()->resetWallPoses();
-    }
-
-    pub_virtual_wall_->publish(markers);
-  }
-
-  void publishMarker() const
-  {
-    using autoware_utils::append_marker_array;
-
-    MarkerArray info_markers{};
-    MarkerArray debug_markers{};
-    MarkerArray drivable_lanes_markers{};
-
-    const auto marker_offset = std::numeric_limits<uint8_t>::max();
-
-    uint32_t marker_id = marker_offset;
-    for (const auto & m : observers_) {
-      if (m.expired()) {
-        continue;
-      }
-
-      for (auto & marker : m.lock()->getInfoMarkers().markers) {
-        marker.id += marker_id;
-        info_markers.markers.push_back(marker);
-      }
-
-      for (auto & marker : m.lock()->getDebugMarkers().markers) {
-        marker.id += marker_id;
-        debug_markers.markers.push_back(marker);
-      }
-
-      for (auto & marker : m.lock()->getDrivableLanesMarkers().markers) {
-        marker.id += marker_id;
-        drivable_lanes_markers.markers.push_back(marker);
-      }
-
-      marker_id += marker_offset;
-    }
-
-    if (observers_.empty() && idle_module_ptr_ != nullptr) {
-      append_marker_array(idle_module_ptr_->getInfoMarkers(), &info_markers);
-      append_marker_array(idle_module_ptr_->getDebugMarkers(), &debug_markers);
-      append_marker_array(idle_module_ptr_->getDrivableLanesMarkers(), &drivable_lanes_markers);
-    }
-
-    pub_info_marker_->publish(info_markers);
-    pub_debug_marker_->publish(debug_markers);
-    pub_drivable_lanes_->publish(drivable_lanes_markers);
-  }
-
-  bool exist(const SceneModulePtr & module_ptr) const
-  {
-    return std::any_of(observers_.begin(), observers_.end(), [&](const auto & observer) {
-      return !observer.expired() && observer.lock() == module_ptr;
-    });
-  }
+  bool exist(const std::shared_ptr<SceneModuleInterface> & module_ptr) const;
 
   /**
    * Determine if a new module can be launched. It ensures that only one instance of a particular
@@ -207,43 +76,21 @@ public:
    * - No other instance of the same name of scene module is currently active or registered.
    *
    */
-  bool canLaunchNewModule() const { return observers_.empty(); }
+  bool canLaunchNewModule() const;
 
-  virtual bool isSimultaneousExecutableAsApprovedModule() const
-  {
-    return config_.enable_simultaneous_execution_as_approved_module;
-  }
+  virtual bool isSimultaneousExecutableAsApprovedModule() const;
 
-  virtual bool isSimultaneousExecutableAsCandidateModule() const
-  {
-    return config_.enable_simultaneous_execution_as_candidate_module;
-  }
+  virtual bool isSimultaneousExecutableAsCandidateModule() const;
 
-  void setData(const std::shared_ptr<PlannerData> & planner_data) { planner_data_ = planner_data; }
+  void setData(const std::shared_ptr<PlannerData> & planner_data);
 
-  void reset()
-  {
-    std::for_each(observers_.begin(), observers_.end(), [](const auto & observer) {
-      if (!observer.expired()) {
-        observer.lock()->onExit();
-      }
-    });
+  void reset();
 
-    observers_.clear();
+  std::string name() const;
 
-    if (idle_module_ptr_ != nullptr) {
-      idle_module_ptr_->onExit();
-      idle_module_ptr_.reset();
-    }
+  std::vector<std::weak_ptr<SceneModuleInterface>> getSceneModuleObservers();
 
-    pub_debug_marker_->publish(MarkerArray{});
-  }
-
-  std::string name() const { return name_; }
-
-  std::vector<SceneModuleObserver> getSceneModuleObservers() { return observers_; }
-
-  std::shared_ptr<SceneModuleInterface> getIdleModule() { return std::move(idle_module_ptr_); }
+  std::shared_ptr<SceneModuleInterface> getIdleModule();
 
   virtual void updateModuleParams(const std::vector<rclcpp::Parameter> & parameters) = 0;
 
@@ -254,13 +101,13 @@ protected:
 
   rclcpp::Node * node_ = nullptr;
 
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_info_marker_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_info_marker_;
 
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_marker_;
 
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_virtual_wall_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_virtual_wall_;
 
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_drivable_lanes_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_drivable_lanes_;
 
   rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr pub_processing_time_;
 
@@ -268,16 +115,21 @@ protected:
 
   std::shared_ptr<PlannerData> planner_data_;
 
-  std::vector<SceneModuleObserver> observers_;
+  std::vector<std::weak_ptr<SceneModuleInterface>> observers_;
 
   std::unique_ptr<SceneModuleInterface> idle_module_ptr_;
 
-  std::shared_ptr<PlanningFactorInterface> planning_factor_interface_;
+  std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface_;
 
-  std::unordered_map<std::string, std::shared_ptr<RTCInterface>> rtc_interface_ptr_map_;
+  std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>>
+    rtc_interface_ptr_map_{};
 
-  std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>>
-    objects_of_interest_marker_interface_ptr_map_;
+  std::unordered_map<
+    std::string,
+    std::shared_ptr<
+      autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>>
+    objects_of_interest_marker_interface_ptr_map_{};
 
   ModuleConfigParameters config_;
 };

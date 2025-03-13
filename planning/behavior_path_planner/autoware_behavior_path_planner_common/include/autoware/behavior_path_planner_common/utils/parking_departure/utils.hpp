@@ -60,7 +60,8 @@ void updatePathProperty(
 void initializeCollisionCheckDebugMap(CollisionCheckDebugMap & collision_check_debug_map);
 
 void updateSafetyCheckTargetObjectsData(
-  StartGoalPlannerData & data, const PredictedObjects & filtered_objects,
+  StartGoalPlannerData & data,
+  const autoware_perception_msgs::msg::PredictedObjects & filtered_objects,
   const TargetObjectsOnLane & target_objects_on_lane,
   const std::vector<PoseWithVelocityStamped> & ego_predicted_path);
 

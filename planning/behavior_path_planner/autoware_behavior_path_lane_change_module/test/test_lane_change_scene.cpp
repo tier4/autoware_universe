@@ -73,8 +73,10 @@ public:
       "/test_data/test_object_filter.yaml";
 
     YAML::Node yaml_node = YAML::LoadFile(objects_file);
-    const auto objects = autoware::test_utils::parse<PredictedObjects>(yaml_node);
-    planner_data_->dynamic_object = std::make_shared<PredictedObjects>(objects);
+    const auto objects =
+      autoware::test_utils::parse<autoware_perception_msgs::msg::PredictedObjects>(yaml_node);
+    planner_data_->dynamic_object =
+      std::make_shared<autoware_perception_msgs::msg::PredictedObjects>(objects);
   }
 
   void init_module()

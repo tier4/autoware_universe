@@ -45,7 +45,7 @@ public:
     GoalCandidates & goal_candidates,
     const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map,
     const std::shared_ptr<const PlannerData> & planner_data,
-    const PredictedObjects & objects) const;
+    const autoware_perception_msgs::msg::PredictedObjects & objects) const;
 
   // todo(kosuke55): Functions for this specific use should not be in the interface,
   // so it is better to consider interface design when we implement other goal searchers.
@@ -56,7 +56,7 @@ public:
     const GoalCandidate & goal_candidate, const double margin_scale_factor,
     const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map,
     const std::shared_ptr<const PlannerData> & planner_data,
-    const PredictedObjects & objects) const;
+    const autoware_perception_msgs::msg::PredictedObjects & objects) const;
 
   MultiPolygon2d getAreaPolygons() const { return area_polygons_; }
 
@@ -69,17 +69,18 @@ private:
     const lanelet::BasicPolygons2d & bus_stop_area_polygons);
 
   void countObjectsToAvoid(
-    GoalCandidates & goal_candidates, const PredictedObjects & objects,
+    GoalCandidates & goal_candidates,
+    const autoware_perception_msgs::msg::PredictedObjects & objects,
     const std::shared_ptr<const PlannerData> & planner_data,
     const Pose & reference_goal_pose) const;
   void createAreaPolygons(
     std::vector<Pose> original_search_poses,
     const std::shared_ptr<const PlannerData> & planner_data);
   bool checkCollision(
-    const Pose & pose, const PredictedObjects & objects,
+    const Pose & pose, const autoware_perception_msgs::msg::PredictedObjects & objects,
     const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map) const;
   bool checkCollisionWithLongitudinalDistance(
-    const Pose & ego_pose, const PredictedObjects & objects,
+    const Pose & ego_pose, const autoware_perception_msgs::msg::PredictedObjects & objects,
     const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map,
     const std::shared_ptr<const PlannerData> & planner_data) const;
 

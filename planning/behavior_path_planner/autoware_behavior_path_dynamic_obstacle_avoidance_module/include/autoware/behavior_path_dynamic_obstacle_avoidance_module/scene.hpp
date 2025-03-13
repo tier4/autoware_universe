@@ -180,8 +180,8 @@ public:
   struct DynamicAvoidanceObject
   {
     DynamicAvoidanceObject(
-      const PredictedObject & predicted_object, const double arg_vel, const double arg_lat_vel,
-      const bool arg_is_object_on_ego_path,
+      const autoware_perception_msgs::msg::PredictedObject & predicted_object, const double arg_vel,
+      const double arg_lat_vel, const bool arg_is_object_on_ego_path,
       const std::optional<rclcpp::Time> & arg_latest_time_inside_ego_path)
     : uuid(autoware_utils::to_hex_string(predicted_object.object_id)),
       label(predicted_object.classification.front().label),
@@ -349,10 +349,15 @@ public:
   DynamicObstacleAvoidanceModule(
     const std::string & name, rclcpp::Node & node,
     std::shared_ptr<DynamicAvoidanceParameters> parameters,
-    const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-    std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+    const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+      rtc_interface_ptr_map,
+    std::unordered_map<
+      std::string,
+      std::shared_ptr<
+        autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
-    const std::shared_ptr<PlanningFactorInterface> planning_factor_interface);
+    const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+      planning_factor_interface);
 
   void updateModuleParams(const std::any & parameters) override
   {
@@ -410,7 +415,8 @@ private:
     const geometry_msgs::msg::Pose & obj_pose,
     const autoware_perception_msgs::msg::Shape & obj_shape, const double obj_vel) const;
   bool isObjectFarFromPath(
-    const PredictedObject & predicted_object, const double obj_dist_to_path) const;
+    const autoware_perception_msgs::msg::PredictedObject & predicted_object,
+    const double obj_dist_to_path) const;
   TimeWhileCollision calcTimeWhileCollision(
     const std::vector<PathPointWithLaneId> & ego_path, const double obj_tangent_vel,
     const LatLonOffset & lat_lon_offset) const;

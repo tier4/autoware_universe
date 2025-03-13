@@ -43,7 +43,6 @@
 namespace autoware::behavior_path_planner::utils::static_obstacle_avoidance
 {
 
-using autoware::behavior_path_planner::utils::traffic_light::calcDistanceToRedTrafficLight;
 using autoware::behavior_path_planner::utils::traffic_light::getDistanceToNextTrafficLight;
 using autoware_perception_msgs::msg::TrafficLightElement;
 
@@ -170,7 +169,8 @@ namespace filtering_utils
  * @return if the object is avoidance target object type, return true.
  */
 bool isAvoidanceTargetObjectType(
-  const PredictedObject & object, const std::shared_ptr<AvoidanceParameters> & parameters)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const std::shared_ptr<AvoidanceParameters> & parameters)
 {
   const auto object_type = utils::getHighestProbLabel(object.classification);
 
@@ -188,7 +188,8 @@ bool isAvoidanceTargetObjectType(
  * @return if the object is safety check target object type, return true.
  */
 bool isSafetyCheckTargetObjectType(
-  const PredictedObject & object, const std::shared_ptr<AvoidanceParameters> & parameters)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const std::shared_ptr<AvoidanceParameters> & parameters)
 {
   const auto object_type = utils::getHighestProbLabel(object.classification);
 
@@ -2213,7 +2214,7 @@ std::vector<ExtendedPredictedObject> getSafetyCheckTargetObjects(
   };
 
   const auto to_predicted_objects = [&parameters](const auto & objects) {
-    PredictedObjects ret{};
+    autoware_perception_msgs::msg::PredictedObjects ret{};
     std::for_each(objects.begin(), objects.end(), [&ret, &parameters](const auto & object) {
       if (filtering_utils::isSafetyCheckTargetObjectType(object.object, parameters)) {
         // check only moving objects
@@ -2321,14 +2322,16 @@ std::vector<ExtendedPredictedObject> getSafetyCheckTargetObjects(
   return target_objects;
 }
 
-std::pair<PredictedObjects, PredictedObjects> separateObjectsByPath(
+std::pair<
+  autoware_perception_msgs::msg::PredictedObjects, autoware_perception_msgs::msg::PredictedObjects>
+separateObjectsByPath(
   const PathWithLaneId & reference_path, const PathWithLaneId & spline_path,
   const std::shared_ptr<const PlannerData> & planner_data, const AvoidancePlanningData & data,
   const std::shared_ptr<AvoidanceParameters> & parameters,
   const double object_check_forward_distance, DebugData & debug)
 {
-  PredictedObjects target_objects;
-  PredictedObjects other_objects;
+  autoware_perception_msgs::msg::PredictedObjects target_objects;
+  autoware_perception_msgs::msg::PredictedObjects other_objects;
 
   if (reference_path.points.empty() || spline_path.points.empty()) {
     return std::make_pair(target_objects, other_objects);

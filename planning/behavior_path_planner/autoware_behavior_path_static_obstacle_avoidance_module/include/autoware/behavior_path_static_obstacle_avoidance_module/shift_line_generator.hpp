@@ -18,7 +18,6 @@
 #include "autoware/behavior_path_planner_common/utils/path_shifter/path_shifter.hpp"
 #include "autoware/behavior_path_static_obstacle_avoidance_module/data_structs.hpp"
 #include "autoware/behavior_path_static_obstacle_avoidance_module/helper.hpp"
-#include "autoware/behavior_path_static_obstacle_avoidance_module/type_alias.hpp"
 
 #include <memory>
 

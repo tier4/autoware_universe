@@ -168,7 +168,7 @@ autoware_utils::Point2d convertPoint(const geometry_msgs::msg::Point & p)
 }
 }  // namespace
 
-std::vector<TrajectoryPoint> PlannerInterface::generateStopTrajectory(
+std::vector<autoware_planning_msgs::msg::TrajectoryPoint> PlannerInterface::generateStopTrajectory(
   const PlannerData & planner_data, const std::vector<StopObstacle> & stop_obstacles)
 {
   stop_watch_.tic(__func__);

@@ -641,7 +641,7 @@ std::optional<size_t> getOverlappedLaneletId(const std::vector<DrivableLanes> & 
 
     for (const auto & lanelet : lanelets) {
       for (const auto & target_lanelet : target_lanelets) {
-        std::vector<Polygon2d> intersections{};
+        std::vector<autoware_utils::Polygon2d> intersections{};
         boost::geometry::intersection(
           toPolygon2d(lanelet), toPolygon2d(target_lanelet), intersections);
 
@@ -924,8 +924,8 @@ void generateDrivableArea(
 
   // fix intersected bound
   // if bound is intersected, remove them and insert intersection point
-  typedef boost::geometry::model::d2::point_xy<double> BoostPoint;
-  typedef boost::geometry::model::linestring<BoostPoint> LineString;
+  using BoostPoint = boost::geometry::model::d2::point_xy<double>;
+  using LineString = boost::geometry::model::linestring<BoostPoint>;
   auto modify_bound_intersection = [](const std::vector<Point> & bound) {
     const double intersection_check_distance = 10.0;
     std::vector<Point> modified_bound;

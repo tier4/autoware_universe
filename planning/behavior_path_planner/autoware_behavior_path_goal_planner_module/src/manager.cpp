@@ -16,6 +16,7 @@
 
 #include "autoware/behavior_path_goal_planner_module/goal_planner_module.hpp"
 #include "autoware/behavior_path_goal_planner_module/goal_planner_parameters.hpp"
+#include "autoware/behavior_path_planner_common/utils/utils.hpp"
 #include "autoware_utils/ros/update_param.hpp"
 
 #include <rclcpp/rclcpp.hpp>

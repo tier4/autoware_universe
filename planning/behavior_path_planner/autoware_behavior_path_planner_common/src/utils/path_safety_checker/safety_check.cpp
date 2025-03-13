@@ -774,8 +774,9 @@ double calc_obstacle_max_length(const Shape & shape)
 }
 
 std::pair<bool, bool> checkObjectsCollisionRough(
-  const PathWithLaneId & path, const PredictedObjects & objects, const double margin,
-  const BehaviorPathPlannerParameters & parameters, const bool use_offset_ego_point)
+  const PathWithLaneId & path, const autoware_perception_msgs::msg::PredictedObjects & objects,
+  const double margin, const BehaviorPathPlannerParameters & parameters,
+  const bool use_offset_ego_point)
 {
   const auto & points = path.points;
 
@@ -826,7 +827,7 @@ std::pair<bool, bool> checkObjectsCollisionRough(
 }
 
 double calculateRoughDistanceToObjects(
-  const PathWithLaneId & path, const PredictedObjects & objects,
+  const PathWithLaneId & path, const autoware_perception_msgs::msg::PredictedObjects & objects,
   const BehaviorPathPlannerParameters & parameters, const bool use_offset_ego_point,
   const std::string & distance_type)
 {

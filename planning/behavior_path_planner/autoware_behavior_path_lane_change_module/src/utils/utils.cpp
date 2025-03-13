@@ -74,7 +74,6 @@ using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_utils::LineString2d;
-using autoware_utils::Point2d;
 using autoware_utils::Polygon2d;
 using behavior_path_planner::lane_change::PathType;
 using geometry_msgs::msg::Pose;
@@ -534,7 +533,8 @@ lanelet::BasicPolygon2d create_polygon(
 }
 
 ExtendedPredictedObject transform(
-  const PredictedObject & object, const LaneChangeParameters & lane_change_parameters)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const LaneChangeParameters & lane_change_parameters)
 {
   ExtendedPredictedObject extended_object(object);
 

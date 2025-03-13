@@ -16,12 +16,15 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 
+#include <lanelet2_core/primitives/BasicRegulatoryElements.h>
+
 #include <limits>
 #include <memory>
 
 namespace autoware::behavior_path_planner::utils::traffic_light
 {
 using autoware::motion_utils::calcSignedArcLength;
+using lanelet::TrafficLight;
 
 double getDistanceToNextTrafficLight(
   const Pose & current_pose, const lanelet::ConstLanelets & lanelets)

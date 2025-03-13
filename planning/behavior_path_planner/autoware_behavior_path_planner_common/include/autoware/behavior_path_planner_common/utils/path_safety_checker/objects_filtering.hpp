@@ -55,7 +55,8 @@ bool velocity_filter(const Twist & object_twist, double velocity_threshold, doub
  * @return Returns true when the object is within a certain distance.
  */
 bool position_filter(
-  const PredictedObject & object, const std::vector<PathPointWithLaneId> & path_points,
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const std::vector<PathPointWithLaneId> & path_points,
   const geometry_msgs::msg::Point & current_pose, const double forward_distance,
   const double backward_distance);
 
@@ -99,8 +100,8 @@ using autoware_perception_msgs::msg::PredictedObjects;
  * @return result.
  */
 bool isCentroidWithinLanelet(
-  const PredictedObject & object, const lanelet::ConstLanelet & lanelet,
-  const double yaw_threshold);
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const lanelet::ConstLanelet & lanelet, const double yaw_threshold);
 
 /**
  * @brief Filters objects based on object polygon overlapping with lanelet.
@@ -111,14 +112,16 @@ bool isCentroidWithinLanelet(
  * @return result.
  */
 bool isPolygonOverlapLanelet(
-  const PredictedObject & object, const lanelet::ConstLanelet & lanelet,
-  const double yaw_threshold);
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const lanelet::ConstLanelet & lanelet, const double yaw_threshold);
 
 bool isPolygonOverlapLanelet(
-  const PredictedObject & object, const autoware_utils::Polygon2d & lanelet_polygon);
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const autoware_utils::Polygon2d & lanelet_polygon);
 
 bool isPolygonOverlapLanelet(
-  const PredictedObject & object, const lanelet::BasicPolygon2d & lanelet_polygon);
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const lanelet::BasicPolygon2d & lanelet_polygon);
 
 /**
  * @brief Filters objects based on various criteria.
@@ -128,10 +131,10 @@ bool isPolygonOverlapLanelet(
  * @param current_lanes
  * @param current_pose The current pose of ego vehicle.
  * @param params The filtering parameters.
- * @return PredictedObjects The filtered objects.
+ * @return autoware_perception_msgs::msg::PredictedObjects The filtered objects.
  */
 PredictedObjects filterObjects(
-  const std::shared_ptr<const PredictedObjects> & objects,
+  const std::shared_ptr<const autoware_perception_msgs::msg::PredictedObjects> & objects,
   const std::shared_ptr<RouteHandler> & route_handler, const lanelet::ConstLanelets & current_lanes,
   const geometry_msgs::msg::Point & current_pose,
   const std::shared_ptr<ObjectsFilteringParams> & params);
@@ -151,7 +154,7 @@ PredictedObjects filterObjects(
  * @return A new collection of objects that have been filtered according to the rules.
  */
 PredictedObjects filterObjectsByVelocity(
-  const PredictedObjects & objects, const double velocity_threshold,
+  const autoware_perception_msgs::msg::PredictedObjects & objects, const double velocity_threshold,
   const bool remove_above_threshold = false);
 
 /**
@@ -167,7 +170,8 @@ PredictedObjects filterObjectsByVelocity(
  * @return A new collection of objects that have been filtered according to the rules.
  */
 PredictedObjects filterObjectsByVelocity(
-  const PredictedObjects & objects, double velocity_threshold, double max_velocity);
+  const autoware_perception_msgs::msg::PredictedObjects & objects, double velocity_threshold,
+  double max_velocity);
 
 /**
  * @brief Filter objects based on their position relative to a current_pose.
@@ -179,7 +183,8 @@ PredictedObjects filterObjectsByVelocity(
  * @param backward_distance Maximum backward distance for filtering.
  */
 void filterObjectsByPosition(
-  PredictedObjects & objects, const std::vector<PathPointWithLaneId> & path_points,
+  autoware_perception_msgs::msg::PredictedObjects & objects,
+  const std::vector<PathPointWithLaneId> & path_points,
   const geometry_msgs::msg::Point & current_pose, const double forward_distance,
   const double backward_distance);
 
@@ -193,8 +198,8 @@ void filterObjectsByPosition(
  * @param search_radius The radius within which to retain objects.
  */
 void filterObjectsWithinRadius(
-  PredictedObjects & objects, const geometry_msgs::msg::Point & reference_point,
-  const double search_radius);
+  autoware_perception_msgs::msg::PredictedObjects & objects,
+  const geometry_msgs::msg::Point & reference_point, const double search_radius);
 
 /**
  * @brief Filters the provided objects based on their classification.
@@ -203,7 +208,8 @@ void filterObjectsWithinRadius(
  * @param target_object_types The types of objects to retain after filtering.
  */
 void filterObjectsByClass(
-  PredictedObjects & objects, const ObjectTypesToCheck & target_object_types);
+  autoware_perception_msgs::msg::PredictedObjects & objects,
+  const ObjectTypesToCheck & target_object_types);
 
 /**
  * @brief Separate index of the obstacles into two part based on whether the object is within
@@ -212,19 +218,25 @@ void filterObjectsByClass(
  * lanelet.
  */
 std::pair<std::vector<size_t>, std::vector<size_t>> separateObjectIndicesByLanelets(
-  const PredictedObjects & objects, const lanelet::ConstLanelets & target_lanelets,
-  const std::function<bool(const PredictedObject, const lanelet::ConstLanelet, const double)> &
-    condition,
+  const autoware_perception_msgs::msg::PredictedObjects & objects,
+  const lanelet::ConstLanelets & target_lanelets,
+  const std::function<bool(
+    const autoware_perception_msgs::msg::PredictedObject, const lanelet::ConstLanelet,
+    const double)> & condition,
   const double yaw_threshold = M_PI);
 
 /**
  * @brief Separate the objects into two part based on whether the object is within lanelet.
  * @return Objects pair. first objects are in the lanelet, and second others are out of lanelet.
  */
-std::pair<PredictedObjects, PredictedObjects> separateObjectsByLanelets(
-  const PredictedObjects & objects, const lanelet::ConstLanelets & target_lanelets,
-  const std::function<bool(const PredictedObject, const lanelet::ConstLanelet, const double)> &
-    condition,
+std::pair<
+  autoware_perception_msgs::msg::PredictedObjects, autoware_perception_msgs::msg::PredictedObjects>
+separateObjectsByLanelets(
+  const autoware_perception_msgs::msg::PredictedObjects & objects,
+  const lanelet::ConstLanelets & target_lanelets,
+  const std::function<bool(
+    const autoware_perception_msgs::msg::PredictedObject, const lanelet::ConstLanelet,
+    const double)> & condition,
   const double yaw_threshold = M_PI);
 
 /**
@@ -273,7 +285,8 @@ std::vector<PoseWithVelocityStamped> createPredictedPath(
  * @return bool True if the object's centroid is within the lanelets, otherwise false.
  */
 bool isCentroidWithinLanelets(
-  const PredictedObject & object, const lanelet::ConstLanelets & target_lanelets);
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const lanelet::ConstLanelets & target_lanelets);
 
 /**
  * @brief Transforms a given object into an extended predicted object.
@@ -284,8 +297,8 @@ bool isCentroidWithinLanelets(
  * @return ExtendedPredictedObject The transformed object.
  */
 ExtendedPredictedObject transform(
-  const PredictedObject & object, const double safety_check_time_horizon,
-  const double safety_check_time_resolution);
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const double safety_check_time_horizon, const double safety_check_time_resolution);
 
 /**
  * @brief Creates target objects on a lane based on provided parameters.
@@ -298,7 +311,7 @@ ExtendedPredictedObject transform(
  */
 TargetObjectsOnLane createTargetObjectsOnLane(
   const lanelet::ConstLanelets & current_lanes, const std::shared_ptr<RouteHandler> & route_handler,
-  const PredictedObjects & filtered_objects,
+  const autoware_perception_msgs::msg::PredictedObjects & filtered_objects,
   const std::shared_ptr<ObjectsFilteringParams> & params);
 
 /**
@@ -313,7 +326,8 @@ TargetObjectsOnLane createTargetObjectsOnLane(
  * specified target object types.
  */
 bool isTargetObjectType(
-  const PredictedObject & object, const ObjectTypesToCheck & target_object_types);
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const ObjectTypesToCheck & target_object_types);
 
 /**
  * @brief Filters objects in the 'selected' container based on the provided filter function.
@@ -327,7 +341,9 @@ bool isTargetObjectType(
  * @param filter The filter function that determines whether an object should be removed.
  */
 template <typename Func>
-void filterObjects(PredictedObjects & selected, PredictedObjects & removed, Func filter)
+void filterObjects(
+  autoware_perception_msgs::msg::PredictedObjects & selected,
+  autoware_perception_msgs::msg::PredictedObjects & removed, Func filter)
 {
   auto partitioned = std::partition(selected.objects.begin(), selected.objects.end(), filter);
   removed.objects.insert(removed.objects.end(), partitioned, selected.objects.end());
@@ -336,7 +352,8 @@ void filterObjects(PredictedObjects & selected, PredictedObjects & removed, Func
 
 template <typename Func>
 void filterObjects(
-  std::vector<PredictedObject> & selected, std::vector<PredictedObject> & removed, Func filter)
+  std::vector<autoware_perception_msgs::msg::PredictedObject> & selected,
+  std::vector<autoware_perception_msgs::msg::PredictedObject> & removed, Func filter)
 {
   auto partitioned = std::partition(selected.begin(), selected.end(), filter);
   removed.insert(removed.end(), partitioned, selected.end());
@@ -355,16 +372,17 @@ void filterObjects(
  * @param filter The filter function that determines whether an object should be removed.
  */
 template <typename Func>
-void filterObjects(PredictedObjects & objects, Func filter)
+void filterObjects(autoware_perception_msgs::msg::PredictedObjects & objects, Func filter)
 {
-  [[maybe_unused]] PredictedObjects removed_objects{};
+  [[maybe_unused]] autoware_perception_msgs::msg::PredictedObjects removed_objects{};
   filterObjects(objects, removed_objects, filter);
 }
 
 template <typename Func>
-void filterObjects(std::vector<PredictedObject> & objects, Func filter)
+void filterObjects(
+  std::vector<autoware_perception_msgs::msg::PredictedObject> & objects, Func filter)
 {
-  [[maybe_unused]] std::vector<PredictedObject> removed_objects{};
+  [[maybe_unused]] std::vector<autoware_perception_msgs::msg::PredictedObject> removed_objects{};
   filterObjects(objects, removed_objects, filter);
 }
 }  // namespace autoware::behavior_path_planner::utils::path_safety_checker

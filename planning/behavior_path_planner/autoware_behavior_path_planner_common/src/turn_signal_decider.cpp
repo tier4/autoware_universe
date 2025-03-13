@@ -15,16 +15,14 @@
 #include "autoware/behavior_path_planner_common/turn_signal_decider.hpp"
 
 #include "autoware/behavior_path_planner_common/utils/utils.hpp"
-
-#include <autoware/motion_utils/constants.hpp>
-#include <autoware/motion_utils/resample/resample.hpp>
-#include <autoware/motion_utils/trajectory/path_with_lane_id.hpp>
-#include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_lanelet2_extension/utility/utilities.hpp>
-#include <autoware_utils/geometry/geometry.hpp>
-#include <autoware_utils/math/normalization.hpp>
-#include <autoware_utils/math/unit_conversion.hpp>
+#include "autoware/motion_utils/constants.hpp"
+#include "autoware/motion_utils/resample/resample.hpp"
+#include "autoware/motion_utils/trajectory/trajectory.hpp"
+#include "autoware_lanelet2_extension/utility/message_conversion.hpp"
+#include "autoware_lanelet2_extension/utility/utilities.hpp"
+#include "autoware_utils/geometry/geometry.hpp"
+#include "autoware_utils/math/normalization.hpp"
+#include "autoware_utils/math/unit_conversion.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -48,6 +46,23 @@ double calc_distance(
       path.points, input_point, nearest_dist_threshold, nearest_yaw_threshold);
   return autoware::motion_utils::calcSignedArcLength(
     path.points, current_pose.position, current_seg_idx, input_point.position, nearest_seg_idx);
+}
+
+TurnSignalInfo::TurnSignalInfo()
+{
+  turn_signal.command = TurnIndicatorsCommand::NO_COMMAND;
+  hazard_signal.command = HazardLightsCommand::NO_COMMAND;
+}
+
+TurnSignalInfo::TurnSignalInfo(const Pose & start, const Pose & end)
+{
+  turn_signal.command = TurnIndicatorsCommand::NO_COMMAND;
+  hazard_signal.command = HazardLightsCommand::NO_COMMAND;
+
+  desired_start_point = start;
+  desired_end_point = end;
+  required_start_point = start;
+  required_end_point = end;
 }
 
 /***
@@ -113,7 +128,8 @@ TurnIndicatorsCommand TurnSignalDecider::getTurnSignal(
       return updated_turn_signal;
     }
     return turn_signal_info.turn_signal;
-  } else if (
+  }
+  if (
     turn_signal_info.turn_signal.command == TurnIndicatorsCommand::NO_COMMAND ||
     turn_signal_info.turn_signal.command == TurnIndicatorsCommand::DISABLE) {
     set_intersection_info(
@@ -135,6 +151,16 @@ std::pair<bool, bool> TurnSignalDecider::getIntersectionTurnSignalFlag()
 std::pair<Pose, double> TurnSignalDecider::getIntersectionPoseAndDistance()
 {
   return std::make_pair(intersection_pose_point_, intersection_distance_);
+}
+
+void TurnSignalDecider::setParameters(
+  const double base_link2front, const double intersection_search_distance,
+  const double intersection_search_time, const double intersection_angle_threshold_deg)
+{
+  base_link2front_ = base_link2front;
+  intersection_search_distance_ = intersection_search_distance;
+  intersection_search_time_ = intersection_search_time;
+  intersection_angle_threshold_deg_ = intersection_angle_threshold_deg;
 }
 
 std::optional<TurnSignalInfo> TurnSignalDecider::getIntersectionTurnSignalInfo(
@@ -271,7 +297,8 @@ std::optional<TurnSignalInfo> TurnSignalDecider::getIntersectionTurnSignalInfo(
       // Vehicle is already passed this lane
       desired_start_point_map_.erase(lane_id);
       continue;
-    } else if (search_distance <= dist_to_front_point) {
+    }
+    if (search_distance <= dist_to_front_point) {
       continue;
     }
     if (requires_turn_signal(lane_attribute, is_in_turn_lane)) {
@@ -555,10 +582,7 @@ bool TurnSignalDecider::use_prior_turn_signal(
 
   // If the prior section is inside of the subsequent required section
   if (dist_to_prior_required_end < dist_to_subsequent_required_end) {
-    if (before_prior_required || inside_prior_required) {
-      return true;
-    }
-    return false;
+    return before_prior_required || inside_prior_required;
   }
 
   // inside or passed the intersection required
@@ -570,7 +594,7 @@ bool TurnSignalDecider::use_prior_turn_signal(
 }
 
 geometry_msgs::msg::Pose TurnSignalDecider::get_required_end_point(
-  const lanelet::ConstLineString3d & centerline)
+  const lanelet::ConstLineString3d & centerline) const
 {
   std::vector<geometry_msgs::msg::Pose> converted_centerline(centerline.size());
   for (size_t i = 0; i < centerline.size(); ++i) {

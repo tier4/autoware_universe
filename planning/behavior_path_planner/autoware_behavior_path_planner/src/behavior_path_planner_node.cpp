@@ -16,9 +16,8 @@
 
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 #include "autoware/motion_utils/trajectory/conversion.hpp"
-
-#include <autoware_utils/ros/update_param.hpp>
-#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include "autoware_utils/ros/marker_helper.hpp"
+#include "autoware_utils/ros/update_param.hpp"
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <tier4_planning_msgs/msg/path_change_module_id.hpp>
@@ -29,14 +28,14 @@
 
 namespace autoware::behavior_path_planner
 {
-using autoware::vehicle_info_utils::VehicleInfoUtils;
 using tier4_planning_msgs::msg::PathChangeModuleId;
 using DebugStringMsg = autoware_internal_debug_msgs::msg::StringStamped;
 
 BehaviorPathPlannerNode::BehaviorPathPlannerNode(const rclcpp::NodeOptions & node_options)
 : Node("behavior_path_planner", node_options),
   planning_factor_interface_{
-    std::make_unique<PlanningFactorInterface>(this, "behavior_path_planner")}
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      this, "behavior_path_planner")}
 {
   using std::placeholders::_1;
   using std::chrono_literals::operator""ms;
@@ -421,7 +420,7 @@ void BehaviorPathPlannerNode::run()
       !planner_data_->prev_modified_goal || autoware_utils::calc_distance2d(
                                               planner_data_->prev_modified_goal->pose.position,
                                               output.modified_goal->pose.position) > 0.01)) {
-    PoseWithUuidStamped modified_goal = *(output.modified_goal);
+    autoware_planning_msgs::msg::PoseWithUuidStamped modified_goal = *(output.modified_goal);
     modified_goal.header.stamp = path->header.stamp;
     planner_data_->prev_modified_goal = modified_goal;
     modified_goal_publisher_->publish(modified_goal);
@@ -474,14 +473,14 @@ void BehaviorPathPlannerNode::publish_steering_factor(
 
     const uint16_t planning_factor_direction = std::invoke([&turn_signal]() {
       if (turn_signal.command == TurnIndicatorsCommand::ENABLE_LEFT) {
-        return PlanningFactor::TURN_LEFT;
+        return planning_factor_interface::PlanningFactor::TURN_LEFT;
       }
-      return PlanningFactor::TURN_RIGHT;
+      return planning_factor_interface::PlanningFactor::TURN_RIGHT;
     });
 
     planning_factor_interface_->add(
       intersection_distance, intersection_distance, intersection_pose, intersection_pose,
-      planning_factor_direction, SafetyFactorArray{});
+      planning_factor_direction, autoware_internal_planning_msgs::msg::SafetyFactorArray{});
   }
 
   planning_factor_interface_->publish();
@@ -494,18 +493,15 @@ void BehaviorPathPlannerNode::publish_reroute_availability() const
   // always-executable module is approved and running, rerouting will not be possible.
   RerouteAvailability is_reroute_available;
   is_reroute_available.stamp = this->now();
-  if (planner_manager_->hasPossibleRerouteApprovedModules(planner_data_)) {
-    is_reroute_available.availability = false;
-  } else {
-    is_reroute_available.availability = true;
-  }
+  is_reroute_available.availability =
+    !planner_manager_->hasPossibleRerouteApprovedModules(planner_data_);
 
   reroute_availability_publisher_->publish(is_reroute_available);
 }
 
 void BehaviorPathPlannerNode::publish_turn_signal_debug_data(const TurnSignalDebugData & debug_data)
 {
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
 
   const auto current_time = rclcpp::Time();
   constexpr double scale_x = 1.0;
@@ -520,20 +516,20 @@ void BehaviorPathPlannerNode::publish_turn_signal_debug_data(const TurnSignalDeb
     const auto & turn_signal_info = debug_data.intersection_turn_signal_info;
 
     auto desired_start_marker = autoware_utils::create_default_marker(
-      "map", current_time, "intersection_turn_signal_desired_start", 0L, Marker::SPHERE, scale,
-      desired_section_color);
+      "map", current_time, "intersection_turn_signal_desired_start", 0L,
+      visualization_msgs::msg::Marker::SPHERE, scale, desired_section_color);
     auto desired_end_marker = autoware_utils::create_default_marker(
-      "map", current_time, "intersection_turn_signal_desired_end", 0L, Marker::SPHERE, scale,
-      desired_section_color);
+      "map", current_time, "intersection_turn_signal_desired_end", 0L,
+      visualization_msgs::msg::Marker::SPHERE, scale, desired_section_color);
     desired_start_marker.pose = turn_signal_info.desired_start_point;
     desired_end_marker.pose = turn_signal_info.desired_end_point;
 
     auto required_start_marker = autoware_utils::create_default_marker(
-      "map", current_time, "intersection_turn_signal_required_start", 0L, Marker::SPHERE, scale,
-      required_section_color);
+      "map", current_time, "intersection_turn_signal_required_start", 0L,
+      visualization_msgs::msg::Marker::SPHERE, scale, required_section_color);
     auto required_end_marker = autoware_utils::create_default_marker(
-      "map", current_time, "intersection_turn_signal_required_end", 0L, Marker::SPHERE, scale,
-      required_section_color);
+      "map", current_time, "intersection_turn_signal_required_end", 0L,
+      visualization_msgs::msg::Marker::SPHERE, scale, required_section_color);
     required_start_marker.pose = turn_signal_info.required_start_point;
     required_end_marker.pose = turn_signal_info.required_end_point;
 
@@ -548,20 +544,20 @@ void BehaviorPathPlannerNode::publish_turn_signal_debug_data(const TurnSignalDeb
     const auto & turn_signal_info = debug_data.behavior_turn_signal_info;
 
     auto desired_start_marker = autoware_utils::create_default_marker(
-      "map", current_time, "behavior_turn_signal_desired_start", 0L, Marker::CUBE, scale,
-      desired_section_color);
+      "map", current_time, "behavior_turn_signal_desired_start", 0L,
+      visualization_msgs::msg::Marker::CUBE, scale, desired_section_color);
     auto desired_end_marker = autoware_utils::create_default_marker(
-      "map", current_time, "behavior_turn_signal_desired_end", 0L, Marker::CUBE, scale,
-      desired_section_color);
+      "map", current_time, "behavior_turn_signal_desired_end", 0L,
+      visualization_msgs::msg::Marker::CUBE, scale, desired_section_color);
     desired_start_marker.pose = turn_signal_info.desired_start_point;
     desired_end_marker.pose = turn_signal_info.desired_end_point;
 
     auto required_start_marker = autoware_utils::create_default_marker(
-      "map", current_time, "behavior_turn_signal_required_start", 0L, Marker::CUBE, scale,
-      required_section_color);
+      "map", current_time, "behavior_turn_signal_required_start", 0L,
+      visualization_msgs::msg::Marker::CUBE, scale, required_section_color);
     auto required_end_marker = autoware_utils::create_default_marker(
-      "map", current_time, "behavior_turn_signal_required_end", 0L, Marker::CUBE, scale,
-      required_section_color);
+      "map", current_time, "behavior_turn_signal_required_end", 0L,
+      visualization_msgs::msg::Marker::CUBE, scale, required_section_color);
     required_start_marker.pose = turn_signal_info.required_start_point;
     required_end_marker.pose = turn_signal_info.required_end_point;
 
@@ -586,7 +582,7 @@ void BehaviorPathPlannerNode::publish_bounds(const PathWithLaneId & path)
 
   const auto current_time = path.header.stamp;
   auto left_marker = autoware_utils::create_default_marker(
-    "map", current_time, "left_bound", 0L, Marker::LINE_STRIP,
+    "map", current_time, "left_bound", 0L, visualization_msgs::msg::Marker::LINE_STRIP,
     autoware_utils::create_marker_scale(scale_x, scale_y, scale_z),
     autoware_utils::create_marker_color(color_r, color_g, color_b, color_a));
   for (const auto lb : path.left_bound) {
@@ -594,14 +590,14 @@ void BehaviorPathPlannerNode::publish_bounds(const PathWithLaneId & path)
   }
 
   auto right_marker = autoware_utils::create_default_marker(
-    "map", current_time, "right_bound", 0L, Marker::LINE_STRIP,
+    "map", current_time, "right_bound", 0L, visualization_msgs::msg::Marker::LINE_STRIP,
     autoware_utils::create_marker_scale(scale_x, scale_y, scale_z),
     autoware_utils::create_marker_color(color_r, color_g, color_b, color_a));
   for (const auto rb : path.right_bound) {
     right_marker.points.push_back(rb);
   }
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.push_back(left_marker);
   msg.markers.push_back(right_marker);
   bound_publisher_->publish(msg);

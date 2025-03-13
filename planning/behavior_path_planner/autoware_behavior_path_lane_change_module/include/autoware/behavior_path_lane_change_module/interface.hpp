@@ -50,10 +50,15 @@ class LaneChangeInterface : public SceneModuleInterface
 public:
   LaneChangeInterface(
     const std::string & name, rclcpp::Node & node, std::shared_ptr<LaneChangeParameters> parameters,
-    const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-    std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+    const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+      rtc_interface_ptr_map,
+    std::unordered_map<
+      std::string,
+      std::shared_ptr<
+        autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
-    const std::shared_ptr<PlanningFactorInterface> & planning_factor_interface,
+    const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface> &
+      planning_factor_interface,
     std::unique_ptr<LaneChangeBase> && module_type);
 
   LaneChangeInterface(const LaneChangeInterface &) = delete;
@@ -92,7 +97,7 @@ public:
 
   void setData(const std::shared_ptr<const PlannerData> & data) override;
 
-  MarkerArray getModuleVirtualWall() override;
+  visualization_msgs::msg::MarkerArray getModuleVirtualWall() override;
 
 protected:
   using SceneModuleInterface::updateRTCStatus;
@@ -131,7 +136,7 @@ protected:
   void updateSteeringFactorPtr(
     const CandidateOutput & output, const LaneChangePath & selected_path) const;
 
-  mutable MarkerArray virtual_wall_marker_;
+  mutable visualization_msgs::msg::MarkerArray virtual_wall_marker_;
 
   void clearAbortApproval() { is_abort_path_approved_ = false; }
 

@@ -159,7 +159,8 @@ lanelet::BasicPolygon2d create_polygon(
   const lanelet::ConstLanelets & lanes, const double start_dist, const double end_dist);
 
 ExtendedPredictedObject transform(
-  const PredictedObject & object, const LaneChangeParameters & lane_change_parameters);
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const LaneChangeParameters & lane_change_parameters);
 
 bool is_collided_polygons_in_lanelet(
   const std::vector<Polygon2d> & collided_polygons, const lanelet::BasicPolygon2d & lanes_polygon);

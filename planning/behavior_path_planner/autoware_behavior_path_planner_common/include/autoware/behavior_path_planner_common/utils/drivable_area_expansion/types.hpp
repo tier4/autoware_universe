@@ -24,7 +24,6 @@
 
 #include <boost/geometry/index/rtree.hpp>
 
-#include <optional>
 #include <vector>
 
 namespace autoware::behavior_path_planner::drivable_area_expansion
@@ -48,12 +47,12 @@ using SegmentRtree = boost::geometry::index::rtree<Segment2d, boost::geometry::i
 
 struct PointDistance
 {
-  Point2d point{};
+  Point2d point;
   double distance{};
 };
 struct Projection
 {
-  Point2d projected_point{};
+  Point2d projected_point;
   double distance{};
   double arc_length{};
 };

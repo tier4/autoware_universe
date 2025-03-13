@@ -45,10 +45,10 @@ MarkerArray showAllValidLaneChangePath(
   const std::vector<LaneChangePath> & lane_change_paths, std::string && ns)
 {
   if (lane_change_paths.empty()) {
-    return MarkerArray{};
+    return visualization_msgs::msg::MarkerArray{};
   }
 
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
   const auto current_time{rclcpp::Clock{RCL_ROS_TIME}.now()};
 
   const auto colors = colors::colors_list();
@@ -65,7 +65,7 @@ MarkerArray showAllValidLaneChangePath(
     const auto & color = colors.at(idx);
     const auto & points = lc_path.path.points;
     auto marker = create_default_marker(
-      "map", current_time, ns_with_idx, ++id, Marker::LINE_STRIP,
+      "map", current_time, ns_with_idx, ++id, visualization_msgs::msg::Marker::LINE_STRIP,
       create_marker_scale(0.1, 0.1, 0.0), color);
     marker.points.reserve(points.size());
 
@@ -111,7 +111,7 @@ MarkerArray createLaneChangingVirtualWallMarker(
   const rclcpp::Time & now, const std::string & ns)
 {
   int32_t id{0};
-  MarkerArray marker_array{};
+  visualization_msgs::msg::MarkerArray marker_array{};
   marker_array.markers.reserve(2);
   {
     auto wall_marker = create_default_marker(
@@ -139,7 +139,7 @@ MarkerArray showFilteredObjects(
   const FilteredLanesObjects & filtered_objects, const std::string & ns)
 {
   int32_t update_id = 0;
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
   auto reserve_size = filtered_objects.current_lane.size() + filtered_objects.others.size() +
                       filtered_objects.target_lane_leading.size() +
                       filtered_objects.target_lane_trailing.size();
@@ -173,11 +173,12 @@ MarkerArray showExecutionInfo(
 {
   auto default_text_marker = [&]() {
     return create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "execution_info", 0, Marker::TEXT_VIEW_FACING,
-      create_marker_scale(0.5, 0.5, 0.5), colors::white());
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "execution_info", 0,
+      visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.5, 0.5, 0.5),
+      colors::white());
   };
 
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
 
   auto safety_check_info_text = default_text_marker();
   safety_check_info_text.pose = ego_pose;
@@ -198,11 +199,12 @@ MarkerArray showExecutionInfo(
 MarkerArray ShowLaneChangeMetricsInfo(
   const Debug & debug_data, const geometry_msgs::msg::Pose & pose)
 {
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
 
   auto text_marker = create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "sampling_metrics", 0, Marker::TEXT_VIEW_FACING,
-    create_marker_scale(0.6, 0.6, 0.6), colors::yellow());
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "sampling_metrics", 0,
+    visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.6, 0.6, 0.6),
+    colors::yellow());
   text_marker.pose = autoware_utils::calc_offset_pose(pose, 10.0, 15.0, 0.0);
 
   if (!debug_data.lane_change_metrics.empty()) {
@@ -291,8 +293,8 @@ MarkerArray createDebugMarkerArray(
   const auto & debug_valid_paths = scene_debug_data.valid_paths;
   const auto & debug_filtered_objects = scene_debug_data.filtered_objects;
 
-  MarkerArray debug_marker;
-  const auto add = [&debug_marker](const MarkerArray & added) {
+  visualization_msgs::msg::MarkerArray debug_marker;
+  const auto add = [&debug_marker](const visualization_msgs::msg::MarkerArray & added) {
     autoware_utils::append_marker_array(added, &debug_marker);
   };
 

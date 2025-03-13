@@ -39,6 +39,20 @@
 #include <utility>
 #include <vector>
 
+using autoware_perception_msgs::msg::ObjectClassification;
+using autoware_perception_msgs::msg::PredictedObject;
+using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_perception_msgs::msg::PredictedPath;
+
+using autoware::route_handler::RouteHandler;
+using autoware_internal_planning_msgs::msg::PathPointWithLaneId;
+using autoware_internal_planning_msgs::msg::PathWithLaneId;
+using autoware_utils::LinearRing2d;
+using autoware_utils::Polygon2d;
+using geometry_msgs::msg::Point;
+using geometry_msgs::msg::Pose;
+using geometry_msgs::msg::Vector3;
+
 namespace
 {
 double calcInterpolatedZ(
@@ -103,7 +117,7 @@ double l2Norm(const Vector3 vector)
 
 bool checkCollisionBetweenPathFootprintsAndObjects(
   const autoware_utils::LinearRing2d & local_vehicle_footprint, const PathWithLaneId & ego_path,
-  const PredictedObjects & dynamic_objects, const double margin)
+  const autoware_perception_msgs::msg::PredictedObjects & dynamic_objects, const double margin)
 {
   for (const auto & p : ego_path.points) {
     if (checkCollisionBetweenFootprintAndObjects(
@@ -116,7 +130,7 @@ bool checkCollisionBetweenPathFootprintsAndObjects(
 
 bool checkCollisionBetweenFootprintAndObjects(
   const autoware_utils::LinearRing2d & local_vehicle_footprint, const Pose & ego_pose,
-  const PredictedObjects & dynamic_objects, const double margin)
+  const autoware_perception_msgs::msg::PredictedObjects & dynamic_objects, const double margin)
 {
   const auto vehicle_footprint = autoware_utils::transform_vector(
     local_vehicle_footprint, autoware_utils::pose2transform(ego_pose));
@@ -130,7 +144,8 @@ bool checkCollisionBetweenFootprintAndObjects(
 }
 
 double calcLateralDistanceFromEgoToObject(
-  const Pose & ego_pose, const double vehicle_width, const PredictedObject & dynamic_object)
+  const Pose & ego_pose, const double vehicle_width,
+  const autoware_perception_msgs::msg::PredictedObject & dynamic_object)
 {
   double min_distance = std::numeric_limits<double>::max();
   const auto obj_polygon = autoware_utils::to_polygon2d(dynamic_object);
@@ -160,7 +175,7 @@ double calcLateralDistanceFromEgoToObject(
 
 double calc_longitudinal_distance_from_ego_to_object(
   const Pose & ego_pose, const double base_link2front, const double base_link2rear,
-  const PredictedObject & dynamic_object)
+  const autoware_perception_msgs::msg::PredictedObject & dynamic_object)
 {
   double min_distance = std::numeric_limits<double>::max();
   const auto obj_polygon = autoware_utils::to_polygon2d(dynamic_object);
@@ -191,7 +206,7 @@ double calc_longitudinal_distance_from_ego_to_object(
 
 double calcLongitudinalDistanceFromEgoToObjects(
   const Pose & ego_pose, double base_link2front, double base_link2rear,
-  const PredictedObjects & dynamic_objects)
+  const autoware_perception_msgs::msg::PredictedObjects & dynamic_objects)
 {
   double min_distance = std::numeric_limits<double>::max();
   for (const auto & object : dynamic_objects.objects) {
@@ -409,7 +424,7 @@ bool isInLaneletWithYawThreshold(
 
 bool isEgoOutOfRoute(
   const Pose & self_pose, const lanelet::ConstLanelet & closest_road_lane,
-  const std::optional<PoseWithUuidStamped> & modified_goal,
+  const std::optional<autoware_planning_msgs::msg::PoseWithUuidStamped> & modified_goal,
   const std::shared_ptr<RouteHandler> & route_handler)
 {
   const Pose & goal_pose = (modified_goal && modified_goal->uuid == route_handler->getRouteUuid())

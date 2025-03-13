@@ -38,7 +38,8 @@ bool velocity_filter(const Twist & object_twist, double velocity_threshold, doub
 }
 
 bool position_filter(
-  const PredictedObject & object, const std::vector<PathPointWithLaneId> & path_points,
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const std::vector<PathPointWithLaneId> & path_points,
   const geometry_msgs::msg::Point & current_pose, const double forward_distance,
   const double backward_distance)
 {
@@ -77,7 +78,8 @@ bool is_vehicle(const ObjectClassification & classification)
 namespace autoware::behavior_path_planner::utils::path_safety_checker
 {
 bool isCentroidWithinLanelet(
-  const PredictedObject & object, const lanelet::ConstLanelet & lanelet, const double yaw_threshold)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const lanelet::ConstLanelet & lanelet, const double yaw_threshold)
 {
   const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
   if (!boost::geometry::within(
@@ -92,7 +94,8 @@ bool isCentroidWithinLanelet(
 }
 
 bool isPolygonOverlapLanelet(
-  const PredictedObject & object, const lanelet::ConstLanelet & lanelet, const double yaw_threshold)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const lanelet::ConstLanelet & lanelet, const double yaw_threshold)
 {
   const auto lanelet_polygon = utils::toPolygon2d(lanelet);
   if (!isPolygonOverlapLanelet(object, lanelet_polygon)) {
@@ -105,28 +108,30 @@ bool isPolygonOverlapLanelet(
 }
 
 bool isPolygonOverlapLanelet(
-  const PredictedObject & object, const autoware_utils::Polygon2d & lanelet_polygon)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const autoware_utils::Polygon2d & lanelet_polygon)
 {
   const auto object_polygon = autoware_utils::to_polygon2d(object);
   return !boost::geometry::disjoint(lanelet_polygon, object_polygon);
 }
 
 bool isPolygonOverlapLanelet(
-  const PredictedObject & object, const lanelet::BasicPolygon2d & lanelet_polygon)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const lanelet::BasicPolygon2d & lanelet_polygon)
 {
   const auto object_polygon = autoware_utils::to_polygon2d(object);
   return !boost::geometry::disjoint(lanelet_polygon, object_polygon);
 }
 
 PredictedObjects filterObjects(
-  const std::shared_ptr<const PredictedObjects> & objects,
+  const std::shared_ptr<const autoware_perception_msgs::msg::PredictedObjects> & objects,
   const std::shared_ptr<RouteHandler> & route_handler, const lanelet::ConstLanelets & current_lanes,
   const geometry_msgs::msg::Point & current_pose,
   const std::shared_ptr<ObjectsFilteringParams> & params)
 {
   // Guard
   if (objects->objects.empty() || !params) {
-    return PredictedObjects();
+    return autoware_perception_msgs::msg::PredictedObjects();
   }
 
   const double ignore_object_velocity_threshold = params->ignore_object_velocity_threshold;
@@ -134,7 +139,7 @@ PredictedObjects filterObjects(
   const double object_check_backward_distance = params->object_check_backward_distance;
   const ObjectTypesToCheck & target_object_types = params->object_types_to_check;
 
-  PredictedObjects filtered_objects =
+  autoware_perception_msgs::msg::PredictedObjects filtered_objects =
     filterObjectsByVelocity(*objects, ignore_object_velocity_threshold, true);
 
   filterObjectsByClass(filtered_objects, target_object_types);
@@ -150,7 +155,7 @@ PredictedObjects filterObjects(
 }
 
 PredictedObjects filterObjectsByVelocity(
-  const PredictedObjects & objects, const double velocity_threshold,
+  const autoware_perception_msgs::msg::PredictedObjects & objects, const double velocity_threshold,
   const bool remove_above_threshold)
 {
   if (!remove_above_threshold) {
@@ -160,7 +165,8 @@ PredictedObjects filterObjectsByVelocity(
 }
 
 PredictedObjects filterObjectsByVelocity(
-  const PredictedObjects & objects, double velocity_threshold, double max_velocity)
+  const autoware_perception_msgs::msg::PredictedObjects & objects, double velocity_threshold,
+  double max_velocity)
 {
   const auto filter = [&](const auto & object) {
     return filter::velocity_filter(
@@ -173,7 +179,8 @@ PredictedObjects filterObjectsByVelocity(
 }
 
 void filterObjectsByPosition(
-  PredictedObjects & objects, const std::vector<PathPointWithLaneId> & path_points,
+  autoware_perception_msgs::msg::PredictedObjects & objects,
+  const std::vector<PathPointWithLaneId> & path_points,
   const geometry_msgs::msg::Point & current_pose, const double forward_distance,
   const double backward_distance)
 {
@@ -186,8 +193,8 @@ void filterObjectsByPosition(
 }
 
 void filterObjectsWithinRadius(
-  PredictedObjects & objects, const geometry_msgs::msg::Point & reference_point,
-  const double search_radius)
+  autoware_perception_msgs::msg::PredictedObjects & objects,
+  const geometry_msgs::msg::Point & reference_point, const double search_radius)
 {
   const auto filter = [&](const auto & object) {
     return filter::is_within_circle(
@@ -198,7 +205,8 @@ void filterObjectsWithinRadius(
 }
 
 void filterObjectsByClass(
-  PredictedObjects & objects, const ObjectTypesToCheck & target_object_types)
+  autoware_perception_msgs::msg::PredictedObjects & objects,
+  const ObjectTypesToCheck & target_object_types)
 {
   const auto filter = [&](const auto & object) {
     return isTargetObjectType(object, target_object_types);
@@ -208,9 +216,11 @@ void filterObjectsByClass(
 }
 
 std::pair<std::vector<size_t>, std::vector<size_t>> separateObjectIndicesByLanelets(
-  const PredictedObjects & objects, const lanelet::ConstLanelets & target_lanelets,
-  const std::function<bool(const PredictedObject, const lanelet::ConstLanelet, const double)> &
-    condition,
+  const autoware_perception_msgs::msg::PredictedObjects & objects,
+  const lanelet::ConstLanelets & target_lanelets,
+  const std::function<bool(
+    const autoware_perception_msgs::msg::PredictedObject, const lanelet::ConstLanelet,
+    const double)> & condition,
   const double yaw_threshold)
 {
   if (target_lanelets.empty()) {
@@ -235,14 +245,18 @@ std::pair<std::vector<size_t>, std::vector<size_t>> separateObjectIndicesByLanel
   return std::make_pair(target_indices, other_indices);
 }
 
-std::pair<PredictedObjects, PredictedObjects> separateObjectsByLanelets(
-  const PredictedObjects & objects, const lanelet::ConstLanelets & target_lanelets,
-  const std::function<bool(const PredictedObject, const lanelet::ConstLanelet, const double)> &
-    condition,
+std::pair<
+  autoware_perception_msgs::msg::PredictedObjects, autoware_perception_msgs::msg::PredictedObjects>
+separateObjectsByLanelets(
+  const autoware_perception_msgs::msg::PredictedObjects & objects,
+  const lanelet::ConstLanelets & target_lanelets,
+  const std::function<bool(
+    const autoware_perception_msgs::msg::PredictedObject, const lanelet::ConstLanelet,
+    const double)> & condition,
   const double yaw_threshold)
 {
-  PredictedObjects target_objects;
-  PredictedObjects other_objects;
+  autoware_perception_msgs::msg::PredictedObjects target_objects;
+  autoware_perception_msgs::msg::PredictedObjects other_objects;
 
   const auto [target_indices, other_indices] =
     separateObjectIndicesByLanelets(objects, target_lanelets, condition, yaw_threshold);
@@ -323,7 +337,8 @@ std::vector<PoseWithVelocityStamped> createPredictedPath(
 }
 
 bool isCentroidWithinLanelets(
-  const PredictedObject & object, const lanelet::ConstLanelets & target_lanelets)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const lanelet::ConstLanelets & target_lanelets)
 {
   if (target_lanelets.empty()) {
     return false;
@@ -340,8 +355,8 @@ bool isCentroidWithinLanelets(
 }
 
 ExtendedPredictedObject transform(
-  const PredictedObject & object, const double safety_check_time_horizon,
-  const double safety_check_time_resolution)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const double safety_check_time_horizon, const double safety_check_time_resolution)
 {
   ExtendedPredictedObject extended_object(object);
 
@@ -368,7 +383,8 @@ ExtendedPredictedObject transform(
 
 TargetObjectsOnLane createTargetObjectsOnLane(
   const lanelet::ConstLanelets & current_lanes, const std::shared_ptr<RouteHandler> & route_handler,
-  const PredictedObjects & filtered_objects, const std::shared_ptr<ObjectsFilteringParams> & params)
+  const autoware_perception_msgs::msg::PredictedObjects & filtered_objects,
+  const std::shared_ptr<ObjectsFilteringParams> & params)
 {
   const auto & object_lane_configuration = params->object_lane_configuration;
   const bool include_opposite = params->include_opposite_lane;
@@ -437,7 +453,8 @@ TargetObjectsOnLane createTargetObjectsOnLane(
 }
 
 bool isTargetObjectType(
-  const PredictedObject & object, const ObjectTypesToCheck & target_object_types)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const ObjectTypesToCheck & target_object_types)
 {
   using autoware_perception_msgs::msg::ObjectClassification;
   const auto t = utils::getHighestProbLabel(object.classification);

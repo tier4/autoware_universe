@@ -48,7 +48,7 @@ MarkerArray createObjectsCubeMarkerArray(
 {
   using autoware_perception_msgs::msg::ObjectClassification;
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   const auto is_small_object = [](const auto & o) {
     const auto t = autoware::behavior_path_planner::utils::getHighestProbLabel(o.classification);
@@ -58,11 +58,12 @@ MarkerArray createObjectsCubeMarkerArray(
 
   for (const auto & object : objects) {
     auto marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, Marker::CUBE, scale, color);
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, visualization_msgs::msg::Marker::CUBE,
+      scale, color);
 
     if (is_small_object(object.object)) {
       marker.scale = create_marker_scale(0.5, 0.5, 1.5);
-      marker.type = Marker::CYLINDER;
+      marker.type = visualization_msgs::msg::Marker::CYLINDER;
     }
 
     marker.id = uuidToInt32(object.object.object_id);
@@ -75,11 +76,11 @@ MarkerArray createObjectsCubeMarkerArray(
 
 MarkerArray createObjectPolygonMarkerArray(const ObjectDataArray & objects, std::string && ns)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   for (const auto & object : objects) {
     auto marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, Marker::LINE_STRIP,
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, visualization_msgs::msg::Marker::LINE_STRIP,
       create_marker_scale(0.1, 0.0, 0.0), create_marker_color(1.0, 1.0, 1.0, 0.999));
 
     for (const auto & p : object.envelope_poly.outer()) {
@@ -96,7 +97,7 @@ MarkerArray createObjectPolygonMarkerArray(const ObjectDataArray & objects, std:
 
 MarkerArray createToDrivableBoundDistance(const ObjectDataArray & objects, std::string && ns)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   for (const auto & object : objects) {
     if (!object.narrowest_place.has_value()) {
@@ -105,8 +106,9 @@ MarkerArray createToDrivableBoundDistance(const ObjectDataArray & objects, std::
 
     {
       auto marker = create_default_marker(
-        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, Marker::LINE_STRIP,
-        create_marker_scale(0.1, 0.0, 0.0), create_marker_color(1.0, 0.0, 0.42, 0.999));
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L,
+        visualization_msgs::msg::Marker::LINE_STRIP, create_marker_scale(0.1, 0.0, 0.0),
+        create_marker_color(1.0, 0.0, 0.42, 0.999));
 
       marker.points.push_back(object.narrowest_place.value().first);
       marker.points.push_back(object.narrowest_place.value().second);
@@ -116,8 +118,9 @@ MarkerArray createToDrivableBoundDistance(const ObjectDataArray & objects, std::
 
     {
       auto marker = create_default_marker(
-        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, Marker::TEXT_VIEW_FACING,
-        create_marker_scale(0.5, 0.5, 0.5), create_marker_color(1.0, 1.0, 0.0, 1.0));
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L,
+        visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.5, 0.5, 0.5),
+        create_marker_color(1.0, 1.0, 0.0, 1.0));
 
       marker.pose.position = object.narrowest_place.value().second;
       std::ostringstream string_stream;
@@ -133,11 +136,12 @@ MarkerArray createToDrivableBoundDistance(const ObjectDataArray & objects, std::
 MarkerArray createObjectInfoMarkerArray(
   const ObjectDataArray & objects, std::string && ns, const bool verbose)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   auto marker = create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, Marker::TEXT_VIEW_FACING,
-    create_marker_scale(0.5, 0.5, 0.5), create_marker_color(1.0, 1.0, 0.0, 1.0));
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L,
+    visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.5, 0.5, 0.5),
+    create_marker_color(1.0, 1.0, 0.0, 1.0));
 
   for (const auto & object : objects) {
     if (verbose) {
@@ -180,7 +184,7 @@ MarkerArray createObjectInfoMarkerArray(
 
 MarkerArray createOverhangLaneletMarkerArray(const ObjectDataArray & objects, std::string && ns)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.reserve(objects.size());
 
   for (const auto & object : objects) {
@@ -195,7 +199,7 @@ MarkerArray createOverhangLaneletMarkerArray(const ObjectDataArray & objects, st
 
 MarkerArray avoidableObjectsMarkerArray(const ObjectDataArray & objects, std::string && ns)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.reserve(objects.size() * 5);
 
   append_marker_array(
@@ -214,7 +218,7 @@ MarkerArray avoidableObjectsMarkerArray(const ObjectDataArray & objects, std::st
 
 MarkerArray unAvoidableObjectsMarkerArray(const ObjectDataArray & objects, std::string && ns)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.reserve(objects.size() * 5);
 
   append_marker_array(
@@ -233,7 +237,7 @@ MarkerArray unAvoidableObjectsMarkerArray(const ObjectDataArray & objects, std::
 
 MarkerArray createTurnSignalMarkerArray(const TurnSignalInfo & turn_signal_info, std::string && ns)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   if (turn_signal_info.turn_signal.command == TurnIndicatorsCommand::NO_COMMAND) {
     return msg;
@@ -254,7 +258,7 @@ MarkerArray createTurnSignalMarkerArray(const TurnSignalInfo & turn_signal_info,
   size_t i = 0;
   {
     auto marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, Marker::ARROW,
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, visualization_msgs::msg::Marker::ARROW,
       create_marker_scale(0.6, 0.3, 0.3), create_marker_color(0.0, 0.0, 1.0, 0.999));
     marker.pose = turn_signal_info.desired_start_point;
     marker.pose = calc_offset_pose(marker.pose, 0.0, 0.0, 0.0, yaw_offset);
@@ -263,7 +267,7 @@ MarkerArray createTurnSignalMarkerArray(const TurnSignalInfo & turn_signal_info,
   }
   {
     auto marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, Marker::ARROW,
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, visualization_msgs::msg::Marker::ARROW,
       create_marker_scale(0.6, 0.3, 0.3), create_marker_color(0.0, 0.0, 1.0, 0.999));
     marker.pose = turn_signal_info.desired_end_point;
     marker.pose = calc_offset_pose(marker.pose, 0.0, 0.0, 0.0, yaw_offset);
@@ -272,7 +276,7 @@ MarkerArray createTurnSignalMarkerArray(const TurnSignalInfo & turn_signal_info,
   }
   {
     auto marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, Marker::ARROW,
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, visualization_msgs::msg::Marker::ARROW,
       create_marker_scale(0.8, 0.4, 0.4), create_marker_color(1.0, 0.0, 0.0, 0.999));
     marker.pose = turn_signal_info.required_start_point;
     marker.pose = calc_offset_pose(marker.pose, 0.0, 0.0, 0.0, yaw_offset);
@@ -281,7 +285,7 @@ MarkerArray createTurnSignalMarkerArray(const TurnSignalInfo & turn_signal_info,
   }
   {
     auto marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, Marker::ARROW,
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, visualization_msgs::msg::Marker::ARROW,
       create_marker_scale(0.8, 0.4, 0.4), create_marker_color(1.0, 0.0, 0.0, 0.999));
     marker.pose = turn_signal_info.required_end_point;
     marker.pose = calc_offset_pose(marker.pose, 0.0, 0.0, 0.0, yaw_offset);
@@ -298,14 +302,14 @@ MarkerArray createAvoidLineMarkerArray(
   const AvoidLineArray & shift_lines, std::string && ns, const float & r, const float & g,
   const float & b, const double & w)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   if (shift_lines.empty()) {
     return msg;
   }
 
   auto marker = create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, Marker::CUBE,
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, visualization_msgs::msg::Marker::CUBE,
     create_marker_scale(0.1, 0.1, 0.1), create_marker_color(r, g, b, 0.9));
 
   int32_t shift_line_id{0};
@@ -315,7 +319,7 @@ MarkerArray createAvoidLineMarkerArray(
     {
       auto m = marker;
       m.id = marker_id++;
-      m.type = Marker::LINE_STRIP;
+      m.type = visualization_msgs::msg::Marker::LINE_STRIP;
       m.scale = create_marker_scale(w, 0.0, 0.0);
       m.points.push_back(calc_offset_pose(s.start, 0.0, s.start_shift_length, 0.0).position);
       m.points.push_back(calc_offset_pose(s.end, 0.0, s.end_shift_length, 0.0).position);
@@ -326,7 +330,7 @@ MarkerArray createAvoidLineMarkerArray(
     {
       auto m = marker;
       m.id = marker_id++;
-      m.type = Marker::CUBE;
+      m.type = visualization_msgs::msg::Marker::CUBE;
       m.scale = create_marker_scale(0.2, 0.2, 0.2);
       m.pose = calc_offset_pose(s.start, 0.0, s.start_shift_length, 0.0);
       msg.markers.push_back(m);
@@ -336,7 +340,7 @@ MarkerArray createAvoidLineMarkerArray(
     {
       auto m = marker;
       m.id = marker_id++;
-      m.type = Marker::CUBE;
+      m.type = visualization_msgs::msg::Marker::CUBE;
       m.scale = create_marker_scale(0.2, 0.2, 0.2);
       m.pose = calc_offset_pose(s.end, 0.0, s.end_shift_length, 0.0);
       msg.markers.push_back(m);
@@ -348,7 +352,7 @@ MarkerArray createAvoidLineMarkerArray(
       std::ostringstream string_stream;
       string_stream << "(S):" << shift_line_id;
       m.id = marker_id++;
-      m.type = Marker::TEXT_VIEW_FACING;
+      m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
       m.scale = create_marker_scale(0.3, 0.3, 0.3);
       m.pose = calc_offset_pose(s.start, 0.0, s.start_shift_length + 0.3, 0.0);
       m.text = string_stream.str();
@@ -361,7 +365,7 @@ MarkerArray createAvoidLineMarkerArray(
       std::ostringstream string_stream;
       string_stream << "(E):" << shift_line_id;
       m.id = marker_id++;
-      m.type = Marker::TEXT_VIEW_FACING;
+      m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
       m.scale = create_marker_scale(0.3, 0.3, 0.3);
       m.pose = calc_offset_pose(s.end, 0.0, s.end_shift_length - 0.3, 0.0);
       m.text = string_stream.str();
@@ -386,7 +390,7 @@ MarkerArray createTargetObjectsMarkerArray(const ObjectDataArray & objects, cons
     }
   }
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.reserve(objects.size() * 4);
 
   append_marker_array(avoidableObjectsMarkerArray(avoidable, "avoidable_" + ns), &msg);
@@ -410,7 +414,7 @@ MarkerArray createOtherObjectsMarkerArray(
     return ret;
   }();
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.reserve(filtered_objects.size() * 2);
 
   std::ostringstream string_stream;
@@ -435,7 +439,7 @@ MarkerArray createOtherObjectsMarkerArray(
 MarkerArray createAmbiguousObjectsMarkerArray(
   const ObjectDataArray & objects, const Pose & ego_pose, const std::string & policy)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   if (policy != "manual") {
     return msg;
@@ -448,8 +452,9 @@ MarkerArray createAmbiguousObjectsMarkerArray(
 
     {
       auto marker = create_default_marker(
-        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "ambiguous_target", 0L, Marker::ARROW,
-        create_marker_scale(0.5, 1.0, 1.0), create_marker_color(1.0, 1.0, 0.0, 0.999));
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "ambiguous_target", 0L,
+        visualization_msgs::msg::Marker::ARROW, create_marker_scale(0.5, 1.0, 1.0),
+        create_marker_color(1.0, 1.0, 0.0, 0.999));
 
       Point src, dst;
       src = object.getPosition();
@@ -467,7 +472,7 @@ MarkerArray createAmbiguousObjectsMarkerArray(
     {
       auto marker = create_default_marker(
         "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "ambiguous_target_text", 0L,
-        Marker::TEXT_VIEW_FACING, create_marker_scale(0.5, 0.5, 0.5),
+        visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.5, 0.5, 0.5),
         create_marker_color(1.0, 1.0, 0.0, 1.0));
 
       marker.id = uuidToInt32(object.object.object_id);
@@ -483,8 +488,9 @@ MarkerArray createAmbiguousObjectsMarkerArray(
 
     {
       auto marker = create_default_marker(
-        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "request_text", 0L, Marker::TEXT_VIEW_FACING,
-        create_marker_scale(0.5, 0.5, 0.5), create_marker_color(1.0, 1.0, 0.0, 1.0));
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "request_text", 0L,
+        visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.5, 0.5, 0.5),
+        create_marker_color(1.0, 1.0, 0.0, 1.0));
 
       marker.id = uuidToInt32(object.object.object_id);
       marker.pose = ego_pose;
@@ -505,7 +511,7 @@ MarkerArray createAmbiguousObjectsMarkerArray(
 
 MarkerArray createStopTargetObjectMarkerArray(const AvoidancePlanningData & data)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   if (!data.stop_target_object.has_value()) {
     return msg;
@@ -525,12 +531,12 @@ MarkerArray createDrivableBounds(
   const float & b)
 {
   const auto current_time = rclcpp::Clock{RCL_ROS_TIME}.now();
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   // right bound
   {
     auto marker = create_default_marker(
-      "map", current_time, ns + "_right", 0L, Marker::LINE_STRIP,
+      "map", current_time, ns + "_right", 0L, visualization_msgs::msg::Marker::LINE_STRIP,
       create_marker_scale(0.4, 0.0, 0.0), create_marker_color(r, g, b, 0.999));
 
     for (const auto & p : data.right_bound) {
@@ -543,8 +549,8 @@ MarkerArray createDrivableBounds(
   // left bound
   {
     auto marker = create_default_marker(
-      "map", current_time, ns + "_left", 0L, Marker::LINE_STRIP, create_marker_scale(0.4, 0.0, 0.0),
-      create_marker_color(r, g, b, 0.999));
+      "map", current_time, ns + "_left", 0L, visualization_msgs::msg::Marker::LINE_STRIP,
+      create_marker_scale(0.4, 0.0, 0.0), create_marker_color(r, g, b, 0.999));
 
     for (const auto & p : data.left_bound) {
       marker.points.push_back(p);
@@ -576,11 +582,13 @@ MarkerArray createDebugMarkerArray(
   using marker_utils::showSafetyCheckInfo;
 
   const auto current_time = rclcpp::Clock{RCL_ROS_TIME}.now();
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   const auto & path = data.reference_path;
 
-  const auto add = [&msg](const MarkerArray & added) { append_marker_array(added, &msg); };
+  const auto add = [&msg](const visualization_msgs::msg::MarkerArray & added) {
+    append_marker_array(added, &msg);
+  };
 
   const auto addAvoidLine =
     [&](const AvoidLineArray & al_arr, const auto & ns, auto r, auto g, auto b, double w = 0.05) {

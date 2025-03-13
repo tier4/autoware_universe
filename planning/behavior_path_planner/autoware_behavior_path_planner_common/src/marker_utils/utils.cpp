@@ -66,14 +66,14 @@ MarkerArray createFootprintMarkerArray(
   const std::string && ns, const int32_t & id, const float & r, const float & g, const float & b)
 {
   const auto current_time = rclcpp::Clock{RCL_ROS_TIME}.now();
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
-  Marker marker = create_default_marker(
-    "map", current_time, ns, id, Marker::LINE_STRIP, create_marker_scale(0.2, 0.2, 0.2),
-    create_marker_color(r, g, b, 0.999));
+  visualization_msgs::msg::Marker marker = create_default_marker(
+    "map", current_time, ns, id, visualization_msgs::msg::Marker::LINE_STRIP,
+    create_marker_scale(0.2, 0.2, 0.2), create_marker_color(r, g, b, 0.999));
   marker.lifetime = rclcpp::Duration::from_seconds(1.5);
 
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
 
   addFootprintMarker(marker, base_link_pose, vehicle_info);
   msg.markers.push_back(marker);
@@ -85,14 +85,14 @@ MarkerArray createPointsMarkerArray(
   const float g, const float b)
 {
   auto marker = create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, id, Marker::LINE_STRIP,
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, id, visualization_msgs::msg::Marker::LINE_STRIP,
     create_marker_scale(0.1, 0.0, 0.0), create_marker_color(r, g, b, 0.999));
 
   for (const auto & point : points) {
     marker.points.push_back(point);
   }
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.push_back(marker);
   return msg;
 }
@@ -101,10 +101,10 @@ MarkerArray createPoseMarkerArray(
   const Pose & pose, std::string && ns, const int32_t & id, const float & r, const float & g,
   const float & b)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
-  Marker marker = create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, id, Marker::ARROW,
+  visualization_msgs::msg::Marker marker = create_default_marker(
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, id, visualization_msgs::msg::Marker::ARROW,
     create_marker_scale(0.7, 0.3, 0.3), create_marker_color(r, g, b, 0.999));
   marker.pose = pose;
   msg.markers.push_back(marker);
@@ -122,17 +122,17 @@ MarkerArray createPathMarkerArray(
   int32_t i{0};
   int32_t idx{0};
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   const auto reserve_size = path.points.size() + static_cast<size_t>(path.points.size() / 10);
   msg.markers.reserve(reserve_size);
 
-  Marker marker = create_default_marker(
-    "map", current_time, ns, 0L, Marker::ARROW, create_marker_scale(0.2, 0.1, 0.3),
-    create_marker_color(r, g, b, 0.999));
+  visualization_msgs::msg::Marker marker = create_default_marker(
+    "map", current_time, ns, 0L, visualization_msgs::msg::Marker::ARROW,
+    create_marker_scale(0.2, 0.1, 0.3), create_marker_color(r, g, b, 0.999));
 
-  Marker marker_text = create_default_marker(
-    "map", current_time, ns, 0L, Marker::TEXT_VIEW_FACING, create_marker_scale(0.2, 0.1, 0.3),
-    create_marker_color(1, 1, 1, 0.999));
+  visualization_msgs::msg::Marker marker_text = create_default_marker(
+    "map", current_time, ns, 0L, visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
+    create_marker_scale(0.2, 0.1, 0.3), create_marker_color(1, 1, 1, 0.999));
 
   for (const auto & p : path.points) {
     marker.id = uid + i++;
@@ -159,7 +159,7 @@ MarkerArray createShiftLineMarkerArray(
     shift_lines_local.emplace_back();
   }
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.reserve(shift_lines_local.size() * 3);
   const auto current_time = rclcpp::Clock{RCL_ROS_TIME}.now();
   int id{0};
@@ -168,9 +168,9 @@ MarkerArray createShiftLineMarkerArray(
   double current_shift = base_shift;
   for (const auto & sp : shift_lines_local) {
     // ROS_ERROR("sp: s = (%f, %f), g = (%f, %f)", sp.start.x, sp.start.y, sp.end.x, sp.end.y);
-    Marker basic_marker = create_default_marker(
-      "map", current_time, ns, 0L, Marker::CUBE, create_marker_scale(0.5, 0.5, 0.5),
-      create_marker_color(r, g, b, 0.5));
+    visualization_msgs::msg::Marker basic_marker = create_default_marker(
+      "map", current_time, ns, 0L, visualization_msgs::msg::Marker::CUBE,
+      create_marker_scale(0.5, 0.5, 0.5), create_marker_color(r, g, b, 0.5));
     basic_marker.pose.orientation = create_marker_orientation(0, 0, 0, 1.0);
     {
       // start point
@@ -190,7 +190,7 @@ MarkerArray createShiftLineMarkerArray(
       // start-to-end line
       auto marker_l = basic_marker;
       marker_l.id = ++id;
-      marker_l.type = Marker::LINE_STRIP;
+      marker_l.type = visualization_msgs::msg::Marker::LINE_STRIP;
       marker_l.scale = create_marker_scale(w, 0.0, 0.0);
       marker_l.points.reserve(2);
       marker_l.points.push_back(marker_s.pose.position);
@@ -208,13 +208,13 @@ MarkerArray createShiftLengthMarkerArray(
   const float & r, const float & g, const float & b)
 {
   if (shift_distance.size() != reference.points.size()) {
-    return MarkerArray{};
+    return visualization_msgs::msg::MarkerArray{};
   }
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
-  Marker marker = create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, Marker::LINE_STRIP,
+  visualization_msgs::msg::Marker marker = create_default_marker(
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, visualization_msgs::msg::Marker::LINE_STRIP,
     create_marker_scale(0.1, 0.0, 0.0), create_marker_color(r, g, b, 0.9));
   marker.pose.orientation = autoware_utils::create_marker_orientation(0, 0, 0, 1.0);
   marker.points.reserve(shift_distance.size());
@@ -235,18 +235,19 @@ MarkerArray createShiftGradMarkerArray(
   const float & b)
 {
   if (grad.size() != reference.points.size()) {
-    return MarkerArray{};
+    return visualization_msgs::msg::MarkerArray{};
   }
 
   if (shift_distance.size() != reference.points.size()) {
-    return MarkerArray{};
+    return visualization_msgs::msg::MarkerArray{};
   }
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
-  Marker marker = create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, Marker::TEXT_VIEW_FACING,
-    create_marker_scale(0.1, 0.1, 0.1), create_marker_color(r, g, b, 0.9));
+  visualization_msgs::msg::Marker marker = create_default_marker(
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L,
+    visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.1, 0.1, 0.1),
+    create_marker_color(r, g, b, 0.9));
 
   for (size_t i = 0; i < grad.size(); ++i) {
     std::ostringstream string_stream;
@@ -267,13 +268,14 @@ MarkerArray createLaneletsAreaMarkerArray(
   const float & g, const float & b)
 {
   const auto current_time = rclcpp::Clock{RCL_ROS_TIME}.now();
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   for (const auto & lanelet : lanelets) {
-    Marker marker = create_default_marker(
+    visualization_msgs::msg::Marker marker = create_default_marker(
 
-      "map", current_time, ns, static_cast<int32_t>(lanelet.id()), Marker::LINE_STRIP,
-      create_marker_scale(0.1, 0.0, 0.0), create_marker_color(r, g, b, 0.999));
+      "map", current_time, ns, static_cast<int32_t>(lanelet.id()),
+      visualization_msgs::msg::Marker::LINE_STRIP, create_marker_scale(0.1, 0.0, 0.0),
+      create_marker_color(r, g, b, 0.999));
     marker.pose.orientation = autoware_utils::create_marker_orientation(0, 0, 0, 1.0);
 
     if (!lanelet.polygon3d().empty()) {
@@ -298,9 +300,10 @@ MarkerArray createPolygonMarkerArray(
   const Polygon & polygon, std::string && ns, const int64_t & lane_id, const float & r,
   const float & g, const float & b, const float & w)
 {
-  Marker marker = create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, static_cast<int32_t>(lane_id), Marker::LINE_STRIP,
-    create_marker_scale(w, 0.0, 0.0), create_marker_color(r, g, b, 0.8));
+  visualization_msgs::msg::Marker marker = create_default_marker(
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, static_cast<int32_t>(lane_id),
+    visualization_msgs::msg::Marker::LINE_STRIP, create_marker_scale(w, 0.0, 0.0),
+    create_marker_color(r, g, b, 0.8));
 
   marker.pose.orientation = autoware_utils::create_marker_orientation(0, 0, 0, 1.0);
 
@@ -315,24 +318,24 @@ MarkerArray createPolygonMarkerArray(
     marker.points.push_back(marker.points.front());
   }
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.push_back(marker);
 
   return msg;
 }
 
 MarkerArray createObjectsMarkerArray(
-  const PredictedObjects & objects, std::string && ns, const int64_t & lane_id, const float & r,
-  const float & g, const float & b)
+  const autoware_perception_msgs::msg::PredictedObjects & objects, std::string && ns,
+  const int64_t & lane_id, const float & r, const float & g, const float & b)
 {
-  Marker marker = create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, Marker::CUBE,
+  visualization_msgs::msg::Marker marker = create_default_marker(
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, 0L, visualization_msgs::msg::Marker::CUBE,
     create_marker_scale(3.0, 1.0, 1.0), create_marker_color(r, g, b, 0.8));
 
   int32_t uid = bitShift(lane_id);
   int32_t i{0};
 
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
   msg.markers.reserve(objects.objects.size());
 
   for (const auto & object : objects.objects) {
@@ -347,7 +350,7 @@ MarkerArray createObjectsMarkerArray(
 MarkerArray createDrivableLanesMarkerArray(
   const std::vector<DrivableLanes> & drivable_lanes, std::string && ns)
 {
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   int32_t i{0};
 
@@ -355,7 +358,7 @@ MarkerArray createDrivableLanesMarkerArray(
     [&ns, &i](const auto & lanelet, const auto r, const auto g, const auto b) {
       auto marker = create_default_marker(
         "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, bitShift(lanelet.id()) + i++,
-        Marker::LINE_STRIP, create_marker_scale(0.1, 0.0, 0.0),
+        visualization_msgs::msg::Marker::LINE_STRIP, create_marker_scale(0.1, 0.0, 0.0),
         create_marker_color(r, g, b, 0.999));
 
       if (lanelet.polygon3d().empty()) {
@@ -397,20 +400,20 @@ MarkerArray createPredictedPathMarkerArray(
   const int32_t & id, const float & r, const float & g, const float & b)
 {
   if (predicted_path.path.empty()) {
-    return MarkerArray{};
+    return visualization_msgs::msg::MarkerArray{};
   }
 
   const auto current_time = rclcpp::Clock{RCL_ROS_TIME}.now();
-  MarkerArray msg;
+  visualization_msgs::msg::MarkerArray msg;
 
   const auto & path = predicted_path.path;
 
-  Marker marker = create_default_marker(
-    "map", current_time, ns, id, Marker::LINE_STRIP, create_marker_scale(0.1, 0.1, 0.1),
-    create_marker_color(r, g, b, 0.999));
+  visualization_msgs::msg::Marker marker = create_default_marker(
+    "map", current_time, ns, id, visualization_msgs::msg::Marker::LINE_STRIP,
+    create_marker_scale(0.1, 0.1, 0.1), create_marker_color(r, g, b, 0.999));
   marker.lifetime = rclcpp::Duration::from_seconds(1.5);
 
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
   for (size_t i = 0; i < path.size(); ++i) {
     marker.id = i + id;
     marker.points.clear();
@@ -426,7 +429,7 @@ MarkerArray createPredictedPathMarkerArray(
 MarkerArray showPolygon(const CollisionCheckDebugMap & obj_debug_vec, std::string && ns)
 {
   if (obj_debug_vec.empty()) {
-    return MarkerArray{};
+    return visualization_msgs::msg::MarkerArray{};
   }
 
   int32_t id{0};
@@ -438,7 +441,7 @@ MarkerArray showPolygon(const CollisionCheckDebugMap & obj_debug_vec, std::strin
 
   auto default_line_marker = [&](const auto & color = colors::green()) {
     return create_default_marker(
-      "map", now, ns, ++id, Marker::LINE_STRIP, line_marker_scale, color);
+      "map", now, ns, ++id, visualization_msgs::msg::Marker::LINE_STRIP, line_marker_scale, color);
   };
 
   constexpr float text_scale_val{1.5};
@@ -458,7 +461,7 @@ MarkerArray showPolygon(const CollisionCheckDebugMap & obj_debug_vec, std::strin
         create_marker_scale(width, depth, 1.0), color);
     };
 
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
   marker_array.markers.reserve(
     obj_debug_vec.size() * 5);  // poly ego, text ego, poly obj, text obj, cube obj
 
@@ -510,10 +513,11 @@ MarkerArray showPredictedPath(const CollisionCheckDebugMap & obj_debug_vec, std:
   const auto arrow_marker_scale = create_marker_scale(1.0, 0.3, 0.3);
   const auto default_arrow_marker = [&](const auto & color) {
     return create_default_marker(
-      "map", current_time, ns, ++id, Marker::ARROW, arrow_marker_scale, color);
+      "map", current_time, ns, ++id, visualization_msgs::msg::Marker::ARROW, arrow_marker_scale,
+      color);
   };
 
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
   marker_array.markers.reserve(std::accumulate(
     obj_debug_vec.cbegin(), obj_debug_vec.cend(), 0UL,
     [&](const auto current_sum, const auto & obj_debug) {
@@ -553,11 +557,12 @@ MarkerArray showSafetyCheckInfo(const CollisionCheckDebugMap & obj_debug_vec, st
   int32_t id{0};
   auto default_text_marker = [&]() {
     return create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, ++id, Marker::TEXT_VIEW_FACING,
-      create_marker_scale(0.5, 0.5, 0.5), colors::aqua());
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, ++id,
+      visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.5, 0.5, 0.5),
+      colors::aqua());
   };
 
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
 
   marker_array.markers.reserve(obj_debug_vec.size());
 
@@ -591,7 +596,7 @@ MarkerArray showFilteredObjects(
 {
   using autoware::behavior_path_planner::utils::path_safety_checker::ExtendedPredictedObject;
   if (predicted_objects.empty()) {
-    return MarkerArray{};
+    return visualization_msgs::msg::MarkerArray{};
   }
 
   const auto now = rclcpp::Clock{RCL_ROS_TIME}.now();
@@ -603,7 +608,7 @@ MarkerArray showFilteredObjects(
         create_marker_scale(width, depth, 1.0), color);
     };
 
-  MarkerArray marker_array;
+  visualization_msgs::msg::MarkerArray marker_array;
   marker_array.markers.reserve(
     predicted_objects.size());  // poly ego, text ego, poly obj, text obj, cube obj
 

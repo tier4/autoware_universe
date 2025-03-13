@@ -102,8 +102,8 @@ TEST_F(BehaviorPathPlanningUtilTest, checkCollisionBetweenPathFootprintsAndObjec
     Point2d{1.0, 1.0}, Point2d{1.0, -1.0}, Point2d{-1.0, -1.0}, Point2d{-1.0, 1.0},
     Point2d{1.0, -1.0}};
   double margin = 0.2;
-  PredictedObjects objs;
-  PredictedObject obj;
+  autoware_perception_msgs::msg::PredictedObjects objs;
+  autoware_perception_msgs::msg::PredictedObject obj;
   obj.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   obj.shape.dimensions.x = 2.0;
   obj.shape.dimensions.y = 2.0;
@@ -136,13 +136,13 @@ TEST_F(BehaviorPathPlanningUtilTest, checkCollisionBetweenFootprintAndObjects)
     Point2d{1.0, 1.0}, Point2d{1.0, -1.0}, Point2d{-1.0, -1.0}, Point2d{-1.0, 1.0},
     Point2d{1.0, -1.0}};
   double margin = 0.2;
-  PredictedObjects objs;
+  autoware_perception_msgs::msg::PredictedObjects objs;
 
   // Condition: no object
   EXPECT_FALSE(checkCollisionBetweenFootprintAndObjects(base_footprint, ego_pose, objs, margin));
 
   // Condition: no collision
-  PredictedObject obj;
+  autoware_perception_msgs::msg::PredictedObject obj;
   obj.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   obj.shape.dimensions.x = 2.0;
   obj.shape.dimensions.y = 2.0;
@@ -164,7 +164,7 @@ TEST_F(BehaviorPathPlanningUtilTest, calcLateralDistanceFromEgoToObject)
   auto ego_pose = createPose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
   double vehicle_width = 2.0;
 
-  PredictedObject obj;
+  autoware_perception_msgs::msg::PredictedObject obj;
   obj.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   obj.shape.dimensions.x = 2.0;
   obj.shape.dimensions.y = 2.0;
@@ -187,7 +187,7 @@ TEST_F(BehaviorPathPlanningUtilTest, calc_longitudinal_distance_from_ego_to_obje
   using autoware::behavior_path_planner::utils::calc_longitudinal_distance_from_ego_to_object;
 
   auto ego_pose = createPose(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-  PredictedObject obj;
+  autoware_perception_msgs::msg::PredictedObject obj;
   obj.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   obj.shape.dimensions.x = 2.0;
   obj.shape.dimensions.y = 1.0;
@@ -224,7 +224,7 @@ TEST_F(BehaviorPathPlanningUtilTest, calcLongitudinalDistanceFromEgoToObjects)
   double base_link2front = 1.0;
   double base_link2rear = -1.0;
 
-  PredictedObjects objs;
+  autoware_perception_msgs::msg::PredictedObjects objs;
 
   // Condition: none object
   EXPECT_DOUBLE_EQ(
@@ -232,13 +232,13 @@ TEST_F(BehaviorPathPlanningUtilTest, calcLongitudinalDistanceFromEgoToObjects)
     std::numeric_limits<double>::max());
 
   // Condition: both object in front
-  PredictedObject near_obj;
+  autoware_perception_msgs::msg::PredictedObject near_obj;
   near_obj.kinematics.initial_pose_with_covariance.pose = createPose(5.0, 2.0, 0.0, 0.0, 0.0, 0.0);
   near_obj.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   near_obj.shape.dimensions.x = 2.0;
   near_obj.shape.dimensions.y = 1.0;
 
-  PredictedObject far_obj;
+  autoware_perception_msgs::msg::PredictedObject far_obj;
   far_obj.kinematics.initial_pose_with_covariance.pose = createPose(25.0, 2.0, 0.0, 0.0, 0.0, 0.0);
   far_obj.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   far_obj.shape.dimensions.x = 5.0;
@@ -453,7 +453,7 @@ TEST_F(BehaviorPathPlanningUtilTest, getHighestProbLabel)
 {
   using autoware::behavior_path_planner::utils::getHighestProbLabel;
 
-  PredictedObject obj;
+  autoware_perception_msgs::msg::PredictedObject obj;
   ObjectClassification classification;
 
   // Condition: no classification

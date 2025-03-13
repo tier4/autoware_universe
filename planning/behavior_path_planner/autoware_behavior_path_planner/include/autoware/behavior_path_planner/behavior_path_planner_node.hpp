@@ -96,12 +96,12 @@ private:
     vector_map_subscriber_{this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
   autoware_utils::InterProcessPollingSubscriber<Odometry> velocity_subscriber_{
     this, "~/input/odometry"};
-  autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
+  autoware_utils::InterProcessPollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped>
     acceleration_subscriber_{this, "~/input/accel"};
   autoware_utils::InterProcessPollingSubscriber<Scenario> scenario_subscriber_{
     this, "~/input/scenario"};
-  autoware_utils::InterProcessPollingSubscriber<PredictedObjects> perception_subscriber_{
-    this, "~/input/perception"};
+  autoware_utils::InterProcessPollingSubscriber<autoware_perception_msgs::msg::PredictedObjects>
+    perception_subscriber_{this, "~/input/perception"};
   autoware_utils::InterProcessPollingSubscriber<OccupancyGrid> occupancy_grid_subscriber_{
     this, "~/input/occupancy_grid_map"};
   autoware_utils::InterProcessPollingSubscriber<OccupancyGrid> costmap_subscriber_{
@@ -136,7 +136,8 @@ private:
 
   std::shared_ptr<PlannerManager> planner_manager_;
 
-  std::unique_ptr<PlanningFactorInterface> planning_factor_interface_;
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface_;
 
   std::mutex mutex_pd_;       // mutex for planner_data_
   std::mutex mutex_manager_;  // mutex for bt_manager_ or planner_manager_
@@ -147,8 +148,8 @@ private:
 
   // callback
   void onOdometry(const Odometry::ConstSharedPtr msg);
-  void onAcceleration(const AccelWithCovarianceStamped::ConstSharedPtr msg);
-  void onPerception(const PredictedObjects::ConstSharedPtr msg);
+  void onAcceleration(const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr msg);
+  void onPerception(const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg);
   void onOccupancyGrid(const OccupancyGrid::ConstSharedPtr msg);
   void onCostMap(const OccupancyGrid::ConstSharedPtr msg);
   void onTrafficSignals(const TrafficLightGroupArray::ConstSharedPtr msg);

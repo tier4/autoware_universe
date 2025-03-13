@@ -247,7 +247,9 @@ std::vector<ExtendedPredictedObject> getSafetyCheckTargetObjects(
   const std::shared_ptr<AvoidanceParameters> & parameters, const bool has_left_shift,
   const bool has_right_shift, DebugData & debug);
 
-std::pair<PredictedObjects, PredictedObjects> separateObjectsByPath(
+std::pair<
+  autoware_perception_msgs::msg::PredictedObjects, autoware_perception_msgs::msg::PredictedObjects>
+separateObjectsByPath(
   const PathWithLaneId & reference_path, const PathWithLaneId & spline_path,
   const std::shared_ptr<const PlannerData> & planner_data, const AvoidancePlanningData & data,
   const std::shared_ptr<AvoidanceParameters> & parameters,

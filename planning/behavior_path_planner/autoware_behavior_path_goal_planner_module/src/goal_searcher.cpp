@@ -287,7 +287,7 @@ GoalCandidates GoalSearcher::search(
 }
 
 void GoalSearcher::countObjectsToAvoid(
-  GoalCandidates & goal_candidates, const PredictedObjects & objects,
+  GoalCandidates & goal_candidates, const autoware_perception_msgs::msg::PredictedObjects & objects,
   const std::shared_ptr<const PlannerData> & planner_data, const Pose & reference_goal_pose) const
 {
   const auto & route_handler = planner_data->route_handler;
@@ -353,7 +353,8 @@ void GoalSearcher::countObjectsToAvoid(
 void GoalSearcher::update(
   GoalCandidates & goal_candidates,
   const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map,
-  const std::shared_ptr<const PlannerData> & planner_data, const PredictedObjects & objects) const
+  const std::shared_ptr<const PlannerData> & planner_data,
+  const autoware_perception_msgs::msg::PredictedObjects & objects) const
 {
   const auto refined_goal_opt = goal_planner_utils::calcRefinedGoal(
     planner_data->route_handler->getOriginalGoalPose(), planner_data->route_handler,
@@ -412,7 +413,8 @@ void GoalSearcher::update(
 bool GoalSearcher::isSafeGoalWithMarginScaleFactor(
   const GoalCandidate & goal_candidate, const double margin_scale_factor,
   const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map,
-  const std::shared_ptr<const PlannerData> & planner_data, const PredictedObjects & objects) const
+  const std::shared_ptr<const PlannerData> & planner_data,
+  const autoware_perception_msgs::msg::PredictedObjects & objects) const
 {
   const Pose goal_pose = goal_candidate.goal_pose;
   const double margin =
@@ -436,7 +438,7 @@ bool GoalSearcher::isSafeGoalWithMarginScaleFactor(
 }
 
 bool GoalSearcher::checkCollision(
-  const Pose & pose, const PredictedObjects & objects,
+  const Pose & pose, const autoware_perception_msgs::msg::PredictedObjects & objects,
   const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map) const
 {
   if (parameters_.use_occupancy_grid_for_goal_search) {
@@ -458,7 +460,7 @@ bool GoalSearcher::checkCollision(
 }
 
 bool GoalSearcher::checkCollisionWithLongitudinalDistance(
-  const Pose & ego_pose, const PredictedObjects & objects,
+  const Pose & ego_pose, const autoware_perception_msgs::msg::PredictedObjects & objects,
   const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map,
   const std::shared_ptr<const PlannerData> & planner_data) const
 {

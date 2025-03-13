@@ -139,8 +139,8 @@ std::vector<PoseWithVelocityStamped> filterPredictedPathByTimeHorizon(
 ExtendedPredictedObject filterObjectPredictedPathByTimeHorizon(
   const ExtendedPredictedObject & object, const double time_horizon,
   const bool check_all_predicted_path);
-ExtendedPredictedObjects filterObjectPredictedPathByTimeHorizon(
-  const ExtendedPredictedObjects & objects, const double time_horizon,
+autoware_perception_msgs::msg::PredictedObject filterObjectPredictedPathByTimeHorizon(
+  const autoware_perception_msgs::msg::PredictedObject & objects, const double time_horizon,
   const bool check_all_predicted_path);
 
 /**
@@ -234,8 +234,9 @@ bool checkPolygonsIntersects(
  */
 bool checkSafetyWithIntegralPredictedPolygon(
   const std::vector<PoseWithVelocityStamped> & ego_predicted_path, const VehicleInfo & vehicle_info,
-  const ExtendedPredictedObjects & objects, const bool check_all_predicted_path,
-  const IntegralPredictedPolygonParams & params, CollisionCheckDebugMap & debug_map);
+  const autoware_perception_msgs::msg::PredictedObject & objects,
+  const bool check_all_predicted_path, const IntegralPredictedPolygonParams & params,
+  CollisionCheckDebugMap & debug_map);
 
 /**
  * @brief Calculates the minimum length from obstacle centroid to outer point.
@@ -262,8 +263,9 @@ double calc_obstacle_max_length(const Shape & shape);
  * @return Collision (rough) between minimum distance and maximum distance
  */
 std::pair<bool, bool> checkObjectsCollisionRough(
-  const PathWithLaneId & path, const PredictedObjects & objects, const double margin,
-  const BehaviorPathPlannerParameters & parameters, const bool use_offset_ego_point);
+  const PathWithLaneId & path, const autoware_perception_msgs::msg::PredictedObject & objects,
+  const double margin, const BehaviorPathPlannerParameters & parameters,
+  const bool use_offset_ego_point);
 
 /**
  * @brief Calculate the rough distance between the ego vehicle and the objects.
@@ -278,7 +280,7 @@ std::pair<bool, bool> checkObjectsCollisionRough(
  * @return The rough distance between the ego vehicle and the objects.
  */
 double calculateRoughDistanceToObjects(
-  const PathWithLaneId & path, const PredictedObjects & objects,
+  const PathWithLaneId & path, const autoware_perception_msgs::msg::PredictedObject & objects,
   const BehaviorPathPlannerParameters & parameters, const bool use_offset_ego_point,
   const std::string & distance_type);
 // debug

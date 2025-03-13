@@ -100,8 +100,8 @@ MarkerArray createPolygonMarkerArray(
   const float & g, const float & b, const float & w = 0.3);
 
 MarkerArray createObjectsMarkerArray(
-  const PredictedObjects & objects, std::string && ns, const int64_t & lane_id, const float & r,
-  const float & g, const float & b);
+  const autoware_perception_msgs::msg::PredictedObjects & objects, std::string && ns,
+  const int64_t & lane_id, const float & r, const float & g, const float & b);
 
 MarkerArray createDrivableLanesMarkerArray(
   const std::vector<DrivableLanes> & drivable_lanes, std::string && ns);

@@ -14,11 +14,13 @@
 
 #include "autoware/behavior_path_dynamic_obstacle_avoidance_module/scene.hpp"
 
+#include "autoware/behavior_path_planner_common/marker_utils/utils.hpp"
 #include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/static_drivable_area.hpp"
 #include "autoware/behavior_path_planner_common/utils/utils.hpp"
 #include "autoware/object_recognition_utils/predicted_path_utils.hpp"
 #include "autoware/signal_processing/lowpass_filter_1d.hpp"
 #include "autoware_utils/geometry/boost_polygon_utils.hpp"
+#include "autoware_utils/ros/marker_helper.hpp"
 
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -66,7 +68,8 @@ MinMaxValue combineMinMaxValues(const MinMaxValue & r1, const MinMaxValue & r2)
   return MinMaxValue{std::min(r1.min_value, r2.min_value), std::max(r1.max_value, r2.max_value)};
 }
 
-void appendObjectMarker(MarkerArray & marker_array, const geometry_msgs::msg::Pose & obj_pose)
+void appendObjectMarker(
+  visualization_msgs::msg::MarkerArray & marker_array, const geometry_msgs::msg::Pose & obj_pose)
 {
   auto marker = autoware_utils::create_default_marker(
     "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "dynamic_objects_to_avoid",
@@ -79,7 +82,8 @@ void appendObjectMarker(MarkerArray & marker_array, const geometry_msgs::msg::Po
 }
 
 void appendExtractedPolygonMarker(
-  MarkerArray & marker_array, const autoware_utils::Polygon2d & obj_poly, const double obj_z)
+  visualization_msgs::msg::MarkerArray & marker_array, const autoware_utils::Polygon2d & obj_poly,
+  const double obj_z)
 {
   auto marker = autoware_utils::create_default_marker(
     "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "extracted_polygons", marker_array.markers.size(),
@@ -130,8 +134,8 @@ std::optional<T> getObjectFromUuid(const std::vector<T> & objects, const std::st
 }
 
 std::pair<double, double> projectObstacleVelocityToTrajectory(
-  const std::vector<PathPointWithLaneId> & path_points, const PredictedObject & object,
-  const size_t obj_idx)
+  const std::vector<PathPointWithLaneId> & path_points,
+  const autoware_perception_msgs::msg::PredictedObject & object, const size_t obj_idx)
 {
   const auto & obj_pose = object.kinematics.initial_pose_with_covariance.pose;
   const double obj_yaw = tf2::getYaw(obj_pose.orientation);
@@ -323,10 +327,15 @@ size_t getNearestIndexFromSegmentIndex(
 DynamicObstacleAvoidanceModule::DynamicObstacleAvoidanceModule(
   const std::string & name, rclcpp::Node & node,
   std::shared_ptr<DynamicAvoidanceParameters> parameters,
-  const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-  std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+  const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+    rtc_interface_ptr_map,
+  std::unordered_map<
+    std::string,
+    std::shared_ptr<
+      autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
     objects_of_interest_marker_interface_ptr_map,
-  const std::shared_ptr<PlanningFactorInterface> planning_factor_interface)
+  const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface)
 : SceneModuleInterface{name, node, rtc_interface_ptr_map, objects_of_interest_marker_interface_ptr_map, planning_factor_interface},  // NOLINT
   parameters_{std::move(parameters)},
   target_objects_manager_{TargetObjectsManager(
@@ -1077,7 +1086,8 @@ TimeWhileCollision DynamicObstacleAvoidanceModule::calcTimeWhileCollision(
 }
 
 bool DynamicObstacleAvoidanceModule::isObjectFarFromPath(
-  const PredictedObject & predicted_object, const double obj_dist_to_path) const
+  const autoware_perception_msgs::msg::PredictedObject & predicted_object,
+  const double obj_dist_to_path) const
 {
   const double obj_max_length = calcObstacleMaxLength(predicted_object.shape);
   const double min_obj_dist_to_path = std::max(

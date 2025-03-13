@@ -69,8 +69,9 @@ std::optional<Polygon2d> generateObjectExtractionPolygon(
   const double inner_offset);
 
 PredictedObjects filterObjectsByLateralDistance(
-  const Pose & ego_pose, const double vehicle_width, const PredictedObjects & objects,
-  const double distance_thresh, const bool filter_inside);
+  const Pose & ego_pose, const double vehicle_width,
+  const autoware_perception_msgs::msg::PredictedObjects & objects, const double distance_thresh,
+  const bool filter_inside);
 
 double calcLateralDeviationBetweenPaths(
   const PathWithLaneId & reference_path, const PathWithLaneId & target_path);
@@ -130,7 +131,8 @@ std::vector<lanelet::BasicPolygon2d> getBusStopAreaPolygons(const lanelet::Const
 
 bool checkObjectsCollision(
   const PathWithLaneId & path, const std::vector<double> & curvatures,
-  const PredictedObjects & static_target_objects, const PredictedObjects & dynamic_target_objects,
+  const autoware_perception_msgs::msg::PredictedObjects & static_target_objects,
+  const autoware_perception_msgs::msg::PredictedObjects & dynamic_target_objects,
   const BehaviorPathPlannerParameters & behavior_path_parameters,
   const double collision_check_margin, const bool extract_static_objects,
   const double maximum_deceleration,

@@ -14,12 +14,15 @@
 
 #include "autoware/behavior_path_start_planner_module/start_planner_module.hpp"
 
+#include "autoware/behavior_path_planner_common/marker_utils/colors.hpp"
+#include "autoware/behavior_path_planner_common/marker_utils/utils.hpp"
 #include "autoware/behavior_path_planner_common/utils/parking_departure/utils.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_safety_checker/objects_filtering.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_safety_checker/path_safety_checker_parameters.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 #include "autoware/behavior_path_start_planner_module/util.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
+#include "autoware_utils/ros/marker_helper.hpp"
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
@@ -60,10 +63,15 @@ namespace autoware::behavior_path_planner
 StartPlannerModule::StartPlannerModule(
   const std::string & name, rclcpp::Node & node,
   const std::shared_ptr<StartPlannerParameters> & parameters,
-  const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-  std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+  const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+    rtc_interface_ptr_map,
+  std::unordered_map<
+    std::string,
+    std::shared_ptr<
+      autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
     objects_of_interest_marker_interface_ptr_map,
-  const std::shared_ptr<PlanningFactorInterface> planning_factor_interface)
+  const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface)
 : SceneModuleInterface{name, node, rtc_interface_ptr_map, objects_of_interest_marker_interface_ptr_map, planning_factor_interface},  // NOLINT
   parameters_{parameters},
   vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo()},
@@ -245,7 +253,8 @@ void StartPlannerModule::updateData()
   }
 
   if (
-    planner_data_->operation_mode->mode == OperationModeState::AUTONOMOUS &&
+    planner_data_->operation_mode->mode ==
+      autoware_adapi_v1_msgs::msg::OperationModeState::AUTONOMOUS &&
     status_.driving_forward && !status_.first_engaged_and_driving_forward_time) {
     status_.first_engaged_and_driving_forward_time = clock_->now();
   }
@@ -1713,7 +1722,9 @@ void StartPlannerModule::setDebugData()
   const auto white_color = create_marker_color(1.0, 1.0, 1.0, 0.99);
 
   const auto life_time = rclcpp::Duration::from_seconds(1.5);
-  auto add = [&](MarkerArray added, MarkerArray & target_marker_array) {
+  auto add = [&](
+               visualization_msgs::msg::MarkerArray added,
+               visualization_msgs::msg::MarkerArray & target_marker_array) {
     for (auto & marker : added.markers) {
       marker.lifetime = life_time;
     }
@@ -1757,7 +1768,7 @@ void StartPlannerModule::setDebugData()
         info_marker_);
       auto marker = create_default_marker(
         "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "static_collision_check_end_polygon", 0,
-        Marker::LINE_STRIP, create_marker_scale(0.1, 0.1, 0.1), red_color);
+        visualization_msgs::msg::Marker::LINE_STRIP, create_marker_scale(0.1, 0.1, 0.1), red_color);
       addFootprintMarker(marker, *collision_check_end_pose, vehicle_info_);
       marker.lifetime = life_time;
       info_marker_.markers.push_back(marker);
@@ -1765,12 +1776,13 @@ void StartPlannerModule::setDebugData()
   }
   // start pose candidates
   {
-    MarkerArray start_pose_footprint_marker_array{};
-    MarkerArray start_pose_text_marker_array{};
-    Marker footprint_marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "start_pose_candidates", 0, Marker::LINE_STRIP,
-      create_marker_scale(0.2, 0.2, 0.2), purple_color);
-    Marker text_marker = create_default_marker(
+    visualization_msgs::msg::MarkerArray start_pose_footprint_marker_array{};
+    visualization_msgs::msg::MarkerArray start_pose_text_marker_array{};
+    visualization_msgs::msg::Marker footprint_marker = create_default_marker(
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "start_pose_candidates", 0,
+      visualization_msgs::msg::Marker::LINE_STRIP, create_marker_scale(0.2, 0.2, 0.2),
+      purple_color);
+    visualization_msgs::msg::Marker text_marker = create_default_marker(
       "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "start_pose_candidates_idx", 0,
       visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.3, 0.3, 0.3),
       purple_color);
@@ -1793,10 +1805,10 @@ void StartPlannerModule::setDebugData()
 
   // visualize the footprint from pull_out_start pose to pull_out_end pose along the path
   {
-    MarkerArray pull_out_path_footprint_marker_array{};
-    Marker pull_out_path_footprint_marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "shift_path_footprint", 0, Marker::LINE_STRIP,
-      create_marker_scale(0.2, 0.2, 0.2), pink_color);
+    visualization_msgs::msg::MarkerArray pull_out_path_footprint_marker_array{};
+    visualization_msgs::msg::Marker pull_out_path_footprint_marker = create_default_marker(
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "shift_path_footprint", 0,
+      visualization_msgs::msg::Marker::LINE_STRIP, create_marker_scale(0.2, 0.2, 0.2), pink_color);
     pull_out_path_footprint_marker.lifetime = rclcpp::Duration::from_seconds(1.5);
     PathWithLaneId path_shift_start_to_end{};
     const auto shift_path = status_.pull_out_path.partial_paths.front();
@@ -1850,8 +1862,9 @@ void StartPlannerModule::setDebugData()
     // visualize estimated_stop_pose for isPreventingRearVehicleFromPassingThrough()
     if (debug_data_.estimated_stop_pose.has_value()) {
       auto footprint_marker = create_default_marker(
-        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "estimated_stop_pose", 0, Marker::LINE_STRIP,
-        create_marker_scale(0.2, 0.2, 0.2), purple_color);
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "estimated_stop_pose", 0,
+        visualization_msgs::msg::Marker::LINE_STRIP, create_marker_scale(0.2, 0.2, 0.2),
+        purple_color);
       footprint_marker.lifetime = rclcpp::Duration::from_seconds(1.5);
       addFootprintMarker(footprint_marker, debug_data_.estimated_stop_pose.value(), vehicle_info_);
       debug_marker_.markers.push_back(footprint_marker);
@@ -1859,7 +1872,8 @@ void StartPlannerModule::setDebugData()
 
     // set objects of interest
     for (const auto & [uuid, data] : debug_data_.collision_check) {
-      const auto color = data.is_safe ? ColorName::GREEN : ColorName::RED;
+      const auto color = data.is_safe ? objects_of_interest_marker_interface::ColorName::GREEN
+                                      : objects_of_interest_marker_interface::ColorName::RED;
       setObjectsOfInterestData(data.current_obj_pose, data.obj_shape, color);
     }
 

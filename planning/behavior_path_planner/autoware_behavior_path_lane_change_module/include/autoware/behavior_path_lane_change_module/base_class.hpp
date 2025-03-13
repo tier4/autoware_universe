@@ -19,7 +19,6 @@
 #include "autoware/behavior_path_lane_change_module/structs/path.hpp"
 #include "autoware/behavior_path_lane_change_module/utils/utils.hpp"
 #include "autoware/behavior_path_planner_common/data_manager.hpp"
-#include "autoware/behavior_path_planner_common/interface/scene_module_interface.hpp"
 #include "autoware/behavior_path_planner_common/turn_signal_decider.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_shifter/path_shifter.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
@@ -283,7 +282,7 @@ protected:
   std::shared_ptr<const PlannerData> planner_data_;
   lane_change::CommonDataPtr common_data_ptr_;
   FilteredLanesObjects filtered_objects_{};
-  BehaviorModuleOutput prev_module_output_{};
+  BehaviorModuleOutput prev_module_output_;
   PoseWithDetailOpt lane_change_stop_pose_{std::nullopt};
   mutable std::optional<LaneChangePath> terminal_lane_change_path_{std::nullopt};
 

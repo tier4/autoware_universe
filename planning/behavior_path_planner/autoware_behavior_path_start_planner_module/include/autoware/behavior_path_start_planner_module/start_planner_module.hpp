@@ -87,10 +87,15 @@ public:
   StartPlannerModule(
     const std::string & name, rclcpp::Node & node,
     const std::shared_ptr<StartPlannerParameters> & parameters,
-    const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-    std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+    const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+      rtc_interface_ptr_map,
+    std::unordered_map<
+      std::string,
+      std::shared_ptr<
+        autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
-    const std::shared_ptr<PlanningFactorInterface> planning_factor_interface);
+    const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+      planning_factor_interface);
 
   ~StartPlannerModule() override
   {
@@ -207,13 +212,13 @@ private:
   {
     switch (output.turn_signal_info.turn_signal.command) {
       case TurnIndicatorsCommand::ENABLE_LEFT:
-        return PlanningFactor::SHIFT_LEFT;
+        return autoware::planning_factor_interface::PlanningFactor::SHIFT_LEFT;
 
       case TurnIndicatorsCommand::ENABLE_RIGHT:
-        return PlanningFactor::SHIFT_RIGHT;
+        return autoware::planning_factor_interface::PlanningFactor::SHIFT_RIGHT;
 
       default:
-        return PlanningFactor::NONE;
+        return autoware::planning_factor_interface::PlanningFactor::NONE;
     }
   };
 
@@ -326,7 +331,7 @@ ego pose.
   std::vector<DrivableLanes> generateDrivableLanes(const PathWithLaneId & path) const;
   void updatePullOutStatus();
   void updateStatusAfterBackwardDriving();
-  PredictedObjects filterStopObjectsInPullOutLanes(
+  autoware_perception_msgs::msg::PredictedObjects filterStopObjectsInPullOutLanes(
     const lanelet::ConstLanelets & pull_out_lanes, const geometry_msgs::msg::Point & current_point,
     const double velocity_threshold, const double object_check_forward_distance,
     const double object_check_backward_distance) const;
@@ -338,7 +343,8 @@ ego pose.
   bool isStopped();
   bool hasFinishedCurrentPath();
   void updateSafetyCheckTargetObjectsData(
-    const PredictedObjects & filtered_objects, const TargetObjectsOnLane & target_objects_on_lane,
+    const autoware_perception_msgs::msg::PredictedObjects & filtered_objects,
+    const TargetObjectsOnLane & target_objects_on_lane,
     const std::vector<PoseWithVelocityStamped> & ego_predicted_path) const;
   bool isSafePath() const;
   void setDrivableAreaInfo(BehaviorModuleOutput & output) const;

@@ -87,7 +87,7 @@ struct ExtendedPredictedObject
   double dist_from_ego{0.0};  ///< Distance from ego to obj, can be arc length or euclidean.
 
   ExtendedPredictedObject() = default;
-  explicit ExtendedPredictedObject(const PredictedObject & object)
+  explicit ExtendedPredictedObject(const autoware_perception_msgs::msg::PredictedObject & object)
   : uuid(object.object_id),
     initial_pose(object.kinematics.initial_pose_with_covariance.pose),
     initial_twist(object.kinematics.initial_twist_with_covariance.twist),

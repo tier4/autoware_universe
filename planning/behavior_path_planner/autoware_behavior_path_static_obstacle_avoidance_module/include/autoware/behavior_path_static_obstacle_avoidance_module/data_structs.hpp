@@ -363,7 +363,7 @@ struct ObjectData  // avoidance target
 
   Point getPosition() const { return object.kinematics.initial_pose_with_covariance.pose.position; }
 
-  PredictedObject object;
+  autoware_perception_msgs::msg::PredictedObject object;
 
   // object behavior.
   enum class Behavior {

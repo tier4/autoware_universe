@@ -18,7 +18,7 @@
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 #include "autoware/behavior_path_planner_common/utils/utils.hpp"
 #include "autoware_utils/ros/debug_publisher.hpp"
-#include "autoware_utils/system/stop_watch.hpp"
+#include "autoware_utils/ros/marker_helper.hpp"
 
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <magic_enum.hpp>
@@ -280,9 +280,10 @@ void PlannerManager::publishDebugRootReferencePath(
   const BehaviorModuleOutput & reference_path) const
 {
   using visualization_msgs::msg::Marker;
-  MarkerArray array;
-  Marker m = autoware_utils::create_default_marker(
-    "map", clock_.now(), "root_reference_path", 0UL, Marker::LINE_STRIP,
+  using visualization_msgs::msg::MarkerArray;
+  visualization_msgs::msg::MarkerArray array;
+  visualization_msgs::msg::Marker m = autoware_utils::create_default_marker(
+    "map", clock_.now(), "root_reference_path", 0UL, visualization_msgs::msg::Marker::LINE_STRIP,
     autoware_utils::create_marker_scale(1.0, 1.0, 1.0),
     autoware_utils::create_marker_color(1.0, 0.0, 0.0, 1.0));
   for (const auto & p : reference_path.path.points) m.points.push_back(p.point.pose.position);
@@ -698,7 +699,7 @@ std::pair<SceneModulePtr, BehaviorModuleOutput> SubPlannerManager::runRequestMod
    */
   if (executable_modules.empty()) {
     clearCandidateModules();
-    return std::make_pair(nullptr, BehaviorModuleOutput{});
+    return std::make_pair(nullptr, BehaviorModuleOutput());
   }
 
   /**
@@ -727,7 +728,7 @@ std::pair<SceneModulePtr, BehaviorModuleOutput> SubPlannerManager::runRequestMod
     return nullptr;
   }();
   if (module_ptr == nullptr) {
-    return std::make_pair(nullptr, BehaviorModuleOutput{});
+    return std::make_pair(nullptr, BehaviorModuleOutput());
   }
 
   /**

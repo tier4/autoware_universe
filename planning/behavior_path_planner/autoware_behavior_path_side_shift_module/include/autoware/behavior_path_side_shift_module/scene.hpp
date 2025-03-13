@@ -43,10 +43,15 @@ public:
   SideShiftModule(
     const std::string & name, rclcpp::Node & node,
     const std::shared_ptr<SideShiftParameters> & parameters,
-    const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-    std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+    const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+      rtc_interface_ptr_map,
+    std::unordered_map<
+      std::string,
+      std::shared_ptr<
+        autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
-    const std::shared_ptr<PlanningFactorInterface> planning_factor_interface);
+    const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+      planning_factor_interface);
 
   bool isExecutionRequested() const override;
   bool isExecutionReady() const override;

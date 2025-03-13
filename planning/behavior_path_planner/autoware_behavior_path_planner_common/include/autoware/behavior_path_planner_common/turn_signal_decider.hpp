@@ -15,18 +15,15 @@
 #ifndef AUTOWARE__BEHAVIOR_PATH_PLANNER_COMMON__TURN_SIGNAL_DECIDER_HPP_
 #define AUTOWARE__BEHAVIOR_PATH_PLANNER_COMMON__TURN_SIGNAL_DECIDER_HPP_
 
-#include "autoware_utils/geometry/boost_polygon_utils.hpp"
+#include "autoware/behavior_path_planner_common/parameters.hpp"
+#include "autoware/behavior_path_planner_common/utils/path_shifter/path_shifter.hpp"
+#include "autoware/route_handler/route_handler.hpp"
+#include "autoware_lanelet2_extension/utility/message_conversion.hpp"
+#include "autoware_utils/geometry/geometry.hpp"
 
-#include <autoware/behavior_path_planner_common/parameters.hpp>
-#include <autoware/behavior_path_planner_common/utils/path_shifter/path_shifter.hpp>
-#include <autoware/route_handler/route_handler.hpp>
-#include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_utils/geometry/boost_geometry.hpp>
-#include <autoware_utils/geometry/geometry.hpp>
-
-#include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
-#include <autoware_vehicle_msgs/msg/hazard_lights_command.hpp>
-#include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include "autoware_internal_planning_msgs/msg/path_with_lane_id.hpp"
+#include "autoware_vehicle_msgs/msg/hazard_lights_command.hpp"
+#include "autoware_vehicle_msgs/msg/turn_indicators_command.hpp"
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <boost/geometry/algorithms/intersects.hpp>
@@ -58,22 +55,9 @@ const std::map<std::string, uint8_t> g_signal_map = {
 
 struct TurnSignalInfo
 {
-  TurnSignalInfo()
-  {
-    turn_signal.command = TurnIndicatorsCommand::NO_COMMAND;
-    hazard_signal.command = HazardLightsCommand::NO_COMMAND;
-  }
+  TurnSignalInfo();
 
-  TurnSignalInfo(const Pose & start, const Pose & end)
-  {
-    turn_signal.command = TurnIndicatorsCommand::NO_COMMAND;
-    hazard_signal.command = HazardLightsCommand::NO_COMMAND;
-
-    desired_start_point = start;
-    desired_end_point = end;
-    required_start_point = start;
-    required_end_point = end;
-  }
+  TurnSignalInfo(const Pose & start, const Pose & end);
 
   // desired turn signal
   TurnIndicatorsCommand turn_signal;
@@ -116,13 +100,7 @@ public:
 
   void setParameters(
     const double base_link2front, const double intersection_search_distance,
-    const double intersection_search_time, const double intersection_angle_threshold_deg)
-  {
-    base_link2front_ = base_link2front;
-    intersection_search_distance_ = intersection_search_distance;
-    intersection_search_time_ = intersection_search_time;
-    intersection_angle_threshold_deg_ = intersection_angle_threshold_deg;
-  }
+    const double intersection_search_time, const double intersection_angle_threshold_deg);
 
   std::pair<bool, bool> getIntersectionTurnSignalFlag();
   std::pair<Pose, double> getIntersectionPoseAndDistance();
@@ -143,7 +121,8 @@ private:
     const size_t current_seg_idx, const RouteHandler & route_handler,
     const double nearest_dist_threshold, const double nearest_yaw_threshold);
 
-  geometry_msgs::msg::Pose get_required_end_point(const lanelet::ConstLineString3d & centerline);
+  geometry_msgs::msg::Pose get_required_end_point(
+    const lanelet::ConstLineString3d & centerline) const;
 
   bool use_prior_turn_signal(
     const double dist_to_prior_required_start, const double dist_to_prior_required_end,
@@ -295,7 +274,7 @@ private:
   mutable bool intersection_turn_signal_ = false;
   mutable bool approaching_intersection_turn_signal_ = false;
   mutable double intersection_distance_ = std::numeric_limits<double>::max();
-  mutable Pose intersection_pose_point_ = Pose();
+  mutable Pose intersection_pose_point_;
 };
 }  // namespace autoware::behavior_path_planner
 

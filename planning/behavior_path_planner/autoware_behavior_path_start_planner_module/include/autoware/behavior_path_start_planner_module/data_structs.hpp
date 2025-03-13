@@ -83,7 +83,7 @@ public:
 struct StartPlannerDebugData
 {
   // filtered objects
-  PredictedObjects filtered_objects;
+  autoware_perception_msgs::msg::PredictedObjects filtered_objects;
   TargetObjectsOnLane target_objects_on_lane;
   std::vector<PoseWithVelocityStamped> ego_predicted_path;
   // collision check debug map

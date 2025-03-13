@@ -230,7 +230,8 @@ void AvoidanceByLaneChange::fillAvoidanceTargetObjects(
 }
 
 std::optional<ObjectData> AvoidanceByLaneChange::createObjectData(
-  const AvoidancePlanningData & data, const PredictedObject & object) const
+  const AvoidancePlanningData & data,
+  const autoware_perception_msgs::msg::PredictedObject & object) const
 {
   using autoware::motion_utils::findNearestIndex;
   using autoware_utils::calc_distance2d;

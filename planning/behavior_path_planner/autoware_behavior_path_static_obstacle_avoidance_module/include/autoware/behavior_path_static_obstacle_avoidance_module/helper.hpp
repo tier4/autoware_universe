@@ -22,6 +22,9 @@
 
 #include <autoware/motion_utils/trajectory/path_shift.hpp>
 
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+
 #include <algorithm>
 #include <limits>
 #include <memory>

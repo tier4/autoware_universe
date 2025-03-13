@@ -16,30 +16,14 @@
 #define AUTOWARE__BEHAVIOR_PATH_SAMPLING_PLANNER_MODULE__SAMPLING_PLANNER_MODULE_HPP_
 
 #include "autoware/behavior_path_planner_common/interface/scene_module_interface.hpp"
-#include "autoware/behavior_path_planner_common/marker_utils/utils.hpp"
-#include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/drivable_area_expansion.hpp"
-#include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/static_drivable_area.hpp"
-#include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
-#include "autoware/behavior_path_planner_common/utils/utils.hpp"
 #include "autoware/behavior_path_sampling_planner_module/sampling_planner_parameters.hpp"
 #include "autoware/behavior_path_sampling_planner_module/util.hpp"
-#include "autoware/motion_utils/trajectory/path_with_lane_id.hpp"
-#include "autoware_bezier_sampler/bezier_sampling.hpp"
-#include "autoware_frenet_planner/frenet_planner.hpp"
+#include "autoware_frenet_planner/structures.hpp"
 #include "autoware_lanelet2_extension/utility/query.hpp"
 #include "autoware_lanelet2_extension/utility/utilities.hpp"
-#include "autoware_sampler_common/constraints/footprint.hpp"
-#include "autoware_sampler_common/constraints/hard_constraint.hpp"
-#include "autoware_sampler_common/constraints/soft_constraint.hpp"
 #include "autoware_sampler_common/structures.hpp"
 #include "autoware_sampler_common/transform/spline_transform.hpp"
 #include "autoware_utils/geometry/boost_geometry.hpp"
-#include "autoware_utils/geometry/boost_polygon_utils.hpp"
-#include "autoware_utils/math/constants.hpp"
-#include "autoware_utils/ros/update_param.hpp"
-#include "autoware_utils/system/stop_watch.hpp"
-#include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
-#include "rclcpp/rclcpp.hpp"
 
 #include "autoware_internal_planning_msgs/msg/path_with_lane_id.hpp"
 #include "tier4_planning_msgs/msg/lateral_offset.hpp"
@@ -51,10 +35,8 @@
 #include <algorithm>
 #include <any>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 namespace autoware::behavior_path_planner
 {
@@ -73,10 +55,10 @@ struct SamplingPlannerData
 
 struct SamplingPlannerDebugData
 {
-  std::vector<autoware::sampler_common::Path> sampled_candidates{};
+  std::vector<autoware::sampler_common::Path> sampled_candidates;
   size_t previous_sampled_candidates_nb = 0UL;
-  std::vector<autoware_utils::Polygon2d> obstacles{};
-  std::vector<autoware_utils::MultiPoint2d> footprints{};
+  std::vector<autoware_utils::Polygon2d> obstacles;
+  std::vector<autoware_utils::MultiPoint2d> footprints;
 };
 class SamplingPlannerModule : public SceneModuleInterface
 {
@@ -84,10 +66,15 @@ public:
   SamplingPlannerModule(
     const std::string & name, rclcpp::Node & node,
     const std::shared_ptr<SamplingPlannerParameters> & parameters,
-    const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-    std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+    const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+      rtc_interface_ptr_map,
+    std::unordered_map<
+      std::string,
+      std::shared_ptr<
+        autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
-    const std::shared_ptr<PlanningFactorInterface> planning_factor_interface);
+    const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+      planning_factor_interface);
 
   bool isExecutionRequested() const override;
   bool isExecutionReady() const override;
@@ -101,40 +88,39 @@ public:
 
   void updateModuleParams(const std::any & parameters) override
   {
-    std::shared_ptr<SamplingPlannerParameters> user_params_ =
-      std::any_cast<std::shared_ptr<SamplingPlannerParameters>>(parameters);
+    auto user_params = std::any_cast<std::shared_ptr<SamplingPlannerParameters>>(parameters);
 
     // Constraints
-    internal_params_->constraints.hard.max_curvature = user_params_->max_curvature;
-    internal_params_->constraints.hard.min_curvature = user_params_->min_curvature;
+    internal_params_->constraints.hard.max_curvature = user_params->max_curvature;
+    internal_params_->constraints.hard.min_curvature = user_params->min_curvature;
     internal_params_->constraints.soft.lateral_deviation_weight =
-      user_params_->lateral_deviation_weight;
-    internal_params_->constraints.soft.length_weight = user_params_->length_weight;
-    internal_params_->constraints.soft.curvature_weight = user_params_->curvature_weight;
-    internal_params_->constraints.soft.weights = user_params_->weights;
+      user_params->lateral_deviation_weight;
+    internal_params_->constraints.soft.length_weight = user_params->length_weight;
+    internal_params_->constraints.soft.curvature_weight = user_params->curvature_weight;
+    internal_params_->constraints.soft.weights = user_params->weights;
     internal_params_->constraints.ego_footprint = vehicle_info_.createFootprint(0.25);
     internal_params_->constraints.ego_width = vehicle_info_.vehicle_width_m;
     internal_params_->constraints.ego_length = vehicle_info_.vehicle_length_m;
     // Sampling
-    internal_params_->sampling.enable_frenet = user_params_->enable_frenet;
-    internal_params_->sampling.enable_bezier = user_params_->enable_bezier;
-    internal_params_->sampling.resolution = user_params_->resolution;
+    internal_params_->sampling.enable_frenet = user_params->enable_frenet;
+    internal_params_->sampling.enable_bezier = user_params->enable_bezier;
+    internal_params_->sampling.resolution = user_params->resolution;
     internal_params_->sampling.previous_path_reuse_points_nb =
-      user_params_->previous_path_reuse_points_nb;
-    internal_params_->sampling.target_lengths = user_params_->target_lengths;
-    internal_params_->sampling.target_lateral_positions = user_params_->target_lateral_positions;
+      user_params->previous_path_reuse_points_nb;
+    internal_params_->sampling.target_lengths = user_params->target_lengths;
+    internal_params_->sampling.target_lateral_positions = user_params->target_lateral_positions;
     internal_params_->sampling.nb_target_lateral_positions =
-      user_params_->nb_target_lateral_positions;
+      user_params->nb_target_lateral_positions;
 
     internal_params_->sampling.frenet.target_lateral_velocities =
-      user_params_->target_lateral_velocities;
+      user_params->target_lateral_velocities;
     internal_params_->sampling.frenet.target_lateral_accelerations =
-      user_params_->target_lateral_accelerations;
+      user_params->target_lateral_accelerations;
 
     // Preprocessing
-    internal_params_->preprocessing.force_zero_deviation = user_params_->force_zero_deviation;
-    internal_params_->preprocessing.force_zero_heading = user_params_->force_zero_heading;
-    internal_params_->preprocessing.smooth_reference = user_params_->smooth_reference;
+    internal_params_->preprocessing.force_zero_deviation = user_params->force_zero_deviation;
+    internal_params_->preprocessing.force_zero_heading = user_params->force_zero_heading;
+    internal_params_->preprocessing.smooth_reference = user_params->smooth_reference;
   }
 
   void acceptVisitor(
@@ -231,7 +217,7 @@ private:
 
   void prepareConstraints(
     autoware::sampler_common::Constraints & constraints,
-    const PredictedObjects::ConstSharedPtr & predicted_objects,
+    const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr & predicted_objects,
     const std::vector<geometry_msgs::msg::Point> & left_bound,
     const std::vector<geometry_msgs::msg::Point> & right_bound) const;
 

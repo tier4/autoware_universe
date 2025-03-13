@@ -128,7 +128,7 @@ protected:
 
   FilteredLanesObjects filter_objects() const;
 
-  void filterOncomingObjects(PredictedObjects & objects) const;
+  void filterOncomingObjects(autoware_perception_msgs::msg::PredictedObjects & objects) const;
 
   std::vector<LaneChangePhaseMetrics> get_prepare_metrics() const;
   std::vector<LaneChangePhaseMetrics> get_lane_changing_metrics(

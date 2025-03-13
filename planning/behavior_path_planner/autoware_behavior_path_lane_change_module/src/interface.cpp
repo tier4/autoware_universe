@@ -19,9 +19,11 @@
 #include "autoware/behavior_path_planner_common/interface/scene_module_interface.hpp"
 #include "autoware/behavior_path_planner_common/interface/scene_module_visitor.hpp"
 #include "autoware/behavior_path_planner_common/marker_utils/utils.hpp"
+#include "autoware_utils/ros/marker_helper.hpp"
+#include "autoware_utils/system/time_keeper.hpp"
 
-#include <autoware_utils/ros/marker_helper.hpp>
-#include <autoware_utils/system/time_keeper.hpp>
+#include <tier4_planning_msgs/msg/safety_factor_array.hpp>
+#include <tier4_rtc_msgs/msg/state.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -37,10 +39,15 @@ using utils::lane_change::assignToCandidate;
 
 LaneChangeInterface::LaneChangeInterface(
   const std::string & name, rclcpp::Node & node, std::shared_ptr<LaneChangeParameters> parameters,
-  const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-  std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+  const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+    rtc_interface_ptr_map,
+  std::unordered_map<
+    std::string,
+    std::shared_ptr<
+      autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
     objects_of_interest_marker_interface_ptr_map,
-  const std::shared_ptr<PlanningFactorInterface> & planning_factor_interface,
+  const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface> &
+    planning_factor_interface,
   std::unique_ptr<LaneChangeBase> && module_type)
 : SceneModuleInterface{name, node, rtc_interface_ptr_map, objects_of_interest_marker_interface_ptr_map, planning_factor_interface},  // NOLINT
   parameters_{std::move(parameters)},
@@ -131,7 +138,7 @@ BehaviorModuleOutput LaneChangeInterface::plan()
     path_candidate_ = std::make_shared<PathWithLaneId>(candidate.path_candidate);
     updateRTCStatus(
       std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(), true,
-      State::ABORTING);
+      tier4_rtc_msgs::msg::State::ABORTING);
   } else {
     const auto path =
       assignToCandidate(module_type_->getLaneChangePath(), module_type_->getEgoPosition());
@@ -142,14 +149,14 @@ BehaviorModuleOutput LaneChangeInterface::plan()
     if (!is_registered) {
       updateRTCStatus(
         path.start_distance_to_path_change, path.finish_distance_to_path_change, true,
-        State::WAITING_FOR_EXECUTION);
+        tier4_rtc_msgs::msg::State::WAITING_FOR_EXECUTION);
     } else {
       const auto force_activated = std::any_of(
         rtc_interface_ptr_map_.begin(), rtc_interface_ptr_map_.end(),
         [&](const auto & rtc) { return rtc.second->isForceActivated(uuid_map_.at(rtc.first)); });
       updateRTCStatus(
         path.start_distance_to_path_change, path.finish_distance_to_path_change, !force_activated,
-        State::RUNNING);
+        tier4_rtc_msgs::msg::State::RUNNING);
     }
   }
 
@@ -184,7 +191,7 @@ BehaviorModuleOutput LaneChangeInterface::planWaitingApproval()
 
   updateRTCStatus(
     candidate.start_distance_to_path_change, candidate.finish_distance_to_path_change,
-    isExecutionReady(), State::WAITING_FOR_EXECUTION);
+    isExecutionReady(), tier4_rtc_msgs::msg::State::WAITING_FOR_EXECUTION);
   is_abort_path_approved_ = false;
 
   set_longitudinal_planning_factor(out.path);
@@ -261,7 +268,7 @@ bool LaneChangeInterface::canTransitFailureState()
   if (state == LaneChangeStates::Cancel) {
     updateRTCStatus(
       std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(), true,
-      State::FAILED);
+      tier4_rtc_msgs::msg::State::FAILED);
     module_type_->toCancelState();
     return true;
   }
@@ -364,10 +371,10 @@ void LaneChangeInterface::updateDebugMarker() const
     interface_debug_, module_type_->getDebugData(), module_type_->getEgoPose());
 }
 
-MarkerArray LaneChangeInterface::getModuleVirtualWall()
+marker_utils::MarkerArray LaneChangeInterface::getModuleVirtualWall()
 {
   using marker_utils::lane_change_markers::createLaneChangingVirtualWallMarker;
-  MarkerArray marker;
+  visualization_msgs::msg::MarkerArray marker;
 
   if (!parameters_->publish_debug_marker) {
     return marker;
@@ -402,17 +409,18 @@ void LaneChangeInterface::updateSteeringFactorPtr(const BehaviorModuleOutput & o
 
   const auto planning_factor_direction = std::invoke([&]() {
     if (module_type_->getDirection() == Direction::LEFT) {
-      return PlanningFactor::SHIFT_LEFT;
+      return autoware::planning_factor_interface::PlanningFactor::SHIFT_LEFT;
     }
     if (module_type_->getDirection() == Direction::RIGHT) {
-      return PlanningFactor::SHIFT_RIGHT;
+      return autoware::planning_factor_interface::PlanningFactor::SHIFT_RIGHT;
     }
-    return PlanningFactor::UNKNOWN;
+    return autoware::planning_factor_interface::PlanningFactor::UNKNOWN;
   });
 
   planning_factor_interface_->add(
     start_distance, finish_distance, status.lane_change_path.info.shift_line.start,
-    status.lane_change_path.info.shift_line.end, planning_factor_direction, SafetyFactorArray{});
+    status.lane_change_path.info.shift_line.end, planning_factor_direction,
+    autoware_internal_planning_msgs::msg::SafetyFactorArray{});
 }
 
 void LaneChangeInterface::updateSteeringFactorPtr(
@@ -420,14 +428,14 @@ void LaneChangeInterface::updateSteeringFactorPtr(
 {
   const uint16_t planning_factor_direction = std::invoke([&output]() {
     if (output.lateral_shift > 0.0) {
-      return PlanningFactor::SHIFT_LEFT;
+      return autoware::planning_factor_interface::PlanningFactor::SHIFT_LEFT;
     }
-    return PlanningFactor::SHIFT_RIGHT;
+    return autoware::planning_factor_interface::PlanningFactor::SHIFT_RIGHT;
   });
 
   planning_factor_interface_->add(
     output.start_distance_to_path_change, output.finish_distance_to_path_change,
     selected_path.info.shift_line.start, selected_path.info.shift_line.end,
-    planning_factor_direction, SafetyFactorArray{});
+    planning_factor_direction, autoware_internal_planning_msgs::msg::SafetyFactorArray{});
 }
 }  // namespace autoware::behavior_path_planner

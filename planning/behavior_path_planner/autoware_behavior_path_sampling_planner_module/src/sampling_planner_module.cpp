@@ -14,6 +14,15 @@
 
 #include "autoware/behavior_path_sampling_planner_module/sampling_planner_module.hpp"
 
+#include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/static_drivable_area.hpp"
+#include "autoware/behavior_path_planner_common/utils/utils.hpp"
+#include "autoware_frenet_planner/frenet_planner.hpp"
+#include "autoware_frenet_planner/structures.hpp"
+#include "autoware_sampler_common/constraints/footprint.hpp"
+#include "autoware_sampler_common/constraints/hard_constraint.hpp"
+#include "autoware_sampler_common/structures.hpp"
+#include "autoware_utils/geometry/boost_polygon_utils.hpp"
+
 #include <algorithm>
 #include <iostream>
 #include <limits>
@@ -40,10 +49,15 @@ namespace bgi = boost::geometry::index;
 SamplingPlannerModule::SamplingPlannerModule(
   const std::string & name, rclcpp::Node & node,
   const std::shared_ptr<SamplingPlannerParameters> & parameters,
-  const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-  std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+  const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+    rtc_interface_ptr_map,
+  std::unordered_map<
+    std::string,
+    std::shared_ptr<
+      autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
     objects_of_interest_marker_interface_ptr_map,
-  const std::shared_ptr<PlanningFactorInterface> planning_factor_interface)
+  const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface)
 : SceneModuleInterface{name, node, rtc_interface_ptr_map, objects_of_interest_marker_interface_ptr_map, planning_factor_interface},  // NOLINT
   vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo()}
 {
@@ -265,7 +279,7 @@ bool SamplingPlannerModule::isReferencePathSafe() const
       geometry_msgs::msg::Vector3 rpy;
       tf2::Quaternion q(quat.x, quat.y, quat.z, quat.w);
       tf2::Matrix3x3(q).getRPY(rpy.x, rpy.y, rpy.z);
-      path.points.emplace_back(Point2d{x, y});
+      path.points.emplace_back(x, y);
       path.poses.emplace_back(plan->points[i].point.pose);
       path.yaws.emplace_back(rpy.z);
     }
@@ -365,7 +379,7 @@ PathWithLaneId SamplingPlannerModule::convertFrenetPathToPathWithLaneID(
 
 void SamplingPlannerModule::prepareConstraints(
   autoware::sampler_common::Constraints & constraints,
-  const PredictedObjects::ConstSharedPtr & predicted_objects,
+  const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr & predicted_objects,
   const std::vector<geometry_msgs::msg::Point> & left_bound,
   const std::vector<geometry_msgs::msg::Point> & right_bound) const
 {

@@ -1039,16 +1039,18 @@ FilteredLanesObjects NormalLaneChange::filter_objects() const
   return filtered_objects;
 }
 
-void NormalLaneChange::filterOncomingObjects(PredictedObjects & objects) const
+void NormalLaneChange::filterOncomingObjects(
+  autoware_perception_msgs::msg::PredictedObjects & objects) const
 {
   const auto & current_pose = getEgoPose();
 
-  const auto is_same_direction = [&](const PredictedObject & object) {
-    const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
-    return !utils::path_safety_checker::isTargetObjectOncoming(
-      current_pose, object_pose,
-      common_data_ptr_->lc_param_ptr->safety.collision_check.th_incoming_object_yaw);
-  };
+  const auto is_same_direction =
+    [&](const autoware_perception_msgs::msg::PredictedObject & object) {
+      const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
+      return !utils::path_safety_checker::isTargetObjectOncoming(
+        current_pose, object_pose,
+        common_data_ptr_->lc_param_ptr->safety.collision_check.th_incoming_object_yaw);
+    };
 
   //  Perception noise could make stationary objects seem opposite the ego vehicle; check the
   //  velocity to prevent this.
@@ -1059,14 +1061,15 @@ void NormalLaneChange::filterOncomingObjects(PredictedObjects & objects) const
       object.kinematics.initial_twist_with_covariance.twist, min_vel_th, max_vel_th);
   };
 
-  utils::path_safety_checker::filterObjects(objects, [&](const PredictedObject & object) {
-    const auto same_direction = is_same_direction(object);
-    if (same_direction) {
-      return true;
-    }
+  utils::path_safety_checker::filterObjects(
+    objects, [&](const autoware_perception_msgs::msg::PredictedObject & object) {
+      const auto same_direction = is_same_direction(object);
+      if (same_direction) {
+        return true;
+      }
 
-    return is_stopped_object(object);
-  });
+      return is_stopped_object(object);
+    });
 }
 
 std::vector<LaneChangePhaseMetrics> NormalLaneChange::get_prepare_metrics() const

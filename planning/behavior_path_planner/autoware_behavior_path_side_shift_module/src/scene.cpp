@@ -19,6 +19,7 @@
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 #include "autoware/behavior_path_planner_common/utils/utils.hpp"
 #include "autoware/behavior_path_side_shift_module/utils.hpp"
+#include "autoware_utils/ros/marker_helper.hpp"
 
 #include <autoware/motion_utils/trajectory/path_shift.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
@@ -40,10 +41,15 @@ using geometry_msgs::msg::Point;
 SideShiftModule::SideShiftModule(
   const std::string & name, rclcpp::Node & node,
   const std::shared_ptr<SideShiftParameters> & parameters,
-  const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-  std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+  const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+    rtc_interface_ptr_map,
+  std::unordered_map<
+    std::string,
+    std::shared_ptr<
+      autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
     objects_of_interest_marker_interface_ptr_map,
-  const std::shared_ptr<PlanningFactorInterface> planning_factor_interface)
+  const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface)
 : SceneModuleInterface{name, node, rtc_interface_ptr_map, objects_of_interest_marker_interface_ptr_map, planning_factor_interface},  // NOLINT
   parameters_{parameters}
 {
@@ -259,8 +265,6 @@ void SideShiftModule::replaceShiftLine()
   lateral_offset_change_request_ = false;
   inserted_lateral_offset_ = requested_lateral_offset_;
   inserted_shift_line_ = new_sl;
-
-  return;
 }
 
 BehaviorModuleOutput SideShiftModule::plan()
@@ -465,7 +469,7 @@ void SideShiftModule::setDebugMarkersVisualization() const
 
   debug_marker_.markers.clear();
 
-  const auto add = [this](const MarkerArray & added) {
+  const auto add = [this](const visualization_msgs::msg::MarkerArray & added) {
     autoware_utils::append_marker_array(added, &debug_marker_);
   };
 

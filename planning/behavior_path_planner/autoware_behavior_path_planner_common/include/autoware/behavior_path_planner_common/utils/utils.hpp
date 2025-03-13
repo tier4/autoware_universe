@@ -17,9 +17,8 @@
 
 #include "autoware/behavior_path_planner_common/data_manager.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
-
-#include <autoware/route_handler/route_handler.hpp>
-#include <autoware_utils/geometry/boost_geometry.hpp>
+#include "autoware_lanelet2_extension/utility/utilities.hpp"
+#include "autoware_utils/geometry/boost_geometry.hpp"
 
 #include <autoware_internal_planning_msgs/msg/path_point_with_lane_id.hpp>
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
@@ -41,19 +40,6 @@
 
 namespace autoware::behavior_path_planner::utils
 {
-using autoware_perception_msgs::msg::ObjectClassification;
-using autoware_perception_msgs::msg::PredictedObject;
-using autoware_perception_msgs::msg::PredictedObjects;
-using autoware_perception_msgs::msg::PredictedPath;
-
-using autoware::route_handler::RouteHandler;
-using autoware_internal_planning_msgs::msg::PathPointWithLaneId;
-using autoware_internal_planning_msgs::msg::PathWithLaneId;
-using autoware_utils::LinearRing2d;
-using autoware_utils::Polygon2d;
-using geometry_msgs::msg::Point;
-using geometry_msgs::msg::Pose;
-using geometry_msgs::msg::Vector3;
 
 static constexpr double eps = 0.01;
 
@@ -133,7 +119,7 @@ Pose to_geom_msg_pose(const LaneletPointType & src_point, const lanelet::ConstLa
 
 // distance (arclength) calculation
 
-double l2Norm(const Vector3 vector);
+double l2Norm(const geometry_msgs::msg::Vector3 vector);
 
 double getDistanceToEndOfLane(const Pose & current_pose, const lanelet::ConstLanelets & lanelets);
 
@@ -169,7 +155,8 @@ double getArcLengthToTargetLanelet(
  * @return Has collision or not
  */
 bool checkCollisionWithExtraStoppingMargin(
-  const PathWithLaneId & ego_path, const PredictedObjects & dynamic_objects,
+  const PathWithLaneId & ego_path,
+  const autoware_perception_msgs::msg::PredictedObjects & dynamic_objects,
   const double base_to_front, const double base_to_rear, const double width,
   const double maximum_deceleration, const double margin, const double max_stopping_margin);
 
@@ -179,7 +166,7 @@ bool checkCollisionWithExtraStoppingMargin(
  */
 bool checkCollisionBetweenPathFootprintsAndObjects(
   const autoware_utils::LinearRing2d & vehicle_footprint, const PathWithLaneId & ego_path,
-  const PredictedObjects & dynamic_objects, const double margin);
+  const autoware_perception_msgs::msg::PredictedObjects & dynamic_objects, const double margin);
 
 /**
  * @brief Check collision between ego footprints and objects.
@@ -187,14 +174,15 @@ bool checkCollisionBetweenPathFootprintsAndObjects(
  */
 bool checkCollisionBetweenFootprintAndObjects(
   const autoware_utils::LinearRing2d & vehicle_footprint, const Pose & ego_pose,
-  const PredictedObjects & dynamic_objects, const double margin);
+  const autoware_perception_msgs::msg::PredictedObjects & dynamic_objects, const double margin);
 
 /**
  * @brief calculate lateral distance from ego pose to object
  * @return distance from ego pose to object
  */
 double calcLateralDistanceFromEgoToObject(
-  const Pose & ego_pose, const double vehicle_width, const PredictedObject & dynamic_object);
+  const Pose & ego_pose, const double vehicle_width,
+  const autoware_perception_msgs::msg::PredictedObject & dynamic_object);
 
 /**
  * @brief calculate longitudinal distance from ego pose to object
@@ -202,7 +190,7 @@ double calcLateralDistanceFromEgoToObject(
  */
 double calc_longitudinal_distance_from_ego_to_object(
   const Pose & ego_pose, const double base_link2front, const double base_link2rear,
-  const PredictedObject & dynamic_object);
+  const autoware_perception_msgs::msg::PredictedObject & dynamic_object);
 
 /**
  * @brief calculate minimum longitudinal distance from ego pose to objects
@@ -210,7 +198,7 @@ double calc_longitudinal_distance_from_ego_to_object(
  */
 double calcLongitudinalDistanceFromEgoToObjects(
   const Pose & ego_pose, double base_link2front, double base_link2rear,
-  const PredictedObjects & dynamic_objects);
+  const autoware_perception_msgs::msg::PredictedObjects & dynamic_objects);
 
 // drivable area generation
 lanelet::ConstLanelets transformToLanelets(const DrivableLanes & drivable_lanes);
@@ -286,7 +274,7 @@ bool isInLaneletWithYawThreshold(
 
 bool isEgoOutOfRoute(
   const Pose & self_pose, const lanelet::ConstLanelet & closest_road_lane,
-  const std::optional<PoseWithUuidStamped> & modified_goal,
+  const std::optional<autoware_planning_msgs::msg::PoseWithUuidStamped> & modified_goal,
   const std::shared_ptr<RouteHandler> & route_handler);
 
 /**
@@ -353,9 +341,9 @@ std::optional<double> getSignedDistanceFromBoundary(
  * @param lanelet Target lanelet.
  * @return Polygon
  */
-Polygon2d toPolygon2d(const lanelet::ConstLanelet & lanelet);
+autoware_utils::Polygon2d toPolygon2d(const lanelet::ConstLanelet & lanelet);
 
-Polygon2d toPolygon2d(const lanelet::BasicPolygon2d & polygon);
+autoware_utils::Polygon2d toPolygon2d(const lanelet::BasicPolygon2d & polygon);
 
 PathWithLaneId getCenterLinePathFromLanelet(
   const lanelet::ConstLanelet & current_route_lanelet,
@@ -368,7 +356,8 @@ PathWithLaneId getCenterLinePath(
   const BehaviorPathPlannerParameters & parameter);
 
 // object label
-std::uint8_t getHighestProbLabel(const std::vector<ObjectClassification> & classification);
+std::uint8_t getHighestProbLabel(
+  const std::vector<autoware_perception_msgs::msg::ObjectClassification> & classification);
 
 lanelet::ConstLanelets getCurrentLanes(
   const std::shared_ptr<const PlannerData> & planner_data, const double backward_path_length,

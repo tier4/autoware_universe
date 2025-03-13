@@ -253,10 +253,11 @@ std::optional<Polygon2d> generateObjectExtractionPolygon(
 }
 
 PredictedObjects filterObjectsByLateralDistance(
-  const Pose & ego_pose, const double vehicle_width, const PredictedObjects & objects,
-  const double distance_thresh, const bool filter_inside)
+  const Pose & ego_pose, const double vehicle_width,
+  const autoware_perception_msgs::msg::PredictedObjects & objects, const double distance_thresh,
+  const bool filter_inside)
 {
-  PredictedObjects filtered_objects;
+  autoware_perception_msgs::msg::PredictedObjects filtered_objects;
   for (const auto & object : objects.objects) {
     const double distance =
       utils::calcLateralDistanceFromEgoToObject(ego_pose, vehicle_width, object);
@@ -304,7 +305,8 @@ std::vector<lanelet::BasicPolygon2d> getBusStopAreaPolygons(const lanelet::Const
 
 bool checkObjectsCollision(
   const PathWithLaneId & path, const std::vector<double> & curvatures,
-  const PredictedObjects & static_target_objects, const PredictedObjects & dynamic_target_objects,
+  const autoware_perception_msgs::msg::PredictedObjects & static_target_objects,
+  const autoware_perception_msgs::msg::PredictedObjects & dynamic_target_objects,
   const BehaviorPathPlannerParameters & behavior_path_parameters,
   const double collision_check_margin, const bool extract_static_objects,
   const double maximum_deceleration,
@@ -380,9 +382,9 @@ MarkerArray createPullOverAreaMarkerArray(
   const autoware_utils::MultiPolygon2d area_polygons, const std_msgs::msg::Header & header,
   const std_msgs::msg::ColorRGBA & color, const double z)
 {
-  MarkerArray marker_array{};
+  visualization_msgs::msg::MarkerArray marker_array{};
   for (size_t i = 0; i < area_polygons.size(); ++i) {
-    Marker marker = create_default_marker(
+    visualization_msgs::msg::Marker marker = create_default_marker(
       header.frame_id, header.stamp, "pull_over_area_" + std::to_string(i), i,
       visualization_msgs::msg::Marker::LINE_STRIP, create_marker_scale(0.1, 0.0, 0.0), color);
     const auto & poly = area_polygons.at(i);
@@ -399,11 +401,11 @@ MarkerArray createPullOverAreaMarkerArray(
 MarkerArray createPosesMarkerArray(
   const std::vector<Pose> & poses, std::string && ns, const std_msgs::msg::ColorRGBA & color)
 {
-  MarkerArray msg{};
+  visualization_msgs::msg::MarkerArray msg{};
   int32_t i = 0;
   for (const auto & pose : poses) {
-    Marker marker = autoware_utils::create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i, Marker::ARROW,
+    visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i, visualization_msgs::msg::Marker::ARROW,
       create_marker_scale(0.5, 0.25, 0.25), color);
     marker.pose = pose;
     marker.id = i++;
@@ -416,12 +418,12 @@ MarkerArray createPosesMarkerArray(
 MarkerArray createGoalPriorityTextsMarkerArray(
   const std::vector<Pose> & poses, std::string && ns, const std_msgs::msg::ColorRGBA & color)
 {
-  MarkerArray msg{};
+  visualization_msgs::msg::MarkerArray msg{};
   int32_t i = 0;
   for (const auto & pose : poses) {
-    Marker marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i, Marker::TEXT_VIEW_FACING,
-      create_marker_scale(0.3, 0.3, 0.3), color);
+    visualization_msgs::msg::Marker marker = create_default_marker(
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i,
+      visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.3, 0.3, 0.3), color);
     marker.pose = calc_offset_pose(pose, 0, 0, 1.0);
     marker.id = i;
     marker.text = std::to_string(i);
@@ -435,13 +437,13 @@ MarkerArray createGoalPriorityTextsMarkerArray(
 MarkerArray createNumObjectsToAvoidTextsMarkerArray(
   const GoalCandidates & goal_candidates, std::string && ns, const std_msgs::msg::ColorRGBA & color)
 {
-  MarkerArray msg{};
+  visualization_msgs::msg::MarkerArray msg{};
   int32_t i = 0;
   for (const auto & goal_candidate : goal_candidates) {
     const Pose & pose = goal_candidate.goal_pose;
-    Marker marker = create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i, Marker::TEXT_VIEW_FACING,
-      create_marker_scale(0.3, 0.3, 0.3), color);
+    visualization_msgs::msg::Marker marker = create_default_marker(
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i,
+      visualization_msgs::msg::Marker::TEXT_VIEW_FACING, create_marker_scale(0.3, 0.3, 0.3), color);
     marker.pose = calc_offset_pose(pose, -0.5, 0, 1.0);
     marker.id = i;
     marker.text = std::to_string(goal_candidate.num_objects_to_avoid);
@@ -842,7 +844,7 @@ autoware_perception_msgs::msg::PredictedObjects extract_dynamic_objects(
     pull_over_lanes, left_side_parking, parameters.detection_bound_offset,
     parameters.margin_from_boundary + parameters.max_lateral_offset + vehicle_width);
 
-  PredictedObjects dynamic_target_objects{};
+  autoware_perception_msgs::msg::PredictedObjects dynamic_target_objects{};
   for (const auto & object : original_objects.objects) {
     const auto object_polygon = autoware_utils::to_polygon2d(object);
     if (

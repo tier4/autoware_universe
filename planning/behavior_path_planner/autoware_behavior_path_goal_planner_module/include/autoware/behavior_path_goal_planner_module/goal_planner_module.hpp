@@ -77,9 +77,11 @@ struct PullOverContextData
 {
   PullOverContextData() = delete;
   explicit PullOverContextData(
-    const bool is_stable_safe_path, const PredictedObjects & static_objects,
-    const PredictedObjects & dynamic_objects, const PathDecisionState & prev_state,
-    const bool is_stopped, LaneParkingResponse && lane_parking_response,
+    const bool is_stable_safe_path,
+    const autoware_perception_msgs::msg::PredictedObjects & static_objects,
+    const autoware_perception_msgs::msg::PredictedObjects & dynamic_objects,
+    const PathDecisionState & prev_state, const bool is_stopped,
+    LaneParkingResponse && lane_parking_response,
     FreespaceParkingResponse && freespace_parking_response)
   : is_stable_safe_path(is_stable_safe_path),
     static_target_objects(static_objects),
@@ -92,8 +94,8 @@ struct PullOverContextData
   }
   // TODO(soblin): make following variables private
   bool is_stable_safe_path;
-  PredictedObjects static_target_objects;
-  PredictedObjects dynamic_target_objects;
+  autoware_perception_msgs::msg::PredictedObjects static_target_objects;
+  autoware_perception_msgs::msg::PredictedObjects dynamic_target_objects;
   PathDecisionState prev_state_for_debug;
   bool is_stopped;
   LaneParkingResponse lane_parking_response;
@@ -103,9 +105,11 @@ struct PullOverContextData
   std::optional<rclcpp::Time> last_path_idx_increment_time;
 
   void update(
-    const bool is_stable_safe_path_, const PredictedObjects static_target_objects_,
-    const PredictedObjects dynamic_target_objects_, const PathDecisionState prev_state_for_debug_,
-    const bool is_stopped_, LaneParkingResponse && lane_parking_response_,
+    const bool is_stable_safe_path_,
+    const autoware_perception_msgs::msg::PredictedObjects static_target_objects_,
+    const autoware_perception_msgs::msg::PredictedObjects dynamic_target_objects_,
+    const PathDecisionState prev_state_for_debug_, const bool is_stopped_,
+    LaneParkingResponse && lane_parking_response_,
     FreespaceParkingResponse && freespace_parking_response_)
   {
     is_stable_safe_path = is_stable_safe_path_;
@@ -139,7 +143,8 @@ bool checkOccupancyGridCollision(
 
 // freespace parking
 std::optional<PullOverPath> planFreespacePath(
-  const FreespaceParkingRequest & req, const PredictedObjects & static_target_objects,
+  const FreespaceParkingRequest & req,
+  const autoware_perception_msgs::msg::PredictedObjects & static_target_objects,
   std::shared_ptr<FreespacePullOver> freespace_planner);
 
 bool isStopped(
@@ -150,7 +155,8 @@ bool isStopped(
 void sortPullOverPaths(
   const std::shared_ptr<const PlannerData> planner_data, const GoalPlannerParameters & parameters,
   const std::vector<PullOverPath> & pull_over_path_candidates,
-  const GoalCandidates & goal_candidates, const PredictedObjects & static_target_objects,
+  const GoalCandidates & goal_candidates,
+  const autoware_perception_msgs::msg::PredictedObjects & static_target_objects,
   rclcpp::Logger logger, std::vector<size_t> & sorted_path_indices);
 
 // Flag class for managing whether a certain callback is running in multi-threading
@@ -236,7 +242,8 @@ private:
   std::shared_ptr<FreespacePullOver> freespace_planner_;
 
   bool isStuck(
-    const PredictedObjects & static_target_objects, const PredictedObjects & dynamic_target_objects,
+    const autoware_perception_msgs::msg::PredictedObjects & static_target_objects,
+    const autoware_perception_msgs::msg::PredictedObjects & dynamic_target_objects,
     const FreespaceParkingRequest & req) const;
 };
 
@@ -246,10 +253,15 @@ public:
   GoalPlannerModule(
     const std::string & name, rclcpp::Node & node,
     const std::shared_ptr<GoalPlannerParameters> & parameters,
-    const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
-    std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
+    const std::unordered_map<std::string, std::shared_ptr<autoware::rtc_interface::RTCInterface>> &
+      rtc_interface_ptr_map,
+    std::unordered_map<
+      std::string,
+      std::shared_ptr<
+        autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
-    const std::shared_ptr<PlanningFactorInterface> planning_factor_interface);
+    const std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+      planning_factor_interface);
 
   ~GoalPlannerModule()
   {
@@ -457,8 +469,9 @@ private:
 
   /*
   void updateSafetyCheckTargetObjectsData(
-    const PredictedObjects & filtered_objects, const TargetObjectsOnLane & target_objects_on_lane,
-    const std::vector<PoseWithVelocityStamped> & ego_predicted_path) const;
+    const autoware_perception_msgs::msg::PredictedObjects & filtered_objects, const
+  TargetObjectsOnLane & target_objects_on_lane, const std::vector<PoseWithVelocityStamped> &
+  ego_predicted_path) const;
   */
   /**
    * @brief Checks if the current path is safe.
