@@ -77,8 +77,9 @@ MotionVelocitySmootherNode::MotionVelocitySmootherNode(const rclcpp::NodeOptions
   pub_trajectory_ = create_publisher<Trajectory>("~/output/trajectory", 1);
   pub_velocity_limit_ = create_publisher<VelocityLimit>(
     "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
-  pub_dist_to_stopline_ = create_publisher<Float32Stamped>("~/distance_to_stopline", 1);
-  pub_over_stop_velocity_ = create_publisher<StopSpeedExceeded>("~/stop_speed_exceeded", 1);
+    pub_dist_to_stopline_ = create_publisher<Float32Stamped>("~/distance_to_stopline", 1);
+    pub_dist_to_stopline_no_smoothing_ = create_publisher<Float32Stamped>("~/distance_to_stopline_no_smoothing", 1);
+    pub_over_stop_velocity_ = create_publisher<StopSpeedExceeded>("~/stop_speed_exceeded", 1);
   sub_current_trajectory_ = create_subscription<Trajectory>(
     "~/input/trajectory", 1, std::bind(&MotionVelocitySmootherNode::onCurrentTrajectory, this, _1));
   sub_current_odometry_ = create_subscription<Odometry>(
@@ -354,6 +355,15 @@ void MotionVelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstShar
     return;
   }
 
+  TrajectoryPoints input = tier4_autoware_utils::convertToTrajectoryPointArray(*base_traj_raw_ptr_);
+
+  // Get the nearest point
+  const auto input_closest_idx = tier4_autoware_utils::findNearestIndex(
+    input, current_pose_ptr_->pose, std::numeric_limits<double>::max(),
+    node_param_.delta_yaw_threshold);
+    
+  publishStopDistanceNoSmoothing(input, *input_closest_idx);
+
   // calculate distance to insert external velocity limit
   if (!prev_output_.empty()) {
     const double travel_dist = calcTravelDistance();
@@ -365,8 +375,7 @@ void MotionVelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstShar
   }
 
   // calculate trajectory velocity
-  TrajectoryPoints output = calcTrajectoryVelocity(
-    tier4_autoware_utils::convertToTrajectoryPointArray(*base_traj_raw_ptr_));
+  TrajectoryPoints output = calcTrajectoryVelocity(input);
   if (output.empty()) {
     RCLCPP_WARN(get_logger(), "Output Point is empty");
     return;
@@ -628,6 +637,25 @@ void MotionVelocitySmootherNode::publishStopDistance(
   dist_to_stopline.stamp = this->now();
   dist_to_stopline.data = std::max(-stop_dist_lim, std::min(stop_dist_lim, stop_dist));
   pub_dist_to_stopline_->publish(dist_to_stopline);
+}
+
+void MotionVelocitySmootherNode::publishStopDistanceNoSmoothing(
+  const TrajectoryPoints & trajectory, const size_t closest) const
+{
+  // stop distance calculation
+  const double stop_dist_lim{50.0};
+  double stop_dist{stop_dist_lim};
+  const auto stop_idx{tier4_autoware_utils::searchZeroVelocityIndex(trajectory)};
+  if (stop_idx) {
+    stop_dist = trajectory_utils::calcArcLength(trajectory, closest, *stop_idx);
+    stop_dist = closest > *stop_idx ? stop_dist : -stop_dist;
+  } else {
+    stop_dist = closest > 0 ? stop_dist : -stop_dist;
+  }
+  Float32Stamped dist_to_stopline{};
+  dist_to_stopline.stamp = this->now();
+  dist_to_stopline.data = std::max(-stop_dist_lim, std::min(stop_dist_lim, stop_dist));
+  pub_dist_to_stopline_no_smoothing_->publish(dist_to_stopline);
 }
 
 std::tuple<double, double, MotionVelocitySmootherNode::InitializeType>
