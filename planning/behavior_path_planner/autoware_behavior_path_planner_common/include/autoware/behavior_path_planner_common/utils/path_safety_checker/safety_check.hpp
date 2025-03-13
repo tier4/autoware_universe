@@ -23,6 +23,7 @@
 #include <autoware_utils/geometry/pose_deviation.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
+#include <autoware_perception_msgs/msg/detail/predicted_objects__struct.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_perception_msgs/msg/predicted_path.hpp>
 #include <geometry_msgs/msg/pose.hpp>
@@ -234,9 +235,8 @@ bool checkPolygonsIntersects(
  */
 bool checkSafetyWithIntegralPredictedPolygon(
   const std::vector<PoseWithVelocityStamped> & ego_predicted_path, const VehicleInfo & vehicle_info,
-  const autoware_perception_msgs::msg::PredictedObject & objects,
-  const bool check_all_predicted_path, const IntegralPredictedPolygonParams & params,
-  CollisionCheckDebugMap & debug_map);
+  const ExtendedPredictedObjects & objects, const bool check_all_predicted_path,
+  const IntegralPredictedPolygonParams & params, CollisionCheckDebugMap & debug_map);
 
 /**
  * @brief Calculates the minimum length from obstacle centroid to outer point.
@@ -263,7 +263,7 @@ double calc_obstacle_max_length(const Shape & shape);
  * @return Collision (rough) between minimum distance and maximum distance
  */
 std::pair<bool, bool> checkObjectsCollisionRough(
-  const PathWithLaneId & path, const autoware_perception_msgs::msg::PredictedObject & objects,
+  const PathWithLaneId & path, const autoware_perception_msgs::msg::PredictedObjects & objects,
   const double margin, const BehaviorPathPlannerParameters & parameters,
   const bool use_offset_ego_point);
 
@@ -280,7 +280,7 @@ std::pair<bool, bool> checkObjectsCollisionRough(
  * @return The rough distance between the ego vehicle and the objects.
  */
 double calculateRoughDistanceToObjects(
-  const PathWithLaneId & path, const autoware_perception_msgs::msg::PredictedObject & objects,
+  const PathWithLaneId & path, const autoware_perception_msgs::msg::PredictedObjects & objects,
   const BehaviorPathPlannerParameters & parameters, const bool use_offset_ego_point,
   const std::string & distance_type);
 // debug

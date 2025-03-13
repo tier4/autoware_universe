@@ -168,8 +168,9 @@ bool hasPreviousModulePathShapeChanged(
       // p.point.pose.position is not within the segment, skip lateral distance check
       continue;
     }
-    const double lateral_distance = std::abs(autoware::motion_utils::calcLateralOffset(
-      last_upstream_module_output.path.points, p.point.pose.position, nearest_seg_idx));
+    const double lateral_distance = std::abs(
+      autoware::motion_utils::calcLateralOffset(
+        last_upstream_module_output.path.points, p.point.pose.position, nearest_seg_idx));
     if (lateral_distance > LATERAL_DEVIATION_THRESH) {
       return true;
     }
@@ -181,8 +182,9 @@ bool hasDeviatedFromPath(
   const Point & ego_position, const BehaviorModuleOutput & upstream_module_output)
 {
   constexpr double LATERAL_DEVIATION_THRESH = 0.1;
-  return std::abs(autoware::motion_utils::calcLateralOffset(
-           upstream_module_output.path.points, ego_position)) > LATERAL_DEVIATION_THRESH;
+  return std::abs(
+           autoware::motion_utils::calcLateralOffset(
+             upstream_module_output.path.points, ego_position)) > LATERAL_DEVIATION_THRESH;
 }
 
 bool needPathUpdate(
@@ -476,9 +478,10 @@ void LaneParkingPlanner::normal_pullover_planning_helper(
     const auto original_pose = planner_data->route_handler->getOriginalGoalPose();
     if (
       parameters_.bus_stop_area.use_bus_stop_area &&
-      std::fabs(autoware_utils::normalize_radian(
-        autoware_utils::get_rpy(original_pose).z -
-        autoware_utils::get_rpy(closest_start_pose.value()).z)) > pull_over_angle_threshold) {
+      std::fabs(
+        autoware_utils::normalize_radian(
+          autoware_utils::get_rpy(original_pose).z -
+          autoware_utils::get_rpy(closest_start_pose.value()).z)) > pull_over_angle_threshold) {
       // reset and try bezier next time
       switch_bezier_ = true;
       path_candidates.clear();
@@ -1402,7 +1405,7 @@ void GoalPlannerModule::updateSteeringFactor(
 
   planning_factor_interface_->add(
     distance[0], distance[1], pose[0], pose[1], planning_factor_direction,
-    tier4_planning_msgs::msg::SafetyFactorArray{});
+    autoware_internal_planning_msgs::msg::SafetyFactorArray{});
 }
 
 void GoalPlannerModule::decideVelocity(PullOverPath & pull_over_path)
@@ -2061,8 +2064,8 @@ TurnSignalInfo GoalPlannerModule::calcTurnSignalInfo(const PullOverContextData &
     }
     constexpr double distance_threshold = 1.0;
     const auto stop_point = pull_over_path.partial_paths().front().points.back();
-    const double distance_from_ego_to_stop_point =
-      std::abs(autoware::motion_utils::calcSignedArcLength(
+    const double distance_from_ego_to_stop_point = std::abs(
+      autoware::motion_utils::calcSignedArcLength(
         path.points, stop_point.point.pose.position, current_pose.position));
     return distance_from_ego_to_stop_point < distance_threshold;
   });
@@ -2363,8 +2366,9 @@ static std::vector<utils::path_safety_checker::ExtendedPredictedObject> filterOb
 
   std::vector<utils::path_safety_checker::ExtendedPredictedObject> refined_filtered_objects;
   for (const auto & within_filtered_object : within_filtered_objects) {
-    refined_filtered_objects.push_back(utils::path_safety_checker::transform(
-      within_filtered_object, safety_check_time_horizon, safety_check_time_resolution));
+    refined_filtered_objects.push_back(
+      utils::path_safety_checker::transform(
+        within_filtered_object, safety_check_time_horizon, safety_check_time_resolution));
   }
   return refined_filtered_objects;
 }
@@ -2534,8 +2538,9 @@ void GoalPlannerModule::setDebugData(const PullOverContextData & context_data)
                          ? create_marker_color(1.0, 1.0, 0.0, 0.999)   // yellow
                          : create_marker_color(0.0, 1.0, 0.0, 0.999);  // green
     const double z = planner_data_->route_handler->getGoalPose().position.z;
-    add(goal_planner_utils::createPullOverAreaMarkerArray(
-      goal_searcher_->getAreaPolygons(), header, color, z));
+    add(
+      goal_planner_utils::createPullOverAreaMarkerArray(
+        goal_searcher_->getAreaPolygons(), header, color, z));
 
     // Visualize goal candidates
     add(goal_planner_utils::createGoalCandidatesMarkerArray(goal_candidates_, color));
