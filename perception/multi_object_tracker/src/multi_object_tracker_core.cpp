@@ -388,15 +388,18 @@ void MultiObjectTracker::sanitizeTracker(
   constexpr double distance_threshold = 5.0;
 
   // Create sorted list with non-UNKNOWN objects first, then by measurement count
-  std::vector<std::shared_ptr<Tracker>> sorted_list_tracker(list_tracker.begin(), list_tracker.end());
-  std::sort(sorted_list_tracker.begin(), sorted_list_tracker.end(),
-    [](const std::shared_ptr<Tracker>& a, const std::shared_ptr<Tracker>& b) {
+  std::vector<std::shared_ptr<Tracker>> sorted_list_tracker(
+    list_tracker.begin(), list_tracker.end());
+  std::sort(
+    sorted_list_tracker.begin(), sorted_list_tracker.end(),
+    [](const std::shared_ptr<Tracker> & a, const std::shared_ptr<Tracker> & b) {
       bool a_unknown = (a->getHighestProbLabel() == Label::UNKNOWN);
       bool b_unknown = (b->getHighestProbLabel() == Label::UNKNOWN);
       if (a_unknown != b_unknown) {
         return b_unknown;  // Put non-UNKNOWN objects first
       }
-      return a->getTotalMeasurementCount() > b->getTotalMeasurementCount();  // Then sort by measurement count
+      return a->getTotalMeasurementCount() >
+             b->getTotalMeasurementCount();  // Then sort by measurement count
     });
 
   /* delete collision tracker */
@@ -438,8 +441,9 @@ void MultiObjectTracker::sanitizeTracker(
 
       if (delete_candidate_tracker) {
         /* erase only when prioritized one has later(or equal time) meas than the other's */
-        if (sorted_list_tracker[i]->getElapsedTimeFromLastUpdate(time) <= 
-            sorted_list_tracker[j]->getElapsedTimeFromLastUpdate(time)) {
+        if (
+          sorted_list_tracker[i]->getElapsedTimeFromLastUpdate(time) <=
+          sorted_list_tracker[j]->getElapsedTimeFromLastUpdate(time)) {
           // Remove from original list_tracker
           list_tracker.remove(sorted_list_tracker[j]);
           // Remove from sorted list
