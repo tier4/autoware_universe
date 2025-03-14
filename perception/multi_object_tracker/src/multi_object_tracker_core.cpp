@@ -257,7 +257,7 @@ void MultiObjectTracker::runProcess(
     rclcpp::Time(input_objects_msg.header.stamp, this->now().get_clock_type());
 
   const auto & list_tracker = processor_->getListTracker();
-  const auto & detected_objects = transformed_objects;
+  const auto & detected_objects;
 
   // Get the transform of the self frame
   const auto self_transform =
@@ -279,6 +279,7 @@ void MultiObjectTracker::runProcess(
   /* object association */
   std::unordered_map<int, int> direct_assignment, reverse_assignment;
   {
+    detected_objects = transformed_objects;
     // global nearest neighbor
     Eigen::MatrixXd score_matrix = data_association_->calcScoreMatrix(
       detected_objects, list_tracker);  // row : tracker, col : measurement
