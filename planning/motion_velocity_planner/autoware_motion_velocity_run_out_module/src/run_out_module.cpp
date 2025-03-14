@@ -25,6 +25,7 @@
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware/universe_utils/system/time_keeper.hpp>
 #include <rclcpp/duration.hpp>
 
 #include <autoware_perception_msgs/msg/object_classification.hpp>
@@ -66,10 +67,10 @@ void RunOutModule::init(rclcpp::Node & node, const std::string & module_name)
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/debug_markers", 1);
   virtual_wall_publisher_ =
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/virtual_walls", 1);
-  processing_diag_publisher_ = std::make_shared<universe_utils::ProcessingTimePublisher>(
+  processing_diag_publisher_ = std::make_shared<autoware_utils::ProcessingTimePublisher>(
     &node, "~/debug/" + ns_ + "/processing_time_ms_diag");
   processing_time_publisher_ =
-    node.create_publisher<tier4_debug_msgs::msg::Float64Stamped>(
+    node.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "~/debug/" + ns_ + "/processing_time_ms", 1);
   debug_trajectory_publisher_ = node.create_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/debug/" + ns_ + "/trajectory", 1);
@@ -145,6 +146,7 @@ void RunOutModule::ignore_unavoidable_collision(const double time_to_stop)
 }
 
 VelocityPlanningResult RunOutModule::plan(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> &,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & smoothed_trajectory_points,
   const std::shared_ptr<const PlannerData> planner_data)
 {
@@ -156,9 +158,9 @@ VelocityPlanningResult RunOutModule::plan(
   time_keeper_->end_track("calc_ego_footprint()");
   time_keeper_->start_track("filter_objects()");
   const auto filtering_data = run_out::calculate_filtering_data(
-    planner_data->route_handler->getLaneletMapPtr(), ego_footprint, planner_data->predicted_objects.objects, params_);
+    planner_data->route_handler->getLaneletMapPtr(), ego_footprint, planner_data->objects, params_);
   auto filtered_objects = run_out::prepare_dynamic_objects(
-    planner_data->predicted_objects.objects, ego_footprint, decisions_tracker_, filtering_data, params_);
+    planner_data->objects, ego_footprint, decisions_tracker_, filtering_data, params_);
   time_keeper_->end_track("filter_objects()");
   time_keeper_->start_track("calc_collisions()");
   run_out::calculate_collisions(

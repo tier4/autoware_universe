@@ -18,7 +18,7 @@
 #include "parameters.hpp"
 #include "types.hpp"
 
-#include <autoware/motion_velocity_planner_common/planner_data.hpp>
+#include <autoware/motion_velocity_planner_common_universe/planner_data.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
@@ -269,7 +269,7 @@ inline void filter_predicted_paths(
 }
 
 inline std::vector<Object> prepare_dynamic_objects(
-  const std::vector<autoware_perception_msgs::msg::PredictedObject> & objects,
+  const std::vector<std::shared_ptr<PlannerData::Object>> & objects,
   const TrajectoryCornerFootprint & ego_trajectory,
   const ObjectDecisionsTracker & previous_decisions, const FilteringDataPerLabel & filtering_data,
   const Parameters & params)
@@ -278,20 +278,20 @@ inline std::vector<Object> prepare_dynamic_objects(
   const auto ego_rear_segment = ego_trajectory.get_rear_segment();
   for (const auto & object : objects) {
     Object filtered_object;
-    filtered_object.uuid = universe_utils::toHexString(object.object_id);
+    filtered_object.uuid = universe_utils::toHexString(object->predicted_object.object_id);
     filtered_object.position =
       universe_utils::fromMsg(
-        object.kinematics.initial_pose_with_covariance.pose.position)
+        object->predicted_object.kinematics.initial_pose_with_covariance.pose.position)
         .to_2d();
-    classify(filtered_object, object, params);
-    calculate_current_footprint(filtered_object, object);
+    classify(filtered_object, object->predicted_object, params);
+    calculate_current_footprint(filtered_object, object->predicted_object);
     const auto & previous_object_decisions = previous_decisions.get(filtered_object.uuid);
     if (skip_object_condition(
           filtered_object, previous_object_decisions, ego_rear_segment,
           filtering_data[filtered_object.label], params)) {
       continue;
     }
-    calculate_predicted_path_footprints(filtered_object, object, params);
+    calculate_predicted_path_footprints(filtered_object, object->predicted_object, params);
     filter_predicted_paths(
       filtered_object, ego_rear_segment, filtering_data[filtered_object.label], params);
     if (!filtered_object.corner_footprints.empty()) {

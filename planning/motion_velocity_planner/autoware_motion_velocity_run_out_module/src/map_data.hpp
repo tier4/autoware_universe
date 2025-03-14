@@ -17,7 +17,7 @@
 
 #include "types.hpp"
 
-#include <autoware/motion_velocity_planner_common/planner_data.hpp>
+#include <autoware/motion_velocity_planner_common_universe/planner_data.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
@@ -31,6 +31,7 @@
 #include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/LineString.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,7 +45,7 @@ universe_utils::Segment2d convert(const lanelet::Segment<T> & segment)
 
 inline FilteringDataPerLabel calculate_filtering_data(
   const lanelet::LaneletMapPtr & map_ptr, const TrajectoryCornerFootprint & ego_footprint,
-  const std::vector<autoware_perception_msgs::msg::PredictedObject> & objects, const Parameters & params)
+  const std::vector<std::shared_ptr<PlannerData::Object>> & objects, const Parameters & parameters)
 {
   lanelet::BoundingBox2d bounding_box(ego_footprint.get_rear_segment().first);
   for (const auto & p : ego_footprint.front_polygon.outer()) {
@@ -52,7 +53,7 @@ inline FilteringDataPerLabel calculate_filtering_data(
   }
   bounding_box.extend(universe_utils::Point2d(ego_footprint.get_rear_segment().second));
   for (const auto & o : objects) {
-    const auto p = o.kinematics.initial_pose_with_covariance.pose.position;
+    const auto p = o->predicted_object.kinematics.initial_pose_with_covariance.pose.position;
     bounding_box.extend(universe_utils::Point2d(p.x, p.y));
   }
   FilteringDataPerLabel data_per_label;
