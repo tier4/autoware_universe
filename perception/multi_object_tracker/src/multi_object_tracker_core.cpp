@@ -317,8 +317,8 @@ void MultiObjectTracker::runProcess(
               measurement_object.classification.at(0).label);
       debug_message += buf;
     }
-    */
   }
+  */
 
   /* tracker update */
   processor_->update(transformed_objects, *self_transform, direct_assignment, channel_index);
