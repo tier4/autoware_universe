@@ -539,14 +539,6 @@ bool MrmHandler::isControlModeAutonomous()
   return mode->mode == ControlModeReport::AUTONOMOUS;
 }
 
-bool MrmHandler::isOperationModeAutonomous()
-{
-  using autoware_adapi_v1_msgs::msg::OperationModeState;
-  auto state = sub_operation_mode_state_.takeData();
-  if (state == nullptr) return false;
-  return state->mode == OperationModeState::AUTONOMOUS;
-}
-
 bool MrmHandler::isPullOverStatusAvailable()
 {
   auto status = sub_mrm_pull_over_status_.takeData();
