@@ -249,6 +249,9 @@ void MultiObjectTracker::onMessage(const ObjectsList & objects_list)
 void MultiObjectTracker::runProcess(
   const DetectedObjects & input_objects_msg, const uint & channel_index)
 {
+  // Add at the beginning of the function
+  std::string debug_message = "";
+
   // Get the time of the measurement
   const rclcpp::Time measurement_time =
     rclcpp::Time(input_objects_msg.header.stamp, this->now().get_clock_type());
@@ -286,11 +289,39 @@ void MultiObjectTracker::runProcess(
       direct_assignment, reverse_assignment);
   }
 
+  for (size_t measurement_idx = 0; measurement_idx < transformed_objects.objects.size(); ++measurement_idx) {
+    const autoware_perception_msgs::msg::DetectedObject & measurement_object = transformed_objects.objects.at(measurement_idx);
+    auto meas_tracker_idx = reverse_assignment.find(measurement_idx);
+    if (meas_tracker_idx != reverse_assignment.end()) {
+      autoware_perception_msgs::msg::TrackedObject track_object;
+      char buf[200];
+      auto tracker_itr = std::next(list_tracker_.begin(), meas_tracker_idx->second);
+      (*tracker_itr)->getTrackedObject(measurement_time, track_object);
+      snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[%d], x[%.3f]->x[%.3f], y[%.3f]->y[%.3f], cls[%d]->cls[%d]\n", 
+              measurement_idx, meas_tracker_idx->second,
+              measurement_object.kinematics.pose_with_covariance.pose.position.x, track_object.kinematics.pose_with_covariance.pose.position.x,
+              measurement_object.kinematics.pose_with_covariance.pose.position.y, track_object.kinematics.pose_with_covariance.pose.position.y,
+              measurement_object.classification.at(0).label, track_object.classification.at(0).label);
+      debug_message += buf;
+    }
+    else {
+      char buf[120];
+      snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[nan], x[%.3f]->x[nan], y[%.3f]->y[nan], cls[%d]->cls[nan]\n", 
+              measurement_idx,
+              measurement_object.kinematics.pose_with_covariance.pose.position.x,
+              measurement_object.kinematics.pose_with_covariance.pose.position.y, 
+              measurement_object.classification.at(0).label);
+      debug_message += buf;
+    }
+  }
+
   /* tracker update */
   processor_->update(transformed_objects, *self_transform, direct_assignment, channel_index);
 
   /* tracker pruning */
   processor_->prune(measurement_time);
+
+  RCLCPP_INFO(get_logger(), "\nobject links:\n%s", debug_message.c_str());
 
   /* spawn new tracker */
   if (input_manager_->isChannelSpawnEnabled(channel_index)) {
