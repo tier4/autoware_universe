@@ -55,7 +55,7 @@ using autoware::behavior_path_planner::utils::path_safety_checker::ObjectsFilter
 using autoware::behavior_path_planner::utils::path_safety_checker::PoseWithVelocityStamped;
 using autoware::behavior_path_planner::utils::path_safety_checker::SafetyCheckParams;
 using autoware::behavior_path_planner::utils::path_safety_checker::TargetObjectsOnLane;
-using autoware::universe_utils::Polygon2d;
+using autoware_utils::Polygon2d;
 
 struct FreespacePlannerDebugData
 {
@@ -71,14 +71,6 @@ struct GoalPlannerDebugData
   lanelet::ConstLanelet expanded_pull_over_lane_between_ego{};
   Polygon2d objects_extraction_polygon{};
   utils::path_safety_checker::CollisionCheckDebugMap collision_check{};
-};
-
-struct LastApprovalData
-{
-  LastApprovalData(rclcpp::Time time, Pose pose) : time(time), pose(pose) {}
-
-  rclcpp::Time time{};
-  Pose pose{};
 };
 
 struct PullOverContextData
@@ -311,7 +303,7 @@ private:
   const SafetyCheckParams safety_check_params_ = parameters_.safety_check_params;
 
   const autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
-  const autoware::universe_utils::LinearRing2d vehicle_footprint_;
+  const autoware_utils::LinearRing2d vehicle_footprint_;
 
   const bool left_side_parking_;
 
@@ -335,7 +327,7 @@ private:
   std::unique_ptr<FixedGoalPlannerBase> fixed_goal_planner_;
 
   // goal searcher
-  std::shared_ptr<GoalSearcherBase> goal_searcher_;
+  std::optional<GoalSearcher> goal_searcher_{};
   GoalCandidates goal_candidates_{};
 
   bool use_bus_stop_area_{false};
@@ -352,7 +344,7 @@ private:
   std::optional<PullOverContextData> context_data_{std::nullopt};
   // path_decision_controller is updated in updateData(), and used in plan()
   PathDecisionStateController path_decision_controller_{getLogger()};
-  std::unique_ptr<LastApprovalData> last_approval_data_{nullptr};
+  std::optional<rclcpp::Time> decided_time_{};
 
   // approximate distance from the start point to the end point of pull_over.
   // this is used as an assumed value to decelerate, etc., before generating the actual path.
@@ -364,7 +356,8 @@ private:
   mutable GoalPlannerDebugData debug_data_;
 
   // goal seach
-  GoalCandidates generateGoalCandidates(const bool use_bus_stop_area) const;
+  GoalCandidates generateGoalCandidates(
+    GoalSearcher & goal_searcher, const bool use_bus_stop_area) const;
 
   /*
    * state transitions and plan function used in each state
@@ -433,7 +426,6 @@ private:
   std::optional<PullOverPath> selectPullOverPath(
     const PullOverContextData & context_data,
     const std::vector<PullOverPath> & pull_over_path_candidates,
-    const GoalCandidates & goal_candidates,
     const std::optional<std::vector<size_t>> sorted_bezier_indices_opt) const;
 
   // lanes and drivable area

@@ -15,7 +15,6 @@
 #ifndef SCENE_HPP_
 #define SCENE_HPP_
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -34,13 +33,6 @@
 
 namespace autoware::behavior_velocity_planner
 {
-
-struct TrafficSignalTimeToRedStamped
-{
-  builtin_interfaces::msg::Time stamp;
-  double time_to_red{};
-};
-
 class TrafficLightModule : public SceneModuleInterfaceWithRTC
 {
 public:
@@ -69,13 +61,9 @@ public:
     double stop_margin;
     double tl_state_timeout;
     double yellow_lamp_period;
+    double yellow_light_stop_velocity;
     double stop_time_hysteresis;
     bool enable_pass_judge;
-    // V2I Parameter
-    bool v2i_use_rest_time;
-    double v2i_last_time_allowed_to_pass;
-    double v2i_velocity_threshold;
-    double v2i_required_time_to_departure;
   };
 
 public:
@@ -83,9 +71,7 @@ public:
     const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
     lanelet::ConstLanelet lane, const PlannerParam & planner_param, const rclcpp::Logger logger,
     const rclcpp::Clock::SharedPtr clock,
-    const std::shared_ptr<universe_utils::TimeKeeper> time_keeper,
-    const std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> &
-      get_rest_time_to_red_signal,
+    const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
       planning_factor_interface);
 
@@ -118,15 +104,6 @@ private:
 
   void updateTrafficSignal();
 
-  /**
-   * @brief Handle V2I Rest Time to Red Signal
-   * @param signed_arc_length_to_stop_point signed arc length to stop point
-   * @param output_path output path
-   * @return true if V2I is handled
-   */
-  bool handleV2I(
-    const double & signed_arc_length_to_stop_point, const std::function<void()> & insert_stop_pose);
-
   // Lane id
   const int64_t lane_id_;
 
@@ -155,9 +132,6 @@ private:
 
   // Traffic Light State
   TrafficSignal looking_tl_state_;
-
-  // V2I
-  std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> get_rest_time_to_red_signal_;
 };
 }  // namespace autoware::behavior_velocity_planner
 
