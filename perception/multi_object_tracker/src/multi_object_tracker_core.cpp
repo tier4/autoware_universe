@@ -295,7 +295,7 @@ void MultiObjectTracker::runProcess(
     if (meas_tracker_idx != reverse_assignment.end()) {
       autoware_perception_msgs::msg::TrackedObject track_object;
       char buf[200];
-      auto tracker_itr = std::next(list_tracker_.begin(), meas_tracker_idx->second);
+      auto tracker_itr = std::next(list_tracker.begin(), meas_tracker_idx->second);
       (*tracker_itr)->getTrackedObject(measurement_time, track_object);
       snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[%d], x[%.3f]->x[%.3f], y[%.3f]->y[%.3f], cls[%d]->cls[%d]\n", 
               measurement_idx, meas_tracker_idx->second,
