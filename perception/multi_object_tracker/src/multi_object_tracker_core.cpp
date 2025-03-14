@@ -35,6 +35,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <rclcpp_components/register_node_macro.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace
 {
@@ -257,7 +258,7 @@ void MultiObjectTracker::runProcess(
     rclcpp::Time(input_objects_msg.header.stamp, this->now().get_clock_type());
 
   const auto & list_tracker = processor_->getListTracker();
-  const auto & detected_objects;
+  autoware_perception_msgs::msg::DetectedObjects detected_objects;
 
   // Get the transform of the self frame
   const auto self_transform =
@@ -323,7 +324,7 @@ void MultiObjectTracker::runProcess(
   /* tracker pruning */
   processor_->prune(measurement_time);
 
-  RCLCPP_INFO(get_logger(), "\nobject links:\n%s", debug_message.c_str());
+  RCLCPP_INFO(this->get_logger(), "\nobject links:\n%s", debug_message.c_str());
 
   /* spawn new tracker */
   if (input_manager_->isChannelSpawnEnabled(channel_index)) {

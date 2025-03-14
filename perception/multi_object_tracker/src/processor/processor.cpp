@@ -21,6 +21,9 @@
 
 #include <iterator>
 
+#include <rclcpp/logging.hpp>
+
+
 using Label = autoware_perception_msgs::msg::ObjectClassification;
 
 TrackerProcessor::TrackerProcessor(
@@ -47,13 +50,13 @@ void TrackerProcessor::predict(const rclcpp::Time & time)
 }
 
 void TrackerProcessor::update(
-  // Add at the beginning of the function
-  std::string debug_message = "";
-
   const autoware_perception_msgs::msg::DetectedObjects & detected_objects,
   const geometry_msgs::msg::Transform & self_transform,
   const std::unordered_map<int, int> & direct_assignment, const uint & channel_index)
 {
+  // Add at the beginning of the function
+  std::string debug_message = "";
+
   int tracker_idx = 0;
   const auto & time = detected_objects.header.stamp;
   for (auto tracker_itr = list_tracker_.begin(); tracker_itr != list_tracker_.end();
@@ -65,11 +68,10 @@ void TrackerProcessor::update(
         ->updateWithMeasurement(associated_object, time, self_transform, channel_index);
 
       char buf[120];
-      snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], t[%.3f], cls[%d]\n", 
+      snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], cls[%d]\n", 
               tracker_idx,
               associated_object.kinematics.pose_with_covariance.pose.position.x,
               associated_object.kinematics.pose_with_covariance.pose.position.y,
-              measurement_time.seconds(),
               associated_object.classification.at(0).label);
       debug_message += buf;
 
@@ -78,11 +80,10 @@ void TrackerProcessor::update(
       (*(tracker_itr))->updateWithoutMeasurement(time);
 
       char buf[120];
-      snprintf(buf, sizeof(buf), "track no meas update idx[%d], x[%.3f], y[%.3f], t[%.3f], cls[%d]\n", 
+      snprintf(buf, sizeof(buf), "track no meas update idx[%d], x[%.3f], y[%.3f], cls[%d]\n", 
               tracker_idx,
               associated_object.kinematics.pose_with_covariance.pose.position.x,
               associated_object.kinematics.pose_with_covariance.pose.position.y,
-              measurement_time.seconds(),
               associated_object.classification.at(0).label);
       debug_message += buf;
 
@@ -90,7 +91,7 @@ void TrackerProcessor::update(
   }
   // Add at the end of the function, before return
   if (!debug_message.empty()) {
-    RCLCPP_INFO(get_logger(), "\nobject updates:\n%s", debug_message.c_str());
+    RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "\nobject updates:\n%s", debug_message.c_str());
   }
 }
 
@@ -109,7 +110,7 @@ void TrackerProcessor::spawn(
       createNewTracker(new_object, time, self_transform, channel_index);
     if (tracker) {
       list_tracker_.push_back(tracker);
-      RCLCPP_INFO(get_logger(), "New tracker");
+      RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "New tracker [%ld]", i);
     }
   }
 }
@@ -240,7 +241,7 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
           sorted_list_tracker.erase(sorted_list_tracker.begin() + j);
           --j;
 
-          RCLCPP_INFO(get_logger(), "Erase tracker [%d] -> [%d] ", i, j);
+          RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "Erase tracker [%ld] -> [%ld] ", i, j);
         }
       }
     }
