@@ -67,6 +67,7 @@ void TrackerProcessor::update(
       (*(tracker_itr))
         ->updateWithMeasurement(associated_object, time, self_transform, channel_index);
 
+      /*
       char buf[120];
       snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], cls[%d]\n", 
               tracker_idx,
@@ -74,11 +75,13 @@ void TrackerProcessor::update(
               associated_object.kinematics.pose_with_covariance.pose.position.y,
               associated_object.classification.at(0).label);
       debug_message += buf;
+      */
 
 
     } else {  // not found
       (*(tracker_itr))->updateWithoutMeasurement(time);
 
+      /*
       char buf[120];
       snprintf(buf, sizeof(buf), "track no meas update idx[%d], x[%.3f], y[%.3f], cls[%d]\n", 
               tracker_idx,
@@ -86,13 +89,15 @@ void TrackerProcessor::update(
               associated_object.kinematics.pose_with_covariance.pose.position.y,
               associated_object.classification.at(0).label);
       debug_message += buf;
+      */
 
     }
   }
   // Add at the end of the function, before return
+  /*
   if (!debug_message.empty()) {
     RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "\nobject updates:\n%s", debug_message.c_str());
-  }
+  }*/
 }
 
 void TrackerProcessor::spawn(

@@ -292,7 +292,6 @@ void MultiObjectTracker::runProcess(
       direct_assignment, reverse_assignment);
   }
 
-  /*
   for (size_t measurement_idx = 0; measurement_idx < transformed_objects.objects.size(); ++measurement_idx) {
     const autoware_perception_msgs::msg::DetectedObject & measurement_object = transformed_objects.objects.at(measurement_idx);
     auto meas_tracker_idx = reverse_assignment.find(measurement_idx);
@@ -318,7 +317,7 @@ void MultiObjectTracker::runProcess(
       debug_message += buf;
     }
   }
-  */
+  
 
   /* tracker update */
   processor_->update(transformed_objects, *self_transform, direct_assignment, channel_index);
@@ -326,7 +325,7 @@ void MultiObjectTracker::runProcess(
   /* tracker pruning */
   processor_->prune(measurement_time);
 
-  //RCLCPP_INFO(this->get_logger(), "\nobject links:\n%s", debug_message.c_str());
+  RCLCPP_INFO(this->get_logger(), "\nobject links:\n%s", debug_message.c_str());
 
   /* spawn new tracker */
   if (input_manager_->isChannelSpawnEnabled(channel_index)) {
