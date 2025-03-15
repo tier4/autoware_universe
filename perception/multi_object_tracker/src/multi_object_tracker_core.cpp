@@ -331,12 +331,12 @@ void MultiObjectTracker::runProcess(
   
 
   /* tracker update */
-  //processor_->update(transformed_objects, *self_transform, direct_assignment, channel_index);
+  processor_->update(transformed_objects, *self_transform, direct_assignment, channel_index);
 
   /* tracker pruning */
   processor_->prune(measurement_time);
 
-  RCLCPP_INFO(this->get_logger(), "\nobject links:\n%s", debug_message.c_str());
+  //RCLCPP_INFO(this->get_logger(), "\nobject links:\n%s", debug_message.c_str());
 
   /* spawn new tracker */
   if (input_manager_->isChannelSpawnEnabled(channel_index)) {
