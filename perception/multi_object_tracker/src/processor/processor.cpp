@@ -62,10 +62,11 @@ void TrackerProcessor::update(
   for (auto tracker_itr = list_tracker_.begin(); tracker_itr != list_tracker_.end();
        ++tracker_itr, ++tracker_idx) {
     if (direct_assignment.find(tracker_idx) != direct_assignment.end()) {  // found
-      (*(tracker_itr))
-        ->updateWithMeasurement(associated_object, time, self_transform, channel_index);
       const auto & associated_object =
         detected_objects.objects.at(direct_assignment.find(tracker_idx)->second);
+      (*(tracker_itr))
+        ->updateWithMeasurement(associated_object, time, self_transform, channel_index);
+      
       /*
       char buf[120];
       snprintf(buf, sizeof(buf), "track meas update idx[%d], x[%.3f], y[%.3f], cls[%d]\n", 
