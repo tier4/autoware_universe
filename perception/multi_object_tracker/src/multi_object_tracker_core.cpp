@@ -306,6 +306,8 @@ void MultiObjectTracker::runProcess(
               measurement_object.kinematics.pose_with_covariance.pose.position.y, track_object.kinematics.pose_with_covariance.pose.position.y,
               measurement_object.classification.at(0).label, track_object.classification.at(0).label);
       debug_message += buf;
+      RCLCPP_INFO(this->get_logger(), "object links:%s", debug_message.c_str());
+      debug_message = "";
     }
     else {
       char buf[120];
@@ -315,12 +317,14 @@ void MultiObjectTracker::runProcess(
               measurement_object.kinematics.pose_with_covariance.pose.position.y, 
               measurement_object.classification.at(0).label);
       debug_message += buf;
+      RCLCPP_INFO(this->get_logger(), "object links:%s", debug_message.c_str());
+      debug_message = "";
     }
   }
   
 
   /* tracker update */
-  processor_->update(transformed_objects, *self_transform, direct_assignment, channel_index);
+  //processor_->update(transformed_objects, *self_transform, direct_assignment, channel_index);
 
   /* tracker pruning */
   processor_->prune(measurement_time);
