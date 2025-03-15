@@ -24,6 +24,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <rclcpp/rclcpp.hpp>
+
 namespace
 {
 double getMahalanobisDistance(
@@ -177,14 +179,20 @@ Eigen::MatrixXd DataAssociation::calcScoreMatrix(
         bool passed_gate = true;
         // dist gate
         if (passed_gate) {
-          if (max_dist < dist) passed_gate = false;
+          if (max_dist < dist) {
+            passed_gate = false;
+            RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "dist gate fail, dist[%.3f], label[%d]", dist, measurement_label);
+          }
         }
         // area gate
         if (passed_gate) {
           const double max_area = max_area_matrix_(tracker_label, measurement_label);
           const double min_area = min_area_matrix_(tracker_label, measurement_label);
           const double area = autoware::universe_utils::getArea(measurement_object.shape);
-          if (area < min_area || max_area < area) passed_gate = false;
+          if (area < min_area || max_area < area) {
+            passed_gate = false;
+            RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "area gate fail area[%.3f], max[%.3f], min[%.3f], label[%d]", area, min_area, max_area, measurement_label);
+          }
         }
         // angle gate
         if (passed_gate) {
@@ -192,8 +200,10 @@ Eigen::MatrixXd DataAssociation::calcScoreMatrix(
           const double angle = getFormedYawAngle(
             measurement_object.kinematics.pose_with_covariance.pose.orientation,
             tracked_object.kinematics.pose_with_covariance.pose.orientation, false);
-          if (std::fabs(max_rad) < M_PI && std::fabs(max_rad) < std::fabs(angle))
+          if (std::fabs(max_rad) < M_PI && std::fabs(max_rad) < std::fabs(angle)) {
             passed_gate = false;
+            RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "angle gate fail rad[%.3f], max[%.3f], label[%d]", angle, max_rad, measurement_label);
+          }
         }
         // mahalanobis dist gate
         if (passed_gate) {
@@ -201,7 +211,10 @@ Eigen::MatrixXd DataAssociation::calcScoreMatrix(
             measurement_object.kinematics.pose_with_covariance.pose.position,
             tracked_object.kinematics.pose_with_covariance.pose.position,
             getXYCovariance(tracked_object.kinematics.pose_with_covariance));
-          if (3.035 /*99%*/ <= mahalanobis_dist) passed_gate = false;
+          if (3.035 /*99%*/ <= mahalanobis_dist) {
+            passed_gate = false;
+            RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "mahalanobis dist gate fail, label[%d]", measurement_label);
+          }
         }
         // 2d iou gate
         if (passed_gate) {
@@ -209,7 +222,10 @@ Eigen::MatrixXd DataAssociation::calcScoreMatrix(
           const double min_union_iou_area = 1e-2;
           const double iou = object_recognition_utils::get2dIoU(
             measurement_object, tracked_object, min_union_iou_area);
-          if (iou < min_iou) passed_gate = false;
+          if (iou < min_iou) {
+            passed_gate = false;
+            RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "iou gate fail, iou[%.3f], label[%d]", iou, measurement_label);
+          }
         }
 
         // all gate is passed
