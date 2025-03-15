@@ -34,8 +34,8 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
-#include <rclcpp_components/register_node_macro.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 
 namespace
 {
@@ -292,43 +292,51 @@ void MultiObjectTracker::runProcess(
       direct_assignment, reverse_assignment);
   }
 
-  for (size_t measurement_idx = 0; measurement_idx < transformed_objects.objects.size(); ++measurement_idx) {
-    const autoware_perception_msgs::msg::DetectedObject & measurement_object = transformed_objects.objects.at(measurement_idx);
+  for (size_t measurement_idx = 0; measurement_idx < transformed_objects.objects.size();
+       ++measurement_idx) {
+    const autoware_perception_msgs::msg::DetectedObject & measurement_object =
+      transformed_objects.objects.at(measurement_idx);
     auto meas_tracker_idx = reverse_assignment.find(measurement_idx);
     if (meas_tracker_idx != reverse_assignment.end()) {
       autoware_perception_msgs::msg::TrackedObject track_object;
       char buf[200];
       auto tracker_itr = std::next(list_tracker.begin(), meas_tracker_idx->second);
       (*tracker_itr)->getTrackedObject(measurement_time, track_object);
-      if ( abs(measurement_object.kinematics.twist_with_covariance.twist.linear.x) > 3.0 or 
-           abs(measurement_object.kinematics.twist_with_covariance.twist.linear.y) > 3.0 ) {
-
-        snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[%d], vx[%.3f]->vx[%.3f], vy[%.3f ]->vy[%.3f], cls[%d]->cls[%d]", 
-                measurement_idx, meas_tracker_idx->second,
-                measurement_object.kinematics.twist_with_covariance.twist.linear.x, track_object.kinematics.twist_with_covariance.twist.linear.x,
-                measurement_object.kinematics.twist_with_covariance.twist.linear.y, track_object.kinematics.twist_with_covariance.twist.linear.y,
-                measurement_object.classification.at(0).label, track_object.classification.at(0).label);
+      if (
+        abs(measurement_object.kinematics.twist_with_covariance.twist.linear.x) > 3.0 or
+        abs(measurement_object.kinematics.twist_with_covariance.twist.linear.y) > 3.0) {
+        snprintf(
+          buf, sizeof(buf),
+          "detect->track link idx[%ld]->[%d], vx[%.3f]->vx[%.3f], vy[%.3f ]->vy[%.3f], "
+          "cls[%d]->cls[%d]",
+          measurement_idx, meas_tracker_idx->second,
+          measurement_object.kinematics.twist_with_covariance.twist.linear.x,
+          track_object.kinematics.twist_with_covariance.twist.linear.x,
+          measurement_object.kinematics.twist_with_covariance.twist.linear.y,
+          track_object.kinematics.twist_with_covariance.twist.linear.y,
+          measurement_object.classification.at(0).label, track_object.classification.at(0).label);
         debug_message += buf;
         RCLCPP_INFO(this->get_logger(), "object links:%s", debug_message.c_str());
         debug_message = "";
       }
-    }
-    else {
-      if ( abs(measurement_object.kinematics.twist_with_covariance.twist.linear.x) > 3.0 or 
-           abs(measurement_object.kinematics.twist_with_covariance.twist.linear.y) > 3.0 ) {
+    } else {
+      if (
+        abs(measurement_object.kinematics.twist_with_covariance.twist.linear.x) > 3.0 or
+        abs(measurement_object.kinematics.twist_with_covariance.twist.linear.y) > 3.0) {
         char buf[200];
-        snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[nan], vx[%.3f]->vx[nan], vy[%.3f ]->vy[nan], cls[%d]->cls[nan]", 
-                measurement_idx, 
-                measurement_object.kinematics.twist_with_covariance.twist.linear.x,
-                measurement_object.kinematics.twist_with_covariance.twist.linear.y,
-                measurement_object.classification.at(0).label);
+        snprintf(
+          buf, sizeof(buf),
+          "detect->track link idx[%ld]->[nan], vx[%.3f]->vx[nan], vy[%.3f ]->vy[nan], "
+          "cls[%d]->cls[nan]",
+          measurement_idx, measurement_object.kinematics.twist_with_covariance.twist.linear.x,
+          measurement_object.kinematics.twist_with_covariance.twist.linear.y,
+          measurement_object.classification.at(0).label);
         debug_message += buf;
         RCLCPP_INFO(this->get_logger(), "object links:%s", debug_message.c_str());
         debug_message = "";
       }
     }
   }
-  
 
   /* tracker update */
   processor_->update(transformed_objects, *self_transform, direct_assignment, channel_index);
@@ -336,7 +344,7 @@ void MultiObjectTracker::runProcess(
   /* tracker pruning */
   processor_->prune(measurement_time);
 
-  //RCLCPP_INFO(this->get_logger(), "\nobject links:\n%s", debug_message.c_str());
+  // RCLCPP_INFO(this->get_logger(), "\nobject links:\n%s", debug_message.c_str());
 
   /* spawn new tracker */
   if (input_manager_->isChannelSpawnEnabled(channel_index)) {
