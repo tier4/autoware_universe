@@ -300,7 +300,7 @@ void MultiObjectTracker::runProcess(
       char buf[200];
       auto tracker_itr = std::next(list_tracker.begin(), meas_tracker_idx->second);
       (*tracker_itr)->getTrackedObject(measurement_time, track_object);
-      snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[%d], x[%.3f]->x[%.3f], y[%.3f]->y[%.3f], cls[%d]->cls[%d]\n", 
+      snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[%d], x[%.3f]->x[%.3f], y[%.3f]->y[%.3f], cls[%d]->cls[%d]", 
               measurement_idx, meas_tracker_idx->second,
               measurement_object.kinematics.pose_with_covariance.pose.position.x, track_object.kinematics.pose_with_covariance.pose.position.x,
               measurement_object.kinematics.pose_with_covariance.pose.position.y, track_object.kinematics.pose_with_covariance.pose.position.y,
@@ -311,7 +311,7 @@ void MultiObjectTracker::runProcess(
     }
     else {
       char buf[120];
-      snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[nan], x[%.3f]->x[nan], y[%.3f]->y[nan], cls[%d]->cls[nan]\n", 
+      snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[nan], x[%.3f]->x[nan], y[%.3f]->y[nan], cls[%d]->cls[nan]", 
               measurement_idx,
               measurement_object.kinematics.pose_with_covariance.pose.position.x,
               measurement_object.kinematics.pose_with_covariance.pose.position.y, 
