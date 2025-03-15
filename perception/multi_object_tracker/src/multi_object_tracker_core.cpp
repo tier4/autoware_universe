@@ -300,8 +300,8 @@ void MultiObjectTracker::runProcess(
       char buf[200];
       auto tracker_itr = std::next(list_tracker.begin(), meas_tracker_idx->second);
       (*tracker_itr)->getTrackedObject(measurement_time, track_object);
-      if ( abs(measurement_object.kinematics.twist_with_covariance.twist.linear.x) > 0.3 or 
-           abs(measurement_object.kinematics.twist_with_covariance.twist.linear.y) > 0.3 ) {
+      if ( abs(measurement_object.kinematics.twist_with_covariance.twist.linear.x) > 3.0 or 
+           abs(measurement_object.kinematics.twist_with_covariance.twist.linear.y) > 3.0 ) {
 
         snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[%d], vx[%.3f]->vx[%.3f], vy[%.3f ]->vy[%.3f], cls[%d]->cls[%d]", 
                 measurement_idx, meas_tracker_idx->second,
@@ -314,8 +314,8 @@ void MultiObjectTracker::runProcess(
       }
     }
     else {
-      if ( abs(measurement_object.kinematics.twist_with_covariance.twist.linear.x) > 0.3 or 
-           abs(measurement_object.kinematics.twist_with_covariance.twist.linear.y) > 0.3 ) {
+      if ( abs(measurement_object.kinematics.twist_with_covariance.twist.linear.x) > 3.0 or 
+           abs(measurement_object.kinematics.twist_with_covariance.twist.linear.y) > 3.0 ) {
         char buf[200];
         snprintf(buf, sizeof(buf), "detect->track link idx[%ld]->[nan], vx[%.3f]->vx[nan], vy[%.3f ]->vy[nan], cls[%d]->cls[nan]", 
                 measurement_idx, 
