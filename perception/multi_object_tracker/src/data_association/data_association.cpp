@@ -138,9 +138,11 @@ void DataAssociation::assign(
       ++itr;
     }
   }
-  for (auto itr = reverse_assignment.begin(); itr != reverse_assignment.end();) {
+  int i=0;
+  for (auto itr = reverse_assignment.begin(); itr != reverse_assignment.end(); i++) {
     if (src(itr->second, itr->first) < score_threshold_) {
       itr = reverse_assignment.erase(itr);
+      RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "reverse assign trim, 1st[%d], 2nd[%d], score[%.3f], idx[%d]", itr->first, itr->second, src(itr->second, itr->first), i);
       continue;
     } else {
       ++itr;
@@ -181,7 +183,6 @@ Eigen::MatrixXd DataAssociation::calcScoreMatrix(
         if (passed_gate) {
           if (max_dist < dist) {
             passed_gate = false;
-            RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "dist gate fail, dist[%.3f], label[%d]", dist, measurement_label);
           }
         }
         // area gate

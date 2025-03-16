@@ -244,6 +244,9 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
           list_tracker_.remove(sorted_list_tracker[j]);
           // Remove from sorted list
           sorted_list_tracker.erase(sorted_list_tracker.begin() + j);
+
+          RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "overlap trim, cls1[%d] -> cls2[%d]", object1.classification.at(0).label, object2.classification.at(0).label);
+
           --j;
 
           //RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "Erase tracker [%ld] -> [%ld] ", i, j);
