@@ -115,7 +115,7 @@ void TrackerProcessor::spawn(
       createNewTracker(new_object, time, self_transform, channel_index);
     if (tracker) {
       list_tracker_.push_back(tracker);
-      //RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "New tracker [%ld]", i);
+      RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "New tracker idx[%ld], cls[%d]", i, new_object.classification.at(0).label);
     }
   }
 }
@@ -245,7 +245,8 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
           // Remove from sorted list
           sorted_list_tracker.erase(sorted_list_tracker.begin() + j);
 
-          RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "overlap trim, cls1[%d] -> cls2[%d]", object1.classification.at(0).label, object2.classification.at(0).label);
+          RCLCPP_INFO(rclcpp::get_logger("multi_object_tracker"), "overlap trim, cls1[%d] -> cls2[%d] meastime1[%.3f] meastime2[%.3f]", 
+            object1.classification.at(0).label, object2.classification.at(0).label, sorted_list_tracker[i]->getElapsedTimeFromLastUpdate(time), sorted_list_tracker[j]->getElapsedTimeFromLastUpdate(time));
 
           --j;
 
