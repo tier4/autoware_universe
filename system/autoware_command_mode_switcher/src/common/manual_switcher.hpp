@@ -12,41 +12,24 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__PLUGIN_HPP_
-#define COMMON__PLUGIN_HPP_
+#ifndef COMMON__MANUAL_SWITCHER_HPP_
+#define COMMON__MANUAL_SWITCHER_HPP_
 
-#include "common/transition.hpp"
+#include "common/plugin.hpp"
 
-#include <rclcpp/rclcpp.hpp>
-
-#include <memory>
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class SwitcherPlugin
+// This is a builtin switcher. Don't export as a plugin.
+class ManualSwitcher : public SwitcherPlugin
 {
 public:
-  void construct(rclcpp::Node * node);
-  auto status() const { return status_; }
-  auto source_status() const { return source_status_; }
-
-  void request(SwitcherState target);
-  void override();
-  void update_status(const TransitionContext & context);
-
-  virtual ~SwitcherPlugin() = default;
-  virtual std::string mode_name() const = 0;
-  virtual std::string source_name() const = 0;
-  virtual void update_source_status();
-
-private:
-  rclcpp::Node * node_;
-  CommandModeStatusItem status_;
-  SourceStatus source_status_;
+  std::string mode_name() const override { return ""; }
+  std::string source_name() const override { return ""; }
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // COMMON__PLUGIN_HPP_
+#endif  // COMMON__MANUAL_SWITCHER_HPP_

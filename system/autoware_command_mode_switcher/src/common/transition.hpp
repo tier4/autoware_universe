@@ -16,15 +16,18 @@
 #define COMMON__TRANSITION_HPP_
 
 #include <tier4_system_msgs/msg/command_mode_status_item.hpp>
+#include <tier4_system_msgs/msg/command_source_status.hpp>
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-using SwitcherState = tier4_system_msgs::msg::CommandModeStatusItem::_state_type;
+using tier4_system_msgs::msg::CommandModeStatusItem;
+using tier4_system_msgs::msg::CommandSourceStatus;
+using SwitcherState = CommandModeStatusItem::_state_type;
 
-enum class SourceState {
+enum class SourceStatus {
   Disabled,
   Transition,
   Enabled,
@@ -32,7 +35,10 @@ enum class SourceState {
 
 struct TransitionContext
 {
-  std::string source;
+  bool is_source_ready;
+  bool is_source_exclusive;
+  bool is_source_selected;
+  bool is_control_selected;
 };
 
 struct TransitionResult
