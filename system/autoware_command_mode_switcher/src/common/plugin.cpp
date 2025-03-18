@@ -16,19 +16,78 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace autoware::command_mode_switcher
 {
 
-void SwitcherPlugin::construct(std::shared_ptr<SwitcherContext> context)
+void SwitcherPlugin::construct(rclcpp::Node * node)
 {
-  context_ = context;
-  status_.mode = name();
-  status_.activation = false;
-  status_.transition = false;
+  node_ = node;
+
+  status_.mode = mode_name();
+  status_.state = CommandModeStatusItem::DISABLED;
+  status_.target = CommandModeStatusItem::DISABLED;
   status_.mrm = CommandModeStatusItem::NONE;
 }
 
+void SwitcherPlugin::request(SwitcherState target)
+{
+  switch (target) {
+    case CommandModeStatusItem::ENABLED:
+    case CommandModeStatusItem::STANDBY:
+      status_.state = CommandModeStatusItem::WAIT_COMMAND_MODE_READY;
+      break;
+    case CommandModeStatusItem::CLEANUP:
+      status_.state = CommandModeStatusItem::DISABLED;
+      break;
+    case CommandModeStatusItem::ABORTED:
+      // Keep the state but release the command source.
+      break;
+    default:
+      RCLCPP_ERROR_STREAM(node_->get_logger(), "invalid target state: " << target);
+      break;
+  }
+  status_.target = target;
+}
+
+void SwitcherPlugin::update_state(const TransitionContext & context)
+{
+  const auto logger = node_->get_logger();
+  const auto update = [logger](SwitcherState state, const TransitionContext & context) {
+    constexpr int loop_limit = 20;
+    std::vector<SwitcherState> history;
+    history.push_back(state);
+
+    for (int i = 0; i < loop_limit; ++i) {
+      const auto result = transition::next(state, context);
+      if (!result.error.empty()) {
+        RCLCPP_ERROR_STREAM(logger, result.error);
+      }
+      if (state == result.state) {
+        break;
+      }
+      history.push_back(state);
+    }
+
+    if (loop_limit <= history.size()) {
+      RCLCPP_ERROR_STREAM(logger, "exeeded");
+    }
+    if (1 < history.size()) {
+      std::string log;
+      for (const auto & h : history) {
+        log += std::to_string(h) + " ";
+      }
+      RCLCPP_WARN_STREAM(logger, log);
+    }
+
+    return state;
+  };
+
+  status_.state = update(status_.state, context);
+}
+
+/*
 void SwitcherPlugin::request(bool activate)
 {
   if (activate) {
@@ -41,5 +100,6 @@ void SwitcherPlugin::on_source_status(const CommandSourceStatus & msg)
   status_.activation = msg.source == source();
   status_.transition = msg.transition;
 }
+*/
 
 }  // namespace autoware::command_mode_switcher

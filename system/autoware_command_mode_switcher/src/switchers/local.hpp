@@ -25,8 +25,8 @@ namespace autoware::command_mode_switcher
 class LocalSwitcher : public SwitcherPlugin
 {
 public:
-  std::string name() const override { return "local"; }
-  std::string source() const override { return "local"; }
+  std::string mode_name() const override { return "local"; }
+  std::string source_name() const override { return "local"; }
 };
 
 }  // namespace autoware::command_mode_switcher

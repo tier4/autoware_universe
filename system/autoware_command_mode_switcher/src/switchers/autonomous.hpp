@@ -25,8 +25,8 @@ namespace autoware::command_mode_switcher
 class AutonomousSwitcher : public SwitcherPlugin
 {
 public:
-  std::string name() const override { return "autonomous"; }
-  std::string source() const override { return "main"; }
+  std::string mode_name() const override { return "autonomous"; }
+  std::string source_name() const override { return "main"; }
 };
 
 }  // namespace autoware::command_mode_switcher

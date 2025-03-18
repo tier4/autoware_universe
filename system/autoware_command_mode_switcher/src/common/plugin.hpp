@@ -16,6 +16,7 @@
 #define COMMON__PLUGIN_HPP_
 
 #include "common/context.hpp"
+#include "common/transition.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -34,18 +35,19 @@ using tier4_system_msgs::msg::CommandSourceStatus;
 class SwitcherPlugin
 {
 public:
-  void construct(std::shared_ptr<SwitcherContext> context);
+  void construct(rclcpp::Node * node);
   auto status() const { return status_; }
+  void request(SwitcherState target);
+  void update_state(const TransitionContext & context);
 
   virtual ~SwitcherPlugin() = default;
-  virtual std::string name() const = 0;
-  virtual std::string source() const = 0;
-  virtual void request(bool activate);
-  virtual void on_source_status(const CommandSourceStatus & msg);
-  // TODO(Isamu, Takagi): private
-protected:
+  virtual std::string mode_name() const = 0;
+  virtual std::string source_name() const = 0;
+  // virtual SourceState update_source_state();
+
+private:
+  rclcpp::Node * node_;
   CommandModeStatusItem status_;
-  std::shared_ptr<SwitcherContext> context_;
 };
 
 }  // namespace autoware::command_mode_switcher

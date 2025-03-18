@@ -5,12 +5,12 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 pluginlib_export_plugin_description_file(${PROJECT_NAME} plugins.xml)
 
-ament_auto_add_library(${PROJECT_NAME} SHARED
-  "src/common/context.cpp"
+ament_auto_add_library(${PROJECT_NAME}_common SHARED
+  "src/common/transition.cpp"
   "src/common/plugin.cpp"
   "src/command_mode_switcher.cpp"
 )
-ament_auto_add_library(${PROJECT_NAME}_plugins SHARED
+ament_auto_add_library(${PROJECT_NAME}_plugin SHARED
   "src/switchers/stop.cpp"
   "src/switchers/autonomous.cpp"
   "src/switchers/local.cpp"
@@ -19,10 +19,10 @@ ament_auto_add_library(${PROJECT_NAME}_plugins SHARED
   "src/switchers/comfortable_stop.cpp"
   "src/switchers/pull_over.cpp"
 )
-target_include_directories(${PROJECT_NAME} PRIVATE "src")
-target_include_directories(${PROJECT_NAME}_plugins PRIVATE "src")
+target_include_directories(${PROJECT_NAME}_common PRIVATE "src")
+target_include_directories(${PROJECT_NAME}_plugin PRIVATE "src")
 
-rclcpp_components_register_node(${PROJECT_NAME}
+rclcpp_components_register_node(${PROJECT_NAME}_common
   PLUGIN "autoware::command_mode_switcher::CommandModeSwitcher"
   EXECUTABLE "command_mode_switcher_node"
   EXECUTOR MultiThreadedExecutor
