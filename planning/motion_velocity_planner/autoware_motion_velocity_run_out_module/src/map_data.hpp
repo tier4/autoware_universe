@@ -44,7 +44,7 @@ universe_utils::Segment2d convert(const lanelet::Segment<T> & segment)
 
 inline FilteringDataPerLabel calculate_filtering_data(
   const lanelet::LaneletMapPtr & map_ptr, const TrajectoryCornerFootprint & ego_footprint,
-  const std::vector<autoware_perception_msgs::msg::PredictedObject> & objects, const Parameters & params)
+  const std::vector<autoware_perception_msgs::msg::PredictedObject> & objects, const Parameters & parameters)
 {
   lanelet::BoundingBox2d bounding_box(ego_footprint.get_rear_segment().first);
   for (const auto & p : ego_footprint.front_polygon.outer()) {
