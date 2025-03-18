@@ -61,11 +61,24 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
 
 void CommandModeSwitcher::on_timer()
 {
-  TransitionContext context;
+  // NOTE: Update the source status first since the transition context depends on.
+  for (const auto & [mode, switcher] : switchers_) {
+    switcher->update_source_status();
+  }
 
   for (const auto & [mode, switcher] : switchers_) {
-    switcher->update_state(context);
+    TransitionContext context;
+    context.is_source_ready = switcher->source_status() == SourceStatus::Enabled;
+    context.is_source_exclusive = false;
+    context.is_source_selected = false;
+    context.is_control_selected = false;
+    switcher->update_status(context);
   }
+
+  if (next_mode_) {
+    // TODO(Takagi, Isamu): update
+  }
+
   publish_command_mode_status();
 }
 
@@ -81,7 +94,7 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   const auto mode = iter->second;
   mode->request(msg.ctrl ? CommandModeStatusItem::ENABLED : CommandModeStatusItem::STANDBY);
 
-  curr_mode_ = mode;
+  next_mode_ = mode;
 }
 
 void CommandModeSwitcher::on_source_status(const CommandSourceStatus & msg)

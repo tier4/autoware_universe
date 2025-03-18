@@ -17,10 +17,20 @@
 namespace autoware::command_mode_switcher::transition
 {
 
-TransitionResult wait_command_mode_ready(SwitcherState state, const TransitionContext & context)
+TransitionResult wait_command_mode_ready(const TransitionContext & context)
 {
+  // TODO(Takagi, Isamu): Subscribe and use command mode availability.
   (void)context;
-  return {state, ""};
+  return {CommandModeStatusItem::WAIT_SOURCE_READY, ""};
+}
+
+TransitionResult wait_source_ready(const TransitionContext & context)
+{
+  if (context.is_source_ready) {
+    return {CommandModeStatusItem::WAIT_SOURCE_EXCLUSIVE, ""};
+  } else {
+    return {CommandModeStatusItem::WAIT_SOURCE_READY, ""};
+  }
 }
 
 TransitionResult next(SwitcherState state, const TransitionContext & context)
@@ -29,7 +39,8 @@ TransitionResult next(SwitcherState state, const TransitionContext & context)
 
   // clang-format off
     switch (state) {
-      case State::WAIT_COMMAND_MODE_READY: return transition::wait_command_mode_ready(state, context);  // NOLINT
+      case State::WAIT_COMMAND_MODE_READY: return wait_command_mode_ready(context);  // NOLINT
+      case State::WAIT_SOURCE_READY:       return wait_source_ready(context);        // NOLINT
     }
   // clang-format on
 
