@@ -482,7 +482,7 @@ void MPTOptimizer::onParam(const std::vector<rclcpp::Parameter> & parameters)
   debug_data_ptr_->mpt_visualize_sampling_num = mpt_param_.mpt_visualize_sampling_num;
 }
 
-std::optional<std::vector<TrajectoryPoint>>MPTOptimizer::optimizeTrajectory(
+std::optional<std::vector<TrajectoryPoint>> MPTOptimizer::optimizeTrajectory(
   const PlannerData & planner_data)
 {
   autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
