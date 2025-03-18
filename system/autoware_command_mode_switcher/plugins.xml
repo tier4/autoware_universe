@@ -1,4 +1,4 @@
-<library path="autoware_command_mode_switcher_plugins">
+<library path="autoware_command_mode_switcher_plugin">
   <class base_class_type="autoware::command_mode_switcher::SwitcherPlugin" type="autoware::command_mode_switcher::StopSwitcher"/>
   <class base_class_type="autoware::command_mode_switcher::SwitcherPlugin" type="autoware::command_mode_switcher::AutonomousSwitcher"/>
   <class base_class_type="autoware::command_mode_switcher::SwitcherPlugin" type="autoware::command_mode_switcher::LocalSwitcher"/>

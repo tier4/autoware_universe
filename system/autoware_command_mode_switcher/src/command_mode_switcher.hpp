@@ -48,14 +48,17 @@ private:
 
   void on_source_status(const CommandSourceStatus & msg);
 
+  // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<CommandModeStatus>::SharedPtr pub_status_;
   rclcpp::Subscription<CommandModeRequest>::SharedPtr sub_request_;
-
   rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_source_status_;
 
+  // Mode switchers.
   pluginlib::ClassLoader<SwitcherPlugin> loader_;
   std::unordered_map<std::string, std::shared_ptr<SwitcherPlugin>> switchers_;
+  std::shared_ptr<SwitcherPlugin> curr_mode_;
+  std::shared_ptr<SwitcherPlugin> next_mode_;
 };
 
 }  // namespace autoware::command_mode_switcher

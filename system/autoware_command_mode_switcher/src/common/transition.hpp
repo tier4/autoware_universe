@@ -12,23 +12,42 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__REMOTE_HPP_
-#define SWITCHERS__REMOTE_HPP_
+#ifndef COMMON__TRANSITION_HPP_
+#define COMMON__TRANSITION_HPP_
 
-#include "common/plugin.hpp"
+#include <tier4_system_msgs/msg/command_mode_status_item.hpp>
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class RemoteSwitcher : public SwitcherPlugin
+using SwitcherState = tier4_system_msgs::msg::CommandModeStatusItem::_state_type;
+
+enum class SourceState {
+  Disabled,
+  Transition,
+  Enabled,
+};
+
+struct TransitionContext
 {
-public:
-  std::string mode_name() const override { return "remote"; }
-  std::string source_name() const override { return "remote"; }
+  std::string source;
+};
+
+struct TransitionResult
+{
+  const SwitcherState state;
+  const std::string error;
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // SWITCHERS__REMOTE_HPP_
+namespace autoware::command_mode_switcher::transition
+{
+
+TransitionResult next(SwitcherState state, const TransitionContext & context);
+
+}  // namespace autoware::command_mode_switcher::transition
+
+#endif  // COMMON__TRANSITION_HPP_

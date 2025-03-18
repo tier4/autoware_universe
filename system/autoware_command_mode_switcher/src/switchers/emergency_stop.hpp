@@ -25,8 +25,8 @@ namespace autoware::command_mode_switcher
 class EmergencyStopSwitcher : public SwitcherPlugin
 {
 public:
-  std::string name() const override { return "emergency_stop"; }
-  std::string source() const override { return "emergency_stop"; }
+  std::string mode_name() const override { return "emergency_stop"; }
+  std::string source_name() const override { return "emergency_stop"; }
 };
 
 }  // namespace autoware::command_mode_switcher

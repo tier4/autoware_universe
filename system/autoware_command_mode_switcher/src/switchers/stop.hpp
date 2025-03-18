@@ -25,8 +25,8 @@ namespace autoware::command_mode_switcher
 class StopSwitcher : public SwitcherPlugin
 {
 public:
-  std::string name() const override { return "stop"; }
-  std::string source() const override { return "stop"; }
+  std::string mode_name() const override { return "stop"; }
+  std::string source_name() const override { return "stop"; }
 };
 
 }  // namespace autoware::command_mode_switcher

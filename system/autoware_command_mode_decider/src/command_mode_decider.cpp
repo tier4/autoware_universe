@@ -64,11 +64,11 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 
   const auto command_modes = declare_parameter<std::vector<std::string>>("command_modes");
   for (const auto & mode : command_modes) {
-    // NOTE: Do not set mode as this is used to check topic reception.
+    // NOTE: Do not set mode as it is used to check topic reception.
     CommandModeItem item;
     item.availability.available = false;
-    item.status.activation = false;
-    item.status.transition = false;
+    item.status.state = CommandModeStatusItem::UNDEFINED;
+    item.status.target = CommandModeStatusItem::UNDEFINED;
     item.status.mrm = CommandModeStatusItem::UNDEFINED;
     command_modes_[mode] = item;
   }
@@ -124,11 +124,14 @@ void CommandModeDeciderBase::on_timer()
   }
 
   const auto & mode = command_modes_.at(curr_command_mode_);
+  (void)mode;
 
+  /*
   if (mode.status.activation) {
     command_mode_request_stamp_ = std::nullopt;
     return;
   }
+  */
 
   if (!command_mode_request_stamp_) {
     return;
