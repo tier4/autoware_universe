@@ -145,7 +145,7 @@ bool NoStoppingAreaModule::modifyPathVelocity(PathWithLaneId * path)
     // Create StopReason
     {
       planning_factor_interface_->add(
-        path->points, planner_data_->current_odometry->pose, stop_point->second, stop_point->second,
+        path->points, planner_data_->current_odometry->pose, stop_point->second,
         tier4_planning_msgs::msg::PlanningFactor::STOP,
         tier4_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
         0.0 /*shift distance*/, "");
