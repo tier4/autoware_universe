@@ -457,16 +457,21 @@ void MultiObjectTracker::sanitizeTracker(
   constexpr float min_iou_for_unknown_object = 0.001;
   constexpr double distance_threshold = 5.0;
 
-  // Create sorted list with non-UNKNOWN objects first, then by measurement count
-  std::vector<std::shared_ptr<Tracker>> sorted_list_tracker(list_tracker.begin(), list_tracker.end());
-  std::sort(sorted_list_tracker.begin(), sorted_list_tracker.end(),
-    [](const std::shared_ptr<Tracker>& a, const std::shared_ptr<Tracker>& b) {
+// Create sorted list with non-UNKNOWN objects first, then by measurement count
+  std::vector<std::shared_ptr<Tracker>> sorted_list_tracker(
+    list_tracker_.begin(), list_tracker_.end());
+  std::sort(
+    sorted_list_tracker.begin(), sorted_list_tracker.end(),
+    [&time](const std::shared_ptr<Tracker> & a, const std::shared_ptr<Tracker> & b) {
       bool a_unknown = (a->getHighestProbLabel() == Label::UNKNOWN);
       bool b_unknown = (b->getHighestProbLabel() == Label::UNKNOWN);
       if (a_unknown != b_unknown) {
         return b_unknown;  // Put non-UNKNOWN objects first
       }
-      return a->getTotalMeasurementCount() > b->getTotalMeasurementCount();  // Then sort by measurement count
+      if (a->getTotalMeasurementCount() != b->getTotalMeasurementCount()) {
+        return a->getTotalMeasurementCount() > b->getTotalMeasurementCount();  // Then sort by measurement count
+      }
+      return a->getElapsedTimeFromLastUpdate(time) < b->getElapsedTimeFromLastUpdate(time);  // Finally sort by elapsed time (smaller first)
     });
 
   /* delete collision tracker */
