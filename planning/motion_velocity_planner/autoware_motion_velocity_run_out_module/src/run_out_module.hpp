@@ -41,9 +41,14 @@ namespace autoware::motion_velocity_planner
 class RunOutModule : public PluginModuleInterface
 {
 public:
+  /// @brief initialize the module
   void init(rclcpp::Node & node, const std::string & module_name) override;
+  /// @brief initialize the parameters
   void init_parameters(rclcpp::Node & node);
+  /// @brief update the parameters
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
+  /// @brief plan change of velocity based on detected collisions with objects running out on the
+  /// ego trajectory
   VelocityPlanningResult plan(
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> &,
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & smoothed_trajectory_points,
@@ -64,7 +69,9 @@ private:
   run_out::ObjectDecisionsTracker decisions_tracker_;
   run_out::Parameters params_;
 
+  /// @brief update whether we are currently detecting collisions that cannot be avoided
   void update_unavoidable_collision_status(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  /// @brief ignore unavoidable collisions from the decision tracker
   void ignore_unavoidable_collision(const double time_to_stop);
 };
 }  // namespace autoware::motion_velocity_planner

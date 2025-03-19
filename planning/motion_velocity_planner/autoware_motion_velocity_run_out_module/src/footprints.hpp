@@ -35,7 +35,7 @@
 
 namespace autoware::motion_velocity_planner::run_out
 {
-/// @brief calculate the rtree for segments of a trajectory
+/// @brief Create the rtree for the segments of a trajectory
 inline void prepare_trajectory_footprint_rtree(TrajectoryCornerFootprint & footprint)
 {
   SegmentRtree rtree;
@@ -53,7 +53,7 @@ inline void prepare_trajectory_footprint_rtree(TrajectoryCornerFootprint & footp
   }
   footprint.rtree = FootprintSegmentRtree(nodes);
 }
-
+/// @brief Calculate the corner footprint of the given trajectory
 inline run_out::TrajectoryCornerFootprint calculate_trajectory_corner_footprint(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
   autoware::vehicle_info_utils::VehicleInfo vehicle_info, const run_out::Parameters & params)

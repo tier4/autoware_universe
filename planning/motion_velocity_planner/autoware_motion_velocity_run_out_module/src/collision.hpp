@@ -42,6 +42,21 @@
 namespace autoware::motion_velocity_planner::run_out
 {
 
+/// @brief calculate the footprint intersection information between an object segment and an ego
+/// vehicle footprint segment This function determines the intersection point between a segment of
+/// the predicted object's path and a segment of the ego vehicle's trajectory footprint.  It
+/// calculates the times of the intersection for both the ego vehicle and the predicted object, as
+/// well as the position of the intersection relative to the ego vehicle's footprint.
+///
+/// @param[in] object_segment The segment of the predicted object's path (a line segment).
+/// @param[in] intersection_point The point where the object segment intersects the ego vehicle's
+/// footprint segment.
+/// @param[in] ego_query_result The result of a spatial query on the ego vehicle's footprint,
+/// containing the intersecting ego vehicle footprint segment and related data.
+/// @param[in] ego_trajectory The ego vehicle's trajectory, represented as a vector of trajectory
+/// points.
+/// @param[in] object_segment_times The start and end times of the object segment.
+/// @return A FootprintIntersection struct containing information about the intersection.
 inline FootprintIntersection calculate_footprint_intersection(
   const universe_utils::Segment2d & object_segment,
   const universe_utils::Point2d & intersection_point, const FootprintSegmentNode & ego_query_result,
@@ -83,9 +98,14 @@ inline FootprintIntersection calculate_footprint_intersection(
   return footprint_intersection;
 }
 
+/// @brief calculate the time along the trajectory closest to the given point.
+/// @param [in] trajectory trajectory with time information
+/// @param [in] p target point
+/// @param [in] longitudinal_offset [m] arc length offset for which to calculate the time (default
+/// to 0)
 inline double calculate_closest_interpolated_time(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
-  const universe_utils::Point2d & p, const double longitudinal_offset)
+  const universe_utils::Point2d & p, const double longitudinal_offset = 0.0)
 {
   geometry_msgs::msg::Point pt;
   pt.x = p.x();
@@ -103,6 +123,13 @@ inline double calculate_closest_interpolated_time(
     point_distance / segment_length);
 }
 
+/// @brief Calculates intersections between a predicted object's corner linestring and the ego
+/// vehicle's trajectory footprint.
+/// @param[in] ls The corner linestring of the predicted object.
+/// @param[in] footprint The footprint of the ego vehicle's trajectory.
+/// @param[in] ego_trajectory The ego vehicle's trajectory.
+/// @param[in] ls_time_step The time step of the predicted object's linestring.
+/// @return A vector of footprint intersections.
 inline std::vector<FootprintIntersection> calculate_intersections(
   const universe_utils::LineString2d & ls, const TrajectoryCornerFootprint & footprint,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & ego_trajectory,
@@ -253,9 +280,11 @@ inline std::vector<TimeCollisionIntervalPair> calculate_overlap_intervals(
   return overlap_intervals;
 }
 
-/// @brief calculate collisions from overlap intervals
-/// @details intervals represent the time range whene ego and an object overlap eachother's
-/// trajectories
+/// @brief Calculates collisions based on overlap intervals.
+///
+/// @param[in] intervals A vector of time collision interval pairs.
+/// @param[in] params The parameters for collision calculation.
+/// @return A vector of collisions.
 inline std::vector<Collision> calculate_interval_collisions(
   std::vector<TimeCollisionIntervalPair> intervals, const Parameters & params)
 {
@@ -284,9 +313,18 @@ inline std::vector<Collision> calculate_interval_collisions(
   return collisions;
 }
 
-/// @brief calculate collisions between the ego footprint and an object footprint
-/// @details overlap intervals are calculated for each individual linestring of the object footprint
-/// and the combined to calculate the collisions
+/// @brief Calculates collisions between the ego vehicle's trajectory footprint and a predicted
+/// object's footprint.
+///
+/// This function iterates through the corner footprints of the predicted object, calculates
+/// intersections with the ego vehicle's footprint, determines overlap intervals, and calculates
+/// collisions based on those intervals.
+///
+/// @param[in] ego_footprint The footprint of the ego vehicle's trajectory.
+/// @param[in] object_footprint The footprint of the predicted object.
+/// @param[in] ego_trajectory The ego vehicle's trajectory.
+/// @param[in] params The parameters for collision calculation.
+/// @return A vector of collisions.
 inline std::vector<Collision> calculate_footprint_collisions(
   const TrajectoryCornerFootprint & ego_footprint, const ObjectCornerFootprint & object_footprint,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & ego_trajectory,
@@ -302,6 +340,12 @@ inline std::vector<Collision> calculate_footprint_collisions(
   return calculate_interval_collisions(all_overlap_intervals, params);
 }
 
+/// @brief Calculates collisions between the ego vehicle's trajectory and a set of predicted
+/// objects.
+/// @param[inout] objects A vector of predicted objects.  Collisions are added to each object.
+/// @param[in] ego_footprint The footprint of the ego vehicle's trajectory.
+/// @param[in] ego_trajectory The ego vehicle's trajectory.
+/// @param[in] params The parameters for collision calculation.
 inline void calculate_collisions(
   std::vector<Object> & objects, const TrajectoryCornerFootprint & ego_footprint,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & ego_trajectory,

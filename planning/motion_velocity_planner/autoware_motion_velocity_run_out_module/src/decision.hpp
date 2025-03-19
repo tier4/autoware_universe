@@ -27,7 +27,7 @@
 
 namespace autoware::motion_velocity_planner::run_out
 {
-
+/// @brief update a decision based on a priority stop > slowdown > nothing
 inline void update_decision(std::optional<Decision> & decision_to_update, const Decision & decision)
 {
   if (!decision.collision.has_value()) {
@@ -45,13 +45,11 @@ inline void update_decision(std::optional<Decision> & decision_to_update, const 
     decision_to_update = decision;
   }
 }
-
 /// @brief return true if the given decision is for a detected collision
 inline bool is_collision(const Decision & d)
 {
   return d.collision.has_value() && d.collision->type == collision;
 }
-
 /// @brief calculate the consecutive time with collisions in the history
 inline double calculate_consecutive_time_with_collision(
   const DecisionHistory & history, const rclcpp::Time & current_time)
@@ -67,16 +65,13 @@ inline double calculate_consecutive_time_with_collision(
                history.times[std::distance(
                  earliest_not_collision_it, std::prev(history.decisions.rend()))];
 }
-
+/// @brief return true if the conditions to stop are met
 inline bool condition_to_stop(
   const DecisionHistory & history, const CollisionType & current_collision_type,
   const rclcpp::Time & current_time, std::stringstream & explanation, const bool ego_is_stopped,
   const Parameters & params)
 {
   // only stop after successively detecting collisions for some time
-  constexpr auto is_collision = [](const Decision & d) {
-    return d.collision.has_value() && d.collision->type == collision;
-  };
   const auto calc_consecutive_time_with_collision = [&]() {
     if (history.times.empty()) {
       return 0.0;
@@ -135,7 +130,7 @@ inline bool condition_to_stop(
   }
   return false;
 }
-
+/// @brief return true if the conditions to slowdown are met
 inline bool condition_to_slowdown(
   const DecisionHistory & history, const CollisionType & current_collision_type,
   const rclcpp::Time & current_time, std::stringstream & explanation, const Parameters & params)
@@ -179,7 +174,7 @@ inline bool condition_to_slowdown(
   }
   return false;
 }
-
+/// @brief calculate the decision type corresponding to a collision type and a decision history
 inline DecisionType calculate_decision_type(
   const CollisionType & collision_type, const DecisionHistory & history, const rclcpp::Time & now,
   std::stringstream & explanation, const double time_to_stop, const Parameters & params)
@@ -193,7 +188,7 @@ inline DecisionType calculate_decision_type(
   }
   return nothing;
 }
-
+/// @brief calculate current decisions for the objects and update the decision tracker accordingly
 inline void calculate_decisions(
   ObjectDecisionsTracker & decisions_tracker, const std::vector<Object> & objects,
   const rclcpp::Time & now, const double time_to_stop, const Parameters & params)

@@ -33,7 +33,7 @@
 namespace autoware::motion_velocity_planner::run_out
 {
 /// @brief calculate the interpolated point along the trajectory at the given time from start
-/// @param trajectory ego trajectory starting from the ego pose
+/// @param trajectory ego trajectory starting from the ego pose (UB if empty)
 /// @param time [s] requested time
 /// @return trajectory point corresponding to the given time
 inline geometry_msgs::msg::Point interpolated_point_at_time(
@@ -109,8 +109,9 @@ inline std::optional<SlowdownInterval> calculate_slowdown_interval(
     const auto t_collision = current_decision.collision->ego_time_interval.from;
     const auto p_collision = interpolated_point_at_time(trajectory, t_collision);
     const auto min_slow_arc_length = planner_data.current_odometry.twist.twist.linear.x * 0.1;
-    auto from_arc_length = std::max(min_slow_arc_length, motion_utils::calcSignedArcLength(trajectory, 0, p_collision) -
-                           params.preventive_slowdown_distance_buffer);
+    auto from_arc_length = std::max(
+      min_slow_arc_length, motion_utils::calcSignedArcLength(trajectory, 0, p_collision) -
+                             params.preventive_slowdown_distance_buffer);
     const auto p_slowdown =
       motion_utils::calcInterpolatedPose(trajectory, from_arc_length).position;
     // TODO(Maxime): add option to use decel limit (instead of comfortable decel)
@@ -122,7 +123,6 @@ inline std::optional<SlowdownInterval> calculate_slowdown_interval(
     const auto smooth_velocity = std::sqrt(
       2.0 * -planner_data.velocity_smoother_->getMinDecel() *
       planner_data.current_odometry.twist.twist.linear.x * from_arc_length);
-    std::cout << "safe_vel = " << safe_velocity << " | smooth vel = " << smooth_velocity << std::endl;
     interval.emplace(p_slowdown, p_collision, std::max({0.0, safe_velocity, smooth_velocity}));
   }
   return interval;

@@ -40,16 +40,17 @@ namespace autoware::motion_velocity_planner::run_out
 
 /// @brief indicates the position of an intersection with the ego footprint
 enum IntersectionPosition {
-  front_left,
-  front_right,
-  rear_left,
-  rear_right,
-  rear,
-  front,
-  inside_front_polygon,
-  inside_rear_polygon,
-  inside_both_polygons
+  front_left,            // intersect with the front_left linestring
+  front_right,           // intersect with the front_right linestring
+  rear_left,             // intersect with the rear_left linestring
+  rear_right,            // intersect with the rear_right linestring
+  rear,                  // intersect with the rear segment
+  front,                 // intersect with the front segment
+  inside_front_polygon,  // inside the front polygon (polygon from front left and right linestrings)
+  inside_rear_polygon,   // inside the rear polygon (polygon from rear left and right linestrings)
+  inside_both_polygons   // inside both the front and rear polygons
 };
+
 /// @brief footprint represented by linestrings corresponding to the path of 4 footprint corners
 struct CornerFootprint
 {
@@ -60,12 +61,14 @@ struct CornerFootprint
     return corner_linestrings[IntersectionPosition::front_left].size();
   }
 };
+/// @brief corner footprint of an object with the timestep separating each footprint point
 struct ObjectCornerFootprint
 {
   CornerFootprint corner_footprint;
   double time_step{};
 };
 
+/// @brief footprint intersection with the corresponding time (for ego and the object) and position
 struct FootprintIntersection
 {
   double ego_time{};
@@ -74,6 +77,7 @@ struct FootprintIntersection
   IntersectionPosition position;
 };
 
+/// @brief a set of footprint intersections between ego and a specific object
 struct FootprintIntersections
 {
   std::vector<FootprintIntersection> intersections;
@@ -91,6 +95,7 @@ using FootprintSegmentNode =
   std::pair<universe_utils::Segment2d, std::pair<IntersectionPosition, size_t>>;
 using FootprintSegmentRtree = bgi::rtree<FootprintSegmentNode, bgi::rstar<16>>;
 
+/// @brief the corner footprint of the ego trajectory
 struct TrajectoryCornerFootprint
 {
   CornerFootprint corner_footprint;
@@ -115,7 +120,7 @@ struct TrajectoryCornerFootprint
   }
 };
 
-/// @brief represent the time interval where a vehicle overlaps the path of another vehicle
+/// @brief the time interval where a vehicle overlaps the path of another vehicle
 struct TimeCollisionInterval
 {
   double from;
@@ -167,9 +172,9 @@ inline std::ostream & operator<<(std::ostream & os, const TimeCollisionInterval 
   os << ss.str();
   return os;
 }
-
+/// @brief Type of collision between ego and an object
 enum CollisionType { pass_first_no_collision, pass_first_collision, collision, no_collision };
-
+/// @brief Collision between ego and an object with the corresponding time intervals and type
 struct Collision
 {
   double enter_time_margin{};
@@ -208,8 +213,9 @@ struct Collision
     }
   }
 };
-
+/// @brief Decision type
 enum DecisionType { stop, slowdown, nothing };
+/// @brief Decision with the corresponding collision, type, and stop point
 struct Decision
 {
   std::optional<Collision> collision = std::nullopt;
@@ -223,7 +229,7 @@ struct Decision
   {
   }
 };
-
+/// @brief History of decision and the corresponding decision times
 struct DecisionHistory
 {
   std::deque<Decision> decisions;
@@ -258,17 +264,18 @@ struct DecisionHistory
     return std::nullopt;
   }
 };
+/// @brief Tracker for the decisions toward predicted objects
 struct ObjectDecisionsTracker
 {
   std::unordered_map<std::string, DecisionHistory> history_per_object;
-
+  /// @brief remove outdated decisions
   void remove_outdated(const rclcpp::Time & now, const double outdated_duration)
   {
     for (auto & [_, history] : history_per_object) {
       history.remove_outdated(now, outdated_duration);
     }
   }
-
+  /// @brief update objects that did not have a decision at the given time
   void update_objects_without_decisions(const rclcpp::Time & now)
   {
     for (auto & [_, history] : history_per_object) {
@@ -291,7 +298,7 @@ struct ObjectDecisionsTracker
       }
     }
   }
-
+  /// @brief get the decision history of the given object
   std::optional<DecisionHistory> get(const std::string & object) const
   {
     if (history_per_object.count(object) < 1) {
@@ -300,13 +307,14 @@ struct ObjectDecisionsTracker
     return history_per_object.at(object);
   }
 };
-
+/// @brief Unavoidable collision with its collision time and the minimum ego time to stop
 struct UnavoidableCollision
 {
   double time_to_collision;
   double comfortable_time_to_stop;
 };
-
+/// @brief Object represented by its uuid, corner footprints, current footprint, position,
+/// collisions with ego, classification label
 struct Object
 {
   std::string uuid;
@@ -318,7 +326,6 @@ struct Object
   bool has_target_label = false;
   std::vector<Collision> collisions;  // collisions with the ego trajectory
 };
-
 /// @brief data to filter predicted paths and collisions
 struct FilteringData
 {

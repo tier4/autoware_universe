@@ -45,7 +45,7 @@ struct ObjectParameters
   double confidence_filtering_threshold;
   bool confidence_filtering_only_use_highest;
 };
-
+/// @brief Parameters of the run_out module
 struct Parameters
 {
   double
@@ -87,6 +87,8 @@ struct Parameters
   std::vector<std::string> objects_target_labels;
   std::vector<ObjectParameters> object_parameters_per_label;
 
+  /// @brief Get the parameter defined for a specific object label, or the default value if it was
+  /// not specified
   template <class T>
   auto get_object_parameter(
     rclcpp::Node & node, const std::string & ns, const uint8_t object_label,
@@ -100,7 +102,7 @@ struct Parameters
       return getOrDeclareParameter<T>(node, ns + ".objects.DEFAULT" + param);
     }
   }
-
+  /// @brief Initialize the parameters
   void initialize(rclcpp::Node & node, const std::string & ns)
   {
     using universe_utils::getOrDeclareParameter;
@@ -163,7 +165,7 @@ struct Parameters
 
     max_history_duration = std::max(stop_off_time_buffer, stop_on_time_buffer);
   }
-
+  /// @brief Update the parameters
   void update(const std::vector<rclcpp::Parameter> & params, const std::string & ns)
   {
     using universe_utils::updateParam;
@@ -227,7 +229,7 @@ struct Parameters
 
     max_history_duration = std::max(stop_off_time_buffer, stop_on_time_buffer);
   }
-
+  /// @brief get a string representation of the given classification label
   static std::string label_to_string(
     const autoware_perception_msgs::msg::ObjectClassification::_label_type & label)
   {
@@ -253,7 +255,7 @@ struct Parameters
         return "DEFAULT";
     }
   }
-
+  /// @brief get all possible classification labels
   static std::vector<uint8_t> all_labels()
   {
     using autoware_perception_msgs::msg::ObjectClassification;
