@@ -30,6 +30,7 @@ enum class SourceStatus {
   Disabled,
   Transition,
   Enabled,
+  Neutral,  // TODO(Takagi, Isamu): Use neutral. This means no source state.
 };
 
 struct TransitionContext
