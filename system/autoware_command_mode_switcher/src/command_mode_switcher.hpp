@@ -22,6 +22,7 @@
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <tier4_system_msgs/msg/command_mode_availability.hpp>
 #include <tier4_system_msgs/msg/command_mode_request.hpp>
 #include <tier4_system_msgs/msg/command_mode_status.hpp>
 #include <tier4_system_msgs/msg/command_source_status.hpp>
@@ -34,6 +35,7 @@
 namespace autoware::command_mode_switcher
 {
 
+using tier4_system_msgs::msg::CommandModeAvailability;
 using tier4_system_msgs::msg::CommandModeRequest;
 using tier4_system_msgs::msg::CommandModeStatus;
 using tier4_system_msgs::msg::CommandModeStatusItem;
@@ -44,14 +46,15 @@ public:
   explicit CommandModeSwitcher(const rclcpp::NodeOptions & options);
 
 private:
+  void on_availability(const CommandModeAvailability & msg);
   void on_request(const CommandModeRequest & msg);
   void update_status();
   void publish_command_mode_status();
-
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<CommandModeStatus>::SharedPtr pub_status_;
+  rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_availability_;
   rclcpp::Subscription<CommandModeRequest>::SharedPtr sub_request_;
+  rclcpp::Publisher<CommandModeStatus>::SharedPtr pub_status_;
   SelectorInterface selector_interface_;
 
   // Mode switchers.
