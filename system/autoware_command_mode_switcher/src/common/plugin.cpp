@@ -58,6 +58,7 @@ void SwitcherPlugin::handover()
 
 void SwitcherPlugin::override()
 {
+  // TODO(Takagi, Isamu): Move to transition namespace.
   if (status_.target != CommandModeStatusItem::ENABLED) {
     return;
   }
@@ -80,8 +81,7 @@ void SwitcherPlugin::update_source_status()
       source_status_ = SourceStatus::Enabled;
       break;
     case CommandModeStatusItem::DISABLED:
-      // TODO(Takagi, Isamu): Handle handover.
-      // case CommandModeStatusItem::HANDOVER:
+    case CommandModeStatusItem::HANDOVER:
       source_status_ = SourceStatus::Disabled;
       break;
   }
