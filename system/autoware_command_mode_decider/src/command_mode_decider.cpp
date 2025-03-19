@@ -76,8 +76,14 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
   using std::placeholders::_1;
   using std::placeholders::_2;
 
+  // Interface with switcher nodes.
   pub_command_mode_request_ =
     create_publisher<CommandModeRequest>("~/command_mode/request", rclcpp::QoS(1));
+  sub_command_mode_status_ = create_subscription<CommandModeStatus>(
+    "~/command_mode/status", rclcpp::QoS(1).transient_local(),
+    std::bind(&CommandModeDeciderBase::on_status, this, std::placeholders::_1));
+
+  // Interface for API.
   pub_operation_mode_ = create_publisher<OperationModeState>(
     "~/operation_mode/state", rclcpp::QoS(1).transient_local());
   srv_operation_mode_ = create_service<ChangeOperationMode>(
@@ -85,13 +91,6 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
     std::bind(&CommandModeDecider::on_change_operation_mode, this, _1, _2));
   srv_request_mrm_ = create_service<RequestMrm>(
     "~/mrm/request", std::bind(&CommandModeDecider::on_request_mrm, this, _1, _2));
-
-  sub_command_mode_availability_ = create_subscription<CommandModeAvailability>(
-    "~/command_mode/availability", rclcpp::QoS(1),
-    std::bind(&CommandModeDeciderBase::on_availability, this, std::placeholders::_1));
-  sub_command_mode_status_ = create_subscription<CommandModeStatus>(
-    "~/command_mode/status", rclcpp::QoS(1).transient_local(),
-    std::bind(&CommandModeDeciderBase::on_status, this, std::placeholders::_1));
 
   const auto period = rclcpp::Rate(declare_parameter<double>("update_rate")).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
@@ -137,8 +136,10 @@ void CommandModeDeciderBase::on_timer()
     return;
   }
 
+  /*
   const auto duration = (now() - *command_mode_request_stamp_).seconds();
   RCLCPP_INFO_STREAM(get_logger(), "time: " << duration);
+  */
 }
 
 void CommandModeDeciderBase::on_change_operation_mode(
