@@ -72,19 +72,19 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 
   const auto source_switcher = iter->second;
   if (msg.ctrl) {
-    manual_transition_ = source_switcher;  // Set source_switcher to disable manual control.
-    source_transition_ = source_switcher;
-    source_transition_->request_enabled();
+    foreground_transition_ = source_switcher;  // Set source_switcher to disable manual control.
+    background_transition_ = source_switcher;
+    background_transition_->request_enabled();
   } else {
-    manual_transition_ = manual_switcher_;  // Set manual_switcher to enable manual control.
-    source_transition_ = source_switcher;
-    manual_transition_->request_enabled();
-    source_transition_->request_standby();
+    foreground_transition_ = manual_switcher_;  // Set manual_switcher to enable manual control.
+    background_transition_ = source_switcher;
+    foreground_transition_->request_enabled();
+    background_transition_->request_standby();
   }
 
   for (const auto & switcher : switchers_) {
-    if (switcher == source_transition_) continue;
-    if (switcher == manual_transition_) continue;
+    if (switcher == background_transition_) continue;
+    if (switcher == foreground_transition_) continue;
     switcher->handover();
   }
 
@@ -107,30 +107,30 @@ void CommandModeSwitcher::update_status()
   };
 
   // Check if the foreground transition is complete.
-  if (manual_transition_) {
-    if (manual_transition_->sequence_state() == CommandModeStatusItem::ENABLED) {
+  if (foreground_transition_) {
+    if (foreground_transition_->sequence_state() == CommandModeStatusItem::ENABLED) {
       for (const auto & switcher : switchers_) {
-        if (switcher == source_transition_) continue;
-        if (switcher == manual_transition_) continue;
+        if (switcher == background_transition_) continue;
+        if (switcher == foreground_transition_) continue;
         // TODO(Takagi, Isamu): override
         switcher->disable();
       }
       // TODO(Takagi, Isamu): override if manual mode is enabled.
-      const auto is_same = manual_transition_ == source_transition_;
-      manual_transition_ = nullptr;
-      source_transition_ = is_same ? nullptr : source_transition_;
+      const auto is_same = foreground_transition_ == background_transition_;
+      foreground_transition_ = nullptr;
+      background_transition_ = is_same ? nullptr : background_transition_;
     }
   }
 
   // Check if the background transition is complete.
-  if (source_transition_) {
-    if (source_transition_->sequence_state() == CommandModeStatusItem::STANDBY) {
+  if (background_transition_) {
+    if (background_transition_->sequence_state() == CommandModeStatusItem::STANDBY) {
       for (const auto & switcher : switchers_) {
-        if (switcher == source_transition_) continue;
-        if (switcher == manual_transition_) continue;
+        if (switcher == background_transition_) continue;
+        if (switcher == foreground_transition_) continue;
         switcher->disable();
       }
-      source_transition_ = nullptr;
+      background_transition_ = nullptr;
     }
   }
 
@@ -151,9 +151,9 @@ void CommandModeSwitcher::update_status()
   }
 
   // Sync command source.
-  if (source_transition_) {
-    if (source_transition_->sequence_state() == CommandModeStatusItem::WAIT_SOURCE_SELECTED) {
-      bool req = selector_interface_.select_source(source_transition_->source_name());
+  if (background_transition_) {
+    if (background_transition_->sequence_state() == CommandModeStatusItem::WAIT_SOURCE_SELECTED) {
+      bool req = selector_interface_.select_source(background_transition_->source_name());
       if (req) {
         RCLCPP_WARN_STREAM(get_logger(), "source select request");
       }
@@ -161,9 +161,9 @@ void CommandModeSwitcher::update_status()
   }
 
   // Sync control mode.
-  if (manual_transition_) {
-    if (manual_transition_->sequence_state() == CommandModeStatusItem::WAIT_CONTROL_SELECTED) {
-      bool req = selector_interface_.select_control(manual_transition_->autoware_control());
+  if (foreground_transition_) {
+    if (foreground_transition_->sequence_state() == CommandModeStatusItem::WAIT_CONTROL_SELECTED) {
+      bool req = selector_interface_.select_control(foreground_transition_->autoware_control());
       if (req) {
         RCLCPP_WARN_STREAM(get_logger(), "control select request");
       }
