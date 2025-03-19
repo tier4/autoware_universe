@@ -29,6 +29,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace autoware::command_mode_switcher
 {
@@ -55,7 +56,8 @@ private:
 
   // Mode switchers.
   pluginlib::ClassLoader<SwitcherPlugin> loader_;
-  std::unordered_map<std::string, std::shared_ptr<SwitcherPlugin>> switchers_;
+  std::vector<std::shared_ptr<SwitcherPlugin>> switchers_;
+  std::unordered_map<std::string, std::shared_ptr<SwitcherPlugin>> autoware_switchers_;
   std::shared_ptr<SwitcherPlugin> manual_switcher_;
   std::shared_ptr<SwitcherPlugin> source_transition_;
   std::shared_ptr<SwitcherPlugin> manual_transition_;

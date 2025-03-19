@@ -52,6 +52,12 @@ void SwitcherPlugin::request(SwitcherState target)
   status_.target = target;
 }
 
+void SwitcherPlugin::disable()
+{
+  status_.target = CommandModeStatusItem::DISABLED;
+  status_.state = transition::disable(status_.state);
+}
+
 void SwitcherPlugin::handover()
 {
   // TODO(Takagi, Isamu): Override and release the source group if it is shared.
@@ -80,8 +86,9 @@ void SwitcherPlugin::update_source_status()
     case CommandModeStatusItem::STANDBY:
       source_status_ = SourceStatus::Enabled;
       break;
-    case CommandModeStatusItem::CLEANUP:
-    case CommandModeStatusItem::ABORTED:
+    case CommandModeStatusItem::DISABLED:
+      // TODO(Takagi, Isamu): Handle handover.
+      // case CommandModeStatusItem::HANDOVER:
       source_status_ = SourceStatus::Disabled;
       break;
   }
@@ -124,23 +131,7 @@ void SwitcherPlugin::update_status(const TransitionContext & context)
     return state;
   };
 
-  // TODO(Takagi, Isamu): update source ready
   status_.state = update(status_.state, context);
 }
-
-/*
-void SwitcherPlugin::request(bool activate)
-{
-  if (activate) {
-    context_->select_source(source());
-  }
-}
-
-void SwitcherPlugin::on_source_status(const CommandSourceStatus & msg)
-{
-  status_.activation = msg.source == source();
-  status_.transition = msg.transition;
-}
-*/
 
 }  // namespace autoware::command_mode_switcher

@@ -26,7 +26,7 @@ namespace autoware::command_mode_switcher
 class ManualSwitcher : public SwitcherPlugin
 {
 public:
-  std::string mode_name() const override { return ""; }
+  std::string mode_name() const override { return "manual"; }
   std::string source_name() const override { return ""; }
   bool autoware_control() const override { return false; }
 };

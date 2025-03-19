@@ -31,10 +31,11 @@ public:
   void construct(rclcpp::Node * node);
   auto status() const { return status_; }
   auto sequence_state() const { return status_.state; }
-  auto target_state() const { return status_.target; }
+  auto sequence_target() const { return status_.target; }
   auto source_status() const { return source_status_; }
 
   void request(SwitcherState target);
+  void disable();
   void handover();
   void override();
   void update_status(const TransitionContext & context);
