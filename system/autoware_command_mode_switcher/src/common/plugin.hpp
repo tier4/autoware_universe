@@ -30,15 +30,19 @@ class SwitcherPlugin
 public:
   void construct(rclcpp::Node * node);
   auto status() const { return status_; }
+  auto sequence_state() const { return status_.state; }
+  auto target_state() const { return status_.target; }
   auto source_status() const { return source_status_; }
 
   void request(SwitcherState target);
+  void handover();
   void override();
   void update_status(const TransitionContext & context);
 
   virtual ~SwitcherPlugin() = default;
   virtual std::string mode_name() const = 0;
   virtual std::string source_name() const = 0;
+  virtual bool autoware_control() const { return true; }
   virtual void update_source_status();
 
 private:

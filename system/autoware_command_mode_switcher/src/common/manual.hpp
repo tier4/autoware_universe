@@ -12,8 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__MANUAL_SWITCHER_HPP_
-#define COMMON__MANUAL_SWITCHER_HPP_
+#ifndef COMMON__MANUAL_HPP_
+#define COMMON__MANUAL_HPP_
 
 #include "common/plugin.hpp"
 
@@ -28,8 +28,9 @@ class ManualSwitcher : public SwitcherPlugin
 public:
   std::string mode_name() const override { return ""; }
   std::string source_name() const override { return ""; }
+  bool autoware_control() const override { return false; }
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // COMMON__MANUAL_SWITCHER_HPP_
+#endif  // COMMON__MANUAL_HPP_

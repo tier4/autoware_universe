@@ -3,9 +3,11 @@
 
   <node pkg="autoware_command_mode_switcher" exec="command_mode_switcher_node">
     <param from="$(var config)"/>
-    <remap from="~/source/status" to="/control/control_command_gate/source/status"/>
-    <remap from="~/source/select" to="/control/control_command_gate/source/select"/>
     <remap from="~/command_mode/status" to="/system/command_mode/status"/>
     <remap from="~/command_mode/request" to="/system/command_mode/request"/>
+    <remap from="~/source/status" to="/control/control_command_gate/source/status"/>
+    <remap from="~/source/select" to="/control/control_command_gate/source/select"/>
+    <remap from="~/control_mode/report" to="/vehicle/status/control_mode"/>
+    <remap from="~/control_mode/request" to="/control/control_mode_request"/>
   </node>
 </launch>

@@ -33,6 +33,37 @@ TransitionResult wait_source_ready(const TransitionContext & context)
   }
 }
 
+TransitionResult wait_source_exclusive(const TransitionContext & context)
+{
+  if (context.is_source_exclusive) {
+    return {CommandModeStatusItem::WAIT_SOURCE_SELECTED, ""};
+  } else {
+    return {CommandModeStatusItem::WAIT_SOURCE_EXCLUSIVE, ""};
+  }
+}
+
+TransitionResult wait_source_selected(const TransitionContext & context)
+{
+  if (!context.is_source_selected) {
+    return {CommandModeStatusItem::WAIT_SOURCE_SELECTED, ""};
+  }
+  if (context.target_state == CommandModeStatusItem::ENABLED) {
+    return {CommandModeStatusItem::WAIT_CONTROL_READY, ""};
+  }
+  if (context.target_state == CommandModeStatusItem::STANDBY) {
+    return {CommandModeStatusItem::STANDBY, ""};
+  }
+  return {CommandModeStatusItem::WAIT_SOURCE_SELECTED, "invalid target state"};
+}
+
+TransitionResult wait_control_ready(const TransitionContext & context)
+{
+  if (context.is_control_selected) {
+    return {CommandModeStatusItem::WAIT_CONTROL_SELECTED, ""};
+  }
+  return {CommandModeStatusItem::WAIT_CONTROL_READY, ""};
+}
+
 TransitionResult next(SwitcherState state, const TransitionContext & context)
 {
   using State = tier4_system_msgs::msg::CommandModeStatusItem;
@@ -41,6 +72,8 @@ TransitionResult next(SwitcherState state, const TransitionContext & context)
     switch (state) {
       case State::WAIT_COMMAND_MODE_READY: return wait_command_mode_ready(context);  // NOLINT
       case State::WAIT_SOURCE_READY:       return wait_source_ready(context);        // NOLINT
+      case State::WAIT_SOURCE_EXCLUSIVE:   return wait_source_exclusive(context);    // NOLINT
+      case State::WAIT_SOURCE_SELECTED:    return wait_source_selected(context);     // NOLINT
     }
   // clang-format on
 

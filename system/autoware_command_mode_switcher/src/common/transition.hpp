@@ -24,7 +24,6 @@ namespace autoware::command_mode_switcher
 {
 
 using tier4_system_msgs::msg::CommandModeStatusItem;
-using tier4_system_msgs::msg::CommandSourceStatus;
 using SwitcherState = CommandModeStatusItem::_state_type;
 
 enum class SourceStatus {
@@ -35,6 +34,7 @@ enum class SourceStatus {
 
 struct TransitionContext
 {
+  SwitcherState target_state;
   bool is_source_ready;
   bool is_source_exclusive;
   bool is_source_selected;
