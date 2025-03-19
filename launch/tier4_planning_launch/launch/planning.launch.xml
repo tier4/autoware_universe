@@ -39,6 +39,10 @@
       </include>
     </group>
 
+    <group>
+      <include file="$(find-pkg-share autoware_rear_obstacle_checker)/launch/rear_obstacle_checker.launch.xml"/>
+    </group>
+
     <!-- planning evaluator -->
     <group>
       <include file="$(find-pkg-share autoware_planning_evaluator)/launch/planning_evaluator.launch.xml"/>
