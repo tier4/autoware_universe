@@ -34,7 +34,8 @@ public:
   auto sequence_target() const { return status_.target; }
   auto source_status() const { return source_status_; }
 
-  void request(SwitcherState target);
+  void request_enabled();
+  void request_standby();
   void disable();
   void handover();
   void override();

@@ -74,12 +74,12 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   if (msg.ctrl) {
     manual_transition_ = source_switcher;  // Set source_switcher to disable manual control.
     source_transition_ = source_switcher;
-    source_transition_->request(CommandModeStatusItem::ENABLED);
+    source_transition_->request_enabled();
   } else {
     manual_transition_ = manual_switcher_;  // Set manual_switcher to enable manual control.
     source_transition_ = source_switcher;
-    source_transition_->request(CommandModeStatusItem::STANDBY);
-    manual_transition_->request(CommandModeStatusItem::ENABLED);
+    manual_transition_->request_enabled();
+    source_transition_->request_standby();
   }
 
   for (const auto & switcher : switchers_) {
@@ -112,8 +112,10 @@ void CommandModeSwitcher::update_status()
       for (const auto & switcher : switchers_) {
         if (switcher == source_transition_) continue;
         if (switcher == manual_transition_) continue;
+        // TODO(Takagi, Isamu): override
         switcher->disable();
       }
+      // TODO(Takagi, Isamu): override if manual mode is enabled.
       const auto is_same = manual_transition_ == source_transition_;
       manual_transition_ = nullptr;
       source_transition_ = is_same ? nullptr : source_transition_;

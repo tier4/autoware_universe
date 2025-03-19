@@ -90,6 +90,7 @@ TransitionResult wait_command_mode_stable(const TransitionContext & context)
 
 TransitionResult next(SwitcherState state, const TransitionContext & context)
 {
+  // TODO(Takagi, Isamu): Handle aborted transition.
   using State = tier4_system_msgs::msg::CommandModeStatusItem;
 
   // clang-format off
@@ -115,6 +116,18 @@ SwitcherState disable(SwitcherState state)
 {
   using State = tier4_system_msgs::msg::CommandModeStatusItem;
   return state == State::DISABLED ? State::DISABLED : State::CLEANUP;
+}
+
+SwitcherState request_enabled(SwitcherState)
+{
+  using State = tier4_system_msgs::msg::CommandModeStatusItem;
+  return State::WAIT_COMMAND_MODE_READY;
+}
+
+SwitcherState request_standby(SwitcherState)
+{
+  using State = tier4_system_msgs::msg::CommandModeStatusItem;
+  return State::WAIT_COMMAND_MODE_READY;
 }
 
 }  // namespace autoware::command_mode_switcher::transition
