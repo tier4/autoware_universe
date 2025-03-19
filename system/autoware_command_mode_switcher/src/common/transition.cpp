@@ -24,12 +24,21 @@ TransitionResult wait_command_mode_ready(const TransitionContext & context)
   return {CommandModeStatusItem::WAIT_SOURCE_READY, ""};
 }
 
-TransitionResult wait_source_ready(const TransitionContext & context)
+TransitionResult wait_source_acquire(const TransitionContext & context)
 {
-  if (context.is_source_ready) {
+  if (context.source_state == SourceStatus::Enabled) {
     return {CommandModeStatusItem::WAIT_SOURCE_EXCLUSIVE, ""};
   } else {
     return {CommandModeStatusItem::WAIT_SOURCE_READY, ""};
+  }
+}
+
+TransitionResult wait_source_release(const TransitionContext & context)
+{
+  if (context.source_state == SourceStatus::Disabled) {
+    return {CommandModeStatusItem::DISABLED, ""};
+  } else {
+    return {CommandModeStatusItem::CLEANUP, ""};
   }
 }
 
@@ -47,10 +56,10 @@ TransitionResult wait_source_selected(const TransitionContext & context)
   if (!context.is_source_selected) {
     return {CommandModeStatusItem::WAIT_SOURCE_SELECTED, ""};
   }
-  if (context.target_state == CommandModeStatusItem::ENABLED) {
+  if (context.sequence_target == CommandModeStatusItem::ENABLED) {
     return {CommandModeStatusItem::WAIT_CONTROL_READY, ""};
   }
-  if (context.target_state == CommandModeStatusItem::STANDBY) {
+  if (context.sequence_target == CommandModeStatusItem::STANDBY) {
     return {CommandModeStatusItem::STANDBY, ""};
   }
   return {CommandModeStatusItem::WAIT_SOURCE_SELECTED, "invalid target state"};
@@ -86,7 +95,7 @@ TransitionResult next(SwitcherState state, const TransitionContext & context)
   // clang-format off
   switch (state) {
     case State::WAIT_COMMAND_MODE_READY:  return wait_command_mode_ready(context);
-    case State::WAIT_SOURCE_READY:        return wait_source_ready(context);
+    case State::WAIT_SOURCE_READY:        return wait_source_acquire(context);
     case State::WAIT_SOURCE_EXCLUSIVE:    return wait_source_exclusive(context);
     case State::WAIT_SOURCE_SELECTED:     return wait_source_selected(context);
     case State::WAIT_CONTROL_READY:       return wait_control_ready(context);
@@ -95,10 +104,17 @@ TransitionResult next(SwitcherState state, const TransitionContext & context)
     case State::DISABLED:                 return {state, ""};
     case State::STANDBY:                  return {state, ""};
     case State::ENABLED:                  return {state, ""};
+    case State::CLEANUP:                  return wait_source_release(context);
   }
   // clang-format on
 
   return {state, "unknown transition"};
+}
+
+SwitcherState disable(SwitcherState state)
+{
+  using State = tier4_system_msgs::msg::CommandModeStatusItem;
+  return state == State::DISABLED ? State::DISABLED : State::CLEANUP;
 }
 
 }  // namespace autoware::command_mode_switcher::transition

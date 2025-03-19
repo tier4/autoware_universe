@@ -36,6 +36,7 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   // Init manual switcher
   manual_switcher_ = std::make_shared<ManualSwitcher>();
   manual_switcher_->construct(this);
+  switchers_.push_back(manual_switcher_);
 
   // Init source switchers
   {
@@ -47,12 +48,13 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
         continue;
       }
       const auto switcher = loader_.createSharedInstance(plugin);
-      if (switchers_.count(switcher->mode_name())) {
+      if (autoware_switchers_.count(switcher->mode_name())) {
         RCLCPP_WARN_STREAM(get_logger(), "ignore duplicate plugin: " << plugin);
         continue;
       }
       switcher->construct(this);
-      switchers_[switcher->mode_name()] = switcher;
+      autoware_switchers_[switcher->mode_name()] = switcher;
+      switchers_.push_back(switcher);
     }
   }
 
@@ -62,8 +64,8 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
 
 void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 {
-  const auto iter = switchers_.find(msg.mode);
-  if (iter == switchers_.end()) {
+  const auto iter = autoware_switchers_.find(msg.mode);
+  if (iter == autoware_switchers_.end()) {
     RCLCPP_ERROR_STREAM(get_logger(), "invalid mode: " << msg.ctrl << " " << msg.mode);
     return;
   }
@@ -80,7 +82,7 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
     manual_transition_->request(CommandModeStatusItem::ENABLED);
   }
 
-  for (const auto & [mode, switcher] : switchers_) {
+  for (const auto & switcher : switchers_) {
     if (switcher == source_transition_) continue;
     if (switcher == manual_transition_) continue;
     switcher->handover();
@@ -92,7 +94,10 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 void CommandModeSwitcher::update_status()
 {
   const auto is_source_exclusive = [this](std::shared_ptr<SwitcherPlugin> target) {
-    for (const auto & [mode, switcher] : switchers_) {
+    if (target->source_name().empty()) {
+      return true;
+    }
+    for (const auto & switcher : switchers_) {
       if (switcher == target) continue;
       if (switcher->source_name() != target->source_name()) continue;
       if (switcher->source_status() == SourceStatus::Disabled) continue;
@@ -101,19 +106,41 @@ void CommandModeSwitcher::update_status()
     return true;
   };
 
-  // TODO(Takagi, Isamu): Detect override.
-  // TODO(Takagi, Isamu): Reflect mode change completion.
-
-  // NOTE: Update the source status first since the transition context depends on.
-  for (const auto & [mode, switcher] : switchers_) {
-    switcher->update_source_status();
+  // Check if the foreground transition is complete.
+  if (manual_transition_) {
+    if (manual_transition_->sequence_state() == CommandModeStatusItem::ENABLED) {
+      for (const auto & switcher : switchers_) {
+        if (switcher == source_transition_) continue;
+        if (switcher == manual_transition_) continue;
+        switcher->disable();
+      }
+      const auto is_same = manual_transition_ == source_transition_;
+      manual_transition_ = nullptr;
+      source_transition_ = is_same ? nullptr : source_transition_;
+    }
   }
 
-  for (const auto & [mode, switcher] : switchers_) {
+  // Check if the background transition is complete.
+  if (source_transition_) {
+    if (source_transition_->sequence_state() == CommandModeStatusItem::STANDBY) {
+      for (const auto & switcher : switchers_) {
+        if (switcher == source_transition_) continue;
+        if (switcher == manual_transition_) continue;
+        switcher->disable();
+      }
+      source_transition_ = nullptr;
+    }
+  }
+
+  // NOTE: Update the source status first since the transition context depends on.
+  for (const auto & switcher : switchers_) {
+    switcher->update_source_status();
+  }
+  for (const auto & switcher : switchers_) {
     // TODO(Takagi, Isamu): move to utility function.
     TransitionContext context;
-    context.target_state = switcher->target_state();
-    context.is_source_ready = switcher->source_status() == SourceStatus::Enabled;
+    context.sequence_target = switcher->sequence_target();
+    context.source_state = switcher->source_status();
     context.is_source_exclusive = is_source_exclusive(switcher);
     context.is_source_selected = switcher->source_name() == selector_interface_.source_name();
     context.is_control_selected =
@@ -148,7 +175,7 @@ void CommandModeSwitcher::publish_command_mode_status()
 {
   CommandModeStatus msg;
   msg.stamp = now();
-  for (const auto & [mode, switcher] : switchers_) {
+  for (const auto & switcher : switchers_) {
     msg.items.push_back(switcher->status());
   }
   pub_status_->publish(msg);

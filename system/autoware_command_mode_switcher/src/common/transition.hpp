@@ -34,8 +34,8 @@ enum class SourceStatus {
 
 struct TransitionContext
 {
-  SwitcherState target_state;
-  bool is_source_ready;
+  SwitcherState sequence_target;
+  SourceStatus source_state;
   bool is_source_exclusive;
   bool is_source_selected;
   bool is_control_selected;
@@ -53,6 +53,7 @@ namespace autoware::command_mode_switcher::transition
 {
 
 TransitionResult next(SwitcherState state, const TransitionContext & context);
+SwitcherState disable(SwitcherState state);
 
 }  // namespace autoware::command_mode_switcher::transition
 
