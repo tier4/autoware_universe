@@ -106,23 +106,32 @@ void CommandModeSwitcher::update_status()
     return true;
   };
 
-  // Check if the foreground transition is complete.
-  if (foreground_transition_) {
+  // Check if the foreground source transition is complete.
+  if (foreground_transition_ && foreground_transition_ != manual_switcher_) {
     if (foreground_transition_->sequence_state() == CommandModeStatusItem::ENABLED) {
       for (const auto & switcher : switchers_) {
         if (switcher == background_transition_) continue;
         if (switcher == foreground_transition_) continue;
-        // TODO(Takagi, Isamu): override
         switcher->disable();
       }
-      // TODO(Takagi, Isamu): override if manual mode is enabled.
-      const auto is_same = foreground_transition_ == background_transition_;
       foreground_transition_ = nullptr;
-      background_transition_ = is_same ? nullptr : background_transition_;
+      background_transition_ = nullptr;
     }
   }
 
-  // Check if the background transition is complete.
+  // Check if the foreground manual transition is complete.
+  if (foreground_transition_ && foreground_transition_ == manual_switcher_) {
+    if (foreground_transition_->sequence_state() == CommandModeStatusItem::ENABLED) {
+      for (const auto & switcher : switchers_) {
+        if (switcher == background_transition_) continue;
+        if (switcher == foreground_transition_) continue;
+        switcher->override();
+      }
+      foreground_transition_ = nullptr;  // Keep the background source transition.
+    }
+  }
+
+  // Check if the background source transition is complete.
   if (background_transition_) {
     if (background_transition_->sequence_state() == CommandModeStatusItem::STANDBY) {
       for (const auto & switcher : switchers_) {
@@ -130,7 +139,7 @@ void CommandModeSwitcher::update_status()
         if (switcher == foreground_transition_) continue;
         switcher->disable();
       }
-      background_transition_ = nullptr;
+      background_transition_ = nullptr;  // Keep the foreground manual transition.
     }
   }
 
@@ -138,6 +147,8 @@ void CommandModeSwitcher::update_status()
   for (const auto & switcher : switchers_) {
     switcher->update_source_status();
   }
+
+  // TODO(Takagi, Isamu): Handle aborted transition (control, source, source group).
   for (const auto & switcher : switchers_) {
     // TODO(Takagi, Isamu): move to utility function.
     TransitionContext context;
@@ -153,6 +164,7 @@ void CommandModeSwitcher::update_status()
   // Sync command source.
   if (background_transition_) {
     if (background_transition_->sequence_state() == CommandModeStatusItem::WAIT_SOURCE_SELECTED) {
+      // TODO(Takagi, Isamu): remove debug log.
       bool req = selector_interface_.select_source(background_transition_->source_name());
       if (req) {
         RCLCPP_WARN_STREAM(get_logger(), "source select request");
@@ -163,6 +175,7 @@ void CommandModeSwitcher::update_status()
   // Sync control mode.
   if (foreground_transition_) {
     if (foreground_transition_->sequence_state() == CommandModeStatusItem::WAIT_CONTROL_SELECTED) {
+      // TODO(Takagi, Isamu): remove debug log.
       bool req = selector_interface_.select_control(foreground_transition_->autoware_control());
       if (req) {
         RCLCPP_WARN_STREAM(get_logger(), "control select request");

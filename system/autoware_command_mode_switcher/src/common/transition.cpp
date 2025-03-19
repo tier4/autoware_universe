@@ -90,7 +90,7 @@ TransitionResult wait_command_mode_stable(const TransitionContext & context)
 
 TransitionResult next(SwitcherState state, const TransitionContext & context)
 {
-  // TODO(Takagi, Isamu): Handle aborted transition.
+  // TODO(Takagi, Isamu): Handle aborted transition (control, source, source group).
   using State = tier4_system_msgs::msg::CommandModeStatusItem;
 
   // clang-format off
