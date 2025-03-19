@@ -3,6 +3,7 @@
 
   <node pkg="autoware_command_mode_switcher" exec="command_mode_switcher_node">
     <param from="$(var config)"/>
+    <remap from="~/command_mode/availability" to="/system/command_mode/availability"/>
     <remap from="~/command_mode/status" to="/system/command_mode/status"/>
     <remap from="~/command_mode/request" to="/system/command_mode/request"/>
     <remap from="~/source/status" to="/control/control_command_gate/source/status"/>

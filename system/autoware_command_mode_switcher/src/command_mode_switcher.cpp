@@ -32,6 +32,9 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   sub_request_ = create_subscription<CommandModeRequest>(
     "~/command_mode/request", rclcpp::QoS(1),
     std::bind(&CommandModeSwitcher::on_request, this, std::placeholders::_1));
+  sub_availability_ = create_subscription<CommandModeAvailability>(
+    "~/command_mode/availability", rclcpp::QoS(1),
+    std::bind(&CommandModeSwitcher::on_availability, this, std::placeholders::_1));
 
   // Init manual switcher
   manual_switcher_ = std::make_shared<ManualSwitcher>();
@@ -60,6 +63,20 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
 
   const auto period = rclcpp::Rate(declare_parameter<double>("update_rate")).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { update_status(); });
+}
+
+void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
+{
+  for (const auto & item : msg.items) {
+    const auto iter = autoware_switchers_.find(item.mode);
+    if (iter != autoware_switchers_.end()) {
+      iter->second->set_available(item.available);
+      iter->second->set_continuable(item.available);
+      iter->second->set_acceptable(true);    // TODO(Takagi, Isamu): Subscribe value.
+      iter->second->set_controllable(true);  // TODO(Takagi, Isamu): Subscribe value.
+    }
+  }
+  update_status();  // Reflect immediately.
 }
 
 void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
@@ -93,6 +110,8 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 
 void CommandModeSwitcher::update_status()
 {
+  // TODO(Takagi, Isamu): Check call rate.
+
   const auto is_source_exclusive = [this](std::shared_ptr<SwitcherPlugin> target) {
     if (target->source_name().empty()) {
       return true;
