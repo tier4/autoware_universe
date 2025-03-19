@@ -18,6 +18,7 @@
 #include "autoware/velocity_smoother/trajectory_utils.hpp"
 
 #include <Eigen/Core>
+#include <Eigen/Dense>
 
 #include <algorithm>
 #include <chrono>
@@ -351,6 +352,27 @@ bool JerkFilteredSmoother::apply(
         logger_, "i =  %4lu | s: %5f | ds: %5f | rs: %9f | op_v: %10f | op_a: %10f |", i,
         s_output.at(i), ds, v_rs, v_opt, a_opt);
     }
+
+    Eigen::VectorXd x_eigen(5 * N);
+    for (size_t i = 0; i < 5 * N; ++i) {
+      x_eigen(i) = optval[i];
+    }
+    Eigen::VectorXd q_eigen(5 * N);
+    for (size_t i = 0; i < 5 * N; ++i) {
+      q_eigen(i) = q[i];
+    }
+
+    std::vector<double> J(5);
+    for (size_t i = 0; i < J.size(); ++i) {
+      const double xPx_segment = x_eigen.segment(N * i, N).transpose() *
+                                 P.block(N * i, N * i, N, N) * x_eigen.segment(N * i, N);
+      const double qx_segment = q_eigen.segment(N * i, N).transpose() * x_eigen.segment(N * i, N);
+      J[i] = xPx_segment + qx_segment;
+    }
+    RCLCPP_INFO(
+      logger_,
+      "J_vel: %7.2f | J_smooth: %7.2f | J_over_v: %7.2f | J_over_a: %7.2f | J_over_j: %7.2f", J[0],
+      J[1], J[2], J[3], J[4]);
   }
 
   return true;
