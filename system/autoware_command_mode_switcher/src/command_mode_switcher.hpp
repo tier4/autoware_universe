@@ -15,7 +15,9 @@
 #ifndef COMMAND_MODE_SWITCHER_HPP_
 #define COMMAND_MODE_SWITCHER_HPP_
 
+#include "common/manual.hpp"
 #include "common/plugin.hpp"
+#include "common/selector_interface.hpp"
 
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -34,7 +36,6 @@ namespace autoware::command_mode_switcher
 using tier4_system_msgs::msg::CommandModeRequest;
 using tier4_system_msgs::msg::CommandModeStatus;
 using tier4_system_msgs::msg::CommandModeStatusItem;
-using tier4_system_msgs::msg::CommandSourceStatus;
 
 class CommandModeSwitcher : public rclcpp::Node
 {
@@ -46,19 +47,20 @@ private:
   void on_request(const CommandModeRequest & msg);
   void publish_command_mode_status();
 
-  void on_source_status(const CommandSourceStatus & msg);
+  void on_selector_updated(/* selector status */);
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<CommandModeStatus>::SharedPtr pub_status_;
   rclcpp::Subscription<CommandModeRequest>::SharedPtr sub_request_;
-  rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_source_status_;
+  SelectorInterface selector_interface_;
 
   // Mode switchers.
   pluginlib::ClassLoader<SwitcherPlugin> loader_;
   std::unordered_map<std::string, std::shared_ptr<SwitcherPlugin>> switchers_;
-  std::shared_ptr<SwitcherPlugin> curr_mode_;
-  std::shared_ptr<SwitcherPlugin> next_mode_;
+  std::shared_ptr<SwitcherPlugin> manual_switcher_;
+  std::shared_ptr<SwitcherPlugin> source_transition_;
+  std::shared_ptr<SwitcherPlugin> manual_transition_;
 };
 
 }  // namespace autoware::command_mode_switcher

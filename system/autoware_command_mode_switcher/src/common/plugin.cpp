@@ -52,6 +52,11 @@ void SwitcherPlugin::request(SwitcherState target)
   status_.target = target;
 }
 
+void SwitcherPlugin::handover()
+{
+  // TODO(Takagi, Isamu): Override and release the source group if it is shared.
+}
+
 void SwitcherPlugin::override()
 {
   if (status_.target != CommandModeStatusItem::ENABLED) {

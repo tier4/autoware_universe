@@ -8,6 +8,8 @@ pluginlib_export_plugin_description_file(${PROJECT_NAME} plugins.xml)
 ament_auto_add_library(${PROJECT_NAME}_common SHARED
   "src/common/transition.cpp"
   "src/common/plugin.cpp"
+  "src/common/manual.cpp"
+  "src/common/selector_interface.cpp"
   "src/command_mode_switcher.cpp"
 )
 ament_auto_add_library(${PROJECT_NAME}_plugin SHARED
