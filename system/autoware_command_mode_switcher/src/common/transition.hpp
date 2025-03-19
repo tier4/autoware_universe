@@ -54,6 +54,8 @@ namespace autoware::command_mode_switcher::transition
 
 TransitionResult next(SwitcherState state, const TransitionContext & context);
 SwitcherState disable(SwitcherState state);
+SwitcherState request_enabled(SwitcherState state);
+SwitcherState request_standby(SwitcherState state);
 
 }  // namespace autoware::command_mode_switcher::transition
 

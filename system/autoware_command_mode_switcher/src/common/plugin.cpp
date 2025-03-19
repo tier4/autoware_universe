@@ -32,24 +32,16 @@ void SwitcherPlugin::construct(rclcpp::Node * node)
   status_.mrm = CommandModeStatusItem::NONE;
 }
 
-void SwitcherPlugin::request(SwitcherState target)
+void SwitcherPlugin::request_enabled()
 {
-  switch (target) {
-    case CommandModeStatusItem::ENABLED:
-    case CommandModeStatusItem::STANDBY:
-      status_.state = CommandModeStatusItem::WAIT_COMMAND_MODE_READY;
-      break;
-    case CommandModeStatusItem::CLEANUP:
-      status_.state = CommandModeStatusItem::DISABLED;
-      break;
-    case CommandModeStatusItem::ABORTED:
-      // Keep the state but release the command source.
-      break;
-    default:
-      RCLCPP_ERROR_STREAM(node_->get_logger(), "invalid target state: " << target);
-      break;
-  }
-  status_.target = target;
+  status_.target = CommandModeStatusItem::ENABLED;
+  status_.state = transition::request_standby(status_.state);
+}
+
+void SwitcherPlugin::request_standby()
+{
+  status_.target = CommandModeStatusItem::STANDBY;
+  status_.state = transition::request_standby(status_.state);
 }
 
 void SwitcherPlugin::disable()
@@ -61,6 +53,7 @@ void SwitcherPlugin::disable()
 void SwitcherPlugin::handover()
 {
   // TODO(Takagi, Isamu): Override and release the source group if it is shared.
+  // Keep the state but release the command source.
 }
 
 void SwitcherPlugin::override()
