@@ -1227,8 +1227,8 @@ CandidateOutput StaticObstacleAvoidanceModule::planCandidate() const
   planning_factor_interface_->add(
     output.start_distance_to_path_change, output.finish_distance_to_path_change, sl_front.start,
     sl_back.end, planning_factor_direction,
-    utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check), true, 0.0,
-    output.lateral_shift);
+    utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check), true, 0.0, 0.0,
+    sl_front.start_shift_length, sl_back.end_shift_length);
 
   output.path_candidate = shifted_path.path;
   return output;
@@ -1274,10 +1274,12 @@ void StaticObstacleAvoidanceModule::updatePathShifter(const AvoidLineArray & shi
 
   if (helper_->getRelativeShiftToPath(sl) > 0.0) {
     left_shift_array_.push_back(
-      {uuid_map_.at("left"), sl_front.start, sl_back.end, relative_longitudinal});
+      {uuid_map_.at("left"), sl_front.start, sl_back.end, sl_front.start_shift_length,
+       sl_back.end_shift_length, relative_longitudinal});
   } else if (helper_->getRelativeShiftToPath(sl) < 0.0) {
     right_shift_array_.push_back(
-      {uuid_map_.at("right"), sl_front.start, sl_back.end, relative_longitudinal});
+      {uuid_map_.at("right"), sl_front.start, sl_back.end, sl_front.start_shift_length,
+       sl_back.end_shift_length, relative_longitudinal});
   }
 
   uuid_map_.at("left") = generate_uuid();

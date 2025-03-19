@@ -136,7 +136,8 @@ private:
         planning_factor_interface_->add(
           start_distance, finish_distance, left_shift.start_pose, left_shift.finish_pose,
           PlanningFactor::SHIFT_LEFT,
-          utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check));
+          utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check), true,
+          0.0, 0.0, left_shift.start_shift_length, left_shift.end_shift_length);
       }
     }
 
@@ -157,7 +158,8 @@ private:
         planning_factor_interface_->add(
           start_distance, finish_distance, right_shift.start_pose, right_shift.finish_pose,
           PlanningFactor::SHIFT_RIGHT,
-          utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check));
+          utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check), true,
+          0.0, 0.0, right_shift.start_shift_length, right_shift.end_shift_length);
       }
     }
   }
@@ -450,6 +452,8 @@ private:
     UUID uuid;
     Pose start_pose;
     Pose finish_pose;
+    double start_shift_length{0.0};
+    double end_shift_length{0.0};
     double relative_longitudinal{0.0};
   };
 
