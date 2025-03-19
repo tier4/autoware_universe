@@ -21,9 +21,10 @@
 namespace autoware::command_mode_switcher
 {
 
-SelectorInterface::SelectorInterface(rclcpp::Node & node) : node_(node)
+SelectorInterface::SelectorInterface(rclcpp::Node & node, Callback callback) : node_(node)
 {
   group_ = node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  notification_callback_ = callback;
 
   cli_source_select_ = node.create_client<SelectCommandSource>(
     "~/source/select", rmw_qos_profile_services_default, group_);
@@ -40,16 +41,27 @@ SelectorInterface::SelectorInterface(rclcpp::Node & node) : node_(node)
     std::bind(&SelectorInterface::on_control_mode, this, std::placeholders::_1));
 }
 
+template <class T>
+bool equals_except_stamp(const T & msg1, const T & msg2)
+{
+  T t1 = msg1;
+  T t2 = msg2;
+  t1.stamp = t2.stamp = rclcpp::Time();
+  return t1 == t2;
+}
+
 void SelectorInterface::on_source_status(const CommandSourceStatus & msg)
 {
-  // TODO(Takagi, Isamu): notify status update
+  const auto equals = equals_except_stamp(source_status_, msg);
   source_status_ = msg;
+  if (!equals) notification_callback_();
 }
 
 void SelectorInterface::on_control_mode(const ControlModeReport & msg)
 {
-  // TODO(Takagi, Isamu): notify status update
+  const auto equals = equals_except_stamp(control_mode_, msg);
   control_mode_ = msg;
+  if (!equals) notification_callback_();
 }
 
 bool SelectorInterface::select_source(const std::string & source)

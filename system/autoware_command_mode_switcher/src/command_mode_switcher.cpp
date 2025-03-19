@@ -24,7 +24,7 @@ namespace autoware::command_mode_switcher
 
 CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
 : Node("command_mode_switcher", options),
-  selector_interface_(*this),
+  selector_interface_(*this, [this]() { update_status(); }),
   loader_("autoware_command_mode_switcher", "autoware::command_mode_switcher::SwitcherPlugin")
 {
   pub_status_ =
@@ -57,10 +57,39 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   }
 
   const auto period = rclcpp::Rate(declare_parameter<double>("update_rate")).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
+  timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { update_status(); });
 }
 
-void CommandModeSwitcher::on_timer()
+void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
+{
+  const auto iter = switchers_.find(msg.mode);
+  if (iter == switchers_.end()) {
+    RCLCPP_ERROR_STREAM(get_logger(), "invalid mode: " << msg.ctrl << " " << msg.mode);
+    return;
+  }
+
+  const auto source_switcher = iter->second;
+  if (msg.ctrl) {
+    manual_transition_ = source_switcher;  // Set source_switcher to disable manual control.
+    source_transition_ = source_switcher;
+    source_transition_->request(CommandModeStatusItem::ENABLED);
+  } else {
+    manual_transition_ = manual_switcher_;  // Set manual_switcher to enable manual control.
+    source_transition_ = source_switcher;
+    source_transition_->request(CommandModeStatusItem::STANDBY);
+    manual_transition_->request(CommandModeStatusItem::ENABLED);
+  }
+
+  for (const auto & [mode, switcher] : switchers_) {
+    if (switcher == source_transition_) continue;
+    if (switcher == manual_transition_) continue;
+    switcher->handover();
+  }
+
+  update_status();  // Reflect immediately.
+}
+
+void CommandModeSwitcher::update_status()
 {
   const auto is_source_exclusive = [this](std::shared_ptr<SwitcherPlugin> target) {
     for (const auto & [mode, switcher] : switchers_) {
@@ -73,6 +102,7 @@ void CommandModeSwitcher::on_timer()
   };
 
   // TODO(Takagi, Isamu): Detect override.
+  // TODO(Takagi, Isamu): Reflect mode change completion.
 
   // NOTE: Update the source status first since the transition context depends on.
   for (const auto & [mode, switcher] : switchers_) {
@@ -112,38 +142,6 @@ void CommandModeSwitcher::on_timer()
   }
 
   publish_command_mode_status();
-}
-
-void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
-{
-  const auto iter = switchers_.find(msg.mode);
-  if (iter == switchers_.end()) {
-    RCLCPP_ERROR_STREAM(get_logger(), "invalid mode: " << msg.ctrl << " " << msg.mode);
-    return;
-  }
-
-  const auto source_switcher = iter->second;
-  if (msg.ctrl) {
-    manual_transition_ = source_switcher;  // Set source_switcher to disable manual control.
-    source_transition_ = source_switcher;
-    source_transition_->request(CommandModeStatusItem::ENABLED);
-  } else {
-    manual_transition_ = manual_switcher_;  // Set manual_switcher to enable manual control.
-    source_transition_ = source_switcher;
-    source_transition_->request(CommandModeStatusItem::STANDBY);
-    manual_transition_->request(CommandModeStatusItem::ENABLED);
-  }
-
-  for (const auto & [mode, switcher] : switchers_) {
-    if (switcher == source_transition_) continue;
-    if (switcher == manual_transition_) continue;
-    switcher->handover();
-  }
-}
-
-void CommandModeSwitcher::on_selector_updated(/* selector status */)
-{
-  // update(elector_status);
 }
 
 void CommandModeSwitcher::publish_command_mode_status()

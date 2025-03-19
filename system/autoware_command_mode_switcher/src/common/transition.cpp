@@ -58,10 +58,25 @@ TransitionResult wait_source_selected(const TransitionContext & context)
 
 TransitionResult wait_control_ready(const TransitionContext & context)
 {
+  // TODO(Takagi, Isamu): Subscribe and use transition availability.
+  (void)context;
+  return {CommandModeStatusItem::WAIT_CONTROL_SELECTED, ""};
+}
+
+TransitionResult wait_control_selected(const TransitionContext & context)
+{
   if (context.is_control_selected) {
     return {CommandModeStatusItem::WAIT_CONTROL_SELECTED, ""};
+  } else {
+    return {CommandModeStatusItem::WAIT_COMMAND_MODE_STABLE, ""};
   }
-  return {CommandModeStatusItem::WAIT_CONTROL_READY, ""};
+}
+
+TransitionResult wait_command_mode_stable(const TransitionContext & context)
+{
+  // TODO(Takagi, Isamu): Subscribe and use transition completed.
+  (void)context;
+  return {CommandModeStatusItem::ENABLED, ""};
 }
 
 TransitionResult next(SwitcherState state, const TransitionContext & context)
@@ -69,15 +84,21 @@ TransitionResult next(SwitcherState state, const TransitionContext & context)
   using State = tier4_system_msgs::msg::CommandModeStatusItem;
 
   // clang-format off
-    switch (state) {
-      case State::WAIT_COMMAND_MODE_READY: return wait_command_mode_ready(context);  // NOLINT
-      case State::WAIT_SOURCE_READY:       return wait_source_ready(context);        // NOLINT
-      case State::WAIT_SOURCE_EXCLUSIVE:   return wait_source_exclusive(context);    // NOLINT
-      case State::WAIT_SOURCE_SELECTED:    return wait_source_selected(context);     // NOLINT
-    }
+  switch (state) {
+    case State::WAIT_COMMAND_MODE_READY:  return wait_command_mode_ready(context);
+    case State::WAIT_SOURCE_READY:        return wait_source_ready(context);
+    case State::WAIT_SOURCE_EXCLUSIVE:    return wait_source_exclusive(context);
+    case State::WAIT_SOURCE_SELECTED:     return wait_source_selected(context);
+    case State::WAIT_CONTROL_READY:       return wait_control_ready(context);
+    case State::WAIT_CONTROL_SELECTED:    return wait_control_selected(context);
+    case State::WAIT_COMMAND_MODE_STABLE: return wait_command_mode_stable(context);
+    case State::DISABLED:                 return {state, ""};
+    case State::STANDBY:                  return {state, ""};
+    case State::ENABLED:                  return {state, ""};
+  }
   // clang-format on
 
-  return {state, ""};
+  return {state, "unknown transition"};
 }
 
 }  // namespace autoware::command_mode_switcher::transition

@@ -43,11 +43,9 @@ public:
   explicit CommandModeSwitcher(const rclcpp::NodeOptions & options);
 
 private:
-  void on_timer();
   void on_request(const CommandModeRequest & msg);
+  void update_status();
   void publish_command_mode_status();
-
-  void on_selector_updated(/* selector status */);
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;

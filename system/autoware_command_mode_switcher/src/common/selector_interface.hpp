@@ -31,7 +31,8 @@ namespace autoware::command_mode_switcher
 class SelectorInterface
 {
 public:
-  explicit SelectorInterface(rclcpp::Node & node);
+  using Callback = std::function<void()>;
+  SelectorInterface(rclcpp::Node & node, Callback callback);
   bool select_source(const std::string & source);
   bool select_control(const bool autoware_control);
 
@@ -49,6 +50,7 @@ private:
 
   rclcpp::Node & node_;
   rclcpp::CallbackGroup::SharedPtr group_;
+  Callback notification_callback_;
 
   rclcpp::Client<SelectCommandSource>::SharedPtr cli_source_select_;
   rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_source_status_;
