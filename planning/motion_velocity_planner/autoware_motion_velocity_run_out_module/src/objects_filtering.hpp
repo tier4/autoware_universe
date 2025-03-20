@@ -43,8 +43,7 @@
 namespace autoware::motion_velocity_planner::run_out
 {
 
-/// @brief return true if the given object has a classification label matching the given label
-/// vector
+/// @brief get the most proposable classification label of a predicted object
 inline uint8_t get_most_probable_classification_label(
   const autoware_perception_msgs::msg::PredictedObject & object)
 {
@@ -59,6 +58,7 @@ inline uint8_t get_most_probable_classification_label(
   return most_probable_label;
 }
 
+/// @brief identify the most probable class of an object and whether it is stopped or not
 inline void classify(
   Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   const Parameters & params)
@@ -75,6 +75,7 @@ inline void classify(
   }
 }
 
+/// @brief calculate the current footprint of an object
 inline void calculate_current_footprint(
   Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object)
 {
@@ -83,6 +84,7 @@ inline void calculate_current_footprint(
     predicted_object.kinematics.initial_pose_with_covariance.pose, half_length, half_length,
     predicted_object.shape.dimensions.y);
 }
+/// @brief return true if an object should be ignored
 inline bool skip_object_condition(
   const Object & object, const std::optional<DecisionHistory> & prev_decisions,
   const universe_utils::Segment2d & ego_rear_segment, const FilteringData & filtering_data,
@@ -115,7 +117,7 @@ inline bool skip_object_condition(
   }
   return !skip_object;
 }
-
+/// @brief get the predicted paths with confidence above threshold
 inline std::vector<autoware_perception_msgs::msg::PredictedPath> filter_by_confidence(
   const std::vector<autoware_perception_msgs::msg::PredictedPath> & predicted_paths,
   const uint8_t label, const Parameters & params)
@@ -137,7 +139,7 @@ inline std::vector<autoware_perception_msgs::msg::PredictedPath> filter_by_confi
   }
   return filtered;
 }
-
+/// @brief calculate the predicted path footprints of an object
 inline void calculate_predicted_path_footprints(
   Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   [[maybe_unused]] const Parameters & params)
@@ -162,7 +164,7 @@ inline void calculate_predicted_path_footprints(
     object.corner_footprints.push_back(footprint);
   }
 }
-
+/// @brief get the first footprint segment index which intersect with the given segment
 inline std::optional<size_t> get_first_intersecting_segment_idx(
   const ObjectCornerFootprint & footprint, const universe_utils::Segment2d & segment)
 {
@@ -202,7 +204,7 @@ inline bool crosses_from_the_rear(
   const auto incoming_vector = incoming.second - incoming.first;
   return incoming_vector.dot(rear_normal) > 0.0;
 }
-
+/// @brief cut a footprint after the given index
 inline void cut_footprint_after_index(ObjectCornerFootprint & footprint, const size_t index)
 {
   footprint.corner_footprint.corner_linestrings[front_left].resize(index);
@@ -210,7 +212,7 @@ inline void cut_footprint_after_index(ObjectCornerFootprint & footprint, const s
   footprint.corner_footprint.corner_linestrings[rear_left].resize(index);
   footprint.corner_footprint.corner_linestrings[rear_right].resize(index);
 }
-
+/// @brief filter predicted paths of an object used map filtering data
 inline void filter_predicted_paths(
   Object & object, const universe_utils::Segment2d & ego_rear_segment,
   const FilteringData & map_data, const Parameters & params)
@@ -267,7 +269,8 @@ inline void filter_predicted_paths(
     }
   }
 }
-
+/// @brief prepare data for the dynamic objects and their path footprints to use for collision
+/// detection
 inline std::vector<Object> prepare_dynamic_objects(
   const std::vector<std::shared_ptr<PlannerData::Object>> & objects,
   const TrajectoryCornerFootprint & ego_trajectory,

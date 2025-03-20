@@ -29,6 +29,7 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/BoundingBox.h>
 #include <lanelet2_core/geometry/Polygon.h>
+#include <lanelet2_core/primitives/BoundingBox.h>
 #include <lanelet2_core/primitives/LineString.h>
 
 #include <memory>
@@ -43,9 +44,10 @@ universe_utils::Segment2d convert(const lanelet::Segment<T> & segment)
   return {{segment.first.x(), segment.first.y()}, {segment.second.x(), segment.second.y()}};
 }
 
-inline FilteringDataPerLabel calculate_filtering_data(
-  const lanelet::LaneletMapPtr & map_ptr, const TrajectoryCornerFootprint & ego_footprint,
-  const std::vector<std::shared_ptr<PlannerData::Object>> & objects, const Parameters & parameters)
+/// @brief prepare the bounding box where map data will be extracted
+inline lanelet::BoundingBox2d prepare_relevent_bounding_box(
+  const TrajectoryCornerFootprint & ego_footprint,
+  const std::vector<std::shared_ptr<PlannerData::Object>> & objects)
 {
   lanelet::BoundingBox2d bounding_box(ego_footprint.get_rear_segment().first);
   for (const auto & p : ego_footprint.front_polygon.outer()) {
@@ -56,6 +58,15 @@ inline FilteringDataPerLabel calculate_filtering_data(
     const auto p = o->predicted_object.kinematics.initial_pose_with_covariance.pose.position;
     bounding_box.extend(universe_utils::Point2d(p.x, p.y));
   }
+  return bounding_box;
+}
+
+/// @brief calculate map filtering data for each object classification label
+inline FilteringDataPerLabel calculate_filtering_data(
+  const lanelet::LaneletMapPtr & map_ptr, const TrajectoryCornerFootprint & ego_footprint,
+  const std::vector<std::shared_ptr<PlannerData::Object>> & objects, const Parameters & parameters)
+{
+  const auto bounding_box = prepare_relevent_bounding_box(ego_footprint, objects);
   FilteringDataPerLabel data_per_label;
   const auto all_labels = Parameters::all_labels();
   data_per_label.resize(all_labels.size());
