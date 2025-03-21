@@ -128,6 +128,7 @@ void CommandModeDeciderBase::update_command_mode()
     decided_.autoware_control = request_.autoware_control;
   }
 
+  // Publish time for state messages.
   const auto stamp = now();
 
   // Request command mode to switcher nodes.
@@ -141,20 +142,31 @@ void CommandModeDeciderBase::update_command_mode()
     command_mode_request_stamp_ = stamp;
   }
 
-  // Update operation mode status.
-  const auto is_available = [this](const auto & mode) {
-    return command_mode_status_.get(mode).available;
-  };
-  OperationModeState state;
-  state.stamp = stamp;
-  state.mode = text_to_mode(decided_.command_mode);
-  state.is_autoware_control_enabled = true;  // TODO(Takagi, Isamu): subscribe
-  state.is_in_transition = false;            // TODO(Takagi, Isamu): check status is enabled
-  state.is_stop_mode_available = is_available("stop");
-  state.is_autonomous_mode_available = is_available("autonomous");
-  state.is_local_mode_available = is_available("local");
-  state.is_remote_mode_available = is_available("remote");
-  pub_operation_mode_->publish(state);
+  // Update operation mode state.
+  {
+    const auto is_available = [this](const auto & mode) {
+      return command_mode_status_.get(mode).available;
+    };
+    OperationModeState state;
+    state.stamp = stamp;
+    state.mode = text_to_mode(decided_.command_mode);
+    state.is_autoware_control_enabled = true;  // TODO(Takagi, Isamu): subscribe
+    state.is_in_transition = false;            // TODO(Takagi, Isamu): check status is enabled
+    state.is_stop_mode_available = is_available("stop");
+    state.is_autonomous_mode_available = is_available("autonomous");
+    state.is_local_mode_available = is_available("local");
+    state.is_remote_mode_available = is_available("remote");
+    pub_operation_mode_->publish(state);
+  }
+
+  // Update MRM state.
+  {
+    MrmState state;
+    state.stamp = stamp;
+    state.state = text_to_mrm_state(decided_.mrm);
+    state.behavior = text_to_mrm_behavior(decided_.mrm);
+    pub_mrm_state_->publish(state);
+  }
 }
 
 template <class T>
