@@ -16,7 +16,7 @@
 
 #include <string>
 
-namespace autoware::command_mode_decider
+namespace autoware::command_mode_switcher
 {
 
 CommandModeAvailabilityItem make_availability_item(const std::string & mode, bool available)
@@ -48,7 +48,7 @@ AvailabilityConverter::AvailabilityConverter(const rclcpp::NodeOptions & options
     });
 }
 
-}  // namespace autoware::command_mode_decider
+}  // namespace autoware::command_mode_switcher
 
 #include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(autoware::command_mode_decider::AvailabilityConverter)
+RCLCPP_COMPONENTS_REGISTER_NODE(autoware::command_mode_switcher::AvailabilityConverter)

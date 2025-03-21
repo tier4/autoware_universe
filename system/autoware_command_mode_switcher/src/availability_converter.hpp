@@ -20,7 +20,7 @@
 #include <tier4_system_msgs/msg/command_mode_availability.hpp>
 #include <tier4_system_msgs/msg/operation_mode_availability.hpp>
 
-namespace autoware::command_mode_decider
+namespace autoware::command_mode_switcher
 {
 
 using tier4_system_msgs::msg::CommandModeAvailability;
@@ -37,6 +37,6 @@ private:
   rclcpp::Publisher<CommandModeAvailability>::SharedPtr pub_command_mode_;
 };
 
-}  // namespace autoware::command_mode_decider
+}  // namespace autoware::command_mode_switcher
 
 #endif  // AVAILABILITY_CONVERTER_HPP_
