@@ -1,0 +1,87 @@
+//  Copyright 2025 The Autoware Contributors
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
+#include "command_mode_decider.hpp"
+
+#include <string>
+
+namespace autoware::command_mode_decider
+{
+
+CommandModeDecider::CommandModeDecider(const rclcpp::NodeOptions & options)
+: CommandModeDeciderBase(options)
+{
+}
+
+std::string CommandModeDecider::decide_command_mode()
+{
+  const auto command_mode_status = get_command_mode_status();
+  const auto target_operation_mode = get_target_operation_mode();
+  const auto target_mrm = get_target_mrm();
+
+  // Use the requested MRM if available.
+  {
+    const auto iter = command_mode_status.find(target_mrm);
+    if (iter != command_mode_status.end()) {
+      const auto [mode, status] = *iter;
+      if (status.available) {
+        return mode;
+      }
+    }
+  }
+
+  // Use the specified operation mode if available.
+  {
+    const auto iter = command_mode_status.find(target_operation_mode);
+    if (iter != command_mode_status.end()) {
+      const auto [mode, status] = *iter;
+      if (status.available) {
+        return mode;
+      }
+    }
+  }
+
+  // TODO(Takagi, Isamu): Use the available MRM according to the state transitions at the
+  // following.
+  // https://autowarefoundation.github.io/autoware-documentation/main/design/autoware-interfaces/ad-api/features/fail-safe/#behavior
+  const auto pull_over = "pull_over";
+  const auto comfortable_stop = "comfortable_stop";
+  const auto emergency_stop = "emergency_stop";
+
+  const auto is_available = [](const auto & command_mode_status, const auto & mode) {
+    const auto iter = command_mode_status.find(mode);
+    return iter == command_mode_status.end() ? false : iter->second.available;
+  };
+
+  // TODO(Takagi, Isamu): check command_modes parameter
+  if (is_available(command_mode_status, pull_over) /*&& use_pull_over_*/) {
+    return pull_over;
+  }
+  if (is_available(command_mode_status, comfortable_stop) /*&& use_comfortable_stop_*/) {
+    return comfortable_stop;
+  }
+  if (is_available(command_mode_status, emergency_stop)) {
+    return emergency_stop;
+  }
+
+  // Use an empty string to delegate to switcher node.
+  RCLCPP_WARN_THROTTLE(
+    get_logger(), *get_clock(), 5000, "no mrm available: delegate to switcher node");
+  return std::string();
+}
+
+}  // namespace autoware::command_mode_decider
+
+#include <rclcpp_components/register_node_macro.hpp>
+RCLCPP_COMPONENTS_REGISTER_NODE(autoware::command_mode_decider::CommandModeDecider)
