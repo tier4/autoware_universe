@@ -75,9 +75,9 @@ TransitionResult wait_control_ready(const TransitionContext & context)
 TransitionResult wait_control_selected(const TransitionContext & context)
 {
   if (context.is_control_selected) {
-    return {CommandModeStatusItem::WAIT_CONTROL_SELECTED, ""};
-  } else {
     return {CommandModeStatusItem::WAIT_COMMAND_MODE_STABLE, ""};
+  } else {
+    return {CommandModeStatusItem::WAIT_CONTROL_SELECTED, ""};
   }
 }
 

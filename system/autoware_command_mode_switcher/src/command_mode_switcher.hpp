@@ -50,6 +50,8 @@ private:
   void on_request(const CommandModeRequest & msg);
   void update_status();
   void publish_command_mode_status();
+  TransitionContext create_transition_context(const SwitcherPlugin & target);
+
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_availability_;
