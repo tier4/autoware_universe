@@ -77,6 +77,9 @@ void CommandModeDeciderBase::on_status(const CommandModeStatus & msg)
 
   // Check if all command mode status items are ready.
   is_modes_ready_ = is_modes_ready_ ? true : command_mode_status_.ready();
+  if (!is_modes_ready_) {
+    return;
+  }
   update_command_mode();
 }
 
@@ -110,29 +113,25 @@ void CommandModeDeciderBase::on_timer()
 
 void CommandModeDeciderBase::update_command_mode()
 {
-  if (!is_modes_ready_) {
-    return;
-  }
+  // Note: is_modes_ready_ should be checked in the function that called this.
 
-  const auto stamp = now();
-
-  // Decide target command mode.
-  bool is_command_mode_changed = false;
+  const auto previous = decided_;
   {
     const auto next_mode = decide_command_mode();
     const auto curr_mode = decided_.command_mode;
-    is_command_mode_changed = curr_mode != next_mode;
-
-    if (is_command_mode_changed) {
+    if (curr_mode != next_mode) {
       const auto curr_text = "'" + curr_mode + "'";
       const auto next_text = "'" + next_mode + "'";
       RCLCPP_INFO_STREAM(get_logger(), "mode changed: " << curr_text << " -> " << next_text);
     }
     decided_.command_mode = next_mode;
+    decided_.autoware_control = request_.autoware_control;
   }
 
+  const auto stamp = now();
+
   // Request command mode to switcher nodes.
-  if (is_command_mode_changed) {
+  if (previous != decided_) {
     CommandModeRequest msg;
     msg.stamp = stamp;
     msg.ctrl = decided_.autoware_control;
@@ -158,68 +157,78 @@ void CommandModeDeciderBase::update_command_mode()
   pub_operation_mode_->publish(state);
 }
 
+template <class T>
+bool on_change_mode(T & res, const CommandModeStatusWrapper & wrapper, const std::string & mode)
+{
+  const auto item = wrapper.get(mode);
+  if (item.mode.empty()) {
+    res->status.success = false;
+    res->status.message = "invalid mode name: " + mode;
+    return false;
+  }
+  if (!item.available) {
+    res->status.success = false;
+    res->status.message = "mode is not available: " + mode;
+    return false;
+  }
+  res->status.success = true;
+  return true;
+}
+
 void CommandModeDeciderBase::on_change_autoware_control(
   ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res)
 {
-  // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
-  // TODO(Takagi, Isamu): Check is_modes_ready_.
-  (void)req;
-  (void)res;
+  if (!is_modes_ready_) {
+    res->status.success = false;
+    res->status.message = "Mode management is not ready.";
+    return;
+  }
+
+  const auto mode = req->autoware_control ? request_.operation_mode : "manual";
+  if (!on_change_mode(res, command_mode_status_, mode)) {
+    RCLCPP_WARN_STREAM(get_logger(), res->status.message);
+    return;
+  }
+
+  request_.autoware_control = req->autoware_control;
+  update_command_mode();
 }
 
 void CommandModeDeciderBase::on_change_operation_mode(
   ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res)
 {
-  // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
-  // TODO(Takagi, Isamu): Check is_modes_ready_.
-
-  const auto mode = mode_to_text(req->mode);
-  const auto item = command_mode_status_.get(mode);
-  if (item.mode.empty()) {
-    RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
+  if (!is_modes_ready_) {
     res->status.success = false;
-    res->status.message = "invalid mode name: " + mode;
+    res->status.message = "Mode management is not ready.";
     return;
   }
 
-  if (!item.available) {
-    RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
-    res->status.success = false;
-    res->status.message = "mode is not available: " + mode;
+  const auto mode = mode_to_text(req->mode);
+  if (!on_change_mode(res, command_mode_status_, mode)) {
+    RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
 
   request_.operation_mode = mode;
-  res->status.success = true;
-
   update_command_mode();
 }
 
 void CommandModeDeciderBase::on_request_mrm(
   RequestMrm::Request::SharedPtr req, RequestMrm::Response::SharedPtr res)
 {
-  // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
-  // TODO(Takagi, Isamu): Check is_modes_ready_.
-
-  const auto mode = req->name;
-  const auto item = command_mode_status_.get(mode);
-  if (item.mode.empty()) {
-    RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
+  if (!is_modes_ready_) {
     res->status.success = false;
-    res->status.message = "invalid mode name: " + mode;
+    res->status.message = "Mode management is not ready.";
     return;
   }
 
-  if (!item.available) {
-    RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
-    res->status.success = false;
-    res->status.message = "mode is not available: " + mode;
+  const auto mode = req->name;
+  if (!on_change_mode(res, command_mode_status_, mode)) {
+    RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
 
   request_.mrm = mode;
-  res->status.success = true;
-
   update_command_mode();
 }
 
