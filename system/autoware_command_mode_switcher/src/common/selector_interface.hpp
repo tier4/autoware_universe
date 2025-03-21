@@ -37,7 +37,7 @@ public:
   bool select_control(const bool autoware_control);
 
   const std::string & source_name() const { return source_status_.source; }
-  bool autoware_control() const { return control_mode_.mode == ControlModeReport::AUTONOMOUS; }
+  std::optional<bool> autoware_control() const;
 
 private:
   using SelectCommandSource = tier4_system_msgs::srv::SelectCommandSource;

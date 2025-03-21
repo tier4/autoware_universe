@@ -54,7 +54,6 @@ protected:
 private:
   void update_command_mode();
   void on_timer();
-  void on_availability(const CommandModeAvailability & msg);
   void on_status(const CommandModeStatus & msg);
   void on_change_operation_mode(
     ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res);

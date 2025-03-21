@@ -63,11 +63,21 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 
 void CommandModeDeciderBase::on_status(const CommandModeStatus & msg)
 {
+  // Update command mode status.
   for (const auto & item : msg.items) {
     const auto iter = command_mode_status_.find(item.mode);
     if (iter == command_mode_status_.end()) continue;
     iter->second = item;
   }
+
+  // Check if all command mode status items are ready.
+  const auto check_ready = [this]() {
+    for (const auto & [mode, status] : command_mode_status_) {
+      if (status.mode.empty()) return false;
+    }
+    return true;
+  };
+  is_modes_ready_ = is_modes_ready_ ? true : check_ready();
   update_command_mode();
 }
 
@@ -77,8 +87,10 @@ void CommandModeDeciderBase::on_timer()
     return;
   }
 
+  /*
   const auto & status = command_mode_status_.at(curr_command_mode_);
   (void)status;
+  */
 
   /*
   if (mode.status.activation) {
@@ -97,71 +109,10 @@ void CommandModeDeciderBase::on_timer()
   */
 }
 
-void CommandModeDeciderBase::on_change_operation_mode(
-  ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res)
-{
-  // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
-
-  const auto mode = mode_to_text(req->mode);
-  const auto iter = command_mode_status_.find(mode);
-  if (iter == command_mode_status_.end()) {
-    RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
-    res->status.success = false;
-    res->status.message = "invalid mode name: " + mode;
-    return;
-  }
-
-  const auto status = iter->second;
-  if (!status.available) {
-    RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
-    res->status.success = false;
-    res->status.message = "mode is not available: " + mode;
-    return;
-  }
-
-  target_operation_mode_ = mode;
-  res->status.success = true;
-
-  update_command_mode();
-}
-
-void CommandModeDeciderBase::on_request_mrm(
-  RequestMrm::Request::SharedPtr req, RequestMrm::Response::SharedPtr res)
-{
-  // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
-
-  const auto mode = req->name;
-  const auto iter = command_mode_status_.find(mode);
-  if (iter == command_mode_status_.end()) {
-    RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
-    res->status.success = false;
-    res->status.message = "invalid mode name: " + mode;
-    return;
-  }
-
-  const auto status = iter->second;
-  if (!status.available) {
-    RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
-    res->status.success = false;
-    res->status.message = "mode is not available: " + mode;
-    return;
-  }
-
-  target_mrm_ = mode;
-  res->status.success = true;
-
-  update_command_mode();
-}
-
 void CommandModeDeciderBase::update_command_mode()
 {
   if (!is_modes_ready_) {
-    for (const auto & [mode, status] : command_mode_status_) {
-      if (status.mode.empty()) {
-        return;
-      }
-    }
-    is_modes_ready_ = true;
+    return;
   }
 
   const auto stamp = now();
@@ -205,6 +156,64 @@ void CommandModeDeciderBase::update_command_mode()
   state.is_local_mode_available = is_available("local");
   state.is_remote_mode_available = is_available("remote");
   pub_operation_mode_->publish(state);
+}
+
+void CommandModeDeciderBase::on_change_operation_mode(
+  ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res)
+{
+  // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
+  // TODO(Takagi, Isamu): Check is_modes_ready_.
+
+  const auto mode = mode_to_text(req->mode);
+  const auto iter = command_mode_status_.find(mode);
+  if (iter == command_mode_status_.end()) {
+    RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
+    res->status.success = false;
+    res->status.message = "invalid mode name: " + mode;
+    return;
+  }
+
+  const auto status = iter->second;
+  if (!status.available) {
+    RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
+    res->status.success = false;
+    res->status.message = "mode is not available: " + mode;
+    return;
+  }
+
+  target_operation_mode_ = mode;
+  res->status.success = true;
+
+  update_command_mode();
+}
+
+void CommandModeDeciderBase::on_request_mrm(
+  RequestMrm::Request::SharedPtr req, RequestMrm::Response::SharedPtr res)
+{
+  // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
+  // TODO(Takagi, Isamu): Check is_modes_ready_.
+
+  const auto mode = req->name;
+  const auto iter = command_mode_status_.find(mode);
+  if (iter == command_mode_status_.end()) {
+    RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
+    res->status.success = false;
+    res->status.message = "invalid mode name: " + mode;
+    return;
+  }
+
+  const auto status = iter->second;
+  if (!status.available) {
+    RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
+    res->status.success = false;
+    res->status.message = "mode is not available: " + mode;
+    return;
+  }
+
+  target_mrm_ = mode;
+  res->status.success = true;
+
+  update_command_mode();
 }
 
 }  // namespace autoware::command_mode_decider

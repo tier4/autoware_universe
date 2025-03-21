@@ -34,11 +34,22 @@ SelectorInterface::SelectorInterface(rclcpp::Node & node, Callback callback) : n
     std::bind(&SelectorInterface::on_source_status, this, std::placeholders::_1));
 
   cli_control_mode_ = node.create_client<ControlModeCommand>(
-    "~/control_mode/command", rmw_qos_profile_services_default, group_);
+    "~/control_mode/request", rmw_qos_profile_services_default, group_);
 
   sub_control_mode_ = node.create_subscription<ControlModeReport>(
-    "~/control_mode/report", rclcpp::QoS(1).transient_local(),
+    "~/control_mode/report", rclcpp::QoS(1),
     std::bind(&SelectorInterface::on_control_mode, this, std::placeholders::_1));
+}
+
+std::optional<bool> SelectorInterface::autoware_control() const
+{
+  if (control_mode_.mode == ControlModeReport::AUTONOMOUS) {
+    return true;
+  }
+  if (control_mode_.mode == ControlModeReport::MANUAL) {
+    return false;
+  }
+  return std::nullopt;
 }
 
 template <class T>
@@ -66,7 +77,7 @@ void SelectorInterface::on_control_mode(const ControlModeReport & msg)
 
 bool SelectorInterface::select_source(const std::string & source)
 {
-  if (source_status_.source == source) {
+  if (this->source_name() == source) {
     return false;
   }
   if (waiting_source_select_) {
@@ -88,7 +99,7 @@ bool SelectorInterface::select_source(const std::string & source)
 
 bool SelectorInterface::select_control(const bool autoware_control)
 {
-  if (control_mode_.mode == autoware_control) {
+  if (this->autoware_control() == autoware_control) {
     return false;
   }
   if (waiting_control_mode_) {
