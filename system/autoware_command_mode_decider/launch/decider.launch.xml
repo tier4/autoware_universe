@@ -6,7 +6,7 @@
     <remap from="~/command_mode/request" to="/system/command_mode/request"/>
     <remap from="~/operation_mode/state" to="/system/operation_mode/state"/>
     <remap from="~/operation_mode/change_operation_mode" to="/system/operation_mode/change_operation_mode"/>
-    <!-- TODO(Takagi, Isamu): MRM state. -->
-    <!-- TODO(Takagi, Isamu): MRM request. -->
+    <remap from="~/mrm/state" to="/system/fail_safe/mrm_state"/>
+    <remap from="~/mrm/request" to="/system/fail_safe/mrm_request"/>
   </node>
 </launch>

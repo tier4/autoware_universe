@@ -112,19 +112,6 @@ void CommandModeSwitcher::update_status()
 {
   // TODO(Takagi, Isamu): Check call rate.
 
-  const auto is_source_exclusive = [this](std::shared_ptr<SwitcherPlugin> target) {
-    if (target->source_name().empty()) {
-      return true;
-    }
-    for (const auto & switcher : switchers_) {
-      if (switcher == target) continue;
-      if (switcher->source_name() != target->source_name()) continue;
-      if (switcher->source_status() == SourceStatus::Disabled) continue;
-      return false;
-    }
-    return true;
-  };
-
   // Check if the foreground source transition is complete.
   if (foreground_transition_ && foreground_transition_ != manual_switcher_) {
     if (foreground_transition_->sequence_state() == CommandModeStatusItem::ENABLED) {
@@ -169,17 +156,10 @@ void CommandModeSwitcher::update_status()
 
   // TODO(Takagi, Isamu): Handle aborted transition (control, source, source group).
   for (const auto & switcher : switchers_) {
-    // TODO(Takagi, Isamu): move to utility function.
-    TransitionContext context;
-    context.sequence_target = switcher->sequence_target();
-    context.source_state = switcher->source_status();
-    context.is_source_exclusive = is_source_exclusive(switcher);
-    context.is_source_selected = switcher->source_name() == selector_interface_.source_name();
-    context.is_control_selected =
-      switcher->autoware_control() == selector_interface_.autoware_control();
-    switcher->update_status(context);
+    switcher->update_status(create_transition_context(*switcher));
   }
 
+  // TODO(Takagi, Isamu): Wait status update delay.
   // Sync command source.
   if (background_transition_) {
     if (background_transition_->sequence_state() == CommandModeStatusItem::WAIT_SOURCE_SELECTED) {
@@ -191,6 +171,7 @@ void CommandModeSwitcher::update_status()
     }
   }
 
+  // TODO(Takagi, Isamu): Wait status update delay.
   // Sync control mode.
   if (foreground_transition_) {
     if (foreground_transition_->sequence_state() == CommandModeStatusItem::WAIT_CONTROL_SELECTED) {
@@ -213,6 +194,41 @@ void CommandModeSwitcher::publish_command_mode_status()
     msg.items.push_back(switcher->status());
   }
   pub_status_->publish(msg);
+}
+
+TransitionContext CommandModeSwitcher::create_transition_context(const SwitcherPlugin & target)
+{
+  const auto is_source_exclusive = [this](const SwitcherPlugin & target) {
+    if (target.source_name().empty()) {
+      return true;
+    }
+    for (const auto & switcher : switchers_) {
+      if (switcher->mode_name() == target.mode_name()) continue;
+      if (switcher->source_name() != target.source_name()) continue;
+      if (switcher->source_status() == SourceStatus::Disabled) continue;
+      return false;
+    }
+    return true;
+  };
+
+  const auto is_source_selected = [this](const SwitcherPlugin & target) {
+    if (target.source_name().empty()) {
+      return true;
+    }
+    return target.source_name() == selector_interface_.source_name();
+  };
+
+  const auto is_control_selected = [this](const SwitcherPlugin & target) {
+    return target.autoware_control() == selector_interface_.autoware_control();
+  };
+
+  TransitionContext context;
+  context.sequence_target = target.sequence_target();
+  context.source_state = target.source_status();
+  context.is_source_exclusive = is_source_exclusive(target);
+  context.is_source_selected = is_source_selected(target);
+  context.is_control_selected = is_control_selected(target);
+  return context;
 }
 
 }  // namespace autoware::command_mode_switcher

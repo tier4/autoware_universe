@@ -27,6 +27,7 @@ class ComfortableStopSwitcher : public SwitcherPlugin
 public:
   std::string mode_name() const override { return "comfortable_stop"; }
   std::string source_name() const override { return "main"; }
+  bool autoware_control() const override { return true; }
 };
 
 }  // namespace autoware::command_mode_switcher

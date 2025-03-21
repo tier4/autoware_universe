@@ -27,16 +27,18 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 : Node("command_mode_decider", options)
 {
   is_modes_ready_ = false;
-  target_operation_mode_ = declare_parameter<std::string>("initial_operation_mode");
-  target_mrm_ = std::string();
-  curr_command_mode_ = std::string();
+  command_mode_status_.init(declare_parameter<std::vector<std::string>>("command_modes"));
   command_mode_request_stamp_ = std::nullopt;
 
-  const auto command_modes = declare_parameter<std::vector<std::string>>("command_modes");
-  for (const auto & mode : command_modes) {
-    // NOTE: The mode field will be used to check topic reception.
-    command_mode_status_[mode] = CommandModeStatusItem();
-  }
+  request_.autoware_control = true;
+  request_.operation_mode = declare_parameter<std::string>("initial_operation_mode");
+  request_.mrm = std::string();
+
+  decided_.autoware_control = true;
+  decided_.command_mode = std::string();
+
+  current_.autoware_control = true;
+  current_.command_mode = std::string();
 
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -54,7 +56,12 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
   srv_operation_mode_ = create_service<ChangeOperationMode>(
     "~/operation_mode/change_operation_mode",
     std::bind(&CommandModeDeciderBase::on_change_operation_mode, this, _1, _2));
-  srv_request_mrm_ = create_service<RequestMrm>(
+  srv_autoware_control_ = create_service<ChangeAutowareControl>(
+    "~/operation_mode/change_autoware_control",
+    std::bind(&CommandModeDeciderBase::on_change_autoware_control, this, _1, _2));
+
+  pub_mrm_state_ = create_publisher<MrmState>("~/mrm/state", rclcpp::QoS(1));
+  srv_mrm_request_ = create_service<RequestMrm>(
     "~/mrm/request", std::bind(&CommandModeDeciderBase::on_request_mrm, this, _1, _2));
 
   const auto period = rclcpp::Rate(declare_parameter<double>("update_rate")).period();
@@ -63,11 +70,13 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 
 void CommandModeDeciderBase::on_status(const CommandModeStatus & msg)
 {
+  // Update command mode status.
   for (const auto & item : msg.items) {
-    const auto iter = command_mode_status_.find(item.mode);
-    if (iter == command_mode_status_.end()) continue;
-    iter->second = item;
+    command_mode_status_.set(item);
   }
+
+  // Check if all command mode status items are ready.
+  is_modes_ready_ = is_modes_ready_ ? true : command_mode_status_.ready();
   update_command_mode();
 }
 
@@ -77,8 +86,10 @@ void CommandModeDeciderBase::on_timer()
     return;
   }
 
+  /*
   const auto & status = command_mode_status_.at(curr_command_mode_);
   (void)status;
+  */
 
   /*
   if (mode.status.activation) {
@@ -97,29 +108,88 @@ void CommandModeDeciderBase::on_timer()
   */
 }
 
+void CommandModeDeciderBase::update_command_mode()
+{
+  if (!is_modes_ready_) {
+    return;
+  }
+
+  const auto stamp = now();
+
+  // Decide target command mode.
+  bool is_command_mode_changed = false;
+  {
+    const auto next_mode = decide_command_mode();
+    const auto curr_mode = decided_.command_mode;
+    is_command_mode_changed = curr_mode != next_mode;
+
+    if (is_command_mode_changed) {
+      const auto curr_text = "'" + curr_mode + "'";
+      const auto next_text = "'" + next_mode + "'";
+      RCLCPP_INFO_STREAM(get_logger(), "mode changed: " << curr_text << " -> " << next_text);
+    }
+    decided_.command_mode = next_mode;
+  }
+
+  // Request command mode to switcher nodes.
+  if (is_command_mode_changed) {
+    CommandModeRequest msg;
+    msg.stamp = stamp;
+    msg.ctrl = decided_.autoware_control;
+    msg.mode = decided_.command_mode;
+    pub_command_mode_request_->publish(msg);
+
+    command_mode_request_stamp_ = stamp;
+  }
+
+  // Update operation mode status.
+  const auto is_available = [this](const auto & mode) {
+    return command_mode_status_.get(mode).available;
+  };
+  OperationModeState state;
+  state.stamp = stamp;
+  state.mode = text_to_mode(decided_.command_mode);
+  state.is_autoware_control_enabled = true;  // TODO(Takagi, Isamu): subscribe
+  state.is_in_transition = false;            // TODO(Takagi, Isamu): check status is enabled
+  state.is_stop_mode_available = is_available("stop");
+  state.is_autonomous_mode_available = is_available("autonomous");
+  state.is_local_mode_available = is_available("local");
+  state.is_remote_mode_available = is_available("remote");
+  pub_operation_mode_->publish(state);
+}
+
+void CommandModeDeciderBase::on_change_autoware_control(
+  ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res)
+{
+  // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
+  // TODO(Takagi, Isamu): Check is_modes_ready_.
+  (void)req;
+  (void)res;
+}
+
 void CommandModeDeciderBase::on_change_operation_mode(
   ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res)
 {
   // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
+  // TODO(Takagi, Isamu): Check is_modes_ready_.
 
   const auto mode = mode_to_text(req->mode);
-  const auto iter = command_mode_status_.find(mode);
-  if (iter == command_mode_status_.end()) {
+  const auto item = command_mode_status_.get(mode);
+  if (item.mode.empty()) {
     RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
     res->status.success = false;
     res->status.message = "invalid mode name: " + mode;
     return;
   }
 
-  const auto status = iter->second;
-  if (!status.available) {
+  if (!item.available) {
     RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
     res->status.success = false;
     res->status.message = "mode is not available: " + mode;
     return;
   }
 
-  target_operation_mode_ = mode;
+  request_.operation_mode = mode;
   res->status.success = true;
 
   update_command_mode();
@@ -129,82 +199,28 @@ void CommandModeDeciderBase::on_request_mrm(
   RequestMrm::Request::SharedPtr req, RequestMrm::Response::SharedPtr res)
 {
   // TODO(Takagi, Isamu): Commonize on_change_operation_mode and on_request_mrm.
+  // TODO(Takagi, Isamu): Check is_modes_ready_.
 
   const auto mode = req->name;
-  const auto iter = command_mode_status_.find(mode);
-  if (iter == command_mode_status_.end()) {
+  const auto item = command_mode_status_.get(mode);
+  if (item.mode.empty()) {
     RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
     res->status.success = false;
     res->status.message = "invalid mode name: " + mode;
     return;
   }
 
-  const auto status = iter->second;
-  if (!status.available) {
+  if (!item.available) {
     RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
     res->status.success = false;
     res->status.message = "mode is not available: " + mode;
     return;
   }
 
-  target_mrm_ = mode;
+  request_.mrm = mode;
   res->status.success = true;
 
   update_command_mode();
-}
-
-void CommandModeDeciderBase::update_command_mode()
-{
-  if (!is_modes_ready_) {
-    for (const auto & [mode, status] : command_mode_status_) {
-      if (status.mode.empty()) {
-        return;
-      }
-    }
-    is_modes_ready_ = true;
-  }
-
-  const auto stamp = now();
-
-  // Decide target command mode.
-  bool is_command_mode_changed = false;
-  {
-    const auto next_command_mode = decide_command_mode();
-    is_command_mode_changed = curr_command_mode_ != next_command_mode;
-    if (is_command_mode_changed) {
-      const auto curr_text = "'" + curr_command_mode_ + "'";
-      const auto next_text = "'" + next_command_mode + "'";
-      RCLCPP_INFO_STREAM(
-        get_logger(), "command mode changed: " << curr_text << " -> " << next_text);
-    }
-    curr_command_mode_ = next_command_mode;
-  }
-
-  // Request command mode to switcher nodes.
-  if (is_command_mode_changed) {
-    CommandModeRequest msg;
-    msg.stamp = stamp;
-    msg.mode = curr_command_mode_;
-    pub_command_mode_request_->publish(msg);
-
-    command_mode_request_stamp_ = stamp;
-  }
-
-  // Update operation mode status.
-  const auto is_available = [this](const auto & mode) {
-    const auto iter = command_mode_status_.find(mode);
-    return iter == command_mode_status_.end() ? false : iter->second.available;
-  };
-  OperationModeState state;
-  state.stamp = stamp;
-  state.mode = text_to_mode(target_operation_mode_);
-  state.is_autoware_control_enabled = true;  // TODO(Takagi, Isamu): subscribe
-  state.is_in_transition = false;            // TODO(Takagi, Isamu): check status is enabled
-  state.is_stop_mode_available = is_available("stop");
-  state.is_autonomous_mode_available = is_available("autonomous");
-  state.is_local_mode_available = is_available("local");
-  state.is_remote_mode_available = is_available("remote");
-  pub_operation_mode_->publish(state);
 }
 
 }  // namespace autoware::command_mode_decider

@@ -27,28 +27,21 @@ CommandModeDecider::CommandModeDecider(const rclcpp::NodeOptions & options)
 std::string CommandModeDecider::decide_command_mode()
 {
   const auto command_mode_status = get_command_mode_status();
-  const auto target_operation_mode = get_target_operation_mode();
-  const auto target_mrm = get_target_mrm();
+  const auto request_mode_status = get_request_mode_status();
 
   // Use the requested MRM if available.
   {
-    const auto iter = command_mode_status.find(target_mrm);
-    if (iter != command_mode_status.end()) {
-      const auto [mode, status] = *iter;
-      if (status.available) {
-        return mode;
-      }
+    const auto status = command_mode_status.get(request_mode_status.mrm);
+    if (status.available) {
+      return request_mode_status.mrm;
     }
   }
 
   // Use the specified operation mode if available.
   {
-    const auto iter = command_mode_status.find(target_operation_mode);
-    if (iter != command_mode_status.end()) {
-      const auto [mode, status] = *iter;
-      if (status.available) {
-        return mode;
-      }
+    const auto status = command_mode_status.get(request_mode_status.operation_mode);
+    if (status.available) {
+      return request_mode_status.operation_mode;
     }
   }
 
@@ -59,19 +52,14 @@ std::string CommandModeDecider::decide_command_mode()
   const auto comfortable_stop = "comfortable_stop";
   const auto emergency_stop = "emergency_stop";
 
-  const auto is_available = [](const auto & command_mode_status, const auto & mode) {
-    const auto iter = command_mode_status.find(mode);
-    return iter == command_mode_status.end() ? false : iter->second.available;
-  };
-
   // TODO(Takagi, Isamu): check command_modes parameter
-  if (is_available(command_mode_status, pull_over) /*&& use_pull_over_*/) {
+  if (command_mode_status.get(pull_over).available /*&& use_pull_over_*/) {
     return pull_over;
   }
-  if (is_available(command_mode_status, comfortable_stop) /*&& use_comfortable_stop_*/) {
+  if (command_mode_status.get(comfortable_stop).available /*&& use_comfortable_stop_*/) {
     return comfortable_stop;
   }
-  if (is_available(command_mode_status, emergency_stop)) {
+  if (command_mode_status.get(emergency_stop).available) {
     return emergency_stop;
   }
 

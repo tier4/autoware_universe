@@ -49,7 +49,7 @@ public:
   virtual ~SwitcherPlugin() = default;
   virtual std::string mode_name() const = 0;
   virtual std::string source_name() const = 0;
-  virtual bool autoware_control() const { return true; }
+  virtual bool autoware_control() const = 0;
   virtual void update_source_status();
 
 private:
