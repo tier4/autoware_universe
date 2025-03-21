@@ -30,6 +30,15 @@ rclcpp_components_register_node(${PROJECT_NAME}_common
   EXECUTOR MultiThreadedExecutor
 )
 
+ament_auto_add_library(${PROJECT_NAME}_tools SHARED
+  "src/availability_converter.cpp"
+)
+rclcpp_components_register_node(${PROJECT_NAME}_tools
+  PLUGIN "autoware::command_mode_switcher::AvailabilityConverter"
+  EXECUTABLE "availability_converter_node"
+  EXECUTOR SingleThreadedExecutor
+)
+
 if(BUILD_TESTING)
 endif()
 

@@ -12,29 +12,17 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMAND_MODE_DECIDER_HPP_
-#define COMMAND_MODE_DECIDER_HPP_
-
-#include "command_mode_decider_base.hpp"
+#ifndef COMMAND_MODE_CONVERSION_HPP_
+#define COMMAND_MODE_CONVERSION_HPP_
 
 #include <string>
 
 namespace autoware::command_mode_decider
 {
 
-class CommandModeDecider : public CommandModeDeciderBase
-{
-public:
-  explicit CommandModeDecider(const rclcpp::NodeOptions & options);
-
-protected:
-  std::string decide_command_mode() override;
-
-private:
-  bool use_pull_over_;
-  bool use_comfortable_stop_;
-};
+std::string mode_to_text(uint32_t mode);
+uint32_t text_to_mode(const std::string & text);
 
 }  // namespace autoware::command_mode_decider
 
-#endif  // COMMAND_MODE_DECIDER_HPP_
+#endif  // COMMAND_MODE_CONVERSION_HPP_
