@@ -1,0 +1,130 @@
+//  Copyright 2025 The Autoware Contributors
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
+#include "plugin.hpp"
+
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace autoware::command_mode_switcher
+{
+
+void SwitcherPlugin::construct(rclcpp::Node * node)
+{
+  node_ = node;
+  source_status_ = SourceStatus::Disabled;
+
+  status_.mode = mode_name();
+  status_.state = CommandModeStatusItem::DISABLED;
+  status_.target = CommandModeStatusItem::DISABLED;
+  status_.mrm = CommandModeStatusItem::NONE;
+}
+
+void SwitcherPlugin::request_enabled()
+{
+  status_.target = CommandModeStatusItem::ENABLED;
+  status_.state = transition::request_standby(status_.state);
+}
+
+void SwitcherPlugin::request_standby()
+{
+  status_.target = CommandModeStatusItem::STANDBY;
+  status_.state = transition::request_standby(status_.state);
+}
+
+void SwitcherPlugin::disable()
+{
+  status_.target = CommandModeStatusItem::DISABLED;
+  status_.state = transition::disable(status_.state);
+}
+
+void SwitcherPlugin::handover()
+{
+  // TODO(Takagi, Isamu): Override and release the source group if it is shared.
+  // Keep the state but release the command source.
+}
+
+void SwitcherPlugin::override()
+{
+  // TODO(Takagi, Isamu): Move to transition namespace.
+  if (status_.target != CommandModeStatusItem::ENABLED) {
+    return;
+  }
+  switch (status_.state) {
+    case CommandModeStatusItem::WAIT_CONTROL_READY:
+    case CommandModeStatusItem::WAIT_CONTROL_SELECTED:
+    case CommandModeStatusItem::WAIT_COMMAND_MODE_STABLE:
+    case CommandModeStatusItem::ENABLED:
+      status_.state = CommandModeStatusItem::STANDBY;
+      break;
+  }
+  status_.target = CommandModeStatusItem::STANDBY;
+}
+
+void SwitcherPlugin::update_source_status()
+{
+  switch (status_.target) {
+    case CommandModeStatusItem::ENABLED:
+    case CommandModeStatusItem::STANDBY:
+      source_status_ = SourceStatus::Enabled;
+      break;
+    case CommandModeStatusItem::DISABLED:
+    case CommandModeStatusItem::HANDOVER:
+      source_status_ = SourceStatus::Disabled;
+      break;
+  }
+}
+
+void SwitcherPlugin::update_status(const TransitionContext & context)
+{
+  const auto logger = [this](const std::string & message) {
+    RCLCPP_WARN_STREAM(node_->get_logger(), mode_name() << " mode: " << message);
+  };
+
+  const auto update = [logger](SwitcherState state, const TransitionContext & context) {
+    constexpr int loop_limit = 20;
+    std::vector<SwitcherState> history;
+    history.push_back(state);
+
+    for (int i = 0; i < loop_limit; ++i) {
+      const auto result = transition::next(state, context);
+      if (!result.error.empty()) {
+        logger("transition error: " + result.error);
+      }
+      if (state == result.state) {
+        break;
+      }
+      state = result.state;
+      history.push_back(state);
+    }
+
+    if (loop_limit <= history.size()) {
+      logger("loop limit exceeded");
+    }
+    if (1 < history.size()) {
+      std::string log;
+      for (const auto & h : history) {
+        log += " " + std::to_string(h);
+      }
+      logger("update" + log);
+    }
+
+    return state;
+  };
+
+  status_.state = update(status_.state, context);
+}
+
+}  // namespace autoware::command_mode_switcher
