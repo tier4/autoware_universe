@@ -67,6 +67,7 @@ private:
   rclcpp::Subscription<CommandModeStatus>::SharedPtr sub_command_mode_status_;
 
   bool is_modes_ready_;
+  bool target_autoware_control_;
   std::string target_operation_mode_;
   std::string target_mrm_;
   std::string curr_command_mode_;
