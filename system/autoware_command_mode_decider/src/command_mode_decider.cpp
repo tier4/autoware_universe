@@ -27,12 +27,11 @@ CommandModeDecider::CommandModeDecider(const rclcpp::NodeOptions & options)
 std::string CommandModeDecider::decide_command_mode()
 {
   const auto command_mode_status = get_command_mode_status();
-  const auto target_operation_mode = get_target_operation_mode();
-  const auto target_mrm = get_target_mrm();
+  const auto request_mode_status = get_request_mode_status();
 
   // Use the requested MRM if available.
   {
-    const auto iter = command_mode_status.find(target_mrm);
+    const auto iter = command_mode_status.find(request_mode_status.mrm);
     if (iter != command_mode_status.end()) {
       const auto [mode, status] = *iter;
       if (status.available) {
@@ -43,7 +42,7 @@ std::string CommandModeDecider::decide_command_mode()
 
   // Use the specified operation mode if available.
   {
-    const auto iter = command_mode_status.find(target_operation_mode);
+    const auto iter = command_mode_status.find(request_mode_status.operation_mode);
     if (iter != command_mode_status.end()) {
       const auto [mode, status] = *iter;
       if (status.available) {
