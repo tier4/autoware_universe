@@ -27,6 +27,7 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 : Node("command_mode_decider", options)
 {
   is_modes_ready_ = false;
+  target_autoware_control_ = true;
   target_operation_mode_ = declare_parameter<std::string>("initial_operation_mode");
   target_mrm_ = std::string();
   curr_command_mode_ = std::string();
@@ -136,6 +137,7 @@ void CommandModeDeciderBase::update_command_mode()
     CommandModeRequest msg;
     msg.stamp = stamp;
     msg.mode = curr_command_mode_;
+    msg.ctrl = target_autoware_control_;  // TODO(Takagi, Isamu): use current autoware control.
     pub_command_mode_request_->publish(msg);
 
     command_mode_request_stamp_ = stamp;
