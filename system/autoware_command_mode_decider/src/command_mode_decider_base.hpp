@@ -85,6 +85,10 @@ private:
 
   struct DeciderModeStatus
   {
+    bool operator!=(const DeciderModeStatus & s) const
+    {
+      return autoware_control != s.autoware_control || command_mode != s.command_mode;
+    }
     bool autoware_control;
     std::string command_mode;
   };

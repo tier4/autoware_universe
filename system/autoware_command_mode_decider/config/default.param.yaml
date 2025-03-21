@@ -3,6 +3,7 @@
     update_rate: 10.0
     initial_operation_mode: stop
     command_modes:
+      - manual
       - stop
       - autonomous
       - local

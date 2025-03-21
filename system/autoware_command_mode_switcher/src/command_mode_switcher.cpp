@@ -41,6 +41,12 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   manual_switcher_->construct(this);
   switchers_.push_back(manual_switcher_);
 
+  // TODO(Takagi, Isamu): This should be set by plugin. Set manual switcher to available.
+  manual_switcher_->set_available(true);
+  manual_switcher_->set_continuable(true);
+  manual_switcher_->set_acceptable(true);
+  manual_switcher_->set_controllable(true);
+
   // Init source switchers
   {
     const auto plugins = declare_parameter<std::vector<std::string>>("plugins");
