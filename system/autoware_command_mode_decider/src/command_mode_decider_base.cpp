@@ -27,6 +27,7 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 : Node("command_mode_decider", options)
 {
   is_modes_ready_ = false;
+  command_mode_status_.init(declare_parameter<std::vector<std::string>>("command_modes"));
   command_mode_request_stamp_ = std::nullopt;
 
   request_.autoware_control = true;
@@ -38,12 +39,6 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 
   current_.autoware_control = true;
   current_.command_mode = std::string();
-
-  const auto command_modes = declare_parameter<std::vector<std::string>>("command_modes");
-  for (const auto & mode : command_modes) {
-    // NOTE: The mode field will be used to check topic reception.
-    command_mode_status_[mode] = CommandModeStatusItem();
-  }
 
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -77,19 +72,11 @@ void CommandModeDeciderBase::on_status(const CommandModeStatus & msg)
 {
   // Update command mode status.
   for (const auto & item : msg.items) {
-    const auto iter = command_mode_status_.find(item.mode);
-    if (iter == command_mode_status_.end()) continue;
-    iter->second = item;
+    command_mode_status_.set(item);
   }
 
   // Check if all command mode status items are ready.
-  const auto check_ready = [this]() {
-    for (const auto & [mode, status] : command_mode_status_) {
-      if (status.mode.empty()) return false;
-    }
-    return true;
-  };
-  is_modes_ready_ = is_modes_ready_ ? true : check_ready();
+  is_modes_ready_ = is_modes_ready_ ? true : command_mode_status_.ready();
   update_command_mode();
 }
 
@@ -157,8 +144,7 @@ void CommandModeDeciderBase::update_command_mode()
 
   // Update operation mode status.
   const auto is_available = [this](const auto & mode) {
-    const auto iter = command_mode_status_.find(mode);
-    return iter == command_mode_status_.end() ? false : iter->second.available;
+    return command_mode_status_.get(mode).available;
   };
   OperationModeState state;
   state.stamp = stamp;
@@ -188,16 +174,15 @@ void CommandModeDeciderBase::on_change_operation_mode(
   // TODO(Takagi, Isamu): Check is_modes_ready_.
 
   const auto mode = mode_to_text(req->mode);
-  const auto iter = command_mode_status_.find(mode);
-  if (iter == command_mode_status_.end()) {
+  const auto item = command_mode_status_.get(mode);
+  if (item.mode.empty()) {
     RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
     res->status.success = false;
     res->status.message = "invalid mode name: " + mode;
     return;
   }
 
-  const auto status = iter->second;
-  if (!status.available) {
+  if (!item.available) {
     RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
     res->status.success = false;
     res->status.message = "mode is not available: " + mode;
@@ -217,16 +202,15 @@ void CommandModeDeciderBase::on_request_mrm(
   // TODO(Takagi, Isamu): Check is_modes_ready_.
 
   const auto mode = req->name;
-  const auto iter = command_mode_status_.find(mode);
-  if (iter == command_mode_status_.end()) {
+  const auto item = command_mode_status_.get(mode);
+  if (item.mode.empty()) {
     RCLCPP_WARN_STREAM(get_logger(), "invalid mode name: " << mode);
     res->status.success = false;
     res->status.message = "invalid mode name: " + mode;
     return;
   }
 
-  const auto status = iter->second;
-  if (!status.available) {
+  if (!item.available) {
     RCLCPP_WARN_STREAM(get_logger(), "mode is not available: " << mode);
     res->status.success = false;
     res->status.message = "mode is not available: " + mode;

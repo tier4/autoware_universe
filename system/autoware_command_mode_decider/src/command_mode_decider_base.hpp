@@ -15,6 +15,8 @@
 #ifndef COMMAND_MODE_DECIDER_BASE_HPP_
 #define COMMAND_MODE_DECIDER_BASE_HPP_
 
+#include "command_mode_status.hpp"
+
 #include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -27,7 +29,6 @@
 #include <tier4_system_msgs/srv/request_mrm.hpp>
 
 #include <string>
-#include <unordered_map>
 
 namespace autoware::command_mode_decider
 {
@@ -36,7 +37,6 @@ using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using tier4_system_msgs::msg::CommandModeRequest;
 using tier4_system_msgs::msg::CommandModeStatus;
-using tier4_system_msgs::msg::CommandModeStatusItem;
 using tier4_system_msgs::srv::ChangeAutowareControl;
 using tier4_system_msgs::srv::ChangeOperationMode;
 using tier4_system_msgs::srv::RequestMrm;
@@ -80,7 +80,7 @@ private:
   rclcpp::Publisher<MrmState>::SharedPtr pub_mrm_state_;
 
   bool is_modes_ready_;
-  std::unordered_map<std::string, CommandModeStatusItem> command_mode_status_;
+  CommandModeStatusWrapper command_mode_status_;
   std::optional<rclcpp::Time> command_mode_request_stamp_;
 
   struct DeciderModeStatus
