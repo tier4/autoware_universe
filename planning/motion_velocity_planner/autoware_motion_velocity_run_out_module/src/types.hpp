@@ -15,8 +15,6 @@
 #ifndef TYPES_HPP_
 #define TYPES_HPP_
 
-#include "parameters.hpp"
-
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <rclcpp/time.hpp>
 
@@ -68,13 +66,16 @@ struct ObjectCornerFootprint
   double time_step{};
 };
 
-/// @brief footprint intersection with the corresponding time (for ego and the object) and position
+/// @brief footprint intersection with the corresponding time (for ego and the object), position, and angle
 struct FootprintIntersection
 {
   double ego_time{};
   double object_time{};
   universe_utils::Point2d intersection;
   IntersectionPosition position;
+  double yaw_diff{};  // [rad] yaw difference between ego and the object at the intersection
+  double ego_vel{};  // [m/s] ego velocity at the intersection
+  double vel_diff{};  // [m/s] velocity difference between ego and the object at the intersection
 };
 
 /// @brief a set of footprint intersections between ego and a specific object
@@ -121,14 +122,14 @@ struct TrajectoryCornerFootprint
 };
 
 /// @brief the time interval where a vehicle overlaps the path of another vehicle
-struct TimeCollisionInterval
+struct TimeOverlapInterval
 {
   double from;
   double to;
   FootprintIntersection first_intersection;
   FootprintIntersection last_intersection;
-  TimeCollisionInterval() = delete;
-  TimeCollisionInterval(
+  TimeOverlapInterval() = delete;
+  TimeOverlapInterval(
     const double from_, const double to_, FootprintIntersection first_intersection_,
     FootprintIntersection last_intersection_)
   : from(from_),
@@ -138,21 +139,21 @@ struct TimeCollisionInterval
   {
   }
 
-  [[nodiscard]] bool precedes(const TimeCollisionInterval & o, const double tolerance = 0.0) const
+  [[nodiscard]] bool precedes(const TimeOverlapInterval & o, const double tolerance = 0.0) const
   {
     return to + tolerance < o.from;
   }
-  [[nodiscard]] bool succeeds(const TimeCollisionInterval & o, const double tolerance = 0.0) const
+  [[nodiscard]] bool succeeds(const TimeOverlapInterval & o, const double tolerance = 0.0) const
   {
     return from > o.to + tolerance;
   }
-  [[nodiscard]] bool overlaps(const TimeCollisionInterval & o, const double tolerance = 0.0) const
+  [[nodiscard]] bool overlaps(const TimeOverlapInterval & o, const double tolerance = 0.0) const
   {
     return !precedes(o, tolerance) && !succeeds(o, tolerance) && !o.precedes(*this, tolerance) &&
            !o.succeeds(*this, tolerance);
   };
 
-  void expand(const TimeCollisionInterval & o)
+  void expand(const TimeOverlapInterval & o)
   {
     if (o.from < from) {
       from = o.from;
@@ -165,7 +166,7 @@ struct TimeCollisionInterval
   }
 };
 
-inline std::ostream & operator<<(std::ostream & os, const TimeCollisionInterval & i)
+inline std::ostream & operator<<(std::ostream & os, const TimeOverlapInterval & i)
 {
   std::stringstream ss;
   ss << std::setprecision(3) << "[" << i.from << ", " << i.to << "]";
@@ -177,41 +178,16 @@ enum CollisionType { pass_first_no_collision, pass_first_collision, collision, n
 /// @brief Collision between ego and an object with the corresponding time intervals and type
 struct Collision
 {
-  double enter_time_margin{};
-  double exit_time_margin{};
-  TimeCollisionInterval ego_time_interval;
-  TimeCollisionInterval object_time_interval;
-  CollisionType type;
+  TimeOverlapInterval ego_time_interval;
+  TimeOverlapInterval object_time_interval;
+  CollisionType type{};
+  double ego_collision_time{};  // [s] predicted time of the collision for ego (only used when type is 'collision')
   std::string explanation;
 
   Collision(
-    const TimeCollisionInterval & ego, const TimeCollisionInterval & object,
-    const Parameters & params)
-  : ego_time_interval(ego), object_time_interval(object)
-  {
-    // TODO(Maxime): move to collision.cpp
-    if (
-      params.enable_passing_collisions && ego.from < object.from && ego.overlaps(object) &&
-      ego.from + params.passing_collisions_time_margin < object.from &&
-      ego.to - ego.from <= params.passing_max_overlap_duration) {
-      type = pass_first_collision;
-      enter_time_margin = object.from - ego.from;
-      std::stringstream ss;
-      ss << std::setprecision(2) << "pass first collision since ego arrives first (" << ego.from
-         << " < " << object.from << "), including with margin ("
-         << params.passing_collisions_time_margin << ") and ego overlap bellow max ("
-         << ego.to - ego.from << " < " << params.passing_max_overlap_duration << ")";
-      explanation = ss.str();
-    } else if (ego.overlaps(object)) {
-      type = collision;
-      enter_time_margin = object.to - ego.from;
-    } else if (ego.to < object.from) {
-      type = pass_first_no_collision;
-      enter_time_margin = ego.to - object.from;
-    } else {
-      type = no_collision;
-    }
-  }
+    TimeOverlapInterval ego, TimeOverlapInterval object)
+  : ego_time_interval(std::move(ego)), object_time_interval(std::move(object))
+  {}
 };
 /// @brief Decision type
 enum DecisionType { stop, slowdown, nothing };

@@ -24,8 +24,10 @@
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware/universe_utils/math/normalization.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
 #include <magic_enum.hpp>
+#include <tf2/utils.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_planning_msgs/msg/detail/trajectory_point__struct.hpp>
@@ -70,7 +72,7 @@ inline FootprintIntersection calculate_footprint_intersection(
   const auto & ego_traj_from = ego_trajectory[ego_trajectory_index];
   const auto & ego_traj_to = ego_trajectory[ego_trajectory_index + 1];
 
-  const auto object_segment_length = boost::geometry::length(object_segment);
+  const auto object_segment_length = static_cast<double>(boost::geometry::length(object_segment));
   const auto object_segment_intersection_ratio =
     object_segment_length > 1e-3
       ? boost::geometry::distance(object_segment.first, intersection_point) / object_segment_length
@@ -90,37 +92,53 @@ inline FootprintIntersection calculate_footprint_intersection(
   footprint_intersection.ego_time = interpolation::lerp(
     rclcpp::Duration(ego_traj_from.time_from_start).seconds(),
     rclcpp::Duration(ego_traj_to.time_from_start).seconds(),
-    static_cast<double>(ego_segment_intersection_ratio));
+    ego_segment_intersection_ratio);
+  const auto ego_yaw = interpolation::lerp(tf2::getYaw(ego_traj_from.pose.orientation), tf2::getYaw(ego_traj_to.pose.orientation), ego_segment_intersection_ratio);
+  const auto obj_yaw = std::atan2(object_segment.second.y() - object_segment.first.y(), object_segment.second.x() - object_segment.first.x());
+  footprint_intersection.yaw_diff = autoware::universe_utils::normalizeRadian(ego_yaw - obj_yaw);
+  footprint_intersection.ego_vel = interpolation::lerp(ego_traj_from.longitudinal_velocity_mps, ego_traj_to.longitudinal_velocity_mps, ego_segment_intersection_ratio);
+  const auto obj_vel = object_segment_length / (object_segment_times.second - object_segment_times.first);
+  footprint_intersection.vel_diff = footprint_intersection.ego_vel - obj_vel;
   footprint_intersection.object_time = interpolation::lerp(
     object_segment_times.first, object_segment_times.second,
-    static_cast<double>(object_segment_intersection_ratio));
+    object_segment_intersection_ratio);
   footprint_intersection.position = ego_query_result.second.first;
   return footprint_intersection;
 }
 
-/// @brief calculate the time along the trajectory closest to the given point.
+/// @brief calculate the interpolated trajectory point closest to the given position
+/// @details the pose (position + orientation), time from start, and velocities are interpolated
 /// @param [in] trajectory trajectory with time information
-/// @param [in] p target point
-/// @param [in] longitudinal_offset [m] arc length offset for which to calculate the time (default
-/// to 0)
-inline double calculate_closest_interpolated_time(
+/// @param [in] p target position
+/// @param [in] longitudinal_offset [m] arc length offset for which to calculate the interpolation (default to 0)
+inline autoware_planning_msgs::msg::TrajectoryPoint calculate_closest_interpolated_point(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
   const universe_utils::Point2d & p, const double longitudinal_offset = 0.0)
 {
+  autoware_planning_msgs::msg::TrajectoryPoint trajectory_point;
   geometry_msgs::msg::Point pt;
   pt.x = p.x();
   pt.y = p.y();
   const auto arc_length = motion_utils::calcSignedArcLength(trajectory, 0, pt);
-  const auto baselink_arc_length = arc_length - longitudinal_offset;
-  const auto pose = motion_utils::calcInterpolatedPose(trajectory, baselink_arc_length);
+  const auto offset_arc_length = arc_length - longitudinal_offset;
+  const auto pose = motion_utils::calcInterpolatedPose(trajectory, offset_arc_length);
+  trajectory_point.pose = pose;
   const auto segment_idx = motion_utils::findNearestSegmentIndex(trajectory, pose.position);
   const auto segment_length =
     universe_utils::calcDistance2d(trajectory[segment_idx], trajectory[segment_idx + 1]);
   const auto point_distance = universe_utils::calcDistance2d(trajectory[segment_idx], pose);
-  return interpolation::lerp(
+  trajectory_point.time_from_start = rclcpp::Duration::from_seconds(
+  interpolation::lerp(
     rclcpp::Duration(trajectory[segment_idx].time_from_start).seconds(),
     rclcpp::Duration(trajectory[segment_idx + 1].time_from_start).seconds(),
-    point_distance / segment_length);
+    point_distance / segment_length));
+  trajectory_point.longitudinal_velocity_mps = 
+  static_cast<float>(
+  interpolation::lerp(
+    trajectory[segment_idx].longitudinal_velocity_mps,
+    trajectory[segment_idx + 1].longitudinal_velocity_mps,
+    point_distance / segment_length));
+  return trajectory_point;
 }
 
 /// @brief Calculates intersections between a predicted object's corner linestring and the ego
@@ -136,7 +154,7 @@ inline std::vector<FootprintIntersection> calculate_intersections(
   const double ls_time_step)
 {
   std::vector<FootprintIntersection> intersections;
-  if (ls.empty()) {
+  if (ls.size() < 2) {
     return intersections;
   }
   const auto front_inside_front_polygon =
@@ -146,8 +164,14 @@ inline std::vector<FootprintIntersection> calculate_intersections(
   if (front_inside_front_polygon || front_inside_rear_polygon) {
     FootprintIntersection fi;
     fi.intersection = ls.front();
-    fi.ego_time = calculate_closest_interpolated_time(
-      ego_trajectory, ls.front(), footprint.max_longitudinal_offset);
+    const auto ego_point = calculate_closest_interpolated_point(
+      ego_trajectory, fi.intersection, footprint.max_longitudinal_offset);
+    fi.ego_time = rclcpp::Duration(ego_point.time_from_start).seconds();
+    const auto obj_yaw = std::atan2(ls[1].y() - ls[0].y(), ls[1].x() - ls[2].x());
+    fi.yaw_diff = autoware::universe_utils::normalizeRadian(tf2::getYaw(ego_point.pose.orientation)- obj_yaw);
+    const auto obj_vel = boost::geometry::distance(ls[0], ls[1]) / ls_time_step;
+    fi.ego_vel = ego_point.longitudinal_velocity_mps;
+    fi.vel_diff = fi.ego_vel - obj_vel;
     fi.object_time = 0.0;
     if (front_inside_front_polygon && front_inside_rear_polygon)
       fi.position = inside_both_polygons;
@@ -192,10 +216,18 @@ inline std::vector<FootprintIntersection> calculate_intersections(
     boost::geometry::within(ls.back(), footprint.front_polygon);
   const auto back_inside_rear_polygon = boost::geometry::within(ls.back(), footprint.rear_polygon);
   if (back_inside_front_polygon || back_inside_rear_polygon) {
+    const auto & obj_from = ls[ls.size() - 2];
+    const auto & obj_to = ls.back();
     FootprintIntersection fi;
-    fi.intersection = ls.back();
-    fi.ego_time = calculate_closest_interpolated_time(
-      ego_trajectory, ls.back(), footprint.max_longitudinal_offset);
+    fi.intersection = obj_to;
+    const auto ego_point = calculate_closest_interpolated_point(
+      ego_trajectory, fi.intersection, footprint.max_longitudinal_offset);
+    fi.ego_time = rclcpp::Duration(ego_point.time_from_start).seconds();
+    const auto obj_yaw = std::atan2(obj_to.y() - obj_from.y(), obj_to.x() - obj_from.x());
+    fi.yaw_diff = autoware::universe_utils::normalizeRadian(tf2::getYaw(ego_point.pose.orientation)- obj_yaw);
+    fi.ego_vel = ego_point.longitudinal_velocity_mps;
+    const auto obj_vel = boost::geometry::distance(obj_from, obj_to) / (ls_time_step);
+    fi.vel_diff = fi.ego_vel - obj_vel;
     fi.object_time = (static_cast<double>(ls.size()) - 1.0) * ls_time_step;
     if (back_inside_front_polygon && back_inside_rear_polygon)
       fi.position = inside_both_polygons;
@@ -208,12 +240,13 @@ inline std::vector<FootprintIntersection> calculate_intersections(
   return intersections;
 }
 
-struct TimeCollisionIntervalPair
+/// @brief time intervals for ego and the object when their predicted paths overlap
+struct TimeOverlapIntervalPair
 {
-  TimeCollisionInterval ego;
-  TimeCollisionInterval object;
+  TimeOverlapInterval ego;
+  TimeOverlapInterval object;
 
-  TimeCollisionIntervalPair(TimeCollisionInterval e, TimeCollisionInterval o)
+  TimeOverlapIntervalPair(TimeOverlapInterval e, TimeOverlapInterval o)
   : ego(std::move(e)), object(std::move(o))
   {
   }
@@ -222,10 +255,11 @@ struct TimeCollisionIntervalPair
 /// @brief group the intersections into overlap intervals of increasing object time
 /// @param intersections intersection points calculated between one object footprint linestring and
 /// the ego footprint
-inline std::vector<TimeCollisionIntervalPair> calculate_overlap_intervals(
+/// @return the corresponding overlap time intervals for both ego and the object
+inline std::vector<TimeOverlapIntervalPair> calculate_overlap_intervals(
   std::vector<FootprintIntersection> intersections)
 {
-  std::vector<TimeCollisionIntervalPair> overlap_intervals;
+  std::vector<TimeOverlapIntervalPair> overlap_intervals;
   if (intersections.empty()) {
     return overlap_intervals;
   }
@@ -241,7 +275,7 @@ inline std::vector<TimeCollisionIntervalPair> calculate_overlap_intervals(
   bool overlap_rear =
     (first_position == inside_rear_polygon) || (first_position == inside_both_polygons);
   const auto create_overlap = [&](const size_t entering_id, const size_t exiting_id) {
-    TimeCollisionInterval object_interval(
+    TimeOverlapInterval object_interval(
       intersections[entering_id].object_time, intersections[exiting_id].object_time,
       intersections[entering_id], intersections[exiting_id]);
     auto ego_entering = intersections[entering_id];
@@ -255,7 +289,7 @@ inline std::vector<TimeCollisionIntervalPair> calculate_overlap_intervals(
         ego_exiting = intersection;
       }
     }
-    TimeCollisionInterval ego_interval(
+    TimeOverlapInterval ego_interval(
       ego_entering.ego_time, ego_exiting.ego_time, ego_entering, ego_exiting);
     overlap_intervals.emplace_back(ego_interval, object_interval);
   };
@@ -280,13 +314,62 @@ inline std::vector<TimeCollisionIntervalPair> calculate_overlap_intervals(
   return overlap_intervals;
 }
 
+/// @brief calculate a collision from the time when the trajectories of ego and an object overlap
+/// @return a Collision object with the collision type and predicted collision time
+inline Collision calculate_collision(
+    const TimeOverlapInterval & ego, const TimeOverlapInterval & object,
+    const Parameters & params)
+  {
+    Collision c(ego, object);
+    if (
+      params.enable_passing_collisions && ego.from < object.from && ego.overlaps(object) &&
+      ego.from + params.passing_collisions_time_margin < object.from &&
+      ego.to - ego.from <= params.passing_max_overlap_duration) {
+      c.type = pass_first_collision;
+      std::stringstream ss;
+      ss << std::setprecision(2) << "pass first collision since ego arrives first (" << ego.from
+         << " < " << object.from << "), including with margin ("
+         << params.passing_collisions_time_margin << ") and ego overlap bellow max ("
+         << ego.to - ego.from << " < " << params.passing_max_overlap_duration << ")";
+      c.explanation = ss.str();
+    } else if (ego.overlaps(object)) {
+      // if going in the same direction
+      if(-M_PI_4 < ego.first_intersection.yaw_diff && ego.first_intersection.yaw_diff < M_PI_4) {
+        if(ego.first_intersection.vel_diff < 0.0) {  // object is faster than ego
+          c.explanation = " no collision will happen because object is faster and enter first";
+          c.type = no_collision;
+        } else {
+          c.explanation = " v_diff = " + std::to_string(ego.first_intersection.vel_diff);
+          c.type = collision;
+          // adjust the collision time based on the velocity difference
+          const auto time_margin = ego.first_intersection.ego_time - ego.first_intersection.object_time;
+          const auto catchup_time = ego.first_intersection.ego_vel * time_margin / ego.first_intersection.vel_diff;
+          c.ego_collision_time = ego.first_intersection.ego_time + catchup_time;
+        }
+      // if going in opposite directions
+      } else if(M_PI - M_PI_4 < ego.first_intersection.yaw_diff && ego.first_intersection.yaw_diff < M_PI + M_PI_4) {
+        // TODO(Maxime): do we need to thandle the opposite direction differently ?
+        c.type = collision;
+        c.ego_collision_time = ego.first_intersection.ego_time;
+      } else {
+        c.type = collision;
+        c.ego_collision_time = ego.first_intersection.ego_time;
+      }
+    } else if (ego.to < object.from) {
+      c.type = pass_first_no_collision;
+    } else {
+      c.type = no_collision;
+    }
+    return c;
+  }
+
 /// @brief Calculates collisions based on overlap intervals.
 ///
 /// @param[in] intervals A vector of time collision interval pairs.
 /// @param[in] params The parameters for collision calculation.
 /// @return A vector of collisions.
 inline std::vector<Collision> calculate_interval_collisions(
-  std::vector<TimeCollisionIntervalPair> intervals, const Parameters & params)
+  std::vector<TimeOverlapIntervalPair> intervals, const Parameters & params)
 {
   std::vector<Collision> collisions;
   if (intervals.empty()) {
@@ -294,22 +377,22 @@ inline std::vector<Collision> calculate_interval_collisions(
   }
   std::sort(
     intervals.begin(), intervals.end(),
-    [&](const TimeCollisionIntervalPair & i1, const TimeCollisionIntervalPair & i2) {
+    [&](const TimeOverlapIntervalPair & i1, const TimeOverlapIntervalPair & i2) {
       return i1.object.from < i2.object.from;
     });
-  TimeCollisionInterval object_combined = intervals.front().object;
-  TimeCollisionInterval ego_combined = intervals.front().ego;
+  TimeOverlapInterval object_combined = intervals.front().object;
+  TimeOverlapInterval ego_combined = intervals.front().ego;
   for (const auto & interval : intervals) {
     if (interval.object.overlaps(object_combined, params.time_overlap_tolerance)) {
       object_combined.expand(interval.object);
       ego_combined.expand(interval.ego);
     } else {
-      collisions.emplace_back(ego_combined, object_combined, params);
+      collisions.push_back(calculate_collision(ego_combined, object_combined, params));
       object_combined = interval.object;
       ego_combined = interval.ego;
     }
   }
-  collisions.emplace_back(ego_combined, object_combined, params);
+  collisions.push_back(calculate_collision(ego_combined, object_combined, params));
   return collisions;
 }
 
@@ -330,7 +413,7 @@ inline std::vector<Collision> calculate_footprint_collisions(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & ego_trajectory,
   const Parameters & params)
 {
-  std::vector<TimeCollisionIntervalPair> all_overlap_intervals;
+  std::vector<TimeOverlapIntervalPair> all_overlap_intervals;
   for (const auto & corner_ls : object_footprint.corner_footprint.corner_linestrings) {
     const std::vector<FootprintIntersection> footprint_intersections =
       calculate_intersections(corner_ls, ego_footprint, ego_trajectory, object_footprint.time_step);

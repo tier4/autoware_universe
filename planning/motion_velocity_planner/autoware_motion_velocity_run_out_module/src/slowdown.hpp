@@ -66,10 +66,14 @@ inline std::optional<geometry_msgs::msg::Point> calculate_stop_position(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
   const Parameters & params)
 {
+  const auto max_time = rclcpp::Duration(trajectory.back().time_from_start).seconds();
   std::optional<geometry_msgs::msg::Point> stop_position;
   auto & current_decision = history.decisions.back();
   if (current_decision.type == stop) {
-    const auto t_coll = current_decision.collision->ego_time_interval.from;
+    const auto t_coll = current_decision.collision->ego_collision_time;
+    if(t_coll > max_time) {
+      return stop_position;
+    }
     const auto t_stop = std::max(0.0, t_coll);
     const auto base_link_point = interpolated_point_at_time(trajectory, t_stop);
     auto stop_point_length = motion_utils::calcSignedArcLength(trajectory, 0, base_link_point) -
@@ -106,7 +110,7 @@ inline std::optional<SlowdownInterval> calculate_slowdown_interval(
   std::optional<SlowdownInterval> interval;
   auto & current_decision = history.decisions.back();
   if (current_decision.type == slowdown) {
-    const auto t_collision = current_decision.collision->ego_time_interval.from;
+    const auto t_collision = current_decision.collision->ego_collision_time;
     const auto p_collision = interpolated_point_at_time(trajectory, t_collision);
     const auto min_slow_arc_length = planner_data.current_odometry.twist.twist.linear.x * 0.1;
     auto from_arc_length = std::max(

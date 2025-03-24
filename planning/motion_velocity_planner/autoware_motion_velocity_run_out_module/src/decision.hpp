@@ -36,8 +36,8 @@ inline void update_decision(std::optional<Decision> & decision_to_update, const 
   const auto not_set_yet = !decision_to_update;
   const auto same_decision_but_earlier =
     decision_to_update && (decision_to_update->type == decision.type &&
-                           decision.collision->ego_time_interval.from <
-                             decision_to_update->collision->ego_time_interval.from);
+                           decision.collision->ego_collision_time <
+                             decision_to_update->collision->ego_collision_time);
   const auto higher_priority_decision =
     decision_to_update && ((decision_to_update->type == slowdown && decision.type == stop) ||
                            (decision_to_update->type == nothing && decision.type != nothing));

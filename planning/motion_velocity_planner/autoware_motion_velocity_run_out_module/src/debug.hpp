@@ -129,6 +129,8 @@ inline MarkerArray make_debug_object_markers(const std::vector<Object> & objects
   ss << std::setw(20) << "ego_time_interval";
   ss << "|";
   ss << std::setw(20) << "object_time_interval";
+  ss << "|";
+  ss << std::setw(20) << "ego_collision_time";
   ss << "\n";
   for (const auto & o : objects) {
     for (const auto & col : o.collisions) {
@@ -139,6 +141,7 @@ inline MarkerArray make_debug_object_markers(const std::vector<Object> & objects
       if (col.type == no_collision) ss << std::setw(10) << "-|";
       ss << std::setw(20) << col.ego_time_interval << "|";
       ss << std::setw(20) << col.object_time_interval << "|";
+      ss << std::setw(20) << col.ego_collision_time << "|";
       ss << std::setw(20) << col.explanation;
       ss << "\n";
     }
