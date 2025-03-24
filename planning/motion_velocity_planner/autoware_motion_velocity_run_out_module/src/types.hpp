@@ -244,36 +244,6 @@ struct DecisionHistory
 struct ObjectDecisionsTracker
 {
   std::unordered_map<std::string, DecisionHistory> history_per_object;
-  /// @brief remove outdated decisions
-  void remove_outdated(const rclcpp::Time & now, const double outdated_duration)
-  {
-    for (auto & [_, history] : history_per_object) {
-      history.remove_outdated(now, outdated_duration);
-    }
-  }
-  /// @brief update objects that did not have a decision at the given time
-  void update_objects_without_decisions(const rclcpp::Time & now)
-  {
-    for (auto & [_, history] : history_per_object) {
-      if (!history.times.empty() && history.times.back() != now.seconds()) {
-        history.times.push_back(now.seconds());
-        history.decisions.emplace_back();
-      }
-    }
-    // remove histories where all decisions are "nothing"
-    constexpr auto nothing_no_collision = [](const Decision & decision) {
-      return decision.type == nothing &&
-             (!decision.collision.has_value() || decision.collision->type == no_collision);
-    };
-    for (auto it = history_per_object.begin(); it != history_per_object.end();) {
-      const auto & history = it->second;
-      if (std::all_of(history.decisions.begin(), history.decisions.end(), nothing_no_collision)) {
-        it = history_per_object.erase(it);
-      } else {
-        ++it;
-      }
-    }
-  }
   /// @brief get the decision history of the given object
   std::optional<DecisionHistory> get(const std::string & object) const
   {

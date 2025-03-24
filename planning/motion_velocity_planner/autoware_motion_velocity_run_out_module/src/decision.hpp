@@ -113,12 +113,10 @@ inline bool condition_to_stop(
     }
     // -1 because the reverse iterator has an offset compared to base iterator
     const auto i = std::distance(history.decisions.begin(), most_recent_collision_it.base()) - 1;
-    // TODO(Maxime): may be off by one time step
     const auto time_since_last_collision = current_time.seconds() - history.times[i];
     if (time_since_last_collision < params.stop_off_time_buffer) {
       explanation << "keeping stop since last collision found " << time_since_last_collision
-                  << "s ago (" << params.stop_off_time_buffer << "s buffer)"
-                  << most_recent_collision_it->type;
+                  << "s ago (" << params.stop_off_time_buffer << "s buffer)";
       return true;
     }
     explanation << "removing stop since last collision found " << time_since_last_collision
@@ -146,7 +144,7 @@ inline bool condition_to_slowdown(
       return true;
     }
     explanation << "not slowing down since only finding collisions for "
-                << consecutive_time_with_collision << "s (" << params.stop_on_time_buffer
+                << consecutive_time_with_collision << "s (" << params.preventive_slowdown_on_time_buffer
                 << "s buffer)";
     return false;
   }
@@ -155,21 +153,21 @@ inline bool condition_to_slowdown(
     const auto most_recent_collision_it =
       std::find_if(history.decisions.rbegin(), history.decisions.rend(), is_collision);
     if (most_recent_collision_it == history.decisions.rend()) {
-      explanation << "removing stop since no collision in history";
+      explanation << "removing slowdown since no collision in history";
       return false;
     }
     // -1 because the reverse iterator has an offset compared to base iterator
     const auto i = std::distance(history.decisions.begin(), most_recent_collision_it.base()) - 1;
     // TODO(Maxime): may be off by one time step
     const auto time_since_last_collision = current_time.seconds() - history.times[i];
-    if (time_since_last_collision < params.stop_off_time_buffer) {
+    if (time_since_last_collision < params.preventive_slowdown_off_time_buffer) {
       explanation << "keeping slowdown since last collision found " << time_since_last_collision
-                  << "s ago (" << params.stop_off_time_buffer << "s buffer)"
+                  << "s ago (" << params.preventive_slowdown_off_time_buffer << "s buffer)"
                   << most_recent_collision_it->type;
       return true;
     }
     explanation << "removing slowdown since last collision found " << time_since_last_collision
-                << "s ago (" << params.stop_off_time_buffer << "s buffer)";
+                << "s ago (" << params.preventive_slowdown_off_time_buffer << "s buffer)";
     return false;
   }
   return false;
@@ -187,6 +185,30 @@ inline DecisionType calculate_decision_type(
     return slowdown;
   }
   return nothing;
+}
+
+/// @brief update objects that did not have a decision at the given time
+inline void update_objects_without_decisions(ObjectDecisionsTracker & decisions_tracker, const rclcpp::Time & now)
+{
+  for (auto & [_, history] : decisions_tracker.history_per_object) {
+    if (!history.times.empty() && history.times.back() != now.seconds()) {
+      history.times.push_back(now.seconds());
+      history.decisions.emplace_back();
+    }
+  }
+  // remove histories where all decisions are "nothing"
+  constexpr auto nothing_and_no_collision = [](const Decision & decision) {
+    return decision.type == nothing &&
+            (!decision.collision.has_value() || decision.collision->type == no_collision);
+  };
+  for (auto it = decisions_tracker.history_per_object.begin(); it != decisions_tracker.history_per_object.end();) {
+    const auto & history = it->second;
+    if (std::all_of(history.decisions.begin(), history.decisions.end(), nothing_and_no_collision)) {
+      it = decisions_tracker.history_per_object.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 /// @brief calculate current decisions for the objects and update the decision tracker accordingly
 inline void calculate_decisions(
@@ -208,8 +230,17 @@ inline void calculate_decisions(
       decision_history.add_decision(now.seconds(), *object_decision);
     }
   }
-  decisions_tracker.remove_outdated(now, params.max_history_duration);
-  decisions_tracker.update_objects_without_decisions(now);
+  // handle objects in the history which did not get updated this iteration
+  for(auto & [_, history] : decisions_tracker.history_per_object) {
+    if (!history.times.empty() && history.times.back() != now.seconds()) {
+        Decision d;
+        std::stringstream explanation;
+        d.type = calculate_decision_type(no_collision, history, now, explanation, time_to_stop, params);
+        history.add_decision(now.seconds(), d);
+    }
+    history.remove_outdated(now, params.max_history_duration);
+  }
+  update_objects_without_decisions(decisions_tracker, now);
 }
 }  // namespace autoware::motion_velocity_planner::run_out
 

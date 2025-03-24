@@ -56,6 +56,17 @@ inline geometry_msgs::msg::Point interpolated_point_at_time(
     prev_it->pose.position, std::next(prev_it)->pose.position, ratio);
 }
 
+/// @brief get the most recent collision in the history
+inline std::optional<Decision> get_most_recent_decision_with_collision(const DecisionHistory & history) {
+  const auto most_recent_decision_it = std::find_if(history.decisions.rbegin(), history.decisions.rend(), [&](const Decision & d) {
+    return d.collision.has_value();
+  });
+  if(most_recent_decision_it != history.decisions.rend()) {
+    return *most_recent_decision_it;
+  }
+  return std::nullopt;
+}
+
 /// @brief calculate the stop for the given decision history
 /// @param [inout] history decision history
 /// @param [in] trajectory ego trajectory starting from the current ego pose
@@ -69,7 +80,11 @@ inline std::optional<geometry_msgs::msg::Point> calculate_stop_position(
   const auto max_time = rclcpp::Duration(trajectory.back().time_from_start).seconds();
   std::optional<geometry_msgs::msg::Point> stop_position;
   auto & current_decision = history.decisions.back();
-  if (current_decision.type == stop) {
+  const auto most_recent_decision_with_collision = get_most_recent_decision_with_collision(history);
+  if (current_decision.type == stop && most_recent_decision_with_collision) {
+    if(!current_decision.collision) {
+      return most_recent_decision_with_collision->stop_point;
+    }
     const auto t_coll = current_decision.collision->ego_collision_time;
     if(t_coll > max_time) {
       return stop_position;
@@ -109,7 +124,11 @@ inline std::optional<SlowdownInterval> calculate_slowdown_interval(
 {
   std::optional<SlowdownInterval> interval;
   auto & current_decision = history.decisions.back();
+  const auto most_recent_decision_with_collision = get_most_recent_decision_with_collision(history);
   if (current_decision.type == slowdown) {
+    if(!current_decision.collision) {
+      // TODO(Maxime): calculate slowdown interval when using time buffer
+    }
     const auto t_collision = current_decision.collision->ego_collision_time;
     const auto p_collision = interpolated_point_at_time(trajectory, t_collision);
     const auto min_slow_arc_length = planner_data.current_odometry.twist.twist.linear.x * 0.1;
