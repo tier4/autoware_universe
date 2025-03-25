@@ -42,7 +42,6 @@
   <depend>autoware_frenet_planner</depend>
   <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_interpolation</depend>
-  <depend>autoware_lane_departure_checker</depend>
   <depend>autoware_lanelet2_extension</depend>
   <depend>autoware_motion_utils</depend>
   <depend>autoware_object_recognition_utils</depend>
