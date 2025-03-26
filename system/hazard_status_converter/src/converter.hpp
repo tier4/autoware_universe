@@ -21,6 +21,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_system_msgs/msg/hazard_status_stamped.hpp>
+#include <tier4_external_api_msgs/msg/emergency.hpp>
 
 #include <unordered_map>
 #include <unordered_set>
@@ -41,6 +42,8 @@ private:
   void on_update(DiagGraph::ConstSharedPtr graph);
   diagnostic_graph_utils::DiagGraphSubscription sub_graph_;
   rclcpp::Publisher<HazardStatusStamped>::SharedPtr pub_hazard_;
+  autoware_utils::InterProcessPollingSubscriber<tier4_external_api_msgs::msg::Emergency>
+    sub_external_emergency_{this, "~/input/external_emergency"};
 
   struct ModeSubgraph
   {
