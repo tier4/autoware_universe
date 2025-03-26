@@ -141,12 +141,14 @@ inline MarkerArray make_debug_object_markers(const std::vector<Object> & objects
       if (col.type == no_collision) ss << std::setw(10) << "-|";
       ss << std::setw(20) << col.ego_time_interval << "|";
       ss << std::setw(20) << col.object_time_interval << "|";
-      ss << std::setw(20) << col.ego_collision_time << "|";
+      ss << std::setw(20)
+         << (col.type == no_collision ? "-" : std::to_string(col.ego_collision_time)) << "|";
       ss << std::setw(20) << col.explanation;
       ss << "\n";
     }
   }
   m.text = ss.str();
+  std::cout << ss.str() << std::endl;
   markers.markers.push_back(m);
   m.ns = "collisions_points";
   m.header.frame_id = "map";

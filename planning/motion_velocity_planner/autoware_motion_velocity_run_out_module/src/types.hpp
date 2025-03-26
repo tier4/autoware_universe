@@ -15,6 +15,7 @@
 #ifndef TYPES_HPP_
 #define TYPES_HPP_
 
+#include <autoware/motion_velocity_planner_common_universe/velocity_planning_result.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <rclcpp/time.hpp>
 
@@ -66,7 +67,8 @@ struct ObjectCornerFootprint
   double time_step{};
 };
 
-/// @brief footprint intersection with the corresponding time (for ego and the object), position, and angle
+/// @brief footprint intersection with the corresponding time (for ego and the object), position,
+/// and angle
 struct FootprintIntersection
 {
   double ego_time{};
@@ -74,7 +76,7 @@ struct FootprintIntersection
   universe_utils::Point2d intersection;
   IntersectionPosition position;
   double yaw_diff{};  // [rad] yaw difference between ego and the object at the intersection
-  double ego_vel{};  // [m/s] ego velocity at the intersection
+  double ego_vel{};   // [m/s] ego velocity at the intersection
   double vel_diff{};  // [m/s] velocity difference between ego and the object at the intersection
 };
 
@@ -181,13 +183,14 @@ struct Collision
   TimeOverlapInterval ego_time_interval;
   TimeOverlapInterval object_time_interval;
   CollisionType type{};
-  double ego_collision_time{};  // [s] predicted time of the collision for ego (only used when type is 'collision')
+  double ego_collision_time{};  // [s] predicted time of the collision for ego (only used when type
+                                // is 'collision')
   std::string explanation;
 
-  Collision(
-    TimeOverlapInterval ego, TimeOverlapInterval object)
+  Collision(TimeOverlapInterval ego, TimeOverlapInterval object)
   : ego_time_interval(std::move(ego)), object_time_interval(std::move(object))
-  {}
+  {
+  }
 };
 /// @brief Decision type
 enum DecisionType { stop, slowdown, nothing };
@@ -196,7 +199,8 @@ struct Decision
 {
   std::optional<Collision> collision = std::nullopt;
   DecisionType type = nothing;
-  std::optional<geometry_msgs::msg::Point> stop_point;
+  std::optional<geometry_msgs::msg::Point> stop_point;  // stop point calculated from this decision
+  std::optional<SlowdownInterval> slowdown_interval;    // slowdown calculated from this decision
   std::string explanation;
 
   Decision() = default;
@@ -210,6 +214,7 @@ struct DecisionHistory
 {
   std::deque<Decision> decisions;
   std::deque<double> times;
+  std::optional<geometry_msgs::msg::Point> latest_stop;
 
   /// @brief remove outdated history, keeping at most one item above the max_history_duration
   void remove_outdated(const rclcpp::Time & now, const double max_history_duration)

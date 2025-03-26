@@ -57,18 +57,21 @@ inline geometry_msgs::msg::Point interpolated_point_at_time(
 }
 
 /// @brief get the most recent collision in the history
-inline std::optional<Decision> get_most_recent_decision_with_collision(const DecisionHistory & history) {
-  const auto most_recent_decision_it = std::find_if(history.decisions.rbegin(), history.decisions.rend(), [&](const Decision & d) {
-    return d.collision.has_value();
-  });
-  if(most_recent_decision_it != history.decisions.rend()) {
+inline std::optional<Decision> get_most_recent_decision_with_collision(
+  const DecisionHistory & history)
+{
+  const auto most_recent_decision_it = std::find_if(
+    history.decisions.rbegin(), history.decisions.rend(),
+    [&](const Decision & d) { return d.collision.has_value(); });
+  if (most_recent_decision_it != history.decisions.rend()) {
     return *most_recent_decision_it;
   }
   return std::nullopt;
 }
 
 /// @brief calculate the stop for the given decision history
-/// @param [inout] history decision history
+/// @param [inout] history decision history where the current decision may be updated with the
+/// calculated stop point
 /// @param [in] trajectory ego trajectory starting from the current ego pose
 /// @param [in] params module parameters
 /// @return stop point
@@ -82,11 +85,13 @@ inline std::optional<geometry_msgs::msg::Point> calculate_stop_position(
   auto & current_decision = history.decisions.back();
   const auto most_recent_decision_with_collision = get_most_recent_decision_with_collision(history);
   if (current_decision.type == stop && most_recent_decision_with_collision) {
-    if(!current_decision.collision) {
-      return most_recent_decision_with_collision->stop_point;
+    if (!current_decision.collision) {
+      const auto stop_point_length = motion_utils::calcSignedArcLength(
+        trajectory, 0, *most_recent_decision_with_collision->stop_point);
+      return motion_utils::calcInterpolatedPose(trajectory, stop_point_length).position;
     }
     const auto t_coll = current_decision.collision->ego_collision_time;
-    if(t_coll > max_time) {
+    if (t_coll > max_time) {
       return stop_position;
     }
     const auto t_stop = std::max(0.0, t_coll);
@@ -112,7 +117,8 @@ inline std::optional<geometry_msgs::msg::Point> calculate_stop_position(
 }
 
 /// @brief calculate the slowdown for the given decision history
-/// @param [inout] history decision history
+/// @param [inout] history decision history where the current decision may be updated with the
+/// calculated slowdown interval
 /// @param [in] trajectory ego trajectory starting from the current ego pose
 /// @param [in] planner_data planner data with deceleration limits
 /// @param [in] params module parameters
@@ -122,32 +128,33 @@ inline std::optional<SlowdownInterval> calculate_slowdown_interval(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
   const PlannerData & planner_data, const Parameters & params)
 {
-  std::optional<SlowdownInterval> interval;
   auto & current_decision = history.decisions.back();
   const auto most_recent_decision_with_collision = get_most_recent_decision_with_collision(history);
-  if (current_decision.type == slowdown) {
-    if(!current_decision.collision) {
-      // TODO(Maxime): calculate slowdown interval when using time buffer
-    }
-    const auto t_collision = current_decision.collision->ego_collision_time;
-    const auto p_collision = interpolated_point_at_time(trajectory, t_collision);
-    const auto min_slow_arc_length = planner_data.current_odometry.twist.twist.linear.x * 0.1;
-    auto from_arc_length = std::max(
-      min_slow_arc_length, motion_utils::calcSignedArcLength(trajectory, 0, p_collision) -
-                             params.preventive_slowdown_distance_buffer);
-    const auto p_slowdown =
-      motion_utils::calcInterpolatedPose(trajectory, from_arc_length).position;
-    // TODO(Maxime): add option to use decel limit (instead of comfortable decel)
-    // safe velocity that guarantees we can stop before the collision
-    const auto safe_velocity = std::sqrt(
-      2.0 * -planner_data.velocity_smoother_->getMinDecel() *
-      params.preventive_slowdown_distance_buffer);
-    // smooth velocity we can reach by smoothly decelerating to the slowdown point
-    const auto smooth_velocity = std::sqrt(
-      2.0 * -planner_data.velocity_smoother_->getMinDecel() *
-      planner_data.current_odometry.twist.twist.linear.x * from_arc_length);
-    interval.emplace(p_slowdown, p_collision, std::max({0.0, safe_velocity, smooth_velocity}));
+  if (current_decision.type != slowdown || !most_recent_decision_with_collision.has_value()) {
+    return std::nullopt;
   }
+  const auto t_collision = current_decision.collision->ego_collision_time;
+  const auto p_collision = current_decision.collision.has_value()
+                             ? interpolated_point_at_time(trajectory, t_collision)
+                             : most_recent_decision_with_collision->slowdown_interval->from;
+  const auto min_slow_arc_length = planner_data.current_odometry.twist.twist.linear.x * 0.1;
+  auto from_arc_length = std::max(
+    min_slow_arc_length, motion_utils::calcSignedArcLength(trajectory, 0, p_collision) -
+                           params.preventive_slowdown_distance_buffer);
+  const auto p_slowdown = motion_utils::calcInterpolatedPose(trajectory, from_arc_length).position;
+  // TODO(Maxime): add option to use decel limit (instead of comfortable decel)
+  // safe velocity that guarantees we can stop before the collision
+  // TODO(Maxime): smooth velocity does not work as expected ?
+  const auto safe_velocity = std::sqrt(
+    2.0 * -planner_data.velocity_smoother_->getMinDecel() *
+    params.preventive_slowdown_distance_buffer);
+  // smooth velocity we can reach by smoothly decelerating to the slowdown point
+  const auto smooth_velocity = std::sqrt(
+    2.0 * -planner_data.velocity_smoother_->getMinDecel() *
+    planner_data.current_odometry.twist.twist.linear.x * from_arc_length);
+  const SlowdownInterval interval{
+    p_slowdown, p_collision, std::max({0.0, safe_velocity, smooth_velocity})};
+  current_decision.slowdown_interval = interval;
   return interval;
 }
 
