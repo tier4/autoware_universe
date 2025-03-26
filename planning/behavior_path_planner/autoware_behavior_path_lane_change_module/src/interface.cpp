@@ -412,10 +412,14 @@ void LaneChangeInterface::updateSteeringFactorPtr(const BehaviorModuleOutput & o
   });
 
   const auto & lane_change_debug = module_type_->getDebugData();
+  const auto & velocity = status.lane_change_path.info.velocity;
   planning_factor_interface_->add(
     start_distance, finish_distance, status.lane_change_path.info.shift_line.start,
     status.lane_change_path.info.shift_line.end, planning_factor_direction,
-    utils::path_safety_checker::to_safety_factor_array(lane_change_debug.collision_check_objects));
+    utils::path_safety_checker::to_safety_factor_array(lane_change_debug.collision_check_objects),
+    true, velocity.prepare, velocity.lane_changing,
+    status.lane_change_path.info.shift_line.start_shift_length,
+    status.lane_change_path.info.shift_line.end_shift_length);
 }
 
 void LaneChangeInterface::updateSteeringFactorPtr(
@@ -428,11 +432,16 @@ void LaneChangeInterface::updateSteeringFactorPtr(
     return PlanningFactor::SHIFT_RIGHT;
   });
 
+  const auto status = module_type_->getLaneChangeStatus();
   const auto & lane_change_debug = module_type_->getDebugData();
+  const auto & velocity = status.lane_change_path.info.velocity;
   planning_factor_interface_->add(
     output.start_distance_to_path_change, output.finish_distance_to_path_change,
     selected_path.info.shift_line.start, selected_path.info.shift_line.end,
     planning_factor_direction,
-    utils::path_safety_checker::to_safety_factor_array(lane_change_debug.collision_check_objects));
+    utils::path_safety_checker::to_safety_factor_array(lane_change_debug.collision_check_objects),
+    true, velocity.prepare, velocity.lane_changing,
+    status.lane_change_path.info.shift_line.start_shift_length,
+    status.lane_change_path.info.shift_line.end_shift_length);
 }
 }  // namespace autoware::behavior_path_planner
