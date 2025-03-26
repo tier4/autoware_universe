@@ -26,7 +26,7 @@ class SubEcuInLaneStop04GSwitcher : public ControlCommandPlugin
 {
 public:
   std::string mode_name() const override { return "sub_ecu_in_lane_stop_0_4g"; }
-  std::string source_name() const override { return "sub_ecu_in_lane_stop_0_4g"; }
+  std::string source_name() const override { return "in_lane_stop"; }
   bool autoware_control() const override { return true; }
 };
 
