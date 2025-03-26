@@ -75,9 +75,10 @@ struct FootprintIntersection
   double object_time{};
   universe_utils::Point2d intersection;
   IntersectionPosition position;
-  double yaw_diff{};  // [rad] yaw difference between ego and the object at the intersection
-  double ego_vel{};   // [m/s] ego velocity at the intersection
-  double vel_diff{};  // [m/s] velocity difference between ego and the object at the intersection
+  double arc_length{};  // [m] arc length of the intersection along the ego trajectory
+  double yaw_diff{};    // [rad] yaw difference between ego and the object at the intersection
+  double ego_vel{};     // [m/s] ego velocity at the intersection
+  double vel_diff{};    // [m/s] velocity difference between ego and the object at the intersection
 };
 
 /// @brief a set of footprint intersections between ego and a specific object
