@@ -80,8 +80,10 @@ inline FootprintIntersection calculate_footprint_intersection(
   const auto ego_segment_length = static_cast<double>(boost::geometry::length(ego_segment));
   const auto ego_segment_offset =
     universe_utils::calcDistance2d(ego_segment.first, intersection_point);
-  footprint_intersection.arc_length =
-    motion_utils::calcSignedArcLength(ego_trajectory, 0, ego_trajectory_index) + ego_segment_offset;
+  geometry_msgs::msg::Point p;
+  p.x = intersection_point.x();
+  p.y = intersection_point.y();
+  footprint_intersection.arc_length = motion_utils::calcSignedArcLength(ego_trajectory, 0, p);
   const auto ego_segment_intersection_ratio =
     ego_segment_length > 1e-3 ? ego_segment_offset / ego_segment_length : 0.0;
 

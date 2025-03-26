@@ -28,6 +28,7 @@
 #include <geometry_msgs/msg/point.hpp>
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 namespace autoware::motion_velocity_planner::run_out
@@ -62,7 +63,7 @@ inline std::optional<Decision> get_most_recent_decision_with_collision(
 {
   const auto most_recent_decision_it = std::find_if(
     history.decisions.rbegin(), history.decisions.rend(),
-    [&](const Decision & d) { return d.collision.has_value(); });
+    [&](const Decision & d) { return d.type != nothing && d.collision.has_value(); });
   if (most_recent_decision_it != history.decisions.rend()) {
     return *most_recent_decision_it;
   }
@@ -81,18 +82,19 @@ inline std::optional<geometry_msgs::msg::Point> calculate_stop_position(
   const Parameters & params)
 {
   const auto max_time = rclcpp::Duration(trajectory.back().time_from_start).seconds();
-  std::optional<geometry_msgs::msg::Point> stop_position;
   auto & current_decision = history.decisions.back();
   const auto most_recent_decision_with_collision = get_most_recent_decision_with_collision(history);
   if (current_decision.type == stop && most_recent_decision_with_collision) {
-    if (!current_decision.collision) {
+    if (!current_decision.collision || current_decision.collision->type != collision) {
       const auto stop_point_length = motion_utils::calcSignedArcLength(
         trajectory, 0, *most_recent_decision_with_collision->stop_point);
-      return motion_utils::calcInterpolatedPose(trajectory, stop_point_length).position;
+      current_decision.stop_point =
+        motion_utils::calcInterpolatedPose(trajectory, stop_point_length).position;
+      return current_decision.stop_point;
     }
     const auto t_coll = current_decision.collision->ego_collision_time;
     if (t_coll > max_time) {
-      return stop_position;
+      return std::nullopt;
     }
     const auto t_stop = std::max(0.0, t_coll);
     const auto base_link_point = interpolated_point_at_time(trajectory, t_stop);
@@ -108,12 +110,11 @@ inline std::optional<geometry_msgs::msg::Point> calculate_stop_position(
             stop_point_length);
         }
       }
-      stop_position = motion_utils::calcInterpolatedPose(trajectory, stop_point_length).position;
-    } else {
-      stop_position = current_decision.stop_point;
+      current_decision.stop_point =
+        motion_utils::calcInterpolatedPose(trajectory, stop_point_length).position;
     }
   }
-  return stop_position;
+  return current_decision.stop_point;
 }
 
 /// @brief calculate the slowdown for the given decision history
