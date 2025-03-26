@@ -1427,21 +1427,16 @@ void GoalPlannerModule::setTurnSignalInfo(
 }
 
 void GoalPlannerModule::updateSteeringFactor(
-  const PullOverContextData & context_data, const std::array<Pose, 2> & pose,
+  [[maybe_unused]] const PullOverContextData & context_data, const std::array<Pose, 2> & pose,
   const std::array<double, 2> distance)
 {
   const uint16_t planning_factor_direction = std::invoke([&]() {
-    const auto turn_signal = calcTurnSignalInfo(context_data);
-    if (turn_signal.turn_signal.command == TurnIndicatorsCommand::ENABLE_LEFT) {
-      return PlanningFactor::SHIFT_LEFT;
-    } else if (turn_signal.turn_signal.command == TurnIndicatorsCommand::ENABLE_RIGHT) {
-      return PlanningFactor::SHIFT_RIGHT;
-    }
-    return PlanningFactor::NONE;
+    return left_side_parking_ ? PlanningFactor::SHIFT_LEFT : PlanningFactor::SHIFT_RIGHT;
   });
 
   planning_factor_interface_->add(
-    distance[0], distance[1], pose[0], pose[1], planning_factor_direction, SafetyFactorArray{});
+    distance[0], distance[1], pose[0], pose[1], planning_factor_direction,
+    utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check));
 }
 
 void GoalPlannerModule::decideVelocity(PullOverPath & pull_over_path)
