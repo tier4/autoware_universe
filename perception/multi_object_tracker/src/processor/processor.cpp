@@ -141,7 +141,7 @@ void TrackerProcessor::removeOldTracker(const rclcpp::Time & time)
 // This function removes overlapped trackers based on distance and IoU criteria
 void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
 {
-// Create sorted list with non-UNKNOWN objects first, then by measurement count
+  // Create sorted list with non-UNKNOWN objects first, then by measurement count
   std::vector<std::shared_ptr<Tracker>> sorted_list_tracker(
     list_tracker_.begin(), list_tracker_.end());
   std::sort(
@@ -153,9 +153,11 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
         return b_unknown;  // Put non-UNKNOWN objects first
       }
       if (a->getTotalMeasurementCount() != b->getTotalMeasurementCount()) {
-        return a->getTotalMeasurementCount() > b->getTotalMeasurementCount();  // Then sort by measurement count
+        return a->getTotalMeasurementCount() >
+               b->getTotalMeasurementCount();  // Then sort by measurement count
       }
-      return a->getElapsedTimeFromLastUpdate(time) < b->getElapsedTimeFromLastUpdate(time);  // Finally sort by elapsed time (smaller first)
+      return a->getElapsedTimeFromLastUpdate(time) <
+             b->getElapsedTimeFromLastUpdate(time);  // Finally sort by elapsed time (smaller first)
     });
 
   /* Iterate through the list of trackers */
