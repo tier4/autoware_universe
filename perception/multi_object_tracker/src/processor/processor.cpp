@@ -143,7 +143,7 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
 {
 // Create sorted list with non-UNKNOWN objects first, then by measurement count
   std::vector<std::shared_ptr<Tracker>> sorted_list_tracker(
-    list_tracker.begin(), list_tracker.end());
+    list_tracker_.begin(), list_tracker_.end());
   std::sort(
     sorted_list_tracker.begin(), sorted_list_tracker.end(),
     [](const std::shared_ptr<Tracker> & a, const std::shared_ptr<Tracker> & b) {
@@ -186,13 +186,13 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
       // If both trackers are UNKNOWN, delete the younger tracker
       // If one side of the tracker is UNKNOWN, delete UNKNOWN objects
       if (label1 == Label::UNKNOWN || label2 == Label::UNKNOWN) {
-        if (min_iou_for_unknown_object < iou) {
+        if (min_iou_for_unknown_object_ < iou) {
           if (label2 == Label::UNKNOWN) {
             delete_candidate_tracker = true;
           }
         }
       } else {  // If neither is UNKNOWN, delete the one with lower IOU.
-        if (min_iou < iou) {
+        if (min_iou_ < iou) {
           /* erase only when prioritized one has a measurement */
           delete_candidate_tracker = true;
         }
@@ -204,7 +204,7 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
           sorted_list_tracker[i]->getElapsedTimeFromLastUpdate(time) <=
           sorted_list_tracker[j]->getElapsedTimeFromLastUpdate(time)) {
           // Remove from original list_tracker
-          list_tracker.remove(sorted_list_tracker[j]);
+          list_tracker_.remove(sorted_list_tracker[j]);
           // Remove from sorted list
           sorted_list_tracker.erase(sorted_list_tracker.begin() + j);
           --j;
