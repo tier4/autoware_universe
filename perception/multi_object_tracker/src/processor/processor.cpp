@@ -20,6 +20,7 @@
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 
 #include <iterator>
+#include <chrono>
 
 using Label = autoware_perception_msgs::msg::ObjectClassification;
 
@@ -141,7 +142,11 @@ void TrackerProcessor::removeOldTracker(const rclcpp::Time & time)
 // This function removes overlapped trackers based on distance and IoU criteria
 void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
 {
-  // Create sorted list with non-UNKNOWN objects first, then by measurement count
+  auto start_total = std::chrono::high_resolution_clock::now();
+  
+  // Sorting phase timing
+  auto start_sort = std::chrono::high_resolution_clock::now();
+  
   std::vector<std::shared_ptr<Tracker>> sorted_list_tracker(
     list_tracker_.begin(), list_tracker_.end());
   std::sort(
@@ -150,7 +155,7 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
       bool a_unknown = (a->getHighestProbLabel() == Label::UNKNOWN);
       bool b_unknown = (b->getHighestProbLabel() == Label::UNKNOWN);
       if (a_unknown != b_unknown) {
-        return b_unknown;  // Put non-UNKNOWN objects first
+        return b_unknown;
       }
       if (a->getTotalMeasurementCount() != b->getTotalMeasurementCount()) {
         return a->getTotalMeasurementCount() >
@@ -159,6 +164,12 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
       return a->getElapsedTimeFromLastUpdate(time) <
              b->getElapsedTimeFromLastUpdate(time);  // Finally sort by elapsed time (smaller first)
     });
+
+  auto end_sort = std::chrono::high_resolution_clock::now();
+  auto sort_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_sort - start_sort);
+
+  // Loop phase timing
+  auto start_loop = std::chrono::high_resolution_clock::now();
 
   /* Iterate through the list of trackers */
   for (size_t i = 0; i < sorted_list_tracker.size(); ++i) {
@@ -216,6 +227,17 @@ void TrackerProcessor::removeOverlappedTracker(const rclcpp::Time & time)
       }
     }
   }
+
+  auto end_loop = std::chrono::high_resolution_clock::now();
+  auto loop_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_loop - start_loop);
+  
+  auto end_total = std::chrono::high_resolution_clock::now();
+  auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_total - start_total);
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("tracker_processor"),
+    "Timing (μs) - Sort: %ld, Loop: %ld, Total: %ld, List size: %ld",
+    sort_duration.count(), loop_duration.count(), total_duration.count(), sorted_list_tracker.size());
 }
 
 bool TrackerProcessor::isConfidentTracker(const std::shared_ptr<Tracker> & tracker) const

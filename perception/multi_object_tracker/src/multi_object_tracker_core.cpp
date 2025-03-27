@@ -278,7 +278,16 @@ void MultiObjectTracker::runProcess(
     // global nearest neighbor
     Eigen::MatrixXd score_matrix = data_association_->calcScoreMatrix(
       detected_objects, list_tracker);  // row : tracker, col : measurement
+
+    auto start_assign = std::chrono::high_resolution_clock::now();
     data_association_->assign(score_matrix, direct_assignment, reverse_assignment);
+    auto end_assign = std::chrono::high_resolution_clock::now();
+    auto assign_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_assign - start_assign);
+
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Data Association Timing (μs) - Assignment: %ld, Matrix size: %ldx%ld, Tracker list size: %ld",
+      assign_duration.count(), score_matrix.rows(), score_matrix.cols(), list_tracker.size());
 
     // Collect debug information - tracker list, existence probabilities, association results
     debugger_->collectObjectInfo(
