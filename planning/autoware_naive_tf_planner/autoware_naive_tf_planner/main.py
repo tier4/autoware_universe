@@ -407,67 +407,30 @@ class NaiveTFInferenceNode(Node):
         data["objects_footprint"][:actual_objects_num] = torch.stack(processed_footprints)
         
         # Process trajectories
-        data["history_trajectories_transform"] = torch.tensor(frame["history_trajectories_transform_list"])
-        data["history_trajectories_speed"] = torch.tensor(frame["history_trajectories_speed_list"])
+        data["history_trajectories_transform"] = torch.tensor(frame["history_trajectories_transform_list"], dtype=torch.float32)
+        data["history_trajectories_speed"] = torch.tensor(frame["history_trajectories_speed_list"], dtype=torch.float32)
         
         # Process map elements
-        max_map_element_num = 80
-        lane_point_number = 20
-        
         nearby_road_ids = [
-            lanelet_idx for lanelet_idx in frame["nearby_lanelets_ids"] 
-            if self.map_manager.map_object.laneletLayer.get(lanelet_idx).attributes["subtype"] == "road"
+            lanelet_idx for lanelet_idx in frame["nearby_lanelets_ids"] if int(lanelet_idx) in self.map_manager.resampled_lanelets
         ]
         is_road_in_route = [
             bool(lanelet_idx in frame["routes"]) for lanelet_idx in nearby_road_ids
         ]
+        max_map_element_num = 80
+        lane_point_number = 20
         if len(nearby_road_ids) > max_map_element_num:
             nearby_road_ids = nearby_road_ids[:max_map_element_num]
             is_road_in_route = is_road_in_route[:max_map_element_num]
-        
+
         data["boundary_left_boundaries"] = torch.zeros([max_map_element_num, lane_point_number, 2], dtype=torch.float32)
         data["boundary_right_boundaries"] = torch.zeros([max_map_element_num, lane_point_number, 2], dtype=torch.float32)
         data["boundary_in_route"] = torch.zeros([max_map_element_num], dtype=torch.bool)
         data["boundary_mask"] = torch.zeros([max_map_element_num, lane_point_number], dtype=torch.bool)
-        
-        if len(nearby_road_ids) > 0:
-            data["boundary_mask"][0:len(nearby_road_ids)] = True
-            
-            # Get resampled lanelets from map_manager
-            left_boundaries = []
-            right_boundaries = []
-            
-            for lanelet_idx in nearby_road_ids:
-                lanelet = self.map_manager.map_object.laneletLayer.get(lanelet_idx)
-                if hasattr(self.map_manager, 'resampled_lanelets') and int(lanelet_idx) in self.map_manager.resampled_lanelets:
-                    left_bound = [(p.x, p.y) for p in self.map_manager.resampled_lanelets[int(lanelet_idx)]["left_bound"]]
-                    right_bound = [(p.x, p.y) for p in self.map_manager.resampled_lanelets[int(lanelet_idx)]["right_bound"]]
-                else:
-                    # Fallback if resampled lanelets not available
-                    left_bound = [(p.x, p.y) for p in lanelet.leftBound]
-                    right_bound = [(p.x, p.y) for p in lanelet.rightBound]
-                    
-                    # Ensure we have exactly lane_point_number points
-                    if len(left_bound) > lane_point_number:
-                        indices = np.linspace(0, len(left_bound)-1, lane_point_number, dtype=int)
-                        left_bound = [left_bound[i] for i in indices]
-                    elif len(left_bound) < lane_point_number:
-                        # Pad with last point
-                        left_bound = left_bound + [left_bound[-1]] * (lane_point_number - len(left_bound))
-                        
-                    if len(right_bound) > lane_point_number:
-                        indices = np.linspace(0, len(right_bound)-1, lane_point_number, dtype=int)
-                        right_bound = [right_bound[i] for i in indices]
-                    elif len(right_bound) < lane_point_number:
-                        # Pad with last point
-                        right_bound = right_bound + [right_bound[-1]] * (lane_point_number - len(right_bound))
-                
-                left_boundaries.append(left_bound)
-                right_boundaries.append(right_bound)
-            
-            data["boundary_left_boundaries"][0:len(nearby_road_ids)] = torch.tensor(left_boundaries)
-            data["boundary_right_boundaries"][0:len(nearby_road_ids)] = torch.tensor(right_boundaries)
-            data["boundary_in_route"][0:len(nearby_road_ids)] = torch.tensor(is_road_in_route, dtype=torch.bool)
+        data["lanelet_subtypes"] = torch.zeros([max_map_element_num], dtype=torch.long) 
+        data["lanelet_locations"] = torch.zeros([max_map_element_num], dtype=torch.long) 
+        data["lanelet_turn_directions"] = torch.zeros([max_map_element_num], dtype=torch.long) 
+        data["lanelet_speed_limit"] = torch.zeros([max_map_element_num], dtype=torch.float32)
         
         # Transform to ego frame
         ego_transform = data["history_trajectories_transform"][-1]  # [4, 4]

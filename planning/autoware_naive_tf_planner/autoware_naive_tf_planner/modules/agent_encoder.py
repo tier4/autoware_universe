@@ -34,9 +34,10 @@ class AgentEncoder(nn.Module):
 
         if self.use_ego_history:
             self.history_embedding = nn.Sequential(
-                nn.Linear(10 * (16 + 3), dim),
+                nn.Linear(10 * (16 + 1), dim),
                 nn.LayerNorm(dim),
                 nn.ReLU(),
+                nn.Dropout(state_dropout),
                 nn.Linear(dim, dim),
             )
 
@@ -53,11 +54,13 @@ class AgentEncoder(nn.Module):
         shape = data["objects_footprint"] #[B, N_obj, 4, 2]
         valid_mask = data["objects_mask"] #[B, N_obj]
 
+        ego_pos_history = data["history_trajectories_transform"] # [B, N_h, 4, 4]
+        ego_vel_history = data["history_trajectories_speed"] # [B, N_h, 1]
+
         B, N_obj = valid_mask.shape
         objs_feature  = torch.cat(
             [position.view(B, N_obj, -1), velocity, shape.view(B, N_obj, -1)], dim=-1
         ) #[B, N_obj, 4*4 + 3 + 4*2]
-
         objs_feature = self.obj_embedding(objs_feature) #[B, N_obj, dim]
         objs_feature = objs_feature * valid_mask.unsqueeze(-1) #[B, N_obj, dim]
         
@@ -66,15 +69,13 @@ class AgentEncoder(nn.Module):
 
 
         if self.use_ego_history:
-            ego_pos_history = data["history_trajectories_transform"] # [B, N_h, 4, 4]
-            ego_vel_history = data["history_trajectories_speed"] # [B, N_h, 3]
-            B, N_h, _ = ego_pos_history.shape
+            B, N_h, _, _ = ego_pos_history.shape
             ego_pos_history = ego_pos_history.view(B, N_h, -1) #[B, N_h, 16]
-            ego_vel_history = ego_vel_history.view(B, N_h, -1) #[B, N_h, 3]
+            ego_vel_history = ego_vel_history.view(B, N_h, -1) #[B, N_h, 1]
             ego_history_feature = torch.cat(
                 [ego_pos_history, ego_vel_history], dim=-1
             ) #[B, N_h, 19]
-            ego_history_feature = self.history_encoder(
+            ego_history_feature = self.history_embedding(
                 ego_history_feature.view(B, 1, -1)
             ) #[B, 1, dim]
 

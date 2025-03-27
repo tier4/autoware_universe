@@ -23,7 +23,7 @@ class PlanningModel(nn.Module):
         drop_path=0.2,
         num_heads=8,
         num_modes=6,
-        use_ego_history=False,
+        use_ego_history=True,
         state_attn_encoder=True,
         state_dropout=0.75,
     ) -> None:

@@ -10,7 +10,7 @@ from geometry_msgs.msg import Pose
 import lanelet2
 from autoware_lanelet2_extension_python.utility import load_info_from_yaml, MapProjectorInfo
 from autoware_lanelet2_extension_python.projection import MGRSProjector
-
+import autoware_lanelet2_extension_python.utility.utilities as utilities
 
 def automatic_find_projector_yaml(map_path):
     """in the same directory with the name projector_info.yaml"""
@@ -91,6 +91,27 @@ class MapManager:
 
         self.global_path = []
         self.local_map_range = local_map_range
+        self.lane_point_number = 20
+        self._preprocess_map()
+
+    def _preprocess_map(self):
+        """For each road lanelet in the map, resample the left and right boundary to a fix shape and generate the centerline"""
+        self.resampled_lanelets = dict()
+        for lanelet in self.map_object.laneletLayer:
+            self.resampled_lanelets[int(lanelet.id)] = dict()
+            left_length = lanelet2.geometry.length(lanelet.leftBound)
+            right_length = lanelet2.geometry.length(lanelet.rightBound)
+            length = max(left_length, right_length)
+            if length < 0.001:
+                continue
+            resolution = length / (self.lane_point_number - 1) + 0.0001 # make sure the distance/resolution == self.lane_point_number
+            right_bound = utilities.getRightBoundWithOffset(lanelet, 0.0, resolution)
+            left_bound = utilities.getLeftBoundWithOffset(lanelet, 0.0, resolution)
+            center_line = utilities.generateFineCenterline(lanelet, resolution)
+
+            self.resampled_lanelets[int(lanelet.id)]["right_bound"] = right_bound
+            self.resampled_lanelets[int(lanelet.id)]["left_bound"] = left_bound
+            self.resampled_lanelets[int(lanelet.id)]["center_line"] = center_line
 
     def set_global_path(self, msgs:LaneletRoute):
         self.global_path = [segment.preferred_primitive.id for segment in msgs.segments]
