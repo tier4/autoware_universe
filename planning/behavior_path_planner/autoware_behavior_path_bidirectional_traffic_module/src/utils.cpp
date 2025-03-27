@@ -14,7 +14,7 @@
 
 #include "autoware/behavior_path_bidirectional_traffic_module/utils.hpp"
 
-#include "autoware_utils/system/lru_cache.hpp"
+#include "autoware/universe_utils/system/lru_cache.hpp"
 
 #include <boost/geometry/algorithms/length.hpp>
 
@@ -22,6 +22,7 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 
 #include <unordered_set>
+#include <vector>
 
 namespace autoware::behavior_path_planner
 {
@@ -39,7 +40,7 @@ bool has_common_part(const lanelet::Ids & lane_ids1, const lanelet::Ids & lane_i
 
 double compute_length_of_lanelets(const lanelet::ConstLanelet & lanelet)
 {
-  static autoware_utils::LRUCache<lanelet::Id, double> lanelet_length_cache(1000);
+  static universe_utils::LRUCache<lanelet::Id, double> lanelet_length_cache(1000);
   if (lanelet_length_cache.contains(lanelet.id())) {
     return lanelet_length_cache.get(lanelet.id()).value();
   }

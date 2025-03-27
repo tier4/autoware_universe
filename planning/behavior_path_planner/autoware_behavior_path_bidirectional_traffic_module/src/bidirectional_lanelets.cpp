@@ -20,7 +20,7 @@
 #include "autoware/trajectory/utils/frenet_utils.hpp"
 #include "autoware/universe_utils/geometry/boost_geometry.hpp"
 #include "autoware/universe_utils/geometry/boost_polygon_utils.hpp"
-#include "autoware_utils/system/lru_cache.hpp"
+#include "autoware/universe_utils/system/lru_cache.hpp"
 
 #include <Eigen/Core>
 
@@ -38,6 +38,7 @@
 
 #include <algorithm>
 #include <list>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -269,7 +270,7 @@ ConnectedBidirectionalLanelets::get_lanelets_after_exiting() const
 ConnectedBidirectionalLanelets::get_center_line() const
 {
   // add cache
-  static autoware_utils::LRUCache<
+  static universe_utils::LRUCache<
     lanelet::ConstLanelets, trajectory::Trajectory<geometry_msgs::msg::Point>, ConstLaneletsHashMap>
     cache(1000);
   if (cache.contains(bidirectional_lanelets_)) {
@@ -302,7 +303,7 @@ ConnectedBidirectionalLanelets::get_center_line() const
 
 [[nodiscard]] double ConnectedBidirectionalLanelets::average_lane_width() const
 {
-  static autoware_utils::LRUCache<lanelet::ConstLanelets, double, ConstLaneletsHashMap> cache(1000);
+  static universe_utils::LRUCache<lanelet::ConstLanelets, double, ConstLaneletsHashMap> cache(1000);
   if (cache.contains(bidirectional_lanelets_)) {
     return cache.get(bidirectional_lanelets_).value();
   }
