@@ -152,7 +152,7 @@ TEST_P(CreateVehicleFootprintsAlongTrajectoryTest, test_create_vehicle_footprint
 
   ASSERT_EQ(footprints.size(), p.expected_footprints.size());
   for (size_t i = 0; i < footprints.size(); ++i) {
-    const auto & footprint = footprints.at(i);
+    const auto & [footprint, pose] = footprints.at(i);
     const auto & expected_footprint = p.expected_footprints.at(i);
     ASSERT_EQ(footprint.size(), expected_footprint.size());
     for (size_t j = 0; j < footprint.size(); ++j) {

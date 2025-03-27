@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__UTILS_HPP_
 #define AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__UTILS_HPP_
 
+#include "autoware/boundary_departure_checker/parameters.hpp"
+
 #include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/geometry/pose_deviation.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
@@ -28,6 +30,8 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/Polygon.h>
 
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::lane_departure_checker::utils
@@ -37,8 +41,8 @@ using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_utils::LinearRing2d;
 using autoware_utils::MultiPoint2d;
-using autoware_utils::PoseDeviation;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
+using geometry_msgs::msg::Pose;
 
 /**
  * @brief cut trajectory by length
@@ -65,7 +69,7 @@ TrajectoryPoints resampleTrajectory(const Trajectory & trajectory, const double 
  * @param footprint_margin_scale scale of the footprint margin
  * @return vehicle footprints along the trajectory
  */
-std::vector<LinearRing2d> createVehicleFootprints(
+std::vector<std::pair<LinearRing2d, Pose>> createVehicleFootprints(
   const geometry_msgs::msg::PoseWithCovariance & covariance, const TrajectoryPoints & trajectory,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
   const double footprint_margin_scale);
@@ -116,6 +120,10 @@ std::vector<LinearRing2d> createVehiclePassingAreas(
  */
 double calcMaxSearchLengthForBoundaries(
   const Trajectory & trajectory, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info);
+
+SideToBoundPojections get_closest_boundary_from_side(
+  const lanelet::LaneletMap & lanelet_map, const EgoSides & ego_sides_from_footprints,
+  const std::vector<std::string> & boundary_types_to_detect, const double max_lat_query_dist);
 }  // namespace autoware::lane_departure_checker::utils
 
 #endif  // AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__UTILS_HPP_

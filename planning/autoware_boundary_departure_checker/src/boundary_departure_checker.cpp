@@ -22,6 +22,7 @@
 
 #include <boost/geometry.hpp>
 
+#include <fmt/format.h>
 #include <lanelet2_core/geometry/Polygon.h>
 #include <tf2/utils.h>
 
@@ -83,10 +84,29 @@ Output LaneDepartureChecker::update(const Input & input)
       braking_distance);
     output.processing_time_map["resampleTrajectory"] = stop_watch.toc(true);
   }
-  output.vehicle_footprints = utils::createVehicleFootprints(
-    input.current_odom->pose, output.resampled_trajectory, *vehicle_info_ptr_,
-    param_.footprint_margin_scale);
+
+  output.vehicle_footprints = std::invoke([&]() {
+    const auto footprints_with_pose = utils::createVehicleFootprints(
+      input.current_odom->pose, output.resampled_trajectory, *vehicle_info_ptr_,
+      param_.footprint_margin_scale);
+    std::vector<LinearRing2d> footprints;
+    footprints.reserve(footprints_with_pose.size());
+    for (const auto & [footprint, pose] : footprints_with_pose) {
+      footprints.push_back(footprint);
+    }
+    return footprints;
+  });
   output.processing_time_map["createVehicleFootprints"] = stop_watch.toc(true);
+
+  output.ego_sides_from_footprints.reserve(output.vehicle_footprints.size());
+  for (const auto & fp : output.vehicle_footprints) {
+    EgoSide footprint_side;
+    footprint_side.right = {
+      Point2d(fp.at(1).x(), fp.at(1).y()), Point2d(fp.at(3).x(), fp.at(3).y())};
+    footprint_side.left = {
+      Point2d(fp.at(6).x(), fp.at(6).y()), Point2d(fp.at(4).x(), fp.at(4).y())};
+    output.ego_sides_from_footprints.push_back(footprint_side);
+  }
 
   output.vehicle_passing_areas = utils::createVehiclePassingAreas(output.vehicle_footprints);
   output.processing_time_map["createVehiclePassingAreas"] = stop_watch.toc(true);

@@ -180,23 +180,6 @@
         <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_control_check_container_component"/>
       </node_container>
 
-      <!-- lane departure checker -->
-      <group if="$(var launch_lane_departure_checker)">
-        <load_composable_node target="/control/control_check_container">
-          <composable_node pkg="autoware_lane_departure_checker" plugin="autoware::lane_departure_checker::LaneDepartureCheckerNode" name="lane_departure_checker_node" namespace="trajectory_follower">
-            <remap from="~/input/odometry" to="/localization/kinematic_state"/>
-            <remap from="~/input/lanelet_map_bin" to="/map/vector_map"/>
-            <remap from="~/input/route" to="/planning/mission_planning/route"/>
-            <remap from="~/input/reference_trajectory" to="/planning/scenario_planning/trajectory"/>
-            <remap from="~/input/predicted_trajectory" to="/control/trajectory_follower/lateral/predicted_trajectory"/>
-            <param from="$(var nearest_search_param_path)"/>
-            <param from="$(var lane_departure_checker_param_path)"/>
-            <param from="$(var vehicle_param_file)"/>
-            <extra_arg name="use_intra_process_comms" value="$(var use_intra_process)"/>
-          </composable_node>
-        </load_composable_node>
-      </group>
-
       <!-- control validator checker -->
       <group if="$(var launch_control_validator)">
         <load_composable_node target="/control/control_check_container">
