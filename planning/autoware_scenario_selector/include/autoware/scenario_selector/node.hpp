@@ -112,9 +112,11 @@ private:
     pub_processing_time_;
 
   // polling subscribers
-  autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry, autoware_utils::polling_policy::All>::SharedPtr sub_odom_;
+  autoware_utils::InterProcessPollingSubscriber<
+    nav_msgs::msg::Odometry, autoware_utils::polling_policy::All>::SharedPtr sub_odom_;
   autoware_utils::InterProcessPollingSubscriber<std_msgs::msg::Bool>::SharedPtr sub_parking_state_;
-  autoware_utils::InterProcessPollingSubscriber<std_msgs::msg::Bool>::SharedPtr sub_waypoint_following_state_;
+  autoware_utils::InterProcessPollingSubscriber<std_msgs::msg::Bool>::SharedPtr
+    sub_waypoint_following_state_;
   autoware_utils::InterProcessPollingSubscriber<
     autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr sub_operation_mode_state_;
 

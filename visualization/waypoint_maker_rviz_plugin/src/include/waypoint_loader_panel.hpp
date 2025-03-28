@@ -12,10 +12,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/panel.hpp>
 
-
 #include <autoware_adapi_v1_msgs/msg/motion_state.hpp>
-#include <tier4_planning_msgs/srv/save_waypoint.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <tier4_planning_msgs/srv/save_waypoint.hpp>
 
 #include <cstdint>
 #include <string>

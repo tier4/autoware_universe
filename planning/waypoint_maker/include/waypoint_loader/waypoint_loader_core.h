@@ -27,12 +27,12 @@
 #include <autoware_utils/autoware_utils.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
+#include <autoware_internal_planning_msgs/msg/scenario.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_system_msgs/msg/autoware_state.hpp>
-#include <tier4_planning_msgs/msg/route_state.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
-#include <autoware_internal_planning_msgs/msg/scenario.hpp>
+#include <tier4_planning_msgs/msg/route_state.hpp>
 
 class WaypointLoaderNode : public rclcpp::Node
 {

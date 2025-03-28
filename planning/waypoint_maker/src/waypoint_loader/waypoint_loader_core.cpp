@@ -68,9 +68,7 @@ WaypointLoaderNode::WaypointLoaderNode()
 void WaypointLoaderNode::run()
 {
   // if arrived, clear output_trajectory_ and return;
-  if (
-    route_state_.state ==
-    tier4_planning_msgs::msg::RouteState::ARRIVED) {
+  if (route_state_.state == tier4_planning_msgs::msg::RouteState::ARRIVED) {
     ouput_trajectory_.header.stamp = this->now();
     ouput_trajectory_.points.clear();
 
@@ -385,7 +383,8 @@ void WaypointLoaderNode::onOdometry(const nav_msgs::msg::Odometry::ConstSharedPt
   waypoint_following_state_pub_->publish(state);
 }
 
-void WaypointLoaderNode::onScenario(const autoware_internal_planning_msgs::msg::Scenario::ConstSharedPtr msg)
+void WaypointLoaderNode::onScenario(
+  const autoware_internal_planning_msgs::msg::Scenario::ConstSharedPtr msg)
 {
   if (msg) {
     current_scenario_ = msg->current_scenario;
