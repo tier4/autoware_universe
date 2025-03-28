@@ -37,6 +37,9 @@ AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options) : Node("aggr
   if (declare_parameter<bool>("use_operation_mode_availability")) {
     modes_ = std::make_unique<ModesAvailability>(*this, graph_);
   }
+  if (declare_parameter<bool>("use_command_mode_mappings")) {
+    command_mode_mappings_ = std::make_unique<CommandModeMapping>(*this, graph_);
+  }
 
   // Init ros interface.
   {
@@ -81,6 +84,7 @@ void AggregatorNode::on_timer()
   pub_status_->publish(graph_.create_status(stamp));
   pub_unknown_->publish(create_unknown_diags(stamp));
   if (modes_) modes_->update(stamp);
+  if (command_mode_mappings_) command_mode_mappings_->update(stamp);
 }
 
 void AggregatorNode::on_diag(const DiagnosticArray & msg)
