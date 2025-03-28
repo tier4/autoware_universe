@@ -244,15 +244,15 @@ inline motion_utils::VirtualWalls create_virtual_walls(
   motion_utils::VirtualWall wall;
   wall.text = "run_out (mvp)";
   wall.longitudinal_offset = front_offset;
+  wall.style = motion_utils::VirtualWallType::stop;
   for (const auto & stop_point : result.stop_points) {
-    wall.style = motion_utils::VirtualWallType::stop;
     const auto length = motion_utils::calcSignedArcLength(trajectory, 0, stop_point);
     wall.pose = motion_utils::calcInterpolatedPose(trajectory, length);
     virtual_walls.push_back(wall);
   }
+  wall.style = motion_utils::VirtualWallType::slowdown;
+  wall.text += " [SLOW]";
   for (const auto & slowdown : result.slowdown_intervals) {
-    wall.style = motion_utils::VirtualWallType::slowdown;
-    wall.text += " [SLOW]";
     const auto length = motion_utils::calcSignedArcLength(trajectory, 0, slowdown.from);
     wall.pose = motion_utils::calcInterpolatedPose(trajectory, length);
     wall.pose.position = slowdown.from;

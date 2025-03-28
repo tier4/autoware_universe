@@ -38,6 +38,7 @@
 #include <boost/geometry/algorithms/distance.hpp>
 #include <boost/geometry/algorithms/length.hpp>
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -340,17 +341,20 @@ inline Collision calculate_collision(
   } else if (ego.overlaps(object)) {
     c.type = collision;
     c.ego_collision_time = ego.first_intersection.ego_time;
-    const auto is_same_direction_collision =
-      -M_PI_4 < ego.first_intersection.yaw_diff && ego.first_intersection.yaw_diff < M_PI_4;
-    const auto is_opposite_direction_collision = M_PI - M_PI_4 < ego.first_intersection.yaw_diff &&
-                                                 ego.first_intersection.yaw_diff < M_PI + M_PI_4;
+    // TODO(Maxime): parameters for the angle range
+    // TODO(Maxime): can unify the logic ? (whatever the angle we can refine the collision time
+    // calculation within the overlap)
+    const auto is_same_direction_collision = -1.0 / 8.0 * M_PI < ego.first_intersection.yaw_diff &&
+                                             ego.first_intersection.yaw_diff < 1.0 / 8.0 * M_PI;
+    const auto is_opposite_direction_collision =
+      M_PI * 7.0 / 8.0 < ego.first_intersection.yaw_diff &&
+      ego.first_intersection.yaw_diff < M_PI * 9.0 / 8.0;
     if (is_same_direction_collision) {
       if (ego.first_intersection.vel_diff < 0.0) {  // object is faster than ego
-        c.explanation = " no collision will happen because object is faster and enter first";
         c.type = no_collision;
+        c.explanation = " no collision will happen because object is faster and enter first";
       } else {
         c.explanation = " v_diff = " + std::to_string(ego.first_intersection.vel_diff);
-        c.type = collision;
         // adjust the collision time based on the velocity difference
         const auto time_margin =
           ego.first_intersection.ego_time - ego.first_intersection.object_time;
@@ -359,7 +363,6 @@ inline Collision calculate_collision(
         c.ego_collision_time += catchup_time;
       }
     } else if (is_opposite_direction_collision) {
-      c.type = collision;
       // predict time when collision would occur by finding time when arc lengths are equal
       const auto overlap_length =
         ego.last_intersection.arc_length - ego.first_intersection.arc_length;
@@ -369,9 +372,11 @@ inline Collision calculate_collision(
         object.last_intersection.object_time - object.first_intersection.object_time;
       const auto ego_vel = overlap_length / ego_overlap_duration;
       const auto obj_vel = overlap_length / object_overlap_duration;
-      const auto collision_time_within_overlap = overlap_length / (ego_vel + obj_vel);
+      const auto lon_buffer = std::min(overlap_length, 4.0);
+      const auto collision_time_within_overlap =
+        (overlap_length - lon_buffer) / (ego_vel + obj_vel);
+      // TODO(Maxime): we need to correctly account for the agents' longitudinal offsets
       c.ego_collision_time += collision_time_within_overlap;
-    } else {
     }
   } else if (ego.to < object.from) {
     c.type = pass_first_no_collision;
