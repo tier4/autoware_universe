@@ -38,6 +38,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_available_;
   rclcpp::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_completed_;
+  rclcpp::Publisher<ModeChangeBase::DebugInfo>::SharedPtr pub_debug_;
 
   std::unique_ptr<ModeChangeBase> autonomous_mode_;
 };
