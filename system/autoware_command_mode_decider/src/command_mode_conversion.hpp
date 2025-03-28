@@ -20,8 +20,9 @@
 namespace autoware::command_mode_decider
 {
 
-std::string mode_to_text(uint32_t mode);
-uint32_t text_to_mode(const std::string & text);
+std::string operation_mode_to_command(uint32_t mode);
+uint32_t command_to_operation_mode(const std::string & text);
+uint32_t command_to_mrm_behavior(const std::string & text);
 
 }  // namespace autoware::command_mode_decider
 
