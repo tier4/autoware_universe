@@ -29,6 +29,8 @@ FlagNode::FlagNode(const rclcpp::NodeOptions & options) : Node("flag_node", opti
   pub_transition_completed_ =
     create_publisher<ModeChangeAvailable>("/system/command_mode/transition/completed", 1);
 
+  pub_debug_ = create_publisher<ModeChangeBase::DebugInfo>("~/debug_info", 1);
+
   const auto period = rclcpp::Rate(declare_parameter<double>("frequency_hz")).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
 }
@@ -45,6 +47,10 @@ void FlagNode::on_timer()
   const auto stamp = get_clock()->now();
   publish(pub_transition_available_, stamp, autonomous_mode_->isModeChangeAvailable());
   publish(pub_transition_completed_, stamp, autonomous_mode_->isModeChangeCompleted());
+
+  ModeChangeBase::DebugInfo debug = autonomous_mode_->getDebugInfo();
+  debug.stamp = stamp;
+  pub_debug_->publish(debug);
 }
 
 }  // namespace autoware::operation_mode_transition_manager
