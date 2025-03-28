@@ -106,7 +106,6 @@ void PlanningValidator::setupParameters()
     p.deviation.velocity_th = declare_parameter<double>(t + "deviation.velocity_th");
     p.deviation.distance_th = declare_parameter<double>(t + "deviation.distance_th");
     p.deviation.lon_distance_th = declare_parameter<double>(t + "deviation.lon_distance_th");
-    p.deviation.yaw_th = declare_parameter<double>(t + "deviation.yaw_th");
 
     set_validation_flags(p.trajectory_shift, t + "trajectory_shift");
     p.trajectory_shift.lat_shift_th =
@@ -239,12 +238,6 @@ void PlanningValidator::setupDiag()
     setStatus(
       stat, validation_status_.is_valid_latency, "latency is larger than expected value.",
       p.latency.is_critical);
-  });
-  d->add(ns + "yaw_deviation", [&](auto & stat) {
-    setStatus(
-      stat, validation_status_.is_valid_yaw_deviation,
-      "difference between vehicle yaw and closest trajectory yaw is too large.",
-      p.deviation.is_critical);
   });
   d->add(ns + "trajectory_shift", [&](auto & stat) {
     setStatus(
@@ -411,7 +404,6 @@ void PlanningValidator::validate(
   s.is_valid_velocity_deviation = checkValidVelocityDeviation(trajectory);
   s.is_valid_distance_deviation = checkValidDistanceDeviation(trajectory);
   s.is_valid_longitudinal_distance_deviation = checkValidLongitudinalDistanceDeviation(trajectory);
-  s.is_valid_yaw_deviation = checkValidYawDeviation(trajectory);
   s.is_valid_forward_trajectory_length = checkValidForwardTrajectoryLength(trajectory);
   s.is_valid_latency = checkValidLatency(trajectory);
   s.is_valid_trajectory_shift =
@@ -676,20 +668,6 @@ bool PlanningValidator::checkValidLongitudinalDistanceDeviation(const Trajectory
   return true;
 }
 
-bool PlanningValidator::checkValidYawDeviation(const Trajectory & trajectory)
-{
-  if (!params_.validation_params.deviation.enable) {
-    return true;
-  }
-
-  const auto interpolated_trajectory_point =
-    motion_utils::calcInterpolatedPoint(trajectory, current_kinematics_->pose.pose);
-  validation_status_.yaw_deviation = std::abs(angles::shortest_angular_distance(
-    tf2::getYaw(interpolated_trajectory_point.pose.orientation),
-    tf2::getYaw(current_kinematics_->pose.pose.orientation)));
-  return validation_status_.yaw_deviation <= params_.validation_params.deviation.yaw_th;
-}
-
 bool PlanningValidator::checkValidForwardTrajectoryLength(const Trajectory & trajectory)
 {
   if (!params_.validation_params.forward_trajectory_length.enable) {
@@ -796,7 +774,7 @@ bool PlanningValidator::isAllValid(const PlanningValidatorStatus & s) const
          s.is_valid_longitudinal_max_acc && s.is_valid_longitudinal_min_acc &&
          s.is_valid_steering && s.is_valid_steering_rate && s.is_valid_velocity_deviation &&
          s.is_valid_distance_deviation && s.is_valid_longitudinal_distance_deviation &&
-         s.is_valid_forward_trajectory_length && s.is_valid_latency && s.is_valid_yaw_deviation &&
+         s.is_valid_forward_trajectory_length && s.is_valid_latency &&
          s.is_valid_trajectory_shift;
 }
 
@@ -819,7 +797,6 @@ void PlanningValidator::displayStatus()
   warn(s.is_valid_lateral_acc, "planning trajectory lateral acceleration is too high!!");
   warn(s.is_valid_longitudinal_max_acc, "planning trajectory acceleration is too high!!");
   warn(s.is_valid_longitudinal_min_acc, "planning trajectory deceleration is too high!!");
-  warn(s.is_valid_relative_angle, "planning trajectory yaw angle varies too fast!!");
   warn(s.is_valid_steering, "planning trajectory expected steering angle is too high!!");
   warn(s.is_valid_steering_rate, "planning trajectory expected steering angle rate is too high!!");
   warn(s.is_valid_velocity_deviation, "planning trajectory velocity deviation is too high!!");
