@@ -66,6 +66,8 @@ private:
   std::shared_ptr<SwitcherPlugin> manual_switcher_;
   std::shared_ptr<SwitcherPlugin> background_transition_;
   std::shared_ptr<SwitcherPlugin> foreground_transition_;
+
+  bool is_ready_ = false;
 };
 
 }  // namespace autoware::command_mode_switcher

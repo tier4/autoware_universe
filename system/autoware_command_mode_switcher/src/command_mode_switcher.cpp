@@ -82,6 +82,7 @@ void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
       iter->second->set_controllable(true);  // TODO(Takagi, Isamu): Subscribe value.
     }
   }
+  is_ready_ = true;
   update_status();  // Reflect immediately.
 }
 
@@ -117,6 +118,9 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 void CommandModeSwitcher::update_status()
 {
   // TODO(Takagi, Isamu): Check call rate.
+  if (!is_ready_) {
+    return;
+  }
 
   // Check if the foreground source transition is complete.
   if (foreground_transition_ && foreground_transition_ != manual_switcher_) {

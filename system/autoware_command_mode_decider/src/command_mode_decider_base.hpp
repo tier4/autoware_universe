@@ -44,8 +44,16 @@ using tier4_system_msgs::srv::RequestMrm;
 struct RequestModeStatus
 {
   bool autoware_control;
+  std::string command_mode;
   std::string operation_mode;
   std::string mrm;
+};
+
+struct DeciderModeStatus
+{
+  bool autoware_control;
+  std::string command_mode;
+  std::string operation_mode;
 };
 
 class CommandModeDeciderBase : public rclcpp::Node
@@ -60,6 +68,10 @@ protected:
 
 private:
   void update_command_mode();
+  void sync_command_mode();
+  void publish_operation_mode_state();
+  void publish_mrm_state();
+
   void on_timer();
   void on_status(const CommandModeStatus & msg);
   void on_request_mrm(RequestMrm::Request::SharedPtr req, RequestMrm::Response::SharedPtr res);
@@ -79,22 +91,14 @@ private:
   rclcpp::Service<RequestMrm>::SharedPtr srv_mrm_request_;
   rclcpp::Publisher<MrmState>::SharedPtr pub_mrm_state_;
 
+  // parameters
+  double request_timeout_;
+
+  // status
   bool is_modes_ready_;
   CommandModeStatusWrapper command_mode_status_;
-  std::optional<rclcpp::Time> command_mode_request_stamp_;
-
-  struct DeciderModeStatus
-  {
-    bool operator!=(const DeciderModeStatus & s) const
-    {
-      return autoware_control != s.autoware_control || command_mode != s.command_mode;
-    }
-    bool autoware_control;
-    std::string command_mode;
-  };
   RequestModeStatus request_;
-  DeciderModeStatus decided_;
-  DeciderModeStatus current_;
+  std::optional<rclcpp::Time> command_mode_request_stamp_;
 };
 
 }  // namespace autoware::command_mode_decider
