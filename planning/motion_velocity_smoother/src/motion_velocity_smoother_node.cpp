@@ -77,9 +77,10 @@ MotionVelocitySmootherNode::MotionVelocitySmootherNode(const rclcpp::NodeOptions
   pub_trajectory_ = create_publisher<Trajectory>("~/output/trajectory", 1);
   pub_velocity_limit_ = create_publisher<VelocityLimit>(
     "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
-    pub_dist_to_stopline_ = create_publisher<Float32Stamped>("~/distance_to_stopline", 1);
-    pub_dist_to_stopline_no_smoothing_ = create_publisher<Float32Stamped>("~/distance_to_stopline_no_smoothing", 1);
-    pub_over_stop_velocity_ = create_publisher<StopSpeedExceeded>("~/stop_speed_exceeded", 1);
+  pub_dist_to_stopline_ = create_publisher<Float32Stamped>("~/distance_to_stopline", 1);
+  pub_dist_to_stopline_no_smoothing_ =
+    create_publisher<Float32Stamped>("~/distance_to_stopline_no_smoothing", 1);
+  pub_over_stop_velocity_ = create_publisher<StopSpeedExceeded>("~/stop_speed_exceeded", 1);
   sub_current_trajectory_ = create_subscription<Trajectory>(
     "~/input/trajectory", 1, std::bind(&MotionVelocitySmootherNode::onCurrentTrajectory, this, _1));
   sub_current_odometry_ = create_subscription<Odometry>(
@@ -361,7 +362,7 @@ void MotionVelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstShar
   const auto input_closest_idx = tier4_autoware_utils::findNearestIndex(
     input, current_pose_ptr_->pose, std::numeric_limits<double>::max(),
     node_param_.delta_yaw_threshold);
-    
+
   publishStopDistanceNoSmoothing(input, *input_closest_idx);
 
   // calculate distance to insert external velocity limit

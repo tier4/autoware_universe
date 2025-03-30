@@ -147,7 +147,8 @@ private:
 
   void publishStopDistance(const TrajectoryPoints & trajectory, const size_t closest) const;
 
-  void publishStopDistanceNoSmoothing(const TrajectoryPoints & trajectory, const size_t closest) const;
+  void publishStopDistanceNoSmoothing(
+    const TrajectoryPoints & trajectory, const size_t closest) const;
 
   // non-const methods
   void publishClosestState(const TrajectoryPoint & closest_point);
