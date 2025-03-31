@@ -19,290 +19,70 @@
 #include "types.hpp"
 
 #include <autoware/motion_velocity_planner_common_universe/planner_data.hpp>
-#include <autoware/universe_utils/geometry/boost_geometry.hpp>
-#include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
-#include <autoware/universe_utils/geometry/geometry.hpp>
-#include <autoware/universe_utils/ros/uuid_helper.hpp>
-#include <magic_enum.hpp>
 
-#include <autoware_perception_msgs/msg/detail/object_classification__struct.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
-#include <autoware_perception_msgs/msg/detail/predicted_path__struct.hpp>
-#include <autoware_perception_msgs/msg/object_classification.hpp>
-#include <autoware_perception_msgs/msg/predicted_object.hpp>
-#include <autoware_perception_msgs/msg/predicted_objects.hpp>
-#include <geometry_msgs/msg/detail/point__struct.hpp>
+#include <autoware_perception_msgs/msg/predicted_path.hpp>
 
 #include <boost/geometry/algorithms/correct.hpp>
 #include <boost/geometry/algorithms/detail/overlaps/interface.hpp>
 
-#include <algorithm>
-#include <string>
 #include <vector>
 
 namespace autoware::motion_velocity_planner::run_out
 {
 
-/// @brief get the most proposable classification label of a predicted object
-inline uint8_t get_most_probable_classification_label(
-  const autoware_perception_msgs::msg::PredictedObject & object)
-{
-  double highest_probability = 0.0;
-  uint8_t most_probable_label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
-  for (const auto & classification : object.classification) {
-    if (classification.probability > highest_probability) {
-      highest_probability = classification.probability;
-      most_probable_label = classification.label;
-    }
-  }
-  return most_probable_label;
-}
+/// @brief get the most probable classification label of a predicted object
+uint8_t get_most_probable_classification_label(
+  const autoware_perception_msgs::msg::PredictedObject & object);
 
 /// @brief identify the most probable class of an object and whether it is stopped or not
-inline void classify(
+void classify(
   Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object,
-  const Parameters & params)
-{
-  object.label = get_most_probable_classification_label(predicted_object);
-  object.has_target_label =
-    std::find(
-      params.objects_target_labels.begin(), params.objects_target_labels.end(),
-      Parameters::label_to_string(object.label)) != params.objects_target_labels.end();
-  if (
-    predicted_object.kinematics.initial_twist_with_covariance.twist.linear.x <=
-    params.object_parameters_per_label[object.label].stopped_velocity_threshold) {
-    object.is_stopped = true;
-  }
-}
+  const Parameters & params);
 
 /// @brief calculate the current footprint of an object
-inline void calculate_current_footprint(
-  Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object)
-{
-  const auto half_length = predicted_object.shape.dimensions.x * 0.5;
-  object.current_footprint = universe_utils::toFootprint(
-    predicted_object.kinematics.initial_pose_with_covariance.pose, half_length, half_length,
-    predicted_object.shape.dimensions.y);
-}
+void calculate_current_footprint(
+  Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object);
+
 /// @brief return true if an object should be ignored
-inline bool skip_object_condition(
+bool skip_object_condition(
   const Object & object, const std::optional<DecisionHistory> & prev_decisions,
   const universe_utils::Segment2d & ego_rear_segment, const FilteringData & filtering_data,
-  const Parameters & params)
-{
-  constexpr auto skip_object = true;
-  const auto rear_vector = ego_rear_segment.second - ego_rear_segment.first;
-  // normal vector in the direction coming from the rear
-  const auto rear_normal = universe_utils::Point2d(-rear_vector.y(), rear_vector.x());
-  const auto object_vector = object.position - ego_rear_segment.first;
-  const auto is_behind_ego = rear_normal.dot(object_vector) < 0.0;
-  if (params.object_parameters_per_label[object.label].ignore_if_behind_ego && is_behind_ego) {
-    return skip_object;
-  }
-  const auto & is_previous_target =
-    prev_decisions && (prev_decisions->decisions.back().type == stop ||
-                       (prev_decisions->decisions.back().collision.has_value() &&
-                        prev_decisions->decisions.back().collision->type == collision));
-  if (is_previous_target) {
-    return !skip_object;
-  }
-  if (params.object_parameters_per_label[object.label].ignore_if_stopped && object.is_stopped) {
-    return skip_object;
-  }
-  if (!object.has_target_label) {
-    return skip_object;
-  }
-  if (filtering_data.to_be_ignored(object.current_footprint)) {
-    return skip_object;
-  }
-  return !skip_object;
-}
+  const Parameters & params);
+
 /// @brief get the predicted paths with confidence above threshold
-inline std::vector<autoware_perception_msgs::msg::PredictedPath> filter_by_confidence(
+std::vector<autoware_perception_msgs::msg::PredictedPath> filter_by_confidence(
   const std::vector<autoware_perception_msgs::msg::PredictedPath> & predicted_paths,
-  const uint8_t label, const Parameters & params)
-{
-  std::vector<autoware_perception_msgs::msg::PredictedPath> filtered;
-  auto max_confidence = 0.0f;
-  for (const auto & path : predicted_paths) {
-    max_confidence = std::max(max_confidence, path.confidence);
-    if (
-      path.confidence >= params.object_parameters_per_label[label].confidence_filtering_threshold) {
-      filtered.push_back(path);
-    }
-  }
-  if (params.object_parameters_per_label[label].confidence_filtering_only_use_highest) {
-    const auto new_end = std::remove_if(filtered.begin(), filtered.end(), [&](const auto & p) {
-      return p.confidence != max_confidence;
-    });
-    filtered.erase(new_end, filtered.end());
-  }
-  return filtered;
-}
+  const uint8_t label, const Parameters & params);
+
 /// @brief calculate the predicted path footprints of an object
-inline void calculate_predicted_path_footprints(
+void calculate_predicted_path_footprints(
   Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object,
-  [[maybe_unused]] const Parameters & params)
-{
-  // calculate footprint
-  for (const auto & path :
-       filter_by_confidence(predicted_object.kinematics.predicted_paths, object.label, params)) {
-    ObjectCornerFootprint footprint;
-    footprint.time_step = rclcpp::Duration(path.time_step).seconds();
-    const auto half_length = predicted_object.shape.dimensions.x * 0.5;
-    for (const auto & p : path.path) {
-      const auto object_polygon = universe_utils::toFootprint(
-        p, half_length, half_length, predicted_object.shape.dimensions.y);
-      footprint.corner_footprint.corner_linestrings[front_left].push_back(
-        object_polygon.outer()[0]);
-      footprint.corner_footprint.corner_linestrings[front_right].push_back(
-        object_polygon.outer()[1]);
-      footprint.corner_footprint.corner_linestrings[rear_right].push_back(
-        object_polygon.outer()[2]);
-      footprint.corner_footprint.corner_linestrings[rear_left].push_back(object_polygon.outer()[3]);
-    }
-    object.corner_footprints.push_back(footprint);
-  }
-}
+  [[maybe_unused]] const Parameters & params);
+
 /// @brief get the first footprint segment index which intersect with the given segment
-inline std::optional<size_t> get_first_intersecting_segment_idx(
-  const ObjectCornerFootprint & footprint, const universe_utils::Segment2d & segment)
-{
-  geometry_msgs::msg::Point p1;
-  p1.x = segment.first.x();
-  p1.y = segment.first.y();
-  geometry_msgs::msg::Point p2;
-  p2.x = segment.second.x();
-  p2.y = segment.second.y();
-  for (auto i = 0UL; i + 1 < footprint.corner_footprint.size(); ++i) {
-    geometry_msgs::msg::Point p3;
-    geometry_msgs::msg::Point p4;
-    for (const auto & ls :
-         {footprint.corner_footprint.corner_linestrings[front_left],
-          footprint.corner_footprint.corner_linestrings[front_right],
-          footprint.corner_footprint.corner_linestrings[rear_left],
-          footprint.corner_footprint.corner_linestrings[rear_right]}) {
-      p3.x = ls[i].x();
-      p3.y = ls[i].y();
-      p4.x = ls[i+1].x();
-      p4.y = ls[i+1].y();
-      if (universe_utils::intersect(p1, p2, p3, p4)) {
-        return i;
-      }
-    }
-  }
-  return std::nullopt;
-}
+std::optional<size_t> get_first_intersecting_segment_idx(
+  const ObjectCornerFootprint & footprint, const universe_utils::Segment2d & segment);
 
 /// @brief return true if the incoming vector crosses from the rear
-inline bool crosses_from_the_rear(
-  const universe_utils::Segment2d & incoming, const universe_utils::Segment2d & rear)
-{
-  const auto rear_vector = rear.second - rear.first;
-  // normal vector in the direction coming from the rear
-  const auto rear_normal = universe_utils::Point2d(-rear_vector.y(), rear_vector.x());
-  const auto incoming_vector = incoming.second - incoming.first;
-  return incoming_vector.dot(rear_normal) > 0.0;
-}
+bool crosses_from_the_rear(
+  const universe_utils::Segment2d & incoming, const universe_utils::Segment2d & rear);
+
 /// @brief cut a footprint after the given index
-inline void cut_footprint_after_index(ObjectCornerFootprint & footprint, const size_t index)
-{
-  footprint.corner_footprint.corner_linestrings[front_left].resize(index);
-  footprint.corner_footprint.corner_linestrings[front_right].resize(index);
-  footprint.corner_footprint.corner_linestrings[rear_left].resize(index);
-  footprint.corner_footprint.corner_linestrings[rear_right].resize(index);
-}
+void cut_footprint_after_index(ObjectCornerFootprint & footprint, const size_t index);
+
 /// @brief filter predicted paths of an object used map filtering data
-inline void filter_predicted_paths(
+void filter_predicted_paths(
   Object & object, const universe_utils::Segment2d & ego_rear_segment,
-  const FilteringData & map_data, const Parameters & params)
-{
-  for (auto & corner_footprint : object.corner_footprints) {
-    bool cut = false;
-    for (auto i = 0UL; i + 1 < corner_footprint.corner_footprint.size(); ++i) {
-      for (const auto & corner : {front_left, front_right, rear_left, rear_right}) {
-        const auto & ls = corner_footprint.corner_footprint.corner_linestrings[corner];
-        const auto & segment = universe_utils::Segment2d(ls[i], ls[i + 1]);
-        geometry_msgs::msg::Point p1;
-        p1.x = segment.first.x();
-        p1.y = segment.first.y();
-        geometry_msgs::msg::Point p2;
-        p2.x = segment.second.x();
-        p2.y = segment.second.y();
-        std::vector<SegmentNode> query_results;
-        map_data.cut_predicted_paths_rtree.query(
-          boost::geometry::index::intersects(segment), std::back_inserter(query_results));
-        for (const auto & candidate : query_results) {
-          geometry_msgs::msg::Point p3;
-          p3.x = candidate.first.first.x();
-          p3.y = candidate.first.first.y();
-          geometry_msgs::msg::Point p4;
-          p4.x = candidate.first.second.x();
-          p4.y = candidate.first.second.y();
-          if (universe_utils::intersect(
-                p1, p2, p3, p4)) {
-            cut = true;
-            cut_footprint_after_index(corner_footprint, i);
-            break;
-          }
-        }
-        if (cut) {
-          break;
-        }
-      }
-      if (cut) {
-        break;
-      }
-    }
-    if (params.object_parameters_per_label[object.label].cut_if_crossing_ego_from_behind) {
-      const auto first_intersecting_idx =
-        get_first_intersecting_segment_idx(corner_footprint, ego_rear_segment);
-      if (first_intersecting_idx) {
-        const auto first_intersecting_segment = universe_utils::Segment2d(
-          corner_footprint.corner_footprint.corner_linestrings[rear_left][*first_intersecting_idx],
-          corner_footprint.corner_footprint
-            .corner_linestrings[rear_left][*first_intersecting_idx + 1]);
-        if (crosses_from_the_rear(first_intersecting_segment, ego_rear_segment)) {
-          cut_footprint_after_index(corner_footprint, *first_intersecting_idx);
-        }
-      }
-    }
-  }
-}
+  const FilteringData & map_data, const Parameters & params);
+
 /// @brief prepare data for the dynamic objects and their path footprints to use for collision
 /// detection
-inline std::vector<Object> prepare_dynamic_objects(
-  const std::vector<std::shared_ptr<PlannerData::Object>> & objects,
+std::vector<Object> prepare_dynamic_objects(
+  const std::vector<std::shared_ptr<motion_velocity_planner::PlannerData::Object>> & objects,
   const TrajectoryCornerFootprint & ego_trajectory,
   const ObjectDecisionsTracker & previous_decisions, const FilteringDataPerLabel & filtering_data,
-  const Parameters & params)
-{
-  std::vector<Object> filtered_objects;
-  const auto ego_rear_segment = ego_trajectory.get_rear_segment();
-  for (const auto & object : objects) {
-    Object filtered_object;
-    filtered_object.uuid = universe_utils::toHexString(object->predicted_object.object_id);
-    filtered_object.position =
-      universe_utils::fromMsg(
-        object->predicted_object.kinematics.initial_pose_with_covariance.pose.position)
-        .to_2d();
-    classify(filtered_object, object->predicted_object, params);
-    calculate_current_footprint(filtered_object, object->predicted_object);
-    const auto & previous_object_decisions = previous_decisions.get(filtered_object.uuid);
-    if (skip_object_condition(
-          filtered_object, previous_object_decisions, ego_rear_segment,
-          filtering_data[filtered_object.label], params)) {
-      continue;
-    }
-    calculate_predicted_path_footprints(filtered_object, object->predicted_object, params);
-    filter_predicted_paths(
-      filtered_object, ego_rear_segment, filtering_data[filtered_object.label], params);
-    if (!filtered_object.corner_footprints.empty()) {
-      filtered_objects.push_back(filtered_object);
-    }
-  }
-  return filtered_objects;
-}
+  const Parameters & params);
 }  // namespace autoware::motion_velocity_planner::run_out
 
 #endif  // OBJECTS_FILTERING_HPP_
