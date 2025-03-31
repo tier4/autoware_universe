@@ -15,6 +15,7 @@
 #ifndef FOOTPRINTS_HPP_
 #define FOOTPRINTS_HPP_
 
+#include "parameters.hpp"
 #include "types.hpp"
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>

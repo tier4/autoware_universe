@@ -15,6 +15,7 @@
 #ifndef MAP_DATA_HPP_
 #define MAP_DATA_HPP_
 
+#include "parameters.hpp"
 #include "types.hpp"
 
 #include <autoware/motion_velocity_planner_common_universe/planner_data.hpp>
@@ -31,9 +32,9 @@
 #include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/BoundingBox.h>
 #include <lanelet2_core/primitives/LineString.h>
+#include <lanelet2_core/primitives/Polygon.h>
 
 #include <memory>
-#include <string>
 #include <vector>
 
 namespace autoware::motion_velocity_planner::run_out
@@ -45,112 +46,29 @@ universe_utils::Segment2d convert(const lanelet::Segment<T> & segment)
 }
 
 /// @brief prepare the bounding box where map data will be extracted
-inline lanelet::BoundingBox2d prepare_relevent_bounding_box(
+lanelet::BoundingBox2d prepare_relevent_bounding_box(
   const TrajectoryCornerFootprint & ego_footprint,
-  const std::vector<std::shared_ptr<PlannerData::Object>> & objects)
-{
-  lanelet::BoundingBox2d bounding_box(ego_footprint.get_rear_segment().first);
-  for (const auto & p : ego_footprint.front_polygon.outer()) {
-    bounding_box.extend(p);
-  }
-  bounding_box.extend(universe_utils::Point2d(ego_footprint.get_rear_segment().second));
-  for (const auto & o : objects) {
-    const auto p = o->predicted_object.kinematics.initial_pose_with_covariance.pose.position;
-    bounding_box.extend(universe_utils::Point2d(p.x, p.y));
-  }
-  return bounding_box;
-}
+  const std::vector<std::shared_ptr<PlannerData::Object>> & objects);
+
+/// @brief add polygons used to ignore objects in the given lanelets
+void add_ignore_polygons(
+  FilteringDataPerLabel & data_per_label, const std::vector<lanelet::Lanelet> & lanelets,
+  const std::vector<uint8_t> & all_labels, const std::vector<ObjectParameters> & params_per_label);
+
+/// @brief add segments used to cut the predicted paths in the given polygons
+void add_cut_segments(
+  FilteringDataPerLabel & data_per_label, const std::vector<lanelet::Polygon3d> & polygons,
+  const std::vector<uint8_t> & all_labels, const std::vector<ObjectParameters> & params_per_label);
+
+/// @brief add segments used to cut the predicted paths in the given linestrings
+void add_cut_segments(
+  FilteringDataPerLabel & data_per_label, const std::vector<lanelet::LineString3d> & linestrings,
+  const std::vector<uint8_t> & all_labels, const std::vector<ObjectParameters> & params_per_label);
 
 /// @brief calculate map filtering data for each object classification label
-inline FilteringDataPerLabel calculate_filtering_data(
+FilteringDataPerLabel calculate_filtering_data(
   const lanelet::LaneletMapPtr & map_ptr, const TrajectoryCornerFootprint & ego_footprint,
-  const std::vector<std::shared_ptr<PlannerData::Object>> & objects, const Parameters & parameters)
-{
-  const auto bounding_box = prepare_relevent_bounding_box(ego_footprint, objects);
-  FilteringDataPerLabel data_per_label;
-  const auto all_labels = Parameters::all_labels();
-  data_per_label.resize(all_labels.size());
-  for (const auto label : all_labels) {
-    data_per_label[label].cut_predicted_paths_segments.push_back(ego_footprint.get_rear_segment());
-  }
-  const auto lanelets_in_range = map_ptr->laneletLayer.search(bounding_box);
-  universe_utils::Segment2d segment;
-  for (const auto & ll : lanelets_in_range) {
-    const auto attribute = ll.attributeOr(lanelet::AttributeName::Subtype, std::string());
-    for (const auto label : all_labels) {
-      auto & data = data_per_label[label];
-      const auto & params = parameters.object_parameters_per_label[label];
-      const auto & types = params.cut_polygon_types;
-      if (std::find(types.begin(), types.end(), attribute) != types.end()) {
-        for (auto i = 0UL; i < ll.polygon2d().numSegments(); ++i) {
-          data.cut_predicted_paths_segments.push_back(convert(ll.polygon2d().segment(i)));
-        }
-      }
-      if (params.ignore_if_on_crosswalk && attribute == lanelet::AttributeValueString::Crosswalk) {
-        universe_utils::LinearRing2d polygon;
-        boost::geometry::convert(ll.polygon2d().basicPolygon(), polygon);
-        data.ignore_polygons.push_back(polygon);
-      }
-    }
-  }
-  const auto polygons_in_range = map_ptr->polygonLayer.search(bounding_box);
-  for (const auto & p : polygons_in_range) {
-    const auto attribute = p.attributeOr(lanelet::AttributeName::Subtype, std::string());
-    for (const auto label : all_labels) {
-      auto & data = data_per_label[label];
-      const auto & params = parameters.object_parameters_per_label[label];
-      const auto & types = params.cut_polygon_types;
-      if (std::find(types.begin(), types.end(), attribute) != types.end()) {
-        for (auto i = 0UL; i < p.numSegments(); ++i) {
-          data.cut_predicted_paths_segments.push_back(convert(p.segment(i)));
-        }
-      }
-    }
-  }
-  const auto linestrings_in_range = map_ptr->lineStringLayer.search(bounding_box);
-  for (const auto & ls : linestrings_in_range) {
-    for (const auto label : all_labels) {
-      auto & data = data_per_label[label];
-      const auto & params = parameters.object_parameters_per_label[label];
-      const auto attribute = ls.attributeOr(lanelet::AttributeName::Subtype, std::string());
-      const auto & types = params.cut_linestring_types;
-      if (std::find(types.begin(), types.end(), attribute) != types.end()) {
-        for (auto i = 0UL; i < ls.numSegments(); ++i) {
-          data.cut_predicted_paths_segments.push_back(convert(ls.segment(i)));
-        }
-      }
-    }
-  }
-  for (const auto label : all_labels) {
-    auto & data = data_per_label[label];
-    const auto & params = parameters.object_parameters_per_label[label];
-    if (params.ignore_if_on_ego_trajectory) {
-      data.ignore_polygons.push_back(ego_footprint.front_polygon.outer());
-      data.ignore_polygons.push_back(ego_footprint.rear_polygon.outer());
-    }
-  }
-
-  for (const auto label : all_labels) {
-    auto & data = data_per_label[label];
-    std::vector<SegmentNode> nodes;
-    nodes.reserve(data.cut_predicted_paths_segments.size());
-    for (auto i = 0UL; i < data.cut_predicted_paths_segments.size(); ++i) {
-      nodes.emplace_back(data.cut_predicted_paths_segments[i], i);
-    }
-    data.cut_predicted_paths_rtree = SegmentRtree(nodes);
-  }
-  for (const auto label : all_labels) {
-    auto & data = data_per_label[label];
-    std::vector<PolygonNode> nodes;
-    nodes.reserve(data.ignore_polygons.size());
-    for (auto i = 0UL; i < data.ignore_polygons.size(); ++i) {
-      nodes.emplace_back(
-        boost::geometry::return_envelope<universe_utils::Box2d>(data.ignore_polygons[i]), i);
-    }
-    data.ignore_rtree = PolygonRtree(nodes);
-  }
-  return data_per_label;
-}
+  const std::vector<std::shared_ptr<PlannerData::Object>> & objects, const Parameters & parameters);
 }  // namespace autoware::motion_velocity_planner::run_out
 
 #endif  // MAP_DATA_HPP_
