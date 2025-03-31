@@ -56,7 +56,8 @@ void WaypointLoaderPanel::onInitialize()
       loadeFiles(QString::fromStdString(file_position_));
     });
 
-  path_file_pub_ = raw_node_->create_publisher<std_msgs::msg::String>("/waypoint_loader/input_file_path", rclcpp::QoS{1});
+  path_file_pub_ = raw_node_->create_publisher<std_msgs::msg::String>(
+    "/waypoint_loader/input_file_path", rclcpp::QoS{1});
 }
 
 void WaypointLoaderPanel::onRecordService(

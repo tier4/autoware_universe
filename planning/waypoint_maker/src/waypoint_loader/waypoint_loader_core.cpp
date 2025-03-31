@@ -22,7 +22,8 @@ WaypointLoaderNode::WaypointLoaderNode()
 
   // subscriber
   file_subscriber_ = create_subscription<std_msgs::msg::String>(
-    "/waypoint_loader/input_file_path", 1, std::bind(&WaypointLoaderNode::csvFileCallback, this, std::placeholders::_1));
+    "/waypoint_loader/input_file_path", 1,
+    std::bind(&WaypointLoaderNode::csvFileCallback, this, std::placeholders::_1));
   sub_odometry_ = create_subscription<nav_msgs::msg::Odometry>(
     "/input/pose", rclcpp::QoS(1),
     std::bind(&WaypointLoaderNode::onOdometry, this, std::placeholders::_1));
@@ -317,7 +318,7 @@ void WaypointLoaderNode::csvFileCallback(std_msgs::msg::String::ConstSharedPtr m
   std::string default_csv_file = lane_csv_position_ + "waypoint_default.csv";
   csv_file_ = msg->data;
 
-  if (!std::filesystem::equivalent(csv_file_, default_csv_file)){
+  if (!std::filesystem::equivalent(csv_file_, default_csv_file)) {
     RCLCPP_INFO(get_logger(), "Receive a new file. Reloading");
     readCsvFile();
 
