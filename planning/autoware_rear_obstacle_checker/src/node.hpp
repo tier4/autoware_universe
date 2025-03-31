@@ -20,11 +20,11 @@
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 
 #include <autoware/route_handler/route_handler.hpp>
-#include <autoware_rear_obstacle_checker/rear_obstacle_checker_node_parameters.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rear_obstacle_checker_node_parameters.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
