@@ -22,7 +22,6 @@
 #include <autoware/motion_velocity_planner_common_universe/velocity_planning_result.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware/universe_utils/ros/marker_helper.hpp>
-#include <magic_enum.hpp>
 #include <rclcpp/duration.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
