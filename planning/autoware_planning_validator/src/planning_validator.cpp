@@ -20,6 +20,7 @@
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/geometry/pose_deviation.hpp>
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
