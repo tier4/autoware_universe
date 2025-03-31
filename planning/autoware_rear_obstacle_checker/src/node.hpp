@@ -27,7 +27,6 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
-#include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
@@ -36,6 +35,7 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <tier4_planning_msgs/msg/planning_factor_array.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <pcl/common/transforms.h>
@@ -57,8 +57,6 @@ namespace autoware::rear_obstacle_checker
 
 using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
-using autoware_internal_planning_msgs::msg::PlanningFactor;
-using autoware_internal_planning_msgs::msg::PlanningFactorArray;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::Shape;
@@ -66,6 +64,8 @@ using autoware_planning_msgs::msg::LaneletRoute;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 using sensor_msgs::msg::PointCloud2;
+using tier4_planning_msgs::msg::PlanningFactor;
+using tier4_planning_msgs::msg::PlanningFactorArray;
 using visualization_msgs::msg::MarkerArray;
 
 struct DebugData
