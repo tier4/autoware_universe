@@ -71,7 +71,7 @@ std::uint8_t get_highest_prob_label(
 }
 
 bool is_target_behavior(
-  const autoware_internal_planning_msgs::msg::PlanningFactor & factor,
+  const tier4_planning_msgs::msg::PlanningFactor & factor,
   const rear_obstacle_checker_node::Params::MapScene & config)
 {
   switch (factor.behavior) {
@@ -104,7 +104,7 @@ bool is_target_behavior(
   return false;
 }
 
-bool has_valid_control_points(const autoware_internal_planning_msgs::msg::PlanningFactor & factor)
+bool has_valid_control_points(const tier4_planning_msgs::msg::PlanningFactor & factor)
 {
   if (factor.control_points.empty()) {
     return false;
@@ -209,7 +209,7 @@ lanelet::BasicPolygon3d to_basic_polygon3d(
 }
 
 bool should_activate(
-  const autoware_internal_planning_msgs::msg::PlanningFactor & factor,
+  const tier4_planning_msgs::msg::PlanningFactor & factor,
   const rear_obstacle_checker_node::Params & parameters)
 {
   const auto config = parameters.scene_map.at(factor.module);
@@ -240,7 +240,7 @@ bool should_activate(
 }
 
 bool should_check_objects(
-  const autoware_internal_planning_msgs::msg::PlanningFactor & factor,
+  const tier4_planning_msgs::msg::PlanningFactor & factor,
   const rear_obstacle_checker_node::Params & parameters)
 {
   const auto config = parameters.scene_map.at(factor.module);
@@ -250,7 +250,7 @@ bool should_check_objects(
 }
 
 bool should_check_pointcloud(
-  const autoware_internal_planning_msgs::msg::PlanningFactor & factor,
+  const tier4_planning_msgs::msg::PlanningFactor & factor,
   const rear_obstacle_checker_node::Params & parameters)
 {
   const auto config = parameters.scene_map.at(factor.module);
@@ -261,7 +261,7 @@ bool should_check_pointcloud(
 
 bool is_target(
   const autoware_perception_msgs::msg::PredictedObject & object,
-  const autoware_internal_planning_msgs::msg::PlanningFactor & factor,
+  const tier4_planning_msgs::msg::PlanningFactor & factor,
   const rear_obstacle_checker_node::Params & parameters)
 {
   using autoware_perception_msgs::msg::ObjectClassification;
