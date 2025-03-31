@@ -41,10 +41,7 @@ inline void prepare_trajectory_footprint_rtree(TrajectoryCornerFootprint & footp
   SegmentRtree rtree;
   std::vector<FootprintSegmentNode> nodes;
   nodes.emplace_back(footprint.get_rear_segment(), std::make_pair(rear, 0UL));
-  if (footprint.corner_footprint.size() > 0UL) {
-    nodes.emplace_back(
-      footprint.get_front_segment(), std::make_pair(front, footprint.corner_footprint.size() - 1));
-  }
+  nodes.emplace_back(footprint.get_front_segment(), std::make_pair(front, 0UL));
   for (const auto corner : {front_left, front_right, rear_left, rear_right}) {
     const auto & ls = footprint.corner_footprint.corner_linestrings[corner];
     for (auto i = 0UL; i + 1 < ls.size(); ++i) {
@@ -54,9 +51,9 @@ inline void prepare_trajectory_footprint_rtree(TrajectoryCornerFootprint & footp
   footprint.rtree = FootprintSegmentRtree(nodes);
 }
 /// @brief Calculate the corner footprint of the given trajectory
-inline run_out::TrajectoryCornerFootprint calculate_trajectory_corner_footprint(
+inline TrajectoryCornerFootprint calculate_trajectory_corner_footprint(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
-  autoware::vehicle_info_utils::VehicleInfo vehicle_info, const run_out::Parameters & params)
+  autoware::vehicle_info_utils::VehicleInfo vehicle_info, const Parameters & params)
 {
   run_out::TrajectoryCornerFootprint trajectory_footprint;
   auto & footprint = trajectory_footprint.corner_footprint;
