@@ -147,6 +147,9 @@ private:
 
   void publishStopDistance(const TrajectoryPoints & trajectory, const size_t closest) const;
 
+  void publishStopDistanceNoSmoothing(
+    const TrajectoryPoints & trajectory, const size_t closest) const;
+
   // non-const methods
   void publishClosestState(const TrajectoryPoint & closest_point);
 
@@ -193,6 +196,7 @@ private:
   std::shared_ptr<rclcpp::Time> prev_time_;
   double prev_acc_;
   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_dist_to_stopline_;
+  rclcpp::Publisher<Float32Stamped>::SharedPtr pub_dist_to_stopline_no_smoothing_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_raw_;
   rclcpp::Publisher<VelocityLimit>::SharedPtr pub_velocity_limit_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_vel_lim_;
