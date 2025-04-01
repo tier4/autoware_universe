@@ -33,6 +33,7 @@ enum class SourceStatus {
   Neutral,  // TODO(Takagi, Isamu): Use neutral. This means no source state.
 };
 
+// TODO(Takagi, Isamu): It's probably better to use switcher wrapper.
 struct TransitionContext
 {
   SwitcherState sequence_target;

@@ -19,12 +19,14 @@ namespace autoware::command_mode_switcher::transition
 
 TransitionResult wait_command_mode_ready(const TransitionContext & context)
 {
-  // TODO(Takagi, Isamu): Subscribe and use command mode availability.
-  (void)context;
-  return {CommandModeStatusItem::WAIT_SOURCE_READY, ""};
+  if (context.is_mode_available) {
+    return {CommandModeStatusItem::WAIT_SOURCE_READY, ""};
+  } else {
+    return {CommandModeStatusItem::WAIT_COMMAND_MODE_READY, ""};
+  }
 }
 
-TransitionResult wait_source_acquire(const TransitionContext & context)
+TransitionResult wait_source_ready(const TransitionContext & context)
 {
   if (context.source_state == SourceStatus::Enabled) {
     return {CommandModeStatusItem::WAIT_SOURCE_EXCLUSIVE, ""};
@@ -33,7 +35,7 @@ TransitionResult wait_source_acquire(const TransitionContext & context)
   }
 }
 
-TransitionResult wait_source_release(const TransitionContext & context)
+TransitionResult wait_source_cleanup(const TransitionContext & context)
 {
   if (context.source_state == SourceStatus::Disabled) {
     return {CommandModeStatusItem::DISABLED, ""};
@@ -67,9 +69,11 @@ TransitionResult wait_source_selected(const TransitionContext & context)
 
 TransitionResult wait_control_ready(const TransitionContext & context)
 {
-  // TODO(Takagi, Isamu): Subscribe and use transition availability.
-  (void)context;
-  return {CommandModeStatusItem::WAIT_CONTROL_SELECTED, ""};
+  if (context.is_ctrl_available) {
+    return {CommandModeStatusItem::WAIT_CONTROL_SELECTED, ""};
+  } else {
+    return {CommandModeStatusItem::WAIT_CONTROL_READY, ""};
+  }
 }
 
 TransitionResult wait_control_selected(const TransitionContext & context)
@@ -83,9 +87,11 @@ TransitionResult wait_control_selected(const TransitionContext & context)
 
 TransitionResult wait_command_mode_stable(const TransitionContext & context)
 {
-  // TODO(Takagi, Isamu): Subscribe and use transition completed.
-  (void)context;
-  return {CommandModeStatusItem::ENABLED, ""};
+  if (context.is_transition_completed) {
+    return {CommandModeStatusItem::ENABLED, ""};
+  } else {
+    return {CommandModeStatusItem::WAIT_COMMAND_MODE_STABLE, ""};
+  }
 }
 
 TransitionResult next(SwitcherState state, const TransitionContext & context)
@@ -96,7 +102,7 @@ TransitionResult next(SwitcherState state, const TransitionContext & context)
   // clang-format off
   switch (state) {
     case State::WAIT_COMMAND_MODE_READY:  return wait_command_mode_ready(context);
-    case State::WAIT_SOURCE_READY:        return wait_source_acquire(context);
+    case State::WAIT_SOURCE_READY:        return wait_source_ready(context);
     case State::WAIT_SOURCE_EXCLUSIVE:    return wait_source_exclusive(context);
     case State::WAIT_SOURCE_SELECTED:     return wait_source_selected(context);
     case State::WAIT_CONTROL_READY:       return wait_control_ready(context);
@@ -105,7 +111,7 @@ TransitionResult next(SwitcherState state, const TransitionContext & context)
     case State::DISABLED:                 return {state, ""};
     case State::STANDBY:                  return {state, ""};
     case State::ENABLED:                  return {state, ""};
-    case State::CLEANUP:                  return wait_source_release(context);
+    case State::CLEANUP:                  return wait_source_cleanup(context);
   }
   // clang-format on
 
