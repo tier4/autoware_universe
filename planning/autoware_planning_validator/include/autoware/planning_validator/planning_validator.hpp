@@ -67,7 +67,9 @@ public:
   bool checkValidDistanceDeviation(const Trajectory & trajectory);
   bool checkValidLongitudinalDistanceDeviation(const Trajectory & trajectory);
   bool checkValidForwardTrajectoryLength(const Trajectory & trajectory);
-  bool checkTrajectoryShift(const Trajectory & trajectory, const Trajectory & prev_trajectory);
+  bool checkTrajectoryShift(
+    const Trajectory & trajectory, const Trajectory & prev_trajectory,
+    const geometry_msgs::msg::Pose & ego_pose);
 
 private:
   void setupDiag();
