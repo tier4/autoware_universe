@@ -28,6 +28,7 @@ public:
   std::string mode_name() const override { return "remote"; }
   std::string source_name() const override { return "remote"; }
   bool autoware_control() const override { return true; }
+  void initialize() override;
 };
 
 }  // namespace autoware::command_mode_switcher

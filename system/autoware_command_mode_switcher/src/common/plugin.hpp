@@ -41,19 +41,22 @@ public:
   void override();
   void update_status(const TransitionContext & context);
 
-  void set_available(bool available) { status_.available = available; }
-  void set_continuable(bool continuable) { status_.continuable = continuable; }
-  void set_acceptable(bool acceptable) { status_.acceptable = acceptable; }
-  void set_controllable(bool controllable) { status_.controllable = controllable; }
+  void set_mode_continuable(bool continuable) { status_.mode_continuable = continuable; }
+  void set_mode_available(bool available) { status_.mode_available = available; }
+  void set_ctrl_available(bool available) { status_.ctrl_available = available; }
+  void set_transition_completed(bool completed) { status_.transition_completed = completed; }
 
   virtual ~SwitcherPlugin() = default;
   virtual std::string mode_name() const = 0;
   virtual std::string source_name() const = 0;
   virtual bool autoware_control() const = 0;
+  virtual void initialize() = 0;
   virtual void update_source_status();
 
-private:
+protected:
   rclcpp::Node * node_;
+
+private:
   CommandModeStatusItem status_;
   SourceStatus source_status_;
 };

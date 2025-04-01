@@ -29,6 +29,7 @@ public:
   std::string mode_name() const override { return "manual"; }
   std::string source_name() const override { return ""; }
   bool autoware_control() const override { return false; }
+  void initialize() override;
 };
 
 }  // namespace autoware::command_mode_switcher

@@ -6,6 +6,8 @@
     <remap from="~/command_mode/availability" to="/system/command_mode/availability"/>
     <remap from="~/command_mode/status" to="/system/command_mode/status"/>
     <remap from="~/command_mode/request" to="/system/command_mode/request"/>
+    <remap from="~/command_mode/transition/available" to="/system/command_mode/transition/available"/>
+    <remap from="~/command_mode/transition/completed" to="/system/command_mode/transition/completed"/>
     <remap from="~/source/status" to="/control/control_command_gate/source/status"/>
     <remap from="~/source/select" to="/control/control_command_gate/source/select"/>
     <remap from="~/control_mode/report" to="/vehicle/status/control_mode"/>

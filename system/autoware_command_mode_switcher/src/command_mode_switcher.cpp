@@ -36,18 +36,11 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
     "~/command_mode/availability", rclcpp::QoS(1),
     std::bind(&CommandModeSwitcher::on_availability, this, std::placeholders::_1));
 
-  // Init manual switcher
+  // Create manual switcher
   manual_switcher_ = std::make_shared<ManualSwitcher>();
-  manual_switcher_->construct(this);
   switchers_.push_back(manual_switcher_);
 
-  // TODO(Takagi, Isamu): This should be set by plugin. Set manual switcher to available.
-  manual_switcher_->set_available(true);
-  manual_switcher_->set_continuable(true);
-  manual_switcher_->set_acceptable(true);
-  manual_switcher_->set_controllable(true);
-
-  // Init source switchers
+  // Create source switchers
   {
     const auto plugins = declare_parameter<std::vector<std::string>>("plugins");
 
@@ -61,10 +54,15 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
         RCLCPP_WARN_STREAM(get_logger(), "ignore duplicate plugin: " << plugin);
         continue;
       }
-      switcher->construct(this);
       autoware_switchers_[switcher->mode_name()] = switcher;
       switchers_.push_back(switcher);
     }
+  }
+
+  // Initialize all switchers. Call "construct" first, which acts as the base class constructor.
+  for (const auto & switcher : switchers_) {
+    switcher->construct(this);
+    switcher->initialize();
   }
 
   const auto period = rclcpp::Rate(declare_parameter<double>("update_rate")).period();
@@ -76,10 +74,11 @@ void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
   for (const auto & item : msg.items) {
     const auto iter = autoware_switchers_.find(item.mode);
     if (iter != autoware_switchers_.end()) {
-      iter->second->set_available(item.available);
-      iter->second->set_continuable(item.available);
-      iter->second->set_acceptable(true);    // TODO(Takagi, Isamu): Subscribe value.
-      iter->second->set_controllable(true);  // TODO(Takagi, Isamu): Subscribe value.
+      iter->second->set_mode_continuable(item.available);
+      iter->second->set_mode_available(item.available);
+      // TODO(Takagi, Isamu): Replace with the method using diagnostics.
+      // iter->second->set_ctrl_available(item.???);
+      // iter->second->set_transition_completed(item.???);
     }
   }
   is_ready_ = true;
