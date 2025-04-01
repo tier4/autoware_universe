@@ -158,18 +158,19 @@ void CommandModeDeciderBase::sync_command_mode()
 
 void CommandModeDeciderBase::publish_operation_mode_state()
 {
-  const auto is_available = [this](const auto & mode) {
-    return command_mode_status_.get(mode).available;
+  const auto is_transition_available = [this](const auto & mode) {
+    const auto status = command_mode_status_.get(mode);
+    return status.mode_available && status.ctrl_available;
   };
   OperationModeState state;
   state.stamp = now();
   state.mode = command_to_operation_mode(request_.operation_mode);  // TODO(Takagi, Isamu): check
   state.is_autoware_control_enabled = request_.autoware_control;    // TODO(Takagi, Isamu): check
   state.is_in_transition = command_mode_request_stamp_.has_value();
-  state.is_stop_mode_available = is_available("stop");
-  state.is_autonomous_mode_available = is_available("autonomous");
-  state.is_local_mode_available = is_available("local");
-  state.is_remote_mode_available = is_available("remote");
+  state.is_stop_mode_available = is_transition_available("stop");
+  state.is_autonomous_mode_available = is_transition_available("autonomous");
+  state.is_local_mode_available = is_transition_available("local");
+  state.is_remote_mode_available = is_transition_available("remote");
   pub_operation_mode_->publish(state);
 }
 
@@ -203,7 +204,7 @@ bool on_change_mode(T & res, const CommandModeStatusWrapper & wrapper, const std
     res->status.message = "invalid mode name: " + mode;
     return false;
   }
-  if (!item.available) {
+  if (!item.mode_available || !item.ctrl_available) {
     res->status.success = false;
     res->status.message = "mode is not available: " + mode;
     return false;

@@ -237,6 +237,10 @@ TransitionContext CommandModeSwitcher::create_transition_context(const SwitcherP
   context.is_source_exclusive = is_source_exclusive(target);
   context.is_source_selected = is_source_selected(target);
   context.is_control_selected = is_control_selected(target);
+  context.is_mode_continuable = target.status().mode_continuable;
+  context.is_mode_available = target.status().mode_available;
+  context.is_ctrl_available = target.status().ctrl_available;
+  context.is_transition_completed = target.status().transition_completed;
   return context;
 }
 
