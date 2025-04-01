@@ -17,4 +17,12 @@
 namespace autoware::command_mode_switcher
 {
 
+void ManualSwitcher::initialize()
+{
+  set_mode_continuable(true);
+  set_mode_available(true);
+  set_ctrl_available(true);
+  set_transition_completed(true);
+}
+
 }  // namespace autoware::command_mode_switcher

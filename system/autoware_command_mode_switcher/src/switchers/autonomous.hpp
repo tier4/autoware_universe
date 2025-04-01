@@ -17,6 +17,8 @@
 
 #include "common/plugin.hpp"
 
+#include <tier4_system_msgs/msg/mode_change_available.hpp>
+
 #include <string>
 
 namespace autoware::command_mode_switcher
@@ -28,6 +30,12 @@ public:
   std::string mode_name() const override { return "autonomous"; }
   std::string source_name() const override { return "main"; }
   bool autoware_control() const override { return true; }
+  void initialize() override;
+
+private:
+  using ModeChangeAvailable = tier4_system_msgs::msg::ModeChangeAvailable;
+  rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_available_;
+  rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_completed_;
 };
 
 }  // namespace autoware::command_mode_switcher

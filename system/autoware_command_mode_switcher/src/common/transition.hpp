@@ -40,6 +40,10 @@ struct TransitionContext
   bool is_source_exclusive;
   bool is_source_selected;
   bool is_control_selected;
+  bool is_mode_continuable;
+  bool is_mode_available;
+  bool is_ctrl_available;
+  bool is_transition_completed;
 };
 
 struct TransitionResult
