@@ -20,11 +20,14 @@
 #include <autoware/motion_velocity_planner_common_universe/planner_data.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
 
+#include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/predicted_path.hpp>
+#include <geometry_msgs/msg/detail/point__struct.hpp>
 
 #include <boost/geometry/algorithms/correct.hpp>
 #include <boost/geometry/algorithms/detail/overlaps/interface.hpp>
@@ -134,15 +137,27 @@ void calculate_predicted_path_footprints(
   Object & object, const autoware_perception_msgs::msg::PredictedObject & predicted_object,
   [[maybe_unused]] const Parameters & params)
 {
+  auto width = 0.0;
+  auto half_length = 0.0;
+  if (
+    predicted_object.shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX ||
+    predicted_object.shape.type == autoware_perception_msgs::msg::Shape::CYLINDER) {
+    half_length = predicted_object.shape.dimensions.x * 0.5;
+    width = predicted_object.shape.dimensions.y;
+  } else if (predicted_object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
+    for (const auto p : predicted_object.shape.footprint.points) {
+      const auto zero_point = geometry_msgs::msg::Point();
+      width = std::max(width, autoware_utils_geometry::calc_distance2d(p, zero_point));
+    }
+    half_length = width / 2.0;
+  }
   // calculate footprint
   for (const auto & path :
        filter_by_confidence(predicted_object.kinematics.predicted_paths, object.label, params)) {
     ObjectCornerFootprint footprint;
     footprint.time_step = rclcpp::Duration(path.time_step).seconds();
-    const auto half_length = predicted_object.shape.dimensions.x * 0.5;
     for (const auto & p : path.path) {
-      const auto object_polygon = autoware_utils::to_footprint(
-        p, half_length, half_length, predicted_object.shape.dimensions.y);
+      const auto object_polygon = autoware_utils::to_footprint(p, half_length, half_length, width);
       footprint.corner_footprint.corner_linestrings[front_left].push_back(
         object_polygon.outer()[0]);
       footprint.corner_footprint.corner_linestrings[front_right].push_back(
