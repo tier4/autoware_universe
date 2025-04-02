@@ -61,6 +61,15 @@ private:
   SourceStatus source_status_;
 };
 
+using ControlGateSwitcher = SwitcherPlugin;
+
+class VehicleGateSwitcher : public SwitcherPlugin
+{
+public:
+  void enable_autoware_control() {}
+  void disable_autoware_control() {}
+};
+
 }  // namespace autoware::command_mode_switcher
 
 #endif  // COMMON__PLUGIN_HPP_

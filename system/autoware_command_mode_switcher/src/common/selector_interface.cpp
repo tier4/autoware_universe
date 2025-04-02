@@ -21,35 +21,26 @@
 namespace autoware::command_mode_switcher
 {
 
-SelectorInterface::SelectorInterface(rclcpp::Node & node, Callback callback) : node_(node)
+ControlGateInterface::ControlGateInterface(rclcpp::Node & node, Callback callback) : node_(node)
 {
-  group_ = node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   notification_callback_ = callback;
+  status_.source = "";
 
-  cli_source_select_ = node.create_client<SelectCommandSource>(
-    "~/source/select", rmw_qos_profile_services_default, group_);
-
+  cli_source_select_ = node.create_client<SelectCommandSource>("~/source/select");
   sub_source_status_ = node.create_subscription<CommandSourceStatus>(
     "~/source/status", rclcpp::QoS(1).transient_local(),
-    std::bind(&SelectorInterface::on_source_status, this, std::placeholders::_1));
-
-  cli_control_mode_ = node.create_client<ControlModeCommand>(
-    "~/control_mode/request", rmw_qos_profile_services_default, group_);
-
-  sub_control_mode_ = node.create_subscription<ControlModeReport>(
-    "~/control_mode/report", rclcpp::QoS(1),
-    std::bind(&SelectorInterface::on_control_mode, this, std::placeholders::_1));
+    std::bind(&ControlGateInterface::on_source_status, this, std::placeholders::_1));
 }
 
-std::optional<bool> SelectorInterface::autoware_control() const
+VehicleGateInterface::VehicleGateInterface(rclcpp::Node & node, Callback callback) : node_(node)
 {
-  if (control_mode_.mode == ControlModeReport::AUTONOMOUS) {
-    return true;
-  }
-  if (control_mode_.mode == ControlModeReport::MANUAL) {
-    return false;
-  }
-  return std::nullopt;
+  notification_callback_ = callback;
+  status_.mode = ControlModeReport::NO_COMMAND;
+
+  cli_control_mode_ = node.create_client<ControlModeCommand>("~/control_mode/request");
+  sub_control_mode_ = node.create_subscription<ControlModeReport>(
+    "~/control_mode/report", rclcpp::QoS(1),
+    std::bind(&VehicleGateInterface::on_control_mode, this, std::placeholders::_1));
 }
 
 template <class T>
@@ -61,26 +52,38 @@ bool equals_except_stamp(const T & msg1, const T & msg2)
   return t1 == t2;
 }
 
-void SelectorInterface::on_source_status(const CommandSourceStatus & msg)
+void ControlGateInterface::on_source_status(const CommandSourceStatus & msg)
 {
-  const auto equals = equals_except_stamp(source_status_, msg);
-  source_status_ = msg;
+  const auto equals = equals_except_stamp(status_, msg);
+  status_ = msg;
   if (!equals) notification_callback_();
 }
 
-void SelectorInterface::on_control_mode(const ControlModeReport & msg)
+void VehicleGateInterface::on_control_mode(const ControlModeReport & msg)
 {
-  const auto equals = equals_except_stamp(control_mode_, msg);
-  control_mode_ = msg;
+  const auto equals = equals_except_stamp(status_, msg);
+  status_ = msg;
   if (!equals) notification_callback_();
 }
 
-bool SelectorInterface::select_source(const std::string & source)
+bool ControlGateInterface::is_selected(const SwitcherPlugin & target)
 {
-  if (this->source_name() == source) {
-    return false;
+  if (target.source_name().empty()) return true;
+  return target.source_name() == status_.source;
+}
+
+bool VehicleGateInterface::is_selected(const SwitcherPlugin & target)
+{
+  if (target.autoware_control()) {
+    return status_.mode == ControlModeReport::AUTONOMOUS;
+  } else {
+    return status_.mode == ControlModeReport::MANUAL;
   }
-  if (waiting_source_select_) {
+}
+
+bool ControlGateInterface::request(const SwitcherPlugin & target, bool transition)
+{
+  if (requesting_) {
     return false;
   }
   if (!cli_source_select_->service_is_ready()) {
@@ -89,20 +92,18 @@ bool SelectorInterface::select_source(const std::string & source)
 
   using SharedFuture = rclcpp::Client<SelectCommandSource>::SharedFuture;
   auto request = std::make_shared<SelectCommandSource::Request>();
-  request->source = source;
+  request->source = target.source_name();
+  request->transition = transition;
 
-  waiting_source_select_ = true;
-  cli_source_select_->async_send_request(
-    request, [this](SharedFuture) { waiting_source_select_ = false; });
+  RCLCPP_WARN_STREAM(node_.get_logger(), "control gate request");
+  requesting_ = true;
+  cli_source_select_->async_send_request(request, [this](SharedFuture) { requesting_ = false; });
   return true;
 }
 
-bool SelectorInterface::select_control(const bool autoware_control)
+bool VehicleGateInterface::request(const SwitcherPlugin & target)
 {
-  if (this->autoware_control() == autoware_control) {
-    return false;
-  }
-  if (waiting_control_mode_) {
+  if (requesting_) {
     return false;
   }
   if (!cli_control_mode_->service_is_ready()) {
@@ -111,15 +112,15 @@ bool SelectorInterface::select_control(const bool autoware_control)
 
   using SharedFuture = rclcpp::Client<ControlModeCommand>::SharedFuture;
   auto request = std::make_shared<ControlModeCommand::Request>();
-  if (autoware_control) {
+  if (target.autoware_control()) {
     request->mode = ControlModeCommand::Request::AUTONOMOUS;
   } else {
     request->mode = ControlModeCommand::Request::MANUAL;
   }
 
-  waiting_control_mode_ = true;
-  cli_control_mode_->async_send_request(
-    request, [this](SharedFuture) { waiting_control_mode_ = false; });
+  RCLCPP_WARN_STREAM(node_.get_logger(), "vehicle gate request");
+  requesting_ = true;
+  cli_control_mode_->async_send_request(request, [this](SharedFuture) { requesting_ = false; });
   return true;
 }
 

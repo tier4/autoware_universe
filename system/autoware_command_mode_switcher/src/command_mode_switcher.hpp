@@ -49,6 +49,7 @@ private:
   void on_availability(const CommandModeAvailability & msg);
   void on_request(const CommandModeRequest & msg);
   void update_status();
+  void update_transition();
   void publish_command_mode_status();
   TransitionContext create_transition_context(const SwitcherPlugin & target);
 
@@ -57,17 +58,26 @@ private:
   rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_availability_;
   rclcpp::Subscription<CommandModeRequest>::SharedPtr sub_request_;
   rclcpp::Publisher<CommandModeStatus>::SharedPtr pub_status_;
-  SelectorInterface selector_interface_;
 
   // Mode switchers.
   pluginlib::ClassLoader<SwitcherPlugin> loader_;
   std::vector<std::shared_ptr<SwitcherPlugin>> switchers_;
   std::unordered_map<std::string, std::shared_ptr<SwitcherPlugin>> autoware_switchers_;
   std::shared_ptr<SwitcherPlugin> manual_switcher_;
-  std::shared_ptr<SwitcherPlugin> background_transition_;
-  std::shared_ptr<SwitcherPlugin> foreground_transition_;
+
+  ControlGateInterface control_gate_interface_;
+  VehicleGateInterface vehicle_gate_interface_;
+  std::shared_ptr<SwitcherPlugin> control_gate_target_;
+  std::shared_ptr<SwitcherPlugin> vehicle_gate_target_;
+
+  struct ModeRequest
+  {
+    std::string mode;
+    bool ctrl;
+  };
 
   bool is_ready_ = false;
+  std::optional<ModeRequest> request_;
 };
 
 }  // namespace autoware::command_mode_switcher

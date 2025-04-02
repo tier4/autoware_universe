@@ -23,7 +23,7 @@ namespace autoware::command_mode_switcher
 {
 
 // This is a builtin switcher. Don't export as a plugin.
-class ManualSwitcher : public SwitcherPlugin
+class ManualSwitcher : public VehicleGateSwitcher
 {
 public:
   std::string mode_name() const override { return "manual"; }
