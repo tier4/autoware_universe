@@ -13,8 +13,8 @@
       use_lane_type: "opposite_direction_lane"
       # drivable area setting
       use_intersection_areas: true
-      use_hatched_road_markings: true
-      use_freespace_areas: true
+      use_hatched_road_markings: false
+      use_freespace_areas: false
 
       # avoidance is performed for the object type with true
       target_object:

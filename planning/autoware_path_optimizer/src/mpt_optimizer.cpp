@@ -1648,6 +1648,7 @@ std::optional<std::vector<TrajectoryPoint>> MPTOptimizer::calcMPTPoints(
   const Eigen::VectorXd steer_angles = optimized_variables.segment(N_x, N_u);
   const Eigen::VectorXd slack_variables = optimized_variables.segment(N_x + N_u, N_ref * N_slack);
 
+
   // calculate trajectory points from optimization result
   std::vector<TrajectoryPoint> traj_points;
   for (size_t i = 0; i < N_ref; ++i) {
