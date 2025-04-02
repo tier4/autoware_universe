@@ -39,6 +39,8 @@
 #include <tuple>
 #include <utility>
 
+class AccelerationValidatorTest;
+
 namespace autoware::control_validator
 {
 using autoware_control_msgs::msg::Control;
@@ -67,6 +69,7 @@ struct ValidationParams
 class AccelerationValidator
 {
 public:
+  friend class ::AccelerationValidatorTest;
   explicit AccelerationValidator(rclcpp::Node & node)
   {
     e_offset =
@@ -83,6 +86,7 @@ public:
     const AccelWithCovarianceStamped & loc_acc);
 
 private:
+  bool is_in_error_range() const;
   double e_offset;
   double e_scale;
   autoware::signal_processing::LowpassFilter1d desired_acc_lpf{0.0};
@@ -186,9 +190,9 @@ private:
 
   // Subscribers and publishers
   rclcpp::Subscription<Control>::SharedPtr sub_control_cmd_;
-  rclcpp::Subscription<Trajectory>::SharedPtr sub_predicted_traj_;
   autoware_utils::InterProcessPollingSubscriber<Odometry>::SharedPtr sub_kinematics_;
   autoware_utils::InterProcessPollingSubscriber<Trajectory>::SharedPtr sub_reference_traj_;
+  autoware_utils::InterProcessPollingSubscriber<Trajectory>::SharedPtr sub_predicted_traj_;
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>::SharedPtr
     sub_measured_acc_;
   rclcpp::Publisher<ControlValidatorStatus>::SharedPtr pub_status_;
