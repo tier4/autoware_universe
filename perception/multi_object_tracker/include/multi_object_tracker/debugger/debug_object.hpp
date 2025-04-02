@@ -54,6 +54,7 @@ struct ObjectData
 
   // existence probabilities
   std::vector<float> existence_vector;
+  float total_existence_probability;
 
   // detection channel id
   uint channel_id;

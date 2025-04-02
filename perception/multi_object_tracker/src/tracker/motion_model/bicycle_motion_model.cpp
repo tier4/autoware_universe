@@ -207,7 +207,7 @@ bool BicycleMotionModel::updateStatePoseHeadVel(
   if (!checkInitialized()) return false;
 
   // update state, with velocity
-  constexpr int DIM_Y = 4;
+  constexpr int DIM_Y = 3;
 
   // fix yaw
   double estimated_yaw = getStateElement(IDX::YAW);
