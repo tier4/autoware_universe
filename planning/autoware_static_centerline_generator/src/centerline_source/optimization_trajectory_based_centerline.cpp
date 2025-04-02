@@ -157,27 +157,29 @@ std::vector<TrajectoryPoint> OptimizationTrajectoryBasedCenterline::optimize_tra
     const auto smoothed_traj_points =
       eb_path_smoother_ptr->smoothTrajectory(raw_traj_points, virtual_ego_pose);
 
-    // road collision avoidance by model predictive trajectory in the autoware_path_optimizer
-    // package
+    // road collision avoidance by model predictive trajectory in the autoware_path_optimizer package
     const autoware::path_optimizer::PlannerData planner_data{
       raw_path.header, smoothed_traj_points, raw_path.left_bound, raw_path.right_bound,
       virtual_ego_pose};
-    const auto optimized_traj_points = mpt_optimizer_ptr->optimizeTrajectory(planner_data);
+    const auto optimized_points_opt = mpt_optimizer_ptr->optimizeTrajectory(planner_data);
 
     // connect the previously and currently optimized trajectory points
-    for (size_t j = 0; j < whole_optimized_traj_points.size(); ++j) {
-      const double dist = autoware::universe_utils::calcDistance2d(
-        whole_optimized_traj_points.at(j), optimized_traj_points.front());
-      if (dist < 0.5) {
-        const std::vector<TrajectoryPoint> extracted_whole_optimized_traj_points{
-          whole_optimized_traj_points.begin(),
-          whole_optimized_traj_points.begin() + std::max(j, 1UL) - 1};
-        whole_optimized_traj_points = extracted_whole_optimized_traj_points;
-        break;
+    if (optimized_points_opt && !optimized_points_opt->empty()) {
+      const auto & optimized_points = *optimized_points_opt;
+      for (size_t j = 0; j < whole_optimized_traj_points.size(); ++j) {
+        const double dist = autoware::universe_utils::calcDistance2d(
+          whole_optimized_traj_points.at(j), optimized_points.front());
+        if (dist < 0.5) {
+          const std::vector<TrajectoryPoint> extracted_whole_optimized_traj_points{
+            whole_optimized_traj_points.begin(),
+            whole_optimized_traj_points.begin() + std::max(j, 1UL) - 1};
+          whole_optimized_traj_points = extracted_whole_optimized_traj_points;
+          break;
+        }
       }
-    }
-    for (size_t j = 0; j < optimized_traj_points.size(); ++j) {
-      whole_optimized_traj_points.push_back(optimized_traj_points.at(j));
+      for (const auto & point : optimized_points) {
+        whole_optimized_traj_points.push_back(point);
+      }
     }
   }
 
