@@ -22,10 +22,10 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <object_recognition_utils/object_recognition_utils.hpp>
-#include <autoware_utils/geometry/boost_polygon_utils.hpp>
-#include <autoware_utils/math/normalization.hpp>
-#include <autoware_utils/math/unit_conversion.hpp>
-#include <autoware_utils/ros/msg_covariance.hpp>
+#include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware/universe_utils/math/normalization.hpp>
+#include <autoware/universe_utils/math/unit_conversion.hpp>
+#include <autoware/universe_utils/ros/msg_covariance.hpp>
 
 #include <bits/stdc++.h>
 #include <tf2/utils.h>
@@ -70,7 +70,7 @@ PedestrianTracker::PedestrianTracker(const rclcpp::Time & time, const types::Dyn
 
   // Set initial state
   {
-    using autoware_utils::xyzrpy_covariance_index::XYZRPY_COV_IDX;
+    using autoware::universe_utils::xyzrpy_covariance_index::XYZRPY_COV_IDX;
     const double x = object.pose.position.x;
     const double y = object.pose.position.y;
     const double yaw = tf2::getYaw(object.pose.orientation);
@@ -211,7 +211,7 @@ bool PedestrianTracker::getTrackedObject(
   const auto origin_yaw = tf2::getYaw(object_.pose.orientation);
   const auto ekf_pose_yaw = tf2::getYaw(pose.orientation);
   object.shape.footprint =
-    autoware_utils::rotate_polygon(object.shape.footprint, origin_yaw - ekf_pose_yaw);
+    autoware::universe_utils::rotate_polygon(object.shape.footprint, origin_yaw - ekf_pose_yaw);
 
   return true;
 }

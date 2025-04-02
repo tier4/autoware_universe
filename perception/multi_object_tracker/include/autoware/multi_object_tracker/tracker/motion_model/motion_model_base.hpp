@@ -33,7 +33,7 @@
 
 namespace autoware::multi_object_tracker
 {
-using autoware::kalman_filter::KalmanFilter;
+using kalman_filter::KalmanFilter;
 
 class MotionModel
 {
