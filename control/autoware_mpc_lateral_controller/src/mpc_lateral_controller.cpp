@@ -308,7 +308,7 @@ trajectory_follower::LateralOutput MpcLateralController::run(
 
   const auto createLateralOutput =
     [this](
-      const auto & cmd, const bool is_mpc_solved,
+      const auto & cmd, [[maybe_unused]] const bool is_mpc_solved,
       const auto & cmd_horizon) -> trajectory_follower::LateralOutput {
     trajectory_follower::LateralOutput output;
     output.control_cmd = createCtrlCmdMsg(cmd);
