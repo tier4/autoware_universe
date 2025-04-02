@@ -66,7 +66,7 @@ public:
 
   std::uint8_t getHighestProbLabel() const
   {
-    return autoware::object_recognition_utils::getHighestProbLabel(object_.classification);
+    return object_recognition_utils::getHighestProbLabel(object_.classification);
   }
 
   // existence states

@@ -117,7 +117,7 @@ bool Tracker::updateWithMeasurement(
   // Update classification
   if (
     channel_info.trust_classification &&
-    autoware::object_recognition_utils::getHighestProbLabel(object.classification) !=
+    object_recognition_utils::getHighestProbLabel(object.classification) !=
       autoware_perception_msgs::msg::ObjectClassification::UNKNOWN) {
     updateClassification(object.classification);
   }

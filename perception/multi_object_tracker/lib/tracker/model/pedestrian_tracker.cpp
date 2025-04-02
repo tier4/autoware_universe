@@ -211,7 +211,7 @@ bool PedestrianTracker::getTrackedObject(
   const auto origin_yaw = tf2::getYaw(object_.pose.orientation);
   const auto ekf_pose_yaw = tf2::getYaw(pose.orientation);
   object.shape.footprint =
-    autoware::universe_utils::rotate_polygon(object.shape.footprint, origin_yaw - ekf_pose_yaw);
+    autoware::universe_utils::rotatePolygon(object.shape.footprint, origin_yaw - ekf_pose_yaw);
 
   return true;
 }

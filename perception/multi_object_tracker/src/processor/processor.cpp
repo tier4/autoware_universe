@@ -121,7 +121,7 @@ std::shared_ptr<Tracker> TrackerProcessor::createNewTracker(
   const types::DynamicObject & object, const rclcpp::Time & time) const
 {
   const LabelType label =
-    autoware::object_recognition_utils::getHighestProbLabel(object.classification);
+    object_recognition_utils::getHighestProbLabel(object.classification);
   if (config_.tracker_map.count(label) != 0) {
     const auto tracker = config_.tracker_map.at(label);
     if (tracker == "bicycle_tracker")

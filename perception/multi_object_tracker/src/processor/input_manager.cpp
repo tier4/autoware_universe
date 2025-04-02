@@ -73,7 +73,7 @@ void InputStream::onMessage(
   // object shape processing
   for (auto & object : dynamic_objects.objects) {
     const auto label =
-      autoware::object_recognition_utils::getHighestProbLabel(object.classification);
+      object_recognition_utils::getHighestProbLabel(object.classification);
     if (label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN) {
       continue;
     }

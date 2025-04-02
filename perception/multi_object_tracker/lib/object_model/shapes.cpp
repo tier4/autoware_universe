@@ -65,9 +65,9 @@ double get2dIoU(
 {
   static const double MIN_AREA = 1e-6;
 
-  const auto source_polygon = autoware::universe_utils::to_polygon2d(source_object.pose, source_object.shape);
+  const auto source_polygon = autoware::universe_utils::toPolygon2d(source_object.pose, source_object.shape);
   if (boost::geometry::area(source_polygon) < MIN_AREA) return 0.0;
-  const auto target_polygon = autoware::universe_utils::to_polygon2d(target_object.pose, target_object.shape);
+  const auto target_polygon = autoware::universe_utils::toPolygon2d(target_object.pose, target_object.shape);
   if (boost::geometry::area(target_polygon) < MIN_AREA) return 0.0;
 
   const double intersection_area = getIntersectionArea(source_polygon, target_polygon);

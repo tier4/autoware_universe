@@ -274,7 +274,7 @@ bool BicycleMotionModel::limitStates()
     X_t(IDX::SLIP) = X_t(IDX::SLIP) < 0 ? -motion_params_.max_slip : motion_params_.max_slip;
   }
   // normalize yaw
-  X_t(IDX::YAW) = autoware::universe_utils::normalize_radian(X_t(IDX::YAW));
+  X_t(IDX::YAW) = autoware::universe_utils::normalizeRadian(X_t(IDX::YAW));
 
   // overwrite state
   ekf_.init(X_t, P_t);
