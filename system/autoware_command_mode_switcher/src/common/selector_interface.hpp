@@ -15,6 +15,8 @@
 #ifndef COMMON__SELECTOR_INTERFACE_HPP_
 #define COMMON__SELECTOR_INTERFACE_HPP_
 
+#include "plugin.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
@@ -22,45 +24,57 @@
 #include <tier4_system_msgs/msg/command_source_status.hpp>
 #include <tier4_system_msgs/srv/select_command_source.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace autoware::command_mode_switcher
 {
 
-class SelectorInterface
+class ControlGateInterface
 {
 public:
   using Callback = std::function<void()>;
-  SelectorInterface(rclcpp::Node & node, Callback callback);
-  bool select_source(const std::string & source);
-  bool select_control(const bool autoware_control);
-
-  const std::string & source_name() const { return source_status_.source; }
-  std::optional<bool> autoware_control() const;
+  ControlGateInterface(rclcpp::Node & node, Callback callback);
+  bool request(const SwitcherPlugin & target, bool transition);
+  bool is_selected(const SwitcherPlugin & target);
 
 private:
   using SelectCommandSource = tier4_system_msgs::srv::SelectCommandSource;
   using CommandSourceStatus = tier4_system_msgs::msg::CommandSourceStatus;
+  void on_source_status(const CommandSourceStatus & msg);
+
+  rclcpp::Node & node_;
+  rclcpp::Client<SelectCommandSource>::SharedPtr cli_source_select_;
+  rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_source_status_;
+
+  Callback notification_callback_;
+  CommandSourceStatus status_;
+  std::shared_ptr<SwitcherPlugin> switcher_;
+  bool requesting_ = false;
+};
+
+class VehicleGateInterface
+{
+public:
+  using Callback = std::function<void()>;
+  VehicleGateInterface(rclcpp::Node & node, Callback callback);
+  bool request(const SwitcherPlugin & target);
+  bool is_selected(const SwitcherPlugin & target);
+
+private:
   using ControlModeCommand = autoware_vehicle_msgs::srv::ControlModeCommand;
   using ControlModeReport = autoware_vehicle_msgs::msg::ControlModeReport;
-
-  void on_source_status(const CommandSourceStatus & msg);
   void on_control_mode(const ControlModeReport & msg);
 
   rclcpp::Node & node_;
-  rclcpp::CallbackGroup::SharedPtr group_;
-  Callback notification_callback_;
-
-  rclcpp::Client<SelectCommandSource>::SharedPtr cli_source_select_;
-  rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_source_status_;
-  bool waiting_source_select_ = false;
-  CommandSourceStatus source_status_;
-
   rclcpp::Client<ControlModeCommand>::SharedPtr cli_control_mode_;
   rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
-  bool waiting_control_mode_ = false;
-  ControlModeReport control_mode_;
+
+  Callback notification_callback_;
+  ControlModeReport status_;
+  std::shared_ptr<SwitcherPlugin> switcher_;
+  bool requesting_ = false;
 };
 
 }  // namespace autoware::command_mode_switcher

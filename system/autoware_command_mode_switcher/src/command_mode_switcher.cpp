@@ -24,23 +24,15 @@ namespace autoware::command_mode_switcher
 
 CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
 : Node("command_mode_switcher", options),
-  selector_interface_(*this, [this]() { update_status(); }),
-  loader_("autoware_command_mode_switcher", "autoware::command_mode_switcher::SwitcherPlugin")
+  loader_("autoware_command_mode_switcher", "autoware::command_mode_switcher::SwitcherPlugin"),
+  control_gate_interface_(*this, [this]() { update_status(); }),
+  vehicle_gate_interface_(*this, [this]() { update_status(); })
 {
-  pub_status_ =
-    create_publisher<CommandModeStatus>("~/command_mode/status", rclcpp::QoS(1).transient_local());
-  sub_request_ = create_subscription<CommandModeRequest>(
-    "~/command_mode/request", rclcpp::QoS(1),
-    std::bind(&CommandModeSwitcher::on_request, this, std::placeholders::_1));
-  sub_availability_ = create_subscription<CommandModeAvailability>(
-    "~/command_mode/availability", rclcpp::QoS(1),
-    std::bind(&CommandModeSwitcher::on_availability, this, std::placeholders::_1));
-
-  // Create manual switcher
+  // Create vehicle gate switcher.
   manual_switcher_ = std::make_shared<ManualSwitcher>();
   switchers_.push_back(manual_switcher_);
 
-  // Create source switchers
+  // Create control gate switcher.
   {
     const auto plugins = declare_parameter<std::vector<std::string>>("plugins");
 
@@ -64,6 +56,15 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
     switcher->construct(this);
     switcher->initialize();
   }
+
+  pub_status_ =
+    create_publisher<CommandModeStatus>("~/command_mode/status", rclcpp::QoS(1).transient_local());
+  sub_request_ = create_subscription<CommandModeRequest>(
+    "~/command_mode/request", rclcpp::QoS(1),
+    std::bind(&CommandModeSwitcher::on_request, this, std::placeholders::_1));
+  sub_availability_ = create_subscription<CommandModeAvailability>(
+    "~/command_mode/availability", rclcpp::QoS(1),
+    std::bind(&CommandModeSwitcher::on_availability, this, std::placeholders::_1));
 
   const auto period = rclcpp::Rate(declare_parameter<double>("update_rate")).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { update_status(); });
@@ -93,70 +94,65 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
     return;
   }
 
+  request_ = ModeRequest{msg.mode, msg.ctrl};
+
   const auto source_switcher = iter->second;
+  const auto control_target = msg.ctrl ? source_switcher : source_switcher;
+  const auto vehicle_target = msg.ctrl ? source_switcher : manual_switcher_;
+
+  const auto control_status = control_target->status();
+  const auto vehicle_status = vehicle_target->status();
+
+  if (!control_status.mode_available || !vehicle_status.ctrl_available) {
+    RCLCPP_WARN_STREAM(get_logger(), "request ignored: " << msg.ctrl << " " << msg.mode);
+    return;
+  }
+
+  control_gate_target_ = control_target;
+  vehicle_gate_target_ = vehicle_target;
+  update_status();  // Reflect immediately.
+
+  /*
   if (msg.ctrl) {
-    foreground_transition_ = source_switcher;  // Set source_switcher to disable manual control.
-    background_transition_ = source_switcher;
-    background_transition_->request_enabled();
+    vehicle_gate_switcher_->enable_autoware_control();
+    control_gate_switcher_ = source_switcher;
+    control_gate_switcher_->request_enabled();
   } else {
-    foreground_transition_ = manual_switcher_;  // Set manual_switcher to enable manual control.
-    background_transition_ = source_switcher;
-    foreground_transition_->request_enabled();
-    background_transition_->request_standby();
+    vehicle_gate_switcher_->disable_autoware_control();
+    control_gate_switcher_ = source_switcher;
+    control_gate_switcher_->request_standby();
   }
 
   for (const auto & switcher : switchers_) {
-    if (switcher == background_transition_) continue;
-    if (switcher == foreground_transition_) continue;
+    if (switcher == vehicle_gate_switcher_) continue;
+    if (switcher == control_gate_switcher_) continue;
     switcher->handover();
   }
-
-  update_status();  // Reflect immediately.
+  */
 }
 
 void CommandModeSwitcher::update_status()
 {
   // TODO(Takagi, Isamu): Check call rate.
-  if (!is_ready_) {
-    return;
-  }
+  if (!is_ready_) return;
+  update_transition();
+  publish_command_mode_status();
+}
 
-  // Check if the foreground source transition is complete.
-  if (foreground_transition_ && foreground_transition_ != manual_switcher_) {
-    if (foreground_transition_->sequence_state() == CommandModeStatusItem::ENABLED) {
-      for (const auto & switcher : switchers_) {
-        if (switcher == background_transition_) continue;
-        if (switcher == foreground_transition_) continue;
-        switcher->disable();
-      }
-      foreground_transition_ = nullptr;
-      background_transition_ = nullptr;
-    }
-  }
+void CommandModeSwitcher::update_transition()
+{
+  if (!control_gate_target_ || !vehicle_gate_target_) return;
 
-  // Check if the foreground manual transition is complete.
-  if (foreground_transition_ && foreground_transition_ == manual_switcher_) {
-    if (foreground_transition_->sequence_state() == CommandModeStatusItem::ENABLED) {
-      for (const auto & switcher : switchers_) {
-        if (switcher == background_transition_) continue;
-        if (switcher == foreground_transition_) continue;
-        switcher->override();
-      }
-      foreground_transition_ = nullptr;  // Keep the background source transition.
-    }
-  }
+  const auto control_selected = control_gate_interface_.is_selected(*control_gate_target_);
+  const auto vehicle_selected = vehicle_gate_interface_.is_selected(*vehicle_gate_target_);
+  const auto request_autoware_control = request_->ctrl;
+  const auto request_manual_control = !request_->ctrl;
 
-  // Check if the background source transition is complete.
-  if (background_transition_) {
-    if (background_transition_->sequence_state() == CommandModeStatusItem::STANDBY) {
-      for (const auto & switcher : switchers_) {
-        if (switcher == background_transition_) continue;
-        if (switcher == foreground_transition_) continue;
-        switcher->disable();
-      }
-      background_transition_ = nullptr;  // Keep the foreground manual transition.
-    }
-  }
+  RCLCPP_WARN(get_logger(), "update_transition");
+  RCLCPP_WARN(get_logger(), "  control_selected        : %d", control_selected);
+  RCLCPP_WARN(get_logger(), "  vehicle_selected        : %d", vehicle_selected);
+  RCLCPP_WARN(get_logger(), "  request_autoware_control: %d", request_autoware_control);
+  RCLCPP_WARN(get_logger(), "  request_manual_control  : %d", request_manual_control);
 
   // NOTE: Update the source status first since the transition context depends on.
   for (const auto & switcher : switchers_) {
@@ -169,30 +165,22 @@ void CommandModeSwitcher::update_status()
   }
 
   // TODO(Takagi, Isamu): Wait status update delay.
-  // Sync command source.
-  if (background_transition_) {
-    if (background_transition_->sequence_state() == CommandModeStatusItem::WAIT_SOURCE_SELECTED) {
-      // TODO(Takagi, Isamu): remove debug log.
-      bool req = selector_interface_.select_source(background_transition_->source_name());
-      if (req) {
-        RCLCPP_WARN_STREAM(get_logger(), "source select request");
-      }
+  if (control_selected || request_manual_control) {
+    if (!vehicle_selected) {
+      vehicle_gate_interface_.request(*vehicle_gate_target_);
     }
   }
 
   // TODO(Takagi, Isamu): Wait status update delay.
-  // Sync control mode.
-  if (foreground_transition_) {
-    if (foreground_transition_->sequence_state() == CommandModeStatusItem::WAIT_CONTROL_SELECTED) {
-      // TODO(Takagi, Isamu): remove debug log.
-      bool req = selector_interface_.select_control(foreground_transition_->autoware_control());
-      if (req) {
-        RCLCPP_WARN_STREAM(get_logger(), "control select request");
-      }
+  if (vehicle_selected || request_autoware_control) {
+    if (!control_selected) {
+      control_gate_interface_.request(*control_gate_target_, request_autoware_control);
     }
   }
 
-  publish_command_mode_status();
+  if (control_selected && vehicle_selected) {
+    control_gate_interface_.request(*control_gate_target_, false);
+  }
 }
 
 void CommandModeSwitcher::publish_command_mode_status()
@@ -220,23 +208,12 @@ TransitionContext CommandModeSwitcher::create_transition_context(const SwitcherP
     return true;
   };
 
-  const auto is_source_selected = [this](const SwitcherPlugin & target) {
-    if (target.source_name().empty()) {
-      return true;
-    }
-    return target.source_name() == selector_interface_.source_name();
-  };
-
-  const auto is_control_selected = [this](const SwitcherPlugin & target) {
-    return target.autoware_control() == selector_interface_.autoware_control();
-  };
-
   TransitionContext context;
   context.sequence_target = target.sequence_target();
   context.source_state = target.source_status();
   context.is_source_exclusive = is_source_exclusive(target);
-  context.is_source_selected = is_source_selected(target);
-  context.is_control_selected = is_control_selected(target);
+  context.is_source_selected = control_gate_interface_.is_selected(target);
+  context.is_control_selected = vehicle_gate_interface_.is_selected(target);
   context.is_mode_continuable = target.status().mode_continuable;
   context.is_mode_available = target.status().mode_available;
   context.is_ctrl_available = target.status().ctrl_available;
