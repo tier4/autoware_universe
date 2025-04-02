@@ -60,11 +60,14 @@ FootprintIntersection calculate_footprint_intersection(
       ? boost::geometry::distance(object_segment.first, intersection_point) / object_segment_length
       : 0.0;
   const auto ego_segment_length = static_cast<double>(boost::geometry::length(ego_segment));
-  const auto ego_segment_offset =
-    universe_utils::calcDistance2d(ego_segment.first, intersection_point);
   geometry_msgs::msg::Point p;
   p.x = intersection_point.x();
   p.y = intersection_point.y();
+  geometry_msgs::msg::Point q;
+  q.x = ego_segment.first.x();
+  q.y = ego_segment.first.y();
+  const auto ego_segment_offset =
+    universe_utils::calcDistance2d(q, p);
   footprint_intersection.arc_length = motion_utils::calcSignedArcLength(ego_trajectory, 0, p);
   const auto ego_segment_intersection_ratio =
     ego_segment_length > 1e-3 ? ego_segment_offset / ego_segment_length : 0.0;
@@ -157,15 +160,18 @@ std::vector<FootprintIntersection> calculate_intersections(
     universe_utils::Segment2d segment;
     segment.first = ls[i];
     segment.second = ls[i + 1];
+    const auto p1 = geometry_msgs::msg::Point().set__x(segment.first.x()).set__y(segment.first.y());
+    const auto p2 = geometry_msgs::msg::Point().set__x(segment.second.x()).set__y(segment.second.y());
     std::vector<FootprintSegmentNode> query_results;
     footprint.rtree.query(
       boost::geometry::index::intersects(segment), std::back_inserter(query_results));
     for (const auto & query_result : query_results) {
-      const auto intersection = universe_utils::intersect(
-        segment.first, segment.second, query_result.first.first, query_result.first.second);
+      const auto q1 = geometry_msgs::msg::Point().set__x(query_result.first.first.x()).set__y(query_result.first.first.y());
+      const auto q2 = geometry_msgs::msg::Point().set__x(query_result.first.second.x()).set__y(query_result.first.second.y());
+      const auto intersection = universe_utils::intersect(p1, p2, q1, q2);
       if (intersection) {
         const auto footprint_intersection = calculate_footprint_intersection(
-          segment, *intersection, query_result, ego_trajectory,
+          segment, universe_utils::Point2d(intersection->x, intersection->y), query_result, ego_trajectory,
           {ls_time_step * static_cast<double>(i), ls_time_step * (static_cast<double>(i) + 1)});
         intersections.push_back(footprint_intersection);
       }

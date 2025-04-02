@@ -20,7 +20,7 @@
 #include <autoware/motion_velocity_planner_common_universe/planner_data.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
-#include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 
 #include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
 #include <autoware_perception_msgs/msg/object_classification.hpp>
@@ -147,7 +147,7 @@ void calculate_predicted_path_footprints(
   } else if (predicted_object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
     for (const auto p : predicted_object.shape.footprint.points) {
       const auto zero_point = geometry_msgs::msg::Point();
-      width = std::max(width, autoware_utils_geometry::calc_distance2d(p, zero_point));
+      width = std::max(width, autoware_utils::calc_distance2d(p, zero_point));
     }
     half_length = width / 2.0;
   }
@@ -173,13 +173,17 @@ void calculate_predicted_path_footprints(
 std::optional<size_t> get_first_intersecting_segment_idx(
   const ObjectCornerFootprint & footprint, const universe_utils::Segment2d & segment)
 {
+  const auto p1 = geometry_msgs::msg::Point().set__x(segment.first.x()).set__y(segment.first.y());
+  const auto p2 = geometry_msgs::msg::Point().set__x(segment.second.x()).set__y(segment.second.y());
   for (auto i = 0UL; i + 1 < footprint.corner_footprint.size(); ++i) {
     for (const auto & ls :
          {footprint.corner_footprint.corner_linestrings[front_left],
           footprint.corner_footprint.corner_linestrings[front_right],
           footprint.corner_footprint.corner_linestrings[rear_left],
           footprint.corner_footprint.corner_linestrings[rear_right]}) {
-      if (universe_utils::intersect(segment.first, segment.second, ls[i], ls[i + 1])) {
+      const auto q1 = geometry_msgs::msg::Point().set__x(ls[i].x()).set__y(ls[i].y());
+      const auto q2 = geometry_msgs::msg::Point().set__x(ls[i+1].x()).set__y(ls[i+1].y());
+      if (universe_utils::intersect(p1, p2, q1, q2)) {
         return i;
       }
     }
@@ -215,12 +219,16 @@ void filter_predicted_paths(
       for (const auto & corner : {front_left, front_right, rear_left, rear_right}) {
         const auto & ls = corner_footprint.corner_footprint.corner_linestrings[corner];
         const auto & segment = universe_utils::Segment2d(ls[i], ls[i + 1]);
+        const auto p1 = geometry_msgs::msg::Point().set__x(segment.first.x()).set__y(segment.first.y());
+        const auto p2 = geometry_msgs::msg::Point().set__x(segment.second.x()).set__y(segment.second.y());
         std::vector<SegmentNode> query_results;
         map_data.cut_predicted_paths_rtree.query(
           boost::geometry::index::intersects(segment), std::back_inserter(query_results));
         for (const auto & candidate : query_results) {
+          const auto q1 = geometry_msgs::msg::Point().set__x(candidate.first.first.x()).set__y(candidate.first.first.y());
+          const auto q2 = geometry_msgs::msg::Point().set__x(candidate.first.second.x()).set__y(candidate.first.second.y());
           if (universe_utils::intersect(
-                segment.first, segment.second, candidate.first.first, candidate.first.second)) {
+                p1, p2, q1, q2)) {
             cut = true;
             cut_footprint_after_index(corner_footprint, i);
             break;
