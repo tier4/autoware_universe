@@ -195,39 +195,44 @@ void CommandModeDeciderBase::publish_mrm_state()
   pub_mrm_state_->publish(state);
 }
 
-template <class T>
-bool on_change_mode(T & res, const CommandModeStatusWrapper & wrapper, const std::string & mode)
+ResponseStatus CommandModeDeciderBase::check_request(
+  const std::string & mode, bool check_mode_ready, bool check_ctrl_ready)
 {
-  const auto item = wrapper.get(mode);
+  const auto response = [](bool success, const std::string & message) {
+    ResponseStatus res;
+    res.success = success;
+    res.message = message;
+    return res;
+  };
+
+  if (!is_modes_ready_) {
+    return response(false, "Mode management is not ready.");
+  }
+
+  const auto item = command_mode_status_.get(mode);
   if (item.mode.empty()) {
-    res->status.success = false;
-    res->status.message = "invalid mode name: " + mode;
-    return false;
+    return response(false, "Invalid mode name: " + mode);
   }
-  if (!item.mode_available || !item.ctrl_available) {
-    res->status.success = false;
-    res->status.message = "mode is not available: " + mode;
-    return false;
+
+  const auto mode_available = item.mode_available || (!check_mode_ready);
+  const auto ctrl_available = item.ctrl_available || (!check_ctrl_ready);
+  if (!mode_available || !ctrl_available) {
+    return response(false, "Mode is not available: " + mode);
   }
-  res->status.success = true;
-  return true;
+
+  return response(true, "");
 }
 
 void CommandModeDeciderBase::on_change_autoware_control(
   ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res)
 {
-  if (!is_modes_ready_) {
-    res->status.success = false;
-    res->status.message = "Mode management is not ready.";
-    return;
-  }
-
   const auto mode = req->autoware_control ? request_.operation_mode : "manual";
-  if (!on_change_mode(res, command_mode_status_, mode)) {
+
+  res->status = check_request(mode, true, true);
+  if (!res->status.success) {
     RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
-
   request_.autoware_control = req->autoware_control;
   update_command_mode();
 }
@@ -235,18 +240,13 @@ void CommandModeDeciderBase::on_change_autoware_control(
 void CommandModeDeciderBase::on_change_operation_mode(
   ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res)
 {
-  if (!is_modes_ready_) {
-    res->status.success = false;
-    res->status.message = "Mode management is not ready.";
-    return;
-  }
-
   const auto mode = operation_mode_to_command(req->mode);
-  if (!on_change_mode(res, command_mode_status_, mode)) {
+
+  res->status = check_request(mode, true, request_.autoware_control);
+  if (!res->status.success) {
     RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
-
   request_.operation_mode = mode;
   update_command_mode();
 }
@@ -254,18 +254,13 @@ void CommandModeDeciderBase::on_change_operation_mode(
 void CommandModeDeciderBase::on_request_mrm(
   RequestMrm::Request::SharedPtr req, RequestMrm::Response::SharedPtr res)
 {
-  if (!is_modes_ready_) {
-    res->status.success = false;
-    res->status.message = "Mode management is not ready.";
-    return;
-  }
-
   const auto mode = req->name;
-  if (!on_change_mode(res, command_mode_status_, mode)) {
+
+  res->status = check_request(mode, false, false);
+  if (!res->status.success) {
     RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
-
   request_.mrm = mode;
   update_command_mode();
 }

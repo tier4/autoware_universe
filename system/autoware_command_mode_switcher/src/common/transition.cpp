@@ -124,15 +124,18 @@ SwitcherState disable(SwitcherState state)
   return state == State::DISABLED ? State::DISABLED : State::CLEANUP;
 }
 
-SwitcherState request_enabled(SwitcherState)
+SwitcherState request_enabled(SwitcherState state)
 {
   using State = tier4_system_msgs::msg::CommandModeStatusItem;
+  if (state == State::ENABLED) return State::ENABLED;
   return State::WAIT_COMMAND_MODE_READY;
 }
 
-SwitcherState request_standby(SwitcherState)
+SwitcherState request_standby(SwitcherState state)
 {
   using State = tier4_system_msgs::msg::CommandModeStatusItem;
+  if (state == State::ENABLED) return State::ENABLED;
+  if (state == State::STANDBY) return State::STANDBY;
   return State::WAIT_COMMAND_MODE_READY;
 }
 
