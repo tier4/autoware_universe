@@ -282,7 +282,8 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
       time_keeper_->start_track("filter_pointcloud");
       obstacle_pointcloud += utils::filter_lost_object_pointcloud(
         objects_on_target_lane,
-        utils::get_obstacle_points(detection_areas_for_pointcloud, pointcloud_));
+        utils::get_obstacle_points(detection_areas_for_pointcloud, pointcloud_),
+        p.common.pointcloud.object_buffer);
       time_keeper_->end_track("filter_pointcloud");
     }
   }

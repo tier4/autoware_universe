@@ -4,6 +4,9 @@
       on_time_buffer: 0.3
       off_time_buffer: 0.3
 
+      pointcloud:
+        object_buffer: 0.5
+
       range:
         pointcloud:
           forward: 0.0
