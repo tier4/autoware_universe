@@ -12,16 +12,13 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__TARGET_STATUS_HPP_
-#define COMMON__TARGET_STATUS_HPP_
+#ifndef COMMON__COMMAND_STATUS_HPP_
+#define COMMON__COMMAND_STATUS_HPP_
+
+#include <string>
 
 namespace autoware::command_mode_switcher
 {
-
-enum class RequestState {
-  Disable,
-  Enable,
-};
 
 enum class SourceState {
   Disabled,
@@ -46,12 +43,14 @@ enum class VehicleGateState {
   Selected,
 };
 
-struct TargetStatus
+struct CommandStatus
 {
   SourceState source_state;
   SourceGroup source_group;
   ControlGateState control_gate_state;
   VehicleGateState vehicle_gate_state;
+  bool vehicle_gate_request;
+  bool control_gate_request;
   bool mode_continuable;
   bool mode_available;
   bool control_gate_ready;
@@ -59,6 +58,8 @@ struct TargetStatus
   bool transition_completed;
 };
 
+std::string convert_debug_string(const CommandStatus & status);
+
 }  // namespace autoware::command_mode_switcher
 
-#endif  // COMMON__TARGET_STATUS_HPP_
+#endif  // COMMON__COMMAND_STATUS_HPP_

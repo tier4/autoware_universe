@@ -12,34 +12,23 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__TARGET_PLUGIN_HPP_
-#define COMMON__TARGET_PLUGIN_HPP_
-
-#include "common/target_status.hpp"
-
-#include <rclcpp/rclcpp.hpp>
-
-#include <string>
+#include "remote.hpp"
 
 namespace autoware::command_mode_switcher
 {
 
-class TargetPlugin
+void RemoteSwitcher::initialize()
 {
-public:
-  virtual ~TargetPlugin() = default;
-  virtual std::string mode_name() const { return ""; }
-  virtual std::string source_name() const = 0;
-  virtual bool autoware_control() const = 0;
-  virtual void initialize() {}
-  virtual SourceState update_source_state() { return SourceState::Disabled; }
-
-  void construct(rclcpp::Node * node) { node_ = node; }
-
-protected:
-  rclcpp::Node * node_;
-};
+  /*
+  set_mode_continuable(false);
+  set_mode_available(false);
+  set_ctrl_available(true);
+  set_transition_completed(true);
+  */
+}
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // COMMON__TARGET_PLUGIN_HPP_
+#include <pluginlib/class_list_macros.hpp>
+PLUGINLIB_EXPORT_CLASS(
+  autoware::command_mode_switcher::RemoteSwitcher, autoware::command_mode_switcher::CommandPlugin)

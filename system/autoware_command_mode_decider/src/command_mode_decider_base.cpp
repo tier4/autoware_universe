@@ -122,21 +122,23 @@ void CommandModeDeciderBase::update_command_mode()
 
 void CommandModeDeciderBase::sync_command_mode()
 {
-  const auto control_status = command_mode_status_.get("manual");
-  const auto command_status = command_mode_status_.get(request_.command_mode);
-  bool control_synced = false;
-  bool command_synced = false;
+  const auto manual_command = command_mode_status_.get("manual");
+  const auto target_command = command_mode_status_.get(request_.command_mode);
+  bool control_gate_requested = false;
+  bool vehicle_gate_requested = false;
 
   if (request_.autoware_control) {
-    control_synced = control_status.target == CommandModeStatusItem::DISABLED;
-    command_synced = command_status.target == CommandModeStatusItem::ENABLED;
+    // If autoware control, the target mode requires both gates.
+    control_gate_requested = target_command.control_gate_request;
+    vehicle_gate_requested = target_command.vehicle_gate_request;
   } else {
-    control_synced = control_status.target == CommandModeStatusItem::ENABLED;
-    command_synced = command_status.target == CommandModeStatusItem::STANDBY;
+    // If manual control, target mode requires only control gate.
+    control_gate_requested = target_command.control_gate_request;
+    vehicle_gate_requested = manual_command.vehicle_gate_request;
   }
 
-  // Skip the request if mode is synced or is requested.
-  if (control_synced && command_synced) {
+  // Skip the request if mode is already requested or now requesting.
+  if (control_gate_requested && vehicle_gate_requested) {
     command_mode_request_stamp_ = std::nullopt;
     return;
   }
@@ -160,7 +162,7 @@ void CommandModeDeciderBase::publish_operation_mode_state()
 {
   const auto is_transition_available = [this](const auto & mode) {
     const auto status = command_mode_status_.get(mode);
-    return status.mode_available && status.ctrl_available;
+    return status.mode_available && status.vehicle_gate_ready;
   };
   OperationModeState state;
   state.stamp = now();
@@ -215,7 +217,7 @@ ResponseStatus CommandModeDeciderBase::check_request(
   }
 
   const auto mode_available = item.mode_available || (!check_mode_ready);
-  const auto ctrl_available = item.ctrl_available || (!check_ctrl_ready);
+  const auto ctrl_available = item.vehicle_gate_ready || (!check_ctrl_ready);
   if (!mode_available || !ctrl_available) {
     return response(false, "Mode is not available: " + mode);
   }

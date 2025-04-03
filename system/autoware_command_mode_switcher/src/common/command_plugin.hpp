@@ -12,25 +12,37 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__COMFORTABLE_STOP_HPP_
-#define SWITCHERS__COMFORTABLE_STOP_HPP_
+#ifndef COMMON__COMMAND_PLUGIN_HPP_
+#define COMMON__COMMAND_PLUGIN_HPP_
 
-#include "common/target_plugin.hpp"
+#include "common/command_status.hpp"
+
+#include <rclcpp/rclcpp.hpp>
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class ComfortableStopSwitcher : public TargetPlugin
+class CommandPlugin
 {
 public:
-  std::string mode_name() const override { return "comfortable_stop"; }
-  std::string source_name() const override { return "main"; }
-  bool autoware_control() const override { return true; }
-  void initialize() override;
+  virtual ~CommandPlugin() = default;
+  virtual std::string mode_name() const = 0;
+  virtual std::string source_name() const = 0;
+  virtual bool autoware_control() const = 0;
+  virtual void initialize() {}
+  virtual SourceState update_source_state() { return SourceState::Disabled; }
+
+  virtual bool get_control_gate_ready() { return false; }
+  virtual bool get_vehicle_gate_ready() { return false; }
+
+  void construct(rclcpp::Node * node) { node_ = node; }
+
+protected:
+  rclcpp::Node * node_;
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // SWITCHERS__COMFORTABLE_STOP_HPP_
+#endif  // COMMON__COMMAND_PLUGIN_HPP_

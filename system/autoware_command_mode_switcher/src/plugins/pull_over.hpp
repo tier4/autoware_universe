@@ -12,25 +12,25 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__LOCAL_HPP_
-#define SWITCHERS__LOCAL_HPP_
+#ifndef PLUGINS__PULL_OVER_HPP_
+#define PLUGINS__PULL_OVER_HPP_
 
-#include "common/target_plugin.hpp"
+#include "common/command_plugin.hpp"
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class LocalSwitcher : public TargetPlugin
+class PullOverSwitcher : public CommandPlugin
 {
 public:
-  std::string mode_name() const override { return "local"; }
-  std::string source_name() const override { return "local"; }
+  std::string mode_name() const override { return "pull_over"; }
+  std::string source_name() const override { return "main"; }
   bool autoware_control() const override { return true; }
   void initialize() override;
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // SWITCHERS__LOCAL_HPP_
+#endif  // PLUGINS__PULL_OVER_HPP_

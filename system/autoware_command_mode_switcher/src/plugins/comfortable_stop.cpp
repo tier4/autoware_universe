@@ -12,12 +12,12 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "stop.hpp"
+#include "comfortable_stop.hpp"
 
 namespace autoware::command_mode_switcher
 {
 
-void StopSwitcher::initialize()
+void ComfortableStopSwitcher::initialize()
 {
   /*
   set_mode_continuable(false);
@@ -31,4 +31,5 @@ void StopSwitcher::initialize()
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::command_mode_switcher::StopSwitcher, autoware::command_mode_switcher::TargetPlugin)
+  autoware::command_mode_switcher::ComfortableStopSwitcher,
+  autoware::command_mode_switcher::CommandPlugin)

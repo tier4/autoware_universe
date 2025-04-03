@@ -12,35 +12,25 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__AUTONOMOUS_HPP_
-#define SWITCHERS__AUTONOMOUS_HPP_
+#ifndef PLUGINS__REMOTE_HPP_
+#define PLUGINS__REMOTE_HPP_
 
-#include "common/target_plugin.hpp"
-
-#include <tier4_system_msgs/msg/mode_change_available.hpp>
+#include "common/command_plugin.hpp"
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class AutonomousSwitcher : public TargetPlugin
+class RemoteSwitcher : public CommandPlugin
 {
 public:
-  std::string mode_name() const override { return "autonomous"; }
-  std::string source_name() const override { return "main"; }
+  std::string mode_name() const override { return "remote"; }
+  std::string source_name() const override { return "remote"; }
   bool autoware_control() const override { return true; }
   void initialize() override;
-
-private:
-  using ModeChangeAvailable = tier4_system_msgs::msg::ModeChangeAvailable;
-  rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_available_;
-  rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_completed_;
-
-  bool transition_available_ = false;
-  bool transition_completed_ = false;
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // SWITCHERS__AUTONOMOUS_HPP_
+#endif  // PLUGINS__REMOTE_HPP_

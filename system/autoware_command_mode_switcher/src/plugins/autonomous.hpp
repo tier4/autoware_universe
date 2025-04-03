@@ -12,25 +12,37 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__PULL_OVER_HPP_
-#define SWITCHERS__PULL_OVER_HPP_
+#ifndef PLUGINS__AUTONOMOUS_HPP_
+#define PLUGINS__AUTONOMOUS_HPP_
 
-#include "common/target_plugin.hpp"
+#include "common/command_plugin.hpp"
+
+#include <tier4_system_msgs/msg/mode_change_available.hpp>
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class PullOverSwitcher : public TargetPlugin
+class AutonomousSwitcher : public CommandPlugin
 {
 public:
-  std::string mode_name() const override { return "pull_over"; }
+  std::string mode_name() const override { return "autonomous"; }
   std::string source_name() const override { return "main"; }
   bool autoware_control() const override { return true; }
   void initialize() override;
+  bool get_control_gate_ready() override { return true; }
+  bool get_vehicle_gate_ready() override { return transition_available_; }
+
+private:
+  using ModeChangeAvailable = tier4_system_msgs::msg::ModeChangeAvailable;
+  rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_available_;
+  rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_completed_;
+
+  bool transition_available_ = false;
+  bool transition_completed_ = false;
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // SWITCHERS__PULL_OVER_HPP_
+#endif  // PLUGINS__AUTONOMOUS_HPP_

@@ -12,25 +12,9 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__EMERGENCY_STOP_HPP_
-#define SWITCHERS__EMERGENCY_STOP_HPP_
-
-#include "common/target_plugin.hpp"
-
-#include <string>
+#include "command_plugin.hpp"
 
 namespace autoware::command_mode_switcher
 {
 
-class EmergencyStopSwitcher : public TargetPlugin
-{
-public:
-  std::string mode_name() const override { return "emergency_stop"; }
-  std::string source_name() const override { return "emergency_stop"; }
-  bool autoware_control() const override { return true; }
-  void initialize() override;
-};
-
 }  // namespace autoware::command_mode_switcher
-
-#endif  // SWITCHERS__EMERGENCY_STOP_HPP_

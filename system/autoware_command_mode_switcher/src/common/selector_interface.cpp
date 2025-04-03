@@ -66,13 +66,13 @@ void VehicleGateInterface::on_control_mode(const ControlModeReport & msg)
   if (!equals) notification_callback_();
 }
 
-bool ControlGateInterface::is_selected(const TargetPlugin & target)
+bool ControlGateInterface::is_selected(const CommandPlugin & target)
 {
   if (target.source_name().empty()) return true;
   return target.source_name() == status_.source;
 }
 
-bool VehicleGateInterface::is_selected(const TargetPlugin & target)
+bool VehicleGateInterface::is_selected(const CommandPlugin & target)
 {
   if (target.autoware_control()) {
     return status_.mode == ControlModeReport::AUTONOMOUS;
@@ -81,7 +81,7 @@ bool VehicleGateInterface::is_selected(const TargetPlugin & target)
   }
 }
 
-bool ControlGateInterface::request(const TargetPlugin & target, bool transition)
+bool ControlGateInterface::request(const CommandPlugin & target, bool transition)
 {
   if (requesting_) {
     return false;
@@ -101,7 +101,7 @@ bool ControlGateInterface::request(const TargetPlugin & target, bool transition)
   return true;
 }
 
-bool VehicleGateInterface::request(const TargetPlugin & target)
+bool VehicleGateInterface::request(const CommandPlugin & target)
 {
   if (requesting_) {
     return false;
