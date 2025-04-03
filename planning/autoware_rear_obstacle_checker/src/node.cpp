@@ -221,7 +221,8 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
     debug.text = "CAUSION!!!\nEGO CAN'T STOP WITHIN CURRENT LANE.";
   }
 
-  PredictedObjects objects;
+  PredictedObjects objects_on_target_lane;
+  PredictedObjects objects_filtered_by_class;
   pcl::PointCloud<pcl::PointXYZ> obstacle_pointcloud;
 
   for (const auto & factor : factors_ptr_->factors) {
@@ -244,13 +245,18 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
         behavior_path_planner::utils::path_safety_checker::separateObjectsByLanelets(
           *object_ptr_, detection_lanes_for_objects,
           [&factor, &p](const auto & obj, const auto & lane, const auto yaw_threshold = M_PI_2) {
-            if (!utils::is_target(obj, factor, p)) {
-              return false;
-            }
             return behavior_path_planner::utils::path_safety_checker::isPolygonOverlapLanelet(
               obj, lane, yaw_threshold);
           });
-      objects.objects.insert(objects.objects.end(), targets.objects.begin(), targets.objects.end());
+
+      objects_on_target_lane.objects.insert(
+        objects_on_target_lane.objects.end(), targets.objects.begin(), targets.objects.end());
+
+      for (const auto & object : targets.objects) {
+        if (utils::is_target(object, factor, p)) {
+          objects_filtered_by_class.objects.push_back(object);
+        }
+      }
     }
 
     if (utils::should_check_pointcloud(factor, p)) {
@@ -261,13 +267,14 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
         debug.detection_areas_for_pointcloud.end(), detection_areas_for_pointcloud.begin(),
         detection_areas_for_pointcloud.end());
 
-      obstacle_pointcloud +=
-        utils::get_obstacle_points(detection_areas_for_pointcloud, pointcloud_);
+      obstacle_pointcloud += utils::filter_lost_object_pointcloud(
+        objects_on_target_lane,
+        utils::get_obstacle_points(detection_areas_for_pointcloud, pointcloud_));
     }
   }
 
   const auto now = this->now();
-  if (is_safe(objects, debug) && is_safe(obstacle_pointcloud, debug)) {
+  if (is_safe(objects_filtered_by_class, debug) && is_safe(obstacle_pointcloud, debug)) {
     last_safe_time_ = now;
     if ((now - last_unsafe_time_).seconds() > p.common.off_time_buffer) {
       return true;
