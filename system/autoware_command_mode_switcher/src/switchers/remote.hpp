@@ -15,14 +15,14 @@
 #ifndef SWITCHERS__REMOTE_HPP_
 #define SWITCHERS__REMOTE_HPP_
 
-#include "common/plugin.hpp"
+#include "common/target_plugin.hpp"
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class RemoteSwitcher : public SwitcherPlugin
+class RemoteSwitcher : public TargetPlugin
 {
 public:
   std::string mode_name() const override { return "remote"; }

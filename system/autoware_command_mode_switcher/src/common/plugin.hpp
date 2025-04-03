@@ -41,11 +41,6 @@ public:
   void override();
   void update_status(const TransitionContext & context);
 
-  void set_mode_continuable(bool continuable) { status_.mode_continuable = continuable; }
-  void set_mode_available(bool available) { status_.mode_available = available; }
-  void set_ctrl_available(bool available) { status_.ctrl_available = available; }
-  void set_transition_completed(bool completed) { status_.transition_completed = completed; }
-
   virtual ~SwitcherPlugin() = default;
   virtual std::string mode_name() const = 0;
   virtual std::string source_name() const = 0;
