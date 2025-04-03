@@ -224,7 +224,9 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
   const auto current_lanes = utils::get_current_lanes(
     predicted_stop_pose.value(), route_handler_, vehicle_info_, forward_range, backward_range);
   if (current_lanes.empty()) {
-    debug.text = "CAUSION!!!\nEGO CAN'T STOP WITHIN CURRENT LANE.";
+    debug.text = {
+      "CAUSION!!!\nEGO CAN'T STOP WITHIN CURRENT LANE.",
+      autoware_utils::create_marker_color(1.0, 0.67, 0.0, 0.999)};
   }
 
   PredictedObjects objects_on_target_lane;
@@ -302,7 +304,8 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
     }
 
     {
-      debug.text = "RISK OF COLLISION!!!";
+      debug.text = {
+        "RISK OF COLLISION!!!", autoware_utils::create_marker_color(1.0, 0.0, 0.42, 0.999)};
     }
   }
 
@@ -413,9 +416,8 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
     auto marker = autoware_utils::create_default_marker(
       "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "text", 0L,
       visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
-      autoware_utils::create_marker_scale(0.5, 0.5, 0.5),
-      autoware_utils::create_marker_color(1.0, 0.67, 0.0, 0.999));
-    marker.text = debug.text.c_str();
+      autoware_utils::create_marker_scale(0.5, 0.5, 0.5), debug.text.second);
+    marker.text = debug.text.first.c_str();
     marker.pose = odometry_ptr_->pose.pose;
     marker.pose.position.z += 5.0;
     msg.markers.push_back(marker);
