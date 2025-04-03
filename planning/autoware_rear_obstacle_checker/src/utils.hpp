@@ -419,11 +419,13 @@ pcl::PointCloud<pcl::PointXYZ> get_obstacle_points(
 }
 
 pcl::PointCloud<pcl::PointXYZ> filter_lost_object_pointcloud(
-  const PredictedObjects & objects, const pcl::PointCloud<pcl::PointXYZ> & points)
+  const PredictedObjects & objects, const pcl::PointCloud<pcl::PointXYZ> & points,
+  const double object_buffer)
 {
   pcl::PointCloud<pcl::PointXYZ> ret = points;
   for (const auto & object : objects.objects) {
-    const auto polygon = autoware_utils::expand_polygon(autoware_utils::to_polygon2d(object), 0.5);
+    const auto polygon =
+      autoware_utils::expand_polygon(autoware_utils::to_polygon2d(object), object_buffer);
     lanelet::BasicPolygon2d basic_polygon;
     for (const auto & p : polygon.outer()) {
       basic_polygon.emplace_back(p.x(), p.y());
