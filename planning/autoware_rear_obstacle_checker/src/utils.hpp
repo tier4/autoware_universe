@@ -421,20 +421,25 @@ pcl::PointCloud<pcl::PointXYZ> get_obstacle_points(
 pcl::PointCloud<pcl::PointXYZ> filter_lost_object_pointcloud(
   const PredictedObjects & objects, const pcl::PointCloud<pcl::PointXYZ> & points)
 {
-  pcl::PointCloud<pcl::PointXYZ> ret;
-  for (const auto & p : points) {
-    bool is_lost_object_pointcloud = true;
-    for (const auto & object : objects.objects) {
-      const auto polygon =
-        autoware_utils::expand_polygon(autoware_utils::to_polygon2d(object), 0.5);
-      if (boost::geometry::within(autoware_utils::Point2d{p.x, p.y}, polygon)) {
-        is_lost_object_pointcloud = false;
-        break;
-      }
+  pcl::PointCloud<pcl::PointXYZ> ret = points;
+  for (const auto & object : objects.objects) {
+    const auto polygon = autoware_utils::expand_polygon(autoware_utils::to_polygon2d(object), 0.5);
+    lanelet::BasicPolygon2d basic_polygon;
+    for (const auto & p : polygon.outer()) {
+      basic_polygon.emplace_back(p.x(), p.y());
     }
-
-    if (is_lost_object_pointcloud) {
-      ret.push_back(p);
+    const auto circle = get_smallest_enclosing_circle(basic_polygon);
+    auto itr = ret.begin();
+    while (itr != ret.end()) {
+      const double squared_dist = (circle.first.x() - itr->x) * (circle.first.x() - itr->x) +
+                                  (circle.first.y() - itr->y) * (circle.first.y() - itr->y);
+      if (squared_dist > circle.second) {
+        itr++;
+      } else if (boost::geometry::within(autoware_utils::Point2d{itr->x, itr->y}, polygon)) {
+        itr = ret.erase(itr);
+      } else {
+        itr++;
+      }
     }
   }
   return ret;
