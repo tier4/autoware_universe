@@ -195,6 +195,70 @@ bool is_within_lanes(
 
   return boost::geometry::within(footprint, combine_lanelet.polygon2d().basicPolygon());
 }
+
+std::pair<lanelet::BasicPoint2d, double> get_smallest_enclosing_circle(
+  const lanelet::BasicPolygon2d & poly)
+{
+  // The `eps` is used to avoid precision bugs in circle inclusion checks.
+  // If the value of `eps` is too small, this function doesn't work well. More than 1e-10 is
+  // recommended.
+  const double eps = 1e-5;
+  lanelet::BasicPoint2d center(0.0, 0.0);
+  double radius_squared = 0.0;
+
+  auto cross = [](const lanelet::BasicPoint2d & p1, const lanelet::BasicPoint2d & p2) -> double {
+    return p1.x() * p2.y() - p1.y() * p2.x();
+  };
+
+  auto make_circle_3 = [&](
+                         const lanelet::BasicPoint2d & p1, const lanelet::BasicPoint2d & p2,
+                         const lanelet::BasicPoint2d & p3) -> void {
+    // reference for circumcenter vector https://en.wikipedia.org/wiki/Circumscribed_circle
+    const double a = (p2 - p3).squaredNorm();
+    const double b = (p3 - p1).squaredNorm();
+    const double c = (p1 - p2).squaredNorm();
+    const double s = cross(p2 - p1, p3 - p1);
+    if (std::abs(s) < eps) return;
+    center = (a * (b + c - a) * p1 + b * (c + a - b) * p2 + c * (a + b - c) * p3) / (4 * s * s);
+    radius_squared = (center - p1).squaredNorm() + eps;
+  };
+
+  auto make_circle_2 =
+    [&](const lanelet::BasicPoint2d & p1, const lanelet::BasicPoint2d & p2) -> void {
+    center = (p1 + p2) * 0.5;
+    radius_squared = (center - p1).squaredNorm() + eps;
+  };
+
+  auto in_circle = [&](const lanelet::BasicPoint2d & p) -> bool {
+    return (center - p).squaredNorm() <= radius_squared;
+  };
+
+  // mini disc
+  for (size_t i = 1; i < poly.size(); i++) {
+    const auto p1 = poly[i];
+    if (in_circle(p1)) continue;
+
+    // mini disc with point
+    const auto p0 = poly[0];
+    make_circle_2(p0, p1);
+    for (size_t j = 0; j < i; j++) {
+      const auto p2 = poly[j];
+      if (in_circle(p2)) continue;
+
+      // mini disc with two points
+      make_circle_2(p1, p2);
+      for (size_t k = 0; k < j; k++) {
+        const auto p3 = poly[k];
+        if (in_circle(p3)) continue;
+
+        // mini disc with tree points
+        make_circle_3(p1, p2, p3);
+      }
+    }
+  }
+
+  return std::make_pair(center, radius_squared);
+}
 }  // namespace
 
 lanelet::BasicPolygon3d to_basic_polygon3d(
@@ -338,12 +402,39 @@ pcl::PointCloud<pcl::PointXYZ> get_obstacle_points(
 {
   pcl::PointCloud<pcl::PointXYZ> ret;
   for (const auto & polygon : polygons) {
+    const auto circle = get_smallest_enclosing_circle(lanelet::utils::to2D(polygon));
     for (const auto & p : points) {
+      const double squared_dist = (circle.first.x() - p.x) * (circle.first.x() - p.x) +
+                                  (circle.first.y() - p.y) * (circle.first.y() - p.y);
+      if (squared_dist > circle.second) {
+        continue;
+      }
       if (boost::geometry::within(
             autoware_utils::Point2d{p.x, p.y}, lanelet::utils::to2D(polygon))) {
         ret.push_back(p);
+      }
+    }
+  }
+  return ret;
+}
+
+pcl::PointCloud<pcl::PointXYZ> filter_lost_object_pointcloud(
+  const PredictedObjects & objects, const pcl::PointCloud<pcl::PointXYZ> & points)
+{
+  pcl::PointCloud<pcl::PointXYZ> ret;
+  for (const auto & p : points) {
+    bool is_lost_object_pointcloud = true;
+    for (const auto & object : objects.objects) {
+      const auto polygon =
+        autoware_utils::expand_polygon(autoware_utils::to_polygon2d(object), 0.5);
+      if (boost::geometry::within(autoware_utils::Point2d{p.x, p.y}, polygon)) {
+        is_lost_object_pointcloud = false;
         break;
       }
+    }
+
+    if (is_lost_object_pointcloud) {
+      ret.push_back(p);
     }
   }
   return ret;
