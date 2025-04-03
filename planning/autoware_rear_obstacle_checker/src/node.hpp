@@ -21,6 +21,7 @@
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
+#include <autoware_utils/system/time_keeper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -113,6 +114,9 @@ private:
 
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;
 
+  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
+    pub_debug_processing_time_detail_;
+
   autoware_utils::InterProcessPollingSubscriber<
     LaneletRoute, autoware_utils::polling_policy::Newest>
     sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
@@ -146,6 +150,8 @@ private:
   std::unique_ptr<diagnostic_updater::Updater> diag_updater_;
 
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
+
+  std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
 
   Odometry::ConstSharedPtr odometry_ptr_;
 
