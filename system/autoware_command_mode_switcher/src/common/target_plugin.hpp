@@ -15,6 +15,12 @@
 #ifndef COMMON__TARGET_PLUGIN_HPP_
 #define COMMON__TARGET_PLUGIN_HPP_
 
+#include "common/target_status.hpp"
+
+#include <rclcpp/rclcpp.hpp>
+
+#include <string>
+
 namespace autoware::command_mode_switcher
 {
 
@@ -22,6 +28,16 @@ class TargetPlugin
 {
 public:
   virtual ~TargetPlugin() = default;
+  virtual std::string mode_name() const { return ""; }
+  virtual std::string source_name() const = 0;
+  virtual bool autoware_control() const = 0;
+  virtual void initialize() {}
+  virtual SourceState update_source_state() { return SourceState::Disabled; }
+
+  void construct(rclcpp::Node * node) { node_ = node; }
+
+protected:
+  rclcpp::Node * node_;
 };
 
 }  // namespace autoware::command_mode_switcher

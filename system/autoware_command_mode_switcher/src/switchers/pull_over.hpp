@@ -15,14 +15,14 @@
 #ifndef SWITCHERS__PULL_OVER_HPP_
 #define SWITCHERS__PULL_OVER_HPP_
 
-#include "common/plugin.hpp"
+#include "common/target_plugin.hpp"
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class PullOverSwitcher : public SwitcherPlugin
+class PullOverSwitcher : public TargetPlugin
 {
 public:
   std::string mode_name() const override { return "pull_over"; }

@@ -15,14 +15,14 @@
 #ifndef SWITCHERS__LOCAL_HPP_
 #define SWITCHERS__LOCAL_HPP_
 
-#include "common/plugin.hpp"
+#include "common/target_plugin.hpp"
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class LocalSwitcher : public SwitcherPlugin
+class LocalSwitcher : public TargetPlugin
 {
 public:
   std::string mode_name() const override { return "local"; }

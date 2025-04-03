@@ -15,7 +15,7 @@
 #ifndef SWITCHERS__AUTONOMOUS_HPP_
 #define SWITCHERS__AUTONOMOUS_HPP_
 
-#include "common/plugin.hpp"
+#include "common/target_plugin.hpp"
 
 #include <tier4_system_msgs/msg/mode_change_available.hpp>
 
@@ -24,7 +24,7 @@
 namespace autoware::command_mode_switcher
 {
 
-class AutonomousSwitcher : public SwitcherPlugin
+class AutonomousSwitcher : public TargetPlugin
 {
 public:
   std::string mode_name() const override { return "autonomous"; }
@@ -36,6 +36,9 @@ private:
   using ModeChangeAvailable = tier4_system_msgs::msg::ModeChangeAvailable;
   rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_available_;
   rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_completed_;
+
+  bool transition_available_ = false;
+  bool transition_completed_ = false;
 };
 
 }  // namespace autoware::command_mode_switcher

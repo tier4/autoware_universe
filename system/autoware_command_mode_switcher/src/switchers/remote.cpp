@@ -19,14 +19,16 @@ namespace autoware::command_mode_switcher
 
 void RemoteSwitcher::initialize()
 {
+  /*
   set_mode_continuable(false);
   set_mode_available(false);
   set_ctrl_available(true);
   set_transition_completed(true);
+  */
 }
 
 }  // namespace autoware::command_mode_switcher
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::command_mode_switcher::RemoteSwitcher, autoware::command_mode_switcher::SwitcherPlugin)
+  autoware::command_mode_switcher::RemoteSwitcher, autoware::command_mode_switcher::TargetPlugin)

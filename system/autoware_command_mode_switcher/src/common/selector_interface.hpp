@@ -15,7 +15,7 @@
 #ifndef COMMON__SELECTOR_INTERFACE_HPP_
 #define COMMON__SELECTOR_INTERFACE_HPP_
 
-#include "plugin.hpp"
+#include "common/target_plugin.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -36,8 +36,8 @@ class ControlGateInterface
 public:
   using Callback = std::function<void()>;
   ControlGateInterface(rclcpp::Node & node, Callback callback);
-  bool request(const SwitcherPlugin & target, bool transition);
-  bool is_selected(const SwitcherPlugin & target);
+  bool request(const TargetPlugin & target, bool transition);
+  bool is_selected(const TargetPlugin & target);
 
 private:
   using SelectCommandSource = tier4_system_msgs::srv::SelectCommandSource;
@@ -48,10 +48,9 @@ private:
   rclcpp::Client<SelectCommandSource>::SharedPtr cli_source_select_;
   rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_source_status_;
 
+  bool requesting_ = false;
   Callback notification_callback_;
   CommandSourceStatus status_;
-  std::shared_ptr<SwitcherPlugin> switcher_;
-  bool requesting_ = false;
 };
 
 class VehicleGateInterface
@@ -59,8 +58,8 @@ class VehicleGateInterface
 public:
   using Callback = std::function<void()>;
   VehicleGateInterface(rclcpp::Node & node, Callback callback);
-  bool request(const SwitcherPlugin & target);
-  bool is_selected(const SwitcherPlugin & target);
+  bool request(const TargetPlugin & target);
+  bool is_selected(const TargetPlugin & target);
 
 private:
   using ControlModeCommand = autoware_vehicle_msgs::srv::ControlModeCommand;
@@ -71,10 +70,9 @@ private:
   rclcpp::Client<ControlModeCommand>::SharedPtr cli_control_mode_;
   rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
 
+  bool requesting_ = false;
   Callback notification_callback_;
   ControlModeReport status_;
-  std::shared_ptr<SwitcherPlugin> switcher_;
-  bool requesting_ = false;
 };
 
 }  // namespace autoware::command_mode_switcher

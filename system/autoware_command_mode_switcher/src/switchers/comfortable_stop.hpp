@@ -15,14 +15,14 @@
 #ifndef SWITCHERS__COMFORTABLE_STOP_HPP_
 #define SWITCHERS__COMFORTABLE_STOP_HPP_
 
-#include "common/plugin.hpp"
+#include "common/target_plugin.hpp"
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class ComfortableStopSwitcher : public SwitcherPlugin
+class ComfortableStopSwitcher : public TargetPlugin
 {
 public:
   std::string mode_name() const override { return "comfortable_stop"; }
