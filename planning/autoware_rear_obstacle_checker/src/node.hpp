@@ -20,6 +20,7 @@
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 
 #include <autoware/route_handler/route_handler.hpp>
+#include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
@@ -81,7 +82,8 @@ struct DebugData
 
   std::vector<geometry_msgs::msg::Point> obstacle_pointcloud;
 
-  std::string text{"NONE"};
+  std::pair<std::string, std_msgs::msg::ColorRGBA> text{
+    "NONE", autoware_utils::create_marker_color(1.0, 1.0, 1.0, 0.999)};
 };
 
 class RearObstacleCheckerNode : public rclcpp::Node
