@@ -94,8 +94,6 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
     return;
   }
 
-  request_ = ModeRequest{msg.mode, msg.ctrl};
-
   const auto source_switcher = iter->second;
   const auto control_target = msg.ctrl ? source_switcher : source_switcher;
   const auto vehicle_target = msg.ctrl ? source_switcher : manual_switcher_;
@@ -131,28 +129,64 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   */
 }
 
+void CommandModeSwitcher::handle_autoware_transition()
+{
+  const auto control_selected = control_gate_interface_.is_selected(*control_gate_target_);
+  const auto vehicle_selected = vehicle_gate_interface_.is_selected(*vehicle_gate_target_);
+
+  // TODO(Takagi, Isamu): Wait status update delay.
+  if (!vehicle_selected) {
+    vehicle_gate_interface_.request(*vehicle_gate_target_);
+    return;
+  }
+
+  // TODO(Takagi, Isamu): Wait status update delay.
+  if (!control_selected) {
+    control_gate_interface_.request(*control_gate_target_, true);
+    return;
+  }
+
+  // Note: (vehicle_selected && control_selected) is true here.
+  if (!vehicle_gate_target_->status().transition_completed) {
+    return;
+  }
+
+  control_gate_interface_.request(*control_gate_target_, false);
+}
+
+void CommandModeSwitcher::handle_manual_transition()
+{
+  const auto control_selected = control_gate_interface_.is_selected(*control_gate_target_);
+  const auto vehicle_selected = vehicle_gate_interface_.is_selected(*vehicle_gate_target_);
+
+  // TODO(Takagi, Isamu): Wait status update delay.
+  if (!control_selected) {
+    control_gate_interface_.request(*control_gate_target_, false);
+    return;
+  }
+
+  // TODO(Takagi, Isamu): Wait status update delay.
+  if (!vehicle_selected) {
+    vehicle_gate_interface_.request(*vehicle_gate_target_);
+  }
+
+  /*
+  const auto command_selected = vehicle_selected && (control_selected || request_manual_control);
+  if (command_selected) {
+    if (vehicle_gate_target_->status().transition_completed) {
+
+    }
+    if (request_autoware_control) {
+      control_gate_interface_.request(*control_gate_target_, false);
+    }
+  }
+  */
+}
+
 void CommandModeSwitcher::update_status()
 {
   // TODO(Takagi, Isamu): Check call rate.
   if (!is_ready_) return;
-  update_transition();
-  publish_command_mode_status();
-}
-
-void CommandModeSwitcher::update_transition()
-{
-  if (!control_gate_target_ || !vehicle_gate_target_) return;
-
-  const auto control_selected = control_gate_interface_.is_selected(*control_gate_target_);
-  const auto vehicle_selected = vehicle_gate_interface_.is_selected(*vehicle_gate_target_);
-  const auto request_autoware_control = request_->ctrl;
-  const auto request_manual_control = !request_->ctrl;
-
-  RCLCPP_WARN(get_logger(), "update_transition");
-  RCLCPP_WARN(get_logger(), "  control_selected        : %d", control_selected);
-  RCLCPP_WARN(get_logger(), "  vehicle_selected        : %d", vehicle_selected);
-  RCLCPP_WARN(get_logger(), "  request_autoware_control: %d", request_autoware_control);
-  RCLCPP_WARN(get_logger(), "  request_manual_control  : %d", request_manual_control);
 
   // NOTE: Update the source status first since the transition context depends on.
   for (const auto & switcher : switchers_) {
@@ -164,23 +198,16 @@ void CommandModeSwitcher::update_transition()
     switcher->update_status(create_transition_context(*switcher));
   }
 
-  // TODO(Takagi, Isamu): Wait status update delay.
-  if (control_selected || request_manual_control) {
-    if (!vehicle_selected) {
-      vehicle_gate_interface_.request(*vehicle_gate_target_);
+  if (control_gate_target_ && vehicle_gate_target_) {
+    if (control_gate_target_ == vehicle_gate_target_) {
+      handle_autoware_transition();
+    } else {
+      handle_manual_transition();
+      handle_background_transition();
     }
   }
 
-  // TODO(Takagi, Isamu): Wait status update delay.
-  if (vehicle_selected || request_autoware_control) {
-    if (!control_selected) {
-      control_gate_interface_.request(*control_gate_target_, request_autoware_control);
-    }
-  }
-
-  if (control_selected && vehicle_selected) {
-    control_gate_interface_.request(*control_gate_target_, false);
-  }
+  publish_command_mode_status();
 }
 
 void CommandModeSwitcher::publish_command_mode_status()
