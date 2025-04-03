@@ -49,11 +49,14 @@ RearObstacleCheckerNode::RearObstacleCheckerNode(const rclcpp::NodeOptions & nod
   tf_buffer_{this->get_clock()},
   tf_listener_{tf_buffer_},
   pub_debug_marker_{this->create_publisher<MarkerArray>("~/debug_marker", 20)},
+  pub_debug_processing_time_detail_{this->create_publisher<autoware_utils::ProcessingTimeDetail>(
+    "~/debug/processing_time_detail_ms", 1)},
   route_handler_{std::make_shared<autoware::route_handler::RouteHandler>()},
   param_listener_{std::make_unique<rear_obstacle_checker_node::ParamListener>(
     this->get_node_parameters_interface())},
   diag_updater_{std::make_unique<diagnostic_updater::Updater>(this)},
-  vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()}
+  vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()},
+  time_keeper_{std::make_shared<autoware_utils::TimeKeeper>(pub_debug_processing_time_detail_)}
 {
   for (const auto & [key, param] : param_listener_->get_params().scene_map) {
     sub_planning_factor_map_.emplace(
@@ -169,6 +172,7 @@ bool RearObstacleCheckerNode::is_ready() const
 
 void RearObstacleCheckerNode::update(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   take_data();
 
   if (!is_ready()) {
@@ -193,6 +197,8 @@ void RearObstacleCheckerNode::on_timer()
 
 bool RearObstacleCheckerNode::is_safe(DebugData & debug)
 {
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+
   const auto p = param_listener_->get_params();
   const auto forward_range =
     std::max(p.common.range.object.forward, p.common.range.pointcloud.forward);
@@ -235,12 +241,15 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
     }
 
     if (utils::should_check_objects(factor, p)) {
+      time_keeper_->start_track("prepare_detection_area_for_objects");
       const auto detection_lanes_for_objects = utils::generate_detection_area_for_object(
         factor, current_lanes, odometry_ptr_->pose.pose, route_handler_, vehicle_info_, p);
       debug.detection_lanes_for_objects.insert(
         debug.detection_lanes_for_objects.end(), detection_lanes_for_objects.begin(),
         detection_lanes_for_objects.end());
+      time_keeper_->end_track("prepare_detection_area_for_objects");
 
+      time_keeper_->start_track("filter_objects");
       const auto [targets, others] =
         behavior_path_planner::utils::path_safety_checker::separateObjectsByLanelets(
           *object_ptr_, detection_lanes_for_objects,
@@ -257,36 +266,43 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
           objects_filtered_by_class.objects.push_back(object);
         }
       }
+      time_keeper_->end_track("filter_objects");
     }
 
     if (utils::should_check_pointcloud(factor, p)) {
+      time_keeper_->start_track("prepare_detection_area_for_pointcloud");
       const auto detection_areas_for_pointcloud = utils::generate_detection_area_for_pointcloud(
         factor, current_lanes, odometry_ptr_->pose.pose, odometry_ptr_->twist.twist.linear.x,
         acceleration_ptr_->accel.accel.linear.x, route_handler_, vehicle_info_, p);
       debug.detection_areas_for_pointcloud.insert(
         debug.detection_areas_for_pointcloud.end(), detection_areas_for_pointcloud.begin(),
         detection_areas_for_pointcloud.end());
+      time_keeper_->end_track("prepare_detection_area_for_pointcloud");
 
+      time_keeper_->start_track("filter_pointcloud");
       obstacle_pointcloud += utils::filter_lost_object_pointcloud(
         objects_on_target_lane,
         utils::get_obstacle_points(detection_areas_for_pointcloud, pointcloud_));
-    }
-  }
-
-  const auto now = this->now();
-  if (is_safe(objects_filtered_by_class, debug) && is_safe(obstacle_pointcloud, debug)) {
-    last_safe_time_ = now;
-    if ((now - last_unsafe_time_).seconds() > p.common.off_time_buffer) {
-      return true;
-    }
-  } else {
-    if ((now - last_safe_time_).seconds() < p.common.on_time_buffer) {
-      return true;
+      time_keeper_->end_track("filter_pointcloud");
     }
   }
 
   {
-    debug.text = "RISK OF COLLISION!!!";
+    const auto now = this->now();
+    if (is_safe(objects_filtered_by_class, debug) && is_safe(obstacle_pointcloud, debug)) {
+      last_safe_time_ = now;
+      if ((now - last_unsafe_time_).seconds() > p.common.off_time_buffer) {
+        return true;
+      }
+    } else {
+      if ((now - last_safe_time_).seconds() < p.common.on_time_buffer) {
+        return true;
+      }
+    }
+
+    {
+      debug.text = "RISK OF COLLISION!!!";
+    }
   }
 
   return false;
