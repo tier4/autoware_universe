@@ -24,14 +24,13 @@ namespace autoware::command_mode_switcher
 
 CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
 : Node("command_mode_switcher", options),
-  loader_("autoware_command_mode_switcher", "autoware::command_mode_switcher::TargetPlugin"),
+  loader_("autoware_command_mode_switcher", "autoware::command_mode_switcher::CommandPlugin"),
   control_gate_interface_(*this, [this]() { update(); }),
   vehicle_gate_interface_(*this, [this]() { update(); })
 {
   // Create vehicle gate switcher.
   {
-    const auto command = std::make_shared<Target>();
-    command->plugin = std::make_shared<ManualCommand>();
+    const auto command = std::make_shared<Command>(std::make_shared<ManualCommand>());
     manual_command_ = command;
     commands_.push_back(command);
   }
@@ -51,8 +50,7 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
         continue;
       }
 
-      const auto command = std::make_shared<Target>();
-      command->plugin = instance;
+      const auto command = std::make_shared<Command>(instance);
       autoware_commands_[instance->mode_name()] = command;
       commands_.push_back(command);
     }
@@ -106,35 +104,31 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   const auto control_target = msg.ctrl ? target_command : target_command;
   const auto vehicle_target = msg.ctrl ? target_command : manual_command_;
 
-  const auto control_status = control_target->status;
-  const auto vehicle_status = vehicle_target->status;
-
-  if (!control_status.mode_available || !vehicle_status.vehicle_gate_ready) {
-    RCLCPP_WARN_STREAM(get_logger(), "request ignored: " << msg.ctrl << " " << msg.mode);
+  // Check transition conditions.
+  if (!control_target->status.mode_available || !vehicle_target->status.vehicle_gate_ready) {
+    RCLCPP_WARN_STREAM(get_logger(), "request rejected: " << msg.ctrl << " " << msg.mode);
     return;
   }
 
+  // Update request status.
+  for (const auto & command : commands_) {
+    command->status.control_gate_request = false;
+    command->status.vehicle_gate_request = false;
+  }
+  control_target->status.control_gate_request = true;
+  vehicle_target->status.vehicle_gate_request = true;
+
+  // Update command target.
+  const auto control_target_changed = control_gate_target_ != control_target;
+  const auto vehicle_target_changed = vehicle_gate_target_ != vehicle_target;
   control_gate_target_ = control_target;
   vehicle_gate_target_ = vehicle_target;
-  update();  // Reflect immediately.
 
-  /*
-  if (msg.ctrl) {
-    vehicle_gate_switcher_->enable_autoware_control();
-    control_gate_switcher_ = source_switcher;
-    control_gate_switcher_->request_enabled();
-  } else {
-    vehicle_gate_switcher_->disable_autoware_control();
-    control_gate_switcher_ = source_switcher;
-    control_gate_switcher_->request_standby();
+  // Update if the command target is changed.
+  if (control_target_changed || vehicle_target_changed) {
+    RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.ctrl << " " << msg.mode);
+    update();
   }
-
-  for (const auto & switcher : switchers_) {
-    if (switcher == vehicle_gate_switcher_) continue;
-    if (switcher == control_gate_switcher_) continue;
-    switcher->handover();
-  }
-  */
 }
 
 void CommandModeSwitcher::update()
@@ -149,7 +143,7 @@ void CommandModeSwitcher::update()
 
   // TODO(Takagi, Isamu): Handle aborted transition (control, source, source group).
   for (const auto & command : commands_) {
-    update_status(*command);
+    command->update_status();
   }
 
   if (control_gate_target_ && vehicle_gate_target_) {
@@ -164,47 +158,21 @@ void CommandModeSwitcher::update()
   publish_command_mode_status();
 }
 
-void CommandModeSwitcher::update_status(const Target & target)
-{
-  (void)target;
-  /*
-  const auto is_source_exclusive = [this](const Target & target) {
-    if (target.source_name().empty()) {
-      return true;
-    }
-    for (const auto & switcher : switchers_) {
-      if (switcher->mode_name() == target.mode_name()) continue;
-      if (switcher->source_name() != target.source_name()) continue;
-      if (switcher->source_status() == SourceStatus::Disabled) continue;
-      return false;
-    }
-    return true;
-  };
-
-  TransitionContext context;
-  context.sequence_target = target.sequence_target();
-  context.source_state = target.source_status();
-  context.is_source_exclusive = is_source_exclusive(target);
-  context.is_source_selected = control_gate_interface_.is_selected(target);
-  context.is_control_selected = vehicle_gate_interface_.is_selected(target);
-  context.is_mode_continuable = target.status().mode_continuable;
-  context.is_mode_available = target.status().mode_available;
-  context.is_ctrl_available = target.status().ctrl_available;
-  context.is_transition_completed = target.status().transition_completed;
-  return context;
-  */
-}
-
 void CommandModeSwitcher::publish_command_mode_status()
 {
-  const auto convert = [](const Target & target) {
+  const auto convert = [](const Command & command) {
     CommandModeStatusItem item;
-    item.mode = target.plugin->mode_name();
-    item.mode_continuable = target.status.mode_continuable;
-    item.mode_available = target.status.mode_available;
-    item.control_gate_ready = target.status.control_gate_ready;
-    item.vehicle_gate_ready = target.status.vehicle_gate_ready;
-    item.transition_completed = target.status.transition_completed;
+    item.mode = command.plugin->mode_name();
+    // state
+    // mrm
+    item.mode_continuable = command.status.mode_continuable;
+    item.mode_available = command.status.mode_available;
+    item.control_gate_request = command.status.control_gate_request;
+    item.vehicle_gate_request = command.status.vehicle_gate_request;
+    item.control_gate_ready = command.status.control_gate_ready;
+    item.vehicle_gate_ready = command.status.vehicle_gate_ready;
+    item.transition_completed = command.status.transition_completed;
+    item.debug = convert_debug_string(command.status);
     return item;
   };
 

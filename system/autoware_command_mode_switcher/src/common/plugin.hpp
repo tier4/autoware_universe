@@ -31,7 +31,6 @@ public:
   void construct(rclcpp::Node * node);
   auto status() const { return status_; }
   auto sequence_state() const { return status_.state; }
-  auto sequence_target() const { return status_.target; }
   auto source_status() const { return source_status_; }
 
   void request_enabled();

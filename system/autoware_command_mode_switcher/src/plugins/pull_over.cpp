@@ -12,12 +12,12 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "local.hpp"
+#include "pull_over.hpp"
 
 namespace autoware::command_mode_switcher
 {
 
-void LocalSwitcher::initialize()
+void PullOverSwitcher::initialize()
 {
   /*
   set_mode_continuable(false);
@@ -31,4 +31,4 @@ void LocalSwitcher::initialize()
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::command_mode_switcher::LocalSwitcher, autoware::command_mode_switcher::TargetPlugin)
+  autoware::command_mode_switcher::PullOverSwitcher, autoware::command_mode_switcher::CommandPlugin)

@@ -12,23 +12,26 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "remote.hpp"
+#ifndef COMMON__COMMAND_CONTAINER_HPP_
+#define COMMON__COMMAND_CONTAINER_HPP_
+
+#include "common/command_plugin.hpp"
+#include "common/command_status.hpp"
+
+#include <memory>
 
 namespace autoware::command_mode_switcher
 {
 
-void RemoteSwitcher::initialize()
+struct Command
 {
-  /*
-  set_mode_continuable(false);
-  set_mode_available(false);
-  set_ctrl_available(true);
-  set_transition_completed(true);
-  */
-}
+  explicit Command(std::shared_ptr<CommandPlugin> plugin);
+  void update_status();
+
+  std::shared_ptr<CommandPlugin> plugin;
+  CommandStatus status;
+};
 
 }  // namespace autoware::command_mode_switcher
 
-#include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(
-  autoware::command_mode_switcher::RemoteSwitcher, autoware::command_mode_switcher::TargetPlugin)
+#endif  // COMMON__COMMAND_CONTAINER_HPP_

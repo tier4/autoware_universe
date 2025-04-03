@@ -15,11 +15,9 @@
 #ifndef COMMAND_MODE_SWITCHER_HPP_
 #define COMMAND_MODE_SWITCHER_HPP_
 
+#include "common/command_container.hpp"
 #include "common/manual.hpp"
-#include "common/plugin.hpp"
 #include "common/selector_interface.hpp"
-#include "common/target_plugin.hpp"
-#include "common/target_status.hpp"
 
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -48,15 +46,9 @@ public:
   explicit CommandModeSwitcher(const rclcpp::NodeOptions & options);
 
 private:
-  struct Target
-  {
-    std::shared_ptr<TargetPlugin> plugin;
-    TargetStatus status;
-  };
   void on_availability(const CommandModeAvailability & msg);
   void on_request(const CommandModeRequest & msg);
   void update();
-  void update_status(const Target & target);
   void publish_command_mode_status();
   void handle_autoware_transition();
   void handle_manual_transition();
@@ -69,12 +61,12 @@ private:
   rclcpp::Publisher<CommandModeStatus>::SharedPtr pub_status_;
 
   // Mode switching.
-  pluginlib::ClassLoader<TargetPlugin> loader_;
-  std::vector<std::shared_ptr<Target>> commands_;
-  std::unordered_map<std::string, std::shared_ptr<Target>> autoware_commands_;
-  std::shared_ptr<Target> manual_command_;
-  std::shared_ptr<Target> control_gate_target_;
-  std::shared_ptr<Target> vehicle_gate_target_;
+  pluginlib::ClassLoader<CommandPlugin> loader_;
+  std::vector<std::shared_ptr<Command>> commands_;
+  std::unordered_map<std::string, std::shared_ptr<Command>> autoware_commands_;
+  std::shared_ptr<Command> manual_command_;
+  std::shared_ptr<Command> control_gate_target_;
+  std::shared_ptr<Command> vehicle_gate_target_;
   ControlGateInterface control_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
 

@@ -15,7 +15,7 @@
 #ifndef COMMON__SELECTOR_INTERFACE_HPP_
 #define COMMON__SELECTOR_INTERFACE_HPP_
 
-#include "common/target_plugin.hpp"
+#include "common/command_plugin.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -36,8 +36,8 @@ class ControlGateInterface
 public:
   using Callback = std::function<void()>;
   ControlGateInterface(rclcpp::Node & node, Callback callback);
-  bool request(const TargetPlugin & target, bool transition);
-  bool is_selected(const TargetPlugin & target);
+  bool request(const CommandPlugin & target, bool transition);
+  bool is_selected(const CommandPlugin & target);
 
 private:
   using SelectCommandSource = tier4_system_msgs::srv::SelectCommandSource;
@@ -58,8 +58,8 @@ class VehicleGateInterface
 public:
   using Callback = std::function<void()>;
   VehicleGateInterface(rclcpp::Node & node, Callback callback);
-  bool request(const TargetPlugin & target);
-  bool is_selected(const TargetPlugin & target);
+  bool request(const CommandPlugin & target);
+  bool is_selected(const CommandPlugin & target);
 
 private:
   using ControlModeCommand = autoware_vehicle_msgs::srv::ControlModeCommand;

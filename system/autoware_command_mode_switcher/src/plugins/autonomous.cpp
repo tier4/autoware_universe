@@ -39,4 +39,4 @@ void AutonomousSwitcher::initialize()
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
   autoware::command_mode_switcher::AutonomousSwitcher,
-  autoware::command_mode_switcher::TargetPlugin)
+  autoware::command_mode_switcher::CommandPlugin)
