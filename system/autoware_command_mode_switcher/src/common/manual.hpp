@@ -30,6 +30,11 @@ public:
   std::string source_name() const override { return ""; }
   bool autoware_control() const override { return false; }
   void initialize() override;
+
+  bool get_mode_continuable() override { return true; }
+  bool get_mode_available() override { return true; }
+  bool get_transition_available() override { return true; }
+  bool get_transition_completed() override { return true; }
 };
 
 }  // namespace autoware::command_mode_switcher

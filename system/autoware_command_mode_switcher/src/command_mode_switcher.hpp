@@ -40,6 +40,20 @@ using tier4_system_msgs::msg::CommandModeRequest;
 using tier4_system_msgs::msg::CommandModeStatus;
 using tier4_system_msgs::msg::CommandModeStatusItem;
 
+// TODO(Takagi, Isamu): Move to tier4_system_msgs.
+enum class SwitcherRequestType {
+  UNDEFINED = 0,
+  FOREGROUND = 1,
+  BACKGROUND = 2,
+  MANUAL = 3,
+};
+
+struct SwitcherRequest
+{
+  SwitcherRequestType type;
+  std::shared_ptr<Command> command;
+};
+
 class CommandModeSwitcher : public rclcpp::Node
 {
 public:
@@ -66,8 +80,7 @@ private:
   std::vector<std::shared_ptr<Command>> commands_;
   std::unordered_map<std::string, std::shared_ptr<Command>> autoware_commands_;
   std::shared_ptr<Command> manual_command_;
-  std::shared_ptr<Command> control_gate_target_;
-  std::shared_ptr<Command> vehicle_gate_target_;
+  SwitcherRequest request_;
   ControlGateInterface control_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
 
