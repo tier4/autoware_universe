@@ -2,7 +2,6 @@
   ros__parameters:
     rate: 10.0
     inputs: [stop, main, local, remote, emergency_stop]  # main is for autonomous, pull_over, comfortable_stop
-    initial_source: stop
     builtin_emergency_acceleration: -2.4
     diag_timeout_warn_duration: 1.0
     diag_timeout_error_duration: 2.0

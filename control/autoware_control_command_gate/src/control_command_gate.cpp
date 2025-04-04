@@ -117,13 +117,7 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
   }
 
   // Select initial command source. Note that the select function calls on_change_source.
-  {
-    const auto initial_source = declare_parameter<std::string>("initial_source");
-    if (!selector_->select(initial_source)) {
-      throw std::invalid_argument("invalid initial source: " + initial_source);
-    }
-    selector_->select_builtin_source(builtin);
-  }
+  selector_->select_builtin_source(builtin);
 
   const auto period = rclcpp::Rate(declare_parameter<double>("rate")).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
@@ -138,13 +132,17 @@ void ControlCmdGate::on_select_source(
   const SelectCommandSource::Request::SharedPtr req,
   const SelectCommandSource::Response::SharedPtr res)
 {
-  const auto result = selector_->select(req->source);
-  if (result) {
-    RCLCPP_INFO_STREAM(get_logger(), "changed command source: " << req->source);
-  } else {
-    RCLCPP_INFO_STREAM(get_logger(), "unknown command source: " << req->source);
+  const auto error = selector_->select(req->source);
+  if (!error.empty()) {
+    res->status.success = false;
+    res->status.message = error;
+    RCLCPP_INFO_STREAM(get_logger(), error);
+    return;
   }
-  res->status.success = result;
+  const auto message = "target command source is selected: " + req->source;
+  res->status.success = true;
+  res->status.message = message;
+  RCLCPP_INFO_STREAM(get_logger(), message);
 }
 
 }  // namespace autoware::control_command_gate
