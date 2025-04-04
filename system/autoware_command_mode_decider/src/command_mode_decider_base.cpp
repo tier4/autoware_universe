@@ -162,7 +162,7 @@ void CommandModeDeciderBase::publish_operation_mode_state()
 {
   const auto is_transition_available = [this](const auto & mode) {
     const auto status = command_mode_status_.get(mode);
-    return status.mode_available && status.vehicle_gate_ready;
+    return status.mode_available && status.transition_available;
   };
   OperationModeState state;
   state.stamp = now();
@@ -181,7 +181,7 @@ void CommandModeDeciderBase::publish_mrm_state()
   const auto convert = [](uint32_t item) {
     // clang-format off
     switch (item) {
-      case CommandModeStatusItem::NONE:      return MrmState::NONE;
+      case CommandModeStatusItem::NORMAL:    return MrmState::NORMAL;
       case CommandModeStatusItem::OPERATING: return MrmState::MRM_OPERATING;
       case CommandModeStatusItem::SUCCEEDED: return MrmState::MRM_SUCCEEDED;
       case CommandModeStatusItem::FAILED:    return MrmState::MRM_FAILED;
@@ -217,8 +217,8 @@ ResponseStatus CommandModeDeciderBase::check_request(
   }
 
   const auto mode_available = item.mode_available || (!check_mode_ready);
-  const auto ctrl_available = item.vehicle_gate_ready || (!check_ctrl_ready);
-  if (!mode_available || !ctrl_available) {
+  const auto transition_available = item.transition_available || (!check_ctrl_ready);
+  if (!mode_available || !transition_available) {
     return response(false, "Mode is not available: " + mode);
   }
 

@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -80,12 +81,9 @@ void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
   for (const auto & item : msg.items) {
     const auto iter = autoware_commands_.find(item.mode);
     if (iter != autoware_commands_.end()) {
-      iter->second->status.mode_continuable = item.available;
-      iter->second->status.mode_available = item.available;
-      // TODO(Takagi, Isamu): Replace with the method using diagnostics.
-      // iter->second->status.control_gate_ready = item.???;
-      // iter->second->status.vehicle_gate_ready = item.???;
-      // iter->second->status.transition_completed = item.???;
+      // TODO(Takagi, Isamu): Use data from diagnostics for transition conditions.
+      iter->second->plugin->set_mode_continuable(item.available);
+      iter->second->plugin->set_mode_available(item.available);
     }
   }
   is_ready_ = true;
@@ -94,20 +92,58 @@ void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
 
 void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 {
-  const auto iter = autoware_commands_.find(msg.mode);
-  if (iter == autoware_commands_.end()) {
-    RCLCPP_ERROR_STREAM(get_logger(), "invalid mode: " << msg.ctrl << " " << msg.mode);
+  struct RequestTargets
+  {
+    bool success;
+    std::shared_ptr<Command> control;
+    std::shared_ptr<Command> vehicle;
+  };
+
+  const auto get_request_targets = [this](const CommandModeRequest & msg) {
+    if (!msg.ctrl && manual_command_->status.state == MainState::Enabled) {
+      return RequestTargets{true, nullptr, manual_command_};
+    }
+
+    const auto iter = autoware_commands_.find(msg.mode);
+    if (iter == autoware_commands_.end()) {
+      RCLCPP_ERROR_STREAM(get_logger(), "invalid mode: " << msg.mode);
+      return RequestTargets{false, nullptr, nullptr};
+    }
+    const auto target = iter->second;
+    const auto status = iter->second->status;
+
+    // Check transition conditions.
+    const auto transition_available = status.transition_available || !msg.ctrl;
+    if (!status.mode_available || !transition_available) {
+      RCLCPP_WARN_STREAM(get_logger(), "request rejected: " << msg.ctrl << " " << msg.mode);
+      return RequestTargets{false, nullptr, nullptr};
+    }
+
+    if (msg.ctrl) {
+      return RequestTargets{true, target, target};
+    } else {
+      return RequestTargets{true, target, nullptr};
+    }
+  };
+
+  const auto targets = get_request_targets(msg);
+  if (!targets.success) {
     return;
   }
 
-  const auto target_command = iter->second;
-  const auto control_target = msg.ctrl ? target_command : target_command;
-  const auto vehicle_target = msg.ctrl ? target_command : manual_command_;
+  // Update command target.
+  {
+    const auto control_target = targets.control ? targets.control : control_gate_target_;
+    const auto vehicle_target = targets.vehicle ? targets.vehicle : vehicle_gate_target_;
+    const auto control_target_changed = control_target != control_gate_target_;
+    const auto vehicle_target_changed = vehicle_target != vehicle_gate_target_;
+    control_gate_target_ = control_target;
+    vehicle_gate_target_ = vehicle_target;
 
-  // Check transition conditions.
-  if (!control_target->status.mode_available || !vehicle_target->status.vehicle_gate_ready) {
-    RCLCPP_WARN_STREAM(get_logger(), "request rejected: " << msg.ctrl << " " << msg.mode);
-    return;
+    if (!control_target_changed && !vehicle_target_changed) {
+      RCLCPP_INFO_STREAM(get_logger(), "request ignored: " << msg.ctrl << " " << msg.mode);
+      return;
+    }
   }
 
   // Update request status.
@@ -115,20 +151,15 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
     command->status.control_gate_request = false;
     command->status.vehicle_gate_request = false;
   }
-  control_target->status.control_gate_request = true;
-  vehicle_target->status.vehicle_gate_request = true;
-
-  // Update command target.
-  const auto control_target_changed = control_gate_target_ != control_target;
-  const auto vehicle_target_changed = vehicle_gate_target_ != vehicle_target;
-  control_gate_target_ = control_target;
-  vehicle_gate_target_ = vehicle_target;
-
-  // Update if the command target is changed.
-  if (control_target_changed || vehicle_target_changed) {
-    RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.ctrl << " " << msg.mode);
-    update();
+  if (control_gate_target_) {
+    control_gate_target_->status.control_gate_request = true;
   }
+  if (vehicle_gate_target_) {
+    vehicle_gate_target_->status.vehicle_gate_request = true;
+  }
+
+  RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.ctrl << " " << msg.mode);
+  update();
 }
 
 void CommandModeSwitcher::update()
@@ -136,23 +167,40 @@ void CommandModeSwitcher::update()
   // TODO(Takagi, Isamu): Check call rate.
   if (!is_ready_) return;
 
-  // NOTE: Update the source status first since the transition context depends on.
+  // NOTE: Update local states first since global states depend on them.
   for (const auto & command : commands_) {
-    command->status.source_state = command->plugin->update_source_state();
+    auto & status = command->status;
+    auto & plugin = command->plugin;
+    status.source_state = plugin->update_source_state(status.control_gate_request);
+    status.control_gate_state = control_gate_interface_.get_state(*plugin);
+    status.network_gate_state = NetworkGateState::Selected;
+    status.vehicle_gate_state = vehicle_gate_interface_.get_state(*plugin);
+    status.mode_continuable = plugin->get_mode_continuable();
+    status.mode_available = plugin->get_mode_available();
+    status.transition_available = plugin->get_transition_available();
+    status.transition_completed = plugin->get_transition_completed();
+    status.mrm = plugin->update_mrm_state();
   }
 
-  // TODO(Takagi, Isamu): Handle aborted transition (control, source, source group).
+  std::unordered_map<std::string, int> source_group_count;
   for (const auto & command : commands_) {
-    command->update_status();
+    const auto uses = command->status.source_state != SourceState::Disabled;
+    source_group_count[command->plugin->source_name()] += uses ? 1 : 0;
   }
 
-  if (control_gate_target_ && vehicle_gate_target_) {
-    if (control_gate_target_ == vehicle_gate_target_) {
-      handle_autoware_transition();
-    } else {
-      handle_manual_transition();
-      handle_background_transition();
-    }
+  for (const auto & command : commands_) {
+    auto & status = command->status;
+    auto & plugin = command->plugin;
+    const auto srouce_count = source_group_count[plugin->source_name()];
+    status.source_group = srouce_count <= 1 ? SourceGroup::Exclusive : SourceGroup::Shared;
+    status.state = update_main_state(status);
+  }
+
+  if (control_gate_target_ == vehicle_gate_target_) {
+    handle_all_gate_transition();
+  } else {
+    handle_control_gate_transition();
+    handle_vehicle_gate_transition();
   }
 
   publish_command_mode_status();
@@ -163,14 +211,13 @@ void CommandModeSwitcher::publish_command_mode_status()
   const auto convert = [](const Command & command) {
     CommandModeStatusItem item;
     item.mode = command.plugin->mode_name();
-    // state
-    // mrm
+    item.state = convert_main_state(command.status.state);
+    item.mrm = convert_mrm_state(command.status.mrm);
     item.mode_continuable = command.status.mode_continuable;
     item.mode_available = command.status.mode_available;
     item.control_gate_request = command.status.control_gate_request;
     item.vehicle_gate_request = command.status.vehicle_gate_request;
-    item.control_gate_ready = command.status.control_gate_ready;
-    item.vehicle_gate_ready = command.status.vehicle_gate_ready;
+    item.transition_available = command.status.transition_available;
     item.transition_completed = command.status.transition_completed;
     item.debug = convert_debug_string(command.status);
     return item;
@@ -184,50 +231,35 @@ void CommandModeSwitcher::publish_command_mode_status()
   pub_status_->publish(msg);
 }
 
-void CommandModeSwitcher::handle_autoware_transition()
+void CommandModeSwitcher::handle_all_gate_transition()
 {
-  const auto control_selected =
-    control_gate_target_->status.control_gate_state == ControlGateState::Selected;
-  const auto vehicle_selected =
-    vehicle_gate_target_->status.vehicle_gate_state == VehicleGateState::Selected;
-
-  // TODO(Takagi, Isamu): Wait status update delay.
-  if (!vehicle_selected) {
-    vehicle_gate_interface_.request(*vehicle_gate_target_->plugin);
+  if (!control_gate_target_ || !vehicle_gate_target_) {
     return;
   }
 
-  // TODO(Takagi, Isamu): Wait status update delay.
-  if (!control_selected) {
+  if (!control_gate_target_->is_control_gate_selected()) {
     control_gate_interface_.request(*control_gate_target_->plugin, true);
     return;
   }
 
-  // Note: (vehicle_selected && control_selected) is true here.
+  if (!vehicle_gate_target_->is_vehicle_gate_selected()) {
+    vehicle_gate_interface_.request(*vehicle_gate_target_->plugin);
+    return;
+  }
+
+  // When both gate is selected, check the transition completion condition.
   if (!vehicle_gate_target_->status.transition_completed) {
     return;
   }
 
-  control_gate_interface_.request(*control_gate_target_->plugin, false);
+  if (control_gate_interface_.is_in_transition()) {
+    control_gate_interface_.request(*control_gate_target_->plugin, false);
+  }
 }
 
-void CommandModeSwitcher::handle_manual_transition()
+void CommandModeSwitcher::handle_vehicle_gate_transition()
 {
-  const auto control_selected =
-    control_gate_target_->status.control_gate_state == ControlGateState::Selected;
-  const auto vehicle_selected =
-    vehicle_gate_target_->status.vehicle_gate_state == VehicleGateState::Selected;
-
-  // TODO(Takagi, Isamu): Wait status update delay.
-  if (!control_selected) {
-    control_gate_interface_.request(*control_gate_target_->plugin, false);
-    return;
-  }
-
-  // TODO(Takagi, Isamu): Wait status update delay.
-  if (!vehicle_selected) {
-    vehicle_gate_interface_.request(*vehicle_gate_target_->plugin);
-  }
+  // Wait control gate transition.
 
   /*
   const auto command_selected = vehicle_selected && (control_selected || request_manual_control);

@@ -22,7 +22,7 @@
 namespace autoware::command_mode_switcher
 {
 
-class ComfortableStopSwitcher : public CommandPlugin
+class ComfortableStopSwitcher : public ControlCommandPlugin
 {
 public:
   std::string mode_name() const override { return "comfortable_stop"; }

@@ -66,33 +66,50 @@ void VehicleGateInterface::on_control_mode(const ControlModeReport & msg)
   if (!equals) notification_callback_();
 }
 
-bool ControlGateInterface::is_selected(const CommandPlugin & target)
+bool ControlGateInterface::is_in_transition() const
 {
-  if (target.source_name().empty()) return true;
-  return target.source_name() == status_.source;
+  return status_.transition;
 }
 
-bool VehicleGateInterface::is_selected(const CommandPlugin & target)
+ControlGateState ControlGateInterface::get_state(const CommandPlugin & plugin) const
 {
-  if (target.autoware_control()) {
-    return status_.mode == ControlModeReport::AUTONOMOUS;
+  if (plugin.source_name().empty()) {
+    return ControlGateState::Selected;
+  }
+
+  if (plugin.source_name() == status_.source) {
+    return ControlGateState::Selected;
   } else {
-    return status_.mode == ControlModeReport::MANUAL;
+    return ControlGateState::Unselected;
   }
 }
 
-bool ControlGateInterface::request(const CommandPlugin & target, bool transition)
+VehicleGateState VehicleGateInterface::get_state(const CommandPlugin & plugin) const
+{
+  const auto is_selected = [](uint8_t mode1, uint8_t mode2) {
+    return mode1 == mode2 ? VehicleGateState::Selected : VehicleGateState::Unselected;
+  };
+
+  if (plugin.autoware_control()) {
+    return is_selected(status_.mode, ControlModeReport::AUTONOMOUS);
+  } else {
+    return is_selected(status_.mode, ControlModeReport::MANUAL);
+  }
+}
+
+bool ControlGateInterface::request(const CommandPlugin & plugin, bool transition)
 {
   if (requesting_) {
     return false;
   }
   if (!cli_source_select_->service_is_ready()) {
+    RCLCPP_WARN_STREAM(node_.get_logger(), "control gate service is not ready");
     return false;
   }
 
   using SharedFuture = rclcpp::Client<SelectCommandSource>::SharedFuture;
   auto request = std::make_shared<SelectCommandSource::Request>();
-  request->source = target.source_name();
+  request->source = plugin.source_name();
   request->transition = transition;
 
   RCLCPP_WARN_STREAM(node_.get_logger(), "control gate request");
@@ -101,18 +118,19 @@ bool ControlGateInterface::request(const CommandPlugin & target, bool transition
   return true;
 }
 
-bool VehicleGateInterface::request(const CommandPlugin & target)
+bool VehicleGateInterface::request(const CommandPlugin & plugin)
 {
   if (requesting_) {
     return false;
   }
   if (!cli_control_mode_->service_is_ready()) {
+    RCLCPP_WARN_STREAM(node_.get_logger(), "vehicle gate service is not ready");
     return false;
   }
 
   using SharedFuture = rclcpp::Client<ControlModeCommand>::SharedFuture;
   auto request = std::make_shared<ControlModeCommand::Request>();
-  if (target.autoware_control()) {
+  if (plugin.autoware_control()) {
     request->mode = ControlModeCommand::Request::AUTONOMOUS;
   } else {
     request->mode = ControlModeCommand::Request::MANUAL;

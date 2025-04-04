@@ -22,20 +22,27 @@ Command::Command(std::shared_ptr<CommandPlugin> plugin) : plugin(plugin)
   status.source_state = SourceState::Disabled;
   status.source_group = SourceGroup::Shared;
   status.control_gate_state = ControlGateState::Unselected;
+  status.network_gate_state = NetworkGateState::Unselected;
   status.vehicle_gate_state = VehicleGateState::Unselected;
+  status.transition_state = TransitionState::Completed;
+  status.state = MainState::Disabled;
+  status.mrm = MrmState::Normal;
   status.vehicle_gate_request = false;
   status.control_gate_request = false;
   status.mode_continuable = false;
   status.mode_available = false;
-  status.control_gate_ready = false;
-  status.vehicle_gate_ready = false;
+  status.transition_available = false;
   status.transition_completed = false;
 }
 
-void Command::update_status()
+bool Command::is_control_gate_selected() const
 {
-  status.control_gate_ready = plugin->get_control_gate_ready();
-  status.vehicle_gate_ready = plugin->get_vehicle_gate_ready();
+  return status.control_gate_state == ControlGateState::Selected;
+}
+
+bool Command::is_vehicle_gate_selected() const
+{
+  return status.vehicle_gate_state == VehicleGateState::Selected;
 }
 
 }  // namespace autoware::command_mode_switcher

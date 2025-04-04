@@ -22,7 +22,7 @@
 namespace autoware::command_mode_switcher
 {
 
-class PullOverSwitcher : public CommandPlugin
+class PullOverSwitcher : public ControlCommandPlugin
 {
 public:
   std::string mode_name() const override { return "pull_over"; }

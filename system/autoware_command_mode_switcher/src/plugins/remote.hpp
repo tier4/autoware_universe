@@ -22,13 +22,16 @@
 namespace autoware::command_mode_switcher
 {
 
-class RemoteSwitcher : public CommandPlugin
+class RemoteSwitcher : public ControlCommandPlugin
 {
 public:
   std::string mode_name() const override { return "remote"; }
   std::string source_name() const override { return "remote"; }
   bool autoware_control() const override { return true; }
   void initialize() override;
+
+  bool get_transition_available() override { return true; }
+  bool get_transition_completed() override { return true; }
 };
 
 }  // namespace autoware::command_mode_switcher

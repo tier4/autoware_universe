@@ -31,11 +31,18 @@ public:
   virtual std::string mode_name() const = 0;
   virtual std::string source_name() const = 0;
   virtual bool autoware_control() const = 0;
-  virtual void initialize() {}
-  virtual SourceState update_source_state() { return SourceState::Disabled; }
+  virtual void initialize() = 0;
 
-  virtual bool get_control_gate_ready() { return false; }
-  virtual bool get_vehicle_gate_ready() { return false; }
+  virtual SourceState update_source_state(bool request);
+  virtual MrmState update_mrm_state() { return MrmState::Normal; }
+
+  virtual bool get_mode_continuable() { return false; }
+  virtual bool get_mode_available() { return false; }
+  virtual bool get_transition_available() { return false; }
+  virtual bool get_transition_completed() { return false; }
+
+  virtual void set_mode_continuable(bool continuable) = 0;
+  virtual void set_mode_available(bool available) = 0;
 
   void construct(rclcpp::Node * node) { node_ = node; }
 
@@ -43,6 +50,25 @@ protected:
   rclcpp::Node * node_;
 };
 
+class ControlCommandPlugin : public CommandPlugin
+{
+public:
+  bool get_mode_continuable() override;
+  bool get_mode_available() override;
+  void set_mode_continuable(bool continuable) override;
+  void set_mode_available(bool available) override;
+
+private:
+  bool mode_continuable_ = false;
+  bool mode_available_ = false;
+};
+
+class VehicleCommandPlugin : public CommandPlugin
+{
+public:
+  void set_mode_continuable(bool continuable) override;
+  void set_mode_available(bool available) override;
+};
 }  // namespace autoware::command_mode_switcher
 
 #endif  // COMMON__COMMAND_PLUGIN_HPP_

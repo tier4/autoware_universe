@@ -14,6 +14,8 @@
 
 #include "command_status.hpp"
 
+#include <tier4_system_msgs/msg/command_mode_status_item.hpp>
+
 #include <string>
 
 namespace autoware::command_mode_switcher
@@ -35,7 +37,7 @@ std::string to_string(const SourceGroup & group)
 {
   // clang-format off
   switch (group) {
-    case SourceGroup::Shared:    return "S";
+    case SourceGroup::Shared:    return "D";
     case SourceGroup::Exclusive: return "E";
     default:                     return "?";
   }
@@ -46,9 +48,21 @@ std::string to_string(const ControlGateState & state)
 {
   // clang-format off
   switch (state) {
-    case ControlGateState::Unselected: return "U";
-    case ControlGateState::Requesting: return "R";
-    case ControlGateState::Selected:   return "S";
+    case ControlGateState::Unselected: return "D";
+    case ControlGateState::Requesting: return "T";
+    case ControlGateState::Selected:   return "E";
+    default:                           return "?";
+  }
+  // clang-format on
+}
+
+std::string to_string(const NetworkGateState & state)
+{
+  // clang-format off
+  switch (state) {
+    case NetworkGateState::Unselected: return "D";
+    case NetworkGateState::Requesting: return "T";
+    case NetworkGateState::Selected:   return "E";
     default:                           return "?";
   }
   // clang-format on
@@ -58,10 +72,21 @@ std::string to_string(const VehicleGateState & state)
 {
   // clang-format off
   switch (state) {
-    case VehicleGateState::Unselected: return "U";
-    case VehicleGateState::Requesting: return "R";
-    case VehicleGateState::Selected:   return "S";
+    case VehicleGateState::Unselected: return "D";
+    case VehicleGateState::Requesting: return "T";
+    case VehicleGateState::Selected:   return "E";
     default:                           return "?";
+  }
+  // clang-format on
+}
+
+std::string to_string(const TransitionState & state)
+{
+  // clang-format off
+  switch (state) {
+    case TransitionState::Transition: return "D";
+    case TransitionState::Completed:  return "E";
+    default:                          return "?";
   }
   // clang-format on
 }
@@ -72,8 +97,52 @@ std::string convert_debug_string(const CommandStatus & status)
   result += to_string(status.source_state);
   result += to_string(status.source_group);
   result += to_string(status.control_gate_state);
+  result += to_string(status.network_gate_state);
   result += to_string(status.vehicle_gate_state);
+  result += to_string(status.transition_state);
   return result;
+}
+
+uint8_t convert_main_state(const MainState & state)
+{
+  using Message = tier4_system_msgs::msg::CommandModeStatusItem;
+  // clang-format off
+  switch (state) {
+    case MainState::Disabled:   return Message::DISABLED;
+    case MainState::Transition: return Message::TRANSITION;
+    case MainState::Enabled:    return Message::ENABLED;
+    default:                    return Message::UNDEFINED;
+  }
+  // clang-format on
+}
+
+uint8_t convert_mrm_state(const MrmState & mrm)
+{
+  using Message = tier4_system_msgs::msg::CommandModeStatusItem;
+  // clang-format off
+  switch (mrm) {
+    case MrmState::Normal:     return Message::NORMAL;
+    case MrmState::Operating:  return Message::OPERATING;
+    case MrmState::Succeeded:  return Message::SUCCEEDED;
+    case MrmState::Failed:     return Message::FAILED;
+    default:                   return Message::UNDEFINED;
+  }
+  // clang-format on
+}
+
+MainState update_main_state(const CommandStatus & status)
+{
+  if (status.transition_state == TransitionState::Transition) {
+    return MainState::Transition;
+  }
+  bool is_enabled = true;
+  is_enabled &= status.source_state == SourceState::Enabled;
+  is_enabled &= status.source_group == SourceGroup::Exclusive;
+  is_enabled &= status.control_gate_state == ControlGateState::Selected;
+  is_enabled &= status.network_gate_state == NetworkGateState::Selected;
+  is_enabled &= status.vehicle_gate_state == VehicleGateState::Selected;
+  is_enabled &= status.transition_state == TransitionState::Completed;
+  return is_enabled ? MainState::Enabled : MainState::Disabled;
 }
 
 }  // namespace autoware::command_mode_switcher

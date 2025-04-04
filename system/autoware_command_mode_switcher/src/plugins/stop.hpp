@@ -22,15 +22,16 @@
 namespace autoware::command_mode_switcher
 {
 
-class StopSwitcher : public CommandPlugin
+class StopSwitcher : public ControlCommandPlugin
 {
 public:
   std::string mode_name() const override { return "stop"; }
   std::string source_name() const override { return "stop"; }
   bool autoware_control() const override { return true; }
   void initialize() override;
-  bool get_control_gate_ready() override { return true; }
-  bool get_vehicle_gate_ready() override { return true; }
+
+  bool get_transition_available() override { return true; }
+  bool get_transition_completed() override { return true; }
 };
 
 }  // namespace autoware::command_mode_switcher

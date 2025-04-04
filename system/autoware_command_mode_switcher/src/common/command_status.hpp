@@ -37,10 +37,34 @@ enum class ControlGateState {
   Selected,
 };
 
+enum class NetworkGateState {
+  Unselected,
+  Requesting,
+  Selected,
+};
+
 enum class VehicleGateState {
   Unselected,
   Requesting,
   Selected,
+};
+
+enum class TransitionState {
+  Transition,
+  Completed,
+};
+
+enum class MainState {
+  Disabled,
+  Transition,
+  Enabled,
+};
+
+enum class MrmState {
+  Normal,
+  Operating,
+  Succeeded,
+  Failed,
 };
 
 struct CommandStatus
@@ -48,17 +72,26 @@ struct CommandStatus
   SourceState source_state;
   SourceGroup source_group;
   ControlGateState control_gate_state;
+  NetworkGateState network_gate_state;
   VehicleGateState vehicle_gate_state;
+  TransitionState transition_state;
+  MainState state;
+  MrmState mrm;
   bool vehicle_gate_request;
   bool control_gate_request;
   bool mode_continuable;
   bool mode_available;
-  bool control_gate_ready;
-  bool vehicle_gate_ready;
+  bool transition_available;
   bool transition_completed;
 };
 
+// For ROS message
+uint8_t convert_main_state(const MainState & state);
+uint8_t convert_mrm_state(const MrmState & mrm);
 std::string convert_debug_string(const CommandStatus & status);
+
+// For internal use.
+MainState update_main_state(const CommandStatus & status);
 
 }  // namespace autoware::command_mode_switcher
 

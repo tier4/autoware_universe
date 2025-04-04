@@ -22,13 +22,16 @@
 namespace autoware::command_mode_switcher
 {
 
-class LocalSwitcher : public CommandPlugin
+class LocalSwitcher : public ControlCommandPlugin
 {
 public:
   std::string mode_name() const override { return "local"; }
   std::string source_name() const override { return "local"; }
   bool autoware_control() const override { return true; }
   void initialize() override;
+
+  bool get_transition_available() override { return true; }
+  bool get_transition_completed() override { return true; }
 };
 
 }  // namespace autoware::command_mode_switcher
