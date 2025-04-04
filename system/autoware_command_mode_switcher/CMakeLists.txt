@@ -6,20 +6,21 @@ autoware_package()
 pluginlib_export_plugin_description_file(${PROJECT_NAME} plugins.xml)
 
 ament_auto_add_library(${PROJECT_NAME}_common SHARED
-  "src/common/transition.cpp"
-  "src/common/plugin.cpp"
+  "src/common/command_container.cpp"
+  "src/common/command_plugin.cpp"
+  "src/common/command_status.cpp"
   "src/common/manual.cpp"
   "src/common/selector_interface.cpp"
   "src/command_mode_switcher.cpp"
 )
 ament_auto_add_library(${PROJECT_NAME}_plugin SHARED
-  "src/switchers/stop.cpp"
-  "src/switchers/autonomous.cpp"
-  "src/switchers/local.cpp"
-  "src/switchers/remote.cpp"
-  "src/switchers/emergency_stop.cpp"
-  "src/switchers/comfortable_stop.cpp"
-  "src/switchers/pull_over.cpp"
+  "src/plugins/stop.cpp"
+  "src/plugins/autonomous.cpp"
+  "src/plugins/local.cpp"
+  "src/plugins/remote.cpp"
+  "src/plugins/emergency_stop.cpp"
+  "src/plugins/comfortable_stop.cpp"
+  "src/plugins/pull_over.cpp"
 )
 target_include_directories(${PROJECT_NAME}_common PRIVATE "src")
 target_include_directories(${PROJECT_NAME}_plugin PRIVATE "src")

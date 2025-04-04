@@ -32,7 +32,7 @@ std::string CommandModeDecider::decide_command_mode()
   // Use the requested MRM if available.
   {
     const auto status = command_mode_status.get(request_mode_status.mrm);
-    if (status.available) {
+    if (status.mode_available) {
       return request_mode_status.mrm;
     }
   }
@@ -40,7 +40,7 @@ std::string CommandModeDecider::decide_command_mode()
   // Use the specified operation mode if available.
   {
     const auto status = command_mode_status.get(request_mode_status.operation_mode);
-    if (status.available) {
+    if (status.mode_available) {
       return request_mode_status.operation_mode;
     }
   }
@@ -52,20 +52,21 @@ std::string CommandModeDecider::decide_command_mode()
   const auto comfortable_stop = "comfortable_stop";
   const auto emergency_stop = "emergency_stop";
 
-  // TODO(Takagi, Isamu): check command_modes parameter
-  if (command_mode_status.get(pull_over).available /*&& use_pull_over_*/) {
+  // TODO(Takagi, Isamu): Create state transition table.
+  // use_pull_over_
+  // use_comfortable_stop_
+  if (command_mode_status.get(pull_over).mode_available) {
     return pull_over;
   }
-  if (command_mode_status.get(comfortable_stop).available /*&& use_comfortable_stop_*/) {
+  if (command_mode_status.get(comfortable_stop).mode_available) {
     return comfortable_stop;
   }
-  if (command_mode_status.get(emergency_stop).available) {
+  if (command_mode_status.get(emergency_stop).mode_available) {
     return emergency_stop;
   }
 
   // Use an empty string to delegate to switcher node.
-  RCLCPP_WARN_THROTTLE(
-    get_logger(), *get_clock(), 5000, "no mrm available: delegate to switcher node");
+  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "no mrm available: delegate to switcher");
   return std::string();
 }
 

@@ -12,14 +12,24 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "comfortable_stop.hpp"
+#include "autonomous.hpp"
 
 namespace autoware::command_mode_switcher
 {
+
+void AutonomousSwitcher::initialize()
+{
+  sub_transition_available_ = node_->create_subscription<ModeChangeAvailable>(
+    "~/command_mode/transition/available", rclcpp::QoS(1),
+    [this](const ModeChangeAvailable & msg) { transition_available_ = msg.available; });
+  sub_transition_completed_ = node_->create_subscription<ModeChangeAvailable>(
+    "~/command_mode/transition/completed", rclcpp::QoS(1),
+    [this](const ModeChangeAvailable & msg) { transition_completed_ = msg.available; });
+}
 
 }  // namespace autoware::command_mode_switcher
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::command_mode_switcher::ComfortableStopSwitcher,
-  autoware::command_mode_switcher::SwitcherPlugin)
+  autoware::command_mode_switcher::AutonomousSwitcher,
+  autoware::command_mode_switcher::CommandPlugin)

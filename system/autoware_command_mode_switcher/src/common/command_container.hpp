@@ -12,24 +12,28 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__LOCAL_HPP_
-#define SWITCHERS__LOCAL_HPP_
+#ifndef COMMON__COMMAND_CONTAINER_HPP_
+#define COMMON__COMMAND_CONTAINER_HPP_
 
-#include "common/plugin.hpp"
+#include "common/command_plugin.hpp"
+#include "common/command_status.hpp"
 
-#include <string>
+#include <memory>
 
 namespace autoware::command_mode_switcher
 {
 
-class LocalSwitcher : public SwitcherPlugin
+struct Command
 {
-public:
-  std::string mode_name() const override { return "local"; }
-  std::string source_name() const override { return "local"; }
-  bool autoware_control() const override { return true; }
+  explicit Command(std::shared_ptr<CommandPlugin> plugin);
+
+  bool is_control_gate_selected() const;
+  bool is_vehicle_gate_selected() const;
+
+  std::shared_ptr<CommandPlugin> plugin;
+  CommandStatus status;
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // SWITCHERS__LOCAL_HPP_
+#endif  // COMMON__COMMAND_CONTAINER_HPP_

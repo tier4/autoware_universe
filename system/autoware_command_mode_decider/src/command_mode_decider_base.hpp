@@ -35,6 +35,7 @@ namespace autoware::command_mode_decider
 
 using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
+using autoware_common_msgs::msg::ResponseStatus;
 using tier4_system_msgs::msg::CommandModeRequest;
 using tier4_system_msgs::msg::CommandModeStatus;
 using tier4_system_msgs::srv::ChangeAutowareControl;
@@ -54,6 +55,12 @@ struct DeciderModeStatus
   bool autoware_control;
   std::string command_mode;
   std::string operation_mode;
+};
+
+struct TargetMode
+{
+  std::string mode;
+  bool ctrl;
 };
 
 class CommandModeDeciderBase : public rclcpp::Node
@@ -79,6 +86,9 @@ private:
     ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res);
   void on_change_autoware_control(
     ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res);
+
+  ResponseStatus check_request(
+    const std::string & mode, bool check_mode_ready, bool check_ctrl_ready);
 
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<CommandModeRequest>::SharedPtr pub_command_mode_request_;
