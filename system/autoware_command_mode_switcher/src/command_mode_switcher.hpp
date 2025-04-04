@@ -15,8 +15,8 @@
 #ifndef COMMAND_MODE_SWITCHER_HPP_
 #define COMMAND_MODE_SWITCHER_HPP_
 
+#include "common/command_container.hpp"
 #include "common/manual.hpp"
-#include "common/plugin.hpp"
 #include "common/selector_interface.hpp"
 
 #include <pluginlib/class_loader.hpp>
@@ -48,24 +48,28 @@ public:
 private:
   void on_availability(const CommandModeAvailability & msg);
   void on_request(const CommandModeRequest & msg);
-  void update_status();
+  void update();
   void publish_command_mode_status();
-  TransitionContext create_transition_context(const SwitcherPlugin & target);
+
+  void handle_all_gate_transition();
+  void handle_control_gate_transition();
+  void handle_vehicle_gate_transition();
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_availability_;
   rclcpp::Subscription<CommandModeRequest>::SharedPtr sub_request_;
   rclcpp::Publisher<CommandModeStatus>::SharedPtr pub_status_;
-  SelectorInterface selector_interface_;
 
-  // Mode switchers.
-  pluginlib::ClassLoader<SwitcherPlugin> loader_;
-  std::vector<std::shared_ptr<SwitcherPlugin>> switchers_;
-  std::unordered_map<std::string, std::shared_ptr<SwitcherPlugin>> autoware_switchers_;
-  std::shared_ptr<SwitcherPlugin> manual_switcher_;
-  std::shared_ptr<SwitcherPlugin> background_transition_;
-  std::shared_ptr<SwitcherPlugin> foreground_transition_;
+  // Mode switching.
+  pluginlib::ClassLoader<CommandPlugin> loader_;
+  std::vector<std::shared_ptr<Command>> commands_;
+  std::unordered_map<std::string, std::shared_ptr<Command>> autoware_commands_;
+  std::shared_ptr<Command> manual_command_;
+  std::shared_ptr<Command> control_gate_target_;
+  std::shared_ptr<Command> vehicle_gate_target_;
+  ControlGateInterface control_gate_interface_;
+  VehicleGateInterface vehicle_gate_interface_;
 
   bool is_ready_ = false;
 };

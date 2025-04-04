@@ -12,13 +12,25 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "local.hpp"
+#ifndef PLUGINS__COMFORTABLE_STOP_HPP_
+#define PLUGINS__COMFORTABLE_STOP_HPP_
+
+#include "common/command_plugin.hpp"
+
+#include <string>
 
 namespace autoware::command_mode_switcher
 {
 
+class ComfortableStopSwitcher : public ControlCommandPlugin
+{
+public:
+  std::string mode_name() const override { return "comfortable_stop"; }
+  std::string source_name() const override { return "main"; }
+  bool autoware_control() const override { return true; }
+  void initialize() override;
+};
+
 }  // namespace autoware::command_mode_switcher
 
-#include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(
-  autoware::command_mode_switcher::LocalSwitcher, autoware::command_mode_switcher::SwitcherPlugin)
+#endif  // PLUGINS__COMFORTABLE_STOP_HPP_

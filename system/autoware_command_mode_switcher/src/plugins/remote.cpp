@@ -12,24 +12,23 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__EMERGENCY_STOP_HPP_
-#define SWITCHERS__EMERGENCY_STOP_HPP_
-
-#include "common/plugin.hpp"
-
-#include <string>
+#include "remote.hpp"
 
 namespace autoware::command_mode_switcher
 {
 
-class EmergencyStopSwitcher : public SwitcherPlugin
+void RemoteSwitcher::initialize()
 {
-public:
-  std::string mode_name() const override { return "emergency_stop"; }
-  std::string source_name() const override { return "emergency_stop"; }
-  bool autoware_control() const override { return true; }
-};
+  /*
+  set_mode_continuable(false);
+  set_mode_available(false);
+  set_ctrl_available(true);
+  set_transition_completed(true);
+  */
+}
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // SWITCHERS__EMERGENCY_STOP_HPP_
+#include <pluginlib/class_list_macros.hpp>
+PLUGINLIB_EXPORT_CLASS(
+  autoware::command_mode_switcher::RemoteSwitcher, autoware::command_mode_switcher::CommandPlugin)

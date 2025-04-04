@@ -12,24 +12,28 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__AUTONOMOUS_HPP_
-#define SWITCHERS__AUTONOMOUS_HPP_
+#ifndef PLUGINS__STOP_HPP_
+#define PLUGINS__STOP_HPP_
 
-#include "common/plugin.hpp"
+#include "common/command_plugin.hpp"
 
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
 
-class AutonomousSwitcher : public SwitcherPlugin
+class StopSwitcher : public ControlCommandPlugin
 {
 public:
-  std::string mode_name() const override { return "autonomous"; }
-  std::string source_name() const override { return "main"; }
+  std::string mode_name() const override { return "stop"; }
+  std::string source_name() const override { return "stop"; }
   bool autoware_control() const override { return true; }
+  void initialize() override;
+
+  bool get_transition_available() override { return true; }
+  bool get_transition_completed() override { return true; }
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // SWITCHERS__AUTONOMOUS_HPP_
+#endif  // PLUGINS__STOP_HPP_

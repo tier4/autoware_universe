@@ -15,7 +15,7 @@
 #ifndef COMMON__MANUAL_HPP_
 #define COMMON__MANUAL_HPP_
 
-#include "common/plugin.hpp"
+#include "common/command_plugin.hpp"
 
 #include <string>
 
@@ -23,12 +23,13 @@ namespace autoware::command_mode_switcher
 {
 
 // This is a builtin switcher. Don't export as a plugin.
-class ManualSwitcher : public SwitcherPlugin
+class ManualCommand : public VehicleCommandPlugin
 {
 public:
   std::string mode_name() const override { return "manual"; }
   std::string source_name() const override { return ""; }
   bool autoware_control() const override { return false; }
+  void initialize() override;
 };
 
 }  // namespace autoware::command_mode_switcher

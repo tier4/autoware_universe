@@ -12,14 +12,28 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "autonomous.hpp"
+#ifndef PLUGINS__REMOTE_HPP_
+#define PLUGINS__REMOTE_HPP_
+
+#include "common/command_plugin.hpp"
+
+#include <string>
 
 namespace autoware::command_mode_switcher
 {
 
+class RemoteSwitcher : public ControlCommandPlugin
+{
+public:
+  std::string mode_name() const override { return "remote"; }
+  std::string source_name() const override { return "remote"; }
+  bool autoware_control() const override { return true; }
+  void initialize() override;
+
+  bool get_transition_available() override { return true; }
+  bool get_transition_completed() override { return true; }
+};
+
 }  // namespace autoware::command_mode_switcher
 
-#include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(
-  autoware::command_mode_switcher::AutonomousSwitcher,
-  autoware::command_mode_switcher::SwitcherPlugin)
+#endif  // PLUGINS__REMOTE_HPP_

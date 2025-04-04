@@ -51,24 +51,24 @@ void CommandSelector::update()
   const auto iter = sources_.find(current_source_);
   if (iter == sources_.end()) {
     RCLCPP_ERROR_STREAM(logger_, "Selected source not found. Switched to builtin source.");
-    select(builtin_source_);
-    return;
+    return select_source(builtin_source_);
   }
 
   const auto & source = iter->second;
   if (source->is_timeout()) {
     RCLCPP_ERROR_STREAM(logger_, "Selected source is timeout. Switched to builtin source.");
-    select(builtin_source_);
-    return;
+    return select_source(builtin_source_);
   }
 }
 
-bool CommandSelector::select(const std::string & name)
+void CommandSelector::select_builtin_source(const std::string & name)
 {
-  const auto iter = sources_.find(name);
-  if (iter == sources_.end()) {
-    return false;
-  }
+  builtin_source_ = name;
+  select_source(builtin_source_);
+}
+
+void CommandSelector::select_source(const std::string & name)
+{
   for (auto & [key, source] : sources_) {
     if (key == name) {
       source->set_output(output_.get());
@@ -79,7 +79,19 @@ bool CommandSelector::select(const std::string & name)
   }
   current_source_ = name;
   on_change_source_(name);
-  return true;
+}
+
+std::string CommandSelector::select(const std::string & name)
+{
+  const auto iter = sources_.find(name);
+  if (iter == sources_.end()) {
+    return "target command source is invalid: " + name;
+  }
+  if (iter->second->is_timeout()) {
+    return "target command source is timeout: " + name;
+  }
+  select_source(name);
+  return std::string();
 }
 
 }  // namespace autoware::control_command_gate
