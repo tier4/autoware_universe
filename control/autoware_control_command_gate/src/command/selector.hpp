@@ -36,10 +36,12 @@ public:
   void add_source(std::unique_ptr<CommandSource> && source);
   void set_output(std::unique_ptr<CommandOutput> && output);
   void update();
-  bool select(const std::string & name);
-  void select_builtin_source(const std::string & name) { builtin_source_ = name; }
+  void select_builtin_source(const std::string & name);
+  std::string select(const std::string & name);
 
 private:
+  void select_source(const std::string & name);
+
   rclcpp::Logger logger_;
   SourceChangeCallback on_change_source_;
   std::string builtin_source_;
