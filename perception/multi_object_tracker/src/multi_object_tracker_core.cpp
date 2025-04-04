@@ -386,13 +386,33 @@ void MultiObjectTracker::sanitizeTracker(
   constexpr float min_iou = 0.1;
   constexpr float min_iou_for_unknown_object = 0.001;
   constexpr double distance_threshold = 5.0;
+
+  // Create sorted list with non-UNKNOWN objects first, then by measurement count
+  std::vector<std::shared_ptr<Tracker>> sorted_list_tracker(
+    list_tracker.begin(), list_tracker.end());
+  std::sort(
+    sorted_list_tracker.begin(), sorted_list_tracker.end(),
+    [&time](const std::shared_ptr<Tracker> & a, const std::shared_ptr<Tracker> & b) {
+      bool a_unknown = (a->getHighestProbLabel() == Label::UNKNOWN);
+      bool b_unknown = (b->getHighestProbLabel() == Label::UNKNOWN);
+      if (a_unknown != b_unknown) {
+        return b_unknown;  // Put non-UNKNOWN objects first
+      }
+      if (a->getTotalMeasurementCount() != b->getTotalMeasurementCount()) {
+        return a->getTotalMeasurementCount() >
+               b->getTotalMeasurementCount();  // Then sort by measurement count
+      }
+      return a->getElapsedTimeFromLastUpdate(time) <
+             b->getElapsedTimeFromLastUpdate(time);  // Finally sort by elapsed time (smaller first)
+    });
+
   /* delete collision tracker */
-  for (auto itr1 = list_tracker.begin(); itr1 != list_tracker.end(); ++itr1) {
+  for (size_t i = 0; i < sorted_list_tracker.size(); ++i) {
     autoware_auto_perception_msgs::msg::TrackedObject object1;
-    (*itr1)->getTrackedObject(time, object1);
-    for (auto itr2 = std::next(itr1); itr2 != list_tracker.end(); ++itr2) {
+    sorted_list_tracker[i]->getTrackedObject(time, object1);
+    for (size_t j = i + 1; j < sorted_list_tracker.size(); ++j) {
       autoware_auto_perception_msgs::msg::TrackedObject object2;
-      (*itr2)->getTrackedObject(time, object2);
+      sorted_list_tracker[j]->getTrackedObject(time, object2);
       const double distance = std::hypot(
         object1.kinematics.pose_with_covariance.pose.position.x -
           object2.kinematics.pose_with_covariance.pose.position.x,
@@ -404,44 +424,36 @@ void MultiObjectTracker::sanitizeTracker(
 
       const double min_union_iou_area = 1e-2;
       const auto iou = object_recognition_utils::get2dIoU(object1, object2, min_union_iou_area);
-      const auto & label1 = (*itr1)->getHighestProbLabel();
-      const auto & label2 = (*itr2)->getHighestProbLabel();
-      bool should_delete_tracker1 = false;
-      bool should_delete_tracker2 = false;
+      const auto & label1 = sorted_list_tracker[i]->getHighestProbLabel();
+      const auto & label2 = sorted_list_tracker[j]->getHighestProbLabel();
+      bool delete_candidate_tracker = false;
 
       // If at least one of them is UNKNOWN, delete the one with lower IOU. Because the UNKNOWN
       // objects are not reliable.
       if (label1 == Label::UNKNOWN || label2 == Label::UNKNOWN) {
         if (min_iou_for_unknown_object < iou) {
-          if (label1 == Label::UNKNOWN && label2 == Label::UNKNOWN) {
-            if ((*itr1)->getTotalMeasurementCount() < (*itr2)->getTotalMeasurementCount()) {
-              should_delete_tracker1 = true;
-            } else {
-              should_delete_tracker2 = true;
-            }
-          } else if (label1 == Label::UNKNOWN) {
-            should_delete_tracker1 = true;
-          } else if (label2 == Label::UNKNOWN) {
-            should_delete_tracker2 = true;
+          if (label2 == Label::UNKNOWN) {
+            delete_candidate_tracker = true;
           }
         }
       } else {  // If neither is UNKNOWN, delete the one with lower IOU.
         if (min_iou < iou) {
-          if ((*itr1)->getTotalMeasurementCount() < (*itr2)->getTotalMeasurementCount()) {
-            should_delete_tracker1 = true;
-          } else {
-            should_delete_tracker2 = true;
-          }
+          /* erase only when prioritized one has a measurement */
+          delete_candidate_tracker = true;
         }
       }
 
-      if (should_delete_tracker1) {
-        itr1 = list_tracker.erase(itr1);
-        --itr1;
-        break;
-      } else if (should_delete_tracker2) {
-        itr2 = list_tracker.erase(itr2);
-        --itr2;
+      if (delete_candidate_tracker) {
+        /* erase only when prioritized one has later(or equal time) meas than the other's */
+        if (
+          sorted_list_tracker[i]->getElapsedTimeFromLastUpdate(time) <=
+          sorted_list_tracker[j]->getElapsedTimeFromLastUpdate(time)) {
+          // Remove from original list_tracker
+          list_tracker.remove(sorted_list_tracker[j]);
+          // Remove from sorted list
+          sorted_list_tracker.erase(sorted_list_tracker.begin() + j);
+          --j;
+        }
       }
     }
   }
