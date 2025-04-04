@@ -398,8 +398,12 @@ void MultiObjectTracker::sanitizeTracker(
       if (a_unknown != b_unknown) {
         return b_unknown;  // Put non-UNKNOWN objects first
       }
-      return a->getTotalMeasurementCount() >
-             b->getTotalMeasurementCount();  // Then sort by measurement count
+      if (a->getTotalMeasurementCount() != b->getTotalMeasurementCount()) {
+        return a->getTotalMeasurementCount() >
+               b->getTotalMeasurementCount();  // Then sort by measurement count
+      }
+      return a->getElapsedTimeFromLastUpdate(time) <
+             b->getElapsedTimeFromLastUpdate(time);  // Finally sort by elapsed time (smaller first)
     });
 
   /* delete collision tracker */
