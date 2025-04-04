@@ -392,7 +392,7 @@ void MultiObjectTracker::sanitizeTracker(
     list_tracker.begin(), list_tracker.end());
   std::sort(
     sorted_list_tracker.begin(), sorted_list_tracker.end(),
-    [](const std::shared_ptr<Tracker> & a, const std::shared_ptr<Tracker> & b) {
+    [&time](const std::shared_ptr<Tracker> & a, const std::shared_ptr<Tracker> & b) {
       bool a_unknown = (a->getHighestProbLabel() == Label::UNKNOWN);
       bool b_unknown = (b->getHighestProbLabel() == Label::UNKNOWN);
       if (a_unknown != b_unknown) {
