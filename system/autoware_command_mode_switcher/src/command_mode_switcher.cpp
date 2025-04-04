@@ -100,7 +100,7 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   };
 
   const auto get_request_targets = [this](const CommandModeRequest & msg) {
-    if (!msg.ctrl && manual_command_->status.state == MainState::Enabled) {
+    if (msg.type == CommandModeRequest::MANUAL) {
       return RequestTargets{true, nullptr, manual_command_};
     }
 
@@ -115,15 +115,19 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
     // Check transition conditions.
     const auto transition_available = status.transition_available || !msg.ctrl;
     if (!status.mode_available || !transition_available) {
-      RCLCPP_WARN_STREAM(get_logger(), "request rejected: " << msg.ctrl << " " << msg.mode);
+      RCLCPP_WARN_STREAM(get_logger(), "request rejected: " << msg.type << " " << msg.mode);
       return RequestTargets{false, nullptr, nullptr};
     }
 
-    if (msg.ctrl) {
+    if (msg.type == CommandModeRequest::FOREGROUND) {
       return RequestTargets{true, target, target};
-    } else {
+    }
+    if (msg.type == CommandModeRequest::BACKGROUND) {
       return RequestTargets{true, target, nullptr};
     }
+
+    RCLCPP_WARN_STREAM(get_logger(), "request rejected: " << msg.type << " " << msg.mode);
+    return RequestTargets{false, nullptr, nullptr};
   };
 
   const auto targets = get_request_targets(msg);
@@ -141,7 +145,7 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
     vehicle_gate_target_ = vehicle_target;
 
     if (!control_target_changed && !vehicle_target_changed) {
-      RCLCPP_INFO_STREAM(get_logger(), "request ignored: " << msg.ctrl << " " << msg.mode);
+      RCLCPP_INFO_STREAM(get_logger(), "request ignored: " << msg.type << " " << msg.mode);
       return;
     }
   }
@@ -158,7 +162,7 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
     vehicle_gate_target_->status.vehicle_gate_request = true;
   }
 
-  RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.ctrl << " " << msg.mode);
+  RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.type << " " << msg.mode);
   update();
 }
 
@@ -196,11 +200,16 @@ void CommandModeSwitcher::update()
     status.state = update_main_state(status);
   }
 
-  if (control_gate_target_ == vehicle_gate_target_) {
-    handle_all_gate_transition();
-  } else {
-    handle_control_gate_transition();
-    handle_vehicle_gate_transition();
+  switch (request_.type) {
+    case SwitcherRequestType::FOREGROUND:
+      handle_all_gate_transition();
+      break;
+    case SwitcherRequestType::BACKGROUND:
+      handle_control_gate_transition();
+      break;
+    case SwitcherRequestType::MANUAL:
+      handle_vehicle_gate_transition();
+      break;
   }
 
   publish_command_mode_status();
@@ -233,27 +242,27 @@ void CommandModeSwitcher::publish_command_mode_status()
 
 void CommandModeSwitcher::handle_all_gate_transition()
 {
-  if (!control_gate_target_ || !vehicle_gate_target_) {
+  if (!request_.command) {
     return;
   }
 
-  if (!control_gate_target_->is_control_gate_selected()) {
-    control_gate_interface_.request(*control_gate_target_->plugin, true);
+  if (!request_.command->is_control_gate_selected()) {
+    control_gate_interface_.request(*request_.command->plugin, true);
     return;
   }
 
-  if (!vehicle_gate_target_->is_vehicle_gate_selected()) {
-    vehicle_gate_interface_.request(*vehicle_gate_target_->plugin);
+  if (!request_.command->is_vehicle_gate_selected()) {
+    vehicle_gate_interface_.request(*request_.command->plugin);
     return;
   }
 
   // When both gate is selected, check the transition completion condition.
-  if (!vehicle_gate_target_->status.transition_completed) {
+  if (!request_.command->status.transition_completed) {
     return;
   }
 
   if (control_gate_interface_.is_in_transition()) {
-    control_gate_interface_.request(*control_gate_target_->plugin, false);
+    control_gate_interface_.request(*request_.command->plugin, false);
   }
 }
 

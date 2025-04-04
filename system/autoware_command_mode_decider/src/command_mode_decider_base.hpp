@@ -42,25 +42,25 @@ using tier4_system_msgs::srv::ChangeAutowareControl;
 using tier4_system_msgs::srv::ChangeOperationMode;
 using tier4_system_msgs::srv::RequestMrm;
 
-struct RequestModeStatus
+// TODO(Takagi, Isamu): Move to tier4_system_msgs.
+enum class SwitcherRequestType {
+  UNDEFINED = 0,
+  FOREGROUND = 1,
+  BACKGROUND = 2,
+  MANUAL = 3,
+};
+
+struct SwitcherRequest
+{
+  SwitcherRequestType type;
+  std::string mode;
+};
+
+struct AutowareRequest
 {
   bool autoware_control;
-  std::string command_mode;
   std::string operation_mode;
   std::string mrm;
-};
-
-struct DeciderModeStatus
-{
-  bool autoware_control;
-  std::string command_mode;
-  std::string operation_mode;
-};
-
-struct TargetMode
-{
-  std::string mode;
-  bool ctrl;
 };
 
 class CommandModeDeciderBase : public rclcpp::Node
@@ -71,7 +71,7 @@ public:
 protected:
   virtual std::string decide_command_mode() = 0;
   const auto & get_command_mode_status() const { return command_mode_status_; }
-  const auto & get_request_mode_status() const { return request_; }
+  const auto & get_request_mode_status() const { return autoware_request_; }
 
 private:
   void update_command_mode();
@@ -107,8 +107,9 @@ private:
   // status
   bool is_modes_ready_;
   CommandModeStatusWrapper command_mode_status_;
-  RequestModeStatus request_;
-  std::optional<rclcpp::Time> command_mode_request_stamp_;
+  AutowareRequest autoware_request_;
+  SwitcherRequest switcher_request_;
+  std::optional<rclcpp::Time> switcher_request_stamp_;
 };
 
 }  // namespace autoware::command_mode_decider

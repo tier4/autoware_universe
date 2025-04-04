@@ -30,13 +30,15 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 
   is_modes_ready_ = false;
   command_mode_status_.init(declare_parameter<std::vector<std::string>>("command_modes"));
-  command_mode_request_stamp_ = std::nullopt;
 
   const auto initial_operation_mode = declare_parameter<std::string>("initial_operation_mode");
-  request_.autoware_control = true;
-  request_.operation_mode = initial_operation_mode;
-  request_.mrm = "";
-  request_.command_mode = "";
+  autoware_request_.autoware_control = true;
+  autoware_request_.operation_mode = initial_operation_mode;
+  autoware_request_.mrm = "";
+  autoware_request_.command_mode = "";
+  switcher_request_.type = SwitcherRequestType::UNDEFINED;
+  switcher_request_.command = nullptr;
+  switcher_request_stamp_ = std::nullopt;
 
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -228,14 +230,17 @@ ResponseStatus CommandModeDeciderBase::check_request(
 void CommandModeDeciderBase::on_change_autoware_control(
   ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res)
 {
-  const auto mode = req->autoware_control ? request_.operation_mode : "manual";
+  if (!req->autoware_contro) {
+    return;
+  }
 
+  const auto mode = request_.operation_mode;
   res->status = check_request(mode, true, true);
   if (!res->status.success) {
     RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
-  request_.autoware_control = req->autoware_control;
+  autoware_request_.autoware_control = req->autoware_control;
   update_command_mode();
 }
 
@@ -249,7 +254,7 @@ void CommandModeDeciderBase::on_change_operation_mode(
     RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
-  request_.operation_mode = mode;
+  autoware_request_.operation_mode = mode;
   update_command_mode();
 }
 
@@ -263,7 +268,7 @@ void CommandModeDeciderBase::on_request_mrm(
     RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
-  request_.mrm = mode;
+  autoware_request_.mrm = mode;
   update_command_mode();
 }
 
