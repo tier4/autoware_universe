@@ -181,7 +181,9 @@ AEB::AEB(const rclcpp::NodeOptions & node_options)
   max_generated_imu_path_length_ = declare_parameter<double>("max_generated_imu_path_length");
   expand_width_ = declare_parameter<double>("expand_width");
   longitudinal_offset_margin_ = declare_parameter<double>("longitudinal_offset_margin");
+  use_dynamic_t_response_ = declare_parameter<bool>("use_dynamic_t_response");
   t_response_ = declare_parameter<double>("t_response");
+  t_response_downstream_ = declare_parameter<double>("t_response_downstream");
   a_ego_min_ = declare_parameter<double>("a_ego_min");
   a_obj_min_ = declare_parameter<double>("a_obj_min");
 
@@ -245,7 +247,9 @@ rcl_interfaces::msg::SetParametersResult AEB::onParameter(
   update_param<double>(parameters, "max_generated_imu_path_length", max_generated_imu_path_length_);
   update_param<double>(parameters, "expand_width", expand_width_);
   update_param<double>(parameters, "longitudinal_offset_margin", longitudinal_offset_margin_);
+  update_param<bool>(parameters, "use_dynamic_t_response", use_dynamic_t_response_);
   update_param<double>(parameters, "t_response", t_response_);
+  update_param<double>(parameters, "t_response_downstream", t_response_downstream_);
   update_param<double>(parameters, "a_ego_min", a_ego_min_);
   update_param<double>(parameters, "a_obj_min", a_obj_min_);
 
@@ -465,6 +469,8 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
     return false;
   }
 
+  updateResponseTime();
+
   // step2. create velocity data check if the vehicle stops or not
   const double current_v = current_velocity_ptr_->longitudinal_velocity;
   if (std::abs(current_v) < MIN_MOVING_VELOCITY_THRESHOLD) {
@@ -628,7 +634,10 @@ bool AEB::hasCollision(const double current_v, const ObjectData & closest_object
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   const double rss_dist = std::invoke([&]() {
     const double & obj_v = closest_object.velocity;
-    const double & t = t_response_;
+    const double t = (!closest_object.is_target && use_dynamic_t_response_ &&
+                      !dynamic_t_response_.getValue().has_value())
+                       ? dynamic_t_response_.getValue().value()
+                       : t_response_;
     const double pre_braking_covered_distance = std::abs(current_v) * t;
     const double braking_distance = (current_v * current_v) / (2 * std::fabs(a_ego_min_));
     const double ego_stopping_distance = pre_braking_covered_distance + braking_distance;
@@ -1092,6 +1101,18 @@ void AEB::addCollisionMarker(const ObjectData & data, MarkerArray & debug_marker
     autoware_utils::create_marker_color(1.0, 0.0, 0.0, 0.3));
   point_marker.pose.position = data.position;
   debug_markers.markers.push_back(point_marker);
+}
+
+void AEB::updateResponseTime(void)
+{
+  const double latest_pointclound_delay =
+    std::clamp((this->now() - obstacle_ros_pointcloud_ptr_->header.stamp).seconds(), 0.1, 2.0);
+  const double latest_response = latest_pointclound_delay + t_response_downstream_;
+  if (latest_response > dynamic_t_response_.getValue()) {
+    dynamic_t_response_.reset(latest_response);
+  } else {
+    dynamic_t_response_.filter(latest_response);
+  }
 }
 
 }  // namespace autoware::motion::control::autonomous_emergency_braking

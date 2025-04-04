@@ -18,6 +18,7 @@
 #include "autoware_utils/system/time_keeper.hpp"
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware/signal_processing/lowpass_filter_1d.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
@@ -523,15 +524,7 @@ public:
    */
   void addVirtualStopWallMarker(MarkerArray & markers);
 
-  /**
-   * @brief Calculate object speed from history
-   * @param closest_object Data of the closest object
-   * @param path Ego vehicle path
-   * @param current_ego_speed Current speed of the ego vehicle
-   * @return Optional calculated object speed
-   */
-  std::optional<double> calcObjectSpeedFromHistory(
-    const ObjectData & closest_object, const Path & path, const double current_ego_speed);
+  void updateResponseTime(void);
 
   // Member variables
   PointCloud2::SharedPtr obstacle_ros_pointcloud_ptr_{nullptr};
@@ -573,7 +566,10 @@ public:
   double max_generated_imu_path_length_;
   double expand_width_;
   double longitudinal_offset_margin_;
+  bool use_dynamic_t_response_;
   double t_response_;
+  autoware::signal_processing::LowpassFilter1d dynamic_t_response_{0.9};
+  double t_response_downstream_;
   double a_ego_min_;
   double a_obj_min_;
   double cluster_tolerance_;
@@ -584,6 +580,7 @@ public:
   double imu_prediction_time_interval_;
   double mpc_prediction_time_horizon_;
   double mpc_prediction_time_interval_;
+
   CollisionDataKeeper collision_data_keeper_;
   // Parameter callback
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
