@@ -50,9 +50,10 @@ private:
   void on_request(const CommandModeRequest & msg);
   void update();
   void publish_command_mode_status();
-  void handle_autoware_transition();
-  void handle_manual_transition();
-  void handle_background_transition();
+
+  void handle_all_gate_transition();
+  void handle_control_gate_transition();
+  void handle_vehicle_gate_transition();
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;

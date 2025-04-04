@@ -36,8 +36,9 @@ class ControlGateInterface
 public:
   using Callback = std::function<void()>;
   ControlGateInterface(rclcpp::Node & node, Callback callback);
-  bool request(const CommandPlugin & target, bool transition);
-  bool is_selected(const CommandPlugin & target);
+  ControlGateState get_state(const CommandPlugin & plugin) const;
+  bool is_in_transition() const;
+  bool request(const CommandPlugin & plugin, bool transition);
 
 private:
   using SelectCommandSource = tier4_system_msgs::srv::SelectCommandSource;
@@ -58,8 +59,8 @@ class VehicleGateInterface
 public:
   using Callback = std::function<void()>;
   VehicleGateInterface(rclcpp::Node & node, Callback callback);
-  bool request(const CommandPlugin & target);
-  bool is_selected(const CommandPlugin & target);
+  VehicleGateState get_state(const CommandPlugin & plugin) const;
+  bool request(const CommandPlugin & plugin);
 
 private:
   using ControlModeCommand = autoware_vehicle_msgs::srv::ControlModeCommand;

@@ -19,13 +19,6 @@ namespace autoware::command_mode_switcher
 
 void AutonomousSwitcher::initialize()
 {
-  /*
-  set_mode_continuable(false);
-  set_mode_available(false);
-  set_ctrl_available(false);
-  set_transition_completed(false);
-  */
-
   sub_transition_available_ = node_->create_subscription<ModeChangeAvailable>(
     "~/command_mode/transition/available", rclcpp::QoS(1),
     [this](const ModeChangeAvailable & msg) { transition_available_ = msg.available; });

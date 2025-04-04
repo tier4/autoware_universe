@@ -24,15 +24,16 @@
 namespace autoware::command_mode_switcher
 {
 
-class AutonomousSwitcher : public CommandPlugin
+class AutonomousSwitcher : public ControlCommandPlugin
 {
 public:
   std::string mode_name() const override { return "autonomous"; }
   std::string source_name() const override { return "main"; }
   bool autoware_control() const override { return true; }
   void initialize() override;
-  bool get_control_gate_ready() override { return true; }
-  bool get_vehicle_gate_ready() override { return transition_available_; }
+
+  bool get_transition_available() override { return transition_available_; }
+  bool get_transition_completed() override { return transition_completed_; }
 
 private:
   using ModeChangeAvailable = tier4_system_msgs::msg::ModeChangeAvailable;

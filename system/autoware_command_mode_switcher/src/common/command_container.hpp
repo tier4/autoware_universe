@@ -26,7 +26,9 @@ namespace autoware::command_mode_switcher
 struct Command
 {
   explicit Command(std::shared_ptr<CommandPlugin> plugin);
-  void update_status();
+
+  bool is_control_gate_selected() const;
+  bool is_vehicle_gate_selected() const;
 
   std::shared_ptr<CommandPlugin> plugin;
   CommandStatus status;
