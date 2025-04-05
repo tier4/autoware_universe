@@ -195,7 +195,7 @@ void CommandModeSwitcher::publish_command_mode_status()
     item.request = convert_request_stage(command.status.request);
     item.command_mode_state = convert_tri_state(command.status.command_mode_state);
     item.vehicle_gate_state = convert_tri_state(command.status.vehicle_gate_state);
-    item.network_gate_state = convert_tri_state(TriState::Enabled);
+    item.network_gate_state = convert_tri_state(command.status.network_gate_state);
     item.control_gate_state = convert_tri_state(command.status.control_gate_state);
     item.source_state = convert_tri_state(command.status.source_state);
     item.source_group = convert_tri_state(command.status.source_group);
@@ -233,6 +233,7 @@ void CommandModeSwitcher::handle_foreground_transition()
   }
 
   // When both gate is selected, check the transition completion condition.
+  // NOTE(Takagi, Isamu): Use command_mode_state to commonize background transition?
   if (!foreground_->status.transition_completed) {
     return;
   }
@@ -263,12 +264,7 @@ void CommandModeSwitcher::handle_background_transition()
     return;
   }
 
-  // When control gate is selected, check the transition completion condition.
-  if (!background_->status.transition_completed) {
-    return;
-  }
-
-  // Complete transition.
+  // Complete transition, No need to check the transition completion condition.
   background_->status.command_mode_state = TriState::Enabled;
 }
 

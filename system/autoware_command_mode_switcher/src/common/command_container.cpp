@@ -24,8 +24,9 @@ Command::Command(std::shared_ptr<CommandPlugin> plugin) : plugin(plugin)
   status.request = RequestStage::NoRequest;
 
   status.command_mode_state = TriState::Disabled;
-  status.control_gate_state = TriState::Disabled;
   status.vehicle_gate_state = TriState::Disabled;
+  status.network_gate_state = TriState::Enabled;
+  status.control_gate_state = TriState::Disabled;
   status.source_state = TriState::Disabled;
   status.source_group = TriState::Disabled;
 

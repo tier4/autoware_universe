@@ -32,15 +32,20 @@ TriState update_main_state(const CommandStatus & status)
     return TriState::Transition;
   };
 
-  // TODO(isamu): Check ignore condition.
-  TriState state = status.command_mode_state;
-  if (status.request != RequestStage::NoRequest) {
-    state = merge_state(state, status.vehicle_gate_state);
-    state = merge_state(state, status.network_gate_state);
-    state = merge_state(state, status.control_gate_state);
-    state = merge_state(state, status.source_group);
+  TriState state = merge_state(status.command_mode_state, status.source_state);
+  switch (status.request) {
+    case RequestStage::CommandMode:
+    case RequestStage::VehicleGate:
+      state = merge_state(state, status.vehicle_gate_state);  // fall-through
+    case RequestStage::NetworkGate:
+      state = merge_state(state, status.network_gate_state);  // fall-through
+    case RequestStage::ControlGate:
+      state = merge_state(state, status.source_group);
+      state = merge_state(state, status.control_gate_state);
+      break;
+    case RequestStage::NoRequest:
+      break;
   }
-  state = merge_state(state, status.source_state);
   return state;
 }
 
