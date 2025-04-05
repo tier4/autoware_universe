@@ -27,18 +27,20 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 : Node("command_mode_decider", options)
 {
   request_timeout_ = declare_parameter<double>("request_timeout");
+  manual_mode_name_ = "manual";
 
   is_modes_ready_ = false;
   command_mode_status_.init(declare_parameter<std::vector<std::string>>("command_modes"));
 
   const auto initial_operation_mode = declare_parameter<std::string>("initial_operation_mode");
-  autoware_request_.autoware_control = true;
-  autoware_request_.operation_mode = initial_operation_mode;
-  autoware_request_.mrm = "";
-  autoware_request_.command_mode = "";
-  switcher_request_.type = SwitcherRequestType::UNDEFINED;
-  switcher_request_.command = nullptr;
-  switcher_request_stamp_ = std::nullopt;
+  system_request_.autoware_control = true;
+  system_request_.operation_mode = initial_operation_mode;
+  system_request_.mrm = "";
+  foreground_request_ = "";
+  background_request_ = "";
+  request_mode_ = "";
+  current_mode_ = "";
+  request_stamp_ = std::nullopt;
 
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -80,7 +82,7 @@ void CommandModeDeciderBase::on_status(const CommandModeStatus & msg)
   if (!is_modes_ready_) {
     return;
   }
-  update_command_mode();
+  update();
 }
 
 void CommandModeDeciderBase::on_timer()
@@ -89,25 +91,34 @@ void CommandModeDeciderBase::on_timer()
     return;
   }
 
-  if (command_mode_request_stamp_) {
-    const auto duration = (now() - *command_mode_request_stamp_).seconds();
+  if (request_stamp_) {
+    const auto duration = (now() - *request_stamp_).seconds();
     if (request_timeout_ < duration) {
-      command_mode_request_stamp_ = std::nullopt;
+      request_stamp_ = std::nullopt;
       RCLCPP_WARN_STREAM(get_logger(), "command mode request timeout");
     }
   }
 
+  update();
+}
+
+void CommandModeDeciderBase::update()
+{
+  // Note: is_modes_ready_ should be checked in the function that called this.
+  // TODO(Takagi, Isamu): Check call rate.
   update_command_mode();
+  sync_command_mode();
+  publish_operation_mode_state();
+  publish_mrm_state();
 }
 
 void CommandModeDeciderBase::update_command_mode()
 {
-  // Note: is_modes_ready_ should be checked in the function that called this.
-  // TODO(Takagi, Isamu): Check call rate.
+  // Decide command mode with system-dependent logic.
   {
-    const auto prev_mode = request_.command_mode;
+    const auto prev_mode = request_mode_;
     const auto next_mode = decide_command_mode();
-    request_.command_mode = next_mode;
+    request_mode_ = next_mode;
 
     if (prev_mode != next_mode) {
       const auto prev_text = "'" + prev_mode + "'";
@@ -116,48 +127,54 @@ void CommandModeDeciderBase::update_command_mode()
     }
   }
 
-  sync_command_mode();
-
-  publish_operation_mode_state();
-  publish_mrm_state();
+  // Convert the request into internal structure.
+  if (system_request_.autoware_control) {
+    foreground_request_ = request_mode_;
+    background_request_ = "";
+  } else {
+    foreground_request_ = manual_mode_name_;
+    background_request_ = request_mode_;
+  }
 }
 
 void CommandModeDeciderBase::sync_command_mode()
 {
-  const auto manual_command = command_mode_status_.get("manual");
-  const auto target_command = command_mode_status_.get(request_.command_mode);
-  bool control_gate_requested = false;
-  bool vehicle_gate_requested = false;
+  bool foreground_request_reflected = foreground_request_.empty();
+  bool background_request_reflected = background_request_.empty();
 
-  if (request_.autoware_control) {
-    // If autoware control, the target mode requires both gates.
-    control_gate_requested = target_command.control_gate_request;
-    vehicle_gate_requested = target_command.vehicle_gate_request;
-  } else {
-    // If manual control, target mode requires only control gate.
-    control_gate_requested = target_command.control_gate_request;
-    vehicle_gate_requested = manual_command.vehicle_gate_request;
+  if (!foreground_request_reflected) {
+    const auto status = command_mode_status_.get(foreground_request_);
+    foreground_request_reflected = status.control_gate_request && status.vehicle_gate_request;
+  }
+  if (!background_request_reflected) {
+    const auto status = command_mode_status_.get(background_request_);
+    background_request_reflected = status.control_gate_request;
   }
 
   // Skip the request if mode is already requested or now requesting.
-  if (control_gate_requested && vehicle_gate_requested) {
-    command_mode_request_stamp_ = std::nullopt;
+  if (foreground_request_reflected && background_request_reflected) {
+    request_stamp_ = std::nullopt;
     return;
   }
-  if (command_mode_request_stamp_) {
+  if (request_stamp_) {
     return;
   }
 
   // Request stamp is used for timeout check and request flag.
   const auto stamp = now();
-  command_mode_request_stamp_ = stamp;
+  request_stamp_ = stamp;
 
   // Request command mode to switcher nodes.
   CommandModeRequest msg;
   msg.stamp = stamp;
-  msg.ctrl = request_.autoware_control;
-  msg.mode = request_.command_mode;
+  msg.foreground = foreground_request_;
+  msg.background = background_request_;
   pub_command_mode_request_->publish(msg);
+}
+
+bool operator!=(const OperatorStatus & s1, const OperatorStatus & s2)
+{
+  return s1.operation_mode != s2.operation_mode || s1.autoware_control != s2.autoware_control;
 }
 
 void CommandModeDeciderBase::publish_operation_mode_state()
@@ -168,9 +185,9 @@ void CommandModeDeciderBase::publish_operation_mode_state()
   };
   OperationModeState state;
   state.stamp = now();
-  state.mode = command_to_operation_mode(request_.operation_mode);  // TODO(Takagi, Isamu): check
-  state.is_autoware_control_enabled = request_.autoware_control;    // TODO(Takagi, Isamu): check
-  state.is_in_transition = command_mode_request_stamp_.has_value();
+  state.mode = command_to_operation_mode(temporary_operator_.operation_mode);
+  state.is_autoware_control_enabled = temporary_operator_.autoware_control;
+  state.is_in_transition = (temporary_operator_ != confirmed_operator_);
   state.is_stop_mode_available = is_transition_available("stop");
   state.is_autonomous_mode_available = is_transition_available("autonomous");
   state.is_local_mode_available = is_transition_available("local");
@@ -191,85 +208,82 @@ void CommandModeDeciderBase::publish_mrm_state()
     }
     // clang-format on
   };
-  const auto status = command_mode_status_.get(request_.command_mode);
+  const auto status = command_mode_status_.get(current_mode_);
   MrmState state;
   state.stamp = now();
   state.state = convert(status.mrm);
-  state.behavior = command_to_mrm_behavior(request_.command_mode);
+  state.behavior = command_to_mrm_behavior(status.mode);
   pub_mrm_state_->publish(state);
 }
 
-ResponseStatus CommandModeDeciderBase::check_request(
-  const std::string & mode, bool check_mode_ready, bool check_ctrl_ready)
+ResponseStatus make_response(bool success, const std::string & message = "")
 {
-  const auto response = [](bool success, const std::string & message) {
-    ResponseStatus res;
-    res.success = success;
-    res.message = message;
-    return res;
-  };
+  ResponseStatus res;
+  res.success = success;
+  res.message = message;
+  return res;
+};
 
+ResponseStatus CommandModeDeciderBase::check_mode_exists(const std::string & mode)
+{
   if (!is_modes_ready_) {
-    return response(false, "Mode management is not ready.");
+    return make_response(false, "Mode management is not ready.");
   }
-
-  const auto item = command_mode_status_.get(mode);
-  if (item.mode.empty()) {
-    return response(false, "Invalid mode name: " + mode);
+  if (command_mode_status_.get(mode).mode.empty()) {
+    return make_response(false, "Invalid mode name: " + mode);
   }
+  return make_response(true);
+}
 
-  const auto mode_available = item.mode_available || (!check_mode_ready);
-  const auto transition_available = item.transition_available || (!check_ctrl_ready);
-  if (!mode_available || !transition_available) {
-    return response(false, "Mode is not available: " + mode);
+ResponseStatus CommandModeDeciderBase::check_mode_request(const std::string & mode, bool background)
+{
+  const auto result = check_mode_exists(mode);
+  if (!result.success) {
+    return result;
   }
-
-  return response(true, "");
+  const auto status = command_mode_status_.get(mode);
+  const auto available = status.mode_available && (status.transition_available || background);
+  return available ? make_response(true) : make_response(false, "Mode is not available: " + mode);
 }
 
 void CommandModeDeciderBase::on_change_autoware_control(
   ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res)
 {
-  if (!req->autoware_contro) {
-    return;
+  // Assume the driver is always ready.
+  if (req->autoware_control) {
+    res->status = check_mode_request(system_request_.operation_mode, false);
+    if (!res->status.success) {
+      RCLCPP_WARN_STREAM(get_logger(), res->status.message);
+      return;
+    }
   }
-
-  const auto mode = request_.operation_mode;
-  res->status = check_request(mode, true, true);
-  if (!res->status.success) {
-    RCLCPP_WARN_STREAM(get_logger(), res->status.message);
-    return;
-  }
-  autoware_request_.autoware_control = req->autoware_control;
-  update_command_mode();
+  system_request_.autoware_control = req->autoware_control;
+  update();
 }
 
 void CommandModeDeciderBase::on_change_operation_mode(
   ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res)
 {
   const auto mode = operation_mode_to_command(req->mode);
-
-  res->status = check_request(mode, true, request_.autoware_control);
+  res->status = check_mode_request(mode, !system_request_.autoware_control);
   if (!res->status.success) {
     RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
-  autoware_request_.operation_mode = mode;
-  update_command_mode();
+  system_request_.operation_mode = mode;
+  update();
 }
 
 void CommandModeDeciderBase::on_request_mrm(
   RequestMrm::Request::SharedPtr req, RequestMrm::Response::SharedPtr res)
 {
-  const auto mode = req->name;
-
-  res->status = check_request(mode, false, false);
+  res->status = check_mode_exists(req->name);
   if (!res->status.success) {
     RCLCPP_WARN_STREAM(get_logger(), res->status.message);
     return;
   }
-  autoware_request_.mrm = mode;
-  update_command_mode();
+  system_request_.mrm = req->name;
+  update();
 }
 
 }  // namespace autoware::command_mode_decider

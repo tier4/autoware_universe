@@ -33,6 +33,7 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   {
     const auto command = std::make_shared<Command>(std::make_shared<ManualCommand>());
     manual_command_ = command;
+    platform_commands_[command->plugin->mode_name()] = command;
     commands_.push_back(command);
   }
 
@@ -52,7 +53,7 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
       }
 
       const auto command = std::make_shared<Command>(instance);
-      autoware_commands_[instance->mode_name()] = command;
+      autoware_commands_[command->plugin->mode_name()] = command;
       commands_.push_back(command);
     }
   }
@@ -92,62 +93,39 @@ void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
 
 void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 {
-  struct RequestTargets
-  {
-    bool success;
-    std::shared_ptr<Command> control;
-    std::shared_ptr<Command> vehicle;
-  };
-
-  const auto get_request_targets = [this](const CommandModeRequest & msg) {
-    if (msg.type == CommandModeRequest::MANUAL) {
-      return RequestTargets{true, nullptr, manual_command_};
+  const auto get_command = [this](const std::string & mode, bool background) {
+    // Platform commands are only available in foreground.
+    if (!background) {
+      const auto iter = platform_commands_.find(mode);
+      if (iter != platform_commands_.end()) {
+        return iter->second;
+      }
     }
-
-    const auto iter = autoware_commands_.find(msg.mode);
+    // Autoware commands are available in both foreground and background.
+    const auto iter = autoware_commands_.find(mode);
     if (iter == autoware_commands_.end()) {
-      RCLCPP_ERROR_STREAM(get_logger(), "invalid mode: " << msg.mode);
-      return RequestTargets{false, nullptr, nullptr};
+      RCLCPP_ERROR_STREAM(get_logger(), "invalid mode: " << mode << " " << background);
+      return std::shared_ptr<Command>(nullptr);
     }
-    const auto target = iter->second;
-    const auto status = iter->second->status;
-
     // Check transition conditions.
-    const auto transition_available = status.transition_available || !msg.ctrl;
-    if (!status.mode_available || !transition_available) {
-      RCLCPP_WARN_STREAM(get_logger(), "request rejected: " << msg.type << " " << msg.mode);
-      return RequestTargets{false, nullptr, nullptr};
+    const auto status = iter->second->status;
+    const auto available = status.mode_available && (status.transition_available || background);
+    if (!available) {
+      RCLCPP_ERROR_STREAM(get_logger(), "unavailable mode: " << mode << " " << background);
+      return std::shared_ptr<Command>(nullptr);
     }
-
-    if (msg.type == CommandModeRequest::FOREGROUND) {
-      return RequestTargets{true, target, target};
-    }
-    if (msg.type == CommandModeRequest::BACKGROUND) {
-      return RequestTargets{true, target, nullptr};
-    }
-
-    RCLCPP_WARN_STREAM(get_logger(), "request rejected: " << msg.type << " " << msg.mode);
-    return RequestTargets{false, nullptr, nullptr};
+    return iter->second;
   };
-
-  const auto targets = get_request_targets(msg);
-  if (!targets.success) {
-    return;
-  }
 
   // Update command target.
+  const auto foreground = msg.foreground.empty() ? nullptr : get_command(msg.foreground, false);
+  const auto background = msg.background.empty() ? nullptr : get_command(msg.background, true);
   {
-    const auto control_target = targets.control ? targets.control : control_gate_target_;
-    const auto vehicle_target = targets.vehicle ? targets.vehicle : vehicle_gate_target_;
-    const auto control_target_changed = control_target != control_gate_target_;
-    const auto vehicle_target_changed = vehicle_target != vehicle_gate_target_;
-    control_gate_target_ = control_target;
-    vehicle_gate_target_ = vehicle_target;
-
-    if (!control_target_changed && !vehicle_target_changed) {
-      RCLCPP_INFO_STREAM(get_logger(), "request ignored: " << msg.type << " " << msg.mode);
-      return;
-    }
+    const auto foreground_changed = foreground != foreground_;
+    const auto background_changed = background != background_;
+    foreground_ = foreground;
+    background_ = background;
+    if (!foreground_changed && !background_changed) return;
   }
 
   // Update request status.
@@ -155,14 +133,15 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
     command->status.control_gate_request = false;
     command->status.vehicle_gate_request = false;
   }
-  if (control_gate_target_) {
-    control_gate_target_->status.control_gate_request = true;
+  if (foreground_) {
+    foreground_->status.control_gate_request = true;
+    foreground_->status.vehicle_gate_request = true;
   }
-  if (vehicle_gate_target_) {
-    vehicle_gate_target_->status.vehicle_gate_request = true;
+  if (background_) {
+    background_->status.control_gate_request = true;
+    background_->status.vehicle_gate_request = false;
   }
-
-  RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.type << " " << msg.mode);
+  RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.foreground << " " << msg.background);
   update();
 }
 
@@ -175,15 +154,14 @@ void CommandModeSwitcher::update()
   for (const auto & command : commands_) {
     auto & status = command->status;
     auto & plugin = command->plugin;
+    status.mrm = plugin->update_mrm_state();
     status.source_state = plugin->update_source_state(status.control_gate_request);
-    status.control_gate_state = control_gate_interface_.get_state(*plugin);
-    status.network_gate_state = NetworkGateState::Selected;
-    status.vehicle_gate_state = vehicle_gate_interface_.get_state(*plugin);
+    status.control_gate_selected = control_gate_interface_.is_selected(*plugin);
+    status.vehicle_gate_selected = vehicle_gate_interface_.is_selected(*plugin);
     status.mode_continuable = plugin->get_mode_continuable();
     status.mode_available = plugin->get_mode_available();
     status.transition_available = plugin->get_transition_available();
     status.transition_completed = plugin->get_transition_completed();
-    status.mrm = plugin->update_mrm_state();
   }
 
   std::unordered_map<std::string, int> source_group_count;
@@ -200,18 +178,8 @@ void CommandModeSwitcher::update()
     status.state = update_main_state(status);
   }
 
-  switch (request_.type) {
-    case SwitcherRequestType::FOREGROUND:
-      handle_all_gate_transition();
-      break;
-    case SwitcherRequestType::BACKGROUND:
-      handle_control_gate_transition();
-      break;
-    case SwitcherRequestType::MANUAL:
-      handle_vehicle_gate_transition();
-      break;
-  }
-
+  handle_foreground_transition();
+  handle_background_transition();
   publish_command_mode_status();
 }
 
@@ -224,6 +192,7 @@ void CommandModeSwitcher::publish_command_mode_status()
     item.mrm = convert_mrm_state(command.status.mrm);
     item.mode_continuable = command.status.mode_continuable;
     item.mode_available = command.status.mode_available;
+
     item.control_gate_request = command.status.control_gate_request;
     item.vehicle_gate_request = command.status.vehicle_gate_request;
     item.transition_available = command.status.transition_available;
@@ -240,33 +209,33 @@ void CommandModeSwitcher::publish_command_mode_status()
   pub_status_->publish(msg);
 }
 
-void CommandModeSwitcher::handle_all_gate_transition()
+void CommandModeSwitcher::handle_foreground_transition()
 {
-  if (!request_.command) {
+  if (!foreground_) {
     return;
   }
 
-  if (!request_.command->is_control_gate_selected()) {
-    control_gate_interface_.request(*request_.command->plugin, true);
+  if (!foreground_->status.control_gate_selected) {
+    control_gate_interface_.request(*foreground_->plugin, true);
     return;
   }
 
-  if (!request_.command->is_vehicle_gate_selected()) {
-    vehicle_gate_interface_.request(*request_.command->plugin);
+  if (!foreground_->status.vehicle_gate_selected) {
+    vehicle_gate_interface_.request(*foreground_->plugin);
     return;
   }
 
   // When both gate is selected, check the transition completion condition.
-  if (!request_.command->status.transition_completed) {
+  if (!foreground_->status.transition_completed) {
     return;
   }
 
   if (control_gate_interface_.is_in_transition()) {
-    control_gate_interface_.request(*request_.command->plugin, false);
+    control_gate_interface_.request(*foreground_->plugin, false);
   }
 }
 
-void CommandModeSwitcher::handle_vehicle_gate_transition()
+void CommandModeSwitcher::handle_background_transition()
 {
   // Wait control gate transition.
 

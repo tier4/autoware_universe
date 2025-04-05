@@ -28,11 +28,15 @@ std::string CommandModeDecider::decide_command_mode()
 {
   const auto command_mode_status = get_command_mode_status();
   const auto request_mode_status = get_request_mode_status();
+  const auto background = !request_mode_status.autoware_control;
+  const auto is_available = [background](const auto & status) {
+    return status.mode_available && (status.transition_available || background);
+  };
 
   // Use the requested MRM if available.
   {
     const auto status = command_mode_status.get(request_mode_status.mrm);
-    if (status.mode_available) {
+    if (is_available(status)) {
       return request_mode_status.mrm;
     }
   }
@@ -40,7 +44,7 @@ std::string CommandModeDecider::decide_command_mode()
   // Use the specified operation mode if available.
   {
     const auto status = command_mode_status.get(request_mode_status.operation_mode);
-    if (status.mode_available) {
+    if (is_available(status)) {
       return request_mode_status.operation_mode;
     }
   }
