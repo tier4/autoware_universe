@@ -22,63 +22,32 @@
 namespace autoware::command_mode_switcher
 {
 
-enum class SourceState {
-  Disabled,
-  Transition,
-  Enabled,
-};
-
-enum class SourceGroup {
-  Shared,
-  Exclusive,
-};
-
-enum class TransitionState {
-  Transition,
-  Completed,
-};
-
-enum class MainState {
-  Inactive,
-  Transition,
-  Active,
-};
-
-enum class MrmState {
-  Normal,
-  Operating,
-  Succeeded,
-  Failed,
-};
-
+using command_mode_types::MrmState;
 using command_mode_types::RequestStage;
+using command_mode_types::TriState;
 
 struct CommandStatus
 {
-  MainState state;
+  TriState state;
   MrmState mrm;
   RequestStage request;
-  bool transition;
-  bool control_gate_selected;
-  bool vehicle_gate_selected;
-  bool control_gate_request;
-  bool vehicle_gate_request;
+
+  TriState command_mode_state;
+  TriState vehicle_gate_state;
+  TriState network_gate_state;
+  TriState control_gate_state;
+  TriState source_state;
+  TriState source_group;
+
   bool mode_continuable;
   bool mode_available;
   bool transition_available;
   bool transition_completed;
-
-  SourceState source_state;
-  SourceGroup source_group;
 };
 
-// For ROS message
-uint8_t convert_main_state(const MainState & state);
-uint8_t convert_mrm_state(const MrmState & mrm);
-std::string convert_debug_string(const CommandStatus & status);
-
 // For internal use.
-MainState update_main_state(const CommandStatus & status);
+TriState to_tri_state(bool state);
+TriState update_main_state(const CommandStatus & status);
 
 }  // namespace autoware::command_mode_switcher
 

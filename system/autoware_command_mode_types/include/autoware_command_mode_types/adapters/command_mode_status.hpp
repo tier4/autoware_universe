@@ -22,19 +22,9 @@
 namespace autoware::command_mode_types
 {
 
-uint8_t convert_request_stage(const RequestStage & request_stage)
-{
-  using Message = tier4_system_msgs::msg::CommandModeStatusItem;
-  // clang-format off
-  switch (request_stage) {
-    case RequestStage::CommandModeReady: return Message::COMMAND_MODE_READY;
-    case RequestStage::VehicleGateReady: return Message::VEHICLE_GATE_READY;
-    case RequestStage::NetworkGateReady: return Message::NETWORK_GATE_READY;
-    case RequestStage::ControlGateReady: return Message::CONTROL_GATE_READY;
-    default:                             return Message::UNDEFINED;
-  }
-  // clang-format on
-}
+uint8_t convert_tri_state(const TriState & state);
+uint8_t convert_mrm_state(const MrmState & state);
+uint8_t convert_request_stage(const RequestStage & stage);
 
 }  // namespace autoware::command_mode_types
 

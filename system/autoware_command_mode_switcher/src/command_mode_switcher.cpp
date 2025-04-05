@@ -132,18 +132,16 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 
   // Update request status.
   for (const auto & command : commands_) {
-    command->status.control_gate_request = false;
-    command->status.vehicle_gate_request = false;
+    command->status.request = RequestStage::NoRequest;
+    command->status.command_mode_state = TriState::Disabled;
   }
   if (foreground_) {
-    foreground_->status.control_gate_request = true;
-    foreground_->status.vehicle_gate_request = true;
-    foreground_->status.transition = true;
+    foreground_->status.request = RequestStage::CommandMode;
+    foreground_->status.command_mode_state = TriState::Transition;
   }
   if (background_) {
-    background_->status.control_gate_request = true;
-    background_->status.vehicle_gate_request = false;
-    background_->status.transition = true;
+    background_->status.request = RequestStage::ControlGate;
+    background_->status.command_mode_state = TriState::Transition;
   }
   RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.foreground << " " << msg.background);
   update();
@@ -159,9 +157,9 @@ void CommandModeSwitcher::update()
     auto & status = command->status;
     auto & plugin = command->plugin;
     status.mrm = plugin->update_mrm_state();
-    status.source_state = plugin->update_source_state(status.control_gate_request);
-    status.control_gate_selected = control_gate_interface_.is_selected(*plugin);
-    status.vehicle_gate_selected = vehicle_gate_interface_.is_selected(*plugin);
+    status.source_state = plugin->update_source_state(status.request != RequestStage::NoRequest);
+    status.control_gate_state = to_tri_state(control_gate_interface_.is_selected(*plugin));
+    status.vehicle_gate_state = to_tri_state(vehicle_gate_interface_.is_selected(*plugin));
     status.mode_continuable = plugin->get_mode_continuable();
     status.mode_available = plugin->get_mode_available();
     status.transition_available = plugin->get_transition_available();
@@ -170,15 +168,15 @@ void CommandModeSwitcher::update()
 
   std::unordered_map<std::string, int> source_group_count;
   for (const auto & command : commands_) {
-    const auto uses = command->status.source_state != SourceState::Disabled;
+    const auto uses = command->status.source_state != TriState::Disabled;
     source_group_count[command->plugin->source_name()] += uses ? 1 : 0;
   }
 
   for (const auto & command : commands_) {
     auto & status = command->status;
     auto & plugin = command->plugin;
-    const auto srouce_count = source_group_count[plugin->source_name()];
-    status.source_group = srouce_count <= 1 ? SourceGroup::Exclusive : SourceGroup::Shared;
+    const auto source_count = source_group_count[plugin->source_name()];
+    status.source_group = source_count <= 1 ? TriState::Enabled : TriState::Disabled;
     status.state = update_main_state(status);
   }
 
@@ -192,18 +190,19 @@ void CommandModeSwitcher::publish_command_mode_status()
   const auto convert = [](const Command & command) {
     CommandModeStatusItem item;
     item.mode = command.plugin->mode_name();
-    item.state = convert_main_state(command.status.state);
+    item.state = convert_tri_state(command.status.state);
     item.mrm = convert_mrm_state(command.status.mrm);
-    item.request = command_mode_types::convert_request_stage(command.status.request);
-    item.command_mode_ready = false;
-    item.vehicle_gate_ready = command.status.vehicle_gate_selected;
-    item.network_gate_ready = true;
-    item.control_gate_ready = command.status.control_gate_selected;
+    item.request = convert_request_stage(command.status.request);
+    item.command_mode_state = convert_tri_state(command.status.command_mode_state);
+    item.vehicle_gate_state = convert_tri_state(command.status.vehicle_gate_state);
+    item.network_gate_state = convert_tri_state(TriState::Enabled);
+    item.control_gate_state = convert_tri_state(command.status.control_gate_state);
+    item.source_state = convert_tri_state(command.status.source_state);
+    item.source_group = convert_tri_state(command.status.source_group);
     item.mode_continuable = command.status.mode_continuable;
     item.mode_available = command.status.mode_available;
     item.transition_available = command.status.transition_available;
     item.transition_completed = command.status.transition_completed;
-    item.debug = convert_debug_string(command.status);
     return item;
   };
 
@@ -222,13 +221,13 @@ void CommandModeSwitcher::handle_foreground_transition()
   }
 
   // Select control gate with transition filter.
-  if (!foreground_->status.control_gate_selected) {
+  if (foreground_->status.control_gate_state != TriState::Enabled) {
     control_gate_interface_.request(*foreground_->plugin, true);
     return;
   }
 
   // Select vehicle gate when the control gate is selected.
-  if (!foreground_->status.vehicle_gate_selected) {
+  if (foreground_->status.vehicle_gate_state != TriState::Enabled) {
     vehicle_gate_interface_.request(*foreground_->plugin);
     return;
   }
@@ -244,7 +243,7 @@ void CommandModeSwitcher::handle_foreground_transition()
   }
 
   // Complete transition.
-  foreground_->status.transition = false;
+  foreground_->status.command_mode_state = TriState::Enabled;
 }
 
 void CommandModeSwitcher::handle_background_transition()
@@ -254,12 +253,12 @@ void CommandModeSwitcher::handle_background_transition()
   }
 
   // Wait for the foreground transition so that the command does not affect the vehicle behavior.
-  if (foreground_->status.transition) {
+  if (foreground_->status.command_mode_state != TriState::Enabled) {
     return;
   }
 
   // Select control gate without transition filter.
-  if (!background_->status.control_gate_selected) {
+  if (background_->status.control_gate_state != TriState::Enabled) {
     control_gate_interface_.request(*background_->plugin, false);
     return;
   }
@@ -270,7 +269,7 @@ void CommandModeSwitcher::handle_background_transition()
   }
 
   // Complete transition.
-  background_->status.transition = false;
+  background_->status.command_mode_state = TriState::Enabled;
 }
 
 }  // namespace autoware::command_mode_switcher

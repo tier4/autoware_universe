@@ -33,7 +33,7 @@ public:
   virtual bool autoware_control() const = 0;
   virtual void initialize() = 0;
 
-  virtual SourceState update_source_state(bool request);
+  virtual TriState update_source_state(bool request);
   virtual MrmState update_mrm_state() { return MrmState::Normal; }
 
   virtual bool get_mode_continuable() { return false; }
