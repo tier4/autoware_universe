@@ -15,6 +15,8 @@
 #ifndef COMMON__COMMAND_STATUS_HPP_
 #define COMMON__COMMAND_STATUS_HPP_
 
+#include <autoware_command_mode_types/types/command_mode_status.hpp>
+
 #include <string>
 
 namespace autoware::command_mode_switcher
@@ -37,9 +39,9 @@ enum class TransitionState {
 };
 
 enum class MainState {
-  Disabled,
+  Inactive,
   Transition,
-  Enabled,
+  Active,
 };
 
 enum class MrmState {
@@ -49,13 +51,14 @@ enum class MrmState {
   Failed,
 };
 
+using command_mode_types::RequestStage;
+
 struct CommandStatus
 {
   MainState state;
   MrmState mrm;
-  TransitionState transition_state;
-  SourceState source_state;
-  SourceGroup source_group;
+  RequestStage request;
+  bool transition;
   bool control_gate_selected;
   bool vehicle_gate_selected;
   bool control_gate_request;
@@ -64,6 +67,9 @@ struct CommandStatus
   bool mode_available;
   bool transition_available;
   bool transition_completed;
+
+  SourceState source_state;
+  SourceGroup source_group;
 };
 
 // For ROS message

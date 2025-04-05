@@ -14,6 +14,8 @@
 
 #include "command_mode_switcher.hpp"
 
+#include <autoware_command_mode_types/adapters/command_mode_status.hpp>
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -136,10 +138,12 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   if (foreground_) {
     foreground_->status.control_gate_request = true;
     foreground_->status.vehicle_gate_request = true;
+    foreground_->status.transition = true;
   }
   if (background_) {
     background_->status.control_gate_request = true;
     background_->status.vehicle_gate_request = false;
+    background_->status.transition = true;
   }
   RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.foreground << " " << msg.background);
   update();
@@ -190,11 +194,13 @@ void CommandModeSwitcher::publish_command_mode_status()
     item.mode = command.plugin->mode_name();
     item.state = convert_main_state(command.status.state);
     item.mrm = convert_mrm_state(command.status.mrm);
+    item.request = command_mode_types::convert_request_stage(command.status.request);
+    item.command_mode_ready = false;
+    item.vehicle_gate_ready = command.status.vehicle_gate_selected;
+    item.network_gate_ready = true;
+    item.control_gate_ready = command.status.control_gate_selected;
     item.mode_continuable = command.status.mode_continuable;
     item.mode_available = command.status.mode_available;
-
-    item.control_gate_request = command.status.control_gate_request;
-    item.vehicle_gate_request = command.status.vehicle_gate_request;
     item.transition_available = command.status.transition_available;
     item.transition_completed = command.status.transition_completed;
     item.debug = convert_debug_string(command.status);
@@ -215,11 +221,13 @@ void CommandModeSwitcher::handle_foreground_transition()
     return;
   }
 
+  // Select control gate with transition filter.
   if (!foreground_->status.control_gate_selected) {
     control_gate_interface_.request(*foreground_->plugin, true);
     return;
   }
 
+  // Select vehicle gate when the control gate is selected.
   if (!foreground_->status.vehicle_gate_selected) {
     vehicle_gate_interface_.request(*foreground_->plugin);
     return;
@@ -230,26 +238,39 @@ void CommandModeSwitcher::handle_foreground_transition()
     return;
   }
 
+  // Disable transition filter of control gate.
   if (control_gate_interface_.is_in_transition()) {
     control_gate_interface_.request(*foreground_->plugin, false);
   }
+
+  // Complete transition.
+  foreground_->status.transition = false;
 }
 
 void CommandModeSwitcher::handle_background_transition()
 {
-  // Wait control gate transition.
-
-  /*
-  const auto command_selected = vehicle_selected && (control_selected || request_manual_control);
-  if (command_selected) {
-    if (vehicle_gate_target_->status().transition_completed) {
-
-    }
-    if (request_autoware_control) {
-      control_gate_interface_.request(*control_gate_target_, false);
-    }
+  if (!background_) {
+    return;
   }
-  */
+
+  // Wait for the foreground transition so that the command does not affect the vehicle behavior.
+  if (foreground_->status.transition) {
+    return;
+  }
+
+  // Select control gate without transition filter.
+  if (!background_->status.control_gate_selected) {
+    control_gate_interface_.request(*background_->plugin, false);
+    return;
+  }
+
+  // When control gate is selected, check the transition completion condition.
+  if (!background_->status.transition_completed) {
+    return;
+  }
+
+  // Complete transition.
+  background_->status.transition = false;
 }
 
 }  // namespace autoware::command_mode_switcher
