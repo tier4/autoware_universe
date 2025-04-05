@@ -40,20 +40,6 @@ using tier4_system_msgs::msg::CommandModeRequest;
 using tier4_system_msgs::msg::CommandModeStatus;
 using tier4_system_msgs::msg::CommandModeStatusItem;
 
-// TODO(Takagi, Isamu): Move to tier4_system_msgs.
-enum class SwitcherRequestType {
-  UNDEFINED = 0,
-  FOREGROUND = 1,
-  BACKGROUND = 2,
-  MANUAL = 3,
-};
-
-struct SwitcherRequest
-{
-  SwitcherRequestType type;
-  std::shared_ptr<Command> command;
-};
-
 class CommandModeSwitcher : public rclcpp::Node
 {
 public:
@@ -64,10 +50,8 @@ private:
   void on_request(const CommandModeRequest & msg);
   void update();
   void publish_command_mode_status();
-
-  void handle_all_gate_transition();
-  void handle_control_gate_transition();
-  void handle_vehicle_gate_transition();
+  void handle_foreground_transition();
+  void handle_background_transition();
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
@@ -78,9 +62,11 @@ private:
   // Mode switching.
   pluginlib::ClassLoader<CommandPlugin> loader_;
   std::vector<std::shared_ptr<Command>> commands_;
+  std::unordered_map<std::string, std::shared_ptr<Command>> platform_commands_;
   std::unordered_map<std::string, std::shared_ptr<Command>> autoware_commands_;
   std::shared_ptr<Command> manual_command_;
-  SwitcherRequest request_;
+  std::shared_ptr<Command> foreground_;
+  std::shared_ptr<Command> background_;
   ControlGateInterface control_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
 

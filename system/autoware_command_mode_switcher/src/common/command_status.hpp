@@ -31,24 +31,6 @@ enum class SourceGroup {
   Exclusive,
 };
 
-enum class ControlGateState {
-  Unselected,
-  Requesting,
-  Selected,
-};
-
-enum class NetworkGateState {
-  Unselected,
-  Requesting,
-  Selected,
-};
-
-enum class VehicleGateState {
-  Unselected,
-  Requesting,
-  Selected,
-};
-
 enum class TransitionState {
   Transition,
   Completed,
@@ -69,16 +51,15 @@ enum class MrmState {
 
 struct CommandStatus
 {
-  SourceState source_state;
-  SourceGroup source_group;
-  ControlGateState control_gate_state;
-  NetworkGateState network_gate_state;
-  VehicleGateState vehicle_gate_state;
-  TransitionState transition_state;
   MainState state;
   MrmState mrm;
-  bool vehicle_gate_request;
+  TransitionState transition_state;
+  SourceState source_state;
+  SourceGroup source_group;
+  bool control_gate_selected;
+  bool vehicle_gate_selected;
   bool control_gate_request;
+  bool vehicle_gate_request;
   bool mode_continuable;
   bool mode_available;
   bool transition_available;

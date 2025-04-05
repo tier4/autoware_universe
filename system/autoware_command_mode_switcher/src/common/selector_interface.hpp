@@ -36,7 +36,7 @@ class ControlGateInterface
 public:
   using Callback = std::function<void()>;
   ControlGateInterface(rclcpp::Node & node, Callback callback);
-  ControlGateState get_state(const CommandPlugin & plugin) const;
+  bool is_selected(const CommandPlugin & plugin) const;
   bool is_in_transition() const;
   bool request(const CommandPlugin & plugin, bool transition);
 
@@ -59,7 +59,7 @@ class VehicleGateInterface
 public:
   using Callback = std::function<void()>;
   VehicleGateInterface(rclcpp::Node & node, Callback callback);
-  VehicleGateState get_state(const CommandPlugin & plugin) const;
+  bool is_selected(const CommandPlugin & plugin) const;
   bool request(const CommandPlugin & plugin);
 
 private:

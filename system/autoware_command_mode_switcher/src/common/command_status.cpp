@@ -44,42 +44,6 @@ std::string to_string(const SourceGroup & group)
   // clang-format on
 }
 
-std::string to_string(const ControlGateState & state)
-{
-  // clang-format off
-  switch (state) {
-    case ControlGateState::Unselected: return "D";
-    case ControlGateState::Requesting: return "T";
-    case ControlGateState::Selected:   return "E";
-    default:                           return "?";
-  }
-  // clang-format on
-}
-
-std::string to_string(const NetworkGateState & state)
-{
-  // clang-format off
-  switch (state) {
-    case NetworkGateState::Unselected: return "D";
-    case NetworkGateState::Requesting: return "T";
-    case NetworkGateState::Selected:   return "E";
-    default:                           return "?";
-  }
-  // clang-format on
-}
-
-std::string to_string(const VehicleGateState & state)
-{
-  // clang-format off
-  switch (state) {
-    case VehicleGateState::Unselected: return "D";
-    case VehicleGateState::Requesting: return "T";
-    case VehicleGateState::Selected:   return "E";
-    default:                           return "?";
-  }
-  // clang-format on
-}
-
 std::string to_string(const TransitionState & state)
 {
   // clang-format off
@@ -91,14 +55,18 @@ std::string to_string(const TransitionState & state)
   // clang-format on
 }
 
+std::string to_string(bool state)
+{
+  return state ? "E" : "D";
+}
+
 std::string convert_debug_string(const CommandStatus & status)
 {
   std::string result;
   result += to_string(status.source_state);
   result += to_string(status.source_group);
-  result += to_string(status.control_gate_state);
-  result += to_string(status.network_gate_state);
-  result += to_string(status.vehicle_gate_state);
+  result += to_string(status.control_gate_selected);
+  result += to_string(status.vehicle_gate_selected);
   result += to_string(status.transition_state);
   return result;
 }
@@ -138,9 +106,8 @@ MainState update_main_state(const CommandStatus & status)
   bool is_enabled = true;
   is_enabled &= status.source_state == SourceState::Enabled;
   is_enabled &= status.source_group == SourceGroup::Exclusive;
-  is_enabled &= status.control_gate_state == ControlGateState::Selected;
-  is_enabled &= status.network_gate_state == NetworkGateState::Selected;
-  is_enabled &= status.vehicle_gate_state == VehicleGateState::Selected;
+  is_enabled &= status.control_gate_selected;
+  is_enabled &= status.vehicle_gate_selected;
   is_enabled &= status.transition_state == TransitionState::Completed;
   return is_enabled ? MainState::Enabled : MainState::Disabled;
 }

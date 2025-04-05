@@ -42,25 +42,17 @@ using tier4_system_msgs::srv::ChangeAutowareControl;
 using tier4_system_msgs::srv::ChangeOperationMode;
 using tier4_system_msgs::srv::RequestMrm;
 
-// TODO(Takagi, Isamu): Move to tier4_system_msgs.
-enum class SwitcherRequestType {
-  UNDEFINED = 0,
-  FOREGROUND = 1,
-  BACKGROUND = 2,
-  MANUAL = 3,
-};
-
-struct SwitcherRequest
-{
-  SwitcherRequestType type;
-  std::string mode;
-};
-
-struct AutowareRequest
+struct RequestModeStatus
 {
   bool autoware_control;
   std::string operation_mode;
   std::string mrm;
+};
+
+struct OperatorStatus
+{
+  bool autoware_control;
+  std::string operation_mode;
 };
 
 class CommandModeDeciderBase : public rclcpp::Node
@@ -71,9 +63,10 @@ public:
 protected:
   virtual std::string decide_command_mode() = 0;
   const auto & get_command_mode_status() const { return command_mode_status_; }
-  const auto & get_request_mode_status() const { return autoware_request_; }
+  const auto & get_request_mode_status() const { return system_request_; }
 
 private:
+  void update();
   void update_command_mode();
   void sync_command_mode();
   void publish_operation_mode_state();
@@ -87,8 +80,8 @@ private:
   void on_change_autoware_control(
     ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res);
 
-  ResponseStatus check_request(
-    const std::string & mode, bool check_mode_ready, bool check_ctrl_ready);
+  ResponseStatus check_mode_exists(const std::string & mode);
+  ResponseStatus check_mode_request(const std::string & mode, bool background);
 
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<CommandModeRequest>::SharedPtr pub_command_mode_request_;
@@ -103,13 +96,19 @@ private:
 
   // parameters
   double request_timeout_;
+  std::string manual_mode_name_;
 
   // status
   bool is_modes_ready_;
   CommandModeStatusWrapper command_mode_status_;
-  AutowareRequest autoware_request_;
-  SwitcherRequest switcher_request_;
-  std::optional<rclcpp::Time> switcher_request_stamp_;
+  RequestModeStatus system_request_;
+  std::string foreground_request_;
+  std::string background_request_;
+  std::string request_mode_;
+  std::string current_mode_;
+  std::optional<rclcpp::Time> request_stamp_;
+  OperatorStatus temporary_operator_;
+  OperatorStatus confirmed_operator_;
 };
 
 }  // namespace autoware::command_mode_decider
