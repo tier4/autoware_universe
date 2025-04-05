@@ -19,11 +19,11 @@ namespace autoware::command_mode_switcher
 
 Command::Command(std::shared_ptr<CommandPlugin> plugin) : plugin(plugin)
 {
-  status.state = MainState::Disabled;
+  status.state = MainState::Inactive;
   status.mrm = MrmState::Normal;
-  status.transition_state = TransitionState::Completed;
   status.source_state = SourceState::Disabled;
   status.source_group = SourceGroup::Shared;
+  status.transition = false;
   status.control_gate_selected = false;
   status.vehicle_gate_selected = false;
   status.control_gate_request = false;

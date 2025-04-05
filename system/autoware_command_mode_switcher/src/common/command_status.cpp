@@ -67,7 +67,7 @@ std::string convert_debug_string(const CommandStatus & status)
   result += to_string(status.source_group);
   result += to_string(status.control_gate_selected);
   result += to_string(status.vehicle_gate_selected);
-  result += to_string(status.transition_state);
+  result += to_string(status.transition);
   return result;
 }
 
@@ -76,9 +76,9 @@ uint8_t convert_main_state(const MainState & state)
   using Message = tier4_system_msgs::msg::CommandModeStatusItem;
   // clang-format off
   switch (state) {
-    case MainState::Disabled:   return Message::DISABLED;
+    case MainState::Inactive:   return Message::INACTIVE;
     case MainState::Transition: return Message::TRANSITION;
-    case MainState::Enabled:    return Message::ENABLED;
+    case MainState::Active:     return Message::ACTIVE;
     default:                    return Message::UNDEFINED;
   }
   // clang-format on
@@ -100,7 +100,7 @@ uint8_t convert_mrm_state(const MrmState & mrm)
 
 MainState update_main_state(const CommandStatus & status)
 {
-  if (status.transition_state == TransitionState::Transition) {
+  if (status.transition) {
     return MainState::Transition;
   }
   bool is_enabled = true;
@@ -108,8 +108,8 @@ MainState update_main_state(const CommandStatus & status)
   is_enabled &= status.source_group == SourceGroup::Exclusive;
   is_enabled &= status.control_gate_selected;
   is_enabled &= status.vehicle_gate_selected;
-  is_enabled &= status.transition_state == TransitionState::Completed;
-  return is_enabled ? MainState::Enabled : MainState::Disabled;
+  is_enabled &= status.transition == false;
+  return is_enabled ? MainState::Active : MainState::Inactive;
 }
 
 }  // namespace autoware::command_mode_switcher

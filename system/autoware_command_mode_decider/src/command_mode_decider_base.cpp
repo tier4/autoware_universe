@@ -144,11 +144,11 @@ void CommandModeDeciderBase::sync_command_mode()
 
   if (!foreground_request_reflected) {
     const auto status = command_mode_status_.get(foreground_request_);
-    foreground_request_reflected = status.control_gate_request && status.vehicle_gate_request;
+    foreground_request_reflected = status.request == CommandModeStatusItem::COMMAND_MODE_READY;
   }
   if (!background_request_reflected) {
     const auto status = command_mode_status_.get(background_request_);
-    background_request_reflected = status.control_gate_request;
+    background_request_reflected = status.request == CommandModeStatusItem::CONTROL_GATE_READY;
   }
 
   // Skip the request if mode is already requested or now requesting.
