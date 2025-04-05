@@ -16,100 +16,32 @@
 
 #include <tier4_system_msgs/msg/command_mode_status_item.hpp>
 
-#include <string>
-
 namespace autoware::command_mode_switcher
 {
 
-std::string to_string(const SourceState & state)
+TriState to_tri_state(bool state)
 {
-  // clang-format off
-  switch (state) {
-    case SourceState::Disabled:   return "D";
-    case SourceState::Transition: return "T";
-    case SourceState::Enabled:    return "E";
-    default:                      return "?";
+  return state ? TriState::Enabled : TriState::Disabled;
+}
+
+TriState update_main_state(const CommandStatus & status)
+{
+  const auto merge_state = [](const TriState & s1, const TriState & s2) {
+    if (s1 == TriState::Disabled && s2 == TriState::Disabled) return TriState::Disabled;
+    if (s1 == TriState::Enabled && s2 == TriState::Enabled) return TriState::Enabled;
+    return TriState::Transition;
+  };
+
+  // TODO(isamu): Check ignore condition.
+  TriState state = status.command_mode_state;
+  if (status.request != RequestStage::NoRequest) {
+    state = merge_state(state, status.vehicle_gate_state);
+    state = merge_state(state, status.network_gate_state);
+    state = merge_state(state, status.control_gate_state);
+    state = merge_state(state, status.source_group);
   }
-  // clang-format on
-}
-
-std::string to_string(const SourceGroup & group)
-{
-  // clang-format off
-  switch (group) {
-    case SourceGroup::Shared:    return "D";
-    case SourceGroup::Exclusive: return "E";
-    default:                     return "?";
-  }
-  // clang-format on
-}
-
-std::string to_string(const TransitionState & state)
-{
-  // clang-format off
-  switch (state) {
-    case TransitionState::Transition: return "D";
-    case TransitionState::Completed:  return "E";
-    default:                          return "?";
-  }
-  // clang-format on
-}
-
-std::string to_string(bool state)
-{
-  return state ? "E" : "D";
-}
-
-std::string convert_debug_string(const CommandStatus & status)
-{
-  std::string result;
-  result += to_string(status.source_state);
-  result += to_string(status.source_group);
-  result += to_string(status.control_gate_selected);
-  result += to_string(status.vehicle_gate_selected);
-  result += to_string(status.transition);
-  return result;
-}
-
-uint8_t convert_main_state(const MainState & state)
-{
-  using Message = tier4_system_msgs::msg::CommandModeStatusItem;
-  // clang-format off
-  switch (state) {
-    case MainState::Inactive:   return Message::INACTIVE;
-    case MainState::Transition: return Message::TRANSITION;
-    case MainState::Active:     return Message::ACTIVE;
-    default:                    return Message::UNDEFINED;
-  }
-  // clang-format on
-}
-
-uint8_t convert_mrm_state(const MrmState & mrm)
-{
-  using Message = tier4_system_msgs::msg::CommandModeStatusItem;
-  // clang-format off
-  switch (mrm) {
-    case MrmState::Normal:     return Message::NORMAL;
-    case MrmState::Operating:  return Message::OPERATING;
-    case MrmState::Succeeded:  return Message::SUCCEEDED;
-    case MrmState::Failed:     return Message::FAILED;
-    default:                   return Message::UNDEFINED;
-  }
-  // clang-format on
-}
-
-MainState update_main_state(const CommandStatus & status)
-{
-  if (status.transition) {
-    return MainState::Transition;
-  }
-  bool is_enabled = true;
-  is_enabled &= status.source_state == SourceState::Enabled;
-  is_enabled &= status.source_group == SourceGroup::Exclusive;
-  is_enabled &= status.control_gate_selected;
-  is_enabled &= status.vehicle_gate_selected;
-  is_enabled &= status.transition == false;
-  return is_enabled ? MainState::Active : MainState::Inactive;
+  state = merge_state(state, status.source_state);
+  return state;
 }
 
 }  // namespace autoware::command_mode_switcher

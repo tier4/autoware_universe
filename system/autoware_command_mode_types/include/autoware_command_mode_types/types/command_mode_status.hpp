@@ -18,11 +18,25 @@
 namespace autoware::command_mode_types
 {
 
+enum class TriState {
+  Disabled,
+  Enabled,
+  Transition,
+};
+
+enum class MrmState {
+  Normal,
+  Operating,
+  Succeeded,
+  Failed,
+};
+
 enum class RequestStage {
-  CommandModeReady,
-  VehicleGateReady,
-  NetworkGateReady,
-  ControlGateReady,
+  NoRequest,
+  CommandMode,
+  VehicleGate,
+  NetworkGate,
+  ControlGate,
 };
 
 }  // namespace autoware::command_mode_types

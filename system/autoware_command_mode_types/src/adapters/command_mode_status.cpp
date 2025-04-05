@@ -17,6 +17,46 @@
 namespace autoware::command_mode_types
 {
 
-uint8_t convert_request_stage(const RequestStage & request_stage);
+uint8_t convert_tri_state(const TriState & state)
+{
+  using Message = tier4_system_msgs::msg::CommandModeStatusItem;
+  // clang-format off
+  switch (state) {
+    case TriState::Disabled:   return Message::DISABLED;
+    case TriState::Enabled:    return Message::ENABLED;
+    case TriState::Transition: return Message::TRANSITION;
+    default:                   return Message::UNDEFINED;
+  }
+  // clang-format on
+}
+
+uint8_t convert_mrm_state(const MrmState & state)
+{
+  using Message = tier4_system_msgs::msg::CommandModeStatusItem;
+  // clang-format off
+  switch (state) {
+    case MrmState::Normal:     return Message::NORMAL;
+    case MrmState::Operating:  return Message::OPERATING;
+    case MrmState::Succeeded:  return Message::SUCCEEDED;
+    case MrmState::Failed:     return Message::FAILED;
+    default:                   return Message::UNDEFINED;
+  }
+  // clang-format on
+}
+
+uint8_t convert_request_stage(const RequestStage & stage)
+{
+  using Message = tier4_system_msgs::msg::CommandModeStatusItem;
+  // clang-format off
+  switch (stage) {
+    case RequestStage::NoRequest:   return Message::NO_REQUEST;
+    case RequestStage::CommandMode: return Message::COMMAND_MODE;
+    case RequestStage::VehicleGate: return Message::VEHICLE_GATE;
+    case RequestStage::NetworkGate: return Message::NETWORK_GATE;
+    case RequestStage::ControlGate: return Message::CONTROL_GATE;
+    default:                        return Message::UNDEFINED;
+  }
+  // clang-format on
+}
 
 }  // namespace autoware::command_mode_types
