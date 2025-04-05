@@ -32,7 +32,7 @@ std::string CommandModeDeciderRedundancy::decide_command_mode()
   // Use the requested MRM if available.
   {
     const auto status = command_mode_status.get(request_mode_status.mrm);
-    if (status.available) {
+    if (status.mode_available) {
       return request_mode_status.mrm;
     }
   }
@@ -40,7 +40,7 @@ std::string CommandModeDeciderRedundancy::decide_command_mode()
   // Use the specified operation mode if available.
   {
     const auto status = command_mode_status.get(request_mode_status.operation_mode);
-    if (status.available) {
+    if (status.mode_available) {
       return request_mode_status.operation_mode;
     }
   }
@@ -54,16 +54,16 @@ std::string CommandModeDeciderRedundancy::decide_command_mode()
   const auto sub_ecu_in_lane_stop_0_4g = "sub_ecu_in_lane_stop_0_4g";
 
   // TODO(Takagi, Isamu): check command_modes parameter
-  if (command_mode_status.get(comfortable_stop).available /*&& use_comfortable_stop_*/) {
+  if (command_mode_status.get(comfortable_stop).mode_available /*&& use_comfortable_stop_*/) {
     return comfortable_stop;
   }
-  if (command_mode_status.get(main_ecu_in_lane_stop_0_4g).available /*&& use_main_ecu_in_lane_stop_0_4g_*/) {
+  if (command_mode_status.get(main_ecu_in_lane_stop_0_4g).mode_available /*&& use_main_ecu_in_lane_stop_0_4g_*/) {
     return main_ecu_in_lane_stop_0_4g;
   }
-  if (command_mode_status.get(main_ecu_in_lane_stop_0_6g).available /*&& use_main_ecu_in_lane_stop_0_6g_*/) {
+  if (command_mode_status.get(main_ecu_in_lane_stop_0_6g).mode_available /*&& use_main_ecu_in_lane_stop_0_6g_*/) {
     return main_ecu_in_lane_stop_0_6g;
   }
-  if (command_mode_status.get(sub_ecu_in_lane_stop_0_4g).available /*&& use_sub_ecu_in_lane_stop_0_4g_*/) {
+  if (command_mode_status.get(sub_ecu_in_lane_stop_0_4g).mode_available /*&& use_sub_ecu_in_lane_stop_0_4g_*/) {
     return sub_ecu_in_lane_stop_0_4g;
   }
   // FIXME(TetsuKawa): How to handle the case where no MRM is available.
