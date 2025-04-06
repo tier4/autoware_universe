@@ -47,7 +47,8 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
 
   custom.state = from_msg_tri_state(item.state);
   custom.mrm = from_msg_mrm_state(item.mrm);
-  custom.request = from_msg_request_stage(item.request);
+  custom.request_phase = from_msg_request_phase(item.request_phase);
+  custom.current_phase = from_msg_request_phase(item.current_phase);
 
   custom.mode_continuable = item.mode_continuable;
   custom.mode_available = item.mode_available;
@@ -91,17 +92,17 @@ MrmState from_msg_mrm_state(const uint8_t msg)
   // clang-format on
 }
 
-RequestStage from_msg_request_stage(const uint8_t msg)
+RequestPhase from_msg_request_phase(const uint8_t msg)
 {
   // clang-format off
   using Message = tier4_system_msgs::msg::CommandModeStatusItem;
   switch (msg) {
-    case Message::NO_REQUEST:   return RequestStage::NoRequest;
-    case Message::COMMAND_MODE: return RequestStage::CommandMode;
-    case Message::VEHICLE_GATE: return RequestStage::VehicleGate;
-    case Message::NETWORK_GATE: return RequestStage::NetworkGate;
-    case Message::CONTROL_GATE: return RequestStage::ControlGate;
-    default:                    return RequestStage::NoRequest;
+    case Message::NO_REQUEST:   return RequestPhase::NoRequest;
+    case Message::COMMAND_MODE: return RequestPhase::CommandMode;
+    case Message::VEHICLE_GATE: return RequestPhase::VehicleGate;
+    case Message::NETWORK_GATE: return RequestPhase::NetworkGate;
+    case Message::CONTROL_GATE: return RequestPhase::ControlGate;
+    default:                    return RequestPhase::NoRequest;
   }
   // clang-format on
 }
@@ -133,16 +134,16 @@ uint8_t convert_mrm_state(const MrmState & state)
   // clang-format on
 }
 
-uint8_t convert_request_stage(const RequestStage & stage)
+uint8_t convert_request_phase(const RequestPhase & phase)
 {
   // clang-format off
   using Message = tier4_system_msgs::msg::CommandModeStatusItem;
-  switch (stage) {
-    case RequestStage::NoRequest:   return Message::NO_REQUEST;
-    case RequestStage::CommandMode: return Message::COMMAND_MODE;
-    case RequestStage::VehicleGate: return Message::VEHICLE_GATE;
-    case RequestStage::NetworkGate: return Message::NETWORK_GATE;
-    case RequestStage::ControlGate: return Message::CONTROL_GATE;
+  switch (phase) {
+    case RequestPhase::NoRequest:   return Message::NO_REQUEST;
+    case RequestPhase::CommandMode: return Message::COMMAND_MODE;
+    case RequestPhase::VehicleGate: return Message::VEHICLE_GATE;
+    case RequestPhase::NetworkGate: return Message::NETWORK_GATE;
+    case RequestPhase::ControlGate: return Message::CONTROL_GATE;
     default:                        return Message::UNDEFINED;
   }
   // clang-format on

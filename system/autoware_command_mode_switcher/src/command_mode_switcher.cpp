@@ -132,15 +132,15 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 
   // Update request status.
   for (const auto & command : commands_) {
-    command->status.request = RequestStage::NoRequest;
+    command->status.request_phase = RequestPhase::NoRequest;
     command->status.command_mode_state = TriState::Disabled;
   }
   if (foreground_) {
-    foreground_->status.request = RequestStage::CommandMode;
+    foreground_->status.request_phase = RequestPhase::CommandMode;
     foreground_->status.command_mode_state = TriState::Transition;
   }
   if (background_) {
-    background_->status.request = RequestStage::ControlGate;
+    background_->status.request_phase = RequestPhase::ControlGate;
     background_->status.command_mode_state = TriState::Transition;
   }
   RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.foreground << " " << msg.background);
@@ -157,7 +157,8 @@ void CommandModeSwitcher::update()
     auto & status = command->status;
     auto & plugin = command->plugin;
     status.mrm = plugin->update_mrm_state();
-    status.source_state = plugin->update_source_state(status.request != RequestStage::NoRequest);
+    status.source_state =
+      plugin->update_source_state(status.request_phase != RequestPhase::NoRequest);
     status.control_gate_state = to_tri_state(control_gate_interface_.is_selected(*plugin));
     status.vehicle_gate_state = to_tri_state(vehicle_gate_interface_.is_selected(*plugin));
     status.mode_continuable = plugin->get_mode_continuable();
@@ -178,6 +179,7 @@ void CommandModeSwitcher::update()
     const auto source_count = source_group_count[plugin->source_name()];
     status.source_group = source_count <= 1 ? TriState::Enabled : TriState::Disabled;
     status.state = update_main_state(status);
+    status.current_phase = update_current_phase(status);
   }
 
   handle_foreground_transition();
@@ -192,7 +194,8 @@ void CommandModeSwitcher::publish_command_mode_status()
     item.mode = command.plugin->mode_name();
     item.state = convert_tri_state(command.status.state);
     item.mrm = convert_mrm_state(command.status.mrm);
-    item.request = convert_request_stage(command.status.request);
+    item.request_phase = convert_request_phase(command.status.request_phase);
+    item.current_phase = convert_request_phase(command.status.current_phase);
     item.command_mode_state = convert_tri_state(command.status.command_mode_state);
     item.vehicle_gate_state = convert_tri_state(command.status.vehicle_gate_state);
     item.network_gate_state = convert_tri_state(command.status.network_gate_state);
