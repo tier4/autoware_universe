@@ -37,11 +37,10 @@ enum class MrmState {
 };
 
 enum class RequestPhase {
-  NoRequest,
-  CommandMode,
-  VehicleGate,
-  NetworkGate,
+  NotSelected,
   ControlGate,
+  NetworkGate,
+  VehicleGate,
 };
 
 struct CommandModeStatusItem
@@ -50,6 +49,8 @@ struct CommandModeStatusItem
 
   TriState state;
   MrmState mrm;
+  TriState transition_state;
+  TriState gate_state;
   RequestPhase request_phase;
   RequestPhase current_phase;
 
@@ -58,7 +59,6 @@ struct CommandModeStatusItem
   bool transition_available;
   bool transition_completed;
 
-  TriState command_mode_state;
   TriState vehicle_gate_state;
   TriState network_gate_state;
   TriState control_gate_state;

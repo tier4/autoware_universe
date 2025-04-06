@@ -21,10 +21,11 @@ Command::Command(std::shared_ptr<CommandPlugin> plugin) : plugin(plugin)
 {
   status.state = TriState::Disabled;
   status.mrm = MrmState::Normal;
-  status.request_phase = RequestPhase::NoRequest;
-  status.current_phase = RequestPhase::NoRequest;
+  status.transition_state = TriState::Disabled;
+  status.gate_state = TriState::Disabled;
+  status.request_phase = RequestPhase::NotSelected;
+  status.current_phase = RequestPhase::NotSelected;
 
-  status.command_mode_state = TriState::Disabled;
   status.vehicle_gate_state = TriState::Disabled;
   status.network_gate_state = TriState::Enabled;
   status.control_gate_state = TriState::Disabled;
