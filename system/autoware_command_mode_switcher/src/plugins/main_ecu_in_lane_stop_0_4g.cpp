@@ -17,6 +17,16 @@
 namespace autoware::command_mode_switcher
 {
 
+void MainEcuInLaneStop04GSwitcher::initialize()
+{
+  /*
+  set_mode_continuable(false);
+  set_mode_available(false);
+  set_ctrl_available(true);
+  set_transition_completed(true);
+  */
+}
+
 }  // namespace autoware::command_mode_switcher
 
 #include <pluginlib/class_list_macros.hpp>
