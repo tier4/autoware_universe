@@ -36,7 +36,7 @@ enum class MrmState {
   Failed,
 };
 
-enum class RequestStage {
+enum class RequestPhase {
   NoRequest,
   CommandMode,
   VehicleGate,
@@ -50,7 +50,8 @@ struct CommandModeStatusItem
 
   TriState state;
   MrmState mrm;
-  RequestStage request;
+  RequestPhase request_phase;
+  RequestPhase current_phase;
 
   bool mode_continuable;
   bool mode_available;

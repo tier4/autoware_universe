@@ -144,11 +144,11 @@ void CommandModeDeciderBase::sync_command_mode()
 
   if (!foreground_request_reflected) {
     const auto status = command_mode_status_.get(foreground_request_);
-    foreground_request_reflected = status.request == RequestStage::CommandMode;
+    foreground_request_reflected = status.request_phase == RequestPhase::CommandMode;
   }
   if (!background_request_reflected) {
     const auto status = command_mode_status_.get(background_request_);
-    background_request_reflected = status.request == RequestStage::ControlGate;
+    background_request_reflected = status.request_phase == RequestPhase::ControlGate;
   }
 
   // Skip the request if mode is already requested or now requesting.
@@ -185,8 +185,8 @@ void CommandModeDeciderBase::publish_operation_mode_state()
   };
   OperationModeState state;
   state.stamp = now();
-  state.mode = command_to_operation_mode(temporary_operator_.operation_mode);
-  state.is_autoware_control_enabled = temporary_operator_.autoware_control;
+  state.mode = command_to_operation_mode(system_request_.operation_mode);
+  state.is_autoware_control_enabled = system_request_.autoware_control;
   state.is_in_transition = (temporary_operator_ != confirmed_operator_);
   state.is_stop_mode_available = is_transition_available("stop");
   state.is_autonomous_mode_available = is_transition_available("autonomous");
@@ -258,6 +258,7 @@ void CommandModeDeciderBase::on_change_autoware_control(
       return;
     }
   }
+  res->status = make_response(true);  // For autoware_control is false.
   system_request_.autoware_control = req->autoware_control;
   update();
 }

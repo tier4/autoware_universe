@@ -42,11 +42,11 @@ CommandModeStatus from_msg(const tier4_system_msgs::msg::CommandModeStatus & sta
 CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusItem & item);
 TriState from_msg_tri_state(const uint8_t msg);
 MrmState from_msg_mrm_state(const uint8_t msg);
-RequestStage from_msg_request_stage(const uint8_t msg);
+RequestPhase from_msg_request_phase(const uint8_t msg);
 
 uint8_t convert_tri_state(const TriState & state);
 uint8_t convert_mrm_state(const MrmState & state);
-uint8_t convert_request_stage(const RequestStage & stage);
+uint8_t convert_request_phase(const RequestPhase & phase);
 
 }  // namespace autoware::command_mode_types
 
