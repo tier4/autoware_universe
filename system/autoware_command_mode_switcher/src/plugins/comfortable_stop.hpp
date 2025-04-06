@@ -17,6 +17,13 @@
 
 #include "common/command_plugin.hpp"
 
+#include <autoware_utils/ros/polling_subscriber.hpp>
+
+#include <nav_msgs/msg/odometry.hpp>
+#include <tier4_planning_msgs/msg/velocity_limit.hpp>
+#include <tier4_planning_msgs/msg/velocity_limit_clear_command.hpp>
+
+#include <optional>
 #include <string>
 
 namespace autoware::command_mode_switcher
@@ -29,6 +36,24 @@ public:
   std::string source_name() const override { return "main"; }
   bool autoware_control() const override { return true; }
   void initialize() override;
+
+  TriState update_source_state(bool request) override;
+  MrmState update_mrm_state() override;
+
+  bool get_transition_available() override { return true; }
+  bool get_transition_completed() override { return true; }
+
+private:
+  void publishVelocityLimit();
+  void publishVelocityLimitClearCommand();
+  bool isStopped();
+
+  rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimit>::SharedPtr pub_velocity_limit_;
+  rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>::SharedPtr pub_velocity_limit_clear_command_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
+
+  std::optional<nav_msgs::msg::Odometry> odom_;
+  MrmState mrm_state_;
 };
 
 }  // namespace autoware::command_mode_switcher
