@@ -28,11 +28,15 @@ std::string CommandModeDeciderRedundancy::decide_command_mode()
 {
   const auto command_mode_status = get_command_mode_status();
   const auto request_mode_status = get_request_mode_status();
+  const auto background = !request_mode_status.autoware_control;
+  const auto is_available = [background](const auto & status) {
+    return status.mode_available && (status.transition_available || background);
+  };
 
   // Use the requested MRM if available.
   {
     const auto status = command_mode_status.get(request_mode_status.mrm);
-    if (status.mode_available) {
+    if (is_available(status)) {
       return request_mode_status.mrm;
     }
   }
@@ -40,7 +44,7 @@ std::string CommandModeDeciderRedundancy::decide_command_mode()
   // Use the specified operation mode if available.
   {
     const auto status = command_mode_status.get(request_mode_status.operation_mode);
-    if (status.mode_available) {
+    if (is_available(status)) {
       return request_mode_status.operation_mode;
     }
   }
@@ -54,16 +58,16 @@ std::string CommandModeDeciderRedundancy::decide_command_mode()
   const auto sub_ecu_in_lane_stop_0_4g = "sub_ecu_in_lane_stop_0_4g";
 
   // TODO(Takagi, Isamu): check command_modes parameter
-  if (command_mode_status.get(comfortable_stop).mode_available /*&& use_comfortable_stop_*/) {
+  if (command_mode_status.get(comfortable_stop).mode_available) {
     return comfortable_stop;
   }
-  if (command_mode_status.get(main_ecu_in_lane_stop_0_4g).mode_available /*&& use_main_ecu_in_lane_stop_0_4g_*/) {
+  if (command_mode_status.get(main_ecu_in_lane_stop_0_4g).mode_available) {
     return main_ecu_in_lane_stop_0_4g;
   }
-  if (command_mode_status.get(main_ecu_in_lane_stop_0_6g).mode_available /*&& use_main_ecu_in_lane_stop_0_6g_*/) {
+  if (command_mode_status.get(main_ecu_in_lane_stop_0_6g).mode_available) {
     return main_ecu_in_lane_stop_0_6g;
   }
-  if (command_mode_status.get(sub_ecu_in_lane_stop_0_4g).mode_available /*&& use_sub_ecu_in_lane_stop_0_4g_*/) {
+  if (command_mode_status.get(sub_ecu_in_lane_stop_0_4g).mode_available) {
     return sub_ecu_in_lane_stop_0_4g;
   }
   // FIXME(TetsuKawa): How to handle the case where no MRM is available.
