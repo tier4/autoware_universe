@@ -57,6 +57,10 @@ uint32_t command_to_mrm_behavior(const std::string & text)
   if (text == "emergency_stop")   return MrmState::EMERGENCY_STOP;
   if (text == "comfortable_stop") return MrmState::COMFORTABLE_STOP;
   if (text == "pull_over")        return MrmState::PULL_OVER;
+
+  // tmp mapping
+  if (text == "main_ecu_in_lane_stop_0_4g") return MrmState::PULL_OVER;
+  if (text == "main_ecu_in_lane_stop_0_6g") return MrmState::EMERGENCY_STOP;
   // clang-format on
   return MrmState::NONE;
 }
