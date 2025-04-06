@@ -38,15 +38,17 @@ namespace autoware::command_mode_types
 using CommandModeStatusAdapter = rclcpp::TypeAdapter<
   autoware::command_mode_types::CommandModeStatus, tier4_system_msgs::msg::CommandModeStatus>;
 
+tier4_system_msgs::msg::CommandModeStatus to_msg(const CommandModeStatus & status);
+tier4_system_msgs::msg::CommandModeStatusItem to_msg(const CommandModeStatusItem & item);
+uint8_t to_tri_state(const TriState & state);
+uint8_t to_mrm_state(const MrmState & state);
+uint8_t to_request_phase(const RequestPhase & phase);
+
 CommandModeStatus from_msg(const tier4_system_msgs::msg::CommandModeStatus & status);
 CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusItem & item);
-TriState from_msg_tri_state(const uint8_t msg);
-MrmState from_msg_mrm_state(const uint8_t msg);
-RequestPhase from_msg_request_phase(const uint8_t msg);
-
-uint8_t convert_tri_state(const TriState & state);
-uint8_t convert_mrm_state(const MrmState & state);
-uint8_t convert_request_phase(const RequestPhase & phase);
+TriState from_tri_state(const uint8_t msg);
+MrmState from_mrm_state(const uint8_t msg);
+RequestPhase from_request_phase(const uint8_t msg);
 
 }  // namespace autoware::command_mode_types
 
