@@ -12,7 +12,7 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "command_mode_status.hpp"
+#include "command_mode_status_table.hpp"
 
 #include <string>
 #include <vector>
@@ -20,14 +20,14 @@
 namespace autoware::command_mode_decider
 {
 
-void CommandModeStatusWrapper::init(const std::vector<std::string> & modes)
+void CommandModeStatusTable::init(const std::vector<std::string> & modes)
 {
   for (const auto & mode : modes) {
     command_mode_status_[mode] = CommandModeStatusItem();
   }
 }
 
-bool CommandModeStatusWrapper::ready() const
+bool CommandModeStatusTable::ready() const
 {
   for (const auto & [mode, item] : command_mode_status_) {
     if (item.mode.empty()) return false;
@@ -35,7 +35,7 @@ bool CommandModeStatusWrapper::ready() const
   return true;
 }
 
-void CommandModeStatusWrapper::set(const CommandModeStatusItem & item)
+void CommandModeStatusTable::set(const CommandModeStatusItem & item)
 {
   const auto iter = command_mode_status_.find(item.mode);
   if (iter != command_mode_status_.end()) {
@@ -43,7 +43,7 @@ void CommandModeStatusWrapper::set(const CommandModeStatusItem & item)
   }
 }
 
-const CommandModeStatusItem & CommandModeStatusWrapper::get(const std::string & mode) const
+const CommandModeStatusItem & CommandModeStatusTable::get(const std::string & mode) const
 {
   const auto iter = command_mode_status_.find(mode);
   if (iter != command_mode_status_.end()) {
