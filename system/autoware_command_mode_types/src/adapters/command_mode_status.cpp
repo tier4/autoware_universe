@@ -47,6 +47,8 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
 
   custom.state = from_msg_tri_state(item.state);
   custom.mrm = from_msg_mrm_state(item.mrm);
+  custom.transition_state = from_msg_tri_state(item.transition_state);
+  custom.gate_state = from_msg_tri_state(item.gate_state);
   custom.request_phase = from_msg_request_phase(item.request_phase);
   custom.current_phase = from_msg_request_phase(item.current_phase);
 
@@ -55,7 +57,6 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
   custom.transition_available = item.transition_available;
   custom.transition_completed = item.transition_completed;
 
-  custom.command_mode_state = from_msg_tri_state(item.command_mode_state);
   custom.vehicle_gate_state = from_msg_tri_state(item.vehicle_gate_state);
   custom.network_gate_state = from_msg_tri_state(item.network_gate_state);
   custom.control_gate_state = from_msg_tri_state(item.control_gate_state);
@@ -97,12 +98,11 @@ RequestPhase from_msg_request_phase(const uint8_t msg)
   // clang-format off
   using Message = tier4_system_msgs::msg::CommandModeStatusItem;
   switch (msg) {
-    case Message::NO_REQUEST:   return RequestPhase::NoRequest;
-    case Message::COMMAND_MODE: return RequestPhase::CommandMode;
-    case Message::VEHICLE_GATE: return RequestPhase::VehicleGate;
-    case Message::NETWORK_GATE: return RequestPhase::NetworkGate;
+    case Message::NOT_SELECTED: return RequestPhase::NotSelected;
     case Message::CONTROL_GATE: return RequestPhase::ControlGate;
-    default:                    return RequestPhase::NoRequest;
+    case Message::NETWORK_GATE: return RequestPhase::NetworkGate;
+    case Message::VEHICLE_GATE: return RequestPhase::VehicleGate;
+    default:                    return RequestPhase::NotSelected;
   }
   // clang-format on
 }
@@ -139,11 +139,10 @@ uint8_t convert_request_phase(const RequestPhase & phase)
   // clang-format off
   using Message = tier4_system_msgs::msg::CommandModeStatusItem;
   switch (phase) {
-    case RequestPhase::NoRequest:   return Message::NO_REQUEST;
-    case RequestPhase::CommandMode: return Message::COMMAND_MODE;
-    case RequestPhase::VehicleGate: return Message::VEHICLE_GATE;
-    case RequestPhase::NetworkGate: return Message::NETWORK_GATE;
+    case RequestPhase::NotSelected: return Message::NOT_SELECTED;
     case RequestPhase::ControlGate: return Message::CONTROL_GATE;
+    case RequestPhase::NetworkGate: return Message::NETWORK_GATE;
+    case RequestPhase::VehicleGate: return Message::VEHICLE_GATE;
     default:                        return Message::UNDEFINED;
   }
   // clang-format on

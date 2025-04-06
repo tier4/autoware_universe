@@ -2,6 +2,7 @@
   ros__parameters:
     update_rate: 10.0
     request_timeout: 1.0
+    initial_autoware_control: true
     initial_operation_mode: stop
     command_modes:
       - manual

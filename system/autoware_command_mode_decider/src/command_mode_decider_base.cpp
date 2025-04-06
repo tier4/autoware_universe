@@ -31,16 +31,20 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 
   is_modes_ready_ = false;
   command_mode_status_.init(declare_parameter<std::vector<std::string>>("command_modes"));
-
-  const auto initial_operation_mode = declare_parameter<std::string>("initial_operation_mode");
-  system_request_.autoware_control = true;
-  system_request_.operation_mode = initial_operation_mode;
+  system_request_.autoware_control = declare_parameter<bool>("initial_autoware_control");
+  system_request_.operation_mode = declare_parameter<std::string>("initial_operation_mode");
   system_request_.mrm = "";
   foreground_request_ = "";
   background_request_ = "";
   request_mode_ = "";
-  current_mode_ = "";
   request_stamp_ = std::nullopt;
+
+  temporary_mode_ = "";
+  confirmed_mode_ = "";
+  temporary_operator_.operation_mode = "";
+  confirmed_operator_.operation_mode = "";
+  temporary_operator_.autoware_control = true;
+  confirmed_operator_.autoware_control = true;
 
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -110,6 +114,25 @@ void CommandModeDeciderBase::update()
   sync_command_mode();
   publish_operation_mode_state();
   publish_mrm_state();
+
+  for (const auto & [mode, status] : command_mode_status_) {
+    bool is_confirmed = status.current_phase == RequestPhase::VehicleGate;
+    bool is_temporary = status.current_phase == RequestPhase::VehicleGate;
+    if (is_confirmed) {
+      if (mode != confirmed_mode_) {
+        RCLCPP_INFO_STREAM(
+          get_logger(), "confirmed mode changed: " << confirmed_mode_ << " -> " << mode);
+      }
+      confirmed_mode_ = mode;
+    }
+    if (is_confirmed || is_temporary) {
+      if (mode != temporary_mode_) {
+        RCLCPP_INFO_STREAM(
+          get_logger(), "temporary mode changed: " << temporary_mode_ << " -> " << mode);
+      }
+      temporary_mode_ = mode;
+    }
+  }
 }
 
 void CommandModeDeciderBase::update_command_mode()
@@ -144,7 +167,7 @@ void CommandModeDeciderBase::sync_command_mode()
 
   if (!foreground_request_reflected) {
     const auto status = command_mode_status_.get(foreground_request_);
-    foreground_request_reflected = status.request_phase == RequestPhase::CommandMode;
+    foreground_request_reflected = status.request_phase == RequestPhase::VehicleGate;
   }
   if (!background_request_reflected) {
     const auto status = command_mode_status_.get(background_request_);
@@ -185,8 +208,8 @@ void CommandModeDeciderBase::publish_operation_mode_state()
   };
   OperationModeState state;
   state.stamp = now();
-  state.mode = command_to_operation_mode(system_request_.operation_mode);
-  state.is_autoware_control_enabled = system_request_.autoware_control;
+  state.mode = command_to_operation_mode(temporary_operator_.operation_mode);
+  state.is_autoware_control_enabled = temporary_operator_.autoware_control;
   state.is_in_transition = (temporary_operator_ != confirmed_operator_);
   state.is_stop_mode_available = is_transition_available("stop");
   state.is_autonomous_mode_available = is_transition_available("autonomous");
@@ -209,7 +232,7 @@ void CommandModeDeciderBase::publish_mrm_state()
     }
     // clang-format on
   };
-  const auto status = command_mode_status_.get(current_mode_);
+  const auto status = command_mode_status_.get(temporary_mode_);
   MrmState state;
   state.stamp = now();
   state.state = convert(status.mrm);

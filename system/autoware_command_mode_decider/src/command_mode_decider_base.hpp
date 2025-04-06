@@ -109,8 +109,10 @@ private:
   std::string foreground_request_;
   std::string background_request_;
   std::string request_mode_;
-  std::string current_mode_;
   std::optional<rclcpp::Time> request_stamp_;
+
+  std::string temporary_mode_;
+  std::string confirmed_mode_;
   OperatorStatus temporary_operator_;
   OperatorStatus confirmed_operator_;
 };
