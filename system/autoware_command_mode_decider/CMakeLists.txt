@@ -6,7 +6,7 @@ autoware_package()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   "src/command_mode_conversion.cpp"
-  "src/command_mode_status.cpp"
+  "src/command_mode_status_table.cpp"
   "src/command_mode_decider_base.cpp"
   "src/command_mode_decider.cpp"
 )

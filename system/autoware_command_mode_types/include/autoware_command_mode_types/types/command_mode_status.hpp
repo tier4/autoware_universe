@@ -12,25 +12,50 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__COMMAND_STATUS_HPP_
-#define COMMON__COMMAND_STATUS_HPP_
+#ifndef AUTOWARE_COMMAND_MODE_TYPES__TYPES__COMMAND_MODE_STATUS_HPP_
+#define AUTOWARE_COMMAND_MODE_TYPES__TYPES__COMMAND_MODE_STATUS_HPP_
 
-#include <autoware_command_mode_types/types/command_mode_status.hpp>
+#include <rclcpp/time.hpp>
 
 #include <string>
+#include <vector>
 
-namespace autoware::command_mode_switcher
+namespace autoware::command_mode_types
 {
 
-using command_mode_types::MrmState;
-using command_mode_types::RequestStage;
-using command_mode_types::TriState;
+enum class TriState {
+  Disabled,
+  Enabled,
+  Transition,
+};
 
-struct CommandStatus
+enum class MrmState {
+  Normal,
+  Operating,
+  Succeeded,
+  Failed,
+};
+
+enum class RequestStage {
+  NoRequest,
+  CommandMode,
+  VehicleGate,
+  NetworkGate,
+  ControlGate,
+};
+
+struct CommandModeStatusItem
 {
+  std::string mode;
+
   TriState state;
   MrmState mrm;
   RequestStage request;
+
+  bool mode_continuable;
+  bool mode_available;
+  bool transition_available;
+  bool transition_completed;
 
   TriState command_mode_state;
   TriState vehicle_gate_state;
@@ -38,17 +63,14 @@ struct CommandStatus
   TriState control_gate_state;
   TriState source_state;
   TriState source_group;
-
-  bool mode_continuable;
-  bool mode_available;
-  bool transition_available;
-  bool transition_completed;
 };
 
-// For internal use.
-TriState to_tri_state(bool state);
-TriState update_main_state(const CommandStatus & status);
+struct CommandModeStatus
+{
+  rclcpp::Time stamp;
+  std::vector<CommandModeStatusItem> items;
+};
 
-}  // namespace autoware::command_mode_switcher
+}  // namespace autoware::command_mode_types
 
-#endif  // COMMON__COMMAND_STATUS_HPP_
+#endif  // AUTOWARE_COMMAND_MODE_TYPES__TYPES__COMMAND_MODE_STATUS_HPP_
