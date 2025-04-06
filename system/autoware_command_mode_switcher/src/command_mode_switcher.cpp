@@ -132,15 +132,15 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 
   // Update request status.
   for (const auto & command : commands_) {
-    command->status.request_phase = RequestPhase::NotSelected;
+    command->status.request_phase = GateType::NotSelected;
     command->status.transition_state = TriState::Disabled;
   }
   if (foreground_) {
-    foreground_->status.request_phase = RequestPhase::VehicleGate;
+    foreground_->status.request_phase = GateType::VehicleGate;
     foreground_->status.transition_state = TriState::Transition;
   }
   if (background_) {
-    background_->status.request_phase = RequestPhase::ControlGate;
+    background_->status.request_phase = GateType::ControlGate;
     background_->status.transition_state = TriState::Transition;
   }
   RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.foreground << " " << msg.background);
@@ -161,7 +161,7 @@ void CommandModeSwitcher::update()
     auto & plugin = command->plugin;
     status.mrm = plugin->update_mrm_state();
     status.source_state =
-      plugin->update_source_state(status.request_phase != RequestPhase::NotSelected);
+      plugin->update_source_state(status.request_phase != GateType::NotSelected);
     status.control_gate_state = to_tri_state(control_gate_interface_.is_selected(*plugin));
     status.vehicle_gate_state = to_tri_state(vehicle_gate_interface_.is_selected(*plugin));
     status.mode_continuable = plugin->get_mode_continuable();
@@ -182,7 +182,7 @@ void CommandModeSwitcher::update()
     const auto source_count = source_group_count[plugin->source_name()];
     status.source_group = source_count <= 1 ? TriState::Enabled : TriState::Disabled;
     status.current_phase = update_current_phase(status);  // Depends on the source group.
-    status.gate_state = update_gate_state(status);        // Depends on the current phase.
+    status.gate_state = update_gate_state(status);        // Depends on the source group.
     status.mode_state = update_mode_state(status);        // Depends on the gate state.
   }
 

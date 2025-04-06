@@ -24,8 +24,8 @@ Command::Command(std::shared_ptr<CommandPlugin> plugin) : plugin(plugin)
   status.mode_state = TriState::Disabled;
   status.gate_state = TriState::Disabled;
   status.mrm = MrmState::Normal;
-  status.request_phase = RequestPhase::NotSelected;
-  status.current_phase = RequestPhase::NotSelected;
+  status.request_phase = GateType::NotSelected;
+  status.current_phase = GateType::NotSelected;
 
   status.mode_continuable = false;
   status.mode_available = false;
