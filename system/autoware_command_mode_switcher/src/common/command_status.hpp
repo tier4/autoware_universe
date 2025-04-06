@@ -27,10 +27,9 @@ using command_mode_types::MrmState;
 using command_mode_types::RequestPhase;
 using command_mode_types::TriState;
 
-// For internal use.
-TriState to_tri_state(bool state);
-TriState update_main_state(const CommandStatus & status);
 RequestPhase update_current_phase(const CommandStatus & status);
+TriState update_gate_state(const CommandStatus & status);
+TriState update_mode_state(const CommandStatus & status);
 
 }  // namespace autoware::command_mode_switcher
 

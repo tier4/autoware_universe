@@ -19,11 +19,6 @@
 namespace autoware::command_mode_switcher
 {
 
-TriState to_tri_state(bool state)
-{
-  return state ? TriState::Enabled : TriState::Disabled;
-}
-
 TriState merge_state(const TriState & s1, const TriState & s2)
 {
   if (s1 == TriState::Disabled && s2 == TriState::Disabled) return TriState::Disabled;
@@ -34,6 +29,24 @@ TriState merge_state(const TriState & s1, const TriState & s2)
 TriState update_main_state(const CommandStatus & status)
 {
   TriState state = merge_state(status.transition_state, status.source_state);
+  switch (status.request_phase) {
+    case RequestPhase::VehicleGate:
+      state = merge_state(state, status.vehicle_gate_state);  // fall-through
+    case RequestPhase::NetworkGate:
+      state = merge_state(state, status.network_gate_state);  // fall-through
+    case RequestPhase::ControlGate:
+      state = merge_state(state, status.source_group);
+      state = merge_state(state, status.control_gate_state);
+      break;
+    case RequestPhase::NotSelected:
+      break;
+  }
+  return state;
+}
+
+TriState update_gate_state(const CommandStatus & status)
+{
+  TriState state = status.source_state);
   switch (status.request_phase) {
     case RequestPhase::VehicleGate:
       state = merge_state(state, status.vehicle_gate_state);  // fall-through

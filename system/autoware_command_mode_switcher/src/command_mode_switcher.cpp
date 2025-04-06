@@ -152,7 +152,10 @@ void CommandModeSwitcher::update()
   // TODO(Takagi, Isamu): Check call rate.
   if (!is_ready_) return;
 
-  // NOTE: Update local states first since global states depend on them.
+  // NOTE: Update the source state first since the source group state depends on it.
+  const auto to_tri_state = [](bool state) {
+    return state ? TriState::Enabled : TriState::Disabled;
+  };
   for (const auto & command : commands_) {
     auto & status = command->status;
     auto & plugin = command->plugin;
@@ -167,19 +170,20 @@ void CommandModeSwitcher::update()
     status.transition_completed = plugin->get_transition_completed();
   }
 
+  // Within the source group, all sources except for the active must be disabled.
   std::unordered_map<std::string, int> source_group_count;
   for (const auto & command : commands_) {
     const auto uses = command->status.source_state != TriState::Disabled;
     source_group_count[command->plugin->source_name()] += uses ? 1 : 0;
   }
-
   for (const auto & command : commands_) {
     auto & status = command->status;
     auto & plugin = command->plugin;
     const auto source_count = source_group_count[plugin->source_name()];
     status.source_group = source_count <= 1 ? TriState::Enabled : TriState::Disabled;
-    status.state = update_main_state(status);
-    status.current_phase = update_current_phase(status);
+    status.current_phase = update_current_phase(status);  // Depends on the source group.
+    status.gate_state = update_gate_state(status);        // Depends on the current phase.
+    status.mode_state = update_mode_state(status);        // Depends on the gate state.
   }
 
   handle_foreground_transition();
