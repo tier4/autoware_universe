@@ -28,6 +28,10 @@ public:
   std::string mode_name() const override { return "main_ecu_in_lane_stop_0_6g"; }
   std::string source_name() const override { return "in_lane_stop"; }
   bool autoware_control() const override { return true; }
+  void initialize() override;
+
+  bool get_transition_available() override { return true; }
+  bool get_transition_completed() override { return true; }
 };
 
 }  // namespace autoware::command_mode_switcher
