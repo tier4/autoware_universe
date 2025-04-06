@@ -26,54 +26,42 @@ TriState merge_state(const TriState & s1, const TriState & s2)
   return TriState::Transition;
 };
 
-TriState update_main_state(const CommandStatus & status)
+TriState update_mode_state(const CommandStatus & status)
 {
-  TriState state = merge_state(status.transition_state, status.source_state);
-  switch (status.request_phase) {
-    case RequestPhase::VehicleGate:
-      state = merge_state(state, status.vehicle_gate_state);  // fall-through
-    case RequestPhase::NetworkGate:
-      state = merge_state(state, status.network_gate_state);  // fall-through
-    case RequestPhase::ControlGate:
-      state = merge_state(state, status.source_group);
-      state = merge_state(state, status.control_gate_state);
-      break;
-    case RequestPhase::NotSelected:
-      break;
-  }
-  return state;
+  return merge_state(status.gate_state, status.transition_state);
 }
 
 TriState update_gate_state(const CommandStatus & status)
 {
-  TriState state = status.source_state);
-  switch (status.request_phase) {
-    case RequestPhase::VehicleGate:
-      state = merge_state(state, status.vehicle_gate_state);  // fall-through
-    case RequestPhase::NetworkGate:
-      state = merge_state(state, status.network_gate_state);  // fall-through
-    case RequestPhase::ControlGate:
-      state = merge_state(state, status.source_group);
-      state = merge_state(state, status.control_gate_state);
-      break;
-    case RequestPhase::NotSelected:
-      break;
+  const bool is_vehicle_gate = status.request_phase == GateType::VehicleGate;
+  const bool is_network_gate = status.request_phase == GateType::NetworkGate;
+  const bool is_control_gate = status.request_phase == GateType::ControlGate;
+  TriState state = status.source_state;
+  if (is_vehicle_gate || is_network_gate || is_control_gate) {
+    state = merge_state(state, status.source_group);
+    state = merge_state(state, status.control_gate_state);
+  }
+  if (is_vehicle_gate || is_network_gate) {
+    state = merge_state(state, status.network_gate_state);
+  }
+  if (is_vehicle_gate) {
+    state = merge_state(state, status.vehicle_gate_state);
   }
   return state;
 }
 
-RequestPhase update_current_phase(const CommandStatus & status)
+GateType update_current_phase(const CommandStatus & status)
 {
   TriState state = TriState::Enabled;
-  state = merge_state(state, status.source_group);
   state = merge_state(state, status.source_state);
+  state = merge_state(state, status.source_group);
   state = merge_state(state, status.control_gate_state);
-  if (state != TriState::Enabled) return RequestPhase::NotSelected;
+  if (state != TriState::Enabled) return GateType::NotSelected;
   state = merge_state(state, status.network_gate_state);
-  if (state != TriState::Enabled) return RequestPhase::ControlGate;
+  if (state != TriState::Enabled) return GateType::ControlGate;
   state = merge_state(state, status.vehicle_gate_state);
-  if (state != TriState::Enabled) return RequestPhase::NetworkGate;
-  return RequestPhase::VehicleGate;
+  if (state != TriState::Enabled) return GateType::NetworkGate;
+  return GateType::VehicleGate;
 }
 
 }  // namespace autoware::command_mode_switcher

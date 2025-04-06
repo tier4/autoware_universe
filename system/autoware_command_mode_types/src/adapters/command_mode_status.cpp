@@ -57,8 +57,8 @@ tier4_system_msgs::msg::CommandModeStatusItem to_msg(const CommandModeStatusItem
   msg.mode_state = to_tri_state(item.mode_state);
   msg.gate_state = to_tri_state(item.gate_state);
   msg.mrm = to_mrm_state(item.mrm);
-  msg.request_phase = to_request_phase(item.request_phase);
-  msg.current_phase = to_request_phase(item.current_phase);
+  msg.request_phase = to_gate_type(item.request_phase);
+  msg.current_phase = to_gate_type(item.current_phase);
 
   msg.mode_continuable = item.mode_continuable;
   msg.mode_available = item.mode_available;
@@ -83,8 +83,8 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
   custom.mode_state = from_tri_state(item.mode_state);
   custom.gate_state = from_tri_state(item.gate_state);
   custom.mrm = from_mrm_state(item.mrm);
-  custom.request_phase = from_request_phase(item.request_phase);
-  custom.current_phase = from_request_phase(item.current_phase);
+  custom.request_phase = from_gate_type(item.request_phase);
+  custom.current_phase = from_gate_type(item.current_phase);
 
   custom.mode_continuable = item.mode_continuable;
   custom.mode_available = item.mode_available;
@@ -155,31 +155,32 @@ MrmState from_mrm_state(const uint8_t msg)
   // clang-format on
 }
 
-uint8_t to_request_phase(const RequestPhase & phase)
+uint8_t to_gate_type(const GateType & type)
 {
   // clang-format off
   using Message = tier4_system_msgs::msg::CommandModeStatusItem;
-  switch (phase) {
-    case RequestPhase::NotSelected: return Message::NOT_SELECTED;
-    case RequestPhase::ControlGate: return Message::CONTROL_GATE;
-    case RequestPhase::NetworkGate: return Message::NETWORK_GATE;
-    case RequestPhase::VehicleGate: return Message::VEHICLE_GATE;
-    default:                        return Message::UNDEFINED;
+  switch (type) {
+    case GateType::NotSelected: return Message::NOT_SELECTED;
+    case GateType::ControlGate: return Message::CONTROL_GATE;
+    case GateType::NetworkGate: return Message::NETWORK_GATE;
+    case GateType::VehicleGate: return Message::VEHICLE_GATE;
+    default:                    return Message::UNDEFINED;
   }
   // clang-format on
 }
 
-RequestPhase from_request_phase(const uint8_t msg)
+GateType from_gate_type(const uint8_t msg)
 {
   // clang-format off
   using Message = tier4_system_msgs::msg::CommandModeStatusItem;
   switch (msg) {
-    case Message::NOT_SELECTED: return RequestPhase::NotSelected;
-    case Message::CONTROL_GATE: return RequestPhase::ControlGate;
-    case Message::NETWORK_GATE: return RequestPhase::NetworkGate;
-    case Message::VEHICLE_GATE: return RequestPhase::VehicleGate;
-    default:                    return RequestPhase::NotSelected;
+    case Message::NOT_SELECTED: return GateType::NotSelected;
+    case Message::CONTROL_GATE: return GateType::ControlGate;
+    case Message::NETWORK_GATE: return GateType::NetworkGate;
+    case Message::VEHICLE_GATE: return GateType::VehicleGate;
+    default:                    return GateType::NotSelected;
   }
   // clang-format on
 }
+
 }  // namespace autoware::command_mode_types

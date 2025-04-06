@@ -36,7 +36,7 @@ enum class MrmState {
   Failed,
 };
 
-enum class RequestPhase {
+enum class GateType {
   NotSelected,
   ControlGate,
   NetworkGate,
@@ -50,8 +50,8 @@ struct CommandModeStatusItem
   TriState mode_state;
   TriState gate_state;
   MrmState mrm;
-  RequestPhase request_phase;
-  RequestPhase current_phase;
+  GateType request_phase;
+  GateType current_phase;
 
   bool mode_continuable;
   bool mode_available;
@@ -64,6 +64,9 @@ struct CommandModeStatusItem
   TriState control_gate_state;
   TriState source_state;
   TriState source_group;
+
+  bool check_mode_ready() const;
+  bool check_gate_ready(GateType gate) const;
 };
 
 struct CommandModeStatus
