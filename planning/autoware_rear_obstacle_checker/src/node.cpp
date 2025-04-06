@@ -14,12 +14,21 @@
 
 #include "node.hpp"
 
+#include "autoware/signal_processing/lowpass_filter_1d.hpp"
 #include "utils.hpp"
 
 #include <autoware_lanelet2_extension/visualization/visualization.hpp>
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/geometry/Polygon.h>
+#include <pcl/filters/crop_hull.h>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/point_types.h>
+#include <pcl/registration/gicp.h>
+#include <pcl/segmentation/extract_clusters.h>
+#include <pcl/surface/convex_hull.h>
 
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_eigen/tf2_eigen.h>
@@ -69,6 +78,8 @@ RearObstacleCheckerNode::RearObstacleCheckerNode(const rclcpp::NodeOptions & nod
 
 void RearObstacleCheckerNode::take_data()
 {
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+
   // route
   {
     const auto msg = sub_route_.take_data();
@@ -107,20 +118,23 @@ void RearObstacleCheckerNode::take_data()
   // pointcloud
   {
     const auto msg = sub_pointcloud_.take_data();
-    if (msg && !msg->data.empty()) {
-      geometry_msgs::msg::TransformStamped transform_stamped;
-      try {
-        transform_stamped = tf_buffer_.lookupTransform(
-          "map", msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
-      } catch (tf2::TransformException & e) {
-        RCLCPP_WARN(get_logger(), "no transform found for no_ground_pointcloud: %s", e.what());
-      }
+    if (msg) {
+      header_ptr_ = std::make_shared<const std_msgs::msg::Header>(msg->header);
+      pointcloud_ = std::make_shared<PointCloud>();
 
-      Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.transform).cast<float>();
-      pcl::fromROSMsg(*msg, pointcloud_);
-      autoware_utils::transform_pointcloud(pointcloud_, pointcloud_, isometry);
-    } else {
-      pointcloud_.clear();
+      if (!msg->data.empty()) {
+        geometry_msgs::msg::TransformStamped transform_stamped;
+        try {
+          transform_stamped = tf_buffer_.lookupTransform(
+            "map", msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
+        } catch (tf2::TransformException & e) {
+          RCLCPP_WARN(get_logger(), "no transform found for no_ground_pointcloud: %s", e.what());
+        }
+
+        Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.transform).cast<float>();
+        pcl::fromROSMsg(*msg, *pointcloud_);
+        autoware_utils::transform_pointcloud(*pointcloud_, *pointcloud_, isometry);
+      }
     }
   }
 
@@ -164,6 +178,10 @@ bool RearObstacleCheckerNode::is_ready() const
   }
 
   if (!path_ptr_) {
+    return false;
+  }
+
+  if (!pointcloud_) {
     return false;
   }
 
@@ -229,9 +247,11 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
       autoware_utils::create_marker_color(1.0, 0.67, 0.0, 0.999)};
   }
 
+  const auto filtered = filter_pointcloud(pointcloud_);
+
   PredictedObjects objects_on_target_lane;
   PredictedObjects objects_filtered_by_class;
-  pcl::PointCloud<pcl::PointXYZ> obstacle_pointcloud;
+  PointCloudObjects pointcloud_objects;
 
   for (const auto & factor : factors_ptr_->factors) {
     if (p.scene_map.count(factor.module) == 0) {
@@ -272,27 +292,32 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
     }
 
     if (utils::should_check_pointcloud(factor, p)) {
-      time_keeper_->start_track("prepare_detection_area_for_pointcloud");
-      const auto detection_areas_for_pointcloud = utils::generate_detection_area_for_pointcloud(
-        factor, current_lanes, odometry_ptr_->pose.pose, odometry_ptr_->twist.twist.linear.x,
-        acceleration_ptr_->accel.accel.linear.x, route_handler_, vehicle_info_, p);
-      debug.detection_areas_for_pointcloud.insert(
-        debug.detection_areas_for_pointcloud.end(), detection_areas_for_pointcloud.begin(),
-        detection_areas_for_pointcloud.end());
-      time_keeper_->end_track("prepare_detection_area_for_pointcloud");
+      time_keeper_->start_track("get_pointcloud_objects");
+      const auto objects = get_pointcloud_objects(factor, current_lanes);
+      pointcloud_objects.insert(pointcloud_objects.end(), objects.begin(), objects.end());
+      time_keeper_->end_track("get_pointcloud_objects");
 
-      time_keeper_->start_track("filter_pointcloud");
-      obstacle_pointcloud += utils::filter_lost_object_pointcloud(
-        objects_on_target_lane,
-        utils::get_obstacle_points(detection_areas_for_pointcloud, pointcloud_),
-        p.common.pointcloud.object_buffer);
-      time_keeper_->end_track("filter_pointcloud");
+      // time_keeper_->start_track("prepare_detection_area_for_pointcloud");
+      // const auto detection_areas_for_pointcloud = utils::generate_detection_area_for_pointcloud(
+      //   factor, current_lanes, odometry_ptr_->pose.pose, odometry_ptr_->twist.twist.linear.x,
+      //   acceleration_ptr_->accel.accel.linear.x, route_handler_, vehicle_info_, p);
+      // debug.detection_areas_for_pointcloud.insert(
+      //   debug.detection_areas_for_pointcloud.end(), detection_areas_for_pointcloud.begin(),
+      //   detection_areas_for_pointcloud.end());
+      // time_keeper_->end_track("prepare_detection_area_for_pointcloud");
+
+      // time_keeper_->start_track("filter_pointcloud");
+      // obstacle_pointcloud += utils::filter_lost_object_pointcloud(
+      //   objects_on_target_lane,
+      //   utils::get_obstacle_points(detection_areas_for_pointcloud, *pointcloud_),
+      //   p.common.pointcloud.object_buffer);
+      // time_keeper_->end_track("filter_pointcloud");
     }
   }
 
   {
     const auto now = this->now();
-    if (is_safe(objects_filtered_by_class, debug) && is_safe(obstacle_pointcloud, debug)) {
+    if (is_safe(objects_filtered_by_class, debug) && is_safe(pointcloud_objects, debug)) {
       last_safe_time_ = now;
       if ((now - last_unsafe_time_).seconds() > p.common.off_time_buffer) {
         return true;
@@ -312,13 +337,35 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
   return false;
 }
 
-bool RearObstacleCheckerNode::is_safe(
-  const pcl::PointCloud<pcl::PointXYZ> & pointcloud, DebugData & debug) const
+bool RearObstacleCheckerNode::is_safe(const PointCloudObjects & objects, DebugData & debug) const
 {
-  for (const auto & p : pointcloud) {
-    debug.obstacle_pointcloud.push_back(autoware_utils::create_point(p.x, p.y, p.z));
+  const auto p = param_listener_->get_params();
+
+  const auto delay_ego = p.common.prediction.object.reaction_time;
+  const auto max_deceleration_ego = p.common.prediction.ego.max_deceleration;
+  const auto max_deceleration_object = p.common.prediction.object.max_deceleration;
+  const auto current_velocity = odometry_ptr_->twist.twist.linear.x;
+  const auto current_acceleration = acceleration_ptr_->accel.accel.linear.x;
+
+  for (const auto & object : objects) {
+    const auto stop_distance_object =
+      0.5 * std::pow(object.velocity, 2.0) / std::abs(max_deceleration_object);
+    const auto stop_distance_ego =
+      current_velocity * delay_ego + 0.5 * current_acceleration * std::pow(delay_ego, 2.0) +
+      0.5 * std::pow(current_velocity + current_acceleration * delay_ego, 2.0) /
+        std::abs(max_deceleration_ego);
+
+    const auto rss_distance = stop_distance_object - stop_distance_ego;
+    if (rss_distance > object.relative_distance) {
+      return false;
+    }
   }
-  return pointcloud.points.empty();
+
+  {
+    debug.pointcloud_objects = objects;
+  }
+
+  return true;
 }
 
 bool RearObstacleCheckerNode::is_safe(const PredictedObjects & objects, DebugData & debug) const
@@ -379,6 +426,287 @@ bool RearObstacleCheckerNode::is_safe(const PredictedObjects & objects, DebugDat
   return true;
 }
 
+auto RearObstacleCheckerNode::filter_pointcloud(const PointCloud::Ptr in) const -> PointCloud::Ptr
+{
+  auto out = in;
+  const auto z_coordinate = odometry_ptr_->pose.pose.position.z;
+  // apply z-axis filter for removing False Positive points
+  constexpr double detection_range_min_height_ = 0.0;
+  constexpr double detection_range_max_height_margin_ = 0.0;
+  pcl::PassThrough<pcl::PointXYZ> height_filter;
+  height_filter.setInputCloud(out);
+  height_filter.setFilterFieldName("z");
+  height_filter.setFilterLimits(
+    detection_range_min_height_ + z_coordinate,
+    vehicle_info_.vehicle_height_m + detection_range_max_height_margin_ + z_coordinate);
+  height_filter.filter(*out);
+  pcl::VoxelGrid<pcl::PointXYZ> filter;
+  filter.setInputCloud(out);
+  constexpr double voxel_grid_x_ = 0.1;
+  constexpr double voxel_grid_y_ = 0.1;
+  constexpr double voxel_grid_z_ = 0.5;
+  filter.setLeafSize(voxel_grid_x_, voxel_grid_y_, voxel_grid_z_);
+  filter.filter(*out);
+
+  return get_clustered_pointcloud(out);
+}
+
+auto RearObstacleCheckerNode::get_clustered_pointcloud(const PointCloud::Ptr in) const
+  -> PointCloud::Ptr
+{
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+  const auto points_belonging_to_cluster_hulls = std::make_shared<PointCloud>();
+  // eliminate noisy points by only considering points belonging to clusters of at least a certain
+  // size
+  if (in->empty()) return std::make_shared<PointCloud>();
+  const std::vector<pcl::PointIndices> cluster_indices = std::invoke([&]() {
+    std::vector<pcl::PointIndices> cluster_idx;
+    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
+    tree->setInputCloud(in);
+    pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+    constexpr double cluster_tolerance_ = 0.15;
+    constexpr size_t minimum_cluster_size_ = 10;
+    constexpr size_t maximum_cluster_size_ = 10000;
+    ec.setClusterTolerance(cluster_tolerance_);
+    ec.setMinClusterSize(minimum_cluster_size_);
+    ec.setMaxClusterSize(maximum_cluster_size_);
+    ec.setSearchMethod(tree);
+    ec.setInputCloud(in);
+    ec.extract(cluster_idx);
+    return cluster_idx;
+  });
+  std::vector<autoware_utils::Polygon3d> hull_polygons;
+  for (const auto & indices : cluster_indices) {
+    PointCloud::Ptr cluster(new PointCloud);
+    bool cluster_surpasses_threshold_height{false};
+    constexpr double cluster_minimum_height_ = 0.1;
+    for (const auto & index : indices.indices) {
+      const auto & p = (*in)[index];
+      cluster_surpasses_threshold_height = (cluster_surpasses_threshold_height)
+                                             ? cluster_surpasses_threshold_height
+                                             : (p.z > cluster_minimum_height_);
+      cluster->push_back(p);
+    }
+    if (!cluster_surpasses_threshold_height) continue;
+    // Make a 2d convex hull for the objects
+    pcl::ConvexHull<pcl::PointXYZ> hull;
+    hull.setDimension(2);
+    hull.setInputCloud(cluster);
+    std::vector<pcl::Vertices> polygons;
+    PointCloud::Ptr surface_hull(new PointCloud);
+    hull.reconstruct(*surface_hull, polygons);
+    autoware_utils::Polygon3d hull_polygon;
+    for (const auto & p : *surface_hull) {
+      points_belonging_to_cluster_hulls->push_back(p);
+      // if (publish_debug_markers_) {
+      //   const auto geom_point = autoware_utils::create_point(p.x, p.y, p.z);
+      //   appendPointToPolygon(hull_polygon, geom_point);
+      // }
+    }
+    hull_polygons.push_back(hull_polygon);
+  }
+  return points_belonging_to_cluster_hulls;
+  // if (publish_debug_markers_ && !hull_polygons.empty()) {
+  //   constexpr colorTuple debug_color = {255.0 / 256.0, 51.0 / 256.0, 255.0 / 256.0, 0.999};
+  //   addClusterHullMarkers(now(), hull_polygons, debug_color, "hulls", debug_markers);
+  // }
+}
+
+auto RearObstacleCheckerNode::get_pointcloud_objects(
+  const PlanningFactor & factor, const lanelet::ConstLanelets & current_lanes) -> PointCloudObjects
+{
+  const auto p = param_listener_->get_params();
+
+  const auto config = p.scene_map.at(factor.module);
+
+  PointCloudObjects objects;
+
+  constexpr double v_object = 10.0;
+
+  const auto delay_ego = p.common.prediction.object.reaction_time;
+  const auto max_deceleration_ego = p.common.prediction.ego.max_deceleration;
+  const auto max_deceleration_object = p.common.prediction.object.max_deceleration;
+  const auto current_velocity = odometry_ptr_->twist.twist.linear.x;
+  const auto current_acceleration = acceleration_ptr_->accel.accel.linear.x;
+
+  const auto stop_distance_object =
+    0.5 * std::pow(v_object, 2.0) / std::abs(max_deceleration_object);
+  const auto stop_distance_ego =
+    current_velocity * delay_ego + 0.5 * current_acceleration * std::pow(delay_ego, 2.0) +
+    0.5 * std::pow(current_velocity + current_acceleration * delay_ego, 2.0) /
+      std::abs(max_deceleration_ego);
+
+  const auto forward_distance =
+    p.common.range.pointcloud.forward + vehicle_info_.max_longitudinal_offset_m;
+  const auto backward_distance = p.common.range.pointcloud.backward -
+                                 vehicle_info_.min_longitudinal_offset_m +
+                                 std::max(0.0, stop_distance_object - stop_distance_ego);
+
+  if (
+    factor.behavior == PlanningFactor::SHIFT_LEFT || factor.behavior == PlanningFactor::TURN_LEFT) {
+    if (config.adjacent_lane) {
+      const auto pointcloud_objects =
+        get_pointcloud_objects(current_lanes, false, forward_distance, backward_distance);
+      objects.insert(objects.end(), pointcloud_objects.begin(), pointcloud_objects.end());
+    }
+
+    // if (config.current_lane) {
+    //   const auto half_lanes = [&current_lanes, &vehicle_info]() {
+    //     lanelet::ConstLanelets ret{};
+    //     for (const auto & lane : current_lanes) {
+    //       ret.push_back(
+    //         utils::generate_half_lanelet(lane, false, 0.5 * vehicle_info.vehicle_width_m));
+    //     }
+    //     return ret;
+    //   }();
+    //   detection_polygons.push_back(utils::generate_detection_polygon(
+    //     half_lanes, ego_pose, forward_distance, backward_distance));
+    // }
+  }
+
+  if (
+    factor.behavior == PlanningFactor::SHIFT_RIGHT ||
+    factor.behavior == PlanningFactor::TURN_RIGHT) {
+    if (config.adjacent_lane) {
+      const auto pointcloud_objects =
+        get_pointcloud_objects(current_lanes, true, forward_distance, backward_distance);
+      objects.insert(objects.end(), pointcloud_objects.begin(), pointcloud_objects.end());
+    }
+
+    // if (config.current_lane) {
+    //   const auto half_lanes = [&current_lanes, &vehicle_info]() {
+    //     lanelet::ConstLanelets ret{};
+    //     for (const auto & lane : current_lanes) {
+    //       ret.push_back(
+    //         utils::generate_half_lanelet(lane, true, 0.5 * vehicle_info.vehicle_width_m));
+    //     }
+    //     return ret;
+    //   }();
+    //   detection_polygons.push_back(utils::generate_detection_polygon(
+    //     half_lanes, ego_pose, forward_distance, backward_distance));
+    // }
+  }
+
+  return objects;
+}
+
+auto RearObstacleCheckerNode::get_pointcloud_objects(
+  const lanelet::ConstLanelets & current_lanes, const bool is_right, const double forward_distance,
+  const double backward_distance) -> PointCloudObjects
+{
+  const auto ego_coordinate_on_arc =
+    lanelet::utils::getArcCoordinates(current_lanes, odometry_ptr_->pose.pose);
+
+  PointCloudObjects objects{};
+
+  lanelet::ConstLanelets connected_adjacent_lanes{};
+
+  double length = 0.0;
+  for (const auto & lane : current_lanes) {
+    const auto current_lane_length = lanelet::utils::getLaneletLength2d(lane);
+
+    length += current_lane_length;
+
+    const auto ego_to_furthest_point = length - ego_coordinate_on_arc.length;
+    const auto residual_distance = ego_to_furthest_point - forward_distance;
+
+    const auto opt_adjacent_lane = [&lane, &is_right, this]() {
+      return is_right ? route_handler_->getRightLanelet(lane, true, true)
+                      : route_handler_->getLeftLanelet(lane, true, true);
+    }();
+
+    if (opt_adjacent_lane.has_value()) {
+      connected_adjacent_lanes.push_back(opt_adjacent_lane.value());
+    }
+
+    if (!connected_adjacent_lanes.empty() && residual_distance > 0.0) {
+      const auto polygons_with_lane = utils::get_previous_polygons_with_lane_recursively(
+        connected_adjacent_lanes, residual_distance,
+        residual_distance + forward_distance + backward_distance, route_handler_);
+
+      auto opt_pointcloud_object = utils::get_pointcloud_object(
+        header_ptr_->stamp, pointcloud_, polygons_with_lane, route_handler_);
+
+      if (!opt_pointcloud_object.has_value()) {
+        return objects;
+      }
+
+      opt_pointcloud_object.value().relative_distance =
+        opt_pointcloud_object.value().absolute_distance - ego_to_furthest_point -
+        std::abs(vehicle_info_.min_longitudinal_offset_m);
+
+      if (history_.count(connected_adjacent_lanes.front().id()) == 0) {
+        history_.emplace(connected_adjacent_lanes.front().id(), opt_pointcloud_object.value());
+      } else {
+        const auto previous_data = history_.at(connected_adjacent_lanes.front().id());
+        const auto dx =
+          previous_data.relative_distance - opt_pointcloud_object.value().relative_distance;
+        const auto dt =
+          (opt_pointcloud_object.value().last_update_time - previous_data.last_update_time)
+            .seconds();
+
+        if (dt > 1e-6) {
+          opt_pointcloud_object.value().velocity =
+            odometry_ptr_->twist.twist.linear.x +
+            autoware::signal_processing::lowpassFilter(dx / dt, previous_data.velocity, 0.5);
+        } else {
+          opt_pointcloud_object.value().velocity = previous_data.velocity;
+        }
+
+        history_.at(connected_adjacent_lanes.front().id()) = opt_pointcloud_object.value();
+      }
+
+      objects.push_back(opt_pointcloud_object.value());
+
+      return objects;
+    }
+
+    if (!connected_adjacent_lanes.empty() && !opt_adjacent_lane.has_value()) {
+      const auto polygons_with_lane = utils::get_previous_polygons_with_lane_recursively(
+        connected_adjacent_lanes, 0.0,
+        ego_to_furthest_point - current_lane_length + backward_distance, route_handler_);
+
+      connected_adjacent_lanes.clear();
+
+      auto opt_pointcloud_object = utils::get_pointcloud_object(
+        header_ptr_->stamp, pointcloud_, polygons_with_lane, route_handler_);
+
+      if (!opt_pointcloud_object.has_value()) {
+        continue;
+      }
+
+      opt_pointcloud_object.value().relative_distance =
+        opt_pointcloud_object.value().absolute_distance - ego_to_furthest_point -
+        std::abs(vehicle_info_.min_longitudinal_offset_m);
+
+      if (history_.count(connected_adjacent_lanes.front().id()) == 0) {
+        history_.emplace(connected_adjacent_lanes.front().id(), opt_pointcloud_object.value());
+      } else {
+        const auto previous_data = history_.at(connected_adjacent_lanes.front().id());
+        const auto dx =
+          previous_data.relative_distance - opt_pointcloud_object.value().relative_distance;
+        const auto dt =
+          (opt_pointcloud_object.value().last_update_time - previous_data.last_update_time)
+            .seconds();
+
+        if (dt > 1e-6) {
+          opt_pointcloud_object.value().velocity =
+            odometry_ptr_->twist.twist.linear.x +
+            autoware::signal_processing::lowpassFilter(dx / dt, previous_data.velocity, 0.5);
+        } else {
+          opt_pointcloud_object.value().velocity = previous_data.velocity;
+        }
+
+        history_.at(connected_adjacent_lanes.front().id()) = opt_pointcloud_object.value();
+      }
+
+      objects.push_back(opt_pointcloud_object.value());
+    }
+  }
+
+  return objects;
+}
+
 void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
 {
   MarkerArray msg;
@@ -400,6 +728,8 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
   }
 
   {
+    add(
+      utils::create_pointcloud_object_marker_array(debug.pointcloud_objects, "pointcloud_objects"));
     add(utils::createPointsMarkerArray(debug.obstacle_pointcloud, "obstacle_pointcloud"));
     add(utils::create_polygon_marker_array(
       debug.detection_areas_for_pointcloud, "detection_areas_for_pointcloud",
@@ -407,7 +737,7 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
   }
 
   {
-    add(utils::showSafetyCheckInfo(debug.collision_check, "object_debug_info"));
+    // add(utils::showSafetyCheckInfo(debug.collision_check, "object_debug_info"));
     add(utils::showPredictedPath(debug.collision_check, "ego_predicted_path"));
     add(utils::showPolygon(debug.collision_check, "ego_and_target_polygon_relation"));
   }
