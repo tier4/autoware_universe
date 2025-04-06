@@ -48,7 +48,7 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
   // Interface with switcher nodes.
   pub_command_mode_request_ =
     create_publisher<CommandModeRequest>("~/command_mode/request", rclcpp::QoS(1));
-  sub_command_mode_status_ = create_subscription<CommandModeStatus>(
+  sub_command_mode_status_ = create_subscription<CommandModeStatusAdapter>(
     "~/command_mode/status", rclcpp::QoS(1).transient_local(),
     std::bind(&CommandModeDeciderBase::on_status, this, std::placeholders::_1));
 
@@ -144,11 +144,11 @@ void CommandModeDeciderBase::sync_command_mode()
 
   if (!foreground_request_reflected) {
     const auto status = command_mode_status_.get(foreground_request_);
-    foreground_request_reflected = status.request == CommandModeStatusItem::COMMAND_MODE;
+    foreground_request_reflected = status.request == RequestStage::CommandMode;
   }
   if (!background_request_reflected) {
     const auto status = command_mode_status_.get(background_request_);
-    background_request_reflected = status.request == CommandModeStatusItem::CONTROL_GATE;
+    background_request_reflected = status.request == RequestStage::ControlGate;
   }
 
   // Skip the request if mode is already requested or now requesting.
@@ -197,14 +197,15 @@ void CommandModeDeciderBase::publish_operation_mode_state()
 
 void CommandModeDeciderBase::publish_mrm_state()
 {
-  const auto convert = [](uint32_t item) {
+  using CommandModeMrmState = autoware::command_mode_types::MrmState;
+  const auto convert = [](const CommandModeMrmState state) {
     // clang-format off
-    switch (item) {
-      case CommandModeStatusItem::NORMAL:    return MrmState::NORMAL;
-      case CommandModeStatusItem::OPERATING: return MrmState::MRM_OPERATING;
-      case CommandModeStatusItem::SUCCEEDED: return MrmState::MRM_SUCCEEDED;
-      case CommandModeStatusItem::FAILED:    return MrmState::MRM_FAILED;
-      default:                               return MrmState::UNKNOWN;
+    switch (state) {
+      case CommandModeMrmState::Normal:    return MrmState::NORMAL;
+      case CommandModeMrmState::Operating: return MrmState::MRM_OPERATING;
+      case CommandModeMrmState::Succeeded: return MrmState::MRM_SUCCEEDED;
+      case CommandModeMrmState::Failed:    return MrmState::MRM_FAILED;
+      default:                             return MrmState::UNKNOWN;
     }
     // clang-format on
   };

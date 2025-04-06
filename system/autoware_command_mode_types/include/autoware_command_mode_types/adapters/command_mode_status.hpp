@@ -17,10 +17,32 @@
 
 #include "autoware_command_mode_types/types/command_mode_status.hpp"
 
-#include <tier4_system_msgs/msg/command_mode_status_item.hpp>
+#include <rclcpp/type_adapter.hpp>
+
+#include <tier4_system_msgs/msg/command_mode_status.hpp>
+
+template <>
+struct rclcpp::TypeAdapter<
+  autoware::command_mode_types::CommandModeStatus, tier4_system_msgs::msg::CommandModeStatus>
+{
+  using is_specialized = std::true_type;
+  using custom_type = autoware::command_mode_types::CommandModeStatus;
+  using ros_message_type = tier4_system_msgs::msg::CommandModeStatus;
+  static void convert_to_ros_message(const custom_type & custom, ros_message_type & ros);
+  static void convert_to_custom(const ros_message_type & ros, custom_type & custom);
+};
 
 namespace autoware::command_mode_types
 {
+
+using CommandModeStatusAdapter = rclcpp::TypeAdapter<
+  autoware::command_mode_types::CommandModeStatus, tier4_system_msgs::msg::CommandModeStatus>;
+
+CommandModeStatus from_msg(const tier4_system_msgs::msg::CommandModeStatus & status);
+CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusItem & item);
+TriState from_msg_tri_state(const uint8_t msg);
+MrmState from_msg_mrm_state(const uint8_t msg);
+RequestStage from_msg_request_stage(const uint8_t msg);
 
 uint8_t convert_tri_state(const TriState & state);
 uint8_t convert_mrm_state(const MrmState & state);

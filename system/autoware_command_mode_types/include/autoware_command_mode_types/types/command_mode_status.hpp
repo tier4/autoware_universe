@@ -15,6 +15,11 @@
 #ifndef AUTOWARE_COMMAND_MODE_TYPES__TYPES__COMMAND_MODE_STATUS_HPP_
 #define AUTOWARE_COMMAND_MODE_TYPES__TYPES__COMMAND_MODE_STATUS_HPP_
 
+#include <rclcpp/time.hpp>
+
+#include <string>
+#include <vector>
+
 namespace autoware::command_mode_types
 {
 
@@ -37,6 +42,33 @@ enum class RequestStage {
   VehicleGate,
   NetworkGate,
   ControlGate,
+};
+
+struct CommandModeStatusItem
+{
+  std::string mode;
+
+  TriState state;
+  MrmState mrm;
+  RequestStage request;
+
+  bool mode_continuable;
+  bool mode_available;
+  bool transition_available;
+  bool transition_completed;
+
+  TriState command_mode_state;
+  TriState vehicle_gate_state;
+  TriState network_gate_state;
+  TriState control_gate_state;
+  TriState source_state;
+  TriState source_group;
+};
+
+struct CommandModeStatus
+{
+  rclcpp::Time stamp;
+  std::vector<CommandModeStatusItem> items;
 };
 
 }  // namespace autoware::command_mode_types
