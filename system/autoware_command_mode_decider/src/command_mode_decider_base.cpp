@@ -185,9 +185,9 @@ void CommandModeDeciderBase::publish_operation_mode_state()
   };
   OperationModeState state;
   state.stamp = now();
-  state.mode = command_to_operation_mode(temporary_operator_.operation_mode);
-  state.is_autoware_control_enabled = temporary_operator_.autoware_control;
-  state.is_in_transition = (temporary_operator_ != confirmed_operator_);
+  state.mode = command_to_operation_mode(system_request_.operation_mode);
+  state.is_autoware_control_enabled = system_request_.autoware_control;
+  state.is_in_transition = request_stamp_.has_value();
   state.is_stop_mode_available = is_transition_available("stop");
   state.is_autonomous_mode_available = is_transition_available("autonomous");
   state.is_local_mode_available = is_transition_available("local");
@@ -209,7 +209,9 @@ void CommandModeDeciderBase::publish_mrm_state()
     }
     // clang-format on
   };
-  const auto status = command_mode_status_.get(current_mode_);
+
+  const auto status = command_mode_status_.get(
+    system_request_.autoware_control ? foreground_request_ : background_request_);
   MrmState state;
   state.stamp = now();
   state.state = convert(status.mrm);
