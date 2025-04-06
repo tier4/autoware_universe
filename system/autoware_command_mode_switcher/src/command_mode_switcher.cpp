@@ -66,8 +66,8 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
     command->plugin->initialize();
   }
 
-  pub_status_ =
-    create_publisher<CommandModeStatus>("~/command_mode/status", rclcpp::QoS(1).transient_local());
+  pub_status_ = create_publisher<CommandModeStatusAdapter>(
+    "~/command_mode/status", rclcpp::QoS(1).transient_local());
   sub_request_ = create_subscription<CommandModeRequest>(
     "~/command_mode/request", rclcpp::QoS(1),
     std::bind(&CommandModeSwitcher::on_request, this, std::placeholders::_1));
@@ -189,31 +189,10 @@ void CommandModeSwitcher::update()
 
 void CommandModeSwitcher::publish_command_mode_status()
 {
-  const auto convert = [](const Command & command) {
-    CommandModeStatusItem item;
-    item.mode = command.plugin->mode_name();
-    item.state = convert_tri_state(command.status.state);
-    item.mrm = convert_mrm_state(command.status.mrm);
-    item.transition_state = convert_tri_state(command.status.transition_state);
-    item.gate_state = convert_tri_state(command.status.gate_state);
-    item.request_phase = convert_request_phase(command.status.request_phase);
-    item.current_phase = convert_request_phase(command.status.current_phase);
-    item.vehicle_gate_state = convert_tri_state(command.status.vehicle_gate_state);
-    item.network_gate_state = convert_tri_state(command.status.network_gate_state);
-    item.control_gate_state = convert_tri_state(command.status.control_gate_state);
-    item.source_state = convert_tri_state(command.status.source_state);
-    item.source_group = convert_tri_state(command.status.source_group);
-    item.mode_continuable = command.status.mode_continuable;
-    item.mode_available = command.status.mode_available;
-    item.transition_available = command.status.transition_available;
-    item.transition_completed = command.status.transition_completed;
-    return item;
-  };
-
   CommandModeStatus msg;
   msg.stamp = now();
   for (const auto & command : commands_) {
-    msg.items.push_back(convert(*command));
+    msg.items.push_back(command->status);
   }
   pub_status_->publish(msg);
 }

@@ -19,6 +19,8 @@ namespace autoware::command_mode_switcher
 
 Command::Command(std::shared_ptr<CommandPlugin> plugin) : plugin(plugin)
 {
+  status.mode = plugin->mode_name();
+
   status.state = TriState::Disabled;
   status.mrm = MrmState::Normal;
   status.transition_state = TriState::Disabled;
