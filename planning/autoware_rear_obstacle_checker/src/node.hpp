@@ -18,6 +18,7 @@
 #include "autoware/behavior_path_planner_common/utils/path_safety_checker/objects_filtering.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_safety_checker/safety_check.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
+#include "structs.hpp"
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
@@ -66,25 +67,10 @@ using autoware_planning_msgs::msg::LaneletRoute;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 using sensor_msgs::msg::PointCloud2;
+using std_msgs::msg::Header;
 using tier4_planning_msgs::msg::PlanningFactor;
 using tier4_planning_msgs::msg::PlanningFactorArray;
 using visualization_msgs::msg::MarkerArray;
-
-struct DebugData
-{
-  lanelet::BasicPolygon3d predicted_stop_pose_footprint;
-
-  lanelet::ConstLanelets detection_lanes_for_objects;
-
-  lanelet::BasicPolygons3d detection_areas_for_pointcloud;
-
-  behavior_path_planner::utils::path_safety_checker::CollisionCheckDebugMap collision_check;
-
-  std::vector<geometry_msgs::msg::Point> obstacle_pointcloud;
-
-  std::pair<std::string, std_msgs::msg::ColorRGBA> text{
-    "NONE", autoware_utils::create_marker_color(1.0, 1.0, 1.0, 0.999)};
-};
 
 class RearObstacleCheckerNode : public rclcpp::Node
 {
@@ -100,11 +86,23 @@ private:
 
   bool is_safe(const PredictedObjects & objects, DebugData & debug) const;
 
-  bool is_safe(const pcl::PointCloud<pcl::PointXYZ> & pointcloud, DebugData & debug) const;
+  bool is_safe(const PointCloudObjects & objects, DebugData & debug) const;
 
   bool is_safe(DebugData & debug);
 
   void update(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
+  auto filter_pointcloud(const PointCloud::Ptr in) const -> PointCloud::Ptr;
+
+  auto get_clustered_pointcloud(const PointCloud::Ptr in) const -> PointCloud::Ptr;
+
+  auto get_pointcloud_objects(
+    const PlanningFactor & factor, const lanelet::ConstLanelets & current_lanes)
+    -> PointCloudObjects;
+
+  auto get_pointcloud_objects(
+    const lanelet::ConstLanelets & current_lanes, const bool is_right,
+    const double forward_distance, const double backward_distance) -> PointCloudObjects;
 
   void publish_marker(const DebugData & debug) const;
 
@@ -145,6 +143,8 @@ private:
     std::string, autoware_utils::InterProcessPollingSubscriber<PlanningFactorArray>>
     sub_planning_factor_map_;
 
+  std::unordered_map<lanelet::Id, PointCloudObject> history_;
+
   std::shared_ptr<autoware::route_handler::RouteHandler> route_handler_;
 
   std::unique_ptr<rear_obstacle_checker_node::ParamListener> param_listener_;
@@ -165,7 +165,9 @@ private:
 
   PlanningFactorArray::ConstSharedPtr factors_ptr_;
 
-  pcl::PointCloud<pcl::PointXYZ> pointcloud_;
+  Header::ConstSharedPtr header_ptr_;
+
+  PointCloud::Ptr pointcloud_;
 
   rclcpp::Time last_safe_time_{this->now()};
 
