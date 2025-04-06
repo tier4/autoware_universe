@@ -47,10 +47,9 @@ struct CommandModeStatusItem
 {
   std::string mode;
 
-  TriState state;
-  MrmState mrm;
-  TriState transition_state;
+  TriState mode_state;
   TriState gate_state;
+  MrmState mrm;
   RequestPhase request_phase;
   RequestPhase current_phase;
 
@@ -59,6 +58,7 @@ struct CommandModeStatusItem
   bool transition_available;
   bool transition_completed;
 
+  TriState transition_state;
   TriState vehicle_gate_state;
   TriState network_gate_state;
   TriState control_gate_state;

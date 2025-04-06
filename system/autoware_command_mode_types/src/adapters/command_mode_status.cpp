@@ -53,21 +53,25 @@ tier4_system_msgs::msg::CommandModeStatusItem to_msg(const CommandModeStatusItem
 {
   tier4_system_msgs::msg::CommandModeStatusItem msg;
   msg.mode = item.mode;
-  msg.state = to_tri_state(item.state);
-  msg.mrm = to_mrm_state(item.mrm);
-  msg.transition_state = to_tri_state(item.transition_state);
+
+  msg.mode_state = to_tri_state(item.mode_state);
   msg.gate_state = to_tri_state(item.gate_state);
+  msg.mrm = to_mrm_state(item.mrm);
   msg.request_phase = to_request_phase(item.request_phase);
   msg.current_phase = to_request_phase(item.current_phase);
+
+  msg.mode_continuable = item.mode_continuable;
+  msg.mode_available = item.mode_available;
+  msg.transition_available = item.transition_available;
+  msg.transition_completed = item.transition_completed;
+
+  msg.transition_state = to_tri_state(item.transition_state);
   msg.vehicle_gate_state = to_tri_state(item.vehicle_gate_state);
   msg.network_gate_state = to_tri_state(item.network_gate_state);
   msg.control_gate_state = to_tri_state(item.control_gate_state);
   msg.source_state = to_tri_state(item.source_state);
   msg.source_group = to_tri_state(item.source_group);
-  msg.mode_continuable = item.mode_continuable;
-  msg.mode_available = item.mode_available;
-  msg.transition_available = item.transition_available;
-  msg.transition_completed = item.transition_completed;
+
   return msg;
 }
 
@@ -76,10 +80,9 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
   CommandModeStatusItem custom;
   custom.mode = item.mode;
 
-  custom.state = from_tri_state(item.state);
-  custom.mrm = from_mrm_state(item.mrm);
-  custom.transition_state = from_tri_state(item.transition_state);
+  custom.mode_state = from_tri_state(item.mode_state);
   custom.gate_state = from_tri_state(item.gate_state);
+  custom.mrm = from_mrm_state(item.mrm);
   custom.request_phase = from_request_phase(item.request_phase);
   custom.current_phase = from_request_phase(item.current_phase);
 
@@ -88,6 +91,7 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
   custom.transition_available = item.transition_available;
   custom.transition_completed = item.transition_completed;
 
+  custom.transition_state = from_tri_state(item.transition_state);
   custom.vehicle_gate_state = from_tri_state(item.vehicle_gate_state);
   custom.network_gate_state = from_tri_state(item.network_gate_state);
   custom.control_gate_state = from_tri_state(item.control_gate_state);
