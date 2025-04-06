@@ -43,8 +43,10 @@
 #include <lanelet2_core/geometry/Point.h>
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -397,10 +399,9 @@ std::optional<geometry_msgs::msg::Pose> calc_predicted_stop_pose(
     points, ego_pose.position, stop_distance.value());
 }
 
-pcl::PointCloud<pcl::PointXYZ> get_obstacle_points(
-  const lanelet::BasicPolygons3d & polygons, const pcl::PointCloud<pcl::PointXYZ> & points)
+PointCloud get_obstacle_points(const lanelet::BasicPolygons3d & polygons, const PointCloud & points)
 {
-  pcl::PointCloud<pcl::PointXYZ> ret;
+  PointCloud ret;
   for (const auto & polygon : polygons) {
     const auto circle = get_smallest_enclosing_circle(lanelet::utils::to2D(polygon));
     for (const auto & p : points) {
@@ -418,11 +419,10 @@ pcl::PointCloud<pcl::PointXYZ> get_obstacle_points(
   return ret;
 }
 
-pcl::PointCloud<pcl::PointXYZ> filter_lost_object_pointcloud(
-  const PredictedObjects & objects, const pcl::PointCloud<pcl::PointXYZ> & points,
-  const double object_buffer)
+PointCloud filter_lost_object_pointcloud(
+  const PredictedObjects & objects, const PointCloud & points, const double object_buffer)
 {
-  pcl::PointCloud<pcl::PointXYZ> ret = points;
+  PointCloud ret = points;
   for (const auto & object : objects.objects) {
     const auto polygon =
       autoware_utils::expand_polygon(autoware_utils::to_polygon2d(object), object_buffer);
@@ -614,6 +614,85 @@ lanelet::BasicPolygons3d get_adjacent_polygons(
   }
 
   return ret;
+}
+
+std::vector<std::pair<lanelet::BasicPolygon3d, lanelet::ConstLanelets>>
+get_previous_polygons_with_lane_recursively(
+  const lanelet::ConstLanelets & lanes, const double s1, const double s2,
+  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
+{
+  std::vector<std::pair<lanelet::BasicPolygon3d, lanelet::ConstLanelets>> ret{};
+
+  if (lanes.empty()) {
+    return ret;
+  }
+
+  for (const auto & prev_lane : route_handler->getPreviousLanelets(lanes.front())) {
+    lanelet::ConstLanelets pushed_lanes = lanes;
+    pushed_lanes.insert(pushed_lanes.begin(), prev_lane);
+    const auto total_length = lanelet::utils::getLaneletLength2d(pushed_lanes);
+    if (total_length > s2) {
+      const auto polygon =
+        lanelet::utils::getPolygonFromArcLength(pushed_lanes, total_length - s2, total_length - s1);
+      ret.emplace_back(polygon.basicPolygon(), pushed_lanes);
+    } else {
+      const auto polygons =
+        get_previous_polygons_with_lane_recursively(pushed_lanes, s1, s2, route_handler);
+      ret.insert(ret.end(), polygons.begin(), polygons.end());
+    }
+  }
+
+  return ret;
+}
+
+auto get_pointcloud_object(
+  const rclcpp::Time & now, const PointCloud::Ptr & pointcloud_ptr,
+  const std::vector<std::pair<lanelet::BasicPolygon3d, lanelet::ConstLanelets>> &
+    polygons_with_lane,
+  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
+  -> std::optional<PointCloudObject>
+{
+  std::optional<PointCloudObject> opt_object = std::nullopt;
+  // const auto now = rclcpp::Clock{RCL_ROS_TIME}.now();
+  for (const auto & [polygon, lanes] : polygons_with_lane) {
+    const auto pointcloud = get_obstacle_points({polygon}, *pointcloud_ptr);
+
+    const auto path =
+      route_handler->getCenterLinePath(lanes, 0.0, std::numeric_limits<double>::max());
+    const auto resampled_path = behavior_path_planner::utils::resamplePathWithSpline(path, 0.3);
+
+    for (const auto & point : pointcloud) {
+      // TODO(satoshi-ota): remove redundant implementation.
+      const double obj_arc_length = autoware::motion_utils::calcSignedArcLength(
+        resampled_path.points, autoware_utils::create_point(point.x, point.y, point.z),
+        autoware_utils::get_point(path.points.back()));
+      const auto point_on_ceter_line = autoware::motion_utils::calcLongitudinalOffsetPoint(
+        resampled_path.points, autoware_utils::get_point(resampled_path.points.back()),
+        -1.0 * obj_arc_length);
+
+      if (!point_on_ceter_line.has_value()) {
+        continue;
+      }
+
+      if (!opt_object.has_value()) {
+        PointCloudObject object;
+        object.last_update_time = now;
+        object.position = point_on_ceter_line.value();
+        object.base_lane_id = lanes.front().id();
+        object.absolute_distance = obj_arc_length;
+        object.velocity = 0.0;
+        opt_object = object;
+      } else if (opt_object.value().absolute_distance > obj_arc_length) {
+        opt_object.value().last_update_time = now;
+        opt_object.value().position = point_on_ceter_line.value();
+        opt_object.value().base_lane_id = lanes.front().id();
+        opt_object.value().absolute_distance = obj_arc_length;
+        opt_object.value().velocity = 0.0;
+      }
+    }
+  }
+
+  return opt_object;
 }
 
 MarkerArray create_polygon_marker_array(
@@ -1010,6 +1089,42 @@ MarkerArray createPointsMarkerArray(
     marker.points.push_back(p);
   }
   msg.markers.push_back(marker);
+
+  return msg;
+}
+
+MarkerArray create_pointcloud_object_marker_array(
+  const PointCloudObjects & objects, const std::string & ns)
+{
+  MarkerArray msg;
+
+  size_t i = 0L;
+  for (const auto & object : objects) {
+    {
+      auto marker = autoware_utils::create_default_marker(
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, Marker::SPHERE,
+        autoware_utils::create_marker_scale(1.0, 1.0, 1.0),
+        autoware_utils::create_marker_color(1.0, 0.0, 0.42, 0.999));
+      marker.pose.position = object.position;
+      msg.markers.push_back(marker);
+    }
+
+    {
+      auto marker = autoware_utils::create_default_marker(
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns + "_text", i++,
+        visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
+        autoware_utils::create_marker_scale(0.5, 0.5, 0.5),
+        autoware_utils::create_marker_color(0.16, 1.0, 0.69, 0.999));
+
+      std::ostringstream ss;
+      ss << "RelativeDistance:" << object.relative_distance << "\nVelocity:" << object.velocity;
+
+      marker.text = ss.str();
+      marker.pose.position = object.position;
+      marker.pose.position.z += 1.0;
+      msg.markers.push_back(marker);
+    }
+  }
 
   return msg;
 }
