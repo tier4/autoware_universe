@@ -17,9 +17,9 @@
 namespace autoware::command_mode_switcher
 {
 
-SourceState CommandPlugin::update_source_state(bool request)
+TriState CommandPlugin::update_source_state(bool request)
 {
-  return request ? SourceState::Enabled : SourceState::Disabled;
+  return request ? TriState::Enabled : TriState::Disabled;
 }
 
 bool ControlCommandPlugin::get_mode_continuable()

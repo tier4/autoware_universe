@@ -71,29 +71,20 @@ bool ControlGateInterface::is_in_transition() const
   return status_.transition;
 }
 
-ControlGateState ControlGateInterface::get_state(const CommandPlugin & plugin) const
+bool ControlGateInterface::is_selected(const CommandPlugin & plugin) const
 {
   if (plugin.source_name().empty()) {
-    return ControlGateState::Selected;
+    return true;
   }
-
-  if (plugin.source_name() == status_.source) {
-    return ControlGateState::Selected;
-  } else {
-    return ControlGateState::Unselected;
-  }
+  return plugin.source_name() == status_.source;
 }
 
-VehicleGateState VehicleGateInterface::get_state(const CommandPlugin & plugin) const
+bool VehicleGateInterface::is_selected(const CommandPlugin & plugin) const
 {
-  const auto is_selected = [](uint8_t mode1, uint8_t mode2) {
-    return mode1 == mode2 ? VehicleGateState::Selected : VehicleGateState::Unselected;
-  };
-
   if (plugin.autoware_control()) {
-    return is_selected(status_.mode, ControlModeReport::AUTONOMOUS);
+    return status_.mode == ControlModeReport::AUTONOMOUS;
   } else {
-    return is_selected(status_.mode, ControlModeReport::MANUAL);
+    return status_.mode == ControlModeReport::MANUAL;
   }
 }
 

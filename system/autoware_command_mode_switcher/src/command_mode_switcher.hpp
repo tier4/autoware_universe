@@ -50,10 +50,8 @@ private:
   void on_request(const CommandModeRequest & msg);
   void update();
   void publish_command_mode_status();
-
-  void handle_all_gate_transition();
-  void handle_control_gate_transition();
-  void handle_vehicle_gate_transition();
+  void handle_foreground_transition();
+  void handle_background_transition();
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
@@ -64,10 +62,11 @@ private:
   // Mode switching.
   pluginlib::ClassLoader<CommandPlugin> loader_;
   std::vector<std::shared_ptr<Command>> commands_;
+  std::unordered_map<std::string, std::shared_ptr<Command>> platform_commands_;
   std::unordered_map<std::string, std::shared_ptr<Command>> autoware_commands_;
   std::shared_ptr<Command> manual_command_;
-  std::shared_ptr<Command> control_gate_target_;
-  std::shared_ptr<Command> vehicle_gate_target_;
+  std::shared_ptr<Command> foreground_;
+  std::shared_ptr<Command> background_;
   ControlGateInterface control_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
 
