@@ -4,6 +4,8 @@ project(autoware_occupancy_grid_map_outlier_filter)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(autoware_agnocast_wrapper REQUIRED)
+
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
@@ -30,6 +32,13 @@ target_link_libraries(${PROJECT_NAME}
   ${OpenCV_LIBRARIES}
   ${PCL_LIBRARIES}
 )
+
+ament_target_dependencies(${PROJECT_NAME} autoware_agnocast_wrapper)
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${autoware_agnocast_wrapper_INCLUDE_DIRS}
+)
+
+autoware_agnocast_wrapper_setup(${PROJECT_NAME})
 
 if(OPENMP_FOUND)
   set_target_properties(${PROJECT_NAME} PROPERTIES

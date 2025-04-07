@@ -1,4 +1,6 @@
 <launch>
+  <arg name="agnocast_heaphook_path" description="Path to the agnocast heaphook library"/>
+
   <arg name="interface_input_topic" default="/planning/scenario_planning/lane_driving/behavior_planning/path"/>
   <arg name="interface_output_topic" default="/planning/scenario_planning/lane_driving/trajectory"/>
 
@@ -44,7 +46,13 @@
   />
   <let name="motion_velocity_planner_launch_modules" value="$(eval &quot;'$(var motion_velocity_planner_launch_modules)' + '$(var launch_module_list_end)'&quot;)"/>
 
+  <let name="enable_agnocast" value="$(env ENABLE_AGNOCAST 0)" />
+  <let name="current_ld_preload" value="$(env LD_PRELOAD '')" />
+  <let name="new_ld_preload" value="$(eval &quot;\'$(var agnocast_heaphook_path):$(env LD_PRELOAD '')\' if \'$(var enable_agnocast)\' == \'1\' else \'$(var current_ld_preload)\'&quot;)"/>
+
   <node_container pkg="rclcpp_components" exec="$(var container_type)" name="motion_planning_container" namespace="" args="" output="screen">
+    <env name="LD_PRELOAD" value="$(var new_ld_preload)" />
+    <env name="AGNOCAST_MEMPOOL_SIZE" value="1024"/>
     <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component" namespace=""/>
   </node_container>
 

@@ -177,7 +177,8 @@ bool MotionVelocityPlannerNode::update_planner_data(
     planner_data_.process_predicted_objects(*predicted_objects_ptr);
   processing_times["update_planner_data.pred_obj"] = sw.toc(true);
 
-  const auto no_ground_pointcloud_ptr = sub_no_ground_pointcloud_.take_data();
+  const AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) no_ground_pointcloud_ptr =
+    sub_no_ground_pointcloud_.takeData();
   if (check_with_log(no_ground_pointcloud_ptr, "Waiting for pointcloud")) {
     const auto no_ground_pointcloud = process_no_ground_pointcloud(no_ground_pointcloud_ptr);
     if (no_ground_pointcloud)
@@ -215,7 +216,7 @@ bool MotionVelocityPlannerNode::update_planner_data(
 
 std::optional<pcl::PointCloud<pcl::PointXYZ>>
 MotionVelocityPlannerNode::process_no_ground_pointcloud(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
+  const AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) msg)
 {
   geometry_msgs::msg::TransformStamped transform;
   try {

@@ -642,7 +642,9 @@ void ObstacleCruisePlannerNode::onTrajectory(const Trajectory::ConstSharedPtr ms
 {
   const auto ego_odom_ptr = ego_odom_sub_.take_data();
   const auto objects_ptr = objects_sub_.take_data();
-  const auto pointcloud_ptr = use_pointcloud_ ? pointcloud_sub_.take_data() : nullptr;
+  const AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) pointcloud_ptr =
+    use_pointcloud_ ? pointcloud_sub_.takeData()
+                    : AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2)();
   const auto acc_ptr = acc_sub_.take_data();
   const bool can_detect_obstacles = objects_ptr || pointcloud_ptr;
   if (!ego_odom_ptr || !can_detect_obstacles || !acc_ptr) {

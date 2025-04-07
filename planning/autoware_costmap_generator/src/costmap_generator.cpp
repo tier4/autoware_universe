@@ -250,7 +250,6 @@ void CostmapGenerator::onLaneletMapBin(
 void CostmapGenerator::update_data()
 {
   objects_ = sub_objects_.take_data();
-  points_ = sub_points_.take_data();
   scenario_ = sub_scenario_.take_data();
 }
 
@@ -301,9 +300,12 @@ void CostmapGenerator::onTimer()
     costmap_[LayerName::objects] = generateObjectsCostmap(objects_);
   }
 
-  if (param_->use_points && points_) {
-    autoware_utils::ScopedTimeTrack st("generatePointsCostmap()", *time_keeper_);
-    costmap_[LayerName::points] = generatePointsCostmap(points_, tf.transform.translation.z);
+  if (param_->use_points) {
+    const AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) points = sub_points_.takeData();
+    if (points.get()) {
+      autoware_utils::ScopedTimeTrack st("generatePointsCostmap()", *time_keeper_);
+      costmap_[LayerName::points] = generatePointsCostmap(points, tf.transform.translation.z);
+    }
   }
 
   {
@@ -357,7 +359,8 @@ void CostmapGenerator::initGridmap()
 }
 
 grid_map::Matrix CostmapGenerator::generatePointsCostmap(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & in_points, const double vehicle_to_map_z)
+  const AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) in_points,
+  const double vehicle_to_map_z)
 {
   geometry_msgs::msg::TransformStamped points2costmap;
   try {

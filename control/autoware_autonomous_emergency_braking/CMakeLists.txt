@@ -5,6 +5,7 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(PCL REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 
 include_directories(
   include
@@ -22,6 +23,13 @@ ament_auto_add_library(${AEB_NODE} SHARED
   include/autoware/autonomous_emergency_braking/node.hpp
   src/node.cpp
 )
+
+ament_target_dependencies(${AEB_NODE} autoware_agnocast_wrapper)
+target_include_directories(${AEB_NODE} PRIVATE
+  ${autoware_agnocast_wrapper_INCLUDE_DIRS}
+)
+
+autoware_agnocast_wrapper_setup(${AEB_NODE})
 
 target_link_libraries(${AEB_NODE} autoware_autonomous_emergency_braking_helpers)
 rclcpp_components_register_node(${AEB_NODE}

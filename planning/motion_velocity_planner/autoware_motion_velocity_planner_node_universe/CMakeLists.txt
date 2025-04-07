@@ -3,6 +3,7 @@ project(autoware_motion_velocity_planner_node_universe)
 
 find_package(autoware_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
@@ -16,6 +17,13 @@ autoware_package()
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   DIRECTORY src
 )
+
+ament_target_dependencies(${PROJECT_NAME}_lib autoware_agnocast_wrapper)
+target_include_directories(${PROJECT_NAME}_lib PRIVATE
+  ${autoware_agnocast_wrapper_INCLUDE_DIRS}
+)
+
+autoware_agnocast_wrapper_setup(${PROJECT_NAME}_lib)
 
 rclcpp_components_register_node(${PROJECT_NAME}_lib
   PLUGIN "autoware::motion_velocity_planner::MotionVelocityPlannerNode"

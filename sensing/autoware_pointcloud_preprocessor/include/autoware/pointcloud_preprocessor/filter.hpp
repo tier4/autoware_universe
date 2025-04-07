@@ -75,6 +75,7 @@
 #include <pcl_msgs/msg/point_indices.h>
 
 // Include tier4 autoware utils
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/managed_transform_buffer.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
@@ -137,7 +138,7 @@ protected:
   rclcpp::Subscription<PointCloud2>::SharedPtr sub_input_;
 
   /** \brief The output PointCloud2 publisher. */
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
+  AUTOWARE_PUBLISHER_PTR(PointCloud2) pub_output_;
 
   /** \brief The message filter subscriber for PointCloud2. */
   message_filters::Subscriber<PointCloud2> sub_input_filter_;
@@ -210,7 +211,7 @@ protected:
   /** \brief PointCloud2 + Indices data callback. */
   virtual void input_indices_callback(
     const PointCloud2ConstPtr cloud, const PointIndicesConstPtr indices);
-  virtual bool convert_output_costly(std::unique_ptr<PointCloud2> & output);
+  virtual bool convert_output_costly(PointCloud2 & output);
 
   //////////////////////
   // from PCLNodelet //

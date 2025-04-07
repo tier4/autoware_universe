@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__OBSTACLE_CRUISE_PLANNER__NODE_HPP_
 #define AUTOWARE__OBSTACLE_CRUISE_PLANNER__NODE_HPP_
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include "autoware/obstacle_cruise_planner/common_structs.hpp"
 #include "autoware/obstacle_cruise_planner/optimization_based_planner/optimization_based_planner.hpp"
 #include "autoware/obstacle_cruise_planner/pid_based_planner/pid_based_planner.hpp"
@@ -176,7 +177,7 @@ private:
   autoware_utils::InterProcessPollingSubscriber<Odometry> ego_odom_sub_{this, "~/input/odometry"};
   autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_sub_{
     this, "~/input/objects"};
-  autoware_utils::InterProcessPollingSubscriber<PointCloud2> pointcloud_sub_{
+  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2) pointcloud_sub_{
     this, "~/input/pointcloud"};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> acc_sub_{
     this, "~/input/acceleration"};

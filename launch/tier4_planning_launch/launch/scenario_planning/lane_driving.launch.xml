@@ -1,4 +1,5 @@
 <launch>
+  <arg name="agnocast_heaphook_path" description="Path to the agnocast heaphook library"/>
   <arg name="enable_all_modules_auto_mode"/>
   <arg name="is_simulation"/>
 
@@ -10,6 +11,7 @@
       <push-ros-namespace namespace="behavior_planning"/>
       <group>
         <include file="$(find-pkg-share tier4_planning_launch)/launch/scenario_planning/lane_driving/behavior_planning/behavior_planning.launch.xml">
+          <arg name="agnocast_heaphook_path" value="$(var agnocast_heaphook_path)"/>
           <arg name="container_type" value="component_container_mt"/>
           <arg name="enable_all_modules_auto_mode" value="$(var enable_all_modules_auto_mode)"/>
           <arg name="is_simulation" value="$(var is_simulation)"/>
@@ -24,6 +26,7 @@
       <push-ros-namespace namespace="motion_planning"/>
       <group>
         <include file="$(find-pkg-share tier4_planning_launch)/launch/scenario_planning/lane_driving/motion_planning/motion_planning.launch.xml">
+          <arg name="agnocast_heaphook_path" value="$(var agnocast_heaphook_path)"/>
           <arg name="container_type" value="component_container_mt"/>
         </include>
       </group>

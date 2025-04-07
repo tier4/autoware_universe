@@ -1,4 +1,6 @@
 <launch>
+  <arg name="agnocast_heaphook_path" description="Path to the agnocast heaphook library"/>
+
   <arg name="input_route_topic_name" default="/planning/mission_planning/route"/>
   <arg name="input_traffic_light_topic_name" default="/perception/traffic_light_recognition/traffic_signals"/>
   <arg name="input_virtual_traffic_light_topic_name" default="/awapi/tmp/virtual_traffic_light_states"/>
@@ -169,7 +171,14 @@
   />
   <let name="behavior_velocity_planner_launch_modules" value="$(eval &quot;'$(var behavior_velocity_planner_launch_modules)' + '$(var launch_module_list_end)'&quot;)"/>
 
+  <let name="enable_agnocast" value="$(env ENABLE_AGNOCAST 0)" />
+  <let name="current_ld_preload" value="$(env LD_PRELOAD '')" />
+  <let name="new_ld_preload" value="$(eval &quot;\'$(var agnocast_heaphook_path):$(env LD_PRELOAD '')\' if \'$(var enable_agnocast)\' == \'1\' else \'$(var current_ld_preload)\'&quot;)"/>
+
   <node_container pkg="rclcpp_components" exec="$(var container_type)" name="behavior_planning_container" namespace="" args="" output="both">
+    <env name="LD_PRELOAD" value="$(var new_ld_preload)" />
+    <env name="AGNOCAST_MEMPOOL_SIZE" value="1024"/>
+    
     <composable_node pkg="autoware_behavior_path_planner" plugin="autoware::behavior_path_planner::BehaviorPathPlannerNode" name="behavior_path_planner" namespace="">
       <!-- topic remap -->
       <remap from="~/input/route" to="$(var input_route_topic_name)"/>

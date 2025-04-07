@@ -16,6 +16,7 @@
 #define AUTOWARE__AUTONOMOUS_EMERGENCY_BRAKING__NODE_HPP_
 
 #include "autoware_utils/system/time_keeper.hpp"
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -331,7 +332,7 @@ public:
   explicit AEB(const rclcpp::NodeOptions & node_options);
 
   // subscriber
-  autoware_utils::InterProcessPollingSubscriber<PointCloud2> sub_point_cloud_{
+  AUTOWARE_POLLING_SUBSCRIBER(PointCloud2) sub_point_cloud_{
     this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
   autoware_utils::InterProcessPollingSubscriber<VelocityReport> sub_velocity_{
     this, "~/input/velocity"};
@@ -359,7 +360,7 @@ public:
    * @brief Callback for point cloud messages
    * @param input_msg Shared pointer to the point cloud message
    */
-  void onPointCloud(const PointCloud2::ConstSharedPtr input_msg);
+  void onPointCloud(const AUTOWARE_MESSAGE_SHARED_PTR(const PointCloud2) input_msg);
 
   /**
    * @brief Callback for IMU messages

@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_behavior_velocity_planner)
 
 find_package(autoware_cmake REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 
 autoware_package()
 
@@ -10,6 +11,13 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/planner_manager.cpp
   src/test_utils.cpp
 )
+
+ament_target_dependencies(${PROJECT_NAME}_lib autoware_agnocast_wrapper)
+target_include_directories(${PROJECT_NAME}_lib PRIVATE
+  ${autoware_agnocast_wrapper_INCLUDE_DIRS}
+)
+
+autoware_agnocast_wrapper_setup(${PROJECT_NAME}_lib)
 
 rclcpp_components_register_node(${PROJECT_NAME}_lib
   PLUGIN "autoware::behavior_velocity_planner::BehaviorVelocityPlannerNode"
