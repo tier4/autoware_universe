@@ -62,7 +62,7 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
   pub_command_mode_request_ =
     create_publisher<CommandModeRequest>("~/command_mode/request", rclcpp::QoS(1));
   sub_command_mode_status_ = create_subscription<CommandModeStatusAdapter>(
-    "~/command_mode/status", rclcpp::QoS(1).transient_local(),
+    "~/command_mode/status", rclcpp::QoS(50).transient_local(),
     std::bind(&CommandModeDeciderBase::on_status, this, std::placeholders::_1));
 
   // Interface for API.
@@ -128,11 +128,24 @@ void CommandModeDeciderBase::update()
 {
   // Note: is_modes_ready_ should be checked in the function that called this.
   // TODO(Takagi, Isamu): Check call rate.
+  detect_override();
   update_request_mode();
   update_current_mode();
   sync_command_mode();
   publish_operation_mode_state();
   publish_mrm_state();
+}
+
+void CommandModeDeciderBase::detect_override()
+{
+  if (foreground_request_ == manual_mode_name_) return;
+
+  const auto status = command_mode_status_.get(manual_mode_name_);
+  if (status.request_phase == GateType::VehicleGate) {
+    RCLCPP_WARN_STREAM(get_logger(), "override detected");
+    foreground_request_ = manual_mode_name_;
+    system_request_.autoware_control = false;
+  }
 }
 
 void CommandModeDeciderBase::update_request_mode()

@@ -162,14 +162,15 @@ void CommandModeSwitcher::update()
 void CommandModeSwitcher::detect_override()
 {
   const auto curr_autoware_control = vehicle_gate_interface_.is_autoware_control();
-  const auto is_override = (is_autoware_control_ && !curr_autoware_control);
+  const auto is_changed_to_manual = (is_autoware_control_ && !curr_autoware_control);
   is_autoware_control_ = curr_autoware_control;
-  if (!is_override) return;
 
+  if (!is_changed_to_manual) return;
+  if (foreground_ == manual_command_) return;
   RCLCPP_WARN_STREAM(get_logger(), "override detected");
 
-  // If forground is not manual, move to background.
-  if (foreground_ && foreground_ != manual_command_) {
+  // Move foreground to background.
+  if (foreground_) {
     background_ = foreground_;
     background_->status.request_phase = GateType::ControlGate;
     background_->status.transition_state = TriState::Transition;
