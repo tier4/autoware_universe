@@ -2148,7 +2148,7 @@ size_t findFirstNearestIndexWithSoftConstraints(
     bool is_within_constraints = false;
     for (size_t i = 0; i < points.size(); ++i) {
       const auto yaw = autoware::universe_utils::calcYawDeviation(
-        autoware::universe_utils::getPose(points.at(i)), pose);  
+        autoware::universe_utils::getPose(points.at(i)), pose);
       const auto squared_dist =
         autoware::universe_utils::calcSquaredDistance2d(points.at(i), pose.position);
 

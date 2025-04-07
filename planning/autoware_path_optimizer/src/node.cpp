@@ -398,9 +398,10 @@ void PathOptimizer::applyInputVelocity(
 
     // trim to ego-pose
     const size_t ego_seg_idx_output_traj =
-    trajectory_utils::findEgoSegmentIndex(output_traj_points, ego_pose, ego_nearest_param_);
-    
-    output_traj_points = std::vector<TrajectoryPoint>(output_traj_points.begin() + ego_seg_idx_output_traj, output_traj_points.end());
+      trajectory_utils::findEgoSegmentIndex(output_traj_points, ego_pose, ego_nearest_param_);
+
+    output_traj_points = std::vector<TrajectoryPoint>(
+      output_traj_points.begin() + ego_seg_idx_output_traj, output_traj_points.end());
 
     const auto cropped_points = autoware::motion_utils::cropForwardPoints(
       input_traj_points, ego_pose.position, ego_seg_idx,
@@ -411,7 +412,7 @@ void PathOptimizer::applyInputVelocity(
     }
     return cropped_points;
   }();
-  
+
   // update velocity
   const auto segment_length_vec = calcSegmentLengthVector(forward_cropped_input_traj_points);
   const double mpt_delta_arc_length = mpt_optimizer_ptr_->getDeltaArcLength();
