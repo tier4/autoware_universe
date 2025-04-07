@@ -44,9 +44,9 @@ public:
   bool get_transition_completed() override { return true; }
 
 private:
-  void publishVelocityLimit();
-  void publishVelocityLimitClearCommand();
-  bool isStopped();
+  void publish_velocity_limit();
+  void publish_velocity_limit_clear_command();
+  bool is_stopped();
 
   rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimit>::SharedPtr pub_velocity_limit_;
   rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>::SharedPtr pub_velocity_limit_clear_command_;

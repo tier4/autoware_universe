@@ -58,7 +58,7 @@ MrmState ComfortableStopSwitcher::update_mrm_state()
   return mrm_state_;
 }
 
-void ComfortableStopSwitcher::publishVelocityLimit()
+void ComfortableStopSwitcher::publish_velocity_limit()
 {
   auto velocity_limit = tier4_planning_msgs::msg::VelocityLimit();
   velocity_limit.stamp = node_->now();
@@ -73,7 +73,7 @@ void ComfortableStopSwitcher::publishVelocityLimit()
   RCLCPP_INFO_STREAM(node_->get_logger(), "Comfortable stop is requested.");
 }
 
-void ComfortableStopSwitcher::publishVelocityLimitClearCommand()
+void ComfortableStopSwitcher::publish_velocity_limit_clear_command()
 {
   auto velocity_limit_clear_command = tier4_planning_msgs::msg::VelocityLimitClearCommand();
   velocity_limit_clear_command.stamp = node_->now();
@@ -84,7 +84,7 @@ void ComfortableStopSwitcher::publishVelocityLimitClearCommand()
   RCLCPP_INFO_STREAM(node_->get_logger(), "Comfortable stop is canceled.");
 }
 
-bool ComfortableStopSwitcher::isStopped()
+bool ComfortableStopSwitcher::is_stopped()
 {
   if (!odom_.has_value()) return false;
   constexpr auto th_stopped_velocity = 0.001;
