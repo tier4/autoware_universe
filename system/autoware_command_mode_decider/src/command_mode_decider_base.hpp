@@ -64,6 +64,7 @@ protected:
   const auto & get_request_mode_status() const { return system_request_; }
 
 private:
+  bool is_in_transition() const;
   void update();
   void update_request_mode();
   void update_current_mode();
@@ -103,12 +104,14 @@ private:
   RequestModeStatus system_request_;
   std::string foreground_request_;
   std::string background_request_;
-  std::string request_mode_;
   std::string command_mode_;
+  std::string request_mode_;
   std::optional<rclcpp::Time> request_stamp_;
 
   bool curr_autoware_control_;
+  bool last_autoware_control_;
   std::string curr_operation_mode_;
+  std::string last_operation_mode_;
 };
 
 }  // namespace autoware::command_mode_decider
