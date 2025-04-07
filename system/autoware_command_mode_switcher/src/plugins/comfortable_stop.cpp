@@ -35,15 +35,15 @@ TriState ComfortableStopSwitcher::update_source_state(bool request)
 {
   if (request && mrm_state_ == MrmState::Operating) return TriState::Enabled;
   if (request && mrm_state_ == MrmState::Succeeded) return TriState::Enabled;
-  if (request && mrm_state_ == MrmState::Failed) return TriState::Disabled;
   if (!request && mrm_state_ == MrmState::Normal) return TriState::Disabled;
-  if (!request && mrm_state_ == MrmState::Failed) return TriState::Transition;
 
   if (request) {
     publishVelocityLimit();
+    mrm_state_ = MrmState::Operating;
     return TriState::Enabled;
   } else {
     publishVelocityLimitClearCommand();
+    mrm_state_ = MrmState::Normal;
     return TriState::Disabled;
   }
 }
@@ -70,7 +70,6 @@ void ComfortableStopSwitcher::publishVelocityLimit()
   velocity_limit.sender = node_->get_name();
 
   pub_velocity_limit_->publish(velocity_limit);
-  mrm_state_ = MrmState::Operating;
   RCLCPP_INFO_STREAM(node_->get_logger(), "Comfortable stop is requested.");
 }
 
@@ -82,7 +81,6 @@ void ComfortableStopSwitcher::publishVelocityLimitClearCommand()
   velocity_limit_clear_command.sender = node_->get_name();
 
   pub_velocity_limit_clear_command_->publish(velocity_limit_clear_command);
-  mrm_state_ = MrmState::Normal;
   RCLCPP_INFO_STREAM(node_->get_logger(), "Comfortable stop is canceled.");
 }
 
