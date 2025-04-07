@@ -96,7 +96,7 @@ private:
 
   // parameters
   double request_timeout_;
-  std::string manual_mode_name_;
+  std::string manual_mode_name_ = "manual";
 
   // status
   bool is_modes_ready_;
