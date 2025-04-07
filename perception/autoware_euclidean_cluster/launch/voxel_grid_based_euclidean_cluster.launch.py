@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import launch
 from launch.actions import DeclareLaunchArgument
 from launch.actions import OpaqueFunction
@@ -22,7 +24,6 @@ from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import LoadComposableNodes
 from launch_ros.descriptions import ComposableNode
 from launch_ros.substitutions import FindPackageShare
-import os
 import yaml
 
 

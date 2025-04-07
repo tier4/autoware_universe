@@ -113,7 +113,8 @@ void CloudCollector::concatenate_callback()
 }
 
 ConcatenatedCloudResult CloudCollector::concatenate_pointclouds(
-  std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)> topic_to_cloud_map)
+  std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)>
+    topic_to_cloud_map)
 {
   return combine_cloud_handler_->combine_pointclouds(topic_to_cloud_map);
 }
