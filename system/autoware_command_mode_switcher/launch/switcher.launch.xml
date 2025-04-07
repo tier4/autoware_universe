@@ -6,6 +6,7 @@
 
   <node pkg="autoware_command_mode_switcher" exec="command_mode_switcher_node">
     <param from="$(var config)"/>
+    <param name="is_main_ecu" value="$(var is_main_ecu)"/>
     <remap from="~/command_mode/availability" to="/system/command_mode/availability"/>
     <remap from="~/command_mode/status" to="$(var status_topic_name)"/>
     <remap from="~/command_mode/request" to="/system/command_mode/request"/>
