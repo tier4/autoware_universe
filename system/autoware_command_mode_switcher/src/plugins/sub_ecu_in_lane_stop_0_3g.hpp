@@ -12,8 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__SUB_ECU_IN_LANE_STOP_0_3G_HPP_
-#define SWITCHERS__SUB_ECU_IN_LANE_STOP_0_3G_HPP_
+#ifndef PLUGINS__SUB_ECU_IN_LANE_STOP_0_3G_HPP_
+#define PLUGINS__SUB_ECU_IN_LANE_STOP_0_3G_HPP_
 
 #include "common/command_plugin.hpp"
 
@@ -24,7 +24,7 @@
 
 namespace autoware::command_mode_switcher
 {
-  using jerk_constant_deceleration_controller_msgs::msg::JerkConstantDecelerationTrigger;
+using jerk_constant_deceleration_controller_msgs::msg::JerkConstantDecelerationTrigger;
 
 class SubEcuInLaneStop03GSwitcher : public ControlCommandPlugin
 {
@@ -39,12 +39,12 @@ public:
 
   bool get_transition_available() override { return true; }
   bool get_transition_completed() override { return true; }
+
 private:
   void publish_jerk_constant_deceleration_trigger(bool turn_on);
   bool is_stopped();
 
-  rclcpp::Publisher<JerkConstantDecelerationTrigger>::SharedPtr 
-    pub_trigger_;
+  rclcpp::Publisher<JerkConstantDecelerationTrigger>::SharedPtr pub_trigger_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
 
   std::optional<nav_msgs::msg::Odometry> odom_;
@@ -53,4 +53,4 @@ private:
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  //SWITCHERS__SUB_ECU_IN_LANE_STOP_0_3G_HPP_
+#endif  // PLUGINS__SUB_ECU_IN_LANE_STOP_0_3G_HPP_
