@@ -30,9 +30,12 @@ class CommandModeStatusTable
 {
 public:
   void init(const std::vector<std::string> & modes);
+  void set(const CommandModeStatusItem & item);
   bool ready() const;
   const CommandModeStatusItem & get(const std::string & mode) const;
-  void set(const CommandModeStatusItem & item);
+
+  auto begin() const { return command_mode_status_.begin(); }
+  auto end() const { return command_mode_status_.end(); }
 
 private:
   CommandModeStatusItem empty_item_;

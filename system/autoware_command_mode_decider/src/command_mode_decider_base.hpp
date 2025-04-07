@@ -36,7 +36,8 @@ namespace autoware::command_mode_decider
 
 using autoware::command_mode_types::CommandModeStatus;
 using autoware::command_mode_types::CommandModeStatusAdapter;
-using autoware::command_mode_types::RequestStage;
+using autoware::command_mode_types::GateType;
+using autoware::command_mode_types::TriState;
 using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_common_msgs::msg::ResponseStatus;
@@ -52,12 +53,6 @@ struct RequestModeStatus
   std::string mrm;
 };
 
-struct OperatorStatus
-{
-  bool autoware_control;
-  std::string operation_mode;
-};
-
 class CommandModeDeciderBase : public rclcpp::Node
 {
 public:
@@ -69,8 +64,11 @@ protected:
   const auto & get_request_mode_status() const { return system_request_; }
 
 private:
+  bool is_in_transition() const;
   void update();
-  void update_command_mode();
+  void detect_override();
+  void update_request_mode();
+  void update_current_mode();
   void sync_command_mode();
   void publish_operation_mode_state();
   void publish_mrm_state();
@@ -99,7 +97,7 @@ private:
 
   // parameters
   double request_timeout_;
-  std::string manual_mode_name_;
+  std::string manual_mode_name_ = "manual";
 
   // status
   bool is_modes_ready_;
@@ -107,11 +105,14 @@ private:
   RequestModeStatus system_request_;
   std::string foreground_request_;
   std::string background_request_;
+  std::string command_mode_;
   std::string request_mode_;
-  std::string current_mode_;
   std::optional<rclcpp::Time> request_stamp_;
-  OperatorStatus temporary_operator_;
-  OperatorStatus confirmed_operator_;
+
+  bool curr_autoware_control_;
+  bool last_autoware_control_;
+  std::string curr_operation_mode_;
+  std::string last_operation_mode_;
 };
 
 }  // namespace autoware::command_mode_decider
