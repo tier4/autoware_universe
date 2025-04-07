@@ -32,7 +32,7 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   vehicle_gate_interface_(*this, [this]() { update(); })
 {
   // Create vehicle gate switcher.
-  {
+  if (this->declare_parameter<bool>("is_main_ecu", true)) {
     const auto command = std::make_shared<Command>(std::make_shared<ManualCommand>());
     manual_command_ = command;
     platform_commands_[command->plugin->mode_name()] = command;
