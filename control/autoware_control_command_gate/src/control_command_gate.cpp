@@ -111,6 +111,7 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
     diag_.add(*output->create_diag_task(params, *get_clock()));
 
     auto filter = std::make_unique<CommandFilter>(std::move(output), *this);
+    output_filter_ = filter.get();
     filter->set_nominal_filter_params(nominal_filter_params);
     filter->set_transition_filter_params(transition_filter_params);
     selector_->set_output(std::move(filter));
@@ -143,6 +144,9 @@ void ControlCmdGate::on_select_source(
   res->status.success = true;
   res->status.message = message;
   RCLCPP_INFO_STREAM(get_logger(), message);
+
+  // Update transition flag if command source is changed.
+  output_filter_->set_transition_flag(req->transition);
 }
 
 }  // namespace autoware::control_command_gate

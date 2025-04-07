@@ -22,32 +22,14 @@
 namespace autoware::command_mode_switcher
 {
 
+using CommandStatus = command_mode_types::CommandModeStatusItem;
+using command_mode_types::GateType;
 using command_mode_types::MrmState;
-using command_mode_types::RequestStage;
 using command_mode_types::TriState;
 
-struct CommandStatus
-{
-  TriState state;
-  MrmState mrm;
-  RequestStage request;
-
-  TriState command_mode_state;
-  TriState vehicle_gate_state;
-  TriState network_gate_state;
-  TriState control_gate_state;
-  TriState source_state;
-  TriState source_group;
-
-  bool mode_continuable;
-  bool mode_available;
-  bool transition_available;
-  bool transition_completed;
-};
-
-// For internal use.
-TriState to_tri_state(bool state);
-TriState update_main_state(const CommandStatus & status);
+TriState update_mode_state(const CommandStatus & status);
+TriState update_gate_state(const CommandStatus & status);
+GateType update_current_phase(const CommandStatus & status);
 
 }  // namespace autoware::command_mode_switcher
 
