@@ -38,11 +38,11 @@ TriState ComfortableStopSwitcher::update_source_state(bool request)
   if (!request && mrm_state_ == MrmState::Normal) return TriState::Disabled;
 
   if (request) {
-    publishVelocityLimit();
+    publish_velocity_limit();
     mrm_state_ = MrmState::Operating;
     return TriState::Enabled;
   } else {
-    publishVelocityLimitClearCommand();
+    publish_velocity_limit_clear_command();
     mrm_state_ = MrmState::Normal;
     return TriState::Disabled;
   }
