@@ -12,12 +12,12 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "main_ecu_in_lane_stop_0_4g.hpp"
+#include "main_ecu_in_lane_stop_0_3g.hpp"
 
 namespace autoware::command_mode_switcher
 {
 
-void MainEcuInLaneStop04GSwitcher::initialize()
+void MainEcuInLaneStop03GSwitcher::initialize()
 {
   /*
   set_mode_continuable(false);
@@ -30,6 +30,6 @@ void MainEcuInLaneStop04GSwitcher::initialize()
 }  // namespace autoware::command_mode_switcher
 
 #include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(
-  autoware::command_mode_switcher::MainEcuInLaneStop04GSwitcher,
+PLUGINLIB_EXPORT_CLASS(0
+  autoware::command_mode_switcher::MainEcuInLaneStop03GSwitcher,
   autoware::command_mode_switcher::CommandPlugin)

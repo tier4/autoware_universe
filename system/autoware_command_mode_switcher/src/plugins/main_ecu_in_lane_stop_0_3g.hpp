@@ -12,8 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef SWITCHERS__SUB_ECU_IN_LANE_STOP_0_4G_HPP_
-#define SWITCHERS__SUB_ECU_IN_LANE_STOP_0_4G_HPP_
+#ifndef SWITCHERS__MAIN_ECU_IN_LANE_STOP_0_3G_HPP_
+#define SWITCHERS__MAIN_ECU_IN_LANE_STOP_0_3G_HPP_
 
 #include "common/command_plugin.hpp"
 
@@ -22,10 +22,10 @@
 namespace autoware::command_mode_switcher
 {
 
-class SubEcuInLaneStop04GSwitcher : public ControlCommandPlugin
+class MainEcuInLaneStop03GSwitcher : public ControlCommandPlugin
 {
 public:
-  std::string mode_name() const override { return "sub_ecu_in_lane_stop_0_4g"; }
+  std::string mode_name() const override { return "main_ecu_in_lane_stop_0_3g"; }
   std::string source_name() const override { return "in_lane_stop"; }
   bool autoware_control() const override { return true; }
   void initialize() override;
@@ -36,4 +36,4 @@ public:
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  //SWITCHERS__SUB_ECU_IN_LANE_STOP_0_4G_HPP_
+#endif  //SWITCHERS__MAIN_ECU_IN_LANE_STOP_0_3G_HPP_

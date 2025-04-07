@@ -6,7 +6,7 @@
   <class base_class_type="autoware::command_mode_switcher::CommandPlugin" type="autoware::command_mode_switcher::EmergencyStopSwitcher"/>
   <class base_class_type="autoware::command_mode_switcher::CommandPlugin" type="autoware::command_mode_switcher::ComfortableStopSwitcher"/>
   <class base_class_type="autoware::command_mode_switcher::CommandPlugin" type="autoware::command_mode_switcher::PullOverSwitcher"/>
-  <class base_class_type="autoware::command_mode_switcher::CommandPlugin" type="autoware::command_mode_switcher::MainEcuInLaneStop04GSwitcher"/>
+  <class base_class_type="autoware::command_mode_switcher::CommandPlugin" type="autoware::command_mode_switcher::MainEcuInLaneStop03GSwitcher"/>
   <class base_class_type="autoware::command_mode_switcher::CommandPlugin" type="autoware::command_mode_switcher::MainEcuInLaneStop06GSwitcher"/>
-  <class base_class_type="autoware::command_mode_switcher::CommandPlugin" type="autoware::command_mode_switcher::SubEcuInLaneStop04GSwitcher"/>
+  <class base_class_type="autoware::command_mode_switcher::CommandPlugin" type="autoware::command_mode_switcher::SubEcuInLaneStop03GSwitcher"/>
 </library>
