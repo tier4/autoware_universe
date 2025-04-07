@@ -36,33 +36,37 @@ enum class MrmState {
   Failed,
 };
 
-enum class RequestStage {
-  NoRequest,
-  CommandMode,
-  VehicleGate,
-  NetworkGate,
+enum class GateType {
+  NotSelected,
   ControlGate,
+  NetworkGate,
+  VehicleGate,
 };
 
 struct CommandModeStatusItem
 {
   std::string mode;
 
-  TriState state;
+  TriState mode_state;
+  TriState gate_state;
   MrmState mrm;
-  RequestStage request;
+  GateType request_phase;
+  GateType current_phase;
 
   bool mode_continuable;
   bool mode_available;
   bool transition_available;
   bool transition_completed;
 
-  TriState command_mode_state;
+  TriState transition_state;
   TriState vehicle_gate_state;
   TriState network_gate_state;
   TriState control_gate_state;
   TriState source_state;
   TriState source_group;
+
+  bool check_mode_ready() const;
+  bool check_gate_ready(GateType gate) const;
 };
 
 struct CommandModeStatus
