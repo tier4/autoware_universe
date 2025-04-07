@@ -112,7 +112,8 @@ private:
   diagnostic_updater::Updater diagnostic_updater_{this};
 
   void cloud_callback(
-    const AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) & input_ptr, const std::string & topic_name);
+    const AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) & input_ptr,
+    const std::string & topic_name);
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
 

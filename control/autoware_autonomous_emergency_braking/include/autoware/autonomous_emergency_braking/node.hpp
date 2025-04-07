@@ -16,8 +16,8 @@
 #define AUTOWARE__AUTONOMOUS_EMERGENCY_BRAKING__NODE_HPP_
 
 #include "autoware_utils/system/time_keeper.hpp"
-#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
@@ -332,8 +332,12 @@ public:
   explicit AEB(const rclcpp::NodeOptions & node_options);
 
   // subscriber
-  AUTOWARE_POLLING_SUBSCRIBER(PointCloud2) sub_point_cloud_{
-    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
+  AUTOWARE_POLLING_SUBSCRIBER(PointCloud2)
+  sub_point_cloud_ {
+    this,
+    "~/input/pointcloud",
+    autoware_utils::single_depth_sensor_qos()
+  };
   autoware_utils::InterProcessPollingSubscriber<VelocityReport> sub_velocity_{
     this, "~/input/velocity"};
   autoware_utils::InterProcessPollingSubscriber<Imu> sub_imu_{this, "~/input/imu"};

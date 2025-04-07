@@ -71,8 +71,12 @@ private:
   rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr sub_trajectory_;
   autoware_utils::InterProcessPollingSubscriber<autoware_perception_msgs::msg::PredictedObjects>
     sub_predicted_objects_{this, "~/input/dynamic_objects"};
-  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2) sub_no_ground_pointcloud_{
-    this, "~/input/no_ground_pointcloud", autoware_utils::single_depth_sensor_qos()};
+  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2)
+  sub_no_ground_pointcloud_ {
+    this,
+    "~/input/no_ground_pointcloud",
+    autoware_utils::single_depth_sensor_qos()
+  };
   autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry> sub_vehicle_odometry_{
     this, "~/input/vehicle_odometry"};
   autoware_utils::InterProcessPollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped>

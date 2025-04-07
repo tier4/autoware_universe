@@ -15,11 +15,11 @@
 #ifndef OCCUPANCY_GRID_MAP_OUTLIER_FILTER_NODE_HPP_
 #define OCCUPANCY_GRID_MAP_OUTLIER_FILTER_NODE_HPP_
 
-#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 #include "autoware_utils/ros/published_time_publisher.hpp"
 #include "autoware_utils/system/time_keeper.hpp"
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <pcl/common/impl/common.hpp>
 #include <rclcpp/rclcpp.hpp>
 

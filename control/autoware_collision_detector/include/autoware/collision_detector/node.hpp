@@ -111,8 +111,12 @@ private:
   // publisher and subscriber
   autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry> sub_odometry_{
     this, "~/input/odometry"};
-  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2) sub_pointcloud_{
-    this, "~/input/pointcloud", autoware::universe_utils::SingleDepthSensorQoS()};
+  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2)
+  sub_pointcloud_ {
+    this,
+    "~/input/pointcloud",
+    autoware::universe_utils::SingleDepthSensorQoS()
+  };
   autoware_utils::InterProcessPollingSubscriber<PredictedObjects> sub_dynamic_objects_{
     this, "~/input/objects"};
   autoware_utils::InterProcessPollingSubscriber<autoware_adapi_v1_msgs::msg::OperationModeState>

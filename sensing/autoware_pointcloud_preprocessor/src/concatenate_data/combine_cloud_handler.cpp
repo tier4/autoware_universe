@@ -193,7 +193,8 @@ void CombineCloudHandler::correct_pointcloud_motion(
 }
 
 ConcatenatedCloudResult CombineCloudHandler::combine_pointclouds(
-  std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)> & topic_to_cloud_map)
+  std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)> &
+    topic_to_cloud_map)
 {
   ConcatenatedCloudResult concatenate_cloud_result;
 

@@ -45,11 +45,11 @@
 #ifndef AUTOWARE__COSTMAP_GENERATOR__COSTMAP_GENERATOR_HPP_
 #define AUTOWARE__COSTMAP_GENERATOR__COSTMAP_GENERATOR_HPP_
 
-#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include "autoware/costmap_generator/utils/objects_to_costmap.hpp"
 #include "autoware/costmap_generator/utils/points_to_costmap.hpp"
 #include "costmap_generator_node_parameters.hpp"
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/processing_time_publisher.hpp>
@@ -103,8 +103,12 @@ private:
     pub_processing_time_ms_;
 
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_lanelet_bin_map_;
-  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2) sub_points_{
-    this, "~/input/points_no_ground", autoware_utils::single_depth_sensor_qos()};
+  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2)
+  sub_points_ {
+    this,
+    "~/input/points_no_ground",
+    autoware_utils::single_depth_sensor_qos()
+  };
   autoware_utils::InterProcessPollingSubscriber<PredictedObjects> sub_objects_{
     this, "~/input/objects"};
   autoware_utils::InterProcessPollingSubscriber<tier4_planning_msgs::msg::Scenario> sub_scenario_{

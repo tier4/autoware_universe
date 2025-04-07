@@ -15,7 +15,6 @@
 #ifndef AUTOWARE__OBSTACLE_CRUISE_PLANNER__NODE_HPP_
 #define AUTOWARE__OBSTACLE_CRUISE_PLANNER__NODE_HPP_
 
-#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include "autoware/obstacle_cruise_planner/common_structs.hpp"
 #include "autoware/obstacle_cruise_planner/optimization_based_planner/optimization_based_planner.hpp"
 #include "autoware/obstacle_cruise_planner/pid_based_planner/pid_based_planner.hpp"
@@ -25,6 +24,7 @@
 #include "autoware_utils/ros/polling_subscriber.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <autoware/objects_of_interest_marker_interface/objects_of_interest_marker_interface.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -177,8 +177,11 @@ private:
   autoware_utils::InterProcessPollingSubscriber<Odometry> ego_odom_sub_{this, "~/input/odometry"};
   autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_sub_{
     this, "~/input/objects"};
-  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2) pointcloud_sub_{
-    this, "~/input/pointcloud"};
+  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2)
+  pointcloud_sub_ {
+    this,
+    "~/input/pointcloud"
+  };
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> acc_sub_{
     this, "~/input/acceleration"};
   autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface

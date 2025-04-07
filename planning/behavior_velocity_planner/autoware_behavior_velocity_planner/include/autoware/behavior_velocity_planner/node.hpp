@@ -15,11 +15,11 @@
 #ifndef AUTOWARE__BEHAVIOR_VELOCITY_PLANNER__NODE_HPP_
 #define AUTOWARE__BEHAVIOR_VELOCITY_PLANNER__NODE_HPP_
 
-#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include "autoware/behavior_velocity_planner/planner_manager.hpp"
 #include "autoware_utils/ros/logger_level_configure.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <autoware/behavior_velocity_planner_common/planner_data.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -66,8 +66,12 @@ private:
   autoware_utils::InterProcessPollingSubscriber<autoware_perception_msgs::msg::PredictedObjects>
     sub_predicted_objects_{this, "~/input/dynamic_objects"};
 
-  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2) sub_no_ground_pointcloud_{
-    this, "~/input/no_ground_pointcloud", autoware_utils::single_depth_sensor_qos()};
+  AUTOWARE_POLLING_SUBSCRIBER(sensor_msgs::msg::PointCloud2)
+  sub_no_ground_pointcloud_ {
+    this,
+    "~/input/no_ground_pointcloud",
+    autoware_utils::single_depth_sensor_qos()
+  };
 
   autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry> sub_vehicle_odometry_{
     this, "~/input/vehicle_odometry"};
@@ -94,7 +98,8 @@ private:
 
   void onParam();
 
-  void processNoGroundPointCloud(const AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) msg);
+  void processNoGroundPointCloud(
+    const AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) msg);
   void processOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
   void processTrafficSignals(
     const autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr msg);

@@ -5,14 +5,14 @@
   <group if="$(var launch_parking_module)">
     <push-ros-namespace namespace="parking"/>
 
-    <let name="enable_agnocast" value="$(env ENABLE_AGNOCAST 0)" />
-    <let name="current_ld_preload" value="$(env LD_PRELOAD '')" />
+    <let name="enable_agnocast" value="$(env ENABLE_AGNOCAST 0)"/>
+    <let name="current_ld_preload" value="$(env LD_PRELOAD '')"/>
     <let name="new_ld_preload" value="$(eval &quot;\'$(var agnocast_heaphook_path):$(env LD_PRELOAD '')\' if \'$(var enable_agnocast)\' == \'1\' else \'$(var current_ld_preload)\'&quot;)"/>
 
     <node_container pkg="rclcpp_components" exec="$(var container_type)" name="parking_container" namespace="" output="screen">
-      <env name="LD_PRELOAD" value="$(var new_ld_preload)" />
+      <env name="LD_PRELOAD" value="$(var new_ld_preload)"/>
       <env name="AGNOCAST_MEMPOOL_SIZE" value="134217728"/>
-      
+
       <composable_node pkg="autoware_costmap_generator" plugin="autoware::costmap_generator::CostmapGenerator" name="costmap_generator" namespace="">
         <!-- topic remap -->
         <remap from="~/input/objects" to="/perception/object_recognition/objects"/>

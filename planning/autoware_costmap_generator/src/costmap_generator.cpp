@@ -301,7 +301,8 @@ void CostmapGenerator::onTimer()
   }
 
   if (param_->use_points) {
-    const AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) points = sub_points_.takeData();
+    const AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) points =
+      sub_points_.takeData();
     if (points.get()) {
       autoware_utils::ScopedTimeTrack st("generatePointsCostmap()", *time_keeper_);
       costmap_[LayerName::points] = generatePointsCostmap(points, tf.transform.translation.z);

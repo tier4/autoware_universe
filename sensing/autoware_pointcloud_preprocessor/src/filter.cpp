@@ -94,7 +94,8 @@ autoware::pointcloud_preprocessor::Filter::Filter(
   {
     AUTOWARE_PUBLISHER_OPTIONS pub_options;
     pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
-    pub_output_ = AUTOWARE_CREATE_PUBLISHER3(PointCloud2, "output", rclcpp::SensorDataQoS().keep_last(max_queue_size_), pub_options);
+    pub_output_ = AUTOWARE_CREATE_PUBLISHER3(
+      PointCloud2, "output", rclcpp::SensorDataQoS().keep_last(max_queue_size_), pub_options);
   }
 
   subscribe(filter_name);
