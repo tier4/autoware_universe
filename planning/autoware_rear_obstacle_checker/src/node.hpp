@@ -97,12 +97,13 @@ private:
   auto get_clustered_pointcloud(const PointCloud::Ptr in) const -> PointCloud::Ptr;
 
   auto get_pointcloud_objects(
-    const PlanningFactor & factor, const lanelet::ConstLanelets & current_lanes)
-    -> PointCloudObjects;
+    const PlanningFactor & factor, const lanelet::ConstLanelets & current_lanes,
+    DebugData & detection_areas) -> PointCloudObjects;
 
   auto get_pointcloud_objects(
     const lanelet::ConstLanelets & current_lanes, const bool is_right,
-    const double forward_distance, const double backward_distance) -> PointCloudObjects;
+    const double forward_distance, const double backward_distance, DebugData & detection_areas)
+    -> PointCloudObjects;
 
   void publish_marker(const DebugData & debug) const;
 

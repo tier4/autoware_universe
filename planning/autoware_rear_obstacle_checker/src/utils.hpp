@@ -274,6 +274,31 @@ lanelet::BasicPolygon3d to_basic_polygon3d(
   return polygon;
 }
 
+auto is_shift_path(
+  const lanelet::ConstLanelets & lanelets,
+  const std::vector<autoware_internal_planning_msgs::msg::PathPointWithLaneId> & points,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info) -> std::pair<bool, bool>
+{
+  const auto combine_lanelet = lanelet::utils::combineLaneletsShape(lanelets);
+
+  for (const auto & p : points) {
+    const auto transform = autoware_utils::pose2transform(autoware_utils::get_pose(p));
+    const auto footprint =
+      autoware_utils::transform_vector(vehicle_info.createFootprint(), transform);
+
+    const auto is_left_shift = boost::geometry::intersects(
+      footprint, lanelet::utils::to2D(combine_lanelet.leftBound()).basicLineString());
+    const auto is_right_shift = boost::geometry::intersects(
+      footprint, lanelet::utils::to2D(combine_lanelet.rightBound()).basicLineString());
+
+    if (is_left_shift || is_right_shift) {
+      return std::make_pair(is_left_shift, is_right_shift);
+    }
+  }
+
+  return std::make_pair(false, false);
+}
+
 bool should_activate(
   const tier4_planning_msgs::msg::PlanningFactor & factor,
   const rear_obstacle_checker_node::Params & parameters)
@@ -616,12 +641,11 @@ lanelet::BasicPolygons3d get_adjacent_polygons(
   return ret;
 }
 
-std::vector<std::pair<lanelet::BasicPolygon3d, lanelet::ConstLanelets>>
-get_previous_polygons_with_lane_recursively(
+auto get_previous_polygons_with_lane_recursively(
   const lanelet::ConstLanelets & lanes, const double s1, const double s2,
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
+  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler) -> DetectionAreas
 {
-  std::vector<std::pair<lanelet::BasicPolygon3d, lanelet::ConstLanelets>> ret{};
+  DetectionAreas ret{};
 
   if (lanes.empty()) {
     return ret;
@@ -647,14 +671,12 @@ get_previous_polygons_with_lane_recursively(
 
 auto get_pointcloud_object(
   const rclcpp::Time & now, const PointCloud::Ptr & pointcloud_ptr,
-  const std::vector<std::pair<lanelet::BasicPolygon3d, lanelet::ConstLanelets>> &
-    polygons_with_lane,
+  const DetectionAreas & detection_areas,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
   -> std::optional<PointCloudObject>
 {
   std::optional<PointCloudObject> opt_object = std::nullopt;
-  // const auto now = rclcpp::Clock{RCL_ROS_TIME}.now();
-  for (const auto & [polygon, lanes] : polygons_with_lane) {
+  for (const auto & [polygon, lanes] : detection_areas) {
     const auto pointcloud = get_obstacle_points({polygon}, *pointcloud_ptr);
 
     const auto path =
