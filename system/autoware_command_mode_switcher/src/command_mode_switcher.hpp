@@ -49,9 +49,12 @@ private:
   void on_availability(const CommandModeAvailability & msg);
   void on_request(const CommandModeRequest & msg);
   void update();
-  void publish_command_mode_status();
+
+  void detect_override();
+  void update_status();
   void handle_foreground_transition();
   void handle_background_transition();
+  void publish_command_mode_status();
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
@@ -71,6 +74,7 @@ private:
   VehicleGateInterface vehicle_gate_interface_;
 
   bool is_ready_ = false;
+  bool is_autoware_control_ = false;
 };
 
 }  // namespace autoware::command_mode_switcher

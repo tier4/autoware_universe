@@ -66,6 +66,7 @@ protected:
 private:
   bool is_in_transition() const;
   void update();
+  void detect_override();
   void update_request_mode();
   void update_current_mode();
   void sync_command_mode();
@@ -96,7 +97,7 @@ private:
 
   // parameters
   double request_timeout_;
-  std::string manual_mode_name_;
+  std::string manual_mode_name_ = "manual";
 
   // status
   bool is_modes_ready_;
