@@ -54,7 +54,7 @@ MrmState ComfortableStopSwitcher::update_mrm_state()
     return mrm_state_;
   }
 
-  if (isStopped()) mrm_state_ = MrmState::Succeeded;
+  if (is_stopped()) mrm_state_ = MrmState::Succeeded;
   return mrm_state_;
 }
 
