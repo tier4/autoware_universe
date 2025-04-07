@@ -426,6 +426,13 @@ void PathOptimizer::applyInputVelocity(
 
     const size_t ego_seg_idx =
       trajectory_utils::findEgoSegmentIndex(input_traj_points, ego_pose, ego_nearest_param_);
+    
+    // trim to ego-pose
+    const size_t ego_seg_idx_output_traj =
+    trajectory_utils::findEgoSegmentIndex(output_traj_points, ego_pose, ego_nearest_param_);
+      
+    output_traj_points = std::vector<TrajectoryPoint>(output_traj_points.begin() + ego_seg_idx_output_traj, output_traj_points.end());
+    
     const auto cropped_points = autoware::motion_utils::cropForwardPoints(
       input_traj_points, ego_pose.position, ego_seg_idx,
       optimized_traj_length + margin_traj_length);
