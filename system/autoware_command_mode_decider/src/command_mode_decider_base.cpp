@@ -38,7 +38,6 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 : Node("command_mode_decider", options)
 {
   request_timeout_ = declare_parameter<double>("request_timeout");
-  manual_mode_name_ = "manual";
 
   is_modes_ready_ = false;
   command_mode_status_.init(declare_parameter<std::vector<std::string>>("command_modes"));
