@@ -32,6 +32,10 @@ namespace autoware::rear_obstacle_checker
 
 using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
 
+using DetectionArea = std::pair<lanelet::BasicPolygon3d, lanelet::ConstLanelets>;
+
+using DetectionAreas = std::vector<DetectionArea>;
+
 struct PointCloudObject
 {
   rclcpp::Time last_update_time;
@@ -61,10 +65,30 @@ struct DebugData
 
   PointCloudObjects pointcloud_objects;
 
+  DetectionAreas detection_areas;
+
   std::vector<geometry_msgs::msg::Point> obstacle_pointcloud;
 
   std::pair<std::string, std_msgs::msg::ColorRGBA> text{
     "NONE", autoware_utils::create_marker_color(1.0, 1.0, 1.0, 0.999)};
+
+  auto get_detection_polygons() const -> lanelet::BasicPolygons3d
+  {
+    lanelet::BasicPolygons3d ret{};
+    for (const auto & [polygon, lanes] : detection_areas) {
+      ret.push_back(polygon);
+    }
+    return ret;
+  }
+
+  auto get_detection_lanes() const -> lanelet::ConstLanelets
+  {
+    lanelet::ConstLanelets ret{};
+    for (const auto & [polygon, lanes] : detection_areas) {
+      ret.insert(ret.end(), lanes.begin(), lanes.end());
+    }
+    return ret;
+  }
 };
 }  // namespace autoware::rear_obstacle_checker
 
