@@ -19,7 +19,7 @@
 namespace autoware::command_mode_decider
 {
 
-  CommandModeDeciderRedundancy::CommandModeDeciderRedundancy(const rclcpp::NodeOptions & options)
+CommandModeDeciderRedundancy::CommandModeDeciderRedundancy(const rclcpp::NodeOptions & options)
 : CommandModeDeciderBase(options)
 {
 }
