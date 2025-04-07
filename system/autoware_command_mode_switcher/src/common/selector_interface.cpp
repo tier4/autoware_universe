@@ -71,6 +71,11 @@ bool ControlGateInterface::is_in_transition() const
   return status_.transition;
 }
 
+bool VehicleGateInterface::is_autoware_control() const
+{
+  return status_.mode == ControlModeReport::AUTONOMOUS;
+}
+
 bool ControlGateInterface::is_selected(const CommandPlugin & plugin) const
 {
   if (plugin.source_name().empty()) {

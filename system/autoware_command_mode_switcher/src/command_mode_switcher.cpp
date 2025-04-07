@@ -152,6 +152,36 @@ void CommandModeSwitcher::update()
   // TODO(Takagi, Isamu): Check call rate.
   if (!is_ready_) return;
 
+  detect_override();
+  update_status();
+  handle_foreground_transition();
+  handle_background_transition();
+  publish_command_mode_status();
+}
+
+void CommandModeSwitcher::detect_override()
+{
+  const auto curr_autoware_control = vehicle_gate_interface_.is_autoware_control();
+  const auto is_changed_to_manual = (is_autoware_control_ && !curr_autoware_control);
+  is_autoware_control_ = curr_autoware_control;
+
+  if (!is_changed_to_manual) return;
+  if (foreground_ == manual_command_) return;
+  RCLCPP_WARN_STREAM(get_logger(), "override detected");
+
+  // Move foreground to background.
+  if (foreground_) {
+    background_ = foreground_;
+    background_->status.request_phase = GateType::ControlGate;
+    background_->status.transition_state = TriState::Transition;
+  }
+  foreground_ = manual_command_;
+  foreground_->status.request_phase = GateType::VehicleGate;
+  foreground_->status.transition_state = TriState::Transition;
+}
+
+void CommandModeSwitcher::update_status()
+{
   // NOTE: Update the source state first since the source group state depends on it.
   const auto to_tri_state = [](bool state) {
     return state ? TriState::Enabled : TriState::Disabled;
@@ -185,10 +215,6 @@ void CommandModeSwitcher::update()
     status.gate_state = update_gate_state(status);        // Depends on the source group.
     status.mode_state = update_mode_state(status);        // Depends on the gate state.
   }
-
-  handle_foreground_transition();
-  handle_background_transition();
-  publish_command_mode_status();
 }
 
 void CommandModeSwitcher::publish_command_mode_status()
@@ -203,7 +229,7 @@ void CommandModeSwitcher::publish_command_mode_status()
 
 void CommandModeSwitcher::handle_foreground_transition()
 {
-  if (!foreground_) {
+  if (!foreground_ || foreground_->status.transition_state == TriState::Enabled) {
     return;
   }
 
@@ -236,7 +262,7 @@ void CommandModeSwitcher::handle_foreground_transition()
 
 void CommandModeSwitcher::handle_background_transition()
 {
-  if (!background_) {
+  if (!background_ || background_->status.transition_state == TriState::Enabled) {
     return;
   }
 
