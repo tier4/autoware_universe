@@ -19,12 +19,12 @@
 #include "common/manual.hpp"
 #include "common/selector_interface.hpp"
 
+#include <autoware_command_mode_types/adapters/command_mode_status.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <tier4_system_msgs/msg/command_mode_availability.hpp>
 #include <tier4_system_msgs/msg/command_mode_request.hpp>
-#include <tier4_system_msgs/msg/command_mode_status.hpp>
 #include <tier4_system_msgs/msg/command_source_status.hpp>
 
 #include <memory>
@@ -35,10 +35,10 @@
 namespace autoware::command_mode_switcher
 {
 
+using autoware::command_mode_types::CommandModeStatus;
+using autoware::command_mode_types::CommandModeStatusAdapter;
 using tier4_system_msgs::msg::CommandModeAvailability;
 using tier4_system_msgs::msg::CommandModeRequest;
-using tier4_system_msgs::msg::CommandModeStatus;
-using tier4_system_msgs::msg::CommandModeStatusItem;
 
 class CommandModeSwitcher : public rclcpp::Node
 {
@@ -57,7 +57,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_availability_;
   rclcpp::Subscription<CommandModeRequest>::SharedPtr sub_request_;
-  rclcpp::Publisher<CommandModeStatus>::SharedPtr pub_status_;
+  rclcpp::Publisher<CommandModeStatusAdapter>::SharedPtr pub_status_;
 
   // Mode switching.
   pluginlib::ClassLoader<CommandPlugin> loader_;

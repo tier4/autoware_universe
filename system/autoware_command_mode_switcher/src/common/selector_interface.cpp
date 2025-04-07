@@ -103,7 +103,7 @@ bool ControlGateInterface::request(const CommandPlugin & plugin, bool transition
   request->source = plugin.source_name();
   request->transition = transition;
 
-  RCLCPP_WARN_STREAM(node_.get_logger(), "control gate request");
+  RCLCPP_INFO_STREAM(node_.get_logger(), "control gate request");
   requesting_ = true;
   cli_source_select_->async_send_request(request, [this](SharedFuture) { requesting_ = false; });
   return true;
@@ -127,7 +127,7 @@ bool VehicleGateInterface::request(const CommandPlugin & plugin)
     request->mode = ControlModeCommand::Request::MANUAL;
   }
 
-  RCLCPP_WARN_STREAM(node_.get_logger(), "vehicle gate request");
+  RCLCPP_INFO_STREAM(node_.get_logger(), "vehicle gate request");
   requesting_ = true;
   cli_control_mode_->async_send_request(request, [this](SharedFuture) { requesting_ = false; });
   return true;
