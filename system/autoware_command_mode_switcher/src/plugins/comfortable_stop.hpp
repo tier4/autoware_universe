@@ -17,8 +17,6 @@
 
 #include "common/command_plugin.hpp"
 
-#include <autoware_utils/ros/polling_subscriber.hpp>
-
 #include <nav_msgs/msg/odometry.hpp>
 #include <tier4_planning_msgs/msg/velocity_limit.hpp>
 #include <tier4_planning_msgs/msg/velocity_limit_clear_command.hpp>
