@@ -53,22 +53,22 @@ std::string CommandModeDeciderRedundancy::decide_command_mode()
   // following.
   // https://autowarefoundation.github.io/autoware-documentation/main/design/autoware-interfaces/ad-api/features/fail-safe/#behavior
   const auto comfortable_stop = "comfortable_stop";
-  const auto main_ecu_in_lane_stop_0_4g = "main_ecu_in_lane_stop_0_4g";
+  const auto main_ecu_in_lane_stop_0_3g = "main_ecu_in_lane_stop_0_3g";
   const auto main_ecu_in_lane_stop_0_6g = "main_ecu_in_lane_stop_0_6g";
-  const auto sub_ecu_in_lane_stop_0_4g = "sub_ecu_in_lane_stop_0_4g";
+  const auto sub_ecu_in_lane_stop_0_3g = "sub_ecu_in_lane_stop_0_3g";
 
   // TODO(Takagi, Isamu): check command_modes parameter
   if (command_mode_status.get(comfortable_stop).mode_available) {
     return comfortable_stop;
   }
-  if (command_mode_status.get(main_ecu_in_lane_stop_0_4g).mode_available) {
-    return main_ecu_in_lane_stop_0_4g;
+  if (command_mode_status.get(main_ecu_in_lane_stop_0_3g).mode_available) {
+    return main_ecu_in_lane_stop_0_3g;
   }
   if (command_mode_status.get(main_ecu_in_lane_stop_0_6g).mode_available) {
     return main_ecu_in_lane_stop_0_6g;
   }
-  if (command_mode_status.get(sub_ecu_in_lane_stop_0_4g).mode_available) {
-    return sub_ecu_in_lane_stop_0_4g;
+  if (command_mode_status.get(sub_ecu_in_lane_stop_0_3g).mode_available) {
+    return sub_ecu_in_lane_stop_0_3g;
   }
   // FIXME(TetsuKawa): How to handle the case where no MRM is available.
 
