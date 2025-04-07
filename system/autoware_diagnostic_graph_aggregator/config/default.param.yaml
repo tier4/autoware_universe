@@ -4,3 +4,13 @@
     rate: 10.0
     input_qos_depth: 1000
     graph_qos_depth: 1
+
+    use_command_mode_mappings: true
+    command_mode_mappings:
+      - "{mode: stop,             path: /autoware/modes/stop}"
+      - "{mode: autonomous,       path: /autoware/modes/autonomous}"
+      - "{mode: local,            path: /autoware/modes/local}"
+      - "{mode: remote,           path: /autoware/modes/remote}"
+      - "{mode: emergency_stop,   path: /autoware/modes/emergency_stop}"
+      - "{mode: comfortable_stop, path: /autoware/modes/comfortable_stop}"
+      - "{mode: pull_over,        path: /autoware/modes/pull_over}"
