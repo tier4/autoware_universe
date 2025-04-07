@@ -60,6 +60,7 @@ public:
   using Callback = std::function<void()>;
   VehicleGateInterface(rclcpp::Node & node, Callback callback);
   bool is_selected(const CommandPlugin & plugin) const;
+  bool is_autoware_control() const;
   bool request(const CommandPlugin & plugin);
 
 private:

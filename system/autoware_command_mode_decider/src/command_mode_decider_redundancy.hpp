@@ -12,25 +12,29 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__COMMAND_STATUS_HPP_
-#define COMMON__COMMAND_STATUS_HPP_
+#ifndef COMMAND_MODE_DECIDER_REDUNDANCY_HPP_
+#define COMMAND_MODE_DECIDER_REDUNDANCY_HPP_
 
-#include <autoware_command_mode_types/types/command_mode_status.hpp>
+#include "command_mode_decider_base.hpp"
 
 #include <string>
 
-namespace autoware::command_mode_switcher
+namespace autoware::command_mode_decider
 {
 
-using CommandStatus = command_mode_types::CommandModeStatusItem;
-using command_mode_types::GateType;
-using command_mode_types::MrmState;
-using command_mode_types::TriState;
+class CommandModeDeciderRedundancy : public CommandModeDeciderBase
+{
+public:
+  explicit CommandModeDeciderRedundancy(const rclcpp::NodeOptions & options);
 
-TriState update_mode_state(const CommandStatus & status);
-TriState update_gate_state(const CommandStatus & status);
-GateType update_current_phase(const CommandStatus & status);
+protected:
+  std::string decide_command_mode() override;
 
-}  // namespace autoware::command_mode_switcher
+private:
+  bool use_pull_over_;
+  bool use_comfortable_stop_;
+};
 
-#endif  // COMMON__COMMAND_STATUS_HPP_
+}  // namespace autoware::command_mode_decider
+
+#endif  // COMMAND_MODE_DECIDER_REDUNDANCY_HPP_
