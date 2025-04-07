@@ -27,7 +27,7 @@ void ComfortableStopSwitcher::initialize()
   sub_odom_ = node_->create_subscription<nav_msgs::msg::Odometry>(
     "/localization/kinematic_state", rclcpp::QoS{1},
     [this](const nav_msgs::msg::Odometry::ConstSharedPtr msg) { odom_.emplace(*msg); });
-  
+
   mrm_state_ = MrmState::Normal;
 }
 
