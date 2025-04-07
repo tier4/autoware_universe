@@ -30,6 +30,6 @@ void MainEcuInLaneStop03GSwitcher::initialize()
 }  // namespace autoware::command_mode_switcher
 
 #include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(0
+PLUGINLIB_EXPORT_CLASS(
   autoware::command_mode_switcher::MainEcuInLaneStop03GSwitcher,
   autoware::command_mode_switcher::CommandPlugin)
