@@ -17,10 +17,14 @@
 
 #include "common/command_plugin.hpp"
 
+#include <jerk_constant_deceleration_controller_msgs/msg/jerk_constant_deceleration_trigger.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+
 #include <string>
 
 namespace autoware::command_mode_switcher
 {
+using jerk_constant_deceleration_controller_msgs::msg::JerkConstantDecelerationTrigger;
 
 class MainEcuInLaneStop03GSwitcher : public ControlCommandPlugin
 {
@@ -30,8 +34,21 @@ public:
   bool autoware_control() const override { return true; }
   void initialize() override;
 
+  TriState update_source_state(bool request) override;
+  MrmState update_mrm_state() override;
+
   bool get_transition_available() override { return true; }
   bool get_transition_completed() override { return true; }
+private:
+  void publish_jerk_constant_deceleration_trigger(bool turn_on);
+  bool is_stopped();
+
+  rclcpp::Publisher<JerkConstantDecelerationTrigger>::SharedPtr 
+    pub_trigger_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
+
+  std::optional<nav_msgs::msg::Odometry> odom_;
+  MrmState mrm_state_;
 };
 
 }  // namespace autoware::command_mode_switcher
