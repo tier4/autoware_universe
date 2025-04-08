@@ -67,6 +67,7 @@ private:
   bool is_in_transition() const;
   void update();
   void detect_override();
+  void detect_operation_mode_timeout();
   void update_request_mode();
   void update_current_mode();
   void sync_command_mode();
@@ -96,6 +97,7 @@ private:
   rclcpp::Publisher<MrmState>::SharedPtr pub_mrm_state_;
 
   // parameters
+  double transition_timeout_;
   double request_timeout_;
   std::string manual_mode_name_ = "manual";
 
@@ -108,6 +110,7 @@ private:
   std::string command_mode_;
   std::string request_mode_;
   std::optional<rclcpp::Time> request_stamp_;
+  std::optional<rclcpp::Time> transition_stamp_;
 
   bool curr_autoware_control_;
   bool last_autoware_control_;

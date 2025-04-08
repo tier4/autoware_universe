@@ -37,6 +37,7 @@ void logging_mode_change(
 CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & options)
 : Node("command_mode_decider", options)
 {
+  transition_timeout_ = declare_parameter<double>("transition_timeout");
   request_timeout_ = declare_parameter<double>("request_timeout");
 
   is_modes_ready_ = false;
@@ -112,15 +113,6 @@ void CommandModeDeciderBase::on_timer()
   if (!is_modes_ready_) {
     return;
   }
-
-  if (request_stamp_) {
-    const auto duration = (now() - *request_stamp_).seconds();
-    if (request_timeout_ < duration) {
-      request_stamp_ = std::nullopt;
-      RCLCPP_WARN_STREAM(get_logger(), "command mode request timeout");
-    }
-  }
-
   update();
 }
 
@@ -129,6 +121,7 @@ void CommandModeDeciderBase::update()
   // Note: is_modes_ready_ should be checked in the function that called this.
   // TODO(Takagi, Isamu): Check call rate.
   detect_override();
+  detect_operation_mode_timeout();
   update_request_mode();
   update_current_mode();
   sync_command_mode();
@@ -146,6 +139,32 @@ void CommandModeDeciderBase::detect_override()
     foreground_request_ = manual_mode_name_;
     system_request_.autoware_control = false;
   }
+}
+
+void CommandModeDeciderBase::detect_operation_mode_timeout()
+{
+  if (!is_in_transition()) {
+    transition_stamp_ = std::nullopt;
+    return;
+  }
+  if (!transition_stamp_) {
+    transition_stamp_ = now();
+  }
+
+  const auto duration = (now() - *transition_stamp_).seconds();
+  if (duration < transition_timeout_) {
+    return;
+  }
+
+  // Rollback to the last operation mode.
+  if (last_autoware_control_) {
+    system_request_.operation_mode = last_operation_mode_;
+    system_request_.autoware_control = true;
+  } else {
+    // Keep the operation mode.
+    system_request_.autoware_control = false;
+  }
+  RCLCPP_INFO_STREAM(get_logger(), "Mode transition is canceled due to timeout.");
 }
 
 void CommandModeDeciderBase::update_request_mode()
@@ -235,7 +254,12 @@ void CommandModeDeciderBase::sync_command_mode()
     return;
   }
   if (request_stamp_) {
-    return;
+    const auto duration = (now() - *request_stamp_).seconds();
+    if (duration < request_timeout_) {
+      return;
+    }
+    request_stamp_ = std::nullopt;
+    RCLCPP_WARN_STREAM(get_logger(), "command mode request timeout");
   }
 
   // Request stamp is used for timeout check and request flag.
