@@ -138,7 +138,8 @@ protected:
   rclcpp::Subscription<PointCloud2>::SharedPtr sub_input_;
 
   /** \brief The output PointCloud2 publisher. */
-  AUTOWARE_PUBLISHER_PTR(PointCloud2) pub_output_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
+  AUTOWARE_PUBLISHER_PTR(PointCloud2) pub_output_wrapped_;
 
   /** \brief The message filter subscriber for PointCloud2. */
   message_filters::Subscriber<PointCloud2> sub_input_filter_;
@@ -242,6 +243,8 @@ protected:
   /** \brief True if we use an approximate time synchronizer
    * versus an exact one (false by default). */
   bool approximate_sync_ = false;
+
+  bool is_agnocast_publish_node_ = false;
 
   std::unique_ptr<autoware_utils::ManagedTransformBuffer> managed_tf_buffer_{nullptr};
 
