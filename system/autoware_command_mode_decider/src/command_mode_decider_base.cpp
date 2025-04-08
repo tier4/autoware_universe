@@ -97,7 +97,7 @@ void CommandModeDeciderBase::on_status(const CommandModeStatus & msg)
 {
   // Update command mode status.
   for (const auto & item : msg.items) {
-    command_mode_status_.set(item);
+    command_mode_status_.set(item, msg.stamp);
   }
 
   // Check if all command mode status items are ready.
@@ -113,6 +113,7 @@ void CommandModeDeciderBase::on_timer()
   if (!is_modes_ready_) {
     return;
   }
+  command_mode_status_.check_timeout(now());
   update();
 }
 

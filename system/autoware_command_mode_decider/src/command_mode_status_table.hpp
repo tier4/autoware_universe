@@ -30,7 +30,8 @@ class CommandModeStatusTable
 {
 public:
   void init(const std::vector<std::string> & modes);
-  void set(const CommandModeStatusItem & item);
+  void set(const CommandModeStatusItem & item, const rclcpp::Time & stamp);
+  void check_timeout(const rclcpp::Time & stamp);
   bool ready() const;
   const CommandModeStatusItem & get(const std::string & mode) const;
 
@@ -40,6 +41,7 @@ public:
 private:
   CommandModeStatusItem empty_item_;
   std::unordered_map<std::string, CommandModeStatusItem> command_mode_status_;
+  std::unordered_map<std::string, rclcpp::Time> command_mode_stamps_;
 };
 
 }  // namespace autoware::command_mode_decider

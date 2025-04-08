@@ -14,8 +14,31 @@
 
 #include "autoware_command_mode_types/adapters/command_mode_status.hpp"
 
+#include <string>
+
 namespace autoware::command_mode_types
 {
+
+CommandModeStatusItem::CommandModeStatusItem(const std::string & mode) : mode(mode)
+{
+  mode_state = TriState::Disabled;
+  gate_state = TriState::Disabled;
+  mrm = MrmState::Normal;
+  request_phase = GateType::NotSelected;
+  current_phase = GateType::NotSelected;
+
+  mode_continuable = false;
+  mode_available = false;
+  transition_available = false;
+  transition_completed = false;
+
+  transition_state = TriState::Disabled;
+  vehicle_gate_state = TriState::Disabled;
+  network_gate_state = TriState::Disabled;
+  control_gate_state = TriState::Disabled;
+  source_state = TriState::Disabled;
+  source_group = TriState::Disabled;
+}
 
 TriState merge_state(const TriState & s1, const TriState & s2)
 {
