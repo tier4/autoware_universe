@@ -311,6 +311,7 @@ class GroundSegmentationPipeline:
         )
 
         if use_additional:
+            concatenation_param = self.ground_segmentation_param["concatenation"]["parameters"]
             for lidar_name in additional_lidars:
                 components.extend(self.create_additional_pipeline(lidar_name))
             components.append(
@@ -318,6 +319,7 @@ class GroundSegmentationPipeline:
                     input_topics=[common_pipeline_output]
                     + [f"{x}/pointcloud" for x in additional_lidars],
                     output_topic=relay_topic if use_ransac else output_topic,
+                    concatenation_param=concatenation_param,
                 )
             )
 
@@ -482,7 +484,7 @@ class GroundSegmentationPipeline:
         return components
 
     @staticmethod
-    def get_additional_lidars_concatenated_component(input_topics, output_topic):
+    def get_additional_lidars_concatenated_component(input_topics, output_topic, concatenation_param):
         return ComposableNode(
             package="autoware_pointcloud_preprocessor",
             plugin="autoware::pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent",
@@ -492,11 +494,12 @@ class GroundSegmentationPipeline:
                 ("output", output_topic),
             ],
             parameters=[
+                concatenation_param,
                 {
                     "input_topics": input_topics,
                     "output_frame": LaunchConfiguration("base_frame"),
                     "input_twist_topic_type": "odom",
-                }
+                },
             ],
             extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
         )
