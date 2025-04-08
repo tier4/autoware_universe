@@ -57,10 +57,8 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
       &ControlCmdGate::on_select_source, this, std::placeholders::_1, std::placeholders::_2));
 
   const auto on_change_source = [this](const std::string & source) {
-    CommandSourceStatus status;
-    status.stamp = now();
-    status.source = source;
-    pub_status_->publish(status);
+    source_status_.source = source;
+    publish_source_status();
   };
 
   selector_ = std::make_unique<CommandSelector>(get_logger(), on_change_source);
@@ -124,6 +122,13 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
 }
 
+void ControlCmdGate::publish_source_status()
+{
+  // The source and transition fields are updated in other functions.
+  source_status_.stamp = now();
+  pub_status_->publish(source_status_);
+};
+
 void ControlCmdGate::on_timer()
 {
   selector_->update();
@@ -147,6 +152,8 @@ void ControlCmdGate::on_select_source(
 
   // Update transition flag if command source is changed.
   output_filter_->set_transition_flag(req->transition);
+  source_status_.transition = req->transition;
+  publish_source_status();
 }
 
 }  // namespace autoware::control_command_gate

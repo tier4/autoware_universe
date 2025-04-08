@@ -229,7 +229,15 @@ void CommandModeSwitcher::publish_command_mode_status()
 
 void CommandModeSwitcher::handle_foreground_transition()
 {
-  if (!foreground_ || foreground_->status.transition_state == TriState::Enabled) {
+  if (!foreground_) {
+    return;
+  }
+
+  // Disable control gate transition filter when the transition is completed.
+  if (foreground_->status.transition_state == TriState::Enabled) {
+    if (control_gate_interface_.is_in_transition()) {
+      control_gate_interface_.request(*foreground_->plugin, false);
+    }
     return;
   }
 
@@ -251,18 +259,17 @@ void CommandModeSwitcher::handle_foreground_transition()
     return;
   }
 
-  // Disable transition filter of control gate.
-  if (control_gate_interface_.is_in_transition()) {
-    control_gate_interface_.request(*foreground_->plugin, false);
-  }
-
   // Complete transition.
   foreground_->status.transition_state = TriState::Enabled;
 }
 
 void CommandModeSwitcher::handle_background_transition()
 {
-  if (!background_ || background_->status.transition_state == TriState::Enabled) {
+  if (!background_) {
+    return;
+  }
+
+  if (background_->status.transition_state == TriState::Enabled) {
     return;
   }
 
