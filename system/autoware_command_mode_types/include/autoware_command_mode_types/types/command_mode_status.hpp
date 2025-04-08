@@ -65,6 +65,7 @@ struct CommandModeStatusItem
   TriState source_state;
   TriState source_group;
 
+  explicit CommandModeStatusItem(const std::string & mode = "");
   bool check_mode_ready() const;
   bool check_gate_ready(GateType gate) const;
 };

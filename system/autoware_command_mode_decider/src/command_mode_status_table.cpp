@@ -35,11 +35,22 @@ bool CommandModeStatusTable::ready() const
   return true;
 }
 
-void CommandModeStatusTable::set(const CommandModeStatusItem & item)
+void CommandModeStatusTable::set(const CommandModeStatusItem & item, const rclcpp::Time & stamp)
 {
   const auto iter = command_mode_status_.find(item.mode);
   if (iter != command_mode_status_.end()) {
     iter->second = item;
+    command_mode_stamps_[item.mode] = stamp;
+  }
+}
+
+void CommandModeStatusTable::check_timeout(const rclcpp::Time & stamp)
+{
+  for (const auto & [mode, message_stamp] : command_mode_stamps_) {
+    const auto duration = (stamp - message_stamp).seconds();
+    if (1.0 < duration) {
+      command_mode_status_[mode] = CommandModeStatusItem(mode);
+    }
   }
 }
 
