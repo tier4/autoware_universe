@@ -30,20 +30,18 @@ namespace autoware::control_command_gate
 class CommandSelector
 {
 public:
-  using SourceChangeCallback = std::function<void(const std::string &)>;
-
-  CommandSelector(const rclcpp::Logger & logger, SourceChangeCallback on_change_source);
+  explicit CommandSelector(const rclcpp::Logger & logger);
   void add_source(std::unique_ptr<CommandSource> && source);
   void set_output(std::unique_ptr<CommandOutput> && output);
   void update();
   void select_builtin_source(const std::string & name);
   std::string select(const std::string & name);
+  std::string get_source_name() const { return current_source_; }
 
 private:
   void select_source(const std::string & name);
 
   rclcpp::Logger logger_;
-  SourceChangeCallback on_change_source_;
   std::string builtin_source_;
   std::string current_source_;
   std::unordered_map<std::string, std::unique_ptr<CommandSource>> sources_;
