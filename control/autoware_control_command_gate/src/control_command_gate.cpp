@@ -132,7 +132,7 @@ void ControlCmdGate::on_select_source(
   if (!error.empty()) {
     res->status.success = false;
     res->status.message = error;
-    RCLCPP_INFO_STREAM(get_logger(), error);
+    RCLCPP_ERROR_STREAM(get_logger(), error);
     return;
   }
   const auto message = "target command source is selected: " + req->source;
