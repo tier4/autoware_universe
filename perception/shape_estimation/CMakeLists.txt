@@ -29,6 +29,7 @@ ament_auto_add_library(shape_estimation_lib SHARED
   lib/filter/utils.cpp
   lib/corrector/no_corrector.cpp
   lib/corrector/utils.cpp
+  lib/corrector/reference_object_based_corrector.cpp
 )
 
 ament_target_dependencies(shape_estimation_lib ${SHAPE_ESTIMATION_DEPENDENCIES})

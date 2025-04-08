@@ -200,6 +200,7 @@ TEST(ShapeEstimator, test_estimateShapeAndPose)
   const bool use_corrector = true;
   const bool use_filter = true;
   const bool use_boost_bbox_optimizer = true;
+  boost::optional<geometry_msgs::msg::Pose> ref_shape = boost::none;
   ShapeEstimator shape_estimator =
     ShapeEstimator(use_corrector, use_filter, use_boost_bbox_optimizer);
 
@@ -216,7 +217,7 @@ TEST(ShapeEstimator, test_estimateShapeAndPose)
 
   // Test estimateShapeAndPose
   const bool result = shape_estimator.estimateShapeAndPose(
-    label, cluster, ref_yaw_info, ref_shape_size_info, shape_output, pose_output);
+    label, cluster, ref_yaw_info, ref_shape_size_info, ref_shape, shape_output, pose_output);
   EXPECT_TRUE(result);
 
   // Check shape_output
