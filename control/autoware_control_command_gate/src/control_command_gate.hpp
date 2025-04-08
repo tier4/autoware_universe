@@ -54,7 +54,9 @@ private:
   diagnostic_updater::Updater diag_;
   std::unique_ptr<CommandSelector> selector_;
   CommandFilter * output_filter_;
-  CommandSourceStatus source_status_;
+
+  std::string source_name_;
+  bool transition_flag_ = false;
 };
 
 }  // namespace autoware::control_command_gate

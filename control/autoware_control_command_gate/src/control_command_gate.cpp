@@ -56,12 +56,7 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
     std::bind(
       &ControlCmdGate::on_select_source, this, std::placeholders::_1, std::placeholders::_2));
 
-  const auto on_change_source = [this](const std::string & source) {
-    source_status_.source = source;
-    publish_source_status();
-  };
-
-  selector_ = std::make_unique<CommandSelector>(get_logger(), on_change_source);
+  selector_ = std::make_unique<CommandSelector>(get_logger());
   diag_.setHardwareID("none");
 
   TimeoutDiag::Params params;
@@ -117,21 +112,16 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
 
   // Select initial command source. Note that the select function calls on_change_source.
   selector_->select_builtin_source(builtin);
+  publish_source_status();
 
   const auto period = rclcpp::Rate(declare_parameter<double>("rate")).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
 }
 
-void ControlCmdGate::publish_source_status()
-{
-  // The source and transition fields are updated in other functions.
-  source_status_.stamp = now();
-  pub_status_->publish(source_status_);
-};
-
 void ControlCmdGate::on_timer()
 {
   selector_->update();
+  publish_source_status();
 }
 
 void ControlCmdGate::on_select_source(
@@ -152,9 +142,25 @@ void ControlCmdGate::on_select_source(
 
   // Update transition flag if command source is changed.
   output_filter_->set_transition_flag(req->transition);
-  source_status_.transition = req->transition;
   publish_source_status();
 }
+
+void ControlCmdGate::publish_source_status()
+{
+  const auto source_name = selector_->get_source_name();
+  const auto transition_flag = output_filter_->get_transition_flag();
+  if (source_name_ == source_name && transition_flag_ == transition_flag) {
+    return;
+  }
+  source_name_ = source_name;
+  transition_flag_ = transition_flag;
+
+  CommandSourceStatus msg;
+  msg.stamp = now();
+  msg.source = source_name_;
+  msg.transition = transition_flag_;
+  pub_status_->publish(msg);
+};
 
 }  // namespace autoware::control_command_gate
 
