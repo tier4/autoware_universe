@@ -80,7 +80,8 @@ autoware::pointcloud_preprocessor::Filter::Filter(
     latched_indices_ = static_cast<bool>(declare_parameter("latched_indices", false));
     approximate_sync_ = static_cast<bool>(declare_parameter("approximate_sync", false));
 
-    is_agnocast_publish_node_ = static_cast<bool>(declare_parameter("is_agnocast_publish_node", false));
+    is_agnocast_publish_node_ =
+      static_cast<bool>(declare_parameter("is_agnocast_publish_node", false));
 
     RCLCPP_DEBUG_STREAM(
       this->get_logger(),
@@ -97,11 +98,13 @@ autoware::pointcloud_preprocessor::Filter::Filter(
     if (is_agnocast_publish_node_) {
       AUTOWARE_PUBLISHER_OPTIONS pub_options;
       pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
-      pub_output_wrapped_ = AUTOWARE_CREATE_PUBLISHER3(PointCloud2, "output", rclcpp::SensorDataQoS().keep_last(max_queue_size_), pub_options);
+      pub_output_wrapped_ = AUTOWARE_CREATE_PUBLISHER3(
+        PointCloud2, "output", rclcpp::SensorDataQoS().keep_last(max_queue_size_), pub_options);
     } else {
       rclcpp::PublisherOptions pub_options;
       pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
-      pub_output_ = this->create_publisher<PointCloud2>("output", rclcpp::SensorDataQoS().keep_last(max_queue_size_), pub_options);
+      pub_output_ = this->create_publisher<PointCloud2>(
+        "output", rclcpp::SensorDataQoS().keep_last(max_queue_size_), pub_options);
     }
   }
 
@@ -206,7 +209,10 @@ void autoware::pointcloud_preprocessor::Filter::computePublish(
     auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_output_wrapped_);
     filter(input, indices, *output);
     bool ret = convert_output_costly(*output);
-    if (!ret) RCLCPP_ERROR(this->get_logger(), "[computePublish] for now, agnocast does not assume early return in callback");
+    if (!ret)
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[computePublish] for now, agnocast does not assume early return in callback");
     output->header.stamp = input->header.stamp;
     pub_output_wrapped_->publish(std::move(output));
     return;
@@ -455,7 +461,11 @@ void autoware::pointcloud_preprocessor::Filter::faster_input_indices_callback(
     auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_output_wrapped_);
     faster_filter(cloud, vindices, *output, transform_info);
     bool ret = convert_output_costly(*output);
-    if (!ret) RCLCPP_ERROR(this->get_logger(), "[faster_input_indices_callback] for now, agnocast does not assume early return in callback");
+    if (!ret)
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[faster_input_indices_callback] for now, agnocast does not assume early return in "
+        "callback");
     output->header.stamp = cloud->header.stamp;
     pub_output_wrapped_->publish(std::move(output));
     return;
