@@ -19,5 +19,6 @@
     <remap from="~/input/lanelet_map_bin" to="$(var input_vector_map_topic_name)"/>
     <remap from="~/input/route" to="$(var input_route_topic_name)"/>
     <remap from="~/input/path_with_lane_id" to="/planning/scenario_planning/lane_driving/behavior_planning/path_with_lane_id"/>
+    <remap from="~/input/trajectory" to="/planning/scenario_planning/trajectory"/>
   </node>
 </launch>

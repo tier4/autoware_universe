@@ -1,5 +1,13 @@
 rear_obstacle_checker_node:
   common:
+    target_type:
+      type: string_array
+      validation:
+        unique<>: []
+        not_empty<>: []
+        subset_of<>:
+          [[bicycle, bus, car, motorcycle, pedestrian, trailer, truck, unknown, pointcloud]]
+
     on_time_buffer:
       type: double
       validation:
@@ -8,69 +16,114 @@ rear_obstacle_checker_node:
       type: double
       validation:
         gt_eq<>: [0.0]
+
     pointcloud:
-      object_buffer:
+      range:
+        dead_zone:
+          type: double
+          validation:
+            gt_eq<>: [0.0]
+        forward:
+          type: double
+          validation:
+            gt_eq<>: [0.0]
+        backward:
+          type: double
+          validation:
+            gt_eq<>: [0.0]
+      height_filter:
+        min_height:
+          type: double
+          validation:
+            gt_eq<>: [0.0]
+        max_height:
+          type: double
+          validation:
+            gt_eq<>: [0.0]
+      voxel_grid_filter:
+        x:
+          type: double
+          validation:
+            gt<>: [0.0]
+        y:
+          type: double
+          validation:
+            gt<>: [0.0]
+        z:
+          type: double
+          validation:
+            gt<>: [0.0]
+      clustering:
+        cluster_tolerance:
+          type: double
+          validation:
+            gt<>: [0.0]
+        min_cluster_height:
+          type: double
+          validation:
+            gt<>: [0.0]
+        min_cluster_size:
+          type: int
+          validation:
+            gt<>: [0]
+        max_cluster_size:
+          type: int
+          validation:
+            gt<>: [0]
+
+    object:
+      range:
+        forward:
+          type: double
+          validation:
+            gt_eq<>: [0.0]
+        backward:
+          type: double
+          validation:
+            gt_eq<>: [0.0]
+      reaction_time:
         type: double
         validation:
-          gt_eq<>: [0.0]
-    range:
-      pointcloud:
-        forward:
-          type: double
-          validation:
-            gt_eq<>: [0.0]
-        backward:
-          type: double
-          validation:
-            gt_eq<>: [0.0]
-      object:
-        forward:
-          type: double
-          validation:
-            gt_eq<>: [0.0]
-        backward:
-          type: double
-          validation:
-            gt_eq<>: [0.0]
-    prediction:
-      ego:
-        reaction_time:
-          type: double
-          validation:
-            gt<>: [0.0]
-        max_acceleration:
-          type: double
-          validation:
-            gt<>: [0.0]
-        max_deceleration:
-          type: double
-          # validation:
-          #   lt<>: [0.0]
-        max_positive_jerk:
-          type: double
-          validation:
-            gt<>: [0.0]
-        max_negative_jerk:
-          type: double
-          # validation:
-          #   lt<>: [0.0]
-      object:
-        reaction_time:
-          type: double
-          validation:
-            gt<>: [0.0]
-        max_deceleration:
-          type: double
-          # validation:
-          #   lt<>: [0.0]
+          gt<>: [0.0]
+      max_velocity:
+        type: double
+        validation:
+          gt<>: [0.0]
+      max_deceleration:
+        type: double
 
-    predicted_path:
+    ego:
+      reaction_time:
+        type: double
+        validation:
+          gt<>: [0.0]
       min_velocity:
         type: double
       max_velocity:
         type: double
-      acceleration:
+      max_acceleration:
         type: double
+        validation:
+          gt<>: [0.0]
+      max_deceleration:
+        type: double
+      max_positive_jerk:
+        type: double
+        validation:
+          gt<>: [0.0]
+      max_negative_jerk:
+        type: double
+
+    blind_spot:
+      active_distance:
+        start:
+          type: double
+          validation:
+            gt<>: [0.0]
+        end:
+          type: double
+
+    predicted_path:
       time_resolution:
         type: double
       time_horizon:
@@ -80,10 +133,6 @@ rear_obstacle_checker_node:
     rss:
       extended_polygon_policy:
         type: string
-      vehicle_deceleration:
-        type: double
-      vehicle_reaction_time:
-        type: double
       vehicle_safety_time_margin:
         type: double
       lateral_distance_max_threshold:
@@ -92,56 +141,3 @@ rear_obstacle_checker_node:
         type: double
       longitudinal_velocity_delta_time:
         type: double
-
-  scene:
-    type: string_array
-    default_value:
-      [
-        static_obstacle_avoidance,
-        lane_change_left,
-        lane_change_right,
-        start_planner,
-        goal_planner,
-        behavior_path_planner,
-      ]
-    validation:
-      unique<>: []
-      subset_of<>:
-        [
-          [
-            static_obstacle_avoidance,
-            lane_change_left,
-            lane_change_right,
-            start_planner,
-            goal_planner,
-            blind_spot,
-            behavior_path_planner,
-          ],
-        ]
-
-  __map_scene:
-    topic:
-      type: string
-    behavior:
-      type: string_array
-      validation:
-        unique<>: []
-        not_empty<>: []
-        subset_of<>: [[slow_down, stop, shift_left, shift_right, turn_left, turn_right]]
-    safety_condition:
-      type: string
-      validation:
-        one_of<>: [[safe, unsafe, both]]
-    check_control_points:
-      type: bool
-    target_type:
-      type: string_array
-      validation:
-        unique<>: []
-        not_empty<>: []
-        subset_of<>:
-          [[bicycle, bus, car, motorcycle, pedestrian, trailer, truck, unknown, pointcloud]]
-    current_lane:
-      type: bool
-    adjacent_lane:
-      type: bool
