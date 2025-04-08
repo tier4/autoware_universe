@@ -123,8 +123,7 @@ bool ShapeEstimator::applyCorrector(
       corrector_ptr.reset(new corrector::ReferenceObjectBasedVehicleCorrector(
         ref_shape_size_info.get(), ref_pose.get()));
     } else {
-      corrector_ptr.reset(
-        new ReferenceShapeBasedVehicleCorrector(ref_shape_size_info.get()));
+      corrector_ptr.reset(new ReferenceShapeBasedVehicleCorrector(ref_shape_size_info.get()));
     }
   } else if (label == Label::CAR) {
     corrector_ptr.reset(new CarCorrector(use_reference_yaw));
