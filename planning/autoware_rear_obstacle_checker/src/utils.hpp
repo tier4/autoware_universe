@@ -18,6 +18,7 @@
 #include "autoware/behavior_path_planner_common/marker_utils/colors.hpp"
 
 #include <autoware/motion_utils/distance/distance.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
@@ -53,15 +54,11 @@
 namespace autoware::rear_obstacle_checker::utils
 {
 
-using visualization_msgs::msg::Marker;
-using visualization_msgs::msg::MarkerArray;
-
 namespace
 {
-std::uint8_t get_highest_prob_label(
-  const std::vector<autoware_perception_msgs::msg::ObjectClassification> & classifications)
+std::uint8_t get_highest_prob_label(const std::vector<ObjectClassification> & classifications)
 {
-  std::uint8_t label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+  std::uint8_t label = ObjectClassification::UNKNOWN;
   float highest_prob = 0.0;
   for (const auto & classification : classifications) {
     if (highest_prob < classification.probability) {
@@ -70,75 +67,6 @@ std::uint8_t get_highest_prob_label(
     }
   }
   return label;
-}
-
-bool is_target_behavior(
-  const tier4_planning_msgs::msg::PlanningFactor & factor,
-  const rear_obstacle_checker_node::Params::MapScene & config)
-{
-  switch (factor.behavior) {
-    case PlanningFactor::SLOW_DOWN:
-      return std::any_of(
-        config.behavior.begin(), config.behavior.end(),
-        [](const auto & condition) { return condition == "slow_down"; });
-    case PlanningFactor::STOP:
-      return std::any_of(
-        config.behavior.begin(), config.behavior.end(),
-        [](const auto & condition) { return condition == "stop"; });
-    case PlanningFactor::SHIFT_LEFT:
-      return std::any_of(
-        config.behavior.begin(), config.behavior.end(),
-        [](const auto & condition) { return condition == "shift_left"; });
-    case PlanningFactor::SHIFT_RIGHT:
-      return std::any_of(
-        config.behavior.begin(), config.behavior.end(),
-        [](const auto & condition) { return condition == "shift_right"; });
-    case PlanningFactor::TURN_LEFT:
-      return std::any_of(
-        config.behavior.begin(), config.behavior.end(),
-        [](const auto & condition) { return condition == "turn_left"; });
-    case PlanningFactor::TURN_RIGHT:
-      return std::any_of(
-        config.behavior.begin(), config.behavior.end(),
-        [](const auto & condition) { return condition == "turn_right"; });
-  }
-
-  return false;
-}
-
-bool has_valid_control_points(const tier4_planning_msgs::msg::PlanningFactor & factor)
-{
-  if (factor.control_points.empty()) {
-    return false;
-  }
-
-  // TODO(satoshi-ota): don't use distance to prevent unnecessary lane checking.
-  if (factor.control_points.front().distance < 0.0) {
-    return false;
-  }
-
-  switch (factor.behavior) {
-    case PlanningFactor::SLOW_DOWN:
-      return true;
-    case PlanningFactor::STOP:
-      return std::any_of(
-        factor.control_points.begin(), factor.control_points.end(),
-        [](const auto & control_point) { return std::abs(control_point.velocity) < 1e-3; });
-    case PlanningFactor::SHIFT_LEFT:
-      return std::any_of(
-        factor.control_points.begin(), factor.control_points.end(),
-        [](const auto & control_point) { return std::abs(control_point.shift_length) > 0.0; });
-    case PlanningFactor::SHIFT_RIGHT:
-      return std::any_of(
-        factor.control_points.begin(), factor.control_points.end(),
-        [](const auto & control_point) { return std::abs(control_point.shift_length) > 0.0; });
-    case PlanningFactor::TURN_LEFT:
-      return true;
-    case PlanningFactor::TURN_RIGHT:
-      return true;
-  }
-
-  return false;
 }
 
 lanelet::ConstLanelets get_previous_lanes_recursively(
@@ -274,10 +202,9 @@ lanelet::BasicPolygon3d to_basic_polygon3d(
   return polygon;
 }
 
-auto is_shift_path(
-  const lanelet::ConstLanelets & lanelets,
-  const std::vector<autoware_internal_planning_msgs::msg::PathPointWithLaneId> & points,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info) -> std::pair<bool, bool>
+auto check_shift_behavior(
+  const lanelet::ConstLanelets & lanelets, const std::vector<PathPointWithLaneId> & points,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info) -> Behavior
 {
   const auto combine_lanelet = lanelet::utils::combineLaneletsShape(lanelets);
 
@@ -288,110 +215,70 @@ auto is_shift_path(
 
     const auto is_left_shift = boost::geometry::intersects(
       footprint, lanelet::utils::to2D(combine_lanelet.leftBound()).basicLineString());
+    if (is_left_shift) {
+      return Behavior::SHIFT_LEFT;
+    }
+
     const auto is_right_shift = boost::geometry::intersects(
       footprint, lanelet::utils::to2D(combine_lanelet.rightBound()).basicLineString());
-
-    if (is_left_shift || is_right_shift) {
-      return std::make_pair(is_left_shift, is_right_shift);
+    if (is_right_shift) {
+      return Behavior::SHIFT_RIGHT;
     }
   }
 
-  return std::make_pair(false, false);
+  return Behavior::NONE;
 }
 
-bool should_activate(
-  const tier4_planning_msgs::msg::PlanningFactor & factor,
-  const rear_obstacle_checker_node::Params & parameters)
+bool should_check_objects(const rear_obstacle_checker_node::Params & parameters)
 {
-  const auto config = parameters.scene_map.at(factor.module);
-
-  if (config.safety_condition == "safe") {
-    if (!factor.safety_factors.is_safe) {
-      return false;
-    }
-  }
-
-  if (config.safety_condition == "unsafe") {
-    if (factor.safety_factors.is_safe) {
-      return false;
-    }
-  }
-
-  if (!is_target_behavior(factor, config)) {
-    return false;
-  }
-
-  if (config.check_control_points) {
-    if (!has_valid_control_points(factor)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-bool should_check_objects(
-  const tier4_planning_msgs::msg::PlanningFactor & factor,
-  const rear_obstacle_checker_node::Params & parameters)
-{
-  const auto config = parameters.scene_map.at(factor.module);
   return std::any_of(
-    config.target_type.begin(), config.target_type.end(),
+    parameters.common.target_type.begin(), parameters.common.target_type.end(),
     [](const auto & target_type) { return target_type != "pointcloud"; });
 }
 
-bool should_check_pointcloud(
-  const tier4_planning_msgs::msg::PlanningFactor & factor,
-  const rear_obstacle_checker_node::Params & parameters)
+bool should_check_pointcloud(const rear_obstacle_checker_node::Params & parameters)
 {
-  const auto config = parameters.scene_map.at(factor.module);
   return std::any_of(
-    config.target_type.begin(), config.target_type.end(),
+    parameters.common.target_type.begin(), parameters.common.target_type.end(),
     [](const auto & target_type) { return target_type == "pointcloud"; });
 }
 
 bool is_target(
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const tier4_planning_msgs::msg::PlanningFactor & factor,
-  const rear_obstacle_checker_node::Params & parameters)
+  const PredictedObject & object, const rear_obstacle_checker_node::Params & parameters)
 {
-  using autoware_perception_msgs::msg::ObjectClassification;
-
-  const auto config = parameters.scene_map.at(factor.module);
-
   const auto label = get_highest_prob_label(object.classification);
   switch (label) {
     case ObjectClassification::UNKNOWN:
       return std::any_of(
-        config.target_type.begin(), config.target_type.end(),
+        parameters.common.target_type.begin(), parameters.common.target_type.end(),
         [](const auto & target_type) { return target_type == "unknown"; });
     case ObjectClassification::CAR:
       return std::any_of(
-        config.target_type.begin(), config.target_type.end(),
+        parameters.common.target_type.begin(), parameters.common.target_type.end(),
         [](const auto & target_type) { return target_type == "car"; });
     case ObjectClassification::TRUCK:
       return std::any_of(
-        config.target_type.begin(), config.target_type.end(),
+        parameters.common.target_type.begin(), parameters.common.target_type.end(),
         [](const auto & target_type) { return target_type == "truck"; });
     case ObjectClassification::TRAILER:
       return std::any_of(
-        config.target_type.begin(), config.target_type.end(),
+        parameters.common.target_type.begin(), parameters.common.target_type.end(),
         [](const auto & target_type) { return target_type == "trailer"; });
     case ObjectClassification::BUS:
       return std::any_of(
-        config.target_type.begin(), config.target_type.end(),
+        parameters.common.target_type.begin(), parameters.common.target_type.end(),
         [](const auto & target_type) { return target_type == "bus"; });
     case ObjectClassification::MOTORCYCLE:
       return std::any_of(
-        config.target_type.begin(), config.target_type.end(),
+        parameters.common.target_type.begin(), parameters.common.target_type.end(),
         [](const auto & target_type) { return target_type == "motorcycle"; });
     case ObjectClassification::PEDESTRIAN:
       return std::any_of(
-        config.target_type.begin(), config.target_type.end(),
+        parameters.common.target_type.begin(), parameters.common.target_type.end(),
         [](const auto & target_type) { return target_type == "pedestrian"; });
     case ObjectClassification::BICYCLE:
       return std::any_of(
-        config.target_type.begin(), config.target_type.end(),
+        parameters.common.target_type.begin(), parameters.common.target_type.end(),
         [](const auto & target_type) { return target_type == "bicycle"; });
   }
 
@@ -399,14 +286,14 @@ bool is_target(
 }
 
 std::optional<geometry_msgs::msg::Pose> calc_predicted_stop_pose(
-  const std::vector<autoware_internal_planning_msgs::msg::PathPointWithLaneId> & points,
-  const geometry_msgs::msg::Pose & ego_pose, const double current_velocity,
-  const double current_acceleration, const rear_obstacle_checker_node::Params & parameters)
+  const std::vector<PathPointWithLaneId> & points, const geometry_msgs::msg::Pose & ego_pose,
+  const double current_velocity, const double current_acceleration,
+  const rear_obstacle_checker_node::Params & parameters)
 {
   constexpr double target_velocity = 0.0;
-  const auto & max_deceleration = parameters.common.prediction.ego.max_deceleration;
-  const auto & max_positive_jerk = parameters.common.prediction.ego.max_positive_jerk;
-  const auto & max_negative_jerk = parameters.common.prediction.ego.max_negative_jerk;
+  const auto & max_deceleration = parameters.common.ego.max_deceleration;
+  const auto & max_positive_jerk = parameters.common.ego.max_positive_jerk;
+  const auto & max_negative_jerk = parameters.common.ego.max_negative_jerk;
 
   if (current_velocity < target_velocity + 1e-3) {
     return ego_pose;
@@ -444,34 +331,6 @@ PointCloud get_obstacle_points(const lanelet::BasicPolygons3d & polygons, const 
   return ret;
 }
 
-PointCloud filter_lost_object_pointcloud(
-  const PredictedObjects & objects, const PointCloud & points, const double object_buffer)
-{
-  PointCloud ret = points;
-  for (const auto & object : objects.objects) {
-    const auto polygon =
-      autoware_utils::expand_polygon(autoware_utils::to_polygon2d(object), object_buffer);
-    lanelet::BasicPolygon2d basic_polygon;
-    for (const auto & p : polygon.outer()) {
-      basic_polygon.emplace_back(p.x(), p.y());
-    }
-    const auto circle = get_smallest_enclosing_circle(basic_polygon);
-    auto itr = ret.begin();
-    while (itr != ret.end()) {
-      const double squared_dist = (circle.first.x() - itr->x) * (circle.first.x() - itr->x) +
-                                  (circle.first.y() - itr->y) * (circle.first.y() - itr->y);
-      if (squared_dist > circle.second) {
-        itr++;
-      } else if (boost::geometry::within(autoware_utils::Point2d{itr->x, itr->y}, polygon)) {
-        itr = ret.erase(itr);
-      } else {
-        itr++;
-      }
-    }
-  }
-  return ret;
-}
-
 lanelet::ConstLanelets get_current_lanes(
   const geometry_msgs::msg::Pose & ego_pose,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
@@ -484,7 +343,7 @@ lanelet::ConstLanelets get_current_lanes(
   }
 
   const auto current_lanes = route_handler->getLaneletSequence(
-    closest_lanelet, ego_pose, forward_distance, backward_distance);
+    closest_lanelet, ego_pose, backward_distance, forward_distance);
 
   if (is_within_lanes(current_lanes, ego_pose, vehicle_info)) {
     return current_lanes;
@@ -504,6 +363,58 @@ lanelet::ConstLanelets get_current_lanes(
   }
 
   return {};
+}
+
+auto check_turn_behavior(
+  const lanelet::ConstLanelets & current_lanes, const std::vector<TrajectoryPoint> & points,
+  const geometry_msgs::msg::Pose & ego_pose,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+  const double active_distance_start, const double active_distance_end) -> Behavior
+{
+  const auto ego_coordinate_on_arc = lanelet::utils::getArcCoordinates(current_lanes, ego_pose);
+
+  const auto distance_to_stop_point =
+    autoware::motion_utils::calcDistanceToForwardStopPoint(points, ego_pose);
+
+  constexpr double buffer = 0.5;
+
+  double ret = 0.0;
+  for (const auto & lane : current_lanes) {
+    const auto distance =
+      ret - ego_coordinate_on_arc.length - vehicle_info.max_longitudinal_offset_m;
+    const std::string turn_direction = lane.attributeOr("turn_direction", "none");
+
+    if (turn_direction == "left") {
+      if (!distance_to_stop_point.has_value()) {
+        return active_distance_end < distance && distance < active_distance_start
+                 ? Behavior::TURN_LEFT
+                 : Behavior::NONE;
+      }
+      if (distance_to_stop_point.value() < distance + buffer) {
+        return Behavior::NONE;
+      }
+      return active_distance_end < distance && distance < active_distance_start
+               ? Behavior::TURN_LEFT
+               : Behavior::NONE;
+    }
+
+    if (turn_direction == "right") {
+      if (!distance_to_stop_point.has_value()) {
+        return active_distance_end < distance && distance < active_distance_start
+                 ? Behavior::TURN_RIGHT
+                 : Behavior::NONE;
+      }
+      if (distance_to_stop_point.value() < distance + buffer) {
+        return Behavior::NONE;
+      }
+      return active_distance_end < distance && distance < active_distance_start
+               ? Behavior::TURN_RIGHT
+               : Behavior::NONE;
+    }
+    ret += lanelet::utils::getLaneletLength2d(lane);
+  }
+
+  return Behavior::NONE;
 }
 
 lanelet::ConstLanelets get_adjacent_lanes(
@@ -575,72 +486,6 @@ lanelet::BasicPolygon3d generate_detection_polygon(
   return polygon.basicPolygon();
 }
 
-lanelet::BasicPolygons3d get_adjacent_polygons(
-  const lanelet::ConstLanelets & current_lanes, const geometry_msgs::msg::Pose & ego_pose,
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler, const bool is_right,
-  const double forward_distance, const double backward_distance)
-{
-  const auto ego_coordinate_on_arc = lanelet::utils::getArcCoordinates(current_lanes, ego_pose);
-
-  lanelet::BasicPolygons3d ret{};
-
-  lanelet::ConstLanelets root{};
-
-  double length = 0.0;
-  for (const auto & lane : current_lanes) {
-    const auto total_length = length + lanelet::utils::getLaneletLength2d(lane);
-    const auto residual_distance = total_length - ego_coordinate_on_arc.length - forward_distance;
-
-    if (!is_right) {
-      const auto opt_left_lane = route_handler->getLeftLanelet(lane, true, true);
-      if (opt_left_lane.has_value()) {
-        root = {opt_left_lane.value()};
-      }
-
-      if (opt_left_lane.has_value() && residual_distance > 0.0) {
-        const auto polygons = get_previous_polygons_recursively(
-          root, residual_distance, residual_distance + forward_distance + backward_distance,
-          route_handler);
-        ret.insert(ret.end(), polygons.begin(), polygons.end());
-        return ret;
-      }
-
-      if (!opt_left_lane.has_value()) {
-        const auto polygons = get_previous_polygons_recursively(
-          root, 0.0, length - ego_coordinate_on_arc.length + backward_distance, route_handler);
-        ret.insert(ret.end(), polygons.begin(), polygons.end());
-        root.clear();
-      }
-    }
-
-    if (is_right) {
-      const auto opt_right_lane = route_handler->getRightLanelet(lane, true, true);
-      if (opt_right_lane.has_value()) {
-        root = {opt_right_lane.value()};
-      }
-
-      if (opt_right_lane.has_value() && residual_distance > 0.0) {
-        const auto polygons = get_previous_polygons_recursively(
-          root, residual_distance, residual_distance + forward_distance + backward_distance,
-          route_handler);
-        ret.insert(ret.end(), polygons.begin(), polygons.end());
-        return ret;
-      }
-
-      if (!opt_right_lane.has_value()) {
-        const auto polygons = get_previous_polygons_recursively(
-          root, 0.0, length - ego_coordinate_on_arc.length + backward_distance, route_handler);
-        ret.insert(ret.end(), polygons.begin(), polygons.end());
-        root.clear();
-      }
-    }
-
-    length += lanelet::utils::getLaneletLength2d(lane);
-  }
-
-  return ret;
-}
-
 auto get_previous_polygons_with_lane_recursively(
   const lanelet::ConstLanelets & lanes, const double s1, const double s2,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler) -> DetectionAreas
@@ -681,33 +526,39 @@ auto get_pointcloud_object(
 
     const auto path =
       route_handler->getCenterLinePath(lanes, 0.0, std::numeric_limits<double>::max());
-    const auto resampled_path = behavior_path_planner::utils::resamplePathWithSpline(path, 0.3);
+    const auto resampled_path = behavior_path_planner::utils::resamplePathWithSpline(path, 1.0);
 
     for (const auto & point : pointcloud) {
-      // TODO(satoshi-ota): remove redundant implementation.
-      const double obj_arc_length = autoware::motion_utils::calcSignedArcLength(
-        resampled_path.points, autoware_utils::create_point(point.x, point.y, point.z),
-        autoware_utils::get_point(path.points.back()));
-      const auto point_on_ceter_line = autoware::motion_utils::calcLongitudinalOffsetPoint(
-        resampled_path.points, autoware_utils::get_point(resampled_path.points.back()),
-        -1.0 * obj_arc_length);
+      const auto p_geom = autoware_utils::create_point(point.x, point.y, point.z);
+      const size_t src_seg_idx =
+        autoware::motion_utils::findNearestSegmentIndex(resampled_path.points, p_geom);
+      const double signed_length_src_offset =
+        autoware::motion_utils::calcLongitudinalOffsetToSegment(
+          resampled_path.points, src_seg_idx, p_geom);
 
-      if (!point_on_ceter_line.has_value()) {
+      const double obj_arc_length =
+        autoware::motion_utils::calcSignedArcLength(
+          resampled_path.points, src_seg_idx, resampled_path.points.size() - 1) -
+        signed_length_src_offset;
+      const auto pose_on_center_line = autoware::motion_utils::calcLongitudinalOffsetPose(
+        resampled_path.points, src_seg_idx, signed_length_src_offset);
+
+      if (!pose_on_center_line.has_value()) {
         continue;
       }
 
       if (!opt_object.has_value()) {
         PointCloudObject object;
         object.last_update_time = now;
-        object.position = point_on_ceter_line.value();
-        object.base_lane_id = lanes.front().id();
+        object.pose = pose_on_center_line.value();
+        object.furthest_lane = lanes.back();
         object.absolute_distance = obj_arc_length;
         object.velocity = 0.0;
         opt_object = object;
       } else if (opt_object.value().absolute_distance > obj_arc_length) {
         opt_object.value().last_update_time = now;
-        opt_object.value().position = point_on_ceter_line.value();
-        opt_object.value().base_lane_id = lanes.front().id();
+        opt_object.value().pose = pose_on_center_line.value();
+        opt_object.value().furthest_lane = lanes.back();
         opt_object.value().absolute_distance = obj_arc_length;
         opt_object.value().velocity = 0.0;
       }
@@ -715,6 +566,30 @@ auto get_pointcloud_object(
   }
 
   return opt_object;
+}
+
+MarkerArray create_polygon_marker_array(
+  const std::vector<autoware_utils::Polygon3d> & polygons, const std::string & ns,
+  const std_msgs::msg::ColorRGBA & color)
+{
+  MarkerArray msg;
+
+  size_t i = 0;
+  for (const auto & polygon : polygons) {
+    auto marker = autoware_utils::create_default_marker(
+      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, Marker::LINE_STRIP,
+      autoware_utils::create_marker_scale(0.05, 0.0, 0.0), color);
+
+    for (const auto & p : polygon.outer()) {
+      marker.points.push_back(autoware_utils::create_point(p.x(), p.y(), p.z()));
+    }
+    if (!marker.points.empty()) {
+      marker.points.push_back(marker.points.front());
+    }
+    msg.markers.push_back(marker);
+  }
+
+  return msg;
 }
 
 MarkerArray create_polygon_marker_array(
@@ -765,170 +640,6 @@ lanelet::ConstLanelet generate_half_lanelet(
   return half_lanelet;
 }
 
-lanelet::ConstLanelet generate_offset_lanelet(
-  const lanelet::ConstLanelet lanelet, const double offset_near, const double offset_far,
-  const bool is_right)
-{
-  lanelet::Points3d lefts, rights;
-
-  const auto bound_near = lanelet::utils::getCenterlineWithOffset(lanelet, offset_near);
-  const auto bound_far = lanelet::utils::getCenterlineWithOffset(lanelet, offset_far);
-
-  const auto original_left_bound = is_right ? bound_near : bound_far;
-  const auto original_right_bound = is_right ? bound_far : bound_near;
-
-  for (const auto & pt : original_left_bound) {
-    lefts.emplace_back(pt);
-  }
-  for (const auto & pt : original_right_bound) {
-    rights.emplace_back(pt);
-  }
-  const auto left_bound = lanelet::LineString3d(lanelet::InvalId, std::move(lefts));
-  const auto right_bound = lanelet::LineString3d(lanelet::InvalId, std::move(rights));
-  auto half_lanelet = lanelet::Lanelet(lanelet::InvalId, left_bound, right_bound);
-  return half_lanelet;
-}
-
-auto generate_detection_area_for_pointcloud(
-  const PlanningFactor & factor, const lanelet::ConstLanelets & current_lanes,
-  const geometry_msgs::msg::Pose & ego_pose, const double current_velocity,
-  const double current_acceleration,
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const rear_obstacle_checker_node::Params & parameters) -> lanelet::BasicPolygons3d
-{
-  const auto config = parameters.scene_map.at(factor.module);
-
-  lanelet::BasicPolygons3d detection_polygons{};
-
-  constexpr double v_object = 10.0;
-
-  const auto delay_ego = parameters.common.prediction.object.reaction_time;
-  const auto max_deceleration_ego = parameters.common.prediction.ego.max_deceleration;
-  const auto max_deceleration_object = parameters.common.prediction.object.max_deceleration;
-
-  const auto stop_distance_object =
-    0.5 * std::pow(v_object, 2.0) / std::abs(max_deceleration_object);
-  const auto stop_distance_ego =
-    current_velocity * delay_ego + 0.5 * current_acceleration * std::pow(delay_ego, 2.0) +
-    0.5 * std::pow(current_velocity + current_acceleration * delay_ego, 2.0) /
-      std::abs(max_deceleration_ego);
-
-  const auto forward_distance =
-    parameters.common.range.pointcloud.forward + vehicle_info.max_longitudinal_offset_m;
-  const auto backward_distance = parameters.common.range.pointcloud.backward -
-                                 vehicle_info.min_longitudinal_offset_m +
-                                 std::max(0.0, stop_distance_object - stop_distance_ego);
-
-  if (
-    factor.behavior == PlanningFactor::SHIFT_LEFT || factor.behavior == PlanningFactor::TURN_LEFT) {
-    if (config.adjacent_lane) {
-      const auto adjacent_polygons = utils::get_adjacent_polygons(
-        current_lanes, ego_pose, route_handler, false, forward_distance, backward_distance);
-      detection_polygons.insert(
-        detection_polygons.end(), adjacent_polygons.begin(), adjacent_polygons.end());
-    }
-
-    if (config.current_lane) {
-      const auto half_lanes = [&current_lanes, &vehicle_info]() {
-        lanelet::ConstLanelets ret{};
-        for (const auto & lane : current_lanes) {
-          ret.push_back(
-            utils::generate_half_lanelet(lane, false, 0.5 * vehicle_info.vehicle_width_m));
-        }
-        return ret;
-      }();
-      detection_polygons.push_back(utils::generate_detection_polygon(
-        half_lanes, ego_pose, forward_distance, backward_distance));
-    }
-  }
-
-  if (
-    factor.behavior == PlanningFactor::SHIFT_RIGHT ||
-    factor.behavior == PlanningFactor::TURN_RIGHT) {
-    if (config.adjacent_lane) {
-      const auto adjacent_polygons = utils::get_adjacent_polygons(
-        current_lanes, ego_pose, route_handler, true, forward_distance, backward_distance);
-      detection_polygons.insert(
-        detection_polygons.end(), adjacent_polygons.begin(), adjacent_polygons.end());
-    }
-
-    if (config.current_lane) {
-      const auto half_lanes = [&current_lanes, &vehicle_info]() {
-        lanelet::ConstLanelets ret{};
-        for (const auto & lane : current_lanes) {
-          ret.push_back(
-            utils::generate_half_lanelet(lane, true, 0.5 * vehicle_info.vehicle_width_m));
-        }
-        return ret;
-      }();
-      detection_polygons.push_back(utils::generate_detection_polygon(
-        half_lanes, ego_pose, forward_distance, backward_distance));
-    }
-  }
-
-  return detection_polygons;
-}
-
-auto generate_detection_area_for_object(
-  const PlanningFactor & factor, const lanelet::ConstLanelets & current_lanes,
-  const geometry_msgs::msg::Pose & ego_pose,
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const rear_obstacle_checker_node::Params & parameters) -> lanelet::ConstLanelets
-{
-  const auto config = parameters.scene_map.at(factor.module);
-
-  lanelet::ConstLanelets detection_lanes_for_objects{};
-
-  if (
-    factor.behavior == PlanningFactor::SHIFT_LEFT || factor.behavior == PlanningFactor::TURN_LEFT) {
-    if (config.adjacent_lane) {
-      const auto adjacent_lanes = utils::get_adjacent_lanes(
-        current_lanes, ego_pose, route_handler, false, parameters.common.range.object.backward);
-      detection_lanes_for_objects.insert(
-        detection_lanes_for_objects.end(), adjacent_lanes.begin(), adjacent_lanes.end());
-    }
-    if (config.current_lane) {
-      const auto half_lanes = [&current_lanes, &vehicle_info]() {
-        lanelet::ConstLanelets ret{};
-        for (const auto & lane : current_lanes) {
-          ret.push_back(
-            utils::generate_half_lanelet(lane, false, 0.5 * vehicle_info.vehicle_width_m));
-        }
-        return ret;
-      }();
-      detection_lanes_for_objects.insert(
-        detection_lanes_for_objects.end(), half_lanes.begin(), half_lanes.end());
-    }
-  }
-
-  if (
-    factor.behavior == PlanningFactor::SHIFT_RIGHT ||
-    factor.behavior == PlanningFactor::TURN_RIGHT) {
-    if (config.adjacent_lane) {
-      const auto adjacent_lanes = utils::get_adjacent_lanes(
-        current_lanes, ego_pose, route_handler, true, parameters.common.range.object.backward);
-      detection_lanes_for_objects.insert(
-        detection_lanes_for_objects.end(), adjacent_lanes.begin(), adjacent_lanes.end());
-    }
-    if (config.current_lane) {
-      const auto half_lanes = [&current_lanes, &vehicle_info]() {
-        lanelet::ConstLanelets ret{};
-        for (const auto & lane : current_lanes) {
-          ret.push_back(
-            utils::generate_half_lanelet(lane, true, 0.5 * vehicle_info.vehicle_width_m));
-        }
-        return ret;
-      }();
-      detection_lanes_for_objects.insert(
-        detection_lanes_for_objects.end(), half_lanes.begin(), half_lanes.end());
-    }
-  }
-
-  return detection_lanes_for_objects;
-}
-
 MarkerArray showPolygon(
   const behavior_path_planner::utils::path_safety_checker::CollisionCheckDebugMap & obj_debug_vec,
   std::string && ns)
@@ -955,15 +666,15 @@ MarkerArray showPolygon(
 
   auto default_text_marker = [&]() {
     return autoware_utils::create_default_marker(
-      "map", now, ns + "_text", ++id, visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
-      text_marker_scale, marker_utils::colors::white());
+      "map", now, ns + "_text", ++id, Marker::TEXT_VIEW_FACING, text_marker_scale,
+      marker_utils::colors::white());
   };
 
   auto default_cube_marker = [&](
                                const auto & width, const auto & depth,
                                const auto & color = marker_utils::colors::green()) {
     return autoware_utils::create_default_marker(
-      "map", now, ns + "_cube", ++id, visualization_msgs::msg::Marker::CUBE,
+      "map", now, ns + "_cube", ++id, Marker::CUBE,
       autoware_utils::create_marker_scale(width, depth, 1.0), color);
   };
 
@@ -1122,27 +833,40 @@ MarkerArray create_pointcloud_object_marker_array(
 
   size_t i = 0L;
   for (const auto & object : objects) {
+    const auto sphere_color = object.safe
+                                ? autoware_utils::create_marker_color(0.16, 1.0, 0.69, 0.999)
+                                : autoware_utils::create_marker_color(1.0, 0.0, 0.42, 0.999);
     {
       auto marker = autoware_utils::create_default_marker(
-        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns, i++, Marker::SPHERE,
-        autoware_utils::create_marker_scale(1.0, 1.0, 1.0),
-        autoware_utils::create_marker_color(1.0, 0.0, 0.42, 0.999));
-      marker.pose.position = object.position;
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns + "_sphere", i++, Marker::SPHERE,
+        autoware_utils::create_marker_scale(1.0, 1.0, 1.0), sphere_color);
+      marker.pose = object.pose;
+      msg.markers.push_back(marker);
+    }
+
+    {
+      const auto x_scale = object.velocity * 0.36;
+      auto marker = autoware_utils::create_default_marker(
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns + "_arrow", i++, Marker::ARROW,
+        autoware_utils::create_marker_scale(x_scale, 0.3, 0.3), sphere_color);
+      marker.pose = object.pose;
       msg.markers.push_back(marker);
     }
 
     {
       auto marker = autoware_utils::create_default_marker(
-        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns + "_text", i++,
-        visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
+        "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns + "_text", i++, Marker::TEXT_VIEW_FACING,
         autoware_utils::create_marker_scale(0.5, 0.5, 0.5),
-        autoware_utils::create_marker_color(0.16, 1.0, 0.69, 0.999));
+        autoware_utils::create_marker_color(1.0, 1.0, 1.0, 0.999));
 
       std::ostringstream ss;
-      ss << "RelativeDistance:" << object.relative_distance << "\nVelocity:" << object.velocity;
+      ss << std::fixed << std::setprecision(2);
+      ss << "RelativeDistance:" << object.relative_distance << "[m]\nVelocity:" << object.velocity
+         << "[m/s]\nRSSDistance" << object.rss_distance
+         << "[m]\nFurthestLaneID:" << object.furthest_lane.id();
 
       marker.text = ss.str();
-      marker.pose.position = object.position;
+      marker.pose = object.pose;
       marker.pose.position.z += 1.0;
       msg.markers.push_back(marker);
     }
