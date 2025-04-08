@@ -41,6 +41,7 @@ private:
   using CommandSourceStatus = tier4_system_msgs::msg::CommandSourceStatus;
   using SelectCommandSource = tier4_system_msgs::srv::SelectCommandSource;
 
+  void publish_source_status();
   void on_timer();
   void on_select_source(
     const SelectCommandSource::Request::SharedPtr req,
@@ -53,6 +54,9 @@ private:
   diagnostic_updater::Updater diag_;
   std::unique_ptr<CommandSelector> selector_;
   CommandFilter * output_filter_;
+
+  std::string source_name_;
+  bool transition_flag_ = false;
 };
 
 }  // namespace autoware::control_command_gate
