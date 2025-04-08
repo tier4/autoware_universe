@@ -1,99 +1,60 @@
 /**:
   ros__parameters:
     common:
+      target_type: [pointcloud]
+      # target_type: [bus, car, motorcycle, trailer, truck, pointcloud]
+
       on_time_buffer: 0.3
       off_time_buffer: 0.3
 
       pointcloud:
-        object_buffer: 0.5
-
-      range:
-        pointcloud:
+        range:
+          static: false
+          dead_zone: 1.0
           forward: 0.0
           backward: 0.0
-        object:
+        height_filter:
+          min_height: 0.0
+          max_height: 0.0
+        voxel_grid_filter:
+          x: 0.1
+          y: 0.1
+          z: 0.5
+        clustering:
+          cluster_tolerance: 0.2  #[m]
+          min_cluster_height: 0.1
+          min_cluster_size: 10
+          max_cluster_size: 10000
+
+      object:
+        range:
           forward: 10.0
           backward: 100.0
+        reaction_time: 1.2
+        max_velocity: 16.6
+        max_deceleration: -2.0
 
-      prediction:
-        ego:
-          reaction_time: 2.0
-          max_acceleration: 1.5
-          max_deceleration: -4.0
-          max_positive_jerk: 5.0
-          max_negative_jerk: -5.0
-        object:
-          reaction_time: 1.2
-          max_deceleration: -2.0
+      ego:
+        reaction_time: 1.2
+        min_velocity: 1.38                              # [m/s]
+        max_velocity: 16.6                              # [m/s]
+        max_acceleration: 1.5
+        max_deceleration: -4.0
+        max_positive_jerk: 5.0
+        max_negative_jerk: -5.0
+
+      blind_spot:
+        active_distance:
+          start: 30.0
+          end: -5.0
 
       predicted_path:
-        # predicted path parameters
-        min_velocity: 1.38                              # [m/s]
-        max_velocity: 50.0                              # [m/s]
-        acceleration: 1.50
         time_resolution: 0.5                            # [s]
         time_horizon: 3.0
         delay_until_departure: 0.0                      # [s]
       rss:
-        # rss parameters
         extended_polygon_policy: along_path             # [-] select "rectangle" or "along_path"
-        vehicle_deceleration: -2.0               # [m/ss]
-        vehicle_reaction_time: 2.0                 # [s]
         vehicle_safety_time_margin: 1.0            # [s]
         lateral_distance_max_threshold: 1.8             # [m]
         longitudinal_distance_min_threshold: 3.0        # [m]
         longitudinal_velocity_delta_time: 0.0           # [s]
-
-    static_obstacle_avoidance:
-      topic: /planning/planning_factors/static_obstacle_avoidance
-      behavior: [shift_left, shift_right]
-      safety_condition: safe
-      check_control_points: true
-      target_type: [bus, car, motorcycle, trailer, truck, pointcloud]
-      current_lane: false
-      adjacent_lane: true
-
-    lane_change_left:
-      topic: /planning/planning_factors/lane_change_left
-      behavior: [shift_left]
-      safety_condition: safe
-      check_control_points: true
-      target_type: [bus, car, motorcycle, trailer, truck, pointcloud]
-      current_lane: false
-      adjacent_lane: true
-
-    lane_change_right:
-      topic: /planning/planning_factors/lane_change_right
-      behavior: [shift_right]
-      safety_condition: safe
-      check_control_points: true
-      target_type: [bus, car, motorcycle, trailer, truck, pointcloud]
-      current_lane: false
-      adjacent_lane: true
-
-    start_planner:
-      topic: /planning/planning_factors/start_planner
-      behavior: [shift_left, shift_right]
-      safety_condition: safe
-      check_control_points: false
-      target_type: [bus, car, motorcycle, trailer, truck, pointcloud]
-      current_lane: false
-      adjacent_lane: true
-
-    goal_planner:
-      topic: /planning/planning_factors/goal_planner
-      behavior: [shift_left, shift_right]
-      safety_condition: safe
-      check_control_points: false
-      target_type: [bus, car, motorcycle, trailer, truck, pointcloud]
-      current_lane: false
-      adjacent_lane: true
-
-    behavior_path_planner:
-      topic: /planning/planning_factors/behavior_path_planner
-      behavior: [turn_left, turn_right]
-      safety_condition: both
-      check_control_points: true
-      target_type: [bicycle, motorcycle, pedestrian]
-      current_lane: true
-      adjacent_lane: false

@@ -29,18 +29,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rear_obstacle_checker_node_parameters.hpp>
 
-#include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
-#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
-#include <autoware_perception_msgs/msg/predicted_objects.hpp>
-#include <autoware_planning_msgs/msg/lanelet_route.hpp>
-#include <diagnostic_msgs/msg/diagnostic_status.hpp>
-#include <diagnostic_msgs/msg/key_value.hpp>
-#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
-#include <nav_msgs/msg/odometry.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <tier4_planning_msgs/msg/planning_factor_array.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
-
 #include <pcl/common/transforms.h>
 #include <pcl/point_cloud.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -48,6 +36,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -57,20 +46,6 @@
 
 namespace autoware::rear_obstacle_checker
 {
-
-using autoware::vehicle_info_utils::VehicleInfo;
-using autoware_internal_planning_msgs::msg::PathWithLaneId;
-using autoware_map_msgs::msg::LaneletMapBin;
-using autoware_perception_msgs::msg::PredictedObjects;
-using autoware_perception_msgs::msg::Shape;
-using autoware_planning_msgs::msg::LaneletRoute;
-using geometry_msgs::msg::AccelWithCovarianceStamped;
-using nav_msgs::msg::Odometry;
-using sensor_msgs::msg::PointCloud2;
-using std_msgs::msg::Header;
-using tier4_planning_msgs::msg::PlanningFactor;
-using tier4_planning_msgs::msg::PlanningFactorArray;
-using visualization_msgs::msg::MarkerArray;
 
 class RearObstacleCheckerNode : public rclcpp::Node
 {
@@ -92,18 +67,37 @@ private:
 
   void update(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
-  auto filter_pointcloud(const PointCloud::Ptr in) const -> PointCloud::Ptr;
+  auto generate_detection_area_for_object(
+    const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
+    const Behavior & turn_behavior) const -> lanelet::ConstLanelets;
 
-  auto get_clustered_pointcloud(const PointCloud::Ptr in) const -> PointCloud::Ptr;
+  auto filter_pointcloud(DebugData & debug_data) const -> PointCloud::Ptr;
+
+  auto get_clustered_pointcloud(const PointCloud::Ptr in, DebugData & debug_data) const
+    -> PointCloud::Ptr;
 
   auto get_pointcloud_objects(
-    const PlanningFactor & factor, const lanelet::ConstLanelets & current_lanes,
+    const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
+    const Behavior & turn_behavior, DebugData & detection_areas) -> PointCloudObjects;
+
+  auto get_pointcloud_objects(
+    const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
+    const Behavior & turn_behavior, const double forward_distance, const double backward_distance,
     DebugData & detection_areas) -> PointCloudObjects;
 
-  auto get_pointcloud_objects(
-    const lanelet::ConstLanelets & current_lanes, const bool is_right,
-    const double forward_distance, const double backward_distance, DebugData & detection_areas)
-    -> PointCloudObjects;
+  auto get_pointcloud_objects_at_blind_spot(
+    const lanelet::ConstLanelets & current_lanes, const Behavior & turn_behavior,
+    const double forward_distance, const double backward_distance,
+    const PointCloud::Ptr & obstacle_pointcloud, DebugData & debug) -> PointCloudObjects;
+
+  auto get_pointcloud_objects_on_adjacent_lane(
+    const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
+    const double forward_distance, const double backward_distance,
+    const PointCloud::Ptr & obstacle_pointcloud, DebugData & debug) -> PointCloudObjects;
+
+  void fill_velocity(PointCloudObject & pointcloud_object);
+
+  void fill_rss_distance(PointCloudObjects & objects) const;
 
   void publish_marker(const DebugData & debug) const;
 
@@ -112,6 +106,8 @@ private:
   tf2_ros::Buffer tf_buffer_;
 
   tf2_ros::TransformListener tf_listener_;
+
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_obstacle_pointcloud_;
 
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;
 
@@ -140,11 +136,10 @@ private:
   autoware_utils::InterProcessPollingSubscriber<PathWithLaneId> sub_path_{
     this, "~/input/path_with_lane_id"};
 
-  std::unordered_map<
-    std::string, autoware_utils::InterProcessPollingSubscriber<PlanningFactorArray>>
-    sub_planning_factor_map_;
+  autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_trajectory_{
+    this, "~/input/trajectory"};
 
-  std::unordered_map<lanelet::Id, PointCloudObject> history_;
+  std::map<lanelet::Id, PointCloudObject> history_;
 
   std::shared_ptr<autoware::route_handler::RouteHandler> route_handler_;
 
@@ -164,11 +159,9 @@ private:
 
   PathWithLaneId::ConstSharedPtr path_ptr_;
 
-  PlanningFactorArray::ConstSharedPtr factors_ptr_;
+  Trajectory::ConstSharedPtr trajectory_ptr_;
 
-  Header::ConstSharedPtr header_ptr_;
-
-  PointCloud::Ptr pointcloud_;
+  PointCloud2::ConstSharedPtr pointcloud_ptr_;
 
   rclcpp::Time last_safe_time_{this->now()};
 
@@ -180,9 +173,9 @@ private:
     const auto p = param_listener_->get_params();
 
     behavior_path_planner::utils::path_safety_checker::EgoPredictedPathParams params{};
-    params.min_velocity = p.common.predicted_path.min_velocity;
-    params.max_velocity = p.common.predicted_path.max_velocity;
-    params.acceleration = p.common.predicted_path.acceleration;
+    params.min_velocity = p.common.ego.min_velocity;
+    params.max_velocity = p.common.ego.max_velocity;
+    params.acceleration = p.common.ego.max_acceleration;
     params.time_horizon_for_front_object = p.common.predicted_path.time_horizon;
     params.time_horizon_for_rear_object = p.common.predicted_path.time_horizon;
     params.time_resolution = p.common.predicted_path.time_resolution;
@@ -201,9 +194,9 @@ private:
     params.extended_polygon_policy = p.common.rss.extended_polygon_policy;
     params.longitudinal_distance_min_threshold = p.common.rss.longitudinal_distance_min_threshold;
     params.longitudinal_velocity_delta_time = p.common.rss.longitudinal_velocity_delta_time;
-    params.front_vehicle_deceleration = p.common.rss.vehicle_deceleration;
-    params.rear_vehicle_deceleration = p.common.rss.vehicle_deceleration;
-    params.rear_vehicle_reaction_time = p.common.rss.vehicle_reaction_time;
+    params.front_vehicle_deceleration = p.common.object.max_deceleration;
+    params.rear_vehicle_deceleration = p.common.object.max_deceleration;
+    params.rear_vehicle_reaction_time = p.common.object.reaction_time;
     params.rear_vehicle_safety_time_margin = p.common.rss.vehicle_safety_time_margin;
     params.lateral_distance_max_threshold = p.common.rss.lateral_distance_max_threshold;
 
