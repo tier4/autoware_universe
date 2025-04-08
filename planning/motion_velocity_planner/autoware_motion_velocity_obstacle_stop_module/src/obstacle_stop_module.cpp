@@ -343,9 +343,7 @@ std::optional<StopObstacle> ObstacleStopModule::filter_inside_stop_obstacle_for_
   const auto & predicted_object = object->predicted_object;
   const auto & obj_pose = object->get_predicted_pose(clock_->now(), predicted_objects_stamp);
 
-  rclcpp::Duration one_second(std::chrono::seconds(1));
-  const auto & future_obj_pose =
-    object->get_specified_time_pose(clock_->now() + one_second, predicted_objects_stamp);
+  constexpr double estimation_time{1.0};
 
   // 1. filter by label
   const uint8_t obj_label = predicted_object.classification.at(0).label;
@@ -356,7 +354,10 @@ std::optional<StopObstacle> ObstacleStopModule::filter_inside_stop_obstacle_for_
   // 2. filter by lateral distance
   const double max_lat_margin = get_max_lat_margin(obj_label);
   // NOTE: max_lat_margin can be negative, so apply std::max with 1e-3.
-  if (std::max(max_lat_margin, 1e-3) <= dist_from_obj_poly_to_traj_poly) {
+  if (
+    std::max(max_lat_margin, 1e-3) <=
+    dist_from_obj_poly_to_traj_poly -
+      std::abs(object->get_lat_vel_relative_to_traj(traj_points) * estimation_time)) {
     return std::nullopt;
   }
 
@@ -376,7 +377,10 @@ std::optional<StopObstacle> ObstacleStopModule::filter_inside_stop_obstacle_for_
   auto collision_point = polygon_utils::get_collision_point(
     decimated_traj_points, decimated_traj_polys_with_lat_margin, obj_pose, clock_->now(),
     predicted_object.shape, dist_to_bumper);
+
   if (!collision_point) {
+    const auto & future_obj_pose = object->get_specified_time_pose(
+      clock_->now() + rclcpp::Duration::from_seconds(estimation_time), predicted_objects_stamp);
     collision_point = polygon_utils::get_collision_point(
       decimated_traj_points, decimated_traj_polys_with_lat_margin, future_obj_pose, clock_->now(),
       predicted_object.shape, dist_to_bumper);
