@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
 import launch
 from launch.actions import DeclareLaunchArgument
 from launch.actions import OpaqueFunction
@@ -72,8 +70,6 @@ def launch_setup(context, *args, **kwargs):
         parameters=[load_composable_node_param("voxel_grid_based_euclidean_param_path")],
     )
 
-    agnocast_heaphook_path = "/opt/ros/humble/lib/libagnocast_heaphook.so"
-
     container = ComposableNodeContainer(
         name="euclidean_cluster_container",
         package="rclcpp_components",
@@ -82,14 +78,6 @@ def launch_setup(context, *args, **kwargs):
         composable_node_descriptions=[],
         output="screen",
         condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),
-        additional_env=(
-            {
-                "LD_PRELOAD": f"{agnocast_heaphook_path}:{os.getenv('LD_PRELOAD', '')}",
-                "AGNOCAST_MEMPOOL_SIZE": "1073741824",  # 1GB
-            }
-            if os.getenv("ENABLE_AGNOCAST") == "1"
-            else {}
-        ),
     )
 
     target_container = (
