@@ -6,5 +6,4 @@ Please see [autowarefoundation/autoware](https://github.com/autowarefoundation/a
 
 ---
 
-
 test
