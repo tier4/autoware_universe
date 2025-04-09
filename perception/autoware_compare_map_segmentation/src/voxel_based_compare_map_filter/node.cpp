@@ -148,7 +148,7 @@ bool VoxelBasedCompareMapFilterComponent::convert_output_costly(PointCloud2 & ou
         rclcpp::Duration::from_seconds(0.0));
       tf2::doTransform(output, *cloud_transformed, transform_stamped);
       cloud_transformed->header.frame_id = tf_output_frame_;
-      output = *cloud_transformed;
+      output = std::move(*cloud_transformed);
     } catch (tf2::TransformException & e) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000, "Could not transform pointcloud: %s",
@@ -165,7 +165,7 @@ bool VoxelBasedCompareMapFilterComponent::convert_output_costly(PointCloud2 & ou
         rclcpp::Duration::from_seconds(0.0));
       tf2::doTransform(output, *cloud_transformed, transform_stamped);
       cloud_transformed->header.frame_id = tf_input_orig_frame_;
-      output = *cloud_transformed;
+      output = std::move(*cloud_transformed);
     } catch (tf2::TransformException & e) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000, "Could not transform pointcloud: %s",
