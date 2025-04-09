@@ -325,6 +325,10 @@ TEST_F(ConcatenateCloudTest, TestSetAndGetAdvancedCollectorInfo)
   EXPECT_DOUBLE_EQ(max, 10.1);
 }
 
+
+// Agnocast v2.1.0 cannot properly handle message objects that are not intended to be actually published, as seen in these unit tests.
+// This limitation may be addressed in a future version.
+// For now, we will work around the issue by commenting out the unsupported parts.
 /*
 TEST_F(ConcatenateCloudTest, TestConcatenateClouds)
 {

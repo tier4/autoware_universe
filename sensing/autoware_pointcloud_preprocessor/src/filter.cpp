@@ -80,6 +80,9 @@ autoware::pointcloud_preprocessor::Filter::Filter(
     latched_indices_ = static_cast<bool>(declare_parameter("latched_indices", false));
     approximate_sync_ = static_cast<bool>(declare_parameter("approximate_sync", false));
 
+    // `is_agnocast_publish_node_` is set to `false` by default, and it will not become `true` unless explicitly specified in the launch file.
+    // Therefore, unintended nodes (i.e., those that inherit from the `Filter` class but are not intended to use Agnocast)
+    // will not have their publish behavior replaced by Agnocast.
     is_agnocast_publish_node_ =
       static_cast<bool>(declare_parameter("is_agnocast_publish_node", false));
 
@@ -205,6 +208,9 @@ void autoware::pointcloud_preprocessor::Filter::unsubscribe()
 void autoware::pointcloud_preprocessor::Filter::computePublish(
   const PointCloud2ConstPtr & input, const IndicesPtr & indices)
 {
+  // The code when `is_agnocast_publish_node_` is `true` is identical to the code written below the if block (i.e., the code executed when it is `false`).
+  // At first glance, this conditional branch may seem unnecessary, but it serves as a workaround due to the inability to ensure type consistency for the local variable `output`.
+  // If the current design where the `Filter` class is inherited by multiple node classes can be eliminated, such a workaround will no longer be necessary.
   if (is_agnocast_publish_node_) {
     auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_output_wrapped_);
     filter(input, indices, *output);
@@ -453,6 +459,9 @@ void autoware::pointcloud_preprocessor::Filter::faster_input_indices_callback(
     vindices.reset(new std::vector<int>(indices->indices));
   }
 
+  // The code when `is_agnocast_publish_node_` is `true` is identical to the code written below the if block (i.e., the code executed when it is `false`).
+  // At first glance, this conditional branch may seem unnecessary, but it serves as a workaround due to the inability to ensure type consistency for the local variable `output`.
+  // If the current design where the `Filter` class is inherited by multiple node classes can be eliminated, such a workaround will no longer be necessary.
   if (is_agnocast_publish_node_) {
     auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_output_wrapped_);
     faster_filter(cloud, vindices, *output, transform_info);
