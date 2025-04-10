@@ -107,12 +107,14 @@ private:
 
   tf2_ros::TransformListener tf_listener_;
 
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_obstacle_pointcloud_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_obstacle_pointcloud_;
 
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;
 
   rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
     pub_debug_processing_time_detail_;
+
+  rclcpp::Publisher<StringStamped>::SharedPtr pub_string_;
 
   autoware_utils::InterProcessPollingSubscriber<
     LaneletRoute, autoware_utils::polling_policy::Newest>
