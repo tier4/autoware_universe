@@ -17,6 +17,7 @@
 
 #include <autoware_utils/ros/marker_helper.hpp>
 
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -43,6 +44,7 @@ namespace autoware::rear_obstacle_checker
 {
 
 using autoware::vehicle_info_utils::VehicleInfo;
+using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_internal_planning_msgs::msg::PathPointWithLaneId;
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using autoware_map_msgs::msg::LaneletMapBin;
