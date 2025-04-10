@@ -62,6 +62,7 @@ RearObstacleCheckerNode::RearObstacleCheckerNode(const rclcpp::NodeOptions & nod
   pub_debug_marker_{this->create_publisher<MarkerArray>("~/debug/marker", 20)},
   pub_debug_processing_time_detail_{this->create_publisher<autoware_utils::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms", 1)},
+  pub_string_{this->create_publisher<StringStamped>("~/debug/state", 1)},
   route_handler_{std::make_shared<autoware::route_handler::RouteHandler>()},
   param_listener_{std::make_unique<rear_obstacle_checker_node::ParamListener>(
     this->get_node_parameters_interface())},
@@ -908,6 +909,16 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
 
   if (debug.obstacle_pointcloud) {
     pub_obstacle_pointcloud_->publish(*debug.obstacle_pointcloud);
+  }
+
+  {
+    std::ostringstream string_stream;
+    string_stream << "INFO:" << debug.text.first.c_str();
+
+    StringStamped string_stamp;
+    string_stamp.stamp = this->now();
+    string_stamp.data = string_stream.str();
+    pub_string_->publish(string_stamp);
   }
 }
 }  // namespace autoware::rear_obstacle_checker
