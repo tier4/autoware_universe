@@ -15,6 +15,7 @@
 #ifndef SCENE_HPP_
 #define SCENE_HPP_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -33,6 +34,13 @@
 
 namespace autoware::behavior_velocity_planner
 {
+
+struct TrafficSignalTimeToRedStamped
+{
+  builtin_interfaces::msg::Time stamp;
+  double time_to_red{};
+};
+
 class TrafficLightModule : public SceneModuleInterface
 {
 public:
@@ -63,13 +71,20 @@ public:
     double yellow_lamp_period;
     double stop_time_hysteresis;
     bool enable_pass_judge;
+    // V2I Parameter
+    bool v2i_use_rest_time;
+    double v2i_last_time_allowed_to_pass;
+    double v2i_velocity_threshold;
+    double v2i_required_time_to_departure;
   };
 
 public:
   TrafficLightModule(
     const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
     lanelet::ConstLanelet lane, const PlannerParam & planner_param, const rclcpp::Logger logger,
-    const rclcpp::Clock::SharedPtr clock);
+    const rclcpp::Clock::SharedPtr clock,
+    const std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> &
+      get_rest_time_to_red_signal);
 
   bool modifyPathVelocity(PathWithLaneId * path, StopReason * stop_reason) override;
 
@@ -100,6 +115,15 @@ private:
 
   void updateTrafficSignal();
 
+  /**
+   * @brief Handle V2I Rest Time to Red Signal
+   * @param signed_arc_length_to_stop_point signed arc length to stop point
+   * @param output_path output path
+   * @return true if V2I is handled
+   */
+  bool handleV2I(
+    const double & signed_arc_length_to_stop_point, const std::function<void()> & insert_stop_pose);
+
   // Lane id
   const int64_t lane_id_;
 
@@ -128,6 +152,9 @@ private:
 
   // Traffic Light State
   TrafficSignal looking_tl_state_;
+
+  // V2I
+  std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> get_rest_time_to_red_signal_;
 };
 }  // namespace autoware::behavior_velocity_planner
 

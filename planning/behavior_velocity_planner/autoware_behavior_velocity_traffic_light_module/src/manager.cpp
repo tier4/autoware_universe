@@ -16,14 +16,17 @@
 
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
 #include <autoware/universe_utils/ros/parameter.hpp>
+#include <rclcpp/logging.hpp>
 
 #include <tf2/utils.h>
 
 #include <limits>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 namespace autoware::behavior_velocity_planner
 {
 using autoware::universe_utils::getOrDeclareParameter;
@@ -41,8 +44,22 @@ TrafficLightModuleManager::TrafficLightModuleManager(rclcpp::Node & node)
   planner_param_.enable_pass_judge = getOrDeclareParameter<bool>(node, ns + ".enable_pass_judge");
   planner_param_.yellow_lamp_period =
     getOrDeclareParameter<double>(node, ns + ".yellow_lamp_period");
+  planner_param_.v2i_use_rest_time = getOrDeclareParameter<bool>(node, ns + ".v2i.use_rest_time");
+  planner_param_.v2i_last_time_allowed_to_pass =
+    getOrDeclareParameter<double>(node, ns + ".v2i.last_time_allowed_to_pass");
+  planner_param_.v2i_velocity_threshold =
+    getOrDeclareParameter<double>(node, ns + ".v2i.velocity_threshold");
+  planner_param_.v2i_required_time_to_departure =
+    getOrDeclareParameter<double>(node, ns + ".v2i.required_time_to_departure");
   pub_tl_state_ = node.create_publisher<autoware_perception_msgs::msg::TrafficLightGroup>(
     "~/output/traffic_signal", 1);
+
+  if (planner_param_.v2i_use_rest_time) {
+    RCLCPP_INFO(logger_, "V2I is enabled");
+    v2i_subscriber_ = autoware::universe_utils::InterProcessPollingSubscriber<
+      jpn_signal_v2i_msgs::msg::TrafficLightInfo>::
+      create_subscription(&node, "/v2i/external/v2i_traffic_light_info", 1);
+  }
 }
 
 void TrafficLightModuleManager::modifyPathVelocity(tier4_planning_msgs::msg::PathWithLaneId * path)
@@ -51,6 +68,8 @@ void TrafficLightModuleManager::modifyPathVelocity(tier4_planning_msgs::msg::Pat
   visualization_msgs::msg::MarkerArray virtual_wall_marker_array;
 
   autoware_perception_msgs::msg::TrafficLightGroup tl_state;
+
+  if (planner_param_.v2i_use_rest_time) updateV2IRestTimeInfo();
 
   autoware_adapi_v1_msgs::msg::VelocityFactorArray velocity_factor_array;
   velocity_factor_array.header.frame_id = "map";
@@ -126,9 +145,13 @@ void TrafficLightModuleManager::launchNewModules(
     // Use lanelet_id to unregister module when the route is changed
     const auto lane_id = traffic_light_reg_elem.second.id();
     if (!isModuleRegisteredFromExistingAssociatedModule(lane_id)) {
-      registerModule(std::make_shared<TrafficLightModule>(
+      registerModule(
+        std::make_shared<TrafficLightModule>(
         lane_id, *(traffic_light_reg_elem.first), traffic_light_reg_elem.second, planner_param_,
-        logger_.get_child("traffic_light_module"), clock_));
+        logger_.get_child("traffic_light_module"), clock_,
+        std::bind(
+          &TrafficLightModuleManager::getV2IRestTimeToRedSignal, this,
+          traffic_light_reg_elem.first->id())));
       generateUUID(lane_id);
       updateRTCStatus(
         getUUID(lane_id), true, State::WAITING_FOR_EXECUTION, std::numeric_limits<double>::lowest(),
@@ -186,6 +209,37 @@ bool TrafficLightModuleManager::hasSameTrafficLight(
     }
   }
   return false;
+}
+
+void TrafficLightModuleManager::updateV2IRestTimeInfo()
+{
+  if (!v2i_subscriber_) {
+    return;
+  }
+  auto msg = v2i_subscriber_->takeData();
+  if (!msg) {
+    return;
+  }
+
+  std::vector<lanelet::Id> traffic_light_ids;
+  traffic_light_id_to_rest_time_map_.clear();
+  for (const auto & car_light : msg->car_lights) {
+    for (const auto & state : car_light.states) {
+      traffic_light_id_to_rest_time_map_[state.traffic_light_group_id] = {
+        msg->header.stamp, car_light.min_rest_time_to_red};
+      traffic_light_ids.push_back(state.traffic_light_group_id);
+    }
+  }
+}
+
+std::optional<TrafficSignalTimeToRedStamped> TrafficLightModuleManager::getV2IRestTimeToRedSignal(
+  const lanelet::Id & id) const
+{
+  const auto rest_time_to_red_signal = traffic_light_id_to_rest_time_map_.find(id);
+  if (rest_time_to_red_signal == traffic_light_id_to_rest_time_map_.end()) {
+    return std::nullopt;
+  }
+  return rest_time_to_red_signal->second;
 }
 
 }  // namespace autoware::behavior_velocity_planner
