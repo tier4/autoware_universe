@@ -150,6 +150,19 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
       return true;
     }
 
+    // Check if the vehicle is stopped and within a certain distance to the stop line
+    if (planner_data_->isVehicleStopped()) {
+      const double dist_to_stop = signed_arc_length_to_stop_point;
+      if (planner_param_.min_dist_to_stop_for_restart_suppression < dist_to_stop &&
+          dist_to_stop < planner_param_.max_dist_to_stop_for_restart_suppression) {
+        // Suppress restart
+        RCLCPP_INFO(logger_, "Suppressing restart due to proximity to stop line.");
+        *path = insertStopPose(input_path, stop_line.value().first, stop_line.value().second);
+        return true;
+      }
+    }
+    
+
     // Decide whether to stop or pass even if a stop signal is received.
     if (!isPassthrough(signed_arc_length_to_stop_point)) {
       *path = insertStopPose(input_path, stop_line.value().first, stop_line.value().second);
