@@ -84,6 +84,8 @@ struct PointCloudObject
 
   lanelet::ConstLanelet furthest_lane;
 
+  double tracking_duration;
+
   double absolute_distance;
 
   double relative_distance;
