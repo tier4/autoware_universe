@@ -195,6 +195,9 @@ AvoidanceParameters getParameter(rclcpp::Node * node)
     set_target_flag(ObjectClassification::MOTORCYCLE, ns + "target_type.motorcycle");
     set_target_flag(ObjectClassification::UNKNOWN, ns + "target_type.unknown");
 
+    p.wait_approval_opposite_direction_lane =
+      get_or_declare_parameter<bool>(*node, ns + "always_wait_approval.opposite_direction_lane");
+
     p.enable_safety_check = get_or_declare_parameter<bool>(*node, ns + "enable");
     p.check_current_lane = get_or_declare_parameter<bool>(*node, ns + "check_current_lane");
     p.check_shift_side_lane = get_or_declare_parameter<bool>(*node, ns + "check_shift_side_lane");
