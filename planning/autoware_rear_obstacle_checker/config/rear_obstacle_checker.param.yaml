@@ -25,6 +25,8 @@
           min_cluster_height: 0.1
           min_cluster_size: 10
           max_cluster_size: 10000
+        velocity_estimation:
+          observation_time: 0.5
 
       object:
         range:

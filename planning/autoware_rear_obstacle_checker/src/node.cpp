@@ -179,12 +179,26 @@ void RearObstacleCheckerNode::update(diagnostic_updater::DiagnosticStatusWrapper
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "validated.");
   }
 
+  post_process();
+
   publish_marker(debug_data);
 }
 
 void RearObstacleCheckerNode::on_timer()
 {
   diag_updater_->force_update();
+}
+
+void RearObstacleCheckerNode::post_process()
+{
+  auto itr = history_.begin();
+  while (itr != history_.end()) {
+    if ((rclcpp::Clock{RCL_ROS_TIME}.now() - itr->second.last_update_time).seconds() > 1.0) {
+      itr = history_.erase(itr);
+    } else {
+      itr++;
+    }
+  }
 }
 
 bool RearObstacleCheckerNode::is_safe(DebugData & debug)
@@ -321,12 +335,25 @@ void RearObstacleCheckerNode::fill_rss_distance(PointCloudObjects & objects) con
 
 bool RearObstacleCheckerNode::is_safe(const PointCloudObjects & objects, DebugData & debug) const
 {
+  const auto p = param_listener_->get_params();
+
   {
     debug.pointcloud_objects = objects;
   }
 
-  return std::all_of(
-    objects.begin(), objects.end(), [](const auto & object) { return object.safe; });
+  for (const auto & object : objects) {
+    if (object.tracking_duration < p.common.pointcloud.velocity_estimation.observation_time) {
+      continue;
+    }
+
+    if (object.safe) {
+      continue;
+    }
+
+    return false;
+  }
+
+  return true;
 }
 
 bool RearObstacleCheckerNode::is_safe(const PredictedObjects & objects, DebugData & debug) const
@@ -713,34 +740,42 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_on_adjacent_lane(
 
 void RearObstacleCheckerNode::fill_velocity(PointCloudObject & pointcloud_object)
 {
+  const auto p = param_listener_->get_params();
+
   const auto update_history = [this](const auto & pointcloud_object) {
     if (history_.count(pointcloud_object.furthest_lane.id()) == 0) {
       history_.emplace(pointcloud_object.furthest_lane.id(), pointcloud_object);
     } else {
       history_.at(pointcloud_object.furthest_lane.id()) = pointcloud_object;
     }
-
-    auto itr = history_.begin();
-    while (itr != history_.end()) {
-      if ((rclcpp::Clock{RCL_ROS_TIME}.now() - itr->second.last_update_time).seconds() > 1.0) {
-        itr = history_.erase(itr);
-      } else {
-        itr++;
-      }
-    }
   };
 
-  const auto estimate_velocity = [this](
-                                   const auto & pointcloud_object, const auto & previous_data) {
+  const auto fill_velocity = [&p, this](auto & pointcloud_object, const auto & previous_data) {
     const auto dx = previous_data.relative_distance - pointcloud_object.relative_distance;
     const auto dt = (pointcloud_object.last_update_time - previous_data.last_update_time).seconds();
 
     if (dt < 1e-6) {
-      return previous_data.velocity;
+      pointcloud_object.velocity = previous_data.velocity;
+      pointcloud_object.tracking_duration = previous_data.tracking_duration + dt;
+      return;
     }
 
-    return autoware::signal_processing::lowpassFilter(
-      dx / dt + odometry_ptr_->twist.twist.linear.x, previous_data.velocity, 0.5);
+    constexpr double assumed_acceleration = 30.0;
+    const auto raw_velocity = dx / dt + odometry_ptr_->twist.twist.linear.x;
+    const auto is_reliable =
+      previous_data.tracking_duration > p.common.pointcloud.velocity_estimation.observation_time;
+
+    if (
+      is_reliable && std::abs(raw_velocity - previous_data.velocity) / dt > assumed_acceleration) {
+      // closest point may jumped. reset tracking history.
+      pointcloud_object.velocity = 0.0;
+      pointcloud_object.tracking_duration = 0.0;
+    } else {
+      // keep tracking.
+      pointcloud_object.velocity =
+        autoware::signal_processing::lowpassFilter(raw_velocity, previous_data.velocity, 0.5);
+      pointcloud_object.tracking_duration = previous_data.tracking_duration + dt;
+    }
   };
 
   if (history_.count(pointcloud_object.furthest_lane.id()) == 0) {
@@ -748,8 +783,7 @@ void RearObstacleCheckerNode::fill_velocity(PointCloudObject & pointcloud_object
       route_handler_->getPreviousLanelets(pointcloud_object.furthest_lane);
     for (const auto & previous_lane : previous_lanes) {
       if (history_.count(previous_lane.id()) != 0) {
-        pointcloud_object.velocity =
-          estimate_velocity(pointcloud_object, history_.at(previous_lane.id()));
+        fill_velocity(pointcloud_object, history_.at(previous_lane.id()));
         update_history(pointcloud_object);
         return;
       }
@@ -759,8 +793,7 @@ void RearObstacleCheckerNode::fill_velocity(PointCloudObject & pointcloud_object
     return;
   }
 
-  pointcloud_object.velocity =
-    estimate_velocity(pointcloud_object, history_.at(pointcloud_object.furthest_lane.id()));
+  fill_velocity(pointcloud_object, history_.at(pointcloud_object.furthest_lane.id()));
   update_history(pointcloud_object);
 }
 
