@@ -552,6 +552,7 @@ auto get_pointcloud_object(
         object.last_update_time = now;
         object.pose = pose_on_center_line.value();
         object.furthest_lane = lanes.back();
+        object.tracking_duration = 0.0;
         object.absolute_distance = obj_arc_length;
         object.velocity = 0.0;
         opt_object = object;
@@ -559,6 +560,7 @@ auto get_pointcloud_object(
         opt_object.value().last_update_time = now;
         opt_object.value().pose = pose_on_center_line.value();
         opt_object.value().furthest_lane = lanes.back();
+        opt_object.value().tracking_duration = 0.0;
         opt_object.value().absolute_distance = obj_arc_length;
         opt_object.value().velocity = 0.0;
       }
@@ -833,9 +835,14 @@ MarkerArray create_pointcloud_object_marker_array(
 
   size_t i = 0L;
   for (const auto & object : objects) {
-    const auto sphere_color = object.safe
-                                ? autoware_utils::create_marker_color(0.16, 1.0, 0.69, 0.999)
-                                : autoware_utils::create_marker_color(1.0, 0.0, 0.42, 0.999);
+    const auto sphere_color = [&object]() {
+      if (object.tracking_duration < 0.3) {
+        return autoware_utils::create_marker_color(1.0, 0.67, 0.0, 0.999);
+      }
+      return object.safe ? autoware_utils::create_marker_color(0.16, 1.0, 0.69, 0.999)
+                         : autoware_utils::create_marker_color(1.0, 0.0, 0.42, 0.999);
+    }();
+
     {
       auto marker = autoware_utils::create_default_marker(
         "map", rclcpp::Clock{RCL_ROS_TIME}.now(), ns + "_sphere", i++, Marker::SPHERE,
@@ -861,8 +868,9 @@ MarkerArray create_pointcloud_object_marker_array(
 
       std::ostringstream ss;
       ss << std::fixed << std::setprecision(2);
-      ss << "RelativeDistance:" << object.relative_distance << "[m]\nVelocity:" << object.velocity
-         << "[m/s]\nRSSDistance" << object.rss_distance
+      ss << "TrackingDuration:" << object.tracking_duration
+         << "[s]\nRelativeDistance:" << object.relative_distance
+         << "[m]\nVelocity:" << object.velocity << "[m/s]\nRSSDistance" << object.rss_distance
          << "[m]\nFurthestLaneID:" << object.furthest_lane.id();
 
       marker.text = ss.str();
