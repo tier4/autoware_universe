@@ -207,6 +207,8 @@ struct AvoidanceParameters
   double th_overhang_distance{0.0};
 
   // parameters for safety check area
+  bool wait_approval_opposite_direction_lane{false};
+
   bool enable_safety_check{false};
   bool check_current_lane{false};
   bool check_shift_side_lane{false};
