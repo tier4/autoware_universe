@@ -5,5 +5,3 @@ This is one of the prototype repositories for Autoware Core/Universe that AWF ag
 Please see [autowarefoundation/autoware](https://github.com/autowarefoundation/autoware) for more details.
 
 ---
-
-test
