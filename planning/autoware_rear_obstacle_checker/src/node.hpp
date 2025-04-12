@@ -57,6 +57,8 @@ private:
 
   void take_data();
 
+  void post_process();
+
   bool is_ready() const;
 
   bool is_safe(const PredictedObjects & objects, DebugData & debug) const;
