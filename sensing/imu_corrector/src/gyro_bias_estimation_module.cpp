@@ -18,16 +18,23 @@ namespace imu_corrector
 {
 GyroBiasEstimationModule::GyroBiasEstimationModule(
   const double velocity_threshold, const double timestamp_threshold,
-  const size_t data_num_threshold, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
+  const size_t data_num_threshold, const double bias_change_threshold, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
 : velocity_threshold_(velocity_threshold),
   timestamp_threshold_(timestamp_threshold),
   data_num_threshold_(data_num_threshold),
+  bias_change_threshold_(bias_change_threshold),
   current_median_(),
   current_stddev_(),
   is_stopped_(false),
+  last_velocity_time_(0.0),
   logger_(logger),
-  clock_(clock)
+  clock_(clock),
+  gyro_buffer_(data_num_threshold),
+  is_gyro_buffer_full_(false),
+  is_calibration_possible_(false)
 {
+  RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
+  RCLCPP_INFO(logger_, "is_gyro_buffer_full_: %d", is_gyro_buffer_full_);
 }
 
 void GyroBiasEstimationModule::update_gyro(
@@ -40,7 +47,10 @@ void GyroBiasEstimationModule::update_gyro(
     gyro_buffer_.clear();
     return;
   }
+  RCLCPP_INFO(logger_, "push_back");
+  RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
   gyro_buffer_.push_back(gyro);
+  RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
 }
 
 void GyroBiasEstimationModule::update_velocity(const double time, const double velocity)
@@ -52,6 +62,8 @@ void GyroBiasEstimationModule::update_velocity(const double time, const double v
 geometry_msgs::msg::Vector3 GyroBiasEstimationModule::get_bias()
 {
   is_gyro_buffer_full_ = gyro_buffer_.full();
+  RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
+  RCLCPP_INFO(logger_, "is_gyro_buffer_full_: %d", is_gyro_buffer_full_);
   if (!is_gyro_buffer_full_) {
     throw std::runtime_error("Bias estimation is not yet ready because of insufficient data.");
   }
@@ -67,10 +79,21 @@ geometry_msgs::msg::Vector3 GyroBiasEstimationModule::get_bias()
   geometry_msgs::msg::Vector3 previous_median = current_median_;
 
   if (
-    abs(current_median_.x - previous_median.x) > 0.00061 ||
-    abs(current_median_.y - previous_median.y) > 0.00061 ||
-    abs(current_median_.z - previous_median.z) > 0.00061) {
-    RCLCPP_WARN(logger_, "Bias estimation is not yet ready because of insufficient data.");
+    abs(current_median_.x - previous_median.x) > bias_change_threshold_ ||
+    abs(current_median_.y - previous_median.y) > bias_change_threshold_ ||
+    abs(current_median_.z - previous_median.z) > bias_change_threshold_) {
+    RCLCPP_WARN(
+      logger_,
+      "Significant gyro bias change detected!\n"
+      "Previous bias: [x: %f, y: %f, z: %f] rad/s\n"
+      "Current bias: [x: %f, y: %f, z: %f] rad/s\n"
+      "Previous standard dev: [x: %f, y: %f, z: %f] rad/s\n"
+      "Current standard dev: [x: %f, y: %f, z: %f] rad/s",
+      previous_median.x, previous_median.y, previous_median.z,
+      current_median_.x, current_median_.y, current_median_.z,
+      buffer_stddev.x, buffer_stddev.y, buffer_stddev.z,
+      current_stddev_.x, current_stddev_.y, current_stddev_.z
+    );
   }
 
   RCLCPP_INFO_THROTTLE(

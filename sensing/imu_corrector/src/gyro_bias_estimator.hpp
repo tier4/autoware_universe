@@ -43,7 +43,7 @@ public:
 private:
   void callback_imu(const Imu::ConstSharedPtr imu_msg_ptr);
   void callback_twist(const TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr);
-  void callback_gyro_bias(const Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr);
+  void on_timer();
 
   rclcpp::Subscription<Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<TwistWithCovarianceStamped>::SharedPtr twist_sub_;

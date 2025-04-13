@@ -20,17 +20,39 @@
 
 namespace imu_corrector
 {
+
+class GyroBiasEstimationModuleTestWrapper : public GyroBiasEstimationModule {
+public:
+  GyroBiasEstimationModuleTestWrapper(
+    double velocity_threshold,
+    double timestamp_threshold,
+    size_t data_num_threshold,
+    double bias_change_threshold,
+    const rclcpp::Logger & logger,
+    const std::shared_ptr<rclcpp::Clock> & clock)
+  : GyroBiasEstimationModule(
+      velocity_threshold,
+      timestamp_threshold,
+      data_num_threshold,
+      bias_change_threshold,
+      logger,
+      clock)
+  {}
+  size_t get_buffer_size() const { return gyro_buffer_.size(); }
+};
+
 class GyroBiasEstimationModuleTest : public ::testing::Test
 {
-protected:
+public:
   double velocity_threshold = 1.0;
-  double timestamp_threshold = 5.0;
-  size_t data_num_threshold = 10;
+  double timestamp_threshold = 0.1;
+  size_t data_num_threshold = 5;
+  double bias_change_threshold = 0.00061;
   rclcpp::Logger mock_logger_{rclcpp::get_logger("GyroBiasEstimationModuleTest")};
   std::shared_ptr<rclcpp::Clock> mock_clock_{std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME)};
 
-  GyroBiasEstimationModule module = GyroBiasEstimationModule(
-    velocity_threshold, timestamp_threshold, data_num_threshold, mock_logger_, mock_clock_);
+  GyroBiasEstimationModuleTestWrapper module = GyroBiasEstimationModuleTestWrapper(
+    velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold, mock_logger_, mock_clock_);
 };
 
 TEST_F(GyroBiasEstimationModuleTest, GetBiasEstimationWhenVehicleStopped)
@@ -67,4 +89,28 @@ TEST_F(GyroBiasEstimationModuleTest, GetInsufficientDataExceptionWhenVehicleMovi
   }
   ASSERT_THROW(module.get_bias(), std::runtime_error);
 }
+
+// FSR01-3
+TEST_F(GyroBiasEstimationModuleTest, RecordsImuDataToBuffer)
+{
+  geometry_msgs::msg::Vector3 gyro;
+  gyro.x = 0.1;
+  gyro.y = 0.2;
+  gyro.z = 0.3;
+  module.update_velocity(0.0, 0.0);
+  module.update_gyro(0.0, gyro);
+  ASSERT_EQ(module.get_buffer_size(), 1);
+}
+
+
+
+// FSR01-4
+
+// FSR01-5
+
+// FSR01-6
+
+// FSR01-7
+
+
 }  // namespace imu_corrector
