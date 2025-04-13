@@ -106,5 +106,4 @@ TEST_F(GyroBiasEstimationModuleTest, CheckCalibrationPossibleWithin2Seconds)
 
 // subscribeしたtopicがメンバ変数に格納されることを確認
 
-
 }  // namespace imu_corrector
