@@ -14,11 +14,13 @@
 #ifndef GYRO_BIAS_ESTIMATION_MODULE_HPP_
 #define GYRO_BIAS_ESTIMATION_MODULE_HPP_
 
-#include <geometry_msgs/msg/vector3.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <deque>
+#include <geometry_msgs/msg/vector3.hpp>
+
 #include <boost/circular_buffer.hpp>
+
+#include <deque>
 namespace imu_corrector
 {
 class GyroBiasEstimationModule
@@ -39,8 +41,10 @@ private:
   geometry_msgs::msg::Vector3 current_stddev_;
   bool is_stopped_;
   double last_velocity_time_;
-  geometry_msgs::msg::Vector3 calculate_stddev(const boost::circular_buffer<geometry_msgs::msg::Vector3> & buffer) const;
-  geometry_msgs::msg::Vector3 calculate_median(const boost::circular_buffer<geometry_msgs::msg::Vector3> & buffer) const;
+  geometry_msgs::msg::Vector3 calculate_stddev(
+    const boost::circular_buffer<geometry_msgs::msg::Vector3> & buffer) const;
+  geometry_msgs::msg::Vector3 calculate_median(
+    const boost::circular_buffer<geometry_msgs::msg::Vector3> & buffer) const;
   rclcpp::Logger logger_;
   rclcpp::Clock::SharedPtr clock_;
 

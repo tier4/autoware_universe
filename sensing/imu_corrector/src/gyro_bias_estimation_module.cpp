@@ -57,7 +57,8 @@ geometry_msgs::msg::Vector3 GyroBiasEstimationModule::get_bias()
   }
 
   geometry_msgs::msg::Vector3 buffer_stddev = calculate_stddev(gyro_buffer_);
-  is_calibration_possible_ = buffer_stddev.x < 0.00175 && buffer_stddev.y < 0.00175 && buffer_stddev.z < 0.00175;
+  is_calibration_possible_ =
+    buffer_stddev.x < 0.00175 && buffer_stddev.y < 0.00175 && buffer_stddev.z < 0.00175;
   if (!is_calibration_possible_) {
     throw std::runtime_error("Bias estimation is not yet ready because of insufficient data.");
   }
@@ -65,15 +66,17 @@ geometry_msgs::msg::Vector3 GyroBiasEstimationModule::get_bias()
   current_median_ = calculate_median(gyro_buffer_);
   geometry_msgs::msg::Vector3 previous_median = current_median_;
 
-  if (abs(current_median_.x - previous_median.x) >0.00061 ||
+  if (
+    abs(current_median_.x - previous_median.x) > 0.00061 ||
     abs(current_median_.y - previous_median.y) > 0.00061 ||
     abs(current_median_.z - previous_median.z) > 0.00061) {
     RCLCPP_WARN(logger_, "Bias estimation is not yet ready because of insufficient data.");
   }
 
-  RCLCPP_INFO_THROTTLE(logger_, *clock_, 10000, "Bias estimation is not yet ready because of insufficient data.");
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 10000, "Bias estimation is not yet ready because of insufficient data.");
 
-  return current_median_; 
+  return current_median_;
 }
 
 geometry_msgs::msg::Vector3 GyroBiasEstimationModule::calculate_stddev(
@@ -150,6 +153,5 @@ geometry_msgs::msg::Vector3 GyroBiasEstimationModule::calculate_median(
 
   return median;
 }
-
 
 }  // namespace imu_corrector

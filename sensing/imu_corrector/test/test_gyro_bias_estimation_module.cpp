@@ -14,8 +14,9 @@
 
 #include "../src/gyro_bias_estimation_module.hpp"
 
-#include <gtest/gtest.h>
 #include <rclcpp/rclcpp.hpp>
+
+#include <gtest/gtest.h>
 
 namespace imu_corrector
 {
@@ -27,14 +28,9 @@ protected:
   size_t data_num_threshold = 10;
   rclcpp::Logger mock_logger_{rclcpp::get_logger("GyroBiasEstimationModuleTest")};
   std::shared_ptr<rclcpp::Clock> mock_clock_{std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME)};
-  
+
   GyroBiasEstimationModule module = GyroBiasEstimationModule(
-      velocity_threshold,
-      timestamp_threshold,
-      data_num_threshold,
-      mock_logger_,
-      mock_clock_);
-    
+    velocity_threshold, timestamp_threshold, data_num_threshold, mock_logger_, mock_clock_);
 };
 
 TEST_F(GyroBiasEstimationModuleTest, GetBiasEstimationWhenVehicleStopped)
