@@ -2,40 +2,6 @@
 
 namespace imu_corrector
 {
-<<<<<<< Updated upstream
-
-class GyroBiasEstimationModuleTestWrapper : public GyroBiasEstimationModule
-{
-public:
-  GyroBiasEstimationModuleTestWrapper(
-    double velocity_threshold, double timestamp_threshold, size_t data_num_threshold,
-    double bias_change_threshold, const rclcpp::Logger & logger,
-    const std::shared_ptr<rclcpp::Clock> & clock)
-  : GyroBiasEstimationModule(
-      velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold, logger,
-      clock)
-  {
-  }
-  size_t get_buffer_size() const { return gyro_buffer_.size(); }
-};
-
-class GyroBiasEstimationModuleTest : public ::testing::Test
-{
-public:
-  double velocity_threshold = 1.0;
-  double timestamp_threshold = 0.1;
-  size_t data_num_threshold = 5;
-  double bias_change_threshold = 0.00061;
-  rclcpp::Logger mock_logger_{rclcpp::get_logger("GyroBiasEstimationModuleTest")};
-  std::shared_ptr<rclcpp::Clock> mock_clock_{std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME)};
-
-  GyroBiasEstimationModuleTestWrapper module = GyroBiasEstimationModuleTestWrapper(
-    velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold,
-    mock_logger_, mock_clock_);
-};
-
-=======
->>>>>>> Stashed changes
 TEST_F(GyroBiasEstimationModuleTest, GetBiasEstimationWhenVehicleStopped)
 {
   geometry_msgs::msg::Vector3 gyro;
@@ -83,11 +49,8 @@ TEST_F(GyroBiasEstimationModuleTest, RecordsImuDataToBuffer)
   ASSERT_EQ(module.get_buffer_size(), 1);
 }
 
-<<<<<<< Updated upstream
-=======
 // 保留
 
->>>>>>> Stashed changes
 // FSR01-4
 TEST_F(GyroBiasEstimationModuleTest, ClearsBufferWhenVehicleMoving)
 {
@@ -140,9 +103,8 @@ TEST_F(GyroBiasEstimationModuleTest, CheckCalibrationPossibleWithin2Seconds)
 // FSR01-6
 
 // FSR01-7
-<<<<<<< Updated upstream
-=======
+
 // subscribeしたtopicがメンバ変数に格納されることを確認
->>>>>>> Stashed changes
+
 
 }  // namespace imu_corrector
