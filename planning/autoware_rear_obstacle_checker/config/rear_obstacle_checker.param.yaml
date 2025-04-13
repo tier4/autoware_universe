@@ -49,6 +49,9 @@
         active_distance:
           start: 30.0
           end: -5.0
+        offset:
+          inner: 0.1
+          outer: 0.3
 
       predicted_path:
         time_resolution: 0.5                            # [s]
