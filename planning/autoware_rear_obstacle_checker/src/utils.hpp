@@ -70,6 +70,20 @@ std::uint8_t get_highest_prob_label(const std::vector<ObjectClassification> & cl
   return label;
 }
 
+std::optional<lanelet::ConstLanelet> get_sibling_straight_lanelet(
+  const lanelet::ConstLanelet assigned_lane,
+  const lanelet::routing::RoutingGraphConstPtr routing_graph_ptr)
+{
+  for (const auto & prev : routing_graph_ptr->previous(assigned_lane)) {
+    for (const auto & following : routing_graph_ptr->following(prev)) {
+      if (std::string(following.attributeOr("turn_direction", "else")) == "straight") {
+        return following;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 lanelet::ConstLanelets get_previous_lanes_recursively(
   const lanelet::ConstLanelet & lane, const double length, const double threshold,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
@@ -369,8 +383,9 @@ lanelet::ConstLanelets get_current_lanes(
 auto check_turn_behavior(
   const lanelet::ConstLanelets & current_lanes, const std::vector<TrajectoryPoint> & points,
   const geometry_msgs::msg::Pose & ego_pose,
+  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const double active_distance_start, const double active_distance_end) -> Behavior
+  const double active_distance_start, [[maybe_unused]] const double active_distance_end) -> Behavior
 {
   const auto ego_coordinate_on_arc = lanelet::utils::getArcCoordinates(current_lanes, ego_pose);
 
@@ -379,13 +394,61 @@ auto check_turn_behavior(
 
   constexpr double buffer = 0.5;
 
-  double ret = 0.0;
+  const auto routing_graph_ptr = route_handler->getRoutingGraphPtr();
+
+  const auto conflict_point = [&points, &vehicle_info](
+                                const auto & sibling_straight_lanelet,
+                                const auto is_right) -> std::optional<geometry_msgs::msg::Point> {
+    const auto bound =
+      is_right ? sibling_straight_lanelet.rightBound() : sibling_straight_lanelet.leftBound();
+    for (const auto & p : points) {
+      const auto transform = autoware_utils::pose2transform(autoware_utils::get_pose(p));
+      const auto footprint =
+        autoware_utils::transform_vector(vehicle_info.createFootprint(), transform);
+
+      if (boost::geometry::intersects(footprint, lanelet::utils::to2D(bound.basicLineString()))) {
+        return autoware_utils::get_point(p);
+      }
+    }
+
+    return std::nullopt;
+  };
+
+  const auto exceed_dead_line = [&points, &ego_pose, &active_distance_end, &conflict_point](
+                                  const auto & sibling_straight_lanelet, const auto distance,
+                                  const auto is_right) {
+    if (!sibling_straight_lanelet.has_value()) {
+      return distance < active_distance_end;
+    }
+
+    if (!sibling_straight_lanelet.has_value()) {
+      return distance < active_distance_end;
+    }
+
+    const auto dead_line_point = conflict_point(sibling_straight_lanelet.value(), is_right);
+    if (!dead_line_point.has_value()) {
+      return distance < active_distance_end;
+    }
+
+    return autoware::motion_utils::calcSignedArcLength(
+             points, ego_pose.position, dead_line_point.value()) < 0.0;
+  };
+
+  double total_length = 0.0;
   for (const auto & lane : current_lanes) {
     const auto distance =
-      ret - ego_coordinate_on_arc.length - vehicle_info.max_longitudinal_offset_m;
+      total_length - ego_coordinate_on_arc.length - vehicle_info.max_longitudinal_offset_m;
     const std::string turn_direction = lane.attributeOr("turn_direction", "none");
 
-    if (turn_direction == "left" && active_distance_end < distance) {
+    total_length += lanelet::utils::getLaneletLength2d(lane);
+
+    if (turn_direction == "left") {
+      const auto sibling_straight_lanelet = get_sibling_straight_lanelet(lane, routing_graph_ptr);
+
+      if (exceed_dead_line(sibling_straight_lanelet, distance, false)) {
+        continue;
+      }
+
       if (!distance_to_stop_point.has_value()) {
         return distance < active_distance_start ? Behavior::TURN_LEFT : Behavior::NONE;
       }
@@ -395,7 +458,13 @@ auto check_turn_behavior(
       return distance < active_distance_start ? Behavior::TURN_LEFT : Behavior::NONE;
     }
 
-    if (turn_direction == "right" && active_distance_end < distance) {
+    if (turn_direction == "right") {
+      const auto sibling_straight_lanelet = get_sibling_straight_lanelet(lane, routing_graph_ptr);
+
+      if (exceed_dead_line(sibling_straight_lanelet, distance, true)) {
+        continue;
+      }
+
       if (!distance_to_stop_point.has_value()) {
         return distance < active_distance_start ? Behavior::TURN_RIGHT : Behavior::NONE;
       }
@@ -404,7 +473,6 @@ auto check_turn_behavior(
       }
       return distance < active_distance_start ? Behavior::TURN_RIGHT : Behavior::NONE;
     }
-    ret += lanelet::utils::getLaneletLength2d(lane);
   }
 
   return Behavior::NONE;
