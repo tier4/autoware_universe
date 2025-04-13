@@ -27,6 +27,7 @@
 #include <autoware_utils/math/unit_conversion.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/transform/transforms.hpp>
+#include <magic_enum.hpp>
 
 #include <boost/assert.hpp>
 #include <boost/assign/list_of.hpp>
@@ -384,32 +385,24 @@ auto check_turn_behavior(
       ret - ego_coordinate_on_arc.length - vehicle_info.max_longitudinal_offset_m;
     const std::string turn_direction = lane.attributeOr("turn_direction", "none");
 
-    if (turn_direction == "left") {
+    if (turn_direction == "left" && active_distance_end < distance) {
       if (!distance_to_stop_point.has_value()) {
-        return active_distance_end < distance && distance < active_distance_start
-                 ? Behavior::TURN_LEFT
-                 : Behavior::NONE;
+        return distance < active_distance_start ? Behavior::TURN_LEFT : Behavior::NONE;
       }
       if (distance_to_stop_point.value() < distance + buffer) {
         return Behavior::NONE;
       }
-      return active_distance_end < distance && distance < active_distance_start
-               ? Behavior::TURN_LEFT
-               : Behavior::NONE;
+      return distance < active_distance_start ? Behavior::TURN_LEFT : Behavior::NONE;
     }
 
-    if (turn_direction == "right") {
+    if (turn_direction == "right" && active_distance_end < distance) {
       if (!distance_to_stop_point.has_value()) {
-        return active_distance_end < distance && distance < active_distance_start
-                 ? Behavior::TURN_RIGHT
-                 : Behavior::NONE;
+        return distance < active_distance_start ? Behavior::TURN_RIGHT : Behavior::NONE;
       }
       if (distance_to_stop_point.value() < distance + buffer) {
         return Behavior::NONE;
       }
-      return active_distance_end < distance && distance < active_distance_start
-               ? Behavior::TURN_RIGHT
-               : Behavior::NONE;
+      return distance < active_distance_start ? Behavior::TURN_RIGHT : Behavior::NONE;
     }
     ret += lanelet::utils::getLaneletLength2d(lane);
   }
@@ -620,15 +613,19 @@ MarkerArray create_polygon_marker_array(
 
 lanelet::ConstLanelet generate_half_lanelet(
   const lanelet::ConstLanelet lanelet, const bool is_right,
-  const double ignore_width_from_centerline)
+  const double ignore_width_from_centerline, const double expand_width_from_bound)
 {
   lanelet::Points3d lefts, rights;
 
   const double offset = !is_right ? ignore_width_from_centerline : -ignore_width_from_centerline;
   const auto offset_centerline = lanelet::utils::getCenterlineWithOffset(lanelet, offset);
 
-  const auto original_left_bound = !is_right ? lanelet.leftBound() : offset_centerline;
-  const auto original_right_bound = !is_right ? offset_centerline : lanelet.rightBound();
+  const auto original_left_bound =
+    !is_right ? lanelet::utils::getLeftBoundWithOffset(lanelet, expand_width_from_bound)
+              : offset_centerline;
+  const auto original_right_bound =
+    !is_right ? offset_centerline
+              : lanelet::utils::getRightBoundWithOffset(lanelet, expand_width_from_bound);
 
   for (const auto & pt : original_left_bound) {
     lefts.emplace_back(pt);
