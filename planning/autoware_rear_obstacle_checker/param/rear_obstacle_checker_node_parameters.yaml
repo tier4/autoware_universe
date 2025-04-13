@@ -76,6 +76,10 @@ rear_obstacle_checker_node:
           validation:
             gt_eq<>: [0.0]
 
+    filter:
+      min_velocity:
+        type: double
+
     object:
       range:
         forward:
