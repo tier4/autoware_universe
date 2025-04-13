@@ -241,6 +241,10 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
 
   const auto current_lanes = utils::get_current_lanes(
     predicted_stop_pose.value(), route_handler_, vehicle_info_, forward_range, backward_range);
+  {
+    debug.current_lanes = current_lanes;
+  }
+
   if (current_lanes.empty()) {
     debug.text = "CAUSION!!!\nEGO CAN'T STOP WITHIN CURRENT LANE.";
   }
@@ -251,6 +255,11 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
 
   const auto shift_behavior =
     utils::check_shift_behavior(current_lanes, resampled_path.points, vehicle_info_);
+
+  {
+    debug.turn_behavior = turn_behavior;
+    debug.shift_behavior = shift_behavior;
+  }
 
   if (turn_behavior == Behavior::NONE && shift_behavior == Behavior::NONE) {
     return true;
@@ -570,11 +579,12 @@ auto RearObstacleCheckerNode::generate_detection_area_for_object(
   }
 
   if (turn_behavior == Behavior::TURN_LEFT) {
-    const auto half_lanes = [&current_lanes, this]() {
+    const auto half_lanes = [&current_lanes, &p, this]() {
       lanelet::ConstLanelets ret{};
       for (const auto & lane : current_lanes) {
-        ret.push_back(
-          utils::generate_half_lanelet(lane, false, 0.5 * vehicle_info_.vehicle_width_m));
+        ret.push_back(utils::generate_half_lanelet(
+          lane, false, 0.5 * vehicle_info_.vehicle_width_m + p.common.blind_spot.offset.inner,
+          p.common.blind_spot.offset.outer));
       }
       return ret;
     }();
@@ -583,11 +593,12 @@ auto RearObstacleCheckerNode::generate_detection_area_for_object(
   }
 
   if (turn_behavior == Behavior::TURN_RIGHT) {
-    const auto half_lanes = [&current_lanes, this]() {
+    const auto half_lanes = [&current_lanes, &p, this]() {
       lanelet::ConstLanelets ret{};
       for (const auto & lane : current_lanes) {
-        ret.push_back(
-          utils::generate_half_lanelet(lane, true, 0.5 * vehicle_info_.vehicle_width_m));
+        ret.push_back(utils::generate_half_lanelet(
+          lane, true, 0.5 * vehicle_info_.vehicle_width_m + p.common.blind_spot.offset.inner,
+          p.common.blind_spot.offset.outer));
       }
       return ret;
     }();
@@ -821,12 +832,13 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_at_blind_spot(
     return objects;
   }
 
-  const auto half_lanes = [&current_lanes, &turn_behavior, this]() {
+  const auto half_lanes = [&current_lanes, &turn_behavior, &p, this]() {
     const auto is_right = turn_behavior == Behavior::TURN_RIGHT;
     lanelet::ConstLanelets ret{};
     for (const auto & lane : current_lanes) {
-      ret.push_back(
-        utils::generate_half_lanelet(lane, is_right, 0.5 * vehicle_info_.vehicle_width_m));
+      ret.push_back(utils::generate_half_lanelet(
+        lane, is_right, 0.5 * vehicle_info_.vehicle_width_m + p.common.blind_spot.offset.inner,
+        p.common.blind_spot.offset.outer));
     }
     return ret;
   }();
@@ -913,6 +925,9 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
     add(lanelet::visualization::laneletsAsTriangleMarkerArray(
       "detection_lanes_for_objects", debug.get_detection_lanes(),
       autoware_utils::create_marker_color(1.0, 0.0, 0.42, 0.2)));
+    add(lanelet::visualization::laneletsAsTriangleMarkerArray(
+      "current_lanes", debug.current_lanes,
+      autoware_utils::create_marker_color(0.16, 1.0, 0.69, 0.2)));
   }
 
   {
@@ -947,6 +962,8 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
     std::ostringstream ss;
     ss << std::fixed << std::setprecision(2) << std::boolalpha;
     ss << "ACTIVE:" << debug.is_active << "\n";
+    ss << "TURN:" << magic_enum::enum_name(debug.turn_behavior) << "\n";
+    ss << "SHIFT:" << magic_enum::enum_name(debug.shift_behavior) << "\n";
     ss << "INFO:" << debug.text.c_str() << "\n";
     ss << "TRACKING OBJECTS:" << debug.pointcloud_objects.size() << "\n";
     ss << "PROCESSING TIME:" << debug.processing_time_detail_ms << "[ms]\n";

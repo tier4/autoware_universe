@@ -127,6 +127,11 @@ rear_obstacle_checker_node:
             gt<>: [0.0]
         end:
           type: double
+      offset:
+        inner:
+          type: double
+        outer:
+          type: double
 
     predicted_path:
       time_resolution:

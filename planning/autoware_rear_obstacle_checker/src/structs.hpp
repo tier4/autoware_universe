@@ -105,6 +105,8 @@ struct DebugData
 
   lanelet::ConstLanelets detection_lanes_for_objects;
 
+  lanelet::ConstLanelets current_lanes;
+
   behavior_path_planner::utils::path_safety_checker::CollisionCheckDebugMap collision_check;
 
   PointCloudObjects pointcloud_objects;
@@ -114,6 +116,10 @@ struct DebugData
   PointCloud::Ptr filtered_pointcloud;
 
   sensor_msgs::msg::PointCloud2::SharedPtr obstacle_pointcloud;
+
+  Behavior turn_behavior{Behavior::NONE};
+
+  Behavior shift_behavior{Behavior::NONE};
 
   std::vector<autoware_utils::Polygon3d> hull_polygons;
 
