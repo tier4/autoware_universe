@@ -8,5 +8,6 @@
     <remap from="input" to="$(var input_topic)"/>
     <remap from="output" to="$(var output_topic)"/>
     <param from="$(var param_file)"/>
+    <param name="sensor_model" value="aip_x1_1"/>
   </node>
 </launch>

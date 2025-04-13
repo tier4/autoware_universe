@@ -15,15 +15,22 @@
 #include "imu_corrector_core.hpp"
 
 #include <algorithm>
+#include <chrono>
+
+using namespace std::chrono_literals;
 
 namespace imu_corrector
 {
 ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
 : Node("imu_corrector", node_options)
 {
-  angular_velocity_offset_x_ = declare_parameter<double>("angular_velocity_offset_x", 0.0);
-  angular_velocity_offset_y_ = declare_parameter<double>("angular_velocity_offset_y", 0.0);
-  angular_velocity_offset_z_ = declare_parameter<double>("angular_velocity_offset_z", 0.0);
+  sensor_model_ = declare_parameter<std::string>("sensor_model", "aip_x1");
+
+  if (sensor_model_ == "aip_x1") {
+    angular_velocity_offset_x_ = declare_parameter<double>("angular_velocity_offset_x", 0.0);
+    angular_velocity_offset_y_ = declare_parameter<double>("angular_velocity_offset_y", 0.0);
+    angular_velocity_offset_z_ = declare_parameter<double>("angular_velocity_offset_z", 0.0);
+  }
 
   angular_velocity_stddev_xx_ = declare_parameter<double>("angular_velocity_stddev_xx", 0.03);
   angular_velocity_stddev_yy_ = declare_parameter<double>("angular_velocity_stddev_yy", 0.03);
@@ -33,6 +40,10 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
     "input", rclcpp::QoS{1}, std::bind(&ImuCorrector::callbackImu, this, std::placeholders::_1));
 
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("output", rclcpp::QoS{10});
+
+  is_calibrated_pub_ = create_publisher<tier4_calibration_msgs::msg::BoolStamped>("is_calibrated", rclcpp::QoS{1});
+
+  timer_ = rclcpp::create_timer(this, get_clock(), 1000ms, std::bind(&ImuCorrector::onTimer, this));
 }
 
 void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr)
@@ -40,9 +51,17 @@ void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_m
   sensor_msgs::msg::Imu imu_msg;
   imu_msg = *imu_msg_ptr;
 
-  imu_msg.angular_velocity.x += angular_velocity_offset_x_;
-  imu_msg.angular_velocity.y += angular_velocity_offset_y_;
-  imu_msg.angular_velocity.z += angular_velocity_offset_z_;
+  if (is_calibrated_) {
+    if (angular_velocity_offset_x_ != std::nullopt) {
+      imu_msg.angular_velocity.x += angular_velocity_offset_x_.value();
+    }
+    if (angular_velocity_offset_y_ != std::nullopt) {
+      imu_msg.angular_velocity.y += angular_velocity_offset_y_.value();
+    }
+    if (angular_velocity_offset_z_ != std::nullopt) {
+      imu_msg.angular_velocity.z += angular_velocity_offset_z_.value();
+    }
+  }
 
   imu_msg.angular_velocity_covariance[0 * 3 + 0] =
     angular_velocity_stddev_xx_ * angular_velocity_stddev_xx_;
@@ -53,6 +72,33 @@ void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_m
 
   imu_pub_->publish(imu_msg);
 }
+
+void ImuCorrector::callbackGyroBias(const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr)
+{
+  if (std::abs(rclcpp::Time(gyro_bias_msg_ptr->header.stamp).seconds() - this->now().seconds()) > 10.0) {
+    RCLCPP_ERROR(this->get_logger(), "Timestamp of gyro bias is too old");
+  }
+  angular_velocity_offset_x_ = gyro_bias_msg_ptr->vector.x;
+  angular_velocity_offset_y_ = gyro_bias_msg_ptr->vector.y;
+  angular_velocity_offset_z_ = gyro_bias_msg_ptr->vector.z;
+}
+
+void ImuCorrector::onTimer()
+{
+  if (angular_velocity_offset_x_ != std::nullopt && angular_velocity_offset_y_ != std::nullopt && angular_velocity_offset_z_ != std::nullopt) {
+    is_calibrated_ = true;
+  }
+  else {
+    is_calibrated_ = false;
+  }
+  tier4_calibration_msgs::msg::BoolStamped is_calibrated_msg;
+
+  is_calibrated_msg.header.stamp = this->now();
+  is_calibrated_msg.data = is_calibrated_;
+  is_calibrated_pub_->publish(is_calibrated_msg);
+}
+
+
 
 }  // namespace imu_corrector
 
