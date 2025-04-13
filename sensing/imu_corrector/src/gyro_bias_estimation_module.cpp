@@ -42,9 +42,11 @@ void GyroBiasEstimationModule::update_gyro(
   const double time, const geometry_msgs::msg::Vector3 & gyro)
 {
   if (time - last_velocity_time_ > timestamp_threshold_) {
+    RCLCPP_INFO(logger_, "timestamp_threshold_ %f", (time - last_velocity_time_));
     return;
   }
   if (!is_stopped_) {
+    RCLCPP_INFO(logger_, "is_stopped_");
     gyro_buffer_.clear();
     return;
   }
@@ -63,17 +65,17 @@ void GyroBiasEstimationModule::update_velocity(const double time, const double v
 geometry_msgs::msg::Vector3 GyroBiasEstimationModule::get_bias()
 {
   is_gyro_buffer_full_ = gyro_buffer_.full();
-  RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
-  RCLCPP_INFO(logger_, "is_gyro_buffer_full_: %d", is_gyro_buffer_full_);
+  // RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
+  // RCLCPP_INFO(logger_, "is_gyro_buffer_full_: %d", is_gyro_buffer_full_);
   if (!is_gyro_buffer_full_) {
     is_calibration_possible_ = false;
     throw std::runtime_error("Bias estimation is not yet ready because of insufficient data.");
   }
 
   geometry_msgs::msg::Vector3 buffer_stddev = calculate_stddev(gyro_buffer_);
-  RCLCPP_INFO(logger_, "buffer_stddev.x: %f", buffer_stddev.x);
-  RCLCPP_INFO(logger_, "buffer_stddev.y: %f", buffer_stddev.y);
-  RCLCPP_INFO(logger_, "buffer_stddev.z: %f", buffer_stddev.z);
+  // RCLCPP_INFO(logger_, "buffer_stddev.x: %f", buffer_stddev.x);
+  // RCLCPP_INFO(logger_, "buffer_stddev.y: %f", buffer_stddev.y);
+  // RCLCPP_INFO(logger_, "buffer_stddev.z: %f", buffer_stddev.z);
   is_calibration_possible_ =
     buffer_stddev.x < 0.00175 && buffer_stddev.y < 0.00175 && buffer_stddev.z < 0.00175;
   current_stddev_ = buffer_stddev;
