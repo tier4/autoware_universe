@@ -18,7 +18,8 @@ namespace imu_corrector
 {
 GyroBiasEstimationModule::GyroBiasEstimationModule(
   const double velocity_threshold, const double timestamp_threshold,
-  const size_t data_num_threshold, const double bias_change_threshold, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
+  const size_t data_num_threshold, const double bias_change_threshold, rclcpp::Logger logger,
+  rclcpp::Clock::SharedPtr clock)
 : velocity_threshold_(velocity_threshold),
   timestamp_threshold_(timestamp_threshold),
   data_num_threshold_(data_num_threshold),
@@ -89,11 +90,9 @@ geometry_msgs::msg::Vector3 GyroBiasEstimationModule::get_bias()
       "Current bias: [x: %f, y: %f, z: %f] rad/s\n"
       "Previous standard dev: [x: %f, y: %f, z: %f] rad/s\n"
       "Current standard dev: [x: %f, y: %f, z: %f] rad/s",
-      previous_median.x, previous_median.y, previous_median.z,
-      current_median_.x, current_median_.y, current_median_.z,
-      buffer_stddev.x, buffer_stddev.y, buffer_stddev.z,
-      current_stddev_.x, current_stddev_.y, current_stddev_.z
-    );
+      previous_median.x, previous_median.y, previous_median.z, current_median_.x, current_median_.y,
+      current_median_.z, buffer_stddev.x, buffer_stddev.y, buffer_stddev.z, current_stddev_.x,
+      current_stddev_.y, current_stddev_.z);
   }
 
   RCLCPP_INFO_THROTTLE(

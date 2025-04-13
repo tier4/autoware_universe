@@ -30,7 +30,8 @@ GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & node_options)
     static_cast<size_t>(declare_parameter<int>("data_num_threshold"));
   const double bias_change_threshold = declare_parameter<double>("bias_change_threshold");
   gyro_bias_estimation_module_ = std::make_unique<GyroBiasEstimationModule>(
-    velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold, get_logger(), get_clock());
+    velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold,
+    get_logger(), get_clock());
 
   imu_sub_ = create_subscription<Imu>(
     "~/input/imu_raw", rclcpp::SensorDataQoS(),

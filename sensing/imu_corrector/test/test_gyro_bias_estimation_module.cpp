@@ -21,23 +21,18 @@
 namespace imu_corrector
 {
 
-class GyroBiasEstimationModuleTestWrapper : public GyroBiasEstimationModule {
+class GyroBiasEstimationModuleTestWrapper : public GyroBiasEstimationModule
+{
 public:
   GyroBiasEstimationModuleTestWrapper(
-    double velocity_threshold,
-    double timestamp_threshold,
-    size_t data_num_threshold,
-    double bias_change_threshold,
-    const rclcpp::Logger & logger,
+    double velocity_threshold, double timestamp_threshold, size_t data_num_threshold,
+    double bias_change_threshold, const rclcpp::Logger & logger,
     const std::shared_ptr<rclcpp::Clock> & clock)
   : GyroBiasEstimationModule(
-      velocity_threshold,
-      timestamp_threshold,
-      data_num_threshold,
-      bias_change_threshold,
-      logger,
+      velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold, logger,
       clock)
-  {}
+  {
+  }
   size_t get_buffer_size() const { return gyro_buffer_.size(); }
 };
 
@@ -52,7 +47,8 @@ public:
   std::shared_ptr<rclcpp::Clock> mock_clock_{std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME)};
 
   GyroBiasEstimationModuleTestWrapper module = GyroBiasEstimationModuleTestWrapper(
-    velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold, mock_logger_, mock_clock_);
+    velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold,
+    mock_logger_, mock_clock_);
 };
 
 TEST_F(GyroBiasEstimationModuleTest, GetBiasEstimationWhenVehicleStopped)
@@ -102,8 +98,6 @@ TEST_F(GyroBiasEstimationModuleTest, RecordsImuDataToBuffer)
   ASSERT_EQ(module.get_buffer_size(), 1);
 }
 
-
-
 // FSR01-4
 
 // FSR01-5
@@ -111,6 +105,5 @@ TEST_F(GyroBiasEstimationModuleTest, RecordsImuDataToBuffer)
 // FSR01-6
 
 // FSR01-7
-
 
 }  // namespace imu_corrector

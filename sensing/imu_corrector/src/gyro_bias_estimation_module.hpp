@@ -28,7 +28,8 @@ class GyroBiasEstimationModule
 public:
   GyroBiasEstimationModule(
     const double velocity_threshold, const double timestamp_threshold,
-    const size_t data_num_threshold, const double bias_change_threshold, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock);
+    const size_t data_num_threshold, const double bias_change_threshold, rclcpp::Logger logger,
+    rclcpp::Clock::SharedPtr clock);
   geometry_msgs::msg::Vector3 get_bias();
   void update_gyro(const double time, const geometry_msgs::msg::Vector3 & gyro);
   void update_velocity(const double time, const double velocity);
