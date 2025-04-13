@@ -16,12 +16,11 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <sensor_msgs/msg/imu.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <tier4_calibration_msgs/msg/bool_stamped.hpp>
 
 #include <optional>
-
 
 namespace imu_corrector
 {
@@ -31,7 +30,6 @@ public:
   explicit ImuCorrector(const rclcpp::NodeOptions & node_options);
 
 private:
-
   void callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr);
   void callbackGyroBias(const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr);
   void onTimer();
@@ -42,7 +40,7 @@ private:
   std::string sensor_model_;
 
   bool is_calibrated_;
-  
+
   double angular_velocity_stddev_xx_;
   double angular_velocity_stddev_yy_;
   double angular_velocity_stddev_zz_;
@@ -52,7 +50,6 @@ private:
   std::optional<double> angular_velocity_offset_y_;
   std::optional<double> angular_velocity_offset_z_;
   rclcpp::TimerBase::SharedPtr timer_;
-
 };
 }  // namespace imu_corrector
 

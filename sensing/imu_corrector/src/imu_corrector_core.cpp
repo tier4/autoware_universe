@@ -41,7 +41,8 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
 
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("output", rclcpp::QoS{10});
 
-  is_calibrated_pub_ = create_publisher<tier4_calibration_msgs::msg::BoolStamped>("is_calibrated", rclcpp::QoS{1});
+  is_calibrated_pub_ =
+    create_publisher<tier4_calibration_msgs::msg::BoolStamped>("is_calibrated", rclcpp::QoS{1});
 
   timer_ = rclcpp::create_timer(this, get_clock(), 1000ms, std::bind(&ImuCorrector::onTimer, this));
 }
@@ -73,9 +74,12 @@ void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_m
   imu_pub_->publish(imu_msg);
 }
 
-void ImuCorrector::callbackGyroBias(const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr)
+void ImuCorrector::callbackGyroBias(
+  const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr)
 {
-  if (std::abs(rclcpp::Time(gyro_bias_msg_ptr->header.stamp).seconds() - this->now().seconds()) > 10.0) {
+  if (
+    std::abs(rclcpp::Time(gyro_bias_msg_ptr->header.stamp).seconds() - this->now().seconds()) >
+    10.0) {
     RCLCPP_ERROR(this->get_logger(), "Timestamp of gyro bias is too old");
   }
   angular_velocity_offset_x_ = gyro_bias_msg_ptr->vector.x;
@@ -85,10 +89,11 @@ void ImuCorrector::callbackGyroBias(const geometry_msgs::msg::Vector3Stamped::Co
 
 void ImuCorrector::onTimer()
 {
-  if (angular_velocity_offset_x_ != std::nullopt && angular_velocity_offset_y_ != std::nullopt && angular_velocity_offset_z_ != std::nullopt) {
+  if (
+    angular_velocity_offset_x_ != std::nullopt && angular_velocity_offset_y_ != std::nullopt &&
+    angular_velocity_offset_z_ != std::nullopt) {
     is_calibrated_ = true;
-  }
-  else {
+  } else {
     is_calibrated_ = false;
   }
   tier4_calibration_msgs::msg::BoolStamped is_calibrated_msg;
@@ -97,8 +102,6 @@ void ImuCorrector::onTimer()
   is_calibrated_msg.data = is_calibrated_;
   is_calibrated_pub_->publish(is_calibrated_msg);
 }
-
-
 
 }  // namespace imu_corrector
 
