@@ -14,6 +14,13 @@
 
 #include "gyro_bias_estimator.hpp"
 
+#include <rclcpp/rclcpp.hpp>
+
+#include <chrono>
+#include <functional>
+
+using namespace std::chrono_literals;
+
 namespace imu_corrector
 {
 GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & node_options)
@@ -39,6 +46,9 @@ GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & node_options)
   twist_sub_ = create_subscription<TwistWithCovarianceStamped>(
     "~/input/twist", rclcpp::SensorDataQoS(),
     [this](const TwistWithCovarianceStamped::ConstSharedPtr msg) { callback_twist(msg); });
+
+  timer_ =
+    rclcpp::create_timer(this, get_clock(), 1000ms, std::bind(&GyroBiasEstimator::on_timer, this));
 
   gyro_bias_pub_ = create_publisher<Vector3Stamped>("~/output/gyro_bias", rclcpp::SensorDataQoS());
 }

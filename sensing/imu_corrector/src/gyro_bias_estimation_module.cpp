@@ -66,15 +66,16 @@ geometry_msgs::msg::Vector3 GyroBiasEstimationModule::get_bias()
   RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
   RCLCPP_INFO(logger_, "is_gyro_buffer_full_: %d", is_gyro_buffer_full_);
   if (!is_gyro_buffer_full_) {
+    is_calibration_possible_ = false;
     throw std::runtime_error("Bias estimation is not yet ready because of insufficient data.");
   }
 
   geometry_msgs::msg::Vector3 buffer_stddev = calculate_stddev(gyro_buffer_);
+  RCLCPP_INFO(logger_, "buffer_stddev.x: %f", buffer_stddev.x);
+  RCLCPP_INFO(logger_, "buffer_stddev.y: %f", buffer_stddev.y);
+  RCLCPP_INFO(logger_, "buffer_stddev.z: %f", buffer_stddev.z);
   is_calibration_possible_ =
     buffer_stddev.x < 0.00175 && buffer_stddev.y < 0.00175 && buffer_stddev.z < 0.00175;
-  if (!is_calibration_possible_) {
-    throw std::runtime_error("Bias estimation is not yet ready because of insufficient data.");
-  }
   current_stddev_ = buffer_stddev;
   current_median_ = calculate_median(gyro_buffer_);
   geometry_msgs::msg::Vector3 previous_median = current_median_;

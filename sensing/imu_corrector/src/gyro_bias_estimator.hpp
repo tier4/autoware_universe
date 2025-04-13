@@ -47,6 +47,7 @@ private:
 
   rclcpp::Subscription<Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<TwistWithCovarianceStamped>::SharedPtr twist_sub_;
+  rclcpp::TimerBase::SharedPtr timer_;
 
   rclcpp::Publisher<Vector3Stamped>::SharedPtr gyro_bias_pub_;
 
