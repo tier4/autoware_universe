@@ -117,8 +117,11 @@ struct DebugData
 
   std::vector<autoware_utils::Polygon3d> hull_polygons;
 
-  std::pair<std::string, std_msgs::msg::ColorRGBA> text{
-    "NONE", autoware_utils::create_marker_color(1.0, 1.0, 1.0, 0.999)};
+  std::string text{"-"};
+
+  double processing_time_detail_ms;
+
+  bool is_active{false};
 
   auto get_detection_polygons() const -> lanelet::BasicPolygons3d
   {
