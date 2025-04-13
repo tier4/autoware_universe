@@ -82,11 +82,6 @@ private:
     const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
     const Behavior & turn_behavior, DebugData & detection_areas) -> PointCloudObjects;
 
-  auto get_pointcloud_objects(
-    const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
-    const Behavior & turn_behavior, const double forward_distance, const double backward_distance,
-    DebugData & detection_areas) -> PointCloudObjects;
-
   auto get_pointcloud_objects_at_blind_spot(
     const lanelet::ConstLanelets & current_lanes, const Behavior & turn_behavior,
     const double forward_distance, const double backward_distance,
