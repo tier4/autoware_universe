@@ -97,6 +97,30 @@ rear_obstacle_checker_node:
       max_deceleration:
         type: double
 
+    vehicle:
+      reaction_time:
+        type: double
+        validation:
+          gt<>: [0.0]
+      max_velocity:
+        type: double
+        validation:
+          gt<>: [0.0]
+      max_deceleration:
+        type: double
+
+    vru:
+      reaction_time:
+        type: double
+        validation:
+          gt<>: [0.0]
+      max_velocity:
+        type: double
+        validation:
+          gt<>: [0.0]
+      max_deceleration:
+        type: double
+
     ego:
       reaction_time:
         type: double

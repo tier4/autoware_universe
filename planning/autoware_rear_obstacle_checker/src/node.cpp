@@ -609,40 +609,6 @@ auto RearObstacleCheckerNode::generate_detection_area_for_object(
   return detection_lanes_for_objects;
 }
 
-auto RearObstacleCheckerNode::get_pointcloud_objects(
-  const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
-  const Behavior & turn_behavior, DebugData & debug) -> PointCloudObjects
-{
-  const auto p = param_listener_->get_params();
-
-  PointCloudObjects objects;
-
-  const auto delay_ego = p.common.object.reaction_time;
-  const auto max_deceleration_ego = p.common.ego.max_deceleration;
-  const auto max_deceleration_object = p.common.object.max_deceleration;
-  const auto current_velocity = odometry_ptr_->twist.twist.linear.x;
-  const auto current_acceleration = acceleration_ptr_->accel.accel.linear.x;
-
-  const auto stop_distance_object =
-    0.5 * std::pow(p.common.object.max_velocity, 2.0) / std::abs(max_deceleration_object);
-  const auto stop_distance_ego =
-    current_velocity * delay_ego + 0.5 * current_acceleration * std::pow(delay_ego, 2.0) +
-    0.5 * std::pow(current_velocity + current_acceleration * delay_ego, 2.0) /
-      std::abs(max_deceleration_ego);
-
-  const auto forward_distance =
-    p.common.pointcloud.range.forward + vehicle_info_.max_longitudinal_offset_m;
-  const auto backward_distance = p.common.pointcloud.range.backward -
-                                 vehicle_info_.min_longitudinal_offset_m +
-                                 std::max(0.0, stop_distance_object - stop_distance_ego);
-
-  const auto pointcloud_objects = get_pointcloud_objects(
-    current_lanes, shift_behavior, turn_behavior, forward_distance, backward_distance, debug);
-  objects.insert(objects.end(), pointcloud_objects.begin(), pointcloud_objects.end());
-
-  return objects;
-}
-
 auto RearObstacleCheckerNode::get_pointcloud_objects_on_adjacent_lane(
   const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
   const double forward_distance, const double backward_distance,
@@ -887,22 +853,64 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_at_blind_spot(
 
 auto RearObstacleCheckerNode::get_pointcloud_objects(
   const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
-  const Behavior & turn_behavior, const double forward_distance, const double backward_distance,
-  DebugData & debug) -> PointCloudObjects
+  const Behavior & turn_behavior, DebugData & debug) -> PointCloudObjects
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  const auto p = param_listener_->get_params();
 
   PointCloudObjects objects{};
 
   const auto obstacle_pointcloud = filter_pointcloud(debug);
 
-  const auto objects_at_blind_spot = get_pointcloud_objects_at_blind_spot(
-    current_lanes, turn_behavior, forward_distance, backward_distance, obstacle_pointcloud, debug);
-  objects.insert(objects.end(), objects_at_blind_spot.begin(), objects_at_blind_spot.end());
+  const auto delay_ego = p.common.vru.reaction_time;
+  const auto max_deceleration_ego = p.common.ego.max_deceleration;
+  const auto current_velocity = odometry_ptr_->twist.twist.linear.x;
+  const auto current_acceleration = acceleration_ptr_->accel.accel.linear.x;
 
-  const auto objects_on_adjacent_lane = get_pointcloud_objects_on_adjacent_lane(
-    current_lanes, shift_behavior, forward_distance, backward_distance, obstacle_pointcloud, debug);
-  objects.insert(objects.end(), objects_on_adjacent_lane.begin(), objects_on_adjacent_lane.end());
+  {
+    const auto max_deceleration_object = p.common.vru.max_deceleration;
+
+    const auto stop_distance_object =
+      0.5 * std::pow(p.common.vru.max_velocity, 2.0) / std::abs(max_deceleration_object);
+    const auto stop_distance_ego =
+      current_velocity * delay_ego + 0.5 * current_acceleration * std::pow(delay_ego, 2.0) +
+      0.5 * std::pow(current_velocity + current_acceleration * delay_ego, 2.0) /
+        std::abs(max_deceleration_ego);
+
+    const auto forward_distance =
+      p.common.pointcloud.range.forward + vehicle_info_.max_longitudinal_offset_m;
+    const auto backward_distance = p.common.pointcloud.range.backward -
+                                   vehicle_info_.min_longitudinal_offset_m +
+                                   std::max(0.0, stop_distance_object - stop_distance_ego);
+
+    const auto objects_at_blind_spot = get_pointcloud_objects_at_blind_spot(
+      current_lanes, turn_behavior, forward_distance, backward_distance, obstacle_pointcloud,
+      debug);
+    objects.insert(objects.end(), objects_at_blind_spot.begin(), objects_at_blind_spot.end());
+  }
+
+  {
+    const auto max_deceleration_object = p.common.vehicle.max_deceleration;
+
+    const auto stop_distance_object =
+      0.5 * std::pow(p.common.vehicle.max_velocity, 2.0) / std::abs(max_deceleration_object);
+    const auto stop_distance_ego =
+      current_velocity * delay_ego + 0.5 * current_acceleration * std::pow(delay_ego, 2.0) +
+      0.5 * std::pow(current_velocity + current_acceleration * delay_ego, 2.0) /
+        std::abs(max_deceleration_ego);
+
+    const auto forward_distance =
+      p.common.pointcloud.range.forward + vehicle_info_.max_longitudinal_offset_m;
+    const auto backward_distance = p.common.pointcloud.range.backward -
+                                   vehicle_info_.min_longitudinal_offset_m +
+                                   std::max(0.0, stop_distance_object - stop_distance_ego);
+
+    const auto objects_on_adjacent_lane = get_pointcloud_objects_on_adjacent_lane(
+      current_lanes, shift_behavior, forward_distance, backward_distance, obstacle_pointcloud,
+      debug);
+    objects.insert(objects.end(), objects_on_adjacent_lane.begin(), objects_on_adjacent_lane.end());
+  }
 
   return objects;
 }

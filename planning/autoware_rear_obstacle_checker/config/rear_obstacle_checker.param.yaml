@@ -36,6 +36,16 @@
         max_velocity: 16.6
         max_deceleration: -2.0
 
+      vehicle:
+        reaction_time: 1.2
+        max_velocity: 16.6
+        max_deceleration: -2.0
+
+      vru:
+        reaction_time: 1.2
+        max_velocity: 8.3
+        max_deceleration: -2.0
+
       ego:
         reaction_time: 1.2
         min_velocity: 1.38                              # [m/s]
@@ -52,6 +62,10 @@
         offset:
           inner: 0.1
           outer: 0.3
+        target_type: [vru, pointcloud]
+
+      adjacent_lane:
+        target_type: [vehicle, pointcloud]
 
       predicted_path:
         time_resolution: 0.5                            # [s]
