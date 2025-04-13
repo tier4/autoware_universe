@@ -250,7 +250,7 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
   }
 
   const auto turn_behavior = utils::check_turn_behavior(
-    current_lanes, trajectory_ptr_->points, odometry_ptr_->pose.pose, vehicle_info_,
+    current_lanes, trajectory_ptr_->points, odometry_ptr_->pose.pose, route_handler_, vehicle_info_,
     p.common.blind_spot.active_distance.start, p.common.blind_spot.active_distance.end);
 
   const auto shift_behavior =
