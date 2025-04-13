@@ -95,6 +95,8 @@ struct PointCloudObject
   double velocity;
 
   bool safe;
+
+  bool ignore;
 };
 
 using PointCloudObjects = std::vector<PointCloudObject>;
