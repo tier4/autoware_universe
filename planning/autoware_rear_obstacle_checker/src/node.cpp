@@ -165,6 +165,8 @@ bool RearObstacleCheckerNode::is_ready() const
 void RearObstacleCheckerNode::update(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+  const auto start_time = this->now();
+
   take_data();
 
   if (!is_ready()) {
@@ -180,6 +182,8 @@ void RearObstacleCheckerNode::update(diagnostic_updater::DiagnosticStatusWrapper
   }
 
   post_process();
+
+  debug_data.processing_time_detail_ms = (this->now() - start_time).seconds() * 1e3;
 
   publish_marker(debug_data);
 }
@@ -238,9 +242,7 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
   const auto current_lanes = utils::get_current_lanes(
     predicted_stop_pose.value(), route_handler_, vehicle_info_, forward_range, backward_range);
   if (current_lanes.empty()) {
-    debug.text = {
-      "CAUSION!!!\nEGO CAN'T STOP WITHIN CURRENT LANE.",
-      autoware_utils::create_marker_color(1.0, 0.67, 0.0, 0.999)};
+    debug.text = "CAUSION!!!\nEGO CAN'T STOP WITHIN CURRENT LANE.";
   }
 
   const auto turn_behavior = utils::check_turn_behavior(
@@ -249,6 +251,14 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
 
   const auto shift_behavior =
     utils::check_shift_behavior(current_lanes, resampled_path.points, vehicle_info_);
+
+  if (turn_behavior == Behavior::NONE && shift_behavior == Behavior::NONE) {
+    return true;
+  }
+
+  {
+    debug.is_active = true;
+  }
 
   PredictedObjects objects_on_target_lane;
   PointCloudObjects pointcloud_objects{};
@@ -302,8 +312,7 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
     }
 
     {
-      debug.text = {
-        "RISK OF COLLISION!!!", autoware_utils::create_marker_color(1.0, 0.0, 0.42, 0.999)};
+      debug.text = "RISK OF COLLISION!!!";
     }
   }
 
@@ -924,16 +933,6 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
     add(utils::showPolygon(debug.collision_check, "ego_and_target_polygon_relation"));
   }
 
-  {
-    auto marker = autoware_utils::create_default_marker(
-      "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "text", 0L, Marker::TEXT_VIEW_FACING,
-      autoware_utils::create_marker_scale(0.5, 0.5, 0.5), debug.text.second);
-    marker.text = debug.text.first.c_str();
-    marker.pose = odometry_ptr_->pose.pose;
-    marker.pose.position.z += 5.0;
-    msg.markers.push_back(marker);
-  }
-
   std::for_each(msg.markers.begin(), msg.markers.end(), [](auto & marker) {
     marker.lifetime = rclcpp::Duration::from_seconds(0.5);
   });
@@ -945,12 +944,16 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
   }
 
   {
-    std::ostringstream string_stream;
-    string_stream << "INFO:" << debug.text.first.c_str();
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(2) << std::boolalpha;
+    ss << "ACTIVE:" << debug.is_active << "\n";
+    ss << "INFO:" << debug.text.c_str() << "\n";
+    ss << "TRACKING OBJECTS:" << debug.pointcloud_objects.size() << "\n";
+    ss << "PROCESSING TIME:" << debug.processing_time_detail_ms << "[ms]\n";
 
     StringStamped string_stamp;
     string_stamp.stamp = this->now();
-    string_stamp.data = string_stream.str();
+    string_stamp.data = ss.str();
     pub_string_->publish(string_stamp);
   }
 }
