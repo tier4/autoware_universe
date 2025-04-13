@@ -348,6 +348,7 @@ void RearObstacleCheckerNode::fill_rss_distance(PointCloudObjects & objects) con
 
     object.rss_distance = stop_distance_object - stop_distance_ego;
     object.safe = object.rss_distance < object.relative_distance;
+    object.ignore = object.velocity < p.common.filter.min_velocity;
   }
 }
 
@@ -361,6 +362,10 @@ bool RearObstacleCheckerNode::is_safe(const PointCloudObjects & objects, DebugDa
 
   for (const auto & object : objects) {
     if (object.tracking_duration < p.common.pointcloud.velocity_estimation.observation_time) {
+      continue;
+    }
+
+    if (object.ignore) {
       continue;
     }
 

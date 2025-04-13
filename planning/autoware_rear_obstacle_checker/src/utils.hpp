@@ -836,6 +836,9 @@ MarkerArray create_pointcloud_object_marker_array(
       if (object.tracking_duration < 0.3) {
         return autoware_utils::create_marker_color(1.0, 0.67, 0.0, 0.999);
       }
+      if (object.ignore) {
+        return autoware_utils::create_marker_color(0.5, 0.5, 0.5, 0.999);
+      }
       return object.safe ? autoware_utils::create_marker_color(0.16, 1.0, 0.69, 0.999)
                          : autoware_utils::create_marker_color(1.0, 0.0, 0.42, 0.999);
     }();
