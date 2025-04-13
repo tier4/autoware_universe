@@ -4,7 +4,7 @@
       target_type: [pointcloud]
       # target_type: [bus, car, motorcycle, trailer, truck, pointcloud]
 
-      on_time_buffer: 0.3
+      on_time_buffer: 0.1
       off_time_buffer: 0.3
 
       pointcloud:
@@ -23,10 +23,10 @@
         clustering:
           cluster_tolerance: 0.2  #[m]
           min_cluster_height: 0.1
-          min_cluster_size: 10
+          min_cluster_size: 5
           max_cluster_size: 10000
         velocity_estimation:
-          observation_time: 0.5
+          observation_time: 0.3
 
       object:
         range:
@@ -58,7 +58,7 @@
       blind_spot:
         active_distance:
           start: 30.0
-          end: -5.0
+          end: -10.0
         offset:
           inner: 0.1
           outer: 0.3
