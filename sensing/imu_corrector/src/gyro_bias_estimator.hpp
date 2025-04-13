@@ -41,9 +41,9 @@ public:
   explicit GyroBiasEstimator(const rclcpp::NodeOptions & node_options);
 
 private:
-  void update_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
   void callback_imu(const Imu::ConstSharedPtr imu_msg_ptr);
   void callback_twist(const TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr);
+  void callback_gyro_bias(const Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr);
 
   rclcpp::Subscription<Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<TwistWithCovarianceStamped>::SharedPtr twist_sub_;
@@ -56,8 +56,6 @@ private:
   const double angular_velocity_offset_x_;
   const double angular_velocity_offset_y_;
   const double angular_velocity_offset_z_;
-
-  diagnostic_updater::Updater updater_;
 
   std::optional<Vector3> gyro_bias_;
 };
