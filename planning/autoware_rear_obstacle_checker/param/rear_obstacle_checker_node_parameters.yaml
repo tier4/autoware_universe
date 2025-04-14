@@ -161,6 +161,13 @@ rear_obstacle_checker_node:
         outer:
           type: double
 
+    adjacent_lane:
+      offset:
+        left:
+          type: double
+        right:
+          type: double
+
     predicted_path:
       time_resolution:
         type: double
