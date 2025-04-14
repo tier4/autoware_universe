@@ -131,6 +131,8 @@ struct DebugData
 
   bool is_active{false};
 
+  bool is_safe{true};
+
   auto get_detection_polygons() const -> lanelet::BasicPolygons3d
   {
     lanelet::BasicPolygons3d ret{};
