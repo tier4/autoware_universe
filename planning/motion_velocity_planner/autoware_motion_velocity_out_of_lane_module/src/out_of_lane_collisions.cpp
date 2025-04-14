@@ -115,14 +115,15 @@ void calculate_min_max_arrival_times(
 void calculate_collisions_to_avoid(
   OutOfLaneData & out_of_lane_data,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory,
-  const PlannerParam & params)
+  const PlannerParam & params, const bool is_stopping)
 {
   for (auto & out_of_lane_point : out_of_lane_data.outside_points) {
     calculate_min_max_arrival_times(out_of_lane_point, trajectory);
   }
   for (auto & p : out_of_lane_data.outside_points) {
     if (params.mode == "ttc") {
-      p.to_avoid = p.ttc && p.ttc <= params.ttc_threshold;
+      const auto threshold = is_stopping ? params.ttc_release_threshold : params.ttc_threshold;
+      p.to_avoid = p.ttc && p.ttc <= threshold;
     } else {
       p.to_avoid = p.min_object_arrival_time && p.min_object_arrival_time <= params.time_threshold;
     }
