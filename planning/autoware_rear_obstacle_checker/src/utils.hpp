@@ -101,33 +101,6 @@ lanelet::ConstLanelets get_previous_lanes_recursively(
   return ret;
 }
 
-lanelet::BasicPolygons3d get_previous_polygons_recursively(
-  const lanelet::ConstLanelets & lanes, const double s1, const double s2,
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
-{
-  lanelet::BasicPolygons3d ret{};
-
-  if (lanes.empty()) {
-    return ret;
-  }
-
-  for (const auto & prev_lane : route_handler->getPreviousLanelets(lanes.front())) {
-    lanelet::ConstLanelets pushed_lanes = lanes;
-    pushed_lanes.insert(pushed_lanes.begin(), prev_lane);
-    const auto total_length = lanelet::utils::getLaneletLength2d(pushed_lanes);
-    if (total_length > s2) {
-      const auto polygon =
-        lanelet::utils::getPolygonFromArcLength(pushed_lanes, total_length - s2, total_length - s1);
-      ret.push_back(polygon.basicPolygon());
-    } else {
-      const auto polygons = get_previous_polygons_recursively(pushed_lanes, s1, s2, route_handler);
-      ret.insert(ret.end(), polygons.begin(), polygons.end());
-    }
-  }
-
-  return ret;
-}
-
 bool is_within_lanes(
   const lanelet::ConstLanelets & lanelets, const geometry_msgs::msg::Pose & ego_pose,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
@@ -549,7 +522,8 @@ lanelet::BasicPolygon3d generate_detection_polygon(
 
 auto get_previous_polygons_with_lane_recursively(
   const lanelet::ConstLanelets & lanes, const double s1, const double s2,
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler) -> DetectionAreas
+  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
+  const double left_offset, const double right_offset) -> DetectionAreas
 {
   DetectionAreas ret{};
 
@@ -562,12 +536,14 @@ auto get_previous_polygons_with_lane_recursively(
     pushed_lanes.insert(pushed_lanes.begin(), prev_lane);
     const auto total_length = lanelet::utils::getLaneletLength2d(pushed_lanes);
     if (total_length > s2) {
-      const auto polygon =
-        lanelet::utils::getPolygonFromArcLength(pushed_lanes, total_length - s2, total_length - s1);
+      const auto expand_lanelets =
+        lanelet::utils::getExpandedLanelets(pushed_lanes, left_offset, -1.0 * right_offset);
+      const auto polygon = lanelet::utils::getPolygonFromArcLength(
+        expand_lanelets, total_length - s2, total_length - s1);
       ret.emplace_back(polygon.basicPolygon(), pushed_lanes);
     } else {
-      const auto polygons =
-        get_previous_polygons_with_lane_recursively(pushed_lanes, s1, s2, route_handler);
+      const auto polygons = get_previous_polygons_with_lane_recursively(
+        pushed_lanes, s1, s2, route_handler, left_offset, right_offset);
       ret.insert(ret.end(), polygons.begin(), polygons.end());
     }
   }
