@@ -134,7 +134,7 @@ void Converter::on_update(DiagGraph::ConstSharedPtr graph)
   }
 
   // Add external emergency to spf so that it is not ignored.
-  if (const auto external_emergency = sub_external_emergency_.take_data()) {
+  if (const auto external_emergency = sub_external_emergency_.takeData()) {
     if (external_emergency->emergency) {
       DiagnosticStatus status;
       status.name = std::string(this->get_name()) + ": external_emergency";
