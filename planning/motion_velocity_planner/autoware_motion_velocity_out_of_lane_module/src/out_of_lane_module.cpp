@@ -230,15 +230,19 @@ std::optional<geometry_msgs::msg::Pose> OutOfLaneModule::calculate_slowdown_pose
 
   if (slowdown_pose_buffer_.empty()) return {};
 
-  // get nearest slowdown pose
-  out_of_lane::SlowdownPose nearest_slowdown_pose;
-  nearest_slowdown_pose.arc_length = std::numeric_limits<double>::max();
+  // get nearest active slowdown pose
+  const auto min_arc_length = std::numeric_limits<double>::max();
+  std::optional<out_of_lane::SlowdownPose> nearest_slowdown_pose = {};
   for (const auto & sp : slowdown_pose_buffer_) {
-    if (sp.arc_length < nearest_slowdown_pose.arc_length && sp.is_active) nearest_slowdown_pose = sp;
+    if (sp.arc_length > min_arc_length || !sp.is_active) continue;
+    nearest_slowdown_pose = sp;
+    min_arc_length = sp.arc_length;
   }
 
-  slowdown_pose = motion_utils::calcInterpolatedPose(
-    ego_data.trajectory_points, nearest_slowdown_pose.arc_length);
+  if (!nearest_slowdown_pose) return {};
+
+  slowdown_pose =
+    motion_utils::calcInterpolatedPose(ego_data.trajectory_points, nearest_slowdown_pose->arc_length);
 
   return slowdown_pose;
 }
@@ -276,8 +280,10 @@ void OutOfLaneModule::update_slowdown_pose_buffer(
 
   if (!slowdown_pose) return;
 
+  static constexpr double eps = 1e-3;
   if (slowdown_pose_buffer_.empty()) {
-    slowdown_pose_buffer_.emplace_back(slowdown_pose_arc_length, clock_->now(), *slowdown_pose, false);
+    slowdown_pose_buffer_.emplace_back(
+      slowdown_pose_arc_length, clock_->now(), *slowdown_pose, params_.min_on_duration < eps);
     return;
   }
 
@@ -292,7 +298,8 @@ void OutOfLaneModule::update_slowdown_pose_buffer(
   }
 
   if (nearest_prev_pose_it == slowdown_pose_buffer_.end()) {
-    slowdown_pose_buffer_.emplace_back(slowdown_pose_arc_length, clock_->now(), *slowdown_pose, false);
+    slowdown_pose_buffer_.emplace_back(
+      slowdown_pose_arc_length, clock_->now(), *slowdown_pose, params_.min_on_duration < eps);
     return;
   }
 
@@ -300,7 +307,10 @@ void OutOfLaneModule::update_slowdown_pose_buffer(
     nearest_prev_pose_it->pose = *slowdown_pose;
     nearest_prev_pose_it->arc_length = slowdown_pose_arc_length;
   }
-  nearest_prev_pose_it->start_time = clock_->now();
+
+  if (nearest_prev_pose_it->is_active) {
+    nearest_prev_pose_it->start_time = clock_->now();
+  }
 }
 
 VelocityPlanningResult OutOfLaneModule::plan(
