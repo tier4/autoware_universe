@@ -656,7 +656,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_on_adjacent_lane(
     if (!connected_adjacent_lanes.empty() && residual_distance > 0.0) {
       const auto detection_areas = utils::get_previous_polygons_with_lane_recursively(
         connected_adjacent_lanes, residual_distance,
-        residual_distance + forward_distance + backward_distance, route_handler_);
+        residual_distance + forward_distance + backward_distance, route_handler_,
+        p.common.adjacent_lane.offset.left, p.common.adjacent_lane.offset.right);
 
       {
         debug.detection_areas.insert(
@@ -692,7 +693,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_on_adjacent_lane(
     if (!connected_adjacent_lanes.empty() && !opt_adjacent_lane.has_value()) {
       const auto detection_areas = utils::get_previous_polygons_with_lane_recursively(
         connected_adjacent_lanes, 0.0,
-        ego_to_furthest_point - current_lane_length + backward_distance, route_handler_);
+        ego_to_furthest_point - current_lane_length + backward_distance, route_handler_,
+        p.common.adjacent_lane.offset.left, p.common.adjacent_lane.offset.right);
 
       {
         debug.detection_areas.insert(
