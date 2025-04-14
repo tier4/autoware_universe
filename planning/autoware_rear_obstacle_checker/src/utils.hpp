@@ -192,25 +192,45 @@ lanelet::BasicPolygon3d to_basic_polygon3d(
 
 auto check_shift_behavior(
   const lanelet::ConstLanelets & lanelets, const std::vector<PathPointWithLaneId> & points,
+  const geometry_msgs::msg::Pose & ego_pose,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info) -> Behavior
 {
   const auto combine_lanelet = lanelet::utils::combineLaneletsShape(lanelets);
-
-  for (const auto & p : points) {
-    const auto transform = autoware_utils::pose2transform(autoware_utils::get_pose(p));
+  const auto nearest_idx =
+    autoware::motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(points, ego_pose);
+  {
+    const auto transform = autoware_utils::pose2transform(ego_pose);
     const auto footprint =
       autoware_utils::transform_vector(vehicle_info.createFootprint(), transform);
 
     const auto is_left_shift = boost::geometry::intersects(
       footprint, lanelet::utils::to2D(combine_lanelet.leftBound()).basicLineString());
     if (is_left_shift) {
-      return Behavior::SHIFT_LEFT;
+      return Behavior::NONE;
     }
 
     const auto is_right_shift = boost::geometry::intersects(
       footprint, lanelet::utils::to2D(combine_lanelet.rightBound()).basicLineString());
     if (is_right_shift) {
-      return Behavior::SHIFT_RIGHT;
+      return Behavior::NONE;
+    }
+  }
+
+  for (size_t i = 0; i < points.size(); i++) {
+    const auto transform = autoware_utils::pose2transform(autoware_utils::get_pose(points.at(i)));
+    const auto footprint =
+      autoware_utils::transform_vector(vehicle_info.createFootprint(), transform);
+
+    const auto is_left_shift = boost::geometry::intersects(
+      footprint, lanelet::utils::to2D(combine_lanelet.leftBound()).basicLineString());
+    if (is_left_shift) {
+      return i < nearest_idx ? Behavior::NONE : Behavior::SHIFT_LEFT;
+    }
+
+    const auto is_right_shift = boost::geometry::intersects(
+      footprint, lanelet::utils::to2D(combine_lanelet.rightBound()).basicLineString());
+    if (is_right_shift) {
+      return i < nearest_idx ? Behavior::NONE : Behavior::SHIFT_RIGHT;
     }
   }
 

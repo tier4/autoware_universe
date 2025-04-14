@@ -177,8 +177,10 @@ void RearObstacleCheckerNode::update(diagnostic_updater::DiagnosticStatusWrapper
 
   if (!is_safe(debug_data)) {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "obstacles exist beside ego");
+    debug_data.is_safe = false;
   } else {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "validated.");
+    debug_data.is_safe = true;
   }
 
   post_process();
@@ -246,15 +248,15 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
   }
 
   if (current_lanes.empty()) {
-    debug.text = "CAUSION!!!\nEGO CAN'T STOP WITHIN CURRENT LANE.";
+    debug.text = "EGO CAN'T STOP WITHIN CURRENT LANE.";
   }
 
   const auto turn_behavior = utils::check_turn_behavior(
     current_lanes, trajectory_ptr_->points, odometry_ptr_->pose.pose, route_handler_, vehicle_info_,
     p.common.blind_spot.active_distance.start, p.common.blind_spot.active_distance.end);
 
-  const auto shift_behavior =
-    utils::check_shift_behavior(current_lanes, resampled_path.points, vehicle_info_);
+  const auto shift_behavior = utils::check_shift_behavior(
+    current_lanes, resampled_path.points, odometry_ptr_->pose.pose, vehicle_info_);
 
   {
     debug.turn_behavior = turn_behavior;
@@ -977,6 +979,7 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
     std::ostringstream ss;
     ss << std::fixed << std::setprecision(2) << std::boolalpha;
     ss << "ACTIVE:" << debug.is_active << "\n";
+    ss << "SAFE:" << debug.is_safe << "\n";
     ss << "TURN:" << magic_enum::enum_name(debug.turn_behavior) << "\n";
     ss << "SHIFT:" << magic_enum::enum_name(debug.shift_behavior) << "\n";
     ss << "INFO:" << debug.text.c_str() << "\n";
