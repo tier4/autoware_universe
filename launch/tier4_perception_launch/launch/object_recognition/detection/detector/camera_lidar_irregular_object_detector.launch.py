@@ -20,7 +20,6 @@ from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LoadComposableNodes
-from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 from launch_ros.substitutions import FindPackageShare
 import yaml
@@ -137,42 +136,42 @@ class SmallUnknownPipeline:
                 ],
             )
         )
-        return components
+        # add roi_pointcloud_fusion node
 
-    def create_roi_pointcloud_fusion_node(self, input_topic, output_topic):
-        node = Node(
-            package="autoware_image_projection_based_fusion",
-            executable="roi_pointcloud_fusion_node",
-            name="roi_pointcloud_fusion",
-            remappings=[
-                ("input", input_topic),
-                ("output", output_topic),
-            ],
-            parameters=[
-                self.roi_pointcloud_fusion_sync_param,
-                self.roi_pointcloud_fusion_param,
-            ],
+        components.append(
+            ComposableNode(
+                package="autoware_image_projection_based_fusion",
+                plugin="autoware::image_projection_based_fusion::RoiPointCloudFusionNode",
+                name="roi_pointcloud_fusion",
+                remappings=[
+                    ("input", "obstacle_segmentation/pointcloud"),
+                    ("output", output_topic),
+                ],
+                parameters=[
+                    self.roi_pointcloud_fusion_sync_param,
+                    self.roi_pointcloud_fusion_param,
+                ],
+                extra_arguments=[
+                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
+                ],
+            )
         )
-        return node
+        return components
 
 
 def launch_setup(context, *args, **kwargs):
-    obstacle_pointcloud_topic = "obstacle_segmentation/pointcloud"
     pipeline = SmallUnknownPipeline(context)
     components = []
     components.extend(
         pipeline.create_irregular_object_pipeline(
-            LaunchConfiguration("input/pointcloud"), obstacle_pointcloud_topic
+            LaunchConfiguration("input/pointcloud"), LaunchConfiguration("output_topic")
         )
     )
     loader = LoadComposableNodes(
         composable_node_descriptions=components,
         target_container=LaunchConfiguration("pointcloud_container_name"),
     )
-    roi_pointcloud_fusion_node = pipeline.create_roi_pointcloud_fusion_node(
-        obstacle_pointcloud_topic, LaunchConfiguration("output_topic")
-    )
-    return [loader, roi_pointcloud_fusion_node]
+    return [loader]
 
 
 def generate_launch_description():
