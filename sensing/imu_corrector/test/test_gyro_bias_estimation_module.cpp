@@ -13,9 +13,9 @@ TEST_F(GyroBiasEstimationModuleTest, GetBiasEstimationWhenVehicleStopped)
       i * 0.1 * timestamp_threshold, 0.0);  // velocity = 0.0 < 1.0 = velocity_threshold
     module.update_gyro(i * 0.1 * timestamp_threshold, gyro);
   }
-  ASSERT_NEAR(module.get_bias().x, gyro.x, 0.0001);
-  ASSERT_NEAR(module.get_bias().y, gyro.y, 0.0001);
-  ASSERT_NEAR(module.get_bias().z, gyro.z, 0.0001);
+  ASSERT_NEAR(module.get_bias().value().x, gyro.x, 0.0001);
+  ASSERT_NEAR(module.get_bias().value().y, gyro.y, 0.0001);
+  ASSERT_NEAR(module.get_bias().value().z, gyro.z, 0.0001);
 }
 
 TEST_F(GyroBiasEstimationModuleTest, GetInsufficientDataException)
