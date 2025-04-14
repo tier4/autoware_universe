@@ -66,7 +66,7 @@ void ComfortableStopSwitcher::publish_velocity_limit()
   velocity_limit.use_constraints = true;
   velocity_limit.constraints.min_acceleration = static_cast<float>(-1.0);
   velocity_limit.constraints.max_jerk = static_cast<float>(0.6);
-  velocity_limit.constraints.min_jerk = static_cast<float>(0.6);
+  velocity_limit.constraints.min_jerk = static_cast<float>(-0.6);
   velocity_limit.sender = node_->get_name();
 
   pub_velocity_limit_->publish(velocity_limit);
