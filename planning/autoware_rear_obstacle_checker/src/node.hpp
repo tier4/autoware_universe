@@ -78,6 +78,10 @@ private:
   auto get_clustered_pointcloud(const PointCloud::Ptr in, DebugData & debug_data) const
     -> PointCloud::Ptr;
 
+  auto get_pointcloud_object(
+    const rclcpp::Time & now, const PointCloud::Ptr & pointcloud_ptr,
+    const DetectionAreas & detection_areas, DebugData & debug) -> std::optional<PointCloudObject>;
+
   auto get_pointcloud_objects(
     const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
     const Behavior & turn_behavior, DebugData & detection_areas) -> PointCloudObjects;

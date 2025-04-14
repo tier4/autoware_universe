@@ -37,6 +37,7 @@
 #endif
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -492,12 +493,6 @@ auto RearObstacleCheckerNode::filter_pointcloud(DebugData & debug) const -> Poin
   }
 
   {
-    autoware_utils::ScopedTimeTrack st("clustering", *time_keeper_);
-
-    output = get_clustered_pointcloud(output, debug);
-  }
-
-  {
     const auto obstacle_pointcloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
     pcl::toROSMsg(*output, *obstacle_pointcloud);
     obstacle_pointcloud->header.stamp = pointcloud_ptr_->header.stamp;
@@ -667,8 +662,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_on_adjacent_lane(
       }
 
       time_keeper_->start_track("get_pointcloud_object");
-      auto opt_pointcloud_object = utils::get_pointcloud_object(
-        pointcloud_ptr_->header.stamp, obstacle_pointcloud, detection_areas, route_handler_);
+      auto opt_pointcloud_object = get_pointcloud_object(
+        pointcloud_ptr_->header.stamp, obstacle_pointcloud, detection_areas, debug);
       time_keeper_->end_track("get_pointcloud_object");
 
       if (!opt_pointcloud_object.has_value()) {
@@ -706,8 +701,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_on_adjacent_lane(
       connected_adjacent_lanes.clear();
 
       time_keeper_->start_track("get_pointcloud_object");
-      auto opt_pointcloud_object = utils::get_pointcloud_object(
-        pointcloud_ptr_->header.stamp, obstacle_pointcloud, detection_areas, route_handler_);
+      auto opt_pointcloud_object = get_pointcloud_object(
+        pointcloud_ptr_->header.stamp, obstacle_pointcloud, detection_areas, debug);
       time_keeper_->end_track("get_pointcloud_object");
 
       if (!opt_pointcloud_object.has_value()) {
@@ -829,8 +824,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_at_blind_spot(
   }
 
   time_keeper_->start_track("get_pointcloud_object");
-  auto opt_pointcloud_object = utils::get_pointcloud_object(
-    pointcloud_ptr_->header.stamp, obstacle_pointcloud, detection_areas, route_handler_);
+  auto opt_pointcloud_object = get_pointcloud_object(
+    pointcloud_ptr_->header.stamp, obstacle_pointcloud, detection_areas, debug);
   time_keeper_->end_track("get_pointcloud_object");
 
   if (!opt_pointcloud_object.has_value()) {
@@ -858,6 +853,63 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_at_blind_spot(
   objects.push_back(opt_pointcloud_object.value());
 
   return objects;
+}
+
+auto RearObstacleCheckerNode::get_pointcloud_object(
+  const rclcpp::Time & now, const PointCloud::Ptr & pointcloud_ptr,
+  const DetectionAreas & detection_areas, DebugData & debug) -> std::optional<PointCloudObject>
+{
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  std::optional<PointCloudObject> opt_object = std::nullopt;
+  for (const auto & [polygon, lanes] : detection_areas) {
+    const auto pointcloud =
+      *get_clustered_pointcloud(utils::get_obstacle_points({polygon}, *pointcloud_ptr), debug);
+
+    const auto path =
+      route_handler_->getCenterLinePath(lanes, 0.0, std::numeric_limits<double>::max());
+    const auto resampled_path = behavior_path_planner::utils::resamplePathWithSpline(path, 1.0);
+
+    for (const auto & point : pointcloud) {
+      const auto p_geom = autoware_utils::create_point(point.x, point.y, point.z);
+      const size_t src_seg_idx =
+        autoware::motion_utils::findNearestSegmentIndex(resampled_path.points, p_geom);
+      const double signed_length_src_offset =
+        autoware::motion_utils::calcLongitudinalOffsetToSegment(
+          resampled_path.points, src_seg_idx, p_geom);
+
+      const double obj_arc_length =
+        autoware::motion_utils::calcSignedArcLength(
+          resampled_path.points, src_seg_idx, resampled_path.points.size() - 1) -
+        signed_length_src_offset;
+      const auto pose_on_center_line = autoware::motion_utils::calcLongitudinalOffsetPose(
+        resampled_path.points, src_seg_idx, signed_length_src_offset);
+
+      if (!pose_on_center_line.has_value()) {
+        continue;
+      }
+
+      if (!opt_object.has_value()) {
+        PointCloudObject object;
+        object.last_update_time = now;
+        object.pose = pose_on_center_line.value();
+        object.furthest_lane = lanes.back();
+        object.tracking_duration = 0.0;
+        object.absolute_distance = obj_arc_length;
+        object.velocity = 0.0;
+        opt_object = object;
+      } else if (opt_object.value().absolute_distance > obj_arc_length) {
+        opt_object.value().last_update_time = now;
+        opt_object.value().pose = pose_on_center_line.value();
+        opt_object.value().furthest_lane = lanes.back();
+        opt_object.value().tracking_duration = 0.0;
+        opt_object.value().absolute_distance = obj_arc_length;
+        opt_object.value().velocity = 0.0;
+      }
+    }
+  }
+
+  return opt_object;
 }
 
 auto RearObstacleCheckerNode::get_pointcloud_objects(
