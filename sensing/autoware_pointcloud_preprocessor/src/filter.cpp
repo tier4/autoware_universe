@@ -224,7 +224,8 @@ void autoware::pointcloud_preprocessor::Filter::computePublish(
 
     // TODO(Ryuta Kambe): solve https://github.com/tier4/agnocast/issues/164
     // Temporarily commented out for Agnocast integration in autoware_universe v0.41.
-    // This is a debug topic and not essential for normal operation, so disabling it in v0.41 is acceptable.
+    // This is a debug topic and not essential for normal operation, so disabling it in v0.41 is
+    // acceptable.
     //
     // published_time_publisher_->publish_if_subscribed(pub_output_wrapped_, input->header.stamp);
     return;
@@ -245,7 +246,8 @@ void autoware::pointcloud_preprocessor::Filter::computePublish(
 
   // TODO(Ryuta Kambe): solve https://github.com/tier4/agnocast/issues/164
   // Temporarily commented out for Agnocast integration in autoware_universe v0.41.
-  // This is a debug topic and not essential for normal operation, so disabling it in v0.41 is acceptable.
+  // This is a debug topic and not essential for normal operation, so disabling it in v0.41 is
+  // acceptable.
   //
   // published_time_publisher_->publish_if_subscribed(pub_output_, input->header.stamp);
 }
@@ -487,7 +489,8 @@ void autoware::pointcloud_preprocessor::Filter::faster_input_indices_callback(
 
     // TODO(Ryuta Kambe): solve https://github.com/tier4/agnocast/issues/164
     // Temporarily commented out for Agnocast integration in autoware_universe v0.41.
-    // This is a debug topic and not essential for normal operation, so disabling it in v0.41 is acceptable.
+    // This is a debug topic and not essential for normal operation, so disabling it in v0.41 is
+    // acceptable.
     //
     // published_time_publisher_->publish_if_subscribed(pub_output_, cloud->header.stamp);
     return;
@@ -505,9 +508,10 @@ void autoware::pointcloud_preprocessor::Filter::faster_input_indices_callback(
 
   // TODO(Ryuta Kambe): solve https://github.com/tier4/agnocast/issues/164
   // Temporarily commented out for Agnocast integration in autoware_universe v0.41.
-  // This is a debug topic and not essential for normal operation, so disabling it in v0.41 is acceptable.
+  // This is a debug topic and not essential for normal operation, so disabling it in v0.41 is
+  // acceptable.
   //
-  //published_time_publisher_->publish_if_subscribed(pub_output_, cloud->header.stamp);
+  // published_time_publisher_->publish_if_subscribed(pub_output_, cloud->header.stamp);
 }
 
 // TODO(sykwer): Temporary Implementation: Remove this interface when all the filter nodes conform
