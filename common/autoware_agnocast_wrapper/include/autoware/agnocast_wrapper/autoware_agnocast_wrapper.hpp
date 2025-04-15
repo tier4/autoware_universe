@@ -14,13 +14,6 @@
 
 #pragma once
 
-// For debug
-#ifdef USE_AGNOCAST_ENABLED
-#pragma message("Building with USE_AGNOCAST_ENABLED defined")
-#else
-#pragma message("Building without USE_AGNOCAST_ENABLED defined")
-#endif
-
 #ifdef USE_AGNOCAST_ENABLED
 
 #include <agnocast/agnocast.hpp>
