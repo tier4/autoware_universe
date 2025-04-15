@@ -552,6 +552,16 @@ auto get_previous_polygons_with_lane_recursively(
     return ret;
   }
 
+  if (route_handler->getPreviousLanelets(lanes.front()).empty()) {
+    const auto total_length = lanelet::utils::getLaneletLength2d(lanes);
+    const auto expand_lanelets =
+      lanelet::utils::getExpandedLanelets(lanes, left_offset, -1.0 * right_offset);
+    const auto polygon = lanelet::utils::getPolygonFromArcLength(
+      expand_lanelets, total_length - s2, total_length - s1);
+    ret.emplace_back(polygon.basicPolygon(), lanes);
+    return ret;
+  }
+
   for (const auto & prev_lane : route_handler->getPreviousLanelets(lanes.front())) {
     lanelet::ConstLanelets pushed_lanes = lanes;
     pushed_lanes.insert(pushed_lanes.begin(), prev_lane);
