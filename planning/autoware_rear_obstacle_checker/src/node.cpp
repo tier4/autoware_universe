@@ -200,7 +200,7 @@ void RearObstacleCheckerNode::post_process()
 {
   auto itr = history_.begin();
   while (itr != history_.end()) {
-    if ((rclcpp::Clock{RCL_ROS_TIME}.now() - itr->second.last_update_time).seconds() > 1.0) {
+    if ((this->now() - itr->second.last_update_time).seconds() > 1.0) {
       itr = history_.erase(itr);
     } else {
       itr++;
@@ -440,7 +440,8 @@ bool RearObstacleCheckerNode::is_safe(const PredictedObjects & objects, DebugDat
   return true;
 }
 
-auto RearObstacleCheckerNode::filter_pointcloud(DebugData & debug) const -> PointCloud::Ptr
+auto RearObstacleCheckerNode::filter_pointcloud([[maybe_unused]] DebugData & debug) const
+  -> PointCloud::Ptr
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -490,14 +491,6 @@ auto RearObstacleCheckerNode::filter_pointcloud(DebugData & debug) const -> Poin
     filter.setInputCloud(output);
     filter.setLeafSize(p.voxel_grid_filter.x, p.voxel_grid_filter.y, p.voxel_grid_filter.z);
     filter.filter(*output);
-  }
-
-  {
-    const auto obstacle_pointcloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
-    pcl::toROSMsg(*output, *obstacle_pointcloud);
-    obstacle_pointcloud->header.stamp = pointcloud_ptr_->header.stamp;
-    obstacle_pointcloud->header.frame_id = "map";
-    debug.obstacle_pointcloud = obstacle_pointcloud;
   }
 
   return output;
@@ -553,6 +546,15 @@ auto RearObstacleCheckerNode::get_clustered_pointcloud(
     }
     debug.hull_polygons.push_back(hull_polygon);
   }
+
+  {
+    const auto obstacle_pointcloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
+    pcl::toROSMsg(*points_belonging_to_cluster_hulls, *obstacle_pointcloud);
+    obstacle_pointcloud->header.stamp = pointcloud_ptr_->header.stamp;
+    obstacle_pointcloud->header.frame_id = "map";
+    debug.obstacle_pointcloud = obstacle_pointcloud;
+  }
+
   return points_belonging_to_cluster_hulls;
 }
 
