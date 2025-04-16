@@ -44,10 +44,6 @@ repositories:
     type: git
     url: https://github.com/tier4/glog.git
     version: ea36766fdc2ac8e8c8e3ac988ae69acd6d09bb30
-  v2x/vehicle2infrastructure:
-    type: git
-    url: git@github.com:tier4/vehicle2infrastructure.git
-    version: 4d97f6bff72541357cbe490f5731036c0ed85286
   # middleware
   # TODO(TIER IV): During the transition period of Agnocast introduction,
   # the Agnocast ROS packages are provided as a source build.
