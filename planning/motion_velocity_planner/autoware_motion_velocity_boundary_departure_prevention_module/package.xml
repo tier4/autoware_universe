@@ -16,7 +16,6 @@
   <depend>autoware_motion_velocity_planner_common_universe</depend>
   <depend>autoware_trajectory</depend>
   <depend>autoware_utils</depend>
-  <depend>autoware_utils_rclcpp</depend>
   <depend>autoware_vehicle_info_utils</depend>
   <depend>fmt</depend>
   <depend>geometry_msgs</depend>
