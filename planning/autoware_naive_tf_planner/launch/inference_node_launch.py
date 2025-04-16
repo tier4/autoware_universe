@@ -30,7 +30,7 @@ def generate_launch_description():
     
     look_ahead_steps_arg = DeclareLaunchArgument(
         'look_ahead_steps',
-        default_value='30',
+        default_value='80',
         description='Number of future steps to predict'
     )
     
