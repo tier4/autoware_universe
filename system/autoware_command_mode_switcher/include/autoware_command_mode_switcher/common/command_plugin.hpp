@@ -15,7 +15,7 @@
 #ifndef COMMON__COMMAND_PLUGIN_HPP_
 #define COMMON__COMMAND_PLUGIN_HPP_
 
-#include "common/command_status.hpp"
+#include "command_status.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 

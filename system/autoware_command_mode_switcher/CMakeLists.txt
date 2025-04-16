@@ -21,9 +21,6 @@ ament_auto_add_library(${PROJECT_NAME}_plugin SHARED
   "src/plugins/emergency_stop.cpp"
   "src/plugins/comfortable_stop.cpp"
   "src/plugins/pull_over.cpp"
-  "src/plugins/main_ecu_in_lane_stop_0_3g.cpp"
-  "src/plugins/main_ecu_in_lane_stop_0_6g.cpp"
-  "src/plugins/sub_ecu_in_lane_stop_0_3g.cpp"
 )
 target_include_directories(${PROJECT_NAME}_common PRIVATE "src")
 target_include_directories(${PROJECT_NAME}_plugin PRIVATE "src")

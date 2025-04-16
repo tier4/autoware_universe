@@ -15,7 +15,7 @@
 #ifndef COMMON__MANUAL_HPP_
 #define COMMON__MANUAL_HPP_
 
-#include "common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/common/command_plugin.hpp"
 
 #include <string>
 
