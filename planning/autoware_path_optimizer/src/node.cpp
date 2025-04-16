@@ -388,6 +388,13 @@ void PathOptimizer::applyInputVelocity(
 {
   autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
+  // trim to ego-pose
+  const size_t ego_seg_idx_output_traj =
+    trajectory_utils::findEgoSegmentIndex(output_traj_points, ego_pose, ego_nearest_param_);
+  output_traj_points = autoware::motion_utils::cropBackwardPoints(
+    output_traj_points, ego_pose.position, ego_seg_idx_output_traj,
+    traj_param_.output_backward_traj_length);
+
   // crop forward for faster calculation
   const auto forward_cropped_input_traj_points = [&]() {
     const double optimized_traj_length = mpt_optimizer_ptr_->getTrajectoryLength();
@@ -395,6 +402,7 @@ void PathOptimizer::applyInputVelocity(
 
     const size_t ego_seg_idx =
       trajectory_utils::findEgoSegmentIndex(input_traj_points, ego_pose, ego_nearest_param_);
+
     const auto cropped_points = autoware::motion_utils::cropForwardPoints(
       input_traj_points, ego_pose.position, ego_seg_idx,
       optimized_traj_length + margin_traj_length);
