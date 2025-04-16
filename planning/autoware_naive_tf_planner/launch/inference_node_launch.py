@@ -72,6 +72,12 @@ def generate_launch_description():
             'prediction_dt': LaunchConfiguration('prediction_dt'),
             'local_map_range': LaunchConfiguration('local_map_range'),
             'device': LaunchConfiguration('device'),
+            "wheel_base": 2.75,
+            "max_steer_angle": 0.55,
+            "front_overhang": 0.8,
+            "rear_overhang": 0.85,
+            "left_overhang": 0.105,
+            "right_overhang": 0.105,
         }],
         output='screen'
     )

@@ -9,7 +9,7 @@ from geometry_msgs.msg import Pose
 
 import lanelet2
 from autoware_lanelet2_extension_python.utility import load_info_from_yaml, MapProjectorInfo
-from autoware_lanelet2_extension_python.projection import MGRSProjector
+from autoware_lanelet2_extension_python.projection import MGRSProjector, TransverseMercatorProjector
 import autoware_lanelet2_extension_python.utility.utilities as utilities
 
 def automatic_find_projector_yaml(map_path):

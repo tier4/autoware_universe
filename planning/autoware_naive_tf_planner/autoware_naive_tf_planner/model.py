@@ -18,7 +18,7 @@ class PlanningModel(nn.Module):
         polygon_channel=4,
         history_channel=9,
         history_steps=10,
-        future_steps=30,
+        future_steps=80,
         encoder_depth=4,
         drop_path=0.2,
         num_heads=8,
@@ -42,6 +42,12 @@ class PlanningModel(nn.Module):
             use_ego_history=use_ego_history,
             state_attn_encoder=state_attn_encoder,
             state_dropout=state_dropout,
+        )
+        self.vehicle_params_encoder = nn.Sequential(
+            nn.Linear(6, dim),
+            nn.LayerNorm(dim),
+            nn.ReLU(),
+            nn.Linear(dim, dim)
         )
 
         self.map_encoder = MapEncoder(
@@ -89,10 +95,11 @@ class PlanningModel(nn.Module):
     def forward_model(self, data):
         x_agent = self.agent_encoder(data) #[B, N_obj, dim] Core vector to represent ego + objects
         x_polygon = self.map_encoder(data) #[B, N_map, dim] Core vector to represent map
+        x_vehicle_param = self.vehicle_params_encoder(data["vehicle_parameters"]) # [B, dim]
 
         bs, A, _ = x_agent.shape # if use_ego_history, it will include ego
 
-        x = torch.cat([x_agent, x_polygon], dim=1) # []
+        x = torch.cat([x_agent, x_polygon, x_vehicle_param.unsqueeze(1)], dim=1) # []
 
         for blk in self.encoder_blocks:
             x = blk(x)
@@ -112,7 +119,8 @@ class PlanningModel(nn.Module):
         best_mode = output['probability'].argmax(dim=-1)
         bs = output['probability'].shape[0]
         output_trajectory = output['trajectory'][torch.arange(bs), best_mode]
-        angle = torch.atan2(output_trajectory[..., 3], output_trajectory[..., 2])
+        #angle = torch.atan2(output_trajectory[..., 3], output_trajectory[..., 2])
+        angle = torch.atan(output_trajectory[..., 3] / (output_trajectory[..., 2] + 1e-6))
         output["output_trajectory"] = torch.cat(
             [output_trajectory[..., :2], angle.unsqueeze(-1)], dim=-1
         )

@@ -16,7 +16,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 # ROS2 message types
-from autoware_perception_msgs.msg import PredictedObjects
+from autoware_perception_msgs.msg import PredictedObjects, TrafficLightGroupArray
 from autoware_planning_msgs.msg import LaneletRoute, Path, PathPoint
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TransformStamped, Pose
@@ -32,6 +32,36 @@ from autoware_naive_tf_planner.object_tracker.base_object_tracker import Current
 from collections import deque
 import scipy.spatial
 from scipy.spatial import ConvexHull
+
+
+LANELET_TYPE_MAPPING = {
+    "road": 0,
+    "private": 1,
+    "highway": 2,
+    "play_street": 3,
+    "emergency_lane": 4,
+    "bus_lane": 5,
+    "bicycle_lane": 6,
+    "exit": 7,
+    "walkway": 8,
+    "shared_walkway": 9,
+    "crosswalk": 10,
+    "stairs": 11,
+    "road_shoulder": 12,
+    "pedestrian_lane": 13,
+    "bicycle_lane": 14,
+    "none": 15,
+}
+
+LANELET_LOCATION_MAPPING = {"urban": 0, "nonurban": 1, "private": 2, "none": 3}
+
+LANELET_TURN_DIRECTION_MAPPING = {"straight": 0, "left": 1, "right": 2}
+
+
+def attribute_or(lanelet, key, default):
+    if key in lanelet.attributes:
+        return lanelet.attributes[key]
+    return default
 
 
 def fit_rotated_bbox(points: np.ndarray) -> np.ndarray:
@@ -141,6 +171,79 @@ def fit_rotated_bbox(points: np.ndarray) -> np.ndarray:
     
     return torch.tensor(best_corners_3d, dtype=torch.float32)
 
+def identify_current_light_status(
+    turn_direction: int, traffic_light_elements: list
+) -> int:
+    """
+    Identify the current traffic light status based on turn direction and traffic light elements.
+
+    Args:
+        turn_direction: Integer representing the turn direction (0=straight, 1=left, 2=right)
+        traffic_light_elements: List of dictionaries containing traffic light information
+                               (color, shape, status, confidence)
+
+    Returns:
+        int: The color of the relevant traffic light (0=UNKNOWN, 1=RED, 2=AMBER, 3=GREEN, 4=WHITE)
+    """
+    # Filter out ineffective elements (color == 0)
+    effective_elements = [
+        element for element in traffic_light_elements if element["color"] != 0
+    ]
+
+    # If no effective elements, return UNKNOWN (0)
+    if not effective_elements:
+        return 0
+
+    # If only one effective element, return its color
+    if len(effective_elements) == 1:
+        return effective_elements[0]["color"]
+
+    # For multiple elements, find the one that matches the turn direction
+    # Map turn direction to corresponding arrow shape
+    direction_to_shape_map = {
+        0: 4,  # straight -> UP_ARROW
+        1: 2,  # left -> LEFT_ARROW
+        2: 3,  # right -> RIGHT_ARROW
+    }
+
+    target_shape = direction_to_shape_map.get(turn_direction, 0)
+
+    # First priority: Find elements with exactly matching direction
+    matching_elements = [
+        element for element in effective_elements if element["shape"] == target_shape
+    ]
+    if matching_elements:
+        # If multiple matching elements, take the one with highest confidence
+        return max(matching_elements, key=lambda x: x["confidence"])["color"]
+
+    # Second priority: Find circle elements
+    circle_elements = [
+        element for element in effective_elements if element["shape"] == 1
+    ]  # CIRCLE
+    if circle_elements:
+        # If multiple circle elements, take the one with highest confidence
+        return max(circle_elements, key=lambda x: x["confidence"])["color"]
+
+    # If no matching direction or circle, return the element with highest confidence
+    return max(effective_elements, key=lambda x: x["confidence"])["color"]
+
+
+def get_current_traffic_light(lanelet, current_traffic_light_status: dict):
+    traffic_light_ids_connected_to_lanelet = lanelet.trafficLights()
+    if len(traffic_light_ids_connected_to_lanelet) == 0:
+        return 0  # unknown, empty
+
+    main_traffic_light_id = str(traffic_light_ids_connected_to_lanelet[0].id)
+    if main_traffic_light_id in current_traffic_light_status:
+        current_traffic_group = current_traffic_light_status[main_traffic_light_id]
+        turn_direction = LANELET_TURN_DIRECTION_MAPPING[
+            attribute_or(lanelet, "turn_direction", "straight")
+        ]
+        light = identify_current_light_status(turn_direction, current_traffic_group)
+        return light
+    else:
+        return 0 # the traffic light not detected
+
 
 class NaiveTFInferenceNode(Node):
     def __init__(self):
@@ -155,6 +258,13 @@ class NaiveTFInferenceNode(Node):
         self.declare_parameter('prediction_dt', 0.1)       # seconds
         self.declare_parameter('local_map_range', 80.0)    # meters
         self.declare_parameter('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+
+        self.declare_parameter('wheel_base', 0.0)
+        self.declare_parameter('max_steer_angle', 0.0)
+        self.declare_parameter('front_overhang', 0.0)
+        self.declare_parameter('rear_overhang', 0.0)
+        self.declare_parameter('left_overhang', 0.0)
+        self.declare_parameter('right_overhang', 0.0)
         
         # Get parameters
         model_path = self.get_parameter('model_path').value
@@ -165,6 +275,19 @@ class NaiveTFInferenceNode(Node):
         self.prediction_dt = self.get_parameter('prediction_dt').value
         local_map_range = self.get_parameter('local_map_range').value
         device = self.get_parameter('device').value
+
+        self.vehicle_params = {}
+        self.vehicle_params["wheel_base"] = self.get_parameter("wheel_base").value
+        self.vehicle_params["max_steer_angle"] = self.get_parameter("max_steer_angle").value
+        self.vehicle_params["front_overhang"] = self.get_parameter("front_overhang").value
+        self.vehicle_params["rear_overhang"] = self.get_parameter("rear_overhang").value
+        self.vehicle_params["left_overhang"] = self.get_parameter("left_overhang").value
+        self.vehicle_params["right_overhang"] = self.get_parameter("right_overhang").value
+
+        self.max_objects = 80
+        self.max_map_element_num = 80
+        self.max_route_element_num = 10
+        self.lane_point_number=20
         
         # Check if required parameters are provided
         if not model_path or not map_path:
@@ -193,6 +316,7 @@ class NaiveTFInferenceNode(Node):
         self.has_route = False
         self.last_inference_time = 0.0
         self.inference_interval = 0.1  # seconds
+        self.traffic_light_data = {}
         
         # TF buffer and listener
         self.tf_buffer = Buffer()
@@ -234,6 +358,13 @@ class NaiveTFInferenceNode(Node):
             self.route_callback,
             route_qos
         )
+
+        self.traffic_light_sub = self.create_subscription(
+            TrafficLightGroupArray,
+            "/perception/traffic_light_recognition/traffic_signals",
+            self.traffic_light_callback,
+            sensor_qos
+        )
         
         # Create publishers
         self.path_pub = self.create_publisher(
@@ -265,6 +396,21 @@ class NaiveTFInferenceNode(Node):
         
         model.eval()
         return model
+    
+    def traffic_light_callback(self, msg):
+        data = dict()
+        for traffic_light_group in msg.traffic_light_groups:
+            group_id = traffic_light_group.traffic_light_group_id
+            elements = traffic_light_group.elements
+            data[group_id] = []
+            for i, element in enumerate(elements):
+                data[group_id].append({
+                    "color": element.color,
+                    "shape": element.shape,
+                    "status": element.status,
+                    "confidence": element.confidence
+                })
+        self.traffic_light_data = data
     
     def route_callback(self, msg):
         """Process route message"""
@@ -369,32 +515,48 @@ class NaiveTFInferenceNode(Node):
     
     def process_data_for_model(self, frame):
         """Process raw data into model input format (similar to CacheDataset.__getitem__)"""
-        data = {}        
-        # Process objects
-        max_objects = 80  # Same as in CacheDataset
-        data["objects_types"] = torch.zeros([max_objects], dtype=torch.long)
-        data["objects_mask"] = torch.zeros([max_objects], dtype=torch.bool)
-        data["objects_transform"] = torch.zeros([max_objects, 4, 4], dtype=torch.float32)
-        data["objects_velocity"] = torch.zeros([max_objects, 3], dtype=torch.float32)
-        data["objects_footprint"] = torch.zeros([max_objects, 4, 3], dtype=torch.float32)
-        
+        data = dict()
+        data["vehicle_parameters"] = torch.tensor(
+            [
+                self.vehicle_params["wheel_base"], self.vehicle_params['max_steer_angle'],
+                self.vehicle_params['front_overhang'], self.vehicle_params['rear_overhang'],
+                self.vehicle_params['left_overhang'], self.vehicle_params['right_overhang']
+            ], dtype=torch.float32
+        ) # [6]
+        data["objects_types"] = torch.zeros([self.max_objects], dtype=torch.long)
+        data["objects_mask"] = torch.zeros([self.max_objects], dtype=torch.bool)
+        data["objects_transform"] = torch.zeros(
+            [self.max_objects, 4, 4], dtype=torch.float32
+        )
+        data["objects_velocity"] = torch.zeros(
+            [self.max_objects, 3], dtype=torch.float32
+        )
+        data["objects_footprint"] = torch.zeros(
+            [self.max_objects, 4, 3], dtype=torch.float32
+        )  # [x, y, z]
+
         actual_objects_num = len(frame["objects"])
-        if actual_objects_num > max_objects:
-            frame["objects"] = frame["objects"][:max_objects]
-            actual_objects_num = max_objects
-        
+        if actual_objects_num > self.max_objects:
+            frame["objects"] = frame["objects"][: self.max_objects]
+            actual_objects_num = self.max_objects
+
         if actual_objects_num > 0:
             data["objects_types"][:actual_objects_num] = torch.tensor(
-                [self.get_object_type_id(obj["type"]) for obj in frame["objects"]], 
-                dtype=torch.long
+                [object["type"] for object in frame["objects"]], dtype=torch.long
             )
-            data["objects_mask"][:actual_objects_num] = torch.tensor([True] * actual_objects_num, dtype=torch.bool)
+            data["objects_mask"][:actual_objects_num] = torch.tensor(
+                [True] * actual_objects_num, dtype=torch.bool
+            )
             data["objects_transform"][:actual_objects_num] = torch.tensor(
-                [obj["transform"] for obj in frame["objects"]], dtype=torch.float32
+                [object["transform"] for object in frame["objects"]],
+                dtype=torch.float32,
             )
             data["objects_velocity"][:actual_objects_num] = torch.tensor(
-                [obj["velocity"] for obj in frame["objects"]], dtype=torch.float32
+                [object["velocity"] for object in frame["objects"]], dtype=torch.float32
             )
+
+            # Process footprints
+            # If the footprint is not a 4-point bbox, fit a rotated bbox to it
             processed_footprints = []
             for obj in frame["objects"][:actual_objects_num]:
                 footprint = obj["global_footprint"]  # Shape could be (N, 2)
@@ -402,86 +564,206 @@ class NaiveTFInferenceNode(Node):
                     bbox = fit_rotated_bbox(np.array(footprint))
                     processed_footprints.append(bbox)
                 else:
-                    processed_footprints.append(torch.tensor(footprint, dtype=torch.float32))
-        
-        data["objects_footprint"][:actual_objects_num] = torch.stack(processed_footprints)
-        
-        # Process trajectories
-        data["history_trajectories_transform"] = torch.tensor(frame["history_trajectories_transform_list"], dtype=torch.float32)
-        data["history_trajectories_speed"] = torch.tensor(frame["history_trajectories_speed_list"], dtype=torch.float32)
-        
-        # Process map elements
+                    processed_footprints.append(
+                        torch.tensor(footprint, dtype=torch.float32)
+                    )
+
+            data["objects_footprint"][:actual_objects_num] = torch.stack(
+                processed_footprints
+            )
+
+        data["history_trajectories_transform"] = torch.tensor(
+            frame["history_trajectories_transform_list"], dtype=torch.float32
+        )  # [N_h, 4, 4]
+        data["history_trajectories_speed"] = torch.tensor(
+            frame["history_trajectories_speed_list"], dtype=torch.float32
+        )  # [N_h, 3]
+
         nearby_road_ids = [
-            lanelet_idx for lanelet_idx in frame["nearby_lanelets_ids"] if int(lanelet_idx) in self.map_manager.resampled_lanelets
+            lanelet_idx
+            for lanelet_idx in frame["nearby_lanelets_ids"]
+            if int(lanelet_idx) in self.map_manager.resampled_lanelets
         ]
         is_road_in_route = [
             bool(lanelet_idx in frame["routes"]) for lanelet_idx in nearby_road_ids
         ]
-        max_map_element_num = 80
-        lane_point_number = 20
-        if len(nearby_road_ids) > max_map_element_num:
-            nearby_road_ids = nearby_road_ids[:max_map_element_num]
-            is_road_in_route = is_road_in_route[:max_map_element_num]
+        if len(nearby_road_ids) > self.max_map_element_num:
+            nearby_road_ids = nearby_road_ids[: self.max_map_element_num]
+            is_road_in_route = is_road_in_route[: self.max_map_element_num]
 
-        data["boundary_left_boundaries"] = torch.zeros([max_map_element_num, lane_point_number, 2], dtype=torch.float32)
-        data["boundary_right_boundaries"] = torch.zeros([max_map_element_num, lane_point_number, 2], dtype=torch.float32)
-        data["boundary_in_route"] = torch.zeros([max_map_element_num], dtype=torch.bool)
-        data["boundary_mask"] = torch.zeros([max_map_element_num, lane_point_number], dtype=torch.bool)
-        data["lanelet_subtypes"] = torch.zeros([max_map_element_num], dtype=torch.long) 
-        data["lanelet_locations"] = torch.zeros([max_map_element_num], dtype=torch.long) 
-        data["lanelet_turn_directions"] = torch.zeros([max_map_element_num], dtype=torch.long) 
-        data["lanelet_speed_limit"] = torch.zeros([max_map_element_num], dtype=torch.float32)
-        
-        # Transform to ego frame
+        nearby_lanelets = [
+            self.map_manager.map_object.laneletLayer.get(lanelet_idx)
+            for lanelet_idx in nearby_road_ids
+        ]
+
+        data["boundary_left_boundaries"] = torch.zeros(
+            [self.max_map_element_num, self.lane_point_number, 3], dtype=torch.float32
+        )
+        data["boundary_right_boundaries"] = torch.zeros(
+            [self.max_map_element_num, self.lane_point_number, 3], dtype=torch.float32
+        )
+        data["boundary_in_route"] = torch.zeros(
+            [self.max_map_element_num], dtype=torch.bool
+        )
+        data["boundary_mask"] = torch.zeros(
+            [self.max_map_element_num, self.lane_point_number], dtype=torch.bool
+        )
+        data["lanelet_subtypes"] = torch.zeros(
+            [self.max_map_element_num], dtype=torch.long
+        )
+        data["lanelet_locations"] = torch.zeros(
+            [self.max_map_element_num], dtype=torch.long
+        )
+        data["lanelet_turn_directions"] = torch.zeros(
+            [self.max_map_element_num], dtype=torch.long
+        )
+        data["lanelet_speed_limit"] = torch.zeros(
+            [self.max_map_element_num], dtype=torch.float32
+        )
+        data["lanelet_traffic_lights"] = torch.zeros(
+            [self.max_map_element_num], dtype=torch.long
+        )
+
+        data["boundary_mask"][0 : len(nearby_road_ids)] = True
+
+        data["boundary_in_route"][0 : len(nearby_road_ids)] = torch.tensor(
+            is_road_in_route, dtype=torch.bool
+        )
+        data["lanelet_subtypes"][0 : len(nearby_road_ids)] = torch.tensor(
+            [
+                LANELET_TYPE_MAPPING[attribute_or(lanelet, "subtype", "road")]
+                for lanelet in nearby_lanelets
+            ],
+            dtype=torch.long,
+        )
+        data["lanelet_locations"][0 : len(nearby_road_ids)] = torch.tensor(
+            [
+                LANELET_LOCATION_MAPPING[attribute_or(lanelet, "location", "urban")]
+                for lanelet in nearby_lanelets
+            ],
+            dtype=torch.long,
+        )
+        data["lanelet_turn_directions"][0 : len(nearby_road_ids)] = torch.tensor(
+            [
+                LANELET_TURN_DIRECTION_MAPPING[
+                    attribute_or(lanelet, "turn_direction", "straight")
+                ]
+                for lanelet in nearby_lanelets
+            ],
+            dtype=torch.long,
+        )
+        data["lanelet_speed_limit"][0 : len(nearby_road_ids)] = torch.tensor(
+            [
+                float(attribute_or(lanelet, "speed_limit", "50"))
+                / 100.0  # normalized to [0, 1]
+                for lanelet in nearby_lanelets
+            ],
+            dtype=torch.float32,
+        )
+        data["lanelet_traffic_lights"][0 : len(nearby_road_ids)] = torch.tensor(
+            [
+                get_current_traffic_light(
+                    lanelet, self.traffic_light_data
+                )
+                for lanelet in nearby_lanelets
+            ],
+            dtype=torch.long,
+        )
+        data["boundary_left_boundaries"][0 : len(nearby_road_ids)] = torch.tensor(
+            [
+                [
+                    (p.x, p.y, p.z)
+                    for p in self.map_manager.resampled_lanelets[int(lanelet_idx)]["left_bound"]
+                ]
+                for lanelet_idx in nearby_road_ids
+            ]
+        )
+        data["boundary_right_boundaries"][0 : len(nearby_road_ids)] = torch.tensor(
+            [
+                [
+                    (p.x, p.y, p.z)
+                    for p in self.map_manager.resampled_lanelets[int(lanelet_idx)]["right_bound"]
+                ]
+                for lanelet_idx in nearby_road_ids
+            ]
+        )
+
         ego_transform = data["history_trajectories_transform"][-1]  # [4, 4]
-        ego_transform_inv = torch.inverse(ego_transform)
-        
-        # Transform all data to ego frame
-        data["history_trajectories_transform"] = torch.matmul(ego_transform_inv, data["history_trajectories_transform"])
-        data["objects_transform"] = torch.matmul(ego_transform_inv, data["objects_transform"])
-        
-        # Transform velocities - only need rotation part
-        rotation_matrix = ego_transform_inv[:3, :3]
-        data["objects_velocity"] = torch.matmul(rotation_matrix, data["objects_velocity"][..., None])[..., 0]
-        
-        # Transform footprints
-        footprints_homogeneous = torch.ones(data["objects_footprint"].shape[0], 
-                                        data["objects_footprint"].shape[1], 
-                                        4, dtype=torch.float32)
-        footprints_homogeneous[..., :3] = data["objects_footprint"]
-        footprints_homogeneous = footprints_homogeneous.transpose(-2, -1)
-        footprints_homogeneous = torch.matmul(ego_transform_inv, footprints_homogeneous)
-        footprints_homogeneous = footprints_homogeneous.transpose(-2, -1)
-        data["objects_footprint"] = footprints_homogeneous[..., :2]
-        
+        ## normalize and transform the ego_trajectory, velocity, and neighbouring
+        ego_transform = torch.inverse(ego_transform)
+        ## ego speed is originally not in global frame, so we don't need to transform it
+        data["history_trajectories_transform"] = torch.matmul(
+            ego_transform,
+            data["history_trajectories_transform"],
+        )  # [N_h, 4, 4]
+        data["objects_transform"] = torch.matmul(
+            ego_transform, data["objects_transform"]
+        )  # [N_o, 4, 4]
+
+        # Transform velocities - only need rotation part of transformation
+        rotation_matrix = ego_transform[:3, :3]  # [3, 3]
+        data["objects_velocity"] = torch.matmul(
+            rotation_matrix, data["objects_velocity"][..., None]
+        )[
+            ..., 0
+        ]  # [N_o, 3]
+
+        # Transform footprints from global to ego frame
+        # First convert 2D points to homogeneous coordinates
+        footprints_homogeneous = torch.ones(
+            data["objects_footprint"].shape[0],
+            data["objects_footprint"].shape[1],
+            4,
+            dtype=torch.float32,
+        )  # [N_o, 4, 4]
+        footprints_homogeneous[..., :3] = data[
+            "objects_footprint"
+        ]  # Set x,y coordinates
+        footprints_homogeneous = footprints_homogeneous.transpose(-2, -1)  # Trans
+        footprints_homogeneous = torch.matmul(
+            ego_transform, footprints_homogeneous
+        )  # [N_o, 4, 4]
+        footprints_homogeneous = footprints_homogeneous.transpose(-2, -1)  # Trans
+        data["objects_footprint"] = footprints_homogeneous[..., :2]  # [N_o, 4, 2]
+        # print(data["objects_footprint"][data["objects_mask"]], ego_transform)
+
         # Transform map elements
-        if len(nearby_road_ids) > 0:
-            # Transform left boundaries
-            left_boundaries_homogeneous = torch.ones(data["boundary_left_boundaries"].shape[0],
-                                                data["boundary_left_boundaries"].shape[1],
-                                                4, dtype=torch.float32)
-            left_boundaries_homogeneous[..., :2] = data["boundary_left_boundaries"]
-            left_boundaries_homogeneous = left_boundaries_homogeneous.transpose(-2, -1)
-            left_boundaries_homogeneous = torch.matmul(ego_transform_inv, left_boundaries_homogeneous)
-            data["boundary_left_boundaries"] = left_boundaries_homogeneous[:, :2, :].transpose(-2, -1)
-            
-            # Transform right boundaries
-            right_boundaries_homogeneous = torch.ones(data["boundary_right_boundaries"].shape[0],
-                                                    data["boundary_right_boundaries"].shape[1],
-                                                    4, dtype=torch.float32)
-            right_boundaries_homogeneous[..., :2] = data["boundary_right_boundaries"]
-            right_boundaries_homogeneous = right_boundaries_homogeneous.transpose(-2, -1)
-            right_boundaries_homogeneous = torch.matmul(ego_transform_inv, right_boundaries_homogeneous)
-            data["boundary_right_boundaries"] = right_boundaries_homogeneous[:, :2, :].transpose(-2, -1)
-        
-        # Add batch dimension and move to device
+        # Transform left boundaries
+        left_boundaries_homogeneous = torch.ones(
+            data["boundary_left_boundaries"].shape[0],
+            data["boundary_left_boundaries"].shape[1],
+            4,
+            dtype=torch.float32,
+        )
+        left_boundaries_homogeneous[..., :3] = data["boundary_left_boundaries"]
+        left_boundaries_homogeneous = left_boundaries_homogeneous.transpose(-2, -1)
+        left_boundaries_homogeneous = torch.matmul(
+            ego_transform, left_boundaries_homogeneous
+        )
+        data["boundary_left_boundaries"] = left_boundaries_homogeneous[
+            :, :2, :
+        ].transpose(-2, -1)[..., :2] # the output should still be in 2d
+
+        # Transform right boundaries
+        right_boundaries_homogeneous = torch.ones(
+            data["boundary_right_boundaries"].shape[0],
+            data["boundary_right_boundaries"].shape[1],
+            4,
+            dtype=torch.float32,
+        )
+        right_boundaries_homogeneous[..., :3] = data["boundary_right_boundaries"]
+        right_boundaries_homogeneous = right_boundaries_homogeneous.transpose(-2, -1)
+        right_boundaries_homogeneous = torch.matmul(
+            ego_transform, right_boundaries_homogeneous
+        )
+        data["boundary_right_boundaries"] = right_boundaries_homogeneous[
+            :, :2, :
+        ].transpose(-2, -1)[..., :2] # the output should still be in 2d
+
         data = {k: v.unsqueeze(0).contiguous().to(self.device) if isinstance(v, torch.Tensor) else v 
                for k, v in data.items()}
-        
-        # Store original ego transform for converting predictions back to global frame
         data["original_ego_transform"] = ego_transform
-        
-        return data
+        return data  # Return data instead of frame
     
     def get_object_type_id(self, object_type):
         """Convert object type string to ID"""
