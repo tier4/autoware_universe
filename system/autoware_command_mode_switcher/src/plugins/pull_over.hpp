@@ -15,7 +15,7 @@
 #ifndef PLUGINS__PULL_OVER_HPP_
 #define PLUGINS__PULL_OVER_HPP_
 
-#include "common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/common/command_plugin.hpp"
 
 #include <string>
 
