@@ -268,7 +268,7 @@ void CommandModeSwitcher::handle_foreground_transition()
 
 void CommandModeSwitcher::handle_background_transition()
 {
-  if (!background_) {
+  if (!background_ || !foreground_) {
     return;
   }
 
