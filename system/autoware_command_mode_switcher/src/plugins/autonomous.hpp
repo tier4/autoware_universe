@@ -15,7 +15,7 @@
 #ifndef PLUGINS__AUTONOMOUS_HPP_
 #define PLUGINS__AUTONOMOUS_HPP_
 
-#include "common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/common/command_plugin.hpp"
 
 #include <tier4_system_msgs/msg/mode_change_available.hpp>
 

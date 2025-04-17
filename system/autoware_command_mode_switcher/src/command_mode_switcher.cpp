@@ -35,7 +35,8 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   {
     const auto command = std::make_shared<Command>(std::make_shared<ManualCommand>());
     manual_command_ = command;
-    if (this->declare_parameter<bool>("is_main_ecu", true)) {
+    bool is_main_ecu = declare_parameter<bool>("is_main_ecu", true);
+    if (is_main_ecu) {
       platform_commands_[command->plugin->mode_name()] = command;
       commands_.push_back(command);
     }
@@ -185,17 +186,14 @@ void CommandModeSwitcher::detect_override()
 void CommandModeSwitcher::update_status()
 {
   // NOTE: Update the source state first since the source group state depends on it.
-  const auto to_tri_state = [](bool state) {
-    return state ? TriState::Enabled : TriState::Disabled;
-  };
   for (const auto & command : commands_) {
     auto & status = command->status;
     auto & plugin = command->plugin;
     status.mrm = plugin->update_mrm_state();
     status.source_state =
       plugin->update_source_state(status.request_phase != GateType::NotSelected);
-    status.control_gate_state = to_tri_state(control_gate_interface_.is_selected(*plugin));
-    status.vehicle_gate_state = to_tri_state(vehicle_gate_interface_.is_selected(*plugin));
+    status.control_gate_state = control_gate_interface_.is_selected(*plugin);
+    status.vehicle_gate_state = vehicle_gate_interface_.is_selected(*plugin);
     status.mode_continuable = plugin->get_mode_continuable();
     status.mode_available = plugin->get_mode_available();
     status.transition_available = plugin->get_transition_available();

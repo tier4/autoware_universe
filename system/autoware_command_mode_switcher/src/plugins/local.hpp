@@ -15,7 +15,7 @@
 #ifndef PLUGINS__LOCAL_HPP_
 #define PLUGINS__LOCAL_HPP_
 
-#include "common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/common/command_plugin.hpp"
 
 #include <string>
 

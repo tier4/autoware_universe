@@ -15,7 +15,7 @@
 #ifndef COMMON__SELECTOR_INTERFACE_HPP_
 #define COMMON__SELECTOR_INTERFACE_HPP_
 
-#include "common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/common/command_plugin.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -36,7 +36,7 @@ class ControlGateInterface
 public:
   using Callback = std::function<void()>;
   ControlGateInterface(rclcpp::Node & node, Callback callback);
-  bool is_selected(const CommandPlugin & plugin) const;
+  TriState is_selected(const CommandPlugin & plugin) const;
   bool is_in_transition() const;
   bool request(const CommandPlugin & plugin, bool transition);
 
@@ -50,6 +50,7 @@ private:
   rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_source_status_;
 
   bool requesting_ = false;
+  std::string last_request_mode_;
   Callback notification_callback_;
   CommandSourceStatus status_;
 };
@@ -59,7 +60,7 @@ class VehicleGateInterface
 public:
   using Callback = std::function<void()>;
   VehicleGateInterface(rclcpp::Node & node, Callback callback);
-  bool is_selected(const CommandPlugin & plugin) const;
+  TriState is_selected(const CommandPlugin & plugin) const;
   bool is_autoware_control() const;
   bool request(const CommandPlugin & plugin);
 
@@ -73,6 +74,7 @@ private:
   rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
 
   bool requesting_ = false;
+  std::string last_request_mode_;
   Callback notification_callback_;
   ControlModeReport status_;
 };

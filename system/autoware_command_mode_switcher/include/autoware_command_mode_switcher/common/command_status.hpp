@@ -12,8 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__COMMAND_STATUS_HPP_
-#define COMMON__COMMAND_STATUS_HPP_
+#ifndef AUTOWARE_COMMAND_MODE_SWITCHER__COMMON__COMMAND_STATUS_HPP_
+#define AUTOWARE_COMMAND_MODE_SWITCHER__COMMON__COMMAND_STATUS_HPP_
 
 #include <autoware_command_mode_types/types/command_mode_status.hpp>
 
@@ -33,4 +33,4 @@ GateType update_current_phase(const CommandStatus & status);
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // COMMON__COMMAND_STATUS_HPP_
+#endif  // AUTOWARE_COMMAND_MODE_SWITCHER__COMMON__COMMAND_STATUS_HPP_

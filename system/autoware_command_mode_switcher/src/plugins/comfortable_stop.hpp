@@ -15,7 +15,7 @@
 #ifndef PLUGINS__COMFORTABLE_STOP_HPP_
 #define PLUGINS__COMFORTABLE_STOP_HPP_
 
-#include "common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/common/command_plugin.hpp"
 
 #include <nav_msgs/msg/odometry.hpp>
 #include <tier4_planning_msgs/msg/velocity_limit.hpp>
