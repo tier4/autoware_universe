@@ -12,8 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__COMMAND_PLUGIN_HPP_
-#define COMMON__COMMAND_PLUGIN_HPP_
+#ifndef AUTOWARE_COMMAND_MODE_SWITCHER__COMMON__COMMAND_PLUGIN_HPP_
+#define AUTOWARE_COMMAND_MODE_SWITCHER__COMMON__COMMAND_PLUGIN_HPP_
 
 #include "command_status.hpp"
 
@@ -71,4 +71,4 @@ public:
 };
 }  // namespace autoware::command_mode_switcher
 
-#endif  // COMMON__COMMAND_PLUGIN_HPP_
+#endif  // AUTOWARE_COMMAND_MODE_SWITCHER__COMMON__COMMAND_PLUGIN_HPP_
