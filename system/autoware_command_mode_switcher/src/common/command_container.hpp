@@ -15,8 +15,8 @@
 #ifndef COMMON__COMMAND_CONTAINER_HPP_
 #define COMMON__COMMAND_CONTAINER_HPP_
 
-#include "common/command_plugin.hpp"
-#include "common/command_status.hpp"
+#include "autoware_command_mode_switcher/common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/common/command_status.hpp"
 
 #include <memory>
 

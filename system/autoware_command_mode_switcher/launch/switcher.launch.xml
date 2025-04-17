@@ -1,6 +1,6 @@
 <launch>
   <arg name="config" default="$(find-pkg-share autoware_command_mode_switcher)/config/default.param.yaml"/>
-  <arg name="is_main_ecu" default="false"/>
+  <arg name="is_main_ecu" default="true"/>
   <let name="status_topic_name" value="/system/command_mode/status" if="$(var is_main_ecu)"/>
   <let name="status_topic_name" value="/sub/system/command_mode/status" unless="$(var is_main_ecu)"/>
 

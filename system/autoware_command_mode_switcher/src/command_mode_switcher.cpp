@@ -35,7 +35,8 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   {
     const auto command = std::make_shared<Command>(std::make_shared<ManualCommand>());
     manual_command_ = command;
-    if (this->declare_parameter<bool>("is_main_ecu", true)) {
+    bool is_main_ecu = declare_parameter<bool>("is_main_ecu", true);
+    if (is_main_ecu) {
       platform_commands_[command->plugin->mode_name()] = command;
       commands_.push_back(command);
     }
