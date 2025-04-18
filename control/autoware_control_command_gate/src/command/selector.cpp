@@ -24,11 +24,8 @@
 namespace autoware::control_command_gate
 {
 
-CommandSelector::CommandSelector(
-  const rclcpp::Logger & logger, SourceChangeCallback on_change_source)
-: logger_(logger)
+CommandSelector::CommandSelector(const rclcpp::Logger & logger) : logger_(logger)
 {
-  on_change_source_ = std::move(on_change_source);
 }
 
 void CommandSelector::add_source(std::unique_ptr<CommandSource> && source)
@@ -78,7 +75,6 @@ void CommandSelector::select_source(const std::string & name)
     }
   }
   current_source_ = name;
-  on_change_source_(name);
 }
 
 std::string CommandSelector::select(const std::string & name)

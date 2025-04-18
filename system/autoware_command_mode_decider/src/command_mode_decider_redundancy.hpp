@@ -12,28 +12,29 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef PLUGINS__LOCAL_HPP_
-#define PLUGINS__LOCAL_HPP_
+#ifndef COMMAND_MODE_DECIDER_REDUNDANCY_HPP_
+#define COMMAND_MODE_DECIDER_REDUNDANCY_HPP_
 
-#include "autoware_command_mode_switcher/common/command_plugin.hpp"
+#include "command_mode_decider_base.hpp"
 
 #include <string>
 
-namespace autoware::command_mode_switcher
+namespace autoware::command_mode_decider
 {
 
-class LocalSwitcher : public ControlCommandPlugin
+class CommandModeDeciderRedundancy : public CommandModeDeciderBase
 {
 public:
-  std::string mode_name() const override { return "local"; }
-  std::string source_name() const override { return "local"; }
-  bool autoware_control() const override { return true; }
-  void initialize() override;
+  explicit CommandModeDeciderRedundancy(const rclcpp::NodeOptions & options);
 
-  bool get_transition_available() override { return true; }
-  bool get_transition_completed() override { return true; }
+protected:
+  std::string decide_command_mode() override;
+
+private:
+  bool use_pull_over_;
+  bool use_comfortable_stop_;
 };
 
-}  // namespace autoware::command_mode_switcher
+}  // namespace autoware::command_mode_decider
 
-#endif  // PLUGINS__LOCAL_HPP_
+#endif  // COMMAND_MODE_DECIDER_REDUNDANCY_HPP_

@@ -15,7 +15,7 @@
 #ifndef PLUGINS__REMOTE_HPP_
 #define PLUGINS__REMOTE_HPP_
 
-#include "common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/common/command_plugin.hpp"
 
 #include <string>
 

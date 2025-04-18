@@ -47,6 +47,7 @@
 
   <!-- temporary: control_command_gate migration -->
   <arg name="use_control_command_gate" default="false"/>
+  <arg name="control_command_gate_param_path" if="$(var use_control_command_gate)"/>
   <let name="operation_mode_transition_manager_plugin" value="FlagNode" if="$(var use_control_command_gate)"/>
   <let name="operation_mode_transition_manager_plugin" value="OperationModeTransitionManager" unless="$(var use_control_command_gate)"/>
 
@@ -54,7 +55,9 @@
     <push-ros-namespace namespace="control"/>
 
     <group if="$(var use_control_command_gate)">
-      <include file="$(find-pkg-share autoware_control_command_gate)/launch/control_command_gate.launch.xml"/>
+      <include file="$(find-pkg-share autoware_control_command_gate)/launch/control_command_gate.launch.xml">
+        <arg name="config" value="$(var control_command_gate_param_path)"/>
+      </include>
     </group>
     <group if="$(var use_control_command_gate)">
       <include file="$(find-pkg-share autoware_stop_mode_operator)/launch/stop_mode_operator.launch.xml"/>

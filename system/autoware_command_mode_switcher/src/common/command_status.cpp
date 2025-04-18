@@ -12,7 +12,7 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "command_status.hpp"
+#include "autoware_command_mode_switcher/common/command_status.hpp"
 
 #include <tier4_system_msgs/msg/command_mode_status_item.hpp>
 
