@@ -51,24 +51,28 @@ void CombineCloudHandler::process_twist(
   msg.header = twist_msg->header;
   msg.twist = twist_msg->twist.twist;
 
-  // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
-  if (!twist_queue_.empty()) {
-    if (rclcpp::Time(twist_queue_.front().header.stamp) > rclcpp::Time(msg.header.stamp)) {
-      twist_queue_.clear();
+  {
+    std::lock_guard<std::mutex> twist_queue_lock(twist_queue_mutex_);
+
+    // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
+    if (!twist_queue_.empty()) {
+      if (rclcpp::Time(twist_queue_.front().header.stamp) > rclcpp::Time(msg.header.stamp)) {
+        twist_queue_.clear();
+      }
     }
-  }
 
-  // Twist data in the queue that is older than the current twist by 1 second will be cleared.
-  auto cutoff_time = rclcpp::Time(msg.header.stamp) - rclcpp::Duration::from_seconds(1.0);
+    // Twist data in the queue that is older than the current twist by 1 second will be cleared.
+    auto cutoff_time = rclcpp::Time(msg.header.stamp) - rclcpp::Duration::from_seconds(1.0);
 
-  while (!twist_queue_.empty()) {
-    if (rclcpp::Time(twist_queue_.front().header.stamp) > cutoff_time) {
-      break;
+    while (!twist_queue_.empty()) {
+      if (rclcpp::Time(twist_queue_.front().header.stamp) > cutoff_time) {
+        break;
+      }
+      twist_queue_.pop_front();
     }
-    twist_queue_.pop_front();
-  }
 
-  twist_queue_.push_back(msg);
+    twist_queue_.push_back(msg);
+  }
 }
 
 void CombineCloudHandler::process_odometry(
@@ -78,24 +82,28 @@ void CombineCloudHandler::process_odometry(
   msg.header = odometry_msg->header;
   msg.twist = odometry_msg->twist.twist;
 
-  // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
-  if (!twist_queue_.empty()) {
-    if (rclcpp::Time(twist_queue_.front().header.stamp) > rclcpp::Time(msg.header.stamp)) {
-      twist_queue_.clear();
+  {
+    std::lock_guard<std::mutex> twist_queue_lock(twist_queue_mutex_);
+
+    // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
+    if (!twist_queue_.empty()) {
+      if (rclcpp::Time(twist_queue_.front().header.stamp) > rclcpp::Time(msg.header.stamp)) {
+        twist_queue_.clear();
+      }
     }
-  }
 
-  // Twist data in the queue that is older than the current twist by 1 second will be cleared.
-  auto cutoff_time = rclcpp::Time(msg.header.stamp) - rclcpp::Duration::from_seconds(1.0);
+    // Twist data in the queue that is older than the current twist by 1 second will be cleared.
+    auto cutoff_time = rclcpp::Time(msg.header.stamp) - rclcpp::Duration::from_seconds(1.0);
 
-  while (!twist_queue_.empty()) {
-    if (rclcpp::Time(twist_queue_.front().header.stamp) > cutoff_time) {
-      break;
+    while (!twist_queue_.empty()) {
+      if (rclcpp::Time(twist_queue_.front().header.stamp) > cutoff_time) {
+        break;
+      }
+      twist_queue_.pop_front();
     }
-    twist_queue_.pop_front();
-  }
 
-  twist_queue_.push_back(msg);
+    twist_queue_.push_back(msg);
+  }
 }
 
 std::deque<geometry_msgs::msg::TwistStamped> CombineCloudHandler::get_twist_queue()
@@ -104,7 +112,7 @@ std::deque<geometry_msgs::msg::TwistStamped> CombineCloudHandler::get_twist_queu
 }
 
 void CombineCloudHandler::convert_to_xyzirc_cloud(
-  const sensor_msgs::msg::PointCloud2::SharedPtr & input_cloud,
+  const AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) & input_cloud,
   sensor_msgs::msg::PointCloud2::SharedPtr & xyzirc_cloud)
 {
   xyzirc_cloud->header = input_cloud->header;
@@ -185,7 +193,8 @@ void CombineCloudHandler::correct_pointcloud_motion(
 }
 
 ConcatenatedCloudResult CombineCloudHandler::combine_pointclouds(
-  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> & topic_to_cloud_map)
+  std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)> &
+    topic_to_cloud_map)
 {
   ConcatenatedCloudResult concatenate_cloud_result;
 
@@ -273,52 +282,56 @@ ConcatenatedCloudResult CombineCloudHandler::combine_pointclouds(
 Eigen::Matrix4f CombineCloudHandler::compute_transform_to_adjust_for_old_timestamp(
   const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp)
 {
-  // return identity if no twist is available
-  if (twist_queue_.empty()) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      node_.get_logger(), *node_.get_clock(), std::chrono::milliseconds(10000).count(),
-      "No twist is available. Please confirm twist topic and timestamp. Leaving point cloud "
-      "untransformed.");
-    return Eigen::Matrix4f::Identity();
-  }
-
-  auto old_twist_it = std::lower_bound(
-    std::begin(twist_queue_), std::end(twist_queue_), old_stamp,
-    [](const geometry_msgs::msg::TwistStamped & x, const rclcpp::Time & t) {
-      return rclcpp::Time(x.header.stamp) < t;
-    });
-  old_twist_it = old_twist_it == twist_queue_.end() ? (twist_queue_.end() - 1) : old_twist_it;
-
-  auto new_twist_it = std::lower_bound(
-    std::begin(twist_queue_), std::end(twist_queue_), new_stamp,
-    [](const geometry_msgs::msg::TwistStamped & x, const rclcpp::Time & t) {
-      return rclcpp::Time(x.header.stamp) < t;
-    });
-  new_twist_it = new_twist_it == twist_queue_.end() ? (twist_queue_.end() - 1) : new_twist_it;
-
-  auto prev_time = old_stamp;
   double x = 0.0;
   double y = 0.0;
   double yaw = 0.0;
-  for (auto twist_it = old_twist_it; twist_it != new_twist_it + 1; ++twist_it) {
-    const double dt =
-      (twist_it != new_twist_it)
-        ? (rclcpp::Time((*twist_it).header.stamp) - rclcpp::Time(prev_time)).seconds()
-        : (rclcpp::Time(new_stamp) - rclcpp::Time(prev_time)).seconds();
 
-    if (std::fabs(dt) > 0.1) {
+  {
+    std::lock_guard<std::mutex> twist_queue_lock(twist_queue_mutex_);
+    // return identity if no twist is available
+    if (twist_queue_.empty()) {
       RCLCPP_WARN_STREAM_THROTTLE(
         node_.get_logger(), *node_.get_clock(), std::chrono::milliseconds(10000).count(),
-        "Time difference is too large. Cloud not interpolate. Please confirm twist topic and "
-        "timestamp");
-      break;
+        "No twist is available. Please confirm twist topic and timestamp. Leaving point cloud "
+        "untransformed.");
+      return Eigen::Matrix4f::Identity();
     }
 
-    const double distance = (*twist_it).twist.linear.x * dt;
-    yaw += (*twist_it).twist.angular.z * dt;
-    x += distance * std::cos(yaw);
-    y += distance * std::sin(yaw);
-    prev_time = (*twist_it).header.stamp;
+    auto old_twist_it = std::lower_bound(
+      std::begin(twist_queue_), std::end(twist_queue_), old_stamp,
+      [](const geometry_msgs::msg::TwistStamped & x, const rclcpp::Time & t) {
+        return rclcpp::Time(x.header.stamp) < t;
+      });
+    old_twist_it = old_twist_it == twist_queue_.end() ? (twist_queue_.end() - 1) : old_twist_it;
+
+    auto new_twist_it = std::lower_bound(
+      std::begin(twist_queue_), std::end(twist_queue_), new_stamp,
+      [](const geometry_msgs::msg::TwistStamped & x, const rclcpp::Time & t) {
+        return rclcpp::Time(x.header.stamp) < t;
+      });
+    new_twist_it = new_twist_it == twist_queue_.end() ? (twist_queue_.end() - 1) : new_twist_it;
+
+    auto prev_time = old_stamp;
+    for (auto twist_it = old_twist_it; twist_it != new_twist_it + 1; ++twist_it) {
+      const double dt =
+        (twist_it != new_twist_it)
+          ? (rclcpp::Time((*twist_it).header.stamp) - rclcpp::Time(prev_time)).seconds()
+          : (rclcpp::Time(new_stamp) - rclcpp::Time(prev_time)).seconds();
+
+      if (std::fabs(dt) > 0.1) {
+        RCLCPP_WARN_STREAM_THROTTLE(
+          node_.get_logger(), *node_.get_clock(), std::chrono::milliseconds(10000).count(),
+          "Time difference is too large. Cloud not interpolate. Please confirm twist topic and "
+          "timestamp");
+        break;
+      }
+
+      const double distance = (*twist_it).twist.linear.x * dt;
+      yaw += (*twist_it).twist.angular.z * dt;
+      x += distance * std::cos(yaw);
+      y += distance * std::sin(yaw);
+      prev_time = (*twist_it).header.stamp;
+    }
   }
 
   Eigen::Matrix4f transformation_matrix = Eigen::Matrix4f::Identity();

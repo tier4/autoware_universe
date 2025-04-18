@@ -128,28 +128,27 @@ void VoxelBasedCompareMapFilterComponent::input_indices_callback(
   computePublish(cloud_tf, vindices);
 }
 
-bool VoxelBasedCompareMapFilterComponent::convert_output_costly(
-  std::unique_ptr<PointCloud2> & output)
+bool VoxelBasedCompareMapFilterComponent::convert_output_costly(PointCloud2 & output)
 {
-  if (!output || output->data.empty() || output->fields.empty()) {
+  if (output.data.empty() || output.fields.empty()) {
     RCLCPP_ERROR(this->get_logger(), "Invalid output point cloud!");
     return false;
   }
   if (
-    pcl::getFieldIndex(*output, "x") == -1 || pcl::getFieldIndex(*output, "y") == -1 ||
-    pcl::getFieldIndex(*output, "z") == -1) {
+    pcl::getFieldIndex(output, "x") == -1 || pcl::getFieldIndex(output, "y") == -1 ||
+    pcl::getFieldIndex(output, "z") == -1) {
     RCLCPP_ERROR(this->get_logger(), "Input pointcloud does not have xyz fields");
     return false;
   }
-  if (!tf_output_frame_.empty() && output->header.frame_id != tf_output_frame_) {
+  if (!tf_output_frame_.empty() && output.header.frame_id != tf_output_frame_) {
     auto cloud_transformed = std::make_unique<PointCloud2>();
     try {
       geometry_msgs::msg::TransformStamped transform_stamped = tf_buffer_.lookupTransform(
-        tf_output_frame_, output->header.frame_id, rclcpp::Time(output->header.stamp),
+        tf_output_frame_, output.header.frame_id, rclcpp::Time(output.header.stamp),
         rclcpp::Duration::from_seconds(0.0));
-      tf2::doTransform(*output, *cloud_transformed, transform_stamped);
+      tf2::doTransform(output, *cloud_transformed, transform_stamped);
       cloud_transformed->header.frame_id = tf_output_frame_;
-      output = std::move(cloud_transformed);
+      output = std::move(*cloud_transformed);
     } catch (tf2::TransformException & e) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000, "Could not transform pointcloud: %s",
@@ -158,15 +157,15 @@ bool VoxelBasedCompareMapFilterComponent::convert_output_costly(
     }
   }
 
-  if (tf_output_frame_.empty() && output->header.frame_id != tf_input_orig_frame_) {
+  if (tf_output_frame_.empty() && output.header.frame_id != tf_input_orig_frame_) {
     auto cloud_transformed = std::make_unique<PointCloud2>();
     try {
       geometry_msgs::msg::TransformStamped transform_stamped = tf_buffer_.lookupTransform(
-        tf_input_orig_frame_, output->header.frame_id, rclcpp::Time(output->header.stamp),
+        tf_input_orig_frame_, output.header.frame_id, rclcpp::Time(output.header.stamp),
         rclcpp::Duration::from_seconds(0.0));
-      tf2::doTransform(*output, *cloud_transformed, transform_stamped);
+      tf2::doTransform(output, *cloud_transformed, transform_stamped);
       cloud_transformed->header.frame_id = tf_input_orig_frame_;
-      output = std::move(cloud_transformed);
+      output = std::move(*cloud_transformed);
     } catch (tf2::TransformException & e) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000, "Could not transform pointcloud: %s",
