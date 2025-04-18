@@ -167,7 +167,7 @@ TrafficLightModule::TrafficLightModule(
   const rclcpp::Clock::SharedPtr clock,
   const std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> &
     get_rest_time_to_red_signal)
- : SceneModuleInterface(lane_id, logger, clock),
+: SceneModuleInterface(lane_id, logger, clock),
   lane_id_(lane_id),
   traffic_light_reg_elem_(traffic_light_reg_elem),
   lane_(lane),
