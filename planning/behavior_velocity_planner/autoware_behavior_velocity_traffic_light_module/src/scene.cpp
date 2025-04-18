@@ -164,13 +164,17 @@ bool calcStopPointAndInsertIndex(
 TrafficLightModule::TrafficLightModule(
   const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
   lanelet::ConstLanelet lane, const PlannerParam & planner_param, const rclcpp::Logger logger,
-  const rclcpp::Clock::SharedPtr clock)
+  const rclcpp::Clock::SharedPtr clock,
+  const std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> &
+    get_rest_time_to_red_signal)
 : SceneModuleInterface(lane_id, logger, clock),
   lane_id_(lane_id),
   traffic_light_reg_elem_(traffic_light_reg_elem),
   lane_(lane),
   state_(State::APPROACH),
-  is_prev_state_stop_(false)
+  debug_data_(),
+  is_prev_state_stop_(false),
+  get_rest_time_to_red_signal_(get_rest_time_to_red_signal)
 {
   velocity_factor_.init(PlanningBehavior::TRAFFIC_SIGNAL);
   planner_param_ = planner_param;
@@ -229,6 +233,16 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path, StopReason * 
 
     // Check if stop is coming.
     const bool is_stop_signal = isStopSignal();
+
+    // Use V2I if available
+    if (planner_param_.v2i_use_rest_time && !is_stop_signal) {
+      bool is_v2i_handled = handleV2I(signed_arc_length_to_stop_point, [&]() {
+        *path = insertStopPose(input_path, stop_line_point_idx, stop_line_point, stop_reason);
+      });
+      if (is_v2i_handled) {
+        return true;
+      }
+    }
 
     // Update stop signal received time
     if (is_stop_signal) {
@@ -306,6 +320,9 @@ void TrafficLightModule::updateTrafficSignal()
   TrafficSignalStamped signal;
   if (!findValidTrafficSignal(signal)) {
     // Don't stop if it never receives traffic light topic.
+    // Reset looking_tl_state
+    looking_tl_state_.elements.clear();
+    looking_tl_state_.traffic_light_group_id = 0;
     return;
   }
 
@@ -333,7 +350,7 @@ bool TrafficLightModule::isPassthrough(const double & signed_arc_length) const
     delay_response_time);
 
   const bool distance_stoppable = pass_judge_line_distance < signed_arc_length;
-  const bool slow_velocity = planner_data_->current_velocity->twist.linear.x < 2.0;
+  const bool slow_velocity = planner_data_->current_velocity->twist.linear.x < 1.0;
   const bool stoppable = distance_stoppable || slow_velocity;
   const bool reachable = signed_arc_length < reachable_distance;
 
@@ -432,4 +449,44 @@ tier4_planning_msgs::msg::PathWithLaneId TrafficLightModule::insertStopPose(
   return modified_path;
 }
 
+bool TrafficLightModule::handleV2I(
+  const double & signed_arc_length_to_stop_point, const std::function<void()> & insert_stop_pose)
+{
+  std::optional<TrafficSignalTimeToRedStamped> rest_time_to_red_signal =
+    get_rest_time_to_red_signal_();
+
+  if (!rest_time_to_red_signal) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 5000,
+      "Failed to get V2I rest time to red signal. traffic_light_lane_id: %ld", lane_id_);
+    return false;
+  }
+
+  auto time_diff = (clock_->now() - rest_time_to_red_signal->stamp).seconds();
+  if (time_diff > planner_param_.tl_state_timeout) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 5000, "V2I data is timeout. traffic_light_lane_id: %ld, time diff: %f",
+      lane_id_, time_diff);
+    return false;
+  }
+
+  const double rest_time_allowed_to_go_ahead =
+    rest_time_to_red_signal->time_to_red - planner_param_.v2i_last_time_allowed_to_pass;
+  const double ego_v = planner_data_->current_velocity->twist.linear.x;
+
+  const bool should_stop =
+    (ego_v >= planner_param_.v2i_velocity_threshold &&
+     ego_v * rest_time_allowed_to_go_ahead <= signed_arc_length_to_stop_point) ||
+    (ego_v < planner_param_.v2i_velocity_threshold &&
+     rest_time_allowed_to_go_ahead < planner_param_.v2i_required_time_to_departure);
+
+  setSafe(!should_stop);
+  if (isActivated()) {
+    is_prev_state_stop_ = false;
+    return true;
+  }
+  insert_stop_pose();
+  is_prev_state_stop_ = true;
+  return true;
+}
 }  // namespace autoware::behavior_velocity_planner

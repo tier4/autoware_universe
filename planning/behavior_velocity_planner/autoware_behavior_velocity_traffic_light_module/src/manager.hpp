@@ -20,11 +20,14 @@
 #include <autoware/behavior_velocity_planner_common/plugin_interface.hpp>
 #include <autoware/behavior_velocity_planner_common/plugin_wrapper.hpp>
 #include <autoware/behavior_velocity_planner_common/scene_module_interface.hpp>
+#include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <jpn_signal_v2i_msgs/msg/traffic_light_info.hpp>
 #include <tier4_planning_msgs/msg/path_with_lane_id.hpp>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 
@@ -54,6 +57,16 @@ private:
   bool hasSameTrafficLight(
     const lanelet::TrafficLightConstPtr element,
     const lanelet::TrafficLightConstPtr registered_element) const;
+
+  void updateV2IRestTimeInfo();
+
+  std::optional<TrafficSignalTimeToRedStamped> getV2IRestTimeToRedSignal(
+    const lanelet::Id & id) const;
+
+  // V2I
+  autoware::universe_utils::InterProcessPollingSubscriber<
+    jpn_signal_v2i_msgs::msg::TrafficLightInfo>::SharedPtr v2i_subscriber_;
+  std::map<lanelet::Id, TrafficSignalTimeToRedStamped> traffic_light_id_to_rest_time_map_;
 
   // Debug
   rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr pub_tl_state_;
