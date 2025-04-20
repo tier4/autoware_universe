@@ -348,7 +348,7 @@ void RearObstacleCheckerNode::fill_rss_distance(PointCloudObjects & objects) con
       0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
 
     object.rss_distance = stop_distance_object - stop_distance_ego;
-    object.safe = object.rss_distance < object.relative_distance;
+    object.safe = object.rss_distance < object.relative_distance_with_delay_compensation;
     object.ignore = object.velocity < p.common.filter.min_velocity;
   }
 }
@@ -747,6 +747,9 @@ void RearObstacleCheckerNode::fill_velocity(PointCloudObject & pointcloud_object
     if (dt < 1e-6) {
       pointcloud_object.velocity = previous_data.velocity;
       pointcloud_object.tracking_duration = previous_data.tracking_duration + dt;
+      pointcloud_object.relative_distance_with_delay_compensation =
+        pointcloud_object.relative_distance -
+        pointcloud_object.velocity * p.common.pointcloud.latency;
       return;
     }
 
@@ -766,6 +769,10 @@ void RearObstacleCheckerNode::fill_velocity(PointCloudObject & pointcloud_object
         autoware::signal_processing::lowpassFilter(raw_velocity, previous_data.velocity, 0.5);
       pointcloud_object.tracking_duration = previous_data.tracking_duration + dt;
     }
+
+    pointcloud_object.relative_distance_with_delay_compensation =
+      pointcloud_object.relative_distance -
+      pointcloud_object.velocity * p.common.pointcloud.latency;
   };
 
   if (history_.count(pointcloud_object.furthest_lane.id()) == 0) {
