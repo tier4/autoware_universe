@@ -1,6 +1,6 @@
 <launch>
   <!-- controller -->
-  <arg name="trajectory_follower_mode" default="trajectory_follower_node"/>
+  <arg name="trajectory_follower_mode" default="smart_mpc_trajectory_follower"/>
   <arg name="lateral_controller_mode"/>
   <arg name="longitudinal_controller_mode"/>
   <arg name="check_external_emergency_heartbeat"/>
