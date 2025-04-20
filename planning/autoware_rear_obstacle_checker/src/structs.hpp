@@ -90,6 +90,8 @@ struct PointCloudObject
 
   double relative_distance;
 
+  double relative_distance_with_delay_compensation;
+
   double rss_distance;
 
   double velocity;
