@@ -888,7 +888,8 @@ MarkerArray create_pointcloud_object_marker_array(
       std::ostringstream ss;
       ss << std::fixed << std::setprecision(2);
       ss << "TrackingDuration:" << object.tracking_duration
-         << "[s]\nRelativeDistance:" << object.relative_distance
+         << "[s]\nRelativeDistance(w/ DC):" << object.relative_distance
+         << "[m]\nRelativeDistance(w/o DC):" << object.relative_distance_with_delay_compensation
          << "[m]\nVelocity:" << object.velocity << "[m/s]\nRSSDistance" << object.rss_distance
          << "[m]\nFurthestLaneID:" << object.furthest_lane.id();
 

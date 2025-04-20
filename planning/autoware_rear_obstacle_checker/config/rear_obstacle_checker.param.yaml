@@ -27,6 +27,7 @@
           max_cluster_size: 10000
         velocity_estimation:
           observation_time: 0.3
+        latency: 0.3
 
       filter:
         min_velocity: 1.0

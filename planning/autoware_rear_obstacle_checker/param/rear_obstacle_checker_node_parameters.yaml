@@ -75,6 +75,10 @@ rear_obstacle_checker_node:
           type: double
           validation:
             gt_eq<>: [0.0]
+      latency:
+        type: double
+        validation:
+          gt_eq<>: [0.0]
 
     filter:
       min_velocity:
