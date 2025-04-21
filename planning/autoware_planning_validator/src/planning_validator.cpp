@@ -75,6 +75,7 @@ void PlanningValidator::setupParameters()
 
   params_.enable_soft_stop_on_prev_traj = declare_parameter<bool>("enable_soft_stop_on_prev_traj");
   params_.soft_stop_deceleration = declare_parameter<double>("soft_stop_deceleration");
+  params_.soft_stop_jerk_lim = declare_parameter<double>("soft_stop_jerk_lim");
 
   {
     auto set_validation_flags = [&](auto & param, const std::string & key) {
@@ -257,6 +258,9 @@ bool PlanningValidator::isDataReady()
   if (!current_kinematics_) {
     return waiting("current_kinematics_");
   }
+  if (!current_acceleration_) {
+    return waiting("current_acceleration_");
+  }
   if (!current_trajectory_) {
     return waiting("current_trajectory_");
   }
@@ -271,6 +275,7 @@ void PlanningValidator::onTrajectory(const Trajectory::ConstSharedPtr msg)
 
   // receive data
   current_kinematics_ = sub_kinematics_.take_data();
+  current_acceleration_ = sub_acceleration_.take_data();
 
   if (!isDataReady()) return;
 
@@ -333,7 +338,8 @@ void PlanningValidator::publishTrajectory()
         previous_published_trajectory_->points, current_kinematics_->pose.pose);
       soft_stop_trajectory_ = std::make_shared<Trajectory>(planning_validator::getStopTrajectory(
         *previous_published_trajectory_, nearest_idx, current_kinematics_->twist.twist.linear.x,
-        params_.soft_stop_deceleration));
+        current_acceleration_->accel.accel.linear.x, params_.soft_stop_deceleration,
+        params_.soft_stop_jerk_lim));
     }
     const auto & pub_trajectory = params_.enable_soft_stop_on_prev_traj
                                     ? *soft_stop_trajectory_
