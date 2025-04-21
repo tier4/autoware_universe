@@ -386,30 +386,30 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
     std::max(0.0, planner_data_->current_velocity->twist.linear.x);
   const double ego_acc = planner_data_->current_acceleration->accel.accel.linear.x;
 
+  // TODO(takagi) replace without_acc_pref_stop_opt with default_stop_pose, and
+  // replace existing default_stop_pose with static_stop_pose.
   const auto without_acc_pref_stop_opt = [&]() -> std::optional<StopCandidate> {
     // From here, first_path_point_on_crosswalk is used as x-origin
     const double current_step_pref_x_pos = [&]() {
-      const double x_pos_ped =
+      const double dynamic_stop_distance_from_crosswalk_front =
         dist_nearest_cp -
         calcSignedArcLength(ego_path.points, ego_pos, first_path_point_on_crosswalk) -
         base_link2front - planner_param_.stop_distance_from_object_preferred;
       if (!default_stop_pose_opt.has_value()) {
-        return x_pos_ped;
+        return dynamic_stop_distance_from_crosswalk_front;
       }
+      const double static_stop_distance_From_crosswalk_front = calcSignedArcLength(
+        ego_path.points, first_path_point_on_crosswalk, default_stop_pose_opt->position);
       return std::min(
-        x_pos_ped,
-        calcSignedArcLength(
-          ego_path.points, first_path_point_on_crosswalk, default_stop_pose_opt->position));
+        dynamic_stop_distance_from_crosswalk_front, static_stop_distance_from_crosswalk_front);
     }();
 
-    if (!pref_stop_x_position_.getValue().has_value()) {
+    if (
+      pref_stop_x_position_.getValue().has_value() &&
+      current_step_pref_x_pos < *pref_stop_x_position_.getValue()) {
       pref_stop_x_position_.reset(current_step_pref_x_pos);
-    } else if (ego_vel_non_negative > 1.0) {
-      if (current_step_pref_x_pos < pref_stop_x_position_.getValue().value()) {
-        pref_stop_x_position_.reset(current_step_pref_x_pos);
-      } else {
-        pref_stop_x_position_.filter(current_step_pref_x_pos);
-      }
+    } else if () {
+      pref_stop_x_position_.filter(current_step_pref_x_pos);
     }  // if the ego is not moving, pref_stop_x_position is not updated.
 
     // From here, ego_pos is used as x-origin
@@ -418,23 +418,32 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
       pref_stop_x_position_.getValue().value();
     const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist);
     if (!pose_opt.has_value()) {
+      // pose_optがtrajectoryのfrontより手前のときは、trajectoryのfrontをreturn
+      // pose_optがtrajectoryのbackより奥のときはnulloptを返す
       RCLCPP_INFO(logger_, "Failure to calculate pref_stop.");
       return std::nullopt;
     }
     return StopCandidate{pose_opt.value(), dist};
   }();
 
+  // nulloptのときは停止計画が不要とみなして早期リターン
+
   // From here, ego_pos is used as x-origin
   const auto weak_brk_stop = [&]() -> std::optional<StopCandidate> {
     const auto dist_opt = autoware::motion_utils::calcDecelDistWithJerkAndAccConstraints(
       ego_vel_non_negative, 0.0, ego_acc, p.min_acc_preferred, 10.0, p.min_jerk_preferred);
-    if (!dist_opt.has_value()) return std::nullopt;
-    const auto pose_opt = calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist_opt.value());
-    if (!pose_opt.has_value()) return std::nullopt;
+
+    // NOTE: dist_opt should have a value if the parameter of the module is correctly set.
+    const auto weak_stop_pose_opt =
+      calcLongitudinalOffsetPose(ego_path.points, ego_pos, dist_opt.value());
+    if (!pose_opt.has_value()) {
+      return std::nullopt;
+    }
     return StopCandidate{pose_opt.value(), dist_opt.value()};
   }();
   if (!weak_brk_stop.has_value()) {
-    RCLCPP_ERROR(logger_, "Failure to calculate braking distance. Stop will be canceled.");
+    RCLCPP_ERROR(
+      logger_, "The stop point is ahead of the trajectory's back. Stop will be canceled.");
     return std::nullopt;
   }
 
@@ -447,6 +456,8 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
     return StopCandidate{pose_opt.value(), dist};
   }();
   if (!limit_stop.has_value()) {
+    // distが正のときのみreturnしてよいが、負のときは停止する必要あり
+    // (weak_brk_stopと同じくtrajectoryのfrontを返す)
     RCLCPP_WARN(
       logger_,
       "Stop is canceled. "
@@ -459,11 +470,11 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
       without_acc_pref_stop_opt.has_value() &&
       weak_brk_stop->dist < without_acc_pref_stop_opt->dist) {
       return without_acc_pref_stop_opt.value();
-    } else if (weak_brk_stop->dist < limit_stop->dist) {
-      return weak_brk_stop.value();
-    } else {
-      return limit_stop.value();
     }
+    if (weak_brk_stop->dist < limit_stop->dist) {
+      return weak_brk_stop.value();
+    }
+    return limit_stop.value();
   }();
 
   const double strong_brk_dist = [&]() {
