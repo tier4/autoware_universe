@@ -3,11 +3,12 @@
   <arg name="input_topic" default="imu_raw"/>
   <arg name="output_topic" default="imu_data"/>
   <arg name="param_file" default="$(find-pkg-share imu_corrector)/config/imu_corrector.param.yaml"/>
+  <arg name="sensor_model" default="aip_x1"/>
 
   <node pkg="imu_corrector" exec="imu_corrector" name="imu_corrector" output="screen">
     <remap from="input" to="$(var input_topic)"/>
     <remap from="output" to="$(var output_topic)"/>
     <param from="$(var param_file)"/>
-    <param name="sensor_model" value="aip_x1_1"/>
+    <param name="sensor_model" value="$(var sensor_model)"/>
   </node>
 </launch>
