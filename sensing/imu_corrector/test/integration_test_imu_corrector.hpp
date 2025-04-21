@@ -12,35 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef INTEGRATION_TEST_GYRO_BIAS_ESTIMATOR_HPP_
-#define INTEGRATION_TEST_GYRO_BIAS_ESTIMATOR_HPP_
-
-#include "test_fixture_gyro_bias_estimation_module.hpp"
+#ifndef INTEGRATION_TEST_IMU_CORRECTOR_HPP_
+#define INTEGRATION_TEST_IMU_CORRECTOR_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <tier4_calibration_msgs/msg/bool_stamped.hpp>
 
 #include <gtest/gtest.h>
 
 #include <memory>
-#include <vector>
 
-class TestGyroBiasEstimator : public ::testing::Test
+class TestImuCorrector : public ::testing::Test
 {
 protected:
   void SetUp() override;
   void TearDown() override;
-
-  rclcpp::Node::SharedPtr test_node_;
-  std::shared_ptr<imu_corrector::GyroBiasEstimationModuleTestWrapper> node_;
+  rclcpp::Node::SharedPtr node_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_pub_;
-  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr bias_sub_;
-  std::vector<geometry_msgs::msg::Vector3Stamped> received_bias_msgs_;
-  std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
+  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr gyro_bias_pub_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  sensor_msgs::msg::Imu received_imu_;
 };
 
-#endif  // INTEGRATION_TEST_GYRO_BIAS_ESTIMATOR_HPP_
+#endif  // INTEGRATION_TEST_IMU_CORRECTOR_HPP_
