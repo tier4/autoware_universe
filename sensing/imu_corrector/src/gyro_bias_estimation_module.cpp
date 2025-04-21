@@ -95,13 +95,12 @@ std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
       "Current bias: [x: %f, y: %f, z: %f] rad/s\n"
       "Previous standard dev: [x: %f, y: %f, z: %f] rad/s\n"
       "Current standard dev: [x: %f, y: %f, z: %f] rad/s",
-      previous_median.x, previous_median.y, previous_median.z, current_median_.value().x, current_median_.value().y,
-      current_median_.value().z, buffer_stddev.x, buffer_stddev.y, buffer_stddev.z, current_stddev_.x,
-      current_stddev_.y, current_stddev_.z);
+      previous_median.x, previous_median.y, previous_median.z, current_median_.value().x,
+      current_median_.value().y, current_median_.value().z, buffer_stddev.x, buffer_stddev.y,
+      buffer_stddev.z, current_stddev_.x, current_stddev_.y, current_stddev_.z);
   }
 
-  RCLCPP_INFO_THROTTLE(
-    logger_, *clock_, 10000, "periodicaly");
+  RCLCPP_INFO_THROTTLE(logger_, *clock_, 10000, "periodicaly");
 
   return current_median_;
 }
