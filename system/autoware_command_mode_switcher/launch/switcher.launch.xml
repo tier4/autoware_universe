@@ -1,0 +1,20 @@
+<launch>
+  <arg name="config" default="$(find-pkg-share autoware_command_mode_switcher)/config/default.param.yaml"/>
+  <arg name="is_main_ecu" default="true"/>
+  <let name="status_topic_name" value="/system/command_mode/status" if="$(var is_main_ecu)"/>
+  <let name="status_topic_name" value="/sub/system/command_mode/status" unless="$(var is_main_ecu)"/>
+
+  <node pkg="autoware_command_mode_switcher" exec="command_mode_switcher_node">
+    <param from="$(var config)"/>
+    <param name="is_main_ecu" value="$(var is_main_ecu)"/>
+    <remap from="~/command_mode/availability" to="/system/command_mode/availability"/>
+    <remap from="~/command_mode/status" to="$(var status_topic_name)"/>
+    <remap from="~/command_mode/request" to="/system/command_mode/request"/>
+    <remap from="~/command_mode/transition/available" to="/system/command_mode/transition/available"/>
+    <remap from="~/command_mode/transition/completed" to="/system/command_mode/transition/completed"/>
+    <remap from="~/source/status" to="/control/control_command_gate/source/status"/>
+    <remap from="~/source/select" to="/control/control_command_gate/source/select"/>
+    <remap from="~/control_mode/report" to="/vehicle/status/control_mode"/>
+    <remap from="~/control_mode/request" to="/control/control_mode_request"/>
+  </node>
+</launch>

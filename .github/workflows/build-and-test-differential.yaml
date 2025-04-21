@@ -7,7 +7,7 @@ on:
         required: true
         type: string
       runner:
-        default: ubuntu-24.04
+        default: ubuntu-22.04-m
         required: false
         type: string
       rosdistro:
@@ -19,6 +19,10 @@ on:
         required: false
         type: boolean
       container-suffix:
+        required: false
+        default: ""
+        type: string
+      build-pre-command:
         required: false
         default: ""
         type: string
@@ -100,7 +104,7 @@ jobs:
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
           build-depends-repos: build_depends.repos
           cache-key-element: ${{ env.BUILD_TYPE_CUDA_STATE }}
-
+          build-pre-command: ${{ inputs.build-pre-command }}
       - name: Show ccache stats after build
         run: du -sh ${CCACHE_DIR} && ccache -s
         shell: bash

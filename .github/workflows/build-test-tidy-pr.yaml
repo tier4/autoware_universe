@@ -20,7 +20,7 @@ jobs:
 
   check-if-cuda-job-is-needed:
     needs: require-label
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04-m
     outputs:
       cuda_job_is_needed: ${{ steps.check.outputs.any_changed }}
     steps:
@@ -58,6 +58,8 @@ jobs:
       container: ghcr.io/autowarefoundation/autoware:universe-devel
       container-suffix: -cuda
       run-condition: ${{ needs.check-if-cuda-job-is-needed.outputs.cuda_job_is_needed == 'true' }}
+      runner: ubuntu-22.04-m
+      build-pre-command: taskset --cpu-list 0-6
     secrets:
       codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
