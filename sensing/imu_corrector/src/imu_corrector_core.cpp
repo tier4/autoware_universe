@@ -16,8 +16,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <string>
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals;  // NOLINT
 
 namespace imu_corrector
 {
@@ -77,10 +78,14 @@ void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_m
 void ImuCorrector::callbackGyroBias(
   const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr)
 {
-  if (
-    std::abs(rclcpp::Time(gyro_bias_msg_ptr->header.stamp).seconds() - this->now().seconds()) >
-    10.0) {
-    RCLCPP_ERROR(this->get_logger(), "Timestamp of gyro bias is too old");
+  const double elapsed_time =
+    std::abs(rclcpp::Time(gyro_bias_msg_ptr->header.stamp).seconds() - this->now().seconds());
+  if (elapsed_time > 10.0) {
+    RCLCPP_ERROR(
+      this->get_logger(),
+      "/sensing/imu/gyro_bias timeout detected . Last data received %f[s] ago. Threshold: "
+      "10.000[s].",
+      elapsed_time);
   }
   angular_velocity_offset_x_ = gyro_bias_msg_ptr->vector.x;
   angular_velocity_offset_y_ = gyro_bias_msg_ptr->vector.y;
