@@ -826,8 +826,7 @@ bool PlanningValidator::isAllValid(const PlanningValidatorStatus & s) const
          s.is_valid_longitudinal_max_acc && s.is_valid_longitudinal_min_acc &&
          s.is_valid_steering && s.is_valid_steering_rate && s.is_valid_velocity_deviation &&
          s.is_valid_distance_deviation && s.is_valid_longitudinal_distance_deviation &&
-         s.is_valid_forward_trajectory_length && s.is_valid_latency &&
-         s.is_valid_trajectory_shift;
+         s.is_valid_forward_trajectory_length && s.is_valid_latency && s.is_valid_trajectory_shift;
 }
 
 void PlanningValidator::displayStatus()
