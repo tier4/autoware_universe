@@ -12,27 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "check_graph.hpp"
-
-#include "config/loader.hpp"
-#include "logger/logger.hpp"
+#ifndef COMMON__LOGGER__LOGGER_HPP_
+#define COMMON__LOGGER__LOGGER_HPP_
 
 #include <string>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-void check_graph(const std::string & path)
+class Logger
 {
-  Logger logger;
-  load_file(path, logger);
-}
+public:
+  void info(const std::string & message);
+};
 
 }  // namespace autoware::diagnostic_graph_aggregator
 
-int main(int argc, char ** argv)
-{
-  (void)argc;
-  (void)argv;
-  autoware::diagnostic_graph_aggregator::check_graph("config/graph.yaml");
-}
+#endif  // COMMON__LOGGER__LOGGER_HPP_

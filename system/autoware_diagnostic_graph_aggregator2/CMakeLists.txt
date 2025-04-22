@@ -8,6 +8,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   "src/common/config/loader.cpp"
   "src/common/config/parser.cpp"
   "src/common/graph/graph.cpp"
+  "src/common/logger/logger.cpp"
 )
 target_include_directories(${PROJECT_NAME} PRIVATE src/common)
 

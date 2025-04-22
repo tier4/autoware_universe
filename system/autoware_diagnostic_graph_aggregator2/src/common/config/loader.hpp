@@ -15,12 +15,14 @@
 #ifndef COMMON__CONFIG__LOADER_HPP_
 #define COMMON__CONFIG__LOADER_HPP_
 
+#include "logger/logger.hpp"
+
 #include <string>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-void load_file(const std::string & path);
+void load_file(const std::string & path, Logger & logger);
 
 }  // namespace autoware::diagnostic_graph_aggregator
 

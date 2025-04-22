@@ -14,14 +14,27 @@
 
 #include "config/loader.hpp"
 
+#include "config/parser.hpp"
+
 #include <string>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-void load_file(const std::string & path)
+void load_file(FileConfig & config)
 {
-  (void)path;
+  config.required("files");
+}
+
+void load_file(const std::string & path, Logger & logger)
+{
+  logger.info("Loading file: " + path);
+
+  FileConfig config;
+  config.path = "./__input__";
+  config.yaml["files"][0]["path"] = path;
+
+  logger.info(YAML::Dump(config.yaml));
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

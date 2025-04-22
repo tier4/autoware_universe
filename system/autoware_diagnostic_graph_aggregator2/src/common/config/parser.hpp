@@ -15,8 +15,25 @@
 #ifndef COMMON__CONFIG__PARSER_HPP_
 #define COMMON__CONFIG__PARSER_HPP_
 
+#include <yaml-cpp/yaml.h>
+
+#include <string>
+
 namespace autoware::diagnostic_graph_aggregator
 {
+
+struct ConfigData
+{
+  std::string file_path;
+  std::string data_path;
+  YAML::Node yaml;
+};
+
+struct FileConfig
+{
+  std::string path;
+  YAML::Node yaml;
+};
 
 }  // namespace autoware::diagnostic_graph_aggregator
 
