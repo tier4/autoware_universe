@@ -20,7 +20,7 @@
 #include <autoware/motion_velocity_planner_common_universe/planner_data.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
-#include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 
 #include <autoware_perception_msgs/msg/detail/object_classification__struct.hpp>
 #include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
@@ -148,7 +148,7 @@ void calculate_predicted_path_footprints(
   } else if (predicted_object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
     for (const auto p : predicted_object.shape.footprint.points) {
       const auto zero_point = geometry_msgs::msg::Point().set__x(0.0).set__y(0.0);
-      width = std::max(width, autoware_utils_geometry::calc_distance2d(p, zero_point));
+      width = std::max(width, autoware_utils::calc_distance2d(p, zero_point));
     }
     half_length = width / 2.0;
   }
