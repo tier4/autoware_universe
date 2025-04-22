@@ -13,9 +13,13 @@
           dead_zone: 0.3
           forward: 0.0
           backward: 0.0
-        height_filter:
-          min_height: 0.0
-          max_height: 0.0
+        crop_box_filter:
+          x:
+            max: 10.0
+            min: -100.0
+          z:
+            max: 0.0
+            min: 0.3
         voxel_grid_filter:
           x: 0.1
           y: 0.1
