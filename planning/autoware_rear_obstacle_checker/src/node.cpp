@@ -235,15 +235,19 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
     return true;
   }
 
+  const auto ego_footprint =
+    vehicle_info_.createFootprint(p.common.ego.footprint_buffer, p.common.ego.footprint_buffer);
+
   {
     const auto transform = autoware_utils::pose2transform(predicted_stop_pose.value());
     debug.predicted_stop_pose_footprint = utils::to_basic_polygon3d(
-      autoware_utils::transform_vector(vehicle_info_.createFootprint(), transform),
+      autoware_utils::transform_vector(ego_footprint, transform),
       odometry_ptr_->pose.pose.position.z);
   }
 
   const auto current_lanes = utils::get_current_lanes(
-    predicted_stop_pose.value(), route_handler_, vehicle_info_, forward_range, backward_range);
+    predicted_stop_pose.value(), route_handler_, vehicle_info_, ego_footprint, forward_range,
+    backward_range);
   {
     debug.current_lanes = current_lanes;
   }
@@ -254,10 +258,11 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
 
   const auto turn_behavior = utils::check_turn_behavior(
     current_lanes, trajectory_ptr_->points, odometry_ptr_->pose.pose, route_handler_, vehicle_info_,
-    p.common.blind_spot.active_distance.start, p.common.blind_spot.active_distance.end);
+    ego_footprint, p.common.blind_spot.active_distance.start,
+    p.common.blind_spot.active_distance.end);
 
   const auto shift_behavior = utils::check_shift_behavior(
-    current_lanes, resampled_path.points, odometry_ptr_->pose.pose, vehicle_info_);
+    current_lanes, resampled_path.points, odometry_ptr_->pose.pose, ego_footprint);
 
   {
     debug.turn_behavior = turn_behavior;

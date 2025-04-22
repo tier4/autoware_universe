@@ -103,15 +103,14 @@ lanelet::ConstLanelets get_previous_lanes_recursively(
 
 bool is_within_lanes(
   const lanelet::ConstLanelets & lanelets, const geometry_msgs::msg::Pose & ego_pose,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
+  const autoware_utils::LinearRing2d & footprint)
 {
   const auto transform = autoware_utils::pose2transform(ego_pose);
-  const auto footprint =
-    autoware_utils::transform_vector(vehicle_info.createFootprint(), transform);
+  const auto transformed_footprint = autoware_utils::transform_vector(footprint, transform);
 
   const auto combine_lanelet = lanelet::utils::combineLaneletsShape(lanelets);
 
-  return boost::geometry::within(footprint, combine_lanelet.polygon2d().basicPolygon());
+  return boost::geometry::within(transformed_footprint, combine_lanelet.polygon2d().basicPolygon());
 }
 
 std::pair<lanelet::BasicPoint2d, double> get_smallest_enclosing_circle(
@@ -192,25 +191,24 @@ lanelet::BasicPolygon3d to_basic_polygon3d(
 
 auto check_shift_behavior(
   const lanelet::ConstLanelets & lanelets, const std::vector<PathPointWithLaneId> & points,
-  const geometry_msgs::msg::Pose & ego_pose,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info) -> Behavior
+  const geometry_msgs::msg::Pose & ego_pose, const autoware_utils::LinearRing2d & footprint)
+  -> Behavior
 {
   const auto combine_lanelet = lanelet::utils::combineLaneletsShape(lanelets);
   const auto nearest_idx =
     autoware::motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(points, ego_pose);
   {
     const auto transform = autoware_utils::pose2transform(ego_pose);
-    const auto footprint =
-      autoware_utils::transform_vector(vehicle_info.createFootprint(), transform);
+    const auto transformed_footprint = autoware_utils::transform_vector(footprint, transform);
 
     const auto is_left_shift = boost::geometry::intersects(
-      footprint, lanelet::utils::to2D(combine_lanelet.leftBound()).basicLineString());
+      transformed_footprint, lanelet::utils::to2D(combine_lanelet.leftBound()).basicLineString());
     if (is_left_shift) {
       return Behavior::NONE;
     }
 
     const auto is_right_shift = boost::geometry::intersects(
-      footprint, lanelet::utils::to2D(combine_lanelet.rightBound()).basicLineString());
+      transformed_footprint, lanelet::utils::to2D(combine_lanelet.rightBound()).basicLineString());
     if (is_right_shift) {
       return Behavior::NONE;
     }
@@ -218,17 +216,16 @@ auto check_shift_behavior(
 
   for (size_t i = 0; i < points.size(); i++) {
     const auto transform = autoware_utils::pose2transform(autoware_utils::get_pose(points.at(i)));
-    const auto footprint =
-      autoware_utils::transform_vector(vehicle_info.createFootprint(), transform);
+    const auto transformed_footprint = autoware_utils::transform_vector(footprint, transform);
 
     const auto is_left_shift = boost::geometry::intersects(
-      footprint, lanelet::utils::to2D(combine_lanelet.leftBound()).basicLineString());
+      transformed_footprint, lanelet::utils::to2D(combine_lanelet.leftBound()).basicLineString());
     if (is_left_shift) {
       return i < nearest_idx ? Behavior::NONE : Behavior::SHIFT_LEFT;
     }
 
     const auto is_right_shift = boost::geometry::intersects(
-      footprint, lanelet::utils::to2D(combine_lanelet.rightBound()).basicLineString());
+      transformed_footprint, lanelet::utils::to2D(combine_lanelet.rightBound()).basicLineString());
     if (is_right_shift) {
       return i < nearest_idx ? Behavior::NONE : Behavior::SHIFT_RIGHT;
     }
@@ -343,7 +340,8 @@ PointCloud::Ptr get_obstacle_points(
 lanelet::ConstLanelets get_current_lanes(
   const geometry_msgs::msg::Pose & ego_pose,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double forward_distance,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+  const autoware_utils::LinearRing2d & footprint, const double forward_distance,
   const double backward_distance)
 {
   lanelet::ConstLanelet closest_lanelet;
@@ -354,7 +352,7 @@ lanelet::ConstLanelets get_current_lanes(
   const auto current_lanes = route_handler->getLaneletSequence(
     closest_lanelet, ego_pose, backward_distance, forward_distance);
 
-  if (is_within_lanes(current_lanes, ego_pose, vehicle_info)) {
+  if (is_within_lanes(current_lanes, ego_pose, footprint)) {
     return current_lanes;
   }
 
@@ -367,7 +365,7 @@ lanelet::ConstLanelets get_current_lanes(
 
   const auto road_shoulder_lanes =
     route_handler->getShoulderLaneletSequence(pull_out_start_lane_opt.value(), start_pose);
-  if (is_within_lanes(road_shoulder_lanes, ego_pose, vehicle_info)) {
+  if (is_within_lanes(road_shoulder_lanes, ego_pose, footprint)) {
     return road_shoulder_lanes;
   }
 
@@ -379,7 +377,8 @@ auto check_turn_behavior(
   const geometry_msgs::msg::Pose & ego_pose,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const double active_distance_start, [[maybe_unused]] const double active_distance_end) -> Behavior
+  const autoware_utils::LinearRing2d & footprint, const double active_distance_start,
+  [[maybe_unused]] const double active_distance_end) -> Behavior
 {
   const auto ego_coordinate_on_arc = lanelet::utils::getArcCoordinates(current_lanes, ego_pose);
 
@@ -390,17 +389,17 @@ auto check_turn_behavior(
 
   const auto routing_graph_ptr = route_handler->getRoutingGraphPtr();
 
-  const auto conflict_point = [&points, &vehicle_info](
+  const auto conflict_point = [&points, &footprint](
                                 const auto & sibling_straight_lanelet,
                                 const auto is_right) -> std::optional<geometry_msgs::msg::Point> {
     const auto bound =
       is_right ? sibling_straight_lanelet.rightBound() : sibling_straight_lanelet.leftBound();
     for (const auto & p : points) {
       const auto transform = autoware_utils::pose2transform(autoware_utils::get_pose(p));
-      const auto footprint =
-        autoware_utils::transform_vector(vehicle_info.createFootprint(), transform);
+      const auto transformed_footprint = autoware_utils::transform_vector(footprint, transform);
 
-      if (boost::geometry::intersects(footprint, lanelet::utils::to2D(bound.basicLineString()))) {
+      if (boost::geometry::intersects(
+            transformed_footprint, lanelet::utils::to2D(bound.basicLineString()))) {
         return autoware_utils::get_point(p);
       }
     }
