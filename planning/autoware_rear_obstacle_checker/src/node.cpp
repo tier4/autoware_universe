@@ -355,6 +355,8 @@ void RearObstacleCheckerNode::fill_rss_distance(PointCloudObjects & objects) con
 
 bool RearObstacleCheckerNode::is_safe(const PointCloudObjects & objects, DebugData & debug) const
 {
+  autoware_utils::ScopedTimeTrack st("is_safe_pointcloud", *time_keeper_);
+
   const auto p = param_listener_->get_params();
 
   {
@@ -382,6 +384,8 @@ bool RearObstacleCheckerNode::is_safe(const PointCloudObjects & objects, DebugDa
 
 bool RearObstacleCheckerNode::is_safe(const PredictedObjects & objects, DebugData & debug) const
 {
+  autoware_utils::ScopedTimeTrack st("is_safe_objects", *time_keeper_);
+
   const auto p = param_listener_->get_params();
 
   const auto ego_predicted_path_params =
@@ -452,6 +456,34 @@ auto RearObstacleCheckerNode::filter_pointcloud([[maybe_unused]] DebugData & deb
   }
 
   {
+    pcl::fromROSMsg(*pointcloud_ptr_, *output);
+    debug.pointcloud_nums.push_back(output->size());
+  }
+
+  {
+    autoware_utils::ScopedTimeTrack st("crop_x", *time_keeper_);
+
+    pcl::PassThrough<pcl::PointXYZ> filter;
+    filter.setInputCloud(output);
+    filter.setFilterFieldName("x");
+    filter.setFilterLimits(p.crop_box_filter.x.min, p.crop_box_filter.x.max);
+    filter.filter(*output);
+    debug.pointcloud_nums.push_back(output->size());
+  }
+
+  {
+    autoware_utils::ScopedTimeTrack st("crop_z", *time_keeper_);
+
+    pcl::PassThrough<pcl::PointXYZ> filter;
+    filter.setInputCloud(output);
+    filter.setFilterFieldName("z");
+    filter.setFilterLimits(
+      p.crop_box_filter.z.min, vehicle_info_.vehicle_height_m + p.crop_box_filter.z.max);
+    filter.filter(*output);
+    debug.pointcloud_nums.push_back(output->size());
+  }
+
+  {
     autoware_utils::ScopedTimeTrack st("transform", *time_keeper_);
 
     geometry_msgs::msg::TransformStamped transform_stamped;
@@ -464,22 +496,8 @@ auto RearObstacleCheckerNode::filter_pointcloud([[maybe_unused]] DebugData & deb
     }
 
     Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.transform).cast<float>();
-    pcl::fromROSMsg(*pointcloud_ptr_, *output);
     autoware_utils::transform_pointcloud(*output, *output, isometry);
-  }
-
-  {
-    autoware_utils::ScopedTimeTrack st("height_filter", *time_keeper_);
-
-    const auto z_coordinate = odometry_ptr_->pose.pose.position.z;
-    // apply z-axis filter for removing False Positive points
-    pcl::PassThrough<pcl::PointXYZ> filter;
-    filter.setInputCloud(output);
-    filter.setFilterFieldName("z");
-    filter.setFilterLimits(
-      p.height_filter.min_height + z_coordinate,
-      vehicle_info_.vehicle_height_m + p.height_filter.max_height + z_coordinate);
-    filter.filter(*output);
+    debug.pointcloud_nums.push_back(output->size());
   }
 
   {
@@ -489,6 +507,7 @@ auto RearObstacleCheckerNode::filter_pointcloud([[maybe_unused]] DebugData & deb
     filter.setInputCloud(output);
     filter.setLeafSize(p.voxel_grid_filter.x, p.voxel_grid_filter.y, p.voxel_grid_filter.z);
     filter.filter(*output);
+    debug.pointcloud_nums.push_back(output->size());
   }
 
   return output;
@@ -875,7 +894,7 @@ auto RearObstacleCheckerNode::get_pointcloud_object(
 
     const auto path =
       route_handler_->getCenterLinePath(lanes, 0.0, std::numeric_limits<double>::max());
-    const auto resampled_path = behavior_path_planner::utils::resamplePathWithSpline(path, 1.0);
+    const auto resampled_path = behavior_path_planner::utils::resamplePathWithSpline(path, 2.0);
 
     for (const auto & point : pointcloud) {
       const auto p_geom = autoware_utils::create_point(point.x, point.y, point.z);
@@ -961,8 +980,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects(
     const auto max_deceleration_object = p.common.vehicle.max_deceleration;
 
     const auto stop_distance_object =
-      delay_object * p.common.vru.max_velocity +
-      0.5 * std::pow(p.common.vru.max_velocity, 2.0) / std::abs(max_deceleration_object);
+      delay_object * p.common.vehicle.max_velocity +
+      0.5 * std::pow(p.common.vehicle.max_velocity, 2.0) / std::abs(max_deceleration_object);
     const auto stop_distance_ego =
       0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
 
@@ -983,6 +1002,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects(
 
 void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
 {
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+
   MarkerArray msg;
 
   const auto add = [&msg](const MarkerArray & added) {
@@ -1041,6 +1062,11 @@ void RearObstacleCheckerNode::publish_marker(const DebugData & debug) const
     ss << "SHIFT:" << magic_enum::enum_name(debug.shift_behavior) << "\n";
     ss << "INFO:" << debug.text.c_str() << "\n";
     ss << "TRACKING OBJECTS:" << debug.pointcloud_objects.size() << "\n";
+    ss << "PC NUM:";
+    for (const auto num : debug.pointcloud_nums) {
+      ss << num << "->";
+    }
+    ss << "\n";
     ss << "PROCESSING TIME:" << debug.processing_time_detail_ms << "[ms]\n";
 
     StringStamped string_stamp;
