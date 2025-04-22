@@ -132,6 +132,8 @@ rear_obstacle_checker_node:
         type: double
 
     ego:
+      footprint_buffer:
+        type: double
       reaction_time:
         type: double
         validation:
