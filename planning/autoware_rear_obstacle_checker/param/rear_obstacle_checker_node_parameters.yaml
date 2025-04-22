@@ -31,15 +31,17 @@ rear_obstacle_checker_node:
           type: double
           validation:
             gt_eq<>: [0.0]
-      height_filter:
-        min_height:
-          type: double
-          validation:
-            gt_eq<>: [0.0]
-        max_height:
-          type: double
-          validation:
-            gt_eq<>: [0.0]
+      crop_box_filter:
+        x:
+          max:
+            type: double
+          min:
+            type: double
+        z:
+          max:
+            type: double
+          min:
+            type: double
       voxel_grid_filter:
         x:
           type: double

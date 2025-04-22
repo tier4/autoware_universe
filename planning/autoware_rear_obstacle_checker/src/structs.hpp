@@ -127,6 +127,8 @@ struct DebugData
 
   std::vector<autoware_utils::Polygon3d> hull_polygons;
 
+  std::vector<size_t> pointcloud_nums{};
+
   std::string text{"-"};
 
   double processing_time_detail_ms;
