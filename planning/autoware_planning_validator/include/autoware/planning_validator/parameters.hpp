@@ -37,7 +37,6 @@ struct ValidationParams
   ValidityCheck interval;
   ValidityCheck relative_angle;
   ValidityCheck curvature;
-  ValidityCheck latency;
 
   struct SteeringCheck : ValidityCheck
   {

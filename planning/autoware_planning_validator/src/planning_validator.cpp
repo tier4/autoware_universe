@@ -93,7 +93,6 @@ void PlanningValidator::setupParameters()
     set_validation_params(p.interval, t + "interval");
     set_validation_params(p.relative_angle, t + "relative_angle");
     set_validation_params(p.curvature, t + "curvature");
-    set_validation_params(p.latency, t + "latency");
     set_validation_params(p.steering, t + "steering");
     p.steering.rate_th = declare_parameter<double>(t + "steering.rate_th");
 
@@ -235,11 +234,6 @@ void PlanningValidator::setupDiag()
     setStatus(
       stat, validation_status_.is_valid_forward_trajectory_length, "trajectory length is too short",
       p.forward_trajectory_length.is_critical);
-  });
-  d->add(ns + "latency", [&](auto & stat) {
-    setStatus(
-      stat, validation_status_.is_valid_latency, "latency is larger than expected value.",
-      p.latency.is_critical);
   });
   d->add(ns + "trajectory_shift", [&](auto & stat) {
     setStatus(
@@ -412,7 +406,6 @@ void PlanningValidator::validate(
   s.is_valid_distance_deviation = checkValidDistanceDeviation(trajectory);
   s.is_valid_longitudinal_distance_deviation = checkValidLongitudinalDistanceDeviation(trajectory);
   s.is_valid_forward_trajectory_length = checkValidForwardTrajectoryLength(trajectory);
-  s.is_valid_latency = checkValidLatency(trajectory);
   s.is_valid_trajectory_shift =
     prev_trajectory
       ? checkTrajectoryShift(trajectory, *prev_trajectory, current_kinematics_->pose.pose)
@@ -723,21 +716,6 @@ bool PlanningValidator::checkValidForwardTrajectoryLength(const Trajectory & tra
   return true;
 }
 
-bool PlanningValidator::checkValidLatency(const Trajectory & trajectory)
-{
-  if (!params_.validation_params.latency.enable) {
-    return true;
-  }
-
-  validation_status_.latency = (this->now() - trajectory.header.stamp).seconds();
-
-  if (validation_status_.latency > params_.validation_params.latency.threshold) {
-    is_critical_error_ |= params_.validation_params.latency.is_critical;
-    return false;
-  }
-  return true;
-}
-
 bool PlanningValidator::checkTrajectoryShift(
   const Trajectory & trajectory, const Trajectory & prev_trajectory,
   const geometry_msgs::msg::Pose & ego_pose)
@@ -826,7 +804,7 @@ bool PlanningValidator::isAllValid(const PlanningValidatorStatus & s) const
          s.is_valid_longitudinal_max_acc && s.is_valid_longitudinal_min_acc &&
          s.is_valid_steering && s.is_valid_steering_rate && s.is_valid_velocity_deviation &&
          s.is_valid_distance_deviation && s.is_valid_longitudinal_distance_deviation &&
-         s.is_valid_forward_trajectory_length && s.is_valid_latency && s.is_valid_trajectory_shift;
+         s.is_valid_forward_trajectory_length && s.is_valid_trajectory_shift;
 }
 
 void PlanningValidator::displayStatus()
@@ -856,7 +834,6 @@ void PlanningValidator::displayStatus()
     s.is_valid_longitudinal_distance_deviation,
     "planning trajectory is too far from ego in longitudinal direction!!");
   warn(s.is_valid_forward_trajectory_length, "planning trajectory forward length is not enough!!");
-  warn(s.is_valid_latency, "planning component latency is larger than threshold!!");
   warn(s.is_valid_trajectory_shift, "planning trajectory had sudden shift!!");
 }
 
