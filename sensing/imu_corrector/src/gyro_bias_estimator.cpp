@@ -19,7 +19,7 @@
 #include <chrono>
 #include <functional>
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals;  // NOLINT
 
 namespace imu_corrector
 {
@@ -56,6 +56,8 @@ GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & node_options)
 void GyroBiasEstimator::callback_imu(const Imu::ConstSharedPtr imu_msg_ptr)
 {
   // Update gyro data
+  RCLCPP_INFO(
+    this->get_logger(), "imu_msg_ptr->angular_velocity.x: %f", imu_msg_ptr->angular_velocity.x);
   gyro_bias_estimation_module_->update_gyro(
     rclcpp::Time(imu_msg_ptr->header.stamp).seconds(), imu_msg_ptr->angular_velocity);
 }
@@ -63,6 +65,9 @@ void GyroBiasEstimator::callback_imu(const Imu::ConstSharedPtr imu_msg_ptr)
 void GyroBiasEstimator::callback_twist(
   const TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr)
 {
+  RCLCPP_INFO(
+    this->get_logger(), "twist_msg_ptr->twist.twist.linear.x: %f",
+    twist_msg_ptr->twist.twist.linear.x);
   gyro_bias_estimation_module_->update_velocity(
     rclcpp::Time(twist_msg_ptr->header.stamp).seconds(), twist_msg_ptr->twist.twist.linear.x);
 }

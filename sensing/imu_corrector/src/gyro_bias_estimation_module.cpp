@@ -14,6 +14,9 @@
 
 #include "gyro_bias_estimation_module.hpp"
 
+#include <algorithm>
+#include <vector>
+
 namespace imu_corrector
 {
 GyroBiasEstimationModule::GyroBiasEstimationModule(
@@ -34,8 +37,6 @@ GyroBiasEstimationModule::GyroBiasEstimationModule(
   is_gyro_buffer_full_(false),
   is_calibration_possible_(false)
 {
-  RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
-  RCLCPP_INFO(logger_, "is_gyro_buffer_full_: %d", is_gyro_buffer_full_);
 }
 
 void GyroBiasEstimationModule::update_gyro(
@@ -58,13 +59,17 @@ void GyroBiasEstimationModule::update_gyro(
 
 void GyroBiasEstimationModule::update_velocity(const double time, const double velocity)
 {
+  RCLCPP_INFO(logger_, "update_velocity");
+  RCLCPP_INFO(logger_, "velocity: %f", velocity);
   is_stopped_ = velocity <= velocity_threshold_;
   last_velocity_time_ = time;
 }
 
 std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
 {
-  is_gyro_buffer_full_ = gyro_buffer_.full();
+  update_gyro_buffer_full_flag(gyro_buffer_);
+  RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
+  RCLCPP_INFO(logger_, "is_gyro_buffer_full_: %d", is_gyro_buffer_full_);
   // RCLCPP_INFO(logger_, "gyro_buffer_.size(): %ld", gyro_buffer_.size());
   // RCLCPP_INFO(logger_, "is_gyro_buffer_full_: %d", is_gyro_buffer_full_);
   if (!is_gyro_buffer_full_) {
@@ -103,6 +108,12 @@ std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
   RCLCPP_INFO_THROTTLE(logger_, *clock_, 10000, "periodicaly");
 
   return current_median_;
+}
+
+void GyroBiasEstimationModule::update_gyro_buffer_full_flag(
+  boost::circular_buffer<geometry_msgs::msg::Vector3> & buffer)
+{
+  is_gyro_buffer_full_ = buffer.full();
 }
 
 geometry_msgs::msg::Vector3 GyroBiasEstimationModule::calculate_stddev(

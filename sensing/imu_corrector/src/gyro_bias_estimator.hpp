@@ -39,6 +39,7 @@ private:
 
 public:
   explicit GyroBiasEstimator(const rclcpp::NodeOptions & node_options);
+  std::unique_ptr<GyroBiasEstimationModule> gyro_bias_estimation_module_;
 
 private:
   void callback_imu(const Imu::ConstSharedPtr imu_msg_ptr);
@@ -50,8 +51,6 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 
   rclcpp::Publisher<Vector3Stamped>::SharedPtr gyro_bias_pub_;
-
-  std::unique_ptr<GyroBiasEstimationModule> gyro_bias_estimation_module_;
 
   const double gyro_bias_threshold_;
   const double angular_velocity_offset_x_;
