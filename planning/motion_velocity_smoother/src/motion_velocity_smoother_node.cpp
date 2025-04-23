@@ -703,8 +703,7 @@ MotionVelocitySmootherNode::calcInitialMotion(
   if (vehicle_speed < engage_vel_thr) {
     if (target_vel >= node_param_.engage_velocity) {
       const auto idx = tier4_autoware_utils::searchZeroVelocityIndex(input_traj);
-      const double stop_dist = idx ? tier4_autoware_utils::calcDistance2d(
-                                       input_traj.at(*idx), input_traj.at(input_closest))
+      const double stop_dist = idx ? trajectory_utils::calcArcLength(input_traj, input_closest, *idx)
                                    : 0.0;
       if (!idx || stop_dist > node_param_.stop_dist_to_prohibit_engage) {
         type = InitializeType::ENGAGING;
