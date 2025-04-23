@@ -10,7 +10,7 @@ class GyroBiasPublisher(Node):
     def __init__(self):
         super().__init__("gyro_bias_publisher")
         self.publisher = self.create_publisher(Vector3Stamped, "/gyro_bias", 10)
-        self.timer = self.create_timer(1.0, self.timer_callback)  # 20秒間隔
+        self.timer = self.create_timer(1.0, self.timer_callback)
 
     def timer_callback(self):
         msg = Vector3Stamped()
