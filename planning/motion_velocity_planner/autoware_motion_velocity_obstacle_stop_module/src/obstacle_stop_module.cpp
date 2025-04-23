@@ -256,7 +256,7 @@ std::vector<geometry_msgs::msg::Point> ObstacleStopModule::convert_point_cloud_t
   const PlannerData::Pointcloud & pointcloud, const std::vector<TrajectoryPoint> & traj_points,
   const VehicleInfo & vehicle_info, size_t ego_idx)
 {
-  autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   if (pointcloud.pointcloud.empty()) {
     return {};
@@ -338,7 +338,7 @@ StopObstacle ObstacleStopModule::create_stop_obstacle_for_point_cloud(
     autoware::motion_utils::calcSignedArcLength(traj_points, 0, stop_point) - dist_to_bumper;
 
   const unique_identifier_msgs::msg::UUID obj_uuid;
-  const auto & obj_uuid_str = autoware::universe_utils::toHexString(obj_uuid);
+  const auto & obj_uuid_str = autoware_utils::to_hex_string(obj_uuid);
 
   autoware_perception_msgs::msg::Shape bounding_box_shape;
   bounding_box_shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
@@ -441,7 +441,7 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
   const double dist_to_bumper,
   const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check, size_t ego_idx)
 {
-  autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   if (!obstacle_filtering_param_.use_pointcloud) {
     return std::vector<StopObstacle>{};
