@@ -318,7 +318,8 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     // 1. At the last loop, mpc should be solved because command should be optimized output.
     // 2. The mpc should be converged.
     // 3. The steer angle should be converged.
-    output.sync_data.is_steer_converged = isMpcConverged() && isSteerConverged(cmd);
+    output.sync_data.is_steer_converged =
+      is_mpc_solved && isMpcConverged() && isSteerConverged(cmd);
 
     return output;
   };
