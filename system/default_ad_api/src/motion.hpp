@@ -51,6 +51,7 @@ private:
   double stop_check_duration_;
   bool require_accept_start_;
   bool is_calling_set_pause_;
+  rclcpp::Time last_call_time_;
 
   void update_state();
   void change_state(const State state);
