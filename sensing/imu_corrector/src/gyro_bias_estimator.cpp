@@ -57,8 +57,6 @@ GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & node_options)
 void GyroBiasEstimator::callback_imu(const Imu::ConstSharedPtr imu_msg_ptr)
 {
   // Update gyro data
-  RCLCPP_INFO(
-    this->get_logger(), "imu_msg_ptr->angular_velocity.x: %f", imu_msg_ptr->angular_velocity.x);
   gyro_bias_estimation_module_->update_gyro(
     rclcpp::Time(imu_msg_ptr->header.stamp).seconds(), imu_msg_ptr->angular_velocity);
 }
@@ -66,9 +64,6 @@ void GyroBiasEstimator::callback_imu(const Imu::ConstSharedPtr imu_msg_ptr)
 void GyroBiasEstimator::callback_twist(
   const TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr)
 {
-  RCLCPP_INFO(
-    this->get_logger(), "twist_msg_ptr->twist.twist.linear.x: %f",
-    twist_msg_ptr->twist.twist.linear.x);
   gyro_bias_estimation_module_->update_velocity(
     rclcpp::Time(twist_msg_ptr->header.stamp).seconds(), twist_msg_ptr->twist.twist.linear.x);
 }
@@ -86,9 +81,6 @@ void GyroBiasEstimator::on_timer()
     Vector3Stamped gyro_bias_msg;
     gyro_bias_msg.header.stamp = this->now();
     gyro_bias_msg.vector = gyro_bias_.value();
-    RCLCPP_INFO(this->get_logger(), "gyro_bias_msg.vector.x: %f", gyro_bias_msg.vector.x);
-    RCLCPP_INFO(this->get_logger(), "gyro_bias_msg.vector.y: %f", gyro_bias_msg.vector.y);
-    RCLCPP_INFO(this->get_logger(), "gyro_bias_msg.vector.z: %f", gyro_bias_msg.vector.z);
     gyro_bias_pub_->publish(gyro_bias_msg);
   }
 }
