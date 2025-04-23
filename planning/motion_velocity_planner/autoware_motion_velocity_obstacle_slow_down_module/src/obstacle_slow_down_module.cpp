@@ -240,7 +240,7 @@ ObstacleSlowDownModule::convert_point_cloud_to_slow_down_points(
     return {};
   }
 
-  autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   const auto & p = obstacle_filtering_param_;
 
@@ -452,7 +452,7 @@ std::vector<SlowDownObstacle> ObstacleSlowDownModule::filter_slow_down_obstacle_
   const PlannerData::Pointcloud & point_cloud, const VehicleInfo & vehicle_info,
   const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check, size_t ego_idx)
 {
-  autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   if (!obstacle_filtering_param_.use_pointcloud) {
     return std::vector<SlowDownObstacle>{};
@@ -636,7 +636,7 @@ SlowDownObstacle ObstacleSlowDownModule::create_slow_down_obstacle_for_point_clo
   const geometry_msgs::msg::Point & back_collision_point, const double lat_dist_to_traj)
 {
   const unique_identifier_msgs::msg::UUID obj_uuid;
-  const auto & obj_uuid_str = autoware::universe_utils::toHexString(obj_uuid);
+  const auto & obj_uuid_str = autoware_utils::to_hex_string(obj_uuid);
 
   ObjectClassification unknown_object_classification;
   unknown_object_classification.label = ObjectClassification::UNKNOWN;
