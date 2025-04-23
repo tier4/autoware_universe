@@ -21,12 +21,13 @@ namespace imu_corrector
 {
 GyroBiasEstimationModule::GyroBiasEstimationModule(
   const double velocity_threshold, const double timestamp_threshold,
-  const size_t data_num_threshold, const double bias_change_threshold, rclcpp::Logger logger,
-  rclcpp::Clock::SharedPtr clock)
+  const size_t data_num_threshold, const double bias_change_threshold,
+  const double stddev_threshold, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
 : velocity_threshold_(velocity_threshold),
   timestamp_threshold_(timestamp_threshold),
   data_num_threshold_(data_num_threshold),
   bias_change_threshold_(bias_change_threshold),
+  stddev_threshold_(stddev_threshold),
   current_median_(std::nullopt),
   current_stddev_(),
   is_stopped_(false),
@@ -78,17 +79,23 @@ std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
   }
 
   geometry_msgs::msg::Vector3 buffer_stddev = calculate_stddev(gyro_buffer_);
-  // RCLCPP_INFO(logger_, "buffer_stddev.x: %f", buffer_stddev.x);
-  // RCLCPP_INFO(logger_, "buffer_stddev.y: %f", buffer_stddev.y);
-  // RCLCPP_INFO(logger_, "buffer_stddev.z: %f", buffer_stddev.z);
-  is_calibration_possible_ =
-    buffer_stddev.x < 0.00175 && buffer_stddev.y < 0.00175 && buffer_stddev.z < 0.00175;
+  RCLCPP_INFO(logger_, "buffer_stddev.x: %.10f (raw: %e)", buffer_stddev.x, buffer_stddev.x);
+  RCLCPP_INFO(logger_, "buffer_stddev.y: %.10f (raw: %e)", buffer_stddev.y, buffer_stddev.y);
+  RCLCPP_INFO(logger_, "buffer_stddev.z: %.10f (raw: %e)", buffer_stddev.z, buffer_stddev.z);
+  RCLCPP_INFO(logger_, "stddev_threshold_: %.10f (raw: %e)", stddev_threshold_, stddev_threshold_);
+  is_calibration_possible_ = buffer_stddev.x <= stddev_threshold_ &&
+                             buffer_stddev.y <= stddev_threshold_ &&
+                             buffer_stddev.z <= stddev_threshold_;
+  RCLCPP_INFO(logger_, "is_calibration_possible_: %d", is_calibration_possible_);
   if (!is_calibration_possible_) {
     return current_median_;
   }
   current_stddev_ = buffer_stddev;
   current_median_ = calculate_median(gyro_buffer_);
   geometry_msgs::msg::Vector3 previous_median = current_median_.value();
+  RCLCPP_INFO(logger_, "previous_median.x: %.10f (raw: %e)", previous_median.x, previous_median.x);
+  RCLCPP_INFO(logger_, "previous_median.y: %.10f (raw: %e)", previous_median.y, previous_median.y);
+  RCLCPP_INFO(logger_, "previous_median.z: %.10f (raw: %e)", previous_median.z, previous_median.z);
   if (
     abs(current_median_.value().x - previous_median.x) > bias_change_threshold_ ||
     abs(current_median_.value().y - previous_median.y) > bias_change_threshold_ ||

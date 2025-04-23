@@ -36,9 +36,10 @@ GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & node_options)
   const size_t data_num_threshold =
     static_cast<size_t>(declare_parameter<int>("data_num_threshold"));
   const double bias_change_threshold = declare_parameter<double>("bias_change_threshold");
+  const double stddev_threshold = declare_parameter<double>("stddev_threshold");
   gyro_bias_estimation_module_ = std::make_unique<GyroBiasEstimationModule>(
     velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold,
-    get_logger(), get_clock());
+    stddev_threshold, get_logger(), get_clock());
 
   imu_sub_ = create_subscription<Imu>(
     "~/input/imu_raw", rclcpp::SensorDataQoS(),
@@ -85,6 +86,9 @@ void GyroBiasEstimator::on_timer()
     Vector3Stamped gyro_bias_msg;
     gyro_bias_msg.header.stamp = this->now();
     gyro_bias_msg.vector = gyro_bias_.value();
+    RCLCPP_INFO(this->get_logger(), "gyro_bias_msg.vector.x: %f", gyro_bias_msg.vector.x);
+    RCLCPP_INFO(this->get_logger(), "gyro_bias_msg.vector.y: %f", gyro_bias_msg.vector.y);
+    RCLCPP_INFO(this->get_logger(), "gyro_bias_msg.vector.z: %f", gyro_bias_msg.vector.z);
     gyro_bias_pub_->publish(gyro_bias_msg);
   }
 }

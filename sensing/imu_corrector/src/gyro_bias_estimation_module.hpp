@@ -28,8 +28,8 @@ class GyroBiasEstimationModule
 public:
   GyroBiasEstimationModule(
     const double velocity_threshold, const double timestamp_threshold,
-    const size_t data_num_threshold, const double bias_change_threshold, rclcpp::Logger logger,
-    rclcpp::Clock::SharedPtr clock);
+    const size_t data_num_threshold, const double bias_change_threshold,
+    const double stddev_threshold, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock);
   std::optional<geometry_msgs::msg::Vector3> get_bias();
   void update_gyro(const double time, const geometry_msgs::msg::Vector3 & gyro);
   void update_velocity(const double time, const double velocity);
@@ -39,6 +39,7 @@ private:
   const double timestamp_threshold_;
   const size_t data_num_threshold_;
   const double bias_change_threshold_;
+  const double stddev_threshold_;
   std::optional<geometry_msgs::msg::Vector3> current_median_;
   geometry_msgs::msg::Vector3 current_stddev_;
   bool is_stopped_;
