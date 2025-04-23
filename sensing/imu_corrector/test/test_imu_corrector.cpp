@@ -160,3 +160,95 @@ TEST(ImuCorrectorTest, DT_1_7_3)
 
   rclcpp::shutdown();
 }
+
+TEST(ImuCorrectorTest, DT_2_1_1)
+{
+  rclcpp::init(0, nullptr);
+  bool is_calibrated;
+  auto node = std::make_shared<ImuCorrectorTest>("aip_x1_1");
+  auto test_node = rclcpp::Node::make_shared("test_node");
+  auto is_calibrated_sub = test_node->create_subscription<tier4_calibration_msgs::msg::BoolStamped>(
+    "/is_calibrated", rclcpp::QoS{10},
+    [&is_calibrated](const tier4_calibration_msgs::msg::BoolStamped::ConstSharedPtr msg) {
+      is_calibrated = msg->data;
+    });
+  auto gyro_bias_pub =
+    test_node->create_publisher<geometry_msgs::msg::Vector3Stamped>("/gyro_bias", rclcpp::QoS{1});
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(node);
+  executor.add_node(test_node);
+
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  EXPECT_EQ(is_calibrated, false);
+  rclcpp::shutdown();
+}
+
+TEST(ImuCorrectorTest, DT_2_1_2)
+{
+  rclcpp::init(0, nullptr);
+  geometry_msgs::msg::Vector3Stamped gyro_bias;
+  bool is_calibrated;
+  auto node = std::make_shared<ImuCorrectorTest>("aip_x1_1");
+  auto test_node = rclcpp::Node::make_shared("test_node");
+  auto is_calibrated_sub = test_node->create_subscription<tier4_calibration_msgs::msg::BoolStamped>(
+    "/is_calibrated", rclcpp::QoS{10},
+    [&is_calibrated](const tier4_calibration_msgs::msg::BoolStamped::ConstSharedPtr msg) {
+      is_calibrated = msg->data;
+    });
+  auto gyro_bias_pub =
+    test_node->create_publisher<geometry_msgs::msg::Vector3Stamped>("/gyro_bias", rclcpp::QoS{1});
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(node);
+  executor.add_node(test_node);
+
+  gyro_bias.header.stamp = rclcpp::Clock().now();
+  gyro_bias.header.frame_id = "imu_link";
+  gyro_bias.vector.x = 0.1;
+  gyro_bias.vector.y = 0.2;
+  gyro_bias.vector.z = 0.3;
+
+  gyro_bias_pub->publish(gyro_bias);
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  EXPECT_EQ(is_calibrated, true);
+  rclcpp::shutdown();
+}
+
+TEST(ImuCorrectorTest, DT_2_1_3)
+{
+  rclcpp::init(0, nullptr);
+  bool is_calibrated;
+  auto node = std::make_shared<ImuCorrectorTest>("aip_x1");
+  auto test_node = rclcpp::Node::make_shared("test_node");
+  auto is_calibrated_sub = test_node->create_subscription<tier4_calibration_msgs::msg::BoolStamped>(
+    "/is_calibrated", rclcpp::QoS{10},
+    [&is_calibrated](const tier4_calibration_msgs::msg::BoolStamped::ConstSharedPtr msg) {
+      is_calibrated = msg->data;
+    });
+  auto gyro_bias_pub =
+    test_node->create_publisher<geometry_msgs::msg::Vector3Stamped>("/gyro_bias", rclcpp::QoS{1});
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(node);
+  executor.add_node(test_node);
+
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  EXPECT_EQ(is_calibrated, true);
+  rclcpp::shutdown();
+}
