@@ -26,8 +26,10 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
 : Node("imu_corrector", node_options)
 {
   sensor_model_ = declare_parameter<std::string>("sensor_model", "aip_x1");
+  RCLCPP_INFO(this->get_logger(), "sensor_model: %s", sensor_model_.c_str());
 
   if (sensor_model_ == "aip_x1") {
+    is_calibrated_ = true;
     angular_velocity_offset_x_ = declare_parameter<double>("angular_velocity_offset_x", 0.0);
     angular_velocity_offset_y_ = declare_parameter<double>("angular_velocity_offset_y", 0.0);
     angular_velocity_offset_z_ = declare_parameter<double>("angular_velocity_offset_z", 0.0);
@@ -39,6 +41,9 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
 
   imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
     "input", rclcpp::QoS{1}, std::bind(&ImuCorrector::callbackImu, this, std::placeholders::_1));
+  gyro_bias_sub_ = create_subscription<geometry_msgs::msg::Vector3Stamped>(
+    "gyro_bias", rclcpp::QoS{1},
+    std::bind(&ImuCorrector::callbackGyroBias, this, std::placeholders::_1));
 
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("output", rclcpp::QoS{10});
 
@@ -46,15 +51,24 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
     create_publisher<tier4_calibration_msgs::msg::BoolStamped>("is_calibrated", rclcpp::QoS{1});
 
   timer_ = rclcpp::create_timer(this, get_clock(), 1000ms, std::bind(&ImuCorrector::onTimer, this));
+  RCLCPP_INFO(this->get_logger(), "imu_corrector initialized");
+  RCLCPP_INFO(this->get_logger(), "angular_velocity_offset_x: %f", angular_velocity_offset_x_);
+  RCLCPP_INFO(this->get_logger(), "angular_velocity_offset_y: %f", angular_velocity_offset_y_);
+  RCLCPP_INFO(this->get_logger(), "angular_velocity_offset_z: %f", angular_velocity_offset_z_);
 }
 
 void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr)
 {
   sensor_msgs::msg::Imu imu_msg;
   imu_msg = *imu_msg_ptr;
-
+  RCLCPP_INFO(
+    this->get_logger(), "imu_msg: %f, %f, %f", imu_msg.angular_velocity.x,
+    imu_msg.angular_velocity.y, imu_msg.angular_velocity.z);
+  RCLCPP_INFO(this->get_logger(), "is_calibrated_: %d", is_calibrated_);
   if (is_calibrated_) {
+    RCLCPP_INFO(this->get_logger(), "is_calibrated_ is true");
     if (angular_velocity_offset_x_ != std::nullopt) {
+      RCLCPP_INFO(this->get_logger(), "angular_velocity_offset_x_ is not null");
       imu_msg.angular_velocity.x += angular_velocity_offset_x_.value();
     }
     if (angular_velocity_offset_y_ != std::nullopt) {
@@ -64,6 +78,9 @@ void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_m
       imu_msg.angular_velocity.z += angular_velocity_offset_z_.value();
     }
   }
+  RCLCPP_INFO(
+    this->get_logger(), "imu_msg: %f, %f, %f", imu_msg.angular_velocity.x,
+    imu_msg.angular_velocity.y, imu_msg.angular_velocity.z);
 
   imu_msg.angular_velocity_covariance[0 * 3 + 0] =
     angular_velocity_stddev_xx_ * angular_velocity_stddev_xx_;
@@ -78,6 +95,9 @@ void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_m
 void ImuCorrector::callbackGyroBias(
   const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr)
 {
+  RCLCPP_INFO(
+    this->get_logger(), "gyro_bias_msg_ptr: %f, %f, %f", gyro_bias_msg_ptr->vector.x,
+    gyro_bias_msg_ptr->vector.y, gyro_bias_msg_ptr->vector.z);
   const double elapsed_time =
     std::abs(rclcpp::Time(gyro_bias_msg_ptr->header.stamp).seconds() - this->now().seconds());
   if (elapsed_time > 10.0) {
@@ -87,9 +107,12 @@ void ImuCorrector::callbackGyroBias(
       "10.000[s].",
       elapsed_time);
   }
+
   angular_velocity_offset_x_ = gyro_bias_msg_ptr->vector.x;
   angular_velocity_offset_y_ = gyro_bias_msg_ptr->vector.y;
   angular_velocity_offset_z_ = gyro_bias_msg_ptr->vector.z;
+  is_calibrated_ = true;
+  RCLCPP_INFO(this->get_logger(), "angular_velocity_offset_x_: %f", angular_velocity_offset_x_);
 }
 
 void ImuCorrector::onTimer()

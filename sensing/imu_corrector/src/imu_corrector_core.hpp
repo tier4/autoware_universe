@@ -21,6 +21,7 @@
 #include <tier4_calibration_msgs/msg/bool_stamped.hpp>
 
 #include <optional>
+#include <string>
 
 namespace imu_corrector
 {
@@ -34,6 +35,7 @@ private:
   void callbackGyroBias(const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr);
   void onTimer();
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gyro_bias_sub_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<tier4_calibration_msgs::msg::BoolStamped>::SharedPtr is_calibrated_pub_;
 
