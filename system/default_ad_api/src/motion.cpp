@@ -38,6 +38,7 @@ MotionNode::MotionNode(const rclcpp::NodeOptions & options)
   rclcpp::Rate rate(10);
   timer_ = rclcpp::create_timer(this, get_clock(), rate.period(), [this]() { on_timer(); });
   state_ = State::Unknown;
+  last_call_time_ = this->now();
 }
 
 void MotionNode::update_state()
@@ -120,11 +121,21 @@ void MotionNode::update_pause(const State state)
 
 void MotionNode::change_pause(bool pause)
 {
+  const auto now = this->now();
+  const double timeout_sec = 1.0;
+
+  // re-send request if timeout
+  if (is_calling_set_pause_ && (now - last_call_time_).seconds() > timeout_sec) {
+    RCLCPP_WARN(this->get_logger(), "Service call timeout. Resetting flag.");
+    is_calling_set_pause_ = false;
+  }
+
   if (!is_calling_set_pause_ && cli_set_pause_->service_is_ready()) {
     const auto req = std::make_shared<control_interface::SetPause::Service::Request>();
     req->pause = pause;
     is_calling_set_pause_ = true;
     cli_set_pause_->async_send_request(req, [this](auto) { is_calling_set_pause_ = false; });
+    last_call_time_ = now;
   }
 }
 
