@@ -3,5 +3,6 @@
     gyro_bias_threshold: 0.0015 # [rad/s]
     velocity_threshold: 0.0 # [m/s]
     timestamp_threshold: 0.5 # [s]
-    data_num_threshold: 10 # [num]
+    data_num_threshold: 400 # [num]
     bias_change_threshold: 0.00061 # [rad/s]
+    stddev_threshold: 0.0001 # [rad/s]
