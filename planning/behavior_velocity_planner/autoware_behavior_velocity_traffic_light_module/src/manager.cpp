@@ -54,6 +54,11 @@ TrafficLightModuleManager::TrafficLightModuleManager(rclcpp::Node & node)
     get_or_declare_parameter<double>(node, ns + ".v2i.velocity_threshold");
   planner_param_.v2i_required_time_to_departure =
     get_or_declare_parameter<double>(node, ns + ".v2i.required_time_to_departure");
+  planner_param_.min_behind_dist_to_stop_for_restart_suppression =
+    get_or_declare_parameter<double>(node, ns + ".restart_suppression.min_behind_distance_to_stop");
+  planner_param_.max_behind_dist_to_stop_for_restart_suppression =
+    get_or_declare_parameter<double>(node, ns + ".restart_suppression.max_behind_distance_to_stop");
+
   pub_tl_state_ = node.create_publisher<autoware_perception_msgs::msg::TrafficLightGroup>(
     "~/output/traffic_signal", 1);
 

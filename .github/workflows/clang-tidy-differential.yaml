@@ -11,7 +11,7 @@ on:
         default: ""
         type: string
       runner:
-        default: ubuntu-24.04
+        default: ubuntu-22.04-m
         required: false
         type: string
       run-condition:

@@ -76,6 +76,9 @@ public:
     double v2i_last_time_allowed_to_pass;
     double v2i_velocity_threshold;
     double v2i_required_time_to_departure;
+    // Restart Suppression Parameter
+    double max_behind_dist_to_stop_for_restart_suppression;
+    double min_behind_dist_to_stop_for_restart_suppression;
   };
 
 public:
