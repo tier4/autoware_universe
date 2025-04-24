@@ -125,7 +125,6 @@ std::array<double, 400> GenerateTestData(
   return data;
 }
 
-/*
 TEST(GyroBiasEstimatorTest, DT_1_3_1)
 {
   rclcpp::init(0, nullptr);
@@ -157,7 +156,7 @@ TEST(GyroBiasEstimatorTest, DT_1_3_1)
   twist_pub->publish(twist);
   executor.spin_some();
 
-  for (int i = 0; i < 50; i++) { //550に戻す
+  for (int i = 0; i < 50; i++) {  // 550に戻す
     RCLCPP_INFO(node->get_logger(), "Count i: %d", i);
     imu.header.stamp = rclcpp::Clock().now();
     twist.header.stamp = rclcpp::Clock().now();
@@ -179,8 +178,6 @@ TEST(GyroBiasEstimatorTest, DT_1_3_1)
   rclcpp::shutdown();
 }
 
-
-
 TEST(GyroBiasEstimatorTest, DT_1_3_2)
 {
   rclcpp::init(0, nullptr);
@@ -196,9 +193,7 @@ TEST(GyroBiasEstimatorTest, DT_1_3_2)
   executor.add_node(node);
   executor.add_node(test_node);
 
-  std::thread spin_thread([&executor]() {
-    executor.spin();
-  });
+  std::thread spin_thread([&executor]() { executor.spin(); });
 
   // 10秒後にexecutorを停止
   std::this_thread::sleep_for(std::chrono::seconds(10));
@@ -206,8 +201,8 @@ TEST(GyroBiasEstimatorTest, DT_1_3_2)
 
   spin_thread.join();
 
-  ASSERT_GE(node->get_estimation_module()->get_min_duration_ms(), 900);    // 最小経過時間は8ms以上
-  ASSERT_LE(node->get_estimation_module()->get_max_duration_ms(), 1100);   // 最大経過時間は12ms以下
+  ASSERT_GE(node->get_estimation_module()->get_min_duration_ms(), 900);  // 最小経過時間は8ms以上
+  ASSERT_LE(node->get_estimation_module()->get_max_duration_ms(), 1100);  // 最大経過時間は12ms以下
 
   rclcpp::shutdown();
 }
@@ -272,7 +267,7 @@ TEST(GyroBiasEstimatorTest, DT_1_4)
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_1) // gyro_buffer_のx, y, zの標準偏差が閾値未満
+TEST(GyroBiasEstimatorTest, DT_1_5_1)  // gyro_buffer_のx, y, zの標準偏差が閾値未満
 {
   rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.000104);  // 標準偏差の閾値を指定
@@ -282,9 +277,9 @@ TEST(GyroBiasEstimatorTest, DT_1_5_1) // gyro_buffer_のx, y, zの標準偏差�
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
-  const auto data_y = GenerateTestData(43, 0.0, 0.0001); // 標準偏差 0.0001007498
-  const auto data_z = GenerateTestData(44, 0.0, 0.0001); // 標準偏差 0.0000978264
+  const auto data_x = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  const auto data_y = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_z = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -302,8 +297,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_1) // gyro_buffer_のx, y, zの標準偏差�
   rclcpp::shutdown();
 }
 
-
-TEST(GyroBiasEstimatorTest, DT_1_5_2) // gyro_buffer_のx, y, zの標準偏差が全てちょうど閾値
+TEST(GyroBiasEstimatorTest, DT_1_5_2)  // gyro_buffer_のx, y, zの標準偏差が全てちょうど閾値
 {
   rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031615);  // 標準偏差の閾値を指定
@@ -313,9 +307,9 @@ TEST(GyroBiasEstimatorTest, DT_1_5_2) // gyro_buffer_のx, y, zの標準偏差�
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
-  const auto data_y = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
-  const auto data_z = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
+  const auto data_x = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  const auto data_y = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  const auto data_z = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -333,7 +327,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_2) // gyro_buffer_のx, y, zの標準偏差�
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_3) // gyro_buffer_のx, y, zの標準偏差が閾値超
+TEST(GyroBiasEstimatorTest, DT_1_5_3)  // gyro_buffer_のx, y, zの標準偏差が閾値超
 {
   rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.000097);  // 標準偏差の閾値を指定
@@ -343,9 +337,9 @@ TEST(GyroBiasEstimatorTest, DT_1_5_3) // gyro_buffer_のx, y, zの標準偏差�
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
-  const auto data_y = GenerateTestData(43, 0.0, 0.0001); // 標準偏差 0.0001007498
-  const auto data_z = GenerateTestData(44, 0.0, 0.0001); // 標準偏差 0.0000978264
+  const auto data_x = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  const auto data_y = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_z = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -363,7 +357,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_3) // gyro_buffer_のx, y, zの標準偏差�
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_4) // gyro_buffer_のxの標準偏差がちょうど閾値、y, zは閾値未満
+TEST(GyroBiasEstimatorTest, DT_1_5_4)  // gyro_buffer_のxの標準偏差がちょうど閾値、y, zは閾値未満
 {
   rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031615);  // 標準偏差の閾値を指定
@@ -373,9 +367,9 @@ TEST(GyroBiasEstimatorTest, DT_1_5_4) // gyro_buffer_のxの標準偏差がち�
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
-  const auto data_y = GenerateTestData(43, 0.0, 0.0001); // 標準偏差 0.0001007498
-  const auto data_z = GenerateTestData(44, 0.0, 0.0001); // 標準偏差 0.0000978264
+  const auto data_x = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  const auto data_y = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_z = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -393,7 +387,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_4) // gyro_buffer_のxの標準偏差がち�
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_5) // gyro_buffer_のxの標準偏差が閾値超、y, zは閾値未満
+TEST(GyroBiasEstimatorTest, DT_1_5_5)  // gyro_buffer_のxの標準偏差が閾値超、y, zは閾値未満
 {
   rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031614);  // 標準偏差の閾値を指定
@@ -403,9 +397,9 @@ TEST(GyroBiasEstimatorTest, DT_1_5_5) // gyro_buffer_のxの標準偏差が閾�
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
-  const auto data_y = GenerateTestData(43, 0.0, 0.0001); // 標準偏差 0.0001007498
-  const auto data_z = GenerateTestData(44, 0.0, 0.0001); // 標準偏差 0.0000978264
+  const auto data_x = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  const auto data_y = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_z = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -423,7 +417,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_5) // gyro_buffer_のxの標準偏差が閾�
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_6) // gyro_buffer_のyの標準偏差がちょうど閾値、x, zは閾値未満
+TEST(GyroBiasEstimatorTest, DT_1_5_6)  // gyro_buffer_のyの標準偏差がちょうど閾値、x, zは閾値未満
 {
   rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031615);  // 標準偏差の閾値を指定
@@ -433,9 +427,9 @@ TEST(GyroBiasEstimatorTest, DT_1_5_6) // gyro_buffer_のyの標準偏差がち�
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(43, 0.0, 0.0001); // 標準偏差 0.0001007498
-  const auto data_y = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
-  const auto data_z = GenerateTestData(44, 0.0, 0.0001); // 標準偏差 0.0000978264
+  const auto data_x = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_y = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  const auto data_z = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -453,7 +447,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_6) // gyro_buffer_のyの標準偏差がち�
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_7) // gyro_buffer_のyの標準偏差が閾値超、x, zは閾値未満
+TEST(GyroBiasEstimatorTest, DT_1_5_7)  // gyro_buffer_のyの標準偏差が閾値超、x, zは閾値未満
 {
   rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031614);  // 標準偏差の閾値を指定
@@ -463,9 +457,9 @@ TEST(GyroBiasEstimatorTest, DT_1_5_7) // gyro_buffer_のyの標準偏差が閾�
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(43, 0.0, 0.0001); // 標準偏差 0.0001007498
-  const auto data_y = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
-  const auto data_z = GenerateTestData(44, 0.0, 0.0001); // 標準偏差 0.0000978264
+  const auto data_x = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_y = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  const auto data_z = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -483,7 +477,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_7) // gyro_buffer_のyの標準偏差が閾�
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_8) // gyro_buffer_のzの標準偏差がちょうど閾値、x, yは閾値未満
+TEST(GyroBiasEstimatorTest, DT_1_5_8)  // gyro_buffer_のzの標準偏差がちょうど閾値、x, yは閾値未満
 {
   rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031615);  // 標準偏差の閾値を指定
@@ -493,9 +487,9 @@ TEST(GyroBiasEstimatorTest, DT_1_5_8) // gyro_buffer_のzの標準偏差がち�
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(43, 0.0, 0.0001); // 標準偏差 0.0001007498
-  const auto data_y = GenerateTestData(44, 0.0, 0.0001); // 標準偏差 0.0000978264
-  const auto data_z = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
+  const auto data_x = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_y = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
+  const auto data_z = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -513,7 +507,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_8) // gyro_buffer_のzの標準偏差がち�
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_9) // gyro_buffer_のzの標準偏差が閾値超、x, yは閾値未満
+TEST(GyroBiasEstimatorTest, DT_1_5_9)  // gyro_buffer_のzの標準偏差が閾値超、x, yは閾値未満
 {
   rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031614);  // 標準偏差の閾値を指定
@@ -523,9 +517,9 @@ TEST(GyroBiasEstimatorTest, DT_1_5_9) // gyro_buffer_のzの標準偏差が閾�
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(43, 0.0, 0.0001); // 標準偏差 0.0001007498
-  const auto data_y = GenerateTestData(44, 0.0, 0.0001); // 標準偏差 0.0000978264
-  const auto data_z = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
+  const auto data_x = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_y = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
+  const auto data_z = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -542,7 +536,6 @@ TEST(GyroBiasEstimatorTest, DT_1_5_9) // gyro_buffer_のzの標準偏差が閾�
   ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), false);
   rclcpp::shutdown();
 }
-
 
 TEST(GyroBiasEstimatorTest, DT_1_6)
 {
@@ -563,9 +556,9 @@ TEST(GyroBiasEstimatorTest, DT_1_6)
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(43, 0.0, 0.0001); // 標準偏差 0.0001007498
-  const auto data_y = GenerateTestData(44, 0.0, 0.0001); // 標準偏差 0.0000978264
-  const auto data_z = GenerateTestData(42, 0.0, 0.0001); // 標準偏差 0.0001031615
+  const auto data_x = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_y = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
+  const auto data_z = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -574,7 +567,6 @@ TEST(GyroBiasEstimatorTest, DT_1_6)
     angular_velocity.z = data_z[i];
     gyro_buffer.push_back(angular_velocity);
   }
-
 
   node->get_estimation_module()->set_gyro_buffer(gyro_buffer);
   executor.spin_some();
@@ -585,4 +577,3 @@ TEST(GyroBiasEstimatorTest, DT_1_6)
   ASSERT_EQ(count, 1);
   rclcpp::shutdown();
 }
-*/
