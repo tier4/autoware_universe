@@ -14,27 +14,118 @@
 
 #include "config/loader.hpp"
 
+#include "config/errors.hpp"
 #include "config/parser.hpp"
+#include "config/substitutions.hpp"
 
+#include <filesystem>
+#include <memory>
 #include <string>
+#include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-void load_file(FileConfig & config)
+ConfigFile load_file(ParseContext context, const std::string & path, Logger & logger);
+std::vector<ConfigFile> load_files(ParseContext context, YAML::Node & yaml, Logger & logger);
+std::vector<ConfigUnit> load_units(YAML::Node & yaml);
+
+YAML::Node take_optional(YAML::Node & yaml, const std::string & name)
 {
-  config.required("files");
+  // TODO(Takagi, Isamu): check map type.
+  if (!yaml[name]) {
+    return YAML::Node(YAML::NodeType::Undefined);
+  }
+  const auto node = yaml[name];
+  yaml.remove(name);
+  return node;
 }
 
-void load_file(const std::string & path, Logger & logger)
+YAML::Node take_required(YAML::Node & yaml, const std::string & name)
 {
-  logger.info("Loading file: " + path);
+  // TODO(Takagi, Isamu): check map type.
+  if (!yaml[name]) {
+    throw std::runtime_error("Required field not found: " + name);
+  }
+  const auto node = yaml[name];
+  yaml.remove(name);
+  return node;
+}
 
-  FileConfig config;
-  config.path = "./__input__";
-  config.yaml["files"][0]["path"] = path;
+ConfigFile load_file(ParseContext context, const std::string & path, Logger & logger)
+{
+  const auto resolved_path = substitutions::evaluate(path, context);
+  if (!context.visit(resolved_path)) {
+    throw SameFileFound(resolved_path);
+  }
+  if (!std::filesystem::exists(resolved_path)) {
+    throw FileNotFound(resolved_path);
+  }
 
-  logger.info(YAML::Dump(config.yaml));
+  ConfigFile result = std::make_shared<ConfigFileData>();
+  result->original_path = path;
+  result->resolved_path = resolved_path;
+  result->yaml = YAML::LoadFile(result->resolved_path);
+  result->files = load_files(context.child(resolved_path), result->yaml, logger);
+  return result;
+}
+
+ConfigUnit load_unit(ConfigFile file)
+{
+  (void)file;
+  ConfigUnit result = std::make_shared<ConfigUnitData>();
+  return result;
+}
+
+std::vector<ConfigFile> load_files(ParseContext context, YAML::Node & yaml, Logger & logger)
+{
+  const auto files = take_optional(yaml, "files");
+  if (files.IsDefined() && !files.IsSequence()) {
+    throw std::runtime_error("Invalid type: files");
+  }
+  std::vector<ConfigFile> result;
+  for (YAML::Node file : files) {
+    const auto file_path = take_required(file, "path").as<std::string>();
+    result.push_back(load_file(context, file_path, logger));
+  }
+  return result;
+}
+
+std::vector<ConfigUnit> load_units(YAML::Node & yaml)
+{
+  const auto units = take_optional(yaml, "units");
+  if (units.IsDefined() && !units.IsSequence()) {
+    throw std::runtime_error("Invalid type: units");
+  }
+  std::vector<ConfigUnit> result;
+  for (YAML::Node unit : units) {
+  }
+  return result;
+}
+
+ConfigFile load_root_file(const std::string & path, Logger & logger)
+{
+  const auto visited = std::make_shared<std::set<std::string>>();
+  return load_file(ParseContext("root", visited), path, logger);
+}
+
+std::vector<ConfigFile> make_file_list(ConfigFile root)
+{
+  std::vector<ConfigFile> result;
+  result.push_back(root);
+  for (size_t i = 0; i < result.size(); ++i) {
+    const auto & files = result[i]->files;
+    result.insert(result.end(), files.begin(), files.end());
+  }
+  return result;
+}
+
+std::vector<ConfigFile> load_unit_tree(const std::vector<ConfigFile> & files)
+{
+  for (const auto & file : files) {
+    file->units = load_units(file->yaml);
+  }
+  return files;
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

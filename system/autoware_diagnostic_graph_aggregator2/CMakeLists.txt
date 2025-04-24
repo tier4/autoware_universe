@@ -7,6 +7,7 @@ autoware_package()
 ament_auto_add_library(${PROJECT_NAME} SHARED
   "src/common/config/loader.cpp"
   "src/common/config/parser.cpp"
+  "src/common/config/substitutions.cpp"
   "src/common/graph/graph.cpp"
   "src/common/logger/logger.cpp"
 )
@@ -17,4 +18,4 @@ ament_auto_add_executable(check_graph
 )
 target_include_directories(check_graph PRIVATE src/common)
 
-ament_auto_package(INSTALL_TO_SHARE launch)
+ament_auto_package(INSTALL_TO_SHARE launch test)

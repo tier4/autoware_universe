@@ -1,0 +1,2 @@
+files:
+  - { path: $(dirname)/loop3.yaml }

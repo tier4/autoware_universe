@@ -1,4 +1,4 @@
-// Copyright 2023 The Autoware Contributors
+// Copyright 2024 The Autoware Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__CONFIG__LOADER_HPP_
-#define COMMON__CONFIG__LOADER_HPP_
-
-#include "config/parser.hpp"
-#include "logger/logger.hpp"
+#include "errors.hpp"
 
 #include <string>
-#include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-ConfigFile load_root_file(const std::string & path, Logger & logger);
-std::vector<ConfigFile> make_file_list(ConfigFile root);
-std::vector<ConfigFile> load_unit_tree(const std::vector<ConfigFile> & files);
-
 }  // namespace autoware::diagnostic_graph_aggregator
-
-#endif  // COMMON__CONFIG__LOADER_HPP_

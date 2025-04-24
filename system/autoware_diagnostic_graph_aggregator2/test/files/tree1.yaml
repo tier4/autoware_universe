@@ -1,0 +1,3 @@
+files:
+  - { path: $(dirname)/tree2.yaml }
+  - { path: $(dirname)/tree3.yaml }

@@ -12,22 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__CONFIG__LOADER_HPP_
-#define COMMON__CONFIG__LOADER_HPP_
+#ifndef COMMON__CONFIG__SUBSTITUTIONS_HPP_
+#define COMMON__CONFIG__SUBSTITUTIONS_HPP_
 
 #include "config/parser.hpp"
-#include "logger/logger.hpp"
 
 #include <string>
-#include <vector>
 
-namespace autoware::diagnostic_graph_aggregator
+namespace autoware::diagnostic_graph_aggregator::substitutions
 {
 
-ConfigFile load_root_file(const std::string & path, Logger & logger);
-std::vector<ConfigFile> make_file_list(ConfigFile root);
-std::vector<ConfigFile> load_unit_tree(const std::vector<ConfigFile> & files);
+std::string evaluate(const std::string & text, const ParseContext & context);
 
-}  // namespace autoware::diagnostic_graph_aggregator
+}  // namespace autoware::diagnostic_graph_aggregator::substitutions
 
-#endif  // COMMON__CONFIG__LOADER_HPP_
+#endif  // COMMON__CONFIG__SUBSTITUTIONS_HPP_
