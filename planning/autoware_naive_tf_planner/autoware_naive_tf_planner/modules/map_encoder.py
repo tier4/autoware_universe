@@ -14,9 +14,7 @@ class MapEncoder(nn.Module):
 
         self.dim = dim
         self.polygon_encoder = PointsEncoder(polygon_channel, dim)
-        self.route_mask_emb = nn.Sequential(
-            nn.Linear(1, dim), nn.ReLU(), nn.Linear(dim, dim)
-        )
+        self.route_mask_emb = nn.Embedding(2, dim)
 
         self.subtype_embed = nn.Embedding(16, dim)
         self.location_embed = nn.Embedding(4, dim)
@@ -25,7 +23,7 @@ class MapEncoder(nn.Module):
         self.speed_limit_embed = nn.Sequential(
             nn.Linear(1, dim), nn.ReLU(), nn.Linear(dim, dim)
         )
-        self.map_dropout = nn.Dropout1d(0.2)
+        self.map_dropout = nn.Dropout1d(0.1)
 
     def forward(self, data) -> torch.Tensor:
         left_boundaries = data["boundary_left_boundaries"]  #[B, N_map, n_points, 2]
@@ -49,7 +47,7 @@ class MapEncoder(nn.Module):
         x_boundary = self.polygon_encoder(boundary_features, boundary_masks) 
         x_boundary = x_boundary.reshape(bs, M, self.dim) #[B, N_map, dim]
 
-        x_boundary_route = self.route_mask_emb(boundary_in_route.float().unsqueeze(-1)) #[B, N_map, dim]
+        x_boundary_route = self.route_mask_emb(boundary_in_route.long()) #[B, N_map, dim]
         x_subtype = self.subtype_embed(subtypes) #[B, N_map, dim]
         x_location = self.location_embed(locations) #[B, N_map, dim]
         x_turn_direction = self.turn_direction_embed(turn_directions) #[B, N_map, dim]

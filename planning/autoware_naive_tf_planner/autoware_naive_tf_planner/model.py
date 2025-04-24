@@ -13,7 +13,7 @@ from autoware_naive_tf_planner.modules.trajectory_decoder import TrajectoryDecod
 class PlanningModel(nn.Module):
     def __init__(
         self,
-        dim=128,
+        dim=256,
         state_channel=6,
         polygon_channel=4,
         history_channel=9,
@@ -96,6 +96,7 @@ class PlanningModel(nn.Module):
         x_agent = self.agent_encoder(data) #[B, N_obj, dim] Core vector to represent ego + objects
         x_polygon = self.map_encoder(data) #[B, N_map, dim] Core vector to represent map
         x_vehicle_param = self.vehicle_params_encoder(data["vehicle_parameters"]) # [B, dim]
+        ego_velocity = data["history_trajectories_speed"][:, -1] # [B]
 
         bs, A, _ = x_agent.shape # if use_ego_history, it will include ego
 
@@ -106,10 +107,20 @@ class PlanningModel(nn.Module):
         x = self.norm(x)
 
         trajectory, probability = self.trajectory_decoder(x[:, 0])
+
+        dt = 0.1
+        ego_velocity_expanded = ego_velocity.view(bs, 1, 1) # [B, 1, 1]
+        future_steps = trajectory.shape[2]  # Should be 80 based on the comment
+        time_steps = torch.arange(0, future_steps * dt, dt, device=trajectory.device)  # [0, 0.1, 0.2, ..., 2.9]
+        extrapolation = ego_velocity_expanded * time_steps.view(1, 1, -1) # B, 1, 80
+        trajectory_x = trajectory[:, :, :, 0] + extrapolation 
+
+        trajectory = torch.concat([trajectory_x[..., None], trajectory[..., 1:]], dim=-1) #[x, y, dx, dy]
+
         #prediction = self.agent_predictor(x[:, 1:A]).view(bs, -1, self.future_steps, 2)
         probability = probability.softmax(dim=-1)
         out = {
-            "trajectory": trajectory, #[B, 6, 30, 4], x, y, dy,dx
+            "trajectory": trajectory, #[B, 6, 80, 4], x, y, dy,dx
             "probability": probability, #[B, 6]
         }
         return out
@@ -119,8 +130,7 @@ class PlanningModel(nn.Module):
         best_mode = output['probability'].argmax(dim=-1)
         bs = output['probability'].shape[0]
         output_trajectory = output['trajectory'][torch.arange(bs), best_mode]
-        #angle = torch.atan2(output_trajectory[..., 3], output_trajectory[..., 2])
-        angle = torch.atan(output_trajectory[..., 3] / (output_trajectory[..., 2] + 1e-6))
+        angle = torch.atan2(output_trajectory[..., 3], output_trajectory[..., 2])
         output["output_trajectory"] = torch.cat(
             [output_trajectory[..., :2], angle.unsqueeze(-1)], dim=-1
         )

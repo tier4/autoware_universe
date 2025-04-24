@@ -18,6 +18,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 # ROS2 message types
 from autoware_perception_msgs.msg import PredictedObjects, TrafficLightGroupArray
 from autoware_planning_msgs.msg import LaneletRoute, Path, PathPoint
+from autoware_planning_msgs.msg import Trajectory, TrajectoryPoint 
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TransformStamped, Pose
 from tf2_ros import TransformBroadcaster, Buffer, TransformListener
@@ -370,6 +371,13 @@ class NaiveTFInferenceNode(Node):
         self.path_pub = self.create_publisher(
             Path,
             '/planning/naive_tf/predicted_path',
+            10
+        )
+
+        self.trajectory_pub = self.create_publisher(
+            Trajectory,
+            # '/planning/scenario_planning/trajectory'
+            '/planning/naive_tf/predicted_trajectory',
             10
         )
         
@@ -793,24 +801,37 @@ class NaiveTFInferenceNode(Node):
         path_msg = Path()
         path_msg.header.frame_id = "map"
         path_msg.header.stamp = current_odom.header.stamp
+
+        # Create trajectory message
+        trajectory_msg = Trajectory()
+        trajectory_msg.header.frame_id = "map"
+        trajectory_msg.header.stamp = current_odom.header.stamp
         
-        # Convert trajectory points to global frame and add to path
+        # Get current ego pose and velocity
+        current_pose = current_odom.pose.pose
+        current_twist = current_odom.twist.twist
+        
+        # Convert trajectory points to global frame and add to path and trajectory
+        global_positions = []
+        global_orientations = []
+        
         for i, point in enumerate(best_trajectory):
             # Extract position (x, y) and direction (dx, dy)
+            ## Notice dx, dy is not usable because they are not trained
             x, y = point[0], point[1]
-            dx, dy = point[2], point[3]
+            if i == 0:
+                dx = 1
+                dy = 0
+                # so that local orientation is unity rotation
+            else:
+                dx = point[0] - best_trajectory[i-i][0]
+                dy = point[1] - best_trajectory[i-1][1]
             
             # Create homogeneous point
             local_point = np.array([x, y, 0, 1])
             
             # Transform to global frame
             global_point = ego_transform @ local_point
-            
-            # Create path point
-            path_point = PathPoint()
-            path_point.pose.position.x = global_point[0].item()
-            path_point.pose.position.y = global_point[1].item()
-            path_point.pose.position.z = global_point[2].item()
             
             # Calculate orientation from direction vector
             yaw = np.arctan2(dy, dx)
@@ -824,24 +845,121 @@ class NaiveTFInferenceNode(Node):
                 current_odom.pose.pose.orientation.w
             ]
             r = Rotation.from_quat(q)
-            global_yaw = yaw + r.as_euler('xyz')[2]
+            # global_yaw = yaw + r.as_euler('xyz')[2]
+            r_local_yaw = Rotation.from_euler('z', yaw)
             
             # Convert yaw to quaternion
-            q_yaw = Rotation.from_euler('z', global_yaw).as_quat()
+            r_yaw = r * r_local_yaw
+            #q_yaw = Rotation.from_euler('z', global_yaw).as_quat()
+            q_yaw = r_yaw.as_quat()
+            
+            # Store global positions and orientations for later calculations
+            global_positions.append([global_point[0].item(), global_point[1].item(), global_point[2].item()])
+            global_orientations.append(q_yaw)
+            
+            # Create path point (for backward compatibility)
+            path_point = PathPoint()
+            path_point.pose.position.x = global_point[0].item()
+            path_point.pose.position.y = global_point[1].item()
+            path_point.pose.position.z = global_point[2].item()
             path_point.pose.orientation.x = q_yaw[0]
             path_point.pose.orientation.y = q_yaw[1]
             path_point.pose.orientation.z = q_yaw[2]
             path_point.pose.orientation.w = q_yaw[3]
             
-            # # Set time from start
-            # path_point.time_from_start.sec = int(i * self.prediction_dt)
-            # path_point.time_from_start.nanosec = int((i * self.prediction_dt % 1) * 1e9)
-            
             # Add to path
             path_msg.points.append(path_point)
         
-        # Publish path
+        # Calculate velocities and accelerations for trajectory points
+        for i in range(len(best_trajectory)):
+            trajectory_point = TrajectoryPoint()
+            
+            # Set pose
+            trajectory_point.pose.position.x = global_positions[i][0]
+            trajectory_point.pose.position.y = global_positions[i][1]
+            trajectory_point.pose.position.z = global_positions[i][2]
+            trajectory_point.pose.orientation.x = global_orientations[i][0]
+            trajectory_point.pose.orientation.y = global_orientations[i][1]
+            trajectory_point.pose.orientation.z = global_orientations[i][2]
+            trajectory_point.pose.orientation.w = global_orientations[i][3]
+            
+            # Set time from start
+            trajectory_point.time_from_start.sec = int(i * self.prediction_dt)
+            trajectory_point.time_from_start.nanosec = int((i * self.prediction_dt % 1) * 1e9)
+            
+            # Calculate velocities and accelerations
+            if i == 0:
+                # For the first point, use current vehicle velocity
+                trajectory_point.longitudinal_velocity_mps = current_twist.linear.x
+                trajectory_point.lateral_velocity_mps = current_twist.linear.y
+                trajectory_point.acceleration_mps2 = 0.0  # We don't have acceleration data
+            else:
+                # Calculate velocity from position difference
+                dt = self.prediction_dt
+                dx = global_positions[i][0] - global_positions[i-1][0]
+                dy = global_positions[i][1] - global_positions[i-1][1]
+                
+                # Get orientation at previous point to project velocity
+                prev_quat = global_orientations[i-1]
+                r_prev = Rotation.from_quat(prev_quat)
+                heading_prev = r_prev.as_euler('xyz')[2]
+                
+                # Project velocity into longitudinal and lateral components
+                speed = np.sqrt(dx*dx + dy*dy) / dt
+                # direction = np.arctan2(dy, dx)
+                
+                # Longitudinal velocity is along the heading direction
+                trajectory_point.longitudinal_velocity_mps = speed
+                trajectory_point.lateral_velocity_mps = 0.0
+                
+                # Calculate acceleration if we have at least 2 previous points
+                if i >= 2:
+                    prev_speed = np.sqrt(
+                        (global_positions[i-1][0] - global_positions[i-2][0])**2 + 
+                        (global_positions[i-1][1] - global_positions[i-2][1])**2
+                    ) / dt
+                    
+                    # Acceleration is change in speed over time
+                    trajectory_point.acceleration_mps2 = (speed - prev_speed) / dt
+                else:
+                    trajectory_point.acceleration_mps2 = 0.0
+            
+            # Calculate heading rate (yaw rate)
+            if i > 0:
+                # Get current and previous orientation
+                curr_quat = global_orientations[i]
+                prev_quat = global_orientations[i-1]
+                
+                r_curr = Rotation.from_quat(curr_quat)
+                r_prev = Rotation.from_quat(prev_quat)
+                
+                # Extract yaw (heading) from quaternions
+                heading_curr = r_curr.as_euler('xyz')[2]
+                heading_prev = r_prev.as_euler('xyz')[2]
+                
+                # Calculate heading rate (handle wrap-around)
+                heading_diff = heading_curr - heading_prev
+                if heading_diff > np.pi:
+                    heading_diff -= 2 * np.pi
+                elif heading_diff < -np.pi:
+                    heading_diff += 2 * np.pi
+                
+                trajectory_point.heading_rate_rps = heading_diff / self.prediction_dt
+            else:
+                trajectory_point.heading_rate_rps = current_twist.angular.z
+            
+            # We don't have wheel angle data from the prediction, so set to 0
+            trajectory_point.front_wheel_angle_rad = 0.0
+            trajectory_point.rear_wheel_angle_rad = 0.0
+            
+            # Add to trajectory
+            trajectory_msg.points.append(trajectory_point)
+        
+        # Publish path (for backward compatibility)
         self.path_pub.publish(path_msg)
+        
+        # Publish trajectory
+        self.trajectory_pub.publish(trajectory_msg)
         
         # Create and publish visualization markers
         self.publish_visualization_markers(predictions, ego_transform, current_odom.header.stamp)
