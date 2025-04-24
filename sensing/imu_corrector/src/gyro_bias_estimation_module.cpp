@@ -55,7 +55,7 @@ void GyroBiasEstimationModule::update_gyro(
 
 void GyroBiasEstimationModule::update_velocity(const double time, const double velocity)
 {
-  is_stopped_ = velocity <= velocity_threshold_;
+  is_stopped_ = velocity <= velocity_threshold_ && velocity >= 0.0;
   last_velocity_time_ = time;
 }
 

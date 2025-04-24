@@ -201,8 +201,9 @@ TEST(GyroBiasEstimatorTest, DT_1_3_2)
 
   spin_thread.join();
 
-  ASSERT_GE(node->get_estimation_module()->get_min_duration_ms(), 900);  // 最小経過時間は8ms以上
-  ASSERT_LE(node->get_estimation_module()->get_max_duration_ms(), 1100);  // 最大経過時間は12ms以下
+  ASSERT_GE(node->get_estimation_module()->get_min_duration_ms(), 900);  // 最小経過時間は900ms以上
+  ASSERT_LE(
+    node->get_estimation_module()->get_max_duration_ms(), 1100);  // 最大経過時間は1100ms以下
 
   rclcpp::shutdown();
 }
@@ -234,10 +235,6 @@ TEST(GyroBiasEstimatorTest, DT_1_4)
   twist.twist.twist.linear.y = 0.0;
   twist.twist.twist.linear.z = 0.0;
 
-  imu_pub->publish(imu);
-  twist_pub->publish(twist);
-  executor.spin_some();
-
   for (int i = 1; i < 51; i++) {
     RCLCPP_INFO(node->get_logger(), "Count i: %d", i);
     imu.header.stamp = rclcpp::Clock().now();
@@ -255,12 +252,29 @@ TEST(GyroBiasEstimatorTest, DT_1_4)
     }
 
     twist_pub->publish(twist);
-    imu_pub->publish(imu);
-
     executor.spin_some();
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    imu_pub->publish(imu);
+    executor.spin_some();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
     if (i == 10) {
       ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 10);
+    }
+    if (i == 11) {
+      ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 0);
+    }
+    if (i == 20) {
+      ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 0);
+    }
+    if (i == 30) {
+      ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 10);
+    }
+    if (i == 31) {
+      ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 0);
+    }
+    if (i == 40) {
+      ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 0);
     }
   }
 
