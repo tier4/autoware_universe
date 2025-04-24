@@ -370,14 +370,15 @@ class NaiveTFInferenceNode(Node):
         # Create publishers
         self.path_pub = self.create_publisher(
             Path,
+            # "/planning/scenario_planning/lane_driving/motion_planning/path_smoother/path",
             '/planning/naive_tf/predicted_path',
             10
         )
 
         self.trajectory_pub = self.create_publisher(
             Trajectory,
-            # '/planning/scenario_planning/trajectory'
-            '/planning/naive_tf/predicted_trajectory',
+            '/planning/scenario_planning/lane_driving/motion_planning/path_optimizer/trajectory',
+            # '/planning/naive_tf/predicted_trajectory',
             10
         )
         
