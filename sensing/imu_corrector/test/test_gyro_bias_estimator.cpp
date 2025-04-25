@@ -125,6 +125,15 @@ std::array<double, 400> GenerateTestData(
   return data;
 }
 
+double CalculateMedian(const std::array<double, 400> & data)
+{
+  std::array<double, 400> sorted_data = data;
+  std::sort(sorted_data.begin(), sorted_data.end());
+
+  const size_t mid = sorted_data.size() / 2;
+  return (sorted_data[mid - 1] + sorted_data[mid]) / 2.0;
+}
+
 TEST(GyroBiasEstimatorTest, DT_1_3_1)
 {
   rclcpp::init(0, nullptr);
@@ -549,13 +558,20 @@ TEST(GyroBiasEstimatorTest, DT_1_6)
 {
   rclcpp::init(0, nullptr);
   int count = 0;
+  double gyro_bias_x = 0.0;
+  double gyro_bias_y = 0.0;
+  double gyro_bias_z = 0.0;
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031615);
   auto test_node = rclcpp::Node::make_shared("test_node");
   auto subscriber = test_node->create_subscription<geometry_msgs::msg::Vector3Stamped>(
     "/gyro_bias_validator/output/gyro_bias", rclcpp::SensorDataQoS(),
-    [&count](const geometry_msgs::msg::Vector3Stamped msg) {
+    [&count, &gyro_bias_x, &gyro_bias_y,
+     &gyro_bias_z](const geometry_msgs::msg::Vector3Stamped msg) {
       RCLCPP_INFO(rclcpp::get_logger("test"), "Received message");
       count++;
+      gyro_bias_x = msg.vector.x;
+      gyro_bias_y = msg.vector.y;
+      gyro_bias_z = msg.vector.z;
     });
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -567,6 +583,9 @@ TEST(GyroBiasEstimatorTest, DT_1_6)
   const auto data_x = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
   const auto data_y = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
   const auto data_z = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  double median_x = CalculateMedian(data_x);
+  double median_y = CalculateMedian(data_y);
+  double median_z = CalculateMedian(data_z);
 
   for (size_t i = 0; i < 400; ++i) {
     geometry_msgs::msg::Vector3 angular_velocity;
@@ -584,4 +603,8 @@ TEST(GyroBiasEstimatorTest, DT_1_6)
   executor.spin_some();
   ASSERT_EQ(count, 1);
   rclcpp::shutdown();
+
+  ASSERT_NEAR(gyro_bias_x, median_x, 0.000001);
+  ASSERT_NEAR(gyro_bias_y, median_y, 0.000001);
+  ASSERT_NEAR(gyro_bias_z, median_z, 0.000001);
 }
