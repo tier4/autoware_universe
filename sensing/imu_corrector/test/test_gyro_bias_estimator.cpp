@@ -184,14 +184,8 @@ TEST(GyroBiasEstimatorTest, DT_1_3_2)
   sensor_msgs::msg::Imu imu;
   geometry_msgs::msg::TwistWithCovarianceStamped twist;
   auto node = std::make_shared<GyroBiasEstimatorTest>();
-  auto test_node = rclcpp::Node::make_shared("test_node");
-  auto imu_pub = test_node->create_publisher<sensor_msgs::msg::Imu>(
-    "/gyro_bias_validator/input/imu_raw", rclcpp::SensorDataQoS());
-  auto twist_pub = test_node->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
-    "/gyro_bias_validator/input/twist", rclcpp::SensorDataQoS());
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
-  executor.add_node(test_node);
 
   std::thread spin_thread([&executor]() { executor.spin(); });
 
