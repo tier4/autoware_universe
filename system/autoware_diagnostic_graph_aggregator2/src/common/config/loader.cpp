@@ -18,41 +18,25 @@
 #include "config/parser.hpp"
 #include "config/substitutions.hpp"
 
+#include <deque>
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
+
+//
+#include <iostream>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
 FileConfig load_file(ParseContext context, const std::string & path, Logger & logger);
 UnitConfig load_unit(FileConfig file);
-std::vector<FileConfig> load_files(ParseContext context, YAML::Node yaml, Logger & logger);
-std::vector<UnitConfig> load_units(YAML::Node yaml);
-
-YAML::Node take_optional(YAML::Node yaml, const std::string & name)
-{
-  // TODO(Takagi, Isamu): check map type.
-  if (!yaml[name]) {
-    return YAML::Node(YAML::NodeType::Undefined);
-  }
-  const auto node = yaml[name];
-  yaml.remove(name);
-  return node;
-}
-
-YAML::Node take_required(YAML::Node yaml, const std::string & name)
-{
-  // TODO(Takagi, Isamu): check map type.
-  if (!yaml[name]) {
-    throw std::runtime_error("Required field not found: " + name);
-  }
-  const auto node = yaml[name];
-  yaml.remove(name);
-  return node;
-}
+std::vector<FileConfig> load_files(ParseContext context, ConfigYaml yaml, Logger & logger);
+std::vector<UnitConfig> load_units(ConfigYaml yaml);
 
 FileConfig load_file(ParseContext context, const std::string & path, Logger & logger)
 {
@@ -67,86 +51,76 @@ FileConfig load_file(ParseContext context, const std::string & path, Logger & lo
   FileConfig result = std::make_shared<FileConfigData>();
   result->original_path = path;
   result->resolved_path = resolved_path;
-  result->yaml = YAML::LoadFile(result->resolved_path);
+  result->yaml = ConfigYaml::LoadFile(result->resolved_path);
   result->files = load_files(context.child(resolved_path), result->yaml, logger);
   return result;
 }
 
-UnitConfig load_unit(YAML::Node yaml)
+UnitConfig load_unit(ConfigYaml yaml)
 {
   UnitConfig result = std::make_shared<UnitConfigData>();
-  result->type = take_required(yaml, "type").as<std::string>("");
-  result->path = take_optional(yaml, "path").as<std::string>("");
+  result->type = yaml.required("type").text("");
+  result->path = yaml.optional("path").text("");
   result->yaml = yaml;
 
   if (result->type == "link") {
-    result->link = take_required(yaml, "link").as<std::string>("");
+    result->link = yaml.required("link").text("");
   } else {
     LogicConfig2 config(result);
     result->logic = LogicFactory::Create(config);
     for (auto & [port, node] : config.ports()) {
-      result->units.push_back(std::make_pair(std::move(port), load_unit(node.raw())));
+      result->units.push_back(std::make_pair(std::move(port), load_unit(node)));
     }
   }
   return result;
 }
 
-std::vector<FileConfig> load_files(ParseContext context, YAML::Node yaml, Logger & logger)
+std::vector<FileConfig> load_files(ParseContext context, ConfigYaml yaml, Logger & logger)
 {
-  const auto files = take_optional(yaml, "files");
-  if (files.IsDefined() && !files.IsSequence()) {
-    throw std::runtime_error("Invalid type: files");
-  }
   std::vector<FileConfig> result;
-  for (YAML::Node file : files) {
-    const auto file_path = take_required(file, "path").as<std::string>();
-    result.push_back(load_file(context, file_path, logger));
+  for (ConfigYaml file : yaml.optional("files").list()) {
+    result.push_back(load_file(context, file.required("path").text(), logger));
   }
   return result;
 }
 
-std::vector<UnitConfig> load_units(YAML::Node yaml)
+std::vector<UnitConfig> load_units(ConfigYaml yaml)
 {
-  const auto units = take_optional(yaml, "units");
-  if (units.IsDefined() && !units.IsSequence()) {
-    throw std::runtime_error("Invalid type: units");
-  }
   std::vector<UnitConfig> result;
-  for (YAML::Node unit : units) {
+  for (ConfigYaml unit : yaml.optional("units").list()) {
     result.push_back(load_unit(unit));
   }
   return result;
 }
 
-FileConfig load_root_file(const std::string & path, Logger & logger)
+void load_root_file(GraphConfig & graph, const std::string & path, Logger & logger)
 {
   const auto visited = std::make_shared<std::set<std::string>>();
-  return load_file(ParseContext("root", visited), path, logger);
+  graph.root = load_file(ParseContext("root", visited), path, logger);
 }
 
-std::vector<FileConfig> make_file_list(FileConfig root)
+void make_file_list(GraphConfig & graph)
 {
   std::vector<FileConfig> result;
-  result.push_back(root);
+  result.push_back(graph.root);
   for (size_t i = 0; i < result.size(); ++i) {
     const auto & files = result[i]->files;
     result.insert(result.end(), files.begin(), files.end());
   }
-  return result;
+  graph.files = result;
 }
 
-std::vector<FileConfig> load_unit_tree(const std::vector<FileConfig> & files)
+void load_unit_tree(GraphConfig & graph)
 {
-  for (const auto & file : files) {
+  for (auto & file : graph.files) {
     file->units = load_units(file->yaml);
   }
-  return files;
 }
 
-std::vector<UnitConfig> make_unit_list(const std::vector<FileConfig> & files)
+void make_unit_list(GraphConfig & graph)
 {
   std::vector<UnitConfig> result;
-  for (const auto & file : files) {
+  for (const auto & file : graph.files) {
     const auto & units = file->units;
     result.insert(result.end(), units.begin(), units.end());
   }
@@ -155,7 +129,107 @@ std::vector<UnitConfig> make_unit_list(const std::vector<FileConfig> & files)
       result.push_back(unit);
     }
   }
-  return result;
+  graph.units = result;
 }
 
+UnitConfig resolve_links(
+  UnitConfig unit, const std::unordered_map<std::string, UnitConfig> & links,
+  std::unordered_set<UnitConfig> & visited)
+{
+  if (!visited.insert(unit).second) {
+    throw LinkLoopFound(unit->path);
+  }
+  if (unit->type != "link") {
+    return unit;
+  }
+  if (!links.count(unit->link)) {
+    throw LinkNotFound(unit->link);
+  }
+  return resolve_links(links.at(unit->link), links, visited);
+}
+
+void resolve_links(GraphConfig & graph)
+{
+  std::unordered_map<std::string, UnitConfig> links;
+  for (auto & unit : graph.units) {
+    if (!unit->path.empty()) {
+      if (!links.insert(std::make_pair(unit->path, unit)).second) {
+        throw PathConflict(unit->path);
+      }
+    }
+  }
+  for (auto & unit : graph.units) {
+    for (auto & [port, child] : unit->units) {
+      std::unordered_set<UnitConfig> visited;
+      visited.insert(unit);
+      child = resolve_links(child, links, visited);
+    }
+  }
+}
+
+void cleanup_files(GraphConfig & graph)
+{
+  std::vector<UnitConfig> units;
+  for (auto & unit : graph.units) {
+    if (unit->type != "link") {
+      units.push_back(unit);
+    }
+  }
+  graph.root.reset();
+  graph.files.clear();
+  graph.units = units;
+}
+
+void topological_sort(GraphConfig & graph)
+{
+  std::unordered_map<UnitConfig, int> degrees;
+  std::deque<UnitConfig> result;
+  std::deque<UnitConfig> buffer;
+
+  // Count degrees of each unit.
+  for (const auto & unit : graph.units) {
+    for (const auto & [port, child] : unit->units) {
+      ++degrees[child];
+    }
+  }
+
+  // Find initial units that are zero degrees.
+  for (const auto & unit : graph.units) {
+    // Do not use "at" function because the zero degree units do not exist.
+    if (degrees[unit] == 0) {
+      buffer.push_back(unit);
+    }
+  }
+
+  // Sort by topological order.
+  while (!buffer.empty()) {
+    const auto unit = buffer.front();
+    buffer.pop_front();
+    for (const auto & [port, child] : unit->units) {
+      if (--degrees[child] == 0) {
+        buffer.push_back(child);
+      }
+    }
+    result.push_back(unit);
+  }
+
+  // Detect circulation because the result does not include the units on the loop.
+  if (result.size() != graph.units.size()) {
+    throw UnitLoopFound("detect unit loop");
+  }
+}
+
+GraphConfig load_config(const std::string & path, Logger & logger)
+{
+  GraphConfig graph;
+  load_root_file(graph, path, logger);
+  make_file_list(graph);
+  load_unit_tree(graph);
+  make_unit_list(graph);
+  resolve_links(graph);
+  cleanup_files(graph);
+  topological_sort(graph);
+
+  return graph;
+}
 }  // namespace autoware::diagnostic_graph_aggregator

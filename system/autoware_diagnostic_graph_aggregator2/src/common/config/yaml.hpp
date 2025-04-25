@@ -26,16 +26,15 @@ namespace autoware::diagnostic_graph_aggregator
 class ConfigYaml
 {
 public:
-  explicit ConfigYaml(const YAML::Node yaml);
+  static ConfigYaml LoadFile(const std::string & path);
+  explicit ConfigYaml(const YAML::Node yaml = {});
   ConfigYaml required(const std::string & name);
   ConfigYaml optional(const std::string & name);
 
   void dump() const;
   std::vector<ConfigYaml> list() const;
   std::string text() const;
-
-  // TODO(Takagi, Isamu): Remove this function.
-  YAML::Node raw() { return yaml_; }
+  std::string text(const std::string & value) const;
 
 private:
   YAML::Node yaml_;

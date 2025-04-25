@@ -41,6 +41,26 @@ struct FileNotFound : public Exception
   using Exception::Exception;
 };
 
+struct PathConflict : public Exception
+{
+  using Exception::Exception;
+};
+
+struct LinkNotFound : public Exception
+{
+  using Exception::Exception;
+};
+
+struct LinkLoopFound : public Exception
+{
+  using Exception::Exception;
+};
+
+struct UnitLoopFound : public Exception
+{
+  using Exception::Exception;
+};
+
 /*
 struct FileNotFound : public Exception
 {
@@ -76,36 +96,6 @@ struct ModeNotFound : public Exception
 {
   explicit ModeNotFound(const std::string & path) : Exception(format(path)) {}
   static std::string format(const std::string & path) { return "mode path is not found: " + path; }
-};
-
-struct PathConflict : public Exception
-{
-  explicit PathConflict(const std::string & path) : Exception(format(path)) {}
-  static std::string format(const std::string & path) { return "node path is not unique: " + path; }
-};
-
-struct PathNotFound : public Exception
-{
-  explicit PathNotFound(const TreePath & path, const std::string & link)
-  : Exception(format(path, link))
-  {
-  }
-  static std::string format(const TreePath & path, const std::string & link)
-  {
-    return "path is not found: " + link + path.text();
-  }
-};
-
-struct UnknownSubstitution : public Exception
-{
-  explicit UnknownSubstitution(const TreePath & path, const std::string & substitution)
-  : Exception(format(path, substitution))
-  {
-  }
-  static std::string format(const TreePath & path, const std::string & substitution)
-  {
-    return "unknown substitution: " + substitution + path.text();
-  }
 };
 
 struct UnknownUnitType : public Exception

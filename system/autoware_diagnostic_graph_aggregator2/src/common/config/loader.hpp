@@ -24,10 +24,12 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-FileConfig load_root_file(const std::string & path, Logger & logger);
-std::vector<FileConfig> make_file_list(FileConfig root);
-std::vector<FileConfig> load_unit_tree(const std::vector<FileConfig> & files);
-std::vector<UnitConfig> make_unit_list(const std::vector<FileConfig> & files);
+GraphConfig load_config(const std::string & path, Logger & logger);
+
+void load_root_file(GraphConfig & graph, const std::string & path, Logger & logger);
+void make_file_list(GraphConfig & graph);
+void load_unit_tree(GraphConfig & graph);
+void make_unit_list(GraphConfig & graph);
 
 }  // namespace autoware::diagnostic_graph_aggregator
 

@@ -1,0 +1,5 @@
+units:
+  - path: unit1
+    type: and
+    list:
+      - { type: link, link: unit2 }

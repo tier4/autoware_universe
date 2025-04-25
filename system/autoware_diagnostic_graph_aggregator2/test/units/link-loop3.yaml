@@ -1,0 +1,21 @@
+units:
+  - path: unit1
+    type: and
+    list:
+      - { type: link, link: unit2 }
+
+  - path: unit2
+    type: link
+    link: unit3
+
+  - path: unit3
+    type: link
+    link: unit4
+
+  - path: unit4
+    type: link
+    link: unit5
+
+  - path: unit5
+    type: link
+    link: unit1

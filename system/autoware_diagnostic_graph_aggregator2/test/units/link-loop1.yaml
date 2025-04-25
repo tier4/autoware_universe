@@ -1,0 +1,4 @@
+units:
+  - path: unit1
+    type: link
+    link: unit1

@@ -14,43 +14,7 @@
 
 #include "config/parser.hpp"
 
-#include "config/errors.hpp"
-
 namespace autoware::diagnostic_graph_aggregator
 {
-
-/*
-ConfigData::ConfigData(const std::string & file, const std::string & tree, const YAML::Node yaml)
-{
-  file_ = file;
-  tree_ = tree;
-  yaml_ = yaml;
-}
-
-
-ConfigData ConfigData::required(const std::string & name)
-{
-  // TODO(Takagi, Isamu): check map type.
-  const auto tree_path = path_.field(name);
-  if (!yaml_[name]) {
-    throw FieldNotFound(tree_path);
-  }
-  const auto data = yaml_[name];
-  yaml_.remove(name);
-  return TreeData(data, tree_path);
-}
-
-ConfigData ConfigData::optional(const std::string & name)
-{
-  // TODO(Takagi, Isamu): check map type.
-  const auto tree_path = path_.field(name);
-  if (!yaml_[name]) {
-    return TreeData(YAML::Node(YAML::NodeType::Undefined), tree_path);
-  }
-  const auto data = yaml_[name];
-  yaml_.remove(name);
-  return TreeData(data, tree_path);
-}
-*/
 
 }  // namespace autoware::diagnostic_graph_aggregator

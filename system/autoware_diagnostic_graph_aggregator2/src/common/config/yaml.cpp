@@ -23,6 +23,11 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
+ConfigYaml ConfigYaml::LoadFile(const std::string & path)
+{
+  return ConfigYaml(YAML::LoadFile(path));
+}
+
 ConfigYaml::ConfigYaml(const YAML::Node yaml)
 {
   yaml_ = yaml;
@@ -70,6 +75,11 @@ std::vector<ConfigYaml> ConfigYaml::list() const
 std::string ConfigYaml::text() const
 {
   return yaml_.as<std::string>();
+}
+
+std::string ConfigYaml::text(const std::string & value) const
+{
+  return yaml_.as<std::string>(value);
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

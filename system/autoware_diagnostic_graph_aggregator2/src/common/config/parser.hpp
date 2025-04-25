@@ -33,6 +33,13 @@ struct UnitConfigData;
 using FileConfig = std::shared_ptr<FileConfigData>;
 using UnitConfig = std::shared_ptr<UnitConfigData>;
 
+struct GraphConfig
+{
+  FileConfig root;
+  std::vector<FileConfig> files;
+  std::vector<UnitConfig> units;
+};
+
 struct UnitConfigData
 {
   std::string type;
@@ -41,7 +48,7 @@ struct UnitConfigData
   std::unique_ptr<Logic> logic;
   std::vector<std::pair<ChildPort::UniquePtr, UnitConfig>> units;
   std::optional<std::pair<ChildPort::UniquePtr, std::string>> diag;
-  YAML::Node yaml;
+  ConfigYaml yaml;
 };
 
 struct FileConfigData
@@ -50,7 +57,7 @@ struct FileConfigData
   std::string resolved_path;
   std::vector<FileConfig> files;
   std::vector<UnitConfig> units;
-  YAML::Node yaml;
+  ConfigYaml yaml;
 };
 
 struct LogicConfigData
