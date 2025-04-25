@@ -15,6 +15,8 @@
 #ifndef COMMON__CONFIG__PARSER_HPP_
 #define COMMON__CONFIG__PARSER_HPP_
 
+#include "graph/logic.hpp"
+
 #include <yaml-cpp/yaml.h>
 
 #include <memory>
@@ -24,25 +26,43 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-struct ConfigUnitData
+struct FileConfigData;
+struct UnitConfigData;
+
+using FileConfig = std::shared_ptr<FileConfigData>;
+using UnitConfig = std::shared_ptr<UnitConfigData>;
+
+struct ChildPort
 {
-  std::string path;
-  std::vector<std::shared_ptr<ConfigUnitData>> units;
-  // Unit
-  // Logic
+  using UniquePtr = std::unique_ptr<ChildPort>;
 };
 
-struct ConfigFileData
+struct UnitConfigData
+{
+  std::string type;
+  std::string path;
+  std::vector<std::pair<ChildPort::UniquePtr, UnitConfig>> units;
+  std::unique_ptr<Logic> logic;
+};
+
+struct FileConfigData
 {
   std::string original_path;
   std::string resolved_path;
-  std::vector<std::shared_ptr<ConfigFileData>> files;
-  std::vector<std::shared_ptr<ConfigUnitData>> units;
+  std::vector<FileConfig> files;
+  std::vector<UnitConfig> units;
   YAML::Node yaml;
 };
 
-using ConfigUnit = std::shared_ptr<ConfigUnitData>;
-using ConfigFile = std::shared_ptr<ConfigFileData>;
+class LogicConfig
+{
+public:
+  explicit LogicConfig(UnitConfig unit) { unit_ = unit; }
+  std::string type() const { return unit_->type; }
+
+private:
+  UnitConfig unit_;
+};
 
 struct ParseContext
 {
@@ -62,25 +82,6 @@ private:
   std::string parent_;
   std::shared_ptr<std::set<std::string>> visited_;
 };
-
-/*
-struct ConfigData
-{
-  ConfigData(const std::string & file, const std::string & tree, const YAML::Node & yaml);
-  ConfigData required(const std::string & name);
-  ConfigData optional(const std::string & name);
-
-  std::string file;
-  std::string tree;
-  YAML::Node yaml;
-};
-
-struct FileConfig
-{
-  std::string path;
-  YAML::Node yaml;
-};
-*/
 
 }  // namespace autoware::diagnostic_graph_aggregator
 

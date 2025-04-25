@@ -26,9 +26,10 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-ConfigFile load_file(ParseContext context, const std::string & path, Logger & logger);
-std::vector<ConfigFile> load_files(ParseContext context, YAML::Node & yaml, Logger & logger);
-std::vector<ConfigUnit> load_units(YAML::Node & yaml);
+FileConfig load_file(ParseContext context, const std::string & path, Logger & logger);
+UnitConfig load_unit(FileConfig file);
+std::vector<FileConfig> load_files(ParseContext context, YAML::Node & yaml, Logger & logger);
+std::vector<UnitConfig> load_units(YAML::Node & yaml);
 
 YAML::Node take_optional(YAML::Node & yaml, const std::string & name)
 {
@@ -52,7 +53,7 @@ YAML::Node take_required(YAML::Node & yaml, const std::string & name)
   return node;
 }
 
-ConfigFile load_file(ParseContext context, const std::string & path, Logger & logger)
+FileConfig load_file(ParseContext context, const std::string & path, Logger & logger)
 {
   const auto resolved_path = substitutions::evaluate(path, context);
   if (!context.visit(resolved_path)) {
@@ -62,7 +63,7 @@ ConfigFile load_file(ParseContext context, const std::string & path, Logger & lo
     throw FileNotFound(resolved_path);
   }
 
-  ConfigFile result = std::make_shared<ConfigFileData>();
+  FileConfig result = std::make_shared<FileConfigData>();
   result->original_path = path;
   result->resolved_path = resolved_path;
   result->yaml = YAML::LoadFile(result->resolved_path);
@@ -70,20 +71,23 @@ ConfigFile load_file(ParseContext context, const std::string & path, Logger & lo
   return result;
 }
 
-ConfigUnit load_unit(ConfigFile file)
+UnitConfig load_unit(YAML::Node & yaml)
 {
-  (void)file;
-  ConfigUnit result = std::make_shared<ConfigUnitData>();
+  UnitConfig result = std::make_shared<UnitConfigData>();
+  result->type = take_required(yaml, "type").as<std::string>();
+  result->path = take_optional(yaml, "path").as<std::string>();
+  result->logic = LogicFactory::Create(LogicConfig(result));
+
   return result;
 }
 
-std::vector<ConfigFile> load_files(ParseContext context, YAML::Node & yaml, Logger & logger)
+std::vector<FileConfig> load_files(ParseContext context, YAML::Node & yaml, Logger & logger)
 {
   const auto files = take_optional(yaml, "files");
   if (files.IsDefined() && !files.IsSequence()) {
     throw std::runtime_error("Invalid type: files");
   }
-  std::vector<ConfigFile> result;
+  std::vector<FileConfig> result;
   for (YAML::Node file : files) {
     const auto file_path = take_required(file, "path").as<std::string>();
     result.push_back(load_file(context, file_path, logger));
@@ -91,27 +95,28 @@ std::vector<ConfigFile> load_files(ParseContext context, YAML::Node & yaml, Logg
   return result;
 }
 
-std::vector<ConfigUnit> load_units(YAML::Node & yaml)
+std::vector<UnitConfig> load_units(YAML::Node & yaml)
 {
   const auto units = take_optional(yaml, "units");
   if (units.IsDefined() && !units.IsSequence()) {
     throw std::runtime_error("Invalid type: units");
   }
-  std::vector<ConfigUnit> result;
+  std::vector<UnitConfig> result;
   for (YAML::Node unit : units) {
+    result.push_back(load_unit(unit));
   }
   return result;
 }
 
-ConfigFile load_root_file(const std::string & path, Logger & logger)
+FileConfig load_root_file(const std::string & path, Logger & logger)
 {
   const auto visited = std::make_shared<std::set<std::string>>();
   return load_file(ParseContext("root", visited), path, logger);
 }
 
-std::vector<ConfigFile> make_file_list(ConfigFile root)
+std::vector<FileConfig> make_file_list(FileConfig root)
 {
-  std::vector<ConfigFile> result;
+  std::vector<FileConfig> result;
   result.push_back(root);
   for (size_t i = 0; i < result.size(); ++i) {
     const auto & files = result[i]->files;
@@ -120,7 +125,7 @@ std::vector<ConfigFile> make_file_list(ConfigFile root)
   return result;
 }
 
-std::vector<ConfigFile> load_unit_tree(const std::vector<ConfigFile> & files)
+std::vector<FileConfig> load_unit_tree(const std::vector<FileConfig> & files)
 {
   for (const auto & file : files) {
     file->units = load_units(file->yaml);

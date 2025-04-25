@@ -15,7 +15,7 @@
 #include "check_graph.hpp"
 
 #include "config/loader.hpp"
-#include "logger/logger.hpp"
+#include "utils/logger.hpp"
 
 #include <iostream>
 #include <string>
@@ -23,7 +23,7 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-void dump_file_tree(const ConfigFile & file, const std::string & indent = "")
+void dump_file_tree(const FileConfig & file, const std::string & indent = "")
 {
   std::cout << indent << file->resolved_path << std::endl;
   for (const auto & child : file->files) {
@@ -48,6 +48,14 @@ void dump_file_list(const std::string & path)
   }
 }
 
+void dump_unit_tree(const UnitConfig & unit, const std::string & indent = "")
+{
+  std::cout << indent << unit->type << "(" << unit->path << ")" << std::endl;
+  for (const auto & [port, child] : unit->units) {
+    dump_unit_tree(child, indent + "  ");
+  }
+}
+
 void dump_unit_tree(const std::string & path)
 {
   Logger logger;
@@ -55,7 +63,9 @@ void dump_unit_tree(const std::string & path)
   const auto list = make_file_list(root);
   const auto list2 = load_unit_tree(list);
   for (const auto & file : list2) {
-    std::cout << file->resolved_path << std::endl;
+    for (const auto & unit : file->units) {
+      dump_unit_tree(unit);
+    }
   }
 }
 

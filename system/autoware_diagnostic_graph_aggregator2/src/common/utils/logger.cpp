@@ -12,20 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__LOGGER__LOGGER_HPP_
-#define COMMON__LOGGER__LOGGER_HPP_
+#include "utils/logger.hpp"
 
+#include <iostream>
 #include <string>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-class Logger
+void Logger::info(const std::string & message)
 {
-public:
-  void info(const std::string & message);
-};
+  std::cout << message << std::endl;
+}
 
 }  // namespace autoware::diagnostic_graph_aggregator
-
-#endif  // COMMON__LOGGER__LOGGER_HPP_

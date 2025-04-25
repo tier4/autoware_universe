@@ -16,7 +16,7 @@
 #define COMMON__CONFIG__LOADER_HPP_
 
 #include "config/parser.hpp"
-#include "logger/logger.hpp"
+#include "utils/logger.hpp"
 
 #include <string>
 #include <vector>
@@ -24,9 +24,9 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-ConfigFile load_root_file(const std::string & path, Logger & logger);
-std::vector<ConfigFile> make_file_list(ConfigFile root);
-std::vector<ConfigFile> load_unit_tree(const std::vector<ConfigFile> & files);
+FileConfig load_root_file(const std::string & path, Logger & logger);
+std::vector<FileConfig> make_file_list(FileConfig root);
+std::vector<FileConfig> load_unit_tree(const std::vector<FileConfig> & files);
 
 }  // namespace autoware::diagnostic_graph_aggregator
 
