@@ -12,38 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__CONFIG__PARSER_HPP_
-#define COMMON__CONFIG__PARSER_HPP_
-
-#include "config/types/forward.hpp"
-#include "config/yaml.hpp"
+#ifndef COMMON__CONFIG__CONTEXT_HPP_
+#define COMMON__CONFIG__CONTEXT_HPP_
 
 #include <memory>
-#include <optional>
 #include <string>
-#include <vector>
+#include <unordered_set>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-struct LogicEntity
+struct ParseContext
 {
-  std::vector<std::pair<std::unique_ptr<ChildPort>, ConfigYaml>> units;
-};
+  ParseContext(
+    const std::string & parent, const std::shared_ptr<std::unordered_set<std::string>> & visited);
 
-class LogicConfig
-{
-public:
-  LogicConfig(UnitConfig unit, LogicEntity * data);
-  ConfigYaml yaml() const;
-  ChildPort * parse(ConfigYaml yaml) const;
-  ChildPort * parse(std::string name) const;
+  ParseContext child(const std::string & path);
 
-protected:
-  UnitConfig unit_;
-  LogicEntity * data_;
+  bool visit(const std::string & path);
+
+  std::string file() const;
+
+private:
+  std::string parent_;
+  std::shared_ptr<std::unordered_set<std::string>> visited_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator
 
-#endif  // COMMON__CONFIG__PARSER_HPP_
+#endif  // COMMON__CONFIG__CONTEXT_HPP_

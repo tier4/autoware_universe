@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__CONFIG__PARSER_HPP_
-#define COMMON__CONFIG__PARSER_HPP_
+#ifndef COMMON__CONFIG__ENTITY_HPP_
+#define COMMON__CONFIG__ENTITY_HPP_
 
 #include "config/types/forward.hpp"
 #include "config/yaml.hpp"
@@ -26,24 +26,33 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-struct LogicEntity
+struct GraphConfig
 {
-  std::vector<std::pair<std::unique_ptr<ChildPort>, ConfigYaml>> units;
+  FileConfig root;
+  std::vector<FileConfig> files;
+  std::vector<UnitConfig> units;
 };
 
-class LogicConfig
+struct UnitConfigData
 {
-public:
-  LogicConfig(UnitConfig unit, LogicEntity * data);
-  ConfigYaml yaml() const;
-  ChildPort * parse(ConfigYaml yaml) const;
-  ChildPort * parse(std::string name) const;
+  std::string type;
+  std::string path;
+  std::string link;
+  std::unique_ptr<Logic> logic;
+  std::vector<std::pair<std::unique_ptr<ChildPort>, UnitConfig>> units;
+  std::optional<std::pair<std::unique_ptr<ChildPort>, std::string>> diag;
+  ConfigYaml yaml;
+};
 
-protected:
-  UnitConfig unit_;
-  LogicEntity * data_;
+struct FileConfigData
+{
+  std::string original_path;
+  std::string resolved_path;
+  std::vector<FileConfig> files;
+  std::vector<UnitConfig> units;
+  ConfigYaml yaml;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator
 
-#endif  // COMMON__CONFIG__PARSER_HPP_
+#endif  // COMMON__CONFIG__ENTITY_HPP_

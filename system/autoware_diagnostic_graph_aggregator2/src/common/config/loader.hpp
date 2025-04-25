@@ -15,11 +15,10 @@
 #ifndef COMMON__CONFIG__LOADER_HPP_
 #define COMMON__CONFIG__LOADER_HPP_
 
-#include "config/parser.hpp"
+#include "config/types/forward.hpp"
 #include "utils/logger.hpp"
 
 #include <string>
-#include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {

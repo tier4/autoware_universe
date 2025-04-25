@@ -12,38 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__CONFIG__PARSER_HPP_
-#define COMMON__CONFIG__PARSER_HPP_
+#ifndef COMMON__LOGICS__AND_HPP_
+#define COMMON__LOGICS__AND_HPP_
 
-#include "config/types/forward.hpp"
-#include "config/yaml.hpp"
+#include "graph/logic.hpp"
 
-#include <memory>
-#include <optional>
-#include <string>
 #include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-struct LogicEntity
-{
-  std::vector<std::pair<std::unique_ptr<ChildPort>, ConfigYaml>> units;
-};
-
-class LogicConfig
+class AndLogic : public Logic
 {
 public:
-  LogicConfig(UnitConfig unit, LogicEntity * data);
-  ConfigYaml yaml() const;
-  ChildPort * parse(ConfigYaml yaml) const;
-  ChildPort * parse(std::string name) const;
+  explicit AndLogic(const LogicConfig & config);
 
-protected:
-  UnitConfig unit_;
-  LogicEntity * data_;
+private:
+  std::vector<ChildPort *> ports_;
+};
+
+class OrLogic : public Logic
+{
+public:
+  explicit OrLogic(const LogicConfig & config);
+
+private:
+  std::vector<ChildPort *> ports_;
+};
+
+class DiagLogic : public Logic
+{
+public:
+  explicit DiagLogic(const LogicConfig & config);
+
+private:
+  ChildPort * port_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator
 
-#endif  // COMMON__CONFIG__PARSER_HPP_
+#endif  // COMMON__LOGICS__AND_HPP_

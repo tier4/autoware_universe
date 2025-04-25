@@ -5,12 +5,15 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
+  "src/common/config/context.cpp"
+  "src/common/config/entity.cpp"
   "src/common/config/loader.cpp"
   "src/common/config/parser.cpp"
   "src/common/config/substitutions.cpp"
   "src/common/config/yaml.cpp"
   "src/common/graph/graph.cpp"
   "src/common/graph/logic.cpp"
+  "src/common/logics/and.cpp"
   "src/common/utils/logger.cpp"
 )
 target_include_directories(${PROJECT_NAME} PRIVATE src/common)

@@ -15,7 +15,7 @@
 #ifndef COMMON__CONFIG__SUBSTITUTIONS_HPP_
 #define COMMON__CONFIG__SUBSTITUTIONS_HPP_
 
-#include "config/parser.hpp"
+#include "config/types/forward.hpp"
 
 #include <string>
 

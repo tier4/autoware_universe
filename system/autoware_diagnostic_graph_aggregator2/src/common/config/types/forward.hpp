@@ -12,38 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__CONFIG__PARSER_HPP_
-#define COMMON__CONFIG__PARSER_HPP_
-
-#include "config/types/forward.hpp"
-#include "config/yaml.hpp"
+#ifndef COMMON__CONFIG__TYPES__FORWARD_HPP_
+#define COMMON__CONFIG__TYPES__FORWARD_HPP_
 
 #include <memory>
-#include <optional>
-#include <string>
-#include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-struct LogicEntity
-{
-  std::vector<std::pair<std::unique_ptr<ChildPort>, ConfigYaml>> units;
-};
+class ChildPort;
+class Logic;
+class LogicConfig;
 
-class LogicConfig
-{
-public:
-  LogicConfig(UnitConfig unit, LogicEntity * data);
-  ConfigYaml yaml() const;
-  ChildPort * parse(ConfigYaml yaml) const;
-  ChildPort * parse(std::string name) const;
+struct ParseContext;
+struct GraphConfig;
+struct FileConfigData;
+struct UnitConfigData;
 
-protected:
-  UnitConfig unit_;
-  LogicEntity * data_;
-};
+using FileConfig = std::shared_ptr<FileConfigData>;
+using UnitConfig = std::shared_ptr<UnitConfigData>;
 
 }  // namespace autoware::diagnostic_graph_aggregator
 
-#endif  // COMMON__CONFIG__PARSER_HPP_
+#endif  // COMMON__CONFIG__TYPES__FORWARD_HPP_

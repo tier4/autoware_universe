@@ -37,7 +37,7 @@ ConfigYaml ConfigYaml::required(const std::string & name)
 {
   // TODO(Takagi, Isamu): check map type.
   if (!yaml_[name]) {
-    throw std::runtime_error("Required field not found: " + name);
+    throw FieldNotFound(name);
   }
   const auto node = yaml_[name];
   yaml_.remove(name);
@@ -63,7 +63,7 @@ void ConfigYaml::dump() const
 std::vector<ConfigYaml> ConfigYaml::list() const
 {
   if (yaml_.IsDefined() && !yaml_.IsSequence()) {
-    throw std::runtime_error("Invalid type: files");
+    throw InvalidType("list");
   }
   std::vector<ConfigYaml> result;
   for (const auto & node : yaml_) {

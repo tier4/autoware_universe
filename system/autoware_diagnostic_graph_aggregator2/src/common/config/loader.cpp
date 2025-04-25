@@ -14,9 +14,15 @@
 
 #include "config/loader.hpp"
 
+#include "config/context.hpp"
+#include "config/entity.hpp"
 #include "config/errors.hpp"
 #include "config/parser.hpp"
 #include "config/substitutions.hpp"
+#include "config/types/forward.hpp"
+#include "config/yaml.hpp"
+#include "graph/logic.hpp"
+#include "graph/port.hpp"
 
 #include <deque>
 #include <filesystem>
@@ -66,9 +72,9 @@ UnitConfig load_unit(ConfigYaml yaml)
   if (result->type == "link") {
     result->link = yaml.required("link").text("");
   } else {
-    LogicConfig2 config(result);
-    result->logic = LogicFactory::Create(config);
-    for (auto & [port, node] : config.ports()) {
+    LogicEntity entity;
+    result->logic = LogicFactory::Create(result->type, LogicConfig(result, &entity));
+    for (auto & [port, node] : entity.units) {
       result->units.push_back(std::make_pair(std::move(port), load_unit(node)));
     }
   }
@@ -95,7 +101,7 @@ std::vector<UnitConfig> load_units(ConfigYaml yaml)
 
 void load_root_file(GraphConfig & graph, const std::string & path, Logger & logger)
 {
-  const auto visited = std::make_shared<std::set<std::string>>();
+  const auto visited = std::make_shared<std::unordered_set<std::string>>();
   graph.root = load_file(ParseContext("root", visited), path, logger);
 }
 
@@ -229,7 +235,7 @@ GraphConfig load_config(const std::string & path, Logger & logger)
   resolve_links(graph);
   cleanup_files(graph);
   topological_sort(graph);
-
   return graph;
 }
+
 }  // namespace autoware::diagnostic_graph_aggregator

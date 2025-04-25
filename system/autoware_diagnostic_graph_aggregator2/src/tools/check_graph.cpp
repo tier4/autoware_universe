@@ -14,6 +14,7 @@
 
 #include "check_graph.hpp"
 
+#include "config/entity.hpp"
 #include "config/loader.hpp"
 #include "utils/logger.hpp"
 
@@ -116,6 +117,9 @@ int main(int argc, char ** argv)
 
   autoware::diagnostic_graph_aggregator::check_graph(
     "$(find-pkg-share autoware_diagnostic_graph_aggregator)/example/graph/main.yaml");
+  std::cout << "================================================" << std::endl;
+  autoware::diagnostic_graph_aggregator::check_graph(
+    "$(find-pkg-share autoware_launch)/config/system/diagnostics/autoware-main.yaml");
   std::cout << "================================================" << std::endl;
   autoware::diagnostic_graph_aggregator::check_graph(
     "$(find-pkg-share autoware_diagnostic_graph_aggregator2)/test/units/sample.yaml");

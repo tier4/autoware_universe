@@ -14,7 +14,7 @@
 
 #include "graph/logic.hpp"
 
-#include "config/parser.hpp"
+#include "config/errors.hpp"
 
 #include <memory>
 #include <string>
@@ -22,53 +22,18 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-std::unique_ptr<Logic> LogicFactory::Create(LogicConfig & config)
+std::unique_ptr<Logic> LogicFactory::Create(const std::string & type, const LogicConfig & config)
 {
-  const auto type = config.type();
   const auto iter = logics_.find(type);
   if (iter != logics_.end()) {
     return iter->second(config);
   }
-  throw std::runtime_error("Logic not found: " + type);
+  throw UnknownLogic(type);
 }
 
 void LogicFactory::Register(const std::string & type, Function function)
 {
   logics_[type] = function;
 }
-
-AndLogic::AndLogic(LogicConfig & config)
-{
-  ConfigYaml yaml = config.yaml();
-  for (ConfigYaml node : yaml.required("list").list()) {
-    ports_.push_back(config.parse(node));
-  }
-}
-
-OrLogic::OrLogic(LogicConfig & config)
-{
-  ConfigYaml yaml = config.yaml();
-  for (ConfigYaml node : yaml.required("list").list()) {
-    ports_.push_back(config.parse(node));
-  }
-}
-
-DiagLogic::DiagLogic(LogicConfig & config)
-{
-  const auto diag_node = config.yaml().required("node").text();
-  const auto diag_name = config.yaml().required("name").text();
-  const auto sep = diag_node.empty() ? "" : ": ";
-  port_ = config.parse(diag_node + sep + diag_name);
-}
-
-struct DummyLogic : public Logic
-{
-  explicit DummyLogic(LogicConfig &) {}
-};
-
-RegisterLogicFactory<DiagLogic> registration4("diag");
-RegisterLogicFactory<AndLogic> registration("and");
-RegisterLogicFactory<OrLogic> registration3("or");
-RegisterLogicFactory<DummyLogic> registration2("ok");
 
 }  // namespace autoware::diagnostic_graph_aggregator

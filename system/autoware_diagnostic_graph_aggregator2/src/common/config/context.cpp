@@ -1,4 +1,4 @@
-// Copyright 2023 The Autoware Contributors
+// Copyright 2024 The Autoware Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,38 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__CONFIG__PARSER_HPP_
-#define COMMON__CONFIG__PARSER_HPP_
-
-#include "config/types/forward.hpp"
-#include "config/yaml.hpp"
+#include "config/context.hpp"
 
 #include <memory>
-#include <optional>
 #include <string>
-#include <vector>
+#include <unordered_set>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-struct LogicEntity
+ParseContext::ParseContext(
+  const std::string & parent, const std::shared_ptr<std::unordered_set<std::string>> & visited)
 {
-  std::vector<std::pair<std::unique_ptr<ChildPort>, ConfigYaml>> units;
-};
+  parent_ = parent;
+  visited_ = visited;
+}
 
-class LogicConfig
+ParseContext ParseContext::child(const std::string & path)
 {
-public:
-  LogicConfig(UnitConfig unit, LogicEntity * data);
-  ConfigYaml yaml() const;
-  ChildPort * parse(ConfigYaml yaml) const;
-  ChildPort * parse(std::string name) const;
+  return ParseContext(path, visited_);
+}
 
-protected:
-  UnitConfig unit_;
-  LogicEntity * data_;
-};
+bool ParseContext::visit(const std::string & path)
+{
+  return visited_->insert(path).second;
+}
+
+std::string ParseContext::file() const
+{
+  return parent_;
+}
 
 }  // namespace autoware::diagnostic_graph_aggregator
-
-#endif  // COMMON__CONFIG__PARSER_HPP_
