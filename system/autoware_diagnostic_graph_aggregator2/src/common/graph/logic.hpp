@@ -65,6 +65,24 @@ private:
   std::vector<ChildPort *> ports_;
 };
 
+class OrLogic : public Logic
+{
+public:
+  explicit OrLogic(LogicConfig & config);
+
+private:
+  std::vector<ChildPort *> ports_;
+};
+
+class DiagLogic : public Logic
+{
+public:
+  explicit DiagLogic(LogicConfig & config);
+
+private:
+  ChildPort * port_;
+};
+
 }  // namespace autoware::diagnostic_graph_aggregator
 
 #endif  // COMMON__GRAPH__LOGIC_HPP_

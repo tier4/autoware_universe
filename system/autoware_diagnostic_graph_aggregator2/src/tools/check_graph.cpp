@@ -69,9 +69,22 @@ void dump_unit_tree(const std::string & path)
   }
 }
 
+void dump_unit_list(const std::string & path)
+{
+  Logger logger;
+  const auto root = load_root_file(path, logger);
+  const auto list = make_file_list(root);
+  const auto list2 = load_unit_tree(list);
+  const auto units = make_unit_list(list2);
+  for (const auto & unit : units) {
+    std::cout << unit->type << "(" << unit->path << ")" << std::endl;
+    std::cout << YAML::Dump(unit->yaml) << std::endl;
+  }
+}
+
 void check_graph(const std::string & path)
 {
-  dump_unit_tree(path);
+  dump_unit_list(path);
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

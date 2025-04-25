@@ -31,7 +31,8 @@ public:
   ConfigYaml optional(const std::string & name);
 
   void dump() const;
-  std::vector<ConfigYaml> list();
+  std::vector<ConfigYaml> list() const;
+  std::string text() const;
 
   // TODO(Takagi, Isamu): Remove this function.
   YAML::Node raw() { return yaml_; }

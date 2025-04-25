@@ -12,23 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__CONFIG__LOADER_HPP_
-#define COMMON__CONFIG__LOADER_HPP_
-
-#include "config/parser.hpp"
-#include "utils/logger.hpp"
-
-#include <string>
-#include <vector>
+#include "graph/port.hpp"
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-FileConfig load_root_file(const std::string & path, Logger & logger);
-std::vector<FileConfig> make_file_list(FileConfig root);
-std::vector<FileConfig> load_unit_tree(const std::vector<FileConfig> & files);
-std::vector<UnitConfig> make_unit_list(const std::vector<FileConfig> & files);
-
 }  // namespace autoware::diagnostic_graph_aggregator
-
-#endif  // COMMON__CONFIG__LOADER_HPP_

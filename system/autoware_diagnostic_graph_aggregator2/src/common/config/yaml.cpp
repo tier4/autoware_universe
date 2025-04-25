@@ -43,7 +43,7 @@ ConfigYaml ConfigYaml::optional(const std::string & name)
 {
   // TODO(Takagi, Isamu): check map type.
   if (!yaml_[name]) {
-    return YAML::Node(YAML::NodeType::Undefined);
+    return ConfigYaml(YAML::Node(YAML::NodeType::Undefined));
   }
   const auto node = yaml_[name];
   yaml_.remove(name);
@@ -55,7 +55,7 @@ void ConfigYaml::dump() const
   std::cout << YAML::Dump(yaml_) << std::endl;
 }
 
-std::vector<ConfigYaml> ConfigYaml::list()
+std::vector<ConfigYaml> ConfigYaml::list() const
 {
   if (yaml_.IsDefined() && !yaml_.IsSequence()) {
     throw std::runtime_error("Invalid type: files");
@@ -65,6 +65,11 @@ std::vector<ConfigYaml> ConfigYaml::list()
     result.push_back(ConfigYaml(node));
   }
   return result;
+}
+
+std::string ConfigYaml::text() const
+{
+  return yaml_.as<std::string>();
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

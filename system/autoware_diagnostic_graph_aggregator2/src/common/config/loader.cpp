@@ -79,7 +79,9 @@ UnitConfig load_unit(YAML::Node yaml)
   result->path = take_optional(yaml, "path").as<std::string>("");
   result->yaml = yaml;
 
-  if (result->type != "link") {
+  if (result->type == "link") {
+    result->link = take_required(yaml, "link").as<std::string>("");
+  } else {
     LogicConfig2 config(result);
     result->logic = LogicFactory::Create(config);
     for (auto & [port, node] : config.ports()) {
@@ -139,6 +141,21 @@ std::vector<FileConfig> load_unit_tree(const std::vector<FileConfig> & files)
     file->units = load_units(file->yaml);
   }
   return files;
+}
+
+std::vector<UnitConfig> make_unit_list(const std::vector<FileConfig> & files)
+{
+  std::vector<UnitConfig> result;
+  for (const auto & file : files) {
+    const auto & units = file->units;
+    result.insert(result.end(), units.begin(), units.end());
+  }
+  for (size_t i = 0; i < result.size(); ++i) {
+    for (const auto & [port, unit] : result[i]->units) {
+      result.push_back(unit);
+    }
+  }
+  return result;
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

@@ -45,14 +45,30 @@ AndLogic::AndLogic(LogicConfig & config)
   }
 }
 
+OrLogic::OrLogic(LogicConfig & config)
+{
+  ConfigYaml yaml = config.yaml();
+  for (ConfigYaml node : yaml.required("list").list()) {
+    ports_.push_back(config.parse(node));
+  }
+}
+
+DiagLogic::DiagLogic(LogicConfig & config)
+{
+  const auto diag_node = config.yaml().required("node").text();
+  const auto diag_name = config.yaml().required("name").text();
+  const auto sep = diag_node.empty() ? "" : ": ";
+  port_ = config.parse(diag_node + sep + diag_name);
+}
+
 struct DummyLogic : public Logic
 {
   explicit DummyLogic(LogicConfig &) {}
 };
 
+RegisterLogicFactory<DiagLogic> registration4("diag");
 RegisterLogicFactory<AndLogic> registration("and");
+RegisterLogicFactory<OrLogic> registration3("or");
 RegisterLogicFactory<DummyLogic> registration2("ok");
-RegisterLogicFactory<DummyLogic> registration3("or");
-RegisterLogicFactory<DummyLogic> registration4("diag");
 
 }  // namespace autoware::diagnostic_graph_aggregator

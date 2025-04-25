@@ -19,6 +19,7 @@
 #include "graph/logic.hpp"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,8 +37,10 @@ struct UnitConfigData
 {
   std::string type;
   std::string path;
-  std::vector<std::pair<ChildPort::UniquePtr, UnitConfig>> units;
+  std::string link;
   std::unique_ptr<Logic> logic;
+  std::vector<std::pair<ChildPort::UniquePtr, UnitConfig>> units;
+  std::optional<std::pair<ChildPort::UniquePtr, std::string>> diag;
   YAML::Node yaml;
 };
 
@@ -68,9 +71,16 @@ public:
     return units_.back().first.get();
   }
 
+  ChildPort * parse(std::string name)
+  {
+    diag_ = std::make_pair(std::make_unique<ChildPort>(), name);
+    return diag_->first.get();
+  }
+
 protected:
   UnitConfig unit_;
   std::vector<std::pair<ChildPort::UniquePtr, ConfigYaml>> units_;
+  std::optional<std::pair<ChildPort::UniquePtr, std::string>> diag_;
 };
 
 class LogicConfig2 : public LogicConfig
