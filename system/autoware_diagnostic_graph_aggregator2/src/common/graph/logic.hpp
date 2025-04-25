@@ -15,10 +15,13 @@
 #ifndef COMMON__GRAPH__LOGIC_HPP_
 #define COMMON__GRAPH__LOGIC_HPP_
 
+#include "graph/port.hpp"
+
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {
@@ -29,33 +32,37 @@ class Logic;
 class LogicFactory
 {
 public:
-  using Function = std::function<std::unique_ptr<Logic>(const LogicConfig &)>;
-  static std::unique_ptr<Logic> Create(const LogicConfig & config);
-  static void Register(const std::string & type, Function func);
+  using Function = std::function<std::unique_ptr<Logic>(LogicConfig &)>;
+  static std::unique_ptr<Logic> Create(LogicConfig & config);
+  static void Register(const std::string & type, Function function);
 
 private:
   static inline std::unordered_map<std::string, Function> logics_;
 };
 
 template <typename T>
-class LogicFactoryRegistration
+class RegisterLogicFactory
 {
 public:
-  explicit LogicFactoryRegistration(const std::string & type)
+  explicit RegisterLogicFactory(const std::string & type)
   {
-    LogicFactory::Register(
-      type, [](const LogicConfig & config) { return std::make_unique<T>(config); });
+    LogicFactory::Register(type, [](LogicConfig & config) { return std::make_unique<T>(config); });
   }
 };
 
 class Logic
 {
+public:
+  virtual ~Logic() = default;
 };
 
 class AndLogic : public Logic
 {
 public:
-  explicit AndLogic(const LogicConfig & config);
+  explicit AndLogic(LogicConfig & config);
+
+private:
+  std::vector<ChildPort *> ports_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

@@ -8,6 +8,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   "src/common/config/loader.cpp"
   "src/common/config/parser.cpp"
   "src/common/config/substitutions.cpp"
+  "src/common/config/yaml.cpp"
   "src/common/graph/graph.cpp"
   "src/common/graph/logic.cpp"
   "src/common/utils/logger.cpp"

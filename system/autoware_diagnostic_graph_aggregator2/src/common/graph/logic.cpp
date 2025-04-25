@@ -22,7 +22,7 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-std::unique_ptr<Logic> LogicFactory::Create(const LogicConfig & config)
+std::unique_ptr<Logic> LogicFactory::Create(LogicConfig & config)
 {
   const auto type = config.type();
   const auto iter = logics_.find(type);
@@ -32,19 +32,27 @@ std::unique_ptr<Logic> LogicFactory::Create(const LogicConfig & config)
   throw std::runtime_error("Logic not found: " + type);
 }
 
-void LogicFactory::Register(const std::string & type, Function func)
+void LogicFactory::Register(const std::string & type, Function function)
 {
-  logics_[type] = func;
+  logics_[type] = function;
 }
 
-AndLogic::AndLogic(const LogicConfig & config)
+AndLogic::AndLogic(LogicConfig & config)
 {
-  (void)config;
+  ConfigYaml yaml = config.yaml();
+  for (ConfigYaml node : yaml.required("list").list()) {
+    ports_.push_back(config.parse(node));
+  }
 }
 
-LogicFactoryRegistration<AndLogic> registration("and");
-LogicFactoryRegistration<AndLogic> registration2("ok");
-LogicFactoryRegistration<AndLogic> registration3("or");
-LogicFactoryRegistration<AndLogic> registration4("diag");
+struct DummyLogic : public Logic
+{
+  explicit DummyLogic(LogicConfig &) {}
+};
+
+RegisterLogicFactory<AndLogic> registration("and");
+RegisterLogicFactory<DummyLogic> registration2("ok");
+RegisterLogicFactory<DummyLogic> registration3("or");
+RegisterLogicFactory<DummyLogic> registration4("diag");
 
 }  // namespace autoware::diagnostic_graph_aggregator

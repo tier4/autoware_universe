@@ -15,12 +15,12 @@
 #ifndef COMMON__CONFIG__PARSER_HPP_
 #define COMMON__CONFIG__PARSER_HPP_
 
+#include "config/yaml.hpp"
 #include "graph/logic.hpp"
-
-#include <yaml-cpp/yaml.h>
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
@@ -32,17 +32,13 @@ struct UnitConfigData;
 using FileConfig = std::shared_ptr<FileConfigData>;
 using UnitConfig = std::shared_ptr<UnitConfigData>;
 
-struct ChildPort
-{
-  using UniquePtr = std::unique_ptr<ChildPort>;
-};
-
 struct UnitConfigData
 {
   std::string type;
   std::string path;
   std::vector<std::pair<ChildPort::UniquePtr, UnitConfig>> units;
   std::unique_ptr<Logic> logic;
+  YAML::Node yaml;
 };
 
 struct FileConfigData
@@ -54,14 +50,34 @@ struct FileConfigData
   YAML::Node yaml;
 };
 
+struct LogicConfigData
+{
+  std::string type;
+  std::vector<ChildPort::UniquePtr> ports;
+};
+
 class LogicConfig
 {
 public:
-  explicit LogicConfig(UnitConfig unit) { unit_ = unit; }
   std::string type() const { return unit_->type; }
+  ConfigYaml yaml() const { return ConfigYaml(unit_->yaml); }
 
-private:
+  ChildPort * parse(ConfigYaml yaml)
+  {
+    units_.push_back(std::make_pair(std::make_unique<ChildPort>(), yaml));
+    return units_.back().first.get();
+  }
+
+protected:
   UnitConfig unit_;
+  std::vector<std::pair<ChildPort::UniquePtr, ConfigYaml>> units_;
+};
+
+class LogicConfig2 : public LogicConfig
+{
+public:
+  explicit LogicConfig2(UnitConfig unit) { unit_ = unit; }
+  auto & ports() { return units_; }
 };
 
 struct ParseContext

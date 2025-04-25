@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
@@ -28,10 +29,10 @@ namespace autoware::diagnostic_graph_aggregator
 
 FileConfig load_file(ParseContext context, const std::string & path, Logger & logger);
 UnitConfig load_unit(FileConfig file);
-std::vector<FileConfig> load_files(ParseContext context, YAML::Node & yaml, Logger & logger);
-std::vector<UnitConfig> load_units(YAML::Node & yaml);
+std::vector<FileConfig> load_files(ParseContext context, YAML::Node yaml, Logger & logger);
+std::vector<UnitConfig> load_units(YAML::Node yaml);
 
-YAML::Node take_optional(YAML::Node & yaml, const std::string & name)
+YAML::Node take_optional(YAML::Node yaml, const std::string & name)
 {
   // TODO(Takagi, Isamu): check map type.
   if (!yaml[name]) {
@@ -42,7 +43,7 @@ YAML::Node take_optional(YAML::Node & yaml, const std::string & name)
   return node;
 }
 
-YAML::Node take_required(YAML::Node & yaml, const std::string & name)
+YAML::Node take_required(YAML::Node yaml, const std::string & name)
 {
   // TODO(Takagi, Isamu): check map type.
   if (!yaml[name]) {
@@ -71,17 +72,24 @@ FileConfig load_file(ParseContext context, const std::string & path, Logger & lo
   return result;
 }
 
-UnitConfig load_unit(YAML::Node & yaml)
+UnitConfig load_unit(YAML::Node yaml)
 {
   UnitConfig result = std::make_shared<UnitConfigData>();
-  result->type = take_required(yaml, "type").as<std::string>();
-  result->path = take_optional(yaml, "path").as<std::string>();
-  result->logic = LogicFactory::Create(LogicConfig(result));
+  result->type = take_required(yaml, "type").as<std::string>("");
+  result->path = take_optional(yaml, "path").as<std::string>("");
+  result->yaml = yaml;
 
+  if (result->type != "link") {
+    LogicConfig2 config(result);
+    result->logic = LogicFactory::Create(config);
+    for (auto & [port, node] : config.ports()) {
+      result->units.push_back(std::make_pair(std::move(port), load_unit(node.raw())));
+    }
+  }
   return result;
 }
 
-std::vector<FileConfig> load_files(ParseContext context, YAML::Node & yaml, Logger & logger)
+std::vector<FileConfig> load_files(ParseContext context, YAML::Node yaml, Logger & logger)
 {
   const auto files = take_optional(yaml, "files");
   if (files.IsDefined() && !files.IsSequence()) {
@@ -95,7 +103,7 @@ std::vector<FileConfig> load_files(ParseContext context, YAML::Node & yaml, Logg
   return result;
 }
 
-std::vector<UnitConfig> load_units(YAML::Node & yaml)
+std::vector<UnitConfig> load_units(YAML::Node yaml)
 {
   const auto units = take_optional(yaml, "units");
   if (units.IsDefined() && !units.IsSequence()) {

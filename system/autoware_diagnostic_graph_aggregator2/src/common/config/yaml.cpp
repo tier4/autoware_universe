@@ -1,4 +1,4 @@
-// Copyright 2023 The Autoware Contributors
+// Copyright 2024 The Autoware Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,45 +12,59 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "config/parser.hpp"
+#include "config/yaml.hpp"
 
 #include "config/errors.hpp"
+
+#include <iostream>
+#include <string>
+#include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-/*
-ConfigData::ConfigData(const std::string & file, const std::string & tree, const YAML::Node yaml)
+ConfigYaml::ConfigYaml(const YAML::Node yaml)
 {
-  file_ = file;
-  tree_ = tree;
   yaml_ = yaml;
 }
 
-
-ConfigData ConfigData::required(const std::string & name)
+ConfigYaml ConfigYaml::required(const std::string & name)
 {
   // TODO(Takagi, Isamu): check map type.
-  const auto tree_path = path_.field(name);
   if (!yaml_[name]) {
-    throw FieldNotFound(tree_path);
+    throw std::runtime_error("Required field not found: " + name);
   }
-  const auto data = yaml_[name];
+  const auto node = yaml_[name];
   yaml_.remove(name);
-  return TreeData(data, tree_path);
+  return ConfigYaml(node);
 }
 
-ConfigData ConfigData::optional(const std::string & name)
+ConfigYaml ConfigYaml::optional(const std::string & name)
 {
   // TODO(Takagi, Isamu): check map type.
-  const auto tree_path = path_.field(name);
   if (!yaml_[name]) {
-    return TreeData(YAML::Node(YAML::NodeType::Undefined), tree_path);
+    return YAML::Node(YAML::NodeType::Undefined);
   }
-  const auto data = yaml_[name];
+  const auto node = yaml_[name];
   yaml_.remove(name);
-  return TreeData(data, tree_path);
+  return ConfigYaml(node);
 }
-*/
+
+void ConfigYaml::dump() const
+{
+  std::cout << YAML::Dump(yaml_) << std::endl;
+}
+
+std::vector<ConfigYaml> ConfigYaml::list()
+{
+  if (yaml_.IsDefined() && !yaml_.IsSequence()) {
+    throw std::runtime_error("Invalid type: files");
+  }
+  std::vector<ConfigYaml> result;
+  for (const auto & node : yaml_) {
+    result.push_back(ConfigYaml(node));
+  }
+  return result;
+}
 
 }  // namespace autoware::diagnostic_graph_aggregator
