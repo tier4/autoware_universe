@@ -25,16 +25,10 @@ public:
   using GyroBiasEstimationModule::GyroBiasEstimationModule;
   int get_buffer_size() const { return gyro_buffer_.size(); }
   bool get_is_buffer_full() const { return is_gyro_buffer_full_; }
-  bool get_is_calibration_possible() const { return is_calibration_possible_; }
+  bool get_is_calibratable() const { return is_calibratable_; }
   void set_gyro_buffer(boost::circular_buffer<geometry_msgs::msg::Vector3> & buffer)
   {
     gyro_buffer_ = buffer;
-  }
-
-  // 最大・最小経過時間を取得するメソッドを追加
-  std::pair<int64_t, int64_t> get_duration_range() const
-  {
-    return {min_duration_ms_, max_duration_ms_};
   }
 
   void update_gyro_buffer_full_flag(boost::circular_buffer<geometry_msgs::msg::Vector3> & buffer)
@@ -45,7 +39,6 @@ public:
         std::chrono::duration_cast<std::chrono::milliseconds>(current_time - *last_update_time_)
           .count();
 
-      // 経過時間の最大・最小値を更新
       min_duration_ms_ = std::min(min_duration_ms_, duration);
       max_duration_ms_ = std::max(max_duration_ms_, duration);
 
@@ -77,13 +70,12 @@ public:
   explicit GyroBiasEstimatorTest(double stddev_threshold = 0.000104)
   : GyroBiasEstimator(setupNodeOptions(stddev_threshold))
   {
-    const double velocity_threshold = get_parameter("velocity_threshold").as_double();
     const double timestamp_threshold = get_parameter("timestamp_threshold").as_double();
     const size_t data_num_threshold = get_parameter("data_num_threshold").as_int();
     const double bias_change_threshold = get_parameter("bias_change_threshold").as_double();
     gyro_bias_estimation_module_ = std::make_unique<GyroBiasEstimationModuleTest>(
-      velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold,
-      stddev_threshold, get_logger(), get_clock());
+      timestamp_threshold, data_num_threshold, bias_change_threshold, stddev_threshold,
+      get_logger(), get_clock());
   }
 
   GyroBiasEstimationModuleTest * get_estimation_module() const
@@ -96,7 +88,6 @@ private:
   {
     rclcpp::NodeOptions node_options;
     node_options.parameter_overrides().push_back(rclcpp::Parameter("gyro_bias_threshold", 0.1));
-    node_options.parameter_overrides().push_back(rclcpp::Parameter("velocity_threshold", 0.1));
     node_options.parameter_overrides().push_back(rclcpp::Parameter("timestamp_threshold", 0.1));
     node_options.parameter_overrides().push_back(rclcpp::Parameter("data_num_threshold", 400));
     node_options.parameter_overrides().push_back(rclcpp::Parameter("bias_change_threshold", 0.1));
@@ -310,7 +301,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_1)  // gyro_buffer_のx, y, zの標準偏差�
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   executor.spin_some();
 
-  ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), true);
+  ASSERT_EQ(node->get_estimation_module()->get_is_calibratable(), true);
   rclcpp::shutdown();
 }
 
@@ -340,7 +331,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_2)  // gyro_buffer_のx, y, zの標準偏差�
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   executor.spin_some();
 
-  ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), true);
+  ASSERT_EQ(node->get_estimation_module()->get_is_calibratable(), true);
   rclcpp::shutdown();
 }
 
@@ -370,7 +361,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_3)  // gyro_buffer_のx, y, zの標準偏差�
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   executor.spin_some();
 
-  ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), false);
+  ASSERT_EQ(node->get_estimation_module()->get_is_calibratable(), false);
   rclcpp::shutdown();
 }
 
@@ -400,7 +391,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_4)  // gyro_buffer_のxの標準偏差がち�
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   executor.spin_some();
 
-  ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), true);
+  ASSERT_EQ(node->get_estimation_module()->get_is_calibratable(), true);
   rclcpp::shutdown();
 }
 
@@ -430,7 +421,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_5)  // gyro_buffer_のxの標準偏差が閾�
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   executor.spin_some();
 
-  ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), false);
+  ASSERT_EQ(node->get_estimation_module()->get_is_calibratable(), false);
   rclcpp::shutdown();
 }
 
@@ -460,7 +451,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_6)  // gyro_buffer_のyの標準偏差がち�
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   executor.spin_some();
 
-  ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), true);
+  ASSERT_EQ(node->get_estimation_module()->get_is_calibratable(), true);
   rclcpp::shutdown();
 }
 
@@ -490,7 +481,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_7)  // gyro_buffer_のyの標準偏差が閾�
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   executor.spin_some();
 
-  ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), false);
+  ASSERT_EQ(node->get_estimation_module()->get_is_calibratable(), false);
   rclcpp::shutdown();
 }
 
@@ -520,7 +511,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_8)  // gyro_buffer_のzの標準偏差がち�
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   executor.spin_some();
 
-  ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), true);
+  ASSERT_EQ(node->get_estimation_module()->get_is_calibratable(), true);
   rclcpp::shutdown();
 }
 
@@ -550,7 +541,7 @@ TEST(GyroBiasEstimatorTest, DT_1_5_9)  // gyro_buffer_のzの標準偏差が閾�
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   executor.spin_some();
 
-  ASSERT_EQ(node->get_estimation_module()->get_is_calibration_possible(), false);
+  ASSERT_EQ(node->get_estimation_module()->get_is_calibratable(), false);
   rclcpp::shutdown();
 }
 

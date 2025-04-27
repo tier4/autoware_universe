@@ -15,16 +15,18 @@
 #include "gyro_bias_estimation_module.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <vector>
+
+using namespace std::chrono_literals;  // NOLINT
 
 namespace imu_corrector
 {
 GyroBiasEstimationModule::GyroBiasEstimationModule(
-  const double velocity_threshold, const double timestamp_threshold,
-  const size_t data_num_threshold, const double bias_change_threshold,
-  const double stddev_threshold, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
-: velocity_threshold_(velocity_threshold),
-  timestamp_threshold_(timestamp_threshold),
+  const double timestamp_threshold, const size_t data_num_threshold,
+  const double bias_change_threshold, const double stddev_threshold, rclcpp::Logger logger,
+  rclcpp::Clock::SharedPtr clock)
+: timestamp_threshold_(timestamp_threshold),
   data_num_threshold_(data_num_threshold),
   bias_change_threshold_(bias_change_threshold),
   stddev_threshold_(stddev_threshold),
@@ -36,68 +38,72 @@ GyroBiasEstimationModule::GyroBiasEstimationModule(
   clock_(clock),
   gyro_buffer_(data_num_threshold),
   is_gyro_buffer_full_(false),
-  is_calibration_possible_(false)
+  is_calibratable_(false)
 {
 }
 
 void GyroBiasEstimationModule::update_gyro(
   const double time, const geometry_msgs::msg::Vector3 & gyro)
 {
-  if (time - last_velocity_time_ > timestamp_threshold_) {
-    return;
+  if (time - last_velocity_time_ < timestamp_threshold_) {
+    if (is_stopped_) {
+      gyro_buffer_.push_back(gyro);
+    } else {
+      gyro_buffer_.clear();
+    }
   }
-  if (!is_stopped_) {
-    gyro_buffer_.clear();
-    return;
-  }
-  gyro_buffer_.push_back(gyro);
 }
 
 void GyroBiasEstimationModule::update_velocity(const double time, const double velocity)
 {
-  is_stopped_ = velocity <= velocity_threshold_ && velocity >= 0.0;
-  last_velocity_time_ = time;
+  if (velocity == 0.0) {
+    last_velocity_time_ = time;
+    is_stopped_ = true;
+  } else {
+    is_stopped_ = false;
+  }
 }
 
 std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
 {
   update_gyro_buffer_full_flag(gyro_buffer_);
   if (!is_gyro_buffer_full_) {
-    is_calibration_possible_ = false;
     throw std::runtime_error("Bias estimation is not yet ready because of insufficient data.");
   }
-
   geometry_msgs::msg::Vector3 buffer_stddev = calculate_stddev(gyro_buffer_);
-  is_calibration_possible_ = buffer_stddev.x <= stddev_threshold_ &&
-                             buffer_stddev.y <= stddev_threshold_ &&
-                             buffer_stddev.z <= stddev_threshold_;
-  if (!is_calibration_possible_) {
-    return current_median_;
+  update_calibratable_flag(buffer_stddev);
+  if (is_calibratable_) {
+    geometry_msgs::msg::Vector3 previous_median;
+    if (current_median_ == std::nullopt) {
+      current_median_ = calculate_median(gyro_buffer_);
+      previous_median = current_median_.value();
+    } else {
+      previous_median = current_median_.value();
+      current_median_ = calculate_median(gyro_buffer_);
+    }
+    current_stddev_ = buffer_stddev;
+    if (
+      abs(current_median_.value().x - previous_median.x) > bias_change_threshold_ ||
+      abs(current_median_.value().y - previous_median.y) > bias_change_threshold_ ||
+      abs(current_median_.value().z - previous_median.z) > bias_change_threshold_) {
+      RCLCPP_WARN(
+        logger_,
+        "Significant gyro bias change detected!\n"
+        "Previous bias: [x: %f, y: %f, z: %f] rad/s\n"
+        "Current bias: [x: %f, y: %f, z: %f] rad/s\n"
+        "Previous standard dev: [x: %f, y: %f, z: %f] rad/s\n"
+        "Current standard dev: [x: %f, y: %f, z: %f] rad/s",
+        previous_median.x, previous_median.y, previous_median.z, current_median_.value().x,
+        current_median_.value().y, current_median_.value().z, buffer_stddev.x, buffer_stddev.y,
+        buffer_stddev.z, current_stddev_.x, current_stddev_.y, current_stddev_.z);
+    }
   }
-  geometry_msgs::msg::Vector3 previous_median;
-  if (current_median_ == std::nullopt) {
-    current_median_ = calculate_median(gyro_buffer_);
-    previous_median = current_median_.value();
-  } else {
-    previous_median = current_median_.value();
-    current_median_ = calculate_median(gyro_buffer_);
-  }
-  current_stddev_ = buffer_stddev;
-  if (
-    abs(current_median_.value().x - previous_median.x) > bias_change_threshold_ ||
-    abs(current_median_.value().y - previous_median.y) > bias_change_threshold_ ||
-    abs(current_median_.value().z - previous_median.z) > bias_change_threshold_) {
-    RCLCPP_WARN(
-      logger_,
-      "Significant gyro bias change detected!\n"
-      "Previous bias: [x: %f, y: %f, z: %f] rad/s\n"
-      "Current bias: [x: %f, y: %f, z: %f] rad/s\n"
-      "Previous standard dev: [x: %f, y: %f, z: %f] rad/s\n"
-      "Current standard dev: [x: %f, y: %f, z: %f] rad/s",
-      previous_median.x, previous_median.y, previous_median.z, current_median_.value().x,
-      current_median_.value().y, current_median_.value().z, buffer_stddev.x, buffer_stddev.y,
-      buffer_stddev.z, current_stddev_.x, current_stddev_.y, current_stddev_.z);
-  }
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 10000,
+    "Bias estimation is ready. Bias: [x: %f, y: %f, z: %f] rad/s, Stddev: [x: %f, y: %f, z: %f] "
+    "rad/s",
+    current_median_.value().x, current_median_.value().y, current_median_.value().z,
+    current_stddev_.x, current_stddev_.y, current_stddev_.z);
   return current_median_;
 }
 
@@ -105,6 +111,13 @@ void GyroBiasEstimationModule::update_gyro_buffer_full_flag(
   boost::circular_buffer<geometry_msgs::msg::Vector3> & buffer)
 {
   is_gyro_buffer_full_ = buffer.full();
+}
+
+void GyroBiasEstimationModule::update_calibratable_flag(
+  const geometry_msgs::msg::Vector3 & buffer_stddev)
+{
+  is_calibratable_ = buffer_stddev.x <= stddev_threshold_ && buffer_stddev.y <= stddev_threshold_ &&
+                     buffer_stddev.z <= stddev_threshold_;
 }
 
 geometry_msgs::msg::Vector3 GyroBiasEstimationModule::calculate_stddev(

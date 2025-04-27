@@ -31,15 +31,14 @@ GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & node_options)
   angular_velocity_offset_z_(declare_parameter<double>("angular_velocity_offset_z")),
   gyro_bias_(std::nullopt)
 {
-  const double velocity_threshold = declare_parameter<double>("velocity_threshold");
   const double timestamp_threshold = declare_parameter<double>("timestamp_threshold");
   const size_t data_num_threshold =
     static_cast<size_t>(declare_parameter<int>("data_num_threshold"));
   const double bias_change_threshold = declare_parameter<double>("bias_change_threshold");
   const double stddev_threshold = declare_parameter<double>("stddev_threshold");
   gyro_bias_estimation_module_ = std::make_unique<GyroBiasEstimationModule>(
-    velocity_threshold, timestamp_threshold, data_num_threshold, bias_change_threshold,
-    stddev_threshold, get_logger(), get_clock());
+    timestamp_threshold, data_num_threshold, bias_change_threshold, stddev_threshold, get_logger(),
+    get_clock());
 
   imu_sub_ = create_subscription<Imu>(
     "~/input/imu_raw", rclcpp::SensorDataQoS(),
@@ -61,13 +60,6 @@ void GyroBiasEstimator::callback_imu(const Imu::ConstSharedPtr imu_msg_ptr)
     rclcpp::Time(imu_msg_ptr->header.stamp).seconds(), imu_msg_ptr->angular_velocity);
 }
 
-void GyroBiasEstimator::callback_twist(
-  const TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr)
-{
-  gyro_bias_estimation_module_->update_velocity(
-    rclcpp::Time(twist_msg_ptr->header.stamp).seconds(), twist_msg_ptr->twist.twist.linear.x);
-}
-
 void GyroBiasEstimator::on_timer()
 {
   // Estimate gyro bias
@@ -84,6 +76,14 @@ void GyroBiasEstimator::on_timer()
     gyro_bias_pub_->publish(gyro_bias_msg);
   }
 }
+
+void GyroBiasEstimator::callback_twist(
+  const TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr)
+{
+  gyro_bias_estimation_module_->update_velocity(
+    rclcpp::Time(twist_msg_ptr->header.stamp).seconds(), twist_msg_ptr->twist.twist.linear.x);
+}
+
 }  // namespace imu_corrector
 
 #include <rclcpp_components/register_node_macro.hpp>
