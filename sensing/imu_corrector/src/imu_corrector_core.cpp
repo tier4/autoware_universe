@@ -32,8 +32,9 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
     angular_velocity_offset_x_ = declare_parameter<double>("angular_velocity_offset_x", 0.0);
     angular_velocity_offset_y_ = declare_parameter<double>("angular_velocity_offset_y", 0.0);
     angular_velocity_offset_z_ = declare_parameter<double>("angular_velocity_offset_z", 0.0);
+  } else {
+    is_calibrated_ = false;
   }
-
   angular_velocity_stddev_xx_ = declare_parameter<double>("angular_velocity_stddev_xx", 0.03);
   angular_velocity_stddev_yy_ = declare_parameter<double>("angular_velocity_stddev_yy", 0.03);
   angular_velocity_stddev_zz_ = declare_parameter<double>("angular_velocity_stddev_zz", 0.03);
@@ -102,8 +103,10 @@ void ImuCorrector::onTimer()
   if (
     angular_velocity_offset_x_ != std::nullopt && angular_velocity_offset_y_ != std::nullopt &&
     angular_velocity_offset_z_ != std::nullopt) {
+    RCLCPP_INFO(this->get_logger(), "onTimer: is_calibrated_ = true");
     is_calibrated_ = true;
   } else {
+    RCLCPP_INFO(this->get_logger(), "onTimer: is_calibrated_ = false");
     is_calibrated_ = false;
   }
   tier4_calibration_msgs::msg::BoolStamped is_calibrated_msg;
