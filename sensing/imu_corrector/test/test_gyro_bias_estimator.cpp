@@ -67,7 +67,7 @@ private:
 class GyroBiasEstimatorTest : public imu_corrector::GyroBiasEstimator
 {
 public:
-  explicit GyroBiasEstimatorTest(double stddev_threshold = 0.000104)
+  explicit GyroBiasEstimatorTest(double stddev_threshold = 0.000140)
   : GyroBiasEstimator(setupNodeOptions(stddev_threshold))
   {
     const double timestamp_threshold = get_parameter("timestamp_threshold").as_double();
@@ -87,10 +87,10 @@ private:
   static rclcpp::NodeOptions setupNodeOptions(double stddev_threshold)
   {
     rclcpp::NodeOptions node_options;
-    node_options.parameter_overrides().push_back(rclcpp::Parameter("gyro_bias_threshold", 0.1));
     node_options.parameter_overrides().push_back(rclcpp::Parameter("timestamp_threshold", 0.1));
     node_options.parameter_overrides().push_back(rclcpp::Parameter("data_num_threshold", 400));
-    node_options.parameter_overrides().push_back(rclcpp::Parameter("bias_change_threshold", 0.1));
+    node_options.parameter_overrides().push_back(
+      rclcpp::Parameter("bias_change_threshold", 0.00061));
     node_options.parameter_overrides().push_back(
       rclcpp::Parameter("stddev_threshold", stddev_threshold));
     node_options.parameter_overrides().push_back(
