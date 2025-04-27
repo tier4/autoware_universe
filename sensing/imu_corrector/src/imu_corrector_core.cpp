@@ -99,6 +99,7 @@ void ImuCorrector::callbackIsCalibrated()
     is_calibrated_msg.data = false;
   }
   is_calibrated_msg.header.stamp = this->now();
+  is_calibrated_msg.header.frame_id = "";
   is_calibrated_pub_->publish(is_calibrated_msg);
 }
 }  // namespace imu_corrector
