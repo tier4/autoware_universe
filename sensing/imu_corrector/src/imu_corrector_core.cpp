@@ -76,9 +76,9 @@ void ImuCorrector::callbackGyroBias(
   const double elapsed_time =
     std::abs(rclcpp::Time(gyro_bias_msg_ptr->header.stamp).seconds() - this->now().seconds());
   if (elapsed_time < 10.0) {
-    angular_velocity_offset_x_ = gyro_bias_msg_ptr->vector.x;
-    angular_velocity_offset_y_ = gyro_bias_msg_ptr->vector.y;
-    angular_velocity_offset_z_ = gyro_bias_msg_ptr->vector.z;
+    angular_velocity_offset_x_ = -gyro_bias_msg_ptr->vector.x;
+    angular_velocity_offset_y_ = -gyro_bias_msg_ptr->vector.y;
+    angular_velocity_offset_z_ = -gyro_bias_msg_ptr->vector.z;
   } else {
     RCLCPP_ERROR(
       this->get_logger(),

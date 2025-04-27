@@ -142,9 +142,9 @@ TEST(ImuCorrectorTest, DT_1_7_3)
   imu.angular_velocity.z = 0.0;
   gyro_bias.header.stamp = rclcpp::Clock().now();
   gyro_bias.header.frame_id = "imu_link";
-  gyro_bias.vector.x = 0.1;
-  gyro_bias.vector.y = 0.2;
-  gyro_bias.vector.z = 0.3;
+  gyro_bias.vector.x = -0.1;
+  gyro_bias.vector.y = -0.2;
+  gyro_bias.vector.z = -0.3;
 
   gyro_bias_pub->publish(gyro_bias);
   executor.spin_some();
