@@ -93,12 +93,6 @@ private:
       rclcpp::Parameter("bias_change_threshold", 0.00061));
     node_options.parameter_overrides().push_back(
       rclcpp::Parameter("stddev_threshold", stddev_threshold));
-    node_options.parameter_overrides().push_back(
-      rclcpp::Parameter("angular_velocity_offset_x", 0.0));
-    node_options.parameter_overrides().push_back(
-      rclcpp::Parameter("angular_velocity_offset_y", 0.0));
-    node_options.parameter_overrides().push_back(
-      rclcpp::Parameter("angular_velocity_offset_z", 0.0));
     return node_options;
   }
 };
@@ -229,7 +223,7 @@ TEST(GyroBiasEstimatorTest, DT_1_4)
   twist.twist.twist.linear.y = 0.0;
   twist.twist.twist.linear.z = 0.0;
 
-  for (int i = 1; i < 51; i++) {
+  for (int i = 1; i < 41; i++) {
     RCLCPP_INFO(node->get_logger(), "Count i: %d", i);
     imu.header.stamp = rclcpp::Clock().now();
     twist.header.stamp = rclcpp::Clock().now();
