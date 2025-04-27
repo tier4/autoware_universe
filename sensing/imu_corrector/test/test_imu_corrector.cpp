@@ -64,17 +64,17 @@ TEST(ImuCorrectorTest, DT_1_7_1)
 
   imu.header.stamp = rclcpp::Clock().now();
   imu.header.frame_id = "imu_link";
-  imu.angular_velocity.x = 0.0;
-  imu.angular_velocity.y = 0.0;
-  imu.angular_velocity.z = 0.0;
+  imu.angular_velocity.x = -0.1;
+  imu.angular_velocity.y = -0.2;
+  imu.angular_velocity.z = -0.3;
   imu_pub->publish(imu);
   executor.spin_some();
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   executor.spin_some();
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  EXPECT_EQ(imu_corrected.angular_velocity.x, 0.1);
-  EXPECT_EQ(imu_corrected.angular_velocity.y, 0.2);
-  EXPECT_EQ(imu_corrected.angular_velocity.z, 0.3);
+  EXPECT_EQ(imu_corrected.angular_velocity.x, 0.0);
+  EXPECT_EQ(imu_corrected.angular_velocity.y, 0.0);
+  EXPECT_EQ(imu_corrected.angular_velocity.z, 0.0);
 
   rclcpp::shutdown();
 }
@@ -99,17 +99,17 @@ TEST(ImuCorrectorTest, DT_1_7_2)
 
   imu.header.stamp = rclcpp::Clock().now();
   imu.header.frame_id = "imu_link";
-  imu.angular_velocity.x = 0.0;
-  imu.angular_velocity.y = 0.0;
-  imu.angular_velocity.z = 0.0;
+  imu.angular_velocity.x = -0.1;
+  imu.angular_velocity.y = -0.2;
+  imu.angular_velocity.z = -0.3;
   imu_pub->publish(imu);
   executor.spin_some();
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   executor.spin_some();
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  EXPECT_EQ(imu_corrected.angular_velocity.x, 0.0);
-  EXPECT_EQ(imu_corrected.angular_velocity.y, 0.0);
-  EXPECT_EQ(imu_corrected.angular_velocity.z, 0.0);
+  EXPECT_EQ(imu_corrected.angular_velocity.x, -0.1);
+  EXPECT_EQ(imu_corrected.angular_velocity.y, -0.2);
+  EXPECT_EQ(imu_corrected.angular_velocity.z, -0.3);
 
   rclcpp::shutdown();
 }
@@ -137,9 +137,9 @@ TEST(ImuCorrectorTest, DT_1_7_3)
 
   imu.header.stamp = rclcpp::Clock().now();
   imu.header.frame_id = "imu_link";
-  imu.angular_velocity.x = 0.0;
-  imu.angular_velocity.y = 0.0;
-  imu.angular_velocity.z = 0.0;
+  imu.angular_velocity.x = -0.1;
+  imu.angular_velocity.y = -0.2;
+  imu.angular_velocity.z = -0.3;
   gyro_bias.header.stamp = rclcpp::Clock().now();
   gyro_bias.header.frame_id = "imu_link";
   gyro_bias.vector.x = -0.1;
@@ -154,9 +154,9 @@ TEST(ImuCorrectorTest, DT_1_7_3)
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   executor.spin_some();
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  EXPECT_EQ(imu_corrected.angular_velocity.x, 0.1);
-  EXPECT_EQ(imu_corrected.angular_velocity.y, 0.2);
-  EXPECT_EQ(imu_corrected.angular_velocity.z, 0.3);
+  EXPECT_EQ(imu_corrected.angular_velocity.x, 0.0);
+  EXPECT_EQ(imu_corrected.angular_velocity.y, 0.0);
+  EXPECT_EQ(imu_corrected.angular_velocity.z, 0.0);
 
   rclcpp::shutdown();
 }
