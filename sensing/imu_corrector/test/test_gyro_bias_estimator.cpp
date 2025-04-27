@@ -604,7 +604,7 @@ TEST(GyroBiasEstimatorTest, DT_1_6)
   ASSERT_EQ(count, 1);
   rclcpp::shutdown();
 
-  ASSERT_NEAR(gyro_bias_x, median_x, 0.000001);
-  ASSERT_NEAR(gyro_bias_y, median_y, 0.000001);
-  ASSERT_NEAR(gyro_bias_z, median_z, 0.000001);
+  ASSERT_EQ(gyro_bias_x, median_x);
+  ASSERT_EQ(gyro_bias_y, median_y);
+  ASSERT_EQ(gyro_bias_z, median_z);
 }
