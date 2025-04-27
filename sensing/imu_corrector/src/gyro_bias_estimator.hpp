@@ -52,7 +52,6 @@ private:
 
   rclcpp::Publisher<Vector3Stamped>::SharedPtr gyro_bias_pub_;
 
-  const double gyro_bias_threshold_;
   const double angular_velocity_offset_x_;
   const double angular_velocity_offset_y_;
   const double angular_velocity_offset_z_;
