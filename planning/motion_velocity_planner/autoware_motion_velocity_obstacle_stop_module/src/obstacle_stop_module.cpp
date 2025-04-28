@@ -465,53 +465,93 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
   // TODO(takagi): fix dupulicate substitution
   debug_data_ptr_->decimated_traj_polys = decimated_traj_polys_with_lat_margin;
 
-  const auto collision_point = get_nearest_collision_point(
+  const auto nearest_collision_point = get_nearest_collision_point(
     decimated_traj_points, decimated_traj_polys_with_lat_margin, point_cloud, vehicle_info,
     dist_to_bumper);
-  if (!collision_point) {
-    return {};
+
+  struct StopCandidate
+  {
+    std::vector<double> initial_velocities{};
+    std::optional<double> vel_lpf{std::nullopt};
+    rclcpp::Time latest_time;
+    std::pair<geometry_msgs::msg::Point, double> latest_collision_point;
+  };
+  static std::deque<StopCandidate> stop_candidates;
+  const auto current_point_cloud_time = [&point_cloud]() {
+    const uint64_t pcl_us = point_cloud.pointcloud.header.stamp;
+    return rclcpp::Time(
+      static_cast<int32_t>(pcl_us / static_cast<int32_t>(1e6)),
+      static_cast<uint32_t>((pcl_us % static_cast<int32_t>(1e6)) * static_cast<int32_t>(1e3)));
+  }();
+
+  // Register collision_point to stop_candidates
+  if (nearest_collision_point) {
+    bool was_appended{false};
+    for (auto stop_candidate = stop_candidates.rbegin(); stop_candidate != stop_candidates.rend();
+         ++stop_candidate) {
+      const double time_diff = (current_point_cloud_time - stop_candidate->latest_time).seconds();
+      if (time_diff < 0.05) {
+        was_appended = true;
+        break;
+      }
+      const double long_diff = autoware::motion_utils::calcSignedArcLength(
+        traj_points, stop_candidate->latest_collision_point.first, nearest_collision_point->first);
+      const bool is_associated_cp = time_diff < 0.35 && -1.0 - 5.0 * time_diff < long_diff &&
+                                    long_diff < 1.0 + 30.0 * time_diff;
+
+      if (is_associated_cp) {
+        was_appended = true;
+        const double vel = std::clamp(long_diff / time_diff, 0.0, 20.0);
+        auto & vel_vec = stop_candidate->initial_velocities;
+        if (!stop_candidate->vel_lpf.has_value()) {
+          vel_vec.push_back(vel);
+          if (vel_vec.size() >= 4) {
+            stop_candidate->vel_lpf =
+              std::accumulate(vel_vec.begin(), vel_vec.end(), 0.0) / vel_vec.size();
+          }
+        } else {
+          stop_candidate->vel_lpf = stop_candidate->vel_lpf.value() * (1.0 - 0.2) + vel * 0.2;
+        }
+
+        stop_candidate->latest_collision_point = *nearest_collision_point;
+        stop_candidate->latest_time = current_point_cloud_time;
+      }
+    }
+    if (!was_appended) {
+      StopCandidate new_stop_candidate;
+      new_stop_candidate.latest_collision_point = *nearest_collision_point;
+      new_stop_candidate.latest_time = current_point_cloud_time;
+      stop_candidates.push_back(new_stop_candidate);
+    }
   }
 
+  // sort by latest_time
+  std::sort(
+    stop_candidates.begin(), stop_candidates.end(),
+    [](StopCandidate & a, StopCandidate & b) { return a.latest_time < b.latest_time; });
+
+  // erase old data
+  while (!stop_candidates.empty() &&
+         (current_point_cloud_time - stop_candidates.front().latest_time).seconds() >
+           obstacle_filtering_param_.stop_obstacle_hold_time_threshold) {
+    stop_candidates.pop_front();
+  }
+
+  // pick stop_obstacle from candidates
   std::vector<StopObstacle> stop_obstacles;
-  const auto & stop_obstacle_stamp = rclcpp::Time(point_cloud.pointcloud.header.stamp);
-  const auto stop_obstacle =
-    create_stop_obstacle_for_point_cloud(stop_obstacle_stamp, *collision_point);
-  stop_obstacles.push_back(stop_obstacle);
+  for (auto & stop_candidate : stop_candidates) {
+    const double time_diff = (current_point_cloud_time - stop_candidate.latest_time).seconds();
+    if (
+      stop_candidate.vel_lpf.has_value() &&
+      time_diff < obstacle_filtering_param_.stop_obstacle_hold_time_threshold) {
 
-  // TODO(takagi): use the all point cloud in the indexed trajectory_polygon to remind history.
-  std::vector<StopObstacle> past_stop_obstacles;
-  for (auto itr = stop_pointcloud_obstacle_history_.begin();
-       itr != stop_pointcloud_obstacle_history_.end();) {
-    rclcpp::Time odom_time(odometry.header.stamp.sec, odometry.header.stamp.nanosec);
-    rclcpp::Time itr_time(itr->stamp);
-
-    const double elapsed_time = (odom_time - itr_time).seconds();
-    if (elapsed_time >= obstacle_filtering_param_.stop_obstacle_hold_time_threshold) {
-      itr = stop_pointcloud_obstacle_history_.erase(itr);
-      continue;
+      auto time_compensated_collision_point = stop_candidate.latest_collision_point;
+      time_compensated_collision_point.second -= odometry.twist.twist.linear.x * time_diff;
+      const auto stop_obstacle = create_stop_obstacle_for_point_cloud(
+        stop_candidate.latest_time, time_compensated_collision_point);
+      stop_obstacles.push_back(stop_obstacle);
     }
-
-    const auto lat_dist_from_obstacle_to_traj =
-      autoware::motion_utils::calcLateralOffset(traj_points, itr->collision_point);
-    const auto min_lat_dist_to_traj_poly =
-      std::abs(lat_dist_from_obstacle_to_traj) - vehicle_info.vehicle_width_m;
-
-    if (min_lat_dist_to_traj_poly < obstacle_filtering_param_.max_lat_margin) {
-      auto stop_obstacle = *itr;
-      stop_obstacle.dist_to_collide_on_decimated_traj =
-        autoware::motion_utils::calcSignedArcLength(
-          decimated_traj_points, 0, stop_obstacle.collision_point) -
-        dist_to_bumper;
-      past_stop_obstacles.push_back(stop_obstacle);
-    }
-
-    ++itr;
   }
-
-  // stop_pointcloud_obstacle_history_ = autoware::motion_velocity_planner::utils::concat_vectors(
-  //   std::move(stop_pointcloud_obstacle_history_), stop_obstacles);
-  stop_obstacles = autoware::motion_velocity_planner::utils::concat_vectors(
-    std::move(stop_obstacles), std::move(past_stop_obstacles));
 
   return stop_obstacles;
 }
