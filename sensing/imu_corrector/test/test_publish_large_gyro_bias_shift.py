@@ -11,7 +11,6 @@ from sensor_msgs.msg import Imu
 class ImuTwistPublisher(Node):
     def __init__(self):
         super().__init__("imu_twist_publisher")
-        # パブリッシャーの設定（200Hz用に周期を0.005秒に設定）
         self.imu_publisher = self.create_publisher(
             Imu,
             "/imu_raw",
@@ -38,11 +37,9 @@ class ImuTwistPublisher(Node):
             velocity_x = 0.0
             angular_velocity_z = 0.0
 
-        # IMUメッセージの作成
         imu_msg = Imu()
         imu_msg.header.stamp = current_time.to_msg()
         imu_msg.header.frame_id = "base_link"
-        # ダミーデータをセット
         imu_msg.angular_velocity.x = 0.0
         imu_msg.angular_velocity.y = 0.0
         imu_msg.angular_velocity.z = angular_velocity_z
@@ -50,17 +47,12 @@ class ImuTwistPublisher(Node):
         imu_msg.linear_acceleration.y = 0.0
         imu_msg.linear_acceleration.z = 9.81
 
-        # TwistWithCovarianceStampedメッセージの作成
         twist_msg = TwistWithCovarianceStamped()
         twist_msg.header.stamp = current_time.to_msg()
         twist_msg.header.frame_id = "base_link"
-        # ダミーデータをセット
         twist_msg.twist.twist.linear.x = velocity_x
         twist_msg.twist.twist.angular.z = 0.0
-        # 共分散行列を設定（必要に応じて）
-        twist_msg.twist.covariance = [0.0] * 36  # 6x6の共分散行列
-
-        # メッセージのパブリッシュ
+        twist_msg.twist.covariance = [0.0] * 36
         self.imu_publisher.publish(imu_msg)
         self.twist_publisher.publish(twist_msg)
 
