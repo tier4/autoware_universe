@@ -17,12 +17,11 @@
 #include "config/context.hpp"
 #include "config/entity.hpp"
 #include "config/errors.hpp"
-#include "config/parser.hpp"
 #include "config/substitutions.hpp"
-#include "config/types/forward.hpp"
 #include "config/yaml.hpp"
+#include "graph/links.hpp"
 #include "graph/logic.hpp"
-#include "graph/port.hpp"
+#include "types/forward.hpp"
 
 #include <deque>
 #include <filesystem>
@@ -39,12 +38,17 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-FileConfig load_file(ParseContext context, const std::string & path, Logger & logger);
-UnitConfig load_unit(FileConfig file);
-std::vector<FileConfig> load_files(ParseContext context, ConfigYaml yaml, Logger & logger);
+struct UnitParser
+{
+};
+
+FileConfig load_file(ParseContext context, const std::string & path, const Logger & logger);
+UnitConfig load_unit(ConfigYaml yaml);
+DiagConfig load_diag(ConfigYaml yaml);
+std::vector<FileConfig> load_files(ParseContext context, ConfigYaml yaml, const Logger & logger);
 std::vector<UnitConfig> load_units(ConfigYaml yaml);
 
-FileConfig load_file(ParseContext context, const std::string & path, Logger & logger)
+FileConfig load_file(ParseContext context, const std::string & path, const Logger & logger)
 {
   const auto resolved_path = substitutions::evaluate(path, context);
   if (!context.visit(resolved_path)) {
@@ -72,16 +76,32 @@ UnitConfig load_unit(ConfigYaml yaml)
   if (result->type == "link") {
     result->link = yaml.required("link").text("");
   } else {
-    LogicEntity entity;
-    result->logic = LogicFactory::Create(result->type, LogicConfig(result, &entity));
-    for (auto & [port, node] : entity.units) {
-      result->units.push_back(std::make_pair(std::move(port), load_unit(node)));
+    result->logic = LogicFactory::Create(result->type, LogicConfig(result));
+    for (auto & [link, node] : result->links_temp) {
+      result->links.push_back(std::make_pair(std::move(link), load_unit(node)));
     }
+    if (result->diag_temp) {
+      auto & [link, diag] = result->diag_temp.value();
+      result->diag = std::make_pair(std::move(link), load_diag(diag));
+    }
+    result->links_temp.clear();
+    result->diag_temp.reset();
   }
   return result;
 }
 
-std::vector<FileConfig> load_files(ParseContext context, ConfigYaml yaml, Logger & logger)
+DiagConfig load_diag(ConfigYaml yaml)
+{
+  const auto diag_node = yaml.required("node").text();
+  const auto diag_name = yaml.required("name").text();
+  const auto sep = diag_node.empty() ? "" : ": ";
+
+  DiagConfig result = std::make_shared<DiagConfigData>();
+  result->name = diag_node + sep + diag_name;
+  return result;
+}
+
+std::vector<FileConfig> load_files(ParseContext context, ConfigYaml yaml, const Logger & logger)
 {
   std::vector<FileConfig> result;
   for (ConfigYaml file : yaml.optional("files").list()) {
@@ -99,7 +119,7 @@ std::vector<UnitConfig> load_units(ConfigYaml yaml)
   return result;
 }
 
-void load_root_file(GraphConfig & graph, const std::string & path, Logger & logger)
+void load_root_file(GraphConfig & graph, const std::string & path, const Logger & logger)
 {
   const auto visited = std::make_shared<std::unordered_set<std::string>>();
   graph.root = load_file(ParseContext("root", visited), path, logger);
@@ -131,7 +151,7 @@ void make_unit_list(GraphConfig & graph)
     result.insert(result.end(), units.begin(), units.end());
   }
   for (size_t i = 0; i < result.size(); ++i) {
-    for (const auto & [port, unit] : result[i]->units) {
+    for (const auto & [link, unit] : result[i]->links) {
       result.push_back(unit);
     }
   }
@@ -165,9 +185,8 @@ void resolve_links(GraphConfig & graph)
     }
   }
   for (auto & unit : graph.units) {
-    for (auto & [port, child] : unit->units) {
+    for (auto & [link, child] : unit->links) {
       std::unordered_set<UnitConfig> visited;
-      visited.insert(unit);
       child = resolve_links(child, links, visited);
     }
   }
@@ -194,14 +213,14 @@ void topological_sort(GraphConfig & graph)
 
   // Count degrees of each unit.
   for (const auto & unit : graph.units) {
-    for (const auto & [port, child] : unit->units) {
+    for (const auto & [link, child] : unit->links) {
       ++degrees[child];
     }
   }
 
   // Find initial units that are zero degrees.
   for (const auto & unit : graph.units) {
-    // Do not use "at" function because the zero degree units do not exist.
+    // Do not use "at" function because the zero degree units are not set.
     if (degrees[unit] == 0) {
       buffer.push_back(unit);
     }
@@ -211,7 +230,7 @@ void topological_sort(GraphConfig & graph)
   while (!buffer.empty()) {
     const auto unit = buffer.front();
     buffer.pop_front();
-    for (const auto & [port, child] : unit->units) {
+    for (const auto & [link, child] : unit->links) {
       if (--degrees[child] == 0) {
         buffer.push_back(child);
       }
@@ -225,7 +244,18 @@ void topological_sort(GraphConfig & graph)
   }
 }
 
-GraphConfig load_config(const std::string & path, Logger & logger)
+void unify_diags(GraphConfig & graph)
+{
+  std::unordered_map<std::string, DiagConfig> diags;
+  for (const auto & unit : graph.units) {
+    if (unit->diag) {
+      auto & [link, diag] = unit->diag.value();
+      diag = diags.insert(std::make_pair(diag->name, diag)).first->second;
+    }
+  }
+}
+
+GraphConfig load_config(const std::string & path, const Logger & logger)
 {
   GraphConfig graph;
   load_root_file(graph, path, logger);
@@ -235,6 +265,14 @@ GraphConfig load_config(const std::string & path, Logger & logger)
   resolve_links(graph);
   cleanup_files(graph);
   topological_sort(graph);
+  unify_diags(graph);
+
+  for (const auto & unit : graph.units) {
+    if (unit->diag) {
+      std::cout << unit->diag->second.get() << " " << unit->diag->second->name << std::endl;
+    }
+  }
+
   return graph;
 }
 

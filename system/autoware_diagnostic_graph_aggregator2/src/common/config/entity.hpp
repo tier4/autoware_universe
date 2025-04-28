@@ -15,8 +15,8 @@
 #ifndef COMMON__CONFIG__ENTITY_HPP_
 #define COMMON__CONFIG__ENTITY_HPP_
 
-#include "config/types/forward.hpp"
 #include "config/yaml.hpp"
+#include "types/forward.hpp"
 
 #include <memory>
 #include <optional>
@@ -31,17 +31,7 @@ struct GraphConfig
   FileConfig root;
   std::vector<FileConfig> files;
   std::vector<UnitConfig> units;
-};
-
-struct UnitConfigData
-{
-  std::string type;
-  std::string path;
-  std::string link;
-  std::unique_ptr<Logic> logic;
-  std::vector<std::pair<std::unique_ptr<ChildPort>, UnitConfig>> units;
-  std::optional<std::pair<std::unique_ptr<ChildPort>, std::string>> diag;
-  ConfigYaml yaml;
+  std::vector<DiagConfig> diags;
 };
 
 struct FileConfigData
@@ -51,6 +41,36 @@ struct FileConfigData
   std::vector<FileConfig> files;
   std::vector<UnitConfig> units;
   ConfigYaml yaml;
+};
+
+struct UnitConfigData
+{
+  std::string type;
+  std::string path;
+  std::string link;
+  std::unique_ptr<Logic> logic;
+  std::vector<std::pair<std::unique_ptr<UnitLink>, UnitConfig>> links;
+  std::vector<std::pair<std::unique_ptr<UnitLink>, ConfigYaml>> links_temp;
+  std::optional<std::pair<std::unique_ptr<UnitLink>, DiagConfig>> diag;
+  std::optional<std::pair<std::unique_ptr<UnitLink>, ConfigYaml>> diag_temp;
+  ConfigYaml yaml;
+};
+
+struct DiagConfigData
+{
+  std::string name;
+};
+
+class LogicConfig
+{
+public:
+  explicit LogicConfig(UnitConfig unit);
+  ConfigYaml yaml() const;
+  UnitLink * parse_unit(ConfigYaml yaml) const;
+  UnitLink * parse_diag(ConfigYaml yaml) const;
+
+protected:
+  UnitConfig unit_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

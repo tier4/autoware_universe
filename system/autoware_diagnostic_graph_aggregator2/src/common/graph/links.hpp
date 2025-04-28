@@ -12,9 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "graph/port.hpp"
+#ifndef COMMON__GRAPH__LINKS_HPP_
+#define COMMON__GRAPH__LINKS_HPP_
+
+#include <memory>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
+class UnitLink
+{
+};
+
 }  // namespace autoware::diagnostic_graph_aggregator
+
+#endif  // COMMON__GRAPH__LINKS_HPP_

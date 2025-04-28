@@ -16,6 +16,7 @@
 
 #include "config/entity.hpp"
 #include "config/loader.hpp"
+#include "graph/graph.hpp"
 #include "utils/logger.hpp"
 
 #include <iostream>
@@ -54,7 +55,7 @@ void dump_file_list(const std::string & path)
 void dump_unit_tree(const UnitConfig & unit, const std::string & indent = "")
 {
   std::cout << indent << unit->type << "(" << unit->path << ")" << std::endl;
-  for (const auto & [port, child] : unit->units) {
+  for (const auto & [link, child] : unit->links) {
     dump_unit_tree(child, indent + "  ");
   }
 }
@@ -84,7 +85,20 @@ void dump_unit_list(const std::string & path)
 
   for (const auto & unit : graph.units) {
     std::cout << unit.use_count() << " " << unit->type << "(" << unit->path << ")" << std::endl;
-    for (const auto & [port, child] : unit->units) {
+    for (const auto & [link, child] : unit->links) {
+      std::cout << " - " << child->path << " ### " << child->link << std::endl;
+    }
+  }
+}
+
+void dump_config(const std::string & path)
+{
+  Logger logger;
+  const auto graph = load_config(path, logger);
+
+  for (const auto & unit : graph.units) {
+    std::cout << unit.use_count() << " " << unit->type << "(" << unit->path << ")" << std::endl;
+    for (const auto & [link, child] : unit->links) {
       std::cout << " - " << child->path << " ### " << child->link << std::endl;
     }
   }
@@ -93,14 +107,8 @@ void dump_unit_list(const std::string & path)
 void dump_graph(const std::string & path)
 {
   Logger logger;
-  const auto graph = load_config(path, logger);
-
-  for (const auto & unit : graph.units) {
-    std::cout << unit.use_count() << " " << unit->type << "(" << unit->path << ")" << std::endl;
-    for (const auto & [port, child] : unit->units) {
-      std::cout << " - " << child->path << " ### " << child->link << std::endl;
-    }
-  }
+  const auto graph = Graph(path, logger);
+  graph.dump();
 }
 
 void check_graph(const std::string & path)

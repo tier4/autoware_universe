@@ -12,19 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__GRAPH__PORT_HPP_
-#define COMMON__GRAPH__PORT_HPP_
-
-#include <memory>
+#include "graph/links.hpp"
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-struct ChildPort
-{
-  using UniquePtr = std::unique_ptr<ChildPort>;
-};
-
 }  // namespace autoware::diagnostic_graph_aggregator
-
-#endif  // COMMON__GRAPH__PORT_HPP_

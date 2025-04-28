@@ -15,7 +15,7 @@
 #ifndef COMMON__GRAPH__LOGIC_HPP_
 #define COMMON__GRAPH__LOGIC_HPP_
 
-#include "config/types/forward.hpp"
+#include "types/forward.hpp"
 
 #include <functional>
 #include <memory>

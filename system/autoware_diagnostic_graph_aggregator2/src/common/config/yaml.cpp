@@ -33,6 +33,16 @@ ConfigYaml::ConfigYaml(const YAML::Node yaml)
   yaml_ = yaml;
 }
 
+void ConfigYaml::dump() const
+{
+  std::cout << str() << std::endl;
+}
+
+std::string ConfigYaml::str() const
+{
+  return YAML::Dump(yaml_);
+}
+
 ConfigYaml ConfigYaml::required(const std::string & name)
 {
   // TODO(Takagi, Isamu): check map type.
@@ -53,11 +63,6 @@ ConfigYaml ConfigYaml::optional(const std::string & name)
   const auto node = yaml_[name];
   yaml_.remove(name);
   return ConfigYaml(node);
-}
-
-void ConfigYaml::dump() const
-{
-  std::cout << YAML::Dump(yaml_) << std::endl;
 }
 
 std::vector<ConfigYaml> ConfigYaml::list() const

@@ -28,10 +28,11 @@ class ConfigYaml
 public:
   static ConfigYaml LoadFile(const std::string & path);
   explicit ConfigYaml(const YAML::Node yaml = {});
+  void dump() const;
+  std::string str() const;
+
   ConfigYaml required(const std::string & name);
   ConfigYaml optional(const std::string & name);
-
-  void dump() const;
   std::vector<ConfigYaml> list() const;
   std::string text() const;
   std::string text(const std::string & value) const;

@@ -14,7 +14,40 @@
 
 #include "graph/graph.hpp"
 
+#include "config/entity.hpp"
+#include "config/loader.hpp"
+#include "graph/links.hpp"
+#include "graph/units.hpp"
+
+#include <string>
+
+//
+#include <iostream>
+
 namespace autoware::diagnostic_graph_aggregator
 {
+
+Graph::Graph(const std::string & path, const Logger & logger)
+{
+  const auto graph = load_config(path, logger);
+  (void)graph;
+  /*
+  for (const auto & unit : graph.units) {
+    std::cout << unit->type << " " << unit->path << std::endl;
+    for (const auto & [link, child] : unit->links) {
+      std::cout << " - " << link.get() << " -> " << child.get() << std::endl;
+    }
+  }
+  */
+}
+
+Graph::~Graph()
+{
+}
+
+void Graph::dump() const
+{
+  std::cout << "Graph" << std::endl;
+}
 
 }  // namespace autoware::diagnostic_graph_aggregator

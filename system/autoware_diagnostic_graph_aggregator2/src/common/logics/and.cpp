@@ -14,7 +14,7 @@
 
 #include "logics/and.hpp"
 
-#include "config/parser.hpp"
+#include "config/entity.hpp"
 #include "config/yaml.hpp"
 
 namespace autoware::diagnostic_graph_aggregator
@@ -24,7 +24,7 @@ AndLogic::AndLogic(const LogicConfig & config)
 {
   ConfigYaml yaml = config.yaml();
   for (ConfigYaml node : yaml.required("list").list()) {
-    ports_.push_back(config.parse(node));
+    links_.push_back(config.parse_unit(node));
   }
 }
 
@@ -32,16 +32,13 @@ OrLogic::OrLogic(const LogicConfig & config)
 {
   ConfigYaml yaml = config.yaml();
   for (ConfigYaml node : yaml.required("list").list()) {
-    ports_.push_back(config.parse(node));
+    links_.push_back(config.parse_unit(node));
   }
 }
 
 DiagLogic::DiagLogic(const LogicConfig & config)
 {
-  const auto diag_node = config.yaml().required("node").text();
-  const auto diag_name = config.yaml().required("name").text();
-  const auto sep = diag_node.empty() ? "" : ": ";
-  port_ = config.parse(diag_node + sep + diag_name);
+  link_ = config.parse_diag(config.yaml());
 }
 
 struct DummyLogic : public Logic

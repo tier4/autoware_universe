@@ -12,26 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMON__CONFIG__TYPES__FORWARD_HPP_
-#define COMMON__CONFIG__TYPES__FORWARD_HPP_
+#include "graph/units.hpp"
 
-#include <memory>
+#include "graph/logic.hpp"
+
+#include <utility>
+#include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-class ChildPort;
-class Logic;
-class LogicConfig;
+NodeUnit::NodeUnit(std::unique_ptr<Logic> && logic, std::vector<UnitLink *> links)
+{
+  logic_ = std::move(logic);
+  links_ = links;
+}
 
-struct ParseContext;
-struct GraphConfig;
-struct FileConfigData;
-struct UnitConfigData;
-
-using FileConfig = std::shared_ptr<FileConfigData>;
-using UnitConfig = std::shared_ptr<UnitConfigData>;
+NodeUnit::~NodeUnit()
+{
+}
 
 }  // namespace autoware::diagnostic_graph_aggregator
-
-#endif  // COMMON__CONFIG__TYPES__FORWARD_HPP_

@@ -1,4 +1,4 @@
-// Copyright 2024 The Autoware Contributors
+// Copyright 2023 The Autoware Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,38 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "config/parser.hpp"
+#ifndef COMMON__GRAPH__UNITS_HPP_
+#define COMMON__GRAPH__UNITS_HPP_
 
-#include "config/entity.hpp"
-#include "graph/port.hpp"
+#include "types/forward.hpp"
 
-#include <string>
-#include <utility>
+#include <memory>
+#include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-LogicConfig::LogicConfig(UnitConfig unit, LogicEntity * data)
+class BaseUnit
 {
-  unit_ = unit;
-  data_ = data;
-}
+public:
+  virtual ~BaseUnit() = default;
+};
 
-ConfigYaml LogicConfig::yaml() const
+class NodeUnit : public BaseUnit
 {
-  return ConfigYaml(unit_->yaml);
-}
+public:
+  NodeUnit(std::unique_ptr<Logic> && logic, std::vector<UnitLink *> links);
+  ~NodeUnit();
 
-ChildPort * LogicConfig::parse(ConfigYaml yaml) const
-{
-  data_->units.push_back(std::make_pair(std::make_unique<ChildPort>(), yaml));
-  return data_->units.back().first.get();
-}
+private:
+  std::unique_ptr<Logic> logic_;
+  std::vector<UnitLink *> links_;
+};
 
-ChildPort * LogicConfig::parse(std::string name) const
+class LeafUnit : public BaseUnit
 {
-  unit_->diag = std::make_pair(std::make_unique<ChildPort>(), name);
-  return unit_->diag->first.get();
-}
+};
+
+class DiagUnit : public LeafUnit
+{
+};
 
 }  // namespace autoware::diagnostic_graph_aggregator
+
+#endif  // COMMON__GRAPH__UNITS_HPP_

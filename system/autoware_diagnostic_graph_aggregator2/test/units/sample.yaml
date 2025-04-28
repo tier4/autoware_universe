@@ -1,3 +1,15 @@
 units:
   - path: unit1
-    type: ok
+    type: diag
+    node: sample_node
+    name: sample_name
+
+  - path: unit2
+    type: diag
+    node: sample_node
+    name: sample_name
+
+  - path: unit3
+    type: diag
+    node: sample_node
+    name: sample_name

@@ -28,7 +28,7 @@ public:
   explicit AndLogic(const LogicConfig & config);
 
 private:
-  std::vector<ChildPort *> ports_;
+  std::vector<UnitLink *> links_;
 };
 
 class OrLogic : public Logic
@@ -37,7 +37,7 @@ public:
   explicit OrLogic(const LogicConfig & config);
 
 private:
-  std::vector<ChildPort *> ports_;
+  std::vector<UnitLink *> links_;
 };
 
 class DiagLogic : public Logic
@@ -46,7 +46,7 @@ public:
   explicit DiagLogic(const LogicConfig & config);
 
 private:
-  ChildPort * port_;
+  UnitLink * link_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

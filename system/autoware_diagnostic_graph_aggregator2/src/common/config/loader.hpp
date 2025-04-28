@@ -15,7 +15,7 @@
 #ifndef COMMON__CONFIG__LOADER_HPP_
 #define COMMON__CONFIG__LOADER_HPP_
 
-#include "config/types/forward.hpp"
+#include "types/forward.hpp"
 #include "utils/logger.hpp"
 
 #include <string>
@@ -23,9 +23,9 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-GraphConfig load_config(const std::string & path, Logger & logger);
+GraphConfig load_config(const std::string & path, const Logger & logger);
 
-void load_root_file(GraphConfig & graph, const std::string & path, Logger & logger);
+void load_root_file(GraphConfig & graph, const std::string & path, const Logger & logger);
 void make_file_list(GraphConfig & graph);
 void load_unit_tree(GraphConfig & graph);
 void make_unit_list(GraphConfig & graph);

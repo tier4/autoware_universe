@@ -15,8 +15,29 @@
 #ifndef COMMON__GRAPH__GRAPH_HPP_
 #define COMMON__GRAPH__GRAPH_HPP_
 
+#include "types/forward.hpp"
+#include "utils/logger.hpp"
+
+#include <memory>
+#include <string>
+#include <vector>
+
 namespace autoware::diagnostic_graph_aggregator
 {
+
+class Graph
+{
+public:
+  Graph(const std::string & path, const Logger & logger);
+  ~Graph();
+
+  void dump() const;
+
+private:
+  std::vector<std::unique_ptr<NodeUnit>> nodes_;
+  std::vector<std::unique_ptr<DiagUnit>> diags_;
+  std::vector<std::unique_ptr<UnitLink>> links_;
+};
 
 }  // namespace autoware::diagnostic_graph_aggregator
 

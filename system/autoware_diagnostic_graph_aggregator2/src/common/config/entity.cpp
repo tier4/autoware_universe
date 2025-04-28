@@ -12,11 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "entity.hpp"
+#include "config/entity.hpp"
+
+#include "graph/links.hpp"
 
 #include <string>
+#include <utility>
 
 namespace autoware::diagnostic_graph_aggregator
 {
+
+LogicConfig::LogicConfig(UnitConfig unit)
+{
+  unit_ = unit;
+}
+
+ConfigYaml LogicConfig::yaml() const
+{
+  return ConfigYaml(unit_->yaml);
+}
+
+UnitLink * LogicConfig::parse_unit(ConfigYaml yaml) const
+{
+  unit_->links_temp.push_back(std::make_pair(std::make_unique<UnitLink>(), yaml));
+  return unit_->links_temp.back().first.get();
+}
+
+UnitLink * LogicConfig::parse_diag(ConfigYaml yaml) const
+{
+  unit_->diag_temp = std::make_pair(std::make_unique<UnitLink>(), yaml);
+  return unit_->diag_temp->first.get();
+}
 
 }  // namespace autoware::diagnostic_graph_aggregator
