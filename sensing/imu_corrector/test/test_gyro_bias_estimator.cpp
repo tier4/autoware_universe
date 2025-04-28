@@ -119,6 +119,7 @@ double CalculateMedian(const std::array<double, 400> & data)
   return (sorted_data[mid - 1] + sorted_data[mid]) / 2.0;
 }
 
+// DT_1_3
 TEST(GyroBiasEstimatorTest, DT_1_3_1)
 {
   rclcpp::init(0, nullptr);
@@ -196,7 +197,8 @@ TEST(GyroBiasEstimatorTest, DT_1_3_2)
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_4)
+// DT_1_4
+TEST(GyroBiasEstimatorTest, DT_1_4_1)
 {
   rclcpp::init(0, nullptr);
   sensor_msgs::msg::Imu imu;
@@ -269,6 +271,7 @@ TEST(GyroBiasEstimatorTest, DT_1_4)
   rclcpp::shutdown();
 }
 
+// DT_1_5
 TEST(GyroBiasEstimatorTest, DT_1_5_1)  // gyro_buffer_のx, y, zの標準偏差が閾値未満
 {
   rclcpp::init(0, nullptr);
@@ -539,7 +542,8 @@ TEST(GyroBiasEstimatorTest, DT_1_5_9)  // gyro_buffer_のzの標準偏差が閾�
   rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_6)
+// DT_1_6
+TEST(GyroBiasEstimatorTest, DT_1_6_1)
 {
   rclcpp::init(0, nullptr);
   int count = 0;
