@@ -113,8 +113,7 @@ bool hasError(const std::vector<DiagnosticArray::ConstSharedPtr> & diags, const 
 std::pair<
   std::shared_ptr<autoware::planning_validator::PlanningValidator>, std::shared_ptr<PubSubManager>>
 prepareTest(
-  Trajectory trajectory, const Odometry & ego_odom,
-  const AccelWithCovarianceStamped & acceleration)
+  Trajectory trajectory, const Odometry & ego_odom, const AccelWithCovarianceStamped & acceleration)
 {
   auto validator = std::make_shared<PlanningValidator>(getNodeOptionsWithDefaultParams());
   auto manager = std::make_shared<PubSubManager>();
