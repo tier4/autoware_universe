@@ -190,7 +190,7 @@ lanelet::BasicPolygon3d to_basic_polygon3d(
 }
 
 auto check_shift_behavior(
-  const lanelet::ConstLanelets & lanelets, const std::vector<PathPointWithLaneId> & points,
+  const lanelet::ConstLanelets & lanelets, const std::vector<TrajectoryPoint> & points,
   const geometry_msgs::msg::Pose & ego_pose, const autoware_utils::LinearRing2d & footprint)
   -> Behavior
 {
@@ -220,13 +220,13 @@ auto check_shift_behavior(
 
     const auto is_left_shift = boost::geometry::intersects(
       transformed_footprint, lanelet::utils::to2D(combine_lanelet.leftBound()).basicLineString());
-    if (is_left_shift) {
+    if (is_left_shift && std::abs(points.at(i).longitudinal_velocity_mps) > 1e-3) {
       return i < nearest_idx ? Behavior::NONE : Behavior::SHIFT_LEFT;
     }
 
     const auto is_right_shift = boost::geometry::intersects(
       transformed_footprint, lanelet::utils::to2D(combine_lanelet.rightBound()).basicLineString());
-    if (is_right_shift) {
+    if (is_right_shift && std::abs(points.at(i).longitudinal_velocity_mps) > 1e-3) {
       return i < nearest_idx ? Behavior::NONE : Behavior::SHIFT_RIGHT;
     }
   }

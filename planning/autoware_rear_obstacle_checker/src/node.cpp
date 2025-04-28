@@ -261,7 +261,7 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
     ego_footprint, p);
 
   const auto shift_behavior = utils::check_shift_behavior(
-    current_lanes, resampled_path.points, odometry_ptr_->pose.pose, ego_footprint);
+    current_lanes, trajectory_ptr_->points, odometry_ptr_->pose.pose, ego_footprint);
 
   {
     debug.turn_behavior = turn_behavior;
