@@ -536,10 +536,30 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
     if (
       stop_candidate.vel_lpf.has_value() &&
       time_diff < obstacle_filtering_param_.stop_obstacle_hold_time_threshold) {
-      auto time_compensated_collision_point = stop_candidate.latest_collision_point;
-      time_compensated_collision_point.second -= odometry.twist.twist.linear.x * time_diff;
-      const auto stop_obstacle = create_stop_obstacle_for_point_cloud(
-        stop_candidate.latest_time, time_compensated_collision_point);
+      autoware_perception_msgs::msg::Shape bounding_box_shape;
+      bounding_box_shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+
+      const double time_compensated_dist_to_collide =
+        stop_candidate.latest_collision_point.second - odometry.twist.twist.linear.x * time_diff;
+
+      const auto braking_dist = [&]() {
+        double error_considered_vel = std::max(
+          stop_candidate.vel_lpf.value() + stop_planning_param_.rss_params.velocity_offset, 0.0);
+        return error_considered_vel * error_considered_vel * 0.5 /
+               -stop_planning_param_.rss_params.other_vehicle_objects_deceleration;
+      }();
+
+      const auto stop_obstacle = StopObstacle{
+        autoware_utils::to_hex_string(unique_identifier_msgs::msg::UUID{}),
+        stop_candidate.latest_time,
+        ObjectClassification{},
+        geometry_msgs::msg::Pose{},
+        bounding_box_shape,
+        stop_candidate.vel_lpf.value(),
+        stop_candidate.latest_collision_point.first,
+        time_compensated_dist_to_collide,
+        braking_dist};
+
       stop_obstacles.push_back(stop_obstacle);
     }
   }
