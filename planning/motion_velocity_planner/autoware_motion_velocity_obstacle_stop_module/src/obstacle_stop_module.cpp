@@ -544,7 +544,6 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
     if (
       stop_candidate.vel_lpf.has_value() &&
       time_diff < obstacle_filtering_param_.stop_obstacle_hold_time_threshold) {
-
       auto time_compensated_collision_point = stop_candidate.latest_collision_point;
       time_compensated_collision_point.second -= odometry.twist.twist.linear.x * time_diff;
       const auto stop_obstacle = create_stop_obstacle_for_point_cloud(
