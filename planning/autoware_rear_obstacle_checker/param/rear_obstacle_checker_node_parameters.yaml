@@ -156,6 +156,11 @@ rear_obstacle_checker_node:
         type: double
 
     blind_spot:
+      check:
+        left:
+          type: bool
+        right:
+          type: bool
       active_distance:
         start:
           type: double
