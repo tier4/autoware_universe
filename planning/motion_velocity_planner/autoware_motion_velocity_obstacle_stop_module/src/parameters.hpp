@@ -229,17 +229,20 @@ struct StopPlanningParam
     }
   }
 
-  std::string get_param_type(const ObjectClassification label)
+  std::string get_param_type(const PCLExtendedObjectClassification extended_label)
   {
-    const auto type_str = object_types_maps.at(label.label);
+    if (extended_label.is_point_cloud){
+      return "default";
+    }
+    const auto type_str = object_types_maps.at(extended_label.object_classification.label);
     if (object_type_specific_param_map.count(type_str) == 0) {
       return "default";
     }
     return type_str;
   }
-  ObjectTypeSpecificParams get_param(const ObjectClassification label)
+  ObjectTypeSpecificParams get_param(const PCLExtendedObjectClassification extended_label)
   {
-    return object_type_specific_param_map.at(get_param_type(label));
+    return object_type_specific_param_map.at(get_param_type(extended_label));
   }
 };
 }  // namespace autoware::motion_velocity_planner

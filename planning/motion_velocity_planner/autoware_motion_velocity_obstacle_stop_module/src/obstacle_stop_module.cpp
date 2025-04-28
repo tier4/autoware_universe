@@ -536,7 +536,6 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
     if (
       stop_candidate.vel_lpf.has_value() &&
       time_diff < obstacle_filtering_param_.stop_obstacle_hold_time_threshold) {
-
       auto time_compensated_collision_point = stop_candidate.latest_collision_point;
       time_compensated_collision_point.second -= odometry.twist.twist.linear.x * time_diff;
       const auto stop_obstacle = create_stop_obstacle_for_point_cloud(
@@ -794,7 +793,7 @@ std::optional<geometry_msgs::msg::Point> ObstacleStopModule::plan_stop(
 
     if (determined_stop_obstacle) {
       const bool is_same_param_types =
-        (stop_obstacle.classification.label == determined_stop_obstacle->classification.label);
+        (stop_obstacle.classification == determined_stop_obstacle->classification);
       if (
         (is_same_param_types && stop_obstacle.dist_to_collide_on_decimated_traj +
                                     stop_obstacle.dist_to_collide_on_decimated_traj >
@@ -893,7 +892,7 @@ std::optional<double> ObstacleStopModule::calc_candidate_zero_vel_dist(
         RCLCPP_WARN(
           rclcpp::get_logger("ObstacleCruisePlanner::StopPlanner"),
           "[Cruise] abandon to stop against %s object",
-          stop_planning_param_.object_types_maps.at(stop_obstacle.classification.label).c_str());
+          stop_planning_param_.get_param_type(stop_obstacle.classification).c_str());
         return std::nullopt;
       } else {
         return stop_planning_param_.get_param(stop_obstacle.classification).limit_min_acc;
@@ -1245,7 +1244,7 @@ std::vector<StopObstacle> ObstacleStopModule::get_closest_stop_obstacles(
   for (const auto & stop_obstacle : stop_obstacles) {
     const auto itr =
       std::find_if(candidates.begin(), candidates.end(), [&stop_obstacle](const StopObstacle & co) {
-        return co.classification.label == stop_obstacle.classification.label;
+        return co.classification == stop_obstacle.classification;
       });
     if (itr == candidates.end()) {
       candidates.emplace_back(stop_obstacle);
