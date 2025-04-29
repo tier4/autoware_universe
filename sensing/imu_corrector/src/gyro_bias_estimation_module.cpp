@@ -100,7 +100,7 @@ std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
   }
   RCLCPP_INFO_THROTTLE(
     logger_, *clock_, 10000,
-    "Bias estimation is ready. Bias: [x: %f, y: %f, z: %f] rad/s, Stddev: [x: %f, y: %f, z: %f] "
+    "Bias: [x: %f, y: %f, z: %f] rad/s, Stddev: [x: %f, y: %f, z: %f] "
     "rad/s",
     current_median_.value().x, current_median_.value().y, current_median_.value().z,
     current_stddev_.x, current_stddev_.y, current_stddev_.z);
