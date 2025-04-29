@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
+
 from builtin_interfaces.msg import Time
 from geometry_msgs.msg import Vector3Stamped
 import rclpy
@@ -19,15 +21,16 @@ from rclpy.node import Node
 
 
 class GyroBiasPublisher(Node):
-    def __init__(self):
+    def __init__(self, time_offset):
         super().__init__("gyro_bias_publisher")
+        self.time_offset = time_offset
         self.publisher = self.create_publisher(Vector3Stamped, "/gyro_bias", 10)
         self.timer = self.create_timer(1.0, self.timer_callback)
 
     def timer_callback(self):
         msg = Vector3Stamped()
         current_time = self.get_clock().now()
-        msg.header.stamp = Time(sec=current_time.seconds_nanoseconds()[0] - 10)  # 現在時刻から10秒前
+        msg.header.stamp = Time(sec=current_time.seconds_nanoseconds()[0] - self.time_offset)
         msg.header.frame_id = "base_link"
         msg.vector.x = 0.0
         msg.vector.y = 0.0
@@ -37,8 +40,18 @@ class GyroBiasPublisher(Node):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--time-offset",
+        type=int,
+        default=10,
+        help="Time offset in seconds for the published message",
+    )
+
     rclpy.init()
-    node = GyroBiasPublisher()
+    args = parser.parse_args()
+
+    node = GyroBiasPublisher(args.time_offset)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
