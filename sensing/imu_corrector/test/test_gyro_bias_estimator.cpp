@@ -38,7 +38,7 @@ public:
   int64_t max_duration_ms_ = 0;
 };
 
-class GyroBiasEstimationModuleTest2 : public GyroBiasEstimationModuleTest
+class GyroBiasEstimationModuleTestForCheckRate : public GyroBiasEstimationModuleTest
 {
 public:
   using GyroBiasEstimationModuleTest::GyroBiasEstimationModuleTest;
@@ -80,7 +80,7 @@ public:
     const size_t data_num_threshold = get_parameter("data_num_threshold").as_int();
     const double bias_change_threshold = get_parameter("bias_change_threshold").as_double();
     if (test_check_buffer_full_rate) {
-      gyro_bias_estimation_module_ = std::make_unique<GyroBiasEstimationModuleTest2>(
+      gyro_bias_estimation_module_ = std::make_unique<GyroBiasEstimationModuleTestForCheckRate>(
         timestamp_threshold, data_num_threshold, bias_change_threshold, stddev_threshold,
         get_logger(), get_clock());
     } else {
