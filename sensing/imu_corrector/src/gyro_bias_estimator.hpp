@@ -31,17 +31,15 @@ namespace imu_corrector
 {
 class GyroBiasEstimator : public rclcpp::Node
 {
+public:
+  explicit GyroBiasEstimator(const rclcpp::NodeOptions & node_options);
+
 private:
   using Imu = sensor_msgs::msg::Imu;
   using TwistWithCovarianceStamped = geometry_msgs::msg::TwistWithCovarianceStamped;
   using Vector3Stamped = geometry_msgs::msg::Vector3Stamped;
   using Vector3 = geometry_msgs::msg::Vector3;
 
-public:
-  explicit GyroBiasEstimator(const rclcpp::NodeOptions & node_options);
-  std::unique_ptr<GyroBiasEstimationModule> gyro_bias_estimation_module_;
-
-private:
   void callback_imu(const Imu::ConstSharedPtr imu_msg_ptr);
   void callback_twist(const TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr);
   void on_timer();
@@ -53,6 +51,9 @@ private:
   rclcpp::Publisher<Vector3Stamped>::SharedPtr gyro_bias_pub_;
 
   std::optional<Vector3> gyro_bias_;
+
+protected:
+  std::unique_ptr<GyroBiasEstimationModule> gyro_bias_estimation_module_;
 };
 }  // namespace imu_corrector
 
