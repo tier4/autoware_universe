@@ -620,15 +620,15 @@ TEST(GyroBiasEstimatorTest, DT_1_6_1)
   boost::circular_buffer<geometry_msgs::msg::Vector3> gyro_buffer(400);
 
   // 異なるシード値で各軸のデータを生成
-  const auto data_x = GenerateTestData(43, 0.0, 0.0001);  // 標準偏差 0.0001007498
-  const auto data_y = GenerateTestData(44, 0.0, 0.0001);  // 標準偏差 0.0000978264
-  const auto data_z = GenerateTestData(42, 0.0, 0.0001);  // 標準偏差 0.0001031615
+  gyro_buffer.clear();
+  const auto data_x = GenerateTestData(43, 1.0, 0.0001);  // 標準偏差 0.0001007498
+  const auto data_y = GenerateTestData(44, 2.0, 0.0001);  // 標準偏差 0.0000978264
+  const auto data_z = GenerateTestData(42, 3.0, 0.0001);  // 標準偏差 0.0001031615
   double median_x = CalculateMedian(data_x);
   double median_y = CalculateMedian(data_y);
   double median_z = CalculateMedian(data_z);
-
-  for (size_t i = 0; i < 400; ++i) {
-    geometry_msgs::msg::Vector3 angular_velocity;
+  geometry_msgs::msg::Vector3 angular_velocity;
+  for (size_t i = 0; i < 399; ++i) {
     angular_velocity.x = data_x[i];
     angular_velocity.y = data_y[i];
     angular_velocity.z = data_z[i];
@@ -637,14 +637,26 @@ TEST(GyroBiasEstimatorTest, DT_1_6_1)
 
   node->get_estimation_module()->set_gyro_buffer(gyro_buffer);
   executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  executor.spin_some();
+  ASSERT_EQ(count, 0);
+
+  angular_velocity.x = data_x[399];
+  angular_velocity.y = data_y[399];
+  angular_velocity.z = data_z[399];
+  gyro_buffer.push_back(angular_velocity);
+  node->get_estimation_module()->set_gyro_buffer(gyro_buffer);
+  executor.spin_some();
+  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
   executor.spin_some();
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   executor.spin_some();
   ASSERT_EQ(count, 1);
-  rclcpp::shutdown();
-
   ASSERT_EQ(gyro_bias_x, median_x);
   ASSERT_EQ(gyro_bias_y, median_y);
   ASSERT_EQ(gyro_bias_z, median_z);
+
+  rclcpp::shutdown();
 }
