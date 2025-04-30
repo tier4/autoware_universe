@@ -90,6 +90,9 @@ public:
     }
   }
 
+  // on_timer()をpublicにアクセスできるようにするメソッドを追加
+  void test_on_timer() { on_timer(); }
+
   GyroBiasEstimationModuleTest * get_estimation_module() const
   {
     return static_cast<GyroBiasEstimationModuleTest *>(gyro_bias_estimation_module_.get());
@@ -162,49 +165,6 @@ TEST(GyroBiasEstimatorTest, DT_1_3_1)
   imu_pub->publish(imu);
   twist_pub->publish(twist);
   executor.spin_some();
-  for (int i = 1; i <= 399; i++) {
-    RCLCPP_INFO(node->get_logger(), "Count i: %d", i);
-    imu.header.stamp = rclcpp::Clock().now();
-    twist.header.stamp = rclcpp::Clock().now();
-    imu_pub->publish(imu);
-    twist_pub->publish(twist);
-    executor.spin_some();
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-  RCLCPP_INFO(
-    node->get_logger(), "buffer_size: %d", node->get_estimation_module()->get_buffer_size());
-  ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 399);
-  ASSERT_EQ(node->get_estimation_module()->get_is_buffer_full(), false);
-
-  twist.twist.twist.linear.x = 1.0;
-  twist.header.stamp = rclcpp::Clock().now();
-  twist_pub->publish(twist);
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  twist.twist.twist.linear.x = 0.0;
-
-  for (int i = 1; i <= 400; i++) {
-    RCLCPP_INFO(node->get_logger(), "Count i: %d", i);
-    imu.header.stamp = rclcpp::Clock().now();
-    twist.header.stamp = rclcpp::Clock().now();
-    imu_pub->publish(imu);
-    twist_pub->publish(twist);
-    executor.spin_some();
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-  RCLCPP_INFO(
-    node->get_logger(), "buffer_size: %d", node->get_estimation_module()->get_buffer_size());
-  ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 400);
-  ASSERT_EQ(node->get_estimation_module()->get_is_buffer_full(), true);
-
-  twist.twist.twist.linear.x = 1.0;
-  twist.header.stamp = rclcpp::Clock().now();
-  twist_pub->publish(twist);
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  twist.twist.twist.linear.x = 0.0;
 
   for (int i = 1; i <= 401; i++) {
     RCLCPP_INFO(node->get_logger(), "Count i: %d", i);
@@ -214,13 +174,18 @@ TEST(GyroBiasEstimatorTest, DT_1_3_1)
     twist_pub->publish(twist);
     executor.spin_some();
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    node->test_on_timer();
+    RCLCPP_INFO(
+      node->get_logger(), "is_buffer_full: %d",
+      node->get_estimation_module()->get_is_buffer_full());
+    if (i < 400) {
+      ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), i);
+      ASSERT_EQ(node->get_estimation_module()->get_is_buffer_full(), false);
+    } else {
+      ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 400);
+      ASSERT_EQ(node->get_estimation_module()->get_is_buffer_full(), true);
+    }
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-  RCLCPP_INFO(
-    node->get_logger(), "buffer_size: %d", node->get_estimation_module()->get_buffer_size());
-  ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 400);
-  ASSERT_EQ(node->get_estimation_module()->get_is_buffer_full(), true);
-
   rclcpp::shutdown();
 }
 
