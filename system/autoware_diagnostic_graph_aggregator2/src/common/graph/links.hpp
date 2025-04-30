@@ -15,6 +15,8 @@
 #ifndef COMMON__GRAPH__LINKS_HPP_
 #define COMMON__GRAPH__LINKS_HPP_
 
+#include "types/forward.hpp"
+
 #include <memory>
 
 namespace autoware::diagnostic_graph_aggregator
@@ -22,6 +24,12 @@ namespace autoware::diagnostic_graph_aggregator
 
 class UnitLink
 {
+public:
+  void init(BaseUnit * parent, BaseUnit * child);
+
+private:
+  BaseUnit * parent_;
+  BaseUnit * child_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

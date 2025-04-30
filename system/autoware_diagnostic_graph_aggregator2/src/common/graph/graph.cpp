@@ -20,6 +20,9 @@
 #include "graph/units.hpp"
 
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 //
 #include <iostream>
@@ -29,8 +32,50 @@ namespace autoware::diagnostic_graph_aggregator
 
 Graph::Graph(const std::string & path, const Logger & logger)
 {
-  const auto graph = load_config(path, logger);
-  (void)graph;
+  {
+    const auto graph = load_config(path, logger);
+    std::unordered_map<LinkConfig, UnitConfig> parent_unit;
+    std::unordered_map<LinkConfig, UnitConfig> child_unit;
+    std::unordered_map<UnitConfig, std::vector<UnitLink *>> parent_links;
+    std::unordered_map<UnitConfig, std::vector<UnitLink *>> child_links;
+    std::unordered_map<UnitConfig, BaseUnit *> units;
+
+    for (const auto & parent : graph.units) {
+      for (const auto & [link, child] : parent->links) {
+        parent_unit[link] = parent;
+        child_unit[link] = child;
+        parent_links[child].push_back(link->link.get());
+        child_links[parent].push_back(link->link.get());
+      }
+      if (parent->diag) {
+        const auto & [link, child] = parent->diag.value();
+        parent_unit[link] = parent;
+        child_unit[link] = child;
+        parent_links[child].push_back(link->link.get());
+        child_links[parent].push_back(link->link.get());
+      }
+    }
+
+    for (const auto & node : graph.units) {
+      const auto parents = parent_links[node];  // Root units have no parents.
+      const auto children = child_links[node];  // Leaf units have no children.
+      nodes_.push_back(std::make_unique<NodeUnit>(parents, children, std::move(node->logic)));
+      units[node] = nodes_.back().get();
+    }
+    for (const auto & diag : graph.diags) {
+      const auto parents = parent_links.at(diag);
+      diags_.push_back(std::make_unique<DiagUnit>(parents, diag->data));
+      units[diag] = diags_.back().get();
+    }
+
+    for (const auto & link : graph.links) {
+      const auto parent = units.at(parent_unit.at(link));
+      const auto child = units.at(child_unit.at(link));
+      link->link->init(parent, child);
+      links_.push_back(std::move(link->link));
+    }
+  }
+
   /*
   for (const auto & unit : graph.units) {
     std::cout << unit->type << " " << unit->path << std::endl;
@@ -48,6 +93,14 @@ Graph::~Graph()
 void Graph::dump() const
 {
   std::cout << "Graph" << std::endl;
+
+  for (const auto & node : nodes_) {
+    std::cout << "Node[" << node.get() << "]: " << node->type() << " (" << node->path() << ")"
+              << std::endl;
+  }
+  for (const auto & diag : diags_) {
+    std::cout << "Diag[" << diag.get() << "]: " << diag->name() << std::endl;
+  }
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

@@ -17,6 +17,8 @@
 #include "config/entity.hpp"
 #include "config/yaml.hpp"
 
+#include <string>
+
 namespace autoware::diagnostic_graph_aggregator
 {
 
@@ -44,6 +46,7 @@ DiagLogic::DiagLogic(const LogicConfig & config)
 struct DummyLogic : public Logic
 {
   explicit DummyLogic(const LogicConfig &) {}
+  std::string type() const override { return "dummy"; }
 };
 
 RegisterLogic<DiagLogic> registration4("diag");

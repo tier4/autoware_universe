@@ -18,6 +18,7 @@
 #include "types/forward.hpp"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
@@ -32,12 +33,18 @@ public:
 class NodeUnit : public BaseUnit
 {
 public:
-  NodeUnit(std::unique_ptr<Logic> && logic, std::vector<UnitLink *> links);
+  NodeUnit(
+    const std::vector<UnitLink *> parents, const std::vector<UnitLink *> children,
+    std::unique_ptr<Logic> && logic);
   ~NodeUnit();
+  std::string path() const;
+  std::string type() const;
 
 private:
+  std::vector<UnitLink *> parents_;
+  std::vector<UnitLink *> children_;
+  std::string path_;
   std::unique_ptr<Logic> logic_;
-  std::vector<UnitLink *> links_;
 };
 
 class LeafUnit : public BaseUnit
@@ -46,6 +53,14 @@ class LeafUnit : public BaseUnit
 
 class DiagUnit : public LeafUnit
 {
+public:
+  DiagUnit(const std::vector<UnitLink *> parents, const std::string & name);
+  ~DiagUnit();
+  std::string name() const;
+
+private:
+  std::vector<UnitLink *> parents_;
+  std::string name_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

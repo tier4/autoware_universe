@@ -17,4 +17,10 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
+void UnitLink::init(BaseUnit * parent, BaseUnit * child)
+{
+  parent_ = parent;
+  child_ = child;
+}
+
 }  // namespace autoware::diagnostic_graph_aggregator

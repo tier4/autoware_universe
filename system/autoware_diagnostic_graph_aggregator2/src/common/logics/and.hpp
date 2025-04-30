@@ -17,6 +17,7 @@
 
 #include "graph/logic.hpp"
 
+#include <string>
 #include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
@@ -26,6 +27,7 @@ class AndLogic : public Logic
 {
 public:
   explicit AndLogic(const LogicConfig & config);
+  std::string type() const override { return "and"; }
 
 private:
   std::vector<UnitLink *> links_;
@@ -35,6 +37,7 @@ class OrLogic : public Logic
 {
 public:
   explicit OrLogic(const LogicConfig & config);
+  std::string type() const override { return "or"; }
 
 private:
   std::vector<UnitLink *> links_;
@@ -44,6 +47,7 @@ class DiagLogic : public Logic
 {
 public:
   explicit DiagLogic(const LogicConfig & config);
+  std::string type() const override { return "diag"; }
 
 private:
   UnitLink * link_;

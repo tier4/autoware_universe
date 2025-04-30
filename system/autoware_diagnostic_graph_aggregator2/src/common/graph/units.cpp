@@ -16,20 +16,50 @@
 
 #include "graph/logic.hpp"
 
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-NodeUnit::NodeUnit(std::unique_ptr<Logic> && logic, std::vector<UnitLink *> links)
+NodeUnit::NodeUnit(
+  const std::vector<UnitLink *> parents, const std::vector<UnitLink *> children,
+  std::unique_ptr<Logic> && logic)
 {
+  parents_ = parents;
+  children_ = children;
   logic_ = std::move(logic);
-  links_ = links;
 }
 
 NodeUnit::~NodeUnit()
 {
+}
+
+std::string NodeUnit::path() const
+{
+  return path_;
+}
+
+std::string NodeUnit::type() const
+{
+  return logic_->type();
+}
+
+DiagUnit::DiagUnit(const std::vector<UnitLink *> parents, const std::string & name)
+{
+  parents_ = parents;
+  name_ = name;
+}
+
+DiagUnit::~DiagUnit()
+{
+}
+
+std::string DiagUnit::name() const
+{
+  return name_;
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

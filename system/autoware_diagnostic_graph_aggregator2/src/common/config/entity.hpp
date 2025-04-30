@@ -31,7 +31,8 @@ struct GraphConfig
   FileConfig root;
   std::vector<FileConfig> files;
   std::vector<UnitConfig> units;
-  std::vector<DiagConfig> diags;
+  std::vector<UnitConfig> diags;
+  std::vector<LinkConfig> links;
 };
 
 struct FileConfigData
@@ -45,20 +46,21 @@ struct FileConfigData
 
 struct UnitConfigData
 {
+  explicit UnitConfigData(ConfigYaml yaml);
   std::string type;
   std::string path;
   std::string link;
+  std::string data;
   std::unique_ptr<Logic> logic;
-  std::vector<std::pair<std::unique_ptr<UnitLink>, UnitConfig>> links;
-  std::vector<std::pair<std::unique_ptr<UnitLink>, ConfigYaml>> links_temp;
-  std::optional<std::pair<std::unique_ptr<UnitLink>, DiagConfig>> diag;
-  std::optional<std::pair<std::unique_ptr<UnitLink>, ConfigYaml>> diag_temp;
+  std::vector<std::pair<LinkConfig, UnitConfig>> links;
+  std::optional<std::pair<LinkConfig, UnitConfig>> diag;
   ConfigYaml yaml;
 };
 
-struct DiagConfigData
+struct LinkConfigData
 {
-  std::string name;
+  LinkConfigData();
+  std::unique_ptr<UnitLink> link;
 };
 
 class LogicConfig

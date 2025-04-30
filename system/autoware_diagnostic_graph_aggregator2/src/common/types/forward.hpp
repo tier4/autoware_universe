@@ -31,11 +31,11 @@ struct ParseContext;
 struct GraphConfig;
 struct FileConfigData;
 struct UnitConfigData;
-struct DiagConfigData;
+struct LinkConfigData;
 
 using FileConfig = std::shared_ptr<FileConfigData>;
 using UnitConfig = std::shared_ptr<UnitConfigData>;
-using DiagConfig = std::shared_ptr<DiagConfigData>;
+using LinkConfig = std::shared_ptr<LinkConfigData>;
 
 }  // namespace autoware::diagnostic_graph_aggregator
 

@@ -29,6 +29,7 @@ class Logic
 {
 public:
   virtual ~Logic() = default;
+  virtual std::string type() const = 0;
 };
 
 class LogicFactory

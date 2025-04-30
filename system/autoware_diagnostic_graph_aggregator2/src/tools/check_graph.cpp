@@ -123,6 +123,7 @@ int main(int argc, char ** argv)
   (void)argc;
   (void)argv;
 
+  std::cout << "================================================" << std::endl;
   autoware::diagnostic_graph_aggregator::check_graph(
     "$(find-pkg-share autoware_diagnostic_graph_aggregator)/example/graph/main.yaml");
   std::cout << "================================================" << std::endl;

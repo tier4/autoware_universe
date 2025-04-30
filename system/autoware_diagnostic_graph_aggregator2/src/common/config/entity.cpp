@@ -15,12 +15,23 @@
 #include "config/entity.hpp"
 
 #include "graph/links.hpp"
+#include "graph/logic.hpp"
 
+#include <memory>
 #include <string>
 #include <utility>
 
 namespace autoware::diagnostic_graph_aggregator
 {
+
+UnitConfigData::UnitConfigData(ConfigYaml yaml) : yaml(yaml)
+{
+}
+
+LinkConfigData::LinkConfigData()
+{
+  link = std::make_unique<UnitLink>();
+}
 
 LogicConfig::LogicConfig(UnitConfig unit)
 {
@@ -34,14 +45,18 @@ ConfigYaml LogicConfig::yaml() const
 
 UnitLink * LogicConfig::parse_unit(ConfigYaml yaml) const
 {
-  unit_->links_temp.push_back(std::make_pair(std::make_unique<UnitLink>(), yaml));
-  return unit_->links_temp.back().first.get();
+  const auto link = std::make_shared<LinkConfigData>();
+  const auto unit = std::make_shared<UnitConfigData>(yaml);
+  unit_->links.push_back(std::make_pair(link, unit));
+  return link->link.get();
 }
 
 UnitLink * LogicConfig::parse_diag(ConfigYaml yaml) const
 {
-  unit_->diag_temp = std::make_pair(std::make_unique<UnitLink>(), yaml);
-  return unit_->diag_temp->first.get();
+  const auto link = std::make_shared<LinkConfigData>();
+  const auto diag = std::make_shared<UnitConfigData>(yaml);
+  unit_->diag = std::make_pair(link, diag);
+  return link->link.get();
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

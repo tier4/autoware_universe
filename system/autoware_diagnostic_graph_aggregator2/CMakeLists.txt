@@ -11,8 +11,9 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   "src/common/config/substitutions.cpp"
   "src/common/config/yaml.cpp"
   "src/common/graph/graph.cpp"
-  "src/common/graph/logic.cpp"
   "src/common/graph/units.cpp"
+  "src/common/graph/links.cpp"
+  "src/common/graph/logic.cpp"
   "src/common/logics/and.cpp"
   "src/common/utils/logger.cpp"
 )

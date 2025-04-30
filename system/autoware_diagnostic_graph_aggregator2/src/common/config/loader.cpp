@@ -38,13 +38,10 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-struct UnitParser
-{
-};
-
 FileConfig load_file(ParseContext context, const std::string & path, const Logger & logger);
 UnitConfig load_unit(ConfigYaml yaml);
-DiagConfig load_diag(ConfigYaml yaml);
+void load_unit(UnitConfig & config);
+void load_diag(UnitConfig & config);
 std::vector<FileConfig> load_files(ParseContext context, ConfigYaml yaml, const Logger & logger);
 std::vector<UnitConfig> load_units(ConfigYaml yaml);
 
@@ -68,37 +65,36 @@ FileConfig load_file(ParseContext context, const std::string & path, const Logge
 
 UnitConfig load_unit(ConfigYaml yaml)
 {
-  UnitConfig result = std::make_shared<UnitConfigData>();
-  result->type = yaml.required("type").text("");
-  result->path = yaml.optional("path").text("");
-  result->yaml = yaml;
-
-  if (result->type == "link") {
-    result->link = yaml.required("link").text("");
-  } else {
-    result->logic = LogicFactory::Create(result->type, LogicConfig(result));
-    for (auto & [link, node] : result->links_temp) {
-      result->links.push_back(std::make_pair(std::move(link), load_unit(node)));
-    }
-    if (result->diag_temp) {
-      auto & [link, diag] = result->diag_temp.value();
-      result->diag = std::make_pair(std::move(link), load_diag(diag));
-    }
-    result->links_temp.clear();
-    result->diag_temp.reset();
-  }
+  UnitConfig result = std::make_shared<UnitConfigData>(yaml);
+  load_unit(result);
   return result;
 }
 
-DiagConfig load_diag(ConfigYaml yaml)
+void load_unit(UnitConfig & config)
 {
-  const auto diag_node = yaml.required("node").text();
-  const auto diag_name = yaml.required("name").text();
-  const auto sep = diag_node.empty() ? "" : ": ";
+  config->type = config->yaml.required("type").text("");
+  config->path = config->yaml.optional("path").text("");
+  config->yaml = config->yaml;
 
-  DiagConfig result = std::make_shared<DiagConfigData>();
-  result->name = diag_node + sep + diag_name;
-  return result;
+  if (config->type == "link") {
+    config->link = config->yaml.required("link").text("");
+  } else {
+    config->logic = LogicFactory::Create(config->type, LogicConfig(config));
+    for (auto & [link, unit] : config->links) {
+      load_unit(unit);
+    }
+    if (config->diag) {
+      load_diag(config->diag->second);
+    }
+  }
+}
+
+void load_diag(UnitConfig & config)
+{
+  const auto diag_node = config->yaml.required("node").text();
+  const auto diag_name = config->yaml.required("name").text();
+  const auto sep = diag_node.empty() ? "" : ": ";
+  config->data = diag_node + sep + diag_name;
 }
 
 std::vector<FileConfig> load_files(ParseContext context, ConfigYaml yaml, const Logger & logger)
@@ -244,13 +240,23 @@ void topological_sort(GraphConfig & graph)
   }
 }
 
-void unify_diags(GraphConfig & graph)
+void make_link_list(GraphConfig & graph)
 {
-  std::unordered_map<std::string, DiagConfig> diags;
+  for (const auto & unit : graph.units) {
+    for (const auto & [link, child] : unit->links) {
+      graph.links.push_back(link);
+    }
+    if (unit->diag) {
+      graph.links.push_back(unit->diag->first);
+    }
+  }
+}
+
+void make_diag_list(GraphConfig & graph)
+{
   for (const auto & unit : graph.units) {
     if (unit->diag) {
-      auto & [link, diag] = unit->diag.value();
-      diag = diags.insert(std::make_pair(diag->name, diag)).first->second;
+      graph.diags.push_back(unit->diag->second);
     }
   }
 }
@@ -262,17 +268,11 @@ GraphConfig load_config(const std::string & path, const Logger & logger)
   make_file_list(graph);
   load_unit_tree(graph);
   make_unit_list(graph);
+  make_link_list(graph);
+  make_diag_list(graph);
   resolve_links(graph);
   cleanup_files(graph);
   topological_sort(graph);
-  unify_diags(graph);
-
-  for (const auto & unit : graph.units) {
-    if (unit->diag) {
-      std::cout << unit->diag->second.get() << " " << unit->diag->second->name << std::endl;
-    }
-  }
-
   return graph;
 }
 
