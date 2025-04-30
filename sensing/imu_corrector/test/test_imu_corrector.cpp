@@ -189,36 +189,28 @@ TEST(ImuCorrectorTest, DT_2_1_1)
   gyro_bias.vector.y = 0.2;
   gyro_bias.vector.z = 0.3;
 
-  // TODO(kubota): spin_some()を何回使う必要があるか、
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 0");
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 1");
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 2");
+  // 2秒間のスピンを実行
+  std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+  while (std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+    executor.spin_some();
+    rclcpp::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  RCLCPP_INFO(rclcpp::get_logger("test"), "spin completed");
+
   ASSERT_TRUE(is_calibrated.has_value());
   ASSERT_EQ(is_calibrated.value(), false);  // before publishing /gyro_bias
 
   gyro_bias_pub->publish(gyro_bias);
 
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 3");
+  // 2秒間のスピンを実行
+  start = std::chrono::steady_clock::now();
+  while (std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+    executor.spin_some();
+    rclcpp::sleep_for(std::chrono::milliseconds(10));
+  }
 
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 4");
-
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 5");
-
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 6");
+  RCLCPP_INFO(rclcpp::get_logger("test"), "spin completed");
 
   EXPECT_EQ(is_calibrated, true);  // after publishing /gyro_bias
   rclcpp::shutdown();
@@ -249,35 +241,23 @@ TEST(ImuCorrectorTest, DT_2_1_2)
   gyro_bias.vector.y = 0.2;
   gyro_bias.vector.z = 0.3;
 
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 0");
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 1");
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 2");
+  // 2秒間のスピンを実行
+  std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+  while (std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+    executor.spin_some();
+    rclcpp::sleep_for(std::chrono::milliseconds(10));
+  }
   ASSERT_TRUE(is_calibrated.has_value());
   ASSERT_EQ(is_calibrated.value(), true);  // before publishing /gyro_bias
 
   gyro_bias_pub->publish(gyro_bias);
 
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 3");
-
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 4");
-
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 5");
-
-  executor.spin_some();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1200));
-  RCLCPP_INFO(rclcpp::get_logger("test"), "spin 6");
+  // 2秒間のスピンを実行
+  start = std::chrono::steady_clock::now();
+  while (std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+    executor.spin_some();
+    rclcpp::sleep_for(std::chrono::milliseconds(10));
+  }
 
   EXPECT_EQ(is_calibrated, true);  // after publishing /gyro_bias
   rclcpp::shutdown();
