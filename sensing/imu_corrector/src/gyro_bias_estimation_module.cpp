@@ -98,12 +98,14 @@ std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
         buffer_stddev.z, current_stddev_.x, current_stddev_.y, current_stddev_.z);
     }
   }
-  RCLCPP_INFO_THROTTLE(
-    logger_, *clock_, 10000,
-    "Bias: [x: %f, y: %f, z: %f] rad/s, Stddev: [x: %f, y: %f, z: %f] "
-    "rad/s",
-    current_median_.value().x, current_median_.value().y, current_median_.value().z,
-    current_stddev_.x, current_stddev_.y, current_stddev_.z);
+  if (current_median_.has_value()) {
+    RCLCPP_INFO_THROTTLE(
+      logger_, *clock_, 10000,
+      "Bias: [x: %f, y: %f, z: %f] rad/s, Stddev: [x: %f, y: %f, z: %f] "
+      "rad/s",
+      current_median_.value().x, current_median_.value().y, current_median_.value().z,
+      buffer_stddev.x, buffer_stddev.y, buffer_stddev.z);
+  }
   return current_median_;
 }
 
