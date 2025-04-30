@@ -473,7 +473,8 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
     const uint64_t pcl_us = point_cloud.pointcloud.header.stamp;
     return rclcpp::Time(
       static_cast<int32_t>(pcl_us / static_cast<int32_t>(1e6)),
-      static_cast<uint32_t>((pcl_us % static_cast<int32_t>(1e6)) * static_cast<int32_t>(1e3)));
+      static_cast<uint32_t>((pcl_us % static_cast<int32_t>(1e6)) * static_cast<int32_t>(1e3)),
+      rcl_clock_type_e::RCL_ROS_TIME);
   }();
 
   // Register collision_point to stop_candidates
@@ -532,33 +533,37 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
   // pick stop_obstacle from candidates
   std::vector<StopObstacle> stop_obstacles;
   for (auto & stop_candidate : stop_candidates) {
+    if (!stop_candidate.vel_lpf.has_value()) {
+      continue;
+    }
+
+    const double time_delay = (clock_->now() - current_point_cloud_time).seconds();
     const double time_diff = (current_point_cloud_time - stop_candidate.latest_time).seconds();
+    const double time_compensated_dist_to_collide =
+      stop_candidate.latest_collision_point.second +
+      *stop_candidate.vel_lpf * (time_delay + time_diff) -
+      odometry.twist.twist.linear.x * time_diff;
+    const auto pcl_braking_dist = [&]() {
+      double error_considered_vel = std::max(
+        stop_candidate.vel_lpf.value() + stop_planning_param_.rss_params.velocity_offset, 0.0);
+      return error_considered_vel * error_considered_vel * 0.5 /
+             -stop_planning_param_.rss_params.other_vehicle_objects_deceleration;
+    }();
     if (
-      stop_candidate.vel_lpf.has_value() &&
-      time_diff < obstacle_filtering_param_.stop_obstacle_hold_time_threshold) {
-      autoware_perception_msgs::msg::Shape bounding_box_shape;
-      bounding_box_shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+      time_diff < obstacle_filtering_param_.stop_obstacle_hold_time_threshold &&
+      std::abs(time_compensated_dist_to_collide) + pcl_braking_dist - 3.0 < ego_braking_dist_th) {
+      const auto stop_obstacle =
+        StopObstacle{stop_candidate.latest_time,       true,
+                     stop_candidate.vel_lpf.value(),   stop_candidate.latest_collision_point.first,
+                     time_compensated_dist_to_collide, pcl_braking_dist};
 
-      const double time_compensated_dist_to_collide =
-        stop_candidate.latest_collision_point.second - odometry.twist.twist.linear.x * time_diff;
-
-      const auto braking_dist = [&]() {
-        double error_considered_vel = std::max(
-          stop_candidate.vel_lpf.value() + stop_planning_param_.rss_params.velocity_offset, 0.0);
-        return error_considered_vel * error_considered_vel * 0.5 /
-               -stop_planning_param_.rss_params.other_vehicle_objects_deceleration;
-      }();
-
-      const auto stop_obstacle = StopObstacle{
-        autoware_utils::to_hex_string(unique_identifier_msgs::msg::UUID{}),
-        stop_candidate.latest_time,
-        ObjectClassification{},
-        geometry_msgs::msg::Pose{},
-        bounding_box_shape,
-        stop_candidate.vel_lpf.value(),
-        stop_candidate.latest_collision_point.first,
-        time_compensated_dist_to_collide,
-        braking_dist};
+      RCLCPP_INFO(
+        logger_,
+        "|_PCL_| total_dist: %2.5f, raw_dist: %2.5f, time_compensated dist: %2.5f, braking_dist: "
+        "%2.5f",
+        (time_compensated_dist_to_collide + pcl_braking_dist),
+        (stop_candidate.latest_collision_point.second), time_compensated_dist_to_collide,
+        pcl_braking_dist);
 
       stop_obstacles.push_back(stop_obstacle);
     }
@@ -678,6 +683,10 @@ std::optional<StopObstacle> ObstacleStopModule::pick_stop_obstacle_from_predicte
       0.0);
     return error_considered_vel * error_considered_vel * 0.5 / -braking_acc;
   }();
+
+  RCLCPP_INFO(
+    logger_, "|_OBJ_| total_dist: %2.5f, dist_to_collide: %2.5f, braking_dist: %2.5f",
+    (collision_point->second + braking_dist), (collision_point->second), braking_dist);
 
   return StopObstacle{
     autoware_utils::to_hex_string(predicted_object.object_id),
@@ -814,12 +823,18 @@ std::optional<geometry_msgs::msg::Point> ObstacleStopModule::plan_stop(
     if (determined_stop_obstacle) {
       const bool is_same_param_types =
         (stop_obstacle.classification == determined_stop_obstacle->classification);
+      const auto point_cloud_suppression_margin = [](StopObstacle obs) {
+        return obs.classification.is_point_cloud ? 2.0 : 0.0;
+      };
+
       if (
         (is_same_param_types && stop_obstacle.dist_to_collide_on_decimated_traj +
                                     stop_obstacle.dist_to_collide_on_decimated_traj >
                                   determined_stop_obstacle->dist_to_collide_on_decimated_traj +
                                     determined_stop_obstacle->braking_dist) ||
-        (!is_same_param_types && *candidate_zero_vel_dist > determined_zero_vel_dist)) {
+        (!is_same_param_types &&
+         *candidate_zero_vel_dist + point_cloud_suppression_margin(stop_obstacle) >
+           *determined_zero_vel_dist + point_cloud_suppression_margin(*determined_stop_obstacle))) {
         continue;
       }
     }
