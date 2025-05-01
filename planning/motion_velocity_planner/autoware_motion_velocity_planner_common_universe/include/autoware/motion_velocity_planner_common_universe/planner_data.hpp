@@ -89,6 +89,8 @@ struct PlannerData
     double get_lat_vel_relative_to_traj(const std::vector<TrajectoryPoint> & traj_points) const;
     geometry_msgs::msg::Pose get_predicted_pose(
       const rclcpp::Time & current_stamp, const rclcpp::Time & predicted_object_stamp) const;
+    geometry_msgs::msg::Pose get_specified_time_pose(
+      const rclcpp::Time & specified_time, const rclcpp::Time & predicted_object_stamp) const;
 
   private:
     void calc_vel_relative_to_traj(const std::vector<TrajectoryPoint> & traj_points) const;
