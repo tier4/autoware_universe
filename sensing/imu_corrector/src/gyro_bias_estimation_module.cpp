@@ -38,7 +38,7 @@ GyroBiasEstimationModule::GyroBiasEstimationModule(
   clock_(clock),
   gyro_buffer_(data_num_threshold),
   is_gyro_buffer_full_(false),
-  is_calibratable_(false)
+  can_calibrate_(false)
 {
 }
 
@@ -70,7 +70,7 @@ std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
   if (is_gyro_buffer_full_) {
     geometry_msgs::msg::Vector3 buffer_stddev = calculate_stddev(gyro_buffer_);
     update_calibratable_flag(buffer_stddev);
-    if (is_calibratable_) {
+    if (can_calibrate_) {
       geometry_msgs::msg::Vector3 previous_median;
       if (current_median_ == std::nullopt) {
         current_median_ = calculate_median(gyro_buffer_);
@@ -118,8 +118,8 @@ void GyroBiasEstimationModule::update_gyro_buffer_full_flag(
 void GyroBiasEstimationModule::update_calibratable_flag(
   const geometry_msgs::msg::Vector3 & buffer_stddev)
 {
-  is_calibratable_ = buffer_stddev.x <= stddev_threshold_ && buffer_stddev.y <= stddev_threshold_ &&
-                     buffer_stddev.z <= stddev_threshold_;
+  can_calibrate_ = buffer_stddev.x <= stddev_threshold_ && buffer_stddev.y <= stddev_threshold_ &&
+                   buffer_stddev.z <= stddev_threshold_;
 }
 
 geometry_msgs::msg::Vector3 GyroBiasEstimationModule::calculate_stddev(
