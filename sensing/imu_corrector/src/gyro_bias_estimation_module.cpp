@@ -67,8 +67,9 @@ void GyroBiasEstimationModule::update_velocity(const double time, const double v
 std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
 {
   update_gyro_buffer_full_flag(gyro_buffer_);
+  geometry_msgs::msg::Vector3 buffer_stddev;
   if (is_gyro_buffer_full_) {
-    geometry_msgs::msg::Vector3 buffer_stddev = calculate_stddev(gyro_buffer_);
+    buffer_stddev = calculate_stddev(gyro_buffer_);
     update_calibratable_flag(buffer_stddev);
     if (can_calibrate_) {
       geometry_msgs::msg::Vector3 previous_median;
