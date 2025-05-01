@@ -2,5 +2,5 @@
   ros__parameters:
     timestamp_threshold: 0.1 # [s]
     data_num_threshold: 400 # [num]
-    bias_change_threshold: 0.00061 # [rad/s]
+    bias_change_threshold: 0.0050 # [rad/s]
     stddev_threshold: 0.00121 # [rad/s]
