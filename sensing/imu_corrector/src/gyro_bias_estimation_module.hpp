@@ -56,7 +56,7 @@ protected:
   bool can_calibrate_;
   virtual void update_gyro_buffer_full_flag(
     boost::circular_buffer<geometry_msgs::msg::Vector3> & buffer);
-  void update_calibratable_flag(const geometry_msgs::msg::Vector3 & buffer_stddev);
+  void update_can_calibrate_flag(const geometry_msgs::msg::Vector3 & buffer_stddev);
 };
 }  // namespace imu_corrector
 
