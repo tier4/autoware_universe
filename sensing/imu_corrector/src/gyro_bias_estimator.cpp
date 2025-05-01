@@ -58,11 +58,7 @@ void GyroBiasEstimator::callback_imu(const Imu::ConstSharedPtr imu_msg_ptr)
 void GyroBiasEstimator::on_timer()
 {
   // Estimate gyro bias
-  try {
-    gyro_bias_ = gyro_bias_estimation_module_->get_bias();
-  } catch (const std::runtime_error & e) {
-    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *(this->get_clock()), 1000, e.what());
-  }
+  gyro_bias_ = gyro_bias_estimation_module_->get_bias();
   // Publish results for debugging
   if (gyro_bias_ != std::nullopt) {
     Vector3Stamped gyro_bias_msg;

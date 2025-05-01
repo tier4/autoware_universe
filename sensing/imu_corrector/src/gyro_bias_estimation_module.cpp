@@ -67,44 +67,44 @@ void GyroBiasEstimationModule::update_velocity(const double time, const double v
 std::optional<geometry_msgs::msg::Vector3> GyroBiasEstimationModule::get_bias()
 {
   update_gyro_buffer_full_flag(gyro_buffer_);
-  if (!is_gyro_buffer_full_) {
-    throw std::runtime_error("Bias estimation is not yet ready because of insufficient data.");
-  }
-  geometry_msgs::msg::Vector3 buffer_stddev = calculate_stddev(gyro_buffer_);
-  update_calibratable_flag(buffer_stddev);
-  if (is_calibratable_) {
-    geometry_msgs::msg::Vector3 previous_median;
-    if (current_median_ == std::nullopt) {
-      current_median_ = calculate_median(gyro_buffer_);
-      previous_median = current_median_.value();
-    } else {
-      previous_median = current_median_.value();
-      current_median_ = calculate_median(gyro_buffer_);
-    }
-    current_stddev_ = buffer_stddev;
-    if (
-      abs(current_median_.value().x - previous_median.x) > bias_change_threshold_ ||
-      abs(current_median_.value().y - previous_median.y) > bias_change_threshold_ ||
-      abs(current_median_.value().z - previous_median.z) > bias_change_threshold_) {
-      RCLCPP_WARN(
-        logger_,
-        "Significant gyro bias change detected!\n"
-        "Previous bias: [x: %f, y: %f, z: %f] rad/s\n"
-        "Current bias: [x: %f, y: %f, z: %f] rad/s\n"
-        "Previous standard dev: [x: %f, y: %f, z: %f] rad/s\n"
-        "Current standard dev: [x: %f, y: %f, z: %f] rad/s",
-        previous_median.x, previous_median.y, previous_median.z, current_median_.value().x,
-        current_median_.value().y, current_median_.value().z, buffer_stddev.x, buffer_stddev.y,
-        buffer_stddev.z, current_stddev_.x, current_stddev_.y, current_stddev_.z);
+  if (is_gyro_buffer_full_) {
+    geometry_msgs::msg::Vector3 buffer_stddev = calculate_stddev(gyro_buffer_);
+    update_calibratable_flag(buffer_stddev);
+    if (is_calibratable_) {
+      geometry_msgs::msg::Vector3 previous_median;
+      if (current_median_ == std::nullopt) {
+        current_median_ = calculate_median(gyro_buffer_);
+        previous_median = current_median_.value();
+      } else {
+        previous_median = current_median_.value();
+        current_median_ = calculate_median(gyro_buffer_);
+      }
+      current_stddev_ = buffer_stddev;
+      if (
+        abs(current_median_.value().x - previous_median.x) > bias_change_threshold_ ||
+        abs(current_median_.value().y - previous_median.y) > bias_change_threshold_ ||
+        abs(current_median_.value().z - previous_median.z) > bias_change_threshold_) {
+        RCLCPP_WARN(
+          logger_,
+          "Significant gyro bias change detected!\n"
+          "Previous bias: [x: %f, y: %f, z: %f] rad/s\n"
+          "Current bias: [x: %f, y: %f, z: %f] rad/s\n"
+          "Previous standard dev: [x: %f, y: %f, z: %f] rad/s\n"
+          "Current standard dev: [x: %f, y: %f, z: %f] rad/s",
+          previous_median.x, previous_median.y, previous_median.z, current_median_.value().x,
+          current_median_.value().y, current_median_.value().z, buffer_stddev.x, buffer_stddev.y,
+          buffer_stddev.z, current_stddev_.x, current_stddev_.y, current_stddev_.z);
+      }
     }
   }
   if (current_median_.has_value()) {
     RCLCPP_INFO_THROTTLE(
       logger_, *clock_, 10000,
-      "Bias: [x: %f, y: %f, z: %f] rad/s, Stddev: [x: %f, y: %f, z: %f] "
-      "rad/s",
+      "Bias: [x: %f, y: %f, z: %f] rad/s, Stddev: [x: %f, y: %f, z: %f] rad/s",
       current_median_.value().x, current_median_.value().y, current_median_.value().z,
       buffer_stddev.x, buffer_stddev.y, buffer_stddev.z);
+  } else {
+    RCLCPP_INFO_THROTTLE(logger_, *clock_, 10000, "Bias and stddev is not ready");
   }
   return current_median_;
 }
