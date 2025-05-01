@@ -27,8 +27,6 @@ ament_auto_add_library(gyro_bias_estimator_node SHARED
   src/gyro_bias_estimator.cpp
 )
 
-
-
 target_link_libraries(gyro_bias_estimator_node gyro_bias_estimation_module)
 target_link_libraries(gyro_bias_estimation_module Boost::boost)
 
