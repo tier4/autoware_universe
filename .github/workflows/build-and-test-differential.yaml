@@ -6,7 +6,7 @@ on:
 jobs:
   build-and-test-differential:
     runs-on: ubuntu-22.04-m
-    container: ghcr.io/autowarefoundation/autoware-universe:humble-latest
+    container: ghcr.io/autowarefoundation/autoware:latest-universe-devel
     steps:
       - name: Cancel previous runs
         uses: styfle/cancel-workflow-action@0.9.1
