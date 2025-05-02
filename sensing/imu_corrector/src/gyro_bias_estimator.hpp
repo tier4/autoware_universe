@@ -31,35 +31,29 @@ namespace imu_corrector
 {
 class GyroBiasEstimator : public rclcpp::Node
 {
+public:
+  explicit GyroBiasEstimator(const rclcpp::NodeOptions & node_options);
+
 private:
   using Imu = sensor_msgs::msg::Imu;
   using TwistWithCovarianceStamped = geometry_msgs::msg::TwistWithCovarianceStamped;
   using Vector3Stamped = geometry_msgs::msg::Vector3Stamped;
   using Vector3 = geometry_msgs::msg::Vector3;
 
-public:
-  explicit GyroBiasEstimator(const rclcpp::NodeOptions & node_options);
-
-private:
-  void update_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
   void callback_imu(const Imu::ConstSharedPtr imu_msg_ptr);
   void callback_twist(const TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr);
 
   rclcpp::Subscription<Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<TwistWithCovarianceStamped>::SharedPtr twist_sub_;
+  rclcpp::TimerBase::SharedPtr timer_;
 
   rclcpp::Publisher<Vector3Stamped>::SharedPtr gyro_bias_pub_;
 
-  std::unique_ptr<GyroBiasEstimationModule> gyro_bias_estimation_module_;
-
-  const double gyro_bias_threshold_;
-  const double angular_velocity_offset_x_;
-  const double angular_velocity_offset_y_;
-  const double angular_velocity_offset_z_;
-
-  diagnostic_updater::Updater updater_;
-
   std::optional<Vector3> gyro_bias_;
+
+protected:
+  std::unique_ptr<GyroBiasEstimationModule> gyro_bias_estimation_module_;
+  void on_timer();
 };
 }  // namespace imu_corrector
 

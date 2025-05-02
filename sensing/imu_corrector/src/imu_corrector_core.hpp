@@ -16,7 +16,12 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <tier4_calibration_msgs/msg/bool_stamped.hpp>
+
+#include <optional>
+#include <string>
 
 namespace imu_corrector
 {
@@ -26,19 +31,22 @@ public:
   explicit ImuCorrector(const rclcpp::NodeOptions & node_options);
 
 private:
-  void callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr);
-
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
-
-  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
-
-  double angular_velocity_offset_x_;
-  double angular_velocity_offset_y_;
-  double angular_velocity_offset_z_;
-
+  std::optional<double> angular_velocity_offset_x_;
+  std::optional<double> angular_velocity_offset_y_;
+  std::optional<double> angular_velocity_offset_z_;
   double angular_velocity_stddev_xx_;
   double angular_velocity_stddev_yy_;
   double angular_velocity_stddev_zz_;
+  void callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr);
+  void callbackGyroBias(const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr);
+  void callbackIsCalibrated();
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr gyro_bias_sub_;
+  rclcpp::Publisher<tier4_calibration_msgs::msg::BoolStamped>::SharedPtr is_calibrated_pub_;
+
+  std::string sensor_model_;
+  rclcpp::TimerBase::SharedPtr timer_;
 };
 }  // namespace imu_corrector
 

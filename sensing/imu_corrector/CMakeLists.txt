@@ -12,6 +12,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake_auto REQUIRED)
+find_package(Boost REQUIRED)
 ament_auto_find_build_dependencies()
 
 ament_auto_add_library(gyro_bias_estimation_module SHARED
@@ -27,6 +28,7 @@ ament_auto_add_library(gyro_bias_estimator_node SHARED
 )
 
 target_link_libraries(gyro_bias_estimator_node gyro_bias_estimation_module)
+target_link_libraries(gyro_bias_estimation_module Boost::boost)
 
 rclcpp_components_register_node(imu_corrector_node
   PLUGIN "imu_corrector::ImuCorrector"
@@ -49,7 +51,8 @@ endfunction()
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
-  add_testcase(test/test_gyro_bias_estimation_module.cpp)
+  add_testcase(test/test_gyro_bias_estimator.cpp)
+  add_testcase(test/test_imu_corrector.cpp)
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE
