@@ -75,7 +75,6 @@
 #include <pcl_msgs/msg/point_indices.h>
 
 // Include tier4 autoware utils
-#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/managed_transform_buffer.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
@@ -139,13 +138,6 @@ protected:
 
   /** \brief The output PointCloud2 publisher. */
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
-
-  // When `is_agnocast_publish_node` is true, `pub_output_wrapped_` is used as the publisher for the
-  // message after filtering, instead of `pub_output_`. When the environment variable
-  // `ENABLE_AGNOCAST=1` is set at build time, `pub_output_wrapped_` is a Publisher provided by
-  // Agnocast; otherwise, `pub_output_` and `pub_output_wrapped_` are functionally equivalent. Only
-  // one of them is initialized.
-  AUTOWARE_PUBLISHER_PTR(PointCloud2) pub_output_wrapped_;
 
   /** \brief The message filter subscriber for PointCloud2. */
   message_filters::Subscriber<PointCloud2> sub_input_filter_;
@@ -218,7 +210,7 @@ protected:
   /** \brief PointCloud2 + Indices data callback. */
   virtual void input_indices_callback(
     const PointCloud2ConstPtr cloud, const PointIndicesConstPtr indices);
-  virtual bool convert_output_costly(PointCloud2 & output);
+  virtual bool convert_output_costly(std::unique_ptr<PointCloud2> & output);
 
   //////////////////////
   // from PCLNodelet //
@@ -249,14 +241,6 @@ protected:
   /** \brief True if we use an approximate time synchronizer
    * versus an exact one (false by default). */
   bool approximate_sync_ = false;
-
-  // When `is_agnocast_publish_node` is true, `pub_output_wrapped_` is used as the publisher for the
-  // message after filtering, instead of `pub_output_`. This is necessary because the `Filter` class
-  // is inherited by various node classes across packages. Since the publish logic is implemented in
-  // the `Filter` base class, replacing it with Agnocast's publisher would inadvertently affect
-  // nodes that are not intended to use Agnocast. Fortunately, due to the ongoing migration to
-  // autoware_core, this inheritance-based design of the `Filter` class may be phased out.
-  bool is_agnocast_publish_node_ = false;
 
   std::unique_ptr<autoware_utils::ManagedTransformBuffer> managed_tf_buffer_{nullptr};
 

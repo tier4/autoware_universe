@@ -121,20 +121,13 @@ PointCloudConcatenateDataSynchronizerComponent::PointCloudConcatenateDataSynchro
     }
   }
 
-  auto sub_cbg = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-
   for (const std::string & topic : params_.input_topics) {
-    std::function<void(const AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) msg)>
-      callback = std::bind(
-        &PointCloudConcatenateDataSynchronizerComponent::cloud_callback, this,
-        std::placeholders::_1, topic);
+    std::function<void(const sensor_msgs::msg::PointCloud2::SharedPtr msg)> callback = std::bind(
+      &PointCloudConcatenateDataSynchronizerComponent::cloud_callback, this, std::placeholders::_1,
+      topic);
 
-    AUTOWARE_SUBSCRIPTION_OPTIONS sub_options;
-    sub_options.callback_group = sub_cbg;
-    auto pointcloud_sub = AUTOWARE_CREATE_SUBSCRIPTION(
-      sensor_msgs::msg::PointCloud2, topic,
-      rclcpp::SensorDataQoS().keep_last(params_.maximum_queue_size), callback, sub_options);
-
+    auto pointcloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      topic, rclcpp::SensorDataQoS().keep_last(params_.maximum_queue_size), callback);
     pointcloud_subs_.push_back(pointcloud_sub);
   }
   RCLCPP_DEBUG_STREAM(
@@ -199,8 +192,7 @@ void PointCloudConcatenateDataSynchronizerComponent::initialize_collector_list()
 }
 
 void PointCloudConcatenateDataSynchronizerComponent::cloud_callback(
-  const AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) & input_ptr,
-  const std::string & topic_name)
+  const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr, const std::string & topic_name)
 {
   stop_watch_ptr_->toc("processing_time", true);
   if (!init_collector_list_) {

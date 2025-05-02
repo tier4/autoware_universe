@@ -40,7 +40,7 @@ protected:
   void input_indices_callback(
     const PointCloud2ConstPtr cloud, const PointIndicesConstPtr indices) override;
 
-  bool convert_output_costly(PointCloud2 & output) override;
+  bool convert_output_costly(std::unique_ptr<PointCloud2> & output) override;
 
 private:
   // pcl::SegmentDifferences<pcl::PointXYZ> impl_;

@@ -67,7 +67,7 @@ bool CloudCollector::topic_exists(const std::string & topic_name)
 }
 
 void CloudCollector::process_pointcloud(
-  const std::string & topic_name, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) cloud)
+  const std::string & topic_name, sensor_msgs::msg::PointCloud2::SharedPtr cloud)
 {
   if (status_ == CollectorStatus::Idle) {
     // Add first pointcloud to the collector, restart the timer
@@ -113,13 +113,12 @@ void CloudCollector::concatenate_callback()
 }
 
 ConcatenatedCloudResult CloudCollector::concatenate_pointclouds(
-  std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)>
-    topic_to_cloud_map)
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> topic_to_cloud_map)
 {
   return combine_cloud_handler_->combine_pointclouds(topic_to_cloud_map);
 }
 
-std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)>
+std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
 CloudCollector::get_topic_to_cloud_map()
 {
   return topic_to_cloud_map_;

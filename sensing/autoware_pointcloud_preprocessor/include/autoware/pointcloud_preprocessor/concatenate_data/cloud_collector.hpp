@@ -16,8 +16,6 @@
 
 #include "combine_cloud_handler.hpp"
 
-#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
-
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -62,15 +60,13 @@ public:
     double timeout_sec, bool debug_mode);
   bool topic_exists(const std::string & topic_name);
   void process_pointcloud(
-    const std::string & topic_name,
-    AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) cloud);
+    const std::string & topic_name, sensor_msgs::msg::PointCloud2::SharedPtr cloud);
   void concatenate_callback();
 
   ConcatenatedCloudResult concatenate_pointclouds(
-    std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)>
-      topic_to_cloud_map);
+    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> topic_to_cloud_map);
 
-  std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)>
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr>
   get_topic_to_cloud_map();
 
   [[nodiscard]] CollectorStatus get_status() const;
@@ -84,8 +80,7 @@ private:
   std::shared_ptr<PointCloudConcatenateDataSynchronizerComponent> ros2_parent_node_;
   std::shared_ptr<CombineCloudHandler> combine_cloud_handler_;
   rclcpp::TimerBase::SharedPtr timer_;
-  std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)>
-    topic_to_cloud_map_;
+  std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> topic_to_cloud_map_;
   uint64_t num_of_clouds_;
   double timeout_sec_;
   bool debug_mode_;

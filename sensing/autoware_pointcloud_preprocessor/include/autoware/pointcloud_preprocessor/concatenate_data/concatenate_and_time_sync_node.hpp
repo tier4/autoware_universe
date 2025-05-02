@@ -25,7 +25,6 @@
 #include "collector_matching_strategy.hpp"
 #include "combine_cloud_handler.hpp"
 
-#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -98,7 +97,7 @@ private:
   static constexpr const char * default_sync_topic_postfix = "_synchronized";
 
   // subscribers
-  std::vector<AUTOWARE_SUBSCRIPTION_PTR(sensor_msgs::msg::PointCloud2)> pointcloud_subs_;
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> pointcloud_subs_;
   rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
 
@@ -112,8 +111,7 @@ private:
   diagnostic_updater::Updater diagnostic_updater_{this};
 
   void cloud_callback(
-    const AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) & input_ptr,
-    const std::string & topic_name);
+    const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr, const std::string & topic_name);
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
 
