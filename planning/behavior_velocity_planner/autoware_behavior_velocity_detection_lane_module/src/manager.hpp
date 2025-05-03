@@ -39,12 +39,12 @@ public:
 
   const char * getModuleName() override { return "detection_lane"; }
 
-  RequiredSubscriptionInfo getRequiredSubscriptions() const override
-  {
-    RequiredSubscriptionInfo required_subscription_info;
-    required_subscription_info.no_ground_pointcloud = true;
-    return required_subscription_info;
-  }
+  // RequiredSubscriptionInfo getRequiredSubscriptions() const override
+  // {
+  //   RequiredSubscriptionInfo required_subscription_info;
+  //   required_subscription_info.no_ground_pointcloud = true;
+  //   return required_subscription_info;
+  // }
 
 private:
   std::unique_ptr<detection_lane::ParamListener> param_listener_;
