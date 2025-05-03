@@ -4,8 +4,8 @@
       target_type: [pointcloud]
       # target_type: [bus, car, motorcycle, trailer, truck, pointcloud]
 
-      on_time_buffer: 0.1
-      off_time_buffer: 0.3
+      on_time_buffer: 0.5
+      off_time_buffer: 0.5
 
       pointcloud:
         range:
@@ -46,12 +46,12 @@
 
       vehicle:
         reaction_time: 1.2
-        max_velocity: 16.6
+        max_velocity: 16.6 # 60km/h
         max_deceleration: -2.0
 
       vru:
         reaction_time: 1.2
-        max_velocity: 8.3
+        max_velocity: 5.5 # 20km/h
         max_deceleration: -2.0
 
       ego:
@@ -69,7 +69,7 @@
           left: true
           right: false
         active_distance:
-          start: 30.0
+          start: 20.0
           end: -10.0
         offset:
           inner: 0.1
