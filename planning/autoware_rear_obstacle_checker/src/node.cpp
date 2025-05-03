@@ -322,6 +322,7 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
         return true;
       }
     } else {
+      last_unsafe_time_ = now;
       if ((now - last_safe_time_).seconds() < p.common.on_time_buffer) {
         return true;
       }
@@ -475,6 +476,10 @@ auto RearObstacleCheckerNode::filter_pointcloud([[maybe_unused]] DebugData & deb
     debug.pointcloud_nums.push_back(output->size());
   }
 
+  if (output->empty()) {
+    return output;
+  }
+
   {
     autoware_utils::ScopedTimeTrack st("crop_z", *time_keeper_);
 
@@ -485,6 +490,10 @@ auto RearObstacleCheckerNode::filter_pointcloud([[maybe_unused]] DebugData & deb
       p.crop_box_filter.z.min, vehicle_info_.vehicle_height_m + p.crop_box_filter.z.max);
     filter.filter(*output);
     debug.pointcloud_nums.push_back(output->size());
+  }
+
+  if (output->empty()) {
+    return output;
   }
 
   {
