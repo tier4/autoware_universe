@@ -39,7 +39,7 @@
 
       enable_rtc: false # If set to true, the scene modules require approval from the rtc (request to cooperate) function. If set to false, the modules can be executed without requiring rtc approval
 
-    intersection_names: [shiojiri, komatsu]
+    intersection_names: [shiojiri, komatsu, akebono]
 
     config:
       shiojiri:
@@ -55,4 +55,12 @@
         stop_line_id: 128271
         lane_1st_ids: [128324, 128080, 128176, 128228, 128122, 128074, 128248, 176]
         lane_2nd_ids: [128323, 128079, 128175, 128227, 128226, 128073, 128247, 175]
+        ttc_threshold: 20.0
+
+      akebono:
+        mgrs_grid: 54SVG
+        lane_id: 78008
+        stop_line_id: 77877
+        lane_1st_ids: [78071, 78047, 78057, 78064, 78048, 78042, 78066, 77999]
+        lane_2nd_ids: [78070, 78046, 78056, 78063, 78062, 78041, 78065, 77998]
         ttc_threshold: 20.0
