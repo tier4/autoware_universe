@@ -196,6 +196,7 @@ struct StopPlanningParam
   double min_behavior_stop_margin{};
   double hold_stop_velocity_threshold{};
   double hold_stop_distance_threshold{};
+  double pointcloud_suppresion_distance_margin{};
   bool enable_approaching_on_curve{};
   double additional_stop_margin_on_curve{};
   double min_stop_margin_on_curve{};
@@ -204,6 +205,7 @@ struct StopPlanningParam
     bool use_rss_stop{};
     double two_wheel_objects_deceleration{};
     double other_vehicle_objects_deceleration{};
+    double pointclound_deceleration{};
     double velocity_offset{};
   } rss_params;
 
@@ -233,6 +235,8 @@ struct StopPlanningParam
       node, "obstacle_stop.stop_planning.hold_stop_velocity_threshold");
     hold_stop_distance_threshold = get_or_declare_parameter<double>(
       node, "obstacle_stop.stop_planning.hold_stop_distance_threshold");
+    pointcloud_suppresion_distance_margin = get_or_declare_parameter<double>(
+      node, "obstacle_stop.stop_planning.pointcloud_suppresion_distance_margin");
     enable_approaching_on_curve = get_or_declare_parameter<bool>(
       node, "obstacle_stop.stop_planning.stop_on_curve.enable_approaching");
     additional_stop_margin_on_curve = get_or_declare_parameter<double>(
@@ -245,6 +249,8 @@ struct StopPlanningParam
       node, "obstacle_stop.stop_planning.rss_params.two_wheel_objects_deceleration");
     rss_params.other_vehicle_objects_deceleration = get_or_declare_parameter<double>(
       node, "obstacle_stop.stop_planning.rss_params.other_vehicle_objects_deceleration");
+    rss_params.pointclound_deceleration = get_or_declare_parameter<double>(
+      node, "obstacle_stop.stop_planning.rss_params.pointclound_deceleration");
     rss_params.velocity_offset = get_or_declare_parameter<double>(
       node, "obstacle_stop.stop_planning.rss_params.velocity_offset");
 
