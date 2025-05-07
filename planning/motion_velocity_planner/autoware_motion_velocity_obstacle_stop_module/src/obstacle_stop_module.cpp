@@ -558,10 +558,17 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
       stop_candidate.latest_collision_point.second +
       *stop_candidate.vel_lpf.getValue() * (time_delay + time_diff) -
       odometry.twist.twist.linear.x * time_diff;
+    const auto pcl_braking_dist = [&]() {
+      double error_considered_vel = std::max(
+        *stop_candidate.vel_lpf.getValue() + stop_planning_param_.rss_params.velocity_offset, 0.0);
+      return error_considered_vel * error_considered_vel * 0.5 /
+             -stop_planning_param_.rss_params.pointclound_deceleration;
+    }();
     if (time_diff < obstacle_filtering_param_.stop_obstacle_hold_time_threshold) {
       const auto stop_obstacle = StopObstacle{
-        stop_candidate.latest_time, true, *stop_candidate.vel_lpf.getValue(),
-        stop_candidate.latest_collision_point.first, time_compensated_dist_to_collide};
+        stop_candidate.latest_time,         true,
+        *stop_candidate.vel_lpf.getValue(), stop_candidate.latest_collision_point.first,
+        time_compensated_dist_to_collide,   pcl_braking_dist};
 
       stop_obstacles.push_back(stop_obstacle);
     }
@@ -817,13 +824,20 @@ std::optional<geometry_msgs::msg::Point> ObstacleStopModule::plan_stop(
     if (determined_stop_obstacle) {
       const bool is_same_param_types =
         (stop_obstacle.classification == determined_stop_obstacle->classification);
+      const auto point_cloud_suppression_margin = [&](StopObstacle obs) {
+        return obs.classification.is_point_cloud
+                 ? stop_planning_param_.pointcloud_suppresion_distance_margin
+                 : 0.0;
+      };
 
       if (
         (is_same_param_types && stop_obstacle.dist_to_collide_on_decimated_traj +
                                     stop_obstacle.dist_to_collide_on_decimated_traj >
                                   determined_stop_obstacle->dist_to_collide_on_decimated_traj +
                                     determined_stop_obstacle->braking_dist) ||
-        (!is_same_param_types && *candidate_zero_vel_dist > determined_zero_vel_dist)) {
+        (!is_same_param_types &&
+         *candidate_zero_vel_dist + point_cloud_suppression_margin(stop_obstacle) >
+           *determined_zero_vel_dist + point_cloud_suppression_margin(*determined_stop_obstacle))) {
         continue;
       }
     }
