@@ -549,9 +549,7 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
       return error_considered_vel * error_considered_vel * 0.5 /
              -stop_planning_param_.rss_params.other_vehicle_objects_deceleration;
     }();
-    if (
-      time_diff < obstacle_filtering_param_.stop_obstacle_hold_time_threshold &&
-      std::abs(time_compensated_dist_to_collide) + pcl_braking_dist - 3.0 < ego_braking_dist_th) {
+    if (time_diff < obstacle_filtering_param_.stop_obstacle_hold_time_threshold) {
       const auto stop_obstacle =
         StopObstacle{stop_candidate.latest_time,       true,
                      stop_candidate.vel_lpf.value(),   stop_candidate.latest_collision_point.first,
