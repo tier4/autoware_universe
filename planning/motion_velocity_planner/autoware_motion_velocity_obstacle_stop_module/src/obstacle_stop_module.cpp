@@ -570,6 +570,14 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
         *stop_candidate.vel_lpf.getValue(), stop_candidate.latest_collision_point.first,
         time_compensated_dist_to_collide,   pcl_braking_dist};
 
+      RCLCPP_DEBUG(
+        logger_,
+        "|_PCL_| total_dist: %2.5f, raw_dist: %2.5f, time_compensated dist: %2.5f, braking_dist: "
+        "%2.5f",
+        (time_compensated_dist_to_collide + pcl_braking_dist),
+        (stop_candidate.latest_collision_point.second), time_compensated_dist_to_collide,
+        pcl_braking_dist);
+
       stop_obstacles.push_back(stop_obstacle);
     }
   }
@@ -688,6 +696,10 @@ std::optional<StopObstacle> ObstacleStopModule::pick_stop_obstacle_from_predicte
       0.0);
     return error_considered_vel * error_considered_vel * 0.5 / -braking_acc;
   }();
+
+  RCLCPP_DEBUG(
+    logger_, "|_OBJ_| total_dist: %2.5f, dist_to_collide: %2.5f, braking_dist: %2.5f",
+    (collision_point->second + braking_dist), (collision_point->second), braking_dist);
 
   return StopObstacle{
     autoware_utils::to_hex_string(predicted_object.object_id),
