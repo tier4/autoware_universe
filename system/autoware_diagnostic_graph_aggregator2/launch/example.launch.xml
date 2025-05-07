@@ -1,0 +1,4 @@
+<launch>
+  <include file="$(find-pkg-share autoware_diagnostic_graph_aggregator2)/launch/aggregator.launch.xml"/>
+  <executable cmd="python3 $(find-pkg-share autoware_diagnostic_graph_aggregator)/example/dummy-diags.py"/>
+</launch>

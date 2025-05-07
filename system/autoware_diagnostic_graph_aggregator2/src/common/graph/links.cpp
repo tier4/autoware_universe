@@ -14,13 +14,36 @@
 
 #include "graph/links.hpp"
 
+#include "graph/units.hpp"
+
 namespace autoware::diagnostic_graph_aggregator
 {
 
 void UnitLink::init(BaseUnit * parent, BaseUnit * child)
 {
+  if (parent_ || child_) {
+    throw std::logic_error("UnitLink: init function is called twice");
+  }
   parent_ = parent;
   child_ = child;
+}
+
+bool UnitLink::is_diag() const
+{
+  return child_->is_diag();
+}
+
+DiagnosticLevel UnitLink::level() const
+{
+  return child_->level();
+}
+
+DiagLinkStruct UnitLink::create_struct() const
+{
+  DiagLinkStruct msg;
+  msg.parent = parent_->index();
+  msg.child = child_->index();
+  return msg;
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

@@ -30,8 +30,10 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-Graph::Graph(const std::string & path, const Logger & logger)
+Graph::Graph(const std::string & path, const std::string & id, const Logger & logger)
 {
+  id_ = id;
+
   {
     const auto graph = load_config(path, logger);
     std::unordered_map<LinkConfig, UnitConfig> parent_unit;
@@ -59,7 +61,8 @@ Graph::Graph(const std::string & path, const Logger & logger)
     for (const auto & node : graph.units) {
       const auto parents = parent_links[node];  // Root units have no parents.
       const auto children = child_links[node];  // Leaf units have no children.
-      nodes_.push_back(std::make_unique<NodeUnit>(parents, children, std::move(node->logic)));
+      nodes_.push_back(std::make_unique<NodeUnit>(
+        parents, children, std::move(node->logic), nodes_.size(), node->path));
       units[node] = nodes_.back().get();
     }
     for (const auto & diag : graph.diags) {
@@ -76,14 +79,9 @@ Graph::Graph(const std::string & path, const Logger & logger)
     }
   }
 
-  /*
-  for (const auto & unit : graph.units) {
-    std::cout << unit->type << " " << unit->path << std::endl;
-    for (const auto & [link, child] : unit->links) {
-      std::cout << " - " << link.get() << " -> " << child.get() << std::endl;
-    }
+  for (const auto & diag : diags_) {
+    diag_dict_[diag->name()] = diag.get();
   }
-  */
 }
 
 Graph::~Graph()
@@ -93,14 +91,61 @@ Graph::~Graph()
 void Graph::dump() const
 {
   std::cout << "Graph" << std::endl;
+  for (const auto & node : nodes_) node->dump();
+  for (const auto & diag : diags_) diag->dump();
+  std::cout << "================================================================================"
+            << std::endl;
+}
 
-  for (const auto & node : nodes_) {
-    std::cout << "Node[" << node.get() << "]: " << node->type() << " (" << node->path() << ")"
-              << std::endl;
+void Graph::update(const rclcpp::Time & stamp)
+{
+  // Update the graph from the leaves. Note that the nodes are topological sorted.
+  std::for_each(diags_.rbegin(), diags_.rend(), [stamp](auto & diag) { diag->update(stamp); });
+  std::for_each(nodes_.rbegin(), nodes_.rend(), [stamp](auto & node) { node->update(stamp); });
+}
+
+bool Graph::update(const rclcpp::Time & stamp, const DiagnosticArray & array)
+{
+  for (const auto & status : array.status) {
+    const auto iter = diag_dict_.find(status.name);
+    if (iter != diag_dict_.end()) {
+      iter->second->update(stamp, array.header.stamp, status);
+    } else {
+      unknown_diags_[status.name] = status;
+    }
   }
-  for (const auto & diag : diags_) {
-    std::cout << "Diag[" << diag.get() << "]: " << diag->name() << std::endl;
+  return true;
+}
+
+DiagGraphStruct Graph::create_struct(const rclcpp::Time & stamp) const
+{
+  DiagGraphStruct msg;
+  msg.stamp = stamp;
+  msg.id = id_;
+  for (const auto & node : nodes_) msg.nodes.push_back(node->create_struct());
+  for (const auto & diag : diags_) msg.diags.push_back(diag->create_struct());
+  for (const auto & link : links_) {
+    if (!link->is_diag()) {
+      msg.links.push_back(link->create_struct());
+    }
   }
+  return msg;
+}
+
+DiagGraphStatus Graph::create_status(const rclcpp::Time & stamp) const
+{
+  DiagGraphStatus msg;
+  msg.stamp = stamp;
+  msg.id = id_;
+  return msg;
+}
+
+DiagnosticArray Graph::create_unknowns(const rclcpp::Time & stamp) const
+{
+  DiagnosticArray msg;
+  msg.header.stamp = stamp;
+  for (const auto & [name, diag] : unknown_diags_) msg.status.push_back(diag);
+  return msg;
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

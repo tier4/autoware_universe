@@ -15,9 +15,8 @@
 #ifndef COMMON__GRAPH__LINKS_HPP_
 #define COMMON__GRAPH__LINKS_HPP_
 
+#include "types/diags.hpp"
 #include "types/forward.hpp"
-
-#include <memory>
 
 namespace autoware::diagnostic_graph_aggregator
 {
@@ -26,6 +25,9 @@ class UnitLink
 {
 public:
   void init(BaseUnit * parent, BaseUnit * child);
+  DiagLinkStruct create_struct() const;
+  DiagnosticLevel level() const;
+  bool is_diag() const;
 
 private:
   BaseUnit * parent_;

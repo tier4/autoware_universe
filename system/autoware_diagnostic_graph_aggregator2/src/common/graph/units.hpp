@@ -15,7 +15,10 @@
 #ifndef COMMON__GRAPH__UNITS_HPP_
 #define COMMON__GRAPH__UNITS_HPP_
 
+#include "types/diags.hpp"
 #include "types/forward.hpp"
+
+#include <rclcpp/time.hpp>
 
 #include <memory>
 #include <string>
@@ -27,7 +30,16 @@ namespace autoware::diagnostic_graph_aggregator
 class BaseUnit
 {
 public:
+  BaseUnit(const std::vector<UnitLink *> parents, int index);
   virtual ~BaseUnit() = default;
+  virtual DiagnosticLevel level() const = 0;
+  virtual bool is_diag() const = 0;
+
+  int index() const;
+
+private:
+  std::vector<UnitLink *> parents_;
+  int index_;
 };
 
 class NodeUnit : public BaseUnit
@@ -35,32 +47,43 @@ class NodeUnit : public BaseUnit
 public:
   NodeUnit(
     const std::vector<UnitLink *> parents, const std::vector<UnitLink *> children,
-    std::unique_ptr<Logic> && logic);
+    std::unique_ptr<Logic> && logic, int index, const std::string & path);
   ~NodeUnit();
+  void dump() const;
+  bool is_diag() const override { return false; }
+  DiagnosticLevel level() const override;
+  DiagNodeStruct create_struct() const;
+
   std::string path() const;
   std::string type() const;
 
+  void update(const rclcpp::Time & stamp);
+
 private:
-  std::vector<UnitLink *> parents_;
   std::vector<UnitLink *> children_;
   std::string path_;
   std::unique_ptr<Logic> logic_;
 };
 
-class LeafUnit : public BaseUnit
-{
-};
-
-class DiagUnit : public LeafUnit
+class DiagUnit : public BaseUnit
 {
 public:
   DiagUnit(const std::vector<UnitLink *> parents, const std::string & name);
   ~DiagUnit();
+  void dump() const;
+  bool is_diag() const override { return true; }
+  DiagnosticLevel level() const override;
+  DiagLeafStruct create_struct() const;
+
   std::string name() const;
+  void update(const rclcpp::Time & stamp);
+  void update(
+    const rclcpp::Time & now_stamp, const rclcpp::Time & msg_stamp,
+    const DiagnosticStatus & status);
 
 private:
-  std::vector<UnitLink *> parents_;
   std::string name_;
+  DiagnosticStatus status_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

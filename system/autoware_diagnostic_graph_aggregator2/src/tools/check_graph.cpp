@@ -107,7 +107,7 @@ void dump_config(const std::string & path)
 void dump_graph(const std::string & path)
 {
   Logger logger;
-  const auto graph = Graph(path, logger);
+  const auto graph = Graph(path, "check", logger);
   graph.dump();
 }
 

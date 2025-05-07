@@ -1,8 +1,7 @@
 <launch>
   <arg name="param_file" default="$(find-pkg-share autoware_diagnostic_graph_aggregator)/config/default.param.yaml"/>
-  <arg name="param_file" default="$(find-pkg-share autoware_diagnostic_graph_aggregator)/graph/main.yaml"/>
-  <arg name="graph_file"/>
-  <node pkg="autoware_diagnostic_graph_aggregator2" exec="diagnostic_graph_aggregator_node">
+  <arg name="graph_file" default="$(find-pkg-share autoware_diagnostic_graph_aggregator)/example/graph/main.yaml"/>
+  <node pkg="autoware_diagnostic_graph_aggregator2" exec="aggregator_node">
     <param from="$(var param_file)"/>
     <param name="graph_file" value="$(var graph_file)"/>
   </node>

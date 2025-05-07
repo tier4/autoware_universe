@@ -20,6 +20,7 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
+class Graph;
 class BaseUnit;
 class NodeUnit;
 class DiagUnit;

@@ -15,6 +15,7 @@
 #ifndef COMMON__GRAPH__LOGIC_HPP_
 #define COMMON__GRAPH__LOGIC_HPP_
 
+#include "types/diags.hpp"
 #include "types/forward.hpp"
 
 #include <functional>
@@ -30,6 +31,7 @@ class Logic
 public:
   virtual ~Logic() = default;
   virtual std::string type() const = 0;
+  virtual DiagnosticLevel level() const = 0;
 };
 
 class LogicFactory

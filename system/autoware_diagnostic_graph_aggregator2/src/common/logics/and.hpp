@@ -28,6 +28,7 @@ class AndLogic : public Logic
 public:
   explicit AndLogic(const LogicConfig & config);
   std::string type() const override { return "and"; }
+  DiagnosticLevel level() const override;
 
 private:
   std::vector<UnitLink *> links_;
@@ -38,6 +39,7 @@ class OrLogic : public Logic
 public:
   explicit OrLogic(const LogicConfig & config);
   std::string type() const override { return "or"; }
+  DiagnosticLevel level() const override;
 
 private:
   std::vector<UnitLink *> links_;
@@ -48,9 +50,24 @@ class DiagLogic : public Logic
 public:
   explicit DiagLogic(const LogicConfig & config);
   std::string type() const override { return "diag"; }
+  DiagnosticLevel level() const override;
 
 private:
   UnitLink * link_;
+};
+
+class ConstLogic : public Logic
+{
+public:
+  explicit ConstLogic(const LogicConfig & config);
+};
+
+class OkLogic : public ConstLogic
+{
+public:
+  using ConstLogic::ConstLogic;
+  std::string type() const override { return "ok"; }
+  DiagnosticLevel level() const override;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

@@ -238,6 +238,7 @@ void topological_sort(GraphConfig & graph)
   if (result.size() != graph.units.size()) {
     throw UnitLoopFound("detect unit loop");
   }
+  graph.units = std::vector<UnitConfig>(result.begin(), result.end());
 }
 
 void make_link_list(GraphConfig & graph)

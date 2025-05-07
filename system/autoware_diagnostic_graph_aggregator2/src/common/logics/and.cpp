@@ -16,7 +16,9 @@
 
 #include "config/entity.hpp"
 #include "config/yaml.hpp"
+#include "graph/links.hpp"
 
+#include <algorithm>
 #include <string>
 
 namespace autoware::diagnostic_graph_aggregator
@@ -30,6 +32,19 @@ AndLogic::AndLogic(const LogicConfig & config)
   }
 }
 
+DiagnosticLevel AndLogic::level() const
+{
+  if (links_.empty()) {
+    return DiagnosticStatus::OK;
+  }
+
+  DiagnosticLevel level = DiagnosticStatus::OK;
+  for (const auto * const link : links_) {
+    level = std::max(level, link->level());
+  }
+  return std::min(level, DiagnosticStatus::ERROR);
+}
+
 OrLogic::OrLogic(const LogicConfig & config)
 {
   ConfigYaml yaml = config.yaml();
@@ -38,21 +53,42 @@ OrLogic::OrLogic(const LogicConfig & config)
   }
 }
 
+DiagnosticLevel OrLogic::level() const
+{
+  if (links_.empty()) {
+    return DiagnosticStatus::OK;
+  }
+
+  DiagnosticLevel level = DiagnosticStatus::STALE;
+  for (const auto * const link : links_) {
+    level = std::min(level, link->level());
+  }
+  return std::min(level, DiagnosticStatus::ERROR);
+}
+
 DiagLogic::DiagLogic(const LogicConfig & config)
 {
   link_ = config.parse_diag(config.yaml());
 }
 
-struct DummyLogic : public Logic
+DiagnosticLevel DiagLogic::level() const
 {
-  explicit DummyLogic(const LogicConfig &) {}
-  std::string type() const override { return "dummy"; }
-};
+  return link_->level();
+}
+
+ConstLogic::ConstLogic(const LogicConfig &)
+{
+}
+
+DiagnosticLevel OkLogic::level() const
+{
+  return DiagnosticStatus::OK;
+}
 
 RegisterLogic<DiagLogic> registration4("diag");
 RegisterLogic<AndLogic> registration("and");
 RegisterLogic<OrLogic> registration3("or");
-RegisterLogic<DummyLogic> registration2("ok");
+RegisterLogic<OkLogic> registration2("ok");
 RegisterLogic<AndLogic> registration5("short-circuit-and");
 
 }  // namespace autoware::diagnostic_graph_aggregator

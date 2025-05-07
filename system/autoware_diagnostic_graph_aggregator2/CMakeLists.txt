@@ -19,9 +19,19 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 )
 target_include_directories(${PROJECT_NAME} PRIVATE src/common)
 
+ament_auto_add_library(aggregator SHARED
+  "src/node/aggregator.cpp"
+)
+target_include_directories(aggregator PRIVATE src/common)
+
 ament_auto_add_executable(check_graph
   "src/tools/check_graph.cpp"
 )
 target_include_directories(check_graph PRIVATE src/common)
+
+rclcpp_components_register_node(aggregator
+  PLUGIN "autoware::diagnostic_graph_aggregator::AggregatorNode"
+  EXECUTABLE aggregator_node
+)
 
 ament_auto_package(INSTALL_TO_SHARE launch test)
