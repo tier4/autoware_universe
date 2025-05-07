@@ -37,6 +37,9 @@ private:
   double angular_velocity_stddev_xx_;
   double angular_velocity_stddev_yy_;
   double angular_velocity_stddev_zz_;
+  double angular_velocity_reverscale_x_;
+  double angular_velocity_reverscale_y_;
+  double angular_velocity_reverscale_z_;
   void callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr);
   void callbackGyroBias(const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr);
   void callbackIsCalibrated();

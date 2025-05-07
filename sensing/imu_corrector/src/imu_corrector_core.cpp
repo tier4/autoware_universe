@@ -36,6 +36,10 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
   angular_velocity_stddev_yy_ = declare_parameter<double>("angular_velocity_stddev_yy", 0.03);
   angular_velocity_stddev_zz_ = declare_parameter<double>("angular_velocity_stddev_zz", 0.03);
 
+  angular_velocity_reverscale_x_ = declare_parameter<double>("angular_velocity_reverscale_x", 1.0);
+  angular_velocity_reverscale_y_ = declare_parameter<double>("angular_velocity_reverscale_y", 1.0);
+  angular_velocity_reverscale_z_ = declare_parameter<double>("angular_velocity_reverscale_z", 1.0);
+
   imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
     "input", rclcpp::QoS{1}, std::bind(&ImuCorrector::callbackImu, this, std::placeholders::_1));
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("output", rclcpp::QoS{10});
@@ -61,6 +65,11 @@ void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_m
   if (angular_velocity_offset_z_ != std::nullopt) {
     imu_msg.angular_velocity.z += angular_velocity_offset_z_.value();
   }
+
+  imu_msg.angular_velocity.x *= angular_velocity_reverscale_x_;
+  imu_msg.angular_velocity.y *= angular_velocity_reverscale_y_;
+  imu_msg.angular_velocity.z *= angular_velocity_reverscale_z_;
+
   imu_msg.angular_velocity_covariance[0 * 3 + 0] =
     angular_velocity_stddev_xx_ * angular_velocity_stddev_xx_;
   imu_msg.angular_velocity_covariance[1 * 3 + 1] =
