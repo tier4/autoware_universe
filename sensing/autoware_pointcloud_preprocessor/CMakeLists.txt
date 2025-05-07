@@ -50,6 +50,10 @@ ament_target_dependencies(pointcloud_preprocessor_filter_base
   autoware_agnocast_wrapper
 )
 
+include(
+  ${autoware_agnocast_wrapper_DIR}/agnocast_wrapper_config_extras.cmake
+)
+
 autoware_agnocast_wrapper_setup(pointcloud_preprocessor_filter_base)
 
 add_library(faster_voxel_grid_downsample_filter SHARED
