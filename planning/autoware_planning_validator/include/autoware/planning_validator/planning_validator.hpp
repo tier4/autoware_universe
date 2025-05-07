@@ -108,7 +108,7 @@ private:
 
   std::shared_ptr<Updater> diag_updater_ = nullptr;
 
-  PlanningValidatorStatus validation_status_;
+  PlanningValidatorStatus validation_status_{};
   Params params_;  // for thresholds
 
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;

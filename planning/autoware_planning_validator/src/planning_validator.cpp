@@ -465,6 +465,11 @@ bool PlanningValidator::checkValidInterval(const Trajectory & trajectory)
   const auto [max_interval_distance, i] = calcMaxIntervalDistance(trajectory);
   validation_status_.max_interval_distance = max_interval_distance;
 
+  // Add tracking for historical max
+  if (max_interval_distance > validation_status_.max_historical_interval_distance) {
+    validation_status_.max_historical_interval_distance = max_interval_distance;
+  }
+
   if (max_interval_distance > params_.validation_params.interval.threshold) {
     if (i > 0) {
       const auto & p = trajectory.points;
@@ -487,6 +492,11 @@ bool PlanningValidator::checkValidRelativeAngle(const Trajectory & trajectory)
   const auto [max_relative_angle, i] = calcMaxRelativeAngles(trajectory);
   validation_status_.max_relative_angle = max_relative_angle;
 
+  // Add tracking for historical max
+  if (max_relative_angle > validation_status_.max_historical_relative_angle) {
+    validation_status_.max_historical_relative_angle = max_relative_angle;
+  }
+
   if (max_relative_angle > params_.validation_params.relative_angle.threshold) {
     const auto & p = trajectory.points;
     if (i < p.size() - 3) {
@@ -508,6 +518,12 @@ bool PlanningValidator::checkValidCurvature(const Trajectory & trajectory)
 
   const auto [max_curvature, i] = calcMaxCurvature(trajectory);
   validation_status_.max_curvature = max_curvature;
+
+  // Add tracking for historical max
+  if (max_curvature > validation_status_.max_historical_curvature) {
+    validation_status_.max_historical_curvature = max_curvature;
+  }
+
   if (max_curvature > params_.validation_params.curvature.threshold) {
     const auto & p = trajectory.points;
     if (i > 0 && i < p.size() - 1) {
@@ -528,6 +544,11 @@ bool PlanningValidator::checkValidLateralAcceleration(const Trajectory & traject
   }
 
   const auto [max_lateral_acc, i] = calcMaxLateralAcceleration(trajectory);
+
+  if (validation_status_.max_historical_lateral_acc < max_lateral_acc) {
+    validation_status_.max_historical_lateral_acc = max_lateral_acc;
+  }
+
   validation_status_.max_lateral_acc = max_lateral_acc;
   if (max_lateral_acc > params_.validation_params.acceleration.lateral_th) {
     debug_pose_publisher_->pushPoseMarker(trajectory.points.at(i), "lateral_acceleration");
@@ -546,6 +567,11 @@ bool PlanningValidator::checkValidMinLongitudinalAcceleration(const Trajectory &
   const auto [min_longitudinal_acc, i] = getMinLongitudinalAcc(trajectory);
   validation_status_.min_longitudinal_acc = min_longitudinal_acc;
 
+  // Add tracking for historical min
+  if (min_longitudinal_acc < validation_status_.min_historical_longitudinal_acc) {
+    validation_status_.min_historical_longitudinal_acc = min_longitudinal_acc;
+  }
+
   if (min_longitudinal_acc < params_.validation_params.acceleration.longitudinal_min_th) {
     debug_pose_publisher_->pushPoseMarker(trajectory.points.at(i).pose, "min_longitudinal_acc");
     is_critical_error_ |= params_.validation_params.acceleration.is_critical;
@@ -563,6 +589,9 @@ bool PlanningValidator::checkValidMaxLongitudinalAcceleration(const Trajectory &
   const auto [max_longitudinal_acc, i] = getMaxLongitudinalAcc(trajectory);
   validation_status_.max_longitudinal_acc = max_longitudinal_acc;
 
+  if (validation_status_.max_historical_longitudinal_acc < max_longitudinal_acc) {
+    validation_status_.max_historical_longitudinal_acc = max_longitudinal_acc;
+  }
   if (max_longitudinal_acc > params_.validation_params.acceleration.longitudinal_max_th) {
     debug_pose_publisher_->pushPoseMarker(trajectory.points.at(i).pose, "max_longitudinal_acc");
     is_critical_error_ |= params_.validation_params.acceleration.is_critical;
@@ -580,6 +609,11 @@ bool PlanningValidator::checkValidSteering(const Trajectory & trajectory)
   const auto [max_steering, i] = calcMaxSteeringAngles(trajectory, vehicle_info_.wheel_base_m);
   validation_status_.max_steering = max_steering;
 
+  // Add tracking for historical max
+  if (max_steering > validation_status_.max_historical_steering) {
+    validation_status_.max_historical_steering = max_steering;
+  }
+
   if (max_steering > params_.validation_params.steering.threshold) {
     debug_pose_publisher_->pushPoseMarker(trajectory.points.at(i).pose, "max_steering");
     is_critical_error_ |= params_.validation_params.steering.is_critical;
@@ -596,6 +630,11 @@ bool PlanningValidator::checkValidSteeringRate(const Trajectory & trajectory)
 
   const auto [max_steering_rate, i] = calcMaxSteeringRates(trajectory, vehicle_info_.wheel_base_m);
   validation_status_.max_steering_rate = max_steering_rate;
+
+  // Add tracking for historical max
+  if (max_steering_rate > validation_status_.max_historical_steering_rate) {
+    validation_status_.max_historical_steering_rate = max_steering_rate;
+  }
 
   if (max_steering_rate > params_.validation_params.steering.rate_th) {
     debug_pose_publisher_->pushPoseMarker(trajectory.points.at(i).pose, "max_steering_rate");
@@ -619,6 +658,12 @@ bool PlanningValidator::checkValidVelocityDeviation(const Trajectory & trajector
     trajectory.points.at(idx).longitudinal_velocity_mps -
     current_kinematics_->twist.twist.linear.x);
 
+  // Add tracking for historical max
+  if (
+    validation_status_.velocity_deviation > validation_status_.max_historical_velocity_deviation) {
+    validation_status_.max_historical_velocity_deviation = validation_status_.velocity_deviation;
+  }
+
   if (validation_status_.velocity_deviation > params_.validation_params.deviation.velocity_th) {
     is_critical_error_ |= params_.validation_params.deviation.is_critical;
     return false;
@@ -638,6 +683,12 @@ bool PlanningValidator::checkValidDistanceDeviation(const Trajectory & trajector
 
   validation_status_.distance_deviation =
     autoware_utils::calc_distance2d(trajectory.points.at(idx), current_kinematics_->pose.pose);
+
+  // Add tracking for historical max
+  if (
+    validation_status_.distance_deviation > validation_status_.max_historical_distance_deviation) {
+    validation_status_.max_historical_distance_deviation = validation_status_.distance_deviation;
+  }
 
   if (validation_status_.distance_deviation > params_.validation_params.deviation.distance_th) {
     is_critical_error_ |= params_.validation_params.deviation.is_critical;
@@ -678,6 +729,14 @@ bool PlanningValidator::checkValidLongitudinalDistanceDeviation(const Trajectory
     }
 
     validation_status_.longitudinal_distance_deviation = long_offset;
+
+    // Add tracking for historical max
+    if (
+      std::abs(long_offset) >
+      std::abs(validation_status_.max_historical_longitudinal_distance_deviation)) {
+      validation_status_.max_historical_longitudinal_distance_deviation = long_offset;
+    }
+
     return std::abs(validation_status_.longitudinal_distance_deviation) <
            params_.validation_params.deviation.lon_distance_th;
   };
@@ -726,6 +785,15 @@ bool PlanningValidator::checkValidForwardTrajectoryLength(const Trajectory & tra
   validation_status_.forward_trajectory_length_required = forward_length_required;
   validation_status_.forward_trajectory_length_measured = forward_length;
 
+  // Add tracking for historical max
+  if (forward_length < validation_status_.max_historical_forward_trajectory_length_measured) {
+    validation_status_.max_historical_forward_trajectory_length_measured = forward_length;
+  }
+
+  if (forward_length_required > validation_status_.max_historical_forward_trajectory_length) {
+    validation_status_.max_historical_forward_trajectory_length = forward_length_required;
+  }
+
   if (forward_length < forward_length_required) {
     is_critical_error_ |= params_.validation_params.forward_trajectory_length.is_critical;
     return false;
@@ -740,6 +808,11 @@ bool PlanningValidator::checkValidLatency(const Trajectory & trajectory)
   }
 
   validation_status_.latency = (this->now() - trajectory.header.stamp).seconds();
+
+  // Add tracking for historical max
+  if (validation_status_.latency > validation_status_.max_historical_latency) {
+    validation_status_.max_historical_latency = validation_status_.latency;
+  }
 
   if (validation_status_.latency > params_.validation_params.latency.threshold) {
     is_critical_error_ |= params_.validation_params.latency.is_critical;
@@ -778,6 +851,11 @@ bool PlanningValidator::checkTrajectoryShift(
   static constexpr auto epsilon = 0.01;
   validation_status_.lateral_shift = lat_shift > epsilon ? lat_shift : 0.0;
 
+  // Add tracking for historical max
+  if (validation_status_.lateral_shift > validation_status_.max_historical_lateral_shift) {
+    validation_status_.max_historical_lateral_shift = validation_status_.lateral_shift;
+  }
+
   if (
     ego_lat_dist > params_.validation_params.trajectory_shift.lat_shift_th &&
     lat_shift > params_.validation_params.trajectory_shift.lat_shift_th) {
@@ -806,6 +884,13 @@ bool PlanningValidator::checkTrajectoryShift(
     autoware_utils::calc_longitudinal_deviation(prev_nearest_pose, nearest_pose.position);
 
   validation_status_.longitudinal_shift = std::abs(lon_shift) > epsilon ? lon_shift : 0.0;
+
+  // Add tracking for historical max
+  if (
+    std::abs(validation_status_.longitudinal_shift) >
+    std::abs(validation_status_.max_historical_longitudinal_shift)) {
+    validation_status_.max_historical_longitudinal_shift = validation_status_.longitudinal_shift;
+  }
 
   // if the nearest segment is the first segment, check forward shift
   if (*nearest_seg_idx == 0) {
@@ -836,6 +921,11 @@ bool PlanningValidator::checkValidYawDeviation(const Trajectory & trajectory)
   validation_status_.yaw_deviation = std::abs(angles::shortest_angular_distance(
     tf2::getYaw(interpolated_trajectory_point.pose.orientation),
     tf2::getYaw(current_kinematics_->pose.pose.orientation)));
+
+  if (validation_status_.max_historical_yaw_deviation < validation_status_.yaw_deviation) {
+    validation_status_.max_historical_yaw_deviation = validation_status_.yaw_deviation;
+  }
+
   return validation_status_.yaw_deviation <= params_.validation_params.deviation.yaw_th;
 }
 
