@@ -6,6 +6,3 @@
     angular_velocity_stddev_xx: 0.03    # [rad/s]
     angular_velocity_stddev_yy: 0.03    # [rad/s]
     angular_velocity_stddev_zz: 0.03    # [rad/s]
-    angular_velocity_reverscale_x: 1.0  # [-]
-    angular_velocity_reverscale_y: 1.0  # [-]
-    angular_velocity_reverscale_z: 1.0  # [-]

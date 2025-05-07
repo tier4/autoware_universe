@@ -36,9 +36,9 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
   angular_velocity_stddev_yy_ = declare_parameter<double>("angular_velocity_stddev_yy", 0.03);
   angular_velocity_stddev_zz_ = declare_parameter<double>("angular_velocity_stddev_zz", 0.03);
 
-  angular_velocity_reverscale_x_ = declare_parameter<double>("angular_velocity_reverscale_x", 1.0);
-  angular_velocity_reverscale_y_ = declare_parameter<double>("angular_velocity_reverscale_y", 1.0);
-  angular_velocity_reverscale_z_ = declare_parameter<double>("angular_velocity_reverscale_z", 1.0);
+  angular_velocity_reverscale_x_ = 1.0;
+  angular_velocity_reverscale_y_ = 1.0;
+  angular_velocity_reverscale_z_ = 1.01;
 
   imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
     "input", rclcpp::QoS{1}, std::bind(&ImuCorrector::callbackImu, this, std::placeholders::_1));
