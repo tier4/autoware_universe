@@ -74,6 +74,20 @@ struct ObstacleFilteringParam
     double pointcloud_cluster_tolerance{};
     int pointcloud_min_cluster_size{};
     int pointcloud_max_cluster_size{};
+    struct
+    {
+      double max_time_diff{};
+      double min_velocity{};
+      double max_velocity{};
+      double position_diff{};
+    } time_series_association;
+    struct
+    {
+      double min_clamp_velocity{};
+      double max_clamp_velocity{};
+      size_t required_velocity_count{};
+      double lpf_gain{};
+    } velocity_estimation;
   };
 
   PointcloudObstacleFilteringParam pointcloud_obstacle_filtering_param;
@@ -87,6 +101,7 @@ struct ObstacleFilteringParam
 
   double max_lat_margin{};
   double max_lat_margin_against_predicted_object_unknown{};
+  double max_lat_margin_against_pointcloud{};
 
   double min_velocity_to_reach_collision_point{};
   double stop_obstacle_hold_time_threshold{};
@@ -113,6 +128,31 @@ struct ObstacleFilteringParam
       node, "obstacle_stop.obstacle_filtering.pointcloud.pointcloud_min_cluster_size");
     pointcloud_obstacle_filtering_param.pointcloud_max_cluster_size = get_or_declare_parameter<int>(
       node, "obstacle_stop.obstacle_filtering.pointcloud.pointcloud_max_cluster_size");
+    pointcloud_obstacle_filtering_param.time_series_association.max_time_diff =
+      get_or_declare_parameter<double>(
+        node, "obstacle_stop.obstacle_filtering.pointcloud.time_series_association.max_time_diff");
+    pointcloud_obstacle_filtering_param.time_series_association.min_velocity =
+      get_or_declare_parameter<double>(
+        node, "obstacle_stop.obstacle_filtering.pointcloud.time_series_association.min_velocity");
+    pointcloud_obstacle_filtering_param.time_series_association.max_velocity =
+      get_or_declare_parameter<double>(
+        node, "obstacle_stop.obstacle_filtering.pointcloud.time_series_association.max_velocity");
+    pointcloud_obstacle_filtering_param.time_series_association.position_diff =
+      get_or_declare_parameter<double>(
+        node, "obstacle_stop.obstacle_filtering.pointcloud.time_series_association.position_diff");
+    pointcloud_obstacle_filtering_param.velocity_estimation.min_clamp_velocity =
+      get_or_declare_parameter<double>(
+        node, "obstacle_stop.obstacle_filtering.pointcloud.velocity_estimation.min_clamp_velocity");
+    pointcloud_obstacle_filtering_param.velocity_estimation.max_clamp_velocity =
+      get_or_declare_parameter<double>(
+        node, "obstacle_stop.obstacle_filtering.pointcloud.velocity_estimation.max_clamp_velocity");
+    pointcloud_obstacle_filtering_param.velocity_estimation.required_velocity_count =
+      get_or_declare_parameter<int>(
+        node,
+        "obstacle_stop.obstacle_filtering.pointcloud.velocity_estimation.required_velocity_count");
+    pointcloud_obstacle_filtering_param.velocity_estimation.lpf_gain =
+      get_or_declare_parameter<double>(
+        node, "obstacle_stop.obstacle_filtering.pointcloud.velocity_estimation.lpf_gain");
     use_pointcloud = get_or_declare_parameter<bool>(
       node, "obstacle_stop.obstacle_filtering.object_type.pointcloud");
     inside_stop_object_types =
@@ -129,6 +169,8 @@ struct ObstacleFilteringParam
       get_or_declare_parameter<double>(node, "obstacle_stop.obstacle_filtering.max_lat_margin");
     max_lat_margin_against_predicted_object_unknown = get_or_declare_parameter<double>(
       node, "obstacle_stop.obstacle_filtering.max_lat_margin_against_predicted_object_unknown");
+    max_lat_margin_against_pointcloud = get_or_declare_parameter<double>(
+      node, "obstacle_stop.obstacle_filtering.max_lat_margin_against_pointcloud");
 
     min_velocity_to_reach_collision_point = get_or_declare_parameter<double>(
       node, "obstacle_stop.obstacle_filtering.min_velocity_to_reach_collision_point");
@@ -229,17 +271,20 @@ struct StopPlanningParam
     }
   }
 
-  std::string get_param_type(const ObjectClassification label)
+  std::string get_param_type(const PCLExtendedObjectClassification extended_label)
   {
-    const auto type_str = object_types_maps.at(label.label);
+    if (extended_label.is_point_cloud) {
+      return "default";
+    }
+    const auto type_str = object_types_maps.at(extended_label.object_classification.label);
     if (object_type_specific_param_map.count(type_str) == 0) {
       return "default";
     }
     return type_str;
   }
-  ObjectTypeSpecificParams get_param(const ObjectClassification label)
+  ObjectTypeSpecificParams get_param(const PCLExtendedObjectClassification extended_label)
   {
-    return object_type_specific_param_map.at(get_param_type(label));
+    return object_type_specific_param_map.at(get_param_type(extended_label));
   }
 };
 }  // namespace autoware::motion_velocity_planner
