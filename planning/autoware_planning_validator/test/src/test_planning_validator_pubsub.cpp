@@ -582,28 +582,3 @@ TEST(PlanningValidator, DiagCheckYawDeviation)
     }
   }
 }
-
-TEST(PlanningValidator, DiagCheckYawDeviation)
-{
-  const auto diag_name = "planning_validator: trajectory_validation_yaw_deviation";
-  const auto straight_trajectory = generateTrajectory(1.0, 0.0, 0.0, 10);
-
-  // Ego with yaw deviation smaller than threshold -> must be OK
-  {
-    auto ego_odom = generateDefaultOdometry(0.0, 0.0, 0.0);
-    for (auto yaw = 0.0; yaw <= THRESHOLD_YAW_DEVIATION; yaw += 0.1) {
-      ego_odom.pose.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
-      runWithOKTrajectory(straight_trajectory, ego_odom, diag_name);
-    }
-  }
-  // Ego with yaw deviation larger than threshold -> must be NG
-  {
-    auto ego_odom = generateDefaultOdometry(0.0, 0.0, 0.0);
-    for (auto yaw = THRESHOLD_YAW_DEVIATION + 1e-3; yaw < M_PI; yaw += 0.1) {
-      ego_odom.pose.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
-      runWithBadTrajectory(straight_trajectory, ego_odom, diag_name);
-      ego_odom.pose.pose.orientation = autoware_utils::create_quaternion_from_yaw(-yaw);
-      runWithBadTrajectory(straight_trajectory, ego_odom, diag_name);
-    }
-  }
-}
