@@ -71,9 +71,6 @@ struct ObstacleFilteringParam
     double pointcloud_voxel_grid_x{};
     double pointcloud_voxel_grid_y{};
     double pointcloud_voxel_grid_z{};
-    double pointcloud_cluster_tolerance{};
-    int pointcloud_min_cluster_size{};
-    int pointcloud_max_cluster_size{};
     struct
     {
       double max_time_diff{};
@@ -121,13 +118,6 @@ struct ObstacleFilteringParam
       node, "obstacle_stop.obstacle_filtering.pointcloud.pointcloud_voxel_grid_y");
     pointcloud_obstacle_filtering_param.pointcloud_voxel_grid_z = get_or_declare_parameter<double>(
       node, "obstacle_stop.obstacle_filtering.pointcloud.pointcloud_voxel_grid_z");
-    pointcloud_obstacle_filtering_param.pointcloud_cluster_tolerance =
-      get_or_declare_parameter<double>(
-        node, "obstacle_stop.obstacle_filtering.pointcloud.pointcloud_cluster_tolerance");
-    pointcloud_obstacle_filtering_param.pointcloud_min_cluster_size = get_or_declare_parameter<int>(
-      node, "obstacle_stop.obstacle_filtering.pointcloud.pointcloud_min_cluster_size");
-    pointcloud_obstacle_filtering_param.pointcloud_max_cluster_size = get_or_declare_parameter<int>(
-      node, "obstacle_stop.obstacle_filtering.pointcloud.pointcloud_max_cluster_size");
     pointcloud_obstacle_filtering_param.time_series_association.max_time_diff =
       get_or_declare_parameter<double>(
         node, "obstacle_stop.obstacle_filtering.pointcloud.time_series_association.max_time_diff");
