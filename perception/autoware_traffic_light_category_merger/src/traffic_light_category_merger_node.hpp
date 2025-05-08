@@ -40,9 +40,6 @@ public:
 
 private:
   // Subscriber
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
-
   message_filters::Subscriber<TrafficLightArray> car_signal_sub_;
   message_filters::Subscriber<TrafficLightArray> pedestrian_signal_sub_;
 
