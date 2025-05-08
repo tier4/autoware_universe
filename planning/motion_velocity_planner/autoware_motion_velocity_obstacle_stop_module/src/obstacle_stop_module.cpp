@@ -27,6 +27,8 @@
 
 #include <autoware_perception_msgs/msg/detail/shape__struct.hpp>
 
+#include <pcl/filters/crop_box.h>
+
 #include <algorithm>
 #include <limits>
 #include <map>
@@ -359,56 +361,83 @@ ObstacleStopModule::get_nearest_collision_point(
     return {};
   }
 
-  const auto & p = obstacle_filtering_param_;
+  const auto & p = obstacle_filtering_param_.pointcloud_obstacle_filtering_param;
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud_ptr =
     std::make_shared<pcl::PointCloud<pcl::PointXYZ>>(pointcloud.pointcloud);
+
+  constexpr double slope_angle_limit = 0.1;
+  constexpr double height_from_bottom = -0.5;
+  constexpr double height_from_top = 0.5;
+
+  pcl::CropBox<pcl::PointXYZ> crop_filter;
+  PointCloud::Ptr croped_pointcloud_ptr(new PointCloud);
+
+  crop_filter.setInputCloud(pointcloud_ptr);
+  const auto [min_point, max_point] = [&]() -> std::pair<Eigen::Vector4f, Eigen::Vector4f> {
+    const auto initial_point = traj_points.front().pose.position;
+    Eigen::Vector4d min_point{initial_point.x, initial_point.y, initial_point.z, 1.0};
+    Eigen::Vector4d max_point{initial_point.x, initial_point.y, initial_point.z, 1.0};
+
+    for (const auto & poly : traj_polygons) {
+      for (const auto & point : poly.outer()) {
+        min_point[0] = std::min(min_point[0], point[0]);
+        min_point[1] = std::min(min_point[1], point[1]);
+        max_point[0] = std::max(max_point[0], point[0]);
+        max_point[1] = std::max(max_point[1], point[1]);
+      }
+    }
+    for (const auto & traj_point : traj_points) {
+      min_point[2] = std::min(min_point[2], traj_point.pose.position.z);
+      max_point[2] = std::max(max_point[2], traj_point.pose.position.z);
+    }
+
+    const double slope_height_diff = std::abs(dist_to_bumper) * slope_angle_limit;
+    min_point[2] += height_from_bottom - slope_height_diff;
+    max_point[2] += height_from_top + vehicle_info.vehicle_height_m + slope_height_diff;
+
+    return {min_point.cast<float>(), max_point.cast<float>()};
+  }();
+
+  crop_filter.setMin(min_point);
+  crop_filter.setMax(max_point);
+  crop_filter.filter(*croped_pointcloud_ptr);
+  if (croped_pointcloud_ptr->points.empty()) {
+    return {};
+  }
+
   // 1. downsample & cluster pointcloud
   PointCloud::Ptr filtered_points_ptr(new PointCloud);
   pcl::VoxelGrid<pcl::PointXYZ> filter;
-  filter.setInputCloud(pointcloud_ptr);
+  filter.setInputCloud(croped_pointcloud_ptr);
   filter.setLeafSize(
-    p.pointcloud_obstacle_filtering_param.pointcloud_voxel_grid_x,
-    p.pointcloud_obstacle_filtering_param.pointcloud_voxel_grid_y,
-    p.pointcloud_obstacle_filtering_param.pointcloud_voxel_grid_z);
+    p.pointcloud_voxel_grid_x, p.pointcloud_voxel_grid_y, p.pointcloud_voxel_grid_z);
   filter.filter(*filtered_points_ptr);
-
-  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
-  tree->setInputCloud(filtered_points_ptr);
-  std::vector<pcl::PointIndices> clusters;
-  pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-  ec.setClusterTolerance(p.pointcloud_obstacle_filtering_param.pointcloud_cluster_tolerance);
-  ec.setMinClusterSize(p.pointcloud_obstacle_filtering_param.pointcloud_min_cluster_size);
-  ec.setMaxClusterSize(p.pointcloud_obstacle_filtering_param.pointcloud_max_cluster_size);
-  ec.setSearchMethod(tree);
-  ec.setInputCloud(filtered_points_ptr);
-  ec.extract(clusters);
 
   std::vector<geometry_msgs::msg::Point> collision_geom_points{};
   for (size_t traj_index = 0; traj_index < traj_points.size(); ++traj_index) {
-    const double rough_dist_th = boost::geometry::perimeter(traj_polygons.at(traj_index)) / 2.0;
+    const double rough_dist_th = boost::geometry::perimeter(traj_polygons.at(traj_index)) * 0.5;
     const double traj_height = traj_points.at(traj_index).pose.position.z;
 
-    for (const auto & cluster : clusters) {
-      for (const auto & point_index : cluster.indices) {
-        const auto obstacle_point = autoware::motion_velocity_planner::utils::to_geometry_point(
-          filtered_points_ptr->points[point_index]);
-        constexpr double slope_angle_limit = 0.2;
-        if (
-          obstacle_point.z - traj_height < -0.1 - std::abs(dist_to_bumper) * slope_angle_limit ||
-          obstacle_point.z - traj_height >
-            0.4 + vehicle_info.vehicle_height_m + std::abs(dist_to_bumper) * slope_angle_limit) {
-          continue;
-        }
-        const double approximated_dist =
-          autoware_utils::calc_distance2d(traj_points.at(traj_index).pose, obstacle_point);
-        if (approximated_dist > rough_dist_th) {
-          continue;
-        }
-        Point2d obstacle_point_2d{obstacle_point.x, obstacle_point.y};
-        if (boost::geometry::within(obstacle_point_2d, traj_polygons.at(traj_index))) {
-          collision_geom_points.push_back(obstacle_point);
-        }
+    for (const auto & point : filtered_points_ptr->points) {
+      const auto obstacle_point =
+        autoware::motion_velocity_planner::utils::to_geometry_point(point);
+      if (
+        obstacle_point.z + p.pointcloud_voxel_grid_z - traj_height <
+          height_from_bottom - std::abs(dist_to_bumper) * slope_angle_limit ||
+        obstacle_point.z - p.pointcloud_voxel_grid_z - traj_height >
+          height_from_top + vehicle_info.vehicle_height_m +
+            std::abs(dist_to_bumper) * slope_angle_limit) {
+        continue;
+      }
+      const double approximated_dist =
+        autoware_utils::calc_distance2d(traj_points.at(traj_index).pose, obstacle_point);
+      if (approximated_dist > rough_dist_th) {
+        continue;
+      }
+      Point2d obstacle_point_2d{obstacle_point.x, obstacle_point.y};
+      if (boost::geometry::within(obstacle_point_2d, traj_polygons.at(traj_index))) {
+        collision_geom_points.push_back(obstacle_point);
       }
     }
     if (collision_geom_points.empty()) {
