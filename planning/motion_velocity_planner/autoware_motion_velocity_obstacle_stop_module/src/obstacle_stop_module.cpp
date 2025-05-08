@@ -478,9 +478,23 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
     return std::vector<StopObstacle>{};
   }
 
+  const auto cropped_decimated_traj_points = [&]() {
+    const double vel = odometry.twist.twist.linear.x;
+    const double crop_length = 4.0 * stop_planning_param_.stop_margin +
+                               2.0 * vel * vel * 0.5 / -common_param_.min_accel +
+                               2.0 * vel * common_param_.min_accel / common_param_.min_jerk;
+    for (size_t i = 0; i < decimated_traj_points.size(); ++i) {
+      if (motion_utils::calcSignedArcLength(decimated_traj_points, 0, i) > crop_length) {
+        return std::vector<TrajectoryPoint>{
+          decimated_traj_points.begin(), decimated_traj_points.begin() + i};
+      }
+    }
+    return decimated_traj_points;
+  }();
+
   const auto & tp = trajectory_polygon_collision_check;
   const auto decimated_traj_polys_with_lat_margin = polygon_utils::create_one_step_polygons(
-    decimated_traj_points, vehicle_info, odometry.pose.pose,
+    cropped_decimated_traj_points, vehicle_info, odometry.pose.pose,
     obstacle_filtering_param_.max_lat_margin_against_pointcloud, tp.enable_to_consider_current_pose,
     tp.time_to_convergence, tp.decimate_trajectory_step_length);
 
@@ -488,7 +502,7 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
   debug_data_ptr_->decimated_traj_polys = decimated_traj_polys_with_lat_margin;
 
   const auto nearest_collision_point = get_nearest_collision_point(
-    decimated_traj_points, decimated_traj_polys_with_lat_margin, point_cloud, vehicle_info,
+    cropped_decimated_traj_points, decimated_traj_polys_with_lat_margin, point_cloud, vehicle_info,
     dist_to_bumper);
 
   struct StopCandidate
