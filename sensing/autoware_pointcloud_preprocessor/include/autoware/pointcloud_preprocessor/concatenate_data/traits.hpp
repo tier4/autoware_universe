@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+<<<<<<<< HEAD:sensing/autoware_pointcloud_preprocessor/include/autoware/pointcloud_preprocessor/concatenate_data/traits.hpp
 #pragma once
 
 #include <rclcpp/rclcpp.hpp>
@@ -29,3 +30,26 @@ struct PointCloud2Traits
 };
 
 }  // namespace autoware::pointcloud_preprocessor
+========
+#ifndef AUTOWARE__BEVFUSION__PREPROCESS__POINT_TYPE_HPP_
+#define AUTOWARE__BEVFUSION__PREPROCESS__POINT_TYPE_HPP_
+
+#include <cstdint>
+
+namespace autoware::bevfusion
+{
+
+struct InputPointType
+{
+  float x;
+  float y;
+  float z;
+  std::uint8_t intensity;
+  std::uint8_t return_type;
+  std::uint16_t channel;
+};
+
+}  // namespace autoware::bevfusion
+
+#endif  // AUTOWARE__BEVFUSION__PREPROCESS__POINT_TYPE_HPP_
+>>>>>>>> tier4/main:perception/autoware_bevfusion/include/autoware/bevfusion/preprocess/point_type.hpp

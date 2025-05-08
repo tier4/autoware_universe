@@ -8,7 +8,7 @@ repositories:
     version: main
   core/autoware_core:
     type: git
-    url: https://github.com/autowarefoundation/autoware_core.git
+    url: https://github.com/tier4/autoware_core.git
     version: main
   core/autoware_adapi_msgs:
     type: git
