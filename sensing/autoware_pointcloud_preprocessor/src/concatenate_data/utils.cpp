@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-<<<<<<<< HEAD:sensing/autoware_pointcloud_preprocessor/src/concatenate_data/utils.cpp
 #include "autoware/pointcloud_preprocessor/concatenate_data/utils.hpp"
 
 #include <iomanip>
@@ -30,20 +29,3 @@ std::string format_timestamp(double timestamp)
 }
 
 }  // namespace autoware::pointcloud_preprocessor
-========
-#ifndef AUTOWARE__TENSORRT_PLUGINS__PLUGIN_REGISTRATION_HPP_
-#define AUTOWARE__TENSORRT_PLUGINS__PLUGIN_REGISTRATION_HPP_
-
-#include <NvInferRuntime.h>
-
-#include <cstdint>
-
-// These are the functions that TensorRT library will call at the runtime.
-
-extern "C" void setLoggerFinder(nvinfer1::ILoggerFinder * finder);
-
-extern "C" nvinfer1::IPluginCreatorInterface * const * getPluginCreators(
-  std::int32_t & num_creators);
-
-#endif  // AUTOWARE__TENSORRT_PLUGINS__PLUGIN_REGISTRATION_HPP_
->>>>>>>> tier4/main:perception/autoware_tensorrt_plugins/include/autoware/tensorrt_plugins/plugin_registration.hpp

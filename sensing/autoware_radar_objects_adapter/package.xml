@@ -1,35 +1,23 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-<<<<<<<< HEAD:sensing/autoware_radar_objects_adapter/package.xml
   <name>autoware_radar_objects_adapter</name>
   <version>0.43.0</version>
   <description>The autoware_radar_objects_adapter package</description>
   <maintainer email="taekjin.lee@tier4.jp">Taekjin Lee</maintainer>
   <maintainer email="yoshi.ri@tier4.jp">Yoshi Ri</maintainer>
-
-========
-  <name>autoware_agnocast_wrapper</name>
-  <version>0.43.0</version>
-  <description>Wrapper macros for Agnocast (true zero-copy communication library)</description>
-  <maintainer email="sykwer@gmail.com">Takahiro Ishikawa-Aso</maintainer>
->>>>>>>> tier4/main:common/autoware_agnocast_wrapper/package.xml
+  
   <license>Apache License 2.0</license>
   <author email="kenzo.lobos@tier4.jp">Kenzo Lobos-Tsunekawa</author>
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
   <buildtool_depend>autoware_cmake</buildtool_depend>
 
-<<<<<<<< HEAD:sensing/autoware_radar_objects_adapter/package.xml
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_sensing_msgs</depend>
   <depend>autoware_universe_utils</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
-========
-  <build_depend>agnocastlib</build_depend>
-  <build_depend>rclcpp</build_depend>
->>>>>>>> tier4/main:common/autoware_agnocast_wrapper/package.xml
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
