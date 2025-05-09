@@ -6,7 +6,7 @@
   <description>The autoware_radar_objects_adapter package</description>
   <maintainer email="taekjin.lee@tier4.jp">Taekjin Lee</maintainer>
   <maintainer email="yoshi.ri@tier4.jp">Yoshi Ri</maintainer>
-  
+
   <license>Apache License 2.0</license>
   <author email="kenzo.lobos@tier4.jp">Kenzo Lobos-Tsunekawa</author>
 
