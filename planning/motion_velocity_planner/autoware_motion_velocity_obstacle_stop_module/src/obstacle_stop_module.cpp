@@ -179,13 +179,128 @@ void ObstacleStopModule::init(rclcpp::Node & node, const std::string & module_na
   time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(processing_time_detail_pub_);
 }
 
-void ObstacleStopModule::update_parameters(const std::vector<rclcpp::Parameter> & parameters)
+void ObstacleStopModule::update_parameters(
+  const std::vector<rclcpp::Parameter> & received_parameters)
 {
-  using autoware_utils::update_param;
+  auto upd_p = [&received_parameters](const std::string & name, auto & value) {
+    autoware_utils::update_param(received_parameters, name, value);
+  };
 
-  update_param(
-    parameters, "obstacle_stop.option.ignore_crossing_obstacle", ignore_crossing_obstacle_);
-  update_param(parameters, "obstacle_stop.option.suppress_sudden_stop", suppress_sudden_stop_);
+  const std::string base_ns = "obstacle_stop.";
+
+  // Module's own option parameters
+  upd_p(base_ns + "option.ignore_crossing_obstacle", ignore_crossing_obstacle_);
+  upd_p(base_ns + "option.suppress_sudden_stop", suppress_sudden_stop_);
+
+  // obstacle_stop.stop_planning
+  {
+    const std::string sp_ns = base_ns + "stop_planning.";  // Stop Planning namespace
+    auto & p = stop_planning_param_;
+
+    upd_p(sp_ns + "stop_margin", p.stop_margin);
+    upd_p(sp_ns + "terminal_stop_margin", p.terminal_stop_margin);
+    upd_p(sp_ns + "min_behavior_stop_margin", p.min_behavior_stop_margin);
+    upd_p(sp_ns + "hold_stop_velocity_threshold", p.hold_stop_velocity_threshold);
+    upd_p(sp_ns + "hold_stop_distance_threshold", p.hold_stop_distance_threshold);
+    upd_p(sp_ns + "pointcloud_suppresion_distance_margin", p.pointcloud_suppresion_distance_margin);
+
+    // stop_on_curve parameters
+    upd_p(sp_ns + "stop_on_curve.enable_approaching", p.enable_approaching_on_curve);
+    upd_p(sp_ns + "stop_on_curve.additional_stop_margin", p.additional_stop_margin_on_curve);
+    upd_p(sp_ns + "stop_on_curve.min_stop_margin", p.min_stop_margin_on_curve);
+
+    // rss_params parameters
+    upd_p(sp_ns + "rss_params.use_rss_stop", p.rss_params.use_rss_stop);
+    upd_p(
+      sp_ns + "rss_params.two_wheel_objects_deceleration",
+      p.rss_params.two_wheel_objects_deceleration);
+    upd_p(
+      sp_ns + "rss_params.other_vehicle_objects_deceleration",
+      p.rss_params.other_vehicle_objects_deceleration);
+    upd_p(sp_ns + "rss_params.pointclound_deceleration", p.rss_params.pointclound_deceleration);
+    upd_p(sp_ns + "rss_params.velocity_offset", p.rss_params.velocity_offset);
+  }
+
+  // obstacle_stop.obstacle_filtering
+  {
+    const std::string of_ns = base_ns + "obstacle_filtering.";  // Obstacle Filtering namespace
+    auto & p = obstacle_filtering_param_;
+
+    auto & pc_filter_p = p.pointcloud_obstacle_filtering_param;
+    // pointcloud specific parameters (under obstacle_filtering.pointcloud)
+    const std::string pc_ns = of_ns + "pointcloud.";  // Base for pointcloud params
+    upd_p(pc_ns + "pointcloud_voxel_grid_x", pc_filter_p.pointcloud_voxel_grid_x);
+    upd_p(pc_ns + "pointcloud_voxel_grid_y", pc_filter_p.pointcloud_voxel_grid_y);
+    upd_p(pc_ns + "pointcloud_voxel_grid_z", pc_filter_p.pointcloud_voxel_grid_z);
+
+    // time_series_association parameters (under
+    // obstacle_filtering.pointcloud.time_series_association)
+    upd_p(
+      pc_ns + "time_series_association.max_time_diff",
+      pc_filter_p.time_series_association.max_time_diff);
+    upd_p(
+      pc_ns + "time_series_association.min_velocity",
+      pc_filter_p.time_series_association.min_velocity);
+    upd_p(
+      pc_ns + "time_series_association.max_velocity",
+      pc_filter_p.time_series_association.max_velocity);
+    upd_p(
+      pc_ns + "time_series_association.position_diff",
+      pc_filter_p.time_series_association.position_diff);
+
+    // velocity_estimation parameters (under obstacle_filtering.pointcloud.velocity_estimation)
+    upd_p(
+      pc_ns + "velocity_estimation.min_clamp_velocity",
+      pc_filter_p.velocity_estimation.min_clamp_velocity);
+    upd_p(
+      pc_ns + "velocity_estimation.max_clamp_velocity",
+      pc_filter_p.velocity_estimation.max_clamp_velocity);
+    upd_p(
+      pc_ns + "velocity_estimation.required_velocity_count",
+      pc_filter_p.velocity_estimation.required_velocity_count);
+    upd_p(pc_ns + "velocity_estimation.lpf_gain", pc_filter_p.velocity_estimation.lpf_gain);
+
+    // object_type parameters (under obstacle_filtering.object_type)
+    upd_p(of_ns + "object_type.pointcloud", p.use_pointcloud);
+
+    auto update_target_type_vector =
+      [&](const std::string & type_group_prefix, std::vector<uint8_t> & target_vec) {
+        std::vector<uint8_t> ret_vector{};
+        for (const auto & type : stop_planning_param_.object_types_maps) {
+          bool value = is_in_vector(type.first, target_vec);
+          upd_p(type_group_prefix + type.second, value);
+          if (value) {
+            ret_vector.push_back(type.first);
+          }
+        }
+        target_vec = ret_vector;
+      };
+    update_target_type_vector(of_ns + "object_type.inside.", p.inside_stop_object_types);
+    update_target_type_vector(of_ns + "object_type.outside.", p.outside_stop_object_types);
+
+    // Remaining obstacle_filtering parameters
+    upd_p(of_ns + "obstacle_velocity_threshold_to_stop", p.obstacle_velocity_threshold_to_stop);
+    upd_p(of_ns + "obstacle_velocity_threshold_from_stop", p.obstacle_velocity_threshold_from_stop);
+    upd_p(of_ns + "max_lat_margin", p.max_lat_margin);
+    upd_p(
+      of_ns + "max_lat_margin_against_predicted_object_unknown",
+      p.max_lat_margin_against_predicted_object_unknown);
+    upd_p(of_ns + "max_lat_margin_against_pointcloud", p.max_lat_margin_against_pointcloud);
+    upd_p(of_ns + "min_velocity_to_reach_collision_point", p.min_velocity_to_reach_collision_point);
+    upd_p(of_ns + "stop_obstacle_hold_time_threshold", p.stop_obstacle_hold_time_threshold);
+
+    // outside_obstacle parameters
+    upd_p(of_ns + "outside_obstacle.estimation_time_horizon", p.outside_estimation_time_horizon);
+    upd_p(
+      of_ns + "outside_obstacle.pedestrian_deceleration_rate",
+      p.outside_pedestrian_deceleration_rate);
+    upd_p(
+      of_ns + "outside_obstacle.bicycle_deceleration_rate", p.outside_bicycle_deceleration_rate);
+
+    // crossing_obstacle parameters
+    upd_p(
+      of_ns + "crossing_obstacle.collision_time_margin", p.crossing_obstacle_collision_time_margin);
+  }
 }
 
 VelocityPlanningResult ObstacleStopModule::plan(
