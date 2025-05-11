@@ -137,7 +137,7 @@ void CloudCollector::show_debug_message()
              << ros2_parent_node_->get_clock()->now().seconds() << " seconds\n";
 
   if (auto advanced_info = std::dynamic_pointer_cast<AdvancedCollectorInfo>(collector_info_)) {
-    log_stream << "Advanced strategy:\n Collector's reference time mi/n: "
+    log_stream << "Advanced strategy:\n Collector's reference time min: "
                << advanced_info->timestamp - advanced_info->noise_window
                << " to max: " << advanced_info->timestamp + advanced_info->noise_window
                << " seconds\n";
