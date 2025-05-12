@@ -73,7 +73,7 @@ public:
   std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)>
   get_topic_to_cloud_map();
 
-  [[nodiscard]] CollectorStatus get_status() const;
+  [[nodiscard]] CollectorStatus get_status();
 
   void set_info(std::shared_ptr<CollectorInfoBase> collector_info);
   [[nodiscard]] std::shared_ptr<CollectorInfoBase> get_info() const;
@@ -89,6 +89,7 @@ private:
   uint64_t num_of_clouds_;
   double timeout_sec_;
   bool debug_mode_;
+  std::mutex concatenate_mutex_;
   std::shared_ptr<CollectorInfoBase> collector_info_;
   CollectorStatus status_;
 };

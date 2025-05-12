@@ -44,6 +44,7 @@ CloudCollector::CloudCollector(
 
   timer_ =
     rclcpp::create_timer(ros2_parent_node_, ros2_parent_node_->get_clock(), period_ns, [this]() {
+      std::lock_guard<std::mutex> concatenate_lock(concatenate_mutex_);
       if (status_ == CollectorStatus::Finished) return;
       concatenate_callback();
     });
@@ -69,6 +70,7 @@ bool CloudCollector::topic_exists(const std::string & topic_name)
 void CloudCollector::process_pointcloud(
   const std::string & topic_name, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) cloud)
 {
+  std::lock_guard<std::mutex> concatenate_lock(concatenate_mutex_);
   if (status_ == CollectorStatus::Idle) {
     // Add first pointcloud to the collector, restart the timer
     status_ = CollectorStatus::Processing;
@@ -91,8 +93,9 @@ void CloudCollector::process_pointcloud(
   }
 }
 
-CollectorStatus CloudCollector::get_status() const
+CollectorStatus CloudCollector::get_status()
 {
+  std::lock_guard<std::mutex> concatenate_lock(concatenate_mutex_);
   return status_;
 }
 
@@ -160,6 +163,8 @@ void CloudCollector::show_debug_message()
 
 void CloudCollector::reset()
 {
+  std::lock_guard<std::mutex> lock(concatenate_mutex_);
+
   status_ = CollectorStatus::Idle;  // Reset status to Idle
   topic_to_cloud_map_.clear();
   collector_info_ = nullptr;
