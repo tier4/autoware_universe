@@ -11,6 +11,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/interface.cpp
   src/localization.cpp
   src/motion.cpp
+  src/mrm_request.cpp
   src/operation_mode.cpp
   src/perception.cpp
   src/planning.cpp
@@ -31,6 +32,7 @@ rclcpp_components_register_nodes(${PROJECT_NAME}
   "autoware::default_adapi::InterfaceNode"
   "autoware::default_adapi::LocalizationNode"
   "autoware::default_adapi::MotionNode"
+  "autoware::default_adapi::MrmRequestNode"
   "autoware::default_adapi::OperationModeNode"
   "autoware::default_adapi::PerceptionNode"
   "autoware::default_adapi::PlanningNode"
