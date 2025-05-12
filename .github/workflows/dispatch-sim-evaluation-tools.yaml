@@ -1,0 +1,37 @@
+name: dispatch-sim-evaluation-tools
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  make_dispatch_event:
+    runs-on: ubuntu-latest
+    if: github.event.label.name == 'execute-autoware-evaluator'
+    steps:
+      - name: generate token
+        id: generate-token
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.PRIVATE_KEY }}
+      - name: trigger without launcher
+        if: ! contains(github.event.issue.labels.*.name, 'launcher')
+        uses: peter-evans/repository-dispatch@v2
+        env:
+          pull_request_info: ${{ toJSON(github.event.pull_request) }}
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          repository: tier4/sim_evaluation_tools_test
+          event-type: pull_request_notification
+          client-payload: '{"branch_name":"${{ github.event.pull_request.head.ref }}","pr":${{ toJSON(github.event.pull_request) }} }'
+
+      - name: trigger with launcher
+        if: contains(github.event.issue.labels.*.name, 'launcher')
+        uses: peter-evans/repository-dispatch@v2
+        env:
+          pull_request_info: ${{ toJSON(github.event.pull_request) }}
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          repository: tier4/sim_evaluation_tools_test
+          event-type: pull_request_notification
+          client-payload: '{"branch_opts": "autoware/launcher={branch}", "branch_name":"${{ github.event.pull_request.head.ref }}","pr":${{ toJSON(github.event.pull_request) }} }'
