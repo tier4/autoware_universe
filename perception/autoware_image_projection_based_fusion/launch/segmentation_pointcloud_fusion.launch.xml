@@ -33,6 +33,10 @@
       <param name="rois_number" value="$(var input/camera_number)"/>
       <param from="$(var semantic_segmentation_based_filter_param_path)"/>
       <param from="$(var sync_param_path)"/>
+      <param name="rois_timestamp_offsets" value="[0.098]"/>
+      <param name="point_project_to_unrectified_image" value="[false]"/>
+      <param name="approximate_camera_projection" value="[true]"/>
+      <param name="matching_strategy.rois_timestamp_noise_window" value="[0.01]"/>
       <remap from="input" to="$(var input/pointcloud)"/>
       <remap from="output" to="$(var output/pointcloud)"/>
 
