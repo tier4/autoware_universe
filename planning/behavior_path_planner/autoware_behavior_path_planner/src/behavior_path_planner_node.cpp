@@ -17,6 +17,7 @@
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 #include "autoware/motion_utils/trajectory/conversion.hpp"
 
+#include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_utils/ros/update_param.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
@@ -375,6 +376,7 @@ void BehaviorPathPlannerNode::run()
   // path handling
   const auto path = getPath(output, planner_data_, planner_manager_);
   path->header.stamp = stamp;
+
   // update planner data
   planner_data_->prev_output_path = path;
 

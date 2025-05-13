@@ -117,6 +117,8 @@ void Lanelet2MapVisualizationNode::on_map_bin(
   lanelet::ConstLineStrings3d parking_spaces =
     lanelet::utils::query::getAllParkingSpaces(viz_lanelet_map);
   lanelet::ConstPolygons3d parking_lots = lanelet::utils::query::getAllParkingLots(viz_lanelet_map);
+  lanelet::ConstPolygons3d waypoint_zones =
+    lanelet::utils::query::getAllWaypointZones(viz_lanelet_map);
   lanelet::ConstPolygons3d obstacle_polygons =
     lanelet::utils::query::getAllObstaclePolygons(viz_lanelet_map);
   lanelet::ConstPolygons3d no_obstacle_segmentation_area =
@@ -148,6 +150,7 @@ void Lanelet2MapVisualizationNode::on_map_bin(
   std_msgs::msg::ColorRGBA cl_speed_bumps;
   std_msgs::msg::ColorRGBA cl_crosswalks;
   std_msgs::msg::ColorRGBA cl_parking_lots;
+  std_msgs::msg::ColorRGBA cl_waypoint_zones;
   std_msgs::msg::ColorRGBA cl_parking_spaces;
   std_msgs::msg::ColorRGBA cl_lanelet_id;
   std_msgs::msg::ColorRGBA cl_obstacle_polygons;
@@ -177,6 +180,7 @@ void Lanelet2MapVisualizationNode::on_map_bin(
   set_color(&cl_crosswalks, 0.80, 0.80, 0.0, 0.5);
   set_color(&cl_obstacle_polygons, 0.4, 0.27, 0.27, 0.5);
   set_color(&cl_parking_lots, 1.0, 1.0, 1.0, 0.2);
+  set_color(&cl_waypoint_zones, 1.0, 0.5, 0.0, 0.3);
   set_color(&cl_parking_spaces, 1.0, 1.0, 1.0, 0.3);
   set_color(&cl_lanelet_id, 0.5, 0.5, 0.5, 0.999);
   set_color(&cl_no_obstacle_segmentation_area, 0.37, 0.37, 0.27, 0.5);
@@ -234,6 +238,9 @@ void Lanelet2MapVisualizationNode::on_map_bin(
   insert_marker_array(
     &map_marker_array,
     lanelet::visualization::parkingLotsAsMarkerArray(parking_lots, cl_parking_lots));
+  insert_marker_array(
+    &map_marker_array,
+    lanelet::visualization::waypointZonesAsMarkerArray(waypoint_zones, cl_waypoint_zones));
   insert_marker_array(
     &map_marker_array,
     lanelet::visualization::parkingSpacesAsMarkerArray(parking_spaces, cl_parking_spaces));
