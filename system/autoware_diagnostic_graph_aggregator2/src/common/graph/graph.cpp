@@ -61,8 +61,7 @@ Graph::Graph(const std::string & path, const std::string & id, const Logger & lo
     for (const auto & node : graph.units) {
       const auto parents = parent_links[node];  // Root units have no parents.
       const auto children = child_links[node];  // Leaf units have no children.
-      nodes_.push_back(std::make_unique<NodeUnit>(
-        parents, children, std::move(node->logic), nodes_.size(), node->path));
+      nodes_.push_back(std::make_unique<NodeUnit>(parents, children, nodes_.size(), node));
       units[node] = nodes_.back().get();
     }
     for (const auto & diag : graph.diags) {

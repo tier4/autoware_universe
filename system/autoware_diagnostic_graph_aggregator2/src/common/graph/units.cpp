@@ -14,6 +14,8 @@
 
 #include "graph/units.hpp"
 
+#include "config/entity.hpp"
+#include "graph/levels.hpp"
 #include "graph/logic.hpp"
 
 #include <memory>
@@ -39,13 +41,14 @@ int BaseUnit::index() const
 }
 
 NodeUnit::NodeUnit(
-  const std::vector<UnitLink *> parents, const std::vector<UnitLink *> children,
-  std::unique_ptr<Logic> && logic, int index, const std::string & path)
+  const std::vector<UnitLink *> parents, const std::vector<UnitLink *> children, int index,
+  const UnitConfig & config)
 : BaseUnit(parents, index)
 {
   children_ = children;
-  path_ = path;
-  logic_ = std::move(logic);
+  path_ = config->path;
+  logic_ = std::move(config->logic);
+  latch_ = std::make_unique<LatchLevel>(config->yaml);
 }
 
 NodeUnit::~NodeUnit()
@@ -54,7 +57,7 @@ NodeUnit::~NodeUnit()
 
 DiagnosticLevel NodeUnit::level() const
 {
-  return logic_->level();
+  return latch_->level();
 }
 
 std::string NodeUnit::path() const
@@ -69,7 +72,7 @@ std::string NodeUnit::type() const
 
 void NodeUnit::update(const rclcpp::Time & stamp)
 {
-  (void)stamp;
+  latch_->update(stamp, logic_->level());
 }
 
 DiagNodeStruct NodeUnit::create_struct() const
@@ -125,18 +128,15 @@ DiagLeafStruct DiagUnit::create_struct() const
 
 std::string str_level(DiagnosticLevel level)
 {
+  // clang-format off
   switch (level) {
-    case DiagnosticStatus::OK:
-      return "OK";
-    case DiagnosticStatus::WARN:
-      return "WARN";
-    case DiagnosticStatus::ERROR:
-      return "ERROR";
-    case DiagnosticStatus::STALE:
-      return "STALE";
-    default:
-      return "-----";
+    case DiagnosticStatus::OK:    return "OK";
+    case DiagnosticStatus::WARN:  return "WARN";
+    case DiagnosticStatus::ERROR: return "ERROR";
+    case DiagnosticStatus::STALE: return "STALE";
+    default: return "-----";
   }
+  // clang-format on
 }
 
 template <typename T>
@@ -144,7 +144,7 @@ void dump_data(const T & data, int width = 0)
 {
   std::cout << "| ";
   if (width) {
-    std::cout << std::setw(width);
+    std::cout << std::setw(width) << std::left;
   }
   std::cout << data;
   std::cout << " ";
@@ -154,9 +154,11 @@ void NodeUnit::dump() const
 {
   dump_data("Node");
   dump_data(this);
-  dump_data(str_level(level()), 5);
+  dump_data(str_level(latch_->level()), 5);
+  dump_data(str_level(latch_->input_level()), 5);
+  dump_data(str_level(latch_->latch_level()), 5);
   dump_data(type(), 5);
-  dump_data(path());
+  dump_data(path(), 50);
   std::cout << "|" << std::endl;
 }
 
@@ -166,7 +168,9 @@ void DiagUnit::dump() const
   dump_data(this);
   dump_data(str_level(level()), 5);
   dump_data(" --- ");
-  dump_data(name());
+  dump_data(" --- ");
+  dump_data(" --- ");
+  dump_data(name(), 50);
   std::cout << "|" << std::endl;
 }
 

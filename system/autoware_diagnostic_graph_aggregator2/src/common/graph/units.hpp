@@ -46,8 +46,8 @@ class NodeUnit : public BaseUnit
 {
 public:
   NodeUnit(
-    const std::vector<UnitLink *> parents, const std::vector<UnitLink *> children,
-    std::unique_ptr<Logic> && logic, int index, const std::string & path);
+    const std::vector<UnitLink *> parents, const std::vector<UnitLink *> children, int index,
+    const UnitConfig & config);
   ~NodeUnit();
   void dump() const;
   bool is_diag() const override { return false; }
@@ -63,6 +63,7 @@ private:
   std::vector<UnitLink *> children_;
   std::string path_;
   std::unique_ptr<Logic> logic_;
+  std::unique_ptr<LatchLevel> latch_;
 };
 
 class DiagUnit : public BaseUnit

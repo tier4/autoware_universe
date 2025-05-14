@@ -42,7 +42,7 @@ DiagnosticLevel AndLogic::level() const
   for (const auto * const link : links_) {
     level = std::max(level, link->level());
   }
-  return std::min(level, DiagnosticStatus::ERROR);
+  return level;
 }
 
 OrLogic::OrLogic(const LogicConfig & config)

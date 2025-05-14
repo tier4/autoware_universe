@@ -20,6 +20,7 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
+class ConfigYaml;
 class Graph;
 class BaseUnit;
 class NodeUnit;
@@ -27,6 +28,8 @@ class DiagUnit;
 class UnitLink;
 class Logic;
 class LogicConfig;
+
+class LatchLevel;
 
 struct ParseContext;
 struct GraphConfig;

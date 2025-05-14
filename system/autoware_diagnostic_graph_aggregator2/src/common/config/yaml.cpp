@@ -77,6 +77,11 @@ std::vector<ConfigYaml> ConfigYaml::list() const
   return result;
 }
 
+bool ConfigYaml::exists() const
+{
+  return yaml_.IsDefined();
+}
+
 std::string ConfigYaml::text() const
 {
   return yaml_.as<std::string>();
@@ -85,6 +90,11 @@ std::string ConfigYaml::text() const
 std::string ConfigYaml::text(const std::string & value) const
 {
   return yaml_.as<std::string>(value);
+}
+
+double ConfigYaml::float64() const
+{
+  return yaml_.as<double>();
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

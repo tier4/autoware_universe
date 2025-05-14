@@ -33,9 +33,12 @@ public:
 
   ConfigYaml required(const std::string & name);
   ConfigYaml optional(const std::string & name);
+  bool exists() const;
+
   std::vector<ConfigYaml> list() const;
   std::string text() const;
   std::string text(const std::string & value) const;
+  double float64() const;
 
 private:
   YAML::Node yaml_;
