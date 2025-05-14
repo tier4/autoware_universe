@@ -300,15 +300,15 @@ bool Tracker::isConfident(const rclcpp::Time & time) const
   getPositionCovarianceEigenSq(time, major_axis_sq, minor_axis_sq);
 
   // if the covariance is very small, the tracker is confident
-  constexpr double STRONG_COV_SQ_THRESHOLD = 0.28;
-  if (major_axis_sq < STRONG_COV_SQ_THRESHOLD) {
+  constexpr double STRONG_COV_THRESHOLD = 0.28;
+  if (major_axis_sq < STRONG_COV_THRESHOLD) {
     return true;
   }
 
   // if the existence probability is high and the covariance is small enough, the tracker is
   // confident
-  constexpr double WEAK_COV_SQ_THRESHOLD = 1.6;
-  if (getTotalExistenceProbability() > 0.60 && major_axis_sq < WEAK_COV_SQ_THRESHOLD) {
+  constexpr double WEAK_COV_THRESHOLD = 2.6;
+  if (getTotalExistenceProbability() > 0.50 && major_axis_sq < WEAK_COV_THRESHOLD) {
     return true;
   }
 
@@ -335,7 +335,7 @@ bool Tracker::isExpired(const rclcpp::Time & now) const
 
   // if the tracker is a bit old and the existence probability is low, check the covariance size
   constexpr double TIME_TO_CHECK_COV = 0.18;  // [sec]
-  constexpr double EXISTENCE_PROBABILITY_TO_CHECK_COV = 0.4;
+  constexpr double EXISTENCE_PROBABILITY_TO_CHECK_COV = 0.3;
   if (
     elapsed_time > TIME_TO_CHECK_COV &&
     existence_probability < EXISTENCE_PROBABILITY_TO_CHECK_COV) {
@@ -343,9 +343,9 @@ bool Tracker::isExpired(const rclcpp::Time & now) const
     double major_axis_sq = 0.0;
     double minor_axis_sq = 0.0;
     getPositionCovarianceEigenSq(now, major_axis_sq, minor_axis_sq);
-    constexpr double MAJOR_COV_SQ_THRESHOLD = 1.8;
-    constexpr double MINOR_COV_SQ_THRESHOLD = 1.2;
-    if (major_axis_sq > MAJOR_COV_SQ_THRESHOLD || minor_axis_sq > MINOR_COV_SQ_THRESHOLD) {
+    constexpr double MAJOR_COV_THRESHOLD = 3.8;
+    constexpr double MINOR_COV_THRESHOLD = 2.7;
+    if (major_axis_sq > MAJOR_COV_THRESHOLD || minor_axis_sq > MINOR_COV_THRESHOLD) {
       return true;
     }
   }
