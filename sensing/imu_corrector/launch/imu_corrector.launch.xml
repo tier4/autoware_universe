@@ -10,5 +10,6 @@
     <remap from="output" to="$(var output_topic)"/>
     <param from="$(var param_file)"/>
     <param name="sensor_model" value="$(var sensor_model)"/>
+    <param name="angular_velocity_reverscale_z" value="1.01"/>
   </node>
 </launch>
