@@ -44,13 +44,54 @@ void FlagNode::on_timer()
     pub->publish(msg);
   };
 
+  const auto input = take_data();
+  if (!input) {
+    return;
+  }
+
+  const bool is_available = autonomous_mode_->isModeChangeAvailable(
+    input->kinematics, input->trajectory, input->trajectory_follower_control_cmd,
+    input->control_cmd);
+  const bool is_completed =
+    autonomous_mode_->isModeChangeCompleted(input->kinematics, input->trajectory);
+
   const auto stamp = get_clock()->now();
-  publish(pub_transition_available_, stamp, autonomous_mode_->isModeChangeAvailable());
-  publish(pub_transition_completed_, stamp, autonomous_mode_->isModeChangeCompleted());
+  publish(pub_transition_available_, stamp, is_available);
+  publish(pub_transition_completed_, stamp, is_completed);
 
   ModeChangeBase::DebugInfo debug = autonomous_mode_->getDebugInfo();
   debug.stamp = stamp;
   pub_debug_->publish(debug);
+}
+
+std::optional<FlagNode::InputData> FlagNode::take_data()
+{
+  const auto kinematics = sub_kinematics_.take_data();
+  if (!kinematics) {
+    return std::nullopt;
+  }
+
+  const auto trajectory = sub_trajectory_.take_data();
+  if (!trajectory) {
+    return std::nullopt;
+  }
+
+  const auto control_cmd = sub_control_cmd_.take_data();
+  if (!control_cmd) {
+    return std::nullopt;
+  }
+
+  const auto trajectory_follower_control_cmd = sub_trajectory_follower_control_cmd_.take_data();
+  if (!trajectory_follower_control_cmd) {
+    return std::nullopt;
+  }
+
+  InputData data;
+  data.kinematics = *kinematics;
+  data.trajectory = *trajectory;
+  data.control_cmd = *control_cmd;
+  data.trajectory_follower_control_cmd = *trajectory_follower_control_cmd;
+  return data;
 }
 
 }  // namespace autoware::operation_mode_transition_manager
