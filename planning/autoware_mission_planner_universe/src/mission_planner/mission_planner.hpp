@@ -22,6 +22,7 @@
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_utils/ros/logger_level_configure.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -37,9 +38,6 @@
 #include <tier4_planning_msgs/srv/set_lanelet_route.hpp>
 #include <tier4_planning_msgs/srv/set_waypoint_route.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -78,8 +76,7 @@ private:
   std::shared_ptr<PlannerPlugin> planner_;
 
   std::string map_frame_;
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   Pose transform_pose(const Pose & pose, const Header & header);
 
   rclcpp::Service<ClearRoute>::SharedPtr srv_clear_route;

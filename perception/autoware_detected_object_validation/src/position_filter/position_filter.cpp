@@ -21,9 +21,7 @@ namespace autoware::detected_object_validation
 namespace position_filter
 {
 ObjectPositionFilterNode::ObjectPositionFilterNode(const rclcpp::NodeOptions & node_options)
-: Node("object_position_filter_node", node_options),
-  tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+: Node("object_position_filter_node", node_options)
 {
   using std::placeholders::_1;
 

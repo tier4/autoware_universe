@@ -43,41 +43,23 @@ namespace
 using autoware_utils::ScopedTimeTrack;
 
 bool transformPointcloud(
-  const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
+  const sensor_msgs::msg::PointCloud2 & input,
+  std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer,
   const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output)
 {
-  rclcpp::Clock clock{RCL_ROS_TIME};
-  geometry_msgs::msg::TransformStamped tf_stamped{};
-  try {
-    tf_stamped = tf2.lookupTransform(
-      target_frame, input.header.frame_id, input.header.stamp, rclcpp::Duration::from_seconds(0.5));
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN_THROTTLE(
-      rclcpp::get_logger("occupancy_grid_map_outlier_filter"), clock, 5000, "%s", ex.what());
-    return false;
-  }
-  // transform pointcloud
-  Eigen::Matrix4f tf_matrix = tf2::transformToEigen(tf_stamped.transform).matrix().cast<float>();
-  pcl_ros::transformPointCloud(tf_matrix, input, output);
-  output.header.stamp = input.header.stamp;
-  output.header.frame_id = target_frame;
-  return true;
+  return managed_tf_buffer->transformPointcloud(
+    target_frame, input, output, input.header.stamp, rclcpp::Duration::from_seconds(0.5),
+    rclcpp::get_logger("occupancy_grid_map_outlier_filter"));
 }
 
 geometry_msgs::msg::PoseStamped getPoseStamped(
-  const tf2_ros::Buffer & tf2, const std::string & target_frame_id,
-  const std::string & src_frame_id, const rclcpp::Time & time)
+  std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer,
+  const std::string & target_frame_id, const std::string & src_frame_id, const rclcpp::Time & time)
 {
-  rclcpp::Clock clock{RCL_ROS_TIME};
-  geometry_msgs::msg::TransformStamped tf_stamped{};
-  try {
-    tf_stamped =
-      tf2.lookupTransform(target_frame_id, src_frame_id, time, rclcpp::Duration::from_seconds(0.5));
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN_THROTTLE(
-      rclcpp::get_logger("occupancy_grid_map_outlier_filter"), clock, 5000, "%s", ex.what());
-  }
-  return autoware_utils::transform2pose(tf_stamped);
+  auto tf_stamped_opt = managed_tf_buffer->getTransform<geometry_msgs::msg::TransformStamped>(
+    target_frame_id, src_frame_id, time, rclcpp::Duration::from_seconds(0.5),
+    rclcpp::get_logger("occupancy_grid_map_outlier_filter"));
+  return autoware_utils::transform2pose(*tf_stamped_opt);
 }
 
 boost::optional<char> getCost(
@@ -247,8 +229,7 @@ OccupancyGridMapOutlierFilterComponent::OccupancyGridMapOutlierFilterComponent(
   auto enable_debugger = declare_parameter<bool>("enable_debugger");
 
   /* tf */
-  tf2_ = std::make_shared<tf2_ros::Buffer>(get_clock());
-  tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_);
+  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
 
   /* Subscriber and publisher */
   pointcloud_sub_.subscribe(this, "~/input/pointcloud", rmw_qos_profile_sensor_data);
@@ -336,9 +317,11 @@ void OccupancyGridMapOutlierFilterComponent::onOccupancyGridMapAndPointCloud2(
       inner_st_ptr = std::make_unique<ScopedTimeTrack>("transformPointcloud", *time_keeper_);
 
     if (
-      !transformPointcloud(input_front_pc, *tf2_, input_ogm->header.frame_id, ogm_frame_pc) ||
       !transformPointcloud(
-        input_behind_pc, *tf2_, input_ogm->header.frame_id, ogm_frame_input_behind_pc)) {
+        input_front_pc, managed_tf_buffer_, input_ogm->header.frame_id, ogm_frame_pc) ||
+      !transformPointcloud(
+        input_behind_pc, managed_tf_buffer_, input_ogm->header.frame_id,
+        ogm_frame_input_behind_pc)) {
       return;
     }
   }
@@ -365,7 +348,8 @@ void OccupancyGridMapOutlierFilterComponent::onOccupancyGridMapAndPointCloud2(
       inner_st_ptr = std::make_unique<ScopedTimeTrack>("radius_search_2d_filter", *time_keeper_);
 
     auto pc_frame_pose_stamped = getPoseStamped(
-      *tf2_, input_ogm->header.frame_id, input_pc->header.frame_id, input_ogm->header.stamp);
+      managed_tf_buffer_, input_ogm->header.frame_id, input_pc->header.frame_id,
+      input_ogm->header.stamp);
     radius_search_2d_filter_ptr_->filter(
       high_confidence_pc, low_confidence_pc, pc_frame_pose_stamped.pose, filtered_low_confidence_pc,
       outlier_pc);
@@ -394,7 +378,8 @@ void OccupancyGridMapOutlierFilterComponent::onOccupancyGridMapAndPointCloud2(
 
     ogm_frame_filtered_pc.header = ogm_frame_pc.header;
     if (!transformPointcloud(
-          ogm_frame_filtered_pc, *tf2_, base_link_frame_, *base_link_frame_filtered_pc_ptr)) {
+          ogm_frame_filtered_pc, managed_tf_buffer_, base_link_frame_,
+          *base_link_frame_filtered_pc_ptr)) {
       return;
     }
   }
@@ -548,7 +533,7 @@ void OccupancyGridMapOutlierFilterComponent::Debugger::publishLowConfidence(
 void OccupancyGridMapOutlierFilterComponent::Debugger::transformToBaseLink(
   const PointCloud2 & ros_input, [[maybe_unused]] const Header & header, PointCloud2 & output)
 {
-  transformPointcloud(ros_input, *(node_.tf2_), node_.base_link_frame_, output);
+  transformPointcloud(ros_input, node_.managed_tf_buffer_, node_.base_link_frame_, output);
 }
 
 }  // namespace autoware::occupancy_grid_map_outlier_filter

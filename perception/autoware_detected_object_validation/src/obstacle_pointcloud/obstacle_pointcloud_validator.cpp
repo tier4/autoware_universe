@@ -285,8 +285,6 @@ ObstaclePointCloudBasedValidator::ObstaclePointCloudBasedValidator(
   obstacle_pointcloud_sub_(
     this, "~/input/obstacle_pointcloud",
     rclcpp::SensorDataQoS{}.keep_last(1).get_rmw_qos_profile()),
-  tf_buffer_(get_clock()),
-  tf_listener_(tf_buffer_),
   sync_(SyncPolicy(10), objects_sub_, obstacle_pointcloud_sub_)
 {
   points_num_threshold_param_.min_points_num =
@@ -331,7 +329,7 @@ void ObstaclePointCloudBasedValidator::onObjectsAndObstaclePointCloud(
   // Transform to pointcloud frame
   autoware_perception_msgs::msg::DetectedObjects transformed_objects;
   if (!autoware::object_recognition_utils::transformObjects(
-        *input_objects, input_obstacle_pointcloud->header.frame_id, tf_buffer_,
+        *input_objects, input_obstacle_pointcloud->header.frame_id, managed_tf_buffer_,
         transformed_objects)) {
     // objects_pub_->publish(*input_objects);
     return;

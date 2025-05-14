@@ -21,6 +21,7 @@
 #include <autoware/behavior_velocity_planner_common/planner_data.hpp>
 #include <autoware/behavior_velocity_planner_common/utilization/path_utilization.hpp>
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -36,8 +37,6 @@
 #else
 #include <tf2_eigen/tf2_eigen.hpp>
 #endif
-
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -165,8 +164,7 @@ private:
   std::unique_ptr<ExactTimeSynchronizer> exact_time_synchronizer_;
 
   // tf
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   // obstacle points
   pcl::PointCloud<pcl::PointXYZ> obstacle_points_map_filtered_;
@@ -206,8 +204,9 @@ pcl::PointCloud<pcl::PointXYZ> extractLateralNearestPoints(
   const float interval);
 
 std::optional<Eigen::Affine3f> getTransformMatrix(
-  const tf2_ros::Buffer & tf_buffer, const std::string & target_frame_id,
-  const std::string & source_frame_id, const builtin_interfaces::msg::Time & stamp);
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
+  const std::string & target_frame_id, const std::string & source_frame_id,
+  const builtin_interfaces::msg::Time & stamp);
 
 pcl::PointCloud<pcl::PointXYZ> transformPointCloud(
   const PointCloud2 & input_pointcloud, const Eigen::Affine3f & transform_matrix);

@@ -30,12 +30,12 @@
 #include <image_geometry/pinhole_camera_model.h>  // for ROS 2 Humble or older
 #endif
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
+
 #include <lanelet2_core/Forward.h>
 #include <pcl/common/transforms.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <list>
 #include <map>
@@ -64,7 +64,7 @@ public:
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info_msg,
     const tier4_perception_msgs::msg::TrafficLightRoiArray::ConstSharedPtr & rois_msg,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg,
-    const tf2_ros::Buffer & tf_buffer,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
     const std::map<lanelet::Id, tf2::Vector3> & traffic_light_position_map,
     std::vector<int> & occlusion_ratios);
 

@@ -27,7 +27,6 @@
 
 #include <lanelet2_core/LaneletMap.h>
 #include <tf2/utils.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
 #include <limits>

@@ -54,8 +54,7 @@ private:
   rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_{
     nullptr};
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_{tf_buffer_};
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   DetectionClassRemapper detection_class_remapper_;
   std::vector<std::string> class_names_;

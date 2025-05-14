@@ -101,8 +101,7 @@ FreespacePlannerNode::FreespacePlannerNode(const rclcpp::NodeOptions & node_opti
 
   // TF
   {
-    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
   }
 
   // Timer
@@ -427,12 +426,9 @@ TransformStamped FreespacePlannerNode::getTransform(
   const std::string & from, const std::string & to)
 {
   TransformStamped tf;
-  try {
-    tf =
-      tf_buffer_->lookupTransform(from, to, rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_ERROR(get_logger(), "%s", ex.what());
-  }
+  auto tf_opt = managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
+    from, to, rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0), this->get_logger());
+  if (tf_opt) tf = *tf_opt;
   return tf;
 }
 

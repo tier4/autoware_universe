@@ -28,9 +28,7 @@ using geometry_msgs::msg::Pose;
 using nav_msgs::msg::OccupancyGrid;
 
 GridMapFusionNode::GridMapFusionNode(const rclcpp::NodeOptions & node_options)
-: Node("synchronized_occupancy_grid_map_fusion", node_options),
-  tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+: Node("synchronized_occupancy_grid_map_fusion", node_options)
 {
   /* load input parameters */
   {
@@ -356,7 +354,8 @@ const OccupancyGridMapFixedBlindSpot & GridMapFusionNode::SingleFrameOccupancyFu
   // get map to gridmap_origin_frame_ transform
   Pose gridmap_origin{};
   try {
-    gridmap_origin = utils::getPose(latest_stamp, tf_buffer_, gridmap_origin_frame_, map_frame_);
+    gridmap_origin =
+      utils::getPose(latest_stamp, managed_tf_buffer_, gridmap_origin_frame_, map_frame_);
   } catch (tf2::TransformException & ex) {
     RCLCPP_WARN_STREAM(get_logger(), ex.what());
     return occupancy_grid_maps[0];

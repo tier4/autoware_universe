@@ -42,9 +42,7 @@ namespace autoware::radar_object_tracker
 using Label = autoware_perception_msgs::msg::ObjectClassification;
 
 RadarObjectTrackerNode::RadarObjectTrackerNode(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("radar_object_tracker", node_options),
-  tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+: rclcpp::Node("radar_object_tracker", node_options)
 {
   // glog for debug
   if (!google::IsGoogleLoggingInitialized()) {
@@ -86,10 +84,6 @@ RadarObjectTrackerNode::RadarObjectTrackerNode(const rclcpp::NodeOptions & node_
     tracker_config_directory_ =
       ament_index_cpp::get_package_share_directory("radar_object_tracker") + "/config/tracking/";
   }
-
-  auto cti = std::make_shared<tf2_ros::CreateTimerROS>(
-    this->get_node_base_interface(), this->get_node_timers_interface());
-  tf_buffer_.setCreateTimerInterface(cti);
 
   // Create ROS time based timer
   if (enable_delay_compensation) {
@@ -156,7 +150,7 @@ void RadarObjectTrackerNode::onMeasurement(
   const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr input_objects_msg)
 {
   const auto self_transform = autoware::radar_object_tracker::utils::getTransformAnonymous(
-    tf_buffer_, "base_link", world_frame_id_, input_objects_msg->header.stamp);
+    managed_tf_buffer_, "base_link", world_frame_id_, input_objects_msg->header.stamp);
   if (!self_transform) {
     return;
   }
@@ -164,7 +158,7 @@ void RadarObjectTrackerNode::onMeasurement(
   /* transform to world coordinate */
   autoware_perception_msgs::msg::DetectedObjects transformed_objects;
   if (!autoware::object_recognition_utils::transformObjects(
-        *input_objects_msg, world_frame_id_, tf_buffer_, transformed_objects)) {
+        *input_objects_msg, world_frame_id_, managed_tf_buffer_, transformed_objects)) {
     return;
   }
 
@@ -257,7 +251,7 @@ void RadarObjectTrackerNode::onTimer()
 {
   rclcpp::Time current_time = this->now();
   const auto self_transform = autoware::radar_object_tracker::utils::getTransformAnonymous(
-    tf_buffer_, world_frame_id_, "base_link", current_time);
+    managed_tf_buffer_, world_frame_id_, "base_link", current_time);
   if (!self_transform) {
     return;
   }

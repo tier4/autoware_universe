@@ -139,8 +139,7 @@ PointCloud2::SharedPtr LaserscanBasedOccupancyGridMapNode::convertLaserscanToPoi
   // convert to pointcloud
   PointCloud2::SharedPtr pointcloud_ptr = std::make_shared<PointCloud2>();
   pointcloud_ptr->header = laserscan.header;
-  laserscan2pointcloud_converter_.transformLaserScanToPointCloud(
-    laserscan.header.frame_id, laserscan, *pointcloud_ptr, *tf2_);
+  laserscan2pointcloud_converter_.projectLaser(laserscan, *pointcloud_ptr);
 
   return pointcloud_ptr;
 }
@@ -165,12 +164,13 @@ void LaserscanBasedOccupancyGridMapNode::onLaserscanPointCloud2WithObstacleAndRa
       inner_st_ptr = std::make_unique<ScopedTimeTrack>("height_filter", *time_keeper_);
 
     if (!utils::cropPointcloudByHeight(
-          *input_obstacle_msg, *tf2_, base_link_frame_, min_height_, max_height_,
+          *input_obstacle_msg, *managed_tf_buffer_, base_link_frame_, min_height_, max_height_,
           cropped_obstacle_pc)) {
       return;
     }
     if (!utils::cropPointcloudByHeight(
-          *input_raw_msg, *tf2_, base_link_frame_, min_height_, max_height_, cropped_raw_pc)) {
+          *input_raw_msg, *managed_tf_buffer_, base_link_frame_, min_height_, max_height_,
+          cropped_raw_pc)) {
       return;
     }
   }
@@ -191,13 +191,15 @@ void LaserscanBasedOccupancyGridMapNode::onLaserscanPointCloud2WithObstacleAndRa
       inner_st_ptr = std::make_unique<ScopedTimeTrack>("transformPointcloud", *time_keeper_);
 
     try {
-      utils::transformPointcloud(*laserscan_pc_ptr, *tf2_, map_frame_, trans_laserscan_pc);
-      utils::transformPointcloud(filtered_obstacle_pc, *tf2_, map_frame_, trans_obstacle_pc);
-      utils::transformPointcloud(filtered_raw_pc, *tf2_, map_frame_, trans_raw_pc);
-      gridmap_origin =
-        utils::getPose(laserscan_pc_ptr->header.stamp, *tf2_, gridmap_origin_frame_, map_frame_);
-      scan_origin =
-        utils::getPose(laserscan_pc_ptr->header.stamp, *tf2_, scan_origin_frame_, map_frame_);
+      utils::transformPointcloud(
+        *laserscan_pc_ptr, *managed_tf_buffer_, map_frame_, trans_laserscan_pc);
+      utils::transformPointcloud(
+        filtered_obstacle_pc, *managed_tf_buffer_, map_frame_, trans_obstacle_pc);
+      utils::transformPointcloud(filtered_raw_pc, *managed_tf_buffer_, map_frame_, trans_raw_pc);
+      gridmap_origin = utils::getPose(
+        laserscan_pc_ptr->header.stamp, *managed_tf_buffer_, gridmap_origin_frame_, map_frame_);
+      scan_origin = utils::getPose(
+        laserscan_pc_ptr->header.stamp, *managed_tf_buffer_, scan_origin_frame_, map_frame_);
     } catch (tf2::TransformException & ex) {
       RCLCPP_WARN_STREAM(get_logger(), ex.what());
       return;

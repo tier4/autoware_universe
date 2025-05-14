@@ -17,11 +17,11 @@
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_utils</depend>
   <depend>eigen</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>mussp</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>tf2</depend>
-  <depend>tf2_ros</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>autoware_lint_common</test_depend>

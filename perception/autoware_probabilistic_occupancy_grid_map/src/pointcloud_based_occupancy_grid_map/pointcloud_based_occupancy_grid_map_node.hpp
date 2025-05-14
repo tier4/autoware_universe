@@ -26,14 +26,13 @@
 #include <autoware_utils/system/time_keeper.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <laser_geometry/laser_geometry.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 #include <cuda_runtime.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -48,8 +47,6 @@ using nav2_costmap_2d::Costmap2D;
 using nav_msgs::msg::OccupancyGrid;
 using sensor_msgs::msg::LaserScan;
 using sensor_msgs::msg::PointCloud2;
-using tf2_ros::Buffer;
-using tf2_ros::TransformListener;
 
 class PointcloudBasedOccupancyGridMapNode : public rclcpp::Node
 {
@@ -73,8 +70,8 @@ private:
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{};
   std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{};
 
-  std::shared_ptr<Buffer> tf2_{std::make_shared<Buffer>(get_clock())};
-  std::shared_ptr<TransformListener> tf2_listener_{std::make_shared<TransformListener>(*tf2_)};
+  std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_{
+    std::make_shared<managed_transform_buffer::ManagedTransformBuffer>()};
 
   std::unique_ptr<OccupancyGridMapInterface> occupancy_grid_map_ptr_;
   std::unique_ptr<OccupancyGridMapUpdaterInterface> occupancy_grid_map_updater_ptr_;

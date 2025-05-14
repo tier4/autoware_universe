@@ -31,8 +31,6 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 
@@ -50,10 +48,6 @@ public:
 
 private:
   // Subscriber
-
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
-
   message_filters::Subscriber<DetectedObjectsWithFeature> detected_rois_sub_;
   message_filters::Subscriber<TrafficLightRoiArray> rough_rois_sub_;
   message_filters::Subscriber<TrafficLightRoiArray> expected_rois_sub_;

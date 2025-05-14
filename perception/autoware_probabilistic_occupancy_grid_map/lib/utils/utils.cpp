@@ -29,49 +29,29 @@ namespace utils
 
 // used in laserscan based occupancy grid map
 bool transformPointcloud(
-  const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
+  const sensor_msgs::msg::PointCloud2 & input,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output)
 {
-  geometry_msgs::msg::TransformStamped tf_stamped;
-  // lookup transform
-  try {
-    tf_stamped = tf2.lookupTransform(
-      target_frame, input.header.frame_id, input.header.stamp, rclcpp::Duration::from_seconds(0.5));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN(
-      rclcpp::get_logger("probabilistic_occupancy_grid_map"), "Failed to lookup transform: %s",
-      ex.what());
-    return false;
-  }
-  // transform pointcloud
-  Eigen::Matrix4f tf_matrix = tf2::transformToEigen(tf_stamped.transform).matrix().cast<float>();
-  pcl_ros::transformPointCloud(tf_matrix, input, output);
-  output.header.stamp = input.header.stamp;
-  output.header.frame_id = target_frame;
-  return true;
+  return managed_tf_buffer.transformPointcloud(
+    target_frame, input, output, input.header.stamp, rclcpp::Duration::from_seconds(0.5),
+    rclcpp::get_logger("probabilistic_occupancy_grid_map"));
 }
 
 #ifdef USE_CUDA
 bool transformPointcloudAsync(
-  CudaPointCloud2 & input, const tf2_ros::Buffer & tf2, const std::string & target_frame,
+  CudaPointCloud2 & input, managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
+  const std::string & target_frame,
   autoware::cuda_utils::CudaUniquePtr<Eigen::Matrix3f> & device_rotation,
   autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> & device_translation)
 {
-  geometry_msgs::msg::TransformStamped tf_stamped;
-  // lookup transform
-  try {
-    tf_stamped = tf2.lookupTransform(
-      target_frame, input.header.frame_id, input.header.stamp, rclcpp::Duration::from_seconds(0.5));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN(
-      rclcpp::get_logger("probabilistic_occupancy_grid_map"), "Failed to lookup transform: %s",
-      ex.what());
-    return false;
-  }
-  // transform pointcloud
-  Eigen::Matrix4f tf_matrix = tf2::transformToEigen(tf_stamped.transform).matrix().cast<float>();
-  Eigen::Matrix3f rotation = tf_matrix.block<3, 3>(0, 0);
-  Eigen::Vector3f translation = tf_matrix.block<3, 1>(0, 3);
+  auto tf_matrix_opt = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
+    target_frame, input.header.frame_id, input.header.stamp, rclcpp::Duration::from_seconds(0.5),
+    rclcpp::get_logger("probabilistic_occupancy_grid_map"));
+  if (!tf_matrix_opt) return false;
+
+  Eigen::Matrix3f rotation = tf_matrix_opt->block<3, 3>(0, 0);
+  Eigen::Vector3f translation = tf_matrix_opt->block<3, 1>(0, 3);
 
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     device_rotation.get(), rotation.data(), sizeof(Eigen::Matrix3f), cudaMemcpyHostToDevice,
@@ -97,7 +77,8 @@ Eigen::Matrix4f getTransformMatrix(const geometry_msgs::msg::Pose & pose)
 }
 
 bool cropPointcloudByHeight(
-  const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
+  const sensor_msgs::msg::PointCloud2 & input,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::string & target_frame, const float min_height, const float max_height,
   sensor_msgs::msg::PointCloud2 & output)
 {
@@ -106,7 +87,7 @@ bool cropPointcloudByHeight(
   sensor_msgs::msg::PointCloud2 trans_input_tmp;
   const bool is_target_frame = (input.header.frame_id == target_frame);
   if (!is_target_frame) {
-    if (!transformPointcloud(input, tf2, target_frame, trans_input_tmp)) return false;
+    if (!transformPointcloud(input, managed_tf_buffer, target_frame, trans_input_tmp)) return false;
   }
   const sensor_msgs::msg::PointCloud2 & trans_input = is_target_frame ? input : trans_input_tmp;
 
@@ -127,26 +108,30 @@ bool cropPointcloudByHeight(
 }
 
 geometry_msgs::msg::Pose getPose(
-  const std_msgs::msg::Header & source_header, const tf2_ros::Buffer & tf2,
+  const std_msgs::msg::Header & source_header,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::string & target_frame)
 {
   geometry_msgs::msg::Pose pose;
-  geometry_msgs::msg::TransformStamped tf_stamped;
-  tf_stamped = tf2.lookupTransform(
-    target_frame, source_header.frame_id, source_header.stamp, rclcpp::Duration::from_seconds(0.5));
-  pose = autoware_utils::transform2pose(tf_stamped.transform);
+  auto tf_stamped_opt = managed_tf_buffer.getTransform<geometry_msgs::msg::TransformStamped>(
+    target_frame, source_header.frame_id, source_header.stamp, rclcpp::Duration::from_seconds(0.5),
+    rclcpp::get_logger("probabilistic_occupancy_grid_map"));
+  if (!tf_stamped_opt) throw tf2::TransformException("Failed to lookup transform");
+  pose = autoware_utils::transform2pose(tf_stamped_opt->transform);
   return pose;
 }
 
 geometry_msgs::msg::Pose getPose(
-  const builtin_interfaces::msg::Time & stamp, const tf2_ros::Buffer & tf2,
+  const builtin_interfaces::msg::Time & stamp,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::string & source_frame, const std::string & target_frame)
 {
   geometry_msgs::msg::Pose pose;
-  geometry_msgs::msg::TransformStamped tf_stamped;
-  tf_stamped =
-    tf2.lookupTransform(target_frame, source_frame, stamp, rclcpp::Duration::from_seconds(0.5));
-  pose = autoware_utils::transform2pose(tf_stamped.transform);
+  auto tf_stamped_opt = managed_tf_buffer.getTransform<geometry_msgs::msg::TransformStamped>(
+    target_frame, source_frame, stamp, rclcpp::Duration::from_seconds(0.5),
+    rclcpp::get_logger("probabilistic_occupancy_grid_map"));
+  if (!tf_stamped_opt) throw tf2::TransformException("Failed to lookup transform");
+  pose = autoware_utils::transform2pose(tf_stamped_opt->transform);
   return pose;
 }
 

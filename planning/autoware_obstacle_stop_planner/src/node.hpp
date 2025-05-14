@@ -27,6 +27,7 @@
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -53,8 +54,6 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <map>
 #include <memory>
@@ -173,8 +172,7 @@ private:
   std::optional<SlowDownSection> latest_slow_down_section_{std::nullopt};
   std::vector<ObstacleWithDetectionTime> obstacle_history_{};
   std::vector<PredictedObjectWithDetectionTime> predicted_object_history_{};
-  tf2_ros::Buffer tf_buffer_{get_clock()};
-  tf2_ros::TransformListener tf_listener_{tf_buffer_};
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   PointCloud2::SharedPtr obstacle_ros_pointcloud_ptr_{nullptr};
   PredictedObjects::ConstSharedPtr object_ptr_{nullptr};
 

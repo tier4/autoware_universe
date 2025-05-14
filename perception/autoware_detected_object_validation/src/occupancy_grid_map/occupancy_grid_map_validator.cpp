@@ -42,8 +42,6 @@ OccupancyGridBasedValidator::OccupancyGridBasedValidator(const rclcpp::NodeOptio
 : rclcpp::Node("occupancy_grid_based_validator", node_options),
   objects_sub_(this, "~/input/detected_objects", rclcpp::QoS{1}.get_rmw_qos_profile()),
   occ_grid_sub_(this, "~/input/occupancy_grid_map", rclcpp::QoS{1}.get_rmw_qos_profile()),
-  tf_buffer_(get_clock()),
-  tf_listener_(tf_buffer_),
   sync_(SyncPolicy(10), objects_sub_, occ_grid_sub_)
 {
   using std::placeholders::_1;
@@ -68,7 +66,7 @@ void OccupancyGridBasedValidator::onObjectsAndOccGrid(
   // Transform to occ grid frame
   autoware_perception_msgs::msg::DetectedObjects transformed_objects;
   if (!autoware::object_recognition_utils::transformObjects(
-        *input_objects, input_occ_grid->header.frame_id, tf_buffer_, transformed_objects))
+        *input_objects, input_occ_grid->header.frame_id, managed_tf_buffer_, transformed_objects))
     return;
 
   // Convert ros data type to cv::Mat

@@ -20,8 +20,8 @@
 #include "autoware/perception_online_evaluator/metrics/metric.hpp"
 #include "autoware/perception_online_evaluator/parameters.hpp"
 #include "autoware/perception_online_evaluator/utils/objects_filtering.hpp"
-#include "tf2_ros/buffer.h"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/time.hpp>
 
 #include "autoware_perception_msgs/msg/object_classification.hpp"
@@ -100,11 +100,15 @@ public:
   /**
    * @brief set the dynamic objects used to calculate obstacle metrics
    * @param [in] objects predicted objects
-   * @param [in] tf_buffer tf buffer
+   * @param [in] managed_tf_buffer managed transform buffer
    */
-  void setPredictedObjects(const PredictedObjects & objects, const tf2_ros::Buffer & tf_buffer);
+  void setPredictedObjects(
+    const PredictedObjects & objects,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
-  void updateObjectsCountMap(const PredictedObjects & objects, const tf2_ros::Buffer & tf_buffer);
+  void updateObjectsCountMap(
+    const PredictedObjects & objects,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
   HistoryPathMap getHistoryPathMap() const { return history_path_map_; }
   ObjectDataMap getDebugObjectData() const { return debug_target_object_; }

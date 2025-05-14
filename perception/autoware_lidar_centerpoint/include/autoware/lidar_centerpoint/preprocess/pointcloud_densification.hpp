@@ -16,9 +16,7 @@
 #define AUTOWARE__LIDAR_CENTERPOINT__PREPROCESS__POINTCLOUD_DENSIFICATION_HPP_
 
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include <list>
 #include <string>
@@ -63,7 +61,7 @@ public:
 
   bool enqueuePointCloud(
     const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
-    const tf2_ros::Buffer & tf_buffer);
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
   double getCurrentTimestamp() const { return current_timestamp_; }
   Eigen::Affine3f getAffineWorldToCurrent() const { return affine_world2current_; }

@@ -121,8 +121,7 @@ LidarMarkerLocalizer::LidarMarkerLocalizer(const rclcpp::NodeOptions & node_opti
     std::bind(&LidarMarkerLocalizer::service_trigger_node, this, _1, _2),
     rclcpp::ServicesQoS().get_rmw_qos_profile(), points_callback_group);
 
-  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, this, false);
+  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
 
   diagnostics_interface_.reset(
     new autoware_utils::DiagnosticsInterface(this, "marker_detection_status"));
@@ -600,20 +599,15 @@ void LidarMarkerLocalizer::transform_sensor_measurement(
     return;
   }
 
-  geometry_msgs::msg::TransformStamped transform;
-  try {
-    transform = tf_buffer_->lookupTransform(source_frame, target_frame, tf2::TimePointZero);
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN(this->get_logger(), "%s", ex.what());
-    RCLCPP_WARN(
-      this->get_logger(), "Please publish TF %s to %s", target_frame.c_str(), source_frame.c_str());
-    // Since there is no clear error handling policy, temporarily return as is.
+  auto transform_opt = managed_tf_buffer_->getLatestTransform<geometry_msgs::msg::TransformStamped>(
+    source_frame, target_frame, this->get_logger());
+  if (!transform_opt) {
     sensor_points_output_ptr = sensor_points_input_ptr;
     return;
   }
 
   const geometry_msgs::msg::PoseStamped target_to_source_pose_stamped =
-    autoware_utils::transform2pose(transform);
+    autoware_utils::transform2pose(*transform_opt);
   const Eigen::Matrix4f base_to_sensor_matrix =
     autoware::localization_util::pose_to_matrix4f(target_to_source_pose_stamped.pose);
   pcl_ros::transformPointCloud(

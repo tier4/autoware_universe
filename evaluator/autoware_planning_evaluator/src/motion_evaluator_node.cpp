@@ -30,8 +30,7 @@ MotionEvaluatorNode::MotionEvaluatorNode(const rclcpp::NodeOptions & node_option
 : Node("motion_evaluator", node_options),
   vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo())
 {
-  tf_buffer_ptr_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-  tf_listener_ptr_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_ptr_);
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
 
   twist_sub_ = create_subscription<nav_msgs::msg::Odometry>(
     "~/input/twist", rclcpp::QoS{1},
@@ -124,18 +123,14 @@ geometry_msgs::msg::Pose MotionEvaluatorNode::getCurrentEgoPose() const
   geometry_msgs::msg::TransformStamped tf_current_pose;
 
   geometry_msgs::msg::Pose p;
-  try {
-    tf_current_pose = tf_buffer_ptr_->lookupTransform(
-      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR(get_logger(), "%s", ex.what());
-    return p;
-  }
+  auto tf_current_pose_opt = managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
+    "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0), this->get_logger());
+  if (!tf_current_pose_opt) return p;
 
-  p.orientation = tf_current_pose.transform.rotation;
-  p.position.x = tf_current_pose.transform.translation.x;
-  p.position.y = tf_current_pose.transform.translation.y;
-  p.position.z = tf_current_pose.transform.translation.z;
+  p.orientation = tf_current_pose_opt->transform.rotation;
+  p.position.x = tf_current_pose_opt->transform.translation.x;
+  p.position.y = tf_current_pose_opt->transform.translation.y;
+  p.position.z = tf_current_pose_opt->transform.translation.z;
   return p;
 }
 

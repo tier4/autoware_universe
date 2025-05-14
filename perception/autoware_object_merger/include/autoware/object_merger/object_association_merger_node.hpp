@@ -21,6 +21,7 @@
 #include "autoware_utils/system/stop_watch.hpp"
 
 #include <autoware_utils/ros/diagnostics_interface.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
@@ -37,9 +38,6 @@
 #else
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <map>
 #include <memory>
@@ -62,8 +60,7 @@ private:
 
   void diagCallback();
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr merged_object_pub_;
   message_filters::Subscriber<autoware_perception_msgs::msg::DetectedObjects> object0_sub_{};
   message_filters::Subscriber<autoware_perception_msgs::msg::DetectedObjects> object1_sub_{};

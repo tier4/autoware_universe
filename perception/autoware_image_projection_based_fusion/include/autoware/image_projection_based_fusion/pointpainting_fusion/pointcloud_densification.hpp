@@ -15,8 +15,6 @@
 #ifndef AUTOWARE__IMAGE_PROJECTION_BASED_FUSION__POINTPAINTING_FUSION__POINTCLOUD_DENSIFICATION_HPP_
 #define AUTOWARE__IMAGE_PROJECTION_BASED_FUSION__POINTPAINTING_FUSION__POINTCLOUD_DENSIFICATION_HPP_
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
 #else
@@ -24,6 +22,7 @@
 #endif
 
 #include <autoware/lidar_centerpoint/preprocess/pointcloud_densification.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include <list>
 #include <string>
@@ -43,7 +42,8 @@ public:
   explicit PointCloudDensification(const autoware::lidar_centerpoint::DensificationParam & param);
 
   bool enqueuePointCloud(
-    const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg, const tf2_ros::Buffer & tf_buffer);
+    const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
   double getCurrentTimestamp() const { return current_timestamp_; }
   Eigen::Affine3f getAffineWorldToCurrent() const { return affine_world2current_; }

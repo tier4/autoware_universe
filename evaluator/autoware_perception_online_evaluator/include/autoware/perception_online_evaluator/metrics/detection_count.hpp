@@ -16,8 +16,8 @@
 #define AUTOWARE__PERCEPTION_ONLINE_EVALUATOR__METRICS__DETECTION_COUNT_HPP_
 
 #include "autoware/perception_online_evaluator/parameters.hpp"
-#include "tf2_ros/buffer.h"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/object_classification.hpp"
@@ -79,9 +79,11 @@ public:
   /*
    * @brief Add objects to the detection counter
    * @param objects Predicted objects
-   * @param tf_buffer tf2 buffer for transforming object poses
+   * @param managed_tf_buffer managed transform buffer for transforming object poses
    */
-  void addObjects(const PredictedObjects & objects, const tf2_ros::Buffer & tf_buffer);
+  void addObjects(
+    const PredictedObjects & objects,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
   /*
    * @brief Get the average count of objects detected in the last `seconds` seconds

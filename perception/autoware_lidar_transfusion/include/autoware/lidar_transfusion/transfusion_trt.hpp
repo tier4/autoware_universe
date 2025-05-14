@@ -48,7 +48,8 @@ public:
   virtual ~TransfusionTRT();
 
   bool detect(
-    const sensor_msgs::msg::PointCloud2 & msg, const tf2_ros::Buffer & tf_buffer,
+    const sensor_msgs::msg::PointCloud2 & msg,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
     std::vector<Box3D> & det_boxes3d, std::unordered_map<std::string, double> & proc_timing);
 
 protected:
@@ -56,7 +57,9 @@ protected:
 
   void initPtr();
 
-  bool preprocess(const sensor_msgs::msg::PointCloud2 & msg, const tf2_ros::Buffer & tf_buffer);
+  bool preprocess(
+    const sensor_msgs::msg::PointCloud2 & msg,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
   bool inference();
 

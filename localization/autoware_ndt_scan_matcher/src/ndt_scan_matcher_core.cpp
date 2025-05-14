@@ -92,8 +92,6 @@ std::array<double, 36> rotate_covariance(
 NDTScanMatcher::NDTScanMatcher(const rclcpp::NodeOptions & options)
 : Node("ndt_scan_matcher", options),
   tf2_broadcaster_(*this),
-  tf2_buffer_(this->get_clock()),
-  tf2_listener_(tf2_buffer_),
   ndt_ptr_(new NormalDistributionsTransform),
   is_activated_(false),
   param_(this)
@@ -713,15 +711,12 @@ void NDTScanMatcher::transform_sensor_measurement(
     return;
   }
 
-  geometry_msgs::msg::TransformStamped transform;
-  try {
-    transform = tf2_buffer_.lookupTransform(target_frame, source_frame, tf2::TimePointZero);
-  } catch (const tf2::TransformException & ex) {
-    throw;
-  }
+  auto transform_opt = managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
+    target_frame, source_frame, this->get_logger());
+  if (!transform_opt) throw;
 
   const geometry_msgs::msg::PoseStamped target_to_source_pose_stamped =
-    autoware_utils::transform2pose(transform);
+    autoware_utils::transform2pose(*transform_opt);
   const Eigen::Matrix4f base_to_sensor_matrix =
     pose_to_matrix4f(target_to_source_pose_stamped.pose);
   autoware_utils::transform_pointcloud(
@@ -1005,14 +1000,10 @@ void NDTScanMatcher::service_ndt_align_main(
   const std::string & target_frame = param_.frame.map_frame;
   const std::string & source_frame = req->pose_with_covariance.header.frame_id;
 
-  geometry_msgs::msg::TransformStamped transform_s2t;
-  try {
-    transform_s2t = tf2_buffer_.lookupTransform(target_frame, source_frame, tf2::TimePointZero);
-  } catch (tf2::TransformException & ex) {
-    // Note: Up to AWSIMv1.1.0, there is a known bug where the GNSS frame_id is incorrectly set to
-    // "gnss_link" instead of "map". The ndt_align is designed to return identity when this issue
-    // occurs. However, in the future, converting to a non-existent frame_id should be prohibited.
-
+  auto transform_s2t_opt =
+    managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
+      target_frame, source_frame, this->get_logger());
+  if (!transform_s2t_opt) {
     diagnostics_ndt_align_->add_key_value("is_succeed_transform_initial_pose", false);
 
     std::stringstream message;
@@ -1027,7 +1018,7 @@ void NDTScanMatcher::service_ndt_align_main(
 
   // transform pose_frame to map_frame
   auto initial_pose_msg_in_map_frame =
-    autoware::localization_util::transform(req->pose_with_covariance, transform_s2t);
+    autoware::localization_util::transform(req->pose_with_covariance, *transform_s2t_opt);
   initial_pose_msg_in_map_frame.header.stamp = req->pose_with_covariance.header.stamp;
   map_update_module_->update_map(
     initial_pose_msg_in_map_frame.pose.pose.position, diagnostics_ndt_align_);

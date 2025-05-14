@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__DUMMY_PERCEPTION_PUBLISHER__NODE_HPP_
 #define AUTOWARE__DUMMY_PERCEPTION_PUBLISHER__NODE_HPP_
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
@@ -34,8 +35,6 @@
 #else
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <random>
@@ -119,8 +118,7 @@ private:
     ground_truth_objects_pub_;
   rclcpp::Subscription<tier4_simulation_msgs::msg::DummyObject>::SharedPtr object_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   std::vector<tier4_simulation_msgs::msg::DummyObject> objects_;
   double visible_range_;
   double detection_successful_rate_;

@@ -19,10 +19,9 @@
 
 namespace yabloc::common
 {
-StaticTfSubscriber::StaticTfSubscriber(rclcpp::Clock::SharedPtr clock)
+StaticTfSubscriber::StaticTfSubscriber()
 {
-  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(clock);
-  transform_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
 }
 
 std::optional<Sophus::SE3f> StaticTfSubscriber::se3f(
@@ -38,26 +37,11 @@ std::optional<Sophus::SE3f> StaticTfSubscriber::se3f(
 std::optional<Eigen::Affine3f> StaticTfSubscriber::operator()(
   const std::string & frame_id, const std::string & parent_frame_id)
 {
-  std::optional<Eigen::Affine3f> extrinsic{std::nullopt};
-  try {
-    geometry_msgs::msg::TransformStamped ts =
-      tf_buffer_->lookupTransform(parent_frame_id, frame_id, tf2::TimePointZero);
-    Eigen::Vector3f p;
-    p.x() = static_cast<float>(ts.transform.translation.x);
-    p.y() = static_cast<float>(ts.transform.translation.y);
-    p.z() = static_cast<float>(ts.transform.translation.z);
+  auto extrinsic_opt =
+    managed_tf_buffer_->getLatestTransform<Eigen::Matrix4f>(parent_frame_id, frame_id);
+  if (!extrinsic_opt) return {};
 
-    Eigen::Quaternionf q;
-    q.w() = static_cast<float>(ts.transform.rotation.w);
-    q.x() = static_cast<float>(ts.transform.rotation.x);
-    q.y() = static_cast<float>(ts.transform.rotation.y);
-    q.z() = static_cast<float>(ts.transform.rotation.z);
-    extrinsic = Eigen::Affine3f::Identity();
-    extrinsic->translation() = p;
-    extrinsic->matrix().topLeftCorner(3, 3) = q.toRotationMatrix();
-  } catch (const tf2::TransformException & ex) {
-  }
-  return extrinsic;
+  return Eigen::Affine3f(extrinsic_opt->matrix());
 }
 
 }  // namespace yabloc::common

@@ -27,7 +27,7 @@ namespace autoware::lidar_transfusion
 {
 
 LidarTransfusionNode::LidarTransfusionNode(const rclcpp::NodeOptions & options)
-: Node("lidar_transfusion", options), tf_buffer_(this->get_clock())
+: Node("lidar_transfusion", options)
 {
   auto descriptor = rcl_interfaces::msg::ParameterDescriptor{}.set__read_only(true);
   // network
@@ -153,7 +153,7 @@ void LidarTransfusionNode::cloudCallback(const sensor_msgs::msg::PointCloud2::Co
 
   std::vector<Box3D> det_boxes3d;
   std::unordered_map<std::string, double> proc_timing;
-  bool is_success = detector_ptr_->detect(*msg, tf_buffer_, det_boxes3d, proc_timing);
+  bool is_success = detector_ptr_->detect(*msg, managed_tf_buffer_, det_boxes3d, proc_timing);
   if (!is_success) {
     return;
   }

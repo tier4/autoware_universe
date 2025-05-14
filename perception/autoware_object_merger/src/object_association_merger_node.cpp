@@ -80,8 +80,6 @@ namespace autoware::object_merger
 {
 ObjectAssociationMergerNode::ObjectAssociationMergerNode(const rclcpp::NodeOptions & node_options)
 : rclcpp::Node("object_association_merger_node", node_options),
-  tf_buffer_(get_clock()),
-  tf_listener_(tf_buffer_),
   object0_sub_(this, "input/object0", rclcpp::QoS{1}.get_rmw_qos_profile()),
   object1_sub_(this, "input/object1", rclcpp::QoS{1}.get_rmw_qos_profile())
 {
@@ -156,9 +154,9 @@ void ObjectAssociationMergerNode::objectsCallback(
   autoware_perception_msgs::msg::DetectedObjects transformed_objects0, transformed_objects1;
   if (
     !autoware::object_recognition_utils::transformObjects(
-      *input_objects0_msg, base_link_frame_id_, tf_buffer_, transformed_objects0) ||
+      *input_objects0_msg, base_link_frame_id_, managed_tf_buffer_, transformed_objects0) ||
     !autoware::object_recognition_utils::transformObjects(
-      *input_objects1_msg, base_link_frame_id_, tf_buffer_, transformed_objects1)) {
+      *input_objects1_msg, base_link_frame_id_, managed_tf_buffer_, transformed_objects1)) {
     return;
   }
 

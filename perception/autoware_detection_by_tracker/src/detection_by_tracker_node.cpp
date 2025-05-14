@@ -86,9 +86,7 @@ namespace autoware::detection_by_tracker
 {
 
 DetectionByTracker::DetectionByTracker(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("detection_by_tracker", node_options),
-  tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+: rclcpp::Node("detection_by_tracker", node_options)
 {
   // Create publishers and subscribers
   trackers_sub_ = create_subscription<autoware_perception_msgs::msg::TrackedObjects>(
@@ -161,7 +159,7 @@ void DetectionByTracker::onObjects(
     if (
       !available_trackers ||
       !autoware::object_recognition_utils::transformObjects(
-        objects, input_msg->header.frame_id, tf_buffer_, transformed_objects)) {
+        objects, input_msg->header.frame_id, managed_tf_buffer_, transformed_objects)) {
       objects_pub_->publish(detected_objects);
       published_time_publisher_->publish_if_subscribed(objects_pub_, detected_objects.header.stamp);
       return;

@@ -24,6 +24,7 @@
   <depend>generate_parameter_library</depend>
   <depend>grid_map_ros</depend>
   <depend>libpcl-all-dev</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>pcl_conversions</depend>
   <depend>pcl_ros</depend>
   <depend>rclcpp</depend>
@@ -31,7 +32,6 @@
   <depend>tf2</depend>
   <depend>tf2_eigen</depend>
   <depend>tf2_geometry_msgs</depend>
-  <depend>tf2_ros</depend>
   <depend>tier4_planning_msgs</depend>
 
   <test_depend>ament_cmake_ros</test_depend>

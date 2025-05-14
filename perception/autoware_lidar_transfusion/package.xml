@@ -19,6 +19,7 @@
   <depend>autoware_tensorrt_common</depend>
   <depend>autoware_utils</depend>
   <depend>launch_ros</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>pcl_ros</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>

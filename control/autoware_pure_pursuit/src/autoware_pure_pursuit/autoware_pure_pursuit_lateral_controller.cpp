@@ -59,10 +59,7 @@ enum TYPE {
 namespace autoware::pure_pursuit
 {
 PurePursuitLateralController::PurePursuitLateralController(rclcpp::Node & node)
-: clock_(node.get_clock()),
-  logger_(node.get_logger().get_child("lateral_controller")),
-  tf_buffer_(clock_),
-  tf_listener_(tf_buffer_)
+: clock_(node.get_clock()), logger_(node.get_logger().get_child("lateral_controller"))
 {
   pure_pursuit_ = std::make_unique<PurePursuit>();
 

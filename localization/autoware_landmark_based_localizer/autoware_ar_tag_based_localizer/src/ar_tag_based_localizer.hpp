@@ -48,6 +48,7 @@
 #include "autoware/landmark_manager/landmark_manager.hpp"
 #include "autoware/localization_util/smart_pose_buffer.hpp"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
@@ -58,9 +59,7 @@
 #include <visualization_msgs/msg/marker.hpp>
 
 #include <aruco/aruco.h>
-#include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <deque>
 #include <map>
@@ -102,8 +101,7 @@ private:
   double ekf_position_tolerance_{};
 
   // tf
-  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::unique_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 
   // Subscribers
   rclcpp::Subscription<LaneletMapBin>::SharedPtr map_bin_sub_;

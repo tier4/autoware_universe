@@ -19,13 +19,13 @@
   <depend>autoware_utils</depend>
   <depend>geometry_msgs</depend>
   <depend>image_geometry</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
   <depend>tf2</depend>
   <depend>tf2_eigen</depend>
   <depend>tf2_geometry_msgs</depend>
-  <depend>tf2_ros</depend>
   <depend>tier4_perception_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>

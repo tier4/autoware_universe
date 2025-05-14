@@ -58,19 +58,16 @@ DetectionRanges DetectionCounter::getRanges() const
 }
 
 void DetectionCounter::addObjects(
-  const PredictedObjects & objects, const tf2_ros::Buffer & tf_buffer)
+  const PredictedObjects & objects,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer)
 {
   // initialize the data structures if new class or new range is detected
   initializeDetectionMap();
 
   const auto objects_frame_id = objects.header.frame_id;
-  geometry_msgs::msg::TransformStamped transform_stamped;
-  try {
-    transform_stamped = tf_buffer.lookupTransform(
-      "base_link", objects_frame_id, tf2::TimePointZero, tf2::durationFromSec(1.0));
-  } catch (const tf2::TransformException & ex) {
-    return;
-  }
+  auto transform_stamped_opt = managed_tf_buffer.getTransform<geometry_msgs::msg::TransformStamped>(
+    "base_link", objects_frame_id, tf2::TimePointZero, tf2::durationFromSec(1.0));
+  if (!transform_stamped_opt) return;
 
   const auto timestamp = objects.header.stamp;
   unique_timestamps_.insert(timestamp);
@@ -88,7 +85,7 @@ void DetectionCounter::addObjects(
       pose_in.pose = object.kinematics.initial_pose_with_covariance.pose;
 
       // Transform the object's pose into the 'base_link' coordinate frame
-      tf2::doTransform(pose_in, pose_out, transform_stamped);
+      tf2::doTransform(pose_in, pose_out, *transform_stamped_opt);
 
       const double distance_to_base_link =
         std::hypot(pose_out.pose.position.x, pose_out.pose.position.y);

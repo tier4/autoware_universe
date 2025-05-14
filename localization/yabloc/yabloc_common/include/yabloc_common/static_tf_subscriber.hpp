@@ -16,10 +16,8 @@
 #define YABLOC_COMMON__STATIC_TF_SUBSCRIBER_HPP_
 
 #include <Eigen/Geometry>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <sophus/geometry.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <optional>
@@ -30,7 +28,7 @@ namespace yabloc::common
 class StaticTfSubscriber
 {
 public:
-  explicit StaticTfSubscriber(rclcpp::Clock::SharedPtr clock);
+  explicit StaticTfSubscriber();
 
   std::optional<Sophus::SE3f> se3f(
     const std::string & frame_id, const std::string & parent_frame_id = "base_link");
@@ -39,8 +37,7 @@ public:
     const std::string & frame_id, const std::string & parent_frame_id = "base_link");
 
 private:
-  std::shared_ptr<tf2_ros::TransformListener> transform_listener_{nullptr};
-  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::unique_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 };
 
 }  // namespace yabloc::common

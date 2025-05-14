@@ -32,8 +32,7 @@ namespace autoware
 {
 namespace lidar_apollo_instance_segmentation
 {
-LidarApolloInstanceSegmentation::LidarApolloInstanceSegmentation(rclcpp::Node * node)
-: node_(node), tf_buffer_(node_->get_clock()), tf_listener_(tf_buffer_)
+LidarApolloInstanceSegmentation::LidarApolloInstanceSegmentation(rclcpp::Node * node) : node_(node)
 {
   int range, width, height;
   bool use_intensity_feature, use_constant_feature;
@@ -88,22 +87,10 @@ bool LidarApolloInstanceSegmentation::transformCloud(
   pcl::fromROSMsg(input, pcl_input);
 
   // transform pointcloud to target_frame
-  if (target_frame_ != input.header.frame_id) {
-    try {
-      geometry_msgs::msg::TransformStamped transform_stamped;
-      transform_stamped = tf_buffer_.lookupTransform(
-        target_frame_, input.header.frame_id, input.header.stamp, std::chrono::milliseconds(500));
-      Eigen::Matrix4f affine_matrix =
-        tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
-      autoware_utils::transform_pointcloud(pcl_input, pcl_transformed_cloud, affine_matrix);
-      transformed_cloud.header.frame_id = target_frame_;
-      pcl_transformed_cloud.header.frame_id = target_frame_;
-    } catch (tf2::TransformException & ex) {
-      RCLCPP_WARN(node_->get_logger(), "%s", ex.what());
-      return false;
-    }
-  } else {
-    pcl_transformed_cloud = pcl_input;
+  if (!managed_tf_buffer_.transformPointcloud<pcl::PointXYZI>(
+        target_frame_, pcl_input, pcl_transformed_cloud, input.header.stamp,
+        rclcpp::Duration::from_seconds(0.5), node_->get_logger())) {
+    return false;
   }
 
   // move pointcloud z_offset in z axis

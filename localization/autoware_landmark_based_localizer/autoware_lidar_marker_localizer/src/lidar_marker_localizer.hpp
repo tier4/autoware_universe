@@ -18,14 +18,12 @@
 #include "autoware/localization_util/smart_pose_buffer.hpp"
 #include "autoware_utils/ros/diagnostics_interface.hpp"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_srvs/srv/set_bool.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <deque>
 #include <memory>
@@ -119,8 +117,7 @@ private:
     const sensor_msgs::msg::PointCloud2::SharedPtr & sensor_points_input_ptr,
     sensor_msgs::msg::PointCloud2::SharedPtr & sensor_points_output_ptr);
 
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 
   rclcpp::Subscription<PointCloud2>::SharedPtr sub_points_;
   rclcpp::Subscription<PoseWithCovarianceStamped>::SharedPtr sub_self_pose_;

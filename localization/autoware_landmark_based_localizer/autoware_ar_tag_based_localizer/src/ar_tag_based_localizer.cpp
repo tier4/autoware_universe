@@ -112,8 +112,7 @@ ArTagBasedLocalizer::ArTagBasedLocalizer(const rclcpp::NodeOptions & options)
   /*
     tf
   */
-  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-  tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
 
   /*
     Subscribers
@@ -304,12 +303,11 @@ std::vector<landmark_manager::Landmark> ArTagBasedLocalizer::detect_landmarks(
   }
 
   // get transform from base_link to camera
-  TransformStamped transform_sensor_to_base_link;
-  try {
-    transform_sensor_to_base_link =
-      tf_buffer_->lookupTransform("base_link", msg->header.frame_id, sensor_stamp);
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_INFO(this->get_logger(), "Could not transform base_link to camera: %s", ex.what());
+  auto transform_sensor_to_base_link_opt =
+    managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
+      "base_link", msg->header.frame_id, sensor_stamp, rclcpp::Duration::from_seconds(1.0),
+      this->get_logger());
+  if (!transform_sensor_to_base_link_opt) {
     return std::vector<Landmark>{};
   }
 
@@ -333,7 +331,7 @@ std::vector<landmark_manager::Landmark> ArTagBasedLocalizer::detect_landmarks(
     pose.orientation.w = q.w;
     const double distance = std::hypot(pose.position.x, pose.position.y, pose.position.z);
     if (distance <= distance_threshold_) {
-      tf2::doTransform(pose, pose, transform_sensor_to_base_link);
+      tf2::doTransform(pose, pose, *transform_sensor_to_base_link_opt);
       landmarks.push_back(Landmark{std::to_string(marker.id), pose});
     }
 

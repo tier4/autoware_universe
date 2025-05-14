@@ -20,12 +20,10 @@
 #include "autoware_utils/system/stop_watch.hpp"
 
 #include <Eigen/Eigen>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "tier4_perception_msgs/msg/detected_objects_with_feature.hpp"
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -47,8 +45,7 @@ private:
   rclcpp::Subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
     object_sub_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   double intensity_threshold_;
   double existence_probability_threshold_;
   double max_x_;

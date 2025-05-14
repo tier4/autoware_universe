@@ -272,7 +272,9 @@ std::optional<Obstacle> SurroundObstacleCheckerNode::getNearestObstacleByPointCl
   }
 
   const auto transform_stamped =
-    getTransform("base_link", pointcloud_ptr_->header.frame_id, pointcloud_ptr_->header.stamp, 0.5);
+    managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+      "base_link", pointcloud_ptr_->header.frame_id, pointcloud_ptr_->header.stamp,
+      rclcpp::Duration::from_seconds(0.5), this->get_logger());
 
   if (!transform_stamped) {
     return std::nullopt;
@@ -358,22 +360,6 @@ std::optional<Obstacle> SurroundObstacleCheckerNode::getNearestObstacleByDynamic
     return std::make_pair(minimum_distance, nearest_point);
   }
   return std::nullopt;
-}
-
-std::optional<geometry_msgs::msg::TransformStamped> SurroundObstacleCheckerNode::getTransform(
-  const std::string & source, const std::string & target, const rclcpp::Time & stamp,
-  double duration_sec) const
-{
-  geometry_msgs::msg::TransformStamped transform_stamped;
-
-  try {
-    transform_stamped =
-      tf_buffer_.lookupTransform(source, target, stamp, tf2::durationFromSec(duration_sec));
-  } catch (const tf2::TransformException & ex) {
-    return {};
-  }
-
-  return transform_stamped;
 }
 
 auto SurroundObstacleCheckerNode::isStopRequired(

@@ -92,13 +92,11 @@ void RoiDetectedObjectFusionNode::fuse_on_single_image(
 
   Eigen::Affine3d object2camera_affine;
   {
-    const auto transform_stamped_optional = getTransformStamped(
-      tf_buffer_, /*target*/ input_rois_msg.header.frame_id,
-      /*source*/ input_object_msg.header.frame_id, input_rois_msg.header.stamp);
-    if (!transform_stamped_optional) {
-      return;
-    }
-    object2camera_affine = transformToEigen(transform_stamped_optional.value().transform);
+    const auto transform_stamped_optional = managed_tf_buffer_.getTransform<Eigen::Matrix4f>(
+      input_rois_msg.header.frame_id, input_object_msg.header.frame_id, input_rois_msg.header.stamp,
+      rclcpp::Duration::from_seconds(0.01), rclcpp::get_logger("image_projection_based_fusion"));
+    if (!transform_stamped_optional) return;
+    object2camera_affine = Eigen::Affine3d(transform_stamped_optional->matrix().cast<double>());
   }
 
   const auto object_roi_map =

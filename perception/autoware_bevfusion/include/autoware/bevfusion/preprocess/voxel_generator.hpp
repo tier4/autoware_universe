@@ -44,7 +44,8 @@ public:
     cudaStream_t stream);
   std::size_t generateSweepPoints(CudaUniquePtr<float[]> & points_d);
   bool enqueuePointCloud(
-    const sensor_msgs::msg::PointCloud2 & msg, const tf2_ros::Buffer & tf_buffer);
+    const sensor_msgs::msg::PointCloud2 & msg,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
   void initCloudInfo(const sensor_msgs::msg::PointCloud2 & msg);
   std::tuple<const std::uint32_t, const std::uint8_t, const std::uint8_t> getFieldInfo(
     const sensor_msgs::msg::PointCloud2 & msg, const std::string & field_name);

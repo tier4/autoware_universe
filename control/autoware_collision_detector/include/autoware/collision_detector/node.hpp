@@ -18,6 +18,7 @@
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
@@ -29,8 +30,6 @@
 #include <boost/optional.hpp>
 
 #include <tf2/utils.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -98,13 +97,8 @@ private:
 
   boost::optional<Obstacle> getNearestObstacleByDynamicObject() const;
 
-  boost::optional<geometry_msgs::msg::TransformStamped> getTransform(
-    const std::string & source, const std::string & target, const rclcpp::Time & stamp,
-    double duration_sec) const;
-
   // ros
-  mutable tf2_ros::Buffer tf_buffer_{get_clock()};
-  mutable tf2_ros::TransformListener tf_listener_{tf_buffer_};
+  mutable managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   // publisher and subscriber

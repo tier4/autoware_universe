@@ -21,6 +21,7 @@
   <depend>autoware_pointcloud_preprocessor</depend>
   <depend>autoware_utils</depend>
   <depend>libpcl-all-dev</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>message_filters</depend>
   <depend>nav_msgs</depend>
   <depend>pcl_conversions</depend>
@@ -30,7 +31,6 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>tf2_eigen</depend>
-  <depend>tf2_ros</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>autoware_lint_common</test_depend>

@@ -97,12 +97,12 @@ void SegmentPointCloudFusionNode::fuse_on_single_image(
   geometry_msgs::msg::TransformStamped transform_stamped;
   // transform pointcloud from frame id to camera optical frame id
   {
-    const auto transform_stamped_optional = getTransformStamped(
-      tf_buffer_, input_mask.header.frame_id, input_pointcloud_msg.header.frame_id,
-      input_pointcloud_msg.header.stamp);
-    if (!transform_stamped_optional) {
-      return;
-    }
+    const auto transform_stamped_optional =
+      managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+        input_mask.header.frame_id, input_pointcloud_msg.header.frame_id,
+        input_pointcloud_msg.header.stamp, rclcpp::Duration::from_seconds(0.01),
+        rclcpp::get_logger("image_projection_based_fusion"));
+    if (!transform_stamped_optional) return;
     transform_stamped = transform_stamped_optional.value();
   }
 

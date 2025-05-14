@@ -143,11 +143,12 @@ void TransfusionTRT::initTrt(const tensorrt_common::TrtCommonConfig & trt_config
 }
 
 bool TransfusionTRT::detect(
-  const sensor_msgs::msg::PointCloud2 & msg, const tf2_ros::Buffer & tf_buffer,
+  const sensor_msgs::msg::PointCloud2 & msg,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   std::vector<Box3D> & det_boxes3d, std::unordered_map<std::string, double> & proc_timing)
 {
   stop_watch_ptr_->toc("processing/inner", true);
-  if (!preprocess(msg, tf_buffer)) {
+  if (!preprocess(msg, managed_tf_buffer)) {
     RCLCPP_WARN_STREAM(
       rclcpp::get_logger("lidar_transfusion"), "Fail to preprocess and skip to detect.");
     return false;
@@ -175,9 +176,10 @@ bool TransfusionTRT::detect(
 }
 
 bool TransfusionTRT::preprocess(
-  const sensor_msgs::msg::PointCloud2 & msg, const tf2_ros::Buffer & tf_buffer)
+  const sensor_msgs::msg::PointCloud2 & msg,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer)
 {
-  if (!vg_ptr_->enqueuePointCloud(msg, tf_buffer)) {
+  if (!vg_ptr_->enqueuePointCloud(msg, managed_tf_buffer)) {
     return false;
   }
 

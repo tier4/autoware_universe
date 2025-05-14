@@ -36,7 +36,7 @@ public:
 
   bool enqueuePointCloud(
     const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
-    const tf2_ros::Buffer & tf_buffer);
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
 protected:
   std::unique_ptr<PointCloudDensification> pd_ptr_{nullptr};

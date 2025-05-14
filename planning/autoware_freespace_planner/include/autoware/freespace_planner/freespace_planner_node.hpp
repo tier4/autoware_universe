@@ -37,6 +37,7 @@
 #include <autoware/freespace_planning_algorithms/rrtstar.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
@@ -55,9 +56,6 @@
 #endif
 
 #include <autoware/route_handler/route_handler.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <deque>
 #include <iostream>
@@ -125,8 +123,7 @@ private:
 
   rclcpp::TimerBase::SharedPtr timer_;
 
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 
   // params
   NodeParam node_param_;

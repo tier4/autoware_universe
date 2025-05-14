@@ -69,8 +69,7 @@ TopicPublisher::TopicPublisher(
     init_rosbag_publishers();
   } else if (node_running_mode_ == RunningMode::PlanningControl) {
     // init tf
-    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
 
     // get parameters
     topic_publisher_params_.dummy_perception_publisher_period =
@@ -218,20 +217,13 @@ void TopicPublisher::dummy_perception_publisher()
     pub_predicted_objects_->publish(empty_predicted_objects);
   } else {
     // transform pointcloud
-    geometry_msgs::msg::TransformStamped transform_stamped{};
-    try {
-      transform_stamped = tf_buffer_->lookupTransform(
-        "base_link", "map", node_->now(), rclcpp::Duration::from_seconds(0.1));
-    } catch (tf2::TransformException & ex) {
-      RCLCPP_ERROR_STREAM(node_->get_logger(), "Failed to look up transform from map to base_link");
-      return;
-    }
-
-    // transform by using eigen matrix
     PointCloud2 transformed_points{};
-    const Eigen::Matrix4f affine_matrix =
-      tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
-    pcl_ros::transformPointCloud(affine_matrix, *entity_pointcloud_ptr_, transformed_points);
+    auto success = managed_tf_buffer_->transformPointcloud(
+      "map", *entity_pointcloud_ptr_, transformed_points, node_->now(),
+      rclcpp::Duration::from_seconds(0.1));
+    if (!success) return;
+    pcl::PointCloud<pcl::PointXYZ> pcl_pointcloud;
+    pcl::fromROSMsg(transformed_points, pcl_pointcloud);
     const auto current_time = node_->now();
 
     transformed_points.header.frame_id = "base_link";

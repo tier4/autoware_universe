@@ -19,6 +19,7 @@
 #include "autoware_utils/ros/published_time_publisher.hpp"
 #include "autoware_utils/system/time_keeper.hpp"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <pcl/common/impl/common.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -34,9 +35,7 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/search/kdtree.h>
-#include <tf2_ros/buffer.h>
 #include <tf2_ros/message_filter.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -113,8 +112,7 @@ private:
   std::shared_ptr<Sync> sync_ptr_;
 
   // tf
-  std::shared_ptr<tf2_ros::Buffer> tf2_;
-  std::shared_ptr<tf2_ros::TransformListener> tf2_listener_;
+  std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 
   // 2d outlier filter
   std::shared_ptr<RadiusSearch2dFilter> radius_search_2d_filter_ptr_;

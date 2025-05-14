@@ -246,13 +246,15 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw()
     // Make sure that the frame is base_link
     if (raw_pointcloud_.header.frame_id != base_link_frame_) {
       if (!utils::transformPointcloudAsync(
-            raw_pointcloud_, *tf2_, base_link_frame_, device_rotation_, device_translation_)) {
+            raw_pointcloud_, *managed_tf_buffer_, base_link_frame_, device_rotation_,
+            device_translation_)) {
         return;
       }
     }
     if (obstacle_pointcloud_.header.frame_id != base_link_frame_) {
       if (!utils::transformPointcloudAsync(
-            obstacle_pointcloud_, *tf2_, base_link_frame_, device_rotation_, device_translation_)) {
+            obstacle_pointcloud_, *managed_tf_buffer_, base_link_frame_, device_rotation_,
+            device_translation_)) {
         return;
       }
     }
@@ -267,11 +269,12 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw()
   Pose gridmap_origin{};
   Pose scan_origin{};
   try {
-    robot_pose = utils::getPose(raw_pointcloud_.header.stamp, *tf2_, base_link_frame_, map_frame_);
-    gridmap_origin =
-      utils::getPose(raw_pointcloud_.header.stamp, *tf2_, gridmap_origin_frame_, map_frame_);
-    scan_origin =
-      utils::getPose(raw_pointcloud_.header.stamp, *tf2_, scan_origin_frame_, map_frame_);
+    robot_pose = utils::getPose(
+      raw_pointcloud_.header.stamp, *managed_tf_buffer_, base_link_frame_, map_frame_);
+    gridmap_origin = utils::getPose(
+      raw_pointcloud_.header.stamp, *managed_tf_buffer_, gridmap_origin_frame_, map_frame_);
+    scan_origin = utils::getPose(
+      raw_pointcloud_.header.stamp, *managed_tf_buffer_, scan_origin_frame_, map_frame_);
   } catch (tf2::TransformException & ex) {
     RCLCPP_WARN_STREAM(get_logger(), ex.what());
     return;

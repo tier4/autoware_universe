@@ -15,6 +15,7 @@
 #ifndef SUBSCRIBER_HPP_
 #define SUBSCRIBER_HPP_
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <utils.hpp>
@@ -26,8 +27,6 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <map>
 #include <memory>
@@ -145,8 +144,7 @@ private:
   std::map<std::string, MessageBufferVariant> message_buffers_;
 
   // tf
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 
   // Functions
   void init_reaction_chains_and_params();

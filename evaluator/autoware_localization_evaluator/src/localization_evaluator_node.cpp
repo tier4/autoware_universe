@@ -31,9 +31,6 @@ LocalizationEvaluatorNode::LocalizationEvaluatorNode(const rclcpp::NodeOptions &
   pose_gt_sub_(this, "~/input/localization/ref", rclcpp::QoS{1}.get_rmw_qos_profile()),
   sync_(SyncPolicy(100), odom_sub_, pose_gt_sub_)
 {
-  tf_buffer_ptr_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-  tf_listener_ptr_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_ptr_);
-
   sync_.registerCallback(std::bind(
     &LocalizationEvaluatorNode::syncCallback, this, std::placeholders::_1, std::placeholders::_2));
 

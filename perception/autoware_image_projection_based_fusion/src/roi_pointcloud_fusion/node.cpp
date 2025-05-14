@@ -94,9 +94,11 @@ void RoiPointCloudFusionNode::fuse_on_single_image(
 
   geometry_msgs::msg::TransformStamped transform_stamped;
   {
-    const auto transform_stamped_optional = getTransformStamped(
-      tf_buffer_, input_rois_msg.header.frame_id, input_pointcloud_msg.header.frame_id,
-      input_rois_msg.header.stamp);
+    const auto transform_stamped_optional =
+      managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+        input_rois_msg.header.frame_id, input_pointcloud_msg.header.frame_id,
+        input_rois_msg.header.stamp, rclcpp::Duration::from_seconds(0.01),
+        rclcpp::get_logger("image_projection_based_fusion"));
     if (!transform_stamped_optional) {
       return;
     }
@@ -168,7 +170,8 @@ void RoiPointCloudFusionNode::fuse_on_single_image(
   // refine and update output_fused_objects_
   updateOutputFusedObjects(
     output_objs, clusters, clusters_data_size, input_pointcloud_msg, input_rois_msg.header,
-    tf_buffer_, min_cluster_size_, max_cluster_size_, cluster_2d_tolerance_, output_fused_objects_);
+    managed_tf_buffer_, min_cluster_size_, max_cluster_size_, cluster_2d_tolerance_,
+    output_fused_objects_);
 
   // publish debug image
   if (debugger_) {

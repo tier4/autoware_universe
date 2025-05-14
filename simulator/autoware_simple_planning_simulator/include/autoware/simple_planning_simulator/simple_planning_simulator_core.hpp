@@ -20,6 +20,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "tier4_api_utils/tier4_api_utils.hpp"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
+
 #include "autoware_control_msgs/msg/control.hpp"
 #include "autoware_map_msgs/msg/lanelet_map_bin.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
@@ -48,8 +50,6 @@
 #include "tier4_vehicle_msgs/msg/actuation_status_stamped.hpp"
 
 #include <lanelet2_core/geometry/Lanelet.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <random>
@@ -170,8 +170,7 @@ private:
   lanelet::ConstLanelets road_lanelets_;
 
   /* tf */
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   /* received & published topics */
   PoseWithCovarianceStamped::ConstSharedPtr initial_pose_{};

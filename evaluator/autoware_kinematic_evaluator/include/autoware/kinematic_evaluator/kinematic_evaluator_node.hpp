@@ -18,8 +18,8 @@
 #include "autoware/kinematic_evaluator/metrics_calculator.hpp"
 #include "autoware_utils/math/accumulator.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/transform_listener.h"
+
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
@@ -64,8 +64,7 @@ private:
   // ROS
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Publisher<DiagnosticArray>::SharedPtr metrics_pub_;
-  std::unique_ptr<tf2_ros::Buffer> tf_buffer_ptr_;
-  std::unique_ptr<tf2_ros::TransformListener> tf_listener_ptr_;
+  std::unique_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 
   // Parameters
   std::string output_file_str_;

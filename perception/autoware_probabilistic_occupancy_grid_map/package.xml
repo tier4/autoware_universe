@@ -23,6 +23,7 @@
   <depend>grid_map_msgs</depend>
   <depend>grid_map_ros</depend>
   <depend>laser_geometry</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>message_filters</depend>
   <depend>nav2_costmap_2d</depend>
   <depend>nav_msgs</depend>
@@ -31,7 +32,6 @@
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
   <depend>tf2_eigen</depend>
-  <depend>tf2_ros</depend>
   <depend>tf2_sensor_msgs</depend>
 
   <exec_depend>autoware_pointcloud_preprocessor</exec_depend>

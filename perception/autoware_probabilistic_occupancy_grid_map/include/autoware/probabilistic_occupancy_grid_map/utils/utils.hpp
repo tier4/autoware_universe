@@ -25,6 +25,7 @@
 #endif
 
 #include <builtin_interfaces/msg/time.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -36,8 +37,6 @@
 
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_eigen/tf2_eigen.h>
@@ -58,12 +57,14 @@ namespace utils
 {
 
 bool transformPointcloud(
-  const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
+  const sensor_msgs::msg::PointCloud2 & input,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output);
 
 #ifdef USE_CUDA
 bool transformPointcloudAsync(
-  CudaPointCloud2 & input, const tf2_ros::Buffer & tf2, const std::string & target_frame,
+  CudaPointCloud2 & input, managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
+  const std::string & target_frame,
   autoware::cuda_utils::CudaUniquePtr<Eigen::Matrix3f> & device_rotation,
   autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> & device_translation);
 #endif
@@ -71,17 +72,20 @@ bool transformPointcloudAsync(
 Eigen::Matrix4f getTransformMatrix(const geometry_msgs::msg::Pose & pose);
 
 bool cropPointcloudByHeight(
-  const sensor_msgs::msg::PointCloud2 & input, const tf2_ros::Buffer & tf2,
+  const sensor_msgs::msg::PointCloud2 & input,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::string & target_frame, const float min_height, const float max_height,
   sensor_msgs::msg::PointCloud2 & output);
 
 // get pose from tf2
 geometry_msgs::msg::Pose getPose(
-  const std_msgs::msg::Header & source_header, const tf2_ros::Buffer & tf2,
+  const std_msgs::msg::Header & source_header,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::string & target_frame);
 
 geometry_msgs::msg::Pose getPose(
-  const builtin_interfaces::msg::Time & stamp, const tf2_ros::Buffer & tf2,
+  const builtin_interfaces::msg::Time & stamp,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::string & source_frame, const std::string & target_frame);
 
 // get inverted pose

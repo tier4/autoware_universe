@@ -54,7 +54,7 @@ double calcLookaheadDistance(
 namespace autoware::pure_pursuit
 {
 PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions & node_options)
-: Node("pure_pursuit", node_options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
+: Node("pure_pursuit", node_options)
 {
   pure_pursuit_ = std::make_unique<PurePursuit>();
 
@@ -88,7 +88,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions & node_options)
   }
 
   //  Wait for first current pose
-  tf_utils::waitForTransform(tf_buffer_, "map", "base_link");
+  tf_utils::waitForTransform(managed_tf_buffer_, "map", "base_link");
 }
 
 bool PurePursuitNode::isDataReady()

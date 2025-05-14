@@ -35,6 +35,7 @@
 
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/self_pose_listener.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_control_msgs/msg/lateral.hpp>
@@ -44,9 +45,6 @@
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <boost/optional.hpp>  // To be replaced by std::optional in C++17
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 
@@ -93,8 +91,7 @@ private:
   void onCurrentOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
 
   // TF
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   geometry_msgs::msg::PoseStamped::ConstSharedPtr current_pose_;
 
   // Publisher

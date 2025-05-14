@@ -17,16 +17,15 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <boost/optional.hpp>  // To be replaced by std::optional in C++17
-
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #else
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
 
-#include <tf2_ros/transform_listener.h>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 
+#include <optional>
 #include <string>
 
 #define TF_UTILS_LOGGER "tf_utils"
@@ -36,28 +35,23 @@ namespace autoware::pure_pursuit
 namespace tf_utils
 {
 rclcpp::Logger logger = rclcpp::get_logger(TF_UTILS_LOGGER);
-inline boost::optional<geometry_msgs::msg::TransformStamped> getTransform(
-  const tf2_ros::Buffer & tf_buffer, const std::string & from, const std::string & to,
-  const rclcpp::Time & time, const rclcpp::Duration & duration)
+inline std::optional<geometry_msgs::msg::TransformStamped> getTransform(
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer, const std::string & from,
+  const std::string & to, const rclcpp::Time & time, const rclcpp::Duration & duration)
 {
-  try {
-    return tf_buffer.lookupTransform(from, to, time, duration);
-  } catch (tf2::TransformException & ex) {
-    return {};
-  }
+  return managed_tf_buffer.getTransform<geometry_msgs::msg::TransformStamped>(
+    from, to, time, duration, logger);
 }
 
 inline geometry_msgs::msg::TransformStamped waitForTransform(
-  const tf2_ros::Buffer & tf_buffer, const std::string & from, const std::string & to)
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer, const std::string & from,
+  const std::string & to)
 {
   while (rclcpp::ok()) {
-    try {
-      const auto transform = tf_buffer.lookupTransform(from, to, tf2::TimePointZero);
-      return transform;
-    } catch (tf2::TransformException & ex) {
-      RCLCPP_INFO(logger, "waiting for transform from `%s` to `%s` ...", from.c_str(), to.c_str());
-      rclcpp::sleep_for(std::chrono::milliseconds(5000));
-    }
+    auto transform_opt =
+      managed_tf_buffer.getLatestTransform<geometry_msgs::msg::TransformStamped>(from, to, logger);
+    if (transform_opt) return *transform_opt;
+    rclcpp::sleep_for(std::chrono::milliseconds(5000));
   }
   return geometry_msgs::msg::TransformStamped();
 }
@@ -74,11 +68,11 @@ inline geometry_msgs::msg::PoseStamped transform2pose(
   return pose;
 }
 
-inline boost::optional<geometry_msgs::msg::PoseStamped> getCurrentPose(
-  const tf2_ros::Buffer & tf_buffer, const double timeout = 1.0)
+inline std::optional<geometry_msgs::msg::PoseStamped> getCurrentPose(
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer, const double timeout = 1.0)
 {
   const auto tf_current_pose = getTransform(
-    tf_buffer, "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(0.0));
+    managed_tf_buffer, "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(0.0));
   if (!tf_current_pose) {
     return {};
   }

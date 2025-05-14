@@ -21,6 +21,7 @@
 #include "autoware_utils/ros/published_time_publisher.hpp"
 #include "debugger.hpp"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
@@ -36,8 +37,6 @@
 #include <pcl/search/kdtree.h>
 #include <pcl/search/pcl_search.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <optional>
@@ -143,8 +142,7 @@ private:
   message_filters::Subscriber<autoware_perception_msgs::msg::DetectedObjects> objects_sub_;
   message_filters::Subscriber<sensor_msgs::msg::PointCloud2> obstacle_pointcloud_sub_;
   std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_{nullptr};
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   typedef message_filters::sync_policies::ApproximateTime<
     autoware_perception_msgs::msg::DetectedObjects, sensor_msgs::msg::PointCloud2>

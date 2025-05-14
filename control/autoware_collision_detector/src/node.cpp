@@ -185,14 +185,16 @@ PredictedObjects CollisionDetectorNode::filterObjects(const PredictedObjects & i
 
   // Get transform from object frame to base_link
   const auto transform_stamped =
-    getTransform("base_link", input_objects.header.frame_id, input_objects.header.stamp, 0.5);
+    managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+      "base_link", input_objects.header.frame_id, input_objects.header.stamp,
+      rclcpp::Duration::from_seconds(0.5), this->get_logger());
 
   if (!transform_stamped) {
     RCLCPP_ERROR(this->get_logger(), "Failed to get transform from object frame to base_link");
     return filtered_objects;
   }
 
-  Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.get().transform).cast<float>();
+  Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped->transform).cast<float>();
 
   for (const auto & object : input_objects.objects) {
     // Transform object position to base_link frame
@@ -409,7 +411,9 @@ boost::optional<Obstacle> CollisionDetectorNode::getNearestObstacle() const
 boost::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByPointCloud() const
 {
   const auto transform_stamped =
-    getTransform("base_link", pointcloud_ptr_->header.frame_id, pointcloud_ptr_->header.stamp, 0.5);
+    managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+      "base_link", pointcloud_ptr_->header.frame_id, pointcloud_ptr_->header.stamp,
+      rclcpp::Duration::from_seconds(0.5), this->get_logger());
 
   geometry_msgs::msg::Point nearest_point;
   auto minimum_distance = std::numeric_limits<double>::max();
@@ -418,7 +422,7 @@ boost::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByPointCloud(
     return {};
   }
 
-  Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped.get().transform).cast<float>();
+  Eigen::Affine3f isometry = tf2::transformToEigen(transform_stamped->transform).cast<float>();
   pcl::PointCloud<pcl::PointXYZ> transformed_pointcloud;
   pcl::fromROSMsg(*pointcloud_ptr_, transformed_pointcloud);
   pcl::transformPointCloud(transformed_pointcloud, transformed_pointcloud, isometry);
@@ -441,8 +445,10 @@ boost::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByPointCloud(
 
 boost::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByDynamicObject() const
 {
-  const auto transform_stamped = getTransform(
-    filtered_object_ptr_->header.frame_id, "base_link", filtered_object_ptr_->header.stamp, 0.5);
+  const auto transform_stamped =
+    managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+      filtered_object_ptr_->header.frame_id, "base_link", filtered_object_ptr_->header.stamp,
+      rclcpp::Duration::from_seconds(0.5), this->get_logger());
 
   geometry_msgs::msg::Point nearest_point;
   auto minimum_distance = std::numeric_limits<double>::max();
@@ -452,7 +458,7 @@ boost::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByDynamicObje
   }
 
   tf2::Transform tf_src2target;
-  tf2::fromMsg(transform_stamped.get().transform, tf_src2target);
+  tf2::fromMsg(transform_stamped->transform, tf_src2target);
 
   const auto ego_polygon = createSelfPolygon(vehicle_info_);
 
@@ -489,22 +495,6 @@ boost::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByDynamicObje
   }
 
   return std::make_pair(minimum_distance, nearest_point);
-}
-
-boost::optional<geometry_msgs::msg::TransformStamped> CollisionDetectorNode::getTransform(
-  const std::string & source, const std::string & target, const rclcpp::Time & stamp,
-  double duration_sec) const
-{
-  geometry_msgs::msg::TransformStamped transform_stamped;
-
-  try {
-    transform_stamped =
-      tf_buffer_.lookupTransform(source, target, stamp, tf2::durationFromSec(duration_sec));
-  } catch (const tf2::TransformException & ex) {
-    return {};
-  }
-
-  return transform_stamped;
 }
 
 }  // namespace autoware::collision_detector

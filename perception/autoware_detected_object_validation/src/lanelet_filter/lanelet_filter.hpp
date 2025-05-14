@@ -22,6 +22,7 @@
 #include "autoware_utils/ros/published_time_publisher.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_map_msgs/msg/lanelet_map_bin.hpp"
@@ -32,8 +33,6 @@
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/geometry/Lanelet.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <limits>
 #include <memory>
@@ -85,8 +84,7 @@ private:
   lanelet::LaneletMapPtr lanelet_map_ptr_;
   std::string lanelet_frame_id_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   utils::FilterTargetLabel filter_target_;
   double ego_base_height_ = 0.0;

@@ -27,9 +27,7 @@
 namespace autoware::low_intensity_cluster_filter
 {
 LowIntensityClusterFilter::LowIntensityClusterFilter(const rclcpp::NodeOptions & node_options)
-: Node("low_intensity_cluster_filter_node", node_options),
-  tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+: Node("low_intensity_cluster_filter_node", node_options)
 {
   intensity_threshold_ = declare_parameter<double>("intensity_threshold");
   existence_probability_threshold_ = declare_parameter<double>("existence_probability_threshold");
@@ -75,22 +73,21 @@ void LowIntensityClusterFilter::objectCallback(
 
   tier4_perception_msgs::msg::DetectedObjectsWithFeature output_object_msg;
   output_object_msg.header = input_msg->header;
-  geometry_msgs::msg::TransformStamped transform_stamp;
-  try {
-    transform_stamp = tf_buffer_.lookupTransform(
-      input_msg->header.frame_id, base_link_frame_id_, tf2_ros::fromMsg(input_msg->header.stamp));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR(get_logger(), "Failed to lookup transform: %s", ex.what());
-    return;
-  }
+  auto transform_stamp_opt = managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+    input_msg->header.frame_id, base_link_frame_id_, input_msg->header.stamp,
+    rclcpp::Duration::from_seconds(0.0), this->get_logger());
+  if (!transform_stamp_opt) return;
+
   geometry_msgs::msg::Pose min_range;
   min_range.position.x = min_x_;
   min_range.position.y = min_y_;
   geometry_msgs::msg::Pose max_pose;
   max_pose.position.x = max_x_;
   max_pose.position.y = max_y_;
-  auto min_ranged_transformed = autoware_utils::transform_pose(min_range, transform_stamp);
-  auto max_range_transformed = autoware_utils::transform_pose(max_pose, transform_stamp);
+  auto min_ranged_transformed =
+    autoware_utils::transform_pose(min_range, transform_stamp_opt->transform);
+  auto max_range_transformed =
+    autoware_utils::transform_pose(max_pose, transform_stamp_opt->transform);
   for (const auto & feature_object : input_msg->feature_objects) {
     const auto & object = feature_object.object;
     const auto & label = object.classification.front().label;

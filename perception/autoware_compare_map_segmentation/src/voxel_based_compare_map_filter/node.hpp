@@ -20,11 +20,10 @@
 
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/search/pcl_search.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 
@@ -53,8 +52,8 @@ private:
   // interfaces
   std::unique_ptr<VoxelGridMapLoader> voxel_grid_map_loader_;
   rclcpp::Subscription<PointCloud2>::SharedPtr sub_map_;
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   // parameters
   double distance_threshold_;

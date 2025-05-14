@@ -17,12 +17,11 @@
   <depend>autoware_object_recognition_utils</depend>
   <depend>autoware_shape_estimation</depend>
   <depend>autoware_utils</depend>
-  <depend>eigen</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>tf2</depend>
   <depend>tf2_geometry_msgs</depend>
-  <depend>tf2_ros</depend>
   <depend>tier4_perception_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>

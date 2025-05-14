@@ -21,12 +21,12 @@
   <depend>diagnostic_updater</depend>
   <depend>eigen</depend>
   <depend>glog</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>mussp</depend>
   <depend>nlohmann-json-dev</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>tf2</depend>
-  <depend>tf2_ros</depend>
   <depend>unique_identifier_msgs</depend>
   <depend>yaml-cpp</depend>
 

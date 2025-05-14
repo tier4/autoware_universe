@@ -86,15 +86,11 @@ void RoiClusterFusionNode::fuse_on_single_image(
   // get transform from cluster frame id to camera optical frame id
   geometry_msgs::msg::TransformStamped transform_stamped;
   {
-    const auto transform_stamped_optional = getTransformStamped(
-      tf_buffer_, /*target*/ camera_info.header.frame_id,
-      /*source*/ input_cluster_msg.header.frame_id, camera_info.header.stamp);
-    if (!transform_stamped_optional) {
-      RCLCPP_WARN_STREAM(
-        get_logger(), "Failed to get transform from " << input_cluster_msg.header.frame_id << " to "
-                                                      << camera_info.header.frame_id);
-      return;
-    }
+    const auto transform_stamped_optional =
+      managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+        camera_info.header.frame_id, input_cluster_msg.header.frame_id, camera_info.header.stamp,
+        rclcpp::Duration::from_seconds(0.01), rclcpp::get_logger("image_projection_based_fusion"));
+    if (!transform_stamped_optional) return;
     transform_stamped = transform_stamped_optional.value();
   }
 

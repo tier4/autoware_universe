@@ -22,8 +22,7 @@
 
 namespace yabloc::initializer
 {
-ProjectorModule::ProjectorModule(rclcpp::Node * node)
-: info_(node), tf_subscriber_(node->get_clock()), logger_(node->get_logger())
+ProjectorModule::ProjectorModule(rclcpp::Node * node) : info_(node), logger_(node->get_logger())
 {
 }
 

@@ -54,8 +54,7 @@ private:
     const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg);
   void diagnoseProcessingTime(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_{tf_buffer_};
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   std::unique_ptr<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>
     pointcloud_sub_;

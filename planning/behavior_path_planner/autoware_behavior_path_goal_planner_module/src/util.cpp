@@ -30,7 +30,6 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <tf2/utils.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
 #include <map>

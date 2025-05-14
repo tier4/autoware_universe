@@ -22,6 +22,7 @@
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -46,8 +47,6 @@
 #include <pcl/point_types.h>
 #include <pcl/surface/convex_hull.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <deque>
 #include <limits>
@@ -541,8 +540,7 @@ public:
   PredictedObjects::ConstSharedPtr predicted_objects_ptr_{nullptr};
   AutowareState::ConstSharedPtr autoware_state_{nullptr};
 
-  tf2_ros::Buffer tf_buffer_{get_clock()};
-  tf2_ros::TransformListener tf_listener_{tf_buffer_};
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   // vehicle info
   VehicleInfo vehicle_info_;

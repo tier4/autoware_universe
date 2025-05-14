@@ -56,7 +56,6 @@
 #include <lanelet2_core/geometry/Point.h>
 #include <lanelet2_core/geometry/Polygon.h>
 #include <tf2/utils.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
 #include <iterator>

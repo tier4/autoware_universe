@@ -69,24 +69,20 @@ namespace
 
 // Copied from scenario selector
 geometry_msgs::msg::PoseStamped::ConstSharedPtr getCurrentPose(
-  const tf2_ros::Buffer & tf_buffer, const rclcpp::Logger & logger,
-  const rclcpp::Clock::SharedPtr clock)
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
+  const rclcpp::Logger & logger)
 {
-  geometry_msgs::msg::TransformStamped tf_current_pose;
-
-  try {
-    tf_current_pose = tf_buffer.lookupTransform("map", "base_link", tf2::TimePointZero);
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_THROTTLE(logger, *clock, 5000, "%s", ex.what());
-    return nullptr;
-  }
+  auto tf_current_pose_opt =
+    managed_tf_buffer.getLatestTransform<geometry_msgs::msg::TransformStamped>(
+      "map", "base_link", logger);
+  if (!tf_current_pose_opt) return nullptr;
 
   geometry_msgs::msg::PoseStamped::SharedPtr p(new geometry_msgs::msg::PoseStamped());
-  p->header = tf_current_pose.header;
-  p->pose.orientation = tf_current_pose.transform.rotation;
-  p->pose.position.x = tf_current_pose.transform.translation.x;
-  p->pose.position.y = tf_current_pose.transform.translation.y;
-  p->pose.position.z = tf_current_pose.transform.translation.z;
+  p->header = tf_current_pose_opt->header;
+  p->pose.orientation = tf_current_pose_opt->transform.rotation;
+  p->pose.position.x = tf_current_pose_opt->transform.translation.x;
+  p->pose.position.y = tf_current_pose_opt->transform.translation.y;
+  p->pose.position.z = tf_current_pose_opt->transform.translation.z;
 
   return geometry_msgs::msg::PoseStamped::ConstSharedPtr(p);
 }
@@ -157,7 +153,7 @@ std::vector<geometry_msgs::msg::Polygon> getTransformedPrimitives(
 namespace autoware::costmap_generator
 {
 CostmapGenerator::CostmapGenerator(const rclcpp::NodeOptions & node_options)
-: Node("costmap_generator", node_options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
+: Node("costmap_generator", node_options)
 {
   param_listener_ = std::make_shared<::costmap_generator_node::ParamListener>(
     this->get_node_parameters_interface());
@@ -256,7 +252,7 @@ void CostmapGenerator::update_data()
 
 void CostmapGenerator::set_current_pose()
 {
-  current_pose_ = getCurrentPose(tf_buffer_, this->get_logger(), this->get_clock());
+  current_pose_ = getCurrentPose(managed_tf_buffer_, this->get_logger());
 }
 
 void CostmapGenerator::onTimer()
@@ -279,17 +275,13 @@ void CostmapGenerator::onTimer()
 
   // Get current pose
   time_keeper_->start_track("lookupTransform");
-  geometry_msgs::msg::TransformStamped tf;
-  try {
-    tf =
-      tf_buffer_.lookupTransform(param_->costmap_frame, param_->vehicle_frame, tf2::TimePointZero);
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR(this->get_logger(), "%s", ex.what());
-    return;
-  }
+
+  auto tf_opt = managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
+    param_->costmap_frame, param_->vehicle_frame, this->get_logger());
+  if (!tf_opt) return;
   time_keeper_->end_track("lookupTransform");
 
-  set_grid_center(tf);
+  set_grid_center(*tf_opt);
 
   if ((param_->use_wayarea || param_->use_parkinglot) && lanelet_map_) {
     autoware_utils::ScopedTimeTrack st("generatePrimitivesCostmap()", *time_keeper_);
@@ -303,7 +295,7 @@ void CostmapGenerator::onTimer()
 
   if (param_->use_points && points_) {
     autoware_utils::ScopedTimeTrack st("generatePointsCostmap()", *time_keeper_);
-    costmap_[LayerName::points] = generatePointsCostmap(points_, tf.transform.translation.z);
+    costmap_[LayerName::points] = generatePointsCostmap(points_, tf_opt->transform.translation.z);
   }
 
   {
@@ -311,7 +303,7 @@ void CostmapGenerator::onTimer()
     costmap_[LayerName::combined] = generateCombinedCostmap();
   }
 
-  publishCostmap(costmap_, tf);
+  publishCostmap(costmap_, *tf_opt);
 }
 
 void CostmapGenerator::set_grid_center(const geometry_msgs::msg::TransformStamped & tf)
@@ -360,13 +352,11 @@ grid_map::Matrix CostmapGenerator::generatePointsCostmap(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr & in_points, const double vehicle_to_map_z)
 {
   geometry_msgs::msg::TransformStamped points2costmap;
-  try {
-    points2costmap = tf_buffer_.lookupTransform(
-      param_->costmap_frame, in_points->header.frame_id, tf2::TimePointZero);
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_ERROR_THROTTLE(
-      rclcpp::get_logger("costmap_generator"), *get_clock(), 1000, "%s", ex.what());
-  }
+  auto points2costmap_opt =
+    managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
+      param_->costmap_frame, in_points->header.frame_id, rclcpp::get_logger("costmap_generator"));
+
+  if (points2costmap_opt) points2costmap = *points2costmap_opt;
 
   const auto transformed_points = getTransformedPointCloud(*in_points, points2costmap.transform);
 
@@ -380,20 +370,19 @@ grid_map::Matrix CostmapGenerator::generatePointsCostmap(
 }
 
 PredictedObjects::ConstSharedPtr transformObjects(
-  const tf2_ros::Buffer & tf_buffer, const PredictedObjects::ConstSharedPtr in_objects,
-  const std::string & target_frame_id, const std::string & src_frame_id)
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
+  const PredictedObjects::ConstSharedPtr in_objects, const std::string & target_frame_id,
+  const std::string & src_frame_id)
 {
   auto objects = std::make_shared<PredictedObjects>();
   *objects = *in_objects;
   objects->header.frame_id = target_frame_id;
 
   geometry_msgs::msg::TransformStamped objects2costmap;
-  try {
-    objects2costmap = tf_buffer.lookupTransform(target_frame_id, src_frame_id, tf2::TimePointZero);
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_ERROR(rclcpp::get_logger("costmap_generator"), "%s", ex.what());
-  }
-
+  auto objects2costmap_opt =
+    managed_tf_buffer.getLatestTransform<geometry_msgs::msg::TransformStamped>(
+      target_frame_id, src_frame_id, rclcpp::get_logger("costmap_generator"));
+  if (objects2costmap_opt) objects2costmap = *objects2costmap_opt;
   for (auto & object : objects->objects) {
     geometry_msgs::msg::PoseStamped output_stamped;
     geometry_msgs::msg::PoseStamped input_stamped;
@@ -410,7 +399,7 @@ grid_map::Matrix CostmapGenerator::generateObjectsCostmap(
 {
   const auto object_frame = in_objects->header.frame_id;
   const auto transformed_objects =
-    transformObjects(tf_buffer_, in_objects, param_->costmap_frame, object_frame);
+    transformObjects(managed_tf_buffer_, in_objects, param_->costmap_frame, object_frame);
 
   grid_map::Matrix objects_costmap = objects2costmap_.makeCostmapFromObjects(
     costmap_, param_->expand_polygon_size, param_->size_of_expansion_kernel, transformed_objects);
@@ -426,12 +415,11 @@ grid_map::Matrix CostmapGenerator::generatePrimitivesCostmap()
   }
 
   geometry_msgs::msg::TransformStamped primitives2costmap;
-  try {
-    primitives2costmap =
-      tf_buffer_.lookupTransform(param_->costmap_frame, param_->map_frame, tf2::TimePointZero);
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_ERROR(rclcpp::get_logger("costmap_generator"), "%s", ex.what());
-  }
+
+  auto primitives2costmap_opt =
+    managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
+      param_->costmap_frame, param_->map_frame, rclcpp::get_logger("costmap_generator"));
+  if (primitives2costmap_opt) primitives2costmap = *primitives2costmap_opt;
 
   const auto transformed_primitives =
     getTransformedPrimitives(primitives_polygons_, primitives2costmap);

@@ -25,6 +25,7 @@
 #include <cuda_blackboard/cuda_blackboard_publisher.hpp>
 #include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
@@ -33,8 +34,6 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <tf2/transform_datatypes.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <deque>
 #include <memory>
@@ -90,8 +89,7 @@ private:
     const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr pointcloud_msg);
   void imuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg);
 
-  tf2_ros::Buffer tf2_buffer_;
-  tf2_ros::TransformListener tf2_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   std::string base_frame_;
   std::deque<geometry_msgs::msg::TwistWithCovarianceStamped> twist_queue_;

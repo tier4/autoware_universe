@@ -39,10 +39,7 @@ namespace autoware::compare_map_segmentation
 
 VoxelBasedCompareMapFilterComponent::VoxelBasedCompareMapFilterComponent(
   const rclcpp::NodeOptions & options)
-: Filter("VoxelBasedCompareMapFilter", options),
-  tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_),
-  diagnostic_updater_(this)
+: Filter("VoxelBasedCompareMapFilter", options), diagnostic_updater_(this)
 {
   // initialize debug tool
   {
@@ -120,32 +117,16 @@ void VoxelBasedCompareMapFilterComponent::input_indices_callback(
   // Check whether the user has given a different input TF frame
   tf_input_orig_frame_ = cloud->header.frame_id;
   PointCloud2ConstPtr cloud_tf;
-  if (cloud->header.frame_id != tf_input_frame_) {
-    RCLCPP_DEBUG(
-      this->get_logger(), "[input_indices_callback] Transforming input dataset from %s to %s.",
-      cloud->header.frame_id.c_str(), tf_input_frame_.c_str());
-    // Save the original frame ID
-    // Convert the cloud into the different frame
-    PointCloud2 cloud_transformed;
 
-    try {
-      // Lookup the transform from input frame to "map"
-      geometry_msgs::msg::TransformStamped transform_stamped = tf_buffer_.lookupTransform(
-        tf_input_frame_, tf_input_orig_frame_, rclcpp::Time(cloud->header.stamp),
-        rclcpp::Duration::from_seconds(0.0));
-
-      // Transform the point cloud
-      tf2::doTransform(*cloud, cloud_transformed, transform_stamped);
-      cloud_tf = std::make_shared<PointCloud2>(cloud_transformed);
-    } catch (tf2::TransformException & ex) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 5000, "Could not transform pointcloud: %s",
-        ex.what());
-      cloud_tf = cloud;  // Fallback to original data
-    }
+  PointCloud2 cloud_transformed;
+  if (managed_tf_buffer_.transformPointcloud(
+        tf_input_frame_, *cloud, cloud_transformed, cloud->header.stamp,
+        rclcpp::Duration::from_seconds(0.0), this->get_logger())) {
+    cloud_tf = std::make_shared<PointCloud2>(cloud_transformed);
   } else {
-    cloud_tf = cloud;
+    cloud_tf = cloud;  // Fallback to original data
   }
+
   // Need setInputCloud () here because we have to extract x/y/z
   IndicesPtr vindices;
   if (indices) {
@@ -170,38 +151,22 @@ bool VoxelBasedCompareMapFilterComponent::convert_output_costly(
   }
   if (!tf_output_frame_.empty() && output->header.frame_id != tf_output_frame_) {
     auto cloud_transformed = std::make_unique<PointCloud2>();
-    try {
-      geometry_msgs::msg::TransformStamped transform_stamped = tf_buffer_.lookupTransform(
-        tf_output_frame_, output->header.frame_id, rclcpp::Time(output->header.stamp),
-        rclcpp::Duration::from_seconds(0.0));
-      tf2::doTransform(*output, *cloud_transformed, transform_stamped);
-      cloud_transformed->header.frame_id = tf_output_frame_;
-      output = std::move(cloud_transformed);
-    } catch (tf2::TransformException & e) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 5000, "Could not transform pointcloud: %s",
-        e.what());
-      return false;
+    if (managed_tf_buffer_.transformPointcloud(
+          tf_output_frame_, *output, *cloud_transformed, output->header.stamp,
+          rclcpp::Duration::from_seconds(0.0), this->get_logger())) {
+      return true;
     }
   }
 
   if (tf_output_frame_.empty() && output->header.frame_id != tf_input_orig_frame_) {
     auto cloud_transformed = std::make_unique<PointCloud2>();
-    try {
-      geometry_msgs::msg::TransformStamped transform_stamped = tf_buffer_.lookupTransform(
-        tf_input_orig_frame_, output->header.frame_id, rclcpp::Time(output->header.stamp),
-        rclcpp::Duration::from_seconds(0.0));
-      tf2::doTransform(*output, *cloud_transformed, transform_stamped);
-      cloud_transformed->header.frame_id = tf_input_orig_frame_;
-      output = std::move(cloud_transformed);
-    } catch (tf2::TransformException & e) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 5000, "Could not transform pointcloud: %s",
-        e.what());
-      return false;
+    if (managed_tf_buffer_.transformPointcloud(
+          tf_input_orig_frame_, *output, *cloud_transformed, output->header.stamp,
+          rclcpp::Duration::from_seconds(0.0), this->get_logger())) {
+      return true;
     }
   }
-  return true;
+  return false;
 }
 
 void VoxelBasedCompareMapFilterComponent::filter(

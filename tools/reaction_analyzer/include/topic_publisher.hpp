@@ -15,6 +15,7 @@
 #ifndef TOPIC_PUBLISHER_HPP_
 #define TOPIC_PUBLISHER_HPP_
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rosbag2_cpp/reader.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -31,9 +32,6 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/imu.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <map>
 #include <memory>
@@ -199,8 +197,7 @@ private:
                                                   // spawn_object_cmd_ is true
 
   // tf
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 
   // Parameters
   TopicPublisherParams topic_publisher_params_;

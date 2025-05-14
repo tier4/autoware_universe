@@ -207,18 +207,11 @@ Polygon2d convertObjToPolygon(const PredictedObject & obj)
 
 std::optional<geometry_msgs::msg::TransformStamped> getTransform(
   const std::string & target_frame, const std::string & source_frame,
-  const tf2_ros::Buffer & tf_buffer, const rclcpp::Logger & logger)
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
+  const rclcpp::Logger & logger)
 {
-  geometry_msgs::msg::TransformStamped tf_current_pose;
-  try {
-    tf_current_pose = tf_buffer.lookupTransform(
-      target_frame, source_frame, rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(
-      logger, "[AEB] Failed to look up transform from " + source_frame + " to " + target_frame);
-    return std::nullopt;
-  }
-  return std::make_optional(tf_current_pose);
+  return managed_tf_buffer.getTransform<geometry_msgs::msg::TransformStamped>(
+    target_frame, source_frame, rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0), logger);
 }
 
 void fillMarkerFromPolygon(

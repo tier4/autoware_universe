@@ -23,10 +23,8 @@
 #include <autoware/cuda_utils/stream_unique_ptr.hpp>
 #include <autoware/tensorrt_common/tensorrt_common.hpp>
 #include <autoware_utils/transform/transforms.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
-
-#include <tf2_ros/buffer_interface.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -61,8 +59,7 @@ private:
   std::shared_ptr<FeatureGenerator> feature_generator_;
   float score_threshold_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   std::string target_frame_;
   float z_offset_;
 

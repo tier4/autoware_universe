@@ -24,6 +24,7 @@
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
 #include <builtin_interfaces/msg/time.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -34,8 +35,6 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <map>
 #include <memory>
@@ -93,8 +92,7 @@ private:
   std::map<std::string, double> input_topic_weights_map_;
 
   // TF
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   // Timer to manage the timeout of the occupancy grid map
   rclcpp::TimerBase::SharedPtr timer_;

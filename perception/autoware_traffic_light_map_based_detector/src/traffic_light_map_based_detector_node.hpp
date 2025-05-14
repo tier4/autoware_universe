@@ -31,11 +31,11 @@
 #include <image_geometry/pinhole_camera_model.h>  // for ROS 2 Humble or older
 #endif
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
+
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRulesFactory.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
 #include <map>
@@ -92,8 +92,7 @@ private:
   rclcpp::Publisher<tier4_perception_msgs::msg::TrafficLightRoiArray>::SharedPtr expect_roi_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr viz_pub_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   using TrafficLightSet = std::set<lanelet::ConstLineString3d, IdLessThan>;
 
@@ -118,8 +117,7 @@ private:
    * @return true       calculation succeed
    * @return false      calculation failed
    */
-  bool getTransform(
-    const rclcpp::Time & t, const std::string & frame_id, tf2::Transform & tf) const;
+  bool getTransform(const rclcpp::Time & t, const std::string & frame_id, tf2::Transform & tf);
   /**
    * @brief callback function for the map message
    *

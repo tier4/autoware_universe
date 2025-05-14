@@ -39,9 +39,7 @@ namespace autoware::detected_object_validation
 namespace lanelet_filter
 {
 ObjectLaneletFilterNode::ObjectLaneletFilterNode(const rclcpp::NodeOptions & node_options)
-: Node("object_lanelet_filter_node", node_options),
-  tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+: Node("object_lanelet_filter_node", node_options)
 {
   using std::placeholders::_1;
 
@@ -146,22 +144,17 @@ void ObjectLaneletFilterNode::objectCallback(
   }
   autoware_perception_msgs::msg::DetectedObjects transformed_objects;
   if (!autoware::object_recognition_utils::transformObjects(
-        *input_msg, lanelet_frame_id_, tf_buffer_, transformed_objects)) {
+        *input_msg, lanelet_frame_id_, managed_tf_buffer_, transformed_objects)) {
     RCLCPP_ERROR(get_logger(), "Failed transform to %s.", lanelet_frame_id_.c_str());
     return;
   }
   // vehicle base pose :map -> base_link
   if (filter_settings_.use_height_threshold) {
-    try {
-      ego_base_height_ = tf_buffer_
-                           .lookupTransform(
-                             lanelet_frame_id_, "base_link", transformed_objects.header.stamp,
-                             rclcpp::Duration::from_seconds(0.5))
-                           .transform.translation.z;
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_ERROR_STREAM(get_logger(), "Failed to get transform: " << ex.what());
-      return;
-    }
+    auto tf_opt = managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+      lanelet_frame_id_, "base_link", transformed_objects.header.stamp,
+      rclcpp::Duration::from_seconds(0.5), this->get_logger());
+    if (!tf_opt) return;
+    ego_base_height_ = tf_opt->transform.translation.z;
   }
 
   if (!transformed_objects.objects.empty()) {

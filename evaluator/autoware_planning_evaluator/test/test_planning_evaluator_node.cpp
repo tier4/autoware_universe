@@ -20,6 +20,7 @@
 
 #include <autoware/planning_evaluator/planning_evaluator_node.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
+#include <tf2/LinearMath/Quaternion.hpp>
 
 #include "autoware_perception_msgs/msg/predicted_objects.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"

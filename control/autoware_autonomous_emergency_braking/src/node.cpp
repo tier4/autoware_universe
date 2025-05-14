@@ -282,7 +282,7 @@ void AEB::onImu(const Imu::ConstSharedPtr input_msg)
   // transform imu
   const auto logger = get_logger();
   const auto transform_stamped =
-    utils::getTransform("base_link", input_msg->header.frame_id, tf_buffer_, logger);
+    utils::getTransform("base_link", input_msg->header.frame_id, managed_tf_buffer_, logger);
   if (!transform_stamped.has_value()) return;
 
   angular_velocity_ptr_ = std::make_shared<Vector3>();
@@ -302,7 +302,7 @@ void AEB::onPointCloud(const PointCloud2::ConstSharedPtr input_msg)
     // transform pointcloud
     const auto logger = get_logger();
     const auto transform_stamped =
-      utils::getTransform("base_link", input_msg->header.frame_id, tf_buffer_, logger);
+      utils::getTransform("base_link", input_msg->header.frame_id, managed_tf_buffer_, logger);
     if (!transform_stamped.has_value()) return;
 
     // transform by using eigen matrix
@@ -726,7 +726,7 @@ std::optional<Path> AEB::generateEgoPath(const Trajectory & predicted_traj)
   }
   const auto logger = get_logger();
   const auto transform_stamped =
-    utils::getTransform("base_link", predicted_traj.header.frame_id, tf_buffer_, logger);
+    utils::getTransform("base_link", predicted_traj.header.frame_id, managed_tf_buffer_, logger);
   if (!transform_stamped.has_value()) return std::nullopt;
   // create path
   time_keeper_->start_track("createPath");
@@ -813,8 +813,8 @@ void AEB::createObjectDataUsingPredictedObjects(
     };
 
   const auto logger = get_logger();
-  const auto transform_stamped_opt =
-    utils::getTransform("base_link", predicted_objects_ptr_->header.frame_id, tf_buffer_, logger);
+  const auto transform_stamped_opt = utils::getTransform(
+    "base_link", predicted_objects_ptr_->header.frame_id, managed_tf_buffer_, logger);
   if (!transform_stamped_opt.has_value()) return;
 
   const auto longitudinal_offset_opt = utils::getLongitudinalOffset(
@@ -1062,7 +1062,8 @@ void AEB::addVirtualStopWallMarker(MarkerArray & markers)
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   const auto ego_map_pose = std::invoke([this]() -> std::optional<geometry_msgs::msg::Pose> {
     const auto logger = get_logger();
-    const auto tf_current_pose = utils::getTransform("map", "base_link", tf_buffer_, logger);
+    const auto tf_current_pose =
+      utils::getTransform("map", "base_link", managed_tf_buffer_, logger);
     if (!tf_current_pose.has_value()) return std::nullopt;
     const auto transform = tf_current_pose.value().transform;
     geometry_msgs::msg::Pose p;

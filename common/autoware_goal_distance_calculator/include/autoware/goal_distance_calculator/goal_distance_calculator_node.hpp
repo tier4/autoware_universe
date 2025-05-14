@@ -26,8 +26,6 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 
-#include <tf2_ros/transform_listener.h>
-
 #include <memory>
 
 namespace autoware::goal_distance_calculator

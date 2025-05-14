@@ -49,7 +49,7 @@ void CloudOcclusionPredictor::predict(
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info_msg,
   const tier4_perception_msgs::msg::TrafficLightRoiArray::ConstSharedPtr & rois_msg,
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg,
-  const tf2_ros::Buffer & tf_buffer,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::map<lanelet::Id, tf2::Vector3> & traffic_light_position_map,
   std::vector<int> & occlusion_ratios)
 {
@@ -58,34 +58,16 @@ void CloudOcclusionPredictor::predict(
   }
   occlusion_ratios.resize(rois_msg->rois.size());
   // get transformation from cloud to camera
-  Eigen::Matrix4d camera2cloud;
-  try {
-    camera2cloud =
-      tf2::transformToEigen(tf_buffer.lookupTransform(
-                              camera_info_msg->header.frame_id, cloud_msg->header.frame_id,
-                              rclcpp::Time(camera_info_msg->header.stamp),
-                              rclcpp::Duration::from_seconds(0.2)))
-        .matrix();
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(
-      node_ptr_->get_logger(), "Error: cannot get transform from << "
-                                 << camera_info_msg->header.frame_id << " to "
-                                 << cloud_msg->header.frame_id);
-    return;
-  }
+  auto camera2cloud_opt = managed_tf_buffer.getTransform<Eigen::Matrix4d>(
+    cloud_msg->header.frame_id, camera_info_msg->header.frame_id, camera_info_msg->header.stamp,
+    rclcpp::Duration::from_seconds(0.2), node_ptr_->get_logger());
+  if (!camera2cloud_opt) return;
+
   // get transformation from map to camera
-  tf2::Transform tf_camera2map;
-  try {
-    geometry_msgs::msg::TransformStamped tf_stamped = tf_buffer.lookupTransform(
-      camera_info_msg->header.frame_id, "map", rclcpp::Time(camera_info_msg->header.stamp),
-      rclcpp::Duration::from_seconds(0.2));
-    tf2::fromMsg(tf_stamped.transform, tf_camera2map);
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(
-      node_ptr_->get_logger(),
-      "Error: cannot get transform from << " << camera_info_msg->header.frame_id << " to map");
-    return;
-  }
+  auto tf_camera2map_opt = managed_tf_buffer.getTransform<tf2::Transform>(
+    camera_info_msg->header.frame_id, "map", camera_info_msg->header.stamp,
+    rclcpp::Duration::from_seconds(0.2), node_ptr_->get_logger());
+  if (!tf_camera2map_opt) return;
 
   std::vector<pcl::PointXYZ> roi_tls(rois_msg->rois.size()), roi_brs(rois_msg->rois.size());
   image_geometry::PinholeCameraModel pinhole_model;
@@ -96,7 +78,7 @@ void CloudOcclusionPredictor::predict(
       continue;
     }
     calcRoiVector3D(
-      rois_msg->rois[i], pinhole_model, traffic_light_position_map, tf_camera2map, roi_tls[i],
+      rois_msg->rois[i], pinhole_model, traffic_light_position_map, *tf_camera2map_opt, roi_tls[i],
       roi_brs[i]);
   }
 
@@ -105,7 +87,7 @@ void CloudOcclusionPredictor::predict(
   pcl::PointCloud<pcl::PointXYZ> cloud_camera;
   // points within roi
   pcl::PointCloud<pcl::PointXYZ> cloud_roi;
-  autoware_utils::transform_point_cloud_from_ros_msg(*cloud_msg, cloud_camera, camera2cloud);
+  autoware_utils::transform_point_cloud_from_ros_msg(*cloud_msg, cloud_camera, *camera2cloud_opt);
 
   filterCloud(cloud_camera, roi_tls, roi_brs, cloud_roi);
 

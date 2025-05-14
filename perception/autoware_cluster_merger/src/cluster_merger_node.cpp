@@ -25,8 +25,6 @@ namespace autoware::cluster_merger
 
 ClusterMergerNode::ClusterMergerNode(const rclcpp::NodeOptions & node_options)
 : rclcpp::Node("cluster_merger_node", node_options),
-  tf_buffer_(get_clock()),
-  tf_listener_(tf_buffer_),
   objects0_sub_(this, "input/cluster0", rclcpp::QoS{1}.get_rmw_qos_profile()),
   objects1_sub_(this, "input/cluster1", rclcpp::QoS{1}.get_rmw_qos_profile()),
   sync_(SyncPolicy(10), objects0_sub_, objects1_sub_)
@@ -53,9 +51,9 @@ void ClusterMergerNode::objectsCallback(
   DetectedObjectsWithFeature transformed_objects1;
   if (
     !autoware::object_recognition_utils::transformObjectsWithFeature(
-      *input_objects0_msg, output_frame_id_, tf_buffer_, transformed_objects0) ||
+      *input_objects0_msg, output_frame_id_, managed_tf_buffer_, transformed_objects0) ||
     !autoware::object_recognition_utils::transformObjectsWithFeature(
-      *input_objects1_msg, output_frame_id_, tf_buffer_, transformed_objects1)) {
+      *input_objects1_msg, output_frame_id_, managed_tf_buffer_, transformed_objects1)) {
     return;
   }
 

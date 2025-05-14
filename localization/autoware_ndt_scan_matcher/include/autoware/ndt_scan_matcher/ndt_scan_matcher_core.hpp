@@ -24,6 +24,7 @@
 #include "ndt_omp/multigrid_ndt_omp.h"
 
 #include <autoware_utils/ros/logger_level_configure.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float32_stamped.hpp>
@@ -41,8 +42,6 @@
 #include <fmt/format.h>
 #include <pcl/point_types.h>
 #include <tf2/transform_datatypes.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -193,8 +192,7 @@ private:
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr service_trigger_node_;
 
   tf2_ros::TransformBroadcaster tf2_broadcaster_;
-  tf2_ros::Buffer tf2_buffer_;
-  tf2_ros::TransformListener tf2_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   rclcpp::CallbackGroup::SharedPtr timer_callback_group_;
 

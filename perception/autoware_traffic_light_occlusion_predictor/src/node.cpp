@@ -42,9 +42,7 @@ namespace autoware::traffic_light
 
 TrafficLightOcclusionPredictorNode::TrafficLightOcclusionPredictorNode(
   const rclcpp::NodeOptions & node_options)
-: Node("traffic_light_occlusion_predictor_node", node_options),
-  tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+: Node("traffic_light_occlusion_predictor_node", node_options)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -156,7 +154,7 @@ void TrafficLightOcclusionPredictorNode::syncCallback(
       auto selected_roi_msg_ptr =
         std::make_shared<const tier4_perception_msgs::msg::TrafficLightRoiArray>(selected_roi_msg);
       cloud_occlusion_predictor_->predict(
-        in_cam_info_msg, selected_roi_msg_ptr, in_cloud_msg, tf_buffer_,
+        in_cam_info_msg, selected_roi_msg_ptr, in_cloud_msg, managed_tf_buffer_,
         traffic_light_position_map_, occlusion_ratios);
     }
   }

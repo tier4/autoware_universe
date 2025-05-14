@@ -23,33 +23,6 @@
 #include <string>
 #include <utility>
 
-namespace
-{
-
-std::optional<geometry_msgs::msg::Transform> getTransform(
-  const tf2_ros::Buffer & tf_buffer, const std::string & target_frame_id,
-  const std::string & source_frame_id, const rclcpp::Time & time)
-{
-  try {
-    geometry_msgs::msg::TransformStamped transform_stamped;
-    transform_stamped = tf_buffer.lookupTransform(
-      target_frame_id, source_frame_id, time, rclcpp::Duration::from_seconds(0.5));
-    return transform_stamped.transform;
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN_STREAM(rclcpp::get_logger("bevfusion"), ex.what());
-    return std::nullopt;
-  }
-}
-
-Eigen::Affine3f transformToEigen(const geometry_msgs::msg::Transform & t)
-{
-  Eigen::Affine3f a;
-  a.matrix() = tf2::transformToEigen(t).matrix().cast<float>();
-  return a;
-}
-
-}  // namespace
-
 namespace autoware::bevfusion
 {
 
@@ -60,17 +33,17 @@ PointCloudDensification::PointCloudDensification(
 }
 
 bool PointCloudDensification::enqueuePointCloud(
-  const sensor_msgs::msg::PointCloud2 & pointcloud_msg, const tf2_ros::Buffer & tf_buffer)
+  const sensor_msgs::msg::PointCloud2 & pointcloud_msg,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer)
 {
   const auto header = pointcloud_msg.header;
 
   if (param_.getPointcloudCacheSize() > 1) {
-    auto transform_world2current =
-      getTransform(tf_buffer, header.frame_id, param_.getWorldFrameId(), header.stamp);
-    if (!transform_world2current) {
-      return false;
-    }
-    auto affine_world2current = transformToEigen(transform_world2current.value());
+    auto transform_world2current_opt = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
+      header.frame_id, param_.getWorldFrameId(), header.stamp, rclcpp::Duration::from_seconds(0.0),
+      rclcpp::get_logger("lidar_centerpoint"));
+    if (!transform_world2current_opt) return false;
+    auto affine_world2current = Eigen::Affine3f(transform_world2current_opt->matrix());
 
     enqueue(pointcloud_msg, affine_world2current);
   } else {

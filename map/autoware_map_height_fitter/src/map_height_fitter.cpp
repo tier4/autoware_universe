@@ -16,6 +16,7 @@
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_map_msgs/srv/get_partial_point_cloud_map.hpp>
@@ -27,7 +28,6 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
 #include <memory>
@@ -47,8 +47,7 @@ struct MapHeightFitter::Impl
   double get_ground_height(const Point & point) const;
   std::optional<Point> fit(const Point & position, const std::string & frame);
 
-  tf2::BufferCore tf2_buffer_;
-  tf2_ros::TransformListener tf2_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   std::string map_frame_;
   rclcpp::Node * node_;
 
@@ -66,7 +65,7 @@ struct MapHeightFitter::Impl
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_vector_map_;
 };
 
-MapHeightFitter::Impl::Impl(rclcpp::Node * node) : tf2_listener_(tf2_buffer_), node_(node)
+MapHeightFitter::Impl::Impl(rclcpp::Node * node) : node_(node)
 {
   fit_target_ = node->declare_parameter<std::string>("map_height_fitter.target");
   if (fit_target_ == "pointcloud_map") {
@@ -250,25 +249,21 @@ std::optional<Point> MapHeightFitter::Impl::fit(const Point & position, const st
   }
 
   // transform frame to map_frame_
-  try {
-    const auto stamped = tf2_buffer_.lookupTransform(frame, map_frame_, tf2::TimePointZero);
-    tf2::doTransform(point, point, stamped);
-  } catch (tf2::TransformException & exception) {
-    RCLCPP_WARN_STREAM(logger, "failed to lookup transform: " << exception.what());
-    return std::nullopt;
-  }
+  const auto to_map_opt =
+    managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
+      frame, map_frame_, node_->get_logger());
+  if (!to_map_opt) return std::nullopt;
+  tf2::doTransform(point, point, *to_map_opt);
 
   // fit height on map_frame_
   point.z = get_ground_height(point);
 
   // transform map_frame_ to frame
-  try {
-    const auto stamped = tf2_buffer_.lookupTransform(map_frame_, frame, tf2::TimePointZero);
-    tf2::doTransform(point, point, stamped);
-  } catch (tf2::TransformException & exception) {
-    RCLCPP_WARN_STREAM(logger, "failed to lookup transform: " << exception.what());
-    return std::nullopt;
-  }
+  const auto from_map_opt =
+    managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
+      map_frame_, frame, node_->get_logger());
+  if (!from_map_opt) return std::nullopt;
+  tf2::doTransform(point, point, *from_map_opt);
 
   RCLCPP_DEBUG(logger, "modified point: %.3f %.3f %.3f", point.x, point.y, point.z);
 

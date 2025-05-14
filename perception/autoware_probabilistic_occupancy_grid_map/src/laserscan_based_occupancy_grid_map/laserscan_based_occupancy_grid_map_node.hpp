@@ -22,6 +22,7 @@
 
 #include <builtin_interfaces/msg/time.hpp>
 #include <laser_geometry/laser_geometry.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <sensor_msgs/msg/laser_scan.hpp>
@@ -31,8 +32,6 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -46,8 +45,6 @@ using nav2_costmap_2d::Costmap2D;
 using nav_msgs::msg::OccupancyGrid;
 using sensor_msgs::msg::LaserScan;
 using sensor_msgs::msg::PointCloud2;
-using tf2_ros::Buffer;
-using tf2_ros::TransformListener;
 
 class LaserscanBasedOccupancyGridMapNode : public rclcpp::Node
 {
@@ -79,8 +76,8 @@ private:
   message_filters::Subscriber<PointCloud2> raw_pointcloud_sub_;
   message_filters::PassThrough<PointCloud2> passthrough_;
 
-  std::shared_ptr<Buffer> tf2_{std::make_shared<Buffer>(get_clock())};
-  std::shared_ptr<TransformListener> tf2_listener_{std::make_shared<TransformListener>(*tf2_)};
+  std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_{
+    std::make_shared<managed_transform_buffer::ManagedTransformBuffer>()};
 
   using SyncPolicy = message_filters::sync_policies::ExactTime<LaserScan, PointCloud2, PointCloud2>;
   using Sync = message_filters::Synchronizer<SyncPolicy>;

@@ -38,9 +38,7 @@ using sensor_msgs::msg::PointCloud2;
 
 CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
   const rclcpp::NodeOptions & node_options)
-: Node("cuda_pointcloud_preprocessor", node_options),
-  tf2_buffer_(this->get_clock()),
-  tf2_listener_(tf2_buffer_)
+: Node("cuda_pointcloud_preprocessor", node_options)
 {
   using std::placeholders::_1;
 
@@ -148,19 +146,15 @@ bool CudaPointcloudPreprocessorNode::getTransform(
     return true;
   }
 
-  try {
-    const auto transform_msg =
-      tf2_buffer_.lookupTransform(target_frame, source_frame, tf2::TimePointZero);
-    tf2::convert(transform_msg.transform, *tf2_transform_ptr);
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN(get_logger(), "%s", ex.what());
-    RCLCPP_ERROR(
-      get_logger(), "Please publish TF %s to %s", target_frame.c_str(), source_frame.c_str());
+  auto transform_opt = managed_tf_buffer_.getTransform<tf2::Transform>(
+    target_frame, source_frame, tf2::TimePointZero, tf2::Duration::zero(), this->get_logger());
 
+  if (!transform_opt) {
     tf2_transform_ptr->setOrigin(tf2::Vector3(0.0, 0.0, 0.0));
     tf2_transform_ptr->setRotation(tf2::Quaternion(0.0, 0.0, 0.0, 1.0));
     return false;
   }
+  *tf2_transform_ptr = *transform_opt;
   return true;
 }
 
@@ -260,18 +254,13 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
   /* *INDENT-ON* */
 
   // Obtain the base link to input pointcloud transform
-  geometry_msgs::msg::TransformStamped transform_msg;
-
-  try {
-    transform_msg = tf2_buffer_.lookupTransform(
-      base_frame_, input_pointcloud_msg_ptr->header.frame_id, tf2::TimePointZero);
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN(get_logger(), "%s", ex.what());
-    return;
-  }
+  auto tf_opt = managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
+    base_frame_, input_pointcloud_msg_ptr->header.frame_id, tf2::TimePointZero,
+    tf2::Duration::zero(), this->get_logger());
+  if (!tf_opt) return;
 
   auto output_pointcloud_ptr = cuda_pointcloud_preprocessor_->process(
-    input_pointcloud_msg_ptr, transform_msg, twist_queue_, angular_velocity_queue_,
+    input_pointcloud_msg_ptr, *tf_opt, twist_queue_, angular_velocity_queue_,
     first_point_rel_stamp);
   output_pointcloud_ptr->header.frame_id = base_frame_;
 

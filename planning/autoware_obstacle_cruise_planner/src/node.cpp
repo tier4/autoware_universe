@@ -527,8 +527,7 @@ ObstacleCruisePlannerNode::ObstacleCruisePlannerNode(const rclcpp::NodeOptions &
     create_publisher<Float32MultiArrayStamped>("~/debug/slow_down_planning_info", 1);
 
   // tf listener
-  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
 
   const auto longitudinal_info = LongitudinalInfo(*this);
 
@@ -921,17 +920,9 @@ std::vector<Obstacle> ObstacleCruisePlannerNode::convertToObstacles(
 
   std::vector<Obstacle> target_obstacles;
 
-  std::optional<geometry_msgs::msg::TransformStamped> transform_stamped{};
-  try {
-    transform_stamped = tf_buffer_->lookupTransform(
-      traj_header.frame_id, pointcloud.header.frame_id, pointcloud.header.stamp,
-      rclcpp::Duration::from_seconds(0.5));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(
-      get_logger(), "Failed to look up transform from " << traj_header.frame_id << " to "
-                                                        << pointcloud.header.frame_id);
-    transform_stamped = std::nullopt;
-  }
+  auto transform_stamped = managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
+    traj_header.frame_id, pointcloud.header.frame_id, pointcloud.header.stamp,
+    rclcpp::Duration::from_seconds(0.5), this->get_logger());
 
   if (!pointcloud.data.empty() && transform_stamped) {
     // 1. transform pointcloud

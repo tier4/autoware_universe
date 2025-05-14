@@ -34,8 +34,6 @@
 #include "autoware/pure_pursuit/autoware_pure_pursuit_viz.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/transform_listener.h"
 
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
@@ -126,9 +124,6 @@ private:
 
   void setResampledTrajectory();
 
-  // TF
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
   geometry_msgs::msg::Pose current_pose_;
 
   void publishDebugMarker() const;

@@ -27,13 +27,13 @@
   <depend>diagnostic_updater</depend>
   <depend>image_geometry</depend>
   <depend>image_transport</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>message_filters</depend>
   <depend>perception_utils</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
   <depend>tf2_eigen</depend>
-  <depend>tf2_ros</depend>
   <depend>tf2_sensor_msgs</depend>
   <depend>tier4_perception_msgs</depend>
 

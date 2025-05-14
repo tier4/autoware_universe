@@ -16,6 +16,8 @@
 
 #include "autoware/bevfusion/utils.hpp"
 
+#include <rclcpp/duration.hpp>
+
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -25,8 +27,7 @@
 namespace autoware::bevfusion
 {
 
-BEVFusionNode::BEVFusionNode(const rclcpp::NodeOptions & options)
-: Node("bevfusion", options), tf_buffer_(this->get_clock())
+BEVFusionNode::BEVFusionNode(const rclcpp::NodeOptions & options) : Node("bevfusion", options)
 {
   auto descriptor = rcl_interfaces::msg::ParameterDescriptor{}.set__read_only(true);
 
@@ -235,8 +236,8 @@ void BEVFusionNode::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstShar
 
   std::vector<Box3D> det_boxes3d;
   std::unordered_map<std::string, double> proc_timing;
-  bool is_success =
-    detector_ptr_->detect(pc_msg, image_msgs_, camera_masks_, tf_buffer_, det_boxes3d, proc_timing);
+  bool is_success = detector_ptr_->detect(
+    pc_msg, image_msgs_, camera_masks_, managed_tf_buffer_, det_boxes3d, proc_timing);
   if (!is_success) {
     return;
   }
@@ -310,20 +311,12 @@ void BEVFusionNode::cameraInfoCallback(
     return;
   }
 
-  try {
-    geometry_msgs::msg::TransformStamped transform_stamped;
-    transform_stamped =
-      tf_buffer_.lookupTransform(msg.header.frame_id, *lidar_frame_, msg.header.stamp);
+  auto transform_stamped_opt = managed_tf_buffer_.getTransform<Eigen::Matrix4f>(
+    msg.header.frame_id, *lidar_frame_, msg.header.stamp, rclcpp::Duration::from_seconds(0.0));
 
-    Eigen::Matrix4f lidar2camera_transform =
-      tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
-
-    Matrix4f lidar2camera_rowmajor_transform = lidar2camera_transform.eval();
-    lidar2camera_extrinsics_[camera_id] = lidar2camera_rowmajor_transform;
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN(this->get_logger(), "%s", ex.what());
-    return;
-  }
+  if (!transform_stamped_opt) return;
+  Matrix4f lidar2camera_rowmajor_transform = transform_stamped_opt->eval();
+  lidar2camera_extrinsics_[camera_id] = lidar2camera_rowmajor_transform;
 
   std::size_t num_valid_extrinsics = std::count_if(
     lidar2camera_extrinsics_.begin(), lidar2camera_extrinsics_.end(),

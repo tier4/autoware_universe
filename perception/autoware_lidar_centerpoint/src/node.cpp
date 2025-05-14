@@ -36,7 +36,7 @@
 namespace autoware::lidar_centerpoint
 {
 LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_options)
-: Node("lidar_center_point", node_options), tf_buffer_(this->get_clock())
+: Node("lidar_center_point", node_options)
 {
   const float score_threshold =
     static_cast<float>(this->declare_parameter<double>("post_process_params.score_threshold"));
@@ -168,7 +168,7 @@ void LidarCenterPointNode::pointCloudCallback(
   std::vector<Box3D> det_boxes3d;
   bool is_num_pillars_within_range = true;
   bool is_success = detector_ptr_->detect(
-    input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
+    input_pointcloud_msg, managed_tf_buffer_, det_boxes3d, is_num_pillars_within_range);
   if (!is_success) {
     return;
   }

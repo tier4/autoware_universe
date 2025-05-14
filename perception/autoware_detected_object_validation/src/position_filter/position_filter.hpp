@@ -24,9 +24,6 @@
 #include "autoware_map_msgs/msg/lanelet_map_bin.hpp"
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-
 #include <memory>
 #include <string>
 
@@ -45,9 +42,6 @@ private:
 
   rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr object_pub_;
   rclcpp::Subscription<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr object_sub_;
-
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
 
   float upper_bound_x_;
   float upper_bound_y_;

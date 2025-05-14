@@ -26,10 +26,8 @@
 
 #include <autoware/objects_of_interest_marker_interface/objects_of_interest_marker_interface.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
 #include <memory>
@@ -183,8 +181,7 @@ private:
   autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface
     objects_of_interest_marker_interface_{this, "obstacle_cruise_planner"};
 
-  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+  std::unique_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_;
 
   // Vehicle Parameters
   VehicleInfo vehicle_info_;

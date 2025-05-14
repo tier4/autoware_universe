@@ -28,32 +28,6 @@
 #include <string>
 #include <utility>
 
-namespace
-{
-boost::optional<geometry_msgs::msg::Transform> getTransform(
-  const tf2_ros::Buffer & tf_buffer, const std::string & target_frame_id,
-  const std::string & source_frame_id, const rclcpp::Time & time)
-{
-  try {
-    geometry_msgs::msg::TransformStamped transform_stamped;
-    transform_stamped = tf_buffer.lookupTransform(
-      target_frame_id, source_frame_id, time, rclcpp::Duration::from_seconds(0.5));
-    return transform_stamped.transform;
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_WARN_STREAM(rclcpp::get_logger("lidar_centerpoint"), ex.what());
-    return boost::none;
-  }
-}
-
-Eigen::Affine3f transformToEigen(const geometry_msgs::msg::Transform & t)
-{
-  Eigen::Affine3f a;
-  a.matrix() = tf2::transformToEigen(t).matrix().cast<float>();
-  return a;
-}
-
-}  // namespace
-
 namespace autoware::image_projection_based_fusion
 {
 PointCloudDensification::PointCloudDensification(
@@ -63,17 +37,19 @@ PointCloudDensification::PointCloudDensification(
 }
 
 bool PointCloudDensification::enqueuePointCloud(
-  const sensor_msgs::msg::PointCloud2 & pointcloud_msg, const tf2_ros::Buffer & tf_buffer)
+  const sensor_msgs::msg::PointCloud2 & pointcloud_msg,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer)
 {
   const auto header = pointcloud_msg.header;
 
   if (param_.pointcloud_cache_size() > 1) {
-    auto transform_world2current =
-      getTransform(tf_buffer, header.frame_id, param_.world_frame_id(), header.stamp);
+    auto transform_world2current = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
+      header.frame_id, param_.world_frame_id(), header.stamp, rclcpp::Duration::from_seconds(0.01),
+      rclcpp::get_logger("image_projection_based_fusion"));
     if (!transform_world2current) {
       return false;
     }
-    auto affine_world2current = transformToEigen(transform_world2current.get());
+    auto affine_world2current = Eigen::Affine3f(transform_world2current->matrix());
 
     enqueue(pointcloud_msg, affine_world2current);
   } else {

@@ -42,8 +42,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include <deque>
 #include <map>
@@ -64,8 +63,7 @@ private:
   rclcpp::Subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
     initial_objects_sub_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   TrackerHandler tracker_handler_;
   std::shared_ptr<autoware::shape_estimation::ShapeEstimator> shape_estimator_;

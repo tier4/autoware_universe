@@ -35,7 +35,6 @@
 #include <pcl/segmentation/euclidean_cluster_comparator.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_ros/buffer.h>
 
 #include <algorithm>
 #include <iostream>

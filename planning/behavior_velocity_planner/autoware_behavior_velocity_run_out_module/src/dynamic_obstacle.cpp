@@ -238,18 +238,17 @@ pcl::PointCloud<pcl::PointXYZ> extractLateralNearestPoints(
 }
 
 std::optional<Eigen::Affine3f> getTransformMatrix(
-  const tf2_ros::Buffer & tf_buffer, const std::string & target_frame_id,
-  const std::string & source_frame_id, const builtin_interfaces::msg::Time & stamp)
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
+  const std::string & target_frame_id, const std::string & source_frame_id,
+  const builtin_interfaces::msg::Time & stamp)
 {
-  geometry_msgs::msg::TransformStamped transform;
-  try {
-    transform = tf_buffer.lookupTransform(target_frame_id, source_frame_id, stamp);
-  } catch (tf2::TransformException & e) {
-    RCLCPP_WARN(rclcpp::get_logger("dynamic_obstacle_creator"), "no transform found: %s", e.what());
-    return {};
-  }
+  auto transform_opt = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
+    target_frame_id, source_frame_id, stamp, rclcpp::Duration::from_seconds(0),
+    rclcpp::get_logger("dynamic_obstacle_creator"));
+  if (!transform_opt) return {};
 
-  Eigen::Affine3f transform_matrix = tf2::transformToEigen(transform.transform).cast<float>();
+  auto transform_matrix = Eigen::Affine3f(transform_opt->matrix());
+
   return transform_matrix;
 }
 
@@ -425,9 +424,7 @@ std::vector<DynamicObstacle> DynamicObstacleCreatorForObjectWithoutPath::createD
 
 DynamicObstacleCreatorForPoints::DynamicObstacleCreatorForPoints(
   rclcpp::Node & node, std::shared_ptr<RunOutDebug> & debug_ptr, const DynamicObstacleParam & param)
-: DynamicObstacleCreator(node, debug_ptr, param),
-  tf_buffer_(node.get_clock()),
-  tf_listener_(tf_buffer_)
+: DynamicObstacleCreator(node, debug_ptr, param)
 {
   if (param_.use_mandatory_area) {
     // Subscribe the input using message filter
@@ -506,7 +503,7 @@ void DynamicObstacleCreatorForPoints::onCompareMapFilteredPointCloud(
 
   // transform and convert to pcl points for easier handling
   const auto transform_matrix =
-    getTransformMatrix(tf_buffer_, "map", msg->header.frame_id, msg->header.stamp);
+    getTransformMatrix(managed_tf_buffer_, "map", msg->header.frame_id, msg->header.stamp);
   if (!transform_matrix) {
     return;
   }
@@ -547,7 +544,7 @@ void DynamicObstacleCreatorForPoints::onSynchronizedPointCloud(
 
   // transform pointcloud and convert to pcl points for easier handling
   const auto transform_matrix = getTransformMatrix(
-    tf_buffer_, "map", compare_map_filtered_points->header.frame_id,
+    managed_tf_buffer_, "map", compare_map_filtered_points->header.frame_id,
     compare_map_filtered_points->header.stamp);
   if (!transform_matrix) {
     return;

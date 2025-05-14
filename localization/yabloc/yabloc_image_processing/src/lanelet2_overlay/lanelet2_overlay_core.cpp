@@ -32,7 +32,7 @@
 namespace yabloc::lanelet2_overlay
 {
 Lanelet2Overlay::Lanelet2Overlay(const rclcpp::NodeOptions & options)
-: Node("lanelet2_overlay", options), tf_subscriber_(get_clock()), pose_buffer_{40}
+: Node("lanelet2_overlay", options), pose_buffer_{40}
 {
   using std::placeholders::_1;
 

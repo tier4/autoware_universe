@@ -56,6 +56,7 @@
 #include <autoware_utils/system/time_keeper.hpp>
 #include <grid_map_ros/GridMapRosConverter.hpp>
 #include <grid_map_ros/grid_map_ros.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
@@ -67,8 +68,6 @@
 #include <grid_map_msgs/msg/grid_map.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <vector>
@@ -112,8 +111,7 @@ private:
 
   rclcpp::TimerBase::SharedPtr timer_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
   std::vector<geometry_msgs::msg::Polygon> primitives_polygons_;
 

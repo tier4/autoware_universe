@@ -17,13 +17,11 @@
 
 #include "autoware/multi_object_tracker/object_model/types.hpp"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <map>
 #include <optional>
@@ -40,13 +38,13 @@ public:
     bool enable_odometry_uncertainty = false);
 
   std::optional<geometry_msgs::msg::Transform> getTransform(
-    const std::string & source_frame_id, const rclcpp::Time & time) const;
-  std::optional<geometry_msgs::msg::Transform> getTransform(const rclcpp::Time & time) const;
+    const std::string & source_frame_id, const rclcpp::Time & time);
+  std::optional<geometry_msgs::msg::Transform> getTransform(const rclcpp::Time & time);
 
-  std::optional<nav_msgs::msg::Odometry> getOdometryFromTf(const rclcpp::Time & time) const;
+  std::optional<nav_msgs::msg::Odometry> getOdometryFromTf(const rclcpp::Time & time);
 
   std::optional<types::DynamicObjectList> transformObjects(
-    const types::DynamicObjectList & input_objects) const;
+    const types::DynamicObjectList & input_objects);
 
 private:
   rclcpp::Node & node_;
@@ -54,8 +52,7 @@ private:
   std::string ego_frame_id_;    // ego vehicle frame
   std::string world_frame_id_;  // absolute/relative ground frame
   // tf
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
 
 public:
   bool enable_odometry_uncertainty_ = false;

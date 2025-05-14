@@ -89,9 +89,7 @@ Eigen::MatrixXd calcScoreMatrixForAssociation(
 }
 
 DecorativeTrackerMergerNode::DecorativeTrackerMergerNode(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("decorative_object_merger_node", node_options),
-  tf_buffer_(get_clock()),
-  tf_listener_(tf_buffer_)
+: rclcpp::Node("decorative_object_merger_node", node_options)
 {
   // glog for debug
   if (!google::IsGoogleLoggingInitialized()) {
@@ -228,7 +226,7 @@ void DecorativeTrackerMergerNode::mainObjectsCallback(
   /* transform to target merge coordinate */
   TrackedObjects transformed_objects;
   if (!autoware::object_recognition_utils::transformObjects(
-        *main_objects, merge_frame_id_, tf_buffer_, transformed_objects)) {
+        *main_objects, merge_frame_id_, managed_tf_buffer_, transformed_objects)) {
     return;
   }
   TrackedObjects::ConstSharedPtr transformed_main_objects =
@@ -293,7 +291,7 @@ void DecorativeTrackerMergerNode::subObjectsCallback(const TrackedObjects::Const
   /* transform to target merge coordinate */
   TrackedObjects transformed_objects;
   if (!autoware::object_recognition_utils::transformObjects(
-        *msg, merge_frame_id_, tf_buffer_, transformed_objects)) {
+        *msg, merge_frame_id_, managed_tf_buffer_, transformed_objects)) {
     return;
   }
   TrackedObjects::ConstSharedPtr transformed_sub_objects =

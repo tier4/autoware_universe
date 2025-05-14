@@ -44,8 +44,6 @@ PlanningEvaluatorNode::PlanningEvaluatorNode(const rclcpp::NodeOptions & node_op
 {
   // ros2
   using std::placeholders::_1;
-  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-  transform_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   // Timer callback to publish evaluator diagnostics
   using namespace std::literals::chrono_literals;

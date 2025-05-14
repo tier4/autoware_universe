@@ -17,6 +17,7 @@
 
 #include "autoware_utils/ros/published_time_publisher.hpp"
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/opencv.hpp>
@@ -28,8 +29,6 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 namespace autoware::detected_object_validation
 {
@@ -44,8 +43,7 @@ private:
   rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_;
   message_filters::Subscriber<autoware_perception_msgs::msg::DetectedObjects> objects_sub_;
   message_filters::Subscriber<nav_msgs::msg::OccupancyGrid> occ_grid_sub_;
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
   typedef message_filters::sync_policies::ApproximateTime<

@@ -28,8 +28,6 @@ namespace autoware::traffic_light
 
 TrafficLightSelectorNode::TrafficLightSelectorNode(const rclcpp::NodeOptions & node_options)
 : rclcpp::Node("traffic_light_selector_node", node_options),
-  tf_buffer_(get_clock()),
-  tf_listener_(tf_buffer_),
   detected_rois_sub_(this, "input/detected_rois", rclcpp::QoS{1}.get_rmw_qos_profile()),
   rough_rois_sub_(this, "input/rough_rois", rclcpp::QoS{1}.get_rmw_qos_profile()),
   expected_rois_sub_(this, "input/expect_rois", rclcpp::QoS{1}.get_rmw_qos_profile()),

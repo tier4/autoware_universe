@@ -33,8 +33,7 @@ SubscriberBase::SubscriberBase(
   entity_params_(entity_params)
 {
   // init tf
-  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
 
   // init reaction parameters and chain configuration
   init_reaction_chains_and_params();
@@ -344,22 +343,10 @@ void SubscriberBase::on_pointcloud(
   }
 
   // transform pointcloud
-  geometry_msgs::msg::TransformStamped transform_stamped{};
-  try {
-    transform_stamped = tf_buffer_->lookupTransform(
-      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(
-      node_->get_logger(),
-      "Failed to look up transform from " << msg_ptr->header.frame_id << " to map");
-    return;
-  }
-
-  // transform by using eigen matrix
   PointCloud2 transformed_points{};
-  const Eigen::Matrix4f affine_matrix =
-    tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
-  pcl_ros::transformPointCloud(affine_matrix, *msg_ptr, transformed_points);
+  auto success = managed_tf_buffer_->transformPointcloud(
+    "map", *msg_ptr, transformed_points, node_->now(), rclcpp::Duration::from_seconds(0.1));
+  if (!success) return;
 
   pcl::PointCloud<pcl::PointXYZ> pcl_pointcloud;
   pcl::fromROSMsg(transformed_points, pcl_pointcloud);
@@ -394,22 +381,10 @@ void SubscriberBase::on_pointcloud(
   }
 
   // transform pointcloud
-  geometry_msgs::msg::TransformStamped transform_stamped{};
-  try {
-    transform_stamped = tf_buffer_->lookupTransform(
-      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(
-      node_->get_logger(),
-      "Failed to look up transform from " << msg_ptr->header.frame_id << " to map");
-    return;
-  }
-
-  // transform by using eigen matrix
   PointCloud2 transformed_points{};
-  const Eigen::Matrix4f affine_matrix =
-    tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
-  pcl_ros::transformPointCloud(affine_matrix, *msg_ptr, transformed_points);
+  auto success = managed_tf_buffer_->transformPointcloud(
+    "map", *msg_ptr, transformed_points, node_->now(), rclcpp::Duration::from_seconds(0.1));
+  if (!success) return;
 
   pcl::PointCloud<pcl::PointXYZ> pcl_pointcloud;
   pcl::fromROSMsg(transformed_points, pcl_pointcloud);
@@ -503,16 +478,11 @@ void SubscriberBase::on_detected_objects(
   }
 
   // transform objects
-  geometry_msgs::msg::TransformStamped transform_stamped{};
-  try {
-    transform_stamped = tf_buffer_->lookupTransform(
-      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(
-      node_->get_logger(),
-      "Failed to look up transform from " << msg_ptr->header.frame_id << " to map");
-    return;
-  }
+  auto transform_stamped_opt =
+    managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
+      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1),
+      node_->get_logger());
+  if (!transform_stamped_opt) return;
 
   DetectedObjects output_objs;
   output_objs = *msg_ptr;
@@ -520,7 +490,7 @@ void SubscriberBase::on_detected_objects(
     geometry_msgs::msg::PoseStamped output_stamped;
     geometry_msgs::msg::PoseStamped input_stamped;
     input_stamped.pose = obj.kinematics.pose_with_covariance.pose;
-    tf2::doTransform(input_stamped, output_stamped, transform_stamped);
+    tf2::doTransform(input_stamped, output_stamped, *transform_stamped_opt);
     obj.kinematics.pose_with_covariance.pose = output_stamped.pose;
   }
   if (search_detected_objects_near_pose(output_objs, entity_pose_, entity_search_radius_)) {
@@ -555,16 +525,11 @@ void SubscriberBase::on_detected_objects(
   }
 
   // transform objects
-  geometry_msgs::msg::TransformStamped transform_stamped{};
-  try {
-    transform_stamped = tf_buffer_->lookupTransform(
-      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(
-      node_->get_logger(),
-      "Failed to look up transform from " << msg_ptr->header.frame_id << " to map");
-    return;
-  }
+  auto transform_stamped_opt =
+    managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
+      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1),
+      node_->get_logger());
+  if (!transform_stamped_opt) return;
 
   DetectedObjects output_objs;
   output_objs = *msg_ptr;
@@ -572,7 +537,7 @@ void SubscriberBase::on_detected_objects(
     geometry_msgs::msg::PoseStamped output_stamped;
     geometry_msgs::msg::PoseStamped input_stamped;
     input_stamped.pose = obj.kinematics.pose_with_covariance.pose;
-    tf2::doTransform(input_stamped, output_stamped, transform_stamped);
+    tf2::doTransform(input_stamped, output_stamped, *transform_stamped_opt);
     obj.kinematics.pose_with_covariance.pose = output_stamped.pose;
   }
   if (search_detected_objects_near_pose(output_objs, entity_pose_, entity_search_radius_)) {

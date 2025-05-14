@@ -20,6 +20,7 @@
 
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/tracked_object.hpp"
@@ -41,7 +42,6 @@
 #include <tf2/LinearMath/Transform.h>
 #include <tf2/convert.h>
 #include <tf2/transform_datatypes.h>
-#include <tf2_ros/buffer.h>
 
 #include <string>
 #include <utility>
@@ -50,8 +50,9 @@ namespace autoware::radar_object_tracker::utils
 {
 
 boost::optional<geometry_msgs::msg::Transform> getTransformAnonymous(
-  const tf2_ros::Buffer & tf_buffer, const std::string & source_frame_id,
-  const std::string & target_frame_id, const rclcpp::Time & time);
+  const managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
+  const std::string & source_frame_id, const std::string & target_frame_id,
+  const rclcpp::Time & time);
 
 bool isDuplicated(
   const std::pair<double, lanelet::ConstLanelet> & target_lanelet,

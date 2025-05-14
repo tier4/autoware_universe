@@ -26,12 +26,12 @@
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
   <depend>glog</depend>
+  <depend>managed_transform_buffer</depend>
   <depend>nav_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>tf2</depend>
-  <depend>tf2_ros</depend>
   <depend>tier4_metric_msgs</depend>
 
   <test_depend>ament_cmake_ros</test_depend>

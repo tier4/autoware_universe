@@ -34,11 +34,11 @@
 #include <image_geometry/pinhole_camera_model.h>  // for ROS 2 Humble or older
 #endif
 
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
+
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/time_synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <map>
 #include <memory>
@@ -88,8 +88,7 @@ private:
    */
   rclcpp::Publisher<tier4_perception_msgs::msg::TrafficLightArray>::SharedPtr signal_pub_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  managed_transform_buffer::ManagedTransformBuffer managed_tf_buffer_;
   std::map<lanelet::Id, tf2::Vector3> traffic_light_position_map_;
   Config config_;
   /**

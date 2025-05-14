@@ -1450,21 +1450,16 @@ bool ObstacleStopPlannerNode::searchPointcloudNearTrajectory(
   const VehicleInfo & vehicle_info, const StopParam & stop_param)
 {
   // transform pointcloud
-  TransformStamped transform_stamped{};
-  try {
-    transform_stamped = tf_buffer_.lookupTransform(
+  auto transform_stamped_opt =
+    managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
       trajectory_header.frame_id, input_points_ptr->header.frame_id, input_points_ptr->header.stamp,
-      rclcpp::Duration::from_seconds(0.5));
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR_STREAM(
-      get_logger(), "Failed to look up transform from " << trajectory_header.frame_id << " to "
-                                                        << input_points_ptr->header.frame_id);
-    return false;
-  }
+      rclcpp::Duration::from_seconds(0.5), this->get_logger());
+
+  if (!transform_stamped_opt) return false;
 
   PointCloud2 transformed_points{};
   const Eigen::Matrix4f affine_matrix =
-    tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
+    tf2::transformToEigen(transform_stamped_opt->transform).matrix().cast<float>();
   pcl_ros::transformPointCloud(affine_matrix, *input_points_ptr, transformed_points);
   PointCloud::Ptr transformed_points_ptr(new PointCloud);
   pcl::fromROSMsg(transformed_points, *transformed_points_ptr);

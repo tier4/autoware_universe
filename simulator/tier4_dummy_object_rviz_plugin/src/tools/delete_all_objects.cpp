@@ -47,8 +47,6 @@
 
 #include "delete_all_objects.hpp"
 
-#include <tf2_ros/transform_listener.h>
-
 #include <string>
 
 namespace rviz_plugins

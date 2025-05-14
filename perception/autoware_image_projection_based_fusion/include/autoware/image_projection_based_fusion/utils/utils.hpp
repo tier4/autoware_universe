@@ -35,6 +35,7 @@
 #include "autoware/image_projection_based_fusion/fusion_node.hpp"
 
 #include <autoware_utils/geometry/geometry.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -65,12 +66,6 @@ struct PointData
 
 bool check_camera_info(const sensor_msgs::msg::CameraInfo & camera_info);
 
-std::optional<geometry_msgs::msg::TransformStamped> getTransformStamped(
-  const tf2_ros::Buffer & tf_buffer, const std::string & target_frame_id,
-  const std::string & source_frame_id, const rclcpp::Time & time);
-
-Eigen::Affine3d transformToEigen(const geometry_msgs::msg::Transform & t);
-
 void closest_cluster(
   const PointCloudMsgType & cluster, const double cluster_2d_tolerance, const int min_cluster_size,
   const pcl::PointXYZ & center, PointCloudMsgType & out_cluster);
@@ -78,8 +73,9 @@ void closest_cluster(
 void updateOutputFusedObjects(
   std::vector<DetectedObjectWithFeature> & output_objs, std::vector<PointCloudMsgType> & clusters,
   const std::vector<size_t> & clusters_data_size, const PointCloudMsgType & in_cloud,
-  const std_msgs::msg::Header & in_roi_header, const tf2_ros::Buffer & tf_buffer,
-  const int min_cluster_size, const int max_cluster_size, const float cluster_2d_tolerance,
+  const std_msgs::msg::Header & in_roi_header,
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer, const int min_cluster_size,
+  const int max_cluster_size, const float cluster_2d_tolerance,
   std::vector<DetectedObjectWithFeature> & output_fused_objects);
 
 geometry_msgs::msg::Point getCentroid(const PointCloudMsgType & pointcloud);

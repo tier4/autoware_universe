@@ -33,9 +33,6 @@
 #include <boost/assign/list_of.hpp>
 #include <boost/geometry.hpp>
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-
 #include <memory>
 #include <utility>
 #include <vector>

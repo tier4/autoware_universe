@@ -19,11 +19,9 @@
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
+#include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <cstddef>
 #include <list>
@@ -66,7 +64,8 @@ public:
   explicit PointCloudDensification(const DensificationParam & param, cudaStream_t stream);
 
   bool enqueuePointCloud(
-    const sensor_msgs::msg::PointCloud2 & msg, const tf2_ros::Buffer & tf_buffer);
+    const sensor_msgs::msg::PointCloud2 & msg,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
   double getCurrentTimestamp() const { return current_timestamp_; }
   Eigen::Affine3f getAffineWorldToCurrent() const { return affine_world2current_; }

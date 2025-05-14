@@ -18,8 +18,6 @@
 #include "autoware/localization_evaluator/metrics_calculator.hpp"
 #include "autoware_utils/math/accumulator.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/transform_listener.h"
 
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
@@ -83,8 +81,6 @@ private:
   typedef message_filters::Synchronizer<SyncPolicy> SyncExact;
   SyncExact sync_;
   rclcpp::Publisher<DiagnosticArray>::SharedPtr metrics_pub_;
-  std::unique_ptr<tf2_ros::Buffer> tf_buffer_ptr_;
-  std::unique_ptr<tf2_ros::TransformListener> tf_listener_ptr_;
 
   // Parameters
   std::string output_file_str_;

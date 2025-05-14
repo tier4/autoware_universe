@@ -79,7 +79,8 @@ public:
   bool detect(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & msg,
     const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & image_msgs,
-    const std::vector<float> & camera_masks, const tf2_ros::Buffer & tf_buffer,
+    const std::vector<float> & camera_masks,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
     std::vector<Box3D> & det_boxes3d, std::unordered_map<std::string, double> & proc_timing);
 
   void setIntrinsicsExtrinsics(
@@ -93,7 +94,8 @@ protected:
   bool preProcess(
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & pc_msg,
     const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & image_msgs,
-    const std::vector<float> & camera_masks, const tf2_ros::Buffer & tf_buffer);
+    const std::vector<float> & camera_masks,
+    managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
   bool inference();
 
