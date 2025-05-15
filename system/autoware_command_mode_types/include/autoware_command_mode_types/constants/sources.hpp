@@ -29,7 +29,7 @@ constexpr uint16_t local = 13;
 constexpr uint16_t remote = 14;
 
 // MRM sources
-constexpr uint16_t emergency_stop = 101;
+constexpr uint16_t emergency_stop = 21;
 
 }  // namespace autoware::command_mode_types::sources
 

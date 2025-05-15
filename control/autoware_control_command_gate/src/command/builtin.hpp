@@ -20,6 +20,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
+#include <string>
 
 namespace autoware::control_command_gate
 {
@@ -27,7 +28,7 @@ namespace autoware::control_command_gate
 class BuiltinEmergency : public CommandSource
 {
 public:
-  explicit BuiltinEmergency(const uint16_t source, rclcpp::Node & node);
+  explicit BuiltinEmergency(uint16_t id, const std::string & name, rclcpp::Node & node);
   void resend_last_command() override;
   void set_prev_control(std::shared_ptr<Control> control) { prev_control_ = control; }
 

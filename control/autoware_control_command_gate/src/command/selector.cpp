@@ -31,7 +31,7 @@ CommandSelector::CommandSelector(const rclcpp::Logger & logger) : logger_(logger
 void CommandSelector::add_source(std::unique_ptr<CommandSource> && source)
 {
   source->set_output(nullptr);
-  sources_.emplace(source->source(), std::move(source));
+  sources_.emplace(source->id(), std::move(source));
 }
 
 void CommandSelector::set_output(std::unique_ptr<CommandOutput> && output)
@@ -66,8 +66,8 @@ void CommandSelector::select_builtin_source(const uint16_t target)
 
 void CommandSelector::select_source(const uint16_t target)
 {
-  for (auto & [key, source] : sources_) {
-    if (key == target) {
+  for (auto & [id, source] : sources_) {
+    if (id == target) {
       source->set_output(output_.get());
       source->resend_last_command();
     } else {

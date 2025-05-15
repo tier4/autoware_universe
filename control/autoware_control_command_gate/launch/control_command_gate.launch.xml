@@ -1,7 +1,9 @@
 <launch>
   <arg name="config" default="$(find-pkg-share autoware_control_command_gate)/config/default.param.yaml"/>
+  <arg name="naming" default="$(find-pkg-share autoware_command_mode_types)/config/sources.param.yaml"/>
   <node pkg="autoware_control_command_gate" exec="control_command_gate_node">
     <param from="$(var config)"/>
+    <param from="$(var naming)"/>
     <remap from="~/output/control" to="/control/command/control_cmd"/>
     <remap from="~/output/gear" to="/control/command/gear_cmd"/>
     <remap from="~/output/turn_indicators" to="/control/command/turn_indicators_cmd"/>
