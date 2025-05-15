@@ -903,6 +903,35 @@ MarkerArray create_pointcloud_object_marker_array(
 
   return msg;
 }
+
+autoware_utils::LinearRing2d createFootprint(
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
+{
+  using autoware_utils::LinearRing2d;
+  using autoware_utils::Point2d;
+
+  const double radius = -1.0 * vehicle_info.rear_overhang_m;
+  const double short_radius =
+    -1.0 * (vehicle_info.wheel_tread_m / 2.0 + vehicle_info.left_overhang_m);
+  const double front = radius * std::pow(0.5, 0.5);
+  const double rear = -1.0 * radius * std::pow(0.5, 0.5);
+  const double right = radius * std::pow(0.5, 0.5);
+  const double left = -1.0 * radius * std::pow(0.5, 0.5);
+
+  LinearRing2d footprint;
+  footprint.reserve(7);
+  footprint.emplace_back(radius, 0.0);
+  footprint.emplace_back(front, right);
+  footprint.emplace_back(0.0, short_radius);
+  footprint.emplace_back(rear, right);
+  footprint.emplace_back(-1.0 * radius, 0.0);
+  footprint.emplace_back(rear, left);
+  footprint.emplace_back(0.0, -1.0 * short_radius);
+  footprint.emplace_back(front, left);
+  footprint.emplace_back(radius, 0.0);
+
+  return footprint;
+}
 }  // namespace autoware::rear_obstacle_checker::utils
 
 #endif  // UTILS_HPP_
