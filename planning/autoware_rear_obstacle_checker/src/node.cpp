@@ -235,8 +235,7 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
     return true;
   }
 
-  const auto ego_footprint =
-    vehicle_info_.createFootprint(p.common.ego.footprint_buffer, p.common.ego.footprint_buffer);
+  const auto ego_footprint = utils::createFootprint(vehicle_info_);
 
   {
     const auto transform = autoware_utils::pose2transform(predicted_stop_pose.value());
