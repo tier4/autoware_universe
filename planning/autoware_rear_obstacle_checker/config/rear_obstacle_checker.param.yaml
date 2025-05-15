@@ -19,15 +19,15 @@
             min: -100.0
           z:
             max: 0.0
-            min: 0.3
+            min: 0.5
         voxel_grid_filter:
           x: 0.1
           y: 0.1
           z: 0.5
         clustering:
-          cluster_tolerance: 0.15  #[m]
-          min_cluster_height: 0.1
-          min_cluster_size: 5
+          cluster_tolerance: 0.5  #[m]
+          min_cluster_height: 0.5
+          min_cluster_size: 10
           max_cluster_size: 10000
         velocity_estimation:
           observation_time: 0.3
