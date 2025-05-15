@@ -17,6 +17,8 @@
 
 #include "common/command_plugin.hpp"
 
+#include <autoware_command_mode_types/constants/sources.hpp>
+
 #include <string>
 
 namespace autoware::command_mode_switcher
@@ -26,7 +28,7 @@ class RemoteSwitcher : public ControlCommandPlugin
 {
 public:
   std::string mode_name() const override { return "remote"; }
-  std::string source_name() const override { return "remote"; }
+  uint16_t source() const override { return autoware::command_mode_types::sources::remote; }
   bool autoware_control() const override { return true; }
   void initialize() override;
 

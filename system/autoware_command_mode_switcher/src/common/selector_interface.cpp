@@ -14,6 +14,8 @@
 
 #include "selector_interface.hpp"
 
+#include <autoware_command_mode_types/constants/sources.hpp>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,7 +26,7 @@ namespace autoware::command_mode_switcher
 ControlGateInterface::ControlGateInterface(rclcpp::Node & node, Callback callback) : node_(node)
 {
   notification_callback_ = callback;
-  status_.source = "";
+  status_.source = autoware::command_mode_types::sources::unknown;
 
   cli_source_select_ = node.create_client<SelectCommandSource>("~/source/select");
   sub_source_status_ = node.create_subscription<CommandSourceStatus>(
@@ -78,10 +80,10 @@ bool VehicleGateInterface::is_autoware_control() const
 
 TriState ControlGateInterface::is_selected(const CommandPlugin & plugin) const
 {
-  if (plugin.source_name().empty()) {
+  if (plugin.source() == autoware::command_mode_types::sources::unknown) {
     return TriState::Enabled;
   }
-  if (plugin.source_name() == status_.source) {
+  if (plugin.source() == status_.source) {
     return TriState::Enabled;
   }
   if (last_request_mode_ == plugin.mode_name()) {
@@ -117,7 +119,7 @@ bool ControlGateInterface::request(const CommandPlugin & plugin, bool transition
 
   using SharedFuture = rclcpp::Client<SelectCommandSource>::SharedFuture;
   auto request = std::make_shared<SelectCommandSource::Request>();
-  request->source = plugin.source_name();
+  request->source = plugin.source();
   request->transition = transition;
 
   RCLCPP_INFO_STREAM(node_.get_logger(), "control gate request");

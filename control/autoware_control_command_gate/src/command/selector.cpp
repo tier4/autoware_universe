@@ -31,7 +31,7 @@ CommandSelector::CommandSelector(const rclcpp::Logger & logger) : logger_(logger
 void CommandSelector::add_source(std::unique_ptr<CommandSource> && source)
 {
   source->set_output(nullptr);
-  sources_.emplace(source->name(), std::move(source));
+  sources_.emplace(source->source(), std::move(source));
 }
 
 void CommandSelector::set_output(std::unique_ptr<CommandOutput> && output)
@@ -58,35 +58,35 @@ void CommandSelector::update()
   }
 }
 
-void CommandSelector::select_builtin_source(const std::string & name)
+void CommandSelector::select_builtin_source(const uint16_t target)
 {
-  builtin_source_ = name;
+  builtin_source_ = target;
   select_source(builtin_source_);
 }
 
-void CommandSelector::select_source(const std::string & name)
+void CommandSelector::select_source(const uint16_t target)
 {
   for (auto & [key, source] : sources_) {
-    if (key == name) {
+    if (key == target) {
       source->set_output(output_.get());
       source->resend_last_command();
     } else {
       source->set_output(nullptr);
     }
   }
-  current_source_ = name;
+  current_source_ = target;
 }
 
-std::string CommandSelector::select(const std::string & name)
+std::string CommandSelector::select(const uint16_t target)
 {
-  const auto iter = sources_.find(name);
+  const auto iter = sources_.find(target);
   if (iter == sources_.end()) {
-    return "target command source is invalid: " + name;
+    return "target command source is invalid: " + std::to_string(target);
   }
   if (iter->second->is_timeout()) {
-    return "target command source is timeout: " + name;
+    return "target command source is timeout: " + std::to_string(target);
   }
-  select_source(name);
+  select_source(target);
   return std::string();
 }
 
