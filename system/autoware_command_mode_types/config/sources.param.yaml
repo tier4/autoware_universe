@@ -1,0 +1,8 @@
+/**:
+  ros__parameters:
+    command_source_naming:
+      11: stop
+      12: main
+      13: local
+      14: remote
+      21: emergency_stop

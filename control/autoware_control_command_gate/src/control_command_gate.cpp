@@ -48,13 +48,14 @@ VehicleCmdFilterParam declare_filter_params(rclcpp::Node & node, const std::stri
 ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
 : Node("control_command_gate", options), diag_(this, 0.5)
 {
+  using std::placeholders::_1;
+  using std::placeholders::_2;
+
   // Create ROS interface.
   pub_status_ =
     create_publisher<CommandSourceStatus>("~/source/status", rclcpp::QoS(1).transient_local());
   srv_select_ = create_service<SelectCommandSource>(
-    "~/source/select",
-    std::bind(
-      &ControlCmdGate::on_select_source, this, std::placeholders::_1, std::placeholders::_2));
+    "~/source/select", std::bind(&ControlCmdGate::on_select_source, this, _1, _2));
 
   selector_ = std::make_unique<CommandSelector>(get_logger());
   diag_.setHardwareID("none");
@@ -83,14 +84,18 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
 
   // Create command sources.
   {
+    const auto get_source_name = [this](const uint16_t input) {
+      return declare_parameter<std::string>("command_source_naming." + std::to_string(input));
+    };
+
     std::vector<std::unique_ptr<CommandSource>> sources;
     {
-      auto source = std::make_unique<BuiltinEmergency>(builtin, *this);
+      auto source = std::make_unique<BuiltinEmergency>(builtin, "builtin", *this);
       source->set_prev_control(prev_control);
       sources.push_back(std::move(source));
     }
     for (const auto & input : inputs) {
-      auto source = std::make_unique<CommandSubscription>(input, *this);
+      auto source = std::make_unique<CommandSubscription>(input, get_source_name(input), *this);
       sources.push_back(std::move(source));
     }
     for (auto & source : sources) {
@@ -137,7 +142,7 @@ void ControlCmdGate::on_select_source(
     RCLCPP_ERROR_STREAM(get_logger(), error);
     return;
   }
-  const auto message = "target command source is selected: " + req->source;
+  const auto message = "select command source: " + std::to_string(req->source);
   res->status.success = true;
   res->status.message = message;
   RCLCPP_INFO_STREAM(get_logger(), message);

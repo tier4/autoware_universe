@@ -20,8 +20,8 @@
 namespace autoware::control_command_gate
 {
 
-BuiltinEmergency::BuiltinEmergency(const uint16_t source, rclcpp::Node & node)
-: CommandSource(source)
+BuiltinEmergency::BuiltinEmergency(uint16_t id, const std::string & name, rclcpp::Node & node)
+: CommandSource(id, name)
 {
   acceleration_ = node.declare_parameter<double>("builtin_emergency_acceleration");
 

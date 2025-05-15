@@ -19,6 +19,7 @@
 #include "interface.hpp"
 
 #include <memory>
+#include <string>
 
 namespace autoware::control_command_gate
 {
@@ -26,11 +27,11 @@ namespace autoware::control_command_gate
 class CommandSource
 {
 public:
-  explicit CommandSource(const uint16_t source);
+  explicit CommandSource(uint16_t id, const std::string & name);
   virtual ~CommandSource() = default;
   virtual void resend_last_command() = 0;
 
-  uint16_t source() const { return source_; }
+  uint16_t id() const { return source_id_; }
   void set_output(CommandOutput * output);
 
   TimeoutDiag * create_diag_task(const TimeoutDiag::Params & params, const rclcpp::Clock & clock);
@@ -43,7 +44,8 @@ protected:
   void send_hazard_lights(const HazardLightsCommand & msg);
 
 private:
-  const uint16_t source_;
+  const uint16_t source_id_;
+  const std::string source_name_;
   CommandOutput * output_;
   std::unique_ptr<TimeoutDiag> timeout_;
 };

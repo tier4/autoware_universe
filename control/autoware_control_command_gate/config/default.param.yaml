@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    inputs: [11, 12, 13, 14, 101]  # See autoware_command_mode_types/constants/sources.hpp
+    inputs: [11, 12, 13, 14, 21]  # See autoware_command_mode_types/constants/sources.hpp
     rate: 10.0
     builtin_emergency_acceleration: -2.4
     diag_timeout_warn_duration: 1.0
