@@ -198,15 +198,15 @@ void CommandModeSwitcher::update_status()
   }
 
   // Within the source group, all sources except for the active must be disabled.
-  std::unordered_map<std::string, int> source_group_count;
+  std::unordered_map<uint16_t, int> source_group_count;
   for (const auto & command : commands_) {
     const auto uses = command->status.source_state != TriState::Disabled;
-    source_group_count[command->plugin->source_name()] += uses ? 1 : 0;
+    source_group_count[command->plugin->source()] += uses ? 1 : 0;
   }
   for (const auto & command : commands_) {
     auto & status = command->status;
     auto & plugin = command->plugin;
-    const auto source_count = source_group_count[plugin->source_name()];
+    const auto source_count = source_group_count[plugin->source()];
     status.source_group = source_count <= 1 ? TriState::Enabled : TriState::Disabled;
     status.current_phase = update_current_phase(status);  // Depends on the source group.
     status.gate_state = update_gate_state(status);        // Depends on the source group.

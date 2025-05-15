@@ -14,7 +14,7 @@
 
 #include "control_command_gate.hpp"
 
-#include "command/emergency.hpp"
+#include "command/builtin.hpp"
 #include "command/filter.hpp"
 #include "command/publisher.hpp"
 #include "command/source.hpp"
@@ -71,9 +71,11 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
     transition_filter_params.wheel_base = info.wheel_base_m;
   }
 
-  const auto inputs = declare_parameter<std::vector<std::string>>("inputs");
-  if (std::find(inputs.begin(), inputs.end(), builtin) != inputs.end()) {
-    throw std::invalid_argument("input name '" + builtin + "' is reserved");
+  const auto inputs = declare_parameter<std::vector<int>>("inputs");
+  for (const auto & input : inputs) {
+    if (input == builtin || input == unknown) {
+      throw std::invalid_argument("input source '" + std::to_string(input) + "' is reserved");
+    }
   }
 
   // Create shared data buffer.
@@ -147,17 +149,17 @@ void ControlCmdGate::on_select_source(
 
 void ControlCmdGate::publish_source_status()
 {
-  const auto source_name = selector_->get_source_name();
+  const auto current_source = selector_->get_source();
   const auto transition_flag = output_filter_->get_transition_flag();
-  if (source_name_ == source_name && transition_flag_ == transition_flag) {
+  if (current_source_ == current_source && transition_flag_ == transition_flag) {
     return;
   }
-  source_name_ = source_name;
+  current_source_ = current_source;
   transition_flag_ = transition_flag;
 
   CommandSourceStatus msg;
   msg.stamp = now();
-  msg.source = source_name_;
+  msg.source = current_source_;
   msg.transition = transition_flag_;
   pub_status_->publish(msg);
 };

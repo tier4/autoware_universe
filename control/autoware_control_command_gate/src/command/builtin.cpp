@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "emergency.hpp"
+#include "builtin.hpp"
 
 #include <memory>
 #include <string>
@@ -20,8 +20,8 @@
 namespace autoware::control_command_gate
 {
 
-BuiltinEmergency::BuiltinEmergency(const std::string & name, rclcpp::Node & node)
-: CommandSource(name)
+BuiltinEmergency::BuiltinEmergency(const uint16_t source, rclcpp::Node & node)
+: CommandSource(source)
 {
   acceleration_ = node.declare_parameter<double>("builtin_emergency_acceleration");
 

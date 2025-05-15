@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COMMAND__EMERGENCY_HPP_
-#define COMMAND__EMERGENCY_HPP_
+#ifndef COMMAND__BUILTIN_HPP_
+#define COMMAND__BUILTIN_HPP_
 
 #include "source.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
-#include <string>
 
 namespace autoware::control_command_gate
 {
@@ -28,7 +27,7 @@ namespace autoware::control_command_gate
 class BuiltinEmergency : public CommandSource
 {
 public:
-  explicit BuiltinEmergency(const std::string & name, rclcpp::Node & node);
+  explicit BuiltinEmergency(const uint16_t source, rclcpp::Node & node);
   void resend_last_command() override;
   void set_prev_control(std::shared_ptr<Control> control) { prev_control_ = control; }
 
@@ -43,4 +42,4 @@ private:
 
 }  // namespace autoware::control_command_gate
 
-#endif  // COMMAND__EMERGENCY_HPP_
+#endif  // COMMAND__BUILTIN_HPP_

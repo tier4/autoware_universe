@@ -29,7 +29,7 @@ class CommandPlugin
 public:
   virtual ~CommandPlugin() = default;
   virtual std::string mode_name() const = 0;
-  virtual std::string source_name() const = 0;
+  virtual uint16_t source() const = 0;
   virtual bool autoware_control() const = 0;
   virtual void initialize() = 0;
 

@@ -19,13 +19,13 @@
 namespace autoware::control_command_gate
 {
 
-CommandSubscription::CommandSubscription(const std::string & name, rclcpp::Node & node)
-: CommandSource(name)
+CommandSubscription::CommandSubscription(const uint16_t source, rclcpp::Node & node)
+: CommandSource(source)
 {
   using std::placeholders::_1;
   const auto control_qos = rclcpp::QoS(5);
   const auto durable_qos = rclcpp::QoS(1).transient_local();
-  const auto prefix = "~/inputs/" + name + "/";
+  const auto prefix = "~/inputs/source" + std::to_string(source) + "/";
 
   sub_control_ = node.create_subscription<Control>(
     prefix + "control", control_qos, std::bind(&CommandSubscription::on_control, this, _1));

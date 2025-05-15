@@ -19,15 +19,13 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <string>
-
 namespace autoware::control_command_gate
 {
 
 class CommandSubscription : public CommandSource
 {
 public:
-  CommandSubscription(const std::string & name, rclcpp::Node & node);
+  CommandSubscription(const uint16_t source, rclcpp::Node & node);
   void resend_last_command() override;
 
 private:
