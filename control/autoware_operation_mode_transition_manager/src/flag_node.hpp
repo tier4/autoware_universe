@@ -17,7 +17,7 @@
 
 #include "state.hpp"
 
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
+#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <tier4_system_msgs/msg/mode_change_available.hpp>
@@ -51,7 +51,7 @@ private:
   rclcpp::Publisher<ModeChangeBase::DebugInfo>::SharedPtr pub_debug_;
 
   template <class T>
-  using PollingSubscriber = autoware_utils_rclcpp::InterProcessPollingSubscriber<T>;
+  using PollingSubscriber = autoware_utils::InterProcessPollingSubscriber<T>;
   PollingSubscriber<Odometry> sub_kinematics_{this, "kinematics"};
   PollingSubscriber<Trajectory> sub_trajectory_{this, "trajectory"};
   PollingSubscriber<Control> sub_control_cmd_{this, "control_cmd"};
