@@ -14,8 +14,6 @@
 
 #include "command_mode_decider_base.hpp"
 
-#include "command_mode_conversion.hpp"
-
 #include <autoware_command_mode_types/constants/modes.hpp>
 
 #include <memory>
@@ -211,7 +209,7 @@ void CommandModeDeciderBase::update_current_mode()
 
   // Update current operation mode
   for (const auto & [mode, status] : command_mode_status_) {
-    if (command_to_operation_mode(mode) == OperationModeState::UNKNOWN) {
+    if (plugin_->to_operation_mode(mode) == OperationModeState::UNKNOWN) {
       continue;
     }
     if (status.check_gate_ready(GateType::ControlGate)) {
@@ -297,7 +295,7 @@ void CommandModeDeciderBase::publish_operation_mode_state()
   namespace modes = autoware::command_mode_types::modes;
   OperationModeState state;
   state.stamp = now();
-  state.mode = command_to_operation_mode(curr_operation_mode_);
+  state.mode = plugin_->to_operation_mode(curr_operation_mode_);
   state.is_autoware_control_enabled = curr_autoware_control_;
   state.is_in_transition = is_in_transition();
   state.is_stop_mode_available = is_transition_available(modes::stop);
@@ -325,7 +323,7 @@ void CommandModeDeciderBase::publish_mrm_state()
   MrmState state;
   state.stamp = now();
   state.state = convert(status.mrm);
-  state.behavior = command_to_mrm_behavior(status.mode);
+  state.behavior = plugin_->to_mrm_behavior(status.mode);
   pub_mrm_state_->publish(state);
 }
 
@@ -381,7 +379,7 @@ void CommandModeDeciderBase::on_change_autoware_control(
 void CommandModeDeciderBase::on_change_operation_mode(
   ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res)
 {
-  const auto mode = operation_mode_to_command(req->mode);
+  const auto mode = plugin_->from_operation_mode(req->mode);
   res->status = check_mode_request(mode, !system_request_.autoware_control);
   if (!res->status.success) {
     RCLCPP_WARN_STREAM(get_logger(), res->status.message);
