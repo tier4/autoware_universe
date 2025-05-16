@@ -19,8 +19,6 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <string>
-
 namespace autoware::command_mode_switcher
 {
 
@@ -28,7 +26,7 @@ class CommandPlugin
 {
 public:
   virtual ~CommandPlugin() = default;
-  virtual std::string mode_name() const = 0;
+  virtual uint16_t mode() const = 0;
   virtual uint16_t source() const = 0;
   virtual bool autoware_control() const = 0;
   virtual void initialize() = 0;

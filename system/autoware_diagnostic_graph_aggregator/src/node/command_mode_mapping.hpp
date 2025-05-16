@@ -21,7 +21,6 @@
 
 #include <tier4_system_msgs/msg/command_mode_availability.hpp>
 
-#include <string>
 #include <unordered_map>
 
 namespace autoware::diagnostic_graph_aggregator
@@ -39,7 +38,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<Availability>::SharedPtr pub_;
 
-  std::unordered_map<std::string, BaseUnit *> mode_to_unit_;
+  std::unordered_map<uint16_t, BaseUnit *> mode_to_unit_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

@@ -17,9 +17,8 @@
 
 #include "common/command_plugin.hpp"
 
+#include <autoware_command_mode_types/constants/modes.hpp>
 #include <autoware_command_mode_types/constants/sources.hpp>
-
-#include <string>
 
 namespace autoware::command_mode_switcher
 {
@@ -27,7 +26,7 @@ namespace autoware::command_mode_switcher
 class StopSwitcher : public ControlCommandPlugin
 {
 public:
-  std::string mode_name() const override { return "stop"; }
+  uint16_t mode() const override { return autoware::command_mode_types::modes::stop; }
   uint16_t source() const override { return autoware::command_mode_types::sources::stop; }
   bool autoware_control() const override { return true; }
   void initialize() override;

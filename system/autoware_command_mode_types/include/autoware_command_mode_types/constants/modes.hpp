@@ -12,15 +12,22 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "command_container.hpp"
+#ifndef AUTOWARE_COMMAND_MODE_TYPES__CONSTANTS__MODES_HPP_
+#define AUTOWARE_COMMAND_MODE_TYPES__CONSTANTS__MODES_HPP_
 
-namespace autoware::command_mode_switcher
+namespace autoware::command_mode_types::modes
 {
 
-Command::Command(std::shared_ptr<CommandPlugin> plugin) : plugin(plugin)
-{
-  status.mode = plugin->mode();
-  status.network_gate_state = TriState::Enabled;
-}
+constexpr uint16_t unknown = 0;
+constexpr uint16_t manual = 1000;
+constexpr uint16_t stop = 1007;
+constexpr uint16_t autonomous = 1001;
+constexpr uint16_t local = 1004;
+constexpr uint16_t remote = 1006;
+constexpr uint16_t emergency_stop = 1003;
+constexpr uint16_t comfortable_stop = 1002;
+constexpr uint16_t pull_over = 1005;
 
-}  // namespace autoware::command_mode_switcher
+}  // namespace autoware::command_mode_types::modes
+
+#endif  // AUTOWARE_COMMAND_MODE_TYPES__CONSTANTS__MODES_HPP_
