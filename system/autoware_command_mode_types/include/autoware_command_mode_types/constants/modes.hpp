@@ -15,18 +15,20 @@
 #ifndef AUTOWARE_COMMAND_MODE_TYPES__CONSTANTS__MODES_HPP_
 #define AUTOWARE_COMMAND_MODE_TYPES__CONSTANTS__MODES_HPP_
 
+#include <cstdint>
+
 namespace autoware::command_mode_types::modes
 {
 
 constexpr uint16_t unknown = 0;
 constexpr uint16_t manual = 1000;
-constexpr uint16_t stop = 1007;
-constexpr uint16_t autonomous = 1001;
-constexpr uint16_t local = 1004;
-constexpr uint16_t remote = 1006;
-constexpr uint16_t emergency_stop = 1003;
-constexpr uint16_t comfortable_stop = 1002;
-constexpr uint16_t pull_over = 1005;
+constexpr uint16_t stop = 1001;
+constexpr uint16_t autonomous = 1002;
+constexpr uint16_t local = 1003;
+constexpr uint16_t remote = 1004;
+constexpr uint16_t emergency_stop = 1005;
+constexpr uint16_t comfortable_stop = 1006;
+constexpr uint16_t pull_over = 1007;
 
 }  // namespace autoware::command_mode_types::modes
 

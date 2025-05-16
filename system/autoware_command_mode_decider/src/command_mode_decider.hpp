@@ -17,8 +17,6 @@
 
 #include "command_mode_decider_base.hpp"
 
-#include <string>
-
 namespace autoware::command_mode_decider
 {
 
@@ -28,7 +26,7 @@ public:
   explicit CommandModeDecider(const rclcpp::NodeOptions & options);
 
 protected:
-  std::string decide_command_mode() override;
+  uint16_t decide_command_mode() override;
 
 private:
   bool use_pull_over_;

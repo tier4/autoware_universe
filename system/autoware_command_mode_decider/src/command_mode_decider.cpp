@@ -14,7 +14,7 @@
 
 #include "command_mode_decider.hpp"
 
-#include <string>
+#include <autoware_command_mode_types/constants/modes.hpp>
 
 namespace autoware::command_mode_decider
 {
@@ -24,7 +24,7 @@ CommandModeDecider::CommandModeDecider(const rclcpp::NodeOptions & options)
 {
 }
 
-std::string CommandModeDecider::decide_command_mode()
+uint16_t CommandModeDecider::decide_command_mode()
 {
   const auto command_mode_status = get_command_mode_status();
   const auto request_mode_status = get_request_mode_status();
@@ -32,14 +32,6 @@ std::string CommandModeDecider::decide_command_mode()
   const auto is_available = [background](const auto & status) {
     return status.mode_available && (status.transition_available || background);
   };
-
-  // Use the requested MRM if available.
-  {
-    const auto status = command_mode_status.get(request_mode_status.mrm);
-    if (is_available(status)) {
-      return request_mode_status.mrm;
-    }
-  }
 
   // Use the specified operation mode if available.
   {
@@ -49,29 +41,26 @@ std::string CommandModeDecider::decide_command_mode()
     }
   }
 
-  // TODO(Takagi, Isamu): Use the available MRM according to the state transitions at the
-  // following.
+  // TODO(Takagi, Isamu): Use the available MRM according to the state transitions.
   // https://autowarefoundation.github.io/autoware-documentation/main/design/autoware-interfaces/ad-api/features/fail-safe/#behavior
-  const auto pull_over = "pull_over";
-  const auto comfortable_stop = "comfortable_stop";
-  const auto emergency_stop = "emergency_stop";
-
-  // TODO(Takagi, Isamu): Create state transition table.
   // use_pull_over_
   // use_comfortable_stop_
-  if (command_mode_status.get(pull_over).mode_available) {
-    return pull_over;
+
+  namespace modes = autoware::command_mode_types::modes;
+
+  if (command_mode_status.get(modes::pull_over).mode_available) {
+    return modes::pull_over;
   }
-  if (command_mode_status.get(comfortable_stop).mode_available) {
-    return comfortable_stop;
+  if (command_mode_status.get(modes::comfortable_stop).mode_available) {
+    return modes::comfortable_stop;
   }
-  if (command_mode_status.get(emergency_stop).mode_available) {
-    return emergency_stop;
+  if (command_mode_status.get(modes::emergency_stop).mode_available) {
+    return modes::emergency_stop;
   }
 
   // Use an empty string to delegate to switcher node.
-  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "no mrm available: delegate to switcher");
-  return std::string();
+  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "no mrm available");
+  return modes::unknown;
 }
 
 }  // namespace autoware::command_mode_decider

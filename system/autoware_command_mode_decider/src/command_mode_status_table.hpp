@@ -17,7 +17,6 @@
 
 #include <autoware_command_mode_types/types/command_mode_status.hpp>
 
-#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -29,19 +28,19 @@ using autoware::command_mode_types::CommandModeStatusItem;
 class CommandModeStatusTable
 {
 public:
-  void init(const std::vector<std::string> & modes);
+  void init(const std::vector<uint16_t> & modes);
   void set(const CommandModeStatusItem & item, const rclcpp::Time & stamp);
   void check_timeout(const rclcpp::Time & stamp);
   bool ready() const;
-  const CommandModeStatusItem & get(const std::string & mode) const;
+  const CommandModeStatusItem & get(uint16_t mode) const;
 
   auto begin() const { return command_mode_status_.begin(); }
   auto end() const { return command_mode_status_.end(); }
 
 private:
   CommandModeStatusItem empty_item_;
-  std::unordered_map<std::string, CommandModeStatusItem> command_mode_status_;
-  std::unordered_map<std::string, rclcpp::Time> command_mode_stamps_;
+  std::unordered_map<uint16_t, CommandModeStatusItem> command_mode_status_;
+  std::unordered_map<uint16_t, rclcpp::Time> command_mode_stamps_;
 };
 
 }  // namespace autoware::command_mode_decider
