@@ -17,6 +17,7 @@
 
 #include "state.hpp"
 
+#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <tier4_system_msgs/msg/mode_change_available.hpp>
@@ -31,14 +32,31 @@ class FlagNode : public rclcpp::Node
 public:
   explicit FlagNode(const rclcpp::NodeOptions & options);
 
+  struct InputData
+  {
+    Odometry kinematics;
+    Trajectory trajectory;
+    Control control_cmd;
+    Control trajectory_follower_control_cmd;
+  };
+
 private:
   using ModeChangeAvailable = tier4_system_msgs::msg::ModeChangeAvailable;
   void on_timer();
+  std::optional<InputData> take_data();
 
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_available_;
   rclcpp::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_completed_;
   rclcpp::Publisher<ModeChangeBase::DebugInfo>::SharedPtr pub_debug_;
+
+  template <class T>
+  using PollingSubscriber = autoware_utils_rclcpp::InterProcessPollingSubscriber<T>;
+  PollingSubscriber<Odometry> sub_kinematics_{this, "kinematics"};
+  PollingSubscriber<Trajectory> sub_trajectory_{this, "trajectory"};
+  PollingSubscriber<Control> sub_control_cmd_{this, "control_cmd"};
+  PollingSubscriber<Control> sub_trajectory_follower_control_cmd_{
+    this, "trajectory_follower_control_cmd"};
 
   std::unique_ptr<ModeChangeBase> autonomous_mode_;
 };
