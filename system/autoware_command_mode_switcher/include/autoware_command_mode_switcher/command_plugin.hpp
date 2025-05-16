@@ -12,15 +12,17 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__COMMAND_PLUGIN_HPP_
-#define COMMON__COMMAND_PLUGIN_HPP_
+#ifndef AUTOWARE_COMMAND_MODE_SWITCHER__COMMAND_PLUGIN_HPP_
+#define AUTOWARE_COMMAND_MODE_SWITCHER__COMMAND_PLUGIN_HPP_
 
-#include "common/command_status.hpp"
-
+#include <autoware_command_mode_types/types/command_mode_status.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace autoware::command_mode_switcher
 {
+
+using command_mode_types::MrmState;
+using command_mode_types::TriState;
 
 class CommandPlugin
 {
@@ -69,4 +71,4 @@ public:
 };
 }  // namespace autoware::command_mode_switcher
 
-#endif  // COMMON__COMMAND_PLUGIN_HPP_
+#endif  // AUTOWARE_COMMAND_MODE_SWITCHER__COMMAND_PLUGIN_HPP_

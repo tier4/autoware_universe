@@ -12,7 +12,7 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "command_plugin.hpp"
+#include <autoware_command_mode_switcher/command_plugin.hpp>
 
 namespace autoware::command_mode_switcher
 {

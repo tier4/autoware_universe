@@ -15,7 +15,7 @@
 #ifndef COMMON__SELECTOR_INTERFACE_HPP_
 #define COMMON__SELECTOR_INTERFACE_HPP_
 
-#include "common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/command_plugin.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 

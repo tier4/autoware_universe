@@ -12,23 +12,28 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "pull_over.hpp"
+#ifndef REMOTE_HPP_
+#define REMOTE_HPP_
+
+#include <autoware_command_mode_switcher/command_plugin.hpp>
+#include <autoware_command_mode_types/constants/modes.hpp>
+#include <autoware_command_mode_types/constants/sources.hpp>
 
 namespace autoware::command_mode_switcher
 {
 
-void PullOverSwitcher::initialize()
+class RemoteSwitcher : public ControlCommandPlugin
 {
-  /*
-  set_mode_continuable(false);
-  set_mode_available(false);
-  set_ctrl_available(true);
-  set_transition_completed(true);
-  */
-}
+public:
+  uint16_t mode() const override { return autoware::command_mode_types::modes::remote; }
+  uint16_t source() const override { return autoware::command_mode_types::sources::remote; }
+  bool autoware_control() const override { return true; }
+  void initialize() override;
+
+  bool get_transition_available() override { return true; }
+  bool get_transition_completed() override { return true; }
+};
 
 }  // namespace autoware::command_mode_switcher
 
-#include <pluginlib/class_list_macros.hpp>
-PLUGINLIB_EXPORT_CLASS(
-  autoware::command_mode_switcher::PullOverSwitcher, autoware::command_mode_switcher::CommandPlugin)
+#endif  // REMOTE_HPP_
