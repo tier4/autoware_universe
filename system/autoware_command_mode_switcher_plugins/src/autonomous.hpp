@@ -12,13 +12,13 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef PLUGINS__AUTONOMOUS_HPP_
-#define PLUGINS__AUTONOMOUS_HPP_
+#ifndef AUTONOMOUS_HPP_
+#define AUTONOMOUS_HPP_
 
-#include "common/command_plugin.hpp"
-
+#include <autoware_command_mode_switcher/command_plugin.hpp>
 #include <autoware_command_mode_types/constants/modes.hpp>
 #include <autoware_command_mode_types/constants/sources.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <tier4_system_msgs/msg/mode_change_available.hpp>
 
@@ -47,4 +47,4 @@ private:
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // PLUGINS__AUTONOMOUS_HPP_
+#endif  // AUTONOMOUS_HPP_
