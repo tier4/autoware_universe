@@ -15,22 +15,16 @@
 #ifndef COMMAND_MODE_DECIDER_HPP_
 #define COMMAND_MODE_DECIDER_HPP_
 
-#include "command_mode_decider_base.hpp"
+#include <autoware_command_mode_decider/plugin.hpp>
 
 namespace autoware::command_mode_decider
 {
 
-class CommandModeDecider : public CommandModeDeciderBase
+class CommandModeDecider : public DeciderPlugin
 {
 public:
-  explicit CommandModeDecider(const rclcpp::NodeOptions & options);
-
-protected:
-  uint16_t decide_command_mode() override;
-
-private:
-  bool use_pull_over_;
-  bool use_comfortable_stop_;
+  uint16_t decide(
+    const RequestModeStatus & request, const CommandModeStatusTable & status) override;
 };
 
 }  // namespace autoware::command_mode_decider

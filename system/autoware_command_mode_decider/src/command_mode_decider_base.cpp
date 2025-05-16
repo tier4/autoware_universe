@@ -37,8 +37,15 @@ void logging_mode_change(
 }
 
 CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & options)
-: Node("command_mode_decider", options)
+: Node("command_mode_decider", options),
+  loader_("autoware_command_mode_decider", "autoware::command_mode_decider::DeciderPlugin")
 {
+  const auto plugin_name = declare_parameter<std::string>("plugin_name");
+  if (!loader_.isClassAvailable(plugin_name)) {
+    throw std::invalid_argument("unknown plugin: " + plugin_name);
+  }
+  plugin_ = loader_.createSharedInstance(plugin_name);
+
   transition_timeout_ = declare_parameter<double>("transition_timeout");
   request_timeout_ = declare_parameter<double>("request_timeout");
 
@@ -176,7 +183,7 @@ void CommandModeDeciderBase::update_request_mode()
 {
   // Decide command mode with system-dependent logic.
   {
-    const auto mode = decide_command_mode();
+    const auto mode = plugin_->decide(system_request_, command_mode_status_);
     logging_mode_change(get_logger(), "request", request_mode_, mode);
     request_mode_ = mode;
   }
@@ -385,3 +392,6 @@ void CommandModeDeciderBase::on_change_operation_mode(
 }
 
 }  // namespace autoware::command_mode_decider
+
+#include <rclcpp_components/register_node_macro.hpp>
+RCLCPP_COMPONENTS_REGISTER_NODE(autoware::command_mode_decider::CommandModeDeciderBase)

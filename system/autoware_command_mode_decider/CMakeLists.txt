@@ -8,12 +8,11 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   "src/command_mode_conversion.cpp"
   "src/command_mode_status_table.cpp"
   "src/command_mode_decider_base.cpp"
-  "src/command_mode_decider.cpp"
 )
 target_include_directories(${PROJECT_NAME} PRIVATE "src")
 
 rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "autoware::command_mode_decider::CommandModeDecider"
+  PLUGIN "autoware::command_mode_decider::CommandModeDeciderBase"
   EXECUTABLE "command_mode_decider_node"
   EXECUTOR MultiThreadedExecutor
 )

@@ -19,15 +19,12 @@
 namespace autoware::command_mode_decider
 {
 
-CommandModeDecider::CommandModeDecider(const rclcpp::NodeOptions & options)
-: CommandModeDeciderBase(options)
+uint16_t CommandModeDecider::decide(
+  const RequestModeStatus & request, const CommandModeStatusTable & status)
 {
-}
+  const auto command_mode_status = status;
+  const auto request_mode_status = request;
 
-uint16_t CommandModeDecider::decide_command_mode()
-{
-  const auto command_mode_status = get_command_mode_status();
-  const auto request_mode_status = get_request_mode_status();
   const auto background = !request_mode_status.autoware_control;
   const auto is_available = [background](const auto & status) {
     return status.mode_available && (status.transition_available || background);
@@ -58,12 +55,12 @@ uint16_t CommandModeDecider::decide_command_mode()
     return modes::emergency_stop;
   }
 
-  // Use an empty string to delegate to switcher node.
-  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "no mrm available");
+  // RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "no mrm available");
   return modes::unknown;
 }
 
 }  // namespace autoware::command_mode_decider
 
-#include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(autoware::command_mode_decider::CommandModeDecider)
+#include <pluginlib/class_list_macros.hpp>
+PLUGINLIB_EXPORT_CLASS(
+  autoware::command_mode_decider::CommandModeDecider, autoware::command_mode_decider::DeciderPlugin)

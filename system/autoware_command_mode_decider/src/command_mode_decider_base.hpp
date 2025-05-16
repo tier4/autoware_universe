@@ -15,10 +15,12 @@
 #ifndef COMMAND_MODE_DECIDER_BASE_HPP_
 #define COMMAND_MODE_DECIDER_BASE_HPP_
 
-#include "command_mode_status_table.hpp"
+#include "autoware_command_mode_decider/command_mode_status_table.hpp"
+#include "autoware_command_mode_decider/plugin.hpp"
 
 #include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <autoware_command_mode_types/adapters/command_mode_status.hpp>
+#include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
@@ -28,6 +30,8 @@
 #include <tier4_system_msgs/srv/change_autoware_control.hpp>
 #include <tier4_system_msgs/srv/change_operation_mode.hpp>
 #include <tier4_system_msgs/srv/request_mrm.hpp>
+
+#include <memory>
 
 namespace autoware::command_mode_decider
 {
@@ -44,21 +48,10 @@ using tier4_system_msgs::srv::ChangeAutowareControl;
 using tier4_system_msgs::srv::ChangeOperationMode;
 using tier4_system_msgs::srv::RequestMrm;
 
-struct RequestModeStatus
-{
-  bool autoware_control;
-  uint16_t operation_mode;
-};
-
 class CommandModeDeciderBase : public rclcpp::Node
 {
 public:
   explicit CommandModeDeciderBase(const rclcpp::NodeOptions & options);
-
-protected:
-  virtual uint16_t decide_command_mode() = 0;
-  const auto & get_command_mode_status() const { return command_mode_status_; }
-  const auto & get_request_mode_status() const { return system_request_; }
 
 private:
   bool is_in_transition() const;
@@ -90,6 +83,9 @@ private:
   rclcpp::Publisher<OperationModeState>::SharedPtr pub_operation_mode_;
 
   rclcpp::Publisher<MrmState>::SharedPtr pub_mrm_state_;
+
+  pluginlib::ClassLoader<DeciderPlugin> loader_;
+  std::shared_ptr<DeciderPlugin> plugin_;
 
   // parameters
   double transition_timeout_;
