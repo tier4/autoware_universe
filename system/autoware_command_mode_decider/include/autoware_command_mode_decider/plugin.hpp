@@ -29,6 +29,9 @@ struct RequestModeStatus
 class DeciderPlugin
 {
 public:
+  virtual uint16_t from_operation_mode(uint16_t operation_mode) = 0;
+  virtual uint16_t to_operation_mode(uint16_t command_mode) = 0;
+  virtual uint16_t to_mrm_behavior(uint16_t command_mode) = 0;
   virtual uint16_t decide(
     const RequestModeStatus & request, const CommandModeStatusTable & status) = 0;
 };
