@@ -3,14 +3,14 @@
     update_rate: 10.0
     transition_timeout: 10.0
     request_timeout: 1.0
+    command_modes:  # See autoware_command_mode_types/constants/modes.hpp
+      - 1000  # manual
+      - 1001  # stop
+      - 1002  # autonomous
+      - 1003  # local
+      - 1004  # remote
+      - 1005  # emergency_stop
+      - 1006  # comfortable_stop
+      - 1007  # pull_over
+    initial_operation_mode: 1001
     initial_autoware_control: true
-    initial_operation_mode: stop
-    command_modes:
-      - manual
-      - stop
-      - autonomous
-      - local
-      - remote
-      - pull_over
-      - comfortable_stop
-      - emergency_stop

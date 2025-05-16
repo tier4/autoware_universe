@@ -14,23 +14,26 @@
 
 #include "command_mode_status_table.hpp"
 
+#include <autoware_command_mode_types/constants/modes.hpp>
+
 #include <string>
 #include <vector>
 
 namespace autoware::command_mode_decider
 {
 
-void CommandModeStatusTable::init(const std::vector<std::string> & modes)
+void CommandModeStatusTable::init(const std::vector<uint16_t> & modes)
 {
   for (const auto & mode : modes) {
-    command_mode_status_[mode] = CommandModeStatusItem();
+    const auto item = CommandModeStatusItem(autoware::command_mode_types::modes::unknown);
+    command_mode_status_[mode] = item;
   }
 }
 
 bool CommandModeStatusTable::ready() const
 {
   for (const auto & [mode, item] : command_mode_status_) {
-    if (item.mode.empty()) return false;
+    if (item.mode == autoware::command_mode_types::modes::unknown) return false;
   }
   return true;
 }
@@ -54,7 +57,7 @@ void CommandModeStatusTable::check_timeout(const rclcpp::Time & stamp)
   }
 }
 
-const CommandModeStatusItem & CommandModeStatusTable::get(const std::string & mode) const
+const CommandModeStatusItem & CommandModeStatusTable::get(uint16_t mode) const
 {
   const auto iter = command_mode_status_.find(mode);
   if (iter != command_mode_status_.end()) {

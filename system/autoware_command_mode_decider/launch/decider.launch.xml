@@ -8,6 +8,5 @@
     <remap from="~/operation_mode/change_operation_mode" to="/system/operation_mode/change_operation_mode"/>
     <remap from="~/operation_mode/change_autoware_control" to="/system/operation_mode/change_autoware_control"/>
     <remap from="~/mrm/state" to="/system/fail_safe/mrm_state"/>
-    <remap from="~/mrm/request" to="/system/fail_safe/mrm_request"/>
   </node>
 </launch>

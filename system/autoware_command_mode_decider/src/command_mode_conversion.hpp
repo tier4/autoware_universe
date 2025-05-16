@@ -15,14 +15,14 @@
 #ifndef COMMAND_MODE_CONVERSION_HPP_
 #define COMMAND_MODE_CONVERSION_HPP_
 
-#include <string>
+#include <cstdint>
 
 namespace autoware::command_mode_decider
 {
 
-std::string operation_mode_to_command(uint32_t mode);
-uint32_t command_to_operation_mode(const std::string & text);
-uint32_t command_to_mrm_behavior(const std::string & text);
+uint16_t operation_mode_to_command(uint32_t operation_mode);
+uint32_t command_to_operation_mode(uint16_t command_mode);
+uint32_t command_to_mrm_behavior(uint16_t command_mode);
 
 }  // namespace autoware::command_mode_decider
 
