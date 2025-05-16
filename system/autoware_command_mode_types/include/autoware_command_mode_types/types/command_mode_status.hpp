@@ -17,7 +17,6 @@
 
 #include <rclcpp/time.hpp>
 
-#include <string>
 #include <vector>
 
 namespace autoware::command_mode_types
@@ -45,7 +44,7 @@ enum class GateType {
 
 struct CommandModeStatusItem
 {
-  std::string mode;
+  uint16_t mode;
 
   TriState mode_state;
   TriState gate_state;
@@ -65,7 +64,7 @@ struct CommandModeStatusItem
   TriState source_state;
   TriState source_group;
 
-  explicit CommandModeStatusItem(const std::string & mode = "");
+  explicit CommandModeStatusItem(uint16_t mode = 0);
   bool check_mode_ready() const;
   bool check_gate_ready(GateType gate) const;
 };

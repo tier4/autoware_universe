@@ -25,7 +25,6 @@
 #include <tier4_system_msgs/srv/select_command_source.hpp>
 
 #include <memory>
-#include <string>
 #include <vector>
 
 namespace autoware::command_mode_switcher
@@ -50,7 +49,7 @@ private:
   rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_source_status_;
 
   bool requesting_ = false;
-  std::string last_request_mode_;
+  uint16_t last_request_mode_;
   Callback notification_callback_;
   CommandSourceStatus status_;
 };
@@ -74,7 +73,7 @@ private:
   rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
 
   bool requesting_ = false;
-  std::string last_request_mode_;
+  uint16_t last_request_mode_;
   Callback notification_callback_;
   ControlModeReport status_;
 };

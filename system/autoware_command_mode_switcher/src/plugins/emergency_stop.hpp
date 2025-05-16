@@ -17,9 +17,8 @@
 
 #include "common/command_plugin.hpp"
 
+#include <autoware_command_mode_types/constants/modes.hpp>
 #include <autoware_command_mode_types/constants/sources.hpp>
-
-#include <string>
 
 namespace autoware::command_mode_switcher
 {
@@ -27,7 +26,7 @@ namespace autoware::command_mode_switcher
 class EmergencyStopSwitcher : public ControlCommandPlugin
 {
 public:
-  std::string mode_name() const override { return "emergency_stop"; }
+  uint16_t mode() const override { return autoware::command_mode_types::modes::emergency_stop; }
   uint16_t source() const override { return autoware::command_mode_types::sources::emergency_stop; }
   bool autoware_control() const override { return true; }
   void initialize() override;

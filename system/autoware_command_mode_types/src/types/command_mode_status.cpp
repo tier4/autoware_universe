@@ -14,12 +14,10 @@
 
 #include "autoware_command_mode_types/adapters/command_mode_status.hpp"
 
-#include <string>
-
 namespace autoware::command_mode_types
 {
 
-CommandModeStatusItem::CommandModeStatusItem(const std::string & mode) : mode(mode)
+CommandModeStatusItem::CommandModeStatusItem(uint16_t mode) : mode(mode)
 {
   mode_state = TriState::Disabled;
   gate_state = TriState::Disabled;

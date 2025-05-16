@@ -17,7 +17,6 @@
 #include <autoware_command_mode_types/constants/sources.hpp>
 
 #include <memory>
-#include <string>
 #include <utility>
 
 namespace autoware::command_mode_switcher
@@ -86,7 +85,7 @@ TriState ControlGateInterface::is_selected(const CommandPlugin & plugin) const
   if (plugin.source() == status_.source) {
     return TriState::Enabled;
   }
-  if (last_request_mode_ == plugin.mode_name()) {
+  if (last_request_mode_ == plugin.mode()) {
     return TriState::Transition;
   } else {
     return TriState::Disabled;
@@ -100,7 +99,7 @@ TriState VehicleGateInterface::is_selected(const CommandPlugin & plugin) const
   } else {
     if (status_.mode == ControlModeReport::MANUAL) return TriState::Enabled;
   }
-  if (last_request_mode_ == plugin.mode_name()) {
+  if (last_request_mode_ == plugin.mode()) {
     return TriState::Transition;
   } else {
     return TriState::Disabled;
@@ -124,7 +123,7 @@ bool ControlGateInterface::request(const CommandPlugin & plugin, bool transition
 
   RCLCPP_INFO_STREAM(node_.get_logger(), "control gate request");
   requesting_ = true;
-  last_request_mode_ = plugin.mode_name();
+  last_request_mode_ = plugin.mode();
   cli_source_select_->async_send_request(request, [this](SharedFuture) { requesting_ = false; });
   return true;
 }
@@ -138,7 +137,7 @@ bool VehicleGateInterface::request(const CommandPlugin & plugin)
     RCLCPP_WARN_STREAM(node_.get_logger(), "vehicle gate service is not ready");
     return false;
   }
-  if (last_request_mode_ == plugin.mode_name()) {
+  if (last_request_mode_ == plugin.mode()) {
     return false;
   }
 
@@ -152,7 +151,7 @@ bool VehicleGateInterface::request(const CommandPlugin & plugin)
 
   RCLCPP_INFO_STREAM(node_.get_logger(), "vehicle gate request");
   requesting_ = true;
-  last_request_mode_ = plugin.mode_name();
+  last_request_mode_ = plugin.mode();
   cli_control_mode_->async_send_request(request, [this](SharedFuture) { requesting_ = false; });
   return true;
 }

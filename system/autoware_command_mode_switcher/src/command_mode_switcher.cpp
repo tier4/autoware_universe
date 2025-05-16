@@ -35,7 +35,7 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   {
     const auto command = std::make_shared<Command>(std::make_shared<ManualCommand>());
     manual_command_ = command;
-    platform_commands_[command->plugin->mode_name()] = command;
+    platform_commands_[command->plugin->mode()] = command;
     commands_.push_back(command);
   }
 
@@ -49,13 +49,13 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
         continue;
       }
       const auto instance = loader_.createSharedInstance(plugin);
-      if (autoware_commands_.count(instance->mode_name())) {
+      if (autoware_commands_.count(instance->mode())) {
         RCLCPP_WARN_STREAM(get_logger(), "ignore duplicate plugin: " << plugin);
         continue;
       }
 
       const auto command = std::make_shared<Command>(instance);
-      autoware_commands_[command->plugin->mode_name()] = command;
+      autoware_commands_[command->plugin->mode()] = command;
       commands_.push_back(command);
     }
   }
@@ -95,7 +95,7 @@ void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
 
 void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 {
-  const auto get_command = [this](const std::string & mode, bool background) {
+  const auto get_command = [this](uint16_t mode, bool background) {
     // Platform commands are only available in foreground.
     if (!background) {
       const auto iter = platform_commands_.find(mode);
@@ -120,8 +120,8 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   };
 
   // Update command target.
-  const auto foreground = msg.foreground.empty() ? nullptr : get_command(msg.foreground, false);
-  const auto background = msg.background.empty() ? nullptr : get_command(msg.background, true);
+  const auto foreground = msg.foreground == 0 ? nullptr : get_command(msg.foreground, false);
+  const auto background = msg.background == 0 ? nullptr : get_command(msg.background, true);
   {
     const auto foreground_changed = foreground != foreground_;
     const auto background_changed = background != background_;

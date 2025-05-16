@@ -28,7 +28,6 @@
 #include <tier4_system_msgs/msg/command_source_status.hpp>
 
 #include <memory>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -65,8 +64,8 @@ private:
   // Mode switching.
   pluginlib::ClassLoader<CommandPlugin> loader_;
   std::vector<std::shared_ptr<Command>> commands_;
-  std::unordered_map<std::string, std::shared_ptr<Command>> platform_commands_;
-  std::unordered_map<std::string, std::shared_ptr<Command>> autoware_commands_;
+  std::unordered_map<uint16_t, std::shared_ptr<Command>> platform_commands_;
+  std::unordered_map<uint16_t, std::shared_ptr<Command>> autoware_commands_;
   std::shared_ptr<Command> manual_command_;
   std::shared_ptr<Command> foreground_;
   std::shared_ptr<Command> background_;

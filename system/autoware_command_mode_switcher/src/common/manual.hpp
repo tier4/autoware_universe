@@ -17,9 +17,8 @@
 
 #include "common/command_plugin.hpp"
 
+#include <autoware_command_mode_types/constants/modes.hpp>
 #include <autoware_command_mode_types/constants/sources.hpp>
-
-#include <string>
 
 namespace autoware::command_mode_switcher
 {
@@ -28,7 +27,7 @@ namespace autoware::command_mode_switcher
 class ManualCommand : public VehicleCommandPlugin
 {
 public:
-  std::string mode_name() const override { return "manual"; }
+  uint16_t mode() const override { return autoware::command_mode_types::modes::manual; }
   uint16_t source() const override { return autoware::command_mode_types::sources::builtin; }
   bool autoware_control() const override { return false; }
   void initialize() override;
