@@ -43,14 +43,15 @@
 #include <tf2/convert.h>
 #include <tf2/transform_datatypes.h>
 
+#include <optional>
 #include <string>
 #include <utility>
 
 namespace autoware::radar_object_tracker::utils
 {
 
-boost::optional<geometry_msgs::msg::Transform> getTransformAnonymous(
-  const managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
+std::optional<geometry_msgs::msg::Transform> getTransformAnonymous(
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
   const std::string & source_frame_id, const std::string & target_frame_id,
   const rclcpp::Time & time);
 
