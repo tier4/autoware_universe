@@ -18,6 +18,7 @@
 #include <autoware/motion_utils/marker/marker_helper.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
+#include <magic_enum.hpp>
 
 #include <vector>
 
@@ -53,23 +54,7 @@ visualization_msgs::msg::MarkerArray createCrosswalkMarkers(
       string_stream << std::fixed << std::setprecision(2);
       string_stream << "(module, ttc, ttv, state)=(" << module_id << " , "
                     << point.time_to_collision << " , " << point.time_to_vehicle;
-      switch (state) {
-        case CollisionState::YIELD:
-          string_stream << " , YIELD)";
-          break;
-        case CollisionState::EGO_PASS_FIRST:
-          string_stream << " , EGO_PASS_FIRST)";
-          break;
-        case CollisionState::EGO_PASS_LATER:
-          string_stream << " , EGO_PASS_LATER)";
-          break;
-        case CollisionState::IGNORE:
-          string_stream << " , IGNORE)";
-          break;
-        default:
-          string_stream << " , NONE)";
-          break;
-      }
+      string_stream << " ," << magic_enum::enum_name(state) << ")";
       marker.text = string_stream.str();
       marker.pose.position = point.collision_point;
       marker.pose.position.z += 2.0 + i * 0.5;  // NOTE: so that the texts will not overlap
