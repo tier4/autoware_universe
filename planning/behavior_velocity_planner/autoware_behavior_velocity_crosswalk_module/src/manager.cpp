@@ -106,6 +106,8 @@ CrosswalkModuleManager::CrosswalkModuleManager(rclcpp::Node & node)
     get_or_declare_parameter<double>(node, ns + ".pass_judge.ego_pass_later_additional_margin");
   cp.ego_min_assumed_speed =
     get_or_declare_parameter<double>(node, ns + ".pass_judge.ego_min_assumed_speed");
+  cp.uncertain_yield_offset =
+    get_or_declare_parameter<double>(node, ns + ".pass_judge.uncertain_yield_offset");
   cp.min_acc_for_no_stop_decision =
     get_or_declare_parameter<double>(node, ns + ".pass_judge.no_stop_decision.min_acc");
   cp.min_jerk_for_no_stop_decision =

@@ -44,7 +44,7 @@ using autoware_internal_planning_msgs::msg::PathPointWithLaneId;
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using tier4_planning_msgs::msg::StopFactor;
 
-enum class CollisionState { YIELD, EGO_PASS_FIRST, EGO_PASS_LATER, IGNORE };
+enum class CollisionState { YIELD, UNCERTAIN_YIELD, EGO_PASS_FIRST, EGO_PASS_LATER, IGNORE };
 
 struct CollisionPoint
 {
