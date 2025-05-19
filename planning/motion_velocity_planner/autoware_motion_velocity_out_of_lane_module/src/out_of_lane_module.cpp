@@ -224,14 +224,14 @@ out_of_lane::OutOfLaneData prepare_out_of_lane_data(const out_of_lane::EgoData &
 std::optional<geometry_msgs::msg::Pose> OutOfLaneModule::calculate_slowdown_pose(
   const out_of_lane::EgoData & ego_data, const out_of_lane::OutOfLaneData & out_of_lane_data)
 {
-  auto slowdown_pose = out_of_lane::calculate_slowdown_pose(ego_data, out_of_lane_data, params_);
+  auto slowdown_pose = out_of_lane::calculate_slowdown_point(ego_data, out_of_lane_data, params_);
 
   update_slowdown_pose_buffer(ego_data, slowdown_pose);
 
   if (slowdown_pose_buffer_.empty()) return {};
 
   // get nearest active slowdown pose
-  const auto min_arc_length = std::numeric_limits<double>::max();
+  auto min_arc_length = std::numeric_limits<double>::max();
   std::optional<out_of_lane::SlowdownPose> nearest_slowdown_pose = {};
   for (const auto & sp : slowdown_pose_buffer_) {
     if (sp.arc_length > min_arc_length || !sp.is_active) continue;
@@ -265,7 +265,7 @@ void OutOfLaneModule::update_slowdown_pose_buffer(
     if (!sp.is_active && !slowdown_pose) continue;
 
     sp.arc_length = motion_utils::calcSignedArcLength(ego_data.trajectory_points, 0LU, sp.pose.position);
-    if (!sp.is_active && abs(sp.arc_length - slowdown_pose_arc_length) > params_.min_update_distance) {
+    if (!sp.is_active && abs(sp.arc_length - slowdown_pose_arc_length) > params_.update_distance_th) {
       continue;
     }
 

@@ -30,6 +30,8 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/Polygon.h>
 
+#include <rclcpp/rclcpp.hpp>
+
 #include <optional>
 #include <set>
 #include <string>
