@@ -54,7 +54,7 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
         continue;
       }
 
-      const auto command = std::make_shared<Command>(instance);
+      const auto command = std::make_shared<Command>(instance, plugin);
       autoware_commands_[command->plugin->mode()] = command;
       commands_.push_back(command);
     }
@@ -62,7 +62,7 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
 
   // Initialize all switchers. Call "construct" first, which acts as the base class constructor.
   for (const auto & command : commands_) {
-    command->plugin->construct(this);
+    command->plugin->construct(this, command->plugin_name);
     command->plugin->initialize();
   }
 

@@ -18,6 +18,8 @@
 #include <autoware_command_mode_types/types/command_mode_status.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <string>
+
 namespace autoware::command_mode_switcher
 {
 
@@ -44,10 +46,23 @@ public:
   virtual void set_mode_continuable(bool continuable) = 0;
   virtual void set_mode_available(bool available) = 0;
 
-  void construct(rclcpp::Node * node) { node_ = node; }
+  void construct(rclcpp::Node * node, std::string & plugin_name)
+  {
+    node_ = node;
+    plugin_name_ = plugin_name;
+  }
+
+  std::string plugin() const { return plugin_name_; }
+  std::string expand_param(const std::string & param_name) const
+  {
+    return "plugin_parameters." + plugin_name_ + "." + param_name;
+  }
 
 protected:
   rclcpp::Node * node_;
+
+private:
+  std::string plugin_name_;
 };
 
 class ControlCommandPlugin : public CommandPlugin
