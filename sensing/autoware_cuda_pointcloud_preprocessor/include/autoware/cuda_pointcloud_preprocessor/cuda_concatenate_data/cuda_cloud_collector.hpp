@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <autoware/pointcloud_preprocessor/concatenate_data/collector_matching_strategy.hpp>
+#ifndef AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_CONCATENATE_DATA__CUDA_CLOUD_COLLECTOR_HPP_
+#define AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_CONCATENATE_DATA__CUDA_CLOUD_COLLECTOR_HPP_
 
-template class autoware::pointcloud_preprocessor::NaiveMatchingStrategy<
-  autoware::pointcloud_preprocessor::PointCloud2Traits>;
-template class autoware::pointcloud_preprocessor::AdvancedMatchingStrategy<
-  autoware::pointcloud_preprocessor::PointCloud2Traits>;
+#include "autoware/pointcloud_preprocessor/concatenate_data/cloud_collector.hpp"
+#include "cuda_combine_cloud_handler.hpp"
+
+#endif  // AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_CONCATENATE_DATA__CUDA_CLOUD_COLLECTOR_HPP_
