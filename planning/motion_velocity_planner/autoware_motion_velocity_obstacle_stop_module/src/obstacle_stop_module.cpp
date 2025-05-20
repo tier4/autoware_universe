@@ -148,8 +148,6 @@ void ObstacleStopModule::init(rclcpp::Node & node, const std::string & module_na
     get_or_declare_parameter<bool>(node, "obstacle_stop.option.ignore_crossing_obstacle");
   suppress_sudden_stop_ =
     get_or_declare_parameter<bool>(node, "obstacle_stop.option.suppress_sudden_stop");
-  enable_debug_info_ =
-    get_or_declare_parameter<bool>(node, "obstacle_stop.option.enable_debug_info");
 
   common_param_ = CommonParam(node);
   stop_planning_param_ = StopPlanningParam(node, common_param_);
@@ -193,7 +191,6 @@ void ObstacleStopModule::update_parameters(
   // Module's own option parameters
   upd_p(base_ns + "option.ignore_crossing_obstacle", ignore_crossing_obstacle_);
   upd_p(base_ns + "option.suppress_sudden_stop", suppress_sudden_stop_);
-  upd_p(base_ns + "option.enable_debug_info", enable_debug_info_);
 
   // obstacle_stop.stop_planning
   {
@@ -873,7 +870,7 @@ std::optional<StopObstacle> ObstacleStopModule::pick_stop_obstacle_from_predicte
     return error_considered_vel * error_considered_vel * 0.5 / -braking_acc;
   }();
 
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     logger_, "|_OBJ_| total_dist: %2.5f, dist_to_collide: %2.5f, braking_dist: %2.5f",
     (collision_point->second + braking_dist), (collision_point->second), braking_dist);
 
