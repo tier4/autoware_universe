@@ -36,8 +36,12 @@ void logging_mode_change(
 
 CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & options)
 : Node("command_mode_decider", options),
+  diagnostics_(this),
   loader_("autoware_command_mode_decider", "autoware::command_mode_decider::DeciderPlugin")
 {
+  diagnostics_.setHardwareID("none");
+  diagnostics_.add("ready", this, &CommandModeDeciderBase::on_diagnostics);
+
   const auto plugin_name = declare_parameter<std::string>("plugin_name");
   if (!loader_.isClassAvailable(plugin_name)) {
     throw std::invalid_argument("unknown plugin: " + plugin_name);
@@ -102,6 +106,36 @@ bool CommandModeDeciderBase::is_in_transition() const
   }
 }
 
+void CommandModeDeciderBase::on_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status)
+{
+  std::vector<uint16_t> waiting_modes;
+  for (const auto & [mode, item] : command_mode_status_) {
+    if (item.mode == autoware::command_mode_types::modes::unknown) {
+      waiting_modes.push_back(mode);
+    }
+  }
+
+  if (waiting_modes.empty()) {
+    status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "");
+    return;
+  }
+
+  std::string message = "Waiting for mode status:";
+  for (const auto & mode : waiting_modes) {
+    message += " " + std::to_string(mode);
+  }
+  status.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, message);
+}
+
+void CommandModeDeciderBase::on_timer()
+{
+  if (!is_modes_ready_) {
+    return;
+  }
+  command_mode_status_.check_timeout(now());
+  update();
+}
+
 void CommandModeDeciderBase::on_status(const CommandModeStatus & msg)
 {
   // Update command mode status.
@@ -114,15 +148,6 @@ void CommandModeDeciderBase::on_status(const CommandModeStatus & msg)
   if (!is_modes_ready_) {
     return;
   }
-  update();
-}
-
-void CommandModeDeciderBase::on_timer()
-{
-  if (!is_modes_ready_) {
-    return;
-  }
-  command_mode_status_.check_timeout(now());
   update();
 }
 

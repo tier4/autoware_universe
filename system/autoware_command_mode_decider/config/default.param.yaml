@@ -10,8 +10,8 @@
       - 1002  # autonomous
       - 1003  # local
       - 1004  # remote
-      - 1005  # emergency_stop
-      - 1006  # comfortable_stop
-      - 1007  # pull_over
+      - 2001  # emergency_stop
+      - 2002  # comfortable_stop
+      - 2003  # pull_over
     initial_operation_mode: 1001
     initial_autoware_control: true

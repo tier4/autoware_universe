@@ -20,6 +20,7 @@
 
 #include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <autoware_command_mode_types/adapters/command_mode_status.hpp>
+#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -64,6 +65,7 @@ private:
   void publish_operation_mode_state();
   void publish_mrm_state();
 
+  void on_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
   void on_timer();
   void on_status(const CommandModeStatus & msg);
   void on_change_operation_mode(
@@ -84,6 +86,7 @@ private:
 
   rclcpp::Publisher<MrmState>::SharedPtr pub_mrm_state_;
 
+  diagnostic_updater::Updater diagnostics_;
   pluginlib::ClassLoader<DeciderPlugin> loader_;
   std::shared_ptr<DeciderPlugin> plugin_;
 
