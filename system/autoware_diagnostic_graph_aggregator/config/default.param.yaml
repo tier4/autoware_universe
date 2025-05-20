@@ -7,10 +7,10 @@
 
     use_command_mode_mappings: true
     command_mode_mappings:
-      - "{mode: stop,             path: /autoware/modes/stop}"
-      - "{mode: autonomous,       path: /autoware/modes/autonomous}"
-      - "{mode: local,            path: /autoware/modes/local}"
-      - "{mode: remote,           path: /autoware/modes/remote}"
-      - "{mode: emergency_stop,   path: /autoware/modes/emergency_stop}"
-      - "{mode: comfortable_stop, path: /autoware/modes/comfortable_stop}"
-      - "{mode: pull_over,        path: /autoware/modes/pull_over}"
+      - "{mode: 1001, path: /autoware/modes/stop}"
+      - "{mode: 1002, path: /autoware/modes/autonomous}"
+      - "{mode: 1003, path: /autoware/modes/local}"
+      - "{mode: 1004, path: /autoware/modes/remote}"
+      - "{mode: 2001, path: /autoware/modes/emergency_stop}"
+      - "{mode: 2002, path: /autoware/modes/comfortable_stop}"
+      - "{mode: 2003, path: /autoware/modes/pull_over}"

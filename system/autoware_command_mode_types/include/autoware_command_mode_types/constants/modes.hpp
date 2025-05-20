@@ -26,9 +26,9 @@ constexpr uint16_t stop = 1001;
 constexpr uint16_t autonomous = 1002;
 constexpr uint16_t local = 1003;
 constexpr uint16_t remote = 1004;
-constexpr uint16_t emergency_stop = 1005;
-constexpr uint16_t comfortable_stop = 1006;
-constexpr uint16_t pull_over = 1007;
+constexpr uint16_t emergency_stop = 2001;
+constexpr uint16_t comfortable_stop = 2002;
+constexpr uint16_t pull_over = 2003;
 
 }  // namespace autoware::command_mode_types::modes
 
