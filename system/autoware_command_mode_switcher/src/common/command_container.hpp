@@ -19,17 +19,15 @@
 #include "common/command_status.hpp"
 
 #include <memory>
-#include <string>
 
 namespace autoware::command_mode_switcher
 {
 
 struct Command
 {
-  explicit Command(std::shared_ptr<CommandPlugin> plugin, const std::string & plugin_name = "");
+  explicit Command(std::shared_ptr<CommandPlugin> plugin);
 
   std::shared_ptr<CommandPlugin> plugin;
-  std::string plugin_name;
   CommandStatus status;
 };
 
