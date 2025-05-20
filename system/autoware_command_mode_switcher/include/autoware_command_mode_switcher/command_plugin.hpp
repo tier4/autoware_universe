@@ -46,8 +46,8 @@ public:
   virtual void set_mode_continuable(bool continuable) = 0;
   virtual void set_mode_available(bool available) = 0;
 
-  void construct(rclcpp::Node * node){ node_ = node; }
-  
+  void construct(rclcpp::Node * node) { node_ = node; }
+
   void set_plugin_name(const std::string & plugin_name) { plugin_name_ = plugin_name; }
   std::string expand_param(const std::string & param_name) const
   {
