@@ -17,7 +17,7 @@
 namespace autoware::command_mode_switcher
 {
 
-Command::Command(std::shared_ptr<CommandPlugin> plugin, const std::string & plugin_name) : plugin(plugin), plugin_name(plugin_name)
+Command::Command(std::shared_ptr<CommandPlugin> plugin) : plugin(plugin)
 {
   status.mode = plugin->mode();
   status.network_gate_state = TriState::Enabled;
