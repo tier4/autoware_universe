@@ -20,6 +20,8 @@
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <tier4_system_msgs/srv/change_operation_mode.hpp>
 
+#include <vector>
+
 namespace autoware::command_mode_decider
 {
 
@@ -66,22 +68,25 @@ uint16_t CommandModeDecider::to_mrm_behavior(uint16_t command_mode)
   // clang-format on
 }
 
-uint16_t CommandModeDecider::decide(
-  const RequestModeStatus & request, const CommandModeStatusTable & status)
+std::vector<uint16_t> CommandModeDecider::decide(
+  const RequestModeStatus & request, const CommandModeStatusTable & table)
 {
-  const auto command_mode_status = status;
-  const auto request_mode_status = request;
+  const auto create_vector = [](uint16_t mode) {
+    std::vector<uint16_t> result;
+    result.push_back(mode);
+    return result;
+  };
 
-  const auto background = !request_mode_status.autoware_control;
+  const auto background = !request.autoware_control;
   const auto is_available = [background](const auto & status) {
     return status.mode_available && (status.transition_available || background);
   };
 
   // Use the specified operation mode if available.
   {
-    const auto status = command_mode_status.get(request_mode_status.operation_mode);
+    const auto status = table.get(request.operation_mode);
     if (is_available(status)) {
-      return request_mode_status.operation_mode;
+      return create_vector(request.operation_mode);
     }
   }
 
@@ -92,18 +97,18 @@ uint16_t CommandModeDecider::decide(
 
   namespace modes = autoware::command_mode_types::modes;
 
-  if (command_mode_status.get(modes::pull_over).mode_available) {
-    return modes::pull_over;
+  if (table.get(modes::pull_over).mode_available) {
+    return create_vector(modes::pull_over);
   }
-  if (command_mode_status.get(modes::comfortable_stop).mode_available) {
-    return modes::comfortable_stop;
+  if (table.get(modes::comfortable_stop).mode_available) {
+    return create_vector(modes::comfortable_stop);
   }
-  if (command_mode_status.get(modes::emergency_stop).mode_available) {
-    return modes::emergency_stop;
+  if (table.get(modes::emergency_stop).mode_available) {
+    return create_vector(modes::emergency_stop);
   }
 
-  // RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "no mrm available");
-  return modes::unknown;
+  RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000, "No mrm available");
+  return create_vector(modes::unknown);
 }
 
 }  // namespace autoware::command_mode_decider

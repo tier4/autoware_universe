@@ -15,7 +15,11 @@
 #ifndef AUTOWARE_COMMAND_MODE_DECIDER__PLUGIN_HPP_
 #define AUTOWARE_COMMAND_MODE_DECIDER__PLUGIN_HPP_
 
-#include "autoware_command_mode_decider/command_mode_status_table.hpp"
+#include "autoware_command_mode_decider/status.hpp"
+
+#include <rclcpp/rclcpp.hpp>
+
+#include <vector>
 
 namespace autoware::command_mode_decider
 {
@@ -29,11 +33,17 @@ struct RequestModeStatus
 class DeciderPlugin
 {
 public:
+  void construct(rclcpp::Node * node);
+
   virtual uint16_t from_operation_mode(uint16_t operation_mode) = 0;
   virtual uint16_t to_operation_mode(uint16_t command_mode) = 0;
   virtual uint16_t to_mrm_behavior(uint16_t command_mode) = 0;
-  virtual uint16_t decide(
+
+  virtual std::vector<uint16_t> decide(
     const RequestModeStatus & request, const CommandModeStatusTable & status) = 0;
+
+protected:
+  rclcpp::Node * node_;
 };
 
 }  // namespace autoware::command_mode_decider

@@ -5,7 +5,8 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
-  "src/command_mode_status_table.cpp"
+  "src/plugin/plugin.cpp"
+  "src/plugin/status.cpp"
   "src/command_mode_decider_base.cpp"
 )
 target_include_directories(${PROJECT_NAME} PRIVATE "src")

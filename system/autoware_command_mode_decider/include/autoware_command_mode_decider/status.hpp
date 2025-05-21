@@ -12,8 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef AUTOWARE_COMMAND_MODE_DECIDER__COMMAND_MODE_STATUS_TABLE_HPP_
-#define AUTOWARE_COMMAND_MODE_DECIDER__COMMAND_MODE_STATUS_TABLE_HPP_
+#ifndef AUTOWARE_COMMAND_MODE_DECIDER__STATUS_HPP_
+#define AUTOWARE_COMMAND_MODE_DECIDER__STATUS_HPP_
 
 #include <autoware_command_mode_types/types/command_mode_status.hpp>
 
@@ -45,4 +45,4 @@ private:
 
 }  // namespace autoware::command_mode_decider
 
-#endif  // AUTOWARE_COMMAND_MODE_DECIDER__COMMAND_MODE_STATUS_TABLE_HPP_
+#endif  // AUTOWARE_COMMAND_MODE_DECIDER__STATUS_HPP_

@@ -12,7 +12,7 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#include "autoware_command_mode_decider/command_mode_status_table.hpp"
+#include "autoware_command_mode_decider/status.hpp"
 
 #include <autoware_command_mode_types/constants/modes.hpp>
 

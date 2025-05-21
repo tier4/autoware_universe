@@ -15,8 +15,8 @@
 #ifndef COMMAND_MODE_DECIDER_BASE_HPP_
 #define COMMAND_MODE_DECIDER_BASE_HPP_
 
-#include "autoware_command_mode_decider/command_mode_status_table.hpp"
 #include "autoware_command_mode_decider/plugin.hpp"
+#include "autoware_command_mode_decider/status.hpp"
 
 #include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <autoware_command_mode_types/adapters/command_mode_status.hpp>
