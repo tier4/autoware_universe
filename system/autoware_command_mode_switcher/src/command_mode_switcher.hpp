@@ -39,6 +39,12 @@ using autoware::command_mode_types::CommandModeStatusAdapter;
 using tier4_system_msgs::msg::CommandModeAvailability;
 using tier4_system_msgs::msg::CommandModeRequest;
 
+enum class TransitionType {
+  NONE,
+  COMMAND,
+  VEHICLE,
+};
+
 class CommandModeSwitcher : public rclcpp::Node
 {
 public:
@@ -53,8 +59,10 @@ private:
   void update_status();
   void handle_foreground_transition();
   void handle_background_transition();
-  void handle_vehicle_mode_manual();
-  void handle_vehicle_mode_autoware();
+  void change_command_mode_foreground();
+  void change_command_mode_background();
+  void change_vehicle_mode_manual();
+  void change_vehicle_mode_autoware();
   void publish_command_mode_status();
 
   // ROS interfaces.
