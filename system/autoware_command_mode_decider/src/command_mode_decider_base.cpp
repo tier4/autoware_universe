@@ -47,6 +47,7 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
     throw std::invalid_argument("unknown plugin: " + plugin_name);
   }
   plugin_ = loader_.createSharedInstance(plugin_name);
+  plugin_->construct(this);
 
   transition_timeout_ = declare_parameter<double>("transition_timeout");
   request_timeout_ = declare_parameter<double>("request_timeout");
@@ -206,7 +207,11 @@ void CommandModeDeciderBase::update_request_mode()
 {
   // Decide command mode with system-dependent logic.
   {
-    const auto mode = plugin_->decide(system_request_, command_mode_status_);
+    const auto modes = plugin_->decide(system_request_, command_mode_status_);
+    if (modes.size() == 0) {
+      RCLCPP_WARN_STREAM(get_logger(), "No command mode is decided.");
+    }
+    const auto mode = modes.front();
     logging_mode_change(get_logger(), "request", request_mode_, mode);
     request_mode_ = mode;
   }

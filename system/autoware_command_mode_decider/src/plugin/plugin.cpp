@@ -12,27 +12,14 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMAND_MODE_DECIDER_HPP_
-#define COMMAND_MODE_DECIDER_HPP_
-
-#include <autoware_command_mode_decider/plugin.hpp>
-
-#include <vector>
+#include "autoware_command_mode_decider/plugin.hpp"
 
 namespace autoware::command_mode_decider
 {
 
-class CommandModeDecider : public DeciderPlugin
+void DeciderPlugin::construct(rclcpp::Node * node)
 {
-public:
-  uint16_t from_operation_mode(uint16_t operation_mode) override;
-  uint16_t to_operation_mode(uint16_t command_mode) override;
-  uint16_t to_mrm_behavior(uint16_t command_mode) override;
-
-  std::vector<uint16_t> decide(
-    const RequestModeStatus & request, const CommandModeStatusTable & status) override;
-};
+  node_ = node;
+}
 
 }  // namespace autoware::command_mode_decider
-
-#endif  // COMMAND_MODE_DECIDER_HPP_

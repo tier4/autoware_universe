@@ -53,6 +53,8 @@ private:
   void update_status();
   void handle_foreground_transition();
   void handle_background_transition();
+  void handle_vehicle_mode_manual();
+  void handle_vehicle_mode_autoware();
   void publish_command_mode_status();
 
   // ROS interfaces.
