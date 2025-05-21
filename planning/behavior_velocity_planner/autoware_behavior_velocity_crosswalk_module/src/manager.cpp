@@ -50,8 +50,8 @@ CrosswalkModuleManager::CrosswalkModuleManager(rclcpp::Node & node)
     get_or_declare_parameter<double>(node, ns + ".stop_position.stop_distance_from_crosswalk");
   cp.stop_distance_from_object_preferred = get_or_declare_parameter<double>(
     node, ns + ".stop_position.stop_distance_from_object_preferred");
-  cp.stop_distance_from_object_limit =
-    get_or_declare_parameter<double>(node, ns + ".stop_position.stop_distance_from_object_limit");
+  cp.stop_distance_from_crosswalk_limit = get_or_declare_parameter<double>(
+    node, ns + ".stop_position.stop_distance_from_crosswalk_limit");
   cp.stop_position_threshold =
     get_or_declare_parameter<double>(node, ns + ".stop_position.stop_position_threshold");
   cp.min_acc_preferred =
@@ -106,12 +106,12 @@ CrosswalkModuleManager::CrosswalkModuleManager(rclcpp::Node & node)
     get_or_declare_parameter<double>(node, ns + ".pass_judge.ego_pass_later_additional_margin");
   cp.ego_min_assumed_speed =
     get_or_declare_parameter<double>(node, ns + ".pass_judge.ego_min_assumed_speed");
+  cp.enable_no_stop_decision = get_or_declare_parameter<bool>(
+    node, ns + ".pass_judge.no_stop_decision.enable_no_stop_decision");
   cp.min_acc_for_no_stop_decision =
     get_or_declare_parameter<double>(node, ns + ".pass_judge.no_stop_decision.min_acc");
   cp.min_jerk_for_no_stop_decision =
     get_or_declare_parameter<double>(node, ns + ".pass_judge.no_stop_decision.min_jerk");
-  cp.overrun_threshold_length_for_no_stop_decision = get_or_declare_parameter<double>(
-    node, ns + ".pass_judge.no_stop_decision.overrun_threshold_length");
   cp.stop_object_velocity =
     get_or_declare_parameter<double>(node, ns + ".pass_judge.stop_object_velocity_threshold");
   cp.min_object_velocity =
