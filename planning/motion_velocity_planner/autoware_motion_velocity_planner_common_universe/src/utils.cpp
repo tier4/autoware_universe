@@ -109,6 +109,33 @@ std::vector<TrajectoryPoint> decimate_trajectory_points_from_ego(
   }
   return extended_traj_points_from_ego;
 }
+geometry_msgs::msg::Point to_geometry_point(const pcl::PointXYZ & point)
+{
+  geometry_msgs::msg::Point geom_point;
+  geom_point.x = point.x;
+  geom_point.y = point.y;
+  geom_point.z = point.z;
+  return geom_point;
+}
+
+geometry_msgs::msg::Point to_geometry_point(const autoware_utils::Point2d & point)
+{
+  geometry_msgs::msg::Point geom_point;
+  geom_point.x = point.x();
+  geom_point.y = point.y();
+  return geom_point;
+}
+
+std::optional<double> calc_distance_to_front_object(
+  const std::vector<TrajectoryPoint> & traj_points, const size_t ego_idx,
+  const geometry_msgs::msg::Point & obstacle_pos)
+{
+  const size_t obstacle_idx = autoware::motion_utils::findNearestIndex(traj_points, obstacle_pos);
+  const auto ego_to_obstacle_distance =
+    autoware::motion_utils::calcSignedArcLength(traj_points, ego_idx, obstacle_idx);
+  if (ego_to_obstacle_distance < 0.0) return std::nullopt;
+  return ego_to_obstacle_distance;
+}
 
 std::vector<uint8_t> get_target_object_type(rclcpp::Node & node, const std::string & param_prefix)
 {
@@ -169,7 +196,7 @@ double calc_possible_min_dist_from_obj_to_traj_poly(
   const double object_possible_max_dist =
     calc_object_possible_max_dist_from_center(object->predicted_object.shape);
   const double possible_min_dist_to_traj_poly =
-    std::abs(object->get_dist_to_traj_lateral(traj_points)) - vehicle_info.vehicle_width_m -
+    std::abs(object->get_dist_to_traj_lateral(traj_points)) - vehicle_info.vehicle_width_m / 2.0 -
     object_possible_max_dist;
   return possible_min_dist_to_traj_poly;
 }

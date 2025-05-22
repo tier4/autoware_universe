@@ -149,6 +149,7 @@ public:
     std::vector<double> ego_pass_later_margin_y;
     double ego_pass_later_additional_margin;
     double ego_min_assumed_speed;
+    double uncertain_yield_offset;
     double min_acc_for_no_stop_decision;
     double min_jerk_for_no_stop_decision;
     double overrun_threshold_length_for_no_stop_decision;
@@ -274,6 +275,49 @@ public:
           collision_state = CollisionState::EGO_PASS_LATER;
           return;
         }
+
+        const auto ego_pass_first_uncertain_margin = [&]() {
+          const double uncertain_yield_additional_margin =
+            collision_state == CollisionState::UNCERTAIN_YIELD
+              ? 0.0
+              : planner_param.ego_pass_first_additional_margin;
+          auto margin_y = planner_param.ego_pass_first_margin_y;
+          std::for_each(margin_y.begin(), margin_y.end(), [&planner_param](auto & margin) {
+            margin -= planner_param.uncertain_yield_offset;
+          });
+          return interpolateEgoPassMargin(
+                   planner_param.ego_pass_first_margin_x, margin_y,
+                   collision_point->time_to_collision) +
+                 uncertain_yield_additional_margin;
+        }();
+        if (
+          collision_point->time_to_collision + ego_pass_first_uncertain_margin <
+          collision_point->time_to_vehicle) {
+          collision_state = CollisionState::UNCERTAIN_YIELD;
+          return;
+        }
+
+        const auto ego_pass_later_uncertain_margin = [&]() {
+          const double uncertain_yield_additional_margin =
+            collision_state == CollisionState::UNCERTAIN_YIELD
+              ? 0.0
+              : planner_param.ego_pass_later_additional_margin;
+          auto margin_x = planner_param.ego_pass_later_margin_x;
+          std::for_each(margin_x.begin(), margin_x.end(), [&planner_param](auto & margin) {
+            margin -= planner_param.uncertain_yield_offset;
+          });
+          return interpolateEgoPassMargin(
+                   margin_x, planner_param.ego_pass_later_margin_y,
+                   collision_point->time_to_collision) +
+                 uncertain_yield_additional_margin;
+        }();
+        if (
+          collision_point->time_to_vehicle + ego_pass_later_uncertain_margin <
+          collision_point->time_to_collision) {
+          collision_state = CollisionState::UNCERTAIN_YIELD;
+          return;
+        }
+
         collision_state = CollisionState::YIELD;
         return;
       }

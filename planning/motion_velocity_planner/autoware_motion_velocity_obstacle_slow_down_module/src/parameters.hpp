@@ -15,6 +15,7 @@
 #ifndef PARAMETERS_HPP_
 #define PARAMETERS_HPP_
 
+#include "autoware/motion_utils/trajectory/conversion.hpp"
 #include "type_alias.hpp"
 #include "types.hpp"
 
@@ -55,10 +56,24 @@ struct CommonParam
 
 struct ObstacleFilteringParam
 {
+  struct PointcloudObstacleFilteringParam
+  {
+    double pointcloud_voxel_grid_x{};
+    double pointcloud_voxel_grid_y{};
+    double pointcloud_voxel_grid_z{};
+    double pointcloud_cluster_tolerance{};
+    double pointcloud_min_cluster_size{};
+    double pointcloud_max_cluster_size{};
+  };
+
+  PointcloudObstacleFilteringParam pointcloud_obstacle_filtering_param;
   std::vector<uint8_t> object_types{};
+
+  bool use_pointcloud{false};
 
   double min_lat_margin{};
   double max_lat_margin{};
+
   double lat_hysteresis_margin{};
 
   int successive_num_to_entry_slow_down_condition{};
@@ -67,6 +82,8 @@ struct ObstacleFilteringParam
   ObstacleFilteringParam() = default;
   explicit ObstacleFilteringParam(rclcpp::Node & node)
   {
+    use_pointcloud = get_or_declare_parameter<bool>(
+      node, "obstacle_slow_down.obstacle_filtering.object_type.pointcloud");
     object_types =
       utils::get_target_object_type(node, "obstacle_slow_down.obstacle_filtering.object_type.");
     min_lat_margin = get_or_declare_parameter<double>(
@@ -79,6 +96,20 @@ struct ObstacleFilteringParam
       node, "obstacle_slow_down.obstacle_filtering.successive_num_to_entry_slow_down_condition");
     successive_num_to_exit_slow_down_condition = get_or_declare_parameter<int>(
       node, "obstacle_slow_down.obstacle_filtering.successive_num_to_exit_slow_down_condition");
+
+    pointcloud_obstacle_filtering_param.pointcloud_voxel_grid_x = get_or_declare_parameter<double>(
+      node, "obstacle_slow_down.obstacle_filtering.pointcloud.pointcloud_voxel_grid_x");
+    pointcloud_obstacle_filtering_param.pointcloud_voxel_grid_y = get_or_declare_parameter<double>(
+      node, "obstacle_slow_down.obstacle_filtering.pointcloud.pointcloud_voxel_grid_y");
+    pointcloud_obstacle_filtering_param.pointcloud_voxel_grid_z = get_or_declare_parameter<double>(
+      node, "obstacle_slow_down.obstacle_filtering.pointcloud.pointcloud_voxel_grid_z");
+    pointcloud_obstacle_filtering_param.pointcloud_cluster_tolerance =
+      get_or_declare_parameter<double>(
+        node, "obstacle_slow_down.obstacle_filtering.pointcloud.pointcloud_cluster_tolerance");
+    pointcloud_obstacle_filtering_param.pointcloud_min_cluster_size = get_or_declare_parameter<int>(
+      node, "obstacle_slow_down.obstacle_filtering.pointcloud.pointcloud_min_cluster_size");
+    pointcloud_obstacle_filtering_param.pointcloud_max_cluster_size = get_or_declare_parameter<int>(
+      node, "obstacle_slow_down.obstacle_filtering.pointcloud.pointcloud_max_cluster_size");
   }
 };
 
@@ -155,19 +186,22 @@ struct SlowDownPlanningParam
     }
   }
 
-  std::string get_param_type(const ObjectClassification label) const
-  {
-    const auto type_str = object_types_maps.at(label.label);
-    if (object_type_specific_param_map.count(type_str) == 0) {
-      return "default";
-    }
-    return type_str;
-  }
   ObjectTypeSpecificParams get_object_param_by_label(
     const ObjectClassification label, const bool is_obstacle_moving) const
   {
+    const auto type_str = object_types_maps.at(label.label);
     const std::string movement_type = is_obstacle_moving ? "moving" : "static";
-    return object_type_specific_param_map.at(get_param_type(label) + "." + movement_type);
+    const std::string param_key = type_str + "." + movement_type;
+
+    // First, search for parameters with the specified type
+    const auto param_it = object_type_specific_param_map.find(param_key);
+    if (param_it != object_type_specific_param_map.end()) {
+      return param_it->second;
+    }
+
+    // If the specified type is not found, use default parameters
+    const std::string default_key = "default." + movement_type;
+    return object_type_specific_param_map.at(default_key);
   }
 };
 }  // namespace autoware::motion_velocity_planner

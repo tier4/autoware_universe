@@ -317,6 +317,9 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
   const std::optional<geometry_msgs::msg::Pose> & default_stop_pose)
 {
   const auto & ego_pos = planner_data_->current_odometry->pose.position;
+  const auto ego_vel_non_negative = std::max(0.0, planner_data_->current_velocity->twist.linear.x);
+  const auto & ego_acc = planner_data_->current_acceleration->accel.accel.linear.x;
+  const auto base_link2front = planner_data_->vehicle_info_.max_longitudinal_offset_m;
 
   // Calculate attention range for crosswalk
   const auto crosswalk_attention_range = getAttentionRange(
@@ -343,14 +346,35 @@ std::optional<StopFactor> CrosswalkModule::checkStopForCrosswalkUsers(
     if (collision_point_opt) {
       const auto & collision_point = collision_point_opt.value();
       const auto & collision_state = object.collision_state;
-      if (collision_state != CollisionState::YIELD) {
+      if (
+        collision_state != CollisionState::YIELD &&
+        collision_state != CollisionState::UNCERTAIN_YIELD) {
         continue;
       }
 
       stop_factor_points.push_back(object.position);
 
-      const auto dist_ego2cp =
-        calcSignedArcLength(sparse_resample_path.points, ego_pos, collision_point.collision_point);
+      const auto dist_ego2cp = [&]() {
+        const auto distance = calcSignedArcLength(
+          sparse_resample_path.points, ego_pos, collision_point.collision_point);
+        if (collision_state == CollisionState::YIELD) {
+          return distance;
+        }
+
+        const auto dist_stop_point =
+          distance - base_link2front - planner_param_.stop_distance_from_object_preferred;
+
+        const auto dist_opt = autoware::motion_utils::calcDecelDistWithJerkAndAccConstraints(
+          ego_vel_non_negative, 0.0, ego_acc, planner_param_.min_acc_preferred,
+          std::abs(planner_param_.min_jerk_preferred), planner_param_.min_jerk_preferred);
+        if (!dist_opt.has_value()) {
+          return distance;
+        }
+
+        return std::max(dist_opt.value(), dist_stop_point) + base_link2front +
+               planner_param_.stop_distance_from_object_preferred;
+      }();
+
       if (!dist_nearest_cp || dist_ego2cp < dist_nearest_cp) {
         dist_nearest_cp = dist_ego2cp;
       }

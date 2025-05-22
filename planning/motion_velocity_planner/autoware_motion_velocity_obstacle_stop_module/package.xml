@@ -8,6 +8,7 @@
   <maintainer email="takayuki.murooka@tier4.jp">Takayuki Murooka</maintainer>
   <maintainer email="yuki.takagi@tier4.jp">Yuki Takagi</maintainer>
   <maintainer email="maxime.clement@tier4.jp">Maxime Clement</maintainer>
+  <maintainer email="arjun.ram@tier4.jp">Arjun Ram</maintainer>
   <maintainer email="berkay@leodrive.ai">Berkay Karaman</maintainer>
 
   <license>Apache License 2.0</license>
@@ -19,6 +20,7 @@
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_planning_msgs</depend>
   <depend>autoware_route_handler</depend>
+  <depend>autoware_signal_processing</depend>
   <depend>autoware_utils</depend>
   <depend>autoware_vehicle_info_utils</depend>
   <depend>geometry_msgs</depend>

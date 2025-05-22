@@ -24,7 +24,6 @@
 // ROS includes
 #include "autoware/point_types/types.hpp"
 
-#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <autoware_utils/ros/managed_transform_buffer.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <point_cloud_msg_wrapper/point_cloud_msg_wrapper.hpp>
@@ -67,7 +66,6 @@ private:
   std::unique_ptr<autoware_utils::ManagedTransformBuffer> managed_tf_buffer_{nullptr};
 
   std::deque<geometry_msgs::msg::TwistStamped> twist_queue_;
-  std::mutex twist_queue_mutex_;
 
   /// @brief RclcppTimeHash structure defines a custom hash function for the rclcpp::Time type by
   /// using its nanoseconds representation as the hash value.
@@ -80,7 +78,7 @@ private:
   };
 
   static void convert_to_xyzirc_cloud(
-    const AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2) & input_cloud,
+    const sensor_msgs::msg::PointCloud2::SharedPtr & input_cloud,
     sensor_msgs::msg::PointCloud2::SharedPtr & xyzirc_cloud);
 
   void correct_pointcloud_motion(
@@ -99,8 +97,7 @@ public:
   void process_odometry(const nav_msgs::msg::Odometry::ConstSharedPtr & odometry_msg);
 
   ConcatenatedCloudResult combine_pointclouds(
-    std::unordered_map<std::string, AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::PointCloud2)> &
-      topic_to_cloud_map);
+    std::unordered_map<std::string, sensor_msgs::msg::PointCloud2::SharedPtr> & topic_to_cloud_map);
 
   Eigen::Matrix4f compute_transform_to_adjust_for_old_timestamp(
     const rclcpp::Time & old_stamp, const rclcpp::Time & new_stamp);

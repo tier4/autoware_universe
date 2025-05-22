@@ -45,6 +45,7 @@
         ego_pass_later_margin_y: [13.0] # [[s]] time to collision margin vector for object pass first situation (the module judges that ego don't have to stop at TTV + MARGIN < TTC condition)
         ego_pass_later_additional_margin: 0.5 # [s] additional time margin for object pass first situation to suppress chattering
         ego_min_assumed_speed: 2.0 # [m/s] assumed speed to calculate the time to collision point
+        uncertain_yield_offset: 2.0
 
         no_stop_decision: # parameters to determine stop cancel. {-$overrun_threshold_length + f($min_acc, $min_jerk)} is compared against distance to stop pose.
           min_acc: -1.5 # min acceleration [m/ss]
