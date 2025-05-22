@@ -177,6 +177,7 @@ void RearObstacleCheckerNode::update(diagnostic_updater::DiagnosticStatusWrapper
   DebugData debug_data;
 
   if (!is_safe(debug_data)) {
+    RCLCPP_ERROR(get_logger(), "[ROC] Continuous collision risk detected.");
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "obstacles exist beside ego");
     debug_data.is_safe = false;
   } else {
@@ -321,6 +322,7 @@ bool RearObstacleCheckerNode::is_safe(DebugData & debug)
         return true;
       }
     } else {
+      RCLCPP_WARN(get_logger(), "[ROC] Momentary collision risk detected.");
       last_unsafe_time_ = now;
       if ((now - last_safe_time_).seconds() < p.common.on_time_buffer) {
         return true;
