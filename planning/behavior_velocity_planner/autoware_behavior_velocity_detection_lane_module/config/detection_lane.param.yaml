@@ -39,7 +39,8 @@
 
       enable_rtc: false # If set to true, the scene modules require approval from the rtc (request to cooperate) function. If set to false, the modules can be executed without requiring rtc approval
 
-    intersection_names: [shiojiri, komatsu_1st, komatsu_2nd, akebono]
+    intersection_names: [akebono]
+    # intersection_names: [shiojiri, komatsu_1st, komatsu_2nd, akebono]
 
     config:
       shiojiri:
