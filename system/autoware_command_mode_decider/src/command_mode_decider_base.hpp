@@ -33,6 +33,7 @@
 #include <tier4_system_msgs/srv/request_mrm.hpp>
 
 #include <memory>
+#include <vector>
 
 namespace autoware::command_mode_decider
 {
@@ -45,6 +46,7 @@ using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_common_msgs::msg::ResponseStatus;
 using tier4_system_msgs::msg::CommandModeRequest;
+using tier4_system_msgs::msg::CommandModeRequestItem;
 using tier4_system_msgs::srv::ChangeAutowareControl;
 using tier4_system_msgs::srv::ChangeOperationMode;
 using tier4_system_msgs::srv::RequestMrm;
@@ -98,8 +100,9 @@ private:
   bool is_modes_ready_;
   CommandModeStatusTable command_mode_status_;
   RequestModeStatus system_request_;
-  uint16_t foreground_request_;
-  uint16_t background_request_;
+  bool request_autoware_control_;
+  std::vector<uint16_t> request_modes_;
+
   uint16_t command_mode_;
   uint16_t request_mode_;
   std::optional<rclcpp::Time> request_stamp_;

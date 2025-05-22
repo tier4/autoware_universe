@@ -46,6 +46,10 @@ struct CommandModeStatusItem
 {
   uint16_t mode;
 
+  bool complete;
+  bool request;
+  bool transition;
+
   TriState mode_state;
   TriState gate_state;
   MrmState mrm;

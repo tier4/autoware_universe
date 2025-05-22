@@ -54,6 +54,10 @@ tier4_system_msgs::msg::CommandModeStatusItem to_msg(const CommandModeStatusItem
   tier4_system_msgs::msg::CommandModeStatusItem msg;
   msg.mode = item.mode;
 
+  msg.complete = item.complete;
+  msg.request = item.request;
+  msg.transition = item.transition;
+
   msg.mode_state = to_tri_state(item.mode_state);
   msg.gate_state = to_tri_state(item.gate_state);
   msg.mrm = to_mrm_state(item.mrm);
@@ -79,6 +83,10 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
 {
   CommandModeStatusItem custom;
   custom.mode = item.mode;
+
+  custom.complete = item.complete;
+  custom.request = item.request;
+  custom.transition = item.transition;
 
   custom.mode_state = from_tri_state(item.mode_state);
   custom.gate_state = from_tri_state(item.gate_state);

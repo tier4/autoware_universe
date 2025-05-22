@@ -34,6 +34,15 @@ void logging_mode_change(
   }
 }
 
+std::string text(const std::vector<uint16_t> & modes)
+{
+  std::string result;
+  for (size_t i = 0; i < modes.size(); ++i) {
+    result += (i ? ", " : "") + std::to_string(modes.at(i));
+  }
+  return "[" + result + "]";
+}
+
 CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & options)
 : Node("command_mode_decider", options),
   diagnostics_(this),
@@ -61,8 +70,6 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
   command_mode_status_.init(command_modes);
   system_request_.operation_mode = declare_parameter<uint16_t>("initial_operation_mode");
   system_request_.autoware_control = declare_parameter<bool>("initial_autoware_control");
-  foreground_request_ = autoware::command_mode_types::modes::unknown;
-  background_request_ = autoware::command_mode_types::modes::unknown;
   command_mode_ = autoware::command_mode_types::modes::unknown;
   request_mode_ = autoware::command_mode_types::modes::unknown;
   request_stamp_ = std::nullopt;
@@ -167,12 +174,12 @@ void CommandModeDeciderBase::update()
 
 void CommandModeDeciderBase::detect_override()
 {
-  if (foreground_request_ == autoware::command_mode_types::modes::manual) return;
+  // if (foreground_request_ == autoware::command_mode_types::modes::manual) return;
 
   const auto status = command_mode_status_.get(autoware::command_mode_types::modes::manual);
   if (status.request_phase == GateType::VehicleGate) {
     RCLCPP_WARN_STREAM(get_logger(), "override detected");
-    foreground_request_ = autoware::command_mode_types::modes::manual;
+    // foreground_request_ = autoware::command_mode_types::modes::manual;
     system_request_.autoware_control = false;
   }
 }
@@ -211,18 +218,13 @@ void CommandModeDeciderBase::update_request_mode()
     if (modes.size() == 0) {
       RCLCPP_WARN_STREAM(get_logger(), "No command mode is decided.");
     }
-    const auto mode = modes.front();
-    logging_mode_change(get_logger(), "request", request_mode_, mode);
-    request_mode_ = mode;
-  }
-
-  // Convert the request into internal structure.
-  if (system_request_.autoware_control) {
-    foreground_request_ = request_mode_;
-    background_request_ = autoware::command_mode_types::modes::unknown;
-  } else {
-    foreground_request_ = autoware::command_mode_types::modes::manual;
-    background_request_ = request_mode_;
+    if (request_modes_ != modes) {
+      const auto prev = text(request_modes_);
+      const auto next = text(modes);
+      RCLCPP_INFO_STREAM(get_logger(), "request mode changed: " << prev << " -> " << next);
+    }
+    request_modes_ = modes;
+    request_autoware_control_ = system_request_.autoware_control;
   }
 }
 
@@ -276,43 +278,42 @@ void CommandModeDeciderBase::update_current_mode()
 
 void CommandModeDeciderBase::sync_command_mode()
 {
-  bool foreground_request_reflected =
-    foreground_request_ == autoware::command_mode_types::modes::unknown;
-  bool background_request_reflected =
-    background_request_ == autoware::command_mode_types::modes::unknown;
-
-  if (!foreground_request_reflected) {
-    const auto status = command_mode_status_.get(foreground_request_);
-    foreground_request_reflected = status.request_phase == GateType::VehicleGate;
+  // Skip the request if mode is already requested.
+  bool is_requested = true;
+  for (const auto & mode : request_modes_) {
+    const auto status = command_mode_status_.get(mode);
+    is_requested = is_requested && status.request;
   }
-  if (!background_request_reflected) {
-    const auto status = command_mode_status_.get(background_request_);
-    background_request_reflected = status.request_phase == GateType::ControlGate;
-  }
-
-  // Skip the request if mode is already requested or now requesting.
-  if (foreground_request_reflected && background_request_reflected) {
+  if (is_requested) {
     request_stamp_ = std::nullopt;
     return;
   }
+
+  // Skip the request if mode is now requesting.
   if (request_stamp_) {
     const auto duration = (now() - *request_stamp_).seconds();
     if (duration < request_timeout_) {
       return;
     }
     request_stamp_ = std::nullopt;
-    RCLCPP_WARN_STREAM(get_logger(), "command mode request timeout");
+    RCLCPP_WARN_STREAM(get_logger(), "request mode timeout");
   }
 
-  // Request stamp is used for timeout check and request flag.
+  // Request stamp is used to check timeout and requesting.
   const auto stamp = now();
   request_stamp_ = stamp;
 
   // Request command mode to switcher nodes.
   CommandModeRequest msg;
   msg.stamp = stamp;
-  msg.foreground = foreground_request_;
-  msg.background = background_request_;
+  for (const auto & mode : request_modes_) {
+    using Item = CommandModeRequestItem;
+    Item item;
+    item.type = Item::COMMAND_MODE_CHANGE;
+    item.command = mode;
+    item.vehicle = request_autoware_control_ ? Item::AUTOWARE : Item::MANUAL;
+    msg.items.push_back(item);
+  }
   pub_command_mode_request_->publish(msg);
 }
 

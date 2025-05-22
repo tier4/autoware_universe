@@ -19,6 +19,10 @@ namespace autoware::command_mode_types
 
 CommandModeStatusItem::CommandModeStatusItem(uint16_t mode) : mode(mode)
 {
+  complete = false;
+  request = false;
+  transition = false;
+
   mode_state = TriState::Disabled;
   gate_state = TriState::Disabled;
   mrm = MrmState::Normal;
