@@ -96,6 +96,7 @@ void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
 
 void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 {
+  /*
   const auto get_command = [this](uint16_t mode, bool background) {
     // Platform commands are only available in foreground.
     if (!background) {
@@ -110,6 +111,7 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
       RCLCPP_ERROR_STREAM(get_logger(), "invalid mode: " << mode << " " << background);
       return std::shared_ptr<Command>(nullptr);
     }
+
     // Check transition conditions.
     const auto status = iter->second->status;
     const auto available = status.mode_available && (status.transition_available || background);
@@ -144,7 +146,38 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
     background_->status.request_phase = GateType::ControlGate;
     background_->status.transition_state = TriState::Transition;
   }
-  RCLCPP_INFO_STREAM(get_logger(), "request updated: " << msg.foreground << " " << msg.background);
+  */
+
+  // clang-format off
+  const auto get_transition_type = [this](uint16_t type)
+  {
+    using tier4_system_msgs::msg::CommandModeRequestItem;
+    switch (type) {
+      case CommandModeRequestItem::COMMAND_MODE_CHANGE: return TransitionType::Command;
+      case CommandModeRequestItem::VEHICLE_MODE_CHANGE: return TransitionType::Vehicle;
+      default:                                          return TransitionType::None;
+    }
+  };
+  // clang-format on
+
+  for (const auto & item : msg.items) {
+    const auto iter = autoware_commands_.find(item.command);
+    if (iter != autoware_commands_.end()) {
+      transition_ = get_transition_type(item.type);
+      command_mode_request_ = iter->second;
+      break;
+    }
+  }
+
+  for (const auto & command : commands_) {
+    const auto is_request_mode = (command_mode_request_ == command);
+    command->status.complete = false;
+    command->status.request = is_request_mode;
+    command->status.transition = is_request_mode;
+  }
+  const auto mode = command_mode_request_->plugin->mode();
+  RCLCPP_INFO_STREAM(get_logger(), "request accepted: " << std::to_string(mode));
+
   update();
 }
 
@@ -155,8 +188,20 @@ void CommandModeSwitcher::update()
 
   detect_override();
   update_status();
-  handle_foreground_transition();
-  handle_background_transition();
+  // handle_foreground_transition();
+  // handle_background_transition();
+
+  switch (transition_) {
+    case TransitionType::Command:
+      RCLCPP_INFO_STREAM(get_logger(), "transition: command");
+      break;
+    case TransitionType::Vehicle:
+      RCLCPP_INFO_STREAM(get_logger(), "transition: vehicle");
+      break;
+    case TransitionType::None:
+      break;
+  }
+
   publish_command_mode_status();
 }
 
@@ -166,19 +211,11 @@ void CommandModeSwitcher::detect_override()
   const auto is_changed_to_manual = (is_autoware_control_ && !curr_autoware_control);
   is_autoware_control_ = curr_autoware_control;
 
-  if (!is_changed_to_manual) return;
-  if (foreground_ == manual_command_) return;
-  RCLCPP_WARN_STREAM(get_logger(), "override detected");
-
-  // Move foreground to background.
-  if (foreground_) {
-    background_ = foreground_;
-    background_->status.request_phase = GateType::ControlGate;
-    background_->status.transition_state = TriState::Transition;
+  if (is_changed_to_manual) {
+    RCLCPP_WARN_STREAM(get_logger(), "override detected");
+    vehicle_mode_request_ = nullptr;
+    current_vehicle_mode_ = manual_command_;
   }
-  foreground_ = manual_command_;
-  foreground_->status.request_phase = GateType::VehicleGate;
-  foreground_->status.transition_state = TriState::Transition;
 }
 
 void CommandModeSwitcher::update_status()
@@ -227,14 +264,14 @@ void CommandModeSwitcher::publish_command_mode_status()
 
 void CommandModeSwitcher::handle_foreground_transition()
 {
-  if (!foreground_) {
+  if (!command_mode_request_) {
     return;
   }
 
   // Disable control gate transition filter when the transition is completed.
-  if (foreground_->status.transition_state == TriState::Enabled) {
+  if (command_mode_request_->status.transition_state == TriState::Enabled) {
     if (control_gate_interface_.is_in_transition()) {
-      control_gate_interface_.request(*foreground_->plugin, false);
+      control_gate_interface_.request(*command_mode_request_->plugin, false);
     }
     return;
   }
@@ -264,6 +301,35 @@ void CommandModeSwitcher::handle_foreground_transition()
 void CommandModeSwitcher::handle_background_transition()
 {
   if (!background_) {
+    return;
+  }
+
+  if (background_->status.selected == TriState::Enabled) {
+    return;
+  }
+
+  // Wait for the foreground transition so that the command does not affect the vehicle behavior.
+  if (foreground_->status.transition_state != TriState::Enabled) {
+    return;
+  }
+
+  // Select control gate without transition filter.
+  if (background_->status.control_gate_state != TriState::Enabled) {
+    control_gate_interface_.request(*background_->plugin, false);
+    return;
+  }
+
+  // Complete transition, No need to check the transition completion condition.
+  background_->status.transition_state = TriState::Enabled;
+}
+
+void CommandModeSwitcher::change_command_mode_foreground()
+{
+}
+
+void CommandModeSwitcher::change_command_mode_background()
+{
+  if (!command_mode_request_) {
     return;
   }
 

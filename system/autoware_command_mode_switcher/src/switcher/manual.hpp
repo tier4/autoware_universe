@@ -12,8 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef COMMON__MANUAL_HPP_
-#define COMMON__MANUAL_HPP_
+#ifndef SWITCHER__MANUAL_HPP_
+#define SWITCHER__MANUAL_HPP_
 
 #include "autoware_command_mode_switcher/command_plugin.hpp"
 
@@ -40,4 +40,4 @@ public:
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // COMMON__MANUAL_HPP_
+#endif  // SWITCHER__MANUAL_HPP_

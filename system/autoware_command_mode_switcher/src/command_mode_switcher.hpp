@@ -16,8 +16,8 @@
 #define COMMAND_MODE_SWITCHER_HPP_
 
 #include "common/command_container.hpp"
-#include "common/manual.hpp"
 #include "common/selector_interface.hpp"
+#include "switcher/manual.hpp"
 
 #include <autoware_command_mode_types/adapters/command_mode_status.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -40,9 +40,9 @@ using tier4_system_msgs::msg::CommandModeAvailability;
 using tier4_system_msgs::msg::CommandModeRequest;
 
 enum class TransitionType {
-  NONE,
-  COMMAND,
-  VEHICLE,
+  None,
+  Command,
+  Vehicle,
 };
 
 class CommandModeSwitcher : public rclcpp::Node
@@ -77,10 +77,14 @@ private:
   std::unordered_map<uint16_t, std::shared_ptr<Command>> platform_commands_;
   std::unordered_map<uint16_t, std::shared_ptr<Command>> autoware_commands_;
   std::shared_ptr<Command> manual_command_;
-  std::shared_ptr<Command> foreground_;
-  std::shared_ptr<Command> background_;
   ControlGateInterface control_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
+
+  TransitionType transition_ = TransitionType::None;
+  std::shared_ptr<Command> command_mode_request_;
+  std::shared_ptr<Command> vehicle_mode_request_;
+  std::shared_ptr<Command> current_command_mode_;
+  std::shared_ptr<Command> current_vehicle_mode_;
 
   bool is_ready_ = false;
   bool is_autoware_control_ = false;
