@@ -103,13 +103,13 @@ private:
   void checkCollision(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   std::optional<Obstacle> getNearestObstacle(
-    const autoware_utils_geometry::Polygon2d & ego_polygon) const;
+    const autoware_utils::Polygon2d & ego_polygon) const;
 
   std::optional<Obstacle> getNearestObstacleByPointCloud(
-    const autoware_utils_geometry::Polygon2d & ego_polygon) const;
+    const autoware_utils::Polygon2d & ego_polygon) const;
 
   std::optional<Obstacle> getNearestObstacleByDynamicObject(
-    const autoware_utils_geometry::Polygon2d & ego_polygon) const;
+    const autoware_utils::Polygon2d & ego_polygon) const;
 
   std::optional<geometry_msgs::msg::TransformStamped> getTransform(
     const std::string & source, const std::string & target, const rclcpp::Time & stamp,

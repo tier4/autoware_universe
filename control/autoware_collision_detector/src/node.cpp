@@ -18,7 +18,7 @@
 
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/uuid_helper.hpp>
-#include <autoware_utils_geometry/boost_geometry.hpp>
+#include <autoware_utils/geometry/boost_geometry.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <boost/geometry.hpp>
@@ -57,7 +57,7 @@ geometry_msgs::msg::Point32 createPoint32(const double x, const double y, const 
   return p;
 }
 
-autoware_utils_geometry::Polygon2d createObjPolygon(
+autoware_utils::Polygon2d createObjPolygon(
   const geometry_msgs::msg::Pose & pose, const geometry_msgs::msg::Polygon & footprint)
 {
   geometry_msgs::msg::Polygon transformed_polygon{};
@@ -65,9 +65,9 @@ autoware_utils_geometry::Polygon2d createObjPolygon(
   geometry_tf.transform = pose2transform(pose);
   tf2::doTransform(footprint, transformed_polygon, geometry_tf);
 
-  autoware_utils_geometry::Polygon2d object_polygon;
+  autoware_utils::Polygon2d object_polygon;
   for (const auto & p : transformed_polygon.points) {
-    object_polygon.outer().push_back(autoware_utils_geometry::Point2d(p.x, p.y));
+    object_polygon.outer().push_back(autoware_utils::Point2d(p.x, p.y));
   }
 
   bg::correct(object_polygon);
@@ -75,7 +75,7 @@ autoware_utils_geometry::Polygon2d createObjPolygon(
   return object_polygon;
 }
 
-autoware_utils_geometry::Polygon2d createObjPolygon(
+autoware_utils::Polygon2d createObjPolygon(
   const geometry_msgs::msg::Pose & pose, const geometry_msgs::msg::Vector3 & size)
 {
   const double length_m = size.x / 2.0;
@@ -91,7 +91,7 @@ autoware_utils_geometry::Polygon2d createObjPolygon(
   return createObjPolygon(pose, polygon);
 }
 
-autoware_utils_geometry::Polygon2d createObjPolygonForCylinder(
+autoware_utils::Polygon2d createObjPolygonForCylinder(
   const geometry_msgs::msg::Pose & pose, const double diameter)
 {
   geometry_msgs::msg::Polygon polygon{};
@@ -108,7 +108,7 @@ autoware_utils_geometry::Polygon2d createObjPolygonForCylinder(
   return createObjPolygon(pose, polygon);
 }
 
-autoware_utils_geometry::Polygon2d createSelfPolygon(
+autoware_utils::Polygon2d createSelfPolygon(
   const VehicleInfo & vehicle_info, const double extra_offset, const bool ignore_behind_rear_axle)
 {
   const double & front_m = vehicle_info.max_longitudinal_offset_m + extra_offset;
@@ -117,12 +117,12 @@ autoware_utils_geometry::Polygon2d createSelfPolygon(
   const double & rear_m =
     ignore_behind_rear_axle ? 0.0 : vehicle_info.min_longitudinal_offset_m - extra_offset;
 
-  autoware_utils_geometry::Polygon2d ego_polygon;
+  autoware_utils::Polygon2d ego_polygon;
 
-  ego_polygon.outer().push_back(autoware_utils_geometry::Point2d(front_m, width_left_m));
-  ego_polygon.outer().push_back(autoware_utils_geometry::Point2d(front_m, width_right_m));
-  ego_polygon.outer().push_back(autoware_utils_geometry::Point2d(rear_m, width_right_m));
-  ego_polygon.outer().push_back(autoware_utils_geometry::Point2d(rear_m, width_left_m));
+  ego_polygon.outer().push_back(autoware_utils::Point2d(front_m, width_left_m));
+  ego_polygon.outer().push_back(autoware_utils::Point2d(front_m, width_right_m));
+  ego_polygon.outer().push_back(autoware_utils::Point2d(rear_m, width_right_m));
+  ego_polygon.outer().push_back(autoware_utils::Point2d(rear_m, width_left_m));
 
   bg::correct(ego_polygon);
 
@@ -421,7 +421,7 @@ void CollisionDetectorNode::checkCollision(diagnostic_updater::DiagnosticStatusW
 }
 
 std::optional<Obstacle> CollisionDetectorNode::getNearestObstacle(
-  const autoware_utils_geometry::Polygon2d & ego_polygon) const
+  const autoware_utils::Polygon2d & ego_polygon) const
 {
   std::optional<Obstacle> nearest_pointcloud;
   std::optional<Obstacle> nearest_object;
@@ -450,7 +450,7 @@ std::optional<Obstacle> CollisionDetectorNode::getNearestObstacle(
 }
 
 std::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByPointCloud(
-  const autoware_utils_geometry::Polygon2d & ego_polygon) const
+  const autoware_utils::Polygon2d & ego_polygon) const
 {
   const auto transform_stamped =
     getTransform("base_link", pointcloud_ptr_->header.frame_id, pointcloud_ptr_->header.stamp, 0.5);
@@ -468,7 +468,7 @@ std::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByPointCloud(
   pcl::transformPointCloud(transformed_pointcloud, transformed_pointcloud, isometry);
 
   for (const auto & p : transformed_pointcloud) {
-    autoware_utils_geometry::Point2d boost_point(p.x, p.y);
+    autoware_utils::Point2d boost_point(p.x, p.y);
 
     const auto distance_to_object = bg::distance(ego_polygon, boost_point);
 
@@ -482,7 +482,7 @@ std::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByPointCloud(
 }
 
 std::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByDynamicObject(
-  const autoware_utils_geometry::Polygon2d & ego_polygon) const
+  const autoware_utils::Polygon2d & ego_polygon) const
 {
   const auto transform_stamped = getTransform(
     filtered_object_ptr_->header.frame_id, "base_link", filtered_object_ptr_->header.stamp, 0.5);
