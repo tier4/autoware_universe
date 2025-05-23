@@ -22,6 +22,10 @@ CommandModeStatusItem::CommandModeStatusItem(uint16_t mode) : mode(mode)
   complete = false;
   request = false;
   transition = false;
+  selected = false;
+
+  vehicle_mode_selected = false;
+  command_mode_selected = false;
 
   mode_state = TriState::Disabled;
   gate_state = TriState::Disabled;

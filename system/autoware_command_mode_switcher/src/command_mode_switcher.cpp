@@ -148,22 +148,9 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   }
   */
 
-  // clang-format off
-  const auto get_transition_type = [this](uint16_t type)
-  {
-    using tier4_system_msgs::msg::CommandModeRequestItem;
-    switch (type) {
-      case CommandModeRequestItem::COMMAND_MODE_CHANGE: return TransitionType::Command;
-      case CommandModeRequestItem::VEHICLE_MODE_CHANGE: return TransitionType::Vehicle;
-      default:                                          return TransitionType::None;
-    }
-  };
-  // clang-format on
-
   for (const auto & item : msg.items) {
     const auto iter = autoware_commands_.find(item.command);
     if (iter != autoware_commands_.end()) {
-      transition_ = get_transition_type(item.type);
       command_mode_request_ = iter->second;
       break;
     }
@@ -188,20 +175,7 @@ void CommandModeSwitcher::update()
 
   detect_override();
   update_status();
-  // handle_foreground_transition();
-  // handle_background_transition();
-
-  switch (transition_) {
-    case TransitionType::Command:
-      RCLCPP_INFO_STREAM(get_logger(), "transition: command");
-      break;
-    case TransitionType::Vehicle:
-      RCLCPP_INFO_STREAM(get_logger(), "transition: vehicle");
-      break;
-    case TransitionType::None:
-      break;
-  }
-
+  change_modes();
   publish_command_mode_status();
 }
 
@@ -213,8 +187,7 @@ void CommandModeSwitcher::detect_override()
 
   if (is_changed_to_manual) {
     RCLCPP_WARN_STREAM(get_logger(), "override detected");
-    vehicle_mode_request_ = nullptr;
-    current_vehicle_mode_ = manual_command_;
+    vehicle_mode_request_ = VehicleModeRequest::None;
   }
 }
 
@@ -233,6 +206,8 @@ void CommandModeSwitcher::update_status()
     status.mode_available = plugin->get_mode_available();
     status.transition_available = plugin->get_transition_available();
     status.transition_completed = plugin->get_transition_completed();
+
+    status.selected = (control_gate_interface_.is_selected(*plugin) == TriState::Enabled);
   }
 
   // Within the source group, all sources except for the active must be disabled.
@@ -262,94 +237,64 @@ void CommandModeSwitcher::publish_command_mode_status()
   pub_status_->publish(msg);
 }
 
-void CommandModeSwitcher::handle_foreground_transition()
+void CommandModeSwitcher::change_modes()
 {
-  if (!command_mode_request_) {
+  // Wait if mode change request is in progress.
+  if (control_gate_interface_.is_requesting() || vehicle_gate_interface_.is_requesting()) {
     return;
   }
 
-  // Disable control gate transition filter when the transition is completed.
-  if (command_mode_request_->status.transition_state == TriState::Enabled) {
-    if (control_gate_interface_.is_in_transition()) {
-      control_gate_interface_.request(*command_mode_request_->plugin, false);
+  if (!command_mode_request_) {
+    RCLCPP_INFO_STREAM(get_logger(), "no command mode request");
+    return;
+  }
+
+  if (vehicle_mode_request_ == VehicleModeRequest::Manual) {
+    return change_vehicle_mode_to_manual();
+  }
+
+  if (!command_mode_request_->status.selected) {
+    return change_command_mode();
+  }
+
+  if (vehicle_mode_request_ == VehicleModeRequest::Autoware) {
+    return change_vehicle_mode_to_autoware();
+  }
+
+  if (vehicle_gate_interface_.is_autoware_control()) {
+    if (!command_mode_request_->status.transition_completed) {
+      return;
     }
+  }
+
+  if (control_gate_interface_.is_in_transition()) {
+    control_gate_interface_.request(*command_mode_request_->plugin, false);
     return;
   }
 
-  // Select control gate with transition filter.
-  if (foreground_->status.control_gate_state != TriState::Enabled) {
-    control_gate_interface_.request(*foreground_->plugin, true);
-    return;
-  }
-
-  // Select vehicle gate when the control gate is selected.
-  if (foreground_->status.vehicle_gate_state != TriState::Enabled) {
-    vehicle_gate_interface_.request(*foreground_->plugin);
-    return;
-  }
-
-  // When both gate is selected, check the transition completion condition.
-  // NOTE(Takagi, Isamu): Use transition_state to commonize background transition?
-  if (!foreground_->status.transition_completed) {
-    return;
-  }
-
-  // Complete transition.
-  foreground_->status.transition_state = TriState::Enabled;
+  command_mode_request_->status.complete = true;
+  command_mode_request_->status.transition = false;
 }
 
-void CommandModeSwitcher::handle_background_transition()
+void CommandModeSwitcher::change_vehicle_mode_to_manual()
 {
-  if (!background_) {
-    return;
-  }
-
-  if (background_->status.selected == TriState::Enabled) {
-    return;
-  }
-
-  // Wait for the foreground transition so that the command does not affect the vehicle behavior.
-  if (foreground_->status.transition_state != TriState::Enabled) {
-    return;
-  }
-
-  // Select control gate without transition filter.
-  if (background_->status.control_gate_state != TriState::Enabled) {
-    control_gate_interface_.request(*background_->plugin, false);
-    return;
-  }
-
-  // Complete transition, No need to check the transition completion condition.
-  background_->status.transition_state = TriState::Enabled;
+  vehicle_mode_request_ = VehicleModeRequest::None;
+  vehicle_gate_interface_.request_manual_control();
 }
 
-void CommandModeSwitcher::change_command_mode_foreground()
+void CommandModeSwitcher::change_vehicle_mode_to_autoware()
 {
+  vehicle_mode_request_ = VehicleModeRequest::None;
+  vehicle_gate_interface_.request_autoware_control();
 }
 
-void CommandModeSwitcher::change_command_mode_background()
+void CommandModeSwitcher::change_command_mode()
 {
-  if (!command_mode_request_) {
-    return;
-  }
-
-  if (background_->status.transition_state == TriState::Enabled) {
-    return;
-  }
-
-  // Wait for the foreground transition so that the command does not affect the vehicle behavior.
-  if (foreground_->status.transition_state != TriState::Enabled) {
-    return;
-  }
-
-  // Select control gate without transition filter.
-  if (background_->status.control_gate_state != TriState::Enabled) {
-    control_gate_interface_.request(*background_->plugin, false);
-    return;
-  }
-
-  // Complete transition, No need to check the transition completion condition.
-  background_->status.transition_state = TriState::Enabled;
+  // Select control gate. Enable transition filter if autoware control is or will be enabled.
+  const auto curr_autoware_control = vehicle_gate_interface_.is_autoware_control();
+  const auto next_autoware_control = vehicle_mode_request_ == VehicleModeRequest::Autoware;
+  const auto filter = curr_autoware_control || next_autoware_control;
+  control_gate_interface_.request(*command_mode_request_->plugin, filter);
 }
 
 }  // namespace autoware::command_mode_switcher

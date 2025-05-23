@@ -49,6 +49,10 @@ struct CommandModeStatusItem
   bool complete;
   bool request;
   bool transition;
+  bool selected;
+
+  bool vehicle_mode_selected;
+  bool command_mode_selected;
 
   TriState mode_state;
   TriState gate_state;

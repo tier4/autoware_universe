@@ -77,6 +77,11 @@ bool VehicleGateInterface::is_autoware_control() const
   return status_.mode == ControlModeReport::AUTONOMOUS;
 }
 
+bool VehicleGateInterface::is_manual_control() const
+{
+  return status_.mode == ControlModeReport::MANUAL;
+}
+
 TriState ControlGateInterface::is_selected(const CommandPlugin & plugin) const
 {
   if (plugin.source() == autoware::command_mode_types::sources::unknown) {
@@ -130,6 +135,25 @@ bool ControlGateInterface::request(const CommandPlugin & plugin, bool transition
 
 bool VehicleGateInterface::request(const CommandPlugin & plugin)
 {
+  if (plugin.autoware_control()) {
+    return request_autoware_control();
+  } else {
+    return request_manual_control();
+  }
+}
+
+bool VehicleGateInterface::request_autoware_control()
+{
+  return request(ControlModeCommand::Request::AUTONOMOUS);
+}
+
+bool VehicleGateInterface::request_manual_control()
+{
+  return request(ControlModeCommand::Request::MANUAL);
+}
+
+bool VehicleGateInterface::request(uint8_t control_mode_command)
+{
   if (requesting_) {
     return false;
   }
@@ -137,21 +161,13 @@ bool VehicleGateInterface::request(const CommandPlugin & plugin)
     RCLCPP_WARN_STREAM(node_.get_logger(), "vehicle gate service is not ready");
     return false;
   }
-  if (last_request_mode_ == plugin.mode()) {
-    return false;
-  }
+
+  RCLCPP_INFO_STREAM(node_.get_logger(), "vehicle gate request");
 
   using SharedFuture = rclcpp::Client<ControlModeCommand>::SharedFuture;
   auto request = std::make_shared<ControlModeCommand::Request>();
-  if (plugin.autoware_control()) {
-    request->mode = ControlModeCommand::Request::AUTONOMOUS;
-  } else {
-    request->mode = ControlModeCommand::Request::MANUAL;
-  }
-
-  RCLCPP_INFO_STREAM(node_.get_logger(), "vehicle gate request");
+  request->mode = control_mode_command;
   requesting_ = true;
-  last_request_mode_ = plugin.mode();
   cli_control_mode_->async_send_request(request, [this](SharedFuture) { requesting_ = false; });
   return true;
 }

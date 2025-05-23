@@ -36,6 +36,7 @@ public:
   using Callback = std::function<void()>;
   ControlGateInterface(rclcpp::Node & node, Callback callback);
   TriState is_selected(const CommandPlugin & plugin) const;
+  bool is_requesting() const { return requesting_; }
   bool is_in_transition() const;
   bool request(const CommandPlugin & plugin, bool transition);
 
@@ -60,8 +61,13 @@ public:
   using Callback = std::function<void()>;
   VehicleGateInterface(rclcpp::Node & node, Callback callback);
   TriState is_selected(const CommandPlugin & plugin) const;
+  bool is_requesting() const { return requesting_; }
   bool is_autoware_control() const;
+  bool is_manual_control() const;
   bool request(const CommandPlugin & plugin);
+  bool request_autoware_control();
+  bool request_manual_control();
+  bool request(uint8_t control_mode_command);
 
 private:
   using ControlModeCommand = autoware_vehicle_msgs::srv::ControlModeCommand;
