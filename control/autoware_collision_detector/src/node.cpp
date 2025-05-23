@@ -16,9 +16,9 @@
 
 #include "autoware/collision_detector/debug.hpp"
 
+#include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/uuid_helper.hpp>
-#include <autoware_utils/geometry/boost_geometry.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <boost/geometry.hpp>

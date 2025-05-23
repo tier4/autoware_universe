@@ -15,8 +15,8 @@
 #ifndef AUTOWARE__COLLISION_DETECTOR__DEBUG_HPP_
 #define AUTOWARE__COLLISION_DETECTOR__DEBUG_HPP_
 
-#include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
+#include <autoware_utils/ros/marker_helper.hpp>
 
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>

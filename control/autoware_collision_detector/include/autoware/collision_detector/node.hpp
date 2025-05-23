@@ -102,8 +102,7 @@ private:
 
   void checkCollision(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
-  std::optional<Obstacle> getNearestObstacle(
-    const autoware_utils::Polygon2d & ego_polygon) const;
+  std::optional<Obstacle> getNearestObstacle(const autoware_utils::Polygon2d & ego_polygon) const;
 
   std::optional<Obstacle> getNearestObstacleByPointCloud(
     const autoware_utils::Polygon2d & ego_polygon) const;
