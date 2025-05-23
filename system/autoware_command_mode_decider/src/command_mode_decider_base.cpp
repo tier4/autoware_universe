@@ -70,14 +70,14 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
   command_mode_status_.init(command_modes);
   system_request_.operation_mode = declare_parameter<uint16_t>("initial_operation_mode");
   system_request_.autoware_control = declare_parameter<bool>("initial_autoware_control");
-  command_mode_ = autoware::command_mode_types::modes::unknown;
-  request_mode_ = autoware::command_mode_types::modes::unknown;
-  request_stamp_ = std::nullopt;
 
   curr_autoware_control_ = false;
-  last_autoware_control_ = false;
   curr_operation_mode_ = autoware::command_mode_types::modes::unknown;
-  last_operation_mode_ = autoware::command_mode_types::modes::unknown;
+  current_mode_ = autoware::command_mode_types::modes::unknown;
+
+  request_stamp_ = std::nullopt;
+  transition_stamp_ = std::nullopt;
+  last_mode_ = std::nullopt;
 
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -108,9 +108,9 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
 bool CommandModeDeciderBase::is_in_transition() const
 {
   if (system_request_.autoware_control) {
-    return last_operation_mode_ != system_request_.operation_mode;
+    return last_mode_ != system_request_.operation_mode;
   } else {
-    return last_autoware_control_ != system_request_.autoware_control;
+    return last_mode_ != std::nullopt;
   }
 }
 
@@ -175,12 +175,11 @@ void CommandModeDeciderBase::update()
 void CommandModeDeciderBase::detect_override()
 {
   // if (foreground_request_ == autoware::command_mode_types::modes::manual) return;
-
+  // TODO(Takagi, Isamu): use control mode
   const auto status = command_mode_status_.get(autoware::command_mode_types::modes::manual);
   if (status.request_phase == GateType::VehicleGate) {
-    RCLCPP_WARN_STREAM(get_logger(), "override detected");
-    // foreground_request_ = autoware::command_mode_types::modes::manual;
     system_request_.autoware_control = false;
+    RCLCPP_WARN_STREAM(get_logger(), "override detected");
   }
 }
 
@@ -199,12 +198,12 @@ void CommandModeDeciderBase::detect_operation_mode_timeout()
     return;
   }
 
-  // Rollback to the last operation mode.
-  if (last_autoware_control_) {
-    system_request_.operation_mode = last_operation_mode_;
+  // Rollback to the last mode.
+  if (last_mode_) {
+    system_request_.operation_mode = last_mode_.value();
     system_request_.autoware_control = true;
   } else {
-    // Keep the operation mode.
+    // No need to rollback the operation mode in the manual mode.
     system_request_.autoware_control = false;
   }
   RCLCPP_INFO_STREAM(get_logger(), "Mode transition is canceled due to timeout.");
@@ -213,64 +212,55 @@ void CommandModeDeciderBase::detect_operation_mode_timeout()
 void CommandModeDeciderBase::update_request_mode()
 {
   // Decide command mode with system-dependent logic.
-  {
-    const auto modes = plugin_->decide(system_request_, command_mode_status_);
-    if (modes.size() == 0) {
-      RCLCPP_WARN_STREAM(get_logger(), "No command mode is decided.");
-    }
-    if (request_modes_ != modes) {
-      const auto prev = text(request_modes_);
-      const auto next = text(modes);
-      RCLCPP_INFO_STREAM(get_logger(), "request mode changed: " << prev << " -> " << next);
-    }
-    request_modes_ = modes;
-    request_autoware_control_ = system_request_.autoware_control;
+  const auto modes = plugin_->decide(system_request_, command_mode_status_);
+  if (modes.size() == 0) {
+    RCLCPP_WARN_STREAM(get_logger(), "No command mode is requested.");
   }
+  if (request_modes_ != modes) {
+    const auto prev = text(request_modes_);
+    const auto next = text(modes);
+    RCLCPP_INFO_STREAM(get_logger(), "Request mode updated: " << prev << " -> " << next);
+  }
+  request_modes_ = modes;
 }
 
 void CommandModeDeciderBase::update_current_mode()
 {
   // Update current command mode.
   for (const auto & [mode, status] : command_mode_status_) {
-    if (status.check_gate_ready(GateType::VehicleGate)) {
-      logging_mode_change(get_logger(), "command", command_mode_, mode);
-      command_mode_ = mode;
+    // TODO(Takagi, Isamu): check switcher selected and autoware control
+    if (status.selected) {
+      current_mode_ = mode;
+      RCLCPP_INFO_STREAM(get_logger(), "Current mode changed: " << current_mode_);
       break;
     }
   }
 
   // Update current operation mode
-  for (const auto & [mode, status] : command_mode_status_) {
-    if (plugin_->to_operation_mode(mode) == OperationModeState::UNKNOWN) {
-      continue;
-    }
-    if (status.check_gate_ready(GateType::ControlGate)) {
-      curr_operation_mode_ = mode;
-      break;
-    }
+  if (plugin_->to_operation_mode(current_mode_) != OperationModeState::UNKNOWN) {
+    curr_operation_mode_ = current_mode_;
   }
 
   // Update current manual control.
   {
+    // TODO(Takagi, Isamu): use control mode
     const auto status = command_mode_status_.get(autoware::command_mode_types::modes::manual);
     curr_autoware_control_ = !status.check_gate_ready(GateType::VehicleGate);
   }
 
-  // Update last operator (manual control or autoware operation mode).
+  // Update last mode (manual control or autoware operation mode).
   if (is_in_transition()) {
     if (system_request_.autoware_control) {
       const auto status = command_mode_status_.get(system_request_.operation_mode);
-      if (status.check_mode_ready()) {
-        last_autoware_control_ = true;
-        last_operation_mode_ = system_request_.operation_mode;
-        RCLCPP_INFO_STREAM(get_logger(), "last mode: " << last_operation_mode_);
+      if (status.complete) {
+        last_mode_ = system_request_.operation_mode;
+        RCLCPP_INFO_STREAM(get_logger(), "Last mode changed: " << last_mode_.value());
       }
     } else {
-      const auto status = command_mode_status_.get(autoware::command_mode_types::modes::manual);
-      if (status.check_mode_ready()) {
-        last_autoware_control_ = false;
-        last_operation_mode_ = autoware::command_mode_types::modes::unknown;
-        RCLCPP_INFO_STREAM(get_logger(), "last mode: manual");
+      const auto status = command_mode_status_.get_manual_mode();
+      if (status.complete) {
+        last_mode_ = std::nullopt;
+        RCLCPP_INFO_STREAM(get_logger(), "Last mode changed: manual");
       }
     }
   }
@@ -278,11 +268,10 @@ void CommandModeDeciderBase::update_current_mode()
 
 void CommandModeDeciderBase::sync_command_mode()
 {
-  // Skip the request if mode is already requested.
+  // Skip the request if all modes are already requested.
   bool is_requested = true;
   for (const auto & mode : request_modes_) {
-    const auto status = command_mode_status_.get(mode);
-    is_requested = is_requested && status.request;
+    is_requested = is_requested && command_mode_status_.get(mode).request;
   }
   if (is_requested) {
     request_stamp_ = std::nullopt;
@@ -307,11 +296,9 @@ void CommandModeDeciderBase::sync_command_mode()
   CommandModeRequest msg;
   msg.stamp = stamp;
   for (const auto & mode : request_modes_) {
-    using Item = CommandModeRequestItem;
-    Item item;
-    item.type = Item::COMMAND_MODE_CHANGE;
+    CommandModeRequestItem item;
     item.command = mode;
-    item.vehicle = request_autoware_control_ ? Item::AUTOWARE : Item::MANUAL;
+    item.vehicle = CommandModeRequestItem::KEEP;
     msg.items.push_back(item);
   }
   pub_command_mode_request_->publish(msg);
@@ -350,7 +337,7 @@ void CommandModeDeciderBase::publish_mrm_state()
     }
     // clang-format on
   };
-  const auto status = command_mode_status_.get(command_mode_);
+  const auto status = command_mode_status_.get(current_mode_);
   MrmState state;
   state.stamp = now();
   state.state = convert(status.mrm);

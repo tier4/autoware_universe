@@ -85,7 +85,6 @@ private:
   rclcpp::Service<ChangeAutowareControl>::SharedPtr srv_autoware_control_;
   rclcpp::Service<ChangeOperationMode>::SharedPtr srv_operation_mode_;
   rclcpp::Publisher<OperationModeState>::SharedPtr pub_operation_mode_;
-
   rclcpp::Publisher<MrmState>::SharedPtr pub_mrm_state_;
 
   diagnostic_updater::Updater diagnostics_;
@@ -100,18 +99,15 @@ private:
   bool is_modes_ready_;
   CommandModeStatusTable command_mode_status_;
   RequestModeStatus system_request_;
-  bool request_autoware_control_;
   std::vector<uint16_t> request_modes_;
 
-  uint16_t command_mode_;
-  uint16_t request_mode_;
+  bool curr_autoware_control_;
+  uint16_t curr_operation_mode_;
+  uint16_t current_mode_;
+
   std::optional<rclcpp::Time> request_stamp_;
   std::optional<rclcpp::Time> transition_stamp_;
-
-  bool curr_autoware_control_;
-  bool last_autoware_control_;
-  uint16_t curr_operation_mode_;
-  uint16_t last_operation_mode_;
+  std::optional<uint16_t> last_mode_;  // nullopt means manual control
 };
 
 }  // namespace autoware::command_mode_decider
