@@ -1,31 +1,18 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-<<<<<<<< HEAD:common/autoware_agnocast_wrapper/package.xml
   <name>autoware_agnocast_wrapper</name>
   <version>0.45.0</version>
   <description>Wrapper macros for Agnocast (true zero-copy communication library)</description>
   <maintainer email="sykwer@gmail.com">Takahiro Ishikawa-Aso</maintainer>
-========
-  <name>autoware_tensorrt_plugins</name>
-  <version>0.44.0</version>
-  <description>The autoware_tensorrt_plugins package</description>
-  <maintainer email="kenzo.lobos@tier4.jp">Kenzo Lobos-Tsunekawa</maintainer>
->>>>>>>> tier4/main:perception/autoware_tensorrt_plugins/package.xml
   <license>Apache License 2.0</license>
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
   <buildtool_depend>autoware_cmake</buildtool_depend>
 
-<<<<<<<< HEAD:common/autoware_agnocast_wrapper/package.xml
   <build_depend>agnocastlib</build_depend>
   <build_depend>rclcpp</build_depend>
-========
-  <depend>autoware_cuda_dependency_meta</depend>
-  <depend>autoware_cuda_utils</depend>
->>>>>>>> tier4/main:perception/autoware_tensorrt_plugins/package.xml
 
-  <test_depend>ament_cmake_ros</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

@@ -2,7 +2,6 @@
 Changelog for package autoware_adapi_specs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-<<<<<<< HEAD
 0.45.0 (2025-05-22)
 -------------------
 * Merge remote-tracking branch 'origin/main' into tmp/notbot/bump_version_base
@@ -12,8 +11,6 @@ Changelog for package autoware_adapi_specs
 0.44.1 (2025-05-01)
 -------------------
 
-=======
->>>>>>> tier4/main
 0.44.0 (2025-04-18)
 -------------------
 
