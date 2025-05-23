@@ -60,9 +60,9 @@ struct CommandModeStatusItem
   GateType request_phase;
   GateType current_phase;
 
-  bool mode_continuable;
-  bool mode_available;
-  bool transition_available;
+  bool continuable;
+  bool available;
+  bool activatable;
   bool transition_completed;
 
   TriState transition_state;

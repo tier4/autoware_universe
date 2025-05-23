@@ -7,6 +7,7 @@
   <arg name="~/operation_mode/change_operation_mode" default="/system/operation_mode/change_operation_mode"/>
   <arg name="~/operation_mode/change_autoware_control" default="/system/operation_mode/change_autoware_control"/>
   <arg name="~/mrm/state" default="/system/fail_safe/mrm_state"/>
+  <arg name="~/control_mode/report" default="/vehicle/status/control_mode"/>
 
   <node pkg="autoware_command_mode_decider" exec="command_mode_decider_node">
     <param from="$(var config)"/>
@@ -16,5 +17,6 @@
     <remap from="~/operation_mode/change_operation_mode" to="$(var ~/operation_mode/change_operation_mode)"/>
     <remap from="~/operation_mode/change_autoware_control" to="$(var ~/operation_mode/change_autoware_control)"/>
     <remap from="~/mrm/state" to="$(var ~/mrm/state)"/>
+    <remap from="~/control_mode/report" to="$(var ~/control_mode/report)"/>
   </node>
 </launch>

@@ -81,7 +81,6 @@ private:
 
   VehicleModeRequest vehicle_mode_request_ = VehicleModeRequest::None;
   std::shared_ptr<Command> command_mode_request_;
-  std::shared_ptr<Command> current_command_mode_;
 
   bool is_ready_ = false;
   bool is_autoware_control_ = false;
