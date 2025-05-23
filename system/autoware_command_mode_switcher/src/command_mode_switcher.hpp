@@ -39,10 +39,10 @@ using autoware::command_mode_types::CommandModeStatusAdapter;
 using tier4_system_msgs::msg::CommandModeAvailability;
 using tier4_system_msgs::msg::CommandModeRequest;
 
-enum class TransitionType {
+enum class VehicleModeRequest {
   None,
-  Command,
-  Vehicle,
+  Autoware,
+  Manual,
 };
 
 class CommandModeSwitcher : public rclcpp::Node
@@ -57,13 +57,12 @@ private:
 
   void detect_override();
   void update_status();
-  void handle_foreground_transition();
-  void handle_background_transition();
-  void change_command_mode_foreground();
-  void change_command_mode_background();
-  void change_vehicle_mode_manual();
-  void change_vehicle_mode_autoware();
+  void change_modes();
   void publish_command_mode_status();
+
+  void change_vehicle_mode_to_manual();
+  void change_vehicle_mode_to_autoware();
+  void change_command_mode();
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
@@ -80,11 +79,9 @@ private:
   ControlGateInterface control_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
 
-  TransitionType transition_ = TransitionType::None;
+  VehicleModeRequest vehicle_mode_request_ = VehicleModeRequest::None;
   std::shared_ptr<Command> command_mode_request_;
-  std::shared_ptr<Command> vehicle_mode_request_;
   std::shared_ptr<Command> current_command_mode_;
-  std::shared_ptr<Command> current_vehicle_mode_;
 
   bool is_ready_ = false;
   bool is_autoware_control_ = false;
