@@ -64,9 +64,9 @@ tier4_system_msgs::msg::CommandModeStatusItem to_msg(const CommandModeStatusItem
   msg.request_phase = to_gate_type(item.request_phase);
   msg.current_phase = to_gate_type(item.current_phase);
 
-  msg.mode_continuable = item.mode_continuable;
-  msg.mode_available = item.mode_available;
-  msg.transition_available = item.transition_available;
+  msg.continuable = item.continuable;
+  msg.available = item.available;
+  msg.activatable = item.activatable;
   msg.transition_completed = item.transition_completed;
 
   msg.transition_state = to_tri_state(item.transition_state);
@@ -97,9 +97,9 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
   custom.request_phase = from_gate_type(item.request_phase);
   custom.current_phase = from_gate_type(item.current_phase);
 
-  custom.mode_continuable = item.mode_continuable;
-  custom.mode_available = item.mode_available;
-  custom.transition_available = item.transition_available;
+  custom.continuable = item.continuable;
+  custom.available = item.available;
+  custom.activatable = item.activatable;
   custom.transition_completed = item.transition_completed;
 
   custom.transition_state = from_tri_state(item.transition_state);

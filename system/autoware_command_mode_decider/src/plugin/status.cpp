@@ -66,10 +66,4 @@ const CommandModeStatusItem & CommandModeStatusTable::get(uint16_t mode) const
   return empty_item_;
 }
 
-const CommandModeStatusItem & CommandModeStatusTable::get_manual_mode() const
-{
-  // TODO(Takagi, Isamu): use control mode
-  return get(autoware::command_mode_types::modes::manual);
-}
-
 }  // namespace autoware::command_mode_decider

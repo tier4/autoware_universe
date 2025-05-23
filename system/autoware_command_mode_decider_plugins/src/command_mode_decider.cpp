@@ -77,9 +77,8 @@ std::vector<uint16_t> CommandModeDecider::decide(
     return result;
   };
 
-  const auto background = !request.autoware_control;
-  const auto is_available = [background](const auto & status) {
-    return status.mode_available && (status.transition_available || background);
+  const auto is_available = [request](const auto & status) {
+    return status.available && (status.activatable || !request.autoware_control);
   };
 
   // Use the specified operation mode if available.
@@ -97,13 +96,13 @@ std::vector<uint16_t> CommandModeDecider::decide(
 
   namespace modes = autoware::command_mode_types::modes;
 
-  if (table.get(modes::pull_over).mode_available) {
+  if (table.get(modes::pull_over).available) {
     return create_vector(modes::pull_over);
   }
-  if (table.get(modes::comfortable_stop).mode_available) {
+  if (table.get(modes::comfortable_stop).available) {
     return create_vector(modes::comfortable_stop);
   }
-  if (table.get(modes::emergency_stop).mode_available) {
+  if (table.get(modes::emergency_stop).available) {
     return create_vector(modes::emergency_stop);
   }
 

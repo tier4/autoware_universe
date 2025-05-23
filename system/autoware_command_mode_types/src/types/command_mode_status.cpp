@@ -33,9 +33,9 @@ CommandModeStatusItem::CommandModeStatusItem(uint16_t mode) : mode(mode)
   request_phase = GateType::NotSelected;
   current_phase = GateType::NotSelected;
 
-  mode_continuable = false;
-  mode_available = false;
-  transition_available = false;
+  continuable = false;
+  available = false;
+  activatable = false;
   transition_completed = false;
 
   transition_state = TriState::Disabled;

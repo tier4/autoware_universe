@@ -33,7 +33,6 @@ public:
   void check_timeout(const rclcpp::Time & stamp);
   bool ready() const;
   const CommandModeStatusItem & get(uint16_t mode) const;
-  const CommandModeStatusItem & get_manual_mode() const;
 
   auto begin() const { return command_mode_status_.begin(); }
   auto end() const { return command_mode_status_.end(); }

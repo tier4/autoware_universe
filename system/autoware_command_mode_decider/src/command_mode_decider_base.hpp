@@ -26,6 +26,7 @@
 
 #include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
+#include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
 #include <tier4_system_msgs/msg/command_mode_request.hpp>
 #include <tier4_system_msgs/msg/command_mode_status.hpp>
 #include <tier4_system_msgs/srv/change_autoware_control.hpp>
@@ -45,6 +46,7 @@ using autoware::command_mode_types::TriState;
 using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_common_msgs::msg::ResponseStatus;
+using autoware_vehicle_msgs::msg::ControlModeReport;
 using tier4_system_msgs::msg::CommandModeRequest;
 using tier4_system_msgs::msg::CommandModeRequestItem;
 using tier4_system_msgs::srv::ChangeAutowareControl;
@@ -68,6 +70,7 @@ private:
   void publish_mrm_state();
 
   void on_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
+  void on_control_mode(const ControlModeReport & msg);
   void on_timer();
   void on_status(const CommandModeStatus & msg);
   void on_change_operation_mode(
@@ -76,11 +79,12 @@ private:
     ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res);
 
   ResponseStatus check_mode_exists(uint16_t mode);
-  ResponseStatus check_mode_request(uint16_t mode, bool background);
+  ResponseStatus check_mode_request(uint16_t mode);
 
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<CommandModeRequest>::SharedPtr pub_command_mode_request_;
   rclcpp::Subscription<CommandModeStatusAdapter>::SharedPtr sub_command_mode_status_;
+  rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
 
   rclcpp::Service<ChangeAutowareControl>::SharedPtr srv_autoware_control_;
   rclcpp::Service<ChangeOperationMode>::SharedPtr srv_operation_mode_;
@@ -102,6 +106,9 @@ private:
   std::vector<uint16_t> request_modes_;
 
   bool curr_autoware_control_;
+  bool curr_manual_control_;
+  bool prev_manual_control_;
+
   uint16_t curr_operation_mode_;
   uint16_t current_mode_;
 

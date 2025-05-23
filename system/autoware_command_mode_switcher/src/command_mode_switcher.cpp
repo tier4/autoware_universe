@@ -148,13 +148,25 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   }
   */
 
+  std::shared_ptr<Command> new_command_mode = nullptr;
   for (const auto & item : msg.items) {
     const auto iter = autoware_commands_.find(item.command);
     if (iter != autoware_commands_.end()) {
-      command_mode_request_ = iter->second;
+      new_command_mode = iter->second;
       break;
     }
   }
+
+  if (!new_command_mode) {
+    RCLCPP_ERROR_STREAM(get_logger(), "invalid mode");
+    return;
+  }
+  if (command_mode_request_ == new_command_mode) {
+    const auto mode = new_command_mode->plugin->mode();
+    RCLCPP_INFO_STREAM(get_logger(), "request ignored: " << std::to_string(mode));
+    return;
+  }
+  command_mode_request_ = new_command_mode;
 
   for (const auto & command : commands_) {
     const auto is_request_mode = (command_mode_request_ == command);
@@ -202,9 +214,9 @@ void CommandModeSwitcher::update_status()
       plugin->update_source_state(status.request_phase != GateType::NotSelected);
     status.control_gate_state = control_gate_interface_.is_selected(*plugin);
     status.vehicle_gate_state = vehicle_gate_interface_.is_selected(*plugin);
-    status.mode_continuable = plugin->get_mode_continuable();
-    status.mode_available = plugin->get_mode_available();
-    status.transition_available = plugin->get_transition_available();
+    status.continuable = plugin->get_mode_continuable();
+    status.available = plugin->get_mode_available();
+    status.activatable = plugin->get_transition_available();
     status.transition_completed = plugin->get_transition_completed();
 
     status.selected = (control_gate_interface_.is_selected(*plugin) == TriState::Enabled);
