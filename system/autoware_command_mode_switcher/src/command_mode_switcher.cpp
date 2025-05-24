@@ -179,13 +179,12 @@ void CommandModeSwitcher::update()
 
 void CommandModeSwitcher::detect_override()
 {
-  const auto curr_autoware_control = vehicle_gate_interface_.is_autoware_control();
-
-  if (prev_autoware_control_ && !curr_autoware_control) {
-    RCLCPP_WARN_STREAM(get_logger(), "override detected");
+  const auto curr_manual_control = vehicle_gate_interface_.is_manual_control();
+  if (!prev_manual_control_ && curr_manual_control) {
     vehicle_mode_request_ = VehicleModeRequest::None;
+    RCLCPP_WARN_STREAM(get_logger(), "override detected");
   }
-  prev_autoware_control_ = curr_autoware_control;
+  prev_manual_control_ = curr_manual_control;
 }
 
 void CommandModeSwitcher::update_status()
