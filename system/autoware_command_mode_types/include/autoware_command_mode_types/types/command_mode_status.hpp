@@ -46,13 +46,13 @@ struct CommandModeStatusItem
 {
   uint16_t mode;
 
-  bool complete;
-  bool request;
   bool transition;
-  bool selected;
-
-  bool vehicle_mode_selected;
-  bool command_mode_selected;
+  bool request;
+  bool vehicle_selected;
+  bool command_selected;
+  bool command_exclusive;
+  bool command_enabled;
+  bool command_disabled;
 
   TriState mode_state;
   TriState gate_state;
@@ -73,6 +73,10 @@ struct CommandModeStatusItem
   TriState source_group;
 
   explicit CommandModeStatusItem(uint16_t mode = 0);
+  bool is_completed() const;
+  bool is_vehicle_ready() const;
+  bool is_command_ready() const;
+
   bool check_mode_ready() const;
   bool check_gate_ready(GateType gate) const;
 };

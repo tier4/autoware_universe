@@ -70,8 +70,8 @@ private:
   void publish_mrm_state();
 
   void on_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
-  void on_control_mode(const ControlModeReport & msg);
   void on_timer();
+  void on_control_mode(const ControlModeReport & msg);
   void on_status(const CommandModeStatus & msg);
   void on_change_operation_mode(
     ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res);
@@ -110,11 +110,11 @@ private:
   bool prev_manual_control_;
 
   uint16_t curr_operation_mode_;
-  uint16_t current_mode_;
+  uint16_t curr_mode_;
+  uint16_t last_mode_;
 
   std::optional<rclcpp::Time> request_stamp_;
   std::optional<rclcpp::Time> transition_stamp_;
-  std::optional<uint16_t> last_mode_;  // nullopt means manual control
 };
 
 }  // namespace autoware::command_mode_decider

@@ -35,7 +35,7 @@ class ControlGateInterface
 public:
   using Callback = std::function<void()>;
   ControlGateInterface(rclcpp::Node & node, Callback callback);
-  TriState is_selected(const CommandPlugin & plugin) const;
+  bool is_selected(const CommandPlugin & plugin) const;
   bool is_requesting() const { return requesting_; }
   bool is_in_transition() const;
   bool request(const CommandPlugin & plugin, bool transition);
@@ -60,7 +60,7 @@ class VehicleGateInterface
 public:
   using Callback = std::function<void()>;
   VehicleGateInterface(rclcpp::Node & node, Callback callback);
-  TriState is_selected(const CommandPlugin & plugin) const;
+  bool is_selected(const CommandPlugin & plugin) const;
   bool is_requesting() const { return requesting_; }
   bool is_autoware_control() const;
   bool is_manual_control() const;

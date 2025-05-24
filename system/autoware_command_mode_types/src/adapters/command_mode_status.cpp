@@ -54,10 +54,14 @@ tier4_system_msgs::msg::CommandModeStatusItem to_msg(const CommandModeStatusItem
   tier4_system_msgs::msg::CommandModeStatusItem msg;
   msg.mode = item.mode;
 
-  msg.complete = item.complete;
-  msg.request = item.request;
   msg.transition = item.transition;
-  msg.selected = item.selected;
+  msg.request = item.request;
+  msg.vehicle_selected = item.vehicle_selected;
+  msg.command_selected = item.command_selected;
+  msg.command_exclusive = item.command_exclusive;
+  msg.command_enabled = item.command_enabled;
+  msg.command_disabled = item.command_disabled;
+
   msg.mode_state = to_tri_state(item.mode_state);
   msg.gate_state = to_tri_state(item.gate_state);
   msg.mrm = to_mrm_state(item.mrm);
@@ -84,12 +88,13 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
   CommandModeStatusItem custom;
   custom.mode = item.mode;
 
-  custom.complete = item.complete;
-  custom.request = item.request;
   custom.transition = item.transition;
-  custom.selected = item.selected;
-  custom.vehicle_mode_selected = item.vehicle_mode_selected;
-  custom.command_mode_selected = item.command_mode_selected;
+  custom.request = item.request;
+  custom.vehicle_selected = item.vehicle_selected;
+  custom.command_selected = item.command_selected;
+  custom.command_exclusive = item.command_exclusive;
+  custom.command_enabled = item.command_enabled;
+  custom.command_disabled = item.command_disabled;
 
   custom.mode_state = from_tri_state(item.mode_state);
   custom.gate_state = from_tri_state(item.gate_state);

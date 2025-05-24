@@ -35,8 +35,6 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   {
     const auto command = std::make_shared<Command>(std::make_shared<ManualCommand>());
     manual_command_ = command;
-    platform_commands_[command->plugin->mode()] = command;
-    commands_.push_back(command);
   }
 
   // Create control gate switcher.
@@ -170,7 +168,6 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 
   for (const auto & command : commands_) {
     const auto is_request_mode = (command_mode_request_ == command);
-    command->status.complete = false;
     command->status.request = is_request_mode;
     command->status.transition = is_request_mode;
   }
@@ -212,14 +209,12 @@ void CommandModeSwitcher::update_status()
     status.mrm = plugin->update_mrm_state();
     status.source_state =
       plugin->update_source_state(status.request_phase != GateType::NotSelected);
-    status.control_gate_state = control_gate_interface_.is_selected(*plugin);
-    status.vehicle_gate_state = vehicle_gate_interface_.is_selected(*plugin);
+    // status.control_gate_state = control_gate_interface_.is_selected(*plugin);
+    // status.vehicle_gate_state = vehicle_gate_interface_.is_selected(*plugin);
     status.continuable = plugin->get_mode_continuable();
     status.available = plugin->get_mode_available();
     status.activatable = plugin->get_transition_available();
     status.transition_completed = plugin->get_transition_completed();
-
-    status.selected = (control_gate_interface_.is_selected(*plugin) == TriState::Enabled);
   }
 
   // Within the source group, all sources except for the active must be disabled.
@@ -228,11 +223,14 @@ void CommandModeSwitcher::update_status()
     const auto uses = command->status.source_state != TriState::Disabled;
     source_group_count[command->plugin->source()] += uses ? 1 : 0;
   }
+
   for (const auto & command : commands_) {
     auto & status = command->status;
     auto & plugin = command->plugin;
-    const auto source_count = source_group_count[plugin->source()];
-    status.source_group = source_count <= 1 ? TriState::Enabled : TriState::Disabled;
+    status.command_exclusive = source_group_count[plugin->source()] <= 1;
+    status.command_selected = control_gate_interface_.is_selected(*plugin);
+    status.vehicle_selected = vehicle_gate_interface_.is_selected(*plugin);
+
     status.current_phase = update_current_phase(status);  // Depends on the source group.
     status.gate_state = update_gate_state(status);        // Depends on the source group.
     status.mode_state = update_mode_state(status);        // Depends on the gate state.
@@ -257,7 +255,7 @@ void CommandModeSwitcher::change_modes()
   }
 
   if (!command_mode_request_) {
-    RCLCPP_INFO_STREAM(get_logger(), "no command mode request");
+    RCLCPP_WARN_STREAM(get_logger(), "no command mode request");
     return;
   }
 
@@ -265,7 +263,7 @@ void CommandModeSwitcher::change_modes()
     return change_vehicle_mode_to_manual();
   }
 
-  if (!command_mode_request_->status.selected) {
+  if (!command_mode_request_->status.command_selected) {
     return change_command_mode();
   }
 
@@ -284,7 +282,6 @@ void CommandModeSwitcher::change_modes()
     return;
   }
 
-  command_mode_request_->status.complete = true;
   command_mode_request_->status.transition = false;
 }
 
