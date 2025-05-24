@@ -213,7 +213,7 @@ void CommandModeSwitcher::update_status()
     // status.vehicle_gate_state = vehicle_gate_interface_.is_selected(*plugin);
     status.continuable = plugin->get_mode_continuable();
     status.available = plugin->get_mode_available();
-    status.activatable = plugin->get_transition_available();
+    status.drivable = plugin->get_transition_available();
     status.transition_completed = plugin->get_transition_completed();
   }
 

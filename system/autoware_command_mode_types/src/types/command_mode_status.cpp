@@ -35,7 +35,7 @@ CommandModeStatusItem::CommandModeStatusItem(uint16_t mode) : mode(mode)
 
   continuable = false;
   available = false;
-  activatable = false;
+  drivable = false;
   transition_completed = false;
 
   transition_state = TriState::Disabled;

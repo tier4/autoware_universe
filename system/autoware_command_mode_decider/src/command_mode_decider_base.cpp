@@ -157,6 +157,8 @@ void CommandModeDeciderBase::on_control_mode(const ControlModeReport & msg)
   // Check override.
   if (!prev_manual_control_ && curr_manual_control_) {
     system_request_.autoware_control = false;
+    curr_mode_ = autoware::command_mode_types::modes::manual;
+    last_mode_ = autoware::command_mode_types::modes::manual;
     RCLCPP_WARN_STREAM(get_logger(), "override detected");
   }
   prev_manual_control_ = curr_manual_control_;
@@ -325,9 +327,10 @@ void CommandModeDeciderBase::sync_command_mode()
   CommandModeRequest msg;
   msg.stamp = stamp;
   for (const auto & mode : request_modes_) {
-    CommandModeRequestItem item;
+    using Item = CommandModeRequestItem;
+    Item item;
     item.command = mode;
-    item.vehicle = CommandModeRequestItem::KEEP;
+    item.vehicle = Item::KEEP;
     msg.items.push_back(item);
   }
   pub_command_mode_request_->publish(msg);
@@ -337,7 +340,7 @@ void CommandModeDeciderBase::publish_operation_mode_state()
 {
   const auto is_transition_available = [this](const auto & mode) {
     const auto status = command_mode_status_.get(mode);
-    return status.available && (status.activatable || curr_manual_control_);
+    return status.available && (status.drivable || curr_manual_control_);
   };
   namespace modes = autoware::command_mode_types::modes;
   OperationModeState state;
@@ -400,11 +403,25 @@ ResponseStatus CommandModeDeciderBase::check_mode_request(uint16_t mode)
     return result;
   }
   const auto status = command_mode_status_.get(mode);
-  const auto available = status.available && (status.activatable || curr_manual_control_);
+  const auto available = status.available && (status.drivable || curr_manual_control_);
   if (!available) {
     return make_response(false, "Mode is not available: " + std::to_string(mode));
   }
   return make_response(true);
+}
+
+void CommandModeDeciderBase::on_change_operation_mode(
+  ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res)
+{
+  const auto mode = plugin_->from_operation_mode(req->mode);
+  res->status = check_mode_request(mode);
+  if (!res->status.success) {
+    RCLCPP_WARN_STREAM(get_logger(), res->status.message);
+    return;
+  }
+  system_request_.operation_mode = mode;
+  RCLCPP_INFO_STREAM(get_logger(), "Change operation mode: " << mode);
+  update();
 }
 
 void CommandModeDeciderBase::on_change_autoware_control(
@@ -421,20 +438,18 @@ void CommandModeDeciderBase::on_change_autoware_control(
   res->status = make_response(true);  // For autoware_control is false.
   system_request_.autoware_control = req->autoware_control;
   update();
-}
 
-void CommandModeDeciderBase::on_change_operation_mode(
-  ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res)
-{
-  const auto mode = plugin_->from_operation_mode(req->mode);
-  res->status = check_mode_request(mode);
-  if (!res->status.success) {
-    RCLCPP_WARN_STREAM(get_logger(), res->status.message);
-    return;
+  // Request vehicle mode to switcher nodes.
+  CommandModeRequest msg;
+  msg.stamp = now();
+  {
+    using Item = CommandModeRequestItem;
+    Item item;
+    item.command = Item::KEEP;
+    item.vehicle = req->autoware_control ? Item::AUTOWARE : Item::MANUAL;
+    msg.items.push_back(item);
   }
-  system_request_.operation_mode = mode;
-  RCLCPP_INFO_STREAM(get_logger(), "Change operation mode: " << mode);
-  update();
+  pub_command_mode_request_->publish(msg);
 }
 
 }  // namespace autoware::command_mode_decider

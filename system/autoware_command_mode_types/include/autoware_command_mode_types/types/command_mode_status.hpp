@@ -62,7 +62,7 @@ struct CommandModeStatusItem
 
   bool continuable;
   bool available;
-  bool activatable;
+  bool drivable;
   bool transition_completed;
 
   TriState transition_state;
