@@ -156,10 +156,11 @@ void CommandModeDeciderBase::on_control_mode(const ControlModeReport & msg)
 
   // Check override.
   if (!prev_manual_control_ && curr_manual_control_) {
-    system_request_.autoware_control = false;
-    curr_mode_ = autoware::command_mode_types::modes::manual;
-    last_mode_ = autoware::command_mode_types::modes::manual;
-    RCLCPP_WARN_STREAM(get_logger(), "override detected");
+    if (system_request_.autoware_control) {
+      // curr_mode_ and last_mode_ will be updated in the update_current_mode function.
+      system_request_.autoware_control = false;
+      RCLCPP_WARN_STREAM(get_logger(), "override detected");
+    }
   }
   prev_manual_control_ = curr_manual_control_;
 
@@ -326,11 +327,10 @@ void CommandModeDeciderBase::sync_command_mode()
   // Request command mode to switcher nodes.
   CommandModeRequest msg;
   msg.stamp = stamp;
+  msg.vehicle = CommandModeRequest::NONE;
   for (const auto & mode : request_modes_) {
-    using Item = CommandModeRequestItem;
-    Item item;
-    item.command = mode;
-    item.vehicle = Item::KEEP;
+    CommandModeRequestItem item;
+    item.mode = mode;
     msg.items.push_back(item);
   }
   pub_command_mode_request_->publish(msg);
@@ -420,6 +420,7 @@ void CommandModeDeciderBase::on_change_operation_mode(
     return;
   }
   system_request_.operation_mode = mode;
+
   RCLCPP_INFO_STREAM(get_logger(), "Change operation mode: " << mode);
   update();
 }
@@ -427,6 +428,9 @@ void CommandModeDeciderBase::on_change_operation_mode(
 void CommandModeDeciderBase::on_change_autoware_control(
   ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res)
 {
+  // For autoware_control is false.
+  res->status = make_response(true);
+
   // Assume the driver is always ready.
   if (req->autoware_control) {
     res->status = check_mode_request(system_request_.operation_mode);
@@ -435,21 +439,16 @@ void CommandModeDeciderBase::on_change_autoware_control(
       return;
     }
   }
-  res->status = make_response(true);  // For autoware_control is false.
   system_request_.autoware_control = req->autoware_control;
-  update();
 
   // Request vehicle mode to switcher nodes.
   CommandModeRequest msg;
   msg.stamp = now();
-  {
-    using Item = CommandModeRequestItem;
-    Item item;
-    item.command = Item::KEEP;
-    item.vehicle = req->autoware_control ? Item::AUTOWARE : Item::MANUAL;
-    msg.items.push_back(item);
-  }
+  msg.vehicle = req->autoware_control ? CommandModeRequest::AUTOWARE : CommandModeRequest::MANUAL;
   pub_command_mode_request_->publish(msg);
+
+  RCLCPP_INFO_STREAM(get_logger(), "Change autoware control: " << req->autoware_control);
+  update();
 }
 
 }  // namespace autoware::command_mode_decider
