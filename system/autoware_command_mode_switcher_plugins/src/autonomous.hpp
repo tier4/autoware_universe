@@ -32,8 +32,6 @@ public:
   uint16_t source() const override { return autoware::command_mode_types::sources::main; }
   bool autoware_control() const override { return true; }
   void initialize() override;
-
-  bool get_transition_available() override { return transition_available_; }
   bool get_transition_completed() override { return transition_completed_; }
 
 private:
