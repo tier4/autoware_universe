@@ -78,7 +78,7 @@ std::vector<uint16_t> CommandModeDecider::decide(
   };
 
   const auto is_available = [request](const auto & status) {
-    return status.available && (status.activatable || !request.autoware_control);
+    return status.available && (status.drivable || !request.autoware_control);
   };
 
   // Use the specified operation mode if available.

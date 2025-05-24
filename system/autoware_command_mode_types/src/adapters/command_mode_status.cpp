@@ -70,7 +70,7 @@ tier4_system_msgs::msg::CommandModeStatusItem to_msg(const CommandModeStatusItem
 
   msg.continuable = item.continuable;
   msg.available = item.available;
-  msg.activatable = item.activatable;
+  msg.drivable = item.drivable;
   msg.transition_completed = item.transition_completed;
 
   msg.transition_state = to_tri_state(item.transition_state);
@@ -104,7 +104,7 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
 
   custom.continuable = item.continuable;
   custom.available = item.available;
-  custom.activatable = item.activatable;
+  custom.drivable = item.drivable;
   custom.transition_completed = item.transition_completed;
 
   custom.transition_state = from_tri_state(item.transition_state);
