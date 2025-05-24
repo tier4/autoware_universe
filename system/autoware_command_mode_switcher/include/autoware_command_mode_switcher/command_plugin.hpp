@@ -24,7 +24,12 @@ namespace autoware::command_mode_switcher
 {
 
 using command_mode_types::MrmState;
-using command_mode_types::TriState;
+
+struct SourceState
+{
+  bool enabled;
+  bool disabled;
+};
 
 class CommandPlugin
 {
@@ -35,19 +40,11 @@ public:
   virtual bool autoware_control() const = 0;
   virtual void initialize() = 0;
 
-  virtual TriState update_source_state(bool request);
+  virtual SourceState update_source_state(bool request);
   virtual MrmState update_mrm_state() { return MrmState::Normal; }
-
-  virtual bool get_mode_continuable() { return false; }
-  virtual bool get_mode_available() { return false; }
-  virtual bool get_transition_available() { return false; }
   virtual bool get_transition_completed() { return false; }
 
-  virtual void set_mode_continuable(bool continuable) = 0;
-  virtual void set_mode_available(bool available) = 0;
-
   void construct(rclcpp::Node * node) { node_ = node; }
-
   void set_plugin_name(const std::string & plugin_name) { plugin_name_ = plugin_name; }
   std::string expand_param(const std::string & param_name) const
   {
@@ -61,25 +58,6 @@ private:
   std::string plugin_name_;
 };
 
-class ControlCommandPlugin : public CommandPlugin
-{
-public:
-  bool get_mode_continuable() override;
-  bool get_mode_available() override;
-  void set_mode_continuable(bool continuable) override;
-  void set_mode_available(bool available) override;
-
-private:
-  bool mode_continuable_ = false;
-  bool mode_available_ = false;
-};
-
-class VehicleCommandPlugin : public CommandPlugin
-{
-public:
-  void set_mode_continuable(bool continuable) override;
-  void set_mode_available(bool available) override;
-};
 }  // namespace autoware::command_mode_switcher
 
 #endif  // AUTOWARE_COMMAND_MODE_SWITCHER__COMMAND_PLUGIN_HPP_

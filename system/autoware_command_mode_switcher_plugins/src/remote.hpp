@@ -22,7 +22,7 @@
 namespace autoware::command_mode_switcher
 {
 
-class RemoteSwitcher : public ControlCommandPlugin
+class RemoteSwitcher : public CommandPlugin
 {
 public:
   uint16_t mode() const override { return autoware::command_mode_types::modes::remote; }

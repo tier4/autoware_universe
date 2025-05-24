@@ -41,8 +41,6 @@ namespace autoware::command_mode_decider
 
 using autoware::command_mode_types::CommandModeStatus;
 using autoware::command_mode_types::CommandModeStatusAdapter;
-using autoware::command_mode_types::GateType;
-using autoware::command_mode_types::TriState;
 using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_common_msgs::msg::ResponseStatus;

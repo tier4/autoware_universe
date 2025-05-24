@@ -22,24 +22,11 @@
 namespace autoware::command_mode_types
 {
 
-enum class TriState {
-  Disabled,
-  Enabled,
-  Transition,
-};
-
 enum class MrmState {
   Normal,
   Operating,
   Succeeded,
   Failed,
-};
-
-enum class GateType {
-  NotSelected,
-  ControlGate,
-  NetworkGate,
-  VehicleGate,
 };
 
 struct CommandModeStatusItem

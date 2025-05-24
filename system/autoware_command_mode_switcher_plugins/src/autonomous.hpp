@@ -25,7 +25,7 @@
 namespace autoware::command_mode_switcher
 {
 
-class AutonomousSwitcher : public ControlCommandPlugin
+class AutonomousSwitcher : public CommandPlugin
 {
 public:
   uint16_t mode() const override { return autoware::command_mode_types::modes::autonomous; }
