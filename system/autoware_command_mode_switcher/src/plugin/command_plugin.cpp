@@ -17,36 +17,9 @@
 namespace autoware::command_mode_switcher
 {
 
-TriState CommandPlugin::update_source_state(bool request)
+SourceState CommandPlugin::update_source_state(bool request)
 {
-  return request ? TriState::Enabled : TriState::Disabled;
-}
-
-bool ControlCommandPlugin::get_mode_continuable()
-{
-  return mode_continuable_;
-}
-bool ControlCommandPlugin::get_mode_available()
-{
-  return mode_available_;
-}
-void ControlCommandPlugin::set_mode_continuable(bool continuable)
-{
-  mode_continuable_ = continuable;
-}
-void ControlCommandPlugin::set_mode_available(bool available)
-{
-  mode_available_ = available;
-}
-
-void VehicleCommandPlugin::set_mode_continuable(bool continuable)
-{
-  RCLCPP_ERROR_STREAM(node_->get_logger(), "vehicle command has no continuable: " << continuable);
-}
-
-void VehicleCommandPlugin::set_mode_available(bool available)
-{
-  RCLCPP_ERROR_STREAM(node_->get_logger(), "vehicle command has no available: " << available);
+  return SourceState(request, !request);
 }
 
 }  // namespace autoware::command_mode_switcher

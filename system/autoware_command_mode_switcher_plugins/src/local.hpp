@@ -22,7 +22,7 @@
 namespace autoware::command_mode_switcher
 {
 
-class LocalSwitcher : public ControlCommandPlugin
+class LocalSwitcher : public CommandPlugin
 {
 public:
   uint16_t mode() const override { return autoware::command_mode_types::modes::local; }

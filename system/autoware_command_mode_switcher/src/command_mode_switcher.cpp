@@ -31,12 +31,6 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   control_gate_interface_(*this, [this]() { update(); }),
   vehicle_gate_interface_(*this, [this]() { update(); })
 {
-  // Create vehicle gate switcher.
-  {
-    const auto command = std::make_shared<Command>(std::make_shared<ManualCommand>());
-    manual_command_ = command;
-  }
-
   // Create control gate switcher.
   {
     const auto plugins = declare_parameter<std::vector<std::string>>("plugins");
@@ -80,6 +74,8 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
 
 void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
 {
+  (void)msg;
+  /*
   for (const auto & item : msg.items) {
     const auto iter = autoware_commands_.find(item.mode);
     if (iter != autoware_commands_.end()) {
@@ -90,6 +86,7 @@ void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
   }
   is_ready_ = true;
   update();  // Reflect immediately.
+  */
 }
 
 void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
@@ -194,8 +191,8 @@ void CommandModeSwitcher::update_status()
     auto & status = command->status;
     auto & plugin = command->plugin;
     const auto state = plugin->update_source_state(status.request);
-    status.command_enabled = state == TriState::Enabled;
-    status.command_disabled = state == TriState::Disabled;
+    status.command_enabled = state.enabled;
+    status.command_disabled = state.disabled;
   }
 
   // Within the source group, all sources except for the active must be disabled.

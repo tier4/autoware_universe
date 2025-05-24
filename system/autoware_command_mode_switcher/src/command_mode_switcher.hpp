@@ -17,7 +17,6 @@
 
 #include "common/command_container.hpp"
 #include "common/selector_interface.hpp"
-#include "switcher/manual.hpp"
 
 #include <autoware_command_mode_types/adapters/command_mode_status.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -75,9 +74,7 @@ private:
   // Mode switching.
   pluginlib::ClassLoader<CommandPlugin> loader_;
   std::vector<std::shared_ptr<Command>> commands_;
-  std::unordered_map<uint16_t, std::shared_ptr<Command>> platform_commands_;
   std::unordered_map<uint16_t, std::shared_ptr<Command>> autoware_commands_;
-  std::shared_ptr<Command> manual_command_;
   ControlGateInterface control_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
 
