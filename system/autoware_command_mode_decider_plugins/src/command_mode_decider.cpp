@@ -77,14 +77,10 @@ std::vector<uint16_t> CommandModeDecider::decide(
     return result;
   };
 
-  const auto is_available = [request](const auto & status) {
-    return status.available && (status.drivable || !request.autoware_control);
-  };
-
   // Use the specified operation mode if available.
   {
-    const auto status = table.get(request.operation_mode);
-    if (is_available(status)) {
+    const auto available = table.available(request.operation_mode, !request.autoware_control);
+    if (available) {
       return create_vector(request.operation_mode);
     }
   }
@@ -96,17 +92,17 @@ std::vector<uint16_t> CommandModeDecider::decide(
 
   namespace modes = autoware::command_mode_types::modes;
 
-  if (table.get(modes::pull_over).available) {
+  if (table.available(modes::pull_over, true)) {
     return create_vector(modes::pull_over);
   }
-  if (table.get(modes::comfortable_stop).available) {
+  if (table.available(modes::comfortable_stop, true)) {
     return create_vector(modes::comfortable_stop);
   }
-  if (table.get(modes::emergency_stop).available) {
+  if (table.available(modes::emergency_stop, true)) {
     return create_vector(modes::emergency_stop);
   }
 
-  RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000, "No mrm available");
+  RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000, "No mrm available");
   return create_vector(modes::unknown);
 }
 

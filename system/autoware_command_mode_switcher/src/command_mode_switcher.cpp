@@ -104,6 +104,7 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
   };
   // clang-format on
 
+  // Use the first command mode that this switcher supports.
   std::shared_ptr<Command> command_mode = nullptr;
   for (const auto & item : msg.items) {
     const auto iter = autoware_commands_.find(item.mode);
@@ -112,7 +113,6 @@ void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
       break;
     }
   }
-
   request_command_mode(command_mode);
   request_vehicle_mode(get_vehicle_mode(msg.vehicle));
   update();
@@ -171,7 +171,6 @@ void CommandModeSwitcher::update()
 {
   // TODO(Takagi, Isamu): Check call rate.
   if (!is_ready_) return;
-
   detect_override();
   update_status();
   change_modes();
@@ -181,49 +180,47 @@ void CommandModeSwitcher::update()
 void CommandModeSwitcher::detect_override()
 {
   const auto curr_autoware_control = vehicle_gate_interface_.is_autoware_control();
-  const auto is_changed_to_manual = (is_autoware_control_ && !curr_autoware_control);
-  is_autoware_control_ = curr_autoware_control;
 
-  if (is_changed_to_manual) {
+  if (prev_autoware_control_ && !curr_autoware_control) {
     RCLCPP_WARN_STREAM(get_logger(), "override detected");
     vehicle_mode_request_ = VehicleModeRequest::None;
   }
+  prev_autoware_control_ = curr_autoware_control;
 }
 
 void CommandModeSwitcher::update_status()
 {
-  // NOTE: Update the source state first since the source group state depends on it.
+  // NOTE: Update the command enable/disable first since the exclusive depends on.
   for (const auto & command : commands_) {
     auto & status = command->status;
     auto & plugin = command->plugin;
-    status.mrm = plugin->update_mrm_state();
-    status.source_state =
-      plugin->update_source_state(status.request_phase != GateType::NotSelected);
-    // status.control_gate_state = control_gate_interface_.is_selected(*plugin);
-    // status.vehicle_gate_state = vehicle_gate_interface_.is_selected(*plugin);
-    status.continuable = plugin->get_mode_continuable();
-    status.available = plugin->get_mode_available();
-    status.drivable = plugin->get_transition_available();
-    status.transition_completed = plugin->get_transition_completed();
+    const auto state = plugin->update_source_state(status.request);
+    status.command_enabled = state == TriState::Enabled;
+    status.command_disabled = state == TriState::Disabled;
   }
 
   // Within the source group, all sources except for the active must be disabled.
-  std::unordered_map<uint16_t, int> source_group_count;
+  struct GroupCount
+  {
+    int total = 0;
+    int disabled = 0;
+  };
+  std::unordered_map<uint16_t, GroupCount> group_count;
   for (const auto & command : commands_) {
-    const auto uses = command->status.source_state != TriState::Disabled;
-    source_group_count[command->plugin->source()] += uses ? 1 : 0;
+    const auto source = command->plugin->source();
+    group_count[source].total += 1;
+    group_count[source].disabled += command->status.command_disabled ? 1 : 0;
   }
 
   for (const auto & command : commands_) {
     auto & status = command->status;
     auto & plugin = command->plugin;
-    status.command_exclusive = source_group_count[plugin->source()] <= 1;
+    const auto count = group_count[plugin->source()];
+    status.command_exclusive = status.command_enabled && (count.total <= count.disabled + 1);
     status.command_selected = control_gate_interface_.is_selected(*plugin);
     status.vehicle_selected = vehicle_gate_interface_.is_selected(*plugin);
-
-    status.current_phase = update_current_phase(status);  // Depends on the source group.
-    status.gate_state = update_gate_state(status);        // Depends on the source group.
-    status.mode_state = update_mode_state(status);        // Depends on the gate state.
+    status.mrm = plugin->update_mrm_state();
+    status.transition_completed = plugin->get_transition_completed();
   }
 }
 

@@ -45,8 +45,9 @@ enum class GateType {
 struct CommandModeStatusItem
 {
   uint16_t mode;
-
+  MrmState mrm;
   bool transition;
+  bool transition_completed;
   bool request;
   bool vehicle_selected;
   bool command_selected;
@@ -54,31 +55,10 @@ struct CommandModeStatusItem
   bool command_enabled;
   bool command_disabled;
 
-  TriState mode_state;
-  TriState gate_state;
-  MrmState mrm;
-  GateType request_phase;
-  GateType current_phase;
-
-  bool continuable;
-  bool available;
-  bool drivable;
-  bool transition_completed;
-
-  TriState transition_state;
-  TriState vehicle_gate_state;
-  TriState network_gate_state;
-  TriState control_gate_state;
-  TriState source_state;
-  TriState source_group;
-
   explicit CommandModeStatusItem(uint16_t mode = 0);
   bool is_completed() const;
   bool is_vehicle_ready() const;
   bool is_command_ready() const;
-
-  bool check_mode_ready() const;
-  bool check_gate_ready(GateType gate) const;
 };
 
 struct CommandModeStatus

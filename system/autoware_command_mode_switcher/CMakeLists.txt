@@ -6,9 +6,8 @@ autoware_package()
 
 ament_auto_add_library(${PROJECT_NAME}_common SHARED
   "src/common/command_container.cpp"
-  "src/common/command_plugin.cpp"
-  "src/common/command_status.cpp"
   "src/common/selector_interface.cpp"
+  "src/plugin/command_plugin.cpp"
   "src/switcher/manual.cpp"
   "src/command_mode_switcher.cpp"
 )

@@ -50,7 +50,6 @@ private:
   rclcpp::Subscription<CommandSourceStatus>::SharedPtr sub_source_status_;
 
   bool requesting_ = false;
-  uint16_t last_request_mode_;
   Callback notification_callback_;
   CommandSourceStatus status_;
 };
@@ -64,7 +63,6 @@ public:
   bool is_requesting() const { return requesting_; }
   bool is_autoware_control() const;
   bool is_manual_control() const;
-  bool request(const CommandPlugin & plugin);
   bool request_autoware_control();
   bool request_manual_control();
   bool request(uint8_t control_mode_command);
@@ -79,7 +77,6 @@ private:
   rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
 
   bool requesting_ = false;
-  uint16_t last_request_mode_;
   Callback notification_callback_;
   ControlModeReport status_;
 };
