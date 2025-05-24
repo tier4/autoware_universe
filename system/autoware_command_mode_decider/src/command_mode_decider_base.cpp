@@ -339,8 +339,7 @@ void CommandModeDeciderBase::sync_command_mode()
 void CommandModeDeciderBase::publish_operation_mode_state()
 {
   const auto is_transition_available = [this](const auto & mode) {
-    const auto status = command_mode_status_.get(mode);
-    return status.available && (status.drivable || curr_manual_control_);
+    return command_mode_status_.available(mode, curr_manual_control_);
   };
   namespace modes = autoware::command_mode_types::modes;
   OperationModeState state;
@@ -402,8 +401,7 @@ ResponseStatus CommandModeDeciderBase::check_mode_request(uint16_t mode)
   if (!result.success) {
     return result;
   }
-  const auto status = command_mode_status_.get(mode);
-  const auto available = status.available && (status.drivable || curr_manual_control_);
+  const auto available = command_mode_status_.available(mode, curr_manual_control_);
   if (!available) {
     return make_response(false, "Mode is not available: " + std::to_string(mode));
   }

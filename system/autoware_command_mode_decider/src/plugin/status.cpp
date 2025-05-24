@@ -47,6 +47,13 @@ void CommandModeStatusTable::set(const CommandModeStatusItem & item, const rclcp
   }
 }
 
+void CommandModeStatusTable::set(
+  const CommandModeAvailabilityItem & item, const rclcpp::Time & stamp)
+{
+  (void)item;
+  (void)stamp;
+}
+
 void CommandModeStatusTable::check_timeout(const rclcpp::Time & stamp)
 {
   for (const auto & [mode, message_stamp] : command_mode_stamps_) {
@@ -55,6 +62,14 @@ void CommandModeStatusTable::check_timeout(const rclcpp::Time & stamp)
       command_mode_status_[mode] = CommandModeStatusItem(mode);
     }
   }
+}
+
+bool CommandModeStatusTable::available(uint16_t mode, bool is_manual) const
+{
+  // return item.available && (item.drivable || is_manual);
+  (void)mode;
+  (void)is_manual;
+  return true;
 }
 
 const CommandModeStatusItem & CommandModeStatusTable::get(uint16_t mode) const

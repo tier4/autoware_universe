@@ -16,7 +16,8 @@
 #define COMMON__COMMAND_CONTAINER_HPP_
 
 #include "autoware_command_mode_switcher/command_plugin.hpp"
-#include "common/command_status.hpp"
+
+#include <autoware_command_mode_types/types/command_mode_status.hpp>
 
 #include <memory>
 
@@ -28,7 +29,7 @@ struct Command
   explicit Command(std::shared_ptr<CommandPlugin> plugin);
 
   std::shared_ptr<CommandPlugin> plugin;
-  CommandStatus status;
+  command_mode_types::CommandModeStatusItem status;
 };
 
 }  // namespace autoware::command_mode_switcher

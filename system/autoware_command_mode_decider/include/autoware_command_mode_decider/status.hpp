@@ -17,6 +17,8 @@
 
 #include <autoware_command_mode_types/types/command_mode_status.hpp>
 
+#include <tier4_system_msgs/msg/command_mode_availability.hpp>
+
 #include <unordered_map>
 #include <vector>
 
@@ -24,14 +26,17 @@ namespace autoware::command_mode_decider
 {
 
 using autoware::command_mode_types::CommandModeStatusItem;
+using tier4_system_msgs::msg::CommandModeAvailabilityItem;
 
 class CommandModeStatusTable
 {
 public:
   void init(const std::vector<uint16_t> & modes);
   void set(const CommandModeStatusItem & item, const rclcpp::Time & stamp);
+  void set(const CommandModeAvailabilityItem & item, const rclcpp::Time & stamp);
   void check_timeout(const rclcpp::Time & stamp);
   bool ready() const;
+  bool available(uint16_t mode, bool is_manual) const;
   const CommandModeStatusItem & get(uint16_t mode) const;
 
   auto begin() const { return command_mode_status_.begin(); }

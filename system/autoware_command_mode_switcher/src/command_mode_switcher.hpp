@@ -85,7 +85,7 @@ private:
   std::shared_ptr<Command> command_mode_request_;
 
   bool is_ready_ = false;
-  bool is_autoware_control_ = false;
+  bool prev_autoware_control_ = false;
 };
 
 }  // namespace autoware::command_mode_switcher
