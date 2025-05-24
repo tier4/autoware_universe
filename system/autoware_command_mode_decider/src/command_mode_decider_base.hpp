@@ -27,8 +27,10 @@
 #include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
+#include <tier4_system_msgs/msg/command_mode_availability.hpp>
 #include <tier4_system_msgs/msg/command_mode_request.hpp>
 #include <tier4_system_msgs/msg/command_mode_status.hpp>
+#include <tier4_system_msgs/msg/mode_change_available.hpp>
 #include <tier4_system_msgs/srv/change_autoware_control.hpp>
 #include <tier4_system_msgs/srv/change_operation_mode.hpp>
 #include <tier4_system_msgs/srv/request_mrm.hpp>
@@ -45,8 +47,10 @@ using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_common_msgs::msg::ResponseStatus;
 using autoware_vehicle_msgs::msg::ControlModeReport;
+using tier4_system_msgs::msg::CommandModeAvailability;
 using tier4_system_msgs::msg::CommandModeRequest;
 using tier4_system_msgs::msg::CommandModeRequestItem;
+using tier4_system_msgs::msg::ModeChangeAvailable;
 using tier4_system_msgs::srv::ChangeAutowareControl;
 using tier4_system_msgs::srv::ChangeOperationMode;
 using tier4_system_msgs::srv::RequestMrm;
@@ -71,6 +75,8 @@ private:
   void on_timer();
   void on_control_mode(const ControlModeReport & msg);
   void on_status(const CommandModeStatus & msg);
+  void on_availability(const CommandModeAvailability & msg);
+  void on_transition_available(const ModeChangeAvailable & msg);
   void on_change_operation_mode(
     ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res);
   void on_change_autoware_control(
@@ -82,6 +88,8 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<CommandModeRequest>::SharedPtr pub_command_mode_request_;
   rclcpp::Subscription<CommandModeStatusAdapter>::SharedPtr sub_command_mode_status_;
+  rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_availability_;
+  rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_available_;
   rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
 
   rclcpp::Service<ChangeAutowareControl>::SharedPtr srv_autoware_control_;

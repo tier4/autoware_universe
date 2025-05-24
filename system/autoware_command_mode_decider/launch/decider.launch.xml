@@ -1,6 +1,8 @@
 <launch>
   <arg name="config" default="$(find-pkg-share autoware_command_mode_decider)/config/default.param.yaml"/>
 
+  <arg name="~/command_mode/transition/available" default="/system/command_mode/transition/available"/>
+  <arg name="~/command_mode/availability" default="/system/command_mode/availability"/>
   <arg name="~/command_mode/status" default="/system/command_mode/status"/>
   <arg name="~/command_mode/request" default="/system/command_mode/request"/>
   <arg name="~/operation_mode/state" default="/system/operation_mode/state"/>
@@ -11,6 +13,8 @@
 
   <node pkg="autoware_command_mode_decider" exec="command_mode_decider_node">
     <param from="$(var config)"/>
+    <remap from="~/command_mode/transition/available" to="$(var ~/command_mode/transition/available)"/>
+    <remap from="~/command_mode/availability" to="$(var ~/command_mode/availability)"/>
     <remap from="~/command_mode/status" to="$(var ~/command_mode/status)"/>
     <remap from="~/command_mode/request" to="$(var ~/command_mode/request)"/>
     <remap from="~/operation_mode/state" to="$(var ~/operation_mode/state)"/>

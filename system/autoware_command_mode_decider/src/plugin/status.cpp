@@ -25,60 +25,86 @@ namespace autoware::command_mode_decider
 void CommandModeStatusTable::init(const std::vector<uint16_t> & modes)
 {
   for (const auto & mode : modes) {
-    const auto item = CommandModeStatusItem(autoware::command_mode_types::modes::unknown);
-    command_mode_status_[mode] = item;
+    items_[mode] = ModeItem();
   }
 }
 
 bool CommandModeStatusTable::ready() const
 {
-  for (const auto & [mode, item] : command_mode_status_) {
-    if (item.mode == autoware::command_mode_types::modes::unknown) return false;
+  for (const auto & [mode, item] : items_) {
+    if (!item.status.stamp) return false;
+    if (!item.available.stamp) return false;
+    if (!item.drivable.stamp) return false;
   }
   return true;
 }
 
 void CommandModeStatusTable::set(const CommandModeStatusItem & item, const rclcpp::Time & stamp)
 {
-  const auto iter = command_mode_status_.find(item.mode);
-  if (iter != command_mode_status_.end()) {
-    iter->second = item;
-    command_mode_stamps_[item.mode] = stamp;
+  const auto iter = items_.find(item.mode);
+  if (iter != items_.end()) {
+    iter->second.status.data = item;
+    iter->second.status.stamp = stamp;
   }
 }
 
-void CommandModeStatusTable::set(
-  const CommandModeAvailabilityItem & item, const rclcpp::Time & stamp)
+void CommandModeStatusTable::set(const AvailabilityItem & item, const rclcpp::Time & stamp)
 {
-  (void)item;
-  (void)stamp;
+  const auto iter = items_.find(item.mode);
+  if (iter != items_.end()) {
+    iter->second.available.data = item.available;
+    iter->second.available.stamp = stamp;
+  }
 }
 
-void CommandModeStatusTable::check_timeout(const rclcpp::Time & stamp)
+void CommandModeStatusTable::set(uint16_t mode, bool drivable, const rclcpp::Time & stamp)
 {
-  for (const auto & [mode, message_stamp] : command_mode_stamps_) {
-    const auto duration = (stamp - message_stamp).seconds();
-    if (1.0 < duration) {
-      command_mode_status_[mode] = CommandModeStatusItem(mode);
+  const auto iter = items_.find(mode);
+  if (iter != items_.end()) {
+    iter->second.drivable.data = drivable;
+    iter->second.drivable.stamp = stamp;
+  }
+}
+
+void CommandModeStatusTable::check_timeout(const rclcpp::Time & now)
+{
+  const auto timeout = [](const rclcpp::Time & now, const std::optional<rclcpp::Time> & stamp) {
+    if (!stamp) return false;
+    const auto duration = (now - *stamp).seconds();
+    return 1.0 < duration;
+  };
+  for (auto & [mode, item] : items_) {
+    if (timeout(now, item.status.stamp)) {
+      item.status.data = CommandModeStatusItem(mode);
+      item.status.stamp = std::nullopt;
+    }
+    if (timeout(now, item.available.stamp)) {
+      item.available.data = false;
+      item.available.stamp = std::nullopt;
+    }
+    if (timeout(now, item.drivable.stamp)) {
+      item.drivable.data = false;
+      item.drivable.stamp = std::nullopt;
     }
   }
 }
 
 bool CommandModeStatusTable::available(uint16_t mode, bool is_manual) const
 {
-  // return item.available && (item.drivable || is_manual);
-  (void)mode;
-  (void)is_manual;
-  return true;
+  const auto iter = items_.find(mode);
+  if (iter == items_.end()) {
+    return false;
+  }
+  return iter->second.available.data && (iter->second.drivable.data || is_manual);
 }
 
 const CommandModeStatusItem & CommandModeStatusTable::get(uint16_t mode) const
 {
-  const auto iter = command_mode_status_.find(mode);
-  if (iter != command_mode_status_.end()) {
-    return iter->second;
+  const auto iter = items_.find(mode);
+  if (iter == items_.end()) {
+    return empty_status_;
   }
-  return empty_item_;
+  return iter->second.status.data;
 }
 
 }  // namespace autoware::command_mode_decider
