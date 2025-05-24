@@ -165,18 +165,20 @@ void CommandModeDeciderBase::on_diagnostics(diagnostic_updater::DiagnosticStatus
 
 void CommandModeDeciderBase::on_timer()
 {
+  // Update transition availability other than autonomous mode.
+  // Note: The is_modes_ready_ depends on this process.
+  const auto stamp = now();
+  for (const auto & [mode, item] : command_mode_status_) {
+    if (mode != command_mode_types::modes::autonomous) {
+      command_mode_status_.set(mode, true, stamp);
+    }
+  }
+
   if (!is_modes_ready_) {
     return;
   }
-
-  // Update transition availability other than autonomous mode.
-  for (const auto & [mode, item] : command_mode_status_) {
-    if (mode != command_mode_types::modes::autonomous) {
-      command_mode_status_.set(mode, true, now());
-    }
-  }
-  command_mode_status_.check_timeout(now());
-
+  command_mode_status_.check_timeout(stamp);
+  RCLCPP_INFO_STREAM(get_logger(), command_mode_status_.debug());
   update();
 }
 

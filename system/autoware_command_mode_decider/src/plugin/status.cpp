@@ -16,6 +16,7 @@
 
 #include <autoware_command_mode_types/constants/modes.hpp>
 
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -105,6 +106,16 @@ const CommandModeStatusItem & CommandModeStatusTable::get(uint16_t mode) const
     return empty_status_;
   }
   return iter->second.status.data;
+}
+
+std::string CommandModeStatusTable::debug() const
+{
+  std::stringstream ss;
+  ss << "===== command mode status table =====" << std::endl;
+  for (const auto & [mode, item] : items_) {
+    ss << mode << ": " << item.available.data << ", " << item.drivable.data << std::endl;
+  }
+  return ss.str();
 }
 
 }  // namespace autoware::command_mode_decider

@@ -20,6 +20,7 @@
 #include <tier4_system_msgs/msg/command_mode_availability.hpp>
 
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -59,6 +60,7 @@ public:
   bool ready() const;
   bool available(uint16_t mode, bool is_manual) const;
   const CommandModeStatusItem & get(uint16_t mode) const;
+  std::string debug() const;
 
   auto begin() const { return items_.begin(); }
   auto end() const { return items_.end(); }
