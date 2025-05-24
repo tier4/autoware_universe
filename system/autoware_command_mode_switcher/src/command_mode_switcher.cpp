@@ -94,87 +94,77 @@ void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
 
 void CommandModeSwitcher::on_request(const CommandModeRequest & msg)
 {
-  /*
-  const auto get_command = [this](uint16_t mode, bool background) {
-    // Platform commands are only available in foreground.
-    if (!background) {
-      const auto iter = platform_commands_.find(mode);
-      if (iter != platform_commands_.end()) {
-        return iter->second;
-      }
+  // clang-format off
+  const auto get_vehicle_mode = [](uint8_t mode) {
+    switch (mode) {
+      case CommandModeRequest::AUTOWARE: return VehicleModeRequest::Autoware;
+      case CommandModeRequest::MANUAL:   return VehicleModeRequest::Manual;
+      default:                           return VehicleModeRequest::None;
     }
-    // Autoware commands are available in both foreground and background.
-    const auto iter = autoware_commands_.find(mode);
-    if (iter == autoware_commands_.end()) {
-      RCLCPP_ERROR_STREAM(get_logger(), "invalid mode: " << mode << " " << background);
-      return std::shared_ptr<Command>(nullptr);
-    }
-
-    // Check transition conditions.
-    const auto status = iter->second->status;
-    const auto available = status.mode_available && (status.transition_available || background);
-    if (!available) {
-      RCLCPP_ERROR_STREAM(get_logger(), "unavailable mode: " << mode << " " << background);
-      return std::shared_ptr<Command>(nullptr);
-    }
-    return iter->second;
   };
+  // clang-format on
 
-  // Update command target.
-  const auto foreground = msg.foreground == 0 ? nullptr : get_command(msg.foreground, false);
-  const auto background = msg.background == 0 ? nullptr : get_command(msg.background, true);
-  {
-    const auto foreground_changed = foreground != foreground_;
-    const auto background_changed = background != background_;
-    foreground_ = foreground;
-    background_ = background;
-    if (!foreground_changed && !background_changed) return;
-  }
-
-  // Update request status.
-  for (const auto & command : commands_) {
-    command->status.request_phase = GateType::NotSelected;
-    command->status.transition_state = TriState::Disabled;
-  }
-  if (foreground_) {
-    foreground_->status.request_phase = GateType::VehicleGate;
-    foreground_->status.transition_state = TriState::Transition;
-  }
-  if (background_) {
-    background_->status.request_phase = GateType::ControlGate;
-    background_->status.transition_state = TriState::Transition;
-  }
-  */
-
-  std::shared_ptr<Command> new_command_mode = nullptr;
+  std::shared_ptr<Command> command_mode = nullptr;
   for (const auto & item : msg.items) {
-    const auto iter = autoware_commands_.find(item.command);
+    const auto iter = autoware_commands_.find(item.mode);
     if (iter != autoware_commands_.end()) {
-      new_command_mode = iter->second;
+      command_mode = iter->second;
       break;
     }
   }
 
-  if (!new_command_mode) {
-    RCLCPP_ERROR_STREAM(get_logger(), "invalid mode");
-    return;
-  }
-  if (command_mode_request_ == new_command_mode) {
-    const auto mode = new_command_mode->plugin->mode();
-    RCLCPP_INFO_STREAM(get_logger(), "request ignored: " << std::to_string(mode));
-    return;
-  }
-  command_mode_request_ = new_command_mode;
+  request_command_mode(command_mode);
+  request_vehicle_mode(get_vehicle_mode(msg.vehicle));
+  update();
+}
 
+void CommandModeSwitcher::request_command_mode(std::shared_ptr<Command> command_mode)
+{
+  if (!command_mode) {
+    return;
+  }
+  if (command_mode_request_ == command_mode) {
+    return;
+  }
+  command_mode_request_ = command_mode;
+
+  // Start new transition of the target command mode.
   for (const auto & command : commands_) {
     const auto is_request_mode = (command_mode_request_ == command);
     command->status.request = is_request_mode;
     command->status.transition = is_request_mode;
   }
-  const auto mode = command_mode_request_->plugin->mode();
-  RCLCPP_INFO_STREAM(get_logger(), "request accepted: " << std::to_string(mode));
+  const auto mode_text = std::to_string(command_mode_request_->plugin->mode());
+  RCLCPP_INFO_STREAM(get_logger(), "command mode accepted: " << mode_text);
+}
 
-  update();
+void CommandModeSwitcher::request_vehicle_mode(VehicleModeRequest vehicle_mode)
+{
+  if (vehicle_mode == VehicleModeRequest::None) {
+    return;
+  }
+  if (vehicle_mode_request_ == vehicle_mode) {
+    return;
+  }
+  vehicle_mode_request_ = vehicle_mode;
+
+  // No need to restart the transition if the vehicle mode is manual.
+  if (vehicle_mode_request_ == VehicleModeRequest::Manual) {
+    RCLCPP_INFO_STREAM(get_logger(), "vehicle mode accepted: manual");
+    return;
+  }
+
+  // Restart the transition of the current command mode.
+  if (vehicle_mode_request_ == VehicleModeRequest::Autoware) {
+    RCLCPP_INFO_STREAM(get_logger(), "vehicle mode accepted: autoware");
+    if (command_mode_request_) {
+      command_mode_request_->status.request = true;
+      command_mode_request_->status.transition = true;
+    }
+    return;
+  }
+
+  RCLCPP_ERROR_STREAM(get_logger(), "invalid vehicle mode");
 }
 
 void CommandModeSwitcher::update()

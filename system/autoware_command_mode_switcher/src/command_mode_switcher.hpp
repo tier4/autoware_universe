@@ -53,8 +53,10 @@ public:
 private:
   void on_availability(const CommandModeAvailability & msg);
   void on_request(const CommandModeRequest & msg);
-  void update();
+  void request_command_mode(std::shared_ptr<Command> command_mode);
+  void request_vehicle_mode(VehicleModeRequest vehicle_mode);
 
+  void update();
   void detect_override();
   void update_status();
   void change_modes();
