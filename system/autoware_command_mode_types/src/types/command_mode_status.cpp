@@ -19,13 +19,13 @@ namespace autoware::command_mode_types
 
 CommandModeStatusItem::CommandModeStatusItem(uint16_t mode) : mode(mode)
 {
-  complete = false;
-  request = false;
   transition = false;
-  selected = false;
-
-  vehicle_mode_selected = false;
-  command_mode_selected = false;
+  request = false;
+  vehicle_selected = false;
+  command_selected = false;
+  command_exclusive = false;
+  command_enabled = false;
+  command_disabled = false;
 
   mode_state = TriState::Disabled;
   gate_state = TriState::Disabled;
@@ -44,6 +44,21 @@ CommandModeStatusItem::CommandModeStatusItem(uint16_t mode) : mode(mode)
   control_gate_state = TriState::Disabled;
   source_state = TriState::Disabled;
   source_group = TriState::Disabled;
+}
+
+bool CommandModeStatusItem::is_completed() const
+{
+  return !transition && is_vehicle_ready();
+}
+
+bool CommandModeStatusItem::is_vehicle_ready() const
+{
+  return vehicle_selected && is_command_ready();
+}
+
+bool CommandModeStatusItem::is_command_ready() const
+{
+  return command_selected && command_exclusive;
 }
 
 TriState merge_state(const TriState & s1, const TriState & s2)

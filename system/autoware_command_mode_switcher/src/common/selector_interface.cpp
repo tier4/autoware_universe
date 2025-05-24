@@ -82,32 +82,17 @@ bool VehicleGateInterface::is_manual_control() const
   return status_.mode == ControlModeReport::MANUAL;
 }
 
-TriState ControlGateInterface::is_selected(const CommandPlugin & plugin) const
+bool ControlGateInterface::is_selected(const CommandPlugin & plugin) const
 {
-  if (plugin.source() == autoware::command_mode_types::sources::unknown) {
-    return TriState::Enabled;
-  }
-  if (plugin.source() == status_.source) {
-    return TriState::Enabled;
-  }
-  if (last_request_mode_ == plugin.mode()) {
-    return TriState::Transition;
-  } else {
-    return TriState::Disabled;
-  }
+  return plugin.source() == status_.source;
 }
 
-TriState VehicleGateInterface::is_selected(const CommandPlugin & plugin) const
+bool VehicleGateInterface::is_selected(const CommandPlugin & plugin) const
 {
   if (plugin.autoware_control()) {
-    if (status_.mode == ControlModeReport::AUTONOMOUS) return TriState::Enabled;
+    return status_.mode == ControlModeReport::AUTONOMOUS;
   } else {
-    if (status_.mode == ControlModeReport::MANUAL) return TriState::Enabled;
-  }
-  if (last_request_mode_ == plugin.mode()) {
-    return TriState::Transition;
-  } else {
-    return TriState::Disabled;
+    return status_.mode == ControlModeReport::MANUAL;
   }
 }
 

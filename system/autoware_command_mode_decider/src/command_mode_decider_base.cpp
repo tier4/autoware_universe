@@ -75,11 +75,11 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
   curr_manual_control_ = false;
   prev_manual_control_ = false;
   curr_operation_mode_ = autoware::command_mode_types::modes::unknown;
-  current_mode_ = autoware::command_mode_types::modes::unknown;
+  curr_mode_ = autoware::command_mode_types::modes::unknown;
+  last_mode_ = autoware::command_mode_types::modes::unknown;
 
   request_stamp_ = std::nullopt;
   transition_stamp_ = std::nullopt;
-  last_mode_ = std::nullopt;
 
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -115,7 +115,7 @@ bool CommandModeDeciderBase::is_in_transition() const
   if (system_request_.autoware_control) {
     return last_mode_ != system_request_.operation_mode;
   } else {
-    return last_mode_ != std::nullopt;
+    return last_mode_ != autoware::command_mode_types::modes::manual;
   }
 }
 
@@ -140,24 +140,46 @@ void CommandModeDeciderBase::on_diagnostics(diagnostic_updater::DiagnosticStatus
   status.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, message);
 }
 
-void CommandModeDeciderBase::on_control_mode(const ControlModeReport & msg)
-{
-  curr_autoware_control_ = (msg.mode == ControlModeReport::AUTONOMOUS);
-  curr_manual_control_ = (msg.mode == ControlModeReport::MANUAL);
-
-  if (!prev_manual_control_ && curr_manual_control_) {
-    system_request_.autoware_control = false;
-    RCLCPP_WARN_STREAM(get_logger(), "override detected");
-  }
-  prev_manual_control_ = curr_manual_control_;
-}
-
 void CommandModeDeciderBase::on_timer()
 {
   if (!is_modes_ready_) {
     return;
   }
   command_mode_status_.check_timeout(now());
+  update();
+}
+
+void CommandModeDeciderBase::on_control_mode(const ControlModeReport & msg)
+{
+  curr_autoware_control_ = (msg.mode == ControlModeReport::AUTONOMOUS);
+  curr_manual_control_ = (msg.mode == ControlModeReport::MANUAL);
+
+  // Check override.
+  if (!prev_manual_control_ && curr_manual_control_) {
+    system_request_.autoware_control = false;
+    RCLCPP_WARN_STREAM(get_logger(), "override detected");
+  }
+  prev_manual_control_ = curr_manual_control_;
+
+  // Update command mode status for manual mode.
+  {
+    CommandModeStatusItem item;
+    item.mode = autoware::command_mode_types::modes::manual;
+    item.transition = false;
+    item.request = curr_manual_control_;
+    item.vehicle_selected = curr_manual_control_;
+    item.command_selected = true;
+    item.command_exclusive = true;
+    item.command_enabled = true;
+    item.command_disabled = true;
+    command_mode_status_.set(item, msg.stamp);
+  }
+
+  // Check if all command mode status items are ready.
+  is_modes_ready_ = is_modes_ready_ ? true : command_mode_status_.ready();
+  if (!is_modes_ready_) {
+    return;
+  }
   update();
 }
 
@@ -204,13 +226,14 @@ void CommandModeDeciderBase::detect_operation_mode_timeout()
   }
 
   // Rollback to the last mode.
-  if (last_mode_) {
-    system_request_.operation_mode = last_mode_.value();
+  if (last_mode_ != autoware::command_mode_types::modes::manual) {
+    system_request_.operation_mode = last_mode_;
     system_request_.autoware_control = true;
   } else {
     // No need to rollback the operation mode in the manual mode.
     system_request_.autoware_control = false;
   }
+
   RCLCPP_INFO_STREAM(get_logger(), "Mode transition is canceled due to timeout.");
 }
 
@@ -231,35 +254,42 @@ void CommandModeDeciderBase::update_request_mode()
 
 void CommandModeDeciderBase::update_current_mode()
 {
-  // Update current command mode.
+  // Search current operation mode
   for (const auto & [mode, status] : command_mode_status_) {
-    // TODO(Takagi, Isamu): check switcher selected and autoware control
-    if (status.selected) {
-      if (current_mode_ != mode) {
-        current_mode_ = mode;
-        RCLCPP_INFO_STREAM(get_logger(), "Current mode changed: " << current_mode_);
+    if (plugin_->to_operation_mode(mode) == OperationModeState::UNKNOWN) {
+      continue;
+    }
+    if (status.is_command_ready()) {
+      if (curr_operation_mode_ != mode) {
+        curr_operation_mode_ = mode;
+        RCLCPP_INFO_STREAM(get_logger(), "Operation mode changed: " << curr_operation_mode_);
       }
       break;
     }
   }
 
-  // Update current operation mode
-  if (plugin_->to_operation_mode(current_mode_) != OperationModeState::UNKNOWN) {
-    curr_operation_mode_ = current_mode_;
+  // Search current command mode.
+  for (const auto & [mode, status] : command_mode_status_) {
+    if (status.is_vehicle_ready()) {
+      if (curr_mode_ != mode) {
+        curr_mode_ = mode;
+        RCLCPP_INFO_STREAM(get_logger(), "Curr mode changed: " << curr_mode_);
+      }
+      break;
+    }
   }
 
-  // Update last mode (manual control or autoware operation mode).
-  if (is_in_transition()) {
-    if (system_request_.autoware_control) {
-      const auto status = command_mode_status_.get(system_request_.operation_mode);
-      if (status.complete) {
-        last_mode_ = system_request_.operation_mode;
-        RCLCPP_INFO_STREAM(get_logger(), "Last mode changed: " << last_mode_.value());
-      }
-    } else {
-      if (curr_manual_control_) {
-        last_mode_ = std::nullopt;
-        RCLCPP_INFO_STREAM(get_logger(), "Last mode changed: manual");
+  // Update last confirmed mode.
+  {
+    const auto mode = system_request_.autoware_control
+                        ? system_request_.operation_mode
+                        : autoware::command_mode_types::modes::manual;
+
+    const auto status = command_mode_status_.get(mode);
+    if (status.is_completed()) {
+      if (last_mode_ != mode) {
+        last_mode_ = mode;
+        RCLCPP_INFO_STREAM(get_logger(), "Last mode changed: " << last_mode_);
       }
     }
   }
@@ -336,7 +366,7 @@ void CommandModeDeciderBase::publish_mrm_state()
     }
     // clang-format on
   };
-  const auto status = command_mode_status_.get(current_mode_);
+  const auto status = command_mode_status_.get(curr_mode_);
   MrmState state;
   state.stamp = now();
   state.state = convert(status.mrm);
