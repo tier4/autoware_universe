@@ -19,6 +19,7 @@
 
 #include <tier4_system_msgs/msg/command_mode_availability.hpp>
 
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -26,26 +27,45 @@ namespace autoware::command_mode_decider
 {
 
 using autoware::command_mode_types::CommandModeStatusItem;
-using tier4_system_msgs::msg::CommandModeAvailabilityItem;
+using AvailabilityItem = tier4_system_msgs::msg::CommandModeAvailabilityItem;
+
+struct StatusItem
+{
+  std::optional<rclcpp::Time> stamp;
+  CommandModeStatusItem data;
+};
+
+struct FlagItem
+{
+  std::optional<rclcpp::Time> stamp;
+  bool data;
+};
+
+struct ModeItem
+{
+  StatusItem status;
+  FlagItem available;
+  FlagItem drivable;
+};
 
 class CommandModeStatusTable
 {
 public:
   void init(const std::vector<uint16_t> & modes);
   void set(const CommandModeStatusItem & item, const rclcpp::Time & stamp);
-  void set(const CommandModeAvailabilityItem & item, const rclcpp::Time & stamp);
-  void check_timeout(const rclcpp::Time & stamp);
+  void set(const AvailabilityItem & item, const rclcpp::Time & stamp);
+  void set(uint16_t mode, bool drivable, const rclcpp::Time & stamp);
+  void check_timeout(const rclcpp::Time & now);
   bool ready() const;
   bool available(uint16_t mode, bool is_manual) const;
   const CommandModeStatusItem & get(uint16_t mode) const;
 
-  auto begin() const { return command_mode_status_.begin(); }
-  auto end() const { return command_mode_status_.end(); }
+  auto begin() const { return items_.begin(); }
+  auto end() const { return items_.end(); }
 
 private:
-  CommandModeStatusItem empty_item_;
-  std::unordered_map<uint16_t, CommandModeStatusItem> command_mode_status_;
-  std::unordered_map<uint16_t, rclcpp::Time> command_mode_stamps_;
+  CommandModeStatusItem empty_status_;
+  std::unordered_map<uint16_t, ModeItem> items_;
 };
 
 }  // namespace autoware::command_mode_decider

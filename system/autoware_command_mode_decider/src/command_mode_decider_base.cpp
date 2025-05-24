@@ -90,6 +90,12 @@ CommandModeDeciderBase::CommandModeDeciderBase(const rclcpp::NodeOptions & optio
   sub_command_mode_status_ = create_subscription<CommandModeStatusAdapter>(
     "~/command_mode/status", rclcpp::QoS(50).transient_local(),
     std::bind(&CommandModeDeciderBase::on_status, this, std::placeholders::_1));
+  sub_availability_ = create_subscription<CommandModeAvailability>(
+    "~/command_mode/availability", rclcpp::QoS(1),
+    std::bind(&CommandModeDeciderBase::on_availability, this, std::placeholders::_1));
+  sub_transition_available_ = create_subscription<ModeChangeAvailable>(
+    "~/command_mode/transition/available", rclcpp::QoS(1),
+    std::bind(&CommandModeDeciderBase::on_transition_available, this, std::placeholders::_1));
   sub_control_mode_ = create_subscription<ControlModeReport>(
     "~/control_mode/report", rclcpp::QoS(1),
     std::bind(&CommandModeDeciderBase::on_control_mode, this, std::placeholders::_1));
@@ -121,21 +127,38 @@ bool CommandModeDeciderBase::is_in_transition() const
 
 void CommandModeDeciderBase::on_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status)
 {
-  std::vector<uint16_t> waiting_modes;
+  std::vector<uint16_t> waiting_status;
+  std::vector<uint16_t> waiting_available;
+  std::vector<uint16_t> waiting_drivable;
+
   for (const auto & [mode, item] : command_mode_status_) {
-    if (item.mode == autoware::command_mode_types::modes::unknown) {
-      waiting_modes.push_back(mode);
+    if (!item.status.stamp) {
+      waiting_status.push_back(mode);
+    }
+    if (!item.available.stamp) {
+      waiting_available.push_back(mode);
+    }
+    if (!item.drivable.stamp) {
+      waiting_drivable.push_back(mode);
     }
   }
 
-  if (waiting_modes.empty()) {
+  // When OK.
+  if (waiting_status.empty() && waiting_available.empty() && waiting_drivable.empty()) {
     status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "");
     return;
   }
 
-  std::string message = "Waiting for mode status:";
-  for (const auto & mode : waiting_modes) {
-    message += " " + std::to_string(mode);
+  // When ERROR.
+  std::string message = "Waiting for mode items:";
+  for (const auto & mode : waiting_status) {
+    message += " S" + std::to_string(mode);
+  }
+  for (const auto & mode : waiting_available) {
+    message += " A" + std::to_string(mode);
+  }
+  for (const auto & mode : waiting_drivable) {
+    message += " D" + std::to_string(mode);
   }
   status.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, message);
 }
@@ -145,7 +168,15 @@ void CommandModeDeciderBase::on_timer()
   if (!is_modes_ready_) {
     return;
   }
+
+  // Update transition availability other than autonomous mode.
+  for (const auto & [mode, item] : command_mode_status_) {
+    if (mode != command_mode_types::modes::autonomous) {
+      command_mode_status_.set(mode, true, now());
+    }
+  }
   command_mode_status_.check_timeout(now());
+
   update();
 }
 
@@ -178,6 +209,14 @@ void CommandModeDeciderBase::on_control_mode(const ControlModeReport & msg)
     command_mode_status_.set(item, msg.stamp);
   }
 
+  // Update command mode availability for manual mode.
+  {
+    AvailabilityItem item;
+    item.mode = autoware::command_mode_types::modes::manual;
+    item.available = true;
+    command_mode_status_.set(item, msg.stamp);
+  }
+
   // Check if all command mode status items are ready.
   is_modes_ready_ = is_modes_ready_ ? true : command_mode_status_.ready();
   if (!is_modes_ready_) {
@@ -195,10 +234,25 @@ void CommandModeDeciderBase::on_status(const CommandModeStatus & msg)
 
   // Check if all command mode status items are ready.
   is_modes_ready_ = is_modes_ready_ ? true : command_mode_status_.ready();
-  if (!is_modes_ready_) {
-    return;
-  }
+  if (!is_modes_ready_) return;
   update();
+}
+
+void CommandModeDeciderBase::on_availability(const CommandModeAvailability & msg)
+{
+  for (const auto & item : msg.items) {
+    command_mode_status_.set(item, msg.stamp);
+  }
+
+  // Check if all command mode status items are ready.
+  is_modes_ready_ = is_modes_ready_ ? true : command_mode_status_.ready();
+  if (!is_modes_ready_) return;
+  update();
+}
+
+void CommandModeDeciderBase::on_transition_available(const ModeChangeAvailable & msg)
+{
+  command_mode_status_.set(command_mode_types::modes::autonomous, msg.available, msg.stamp);
 }
 
 void CommandModeDeciderBase::update()
@@ -258,11 +312,11 @@ void CommandModeDeciderBase::update_request_mode()
 void CommandModeDeciderBase::update_current_mode()
 {
   // Search current operation mode
-  for (const auto & [mode, status] : command_mode_status_) {
+  for (const auto & [mode, item] : command_mode_status_) {
     if (plugin_->to_operation_mode(mode) == OperationModeState::UNKNOWN) {
       continue;
     }
-    if (status.is_command_ready()) {
+    if (item.status.data.is_command_ready()) {
       if (curr_operation_mode_ != mode) {
         curr_operation_mode_ = mode;
         RCLCPP_INFO_STREAM(get_logger(), "Operation mode changed: " << curr_operation_mode_);
@@ -272,8 +326,8 @@ void CommandModeDeciderBase::update_current_mode()
   }
 
   // Search current command mode.
-  for (const auto & [mode, status] : command_mode_status_) {
-    if (status.is_vehicle_ready()) {
+  for (const auto & [mode, item] : command_mode_status_) {
+    if (item.status.data.is_vehicle_ready()) {
       if (curr_mode_ != mode) {
         curr_mode_ = mode;
         RCLCPP_INFO_STREAM(get_logger(), "Curr mode changed: " << curr_mode_);

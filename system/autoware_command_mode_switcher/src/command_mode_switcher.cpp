@@ -64,29 +64,9 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
   sub_request_ = create_subscription<CommandModeRequest>(
     "~/command_mode/request", rclcpp::QoS(1),
     std::bind(&CommandModeSwitcher::on_request, this, std::placeholders::_1));
-  sub_availability_ = create_subscription<CommandModeAvailability>(
-    "~/command_mode/availability", rclcpp::QoS(1),
-    std::bind(&CommandModeSwitcher::on_availability, this, std::placeholders::_1));
 
   const auto period = rclcpp::Rate(declare_parameter<double>("update_rate")).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { update(); });
-}
-
-void CommandModeSwitcher::on_availability(const CommandModeAvailability & msg)
-{
-  (void)msg;
-  /*
-  for (const auto & item : msg.items) {
-    const auto iter = autoware_commands_.find(item.mode);
-    if (iter != autoware_commands_.end()) {
-      // TODO(Takagi, Isamu): Use data from diagnostics for transition conditions.
-      iter->second->plugin->set_mode_continuable(item.available);
-      iter->second->plugin->set_mode_available(item.available);
-    }
-  }
-  is_ready_ = true;
-  update();  // Reflect immediately.
-  */
 }
 
 void CommandModeSwitcher::on_request(const CommandModeRequest & msg)

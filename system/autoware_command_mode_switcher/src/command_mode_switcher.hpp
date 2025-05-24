@@ -22,7 +22,6 @@
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <tier4_system_msgs/msg/command_mode_availability.hpp>
 #include <tier4_system_msgs/msg/command_mode_request.hpp>
 #include <tier4_system_msgs/msg/command_source_status.hpp>
 
@@ -35,7 +34,6 @@ namespace autoware::command_mode_switcher
 
 using autoware::command_mode_types::CommandModeStatus;
 using autoware::command_mode_types::CommandModeStatusAdapter;
-using tier4_system_msgs::msg::CommandModeAvailability;
 using tier4_system_msgs::msg::CommandModeRequest;
 
 enum class VehicleModeRequest {
@@ -50,7 +48,6 @@ public:
   explicit CommandModeSwitcher(const rclcpp::NodeOptions & options);
 
 private:
-  void on_availability(const CommandModeAvailability & msg);
   void on_request(const CommandModeRequest & msg);
   void request_command_mode(std::shared_ptr<Command> command_mode);
   void request_vehicle_mode(VehicleModeRequest vehicle_mode);
@@ -67,7 +64,6 @@ private:
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_availability_;
   rclcpp::Subscription<CommandModeRequest>::SharedPtr sub_request_;
   rclcpp::Publisher<CommandModeStatusAdapter>::SharedPtr pub_status_;
 

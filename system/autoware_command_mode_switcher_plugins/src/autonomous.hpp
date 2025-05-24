@@ -36,10 +36,8 @@ public:
 
 private:
   using ModeChangeAvailable = tier4_system_msgs::msg::ModeChangeAvailable;
-  rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_available_;
   rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_completed_;
 
-  bool transition_available_ = false;
   bool transition_completed_ = false;
 };
 
