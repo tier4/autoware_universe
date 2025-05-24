@@ -167,7 +167,6 @@ void CommandModeSwitcher::request_vehicle_mode(VehicleModeRequest vehicle_mode)
 void CommandModeSwitcher::update()
 {
   // TODO(Takagi, Isamu): Check call rate.
-  if (!is_ready_) return;
   detect_override();
   update_status();
   change_modes();
@@ -238,7 +237,6 @@ void CommandModeSwitcher::change_modes()
   }
 
   if (!command_mode_request_) {
-    RCLCPP_WARN_STREAM(get_logger(), "no command mode request");
     return;
   }
 

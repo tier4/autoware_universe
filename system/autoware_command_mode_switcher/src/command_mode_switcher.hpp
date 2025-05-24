@@ -78,11 +78,9 @@ private:
   ControlGateInterface control_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
 
+  bool prev_manual_control_ = false;
   VehicleModeRequest vehicle_mode_request_ = VehicleModeRequest::None;
   std::shared_ptr<Command> command_mode_request_;
-
-  bool is_ready_ = false;
-  bool prev_manual_control_ = false;
 };
 
 }  // namespace autoware::command_mode_switcher
