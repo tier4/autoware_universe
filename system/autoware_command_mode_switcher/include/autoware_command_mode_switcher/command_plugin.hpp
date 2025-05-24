@@ -42,7 +42,7 @@ public:
 
   virtual SourceState update_source_state(bool request);
   virtual MrmState update_mrm_state() { return MrmState::Normal; }
-  virtual bool get_transition_completed() { return false; }
+  virtual bool get_transition_completed() { return true; }
 
   void construct(rclcpp::Node * node) { node_ = node; }
   void set_plugin_name(const std::string & plugin_name) { plugin_name_ = plugin_name; }

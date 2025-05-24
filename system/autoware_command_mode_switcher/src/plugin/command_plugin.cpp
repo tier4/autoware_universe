@@ -19,7 +19,7 @@ namespace autoware::command_mode_switcher
 
 SourceState CommandPlugin::update_source_state(bool request)
 {
-  return SourceState(request, !request);
+  return SourceState{request, !request};
 }
 
 }  // namespace autoware::command_mode_switcher

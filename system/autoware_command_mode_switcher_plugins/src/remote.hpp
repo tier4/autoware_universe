@@ -29,9 +29,6 @@ public:
   uint16_t source() const override { return autoware::command_mode_types::sources::remote; }
   bool autoware_control() const override { return true; }
   void initialize() override;
-
-  bool get_transition_available() override { return true; }
-  bool get_transition_completed() override { return true; }
 };
 
 }  // namespace autoware::command_mode_switcher
