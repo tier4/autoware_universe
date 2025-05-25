@@ -178,7 +178,6 @@ void CommandModeDeciderBase::on_timer()
     return;
   }
   command_mode_status_.check_timeout(stamp);
-  RCLCPP_INFO_STREAM(get_logger(), command_mode_status_.debug());
   update();
 }
 
