@@ -32,10 +32,9 @@ void CommandModeStatusTable::init(const std::vector<uint16_t> & modes)
 
 bool CommandModeStatusTable::ready() const
 {
+  // available and drivable are not necessary.
   for (const auto & [mode, item] : items_) {
     if (!item.status.stamp) return false;
-    if (!item.available.stamp) return false;
-    if (!item.drivable.stamp) return false;
   }
   return true;
 }
