@@ -33,7 +33,6 @@
 #include <tier4_system_msgs/msg/mode_change_available.hpp>
 #include <tier4_system_msgs/srv/change_autoware_control.hpp>
 #include <tier4_system_msgs/srv/change_operation_mode.hpp>
-#include <tier4_system_msgs/srv/request_mrm.hpp>
 
 #include <memory>
 #include <vector>
@@ -53,7 +52,6 @@ using tier4_system_msgs::msg::CommandModeRequestItem;
 using tier4_system_msgs::msg::ModeChangeAvailable;
 using tier4_system_msgs::srv::ChangeAutowareControl;
 using tier4_system_msgs::srv::ChangeOperationMode;
-using tier4_system_msgs::srv::RequestMrm;
 
 class CommandModeDeciderBase : public rclcpp::Node
 {
