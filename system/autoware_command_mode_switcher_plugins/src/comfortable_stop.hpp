@@ -16,11 +16,24 @@
 #define COMFORTABLE_STOP_HPP_
 
 #include <autoware_command_mode_switcher/command_plugin.hpp>
+#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_command_mode_types/constants/modes.hpp>
 #include <autoware_command_mode_types/constants/sources.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+#include <nav_msgs/msg/odometry.hpp>
+#include <tier4_planning_msgs/msg/velocity_limit.hpp>
+#include <tier4_planning_msgs/msg/velocity_limit_clear_command.hpp>
 
 namespace autoware::command_mode_switcher
 {
+using autoware::command_mode_types::MrmState;
+
+struct Params {
+  float min_acceleration;
+  float max_jerk;
+  float min_jerk;
+};
 
 class ComfortableStopSwitcher : public CommandPlugin
 {
@@ -29,6 +42,23 @@ public:
   uint16_t source() const override { return autoware::command_mode_types::sources::main; }
   bool autoware_control() const override { return true; }
   void initialize() override;
+
+  SourceState update_source_state(bool request) override;
+  MrmState update_mrm_state() override;
+
+private:
+  void publish_velocity_limit();
+  void publish_velocity_limit_clear_command();
+  bool is_stopped();
+
+  rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimit>::SharedPtr pub_velocity_limit_;
+  rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>::SharedPtr
+    pub_velocity_limit_clear_command_;
+  std::unique_ptr<
+    autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry>> sub_odom_;
+
+  MrmState mrm_state_;
+  struct Params params_;
 };
 
 }  // namespace autoware::command_mode_switcher
