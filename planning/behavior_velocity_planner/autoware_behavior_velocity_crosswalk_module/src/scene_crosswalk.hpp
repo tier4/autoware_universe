@@ -20,8 +20,8 @@
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
+#include <autoware_utils/ros/uuid_helper.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
-#include <autoware_utils_uuid/uuid_helper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
@@ -594,10 +594,9 @@ private:
         detected_objects_with_previous_target;
       detected_objects_with_previous_target.reserve(detected_objects.size() + 1);
       bool found = false;
-      const auto previous_uuid =
-        autoware_utils_uuid::to_hex_string(previous_target_vehicle->object_id);
+      const auto previous_uuid = autoware_utils::to_hex_string(previous_target_vehicle->object_id);
       for (const auto & object : detected_objects) {
-        const auto uuid = autoware_utils_uuid::to_hex_string(object.object_id);
+        const auto uuid = autoware_utils::to_hex_string(object.object_id);
         if (uuid == previous_uuid) {
           previous_detection_time = current_time;
           found = true;

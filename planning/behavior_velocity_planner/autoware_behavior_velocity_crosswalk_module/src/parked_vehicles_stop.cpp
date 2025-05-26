@@ -16,9 +16,9 @@
 
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware_utils/geometry/boost_geometry.hpp>
+#include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/ros/uuid_helper.hpp>
-#include <autoware_utils_geometry/boost_geometry.hpp>
-#include <autoware_utils_geometry/boost_polygon_utils.hpp>
 
 #include <geometry_msgs/msg/point.hpp>
 
@@ -178,7 +178,7 @@ calculate_furthest_parked_vehicle(
     }
   };
   for (const auto & parked_vehicle : parked_vehicles) {
-    const auto footprint = autoware_utils_geometry::to_polygon2d(parked_vehicle);
+    const auto footprint = autoware_utils::to_polygon2d(parked_vehicle);
     if (boost::geometry::disjoint(footprint, search_area)) {
       continue;
     }

@@ -25,8 +25,6 @@
 #include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/uuid_helper.hpp>
-#include <autoware_utils_geometry/geometry.hpp>
-#include <autoware_utils_uuid/uuid_helper.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -1163,7 +1161,7 @@ std::optional<StopFactor> CrosswalkModule::checkStopForParkedVehicles(
   }
 
   const auto & vehicle_info = planner_data_->vehicle_info_;
-  const auto ego_footprint = autoware_utils_geometry::to_footprint(
+  const auto ego_footprint = autoware_utils::to_footprint(
     ego_pose, vehicle_info.max_longitudinal_offset_m, vehicle_info.min_longitudinal_offset_m,
     vehicle_info.max_lateral_offset_m);
   const auto ego_within_search_area =
@@ -1171,7 +1169,7 @@ std::optional<StopFactor> CrosswalkModule::checkStopForParkedVehicles(
     planner_param_.parked_vehicles_stop_parked_ego_inside_safe_area_margin;
   const auto ego_close_to_previous_stop_pose =
     parked_vehicles_stop_.previous_stop_pose &&
-    autoware_utils_geometry::calc_distance2d(*parked_vehicles_stop_.previous_stop_pose, ego_pose) <=
+    autoware_utils::calc_distance2d(*parked_vehicles_stop_.previous_stop_pose, ego_pose) <=
       planner_param_.parked_vehicles_stop_parked_ego_inside_safe_area_margin;
   const auto already_stopped_condition =
     (ego_within_search_area || ego_close_to_previous_stop_pose) &&
