@@ -49,6 +49,7 @@ public:
     const std::vector<UnitLink *> parents, const std::vector<UnitLink *> children, int index,
     const UnitConfig & config);
   ~NodeUnit();
+  void reset();
   void dump() const;
   bool is_diag() const override { return false; }
   DiagnosticLevel level() const override;

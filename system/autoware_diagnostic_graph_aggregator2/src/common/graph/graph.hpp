@@ -37,9 +37,11 @@ public:
   void dump() const;
   void update(const rclcpp::Time & stamp);
   bool update(const rclcpp::Time & stamp, const DiagnosticArray & array);
-  DiagGraphStruct create_struct(const rclcpp::Time & stamp) const;
-  DiagGraphStatus create_status(const rclcpp::Time & stamp) const;
-  DiagnosticArray create_unknowns(const rclcpp::Time & stamp) const;
+  DiagGraphStruct create_struct_msg(const rclcpp::Time & stamp) const;
+  DiagGraphStatus create_status_msg(const rclcpp::Time & stamp) const;
+  DiagnosticArray create_unknown_msg(const rclcpp::Time & stamp) const;
+
+  void reset();
 
 private:
   std::string id_;

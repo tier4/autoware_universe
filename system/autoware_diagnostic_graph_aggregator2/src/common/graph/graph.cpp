@@ -116,7 +116,7 @@ bool Graph::update(const rclcpp::Time & stamp, const DiagnosticArray & array)
   return true;
 }
 
-DiagGraphStruct Graph::create_struct(const rclcpp::Time & stamp) const
+DiagGraphStruct Graph::create_struct_msg(const rclcpp::Time & stamp) const
 {
   DiagGraphStruct msg;
   msg.stamp = stamp;
@@ -131,7 +131,7 @@ DiagGraphStruct Graph::create_struct(const rclcpp::Time & stamp) const
   return msg;
 }
 
-DiagGraphStatus Graph::create_status(const rclcpp::Time & stamp) const
+DiagGraphStatus Graph::create_status_msg(const rclcpp::Time & stamp) const
 {
   DiagGraphStatus msg;
   msg.stamp = stamp;
@@ -139,12 +139,17 @@ DiagGraphStatus Graph::create_status(const rclcpp::Time & stamp) const
   return msg;
 }
 
-DiagnosticArray Graph::create_unknowns(const rclcpp::Time & stamp) const
+DiagnosticArray Graph::create_unknown_msg(const rclcpp::Time & stamp) const
 {
   DiagnosticArray msg;
   msg.header.stamp = stamp;
   for (const auto & [name, diag] : unknown_diags_) msg.status.push_back(diag);
   return msg;
+}
+
+void Graph::reset()
+{
+  for (const auto & node : nodes_) node->reset();
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

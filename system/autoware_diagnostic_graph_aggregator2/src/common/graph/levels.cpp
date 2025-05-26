@@ -36,6 +36,15 @@ LatchLevel::LatchLevel(ConfigYaml yaml)
   input_level_ = DiagnosticStatus::STALE;
 }
 
+void LatchLevel::reset()
+{
+  // Note: Keep the current input level.
+  warn_latched_ = false;
+  error_latched_ = false;
+  warn_stamp_ = std::nullopt;
+  error_stamp_ = std::nullopt;
+}
+
 void LatchLevel::update(const rclcpp::Time & stamp, DiagnosticLevel level)
 {
   input_level_ = level;
@@ -47,17 +56,15 @@ void LatchLevel::update(const rclcpp::Time & stamp, DiagnosticLevel level)
 
 void LatchLevel::update_latch_status(const rclcpp::Time & stamp, DiagnosticLevel level)
 {
-  if (level != DiagnosticStatus::STALE) {
-    if (level < DiagnosticStatus::WARN) {
-      warn_stamp_ = std::nullopt;
-    } else {
-      warn_stamp_ = warn_stamp_.value_or(stamp);
-    }
-    if (level < DiagnosticStatus::ERROR) {
-      error_stamp_ = std::nullopt;
-    } else {
-      error_stamp_ = error_stamp_.value_or(stamp);
-    }
+  if (level < DiagnosticStatus::WARN) {
+    warn_stamp_ = std::nullopt;
+  } else {
+    warn_stamp_ = warn_stamp_.value_or(stamp);
+  }
+  if (level < DiagnosticStatus::ERROR) {
+    error_stamp_ = std::nullopt;
+  } else {
+    error_stamp_ = error_stamp_.value_or(stamp);
   }
 
   if (warn_stamp_ && !warn_latched_) {

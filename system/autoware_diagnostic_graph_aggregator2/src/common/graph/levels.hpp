@@ -29,6 +29,7 @@ class LatchLevel
 {
 public:
   explicit LatchLevel(ConfigYaml yaml);
+  void reset();
   void update(const rclcpp::Time & stamp, DiagnosticLevel level);
   DiagnosticLevel level() const;
   DiagnosticLevel input_level() const;

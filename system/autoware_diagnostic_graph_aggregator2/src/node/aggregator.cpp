@@ -49,13 +49,16 @@ AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options) : Node("aggr
     pub_unknown_ = create_publisher<DiagnosticArray>("/diagnostics_graph/unknowns", qos_unknown);
     pub_struct_ = create_publisher<DiagGraphStruct>("/diagnostics_graph/struct", qos_struct);
     pub_status_ = create_publisher<DiagGraphStatus>("/diagnostics_graph/status", qos_status);
+    srv_reset_ = create_service<ResetDiagGraph>(
+      "/diagnostics_graph/reset",
+      std::bind(&AggregatorNode::on_reset, this, std::placeholders::_1, std::placeholders::_2));
 
     const auto rate = rclcpp::Rate(declare_parameter<double>("rate"));
     timer_ = rclcpp::create_timer(this, get_clock(), rate.period(), [this]() { on_timer(); });
   }
 
   // Send structure topic once.
-  pub_struct_->publish(graph_->create_struct(stamp));
+  pub_struct_->publish(graph_->create_struct_msg(stamp));
 }
 
 AggregatorNode::~AggregatorNode()
@@ -73,8 +76,8 @@ void AggregatorNode::on_timer()
   graph_->update(stamp);
 
   // Publish status.
-  pub_status_->publish(graph_->create_status(stamp));
-  pub_unknown_->publish(graph_->create_unknowns(stamp));
+  pub_status_->publish(graph_->create_status_msg(stamp));
+  pub_unknown_->publish(graph_->create_unknown_msg(stamp));
 
   // Update plugins.
   if (availability_) availability_->update(stamp);
@@ -95,6 +98,13 @@ void AggregatorNode::on_diag(const DiagnosticArray & msg)
 
   // TODO(Takagi, Isamu): Publish immediately when graph status changes.
   // pub_status_->publish();
+}
+
+void AggregatorNode::on_reset(
+  const ResetDiagGraph::Request::SharedPtr, const ResetDiagGraph::Response::SharedPtr response)
+{
+  graph_->reset();
+  response->status.success = true;
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

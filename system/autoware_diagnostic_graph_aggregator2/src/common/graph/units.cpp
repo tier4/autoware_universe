@@ -55,6 +55,11 @@ NodeUnit::~NodeUnit()
 {
 }
 
+void NodeUnit::reset()
+{
+  latch_->reset();
+}
+
 DiagnosticLevel NodeUnit::level() const
 {
   return latch_->level();
