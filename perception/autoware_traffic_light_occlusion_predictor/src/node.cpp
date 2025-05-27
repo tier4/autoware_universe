@@ -84,17 +84,17 @@ TrafficLightOcclusionPredictorNode::TrafficLightOcclusionPredictorNode(
       tier4_perception_msgs::msg::TrafficLightRoi::CAR_TRAFFIC_LIGHT),
     config_.max_image_cloud_delay, config_.max_wait_t);
 
-  const std::vector<std::string> topics_ped{
-    "~/input/pedestrian/traffic_signals", "~/input/rois", "~/input/camera_info", "~/input/cloud"};
-  const std::vector<rclcpp::QoS> qos_ped(topics_ped.size(), rclcpp::SensorDataQoS());
-  synchronizer_ped_ = std::make_shared<SynchronizerType>(
-    this, topics_ped, qos_ped,
-    std::bind(
-      &TrafficLightOcclusionPredictorNode::syncCallback, this, _1, _2, _3, _4,
-      tier4_perception_msgs::msg::TrafficLightRoi::PEDESTRIAN_TRAFFIC_LIGHT),
-    config_.max_image_cloud_delay, config_.max_wait_t);
+  // const std::vector<std::string> topics_ped{
+  //   "~/input/pedestrian/traffic_signals", "~/input/rois", "~/input/camera_info", "~/input/cloud"};
+  // const std::vector<rclcpp::QoS> qos_ped(topics_ped.size(), rclcpp::SensorDataQoS());
+  // synchronizer_ped_ = std::make_shared<SynchronizerType>(
+  //   this, topics_ped, qos_ped,
+  //   std::bind(
+  //     &TrafficLightOcclusionPredictorNode::syncCallback, this, _1, _2, _3, _4,
+  //     tier4_perception_msgs::msg::TrafficLightRoi::PEDESTRIAN_TRAFFIC_LIGHT),
+  //   config_.max_image_cloud_delay, config_.max_wait_t);
 
-  subscribed_.resize(2, false);
+  subscribed_.resize(2, true);
 }
 
 void TrafficLightOcclusionPredictorNode::mapCallback(
@@ -183,7 +183,7 @@ void TrafficLightOcclusionPredictorNode::syncCallback(
     pub_msg->header = in_signal_msg->header;
     signal_pub_->publish(std::move(pub_msg));
     out_msg_.signals.clear();
-    std::fill(subscribed_.begin(), subscribed_.end(), false);
+    // std::fill(subscribed_.begin(), subscribed_.end(), false);
   }
 }
 }  // namespace autoware::traffic_light
