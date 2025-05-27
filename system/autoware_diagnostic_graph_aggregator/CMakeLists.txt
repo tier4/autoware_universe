@@ -13,26 +13,36 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/common/graph/units.cpp
 )
 
-ament_auto_add_executable(tree
-  src/tool/tree.cpp
-)
-target_include_directories(tree PRIVATE src/common)
-
-ament_auto_add_executable(plantuml
-  src/tool/plantuml.cpp
-)
-target_include_directories(plantuml PRIVATE src/common)
-
 ament_auto_add_library(aggregator SHARED
   src/node/aggregator.cpp
   src/node/availability.cpp
   src/node/command_mode_mapping.cpp
 )
+
+ament_auto_add_library(converter SHARED
+  src/node/availability_converter.cpp
+)
+
+ament_auto_add_executable(tree
+  src/tool/tree.cpp
+)
+
+ament_auto_add_executable(plantuml
+  src/tool/plantuml.cpp
+)
+
 target_include_directories(aggregator PRIVATE src/common)
+target_include_directories(tree PRIVATE src/common)
+target_include_directories(plantuml PRIVATE src/common)
 
 rclcpp_components_register_node(aggregator
   PLUGIN "autoware::diagnostic_graph_aggregator::AggregatorNode"
-  EXECUTABLE ${PROJECT_NAME}_node
+  EXECUTABLE "aggregator_node"
+)
+
+rclcpp_components_register_node(converter
+  PLUGIN "autoware::command_mode_switcher::AvailabilityConverter"
+  EXECUTABLE "converter_node"
 )
 
 if(BUILD_TESTING)

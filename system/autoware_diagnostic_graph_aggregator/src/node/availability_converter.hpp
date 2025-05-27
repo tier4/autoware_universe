@@ -12,8 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-#ifndef AVAILABILITY_CONVERTER_HPP_
-#define AVAILABILITY_CONVERTER_HPP_
+#ifndef NODE__AVAILABILITY_CONVERTER_HPP_
+#define NODE__AVAILABILITY_CONVERTER_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -33,10 +33,19 @@ public:
   explicit AvailabilityConverter(const rclcpp::NodeOptions & options);
 
 private:
-  rclcpp::Subscription<OperationModeAvailability>::SharedPtr sub_operation_mode_;
-  rclcpp::Publisher<CommandModeAvailability>::SharedPtr pub_command_mode_;
+  rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_command_mode_;
+  rclcpp::Publisher<OperationModeAvailability>::SharedPtr pub_operation_mode_;
+  void on_availability(const CommandModeAvailability & in);
+
+  uint16_t stop_;
+  uint16_t autonomous_;
+  uint16_t local_;
+  uint16_t remote_;
+  uint16_t emergency_stop_;
+  uint16_t comfortable_stop_;
+  uint16_t pull_over_;
 };
 
 }  // namespace autoware::command_mode_switcher
 
-#endif  // AVAILABILITY_CONVERTER_HPP_
+#endif  // NODE__AVAILABILITY_CONVERTER_HPP_
