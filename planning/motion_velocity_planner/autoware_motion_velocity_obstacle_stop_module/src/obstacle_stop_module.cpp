@@ -483,9 +483,9 @@ ObstacleStopModule::get_nearest_collision_point(
   pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud_ptr =
     std::make_shared<pcl::PointCloud<pcl::PointXYZ>>(pointcloud.pointcloud);
 
-  constexpr double slope_angle_limit = 0.1;
-  constexpr double height_from_bottom = -0.5;
-  constexpr double height_from_top = 0.5;
+  constexpr double slope_angle_limit = 0.05;
+  constexpr double height_from_bottom = 0.0;
+  constexpr double height_from_top = -0.5;
 
   PointCloud::Ptr croped_pointcloud_ptr(new PointCloud);
   {
