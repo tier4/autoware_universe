@@ -16,19 +16,16 @@
 #define COMMAND_MODE_SWITCHER_HPP_
 
 #include "common/command_container.hpp"
-#include "common/manual.hpp"
 #include "common/selector_interface.hpp"
 
 #include <autoware_command_mode_types/adapters/command_mode_status.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <tier4_system_msgs/msg/command_mode_availability.hpp>
 #include <tier4_system_msgs/msg/command_mode_request.hpp>
 #include <tier4_system_msgs/msg/command_source_status.hpp>
 
 #include <memory>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -37,8 +34,13 @@ namespace autoware::command_mode_switcher
 
 using autoware::command_mode_types::CommandModeStatus;
 using autoware::command_mode_types::CommandModeStatusAdapter;
-using tier4_system_msgs::msg::CommandModeAvailability;
 using tier4_system_msgs::msg::CommandModeRequest;
+
+enum class VehicleModeRequest {
+  None,
+  Autoware,
+  Manual,
+};
 
 class CommandModeSwitcher : public rclcpp::Node
 {
@@ -46,35 +48,35 @@ public:
   explicit CommandModeSwitcher(const rclcpp::NodeOptions & options);
 
 private:
-  void on_availability(const CommandModeAvailability & msg);
   void on_request(const CommandModeRequest & msg);
-  void update();
+  void request_command_mode(std::shared_ptr<Command> command_mode);
+  void request_vehicle_mode(VehicleModeRequest vehicle_mode);
 
+  void update();
   void detect_override();
   void update_status();
-  void handle_foreground_transition();
-  void handle_background_transition();
+  void change_modes();
   void publish_command_mode_status();
+
+  void change_vehicle_mode_to_manual();
+  void change_vehicle_mode_to_autoware();
+  void change_command_mode();
 
   // ROS interfaces.
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_availability_;
   rclcpp::Subscription<CommandModeRequest>::SharedPtr sub_request_;
   rclcpp::Publisher<CommandModeStatusAdapter>::SharedPtr pub_status_;
 
   // Mode switching.
   pluginlib::ClassLoader<CommandPlugin> loader_;
   std::vector<std::shared_ptr<Command>> commands_;
-  std::unordered_map<std::string, std::shared_ptr<Command>> platform_commands_;
-  std::unordered_map<std::string, std::shared_ptr<Command>> autoware_commands_;
-  std::shared_ptr<Command> manual_command_;
-  std::shared_ptr<Command> foreground_;
-  std::shared_ptr<Command> background_;
+  std::unordered_map<uint16_t, std::shared_ptr<Command>> autoware_commands_;
   ControlGateInterface control_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
 
-  bool is_ready_ = false;
-  bool is_autoware_control_ = false;
+  bool prev_manual_control_ = false;
+  VehicleModeRequest vehicle_mode_request_ = VehicleModeRequest::None;
+  std::shared_ptr<Command> command_mode_request_;
 };
 
 }  // namespace autoware::command_mode_switcher

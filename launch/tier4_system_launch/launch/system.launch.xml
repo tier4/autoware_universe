@@ -36,21 +36,15 @@
 
   <!-- temporary: control_command_gate migration -->
   <arg name="use_control_command_gate" default="false"/>
-  <arg name="command_mode_switcher_param_path" if="$(var use_control_command_gate)"/>
-  <arg name="command_mode_decider_param_path" if="$(var use_control_command_gate)"/>
 
   <group>
     <push-ros-namespace namespace="/system"/>
 
     <group if="$(var use_control_command_gate)">
-      <include file="$(find-pkg-share autoware_command_mode_switcher)/launch/switcher.launch.xml">
-        <arg name="config" value="$(var command_mode_switcher_param_path)"/>
-      </include>
+      <include file="$(find-pkg-share autoware_command_mode_switcher)/launch/switcher.launch.xml"/>
     </group>
     <group if="$(var use_control_command_gate)">
-      <include file="$(find-pkg-share autoware_command_mode_decider)/launch/decider.launch.xml">
-        <arg name="config" value="$(var command_mode_decider_param_path)"/>
-      </include>
+      <include file="$(find-pkg-share autoware_command_mode_decider)/launch/decider.launch.xml"/>
     </group>
 
     <!-- System Monitor -->

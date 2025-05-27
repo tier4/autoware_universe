@@ -14,7 +14,7 @@
 
 #include "control_command_gate.hpp"
 
-#include "command/emergency.hpp"
+#include "command/builtin.hpp"
 #include "command/filter.hpp"
 #include "command/publisher.hpp"
 #include "command/source.hpp"
@@ -48,13 +48,14 @@ VehicleCmdFilterParam declare_filter_params(rclcpp::Node & node, const std::stri
 ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
 : Node("control_command_gate", options), diag_(this, 0.5)
 {
+  using std::placeholders::_1;
+  using std::placeholders::_2;
+
   // Create ROS interface.
   pub_status_ =
     create_publisher<CommandSourceStatus>("~/source/status", rclcpp::QoS(1).transient_local());
   srv_select_ = create_service<SelectCommandSource>(
-    "~/source/select",
-    std::bind(
-      &ControlCmdGate::on_select_source, this, std::placeholders::_1, std::placeholders::_2));
+    "~/source/select", std::bind(&ControlCmdGate::on_select_source, this, _1, _2));
 
   selector_ = std::make_unique<CommandSelector>(get_logger());
   diag_.setHardwareID("none");
@@ -71,9 +72,11 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
     transition_filter_params.wheel_base = info.wheel_base_m;
   }
 
-  const auto inputs = declare_parameter<std::vector<std::string>>("inputs");
-  if (std::find(inputs.begin(), inputs.end(), builtin) != inputs.end()) {
-    throw std::invalid_argument("input name '" + builtin + "' is reserved");
+  const auto inputs = declare_parameter<std::vector<int>>("inputs");
+  for (const auto & input : inputs) {
+    if (input == builtin || input == unknown) {
+      throw std::invalid_argument("input source '" + std::to_string(input) + "' is reserved");
+    }
   }
 
   // Create shared data buffer.
@@ -81,14 +84,18 @@ ControlCmdGate::ControlCmdGate(const rclcpp::NodeOptions & options)
 
   // Create command sources.
   {
+    const auto get_source_name = [this](const uint16_t input) {
+      return declare_parameter<std::string>("command_source_naming." + std::to_string(input));
+    };
+
     std::vector<std::unique_ptr<CommandSource>> sources;
     {
-      auto source = std::make_unique<BuiltinEmergency>(builtin, *this);
+      auto source = std::make_unique<BuiltinEmergency>(builtin, "builtin", *this);
       source->set_prev_control(prev_control);
       sources.push_back(std::move(source));
     }
     for (const auto & input : inputs) {
-      auto source = std::make_unique<CommandSubscription>(input, *this);
+      auto source = std::make_unique<CommandSubscription>(input, get_source_name(input), *this);
       sources.push_back(std::move(source));
     }
     for (auto & source : sources) {
@@ -132,10 +139,10 @@ void ControlCmdGate::on_select_source(
   if (!error.empty()) {
     res->status.success = false;
     res->status.message = error;
-    RCLCPP_INFO_STREAM(get_logger(), error);
+    RCLCPP_ERROR_STREAM(get_logger(), error);
     return;
   }
-  const auto message = "target command source is selected: " + req->source;
+  const auto message = "select command source: " + std::to_string(req->source);
   res->status.success = true;
   res->status.message = message;
   RCLCPP_INFO_STREAM(get_logger(), message);
@@ -147,17 +154,17 @@ void ControlCmdGate::on_select_source(
 
 void ControlCmdGate::publish_source_status()
 {
-  const auto source_name = selector_->get_source_name();
+  const auto current_source = selector_->get_source();
   const auto transition_flag = output_filter_->get_transition_flag();
-  if (source_name_ == source_name && transition_flag_ == transition_flag) {
+  if (current_source_ == current_source && transition_flag_ == transition_flag) {
     return;
   }
-  source_name_ = source_name;
+  current_source_ = current_source;
   transition_flag_ = transition_flag;
 
   CommandSourceStatus msg;
   msg.stamp = now();
-  msg.source = source_name_;
+  msg.source = current_source_;
   msg.transition = transition_flag_;
   pub_status_->publish(msg);
 };

@@ -19,8 +19,8 @@
 namespace autoware::control_command_gate
 {
 
-CommandSubscription::CommandSubscription(const std::string & name, rclcpp::Node & node)
-: CommandSource(name)
+CommandSubscription::CommandSubscription(uint16_t id, const std::string & name, rclcpp::Node & node)
+: CommandSource(id, name)
 {
   using std::placeholders::_1;
   const auto control_qos = rclcpp::QoS(5);

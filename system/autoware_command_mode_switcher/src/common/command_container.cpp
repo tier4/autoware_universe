@@ -19,25 +19,7 @@ namespace autoware::command_mode_switcher
 
 Command::Command(std::shared_ptr<CommandPlugin> plugin) : plugin(plugin)
 {
-  status.mode = plugin->mode_name();
-
-  status.mode_state = TriState::Disabled;
-  status.gate_state = TriState::Disabled;
-  status.mrm = MrmState::Normal;
-  status.request_phase = GateType::NotSelected;
-  status.current_phase = GateType::NotSelected;
-
-  status.mode_continuable = false;
-  status.mode_available = false;
-  status.transition_available = false;
-  status.transition_completed = false;
-
-  status.transition_state = TriState::Disabled;
-  status.vehicle_gate_state = TriState::Disabled;
-  status.network_gate_state = TriState::Enabled;
-  status.control_gate_state = TriState::Disabled;
-  status.source_state = TriState::Disabled;
-  status.source_group = TriState::Disabled;
+  status.mode = plugin->mode();
 }
 
 }  // namespace autoware::command_mode_switcher

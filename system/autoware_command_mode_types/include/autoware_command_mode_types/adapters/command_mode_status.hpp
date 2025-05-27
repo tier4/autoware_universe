@@ -40,15 +40,11 @@ using CommandModeStatusAdapter = rclcpp::TypeAdapter<
 
 tier4_system_msgs::msg::CommandModeStatus to_msg(const CommandModeStatus & status);
 tier4_system_msgs::msg::CommandModeStatusItem to_msg(const CommandModeStatusItem & item);
-uint8_t to_tri_state(const TriState & state);
 uint8_t to_mrm_state(const MrmState & state);
-uint8_t to_gate_type(const GateType & type);
 
 CommandModeStatus from_msg(const tier4_system_msgs::msg::CommandModeStatus & status);
 CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusItem & item);
-TriState from_tri_state(const uint8_t msg);
 MrmState from_mrm_state(const uint8_t msg);
-GateType from_gate_type(const uint8_t msg);
 
 }  // namespace autoware::command_mode_types
 

@@ -17,30 +17,32 @@
 namespace autoware::command_mode_types
 {
 
-TriState merge_state(const TriState & s1, const TriState & s2)
+CommandModeStatusItem::CommandModeStatusItem(uint16_t mode) : mode(mode)
 {
-  if (s1 == TriState::Disabled && s2 == TriState::Disabled) return TriState::Disabled;
-  if (s1 == TriState::Enabled && s2 == TriState::Enabled) return TriState::Enabled;
-  return TriState::Transition;
-};
-
-bool CommandModeStatusItem::check_mode_ready() const
-{
-  return check_gate_ready(GateType::VehicleGate) && (transition_state == TriState::Enabled);
+  mrm = MrmState::Normal;
+  transition_completed = false;
+  transition = false;
+  request = false;
+  vehicle_selected = false;
+  command_selected = false;
+  command_exclusive = false;
+  command_enabled = false;
+  command_disabled = false;
 }
 
-bool CommandModeStatusItem::check_gate_ready(GateType gate) const
+bool CommandModeStatusItem::is_completed() const
 {
-  TriState state = TriState::Enabled;
-  state = merge_state(state, source_state);
-  state = merge_state(state, source_group);
-  state = merge_state(state, control_gate_state);
-  if (gate == GateType::ControlGate) return state == TriState::Enabled;
-  state = merge_state(state, network_gate_state);
-  if (gate == GateType::NetworkGate) return state == TriState::Enabled;
-  state = merge_state(state, vehicle_gate_state);
-  if (gate == GateType::VehicleGate) return state == TriState::Enabled;
-  return false;  // For invalid gate type.
+  return !transition && is_vehicle_ready();
+}
+
+bool CommandModeStatusItem::is_vehicle_ready() const
+{
+  return vehicle_selected && is_command_ready();
+}
+
+bool CommandModeStatusItem::is_command_ready() const
+{
+  return command_selected && command_exclusive;
 }
 
 }  // namespace autoware::command_mode_types

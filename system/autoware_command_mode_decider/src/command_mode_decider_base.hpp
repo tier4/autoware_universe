@@ -15,104 +15,110 @@
 #ifndef COMMAND_MODE_DECIDER_BASE_HPP_
 #define COMMAND_MODE_DECIDER_BASE_HPP_
 
-#include "command_mode_status_table.hpp"
+#include "autoware_command_mode_decider/plugin.hpp"
+#include "autoware_command_mode_decider/status.hpp"
 
 #include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <autoware_command_mode_types/adapters/command_mode_status.hpp>
+#include <diagnostic_updater/diagnostic_updater.hpp>
+#include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
+#include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
+#include <tier4_system_msgs/msg/command_mode_availability.hpp>
 #include <tier4_system_msgs/msg/command_mode_request.hpp>
 #include <tier4_system_msgs/msg/command_mode_status.hpp>
+#include <tier4_system_msgs/msg/mode_change_available.hpp>
 #include <tier4_system_msgs/srv/change_autoware_control.hpp>
 #include <tier4_system_msgs/srv/change_operation_mode.hpp>
-#include <tier4_system_msgs/srv/request_mrm.hpp>
 
-#include <string>
+#include <memory>
+#include <vector>
 
 namespace autoware::command_mode_decider
 {
 
 using autoware::command_mode_types::CommandModeStatus;
 using autoware::command_mode_types::CommandModeStatusAdapter;
-using autoware::command_mode_types::GateType;
-using autoware::command_mode_types::TriState;
 using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_common_msgs::msg::ResponseStatus;
+using autoware_vehicle_msgs::msg::ControlModeReport;
+using tier4_system_msgs::msg::CommandModeAvailability;
 using tier4_system_msgs::msg::CommandModeRequest;
+using tier4_system_msgs::msg::CommandModeRequestItem;
+using tier4_system_msgs::msg::ModeChangeAvailable;
 using tier4_system_msgs::srv::ChangeAutowareControl;
 using tier4_system_msgs::srv::ChangeOperationMode;
-using tier4_system_msgs::srv::RequestMrm;
-
-struct RequestModeStatus
-{
-  bool autoware_control;
-  std::string operation_mode;
-  std::string mrm;
-};
 
 class CommandModeDeciderBase : public rclcpp::Node
 {
 public:
   explicit CommandModeDeciderBase(const rclcpp::NodeOptions & options);
 
-protected:
-  virtual std::string decide_command_mode() = 0;
-  const auto & get_command_mode_status() const { return command_mode_status_; }
-  const auto & get_request_mode_status() const { return system_request_; }
-
 private:
   bool is_in_transition() const;
   void update();
   void detect_override();
+  void detect_operation_mode_timeout();
   void update_request_mode();
   void update_current_mode();
   void sync_command_mode();
   void publish_operation_mode_state();
   void publish_mrm_state();
 
+  void on_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & status);
   void on_timer();
+  void on_control_mode(const ControlModeReport & msg);
   void on_status(const CommandModeStatus & msg);
-  void on_request_mrm(RequestMrm::Request::SharedPtr req, RequestMrm::Response::SharedPtr res);
+  void on_availability(const CommandModeAvailability & msg);
+  void on_transition_available(const ModeChangeAvailable & msg);
   void on_change_operation_mode(
     ChangeOperationMode::Request::SharedPtr req, ChangeOperationMode::Response::SharedPtr res);
   void on_change_autoware_control(
     ChangeAutowareControl::Request::SharedPtr req, ChangeAutowareControl::Response::SharedPtr res);
 
-  ResponseStatus check_mode_exists(const std::string & mode);
-  ResponseStatus check_mode_request(const std::string & mode, bool background);
+  ResponseStatus check_mode_exists(uint16_t mode);
+  ResponseStatus check_mode_request(uint16_t mode);
 
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<CommandModeRequest>::SharedPtr pub_command_mode_request_;
   rclcpp::Subscription<CommandModeStatusAdapter>::SharedPtr sub_command_mode_status_;
+  rclcpp::Subscription<CommandModeAvailability>::SharedPtr sub_availability_;
+  rclcpp::Subscription<ModeChangeAvailable>::SharedPtr sub_transition_available_;
+  rclcpp::Subscription<ControlModeReport>::SharedPtr sub_control_mode_;
 
   rclcpp::Service<ChangeAutowareControl>::SharedPtr srv_autoware_control_;
   rclcpp::Service<ChangeOperationMode>::SharedPtr srv_operation_mode_;
   rclcpp::Publisher<OperationModeState>::SharedPtr pub_operation_mode_;
-
-  rclcpp::Service<RequestMrm>::SharedPtr srv_mrm_request_;
   rclcpp::Publisher<MrmState>::SharedPtr pub_mrm_state_;
 
+  diagnostic_updater::Updater diagnostics_;
+  pluginlib::ClassLoader<DeciderPlugin> loader_;
+  std::shared_ptr<DeciderPlugin> plugin_;
+
   // parameters
+  double transition_timeout_;
   double request_timeout_;
-  std::string manual_mode_name_ = "manual";
 
   // status
   bool is_modes_ready_;
   CommandModeStatusTable command_mode_status_;
   RequestModeStatus system_request_;
-  std::string foreground_request_;
-  std::string background_request_;
-  std::string command_mode_;
-  std::string request_mode_;
-  std::optional<rclcpp::Time> request_stamp_;
+  std::vector<uint16_t> request_modes_;
 
   bool curr_autoware_control_;
-  bool last_autoware_control_;
-  std::string curr_operation_mode_;
-  std::string last_operation_mode_;
+  bool curr_manual_control_;
+  bool prev_manual_control_;
+
+  uint16_t curr_operation_mode_;
+  uint16_t curr_mode_;
+  uint16_t last_mode_;
+
+  std::optional<rclcpp::Time> request_stamp_;
+  std::optional<rclcpp::Time> transition_stamp_;
 };
 
 }  // namespace autoware::command_mode_decider

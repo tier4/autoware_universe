@@ -15,7 +15,7 @@
 #ifndef COMMON__SELECTOR_INTERFACE_HPP_
 #define COMMON__SELECTOR_INTERFACE_HPP_
 
-#include "autoware_command_mode_switcher/common/command_plugin.hpp"
+#include "autoware_command_mode_switcher/command_plugin.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -25,7 +25,6 @@
 #include <tier4_system_msgs/srv/select_command_source.hpp>
 
 #include <memory>
-#include <string>
 #include <vector>
 
 namespace autoware::command_mode_switcher
@@ -37,6 +36,7 @@ public:
   using Callback = std::function<void()>;
   ControlGateInterface(rclcpp::Node & node, Callback callback);
   bool is_selected(const CommandPlugin & plugin) const;
+  bool is_requesting() const { return requesting_; }
   bool is_in_transition() const;
   bool request(const CommandPlugin & plugin, bool transition);
 
@@ -60,8 +60,12 @@ public:
   using Callback = std::function<void()>;
   VehicleGateInterface(rclcpp::Node & node, Callback callback);
   bool is_selected(const CommandPlugin & plugin) const;
+  bool is_requesting() const { return requesting_; }
   bool is_autoware_control() const;
-  bool request(const CommandPlugin & plugin);
+  bool is_manual_control() const;
+  bool request_autoware_control();
+  bool request_manual_control();
+  bool request(uint8_t control_mode_command);
 
 private:
   using ControlModeCommand = autoware_vehicle_msgs::srv::ControlModeCommand;

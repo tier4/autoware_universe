@@ -17,17 +17,10 @@
 
 #include <rclcpp/time.hpp>
 
-#include <string>
 #include <vector>
 
 namespace autoware::command_mode_types
 {
-
-enum class TriState {
-  Disabled,
-  Enabled,
-  Transition,
-};
 
 enum class MrmState {
   Normal,
@@ -36,37 +29,23 @@ enum class MrmState {
   Failed,
 };
 
-enum class GateType {
-  NotSelected,
-  ControlGate,
-  NetworkGate,
-  VehicleGate,
-};
-
 struct CommandModeStatusItem
 {
-  std::string mode;
-
-  TriState mode_state;
-  TriState gate_state;
+  uint16_t mode;
   MrmState mrm;
-  GateType request_phase;
-  GateType current_phase;
-
-  bool mode_continuable;
-  bool mode_available;
-  bool transition_available;
+  bool transition;
   bool transition_completed;
+  bool request;
+  bool vehicle_selected;
+  bool command_selected;
+  bool command_exclusive;
+  bool command_enabled;
+  bool command_disabled;
 
-  TriState transition_state;
-  TriState vehicle_gate_state;
-  TriState network_gate_state;
-  TriState control_gate_state;
-  TriState source_state;
-  TriState source_group;
-
-  bool check_mode_ready() const;
-  bool check_gate_ready(GateType gate) const;
+  explicit CommandModeStatusItem(uint16_t mode = 0);
+  bool is_completed() const;
+  bool is_vehicle_ready() const;
+  bool is_command_ready() const;
 };
 
 struct CommandModeStatus
