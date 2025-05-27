@@ -356,11 +356,13 @@ void CommandModeDeciderBase::update_current_mode()
 void CommandModeDeciderBase::sync_command_mode()
 {
   // Skip the request if all modes are already requested.
-  bool is_requested = true;
+  std::vector<uint16_t> requesting_modes;
   for (const auto & mode : request_modes_) {
-    is_requested = is_requested && command_mode_status_.get(mode).request;
+    if (!command_mode_status_.get(mode).request) {
+      requesting_modes.push_back(mode);
+    }
   }
-  if (is_requested) {
+  if (requesting_modes.empty()) {
     request_stamp_ = std::nullopt;
     return;
   }
@@ -372,7 +374,12 @@ void CommandModeDeciderBase::sync_command_mode()
       return;
     }
     request_stamp_ = std::nullopt;
-    RCLCPP_WARN_STREAM(get_logger(), "request mode timeout");
+
+    std::string message = "Request mode timeout:";
+    for (const auto & mode : requesting_modes) {
+      message += " " + std::to_string(mode);
+    }
+    RCLCPP_WARN_STREAM(get_logger(), message);
   }
 
   // Request stamp is used to check timeout and requesting.
