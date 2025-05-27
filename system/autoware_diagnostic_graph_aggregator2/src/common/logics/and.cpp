@@ -59,11 +59,11 @@ DiagnosticLevel OrLogic::level() const
     return DiagnosticStatus::OK;
   }
 
-  DiagnosticLevel level = DiagnosticStatus::STALE;
+  DiagnosticLevel level = DiagnosticStatus::ERROR;
   for (const auto * const link : links_) {
     level = std::min(level, link->level());
   }
-  return std::min(level, DiagnosticStatus::ERROR);
+  return level;
 }
 
 DiagLogic::DiagLogic(const LogicConfig & config)
@@ -73,7 +73,8 @@ DiagLogic::DiagLogic(const LogicConfig & config)
 
 DiagnosticLevel DiagLogic::level() const
 {
-  return link_->level();
+  // STALE to ERROR
+  return std::min(link_->level(), DiagnosticStatus::ERROR);
 }
 
 ConstLogic::ConstLogic(const LogicConfig &)

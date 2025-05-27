@@ -89,11 +89,15 @@ Graph::~Graph()
 
 void Graph::dump() const
 {
-  std::cout << "Graph" << std::endl;
+  // NOLINTBEGIN(build/namespaces, whitespace/line_length)
+  // clang-format off
+  std::cout << "| Unit | Address        | Level | Input | Latch | Type  | Details                                            |" << std::endl;
+  std::cout << "|------------------------------------------------------------------------------------------------------------|" << std::endl;
   for (const auto & node : nodes_) node->dump();
   for (const auto & diag : diags_) diag->dump();
-  std::cout << "================================================================================"
-            << std::endl;
+  std::cout << "|============================================================================================================|" << std::endl;
+  // clang-format on
+  // NOLINTEND
 }
 
 void Graph::update(const rclcpp::Time & stamp)

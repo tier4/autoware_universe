@@ -8,3 +8,8 @@ units:
     type: diag
     node: external_command_checker
     name: remote_command
+
+  - path: /external/sample_command
+    type: diag
+    node: external_command_checker
+    name: sample_command
