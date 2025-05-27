@@ -69,11 +69,11 @@ void LatchLevel::update_latch_status(const rclcpp::Time & stamp, DiagnosticLevel
 
   if (warn_stamp_ && !warn_latched_) {
     const auto duration = (stamp - *warn_stamp_).seconds();
-    warn_latched_ = latch_duration_ < duration;
+    warn_latched_ = latch_duration_ <= duration;
   }
   if (error_stamp_ && !error_latched_) {
     const auto duration = (stamp - *error_stamp_).seconds();
-    error_latched_ = latch_duration_ < duration;
+    error_latched_ = latch_duration_ <= duration;
   }
 }
 

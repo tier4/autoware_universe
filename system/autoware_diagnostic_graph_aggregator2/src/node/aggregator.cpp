@@ -68,12 +68,12 @@ AggregatorNode::~AggregatorNode()
 
 void AggregatorNode::on_timer()
 {
-  // DEBUG
-  graph_->dump();
-
   // Check timeout of diag units.
   const auto stamp = now();
   graph_->update(stamp);
+
+  // TODO(Takagi, Isamu): Remove debug code.
+  graph_->dump();
 
   // Publish status.
   pub_status_->publish(graph_->create_status_msg(stamp));
