@@ -19,8 +19,4 @@
     <remap from="~/control_mode/report" to="$(var ~/control_mode/report)"/>
     <remap from="~/control_mode/request" to="$(var ~/control_mode/request)"/>
   </node>
-  <node pkg="autoware_command_mode_switcher" exec="availability_converter_node">
-    <remap from="~/command_mode/availability" to="/system/command_mode/availability"/>
-    <remap from="~/operation_mode/availability" to="/system/operation_mode/availability"/>
-  </node>
 </launch>
