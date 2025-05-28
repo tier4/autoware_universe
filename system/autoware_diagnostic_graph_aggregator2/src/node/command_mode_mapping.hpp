@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NODE__AVAILABILITY_HPP_
-#define NODE__AVAILABILITY_HPP_
+#ifndef NODE__COMMAND_MODE_MAPPING_HPP_
+#define NODE__COMMAND_MODE_MAPPING_HPP_
 
 #include "types/forward.hpp"
 
@@ -21,16 +21,15 @@
 
 #include <tier4_system_msgs/msg/command_mode_availability.hpp>
 
-#include <string>
 #include <unordered_map>
 
 namespace autoware::diagnostic_graph_aggregator
 {
 
-class AvailabilityMapping
+class CommandModeMapping
 {
 public:
-  AvailabilityMapping(rclcpp::Node & node, const Graph & graph);
+  CommandModeMapping(rclcpp::Node & node, const Graph & graph);
   void update(const rclcpp::Time & stamp) const;
 
 private:
@@ -39,9 +38,9 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<Availability>::SharedPtr pub_;
 
-  std::unordered_map<std::string, BaseUnit *> mode_to_unit_;
+  std::unordered_map<uint16_t, BaseUnit *> mode_to_unit_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator
 
-#endif  // NODE__AVAILABILITY_HPP_
+#endif  // NODE__COMMAND_MODE_MAPPING_HPP_

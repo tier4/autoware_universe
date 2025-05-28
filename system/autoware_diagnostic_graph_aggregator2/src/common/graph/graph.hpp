@@ -42,6 +42,7 @@ public:
   DiagnosticArray create_unknown_msg(const rclcpp::Time & stamp) const;
 
   void reset();
+  std::vector<NodeUnit *> units() const;
 
 private:
   std::string id_;

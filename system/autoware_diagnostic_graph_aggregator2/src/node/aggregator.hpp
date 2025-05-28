@@ -15,7 +15,7 @@
 #ifndef NODE__AGGREGATOR_HPP_
 #define NODE__AGGREGATOR_HPP_
 
-#include "availability.hpp"
+#include "command_mode_mapping.hpp"
 #include "graph/graph.hpp"
 
 #include <rclcpp/rclcpp.hpp>
@@ -35,7 +35,7 @@ public:
 
 private:
   std::unique_ptr<Graph> graph_;
-  std::unique_ptr<AvailabilityMapping> availability_;
+  std::unique_ptr<CommandModeMapping> availability_;
 
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Subscription<DiagnosticArray>::SharedPtr sub_input_;

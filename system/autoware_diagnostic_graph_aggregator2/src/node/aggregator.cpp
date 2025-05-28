@@ -35,7 +35,7 @@ AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options) : Node("aggr
 
   // Init plugins.
   if (declare_parameter<bool>("use_command_mode_mappings")) {
-    // availability_ = std::make_unique<AvailabilityMapping>(*this, *graph_);
+    availability_ = std::make_unique<CommandModeMapping>(*this, *graph_);
   }
 
   // Init ros interface.
@@ -46,11 +46,11 @@ AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options) : Node("aggr
     const auto qos_status = rclcpp::QoS(declare_parameter<int64_t>("graph_qos_depth"));
     const auto callback = std::bind(&AggregatorNode::on_diag, this, std::placeholders::_1);
     sub_input_ = create_subscription<DiagnosticArray>("/diagnostics", qos_input, callback);
-    pub_unknown_ = create_publisher<DiagnosticArray>("/diagnostics_graph/unknowns", qos_unknown);
-    pub_struct_ = create_publisher<DiagGraphStruct>("/diagnostics_graph/struct", qos_struct);
-    pub_status_ = create_publisher<DiagGraphStatus>("/diagnostics_graph/status", qos_status);
+    pub_unknown_ = create_publisher<DiagnosticArray>("~/unknowns", qos_unknown);
+    pub_struct_ = create_publisher<DiagGraphStruct>("~/struct", qos_struct);
+    pub_status_ = create_publisher<DiagGraphStatus>("~/status", qos_status);
     srv_reset_ = create_service<ResetDiagGraph>(
-      "/diagnostics_graph/reset",
+      "~/reset",
       std::bind(&AggregatorNode::on_reset, this, std::placeholders::_1, std::placeholders::_2));
 
     const auto rate = rclcpp::Rate(declare_parameter<double>("rate"));

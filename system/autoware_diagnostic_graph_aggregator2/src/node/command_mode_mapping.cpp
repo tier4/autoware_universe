@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "availability.hpp"
+#include "command_mode_mapping.hpp"
 
-#include "graph/error.hpp"
 #include "graph/graph.hpp"
 #include "graph/units.hpp"
 
@@ -29,25 +28,25 @@ namespace autoware::diagnostic_graph_aggregator
 
 CommandModeMapping::CommandModeMapping(rclcpp::Node & node, const Graph & graph)
 {
-  std::unordered_map<std::string, BaseUnit *> path_to_unit_;
+  std::unordered_map<std::string, BaseUnit *> path_to_unit;
   for (const auto & unit : graph.units()) {
-    path_to_unit_[unit->path()] = unit;
+    path_to_unit[unit->path()] = unit;
   }
 
   const auto mappings = node.declare_parameter<std::vector<std::string>>("command_mode_mappings");
   for (const auto & mapping : mappings) {
     YAML::Node yaml = YAML::Load(mapping);
-    const auto mode = yaml["mode"].as<std::string>();
+    const auto mode = yaml["mode"].as<uint16_t>();
     const auto path = yaml["path"].as<std::string>();
-    const auto iter = path_to_unit_.find(path);
-    if (iter != path_to_unit_.end()) {
+    const auto iter = path_to_unit.find(path);
+    if (iter != path_to_unit.end()) {
       mode_to_unit_[mode] = iter->second;
     } else {
       RCLCPP_ERROR_STREAM(node.get_logger(), "Mode path not found: " << mode << " " << path);
     }
   }
 
-  pub_ = node.create_publisher<Availability>("/system/command_mode/availability", rclcpp::QoS(1));
+  pub_ = node.create_publisher<Availability>("~/availability", rclcpp::QoS(1));
 }
 
 void CommandModeMapping::update(const rclcpp::Time & stamp) const

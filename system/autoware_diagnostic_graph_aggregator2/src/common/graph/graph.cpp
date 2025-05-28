@@ -165,4 +165,11 @@ void Graph::reset()
   for (const auto & node : nodes_) node->reset();
 }
 
+std::vector<NodeUnit *> Graph::units() const
+{
+  std::vector<NodeUnit *> units;
+  for (const auto & node : nodes_) units.push_back(node.get());
+  return units;
+}
+
 }  // namespace autoware::diagnostic_graph_aggregator

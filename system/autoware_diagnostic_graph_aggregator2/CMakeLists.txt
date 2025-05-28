@@ -22,6 +22,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE src/common)
 
 ament_auto_add_library(aggregator SHARED
   "src/node/aggregator.cpp"
+  "src/node/command_mode_mapping.cpp"
 )
 target_include_directories(aggregator PRIVATE src/common)
 
