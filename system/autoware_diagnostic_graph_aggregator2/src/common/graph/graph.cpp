@@ -66,7 +66,7 @@ Graph::Graph(const std::string & path, const std::string & id, const Logger & lo
     }
     for (const auto & diag : graph.diags) {
       const auto parents = parent_links.at(diag);
-      diags_.push_back(std::make_unique<DiagUnit>(parents, diag->data));
+      diags_.push_back(std::make_unique<DiagUnit>(parents, diag));
       units[diag] = diags_.back().get();
     }
 
@@ -109,10 +109,17 @@ void Graph::update(const rclcpp::Time & stamp)
 
 bool Graph::update(const rclcpp::Time & stamp, const DiagnosticArray & array)
 {
+  // check message stamp delay
+  const auto delay = (stamp - array.header.stamp).seconds();
+  if (1.0 < delay) {
+    return false;  // TODO(Takagi, Isamu): parameterize, output warning
+  }
+  // TODO(Takagi, Isamu): Check future stamp. Use now stamp instead of message stamp.
+
   for (const auto & status : array.status) {
     const auto iter = diag_dict_.find(status.name);
     if (iter != diag_dict_.end()) {
-      iter->second->update(stamp, array.header.stamp, status);
+      iter->second->update(array.header.stamp, status);
     } else {
       unknown_diags_[status.name] = status;
     }

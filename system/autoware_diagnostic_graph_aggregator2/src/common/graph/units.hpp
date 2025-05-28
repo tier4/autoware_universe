@@ -61,8 +61,8 @@ public:
   void update(const rclcpp::Time & stamp);
 
 private:
-  std::vector<UnitLink *> children_;
   std::string path_;
+  std::vector<UnitLink *> children_;
   std::unique_ptr<Logic> logic_;
   std::unique_ptr<LatchLevel> latch_;
 };
@@ -70,7 +70,7 @@ private:
 class DiagUnit : public BaseUnit
 {
 public:
-  DiagUnit(const std::vector<UnitLink *> parents, const std::string & name);
+  DiagUnit(const std::vector<UnitLink *> parents, const UnitConfig & config);
   ~DiagUnit();
   void dump() const;
   bool is_diag() const override { return true; }
@@ -79,12 +79,12 @@ public:
 
   std::string name() const;
   void update(const rclcpp::Time & stamp);
-  void update(
-    const rclcpp::Time & now_stamp, const rclcpp::Time & msg_stamp,
-    const DiagnosticStatus & status);
+  void update(const rclcpp::Time & stamp, const DiagnosticStatus & status);
 
 private:
   std::string name_;
+  std::unique_ptr<TimeoutLevel> timeout_;
+  std::unique_ptr<HysteresisLevel> histeresis_;
   DiagnosticStatus status_;
 };
 

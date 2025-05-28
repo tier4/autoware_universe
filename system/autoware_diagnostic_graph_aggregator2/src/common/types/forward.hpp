@@ -30,6 +30,8 @@ class Logic;
 class LogicConfig;
 
 class LatchLevel;
+class HysteresisLevel;
+class TimeoutLevel;
 
 struct ParseContext;
 struct GraphConfig;

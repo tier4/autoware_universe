@@ -39,6 +39,7 @@ public:
   std::string text() const;
   std::string text(const std::string & value) const;
   double float64() const;
+  double float64(double value) const;
 
 private:
   YAML::Node yaml_;

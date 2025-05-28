@@ -97,4 +97,9 @@ double ConfigYaml::float64() const
   return yaml_.as<double>();
 }
 
+double ConfigYaml::float64(double value) const
+{
+  return yaml_.as<double>(value);
+}
+
 }  // namespace autoware::diagnostic_graph_aggregator

@@ -21,6 +21,7 @@
 #include <rclcpp/time.hpp>
 
 #include <optional>
+#include <unordered_map>
 
 namespace autoware::diagnostic_graph_aggregator
 {
@@ -38,14 +39,52 @@ public:
 private:
   void update_latch_status(const rclcpp::Time & stamp, DiagnosticLevel level);
 
-  double latch_duration_;
   bool latch_enabled_;
+  double latch_duration_;
 
+  DiagnosticLevel input_level_;
   bool warn_latched_;
   bool error_latched_;
   std::optional<rclcpp::Time> warn_stamp_;
   std::optional<rclcpp::Time> error_stamp_;
+};
+
+class TimeoutLevel
+{
+public:
+  explicit TimeoutLevel(ConfigYaml yaml);
+  void update(const rclcpp::Time & stamp, DiagnosticLevel level);
+  void update(const rclcpp::Time & stamp);
+  DiagnosticLevel level() const;
+
+private:
+  double timeout_duration_;
+  std::optional<rclcpp::Time> stamp_;
+  DiagnosticLevel level_;
+};
+
+class HysteresisLevel
+{
+public:
+  explicit HysteresisLevel(ConfigYaml yaml);
+  void update(const rclcpp::Time & stamp, DiagnosticLevel level);
+  DiagnosticLevel level() const;
+  DiagnosticLevel input_level() const;
+
+private:
+  static constexpr DiagnosticLevel upper_limit = DiagnosticStatus::STALE;
+  static constexpr DiagnosticLevel lower_limit = DiagnosticStatus::OK;
+
+  void update_stamp(const rclcpp::Time & stamp, DiagnosticLevel level);
+  void update_level(const rclcpp::Time & stamp, DiagnosticLevel level);
+
+  bool hysteresis_enabled_;
+  double hysteresis_duration_;
+
+  DiagnosticLevel stable_level_;
   DiagnosticLevel input_level_;
+  std::unordered_map<DiagnosticLevel, std::optional<rclcpp::Time>> upper_edges_;
+  std::unordered_map<DiagnosticLevel, std::optional<rclcpp::Time>> lower_edges_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

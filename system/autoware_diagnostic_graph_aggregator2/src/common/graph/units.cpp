@@ -88,10 +88,12 @@ DiagNodeStruct NodeUnit::create_struct() const
   return msg;
 }
 
-DiagUnit::DiagUnit(const std::vector<UnitLink *> parents, const std::string & name)
+DiagUnit::DiagUnit(const std::vector<UnitLink *> parents, const UnitConfig & config)
 : BaseUnit(parents, -1)
 {
-  name_ = name;
+  name_ = config->data;
+  timeout_ = std::make_unique<TimeoutLevel>(config->yaml);
+  histeresis_ = std::make_unique<HysteresisLevel>(config->yaml);
   status_.level = DiagnosticStatus::STALE;
 }
 
@@ -101,7 +103,7 @@ DiagUnit::~DiagUnit()
 
 DiagnosticLevel DiagUnit::level() const
 {
-  return status_.level;
+  return histeresis_->level();
 }
 
 std::string DiagUnit::name() const
@@ -111,15 +113,15 @@ std::string DiagUnit::name() const
 
 void DiagUnit::update(const rclcpp::Time & stamp)
 {
-  (void)stamp;
+  timeout_->update(stamp);
+  histeresis_->update(stamp, timeout_->level());
 }
 
-void DiagUnit::update(
-  const rclcpp::Time & now_stamp, const rclcpp::Time & msg_stamp, const DiagnosticStatus & status)
+void DiagUnit::update(const rclcpp::Time & stamp, const DiagnosticStatus & status)
 {
-  (void)now_stamp;
-  (void)msg_stamp;
   status_ = status;
+  timeout_->update(stamp, status.level);
+  histeresis_->update(stamp, timeout_->level());
 }
 
 DiagLeafStruct DiagUnit::create_struct() const
@@ -128,6 +130,8 @@ DiagLeafStruct DiagUnit::create_struct() const
   msg.name = name();
   return msg;
 }
+
+// TODO(Takagi, Isamu): DO NOT use status_.level in create_status.
 
 // dump functions
 
@@ -172,7 +176,7 @@ void DiagUnit::dump() const
   dump_data("Diag");
   dump_data(this);
   dump_data(str_level(level()), 5);
-  dump_data(" --- ");
+  dump_data(str_level(histeresis_->input_level()), 5);
   dump_data(" --- ");
   dump_data(" --- ");
   dump_data(name(), 50);

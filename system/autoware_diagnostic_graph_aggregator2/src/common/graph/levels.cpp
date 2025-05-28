@@ -98,4 +98,108 @@ DiagnosticLevel LatchLevel::latch_level() const
   return DiagnosticStatus::OK;
 }
 
+TimeoutLevel::TimeoutLevel(ConfigYaml yaml)
+{
+  timeout_duration_ = yaml.optional("timeout").float64(1.0);
+  level_ = DiagnosticStatus::STALE;
+}
+
+void TimeoutLevel::update(const rclcpp::Time & stamp, DiagnosticLevel level)
+{
+  stamp_ = stamp;
+  level_ = level;
+}
+
+void TimeoutLevel::update(const rclcpp::Time & stamp)
+{
+  if (stamp_) {
+    const auto duration = (stamp - *stamp_).seconds();
+    if (timeout_duration_ <= duration) {
+      stamp_ = std::nullopt;
+      level_ = DiagnosticStatus::STALE;
+    }
+  }
+}
+
+DiagnosticLevel TimeoutLevel::level() const
+{
+  return level_;
+}
+
+HysteresisLevel::HysteresisLevel(ConfigYaml yaml)
+{
+  const auto hysteresis = yaml.optional("hysteresis");
+  hysteresis_enabled_ = hysteresis.exists();
+  if (hysteresis_enabled_) {
+    hysteresis_duration_ = hysteresis.float64();
+  }
+
+  stable_level_ = DiagnosticStatus::STALE;
+  input_level_ = DiagnosticStatus::STALE;
+}
+
+void HysteresisLevel::update(const rclcpp::Time & stamp, DiagnosticLevel input_level)
+{
+  input_level_ = input_level;
+
+  if (hysteresis_enabled_) {
+    update_stamp(stamp, input_level);
+    update_level(stamp, input_level);
+  } else {
+    stable_level_ = input_level;
+  }
+}
+
+void HysteresisLevel::update_stamp(const rclcpp::Time & stamp, DiagnosticLevel input_level)
+{
+  for (auto level = upper_limit; level > input_level; --level) {
+    upper_edges_[level] = std::nullopt;
+  }
+  for (auto level = input_level; level > stable_level_; --level) {
+    upper_edges_[level] = upper_edges_[level].value_or(stamp);
+  }
+
+  for (auto level = lower_limit; level < input_level; ++level) {
+    lower_edges_[level] = std::nullopt;
+  }
+  for (auto level = input_level; level < stable_level_; ++level) {
+    lower_edges_[level] = lower_edges_[level].value_or(stamp);
+  }
+}
+
+void HysteresisLevel::update_level(const rclcpp::Time & stamp, DiagnosticLevel input_level)
+{
+  const auto is_continued = [this](const auto & start, const rclcpp::Time & stamp) {
+    if (!start) return false;
+    const auto duration = (stamp - *start).seconds();
+    return hysteresis_duration_ <= duration;
+  };
+
+  for (auto level = input_level; level > stable_level_; --level) {
+    if (is_continued(upper_edges_[level], stamp)) {
+      stable_level_ = level;
+      lower_edges_.clear();  // Clear old stamps in the reverse direction.
+      return;
+    }
+  }
+
+  for (auto level = input_level; level < stable_level_; ++level) {
+    if (is_continued(lower_edges_[level], stamp)) {
+      stable_level_ = level;
+      upper_edges_.clear();  // Clear old stamps in the reverse direction.
+      return;
+    }
+  }
+}
+
+DiagnosticLevel HysteresisLevel::level() const
+{
+  return stable_level_;
+}
+
+DiagnosticLevel HysteresisLevel::input_level() const
+{
+  return input_level_;
+}
+
 }  // namespace autoware::diagnostic_graph_aggregator
