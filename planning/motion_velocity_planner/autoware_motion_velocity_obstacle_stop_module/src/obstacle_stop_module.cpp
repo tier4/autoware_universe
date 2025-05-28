@@ -835,6 +835,12 @@ std::optional<StopObstacle> ObstacleStopModule::pick_stop_obstacle_from_predicte
     collision_point = polygon_utils::get_collision_point(
       decimated_traj_points, decimated_traj_polys_with_lat_margin, future_obj_pose, clock_->now(),
       predicted_object.shape, dist_to_bumper);
+    if (collision_point) {
+      collision_point->second -= std::abs(odometry.twist.twist.linear.x) * estimation_time;
+      if (collision_point->second < 3.0) {
+        return std::nullopt;
+      }
+    }
   }
 
   if (!collision_point) {
