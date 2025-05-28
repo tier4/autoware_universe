@@ -355,7 +355,17 @@ void RearObstacleCheckerNode::fill_rss_distance(PointCloudObjects & objects) con
 
     object.rss_distance = stop_distance_object - stop_distance_ego;
     object.safe = object.rss_distance < object.relative_distance_with_delay_compensation;
-    object.ignore = object.velocity < p.common.filter.min_velocity;
+    object.ignore = [&object, &p]() {
+      if (object.velocity < p.common.filter.min_velocity) {
+        return true;
+      }
+
+      if (object.is_vru) {
+        return object.velocity > p.common.vru.max_velocity;
+      }
+
+      return object.velocity > p.common.vehicle.max_velocity;
+    }();
   }
 }
 
@@ -703,6 +713,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_on_adjacent_lane(
         return objects;
       }
 
+      opt_pointcloud_object.value().is_vru = false;
+
       opt_pointcloud_object.value().relative_distance =
         opt_pointcloud_object.value().absolute_distance - ego_to_furthest_point -
         std::abs(vehicle_info_.min_longitudinal_offset_m);
@@ -741,6 +753,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_on_adjacent_lane(
       if (!opt_pointcloud_object.has_value()) {
         continue;
       }
+
+      opt_pointcloud_object.value().is_vru = false;
 
       opt_pointcloud_object.value().relative_distance =
         opt_pointcloud_object.value().absolute_distance - ego_to_furthest_point -
@@ -871,6 +885,8 @@ auto RearObstacleCheckerNode::get_pointcloud_objects_at_blind_spot(
   if (!opt_pointcloud_object.has_value()) {
     return objects;
   }
+
+  opt_pointcloud_object.value().is_vru = true;
 
   const auto ego_coordinate_on_arc =
     lanelet::utils::getArcCoordinates(current_lanes, odometry_ptr_->pose.pose);

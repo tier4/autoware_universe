@@ -18,7 +18,7 @@
             max: 10.0
             min: -100.0
           z:
-            max: 0.0
+            max: -1.0
             min: 0.5
         voxel_grid_filter:
           x: 0.1
