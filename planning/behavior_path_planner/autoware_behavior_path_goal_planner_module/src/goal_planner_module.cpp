@@ -517,9 +517,10 @@ void LaneParkingPlanner::bezier_planning_helper(
       sorted_indices.push_back(i);
     }
   }
+  const auto lanelet_map_ptr = planner_data->route_handler->getLaneletMapPtr();
   const auto dynamic_target_objects = goal_planner_utils::extract_dynamic_objects(
     *(planner_data->dynamic_object), *(planner_data->route_handler), parameters_,
-    planner_data->parameters.vehicle_width);
+    planner_data->parameters.vehicle_width, planner_data->self_odometry->pose.pose);
   const auto static_target_objects = utils::path_safety_checker::filterObjectsByVelocity(
     dynamic_target_objects, parameters_.th_moving_object_velocity);
   sortPullOverPaths(
@@ -608,7 +609,7 @@ void FreespaceParkingPlanner::onTimer()
 
   const auto dynamic_target_objects = goal_planner_utils::extract_dynamic_objects(
     *(local_planner_data->dynamic_object), *(local_planner_data->route_handler), parameters,
-    local_planner_data->parameters.vehicle_width);
+    local_planner_data->parameters.vehicle_width, local_planner_data->self_odometry->pose.pose);
   const auto static_target_objects = utils::path_safety_checker::filterObjectsByVelocity(
     dynamic_target_objects, parameters.th_moving_object_velocity);
 
@@ -771,7 +772,7 @@ void GoalPlannerModule::updateData()
   // extract static and dynamic objects in extraction polygon for path collision check
   const auto dynamic_target_objects = goal_planner_utils::extract_dynamic_objects(
     *(planner_data_->dynamic_object), *(planner_data_->route_handler), parameters_,
-    planner_data_->parameters.vehicle_width);
+    planner_data_->parameters.vehicle_width, planner_data_->self_odometry->pose.pose);
   const auto static_target_objects = utils::path_safety_checker::filterObjectsByVelocity(
     dynamic_target_objects, parameters_.th_moving_object_velocity);
 
