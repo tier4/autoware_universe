@@ -37,6 +37,8 @@
   <arg name="aeb_param_path"/>
   <arg name="predicted_path_checker_param_path"/>
   <arg name="collision_detector_param_path"/>
+  <arg name="control_command_gate_param_path"/>
+  <arg name="control_command_gate_naming_path"/>
 
   <!-- component -->
   <arg name="use_intra_process" default="false" description="use ROS 2 component container communication"/>
@@ -54,7 +56,10 @@
     <push-ros-namespace namespace="control"/>
 
     <group if="$(var use_control_command_gate)">
-      <include file="$(find-pkg-share autoware_control_command_gate)/launch/control_command_gate.launch.xml"/>
+      <include file="$(find-pkg-share autoware_control_command_gate)/launch/control_command_gate.launch.xml">
+        <arg name="config" value="$(var control_command_gate_param_path)"/>
+        <arg name="naming" value="$(var control_command_gate_naming_path)"/>
+      </include>
     </group>
     <group if="$(var use_control_command_gate)">
       <include file="$(find-pkg-share autoware_stop_mode_operator)/launch/stop_mode_operator.launch.xml"/>
