@@ -930,14 +930,7 @@ autoware_perception_msgs::msg::PredictedObjects extract_dynamic_objects(
   auto filtered_objects =
     filter_objects_by_road_border(dynamic_target_objects, road_border_segments, ego_pose, true);
 
-  RCLCPP_INFO(rclcpp::get_logger("goal_planer_util"), "%f", ego_pose.position.x);
-  RCLCPP_ERROR(
-    rclcpp::get_logger("goal_planer_util"), "number of objects: %zu; filtered objects: %zu",
-    dynamic_target_objects.objects.size(), filtered_objects.objects.size());
   return filtered_objects;
-  // // Filter objects on the opposite side of road borders
-  // return filter_objects_by_road_border(
-  //   dynamic_target_objects, road_border_segments, ego_pose, true);
 }
 
 bool is_goal_reachable_on_path(
