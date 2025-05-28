@@ -38,7 +38,7 @@ DiagnosticLevel UnitLink::level() const
   return child_->level();
 }
 
-DiagLinkStruct UnitLink::create_struct() const
+DiagLinkStruct UnitLink::create_struct()
 {
   DiagLinkStruct msg;
   msg.parent = parent_->index();

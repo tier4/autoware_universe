@@ -46,13 +46,29 @@ NodeUnit::NodeUnit(
 : BaseUnit(parents, index)
 {
   children_ = children;
-  path_ = config->path;
   logic_ = std::move(config->logic);
   latch_ = std::make_unique<LatchLevel>(config->yaml);
+
+  struct_.path = config->path;
+  struct_.type = logic_->type();
+  status_.level = DiagnosticStatus::STALE;
 }
 
 NodeUnit::~NodeUnit()
 {
+}
+
+DiagNodeStruct NodeUnit::create_struct()
+{
+  return struct_;
+}
+
+DiagNodeStatus NodeUnit::create_status()
+{
+  status_.level = latch_->level();
+  status_.input_level = latch_->input_level();
+  status_.latch_level = latch_->latch_level();
+  return status_;
 }
 
 void NodeUnit::reset()
@@ -67,12 +83,12 @@ DiagnosticLevel NodeUnit::level() const
 
 std::string NodeUnit::path() const
 {
-  return path_;
+  return struct_.path;
 }
 
 std::string NodeUnit::type() const
 {
-  return logic_->type();
+  return struct_.type;
 }
 
 void NodeUnit::update(const rclcpp::Time & stamp)
@@ -80,25 +96,30 @@ void NodeUnit::update(const rclcpp::Time & stamp)
   latch_->update(stamp, logic_->level());
 }
 
-DiagNodeStruct NodeUnit::create_struct() const
-{
-  DiagNodeStruct msg;
-  msg.path = path();
-  msg.type = type();
-  return msg;
-}
-
 DiagUnit::DiagUnit(const std::vector<UnitLink *> parents, const UnitConfig & config)
 : BaseUnit(parents, -1)
 {
-  name_ = config->data;
   timeout_ = std::make_unique<TimeoutLevel>(config->yaml);
   histeresis_ = std::make_unique<HysteresisLevel>(config->yaml);
+
+  struct_.name = config->data;
   status_.level = DiagnosticStatus::STALE;
 }
 
 DiagUnit::~DiagUnit()
 {
+}
+
+DiagLeafStruct DiagUnit::create_struct()
+{
+  return struct_;
+}
+
+DiagLeafStatus DiagUnit::create_status()
+{
+  status_.level = histeresis_->level();
+  status_.input_level = histeresis_->input_level();
+  return status_;
 }
 
 DiagnosticLevel DiagUnit::level() const
@@ -108,7 +129,7 @@ DiagnosticLevel DiagUnit::level() const
 
 std::string DiagUnit::name() const
 {
-  return name_;
+  return struct_.name;
 }
 
 void DiagUnit::update(const rclcpp::Time & stamp)
@@ -119,19 +140,13 @@ void DiagUnit::update(const rclcpp::Time & stamp)
 
 void DiagUnit::update(const rclcpp::Time & stamp, const DiagnosticStatus & status)
 {
-  status_ = status;
   timeout_->update(stamp, status.level);
   histeresis_->update(stamp, timeout_->level());
-}
 
-DiagLeafStruct DiagUnit::create_struct() const
-{
-  DiagLeafStruct msg;
-  msg.name = name();
-  return msg;
+  status_.message = status.message;
+  status_.hardware_id = status.hardware_id;
+  status_.values = status.values;
 }
-
-// TODO(Takagi, Isamu): DO NOT use status_.level in create_status.
 
 // dump functions
 

@@ -41,7 +41,7 @@ AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options) : Node("aggr
   // Init ros interface.
   {
     const auto qos_input = rclcpp::QoS(declare_parameter<int64_t>("input_qos_depth"));
-    const auto qos_unknown = rclcpp::QoS(1);  // TODO(Takagi, Isamu): parameter
+    const auto qos_unknown = rclcpp::QoS(1);
     const auto qos_struct = rclcpp::QoS(1).transient_local();
     const auto qos_status = rclcpp::QoS(declare_parameter<int64_t>("graph_qos_depth"));
     const auto callback = std::bind(&AggregatorNode::on_diag, this, std::placeholders::_1);
@@ -72,9 +72,6 @@ void AggregatorNode::on_timer()
   const auto stamp = now();
   graph_->update(stamp);
 
-  // TODO(Takagi, Isamu): Remove debug code.
-  graph_->dump();
-
   // Publish status.
   pub_status_->publish(graph_->create_status_msg(stamp));
   pub_unknown_->publish(graph_->create_unknown_msg(stamp));
@@ -85,19 +82,7 @@ void AggregatorNode::on_timer()
 
 void AggregatorNode::on_diag(const DiagnosticArray & msg)
 {
-  // Update status. Store it as unknown if it does not exist in the graph.
-
   graph_->update(now(), msg);
-  /*
-  const auto & stamp = msg.header.stamp;
-  for (const auto & status : msg.status) {
-    if (!graph_->update(stamp, status)) {
-      unknown_diags_[status.name] = status;
-    }
-  }*/
-
-  // TODO(Takagi, Isamu): Publish immediately when graph status changes.
-  // pub_status_->publish();
 }
 
 void AggregatorNode::on_reset(

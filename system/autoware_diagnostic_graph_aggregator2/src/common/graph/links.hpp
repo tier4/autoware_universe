@@ -25,9 +25,9 @@ class UnitLink
 {
 public:
   void init(BaseUnit * parent, BaseUnit * child);
-  DiagLinkStruct create_struct() const;
-  DiagnosticLevel level() const;
   bool is_diag() const;
+  DiagnosticLevel level() const;
+  DiagLinkStruct create_struct();
 
 private:
   BaseUnit * parent_;

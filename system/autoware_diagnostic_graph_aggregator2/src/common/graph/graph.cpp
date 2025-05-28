@@ -147,6 +147,8 @@ DiagGraphStatus Graph::create_status_msg(const rclcpp::Time & stamp) const
   DiagGraphStatus msg;
   msg.stamp = stamp;
   msg.id = id_;
+  for (const auto & node : nodes_) msg.nodes.push_back(node->create_status());
+  for (const auto & diag : diags_) msg.diags.push_back(diag->create_status());
   return msg;
 }
 

@@ -53,7 +53,8 @@ public:
   void dump() const;
   bool is_diag() const override { return false; }
   DiagnosticLevel level() const override;
-  DiagNodeStruct create_struct() const;
+  DiagNodeStruct create_struct();
+  DiagNodeStatus create_status();
 
   std::string path() const;
   std::string type() const;
@@ -61,7 +62,8 @@ public:
   void update(const rclcpp::Time & stamp);
 
 private:
-  std::string path_;
+  DiagNodeStruct struct_;
+  DiagNodeStatus status_;
   std::vector<UnitLink *> children_;
   std::unique_ptr<Logic> logic_;
   std::unique_ptr<LatchLevel> latch_;
@@ -75,17 +77,18 @@ public:
   void dump() const;
   bool is_diag() const override { return true; }
   DiagnosticLevel level() const override;
-  DiagLeafStruct create_struct() const;
+  DiagLeafStruct create_struct();
+  DiagLeafStatus create_status();
 
   std::string name() const;
   void update(const rclcpp::Time & stamp);
   void update(const rclcpp::Time & stamp, const DiagnosticStatus & status);
 
 private:
-  std::string name_;
+  DiagLeafStruct struct_;
+  DiagLeafStatus status_;
   std::unique_ptr<TimeoutLevel> timeout_;
   std::unique_ptr<HysteresisLevel> histeresis_;
-  DiagnosticStatus status_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator
