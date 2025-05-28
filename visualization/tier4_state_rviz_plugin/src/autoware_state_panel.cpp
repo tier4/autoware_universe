@@ -18,6 +18,8 @@
 
 #include <rviz_common/display_context.hpp>
 
+#include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
+
 #include <qcolor.h>
 #include <qscrollarea.h>
 
@@ -152,6 +154,11 @@ void AutowareStatePanel::onInitialize()
   pub_velocity_limit_ = raw_node_->create_publisher<tier4_planning_msgs::msg::VelocityLimit>(
     "/planning/scenario_planning/max_velocity_default", rclcpp::QoS{1}.transient_local());
 
+  sub_control_mode_report_ =
+    raw_node_->create_subscription<autoware_vehicle_msgs::msg::ControlModeReport>(
+      "/vehicle/status/control_mode", 10,
+      std::bind(&AutowareStatePanel::onControlModeReport, this, std::placeholders::_1));
+
   QObject::connect(segmented_button, &CustomSegmentedButton::buttonClicked, this, [this](int id) {
     const QList<QAbstractButton *> buttons = segmented_button->getButtonGroup()->buttons();
 
@@ -215,6 +222,12 @@ QVBoxLayout * AutowareStatePanel::makeOperationModeGroup()
   local_button_ptr_ = segmented_button->addButton("Local");
   remote_button_ptr_ = segmented_button->addButton("Remote");
   stop_button_ptr_ = segmented_button->addButton("Stop");
+
+  control_mode_label_ = new QLabel("Control Mode | Unknown");
+  control_mode_label_->setAlignment(Qt::AlignCenter);
+  control_mode_label_->setStyleSheet(
+    "QLabel { padding: 10px; border-radius: 5px; background-color: #333333; color: white; "
+    "font-size: 14px; font-weight: bold; }");
 
   QVBoxLayout * groupLayout = new QVBoxLayout;
   // set these widgets to show up at the left and not stretch more than needed
@@ -474,6 +487,8 @@ QVBoxLayout * AutowareStatePanel::makeVelocityLimitGroup()
   utility_layout->addLayout(velocity_limit_layout);
   utility_layout->addSpacing(25);
   utility_layout->addWidget(emergency_button_ptr_);
+  utility_layout->addSpacing(25);
+  utility_layout->addWidget(control_mode_label_);
 
   utility_layout->setContentsMargins(15, 0, 15, 0);
 
@@ -870,6 +885,52 @@ void AutowareStatePanel::onClickEmergencyButton()
           raw_node_->get_logger(), "service failed: %s", response->status.message.c_str());
       }
     });
+}
+
+void AutowareStatePanel::onControlModeReport(
+  const autoware_vehicle_msgs::msg::ControlModeReport::ConstSharedPtr msg)
+{
+  QString mode_str;
+  QString bg_color;
+  switch (msg->mode) {
+    case 0:
+      mode_str = "NO_COMMAND";
+      bg_color = "#333333";
+      break;
+    case 1:
+      mode_str = "AUTONOMOUS";
+      bg_color = "#4CAF50";
+      break;
+    case 2:
+      mode_str = "AUTONOMOUS_STEER_ONLY";
+      bg_color = "#333333";
+      break;
+    case 3:
+      mode_str = "AUTONOMOUS_VELOCITY_ONLY";
+      bg_color = "#333333";
+      break;
+    case 4:
+      mode_str = "MANUAL";
+      bg_color = "#2196F3";
+      break;
+    case 5:
+      mode_str = "DISENGAGED";
+      bg_color = "#F44336";
+      break;
+    case 6:
+      mode_str = "NOT_READY";
+      bg_color = "#333333";
+      break;
+    default:
+      mode_str = "UNKNOWN";
+      bg_color = "#333333";
+      break;
+  }
+  control_mode_label_->setText("Control Mode | " + mode_str);
+  control_mode_label_->setStyleSheet(
+    QString("QLabel { padding: 10px; border-radius: 5px; background-color: %1; color: white; "
+            "font-size: 14px; font-weight: bold; }")
+      .arg(bg_color));
 }
 
 }  // namespace rviz_plugins
