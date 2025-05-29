@@ -1330,10 +1330,9 @@ void CrosswalkModule::updateObjectState(
   object_info_manager_.finalize();
 }
 
-bool CrosswalkModule::isRedSignalForEgo() const
-{
+bool CrosswalkModule::isRedSignalForLanelet(const lanelet::ConstLanelet & lanelet) const {
   const auto traffic_lights_reg_elems =
-    road_.regulatoryElementsAs<const lanelet::TrafficLight>();
+    lanelet.regulatoryElementsAs<const lanelet::TrafficLight>();
 
   for (const auto & traffic_lights_reg_elem : traffic_lights_reg_elems) {
     const auto traffic_signal_stamped_opt =
@@ -1359,41 +1358,16 @@ bool CrosswalkModule::isRedSignalForEgo() const
         return true;
     }
   }
-
   return false;
+}
+bool CrosswalkModule::isRedSignalForEgo() const
+{
+  return isRedSignalForLanelet(road_);
 }
 
 bool CrosswalkModule::isRedSignalForPedestrians() const
 {
-  const auto traffic_lights_reg_elems =
-    crosswalk_.regulatoryElementsAs<const lanelet::TrafficLight>();
-
-  for (const auto & traffic_lights_reg_elem : traffic_lights_reg_elems) {
-    const auto traffic_signal_stamped_opt =
-      planner_data_->getTrafficSignal(traffic_lights_reg_elem->id());
-    if (!traffic_signal_stamped_opt) {
-      continue;
-    }
-    const auto traffic_signal_stamped = traffic_signal_stamped_opt.value();
-
-    if (
-      planner_param_.traffic_light_state_timeout <
-      (clock_->now() - traffic_signal_stamped.stamp).seconds()) {
-      continue;
-    }
-
-    const auto & lights = traffic_signal_stamped.signal.elements;
-    if (lights.empty()) {
-      continue;
-    }
-
-    for (const auto & element : lights) {
-      if (element.color == TrafficLightElement::RED && element.shape == TrafficLightElement::CIRCLE)
-        return true;
-    }
-  }
-
-  return false;
+  return isRedSignalForLanelet(crosswalk_);
 }
 
 bool CrosswalkModule::isVehicle(const PredictedObject & object)
