@@ -376,9 +376,112 @@ void CollisionDetectorNode::checkCollision(diagnostic_updater::DiagnosticStatusW
   if (is_collision_found) {
     if (!start_of_consecutive_collision_stamp_.has_value()) {
       start_of_consecutive_collision_stamp_ = this->now();
+
+      if (nearest_obstacle) {
+        const double collision_distance = nearest_obstacle->first;
+        const auto & collision_point = nearest_obstacle->second;
+
+        double vehicle_speed = 0.0;
+        if (odometry_ptr_) {
+          vehicle_speed = std::sqrt(
+            std::pow(odometry_ptr_->twist.twist.linear.x, 2) +
+            std::pow(odometry_ptr_->twist.twist.linear.y, 2));
+        }
+
+        std::string object_class_info = "";
+        if (
+          node_param_.use_dynamic_object && filtered_object_ptr_ &&
+          !filtered_object_ptr_->objects.empty()) {
+          double min_distance = std::numeric_limits<double>::max();
+          const PredictedObject * closest_object = nullptr;
+
+          const auto transform_stamped = getTransform(
+            filtered_object_ptr_->header.frame_id, "base_link", filtered_object_ptr_->header.stamp,
+            0.5);
+
+          if (transform_stamped) {
+            tf2::Transform tf_src2target;
+            tf2::fromMsg(transform_stamped->transform, tf_src2target);
+
+            for (const auto & object : filtered_object_ptr_->objects) {
+              const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
+              tf2::Transform tf_src2object;
+              tf2::fromMsg(object_pose, tf_src2object);
+              geometry_msgs::msg::Pose transformed_object_pose;
+              tf2::toMsg(tf_src2target.inverse() * tf_src2object, transformed_object_pose);
+
+              const auto object_polygon = [&]() {
+                switch (object.shape.type) {
+                  case Shape::POLYGON:
+                    return createObjPolygon(transformed_object_pose, object.shape.footprint);
+                  case Shape::CYLINDER:
+                    return createObjPolygonForCylinder(
+                      transformed_object_pose, object.shape.dimensions.x);
+                  case Shape::BOUNDING_BOX:
+                    return createObjPolygon(transformed_object_pose, object.shape.dimensions);
+                  default:
+                    return createObjPolygon(transformed_object_pose, object.shape.dimensions);
+                }
+              }();
+
+              const auto distance_to_object = bg::distance(ego_polygon, object_polygon);
+              if (distance_to_object < min_distance) {
+                min_distance = distance_to_object;
+                closest_object = &object;
+              }
+            }
+
+            if (closest_object && min_distance <= collision_distance + 0.1) {
+              if (!closest_object->classification.empty()) {
+                switch (closest_object->classification.front().label) {
+                  case autoware_perception_msgs::msg::ObjectClassification::CAR:
+                    object_class_info = " (CAR)";
+                    break;
+                  case autoware_perception_msgs::msg::ObjectClassification::TRUCK:
+                    object_class_info = " (TRUCK)";
+                    break;
+                  case autoware_perception_msgs::msg::ObjectClassification::BUS:
+                    object_class_info = " (BUS)";
+                    break;
+                  case autoware_perception_msgs::msg::ObjectClassification::TRAILER:
+                    object_class_info = " (TRAILER)";
+                    break;
+                  case autoware_perception_msgs::msg::ObjectClassification::BICYCLE:
+                    object_class_info = " (BICYCLE)";
+                    break;
+                  case autoware_perception_msgs::msg::ObjectClassification::MOTORCYCLE:
+                    object_class_info = " (MOTORCYCLE)";
+                    break;
+                  case autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN:
+                    object_class_info = " (PEDESTRIAN)";
+                    break;
+                  default:
+                    object_class_info = " (UNKNOWN)";
+                    break;
+                }
+              }
+            }
+          }
+        }
+
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "NEW COLLISION STARTED! Distance: %.3f m (threshold: %.3f m), "
+          "Relative Position: (%.3f, %.3f, %.3f), Vehicle speed: %.3f m/s%s",
+          collision_distance, node_param_.collision_distance, collision_point.x, collision_point.y,
+          collision_point.z, vehicle_speed, object_class_info.c_str());
+      }
     }
     most_recent_collision_stamp_ = this->now();
   } else {
+    if (start_of_consecutive_collision_stamp_.has_value()) {
+      const double total_collision_duration =
+        (this->now() - *start_of_consecutive_collision_stamp_).seconds();
+
+      RCLCPP_INFO(
+        this->get_logger(), "COLLISION ENDED. Total collision duration: %.3f s",
+        total_collision_duration);
+    }
     start_of_consecutive_collision_stamp_.reset();
   }
 
@@ -403,12 +506,153 @@ void CollisionDetectorNode::checkCollision(diagnostic_updater::DiagnosticStatusW
     is_error_diag_ = true;
     status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     status.message = "collision detected";
+
     if (nearest_obstacle) {
+      const double collision_distance = nearest_obstacle->first;
+      const auto & collision_point = nearest_obstacle->second;
+
+      double collision_duration = 0.0;
+      if (start_of_consecutive_collision_stamp_.has_value()) {
+        collision_duration = (this->now() - *start_of_consecutive_collision_stamp_).seconds();
+      }
+
+      double vehicle_speed = 0.0;
+      if (odometry_ptr_) {
+        vehicle_speed = std::sqrt(
+          std::pow(odometry_ptr_->twist.twist.linear.x, 2) +
+          std::pow(odometry_ptr_->twist.twist.linear.y, 2));
+      }
+
+      std::string obstacle_source = "unknown";
+      std::string obstacle_class = "";
+      std::optional<Obstacle> nearest_pointcloud_obs;
+      std::optional<Obstacle> nearest_object_obs;
+
+      if (node_param_.use_pointcloud) {
+        nearest_pointcloud_obs = getNearestObstacleByPointCloud(ego_polygon);
+      }
+      if (node_param_.use_dynamic_object) {
+        nearest_object_obs = getNearestObstacleByDynamicObject(ego_polygon);
+
+        if (
+          nearest_object_obs &&
+          (!nearest_pointcloud_obs || nearest_object_obs->first <= nearest_pointcloud_obs->first)) {
+          if (filtered_object_ptr_ && !filtered_object_ptr_->objects.empty()) {
+            double min_distance = std::numeric_limits<double>::max();
+            const PredictedObject * closest_object = nullptr;
+
+            const auto transform_stamped = getTransform(
+              filtered_object_ptr_->header.frame_id, "base_link",
+              filtered_object_ptr_->header.stamp, 0.5);
+
+            if (transform_stamped) {
+              tf2::Transform tf_src2target;
+              tf2::fromMsg(transform_stamped->transform, tf_src2target);
+
+              for (const auto & object : filtered_object_ptr_->objects) {
+                const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
+                tf2::Transform tf_src2object;
+                tf2::fromMsg(object_pose, tf_src2object);
+                geometry_msgs::msg::Pose transformed_object_pose;
+                tf2::toMsg(tf_src2target.inverse() * tf_src2object, transformed_object_pose);
+
+                const auto object_polygon = [&]() {
+                  switch (object.shape.type) {
+                    case Shape::POLYGON:
+                      return createObjPolygon(transformed_object_pose, object.shape.footprint);
+                    case Shape::CYLINDER:
+                      return createObjPolygonForCylinder(
+                        transformed_object_pose, object.shape.dimensions.x);
+                    case Shape::BOUNDING_BOX:
+                      return createObjPolygon(transformed_object_pose, object.shape.dimensions);
+                    default:
+                      return createObjPolygon(transformed_object_pose, object.shape.dimensions);
+                  }
+                }();
+
+                const auto distance_to_object = bg::distance(ego_polygon, object_polygon);
+                if (distance_to_object < min_distance) {
+                  min_distance = distance_to_object;
+                  closest_object = &object;
+                }
+              }
+
+              if (closest_object) {
+                if (!closest_object->classification.empty()) {
+                  switch (closest_object->classification.front().label) {
+                    case autoware_perception_msgs::msg::ObjectClassification::CAR:
+                      obstacle_class = "CAR";
+                      break;
+                    case autoware_perception_msgs::msg::ObjectClassification::TRUCK:
+                      obstacle_class = "TRUCK";
+                      break;
+                    case autoware_perception_msgs::msg::ObjectClassification::BUS:
+                      obstacle_class = "BUS";
+                      break;
+                    case autoware_perception_msgs::msg::ObjectClassification::TRAILER:
+                      obstacle_class = "TRAILER";
+                      break;
+                    case autoware_perception_msgs::msg::ObjectClassification::BICYCLE:
+                      obstacle_class = "BICYCLE";
+                      break;
+                    case autoware_perception_msgs::msg::ObjectClassification::MOTORCYCLE:
+                      obstacle_class = "MOTORCYCLE";
+                      break;
+                    case autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN:
+                      obstacle_class = "PEDESTRIAN";
+                      break;
+                    default:
+                      obstacle_class = "UNKNOWN";
+                      break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (nearest_pointcloud_obs && nearest_object_obs) {
+        obstacle_source = nearest_pointcloud_obs->first < nearest_object_obs->first
+                            ? "pointcloud"
+                            : "dynamic_object";
+      } else if (nearest_pointcloud_obs) {
+        obstacle_source = "pointcloud";
+      } else if (nearest_object_obs) {
+        obstacle_source = "dynamic_object";
+      }
+
+      std::string log_message =
+        "COLLISION DETECTED! Distance: " + std::to_string(collision_distance) +
+        " m (threshold: " + std::to_string(node_param_.collision_distance) + " m), " +
+        "Relative Position: (" + std::to_string(collision_point.x) + ", " +
+        std::to_string(collision_point.y) + ", " + std::to_string(collision_point.z) + "), " +
+        "Source: " + obstacle_source;
+
+      if (!obstacle_class.empty()) {
+        log_message += " (" + obstacle_class + ")";
+      }
+
+      log_message += ", Collision duration: " + std::to_string(collision_duration) + " s, " +
+                     "Vehicle speed: " + std::to_string(vehicle_speed) + " m/s, " +
+                     "Hysteresis: " + std::to_string(hysteresis) + " m";
+
+      RCLCPP_ERROR(this->get_logger(), "%s", log_message.c_str());
+
       stat.addf("Distance to nearest neighbor object", "%lf", nearest_obstacle->first);
     } else {
-      stat.addf(
-        "Time since last detection", "%lf",
-        (this->now() - *most_recent_collision_stamp_).seconds() < node_param_.time_buffer.off);
+      double time_since_last_collision = 0.0;
+      if (most_recent_collision_stamp_.has_value()) {
+        time_since_last_collision = (this->now() - *most_recent_collision_stamp_).seconds();
+      }
+
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "COLLISION STATE MAINTAINED! Time since last detection: %.3f s "
+        "(off threshold: %.3f s), Hysteresis: %.3f m",
+        time_since_last_collision, node_param_.time_buffer.off, hysteresis);
+
+      stat.addf("Time since last detection", "%lf", time_since_last_collision);
     }
   } else {
     is_error_diag_ = false;
@@ -524,7 +768,12 @@ std::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByDynamicObject
     const auto distance_to_object = bg::distance(ego_polygon, object_polygon);
 
     if (distance_to_object < minimum_distance) {
-      nearest_point = object_pose.position;
+      geometry_msgs::msg::Point transformed_point;
+      transformed_point.x = transformed_object_pose.position.x;
+      transformed_point.y = transformed_object_pose.position.y;
+      transformed_point.z = transformed_object_pose.position.z;
+
+      nearest_point = transformed_point;
       minimum_distance = distance_to_object;
     }
   }
