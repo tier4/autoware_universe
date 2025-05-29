@@ -17,4 +17,10 @@
     <remap from="~/reset" to="$(var ~/reset)"/>
     <remap from="~/availability" to="$(var ~/availability)"/>
   </node>
+
+  <node pkg="autoware_diagnostic_graph_aggregator" exec="converter_node">
+    <param from="$(find-pkg-share autoware_diagnostic_graph_aggregator)/config/converter.param.yaml"/>
+    <remap from="~/command_mode/availability" to="/system/command_mode/availability"/>
+    <remap from="~/operation_mode/availability" to="/system/operation_mode/availability"/>
+  </node>
 </launch>
