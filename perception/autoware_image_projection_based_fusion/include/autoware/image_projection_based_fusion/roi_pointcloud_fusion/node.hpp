@@ -41,6 +41,9 @@ private:
   void postprocess(const PointCloudMsgType & pointcloud_msg, ClusterMsgType & output_msg) override;
 
   void publish(const ClusterMsgType & output_msg) override;
+  double pixelTo3DPoint(
+    const sensor_msgs::msg::RegionOfInterest & roi, const Eigen::Matrix4f & transform,
+    const double & margin_distance);
 
   int min_cluster_size_{1};
   int max_cluster_size_{20};
@@ -49,6 +52,8 @@ private:
   double cluster_2d_tolerance_;
   double roi_scale_factor_{1.0};
   bool override_class_with_unknown_{false};
+
+  const double margin_distance_ = 10.0;  // margin distance to avoid false negative detection
 
   std::vector<ClusterObjType> output_fused_objects_;
 };

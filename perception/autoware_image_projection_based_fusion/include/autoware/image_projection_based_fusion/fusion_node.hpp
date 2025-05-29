@@ -75,6 +75,12 @@ struct Det2dStatus
   double input_offset_ms = 0.0;
   // cache
   std::map<int64_t, typename Msg2D::ConstSharedPtr> cached_det2d_msgs;
+
+  Eigen::Matrix4f inv_projection_;
+  bool is_inv_projection_initialized_{false};
+  bool is_camera2lidar_mul_inv_projection_initialized_{false};
+  std::shared_ptr<TransformListener> transform_listener_;
+  geometry_msgs::msg::TransformStamped::ConstSharedPtr transform_;
 };
 
 template <class Msg3D, class Msg2D, class ExportObj>

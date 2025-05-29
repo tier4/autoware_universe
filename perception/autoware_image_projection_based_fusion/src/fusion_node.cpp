@@ -221,11 +221,20 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::cameraInfoCallback(
   // create the CameraProjection when the camera info arrives for the first time
   // assuming the camera info does not change while the node is running
   auto & det2d = det2d_list_.at(camera_id);
-  if (!det2d.camera_projector_ptr && checkCameraInfo(*input_camera_info_msg)) {
+  if (
+    !det2d.camera_projector_ptr && !det2d.is_inv_projection_initialized_ &&
+    checkCameraInfo(*input_camera_info_msg)) {
     det2d.camera_projector_ptr = std::make_unique<CameraProjection>(
       *input_camera_info_msg, approx_grid_cell_w_size_, approx_grid_cell_h_size_,
       det2d.project_to_unrectified_image, det2d.approximate_camera_projection);
     det2d.camera_projector_ptr->initialize();
+    Eigen::Matrix4f projection;
+    projection << camera_info_.p.at(0), camera_info_.p.at(1), camera_info_.p.at(2),
+      camera_info_.p.at(3), camera_info_.p.at(4), camera_info_.p.at(5), camera_info_.p.at(6),
+      camera_info_.p.at(7), camera_info_.p.at(8), camera_info_.p.at(9), camera_info_.p.at(10),
+      camera_info_.p.at(11), 0.0, 0.0, 0.0, 1.0;
+    det2d.inv_projection_ = projection.inverse();
+    det2d.is_inv_projection_initialized_ = true;
   }
 }
 
