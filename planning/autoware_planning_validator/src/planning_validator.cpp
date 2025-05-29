@@ -641,6 +641,11 @@ bool PlanningValidator::checkValidDistanceDeviation(const Trajectory & trajector
 
   if (validation_status_.distance_deviation > params_.validation_params.deviation.distance_th) {
     is_critical_error_ |= params_.validation_params.deviation.is_critical;
+    RCLCPP_ERROR(
+      get_logger(),
+      "Distance deviation exceeded threshold. Current: %f, Threshold: %f",
+      validation_status_.distance_deviation,
+      params_.validation_params.deviation.distance_th);
     return false;
   }
   return true;
@@ -836,6 +841,24 @@ bool PlanningValidator::checkValidYawDeviation(const Trajectory & trajectory)
   validation_status_.yaw_deviation = std::abs(angles::shortest_angular_distance(
     tf2::getYaw(interpolated_trajectory_point.pose.orientation),
     tf2::getYaw(current_kinematics_->pose.pose.orientation)));
+
+  constexpr double YAW_DEVIATION_WARN_THRESHOLD = 0.1;  // rad
+
+  if (validation_status_.yaw_deviation > params_.validation_params.deviation.yaw_th) {
+    is_critical_error_ |= params_.validation_params.deviation.is_critical;
+    RCLCPP_ERROR(
+      get_logger(),
+      "Yaw deviation exceeded threshold. Current: %f[rad], Threshold: %f[rad]",
+      validation_status_.yaw_deviation,
+      params_.validation_params.deviation.yaw_th);
+    return false;
+  } else if (validation_status_.yaw_deviation > YAW_DEVIATION_WARN_THRESHOLD) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Yaw deviation exceeded warning threshold. Current: %f[rad], Warning Threshold: %f[rad]",
+      validation_status_.yaw_deviation,
+      YAW_DEVIATION_WARN_THRESHOLD);
+  }
   return validation_status_.yaw_deviation <= params_.validation_params.deviation.yaw_th;
 }
 
