@@ -1,1 +1,0 @@
-# autoware_command_mode_types
