@@ -81,7 +81,7 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
         output_objs.push_back(feature_obj);
         const auto & roi = feature_obj.feature.roi;
         min_distance =
-          pixelTo3DPoint(roi, det2d.camera_projector_ptr->getTransform(), margin_distance_);
+          pixelTo3DPoint(roi, det2d.camera2lidar_mul_inv_projection_, margin_distance_);
         output_objs_distances.push_back(min_distance);
         debug_image_rois.push_back(feature_obj.feature.roi);
       }
@@ -93,13 +93,13 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
         output_objs.push_back(feature_obj_remap);
         const auto & roi = feature_obj_remap.feature.roi;
         min_distance =
-          pixelTo3DPoint(roi, det2d.camera_projector_ptr->getTransform(), margin_distance_);
+          pixelTo3DPoint(roi, det2d.camera2lidar_mul_inv_projection_, margin_distance_);
         output_objs_distances.push_back(min_distance);
       } else {
         output_objs.push_back(feature_obj);
         const auto & roi = feature_obj.feature.roi;
         min_distance =
-          pixelTo3DPoint(roi, det2d.camera_projector_ptr->getTransform(), margin_distance_);
+          pixelTo3DPoint(roi, det2d.camera2lidar_mul_inv_projection_, margin_distance_);
         output_objs_distances.push_back(min_distance);
       }
       debug_image_rois.push_back(feature_obj.feature.roi);
@@ -156,18 +156,17 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
     if (transformed_z <= 0.0) {
       continue;
     }
-
+    const float origin_x =
+      *reinterpret_cast<const float *>(&input_pointcloud_msg.data[offset + x_offset]);
+    const float origin_y =
+      *reinterpret_cast<const float *>(&input_pointcloud_msg.data[offset + y_offset]);
     Eigen::Vector2d projected_point;
     if (det2d.camera_projector_ptr->calcImageProjectedPoint(
           cv::Point3d(transformed_x, transformed_y, transformed_z), projected_point)) {
       for (std::size_t i = 0; i < output_objs.size(); ++i) {
         // check the distance to the object
         const double min_distance = output_objs_distances.at(i);
-        double distance = std::hypot(projected_point.x(), projected_point.y());
-        if (distance < min_distance) {
-          // skip if the point closer than the minimum distance
-          continue;
-        }
+        double distance = std::hypot(origin_x, origin_y);
         auto & feature_obj = output_objs.at(i);
         const auto & check_roi = feature_obj.feature.roi;
         auto & cluster = clusters.at(i);
@@ -227,8 +226,8 @@ double RoiPointCloudFusionNode::pixelTo3DPoint(
   const sensor_msgs::msg::RegionOfInterest & roi, const Eigen::Matrix4f & transform,
   const double & margin_distance)
 {
-  const double bottom_middle_x = roi.y_offset + roi.height;
-  const double bottom_middle_y = roi.x_offset + roi.width / 2.0;
+  const double bottom_middle_y = roi.y_offset + roi.height;
+  const double bottom_middle_x = roi.x_offset + roi.width / 2.0;
   auto w_div_projected_z =
     -(transform(2, 0) * bottom_middle_x + transform(2, 1) * bottom_middle_y + transform(2, 2)) /
     transform(2, 3);
@@ -236,7 +235,7 @@ double RoiPointCloudFusionNode::pixelTo3DPoint(
                             transform(3, 2) + transform(3, 3) * w_div_projected_z);
   auto w = w_div_projected_z * projected_z;
   Eigen::Vector4f projected_point =
-    Eigen::Vector4f(pixel(0) * projected_z, pixel(1) * projected_z, projected_z, w);
+    Eigen::Vector4f(bottom_middle_x * projected_z, bottom_middle_y * projected_z, projected_z, w);
   Eigen::Vector4f point = transform * projected_point;
   return sqrt(pow(point(0), 2) + pow(point(1), 2) + pow(point(2), 2)) - margin_distance;
 }
