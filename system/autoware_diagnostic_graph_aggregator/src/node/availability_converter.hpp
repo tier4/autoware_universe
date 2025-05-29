@@ -20,7 +20,7 @@
 #include <tier4_system_msgs/msg/command_mode_availability.hpp>
 #include <tier4_system_msgs/msg/operation_mode_availability.hpp>
 
-namespace autoware::command_mode_switcher
+namespace autoware::diagnostic_graph_aggregator
 {
 
 using tier4_system_msgs::msg::CommandModeAvailability;
@@ -44,8 +44,9 @@ private:
   uint16_t emergency_stop_;
   uint16_t comfortable_stop_;
   uint16_t pull_over_;
+  OperationModeAvailability out_;
 };
 
-}  // namespace autoware::command_mode_switcher
+}  // namespace autoware::diagnostic_graph_aggregator
 
 #endif  // NODE__AVAILABILITY_CONVERTER_HPP_

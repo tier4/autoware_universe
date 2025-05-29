@@ -16,7 +16,7 @@
 
 #include <unordered_map>
 
-namespace autoware::command_mode_switcher
+namespace autoware::diagnostic_graph_aggregator
 {
 
 AvailabilityConverter::AvailabilityConverter(const rclcpp::NodeOptions & options)
@@ -45,24 +45,23 @@ void AvailabilityConverter::on_availability(const CommandModeAvailability & in)
     availability[item.mode] = item.available;
   }
 
-  const auto is_available = [availability](uint16_t mode) {
+  const auto is_available = [availability](uint16_t mode, bool current) {
     const auto iter = availability.find(mode);
-    return iter != availability.end() ? iter->second : false;
+    return iter != availability.end() ? iter->second : current;
   };
 
-  OperationModeAvailability out;
-  out.stamp = in.stamp;
-  out.stop = is_available(stop_);
-  out.autonomous = is_available(autonomous_);
-  out.local = is_available(local_);
-  out.remote = is_available(remote_);
-  out.emergency_stop = is_available(emergency_stop_);
-  out.comfortable_stop = is_available(comfortable_stop_);
-  out.pull_over = is_available(pull_over_);
-  pub_operation_mode_->publish(out);
+  out_.stamp = in.stamp;
+  out_.stop = is_available(stop_, out_.stop);
+  out_.autonomous = is_available(autonomous_, out_.autonomous);
+  out_.local = is_available(local_, out_.local);
+  out_.remote = is_available(remote_, out_.remote);
+  out_.emergency_stop = is_available(emergency_stop_, out_.emergency_stop);
+  out_.comfortable_stop = is_available(comfortable_stop_, out_.comfortable_stop);
+  out_.pull_over = is_available(pull_over_, out_.pull_over);
+  pub_operation_mode_->publish(out_);
 }
 
-}  // namespace autoware::command_mode_switcher
+}  // namespace autoware::diagnostic_graph_aggregator
 
 #include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(autoware::command_mode_switcher::AvailabilityConverter)
+RCLCPP_COMPONENTS_REGISTER_NODE(autoware::diagnostic_graph_aggregator::AvailabilityConverter)

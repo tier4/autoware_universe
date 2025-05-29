@@ -41,7 +41,7 @@ rclcpp_components_register_node(aggregator
 )
 
 rclcpp_components_register_node(converter
-  PLUGIN "autoware::command_mode_switcher::AvailabilityConverter"
+  PLUGIN "autoware::diagnostic_graph_aggregator::AvailabilityConverter"
   EXECUTABLE "converter_node"
 )
 
