@@ -837,7 +837,7 @@ std::optional<StopObstacle> ObstacleStopModule::pick_stop_obstacle_from_predicte
       predicted_object.shape, dist_to_bumper);
     if (collision_point) {
       collision_point->second -= std::abs(odometry.twist.twist.linear.x) * estimation_time;
-      if (collision_point->second < 3.0) {
+      if (collision_point->second < 0.0) {
         return std::nullopt;
       }
     }
