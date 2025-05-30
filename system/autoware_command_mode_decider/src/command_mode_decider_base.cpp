@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace autoware::command_mode_decider
@@ -327,13 +328,36 @@ void CommandModeDeciderBase::update_current_mode()
   }
 
   // Search current command mode.
-  for (const auto & [mode, item] : command_mode_status_) {
-    if (item.status.data.is_vehicle_ready()) {
-      if (curr_mode_ != mode) {
-        curr_mode_ = mode;
+  {
+    std::unordered_set<uint16_t> vehicle_ready_modes;
+    for (const auto & [mode, item] : command_mode_status_) {
+      if (item.status.data.is_vehicle_ready()) {
+        vehicle_ready_modes.insert(mode);
+      }
+    }
+
+    // If there are multiple modes, use the highest priority.
+    bool curr_mode = autoware::command_mode_types::modes::unknown;
+    for (const auto & mode : request_modes_) {
+      if (vehicle_ready_modes.count(mode)) {
+        curr_mode = mode;
+        break;
+      }
+    }
+    // If not, use one of them.
+    if (curr_mode == autoware::command_mode_types::modes::unknown) {
+      if (!vehicle_ready_modes.empty()) {
+        curr_mode = *vehicle_ready_modes.begin();
+      }
+    }
+
+    if (curr_mode != autoware::command_mode_types::modes::unknown) {
+      if (curr_mode_ != curr_mode) {
+        curr_mode_ = curr_mode;
         RCLCPP_INFO_STREAM(get_logger(), "Curr mode changed: " << curr_mode_);
       }
-      break;
+    } else {
+      RCLCPP_WARN_STREAM(get_logger(), "Curr mode is unknown.");
     }
   }
 
