@@ -29,8 +29,17 @@ CommandModeSwitcher::CommandModeSwitcher(const rclcpp::NodeOptions & options)
 : Node("command_mode_switcher", options),
   loader_("autoware_command_mode_switcher", "autoware::command_mode_switcher::CommandPlugin"),
   control_gate_interface_(*this, [this]() { update(); }),
+  network_gate_interface_(*this, [this]() { update(); }),
   vehicle_gate_interface_(*this, [this]() { update(); })
 {
+  // ECU ID for multiple devices systems.
+  {
+    const auto multiple_ecu_enabled = declare_parameter<bool>("multiple_ecu_enabled");
+    if (multiple_ecu_enabled) {
+      ecu_ = declare_parameter<uint8_t>("multiple_ecu_identifier");
+    }
+  }
+
   // Create control gate switcher.
   {
     const auto plugins = declare_parameter<std::vector<std::string>>("plugins");
@@ -193,6 +202,7 @@ void CommandModeSwitcher::update_status()
     const auto count = group_count[plugin->source()];
     status.command_exclusive = status.command_enabled && (count.total <= count.disabled + 1);
     status.command_selected = control_gate_interface_.is_selected(*plugin);
+    status.network_selected = network_gate_interface_.is_selected(ecu_);
     status.vehicle_selected = vehicle_gate_interface_.is_selected(*plugin);
     status.mrm = plugin->update_mrm_state();
     status.transition_completed = plugin->get_transition_completed();

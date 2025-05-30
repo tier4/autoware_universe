@@ -37,6 +37,7 @@ struct CommandModeStatusItem
   bool transition_completed;
   bool request;
   bool vehicle_selected;
+  bool network_selected;
   bool command_selected;
   bool command_exclusive;
   bool command_enabled;
@@ -45,7 +46,7 @@ struct CommandModeStatusItem
   explicit CommandModeStatusItem(uint16_t mode = 0);
   bool is_completed() const;
   bool is_vehicle_ready() const;
-  bool is_command_ready() const;
+  bool is_network_ready() const;
 };
 
 struct CommandModeStatus

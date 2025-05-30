@@ -24,6 +24,7 @@ CommandModeStatusItem::CommandModeStatusItem(uint16_t mode) : mode(mode)
   transition = false;
   request = false;
   vehicle_selected = false;
+  network_selected = false;
   command_selected = false;
   command_exclusive = false;
   command_enabled = false;
@@ -37,12 +38,12 @@ bool CommandModeStatusItem::is_completed() const
 
 bool CommandModeStatusItem::is_vehicle_ready() const
 {
-  return vehicle_selected && is_command_ready();
+  return vehicle_selected && is_network_ready();
 }
 
-bool CommandModeStatusItem::is_command_ready() const
+bool CommandModeStatusItem::is_network_ready() const
 {
-  return command_selected && command_exclusive;
+  return network_selected && command_selected && command_exclusive;
 }
 
 }  // namespace autoware::command_mode_types

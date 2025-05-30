@@ -317,7 +317,7 @@ void CommandModeDeciderBase::update_current_mode()
     if (plugin_->to_operation_mode(mode) == OperationModeState::UNKNOWN) {
       continue;
     }
-    if (item.status.data.is_command_ready()) {
+    if (item.status.data.is_network_ready()) {
       if (curr_operation_mode_ != mode) {
         curr_operation_mode_ = mode;
         RCLCPP_INFO_STREAM(get_logger(), "Operation mode changed: " << curr_operation_mode_);
@@ -327,14 +327,20 @@ void CommandModeDeciderBase::update_current_mode()
   }
 
   // Search current command mode.
+  std::optional<uint16_t> curr_mode;
   for (const auto & [mode, item] : command_mode_status_) {
     if (item.status.data.is_vehicle_ready()) {
-      if (curr_mode_ != mode) {
-        curr_mode_ = mode;
-        RCLCPP_INFO_STREAM(get_logger(), "Curr mode changed: " << curr_mode_);
-      }
+      curr_mode = mode;
       break;
     }
+  }
+  if (curr_mode) {
+    if (curr_mode_ != *curr_mode) {
+      curr_mode_ = *curr_mode;
+      RCLCPP_INFO_STREAM(get_logger(), "Curr mode changed: " << curr_mode_);
+    }
+  } else {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Curr mode is unknown.");
   }
 
   // Update last confirmed mode.

@@ -72,11 +72,13 @@ private:
   std::vector<std::shared_ptr<Command>> commands_;
   std::unordered_map<uint16_t, std::shared_ptr<Command>> autoware_commands_;
   ControlGateInterface control_gate_interface_;
+  NetworkGateInterface network_gate_interface_;
   VehicleGateInterface vehicle_gate_interface_;
 
   bool prev_manual_control_ = false;
   VehicleModeRequest vehicle_mode_request_ = VehicleModeRequest::None;
   std::shared_ptr<Command> command_mode_request_;
+  std::optional<uint8_t> ecu_;
 };
 
 }  // namespace autoware::command_mode_switcher

@@ -58,6 +58,7 @@ tier4_system_msgs::msg::CommandModeStatusItem to_msg(const CommandModeStatusItem
   msg.transition_completed = item.transition_completed;
   msg.request = item.request;
   msg.vehicle_selected = item.vehicle_selected;
+  msg.network_selected = item.network_selected;
   msg.command_selected = item.command_selected;
   msg.command_exclusive = item.command_exclusive;
   msg.command_enabled = item.command_enabled;
@@ -74,6 +75,7 @@ CommandModeStatusItem from_msg(const tier4_system_msgs::msg::CommandModeStatusIt
   custom.transition_completed = item.transition_completed;
   custom.request = item.request;
   custom.vehicle_selected = item.vehicle_selected;
+  custom.network_selected = item.network_selected;
   custom.command_selected = item.command_selected;
   custom.command_exclusive = item.command_exclusive;
   custom.command_enabled = item.command_enabled;

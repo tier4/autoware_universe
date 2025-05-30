@@ -1,6 +1,7 @@
 /**:
   ros__parameters:
     update_rate: 10.0
+    multiple_ecu_enabled: false
     plugins:
       - autoware::command_mode_switcher::StopSwitcher
       - autoware::command_mode_switcher::AutonomousSwitcher

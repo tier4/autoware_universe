@@ -21,10 +21,12 @@
 
 #include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
 #include <autoware_vehicle_msgs/srv/control_mode_command.hpp>
+#include <tier4_external_api_msgs/msg/election_status.hpp>
 #include <tier4_system_msgs/msg/command_source_status.hpp>
 #include <tier4_system_msgs/srv/select_command_source.hpp>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace autoware::command_mode_switcher
@@ -79,6 +81,24 @@ private:
   bool requesting_ = false;
   Callback notification_callback_;
   ControlModeReport status_;
+};
+
+class NetworkGateInterface
+{
+public:
+  using Callback = std::function<void()>;
+  NetworkGateInterface(rclcpp::Node & node, Callback callback);
+  bool is_selected(const std::optional<uint8_t> ecu) const;
+
+private:
+  using ElectionStatus = tier4_external_api_msgs::msg::ElectionStatus;
+  void on_election_status(const ElectionStatus & msg);
+
+  rclcpp::Node & node_;
+  rclcpp::Subscription<ElectionStatus>::SharedPtr sub_election_status_;
+
+  Callback notification_callback_;
+  std::optional<uint8_t> ecu_;
 };
 
 }  // namespace autoware::command_mode_switcher

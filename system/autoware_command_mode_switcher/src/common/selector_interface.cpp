@@ -44,6 +44,16 @@ VehicleGateInterface::VehicleGateInterface(rclcpp::Node & node, Callback callbac
     std::bind(&VehicleGateInterface::on_control_mode, this, std::placeholders::_1));
 }
 
+NetworkGateInterface::NetworkGateInterface(rclcpp::Node & node, Callback callback) : node_(node)
+{
+  notification_callback_ = callback;
+  ecu_ = std::nullopt;
+
+  sub_election_status_ = node.create_subscription<ElectionStatus>(
+    "~/election/status", rclcpp::QoS(1),
+    std::bind(&NetworkGateInterface::on_election_status, this, std::placeholders::_1));
+}
+
 template <class T>
 bool equals_except_stamp(const T & msg1, const T & msg2)
 {
@@ -65,6 +75,34 @@ void VehicleGateInterface::on_control_mode(const ControlModeReport & msg)
   const auto equals = equals_except_stamp(status_, msg);
   status_ = msg;
   if (!equals) notification_callback_();
+}
+
+void NetworkGateInterface::on_election_status(const ElectionStatus & msg)
+{
+  const auto get_ecu = [](uint8_t node, uint8_t path) -> std::optional<uint8_t> {
+    switch (node) {
+      case ElectionStatus::ELECTION_UNCLOSED:
+      case ElectionStatus::PATH_NOT_FOUND:
+      case ElectionStatus::SELF_INTERRUPTION:
+        return std::nullopt;
+    }
+    switch (path) {
+      case ElectionStatus::MAIN_ECU_TO_MAIN_VCU:
+      case ElectionStatus::MAIN_ECU_TO_SUB_VCU:
+        return ElectionStatus::MAIN_ECU;
+      case ElectionStatus::SUB_ECU_TO_MAIN_VCU:
+      case ElectionStatus::SUB_ECU_TO_SUB_VCU:
+        return ElectionStatus::SUB_ECU;
+      default:
+        return std::nullopt;
+    }
+  };
+
+  const auto ecu = get_ecu(msg.node_state, msg.path_info);
+  if (ecu_ != ecu) {
+    ecu_ = ecu;
+    notification_callback_();
+  }
 }
 
 bool ControlGateInterface::is_in_transition() const
@@ -94,6 +132,11 @@ bool VehicleGateInterface::is_selected(const CommandPlugin & plugin) const
   } else {
     return status_.mode == ControlModeReport::MANUAL;
   }
+}
+
+bool NetworkGateInterface::is_selected(const std::optional<uint8_t> ecu) const
+{
+  return ecu_ == ecu;
 }
 
 bool ControlGateInterface::request(const CommandPlugin & plugin, bool transition)
