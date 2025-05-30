@@ -41,7 +41,6 @@
   <arg name="car_traffic_light_classifier_param_path"/>
   <arg name="pedestrian_traffic_light_classifier_param_path"/>
   <arg name="traffic_light_roi_visualizer_param_path"/>
-  <arg name="traffic_light_selector_param_path"/>
   <arg name="traffic_light_occlusion_predictor_param_path"/>
   <arg name="traffic_light_multi_camera_fusion_param_path"/>
   <arg name="traffic_light_arbiter_param_path"/>
@@ -86,6 +85,8 @@
   <arg name="detection_rois7" default="/perception/object_recognition/detection/rois7"/>
   <arg name="image_number" default="6" description="choose image raw number(1-8)"/>
   <arg name="image_topic_name" default="image_rect_color" description="image topic name options `image_rect_color`, `image_raw"/>
+  <arg name="segmentation_pointcloud_fusion_camera_ids" default="[0,1,5]" description="list of camera ids used for segmentation_pointcloud_fusion node"/>
+
   <arg name="pointcloud_container_name" default="pointcloud_container"/>
 
   <!-- Pipeline junctions -->
@@ -269,6 +270,7 @@
           <arg name="objects_filter_method" value="$(var objects_filter_method)"/>
           <arg name="use_irregular_object_detector" value="$(var use_irregular_object_detector)"/>
           <arg name="image_topic_name" value="$(var image_topic_name)"/>
+          <arg name="segmentation_pointcloud_fusion_camera_ids" value="$(var segmentation_pointcloud_fusion_camera_ids)"/>
         </include>
       </group>
 
@@ -322,7 +324,6 @@
         <arg name="car_traffic_light_classifier_param_path" value="$(var car_traffic_light_classifier_param_path)"/>
         <arg name="pedestrian_traffic_light_classifier_param_path" value="$(var pedestrian_traffic_light_classifier_param_path)"/>
         <arg name="traffic_light_roi_visualizer_param_path" value="$(var traffic_light_roi_visualizer_param_path)"/>
-        <arg name="traffic_light_selector_param_path" value="$(var traffic_light_selector_param_path)"/>
         <arg name="traffic_light_occlusion_predictor_param_path" value="$(var traffic_light_occlusion_predictor_param_path)"/>
         <arg name="traffic_light_multi_camera_fusion_param_path" value="$(var traffic_light_multi_camera_fusion_param_path)"/>
         <arg name="traffic_light_arbiter_param_path" value="$(var traffic_light_arbiter_param_path)"/>
