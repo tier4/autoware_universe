@@ -21,6 +21,7 @@
 #include <autoware/tensorrt_common/tensorrt_conv_calib.hpp>
 #include <autoware/tensorrt_common/utils.hpp>
 #include <autoware/tensorrt_yolox/preprocess.hpp>
+#include <cuda_blackboard/cuda_image.hpp>
 #include <opencv2/opencv.hpp>
 
 #include <memory>
@@ -33,6 +34,7 @@ using autoware::cuda_utils::CudaUniquePtr;
 using autoware::cuda_utils::CudaUniquePtrHost;
 using autoware::cuda_utils::makeCudaStream;
 using autoware::cuda_utils::StreamUniquePtr;
+using CudaImage = cuda_blackboard::CudaImage;
 
 struct Object
 {
@@ -123,6 +125,10 @@ public:
   bool doInference(
     const std::vector<cv::Mat> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
     std::vector<cv::Mat> & color_masks);
+  
+  bool doInference(
+    const std::vector<std::shared_ptr<const CudaImage>> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
+    std::vector<cv::Mat> & color_masks);
 
   /**
    * @brief run inference including pre-process and post-process
@@ -132,6 +138,8 @@ public:
    */
   bool doInferenceWithRoi(
     const std::vector<cv::Mat> & images, ObjectArrays & objects, const std::vector<cv::Rect> & roi);
+  bool doInferenceWithRoi(
+    const std::vector<std::shared_ptr<const CudaImage>> & images, ObjectArrays & objects, const std::vector<cv::Rect> & roi);
 
   /**
    * @brief run multi-scale inference including pre-process and post-process
@@ -141,6 +149,8 @@ public:
    */
   bool doMultiScaleInference(
     const cv::Mat & image, ObjectArrays & objects, const std::vector<cv::Rect> & roi);
+  bool doMultiScaleInference(
+    const std::shared_ptr<const CudaImage> & image, ObjectArrays & objects, const std::vector<cv::Rect> & roi
 
   /**
    * @brief allocate buffer for preprocess on GPU
@@ -190,6 +200,8 @@ private:
    * @param[in] images batching images
    */
   void preprocessGpu(const std::vector<cv::Mat> & images);
+  void preprocessGpu(
+    const std::vector<std::shared_ptr<const CudaImage>> & images);
 
   /**
    * @brief run preprocess including resizing, letterbox, NHWC2NCHW and toFloat on CPU
@@ -197,6 +209,8 @@ private:
    * @param[in] rois region of interest
    */
   void preprocessWithRoi(const std::vector<cv::Mat> & images, const std::vector<cv::Rect> & rois);
+  void preprocessWithRoi(
+    const std::vector<std::shared_ptr<const CudaImage>> & images, const std::vector<cv::Rect> & rois);
 
   /**
    * @brief run preprocess on GPU
@@ -221,13 +235,23 @@ private:
   void multiScalePreprocessGpu(const cv::Mat & image, const std::vector<cv::Rect> & rois);
 
   bool multiScaleFeedforward(const cv::Mat & image, int batch_size, ObjectArrays & objects);
+  bool multiScaleFeedforward(
+    const std::shared_ptr<const CudaImage> & image, int batch_size, ObjectArrays & objects);
   bool multiScaleFeedforwardAndDecode(
     const cv::Mat & images, int batch_size, ObjectArrays & objects);
+  bool multiScaleFeedforwardAndDecode(
+    const std::shared_ptr<const CudaImage> & images, int batch_size, ObjectArrays & objects);
 
   bool feedforward(const std::vector<cv::Mat> & images, ObjectArrays & objects);
+  bool feedforward(
+    const std::vector<std::shared_ptr<const CudaImage>> & images, ObjectArrays & objects);
   bool feedforwardAndDecode(
     const std::vector<cv::Mat> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
     std::vector<cv::Mat> & color_masks);
+  bool feedforwardAndDecode(
+    const std::vector<std::shared_ptr<const CudaImage>> & images, ObjectArrays & objects,
+    std::vector<cv::Mat> & masks, std::vector<cv::Mat> & color_masks);
+
   void decodeOutputs(float * prob, ObjectArray & objects, float scale, cv::Size & img_size) const;
   void generateGridsAndStride(
     const int target_w, const int target_h, const std::vector<int> & strides,

@@ -28,6 +28,9 @@
 #include <std_msgs/msg/header.hpp>
 #include <tier4_perception_msgs/msg/detected_objects_with_feature.hpp>
 #include <tier4_perception_msgs/msg/semantic.hpp>
+#include <cuda_blackboard/cuda_image.hpp>
+#include <cuda_blackboard/cuda_adaptation.hpp>
+#include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
 
 #if __has_include(<cv_bridge/cv_bridge.hpp>)
 #include <cv_bridge/cv_bridge.hpp>
@@ -48,6 +51,7 @@ namespace autoware::tensorrt_yolox
 // cspell: ignore Semseg
 using LabelMap = std::map<int, std::string>;
 using Label = tier4_perception_msgs::msg::Semantic;
+using CudaImage = cuda_blackboard::CudaImage;
 class TrtYoloXNode : public rclcpp::Node
 {
   struct RoiOverlaySemsegLabel
