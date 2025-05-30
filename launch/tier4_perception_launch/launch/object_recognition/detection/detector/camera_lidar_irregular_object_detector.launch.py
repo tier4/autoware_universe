@@ -46,13 +46,20 @@ class SmallUnknownPipeline:
         # convert string to list
         self.camera_ids = yaml.load(self.camera_ids, Loader=yaml.FullLoader)
         self.roi_pointcloud_fusion_param["rois_number"] = len(self.camera_ids)
-        input_offset_ms = []
+        rois_timestamp_offsets = []
+        approximate_camera_projection = []
+        rois_timestamp_noise_window = []
         approximate_camera_projection = []
         point_project_to_unrectified_image = []
 
         for index, camera_id in enumerate(self.camera_ids):
-            input_offset_ms.append(
-                self.roi_pointcloud_fusion_sync_param["input_offset_ms"][camera_id]
+            rois_timestamp_offsets.append(
+                self.roi_pointcloud_fusion_sync_param["rois_timestamp_offsets"][camera_id]
+            )
+            rois_timestamp_noise_window.append(
+                self.roi_pointcloud_fusion_sync_param["matching_strategy"][
+                    "rois_timestamp_noise_window"
+                ][camera_id]
             )
             approximate_camera_projection.append(
                 self.roi_pointcloud_fusion_sync_param["approximate_camera_projection"][camera_id]
@@ -72,7 +79,13 @@ class SmallUnknownPipeline:
                 f"/sensing/camera/camera{camera_id}/image_raw"
             )
 
-        self.roi_pointcloud_fusion_sync_param["input_offset_ms"] = input_offset_ms
+        self.roi_pointcloud_fusion_sync_param["rois_timestamp_offsets"] = rois_timestamp_offsets
+        self.roi_pointcloud_fusion_sync_param["approximate_camera_projection"] = (
+            approximate_camera_projection
+        )
+        self.roi_pointcloud_fusion_sync_param["matching_strategy"][
+            "rois_timestamp_noise_window"
+        ] = rois_timestamp_noise_window
         self.roi_pointcloud_fusion_sync_param["approximate_camera_projection"] = (
             approximate_camera_projection
         )
