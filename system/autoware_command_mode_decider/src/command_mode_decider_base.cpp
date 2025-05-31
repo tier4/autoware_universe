@@ -203,6 +203,7 @@ void CommandModeDeciderBase::on_control_mode(const ControlModeReport & msg)
     item.transition = false;
     item.request = curr_manual_control_;
     item.vehicle_selected = curr_manual_control_;
+    item.network_selected = true;
     item.command_selected = true;
     item.command_exclusive = true;
     item.command_enabled = true;
