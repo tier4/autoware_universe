@@ -162,7 +162,9 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
         const double py = projected_point.y();
 
         // is not correct to skip fusion and keep a cluster with a partial of points
-        if (isPointInsideRoi(check_roi, px, py, roi_scale_factor_)) {
+        if (
+          isPointInsideRoi(check_roi, px, py, roi_scale_factor_) &&
+          point_distance > roi_distance * roi_distance_margin_rate_) {
           // append point data to clusters data vector
           cluster.data.insert(
             cluster.data.end(), &input_pointcloud_msg.data[offset],
