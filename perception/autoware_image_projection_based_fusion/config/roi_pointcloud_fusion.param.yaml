@@ -6,4 +6,5 @@
     cluster_2d_tolerance: 0.5
     roi_scale_factor: 1.0
     max_object_size: 2.0
+    roi_distance_margin_rate: 0.9
     override_class_with_unknown: false

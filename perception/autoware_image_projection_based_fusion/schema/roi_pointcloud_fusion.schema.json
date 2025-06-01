@@ -46,6 +46,12 @@
           "description": "The maximum size of the object to be considered as valid.",
           "default": 2.0,
           "exclusiveMinimum": 0.0
+        },
+        "roi_distance_margin_rate": {
+          "type": "number",
+          "description": "The margin scale for roi distance",
+          "default": 0.9,
+          "exclusiveMinimum": 0.0
         }
       },
       "required": [

@@ -48,6 +48,7 @@ RoiPointCloudFusionNode::RoiPointCloudFusionNode(const rclcpp::NodeOptions & opt
   roi_scale_factor_ = declare_parameter<double>("roi_scale_factor");
   override_class_with_unknown_ = declare_parameter<bool>("override_class_with_unknown");
   max_object_size_ = declare_parameter<double>("max_object_size");
+  roi_distance_margin_rate_ = declare_parameter<double>("roi_distance_margin_rate");
 
   // publisher
   pub_ptr_ = this->create_publisher<ClusterMsgType>("output", rclcpp::QoS{1});
@@ -67,22 +68,15 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
   }
 
   std::vector<DetectedObjectWithFeature> output_objs;
-  std::vector<float> output_objs_distances;
   std::vector<sensor_msgs::msg::RegionOfInterest> debug_image_rois;
   std::vector<Eigen::Vector2d> debug_image_points;
   // select ROIs for fusion
-  double min_distance = -1.0;
   for (const auto & feature_obj : input_roi_msg.feature_objects) {
-    // add calculate object rough distance
     if (fuse_unknown_only_) {
       bool is_roi_label_unknown =
         feature_obj.object.classification.front().label == Classification::UNKNOWN;
       if (is_roi_label_unknown) {
         output_objs.push_back(feature_obj);
-        const auto & roi = feature_obj.feature.roi;
-        min_distance =
-          pixelTo3DPoint(roi, det2d.camera2lidar_mul_inv_projection_, margin_distance_);
-        output_objs_distances.push_back(min_distance);
         debug_image_rois.push_back(feature_obj.feature.roi);
       }
     } else {
@@ -91,16 +85,8 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
         auto feature_obj_remap = feature_obj;
         feature_obj_remap.object.classification.front().label = Classification::UNKNOWN;
         output_objs.push_back(feature_obj_remap);
-        const auto & roi = feature_obj_remap.feature.roi;
-        min_distance =
-          pixelTo3DPoint(roi, det2d.camera2lidar_mul_inv_projection_, margin_distance_);
-        output_objs_distances.push_back(min_distance);
       } else {
         output_objs.push_back(feature_obj);
-        const auto & roi = feature_obj.feature.roi;
-        min_distance =
-          pixelTo3DPoint(roi, det2d.camera2lidar_mul_inv_projection_, margin_distance_);
-        output_objs_distances.push_back(min_distance);
       }
       debug_image_rois.push_back(feature_obj.feature.roi);
     }
@@ -165,10 +151,11 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
           cv::Point3d(transformed_x, transformed_y, transformed_z), projected_point)) {
       for (std::size_t i = 0; i < output_objs.size(); ++i) {
         // check the distance to the object
-        const double min_distance = output_objs_distances.at(i);
-        double distance = std::hypot(origin_x, origin_y);
+        double point_distance = std::hypot(origin_x, origin_y);
         auto & feature_obj = output_objs.at(i);
         const auto & check_roi = feature_obj.feature.roi;
+        const auto roi_distance =
+          calcRoiDistance(check_roi, det2d.camera2lidar_mul_inv_projection_);
         auto & cluster = clusters.at(i);
 
         const double px = projected_point.x();
@@ -222,9 +209,8 @@ void RoiPointCloudFusionNode::postprocess(
   }
 }
 
-double RoiPointCloudFusionNode::pixelTo3DPoint(
-  const sensor_msgs::msg::RegionOfInterest & roi, const Eigen::Matrix4f & transform,
-  const double & margin_distance)
+double RoiPointCloudFusionNode::calcRoiDistance(
+  const sensor_msgs::msg::RegionOfInterest & roi, const Eigen::Matrix4f & transform)
 {
   const double bottom_middle_y = roi.y_offset + roi.height;
   const double bottom_middle_x = roi.x_offset + roi.width / 2.0;
@@ -237,7 +223,7 @@ double RoiPointCloudFusionNode::pixelTo3DPoint(
   Eigen::Vector4f projected_point =
     Eigen::Vector4f(bottom_middle_x * projected_z, bottom_middle_y * projected_z, projected_z, w);
   Eigen::Vector4f point = transform * projected_point;
-  return sqrt(pow(point(0), 2) + pow(point(1), 2) + pow(point(2), 2)) - margin_distance;
+  return sqrt(pow(point(0), 2) + pow(point(1), 2) + pow(point(2), 2));
 }
 
 void RoiPointCloudFusionNode::publish(const ClusterMsgType & output_msg)
