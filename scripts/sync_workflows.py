@@ -184,35 +184,8 @@ def write_workflow_file(filepath: Path, content: str | dict, *, is_yaml_obj: boo
         logger.exception("  Error: Failed to write '%s'", filepath)
 
 
-def main() -> None:  # noqa: C901, PLR0912
-    logger.info("🔄 Starting workflow sync...\n")
-
-    # Check for GitHub token
-    if not GITHUB_TOKEN:
-        logger.error("❌ Error: GITHUB_TOKEN environment variable is required.")
-        logger.error("   Set it with: export GITHUB_TOKEN=your_token_here")
-        sys.exit(1)
-
-    # Load settings
-    logger.info("📖 Loading settings from %s", SETTINGS_FILE)
-    settings = load_settings(SETTINGS_FILE)
-
-    workflows_config = settings.get("workflows", {})
-    keep_workflows = workflows_config.get("keep", [])
-    ignore_workflows = set(workflows_config.get("ignore", []))
-    modify_workflows = workflows_config.get("modify", {})
-    unique_tier4_workflows = workflows_config.get("unique_tier4_workflows", [])
-
-    logger.info("   Keep: %s workflows", len(keep_workflows))
-    logger.info("   Modify: %s workflows", len(modify_workflows))
-    logger.info("   Ignore: %s workflows", len(ignore_workflows))
-    logger.info("   Unique TIER IV: %s workflows", len(unique_tier4_workflows))
-
-    # Ensure workflows directory exists
-    WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
-    logger.info("\n📁 Workflows directory: %s", WORKFLOWS_DIR)
-
-    # Check existence of unique TIER IV workflows
+def check_unique_tier4_workflows(unique_tier4_workflows: list) -> None:
+    """Check existence of unique TIER IV workflows."""
     if unique_tier4_workflows:
         logger.info("\n🔍 Checking unique TIER IV workflows...")
         for workflow in unique_tier4_workflows:
@@ -222,7 +195,9 @@ def main() -> None:  # noqa: C901, PLR0912
             else:
                 logger.warning("  ⚠️  Missing: %s", workflow)
 
-    # Process 'keep' workflows
+
+def process_keep_workflows(keep_workflows: list) -> None:
+    """Process 'keep' workflows by downloading and writing them."""
     logger.info("\n🔗 Syncing %s 'keep' workflows...", len(keep_workflows))
     for workflow in keep_workflows:
         logger.info("\n📥 Syncing (keep): %s", workflow)
@@ -230,7 +205,9 @@ def main() -> None:  # noqa: C901, PLR0912
         if content:
             write_workflow_file(WORKFLOWS_DIR / workflow, content)
 
-    # Process 'modify' workflows
+
+def process_modify_workflows(modify_workflows: dict) -> None:
+    """Process 'modify' workflows by downloading, modifying, and writing them."""
     logger.info("\n🔧 Syncing %s 'modify' workflows...", len(modify_workflows))
     for workflow, modifications in modify_workflows.items():
         logger.info("\n📥 Syncing (modify): %s", workflow)
@@ -243,7 +220,13 @@ def main() -> None:  # noqa: C901, PLR0912
             if modified_yaml:
                 write_workflow_file(WORKFLOWS_DIR / workflow, modified_yaml, is_yaml_obj=True)
 
-    # Check for extra workflows
+
+def check_extra_workflows(
+    keep_workflows: list,
+    modify_workflows: dict,
+    unique_tier4_workflows: list,
+) -> None:
+    """Check for extra workflows not mentioned in settings."""
     logger.info("\n🔍 Checking for extra workflows...")
     if WORKFLOWS_DIR.exists():
         local_workflows = {p.name for p in WORKFLOWS_DIR.glob("*.yaml") if p.is_file()}
@@ -273,6 +256,41 @@ def main() -> None:  # noqa: C901, PLR0912
             )
     else:
         logger.info("i  No local workflows directory found yet.")
+
+
+def main() -> None:
+    logger.info("🔄 Starting workflow sync...\n")
+
+    # Check for GitHub token
+    if not GITHUB_TOKEN:
+        logger.error("❌ Error: GITHUB_TOKEN environment variable is required.")
+        logger.error("   Set it with: export GITHUB_TOKEN=your_token_here")
+        sys.exit(1)
+
+    # Load settings
+    logger.info("📖 Loading settings from %s", SETTINGS_FILE)
+    settings = load_settings(SETTINGS_FILE)
+
+    workflows_config = settings.get("workflows", {})
+    keep_workflows = workflows_config.get("keep", [])
+    ignore_workflows = set(workflows_config.get("ignore", []))
+    modify_workflows = workflows_config.get("modify", {})
+    unique_tier4_workflows = workflows_config.get("unique_tier4_workflows", [])
+
+    logger.info("   Keep: %s workflows", len(keep_workflows))
+    logger.info("   Modify: %s workflows", len(modify_workflows))
+    logger.info("   Ignore: %s workflows", len(ignore_workflows))
+    logger.info("   Unique TIER IV: %s workflows", len(unique_tier4_workflows))
+
+    # Ensure workflows directory exists
+    WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info("\n📁 Workflows directory: %s", WORKFLOWS_DIR)
+
+    # Process workflows
+    check_unique_tier4_workflows(unique_tier4_workflows)
+    process_keep_workflows(keep_workflows)
+    process_modify_workflows(modify_workflows)
+    check_extra_workflows(keep_workflows, modify_workflows, unique_tier4_workflows)
 
     logger.info("\n✅ Workflow sync completed!")
 
