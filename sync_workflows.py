@@ -4,11 +4,13 @@ Workflow sync script for autoware_universe.
 Syncs workflows from autowarefoundation/autoware_universe according to workflow_sync_setting.yaml
 """
 
-from io import StringIO
+from __future__ import annotations
+
 import logging
 import os
-from pathlib import Path
 import sys
+from io import StringIO
+from pathlib import Path
 
 import requests
 
@@ -187,8 +189,8 @@ def main() -> None:
 
     # Check for GitHub token
     if not GITHUB_TOKEN:
-        logger.error("❌ Error: AUTOWARE_RELEASE_GITHUB_TOKEN environment variable is required.")
-        logger.error("   Set it with: export AUTOWARE_RELEASE_GITHUB_TOKEN=your_token_here")
+        logger.error("❌ Error: GITHUB_TOKEN environment variable is required.")
+        logger.error("   Set it with: export GITHUB_TOKEN=your_token_here")
         sys.exit(1)
 
     # Load settings
@@ -240,19 +242,20 @@ def main() -> None:
 
         if extra_workflows:
             logger.warning(
-                "\n⚠️  Found %s extra workflows not mentioned in settings:", len(extra_workflows)
+                "\n⚠️  Found %s extra workflows not mentioned in settings:",
+                len(extra_workflows),
             )
             for workflow in sorted(extra_workflows):
                 logger.warning("   - %s", workflow)
             logger.warning(
-                "\n💡 These workflows are present locally but not in 'keep' or 'modify' sections."
+                "\n💡 These workflows are present locally but not in 'keep' or 'modify' sections.",
             )
             logger.warning(
-                "   Consider adding them to 'ignore' section if they should remain local-only."
+                "   Consider adding them to 'ignore' section if they should remain local-only.",
             )
         else:
             logger.info(
-                "✅ No extra workflows found - all local workflows are managed by settings."
+                "✅ No extra workflows found - all local workflows are managed by settings.",
             )
     else:
         logger.info("i  No local workflows directory found yet.")
