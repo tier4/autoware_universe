@@ -11,6 +11,10 @@ workflows:
     - spell-check-differential.yaml
 
   ignore:
+    # TIER IV unique workflows (not present in upstream)
+    - sync-workflows.yaml
+
+    # Upstream workflows ignored for TIER IV environment
     - bump-version-pr.yaml
     - comment-on-pr.yaml
     - cppcheck-weekly.yaml
