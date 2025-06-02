@@ -48,6 +48,7 @@ RoiPointCloudFusionNode::RoiPointCloudFusionNode(const rclcpp::NodeOptions & opt
   roi_scale_factor_ = declare_parameter<double>("roi_scale_factor");
   override_class_with_unknown_ = declare_parameter<bool>("override_class_with_unknown");
   max_object_size_ = declare_parameter<double>("max_object_size");
+  roi_distance_based_check_ = declare_parameter<bool>("roi_distance_based_check");
   roi_distance_margin_rate_ = declare_parameter<double>("roi_distance_margin_rate");
 
   // publisher
@@ -155,7 +156,9 @@ void RoiPointCloudFusionNode::fuseOnSingleImage(
         auto & feature_obj = output_objs.at(i);
         const auto & check_roi = feature_obj.feature.roi;
         const auto roi_distance =
-          calcRoiDistance(check_roi, det2d.camera2lidar_mul_inv_projection_);
+          roi_distance_based_check_
+            ? calcRoiDistance(check_roi, det2d.camera2lidar_mul_inv_projection_)
+            : -1.0;
         auto & cluster = clusters.at(i);
 
         const double px = projected_point.x();

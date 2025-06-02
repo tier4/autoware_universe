@@ -51,7 +51,7 @@ private:
   double cluster_2d_tolerance_;
   double roi_scale_factor_{1.0};
   bool override_class_with_unknown_{false};
-
+  bool roi_distance_based_check_{false};
   double roi_distance_margin_rate_{0.9};
   std::vector<ClusterObjType> output_fused_objects_;
 };
