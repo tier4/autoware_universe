@@ -43,18 +43,12 @@ class SegmentationPointcloudFusion:
         self.segmentation_pointcloud_fusion_param["rois_number"] = len(self.camera_ids)
         mask_timestamp_offsets = []
         approximate_camera_projection = []
-        rois_timestamp_noise_window = []
         point_project_to_unrectified_image = []
         image_topic_name = LaunchConfiguration("image_topic_name")
 
         for index, camera_id in enumerate(self.camera_ids):
             mask_timestamp_offsets.append(
-                self.segmentation_pointcloud_fusion_sync_param["rois_timestamp_offsets"][camera_id]
-            )
-            rois_timestamp_noise_window.append(
-                self.segmentation_pointcloud_fusion_sync_param["matching_strategy"][
-                    "rois_timestamp_noise_window"
-                ][camera_id]
+                self.segmentation_pointcloud_fusion_sync_param["input_offset_ms"][camera_id]
             )
             approximate_camera_projection.append(
                 self.segmentation_pointcloud_fusion_sync_param["approximate_camera_projection"][
@@ -76,15 +70,10 @@ class SegmentationPointcloudFusion:
                 f"/sensing/camera/camera{camera_id}/{image_topic_name}"
             )
 
-        self.segmentation_pointcloud_fusion_sync_param["rois_timestamp_offsets"] = (
-            mask_timestamp_offsets
-        )
+        self.segmentation_pointcloud_fusion_sync_param["input_offset_ms"] = mask_timestamp_offsets
         self.segmentation_pointcloud_fusion_sync_param["approximate_camera_projection"] = (
             approximate_camera_projection
         )
-        self.segmentation_pointcloud_fusion_sync_param["matching_strategy"][
-            "rois_timestamp_noise_window"
-        ] = rois_timestamp_noise_window
         self.segmentation_pointcloud_fusion_sync_param["approximate_camera_projection"] = (
             approximate_camera_projection
         )
