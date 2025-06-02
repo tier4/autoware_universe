@@ -260,7 +260,7 @@ bool GeometricParallelParking::planPullOut(
   const lanelet::ConstLanelets & pull_over_lanes, const bool left_side_start,
   const bool use_clothoid,
   const std::shared_ptr<autoware::boundary_departure_checker::BoundaryDepartureChecker>
-    lane_departure_checker)
+    autoware_lane_departure_checker)
 {
   constexpr bool is_forward = false;         // parking backward means pull_out forward
   constexpr double start_pose_offset = 0.0;  // start_pose is current_pose
@@ -285,12 +285,12 @@ bool GeometricParallelParking::planPullOut(
       arc_paths = planOneTrialClothoid(
         *end_pose, start_pose, R_E_min_, L_min, road_lanes, pull_over_lanes, is_forward,
         left_side_start, start_pose_offset, parameters_.pull_out_lane_departure_margin,
-        parameters_.pull_out_arc_path_interval, lane_departure_checker);
+        parameters_.pull_out_arc_path_interval, autoware_lane_departure_checker);
     } else {
       arc_paths = planOneTrial(
         *end_pose, start_pose, R_E_min_, road_lanes, pull_over_lanes, is_forward, left_side_start,
         start_pose_offset, parameters_.pull_out_lane_departure_margin,
-        parameters_.pull_out_arc_path_interval, lane_departure_checker);
+        parameters_.pull_out_arc_path_interval, autoware_lane_departure_checker);
     }
     if (arc_paths.empty()) {
       // not found path
@@ -425,7 +425,7 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrial(
   const bool is_forward, const bool left_side_parking, const double end_pose_offset,
   const double lane_departure_margin, const double arc_path_interval,
   const std::shared_ptr<autoware::boundary_departure_checker::BoundaryDepartureChecker>
-    lane_departure_checker)
+    autoware_lane_departure_checker)
 {
   clearPaths();
 
@@ -559,18 +559,18 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrial(
   setLaneIdsToPath(path_turn_first);
   setLaneIdsToPath(path_turn_second);
 
-  if (lane_departure_checker) {
+  if (autoware_lane_departure_checker) {
     const auto lanelet_map_ptr = planner_data_->route_handler->getLaneletMapPtr();
 
     const bool is_path_turn_first_outside_lanes =
-      lane_departure_checker->checkPathWillLeaveLane(lanelet_map_ptr, path_turn_first);
+      autoware_lane_departure_checker->checkPathWillLeaveLane(lanelet_map_ptr, path_turn_first);
 
     if (is_path_turn_first_outside_lanes) {
       return std::vector<PathWithLaneId>{};
     }
 
     const bool is_path_turn_second_outside_lanes =
-      lane_departure_checker->checkPathWillLeaveLane(lanelet_map_ptr, path_turn_second);
+      autoware_lane_departure_checker->checkPathWillLeaveLane(lanelet_map_ptr, path_turn_second);
 
     if (is_path_turn_second_outside_lanes) {
       return std::vector<PathWithLaneId>{};
@@ -607,8 +607,8 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
   const lanelet::ConstLanelets & road_lanes, const lanelet::ConstLanelets & shoulder_lanes,
   const bool is_forward, const bool left_side_parking, const double end_pose_offset,
   const double lane_departure_margin, const double arc_path_interval,
-  const std::shared_ptr<autoware::lane_departure_checker::LaneDepartureChecker>
-    lane_departure_checker)
+  const std::shared_ptr<autoware::boundary_departure_checker::BoundaryDepartureChecker>
+    autoware_lane_departure_checker)
 {
   clearPaths();
 
@@ -830,13 +830,13 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
   };
   setLaneIdsToPath(path_turn_first);
   setLaneIdsToPath(path_turn_second);
-
-  if (lane_departure_checker) {
+  std::cout << "lnde" << std::endl;
+  if (autoware_lane_departure_checker) {
     const auto lanelet_map_ptr = planner_data_->route_handler->getLaneletMapPtr();
 
     for (auto & p : path_turn_first) {
       const bool is_path_turn_first_outside_lanes =
-        lane_departure_checker->checkPathWillLeaveLane(lanelet_map_ptr, p);
+        autoware_lane_departure_checker->checkPathWillLeaveLane(lanelet_map_ptr, p);
 
       if (is_path_turn_first_outside_lanes) {
         return std::vector<PathWithLaneId>{};
@@ -845,7 +845,7 @@ std::vector<PathWithLaneId> GeometricParallelParking::planOneTrialClothoid(
 
     for (auto & p : path_turn_second) {
       const bool is_path_turn_second_outside_lanes =
-        lane_departure_checker->checkPathWillLeaveLane(lanelet_map_ptr, p);
+        autoware_lane_departure_checker->checkPathWillLeaveLane(lanelet_map_ptr, p);
 
       if (is_path_turn_second_outside_lanes) {
         return std::vector<PathWithLaneId>{};
