@@ -19,6 +19,7 @@ bool is_valid_forward_trajectory_length
 bool is_valid_latency
 bool is_valid_yaw_deviation
 bool is_valid_trajectory_shift
+bool is_no_collision_risk_rear
 
 # values
 int64 trajectory_size
