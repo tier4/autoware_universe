@@ -39,7 +39,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
-          poetry run sync-workflows
+          poetry run python -m scripts.sync_workflows
 
       - name: Check for changes
         id: changes
