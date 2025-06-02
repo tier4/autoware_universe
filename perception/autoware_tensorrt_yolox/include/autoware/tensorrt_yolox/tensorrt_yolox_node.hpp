@@ -20,6 +20,9 @@
 #include <autoware/tensorrt_yolox/tensorrt_yolox.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
+#include <cuda_blackboard/cuda_adaptation.hpp>
+#include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
+#include <cuda_blackboard/cuda_image.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/opencv.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -28,9 +31,6 @@
 #include <std_msgs/msg/header.hpp>
 #include <tier4_perception_msgs/msg/detected_objects_with_feature.hpp>
 #include <tier4_perception_msgs/msg/semantic.hpp>
-#include <cuda_blackboard/cuda_image.hpp>
-#include <cuda_blackboard/cuda_adaptation.hpp>
-#include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
 
 #if __has_include(<cv_bridge/cv_bridge.hpp>)
 #include <cv_bridge/cv_bridge.hpp>
@@ -78,7 +78,7 @@ public:
 
 private:
   void onConnect();
-  void onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg);
+  void onImage(const std::shared_ptr<const CudaImage> msg);
   bool readLabelFile(const std::string & label_path);
   void replaceLabelMap();
   void overlapSegmentByRoi(
@@ -91,7 +91,7 @@ private:
 
   rclcpp::Publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr objects_pub_;
 
-  image_transport::Subscriber image_sub_;
+  std::shared_ptr<cuda_blackboard::CudaBlackboardSubscriber<CudaImage>> image_sub_;
 
   rclcpp::TimerBase::SharedPtr timer_;
 
