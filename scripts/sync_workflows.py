@@ -184,7 +184,7 @@ def write_workflow_file(filepath: Path, content: str | dict, *, is_yaml_obj: boo
         logger.exception("  Error: Failed to write '%s'", filepath)
 
 
-def main() -> None:
+def main() -> None:  # noqa: C901, PLR0912
     logger.info("🔄 Starting workflow sync...\n")
 
     # Check for GitHub token
@@ -201,14 +201,26 @@ def main() -> None:
     keep_workflows = workflows_config.get("keep", [])
     ignore_workflows = set(workflows_config.get("ignore", []))
     modify_workflows = workflows_config.get("modify", {})
+    unique_tier4_workflows = workflows_config.get("unique_tier4_workflows", [])
 
     logger.info("   Keep: %s workflows", len(keep_workflows))
     logger.info("   Modify: %s workflows", len(modify_workflows))
     logger.info("   Ignore: %s workflows", len(ignore_workflows))
+    logger.info("   Unique TIER IV: %s workflows", len(unique_tier4_workflows))
 
     # Ensure workflows directory exists
     WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
     logger.info("\n📁 Workflows directory: %s", WORKFLOWS_DIR)
+
+    # Check existence of unique TIER IV workflows
+    if unique_tier4_workflows:
+        logger.info("\n🔍 Checking unique TIER IV workflows...")
+        for workflow in unique_tier4_workflows:
+            workflow_path = WORKFLOWS_DIR / workflow
+            if workflow_path.exists():
+                logger.info("  ✓ Found: %s", workflow)
+            else:
+                logger.warning("  ⚠️  Missing: %s", workflow)
 
     # Process 'keep' workflows
     logger.info("\n🔗 Syncing %s 'keep' workflows...", len(keep_workflows))
@@ -237,7 +249,9 @@ def main() -> None:
         local_workflows = {p.name for p in WORKFLOWS_DIR.glob("*.yaml") if p.is_file()}
         local_workflows.update({p.name for p in WORKFLOWS_DIR.glob("*.yml") if p.is_file()})
 
-        expected_workflows = set(keep_workflows) | set(modify_workflows.keys())
+        expected_workflows = (
+            set(keep_workflows) | set(modify_workflows.keys()) | set(unique_tier4_workflows)
+        )
         extra_workflows = local_workflows - expected_workflows
 
         if extra_workflows:

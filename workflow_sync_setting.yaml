@@ -11,10 +11,6 @@ workflows:
     - spell-check-differential.yaml
 
   ignore:
-    # TIER IV unique workflows (not present in upstream)
-    - sync-workflows.yaml
-
-    # Upstream workflows ignored for TIER IV environment
     - bump-version-pr.yaml
     - comment-on-pr.yaml
     - cppcheck-weekly.yaml
@@ -51,3 +47,5 @@ workflows:
       updates:
         - on.workflow_call.inputs.runner.default: ubuntu-22.04-m
         - jobs.build-and-test-differential.runs-on: ${{ inputs.runner }}
+  unique_tier4_workflows:
+    - sync-workflows.yaml
