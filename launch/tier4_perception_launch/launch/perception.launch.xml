@@ -85,7 +85,7 @@
   <arg name="detection_rois7" default="/perception/object_recognition/detection/rois7"/>
   <arg name="image_number" default="6" description="choose image raw number(1-8)"/>
   <arg name="image_topic_name" default="image_rect_color" description="image topic name options `image_rect_color`, `image_raw"/>
-  <arg name="segmentation_pointcloud_fusion_camera_ids" default="[0,1,5]" description="list of camera ids used for segmentation_pointcloud_fusion node"/>
+  <arg name="segmentation_pointcloud_fusion_camera_ids" default="[8]" description="list of camera ids used for segmentation_pointcloud_fusion node"/>
 
   <arg name="pointcloud_container_name" default="pointcloud_container"/>
 
