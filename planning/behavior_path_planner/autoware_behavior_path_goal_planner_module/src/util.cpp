@@ -34,6 +34,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -72,14 +73,13 @@ SegmentRtree extract_uncrossable_segments(
   lanelet::BoundingBox2d search_area(
     lanelet::BasicPoint2d(min_x, min_y), lanelet::BasicPoint2d(max_x, max_y));
 
-  auto linestrings = lanelet_map.lineStringLayer.search(search_area);
-  LineString2d line;
+  const auto linestrings = lanelet_map.lineStringLayer.search(search_area);
   for (const auto & ls : linestrings) {
     if (has_types(ls, {"road_border"})) {
-      line.clear();
+      LineString2d line;
       for (const auto & p : ls) line.push_back(Point2d{p.x(), p.y()});
       for (auto segment_idx = 0LU; segment_idx + 1 < line.size(); ++segment_idx) {
-        Segment2d segment = {line[segment_idx], line[segment_idx + 1]};
+        const Segment2d segment = {line[segment_idx], line[segment_idx + 1]};
         if (boost::geometry::intersects(segment, extraction_polygon)) {
           uncrossable_segments_in_range.insert(segment);
         }
@@ -113,51 +113,6 @@ bool crosses_road_border(
   return false;  // No crossing found
 }
 
-// Function to extract corner points from a bounding box
-std::vector<Point2d> getBoundingBoxCornersFromObject(
-  const Point2d & center_point, const geometry_msgs::msg::Vector3 & dimensions,
-  const geometry_msgs::msg::Quaternion & orientation)
-{
-  std::vector<Point2d> corners;
-
-  // Extract dimensions from the bounding box
-  const double half_length = dimensions.x / 2.0;
-  const double half_width = dimensions.y / 2.0;
-
-  // Convert quaternion to yaw angle
-  const double yaw = tf2::getYaw(orientation);
-
-  // Calculate the four corners of the bounding box
-  // Front-right corner
-  corners.push_back(
-    Point2d{
-      center_point[0] + half_length * std::cos(yaw) - half_width * std::sin(yaw),
-      center_point[1] + half_length * std::sin(yaw) + half_width * std::cos(yaw)});
-
-  // Front-left corner
-  corners.push_back(
-    Point2d{
-      center_point[0] + half_length * std::cos(yaw) + half_width * std::sin(yaw),
-      center_point[1] + half_length * std::sin(yaw) - half_width * std::cos(yaw)});
-
-  // Rear-left corner
-  corners.push_back(
-    Point2d{
-      center_point[0] - half_length * std::cos(yaw) + half_width * std::sin(yaw),
-      center_point[1] - half_length * std::sin(yaw) - half_width * std::cos(yaw)});
-
-  // Rear-right corner
-  corners.push_back(
-    Point2d{
-      center_point[0] - half_length * std::cos(yaw) - half_width * std::sin(yaw),
-      center_point[1] - half_length * std::sin(yaw) + half_width * std::cos(yaw)});
-
-  // Also add the center point
-  corners.push_back(center_point);
-
-  return corners;
-}
-
 // Improved filter_objects_by_road_border function
 PredictedObjects filter_objects_by_road_border(
   const PredictedObjects & objects, const SegmentRtree & road_border_segments,
@@ -182,24 +137,9 @@ PredictedObjects filter_objects_by_road_border(
     const Point2d obj_center_point{obj_pose.position.x, obj_pose.position.y};
 
     std::vector<Point2d> points;
-    if (object.shape.type == Shape::POLYGON) {
-      // If ray to any footprint point is not blocked by segments, regard as true
-      const auto footprint = object.shape.footprint;
-      for (const auto point : footprint.points) {
-        points.push_back(Point2d(point.x, point.y));
-      }
-    } else if (object.shape.type == Shape::BOUNDING_BOX) {
-      // If ray to any bounding box corner point is not blocked by segments, regard as true
-      points = getBoundingBoxCornersFromObject(
-        obj_center_point,
-        object.shape.dimensions,  // Fixed typo: dimensions instead of dimensions
-        obj_pose.orientation);
-    } else {
-      // For other shapes (like cylinder), just use the center point
-      points.push_back(obj_center_point);
-    }
+    const auto obj_polygon = autoware_utils::to_polygon2d(object);
 
-    for (const auto & obj_point : points) {
+    for (const auto & obj_point : obj_polygon.outer()) {
       if (!crosses_road_border(ego_point, obj_point, road_border_segments)) {
         not_being_separated = true;
         break;
@@ -660,9 +600,8 @@ double calcLateralDeviationBetweenPaths(
       reference_path.points, target_point.point.pose.position);
     lateral_deviation = std::max(
       lateral_deviation,
-      std::abs(
-        autoware_utils::calc_lateral_deviation(
-          reference_path.points[nearest_index].point.pose, target_point.point.pose.position)));
+      std::abs(autoware_utils::calc_lateral_deviation(
+        reference_path.points[nearest_index].point.pose, target_point.point.pose.position)));
   }
   return lateral_deviation;
 }
