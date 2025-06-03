@@ -124,35 +124,47 @@ void TrtYoloXNode::onConnect()
     objects_pub_->get_intra_process_subscription_count() == 0 &&
     image_pub_.getNumSubscribers() == 0 && mask_pub_.getNumSubscribers() == 0 &&
     color_mask_pub_.getNumSubscribers() == 0) {
-    image_sub_.shutdown();
+    ;
   } else if (!image_sub_) {
-    image_sub_ = image_transport::create_subscription(
-      this, "~/in/image", std::bind(&TrtYoloXNode::onImage, this, _1), "raw",
-      rmw_qos_profile_sensor_data);
+    image_sub_ = std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<CudaImage>>(
+      *this, "~/in/image", false, std::bind(&TrtYoloXNode::onImage, this, std::placeholders::_1));
   }
 }
 
-void TrtYoloXNode::onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg)
+void TrtYoloXNode::onImage(const std::shared_ptr<const CudaImage> msg)
 {
   stop_watch_ptr_->toc("processing_time", true);
   tier4_perception_msgs::msg::DetectedObjectsWithFeature out_objects;
 
+  // Transform to sensor message (for debugging usage)
+  auto ros_image = std::make_shared<sensor_msgs::msg::Image>();
+  ros_image->encoding = msg->encoding;
+  ros_image->height = msg->height;
+  ros_image->width = msg->width;
+  ros_image->step = msg->step;
+  ros_image->is_bigendian = msg->is_bigendian;
+  ros_image->data.resize(msg->height * ros_image->step);
+  cudaMemcpy(
+    ros_image->data.data(), msg->data.get(), ros_image->height * ros_image->step,
+    cudaMemcpyDeviceToHost);
+
   cv_bridge::CvImagePtr in_image_ptr;
   try {
-    in_image_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+    in_image_ptr = cv_bridge::toCvCopy(ros_image, sensor_msgs::image_encodings::BGR8);
   } catch (cv_bridge::Exception & e) {
     RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
     return;
   }
-  const auto width = in_image_ptr->image.cols;
-  const auto height = in_image_ptr->image.rows;
+  const auto width = static_cast<int>(msg->width);
+  const auto height = static_cast<int>(msg->height);
 
   tensorrt_yolox::ObjectArrays objects;
   std::vector<cv::Mat> masks = {cv::Mat(cv::Size(height, width), CV_8UC1, cv::Scalar(0))};
   std::vector<cv::Mat> color_masks = {
     cv::Mat(cv::Size(height, width), CV_8UC3, cv::Scalar(0, 0, 0))};
 
-  if (!trt_yolox_->doInference({in_image_ptr->image}, objects, masks, color_masks)) {
+  if (!trt_yolox_->doInference<std::shared_ptr<const CudaImage>>(
+        {msg}, objects, masks, color_masks)) {
     RCLCPP_WARN(this->get_logger(), "Fail to inference");
     return;
   }

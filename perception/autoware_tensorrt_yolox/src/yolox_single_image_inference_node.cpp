@@ -49,11 +49,11 @@ public:
     auto trt_config = tensorrt_common::TrtCommonConfig(model_path, precision);
 
     auto trt_yolox = std::make_unique<tensorrt_yolox::TrtYoloX>(trt_config);
-    auto image = cv::imread(image_path);
+    cv::Mat image = cv::imread(image_path);
     tensorrt_yolox::ObjectArrays objects;
     std::vector<cv::Mat> masks;
     std::vector<cv::Mat> color_masks;
-    trt_yolox->doInference({image}, objects, masks, color_masks);
+    trt_yolox->doInference<cv::Mat>({image}, objects, masks, color_masks);
     for (const auto & object : objects[0]) {
       const auto left = object.x_offset;
       const auto top = object.y_offset;
