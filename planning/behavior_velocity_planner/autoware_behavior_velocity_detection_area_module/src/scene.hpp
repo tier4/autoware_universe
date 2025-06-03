@@ -78,7 +78,18 @@ public:
   visualization_msgs::msg::MarkerArray createDebugMarkerArray() override;
   autoware::motion_utils::VirtualWalls createVirtualWalls() override;
 
+  std::vector<int64_t> getRegulatoryElementIds() const { return {detection_area_reg_elem_.id()}; }
+  std::vector<int64_t> getLaneletIds() const override { return {lane_id_}; }
+  // std::vector<int64_t> getLineIds() const override { 
+  //   const auto ref_lines = detection_area_reg_elem_.refLines();
+
+
+
 private:
+  void outputStopStatusLog(
+    const std::vector<geometry_msgs::msg::Point> & obstacle_points,
+    const geometry_msgs::msg::Pose & self_pose) const;
+
   // Lane id
   int64_t lane_id_;
 

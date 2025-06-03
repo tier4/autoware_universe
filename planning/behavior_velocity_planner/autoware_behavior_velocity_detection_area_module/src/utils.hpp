@@ -29,6 +29,7 @@
 
 #include <memory>
 #include <vector>
+#include <optional>
 
 namespace autoware::behavior_velocity_planner::detection_area
 {

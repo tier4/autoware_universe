@@ -66,7 +66,7 @@ void PlannerManager::launchScenePlugin(rclcpp::Node & node, const std::string & 
     // register
     manager_ptrs_.push_back(plugin);
     processing_time_.emplace(plugin->name(), 0.0);
-    RCLCPP_DEBUG_STREAM(node.get_logger(), "The scene plugin '" << name << "' is loaded.");
+    RCLCPP_INFO_STREAM(node.get_logger(), "The scene plugin '" << name << "' is loaded.");
   } else {
     RCLCPP_ERROR_STREAM(node.get_logger(), "The scene plugin '" << name << "' is not available.");
   }
