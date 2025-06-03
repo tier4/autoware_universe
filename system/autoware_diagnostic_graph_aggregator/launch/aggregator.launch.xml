@@ -4,6 +4,11 @@
   <node pkg="autoware_diagnostic_graph_aggregator" exec="aggregator_node">
     <param from="$(var param_file)"/>
     <param name="graph_file" value="$(var graph_file)"/>
+    <remap from="~/availability" to="/system/aggregator/availability"/>
+    <remap from="~/struct" to="/diagnostics_graph/struct"/>
+    <remap from="~/status" to="/diagnostics_graph/status"/>
+    <remap from="~/unknowns" to="/diagnostics_graph/unknowns"/>
+    <remap from="~/reset" to="/diagnostics_graph/reset"/>
   </node>
   <node pkg="autoware_diagnostic_graph_aggregator" exec="converter_node">
     <param from="$(find-pkg-share autoware_diagnostic_graph_aggregator)/config/converter.param.yaml"/>
