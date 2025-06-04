@@ -58,14 +58,14 @@
     </group>
 
     <!-- Dummy Perception -->
-    <group if="$(var launch_dummy_perception)">
+    <!-- <group if="$(var launch_dummy_perception)">
       <include file="$(find-pkg-share autoware_dummy_perception_publisher)/launch/dummy_perception_publisher.launch.xml">
         <arg name="real" value="$(var perception/enable_detection_failure)"/>
         <arg name="use_object_recognition" value="$(var perception/enable_object_recognition)"/>
         <arg name="use_base_link_z" value="$(var perception/use_base_link_z)"/>
         <arg name="visible_range" value="$(var sensing/visible_range)"/>
       </include>
-    </group>
+    </group> -->
 
     <group unless="$(var scenario_simulation)">
       <!-- Occupancy Grid -->
@@ -89,7 +89,7 @@
       <group if="$(var perception/enable_object_recognition)">
         <push-ros-namespace namespace="object_recognition"/>
         <!-- tracking module -->
-        <group>
+        <!-- <group>
           <push-ros-namespace namespace="tracking"/>
           <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/tracking/tracking.launch.xml">
             <arg
@@ -105,7 +105,7 @@
             <arg name="use_detection_by_tracker" value="true"/>
             <arg name="use_validator" value="true"/>
           </include>
-        </group>
+        </group> -->
         <!-- prediction module -->
         <group>
           <push-ros-namespace namespace="prediction"/>
@@ -121,12 +121,12 @@
       </group>
 
       <!-- publish empty objects instead of object recognition module -->
-      <group unless="$(var perception/enable_object_recognition)">
+      <!-- <group unless="$(var perception/enable_object_recognition)">
         <push-ros-namespace namespace="object_recognition"/>
         <node pkg="autoware_dummy_perception_publisher" exec="empty_objects_publisher" name="empty_objects_publisher" output="screen">
           <remap from="~/output/objects" to="/perception/object_recognition/objects"/>
         </node>
-      </group>
+      </group> -->
 
       <group if="$(var perception/enable_elevation_map)">
         <push-ros-namespace namespace="obstacle_segmentation/elevation_map"/>
