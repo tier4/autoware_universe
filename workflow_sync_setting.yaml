@@ -9,6 +9,10 @@ workflows:
     - pr-labeler.yaml
     - semantic-pull-request.yaml
     - spell-check-differential.yaml
+    - pre-commit-autoupdate.yaml
+    - pre-commit-optional-autoupdate.yaml
+    - pre-commit-optional.yaml
+    - pre-commit.yaml
 
   ignore:
     - bump-version-pr.yaml
@@ -16,10 +20,6 @@ workflows:
     - cppcheck-weekly.yaml
     - dco.yaml
     - github-release.yaml
-    - pre-commit-autoupdate.yaml
-    - pre-commit-optional-autoupdate.yaml
-    - pre-commit-optional.yaml
-    - pre-commit.yaml
     - spell-check-daily.yaml
     - sync-files.yaml
     - update-codeowners-from-packages.yaml
