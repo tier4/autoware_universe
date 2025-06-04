@@ -74,7 +74,6 @@ void load_unit(UnitConfig & config)
 {
   config->type = config->yaml.required("type").text("");
   config->path = config->yaml.optional("path").text("");
-  config->yaml = config->yaml;
 
   if (config->type == "link") {
     config->link = config->yaml.required("link").text("");

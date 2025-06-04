@@ -27,7 +27,7 @@ namespace autoware::diagnostic_graph_aggregator
 AndLogic::AndLogic(const LogicConfig & config)
 {
   ConfigYaml yaml = config.yaml();
-  for (ConfigYaml node : yaml.required("list").list()) {
+  for (ConfigYaml node : yaml.optional("list").list()) {
     links_.push_back(config.parse_unit(node));
   }
 }
@@ -101,6 +101,20 @@ DiagnosticLevel ConstStaleLogic::level() const
   return DiagnosticStatus::STALE;
 }
 
+WarnToOkLogic::WarnToOkLogic(const LogicConfig & config)
+{
+  link_ = config.parse_unit(config.yaml().required("item"));
+}
+
+DiagnosticLevel WarnToOkLogic::level() const
+{
+  if (link_->level() == DiagnosticStatus::WARN) {
+    return DiagnosticStatus::OK;
+  } else {
+    return link_->level();
+  }
+}
+
 RegisterLogic<DiagLogic> registration4("diag");
 RegisterLogic<AndLogic> registration("and");
 RegisterLogic<OrLogic> registration3("or");
@@ -109,5 +123,6 @@ RegisterLogic<ConstStaleLogic> registration6("stale");
 RegisterLogic<ConstWarnLogic> registration7("warn");
 RegisterLogic<ConstErrorLogic> registration8("error");
 RegisterLogic<AndLogic> registration5("short-circuit-and");
+RegisterLogic<WarnToOkLogic> registration9("warn-to-ok");
 
 }  // namespace autoware::diagnostic_graph_aggregator

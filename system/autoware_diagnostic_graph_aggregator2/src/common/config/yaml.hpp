@@ -36,6 +36,7 @@ public:
   bool exists() const;
 
   std::vector<ConfigYaml> list() const;
+  std::vector<ConfigYaml> list(const std::vector<ConfigYaml> & value) const;
   std::string text() const;
   std::string text(const std::string & value) const;
   double float64() const;

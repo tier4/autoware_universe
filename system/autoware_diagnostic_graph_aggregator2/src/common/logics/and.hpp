@@ -94,6 +94,17 @@ public:
   DiagnosticLevel level() const override;
 };
 
+class WarnToOkLogic : public Logic
+{
+public:
+  explicit WarnToOkLogic(const LogicConfig & config);
+  std::string type() const override { return "warn-to-ok"; }
+  DiagnosticLevel level() const override;
+
+private:
+  UnitLink * link_;
+};
+
 }  // namespace autoware::diagnostic_graph_aggregator
 
 #endif  // COMMON__LOGICS__AND_HPP_

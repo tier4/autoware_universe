@@ -77,6 +77,11 @@ std::vector<ConfigYaml> ConfigYaml::list() const
   return result;
 }
 
+std::vector<ConfigYaml> ConfigYaml::list(const std::vector<ConfigYaml> & value) const
+{
+  return yaml_.IsDefined() ? list() : value;
+}
+
 bool ConfigYaml::exists() const
 {
   return yaml_.IsDefined();
