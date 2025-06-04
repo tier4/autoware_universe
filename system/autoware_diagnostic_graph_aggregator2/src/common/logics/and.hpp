@@ -62,7 +62,7 @@ public:
   explicit ConstLogic(const LogicConfig & config);
 };
 
-class OkLogic : public ConstLogic
+class ConstOkLogic : public ConstLogic
 {
 public:
   using ConstLogic::ConstLogic;
@@ -70,7 +70,23 @@ public:
   DiagnosticLevel level() const override;
 };
 
-class StaleLogic : public ConstLogic
+class ConstWarnLogic : public ConstLogic
+{
+public:
+  using ConstLogic::ConstLogic;
+  std::string type() const override { return "warn"; }
+  DiagnosticLevel level() const override;
+};
+
+class ConstErrorLogic : public ConstLogic
+{
+public:
+  using ConstLogic::ConstLogic;
+  std::string type() const override { return "error"; }
+  DiagnosticLevel level() const override;
+};
+
+class ConstStaleLogic : public ConstLogic
 {
 public:
   using ConstLogic::ConstLogic;

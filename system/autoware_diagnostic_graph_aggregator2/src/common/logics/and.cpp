@@ -81,12 +81,22 @@ ConstLogic::ConstLogic(const LogicConfig &)
 {
 }
 
-DiagnosticLevel OkLogic::level() const
+DiagnosticLevel ConstOkLogic::level() const
 {
   return DiagnosticStatus::OK;
 }
 
-DiagnosticLevel StaleLogic::level() const
+DiagnosticLevel ConstWarnLogic::level() const
+{
+  return DiagnosticStatus::WARN;
+}
+
+DiagnosticLevel ConstErrorLogic::level() const
+{
+  return DiagnosticStatus::ERROR;
+}
+
+DiagnosticLevel ConstStaleLogic::level() const
 {
   return DiagnosticStatus::STALE;
 }
@@ -94,8 +104,10 @@ DiagnosticLevel StaleLogic::level() const
 RegisterLogic<DiagLogic> registration4("diag");
 RegisterLogic<AndLogic> registration("and");
 RegisterLogic<OrLogic> registration3("or");
-RegisterLogic<OkLogic> registration2("ok");
-RegisterLogic<StaleLogic> registration6("stale");
+RegisterLogic<ConstOkLogic> registration2("ok");
+RegisterLogic<ConstStaleLogic> registration6("stale");
+RegisterLogic<ConstWarnLogic> registration7("warn");
+RegisterLogic<ConstErrorLogic> registration8("error");
 RegisterLogic<AndLogic> registration5("short-circuit-and");
 
 }  // namespace autoware::diagnostic_graph_aggregator
