@@ -86,10 +86,16 @@ DiagnosticLevel OkLogic::level() const
   return DiagnosticStatus::OK;
 }
 
+DiagnosticLevel StaleLogic::level() const
+{
+  return DiagnosticStatus::STALE;
+}
+
 RegisterLogic<DiagLogic> registration4("diag");
 RegisterLogic<AndLogic> registration("and");
 RegisterLogic<OrLogic> registration3("or");
 RegisterLogic<OkLogic> registration2("ok");
+RegisterLogic<StaleLogic> registration6("stale");
 RegisterLogic<AndLogic> registration5("short-circuit-and");
 
 }  // namespace autoware::diagnostic_graph_aggregator

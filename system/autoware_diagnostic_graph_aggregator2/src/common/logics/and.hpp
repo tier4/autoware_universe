@@ -70,6 +70,14 @@ public:
   DiagnosticLevel level() const override;
 };
 
+class StaleLogic : public ConstLogic
+{
+public:
+  using ConstLogic::ConstLogic;
+  std::string type() const override { return "stale"; }
+  DiagnosticLevel level() const override;
+};
+
 }  // namespace autoware::diagnostic_graph_aggregator
 
 #endif  // COMMON__LOGICS__AND_HPP_
