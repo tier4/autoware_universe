@@ -231,10 +231,6 @@ rclcpp::NodeOptions getNodeOptionsWithDefaultParams()
   node_options.append_parameter_override("soft_stop_deceleration", -1.0);
   node_options.append_parameter_override("soft_stop_jerk_lim", 0.3);
 
-  node_options.append_parameter_override("validity_checks.latency.enable", true);
-  node_options.append_parameter_override("validity_checks.latency.threshold", THRESHOLD_LATENCY);
-  node_options.append_parameter_override("validity_checks.latency.is_critical", false);
-
   node_options.append_parameter_override("validity_checks.interval.enable", true);
   node_options.append_parameter_override("validity_checks.interval.threshold", THRESHOLD_INTERVAL);
   node_options.append_parameter_override("validity_checks.interval.is_critical", false);

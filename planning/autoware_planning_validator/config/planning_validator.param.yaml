@@ -22,10 +22,6 @@
     soft_stop_jerk_lim: 0.3 # [m/s^3]
 
     validity_checks:
-      latency:
-        enable: true
-        threshold: 1.0
-        is_critical: false
       interval:
         enable: true
         threshold: 100.0

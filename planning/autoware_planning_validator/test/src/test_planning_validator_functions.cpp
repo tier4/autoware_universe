@@ -14,7 +14,6 @@
 
 #include "autoware/planning_validator/debug_marker.hpp"
 #include "autoware/planning_validator/planning_validator.hpp"
-#include "autoware_utils/geometry/geometry.hpp"
 #include "test_parameter.hpp"
 #include "test_planning_validator_helper.hpp"
 
