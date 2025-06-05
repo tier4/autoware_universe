@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__IMAGE_PROJECTION_BASED_FUSION__FUSION_NODE_HPP_
 #define AUTOWARE__IMAGE_PROJECTION_BASED_FUSION__FUSION_NODE_HPP_
 
+#include "autoware_utils/ros/transform_listener.hpp"
+
 #include <autoware/image_projection_based_fusion/camera_projection.hpp>
 #include <autoware/image_projection_based_fusion/debugger.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
@@ -59,6 +61,7 @@ using tier4_perception_msgs::msg::DetectedObjectWithFeature;
 using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
 using autoware::image_projection_based_fusion::CameraProjection;
 using autoware_perception_msgs::msg::ObjectClassification;
+using autoware_utils::TransformListener;
 
 template <class Msg2D>
 struct Det2dStatus
@@ -75,6 +78,12 @@ struct Det2dStatus
   double input_offset_ms = 0.0;
   // cache
   std::map<int64_t, typename Msg2D::ConstSharedPtr> cached_det2d_msgs;
+
+  Eigen::Matrix4f inv_projection_;
+  bool is_inv_projection_initialized_{false};
+  bool is_camera2lidar_mul_inv_projection_initialized_{false};
+  Eigen::Matrix4f camera2lidar_mul_inv_projection_;
+  geometry_msgs::msg::TransformStamped::ConstSharedPtr transform_;
 };
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -146,6 +155,8 @@ protected:
   // Members
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
+  std::shared_ptr<TransformListener> transform_listener_;
+  std::string target_frame_{"base_link"};
 
   // 2d detection management
   std::vector<Det2dStatus<Msg2D>> det2d_list_;

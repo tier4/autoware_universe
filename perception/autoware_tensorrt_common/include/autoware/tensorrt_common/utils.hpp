@@ -57,7 +57,7 @@ struct TrtCommonConfig
    */
   explicit TrtCommonConfig(
     const std::string onnx_path, const std::string precision = "fp16",
-    const std::string engine_path = "", const size_t max_workspace_size = (1ULL << 30U),
+    const std::string engine_path = "", const size_t max_workspace_size = (2ULL << 30U),
     const int32_t dla_core_id = -1, const bool profile_per_layer = false)
   : onnx_path(onnx_path),
     precision(precision),
