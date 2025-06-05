@@ -10,8 +10,6 @@ on:
         required: false
         default: ""
         type: string
-      # Why is it a JSON string?
-      # https://github.com/orgs/community/discussions/11692#discussioncomment-3541856
       runner:
         default: ubuntu-22.04-m
         required: false
