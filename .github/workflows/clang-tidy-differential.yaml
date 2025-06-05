@@ -24,7 +24,7 @@ on:
 jobs:
   clang-tidy-differential:
     if: ${{ inputs.run-condition }}
-    runs-on: ${{ fromJson(inputs.runner) }}
+    runs-on: ${{ inputs.runner }}
     container: ${{ inputs.container }}${{ inputs.container-suffix }}
     steps:
       - name: Set PR fetch depth
