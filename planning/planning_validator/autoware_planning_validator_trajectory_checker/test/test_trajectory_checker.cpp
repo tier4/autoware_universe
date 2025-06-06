@@ -322,7 +322,7 @@ TEST_F(TestTrajectoryChecker, checkCalcMaxLateralJerkFunction)
       autoware_planning_msgs::msg::TrajectoryPoint p;
       p.pose.position.x = i * point_spacing;
       p.pose.position.y = 0.0;
-      p.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(0.0);
+      p.pose.orientation = autoware_utils::create_quaternion_from_yaw(0.0);
       p.longitudinal_velocity_mps = 1.0;
       p.acceleration_mps2 = 1.0;
       custom_traj.points.push_back(p);
@@ -341,7 +341,7 @@ TEST_F(TestTrajectoryChecker, checkCalcMaxLateralJerkFunction)
       p.pose.position.x = last_x + curve_radius * (std::sin(angle) - std::sin(prev_angle));
       p.pose.position.y =
         last_y + curve_radius * (1 - std::cos(angle) - (1 - std::cos(prev_angle)));
-      p.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(angle);
+      p.pose.orientation = autoware_utils::create_quaternion_from_yaw(angle);
 
       p.longitudinal_velocity_mps = 1.0 + (i - 4);  // 1.0, 2.0, 3.0
       p.acceleration_mps2 = 1.0 + (i - 4);          // 1.0, 2.0, 3.0
@@ -368,7 +368,7 @@ TEST_F(TestTrajectoryChecker, checkCalcMaxLateralJerkFunction)
 
       p.pose.position.x = start_x + dx;
       p.pose.position.y = start_y + dy;
-      p.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(final_yaw);
+      p.pose.orientation = autoware_utils::create_quaternion_from_yaw(final_yaw);
 
       p.longitudinal_velocity_mps = 3.0;
       p.acceleration_mps2 = 3.0;
