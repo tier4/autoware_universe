@@ -21,8 +21,8 @@
           z: 0.5
         clustering:
           cluster_tolerance: 0.15  #[m]
-          min_cluster_height: 0.1
-          min_cluster_size: 5
+          min_cluster_height: 0.3
+          min_cluster_size: 10
           max_cluster_size: 10000
         velocity_estimation:
           observation_time: 0.3
