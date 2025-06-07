@@ -41,7 +41,19 @@
   <arg name="input_route_topic_name" default="/planning/mission_planning/route"/>
   <arg name="input_vector_map_topic_name" default="/map/vector_map"/>
 
+  <!-- Global parameters -->
+  <arg name="vehicle_model" default="sample_vehicle" description="vehicle model name"/>
+  <arg name="use_sim_time" default="false" description="use_sim_time"/>
+  <arg name="stand_alone" default="false" description=""/>
+  <group scoped="false" if="$(var stand_alone)">
+    <include file="$(find-pkg-share autoware_global_parameter_loader)/launch/global_params.launch.py">
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="vehicle_model" value="$(var vehicle_model)"/>
+    </include>
+  </group>
+
   <group>
+    <push-ros-namespace namespace="planning" if="$(var stand_alone)"/>
     <node_container pkg="rclcpp_components" exec="$(var container_type)" name="planning_validator_container" namespace="" args="" output="both">
       <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component" namespace=""/>
       <composable_node pkg="autoware_planning_validator" plugin="autoware::planning_validator::PlanningValidatorNode" name="planning_validator" namespace="">
