@@ -160,7 +160,7 @@ private:
   void update_image_diagnostics(
     const std::vector<ImageState> & states, const rclcpp::Time & timestamp);
 
-  std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_interface_;
+  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_;
 
 public:
   explicit ImageDiagNode(const rclcpp::NodeOptions & node_options);
