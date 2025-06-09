@@ -483,9 +483,9 @@ ObstacleStopModule::get_nearest_collision_point(
   pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud_ptr =
     std::make_shared<pcl::PointCloud<pcl::PointXYZ>>(pointcloud.pointcloud);
 
-  constexpr double slope_angle_limit = 0.1;
-  constexpr double height_from_bottom = -0.5;
-  constexpr double height_from_top = 0.5;
+  constexpr double slope_angle_limit = 0.05;
+  constexpr double height_from_bottom = 0.0;
+  constexpr double height_from_top = -0.5;
 
   PointCloud::Ptr croped_pointcloud_ptr(new PointCloud);
   {
@@ -835,6 +835,12 @@ std::optional<StopObstacle> ObstacleStopModule::pick_stop_obstacle_from_predicte
     collision_point = polygon_utils::get_collision_point(
       decimated_traj_points, decimated_traj_polys_with_lat_margin, future_obj_pose, clock_->now(),
       predicted_object.shape, dist_to_bumper);
+    if (collision_point) {
+      collision_point->second -= std::abs(odometry.twist.twist.linear.x) * estimation_time;
+      if (collision_point->second < 0.0) {
+        return std::nullopt;
+      }
+    }
   }
 
   if (!collision_point) {

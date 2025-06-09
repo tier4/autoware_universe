@@ -99,6 +99,8 @@ struct PointCloudObject
   bool safe;
 
   bool ignore;
+
+  bool is_vru;
 };
 
 using PointCloudObjects = std::vector<PointCloudObject>;
