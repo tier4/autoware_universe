@@ -22,6 +22,7 @@
 #include <autoware/universe_utils/ros/debug_publisher.hpp>
 #include <autoware/universe_utils/ros/polling_subscriber.hpp>
 #include <autoware/universe_utils/system/stop_watch.hpp>
+#include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <cuda_blackboard/cuda_adaptation.hpp>
 #include <cuda_blackboard/cuda_blackboard_publisher.hpp>
 #include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
@@ -91,10 +92,35 @@ private:
     const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr pointcloud_msg);
   void imuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg);
 
+  // Helper Functions
+
+  void validatePointcloudLayout(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr);
+  double getFirstPointTimestamp(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr);
+
+  void updateTwistQueue(double first_point_stamp);
+  void updateImuQueue(double first_point_stamp);
+  std::optional<geometry_msgs::msg::TransformStamped> lookupTransformToBase(
+    const std::string & source_frame);
+  std::unique_ptr<cuda_blackboard::CudaPointCloud2> processPointcloud(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr,
+    const geometry_msgs::msg::TransformStamped & transform_msg);
+
+  void publishDiagnostics(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_pointcloud_msg_ptr,
+    const std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_pointcloud_ptr);
+
   tf2_ros::Buffer tf2_buffer_;
   tf2_ros::TransformListener tf2_listener_;
 
+  // Diagnostic
+  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_;
+
   std::string base_frame_;
+  double processing_time_threshold_sec_;
+  double timestamp_mismatch_fraction_threshold_;
+  bool use_3d_undistortion_;
   std::deque<geometry_msgs::msg::TwistWithCovarianceStamped> twist_queue_;
   std::deque<geometry_msgs::msg::Vector3Stamped> angular_velocity_queue_;
 
