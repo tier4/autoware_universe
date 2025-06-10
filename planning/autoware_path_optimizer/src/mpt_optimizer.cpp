@@ -517,14 +517,11 @@ std::optional<std::vector<TrajectoryPoint>> MPTOptimizer::optimizeTrajectory(
     RCLCPP_INFO(logger_, "Inputs causing failure:");
     RCLCPP_INFO_STREAM(logger_, "ref_points: ");
 
+    std::ostringstream oss;
     for (const auto & ref_point : ref_points) {
-      std::cout << "\t" << ref_point << "\n";
+      oss << "\t" << ref_point << "\n";
     }
-
-    RCLCPP_INFO_STREAM(logger_, "mpt_mat: " << mpt_mat);
-    RCLCPP_INFO_STREAM(logger_, "val_mat: " << val_mat);
-    RCLCPP_INFO_STREAM(logger_, "obj_mat: " << obj_mat);
-    RCLCPP_INFO_STREAM(logger_, "const_mat: " << const_mat);
+    RCLCPP_INFO_STREAM(logger_, oss.str());
 
     return std::nullopt;
   }
@@ -1175,6 +1172,7 @@ void MPTOptimizer::updateVehicleBounds(
 
 // cost function: J = x' Q x + u' R u
 MPTOptimizer::ValueMatrix MPTOptimizer::calcValueMatrix(
+
   const std::vector<ReferencePoint> & ref_points,
   const std::vector<TrajectoryPoint> & traj_points) const
 {
