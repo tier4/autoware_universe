@@ -2,8 +2,8 @@
 Changelog for package tier4_perception_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.44.2 (2025-06-10)
+-------------------
 * feat(tier4_simulator_launch): add use_pointcloud_container argument (`#10770 <https://github.com/autowarefoundation/autoware_universe/issues/10770>`_) (`#10786 <https://github.com/autowarefoundation/autoware_universe/issues/10786>`_)
 * feat(tier4_simulator_launch): add use_pointcloud_container argument (`#10770 <https://github.com/autowarefoundation/autoware_universe/issues/10770>`_)
 * Contributors: Ryohsuke Mitsudome
