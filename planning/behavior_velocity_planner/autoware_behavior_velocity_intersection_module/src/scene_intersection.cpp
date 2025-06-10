@@ -274,6 +274,9 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
     }
   }
 
+  safety_factor_array_.factors.clear();
+  safety_factor_array_.header.stamp = clock_->now();
+  safety_factor_array_.header.frame_id = "map";
   for (const auto & object_info : object_info_manager_.attentionObjects()) {
     if (!object_info->unsafe_info()) {
       continue;
@@ -281,7 +284,25 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
     setObjectsOfInterestData(
       object_info->predicted_object().kinematics.initial_pose_with_covariance.pose,
       object_info->predicted_object().shape, ColorName::RED);
+
+    autoware_internal_planning_msgs::msg::SafetyFactor safety_factor;
+    safety_factor.object_id = object_info->predicted_object().object_id;
+    safety_factor.type = autoware_internal_planning_msgs::msg::SafetyFactor::OBJECT;
+
+    // TODO(odashima): add a predicted path used for dicision.
+    // safety_factor.predicted_path =
+    safety_factor.ttc_begin = object_info->unsafe_info()->interval_time.first;
+    safety_factor.ttc_end = object_info->unsafe_info()->interval_time.second;
+    safety_factor.is_safe = false;
+
+    safety_factor.points = {
+      object_info->predicted_object().kinematics.initial_pose_with_covariance.pose.position};
+    safety_factor_array_.factors.push_back(safety_factor);
   }
+
+  safety_factor_array_.is_safe = std::all_of(
+    safety_factor_array_.factors.begin(), safety_factor_array_.factors.end(),
+    [](const auto & factor) { return factor.is_safe; });
 
   const auto [has_collision, collision_position, too_late_detect_objects, misjudge_objects] =
     detectCollision(is_over_1st_pass_judge_line, is_over_2nd_pass_judge_line);
@@ -736,6 +757,7 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   [[maybe_unused]] IntersectionModule::DebugData * debug_data)
 {
@@ -751,6 +773,7 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   [[maybe_unused]] IntersectionModule::DebugData * debug_data)
 {
@@ -765,6 +788,7 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   [[maybe_unused]] IntersectionModule::DebugData * debug_data)
 {
@@ -777,6 +801,7 @@ void reactRTCApprovalByDecisionResult(
   const StuckStop & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   IntersectionModule::DebugData * debug_data)
 {
@@ -795,9 +820,8 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(pure StuckStop)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "pure StuckStop");
     }
   }
   if (!rtc_occlusion_approved && decision_result.occlusion_stopline_idx) {
@@ -809,9 +833,8 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(closest_idx).point.pose,
         path->points.at(occlusion_stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(StuckStop with occlusion)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "StuckStop with occlusion");
     }
   }
   return;
@@ -823,6 +846,7 @@ void reactRTCApprovalByDecisionResult(
   const YieldStuckStop & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   IntersectionModule::DebugData * debug_data)
 {
@@ -841,9 +865,8 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(Yield Stuck)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "Yield Stuck");
     }
   }
   return;
@@ -855,6 +878,7 @@ void reactRTCApprovalByDecisionResult(
   const NonOccludedCollisionStop & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   IntersectionModule::DebugData * debug_data)
 {
@@ -871,9 +895,8 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(CollisionStop)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "CollisionStop");
     }
   }
   if (!rtc_occlusion_approved) {
@@ -885,9 +908,8 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(CollisionStop with occlusion)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "CollisionStop with occlusion");
     }
   }
   return;
@@ -899,6 +921,7 @@ void reactRTCApprovalByDecisionResult(
   const FirstWaitBeforeOcclusion & decision_result,
   const IntersectionModule::PlannerParam & planner_param, const double baselink2front,
   autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   IntersectionModule::DebugData * debug_data)
 {
@@ -915,9 +938,9 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(FirstWaitBeforeOcclusion with collision)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/,
+        "FirstWaitBeforeOcclusion with collision");
     }
   }
   if (!rtc_occlusion_approved) {
@@ -937,9 +960,9 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(FirstWaitBeforeOcclusion with occlusion)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/,
+        "FirstWaitBeforeOcclusion with occlusion");
     }
   }
   return;
@@ -951,6 +974,7 @@ void reactRTCApprovalByDecisionResult(
   const PeekingTowardOcclusion & decision_result,
   const IntersectionModule::PlannerParam & planner_param, const double baselink2front,
   autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   IntersectionModule::DebugData * debug_data)
 {
@@ -980,9 +1004,8 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(occlusion_peeking_stopline).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(PeekingToOcclusion)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "PeekingToOcclusion");
     }
   }
   if (!rtc_default_approved) {
@@ -994,9 +1017,9 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(PeekingToOcclusion while stopping for collision)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/,
+        "PeekingToOcclusion while stopping for collision");
     }
   }
   return;
@@ -1008,6 +1031,7 @@ void reactRTCApprovalByDecisionResult(
   const OccludedCollisionStop & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   IntersectionModule::DebugData * debug_data)
 {
@@ -1024,9 +1048,8 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(CollisionStop with occlusion)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "CollisionStop with occlusion");
     }
   }
   if (!rtc_occlusion_approved) {
@@ -1042,9 +1065,8 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(CollisionStop with occlusion)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "CollisionStop with occlusion");
     }
   }
   return;
@@ -1056,6 +1078,7 @@ void reactRTCApprovalByDecisionResult(
   const OccludedAbsenceTrafficLight & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   IntersectionModule::DebugData * debug_data)
 {
@@ -1072,10 +1095,9 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/,
-        "intersection(Occlusion without traffic light, collision detected)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/,
+        "Occlusion without traffic light, collision detected");
     }
   }
   if (!rtc_occlusion_approved && decision_result.temporal_stop_before_attention_required) {
@@ -1087,9 +1109,9 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(Occlusion without traffic light)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/,
+        "Occlusion without traffic light");
     }
   }
   if (!rtc_occlusion_approved && !decision_result.temporal_stop_before_attention_required) {
@@ -1110,6 +1132,7 @@ void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const bool rtc_occlusion_approved, const Safe & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   IntersectionModule::DebugData * debug_data)
 {
@@ -1125,9 +1148,9 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(Safe, but RTC interrupted for collision)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/,
+        "Safe, but RTC interrupted for collision");
     }
   }
   if (!rtc_occlusion_approved) {
@@ -1139,9 +1162,9 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(Safe, but RTC interrupted for occlusion)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/,
+        "Safe, but RTC interrupted for occlusion");
     }
   }
   return;
@@ -1153,6 +1176,7 @@ void reactRTCApprovalByDecisionResult(
   const FullyPrioritized & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
+  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   IntersectionModule::DebugData * debug_data)
 {
@@ -1169,9 +1193,9 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/, "intersection(FullyPrioritized, collision detected)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/,
+        "FullyPrioritized, collision detected");
     }
   }
   if (!rtc_occlusion_approved) {
@@ -1183,10 +1207,9 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-        autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-        0.0 /*shift distance*/,
-        "intersection(FullyPrioritized, RTC for occlusion is interrupting)");
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/,
+        "FullyPrioritized, RTC for occlusion is interrupting");
     }
   }
   return;
@@ -1201,7 +1224,7 @@ void IntersectionModule::reactRTCApproval(
     VisitorSwitch{[&](const auto & decision) {
       reactRTCApprovalByDecisionResult(
         activated_, occlusion_activated_, decision, planner_param_, baselink2front, path,
-        planning_factor_interface_.get(), &debug_data_);
+        safety_factor_array_, planning_factor_interface_.get(), &debug_data_);
     }},
     decision_result);
   return;
