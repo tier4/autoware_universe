@@ -68,10 +68,6 @@ void RearCollisionChecker::init(
 
   last_unsafe_time_ = clock_->now();
 
-  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(clock_);
-
-  tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
-
   param_listener_ = std::make_unique<rear_collision_checker_node::ParamListener>(
     node.get_node_parameters_interface());
 
@@ -291,7 +287,7 @@ auto RearCollisionChecker::filter_pointcloud([[maybe_unused]] DebugData & debug)
 
     geometry_msgs::msg::TransformStamped transform_stamped;
     try {
-      transform_stamped = tf_buffer_->lookupTransform(
+      transform_stamped = context_->tf_buffer.lookupTransform(
         "map", context_->data->obstacle_pointcloud->header.frame_id,
         context_->data->obstacle_pointcloud->header.stamp, rclcpp::Duration::from_seconds(0.1));
     } catch (tf2::TransformException & e) {
