@@ -50,9 +50,9 @@
         max_deceleration: -4.0
         max_positive_jerk: 5.0
         max_negative_jerk: -5.0
-        nominal_deceleration: -1.5
-        nominal_positive_jerk: 0.6
-        nominal_negative_jerk: -0.6
+        nominal_deceleration: -0.75
+        nominal_positive_jerk: 0.3
+        nominal_negative_jerk: -0.3
 
       blind_spot:
         check:
