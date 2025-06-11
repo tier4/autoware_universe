@@ -170,7 +170,8 @@ void VehicleCmdFilter::limitLateralSteerRate(const double dt, Control & input) c
   const float original_steer_angle = input.lateral.steering_tire_angle;
 
   // Calculate original lateral jerk for logging
-  const double original_lateral_jerk = (current_speed_ * current_speed_ / param_.wheel_base) * original_steer_rate;
+  const double original_lateral_jerk =
+    (current_speed_ * current_speed_ / param_.wheel_base) * original_steer_rate;
 
   // Limit steering angle rate
   input.lateral.steering_tire_rotation_rate = std::clamp(
@@ -185,9 +186,10 @@ void VehicleCmdFilter::limitLateralSteerRate(const double dt, Control & input) c
   // Log if steering rate was limited
   if (std::abs(original_steer_rate - input.lateral.steering_tire_rotation_rate) > 1e-6) {
     RCLCPP_ERROR(
-      logger_, "Steering rate limited: original=%.4f, limited=%.4f, limit=%.4f [rad/s], "
-               "vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
-               "lateral_jerk_threshold=%.4f [m/s^3]",
+      logger_,
+      "Steering rate limited: original=%.4f, limited=%.4f, limit=%.4f [rad/s], "
+      "vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
+      "lateral_jerk_threshold=%.4f [m/s^3]",
       original_steer_rate, input.lateral.steering_tire_rotation_rate, effective_steer_rate_lim,
       current_speed_, original_lateral_jerk, steer_rate_lim_from_lat_jerk);
   }
@@ -195,11 +197,12 @@ void VehicleCmdFilter::limitLateralSteerRate(const double dt, Control & input) c
   // Log if steering angle change was limited
   if (std::abs(original_steer_angle - input.lateral.steering_tire_angle) > 1e-6) {
     RCLCPP_ERROR(
-      logger_, "Steering angle change limited: original=%.4f, limited=%.4f, max_change=%.4f [rad], "
-               "vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
-               "lateral_jerk_threshold=%.4f [m/s^3]",
-      original_steer_angle, input.lateral.steering_tire_angle, steer_diff_limit,
-      current_speed_, original_lateral_jerk, steer_rate_lim_from_lat_jerk);
+      logger_,
+      "Steering angle change limited: original=%.4f, limited=%.4f, max_change=%.4f [rad], "
+      "vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
+      "lateral_jerk_threshold=%.4f [m/s^3]",
+      original_steer_angle, input.lateral.steering_tire_angle, steer_diff_limit, current_speed_,
+      original_lateral_jerk, steer_rate_lim_from_lat_jerk);
   }
 }
 
