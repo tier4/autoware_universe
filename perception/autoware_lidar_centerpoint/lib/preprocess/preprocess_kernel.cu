@@ -44,6 +44,7 @@ const std::size_t WARPS_PER_BLOCK = 4;
 namespace autoware::lidar_centerpoint
 {
 
+
 __global__ void generateSweepPoints_kernel(
   const float * input_points, std::size_t points_size, int input_point_step, float time_lag,
   const float * transform_array, int num_features, float * output_points)
@@ -65,7 +66,17 @@ __global__ void generateSweepPoints_kernel(
   output_points[point_idx * num_features + 2] = transform_array[2] * input_x +
                                                 transform_array[6] * input_y +
                                                 transform_array[10] * input_z + transform_array[14];
-  output_points[point_idx * num_features + 3] = time_lag;
+  
+  if (num_features == 4) {
+  	output_points[point_idx * num_features + 3] = time_lag;
+  } else if (num_features == 5) {
+	const float input_intensity = static_cast<float>(input_points[point_idx * input_point_step + 3]);
+  	output_points[point_idx * num_features + 3] = input_intensity;
+  	output_points[point_idx * num_features + 4] = time_lag;
+  } else {
+	// Unsupported number of features
+	return;
+  }
 }
 
 cudaError_t generateSweepPoints_launch(
@@ -78,7 +89,7 @@ cudaError_t generateSweepPoints_launch(
 
   dim3 blocks((points_size + 256 - 1) / 256);
   dim3 threads(256);
-  assert(num_features == 4);
+  assert(num_features == 4 || num_features == 5);
 
   generateSweepPoints_kernel<<<blocks, threads, 0, stream>>>(
     input_points, points_size, input_point_step, time_lag, transform_d.get(), num_features,
@@ -88,6 +99,8 @@ cudaError_t generateSweepPoints_launch(
   return err;
 }
 
+
+template<int NUM_FEATURES>
 __global__ void shufflePoints_kernel(
   const float * points, const unsigned int * indices, float * shuffled_points,
   const std::size_t points_size, const std::size_t max_size, const std::size_t offset)
@@ -103,18 +116,24 @@ __global__ void shufflePoints_kernel(
     shuffled_points[4 * dst_idx + 1] = INFINITY;
     shuffled_points[4 * dst_idx + 2] = INFINITY;
     shuffled_points[4 * dst_idx + 3] = INFINITY;
-  } else {
+	if (NUM_FEATURES == 5) {
+	  shuffled_points[4 * dst_idx + 4] = INFINITY;
+	}
+} else {
     shuffled_points[4 * dst_idx + 0] = points[4 * src_idx + 0];
     shuffled_points[4 * dst_idx + 1] = points[4 * src_idx + 1];
     shuffled_points[4 * dst_idx + 2] = points[4 * src_idx + 2];
     shuffled_points[4 * dst_idx + 3] = points[4 * src_idx + 3];
+	if (NUM_FEATURES == 5) {
+	  shuffled_points[4 * dst_idx + 4] = points[4 * src_idx + 4];
+	}
   }
 }
 
 cudaError_t shufflePoints_launch(
   const float * points, const unsigned int * indices, float * shuffled_points,
   const std::size_t points_size, const std::size_t max_size, const std::size_t offset,
-  cudaStream_t stream)
+  const int num_features, cudaStream_t stream)
 {
   dim3 blocks((max_size + 256 - 1) / 256);
   dim3 threads(256);
@@ -123,12 +142,20 @@ cudaError_t shufflePoints_launch(
     return cudaGetLastError();
   }
 
-  shufflePoints_kernel<<<blocks, threads, 0, stream>>>(
-    points, indices, shuffled_points, points_size, max_size, offset);
+  if (num_features == 4) {
+	shufflePoints_kernel<4><<<blocks, threads, 0, stream>>>(
+	  points, indices, shuffled_points, points_size, max_size, offset);
+  } else if (num_features == 5) {
+	shufflePoints_kernel<5><<<blocks, threads, 0, stream>>>(
+	  points, indices, shuffled_points, points_size, max_size, offset);
+  } else {
+	throw std::runtime_error("Value of num_features is not supported!");
+  }
   cudaError_t err = cudaGetLastError();
   return err;
 }
 
+template<int NUM_FEATURES>
 __global__ void generateVoxels_random_kernel(
   const float * points, std::size_t points_size, float min_x_range, float max_x_range,
   float min_y_range, float max_y_range, float min_z_range, float max_z_range, float pillar_x_size,
@@ -138,34 +165,64 @@ __global__ void generateVoxels_random_kernel(
   int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_idx >= points_size) return;
 
-  float4 point = ((float4 *)points)[point_idx];
+  if (NUM_FEATURES == 4) {
+	float4 point = ((float4 *)points)[point_idx];
 
-  if (
-    point.x < min_x_range || point.x >= max_x_range || point.y < min_y_range ||
-    point.y >= max_y_range || point.z < min_z_range || point.z >= max_z_range)
-    return;
+	if (
+		point.x < min_x_range || point.x >= max_x_range || point.y < min_y_range ||
+		point.y >= max_y_range || point.z < min_z_range || point.z >= max_z_range)
+		return;
 
-  int voxel_idx = floorf((point.x - min_x_range) / pillar_x_size);
-  int voxel_idy = floorf((point.y - min_y_range) / pillar_y_size);
-  voxel_idx = voxel_idx < 0 ? 0 : voxel_idx >= grid_x_size ? grid_x_size - 1 : voxel_idx;
-  voxel_idy = voxel_idy < 0 ? 0 : voxel_idy >= grid_y_size ? grid_y_size - 1 : voxel_idy;
-  unsigned int voxel_index = (grid_x_size - 1 - voxel_idx) * grid_y_size + voxel_idy;
+	int voxel_idx = floorf((point.x - min_x_range) / pillar_x_size);
+	int voxel_idy = floorf((point.y - min_y_range) / pillar_y_size);
+	voxel_idx = voxel_idx < 0 ? 0 : voxel_idx >= grid_x_size ? grid_x_size - 1 : voxel_idx;
+	voxel_idy = voxel_idy < 0 ? 0 : voxel_idy >= grid_y_size ? grid_y_size - 1 : voxel_idy;
+	unsigned int voxel_index = (grid_x_size - 1 - voxel_idx) * grid_y_size + voxel_idy;
 
-  unsigned int point_id = atomicAdd(&(mask[voxel_index]), 1);
+	unsigned int point_id = atomicAdd(&(mask[voxel_index]), 1);
 
-  if (point_id >= MAX_POINT_IN_VOXEL_SIZE) return;
-  float * address = voxels + (voxel_index * MAX_POINT_IN_VOXEL_SIZE + point_id) * 4;
-  atomicExch(address + 0, point.x);
-  atomicExch(address + 1, point.y);
-  atomicExch(address + 2, point.z);
-  atomicExch(address + 3, point.w);
+	if (point_id >= MAX_POINT_IN_VOXEL_SIZE) return;
+	float * address = voxels + (voxel_index * MAX_POINT_IN_VOXEL_SIZE + point_id) * 4;
+	atomicExch(address + 0, point.x);
+	atomicExch(address + 1, point.y);
+	atomicExch(address + 2, point.z);
+	atomicExch(address + 3, point.w);
+		
+  } else {
+	float x = points[point_idx * 5];
+  	float y = points[point_idx * 5 + 1];
+  	float z = points[point_idx * 5 + 2];
+  	float i = points[point_idx * 5 + 3];
+  	float t = points[point_idx * 5 + 4];
+
+	if (
+		x < min_x_range || x >= max_x_range || y < min_y_range ||
+		y >= max_y_range || z < min_z_range || z >= max_z_range)
+		return;
+
+	int voxel_idx = floorf((x - min_x_range) / pillar_x_size);
+	int voxel_idy = floorf((y - min_y_range) / pillar_y_size);
+	voxel_idx = voxel_idx < 0 ? 0 : voxel_idx >= grid_x_size ? grid_x_size - 1 : voxel_idx;
+	voxel_idy = voxel_idy < 0 ? 0 : voxel_idy >= grid_y_size ? grid_y_size - 1 : voxel_idy;
+	unsigned int voxel_index = (grid_x_size - 1 - voxel_idx) * grid_y_size + voxel_idy;
+
+	unsigned int point_id = atomicAdd(&(mask[voxel_index]), 1);
+
+	if (point_id >= MAX_POINT_IN_VOXEL_SIZE) return;
+	float * address = voxels + (voxel_index * MAX_POINT_IN_VOXEL_SIZE + point_id) * 4;
+	atomicExch(address + 0, x);
+	atomicExch(address + 1, y);
+	atomicExch(address + 2, z);
+	atomicExch(address + 3, i);
+	atomicExch(address + 4, t);
+  }
 }
 
 cudaError_t generateVoxels_random_launch(
   const float * points, std::size_t points_size, float min_x_range, float max_x_range,
   float min_y_range, float max_y_range, float min_z_range, float max_z_range, float pillar_x_size,
   float pillar_y_size, float pillar_z_size, int grid_y_size, int grid_x_size, unsigned int * mask,
-  float * voxels, cudaStream_t stream)
+  float * voxels, const int num_features, cudaStream_t stream)
 {
   dim3 blocks((points_size + 256 - 1) / 256);
   dim3 threads(256);
@@ -174,14 +231,24 @@ cudaError_t generateVoxels_random_launch(
     return cudaGetLastError();
   }
 
-  generateVoxels_random_kernel<<<blocks, threads, 0, stream>>>(
-    points, points_size, min_x_range, max_x_range, min_y_range, max_y_range, min_z_range,
-    max_z_range, pillar_x_size, pillar_y_size, pillar_z_size, grid_y_size, grid_x_size, mask,
-    voxels);
+  if (num_features == 4) {
+	generateVoxels_random_kernel<4><<<blocks, threads, 0, stream>>>(
+	  points, points_size, min_x_range, max_x_range, min_y_range, max_y_range, min_z_range,
+	  max_z_range, pillar_x_size, pillar_y_size, pillar_z_size, grid_y_size, grid_x_size, mask,
+	  voxels);
+  } else if (num_features == 5) {
+	generateVoxels_random_kernel<5><<<blocks, threads, 0, stream>>>(
+	  points, points_size, min_x_range, max_x_range, min_y_range, max_y_range, min_z_range,
+	  max_z_range, pillar_x_size, pillar_y_size, pillar_z_size, grid_y_size, grid_x_size, mask,
+	  voxels);
+  } else {
+	throw std::runtime_error("Value of num_features is not supported!");
+  }
   cudaError_t err = cudaGetLastError();
   return err;
 }
 
+template <int NUM_FEATURES>
 __global__ void generateBaseFeatures_kernel(
   unsigned int * mask, float * voxels, int grid_y_size, int grid_x_size, int max_voxel_size,
   unsigned int * pillar_num, float * voxel_features, float * voxel_num, int * voxel_idxs)
@@ -210,7 +277,15 @@ __global__ void generateBaseFeatures_kernel(
   for (int i = 0; i < count; i++) {
     int inIndex = voxel_index * MAX_POINT_IN_VOXEL_SIZE + i;
     int outIndex = current_pillarId * MAX_POINT_IN_VOXEL_SIZE + i;
-    ((float4 *)voxel_features)[outIndex] = ((float4 *)voxels)[inIndex];
+	if (NUM_FEATURES == 4) {
+    	((float4 *)voxel_features)[outIndex] = ((float4 *)voxels)[inIndex];
+	} else {
+		voxel_features[outIndex * 5] = voxels[inIndex * 5];
+    	voxel_features[outIndex * 5 + 1] = voxels[inIndex * 5 + 1];
+    	voxel_features[outIndex * 5 + 2] = voxels[inIndex * 5 + 2];
+    	voxel_features[outIndex * 5 + 3] = voxels[inIndex * 5 + 3];
+    	voxel_features[outIndex * 5 + 4] = voxels[inIndex * 5 + 4];
+	}
   }
 
   // clear buffer for next infer
@@ -220,22 +295,29 @@ __global__ void generateBaseFeatures_kernel(
 // create 4 channels
 cudaError_t generateBaseFeatures_launch(
   unsigned int * mask, float * voxels, int grid_y_size, int grid_x_size, int max_voxel_size,
-  unsigned int * pillar_num, float * voxel_features, float * voxel_num, int * voxel_idxs,
+  unsigned int * pillar_num, float * voxel_features, float * voxel_num, int * voxel_idxs, const int num_features,
   cudaStream_t stream)
 {
   // exchange x and y to process in a row-major order
   dim3 threads = {32, 32};
   dim3 blocks = {
     (grid_y_size + threads.x - 1) / threads.x, (grid_x_size + threads.y - 1) / threads.y};
-
-  generateBaseFeatures_kernel<<<blocks, threads, 0, stream>>>(
-    mask, voxels, grid_y_size, grid_x_size, max_voxel_size, pillar_num, voxel_features, voxel_num,
-    voxel_idxs);
+  
+  if (num_features == 4) {
+	  generateBaseFeatures_kernel<4><<<blocks, threads, 0, stream>>>(
+	mask, voxels, grid_y_size, grid_x_size, max_voxel_size, pillar_num, voxel_features, voxel_num,
+	voxel_idxs);
+  } else if (num_features == 5) {
+	  generateBaseFeatures_kernel<5><<<blocks, threads, 0, stream>>>(
+	mask, voxels, grid_y_size, grid_x_size, max_voxel_size, pillar_num, voxel_features, voxel_num,
+	voxel_idxs);
+  } else {
+	throw std::runtime_error("Value of num_features is not supported!");
+  }	
   cudaError_t err = cudaGetLastError();
   return err;
 }
 
-template <std::size_t ENCODER_IN_FEATURE_SIZE>
 __global__ void generateFeatures_kernel(
   const float * voxel_features, const float * voxel_num_points, const int * coords,
   const unsigned int * num_voxels, const float voxel_x, const float voxel_y, const float voxel_z,
@@ -256,7 +338,7 @@ __global__ void generateFeatures_kernel(
   __shared__ float3 pillarSumSM[WARPS_PER_BLOCK];
   __shared__ int3 cordsSM[WARPS_PER_BLOCK];
   __shared__ int pointsNumSM[WARPS_PER_BLOCK];
-  __shared__ float pillarOutSM[WARPS_PER_BLOCK][MAX_POINT_IN_VOXEL_SIZE][ENCODER_IN_FEATURE_SIZE];
+  __shared__ float pillarOutSM[WARPS_PER_BLOCK][MAX_POINT_IN_VOXEL_SIZE][10];
 
   if (threadIdx.x < WARPS_PER_BLOCK) {
     pointsNumSM[threadIdx.x] = voxel_num_points[blockIdx.x * WARPS_PER_BLOCK + threadIdx.x];
@@ -311,11 +393,7 @@ __global__ void generateFeatures_kernel(
 
     pillarOutSM[pillar_idx_inBlock][point_idx][7] = center.x;
     pillarOutSM[pillar_idx_inBlock][point_idx][8] = center.y;
-
-	if (ENCODER_IN_FEATURE_SIZE == 10) {
-      pillarOutSM[pillar_idx_inBlock][point_idx][9] = center.z;
-    }
-
+    pillarOutSM[pillar_idx_inBlock][point_idx][9] = center.z;
   } else {
     pillarOutSM[pillar_idx_inBlock][point_idx][0] = 0;
     pillarOutSM[pillar_idx_inBlock][point_idx][1] = 0;
@@ -328,18 +406,123 @@ __global__ void generateFeatures_kernel(
 
     pillarOutSM[pillar_idx_inBlock][point_idx][7] = 0;
     pillarOutSM[pillar_idx_inBlock][point_idx][8] = 0;
-
-	if (ENCODER_IN_FEATURE_SIZE == 10) {
-      pillarOutSM[pillar_idx_inBlock][point_idx][9] = 0;
-    }
+    pillarOutSM[pillar_idx_inBlock][point_idx][9] = 0;
   }
 
   __syncthreads();
 
-  for (int i = 0; i < ENCODER_IN_FEATURE_SIZE; i++) {
-    int outputSMId = pillar_idx_inBlock * MAX_POINT_IN_VOXEL_SIZE * ENCODER_IN_FEATURE_SIZE +
+  for (int i = 0; i < 10; i++) {
+    int outputSMId = pillar_idx_inBlock * MAX_POINT_IN_VOXEL_SIZE * 10 +
                      i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
-    int outputId = pillar_idx * MAX_POINT_IN_VOXEL_SIZE * ENCODER_IN_FEATURE_SIZE +
+    int outputId = pillar_idx * MAX_POINT_IN_VOXEL_SIZE * 10 +
+                   i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
+    features[outputId] = ((float *)pillarOutSM)[outputSMId];
+  }
+}
+
+_global__ void generateIntensityFeatures_kernel(
+  const float * voxel_features, const float * voxel_num_points, const int * coords,
+  const unsigned int * num_voxels, const float voxel_x, const float voxel_y, const float voxel_z,
+  const float range_min_x, const float range_min_y, const float range_min_z, float * features)
+{
+  // voxel_features (float): (max_voxel_size, max_point_in_voxel_size, point_feature_size)
+  // voxel_num_points (int): (max_voxel_size)
+  // coords (int): (max_voxel_size, point_dim_size)
+  int pillar_idx = blockIdx.x * WARPS_PER_BLOCK + threadIdx.x / MAX_POINT_IN_VOXEL_SIZE;
+  int point_idx = threadIdx.x % MAX_POINT_IN_VOXEL_SIZE;
+  int pillar_idx_inBlock = threadIdx.x / MAX_POINT_IN_VOXEL_SIZE;  // max_point_in_voxel_size
+
+  unsigned int num_pillars = num_voxels[0];
+  if (pillar_idx >= num_pillars) return;
+
+  // load src
+  __shared__ float pillarSM[WARPS_PER_BLOCK][MAX_POINT_IN_VOXEL_SIZE][5];
+  __shared__ float3 pillarSumSM[WARPS_PER_BLOCK];
+  __shared__ int3 cordsSM[WARPS_PER_BLOCK];
+  __shared__ int pointsNumSM[WARPS_PER_BLOCK];
+  __shared__ float pillarOutSM[WARPS_PER_BLOCK][MAX_POINT_IN_VOXEL_SIZE][11];
+
+  if (threadIdx.x < WARPS_PER_BLOCK) {
+    pointsNumSM[threadIdx.x] = voxel_num_points[blockIdx.x * WARPS_PER_BLOCK + threadIdx.x];
+    cordsSM[threadIdx.x] = ((int3 *)coords)[blockIdx.x * WARPS_PER_BLOCK + threadIdx.x];
+    pillarSumSM[threadIdx.x] = {0, 0, 0};
+  }
+
+  #pragma unroll
+  for (int i = 0; i < 5; i++) {
+  	pillarSM[pillar_idx_inBlock][point_idx][i] =
+    ((float *)voxel_features)[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * 5 + point_idx * 5 + i];
+  }
+  __syncthreads();
+
+  // calculate sm in a pillar
+  if (point_idx < pointsNumSM[pillar_idx_inBlock]) {
+    atomicAdd(&(pillarSumSM[pillar_idx_inBlock].x), pillarSM[pillar_idx_inBlock][point_idx][0]);
+    atomicAdd(&(pillarSumSM[pillar_idx_inBlock].y), pillarSM[pillar_idx_inBlock][point_idx][1]);
+    atomicAdd(&(pillarSumSM[pillar_idx_inBlock].z), pillarSM[pillar_idx_inBlock][point_idx][2]);
+  }
+  __syncthreads();
+
+  // feature-mean
+  float3 mean;
+  float validPoints = pointsNumSM[pillar_idx_inBlock];
+  mean.x = pillarSumSM[pillar_idx_inBlock].x / validPoints;
+  mean.y = pillarSumSM[pillar_idx_inBlock].y / validPoints;
+  mean.z = pillarSumSM[pillar_idx_inBlock].z / validPoints;
+
+  mean.x = pillarSM[pillar_idx_inBlock][point_idx][0] - mean.x;
+  mean.y = pillarSM[pillar_idx_inBlock][point_idx][1] - mean.y;
+  mean.z = pillarSM[pillar_idx_inBlock][point_idx][2] - mean.z;
+
+  // calculate offset
+  float x_offset = voxel_x / 2 + cordsSM[pillar_idx_inBlock].z * voxel_x + range_min_x;
+  float y_offset = voxel_y / 2 + cordsSM[pillar_idx_inBlock].y * voxel_y + range_min_y;
+  float z_offset = voxel_z / 2 + cordsSM[pillar_idx_inBlock].x * voxel_z + range_min_z;
+
+  // feature-offset
+  float3 center;
+  center.x = pillarSM[pillar_idx_inBlock][point_idx][0] - x_offset;
+  center.y = pillarSM[pillar_idx_inBlock][point_idx][1] - y_offset;
+  center.z = pillarSM[pillar_idx_inBlock][point_idx][2] - z_offset;
+
+  // store output
+  if (point_idx < pointsNumSM[pillar_idx_inBlock]) {
+    pillarOutSM[pillar_idx_inBlock][point_idx][0] = pillarSM[pillar_idx_inBlock][point_idx][0];
+    pillarOutSM[pillar_idx_inBlock][point_idx][1] = pillarSM[pillar_idx_inBlock][point_idx][1];
+    pillarOutSM[pillar_idx_inBlock][point_idx][2] = pillarSM[pillar_idx_inBlock][point_idx][2];
+    pillarOutSM[pillar_idx_inBlock][point_idx][3] = pillarSM[pillar_idx_inBlock][point_idx][3];
+    pillarOutSM[pillar_idx_inBlock][point_idx][4] = pillarSM[pillar_idx_inBlock][point_idx][4];
+
+    pillarOutSM[pillar_idx_inBlock][point_idx][5] = mean.x;
+    pillarOutSM[pillar_idx_inBlock][point_idx][6] = mean.y;
+    pillarOutSM[pillar_idx_inBlock][point_idx][7] = mean.z;
+
+    pillarOutSM[pillar_idx_inBlock][point_idx][8] = center.x;
+    pillarOutSM[pillar_idx_inBlock][point_idx][9] = center.y;
+    pillarOutSM[pillar_idx_inBlock][point_idx][10] = center.z;
+
+  } else {
+	pillarOutSM[pillar_idx_inBlock][point_idx][0] = 0;
+    pillarOutSM[pillar_idx_inBlock][point_idx][1] = 0;
+    pillarOutSM[pillar_idx_inBlock][point_idx][2] = 0;
+    pillarOutSM[pillar_idx_inBlock][point_idx][3] = 0;
+    pillarOutSM[pillar_idx_inBlock][point_idx][4] = 0;
+
+    pillarOutSM[pillar_idx_inBlock][point_idx][5] = 0;
+    pillarOutSM[pillar_idx_inBlock][point_idx][6] = 0;
+    pillarOutSM[pillar_idx_inBlock][point_idx][7] = 0;
+ 
+	pillarOutSM[pillar_idx_inBlock][point_idx][8] = 0;
+	pillarOutSM[pillar_idx_inBlock][point_idx][9] = 0;
+	pillarOutSM[pillar_idx_inBlock][point_idx][10] = 0;
+  }
+
+  __syncthreads();
+
+  for (int i = 0; i < 11; i++) {
+    int outputSMId = pillar_idx_inBlock * MAX_POINT_IN_VOXEL_SIZE * 11 +
+                     i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
+    int outputId = pillar_idx * MAX_POINT_IN_VOXEL_SIZE * 11 +
                    i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
     features[outputId] = ((float *)pillarOutSM)[outputSMId];
   }
@@ -354,12 +537,12 @@ cudaError_t generateFeatures_launch(
 {
   dim3 blocks(divup(max_voxel_size, WARPS_PER_BLOCK));
   dim3 threads(WARPS_PER_BLOCK * MAX_POINT_IN_VOXEL_SIZE);
-  if (encoder_in_feature_size == 9) {
-    generateFeatures_kernel<9><<<blocks, threads, 0, stream>>>(
+  if (encoder_in_feature_size == 10) {
+    generateFeatures_kernel<<<blocks, threads, 0, stream>>>(
       voxel_features, voxel_num_points, coords, num_voxels, voxel_size_x, voxel_size_y,
       voxel_size_z, range_min_x, range_min_y, range_min_z, features);
-  } else if (encoder_in_feature_size == 10) {
-    generateFeatures_kernel<10><<<blocks, threads, 0, stream>>>(
+  } else if (encoder_in_feature_size == 11) {
+    generateIntensityFeatures_kernel<<<blocks, threads, 0, stream>>>(
       voxel_features, voxel_num_points, coords, num_voxels, voxel_size_x, voxel_size_y,
       voxel_size_z, range_min_x, range_min_y, range_min_z, features);
   } else {
