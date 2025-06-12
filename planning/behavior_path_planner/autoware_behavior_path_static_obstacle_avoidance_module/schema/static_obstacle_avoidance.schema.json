@@ -886,6 +886,7 @@
             "object_check_goal_distance",
             "object_check_return_pose_distance",
             "max_compensation_time",
+            "unstable_classification_time",
             "detection_area",
             "merging_vehicle",
             "parked_vehicle",
