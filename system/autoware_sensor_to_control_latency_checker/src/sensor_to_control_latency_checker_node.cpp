@@ -129,6 +129,35 @@ void SensorToControlLatencyCheckerNode::calculateTotalLatency()
 {
   total_latency_ms_ = 0.0;
 
+  // Check if all required data is available
+  bool all_data_available = hasValidData(control_system_latency_history_) &&
+                           hasValidData(planning_system_latency_history_) &&
+                           hasValidData(map_based_prediction_processing_time_history_) &&
+                           hasValidData(meas_to_tracked_object_history_);
+
+  if (!all_data_available) {
+    std::string missing_data = "";
+    if (!hasValidData(control_system_latency_history_)) {
+      if (!missing_data.empty()) missing_data += ", ";
+      missing_data += "control_system_latency";
+    }
+    if (!hasValidData(planning_system_latency_history_)) {
+      if (!missing_data.empty()) missing_data += ", ";
+      missing_data += "planning_system_latency";
+    }
+    if (!hasValidData(map_based_prediction_processing_time_history_)) {
+      if (!missing_data.empty()) missing_data += ", ";
+      missing_data += "processing_time_prediction";
+    }
+    if (!hasValidData(meas_to_tracked_object_history_)) {
+      if (!missing_data.empty()) missing_data += ", ";
+      missing_data += "meas_to_tracked_object";
+    }
+
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000, "Input data is insufficient for latency calculation. Missing: %s", missing_data.c_str());
+    return;
+  }
+
   // Get control_system_latency data (most recent)
   double control_system_latency_ms = 0.0;
   rclcpp::Time control_system_latency_timestamp = rclcpp::Time(0);
@@ -204,6 +233,13 @@ void SensorToControlLatencyCheckerNode::calculateTotalLatency()
     "planning_offset=%.2f + control_offset=%.2f + vehicle_offset=%.2f)",
     total_latency_ms_, sensor_offset_ms_, perception_offset_ms_, planning_offset_ms_,
     control_offset_ms_, vehicle_offset_ms_);
+
+  // Check if total latency exceeds threshold
+  if (total_latency_ms_ > latency_threshold_ms_) {
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
+      "Total sensor-to-control latency (%.2f ms) exceeds threshold (%.2f ms)!",
+      total_latency_ms_, latency_threshold_ms_);
+  }
 }
 
 void SensorToControlLatencyCheckerNode::publishTotalLatency()
@@ -239,10 +275,10 @@ void SensorToControlLatencyCheckerNode::publishTotalLatency()
   debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/total_latency_ms", total_latency_ms_);
 
-  RCLCPP_INFO_THROTTLE(
-    get_logger(), *get_clock(), 1000,
-    "Total sensor-to-control latency: %.2f ms (threshold: %.2f ms)", total_latency_ms_,
-    latency_threshold_ms_);
+  // RCLCPP_INFO_THROTTLE(
+  //   get_logger(), *get_clock(), 1000,
+  //   "Total sensor-to-control latency: %.2f ms (threshold: %.2f ms)", total_latency_ms_,
+  //   latency_threshold_ms_);
 }
 
 void SensorToControlLatencyCheckerNode::checkTotalLatency(
@@ -296,11 +332,15 @@ void SensorToControlLatencyCheckerNode::checkTotalLatency(
     }
 
     stat.add("uninitialized_data", uninitialized_data);
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000, "Input data is not initialized: %s", uninitialized_data.c_str());
     stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::OK,
+      diagnostic_msgs::msg::DiagnosticStatus::ERROR,
       "Some latency data not yet initialized: " + uninitialized_data);
   } else if (total_latency_ms_ > latency_threshold_ms_) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Total latency exceeds threshold");
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
+      "Total sensor-to-control latency (%.2f ms) exceeds threshold (%.2f ms) in diagnostic check!",
+      total_latency_ms_, latency_threshold_ms_);
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "Total latency exceeds threshold");
   } else {
     stat.summary(
       diagnostic_msgs::msg::DiagnosticStatus::OK, "Total latency within acceptable range");
