@@ -420,7 +420,7 @@ __global__ void generateFeatures_kernel(
   }
 }
 
-_global__ void generateIntensityFeatures_kernel(
+__global__ void generateIntensityFeatures_kernel(
   const float * voxel_features, const float * voxel_num_points, const int * coords,
   const unsigned int * num_voxels, const float voxel_x, const float voxel_y, const float voxel_z,
   const float range_min_x, const float range_min_y, const float range_min_z, float * features)
