@@ -54,7 +54,7 @@
 
   <group>
     <push-ros-namespace namespace="planning" if="$(var stand_alone)"/>
-    <node_container pkg="rclcpp_components" exec="$(var container_type)" name="planning_validator_container" namespace="" args="" output="both">
+    <node_container pkg="rclcpp_components" exec="$(var container_type)" name="planning_validator_container" namespace="" args="" output="both" launch-prefix="konsole -e gdb -ex run --args">
       <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component" namespace=""/>
       <composable_node pkg="autoware_planning_validator" plugin="autoware::planning_validator::PlanningValidatorNode" name="planning_validator" namespace="">
         <remap from="~/input/pointcloud" to="$(var input_pointcloud)"/>
