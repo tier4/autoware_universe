@@ -38,13 +38,16 @@ private:
 
 struct is_score_greater_or_front_back_low_score
 {
-  is_score_greater_or_front_back_low_score(float t, float low_t, float ego_width) 
-    : t_(t), low_t_(low_t), ego_width_(ego_width) {}
+  is_score_greater_or_front_back_low_score(float t, float low_t, float ego_width)
+  : t_(t), low_t_(low_t), ego_width_(ego_width)
+  {
+  }
 
-  __device__ bool operator()(const Box3D & b) { 
+  __device__ bool operator()(const Box3D & b)
+  {
     // Always keep if score > high threshold
     if (b.score > t_) return true;
-    
+
     // For lower scores, only keep if:
     // 1. Score > low threshold AND
     // 2. Object is in front or back (y position within ego width)
@@ -56,8 +59,6 @@ private:
   float low_t_{0.0};
   float ego_width_{0.0};
 };
-
-
 
 struct is_kept
 {
@@ -186,11 +187,9 @@ cudaError_t PostProcessCUDA::generateDetectedBoxes3D_launch(
   // suppress by score
   // suppress by score with new condition
   const auto num_det_boxes3d = thrust::count_if(
-    thrust::device, boxes3d_d.begin(), boxes3d_d.end(), 
+    thrust::device, boxes3d_d.begin(), boxes3d_d.end(),
     is_score_greater_or_front_back_low_score(
-      config_.score_threshold_, 
-      0.25f,  // New lower threshold for front/back objects
-      1.5));  // Need to add ego_width to config
+      config_.score_threshold_, config_.front_back_low_score_threshold_, config_.ego_width_));
   if (num_det_boxes3d == 0) {
     return cudaGetLastError();
   }
@@ -198,9 +197,7 @@ cudaError_t PostProcessCUDA::generateDetectedBoxes3D_launch(
   thrust::copy_if(
     thrust::device, boxes3d_d.begin(), boxes3d_d.end(), det_boxes3d_d.begin(),
     is_score_greater_or_front_back_low_score(
-      config_.score_threshold_,
-      0.25f,
-      1.5));
+      config_.score_threshold_, config_.front_back_low_score_threshold_, config_.ego_width_));
 
   // sort by score
   thrust::sort(det_boxes3d_d.begin(), det_boxes3d_d.end(), score_greater());

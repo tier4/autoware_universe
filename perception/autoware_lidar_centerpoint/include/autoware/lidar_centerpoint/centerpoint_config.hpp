@@ -29,7 +29,7 @@ public:
     const std::vector<double> & voxel_size, const std::size_t downsample_factor,
     const std::size_t encoder_in_feature_size, const float score_threshold,
     const float circle_nms_dist_threshold, const std::vector<double> yaw_norm_thresholds,
-    const bool has_variance)
+    const bool has_variance, const float front_back_low_score_threshold, const float ego_width)
   {
     class_size_ = class_size;
     point_feature_size_ = point_feature_size;
@@ -84,6 +84,9 @@ public:
     offset_z_ = range_min_z_ + voxel_size_z_ / 2;
     down_grid_size_x_ = grid_size_x_ / downsample_factor_;
     down_grid_size_y_ = grid_size_y_ / downsample_factor_;
+
+    front_back_low_score_threshold_ = front_back_low_score_threshold;
+    ego_width_ = ego_width;
   };
 
   // input params
@@ -118,6 +121,8 @@ public:
 
   // post-process params
   float score_threshold_{0.35f};
+  float front_back_low_score_threshold_{0.25f};
+  float ego_width_{1.5f};
   float circle_nms_dist_threshold_{1.5f};
   std::vector<float> yaw_norm_thresholds_{};
 
