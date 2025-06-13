@@ -12,6 +12,8 @@ ECU2 上で Autoweare launch を実行する際のコマンド
 $ros2 launch autoware_launch logging_simulator.launch.xml map_path:=$HOME/autoware_map/sample-map-rosbag vehicle_model:=sample_vehicle sensor_model:=aip_xx1 phase1_acc_trial_ecu2:=true
 ```
 
+※ECU2 については launch パラメータも変更されている。[変更先](https://github.com/tier4/autoware_launch.xx1/tree/feature-ecu2-node)
+
 以下元情報から変更なし
 ---
 # Autoware Universe
