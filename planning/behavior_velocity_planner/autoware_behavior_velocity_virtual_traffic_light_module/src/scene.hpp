@@ -35,10 +35,28 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <functional>
 
 namespace autoware::behavior_velocity_planner
 {
-class VirtualTrafficLightModule : public SceneModuleInterface
+
+// 状態遷移の結果を表す構造体
+struct StateTransitionResult
+{
+  enum class Action {
+    CONTINUE,      // 処理を続行
+    RETURN_TRUE,   // 処理を終了してtrueを返す
+    STOP_AT_STOP_LINE,  // stop lineで停止
+    STOP_AT_END_LINE    // end lineで停止
+  };
+  
+  Action action;
+  bool state_changed;
+  std::string log_message;
+};
+
+// 状態遷移を管理するクラス
+class StateTransitionManager
 {
 public:
   enum class State : uint8_t {
@@ -48,6 +66,56 @@ public:
     FINALIZING = 3,
     FINALIZED = 4,
   };
+
+  // 状態変更時のコールバック関数型
+  using StateChangeCallback = std::function<void(State old_state, State new_state)>;
+
+  StateTransitionManager(State initial_state = State::NONE);
+
+  // コールバック関数を設定
+  void setStateChangeCallback(StateChangeCallback callback);
+
+  // 各状態での遷移処理
+  StateTransitionResult processNoneState(int64_t start_line_id);
+  StateTransitionResult processRequestingState(
+    const std::string& stop_line_id,
+    bool has_stop_line,
+    bool has_virtual_state,
+    bool has_right_of_way,
+    bool is_before_stop_line,
+    bool is_timeout);
+  StateTransitionResult processPassingState(
+    int64_t end_line_id,
+    bool has_virtual_state,
+    bool is_timeout_after_stop,
+    bool is_finalized,
+    bool is_near_end_line,
+    bool is_stopped);
+  StateTransitionResult processFinalizingState(bool is_finalized);
+  StateTransitionResult processFinalizedState();
+
+  // 特殊な遷移処理
+  StateTransitionResult processBeforeStartLine();
+  StateTransitionResult processAfterEndLine(int64_t end_line_id);
+
+  // 状態の取得・設定
+  State getCurrentState() const { return current_state_; }
+
+  // 状態を文字列に変換
+  std::string stateToString(State state) const;
+
+private:
+  State current_state_;
+  StateChangeCallback state_change_callback_;
+
+  // 内部的な状態変更関数
+  void changeState(State new_state);
+};
+
+class VirtualTrafficLightModule : public SceneModuleInterface
+{
+public:
+  using State = StateTransitionManager::State;  // エイリアスを作成
 
   struct MapData
   {
@@ -109,16 +177,17 @@ private:
   const lanelet::ConstLanelet lane_;
   const PlannerParam planner_param_;
   tier4_v2x_msgs::msg::VirtualTrafficLightStateArray::ConstSharedPtr virtual_traffic_light_states_;
-  State state_{State::NONE};
+  StateTransitionManager state_manager_;  // 状態遷移管理
   tier4_v2x_msgs::msg::InfrastructureCommand command_;
   std::optional<tier4_v2x_msgs::msg::InfrastructureCommand> infrastructure_command_;
   MapData map_data_;
   ModuleData module_data_;
   rclcpp::Logger base_logger_;
 
-  void setState(State new_state);
-
   void updateInfrastructureCommand();
+
+  // 状態変更時のコールバック関数
+  void onStateChanged(State old_state, State new_state);
 
   std::optional<std::pair<size_t, int64_t>> getPathIndexOfFirstEndLine();
 

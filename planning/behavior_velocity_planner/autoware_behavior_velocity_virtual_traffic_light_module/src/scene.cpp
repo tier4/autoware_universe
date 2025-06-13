@@ -99,12 +99,18 @@ VirtualTrafficLightModule::VirtualTrafficLightModule(
   // Set up base logger with instrument information
   base_logger_ =
     base_logger_.get_child((map_data_.instrument_type + "_" + map_data_.instrument_id).c_str());
+  
+  // StateTransitionManagerのコールバック関数を設定
+  state_manager_.setStateChangeCallback(
+    [this](State old_state, State new_state) {
+      this->onStateChanged(old_state, new_state);
+    });
+  
   updateLoggerWithState();
 }
 
-void VirtualTrafficLightModule::setState(State new_state)
+void VirtualTrafficLightModule::onStateChanged(State old_state, State new_state)
 {
-  state_ = new_state;
   updateLoggerWithState();
 }
 
@@ -112,7 +118,6 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
 {
   // Initialize
   setInfrastructureCommand({});
-
   module_data_ = {};
 
   // Copy data
@@ -125,8 +130,6 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
     reg_elem_.getStopLine() ? std::to_string(reg_elem_.getStopLine()->id()) : "";
 
   // Calculate path index of end line
-  // NOTE: In order to deal with u-turn or self-crossing path, only start/stop lines before the end
-  // line are used when whether the ego is before/after the start/stop/end lines is calculated.
   const auto opt_end_line_result = getPathIndexOfFirstEndLine();
   if (!opt_end_line_result) {
     return true;
@@ -134,104 +137,152 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
   const size_t end_line_idx = opt_end_line_result->first;
   const int64_t end_line_id = opt_end_line_result->second;
 
+  // 特殊な状況の処理
+  StateTransitionResult result;
+
   // Do nothing if vehicle is before start line
   if (isBeforeStartLine(end_line_idx)) {
     logDebug("before start_line");
-    setState(State::NONE);
-    updateInfrastructureCommand();
+    result = state_manager_.processBeforeStartLine();
+    if (result.state_changed) {
+      updateInfrastructureCommand();
+    }
     return true;
   }
 
   // Do nothing if vehicle is after any end line
-  if (isAfterAnyEndLine(end_line_idx) || state_ == State::FINALIZED) {
-    if (state_ != State::FINALIZED) {
-      logInfo(
-        "State transition: %d -> FINALIZED because vehicle pass end line (ID: %ld)",
-        static_cast<int>(state_), end_line_id);
+  if (isAfterAnyEndLine(end_line_idx) || state_manager_.getCurrentState() == State::FINALIZED) {
+    result = state_manager_.processAfterEndLine(end_line_id);
+    if (result.state_changed) {
+      logInfo(result.log_message.c_str());
     }
-    setState(State::FINALIZED);
     updateInfrastructureCommand();
     return true;
   }
 
-  // Set state
-  if (state_ != State::REQUESTING) {
-    logInfo(
-      "State transition: %d -> REQUESTING as vehicle is between start line (ID: %ld) and end line "
-      "(ID: %ld)",
-      static_cast<int>(state_), reg_elem_.getStartLine().id(), end_line_id);
-  }
-  setState(State::REQUESTING);
+  // 現在の状態に基づいた処理
+  const State current_state = state_manager_.getCurrentState();
 
-  // Don't need to stop if there is no stop_line
-  if (!map_data_.stop_line) {
-    updateInfrastructureCommand();
-    return true;
-  }
-
-  // Find corresponding state
-  const auto virtual_traffic_light_state = findCorrespondingState();
-
-  // Stop at stop_line if no message received
-  if (!virtual_traffic_light_state) {
-    logWarnThrottle(5000, "no message received");
-    insertStopVelocityAtStopLine(path, end_line_idx);
-    updateInfrastructureCommand();
-    return true;
-  }
-
-  // Stop at stop_line if no right is given
-  if (!hasRightOfWay(*virtual_traffic_light_state)) {
-    logInfoThrottle(
-      5000, "Approval for passage has not yet been given, so wait at stop line (ID: %s)",
-      stop_line_id_for_log.c_str());
-    insertStopVelocityAtStopLine(path, end_line_idx);
-    updateInfrastructureCommand();
-    return true;
-  }
-
-  // Stop at stop_line if state is timeout before stop_line
-  if (isBeforeStopLine(end_line_idx)) {
-    if (isStateTimeout(*virtual_traffic_light_state)) {
-      logWarnThrottle(
-        5000, "state is timeout before stop line, stop at stop line (ID: %s)",
-        stop_line_id_for_log.c_str());
-      insertStopVelocityAtStopLine(path, end_line_idx);
-    }
-
-    updateInfrastructureCommand();
-    return true;
-  }
-
-  // After stop_line
-  if (state_ != State::PASSING) {
-    logInfo(
-      "State transition: %d -> PASSING as vehicle has passed stop line (ID: %s)",
-      static_cast<int>(state_), stop_line_id_for_log.c_str());
-  }
-  setState(State::PASSING);
-
-  // Check timeout after stop_line if the option is on
-  if (
-    planner_param_.check_timeout_after_stop_line && isStateTimeout(*virtual_traffic_light_state)) {
-    logDebug("state is timeout after stop line");
-    insertStopVelocityAtStopLine(path, end_line_idx);
-    updateInfrastructureCommand();
-    return true;
-  }
-
-  // Stop at stop_line if finalization isn't completed
-  if (!virtual_traffic_light_state->is_finalized) {
-    logDebug("finalization isn't completed");
-    insertStopVelocityAtEndLine(path, end_line_idx);
-
-    if (isNearAnyEndLine(end_line_idx) && planner_data_->isVehicleStopped()) {
-      if (state_ != State::FINALIZING) {
-        logInfo(
-          "State transition: %d -> FINALIZING as vehicle is near end line (ID: %ld) and stopped",
-          static_cast<int>(state_), end_line_id);
+  switch (current_state) {
+    case State::NONE: {
+      result = state_manager_.processNoneState(reg_elem_.getStartLine().id());
+      if (result.state_changed) {
+        logInfo(result.log_message.c_str());
       }
-      setState(State::FINALIZING);
+      break;
+    }
+
+    case State::REQUESTING: {
+      // 必要な情報を収集
+      const auto virtual_traffic_light_state = findCorrespondingState();
+      const bool has_stop_line = static_cast<bool>(map_data_.stop_line);
+      const bool has_virtual_state = static_cast<bool>(virtual_traffic_light_state);
+      const bool has_right_of_way =
+        has_virtual_state ? hasRightOfWay(*virtual_traffic_light_state) : false;
+      const bool is_before_stop_line = isBeforeStopLine(end_line_idx);
+      const bool is_timeout =
+        has_virtual_state ? isStateTimeout(*virtual_traffic_light_state) : false;
+
+      result = state_manager_.processRequestingState(
+        stop_line_id_for_log, has_stop_line, has_virtual_state, has_right_of_way,
+        is_before_stop_line, is_timeout);
+
+      // 結果に基づいた処理
+      if (result.state_changed) {
+        logInfo(result.log_message.c_str());
+      }
+
+      switch (result.action) {
+        case StateTransitionResult::Action::RETURN_TRUE:
+          updateInfrastructureCommand();
+          return true;
+        case StateTransitionResult::Action::STOP_AT_STOP_LINE:
+          if (!result.log_message.empty()) {
+            logWarnThrottle(5000, result.log_message.c_str());
+          }
+          insertStopVelocityAtStopLine(path, end_line_idx);
+          updateInfrastructureCommand();
+          return true;
+        case StateTransitionResult::Action::CONTINUE:
+          break;
+        default:
+          break;
+      }
+      break;
+    }
+
+    case State::PASSING: {
+      // 必要な情報を収集
+      const auto virtual_traffic_light_state = findCorrespondingState();
+      const bool has_virtual_state = static_cast<bool>(virtual_traffic_light_state);
+      const bool is_timeout_after_stop = planner_param_.check_timeout_after_stop_line &&
+                                         has_virtual_state &&
+                                         isStateTimeout(*virtual_traffic_light_state);
+      const bool is_finalized =
+        has_virtual_state ? virtual_traffic_light_state->is_finalized : true;
+      const bool is_near_end_line = isNearAnyEndLine(end_line_idx);
+      const bool is_stopped = planner_data_->isVehicleStopped();
+
+      result = state_manager_.processPassingState(
+        end_line_id, has_virtual_state, is_timeout_after_stop, is_finalized, is_near_end_line,
+        is_stopped);
+
+      // 結果に基づいた処理
+      if (result.state_changed) {
+        logInfo(result.log_message.c_str());
+      }
+
+      switch (result.action) {
+        case StateTransitionResult::Action::RETURN_TRUE:
+          updateInfrastructureCommand();
+          return true;
+        case StateTransitionResult::Action::STOP_AT_STOP_LINE:
+          logDebug(result.log_message.c_str());
+          insertStopVelocityAtStopLine(path, end_line_idx);
+          updateInfrastructureCommand();
+          return true;
+        case StateTransitionResult::Action::STOP_AT_END_LINE:
+          logDebug(result.log_message.c_str());
+          insertStopVelocityAtEndLine(path, end_line_idx);
+          break;
+        case StateTransitionResult::Action::CONTINUE:
+          break;
+      }
+      break;
+    }
+
+    case State::FINALIZING: {
+      // 必要な情報を収集
+      const auto virtual_traffic_light_state = findCorrespondingState();
+      const bool is_finalized =
+        virtual_traffic_light_state ? virtual_traffic_light_state->is_finalized : true;
+
+      result = state_manager_.processFinalizingState(is_finalized);
+
+      switch (result.action) {
+        case StateTransitionResult::Action::RETURN_TRUE:
+          updateInfrastructureCommand();
+          return true;
+        case StateTransitionResult::Action::STOP_AT_END_LINE:
+          logDebug(result.log_message.c_str());
+          insertStopVelocityAtEndLine(path, end_line_idx);
+          break;
+        case StateTransitionResult::Action::CONTINUE:
+          break;
+        default:
+          break;
+      }
+      break;
+    }
+
+    case State::FINALIZED: {
+      result = state_manager_.processFinalizedState();
+      break;
+    }
+
+    default: {
+      logWarn("Unknown state: %d", static_cast<int>(current_state));
+      break;
     }
   }
 
@@ -242,7 +293,7 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
 void VirtualTrafficLightModule::updateInfrastructureCommand()
 {
   command_.stamp = clock_->now();
-  command_.state = static_cast<uint8_t>(state_);
+  command_.state = static_cast<uint8_t>(state_manager_.getCurrentState());
   setInfrastructureCommand(command_);
 }
 
@@ -534,6 +585,193 @@ void VirtualTrafficLightModule::setVirtualTrafficLightStates(
 
 std::string VirtualTrafficLightModule::stateToString(State state) const
 {
+  return state_manager_.stateToString(state);
+}
+
+VirtualTrafficLightModule::State VirtualTrafficLightModule::getState() const
+{
+  return state_manager_.getCurrentState();
+}
+
+void VirtualTrafficLightModule::updateLoggerWithState()
+{
+  const std::string state_name = stateToString(state_manager_.getCurrentState());
+  logger_ = base_logger_.get_child(("state: " + state_name).c_str());
+}
+
+// StateTransitionManagerの実装
+StateTransitionManager::StateTransitionManager(State initial_state) : current_state_(initial_state)
+{
+}
+
+void StateTransitionManager::setStateChangeCallback(StateChangeCallback callback)
+{
+  state_change_callback_ = callback;
+}
+
+void StateTransitionManager::changeState(State new_state)
+{
+  if (current_state_ != new_state) {
+    State old_state = current_state_;
+    current_state_ = new_state;
+    
+    // コールバック関数が設定されていれば呼び出す
+    if (state_change_callback_) {
+      state_change_callback_(old_state, new_state);
+    }
+  }
+}
+
+StateTransitionResult StateTransitionManager::processBeforeStartLine()
+{
+  StateTransitionResult result;
+  if (current_state_ != State::NONE) {
+    changeState(State::NONE);
+    result.state_changed = true;
+    result.log_message = "State transition: -> NONE (before start line)";
+  } else {
+    result.state_changed = false;
+  }
+  result.action = StateTransitionResult::Action::RETURN_TRUE;
+  return result;
+}
+
+StateTransitionResult StateTransitionManager::processAfterEndLine(int64_t end_line_id)
+{
+  StateTransitionResult result;
+  if (current_state_ != State::FINALIZED) {
+    changeState(State::FINALIZED);
+    result.state_changed = true;
+    result.log_message =
+      "State transition: -> FINALIZED (passed end line ID: " + std::to_string(end_line_id) + ")";
+  } else {
+    result.state_changed = false;
+  }
+  result.action = StateTransitionResult::Action::RETURN_TRUE;
+  return result;
+}
+
+StateTransitionResult StateTransitionManager::processNoneState(int64_t start_line_id)
+{
+  StateTransitionResult result;
+  changeState(State::REQUESTING);
+  result.state_changed = true;
+  result.log_message = "State transition: NONE -> REQUESTING (crossed start line ID: " +
+                       std::to_string(start_line_id) + ")";
+  result.action = StateTransitionResult::Action::CONTINUE;
+  return result;
+}
+
+StateTransitionResult StateTransitionManager::processRequestingState(
+  const std::string & stop_line_id, bool has_stop_line, bool has_virtual_state,
+  bool has_right_of_way, bool is_before_stop_line, bool is_timeout)
+{
+  StateTransitionResult result;
+  result.state_changed = false;
+
+  // stop lineがない場合
+  if (!has_stop_line) {
+    result.action = StateTransitionResult::Action::RETURN_TRUE;
+    return result;
+  }
+
+  // メッセージ未受信
+  if (!has_virtual_state) {
+    result.action = StateTransitionResult::Action::STOP_AT_STOP_LINE;
+    result.log_message = "No message received";
+    return result;
+  }
+
+  // 通行権なし
+  if (!has_right_of_way) {
+    result.action = StateTransitionResult::Action::STOP_AT_STOP_LINE;
+    result.log_message = "No right of way, waiting at stop line ID: " + stop_line_id;
+    return result;
+  }
+
+  // stop line前でタイムアウト
+  if (is_before_stop_line) {
+    if (is_timeout) {
+      result.action = StateTransitionResult::Action::STOP_AT_STOP_LINE;
+      result.log_message = "Timeout before stop line ID: " + stop_line_id;
+    } else {
+      result.action = StateTransitionResult::Action::RETURN_TRUE;
+    }
+    return result;
+  }
+
+  // stop lineを超えた → PASSING遷移
+  changeState(State::PASSING);
+  result.state_changed = true;
+  result.log_message =
+    "State transition: REQUESTING -> PASSING (crossed stop line ID: " + stop_line_id + ")";
+  result.action = StateTransitionResult::Action::CONTINUE;
+  return result;
+}
+
+StateTransitionResult StateTransitionManager::processPassingState(
+  int64_t end_line_id, bool has_virtual_state, bool is_timeout_after_stop, bool is_finalized,
+  bool is_near_end_line, bool is_stopped)
+{
+  StateTransitionResult result;
+  result.state_changed = false;
+
+  if (!has_virtual_state) {
+    result.action = StateTransitionResult::Action::RETURN_TRUE;
+    return result;
+  }
+
+  // stop line後のタイムアウトチェック
+  if (is_timeout_after_stop) {
+    result.action = StateTransitionResult::Action::STOP_AT_STOP_LINE;
+    result.log_message = "Timeout after stop line";
+    return result;
+  }
+
+  // finalization未完了の場合
+  if (!is_finalized) {
+    result.action = StateTransitionResult::Action::STOP_AT_END_LINE;
+    result.log_message = "Finalization not completed";
+
+    // end line近くで停止 → FINALIZING遷移
+    if (is_near_end_line && is_stopped) {
+      changeState(State::FINALIZING);
+      result.state_changed = true;
+      result.log_message = "State transition: PASSING -> FINALIZING (near end line ID: " +
+                           std::to_string(end_line_id) + " and stopped)";
+    }
+    return result;
+  }
+
+  result.action = StateTransitionResult::Action::CONTINUE;
+  return result;
+}
+
+StateTransitionResult StateTransitionManager::processFinalizingState(bool is_finalized)
+{
+  StateTransitionResult result;
+  result.state_changed = false;
+
+  if (!is_finalized) {
+    result.action = StateTransitionResult::Action::STOP_AT_END_LINE;
+    result.log_message = "Finalization not completed, waiting...";
+  } else {
+    result.action = StateTransitionResult::Action::CONTINUE;
+  }
+
+  return result;
+}
+
+StateTransitionResult StateTransitionManager::processFinalizedState()
+{
+  StateTransitionResult result;
+  result.state_changed = false;
+  result.action = StateTransitionResult::Action::CONTINUE;
+  return result;
+}
+
+std::string StateTransitionManager::stateToString(State state) const
+{
   switch (state) {
     case State::NONE:
       return "NONE";
@@ -548,11 +786,5 @@ std::string VirtualTrafficLightModule::stateToString(State state) const
     default:
       return "UNKNOWN";
   }
-}
-
-void VirtualTrafficLightModule::updateLoggerWithState()
-{
-  const std::string state_name = stateToString(state_);
-  logger_ = base_logger_.get_child(("state: " + state_name).c_str());
 }
 }  // namespace autoware::behavior_velocity_planner
