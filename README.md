@@ -1,6 +1,18 @@
 Gion ECU 設定については↓を参照
 https://github.com/tier4/pilot-auto.xx1/tree/feature/Gion-v0.46.0
 
+ここでは Phase1 ECU2 での動作を前提とした launch 改造を行っています。
+[Phase1 ECU1](https://github.com/tier4/autoware_universe/tree/feature-ecu1-node) とノード分割連携動作の挙動となります。
+
+Phase1 ECU2 ノード分割を行う場合、Autoware launch 時に下記を追加してください。追加しない場合、ECU単体の通常動作となります。
+[phase1_acc_trial_ecu2:=true]
+
+ECU2 上で Autoweare launch を実行する際のコマンド
+```bash
+$ros2 launch autoware_launch logging_simulator.launch.xml map_path:=$HOME/autoware_map/sample-map-rosbag vehicle_model:=sample_vehicle sensor_model:=aip_xx1 phase1_acc_trial_ecu2:=true
+```
+
+以下元情報から変更なし
 ---
 # Autoware Universe
 
