@@ -26,27 +26,30 @@ namespace autoware::behavior_path_planner
 using autoware::motion_utils::calcSignedArcLength;
 
 void PathDecisionStateController::transit_state(
-  const std::optional<PullOverPath> & pull_over_path_opt, const rclcpp::Time & now,
-  const PredictedObjects & static_target_objects, const PredictedObjects & dynamic_target_objects,
+  const std::optional<PullOverPath> & pull_over_path_opt, const bool upstream_module_has_stopline,
+  const rclcpp::Time & now, const PredictedObjects & static_target_objects,
+  const PredictedObjects & dynamic_target_objects,
   const std::shared_ptr<const PlannerData> planner_data,
   const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map,
-  const bool is_current_safe, const GoalPlannerParameters & parameters,
-  const GoalSearcher & goal_searcher,
+  const bool is_current_safe, const bool lane_change_status_changed,
+  const GoalPlannerParameters & parameters, const GoalSearcher & goal_searcher,
   std::vector<autoware_utils::Polygon2d> & ego_polygons_expanded)
 {
   const auto next_state = get_next_state(
-    pull_over_path_opt, now, static_target_objects, dynamic_target_objects, planner_data,
-    occupancy_grid_map, is_current_safe, parameters, goal_searcher, ego_polygons_expanded);
+    pull_over_path_opt, upstream_module_has_stopline, now, static_target_objects,
+    dynamic_target_objects, planner_data, occupancy_grid_map, is_current_safe,
+    lane_change_status_changed, parameters, goal_searcher, ego_polygons_expanded);
   current_state_ = next_state;
 }
 
 PathDecisionState PathDecisionStateController::get_next_state(
-  const std::optional<PullOverPath> & pull_over_path_opt, const rclcpp::Time & now,
-  const PredictedObjects & static_target_objects, const PredictedObjects & dynamic_target_objects,
+  const std::optional<PullOverPath> & pull_over_path_opt, const bool upstream_module_has_stopline,
+  const rclcpp::Time & now, const PredictedObjects & static_target_objects,
+  const PredictedObjects & dynamic_target_objects,
   const std::shared_ptr<const PlannerData> planner_data,
   const std::shared_ptr<OccupancyGridBasedCollisionDetector> occupancy_grid_map,
-  const bool is_current_safe, const GoalPlannerParameters & parameters,
-  const GoalSearcher & goal_searcher,
+  const bool is_current_safe, const bool lane_change_status_changed,
+  const GoalPlannerParameters & parameters, const GoalSearcher & goal_searcher,
   std::vector<autoware_utils::Polygon2d> & ego_polygons_expanded) const
 {
   auto next_state = current_state_;
@@ -68,6 +71,19 @@ PathDecisionState PathDecisionStateController::get_next_state(
 
   // Once this function returns true, it will continue to return true thereafter
   if (next_state.state == PathDecisionState::DecisionKind::DECIDED) {
+    return next_state;
+  }
+
+  // if lane change is triggered, reference path for pull over must be reset accordingly
+  if (lane_change_status_changed) {
+    RCLCPP_INFO(logger_, "[DecidingPathStatus]: NOT_DECIDED. lane change detected");
+    next_state.state = PathDecisionState::DecisionKind::NOT_DECIDED;
+    return next_state;
+  }
+
+  // while upstream module path has stopline, goal_planner remains NOT_DECIDED
+  if (upstream_module_has_stopline) {
+    next_state.state = PathDecisionState::DecisionKind::NOT_DECIDED;
     return next_state;
   }
 
