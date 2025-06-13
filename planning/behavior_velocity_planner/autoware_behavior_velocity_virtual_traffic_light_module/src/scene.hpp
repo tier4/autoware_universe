@@ -101,6 +101,8 @@ public:
     const tier4_v2x_msgs::msg::VirtualTrafficLightStateArray::ConstSharedPtr
       virtual_traffic_light_states);
 
+  State getState() const;
+
 private:
   const int64_t lane_id_;
   const lanelet::autoware::VirtualTrafficLight & reg_elem_;
@@ -112,10 +114,13 @@ private:
   std::optional<tier4_v2x_msgs::msg::InfrastructureCommand> infrastructure_command_;
   MapData map_data_;
   ModuleData module_data_;
+  rclcpp::Logger base_logger_;
+
+  void setState(State new_state);
 
   void updateInfrastructureCommand();
 
-  std::optional<size_t> getPathIndexOfFirstEndLine();
+  std::optional<std::pair<size_t, int64_t>> getPathIndexOfFirstEndLine();
 
   bool isBeforeStartLine(const size_t end_line_idx);
 
@@ -136,6 +141,10 @@ private:
 
   void insertStopVelocityAtEndLine(
     autoware_internal_planning_msgs::msg::PathWithLaneId * path, const size_t end_line_idx);
+
+  std::string stateToString(State state) const;
+
+  void updateLoggerWithState();
 };
 }  // namespace autoware::behavior_velocity_planner
 #endif  // SCENE_HPP_
