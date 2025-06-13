@@ -333,17 +333,33 @@ VelocityPlanningResult ObstacleStopModule::plan(
     planner_data->trajectory_polygon_collision_check.decimate_trajectory_step_length,
     stop_planning_param_.stop_margin);
 
+  const auto cropped_decimated_traj_points = [&]() {
+    const double vel = planner_data->current_odometry.twist.twist.linear.x;
+    // const double crop_length = 50.0;
+    const double crop_length =
+      50.0 + 10.0 * stop_planning_param_.stop_margin +
+      2.0 * vel * vel * 0.5 / -common_param_.min_accel +
+      2.0 * vel * (common_param_.max_accel - common_param_.min_accel) / -common_param_.min_jerk;
+    for (size_t i = 0; i < decimated_traj_points.size(); ++i) {
+      if (motion_utils::calcSignedArcLength(decimated_traj_points, 0, i) > crop_length) {
+        return std::vector<TrajectoryPoint>{
+          decimated_traj_points.begin(), decimated_traj_points.begin() + i};
+      }
+    }
+    return decimated_traj_points;
+  }();
+
   // 3. filter obstacles of predicted objects
   auto stop_obstacles_for_predicted_object = filter_stop_obstacle_for_predicted_object(
     planner_data->current_odometry, planner_data->ego_nearest_dist_threshold,
     planner_data->ego_nearest_yaw_threshold,
     rclcpp::Time(planner_data->predicted_objects_header.stamp), raw_trajectory_points,
-    decimated_traj_points, planner_data->objects, planner_data->vehicle_info_, dist_to_bumper,
+    cropped_decimated_traj_points, planner_data->objects, planner_data->vehicle_info_, dist_to_bumper,
     planner_data->trajectory_polygon_collision_check);
 
   // 4. filter obstacles of point cloud
   auto stop_obstacles_for_point_cloud = filter_stop_obstacle_for_point_cloud(
-    planner_data->current_odometry, raw_trajectory_points, decimated_traj_points,
+    planner_data->current_odometry, raw_trajectory_points, cropped_decimated_traj_points,
     planner_data->no_ground_pointcloud, planner_data->vehicle_info_, dist_to_bumper,
     planner_data->trajectory_polygon_collision_check);
 
@@ -435,7 +451,7 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_predicted
       autoware_utils::ScopedTimeTrack st_get_decimated_traj_polys(
         "get_decimated_traj_polys", *time_keeper_);
       return get_decimated_traj_polys(
-        traj_points, current_pose, vehicle_info, ego_nearest_dist_threshold,
+        decimated_traj_points, current_pose, vehicle_info, ego_nearest_dist_threshold,
         ego_nearest_yaw_threshold, trajectory_polygon_collision_check);
     }();
     const double dist_from_obj_to_traj_poly = [&]() {
@@ -623,7 +639,7 @@ std::vector<StopObstacle> ObstacleStopModule::filter_stop_obstacle_for_point_clo
   }();
 
   const auto & tp = trajectory_polygon_collision_check;
-  const auto decimated_traj_polys_with_lat_margin = polygon_utils::create_one_step_polygons(
+  const auto decimated_traj_polys_with_lat_margin = polygon_utils::create_one_step_polygons_precise(
     cropped_decimated_traj_points, vehicle_info, odometry.pose.pose,
     obstacle_filtering_param_.max_lat_margin_against_pointcloud, tp.enable_to_consider_current_pose,
     tp.time_to_convergence, tp.decimate_trajectory_step_length);
@@ -1261,7 +1277,7 @@ void ObstacleStopModule::publish_debug_info()
   auto decimated_traj_polys_marker = autoware_utils::create_default_marker(
     "map", clock_->now(), "detection_area", 0, Marker::LINE_LIST,
     autoware_utils::create_marker_scale(0.01, 0.0, 0.0),
-    autoware_utils::create_marker_color(0.0, 1.0, 0.0, 0.999));
+    autoware_utils::create_marker_color(1.0, 0.1, 0.0, 0.999));
   for (const auto & decimated_traj_poly : debug_data_ptr_->decimated_traj_polys) {
     for (size_t dp_idx = 0; dp_idx < decimated_traj_poly.outer().size(); ++dp_idx) {
       const auto & current_point = decimated_traj_poly.outer().at(dp_idx);
@@ -1335,7 +1351,7 @@ std::vector<Polygon2d> ObstacleStopModule::get_trajectory_polygon_for_inside(
   const double decimate_trajectory_step_length) const
 {
   if (trajectory_polygon_for_inside_map_.count(lat_margin) == 0) {
-    const auto traj_polys = polygon_utils::create_one_step_polygons(
+    const auto traj_polys = polygon_utils::create_one_step_polygons_precise(
       decimated_traj_points, vehicle_info, current_ego_pose, lat_margin,
       enable_to_consider_current_pose, time_to_convergence, decimate_trajectory_step_length);
     trajectory_polygon_for_inside_map_.emplace(lat_margin, traj_polys);
@@ -1505,7 +1521,7 @@ std::vector<Polygon2d> ObstacleStopModule::get_decimated_traj_polys(
     const auto decimated_traj_points = utils::decimate_trajectory_points_from_ego(
       traj_points, current_pose, ego_nearest_dist_threshold, ego_nearest_yaw_threshold,
       p.decimate_trajectory_step_length, p.goal_extended_trajectory_length);
-    decimated_traj_polys_ = polygon_utils::create_one_step_polygons(
+    decimated_traj_polys_ = polygon_utils::create_one_step_polygons_precise(
       decimated_traj_points, vehicle_info, current_pose, 0.0, p.enable_to_consider_current_pose,
       p.time_to_convergence, p.decimate_trajectory_step_length);
   }

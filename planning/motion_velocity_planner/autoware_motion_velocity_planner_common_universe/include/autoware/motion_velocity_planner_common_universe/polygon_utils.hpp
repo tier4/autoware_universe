@@ -39,6 +39,7 @@ namespace autoware::motion_velocity_planner
 namespace polygon_utils
 {
 namespace bg = boost::geometry;
+using autoware_utils::MultiPoint2d;
 using autoware_utils::Point2d;
 using autoware_utils::Polygon2d;
 
@@ -76,6 +77,13 @@ std::vector<Polygon2d> create_one_step_polygons(
   const geometry_msgs::msg::Pose & current_ego_pose, const double lat_margin,
   const bool enable_to_consider_current_pose, const double time_to_convergence,
   const double decimate_trajectory_step_length);
+
+std::vector<Polygon2d> create_one_step_polygons_precise(
+  const std::vector<TrajectoryPoint> & traj_points, const VehicleInfo & vehicle_info,
+  const geometry_msgs::msg::Pose & current_ego_pose, const double lat_margin,
+  const bool enable_to_consider_current_pose, const double time_to_convergence,
+  const double decimate_trajectory_step_length, const double required_accuracy = 0.05);
+
 }  // namespace polygon_utils
 }  // namespace autoware::motion_velocity_planner
 
