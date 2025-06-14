@@ -502,9 +502,9 @@ __global__ void generateIntensityFeatures_kernel(
 
   // calculate sm in a pillar
   if (point_idx < pointsNumSM[pillar_idx_inBlock]) {
-    atomicAdd(&(pillarSumSM[pillar_idx_inBlock].x), pillarSM[pillar_idx_inBlock][point_idx].x);
-    atomicAdd(&(pillarSumSM[pillar_idx_inBlock].y), pillarSM[pillar_idx_inBlock][point_idx].y);
-    atomicAdd(&(pillarSumSM[pillar_idx_inBlock].z), pillarSM[pillar_idx_inBlock][point_idx].z);
+    atomicAdd(&(pillarSumSM[pillar_idx_inBlock].x), pillarSM[pillar_idx_inBlock][point_idx][0]);
+    atomicAdd(&(pillarSumSM[pillar_idx_inBlock].y), pillarSM[pillar_idx_inBlock][point_idx][1]);
+    atomicAdd(&(pillarSumSM[pillar_idx_inBlock].z), pillarSM[pillar_idx_inBlock][point_idx][2]);
   }
   __syncthreads();
 
@@ -515,9 +515,9 @@ __global__ void generateIntensityFeatures_kernel(
   mean.y = pillarSumSM[pillar_idx_inBlock].y / validPoints;
   mean.z = pillarSumSM[pillar_idx_inBlock].z / validPoints;
 
-  mean.x = pillarSM[pillar_idx_inBlock][point_idx].x - mean.x;
-  mean.y = pillarSM[pillar_idx_inBlock][point_idx].y - mean.y;
-  mean.z = pillarSM[pillar_idx_inBlock][point_idx].z - mean.z;
+  mean.x = pillarSM[pillar_idx_inBlock][point_idx][0] - mean.x;
+  mean.y = pillarSM[pillar_idx_inBlock][point_idx][1] - mean.y;
+  mean.z = pillarSM[pillar_idx_inBlock][point_idx][2] - mean.z;
 
   // calculate offset
   float x_offset = voxel_x / 2 + cordsSM[pillar_idx_inBlock].z * voxel_x + range_min_x;
