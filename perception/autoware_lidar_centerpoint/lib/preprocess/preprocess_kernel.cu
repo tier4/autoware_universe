@@ -526,9 +526,9 @@ __global__ void generateIntensityFeatures_kernel(
 
   // feature-offset
   float3 center;
-  center.x = pillarSM[pillar_idx_inBlock][point_idx].x - x_offset;
-  center.y = pillarSM[pillar_idx_inBlock][point_idx].y - y_offset;
-  center.z = pillarSM[pillar_idx_inBlock][point_idx].z - z_offset;
+  center.x = pillarSM[pillar_idx_inBlock][point_idx][0] - x_offset;
+  center.y = pillarSM[pillar_idx_inBlock][point_idx][1] - y_offset;
+  center.z = pillarSM[pillar_idx_inBlock][point_idx][2] - z_offset;
 
   // store output
   if (point_idx < pointsNumSM[pillar_idx_inBlock]) {
