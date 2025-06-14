@@ -213,8 +213,8 @@ __global__ void generateIntensityVoxels_random_kernel(
 
   unsigned int point_id = atomicAdd(&(mask[voxel_index]), 1);
 
-  if (point_id >= points_per_voxel) return;
-  float * address = voxels + (voxel_index * points_per_voxel + point_id) * POINT_DIM_XYZIT;
+  if (point_id >= MAX_POINT_IN_VOXEL_SIZE) return;
+  float * address = voxels + (voxel_index * MAX_POINT_IN_VOXEL_SIZE + point_id) * POINT_DIM_XYZIT;
   atomicExch(address + 0, x);
   atomicExch(address + 1, y);
   atomicExch(address + 2, z);
