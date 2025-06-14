@@ -39,7 +39,6 @@ namespace
 {
 const std::size_t MAX_POINT_IN_VOXEL_SIZE = 32;  // the same as max_point_in_voxel_size_ in config
 const std::size_t WARPS_PER_BLOCK = 4;
-const std::size_t ENCODER_IN_FEATURE_SIZE = 9;  // the same as encoder_in_feature_size_ in config
 const std::size_t POINT_DIM_XYZT = 4;
 const std::size_t POINT_DIM_XYZIT = 5;
 const std::size_t NUM_FEATURES_11 = 11;
