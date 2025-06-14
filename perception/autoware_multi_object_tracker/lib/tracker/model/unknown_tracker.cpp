@@ -266,7 +266,7 @@ bool UnknownTracker::getTrackedObject(
     point.y += local_y;
   }
 
-  if(to_publish) {
+  if (to_publish) {
     // if it is for publish, velocity to zero
     object.twist.linear.x = 0.0;
     object.twist.linear.y = 0.0;
