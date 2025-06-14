@@ -111,7 +111,7 @@ cudaError_t generateSweepPoints_launch(
       input_points, points_size, input_point_step, time_lag, transform_d.get(), num_features,
       output_points);
   } else {
-    throw throw std::runtime_error("Value of num_features is not supported!");
+    throw std::runtime_error("Value of num_features is not supported!");
   }
 
   cudaError_t err = cudaGetLastError();
@@ -179,7 +179,7 @@ cudaError_t shufflePoints_launch(
     shufflePoints_kernel<POINT_DIM_XYZIT><<<blocks, threads, 0, stream>>>(
       points, indices, shuffled_points, points_size, max_size, offset);
   } else {
-    throw throw std::runtime_error("Value of num_features is not supported!");
+    throw std::runtime_error("Value of num_features is not supported!");
   }
   cudaError_t err = cudaGetLastError();
   return err;
@@ -278,7 +278,7 @@ cudaError_t generateVoxels_random_launch(
       max_z_range, pillar_x_size, pillar_y_size, pillar_z_size, grid_y_size, grid_x_size, mask,
       voxels);
   } else {
-    throw throw std::runtime_error("Value of num_features is not supported!");
+    throw std::runtime_error("Value of num_features is not supported!");
   }
   cudaError_t err = cudaGetLastError();
   return err;
@@ -348,7 +348,7 @@ cudaError_t generateBaseFeatures_launch(
       mask, voxels, grid_y_size, grid_x_size, max_voxel_size, pillar_num, voxel_features, voxel_num,
       voxel_idxs);
   } else {
-    throw throw std::runtime_error("Value of num_features is not supported!");
+    throw std::runtime_error("Value of num_features is not supported!");
   }
   cudaError_t err = cudaGetLastError();
   return err;
@@ -598,6 +598,8 @@ cudaError_t generateFeatures_launch(
     generateIntensityFeatures_kernel<<<blocks, threads, 0, stream>>>(
       voxel_features, voxel_num_points, coords, num_voxels, voxel_size_x, voxel_size_y, voxel_size_z,
       range_min_x, range_min_y, range_min_z, features);
+  } else {
+    throw std::runtime_error("Value of encoder_in_feature_size is not supported!");
   }
   return cudaGetLastError();
 }
