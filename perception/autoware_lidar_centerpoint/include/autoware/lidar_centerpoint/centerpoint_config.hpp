@@ -122,7 +122,7 @@ public:
   // post-process params
   float score_threshold_{0.35f};
   float front_back_low_score_threshold_{0.25f};
-  float ego_width_{1.5f};
+  float ego_width_{1.5f};  // the width of the ego vehicle
   float circle_nms_dist_threshold_{1.5f};
   std::vector<float> yaw_norm_thresholds_{};
 
