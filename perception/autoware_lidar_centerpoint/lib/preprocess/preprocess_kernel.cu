@@ -491,12 +491,19 @@ __global__ void generateIntensityFeatures_kernel(
     pillarSumSM[threadIdx.x] = {0, 0, 0};
   }
 
-  pillarSM[pillar_idx_inBlock][point_idx][0] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT];
-  pillarSM[pillar_idx_inBlock][point_idx][1] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT + 1];
-  pillarSM[pillar_idx_inBlock][point_idx][2] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT + 2];
-  pillarSM[pillar_idx_inBlock][point_idx][3] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT + 3];
-  pillarSM[pillar_idx_inBlock][point_idx][4] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT + 4];
+//   pillarSM[pillar_idx_inBlock][point_idx][0] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT];
+//   pillarSM[pillar_idx_inBlock][point_idx][1] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT + 1];
+//   pillarSM[pillar_idx_inBlock][point_idx][2] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT + 2];
+//   pillarSM[pillar_idx_inBlock][point_idx][3] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT + 3];
+//   pillarSM[pillar_idx_inBlock][point_idx][4] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT + 4];
   
+  #pragma unroll
+  for (int i = 0; i < POINT_DIM_XYZIT; i++) {  
+	int pillarSMId = pillar_idx_inBlock * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
+    int voxel_feature_id = pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
+	((float *)pillarSM)[pillarSMId] = ((float *)voxel_features)[voxel_feature_id];
+  	// pillarSM[pillar_idx_inBlock][point_idx][0] = voxel_features[pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + point_idx * POINT_DIM_XYZIT];
+  }
   __syncthreads();
 
   // calculate sm in a pillar
