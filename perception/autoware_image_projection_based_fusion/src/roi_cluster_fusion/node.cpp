@@ -109,7 +109,7 @@ void RoiClusterFusionNode::fuseOnSingleImage(
     }
 
     // filter point out of scope
-    if (debugger_ && out_of_scope(input_cluster_msg.feature_objects.at(i))) {
+    if (out_of_scope(input_cluster_msg.feature_objects.at(i))) {
       continue;
     }
 
