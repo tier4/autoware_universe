@@ -26,8 +26,8 @@ cudaError_t generateSweepPoints_launch(
 
 cudaError_t shufflePoints_launch(
   const float * points, const unsigned int * indices, float * shuffled_points,
-  const std::size_t points_size, const std::size_t max_size, const std::size_t offset, const int num_features,
-  cudaStream_t stream);
+  const std::size_t points_size, const std::size_t max_size, const std::size_t offset,
+  const int num_features, cudaStream_t stream);
 
 cudaError_t generateVoxels_random_launch(
   const float * points, std::size_t points_size, float min_x_range, float max_x_range,
@@ -37,14 +37,15 @@ cudaError_t generateVoxels_random_launch(
 
 cudaError_t generateBaseFeatures_launch(
   unsigned int * mask, float * voxels, int grid_y_size, int grid_x_size, int max_voxel_size,
-  unsigned int * pillar_num, float * voxel_features, float * voxel_num, int * voxel_idxs, const int num_features,
-  cudaStream_t stream);
+  unsigned int * pillar_num, float * voxel_features, float * voxel_num, int * voxel_idxs,
+  const int num_features, cudaStream_t stream);
 
 cudaError_t generateFeatures_launch(
   const float * voxel_features, const float * voxel_num_points, const int * coords,
   const unsigned int * num_voxels, const std::size_t max_voxel_size, const float voxel_size_x,
   const float voxel_size_y, const float voxel_size_z, const float range_min_x,
-  const float range_min_y, const float range_min_z, float * features, const std::size_t encoder_in_feature_size, cudaStream_t stream);
+  const float range_min_y, const float range_min_z, float * features,
+  const std::size_t encoder_in_feature_size, cudaStream_t stream);
 
 }  // namespace autoware::lidar_centerpoint
 

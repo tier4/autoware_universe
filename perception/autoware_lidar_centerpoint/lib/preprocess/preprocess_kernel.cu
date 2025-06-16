@@ -47,7 +47,7 @@ const std::size_t NUM_FEATURES_11 = 11;
 namespace autoware::lidar_centerpoint
 {
 
-template <std::size_t POINT_NUM_FEATURES> 
+template <std::size_t POINT_NUM_FEATURES>
 __global__ void generateSweepPoints_kernel(
   const uint8_t * input_points, std::size_t points_size, int input_point_step, float time_lag,
   const float * transform_array, int num_features, float * output_points)
@@ -55,13 +55,12 @@ __global__ void generateSweepPoints_kernel(
   int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_idx >= points_size) return;
 
-
   union {
     uint32_t raw{0};
     float value;
   } input_x, input_y, input_z;
 
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < 4; i++) {  // 4 bytes for float32
     input_x.raw |= input_points[point_idx * input_point_step + i] << i * 8;
     input_y.raw |= input_points[point_idx * input_point_step + i + 4] << i * 8;
@@ -77,7 +76,7 @@ __global__ void generateSweepPoints_kernel(
   output_points[point_idx * num_features + 2] =
     transform_array[2] * input_x.value + transform_array[6] * input_y.value +
     transform_array[10] * input_z.value + transform_array[14];
-  
+
   if (POINT_NUM_FEATURES == POINT_DIM_XYZT) {
     output_points[point_idx * num_features + 3] = time_lag;
   } else if (POINT_NUM_FEATURES == POINT_DIM_XYZIT) {
@@ -100,7 +99,7 @@ cudaError_t generateSweepPoints_launch(
   dim3 blocks((points_size + 256 - 1) / 256);
   dim3 threads(256);
   assert(num_features == POINT_DIM_XYZT || num_features == POINT_DIM_XYZIT);
-  
+
   if (num_features == POINT_DIM_XYZT) {
     generateSweepPoints_kernel<POINT_DIM_XYZT><<<blocks, threads, 0, stream>>>(
       input_points, points_size, input_point_step, time_lag, transform_d.get(), num_features,
@@ -117,7 +116,7 @@ cudaError_t generateSweepPoints_launch(
   return err;
 }
 
-template <std::size_t POINT_NUM_FEATURES> 
+template <std::size_t POINT_NUM_FEATURES>
 __global__ void shufflePoints_kernel(
   const float * points, const unsigned int * indices, float * shuffled_points,
   const std::size_t points_size, const std::size_t max_size, const std::size_t offset)
@@ -161,8 +160,8 @@ __global__ void shufflePoints_kernel(
 
 cudaError_t shufflePoints_launch(
   const float * points, const unsigned int * indices, float * shuffled_points,
-  const std::size_t points_size, const std::size_t max_size, const std::size_t offset, const int num_features,
-  cudaStream_t stream)
+  const std::size_t points_size, const std::size_t max_size, const std::size_t offset,
+  const int num_features, cudaStream_t stream)
 {
   dim3 blocks((max_size + 256 - 1) / 256);
   dim3 threads(256);
@@ -200,8 +199,8 @@ __global__ void generateIntensityVoxels_random_kernel(
   float t = points[point_idx * 5 + 4];
 
   if (
-    x < min_x_range || x >= max_x_range || y < min_y_range || y >= max_y_range ||
-    z < min_z_range || z >= max_z_range)
+    x < min_x_range || x >= max_x_range || y < min_y_range || y >= max_y_range || z < min_z_range ||
+    z >= max_z_range)
     return;
 
   int voxel_idx = floorf((x - min_x_range) / pillar_x_size);
@@ -330,19 +329,19 @@ __global__ void generateBaseFeatures_kernel(
 // create 4 channels
 cudaError_t generateBaseFeatures_launch(
   unsigned int * mask, float * voxels, int grid_y_size, int grid_x_size, int max_voxel_size,
-  unsigned int * pillar_num, float * voxel_features, float * voxel_num, int * voxel_idxs, const int num_features,
-  cudaStream_t stream)
+  unsigned int * pillar_num, float * voxel_features, float * voxel_num, int * voxel_idxs,
+  const int num_features, cudaStream_t stream)
 {
   // exchange x and y to process in a row-major order
   dim3 threads = {32, 32};
   dim3 blocks = {
     (grid_y_size + threads.x - 1) / threads.x, (grid_x_size + threads.y - 1) / threads.y};
-  
+
   if (num_features == POINT_DIM_XYZT) {
     generateBaseFeatures_kernel<POINT_DIM_XYZT><<<blocks, threads, 0, stream>>>(
       mask, voxels, grid_y_size, grid_x_size, max_voxel_size, pillar_num, voxel_features, voxel_num,
       voxel_idxs);
-  } else if (num_features  == POINT_DIM_XYZIT) {
+  } else if (num_features == POINT_DIM_XYZIT) {
     generateBaseFeatures_kernel<POINT_DIM_XYZIT><<<blocks, threads, 0, stream>>>(
       mask, voxels, grid_y_size, grid_x_size, max_voxel_size, pillar_num, voxel_features, voxel_num,
       voxel_idxs);
@@ -490,12 +489,14 @@ __global__ void generateIntensityFeatures_kernel(
     cordsSM[threadIdx.x] = ((int3 *)coords)[blockIdx.x * WARPS_PER_BLOCK + threadIdx.x];
     pillarSumSM[threadIdx.x] = {0, 0, 0};
   }
-  
-  #pragma unroll
-  for (int i = 0; i < POINT_DIM_XYZIT; i++) {  
-	int pillarSMId = pillar_idx_inBlock * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
-    int voxel_feature_id = pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT + i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
-	((float *)pillarSM)[pillarSMId] = ((float *)voxel_features)[voxel_feature_id];
+
+#pragma unroll
+  for (int i = 0; i < POINT_DIM_XYZIT; i++) {
+    int pillarSMId = pillar_idx_inBlock * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT +
+                     i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
+    int voxel_feature_id = pillar_idx * MAX_POINT_IN_VOXEL_SIZE * POINT_DIM_XYZIT +
+                           i * MAX_POINT_IN_VOXEL_SIZE + point_idx;
+    ((float *)pillarSM)[pillarSMId] = ((float *)voxel_features)[voxel_feature_id];
   }
   __syncthreads();
 
@@ -550,7 +551,7 @@ __global__ void generateIntensityFeatures_kernel(
     pillarOutSM[pillar_idx_inBlock][point_idx][2] = 0;
     pillarOutSM[pillar_idx_inBlock][point_idx][3] = 0;
     pillarOutSM[pillar_idx_inBlock][point_idx][4] = 0;
-    
+
     pillarOutSM[pillar_idx_inBlock][point_idx][5] = 0;
     pillarOutSM[pillar_idx_inBlock][point_idx][6] = 0;
     pillarOutSM[pillar_idx_inBlock][point_idx][7] = 0;
@@ -576,27 +577,27 @@ cudaError_t generateFeatures_launch(
   const float * voxel_features, const float * voxel_num_points, const int * coords,
   const unsigned int * num_voxels, const std::size_t max_voxel_size, const float voxel_size_x,
   const float voxel_size_y, const float voxel_size_z, const float range_min_x,
-  const float range_min_y, const float range_min_z, float * features, 
+  const float range_min_y, const float range_min_z, float * features,
   const std::size_t encoder_in_feature_size, cudaStream_t stream)
 {
   dim3 blocks(divup(max_voxel_size, WARPS_PER_BLOCK));
   dim3 threads(WARPS_PER_BLOCK * MAX_POINT_IN_VOXEL_SIZE);
 
-  // No intensity and no distance of point cloud to voxel_z 
+  // No intensity and no distance of point cloud to voxel_z
   if (encoder_in_feature_size == 9) {
     generateFeatures_kernel<9><<<blocks, threads, 0, stream>>>(
-      voxel_features, voxel_num_points, coords, num_voxels, voxel_size_x, voxel_size_y, voxel_size_z,
-      range_min_x, range_min_y, range_min_z, features);
-  // No intensity, but include distance of point cloud to voxel_z 
+      voxel_features, voxel_num_points, coords, num_voxels, voxel_size_x, voxel_size_y,
+      voxel_size_z, range_min_x, range_min_y, range_min_z, features);
+    // No intensity, but include distance of point cloud to voxel_z
   } else if (encoder_in_feature_size == 10) {
     generateFeatures_kernel<10><<<blocks, threads, 0, stream>>>(
-      voxel_features, voxel_num_points, coords, num_voxels, voxel_size_x, voxel_size_y, voxel_size_z,
-      range_min_x, range_min_y, range_min_z, features);
-  // Intensity, and include distance of point cloud to voxel_z 
+      voxel_features, voxel_num_points, coords, num_voxels, voxel_size_x, voxel_size_y,
+      voxel_size_z, range_min_x, range_min_y, range_min_z, features);
+    // Intensity, and include distance of point cloud to voxel_z
   } else if (encoder_in_feature_size == NUM_FEATURES_11) {
     generateIntensityFeatures_kernel<<<blocks, threads, 0, stream>>>(
-      voxel_features, voxel_num_points, coords, num_voxels, voxel_size_x, voxel_size_y, voxel_size_z,
-      range_min_x, range_min_y, range_min_z, features);
+      voxel_features, voxel_num_points, coords, num_voxels, voxel_size_x, voxel_size_y,
+      voxel_size_z, range_min_x, range_min_y, range_min_z, features);
   } else {
     throw std::runtime_error("Value of encoder_in_feature_size is not supported!");
   }

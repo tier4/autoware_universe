@@ -235,7 +235,8 @@ bool CenterPointTRT::preprocess(
     points_d_.get(), config_.cloud_capacity_, config_.range_min_x_, config_.range_max_x_,
     config_.range_min_y_, config_.range_max_y_, config_.range_min_z_, config_.range_max_z_,
     config_.voxel_size_x_, config_.voxel_size_y_, config_.voxel_size_z_, config_.grid_size_y_,
-    config_.grid_size_x_, mask_d_.get(), voxels_buffer_d_.get(), config_.point_feature_size_, stream_));
+    config_.grid_size_x_, mask_d_.get(), voxels_buffer_d_.get(), config_.point_feature_size_,
+    stream_));
 
   CHECK_CUDA_ERROR(generateBaseFeatures_launch(
     mask_d_.get(), voxels_buffer_d_.get(), config_.grid_size_y_, config_.grid_size_x_,

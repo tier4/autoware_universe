@@ -92,7 +92,7 @@ void PointCloudDensification::enqueue(
 
   assert(sizeof(uint8_t) * msg.width * msg.height * msg.point_step % sizeof(float) == 0);
   // auto points_d = cuda::make_unique<float[]>(
-    // sizeof(uint8_t) * msg.width * msg.height * msg.point_step / sizeof(float));
+  // sizeof(uint8_t) * msg.width * msg.height * msg.point_step / sizeof(float));
   auto points_d = cuda::make_unique<uint8_t[]>(
     sizeof(uint8_t) * msg.width * msg.height * msg.point_step / sizeof(uint8_t));
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
