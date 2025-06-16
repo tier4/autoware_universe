@@ -50,7 +50,7 @@ private:
 
 struct PointCloudWithTransform
 {
-  cuda::unique_ptr<float[]> points_d{nullptr};
+  cuda::unique_ptr<uint8_t[]> points_d{nullptr};
   std_msgs::msg::Header header;
   std::size_t num_points{0};
   std::size_t point_step{0};
