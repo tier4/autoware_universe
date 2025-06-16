@@ -159,7 +159,6 @@ PointPaintingFusionNode::PointPaintingFusionNode(const rclcpp::NodeOptions & opt
   const float ego_width =
     static_cast<float>(this->declare_parameter<double>("post_process_params.ego_width"));
 
-
   // subscriber
   std::function<void(const PointCloudMsgType::ConstSharedPtr msg)> sub_callback =
     std::bind(&PointPaintingFusionNode::subCallback, this, std::placeholders::_1);
