@@ -17,6 +17,8 @@
 #include "autoware/planning_validator_trajectory_checker/utils.hpp"
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/parameter.hpp>
 #include <autoware_utils/ros/update_param.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -527,6 +529,23 @@ bool TrajectoryChecker::check_valid_longitudinal_distance_deviation(
   return true;
 }
 
+bool is_yaw_changed_around_ego(
+  const std::shared_ptr<const PlanningValidatorData> & data,
+  const autoware_planning_msgs::msg::TrajectoryPoint & trajectory_point)
+{
+  if (!data->last_valid_trajectory) {
+    return true;
+  }
+  const auto interpolated_previous_trajectory_point =
+    motion_utils::calcInterpolatedPoint(*data->last_valid_trajectory, trajectory_point.pose);
+  const auto yaw_shift_with_previous_trajectory = std::abs(angles::shortest_angular_distance(
+    tf2::getYaw(trajectory_point.pose.orientation),
+    tf2::getYaw(interpolated_previous_trajectory_point.pose.orientation)));
+  constexpr auto yaw_modification_limit = 0.1;
+  const auto is_yaw_changed = yaw_shift_with_previous_trajectory > yaw_modification_limit;
+  return is_yaw_changed;
+}
+
 bool TrajectoryChecker::check_valid_yaw_deviation(
   const std::shared_ptr<const PlanningValidatorData> & data,
   const std::shared_ptr<PlanningValidatorStatus> & status)
@@ -544,7 +563,9 @@ bool TrajectoryChecker::check_valid_yaw_deviation(
     tf2::getYaw(interpolated_trajectory_point.pose.orientation),
     tf2::getYaw(ego_pose.orientation)));
 
-  if (status->yaw_deviation > params_.yaw_deviation.threshold) {
+  if (
+    is_yaw_changed_around_ego(data, interpolated_trajectory_point) &&
+    status->yaw_deviation > params_.yaw_deviation.threshold) {
     is_critical_error_ |= params_.yaw_deviation.is_critical;
     return false;
   }
