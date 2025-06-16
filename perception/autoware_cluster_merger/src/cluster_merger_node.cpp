@@ -25,6 +25,7 @@ namespace autoware::cluster_merger
 
 ClusterMergerNode::ClusterMergerNode(const rclcpp::NodeOptions & node_options)
 : rclcpp::Node("cluster_merger_node", node_options),
+  managed_tf_buffer_(this),
   objects0_sub_(this, "input/cluster0", rclcpp::QoS{1}.get_rmw_qos_profile()),
   objects1_sub_(this, "input/cluster1", rclcpp::QoS{1}.get_rmw_qos_profile()),
   sync_(SyncPolicy(10), objects0_sub_, objects1_sub_)

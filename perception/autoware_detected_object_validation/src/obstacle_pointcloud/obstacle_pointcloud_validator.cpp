@@ -285,6 +285,7 @@ ObstaclePointCloudBasedValidator::ObstaclePointCloudBasedValidator(
   obstacle_pointcloud_sub_(
     this, "~/input/obstacle_pointcloud",
     rclcpp::SensorDataQoS{}.keep_last(1).get_rmw_qos_profile()),
+  managed_tf_buffer_(this),
   sync_(SyncPolicy(10), objects_sub_, obstacle_pointcloud_sub_)
 {
   points_num_threshold_param_.min_points_num =

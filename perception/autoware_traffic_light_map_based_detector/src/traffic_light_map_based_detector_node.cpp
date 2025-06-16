@@ -126,7 +126,7 @@ tf2::Vector3 getTrafficLightCenter(const lanelet::ConstLineString3d & traffic_li
 namespace autoware::traffic_light
 {
 MapBasedDetector::MapBasedDetector(const rclcpp::NodeOptions & node_options)
-: Node("traffic_light_map_based_detector", node_options)
+: Node("traffic_light_map_based_detector", node_options), managed_tf_buffer_(this)
 {
   using std::placeholders::_1;
 
@@ -186,7 +186,7 @@ bool MapBasedDetector::getTransform(
   const rclcpp::Time & t, const std::string & frame_id, tf2::Transform & tf)
 {
   auto tf_opt = managed_tf_buffer_.getTransform<tf2::Transform>(
-    "map", frame_id, t, rclcpp::Duration::from_seconds(0.2), this->get_logger());
+    "map", frame_id, t, rclcpp::Duration::from_seconds(0.2));
   if (!tf_opt) return false;
   tf = *tf_opt;
 

@@ -32,7 +32,8 @@ namespace autoware
 {
 namespace lidar_apollo_instance_segmentation
 {
-LidarApolloInstanceSegmentation::LidarApolloInstanceSegmentation(rclcpp::Node * node) : node_(node)
+LidarApolloInstanceSegmentation::LidarApolloInstanceSegmentation(rclcpp::Node * node)
+: node_(node), managed_tf_buffer_(node)
 {
   int range, width, height;
   bool use_intensity_feature, use_constant_feature;
@@ -89,7 +90,7 @@ bool LidarApolloInstanceSegmentation::transformCloud(
   // transform pointcloud to target_frame
   if (!managed_tf_buffer_.transformPointcloud<pcl::PointXYZI>(
         target_frame_, pcl_input, pcl_transformed_cloud, input.header.stamp,
-        rclcpp::Duration::from_seconds(0.5), node_->get_logger())) {
+        rclcpp::Duration::from_seconds(0.5))) {
     return false;
   }
 

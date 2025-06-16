@@ -89,7 +89,7 @@ void RoiClusterFusionNode::fuse_on_single_image(
     const auto transform_stamped_optional =
       managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
         camera_info.header.frame_id, input_cluster_msg.header.frame_id, camera_info.header.stamp,
-        rclcpp::Duration::from_seconds(0.01), rclcpp::get_logger("image_projection_based_fusion"));
+        rclcpp::Duration::from_seconds(0.01));
     if (!transform_stamped_optional) return;
     transform_stamped = transform_stamped_optional.value();
   }

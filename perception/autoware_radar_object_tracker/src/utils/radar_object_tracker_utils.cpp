@@ -27,8 +27,7 @@ std::optional<geometry_msgs::msg::Transform> getTransformAnonymous(
   const rclcpp::Time & time)
 {
   auto tf_stamped = managed_tf_buffer.getTransform<geometry_msgs::msg::TransformStamped>(
-    target_frame_id, source_frame_id, time, rclcpp::Duration::from_seconds(0.5),
-    rclcpp::get_logger("radar_object_tracker"));
+    target_frame_id, source_frame_id, time, rclcpp::Duration::from_seconds(0.5));
   if (!tf_stamped) return {};
   return std::make_optional<geometry_msgs::msg::Transform>(tf_stamped->transform);
 }

@@ -40,7 +40,7 @@ inline std::optional<geometry_msgs::msg::TransformStamped> getTransform(
   const std::string & to, const rclcpp::Time & time, const rclcpp::Duration & duration)
 {
   return managed_tf_buffer.getTransform<geometry_msgs::msg::TransformStamped>(
-    from, to, time, duration, logger);
+    from, to, time, duration);
 }
 
 inline geometry_msgs::msg::TransformStamped waitForTransform(
@@ -49,7 +49,7 @@ inline geometry_msgs::msg::TransformStamped waitForTransform(
 {
   while (rclcpp::ok()) {
     auto transform_opt =
-      managed_tf_buffer.getLatestTransform<geometry_msgs::msg::TransformStamped>(from, to, logger);
+      managed_tf_buffer.getLatestTransform<geometry_msgs::msg::TransformStamped>(from, to);
     if (transform_opt) return *transform_opt;
     rclcpp::sleep_for(std::chrono::milliseconds(5000));
   }

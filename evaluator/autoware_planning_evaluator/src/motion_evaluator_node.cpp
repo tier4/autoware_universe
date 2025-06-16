@@ -30,7 +30,7 @@ MotionEvaluatorNode::MotionEvaluatorNode(const rclcpp::NodeOptions & node_option
 : Node("motion_evaluator", node_options),
   vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo())
 {
-  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>(this);
 
   twist_sub_ = create_subscription<nav_msgs::msg::Odometry>(
     "~/input/twist", rclcpp::QoS{1},
@@ -124,7 +124,7 @@ geometry_msgs::msg::Pose MotionEvaluatorNode::getCurrentEgoPose() const
 
   geometry_msgs::msg::Pose p;
   auto tf_current_pose_opt = managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
-    "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0), this->get_logger());
+    "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
   if (!tf_current_pose_opt) return p;
 
   p.orientation = tf_current_pose_opt->transform.rotation;

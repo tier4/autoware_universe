@@ -355,8 +355,7 @@ void PointPaintingFusionNode::fuse_on_single_image(
   {
     const auto transform_stamped_optional = managed_tf_buffer_.getTransform<Eigen::Matrix4f>(
       input_rois_msg.header.frame_id, painted_pointcloud_msg.header.frame_id,
-      input_rois_msg.header.stamp, rclcpp::Duration::from_seconds(0.01),
-      rclcpp::get_logger("image_projection_based_fusion"));
+      input_rois_msg.header.stamp, rclcpp::Duration::from_seconds(0.01));
     if (!transform_stamped_optional) return;
     lidar2cam_affine = Eigen::Affine3f(transform_stamped_optional->matrix());
   }

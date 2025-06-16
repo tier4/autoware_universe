@@ -527,7 +527,7 @@ ObstacleCruisePlannerNode::ObstacleCruisePlannerNode(const rclcpp::NodeOptions &
     create_publisher<Float32MultiArrayStamped>("~/debug/slow_down_planning_info", 1);
 
   // tf listener
-  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>(this);
 
   const auto longitudinal_info = LongitudinalInfo(*this);
 
@@ -922,7 +922,7 @@ std::vector<Obstacle> ObstacleCruisePlannerNode::convertToObstacles(
 
   auto transform_stamped = managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
     traj_header.frame_id, pointcloud.header.frame_id, pointcloud.header.stamp,
-    rclcpp::Duration::from_seconds(0.5), this->get_logger());
+    rclcpp::Duration::from_seconds(0.5));
 
   if (!pointcloud.data.empty() && transform_stamped) {
     // 1. transform pointcloud

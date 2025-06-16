@@ -93,7 +93,7 @@ PointCloudConcatenationComponent::PointCloudConcatenationComponent(
 
   // tf2 listener
   {
-    managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+    managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>(this);
   }
 
   // Output Publishers
@@ -239,7 +239,7 @@ void PointCloudConcatenationComponent::combineClouds(
         new sensor_msgs::msg::PointCloud2());
       managed_tf_buffer_->transformPointcloud(
         output_frame_, *e.second, *transformed_cloud_ptr, e.second->header.stamp,
-        rclcpp::Duration::from_seconds(1.0), this->get_logger());
+        rclcpp::Duration::from_seconds(1.0));
 
       // concatenate
       if (concat_cloud_ptr == nullptr) {

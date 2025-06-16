@@ -93,7 +93,7 @@ std::vector<geometry_msgs::msg::Point> convert_centerline_to_points(
 }
 
 SimplePlanningSimulator::SimplePlanningSimulator(const rclcpp::NodeOptions & options)
-: Node("simple_planning_simulator", options)
+: Node("simple_planning_simulator", options), managed_tf_buffer_(this)
 {
   simulated_frame_id_ = declare_parameter("simulated_frame_id", "base_link");
   origin_frame_id_ = declare_parameter("origin_frame_id", "odom");
@@ -790,7 +790,7 @@ TransformStamped SimplePlanningSimulator::get_transform_msg(
   while (true) {
     const auto transform_opt =
       managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-        parent_frame, child_frame, this->get_logger());
+        parent_frame, child_frame);
     if (!transform_opt) {
       rclcpp::sleep_for(std::chrono::milliseconds(500));
     } else {

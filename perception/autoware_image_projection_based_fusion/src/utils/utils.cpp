@@ -118,7 +118,7 @@ void updateOutputFusedObjects(
   {
     const auto transform_stamped_optional = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
       in_cloud_header.frame_id, in_roi_header.frame_id, in_roi_header.stamp,
-      rclcpp::Duration::from_seconds(0.01), rclcpp::get_logger("image_projection_based_fusion"));
+      rclcpp::Duration::from_seconds(0.01));
 
     if (!transform_stamped_optional) {
       return;

@@ -97,8 +97,7 @@ void RoiPointCloudFusionNode::fuse_on_single_image(
     const auto transform_stamped_optional =
       managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
         input_rois_msg.header.frame_id, input_pointcloud_msg.header.frame_id,
-        input_rois_msg.header.stamp, rclcpp::Duration::from_seconds(0.01),
-        rclcpp::get_logger("image_projection_based_fusion"));
+        input_rois_msg.header.stamp, rclcpp::Duration::from_seconds(0.01));
     if (!transform_stamped_optional) {
       return;
     }

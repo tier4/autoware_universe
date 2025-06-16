@@ -19,9 +19,9 @@
 
 namespace yabloc::common
 {
-StaticTfSubscriber::StaticTfSubscriber()
+StaticTfSubscriber::StaticTfSubscriber(rclcpp::Node * node)
 {
-  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>(node);
 }
 
 std::optional<Sophus::SE3f> StaticTfSubscriber::se3f(

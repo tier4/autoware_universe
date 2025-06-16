@@ -116,12 +116,10 @@ Polygon2d convertObjToPolygon(const PredictedObject & obj);
  * @param target_frame target frame
  * @param source_frame source frame
  * @param managed_tf_buffer managed buffer of tf transforms
- * @param logger node logger
  */
 std::optional<geometry_msgs::msg::TransformStamped> getTransform(
   const std::string & target_frame, const std::string & source_frame,
-  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
-  const rclcpp::Logger & logger);
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer);
 
 /**
  * @brief Get the predicted object's shape as a geometry polygon

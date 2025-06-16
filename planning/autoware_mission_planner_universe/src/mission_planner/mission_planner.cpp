@@ -40,6 +40,7 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
   arrival_checker_(this),
   plugin_loader_(
     "autoware_mission_planner_universe", "autoware::mission_planner_universe::PlannerPlugin"),
+  managed_tf_buffer_(this),
   odometry_(nullptr),
   map_ptr_(nullptr)
 {
@@ -164,7 +165,7 @@ void MissionPlanner::on_map(const LaneletMapBin::ConstSharedPtr msg)
 Pose MissionPlanner::transform_pose(const Pose & pose, const Header & header)
 {
   auto transform_opt = managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-    map_frame_, header.frame_id, this->get_logger());
+    map_frame_, header.frame_id);
 
   if (!transform_opt) throw service_utils::TransformError("Failed to get transform");
   geometry_msgs::msg::Pose result;

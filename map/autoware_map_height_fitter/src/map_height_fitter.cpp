@@ -65,7 +65,7 @@ struct MapHeightFitter::Impl
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_vector_map_;
 };
 
-MapHeightFitter::Impl::Impl(rclcpp::Node * node) : node_(node)
+MapHeightFitter::Impl::Impl(rclcpp::Node * node) : managed_tf_buffer_(node), node_(node)
 {
   fit_target_ = node->declare_parameter<std::string>("map_height_fitter.target");
   if (fit_target_ == "pointcloud_map") {
@@ -250,8 +250,7 @@ std::optional<Point> MapHeightFitter::Impl::fit(const Point & position, const st
 
   // transform frame to map_frame_
   const auto to_map_opt =
-    managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-      frame, map_frame_, node_->get_logger());
+    managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(frame, map_frame_);
   if (!to_map_opt) return std::nullopt;
   tf2::doTransform(point, point, *to_map_opt);
 
@@ -260,8 +259,7 @@ std::optional<Point> MapHeightFitter::Impl::fit(const Point & position, const st
 
   // transform map_frame_ to frame
   const auto from_map_opt =
-    managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-      map_frame_, frame, node_->get_logger());
+    managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(map_frame_, frame);
   if (!from_map_opt) return std::nullopt;
   tf2::doTransform(point, point, *from_map_opt);
 

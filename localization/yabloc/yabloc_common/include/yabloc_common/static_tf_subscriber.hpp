@@ -28,7 +28,7 @@ namespace yabloc::common
 class StaticTfSubscriber
 {
 public:
-  explicit StaticTfSubscriber();
+  explicit StaticTfSubscriber(rclcpp::Node * node);
 
   std::optional<Sophus::SE3f> se3f(
     const std::string & frame_id, const std::string & parent_frame_id = "base_link");

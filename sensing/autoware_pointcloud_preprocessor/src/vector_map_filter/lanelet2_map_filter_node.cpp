@@ -68,7 +68,7 @@ Lanelet2MapFilterComponent::Lanelet2MapFilterComponent(const rclcpp::NodeOptions
 
   // Set tf
   {
-    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
+    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(this);
   }
 }
 
@@ -96,7 +96,7 @@ bool Lanelet2MapFilterComponent::transformPointCloud(
 {
   return managed_tf_buffer_->transformPointcloud(
     in_target_frame, *in_cloud_ptr, *out_cloud_ptr, in_cloud_ptr->header.stamp,
-    rclcpp::Duration::from_seconds(1.0), this->get_logger());
+    rclcpp::Duration::from_seconds(1.0));
 }
 
 LinearRing2d Lanelet2MapFilterComponent::getConvexHull(

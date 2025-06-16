@@ -112,7 +112,7 @@ ArTagBasedLocalizer::ArTagBasedLocalizer(const rclcpp::NodeOptions & options)
   /*
     tf
   */
-  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>(this);
 
   /*
     Subscribers
@@ -305,8 +305,7 @@ std::vector<landmark_manager::Landmark> ArTagBasedLocalizer::detect_landmarks(
   // get transform from base_link to camera
   auto transform_sensor_to_base_link_opt =
     managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
-      "base_link", msg->header.frame_id, sensor_stamp, rclcpp::Duration::from_seconds(1.0),
-      this->get_logger());
+      "base_link", msg->header.frame_id, sensor_stamp, rclcpp::Duration::from_seconds(1.0));
   if (!transform_sensor_to_base_link_opt) {
     return std::vector<Landmark>{};
   }

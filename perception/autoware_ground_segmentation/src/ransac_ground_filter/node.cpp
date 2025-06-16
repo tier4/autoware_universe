@@ -118,7 +118,7 @@ RANSACGroundFilterComponent::RANSACGroundFilterComponent(const rclcpp::NodeOptio
 
   pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS);
 
-  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>(this);
 
   bool use_time_keeper = declare_parameter<bool>("publish_processing_time_detail");
   if (use_time_keeper) {
@@ -227,7 +227,7 @@ void RANSACGroundFilterComponent::filter(
   sensor_msgs::msg::PointCloud2::SharedPtr input_transformed_ptr(new sensor_msgs::msg::PointCloud2);
   if (!managed_tf_buffer_->transformPointcloud(
         base_frame_, *input, *input_transformed_ptr, input->header.stamp,
-        rclcpp::Duration::from_seconds(1.0), this->get_logger())) {
+        rclcpp::Duration::from_seconds(1.0))) {
     return;
   }
   pcl::PointCloud<PointType>::Ptr current_sensor_cloud_ptr(new pcl::PointCloud<PointType>);
@@ -310,8 +310,7 @@ void RANSACGroundFilterComponent::filter(
     new sensor_msgs::msg::PointCloud2);
   if (!managed_tf_buffer_->transformPointcloud(
         base_frame_, *no_ground_cloud_msg_ptr, *no_ground_cloud_transformed_msg_ptr,
-        no_ground_cloud_msg_ptr->header.stamp, rclcpp::Duration::from_seconds(1.0),
-        this->get_logger())) {
+        no_ground_cloud_msg_ptr->header.stamp, rclcpp::Duration::from_seconds(1.0))) {
     return;
   }
   output = *no_ground_cloud_transformed_msg_ptr;

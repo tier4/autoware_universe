@@ -29,14 +29,14 @@ class TransformListener
 public:
   explicit TransformListener(rclcpp::Node * node) : logger_(node->get_logger())
   {
-    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
+    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(node);
   }
 
   geometry_msgs::msg::TransformStamped::ConstSharedPtr getLatestTransform(
     const std::string & from, const std::string & to)
   {
     auto tf_opt = managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
-      from, to, tf2::TimePointZero, tf2::Duration::zero(), logger_);
+      from, to, tf2::TimePointZero, tf2::Duration::zero());
 
     if (!tf_opt) return {};
 
@@ -48,7 +48,7 @@ public:
     const rclcpp::Duration & duration)
   {
     auto tf_opt = managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
-      from, to, time, duration, logger_);
+      from, to, time, duration);
 
     if (!tf_opt) return {};
 

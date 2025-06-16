@@ -89,7 +89,7 @@ Eigen::MatrixXd calcScoreMatrixForAssociation(
 }
 
 DecorativeTrackerMergerNode::DecorativeTrackerMergerNode(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("decorative_object_merger_node", node_options)
+: rclcpp::Node("decorative_object_merger_node", node_options), managed_tf_buffer_(this)
 {
   // glog for debug
   if (!google::IsGoogleLoggingInitialized()) {

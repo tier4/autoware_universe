@@ -34,8 +34,7 @@ bool transformPointcloud(
   const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output)
 {
   return managed_tf_buffer.transformPointcloud(
-    target_frame, input, output, input.header.stamp, rclcpp::Duration::from_seconds(0.5),
-    rclcpp::get_logger("probabilistic_occupancy_grid_map"));
+    target_frame, input, output, input.header.stamp, rclcpp::Duration::from_seconds(0.5));
 }
 
 #ifdef USE_CUDA
@@ -46,8 +45,7 @@ bool transformPointcloudAsync(
   autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> & device_translation)
 {
   auto tf_matrix_opt = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
-    target_frame, input.header.frame_id, input.header.stamp, rclcpp::Duration::from_seconds(0.5),
-    rclcpp::get_logger("probabilistic_occupancy_grid_map"));
+    target_frame, input.header.frame_id, input.header.stamp, rclcpp::Duration::from_seconds(0.5));
   if (!tf_matrix_opt) return false;
 
   Eigen::Matrix3f rotation = tf_matrix_opt->block<3, 3>(0, 0);
@@ -114,8 +112,7 @@ geometry_msgs::msg::Pose getPose(
 {
   geometry_msgs::msg::Pose pose;
   auto tf_stamped_opt = managed_tf_buffer.getTransform<geometry_msgs::msg::TransformStamped>(
-    target_frame, source_header.frame_id, source_header.stamp, rclcpp::Duration::from_seconds(0.5),
-    rclcpp::get_logger("probabilistic_occupancy_grid_map"));
+    target_frame, source_header.frame_id, source_header.stamp, rclcpp::Duration::from_seconds(0.5));
   if (!tf_stamped_opt) throw tf2::TransformException("Failed to lookup transform");
   pose = autoware_utils::transform2pose(tf_stamped_opt->transform);
   return pose;
@@ -128,8 +125,7 @@ geometry_msgs::msg::Pose getPose(
 {
   geometry_msgs::msg::Pose pose;
   auto tf_stamped_opt = managed_tf_buffer.getTransform<geometry_msgs::msg::TransformStamped>(
-    target_frame, source_frame, stamp, rclcpp::Duration::from_seconds(0.5),
-    rclcpp::get_logger("probabilistic_occupancy_grid_map"));
+    target_frame, source_frame, stamp, rclcpp::Duration::from_seconds(0.5));
   if (!tf_stamped_opt) throw tf2::TransformException("Failed to lookup transform");
   pose = autoware_utils::transform2pose(tf_stamped_opt->transform);
   return pose;

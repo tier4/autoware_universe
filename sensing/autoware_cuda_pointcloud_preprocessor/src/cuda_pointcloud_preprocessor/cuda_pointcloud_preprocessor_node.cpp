@@ -38,7 +38,7 @@ using sensor_msgs::msg::PointCloud2;
 
 CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
   const rclcpp::NodeOptions & node_options)
-: Node("cuda_pointcloud_preprocessor", node_options)
+: Node("cuda_pointcloud_preprocessor", node_options), managed_tf_buffer_(this)
 {
   using std::placeholders::_1;
 
@@ -147,7 +147,7 @@ bool CudaPointcloudPreprocessorNode::getTransform(
   }
 
   auto transform_opt = managed_tf_buffer_.getTransform<tf2::Transform>(
-    target_frame, source_frame, tf2::TimePointZero, tf2::Duration::zero(), this->get_logger());
+    target_frame, source_frame, tf2::TimePointZero, tf2::Duration::zero());
 
   if (!transform_opt) {
     tf2_transform_ptr->setOrigin(tf2::Vector3(0.0, 0.0, 0.0));
@@ -256,7 +256,7 @@ void CudaPointcloudPreprocessorNode::pointcloudCallback(
   // Obtain the base link to input pointcloud transform
   auto tf_opt = managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
     base_frame_, input_pointcloud_msg_ptr->header.frame_id, tf2::TimePointZero,
-    tf2::Duration::zero(), this->get_logger());
+    tf2::Duration::zero());
   if (!tf_opt) return;
 
   auto output_pointcloud_ptr = cuda_pointcloud_preprocessor_->process(

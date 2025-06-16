@@ -27,7 +27,7 @@ namespace autoware::kinematic_diagnostics
 KinematicEvaluatorNode::KinematicEvaluatorNode(const rclcpp::NodeOptions & node_options)
 : Node("kinematic_evaluator", node_options)
 {
-  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>(this);
 
   odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
     "~/input/twist", rclcpp::QoS{1},
@@ -122,7 +122,7 @@ geometry_msgs::msg::Pose KinematicEvaluatorNode::getCurrentEgoPose() const
 {
   geometry_msgs::msg::Pose p;
   auto tf_current_pose_opt = managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
-    "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0), this->get_logger());
+    "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
 
   if (!tf_current_pose_opt) return p;
 

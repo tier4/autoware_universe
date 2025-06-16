@@ -69,7 +69,7 @@ TopicPublisher::TopicPublisher(
     init_rosbag_publishers();
   } else if (node_running_mode_ == RunningMode::PlanningControl) {
     // init tf
-    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
+    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(node);
 
     // get parameters
     topic_publisher_params_.dummy_perception_publisher_period =

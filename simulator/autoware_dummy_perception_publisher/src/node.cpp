@@ -130,7 +130,8 @@ TrackedObject ObjectInfo::toTrackedObject(
   return tracked_object;
 }
 
-DummyPerceptionPublisherNode::DummyPerceptionPublisherNode() : Node("dummy_perception_publisher")
+DummyPerceptionPublisherNode::DummyPerceptionPublisherNode()
+: Node("dummy_perception_publisher"), managed_tf_buffer_(this)
 {
   visible_range_ = this->declare_parameter("visible_range", 100.0);
   detection_successful_rate_ = this->declare_parameter("detection_successful_rate", 0.8);
@@ -202,7 +203,7 @@ void DummyPerceptionPublisherNode::timerCallback()
   }
 
   auto tf_base_link2map_opt = managed_tf_buffer_.getTransform<tf2::Transform>(
-    "base_link", "map", current_time, rclcpp::Duration::from_seconds(0.5), this->get_logger());
+    "base_link", "map", current_time, rclcpp::Duration::from_seconds(0.5));
   if (!tf_base_link2map_opt) return;
 
   std::vector<size_t> selected_indices{};
@@ -329,8 +330,7 @@ void DummyPerceptionPublisherNode::objectCallback(
       tf2::Transform tf_input2object_origin;
       tf2::Transform tf_map2object_origin;
       auto tf_input2map_opt = managed_tf_buffer_.getTransform<tf2::Transform>(
-        msg->header.frame_id, "map", msg->header.stamp, rclcpp::Duration::from_seconds(0.5),
-        this->get_logger());
+        msg->header.frame_id, "map", msg->header.stamp, rclcpp::Duration::from_seconds(0.5));
       if (!tf_input2map_opt) return;
 
       tf2::fromMsg(msg->initial_state.pose_covariance.pose, tf_input2object_origin);
@@ -343,8 +343,7 @@ void DummyPerceptionPublisherNode::objectCallback(
       if (use_base_link_z_) {
         auto ros_map2base_link_opt =
           managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
-            "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(0.5),
-            this->get_logger());
+            "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(0.5));
         if (!ros_map2base_link_opt) return;
 
         object.initial_state.pose_covariance.pose.position.z =
@@ -369,8 +368,7 @@ void DummyPerceptionPublisherNode::objectCallback(
           tf2::Transform tf_input2object_origin;
           tf2::Transform tf_map2object_origin;
           auto tf_input2map_opt = managed_tf_buffer_.getTransform<tf2::Transform>(
-            msg->header.frame_id, "map", msg->header.stamp, rclcpp::Duration::from_seconds(0.5),
-            this->get_logger());
+            msg->header.frame_id, "map", msg->header.stamp, rclcpp::Duration::from_seconds(0.5));
           if (!tf_input2map_opt) return;
 
           tf2::fromMsg(msg->initial_state.pose_covariance.pose, tf_input2object_origin);
@@ -382,8 +380,7 @@ void DummyPerceptionPublisherNode::objectCallback(
             // Use base_link Z
             auto ros_map2base_link_opt =
               managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
-                "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(0.5),
-                this->get_logger());
+                "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(0.5));
             if (!ros_map2base_link_opt) return;
             objects_.at(i).initial_state.pose_covariance.pose.position.z =
               ros_map2base_link_opt->transform.translation.z +

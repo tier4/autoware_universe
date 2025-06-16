@@ -243,8 +243,7 @@ std::optional<Eigen::Affine3f> getTransformMatrix(
   const builtin_interfaces::msg::Time & stamp)
 {
   auto transform_opt = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
-    target_frame_id, source_frame_id, stamp, rclcpp::Duration::from_seconds(0),
-    rclcpp::get_logger("dynamic_obstacle_creator"));
+    target_frame_id, source_frame_id, stamp, rclcpp::Duration::from_seconds(0));
   if (!transform_opt) return {};
 
   auto transform_matrix = Eigen::Affine3f(transform_opt->matrix());
@@ -424,7 +423,7 @@ std::vector<DynamicObstacle> DynamicObstacleCreatorForObjectWithoutPath::createD
 
 DynamicObstacleCreatorForPoints::DynamicObstacleCreatorForPoints(
   rclcpp::Node & node, std::shared_ptr<RunOutDebug> & debug_ptr, const DynamicObstacleParam & param)
-: DynamicObstacleCreator(node, debug_ptr, param)
+: DynamicObstacleCreator(node, debug_ptr, param), managed_tf_buffer_(&node)
 {
   if (param_.use_mandatory_area) {
     // Subscribe the input using message filter

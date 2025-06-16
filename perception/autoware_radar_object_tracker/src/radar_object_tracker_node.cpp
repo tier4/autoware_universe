@@ -41,7 +41,7 @@ namespace autoware::radar_object_tracker
 using Label = autoware_perception_msgs::msg::ObjectClassification;
 
 RadarObjectTrackerNode::RadarObjectTrackerNode(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("radar_object_tracker", node_options)
+: rclcpp::Node("radar_object_tracker", node_options), managed_tf_buffer_(this)
 {
   // glog for debug
   if (!google::IsGoogleLoggingInitialized()) {

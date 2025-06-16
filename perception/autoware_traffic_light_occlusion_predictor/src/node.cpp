@@ -42,7 +42,7 @@ namespace autoware::traffic_light
 
 TrafficLightOcclusionPredictorNode::TrafficLightOcclusionPredictorNode(
   const rclcpp::NodeOptions & node_options)
-: Node("traffic_light_occlusion_predictor_node", node_options)
+: Node("traffic_light_occlusion_predictor_node", node_options), managed_tf_buffer_(this)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;

@@ -45,8 +45,7 @@ bool PointCloudDensification::enqueuePointCloud(
 
   if (param_.pointcloud_cache_size() > 1) {
     auto transform_world2current_opt = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
-      header.frame_id, param_.world_frame_id(), header.stamp, rclcpp::Duration::from_seconds(0.5),
-      rclcpp::get_logger("lidar_transfusion"));
+      header.frame_id, param_.world_frame_id(), header.stamp, rclcpp::Duration::from_seconds(0.5));
     if (!transform_world2current_opt) return false;
     auto affine_world2current = Eigen::Affine3f(transform_world2current_opt->matrix());
 

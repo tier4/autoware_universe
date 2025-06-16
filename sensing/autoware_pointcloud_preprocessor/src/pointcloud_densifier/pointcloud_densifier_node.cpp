@@ -76,7 +76,7 @@ PointCloudDensifierNode::PointCloudDensifierNode(const rclcpp::NodeOptions & opt
   }
 
   // Initialize Managed TF buffer
-  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(this);
 }
 
 // Legacy filter implementation - for backward compatibility
@@ -213,10 +213,10 @@ void PointCloudDensifierNode::transformAndMergePreviousClouds(
       std::chrono::seconds(previous_cloud->header.stamp.sec));
 
     auto previous_transform = managed_tf_buffer_->getTransform<tf2::Transform>(
-      previous_cloud->header.frame_id, "map", prev_time_point, tf2::Duration::zero(), get_logger());
+      previous_cloud->header.frame_id, "map", prev_time_point, tf2::Duration::zero());
 
     auto current_transform = managed_tf_buffer_->getTransform<tf2::Transform>(
-      "map", current_msg->header.frame_id, current_time_point, tf2::Duration::zero(), get_logger());
+      "map", current_msg->header.frame_id, current_time_point, tf2::Duration::zero());
 
     // TF between previous and current cloud
     auto tf = *current_transform * *previous_transform;

@@ -71,7 +71,7 @@ private:
   std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{};
 
   std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_{
-    std::make_shared<managed_transform_buffer::ManagedTransformBuffer>()};
+    std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(this)};
 
   std::unique_ptr<OccupancyGridMapInterface> occupancy_grid_map_ptr_;
   std::unique_ptr<OccupancyGridMapUpdaterInterface> occupancy_grid_map_updater_ptr_;

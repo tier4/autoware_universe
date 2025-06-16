@@ -42,6 +42,7 @@ OccupancyGridBasedValidator::OccupancyGridBasedValidator(const rclcpp::NodeOptio
 : rclcpp::Node("occupancy_grid_based_validator", node_options),
   objects_sub_(this, "~/input/detected_objects", rclcpp::QoS{1}.get_rmw_qos_profile()),
   occ_grid_sub_(this, "~/input/occupancy_grid_map", rclcpp::QoS{1}.get_rmw_qos_profile()),
+  managed_tf_buffer_(this),
   sync_(SyncPolicy(10), objects_sub_, occ_grid_sub_)
 {
   using std::placeholders::_1;

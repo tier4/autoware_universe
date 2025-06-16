@@ -53,7 +53,7 @@ using autoware_utils::get_pose;
 using autoware_utils::get_rpy;
 
 ObstacleStopPlannerNode::ObstacleStopPlannerNode(const rclcpp::NodeOptions & node_options)
-: Node("obstacle_stop_planner", node_options)
+: Node("obstacle_stop_planner", node_options), managed_tf_buffer_(this)
 {
   // Vehicle Parameters
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -1453,7 +1453,7 @@ bool ObstacleStopPlannerNode::searchPointcloudNearTrajectory(
   auto transform_stamped_opt =
     managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
       trajectory_header.frame_id, input_points_ptr->header.frame_id, input_points_ptr->header.stamp,
-      rclcpp::Duration::from_seconds(0.5), this->get_logger());
+      rclcpp::Duration::from_seconds(0.5));
 
   if (!transform_stamped_opt) return false;
 

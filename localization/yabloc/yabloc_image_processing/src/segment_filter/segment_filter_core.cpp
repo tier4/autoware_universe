@@ -36,7 +36,8 @@ SegmentFilter::SegmentFilter(const rclcpp::NodeOptions & options)
   max_segment_distance_(static_cast<float>(declare_parameter<float>("max_segment_distance"))),
   max_lateral_distance_(static_cast<float>(declare_parameter<float>("max_lateral_distance"))),
   info_(this),
-  synchro_subscriber_(this, "~/input/line_segments_cloud", "~/input/graph_segmented")
+  synchro_subscriber_(this, "~/input/line_segments_cloud", "~/input/graph_segmented"),
+  tf_subscriber_(this)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;

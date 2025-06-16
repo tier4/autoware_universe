@@ -39,7 +39,7 @@ namespace autoware::compare_map_segmentation
 
 VoxelBasedCompareMapFilterComponent::VoxelBasedCompareMapFilterComponent(
   const rclcpp::NodeOptions & options)
-: Filter("VoxelBasedCompareMapFilter", options), diagnostic_updater_(this)
+: Filter("VoxelBasedCompareMapFilter", options), managed_tf_buffer_(this), diagnostic_updater_(this)
 {
   // initialize debug tool
   {
@@ -121,7 +121,7 @@ void VoxelBasedCompareMapFilterComponent::input_indices_callback(
   PointCloud2 cloud_transformed;
   if (managed_tf_buffer_.transformPointcloud(
         tf_input_frame_, *cloud, cloud_transformed, cloud->header.stamp,
-        rclcpp::Duration::from_seconds(0.0), this->get_logger())) {
+        rclcpp::Duration::from_seconds(0.0))) {
     cloud_tf = std::make_shared<PointCloud2>(cloud_transformed);
   } else {
     cloud_tf = cloud;  // Fallback to original data
@@ -153,7 +153,7 @@ bool VoxelBasedCompareMapFilterComponent::convert_output_costly(
     auto cloud_transformed = std::make_unique<PointCloud2>();
     if (managed_tf_buffer_.transformPointcloud(
           tf_output_frame_, *output, *cloud_transformed, output->header.stamp,
-          rclcpp::Duration::from_seconds(0.0), this->get_logger())) {
+          rclcpp::Duration::from_seconds(0.0))) {
       return true;
     }
   }
@@ -162,7 +162,7 @@ bool VoxelBasedCompareMapFilterComponent::convert_output_costly(
     auto cloud_transformed = std::make_unique<PointCloud2>();
     if (managed_tf_buffer_.transformPointcloud(
           tf_input_orig_frame_, *output, *cloud_transformed, output->header.stamp,
-          rclcpp::Duration::from_seconds(0.0), this->get_logger())) {
+          rclcpp::Duration::from_seconds(0.0))) {
       return true;
     }
   }

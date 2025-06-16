@@ -39,7 +39,7 @@ namespace autoware::detected_object_validation
 namespace lanelet_filter
 {
 ObjectLaneletFilterNode::ObjectLaneletFilterNode(const rclcpp::NodeOptions & node_options)
-: Node("object_lanelet_filter_node", node_options)
+: Node("object_lanelet_filter_node", node_options), managed_tf_buffer_(this)
 {
   using std::placeholders::_1;
 
@@ -152,7 +152,7 @@ void ObjectLaneletFilterNode::objectCallback(
   if (filter_settings_.use_height_threshold) {
     auto tf_opt = managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
       lanelet_frame_id_, "base_link", transformed_objects.header.stamp,
-      rclcpp::Duration::from_seconds(0.5), this->get_logger());
+      rclcpp::Duration::from_seconds(0.5));
     if (!tf_opt) return;
     ego_base_height_ = tf_opt->transform.translation.z;
   }

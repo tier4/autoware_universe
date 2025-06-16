@@ -33,6 +33,7 @@ Odometry::Odometry(
 : node_(node),
   ego_frame_id_(ego_frame_id),
   world_frame_id_(world_frame_id),
+  managed_tf_buffer_(&node),
   enable_odometry_uncertainty_(enable_odometry_uncertainty)
 {
 }
@@ -71,8 +72,7 @@ std::optional<geometry_msgs::msg::Transform> Odometry::getTransform(
 {
   auto self_transform_stamped =
     managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
-      world_frame_id_, source_frame_id, tf2::TimePointZero, tf2::Duration::zero(),
-      rclcpp::get_logger("multi_object_tracker"));
+      world_frame_id_, source_frame_id, tf2::TimePointZero, tf2::Duration::zero());
 
   if (!self_transform_stamped) return std::nullopt;
 

@@ -53,7 +53,7 @@ PerceptionOnlineEvaluatorNode::PerceptionOnlineEvaluatorNode(
   metrics_pub_ = create_publisher<tier4_metric_msgs::msg::MetricArray>("~/metrics", 1);
   pub_marker_ = create_publisher<MarkerArray>("~/markers", 10);
 
-  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>(this);
 
   // Parameters
   initParameter();

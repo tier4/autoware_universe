@@ -27,7 +27,7 @@
 namespace autoware::low_intensity_cluster_filter
 {
 LowIntensityClusterFilter::LowIntensityClusterFilter(const rclcpp::NodeOptions & node_options)
-: Node("low_intensity_cluster_filter_node", node_options)
+: Node("low_intensity_cluster_filter_node", node_options), managed_tf_buffer_(this)
 {
   intensity_threshold_ = declare_parameter<double>("intensity_threshold");
   existence_probability_threshold_ = declare_parameter<double>("existence_probability_threshold");
@@ -75,7 +75,7 @@ void LowIntensityClusterFilter::objectCallback(
   output_object_msg.header = input_msg->header;
   auto transform_stamp_opt = managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
     input_msg->header.frame_id, base_link_frame_id_, input_msg->header.stamp,
-    rclcpp::Duration::from_seconds(0.0), this->get_logger());
+    rclcpp::Duration::from_seconds(0.0));
   if (!transform_stamp_opt) return;
 
   geometry_msgs::msg::Pose min_range;

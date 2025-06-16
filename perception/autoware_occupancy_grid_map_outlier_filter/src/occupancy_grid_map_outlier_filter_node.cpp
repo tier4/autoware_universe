@@ -48,8 +48,7 @@ bool transformPointcloud(
   const std::string & target_frame, sensor_msgs::msg::PointCloud2 & output)
 {
   return managed_tf_buffer->transformPointcloud(
-    target_frame, input, output, input.header.stamp, rclcpp::Duration::from_seconds(0.5),
-    rclcpp::get_logger("occupancy_grid_map_outlier_filter"));
+    target_frame, input, output, input.header.stamp, rclcpp::Duration::from_seconds(0.5));
 }
 
 geometry_msgs::msg::PoseStamped getPoseStamped(
@@ -57,8 +56,7 @@ geometry_msgs::msg::PoseStamped getPoseStamped(
   const std::string & target_frame_id, const std::string & src_frame_id, const rclcpp::Time & time)
 {
   auto tf_stamped_opt = managed_tf_buffer->getTransform<geometry_msgs::msg::TransformStamped>(
-    target_frame_id, src_frame_id, time, rclcpp::Duration::from_seconds(0.5),
-    rclcpp::get_logger("occupancy_grid_map_outlier_filter"));
+    target_frame_id, src_frame_id, time, rclcpp::Duration::from_seconds(0.5));
   return autoware_utils::transform2pose(*tf_stamped_opt);
 }
 
@@ -229,7 +227,7 @@ OccupancyGridMapOutlierFilterComponent::OccupancyGridMapOutlierFilterComponent(
   auto enable_debugger = declare_parameter<bool>("enable_debugger");
 
   /* tf */
-  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(this);
 
   /* Subscriber and publisher */
   pointcloud_sub_.subscribe(this, "~/input/pointcloud", rmw_qos_profile_sensor_data);

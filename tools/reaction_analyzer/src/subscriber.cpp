@@ -33,7 +33,7 @@ SubscriberBase::SubscriberBase(
   entity_params_(entity_params)
 {
   // init tf
-  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(node);
 
   // init reaction parameters and chain configuration
   init_reaction_chains_and_params();
@@ -480,8 +480,7 @@ void SubscriberBase::on_detected_objects(
   // transform objects
   auto transform_stamped_opt =
     managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
-      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1),
-      node_->get_logger());
+      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1));
   if (!transform_stamped_opt) return;
 
   DetectedObjects output_objs;
@@ -527,8 +526,7 @@ void SubscriberBase::on_detected_objects(
   // transform objects
   auto transform_stamped_opt =
     managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
-      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1),
-      node_->get_logger());
+      "map", msg_ptr->header.frame_id, node_->now(), rclcpp::Duration::from_seconds(0.1));
   if (!transform_stamped_opt) return;
 
   DetectedObjects output_objs;

@@ -130,7 +130,7 @@ Polygon2d createSelfPolygon(const VehicleInfo & vehicle_info)
 }  // namespace
 
 CollisionDetectorNode::CollisionDetectorNode(const rclcpp::NodeOptions & node_options)
-: Node("collision_detector_node", node_options), updater_(this)
+: Node("collision_detector_node", node_options), managed_tf_buffer_(this), updater_(this)
 {
   // Parameters
   {
@@ -187,7 +187,7 @@ PredictedObjects CollisionDetectorNode::filterObjects(const PredictedObjects & i
   const auto transform_stamped =
     managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
       "base_link", input_objects.header.frame_id, input_objects.header.stamp,
-      rclcpp::Duration::from_seconds(0.5), this->get_logger());
+      rclcpp::Duration::from_seconds(0.5));
 
   if (!transform_stamped) {
     RCLCPP_ERROR(this->get_logger(), "Failed to get transform from object frame to base_link");
@@ -413,7 +413,7 @@ boost::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByPointCloud(
   const auto transform_stamped =
     managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
       "base_link", pointcloud_ptr_->header.frame_id, pointcloud_ptr_->header.stamp,
-      rclcpp::Duration::from_seconds(0.5), this->get_logger());
+      rclcpp::Duration::from_seconds(0.5));
 
   geometry_msgs::msg::Point nearest_point;
   auto minimum_distance = std::numeric_limits<double>::max();
@@ -448,7 +448,7 @@ boost::optional<Obstacle> CollisionDetectorNode::getNearestObstacleByDynamicObje
   const auto transform_stamped =
     managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
       filtered_object_ptr_->header.frame_id, "base_link", filtered_object_ptr_->header.stamp,
-      rclcpp::Duration::from_seconds(0.5), this->get_logger());
+      rclcpp::Duration::from_seconds(0.5));
 
   geometry_msgs::msg::Point nearest_point;
   auto minimum_distance = std::numeric_limits<double>::max();

@@ -36,7 +36,7 @@
 namespace autoware::lidar_centerpoint
 {
 LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_options)
-: Node("lidar_center_point", node_options)
+: Node("lidar_center_point", node_options), managed_tf_buffer_(this)
 {
   const float score_threshold =
     static_cast<float>(this->declare_parameter<double>("post_process_params.score_threshold"));

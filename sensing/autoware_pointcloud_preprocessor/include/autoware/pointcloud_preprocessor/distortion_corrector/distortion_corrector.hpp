@@ -82,7 +82,7 @@ protected:
 public:
   explicit DistortionCorrectorBase(rclcpp::Node & node) : node_(node)
   {
-    managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+    managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>(&node);
   }
 
   virtual ~DistortionCorrectorBase() = default;

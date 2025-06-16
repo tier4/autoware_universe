@@ -27,7 +27,8 @@
 namespace autoware::bevfusion
 {
 
-BEVFusionNode::BEVFusionNode(const rclcpp::NodeOptions & options) : Node("bevfusion", options)
+BEVFusionNode::BEVFusionNode(const rclcpp::NodeOptions & options)
+: Node("bevfusion", options), managed_tf_buffer_(this)
 {
   auto descriptor = rcl_interfaces::msg::ParameterDescriptor{}.set__read_only(true);
 

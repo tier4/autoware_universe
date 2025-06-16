@@ -80,6 +80,7 @@ namespace autoware::object_merger
 {
 ObjectAssociationMergerNode::ObjectAssociationMergerNode(const rclcpp::NodeOptions & node_options)
 : rclcpp::Node("object_association_merger_node", node_options),
+  managed_tf_buffer_(this),
   object0_sub_(this, "input/object0", rclcpp::QoS{1}.get_rmw_qos_profile()),
   object1_sub_(this, "input/object1", rclcpp::QoS{1}.get_rmw_qos_profile())
 {

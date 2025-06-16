@@ -90,7 +90,7 @@ void DistortionCorrectorBase::get_imu_transformation(
 
   Eigen::Matrix4f eigen_imu_to_base_link;
   auto eigen_transform_opt = managed_tf_buffer_->getTransform<Eigen::Matrix4f>(
-    base_frame, imu_frame, node_.now(), rclcpp::Duration::from_seconds(1.0), node_.get_logger());
+    base_frame, imu_frame, node_.now(), rclcpp::Duration::from_seconds(1.0));
   imu_transform_exists_ = eigen_transform_opt.has_value();
   if (imu_transform_exists_) {
     eigen_imu_to_base_link = *eigen_transform_opt;
@@ -436,7 +436,7 @@ void DistortionCorrector2D::set_pointcloud_transform(
 
   Eigen::Matrix4f eigen_lidar_to_base_link;
   auto eigen_transform_opt = managed_tf_buffer_->getTransform<Eigen::Matrix4f>(
-    base_frame, lidar_frame, node_.now(), rclcpp::Duration::from_seconds(1.0), node_.get_logger());
+    base_frame, lidar_frame, node_.now(), rclcpp::Duration::from_seconds(1.0));
   pointcloud_transform_exists_ = eigen_transform_opt.has_value();
   if (pointcloud_transform_exists_) {
     eigen_lidar_to_base_link = *eigen_transform_opt;
@@ -454,7 +454,7 @@ void DistortionCorrector3D::set_pointcloud_transform(
   }
 
   auto eigen_transform_opt = managed_tf_buffer_->getTransform<Eigen::Matrix4f>(
-    base_frame, lidar_frame, node_.now(), rclcpp::Duration::from_seconds(1.0), node_.get_logger());
+    base_frame, lidar_frame, node_.now(), rclcpp::Duration::from_seconds(1.0));
   pointcloud_transform_exists_ = eigen_transform_opt.has_value();
   if (pointcloud_transform_exists_) {
     eigen_lidar_to_base_link_ = *eigen_transform_opt;

@@ -60,13 +60,13 @@ void CloudOcclusionPredictor::predict(
   // get transformation from cloud to camera
   auto camera2cloud_opt = managed_tf_buffer.getTransform<Eigen::Matrix4d>(
     cloud_msg->header.frame_id, camera_info_msg->header.frame_id, camera_info_msg->header.stamp,
-    rclcpp::Duration::from_seconds(0.2), node_ptr_->get_logger());
+    rclcpp::Duration::from_seconds(0.2));
   if (!camera2cloud_opt) return;
 
   // get transformation from map to camera
   auto tf_camera2map_opt = managed_tf_buffer.getTransform<tf2::Transform>(
     camera_info_msg->header.frame_id, "map", camera_info_msg->header.stamp,
-    rclcpp::Duration::from_seconds(0.2), node_ptr_->get_logger());
+    rclcpp::Duration::from_seconds(0.2));
   if (!tf_camera2map_opt) return;
 
   std::vector<pcl::PointXYZ> roi_tls(rois_msg->rois.size()), roi_brs(rois_msg->rois.size());

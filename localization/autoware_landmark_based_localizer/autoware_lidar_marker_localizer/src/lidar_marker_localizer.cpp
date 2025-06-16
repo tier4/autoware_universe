@@ -121,7 +121,7 @@ LidarMarkerLocalizer::LidarMarkerLocalizer(const rclcpp::NodeOptions & node_opti
     std::bind(&LidarMarkerLocalizer::service_trigger_node, this, _1, _2),
     rclcpp::ServicesQoS().get_rmw_qos_profile(), points_callback_group);
 
-  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
+  managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(this);
 
   diagnostics_interface_.reset(
     new autoware_utils::DiagnosticsInterface(this, "marker_detection_status"));
@@ -600,7 +600,7 @@ void LidarMarkerLocalizer::transform_sensor_measurement(
   }
 
   auto transform_opt = managed_tf_buffer_->getLatestTransform<geometry_msgs::msg::TransformStamped>(
-    source_frame, target_frame, this->get_logger());
+    source_frame, target_frame);
   if (!transform_opt) {
     sensor_points_output_ptr = sensor_points_input_ptr;
     return;

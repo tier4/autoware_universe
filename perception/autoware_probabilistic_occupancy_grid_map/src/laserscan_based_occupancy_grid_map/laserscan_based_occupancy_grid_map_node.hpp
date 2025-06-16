@@ -77,7 +77,7 @@ private:
   message_filters::PassThrough<PointCloud2> passthrough_;
 
   std::shared_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_{
-    std::make_shared<managed_transform_buffer::ManagedTransformBuffer>()};
+    std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(this)};
 
   using SyncPolicy = message_filters::sync_policies::ExactTime<LaserScan, PointCloud2, PointCloud2>;
   using Sync = message_filters::Synchronizer<SyncPolicy>;

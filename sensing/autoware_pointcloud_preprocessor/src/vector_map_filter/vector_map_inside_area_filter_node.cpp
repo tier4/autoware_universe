@@ -84,7 +84,7 @@ VectorMapInsideAreaFilterComponent::VectorMapInsideAreaFilterComponent(
 
   // Set tf
   {
-    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>();
+    managed_tf_buffer_ = std::make_shared<managed_transform_buffer::ManagedTransformBuffer>(this);
   }
 }
 
@@ -119,7 +119,7 @@ void VectorMapInsideAreaFilterComponent::filter(
     if (input->header.frame_id != base_link_frame) {
       auto transform_opt = managed_tf_buffer_->getTransform<geometry_msgs::msg::TransformStamped>(
         input->header.frame_id, base_link_frame, input->header.stamp,
-        rclcpp::Duration::from_seconds(0.0), this->get_logger());
+        rclcpp::Duration::from_seconds(0.0));
       if (transform_opt) {
         *z_threshold_in_base_link += transform_opt->transform.translation.z;
       } else {

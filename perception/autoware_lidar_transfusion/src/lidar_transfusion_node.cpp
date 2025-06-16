@@ -27,7 +27,7 @@ namespace autoware::lidar_transfusion
 {
 
 LidarTransfusionNode::LidarTransfusionNode(const rclcpp::NodeOptions & options)
-: Node("lidar_transfusion", options)
+: Node("lidar_transfusion", options), managed_tf_buffer_(this)
 {
   auto descriptor = rcl_interfaces::msg::ParameterDescriptor{}.set__read_only(true);
   // network

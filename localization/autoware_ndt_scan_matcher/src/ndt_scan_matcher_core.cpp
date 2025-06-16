@@ -92,6 +92,7 @@ std::array<double, 36> rotate_covariance(
 NDTScanMatcher::NDTScanMatcher(const rclcpp::NodeOptions & options)
 : Node("ndt_scan_matcher", options),
   tf2_broadcaster_(*this),
+  managed_tf_buffer_(this),
   ndt_ptr_(new NormalDistributionsTransform),
   is_activated_(false),
   param_(this)
@@ -712,7 +713,7 @@ void NDTScanMatcher::transform_sensor_measurement(
   }
 
   auto transform_opt = managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-    target_frame, source_frame, this->get_logger());
+    target_frame, source_frame);
   if (!transform_opt) throw;
 
   const geometry_msgs::msg::PoseStamped target_to_source_pose_stamped =
@@ -1002,7 +1003,7 @@ void NDTScanMatcher::service_ndt_align_main(
 
   auto transform_s2t_opt =
     managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-      target_frame, source_frame, this->get_logger());
+      target_frame, source_frame);
   if (!transform_s2t_opt) {
     diagnostics_ndt_align_->add_key_value("is_succeed_transform_initial_pose", false);
 

@@ -59,7 +59,7 @@ using autoware_utils::create_point;
 using autoware_utils::pose2transform;
 
 SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptions & node_options)
-: Node("surround_obstacle_checker_node", node_options)
+: Node("surround_obstacle_checker_node", node_options), managed_tf_buffer_(this)
 {
   label_map_ = {
     {ObjectClassification::UNKNOWN, "unknown"}, {ObjectClassification::CAR, "car"},
@@ -274,7 +274,7 @@ std::optional<Obstacle> SurroundObstacleCheckerNode::getNearestObstacleByPointCl
   const auto transform_stamped =
     managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
       "base_link", pointcloud_ptr_->header.frame_id, pointcloud_ptr_->header.stamp,
-      rclcpp::Duration::from_seconds(0.5), this->get_logger());
+      rclcpp::Duration::from_seconds(0.5));
 
   if (!transform_stamped) {
     return std::nullopt;

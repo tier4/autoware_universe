@@ -40,8 +40,7 @@ bool PointCloudDensification::enqueuePointCloud(
 
   if (param_.getPointcloudCacheSize() > 1) {
     auto transform_world2current_opt = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
-      header.frame_id, param_.getWorldFrameId(), header.stamp, rclcpp::Duration::from_seconds(0.0),
-      rclcpp::get_logger("lidar_centerpoint"));
+      header.frame_id, param_.getWorldFrameId(), header.stamp, rclcpp::Duration::from_seconds(0.0));
     if (!transform_world2current_opt) return false;
     auto affine_world2current = Eigen::Affine3f(transform_world2current_opt->matrix());
 

@@ -44,8 +44,7 @@ bool PointCloudDensification::enqueuePointCloud(
 
   if (param_.pointcloud_cache_size() > 1) {
     auto transform_world2current = managed_tf_buffer.getTransform<Eigen::Matrix4f>(
-      header.frame_id, param_.world_frame_id(), header.stamp, rclcpp::Duration::from_seconds(0.01),
-      rclcpp::get_logger("image_projection_based_fusion"));
+      header.frame_id, param_.world_frame_id(), header.stamp, rclcpp::Duration::from_seconds(0.01));
     if (!transform_world2current) {
       return false;
     }

@@ -86,7 +86,7 @@ namespace autoware::detection_by_tracker
 {
 
 DetectionByTracker::DetectionByTracker(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("detection_by_tracker", node_options)
+: rclcpp::Node("detection_by_tracker", node_options), managed_tf_buffer_(this)
 {
   // Create publishers and subscribers
   trackers_sub_ = create_subscription<autoware_perception_msgs::msg::TrackedObjects>(

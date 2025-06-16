@@ -28,7 +28,7 @@ using geometry_msgs::msg::Pose;
 using nav_msgs::msg::OccupancyGrid;
 
 GridMapFusionNode::GridMapFusionNode(const rclcpp::NodeOptions & node_options)
-: Node("synchronized_occupancy_grid_map_fusion", node_options)
+: Node("synchronized_occupancy_grid_map_fusion", node_options), managed_tf_buffer_(this)
 {
   /* load input parameters */
   {

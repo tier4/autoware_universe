@@ -69,12 +69,10 @@ namespace
 
 // Copied from scenario selector
 geometry_msgs::msg::PoseStamped::ConstSharedPtr getCurrentPose(
-  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer,
-  const rclcpp::Logger & logger)
+  managed_transform_buffer::ManagedTransformBuffer & managed_tf_buffer)
 {
   auto tf_current_pose_opt =
-    managed_tf_buffer.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-      "map", "base_link", logger);
+    managed_tf_buffer.getLatestTransform<geometry_msgs::msg::TransformStamped>("map", "base_link");
   if (!tf_current_pose_opt) return nullptr;
 
   geometry_msgs::msg::PoseStamped::SharedPtr p(new geometry_msgs::msg::PoseStamped());
@@ -153,7 +151,7 @@ std::vector<geometry_msgs::msg::Polygon> getTransformedPrimitives(
 namespace autoware::costmap_generator
 {
 CostmapGenerator::CostmapGenerator(const rclcpp::NodeOptions & node_options)
-: Node("costmap_generator", node_options)
+: Node("costmap_generator", node_options), managed_tf_buffer_(this)
 {
   param_listener_ = std::make_shared<::costmap_generator_node::ParamListener>(
     this->get_node_parameters_interface());
@@ -252,7 +250,7 @@ void CostmapGenerator::update_data()
 
 void CostmapGenerator::set_current_pose()
 {
-  current_pose_ = getCurrentPose(managed_tf_buffer_, this->get_logger());
+  current_pose_ = getCurrentPose(managed_tf_buffer_);
 }
 
 void CostmapGenerator::onTimer()
@@ -277,7 +275,7 @@ void CostmapGenerator::onTimer()
   time_keeper_->start_track("lookupTransform");
 
   auto tf_opt = managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-    param_->costmap_frame, param_->vehicle_frame, this->get_logger());
+    param_->costmap_frame, param_->vehicle_frame);
   if (!tf_opt) return;
   time_keeper_->end_track("lookupTransform");
 
@@ -354,7 +352,7 @@ grid_map::Matrix CostmapGenerator::generatePointsCostmap(
   geometry_msgs::msg::TransformStamped points2costmap;
   auto points2costmap_opt =
     managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-      param_->costmap_frame, in_points->header.frame_id, rclcpp::get_logger("costmap_generator"));
+      param_->costmap_frame, in_points->header.frame_id);
 
   if (points2costmap_opt) points2costmap = *points2costmap_opt;
 
@@ -381,7 +379,7 @@ PredictedObjects::ConstSharedPtr transformObjects(
   geometry_msgs::msg::TransformStamped objects2costmap;
   auto objects2costmap_opt =
     managed_tf_buffer.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-      target_frame_id, src_frame_id, rclcpp::get_logger("costmap_generator"));
+      target_frame_id, src_frame_id);
   if (objects2costmap_opt) objects2costmap = *objects2costmap_opt;
   for (auto & object : objects->objects) {
     geometry_msgs::msg::PoseStamped output_stamped;
@@ -418,7 +416,7 @@ grid_map::Matrix CostmapGenerator::generatePrimitivesCostmap()
 
   auto primitives2costmap_opt =
     managed_tf_buffer_.getLatestTransform<geometry_msgs::msg::TransformStamped>(
-      param_->costmap_frame, param_->map_frame, rclcpp::get_logger("costmap_generator"));
+      param_->costmap_frame, param_->map_frame);
   if (primitives2costmap_opt) primitives2costmap = *primitives2costmap_opt;
 
   const auto transformed_primitives =
