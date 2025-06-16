@@ -16,6 +16,7 @@
 #define AUTOWARE__POINTCLOUD_PREPROCESSOR__OUTLIER_FILTER__RING_OUTLIER_FILTER_NODE_HPP_
 
 #include "autoware/point_types/types.hpp"
+#include "autoware/pointcloud_preprocessor/diagnostics/diagnostics_base.hpp"
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 #include "autoware/pointcloud_preprocessor/transform_info.hpp"
 
@@ -65,6 +66,7 @@ private:
   uint16_t max_rings_num_;
   size_t max_points_num_per_ring_;
   bool publish_outlier_pointcloud_;
+  double processing_time_threshold_sec_;
 
   // for visibility score
   int noise_threshold_;
@@ -100,7 +102,8 @@ private:
 
   void setUpPointCloudFormat(
     const PointCloud2ConstPtr & input, PointCloud2 & formatted_points, size_t points_size);
-  float calculateVisibilityScore(const PointCloud2 & input);
+  float calculateVisibilityScore(const PointCloud2 & input) const;
+  void publish_diagnostics(const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW
