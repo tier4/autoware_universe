@@ -354,8 +354,8 @@ VelocityPlanningResult ObstacleStopModule::plan(
     planner_data->current_odometry, planner_data->ego_nearest_dist_threshold,
     planner_data->ego_nearest_yaw_threshold,
     rclcpp::Time(planner_data->predicted_objects_header.stamp), raw_trajectory_points,
-    cropped_decimated_traj_points, planner_data->objects, planner_data->vehicle_info_, dist_to_bumper,
-    planner_data->trajectory_polygon_collision_check);
+    cropped_decimated_traj_points, planner_data->objects, planner_data->vehicle_info_,
+    dist_to_bumper, planner_data->trajectory_polygon_collision_check);
 
   // 4. filter obstacles of point cloud
   auto stop_obstacles_for_point_cloud = filter_stop_obstacle_for_point_cloud(
