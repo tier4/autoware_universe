@@ -74,6 +74,10 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
     this->declare_parameter<std::vector<int64_t>>("allow_remapping_by_area_matrix");
   const auto min_area_matrix = this->declare_parameter<std::vector<double>>("min_area_matrix");
   const auto max_area_matrix = this->declare_parameter<std::vector<double>>("max_area_matrix");
+  const float front_back_low_score_threshold = static_cast<float>(
+    this->declare_parameter<double>("post_process_params.front_back_low_score_threshold"));
+  const float ego_width =
+    static_cast<float>(this->declare_parameter<double>("post_process_params.ego_width"));
 
   detection_class_remapper_.setParameters(
     allow_remapping_by_area_matrix, min_area_matrix, max_area_matrix);
@@ -104,7 +108,8 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
   CenterPointConfig config(
     class_names_.size(), point_feature_size, cloud_capacity, max_voxel_size, point_cloud_range,
     voxel_size, downsample_factor, encoder_in_feature_size, score_threshold,
-    circle_nms_dist_threshold, yaw_norm_thresholds, has_variance_);
+    circle_nms_dist_threshold, yaw_norm_thresholds, has_variance_, front_back_low_score_threshold,
+    ego_width);
   detector_ptr_ =
     std::make_unique<CenterPointTRT>(encoder_param, head_param, densification_param, config);
   diagnostics_interface_ptr_ =
