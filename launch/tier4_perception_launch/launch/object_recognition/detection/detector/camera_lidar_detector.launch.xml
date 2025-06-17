@@ -58,9 +58,9 @@
   <let name="shape_estimation1/input/clusters" value="$(var euclidean_cluster/output/clusters)"/>
   <let name="shape_estimation1/output/objects" value="$(var output/clustering/cluster_objects)"/>
 
-  <!-- <let name="roi_cluster_fusion/input/clusters" value="$(var euclidean_cluster/output/clusters)"/>
-  <let name="roi_cluster_fusion/output/clusters" value="$(var ns)/clustering/camera_lidar_fusion/clusters"/> -->
-  <let name="low_intensity_cluster_filter/input/clusters" value="$(var euclidean_cluster/output/clusters)"/>
+  <let name="roi_cluster_fusion/input/clusters" value="$(var euclidean_cluster/output/clusters)"/>
+  <let name="roi_cluster_fusion/output/clusters" value="$(var ns)/clustering/camera_lidar_fusion/clusters"/>
+  <let name="low_intensity_cluster_filter/input/clusters" value="$(var roi_cluster_fusion/output/clusters)"/>
   <let name="low_intensity_cluster_filter/output/clusters" value="$(var ns)/clustering/camera_lidar_fusion/filtered/clusters"/>
 
   <let name="shape_estimation2/input/clusters" value="$(var roi_cluster_fusion/output/clusters)" unless="$(var use_low_intensity_cluster_filter)"/>
@@ -136,7 +136,6 @@
   <!-- Clustering -->
   <group>
     <push-ros-namespace namespace="clustering"/>
-    <!-- euclidean clustering -->
     <group>
       <include file="$(find-pkg-share autoware_euclidean_cluster)/launch/voxel_grid_based_euclidean_cluster.launch.xml">
         <arg name="input_pointcloud" value="$(var euclidean_cluster/input/pointcloud)"/>
@@ -158,8 +157,8 @@
       <push-ros-namespace namespace="camera_lidar_fusion"/>
       <!-- Fusion camera-lidar to classify -->
 
-      <!-- roi cluster fusion -->
-      <!-- <group>
+      <!-- euclidean clustering -->
+      <group>
         <include file="$(find-pkg-share autoware_image_projection_based_fusion)/launch/roi_cluster_fusion.launch.xml">
           <arg name="input/rois_number" value="$(var number_of_cameras)"/>
           <arg name="input/rois0" value="$(var input/camera0/rois)"/>
@@ -190,7 +189,7 @@
           <arg name="output/clusters" value="$(var roi_cluster_fusion/output/clusters)"/>
           <arg name="param_path" value="$(var roi_cluster_fusion_param_path)"/>
         </include>
-      </group> -->
+      </group>
 
       <!-- low_intensity_cluster_filter -->
       <group>
