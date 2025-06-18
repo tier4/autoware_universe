@@ -1880,33 +1880,93 @@ insertDecelPoint<std::vector<autoware_planning_msgs::msg::TrajectoryPoint>>(
 template <class T>
 void insertOrientation(T & points, const bool is_driving_forward)
 {
-  if (is_driving_forward) {
-    for (size_t i = 0; i < points.size() - 1; ++i) {
+  if (points.size() < 2) {
+    return;
+  }
+
+  // 接弦定理を使って、3点から間の点の接線方向を計算
+  for (size_t i = 0; i < points.size(); ++i) {
+    if (i == 0) {
       const auto & src_point = autoware_utils::get_point(points.at(i));
       const auto & dst_point = autoware_utils::get_point(points.at(i + 1));
       const double pitch = autoware_utils::calc_elevation_angle(src_point, dst_point);
       const double yaw = autoware_utils::calc_azimuth_angle(src_point, dst_point);
       autoware_utils::set_orientation(
         autoware_utils::create_quaternion_from_rpy(0.0, pitch, yaw), points.at(i));
-      if (i == points.size() - 2) {
-        // Terminal orientation is same as the point before it
-        autoware_utils::set_orientation(
-          autoware_utils::get_pose(points.at(i)).orientation, points.at(i + 1));
-      }
+      continue;
     }
-  } else {
-    for (size_t i = points.size() - 1; i >= 1; --i) {
-      const auto & src_point = autoware_utils::get_point(points.at(i));
-      const auto & dst_point = autoware_utils::get_point(points.at(i - 1));
+    if (i == points.size() - 1) {
+      const auto & src_point = autoware_utils::get_point(points.at(i - 1));
+      const auto & dst_point = autoware_utils::get_point(points.at(i));
       const double pitch = autoware_utils::calc_elevation_angle(src_point, dst_point);
       const double yaw = autoware_utils::calc_azimuth_angle(src_point, dst_point);
       autoware_utils::set_orientation(
         autoware_utils::create_quaternion_from_rpy(0.0, pitch, yaw), points.at(i));
+      continue;
     }
-    // Initial orientation is same as the point after it
+
+    const auto & src_point = autoware_utils::get_point(points.at(i - 1));
+    const auto & mid_point = autoware_utils::get_point(points.at(i));
+    const auto & dst_point = autoware_utils::get_point(points.at(i + 1));
+
+    const double pitch = autoware_utils::calc_elevation_angle(mid_point, dst_point);
+
+    const Eigen::Vector2d dst_from_src(dst_point.x - src_point.x, dst_point.y - src_point.y);
+    const Eigen::Vector2d mid_from_src(mid_point.x - src_point.x, mid_point.y - src_point.y);
+    const Eigen::Vector2d dst_from_mid(dst_point.x - mid_point.x, dst_point.y - mid_point.y);
+
+    const double dot = dst_from_src.dot(mid_from_src);
+    const double cross = dst_from_src[0] * mid_from_src[1] - dst_from_src[1] * mid_from_src[0];
+    Eigen::Matrix2d rotation_matrix_with_scale;
+    rotation_matrix_with_scale << dot, -cross, cross, dot;
+    const Eigen::Vector2d yaw_vec = rotation_matrix_with_scale * dst_from_mid;
+    const double yaw = std::atan2(yaw_vec.y(), yaw_vec.x());
+
     autoware_utils::set_orientation(
-      autoware_utils::get_pose(points.at(1)).orientation, points.at(0));
+      autoware_utils::create_quaternion_from_rpy(0.0, pitch, yaw), points.at(i));
   }
+
+  if (!is_driving_forward) { //ちゃんと動くか未確認
+    for (size_t i = 0; i < points.size(); ++i) {
+      const auto original_pose = autoware_utils::get_pose(points.at(i));
+      const auto rotation_180 = autoware_utils::create_quaternion_from_yaw(M_PI);
+      geometry_msgs::msg::Pose rotation_pose;
+      rotation_pose.orientation = rotation_180;
+      const auto rotated_pose =
+        autoware_utils::transform_pose(original_pose, rotation_pose);
+      autoware_utils::set_orientation(rotated_pose.orientation, points.at(i));
+    }
+  }
+
+  // old code
+
+  // if (is_driving_forward) {
+  //   for (size_t i = 0; i < points.size() - 1; ++i) {
+  //     const auto & src_point = autoware_utils::get_point(points.at(i));
+  //     const auto & dst_point = autoware_utils::get_point(points.at(i + 1));
+  //     const double pitch = autoware_utils::calc_elevation_angle(src_point, dst_point);
+  //     const double yaw = autoware_utils::calc_azimuth_angle(src_point, dst_point);
+  //     autoware_utils::set_orientation(
+  //       autoware_utils::create_quaternion_from_rpy(0.0, pitch, yaw), points.at(i));
+  //     if (i == points.size() - 2) {
+  //       // Terminal orientation is same as the point before it
+  //       autoware_utils::set_orientation(
+  //         autoware_utils::get_pose(points.at(i)).orientation, points.at(i + 1));
+  //     }
+  //   }
+  // } else {
+  //   for (size_t i = points.size() - 1; i >= 1; --i) {
+  //     const auto & src_point = autoware_utils::get_point(points.at(i));
+  //     const auto & dst_point = autoware_utils::get_point(points.at(i - 1));
+  //     const double pitch = autoware_utils::calc_elevation_angle(src_point, dst_point);
+  //     const double yaw = autoware_utils::calc_azimuth_angle(src_point, dst_point);
+  //     autoware_utils::set_orientation(
+  //       autoware_utils::create_quaternion_from_rpy(0.0, pitch, yaw), points.at(i));
+  //   }
+  //   // Initial orientation is same as the point after it
+  //   autoware_utils::set_orientation(
+  //     autoware_utils::get_pose(points.at(1)).orientation, points.at(0));
+  // }
 }
 
 extern template void insertOrientation<std::vector<autoware_planning_msgs::msg::PathPoint>>(

@@ -110,7 +110,6 @@ std::vector<geometry_msgs::msg::Pose> calculate_error_poses(
   const auto nearest_pose = traj_points.at(nearest_idx).pose;
   const auto current_ego_pose_error =
     autoware_utils::inverse_transform_pose(current_ego_pose, nearest_pose);
-
   const double current_ego_lat_error = current_ego_pose_error.position.y;
   const double current_ego_yaw_error = tf2::getYaw(current_ego_pose_error.orientation);
   double time_elapsed{0.0};
@@ -126,7 +125,8 @@ std::vector<geometry_msgs::msg::Pose> calculate_error_poses(
       autoware_utils::create_quaternion_from_yaw(current_ego_yaw_error * rem_ratio));
     indexed_pose_err.set__position(
       autoware_utils::create_point(0.0, current_ego_lat_error * rem_ratio, 0.0));
-    error_poses.push_back(autoware_utils::transform_pose(indexed_pose_err, traj_points.at(i).pose));
+    error_poses.push_back(
+      autoware_utils::transform_pose(indexed_pose_err, traj_points.at(i).pose));
 
     if (traj_points.at(i).longitudinal_velocity_mps != 0.0 && i < traj_points.size() - 1) {
       time_elapsed += autoware_utils::calc_distance2d(
@@ -217,6 +217,14 @@ std::optional<Polygon2d> cascaded_union(
     return std::nullopt;
   }
 
+  std::string reason;
+  if (!bg::is_valid(work_list.front(), reason)) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("polygon_utils"), "cascaded union result is invalid. reason: %s",
+      reason.c_str());
+    return std::nullopt;
+  }
+
   return std::move(work_list.front());
 }
 
@@ -298,10 +306,16 @@ Polygon2d create_one_step_polygon(
     bg::append(points, rear_bumper_intermidiate_point);
   }
 
+  std::stringstream points_ss;
+  points_ss << "points: " << bg::wkt(points);
+
   // make convex hull polygon
   Polygon2d output_poly{};
   bg::convex_hull(points, output_poly);
   bg::correct(output_poly);
+
+  std::stringstream convex_hull_ss;
+  convex_hull_ss << "convex hull: " << bg::wkt(output_poly);
 
   // insert base link points to cut the convex hull polygon
   if (inner_precise_necessary) {
@@ -311,26 +325,58 @@ Polygon2d create_one_step_polygon(
     }
 
     // find index to be inserted
-    const auto target_point = get_transformed_point(
+    const auto insert_base_point = get_transformed_point(
       src_pose, -rear_length, step_rotation_sign * (vehicle_width * 0.5 + lat_margin));
-    const auto target_idx = std::find_if(
+    const auto validation_point = get_transformed_point(
+      dst_pose, front_length, step_rotation_sign * (vehicle_width * 0.5 + lat_margin));
+    auto insert_itr = std::find_if(
       output_poly.outer().begin(), output_poly.outer().end(),
-      [&target_point](const Point2d & point) {
-        return std::hypot(point.x() - target_point.x(), point.y() - target_point.y()) < 1e-6;
+      [&insert_base_point](const Point2d & point) {
+        return std::hypot(point.x() - insert_base_point.x(), point.y() - insert_base_point.y()) <
+               1e-6;
       });
 
-    if (target_idx == output_poly.outer().end()) {
-      RCLCPP_WARN(rclcpp::get_logger("polygon_utils"), "target point is not found");
+    if (insert_itr >= std::prev(output_poly.outer().end())) {
+      RCLCPP_WARN(rclcpp::get_logger("polygon_utils"), "src back point is not found");
       bg::correct(output_poly);
       return output_poly;
     }
 
+    if (
+      std::hypot(
+        std::next(insert_itr)->x() - validation_point.x(),
+        std::next(insert_itr)->y() - validation_point.y()) > 1e-6) {
+      RCLCPP_DEBUG(
+        rclcpp::get_logger("polygon_utils"),
+        "src back point and dst front point are not connected");
+      bg::correct(output_poly);
+      return output_poly;
+    }
+
+    std::stringstream before_insert_ss;
+    before_insert_ss << "before insert size: " << output_poly.outer().size() << " "
+                     << bg::wkt(output_poly);
+
     // insert base link points
     const auto src_base_link_point =
       get_transformed_point(src_pose, 0.0, step_rotation_sign * (vehicle_width * 0.5 + lat_margin));
+
+    insert_itr = output_poly.outer().insert(std::next(insert_itr), src_base_link_point);
+
     const auto dst_base_link_point =
       get_transformed_point(dst_pose, 0.0, step_rotation_sign * (vehicle_width * 0.5 + lat_margin));
-    output_poly.outer().insert(std::next(target_idx), {src_base_link_point, dst_base_link_point});
+    insert_itr = output_poly.outer().insert(std::next(insert_itr), dst_base_link_point);
+
+    std::stringstream after_insert_ss;
+    after_insert_ss << "after insert size: " << output_poly.outer().size() << " "
+                    << bg::wkt(output_poly);
+
+    if (std::abs(step_orientation_diff) > 0.1) {
+      RCLCPP_DEBUG(
+        rclcpp::get_logger("polygon_utils"), "before insert: %s", before_insert_ss.str().c_str());
+      RCLCPP_DEBUG(
+        rclcpp::get_logger("polygon_utils"), "after insert: %s", after_insert_ss.str().c_str());
+    }
 
     bg::correct(output_poly);
   }
@@ -347,31 +393,6 @@ Polygon2d create_one_step_polygon(
 
   return output_poly;
 }
-
-Polygon2d create_pose_footprint_only_front_margin(
-  const geometry_msgs::msg::Pose & pose, const VehicleInfo & vehicle_info, const double lat_margin)
-{
-  const double front_length = vehicle_info.max_longitudinal_offset_m;
-  const double rear_length = vehicle_info.rear_overhang_m;
-  const double vehicle_width = vehicle_info.vehicle_width_m;
-
-  const auto get_transformed_point =
-    [](const geometry_msgs::msg::Pose & pose, double x, double y) -> Point2d {
-    autoware_utils::Point3d point_3d{x, y, 0};
-    const auto transformed = autoware_utils::transform_point(point_3d, pose);
-    return autoware_utils::Point2d{transformed.x(), transformed.y()};
-  };
-
-  Polygon2d ret_poly{};
-  bg::append(ret_poly, get_transformed_point(pose, -rear_length, -vehicle_width * 0.5));
-  bg::append(ret_poly, get_transformed_point(pose, -rear_length, vehicle_width * 0.5));
-  bg::append(ret_poly, get_transformed_point(pose, front_length, vehicle_width * 0.5 + lat_margin));
-  bg::append(
-    ret_poly, get_transformed_point(pose, front_length, -vehicle_width * 0.5 - lat_margin));
-  bg::append(ret_poly, get_transformed_point(pose, -rear_length, -vehicle_width * 0.5));
-  bg::correct(ret_poly);
-  return ret_poly;
-};
 
 }  // namespace
 
@@ -476,12 +497,9 @@ std::vector<Polygon2d> create_one_step_polygons_precise(
   const std::vector<TrajectoryPoint> & traj_points, const VehicleInfo & vehicle_info,
   const geometry_msgs::msg::Pose & current_ego_pose, const double lat_margin,
   const bool enable_to_consider_current_pose, const double time_to_convergence,
-  const double decimate_trajectory_step_length, const double required_accuracy)
+  [[maybe_unused]] const double decimate_trajectory_step_length, const double required_accuracy)
 {
   const auto start_time = std::chrono::high_resolution_clock::now();
-
-  // TODO (takagi): delete this variable
-  (void)decimate_trajectory_step_length;
 
   // set up nominal_pose
   std::vector<geometry_msgs::msg::Pose> nominal_poses;
@@ -500,21 +518,13 @@ std::vector<Polygon2d> create_one_step_polygons_precise(
   for (size_t i = 0; i < traj_points.size(); ++i) {
     std::vector<Polygon2d> index_polygons;
     if (i == 0) {
-      if (traj_points.at(i).longitudinal_velocity_mps > 1e-3) {
+      index_polygons.push_back(
+        create_pose_footprint(nominal_poses.at(i), vehicle_info, lat_margin));
+      if (i < error_poses.size()) {
         index_polygons.push_back(
-          create_pose_footprint_only_front_margin(nominal_poses.at(i), vehicle_info, lat_margin));
-        if (i < error_poses.size()) {
-          index_polygons.push_back(
-            create_pose_footprint_only_front_margin(error_poses.at(i), vehicle_info, lat_margin));
-        }
-      } else {
-        index_polygons.push_back(
-          create_pose_footprint(nominal_poses.at(i), vehicle_info, lat_margin));
-        if (i < error_poses.size()) {
-          index_polygons.push_back(
-            create_pose_footprint(error_poses.at(i), vehicle_info, lat_margin));
-        }
+          create_pose_footprint(error_poses.at(i), vehicle_info, lat_margin));
       }
+      // }
     } else {
       index_polygons.push_back(create_one_step_polygon(
         nominal_poses.at(i - 1), nominal_poses.at(i), vehicle_info, lat_margin, required_accuracy));
@@ -532,11 +542,13 @@ std::vector<Polygon2d> create_one_step_polygons_precise(
       continue;
     }
     if (index_polygons.size() > 1) {
-      const auto union_poly = cascaded_union(index_polygons);
-      if (union_poly) {
-        bg::simplify(*union_poly, simplified_poly, required_accuracy);
-        output_polygons.push_back(std::move(simplified_poly));
-        continue;
+      if (bg::intersects(index_polygons.front(), index_polygons.back())) {
+        const auto union_poly = cascaded_union(index_polygons);
+        if (union_poly) {
+          bg::simplify(*union_poly, simplified_poly, required_accuracy);
+          output_polygons.push_back(std::move(simplified_poly));
+          continue;
+        }
       }
       RCLCPP_WARN(
         rclcpp::get_logger("polygon_utils"),
