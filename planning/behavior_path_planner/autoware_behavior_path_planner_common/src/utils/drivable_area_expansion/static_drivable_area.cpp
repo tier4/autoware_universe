@@ -620,7 +620,10 @@ std::vector<Point> updateBoundary(
     const size_t removed_end_idx = end_poly.bound_seg_idx;
 
     if (removed_start_idx > removed_end_idx || removed_end_idx >= updated_bound.size()) {
-      RCLCPP_WARN(logger, "Invalid index for erase in updateBoundary. Skipping.");
+      auto clock{rclcpp::Clock{RCL_ROS_TIME}};
+      RCLCPP_ERROR_STREAM_THROTTLE(
+      rclcpp::get_logger("behavior_path_planner").get_child("utils"), clock, 1000,
+      "Invalid index for erase in updateBoundary. Skipping.");
       continue;
     }
     
