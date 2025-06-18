@@ -95,7 +95,7 @@
         "max_area_matrix",
         "min_area_matrix",
         "max_rad_matrix",
-        "min_iou_matrix"
+        "min_giou_matrix"
       ]
     }
   },
