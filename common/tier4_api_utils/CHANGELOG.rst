@@ -8,6 +8,9 @@ Changelog for package tier4_api_utils
 * feat(tier4_api_utils): modify log level (`#10426 <https://github.com/autowarefoundation/autoware_universe/issues/10426>`_)
 * Contributors: TaikiYamada4, Takagi, Isamu
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

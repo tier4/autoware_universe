@@ -43,6 +43,9 @@ Changelog for package autoware_cuda_pointcloud_preprocessor
   ---------
 * Contributors: Kenzo Lobos Tsunekawa, TaikiYamada4, Takahisa Ishikawa, prime number
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

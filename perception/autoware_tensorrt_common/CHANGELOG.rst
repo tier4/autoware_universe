@@ -18,6 +18,9 @@ Changelog for package autoware_tensorrt_common
   * Call cudaSetDeviceFlags in tensorrt_common
 * Contributors: Taekjin LEE, TaikiYamada4, prime number
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

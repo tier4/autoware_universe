@@ -17,6 +17,9 @@ Changelog for package autoware_traffic_light_visualization
   chore: add Taekjin Lee as maintainer to multiple perception packages
 * Contributors: Masato Saeki, Taekjin LEE, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

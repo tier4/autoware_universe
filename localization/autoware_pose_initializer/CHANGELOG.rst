@@ -10,6 +10,9 @@ Changelog for package autoware_pose_initializer
 * fix(autoware_pose_initializer): fix deprecated autoware_utils header (`#10517 <https://github.com/autowarefoundation/autoware_universe/issues/10517>`_)
 * Contributors: Kazusa Hashimoto, TaikiYamada4, 心刚
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

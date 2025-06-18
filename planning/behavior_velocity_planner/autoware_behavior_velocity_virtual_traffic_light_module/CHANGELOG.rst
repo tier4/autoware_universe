@@ -12,6 +12,9 @@ Changelog for package autoware_behavior_velocity_virtual_traffic_light_module
 * refactor(virtual_traffic_light, QC): replace checkCollision with autoware_utils_geometry (`#10524 <https://github.com/autowarefoundation/autoware_universe/issues/10524>`_)
 * Contributors: Mamoru Sobue, Masaki Baba, TaikiYamada4, Takayuki Murooka, Yukinari Hisaki
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

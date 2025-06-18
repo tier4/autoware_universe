@@ -12,6 +12,9 @@ Changelog for package autoware_behavior_path_static_obstacle_avoidance_module
   ---------
 * Contributors: Satoshi OTA, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

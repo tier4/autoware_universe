@@ -14,6 +14,9 @@ Changelog for package autoware_object_velocity_splitter
   ---------
 * Contributors: Taekjin LEE, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

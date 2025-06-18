@@ -8,6 +8,9 @@ Changelog for package autoware_motion_velocity_dynamic_obstacle_stop_module
 * fix(motion_velocity_planner): add missing header (`#10560 <https://github.com/autowarefoundation/autoware_universe/issues/10560>`_)
 * Contributors: Masaki Baba, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

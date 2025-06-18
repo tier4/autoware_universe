@@ -24,6 +24,9 @@ Changelog for package autoware_lidar_transfusion
   Co-authored-by: Kenzo Lobos Tsunekawa <kenzo.lobos@tier4.jp>
 * Contributors: Amadeusz Szymko, Kenzo Lobos Tsunekawa, Taekjin LEE, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

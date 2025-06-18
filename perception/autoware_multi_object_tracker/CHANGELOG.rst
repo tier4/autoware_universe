@@ -72,6 +72,9 @@ Changelog for package autoware_multi_object_tracker
 * fix(multi_object_tracker): remove unused function isChannelSpawnEnabled (`#10528 <https://github.com/autowarefoundation/autoware_universe/issues/10528>`_)
 * Contributors: Ryuta Kambe, Taekjin LEE, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

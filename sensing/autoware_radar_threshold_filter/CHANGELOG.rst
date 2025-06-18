@@ -9,6 +9,9 @@ Changelog for package autoware_radar_threshold_filter
   Co-authored-by: Ryohsuke Mitsudome <ryohsuke.mitsudome@tier4.jp>
 * Contributors: TaikiYamada4, Vishal Chauhan
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

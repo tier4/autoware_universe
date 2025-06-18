@@ -8,6 +8,9 @@ Changelog for package autoware_adapi_specs
 * feat(default_adapi): add mrm request api (`#10550 <https://github.com/autowarefoundation/autoware_universe/issues/10550>`_)
 * Contributors: TaikiYamada4, Takagi, Isamu
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

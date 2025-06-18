@@ -19,6 +19,9 @@ Changelog for package autoware_image_projection_based_fusion
 * fix(image_projection_based_fusion): fix redundantAssignment warning (`#10531 <https://github.com/autowarefoundation/autoware_universe/issues/10531>`_)
 * Contributors: Ryuta Kambe, Taekjin LEE, TaikiYamada4, badai nguyen
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

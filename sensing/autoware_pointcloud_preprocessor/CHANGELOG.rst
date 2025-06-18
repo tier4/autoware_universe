@@ -33,6 +33,9 @@ Changelog for package autoware_pointcloud_preprocessor
   ---------
 * Contributors: Kento Yabuuchi, Kenzo Lobos Tsunekawa, Kotaro Uetake, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

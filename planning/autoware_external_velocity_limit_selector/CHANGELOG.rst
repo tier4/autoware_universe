@@ -8,6 +8,9 @@ Changelog for package autoware_external_velocity_limit_selector
 * chore(autoware_external_velocity_limit_selector): update code owner (`#10581 <https://github.com/autowarefoundation/autoware_universe/issues/10581>`_)
 * Contributors: Shinnosuke Hirakawa, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

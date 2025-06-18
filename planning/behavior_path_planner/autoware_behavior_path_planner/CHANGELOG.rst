@@ -19,6 +19,9 @@ Changelog for package autoware_behavior_path_planner
   ---------
 * Contributors: Shumpei Wakabayashi, TaikiYamada4, Zulfaqar Azmi
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

@@ -11,6 +11,9 @@ Changelog for package autoware_map_based_prediction
   ---------
 * Contributors: TaikiYamada4, Yuxuan Liu
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

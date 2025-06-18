@@ -9,6 +9,9 @@ Changelog for package autoware_behavior_velocity_blind_spot_module
 * feat(blind_spot): extend attention area to straight lanelet (`#10450 <https://github.com/autowarefoundation/autoware_universe/issues/10450>`_)
 * Contributors: Mamoru Sobue, TaikiYamada4, Takayuki Murooka
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

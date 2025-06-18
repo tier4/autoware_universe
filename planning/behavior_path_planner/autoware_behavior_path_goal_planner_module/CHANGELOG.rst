@@ -20,6 +20,9 @@ Changelog for package autoware_behavior_path_goal_planner_module
   feat(route_handler): remove only_route_lanes argument because it is not used
 * Contributors: Mamoru Sobue, TaikiYamada4, Zulfaqar Azmi
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

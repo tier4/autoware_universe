@@ -17,6 +17,9 @@ Changelog for package autoware_operation_mode_transition_manager
   ---------
 * Contributors: TaikiYamada4, Takayuki Murooka
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

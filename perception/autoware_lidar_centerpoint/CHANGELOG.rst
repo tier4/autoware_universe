@@ -22,6 +22,9 @@ Changelog for package autoware_lidar_centerpoint
   ---------
 * Contributors: Kenzo Lobos Tsunekawa, Kok Seang Tan, Taekjin LEE, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

@@ -9,6 +9,9 @@ Changelog for package autoware_vehicle_cmd_gate
 * fix(vehicle_cmd_gate): fix bug in limitLateralSteer (`#10532 <https://github.com/autowarefoundation/autoware_universe/issues/10532>`_)
 * Contributors: Ryuta Kambe, TaikiYamada4, Takayuki Murooka
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

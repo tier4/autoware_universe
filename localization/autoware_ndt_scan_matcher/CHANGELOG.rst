@@ -26,6 +26,9 @@ Changelog for package autoware_ndt_scan_matcher
   Co-authored-by: RyuYamamoto <ryu.yamamoto@tier4.jp>
 * Contributors: Kazu, TaikiYamada4, ralwing, 心刚
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

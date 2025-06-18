@@ -29,6 +29,9 @@ Changelog for package autoware_behavior_path_planner_common
   ---------
 * Contributors: Kosuke Takeuchi, Kyoichi Sugahara, TaikiYamada4, TakumIto, Zulfaqar Azmi
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

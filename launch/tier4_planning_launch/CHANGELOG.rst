@@ -10,6 +10,9 @@ Changelog for package tier4_planning_launch
 * feat(motion_velocity_planner): add new run_out module (`#10388 <https://github.com/autowarefoundation/autoware_universe/issues/10388>`_)
 * Contributors: Kosuke Takeuchi, Maxime CLEMENT, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

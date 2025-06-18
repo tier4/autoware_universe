@@ -23,6 +23,9 @@ Changelog for package autoware_ground_segmentation
 * docs(autoware_ground_segmentation): move parameter table to respective README (`#10500 <https://github.com/autowarefoundation/autoware_universe/issues/10500>`_)
 * Contributors: Ryohsuke Mitsudome, Taekjin LEE, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

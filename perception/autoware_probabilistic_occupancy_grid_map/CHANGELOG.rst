@@ -24,6 +24,9 @@ Changelog for package autoware_probabilistic_occupancy_grid_map
   fix: the first iteration fails due to how the algorithm is designed (the delta between poses is too high). However, the first iteration of the update routine is actually not needed in the first iteration, so I skipped it
 * Contributors: Amadeusz Szymko, Kento Yabuuchi, Kenzo Lobos Tsunekawa, Taekjin LEE, TaikiYamada4, Tomohito ANDO
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

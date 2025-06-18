@@ -8,6 +8,9 @@ Changelog for package autoware_smart_mpc_trajectory_follower
 * fix(smart_mpc): imperative mood (`#10658 <https://github.com/autowarefoundation/autoware_universe/issues/10658>`_)
 * Contributors: TaikiYamada4, Yuxuan Liu
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

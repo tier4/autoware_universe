@@ -34,6 +34,9 @@ Changelog for package autoware_traffic_light_selector
   Co-authored-by: badai nguyen <94814556+badai-nguyen@users.noreply.github.com>
 * Contributors: Masato Saeki, Taekjin LEE, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

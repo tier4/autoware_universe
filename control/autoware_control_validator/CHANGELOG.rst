@@ -21,6 +21,9 @@ Changelog for package autoware_control_validator
 * fix(control_validator): fix less trajectory point check (`#10508 <https://github.com/autowarefoundation/autoware_universe/issues/10508>`_)
 * Contributors: Kyoichi Sugahara, TaikiYamada4, Yuki TAKAGI
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

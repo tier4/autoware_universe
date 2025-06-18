@@ -11,6 +11,9 @@ Changelog for package autoware_motion_velocity_out_of_lane_module
 * fix(out_of_lane): throttle log message to avoid spamming the logs (`#10562 <https://github.com/autowarefoundation/autoware_universe/issues/10562>`_)
 * Contributors: Masaki Baba, Maxime CLEMENT, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

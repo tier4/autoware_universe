@@ -9,6 +9,9 @@ Changelog for package autoware_component_interface_specs_universe
   Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
 * Contributors: TaikiYamada4, 心刚
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 

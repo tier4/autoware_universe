@@ -10,6 +10,9 @@ Changelog for package autoware_elevation_map_loader
 * build(autoware_elevation_map_loader): add map_msgs dependency (`#10533 <https://github.com/autowarefoundation/autoware_universe/issues/10533>`_)
 * Contributors: Esteve Fernandez, Kosuke Takeuchi, TaikiYamada4
 
+0.44.2 (2025-06-10)
+-------------------
+
 0.44.1 (2025-05-01)
 -------------------
 
