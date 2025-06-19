@@ -4,6 +4,11 @@ Changelog for package autoware_bevfusion
 
 0.45.0 (2025-05-22)
 -------------------
+* fix(autoware_bevfusion): fix clang-tidy errors by removing unused fields (`#10850 <https://github.com/TaikiYamada4/autoware_universe/issues/10850>`_)
+  * fix clang-tidy errors by removing unused fields
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
 * Merge remote-tracking branch 'origin/main' into tmp/notbot/bump_version_base
 * chore: perception code owner update (`#10645 <https://github.com/autowarefoundation/autoware_universe/issues/10645>`_)
   * chore: update maintainers in multiple perception packages
