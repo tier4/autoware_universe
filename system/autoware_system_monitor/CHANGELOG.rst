@@ -2,6 +2,14 @@
 Changelog for package autoware_system_monitor
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.45.0 (2025-05-22)
+-------------------
+* fix(autoware_system_monitor): quick fix for autoware_system_monitor (`#10506 <https://github.com/autowarefoundation/autoware_universe/issues/10506>`_)
+  * feat(autoware_system_monitor): quick fix, autoware_system_monitor, fix sompile issue : v0.0
+  * feat(autoware_system_monitor): quick fix, autoware_system_monitor, add comment by sasaki san: v0.1
+  ---------
+* Contributors: 心刚
+
 0.44.2 (2025-06-10)
 -------------------
 

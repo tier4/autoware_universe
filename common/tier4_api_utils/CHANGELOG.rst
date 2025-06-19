@@ -2,6 +2,12 @@
 Changelog for package tier4_api_utils
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.45.0 (2025-05-22)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/notbot/bump_version_base
+* feat(tier4_api_utils): modify log level (`#10426 <https://github.com/autowarefoundation/autoware_universe/issues/10426>`_)
+* Contributors: TaikiYamada4, Takagi, Isamu
+
 0.44.2 (2025-06-10)
 -------------------
 
