@@ -1926,14 +1926,13 @@ void insertOrientation(T & points, const bool is_driving_forward)
       autoware_utils::create_quaternion_from_rpy(0.0, pitch, yaw), points.at(i));
   }
 
-  if (!is_driving_forward) { //ちゃんと動くか未確認
+  if (!is_driving_forward) {  // ちゃんと動くか未確認
     for (size_t i = 0; i < points.size(); ++i) {
       const auto original_pose = autoware_utils::get_pose(points.at(i));
       const auto rotation_180 = autoware_utils::create_quaternion_from_yaw(M_PI);
       geometry_msgs::msg::Pose rotation_pose;
       rotation_pose.orientation = rotation_180;
-      const auto rotated_pose =
-        autoware_utils::transform_pose(original_pose, rotation_pose);
+      const auto rotated_pose = autoware_utils::transform_pose(original_pose, rotation_pose);
       autoware_utils::set_orientation(rotated_pose.orientation, points.at(i));
     }
   }

@@ -125,8 +125,7 @@ std::vector<geometry_msgs::msg::Pose> calculate_error_poses(
       autoware_utils::create_quaternion_from_yaw(current_ego_yaw_error * rem_ratio));
     indexed_pose_err.set__position(
       autoware_utils::create_point(0.0, current_ego_lat_error * rem_ratio, 0.0));
-    error_poses.push_back(
-      autoware_utils::transform_pose(indexed_pose_err, traj_points.at(i).pose));
+    error_poses.push_back(autoware_utils::transform_pose(indexed_pose_err, traj_points.at(i).pose));
 
     if (traj_points.at(i).longitudinal_velocity_mps != 0.0 && i < traj_points.size() - 1) {
       time_elapsed += autoware_utils::calc_distance2d(
