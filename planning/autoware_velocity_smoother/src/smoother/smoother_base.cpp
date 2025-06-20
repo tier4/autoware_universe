@@ -190,7 +190,7 @@ TrajectoryPoints SmootherBase::applyLateralAccelerationFilter(
                             output, v0, a0, base_param_.min_jerk, base_param_.max_accel,
                             base_param_.min_decel_for_lateral_acc_lim_filter)
                         : std::vector<double>{};
-    
+
   const auto lateral_acceleration_velocity_square_ratio_limits =
     computeLateralAccelerationVelocitySquareRatioLimits();
 
@@ -371,7 +371,7 @@ TrajectoryPoints SmootherBase::applySteeringRateLimit(
   }
 
   const auto steer_rate_velocity_ratio_limits = computeSteerRateVelocityRatioLimits();
-  
+
   // Interpolate with constant interval distance for lateral acceleration calculation.
   const double points_interval = use_resampling ? base_param_.sample_ds : input_points_interval;
 
@@ -402,7 +402,7 @@ TrajectoryPoints SmootherBase::applySteeringRateLimit(
   steer_rate_velocity_ratio_arr.back() = steer_rate_velocity_ratio_arr.at((output.size() - 2));
 
   // Step3. Remove noise by mean filter.
-    for (size_t i = 1; i < steer_rate_velocity_ratio_arr.size() - 1; i++) {
+  for (size_t i = 1; i < steer_rate_velocity_ratio_arr.size() - 1; i++) {
     steer_rate_velocity_ratio_arr.at(i) =
       (steer_rate_velocity_ratio_arr.at(i - 1) + steer_rate_velocity_ratio_arr.at(i) +
        steer_rate_velocity_ratio_arr.at(i + 1)) /

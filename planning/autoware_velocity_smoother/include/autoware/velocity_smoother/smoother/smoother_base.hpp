@@ -49,8 +49,8 @@ public:
     std::vector<double> lateral_acceleration_limits;  // lateral acceleration limits [m/ss]
     std::vector<double> velocity_thresholds;          // velocity thresholds [m/s]
     std::vector<double> steering_angle_rate_limits;   // steering angle rate limits [degree/s]
-    double wheel_base;                   // wheel base [m]
-    double sample_ds;                    // distance between trajectory points [m]
+    double wheel_base;                                // wheel base [m]
+    double sample_ds;                                 // distance between trajectory points [m]
     double curvature_threshold;  // look-up distance of Trajectory point for calculation of steering
                                  // angle limit [m]
     double curvature_calculation_distance;  // threshold steering degree limit to trigger
