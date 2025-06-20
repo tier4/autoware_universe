@@ -38,14 +38,14 @@ private:
 
 struct is_score_greater_or_front_back_low_score
 {
-  is_score_greater_or_front_back_low_score(const float *t, float low_t, float ego_width)
+  is_score_greater_or_front_back_low_score(const float * t, float low_t, float ego_width)
   : t_(t), low_t_(low_t), ego_width_(ego_width)
   {
   }
 
   __device__ bool operator()(const Box3D & b)
   {
-	auto score_threshold = t_[b.label];
+    auto score_threshold = t_[b.label];
     // Always keep if score > high threshold
     if (b.score > score_threshold) return true;
 
@@ -56,7 +56,7 @@ struct is_score_greater_or_front_back_low_score
   }
 
 private:
-  const float* t_;
+  const float * t_;
   float low_t_{0.0};
   float ego_width_{0.0};
 };
