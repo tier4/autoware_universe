@@ -38,7 +38,7 @@ private:
 
 struct is_score_greater_or_front_back_low_score
 {
-  is_score_greater_or_front_back_low_score(std::vetcor<float> t, float low_t, float ego_width)
+  is_score_greater_or_front_back_low_score(std::vector<float> t, float low_t, float ego_width)
   : t_(t), low_t_(low_t), ego_width_(ego_width)
   {
   }
