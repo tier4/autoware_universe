@@ -38,7 +38,7 @@ private:
 
 struct is_score_greater_or_front_back_low_score
 {
-  is_score_greater_or_front_back_low_score(thrust::device_ptr<float> *t, float low_t, float ego_width)
+  is_score_greater_or_front_back_low_score(const float *t, float low_t, float ego_width)
   : t_(t), low_t_(low_t), ego_width_(ego_width)
   {
   }
@@ -56,7 +56,7 @@ struct is_score_greater_or_front_back_low_score
   }
 
 private:
-  thrust::device_ptr<float> *t_;
+  const float * t_;
   float low_t_{0.0};
   float ego_width_{0.0};
 };
@@ -188,10 +188,11 @@ cudaError_t PostProcessCUDA::generateDetectedBoxes3D_launch(
   // suppress by score
   // suppress by score with new condition
   thrust::device_vector<float> score_thresholds_d_ = config_.score_thresholds_;
+  float* score_thresholds_d_ptr_ = thrust::raw_pointer_cast(score_thresholds_d_.data());
   const auto num_det_boxes3d = thrust::count_if(
     thrust::device, boxes3d_d.begin(), boxes3d_d.end(),
     is_score_greater_or_front_back_low_score(
-      score_thresholds_d_.data(), config_.front_back_low_score_threshold_, config_.ego_width_));
+      score_thresholds_d_ptr_, config_.front_back_low_score_threshold_, config_.ego_width_));
   if (num_det_boxes3d == 0) {
     return cudaGetLastError();
   }
@@ -199,7 +200,7 @@ cudaError_t PostProcessCUDA::generateDetectedBoxes3D_launch(
   thrust::copy_if(
     thrust::device, boxes3d_d.begin(), boxes3d_d.end(), det_boxes3d_d.begin(),
     is_score_greater_or_front_back_low_score(
-      score_thresholds_d_.data(), config_.front_back_low_score_threshold_, config_.ego_width_));
+      score_thresholds_d_ptr_, config_.front_back_low_score_threshold_, config_.ego_width_));
 
   // sort by score
   thrust::sort(det_boxes3d_d.begin(), det_boxes3d_d.end(), score_greater());
