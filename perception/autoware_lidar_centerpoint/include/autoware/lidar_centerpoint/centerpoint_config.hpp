@@ -27,7 +27,7 @@ public:
     const std::size_t class_size, const float point_feature_size, const std::size_t cloud_capacity,
     const std::size_t max_voxel_size, const std::vector<double> & point_cloud_range,
     const std::vector<double> & voxel_size, const std::size_t downsample_factor,
-    const std::size_t encoder_in_feature_size, const float score_threshold,
+    const std::size_t encoder_in_feature_size, const std::vector<double> score_thresholds,
     const float circle_nms_dist_threshold, const std::vector<double> yaw_norm_thresholds,
     const bool has_variance, const float front_back_low_score_threshold, const float ego_width)
   {
@@ -60,14 +60,11 @@ public:
       head_out_vel_size_ = 4;
     }
 
-    if (score_threshold > 0 && score_threshold < 1) {
-      score_threshold_ = score_threshold;
-    }
-
     if (circle_nms_dist_threshold > 0) {
       circle_nms_dist_threshold_ = circle_nms_dist_threshold;
     }
 
+    score_thresholds_ = std::vector<float>(score_thresholds.begin(), score_thresholds.end());
     yaw_norm_thresholds_ =
       std::vector<float>(yaw_norm_thresholds.begin(), yaw_norm_thresholds.end());
 
@@ -120,7 +117,8 @@ public:
   std::size_t head_out_vel_size_{2};
 
   // post-process params
-  float score_threshold_{0.35f};
+  // CAR, TRUCK, BUS, BICYCLE, PEDESTRIAN
+  std::vector<float> score_thresholds_{0.35f, 0.35f, 0.35f, 0.35f, 0.35f};
   float front_back_low_score_threshold_{0.25f};
   float ego_width_{1.5f};  // the width of the ego vehicle
   float circle_nms_dist_threshold_{1.5f};
