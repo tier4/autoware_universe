@@ -45,7 +45,7 @@ struct is_score_greater_or_front_back_low_score
 
   __device__ bool operator()(const Box3D & b)
   {
-    auto score_threshold = t_[b.label];
+    float score_threshold = t_[b.label];
     // Always keep if score > high threshold
     if (b.score > score_threshold) return true;
 
