@@ -64,8 +64,8 @@ public:
       circle_nms_dist_threshold_ = circle_nms_dist_threshold;
     }
 
-    yaw_norm_thresholds_ =
-      std::vector<float>(yaw_norm_thresholds.begin(), yaw_norm_thresholds.end());
+	score_thresholds_ = std::vector<float>(score_thresholds.begin(), score_thresholds.end());
+    yaw_norm_thresholds_ = std::vector<float>(yaw_norm_thresholds.begin(), yaw_norm_thresholds.end());
 
     for (auto & yaw_norm_threshold : yaw_norm_thresholds_) {
       yaw_norm_threshold =
