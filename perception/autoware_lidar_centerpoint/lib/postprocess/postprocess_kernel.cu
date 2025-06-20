@@ -38,7 +38,7 @@ private:
 
 struct is_score_greater_or_front_back_low_score
 {
-  is_score_greater_or_front_back_low_score(const float * t, float low_t, float ego_width)
+  is_score_greater_or_front_back_low_score(thrust::device_ptr<float> *t, float low_t, float ego_width)
   : t_(t), low_t_(low_t), ego_width_(ego_width)
   {
   }
@@ -56,7 +56,7 @@ struct is_score_greater_or_front_back_low_score
   }
 
 private:
-  const float * t_;
+  thrust::device_ptr<float> *t_;
   float low_t_{0.0};
   float ego_width_{0.0};
 };
