@@ -38,7 +38,7 @@ private:
 
 struct is_score_greater_or_front_back_low_score
 {
-  is_score_greater_or_front_back_low_score(const float *t, float low_t, float ego_width)
+  is_score_greater_or_front_back_low_score(const float * t, float low_t, float ego_width)
   : t_(t), low_t_(low_t), ego_width_(ego_width)
   {
   }
@@ -188,7 +188,7 @@ cudaError_t PostProcessCUDA::generateDetectedBoxes3D_launch(
   // suppress by score
   // suppress by score with new condition
   thrust::device_vector<float> score_thresholds_d_ = config_.score_thresholds_;
-  float* score_thresholds_d_ptr_ = thrust::raw_pointer_cast(score_thresholds_d_.data());
+  float * score_thresholds_d_ptr_ = thrust::raw_pointer_cast(score_thresholds_d_.data());
   const auto num_det_boxes3d = thrust::count_if(
     thrust::device, boxes3d_d.begin(), boxes3d_d.end(),
     is_score_greater_or_front_back_low_score(
