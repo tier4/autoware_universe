@@ -461,6 +461,10 @@ bool TrajectoryChecker::check_valid_distance_deviation(
   status->distance_deviation = motion_utils::calcLateralOffset(trajectory, ego_position, idx);
 
   if (std::abs(status->distance_deviation) > params_.distance_deviation.threshold) {
+    RCLCPP_ERROR_THROTTLE(
+      logger_, *clock_, 1000,
+      "distance deviation is too large: %.3f > %.3f [m]",
+      std::abs(status->distance_deviation), params_.distance_deviation.threshold);
     is_critical_error_ |= params_.distance_deviation.is_critical;
     return false;
   }
@@ -568,6 +572,10 @@ bool TrajectoryChecker::check_valid_yaw_deviation(
     nearest_trajectory_yaw_shift(data->last_valid_trajectory, interpolated_trajectory_point) >
     params_.yaw_deviation.nearest_yaw_trajectory_shift_required_for_checking;
   if (check_condition && status->yaw_deviation > params_.yaw_deviation.threshold) {
+    RCLCPP_ERROR_THROTTLE(
+      logger_, *clock_, 1000,
+      "yaw deviation is too large: %.3f > %.3f [rad]",
+      status->yaw_deviation, params_.yaw_deviation.threshold);
     is_critical_error_ |= params_.yaw_deviation.is_critical;
     return false;
   }
