@@ -161,9 +161,10 @@ void VehicleCmdFilter::limitLateralSteerRate(const double dt, Control & input) c
   const double max_steer_rate_from_jerk =
     steer_rate_lim_from_lat_jerk * param_.wheel_base / velocity_sq;
 
-  // Apply the more restrictive limit between basic rate limit and lateral jerk constraint
-  const float effective_steer_rate_lim =
-    std::min(static_cast<double>(cmd_steer_rate_lim), max_steer_rate_from_jerk);
+  // Determine which constraint is more restrictive
+  const bool is_jerk_constraint_active = max_steer_rate_from_jerk < cmd_steer_rate_lim;
+  const float effective_steer_rate_lim = is_jerk_constraint_active ?
+    max_steer_rate_from_jerk : cmd_steer_rate_lim;
 
   // Store original values for logging
   const float original_steer_rate = input.lateral.steering_tire_rotation_rate;
@@ -185,24 +186,44 @@ void VehicleCmdFilter::limitLateralSteerRate(const double dt, Control & input) c
 
   // Log if steering rate was limited
   if (std::abs(original_steer_rate - input.lateral.steering_tire_rotation_rate) > 1e-6) {
-    RCLCPP_ERROR(
-      logger_,
-      "Steering rate limited: original=%.4f, limited=%.4f, limit=%.4f [rad/s], "
-      "vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
-      "lateral_jerk_threshold=%.4f [m/s^3]",
-      original_steer_rate, input.lateral.steering_tire_rotation_rate, effective_steer_rate_lim,
-      current_speed_, original_lateral_jerk, steer_rate_lim_from_lat_jerk);
+    if (is_jerk_constraint_active) {
+      RCLCPP_ERROR(
+        logger_,
+        "Steering rate limited by lateral jerk constraint: original=%.4f, limited=%.4f, "
+        "jerk_limit=%.4f [rad/s], vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
+        "lateral_jerk_threshold=%.4f [m/s^3], wheel_base=%.4f [m], basic_rate_limit=%.4f [rad/s]",
+        original_steer_rate, input.lateral.steering_tire_rotation_rate, effective_steer_rate_lim,
+        current_speed_, original_lateral_jerk, steer_rate_lim_from_lat_jerk, param_.wheel_base, cmd_steer_rate_lim);
+    } else {
+      RCLCPP_ERROR(
+        logger_,
+        "Steering rate limited by basic rate constraint: original=%.4f, limited=%.4f, "
+        "basic_limit=%.4f [rad/s], vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
+        "lateral_jerk_threshold=%.4f [m/s^3], jerk_limit=%.4f [rad/s]",
+        original_steer_rate, input.lateral.steering_tire_rotation_rate, effective_steer_rate_lim,
+        current_speed_, original_lateral_jerk, steer_rate_lim_from_lat_jerk, max_steer_rate_from_jerk);
+    }
   }
 
   // Log if steering angle change was limited
   if (std::abs(original_steer_angle - input.lateral.steering_tire_angle) > 1e-6) {
-    RCLCPP_ERROR(
-      logger_,
-      "Steering angle change limited: original=%.4f, limited=%.4f, max_change=%.4f [rad], "
-      "vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
-      "lateral_jerk_threshold=%.4f [m/s^3]",
-      original_steer_angle, input.lateral.steering_tire_angle, steer_diff_limit, current_speed_,
-      original_lateral_jerk, steer_rate_lim_from_lat_jerk);
+    if (is_jerk_constraint_active) {
+      RCLCPP_ERROR(
+        logger_,
+        "Steering angle change limited by lateral jerk constraint: original=%.4f, limited=%.4f, "
+        "max_change=%.4f [rad], vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
+        "lateral_jerk_threshold=%.4f [m/s^3], wheel_base=%.4f [m], basic_rate_limit=%.4f [rad/s]",
+        original_steer_angle, input.lateral.steering_tire_angle, steer_diff_limit, current_speed_,
+        original_lateral_jerk, steer_rate_lim_from_lat_jerk, param_.wheel_base, cmd_steer_rate_lim);
+    } else {
+      RCLCPP_ERROR(
+        logger_,
+        "Steering angle change limited by basic rate constraint: original=%.4f, limited=%.4f, "
+        "max_change=%.4f [rad], vehicle_speed=%.4f [m/s], calculated_lateral_jerk=%.4f [m/s^3], "
+        "lateral_jerk_threshold=%.4f [m/s^3], jerk_limit=%.4f [rad/s]",
+        original_steer_angle, input.lateral.steering_tire_angle, steer_diff_limit, current_speed_,
+        original_lateral_jerk, steer_rate_lim_from_lat_jerk, max_steer_rate_from_jerk);
+    }
   }
 }
 
