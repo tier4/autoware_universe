@@ -212,6 +212,36 @@ bool is_goal_reachable_on_path(
   const lanelet::ConstLanelets current_lanes, const route_handler::RouteHandler & route_handler,
   const bool left_side_parking);
 
+bool hasPreviousModulePathShapeChanged(
+  const BehaviorModuleOutput & upstream_module_output,
+  const BehaviorModuleOutput & last_upstream_module_output);
+bool hasDeviatedFromPath(
+  const Point & ego_position, const BehaviorModuleOutput & upstream_module_output);
+
+/**
+ * @brief check if stopline exists except for the terminal
+ * @note except for terminal, to account for lane change bug that inserts stopline at the end
+ * randomly
+ */
+bool has_stopline_except_terminal(const PathWithLaneId & path);
+
+/**
+ * @brief find the lanelet that has changed "laterally" from previous lanelet on the routing graph
+ * @return the lanelet that changed "laterally" if the path is lane changing, otherwise nullopt
+ */
+std::optional<lanelet::ConstLanelet> find_lane_change_completed_lanelet(
+  const PathWithLaneId & path, const lanelet::LaneletMapConstPtr lanelet_map,
+  const lanelet::routing::RoutingGraphConstPtr routing_graph);
+
+/**
+ * @brief generate lanelets with which pull over path is aligned
+ * @note if lane changing path is detected, this returns lanelets aligned with later part of the
+ * lane changing path
+ */
+lanelet::ConstLanelets get_reference_lanelets_for_pullover(
+  const PathWithLaneId & path, const std::shared_ptr<const PlannerData> & planner_data,
+  const double backward_length, const double forward_length);
+
 }  // namespace autoware::behavior_path_planner::goal_planner_utils
 
 #endif  // AUTOWARE__BEHAVIOR_PATH_GOAL_PLANNER_MODULE__UTIL_HPP_
