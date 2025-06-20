@@ -56,7 +56,7 @@ struct is_score_greater_or_front_back_low_score
   }
 
 private:
-  std:vector<float> t_{0.0, 0.0, 0.0, 0.0, 0.0};
+  std::vector<float> t_{0.0, 0.0, 0.0, 0.0, 0.0};
   float low_t_{0.0};
   float ego_width_{0.0};
 };
