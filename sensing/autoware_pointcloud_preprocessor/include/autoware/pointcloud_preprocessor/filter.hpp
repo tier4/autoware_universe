@@ -76,6 +76,7 @@
 
 // Include tier4 autoware utils
 #include <autoware_utils/ros/debug_publisher.hpp>
+#include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <autoware_utils/ros/managed_transform_buffer.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
@@ -175,6 +176,9 @@ protected:
   /** \brief Internal mutex. */
   std::mutex mutex_;
 
+  /** \brief The diagnostic message */
+  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_;
+
   /** \brief processing time publisher. **/
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
   std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_;
@@ -259,13 +263,13 @@ protected:
     return true;
   }
 
-  inline bool isValid(
+  static inline bool isValid(
     const PointIndicesConstPtr & /*indices*/, const std::string & /*topic_name*/ = "indices")
   {
     return true;
   }
 
-  inline bool isValid(
+  static inline bool isValid(
     const ModelCoefficientsConstPtr & /*model*/, const std::string & /*topic_name*/ = "model")
   {
     return true;
