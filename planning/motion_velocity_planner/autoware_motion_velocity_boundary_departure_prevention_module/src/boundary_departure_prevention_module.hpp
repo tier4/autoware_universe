@@ -18,7 +18,7 @@
 #include "parameters.hpp"
 #include "slow_down_interpolator.hpp"
 
-#include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
+#include <autoware/motion_velocity_planner_common_universe/plugin_module_interface.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <fmt/format.h>
@@ -40,10 +40,6 @@ public:
     const TrajectoryPoints & smoothed_trajectory_points,
     const std::shared_ptr<const PlannerData> planner_data) override;
   std::string get_module_name() const override { return module_name_; };
-  RequiredSubscriptionInfo getRequiredSubscriptions() const override
-  {
-    return RequiredSubscriptionInfo{};
-  }
 
 private:
   // === Interface and inputs validation ====

@@ -69,7 +69,7 @@ tl::expected<AbnormalitiesData, std::string> BoundaryDepartureChecker::get_abnor
     return tl::make_unexpected("Ego predicted trajectory is empty");
   }
 
-  const auto underlying_bases = aw_raw_traj.get_underlying_bases();
+  const auto underlying_bases = aw_raw_traj.get_internal_bases();
   if (underlying_bases.size() < 4) {
     return tl::make_unexpected("trajectory too short");
   }

@@ -22,6 +22,7 @@
 #include <autoware/motion_utils/marker/marker_helper.hpp>
 #include <autoware/trajectory/trajectory_point.hpp>
 #include <autoware/trajectory/utils/closest.hpp>
+#include <autoware_utils/ros/update_param.hpp>
 #include <magic_enum.hpp>
 #include <range/v3/algorithm/sort.hpp>
 #include <range/v3/view.hpp>
@@ -343,7 +344,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
     trajectory::Trajectory<TrajectoryPoint>::Builder{}.build(raw_trajectory_points);
 
   if (!ref_traj_pts_opt) {
-    return tl::make_unexpected(ref_traj_pts_opt.error().what);
+    return tl::make_unexpected("unable to get trajectory");
   }
   toc_curr_watch("get_ref_traj");
 
@@ -373,8 +374,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
 
   output_.closest_projections_to_bound = *closest_projections_to_bound_opt;
 
-  const auto ego_dist_on_traj_m =
-    experimental::trajectory::closest(*ref_traj_pts_opt, curr_pose.pose);
+  const auto ego_dist_on_traj_m = trajectory::closest(*ref_traj_pts_opt, curr_pose.pose);
   toc_curr_watch("chk_ego_dist_on_traj");
 
   const auto lon_offset_m = [&vehicle_info](const bool take_front_offset) {

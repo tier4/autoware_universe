@@ -56,8 +56,8 @@ using autoware_adapi_v1_msgs::msg::OperationModeState;
 using BoundaryThreshold = boundary_departure_checker::Side<double>;
 using autoware_control_msgs::msg::Control;
 using autoware_internal_debug_msgs::msg::Float64Stamped;
-using autoware_utils_geometry::LinearRing2d;
-using autoware_utils_geometry::Segment2d;
+using autoware_utils::LinearRing2d;
+using autoware_utils::Segment2d;
 using autoware_vehicle_msgs::msg::SteeringReport;
 using boundary_departure_checker::BoundarySideWithIdx;
 using boundary_departure_checker::EgoSide;
@@ -75,7 +75,6 @@ using DiagStatus = diagnostic_msgs::msg::DiagnosticStatus;
 
 namespace bg = boost::geometry;                             // NOLINT
 namespace bgi = boost::geometry::index;                     // NOLINT
-namespace trajectory = autoware::experimental::trajectory;  // NOLINT
 namespace bdc_utils = boundary_departure_checker::utils;    // NOLINT
 namespace polling_policy = autoware_utils::polling_policy;  // NOLINT
 
@@ -83,10 +82,10 @@ using autoware_utils::create_default_marker;     // NOLINT
 using autoware_utils::create_marker_color;       // NOLINT
 using autoware_utils::create_marker_scale;       // NOLINT
 using autoware_utils::get_or_declare_parameter;  // NOLINT
+using autoware_utils::Point2d;                   // NOLINT
 using autoware_utils::ProcessingTimePublisher;   // NOLINT
 using autoware_utils::StopWatch;                 // NOLINT
 using autoware_utils::to_msg;                    // NOLINT
-using autoware_utils_geometry::Point2d;          // NOLINT
 using vehicle_info_utils::VehicleInfo;           // NOLINT
 
 using boundary_departure_checker::Abnormalities;             // NOLINT

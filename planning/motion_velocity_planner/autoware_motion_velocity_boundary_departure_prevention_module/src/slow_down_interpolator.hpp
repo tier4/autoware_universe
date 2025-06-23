@@ -18,7 +18,6 @@
 #include "type_alias.hpp"
 
 #include <autoware/interpolation/linear_interpolation.hpp>
-#include <autoware/motion_velocity_planner_common/planner_data.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <string>

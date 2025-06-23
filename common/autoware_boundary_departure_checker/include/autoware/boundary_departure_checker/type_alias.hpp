@@ -52,8 +52,7 @@ using autoware_utils::Segment2d;
 using autoware::vehicle_info_utils::VehicleInfo;  // NOLINT
 
 namespace bg = boost::geometry;
-namespace bgi = bg::index;                        // NOLINT
-namespace trajectory = experimental::trajectory;  // NOLINT
+namespace bgi = bg::index;  // NOLINT
 
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Pose;

@@ -14,7 +14,7 @@
 
 #include "type_alias.hpp"
 
-#include <autoware_utils_math/unit_conversion.hpp>
+#include <autoware_utils/math/unit_conversion.hpp>
 
 #include <string>
 #include <unordered_map>
@@ -55,7 +55,7 @@ struct Output
 struct NodeParam
 {
   double th_pt_shift_dist_m{1.0};
-  double th_pt_shift_angle_rad{autoware_utils_math::deg2rad(2.0)};
+  double th_pt_shift_angle_rad{autoware_utils::deg2rad(2.0)};
   double th_goal_shift_dist_m{1.0};
   BDCParam bdc_param;
   std::unordered_set<DepartureType> slow_down_types;
@@ -71,7 +71,7 @@ struct NodeParam
       get_or_declare_parameter<double>(node, module_name + "th_dist_hysteresis_m");
     th_pt_shift_angle_rad =
       get_or_declare_parameter<double>(node, module_name + "th_pt_shift.dist_m");
-    th_pt_shift_angle_rad = autoware_utils_math::deg2rad(
+    th_pt_shift_angle_rad = autoware_utils::deg2rad(
       get_or_declare_parameter<double>(node, module_name + "th_pt_shift.angle_deg"));
     th_goal_shift_dist_m =
       get_or_declare_parameter<double>(node, module_name + "th_pt_shift.goal_dist_m");
@@ -206,9 +206,9 @@ struct NodeParam
       const std::string ns_vel{ns_th_trigger + "th_vel_kmph."};
       TriggerThreshold::MinMax th_vel_mps;
       th_vel_mps.min =
-        autoware_utils_math::kmph2mps(get_or_declare_parameter<double>(node, ns_vel + "min"));
+        autoware_utils::kmph2mps(get_or_declare_parameter<double>(node, ns_vel + "min"));
       th_vel_mps.max =
-        autoware_utils_math::kmph2mps(get_or_declare_parameter<double>(node, ns_vel + "max"));
+        autoware_utils::kmph2mps(get_or_declare_parameter<double>(node, ns_vel + "max"));
       return th_vel_mps;
     });
 

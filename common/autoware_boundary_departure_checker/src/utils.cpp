@@ -20,9 +20,9 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/trajectory_point.hpp>
 #include <autoware/trajectory/utils/closest.hpp>
+#include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
-#include <autoware_utils_geometry/boost_geometry.hpp>
 #include <range/v3/view.hpp>
 #include <tl_expected/expected.hpp>
 
