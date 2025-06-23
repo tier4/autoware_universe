@@ -14,6 +14,7 @@
 
 #include "utils.hpp"
 
+#include <autoware/boundary_departure_checker/conversion.hpp>
 #include <autoware/trajectory/utils/closest.hpp>
 #include <magic_enum.hpp>
 #include <range/v3/algorithm/sort.hpp>
@@ -39,8 +40,8 @@ namespace autoware::motion_velocity_planner::experimental::utils
 {
 DepartureIntervals init_departure_intervals(
   const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj,
-  const DeparturePoints & departure_points, const double vehicle_length_m, const SideKey side_key,
-  const std::unordered_set<DepartureType> & enable_type)
+  const DeparturePoints & departure_points, const double curr_vel, const double vehicle_length_m,
+  const SideKey side_key, const std::unordered_set<DepartureType> & enable_type)
 {
   DepartureIntervals departure_intervals;
   size_t idx = 0;
@@ -55,8 +56,11 @@ DepartureIntervals init_departure_intervals(
     interval.start_dist_on_traj = departure_points[idx].dist_on_traj;
     interval.candidates.push_back(departure_points[idx]);
     interval.side_key = side_key;
+    double min_lat_dist_to_bound = std::numeric_limits<double>::max();
 
     size_t idx_end = idx + 1;
+
+    interval.prev_vel = curr_vel;
 
     while (idx_end < departure_points.size()) {
       const auto & curr = departure_points[idx_end];
@@ -82,6 +86,7 @@ DepartureIntervals init_departure_intervals(
       if (diff >= vehicle_length_m) {
         break;
       }
+      min_lat_dist_to_bound = std::min(min_lat_dist_to_bound, curr.lat_dist_to_bound);
       interval.candidates.push_back(curr);
       ++idx_end;
     }
@@ -90,6 +95,7 @@ DepartureIntervals init_departure_intervals(
       continue;
     }
 
+    interval.min_lat_dist_to_bound = min_lat_dist_to_bound;
     interval.end = aw_ref_traj.compute(interval.candidates.back().dist_on_traj);
     interval.end_dist_on_traj = interval.candidates.back().dist_on_traj;
     departure_intervals.push_back(interval);
@@ -100,13 +106,13 @@ DepartureIntervals init_departure_intervals(
 
 DepartureIntervals init_departure_intervals(
   const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj,
-  const Side<DeparturePoints> & departure_points, const double vehicle_length,
-  const std::unordered_set<DepartureType> & enable_type)
+  const Side<DeparturePoints> & departure_points, const double curr_vel,
+  const double vehicle_length, const std::unordered_set<DepartureType> & enable_type)
 {
   DepartureIntervals departure_intervals;
   for (const auto side_key : g_side_keys) {
     auto dpt_pts = init_departure_intervals(
-      aw_ref_traj, departure_points[side_key], vehicle_length, side_key, enable_type);
+      aw_ref_traj, departure_points[side_key], curr_vel, vehicle_length, side_key, enable_type);
     std::move(dpt_pts.begin(), dpt_pts.end(), std::back_inserter(departure_intervals));
   }
   return departure_intervals;
@@ -171,6 +177,10 @@ void check_departure_points_between_intervals(
       if (!has_type(enable_type, departure_point.departure_type)) {
         continue;
       }
+
+      departure_interval.min_lat_dist_to_bound =
+        std::min(departure_interval.min_lat_dist_to_bound, departure_point.lat_dist_to_bound);
+
       if (
         departure_point.dist_on_traj >= departure_interval.start_dist_on_traj &&
         departure_point.dist_on_traj <= departure_interval.end_dist_on_traj) {
@@ -219,12 +229,25 @@ void update_departure_intervals(
         merged.push_back(next_interval_mut);
       }
 
+      // const auto is_curr_start_near_next_start_ =
+      //   std::abs(curr_interval_mut.start_dist_on_traj - next_interval_mut.start_dist_on_traj) <
+      //   vehicle_length_m;
+      // const auto is_curr_start_near_next_end =
+      //   std::abs(curr_interval_mut.start_dist_on_traj - next_interval_mut.end_dist_on_traj) <
+      //   vehicle_length_m;
+      // const auto is_curr_end_near_next_start =
+      //   std::abs(curr_interval_mut.end_dist_on_traj - next_interval_mut.start_dist_on_traj) <
+      //   vehicle_length_m;
+      // const auto is_curr_end_near_next_end =
+      //   std::abs(curr_interval_mut.end_dist_on_traj - next_interval_mut.end_dist_on_traj) <
+      //   vehicle_length_m;
+
       const auto is_end_in_between =
-        curr_interval_mut.start_dist_on_traj < next_interval_mut.end_dist_on_traj &&
-        next_interval_mut.end_dist_on_traj < curr_interval_mut.end_dist_on_traj;
+        curr_interval_mut.start_dist_on_traj <= next_interval_mut.end_dist_on_traj &&
+        next_interval_mut.end_dist_on_traj <= curr_interval_mut.end_dist_on_traj;
       const auto is_start_in_between =
-        curr_interval_mut.start_dist_on_traj < next_interval_mut.start_dist_on_traj &&
-        next_interval_mut.start_dist_on_traj < curr_interval_mut.end_dist_on_traj;
+        curr_interval_mut.start_dist_on_traj <= next_interval_mut.start_dist_on_traj &&
+        next_interval_mut.start_dist_on_traj <= curr_interval_mut.end_dist_on_traj;
 
       if (is_start_in_between && !is_end_in_between) {
         curr_interval_mut.end = next_interval_mut.end;
@@ -300,16 +323,13 @@ void update_critical_departure_points(
 
 std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
   const trajectory::Trajectory<TrajectoryPoint> & ref_traj_pts,
-  const DepartureIntervals & departure_intervals,
-  const SlowDownInterpolator & slow_down_interpolator, const VehicleInfo & vehicle_info,
-  [[maybe_unused]] const BoundarySideWithIdx & boundary_segments, const double curr_vel,
+  DepartureIntervals & departure_intervals, const SlowDownInterpolator & slow_down_interpolator,
+  const VehicleInfo & vehicle_info, const double curr_vel, const TriggerThreshold & th_trigger,
   const double ego_dist_on_traj_m)
 {
   std::vector<std::tuple<Pose, Pose, double>> slowdown_intervals;
 
-  for (auto && pair : departure_intervals | ranges::views::enumerate) {
-    const auto & [idx, departure_interval] = pair;
-
+  for (auto && [idx, departure_interval] : departure_intervals | ranges::views::enumerate) {
     const auto [slow_down_pt_on_traj, slow_down_dist_on_traj_m] =
       (ego_dist_on_traj_m < departure_interval.start_dist_on_traj)
         ? std::make_pair(
@@ -321,33 +341,12 @@ std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
 
     const auto lon_dist_to_bound_m = slow_down_dist_on_traj_m - ego_dist_on_traj_m;
 
-    const auto & candidates = departure_interval.candidates;
-    const auto lat_dist_to_bound_itr = std::min_element(
-      candidates.begin(), candidates.end(),
-      [](const DeparturePoint & pt1, const DeparturePoint & pt2) {
-        return pt1.lat_dist_to_bound < pt2.lat_dist_to_bound;
-      });
-
-    if (lat_dist_to_bound_itr == candidates.end()) {
-      continue;
-    }
-
-    const auto lat_dist_to_bound_m = lat_dist_to_bound_itr->lat_dist_to_bound;
+    const auto lat_dist_to_bound_m = departure_interval.min_lat_dist_to_bound;
 
     const auto vel_opt = slow_down_interpolator.get_interp_to_point(
       curr_vel, lon_dist_to_bound_m, lat_dist_to_bound_m, departure_interval.side_key);
 
     if (!vel_opt) {
-      continue;
-    }
-
-    const auto dist_to_departure_point =
-      (departure_interval.start_dist_on_traj >
-       (ego_dist_on_traj_m + vehicle_info.max_longitudinal_offset_m))
-        ? departure_interval.start_dist_on_traj
-        : departure_interval.end_dist_on_traj;
-
-    if (ego_dist_on_traj_m >= dist_to_departure_point) {
       continue;
     }
 
@@ -361,9 +360,13 @@ std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
       continue;
     }
 
+    departure_interval.prev_vel = std::clamp(
+      vel, th_trigger.th_vel_mps.min,
+      std::min(departure_interval.prev_vel, th_trigger.th_vel_mps.max));
+
     auto start_pose = ref_traj_pts.compute(ego_dist_on_traj_m + rel_dist_m);
 
-    slowdown_intervals.emplace_back(start_pose.pose, end_pose, vel);
+    slowdown_intervals.emplace_back(start_pose.pose, end_pose, departure_interval.prev_vel);
   }
 
   return slowdown_intervals;
