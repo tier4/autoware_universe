@@ -239,8 +239,11 @@ struct DepartureInterval
   TrajectoryPoint start;
   TrajectoryPoint end;
   SideKey side_key;
+  double min_lat_dist_to_bound;
   double start_dist_on_traj;
   double end_dist_on_traj;
+
+  double prev_vel;
 
   bool start_at_traj_front{false};
   bool has_merged{false};

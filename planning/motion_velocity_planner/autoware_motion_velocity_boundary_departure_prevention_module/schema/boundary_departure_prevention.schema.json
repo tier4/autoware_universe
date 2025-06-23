@@ -19,7 +19,7 @@
           "default": 5
         },
 
-        "th_dist_hysteresis_m": {
+        "th_new_point_min_distance_m": {
           "type": "number",
           "description": "Minimum distance between critical points to avoid duplicates [m].",
           "default": 1.0
@@ -385,7 +385,7 @@
       "required": [
         "boundary_types_to_detect",
         "th_max_lateral_query_num",
-        "th_dist_hysteresis_m",
+        "th_new_point_min_distance_m",
         "th_pt_shift",
         "th_cutoff_time_s",
         "on_time_buffer_s",
