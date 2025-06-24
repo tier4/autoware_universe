@@ -54,6 +54,7 @@ AutowareStateNode::AutowareStateNode(const rclcpp::NodeOptions & options)
   localization_state_.state = LocalizationState::UNKNOWN;
   routing_state_.state = RoutingState::UNKNOWN;
   operation_mode_state_.mode = OperationModeState::UNKNOWN;
+  last_log_time_ = now();
 }
 
 void AutowareStateNode::on_localization(const LocalizationState::ConstSharedPtr msg)
@@ -80,37 +81,85 @@ void AutowareStateNode::on_shutdown(
 void AutowareStateNode::on_timer()
 {
   const auto convert_state = [this]() {
+    const auto current_time = now();
+    const auto time_since_last_log = (current_time - last_log_time_).seconds();
+    const bool should_log = time_since_last_log >= 1.0;
+    
     if (launch_state_ == LaunchState::Finalizing) {
+      if (should_log) {
+        RCLCPP_INFO(get_logger(), "State transition: FINALIZING (launch_state_ == LaunchState::Finalizing)");
+        last_log_time_ = current_time;
+      }
       return AutowareState::FINALIZING;
     }
     if (launch_state_ == LaunchState::Initializing) {
+      if (should_log) {
+        RCLCPP_INFO(get_logger(), "State transition: INITIALIZING (launch_state_ == LaunchState::Initializing)");
+        last_log_time_ = current_time;
+      }
       return AutowareState::INITIALIZING;
     }
     if (localization_state_.state == LocalizationState::UNKNOWN) {
+      if (should_log) {
+        RCLCPP_INFO(get_logger(), "State transition: INITIALIZING (localization_state_.state == LocalizationState::UNKNOWN)");
+        last_log_time_ = current_time;
+      }
       return AutowareState::INITIALIZING;
     }
     if (routing_state_.state == RoutingState::UNKNOWN) {
+      if (should_log) {
+        RCLCPP_INFO(get_logger(), "State transition: INITIALIZING (routing_state_.state == RoutingState::UNKNOWN)");
+        last_log_time_ = current_time;
+      }
       return AutowareState::INITIALIZING;
     }
     if (operation_mode_state_.mode == OperationModeState::UNKNOWN) {
+      if (should_log) {
+        RCLCPP_INFO(get_logger(), "State transition: INITIALIZING (operation_mode_state_.mode == OperationModeState::UNKNOWN)");
+        last_log_time_ = current_time;
+      }
       return AutowareState::INITIALIZING;
     }
     if (localization_state_.state != LocalizationState::INITIALIZED) {
+      if (should_log) {
+        RCLCPP_INFO(get_logger(), "State transition: INITIALIZING (localization_state_.state != LocalizationState::INITIALIZED)");
+        last_log_time_ = current_time;
+      }
       return AutowareState::INITIALIZING;
     }
     if (routing_state_.state == RoutingState::UNSET) {
+      if (should_log) {
+        RCLCPP_INFO(get_logger(), "State transition: WAITING_FOR_ROUTE (routing_state_.state == RoutingState::UNSET)");
+        last_log_time_ = current_time;
+      }
       return AutowareState::WAITING_FOR_ROUTE;
     }
     if (routing_state_.state == RoutingState::ARRIVED) {
+      if (should_log) {
+        RCLCPP_INFO(get_logger(), "State transition: ARRIVED_GOAL (routing_state_.state == RoutingState::ARRIVED)");
+        last_log_time_ = current_time;
+      }
       return AutowareState::ARRIVED_GOAL;
     }
     if (operation_mode_state_.mode != OperationModeState::STOP) {
       if (operation_mode_state_.is_autoware_control_enabled) {
+        if (should_log) {
+          RCLCPP_INFO(get_logger(), "State transition: DRIVING (operation_mode_state_.mode != STOP && is_autoware_control_enabled)");
+          last_log_time_ = current_time;
+        }
         return AutowareState::DRIVING;
       }
     }
     if (operation_mode_state_.is_autonomous_mode_available) {
+      if (should_log) {
+        RCLCPP_INFO(get_logger(), "State transition: WAITING_FOR_ENGAGE (operation_mode_state_.is_autonomous_mode_available)");
+        last_log_time_ = current_time;
+      }
       return AutowareState::WAITING_FOR_ENGAGE;
+    }
+    if (should_log) {
+      RCLCPP_INFO(get_logger(), "State transition: PLANNING (default case)");
+      last_log_time_ = current_time;
     }
     return AutowareState::PLANNING;
   };
