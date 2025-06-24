@@ -61,7 +61,8 @@ private:
   rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimit>::SharedPtr pub_velocity_limit_;
   rclcpp::Publisher<tier4_planning_msgs::msg::VelocityLimitClearCommand>::SharedPtr
     pub_velocity_limit_clear_command_;
-  rclcpp::Publisher<autoware_vehicle_msgs::msg::HazardLightsCommand>::SharedPtr pub_hazard_lights_command_;
+  rclcpp::Publisher<autoware_vehicle_msgs::msg::HazardLightsCommand>::SharedPtr
+    pub_hazard_lights_command_;
   rclcpp::TimerBase::SharedPtr pub_hazard_lights_timer_;
   std::unique_ptr<autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry>> sub_odom_;
 
