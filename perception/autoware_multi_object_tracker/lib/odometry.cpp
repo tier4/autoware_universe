@@ -16,7 +16,6 @@
 
 #include "autoware/multi_object_tracker/uncertainty/uncertainty_processor.hpp"
 
-#include <geometry_msgs/msg/detail/transform_stamped__struct.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <tf2_ros/create_timer_ros.h>
@@ -72,7 +71,7 @@ std::optional<geometry_msgs::msg::Transform> Odometry::getTransform(
 {
   auto self_transform_stamped =
     managed_tf_buffer_.getTransform<geometry_msgs::msg::TransformStamped>(
-      world_frame_id_, source_frame_id, tf2::TimePointZero, tf2::Duration::zero());
+      world_frame_id_, source_frame_id, time, rclcpp::Duration::from_seconds(0.5));
 
   if (!self_transform_stamped) return std::nullopt;
 
