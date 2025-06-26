@@ -113,14 +113,14 @@ MotionVelocityPlannerNode::MotionVelocityPlannerNode(const rclcpp::NodeOptions &
   // set velocity smoother param
   set_velocity_smoother_params();
 
-  RCLCPP_INFO(get_logger(), "Initializing PlannerManager");
+  RCLCPP_INFO(get_logger(), "Initializing MotionVelocityPlannerNode");
   // Initialize PlannerManager
   for (const auto & name : declare_parameter<std::vector<std::string>>("launch_modules")) {
     // workaround: Since ROS 2 can't get empty list, launcher set [''] on the parameter.
     if (name.empty()) {
       break;
     }
-    RCLCPP_INFO(get_logger(), "Loading module plugin: %s", name.c_str());
+    RCLCPP_INFO(get_logger(), "Loading MotionVelocityPlannerNode module plugin: %s", name.c_str());
     planner_manager_.load_module_plugin(*this, name);
   }
 

@@ -97,12 +97,15 @@ BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptio
   // is simulation or not
   planner_data_.is_simulation = declare_parameter<bool>("is_simulation");
 
+  RCLCPP_INFO(get_logger(), "Initializing BehaviorVelocityPlannerNode");
+
   // Initialize PlannerManager
   for (const auto & name : declare_parameter<std::vector<std::string>>("launch_modules")) {
     // workaround: Since ROS 2 can't get empty list, launcher set [''] on the parameter.
     if (name == "") {
       break;
     }
+    RCLCPP_INFO(get_logger(), "Loading BehaviorVelocityPlannerNode module plugin: %s", name.c_str());
     planner_manager_.launchScenePlugin(*this, name);
   }
 
