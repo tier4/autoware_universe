@@ -64,10 +64,6 @@ public:
       score_threshold = (score_threshold >= 0.f && score_threshold < 1.f) ? score_threshold : 0.f;
     }
 
-    if (score_threshold > 0 && score_threshold < 1) {
-      score_threshold_ = score_threshold;
-    }
-
     if (circle_nms_dist_threshold > 0) {
       circle_nms_dist_threshold_ = circle_nms_dist_threshold;
     }
