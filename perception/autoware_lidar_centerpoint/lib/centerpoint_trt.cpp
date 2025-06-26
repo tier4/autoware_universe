@@ -243,6 +243,7 @@ bool CenterPointTRT::preprocess(
     encoder_in_features_d_.get());
 
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+
   return true;
 }
 
