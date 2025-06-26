@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/lidar_centerpoint/centerpoint_trt.hpp"
+
 #include "autoware/lidar_centerpoint/centerpoint_config.hpp"
 #include "autoware/lidar_centerpoint/network/scatter_kernel.hpp"
 #include "autoware/lidar_centerpoint/preprocess/preprocess_kernel.hpp"

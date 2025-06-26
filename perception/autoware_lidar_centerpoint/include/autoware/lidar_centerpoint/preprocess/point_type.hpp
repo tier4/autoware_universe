@@ -28,7 +28,7 @@ struct InputPointType
   std::uint8_t intensity;
   std::uint8_t return_type;
   std::uint16_t channel;
-}__attribute__((packed));
+} __attribute__((packed));
 
 }  // namespace autoware::lidar_centerpoint
 

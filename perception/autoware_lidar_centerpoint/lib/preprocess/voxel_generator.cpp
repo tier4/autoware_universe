@@ -58,7 +58,7 @@ std::size_t VoxelGenerator::generateSweepPoints(float * points_d)
   for (auto pc_cache_iter = pd_ptr_->getPointCloudCacheIter(); !pd_ptr_->isCacheEnd(pc_cache_iter);
        pc_cache_iter++) {
     auto sweep_num_points = pc_cache_iter->num_points;
-	auto output_offset = point_counter * config_.point_feature_size_;
+    auto output_offset = point_counter * config_.point_feature_size_;
     // auto point_step = pc_cache_iter->point_step;
     auto affine_past2current =
       pd_ptr_->getAffineWorldToCurrent() * pc_cache_iter->affine_past2world;
@@ -76,14 +76,14 @@ std::size_t VoxelGenerator::generateSweepPoints(float * points_d)
     static_assert(std::is_same<decltype(affine_past2current.matrix()), Eigen::Matrix4f &>::value);
     static_assert(!Eigen::Matrix4f::IsRowMajor, "matrices should be col-major.");
 
-	CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
       affine_past2current_d_.get(), affine_past2current.data(), AFF_MAT_SIZE * sizeof(float),
       cudaMemcpyHostToDevice, stream_));
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
-	
-	pre_ptr_->generateSweepPoints_launch(
-      reinterpret_cast<InputPointType *>(pc_cache_iter->points_d.get()), sweep_num_points,
-      time_lag, affine_past2current_d_.get(), points_d + output_offset);
+
+    pre_ptr_->generateSweepPoints_launch(
+      reinterpret_cast<InputPointType *>(pc_cache_iter->points_d.get()), sweep_num_points, time_lag,
+      affine_past2current_d_.get(), points_d + output_offset);
 
     // generateSweepPoints_launch(
     //   pc_cache_iter->points_d.get(), sweep_num_points, point_step / sizeof(float), time_lag,

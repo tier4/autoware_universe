@@ -36,7 +36,6 @@ private:
   float * t_{nullptr};
 };
 
-
 struct is_kept
 {
   __device__ bool operator()(const bool keep) { return keep; }
