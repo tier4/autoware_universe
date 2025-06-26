@@ -242,7 +242,7 @@ SmootherBase::computeLateralAccelerationVelocitySquareRatioLimits() const
   // Add the last part
   auto v_max = base_param_.velocity_thresholds.back();
   output.push_back(
-    std::make_pair(base_param_.steering_angle_rate_limits.back() / (v_max * v_max + 1e-5), 0.0));
+    std::make_pair(base_param_.lateral_acceleration_limits.back() / (v_max * v_max + 1e-5), 0.0));
 
   return output;
 }
@@ -253,7 +253,7 @@ std::vector<std::pair<double, double>> SmootherBase::computeSteerRateVelocityRat
 
   // Process each velocity threshold
   for (size_t i = 0; i < base_param_.velocity_thresholds.size(); ++i) {
-    double steer_rate_threshold = base_param_.steering_angle_rate_limits[i];
+    double steer_rate_threshold = autoware_utils::deg2rad(base_param_.steering_angle_rate_limits[i]);
     double vi = base_param_.velocity_thresholds[i];
     double vi_1;
 
@@ -270,7 +270,7 @@ std::vector<std::pair<double, double>> SmootherBase::computeSteerRateVelocityRat
 
   // Add the last part
   output.push_back(std::make_pair(
-    base_param_.steering_angle_rate_limits.back() / (base_param_.velocity_thresholds.back() + 1e-5),
+    autoware_utils::deg2rad(base_param_.steering_angle_rate_limits.back()) / (base_param_.velocity_thresholds.back() + 1e-5),
     0.0));
 
   return output;
