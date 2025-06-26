@@ -28,6 +28,7 @@ VoxelGeneratorTemplate::VoxelGeneratorTemplate(
   const DensificationParam & param, const CenterPointConfig & config, cudaStream_t & stream)
 : config_(config), stream_(stream)
 {
+  pd_ptr_ = std::make_unique<PointCloudDensification>(param);
   pre_ptr_ = std::make_unique<PreprocessCuda>(config_, stream_);
   affine_past2current_d_ = cuda::make_unique<float[]>(AFF_MAT_SIZE);
   range_[0] = config.range_min_x_;
@@ -58,7 +59,7 @@ std::size_t VoxelGenerator::generateSweepPoints(float * points_d)
        pc_cache_iter++) {
     auto sweep_num_points = pc_cache_iter->num_points;
 	auto output_offset = point_counter * config_.point_feature_size_;
-    auto point_step = pc_cache_iter->point_step;
+    // auto point_step = pc_cache_iter->point_step;
     auto affine_past2current =
       pd_ptr_->getAffineWorldToCurrent() * pc_cache_iter->affine_past2world;
     float time_lag = static_cast<float>(
