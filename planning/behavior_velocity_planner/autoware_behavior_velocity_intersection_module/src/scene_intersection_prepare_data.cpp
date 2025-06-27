@@ -234,6 +234,7 @@ Result<IntersectionModule::BasicData, InternalError> IntersectionModule::prepare
   const auto & first_conflicting_lane_opt = intersection_lanelets.first_conflicting_lane();
   if (conflicting_lanelets.empty() || !first_conflicting_area_opt || !first_conflicting_lane_opt) {
     // this is abnormal
+    RCLCPP_DEBUG(logger_, "conflicting area is empty %b %b %b", conflicting_lanelets.empty(), !first_conflicting_area_opt, !first_conflicting_lane_opt);
     return make_err<IntersectionModule::BasicData, InternalError>("conflicting area is empty");
   }
   const auto & first_conflicting_lane = first_conflicting_lane_opt.value();
