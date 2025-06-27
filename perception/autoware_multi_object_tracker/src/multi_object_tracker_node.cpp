@@ -33,6 +33,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -192,6 +193,11 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
         int64_t value = declare_parameter<int64_t>("confident_count_threshold." + class_name);
         config.confident_count_threshold[class_label] = static_cast<int>(value);
       }
+
+      config.enable_unknown_object_velocity_estimation =
+        declare_parameter<bool>("enable_unknown_object_velocity_estimation");
+      config.enable_unknown_object_motion_output =
+        declare_parameter<bool>("enable_unknown_object_motion_output");
     }
 
     AssociatorConfig associator_config;
@@ -321,8 +327,19 @@ void MultiObjectTracker::runProcess(const types::DynamicObjectList & detected_ob
   const rclcpp::Time measurement_time =
     rclcpp::Time(detected_objects.header.stamp, this->now().get_clock_type());
 
+  // Get ego pose at the measurement time
+  std::optional<geometry_msgs::msg::Pose> ego_pose;
+  if (const auto odometry_info = odometry_->getOdometryFromTf(measurement_time)) {
+    ego_pose = odometry_info->pose.pose;
+  } else {
+    RCLCPP_WARN(
+      this->get_logger(), "No odometry information available at the measurement time: %.9f",
+      measurement_time.seconds());
+    ego_pose = std::nullopt;
+  }
+
   /* predict trackers to the measurement time */
-  processor_->predict(measurement_time);
+  processor_->predict(measurement_time, ego_pose);
 
   /* object association */
   std::unordered_map<int, int> direct_assignment, reverse_assignment;
