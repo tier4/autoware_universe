@@ -27,6 +27,8 @@
 #include "tf2_eigen/tf2_eigen.hpp"
 #endif
 
+#include "autoware/lidar_centerpoint/preprocess/point_type.hpp"
+
 namespace
 {
 boost::optional<geometry_msgs::msg::Transform> getTransform(
@@ -91,8 +93,10 @@ void PointCloudDensification::enqueue(
   current_timestamp_ = rclcpp::Time(msg.header.stamp).seconds();
 
   assert(sizeof(uint8_t) * msg.width * msg.height * msg.point_step % sizeof(float) == 0);
-  auto points_d = cuda::make_unique<float[]>(
-    sizeof(uint8_t) * msg.width * msg.height * msg.point_step / sizeof(float));
+  //   auto points_d = cuda::make_unique<float[]>(
+  //     sizeof(uint8_t) * msg.width * msg.height * msg.point_step / sizeof(float));
+  auto points_d = cuda::make_unique<InputPointType[]>(
+    msg.width * msg.height * msg.point_step / sizeof(InputPointType));
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     points_d.get(), msg.data.data(), sizeof(uint8_t) * msg.width * msg.height * msg.point_step,
     cudaMemcpyHostToDevice, stream));
