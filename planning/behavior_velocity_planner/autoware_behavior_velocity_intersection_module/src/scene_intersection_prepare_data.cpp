@@ -179,6 +179,8 @@ Result<IntersectionModule::BasicData, InternalError> IntersectionModule::prepare
   const auto footprint = planner_data_->vehicle_info_.createFootprint(0.0, 0.0);
   const auto & current_pose = planner_data_->current_odometry->pose;
 
+  RCLCPP_INFO(logger_, "prepareIntersectionData");
+
   // ==========================================================================================
   // update traffic light information
   // updateTrafficSignalObservation() must be called at first because other traffic signal
@@ -195,11 +197,13 @@ Result<IntersectionModule::BasicData, InternalError> IntersectionModule::prepare
   const auto interpolated_path_info_opt = util::generateInterpolatedPath(
     lane_id_, associative_ids_, *path, planner_param_.common.path_interpolation_ds, logger_);
   if (!interpolated_path_info_opt) {
+    RCLCPP_WARN(logger_, "splineInterpolate failed");
     return make_err<IntersectionModule::BasicData, InternalError>("splineInterpolate failed");
   }
 
   const auto & interpolated_path_info = interpolated_path_info_opt.value();
   if (!interpolated_path_info.lane_id_interval) {
+    RCLCPP_WARN(logger_, "Path has no interval on intersection lane %d", lane_id_);
     return make_err<IntersectionModule::BasicData, InternalError>(
       "Path has no interval on intersection lane " + std::to_string(lane_id_));
   }
