@@ -583,6 +583,15 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
   intersection_stoplines.first_pass_judge_line = intersection_stoplines_temp.first_pass_judge_line;
   intersection_stoplines.occlusion_wo_tl_pass_judge_line =
     intersection_stoplines_temp.occlusion_wo_tl_pass_judge_line;
+
+  // Add before line 760
+  RCLCPP_INFO(logger_, "INTERSECTION_STOP_ACTIVATED: Default stop line at index %zu, reason: %s", 
+    intersection_stoplines.default_stopline, "StuckStop");
+
+  // Add before line 774  
+  RCLCPP_INFO(logger_, "INTERSECTION_STOP_ACTIVATED: Occlusion stop line at index %zu, reason: %s", 
+    intersection_stoplines.occlusion_peeking_stopline, "StuckStop with occlusion");
+
   return intersection_stoplines;
 }
 
