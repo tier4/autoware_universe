@@ -237,6 +237,10 @@ Result<IntersectionModule::BasicData, InternalError> IntersectionModule::prepare
     RCLCPP_WARN(logger_, "conflicting area is empty %b %b %b", conflicting_lanelets.empty(), !first_conflicting_area_opt, !first_conflicting_lane_opt);
     return make_err<IntersectionModule::BasicData, InternalError>("conflicting area is empty");
   }
+  else {
+    RCLCPP_INFO(logger_, "conflicting area is not empty %b %b %b", conflicting_lanelets.empty(), !first_conflicting_area_opt, !first_conflicting_lane_opt);
+  }
+
   const auto & first_conflicting_lane = first_conflicting_lane_opt.value();
   const auto & first_conflicting_area = first_conflicting_area_opt.value();
   const auto & second_attention_area_opt = intersection_lanelets.second_attention_area();
