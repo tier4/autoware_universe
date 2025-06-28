@@ -128,6 +128,23 @@ void Lanelet2MapLoaderNode::on_map_projector_info(
   // create map bin msg
   const auto map_bin_msg = create_map_bin_msg(map, lanelet2_filename, now());
 
+  // Check map data size before publishing
+  const size_t map_data_size = map_bin_msg.data.size();
+  const size_t suspicious_size_threshold = 1000; // 1KB threshold for suspiciously small map data
+  
+  if (map_data_size < suspicious_size_threshold) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Vector map data size is suspiciously small: %zu bytes (threshold: %zu bytes). "
+      "This may indicate a problem with the map file or loading process.",
+      map_data_size, suspicious_size_threshold);
+  } else {
+    RCLCPP_INFO(
+      get_logger(),
+      "Vector map data size: %zu bytes (%.2f KB)",
+      map_data_size, static_cast<double>(map_data_size) / 1024.0);
+  }
+
   // create publisher and publish
   pub_map_bin_ =
     create_publisher<LaneletMapBin>("output/lanelet2_map", rclcpp::QoS{1}.transient_local());

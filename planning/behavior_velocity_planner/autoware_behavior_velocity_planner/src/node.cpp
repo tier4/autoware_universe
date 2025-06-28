@@ -111,6 +111,17 @@ BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptio
 
   logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+
+  // Log subscription setup
+  RCLCPP_INFO(get_logger(), "BehaviorVelocityPlannerNode subscriptions initialized:");
+  RCLCPP_INFO(get_logger(), "  - Vector map: ~/input/vector_map (LaneletMapBin)");
+  RCLCPP_INFO(get_logger(), "  - Path with lane ID: ~/input/path_with_lane_id");
+  RCLCPP_INFO(get_logger(), "  - Vehicle odometry: ~/input/vehicle_odometry");
+  RCLCPP_INFO(get_logger(), "  - Predicted objects: ~/input/dynamic_objects");
+  RCLCPP_INFO(get_logger(), "  - No ground pointcloud: ~/input/no_ground_pointcloud");
+  RCLCPP_INFO(get_logger(), "  - Traffic signals: ~/input/traffic_signals");
+  RCLCPP_INFO(get_logger(), "  - Occupancy grid: ~/input/occupancy_grid");
+  RCLCPP_INFO(get_logger(), "  - External velocity limit: ~/input/external_velocity_limit_mps");
 }
 
 void BehaviorVelocityPlannerNode::onLoadPlugin(
@@ -270,7 +281,30 @@ bool BehaviorVelocityPlannerNode::processData(rclcpp::Clock clock)
 
   const auto map_data = sub_lanelet_map_.take_data();
   if (map_data) {
+    // Add logging to monitor vector map data size
+    size_t map_data_size = 0;
+    if (map_data->data.size() > 0) {
+      map_data_size = map_data->data.size();
+    }
+    RCLCPP_INFO(
+      get_logger(), 
+      "Vector map data received - Size: %zu bytes, Data points: %zu", 
+      map_data_size, 
+      map_data->data.size());
+    
+    if (map_data_size < 1000) {
+      RCLCPP_WARN(
+        get_logger(), 
+        "Vector map data size is suspiciously small (%zu bytes) - possible map loading issue", 
+        map_data_size);
+    }
+    
     planner_data_.route_handler_ = std::make_shared<route_handler::RouteHandler>(*map_data);
+  } else {
+    // Log when vector map data is missing
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), clock, logger_throttle_interval,
+      "Vector map data not received - waiting for /map/vector_map topic");
   }
 
   // planner_data_.external_velocity_limit is std::optional type variable.
@@ -309,9 +343,12 @@ void BehaviorVelocityPlannerNode::onTrigger(
 
   // Load map and check route handler
   if (!planner_data_.route_handler_) {
-    RCLCPP_INFO_THROTTLE(
+    RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), logger_throttle_interval,
-      "Waiting for the initialization of route_handler");
+      "Route handler not initialized - waiting for vector map data from /map/vector_map topic");
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), logger_throttle_interval,
+      "This will prevent IntersectionModule and other modules from working properly");
     return;
   }
 
