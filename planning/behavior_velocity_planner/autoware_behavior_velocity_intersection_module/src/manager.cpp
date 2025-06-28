@@ -311,6 +311,7 @@ void IntersectionModuleManager::launchNewModules(
   const auto lanelets =
     planning_utils::getLaneletsOnPath(path, lanelet_map, planner_data_->current_odometry->pose);
   // run occlusion detection only in the first intersection
+  RCLCPP_INFO(logger_, "launch New Intersection Modules, size = %zu", lanelets.size());
   for (size_t i = 0; i < lanelets.size(); i++) {
     const auto ll = lanelets.at(i);
     const auto lane_id = ll.id();
@@ -321,10 +322,12 @@ void IntersectionModuleManager::launchNewModules(
     const auto is_intersection =
       turn_direction == "right" || turn_direction == "left" || turn_direction == "straight";
     if (!is_intersection) {
+      RCLCPP_INFO(logger_, "not intersection, skip");
       continue;
     }
 
     if (hasSameParentLaneletAndTurnDirectionWithRegistered(ll)) {
+      RCLCPP_INFO(logger_, "has same parent lanelet and turn direction, skip");
       continue;
     }
 
@@ -494,12 +497,14 @@ void MergeFromPrivateModuleManager::launchNewModules(
 
   const auto lanelets =
     planning_utils::getLaneletsOnPath(path, lanelet_map, planner_data_->current_odometry->pose);
+  RCLCPP_INFO(logger_, "launch New MergeFromPrivate Modules, size = %zu", lanelets.size());
   for (size_t i = 0; i < lanelets.size(); i++) {
     const auto ll = lanelets.at(i);
     const auto lane_id = ll.id();
     const auto module_id = lane_id;
 
     if (isModuleRegistered(module_id)) {
+      RCLCPP_INFO(logger_, "isModuleRegistered MergeFromPrivate, skip");
       continue;
     }
 
@@ -508,6 +513,7 @@ void MergeFromPrivateModuleManager::launchNewModules(
     const auto is_intersection =
       turn_direction == "right" || turn_direction == "left" || turn_direction == "straight";
     if (!is_intersection) {
+      RCLCPP_INFO(logger_, "not intersection MergeFromPrivate, skip");
       continue;
     }
 
@@ -515,6 +521,7 @@ void MergeFromPrivateModuleManager::launchNewModules(
     // In case the goal is in private road, check if this lanelet is conflicting with urban lanelet
     const std::string lane_location = ll.attributeOr("location", "else");
     if (lane_location != "private") {
+      RCLCPP_INFO(logger_, "not private MergeFromPrivate, skip");
       continue;
     }
 
@@ -532,6 +539,7 @@ void MergeFromPrivateModuleManager::launchNewModules(
           module_id, lane_id, planner_data_, merge_from_private_area_param_, associative_ids,
           logger_.get_child("merge_from_private_road_module"), clock_, time_keeper_,
           planning_factor_interface_));
+        RCLCPP_INFO(logger_, "register MergeFromPrivate 1, id = %lu", module_id);
         continue;
       }
     } else {
@@ -547,6 +555,7 @@ void MergeFromPrivateModuleManager::launchNewModules(
             module_id, lane_id, planner_data_, merge_from_private_area_param_, associative_ids,
             logger_.get_child("merge_from_private_road_module"), clock_, time_keeper_,
             planning_factor_interface_));
+          RCLCPP_INFO(logger_, "register MergeFromPrivate 2, id = %lu", module_id);
           continue;
         }
       }
