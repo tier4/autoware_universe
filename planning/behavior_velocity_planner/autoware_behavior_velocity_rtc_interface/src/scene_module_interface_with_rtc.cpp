@@ -119,6 +119,7 @@ void SceneModuleManagerInterfaceWithRTC::deleteExpiredModules(
   auto itr = scene_modules_.begin();
   while (itr != scene_modules_.end()) {
     if (isModuleExpired(*itr)) {
+      RCLCPP_INFO(logger_, "delete expired RTC module: %s, id = %lu", getModuleName(), (*itr)->getModuleId());
       const UUID uuid = getUUID((*itr)->getModuleId());
       updateRTCStatus(
         uuid, (*itr)->isSafe(), State::SUCCEEDED, std::numeric_limits<double>::lowest(),

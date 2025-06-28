@@ -215,6 +215,7 @@ protected:
     auto itr = scene_modules_.begin();
     while (itr != scene_modules_.end()) {
       if (isModuleExpired(*itr)) {
+        RCLCPP_INFO(logger_, "delete expired module: %s, id = %lu", getModuleName(), (*itr)->getModuleId());
         registered_module_id_set_.erase((*itr)->getModuleId());
         itr = scene_modules_.erase(itr);
       } else {
@@ -230,7 +231,7 @@ protected:
 
   void registerModule(const std::shared_ptr<T> & scene_module)
   {
-    RCLCPP_DEBUG(
+    RCLCPP_INFO(
       logger_, "register task: module = %s, id = %lu", getModuleName(),
       scene_module->getModuleId());
     registered_module_id_set_.emplace(scene_module->getModuleId());

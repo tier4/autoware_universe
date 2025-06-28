@@ -456,6 +456,7 @@ void IntersectionModuleManager::deleteExpiredModules(
   while (itr != scene_modules_.end()) {
     if (isModuleExpired(*itr)) {
       // default
+      RCLCPP_INFO(logger_, "delete expired intersection module: %s, id = %lu", getModuleName(), (*itr)->getModuleId());
       removeRTCStatus(getUUID((*itr)->getModuleId()));
       removeUUID((*itr)->getModuleId());
       // occlusion
