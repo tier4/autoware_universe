@@ -87,6 +87,7 @@ struct PCDObject
   geometry_msgs::msg::Pose pose;
   lanelet::Id overlap_lanelet_id;
   double track_duration{};
+  double avg_distance_to_overlap{};
   double distance_to_overlap{};
   double delay_compensated_distance_to_overlap{};
   double velocity{};

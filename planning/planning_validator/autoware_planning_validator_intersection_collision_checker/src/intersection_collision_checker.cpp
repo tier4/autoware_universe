@@ -310,7 +310,7 @@ bool IntersectionCollisionChecker::check_collision(
 
     auto update_object = [&](PCDObject & object, const PCDObject & new_data) {
       const auto dt = (new_data.last_update_time - object.last_update_time).seconds();
-      const auto dl = object.distance_to_overlap - new_data.distance_to_overlap;
+      const auto dl = object.avg_distance_to_overlap - new_data.avg_distance_to_overlap;
       if (dt < 1e-6) return;  // too small time difference, skip update
 
       object.track_duration += dt;
@@ -370,48 +370,57 @@ std::optional<PCDObject> IntersectionCollisionChecker::get_pcd_object(
   const rclcpp::Time & time_stamp, const PointCloud::Ptr & filtered_point_cloud,
   const TargetLanelet & target_lanelet) const
 {
-  std::optional<PCDObject> pcd_object = std::nullopt;
+  std::optional<PCDObject> pcd_object_opt = std::nullopt;
 
   PointCloud::Ptr points_within(new PointCloud);
   const auto combine_lanelet = lanelet::utils::combineLaneletsShape(target_lanelet.lanelets);
   get_points_within(
     filtered_point_cloud, combine_lanelet.polygon2d().basicPolygon(), points_within);
 
-  if (points_within->empty()) return pcd_object;
+  if (points_within->empty()) return pcd_object_opt;
 
-  PointCloud::Ptr clustered_points(new PointCloud);
-  cluster_pointcloud(points_within, clustered_points);
+  const auto clustered_objects = get_clustered_objects(points_within);
 
-  if (clustered_points->empty()) return pcd_object;
+  if (clustered_objects.empty()) return pcd_object_opt;
 
   const auto overlap_arc_coord =
     lanelet::utils::getArcCoordinates(target_lanelet.lanelets, target_lanelet.overlap_point);
   auto min_arc_length = std::numeric_limits<double>::max();
-  for (const auto & p : *clustered_points) {
-    const auto p_geom = autoware_utils::create_point(p.x, p.y, p.z);
-    const auto center_pose = lanelet::utils::getClosestCenterPose(combine_lanelet, p_geom);
+  for (const auto & obj : clustered_objects) {
+    if (obj.empty()) continue;
+    double arc_length_sum = 0.0;
+    auto local_min_arc_length = std::numeric_limits<double>::max();
+    auto closest_point = obj.front();
+    for (const auto & point : obj) {
+      const auto center_pose = lanelet::utils::getClosestCenterPose(combine_lanelet, point);
     const auto arc_coord = lanelet::utils::getArcCoordinates(target_lanelet.lanelets, center_pose);
     const auto arc_length_to_overlap = overlap_arc_coord.length - arc_coord.length;
-    if (
-      arc_length_to_overlap < std::numeric_limits<double>::epsilon() ||
-      arc_length_to_overlap > min_arc_length) {
+      arc_length_sum += arc_length_to_overlap;
+      if (local_min_arc_length > arc_length_to_overlap) {
+        local_min_arc_length = arc_length_to_overlap;
+        closest_point = point;
+      }
+    }
+    if (local_min_arc_length < std::numeric_limits<double>::epsilon() ||
+        local_min_arc_length > min_arc_length) {
       continue;
     }
 
-    min_arc_length = arc_length_to_overlap;
+    min_arc_length = local_min_arc_length;
 
-    PCDObject object;
-    object.last_update_time = time_stamp;
-    object.pose.position = p_geom;
-    object.overlap_lanelet_id = target_lanelet.id;
-    object.track_duration = 0.0;
-    object.distance_to_overlap = arc_length_to_overlap;
-    object.delay_compensated_distance_to_overlap = arc_length_to_overlap;
-    object.velocity = 0.0;
-    object.ttc = std::numeric_limits<double>::max();
-    pcd_object = object;
+    PCDObject pcd_obj;
+    pcd_obj.last_update_time = time_stamp;
+    pcd_obj.pose.position = closest_point;
+    pcd_obj.overlap_lanelet_id = target_lanelet.id;
+    pcd_obj.track_duration = 0.0;
+    pcd_obj.distance_to_overlap = local_min_arc_length;
+    pcd_obj.delay_compensated_distance_to_overlap = local_min_arc_length;
+    pcd_obj.avg_distance_to_overlap = arc_length_sum / obj.size();
+    pcd_obj.velocity = 0.0;
+    pcd_obj.ttc = std::numeric_limits<double>::max();
+    pcd_object_opt = pcd_obj;
   }
-  return pcd_object;
+  return pcd_object_opt;
 }
 
 void IntersectionCollisionChecker::get_points_within(
@@ -427,10 +436,10 @@ void IntersectionCollisionChecker::get_points_within(
   }
 }
 
-void IntersectionCollisionChecker::cluster_pointcloud(
-  const PointCloud::Ptr & input, PointCloud::Ptr & output) const
+ClusteredObjectsPoints IntersectionCollisionChecker::get_clustered_objects(
+  const PointCloud::Ptr & input) const
 {
-  if (input->empty()) return;
+  if (input->empty()) return {};
 
   const auto & p = params_.icc_parameters;
 
@@ -454,12 +463,12 @@ void IntersectionCollisionChecker::cluster_pointcloud(
     return rel_height > p.pointcloud.clustering.min_height;
   };
 
+  ClusteredObjectsPoints clustered_objects;
   for (const auto & indices : cluster_indices) {
     PointCloud::Ptr cluster(new PointCloud);
     bool cluster_above_height_threshold{false};
     for (const auto & index : indices.indices) {
       const auto & point = (*input)[index];
-
       cluster_above_height_threshold |= above_height_threshold(point.z);
       cluster->push_back(point);
     }
@@ -470,10 +479,12 @@ void IntersectionCollisionChecker::cluster_pointcloud(
     hull.setInputCloud(cluster);
     PointCloud::Ptr surface_hull(new PointCloud);
     hull.reconstruct(*surface_hull);
+    auto & obj = clustered_objects.emplace_back();
     for (const auto & point : *surface_hull) {
-      output->push_back(point);
+      obj.push_back(autoware_utils::create_point(point.x, point.y, point.z));
     }
   }
+  return clustered_objects;
 }
 
 void IntersectionCollisionChecker::set_lanelets_debug_marker(

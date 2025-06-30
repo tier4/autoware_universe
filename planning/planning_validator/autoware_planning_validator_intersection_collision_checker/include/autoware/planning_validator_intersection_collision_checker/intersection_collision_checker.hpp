@@ -35,6 +35,8 @@ using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
 using autoware_internal_planning_msgs::msg::SafetyFactor;
 using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 
+using ClusteredObjectsPoints = std::vector<std::vector<geometry_msgs::msg::Point>>;
+
 class IntersectionCollisionChecker : public PluginInterface
 {
 public:
@@ -63,7 +65,7 @@ private:
     const PointCloud::Ptr & input, const BasicPolygon2d & polygon,
     const PointCloud::Ptr & output) const;
 
-  void cluster_pointcloud(const PointCloud::Ptr & input, PointCloud::Ptr & output) const;
+  [[nodiscard]] ClusteredObjectsPoints get_clustered_objects(const PointCloud::Ptr & input) const;
 
   void set_lanelets_debug_marker(const CollisionCheckerLanelets & lanelets) const;
 
