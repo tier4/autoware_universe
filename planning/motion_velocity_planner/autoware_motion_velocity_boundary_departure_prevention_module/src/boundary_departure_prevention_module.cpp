@@ -248,22 +248,32 @@ VelocityPlanningResult BoundaryDeparturePreventionModule::plan(
       std::make_unique<utils::SlowDownInterpolator>(node_param_.bdc_param.th_trigger);
   }
 
-  auto result_opt = plan_slow_down_intervals(raw_trajectory_points, planner_data);
+  try {
+    auto result_opt = plan_slow_down_intervals(raw_trajectory_points, planner_data);
 
-  processing_time_publisher_->publish(std::invoke([&]() {
-    autoware_internal_debug_msgs::msg::Float64Stamped msg;
-    msg.stamp = clock_ptr_->now();
-    msg.data = stopwatch_ms.toc();
-    return msg;
-  }));
+    processing_time_publisher_->publish(std::invoke([&]() {
+      autoware_internal_debug_msgs::msg::Float64Stamped msg;
+      msg.stamp = clock_ptr_->now();
+      msg.data = stopwatch_ms.toc();
+      return msg;
+    }));
 
-  if (!result_opt) {
-    RCLCPP_DEBUG(rclcpp::get_logger(get_module_name()), "%s", result_opt.error().c_str());
-    return {};
+    if (!result_opt) {
+      RCLCPP_DEBUG(
+        logger_, "Planning skipped: %s", result_opt.error().c_str());
+      return {};
+    }
+
+    updater_ptr_->force_update();
+    return *result_opt;
+
+  } catch (const std::exception & e) {
+    RCLCPP_WARN(logger_, "Exception in BDP::plan: %s", e.what());
+  } catch (...) {
+    RCLCPP_ERROR(logger_, "Unknown exception occurred in BDP::plan.");
   }
 
-  updater_ptr_->force_update();
-  return *result_opt;
+  return {};
 }
 
 bool BoundaryDeparturePreventionModule::is_data_ready()
