@@ -100,12 +100,35 @@ void BlindSpotModule::reactRTCApprovalByDecision(
     debug_data_.virtual_wall_pose = planning_utils::getAheadPose(
       decision.stop_line_idx, planner_data_->vehicle_info_.max_longitudinal_offset_m, *path);
 
+    const auto safety_factors = [&]() {
+      if (!decision.collision_obstacle.has_value()) {
+        return autoware_internal_planning_msgs::msg::SafetyFactorArray{};
+      }
+
+      const auto & [collision_obstacle, ttc] = decision.collision_obstacle.value();
+
+      autoware_internal_planning_msgs::msg::SafetyFactor safety_factor;
+      safety_factor.type = autoware_internal_planning_msgs::msg::SafetyFactor::OBJECT;
+      safety_factor.object_id = collision_obstacle.object_id;
+      safety_factor.ttc_begin = ttc;
+      safety_factor.ttc_end = ttc;
+      safety_factor.points = {
+        collision_obstacle.kinematics.initial_pose_with_covariance.pose.position};
+      safety_factor.is_safe = false;
+      // TODO(odashiama): add a predicted path used for the decision
+
+      autoware_internal_planning_msgs::msg::SafetyFactorArray safety_factors;
+      safety_factors.factors.push_back(safety_factor);
+      safety_factors.is_safe = false;
+
+      return safety_factors;
+    }();
+
     const auto stop_pose = path->points.at(decision.stop_line_idx).point.pose;
     planning_factor_interface_->add(
       path->points, planner_data_->current_odometry->pose, stop_pose,
-      autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-      autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-      0.0 /*shift distance*/, "blind_spot(module is judging as UNSAFE)");
+      autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factors,
+      true /*is_driving_forward*/, 0.0 /* velocity */, 0.0 /*shift distance*/);
   }
   return;
 }
@@ -138,8 +161,8 @@ void BlindSpotModule::reactRTCApprovalByDecision(
     planning_factor_interface_->add(
       path->points, planner_data_->current_odometry->pose, stop_pose,
       autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
-      autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
-      0.0 /*shift distance*/, "blind_spot(module is judging as SAFE and RTC is not approved)");
+      autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/,
+      0.0 /* velocity */, 0.0 /*shift distance*/, "RTC interruption");
   }
   return;
 }

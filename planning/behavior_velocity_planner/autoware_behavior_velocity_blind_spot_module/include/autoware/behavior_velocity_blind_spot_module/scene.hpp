@@ -47,10 +47,11 @@ struct OverPassJudge
   const std::string report;
 };
 
+using PredictedObjectWithTTC = std::pair<autoware_perception_msgs::msg::PredictedObject, double>;
 struct Unsafe
 {
   const size_t stop_line_idx;
-  const std::optional<autoware_perception_msgs::msg::PredictedObject> collision_obstacle;
+  const std::optional<PredictedObjectWithTTC> collision_obstacle;
 };
 
 struct Safe
@@ -145,9 +146,9 @@ private:
    * @param path path information associated with lane id
    * @param objects_ptr dynamic objects
    * @param closest_idx closest path point index from ego car in path points
-   * @return true when an object is detected in blind spot
+   * @return contains predicted object and ttc when an object is detected in blind spot
    */
-  std::optional<autoware_perception_msgs::msg::PredictedObject> isCollisionDetected(
+  std::optional<PredictedObjectWithTTC> isCollisionDetected(
     const lanelet::ConstLanelets & blind_spot_lanelets,
     const geometry_msgs::msg::Pose & stop_line_pose, const lanelet::CompoundPolygon3d & area,
     const double ego_time_to_reach_stop_line);

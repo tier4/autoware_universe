@@ -1,0 +1,718 @@
+header:
+  stamp:
+    sec: 1751350142
+    nanosec: 666483569
+  frame_id: map
+points:
+  - point:
+      pose:
+        position:
+          x: 944.3069781611053
+          y: 694.8112901397775
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9999276167916062
+          w: 0.012031673925880167
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008071
+  - point:
+      pose:
+        position:
+          x: 942.3075572058152
+          y: 694.7631669276386
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9999276167916062
+          w: 0.012031673925879501
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008071
+  - point:
+      pose:
+        position:
+          x: 940.308136250525
+          y: 694.7150437154997
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9999276167916059
+          w: 0.012031673925908587
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008071
+  - point:
+      pose:
+        position:
+          x: 938.3087152952348
+          y: 694.6669205033608
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9999276167916062
+          w: 0.012031673925880167
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008071
+  - point:
+      pose:
+        position:
+          x: 936.3092943399447
+          y: 694.6187972912219
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9999276167916062
+          w: 0.012031673925880167
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008071
+  - point:
+      pose:
+        position:
+          x: 934.3098733846546
+          y: 694.570674079083
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9999276167916059
+          w: 0.012031673925907921
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008071
+  - point:
+      pose:
+        position:
+          x: 932.3104524293643
+          y: 694.522550866944
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9999276167916062
+          w: 0.012031673925880167
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008071
+  - point:
+      pose:
+        position:
+          x: 930.3110314740742
+          y: 694.4744276548051
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9999276167916061
+          w: 0.012031673925889271
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008071
+  - point:
+      pose:
+        position:
+          x: 928.220169690816
+          y: 694.4241035922896
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9998667898812685
+          w: 0.016321840966239697
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008071
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 926.3127524046411
+          y: 694.3618135749999
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.999775905658024
+          w: 0.02116928118000073
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 924.3144374730884
+          y: 694.2771508721048
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9987606564956917
+          w: 0.04977098588831582
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 922.3374419198847
+          y: 694.0796221148233
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9899686675453341
+          w: 0.14128707399658286
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 920.4025949592155
+          y: 693.5158612610041
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.9617704222039093
+          w: 0.27385699730646657
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 918.6604695497282
+          y: 692.4362103695338
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.8946558912581888
+          w: 0.44675590229678647
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 917.445622741339
+          y: 690.8198631307677
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.8268798848781423
+          w: 0.5623785699899224
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 916.6898876386302
+          y: 688.9071057033514
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.7731056295297211
+          w: 0.6342772939254989
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 916.3014940515975
+          y: 686.9575769170698
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.7223728267013265
+          w: 0.6915037955380543
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 916.2143280714156
+          y: 684.9623216311309
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.7130591495212102
+          w: 0.7011038790964491
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 916.1805134076927
+          y: 682.9625329212902
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.70343558467745
+          w: 0.7107590155668052
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+  - point:
+      pose:
+        position:
+          x: 916.1895696281281
+          y: 682.088153495919
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.6993896563195033
+          w: 0.7147405883488688
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008056
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.2140012072878
+          y: 680.9629656681537
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.6993896563194866
+          w: 0.7147405883488851
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.257417641821
+          y: 678.9634369703821
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.6993896563195069
+          w: 0.7147405883488652
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.3008340763541
+          y: 676.9639082726104
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.6993896563194866
+          w: 0.7147405883488851
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.3442505108874
+          y: 674.9643795748387
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.6993896563194866
+          w: 0.7147405883488851
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.3876669454206
+          y: 672.9648508770671
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.6960227996676756
+          w: 0.7180196810274567
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.446289032747
+          y: 671.081082426269
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.6921010851645184
+          w: 0.7218005873605923
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.530278805976
+          y: 669.0827175518996
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.6928244911177529
+          w: 0.7211062504980987
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.6102576486749
+          y: 667.0842686758516
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.696306220165793
+          w: 0.71774483471386
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.6390307593582
+          y: 666.1355764179355
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.7019712748358925
+          w: 0.7122052578472529
+      longitudinal_velocity_mps: 16.66666603088379
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+  - point:
+      pose:
+        position:
+          x: 916.6535034179688
+          y: 665.1356811523438
+          z: 100.0
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.7019712748358925
+          w: 0.7122052578472529
+      longitudinal_velocity_mps: 0.0
+      lateral_velocity_mps: 0.0
+      heading_rate_rps: 0.0
+      is_final: false
+    lane_ids:
+      - 3008066
+left_bound:
+  - x: 944.854958320797
+    y: 692.8238823767681
+    z: 100.0
+  - x: 942.3556821653185
+    y: 692.7637267564581
+    z: 100.0
+  - x: 940.3562612409357
+    y: 692.7156022602102
+    z: 100.0
+  - x: 938.3568403165532
+    y: 692.6674777639622
+    z: 100.0
+  - x: 936.3574193921705
+    y: 692.6193532677142
+    z: 100.0
+  - x: 934.3579984677879
+    y: 692.5712287714663
+    z: 100.0
+  - x: 932.3585775434051
+    y: 692.5231042752183
+    z: 100.0
+  - x: 930.3591566190225
+    y: 692.4749797789704
+    z: 100.0
+  - x: 928.2682695548283
+    y: 692.4246537643485
+    z: 100.0
+  - x: 926.3468539709077
+    y: 692.3913056792619
+    z: 100.0
+  - x: 925.1223699872498
+    y: 692.3700535376556
+    z: 100.0
+  - x: 924.3245700530242
+    y: 692.289754088968
+    z: 100.0
+  - x: 922.3931701973197
+    y: 692.0131533932872
+    z: 100.0
+  - x: 921.377669632202
+    y: 691.6594539098442
+    z: 100.0
+  - x: 920.6192698467057
+    y: 691.0818539820611
+    z: 100.0
+  - x: 920.2150696211029
+    y: 690.6894537634216
+    z: 100.0
+  - x: 919.6489701331593
+    y: 690.106553257443
+    z: 100.0
+  - x: 919.26897005504
+    y: 689.4860532875173
+    z: 100.0
+  - x: 918.8994696876034
+    y: 688.7972536580637
+    z: 100.0
+  - x: 918.5901694548666
+    y: 687.9830534625798
+    z: 100.0
+  - x: 918.3423696188256
+    y: 686.5196533538401
+    z: 100.0
+  - x: 918.1098699196009
+    y: 685.2205538768321
+    z: 100.0
+  - x: 918.1305700693629
+    y: 684.1934530781582
+    z: 100.0
+  - x: 918.1887697560014
+    y: 682.1485533392988
+    z: 100.0
+  - x: 918.211067739944
+    y: 681.1216408832894
+    z: 100.0
+  - x: 918.2544847403522
+    y: 679.1221121978049
+    z: 100.0
+  - x: 918.2979017407603
+    y: 677.1225835123204
+    z: 100.0
+  - x: 918.3413187411684
+    y: 675.123054826836
+    z: 100.0
+  - x: 918.3846758376606
+    y: 673.1262849592644
+    z: 100.0
+  - x: 918.4280292699427
+    y: 671.1296838433968
+    z: 100.0
+  - x: 918.4713827022249
+    y: 669.1330827275293
+    z: 100.0
+  - x: 918.5160111305638
+    y: 667.0777628801661
+    z: 100.0
+  - x: 918.6634377194247
+    y: 660.2881714606963
+    z: 100.0
+right_bound:
+  - x: 944.7587110472991
+    y: 696.8227595707008
+    z: 100.0
+  - x: 942.2594348145541
+    y: 696.7626071606636
+    z: 100.0
+  - x: 940.260013828358
+    y: 696.7144852326338
+    z: 100.0
+  - x: 938.2605928421619
+    y: 696.666363304604
+    z: 100.0
+  - x: 936.261171855966
+    y: 696.6182413765742
+    z: 100.0
+  - x: 934.26175086977
+    y: 696.5701194485445
+    z: 100.0
+  - x: 932.2623298835739
+    y: 696.5219975205147
+    z: 100.0
+  - x: 930.262908897378
+    y: 696.4738755924849
+    z: 100.0
+  - x: 928.1720698268036
+    y: 696.4235534202307
+    z: 100.0
+  - x: 926.2659288086006
+    y: 696.3794095715841
+    z: 100.0
+  - x: 924.4758701757528
+    y: 696.3379540462047
+    z: 100.0
+  - x: 922.6573699432192
+    y: 696.1152530885302
+    z: 100.0
+  - x: 920.4578700150014
+    y: 695.774653270375
+    z: 100.0
+  - x: 919.045370131149
+    y: 695.3034540410154
+    z: 100.0
+  - x: 917.8887695420999
+    y: 694.5392537857406
+    z: 100.0
+  - x: 917.1893700095825
+    y: 693.9368536826223
+    z: 100.0
+  - x: 916.5486700899783
+    y: 693.2679540296085
+    z: 100.0
+  - x: 915.9759695010725
+    y: 692.546953949146
+    z: 100.0
+  - x: 915.4752703133272
+    y: 691.7709540720098
+    z: 100.0
+  - x: 915.0480697707972
+    y: 690.9509540717117
+    z: 100.0
+  - x: 914.6190699894214
+    y: 689.4939530584961
+    z: 100.0
+  - x: 914.3691702270298
+    y: 687.3331535831094
+    z: 100.0
+  - x: 914.1260700251441
+    y: 684.8858530507423
+    z: 100.0
+  - x: 914.1677632703653
+    y: 683.0325962571076
+    z: 100.0
+  - x: 914.1903695002547
+    y: 682.0277536525391
+    z: 100.0
+  - x: 914.2553452861503
+    y: 679.0352775470392
+    z: 100.0
+  - x: 914.2987611547409
+    y: 677.0357488369791
+    z: 100.0
+  - x: 914.3421770233315
+    y: 675.0362201269191
+    z: 100.0
+  - x: 914.3855329908204
+    y: 673.0394501771112
+    z: 100.0
+  - x: 914.4288852942715
+    y: 671.0428489754804
+    z: 100.0
+  - x: 914.4722375977226
+    y: 669.0462477738496
+    z: 100.0
+  - x: 914.5168648630953
+    y: 666.9909278813552
+    z: 100.0
+  - x: 914.6642876032406
+    y: 660.2013366326723
+    z: 100.0
