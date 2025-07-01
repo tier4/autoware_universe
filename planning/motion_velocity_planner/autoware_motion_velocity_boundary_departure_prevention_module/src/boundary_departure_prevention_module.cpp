@@ -297,16 +297,21 @@ bool BoundaryDeparturePreventionModule::is_data_ready()
   return true;
 }
 
-bool BoundaryDeparturePreventionModule::is_data_valid() const
+std::optional<std::string> BoundaryDeparturePreventionModule::is_data_invalid(
+  const TrajectoryPoints & raw_trajectory_points) const
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  if (ego_pred_traj_ptr_->points.empty()) {
-    RCLCPP_WARN_THROTTLE(
-      logger_, *clock_ptr_, throttle_duration_ms, "empty predicted trajectory...");
-    return false;
+  if (!ego_pred_traj_ptr_ || ego_pred_traj_ptr_->points.empty()) {
+    return {"empty predicted trajectory..."};
   }
-  return true;
+
+  constexpr size_t min_pt_size = 4;
+  if (raw_trajectory_points.size() < min_pt_size) {
+    return {"insufficient raw_trajectory_points..."};
+  }
+
+  return std::nullopt;
 }
 
 bool BoundaryDeparturePreventionModule::is_data_timeout(const Odometry & odom) const
@@ -398,34 +403,53 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
     processing_times_ms_[tag] = stopwatch_ms.toc(true);
   };
 
-  if (!ego_pred_traj_ptr_) {
-    return tl::make_unexpected("Couldn't read predicted path pointer.");
+  if (const auto is_invalid_data_opt = is_data_invalid(raw_trajectory_points)) {
+    return tl::make_unexpected(*is_invalid_data_opt);
   }
 
-  if (raw_trajectory_points.empty()) {
-    return tl::make_unexpected("Empty reference trajectory.");
-  }
   if (autoware_utils::calc_distance2d(curr_position, goal_position) < min_effective_dist) {
     output_.departure_intervals.clear();
     return tl::make_unexpected("Too close to goal.");
   }
   toc_curr_watch("chk_dist_to_goal");
 
-  const auto ref_traj_pts_opt =
-    trajectory::Trajectory<TrajectoryPoint>::Builder{}.build(raw_trajectory_points);
+  trajectory::Trajectory<TrajectoryPoint> ref_traj_pts;
 
-  if (!ref_traj_pts_opt) {
-    return tl::make_unexpected("unable to get trajectory");
+  try {
+    if (
+      const auto ref_traj_pts_opt =
+        trajectory::Trajectory<TrajectoryPoint>::Builder{}.build(raw_trajectory_points)) {
+      ref_traj_pts = *ref_traj_pts_opt;
+    }
+  } catch (const std::exception & e) {
+    RCLCPP_WARN(logger_, "%s", e.what());
+    return tl::make_unexpected("Trouble generating aw_traj");
   }
+
   toc_curr_watch("get_ref_traj");
 
-  if (is_goal_changed(*ref_traj_pts_opt, raw_trajectory_points.back().pose)) {
+  if (is_goal_changed(ref_traj_pts, raw_trajectory_points.back().pose)) {
     RCLCPP_WARN(logger_, "Goal changed.");
     output_ = Output();
   }
 
+  const auto traj_pts = std::invoke([&]() {
+    constexpr size_t max_size = 100;
+    if (ego_pred_traj_ptr_->points.size() <= max_size) {
+      return ego_pred_traj_ptr_->points;
+    }
+
+    RCLCPP_WARN(logger_, "numbers of ego's predicted path points exceeded threshold");
+    TrajectoryPoints pts;
+    pts.reserve(max_size);
+    for (size_t idx = 0; idx < max_size; ++idx) {
+      pts.push_back(ego_pred_traj_ptr_->points[idx]);
+    }
+    return pts;
+  });
+
   const auto abnormality_data_opt = boundary_departure_checker_ptr_->get_abnormalities_data(
-    ego_pred_traj_ptr_->points, *ref_traj_pts_opt, curr_pose, *steering_angle_ptr_);
+    traj_pts, ref_traj_pts, curr_pose, *steering_angle_ptr_);
 
   if (!abnormality_data_opt) {
     return tl::make_unexpected(abnormality_data_opt.error());
@@ -436,7 +460,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
 
   const auto closest_projections_to_bound_opt =
     boundary_departure_checker_ptr_->get_closest_projections_to_boundaries(
-      *ref_traj_pts_opt, output_.abnormalities_data.projections_to_bound);
+      ref_traj_pts, output_.abnormalities_data.projections_to_bound);
   toc_curr_watch("get_ref_traj");
 
   if (!closest_projections_to_bound_opt) {
@@ -445,7 +469,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
 
   output_.closest_projections_to_bound = *closest_projections_to_bound_opt;
 
-  const auto ego_dist_on_traj_m = trajectory::closest(*ref_traj_pts_opt, curr_pose.pose);
+  const auto ego_dist_on_traj_m = trajectory::closest(ref_traj_pts, curr_pose.pose);
   toc_curr_watch("chk_ego_dist_on_traj");
 
   const auto lon_offset_m = [&vehicle_info](const bool take_front_offset) {
@@ -461,7 +485,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
   toc_curr_watch("get_departure_points");
 
   utils::update_critical_departure_points(
-    output_.departure_points, output_.critical_departure_points, *ref_traj_pts_opt,
+    output_.departure_points, output_.critical_departure_points, ref_traj_pts,
     node_param_.bdc_param.th_dist_hysteresis_m,
     ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward),
     node_param_.th_pt_shift_dist_m, node_param_.th_pt_shift_angle_rad);
@@ -469,14 +493,14 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
 
   if (output_.departure_intervals.empty()) {
     output_.departure_intervals = utils::init_departure_intervals(
-      *ref_traj_pts_opt, output_.departure_points,
+      ref_traj_pts, output_.departure_points,
       ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward),
       node_param_.slow_down_types);
   } else {
     auto & departure_intervals_mut = output_.departure_intervals;
     const auto & ref_traj_front_pt = raw_trajectory_points.front();
     utils::update_departure_intervals(
-      departure_intervals_mut, output_.departure_points, *ref_traj_pts_opt,
+      departure_intervals_mut, output_.departure_points, ref_traj_pts,
       vehicle_info.vehicle_length_m, ref_traj_front_pt,
       ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward),
       node_param_.th_pt_shift_dist_m, node_param_.th_pt_shift_angle_rad,
@@ -487,7 +511,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
   slow_down_wall_marker_.markers.clear();
 
   output_.slowdown_intervals = utils::get_slow_down_intervals(
-    *ref_traj_pts_opt, output_.departure_intervals, *slow_down_interpolator_ptr_, vehicle_info,
+    ref_traj_pts, output_.departure_intervals, *slow_down_interpolator_ptr_, vehicle_info,
     output_.abnormalities_data.boundary_segments, curr_odom.twist.twist.linear.x,
     ego_dist_on_traj_with_offset_m(planner_data->is_driving_forward));
   toc_curr_watch("get_slow_down_interval");
