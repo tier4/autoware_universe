@@ -32,11 +32,11 @@ namespace autoware::behavior_path_planner
 {
 ShiftPullOver::ShiftPullOver(rclcpp::Node & node, const GoalPlannerParameters & parameters)
 : PullOverPlannerBase{node, parameters},
-  lane_departure_checker_{[&]() {
-    auto lane_departure_checker_params = lane_departure_checker::Param{};
-    lane_departure_checker_params.footprint_extra_margin =
+  boundary_departure_checker_{[&]() {
+    auto boundary_departure_checker_params = boundary_departure_checker::Param{};
+    boundary_departure_checker_params.footprint_extra_margin =
       parameters.lane_departure_check_expansion_margin;
-    return LaneDepartureChecker{lane_departure_checker_params, vehicle_info_};
+    return BoundaryDepartureChecker{boundary_departure_checker_params, vehicle_info_};
   }()},
   left_side_parking_{parameters.parking_policy == ParkingPolicy::LEFT_SIDE}
 {
@@ -299,7 +299,7 @@ std::optional<PullOverPath> ShiftPullOver::generatePullOverPath(
 
   const auto departure_check_lane = goal_planner_utils::createDepartureCheckLanelet(
     pull_over_lanes, *planner_data->route_handler, left_side_parking_);
-  const bool is_in_lanes = !lane_departure_checker_.checkPathWillLeaveLane(
+  const bool is_in_lanes = !boundary_departure_checker_.checkPathWillLeaveLane(
     {departure_check_lane}, pull_over_path.parking_path());
 
   if (!is_in_parking_lots && !is_in_lanes) {
