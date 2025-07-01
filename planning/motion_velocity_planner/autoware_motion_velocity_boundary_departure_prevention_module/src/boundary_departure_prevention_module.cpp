@@ -259,8 +259,7 @@ VelocityPlanningResult BoundaryDeparturePreventionModule::plan(
     }));
 
     if (!result_opt) {
-      RCLCPP_DEBUG(
-        logger_, "Planning skipped: %s", result_opt.error().c_str());
+      RCLCPP_DEBUG(logger_, "Planning skipped: %s", result_opt.error().c_str());
       return {};
     }
 
