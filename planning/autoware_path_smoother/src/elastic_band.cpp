@@ -34,9 +34,9 @@ Eigen::SparseMatrix<double> makePMatrix(const int num_points)
 {
   std::vector<Eigen::Triplet<double>> triplet_vec;
   const auto assign_value_to_triplet_vec =
-    [&](const double row, const double column, const double value) {
-      triplet_vec.push_back(Eigen::Triplet<double>(row, column, value));
-      triplet_vec.push_back(Eigen::Triplet<double>(row + num_points, column + num_points, value));
+    [&](const double row, const double colum, const double value) {
+      triplet_vec.push_back(Eigen::Triplet<double>(row, colum, value));
+      triplet_vec.push_back(Eigen::Triplet<double>(row + num_points, colum + num_points, value));
     };
 
   for (int r = 0; r < num_points; ++r) {
@@ -402,9 +402,9 @@ std::optional<std::vector<double>> EBPathSmoother::calcSmoothedTrajectory()
 
   // solve QP
   const auto result = osqp_solver_ptr_->optimize();
-  const auto optimized_points = result.primal_solution;
+  const auto optimized_points = std::get<0>(result);
 
-  const auto status = result.solution_status;
+  const auto status = std::get<3>(result);
 
   // check status
   if (status != 1) {

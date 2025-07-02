@@ -23,8 +23,6 @@
 #include "interpolation/spline_interpolation_points_2d.hpp"
 #include "tf2/utils.h"
 
-#include <rclcpp/logging.hpp>
-
 #include <algorithm>
 #include <chrono>
 #include <limits>
@@ -122,18 +120,6 @@ std::tuple<Eigen::VectorXd, Eigen::VectorXd> extractBounds(
 std::vector<double> toStdVector(const Eigen::VectorXd & eigen_vec)
 {
   return {eigen_vec.data(), eigen_vec.data() + eigen_vec.rows()};
-}
-
-std::string vectorToString(const std::vector<double> & vec)
-{
-  std::ostringstream oss;
-  if (!vec.empty()) {
-    oss << vec.front();  // Add the first element
-    for (size_t i = 1; i < vec.size(); ++i) {
-      oss << "," << vec[i];  // Add the rest with commas
-    }
-  }
-  return oss.str();
 }
 
 bool isLeft(const geometry_msgs::msg::Pose & pose, const geometry_msgs::msg::Point & target_pos)
@@ -482,20 +468,31 @@ void MPTOptimizer::onParam(const std::vector<rclcpp::Parameter> & parameters)
   debug_data_ptr_->mpt_visualize_sampling_num = mpt_param_.mpt_visualize_sampling_num;
 }
 
-std::optional<std::vector<TrajectoryPoint>> MPTOptimizer::optimizeTrajectory(
-  const PlannerData & planner_data)
+std::vector<TrajectoryPoint> MPTOptimizer::optimizeTrajectory(const PlannerData & planner_data)
 {
   autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   const auto & p = planner_data;
   const auto & traj_points = p.traj_points;
 
+  const auto get_prev_optimized_traj_points = [&]() {
+    if (prev_optimized_traj_points_ptr_) {
+      RCLCPP_WARN(logger_, "return the previous optimized_trajectory as exceptional behavior.");
+      return *prev_optimized_traj_points_ptr_;
+    }
+    RCLCPP_WARN(
+      logger_,
+      "Try to return the previous optimized_trajectory as exceptional behavior, "
+      "but this failure also. Then return path_smoother output.");
+    return traj_points;
+  };
+
   // 1. calculate reference points
   auto ref_points = calcReferencePoints(planner_data, traj_points);
   if (ref_points.size() < 2) {
     RCLCPP_INFO_EXPRESSION(
       logger_, enable_debug_info_, "return std::nullopt since ref_points size is less than 2.");
-    return std::nullopt;
+    return get_prev_optimized_traj_points();
   }
 
   // 2. calculate B and W matrices where x = B u + W
@@ -514,26 +511,14 @@ std::optional<std::vector<TrajectoryPoint>> MPTOptimizer::optimizeTrajectory(
   const auto optimized_variables = calcOptimizedSteerAngles(ref_points, obj_mat, const_mat);
   if (!optimized_variables) {
     RCLCPP_WARN(logger_, "return std::nullopt since could not solve qp");
-    RCLCPP_INFO(logger_, "Inputs causing failure:");
-    RCLCPP_INFO_STREAM(logger_, "ref_points: ");
-
-    for (const auto & ref_point : ref_points) {
-      std::cout << "\t" << ref_point << "\n";
-    }
-
-    RCLCPP_INFO_STREAM(logger_, "mpt_mat: " << mpt_mat);
-    RCLCPP_INFO_STREAM(logger_, "val_mat: " << val_mat);
-    RCLCPP_INFO_STREAM(logger_, "obj_mat: " << obj_mat);
-    RCLCPP_INFO_STREAM(logger_, "const_mat: " << const_mat);
-
-    return std::nullopt;
+    return get_prev_optimized_traj_points();
   }
 
   // 7. convert to points with validation
-  auto mpt_traj_points = calcMPTPoints(ref_points, *optimized_variables, mpt_mat);
+  const auto mpt_traj_points = calcMPTPoints(ref_points, *optimized_variables, mpt_mat);
   if (!mpt_traj_points) {
     RCLCPP_WARN(logger_, "return std::nullopt since lateral or yaw error is too large.");
-    return std::nullopt;
+    return get_prev_optimized_traj_points();
   }
 
   // 8. publish trajectories for debug
@@ -544,7 +529,7 @@ std::optional<std::vector<TrajectoryPoint>> MPTOptimizer::optimizeTrajectory(
   prev_optimized_traj_points_ptr_ =
     std::make_shared<std::vector<TrajectoryPoint>>(*mpt_traj_points);
 
-  return mpt_traj_points;
+  return *mpt_traj_points;
 }
 
 std::optional<std::vector<TrajectoryPoint>> MPTOptimizer::getPrevOptimizedTrajectoryPoints() const
@@ -1512,7 +1497,6 @@ std::optional<Eigen::VectorXd> MPTOptimizer::calcOptimizedSteerAngles(
   const Eigen::MatrixXd & H = updated_obj_mat.hessian;
   const Eigen::MatrixXd & A = updated_const_mat.linear;
   const auto f = toStdVector(updated_obj_mat.gradient);
-
   const auto upper_bound = toStdVector(updated_const_mat.upper_bound);
   const auto lower_bound = toStdVector(updated_const_mat.lower_bound);
 
@@ -1541,66 +1525,29 @@ std::optional<Eigen::VectorXd> MPTOptimizer::calcOptimizedSteerAngles(
 
   // solve qp
   time_keeper_->start_track("solveOsqp");
-  const autoware::common::osqp::OSQPResult osqp_result = osqp_solver_ptr_->optimize();
+  const auto result = osqp_solver_ptr_->optimize();
   time_keeper_->end_track("solveOsqp");
 
   // check solution status
-  const int solution_status = osqp_result.solution_status;
+  const int solution_status = std::get<3>(result);
   prev_solution_status_ = solution_status;
   if (solution_status != 1) {
-    const std::vector<double> lagrange_multiplier = osqp_result.lagrange_multipliers;
-    const int status_polish = osqp_result.polish_status;
-    const int exit_flag = osqp_result.exit_flag;
-
-    RCLCPP_INFO(logger_, "optimization failed: result contains NaN values");
-    RCLCPP_INFO(logger_, "Problem details:");
-    RCLCPP_INFO_STREAM(logger_, "P_csc: " << P_csc);
-    RCLCPP_INFO_STREAM(logger_, "f: " << vectorToString(f));
-    RCLCPP_INFO_STREAM(logger_, "A_csc: " << A_csc);
-    RCLCPP_INFO_STREAM(logger_, "lower_bound: " << vectorToString(lower_bound));
-    RCLCPP_INFO_STREAM(logger_, "upper_bound: " << vectorToString(upper_bound));
-    RCLCPP_INFO(logger_, "Solver details:");
-    RCLCPP_INFO_STREAM(logger_, "lagrange_multiplier: " << vectorToString(lagrange_multiplier));
-    RCLCPP_INFO_STREAM(logger_, "status_polish: " << status_polish);
-    RCLCPP_INFO_STREAM(logger_, "solution_status: " << solution_status);
-    RCLCPP_INFO_STREAM(logger_, "exit_flag: " << exit_flag);
-
     osqp_solver_ptr_->logUnsolvedStatus("[MPT]");
     return std::nullopt;
   }
 
   // print iteration
-  const int iteration_status = osqp_result.iteration_status;
+  const int iteration_status = std::get<4>(result);
   RCLCPP_INFO_EXPRESSION(logger_, enable_debug_info_, "iteration: %d", iteration_status);
 
   // get optimization result
   auto optimization_result =
-    osqp_result.primal_solution;  // NOTE: const cannot be added due to the next operation.
-
+    std::get<0>(result);  // NOTE: const cannot be added due to the next operation.
   const auto has_nan = std::any_of(
     optimization_result.begin(), optimization_result.end(),
     [](const auto v) { return std::isnan(v); });
-
   if (has_nan) {
-    const std::vector<double> lagrange_multiplier = osqp_result.lagrange_multipliers;
-    const int status_polish = osqp_result.polish_status;
-    const int exit_flag = osqp_result.exit_flag;
-
-    RCLCPP_INFO(logger_, "optimization failed: result contains NaN values");
-    RCLCPP_INFO(logger_, "Problem details:");
-    RCLCPP_INFO_STREAM(logger_, "P_csc: " << P_csc);
-    RCLCPP_INFO_STREAM(logger_, "f: " << vectorToString(f));
-    RCLCPP_INFO_STREAM(logger_, "A_csc: " << A_csc);
-    RCLCPP_INFO_STREAM(logger_, "lower_bound: " << vectorToString(lower_bound));
-    RCLCPP_INFO_STREAM(logger_, "upper_bound: " << vectorToString(upper_bound));
-    RCLCPP_INFO(logger_, "Solver details:");
-    RCLCPP_INFO_STREAM(logger_, "optimization_result: " << vectorToString(optimization_result));
-    RCLCPP_INFO_STREAM(logger_, "lagrange_multiplier: " << vectorToString(lagrange_multiplier));
-    RCLCPP_INFO_STREAM(logger_, "status_polish: " << status_polish);
-    RCLCPP_INFO_STREAM(logger_, "solution_status: " << solution_status);
-    RCLCPP_INFO_STREAM(logger_, "iteration_status: " << iteration_status);
-    RCLCPP_INFO_STREAM(logger_, "exit_flag: " << exit_flag);
-
+    RCLCPP_WARN(logger_, "optimization failed: result contains NaN values");
     return std::nullopt;
   }
   const Eigen::VectorXd optimized_variables =

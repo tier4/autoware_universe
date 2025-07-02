@@ -363,10 +363,11 @@ int64_t OSQPInterface::initializeProblem(
   return m_exitflag;
 }
 
-OSQPResult OSQPInterface::solve()
+std::tuple<std::vector<double>, std::vector<double>, int64_t, int64_t, int64_t>
+OSQPInterface::solve()
 {
   // Solve Problem
-  int32_t exit_flag = osqp_solve(m_work.get());
+  osqp_solve(m_work.get());
 
   /********************
    * EXTRACT SOLUTION
@@ -381,28 +382,25 @@ OSQPResult OSQPInterface::solve()
   int64_t status_iteration = m_work->info->iter;
 
   // Result tuple
-  OSQPResult result;
-
-  result.primal_solution = sol_primal;
-  result.lagrange_multipliers = sol_lagrange_multiplier;
-  result.polish_status = status_polish;
-  result.solution_status = status_solution;
-  result.iteration_status = status_iteration;
-  result.exit_flag = exit_flag;
+  std::tuple<std::vector<double>, std::vector<double>, int64_t, int64_t, int64_t> result =
+    std::make_tuple(
+      sol_primal, sol_lagrange_multiplier, status_polish, status_solution, status_iteration);
 
   m_latest_work_info = *(m_work->info);
 
   return result;
 }
 
-OSQPResult OSQPInterface::optimize()
+std::tuple<std::vector<double>, std::vector<double>, int64_t, int64_t, int64_t>
+OSQPInterface::optimize()
 {
   // Run the solver on the stored problem representation.
-  OSQPResult result = solve();
+  std::tuple<std::vector<double>, std::vector<double>, int64_t, int64_t, int64_t> result = solve();
   return result;
 }
 
-OSQPResult OSQPInterface::optimize(
+std::tuple<std::vector<double>, std::vector<double>, int64_t, int64_t, int64_t>
+OSQPInterface::optimize(
   const Eigen::MatrixXd & P, const Eigen::MatrixXd & A, const std::vector<double> & q,
   const std::vector<double> & l, const std::vector<double> & u)
 {
@@ -410,7 +408,7 @@ OSQPResult OSQPInterface::optimize(
   initializeProblem(P, A, q, l, u);
 
   // Run the solver on the stored problem representation.
-  OSQPResult result = solve();
+  std::tuple<std::vector<double>, std::vector<double>, int64_t, int64_t, int64_t> result = solve();
 
   m_work.reset();
   m_work_initialized = false;
