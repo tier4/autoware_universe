@@ -265,7 +265,9 @@ autoware_perception_msgs::msg::TrafficLightGroupArray SignalMatchValidator::vali
     // arrows, then prioritize the internal signal
     bool perception_has_arrows = false;
     for (const auto & element : perception_result->elements) {
-      if (element.shape != Element::CIRCLE && element.shape != Element::CROSS) {
+      if (
+        element.shape != autoware_perception_msgs::msg::TrafficLightElement::CIRCLE &&
+        element.shape != autoware_perception_msgs::msg::TrafficLightElement::CROSS) {
         perception_has_arrows = true;
         break;
       }
