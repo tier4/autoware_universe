@@ -21,7 +21,9 @@
       BICYCLE : true
       PEDESTRIAN : true
       ANIMAL: true
-
+    model_path: "/opt/autoware/mlmodels/yolox/yolox-sPlus-T4-960x960-debris.onnx"
+    label_path: "/opt/autoware/mlmodels/yolox/label.txt"
+    color_map_path: "/opt/autoware/mlmodels/yolox/semseg_color_map.csv"
     score_threshold: 0.35
     nms_threshold: 0.7
 
