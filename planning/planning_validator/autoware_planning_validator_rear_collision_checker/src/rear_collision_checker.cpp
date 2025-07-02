@@ -123,7 +123,7 @@ void RearCollisionChecker::setup_diag()
 {
   context_->add_diag(
     "rear_collision_risk", context_->validation_status->is_no_collision_risk_rear,
-    "obstacle detected behind the vehicle", false);
+    "obstacle detected behind the vehicle");
 }
 
 void RearCollisionChecker::fill_rss_distance(PointCloudObjects & objects) const
@@ -798,16 +798,15 @@ bool RearCollisionChecker::is_safe(DebugData & debug)
 
   {
     if (is_safe(pointcloud_objects, debug)) {
-      last_safe_time_ = now;
       if ((now - last_unsafe_time_).seconds() > p.common.off_time_buffer) {
+        last_safe_time_ = now;
         return true;
       }
+    } else if ((now - last_safe_time_).seconds() < p.common.on_time_buffer) {
+      RCLCPP_WARN(logger_, "[RCC] Momentary collision risk detected.");
+      return true;
     } else {
       last_unsafe_time_ = now;
-      RCLCPP_WARN(logger_, "[RCC] Momentary collision risk detected.");
-      if ((now - last_safe_time_).seconds() < p.common.on_time_buffer) {
-        return true;
-      }
     }
 
     {
