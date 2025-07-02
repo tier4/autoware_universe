@@ -261,6 +261,20 @@ autoware_perception_msgs::msg::TrafficLightGroupArray SignalMatchValidator::vali
       continue;
     }
 
+    // if prioritize_internal_signals_when_arrows_present_ is true, and the internal signal has
+    // arrows, then prioritize the internal signal
+    bool perception_has_arrows = false;
+    for (const auto & element : perception_result->elements) {
+      if (element.shape != Element::CIRCLE && element.shape != Element::CROSS) {
+        perception_has_arrows = true;
+        break;
+      }
+    }
+    if (prioritize_internal_signals_when_arrows_present_ && perception_has_arrows) {
+      validated_signals.traffic_light_groups.emplace_back(*perception_result);
+      continue;
+    }
+
     // Check if they have the same elements
     if (!util::are_all_elements_equivalent(
           perception_result->elements, external_result->elements)) {
@@ -287,6 +301,13 @@ void SignalMatchValidator::setPedestrianSignals(
 void SignalMatchValidator::setExternalPriority(const bool external_priority)
 {
   external_priority_ = external_priority;
+}
+
+void SignalMatchValidator::setPrioritizeInternalSignalsWhenArrowsPresent(
+  const bool prioritize_internal_signals_when_arrows_present)
+{
+  prioritize_internal_signals_when_arrows_present_ =
+    prioritize_internal_signals_when_arrows_present;
 }
 
 bool SignalMatchValidator::isPedestrianSignal(const lanelet::Id & signal_id)
