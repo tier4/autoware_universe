@@ -164,14 +164,10 @@ std::vector<TrajectoryPoint> OptimizationTrajectoryBasedCenterline::optimize_tra
       virtual_ego_pose};
     const auto optimized_traj_points = mpt_optimizer_ptr->optimizeTrajectory(planner_data);
 
-    if (!optimized_traj_points) {
-      return whole_optimized_traj_points;
-    }
-
     // connect the previously and currently optimized trajectory points
     for (size_t j = 0; j < whole_optimized_traj_points.size(); ++j) {
       const double dist = autoware::universe_utils::calcDistance2d(
-        whole_optimized_traj_points.at(j), optimized_traj_points->front());
+        whole_optimized_traj_points.at(j), optimized_traj_points.front());
       if (dist < 0.5) {
         const std::vector<TrajectoryPoint> extracted_whole_optimized_traj_points{
           whole_optimized_traj_points.begin(),
@@ -180,8 +176,8 @@ std::vector<TrajectoryPoint> OptimizationTrajectoryBasedCenterline::optimize_tra
         break;
       }
     }
-    for (size_t j = 0; j < optimized_traj_points->size(); ++j) {
-      whole_optimized_traj_points.push_back(optimized_traj_points->at(j));
+    for (size_t j = 0; j < optimized_traj_points.size(); ++j) {
+      whole_optimized_traj_points.push_back(optimized_traj_points.at(j));
     }
   }
 
