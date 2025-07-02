@@ -122,8 +122,8 @@ void RearCollisionChecker::validate(bool & is_critical)
 void RearCollisionChecker::setup_diag()
 {
   context_->add_diag(
-    "rear_collision_risk", context_->validation_status->is_no_collision_risk_rear,
-    "obstacle detected behind the vehicle", false);
+    "rear_collision_check", context_->validation_status->is_valid_rear_collision_check,
+    "obstacle detected behind the vehicle");
 }
 
 void RearCollisionChecker::fill_rss_distance(PointCloudObjects & objects) const
