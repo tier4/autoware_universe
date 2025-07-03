@@ -56,6 +56,60 @@ When `use_perception_filter` is enabled, the following topic remapping occurs:
 - **Filtered mode** (`use_perception_filter:=true`): Planning modules subscribe to `/perception/obstacle_segmentation/filtered_pointcloud`
 - **Normal mode** (`use_perception_filter:=false`): Planning modules subscribe to `/perception/obstacle_segmentation/pointcloud`
 
+#### Topic Flow Diagram
+
+```mermaid
+graph LR
+    subgraph "Perception"
+        P1[Object Recognition]
+        P2[Obstacle Segmentation]
+    end
+
+    subgraph "Filter"
+        F[Perception Filter]
+    end
+
+    subgraph "Planning"
+        PL[Planning Modules]
+    end
+
+    P1 -->|objects| F
+    P2 -->|pointcloud| F
+    F -->|filtered_objects| PL
+    F -->|filtered_pointcloud| PL
+
+    P1 -.-|objects bypass| PL
+    P2 -.-|pointcloud bypass| PL
+
+    classDef perception fill:#e1f5fe
+    classDef filter fill:#fff3e0
+    classDef planning fill:#f3e5f5
+
+    class P1,P2 perception
+    class F filter
+    class PL planning
+```
+
+#### Topic Switching States
+
+```mermaid
+graph TD
+    A[use_perception_filter] --> B{Enable Filter?}
+    B -->|true| C[Filtered Mode]
+    B -->|false| D[Normal Mode]
+
+    C --> E[Planning uses:<br/>• filtered_objects<br/>• filtered_pointcloud]
+    D --> F[Planning uses:<br/>• objects<br/>• pointcloud]
+
+    classDef param fill:#e8f5e8
+    classDef decision fill:#fff9c4
+    classDef mode fill:#f0f4ff
+
+    class A param
+    class B decision
+    class C,D,E,F mode
+```
+
 ### Integration Points
 
 The topic switching is implemented at multiple levels in the launch hierarchy:
