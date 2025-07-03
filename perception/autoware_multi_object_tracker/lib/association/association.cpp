@@ -283,6 +283,13 @@ double DataAssociation::calculateScore(
 
   if (mahalanobis_dist >= mahalanobis_dist_threshold) return 0.0;
 
+  // Skip IoU check for pedestrians and use distance-based score
+  if (measurement_label == 7) {
+    const double ratio_sq = (dist_sq < max_dist_sq) ? dist_sq / max_dist_sq : 1.0;
+    const double score = 1.0 - std::sqrt(ratio_sq);
+    return (score >= score_threshold_) * score;
+  }
+
   // 2d iou gate
   const double min_iou = config_.min_iou_matrix(tracker_label, measurement_label);
   const double min_union_iou_area = 1e-2;
