@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypename="package_format3.xsd"?>
+<package format="3">
+  <name>autoware_perception_filter</name>
+  <version>0.1.0</version>
+  <description>Perception filter package that filters perception data based on external approval</description>
+  <maintainer email="kyoichi.sugahara@tier4.jp">Kyoichi Sugahara</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>autoware_perception_msgs</depend>
+  <depend>autoware_utils</depend>
+  <depend>geometry_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>autoware_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
