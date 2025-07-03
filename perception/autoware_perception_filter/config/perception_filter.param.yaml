@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    # Enable/disable filtering for objects
+    enable_object_filtering: true
+
+    # Enable/disable filtering for pointcloud
+    enable_pointcloud_filtering: true
