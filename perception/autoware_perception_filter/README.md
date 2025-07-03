@@ -30,6 +30,86 @@ This package provides a perception filter node that filters perception data base
 | `enable_object_filtering`     | bool | true          | Enable/disable object filtering     |
 | `enable_pointcloud_filtering` | bool | true          | Enable/disable pointcloud filtering |
 
+## Topic Name Switching Strategy
+
+### Overview
+
+The perception filter integrates with Autoware's launch system through a topic name switching strategy. This allows the system to seamlessly switch between filtered and unfiltered perception data based on the `use_perception_filter` launch argument.
+
+### Launch Arguments
+
+| Name                    | Type | Default Value | Description                                  |
+| ----------------------- | ---- | ------------- | -------------------------------------------- |
+| `use_perception_filter` | bool | false         | Enable/disable perception filter integration |
+
+### Topic Remapping Strategy
+
+When `use_perception_filter` is enabled, the following topic remapping occurs:
+
+#### Objects Topic
+
+- **Filtered mode** (`use_perception_filter:=true`): Planning modules subscribe to `/perception/object_recognition/filtered_objects`
+- **Normal mode** (`use_perception_filter:=false`): Planning modules subscribe to `/perception/object_recognition/objects`
+
+#### Pointcloud Topic
+
+- **Filtered mode** (`use_perception_filter:=true`): Planning modules subscribe to `/perception/obstacle_segmentation/filtered_pointcloud`
+- **Normal mode** (`use_perception_filter:=false`): Planning modules subscribe to `/perception/obstacle_segmentation/pointcloud`
+
+### Integration Points
+
+The topic switching is implemented at multiple levels in the launch hierarchy:
+
+1. **autoware.launch.xml**: Defines conditional topic variables
+2. **tier4_planning_component.launch.xml**: Receives and passes topic arguments
+3. **Planning modules**: Use remapped topics for perception input
+
+### Example Usage
+
+#### Enable Perception Filter (Real Vehicle)
+
+```bash
+ros2 launch autoware_launch autoware.launch.xml \
+  map_path:=/path/to/map \
+  vehicle_model:=your_vehicle \
+  sensor_model:=your_sensor \
+  use_perception_filter:=true
+```
+
+#### Disable Perception Filter (Default)
+
+```bash
+ros2 launch autoware_launch autoware.launch.xml \
+  map_path:=/path/to/map \
+  vehicle_model:=your_vehicle \
+  sensor_model:=your_sensor \
+  use_perception_filter:=false
+```
+
+#### Planning Simulator with Perception Filter
+
+```bash
+ros2 launch autoware_launch planning_simulator.launch.xml \
+  map_path:=/path/to/map \
+  vehicle_model:=your_vehicle \
+  sensor_model:=your_sensor \
+  use_perception_filter:=true
+```
+
+### Implementation Details
+
+The topic switching is implemented using ROS 2 launch system's conditional logic:
+
+```xml
+<!-- Conditional topic remapping based on perception filter usage -->
+<let name="objects_topic" value="/perception/object_recognition/filtered_objects" if="$(var use_perception_filter)"/>
+<let name="objects_topic" value="/perception/object_recognition/objects" unless="$(var use_perception_filter)"/>
+<let name="pointcloud_topic" value="/perception/obstacle_segmentation/filtered_pointcloud" if="$(var use_perception_filter)"/>
+<let name="pointcloud_topic" value="/perception/obstacle_segmentation/pointcloud" unless="$(var use_perception_filter)"/>
+```
+
+These variables are then passed through the launch hierarchy to ensure all planning modules receive the correct topic names.
+
 ## Usage
 
 ### Launch
@@ -55,16 +135,6 @@ ros2 launch autoware_perception_filter perception_filter.launch.xml
 
 ## Node Graph
 
-```text
-/external/approval ────────┐
-                           │
-/perception/object_recognition/objects ──┐
-                                         │
-                                    [perception_filter_node]
-                                         │
-/perception/obstacle_segmentation/pointcloud ──┘
-                                         │
-                                         ├── /perception/object_recognition/filtered_objects
-                                         │
-                                         └── /perception/obstacle_segmentation/filtered_pointcloud
-```
+![Node Graph](docs/perception_filter_node_architecture.drawio.png)
+
+_See [perception_filter_node_graph.drawio](docs/perception_filter_node_architecture.drawio) for the editable DrawIO diagram._
