@@ -1,5 +1,7 @@
 <launch>
   <!-- planning module -->
+  <arg name="input_objects_topic" default="/perception/object_recognition/objects"/>
+  <arg name="input_pointcloud_topic" default="/perception/obstacle_segmentation/pointcloud"/>
 
   <!-- mission planner -->
   <arg name="mission_planner_param_path"/>
@@ -30,6 +32,8 @@
       <include file="$(find-pkg-share tier4_planning_launch)/launch/scenario_planning/scenario_planning.launch.xml">
         <arg name="enable_all_modules_auto_mode" value="$(var enable_all_modules_auto_mode)"/>
         <arg name="is_simulation" value="$(var is_simulation)"/>
+        <arg name="input_objects_topic" value="$(var input_objects_topic)"/>
+        <arg name="input_pointcloud_topic" value="$(var input_pointcloud_topic)"/>
       </include>
     </group>
 
