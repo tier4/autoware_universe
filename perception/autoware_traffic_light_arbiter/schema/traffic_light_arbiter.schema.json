@@ -30,6 +30,11 @@
           "type": "boolean",
           "description": "Decide whether to validate the match between perception signals and external signals. If set to true, verify that the colors match and only publish them if they are identical.",
           "default": false
+        },
+        "prioritize_internal_signals_when_arrows_present": {
+          "type": "boolean",
+          "description": "Whether to prioritize internal signals when arrows are present. This is only meant for beta/v0.48.",
+          "default": false
         }
       },
       "required": [

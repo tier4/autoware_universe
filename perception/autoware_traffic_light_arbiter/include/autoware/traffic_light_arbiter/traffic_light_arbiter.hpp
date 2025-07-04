@@ -57,6 +57,7 @@ private:
   double perception_time_tolerance_;
   bool external_priority_;
   bool enable_signal_matching_;
+  bool prioritize_internal_signals_when_arrows_present_;
 
   TrafficSignalArray latest_perception_msg_;
   TrafficSignalArray latest_external_msg_;

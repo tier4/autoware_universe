@@ -13,6 +13,8 @@ A node that merges traffic light/signal state from image recognition and externa
 When `enable_signal_matching` is set to true, this node validates the match between perception signals and external signals.
 The table below outlines how the matching process determines the output based on the combination of perception and external signal colors. Each cell represents the outcome when a specific color from a perception signal (columns) intersects with a color from an external signal (rows).
 
+There is a temporary parameter `prioritize_internal_signals_when_arrows_present` that is used in addressing the issue with current v2i input (the parameters is only meant for `beta/v0.48`). The issue is with v2i not recognizing arrows in the traffic lights. Thus, when there are arrows in the internal signal (from camera), we will prioritize it, because v2i is unreliable in this case.
+
 | External \ Perception | RED     | AMBER   | GREEN   | UNKNOWN | Not Received |
 | --------------------- | ------- | ------- | ------- | ------- | ------------ |
 | RED                   | RED     | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN      |
