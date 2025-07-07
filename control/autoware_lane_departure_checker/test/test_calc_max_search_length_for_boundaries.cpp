@@ -49,7 +49,7 @@ constexpr double rear_overhang_m = 1.1;
 constexpr double left_overhang_m = 0.128;
 constexpr double right_overhang_m = 0.128;
 constexpr double vehicle_height_m = 2.5;
-constexpr double max_steer_angle_rad = 0.70;
+constexpr double max_steer_angle_rad = 0.645;
 }  // namespace
 
 struct CalcMaxSearchLengthForBoundariesParam
