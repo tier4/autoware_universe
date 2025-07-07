@@ -46,12 +46,15 @@ public:
    * @param [in] lb_a parameter matrix for constraint lb_a < a*u < ub_a (not used here)
    * @param [in] ub_a parameter matrix for constraint lb_a < a*u < ub_a (not used here)
    * @param [out] u optimal variable vector
+   * @param [out] dual_eq dual variables for equality constraints
+   * @param [out] dual_ineq dual variables for inequality constraints
    * @return true if the problem was solved
    */
   bool solve(
     const Eigen::MatrixXd & h_mat, const Eigen::MatrixXd & f_vec, const Eigen::MatrixXd & a,
     const Eigen::VectorXd & lb, const Eigen::VectorXd & ub, const Eigen::VectorXd & lb_a,
-    const Eigen::VectorXd & ub_a, Eigen::VectorXd & u) override;
+    const Eigen::VectorXd & ub_a, Eigen::VectorXd & u, Eigen::VectorXd & dual_eq, 
+    Eigen::VectorXd & dual_ineq) override;
 
   int64_t getTakenIter() const override { return osqpsolver_.getTakenIter(); }
   double getRunTime() const override { return osqpsolver_.getRunTime(); }

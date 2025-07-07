@@ -365,6 +365,22 @@ private:
   bool isValid(const MPCMatrix & m) const;
 
   /**
+   * @brief Analyze which constraints are active/limiting the first control signal
+   * @param Uex The optimized control input vector
+   * @param dual_eq Dual variables for equality constraints 
+   * @param dual_ineq Dual variables for inequality constraints
+   * @param lb Lower bounds for control inputs
+   * @param ub Upper bounds for control inputs  
+   * @param lbA Lower bounds for rate constraints
+   * @param ubA Upper bounds for rate constraints
+   * @param steer_rate_limits Steering rate limits used
+   */
+  void analyzeConstraintActivity(
+    const VectorXd & Uex, const VectorXd & dual_eq, const VectorXd & dual_ineq,
+    const VectorXd & lb, const VectorXd & ub, const VectorXd & lbA, const VectorXd & ubA,
+    const VectorXd & steer_rate_limits) const;
+
+  /**
    * @brief Get the weight for the MPC optimization based on the curvature.
    * @param curvature The curvature value.
    * @return The weight for the MPC optimization.

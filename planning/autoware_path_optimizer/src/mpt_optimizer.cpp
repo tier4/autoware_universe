@@ -570,6 +570,46 @@ std::vector<ReferencePoint> MPTOptimizer::calcReferencePoints(
   autoware::interpolation::SplineInterpolationPoints2d ref_points_spline(ref_points);
   ego_seg_idx = trajectory_utils::findEgoSegmentIndex(ref_points, p.ego_pose, ego_nearest_param_);
 
+  // // Print spline information
+  // std::cout << "\nSpline Interpolation Info:" << std::endl;
+  // std::cout << "Number of points: " << ref_points_spline.getSize() << std::endl;
+  
+  // // Print spline coefficients
+  // RCLCPP_INFO(logger_, "=== Spline Coefficients ===");
+  
+  const auto& coeff_a_x = ref_points_spline.getSplineCoefficientsAX();
+  const auto& coeff_b_x = ref_points_spline.getSplineCoefficientsBX();
+  const auto& coeff_c_x = ref_points_spline.getSplineCoefficientsCX();
+  const auto& coeff_d_x = ref_points_spline.getSplineCoefficientsDX();
+  
+  const auto& coeff_a_y = ref_points_spline.getSplineCoefficientsAY();
+  const auto& coeff_b_y = ref_points_spline.getSplineCoefficientsBY();
+  const auto& coeff_c_y = ref_points_spline.getSplineCoefficientsCY();
+  const auto& coeff_d_y = ref_points_spline.getSplineCoefficientsDY();
+  
+  // RCLCPP_INFO(logger_, "X coefficients size: %ld", coeff_a_x.size());
+  // RCLCPP_INFO(logger_, "Y coefficients size: %ld", coeff_a_y.size());
+  
+  // // Print first few coefficients
+  // const size_t num_to_print = std::min(size_t(5), static_cast<size_t>(coeff_a_x.size()));
+  // for (size_t i = 0; i < num_to_print; ++i) {
+  //   RCLCPP_INFO(logger_, "[%zu] X: a=%.6f, b=%.6f, c=%.6f, d=%.6f", 
+  //               i, coeff_a_x(i), coeff_b_x(i), coeff_c_x(i), coeff_d_x(i));
+  //   RCLCPP_INFO(logger_, "[%zu] Y: a=%.6f, b=%.6f, c=%.6f, d=%.6f", 
+  //               i, coeff_a_y(i), coeff_b_y(i), coeff_c_y(i), coeff_d_y(i));
+  // }
+  
+  // RCLCPP_INFO(logger_, "=== End Spline Coefficients ===");
+  
+  // std::cout << "\nKnots (accumulated distances):" << std::endl;
+  // for (size_t i = 0; i < ref_points_spline.getSize(); ++i) {
+  //   std::cout << "s[" << i << "] = " << ref_points_spline.getAccumulatedLength(i) << std::endl;
+  // }
+
+  // Note: To get actual coefficients, we would need to modify the SplineInterpolation and
+  // SplineInterpolationPoints2d classes to expose the internal cubic spline coefficients
+  // (typically 4 coefficients per segment for each dimension x,y,z)
+
   // 3. calculate orientation and curvature
   updateOrientation(ref_points, ref_points_spline);
   updateCurvature(ref_points, ref_points_spline);

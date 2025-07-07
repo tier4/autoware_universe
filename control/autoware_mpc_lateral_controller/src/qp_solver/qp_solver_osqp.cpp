@@ -26,7 +26,8 @@ QPSolverOSQP::QPSolverOSQP(const rclcpp::Logger & logger, rclcpp::Clock::SharedP
 bool QPSolverOSQP::solve(
   const Eigen::MatrixXd & h_mat, const Eigen::MatrixXd & f_vec, const Eigen::MatrixXd & a,
   const Eigen::VectorXd & lb, const Eigen::VectorXd & ub, const Eigen::VectorXd & lb_a,
-  const Eigen::VectorXd & ub_a, Eigen::VectorXd & u)
+  const Eigen::VectorXd & ub_a, Eigen::VectorXd & u, Eigen::VectorXd & dual_eq,
+  Eigen::VectorXd & dual_ineq)
 {
   const Eigen::Index raw_a = a.rows();
   const Eigen::Index col_a = a.cols();
@@ -58,6 +59,18 @@ bool QPSolverOSQP::solve(
   std::vector<double> U_osqp = result.primal_solution;
   u = Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, 1>>(
     &U_osqp[0], static_cast<Eigen::Index>(U_osqp.size()), 1);
+
+  // OSQP treats all constraints as inequalities and returns lagrange_multipliers
+  // The structure is: [variable_bounds, constraint_bounds]
+  // For our MPC: [lb, ub, lbA, ubA] bounds
+  std::vector<double> dual_all = result.lagrange_multipliers;
+  
+  // For this MPC problem, we don't have equality constraints
+  dual_eq = Eigen::VectorXd::Zero(0);  // No equality constraints
+  
+  // All dual variables are inequality constraints
+  dual_ineq = Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, 1>>(
+    &dual_all[0], static_cast<Eigen::Index>(dual_all.size()), 1);
 
   const int status_val = result.solution_status;
   if (status_val != 1) {

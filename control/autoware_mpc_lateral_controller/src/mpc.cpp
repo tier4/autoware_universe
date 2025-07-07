@@ -609,8 +609,15 @@ std::pair<ResultWithReason, VectorXd> MPC::executeOptimization(
   lbA(0) = m_raw_steer_cmd_prev - steer_rate_limits(0) * m_ctrl_period;
 
   auto t_start = std::chrono::system_clock::now();
-  bool solve_result = m_qpsolver_ptr->solve(H, f.transpose(), A, lb, ub, lbA, ubA, Uex);
+  VectorXd dual_eq, dual_ineq;  // Dual variables (not used currently but required by interface)
+  bool solve_result = m_qpsolver_ptr->solve(H, f.transpose(), A, lb, ub, lbA, ubA, Uex, dual_eq, dual_ineq);
   auto t_end = std::chrono::system_clock::now();
+  
+  // Analyze constraint activity for the first control signal
+  if (solve_result) {
+    analyzeConstraintActivity(Uex, dual_eq, dual_ineq, lb, ub, lbA, ubA, steer_rate_limits);
+  }
+  
   if (!solve_result) {
     return {ResultWithReason{false, "qp solver error"}, {}};
   }
@@ -850,5 +857,101 @@ bool MPC::isValid(const MPCMatrix & m) const
   }
 
   return true;
+}
+
+void MPC::analyzeConstraintActivity(
+  const VectorXd & Uex, const VectorXd & dual_eq, const VectorXd & dual_ineq,
+  const VectorXd & lb, const VectorXd & ub, const VectorXd & lbA, const VectorXd & ubA,
+  const VectorXd & steer_rate_limits) const
+{
+  // Suppress unused parameter warnings
+  (void)dual_eq;
+  (void)steer_rate_limits;
+  (void)lb;
+  (void)ubA;
+  
+  const double first_control = Uex(0);
+  const int n_vars = Uex.size();
+  const int n_rate_constraints = lbA.size();
+  (void)n_rate_constraints;  // Used only for dual variable indexing logic
+  
+  if (dual_ineq.size() == 0) {
+    return;
+  }
+  
+  const double DUAL_TOLERANCE = 1e-6;
+  const double CONSTRAINT_TOLERANCE = 1e-4;
+  
+  RCLCPP_INFO(m_logger, "=== MPC Constraint Analysis ===");
+  RCLCPP_INFO(m_logger, "Proposed steering: %.4f rad (%.1f deg)", 
+               first_control, rad2deg(first_control));
+  
+  // Check which constraints are active (near their limits)
+  bool has_active_constraint = false;
+  
+  // Check steering angle limits
+  if (std::abs(first_control - ub(0)) < CONSTRAINT_TOLERANCE) {
+    RCLCPP_INFO(m_logger, "ACTIVE: Upper steering limit (%.1f deg)", rad2deg(ub(0)));
+    has_active_constraint = true;
+  } else if (std::abs(first_control - lb(0)) < CONSTRAINT_TOLERANCE) {
+    RCLCPP_INFO(m_logger, "ACTIVE: Lower steering limit (%.1f deg)", rad2deg(lb(0)));
+    has_active_constraint = true;
+  }
+  
+  // Check steering rate limits  
+  if (std::abs(first_control - ubA(0)) < CONSTRAINT_TOLERANCE) {
+    const double rate_used = (first_control - m_raw_steer_cmd_prev) / m_ctrl_period;
+    RCLCPP_INFO(m_logger, "ACTIVE: Upper rate limit (%.1f deg/s)", rad2deg(rate_used));
+    has_active_constraint = true;
+  } else if (std::abs(first_control - lbA(0)) < CONSTRAINT_TOLERANCE) {
+    const double rate_used = (first_control - m_raw_steer_cmd_prev) / m_ctrl_period;
+    RCLCPP_INFO(m_logger, "ACTIVE: Lower rate limit (%.1f deg/s)", rad2deg(rate_used));
+    has_active_constraint = true;
+  }
+  
+  if (!has_active_constraint) {
+    RCLCPP_INFO(m_logger, "No constraints active");
+  }
+  
+  // Find highest sensitivity constraint from dual variables
+  double max_sensitivity = 0.0;
+  int max_idx = -1;
+  std::string max_constraint_type = "";
+  
+  for (int i = 0; i < dual_ineq.size(); ++i) {
+    if (std::abs(dual_ineq(i)) > DUAL_TOLERANCE) {
+      double sensitivity = 0.0;
+      std::string constraint_type = "";
+      
+      if (i == 0) {
+        // Lower bound u[0] >= lb[0]
+        sensitivity = std::abs(dual_ineq(i));
+        constraint_type = "Steering lower bound";
+      } else if (i == n_vars) {
+        // Upper bound u[0] <= ub[0]  
+        sensitivity = std::abs(dual_ineq(i));
+        constraint_type = "Steering upper bound";
+      } else if (i == 2 * n_vars) {
+        // First rate constraint
+        sensitivity = std::abs(dual_ineq(i));
+        constraint_type = "Rate constraint (first)";
+      } else if (i == 2 * n_vars + 1) {
+        // Second rate constraint  
+        sensitivity = std::abs(dual_ineq(i));
+        constraint_type = "Rate constraint (second)";
+      }
+      
+      if (sensitivity > max_sensitivity) {
+        max_sensitivity = sensitivity;
+        max_idx = i;
+        max_constraint_type = constraint_type;
+      }
+    }
+  }
+  
+  if (max_idx >= 0) {
+    RCLCPP_INFO(m_logger, "Highest sensitivity: %s (λ=%.3f)", 
+                max_constraint_type.c_str(), dual_ineq(max_idx));
+  }
 }
 }  // namespace autoware::motion::control::mpc_lateral_controller
