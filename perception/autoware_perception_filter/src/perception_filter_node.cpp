@@ -19,7 +19,7 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <std_msgs/msg/bool.hpp>
+#include <unique_identifier_msgs/msg/uuid.hpp>
 
 #include <memory>
 
@@ -27,13 +27,17 @@ namespace autoware::perception_filter
 {
 
 PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_options)
-: Node("perception_filter_node", node_options), approval_received_(false), predicted_path_(nullptr)
+: Node("perception_filter_node", node_options), predicted_path_(nullptr)
 {
   // Declare parameters
   enable_object_filtering_ = declare_parameter<bool>("enable_object_filtering", true);
   enable_pointcloud_filtering_ = declare_parameter<bool>("enable_pointcloud_filtering", true);
   filter_distance_ = declare_parameter<double>("filter_distance", 3.0);  // Default 3m
   min_distance_ = declare_parameter<double>("min_distance", 1.0);       // Default 1m
+
+  // Initialize RTC interface
+  rtc_interface_ = std::make_unique<autoware::rtc_interface::RTCInterface>(this, "perception_filter");
+  rtc_uuid_ = autoware::universe_utils::generateUUID();
 
   // Initialize subscribers
   objects_sub_ = create_subscription<autoware_perception_msgs::msg::PredictedObjects>(
@@ -43,10 +47,6 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   pointcloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
     "input/pointcloud", rclcpp::QoS{1},
     std::bind(&PerceptionFilterNode::onPointCloud, this, std::placeholders::_1));
-
-  approval_sub_ = create_subscription<std_msgs::msg::Bool>(
-    "input/approval", rclcpp::QoS{1},
-    std::bind(&PerceptionFilterNode::onApproval, this, std::placeholders::_1));
 
   predicted_path_sub_ = create_subscription<autoware_planning_msgs::msg::Trajectory>(
     "input/predicted_path", rclcpp::QoS{1},
@@ -68,6 +68,9 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
 void PerceptionFilterNode::onObjects(
   const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg)
 {
+  // Update RTC status
+  updateRTCStatus();
+
   if (!enable_object_filtering_) {
     filtered_objects_pub_->publish(*msg);
     published_time_publisher_->publish_if_subscribed(filtered_objects_pub_, msg->header.stamp);
@@ -82,6 +85,9 @@ void PerceptionFilterNode::onObjects(
 
 void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
 {
+  // Update RTC status
+  updateRTCStatus();
+
   if (!enable_pointcloud_filtering_) {
     filtered_pointcloud_pub_->publish(*msg);
     published_time_publisher_->publish_if_subscribed(filtered_pointcloud_pub_, msg->header.stamp);
@@ -94,16 +100,26 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
 }
 
-void PerceptionFilterNode::onApproval(const std_msgs::msg::Bool::ConstSharedPtr msg)
-{
-  approval_received_ = msg->data;
-  RCLCPP_INFO(get_logger(), "Approval status updated: %s", approval_received_ ? "true" : "false");
-}
-
 void PerceptionFilterNode::onPredictedPath(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
 {
   predicted_path_ = msg;
   RCLCPP_DEBUG(get_logger(), "Predicted path received with %zu points", msg->points.size());
+}
+
+void PerceptionFilterNode::updateRTCStatus()
+{
+  if (!rtc_interface_) {
+    return;
+  }
+
+  const bool safe = true;  // Always safe for perception filtering
+  const auto state = tier4_rtc_msgs::msg::State::RUNNING;
+  const double start_distance = 0.0;
+  const double finish_distance = std::numeric_limits<double>::max();
+
+  rtc_interface_->updateCooperateStatus(
+    rtc_uuid_, safe, state, start_distance, finish_distance, this->now());
+  rtc_interface_->publishCooperateStatus(this->now());
 }
 
 autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObjects(
@@ -112,9 +128,10 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
   autoware_perception_msgs::msg::PredictedObjects filtered_objects;
   filtered_objects.header = input_objects.header;
 
-  if (!approval_received_) {
-    // If approval is not received, filter out all objects
-    RCLCPP_DEBUG(get_logger(), "Filtering objects due to no approval");
+  // Check if RTC interface is activated
+  if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
+    // If RTC is not activated, filter out all objects
+    RCLCPP_DEBUG(get_logger(), "Filtering objects due to RTC not activated");
     return filtered_objects;
   }
 
@@ -143,8 +160,9 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   sensor_msgs::msg::PointCloud2 filtered_pointcloud;
   filtered_pointcloud.header = input_pointcloud.header;
 
-  if (!approval_received_) {
-    // If approval is not received, return empty pointcloud
+  // Check if RTC interface is activated
+  if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
+    // If RTC is not activated, return empty pointcloud
     filtered_pointcloud.height = 0;
     filtered_pointcloud.width = 0;
     filtered_pointcloud.fields = input_pointcloud.fields;
@@ -154,7 +172,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     filtered_pointcloud.data.clear();
     filtered_pointcloud.is_dense = input_pointcloud.is_dense;
 
-    RCLCPP_DEBUG(get_logger(), "Filtering pointcloud due to no approval");
+    RCLCPP_DEBUG(get_logger(), "Filtering pointcloud due to RTC not activated");
     return filtered_pointcloud;
   }
 

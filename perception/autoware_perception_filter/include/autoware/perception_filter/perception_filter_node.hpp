@@ -16,13 +16,15 @@
 #define AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_NODE_HPP_
 
 #include <autoware_utils/ros/published_time_publisher.hpp>
+#include <autoware/universe_utils/ros/uuid_helper.hpp>
+#include <autoware/rtc_interface/rtc_interface.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <std_msgs/msg/bool.hpp>
 #include <geometry_msgs/msg/point.hpp>
+#include <unique_identifier_msgs/msg/uuid.hpp>
 
 #include <memory>
 
@@ -38,7 +40,6 @@ private:
   // Callback functions
   void onObjects(const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg);
   void onPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
-  void onApproval(const std_msgs::msg::Bool::ConstSharedPtr msg);
   void onPredictedPath(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
 
   // Filter functions
@@ -57,10 +58,12 @@ private:
     const autoware_planning_msgs::msg::Trajectory & path,
     double filter_distance, double min_distance);
 
+  // RTC interface functions
+  void updateRTCStatus();
+
   // Subscribers
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr objects_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr approval_sub_;
   rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr predicted_path_sub_;
 
   // Publishers
@@ -71,8 +74,11 @@ private:
   // Published time publisher
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
+  // RTC interface
+  std::unique_ptr<autoware::rtc_interface::RTCInterface> rtc_interface_;
+  unique_identifier_msgs::msg::UUID rtc_uuid_;
+
   // State variables
-  bool approval_received_;
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr predicted_path_;
 
   // Parameters

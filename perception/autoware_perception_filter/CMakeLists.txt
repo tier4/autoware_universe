@@ -14,6 +14,10 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(autoware_utils REQUIRED)
+find_package(autoware_rtc_interface REQUIRED)
+find_package(tier4_rtc_msgs REQUIRED)
+find_package(unique_identifier_msgs REQUIRED)
+find_package(autoware_universe_utils REQUIRED)
 
 # Include directories
 include_directories(include)
