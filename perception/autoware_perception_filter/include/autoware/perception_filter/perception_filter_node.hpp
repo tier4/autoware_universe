@@ -25,6 +25,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
 
@@ -61,6 +62,15 @@ private:
   // RTC interface functions
   void updateRTCStatus();
 
+  // Debug visualization functions
+  void publishDebugMarkers(
+    const autoware_perception_msgs::msg::PredictedObjects & input_objects,
+    const autoware_perception_msgs::msg::PredictedObjects & filtered_objects,
+    bool rtc_activated);
+  visualization_msgs::msg::Marker createObjectMarker(
+    const autoware_perception_msgs::msg::PredictedObjects & objects,
+    const std::string & frame_id, int id, const std::array<double, 4> & color);
+
   // Subscribers
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr objects_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
@@ -70,6 +80,9 @@ private:
   rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr
     filtered_objects_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr filtered_pointcloud_pub_;
+
+  // Debug visualization publishers
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_markers_pub_;
 
   // Published time publisher
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;

@@ -22,6 +22,12 @@ This package provides a perception filter node that filters perception data base
 | `output/filtered_objects`    | `autoware_perception_msgs::msg::PredictedObjects` | Filtered predicted objects   |
 | `output/filtered_pointcloud` | `sensor_msgs::msg::PointCloud2`                   | Filtered obstacle pointcloud |
 
+### Debug Visualization Topics
+
+| Name | Type | Description |
+|------|------|-------------|
+| `debug/filtering_markers` | `visualization_msgs::msg::MarkerArray` | Debug visualization markers for filtering status |
+
 ### RTC Interface Topics/Services
 
 | Name | Type | Description |
@@ -201,6 +207,53 @@ ros2 launch autoware_perception_filter perception_filter.launch.xml
 
 ## Behavior
 
+### Debug Visualization
+
+The perception filter provides debug visualization to help understand the filtering behavior:
+
+#### Debug Markers
+
+The node publishes visualization markers on the `debug/filtering_markers` topic that show:
+
+- **Red markers**: Objects that were filtered out (removed from output)
+- **Green markers**: Objects that passed through (included in output)
+- **Status text**: Current RTC activation status and object counts
+
+#### Visualization Details
+
+- **Marker Type**: Cube list markers for easy visualization
+- **Color Coding**:
+  - Red: Filtered out objects (when RTC is activated and objects are near path)
+  - Green: Passed through objects (when RTC is not activated or objects are far from path)
+- **Status Display**: Text marker showing RTC status and object counts
+- **Frame**: All markers are published in the "map" frame
+
+#### Usage
+
+To view the debug visualization:
+
+```bash
+# In RViz, add a MarkerArray display
+# Set the topic to: /perception_filter_node/debug/filtering_markers
+
+# Or monitor the topic directly
+ros2 topic echo /perception_filter_node/debug/filtering_markers
+```
+
+#### Debug Information
+
+The node also logs debug information:
+
+```bash
+# Enable debug logging
+ros2 run autoware_perception_filter autoware_perception_filter_node --ros-args --log-level debug
+```
+
+This will show:
+- RTC activation status
+- Number of filtered vs passed objects
+- Filtering decisions for each object
+
 ### RTC Interface-based Approval System
 
 The perception filter uses the RTC (Remote Traffic Control) interface to receive external approval for filtering operations. This provides a standardized way for external systems (HMI, remote monitoring systems, etc.) to control the filtering behavior.
@@ -377,4 +430,10 @@ ros2 param list /perception_filter_node
 
 # View node logs
 ros2 run autoware_perception_filter autoware_perception_filter_node --ros-args --log-level debug
+
+# Monitor debug visualization
+ros2 topic echo /perception_filter_node/debug/filtering_markers
+
+# Check debug visualization in RViz
+# Add MarkerArray display with topic: /perception_filter_node/debug/filtering_markers
 ```
