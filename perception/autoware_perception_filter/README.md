@@ -22,6 +22,15 @@ This package provides a perception filter node that filters perception data base
 | `output/filtered_objects`    | `autoware_perception_msgs::msg::PredictedObjects` | Filtered predicted objects   |
 | `output/filtered_pointcloud` | `sensor_msgs::msg::PointCloud2`                   | Filtered obstacle pointcloud |
 
+### RTC Interface Topics/Services
+
+| Name | Type | Description |
+|------|------|-------------|
+| `/planning/cooperate_status/perception_filter/cooperate_status` | `tier4_rtc_msgs::msg::CooperateStatusArray` | RTC status array (published) |
+| `/planning/auto_mode_status/perception_filter/auto_mode_status` | `tier4_rtc_msgs::msg::AutoModeStatus` | Auto mode status (published) |
+| `/planning/cooperate_commands/perception_filter/cooperate_commands` | `tier4_rtc_msgs::srv::CooperateCommands` | Cooperation command reception (service) |
+| `/planning/enable_auto_mode/perception_filter/enable_auto_mode` | `tier4_rtc_msgs::srv::AutoMode` | Auto mode enable/disable (service) |
+
 ## Parameters
 
 ### Core Parameters
@@ -184,21 +193,83 @@ ros2 launch autoware_perception_filter perception_filter.launch.xml
 
 - Input objects: `/perception/object_recognition/objects`
 - Input pointcloud: `/perception/obstacle_segmentation/pointcloud`
-- Input approval: `/external/approval`
 - Input predicted path: `/planning/scenario_planning/trajectory`
 - Output filtered objects: `/perception/object_recognition/filtered_objects`
 - Output filtered pointcloud: `/perception/obstacle_segmentation/filtered_pointcloud`
 
+**Note**: External approval is handled through the RTC interface rather than a direct topic subscription. See the RTC Interface Topics/Services section above for details.
+
 ## Behavior
 
-### Approval-based Filtering
-- **When approval is received (true)**: Proceeds to path-based filtering
-- **When approval is not received (false)**:
-  - Objects are filtered out (empty object list is published)
-  - Pointcloud is filtered out (empty pointcloud is published)
+### RTC Interface-based Approval System
+
+The perception filter uses the RTC (Remote Traffic Control) interface to receive external approval for filtering operations. This provides a standardized way for external systems (HMI, remote monitoring systems, etc.) to control the filtering behavior.
+
+#### RTC Interface Overview
+
+- **Module Name**: `perception_filter`
+- **UUID**: Automatically generated unique identifier for each RTC session
+- **State Management**: Tracks WAITING_FOR_EXECUTION, RUNNING, SUCCEEDED, FAILED states
+- **Safety Status**: Always reports as safe (filtering is a safe operation)
+
+#### Approval-based Filtering with RTC
+
+The filtering behavior is controlled by the RTC interface activation status:
+
+##### When RTC is Activated (Approved)
+- **Objects**: Proceeds to path-based filtering
+- **Pointcloud**: Proceeds to path-based filtering
+- **Status**: RTC state is set to RUNNING
+
+##### When RTC is Not Activated (Not Approved)
+- **Objects**: All objects are passed through unchanged (no filtering)
+- **Pointcloud**: All points are passed through unchanged (no filtering)
+- **Status**: RTC state remains WAITING_FOR_EXECUTION
+
+#### RTC Status Update
+
+The node continuously updates its RTC status:
+```cpp
+void updateRTCStatus()
+{
+  const bool safe = true;  // Always safe for perception filtering
+  const auto state = tier4_rtc_msgs::msg::State::RUNNING;
+  const double start_distance = 0.0;
+  const double finish_distance = std::numeric_limits<double>::max();
+  
+  rtc_interface_->updateCooperateStatus(
+    rtc_uuid_, safe, state, start_distance, finish_distance, this->now());
+  rtc_interface_->publishCooperateStatus(this->now());
+}
+```
+
+#### External Control Examples
+
+**Activate filtering via RTC:**
+```bash
+# Send activation command
+ros2 service call /planning/cooperate_commands/perception_filter/cooperate_commands \
+  tier4_rtc_msgs/srv/CooperateCommands \
+  "{commands: [{uuid: [UUID], command: {type: 1}}]}"  # type 1 = ACTIVATE
+```
+
+**Check RTC status:**
+```bash
+# Monitor RTC status
+ros2 topic echo /planning/cooperate_status/perception_filter/cooperate_status
+```
+
+**Enable auto mode (bypass approval):**
+```bash
+# Enable automatic activation
+ros2 service call /planning/enable_auto_mode/perception_filter/enable_auto_mode \
+  tier4_rtc_msgs/srv/AutoMode \
+  "{enable: true}"
+```
 
 ### Path-based Filtering
-When approval is received and a predicted path is available:
+
+When RTC is activated and a predicted path is available:
 
 #### Object Filtering
 - **Objects**: Objects that are closer than `filter_distance` meters from the predicted path are filtered out
@@ -213,9 +284,97 @@ When approval is received and a predicted path is available:
 ### Fallback Behavior
 - **When no predicted path is available**: All perception data is passed through unchanged
 - **When path is empty**: All perception data is passed through unchanged
+- **When RTC interface is not available**: All perception data is passed through unchanged (fail-safe behavior)
 
 ## Node Graph
 
 ![Node Graph](docs/perception_filter_node_architecture.drawio.png)
 
 _See [perception_filter_node_graph.drawio](docs/perception_filter_node_architecture.drawio) for the editable DrawIO diagram._
+
+## RTC Interface Usage Examples
+
+### Basic Usage
+
+1. **Start the perception filter node**
+2. **Check RTC status** to see if the module is registered
+3. **Send activation command** to enable filtering
+4. **Monitor filtered output** to verify operation
+
+### Complete Workflow Example
+
+```bash
+# 1. Start the node
+ros2 launch autoware_perception_filter perception_filter.launch.xml
+
+# 2. Check initial RTC status
+ros2 topic echo /planning/cooperate_status/perception_filter/cooperate_status
+
+# 3. Get the UUID from the status (you'll need this for commands)
+# Look for the UUID in the status message
+
+# 4. Activate the filter (replace [UUID] with actual UUID)
+ros2 service call /planning/cooperate_commands/perception_filter/cooperate_commands \
+  tier4_rtc_msgs/srv/CooperateCommands \
+  "{commands: [{uuid: [UUID], command: {type: 1}}]}"
+
+# 5. Verify activation
+ros2 topic echo /planning/cooperate_status/perception_filter/cooperate_status
+
+# 6. Monitor filtered output
+ros2 topic echo /perception/object_recognition/filtered_objects
+ros2 topic echo /perception/obstacle_segmentation/filtered_pointcloud
+```
+
+### Auto Mode Configuration
+
+To enable automatic activation (bypass external approval):
+
+```bash
+# Enable auto mode
+ros2 service call /planning/enable_auto_mode/perception_filter/enable_auto_mode \
+  tier4_rtc_msgs/srv/AutoMode \
+  "{enable: true}"
+
+# Disable auto mode (require external approval)
+ros2 service call /planning/enable_auto_mode/perception_filter/enable_auto_mode \
+  tier4_rtc_msgs/srv/AutoMode \
+  "{enable: false}"
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### RTC Interface Not Responding
+- **Symptom**: No RTC status messages published
+- **Solution**: Check if the node is running and RTC interface is properly initialized
+
+#### Filtering Not Working
+- **Symptom**: All data is filtered out even when RTC is activated
+- **Check**: Verify RTC activation status and predicted path availability
+- **Debug**: Monitor RTC status and predicted path topics
+
+#### UUID Issues
+- **Symptom**: RTC commands fail with UUID errors
+- **Solution**: Get the correct UUID from the RTC status topic before sending commands
+
+### Debug Commands
+
+```bash
+# Check if node is running
+ros2 node list | grep perception_filter
+
+# Check RTC topics
+ros2 topic list | grep perception_filter
+
+# Monitor all RTC-related topics
+ros2 topic echo /planning/cooperate_status/perception_filter/cooperate_status
+ros2 topic echo /planning/auto_mode_status/perception_filter/auto_mode_status
+
+# Check node parameters
+ros2 param list /perception_filter_node
+
+# View node logs
+ros2 run autoware_perception_filter autoware_perception_filter_node --ros-args --log-level debug
+```
