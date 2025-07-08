@@ -130,8 +130,9 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
 
   // Check if RTC interface is activated
   if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
-    // If RTC is not activated, filter out all objects
-    RCLCPP_DEBUG(get_logger(), "Filtering objects due to RTC not activated");
+    // If RTC is not activated, pass through all objects
+    RCLCPP_DEBUG(get_logger(), "RTC not activated, passing through all objects");
+    filtered_objects = input_objects;
     return filtered_objects;
   }
 
@@ -162,17 +163,9 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 
   // Check if RTC interface is activated
   if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
-    // If RTC is not activated, return empty pointcloud
-    filtered_pointcloud.height = 0;
-    filtered_pointcloud.width = 0;
-    filtered_pointcloud.fields = input_pointcloud.fields;
-    filtered_pointcloud.is_bigendian = input_pointcloud.is_bigendian;
-    filtered_pointcloud.point_step = input_pointcloud.point_step;
-    filtered_pointcloud.row_step = 0;
-    filtered_pointcloud.data.clear();
-    filtered_pointcloud.is_dense = input_pointcloud.is_dense;
-
-    RCLCPP_DEBUG(get_logger(), "Filtering pointcloud due to RTC not activated");
+    // If RTC is not activated, pass through the pointcloud
+    RCLCPP_DEBUG(get_logger(), "RTC not activated, passing through pointcloud");
+    filtered_pointcloud = input_pointcloud;
     return filtered_pointcloud;
   }
 
