@@ -20,6 +20,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
 
@@ -30,10 +31,10 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
 : Node("perception_filter_node", node_options), predicted_path_(nullptr)
 {
   // Declare parameters
-  enable_object_filtering_ = declare_parameter<bool>("enable_object_filtering", true);
-  enable_pointcloud_filtering_ = declare_parameter<bool>("enable_pointcloud_filtering", true);
-  filter_distance_ = declare_parameter<double>("filter_distance", 3.0);  // Default 3m
-  min_distance_ = declare_parameter<double>("min_distance", 1.0);       // Default 1m
+  enable_object_filtering_ = declare_parameter<bool>("enable_object_filtering");
+  enable_pointcloud_filtering_ = declare_parameter<bool>("enable_pointcloud_filtering");
+  filter_distance_ = declare_parameter<double>("filter_distance");
+  min_distance_ = declare_parameter<double>("min_distance");
 
   // Initialize RTC interface
   rtc_interface_ = std::make_unique<autoware::rtc_interface::RTCInterface>(this, "perception_filter");
@@ -59,6 +60,10 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   filtered_pointcloud_pub_ =
     create_publisher<sensor_msgs::msg::PointCloud2>("output/filtered_pointcloud", rclcpp::QoS{1});
 
+  // Initialize debug visualization publishers
+  debug_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+    "debug/filtering_markers", rclcpp::QoS{1});
+
   // Initialize published time publisher
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 
@@ -81,6 +86,10 @@ void PerceptionFilterNode::onObjects(
   filtered_objects_pub_->publish(filtered_objects);
   published_time_publisher_->publish_if_subscribed(
     filtered_objects_pub_, filtered_objects.header.stamp);
+
+  // Publish debug markers
+  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
+  publishDebugMarkers(*msg, filtered_objects, rtc_activated);
 }
 
 void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
@@ -238,6 +247,111 @@ bool PerceptionFilterNode::isPointNearPath(
   // - Distance is less than filter_distance (close to path)
   // - AND distance is greater than min_distance (not too close)
   return (min_dist_to_path <= filter_distance) && (min_dist_to_path > min_distance);
+}
+
+void PerceptionFilterNode::publishDebugMarkers(
+  const autoware_perception_msgs::msg::PredictedObjects & input_objects,
+  const autoware_perception_msgs::msg::PredictedObjects & filtered_objects,
+  bool rtc_activated)
+{
+  visualization_msgs::msg::MarkerArray marker_array;
+
+  // Find filtered out objects (objects in input but not in filtered)
+  autoware_perception_msgs::msg::PredictedObjects filtered_out_objects;
+  filtered_out_objects.header = input_objects.header;
+
+  for (const auto & input_obj : input_objects.objects) {
+    bool found_in_filtered = false;
+    for (const auto & filtered_obj : filtered_objects.objects) {
+      // Simple comparison based on position (in real implementation, use UUID)
+      if (std::abs(input_obj.kinematics.initial_pose_with_covariance.pose.position.x -
+                   filtered_obj.kinematics.initial_pose_with_covariance.pose.position.x) < 0.1 &&
+          std::abs(input_obj.kinematics.initial_pose_with_covariance.pose.position.y -
+                   filtered_obj.kinematics.initial_pose_with_covariance.pose.position.y) < 0.1) {
+        found_in_filtered = true;
+        break;
+      }
+    }
+    if (!found_in_filtered) {
+      filtered_out_objects.objects.push_back(input_obj);
+    }
+  }
+
+  // Create marker for filtered out objects (red)
+  if (!filtered_out_objects.objects.empty()) {
+    auto filtered_out_marker = createObjectMarker(
+      filtered_out_objects, "map", 0, {1.0, 0.0, 0.0, 0.8});
+    marker_array.markers.push_back(filtered_out_marker);
+  }
+
+  // Create marker for passed through objects (green)
+  if (!filtered_objects.objects.empty()) {
+    auto passed_through_marker = createObjectMarker(
+      filtered_objects, "map", 1, {0.0, 1.0, 0.0, 0.8});
+    marker_array.markers.push_back(passed_through_marker);
+  }
+
+  // Create status text marker
+  visualization_msgs::msg::Marker status_marker;
+  status_marker.header.frame_id = "map";
+  status_marker.header.stamp = this->now();
+  status_marker.ns = "rtc_status";
+  status_marker.id = 2;
+  status_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+  status_marker.action = visualization_msgs::msg::Marker::ADD;
+  status_marker.pose.position.x = 0.0;
+  status_marker.pose.position.y = 0.0;
+  status_marker.pose.position.z = 5.0;
+  status_marker.scale.z = 1.0;
+  status_marker.color.a = 1.0;
+  status_marker.color.r = rtc_activated ? 0.0 : 1.0;
+  status_marker.color.g = rtc_activated ? 1.0 : 0.0;
+  status_marker.color.b = 0.0;
+
+  std::string status_text = rtc_activated ? "RTC: ACTIVATED" : "RTC: NOT ACTIVATED";
+  status_text += "\nFiltered: " + std::to_string(filtered_out_objects.objects.size());
+  status_text += " | Passed: " + std::to_string(filtered_objects.objects.size());
+  status_marker.text = status_text;
+
+  marker_array.markers.push_back(status_marker);
+
+  debug_markers_pub_->publish(marker_array);
+
+  RCLCPP_DEBUG(get_logger(),
+    "Debug markers published - RTC: %s, Filtered: %zu, Passed: %zu",
+    rtc_activated ? "ACTIVATED" : "NOT ACTIVATED",
+    filtered_out_objects.objects.size(),
+    filtered_objects.objects.size());
+}
+
+visualization_msgs::msg::Marker PerceptionFilterNode::createObjectMarker(
+  const autoware_perception_msgs::msg::PredictedObjects & objects,
+  const std::string & frame_id, int id, const std::array<double, 4> & color)
+{
+  visualization_msgs::msg::Marker marker;
+  marker.header.frame_id = frame_id;
+  marker.header.stamp = this->now();
+  marker.ns = "perception_filter_debug";
+  marker.id = id;
+  marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.scale.x = 0.5;
+  marker.scale.y = 0.5;
+  marker.scale.z = 0.5;
+  marker.color.a = color[3];
+  marker.color.r = color[0];
+  marker.color.g = color[1];
+  marker.color.b = color[2];
+
+  for (const auto & object : objects.objects) {
+    geometry_msgs::msg::Point point;
+    point.x = object.kinematics.initial_pose_with_covariance.pose.position.x;
+    point.y = object.kinematics.initial_pose_with_covariance.pose.position.y;
+    point.z = object.kinematics.initial_pose_with_covariance.pose.position.z;
+    marker.points.push_back(point);
+  }
+
+  return marker;
 }
 
 }  // namespace autoware::perception_filter
