@@ -19,8 +19,10 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <geometry_msgs/msg/point.hpp>
 
 #include <memory>
 
@@ -37,6 +39,7 @@ private:
   void onObjects(const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg);
   void onPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
   void onApproval(const std_msgs::msg::Bool::ConstSharedPtr msg);
+  void onPredictedPath(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
 
   // Filter functions
   autoware_perception_msgs::msg::PredictedObjects filterObjects(
@@ -44,10 +47,21 @@ private:
   sensor_msgs::msg::PointCloud2 filterPointCloud(
     const sensor_msgs::msg::PointCloud2 & input_pointcloud);
 
+  // Utility functions
+  bool isObjectNearPath(
+    const autoware_perception_msgs::msg::PredictedObject & object,
+    const autoware_planning_msgs::msg::Trajectory & path, double filter_distance);
+
+  bool isPointNearPath(
+    const geometry_msgs::msg::Point & point,
+    const autoware_planning_msgs::msg::Trajectory & path,
+    double filter_distance, double min_distance);
+
   // Subscribers
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr objects_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr approval_sub_;
+  rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr predicted_path_sub_;
 
   // Publishers
   rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr
@@ -59,10 +73,13 @@ private:
 
   // State variables
   bool approval_received_;
+  autoware_planning_msgs::msg::Trajectory::ConstSharedPtr predicted_path_;
 
   // Parameters
   bool enable_object_filtering_;
   bool enable_pointcloud_filtering_;
+  double filter_distance_;  // Distance from path to filter objects [m]
+  double min_distance_;     // Minimum distance for pointcloud filtering [m]
 };
 
 }  // namespace autoware::perception_filter
