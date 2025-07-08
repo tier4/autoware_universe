@@ -86,10 +86,24 @@ public:
    */
   void setExternalPriority(const bool external_priority);
 
+  /**
+   * @brief Sets the flag to prioritize internal signals when arrows are present.
+   *
+   * When set to true, this flag indicates that in cases of discrepancy between
+   * perception and external signal data, the internal data should be prioritized.
+   * Even in case of external priority is true, we will prioritize internal signals when arrows are
+   * present.
+   *
+   * @param prioritize_internal_signals_when_arrows_present The flag to prioritize internal signals
+   * when arrows are present.
+   */
+  void setPrioritizeInternalSignalsWhenArrowsPresent(
+    const bool prioritize_internal_signals_when_arrows_present);
+
 private:
   bool external_priority_;
   std::unordered_set<lanelet::Id> map_pedestrian_signal_regulatory_elements_set_;
-
+  bool prioritize_internal_signals_when_arrows_present_;
   /**
    * @brief Checks if a given signal ID corresponds to a pedestrian signal.
    *

@@ -76,10 +76,14 @@ TrafficLightArbiter::TrafficLightArbiter(const rclcpp::NodeOptions & options)
   perception_time_tolerance_ = this->declare_parameter<double>("perception_time_tolerance");
   external_priority_ = this->declare_parameter<bool>("external_priority");
   enable_signal_matching_ = this->declare_parameter<bool>("enable_signal_matching");
+  prioritize_internal_signals_when_arrows_present_ =
+    this->declare_parameter<bool>("prioritize_internal_signals_when_arrows_present");
 
   if (enable_signal_matching_) {
     signal_match_validator_ = std::make_unique<SignalMatchValidator>();
     signal_match_validator_->setExternalPriority(external_priority_);
+    signal_match_validator_->setPrioritizeInternalSignalsWhenArrowsPresent(
+      prioritize_internal_signals_when_arrows_present_);
   }
 
   map_sub_ = create_subscription<LaneletMapBin>(
