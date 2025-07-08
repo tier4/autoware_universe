@@ -3,6 +3,15 @@
   <arg name="input_objects_topic" default="/perception/object_recognition/objects"/>
   <arg name="input_pointcloud_topic" default="/perception/obstacle_segmentation/pointcloud"/>
 
+  <!-- Whether to use perception filter -->
+  <arg name="use_perception_filter" default="false" description="launch perception filter for external approval"/>
+
+  <!-- Conditional topic remapping based on perception filter usage -->
+  <let name="objects_topic" value="/perception/object_recognition/filtered_objects" if="$(var use_perception_filter)"/>
+  <let name="objects_topic" value="$(var input_objects_topic)" unless="$(var use_perception_filter)"/>
+  <let name="pointcloud_topic" value="/perception/obstacle_segmentation/filtered_pointcloud" if="$(var use_perception_filter)"/>
+  <let name="pointcloud_topic" value="$(var input_pointcloud_topic)" unless="$(var use_perception_filter)"/>
+
   <!-- mission planner -->
   <arg name="mission_planner_param_path"/>
   <!-- parking -->
@@ -32,8 +41,8 @@
       <include file="$(find-pkg-share tier4_planning_launch)/launch/scenario_planning/scenario_planning.launch.xml">
         <arg name="enable_all_modules_auto_mode" value="$(var enable_all_modules_auto_mode)"/>
         <arg name="is_simulation" value="$(var is_simulation)"/>
-        <arg name="input_objects_topic" value="$(var input_objects_topic)"/>
-        <arg name="input_pointcloud_topic" value="$(var input_pointcloud_topic)"/>
+        <arg name="input_objects_topic" value="$(var objects_topic)"/>
+        <arg name="input_pointcloud_topic" value="$(var pointcloud_topic)"/>
       </include>
     </group>
 
@@ -59,5 +68,16 @@
     <group>
       <include file="$(find-pkg-share autoware_remaining_distance_time_calculator)/launch/remaining_distance_time_calculator.launch.xml"/>
     </group>
+  </group>
+
+  <!-- Perception Filter -->
+  <group if="$(var use_perception_filter)">
+    <include file="$(find-pkg-share autoware_perception_filter)/launch/perception_filter.launch.xml">
+      <arg name="input_objects" value="/perception/object_recognition/objects"/>
+      <arg name="input_pointcloud" value="/perception/obstacle_segmentation/pointcloud"/>
+      <arg name="output_filtered_objects" value="/perception/object_recognition/filtered_objects"/>
+      <arg name="output_filtered_pointcloud" value="/perception/obstacle_segmentation/filtered_pointcloud"/>
+      <arg name="perception_filter_param_path" value="$(find-pkg-share autoware_launch)/config/perception/perception_filter/perception_filter.param.yaml"/>
+    </include>
   </group>
 </launch>

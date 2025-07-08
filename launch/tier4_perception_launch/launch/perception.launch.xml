@@ -151,9 +151,6 @@
   <!-- Whether to use detection by tracker -->
   <arg name="use_detection_by_tracker" default="true"/>
 
-  <!-- Whether to use perception filter -->
-  <arg name="use_perception_filter" default="false" description="launch perception filter for external approval"/>
-
   <!-- Radar parameters -->
   <arg
     name="use_radar_tracking_fusion"
@@ -372,16 +369,5 @@
   <!-- perception evaluator -->
   <group if="$(var use_perception_online_evaluator)">
     <include file="$(find-pkg-share autoware_perception_online_evaluator)/launch/perception_online_evaluator.launch.xml"/>
-  </group>
-
-  <!-- Perception Filter -->
-  <group if="$(var use_perception_filter)">
-    <include file="$(find-pkg-share autoware_perception_filter)/launch/perception_filter.launch.xml">
-      <arg name="input_objects" value="/perception/object_recognition/objects"/>
-      <arg name="input_pointcloud" value="/perception/obstacle_segmentation/pointcloud"/>
-      <arg name="output_filtered_objects" value="/perception/object_recognition/filtered_objects"/>
-      <arg name="output_filtered_pointcloud" value="/perception/obstacle_segmentation/filtered_pointcloud"/>
-      <arg name="perception_filter_param_path" value="$(find-pkg-share autoware_launch)/config/perception/perception_filter/perception_filter.param.yaml"/>
-    </include>
   </group>
 </launch>
