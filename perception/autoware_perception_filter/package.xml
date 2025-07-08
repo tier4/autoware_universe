@@ -17,7 +17,7 @@
   <depend>unique_identifier_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>rclcpp</depend>
-  <depend>rclcpp_components</depend>
+  <depend>glog</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>autoware_universe_utils</depend>

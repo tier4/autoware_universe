@@ -15,6 +15,7 @@
 #include "autoware/perception_filter/perception_filter_node.hpp"
 
 #include <rclcpp/rclcpp.hpp>
+#include <glog/logging.h>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -30,6 +31,12 @@ namespace autoware::perception_filter
 PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_options)
 : Node("perception_filter_node", node_options), predicted_path_(nullptr)
 {
+  // Initialize glog
+  if (!google::IsGoogleLoggingInitialized()) {
+    google::InitGoogleLogging("perception_filter_node");
+    google::InstallFailureSignalHandler();
+  }
+
   // Declare parameters
   enable_object_filtering_ = declare_parameter<bool>("enable_object_filtering");
   enable_pointcloud_filtering_ = declare_parameter<bool>("enable_pointcloud_filtering");

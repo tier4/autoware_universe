@@ -7,7 +7,7 @@ autoware_package()
 # Dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(rclcpp_components REQUIRED)
+find_package(glog REQUIRED)
 find_package(autoware_perception_msgs REQUIRED)
 find_package(autoware_planning_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -27,6 +27,8 @@ include_directories(include)
 ament_auto_add_executable(${PROJECT_NAME}_node
   src/perception_filter_node.cpp
 )
+
+target_link_libraries(${PROJECT_NAME}_node glog::glog)
 
 # Install
 ament_auto_package(
