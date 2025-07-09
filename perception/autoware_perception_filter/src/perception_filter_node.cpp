@@ -40,8 +40,8 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   // Declare parameters
   enable_object_filtering_ = declare_parameter<bool>("enable_object_filtering");
   enable_pointcloud_filtering_ = declare_parameter<bool>("enable_pointcloud_filtering");
-  filter_distance_ = declare_parameter<double>("filter_distance");
-  min_distance_ = declare_parameter<double>("min_distance");
+  max_filter_distance_ = declare_parameter<double>("max_filter_distance");
+  pointcloud_safety_distance_ = declare_parameter<double>("pointcloud_safety_distance");
 
   // Initialize RTC interface
   rtc_interface_ = std::make_unique<autoware::rtc_interface::RTCInterface>(this, "perception_filter");
@@ -161,7 +161,7 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
 
   // Filter objects based on distance from predicted path
   for (const auto & object : input_objects.objects) {
-    if (!isObjectNearPath(object, *predicted_path_, filter_distance_)) {
+    if (!isObjectNearPath(object, *predicted_path_, max_filter_distance_)) {
       filtered_objects.objects.push_back(object);
     } else {
       RCLCPP_DEBUG(get_logger(), "Filtering out object (too close to path)");
@@ -193,9 +193,9 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   }
 
   // Filter pointcloud based on distance from predicted path
-  // Points closer than min_distance are always kept
-  // Points between min_distance and filter_distance are filtered out
-  // Points farther than filter_distance are kept
+  // Points closer than pointcloud_safety_distance are always kept
+  // Points between pointcloud_safety_distance and max_filter_distance are filtered out
+  // Points farther than max_filter_distance are kept
 
   // For now, we'll implement a simple approach by keeping all points
   // In a more sophisticated implementation, you would iterate through each point
@@ -208,7 +208,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 
 bool PerceptionFilterNode::isObjectNearPath(
   const autoware_perception_msgs::msg::PredictedObject & object,
-  const autoware_planning_msgs::msg::Trajectory & path, double filter_distance)
+  const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance)
 {
   // Get object position
   const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
@@ -227,14 +227,14 @@ bool PerceptionFilterNode::isObjectNearPath(
     min_distance = std::min(min_distance, distance);
   }
 
-  // Return true if object is within filter_distance of the path
-  return min_distance <= filter_distance;
+  // Return true if object is within max_filter_distance of the path
+  return min_distance <= max_filter_distance;
 }
 
 bool PerceptionFilterNode::isPointNearPath(
   const geometry_msgs::msg::Point & point,
   const autoware_planning_msgs::msg::Trajectory & path,
-  double filter_distance, double min_distance)
+  double max_filter_distance, double pointcloud_safety_distance)
 {
   // Find the minimum distance from point to any point on the path
   double min_dist_to_path = std::numeric_limits<double>::max();
@@ -251,9 +251,9 @@ bool PerceptionFilterNode::isPointNearPath(
   }
 
   // Return true if point should be filtered out:
-  // - Distance is less than filter_distance (close to path)
-  // - AND distance is greater than min_distance (not too close)
-  return (min_dist_to_path <= filter_distance) && (min_dist_to_path > min_distance);
+  // - Distance is less than max_filter_distance (close to path)
+  // - AND distance is greater than pointcloud_safety_distance (not too close)
+  return (min_dist_to_path <= max_filter_distance) && (min_dist_to_path > pointcloud_safety_distance);
 }
 
 void PerceptionFilterNode::publishDebugMarkers(

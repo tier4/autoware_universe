@@ -45,8 +45,8 @@ This package provides a perception filter node that filters perception data base
 | ----------------------------- | ------ | ------------- | ---------------------------------------------- |
 | `enable_object_filtering`     | bool   | true          | Enable/disable object filtering                |
 | `enable_pointcloud_filtering` | bool   | true          | Enable/disable pointcloud filtering            |
-| `filter_distance`             | double | 3.0           | Distance from predicted path to filter objects [m] |
-| `min_distance`                | double | 1.0           | Minimum distance for pointcloud filtering [m]  |
+| `max_filter_distance`         | double | 3.0           | Distance from predicted path to filter objects [m] |
+| `pointcloud_safety_distance`  | double | 1.0           | Minimum distance for pointcloud filtering [m]  |
 
 ## Topic Name Switching Strategy
 
@@ -325,14 +325,14 @@ ros2 service call /planning/enable_auto_mode/perception_filter/enable_auto_mode 
 When RTC is activated and a predicted path is available:
 
 #### Object Filtering
-- **Objects**: Objects that are closer than `filter_distance` meters from the predicted path are filtered out
-- **Logic**: `distance_to_path < filter_distance` → Filter out
+- **Objects**: Objects that are closer than `max_filter_distance` meters from the predicted path are filtered out
+- **Logic**: `distance_to_path < max_filter_distance` → Filter out
 
 #### Pointcloud Filtering
-- **Points**: Points that are between `min_distance` and `filter_distance` meters from the predicted path are filtered out
-- **Logic**: `min_distance < distance_to_path < filter_distance` → Filter out
-- **Points closer than min_distance**: Always kept (safety margin)
-- **Points farther than filter_distance**: Always kept
+- **Points**: Points that are between `pointcloud_safety_distance` and `max_filter_distance` meters from the predicted path are filtered out
+- **Logic**: `pointcloud_safety_distance < distance_to_path < max_filter_distance` → Filter out
+- **Points closer than pointcloud_safety_distance**: Always kept (safety margin)
+- **Points farther than max_filter_distance**: Always kept
 
 ### Fallback Behavior
 - **When no predicted path is available**: All perception data is passed through unchanged

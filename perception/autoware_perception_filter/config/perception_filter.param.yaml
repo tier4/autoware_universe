@@ -7,8 +7,8 @@
     enable_pointcloud_filtering: true
 
     # Distance from predicted path to filter objects [m]
-    filter_distance: 3.0
+    max_filter_distance: 3.0
 
     # Minimum distance from predicted path for pointcloud filtering [m]
     # Points closer than this distance are always kept
-    min_distance: 1.0
+    pointcloud_safety_distance: 1.0
