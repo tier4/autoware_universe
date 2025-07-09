@@ -339,7 +339,7 @@ VelocityPlanningResult ObstacleSlowDownModule::plan(
   const auto decimated_traj_points = utils::decimate_trajectory_points_from_ego(
     raw_trajectory_points, planner_data->current_odometry.pose.pose,
     planner_data->ego_nearest_dist_threshold, planner_data->ego_nearest_yaw_threshold,
-    planner_data->trajectory_polygon_collision_check.decimate_trajectory_step_length, 0.0, 1);
+    planner_data->trajectory_polygon_collision_check.decimate_trajectory_step_length, 0.0);
 
   const auto decimated_traj_polys_with_lat_margin = polygon_utils::create_one_step_polygons(
     decimated_traj_points, planner_data->vehicle_info_, planner_data->current_odometry.pose.pose,
