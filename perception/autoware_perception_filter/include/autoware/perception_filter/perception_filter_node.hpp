@@ -52,12 +52,12 @@ private:
   // Utility functions
   bool isObjectNearPath(
     const autoware_perception_msgs::msg::PredictedObject & object,
-    const autoware_planning_msgs::msg::Trajectory & path, double filter_distance);
+    const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance);
 
   bool isPointNearPath(
     const geometry_msgs::msg::Point & point,
     const autoware_planning_msgs::msg::Trajectory & path,
-    double filter_distance, double min_distance);
+    double max_filter_distance, double pointcloud_safety_distance);
 
   // RTC interface functions
   void updateRTCStatus();
@@ -97,8 +97,8 @@ private:
   // Parameters
   bool enable_object_filtering_;
   bool enable_pointcloud_filtering_;
-  double filter_distance_;  // Distance from path to filter objects [m]
-  double min_distance_;     // Minimum distance for pointcloud filtering [m]
+  double max_filter_distance_;  // Distance from path to filter objects [m]
+  double pointcloud_safety_distance_;     // Minimum distance for pointcloud filtering [m]
 };
 
 }  // namespace autoware::perception_filter
