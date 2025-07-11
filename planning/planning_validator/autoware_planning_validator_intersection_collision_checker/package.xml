@@ -7,6 +7,8 @@
 
   <maintainer email="satoshi.ota@tier4.jp">Satoshi Ota</maintainer>
   <maintainer email="alqudah.mohammad@tier4.jp">Alqudah Mohammad</maintainer>
+  <maintainer email="maxime.clement@tier4.jp">Maxime Clement</maintainer>
+  <maintainer email="kyoichi.sugahara@tier4.jp">Kyoichi Sugahara</maintainer>
 
   <license>Apache License 2.0</license>
 
@@ -15,6 +17,7 @@
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
   <buildtool_depend>autoware_cmake</buildtool_depend>
 
+  <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_motion_utils</depend>
   <depend>autoware_planning_validator</depend>
   <depend>autoware_route_handler</depend>
