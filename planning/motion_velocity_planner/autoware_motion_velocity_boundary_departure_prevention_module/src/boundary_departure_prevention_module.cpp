@@ -464,7 +464,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
 
   if (output_.departure_intervals.empty()) {
     output_.departure_intervals = utils::init_departure_intervals(
-      *ref_traj_pts_opt, output_.departure_points,
+      *ref_traj_pts_opt, output_.departure_points, curr_odom.twist.twist.linear.x,
       ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward),
       node_param_.slow_down_types);
   } else {
@@ -483,7 +483,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
 
   output_.slowdown_intervals = utils::get_slow_down_intervals(
     *ref_traj_pts_opt, output_.departure_intervals, *slow_down_interpolator_ptr_, vehicle_info,
-    output_.abnormalities_data.boundary_segments, curr_odom.twist.twist.linear.x,
+    curr_odom.twist.twist.linear.x, node_param_.bdc_param.th_trigger,
     ego_dist_on_traj_with_offset_m(planner_data->is_driving_forward));
   toc_curr_watch("get_slow_down_interval");
 
