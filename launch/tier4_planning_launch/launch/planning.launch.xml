@@ -53,12 +53,15 @@
         <arg name="planning_validator_latency_checker_param_path" value="$(var planning_validator_latency_checker_param_path)"/>
         <arg name="planning_validator_trajectory_checker_param_path" value="$(var planning_validator_trajectory_checker_param_path)"/>
         <arg name="planning_validator_intersection_collision_checker_param_path" value="$(var planning_validator_intersection_collision_checker_param_path)"/>
+        <arg name="use_perception_filter" value="$(var use_perception_filter)"/>
       </include>
     </group>
 
     <!-- planning evaluator -->
     <group>
-      <include file="$(find-pkg-share autoware_planning_evaluator)/launch/planning_evaluator.launch.xml"/>
+      <include file="$(find-pkg-share autoware_planning_evaluator)/launch/planning_evaluator.launch.xml">
+        <arg name="use_perception_filter" value="$(var use_perception_filter)"/>
+      </include>
     </group>
 
     <!-- mission remaining distance and time calculator -->

@@ -133,6 +133,68 @@ graph TD
     class C,D,E,F mode
 ```
 
+#### Argument Propagation Flow
+
+```mermaid
+graph TD
+    subgraph "Upper Launch Files"
+        UL[autoware.launch.xml<br/>planning_simulator.launch.xml]
+    end
+    
+    subgraph "Main Launch Files"
+        PL[planning.launch.xml]
+        CL[control.launch.xml]
+    end
+    
+    subgraph "Planning Modules"
+        SP[scenario_planning.launch.xml]
+        PV[planning_validator.launch.xml]
+        PE[planning_evaluator.launch.xml]
+    end
+    
+    subgraph "Control Modules"
+        CE[control_evaluator.launch.xml]
+    end
+    
+    subgraph "Final Components"
+        BP[behavior_planning]
+        MP[motion_planning]
+        AEB[autonomous_emergency_braking]
+        CD[collision_detector]
+        OCC[obstacle_collision_checker]
+        PPC[predicted_path_checker]
+        CEV[control_evaluator]
+    end
+
+    UL -->|use_perception_filter| PL
+    UL -->|use_perception_filter| CL
+    
+    PL -->|use_perception_filter| SP
+    PL -->|use_perception_filter| PV
+    PL -->|use_perception_filter| PE
+    
+    CL -->|input_objects_topic_name<br/>input_pointcloud_topic_name| AEB
+    CL -->|input_objects_topic_name<br/>input_pointcloud_topic_name| CD
+    CL -->|input_pointcloud_topic_name| OCC
+    CL -->|input_objects_topic_name| PPC
+    CL -->|input_objects_topic_name| CE
+    
+    SP -->|input_objects_topic_name<br/>input_pointcloud_topic_name| BP
+    SP -->|input_objects_topic_name<br/>input_pointcloud_topic_name| MP
+    
+    CE -->|input_objects_topic_name| CEV
+
+    classDef upper fill:#e1f5fe
+    classDef main fill:#f3e5f5
+    classDef module fill:#fff3e0
+    classDef component fill:#f0f4ff
+
+    class UL upper
+    class PL,CL main
+    class SP,PV,PE,CE module
+    class BP,MP,AEB,CD,OCC,PPC,CEV component
+```
+
 ### Integration Points
 
 The topic switching is implemented at multiple levels in the launch hierarchy:
