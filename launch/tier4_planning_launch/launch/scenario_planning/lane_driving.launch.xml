@@ -18,6 +18,7 @@
           <!-- This condition should be true if run_out module is enabled and its detection method is Points -->
           <arg name="launch_compare_map_pipeline" value="false"/>
           <arg name="input_objects_topic_name" value="$(var input_objects_topic_name)"/>
+          <arg name="input_pointcloud_topic_name" value="$(var input_pointcloud_topic_name)"/>
         </include>
       </group>
     </group>
