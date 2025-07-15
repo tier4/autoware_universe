@@ -13,7 +13,7 @@ This package provides a perception filter node that filters perception data base
 | `input/objects`      | `autoware_perception_msgs::msg::PredictedObjects` | Predicted objects from perception module   |
 | `input/pointcloud`   | `sensor_msgs::msg::PointCloud2`                   | Obstacle pointcloud from perception module |
 | `input/approval`     | `std_msgs::msg::Bool`                             | External approval signal                   |
-| `input/predicted_path` | `autoware_planning_msgs::msg::Trajectory`         | Predicted path/trajectory for filtering    |
+| `input/planning_trajectory` | `autoware_planning_msgs::msg::Trajectory`         | Trajectory from `/planning/scenario_planning/trajectory` for filtering proximity-based object removal |
 
 ### Output
 
@@ -97,7 +97,7 @@ graph LR
 
     P1 -->|objects| F
     P2 -->|pointcloud| F
-    PL1 -->|predicted_path| F
+    PL1 -->|/planning/scenario_planning/trajectory| F
     F -->|filtered_objects| PL2
     F -->|filtered_pointcloud| PL2
 
@@ -261,7 +261,7 @@ ros2 launch autoware_perception_filter perception_filter.launch.xml
 
 - Input objects: `/perception/object_recognition/objects`
 - Input pointcloud: `/perception/obstacle_segmentation/pointcloud`
-- Input predicted path: `/planning/scenario_planning/trajectory`
+- Input planning trajectory: `/planning/scenario_planning/trajectory`
 - Output filtered objects: `/perception/object_recognition/filtered_objects`
 - Output filtered pointcloud: `/perception/obstacle_segmentation/filtered_pointcloud`
 

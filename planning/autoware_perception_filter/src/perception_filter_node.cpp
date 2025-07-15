@@ -62,7 +62,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     std::bind(&PerceptionFilterNode::onPointCloud, this, std::placeholders::_1));
 
   predicted_path_sub_ = create_subscription<autoware_planning_msgs::msg::Trajectory>(
-    "input/predicted_path", rclcpp::QoS{1},
+    "input/planning_trajectory", rclcpp::QoS{1},
     std::bind(&PerceptionFilterNode::onPredictedPath, this, std::placeholders::_1));
 
   // Initialize publishers
@@ -182,6 +182,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   sensor_msgs::msg::PointCloud2 filtered_pointcloud;
   filtered_pointcloud.header = input_pointcloud.header;
 
+
   // Check if RTC interface is activated
   if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
     // If RTC is not activated, pass through the pointcloud
@@ -226,7 +227,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   pcl::toROSMsg(*filtered_cloud, filtered_pointcloud);
   filtered_pointcloud.header = input_pointcloud.header;
 
-  RCLCPP_DEBUG(get_logger(),
+  RCLCPP_WARN(get_logger(),
     "Pointcloud filtering: input points=%zu, output points=%zu",
     input_cloud->points.size(), filtered_cloud->points.size());
 
