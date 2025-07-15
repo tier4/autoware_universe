@@ -76,65 +76,6 @@ When `use_perception_filter` is enabled, the following topic remapping occurs:
 - **Filtered mode** (`use_perception_filter:=true`): Planning modules subscribe to `/perception/obstacle_segmentation/filtered_pointcloud`
 - **Normal mode** (`use_perception_filter:=false`): Planning modules subscribe to `/perception/obstacle_segmentation/pointcloud`
 
-#### Topic Flow Diagram
-
-```mermaid
-graph LR
-    subgraph "Perception"
-        P1[Object Recognition]
-        P2[Obstacle Segmentation]
-    end
-
-    subgraph "Planning"
-        PL1[Trajectory Planning]
-    end
-
-    subgraph "Filter"
-        F[Perception Filter]
-    end
-
-    subgraph "Planning"
-        PL2[Planning Modules]
-    end
-
-    P1 -->|objects| F
-    P2 -->|pointcloud| F
-    PL1 -->|/planning/scenario_planning/trajectory| F
-    F -->|filtered_objects| PL2
-    F -->|filtered_pointcloud| PL2
-
-    P1 -.-|objects bypass| PL2
-    P2 -.-|pointcloud bypass| PL2
-
-    classDef perception fill:#e1f5fe
-    classDef planning fill:#f3e5f5
-    classDef filter fill:#fff3e0
-
-    class P1,P2 perception
-    class PL1,PL2 planning
-    class F filter
-```
-
-#### Topic Switching States
-
-```mermaid
-graph TD
-    A[use_perception_filter] --> B{Enable Filter?}
-    B -->|true| C[Filtered Mode]
-    B -->|false| D[Normal Mode]
-
-    C --> E[Planning uses:<br/>• filtered_objects<br/>• filtered_pointcloud]
-    D --> F[Planning uses:<br/>• objects<br/>• pointcloud]
-
-    classDef param fill:#e8f5e8
-    classDef decision fill:#fff9c4
-    classDef mode fill:#f0f4ff
-
-    class A param
-    class B decision
-    class C,D,E,F mode
-```
-
 #### Argument Propagation Flow
 
 ```mermaid
@@ -207,28 +148,6 @@ The topic switching is implemented at multiple levels in the launch hierarchy:
 
 ### Example Usage
 
-#### Enable Perception Filter (Real Vehicle)
-
-```bash
-ros2 launch autoware_launch autoware.launch.xml \
-  map_path:=/path/to/map \
-  vehicle_model:=your_vehicle \
-  sensor_model:=your_sensor \
-  use_perception_filter:=true
-```
-
-#### Disable Perception Filter (Default)
-
-```bash
-ros2 launch autoware_launch autoware.launch.xml \
-  map_path:=/path/to/map \
-  vehicle_model:=your_vehicle \
-  sensor_model:=your_sensor \
-  use_perception_filter:=false
-```
-
-#### Planning Simulator with Perception Filter
-
 ```bash
 ros2 launch autoware_launch planning_simulator.launch.xml \
   map_path:=/path/to/map \
@@ -236,39 +155,6 @@ ros2 launch autoware_launch planning_simulator.launch.xml \
   sensor_model:=your_sensor \
   use_perception_filter:=true
 ```
-
-### Implementation Details
-
-The topic switching is implemented using ROS 2 launch system's conditional logic:
-
-```xml
-<!-- Conditional topic remapping based on perception filter usage -->
-<let name="objects_topic" value="/perception/object_recognition/filtered_objects" if="$(var use_perception_filter)"/>
-<let name="objects_topic" value="/perception/object_recognition/objects" unless="$(var use_perception_filter)"/>
-<let name="pointcloud_topic" value="/perception/obstacle_segmentation/filtered_pointcloud" if="$(var use_perception_filter)"/>
-<let name="pointcloud_topic" value="/perception/obstacle_segmentation/pointcloud" unless="$(var use_perception_filter)"/>
-```
-
-These variables are then passed through the launch hierarchy to ensure all planning modules receive the correct topic names.
-
-## Usage
-
-### Launch
-
-```bash
-ros2 launch autoware_perception_filter perception_filter.launch.xml
-```
-
-### Default Topic Mapping
-
-- Input objects: `/perception/object_recognition/objects`
-- Input pointcloud: `/perception/obstacle_segmentation/pointcloud`
-- Input planning trajectory: `/planning/scenario_planning/trajectory`
-- Output filtered objects: `/perception/object_recognition/filtered_objects`
-- Output filtered pointcloud: `/perception/obstacle_segmentation/filtered_pointcloud`
-- Output planning factors: `/planning/planning_factors/perception_filter`
-
-**Note**: External approval is handled through the RTC interface rather than a direct topic subscription. See the RTC Interface Topics/Services section above for details.
 
 ### Processing Flow Details
 
@@ -302,7 +188,9 @@ When RTC transitions from inactive to active:
 #### Vehicle Stop-based RTC Recreation
 
 - RTC interface is recreated when vehicle stops (velocity below `stop_velocity_threshold`)
+- **Frozen object list is preserved** across RTC recreation to maintain filtering consistency
 - This allows for fresh approval cycles at traffic lights, intersections, etc.
+- Previous RTC activation state is maintained to ensure seamless operation
 
 ## Behavior
 
@@ -326,33 +214,6 @@ The node publishes visualization markers on the `debug/filtering_markers` topic 
   - Green: Passed through objects (when RTC is not activated or objects are far from path)
 - **Status Display**: Text marker showing RTC status and object counts
 - **Frame**: All markers are published in the "map" frame
-
-#### Usage
-
-To view the debug visualization:
-
-```bash
-# In RViz, add a MarkerArray display
-# Set the topic to: /perception_filter_node/debug/filtering_markers
-
-# Or monitor the topic directly
-ros2 topic echo /perception_filter_node/debug/filtering_markers
-```
-
-#### Debug Information
-
-The node also logs debug information:
-
-```bash
-# Enable debug logging
-ros2 run autoware_perception_filter autoware_perception_filter_node --ros-args --log-level debug
-```
-
-This will show:
-
-- RTC activation status
-- Number of filtered vs passed objects
-- Filtering decisions for each object
 
 ### RTC Interface-based Approval System
 
@@ -417,15 +278,6 @@ ros2 service call /planning/cooperate_commands/supervised_perception_filter/coop
 ros2 topic echo /planning/cooperate_status/supervised_perception_filter/cooperate_status
 ```
 
-**Enable auto mode (bypass approval):**
-
-```bash
-# Enable automatic activation
-ros2 service call /planning/enable_auto_mode/supervised_perception_filter/enable_auto_mode \
-  tier4_rtc_msgs/srv/AutoMode \
-  "{enable: true}"
-```
-
 ### Path-based Filtering
 
 When RTC is activated and a planning trajectory is available:
@@ -448,108 +300,8 @@ When RTC is activated and a planning trajectory is available:
 - **When trajectory is empty**: All perception data is passed through unchanged
 - **When RTC interface is not available**: All perception data is passed through unchanged (fail-safe behavior)
 
-## Node Graph
+## Node Graph(WIP)
 
 ![Node Graph](docs/perception_filter_node_architecture.drawio.png)
 
 _See [perception_filter_node_graph.drawio](docs/perception_filter_node_architecture.drawio) for the editable DrawIO diagram._
-
-## RTC Interface Usage Examples
-
-### Basic Usage
-
-1. **Start the perception filter node**
-2. **Check RTC status** to see if the module is registered
-3. **Send activation command** to enable filtering
-4. **Monitor filtered output** to verify operation
-
-### Complete Workflow Example
-
-```bash
-# 1. Start the node
-ros2 launch autoware_perception_filter perception_filter.launch.xml
-
-# 2. Check initial RTC status
-ros2 topic echo /planning/cooperate_status/supervised_perception_filter/cooperate_status
-
-# 3. Get the UUID from the status (you'll need this for commands)
-# Look for the UUID in the status message
-
-# 4. Activate the filter (replace [UUID] with actual UUID)
-ros2 service call /planning/cooperate_commands/supervised_perception_filter/cooperate_commands \
-  tier4_rtc_msgs/srv/CooperateCommands \
-  "{commands: [{uuid: [UUID], command: {type: 1}}]}"
-
-# 5. Verify activation
-ros2 topic echo /planning/cooperate_status/supervised_perception_filter/cooperate_status
-
-# 6. Monitor filtered output
-ros2 topic echo /perception/object_recognition/filtered_objects
-ros2 topic echo /perception/obstacle_segmentation/filtered_pointcloud
-ros2 topic echo /planning/planning_factors/perception_filter
-```
-
-### Auto Mode Configuration
-
-To enable automatic activation (bypass external approval):
-
-```bash
-# Enable auto mode
-ros2 service call /planning/enable_auto_mode/supervised_perception_filter/enable_auto_mode \
-  tier4_rtc_msgs/srv/AutoMode \
-  "{enable: true}"
-
-# Disable auto mode (require external approval)
-ros2 service call /planning/enable_auto_mode/supervised_perception_filter/enable_auto_mode \
-  tier4_rtc_msgs/srv/AutoMode \
-  "{enable: false}"
-```
-
-## Troubleshooting
-
-### Common Issues
-
-#### RTC Interface Not Responding
-
-- **Symptom**: No RTC status messages published
-- **Solution**: Check if the node is running and RTC interface is properly initialized
-
-#### Filtering Not Working
-
-- **Symptom**: All data is filtered out even when RTC is activated
-- **Check**: Verify RTC activation status and predicted path availability
-- **Debug**: Monitor RTC status and predicted path topics
-
-#### UUID Issues
-
-- **Symptom**: RTC commands fail with UUID errors
-- **Solution**: Get the correct UUID from the RTC status topic before sending commands
-
-### Debug Commands
-
-```bash
-# Check if node is running
-ros2 node list | grep perception_filter
-
-# Check RTC topics
-ros2 topic list | grep supervised_perception_filter
-
-# Monitor all RTC-related topics
-ros2 topic echo /planning/cooperate_status/supervised_perception_filter/cooperate_status
-ros2 topic echo /planning/auto_mode_status/supervised_perception_filter/auto_mode_status
-
-# Check node parameters
-ros2 param list /perception_filter_node
-
-# View node logs
-ros2 run autoware_perception_filter autoware_perception_filter_node --ros-args --log-level debug
-
-# Monitor debug visualization
-ros2 topic echo /perception_filter_node/debug/filtering_markers
-
-# Monitor planning factors
-ros2 topic echo /planning/planning_factors/perception_filter
-
-# Check debug visualization in RViz
-# Add MarkerArray display with topic: /perception_filter_node/debug/filtering_markers
-```
