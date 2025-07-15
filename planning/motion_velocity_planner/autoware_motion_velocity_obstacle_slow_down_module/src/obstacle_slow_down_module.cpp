@@ -623,8 +623,6 @@ SlowDownObstacle ObstacleSlowDownModule::create_slow_down_obstacle_for_point_clo
   const geometry_msgs::msg::Point & back_collision_point, const double lat_dist_to_traj,
   const Side side)
 {
-  const unique_identifier_msgs::msg::UUID obj_uuid;
-
   ObjectClassification unknown_object_classification;
   unknown_object_classification.label = ObjectClassification::UNKNOWN;
   unknown_object_classification.probability = 1.0;
@@ -635,7 +633,7 @@ SlowDownObstacle ObstacleSlowDownModule::create_slow_down_obstacle_for_point_clo
   const double unconfigured_lat_velocity = 0.;
 
   return SlowDownObstacle{
-    obj_uuid,
+    UUID(),
     stamp,
     unknown_object_classification,
     unconfigured_pose,
