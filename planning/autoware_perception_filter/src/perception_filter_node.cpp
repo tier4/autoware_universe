@@ -101,7 +101,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
 
   planning_factors_pub_ =
     create_publisher<autoware_internal_planning_msgs::msg::PlanningFactorArray>(
-      "/planning/planning_factors/perception_filter", rclcpp::QoS{1});
+      "/planning/planning_factors/supervised_perception_filter", rclcpp::QoS{1});
 
   // Initialize debug visualization publishers
   debug_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -220,6 +220,15 @@ void PerceptionFilterNode::onObjects(
 {
   // Check if required data is ready
   if (!isDataReady()) {
+    // If data is not ready, publish input objects as-is
+    filtered_objects_pub_->publish(*msg);
+    published_time_publisher_->publish_if_subscribed(filtered_objects_pub_, msg->header.stamp);
+
+    // Also publish latest pointcloud if available
+    if (latest_pointcloud_) {
+      filtered_pointcloud_pub_->publish(*latest_pointcloud_);
+      published_time_publisher_->publish_if_subscribed(filtered_pointcloud_pub_, latest_pointcloud_->header.stamp);
+    }
     return;
   }
 
@@ -740,7 +749,7 @@ PerceptionFilterNode::createPlanningFactors()
   // Create PlanningFactor only when there are objects that would be filtered when RTC is approved
   if (!objects_to_be_filtered.empty()) {
     autoware_internal_planning_msgs::msg::PlanningFactor factor;
-    factor.module = "perception_filter";
+    factor.module = "supervised_perception_filter";
     factor.behavior = autoware_internal_planning_msgs::msg::PlanningFactor::STOP;
     factor.detail = "Objects that would be filtered when RTC is approved";
 
@@ -909,7 +918,7 @@ geometry_msgs::msg::Pose PerceptionFilterNode::getCurrentEgoPose() const
   return ego_pose;
 }
 
-bool PerceptionFilterNode::isDataReady() const
+bool PerceptionFilterNode::isDataReady()
 {
   if (!enable_object_filtering_ && !enable_pointcloud_filtering_) {
     // If both filtering are disabled, no data dependencies

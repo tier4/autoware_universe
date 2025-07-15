@@ -61,7 +61,7 @@ private:
 
   // Utility functions
   geometry_msgs::msg::Pose getCurrentEgoPose() const;
-  bool isDataReady() const;
+  bool isDataReady();
 
   bool isObjectNearPath(
     const autoware_perception_msgs::msg::PredictedObject & object,
