@@ -267,6 +267,26 @@ ros2 launch autoware_perception_filter perception_filter.launch.xml
 
 **Note**: External approval is handled through the RTC interface rather than a direct topic subscription. See the RTC Interface Topics/Services section above for details.
 
+### Processing Flow Details
+
+#### Object Classification
+
+The node classifies detected objects into three categories within a specified radius:
+
+1. **Always Pass Through (Blue)**: Objects far from the trajectory that are never filtered
+2. **Would Filter (Yellow)**: Objects near the trajectory that pass through when RTC is inactive but would be filtered when RTC is active
+3. **Currently Filtered (Red)**: Objects near the trajectory that are actively being filtered when RTC is active
+
+#### RTC State-based Behavior
+
+- **RTC Not Activated**: All objects pass through, but classification helps visualize potential filtering
+- **RTC Activated**: Objects are filtered based on distance to the planned trajectory
+
+#### Distance-based Filtering
+
+- **Objects**: Filtered if `distance_to_path ≤ max_filter_distance`
+- **PointCloud**: Filtered if `pointcloud_safety_distance < distance_to_path ≤ max_filter_distance`
+
 ## Behavior
 
 ### Debug Visualization
