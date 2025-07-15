@@ -191,6 +191,10 @@ struct AvoidanceParameters
   // use in judge whether the vehicle is parking object on road shoulder
   double object_check_shiftable_ratio{0.0};
 
+  // If the distance between the road shoulder and the object's footprint is below a certain
+  // threshold, it is judged to be a parked vehicle.
+  double object_check_road_bound_distance_threshold{0.0};
+
   // minimum road shoulder width. maybe 0.5 [m]
   double object_check_min_road_shoulder_width{0.0};
 
@@ -381,8 +385,10 @@ struct ObjectData  // avoidance target
   Behavior behavior{Behavior::NONE};
 
   // lateral position of the CoM, in Frenet coordinate from ego-pose
-
   double to_centerline{0.0};
+
+  // distance between object footprint and road bound
+  double to_road_bound{0.0};
 
   // longitudinal position of the CoM, in Frenet coordinate from ego-pose
   double longitudinal{0.0};

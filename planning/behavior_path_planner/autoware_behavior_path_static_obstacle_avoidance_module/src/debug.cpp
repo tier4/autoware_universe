@@ -148,6 +148,7 @@ MarkerArray createObjectInfoMarkerArray(const ObjectDataArray & objects, std::st
     string_stream << std::fixed << std::setprecision(2) << std::boolalpha;
     string_stream << "ratio:" << object.shiftable_ratio << " [-]\n"
                   << "lateral:" << object.to_centerline << " [m]\n"
+                  << "bound:" << object.to_road_bound << " [m]\n"
                   << "clip:" << object.is_clip_target << " [-]\n"
                   << "necessity:" << object.avoid_required << " [-]\n"
                   << "stoppable:" << object.is_stoppable << " [-]\n"

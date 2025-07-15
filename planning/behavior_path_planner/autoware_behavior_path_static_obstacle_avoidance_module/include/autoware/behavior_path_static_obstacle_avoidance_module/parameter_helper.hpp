@@ -130,6 +130,8 @@ AvoidanceParameters getParameter(rclcpp::Node * node)
       get_or_declare_parameter<double>(*node, ns + "th_offset_from_centerline");
     p.object_check_shiftable_ratio =
       get_or_declare_parameter<double>(*node, ns + "th_shiftable_ratio");
+    p.object_check_road_bound_distance_threshold =
+      get_or_declare_parameter<double>(*node, ns + "th_to_road_bound");
     p.object_check_min_road_shoulder_width =
       get_or_declare_parameter<double>(*node, ns + "min_road_shoulder_width");
   }

@@ -116,6 +116,8 @@ void StaticObstacleAvoidanceModuleManager::updateModuleParams(
       parameters, ns + "th_offset_from_centerline", p->threshold_distance_object_is_on_center);
     update_param<double>(parameters, ns + "th_shiftable_ratio", p->object_check_shiftable_ratio);
     update_param<double>(
+      parameters, ns + "th_to_road_bound", p->object_check_road_bound_distance_threshold);
+    update_param<double>(
       parameters, ns + "min_road_shoulder_width", p->object_check_min_road_shoulder_width);
   }
 

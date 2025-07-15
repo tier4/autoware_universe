@@ -471,7 +471,7 @@ bool isMergingToEgoLane(const ObjectData & object)
  * @return if the object is close to road shoulder of the lane, return true.
  */
 bool isParkedVehicle(
-  ObjectData & object, const AvoidancePlanningData & data,
+  ObjectData & object, [[maybe_unused]] const AvoidancePlanningData & data,
   const std::shared_ptr<RouteHandler> & route_handler,
   const std::shared_ptr<AvoidanceParameters> & parameters)
 {
@@ -532,8 +532,12 @@ bool isParkedVehicle(
       to2D(object.overhang_lanelet.centerline().basicLineString()),
       to2D(toLaneletPoint(object.getPosition())).basicPoint());
     object.shiftable_ratio = arc_coordinates.distance / object_shiftable_distance;
+    object.to_road_bound = object_shiftable_distance - arc_coordinates.distance;
 
-    is_left_side_parked_vehicle = object.shiftable_ratio > parameters->object_check_shiftable_ratio;
+    is_left_side_parked_vehicle |=
+      object.shiftable_ratio > parameters->object_check_shiftable_ratio;
+    is_left_side_parked_vehicle |=
+      object.to_road_bound < parameters->object_check_road_bound_distance_threshold;
   }
 
   bool is_right_side_parked_vehicle = false;
@@ -581,18 +585,15 @@ bool isParkedVehicle(
       to2D(object.overhang_lanelet.centerline().basicLineString()),
       to2D(toLaneletPoint(object.getPosition())).basicPoint());
     object.shiftable_ratio = -1.0 * arc_coordinates.distance / object_shiftable_distance;
+    object.to_road_bound = object_shiftable_distance + arc_coordinates.distance;
 
-    is_right_side_parked_vehicle =
+    is_right_side_parked_vehicle |=
       object.shiftable_ratio > parameters->object_check_shiftable_ratio;
+    is_right_side_parked_vehicle |=
+      object.to_road_bound < parameters->object_check_road_bound_distance_threshold;
   }
 
-  if (!is_left_side_parked_vehicle && !is_right_side_parked_vehicle) {
-    return false;
-  }
-
-  object.to_centerline =
-    lanelet::utils::getArcCoordinates(data.current_lanelets, object.getPose()).distance;
-  return std::abs(object.to_centerline) >= parameters->threshold_distance_object_is_on_center;
+  return is_left_side_parked_vehicle || is_right_side_parked_vehicle;
 }
 
 bool isCloseToStopFactor(
