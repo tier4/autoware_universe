@@ -38,7 +38,7 @@ namespace autoware::perception_filter
 {
 
 PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_options)
-: Node("perception_filter_node", node_options), planning_trajectory_(nullptr)
+: Node("perception_filter_node", node_options), vehicle_stop_checker_(this), planning_trajectory_(nullptr)
 {
   // Initialize glog
   if (!google::IsGoogleLoggingInitialized()) {
@@ -60,9 +60,14 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   pointcloud_safety_distance_ = declare_parameter<double>("pointcloud_safety_distance");
   object_classification_radius_ = declare_parameter<double>("object_classification_radius", 50.0);
 
+  // Add parameter for RTC recreation on stop (only stop velocity threshold needed)
+  stop_velocity_threshold_ = declare_parameter<double>("stop_velocity_threshold", 0.001);
+
+  // Initialize vehicle stopped state
+  is_vehicle_stopped_ = false;
+
   // Initialize RTC interface
-  rtc_interface_ = std::make_unique<autoware::rtc_interface::RTCInterface>(this, "supervised_perception_filter");
-  rtc_uuid_ = autoware::universe_utils::generateUUID();
+  initializeRTCInterface();
 
   // Initialize subscribers
   objects_sub_ = create_subscription<autoware_perception_msgs::msg::PredictedObjects>(
@@ -97,9 +102,42 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   RCLCPP_INFO(get_logger(), "PerceptionFilterNode initialized");
 }
 
+void PerceptionFilterNode::initializeRTCInterface()
+{
+  rtc_interface_ = std::make_unique<autoware::rtc_interface::RTCInterface>(this, "supervised_perception_filter");
+  rtc_uuid_ = autoware::universe_utils::generateUUID();
+
+  RCLCPP_INFO(get_logger(), "RTC interface initialized with new UUID");
+}
+
+void PerceptionFilterNode::checkVehicleStoppedState()
+{
+  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0); // 1 second duration
+
+  // Detect transition from moving to stopped
+  if (!is_vehicle_stopped_ && is_currently_stopped) {
+    RCLCPP_INFO(get_logger(), "Vehicle stopped detected. Recreating RTC interface...");
+
+    // Clear current RTC status before recreating
+    if (rtc_interface_) {
+      rtc_interface_->clearCooperateStatus();
+    }
+
+    // Recreate RTC interface with new UUID
+    initializeRTCInterface();
+
+    RCLCPP_INFO(get_logger(), "New RTC interface created on vehicle stop");
+  }
+
+  is_vehicle_stopped_ = is_currently_stopped;
+}
+
 void PerceptionFilterNode::onObjects(
   const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg)
 {
+  // Check vehicle stopped state for potential RTC recreation
+  checkVehicleStoppedState();
+
   // Update RTC status
   updateRTCStatus();
 
@@ -125,6 +163,9 @@ void PerceptionFilterNode::onObjects(
 
 void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
 {
+  // Check vehicle stopped state for potential RTC recreation
+  checkVehicleStoppedState();
+
   // Update RTC status
   updateRTCStatus();
 
@@ -149,6 +190,12 @@ void PerceptionFilterNode::onPlanningTrajectory(const autoware_planning_msgs::ms
 void PerceptionFilterNode::updateRTCStatus()
 {
   if (!rtc_interface_) {
+    return;
+  }
+
+  // Only update RTC status when vehicle is stopped
+  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0); // 1 second duration
+  if (!is_currently_stopped) {
     return;
   }
 
@@ -187,10 +234,14 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
   // Store the latest classification result
   latest_classification_ = classification;
 
+  // Check if vehicle is currently stopped for more detailed logging
+  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0); // 1 second duration
+
   // Log classification results regardless of RTC status
   RCLCPP_INFO(get_logger(),
-    "Object classification within %.1fm: Always pass=%zu, Would filter=%zu, Currently filtered=%zu",
+    "Object classification within %.1fm (Vehicle %s): Always pass=%zu, Would filter=%zu, Currently filtered=%zu",
     object_classification_radius_,
+    is_currently_stopped ? "STOPPED" : "MOVING",
     classification.pass_through_always.size(),
     classification.pass_through_would_filter.size(),
     classification.currently_filtered.size());
@@ -660,7 +711,10 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
     return classification;
   }
 
-  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
+  // Check if RTC interface exists and is activated
+  const bool rtc_interface_exists = rtc_interface_ != nullptr;
+  const bool rtc_activated = rtc_interface_exists && rtc_interface_->isActivated(rtc_uuid_);
+  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0); // 1 second duration
 
   for (const auto & object : input_objects.objects) {
     const double distance_from_ego = getDistanceFromEgo(object);
@@ -670,14 +724,14 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
       const bool would_be_filtered = distance_to_path <= max_filter_distance_;
 
       if (rtc_activated) {
-        // RTC approved: filtering function is active
+        // RTC exists and is approved: filtering function is active
         if (would_be_filtered) {
           classification.currently_filtered.push_back(object);
         } else {
           classification.pass_through_always.push_back(object);
         }
-      } else {
-        // RTC not approved: filtering function is inactive
+      } else if (rtc_interface_exists && !rtc_activated && is_currently_stopped) {
+        // RTC exists, not approved, and vehicle is stopped: filtering function is inactive
         if (would_be_filtered) {
           // Currently passing through, but would be filtered if RTC approved
           classification.pass_through_would_filter.push_back(object);
@@ -685,6 +739,9 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
           // Always pass through regardless of RTC status
           classification.pass_through_always.push_back(object);
         }
+      } else {
+        // No RTC interface or vehicle is moving: classify all objects as pass_through_always
+        classification.pass_through_always.push_back(object);
       }
     }
   }

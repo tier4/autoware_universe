@@ -18,6 +18,7 @@
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
 #include <autoware/rtc_interface/rtc_interface.hpp>
+#include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -74,6 +75,8 @@ private:
 
   // RTC interface functions
   void updateRTCStatus();
+  void initializeRTCInterface();
+  void checkVehicleStoppedState();
 
   // Planning Factor functions
   autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors();
@@ -125,6 +128,10 @@ private:
   std::unique_ptr<autoware::rtc_interface::RTCInterface> rtc_interface_;
   unique_identifier_msgs::msg::UUID rtc_uuid_;
 
+  // Vehicle stop checker for RTC recreation
+  autoware::motion_utils::VehicleStopChecker vehicle_stop_checker_;
+  bool is_vehicle_stopped_;
+
   // State variables
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr planning_trajectory_;
 
@@ -137,6 +144,9 @@ private:
   double max_filter_distance_;  // Distance from path to filter objects [m]
   double pointcloud_safety_distance_;     // Minimum distance for pointcloud filtering [m]
   double object_classification_radius_;   // Radius for object classification [m] (default: 50.0)
+
+  // RTC recreation parameters
+  double stop_velocity_threshold_;
 };
 
 }  // namespace autoware::perception_filter

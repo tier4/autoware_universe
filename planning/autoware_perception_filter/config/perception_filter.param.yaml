@@ -1,14 +1,11 @@
 /**:
   ros__parameters:
-    # Enable/disable filtering for objects
+    # Filtering parameters
     enable_object_filtering: true
-
-    # Enable/disable filtering for pointcloud
     enable_pointcloud_filtering: true
+    max_filter_distance: 5.0  # [m]
+    pointcloud_safety_distance: 1.0  # [m]
+    object_classification_radius: 50.0  # [m]
 
-    # Distance from predicted path to filter objects [m]
-    max_filter_distance: 3.0
-
-    # Minimum distance from predicted path for pointcloud filtering [m]
-    # Points closer than this distance are always kept
-    pointcloud_safety_distance: 1.0
+    # RTC recreation on vehicle stop
+    stop_velocity_threshold: 0.001  # [m/s] Velocity threshold to consider vehicle as stopped
