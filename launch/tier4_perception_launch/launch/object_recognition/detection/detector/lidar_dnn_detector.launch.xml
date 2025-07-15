@@ -22,8 +22,8 @@
     <choice value="centerpoint_short_range"/>
   </arg>
   <arg name="lidar_short_range_detection_model_name" description="options: `centerpoint_short_range`">
-    <choice value="centerpoint_short_range"/>
-    <choice value=""/>
+    <!-- <choice value="centerpoint_short_range"/>
+    <choice value=""/> -->
   </arg>
   <arg name="short_range_centerpoint_model_path" default="$(var data_path)/lidar_short_range_centerpoint"/>
 
