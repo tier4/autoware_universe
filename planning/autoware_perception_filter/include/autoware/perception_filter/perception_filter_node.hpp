@@ -74,6 +74,19 @@ private:
   autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
     const autoware_perception_msgs::msg::PredictedObjects & input_objects);
 
+  // Object classification structure
+  struct ObjectClassification {
+    std::vector<autoware_perception_msgs::msg::PredictedObject> pass_through_always;  // Always pass through
+    std::vector<autoware_perception_msgs::msg::PredictedObject> pass_through_would_filter;  // Pass through now, but would be filtered if RTC approved
+    std::vector<autoware_perception_msgs::msg::PredictedObject> currently_filtered;  // Currently being filtered
+  };
+
+  // Object classification functions
+  ObjectClassification classifyObjectsWithinRadius(
+    const autoware_perception_msgs::msg::PredictedObjects & input_objects);
+
+  double getDistanceFromEgo(const autoware_perception_msgs::msg::PredictedObject & object);
+
   // Debug visualization functions
   void publishDebugMarkers(
     const autoware_perception_msgs::msg::PredictedObjects & input_objects,
@@ -113,6 +126,7 @@ private:
   bool enable_pointcloud_filtering_;
   double max_filter_distance_;  // Distance from path to filter objects [m]
   double pointcloud_safety_distance_;     // Minimum distance for pointcloud filtering [m]
+  double object_classification_radius_;   // Radius for object classification [m] (default: 50.0)
 };
 
 }  // namespace autoware::perception_filter

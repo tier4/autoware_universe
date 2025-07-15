@@ -51,6 +51,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   enable_pointcloud_filtering_ = declare_parameter<bool>("enable_pointcloud_filtering");
   max_filter_distance_ = declare_parameter<double>("max_filter_distance");
   pointcloud_safety_distance_ = declare_parameter<double>("pointcloud_safety_distance");
+  object_classification_radius_ = declare_parameter<double>("object_classification_radius", 50.0);
 
   // Initialize RTC interface
   rtc_interface_ = std::make_unique<autoware::rtc_interface::RTCInterface>(this, "supervised_perception_filter");
@@ -106,7 +107,7 @@ void PerceptionFilterNode::onObjects(
   published_time_publisher_->publish_if_subscribed(
     filtered_objects_pub_, filtered_objects.header.stamp);
 
-  // Publish planning factors
+  // Publish planning factors (include objects that pass through now but would be filtered if RTC approved)
   auto planning_factors = createPlanningFactors(*msg);
   planning_factors_pub_->publish(planning_factors);
 
@@ -160,14 +161,6 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
   autoware_perception_msgs::msg::PredictedObjects filtered_objects;
   filtered_objects.header = input_objects.header;
 
-  // Check if RTC interface is activated
-  if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
-    // If RTC is not activated, pass through all objects
-    RCLCPP_DEBUG(get_logger(), "RTC not activated, passing through all objects");
-    filtered_objects = input_objects;
-    return filtered_objects;
-  }
-
   if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
     // If no planning trajectory is available, pass through all objects
     RCLCPP_DEBUG(get_logger(), "No planning trajectory available, passing through all objects");
@@ -181,11 +174,57 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
     return filtered_objects;
   }
 
-  // Filter objects based on distance from planning trajectory
-  for (const auto & object : input_objects.objects) {
+  // Always classify objects to understand potential filtering behavior
+  auto classification = classifyObjectsWithinRadius(input_objects);
+
+  // Log classification results regardless of RTC status
+  RCLCPP_INFO(get_logger(),
+    "Object classification within %.1fm: Always pass=%zu, Would filter=%zu, Currently filtered=%zu",
+    object_classification_radius_,
+    classification.pass_through_always.size(),
+    classification.pass_through_would_filter.size(),
+    classification.currently_filtered.size());
+
+  // Check if RTC interface is activated
+  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
+
+  if (!rtc_activated) {
+    // If RTC is not activated, pass through all objects but log what would be filtered
+    RCLCPP_DEBUG(get_logger(), "RTC not activated, passing through all objects");
+
+    // Log objects that would be filtered if RTC were approved
+    for (const auto & object : classification.pass_through_would_filter) {
+      const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
+
+      // Convert UUID to string for debug output
+      std::string uuid_str = "";
+      for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
+        if (i > 0) uuid_str += "-";
+        uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
+      }
+
+      RCLCPP_INFO(get_logger(),
+        "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Would be filtered if RTC approved",
+        uuid_str.c_str(), distance_to_path, max_filter_distance_);
+    }
+
+    filtered_objects = input_objects;
+    return filtered_objects;
+  }
+
+  // When RTC is activated, use classification results to determine filtered objects
+  // Pass through: pass_through_always + pass_through_would_filter (empty when RTC active)
+  // Filter out: currently_filtered
+  for (const auto & object : classification.pass_through_always) {
+    filtered_objects.objects.push_back(object);
+  }
+  for (const auto & object : classification.pass_through_would_filter) {
+    filtered_objects.objects.push_back(object);
+  }
+
+  // Log detailed filtering information for each filtered object
+  for (const auto & object : classification.currently_filtered) {
     const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
-    const bool is_near_path = distance_to_path <= max_filter_distance_;
-    const bool should_filter = is_near_path;
 
     // Convert UUID to string for debug output
     std::string uuid_str = "";
@@ -195,13 +234,8 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
     }
 
     RCLCPP_WARN(get_logger(),
-      "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Filtered: %s",
-      uuid_str.c_str(), distance_to_path, max_filter_distance_,
-      should_filter ? "YES" : "NO");
-
-    if (!should_filter) {
-      filtered_objects.objects.push_back(object);
-    }
+      "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Filtered: YES",
+      uuid_str.c_str(), distance_to_path, max_filter_distance_);
   }
 
   return filtered_objects;
@@ -462,26 +496,23 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray PerceptionFilterNode::
     return planning_factors;
   }
 
-  // RTCが承認されていない場合でも、承認されたときにフィルターされるであろうオブジェクトを特定
+  // Classify objects within specified radius
+  auto classification = classifyObjectsWithinRadius(input_objects);
+
+  // Get UUIDs of objects that pass through now but would be filtered if RTC approved
   std::vector<unique_identifier_msgs::msg::UUID> objects_to_be_filtered;
-
-  for (const auto & object : input_objects.objects) {
-    const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
-    const bool would_be_filtered = distance_to_path <= max_filter_distance_;
-
-    if (would_be_filtered) {
-      objects_to_be_filtered.push_back(object.object_id);
-    }
+  for (const auto & object : classification.pass_through_would_filter) {
+    objects_to_be_filtered.push_back(object.object_id);
   }
 
-  // PlanningFactorを作成（オブジェクトがフィルターされる可能性がある場合のみ）
+  // Create PlanningFactor only when there are objects that would be filtered when RTC is approved
   if (!objects_to_be_filtered.empty()) {
     autoware_internal_planning_msgs::msg::PlanningFactor factor;
     factor.module = "perception_filter";
     factor.behavior = autoware_internal_planning_msgs::msg::PlanningFactor::STOP;
-    factor.detail = "Objects near planning trajectory";
+    factor.detail = "Objects that would be filtered when RTC is approved";
 
-    // Control pointを追加（経路上の最も近い点）
+    // Add control point (nearest point on path)
     if (!planning_trajectory_->points.empty()) {
       autoware_internal_planning_msgs::msg::ControlPoint control_point;
       control_point.pose = planning_trajectory_->points.front().pose;
@@ -489,7 +520,7 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray PerceptionFilterNode::
       factor.control_points.push_back(control_point);
     }
 
-    // Safety factorsを追加（フィルターされるオブジェクトのUUIDを含む）
+    // Add safety factors (include UUIDs of objects that would be filtered when RTC approved)
     factor.safety_factors.is_safe = false;
     for (const auto & uuid : objects_to_be_filtered) {
       autoware_internal_planning_msgs::msg::SafetyFactor safety_factor;
@@ -497,8 +528,8 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray PerceptionFilterNode::
       safety_factor.is_safe = false;
       safety_factor.object_id = uuid;
 
-      // オブジェクトの位置を追加（必要に応じて）
-      for (const auto & object : input_objects.objects) {
+      // Add object position
+      for (const auto & object : classification.pass_through_would_filter) {
         if (object.object_id.uuid == uuid.uuid) {
           geometry_msgs::msg::Point point;
           point.x = object.kinematics.initial_pose_with_covariance.pose.position.x;
@@ -515,11 +546,67 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray PerceptionFilterNode::
     planning_factors.factors.push_back(factor);
 
     RCLCPP_DEBUG(get_logger(),
-      "Planning factors published with %zu objects that would be filtered",
+      "Planning factors published with %zu objects that would be filtered when RTC approved",
       objects_to_be_filtered.size());
   }
 
   return planning_factors;
+}
+
+PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjectsWithinRadius(
+  const autoware_perception_msgs::msg::PredictedObjects & input_objects)
+{
+  ObjectClassification classification;
+
+  if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
+    // If no trajectory available, classify all objects as pass_through_always
+    for (const auto & object : input_objects.objects) {
+      const double distance_from_ego = getDistanceFromEgo(object);
+      if (distance_from_ego <= object_classification_radius_) {
+        classification.pass_through_always.push_back(object);
+      }
+    }
+    return classification;
+  }
+
+  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
+
+  for (const auto & object : input_objects.objects) {
+    const double distance_from_ego = getDistanceFromEgo(object);
+
+    // Classify only objects within the specified radius
+    if (distance_from_ego <= object_classification_radius_) {
+      const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
+      const bool would_be_filtered = distance_to_path <= max_filter_distance_;
+
+      if (rtc_activated) {
+        // RTC approved: filtering function is active
+        if (would_be_filtered) {
+          classification.currently_filtered.push_back(object);
+        } else {
+          classification.pass_through_always.push_back(object);
+        }
+      } else {
+        // RTC not approved: filtering function is inactive
+        if (would_be_filtered) {
+          // Currently passing through, but would be filtered if RTC approved
+          classification.pass_through_would_filter.push_back(object);
+        } else {
+          // Always pass through regardless of RTC status
+          classification.pass_through_always.push_back(object);
+        }
+      }
+    }
+  }
+
+  return classification;
+}
+
+double PerceptionFilterNode::getDistanceFromEgo(const autoware_perception_msgs::msg::PredictedObject & object)
+{
+  // Calculate distance from ego position (assumed to be at origin 0, 0)
+  const auto & pos = object.kinematics.initial_pose_with_covariance.pose.position;
+  return std::sqrt(pos.x * pos.x + pos.y * pos.y);
 }
 
 }  // namespace autoware::perception_filter
