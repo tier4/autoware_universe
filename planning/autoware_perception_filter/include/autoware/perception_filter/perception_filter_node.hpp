@@ -15,25 +15,26 @@
 #ifndef AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_NODE_HPP_
 #define AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_NODE_HPP_
 
-#include <autoware_utils/ros/published_time_publisher.hpp>
-#include <autoware/universe_utils/ros/uuid_helper.hpp>
-#include <autoware/rtc_interface/rtc_interface.hpp>
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
+#include <autoware/rtc_interface/rtc_interface.hpp>
+#include <autoware/universe_utils/ros/uuid_helper.hpp>
+#include <autoware_utils/ros/published_time_publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include <autoware_internal_planning_msgs/msg/control_point.hpp>
+#include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
+#include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
+#include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
-#include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
-#include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
-#include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
-#include <autoware_internal_planning_msgs/msg/control_point.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/point.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <set>
@@ -70,8 +71,7 @@ private:
     const autoware_planning_msgs::msg::Trajectory & path);
 
   bool isPointNearPath(
-    const geometry_msgs::msg::Point & point,
-    const autoware_planning_msgs::msg::Trajectory & path,
+    const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path,
     double max_filter_distance, double pointcloud_safety_distance);
 
   // RTC interface functions
@@ -86,10 +86,14 @@ private:
   autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors();
 
   // Object classification structure
-  struct ObjectClassification {
-    std::vector<autoware_perception_msgs::msg::PredictedObject> pass_through_always;  // Always pass through
-    std::vector<autoware_perception_msgs::msg::PredictedObject> pass_through_would_filter;  // Pass through now, but would be filtered if RTC approved
-    std::vector<autoware_perception_msgs::msg::PredictedObject> currently_filtered;  // Currently being filtered
+  struct ObjectClassification
+  {
+    std::vector<autoware_perception_msgs::msg::PredictedObject>
+      pass_through_always;  // Always pass through
+    std::vector<autoware_perception_msgs::msg::PredictedObject>
+      pass_through_would_filter;  // Pass through now, but would be filtered if RTC approved
+    std::vector<autoware_perception_msgs::msg::PredictedObject>
+      currently_filtered;  // Currently being filtered
   };
 
   // Object classification functions
@@ -100,11 +104,10 @@ private:
 
   // Debug visualization functions
   void publishDebugMarkers(
-    const autoware_perception_msgs::msg::PredictedObjects & input_objects,
-    bool rtc_activated);
+    const autoware_perception_msgs::msg::PredictedObjects & input_objects, bool rtc_activated);
   visualization_msgs::msg::Marker createObjectMarker(
-    const autoware_perception_msgs::msg::PredictedObjects & objects,
-    const std::string & frame_id, int id, const std::array<double, 4> & color);
+    const autoware_perception_msgs::msg::PredictedObjects & objects, const std::string & frame_id,
+    int id, const std::array<double, 4> & color);
 
   // Subscribers
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr objects_sub_;
@@ -145,16 +148,17 @@ private:
   // Parameters
   bool enable_object_filtering_;
   bool enable_pointcloud_filtering_;
-  double max_filter_distance_;  // Distance from path to filter objects [m]
-  double pointcloud_safety_distance_;     // Minimum distance for pointcloud filtering [m]
-  double object_classification_radius_;   // Radius for object classification [m] (default: 50.0)
+  double max_filter_distance_;           // Distance from path to filter objects [m]
+  double pointcloud_safety_distance_;    // Minimum distance for pointcloud filtering [m]
+  double object_classification_radius_;  // Radius for object classification [m] (default: 50.0)
 
   // RTC recreation parameters
   double stop_velocity_threshold_;
 
   // RTC transition and frozen filtering state management
   bool previous_rtc_activated_;  // Track previous RTC activation state to detect transitions
-  std::set<std::array<uint8_t, 16>> frozen_filter_object_ids_;  // Object IDs frozen at RTC approval time
+  std::set<std::array<uint8_t, 16>>
+    frozen_filter_object_ids_;  // Object IDs frozen at RTC approval time
 };
 
 }  // namespace autoware::perception_filter

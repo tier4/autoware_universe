@@ -15,13 +15,14 @@
 #include "autoware/perception_filter/perception_filter_node.hpp"
 
 #include <rclcpp/rclcpp.hpp>
-#include <glog/logging.h>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+
+#include <glog/logging.h>
 
 // Add PCL headers for pointcloud processing
 #include <pcl/point_cloud.h>
@@ -30,17 +31,19 @@
 
 // Add autoware_universe_utils and boost geometry for object shape and distance calculation
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+
 #include <boost/geometry.hpp>
 
 #include <memory>
-
 #include <set>
 
 namespace autoware::perception_filter
 {
 
 PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_options)
-: Node("perception_filter_node", node_options), vehicle_stop_checker_(this), planning_trajectory_(nullptr)
+: Node("perception_filter_node", node_options),
+  vehicle_stop_checker_(this),
+  planning_trajectory_(nullptr)
 {
   // Initialize glog
   if (!google::IsGoogleLoggingInitialized()) {
@@ -95,8 +98,9 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   filtered_pointcloud_pub_ =
     create_publisher<sensor_msgs::msg::PointCloud2>("output/filtered_pointcloud", rclcpp::QoS{1});
 
-  planning_factors_pub_ = create_publisher<autoware_internal_planning_msgs::msg::PlanningFactorArray>(
-    "/planning/planning_factors/perception_filter", rclcpp::QoS{1});
+  planning_factors_pub_ =
+    create_publisher<autoware_internal_planning_msgs::msg::PlanningFactorArray>(
+      "/planning/planning_factors/perception_filter", rclcpp::QoS{1});
 
   // Initialize debug visualization publishers
   debug_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -110,15 +114,15 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
 
 void PerceptionFilterNode::initializeRTCInterface()
 {
-  rtc_interface_ = std::make_unique<autoware::rtc_interface::RTCInterface>(this, "supervised_perception_filter");
+  rtc_interface_ =
+    std::make_unique<autoware::rtc_interface::RTCInterface>(this, "supervised_perception_filter");
   rtc_uuid_ = autoware::universe_utils::generateUUID();
 
   RCLCPP_INFO(get_logger(), "RTC interface initialized with new UUID");
 }
 
 void PerceptionFilterNode::handleRTCTransition(
-  bool current_rtc_activated,
-  const autoware_perception_msgs::msg::PredictedObjects & input_objects)
+  bool current_rtc_activated, const autoware_perception_msgs::msg::PredictedObjects & input_objects)
 {
   // Detect transition from not activated to activated
   if (!previous_rtc_activated_ && current_rtc_activated) {
@@ -149,8 +153,8 @@ void PerceptionFilterNode::handleRTCTransition(
             uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
           }
 
-          RCLCPP_INFO(get_logger(),
-            "Frozen object for filtering - UUID: %s, Distance to path: %.2f m",
+          RCLCPP_INFO(
+            get_logger(), "Frozen object for filtering - UUID: %s, Distance to path: %.2f m",
             uuid_str.c_str(), distance_to_path);
         }
       }
@@ -172,7 +176,8 @@ void PerceptionFilterNode::handleRTCTransition(
 
 void PerceptionFilterNode::checkVehicleStoppedState()
 {
-  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0); // 1 second duration
+  const bool is_currently_stopped =
+    vehicle_stop_checker_.isVehicleStopped(1.0);  // 1 second duration
 
   // Detect transition from moving to stopped
   if (!is_vehicle_stopped_ && is_currently_stopped) {
@@ -212,7 +217,8 @@ void PerceptionFilterNode::onObjects(
   published_time_publisher_->publish_if_subscribed(
     filtered_objects_pub_, filtered_objects.header.stamp);
 
-  // Publish planning factors (include objects that pass through now but would be filtered if RTC approved)
+  // Publish planning factors (include objects that pass through now but would be filtered if RTC
+  // approved)
   auto planning_factors = createPlanningFactors();
   planning_factors_pub_->publish(planning_factors);
 
@@ -241,7 +247,8 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
 }
 
-void PerceptionFilterNode::onPlanningTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
+void PerceptionFilterNode::onPlanningTrajectory(
+  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
 {
   planning_trajectory_ = msg;
   RCLCPP_DEBUG(get_logger(), "Planning trajectory received with %zu points", msg->points.size());
@@ -254,7 +261,8 @@ void PerceptionFilterNode::updateRTCStatus()
   }
 
   // Only update RTC status when vehicle is stopped
-  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0); // 1 second duration
+  const bool is_currently_stopped =
+    vehicle_stop_checker_.isVehicleStopped(1.0);  // 1 second duration
   if (!is_currently_stopped) {
     return;
   }
@@ -295,15 +303,16 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
   latest_classification_ = classification;
 
   // Check if vehicle is currently stopped for more detailed logging
-  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0); // 1 second duration
+  const bool is_currently_stopped =
+    vehicle_stop_checker_.isVehicleStopped(1.0);  // 1 second duration
 
   // Log classification results regardless of RTC status
-  RCLCPP_INFO(get_logger(),
-    "Object classification within %.1fm (Vehicle %s): Always pass=%zu, Would filter=%zu, Currently filtered=%zu",
-    object_classification_radius_,
-    is_currently_stopped ? "STOPPED" : "MOVING",
-    classification.pass_through_always.size(),
-    classification.pass_through_would_filter.size(),
+  RCLCPP_INFO(
+    get_logger(),
+    "Object classification within %.1fm (Vehicle %s): Always pass=%zu, Would filter=%zu, Currently "
+    "filtered=%zu",
+    object_classification_radius_, is_currently_stopped ? "STOPPED" : "MOVING",
+    classification.pass_through_always.size(), classification.pass_through_would_filter.size(),
     classification.currently_filtered.size());
 
   // Check if RTC interface is activated
@@ -324,7 +333,8 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
         uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
       }
 
-      RCLCPP_INFO(get_logger(),
+      RCLCPP_INFO(
+        get_logger(),
         "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Would be filtered if RTC approved",
         uuid_str.c_str(), distance_to_path, max_filter_distance_);
     }
@@ -354,8 +364,8 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
       uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
     }
 
-    RCLCPP_WARN(get_logger(),
-      "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Filtered: YES",
+    RCLCPP_WARN(
+      get_logger(), "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Filtered: YES",
       uuid_str.c_str(), distance_to_path, max_filter_distance_);
   }
 
@@ -367,7 +377,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 {
   sensor_msgs::msg::PointCloud2 filtered_pointcloud;
   filtered_pointcloud.header = input_pointcloud.header;
-
 
   // Check if RTC interface is activated
   if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
@@ -398,7 +407,8 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     ros_point.z = point.z;
 
     // Check if point should be filtered out
-    if (!isPointNearPath(ros_point, *planning_trajectory_, max_filter_distance_, pointcloud_safety_distance_)) {
+    if (!isPointNearPath(
+          ros_point, *planning_trajectory_, max_filter_distance_, pointcloud_safety_distance_)) {
       // Keep point if it's not near the path or if it's within safety distance
       filtered_cloud->points.push_back(point);
     }
@@ -413,8 +423,8 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   pcl::toROSMsg(*filtered_cloud, filtered_pointcloud);
   filtered_pointcloud.header = input_pointcloud.header;
 
-  RCLCPP_DEBUG(get_logger(),
-    "Pointcloud filtering: input points=%zu, output points=%zu",
+  RCLCPP_DEBUG(
+    get_logger(), "Pointcloud filtering: input points=%zu, output points=%zu",
     input_cloud->points.size(), filtered_cloud->points.size());
 
   return filtered_pointcloud;
@@ -441,14 +451,17 @@ double PerceptionFilterNode::getMinDistanceToPath(
 
     // Create path segment as line string
     autoware::universe_utils::LineString2d line_segment;
-    line_segment.push_back(autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
-    line_segment.push_back(autoware::universe_utils::Point2d(next_pose.position.x, next_pose.position.y));
+    line_segment.push_back(
+      autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
+    line_segment.push_back(
+      autoware::universe_utils::Point2d(next_pose.position.x, next_pose.position.y));
 
     // Handle case where segment is a point
     if (boost::geometry::distance(line_segment[0], line_segment[1]) < 1e-6) {
       // Calculate distance to point
       const double distance = boost::geometry::distance(
-        object_polygon, autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
+        object_polygon,
+        autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
       min_distance = std::min(min_distance, distance);
     } else {
       // Calculate distance to line segment
@@ -461,7 +474,8 @@ double PerceptionFilterNode::getMinDistanceToPath(
   if (!path.points.empty()) {
     const auto & last_pose = path.points.back().pose;
     const double distance = boost::geometry::distance(
-      object_polygon, autoware::universe_utils::Point2d(last_pose.position.x, last_pose.position.y));
+      object_polygon,
+      autoware::universe_utils::Point2d(last_pose.position.x, last_pose.position.y));
     min_distance = std::min(min_distance, distance);
   }
 
@@ -478,8 +492,7 @@ bool PerceptionFilterNode::isObjectNearPath(
 }
 
 bool PerceptionFilterNode::isPointNearPath(
-  const geometry_msgs::msg::Point & point,
-  const autoware_planning_msgs::msg::Trajectory & path,
+  const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path,
   double max_filter_distance, double pointcloud_safety_distance)
 {
   // Find the minimum distance from point to any point on the path
@@ -499,12 +512,12 @@ bool PerceptionFilterNode::isPointNearPath(
   // Return true if point should be filtered out:
   // - Distance is less than max_filter_distance (close to path)
   // - AND distance is greater than pointcloud_safety_distance (not too close)
-  return (min_dist_to_path <= max_filter_distance) && (min_dist_to_path > pointcloud_safety_distance);
+  return (min_dist_to_path <= max_filter_distance) &&
+         (min_dist_to_path > pointcloud_safety_distance);
 }
 
 void PerceptionFilterNode::publishDebugMarkers(
-  const autoware_perception_msgs::msg::PredictedObjects & input_objects,
-  bool rtc_activated)
+  const autoware_perception_msgs::msg::PredictedObjects & input_objects, bool rtc_activated)
 {
   visualization_msgs::msg::MarkerArray marker_array;
 
@@ -530,8 +543,8 @@ void PerceptionFilterNode::publishDebugMarkers(
     always_pass_objects.header = input_objects.header;
     always_pass_objects.objects = classification.pass_through_always;
 
-    auto always_pass_marker = createObjectMarker(
-      always_pass_objects, "map", marker_id++, {0.0, 0.0, 1.0, 0.8});
+    auto always_pass_marker =
+      createObjectMarker(always_pass_objects, "map", marker_id++, {0.0, 0.0, 1.0, 0.8});
     always_pass_marker.ns = "always_pass_objects";
     marker_array.markers.push_back(always_pass_marker);
 
@@ -563,8 +576,8 @@ void PerceptionFilterNode::publishDebugMarkers(
     would_filter_objects.header = input_objects.header;
     would_filter_objects.objects = classification.pass_through_would_filter;
 
-    auto would_filter_marker = createObjectMarker(
-      would_filter_objects, "map", marker_id++, {1.0, 1.0, 0.0, 0.8});
+    auto would_filter_marker =
+      createObjectMarker(would_filter_objects, "map", marker_id++, {1.0, 1.0, 0.0, 0.8});
     would_filter_marker.ns = "would_filter_objects";
     marker_array.markers.push_back(would_filter_marker);
 
@@ -596,8 +609,8 @@ void PerceptionFilterNode::publishDebugMarkers(
     filtered_out_objects.header = input_objects.header;
     filtered_out_objects.objects = classification.currently_filtered;
 
-    auto filtered_out_marker = createObjectMarker(
-      filtered_out_objects, "map", marker_id++, {1.0, 0.0, 0.0, 0.8});
+    auto filtered_out_marker =
+      createObjectMarker(filtered_out_objects, "map", marker_id++, {1.0, 0.0, 0.0, 0.8});
     filtered_out_marker.ns = "filtered_objects";
     marker_array.markers.push_back(filtered_out_marker);
 
@@ -642,7 +655,8 @@ void PerceptionFilterNode::publishDebugMarkers(
 
   std::string status_text = rtc_activated ? "RTC: ACTIVATED" : "RTC: NOT ACTIVATED";
   status_text += "\nAlways Pass: " + std::to_string(classification.pass_through_always.size());
-  status_text += "\nWould Filter: " + std::to_string(classification.pass_through_would_filter.size());
+  status_text +=
+    "\nWould Filter: " + std::to_string(classification.pass_through_would_filter.size());
   status_text += "\nFiltered: " + std::to_string(classification.currently_filtered.size());
   status_marker.text = status_text;
 
@@ -650,17 +664,16 @@ void PerceptionFilterNode::publishDebugMarkers(
 
   debug_markers_pub_->publish(marker_array);
 
-  RCLCPP_DEBUG(get_logger(),
+  RCLCPP_DEBUG(
+    get_logger(),
     "Debug markers published - RTC: %s, Always Pass: %zu, Would Filter: %zu, Filtered: %zu",
-    rtc_activated ? "ACTIVATED" : "NOT ACTIVATED",
-    classification.pass_through_always.size(),
-    classification.pass_through_would_filter.size(),
-    classification.currently_filtered.size());
+    rtc_activated ? "ACTIVATED" : "NOT ACTIVATED", classification.pass_through_always.size(),
+    classification.pass_through_would_filter.size(), classification.currently_filtered.size());
 }
 
 visualization_msgs::msg::Marker PerceptionFilterNode::createObjectMarker(
-  const autoware_perception_msgs::msg::PredictedObjects & objects,
-  const std::string & frame_id, int id, const std::array<double, 4> & color)
+  const autoware_perception_msgs::msg::PredictedObjects & objects, const std::string & frame_id,
+  int id, const std::array<double, 4> & color)
 {
   visualization_msgs::msg::Marker marker;
   marker.header.frame_id = frame_id;
@@ -688,7 +701,8 @@ visualization_msgs::msg::Marker PerceptionFilterNode::createObjectMarker(
   return marker;
 }
 
-autoware_internal_planning_msgs::msg::PlanningFactorArray PerceptionFilterNode::createPlanningFactors()
+autoware_internal_planning_msgs::msg::PlanningFactorArray
+PerceptionFilterNode::createPlanningFactors()
 {
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
   // Set header with current time and map frame
@@ -748,7 +762,8 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray PerceptionFilterNode::
 
     planning_factors.factors.push_back(factor);
 
-    RCLCPP_DEBUG(get_logger(),
+    RCLCPP_DEBUG(
+      get_logger(),
       "Planning factors published with %zu objects that would be filtered when RTC approved",
       objects_to_be_filtered.size());
   }
@@ -774,7 +789,8 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
   // Check if RTC interface exists and is activated
   const bool rtc_interface_exists = rtc_interface_ != nullptr;
   const bool rtc_activated = rtc_interface_exists && rtc_interface_->isActivated(rtc_uuid_);
-  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0); // 1 second duration
+  const bool is_currently_stopped =
+    vehicle_stop_checker_.isVehicleStopped(1.0);  // 1 second duration
 
   // Handle RTC state transition within classification process
   handleRTCTransition(rtc_activated, input_objects);
@@ -789,7 +805,8 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
       // Check if this object ID is in the frozen filter list
       std::array<uint8_t, 16> uuid_array;
       std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
-      const bool is_frozen_for_filtering = frozen_filter_object_ids_.find(uuid_array) != frozen_filter_object_ids_.end();
+      const bool is_frozen_for_filtering =
+        frozen_filter_object_ids_.find(uuid_array) != frozen_filter_object_ids_.end();
 
       if (rtc_activated) {
         // RTC exists and is approved: filtering function is active
@@ -803,9 +820,9 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
             if (i > 0) uuid_str += "-";
             uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
           }
-          RCLCPP_DEBUG(get_logger(),
-            "Filtering frozen object - UUID: %s, Distance: %.2f m",
-            uuid_str.c_str(), distance_to_path);
+          RCLCPP_DEBUG(
+            get_logger(), "Filtering frozen object - UUID: %s, Distance: %.2f m", uuid_str.c_str(),
+            distance_to_path);
         } else {
           // Not in frozen list, always pass through (even if it would meet filter criteria)
           classification.pass_through_always.push_back(object);
@@ -817,8 +834,8 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
               if (i > 0) uuid_str += "-";
               uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
             }
-            RCLCPP_DEBUG(get_logger(),
-              "New object not filtered (not frozen) - UUID: %s, Distance: %.2f m",
+            RCLCPP_DEBUG(
+              get_logger(), "New object not filtered (not frozen) - UUID: %s, Distance: %.2f m",
               uuid_str.c_str(), distance_to_path);
           }
         }
@@ -841,7 +858,8 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
   return classification;
 }
 
-double PerceptionFilterNode::getDistanceFromEgo(const autoware_perception_msgs::msg::PredictedObject & object)
+double PerceptionFilterNode::getDistanceFromEgo(
+  const autoware_perception_msgs::msg::PredictedObject & object)
 {
   // Get current ego pose using TF
   const auto ego_pose = getCurrentEgoPose();
