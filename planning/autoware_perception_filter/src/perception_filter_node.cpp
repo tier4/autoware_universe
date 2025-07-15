@@ -34,6 +34,8 @@
 
 #include <memory>
 
+#include <set>
+
 namespace autoware::perception_filter
 {
 
@@ -65,6 +67,10 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
 
   // Initialize vehicle stopped state
   is_vehicle_stopped_ = false;
+
+  // Initialize RTC transition and frozen filtering state management
+  previous_rtc_activated_ = false;
+  frozen_filter_object_ids_.clear();
 
   // Initialize RTC interface
   initializeRTCInterface();
@@ -108,6 +114,60 @@ void PerceptionFilterNode::initializeRTCInterface()
   rtc_uuid_ = autoware::universe_utils::generateUUID();
 
   RCLCPP_INFO(get_logger(), "RTC interface initialized with new UUID");
+}
+
+void PerceptionFilterNode::handleRTCTransition(
+  bool current_rtc_activated,
+  const autoware_perception_msgs::msg::PredictedObjects & input_objects)
+{
+  // Detect transition from not activated to activated
+  if (!previous_rtc_activated_ && current_rtc_activated) {
+    RCLCPP_INFO(get_logger(), "RTC transition detected: NOT ACTIVATED -> ACTIVATED");
+    RCLCPP_INFO(get_logger(), "Freezing filter target objects at RTC approval time...");
+
+    // Clear previous frozen object IDs
+    frozen_filter_object_ids_.clear();
+
+    // Find objects that should be filtered at this moment
+    for (const auto & object : input_objects.objects) {
+      const double distance_from_ego = getDistanceFromEgo(object);
+
+      // Only consider objects within classification radius
+      if (distance_from_ego <= object_classification_radius_) {
+        const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
+
+        // If object is within filter distance, add its ID to frozen list
+        if (distance_to_path <= max_filter_distance_) {
+          std::array<uint8_t, 16> uuid_array;
+          std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
+          frozen_filter_object_ids_.insert(uuid_array);
+
+          // Convert UUID to string for logging
+          std::string uuid_str = "";
+          for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
+            if (i > 0) uuid_str += "-";
+            uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
+          }
+
+          RCLCPP_INFO(get_logger(),
+            "Frozen object for filtering - UUID: %s, Distance to path: %.2f m",
+            uuid_str.c_str(), distance_to_path);
+        }
+      }
+    }
+
+    RCLCPP_INFO(get_logger(), "Frozen %zu objects for filtering", frozen_filter_object_ids_.size());
+  }
+
+  // Reset when RTC becomes not activated
+  if (previous_rtc_activated_ && !current_rtc_activated) {
+    RCLCPP_INFO(get_logger(), "RTC transition detected: ACTIVATED -> NOT ACTIVATED");
+    RCLCPP_INFO(get_logger(), "Clearing frozen filter objects...");
+    frozen_filter_object_ids_.clear();
+  }
+
+  // Update previous state
+  previous_rtc_activated_ = current_rtc_activated;
 }
 
 void PerceptionFilterNode::checkVehicleStoppedState()
@@ -716,6 +776,9 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
   const bool rtc_activated = rtc_interface_exists && rtc_interface_->isActivated(rtc_uuid_);
   const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0); // 1 second duration
 
+  // Handle RTC state transition within classification process
+  handleRTCTransition(rtc_activated, input_objects);
+
   for (const auto & object : input_objects.objects) {
     const double distance_from_ego = getDistanceFromEgo(object);
     // Classify only objects within the specified radius
@@ -723,12 +786,41 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
       const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
       const bool would_be_filtered = distance_to_path <= max_filter_distance_;
 
+      // Check if this object ID is in the frozen filter list
+      std::array<uint8_t, 16> uuid_array;
+      std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
+      const bool is_frozen_for_filtering = frozen_filter_object_ids_.find(uuid_array) != frozen_filter_object_ids_.end();
+
       if (rtc_activated) {
         // RTC exists and is approved: filtering function is active
-        if (would_be_filtered) {
+        // Only filter objects that were frozen at RTC approval time
+        if (is_frozen_for_filtering) {
           classification.currently_filtered.push_back(object);
+
+          // Log frozen object filtering
+          std::string uuid_str = "";
+          for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
+            if (i > 0) uuid_str += "-";
+            uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
+          }
+          RCLCPP_DEBUG(get_logger(),
+            "Filtering frozen object - UUID: %s, Distance: %.2f m",
+            uuid_str.c_str(), distance_to_path);
         } else {
+          // Not in frozen list, always pass through (even if it would meet filter criteria)
           classification.pass_through_always.push_back(object);
+
+          if (would_be_filtered) {
+            // Log that this new object would be filtered but isn't because it's not frozen
+            std::string uuid_str = "";
+            for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
+              if (i > 0) uuid_str += "-";
+              uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
+            }
+            RCLCPP_DEBUG(get_logger(),
+              "New object not filtered (not frozen) - UUID: %s, Distance: %.2f m",
+              uuid_str.c_str(), distance_to_path);
+          }
         }
       } else if (rtc_interface_exists && !rtc_activated && is_currently_stopped) {
         // RTC exists, not approved, and vehicle is stopped: filtering function is inactive

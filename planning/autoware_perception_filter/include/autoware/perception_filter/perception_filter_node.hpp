@@ -36,6 +36,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
+#include <set>
 
 namespace autoware::perception_filter
 {
@@ -77,6 +78,9 @@ private:
   void updateRTCStatus();
   void initializeRTCInterface();
   void checkVehicleStoppedState();
+  void handleRTCTransition(
+    bool current_rtc_activated,
+    const autoware_perception_msgs::msg::PredictedObjects & input_objects);
 
   // Planning Factor functions
   autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors();
@@ -147,6 +151,10 @@ private:
 
   // RTC recreation parameters
   double stop_velocity_threshold_;
+
+  // RTC transition and frozen filtering state management
+  bool previous_rtc_activated_;  // Track previous RTC activation state to detect transitions
+  std::set<std::array<uint8_t, 16>> frozen_filter_object_ids_;  // Object IDs frozen at RTC approval time
 };
 
 }  // namespace autoware::perception_filter
