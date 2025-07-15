@@ -110,7 +110,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   // Initialize published time publisher
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 
-  RCLCPP_INFO(get_logger(), "PerceptionFilterNode initialized");
+  RCLCPP_DEBUG(get_logger(), "PerceptionFilterNode initialized");
 }
 
 void PerceptionFilterNode::initializeRTCInterface()
@@ -127,8 +127,9 @@ void PerceptionFilterNode::handleRTCTransition(
 {
   // Detect transition from not activated to activated
   if (!previous_rtc_activated_ && current_rtc_activated) {
+    RCLCPP_DEBUG(get_logger(), "Freezing filter target objects at RTC approval time...");
     RCLCPP_INFO(get_logger(), "RTC transition detected: NOT ACTIVATED -> ACTIVATED");
-    RCLCPP_INFO(get_logger(), "Freezing filter target objects at RTC approval time...");
+
 
     // Clear previous frozen object IDs
     frozen_filter_object_ids_.clear();
@@ -154,20 +155,20 @@ void PerceptionFilterNode::handleRTCTransition(
             uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
           }
 
-          RCLCPP_INFO(
+          RCLCPP_DEBUG(
             get_logger(), "Frozen object for filtering - UUID: %s, Distance to path: %.2f m",
             uuid_str.c_str(), distance_to_path);
         }
       }
     }
 
-    RCLCPP_INFO(get_logger(), "Frozen %zu objects for filtering", frozen_filter_object_ids_.size());
+    RCLCPP_DEBUG(get_logger(), "Frozen %zu objects for filtering", frozen_filter_object_ids_.size());
   }
 
   // Reset when RTC becomes not activated
   if (previous_rtc_activated_ && !current_rtc_activated) {
-    RCLCPP_INFO(get_logger(), "RTC transition detected: ACTIVATED -> NOT ACTIVATED");
-    RCLCPP_INFO(get_logger(), "Clearing frozen filter objects...");
+    RCLCPP_DEBUG(get_logger(), "RTC transition detected: ACTIVATED -> NOT ACTIVATED");
+    RCLCPP_DEBUG(get_logger(), "Clearing frozen filter objects...");
     frozen_filter_object_ids_.clear();
   }
 
@@ -205,7 +206,7 @@ void PerceptionFilterNode::checkVehicleStoppedState()
     RCLCPP_INFO(get_logger(), "New RTC interface created on vehicle stop");
 
     if (frozen_list_size > 0) {
-      RCLCPP_INFO(
+      RCLCPP_DEBUG(
         get_logger(),
         "Frozen filter list preserved across RTC recreation (%zu objects maintained)",
         frozen_list_size);
@@ -338,7 +339,7 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
     vehicle_stop_checker_.isVehicleStopped(1.0);  // 1 second duration
 
   // Log classification results regardless of RTC status
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     get_logger(),
     "Object classification within %.1fm (Vehicle %s): Always pass=%zu, Would filter=%zu, Currently "
     "filtered=%zu",
@@ -364,7 +365,7 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
         uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
       }
 
-      RCLCPP_INFO(
+      RCLCPP_DEBUG(
         get_logger(),
         "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Would be filtered if RTC approved",
         uuid_str.c_str(), distance_to_path, max_filter_distance_);
@@ -395,7 +396,7 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
       uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
     }
 
-    RCLCPP_WARN(
+    RCLCPP_DEBUG(
       get_logger(), "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Filtered: YES",
       uuid_str.c_str(), distance_to_path, max_filter_distance_);
   }
@@ -908,7 +909,7 @@ geometry_msgs::msg::Pose PerceptionFilterNode::getCurrentEgoPose() const
     ego_pose.position.z = transform.transform.translation.z;
     ego_pose.orientation = transform.transform.rotation;
   } catch (const tf2::TransformException & ex) {
-    RCLCPP_ERROR(get_logger(), "Failed to get ego pose: %s", ex.what());
+    RCLCPP_DEBUG(get_logger(), "Failed to get ego pose: %s", ex.what());
     // Return default pose at origin
     ego_pose.position.x = 0.0;
     ego_pose.position.y = 0.0;
@@ -926,19 +927,19 @@ bool PerceptionFilterNode::isDataReady()
   }
 
   if (enable_object_filtering_ && !planning_trajectory_) {
-    RCLCPP_INFO_THROTTLE(
+    RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 5000, "waiting for planning_trajectory for object filtering...");
     return false;
   }
 
   if (enable_pointcloud_filtering_ && !planning_trajectory_) {
-    RCLCPP_INFO_THROTTLE(
+    RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 5000, "waiting for planning_trajectory for pointcloud filtering...");
     return false;
   }
 
   if (enable_pointcloud_filtering_ && !latest_pointcloud_) {
-    RCLCPP_INFO_THROTTLE(
+    RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 5000, "waiting for pointcloud data...");
     return false;
   }
