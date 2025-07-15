@@ -76,6 +76,9 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   filtered_pointcloud_pub_ =
     create_publisher<sensor_msgs::msg::PointCloud2>("output/filtered_pointcloud", rclcpp::QoS{1});
 
+  planning_factors_pub_ = create_publisher<autoware_internal_planning_msgs::msg::PlanningFactorArray>(
+    "/planning/planning_factors/perception_filter", rclcpp::QoS{1});
+
   // Initialize debug visualization publishers
   debug_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
     "debug/filtering_markers", rclcpp::QoS{1});
@@ -102,6 +105,10 @@ void PerceptionFilterNode::onObjects(
   filtered_objects_pub_->publish(filtered_objects);
   published_time_publisher_->publish_if_subscribed(
     filtered_objects_pub_, filtered_objects.header.stamp);
+
+  // Publish planning factors
+  auto planning_factors = createPlanningFactors(*msg);
+  planning_factors_pub_->publish(planning_factors);
 
   // Publish debug markers
   const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
@@ -443,6 +450,76 @@ visualization_msgs::msg::Marker PerceptionFilterNode::createObjectMarker(
   }
 
   return marker;
+}
+
+autoware_internal_planning_msgs::msg::PlanningFactorArray PerceptionFilterNode::createPlanningFactors(
+  const autoware_perception_msgs::msg::PredictedObjects & input_objects)
+{
+  autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
+  planning_factors.header = input_objects.header;
+
+  if (!planning_trajectory_ || planning_trajectory_->points.empty() || input_objects.objects.empty()) {
+    return planning_factors;
+  }
+
+  // RTCが承認されていない場合でも、承認されたときにフィルターされるであろうオブジェクトを特定
+  std::vector<unique_identifier_msgs::msg::UUID> objects_to_be_filtered;
+
+  for (const auto & object : input_objects.objects) {
+    const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
+    const bool would_be_filtered = distance_to_path <= max_filter_distance_;
+
+    if (would_be_filtered) {
+      objects_to_be_filtered.push_back(object.object_id);
+    }
+  }
+
+  // PlanningFactorを作成（オブジェクトがフィルターされる可能性がある場合のみ）
+  if (!objects_to_be_filtered.empty()) {
+    autoware_internal_planning_msgs::msg::PlanningFactor factor;
+    factor.module = "perception_filter";
+    factor.behavior = autoware_internal_planning_msgs::msg::PlanningFactor::STOP;
+    factor.detail = "Objects near planning trajectory";
+
+    // Control pointを追加（経路上の最も近い点）
+    if (!planning_trajectory_->points.empty()) {
+      autoware_internal_planning_msgs::msg::ControlPoint control_point;
+      control_point.pose = planning_trajectory_->points.front().pose;
+      control_point.distance = 0.0;
+      factor.control_points.push_back(control_point);
+    }
+
+    // Safety factorsを追加（フィルターされるオブジェクトのUUIDを含む）
+    factor.safety_factors.is_safe = false;
+    for (const auto & uuid : objects_to_be_filtered) {
+      autoware_internal_planning_msgs::msg::SafetyFactor safety_factor;
+      safety_factor.type = autoware_internal_planning_msgs::msg::SafetyFactor::OBJECT;
+      safety_factor.is_safe = false;
+      safety_factor.object_id = uuid;
+
+      // オブジェクトの位置を追加（必要に応じて）
+      for (const auto & object : input_objects.objects) {
+        if (object.object_id.uuid == uuid.uuid) {
+          geometry_msgs::msg::Point point;
+          point.x = object.kinematics.initial_pose_with_covariance.pose.position.x;
+          point.y = object.kinematics.initial_pose_with_covariance.pose.position.y;
+          point.z = object.kinematics.initial_pose_with_covariance.pose.position.z;
+          safety_factor.points.push_back(point);
+          break;
+        }
+      }
+
+      factor.safety_factors.factors.push_back(safety_factor);
+    }
+
+    planning_factors.factors.push_back(factor);
+
+    RCLCPP_DEBUG(get_logger(),
+      "Planning factors published with %zu objects that would be filtered",
+      objects_to_be_filtered.size());
+  }
+
+  return planning_factors;
 }
 
 }  // namespace autoware::perception_filter

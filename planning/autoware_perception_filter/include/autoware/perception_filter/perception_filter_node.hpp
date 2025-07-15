@@ -22,6 +22,10 @@
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
+#include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
+#include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
+#include <autoware_internal_planning_msgs/msg/control_point.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -66,6 +70,10 @@ private:
   // RTC interface functions
   void updateRTCStatus();
 
+  // Planning Factor functions
+  autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
+    const autoware_perception_msgs::msg::PredictedObjects & input_objects);
+
   // Debug visualization functions
   void publishDebugMarkers(
     const autoware_perception_msgs::msg::PredictedObjects & input_objects,
@@ -84,6 +92,8 @@ private:
   rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr
     filtered_objects_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr filtered_pointcloud_pub_;
+  rclcpp::Publisher<autoware_internal_planning_msgs::msg::PlanningFactorArray>::SharedPtr
+    planning_factors_pub_;
 
   // Debug visualization publishers
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_markers_pub_;
