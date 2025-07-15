@@ -41,7 +41,7 @@ private:
   // Callback functions
   void onObjects(const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg);
   void onPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
-  void onPredictedPath(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
+  void onPlanningTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
 
   // Filter functions
   autoware_perception_msgs::msg::PredictedObjects filterObjects(
@@ -53,6 +53,10 @@ private:
   bool isObjectNearPath(
     const autoware_perception_msgs::msg::PredictedObject & object,
     const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance);
+
+  double getMinDistanceToPath(
+    const autoware_perception_msgs::msg::PredictedObject & object,
+    const autoware_planning_msgs::msg::Trajectory & path);
 
   bool isPointNearPath(
     const geometry_msgs::msg::Point & point,
@@ -74,7 +78,7 @@ private:
   // Subscribers
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr objects_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
-  rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr predicted_path_sub_;
+  rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr planning_trajectory_sub_;
 
   // Publishers
   rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr
@@ -92,7 +96,7 @@ private:
   unique_identifier_msgs::msg::UUID rtc_uuid_;
 
   // State variables
-  autoware_planning_msgs::msg::Trajectory::ConstSharedPtr predicted_path_;
+  autoware_planning_msgs::msg::Trajectory::ConstSharedPtr planning_trajectory_;
 
   // Parameters
   bool enable_object_filtering_;

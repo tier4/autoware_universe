@@ -34,7 +34,7 @@ namespace autoware::perception_filter
 {
 
 PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_options)
-: Node("perception_filter_node", node_options), predicted_path_(nullptr)
+: Node("perception_filter_node", node_options), planning_trajectory_(nullptr)
 {
   // Initialize glog
   if (!google::IsGoogleLoggingInitialized()) {
@@ -61,9 +61,9 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     "input/pointcloud", rclcpp::QoS{1},
     std::bind(&PerceptionFilterNode::onPointCloud, this, std::placeholders::_1));
 
-  predicted_path_sub_ = create_subscription<autoware_planning_msgs::msg::Trajectory>(
+  planning_trajectory_sub_ = create_subscription<autoware_planning_msgs::msg::Trajectory>(
     "input/planning_trajectory", rclcpp::QoS{1},
-    std::bind(&PerceptionFilterNode::onPredictedPath, this, std::placeholders::_1));
+    std::bind(&PerceptionFilterNode::onPlanningTrajectory, this, std::placeholders::_1));
 
   // Initialize publishers
   filtered_objects_pub_ = create_publisher<autoware_perception_msgs::msg::PredictedObjects>(
@@ -121,10 +121,10 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
 }
 
-void PerceptionFilterNode::onPredictedPath(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
+void PerceptionFilterNode::onPlanningTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
 {
-  predicted_path_ = msg;
-  RCLCPP_DEBUG(get_logger(), "Predicted path received with %zu points", msg->points.size());
+  planning_trajectory_ = msg;
+  RCLCPP_DEBUG(get_logger(), "Planning trajectory received with %zu points", msg->points.size());
 }
 
 void PerceptionFilterNode::updateRTCStatus()
@@ -152,24 +152,44 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
   // Check if RTC interface is activated
   if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
     // If RTC is not activated, pass through all objects
-    RCLCPP_WARN(get_logger(), "RTC not activated, passing through all objects");
+    RCLCPP_DEBUG(get_logger(), "RTC not activated, passing through all objects");
     filtered_objects = input_objects;
     return filtered_objects;
   }
 
-  if (!predicted_path_ || predicted_path_->points.empty()) {
-    // If no predicted path is available, pass through all objects
-    RCLCPP_WARN(get_logger(), "No predicted path available, passing through all objects");
+  if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
+    // If no planning trajectory is available, pass through all objects
+    RCLCPP_DEBUG(get_logger(), "No planning trajectory available, passing through all objects");
     filtered_objects = input_objects;
     return filtered_objects;
   }
 
-  // Filter objects based on distance from predicted path
+  if (input_objects.objects.empty()) {
+    RCLCPP_WARN(get_logger(), "No objects to filter, passing through all objects");
+    filtered_objects = input_objects;
+    return filtered_objects;
+  }
+
+  // Filter objects based on distance from planning trajectory
   for (const auto & object : input_objects.objects) {
-    if (!isObjectNearPath(object, *predicted_path_, max_filter_distance_)) {
+    const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
+    const bool is_near_path = distance_to_path <= max_filter_distance_;
+    const bool should_filter = is_near_path;
+
+    // Convert UUID to string for debug output
+    std::string uuid_str = "";
+    for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
+      if (i > 0) uuid_str += "-";
+      uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
+    }
+
+    RCLCPP_WARN(get_logger(),
+      "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Filtered: %s",
+      uuid_str.c_str(), distance_to_path, max_filter_distance_,
+      should_filter ? "YES" : "NO");
+
+    if (!should_filter) {
       filtered_objects.objects.push_back(object);
-    } else {
-      RCLCPP_WARN(get_logger(), "Filtering out object (too close to path)");
     }
   }
 
@@ -191,9 +211,9 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     return filtered_pointcloud;
   }
 
-  if (!predicted_path_ || predicted_path_->points.empty()) {
-    // If no predicted path is available, pass through the pointcloud
-    RCLCPP_DEBUG(get_logger(), "No predicted path available, passing through pointcloud");
+  if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
+    // If no planning trajectory is available, pass through the pointcloud
+    RCLCPP_DEBUG(get_logger(), "No planning trajectory available, passing through pointcloud");
     filtered_pointcloud = input_pointcloud;
     return filtered_pointcloud;
   }
@@ -204,7 +224,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 
   pcl::fromROSMsg(input_pointcloud, *input_cloud);
 
-  // Filter points based on distance from predicted path
+  // Filter points based on distance from planning trajectory
   for (const auto & point : input_cloud->points) {
     geometry_msgs::msg::Point ros_point;
     ros_point.x = point.x;
@@ -212,7 +232,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     ros_point.z = point.z;
 
     // Check if point should be filtered out
-    if (!isPointNearPath(ros_point, *predicted_path_, max_filter_distance_, pointcloud_safety_distance_)) {
+    if (!isPointNearPath(ros_point, *planning_trajectory_, max_filter_distance_, pointcloud_safety_distance_)) {
       // Keep point if it's not near the path or if it's within safety distance
       filtered_cloud->points.push_back(point);
     }
@@ -227,16 +247,16 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   pcl::toROSMsg(*filtered_cloud, filtered_pointcloud);
   filtered_pointcloud.header = input_pointcloud.header;
 
-  RCLCPP_WARN(get_logger(),
+  RCLCPP_DEBUG(get_logger(),
     "Pointcloud filtering: input points=%zu, output points=%zu",
     input_cloud->points.size(), filtered_cloud->points.size());
 
   return filtered_pointcloud;
 }
 
-bool PerceptionFilterNode::isObjectNearPath(
+double PerceptionFilterNode::getMinDistanceToPath(
   const autoware_perception_msgs::msg::PredictedObject & object,
-  const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance)
+  const autoware_planning_msgs::msg::Trajectory & path)
 {
   // Get object position
   const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
@@ -255,6 +275,14 @@ bool PerceptionFilterNode::isObjectNearPath(
     min_distance = std::min(min_distance, distance);
   }
 
+  return min_distance;
+}
+
+bool PerceptionFilterNode::isObjectNearPath(
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance)
+{
+  const double min_distance = getMinDistanceToPath(object, path);
   // Return true if object is within max_filter_distance of the path
   return min_distance <= max_filter_distance;
 }
