@@ -43,7 +43,8 @@ namespace autoware::perception_filter
 PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_options)
 : Node("perception_filter_node", node_options),
   vehicle_stop_checker_(this),
-  planning_trajectory_(nullptr)
+  planning_trajectory_(nullptr),
+  latest_pointcloud_(nullptr)
 {
   // Initialize glog
   if (!google::IsGoogleLoggingInitialized()) {
@@ -183,6 +184,12 @@ void PerceptionFilterNode::checkVehicleStoppedState()
   if (!is_vehicle_stopped_ && is_currently_stopped) {
     RCLCPP_INFO(get_logger(), "Vehicle stopped detected. Recreating RTC interface...");
 
+    // Store current frozen list size for logging
+    const size_t frozen_list_size = frozen_filter_object_ids_.size();
+
+    // Preserve the previous RTC activation state before recreating
+    const bool previous_rtc_was_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
+
     // Clear current RTC status before recreating
     if (rtc_interface_) {
       rtc_interface_->clearCooperateStatus();
@@ -191,7 +198,18 @@ void PerceptionFilterNode::checkVehicleStoppedState()
     // Recreate RTC interface with new UUID
     initializeRTCInterface();
 
+    // Restore the previous RTC activation state to maintain consistency
+    // This ensures frozen list behavior is preserved across RTC recreation
+    previous_rtc_activated_ = previous_rtc_was_activated;
+
     RCLCPP_INFO(get_logger(), "New RTC interface created on vehicle stop");
+
+    if (frozen_list_size > 0) {
+      RCLCPP_INFO(
+        get_logger(),
+        "Frozen filter list preserved across RTC recreation (%zu objects maintained)",
+        frozen_list_size);
+    }
   }
 
   is_vehicle_stopped_ = is_currently_stopped;
@@ -200,6 +218,11 @@ void PerceptionFilterNode::checkVehicleStoppedState()
 void PerceptionFilterNode::onObjects(
   const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg)
 {
+  // Check if required data is ready
+  if (!isDataReady()) {
+    return;
+  }
+
   // Check vehicle stopped state for potential RTC recreation
   checkVehicleStoppedState();
 
@@ -217,18 +240,30 @@ void PerceptionFilterNode::onObjects(
   published_time_publisher_->publish_if_subscribed(
     filtered_objects_pub_, filtered_objects.header.stamp);
 
+  // Check if RTC is activated and execute pointcloud filtering if enabled
+  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
+  if (rtc_activated && enable_pointcloud_filtering_ && latest_pointcloud_) {
+    RCLCPP_DEBUG(get_logger(), "RTC activated: executing pointcloud filtering from onObjects");
+    auto filtered_pointcloud = filterPointCloud(*latest_pointcloud_);
+    filtered_pointcloud_pub_->publish(filtered_pointcloud);
+    published_time_publisher_->publish_if_subscribed(
+      filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
+  }
+
   // Publish planning factors (include objects that pass through now but would be filtered if RTC
   // approved)
   auto planning_factors = createPlanningFactors();
   planning_factors_pub_->publish(planning_factors);
 
   // Publish debug markers
-  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
   publishDebugMarkers(*msg, rtc_activated);
 }
 
 void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
 {
+  // Store latest pointcloud for use in onObjects when RTC is activated
+  latest_pointcloud_ = msg;
+
   // Check vehicle stopped state for potential RTC recreation
   checkVehicleStoppedState();
 
@@ -282,19 +317,6 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
 {
   autoware_perception_msgs::msg::PredictedObjects filtered_objects;
   filtered_objects.header = input_objects.header;
-
-  if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
-    // If no planning trajectory is available, pass through all objects
-    RCLCPP_DEBUG(get_logger(), "No planning trajectory available, passing through all objects");
-    filtered_objects = input_objects;
-    return filtered_objects;
-  }
-
-  if (input_objects.objects.empty()) {
-    RCLCPP_WARN(get_logger(), "No objects to filter, passing through all objects");
-    filtered_objects = input_objects;
-    return filtered_objects;
-  }
 
   // Always classify objects to understand potential filtering behavior
   auto classification = classifyObjectsWithinRadius(input_objects);
@@ -382,13 +404,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
     // If RTC is not activated, pass through the pointcloud
     RCLCPP_DEBUG(get_logger(), "RTC not activated, passing through pointcloud");
-    filtered_pointcloud = input_pointcloud;
-    return filtered_pointcloud;
-  }
-
-  if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
-    // If no planning trajectory is available, pass through the pointcloud
-    RCLCPP_DEBUG(get_logger(), "No planning trajectory available, passing through pointcloud");
     filtered_pointcloud = input_pointcloud;
     return filtered_pointcloud;
   }
@@ -892,6 +907,34 @@ geometry_msgs::msg::Pose PerceptionFilterNode::getCurrentEgoPose() const
     ego_pose.orientation.w = 1.0;
   }
   return ego_pose;
+}
+
+bool PerceptionFilterNode::isDataReady() const
+{
+  if (!enable_object_filtering_ && !enable_pointcloud_filtering_) {
+    // If both filtering are disabled, no data dependencies
+    return true;
+  }
+
+  if (enable_object_filtering_ && !planning_trajectory_) {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 5000, "waiting for planning_trajectory for object filtering...");
+    return false;
+  }
+
+  if (enable_pointcloud_filtering_ && !planning_trajectory_) {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 5000, "waiting for planning_trajectory for pointcloud filtering...");
+    return false;
+  }
+
+  if (enable_pointcloud_filtering_ && !latest_pointcloud_) {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 5000, "waiting for pointcloud data...");
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace autoware::perception_filter

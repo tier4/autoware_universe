@@ -61,6 +61,7 @@ private:
 
   // Utility functions
   geometry_msgs::msg::Pose getCurrentEgoPose() const;
+  bool isDataReady() const;
 
   bool isObjectNearPath(
     const autoware_perception_msgs::msg::PredictedObject & object,
@@ -141,6 +142,7 @@ private:
 
   // State variables
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr planning_trajectory_;
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr latest_pointcloud_;
 
   // Latest object classification result
   ObjectClassification latest_classification_;
