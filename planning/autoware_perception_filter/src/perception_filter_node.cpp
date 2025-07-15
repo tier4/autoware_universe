@@ -397,6 +397,13 @@ void PerceptionFilterNode::publishDebugMarkers(
 {
   visualization_msgs::msg::MarkerArray marker_array;
 
+  // First, delete all previous markers
+  visualization_msgs::msg::Marker delete_marker;
+  delete_marker.header.frame_id = "map";
+  delete_marker.header.stamp = this->now();
+  delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+  marker_array.markers.push_back(delete_marker);
+
   // Get ego pose for marker positioning
   const auto ego_pose = getCurrentEgoPose();
 
@@ -414,6 +421,7 @@ void PerceptionFilterNode::publishDebugMarkers(
 
     auto always_pass_marker = createObjectMarker(
       always_pass_objects, "map", marker_id++, {0.0, 0.0, 1.0, 0.8});
+    always_pass_marker.ns = "always_pass_objects";
     marker_array.markers.push_back(always_pass_marker);
 
     // Add text markers for always pass objects
@@ -422,8 +430,8 @@ void PerceptionFilterNode::publishDebugMarkers(
       visualization_msgs::msg::Marker text_marker;
       text_marker.header.frame_id = "map";
       text_marker.header.stamp = this->now();
-      text_marker.ns = "object_status_text";
-      text_marker.id = marker_id++;
+      text_marker.ns = "always_pass_text";
+      text_marker.id = static_cast<int>(i);
       text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
       text_marker.action = visualization_msgs::msg::Marker::ADD;
       text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
@@ -446,6 +454,7 @@ void PerceptionFilterNode::publishDebugMarkers(
 
     auto would_filter_marker = createObjectMarker(
       would_filter_objects, "map", marker_id++, {1.0, 1.0, 0.0, 0.8});
+    would_filter_marker.ns = "would_filter_objects";
     marker_array.markers.push_back(would_filter_marker);
 
     // Add text markers for would filter objects
@@ -454,8 +463,8 @@ void PerceptionFilterNode::publishDebugMarkers(
       visualization_msgs::msg::Marker text_marker;
       text_marker.header.frame_id = "map";
       text_marker.header.stamp = this->now();
-      text_marker.ns = "object_status_text";
-      text_marker.id = marker_id++;
+      text_marker.ns = "would_filter_text";
+      text_marker.id = static_cast<int>(i);
       text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
       text_marker.action = visualization_msgs::msg::Marker::ADD;
       text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
@@ -478,6 +487,7 @@ void PerceptionFilterNode::publishDebugMarkers(
 
     auto filtered_out_marker = createObjectMarker(
       filtered_out_objects, "map", marker_id++, {1.0, 0.0, 0.0, 0.8});
+    filtered_out_marker.ns = "filtered_objects";
     marker_array.markers.push_back(filtered_out_marker);
 
     // Add text markers for filtered objects
@@ -486,8 +496,8 @@ void PerceptionFilterNode::publishDebugMarkers(
       visualization_msgs::msg::Marker text_marker;
       text_marker.header.frame_id = "map";
       text_marker.header.stamp = this->now();
-      text_marker.ns = "object_status_text";
-      text_marker.id = marker_id++;
+      text_marker.ns = "filtered_text";
+      text_marker.id = static_cast<int>(i);
       text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
       text_marker.action = visualization_msgs::msg::Marker::ADD;
       text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
@@ -507,7 +517,7 @@ void PerceptionFilterNode::publishDebugMarkers(
   status_marker.header.frame_id = "map";
   status_marker.header.stamp = this->now();
   status_marker.ns = "rtc_status";
-  status_marker.id = marker_id++;
+  status_marker.id = 0;
   status_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
   status_marker.action = visualization_msgs::msg::Marker::ADD;
   status_marker.pose.position.x = ego_pose.position.x;
