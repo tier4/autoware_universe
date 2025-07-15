@@ -28,6 +28,10 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+// Add autoware_universe_utils and boost geometry for object shape and distance calculation
+#include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <boost/geometry.hpp>
+
 #include <memory>
 
 namespace autoware::perception_filter
@@ -258,20 +262,44 @@ double PerceptionFilterNode::getMinDistanceToPath(
   const autoware_perception_msgs::msg::PredictedObject & object,
   const autoware_planning_msgs::msg::Trajectory & path)
 {
-  // Get object position
-  const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
+  // Return default value if path is empty
+  if (path.points.empty()) {
+    return std::numeric_limits<double>::max();
+  }
 
-  // Find the minimum distance from object to any point on the path
+  // Get object shape polygon (same approach as other Autoware modules)
+  const auto object_polygon = autoware::universe_utils::toPolygon2d(object);
+
+  // Calculate minimum distance to each path segment
   double min_distance = std::numeric_limits<double>::max();
 
-  for (const auto & path_point : path.points) {
-    const auto & path_pos = path_point.pose.position;
+  for (size_t i = 0; i < path.points.size() - 1; ++i) {
+    const auto & current_pose = path.points[i].pose;
+    const auto & next_pose = path.points[i + 1].pose;
 
-    // Calculate 2D distance between object and path point
-    const double dx = object_pos.x - path_pos.x;
-    const double dy = object_pos.y - path_pos.y;
-    const double distance = std::sqrt(dx * dx + dy * dy);
+    // Create path segment as line string
+    autoware::universe_utils::LineString2d line_segment;
+    line_segment.push_back(autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
+    line_segment.push_back(autoware::universe_utils::Point2d(next_pose.position.x, next_pose.position.y));
 
+    // Handle case where segment is a point
+    if (boost::geometry::distance(line_segment[0], line_segment[1]) < 1e-6) {
+      // Calculate distance to point
+      const double distance = boost::geometry::distance(
+        object_polygon, autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
+      min_distance = std::min(min_distance, distance);
+    } else {
+      // Calculate distance to line segment
+      const double distance = boost::geometry::distance(object_polygon, line_segment);
+      min_distance = std::min(min_distance, distance);
+    }
+  }
+
+  // Also check distance to the last point
+  if (!path.points.empty()) {
+    const auto & last_pose = path.points.back().pose;
+    const double distance = boost::geometry::distance(
+      object_polygon, autoware::universe_utils::Point2d(last_pose.position.x, last_pose.position.y));
     min_distance = std::min(min_distance, distance);
   }
 
