@@ -23,6 +23,11 @@
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+// Add PCL headers for pointcloud processing
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
+
 #include <memory>
 
 namespace autoware::perception_filter
@@ -44,7 +49,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   pointcloud_safety_distance_ = declare_parameter<double>("pointcloud_safety_distance");
 
   // Initialize RTC interface
-  rtc_interface_ = std::make_unique<autoware::rtc_interface::RTCInterface>(this, "perception_filter");
+  rtc_interface_ = std::make_unique<autoware::rtc_interface::RTCInterface>(this, "supervised_perception_filter");
   rtc_uuid_ = autoware::universe_utils::generateUUID();
 
   // Initialize subscribers
@@ -147,14 +152,14 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
   // Check if RTC interface is activated
   if (!rtc_interface_ || !rtc_interface_->isActivated(rtc_uuid_)) {
     // If RTC is not activated, pass through all objects
-    RCLCPP_DEBUG(get_logger(), "RTC not activated, passing through all objects");
+    RCLCPP_WARN(get_logger(), "RTC not activated, passing through all objects");
     filtered_objects = input_objects;
     return filtered_objects;
   }
 
   if (!predicted_path_ || predicted_path_->points.empty()) {
     // If no predicted path is available, pass through all objects
-    RCLCPP_DEBUG(get_logger(), "No predicted path available, passing through all objects");
+    RCLCPP_WARN(get_logger(), "No predicted path available, passing through all objects");
     filtered_objects = input_objects;
     return filtered_objects;
   }
@@ -164,7 +169,7 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
     if (!isObjectNearPath(object, *predicted_path_, max_filter_distance_)) {
       filtered_objects.objects.push_back(object);
     } else {
-      RCLCPP_DEBUG(get_logger(), "Filtering out object (too close to path)");
+      RCLCPP_WARN(get_logger(), "Filtering out object (too close to path)");
     }
   }
 
@@ -192,16 +197,38 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     return filtered_pointcloud;
   }
 
-  // Filter pointcloud based on distance from predicted path
-  // Points closer than pointcloud_safety_distance are always kept
-  // Points between pointcloud_safety_distance and max_filter_distance are filtered out
-  // Points farther than max_filter_distance are kept
+  // Convert ROS PointCloud2 to PCL format
+  pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
-  // For now, we'll implement a simple approach by keeping all points
-  // In a more sophisticated implementation, you would iterate through each point
-  // and check its distance from the path
-  filtered_pointcloud = input_pointcloud;
-  RCLCPP_DEBUG(get_logger(), "Pointcloud filtering: keeping all points (sophisticated filtering not implemented yet)");
+  pcl::fromROSMsg(input_pointcloud, *input_cloud);
+
+  // Filter points based on distance from predicted path
+  for (const auto & point : input_cloud->points) {
+    geometry_msgs::msg::Point ros_point;
+    ros_point.x = point.x;
+    ros_point.y = point.y;
+    ros_point.z = point.z;
+
+    // Check if point should be filtered out
+    if (!isPointNearPath(ros_point, *predicted_path_, max_filter_distance_, pointcloud_safety_distance_)) {
+      // Keep point if it's not near the path or if it's within safety distance
+      filtered_cloud->points.push_back(point);
+    }
+  }
+
+  // Update cloud properties
+  filtered_cloud->width = filtered_cloud->points.size();
+  filtered_cloud->height = 1;
+  filtered_cloud->is_dense = true;
+
+  // Convert back to ROS PointCloud2
+  pcl::toROSMsg(*filtered_cloud, filtered_pointcloud);
+  filtered_pointcloud.header = input_pointcloud.header;
+
+  RCLCPP_DEBUG(get_logger(),
+    "Pointcloud filtering: input points=%zu, output points=%zu",
+    input_cloud->points.size(), filtered_cloud->points.size());
 
   return filtered_pointcloud;
 }

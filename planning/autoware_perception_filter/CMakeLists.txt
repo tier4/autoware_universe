@@ -19,6 +19,8 @@ find_package(autoware_rtc_interface REQUIRED)
 find_package(tier4_rtc_msgs REQUIRED)
 find_package(unique_identifier_msgs REQUIRED)
 find_package(autoware_universe_utils REQUIRED)
+find_package(PCL REQUIRED)
+find_package(pcl_conversions REQUIRED)
 
 # Include directories
 include_directories(include)
@@ -28,7 +30,7 @@ ament_auto_add_executable(${PROJECT_NAME}_node
   src/perception_filter_node.cpp
 )
 
-target_link_libraries(${PROJECT_NAME}_node glog::glog)
+target_link_libraries(${PROJECT_NAME}_node glog::glog ${PCL_LIBRARIES})
 
 # Install
 ament_auto_package(
