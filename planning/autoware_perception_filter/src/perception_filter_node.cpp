@@ -46,6 +46,13 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     google::InstallFailureSignalHandler();
   }
 
+  // Initialize TF buffer and listener
+  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
+
+  // Initialize latest classification (empty)
+  latest_classification_ = ObjectClassification{};
+
   // Declare parameters
   enable_object_filtering_ = declare_parameter<bool>("enable_object_filtering");
   enable_pointcloud_filtering_ = declare_parameter<bool>("enable_pointcloud_filtering");
@@ -108,12 +115,12 @@ void PerceptionFilterNode::onObjects(
     filtered_objects_pub_, filtered_objects.header.stamp);
 
   // Publish planning factors (include objects that pass through now but would be filtered if RTC approved)
-  auto planning_factors = createPlanningFactors(*msg);
+  auto planning_factors = createPlanningFactors();
   planning_factors_pub_->publish(planning_factors);
 
   // Publish debug markers
   const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
-  publishDebugMarkers(*msg, filtered_objects, rtc_activated);
+  publishDebugMarkers(*msg, rtc_activated);
 }
 
 void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
@@ -176,6 +183,9 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
 
   // Always classify objects to understand potential filtering behavior
   auto classification = classifyObjectsWithinRadius(input_objects);
+
+  // Store the latest classification result
+  latest_classification_ = classification;
 
   // Log classification results regardless of RTC status
   RCLCPP_INFO(get_logger(),
@@ -383,57 +393,126 @@ bool PerceptionFilterNode::isPointNearPath(
 
 void PerceptionFilterNode::publishDebugMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & input_objects,
-  const autoware_perception_msgs::msg::PredictedObjects & filtered_objects,
   bool rtc_activated)
 {
   visualization_msgs::msg::MarkerArray marker_array;
 
-  // Find filtered out objects (objects in input but not in filtered)
-  autoware_perception_msgs::msg::PredictedObjects filtered_out_objects;
-  filtered_out_objects.header = input_objects.header;
+  // Get ego pose for marker positioning
+  const auto ego_pose = getCurrentEgoPose();
 
-  for (const auto & input_obj : input_objects.objects) {
-    bool found_in_filtered = false;
-    for (const auto & filtered_obj : filtered_objects.objects) {
-      // Simple comparison based on position (in real implementation, use UUID)
-      if (std::abs(input_obj.kinematics.initial_pose_with_covariance.pose.position.x -
-                   filtered_obj.kinematics.initial_pose_with_covariance.pose.position.x) < 0.1 &&
-          std::abs(input_obj.kinematics.initial_pose_with_covariance.pose.position.y -
-                   filtered_obj.kinematics.initial_pose_with_covariance.pose.position.y) < 0.1) {
-        found_in_filtered = true;
-        break;
-      }
-    }
-    if (!found_in_filtered) {
-      filtered_out_objects.objects.push_back(input_obj);
+  // Use the latest classification result stored in member variable
+  const auto & classification = latest_classification_;
+
+  // Create markers for different object categories
+  int marker_id = 0;
+
+  // Always pass through objects (blue)
+  if (!classification.pass_through_always.empty()) {
+    autoware_perception_msgs::msg::PredictedObjects always_pass_objects;
+    always_pass_objects.header = input_objects.header;
+    always_pass_objects.objects = classification.pass_through_always;
+
+    auto always_pass_marker = createObjectMarker(
+      always_pass_objects, "map", marker_id++, {0.0, 0.0, 1.0, 0.8});
+    marker_array.markers.push_back(always_pass_marker);
+
+    // Add text markers for always pass objects
+    for (size_t i = 0; i < classification.pass_through_always.size(); ++i) {
+      const auto & object = classification.pass_through_always[i];
+      visualization_msgs::msg::Marker text_marker;
+      text_marker.header.frame_id = "map";
+      text_marker.header.stamp = this->now();
+      text_marker.ns = "object_status_text";
+      text_marker.id = marker_id++;
+      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text_marker.action = visualization_msgs::msg::Marker::ADD;
+      text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
+      text_marker.pose.position.z += 2.0;  // Display above object
+      text_marker.scale.z = 0.5;
+      text_marker.color.a = 1.0;
+      text_marker.color.r = 0.0;
+      text_marker.color.g = 0.0;
+      text_marker.color.b = 1.0;
+      text_marker.text = "ALWAYS PASS";
+      marker_array.markers.push_back(text_marker);
     }
   }
 
-  // Create marker for filtered out objects (red)
-  if (!filtered_out_objects.objects.empty()) {
+  // Pass through but would be filtered objects (yellow)
+  if (!classification.pass_through_would_filter.empty()) {
+    autoware_perception_msgs::msg::PredictedObjects would_filter_objects;
+    would_filter_objects.header = input_objects.header;
+    would_filter_objects.objects = classification.pass_through_would_filter;
+
+    auto would_filter_marker = createObjectMarker(
+      would_filter_objects, "map", marker_id++, {1.0, 1.0, 0.0, 0.8});
+    marker_array.markers.push_back(would_filter_marker);
+
+    // Add text markers for would filter objects
+    for (size_t i = 0; i < classification.pass_through_would_filter.size(); ++i) {
+      const auto & object = classification.pass_through_would_filter[i];
+      visualization_msgs::msg::Marker text_marker;
+      text_marker.header.frame_id = "map";
+      text_marker.header.stamp = this->now();
+      text_marker.ns = "object_status_text";
+      text_marker.id = marker_id++;
+      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text_marker.action = visualization_msgs::msg::Marker::ADD;
+      text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
+      text_marker.pose.position.z += 2.0;  // Display above object
+      text_marker.scale.z = 0.5;
+      text_marker.color.a = 1.0;
+      text_marker.color.r = 1.0;
+      text_marker.color.g = 1.0;
+      text_marker.color.b = 0.0;
+      text_marker.text = "WOULD FILTER";
+      marker_array.markers.push_back(text_marker);
+    }
+  }
+
+  // Currently filtered objects (red)
+  if (!classification.currently_filtered.empty()) {
+    autoware_perception_msgs::msg::PredictedObjects filtered_out_objects;
+    filtered_out_objects.header = input_objects.header;
+    filtered_out_objects.objects = classification.currently_filtered;
+
     auto filtered_out_marker = createObjectMarker(
-      filtered_out_objects, "map", 0, {1.0, 0.0, 0.0, 0.8});
+      filtered_out_objects, "map", marker_id++, {1.0, 0.0, 0.0, 0.8});
     marker_array.markers.push_back(filtered_out_marker);
+
+    // Add text markers for filtered objects
+    for (size_t i = 0; i < classification.currently_filtered.size(); ++i) {
+      const auto & object = classification.currently_filtered[i];
+      visualization_msgs::msg::Marker text_marker;
+      text_marker.header.frame_id = "map";
+      text_marker.header.stamp = this->now();
+      text_marker.ns = "object_status_text";
+      text_marker.id = marker_id++;
+      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text_marker.action = visualization_msgs::msg::Marker::ADD;
+      text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
+      text_marker.pose.position.z += 2.0;  // Display above object
+      text_marker.scale.z = 0.5;
+      text_marker.color.a = 1.0;
+      text_marker.color.r = 1.0;
+      text_marker.color.g = 0.0;
+      text_marker.color.b = 0.0;
+      text_marker.text = "FILTERED";
+      marker_array.markers.push_back(text_marker);
+    }
   }
 
-  // Create marker for passed through objects (green)
-  if (!filtered_objects.objects.empty()) {
-    auto passed_through_marker = createObjectMarker(
-      filtered_objects, "map", 1, {0.0, 1.0, 0.0, 0.8});
-    marker_array.markers.push_back(passed_through_marker);
-  }
-
-  // Create status text marker
+  // Create status text marker above ego vehicle
   visualization_msgs::msg::Marker status_marker;
   status_marker.header.frame_id = "map";
   status_marker.header.stamp = this->now();
   status_marker.ns = "rtc_status";
-  status_marker.id = 2;
+  status_marker.id = marker_id++;
   status_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
   status_marker.action = visualization_msgs::msg::Marker::ADD;
-  status_marker.pose.position.x = 0.0;
-  status_marker.pose.position.y = 0.0;
-  status_marker.pose.position.z = 5.0;
+  status_marker.pose.position.x = ego_pose.position.x;
+  status_marker.pose.position.y = ego_pose.position.y;
+  status_marker.pose.position.z = ego_pose.position.z + 3.0;  // 3m above ego vehicle
   status_marker.scale.z = 1.0;
   status_marker.color.a = 1.0;
   status_marker.color.r = rtc_activated ? 0.0 : 1.0;
@@ -441,8 +520,9 @@ void PerceptionFilterNode::publishDebugMarkers(
   status_marker.color.b = 0.0;
 
   std::string status_text = rtc_activated ? "RTC: ACTIVATED" : "RTC: NOT ACTIVATED";
-  status_text += "\nFiltered: " + std::to_string(filtered_out_objects.objects.size());
-  status_text += " | Passed: " + std::to_string(filtered_objects.objects.size());
+  status_text += "\nAlways Pass: " + std::to_string(classification.pass_through_always.size());
+  status_text += "\nWould Filter: " + std::to_string(classification.pass_through_would_filter.size());
+  status_text += "\nFiltered: " + std::to_string(classification.currently_filtered.size());
   status_marker.text = status_text;
 
   marker_array.markers.push_back(status_marker);
@@ -450,10 +530,11 @@ void PerceptionFilterNode::publishDebugMarkers(
   debug_markers_pub_->publish(marker_array);
 
   RCLCPP_DEBUG(get_logger(),
-    "Debug markers published - RTC: %s, Filtered: %zu, Passed: %zu",
+    "Debug markers published - RTC: %s, Always Pass: %zu, Would Filter: %zu, Filtered: %zu",
     rtc_activated ? "ACTIVATED" : "NOT ACTIVATED",
-    filtered_out_objects.objects.size(),
-    filtered_objects.objects.size());
+    classification.pass_through_always.size(),
+    classification.pass_through_would_filter.size(),
+    classification.currently_filtered.size());
 }
 
 visualization_msgs::msg::Marker PerceptionFilterNode::createObjectMarker(
@@ -486,18 +567,19 @@ visualization_msgs::msg::Marker PerceptionFilterNode::createObjectMarker(
   return marker;
 }
 
-autoware_internal_planning_msgs::msg::PlanningFactorArray PerceptionFilterNode::createPlanningFactors(
-  const autoware_perception_msgs::msg::PredictedObjects & input_objects)
+autoware_internal_planning_msgs::msg::PlanningFactorArray PerceptionFilterNode::createPlanningFactors()
 {
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
-  planning_factors.header = input_objects.header;
+  // Set header with current time and map frame
+  planning_factors.header.stamp = this->now();
+  planning_factors.header.frame_id = "map";
 
-  if (!planning_trajectory_ || planning_trajectory_->points.empty() || input_objects.objects.empty()) {
+  if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
     return planning_factors;
   }
 
-  // Classify objects within specified radius
-  auto classification = classifyObjectsWithinRadius(input_objects);
+  // Use the latest classification result stored in member variable
+  const auto & classification = latest_classification_;
 
   // Get UUIDs of objects that pass through now but would be filtered if RTC approved
   std::vector<unique_identifier_msgs::msg::UUID> objects_to_be_filtered;
@@ -557,7 +639,6 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
   const autoware_perception_msgs::msg::PredictedObjects & input_objects)
 {
   ObjectClassification classification;
-
   if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
     // If no trajectory available, classify all objects as pass_through_always
     for (const auto & object : input_objects.objects) {
@@ -573,7 +654,6 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
 
   for (const auto & object : input_objects.objects) {
     const double distance_from_ego = getDistanceFromEgo(object);
-
     // Classify only objects within the specified radius
     if (distance_from_ego <= object_classification_radius_) {
       const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
@@ -604,9 +684,37 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
 
 double PerceptionFilterNode::getDistanceFromEgo(const autoware_perception_msgs::msg::PredictedObject & object)
 {
-  // Calculate distance from ego position (assumed to be at origin 0, 0)
-  const auto & pos = object.kinematics.initial_pose_with_covariance.pose.position;
-  return std::sqrt(pos.x * pos.x + pos.y * pos.y);
+  // Get current ego pose using TF
+  const auto ego_pose = getCurrentEgoPose();
+
+  // Calculate distance from ego position to object position
+  const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
+  const double dx = object_pos.x - ego_pose.position.x;
+  const double dy = object_pos.y - ego_pose.position.y;
+
+  return std::sqrt(dx * dx + dy * dy);
+}
+
+geometry_msgs::msg::Pose PerceptionFilterNode::getCurrentEgoPose() const
+{
+  geometry_msgs::msg::Pose ego_pose;
+  try {
+    const auto transform = tf_buffer_->lookupTransform(
+      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+
+    ego_pose.position.x = transform.transform.translation.x;
+    ego_pose.position.y = transform.transform.translation.y;
+    ego_pose.position.z = transform.transform.translation.z;
+    ego_pose.orientation = transform.transform.rotation;
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_ERROR(get_logger(), "Failed to get ego pose: %s", ex.what());
+    // Return default pose at origin
+    ego_pose.position.x = 0.0;
+    ego_pose.position.y = 0.0;
+    ego_pose.position.z = 0.0;
+    ego_pose.orientation.w = 1.0;
+  }
+  return ego_pose;
 }
 
 }  // namespace autoware::perception_filter

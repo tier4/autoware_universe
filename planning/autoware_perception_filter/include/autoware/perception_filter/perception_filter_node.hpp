@@ -19,6 +19,9 @@
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
 #include <autoware/rtc_interface/rtc_interface.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -54,6 +57,8 @@ private:
     const sensor_msgs::msg::PointCloud2 & input_pointcloud);
 
   // Utility functions
+  geometry_msgs::msg::Pose getCurrentEgoPose() const;
+
   bool isObjectNearPath(
     const autoware_perception_msgs::msg::PredictedObject & object,
     const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance);
@@ -71,8 +76,7 @@ private:
   void updateRTCStatus();
 
   // Planning Factor functions
-  autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
-    const autoware_perception_msgs::msg::PredictedObjects & input_objects);
+  autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors();
 
   // Object classification structure
   struct ObjectClassification {
@@ -90,7 +94,6 @@ private:
   // Debug visualization functions
   void publishDebugMarkers(
     const autoware_perception_msgs::msg::PredictedObjects & input_objects,
-    const autoware_perception_msgs::msg::PredictedObjects & filtered_objects,
     bool rtc_activated);
   visualization_msgs::msg::Marker createObjectMarker(
     const autoware_perception_msgs::msg::PredictedObjects & objects,
@@ -114,12 +117,19 @@ private:
   // Published time publisher
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
+  // TF buffer and listener for ego pose
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
+
   // RTC interface
   std::unique_ptr<autoware::rtc_interface::RTCInterface> rtc_interface_;
   unique_identifier_msgs::msg::UUID rtc_uuid_;
 
   // State variables
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr planning_trajectory_;
+
+  // Latest object classification result
+  ObjectClassification latest_classification_;
 
   // Parameters
   bool enable_object_filtering_;
