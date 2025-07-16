@@ -20,7 +20,7 @@ repositories:
   core/autoware.core:
     type: git
     url: https://github.com/autowarefoundation/autoware.core.git
-    version: main
+    version: a7e470a5e89dca248d9016fcced1abce1efb556e
   core/autoware_msgs:
     type: git
     url: https://github.com/autowarefoundation/autoware_msgs.git
