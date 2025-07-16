@@ -28,6 +28,7 @@
 #include <magic_enum.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <boost/geometry.hpp>
 #include <boost/geometry/algorithms/within.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
@@ -75,6 +76,9 @@ StartPlannerModule::StartPlannerModule(
   }
   if (parameters_->enable_geometric_pull_out) {
     start_planners_.push_back(std::make_shared<GeometricPullOut>(node, *parameters, time_keeper_));
+  }
+  if (parameters_->enable_clothoid_fallback) {
+    start_planners_.push_back(std::make_shared<ClothoidPullOut>(node, *parameters, time_keeper_));
   }
   if (start_planners_.empty()) {
     RCLCPP_ERROR(getLogger(), "Not found enabled planner");
@@ -335,6 +339,72 @@ bool StartPlannerModule::hasCollisionWithDynamicObjects() const
   return !isSafePath();
 }
 
+bool StartPlannerModule::isInsideLanelets() const
+{
+  const auto & current_pose = planner_data_->self_odometry->pose.pose;
+  const auto vehicle_footprint = autoware_utils::transform_vector(
+    vehicle_info_.createFootprint(), autoware_utils::pose2transform(current_pose));
+
+  lanelet::BasicPolygon2d footprint_polygon;
+  for (const auto & point : vehicle_footprint) {
+    footprint_polygon.push_back({point.x(), point.y()});
+  }
+
+  // Find lanelets that intersect with the vehicle footprint
+  const auto & lanelets_distance_pair = lanelet::geometry::findWithin2d(
+    planner_data_->route_handler->getLaneletMapPtr()->laneletLayer, footprint_polygon, 0.0);
+
+  if (lanelets_distance_pair.empty()) {
+    return false;
+  }
+
+  // Combine all intersecting lanelets into a single MultiPolygon
+  autoware_utils::MultiPolygon2d combined_lanelets;
+  bool first_lanelet = true;
+
+  for (const auto & [distance, lanelet] : lanelets_distance_pair) {
+    const auto & poly = lanelet.polygon2d().basicPolygon();
+
+    autoware_utils::Polygon2d lanelet_polygon;
+    auto & outer = lanelet_polygon.outer();
+
+    for (const auto & p : poly) {
+      outer.push_back({p.x(), p.y()});
+    }
+
+    boost::geometry::correct(lanelet_polygon);
+
+    // Handle the first lanelet differently to avoid unnecessary operations
+    if (first_lanelet) {
+      boost::geometry::convert(lanelet_polygon, combined_lanelets);
+      first_lanelet = false;
+    } else {
+      // Union the current lanelet with the combined lanelets
+      autoware_utils::MultiPolygon2d result;
+      boost::geometry::union_(combined_lanelets, lanelet_polygon, result);
+      combined_lanelets = result;
+    }
+  }
+
+  // Remove micro holes (micro inner rings) caused by boost::geometry::union_
+  {
+    constexpr double area_threshold = 1e-5;  // [m^2]
+    for (auto & combined_lanelet : combined_lanelets) {
+      auto & inners = combined_lanelet.inners();
+      inners.erase(
+        std::remove_if(
+          inners.begin(), inners.end(),
+          [&](const auto & inner_ring) {
+            return std::abs(boost::geometry::area(inner_ring)) < area_threshold;
+          }),
+        inners.end());
+    }
+  }
+
+  // Check if the vehicle footprint is completely within the combined lanelets
+  return boost::geometry::within(footprint_polygon, combined_lanelets);
+}
+
 bool StartPlannerModule::isExecutionRequested() const
 {
   if (isModuleRunning()) {
@@ -342,12 +412,12 @@ bool StartPlannerModule::isExecutionRequested() const
   }
 
   // Return false and do not request execution if any of the following conditions are true:
-  // - The start pose is on the middle of the road.
+  // - The start pose is on the centerline or on "waypoints" (custom centerline)
   // - The vehicle has already arrived at the start position planner.
   // - The vehicle has reached the goal position.
   // - The vehicle is still moving.
   if (
-    isCurrentPoseOnMiddleOfTheRoad() || isCloseToOriginalStartPose() || hasArrivedAtGoal() ||
+    isCurrentPoseOnEgoCenterline() || isCloseToOriginalStartPose() || hasArrivedAtGoal() ||
     isMoving()) {
     return false;
   }
@@ -367,7 +437,7 @@ bool StartPlannerModule::isModuleRunning() const
   return getCurrentStatus() == ModuleStatus::RUNNING;
 }
 
-bool StartPlannerModule::isCurrentPoseOnMiddleOfTheRoad() const
+bool StartPlannerModule::isCurrentPoseOnEgoCenterline() const
 {
   const Pose & current_pose = planner_data_->self_odometry->pose.pose;
   const lanelet::ConstLanelets current_lanes = utils::getCurrentLanes(planner_data_);
@@ -609,18 +679,46 @@ bool StartPlannerModule::isExecutionReady() const
 {
   // Evaluate safety. The situation is not safe if any of the following conditions are met:
   // 1. pull out path has not been found
-  // 2. there is a moving objects around ego
-  // 3. waiting for approval and there is a collision with dynamic objects
+  // 2. waiting for approval, AND any of the following conditions:
+  //    a. there are moving objects around ego
+  //    b. there is a collision with dynamic objects (if collision detection is required)
 
-  const bool is_safe = [&]() -> bool {
-    if (!status_.found_pull_out_path) return false;
-    if (!isWaitingApproval()) return true;
-    if (!noMovingObjectsAround()) return false;
-    return !(requiresDynamicObjectsCollisionDetection() && hasCollisionWithDynamicObjects());
-  }();
+  bool is_safe = true;
+  std::string stop_reason = "";
+  // Check pull out path
+  if (!status_.found_pull_out_path) {
+    is_safe = false;
+    const bool is_inside_lanelets = isInsideLanelets();
+
+    // TODO(Sugahara): Improve error messaging to clearly:
+    // 1. Current position is within lane, but candidate path violates lane boundaries
+    // 2. Current position is within lane, but path from backed position violate lane boundaries
+    // 3. Current position is within lane, but insufficient clearance from static obstacles
+    // Currently assuming most failures are type 3 (obstacle clearance issues)
+    // since type 1 is an edge case and type 2 doesn't occur when backward path is disabled.
+    // Future work should provide appropriate messages for each case.
+
+    if (!parameters_->enable_back && !is_inside_lanelets) {
+      stop_reason = "ego outside lanes";
+    } else if (is_inside_lanelets) {
+      stop_reason = "unsafe against static objects";
+    } else {
+      stop_reason = "failed to generate valid path";
+    }
+
+  } else if (isWaitingApproval()) {
+    // Check for moving objects around
+    if (!noMovingObjectsAround()) {
+      is_safe = false;
+      stop_reason = "unsafe against moving objects around";
+    } else if (requiresDynamicObjectsCollisionDetection() && hasCollisionWithDynamicObjects()) {
+      is_safe = false;
+      stop_reason = "unsafe against dynamic objects";
+    }
+  }
 
   if (!is_safe) {
-    stop_pose_ = PoseWithDetail(planner_data_->self_odometry->pose.pose);
+    stop_pose_ = PoseWithDetail(planner_data_->self_odometry->pose.pose, stop_reason);
   }
 
   return is_safe;
@@ -711,9 +809,11 @@ BehaviorModuleOutput StartPlannerModule::plan()
 
       if (!stop_path.has_value()) return current_path;
       // Insert stop point in the path if needed
-      RCLCPP_ERROR_THROTTLE(
+      RCLCPP_DEBUG_THROTTLE(
         getLogger(), *clock_, 5000, "Insert stop point in the path because of dynamic objects");
       status_.prev_stop_path_after_approval = std::make_shared<PathWithLaneId>(stop_path.value());
+      std::string stop_reason = "unsafe against dynamic objects";
+      stop_pose_ = PoseWithDetail(stop_pose_.value().pose, stop_reason);
       status_.stop_pose = stop_pose_;
       return stop_path.value();
     }
@@ -743,7 +843,8 @@ BehaviorModuleOutput StartPlannerModule::plan()
     updateRTCStatus(start_distance, finish_distance);
     planning_factor_interface_->add(
       start_distance, finish_distance, status_.pull_out_path.start_pose,
-      status_.pull_out_path.end_pose, planning_factor_direction, SafetyFactorArray{});
+      status_.pull_out_path.end_pose, planning_factor_direction,
+      utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check));
     setDebugData();
     return output;
   }
@@ -753,7 +854,8 @@ BehaviorModuleOutput StartPlannerModule::plan()
   updateRTCStatus(0.0, distance);
   planning_factor_interface_->add(
     0.0, distance, status_.pull_out_path.start_pose, status_.pull_out_path.end_pose,
-    planning_factor_direction, SafetyFactorArray{});
+    planning_factor_direction,
+    utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check));
 
   setDebugData();
 
@@ -848,7 +950,8 @@ BehaviorModuleOutput StartPlannerModule::planWaitingApproval()
     updateRTCStatus(start_distance, finish_distance);
     planning_factor_interface_->add(
       start_distance, finish_distance, status_.pull_out_path.start_pose,
-      status_.pull_out_path.end_pose, planning_factor_direction, SafetyFactorArray{});
+      status_.pull_out_path.end_pose, planning_factor_direction,
+      utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check));
     setDebugData();
 
     return output;
@@ -859,7 +962,8 @@ BehaviorModuleOutput StartPlannerModule::planWaitingApproval()
   updateRTCStatus(0.0, distance);
   planning_factor_interface_->add(
     0.0, distance, status_.pull_out_path.start_pose, status_.pull_out_path.end_pose,
-    planning_factor_direction, SafetyFactorArray{});
+    planning_factor_direction,
+    utils::path_safety_checker::to_safety_factor_array(debug_data_.collision_check));
 
   setDebugData();
 
@@ -907,6 +1011,37 @@ void StartPlannerModule::planWithPriority(
               collision_check_margin, debug_data_vector)) {
           debug_data_.selected_start_pose_candidate_index = index;
           debug_data_.margin_for_start_pose_candidate = collision_check_margin;
+          set_planner_evaluation_table(debug_data_vector);
+          return;
+        }
+      }
+    }
+
+    // If no path found with collision margins and clothoid fallback is enabled, try clothoid
+    // planner
+    if (parameters_->enable_clothoid_fallback) {
+      RCLCPP_INFO(
+        getLogger(), "No path found with collision margins. Trying clothoid fallback search.");
+
+      // Find clothoid planner from available planners
+      std::shared_ptr<PullOutPlannerBase> clothoid_planner = nullptr;
+      for (const auto & planner : start_planners_) {
+        if (planner->getPlannerType() == PlannerType::CLOTHOID) {
+          clothoid_planner = planner;
+          break;
+        }
+      }
+
+      // Try clothoid planner with minimum collision margin
+      const double min_margin = *std::min_element(
+        parameters_->collision_check_margins.begin(), parameters_->collision_check_margins.end());
+
+      for (size_t index = 0; index < start_pose_candidates.size(); ++index) {
+        if (findPullOutPath(
+              start_pose_candidates[index], clothoid_planner, refined_start_pose, goal_pose,
+              min_margin, debug_data_vector)) {
+          debug_data_.selected_start_pose_candidate_index = index;
+          debug_data_.margin_for_start_pose_candidate = min_margin;
           set_planner_evaluation_table(debug_data_vector);
           return;
         }
@@ -1123,7 +1258,7 @@ void StartPlannerModule::updatePullOutStatus()
     if (parameters_->enable_back) {
       return searchPullOutStartPoseCandidates(start_pose_candidates_path);
     }
-    return {*refined_start_pose};
+    return {current_pose};
   });
 
   if (!status_.backward_driving_complete) {
@@ -1850,7 +1985,7 @@ void StartPlannerModule::setDebugData()
         create_marker_scale(0.2, 0.2, 0.2), purple_color);
       footprint_marker.lifetime = rclcpp::Duration::from_seconds(1.5);
       addFootprintMarker(footprint_marker, debug_data_.estimated_stop_pose.value(), vehicle_info_);
-      debug_marker_.markers.push_back(footprint_marker);
+      info_marker_.markers.push_back(footprint_marker);
     }
 
     // set objects of interest
@@ -1886,14 +2021,14 @@ void StartPlannerModule::setDebugData()
     laneletsAsTriangleMarkerArray(
       "departure_check_lanes_for_shift_pull_out_path", debug_data_.departure_check_lanes,
       cyan_color),
-    debug_marker_);
+    info_marker_);
 
   const auto pull_out_lanes = start_planner_utils::getPullOutLanes(
     planner_data_, planner_data_->parameters.backward_path_length + parameters_->max_back_distance);
   add(
     laneletsAsTriangleMarkerArray(
       "pull_out_lanes_for_static_objects_collision_check", pull_out_lanes, pink_color),
-    debug_marker_);
+    info_marker_);
 }
 
 void StartPlannerModule::logPullOutStatus(rclcpp::Logger::Level log_level) const

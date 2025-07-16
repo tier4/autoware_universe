@@ -26,6 +26,7 @@
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/predicted_path.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 
@@ -33,6 +34,7 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace autoware::behavior_path_planner::start_planner_utils
 {
@@ -51,6 +53,30 @@ lanelet::ConstLanelets getPullOutLanes(
   const std::shared_ptr<const PlannerData> & planner_data, const double backward_length);
 std::optional<PathWithLaneId> extractCollisionCheckSection(
   const PullOutPath & path, const double collision_check_distance_from_end);
+
+double calc_necessary_longitudinal_distance(
+  const double lateral_offset, const double minimum_radius);
+
+CompositeArcPath calc_circular_path(
+  const Pose & start_pose, const double longitudinal_distance, const double lateral_distance,
+  const double angle_diff, const double minimum_radius);
+
+// Convert circular_path to Trajectory and calculate curvature at each point
+autoware_planning_msgs::msg::Trajectory convertCircularPathToTrajectory(
+  const CompositeArcPath & composite_arc_path, const double velocity = 5.0, const double z = 0.0);
+
+std::vector<double> calcCurvatureFromTrajectory(
+  const autoware_planning_msgs::msg::Trajectory & trajectory);
+
+std::vector<double> calcCurvatureFromPoints(const std::vector<geometry_msgs::msg::Point> & points);
+
+Pose findTargetPoseAlongPath(
+  const PathWithLaneId & centerline_path, const Pose & start_pose,
+  const double longitudinal_distance);
+
+RelativePoseInfo calculateRelativePoseInVehicleCoordinate(
+  const Pose & start_pose, const Pose & target_pose);
+
 }  // namespace autoware::behavior_path_planner::start_planner_utils
 
 #endif  // AUTOWARE__BEHAVIOR_PATH_START_PLANNER_MODULE__UTIL_HPP_

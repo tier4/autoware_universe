@@ -117,6 +117,10 @@ void StartPlannerModuleManager::updateModuleParams(
       parameters, ns + "maximum_longitudinal_deviation", p->maximum_longitudinal_deviation);
     update_param<bool>(parameters, ns + "enable_geometric_pull_out", p->enable_geometric_pull_out);
     update_param<bool>(parameters, ns + "divide_pull_out_path", p->divide_pull_out_path);
+    update_param<bool>(parameters, ns + "enable_clothoid_fallback", p->enable_clothoid_fallback);
+    update_param<double>(
+      parameters, ns + "geometric_pull_out_velocity",
+      p->parallel_parking_parameters.pull_out_velocity);
     update_param<double>(
       parameters, ns + "arc_path_interval",
       p->parallel_parking_parameters.pull_out_arc_path_interval);
@@ -129,11 +133,23 @@ void StartPlannerModuleManager::updateModuleParams(
     update_param<double>(
       parameters, ns + "pull_out_max_steer_angle",
       p->parallel_parking_parameters.pull_out_max_steer_angle);
+
+    // clothoid pull out
+    update_param<double>(
+      parameters, ns + "clothoid_initial_velocity", p->clothoid_initial_velocity);
+    update_param<double>(parameters, ns + "clothoid_acceleration", p->clothoid_acceleration);
+    update_param<std::vector<double>>(
+      parameters, ns + "clothoid_max_steer_angle_degs", p->clothoid_max_steer_angle_degs);
+    update_param<double>(
+      parameters, ns + "clothoid_max_steer_angle_rate_deg_per_sec",
+      p->clothoid_max_steer_angle_rate_deg_per_sec);
+    update_param<bool>(
+      parameters, ns + "check_clothoid_path_lane_departure", p->check_clothoid_path_lane_departure);
+
+    // search start pose backward
+
     update_param<bool>(parameters, ns + "enable_back", p->enable_back);
     update_param<double>(parameters, ns + "backward_velocity", p->backward_velocity);
-    update_param<double>(
-      parameters, ns + "geometric_pull_out_velocity",
-      p->parallel_parking_parameters.pull_out_velocity);
     update_param<double>(
       parameters, ns + "geometric_collision_check_distance_from_end",
       p->geometric_collision_check_distance_from_end);
