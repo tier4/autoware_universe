@@ -62,9 +62,9 @@ public:
   explicit PlanningValidatorNode(const rclcpp::NodeOptions & options);
 
 private:
-  void onTimer();
+  void onTrajectory(const Trajectory::ConstSharedPtr & traj_msg);
   void setupParameters();
-  void setData();
+  void setData(const Trajectory::ConstSharedPtr & traj_msg);
   bool isDataReady();
 
   void validate(const std::shared_ptr<const PlanningValidatorData> & data);
@@ -75,20 +75,19 @@ private:
   void displayStatus();
 
   // subscriber
-  autoware_utils::InterProcessPollingSubscriber<Odometry> sub_kinematics_{
-    this, "~/input/kinematics"};
-  autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> sub_acceleration_{
-    this, "~/input/acceleration"};
-  autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_trajectory_{
-    this, "~/input/trajectory"};
-  autoware_utils::InterProcessPollingSubscriber<PointCloud2> sub_pointcloud_{
-    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
+  rclcpp::Subscription<Trajectory>::SharedPtr sub_trajectory_;
   autoware_utils::InterProcessPollingSubscriber<
     LaneletRoute, autoware_utils::polling_policy::Newest>
     sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
   autoware_utils::InterProcessPollingSubscriber<
     LaneletMapBin, autoware_utils::polling_policy::Newest>
     sub_lanelet_map_bin_{this, "~/input/lanelet_map_bin", rclcpp::QoS{1}.transient_local()};
+  autoware_utils::InterProcessPollingSubscriber<PointCloud2> sub_pointcloud_{
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
+  autoware_utils::InterProcessPollingSubscriber<Odometry> sub_kinematics_{
+    this, "~/input/kinematics"};
+  autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> sub_acceleration_{
+    this, "~/input/acceleration"};
 
   // publisher
   rclcpp::Publisher<Trajectory>::SharedPtr pub_traj_;
@@ -111,7 +110,6 @@ private:
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
   StopWatch<std::chrono::milliseconds> stop_watch_;
-  rclcpp::TimerBase::SharedPtr timer_;
 };
 }  // namespace autoware::planning_validator
 
