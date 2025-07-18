@@ -699,7 +699,7 @@ DummyPerceptionPublisherNode::findMatchingPredictedObject(
 
   const std::string & mapped_predicted_uuid = mapping_it->second;
 
-  // Check if we should keep using the current prediction for at least 1 second
+  // Check if we should keep using the current prediction for at least 3 seconds
   const double MIN_KEEP_DURATION = 3.0;  // seconds
 
   // Check if we have a last used prediction and if we should keep using it
@@ -803,7 +803,7 @@ void DummyPerceptionPublisherNode::updateDummyToPredictedMapping(
 
   for (const auto & dummy_obj : dummy_objects) {
     const auto dummy_uuid_str = autoware_utils_uuid::to_hex_string(dummy_obj.id);
-    
+
     // Use last known position if available (which includes straight-line calculated position)
     // Otherwise calculate current position using straight-line model
     auto last_pos_it = dummy_last_known_positions_.find(dummy_uuid_str);
