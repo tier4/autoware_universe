@@ -31,6 +31,7 @@
 
 // Add autoware_universe_utils and boost geometry for object shape and distance calculation
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware/universe_utils/ros/parameter.hpp>
 
 #include <boost/geometry.hpp>
 
@@ -59,19 +60,19 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   // Initialize latest classification (empty)
   latest_classification_ = ObjectClassification{};
 
-  // Declare parameters
-  enable_object_filtering_ = declare_parameter<bool>("enable_object_filtering");
-  enable_pointcloud_filtering_ = declare_parameter<bool>("enable_pointcloud_filtering");
-  max_filter_distance_ = declare_parameter<double>("max_filter_distance");
-  pointcloud_safety_distance_ = declare_parameter<double>("pointcloud_safety_distance");
-  object_classification_radius_ = declare_parameter<double>("object_classification_radius", 50.0);
+  // Declare parameters using get_or_declare_parameter
+  using autoware::universe_utils::getOrDeclareParameter;
+  enable_object_filtering_ = getOrDeclareParameter<bool>(*this, "enable_object_filtering");
+  enable_pointcloud_filtering_ = getOrDeclareParameter<bool>(*this, "enable_pointcloud_filtering");
+  max_filter_distance_ = getOrDeclareParameter<double>(*this, "max_filter_distance");
+  pointcloud_safety_distance_ = getOrDeclareParameter<double>(*this, "pointcloud_safety_distance");
+  object_classification_radius_ = getOrDeclareParameter<double>(*this, "object_classification_radius");
 
   // Add parameter for RTC recreation on stop (only stop velocity threshold needed)
-  stop_velocity_threshold_ = declare_parameter<double>("stop_velocity_threshold", 0.001);
+  stop_velocity_threshold_ = getOrDeclareParameter<double>(*this, "stop_velocity_threshold");
 
   // Add parameter for ignoring specific object classes
-  ignore_object_classes_ = declare_parameter<std::vector<std::string>>(
-    "ignore_object_classes", std::vector<std::string>{});
+  ignore_object_classes_ = getOrDeclareParameter<std::vector<std::string>>(*this, "ignore_object_classes");
 
   // Initialize vehicle stopped state
   is_vehicle_stopped_ = false;
