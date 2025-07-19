@@ -157,15 +157,7 @@ void PerceptionFilterNode::handleRTCTransition(
 
       // Only consider objects within classification radius
       if (distance_from_ego <= object_classification_radius_) {
-        // Skip objects that should be ignored
-        if (shouldIgnoreObject(object)) {
-          const std::string object_label = labelToString(getMostProbableLabel(object));
-          RCLCPP_DEBUG(
-            get_logger(), "Skipping ignored object class %s from frozen list",
-            object_label.c_str());
-          continue;
-        }
-
+        // ignore_object_classesも含めて全ての物体を対象にする
         const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
 
         // If object is within filter distance, add its ID to frozen list
@@ -280,22 +272,13 @@ void PerceptionFilterNode::onObjects(
   published_time_publisher_->publish_if_subscribed(
     filtered_objects_pub_, filtered_objects.header.stamp);
 
-  // Check if RTC is activated and execute pointcloud filtering if enabled
-  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
-  if (rtc_activated && enable_pointcloud_filtering_ && latest_pointcloud_) {
-    RCLCPP_DEBUG(get_logger(), "RTC activated: executing pointcloud filtering from onObjects");
-    auto filtered_pointcloud = filterPointCloud(*latest_pointcloud_);
-    filtered_pointcloud_pub_->publish(filtered_pointcloud);
-    published_time_publisher_->publish_if_subscribed(
-      filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
-  }
-
   // Publish planning factors (include objects that pass through now but would be filtered if RTC
   // approved)
   auto planning_factors = createPlanningFactors();
   planning_factors_pub_->publish(planning_factors);
 
   // Publish debug markers
+  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
   publishDebugMarkers(*msg, rtc_activated);
 }
 
