@@ -36,11 +36,25 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware/universe_utils/ros/parameter.hpp>
+
+#include <boost/geometry.hpp>
+
 #include <memory>
 #include <set>
 
 namespace autoware::perception_filter
 {
+
+// RTC承認時のフィルタリング範囲を表すポリゴン構造体
+struct FilteringPolygon
+{
+  autoware::universe_utils::Polygon2d polygon;  // フィルタリング範囲のポリゴン
+  double start_distance_along_path;             // 経路上の開始距離
+  double end_distance_along_path;               // 経路上の終了距離
+  bool is_active;                               // ポリゴンがアクティブかどうか
+};
 
 class PerceptionFilterNode : public rclcpp::Node
 {
@@ -85,6 +99,17 @@ private:
   void handleRTCTransition(
     bool current_rtc_activated,
     const autoware_perception_msgs::msg::PredictedObjects & input_objects);
+
+  // Pointcloud filtering range management functions
+  double getDistanceAlongPath(const geometry_msgs::msg::Point & point) const;
+
+  // New polygon-based filtering functions
+  void createFilteringPolygon();
+  bool isPointInFilteringPolygon(const geometry_msgs::msg::Point & point) const;
+  void updateFilteringPolygonStatus();
+  autoware::universe_utils::Polygon2d createPathPolygon(
+    const autoware_planning_msgs::msg::Trajectory & trajectory,
+    double start_distance, double end_distance, double width) const;
 
   // Planning Factor functions
   autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors();
@@ -180,6 +205,10 @@ private:
 
   // RTC approval state persistence
   bool rtc_ever_approved_;  // Track if RTC has ever been approved (persistent across RTC recreation)
+
+  // New polygon-based filtering management
+  FilteringPolygon filtering_polygon_;      // RTC承認時に作成されるフィルタリングポリゴン
+  bool filtering_polygon_created_;          // フィルタリングポリゴンが作成されたかどうか
 
   // Helper functions for object classification
   bool shouldIgnoreObject(const autoware_perception_msgs::msg::PredictedObject & object) const;

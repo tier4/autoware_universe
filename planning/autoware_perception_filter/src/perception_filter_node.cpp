@@ -84,6 +84,12 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   // Initialize RTC approval state persistence
   rtc_ever_approved_ = false;
 
+  // Initialize polygon-based filtering management
+  filtering_polygon_created_ = false;
+  filtering_polygon_.is_active = false;
+  filtering_polygon_.start_distance_along_path = 0.0;
+  filtering_polygon_.end_distance_along_path = 0.0;
+
   // Initialize RTC interface
   initializeRTCInterface();
 
@@ -191,6 +197,9 @@ void PerceptionFilterNode::handleRTCTransition(
 
     RCLCPP_DEBUG(
       get_logger(), "Frozen %zu objects for filtering", frozen_filter_object_ids_.size());
+
+    // Create filtering polygon for the approved filtering range
+    createFilteringPolygon();
   }
 
   // Reset when RTC becomes not activated
@@ -198,6 +207,7 @@ void PerceptionFilterNode::handleRTCTransition(
     RCLCPP_DEBUG(get_logger(), "RTC transition detected: ACTIVATED -> NOT ACTIVATED");
     RCLCPP_DEBUG(get_logger(), "Clearing frozen filter objects...");
     frozen_filter_object_ids_.clear();
+
   }
 
   // Update previous state
@@ -312,6 +322,11 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     filtered_pointcloud_pub_->publish(*msg);
     published_time_publisher_->publish_if_subscribed(filtered_pointcloud_pub_, msg->header.stamp);
     return;
+  }
+
+  // Update filtering polygon status
+  if (filtering_polygon_created_) {
+    updateFilteringPolygonStatus();
   }
 
   auto filtered_pointcloud = filterPointCloud(*msg);
@@ -438,16 +453,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   sensor_msgs::msg::PointCloud2 filtered_pointcloud;
   filtered_pointcloud.header = input_pointcloud.header;
 
-  // Check if RTC interface is activated OR if RTC has ever been approved (persistent filtering)
-  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
-  const bool should_filter = rtc_activated || rtc_ever_approved_;
-
-  if (!should_filter) {
-    // If RTC is not activated and has never been approved, pass through the pointcloud
-    RCLCPP_DEBUG(get_logger(), "RTC not activated and never approved, passing through pointcloud");
-    filtered_pointcloud = input_pointcloud;
-    return filtered_pointcloud;
-  }
 
   // Convert ROS PointCloud2 to PCL format
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -467,8 +472,39 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     ros_point.z = point.z;
 
     // Check if point should be filtered out
-    if (!isPointNearPath(
-          ros_point, *planning_trajectory_, max_filter_distance_, pointcloud_safety_distance_)) {
+    bool should_filter_point = false;
+    bool in_polygon = false;
+    bool near_path = false;
+
+    if (filtering_polygon_created_ && filtering_polygon_.is_active) {
+      // Use polygon-based filtering if available and active
+      in_polygon = isPointInFilteringPolygon(ros_point);
+      if (in_polygon) {
+        // For points inside the polygon, check distance to path and safety distance
+        // Filter points that are within max_filter_distance but outside safety_distance
+        const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
+        near_path = (distance_to_path <= max_filter_distance_);
+        const bool outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
+        should_filter_point = near_path && outside_safety_distance;
+
+        // Debug logging for polygon points
+        static int debug_counter = 0;
+        if (++debug_counter % 1000 == 0) {  // Log every 1000th point to avoid spam
+          RCLCPP_WARN(
+            get_logger(),
+            "Polygon point debug: in_polygon=%s, near_path=%s, outside_safety=%s, distance_to_path=%.2f, max_filter_distance=%.2f, safety_distance=%.2f",
+            in_polygon ? "true" : "false",
+            near_path ? "true" : "false",
+            outside_safety_distance ? "true" : "false",
+            distance_to_path,
+            max_filter_distance_,
+            pointcloud_safety_distance_);
+        }
+      }
+      // For points outside the polygon, do not filter (should_filter_point remains false)
+    }
+
+    if (!should_filter_point) {
       // Keep point if it's not near the path or if it's within safety distance
       filtered_cloud->points.push_back(point);
     } else {
@@ -477,8 +513,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
       filtered_info.point = ros_point;
       filtered_info.distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
       filtered_points_info_.push_back(filtered_info);
-
-
     }
   }
 
@@ -494,6 +528,17 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   RCLCPP_DEBUG(
     get_logger(), "Pointcloud filtering: input points=%zu, output points=%zu, filtered points=%zu",
     input_cloud->points.size(), filtered_cloud->points.size(), filtered_points_info_.size());
+
+  // Log polygon filtering information if available
+  if (filtering_polygon_created_) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Polygon-based filtering: %s, range=%.2f to %.2f m, width=%.2f m",
+      filtering_polygon_.is_active ? "ACTIVE" : "INACTIVE",
+      filtering_polygon_.start_distance_along_path,
+      filtering_polygon_.end_distance_along_path,
+      max_filter_distance_);
+  }
 
   return filtered_pointcloud;
 }
@@ -556,18 +601,191 @@ double PerceptionFilterNode::getMinDistanceToPath(
   // Find the minimum distance from point to any point on the path
   double min_distance = std::numeric_limits<double>::max();
 
-  for (const auto & path_point : path.points) {
-    const auto & path_pos = path_point.pose.position;
+  // Check if coordinate frame transformation is needed
+  bool transform_needed = false;
+  geometry_msgs::msg::TransformStamped transform;
 
-    // Calculate 2D distance between point and path point
-    const double dx = point.x - path_pos.x;
-    const double dy = point.y - path_pos.y;
+  // Transform trajectory from map to base_link if needed
+  if (!path.header.frame_id.empty() && path.header.frame_id == "map") {
+    try {
+      // Get transform from map to base_link
+      transform = tf_buffer_->lookupTransform(
+        "base_link", "map",
+        rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+      transform_needed = true;
+
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Failed to get transform from map to base_link: %s. Using original trajectory coordinates.",
+        ex.what());
+      transform_needed = false;
+    }
+  }
+
+  for (const auto & path_point : path.points) {
+    geometry_msgs::msg::Point transformed_path_point = path_point.pose.position;
+
+    // Transform trajectory point from map to base_link if needed
+    if (transform_needed) {
+      tf2::doTransform(path_point.pose.position, transformed_path_point, transform);
+    }
+
+    // Calculate 2D distance between point and transformed path point
+    const double dx = point.x - transformed_path_point.x;
+    const double dy = point.y - transformed_path_point.y;
     const double distance = std::sqrt(dx * dx + dy * dy);
 
     min_distance = std::min(min_distance, distance);
   }
 
+
+  // Return the minimum distance from point to path
   return min_distance;
+}
+
+double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Point & point) const
+{
+  if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
+    return 0.0;
+  }
+
+  // Get current ego pose in map coordinates
+  const auto ego_pose_map = getCurrentEgoPose();
+
+  // Check if coordinate frame transformation is needed
+  bool transform_needed = false;
+  geometry_msgs::msg::TransformStamped transform;
+
+  // Transform trajectory from map to base_link if needed
+  if (!planning_trajectory_->header.frame_id.empty() && planning_trajectory_->header.frame_id == "map") {
+    try {
+      // Get transform from map to base_link
+      transform = tf_buffer_->lookupTransform(
+        "base_link", "map",
+        rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+      transform_needed = true;
+
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Failed to get transform from map to base_link: %s. Using original trajectory coordinates.",
+        ex.what());
+      transform_needed = false;
+    }
+  }
+
+  // Transform ego pose to base_link coordinates if needed
+  geometry_msgs::msg::Pose ego_pose = ego_pose_map;
+  if (transform_needed) {
+    tf2::doTransform(ego_pose_map, ego_pose, transform);
+  }
+
+  // Debug: Log ego pose and trajectory info for first few calls
+  static int distance_debug_counter = 0;
+  if (++distance_debug_counter <= 3) {
+    RCLCPP_WARN(
+      get_logger(),
+      "getDistanceAlongPath debug %d: ego_pose_map=(%.2f,%.2f,%.2f), ego_pose_base_link=(%.2f,%.2f,%.2f), point=(%.2f,%.2f,%.2f), trajectory_points=%zu, frame_id=%s, transform_needed=%s",
+      distance_debug_counter, ego_pose_map.position.x, ego_pose_map.position.y, ego_pose_map.position.z,
+      ego_pose.position.x, ego_pose.position.y, ego_pose.position.z,
+      point.x, point.y, point.z, planning_trajectory_->points.size(),
+      planning_trajectory_->header.frame_id.c_str(), transform_needed ? "true" : "false");
+  }
+
+  // Find the closest point on the trajectory to the ego vehicle
+  double min_ego_distance = std::numeric_limits<double>::max();
+  size_t ego_closest_index = 0;
+
+  for (size_t i = 0; i < planning_trajectory_->points.size(); ++i) {
+    geometry_msgs::msg::Point transformed_path_point = planning_trajectory_->points[i].pose.position;
+
+    // Transform trajectory point from map to base_link if needed
+    if (transform_needed) {
+      tf2::doTransform(planning_trajectory_->points[i].pose.position, transformed_path_point, transform);
+    }
+
+    const double dx = ego_pose.position.x - transformed_path_point.x;
+    const double dy = ego_pose.position.y - transformed_path_point.y;
+    const double distance = std::sqrt(dx * dx + dy * dy);
+
+    if (distance < min_ego_distance) {
+      min_ego_distance = distance;
+      ego_closest_index = i;
+    }
+  }
+
+  // Find the closest point on the trajectory to the given point
+  double min_point_distance = std::numeric_limits<double>::max();
+  size_t point_closest_index = 0;
+
+  for (size_t i = 0; i < planning_trajectory_->points.size(); ++i) {
+    geometry_msgs::msg::Point transformed_path_point = planning_trajectory_->points[i].pose.position;
+
+    // Transform trajectory point from map to base_link if needed
+    if (transform_needed) {
+      tf2::doTransform(planning_trajectory_->points[i].pose.position, transformed_path_point, transform);
+    }
+
+    const double dx = point.x - transformed_path_point.x;
+    const double dy = point.y - transformed_path_point.y;
+    const double distance = std::sqrt(dx * dx + dy * dy);
+
+    if (distance < min_point_distance) {
+      min_point_distance = distance;
+      point_closest_index = i;
+    }
+  }
+
+  // Calculate cumulative distance along path from ego's closest point to the point's closest point
+  double cumulative_distance = 0.0;
+
+  if (ego_closest_index <= point_closest_index) {
+    // Point is ahead of ego vehicle (positive distance)
+    for (size_t i = ego_closest_index; i < point_closest_index; ++i) {
+      geometry_msgs::msg::Point current_point = planning_trajectory_->points[i].pose.position;
+      geometry_msgs::msg::Point next_point = planning_trajectory_->points[i + 1].pose.position;
+
+      // Transform points if needed
+      if (transform_needed) {
+        tf2::doTransform(planning_trajectory_->points[i].pose.position, current_point, transform);
+        tf2::doTransform(planning_trajectory_->points[i + 1].pose.position, next_point, transform);
+      }
+
+      const double dx = next_point.x - current_point.x;
+      const double dy = next_point.y - current_point.y;
+      cumulative_distance += std::sqrt(dx * dx + dy * dy);
+    }
+  } else {
+    // Point is behind ego vehicle (negative distance)
+    for (size_t i = point_closest_index; i < ego_closest_index; ++i) {
+      geometry_msgs::msg::Point current_point = planning_trajectory_->points[i].pose.position;
+      geometry_msgs::msg::Point next_point = planning_trajectory_->points[i + 1].pose.position;
+
+      // Transform points if needed
+      if (transform_needed) {
+        tf2::doTransform(planning_trajectory_->points[i].pose.position, current_point, transform);
+        tf2::doTransform(planning_trajectory_->points[i + 1].pose.position, next_point, transform);
+      }
+
+      const double dx = next_point.x - current_point.x;
+      const double dy = next_point.y - current_point.y;
+      cumulative_distance -= std::sqrt(dx * dx + dy * dy);
+    }
+  }
+
+  // Debug: Log distance calculation for some points
+  static int distance_calc_debug_counter = 0;
+  if (++distance_calc_debug_counter % 10000 == 0) {  // Log every 10000th point to avoid spam
+    RCLCPP_WARN(
+      get_logger(),
+      "Distance calculation: ego_closest_index=%zu, point_closest_index=%zu, cumulative_distance=%.2f, ego_pos=(%.2f,%.2f), point_pos=(%.2f,%.2f), transform_needed=%s",
+      ego_closest_index, point_closest_index, cumulative_distance,
+      ego_pose.position.x, ego_pose.position.y, point.x, point.y,
+      transform_needed ? "true" : "false");
+  }
+
+  return cumulative_distance;
 }
 
 bool PerceptionFilterNode::isObjectNearPath(
@@ -623,6 +841,7 @@ bool PerceptionFilterNode::isPointNearPath(
 
     min_dist_to_path = std::min(min_dist_to_path, distance);
   }
+
 
   // Return true if point should be filtered out:
   // - Distance is less than max_filter_distance (close to path)
@@ -751,6 +970,81 @@ void PerceptionFilterNode::publishDebugMarkers(
     }
   }
 
+  // Create filtering polygon marker if available
+  if (filtering_polygon_created_ && filtering_polygon_.is_active) {
+    visualization_msgs::msg::Marker polygon_marker;
+    polygon_marker.header.frame_id = "map";
+    polygon_marker.header.stamp = this->now();
+    polygon_marker.ns = "filtering_polygon";
+    polygon_marker.id = 0;
+    polygon_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    polygon_marker.action = visualization_msgs::msg::Marker::ADD;
+    polygon_marker.scale.x = 0.3;  // Line width
+    polygon_marker.color.a = 0.8;
+    polygon_marker.color.r = 0.0;
+    polygon_marker.color.g = 1.0;
+    polygon_marker.color.b = 0.0;  // Green color for polygon
+
+    // Add polygon points to create a closed polygon
+    for (const auto & point : filtering_polygon_.polygon.outer()) {
+      geometry_msgs::msg::Point ros_point;
+      ros_point.x = point.x();
+      ros_point.y = point.y();
+      ros_point.z = 0.1;  // Slightly above ground
+      polygon_marker.points.push_back(ros_point);
+    }
+
+    // Close the polygon by adding the first point again
+    if (!filtering_polygon_.polygon.outer().empty()) {
+      const auto & first_point = filtering_polygon_.polygon.outer().front();
+      geometry_msgs::msg::Point ros_point;
+      ros_point.x = first_point.x();
+      ros_point.y = first_point.y();
+      ros_point.z = 0.1;
+      polygon_marker.points.push_back(ros_point);
+    }
+
+    marker_array.markers.push_back(polygon_marker);
+
+    // Add polygon info text marker
+    visualization_msgs::msg::Marker polygon_info_marker;
+    polygon_info_marker.header.frame_id = "map";
+    polygon_info_marker.header.stamp = this->now();
+    polygon_info_marker.ns = "polygon_info";
+    polygon_info_marker.id = 0;
+    polygon_info_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    polygon_info_marker.action = visualization_msgs::msg::Marker::ADD;
+
+    // Position the text at the center of the polygon
+    if (!filtering_polygon_.polygon.outer().empty()) {
+      double center_x = 0.0, center_y = 0.0;
+      for (const auto & point : filtering_polygon_.polygon.outer()) {
+        center_x += point.x();
+        center_y += point.y();
+      }
+      center_x /= filtering_polygon_.polygon.outer().size();
+      center_y /= filtering_polygon_.polygon.outer().size();
+
+      polygon_info_marker.pose.position.x = center_x;
+      polygon_info_marker.pose.position.y = center_y;
+      polygon_info_marker.pose.position.z = 1.0;
+    }
+
+    polygon_info_marker.scale.z = 0.8;
+    polygon_info_marker.color.a = 1.0;
+    polygon_info_marker.color.r = 0.0;
+    polygon_info_marker.color.g = 1.0;
+    polygon_info_marker.color.b = 0.0;
+
+    std::string polygon_text = "FILTERING POLYGON\n";
+    polygon_text += "Range: " + std::to_string(filtering_polygon_.start_distance_along_path) +
+                   " to " + std::to_string(filtering_polygon_.end_distance_along_path) + " m\n";
+    polygon_text += "Width: " + std::to_string(max_filter_distance_) + " m";
+
+    polygon_info_marker.text = polygon_text;
+    marker_array.markers.push_back(polygon_info_marker);
+  }
+
   // Create status text marker above ego vehicle
   visualization_msgs::msg::Marker status_marker;
   status_marker.header.frame_id = "map";
@@ -773,6 +1067,15 @@ void PerceptionFilterNode::publishDebugMarkers(
   status_text +=
     "\nWould Filter: " + std::to_string(classification.pass_through_would_filter.size());
   status_text += "\nFiltered: " + std::to_string(classification.currently_filtered.size());
+
+
+  // Add polygon information if available
+  if (filtering_polygon_created_) {
+    status_text += "\nFiltering Polygon: ";
+    status_text += (filtering_polygon_.is_active ? std::string("ACTIVE") : std::string("INACTIVE"));
+    status_text += "\nPolygon Range: " + std::to_string(filtering_polygon_.start_distance_along_path) + " to " + std::to_string(filtering_polygon_.end_distance_along_path) + " m";
+  }
+
   status_marker.text = status_text;
 
   marker_array.markers.push_back(status_marker);
@@ -1173,6 +1476,200 @@ uint8_t PerceptionFilterNode::stringToLabel(const std::string & label_string) co
     return ObjectClassification::PEDESTRIAN;
   }
   return ObjectClassification::UNKNOWN;
+}
+
+
+void PerceptionFilterNode::createFilteringPolygon()
+{
+  if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
+    RCLCPP_WARN(get_logger(), "Cannot create filtering polygon: no planning trajectory available");
+    return;
+  }
+
+  // Use a fixed filtering distance (e.g., 50 meters) instead of rtc_approval_filtering_distance_
+  const double filtering_distance = 50.0;  // Fixed filtering distance in meters
+
+  // Create polygon from trajectory with max_filter_distance width
+  filtering_polygon_.polygon = createPathPolygon(
+    *planning_trajectory_, 0.0, filtering_distance, max_filter_distance_);
+
+  filtering_polygon_.start_distance_along_path = 0.0;
+  filtering_polygon_.end_distance_along_path = filtering_distance;
+  filtering_polygon_.is_active = true;
+  filtering_polygon_created_ = true;
+
+  RCLCPP_INFO(
+    get_logger(),
+    "Filtering polygon created: start=%.2f m, end=%.2f m, width=%.2f m",
+    filtering_polygon_.start_distance_along_path,
+    filtering_polygon_.end_distance_along_path,
+    max_filter_distance_);
+}
+
+autoware::universe_utils::Polygon2d PerceptionFilterNode::createPathPolygon(
+  const autoware_planning_msgs::msg::Trajectory & trajectory,
+  double start_distance, double end_distance, double width) const
+{
+  autoware::universe_utils::Polygon2d polygon;
+
+  if (trajectory.points.empty()) {
+    return polygon;
+  }
+
+  // Calculate cumulative distances to find start and end indices
+  double cumulative_distance = 0.0;
+  size_t start_index = 0;
+  size_t end_index = trajectory.points.size() - 1;
+
+  for (size_t i = 0; i < trajectory.points.size() - 1; ++i) {
+    const auto & current_point = trajectory.points[i].pose.position;
+    const auto & next_point = trajectory.points[i + 1].pose.position;
+
+    const double dx = next_point.x - current_point.x;
+    const double dy = next_point.y - current_point.y;
+    const double segment_distance = std::sqrt(dx * dx + dy * dy);
+
+    if (cumulative_distance <= start_distance && cumulative_distance + segment_distance > start_distance) {
+      start_index = i;
+    }
+
+    if (cumulative_distance <= end_distance && cumulative_distance + segment_distance > end_distance) {
+      end_index = i + 1;
+      break;
+    }
+
+    cumulative_distance += segment_distance;
+  }
+
+  // Create left and right offset points for the polygon
+  autoware::universe_utils::LineString2d left_points;
+  autoware::universe_utils::LineString2d right_points;
+
+  for (size_t i = start_index; i <= end_index && i < trajectory.points.size(); ++i) {
+    const auto & point = trajectory.points[i].pose.position;
+
+    // Calculate perpendicular direction (normal to trajectory)
+    autoware::universe_utils::Point2d normal_dir(0.0, 0.0);
+
+    if (i > 0 && i < trajectory.points.size() - 1) {
+      // Use direction from previous to next point
+      const auto & prev_point = trajectory.points[i - 1].pose.position;
+      const auto & next_point = trajectory.points[i + 1].pose.position;
+
+      const double dx = next_point.x - prev_point.x;
+      const double dy = next_point.y - prev_point.y;
+      const double length = std::sqrt(dx * dx + dy * dy);
+
+      if (length > 1e-6) {
+        // Normal direction (perpendicular to trajectory)
+        normal_dir.x() = -dy / length;
+        normal_dir.y() = dx / length;
+      }
+    } else if (i > 0) {
+      // Use direction from previous point
+      const auto & prev_point = trajectory.points[i - 1].pose.position;
+      const double dx = point.x - prev_point.x;
+      const double dy = point.y - prev_point.y;
+      const double length = std::sqrt(dx * dx + dy * dy);
+
+      if (length > 1e-6) {
+        normal_dir.x() = -dy / length;
+        normal_dir.y() = dx / length;
+      }
+    } else if (i < trajectory.points.size() - 1) {
+      // Use direction to next point
+      const auto & next_point = trajectory.points[i + 1].pose.position;
+      const double dx = next_point.x - point.x;
+      const double dy = next_point.y - point.y;
+      const double length = std::sqrt(dx * dx + dy * dy);
+
+      if (length > 1e-6) {
+        normal_dir.x() = -dy / length;
+        normal_dir.y() = dx / length;
+      }
+    }
+
+    // Create left and right offset points
+    autoware::universe_utils::Point2d left_point(
+      point.x + normal_dir.x() * width,
+      point.y + normal_dir.y() * width);
+    autoware::universe_utils::Point2d right_point(
+      point.x - normal_dir.x() * width,
+      point.y - normal_dir.y() * width);
+
+    left_points.push_back(left_point);
+    right_points.push_back(right_point);
+  }
+
+  // Build polygon from left and right points
+  for (const auto & point : left_points) {
+    polygon.outer().push_back(point);
+  }
+
+  // Add right points in reverse order to close the polygon
+  for (auto it = right_points.rbegin(); it != right_points.rend(); ++it) {
+    polygon.outer().push_back(*it);
+  }
+
+  // Close polygon if not already closed
+  if (!polygon.outer().empty() &&
+      (polygon.outer().front().x() != polygon.outer().back().x() ||
+       polygon.outer().front().y() != polygon.outer().back().y())) {
+    polygon.outer().push_back(polygon.outer().front());
+  }
+
+  return polygon;
+}
+
+bool PerceptionFilterNode::isPointInFilteringPolygon(const geometry_msgs::msg::Point & point) const
+{
+  if (!filtering_polygon_created_ || !filtering_polygon_.is_active) {
+    return false;
+  }
+
+  // Transform point from base_link to map coordinates
+  geometry_msgs::msg::Point transformed_point = point;
+
+  try {
+    // Get transform from base_link to map
+    const auto transform = tf_buffer_->lookupTransform(
+      "map", "base_link",
+      rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+
+    // Transform the point
+    tf2::doTransform(point, transformed_point, transform);
+
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Failed to get transform from base_link to map: %s. Using original point coordinates.",
+      ex.what());
+    // If transform fails, use original point (this may cause incorrect filtering)
+  }
+
+  autoware::universe_utils::Point2d test_point(transformed_point.x, transformed_point.y);
+  return boost::geometry::within(test_point, filtering_polygon_.polygon);
+}
+
+void PerceptionFilterNode::updateFilteringPolygonStatus()
+{
+  if (!filtering_polygon_created_ || !filtering_polygon_.is_active) {
+    return;
+  }
+
+  // Check if ego vehicle has passed through the filtering polygon
+  const auto ego_pose = getCurrentEgoPose();
+  const double current_distance_along_path = getDistanceAlongPath(ego_pose.position);
+
+  // If ego has moved beyond the end of the filtering polygon, deactivate it
+  if (current_distance_along_path > filtering_polygon_.end_distance_along_path) {
+    filtering_polygon_.is_active = false;
+    RCLCPP_INFO(
+      get_logger(),
+      "Filtering polygon deactivated: ego distance=%.2f m, polygon end=%.2f m",
+      current_distance_along_path,
+      filtering_polygon_.end_distance_along_path);
+  }
 }
 
 }  // namespace autoware::perception_filter
