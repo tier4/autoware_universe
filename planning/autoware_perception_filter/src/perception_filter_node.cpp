@@ -1243,35 +1243,19 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
           // Only filter objects that are in the ignore list AND were frozen at RTC approval time
           if (is_frozen_for_filtering) {
             classification.currently_filtered.push_back(object);
-
-            // Log frozen object filtering
-            std::string uuid_str = "";
-            for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
-              if (i > 0) uuid_str += "-";
-              uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
-            }
-            const std::string object_label = labelToString(getMostProbableLabel(object));
-            RCLCPP_DEBUG(
-              get_logger(),
-              "Filtering frozen ignored object - UUID: %s, Class: %s, Distance: %.2f m",
-              uuid_str.c_str(), object_label.c_str(), distance_to_path);
           } else {
-            // Not in frozen list, always pass through (even if it would meet filter criteria)
-            classification.pass_through_always.push_back(object);
+            // Not in frozen list - classify based on whether RTC is currently activated
+            if (rtc_activated) {
+              // RTC is currently activated: new objects pass through (not frozen)
+              classification.pass_through_always.push_back(object);
 
-            if (would_be_filtered) {
-              // Log that this new object would be filtered but isn't because it's not frozen
-              std::string uuid_str = "";
-              for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
-                if (i > 0) uuid_str += "-";
-                uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
+            } else {
+              // RTC was previously approved but not currently activated: show "would filter"
+              if (would_be_filtered) {
+                classification.pass_through_would_filter.push_back(object);
+              } else {
+                classification.pass_through_always.push_back(object);
               }
-              const std::string object_label = labelToString(getMostProbableLabel(object));
-              RCLCPP_DEBUG(
-                get_logger(),
-                "New ignored object not filtered (not frozen) - UUID: %s, Class: %s, Distance: "
-                "%.2f m",
-                uuid_str.c_str(), object_label.c_str(), distance_to_path);
             }
           }
         } else if (rtc_interface_exists && !rtc_activated && is_currently_stopped) {
@@ -1280,6 +1264,7 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
           if (would_be_filtered) {
             // Currently passing through, but would be filtered if RTC approved
             classification.pass_through_would_filter.push_back(object);
+
           } else {
             // Always pass through regardless of RTC status
             classification.pass_through_always.push_back(object);
