@@ -157,10 +157,19 @@ private:
   // RTC recreation parameters
   double stop_velocity_threshold_;
 
+  // Object classification ignore parameters
+  std::vector<std::string> ignore_object_classes_;  // Object classes to ignore during filtering
+
   // RTC transition and frozen filtering state management
   bool previous_rtc_activated_;  // Track previous RTC activation state to detect transitions
   std::set<std::array<uint8_t, 16>>
     frozen_filter_object_ids_;  // Object IDs frozen at RTC approval time
+
+  // Helper functions for object classification
+  bool shouldIgnoreObject(const autoware_perception_msgs::msg::PredictedObject & object) const;
+  uint8_t getMostProbableLabel(const autoware_perception_msgs::msg::PredictedObject & object) const;
+  std::string labelToString(uint8_t label) const;
+  uint8_t stringToLabel(const std::string & label_string) const;
 };
 
 }  // namespace autoware::perception_filter

@@ -69,6 +69,10 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   // Add parameter for RTC recreation on stop (only stop velocity threshold needed)
   stop_velocity_threshold_ = declare_parameter<double>("stop_velocity_threshold", 0.001);
 
+  // Add parameter for ignoring specific object classes
+  ignore_object_classes_ = declare_parameter<std::vector<std::string>>(
+    "ignore_object_classes", std::vector<std::string>{});
+
   // Initialize vehicle stopped state
   is_vehicle_stopped_ = false;
 
@@ -110,6 +114,20 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   // Initialize published time publisher
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 
+  // Log ignored object classes configuration
+  if (!ignore_object_classes_.empty()) {
+    std::string ignored_classes_str = "";
+    for (size_t i = 0; i < ignore_object_classes_.size(); ++i) {
+      if (i > 0) ignored_classes_str += ", ";
+      ignored_classes_str += ignore_object_classes_[i];
+    }
+    RCLCPP_INFO(get_logger(), "Ignoring object classes: %s", ignored_classes_str.c_str());
+  } else {
+    RCLCPP_INFO(
+      get_logger(),
+      "No object classes are ignored (all classes will be filtered if conditions are met)");
+  }
+
   RCLCPP_DEBUG(get_logger(), "PerceptionFilterNode initialized");
 }
 
@@ -130,7 +148,6 @@ void PerceptionFilterNode::handleRTCTransition(
     RCLCPP_DEBUG(get_logger(), "Freezing filter target objects at RTC approval time...");
     RCLCPP_INFO(get_logger(), "RTC transition detected: NOT ACTIVATED -> ACTIVATED");
 
-
     // Clear previous frozen object IDs
     frozen_filter_object_ids_.clear();
 
@@ -140,6 +157,15 @@ void PerceptionFilterNode::handleRTCTransition(
 
       // Only consider objects within classification radius
       if (distance_from_ego <= object_classification_radius_) {
+        // Skip objects that should be ignored
+        if (shouldIgnoreObject(object)) {
+          const std::string object_label = labelToString(getMostProbableLabel(object));
+          RCLCPP_DEBUG(
+            get_logger(), "Skipping ignored object class %s from frozen list",
+            object_label.c_str());
+          continue;
+        }
+
         const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
 
         // If object is within filter distance, add its ID to frozen list
@@ -155,14 +181,17 @@ void PerceptionFilterNode::handleRTCTransition(
             uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
           }
 
+          const std::string object_label = labelToString(getMostProbableLabel(object));
           RCLCPP_DEBUG(
-            get_logger(), "Frozen object for filtering - UUID: %s, Distance to path: %.2f m",
-            uuid_str.c_str(), distance_to_path);
+            get_logger(),
+            "Frozen object for filtering - UUID: %s, Class: %s, Distance to path: %.2f m",
+            uuid_str.c_str(), object_label.c_str(), distance_to_path);
         }
       }
     }
 
-    RCLCPP_DEBUG(get_logger(), "Frozen %zu objects for filtering", frozen_filter_object_ids_.size());
+    RCLCPP_DEBUG(
+      get_logger(), "Frozen %zu objects for filtering", frozen_filter_object_ids_.size());
   }
 
   // Reset when RTC becomes not activated
@@ -189,7 +218,8 @@ void PerceptionFilterNode::checkVehicleStoppedState()
     const size_t frozen_list_size = frozen_filter_object_ids_.size();
 
     // Preserve the previous RTC activation state before recreating
-    const bool previous_rtc_was_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
+    const bool previous_rtc_was_activated =
+      rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
 
     // Clear current RTC status before recreating
     if (rtc_interface_) {
@@ -207,8 +237,7 @@ void PerceptionFilterNode::checkVehicleStoppedState()
 
     if (frozen_list_size > 0) {
       RCLCPP_DEBUG(
-        get_logger(),
-        "Frozen filter list preserved across RTC recreation (%zu objects maintained)",
+        get_logger(), "Frozen filter list preserved across RTC recreation (%zu objects maintained)",
         frozen_list_size);
     }
   }
@@ -228,7 +257,8 @@ void PerceptionFilterNode::onObjects(
     // Also publish latest pointcloud if available
     if (latest_pointcloud_) {
       filtered_pointcloud_pub_->publish(*latest_pointcloud_);
-      published_time_publisher_->publish_if_subscribed(filtered_pointcloud_pub_, latest_pointcloud_->header.stamp);
+      published_time_publisher_->publish_if_subscribed(
+        filtered_pointcloud_pub_, latest_pointcloud_->header.stamp);
     }
     return;
   }
@@ -342,10 +372,10 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
   RCLCPP_DEBUG(
     get_logger(),
     "Object classification within %.1fm (Vehicle %s): Always pass=%zu, Would filter=%zu, Currently "
-    "filtered=%zu",
+    "filtered=%zu, Ignored classes=%zu",
     object_classification_radius_, is_currently_stopped ? "STOPPED" : "MOVING",
     classification.pass_through_always.size(), classification.pass_through_would_filter.size(),
-    classification.currently_filtered.size());
+    classification.currently_filtered.size(), ignore_object_classes_.size());
 
   // Check if RTC interface is activated
   const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
@@ -824,59 +854,74 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
     const double distance_from_ego = getDistanceFromEgo(object);
     // Classify only objects within the specified radius
     if (distance_from_ego <= object_classification_radius_) {
-      const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
-      const bool would_be_filtered = distance_to_path <= max_filter_distance_;
+      // Check if this object should be ignored based on its class
+      if (shouldIgnoreObject(object)) {
+        // Objects in ignore list are candidates for filtering when RTC is approved
+        // They are NOT always passed through
+        const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
+        const bool would_be_filtered = distance_to_path <= max_filter_distance_;
 
-      // Check if this object ID is in the frozen filter list
-      std::array<uint8_t, 16> uuid_array;
-      std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
-      const bool is_frozen_for_filtering =
-        frozen_filter_object_ids_.find(uuid_array) != frozen_filter_object_ids_.end();
+        // Check if this object ID is in the frozen filter list
+        std::array<uint8_t, 16> uuid_array;
+        std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
+        const bool is_frozen_for_filtering =
+          frozen_filter_object_ids_.find(uuid_array) != frozen_filter_object_ids_.end();
 
-      if (rtc_activated) {
-        // RTC exists and is approved: filtering function is active
-        // Only filter objects that were frozen at RTC approval time
-        if (is_frozen_for_filtering) {
-          classification.currently_filtered.push_back(object);
+        if (rtc_activated) {
+          // RTC exists and is approved: filtering function is active
+          // Only filter objects that are in the ignore list AND were frozen at RTC approval time
+          if (is_frozen_for_filtering) {
+            classification.currently_filtered.push_back(object);
 
-          // Log frozen object filtering
-          std::string uuid_str = "";
-          for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
-            if (i > 0) uuid_str += "-";
-            uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
-          }
-          RCLCPP_DEBUG(
-            get_logger(), "Filtering frozen object - UUID: %s, Distance: %.2f m", uuid_str.c_str(),
-            distance_to_path);
-        } else {
-          // Not in frozen list, always pass through (even if it would meet filter criteria)
-          classification.pass_through_always.push_back(object);
-
-          if (would_be_filtered) {
-            // Log that this new object would be filtered but isn't because it's not frozen
+            // Log frozen object filtering
             std::string uuid_str = "";
             for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
               if (i > 0) uuid_str += "-";
               uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
             }
+            const std::string object_label = labelToString(getMostProbableLabel(object));
             RCLCPP_DEBUG(
-              get_logger(), "New object not filtered (not frozen) - UUID: %s, Distance: %.2f m",
-              uuid_str.c_str(), distance_to_path);
+              get_logger(),
+              "Filtering frozen ignored object - UUID: %s, Class: %s, Distance: %.2f m",
+              uuid_str.c_str(), object_label.c_str(), distance_to_path);
+          } else {
+            // Not in frozen list, always pass through (even if it would meet filter criteria)
+            classification.pass_through_always.push_back(object);
+
+            if (would_be_filtered) {
+              // Log that this new object would be filtered but isn't because it's not frozen
+              std::string uuid_str = "";
+              for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
+                if (i > 0) uuid_str += "-";
+                uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
+              }
+              const std::string object_label = labelToString(getMostProbableLabel(object));
+              RCLCPP_DEBUG(
+                get_logger(),
+                "New ignored object not filtered (not frozen) - UUID: %s, Class: %s, Distance: "
+                "%.2f m",
+                uuid_str.c_str(), object_label.c_str(), distance_to_path);
+            }
           }
-        }
-      } else if (rtc_interface_exists && !rtc_activated && is_currently_stopped) {
-        // RTC exists, not approved, and vehicle is stopped: filtering function is inactive
-        if (would_be_filtered) {
-          // Currently passing through, but would be filtered if RTC approved
-          classification.pass_through_would_filter.push_back(object);
+        } else if (rtc_interface_exists && !rtc_activated && is_currently_stopped) {
+          // RTC exists, not approved, and vehicle is stopped: filtering function is inactive
+          // Show "would filter" for objects that are in the ignore list
+          if (would_be_filtered) {
+            // Currently passing through, but would be filtered if RTC approved
+            classification.pass_through_would_filter.push_back(object);
+          } else {
+            // Always pass through regardless of RTC status
+            classification.pass_through_always.push_back(object);
+          }
         } else {
-          // Always pass through regardless of RTC status
+          // No RTC interface or vehicle is moving: classify all objects as pass_through_always
           classification.pass_through_always.push_back(object);
         }
-      } else {
-        // No RTC interface or vehicle is moving: classify all objects as pass_through_always
-        classification.pass_through_always.push_back(object);
+        continue;  // Skip the rest of the processing for ignored objects
       }
+
+      // Objects NOT in ignore list are always passed through
+      classification.pass_through_always.push_back(object);
     }
   }
 
@@ -934,17 +979,108 @@ bool PerceptionFilterNode::isDataReady()
 
   if (enable_pointcloud_filtering_ && !planning_trajectory_) {
     RCLCPP_DEBUG_THROTTLE(
-      get_logger(), *get_clock(), 5000, "waiting for planning_trajectory for pointcloud filtering...");
+      get_logger(), *get_clock(), 5000,
+      "waiting for planning_trajectory for pointcloud filtering...");
     return false;
   }
 
   if (enable_pointcloud_filtering_ && !latest_pointcloud_) {
-    RCLCPP_DEBUG_THROTTLE(
-      get_logger(), *get_clock(), 5000, "waiting for pointcloud data...");
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 5000, "waiting for pointcloud data...");
     return false;
   }
 
   return true;
+}
+
+bool PerceptionFilterNode::shouldIgnoreObject(
+  const autoware_perception_msgs::msg::PredictedObject & object) const
+{
+  if (ignore_object_classes_.empty()) {
+    return false;  // No classes to ignore
+  }
+
+  const uint8_t object_label = getMostProbableLabel(object);
+  const std::string label_string = labelToString(object_label);
+
+  // Check if the object's label is in the ignore list
+  return std::find(ignore_object_classes_.begin(), ignore_object_classes_.end(), label_string) !=
+         ignore_object_classes_.end();
+}
+
+uint8_t PerceptionFilterNode::getMostProbableLabel(
+  const autoware_perception_msgs::msg::PredictedObject & object) const
+{
+  if (object.classification.empty()) {
+    return autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+  }
+
+  // Find the classification with the highest probability
+  double highest_probability = 0.0;
+  uint8_t most_probable_label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+
+  for (const auto & classification : object.classification) {
+    if (classification.probability > highest_probability) {
+      highest_probability = classification.probability;
+      most_probable_label = classification.label;
+    }
+  }
+
+  return most_probable_label;
+}
+
+std::string PerceptionFilterNode::labelToString(uint8_t label) const
+{
+  using autoware_perception_msgs::msg::ObjectClassification;
+  switch (label) {
+    case ObjectClassification::UNKNOWN:
+      return "UNKNOWN";
+    case ObjectClassification::CAR:
+      return "CAR";
+    case ObjectClassification::TRUCK:
+      return "TRUCK";
+    case ObjectClassification::BUS:
+      return "BUS";
+    case ObjectClassification::TRAILER:
+      return "TRAILER";
+    case ObjectClassification::MOTORCYCLE:
+      return "MOTORCYCLE";
+    case ObjectClassification::BICYCLE:
+      return "BICYCLE";
+    case ObjectClassification::PEDESTRIAN:
+      return "PEDESTRIAN";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+uint8_t PerceptionFilterNode::stringToLabel(const std::string & label_string) const
+{
+  using autoware_perception_msgs::msg::ObjectClassification;
+  if (label_string == "UNKNOWN") {
+    return ObjectClassification::UNKNOWN;
+  }
+  if (label_string == "CAR") {
+    return ObjectClassification::CAR;
+  }
+  if (label_string == "TRUCK") {
+    return ObjectClassification::TRUCK;
+  }
+  if (label_string == "BUS") {
+    return ObjectClassification::BUS;
+  }
+  if (label_string == "TRAILER") {
+    return ObjectClassification::TRAILER;
+  }
+  if (label_string == "MOTORCYCLE") {
+    return ObjectClassification::MOTORCYCLE;
+  }
+  if (label_string == "BICYCLE") {
+    return ObjectClassification::BICYCLE;
+  }
+  if (label_string == "PEDESTRIAN") {
+    return ObjectClassification::PEDESTRIAN;
+  }
+  return ObjectClassification::UNKNOWN;
 }
 
 }  // namespace autoware::perception_filter

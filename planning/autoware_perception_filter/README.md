@@ -41,14 +41,45 @@ This package provides a perception filter node that filters perception data base
 
 ### Core Parameters
 
-| Name                           | Type   | Default Value | Description                                             |
-| ------------------------------ | ------ | ------------- | ------------------------------------------------------- |
-| `enable_object_filtering`      | bool   | true          | Enable/disable object filtering                         |
-| `enable_pointcloud_filtering`  | bool   | true          | Enable/disable pointcloud filtering                     |
-| `max_filter_distance`          | double | 5.0           | Distance from planning trajectory to filter objects [m] |
-| `pointcloud_safety_distance`   | double | 1.0           | Minimum distance for pointcloud filtering [m]           |
-| `object_classification_radius` | double | 50.0          | Radius from ego vehicle for object classification [m]   |
-| `stop_velocity_threshold`      | double | 0.001         | Velocity threshold to consider vehicle as stopped [m/s] |
+| Name                           | Type     | Default Value | Description                                             |
+| ------------------------------ | -------- | ------------- | ------------------------------------------------------- |
+| `enable_object_filtering`      | bool     | true          | Enable/disable object filtering                         |
+| `enable_pointcloud_filtering`  | bool     | true          | Enable/disable pointcloud filtering                     |
+| `max_filter_distance`          | double   | 5.0           | Distance from planning trajectory to filter objects [m] |
+| `pointcloud_safety_distance`   | double   | 1.0           | Minimum distance for pointcloud filtering [m]           |
+| `object_classification_radius` | double   | 50.0          | Radius from ego vehicle for object classification [m]   |
+| `stop_velocity_threshold`      | double   | 0.001         | Velocity threshold to consider vehicle as stopped [m/s] |
+| `ignore_object_classes`        | string[] | []            | List of object classes to ignore during filtering       |
+
+### Object Classification Parameters
+
+| Name                    | Type     | Default Value | Description                                       |
+| ----------------------- | -------- | ------------- | ------------------------------------------------- |
+| `ignore_object_classes` | string[] | []            | List of object classes to ignore during filtering |
+
+**Available Object Classes:**
+
+- `UNKNOWN`: Unknown object type
+- `CAR`: Passenger car
+- `TRUCK`: Truck
+- `BUS`: Bus
+- `TRAILER`: Trailer
+- `MOTORCYCLE`: Motorcycle
+- `BICYCLE`: Bicycle
+- `PEDESTRIAN`: Pedestrian
+
+**Example Configuration:**
+
+```yaml
+# Ignore pedestrians and bicycles (always pass through)
+ignore_object_classes: ["PEDESTRIAN", "BICYCLE"]
+
+# Ignore all vehicle types except cars
+ignore_object_classes: ["TRUCK", "BUS", "TRAILER", "MOTORCYCLE"]
+
+# No objects are ignored (default behavior)
+ignore_object_classes: []
+```
 
 ## Topic Name Switching Strategy
 
@@ -166,6 +197,32 @@ The node classifies detected objects into three categories within a specified ra
 2. **Would Filter**: Objects near the trajectory that pass through when RTC is inactive but would be filtered when RTC is active
 3. **Currently Filtered**: Objects near the trajectory that are actively being filtered when RTC is active (frozen objects only)
 
+**Note:** Objects with classes specified in `ignore_object_classes` are always classified as "Always Pass Through" regardless of their distance from the trajectory or RTC status.
+
+#### Ignored Object Classes
+
+Objects with specific classification labels can be configured to be candidates for filtering when RTC is approved. This is useful for:
+
+- **Selective filtering**: Only specific object classes are considered for filtering
+- **Safety-critical objects**: Pedestrians and cyclists that should be carefully evaluated before filtering
+- **Testing scenarios**: Selective filtering for specific object types
+
+**Behavior:**
+
+- Objects with ignored classes are **candidates for filtering** when RTC is approved
+- They can be classified as "Would Filter" when RTC is not activated but would be filtered if RTC were approved
+- They can be classified as "Currently Filtered" when RTC is activated and they are in the frozen list
+- **Objects NOT in the ignore list are ALWAYS passed through regardless of RTC status**
+- **When ignore list is empty (default), ALL objects always pass through regardless of RTC status**
+
+**Implementation:**
+
+- The system checks the object's most probable classification label
+- If the label is in the `ignore_object_classes` list, the object is a candidate for filtering based on RTC status and distance to trajectory
+- If the label is NOT in the `ignore_object_classes` list, the object is ALWAYS passed through
+- **When `ignore_object_classes` is empty (default), all objects are classified as "Always Pass Through"**
+- This check happens before distance-based filtering and RTC status evaluation
+
 #### Frozen Filtering Mechanism
 
 When RTC transitions from inactive to active:
@@ -202,17 +259,19 @@ The perception filter provides debug visualization to help understand the filter
 
 The node publishes visualization markers on the `debug/filtering_markers` topic that show:
 
+- **Blue markers**: Objects that always pass through (including ignored classes)
+- **Yellow markers**: Objects that would be filtered if RTC were approved
 - **Red markers**: Objects that were filtered out (removed from output)
-- **Green markers**: Objects that passed through (included in output)
-- **Status text**: Current RTC activation status and object counts
+- **Status text**: Current RTC activation status, object counts, and ignored classes count
 
 #### Visualization Details
 
 - **Marker Type**: Cube list markers for easy visualization
 - **Color Coding**:
+  - Blue: Always pass through objects (including ignored classes)
+  - Yellow: Would filter objects (when RTC is not activated but objects are near path)
   - Red: Filtered out objects (when RTC is activated and objects are near path)
-  - Green: Passed through objects (when RTC is not activated or objects are far from path)
-- **Status Display**: Text marker showing RTC status and object counts
+- **Status Display**: Text marker showing RTC status, object counts, and ignored classes configuration
 - **Frame**: All markers are published in the "map" frame
 
 ### RTC Interface-based Approval System
