@@ -71,6 +71,9 @@ private:
     const autoware_perception_msgs::msg::PredictedObject & object,
     const autoware_planning_msgs::msg::Trajectory & path);
 
+  double getMinDistanceToPath(
+    const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path);
+
   bool isPointNearPath(
     const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path,
     double max_filter_distance, double pointcloud_safety_distance);
@@ -95,6 +98,13 @@ private:
       pass_through_would_filter;  // Pass through now, but would be filtered if RTC approved
     std::vector<autoware_perception_msgs::msg::PredictedObject>
       currently_filtered;  // Currently being filtered
+  };
+
+  // Filtered point information structure
+  struct FilteredPointInfo
+  {
+    geometry_msgs::msg::Point point;
+    double distance_to_path;
   };
 
   // Object classification functions
@@ -147,6 +157,9 @@ private:
   // Latest object classification result
   ObjectClassification latest_classification_;
 
+  // Filtered points information for planning factors
+  std::vector<FilteredPointInfo> filtered_points_info_;
+
   // Parameters
   bool enable_object_filtering_;
   bool enable_pointcloud_filtering_;
@@ -164,6 +177,9 @@ private:
   bool previous_rtc_activated_;  // Track previous RTC activation state to detect transitions
   std::set<std::array<uint8_t, 16>>
     frozen_filter_object_ids_;  // Object IDs frozen at RTC approval time
+
+  // RTC approval state persistence
+  bool rtc_ever_approved_;  // Track if RTC has ever been approved (persistent across RTC recreation)
 
   // Helper functions for object classification
   bool shouldIgnoreObject(const autoware_perception_msgs::msg::PredictedObject & object) const;
