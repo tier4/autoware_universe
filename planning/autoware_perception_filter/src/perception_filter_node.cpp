@@ -487,19 +487,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
         const bool outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
         should_filter_point = near_path && outside_safety_distance;
 
-        // Debug logging for polygon points
-        static int debug_counter = 0;
-        if (++debug_counter % 1000 == 0) {  // Log every 1000th point to avoid spam
-          RCLCPP_WARN(
-            get_logger(),
-            "Polygon point debug: in_polygon=%s, near_path=%s, outside_safety=%s, distance_to_path=%.2f, max_filter_distance=%.2f, safety_distance=%.2f",
-            in_polygon ? "true" : "false",
-            near_path ? "true" : "false",
-            outside_safety_distance ? "true" : "false",
-            distance_to_path,
-            max_filter_distance_,
-            pointcloud_safety_distance_);
-        }
       }
       // For points outside the polygon, do not filter (should_filter_point remains false)
     }
@@ -528,17 +515,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   RCLCPP_DEBUG(
     get_logger(), "Pointcloud filtering: input points=%zu, output points=%zu, filtered points=%zu",
     input_cloud->points.size(), filtered_cloud->points.size(), filtered_points_info_.size());
-
-  // Log polygon filtering information if available
-  if (filtering_polygon_created_) {
-    RCLCPP_WARN(
-      get_logger(),
-      "Polygon-based filtering: %s, range=%.2f to %.2f m, width=%.2f m",
-      filtering_polygon_.is_active ? "ACTIVE" : "INACTIVE",
-      filtering_polygon_.start_distance_along_path,
-      filtering_polygon_.end_distance_along_path,
-      max_filter_distance_);
-  }
 
   return filtered_pointcloud;
 }
