@@ -482,23 +482,6 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
     // If RTC is not activated, pass through all objects but log what would be filtered
     RCLCPP_DEBUG(get_logger(), "RTC not activated, passing through all objects");
 
-    // Log objects that would be filtered if RTC were approved
-    for (const auto & object : classification.pass_through_would_filter) {
-      const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
-
-      // Convert UUID to string for debug output
-      std::string uuid_str = "";
-      for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
-        if (i > 0) uuid_str += "-";
-        uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
-      }
-
-      RCLCPP_DEBUG(
-        get_logger(),
-        "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Would be filtered if RTC approved",
-        uuid_str.c_str(), distance_to_path, max_filter_distance_);
-    }
-
     filtered_objects = input_objects;
     return filtered_objects;
   }
@@ -511,22 +494,6 @@ autoware_perception_msgs::msg::PredictedObjects PerceptionFilterNode::filterObje
   }
   for (const auto & object : classification.pass_through_would_filter) {
     filtered_objects.objects.push_back(object);
-  }
-
-  // Log detailed filtering information for each filtered object
-  for (const auto & object : classification.currently_filtered) {
-    const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
-
-    // Convert UUID to string for debug output
-    std::string uuid_str = "";
-    for (size_t i = 0; i < object.object_id.uuid.size(); ++i) {
-      if (i > 0) uuid_str += "-";
-      uuid_str += std::to_string(static_cast<int>(object.object_id.uuid[i]));
-    }
-
-    RCLCPP_DEBUG(
-      get_logger(), "Object UUID: %s, Distance: %.2f m, Threshold: %.2f m, Filtered: YES",
-      uuid_str.c_str(), distance_to_path, max_filter_distance_);
   }
 
   return filtered_objects;
@@ -736,20 +703,6 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
     tf2::doTransform(ego_pose_map, ego_pose, transform);
   }
 
-  // Debug: Log ego pose and trajectory info for first few calls
-  static int distance_debug_counter = 0;
-  if (++distance_debug_counter <= 3) {
-    RCLCPP_WARN(
-      get_logger(),
-      "getDistanceAlongPath debug %d: ego_pose_map=(%.2f,%.2f,%.2f), "
-      "ego_pose_base_link=(%.2f,%.2f,%.2f), point=(%.2f,%.2f,%.2f), trajectory_points=%zu, "
-      "frame_id=%s, transform_needed=%s",
-      distance_debug_counter, ego_pose_map.position.x, ego_pose_map.position.y,
-      ego_pose_map.position.z, ego_pose.position.x, ego_pose.position.y, ego_pose.position.z,
-      point.x, point.y, point.z, planning_trajectory_->points.size(),
-      planning_trajectory_->header.frame_id.c_str(), transform_needed ? "true" : "false");
-  }
-
   // Find the closest point on the trajectory to the ego vehicle
   double min_ego_distance = std::numeric_limits<double>::max();
   size_t ego_closest_index = 0;
@@ -833,17 +786,6 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
       const double dy = next_point.y - current_point.y;
       cumulative_distance -= std::sqrt(dx * dx + dy * dy);
     }
-  }
-
-  // Debug: Log distance calculation for some points
-  static int distance_calc_debug_counter = 0;
-  if (++distance_calc_debug_counter % 10000 == 0) {  // Log every 10000th point to avoid spam
-    RCLCPP_WARN(
-      get_logger(),
-      "Distance calculation: ego_closest_index=%zu, point_closest_index=%zu, "
-      "cumulative_distance=%.2f, ego_pos=(%.2f,%.2f), point_pos=(%.2f,%.2f), transform_needed=%s",
-      ego_closest_index, point_closest_index, cumulative_distance, ego_pose.position.x,
-      ego_pose.position.y, point.x, point.y, transform_needed ? "true" : "false");
   }
 
   return cumulative_distance;

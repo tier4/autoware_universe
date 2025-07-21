@@ -73,6 +73,13 @@ private:
   // Filter functions
   autoware_perception_msgs::msg::PredictedObjects filterObjects(
     const autoware_perception_msgs::msg::PredictedObjects & input_objects);
+  /**
+   * @brief Filter point cloud data
+   * @param input_pointcloud Input point cloud to be filtered
+   * @return Filtered point cloud
+   * @details Keeps only points within a certain distance from the path and removes others.
+   * When RTC is approved, only points within the filtering polygon are kept.
+   */
   sensor_msgs::msg::PointCloud2 filterPointCloud(
     const sensor_msgs::msg::PointCloud2 & input_pointcloud);
 
@@ -84,10 +91,27 @@ private:
     const autoware_perception_msgs::msg::PredictedObject & object,
     const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance);
 
+  /**
+   * @brief Calculate minimum distance from predicted object to path
+   * @param object Predicted object to calculate distance from
+   * @param path Path (trajectory) to calculate distance to
+   * @return Minimum distance from object to path [m]
+   * @details Calculates the shortest distance from the object's boundary to the path,
+   * considering the object's shape. Returns the minimum distance if the object is close
+   * to multiple trajectory points.
+   */
   double getMinDistanceToPath(
     const autoware_perception_msgs::msg::PredictedObject & object,
     const autoware_planning_msgs::msg::Trajectory & path);
 
+  /**
+   * @brief Calculate minimum distance from point to path
+   * @param point Point to calculate distance from
+   * @param path Path (trajectory) to calculate distance to
+   * @return Minimum distance from point to path [m]
+   * @details Calculates distance from the specified point to each point in the trajectory
+   * and returns the minimum value using Euclidean distance.
+   */
   double getMinDistanceToPath(
     const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path);
 
@@ -104,6 +128,13 @@ private:
     const autoware_perception_msgs::msg::PredictedObjects & input_objects);
 
   // Pointcloud filtering range management functions
+  /**
+   * @brief Calculate distance along the path from the start to a given point
+   * @param point Point to calculate distance along path for
+   * @return Distance along the path from start to the point [m]
+   * @details Projects the given point onto the trajectory and calculates the cumulative
+   * distance along the path from the start point to the projected point.
+   */
   double getDistanceAlongPath(const geometry_msgs::msg::Point & point) const;
 
   // New polygon-based filtering functions
