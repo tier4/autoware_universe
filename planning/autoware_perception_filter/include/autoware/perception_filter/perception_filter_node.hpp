@@ -17,10 +17,14 @@
 
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
 #include <autoware/rtc_interface/rtc_interface.hpp>
+#include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware/universe_utils/ros/parameter.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
+#include <autoware_utils/system/stop_watch.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/control_point.hpp>
 #include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
@@ -33,27 +37,26 @@
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <boost/geometry.hpp>
+
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
-#include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
-#include <autoware/universe_utils/ros/parameter.hpp>
-
-#include <boost/geometry.hpp>
-
 #include <memory>
 #include <set>
+#include <string>
+#include <vector>
 
 namespace autoware::perception_filter
 {
 
-// RTC承認時のフィルタリング範囲を表すポリゴン構造体
+// RTC approval filtering range polygon structure
 struct FilteringPolygon
 {
-  autoware::universe_utils::Polygon2d polygon;  // フィルタリング範囲のポリゴン
-  double start_distance_along_path;             // 経路上の開始距離
-  double end_distance_along_path;               // 経路上の終了距離
-  bool is_active;                               // ポリゴンがアクティブかどうか
+  autoware::universe_utils::Polygon2d polygon;  // Filtering range polygon
+  double start_distance_along_path;             // Start distance along the path
+  double end_distance_along_path;               // End distance along the path
+  bool is_active;                               // Whether the polygon is active
 };
 
 class PerceptionFilterNode : public rclcpp::Node
@@ -108,8 +111,8 @@ private:
   bool isPointInFilteringPolygon(const geometry_msgs::msg::Point & point) const;
   void updateFilteringPolygonStatus();
   autoware::universe_utils::Polygon2d createPathPolygon(
-    const autoware_planning_msgs::msg::Trajectory & trajectory,
-    double start_distance, double end_distance, double width) const;
+    const autoware_planning_msgs::msg::Trajectory & trajectory, double start_distance,
+    double end_distance, double width) const;
 
   // Planning Factor functions
   autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors();
@@ -160,6 +163,12 @@ private:
   // Debug visualization publishers
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_markers_pub_;
 
+  // Processing time publishers
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    objects_processing_time_pub_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    pointcloud_processing_time_pub_;
+
   // Published time publisher
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
@@ -204,11 +213,12 @@ private:
     frozen_filter_object_ids_;  // Object IDs frozen at RTC approval time
 
   // RTC approval state persistence
-  bool rtc_ever_approved_;  // Track if RTC has ever been approved (persistent across RTC recreation)
+  bool
+    rtc_ever_approved_;  // Track if RTC has ever been approved (persistent across RTC recreation)
 
   // New polygon-based filtering management
-  FilteringPolygon filtering_polygon_;      // RTC承認時に作成されるフィルタリングポリゴン
-  bool filtering_polygon_created_;          // フィルタリングポリゴンが作成されたかどうか
+  FilteringPolygon filtering_polygon_;  // Filtering polygon created at RTC approval
+  bool filtering_polygon_created_;      // Whether the filtering polygon has been created
 
   // Helper functions for object classification
   bool shouldIgnoreObject(const autoware_perception_msgs::msg::PredictedObject & object) const;
