@@ -32,10 +32,23 @@
 #include <utility>
 #include <vector>
 
-using Label = autoware_perception_msgs::msg::ObjectClassification;
+using autoware_perception_msgs::msg::DetectedObject;
 
 namespace
 {
+bool get_class_based_priority(
+  const DetectedObject & object0, const DetectedObject & object1,
+  const std::vector<int64_t> & class_based_priority_matrix, const int NUMBER_OF_CLASSES)
+{
+  const std::uint8_t highest_label0 =
+    autoware::object_recognition_utils::getHighestProbLabel(object0.classification);
+  const std::uint8_t highest_label1 =
+    autoware::object_recognition_utils::getHighestProbLabel(object1.classification);
+  const int index = highest_label1 * NUMBER_OF_CLASSES + highest_label0;
+  // Check if the label of object1 has higher priority than that of object0
+  return class_based_priority_matrix[index] > 0;
+}
+
 bool isUnknownObjectOverlapped(
   const autoware_perception_msgs::msg::DetectedObject & unknown_object,
   const autoware_perception_msgs::msg::DetectedObject & known_object,
@@ -88,14 +101,6 @@ ObjectAssociationMergerNode::ObjectAssociationMergerNode(const rclcpp::NodeOptio
   // Parameters
   base_link_frame_id_ = declare_parameter<std::string>("base_link_frame_id");
   priority_mode_ = static_cast<PriorityMode>(declare_parameter<int>("priority_mode"));
-  high_priority_labels_.CAR = declare_parameter<bool>("class_based_priority.CAR");
-  high_priority_labels_.TRUCK = declare_parameter<bool>("class_based_priority.TRUCK");
-  high_priority_labels_.BUS = declare_parameter<bool>("class_based_priority.BUS");
-  high_priority_labels_.TRAILER = declare_parameter<bool>("class_based_priority.TRAILER");
-  high_priority_labels_.MOTORCYCLE = declare_parameter<bool>("class_based_priority.MOTORCYCLE");
-  high_priority_labels_.BICYCLE = declare_parameter<bool>("class_based_priority.BICYCLE");
-  high_priority_labels_.PEDESTRIAN = declare_parameter<bool>("class_based_priority.PEDESTRIAN");
-  high_priority_labels_.UNKNOWN = declare_parameter<bool>("class_based_priority.UNKNOWN");
 
   sync_queue_size_ = declare_parameter<int>("sync_queue_size");
   remove_overlapped_unknown_objects_ = declare_parameter<bool>("remove_overlapped_unknown_objects");
@@ -111,6 +116,11 @@ ObjectAssociationMergerNode::ObjectAssociationMergerNode(const rclcpp::NodeOptio
    *  this implementation assumes index of vector shows class_label.
    *  if param supports map, refactor this code.
    */
+
+  class_based_priority_matrix_ =
+    this->declare_parameter<std::vector<int64_t>>("class_based_priority_matrix");
+  NUMBER_OF_CLASSES_ = static_cast<int>(std::sqrt(class_based_priority_matrix_.size()));
+
   overlapped_judge_param_.distance_threshold_map =
     convertListToClassMap(declare_parameter<std::vector<double>>("distance_threshold_list"));
 
@@ -203,8 +213,11 @@ void ObjectAssociationMergerNode::objectsCallback(
           break;
         case PriorityMode::ClassBased: {
           // object1 classes based priority
-          if (high_priority_labels_.isHighPriority(
-                autoware::object_recognition_utils::getHighestProbLabel(object1.classification))) {
+          // get the higher priority label from class_based_priority_matrix_ based on class of
+          // object 0 and object 1
+          auto is_object1_high_priority = get_class_based_priority(
+            object0, object1, class_based_priority_matrix_, NUMBER_OF_CLASSES_);
+          if (is_object1_high_priority) {
             output_msg.objects.push_back(object1);
           } else {
             output_msg.objects.push_back(object0);

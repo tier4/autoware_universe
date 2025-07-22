@@ -58,24 +58,6 @@ public:
   enum class PriorityMode : int { Object0 = 0, Object1 = 1, Confidence = 2, ClassBased = 3 };
 
 private:
-  struct HighPriorityLabels
-  {
-    bool UNKNOWN;
-    bool CAR;
-    bool TRUCK;
-    bool BUS;
-    bool TRAILER;
-    bool MOTORCYCLE;
-    bool BICYCLE;
-    bool PEDESTRIAN;
-    bool isHighPriority(const uint8_t label) const
-    {
-      return (label == Label::UNKNOWN && UNKNOWN) || (label == Label::CAR && CAR) ||
-             (label == Label::TRUCK && TRUCK) || (label == Label::BUS && BUS) ||
-             (label == Label::TRAILER && TRAILER) || (label == Label::MOTORCYCLE && MOTORCYCLE) ||
-             (label == Label::BICYCLE && BICYCLE) || (label == Label::PEDESTRIAN && PEDESTRIAN);
-    }
-  };
   void objectsCallback(
     const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr & input_objects0_msg,
     const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr & input_objects1_msg);
@@ -106,7 +88,10 @@ private:
   std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_ptr_;
 
   PriorityMode priority_mode_;
-  HighPriorityLabels high_priority_labels_;
+  std::vector<int64_t> class_based_priority_matrix_;
+
+  int NUMBER_OF_CLASSES_;
+
   bool remove_overlapped_unknown_objects_;
   struct
   {

@@ -8,14 +8,6 @@
   <arg name="data_association_matrix_path" default="$(find-pkg-share autoware_object_merger)/config/data_association_matrix.param.yaml"/>
   <arg name="distance_threshold_list_path" default="$(find-pkg-share autoware_object_merger)/config/overlapped_judge.param.yaml"/>
   <arg name="object_association_merger_param_path" default="$(find-pkg-share autoware_object_merger)/config/object_association_merger.param.yaml"/>
-  <arg name="class_based_priority.CAR" default="false"/>
-  <arg name="class_based_priority.TRUCK" default="false"/>
-  <arg name="class_based_priority.BUS" default="false"/>
-  <arg name="class_based_priority.TRAILER" default="false"/>
-  <arg name="class_based_priority.MOTORCYCLE" default="true"/>
-  <arg name="class_based_priority.BICYCLE" default="true"/>
-  <arg name="class_based_priority.PEDESTRIAN" default="true"/>
-  <arg name="class_based_priority.UNKNOWN" default="false"/>
 
   <node pkg="autoware_object_merger" exec="object_association_merger_node" name="$(var node_name)" output="screen">
     <remap from="input/object0" to="$(var input/object0)"/>
@@ -24,14 +16,6 @@
     <param from="$(var data_association_matrix_path)"/>
     <param from="$(var distance_threshold_list_path)"/>
     <param from="$(var object_association_merger_param_path)"/>
-    <param name="class_based_priority.CAR" value="$(var class_based_priority.CAR)"/>
-    <param name="class_based_priority.TRUCK" value="$(var class_based_priority.TRUCK)"/>
-    <param name="class_based_priority.BUS" value="$(var class_based_priority.BUS)"/>
-    <param name="class_based_priority.TRAILER" value="$(var class_based_priority.TRAILER)"/>
-    <param name="class_based_priority.MOTORCYCLE" value="$(var class_based_priority.MOTORCYCLE)"/>
-    <param name="class_based_priority.BICYCLE" value="$(var class_based_priority.BICYCLE)"/>
-    <param name="class_based_priority.PEDESTRIAN" value="$(var class_based_priority.PEDESTRIAN)"/>
-    <param name="class_based_priority.UNKNOWN" value="$(var class_based_priority.UNKNOWN)"/>
 
     <!-- Be careful when moving this parameter to param.yaml, since this value depends on which part this launcher is called -->
     <param name="priority_mode" value="$(var priority_mode)"/>
