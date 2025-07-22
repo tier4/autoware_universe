@@ -88,6 +88,15 @@ ObjectAssociationMergerNode::ObjectAssociationMergerNode(const rclcpp::NodeOptio
   // Parameters
   base_link_frame_id_ = declare_parameter<std::string>("base_link_frame_id");
   priority_mode_ = static_cast<PriorityMode>(declare_parameter<int>("priority_mode"));
+  high_priority_labels_.CAR = declare_parameter<bool>("class_based_priority.CAR");
+  high_priority_labels_.TRUCK = declare_parameter<bool>("class_based_priority.TRUCK");
+  high_priority_labels_.BUS = declare_parameter<bool>("class_based_priority.BUS");
+  high_priority_labels_.TRAILER = declare_parameter<bool>("class_based_priority.TRAILER");
+  high_priority_labels_.MOTORCYCLE = declare_parameter<bool>("class_based_priority.MOTORCYCLE");
+  high_priority_labels_.BICYCLE = declare_parameter<bool>("class_based_priority.BICYCLE");
+  high_priority_labels_.PEDESTRIAN = declare_parameter<bool>("class_based_priority.PEDESTRIAN");
+  high_priority_labels_.UNKNOWN = declare_parameter<bool>("class_based_priority.UNKNOWN");
+
   sync_queue_size_ = declare_parameter<int>("sync_queue_size");
   remove_overlapped_unknown_objects_ = declare_parameter<bool>("remove_overlapped_unknown_objects");
   overlapped_judge_param_.precision_threshold =
@@ -192,6 +201,15 @@ void ObjectAssociationMergerNode::objectsCallback(
           else
             output_msg.objects.push_back(object1);
           break;
+        case PriorityMode::ClassBased: {
+          // object1 classes based priority
+          if (high_priority_labels_.isHighPriority(
+                autoware::object_recognition_utils::getHighestProbLabel(object1.classification))) {
+            output_msg.objects.push_back(object1);
+          } else {
+            output_msg.objects.push_back(object0);
+          }
+        }
       }
     } else {  // not found
       output_msg.objects.push_back(object0);
