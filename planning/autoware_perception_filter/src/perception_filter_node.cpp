@@ -51,7 +51,8 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
 : Node("perception_filter_node", node_options),
   vehicle_stop_checker_(this),
   planning_trajectory_(nullptr),
-  latest_pointcloud_(nullptr)
+  latest_pointcloud_(nullptr),
+  latest_classification_(ObjectClassification{})
 {
   // Initialize glog
   if (!google::IsGoogleLoggingInitialized()) {
@@ -63,9 +64,6 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
 
-  // Initialize latest classification (empty)
-  latest_classification_ = ObjectClassification{};
-
   // Declare parameters using get_or_declare_parameter
   using autoware::universe_utils::getOrDeclareParameter;
   enable_object_filtering_ = getOrDeclareParameter<bool>(*this, "enable_object_filtering");
@@ -74,24 +72,11 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   pointcloud_safety_distance_ = getOrDeclareParameter<double>(*this, "pointcloud_safety_distance");
   object_classification_radius_ =
     getOrDeclareParameter<double>(*this, "object_classification_radius");
-
-  // Add parameter for RTC recreation on stop (only stop velocity threshold needed)
   stop_velocity_threshold_ = getOrDeclareParameter<double>(*this, "stop_velocity_threshold");
-
-  // Add parameter for ignoring specific object classes
   ignore_object_classes_ =
     getOrDeclareParameter<std::vector<std::string>>(*this, "ignore_object_classes");
 
-  // Initialize RTC transition and frozen filtering state management
-  previous_rtc_activated_objects_ = false;
-  previous_rtc_activated_pointcloud_ = false;
-  frozen_filter_object_ids_.clear();
-
-  // Initialize RTC approval state persistence
-  rtc_ever_approved_ = false;
-
   // Initialize polygon-based filtering management
-  filtering_polygon_created_ = false;
   filtering_polygon_.is_active = false;
   filtering_polygon_.start_distance_along_path = 0.0;
   filtering_polygon_.end_distance_along_path = 0.0;
@@ -131,6 +116,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   objects_processing_time_pub_ =
     create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/objects_processing_time_ms", rclcpp::QoS{1});
+
   pointcloud_processing_time_pub_ =
     create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pointcloud_processing_time_ms", rclcpp::QoS{1});
@@ -191,7 +177,6 @@ void PerceptionFilterNode::onObjects(
 {
   // Start processing time measurement
   const auto start_time = std::chrono::high_resolution_clock::now();
-  // Store latest objects
   latest_objects_ = msg;
 
   // Check if required data is ready
@@ -201,32 +186,30 @@ void PerceptionFilterNode::onObjects(
     published_time_publisher_->publish_if_subscribed(filtered_objects_pub_, msg->header.stamp);
 
     // Publish processing time even when data is not ready
-    const auto end_time = std::chrono::high_resolution_clock::now();
-    const auto processing_time =
-      std::chrono::duration<double, std::milli>(end_time - start_time).count();
+    const auto processing_time = std::chrono::duration<double, std::milli>(
+                                   std::chrono::high_resolution_clock::now() - start_time)
+                                   .count();
 
     autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
     processing_time_msg.stamp = this->now();
     processing_time_msg.data = processing_time;
     objects_processing_time_pub_->publish(processing_time_msg);
-
     return;
   }
 
-  const bool ego_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0);
-  ego_previously_stopped_ = ego_currently_stopped;
-  const bool ego_just_stopped = ego_currently_stopped && !ego_previously_stopped_;
+  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0);
+  const bool is_just_stopped = is_currently_stopped && !ego_previously_stopped_;
+  ego_previously_stopped_ = is_currently_stopped;
 
   // Update RTC status
-  updateRTCStatus(ego_currently_stopped, ego_just_stopped);
+  updateRTCStatus(is_currently_stopped, is_just_stopped);
 
-  const bool rtc_current_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
-  const bool rtc_just_activated = rtc_current_activated && !previous_rtc_activated_objects_;
+  const bool rtc_is_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
+  const bool rtc_just_activated = rtc_is_activated && !previous_rtc_activated_objects_;
   const bool rtc_is_registered = rtc_interface_ && rtc_interface_->isRegistered(rtc_uuid_);
-  previous_rtc_activated_objects_ = rtc_current_activated;
+  previous_rtc_activated_objects_ = rtc_is_activated;
 
-  std::cerr << "rtc_just_activated: " << rtc_just_activated << std::endl;
-  // add pass_through_would_filter from latest_objects_ to frozen list if rtc_just_activated
+  // Add objects from latest classification to frozen list if RTC just activated
   if (rtc_just_activated) {
     for (const auto & object : latest_classification_.pass_through_would_filter) {
       std::array<uint8_t, 16> uuid_array;
@@ -236,39 +219,38 @@ void PerceptionFilterNode::onObjects(
   }
 
   auto classification = classifyObjectsWithinRadius(*latest_objects_, rtc_is_registered);
-
-  // Store the latest classification result
   latest_classification_ = classification;
 
+  // Create filtered objects message
   autoware_perception_msgs::msg::PredictedObjects filtered_objects;
   filtered_objects.header = msg->header;
-  // When filtering is active, use classification results to determine filtered objects
-  // Pass through: pass_through_always + pass_through_would_filter (empty when filtering active)
-  // Filter out: currently_filtered
-  for (const auto & object : classification.pass_through_always) {
-    filtered_objects.objects.push_back(object);
-  }
-  for (const auto & object : classification.pass_through_would_filter) {
-    filtered_objects.objects.push_back(object);
-  }
+
+  // Add pass through objects
+  filtered_objects.objects.reserve(
+    classification.pass_through_always.size() + classification.pass_through_would_filter.size());
+
+  filtered_objects.objects.insert(
+    filtered_objects.objects.end(), classification.pass_through_always.begin(),
+    classification.pass_through_always.end());
+
+  filtered_objects.objects.insert(
+    filtered_objects.objects.end(), classification.pass_through_would_filter.begin(),
+    classification.pass_through_would_filter.end());
 
   filtered_objects_pub_->publish(filtered_objects);
   published_time_publisher_->publish_if_subscribed(
     filtered_objects_pub_, filtered_objects.header.stamp);
 
-  // Publish planning factors (include objects that pass through now but would be filtered if RTC
-  // approved)
-  auto planning_factors = createPlanningFactors();
-  planning_factors_pub_->publish(planning_factors);
+  // Publish planning factors
+  planning_factors_pub_->publish(createPlanningFactors());
 
   // Publish debug markers
-  const bool rtc_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
-  publishDebugMarkers(*msg, rtc_activated);
+  publishDebugMarkers(*msg, rtc_is_activated);
 
   // Publish processing time
-  const auto end_time = std::chrono::high_resolution_clock::now();
-  const auto processing_time =
-    std::chrono::duration<double, std::milli>(end_time - start_time).count();
+  const auto processing_time = std::chrono::duration<double, std::milli>(
+                                 std::chrono::high_resolution_clock::now() - start_time)
+                                 .count();
 
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = this->now();
@@ -280,36 +262,33 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
 {
   // Start processing time measurement
   const auto start_time = std::chrono::high_resolution_clock::now();
-  // Store latest pointcloud
   latest_pointcloud_ = msg;
 
   if (!isDataReadyForPointCloud() || !enable_pointcloud_filtering_) {
     filtered_pointcloud_pub_->publish(*msg);
     published_time_publisher_->publish_if_subscribed(filtered_pointcloud_pub_, msg->header.stamp);
 
-    const auto end_time = std::chrono::high_resolution_clock::now();
-    const auto processing_time =
-      std::chrono::duration<double, std::milli>(end_time - start_time).count();
+    const auto processing_time = std::chrono::duration<double, std::milli>(
+                                   std::chrono::high_resolution_clock::now() - start_time)
+                                   .count();
 
     autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
     processing_time_msg.stamp = this->now();
     processing_time_msg.data = processing_time;
     pointcloud_processing_time_pub_->publish(processing_time_msg);
-
     return;
   }
 
-  const bool rtc_current_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
-  [[maybe_unused]] const bool rtc_just_activated =
-    rtc_current_activated && !previous_rtc_activated_pointcloud_;
-  [[maybe_unused]] const bool rtc_just_deactivated =
-    !rtc_current_activated && previous_rtc_activated_pointcloud_;
-  const bool ego_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0);
-  ego_previously_stopped_ = ego_currently_stopped;
-  const bool ego_just_stopped = ego_currently_stopped && !ego_previously_stopped_;
+  const bool rtc_is_activated = rtc_interface_ && rtc_interface_->isActivated(rtc_uuid_);
+  const bool rtc_just_activated = rtc_is_activated && !previous_rtc_activated_pointcloud_;
+  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0);
+  const bool is_just_stopped = is_currently_stopped && !ego_previously_stopped_;
+
+  previous_rtc_activated_pointcloud_ = rtc_is_activated;
+  ego_previously_stopped_ = is_currently_stopped;
 
   // Update RTC status
-  updateRTCStatus(ego_currently_stopped, ego_just_stopped);
+  updateRTCStatus(is_currently_stopped, is_just_stopped);
 
   if (rtc_just_activated) {
     createFilteringPolygon();
@@ -326,9 +305,9 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
 
   // Publish processing time
-  const auto end_time = std::chrono::high_resolution_clock::now();
-  const auto processing_time =
-    std::chrono::duration<double, std::milli>(end_time - start_time).count();
+  const auto processing_time = std::chrono::duration<double, std::milli>(
+                                 std::chrono::high_resolution_clock::now() - start_time)
+                                 .count();
 
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = this->now();
@@ -353,8 +332,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
   pcl::fromROSMsg(input_pointcloud, *input_cloud);
-
-  // Clear previous filtered points information
   filtered_points_info_.clear();
 
   // Filter points based on distance from planning trajectory
@@ -364,27 +341,20 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     ros_point.y = point.y;
     ros_point.z = point.z;
 
-    // Check if point should be filtered out
     bool should_filter_point = false;
-    bool in_polygon = false;
-    bool near_path = false;
 
     if (filtering_polygon_created_ && filtering_polygon_.is_active) {
-      // Use polygon-based filtering if available and active
-      in_polygon = isPointInFilteringPolygon(ros_point);
-      if (in_polygon) {
+      const bool is_in_polygon = isPointInFilteringPolygon(ros_point);
+      if (is_in_polygon) {
         // For points inside the polygon, check distance to path and safety distance
-        // Filter points that are within max_filter_distance but outside safety_distance
         const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
-        near_path = (distance_to_path <= max_filter_distance_);
-        const bool outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
-        should_filter_point = near_path && outside_safety_distance;
+        const bool is_near_path = (distance_to_path <= max_filter_distance_);
+        const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
+        should_filter_point = is_near_path && is_outside_safety_distance;
       }
-      // For points outside the polygon, do not filter (should_filter_point remains false)
     }
 
     if (!should_filter_point) {
-      // Keep point if it's not near the path or if it's within safety distance
       filtered_cloud->points.push_back(point);
     } else {
       // Store information about filtered points for planning factors
@@ -415,40 +385,34 @@ double PerceptionFilterNode::getMinDistanceToPath(
   const autoware_perception_msgs::msg::PredictedObject & object,
   const autoware_planning_msgs::msg::Trajectory & path)
 {
-  // Return default value if path is empty
   if (path.points.empty()) {
     return std::numeric_limits<double>::max();
   }
 
-  // Get object shape polygon (same approach as other Autoware modules)
   const auto object_polygon = autoware::universe_utils::toPolygon2d(object);
-
-  // Calculate minimum distance to each path segment
   double min_distance = std::numeric_limits<double>::max();
 
   for (size_t i = 0; i < path.points.size() - 1; ++i) {
     const auto & current_pose = path.points[i].pose;
     const auto & next_pose = path.points[i + 1].pose;
 
-    // Create path segment as line string
     autoware::universe_utils::LineString2d line_segment;
     line_segment.push_back(
       autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
     line_segment.push_back(
       autoware::universe_utils::Point2d(next_pose.position.x, next_pose.position.y));
 
-    // Handle case where segment is a point
+    double distance;
     if (boost::geometry::distance(line_segment[0], line_segment[1]) < 1e-6) {
       // Calculate distance to point
-      const double distance = boost::geometry::distance(
+      distance = boost::geometry::distance(
         object_polygon,
         autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
-      min_distance = std::min(min_distance, distance);
     } else {
       // Calculate distance to line segment
-      const double distance = boost::geometry::distance(object_polygon, line_segment);
-      min_distance = std::min(min_distance, distance);
+      distance = boost::geometry::distance(object_polygon, line_segment);
     }
+    min_distance = std::min(min_distance, distance);
   }
 
   // Also check distance to the last point
@@ -466,17 +430,14 @@ double PerceptionFilterNode::getMinDistanceToPath(
 double PerceptionFilterNode::getMinDistanceToPath(
   const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path)
 {
-  // Find the minimum distance from point to any point on the path
   double min_distance = std::numeric_limits<double>::max();
 
   // Check if coordinate frame transformation is needed
-  bool transform_needed = false;
   geometry_msgs::msg::TransformStamped transform;
+  bool transform_needed = false;
 
-  // Transform trajectory from map to base_link if needed
   if (!path.header.frame_id.empty() && path.header.frame_id == "map") {
     try {
-      // Get transform from map to base_link
       transform = tf_buffer_->lookupTransform(
         "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
       transform_needed = true;
@@ -485,19 +446,16 @@ double PerceptionFilterNode::getMinDistanceToPath(
         get_logger(),
         "Failed to get transform from map to base_link: %s. Using original trajectory coordinates.",
         ex.what());
-      transform_needed = false;
     }
   }
 
   for (const auto & path_point : path.points) {
     geometry_msgs::msg::Point transformed_path_point = path_point.pose.position;
 
-    // Transform trajectory point from map to base_link if needed
     if (transform_needed) {
       tf2::doTransform(path_point.pose.position, transformed_path_point, transform);
     }
 
-    // Calculate 2D distance between point and transformed path point
     const double dx = point.x - transformed_path_point.x;
     const double dy = point.y - transformed_path_point.y;
     const double distance = std::sqrt(dx * dx + dy * dy);
@@ -505,7 +463,6 @@ double PerceptionFilterNode::getMinDistanceToPath(
     min_distance = std::min(min_distance, distance);
   }
 
-  // Return the minimum distance from point to path
   return min_distance;
 }
 
@@ -515,19 +472,16 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
     return 0.0;
   }
 
-  // Get current ego pose in map coordinates
   const auto ego_pose_map = getCurrentEgoPose();
 
   // Check if coordinate frame transformation is needed
-  bool transform_needed = false;
   geometry_msgs::msg::TransformStamped transform;
+  bool transform_needed = false;
 
-  // Transform trajectory from map to base_link if needed
   if (
     !planning_trajectory_->header.frame_id.empty() &&
     planning_trajectory_->header.frame_id == "map") {
     try {
-      // Get transform from map to base_link
       transform = tf_buffer_->lookupTransform(
         "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
       transform_needed = true;
@@ -536,7 +490,6 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
         get_logger(),
         "Failed to get transform from map to base_link: %s. Using original trajectory coordinates.",
         ex.what());
-      transform_needed = false;
     }
   }
 
@@ -554,7 +507,6 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
     geometry_msgs::msg::Point transformed_path_point =
       planning_trajectory_->points[i].pose.position;
 
-    // Transform trajectory point from map to base_link if needed
     if (transform_needed) {
       tf2::doTransform(
         planning_trajectory_->points[i].pose.position, transformed_path_point, transform);
@@ -578,7 +530,6 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
     geometry_msgs::msg::Point transformed_path_point =
       planning_trajectory_->points[i].pose.position;
 
-    // Transform trajectory point from map to base_link if needed
     if (transform_needed) {
       tf2::doTransform(
         planning_trajectory_->points[i].pose.position, transformed_path_point, transform);
@@ -596,42 +547,27 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
 
   // Calculate cumulative distance along path from ego's closest point to the point's closest point
   double cumulative_distance = 0.0;
+  const size_t start_index = std::min(ego_closest_index, point_closest_index);
+  const size_t end_index = std::max(ego_closest_index, point_closest_index);
+  const bool is_point_ahead = (point_closest_index >= ego_closest_index);
 
-  if (ego_closest_index <= point_closest_index) {
-    // Point is ahead of ego vehicle (positive distance)
-    for (size_t i = ego_closest_index; i < point_closest_index; ++i) {
-      geometry_msgs::msg::Point current_point = planning_trajectory_->points[i].pose.position;
-      geometry_msgs::msg::Point next_point = planning_trajectory_->points[i + 1].pose.position;
+  for (size_t i = start_index; i < end_index; ++i) {
+    geometry_msgs::msg::Point current_point = planning_trajectory_->points[i].pose.position;
+    geometry_msgs::msg::Point next_point = planning_trajectory_->points[i + 1].pose.position;
 
-      // Transform points if needed
-      if (transform_needed) {
-        tf2::doTransform(planning_trajectory_->points[i].pose.position, current_point, transform);
-        tf2::doTransform(planning_trajectory_->points[i + 1].pose.position, next_point, transform);
-      }
-
-      const double dx = next_point.x - current_point.x;
-      const double dy = next_point.y - current_point.y;
-      cumulative_distance += std::sqrt(dx * dx + dy * dy);
+    if (transform_needed) {
+      tf2::doTransform(planning_trajectory_->points[i].pose.position, current_point, transform);
+      tf2::doTransform(planning_trajectory_->points[i + 1].pose.position, next_point, transform);
     }
-  } else {
-    // Point is behind ego vehicle (negative distance)
-    for (size_t i = point_closest_index; i < ego_closest_index; ++i) {
-      geometry_msgs::msg::Point current_point = planning_trajectory_->points[i].pose.position;
-      geometry_msgs::msg::Point next_point = planning_trajectory_->points[i + 1].pose.position;
 
-      // Transform points if needed
-      if (transform_needed) {
-        tf2::doTransform(planning_trajectory_->points[i].pose.position, current_point, transform);
-        tf2::doTransform(planning_trajectory_->points[i + 1].pose.position, next_point, transform);
-      }
+    const double dx = next_point.x - current_point.x;
+    const double dy = next_point.y - current_point.y;
+    const double segment_distance = std::sqrt(dx * dx + dy * dy);
 
-      const double dx = next_point.x - current_point.x;
-      const double dy = next_point.y - current_point.y;
-      cumulative_distance -= std::sqrt(dx * dx + dy * dy);
-    }
+    cumulative_distance += segment_distance;
   }
 
-  return cumulative_distance;
+  return is_point_ahead ? cumulative_distance : -cumulative_distance;
 }
 
 bool PerceptionFilterNode::isObjectNearPath(
@@ -639,7 +575,6 @@ bool PerceptionFilterNode::isObjectNearPath(
   const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance)
 {
   const double min_distance = getMinDistanceToPath(object, path);
-  // Return true if object is within max_filter_distance of the path
   return min_distance <= max_filter_distance;
 }
 
@@ -648,13 +583,11 @@ bool PerceptionFilterNode::isPointNearPath(
   double max_filter_distance, double pointcloud_safety_distance)
 {
   // Check if coordinate frame transformation is needed
-  bool transform_needed = false;
   geometry_msgs::msg::TransformStamped transform;
+  bool transform_needed = false;
 
-  // Transform trajectory from map to base_link if needed
   if (!path.header.frame_id.empty() && path.header.frame_id == "map") {
     try {
-      // Get transform from map to base_link
       transform = tf_buffer_->lookupTransform(
         "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
       transform_needed = true;
@@ -663,22 +596,18 @@ bool PerceptionFilterNode::isPointNearPath(
         get_logger(),
         "Failed to get transform from map to base_link: %s. Using original trajectory coordinates.",
         ex.what());
-      transform_needed = false;
     }
   }
 
-  // Find the minimum distance from point to any point on the path
   double min_dist_to_path = std::numeric_limits<double>::max();
 
   for (const auto & path_point : path.points) {
     geometry_msgs::msg::Point transformed_path_point = path_point.pose.position;
 
-    // Transform trajectory point from map to base_link if needed
     if (transform_needed) {
       tf2::doTransform(path_point.pose.position, transformed_path_point, transform);
     }
 
-    // Calculate 2D distance between point and transformed path point
     const double dx = point.x - transformed_path_point.x;
     const double dy = point.y - transformed_path_point.y;
     const double distance = std::sqrt(dx * dx + dy * dy);
@@ -705,113 +634,55 @@ void PerceptionFilterNode::publishDebugMarkers(
   delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
   marker_array.markers.push_back(delete_marker);
 
-  // Get ego pose for marker positioning
   const auto ego_pose = getCurrentEgoPose();
-
-  // Use the latest classification result stored in member variable
   const auto & classification = latest_classification_;
-
-  // Create markers for different object categories
   int marker_id = 0;
 
-  // Always pass through objects (blue)
-  if (!classification.pass_through_always.empty()) {
-    autoware_perception_msgs::msg::PredictedObjects always_pass_objects;
-    always_pass_objects.header = input_objects.header;
-    always_pass_objects.objects = classification.pass_through_always;
+  // Helper lambda to create object markers with text
+  auto create_object_markers =
+    [&](
+      const std::vector<autoware_perception_msgs::msg::PredictedObject> & objects,
+      const std::string & ns_prefix, const std::string & text,
+      const std::array<double, 4> & color) {
+      if (objects.empty()) return;
 
-    auto always_pass_marker =
-      createObjectMarker(always_pass_objects, "map", marker_id++, {0.0, 0.0, 1.0, 0.8});
-    always_pass_marker.ns = "always_pass_objects";
-    marker_array.markers.push_back(always_pass_marker);
+      autoware_perception_msgs::msg::PredictedObjects objects_msg;
+      objects_msg.header = input_objects.header;
+      objects_msg.objects = objects;
 
-    // Add text markers for always pass objects
-    for (size_t i = 0; i < classification.pass_through_always.size(); ++i) {
-      const auto & object = classification.pass_through_always[i];
-      visualization_msgs::msg::Marker text_marker;
-      text_marker.header.frame_id = "map";
-      text_marker.header.stamp = this->now();
-      text_marker.ns = "always_pass_text";
-      text_marker.id = static_cast<int>(i);
-      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-      text_marker.action = visualization_msgs::msg::Marker::ADD;
-      text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
-      text_marker.pose.position.z += 2.0;  // Display above object
-      text_marker.scale.z = 0.5;
-      text_marker.color.a = 1.0;
-      text_marker.color.r = 0.0;
-      text_marker.color.g = 0.0;
-      text_marker.color.b = 1.0;
-      text_marker.text = "ALWAYS PASS";
-      marker_array.markers.push_back(text_marker);
-    }
-  }
+      auto object_marker = createObjectMarker(objects_msg, "map", marker_id++, color);
+      object_marker.ns = ns_prefix + "_objects";
+      marker_array.markers.push_back(object_marker);
 
-  // Pass through but would be filtered objects (yellow)
-  if (!classification.pass_through_would_filter.empty()) {
-    autoware_perception_msgs::msg::PredictedObjects would_filter_objects;
-    would_filter_objects.header = input_objects.header;
-    would_filter_objects.objects = classification.pass_through_would_filter;
+      // Add text markers
+      for (size_t i = 0; i < objects.size(); ++i) {
+        const auto & object = objects[i];
+        visualization_msgs::msg::Marker text_marker;
+        text_marker.header.frame_id = "map";
+        text_marker.header.stamp = this->now();
+        text_marker.ns = ns_prefix + "_text";
+        text_marker.id = static_cast<int>(i);
+        text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+        text_marker.action = visualization_msgs::msg::Marker::ADD;
+        text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
+        text_marker.pose.position.z += 2.0;  // Display above object
+        text_marker.scale.z = 0.5;
+        text_marker.color.r = color[0];
+        text_marker.color.g = color[1];
+        text_marker.color.b = color[2];
+        text_marker.color.a = 1.0;
+        text_marker.text = text;
+        marker_array.markers.push_back(text_marker);
+      }
+    };
 
-    auto would_filter_marker =
-      createObjectMarker(would_filter_objects, "map", marker_id++, {1.0, 1.0, 0.0, 0.8});
-    would_filter_marker.ns = "would_filter_objects";
-    marker_array.markers.push_back(would_filter_marker);
-
-    // Add text markers for would filter objects
-    for (size_t i = 0; i < classification.pass_through_would_filter.size(); ++i) {
-      const auto & object = classification.pass_through_would_filter[i];
-      visualization_msgs::msg::Marker text_marker;
-      text_marker.header.frame_id = "map";
-      text_marker.header.stamp = this->now();
-      text_marker.ns = "would_filter_text";
-      text_marker.id = static_cast<int>(i);
-      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-      text_marker.action = visualization_msgs::msg::Marker::ADD;
-      text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
-      text_marker.pose.position.z += 2.0;  // Display above object
-      text_marker.scale.z = 0.5;
-      text_marker.color.a = 1.0;
-      text_marker.color.r = 1.0;
-      text_marker.color.g = 1.0;
-      text_marker.color.b = 0.0;
-      text_marker.text = "WOULD FILTER";
-      marker_array.markers.push_back(text_marker);
-    }
-  }
-
-  // Currently filtered objects (red)
-  if (!classification.currently_filtered.empty()) {
-    autoware_perception_msgs::msg::PredictedObjects filtered_out_objects;
-    filtered_out_objects.header = input_objects.header;
-    filtered_out_objects.objects = classification.currently_filtered;
-
-    auto filtered_out_marker =
-      createObjectMarker(filtered_out_objects, "map", marker_id++, {1.0, 0.0, 0.0, 0.8});
-    filtered_out_marker.ns = "filtered_objects";
-    marker_array.markers.push_back(filtered_out_marker);
-
-    // Add text markers for filtered objects
-    for (size_t i = 0; i < classification.currently_filtered.size(); ++i) {
-      const auto & object = classification.currently_filtered[i];
-      visualization_msgs::msg::Marker text_marker;
-      text_marker.header.frame_id = "map";
-      text_marker.header.stamp = this->now();
-      text_marker.ns = "filtered_text";
-      text_marker.id = static_cast<int>(i);
-      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-      text_marker.action = visualization_msgs::msg::Marker::ADD;
-      text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
-      text_marker.pose.position.z += 2.0;  // Display above object
-      text_marker.scale.z = 0.5;
-      text_marker.color.a = 1.0;
-      text_marker.color.r = 1.0;
-      text_marker.color.g = 0.0;
-      text_marker.color.b = 0.0;
-      text_marker.text = "FILTERED";
-      marker_array.markers.push_back(text_marker);
-    }
-  }
+  // Create markers for different object categories
+  create_object_markers(
+    classification.pass_through_always, "always_pass", "ALWAYS PASS", {0.0, 0.0, 1.0, 0.8});
+  create_object_markers(
+    classification.pass_through_would_filter, "would_filter", "WOULD FILTER", {1.0, 1.0, 0.0, 0.8});
+  create_object_markers(
+    classification.currently_filtered, "filtered", "FILTERED", {1.0, 0.0, 0.0, 0.8});
 
   // Create filtering polygon marker if available
   if (filtering_polygon_created_ && filtering_polygon_.is_active) {
@@ -822,18 +693,18 @@ void PerceptionFilterNode::publishDebugMarkers(
     polygon_marker.id = 0;
     polygon_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
     polygon_marker.action = visualization_msgs::msg::Marker::ADD;
-    polygon_marker.scale.x = 0.3;  // Line width
-    polygon_marker.color.a = 0.8;
+    polygon_marker.scale.x = 0.3;
     polygon_marker.color.r = 0.0;
     polygon_marker.color.g = 1.0;
-    polygon_marker.color.b = 0.0;  // Green color for polygon
+    polygon_marker.color.b = 0.0;
+    polygon_marker.color.a = 0.8;
 
     // Add polygon points to create a closed polygon
     for (const auto & point : filtering_polygon_.polygon.outer()) {
       geometry_msgs::msg::Point ros_point;
       ros_point.x = point.x();
       ros_point.y = point.y();
-      ros_point.z = 0.1;  // Slightly above ground
+      ros_point.z = 0.1;
       polygon_marker.points.push_back(ros_point);
     }
 
@@ -865,8 +736,9 @@ void PerceptionFilterNode::publishDebugMarkers(
         center_x += point.x();
         center_y += point.y();
       }
-      center_x /= filtering_polygon_.polygon.outer().size();
-      center_y /= filtering_polygon_.polygon.outer().size();
+      const size_t polygon_size = filtering_polygon_.polygon.outer().size();
+      center_x /= polygon_size;
+      center_y /= polygon_size;
 
       polygon_info_marker.pose.position.x = center_x;
       polygon_info_marker.pose.position.y = center_y;
@@ -874,10 +746,10 @@ void PerceptionFilterNode::publishDebugMarkers(
     }
 
     polygon_info_marker.scale.z = 0.8;
-    polygon_info_marker.color.a = 1.0;
     polygon_info_marker.color.r = 0.0;
     polygon_info_marker.color.g = 1.0;
     polygon_info_marker.color.b = 0.0;
+    polygon_info_marker.color.a = 1.0;
 
     std::string polygon_text = "FILTERING POLYGON\n";
     polygon_text += "Range: " + std::to_string(filtering_polygon_.start_distance_along_path) +
@@ -900,10 +772,10 @@ void PerceptionFilterNode::publishDebugMarkers(
   status_marker.pose.position.y = ego_pose.position.y;
   status_marker.pose.position.z = ego_pose.position.z + 3.0;  // 3m above ego vehicle
   status_marker.scale.z = 1.0;
-  status_marker.color.a = 1.0;
   status_marker.color.r = rtc_activated ? 0.0 : 1.0;
   status_marker.color.g = rtc_activated ? 1.0 : 0.0;
   status_marker.color.b = 0.0;
+  status_marker.color.a = 1.0;
 
   std::string status_text = rtc_activated ? "RTC: ACTIVATED" : "RTC: NOT ACTIVATED";
   status_text += "\nAlways Pass: " + std::to_string(classification.pass_through_always.size());
@@ -914,14 +786,13 @@ void PerceptionFilterNode::publishDebugMarkers(
   // Add polygon information if available
   if (filtering_polygon_created_) {
     status_text += "\nFiltering Polygon: ";
-    status_text += (filtering_polygon_.is_active ? std::string("ACTIVE") : std::string("INACTIVE"));
+    status_text += (filtering_polygon_.is_active ? "ACTIVE" : "INACTIVE");
     status_text +=
       "\nPolygon Range: " + std::to_string(filtering_polygon_.start_distance_along_path) + " to " +
       std::to_string(filtering_polygon_.end_distance_along_path) + " m";
   }
 
   status_marker.text = status_text;
-
   marker_array.markers.push_back(status_marker);
 
   debug_markers_pub_->publish(marker_array);
@@ -967,11 +838,9 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray
 PerceptionFilterNode::createPlanningFactors()
 {
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
-  // Set header with current time and map frame
   planning_factors.header.stamp = this->now();
   planning_factors.header.frame_id = "map";
 
-  // Use the latest classification result stored in member variable
   const auto & classification = latest_classification_;
 
   // Get UUIDs of objects that pass through now but would be filtered if RTC approved
@@ -980,23 +849,26 @@ PerceptionFilterNode::createPlanningFactors()
     objects_to_be_filtered.push_back(object.object_id);
   }
 
-  // Check if RTC interface exists and is activated
   const bool rtc_interface_exists = rtc_interface_ != nullptr;
   const bool rtc_activated = rtc_interface_exists && rtc_interface_->isActivated(rtc_uuid_);
+  const bool filtering_active = rtc_activated || rtc_ever_approved_;
 
   // Create PlanningFactor when there are objects that would be filtered when RTC is approved
   // OR when there are filtered points (RTC is activated OR was previously approved)
-  const bool filtering_active = rtc_activated || rtc_ever_approved_;
   if (!objects_to_be_filtered.empty() || (filtering_active && !filtered_points_info_.empty())) {
     autoware_internal_planning_msgs::msg::PlanningFactor factor;
     factor.module = "supervised_perception_filter";
     factor.behavior = autoware_internal_planning_msgs::msg::PlanningFactor::STOP;
 
-    if (!objects_to_be_filtered.empty() && filtering_active && !filtered_points_info_.empty()) {
+    // Set detail message based on what is being filtered
+    const bool has_objects = !objects_to_be_filtered.empty();
+    const bool has_points = filtering_active && !filtered_points_info_.empty();
+
+    if (has_objects && has_points) {
       factor.detail = "Objects and pointcloud that would be filtered when RTC is approved";
-    } else if (!objects_to_be_filtered.empty()) {
+    } else if (has_objects) {
       factor.detail = "Objects that would be filtered when RTC is approved";
-    } else if (filtering_active && !filtered_points_info_.empty()) {
+    } else if (has_points) {
       factor.detail = "Pointcloud that would be filtered when RTC is approved";
     }
 
@@ -1011,7 +883,7 @@ PerceptionFilterNode::createPlanningFactors()
     // Add safety factors
     factor.safety_factors.is_safe = false;
 
-    // Add object safety factors (include UUIDs of objects that would be filtered when RTC approved)
+    // Add object safety factors
     for (const auto & uuid : objects_to_be_filtered) {
       autoware_internal_planning_msgs::msg::SafetyFactor safety_factor;
       safety_factor.type = autoware_internal_planning_msgs::msg::SafetyFactor::OBJECT;
@@ -1058,23 +930,23 @@ PerceptionFilterNode::createPlanningFactors()
   return planning_factors;
 }
 
-PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjectsWithinRadius(
+ObjectClassification PerceptionFilterNode::classifyObjectsWithinRadius(
   const autoware_perception_msgs::msg::PredictedObjects & input_objects, bool rtc_is_registered)
 {
   ObjectClassification classification;
 
-  // if frozen list is empty and ego_currently_stopped is false, then pass through all objects
+  // If frozen list is empty and RTC not registered, pass through all objects
   if (frozen_filter_object_ids_.empty() && !rtc_is_registered) {
     classification.pass_through_always = input_objects.objects;
     return classification;
   }
 
-  // if frozen list is not empty and ego_currently_stopped is false, then keep filtered objects
+  // If frozen list is not empty and RTC not registered, keep filtered objects
   if (!frozen_filter_object_ids_.empty() && !rtc_is_registered) {
-    // check if any object is in the frozen list
     for (const auto & object : input_objects.objects) {
       std::array<uint8_t, 16> uuid_array;
       std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
+
       if (frozen_filter_object_ids_.find(uuid_array) != frozen_filter_object_ids_.end()) {
         classification.currently_filtered.push_back(object);
       } else {
@@ -1088,18 +960,25 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
     for (const auto & object : input_objects.objects) {
       std::array<uint8_t, 16> uuid_array;
       std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
+
+      // Check if object is in frozen filter list
       if (frozen_filter_object_ids_.find(uuid_array) != frozen_filter_object_ids_.end()) {
         classification.currently_filtered.push_back(object);
         continue;
       }
+
+      // Check if object should be ignored
       if (!shouldIgnoreObject(object)) {
         classification.pass_through_always.push_back(object);
         continue;
       }
+
+      // Check if object is within classification radius
       const double distance_from_ego = getDistanceFromEgo(object);
       if (distance_from_ego <= object_classification_radius_) {
         const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory_);
         const bool would_be_filtered = distance_to_path <= max_filter_distance_;
+
         if (would_be_filtered) {
           classification.pass_through_would_filter.push_back(object);
         } else {
@@ -1117,11 +996,9 @@ PerceptionFilterNode::ObjectClassification PerceptionFilterNode::classifyObjects
 double PerceptionFilterNode::getDistanceFromEgo(
   const autoware_perception_msgs::msg::PredictedObject & object)
 {
-  // Get current ego pose using TF
   const auto ego_pose = getCurrentEgoPose();
-
-  // Calculate distance from ego position to object position
   const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
+
   const double dx = object_pos.x - ego_pose.position.x;
   const double dy = object_pos.y - ego_pose.position.y;
 
@@ -1131,6 +1008,7 @@ double PerceptionFilterNode::getDistanceFromEgo(
 geometry_msgs::msg::Pose PerceptionFilterNode::getCurrentEgoPose() const
 {
   geometry_msgs::msg::Pose ego_pose;
+
   try {
     const auto transform = tf_buffer_->lookupTransform(
       "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
@@ -1147,6 +1025,7 @@ geometry_msgs::msg::Pose PerceptionFilterNode::getCurrentEgoPose() const
     ego_pose.position.z = 0.0;
     ego_pose.orientation.w = 1.0;
   }
+
   return ego_pose;
 }
 
@@ -1155,11 +1034,13 @@ bool PerceptionFilterNode::isDataReadyForObjects()
   if (!enable_object_filtering_) {
     return true;
   }
+
   if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 5000, "waiting for planning_trajectory for object filtering...");
     return false;
   }
+
   return true;
 }
 
@@ -1168,12 +1049,14 @@ bool PerceptionFilterNode::isDataReadyForPointCloud()
   if (!enable_pointcloud_filtering_) {
     return true;
   }
+
   if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "waiting for planning_trajectory for pointcloud filtering...");
     return false;
   }
+
   return true;
 }
 
@@ -1241,30 +1124,14 @@ std::string PerceptionFilterNode::labelToString(uint8_t label) const
 uint8_t PerceptionFilterNode::stringToLabel(const std::string & label_string) const
 {
   using autoware_perception_msgs::msg::ObjectClassification;
-  if (label_string == "UNKNOWN") {
-    return ObjectClassification::UNKNOWN;
-  }
-  if (label_string == "CAR") {
-    return ObjectClassification::CAR;
-  }
-  if (label_string == "TRUCK") {
-    return ObjectClassification::TRUCK;
-  }
-  if (label_string == "BUS") {
-    return ObjectClassification::BUS;
-  }
-  if (label_string == "TRAILER") {
-    return ObjectClassification::TRAILER;
-  }
-  if (label_string == "MOTORCYCLE") {
-    return ObjectClassification::MOTORCYCLE;
-  }
-  if (label_string == "BICYCLE") {
-    return ObjectClassification::BICYCLE;
-  }
-  if (label_string == "PEDESTRIAN") {
-    return ObjectClassification::PEDESTRIAN;
-  }
+  if (label_string == "UNKNOWN") return ObjectClassification::UNKNOWN;
+  if (label_string == "CAR") return ObjectClassification::CAR;
+  if (label_string == "TRUCK") return ObjectClassification::TRUCK;
+  if (label_string == "BUS") return ObjectClassification::BUS;
+  if (label_string == "TRAILER") return ObjectClassification::TRAILER;
+  if (label_string == "MOTORCYCLE") return ObjectClassification::MOTORCYCLE;
+  if (label_string == "BICYCLE") return ObjectClassification::BICYCLE;
+  if (label_string == "PEDESTRIAN") return ObjectClassification::PEDESTRIAN;
   return ObjectClassification::UNKNOWN;
 }
 
@@ -1275,13 +1142,11 @@ void PerceptionFilterNode::createFilteringPolygon()
     return;
   }
 
-  // this value should be set by furthest point which is filtered
   const double filtering_distance = 50.0;  // Fixed filtering distance in meters
 
   // Create polygon from trajectory with max_filter_distance width
   filtering_polygon_.polygon =
     createPathPolygon(*planning_trajectory_, 0.0, filtering_distance, max_filter_distance_);
-
   filtering_polygon_.start_distance_along_path = 0.0;
   filtering_polygon_.end_distance_along_path = filtering_distance;
   filtering_polygon_.is_active = true;
@@ -1420,18 +1285,14 @@ bool PerceptionFilterNode::isPointInFilteringPolygon(const geometry_msgs::msg::P
   geometry_msgs::msg::Point transformed_point = point;
 
   try {
-    // Get transform from base_link to map
     const auto transform = tf_buffer_->lookupTransform(
       "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-
-    // Transform the point
     tf2::doTransform(point, transformed_point, transform);
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN(
       get_logger(),
       "Failed to get transform from base_link to map: %s. Using original point coordinates.",
       ex.what());
-    // If transform fails, use original point (this may cause incorrect filtering)
   }
 
   autoware::universe_utils::Point2d test_point(transformed_point.x, transformed_point.y);
