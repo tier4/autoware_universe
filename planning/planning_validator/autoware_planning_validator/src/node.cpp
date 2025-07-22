@@ -123,6 +123,8 @@ void PlanningValidatorNode::onTimer()
 
   if (!isDataReady()) return;
 
+  context_->init_validation_status();
+
   context_->data->set_nearest_trajectory_indices();
 
   context_->debug_pose_publisher->clearMarkers();
