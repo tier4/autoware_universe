@@ -126,6 +126,8 @@ CombineCloudHandler<PointCloud2Traits>::combine_pointclouds(
 
   for (const auto & [topic, cloud] : topic_to_cloud_map) {
     pc_stamps.emplace_back(cloud->header.stamp);
+    concatenate_cloud_result.topic_to_original_stamp_map[topic] =
+      rclcpp::Time(cloud->header.stamp).seconds();
   }
   std::sort(pc_stamps.begin(), pc_stamps.end(), std::greater<rclcpp::Time>());
   const auto oldest_stamp = pc_stamps.back();
@@ -135,6 +137,18 @@ CombineCloudHandler<PointCloud2Traits>::combine_pointclouds(
   // Before combining the pointclouds, initialize and reserve space for the concatenated pointcloud
   concatenate_cloud_result.concatenate_cloud_ptr =
     std::make_unique<sensor_msgs::msg::PointCloud2>();
+  {
+    // Normally, pcl::concatenatePointCloud() copies the field layout (e.g., XYZIRC)
+    // from the non-empty point cloud when given one empty and one non-empty input.
+    //
+    // However, if all input clouds in topic_to_cloud_map are empty,
+    // the function receives two empty point clouds and does nothing,
+    // resulting in concatenate_cloud_ptr not being compatible with the XYZIRC format.
+    //
+    // To avoid this, we explicitly set the fields of concatenate_cloud_ptr to XYZIRC here.
+    PointCloud2Modifier<PointXYZIRC, autoware::point_types::PointXYZIRCGenerator>
+      concatenate_cloud_modifier{*concatenate_cloud_result.concatenate_cloud_ptr, output_frame_};
+  }
 
   // Reserve space based on the total size of the pointcloud data to speed up the concatenation
   // process
@@ -153,9 +167,6 @@ CombineCloudHandler<PointCloud2Traits>::combine_pointclouds(
     managed_tf_buffer_->transformPointcloud(
       output_frame_, *xyzirc_cloud, *transformed_cloud_ptr, xyzirc_cloud->header.stamp,
       rclcpp::Duration::from_seconds(1.0), node_.get_logger());
-
-    concatenate_cloud_result.topic_to_original_stamp_map[topic] =
-      rclcpp::Time(cloud->header.stamp).seconds();
 
     // compensate pointcloud
     std::unique_ptr<sensor_msgs::msg::PointCloud2> transformed_delay_compensated_cloud_ptr;
