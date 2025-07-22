@@ -63,6 +63,8 @@ class PerceptionFilterNode : public rclcpp::Node
 {
 public:
   explicit PerceptionFilterNode(const rclcpp::NodeOptions & node_options);
+  bool isDataReadyForObjects();
+  bool isDataReadyForPointCloud();
 
 private:
   // Callback functions
@@ -120,12 +122,9 @@ private:
     double max_filter_distance, double pointcloud_safety_distance);
 
   // RTC interface functions
-  void updateRTCStatus();
+  void updateRTCStatus(const bool ego_currently_stopped, const bool ego_just_stopped);
   void initializeRTCInterface();
   void checkVehicleStoppedState();
-  void handleRTCTransition(
-    bool current_rtc_activated,
-    const autoware_perception_msgs::msg::PredictedObjects & input_objects);
 
   // Pointcloud filtering range management functions
   /**
@@ -168,7 +167,7 @@ private:
 
   // Object classification functions
   ObjectClassification classifyObjectsWithinRadius(
-    const autoware_perception_msgs::msg::PredictedObjects & input_objects);
+    const autoware_perception_msgs::msg::PredictedObjects & input_objects, bool rtc_activated);
 
   double getDistanceFromEgo(const autoware_perception_msgs::msg::PredictedObject & object);
 
@@ -213,12 +212,11 @@ private:
 
   // Vehicle stop checker for RTC recreation
   autoware::motion_utils::VehicleStopChecker vehicle_stop_checker_;
-  bool is_vehicle_stopped_;
-
+  bool ego_previously_stopped_;
   // State variables
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr planning_trajectory_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr latest_pointcloud_;
-
+  autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr latest_objects_;
   // Latest object classification result
   ObjectClassification latest_classification_;
 
@@ -239,7 +237,8 @@ private:
   std::vector<std::string> ignore_object_classes_;  // Object classes to ignore during filtering
 
   // RTC transition and frozen filtering state management
-  bool previous_rtc_activated_;  // Track previous RTC activation state to detect transitions
+  bool previous_rtc_activated_objects_;     // onObjects用
+  bool previous_rtc_activated_pointcloud_;  // onPointCloud用
   std::set<std::array<uint8_t, 16>>
     frozen_filter_object_ids_;  // Object IDs frozen at RTC approval time
 
