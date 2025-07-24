@@ -547,7 +547,7 @@ bool MrmHandler::isStopped()
 bool MrmHandler::isEmergency()
 {
   return !isAvailableCurrentOperationMode() || is_emergency_holding_ ||
-         is_operation_mode_availability_timeout;
+         is_operation_mode_availability_timeout || is_mrm_holding_;
 }
 
 bool MrmHandler::isControlModeAutonomous()
@@ -585,6 +585,18 @@ bool MrmHandler::isArrivedAtGoal()
   auto state = sub_operation_mode_state_.take_data();
   if (state == nullptr) return false;
   return state->mode == OperationModeState::STOP;
+}
+
+void MrmHandler::onRecoverMrm(
+  const std_srvs::srv::Trigger::Request::SharedPtr,
+  const std_srvs::srv::Trigger::Response::SharedPtr response)
+{
+  if (!param_.is_mrm_recoverable) {
+    is_mrm_holding_ = false;
+    response->success = true;
+  } else {
+    response->success = false;
+  }
 }
 
 bool MrmHandler::isAvailableCurrentOperationMode()
