@@ -29,7 +29,14 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
+
+namespace
+{
+constexpr double MIN_AREA = 1e-6;
+constexpr double INVALID_SCORE = -1.0;
+}  // namespace
 
 namespace autoware::multi_object_tracker
 {
@@ -109,8 +116,6 @@ double get2dIoU(
   const types::DynamicObject & source_object, const types::DynamicObject & target_object,
   const double min_union_area)
 {
-  static const double MIN_AREA = 1e-6;
-
   const auto source_polygon = autoware_utils::to_polygon2d(source_object.pose, source_object.shape);
   if (boost::geometry::area(source_polygon) < MIN_AREA) return 0.0;
   const auto target_polygon = autoware_utils::to_polygon2d(target_object.pose, target_object.shape);
