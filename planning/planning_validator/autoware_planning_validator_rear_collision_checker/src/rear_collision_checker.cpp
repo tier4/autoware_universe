@@ -118,43 +118,6 @@ void RearCollisionChecker::setup_diag()
     "obstacle detected behind the vehicle");
 }
 
-void RearCollisionChecker::fill_rss_distance(PointCloudObjects & objects) const
-{
-  const auto p = param_listener_->get_params();
-  const auto & max_deceleration_ego = p.common.ego.max_deceleration;
-  const auto & current_velocity = context_->data->current_kinematics->twist.twist.linear.x;
-
-  for (auto & object : objects) {
-    if (object.is_vru) {
-      const auto & delay_object = p.common.vulnerable_road_user.reaction_time;
-      const auto & max_deceleration_object = p.common.vulnerable_road_user.max_deceleration;
-      const auto stop_distance_object =
-        delay_object * object.velocity +
-        0.5 * std::pow(object.velocity, 2.0) / std::abs(max_deceleration_object);
-      const auto stop_distance_ego =
-        0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
-
-      object.rss_distance = stop_distance_object - stop_distance_ego;
-      object.safe = object.rss_distance < object.relative_distance_with_delay_compensation;
-      object.ignore = object.moving_time < p.common.filter.moving_time ||
-                      object.velocity > p.common.vulnerable_road_user.max_velocity;
-    } else {
-      const auto & delay_object = p.common.vehicle.reaction_time;
-      const auto & max_deceleration_object = p.common.vehicle.max_deceleration;
-      const auto stop_distance_object =
-        delay_object * object.velocity +
-        0.5 * std::pow(object.velocity, 2.0) / std::abs(max_deceleration_object);
-      const auto stop_distance_ego =
-        0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
-
-      object.rss_distance = stop_distance_object - stop_distance_ego;
-      object.safe = object.rss_distance < object.relative_distance_with_delay_compensation;
-      object.ignore = object.moving_time < p.common.filter.moving_time ||
-                      object.velocity > p.common.vehicle.max_velocity;
-    }
-  }
-}
-
 void RearCollisionChecker::fill_velocity(PointCloudObject & pointcloud_object)
 {
   const auto p = param_listener_->get_params();
@@ -446,7 +409,8 @@ auto RearCollisionChecker::get_pointcloud_object(
 
 auto RearCollisionChecker::get_pointcloud_objects(
   const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
-  const Behavior & turn_behavior, DebugData & debug) -> PointCloudObjects
+  const double distance_to_shift, const Behavior & turn_behavior, const double distance_to_turn,
+  DebugData & debug) -> PointCloudObjects
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -478,9 +442,10 @@ auto RearCollisionChecker::get_pointcloud_objects(
                                    context_->vehicle_info.min_longitudinal_offset_m +
                                    std::max(0.0, stop_distance_object - stop_distance_ego);
 
-    const auto objects_at_blind_spot = get_pointcloud_objects_at_blind_spot(
+    auto objects_at_blind_spot = get_pointcloud_objects_at_blind_spot(
       current_lanes, turn_behavior, forward_distance, backward_distance, obstacle_pointcloud,
       debug);
+    utils::fill_time_to_collision(objects_at_blind_spot, context_, distance_to_turn, p);
     objects.insert(objects.end(), objects_at_blind_spot.begin(), objects_at_blind_spot.end());
   }
 
@@ -502,9 +467,10 @@ auto RearCollisionChecker::get_pointcloud_objects(
                                    context_->vehicle_info.min_longitudinal_offset_m +
                                    std::max(0.0, stop_distance_object - stop_distance_ego);
 
-    const auto objects_on_adjacent_lane = get_pointcloud_objects_on_adjacent_lane(
+    auto objects_on_adjacent_lane = get_pointcloud_objects_on_adjacent_lane(
       current_lanes, shift_behavior, forward_distance, backward_distance, obstacle_pointcloud,
       debug);
+    utils::fill_rss_distance(objects_on_adjacent_lane, context_, distance_to_shift, p);
     objects.insert(objects.end(), objects_on_adjacent_lane.begin(), objects_on_adjacent_lane.end());
   }
 
@@ -788,9 +754,8 @@ bool RearCollisionChecker::is_safe(DebugData & debug)
 
   {
     time_keeper_->start_track("pointcloud_base");
-    pointcloud_objects =
-      get_pointcloud_objects(current_lanes, shift_behavior, turn_behavior, debug);
-    fill_rss_distance(pointcloud_objects);
+    pointcloud_objects = get_pointcloud_objects(
+      current_lanes, shift_behavior, distance_to_shift, turn_behavior, distance_to_turn, debug);
     time_keeper_->end_track("pointcloud_base");
   }
 

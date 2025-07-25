@@ -587,6 +587,51 @@ auto generate_half_lanelet(
   return half_lanelet;
 }
 
+void fill_rss_distance(
+  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
+  [[maybe_unused]] const double distance_to_action,
+  const rear_collision_checker_node::Params & parameters)
+{
+  const auto & p = parameters;
+  const auto & max_deceleration_ego = p.common.ego.max_deceleration;
+  const auto & current_velocity = context->data->current_kinematics->twist.twist.linear.x;
+
+  for (auto & object : objects) {
+    const auto & delay_object = p.common.vulnerable_road_user.reaction_time;
+    const auto & max_deceleration_object = p.common.vulnerable_road_user.max_deceleration;
+    const auto stop_distance_object =
+      delay_object * object.velocity +
+      0.5 * std::pow(object.velocity, 2.0) / std::abs(max_deceleration_object);
+    const auto stop_distance_ego =
+      0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
+
+    object.rss_distance = stop_distance_object - stop_distance_ego;
+    object.safe = object.rss_distance < object.relative_distance_with_delay_compensation;
+    object.ignore = object.moving_time < p.common.filter.moving_time ||
+                    object.velocity > p.common.vulnerable_road_user.max_velocity;
+  }
+}
+
+void fill_time_to_collision(
+  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
+  const double distance_to_action, const rear_collision_checker_node::Params & parameters)
+{
+  const auto & p = parameters;
+  const auto & current_velocity = context->data->current_kinematics->twist.twist.linear.x;
+
+  for (auto & object : objects) {
+    const auto time_to_reach_ego =
+      distance_to_action / std::max(current_velocity, p.common.ego.min_velocity);
+    const auto time_to_reach_obj =
+      (distance_to_action + object.relative_distance_with_delay_compensation) /
+      std::max(object.velocity, p.common.filter.min_velocity);
+    object.time_to_collision = std::abs(time_to_reach_ego - time_to_reach_obj);
+    object.safe = object.time_to_collision > p.common.time_to_collision.margin;
+    object.ignore = object.moving_time < p.common.filter.moving_time ||
+                    object.velocity > p.common.vulnerable_road_user.max_velocity;
+  }
+}
+
 auto create_polygon_marker_array(
   const std::vector<autoware_utils::Polygon3d> & polygons, const std::string & ns,
   const std_msgs::msg::ColorRGBA & color) -> MarkerArray
@@ -691,7 +736,8 @@ auto create_pointcloud_object_marker_array(
          << "[s]\nRelativeDistance(RAW):" << object.relative_distance
          << "[m]\nRelativeDistance(w/DC):" << object.relative_distance_with_delay_compensation
          << "[m]\nVelocity:" << object.velocity << "[m/s]\nRSSDistance" << object.rss_distance
-         << "[m]\nFurthestLaneID:" << object.furthest_lane.id() << "\nDetail:" << object.detail;
+         << "[m]\nTimeToCollision:" << object.time_to_collision
+         << "[s]\nFurthestLaneID:" << object.furthest_lane.id() << "\nDetail:" << object.detail;
 
       marker.text = ss.str();
       marker.pose = object.pose;

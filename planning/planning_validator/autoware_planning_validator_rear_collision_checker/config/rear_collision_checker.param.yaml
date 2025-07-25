@@ -55,6 +55,9 @@
         nominal_positive_jerk: 0.6                  # [m/s^3]
         nominal_negative_jerk: -0.6                 # [m/s^3]
 
+      time_to_collision:
+        margin: 2.0                                 # [s]
+
       blind_spot:
         lookahead_time: 4.0                         # [s]
         check:

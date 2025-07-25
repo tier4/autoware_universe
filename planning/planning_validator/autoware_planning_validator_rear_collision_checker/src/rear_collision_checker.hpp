@@ -39,8 +39,6 @@ public:
   std::string get_module_name() const override { return module_name_; };
 
 private:
-  void fill_rss_distance(PointCloudObjects & objects) const;
-
   void fill_velocity(PointCloudObject & pointcloud_object);
 
   auto filter_pointcloud(DebugData & debug) const -> PointCloud::Ptr;
@@ -54,7 +52,8 @@ private:
 
   auto get_pointcloud_objects(
     const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
-    const Behavior & turn_behavior, DebugData & debug) -> PointCloudObjects;
+    const double distance_to_shift, const Behavior & turn_behavior, const double distance_to_turn,
+    DebugData & debug) -> PointCloudObjects;
 
   auto get_pointcloud_objects_on_adjacent_lane(
     const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
