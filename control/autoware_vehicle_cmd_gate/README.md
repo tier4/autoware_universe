@@ -64,6 +64,7 @@
 | `nominal.lat_jerk_lim_for_steer_cmd`                  | <double> | array of limits for lateral jerk (activated in AUTONOMOUS operation mode)                                                                                                                   |
 | `nominal.steer_cmd_lim`                               | <double> | array of limits for steering angle (activated in AUTONOMOUS operation mode)                                                                                                                 |
 | `nominal.steer_rate_lim_for_steer_cmd`                | <double> | array of limits for command steering rate (activated in AUTONOMOUS operation mode)                                                                                                          |
+| `nominal.lat_jerk_lim_for_steer_rate`                 | double   | limit for lateral jerk constraint on steering rate (activated in AUTONOMOUS operation mode)                                                                                                 |
 | `nominal.steer_cmd_diff_lim_from_current_steer`       | <double> | array of limits for difference between current and command steering angle (activated in AUTONOMOUS operation mode)                                                                          |
 | `on_transition.vel_lim`                               | double   | limit of longitudinal velocity (activated in TRANSITION operation mode)                                                                                                                     |
 | `on_transition.reference_speed_points`                | <double> | velocity point used as a reference when calculate control command limit (activated in TRANSITION operation mode). The size of this array must be equivalent to the size of the limit array. |
@@ -73,6 +74,7 @@
 | `on_transition.lat_jerk_lim_for_steer_cmd`            | <double> | array of limits for lateral jerk (activated in TRANSITION operation mode)                                                                                                                   |
 | `on_transition.steer_cmd_lim`                         | <double> | array of limits for steering angle (activated in TRANSITION operation mode)                                                                                                                 |
 | `on_transition.steer_rate_lim_for_steer_cmd`          | <double> | array of limits for command steering rate (activated in TRANSITION operation mode)                                                                                                          |
+| `on_transition.lat_jerk_lim_for_steer_rate`           | double   | limit for lateral jerk constraint on steering rate (activated in TRANSITION operation mode)                                                                                                 |
 | `on_transition.steer_cmd_diff_lim_from_current_steer` | <double> | array of limits for difference between current and command steering angle (activated in TRANSITION operation mode)                                                                          |
 
 ### Parameter Naming Convention
