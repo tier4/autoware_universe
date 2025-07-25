@@ -18,6 +18,10 @@
 
   <!-- short_range Lidar detector parameters -->
   <arg name="use_short_range_detection" default="false" description="use short range detection for redundant VRU detection"/>
+  <arg name="use_short_range_pointcloud_cropbox" default="true"/>
+  <let name="short_range_centerpoint/input/pointcloud" value="$(var input/pointcloud)" unless="$(var use_short_range_pointcloud_cropbox)"/>
+  <let name="short_range_centerpoint/input/pointcloud" value="short_range_centerpoint/pointcloud" if="$(var use_short_range_pointcloud_cropbox)"/>
+  
   <arg name="lidar_short_range_detection_model_type" description="options: `centerpoint_short_range`">
     <choice value="centerpoint_short_range"/>
   </arg>
@@ -36,11 +40,51 @@
   <let name="long_range_centerpoint/output/objects" value="$(var output/objects)" if="$(var use_multi_channel_tracker_merger)"/>
   <let name="long_range_centerpoint/output/objects" value="long_range/objects" unless="$(var use_multi_channel_tracker_merger)"/>
 
+  <group if="$(var use_short_range_pointcloud_cropbox)">    
+    <group if="$(var use_pointcloud_container)">
+      <load_composable_node target="$(var node/pointcloud_container)">
+        <!-- crop pointcloud for short_range centerpoint -->
+          <arg name="input_topic_name" value="$(var input/pointcloud)"/>
+          <arg name="output_topic_name" value="$(var short_range_centerpoint/input/pointcloud)"/>
+          <arg name="input_frame" default="base_link"/>
+          <arg name="output_frame" default="base_link"/>
+          <node pkg="autoware_pointcloud_preprocessor" exec="crop_box_filter_node" name="crop_box_filter_node">
+            <remap from="input" to="$(var input_topic_name)"/>
+            <remap from="output" to="$(var output_topic_name)"/>
+            <param name="input_frame" value="$(var input_frame)"/>
+            <param name="output_frame" value="$(var output_frame)"/>
+            <param name="min_x" value="-50.0"/>
+            <param name="max_x" value="50.0"/>
+            <param name="min_y" value="-50.0"/>
+            <param name="max_y" value="50.0"/>
+            <param name="min_z" value="-100.0"/>
+            <param name="max_z" value="100.0"/>
+            <param name="negative" value="False"/>
+          </node>
+      </load_composable_node>
+    </group>
+
+    <group unless="$(var use_pointcloud_container)">
+      <node pkg="autoware_pointcloud_preprocessor" exec="crop_box_filter_node" name="crop_box_filter_node">
+        <remap from="input" to="$(var input/pointcloud)"/>
+        <remap from="output" to="$(var short_range_centerpoint/input/pointcloud)"/>
+        <param name="input_frame" value="base_link"/>
+        <param name="output_frame" value="base_link"/>
+        <param name="min_x" value="-50.0"/>
+        <param name="max_x" value="50.0"/>
+        <param name="min_y" value="-50.0"/>
+        <param name="max_y" value="50.0"/>
+        <param name="min_z" value="-100.0"/>
+        <param name="max_z" value="100.0"/>
+        <param name="negative" value="False"/>
+      </node>
+    </group>
+  </group>
+
   <!-- short_range detection -->
-  <group if="$(var use_short_range_detection)">
-    <!-- short_range CenterPoint -->
-    <!-- Launch short_range centerpoint on Sub-ECU -->
-    <!-- <group if="$(eval &quot;'$(var lidar_short_range_detection_model_type)'=='centerpoint_short_range'&quot;)">
+  <!-- Uncomment this when launch short_range_centerpoint on the same main ECU -->
+  <!-- <group if="$(var use_short_range_detection)">
+    <group if="$(eval &quot;'$(var lidar_short_range_detection_model_type)'=='centerpoint_short_range'&quot;)">
       <let
         name="lidar_short_range_detection_model_name"
         value="$(eval &quot;'centerpoint_short_range' if ''=='$(var lidar_short_range_detection_model_name)' else '$(var lidar_short_range_detection_model_name)'&quot;)"
@@ -50,7 +94,7 @@
 
       <group>
         <include file="$(find-pkg-share autoware_lidar_centerpoint)/launch/lidar_centerpoint.launch.xml">
-          <arg name="input/pointcloud" value="$(var input/pointcloud)"/>
+          <arg name="input/pointcloud" value="$(var short_range_centerpoint/input/pointcloud)"/>
           <arg name="output/objects" value="$(var output/short_range_objects)"/>
           <arg name="node_name" value="lidar_short_range_centerpoint"/>
           <arg name="model_name" value="$(var lidar_short_range_detection_model_name)"/>
@@ -64,8 +108,8 @@
           <arg name="pointcloud_container_name" value="$(var node/pointcloud_container)"/>
         </include>
       </group>
-    </group> -->
-  </group>
+    </group>
+  </group> -->
 
   <!-- BEVFusion -->
   <group if="$(eval &quot;'$(var lidar_detection_model_type)'=='bevfusion'&quot;)">
