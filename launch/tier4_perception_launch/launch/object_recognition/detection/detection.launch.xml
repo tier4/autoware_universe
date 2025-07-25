@@ -21,7 +21,7 @@
     <choice value="clustering"/>
   </arg>
   <arg name="lidar_detection_model_name"/>
-  <arg name="use_short_range_detection" description="use short range detection for redundant VRU detection"/>
+  <arg name="use_short_range_detection" default="true" description="use short range detection for redundant VRU detection"/>
   <arg name="use_short_range_pointcloud_cropbox" default="true" description="use crop box to limit the pointcloud for short range centerpoint"/>
   <arg name="lidar_short_range_detection_model_type" description="options: `centerpoint_short_range`">
     <choice value="centerpoint_short_range"/>
