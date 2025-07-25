@@ -40,7 +40,7 @@
   <let name="long_range_centerpoint/output/objects" value="$(var output/objects)" if="$(var use_multi_channel_tracker_merger)"/>
   <let name="long_range_centerpoint/output/objects" value="long_range/objects" unless="$(var use_multi_channel_tracker_merger)"/>
 
-  <group if="$(var use_short_range_pointcloud_cropbox)">    
+  <group if="$(var use_short_range_pointcloud_cropbox)">
     <group if="$(var use_pointcloud_container)">
       <load_composable_node target="$(var node/pointcloud_container)">
         <!-- crop pointcloud for short_range centerpoint -->
@@ -48,7 +48,7 @@
           <arg name="output_topic_name" value="$(var short_range_centerpoint/input/pointcloud)"/>
           <arg name="input_frame" default="base_link"/>
           <arg name="output_frame" default="base_link"/>
-          <node pkg="autoware_pointcloud_preprocessor" exec="crop_box_filter_node" name="crop_box_filter_node">
+          <composable_node pkg="autoware_pointcloud_preprocessor" plugin="autoware::pointcloud_preprocessor::CropBoxFilterComponent" name="crop_box_filter_node">
             <remap from="input" to="$(var input_topic_name)"/>
             <remap from="output" to="$(var output_topic_name)"/>
             <param name="input_frame" value="$(var input_frame)"/>
@@ -60,7 +60,7 @@
             <param name="min_z" value="-100.0"/>
             <param name="max_z" value="100.0"/>
             <param name="negative" value="False"/>
-          </node>
+          </composable_node>
       </load_composable_node>
     </group>
 
