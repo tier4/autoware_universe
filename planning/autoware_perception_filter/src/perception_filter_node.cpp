@@ -570,58 +570,6 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
   return is_point_ahead ? cumulative_distance : -cumulative_distance;
 }
 
-bool PerceptionFilterNode::isObjectNearPath(
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance)
-{
-  const double min_distance = getMinDistanceToPath(object, path);
-  return min_distance <= max_filter_distance;
-}
-
-bool PerceptionFilterNode::isPointNearPath(
-  const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path,
-  double max_filter_distance, double pointcloud_safety_distance)
-{
-  // Check if coordinate frame transformation is needed
-  geometry_msgs::msg::TransformStamped transform;
-  bool transform_needed = false;
-
-  if (!path.header.frame_id.empty() && path.header.frame_id == "map") {
-    try {
-      transform = tf_buffer_->lookupTransform(
-        "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-      transform_needed = true;
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Failed to get transform from map to base_link: %s. Using original trajectory coordinates.",
-        ex.what());
-    }
-  }
-
-  double min_dist_to_path = std::numeric_limits<double>::max();
-
-  for (const auto & path_point : path.points) {
-    geometry_msgs::msg::Point transformed_path_point = path_point.pose.position;
-
-    if (transform_needed) {
-      tf2::doTransform(path_point.pose.position, transformed_path_point, transform);
-    }
-
-    const double dx = point.x - transformed_path_point.x;
-    const double dy = point.y - transformed_path_point.y;
-    const double distance = std::sqrt(dx * dx + dy * dy);
-
-    min_dist_to_path = std::min(min_dist_to_path, distance);
-  }
-
-  // Return true if point should be filtered out:
-  // - Distance is less than max_filter_distance (close to path)
-  // - AND distance is greater than pointcloud_safety_distance (not too close)
-  return (min_dist_to_path <= max_filter_distance) &&
-         (min_dist_to_path > pointcloud_safety_distance);
-}
-
 void PerceptionFilterNode::publishDebugMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & input_objects, bool rtc_activated)
 {
