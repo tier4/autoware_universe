@@ -252,13 +252,12 @@ double DataAssociation::calculateScore(
     return (generalized_iou - generalized_iou_threshold) / (1.0 - generalized_iou_threshold);
   }
 
-   // area gate
+  // area gate
   const double max_area = config_.max_area_matrix(tracker_label, measurement_label);
   const double min_area = config_.min_area_matrix(tracker_label, measurement_label);
   const double & area = measurement_object.area;
   if (area < min_area || area > max_area) return 0.0;
 
-  
   // dist gate
   const double max_dist_sq = config_.max_dist_matrix(tracker_label, measurement_label);
   const double dx = measurement_object.pose.position.x - tracked_object.pose.position.x;
@@ -301,7 +300,6 @@ double DataAssociation::calculateScore(
       significant_shape_change = true;
     }
   }
-
 
   return score;
 }

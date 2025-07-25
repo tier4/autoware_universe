@@ -198,7 +198,7 @@ bool Tracker::updateWithMeasurement(
       }
     }
 
-      // Weak update based on prediction
+    // Weak update based on prediction
     ++weak_update_count_;
     types::DynamicObject pred;
     getTrackedObject(measurement_time, pred);
