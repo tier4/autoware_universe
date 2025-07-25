@@ -1,0 +1,83 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  version="1.1"
+  width="691px"
+  height="582px"
+  viewBox="-0.5 -0.5 691 582"
+  content="&lt;mxfile host=&quot;1ll3k3bhjh4l3lquffuip708rj6164qip8o19arg3062cj63u5d9&quot; modified=&quot;2025-07-03T02:10:43.288Z&quot; agent=&quot;Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Code/1.100.2 Chrome/132.0.6834.210 Electron/34.5.1 Safari/537.36&quot; etag=&quot;AITbGyx4cpiw6ZZSaZvL&quot; version=&quot;12.2.4&quot; pages=&quot;1&quot;&gt;&lt;diagram id=&quot;lFN56OW5z3mUnDbooRIE&quot; name=&quot;Page-1&quot;&gt;7ZdNj5swEIZ/DcetwAZCjvnY3faw6kqp1GPl4AlYMTZ1nJDsr68NJhixlSpVyiHKyZ53xsPY8xhBgFfV+VWRunyTFHiAQnoO8DpAKA5RaAarXDplNkedUChGOykahA37ACe6dcWRUTiMArWUXLN6LOZSCMj1SCNKyWYctpN8/NSaFDARNjnhU/Uno7rs1AzNBv0rsKLsnxyl885TkT7Y7eRQEiobT8LPAV4pKXU3q84r4Pbw+nPp1r38xXstTIHQ/7LAnfuJ8KPb2zuoHGrNpAhQyk2SJWUnW6m+uO2nv4+2vKWGs34inBUiwAsTwWGnB6+ZFW7k3fjSJupVNMqJlDwKCraqyLibkmnY1CS33sZAZLRSV9y5d4zzleRStWsxTSCjsdEPWsk9eJ4MbXGaGs8JlGamgYuu3LWWNqUrfp2b0wKzZMnJFviS5PuirafPJKQAG65yx2JirEqeyLYt35ak4MA+fFtqoj3bXAHwbaDMN7nM9+3uQ2M4bD33tK2u03ZfcPYk1+ZXkBVodTEhzvsUxaGD7tLfw85sBoRxr5U+vnF/ddy1Ka7JB7LMxMH1OWh4ChonQjBRPDC7c8yyW3IWTzirry+0X6ahtgEP4O4aODS7JXDJBLjF+7cHYveFWDIfIxbh5EsygSz7hLG4/2b9H8bSCWNv3388GLsvxmbJLRkz5vCX0fq8fzX8/Ac=&lt;/diagram&gt;&lt;/mxfile&gt;"
+>
+  <defs/>
+  <g>
+    <rect x="350" y="0" width="340" height="141" rx="7.05" ry="7.05" fill="#d5e8d4" stroke="#82b366" pointer-events="all"/>
+    <g transform="translate(491.5,7.5)">
+      <foreignObject style="overflow:visible;" pointer-events="all" width="57" height="12">
+        <div
+          xmlns="http://www.w3.org/1999/xhtml"
+          style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; width: 58px; white-space: nowrap; overflow-wrap: normal; text-align: center;"
+        >
+          <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;white-space:normal;">
+            Perception
+            <div style="text-align: left"/>
+          </div>
+        </div>
+      </foreignObject>
+    </g>
+    <rect x="350" y="440" width="340" height="141" rx="7.05" ry="7.05" fill="#d5e8d4" stroke="#82b366" pointer-events="all"/>
+    <g transform="translate(496.5,447.5)">
+      <foreignObject style="overflow:visible;" pointer-events="all" width="47" height="12">
+        <div
+          xmlns="http://www.w3.org/1999/xhtml"
+          style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; width: 48px; white-space: nowrap; overflow-wrap: normal; text-align: center;"
+        >
+          <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;white-space:normal;">
+            Planning
+            <div style="text-align: left"/>
+          </div>
+        </div>
+      </foreignObject>
+    </g>
+    <rect x="350" y="230" width="340" height="141" rx="7.05" ry="7.05" fill="#d5e8d4" stroke="#82b366" pointer-events="all"/>
+    <g transform="translate(477.5,237.5)">
+      <foreignObject style="overflow:visible;" pointer-events="all" width="85" height="12">
+        <div
+          xmlns="http://www.w3.org/1999/xhtml"
+          style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; width: 86px; white-space: nowrap; overflow-wrap: normal; text-align: center;"
+        >
+          <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;white-space:normal;">
+            perception_filter
+            <div style="text-align: left"/>
+          </div>
+        </div>
+      </foreignObject>
+    </g>
+    <rect x="160" y="95.5" width="80" height="410" rx="4" ry="4" fill="#d5e8d4" stroke="#82b366" pointer-events="all"/>
+    <g transform="translate(190.5,103.5)">
+      <foreignObject style="overflow:visible;" pointer-events="all" width="19" height="12">
+        <div
+          xmlns="http://www.w3.org/1999/xhtml"
+          style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; width: 20px; white-space: nowrap; overflow-wrap: normal; text-align: center;"
+        >
+          <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;white-space:normal;">
+            API
+            <div style="text-align: left"/>
+          </div>
+        </div>
+      </foreignObject>
+    </g>
+    <rect x="0" y="95.5" width="80" height="410" rx="4" ry="4" fill="#d5e8d4" stroke="#82b366" pointer-events="all"/>
+    <g transform="translate(26.5,103.5)">
+      <foreignObject style="overflow:visible;" pointer-events="all" width="27" height="12">
+        <div
+          xmlns="http://www.w3.org/1999/xhtml"
+          style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0); line-height: 1.2; vertical-align: top; width: 28px; white-space: nowrap; overflow-wrap: normal; text-align: center;"
+        >
+          <div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;text-align:inherit;text-decoration:inherit;white-space:normal;">
+            MOT
+            <div style="text-align: left"/>
+          </div>
+        </div>
+      </foreignObject>
+    </g>
+  </g>
+</svg>
