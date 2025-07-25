@@ -41,6 +41,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
@@ -52,6 +53,8 @@ using autoware_internal_planning_msgs::msg::PlanningFactor;
 using autoware_internal_planning_msgs::msg::SafetyFactor;
 using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_utils::get_or_declare_parameter;
+
+using std::placeholders::_1;
 
 void RearCollisionChecker::init(
   rclcpp::Node & node, const std::string & name,
@@ -409,8 +412,10 @@ auto RearCollisionChecker::get_pointcloud_object(
 
 auto RearCollisionChecker::get_pointcloud_objects(
   const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
-  const double distance_to_shift, const Behavior & turn_behavior, const double distance_to_turn,
-  DebugData & debug) -> PointCloudObjects
+  const Behavior & turn_behavior,
+  const std::function<void(PointCloudObjects &)> & metric_for_blind_spot,
+  const std::function<void(PointCloudObjects &)> & metric_for_adjacent_lane, DebugData & debug)
+  -> PointCloudObjects
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -445,7 +450,7 @@ auto RearCollisionChecker::get_pointcloud_objects(
     auto objects_at_blind_spot = get_pointcloud_objects_at_blind_spot(
       current_lanes, turn_behavior, forward_distance, backward_distance, obstacle_pointcloud,
       debug);
-    utils::fill_time_to_collision(objects_at_blind_spot, context_, distance_to_turn, p);
+    metric_for_blind_spot(objects_at_blind_spot);
     objects.insert(objects.end(), objects_at_blind_spot.begin(), objects_at_blind_spot.end());
   }
 
@@ -470,7 +475,7 @@ auto RearCollisionChecker::get_pointcloud_objects(
     auto objects_on_adjacent_lane = get_pointcloud_objects_on_adjacent_lane(
       current_lanes, shift_behavior, forward_distance, backward_distance, obstacle_pointcloud,
       debug);
-    utils::fill_rss_distance(objects_on_adjacent_lane, context_, distance_to_shift, p);
+    metric_for_adjacent_lane(objects_on_adjacent_lane);
     objects.insert(objects.end(), objects_on_adjacent_lane.begin(), objects_on_adjacent_lane.end());
   }
 
@@ -754,8 +759,21 @@ bool RearCollisionChecker::is_safe(DebugData & debug)
 
   {
     time_keeper_->start_track("pointcloud_base");
+    const auto metric_for_blind_spot = [&, this]() {
+      if (p.common.blind_spot.metric == "ttc") {
+        return std::bind(utils::fill_time_to_collision, _1, context_, distance_to_turn, p);
+      }
+      return std::bind(utils::fill_rss_distance, _1, context_, distance_to_turn, p);
+    }();
+    const auto metric_for_adjacent_lane = [&, this]() {
+      if (p.common.blind_spot.metric == "ttc") {
+        return std::bind(utils::fill_time_to_collision, _1, context_, distance_to_shift, p);
+      }
+      return std::bind(utils::fill_rss_distance, _1, context_, distance_to_shift, p);
+    }();
     pointcloud_objects = get_pointcloud_objects(
-      current_lanes, shift_behavior, distance_to_shift, turn_behavior, distance_to_turn, debug);
+      current_lanes, shift_behavior, turn_behavior, metric_for_blind_spot, metric_for_adjacent_lane,
+      debug);
     time_keeper_->end_track("pointcloud_base");
   }
 

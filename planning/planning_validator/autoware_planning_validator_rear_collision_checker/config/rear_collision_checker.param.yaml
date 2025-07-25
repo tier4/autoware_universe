@@ -60,6 +60,7 @@
 
       blind_spot:
         lookahead_time: 4.0                         # [s]
+        metric: ttc
         check:
           front: false
           left: true
@@ -70,6 +71,7 @@
 
       adjacent_lane:
         lookahead_time: 4.0                         # [s]
+        metric: rss
         check:
           front: true
         offset:

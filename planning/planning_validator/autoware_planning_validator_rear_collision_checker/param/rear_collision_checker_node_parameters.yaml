@@ -149,6 +149,10 @@ rear_collision_checker_node:
         type: double
         validation:
           gt<>: [0.0]
+      metric:
+        type: string
+        validation:
+          one_of<>: [[ttc, rss]]
       check:
         front:
           type: bool
@@ -167,6 +171,10 @@ rear_collision_checker_node:
         type: double
         validation:
           gt<>: [0.0]
+      metric:
+        type: string
+        validation:
+          one_of<>: [[ttc, rss]]
       check:
         front:
           type: bool
