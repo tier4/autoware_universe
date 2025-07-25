@@ -8,7 +8,7 @@
   <arg name="debug_filtering_markers" default="/perception_filter_node/debug/filtering_markers"/>
   <arg name="perception_filter_param_path" default="$(find-pkg-share autoware_perception_filter)/config/perception_filter.param.yaml"/>
 
-  <node pkg="autoware_perception_filter" exec="autoware_perception_filter_node" name="perception_filter_node" output="both">
+  <node pkg="autoware_perception_filter" exec="autoware_perception_filter_node" name="perception_filter_node" output="both" launch-prefix="konsole -e gdb -ex run --args">
     <remap from="input/objects" to="$(var input_objects)"/>
     <remap from="input/pointcloud" to="$(var input_pointcloud)"/>
     <remap from="input/planning_trajectory" to="$(var input_planning_trajectory)"/>
