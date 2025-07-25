@@ -248,6 +248,7 @@
       <arg name="lidar_short_range_detection_model_name" value="$(var lidar_short_range_detection_model_name)"/>
       <arg name="use_short_range_detection" value="$(var use_short_range_detection)"/>
       <arg name="output/short_range_objects" value="$(var lidar_ml_detector/output/short_range_objects)"/>
+      <arg name="use_multi_channel_tracker_merger" value="$(var use_multi_channel_tracker_merger)"/>
     </include>
   </group>
   <group if="$(var switch/detector/lidar_rule)">
