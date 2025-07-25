@@ -36,7 +36,8 @@
   <!-- short_range detection -->
   <group if="$(var use_short_range_detection)">
     <!-- short_range CenterPoint -->
-    <group if="$(eval &quot;'$(var lidar_short_range_detection_model_type)'=='centerpoint_short_range'&quot;)">
+    <!-- Launch short_range centerpoint on Sub-ECU -->
+    <!-- <group if="$(eval &quot;'$(var lidar_short_range_detection_model_type)'=='centerpoint_short_range'&quot;)">
       <let
         name="lidar_short_range_detection_model_name"
         value="$(eval &quot;'centerpoint_short_range' if ''=='$(var lidar_short_range_detection_model_name)' else '$(var lidar_short_range_detection_model_name)'&quot;)"
@@ -60,7 +61,7 @@
           <arg name="pointcloud_container_name" value="$(var node/pointcloud_container)"/>
         </include>
       </group>
-    </group>
+    </group> -->
   </group>
 
   <!-- BEVFusion -->
