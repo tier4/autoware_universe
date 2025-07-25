@@ -192,13 +192,6 @@ private:
   void createFilteringPolygon();
 
   /**
-   * @brief Check if point is within the filtering polygon
-   * @param point Point to check
-   * @return True if point is inside polygon, false otherwise
-   */
-  bool isPointInFilteringPolygon(const geometry_msgs::msg::Point & point) const;
-
-  /**
    * @brief Update filtering polygon activation status
    * @details Deactivates polygon when ego vehicle passes through it
    */
