@@ -41,6 +41,14 @@ auto check_turn_behavior(
 
 void cut_by_lanelets(const lanelet::ConstLanelets & lanelets, DetectionAreas & detection_areas);
 
+void fill_rss_distance(
+  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
+  const double distance_to_action, const rear_collision_checker_node::Params & parameters);
+
+void fill_time_to_collision(
+  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
+  const double distance_to_action, const rear_collision_checker_node::Params & parameters);
+
 auto generate_half_lanelet(
   const lanelet::ConstLanelet lanelet, const bool is_right,
   const double ignore_width_from_centerline, const double expand_width_from_bound)
@@ -63,13 +71,13 @@ auto generate_detection_polygon(
   const lanelet::ConstLanelets & lanelets, const geometry_msgs::msg::Pose & ego_pose,
   const double forward_distance, const double backward_distance) -> lanelet::BasicPolygon3d;
 
-void fill_rss_distance(
-  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
-  const double distance_to_action, const rear_collision_checker_node::Params & parameters);
+auto get_range_for_rss(
+  const std::shared_ptr<PlanningValidatorContext> & context, const double distance_to_action,
+  const rear_collision_checker_node::Params & parameters) -> std::pair<double, double>;
 
-void fill_time_to_collision(
-  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
-  const double distance_to_action, const rear_collision_checker_node::Params & parameters);
+auto get_range_for_ttc(
+  const std::shared_ptr<PlanningValidatorContext> & context, const double distance_to_action,
+  const rear_collision_checker_node::Params & parameters) -> std::pair<double, double>;
 
 auto create_polygon_marker_array(
   const std::vector<autoware_utils::Polygon3d> & polygons, const std::string & ns,

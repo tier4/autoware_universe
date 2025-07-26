@@ -450,6 +450,51 @@ void cut_by_lanelets(const lanelet::ConstLanelets & lanelets, DetectionAreas & d
   }
 }
 
+void fill_rss_distance(
+  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
+  [[maybe_unused]] const double distance_to_action,
+  const rear_collision_checker_node::Params & parameters)
+{
+  const auto & p = parameters;
+  const auto & max_deceleration_ego = p.common.ego.max_deceleration;
+  const auto & current_velocity = context->data->current_kinematics->twist.twist.linear.x;
+
+  for (auto & object : objects) {
+    const auto & delay_object = p.common.vulnerable_road_user.reaction_time;
+    const auto & max_deceleration_object = p.common.vulnerable_road_user.max_deceleration;
+    const auto stop_distance_object =
+      delay_object * object.velocity +
+      0.5 * std::pow(object.velocity, 2.0) / std::abs(max_deceleration_object);
+    const auto stop_distance_ego =
+      0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
+
+    object.rss_distance = stop_distance_object - stop_distance_ego;
+    object.safe = object.rss_distance < object.relative_distance_with_delay_compensation;
+    object.ignore = object.moving_time < p.common.filter.moving_time ||
+                    object.velocity > p.common.vulnerable_road_user.max_velocity;
+  }
+}
+
+void fill_time_to_collision(
+  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
+  const double distance_to_action, const rear_collision_checker_node::Params & parameters)
+{
+  const auto & p = parameters;
+  const auto & current_velocity = context->data->current_kinematics->twist.twist.linear.x;
+
+  for (auto & object : objects) {
+    const auto time_to_reach_ego =
+      distance_to_action / std::max(current_velocity, p.common.ego.min_velocity);
+    const auto time_to_reach_obj =
+      (distance_to_action + object.relative_distance_with_delay_compensation) /
+      std::max(object.velocity, p.common.filter.min_velocity);
+    object.time_to_collision = std::abs(time_to_reach_ego - time_to_reach_obj);
+    object.safe = object.time_to_collision > p.common.time_to_collision.margin;
+    object.ignore = object.moving_time < p.common.filter.moving_time ||
+                    object.velocity > p.common.vulnerable_road_user.max_velocity;
+  }
+}
+
 auto get_current_lanes(
   const std::shared_ptr<PlanningValidatorContext> & context, const double forward_distance,
   const double backward_distance) -> lanelet::ConstLanelets
@@ -587,49 +632,52 @@ auto generate_half_lanelet(
   return half_lanelet;
 }
 
-void fill_rss_distance(
-  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
+auto get_range_for_rss(
+  const std::shared_ptr<PlanningValidatorContext> & context,
   [[maybe_unused]] const double distance_to_action,
-  const rear_collision_checker_node::Params & parameters)
+  const rear_collision_checker_node::Params & parameters) -> std::pair<double, double>
 {
   const auto & p = parameters;
   const auto & max_deceleration_ego = p.common.ego.max_deceleration;
   const auto & current_velocity = context->data->current_kinematics->twist.twist.linear.x;
 
-  for (auto & object : objects) {
-    const auto & delay_object = p.common.vulnerable_road_user.reaction_time;
-    const auto & max_deceleration_object = p.common.vulnerable_road_user.max_deceleration;
-    const auto stop_distance_object =
-      delay_object * object.velocity +
-      0.5 * std::pow(object.velocity, 2.0) / std::abs(max_deceleration_object);
-    const auto stop_distance_ego =
-      0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
+  const auto & delay_object = p.common.vulnerable_road_user.reaction_time;
+  const auto & max_deceleration_object = p.common.vulnerable_road_user.max_deceleration;
 
-    object.rss_distance = stop_distance_object - stop_distance_ego;
-    object.safe = object.rss_distance < object.relative_distance_with_delay_compensation;
-    object.ignore = object.moving_time < p.common.filter.moving_time ||
-                    object.velocity > p.common.vulnerable_road_user.max_velocity;
-  }
+  const auto stop_distance_object = delay_object * p.common.vulnerable_road_user.max_velocity +
+                                    0.5 *
+                                      std::pow(p.common.vulnerable_road_user.max_velocity, 2.0) /
+                                      std::abs(max_deceleration_object);
+  const auto stop_distance_ego =
+    0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
+
+  const auto forward_distance = p.common.pointcloud.range.buffer +
+                                std::max(
+                                  context->vehicle_info.max_longitudinal_offset_m,
+                                  (p.common.blind_spot.check.front ? stop_distance_ego : 0.0));
+  const auto backward_distance = p.common.pointcloud.range.buffer -
+                                 context->vehicle_info.min_longitudinal_offset_m +
+                                 std::max(0.0, stop_distance_object - stop_distance_ego);
+
+  return std::make_pair(forward_distance, backward_distance);
 }
 
-void fill_time_to_collision(
-  PointCloudObjects & objects, const std::shared_ptr<PlanningValidatorContext> & context,
-  const double distance_to_action, const rear_collision_checker_node::Params & parameters)
+auto get_range_for_ttc(
+  const std::shared_ptr<PlanningValidatorContext> & context, const double distance_to_action,
+  const rear_collision_checker_node::Params & parameters) -> std::pair<double, double>
 {
   const auto & p = parameters;
   const auto & current_velocity = context->data->current_kinematics->twist.twist.linear.x;
 
-  for (auto & object : objects) {
-    const auto time_to_reach_ego =
-      distance_to_action / std::max(current_velocity, p.common.ego.min_velocity);
-    const auto time_to_reach_obj =
-      (distance_to_action + object.relative_distance_with_delay_compensation) /
-      std::max(object.velocity, p.common.filter.min_velocity);
-    object.time_to_collision = std::abs(time_to_reach_ego - time_to_reach_obj);
-    object.safe = object.time_to_collision > p.common.time_to_collision.margin;
-    object.ignore = object.moving_time < p.common.filter.moving_time ||
-                    object.velocity > p.common.vulnerable_road_user.max_velocity;
-  }
+  const auto time_to_reach_ego =
+    distance_to_action / std::max(current_velocity, p.common.ego.min_velocity);
+
+  const auto forward_distance = context->vehicle_info.max_longitudinal_offset_m;
+  const auto backward_distance = (time_to_reach_ego + p.common.time_to_collision.margin) *
+                                   p.common.vulnerable_road_user.max_velocity -
+                                 distance_to_action;
+
+  return std::make_pair(forward_distance, backward_distance);
 }
 
 auto create_polygon_marker_array(

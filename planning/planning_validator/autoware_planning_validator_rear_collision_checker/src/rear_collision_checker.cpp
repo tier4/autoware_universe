@@ -54,8 +54,6 @@ using autoware_internal_planning_msgs::msg::SafetyFactor;
 using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_utils::get_or_declare_parameter;
 
-using std::placeholders::_1;
-
 void RearCollisionChecker::init(
   rclcpp::Node & node, const std::string & name,
   const std::shared_ptr<PlanningValidatorContext> & context)
@@ -411,73 +409,15 @@ auto RearCollisionChecker::get_pointcloud_object(
 }
 
 auto RearCollisionChecker::get_pointcloud_objects(
-  const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
-  const Behavior & turn_behavior,
-  const std::function<void(PointCloudObjects &)> & metric_for_blind_spot,
-  const std::function<void(PointCloudObjects &)> & metric_for_adjacent_lane, DebugData & debug)
-  -> PointCloudObjects
+  const std::function<std::pair<double, double>()> & func_range_calculation,
+  const std::function<PointCloudObjects(const double, const double)> & func_object_filtering,
+  const std::function<void(PointCloudObjects &)> & func_safety_check) -> PointCloudObjects
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  const auto p = param_listener_->get_params();
-
-  PointCloudObjects objects{};
-
-  const auto obstacle_pointcloud = filter_pointcloud(debug);
-
-  const auto max_deceleration_ego = p.common.ego.max_deceleration;
-  const auto current_velocity = context_->data->current_kinematics->twist.twist.linear.x;
-
-  {
-    const auto delay_object = p.common.vulnerable_road_user.reaction_time;
-    const auto max_deceleration_object = p.common.vulnerable_road_user.max_deceleration;
-
-    const auto stop_distance_object = delay_object * p.common.vulnerable_road_user.max_velocity +
-                                      0.5 *
-                                        std::pow(p.common.vulnerable_road_user.max_velocity, 2.0) /
-                                        std::abs(max_deceleration_object);
-    const auto stop_distance_ego =
-      0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
-
-    const auto forward_distance = p.common.pointcloud.range.buffer +
-                                  std::max(
-                                    context_->vehicle_info.max_longitudinal_offset_m,
-                                    (p.common.blind_spot.check.front ? stop_distance_ego : 0.0));
-    const auto backward_distance = p.common.pointcloud.range.buffer -
-                                   context_->vehicle_info.min_longitudinal_offset_m +
-                                   std::max(0.0, stop_distance_object - stop_distance_ego);
-
-    auto objects_at_blind_spot = get_pointcloud_objects_at_blind_spot(
-      current_lanes, turn_behavior, forward_distance, backward_distance, obstacle_pointcloud,
-      debug);
-    metric_for_blind_spot(objects_at_blind_spot);
-    objects.insert(objects.end(), objects_at_blind_spot.begin(), objects_at_blind_spot.end());
-  }
-
-  {
-    const auto delay_object = p.common.vehicle.reaction_time;
-    const auto max_deceleration_object = p.common.vehicle.max_deceleration;
-
-    const auto stop_distance_object =
-      delay_object * p.common.vehicle.max_velocity +
-      0.5 * std::pow(p.common.vehicle.max_velocity, 2.0) / std::abs(max_deceleration_object);
-    const auto stop_distance_ego =
-      0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
-
-    const auto forward_distance = p.common.pointcloud.range.buffer +
-                                  std::max(
-                                    context_->vehicle_info.max_longitudinal_offset_m,
-                                    (p.common.adjacent_lane.check.front ? stop_distance_ego : 0.0));
-    const auto backward_distance = p.common.pointcloud.range.buffer -
-                                   context_->vehicle_info.min_longitudinal_offset_m +
-                                   std::max(0.0, stop_distance_object - stop_distance_ego);
-
-    auto objects_on_adjacent_lane = get_pointcloud_objects_on_adjacent_lane(
-      current_lanes, shift_behavior, forward_distance, backward_distance, obstacle_pointcloud,
-      debug);
-    metric_for_adjacent_lane(objects_on_adjacent_lane);
-    objects.insert(objects.end(), objects_on_adjacent_lane.begin(), objects_on_adjacent_lane.end());
-  }
+  const auto [forward_distance, backward_distance] = func_range_calculation();
+  auto objects = func_object_filtering(forward_distance, backward_distance);
+  func_safety_check(objects);
 
   return objects;
 }
@@ -712,6 +652,9 @@ bool RearCollisionChecker::is_safe(const PointCloudObjects & objects, DebugData 
 
 bool RearCollisionChecker::is_safe(DebugData & debug)
 {
+  using std::placeholders::_1;
+  using std::placeholders::_2;
+
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   const auto p = param_listener_->get_params();
@@ -754,27 +697,63 @@ bool RearCollisionChecker::is_safe(DebugData & debug)
     debug.is_active = true;
   }
 
-  PredictedObjects objects_on_target_lane;
   PointCloudObjects pointcloud_objects{};
+  const auto obstacle_pointcloud = filter_pointcloud(debug);
 
   {
-    time_keeper_->start_track("pointcloud_base");
-    const auto metric_for_blind_spot = [&, this]() {
+    time_keeper_->start_track("adjacent_lane");
+
+    const auto func_range_calculation = [&, this]() {
+      if (p.common.adjacent_lane.metric == "ttc") {
+        return std::bind(utils::get_range_for_ttc, context_, distance_to_shift, p);
+      }
+      return std::bind(utils::get_range_for_rss, context_, distance_to_shift, p);
+    }();
+    const auto func_object_filtering = [&, this]() {
+      return std::bind(
+        &RearCollisionChecker::get_pointcloud_objects_on_adjacent_lane, this, current_lanes,
+        shift_behavior, _1, _2, obstacle_pointcloud, std::ref(debug));
+    }();
+    const auto func_safety_check = [&, this]() {
+      if (p.common.adjacent_lane.metric == "ttc") {
+        return std::bind(utils::fill_time_to_collision, _1, context_, distance_to_shift, p);
+      }
+      return std::bind(utils::fill_rss_distance, _1, context_, distance_to_shift, p);
+    }();
+
+    auto objects =
+      get_pointcloud_objects(func_range_calculation, func_object_filtering, func_safety_check);
+    pointcloud_objects.insert(pointcloud_objects.end(), objects.begin(), objects.end());
+
+    time_keeper_->end_track("adjacent_lane");
+  }
+
+  {
+    time_keeper_->start_track("blind_spot");
+
+    const auto func_range_calculation = [&, this]() {
+      if (p.common.blind_spot.metric == "ttc") {
+        return std::bind(utils::get_range_for_ttc, context_, distance_to_turn, p);
+      }
+      return std::bind(utils::get_range_for_rss, context_, distance_to_turn, p);
+    }();
+    const auto func_object_filtering = [&, this]() {
+      return std::bind(
+        &RearCollisionChecker::get_pointcloud_objects_at_blind_spot, this, current_lanes,
+        turn_behavior, _1, _2, obstacle_pointcloud, std::ref(debug));
+    }();
+    const auto func_safety_check = [&, this]() {
       if (p.common.blind_spot.metric == "ttc") {
         return std::bind(utils::fill_time_to_collision, _1, context_, distance_to_turn, p);
       }
       return std::bind(utils::fill_rss_distance, _1, context_, distance_to_turn, p);
     }();
-    const auto metric_for_adjacent_lane = [&, this]() {
-      if (p.common.blind_spot.metric == "ttc") {
-        return std::bind(utils::fill_time_to_collision, _1, context_, distance_to_shift, p);
-      }
-      return std::bind(utils::fill_rss_distance, _1, context_, distance_to_shift, p);
-    }();
-    pointcloud_objects = get_pointcloud_objects(
-      current_lanes, shift_behavior, turn_behavior, metric_for_blind_spot, metric_for_adjacent_lane,
-      debug);
-    time_keeper_->end_track("pointcloud_base");
+
+    auto objects =
+      get_pointcloud_objects(func_range_calculation, func_object_filtering, func_safety_check);
+    pointcloud_objects.insert(pointcloud_objects.end(), objects.begin(), objects.end());
+
+    time_keeper_->end_track("blind_spot");
   }
 
   {
