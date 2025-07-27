@@ -335,7 +335,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   sensor_msgs::msg::PointCloud2 filtered_pointcloud;
   filtered_pointcloud.header = input_pointcloud.header;
   if (input_pointcloud.data.empty()) {
-    return filtered_pointcloud;
+    return input_pointcloud;
   }
 
   // Convert ROS PointCloud2 to PCL format
