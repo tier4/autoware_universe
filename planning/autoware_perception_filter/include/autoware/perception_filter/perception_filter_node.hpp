@@ -170,30 +170,6 @@ private:
    * @details Positive values indicate points ahead of ego, negative values behind
    */
   double getDistanceAlongPath(const geometry_msgs::msg::Point & point) const;
-
-  /**
-   * @brief Check if object is within filtering distance of trajectory
-   * @param object Object to check
-   * @param path Trajectory to check against
-   * @param max_filter_distance Maximum filtering distance [m]
-   * @return True if object is near path, false otherwise
-   */
-  bool isObjectNearPath(
-    const autoware_perception_msgs::msg::PredictedObject & object,
-    const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance);
-
-  /**
-   * @brief Check if point should be filtered based on trajectory proximity
-   * @param point Point to check
-   * @param path Trajectory to check against
-   * @param max_filter_distance Maximum filtering distance [m]
-   * @param pointcloud_safety_distance Minimum safety distance [m]
-   * @return True if point should be filtered, false otherwise
-   */
-  bool isPointNearPath(
-    const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path,
-    double max_filter_distance, double pointcloud_safety_distance);
-
   // ========== RTC Interface Functions ==========
 
   /**
@@ -214,13 +190,6 @@ private:
    * @brief Create filtering polygon when RTC is activated
    */
   void createFilteringPolygon();
-
-  /**
-   * @brief Check if point is within the filtering polygon
-   * @param point Point to check
-   * @return True if point is inside polygon, false otherwise
-   */
-  bool isPointInFilteringPolygon(const geometry_msgs::msg::Point & point) const;
 
   /**
    * @brief Update filtering polygon activation status

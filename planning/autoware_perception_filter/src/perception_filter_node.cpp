@@ -14,10 +14,12 @@
 
 #include "autoware/perception_filter/perception_filter_node.hpp"
 
+#include <autoware_utils_geometry/boost_geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <geometry_msgs/msg/detail/transform_stamped__struct.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -25,15 +27,20 @@
 #include <glog/logging.h>
 
 // Add PCL headers for pointcloud processing
+#include <pcl/common/transforms.h>
+#include <pcl/filters/passthrough.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/segmentation/extract_polygonal_prism_data.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 // Add autoware_universe_utils and boost geometry for object shape and distance calculation
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/ros/parameter.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 #include <boost/geometry.hpp>
+#include <boost/geometry/algorithms/detail/envelope/interface.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -326,43 +333,83 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 {
   sensor_msgs::msg::PointCloud2 filtered_pointcloud;
   filtered_pointcloud.header = input_pointcloud.header;
+  if (input_pointcloud.data.empty()) {
+    return filtered_pointcloud;
+  }
 
   // Convert ROS PointCloud2 to PCL format
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr polygon_points(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
   pcl::fromROSMsg(input_pointcloud, *input_cloud);
   filtered_points_info_.clear();
 
-  // Filter points based on distance from planning trajectory
-  for (const auto & point : input_cloud->points) {
-    geometry_msgs::msg::Point ros_point;
-    ros_point.x = point.x;
-    ros_point.y = point.y;
-    ros_point.z = point.z;
+  geometry_msgs::msg::TransformStamped transform;
+  try {
+    transform = tf_buffer_->lookupTransform(
+      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Failed to get transform from base_link to map: %s. Using original point coordinates.",
+      ex.what());
+  }
+  const auto eigen_transform = tf2::transformToEigen(transform.transform).cast<float>();
+  pcl::transformPointCloud(*input_cloud, *transformed_cloud, eigen_transform);
 
-    bool should_filter_point = false;
+  if (filtering_polygon_created_ && filtering_polygon_.is_active) {
+    const auto bbox = boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(
+      filtering_polygon_.polygon.outer());
+    // Rough filter on the X/Y axis
+    pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
+    passthrough_filter.setInputCloud(transformed_cloud);
+    passthrough_filter.setFilterFieldName("x");
+    passthrough_filter.setFilterLimits(
+      static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().y()));
+    pcl::PointCloud<pcl::PointXYZ>::Ptr x_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    passthrough_filter.filter(*x_filtered_cloud);
+    passthrough_filter.setInputCloud(x_filtered_cloud);
+    passthrough_filter.setFilterFieldName("y");
+    passthrough_filter.setFilterLimits(
+      static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
+    pcl::PointCloud<pcl::PointXYZ>::Ptr xy_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    passthrough_filter.filter(*xy_filtered_cloud);
 
-    if (filtering_polygon_created_ && filtering_polygon_.is_active) {
-      const bool is_in_polygon = isPointInFilteringPolygon(ros_point);
-      if (is_in_polygon) {
-        // For points inside the polygon, check distance to path and safety distance
-        const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
-        const bool is_near_path = (distance_to_path <= max_filter_distance_);
-        const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
-        should_filter_point = is_near_path && is_outside_safety_distance;
+    // Keep points inside the polygon
+    for (const auto & p : filtering_polygon_.polygon.outer()) {
+      polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
+    }
+    pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
+    pcl::ExtractPolygonalPrismData<pcl::PointXYZ> prism;
+    prism.setInputCloud(xy_filtered_cloud);
+    prism.setInputPlanarHull(polygon_points);
+    prism.segment(*inliers);
+    // Filter points based on distance from planning trajectory
+    for (const auto & i : inliers->indices) {
+      const auto point = transformed_cloud->points[i];
+      geometry_msgs::msg::Point ros_point;
+      ros_point.x = point.x;
+      ros_point.y = point.y;
+      ros_point.z = point.z;
+      // For points inside the polygon, check distance to path and safety distance
+      const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
+      const bool is_near_path = (distance_to_path <= max_filter_distance_);
+      const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
+      if (!is_near_path || !is_outside_safety_distance) {
+        filtered_cloud->points.push_back(point);
+      } else {
+        // Store information about filtered points for planning factors
+        FilteredPointInfo filtered_info;
+        filtered_info.point = ros_point;
+        filtered_info.distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
+        filtered_points_info_.push_back(filtered_info);
       }
     }
-
-    if (!should_filter_point) {
-      filtered_cloud->points.push_back(point);
-    } else {
-      // Store information about filtered points for planning factors
-      FilteredPointInfo filtered_info;
-      filtered_info.point = ros_point;
-      filtered_info.distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
-      filtered_points_info_.push_back(filtered_info);
-    }
+    std::printf(
+      "%lu -> %lu -> %lu -> %lu -> %lu\n", input_cloud->size(), transformed_cloud->size(),
+      x_filtered_cloud->size(), xy_filtered_cloud->size(), filtered_cloud->size());
   }
 
   // Update cloud properties
@@ -433,29 +480,8 @@ double PerceptionFilterNode::getMinDistanceToPath(
   double min_distance = std::numeric_limits<double>::max();
 
   // Check if coordinate frame transformation is needed
-  geometry_msgs::msg::TransformStamped transform;
-  bool transform_needed = false;
-
-  if (!path.header.frame_id.empty() && path.header.frame_id == "map") {
-    try {
-      transform = tf_buffer_->lookupTransform(
-        "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-      transform_needed = true;
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Failed to get transform from map to base_link: %s. Using original trajectory coordinates.",
-        ex.what());
-    }
-  }
-
   for (const auto & path_point : path.points) {
     geometry_msgs::msg::Point transformed_path_point = path_point.pose.position;
-
-    if (transform_needed) {
-      tf2::doTransform(path_point.pose.position, transformed_path_point, transform);
-    }
-
     const double dx = point.x - transformed_path_point.x;
     const double dy = point.y - transformed_path_point.y;
     const double distance = std::sqrt(dx * dx + dy * dy);
@@ -568,58 +594,6 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
   }
 
   return is_point_ahead ? cumulative_distance : -cumulative_distance;
-}
-
-bool PerceptionFilterNode::isObjectNearPath(
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const autoware_planning_msgs::msg::Trajectory & path, double max_filter_distance)
-{
-  const double min_distance = getMinDistanceToPath(object, path);
-  return min_distance <= max_filter_distance;
-}
-
-bool PerceptionFilterNode::isPointNearPath(
-  const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path,
-  double max_filter_distance, double pointcloud_safety_distance)
-{
-  // Check if coordinate frame transformation is needed
-  geometry_msgs::msg::TransformStamped transform;
-  bool transform_needed = false;
-
-  if (!path.header.frame_id.empty() && path.header.frame_id == "map") {
-    try {
-      transform = tf_buffer_->lookupTransform(
-        "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-      transform_needed = true;
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Failed to get transform from map to base_link: %s. Using original trajectory coordinates.",
-        ex.what());
-    }
-  }
-
-  double min_dist_to_path = std::numeric_limits<double>::max();
-
-  for (const auto & path_point : path.points) {
-    geometry_msgs::msg::Point transformed_path_point = path_point.pose.position;
-
-    if (transform_needed) {
-      tf2::doTransform(path_point.pose.position, transformed_path_point, transform);
-    }
-
-    const double dx = point.x - transformed_path_point.x;
-    const double dy = point.y - transformed_path_point.y;
-    const double distance = std::sqrt(dx * dx + dy * dy);
-
-    min_dist_to_path = std::min(min_dist_to_path, distance);
-  }
-
-  // Return true if point should be filtered out:
-  // - Distance is less than max_filter_distance (close to path)
-  // - AND distance is greater than pointcloud_safety_distance (not too close)
-  return (min_dist_to_path <= max_filter_distance) &&
-         (min_dist_to_path > pointcloud_safety_distance);
 }
 
 void PerceptionFilterNode::publishDebugMarkers(
@@ -1273,30 +1247,6 @@ autoware::universe_utils::Polygon2d PerceptionFilterNode::createPathPolygon(
   }
 
   return polygon;
-}
-
-bool PerceptionFilterNode::isPointInFilteringPolygon(const geometry_msgs::msg::Point & point) const
-{
-  if (!filtering_polygon_created_ || !filtering_polygon_.is_active) {
-    return false;
-  }
-
-  // Transform point from base_link to map coordinates
-  geometry_msgs::msg::Point transformed_point = point;
-
-  try {
-    const auto transform = tf_buffer_->lookupTransform(
-      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-    tf2::doTransform(point, transformed_point, transform);
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN(
-      get_logger(),
-      "Failed to get transform from base_link to map: %s. Using original point coordinates.",
-      ex.what());
-  }
-
-  autoware::universe_utils::Point2d test_point(transformed_point.x, transformed_point.y);
-  return boost::geometry::within(test_point, filtering_polygon_.polygon);
 }
 
 void PerceptionFilterNode::updateFilteringPolygonStatus()
