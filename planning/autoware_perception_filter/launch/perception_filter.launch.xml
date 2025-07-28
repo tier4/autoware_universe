@@ -6,7 +6,7 @@
   <arg name="output_filtered_objects" default="/perception/object_recognition/filtered_objects"/>
   <arg name="output_filtered_pointcloud" default="/perception/obstacle_segmentation/filtered_pointcloud"/>
   <arg name="debug_filtering_markers" default="/perception_filter_node/debug/filtering_markers"/>
-  <arg name="perception_filter_param_path" default="$(find-pkg-share autoware_perception_filter)/config/perception_filter.param.yaml"/>
+  <arg name="perception_filter_param_path" default="$(find-pkg-share autoware_launch)/config/planning/perception_filter/perception_filter.param.yaml"/>
 
   <node pkg="autoware_perception_filter" exec="autoware_perception_filter_node" name="perception_filter_node" output="both">
     <remap from="input/objects" to="$(var input_objects)"/>
