@@ -368,7 +368,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     passthrough_filter.setInputCloud(transformed_cloud);
     passthrough_filter.setFilterFieldName("x");
     passthrough_filter.setFilterLimits(
-      static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().y()));
+      static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
     pcl::PointCloud<pcl::PointXYZ>::Ptr x_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
     passthrough_filter.filter(*x_filtered_cloud);
     passthrough_filter.setInputCloud(x_filtered_cloud);
@@ -386,7 +386,29 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     pcl::ExtractPolygonalPrismData<pcl::PointXYZ> prism;
     prism.setInputCloud(xy_filtered_cloud);
     prism.setInputPlanarHull(polygon_points);
+    prism.setHeightLimits(-1.0, 1.0);  // Set height limits for 2D polygon
     prism.segment(*inliers);
+
+    // If PCL prism segmentation fails, try manual point-in-polygon test
+    if (inliers->indices.empty() && !xy_filtered_cloud->points.empty()) {
+      RCLCPP_WARN(get_logger(), "PCL prism segmentation failed, trying manual point-in-polygon test");
+
+      // Manual point-in-polygon test using boost geometry
+      for (size_t i = 0; i < xy_filtered_cloud->points.size(); ++i) {
+        const auto & point = xy_filtered_cloud->points[i];
+        autoware::universe_utils::Point2d test_point(point.x, point.y);
+
+        if (boost::geometry::within(test_point, filtering_polygon_.polygon)) {
+          inliers->indices.push_back(i);
+        }
+      }
+
+      RCLCPP_WARN(
+        get_logger(),
+        "Manual point-in-polygon test: found %zu points inside polygon",
+        inliers->indices.size());
+    }
+
     // Filter points based on distance from planning trajectory
     for (const auto & i : inliers->indices) {
       const auto point = transformed_cloud->points[i];
@@ -398,19 +420,27 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
       const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
       const bool is_near_path = (distance_to_path <= max_filter_distance_);
       const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
+
+      // Keep points that are either:
+      // 1. Not near the path (outside max_filter_distance), OR
+      // 2. Inside safety distance (within pointcloud_safety_distance)
       if (!is_near_path || !is_outside_safety_distance) {
         filtered_cloud->points.push_back(point);
       } else {
         // Store information about filtered points for planning factors
         FilteredPointInfo filtered_info;
         filtered_info.point = ros_point;
-        filtered_info.distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
+        filtered_info.distance_to_path = distance_to_path;
         filtered_points_info_.push_back(filtered_info);
       }
     }
+
     std::printf(
       "%lu -> %lu -> %lu -> %lu -> %lu\n", input_cloud->size(), transformed_cloud->size(),
       x_filtered_cloud->size(), xy_filtered_cloud->size(), filtered_cloud->size());
+  } else {
+    // If filtering is not active, copy all points
+    *filtered_cloud = *transformed_cloud;
   }
 
   // Update cloud properties
@@ -418,8 +448,16 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   filtered_cloud->height = 1;
   filtered_cloud->is_dense = true;
 
+  // Transform filtered points back to original coordinate frame (base_link)
+  pcl::PointCloud<pcl::PointXYZ>::Ptr final_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  if (!filtered_cloud->points.empty()) {
+    // Inverse transform from map to base_link
+    const auto inverse_transform = eigen_transform.inverse();
+    pcl::transformPointCloud(*filtered_cloud, *final_filtered_cloud, inverse_transform);
+  }
+
   // Convert back to ROS PointCloud2
-  pcl::toROSMsg(*filtered_cloud, filtered_pointcloud);
+  pcl::toROSMsg(*final_filtered_cloud, filtered_pointcloud);
   filtered_pointcloud.header = input_pointcloud.header;
 
   RCLCPP_DEBUG(
