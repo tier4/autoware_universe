@@ -250,7 +250,7 @@ void PerceptionFilterNode::onObjects(
     filtered_objects_pub_, filtered_objects.header.stamp);
 
   // Publish planning factors
-  planning_factors_pub_->publish(createPlanningFactors());
+  planning_factors_pub_->publish(createPlanningFactors(is_currently_stopped));
 
   // Publish debug markers
   publishDebugMarkers(*msg, rtc_is_activated);
@@ -345,6 +345,8 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
       skip_reason += "filtering polygon not active";
     }
     RCLCPP_DEBUG(get_logger(), "%s", skip_reason.c_str());
+    // Clear filtered points info when filtering is not active
+    filtered_points_info_.clear();
     return input_pointcloud;
   }
 
@@ -813,7 +815,7 @@ visualization_msgs::msg::Marker PerceptionFilterNode::createObjectMarker(
 }
 
 autoware_internal_planning_msgs::msg::PlanningFactorArray
-PerceptionFilterNode::createPlanningFactors()
+PerceptionFilterNode::createPlanningFactors(bool /*is_currently_stopped*/)
 {
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
   planning_factors.header.stamp = this->now();
@@ -827,22 +829,17 @@ PerceptionFilterNode::createPlanningFactors()
     objects_to_be_filtered.push_back(object.object_id);
   }
 
-  const bool rtc_interface_exists = rtc_interface_ != nullptr;
-  const bool rtc_is_registered = rtc_interface_exists && rtc_interface_->isRegistered(rtc_uuid_);
-  const bool rtc_activated =
-    rtc_interface_exists && rtc_is_registered && rtc_interface_->isActivated(rtc_uuid_);
-  const bool filtering_active = rtc_activated || rtc_ever_approved_;
 
   // Create PlanningFactor when there are objects that would be filtered when RTC is approved
-  // OR when there are filtered points (RTC is activated OR was previously approved)
-  if (!objects_to_be_filtered.empty() || (filtering_active && !filtered_points_info_.empty())) {
+  // OR when there are points that would be filtered when RTC is approved
+  if (!objects_to_be_filtered.empty() || (filtering_active_ && !filtered_points_info_.empty())) {
     autoware_internal_planning_msgs::msg::PlanningFactor factor;
     factor.module = "supervised_perception_filter";
     factor.behavior = autoware_internal_planning_msgs::msg::PlanningFactor::STOP;
 
     // Set detail message based on what is being filtered
     const bool has_objects = !objects_to_be_filtered.empty();
-    const bool has_points = filtering_active && !filtered_points_info_.empty();
+    const bool has_points = filtering_active_ && !filtered_points_info_.empty();
 
     if (has_objects && has_points) {
       factor.detail = "Objects and pointcloud that would be filtered when RTC is approved";
@@ -886,7 +883,7 @@ PerceptionFilterNode::createPlanningFactors()
     }
 
     // Add pointcloud safety factors (include filtered points when filtering is active)
-    if (filtering_active && !filtered_points_info_.empty()) {
+    if (filtering_active_ && !filtered_points_info_.empty()) {
       autoware_internal_planning_msgs::msg::SafetyFactor pointcloud_safety_factor;
       pointcloud_safety_factor.type =
         autoware_internal_planning_msgs::msg::SafetyFactor::POINTCLOUD;

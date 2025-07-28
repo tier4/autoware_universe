@@ -269,7 +269,7 @@ private:
    * @brief Create planning factors for filtered objects and points
    * @return Planning factor array
    */
-  autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors();
+  autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(bool is_currently_stopped);
 
   // ========== Debug Visualization Functions ==========
 
@@ -350,8 +350,7 @@ private:
                                               ///< processing
   std::set<std::array<uint8_t, 16>>
     frozen_filter_object_ids_;  ///< Object IDs frozen at RTC approval time
-  bool
-    rtc_ever_approved_{};  ///< Track if RTC has ever been approved (persistent across recreation)
+  bool filtering_active_{};     ///< Whether filtering is currently active
 
   // Polygon-based filtering management
   FilteringPolygon filtering_polygon_;  ///< Filtering polygon created at RTC approval
