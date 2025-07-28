@@ -373,18 +373,19 @@ auto check_turn_behavior(
     [&points, &ego_pose, &conflict_point, &stoppable_point, &vehicle_info](
       const auto & sibling_straight_lanelet, const auto distance, const auto is_right) {
       if (!sibling_straight_lanelet.has_value()) {
-        return distance < stoppable_point.value().second;
+        return std::make_pair(distance < stoppable_point.value().second, distance);
       }
 
       const auto dead_line_point = conflict_point(sibling_straight_lanelet.value(), is_right);
       if (!dead_line_point.has_value()) {
-        return distance < stoppable_point.value().second;
+        return std::make_pair(distance < stoppable_point.value().second, distance);
       }
 
-      return autoware::motion_utils::calcSignedArcLength(
-               points, ego_pose.position, dead_line_point.value()) -
-               vehicle_info.max_longitudinal_offset_m <
-             stoppable_point.value().second;
+      const auto conflict_point_distance = autoware::motion_utils::calcSignedArcLength(
+                                             points, ego_pose.position, dead_line_point.value()) -
+                                           vehicle_info.max_longitudinal_offset_m;
+      return std::make_pair(
+        conflict_point_distance < stoppable_point.value().second, conflict_point_distance);
     };
 
   double total_length = 0.0;
@@ -411,9 +412,9 @@ auto check_turn_behavior(
         }
       }
 
-      if (
-        !parameters.common.check_on_unstoppable &&
-        exceed_dead_line(sibling_straight_lanelet, distance, false)) {
+      const auto [has_exceeded, conflict_point_distance] =
+        exceed_dead_line(sibling_straight_lanelet, distance, false);
+      if (!parameters.common.check_on_unstoppable && has_exceeded) {
         debug.text = "unable to stop before the conflict area under limited braking.";
         continue;
       }
@@ -421,10 +422,11 @@ auto check_turn_behavior(
       if (!distance_to_stop_point.has_value()) {
         return std::make_pair((is_reachable ? Behavior::TURN_LEFT : Behavior::NONE), distance);
       }
-      if (distance_to_stop_point.value() < distance + buffer) {
-        return std::make_pair(Behavior::NONE, distance);
+      if (distance_to_stop_point.value() < conflict_point_distance + buffer) {
+        return std::make_pair(Behavior::NONE, conflict_point_distance);
       }
-      return std::make_pair((is_reachable ? Behavior::TURN_LEFT : Behavior::NONE), distance);
+      return std::make_pair(
+        (is_reachable ? Behavior::TURN_LEFT : Behavior::NONE), conflict_point_distance);
     }
 
     if (turn_direction == "right" && p.check.right) {
@@ -437,9 +439,9 @@ auto check_turn_behavior(
         }
       }
 
-      if (
-        !parameters.common.check_on_unstoppable &&
-        exceed_dead_line(sibling_straight_lanelet, distance, true)) {
+      const auto [has_exceeded, conflict_point_distance] =
+        exceed_dead_line(sibling_straight_lanelet, distance, true);
+      if (!parameters.common.check_on_unstoppable && has_exceeded) {
         debug.text = "unable to stop before the conflict area under limited braking.";
         continue;
       }
@@ -447,10 +449,11 @@ auto check_turn_behavior(
       if (!distance_to_stop_point.has_value()) {
         return std::make_pair((is_reachable ? Behavior::TURN_RIGHT : Behavior::NONE), distance);
       }
-      if (distance_to_stop_point.value() < distance + buffer) {
-        return std::make_pair(Behavior::NONE, distance);
+      if (distance_to_stop_point.value() < conflict_point_distance + buffer) {
+        return std::make_pair(Behavior::NONE, conflict_point_distance);
       }
-      return std::make_pair((is_reachable ? Behavior::TURN_RIGHT : Behavior::NONE), distance);
+      return std::make_pair(
+        (is_reachable ? Behavior::TURN_RIGHT : Behavior::NONE), conflict_point_distance);
     }
   }
 
