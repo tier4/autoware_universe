@@ -199,6 +199,7 @@ public:
    * @param projections_to_bound Closest projections to road boundaries for each side.
    * @param lon_offset_m         Longitudinal offset from ego to front of trajectory (including
    * vehicle length).
+   * @param cutoff_idx           Index to filter out points beyond time from start.
    * @return Side-keyed container of filtered departure points.
    */
   Side<DeparturePoints> get_departure_points(

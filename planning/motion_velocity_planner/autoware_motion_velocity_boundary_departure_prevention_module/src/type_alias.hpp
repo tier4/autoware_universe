@@ -33,6 +33,7 @@
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
@@ -45,6 +46,7 @@
 namespace autoware::motion_velocity_planner::experimental
 {
 using autoware_map_msgs::msg::LaneletMapBin;
+using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using geometry_msgs::msg::Point;
@@ -64,7 +66,7 @@ using boundary_departure_checker::EgoSide;
 using boundary_departure_checker::EgoSides;
 using boundary_departure_checker::Footprint;
 using boundary_departure_checker::Footprints;
-using boundary_departure_checker::g_side_keys;
+using boundary_departure_checker::g_side_keys;  // NOLINT
 using boundary_departure_checker::ProjectionsToBound;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;

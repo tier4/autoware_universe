@@ -114,12 +114,14 @@ inline Point2d to_pt2d(const geometry_msgs::msg::Point & point)
  * @param departure_points Departure points for left and right sides of the ego vehicle.
  * @param vehicle_length   Length of the ego vehicle, used to determine grouping distance.
  * @param enable_type      Set of departure types to include in the interval grouping.
+ * @param is_departure_persist Checks to insert departure point to departure intervals.
  * @return A list of departure intervals representing potential boundary departure risks.
  */
 DepartureIntervals init_departure_intervals(
   const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj,
-  const Side<DeparturePoints> & departure_points, const double vehicle_length,
-  const std::unordered_set<DepartureType> & enable_type);
+  const Side<DeparturePoints> & departure_points, const double curr_vel,
+  const double vehicle_length, const std::unordered_set<DepartureType> & enable_type,
+  const bool is_departure_persist);
 
 /**
  * @brief Update and merge departure intervals based on current trajectory and ego state.
@@ -138,14 +140,18 @@ DepartureIntervals init_departure_intervals(
  * @param[in] ego_dist_from_traj_front Ego’s current distance along the trajectory.
  * @param[in] th_pt_shift_dist_m Threshold distance for detecting shifted points.
  * @param[in] th_pt_shift_angle_rad Threshold angle for detecting shifted points.
+ * @param[in] enable_type Set of enabled departure types to consider for intervals.
  * @param[in] enable_type Enabled departure types.
+ * @param[in] is_reset_interval Flags to reset departure intervals is no departure point found.
+ * @param[in] is_departure_persist Checks to insert departure point to departure intervals.
  */
 void update_departure_intervals(
   DepartureIntervals & departure_intervals, Side<DeparturePoints> & departure_points,
   const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj, const double vehicle_length_m,
   const TrajectoryPoint & ref_traj_fr_pt, const double ego_dist_from_traj_front,
   const double th_pt_shift_dist_m, const double th_pt_shift_angle_rad,
-  const std::unordered_set<DepartureType> & enable_type);
+  const std::unordered_set<DepartureType> & enable_type, const bool is_reset_interval,
+  const bool is_departure_persist);
 
 /**
  * @brief Refresh and add critical departure points based on updated trajectory.
@@ -156,7 +162,7 @@ void update_departure_intervals(
  * @param[in] new_departure_points New departure points from the current cycle.
  * @param[in,out] critical_departure_points Persistent list of critical points to update.
  * @param[in] aw_ref_traj Reference trajectory.
- * @param[in] th_dist_hysteresis_m Min distance to avoid adding duplicates.
+ * @param[in] th_new_point_min_distance_m Min distance to avoid adding duplicates.
  * @param[in] offset_from_ego Ignore points before this arc-length.
  * @param[in] th_pt_shift_dist_m Threshold distance to detect point drift.
  * @param[in] th_pt_shift_angle_rad Threshold angle to detect pose change.
@@ -164,9 +170,9 @@ void update_departure_intervals(
 void update_critical_departure_points(
   const Side<DeparturePoints> & new_departure_points,
   CriticalDeparturePoints & critical_departure_points,
-  const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj, const double th_dist_hysteresis_m,
-  const double offset_from_ego, const double th_pt_shift_dist_m,
-  const double th_pt_shift_angle_rad);
+  const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj,
+  const double th_new_point_min_distance_m, const double offset_from_ego,
+  const double th_pt_shift_dist_m, const double th_pt_shift_angle_rad, const double dist_to_stop);
 
 /**
  * @brief Build slow-down segments ahead of the ego vehicle.
@@ -182,16 +188,14 @@ void update_critical_departure_points(
  * @param departure_intervals  Boundary-departure intervals to check.
  * @param slow_down_interpolator  Provides (rel_dist, vel, accel) lookup.
  * @param vehicle_info         Needed for longitudinal footprint checks.
- * @param boundary_segments     (reserved, currently unused)
  * @param curr_vel             Current ego speed [m/s].
  * @param ego_dist_on_traj_m   Ego arc-length position on the trajectory.
  * @return Vector of (start_pose, end_pose, target_vel) triples.
  */
 std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
   const trajectory::Trajectory<TrajectoryPoint> & ref_traj_pts,
-  const DepartureIntervals & departure_intervals,
-  const SlowDownInterpolator & slow_down_interpolator, const VehicleInfo & vehicle_info,
-  const BoundarySideWithIdx & boundary_segments, const double curr_vel,
+  DepartureIntervals & departure_intervals, const SlowDownInterpolator & slow_down_interpolator,
+  const VehicleInfo & vehicle_info, const double curr_vel, const TriggerThreshold & th_trigger,
   const double ego_dist_on_traj_m);
 
 /**
@@ -207,5 +211,11 @@ std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
 std::optional<std::pair<double, double>> is_point_shifted(
   const Pose & prev_iter_pt, const Pose & curr_iter_pt, const double th_shift_m,
   const double th_yaw_diff_rad);
+
+double calc_abs_dist_to_stop(const double th_vel, const double decel);
+
+std::unordered_map<DepartureType, size_t> get_cutoff_time_index(
+  const TrajectoryPoints & ego_pred_path, const double th_cutoff_time_departure_s,
+  const double th_cutoff_time_near_boundary_s);
 }  // namespace autoware::motion_velocity_planner::experimental::utils
 #endif  // UTILS_HPP_

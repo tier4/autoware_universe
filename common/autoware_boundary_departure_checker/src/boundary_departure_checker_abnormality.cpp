@@ -74,6 +74,9 @@ tl::expected<AbnormalitiesData, std::string> BoundaryDepartureChecker::get_abnor
     return tl::make_unexpected("trajectory too short");
   }
 
+  const auto trimmed_pred_traj =
+    utils::trim_pred_path(predicted_traj, param_ptr_->th_cutoff_time_predicted_path_s);
+
   const auto uncertainty_fp_margin =
     utils::calc_margin_from_covariance(curr_pose_with_cov, param_ptr_->footprint_extra_margin);
 
@@ -81,8 +84,8 @@ tl::expected<AbnormalitiesData, std::string> BoundaryDepartureChecker::get_abnor
   for (const auto abnormality_type : param_ptr_->abnormality_types_to_compensate) {
     auto & fps = abnormalities_data.footprints[abnormality_type];
     fps = utils::create_ego_footprints(
-      abnormality_type, uncertainty_fp_margin, predicted_traj, current_steering, *vehicle_info_ptr_,
-      *param_ptr_);
+      abnormality_type, uncertainty_fp_margin, trimmed_pred_traj, current_steering,
+      *vehicle_info_ptr_, *param_ptr_);
 
     abnormalities_data.footprints_sides[abnormality_type] = utils::get_sides_from_footprints(fps);
   }
@@ -99,7 +102,8 @@ tl::expected<AbnormalitiesData, std::string> BoundaryDepartureChecker::get_abnor
   for (const auto abnormality_type : param_ptr_->abnormality_types_to_compensate) {
     auto & proj_to_bound = abnormalities_data.projections_to_bound[abnormality_type];
     proj_to_bound = utils::get_closest_boundary_segments_from_side(
-      abnormalities_data.boundary_segments, abnormalities_data.footprints_sides[abnormality_type]);
+      trimmed_pred_traj, abnormalities_data.boundary_segments,
+      abnormalities_data.footprints_sides[abnormality_type]);
   }
   return abnormalities_data;
 }
@@ -223,9 +227,15 @@ BoundaryDepartureChecker::get_closest_projections_to_boundaries_side(
         continue;
       }
 
+      if (pt.time_from_start > param_ptr_->th_cutoff_time_near_boundary_s) {
+        break;
+      }
+
       if (abnormality_type == AbnormalityType::NORMAL && is_on_bound(pt.lat_dist, side_key)) {
         min_pt = std::make_unique<ClosestProjectionToBound>(pt);
-        min_pt->departure_type = DepartureType::CRITICAL_DEPARTURE;
+        min_pt->departure_type = (pt.time_from_start <= param_ptr_->th_cutoff_time_departure_s)
+                                   ? DepartureType::CRITICAL_DEPARTURE
+                                   : DepartureType::APPROACHING_DEPARTURE;
         min_pt->abnormality_type = abnormality_type;
         break;
       }
@@ -256,6 +266,7 @@ BoundaryDepartureChecker::get_closest_projections_to_boundaries_side(
       break;
     }
   }
+
   return min_to_bound;
 }
 
@@ -307,12 +318,12 @@ Side<DeparturePoints> BoundaryDepartureChecker::get_departure_points(
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  const auto th_dist_hysteresis_m = param_ptr_->th_dist_hysteresis_m;
+  const auto th_new_point_min_distance_m = param_ptr_->th_new_point_min_distance_m;
 
   Side<DeparturePoints> departure_points;
   for (const auto side_key : g_side_keys) {
     departure_points[side_key] = utils::get_departure_points(
-      projections_to_bound[side_key], th_dist_hysteresis_m, lon_offset_m);
+      projections_to_bound[side_key], th_new_point_min_distance_m, lon_offset_m);
   }
   return departure_points;
 }

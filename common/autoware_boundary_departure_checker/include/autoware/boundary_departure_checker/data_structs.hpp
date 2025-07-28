@@ -102,6 +102,7 @@ struct ProjectionToBound
   Segment2d nearest_bound_seg;
   double lat_dist{std::numeric_limits<double>::max()};
   size_t ego_sides_idx{0};
+  double time_from_start{std::numeric_limits<double>::max()};
   ProjectionToBound() = default;
   explicit ProjectionToBound(size_t idx) : ego_sides_idx(idx) {}
   ProjectionToBound(
@@ -238,8 +239,11 @@ struct DepartureInterval
   TrajectoryPoint start;
   TrajectoryPoint end;
   SideKey side_key;
+  double min_lat_dist_to_bound;
   double start_dist_on_traj;
   double end_dist_on_traj;
+
+  double prev_vel;
 
   bool start_at_traj_front{false};
   bool has_merged{false};
