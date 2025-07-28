@@ -33,7 +33,6 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <pcl/segmentation/extract_polygonal_prism_data.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 // Add autoware_universe_utils and boost geometry for object shape and distance calculation
@@ -81,7 +80,6 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   pointcloud_safety_distance_ = getOrDeclareParameter<double>(*this, "pointcloud_safety_distance");
   object_classification_radius_ =
     getOrDeclareParameter<double>(*this, "object_classification_radius");
-  stop_velocity_threshold_ = getOrDeclareParameter<double>(*this, "stop_velocity_threshold");
   ignore_object_classes_ =
     getOrDeclareParameter<std::vector<std::string>>(*this, "ignore_object_classes");
 
@@ -534,13 +532,10 @@ double PerceptionFilterNode::getMinDistanceToPath(
 {
   double min_distance = std::numeric_limits<double>::max();
 
-  // Check if coordinate frame transformation is needed
   for (const auto & path_point : path.points) {
-    geometry_msgs::msg::Point transformed_path_point = path_point.pose.position;
-    const double dx = point.x - transformed_path_point.x;
-    const double dy = point.y - transformed_path_point.y;
+    const double dx = point.x - path_point.pose.position.x;
+    const double dy = point.y - path_point.pose.position.y;
     const double distance = std::sqrt(dx * dx + dy * dy);
-
     min_distance = std::min(min_distance, distance);
   }
 
@@ -553,49 +548,16 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
     return 0.0;
   }
 
-  const auto ego_pose_map = getCurrentEgoPose();
-
-  // Check if coordinate frame transformation is needed
-  geometry_msgs::msg::TransformStamped transform;
-  bool transform_needed = false;
-
-  if (
-    !planning_trajectory_->header.frame_id.empty() &&
-    planning_trajectory_->header.frame_id == "map") {
-    try {
-      transform = tf_buffer_->lookupTransform(
-        "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-      transform_needed = true;
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Failed to get transform from map to base_link: %s. Using original trajectory "
-        "coordinates.",
-        ex.what());
-    }
-  }
-
-  // Transform ego pose to base_link coordinates if needed
-  geometry_msgs::msg::Pose ego_pose = ego_pose_map;
-  if (transform_needed) {
-    tf2::doTransform(ego_pose_map, ego_pose, transform);
-  }
+  const auto ego_pose = getCurrentEgoPose();
 
   // Find the closest point on the trajectory to the ego vehicle
   double min_ego_distance = std::numeric_limits<double>::max();
   size_t ego_closest_index = 0;
 
   for (size_t i = 0; i < planning_trajectory_->points.size(); ++i) {
-    geometry_msgs::msg::Point transformed_path_point =
-      planning_trajectory_->points[i].pose.position;
-
-    if (transform_needed) {
-      tf2::doTransform(
-        planning_trajectory_->points[i].pose.position, transformed_path_point, transform);
-    }
-
-    const double dx = ego_pose.position.x - transformed_path_point.x;
-    const double dy = ego_pose.position.y - transformed_path_point.y;
+    const auto & path_point = planning_trajectory_->points[i].pose.position;
+    const double dx = ego_pose.position.x - path_point.x;
+    const double dy = ego_pose.position.y - path_point.y;
     const double distance = std::sqrt(dx * dx + dy * dy);
 
     if (distance < min_ego_distance) {
@@ -609,16 +571,9 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
   size_t point_closest_index = 0;
 
   for (size_t i = 0; i < planning_trajectory_->points.size(); ++i) {
-    geometry_msgs::msg::Point transformed_path_point =
-      planning_trajectory_->points[i].pose.position;
-
-    if (transform_needed) {
-      tf2::doTransform(
-        planning_trajectory_->points[i].pose.position, transformed_path_point, transform);
-    }
-
-    const double dx = point.x - transformed_path_point.x;
-    const double dy = point.y - transformed_path_point.y;
+    const auto & path_point = planning_trajectory_->points[i].pose.position;
+    const double dx = point.x - path_point.x;
+    const double dy = point.y - path_point.y;
     const double distance = std::sqrt(dx * dx + dy * dy);
 
     if (distance < min_point_distance) {
@@ -627,26 +582,18 @@ double PerceptionFilterNode::getDistanceAlongPath(const geometry_msgs::msg::Poin
     }
   }
 
-  // Calculate cumulative distance along path from ego's closest point to the point's closest
-  // point
+  // Calculate cumulative distance along path
   double cumulative_distance = 0.0;
   const size_t start_index = std::min(ego_closest_index, point_closest_index);
   const size_t end_index = std::max(ego_closest_index, point_closest_index);
   const bool is_point_ahead = (point_closest_index >= ego_closest_index);
 
   for (size_t i = start_index; i < end_index; ++i) {
-    geometry_msgs::msg::Point current_point = planning_trajectory_->points[i].pose.position;
-    geometry_msgs::msg::Point next_point = planning_trajectory_->points[i + 1].pose.position;
-
-    if (transform_needed) {
-      tf2::doTransform(planning_trajectory_->points[i].pose.position, current_point, transform);
-      tf2::doTransform(planning_trajectory_->points[i + 1].pose.position, next_point, transform);
-    }
-
+    const auto & current_point = planning_trajectory_->points[i].pose.position;
+    const auto & next_point = planning_trajectory_->points[i + 1].pose.position;
     const double dx = next_point.x - current_point.x;
     const double dy = next_point.y - current_point.y;
     const double segment_distance = std::sqrt(dx * dx + dy * dy);
-
     cumulative_distance += segment_distance;
   }
 
@@ -906,7 +853,7 @@ PerceptionFilterNode::createPlanningFactors()
     }
 
     // Add control point (nearest point on path)
-    if (!planning_trajectory_->points.empty()) {
+    if (planning_trajectory_ && !planning_trajectory_->points.empty()) {
       autoware_internal_planning_msgs::msg::ControlPoint control_point;
       control_point.pose = planning_trajectory_->points.front().pose;
       control_point.distance = 0.0;
