@@ -15,6 +15,7 @@
 #include "autoware/perception_filter/perception_filter_node.hpp"
 
 #include <autoware_utils_geometry/boost_geometry.hpp>
+#include <pcl/impl/point_types.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -27,7 +28,12 @@
 #include <glog/logging.h>
 
 // Add PCL headers for pointcloud processing
+#include <pcl/PointIndices.h>
+#include <pcl/Vertices.h>
 #include <pcl/common/transforms.h>
+#include <pcl/filters/crop_hull.h>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/filters/filter_indices.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -363,32 +369,41 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     const auto bbox = boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(
       filtering_polygon_.polygon.outer());
     // Rough filter on the X/Y axis
+    pcl::IndicesPtr x_filtered_indices(new pcl::Indices());
     pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
     passthrough_filter.setInputCloud(transformed_cloud);
     passthrough_filter.setFilterFieldName("x");
     passthrough_filter.setFilterLimits(
-      static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().y()));
-    pcl::PointCloud<pcl::PointXYZ>::Ptr x_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-    passthrough_filter.filter(*x_filtered_cloud);
-    passthrough_filter.setInputCloud(x_filtered_cloud);
+      static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
+    passthrough_filter.filter(*x_filtered_indices);
+    pcl::IndicesPtr xy_filtered_indices(new pcl::Indices());
+    passthrough_filter.setInputCloud(transformed_cloud);
     passthrough_filter.setFilterFieldName("y");
+    passthrough_filter.setIndices(x_filtered_indices);
     passthrough_filter.setFilterLimits(
       static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
-    pcl::PointCloud<pcl::PointXYZ>::Ptr xy_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-    passthrough_filter.filter(*xy_filtered_cloud);
+    passthrough_filter.filter(*xy_filtered_indices);
 
     // Keep points inside the polygon
+    std::vector<pcl::Vertices> polygon_vertices;
+    polygon_vertices.emplace_back();
+    auto polygon_i = 0;
     for (const auto & p : filtering_polygon_.polygon.outer()) {
+      polygon_vertices.back().vertices.push_back(polygon_i++);
       polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
     }
     pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-    pcl::ExtractPolygonalPrismData<pcl::PointXYZ> prism;
-    prism.setInputCloud(xy_filtered_cloud);
-    prism.setInputPlanarHull(polygon_points);
-    prism.segment(*inliers);
+    pcl::CropHull<pcl::PointXYZ> crop_hull;
+    crop_hull.setInputCloud(transformed_cloud);
+    crop_hull.setIndices(xy_filtered_indices);
+    crop_hull.setHullCloud(polygon_points);
+    crop_hull.setHullIndices(polygon_vertices);
+    crop_hull.setDim(2);
+    crop_hull.filter(inliers->indices);
     // Filter points based on distance from planning trajectory
-    for (const auto & i : inliers->indices) {
-      const auto point = transformed_cloud->points[i];
+    pcl::PointIndices::Ptr indices_to_remove(new pcl::PointIndices());
+    for (const auto i : inliers->indices) {
+      const auto & point = transformed_cloud->points[i];
       geometry_msgs::msg::Point ros_point;
       ros_point.x = point.x;
       ros_point.y = point.y;
@@ -397,8 +412,8 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
       const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
       const bool is_near_path = (distance_to_path <= max_filter_distance_);
       const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
-      if (!is_near_path || !is_outside_safety_distance) {
-        filtered_cloud->points.push_back(point);
+      if (is_near_path && is_outside_safety_distance) {
+        indices_to_remove->indices.push_back(i);
       } else {
         // Store information about filtered points for planning factors
         FilteredPointInfo filtered_info;
@@ -407,11 +422,18 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
         filtered_points_info_.push_back(filtered_info);
       }
     }
-    std::printf(
-      "%lu -> %lu -> %lu -> %lu -> %lu\n", input_cloud->size(), transformed_cloud->size(),
-      x_filtered_cloud->size(), xy_filtered_cloud->size(), filtered_cloud->size());
-  }
+    pcl::PointCloud<pcl::PointXYZ>::Ptr final_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::ExtractIndices<pcl::PointXYZ> extract_indices;
+    extract_indices.setInputCloud(input_cloud);
+    extract_indices.setIndices(indices_to_remove);
+    extract_indices.setNegative(true);
+    extract_indices.filter(*filtered_cloud);
 
+    // std::printf(
+    //   "%lu -> %lu -> %lu -> %lu -> %lu -> %lu\n", input_cloud->size(), transformed_cloud->size(),
+    //   x_filtered_indices->size(), xy_filtered_indices->size(), indices_to_remove->indices.size(),
+    //   filtered_cloud->size());
+  }
   // Update cloud properties
   filtered_cloud->width = filtered_cloud->points.size();
   filtered_cloud->height = 1;
