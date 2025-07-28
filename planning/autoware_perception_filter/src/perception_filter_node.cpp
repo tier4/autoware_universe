@@ -336,9 +336,17 @@ void PerceptionFilterNode::onPlanningTrajectory(
 sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud)
 {
-  sensor_msgs::msg::PointCloud2 filtered_pointcloud;
-  filtered_pointcloud.header = input_pointcloud.header;
-  if (input_pointcloud.data.empty()) {
+  if (
+    input_pointcloud.data.empty() || !filtering_polygon_created_ || !filtering_polygon_.is_active) {
+    std::string skip_reason = "Pointcloud filtering is skipped: ";
+    if (input_pointcloud.data.empty()) {
+      skip_reason += "empty pointcloud data";
+    } else if (!filtering_polygon_created_) {
+      skip_reason += "filtering polygon not created";
+    } else if (!filtering_polygon_.is_active) {
+      skip_reason += "filtering polygon not active";
+    }
+    RCLCPP_DEBUG(get_logger(), "%s", skip_reason.c_str());
     return input_pointcloud;
   }
 
@@ -367,111 +375,104 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   const auto eigen_transform = tf2::transformToEigen(transform.transform).cast<float>();
   pcl::transformPointCloud(*input_cloud, *transformed_cloud, eigen_transform);
 
-  pcl::PointCloud<pcl::PointXYZ>::Ptr final_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  const auto bbox = boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(
+    filtering_polygon_.polygon.outer());
 
-  if (filtering_polygon_created_ && filtering_polygon_.is_active) {
-    const auto bbox = boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(
-      filtering_polygon_.polygon.outer());
+  // Rough filter on the X/Y axis using indices-based approach
+  pcl::IndicesPtr x_filtered_indices(new pcl::Indices());
+  pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
+  passthrough_filter.setInputCloud(transformed_cloud);
+  passthrough_filter.setFilterFieldName("x");
+  passthrough_filter.setFilterLimits(
+    static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
+  passthrough_filter.filter(*x_filtered_indices);
 
-    // Rough filter on the X/Y axis using indices-based approach
-    pcl::IndicesPtr x_filtered_indices(new pcl::Indices());
-    pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
-    passthrough_filter.setInputCloud(transformed_cloud);
-    passthrough_filter.setFilterFieldName("x");
-    passthrough_filter.setFilterLimits(
-      static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
-    passthrough_filter.filter(*x_filtered_indices);
+  pcl::IndicesPtr xy_filtered_indices(new pcl::Indices());
+  passthrough_filter.setInputCloud(transformed_cloud);
+  passthrough_filter.setFilterFieldName("y");
+  passthrough_filter.setIndices(x_filtered_indices);
+  passthrough_filter.setFilterLimits(
+    static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
+  passthrough_filter.filter(*xy_filtered_indices);
 
-    pcl::IndicesPtr xy_filtered_indices(new pcl::Indices());
-    passthrough_filter.setInputCloud(transformed_cloud);
-    passthrough_filter.setFilterFieldName("y");
-    passthrough_filter.setIndices(x_filtered_indices);
-    passthrough_filter.setFilterLimits(
-      static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
-    passthrough_filter.filter(*xy_filtered_indices);
-
-    // Prepare polygon hull for CropHull filter
-    std::vector<pcl::Vertices> polygon_vertices;
-    polygon_vertices.emplace_back();
-    auto polygon_i = 0;
-    for (const auto & p : filtering_polygon_.polygon.outer()) {
-      polygon_vertices.back().vertices.push_back(polygon_i++);
-      polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
-    }
-
-    // Use CropHull for polygon-based filtering
-    pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-    pcl::CropHull<pcl::PointXYZ> crop_hull;
-    crop_hull.setInputCloud(transformed_cloud);
-    crop_hull.setIndices(xy_filtered_indices);
-    crop_hull.setHullCloud(polygon_points);
-    crop_hull.setHullIndices(polygon_vertices);
-    crop_hull.setDim(2);  // 2D polygon filtering
-    crop_hull.filter(inliers->indices);
-
-    // Filter points based on distance from planning trajectory
-    pcl::PointIndices::Ptr indices_to_remove(new pcl::PointIndices());
-    for (const auto i : inliers->indices) {
-      const auto & point = transformed_cloud->points[i];
-      geometry_msgs::msg::Point ros_point;
-      ros_point.x = point.x;
-      ros_point.y = point.y;
-      ros_point.z = point.z;
-
-      // For points inside the polygon, check distance to path and safety distance
-      const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
-      const bool is_near_path = (distance_to_path <= max_filter_distance_);
-      const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
-
-      // Remove points that are:
-      // 1. Near the path (within max_filter_distance), AND
-      // 2. Outside safety distance (beyond pointcloud_safety_distance)
-      if (is_near_path && is_outside_safety_distance) {
-        indices_to_remove->indices.push_back(i);
-
-        // Store information about filtered points for planning factors
-        FilteredPointInfo filtered_info;
-        filtered_info.point = ros_point;
-        filtered_info.distance_to_path = distance_to_path;
-        filtered_points_info_.push_back(filtered_info);
-      }
-    }
-
-    // Extract the filtered cloud by removing the indices to be filtered
-    pcl::ExtractIndices<pcl::PointXYZ> extract_indices;
-    extract_indices.setInputCloud(transformed_cloud);  // 修正: transformed_cloudを使用
-    extract_indices.setIndices(indices_to_remove);
-    extract_indices.setNegative(true);  // Keep points NOT in the indices_to_remove
-    extract_indices.filter(*filtered_cloud);
-
-    // Transform filtered points back to original coordinate frame (base_link)
-    if (!filtered_cloud->points.empty()) {
-      // Inverse transform from map to base_link
-      const auto inverse_transform = eigen_transform.inverse();
-      pcl::transformPointCloud(*filtered_cloud, *final_filtered_cloud, inverse_transform);
-    } else {
-      final_filtered_cloud->clear();
-    }
-
-    RCLCPP_WARN(
-      get_logger(),
-      "Pointcloud filtering stages: input=%lu -> transformed=%lu -> x_filtered=%lu -> "
-      "xy_filtered=%lu -> polygon_inside=%lu -> removed=%lu -> final=%lu",
-      input_cloud->size(), transformed_cloud->size(), x_filtered_indices->size(),
-      xy_filtered_indices->size(), inliers->indices.size(), indices_to_remove->indices.size(),
-      final_filtered_cloud->size());
-  } else {
-    // If filtering is not active, transform back to original frame
-    const auto inverse_transform = eigen_transform.inverse();
-    pcl::transformPointCloud(*transformed_cloud, *final_filtered_cloud, inverse_transform);
+  // Prepare polygon hull for CropHull filter
+  std::vector<pcl::Vertices> polygon_vertices;
+  polygon_vertices.emplace_back();
+  auto polygon_i = 0;
+  for (const auto & p : filtering_polygon_.polygon.outer()) {
+    polygon_vertices.back().vertices.push_back(polygon_i++);
+    polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
   }
 
-  // Update cloud properties
+  // Use CropHull for polygon-based filtering
+  pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
+  pcl::CropHull<pcl::PointXYZ> crop_hull;
+  crop_hull.setInputCloud(transformed_cloud);
+  crop_hull.setIndices(xy_filtered_indices);
+  crop_hull.setHullCloud(polygon_points);
+  crop_hull.setHullIndices(polygon_vertices);
+  crop_hull.setDim(2);  // 2D polygon filtering
+  crop_hull.filter(inliers->indices);
+
+  // Filter points based on distance from planning trajectory
+  pcl::PointIndices::Ptr indices_to_remove(new pcl::PointIndices());
+  for (const auto i : inliers->indices) {
+    const auto & point = transformed_cloud->points[i];
+    geometry_msgs::msg::Point ros_point;
+    ros_point.x = point.x;
+    ros_point.y = point.y;
+    ros_point.z = point.z;
+
+    // For points inside the polygon, check distance to path and safety distance
+    const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
+    const bool is_near_path = (distance_to_path <= max_filter_distance_);
+    const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
+
+    // Remove points that are:
+    // 1. Near the path (within max_filter_distance), AND
+    // 2. Outside safety distance (beyond pointcloud_safety_distance)
+    if (is_near_path && is_outside_safety_distance) {
+      indices_to_remove->indices.push_back(i);
+
+      // Store information about filtered points for planning factors
+      FilteredPointInfo filtered_info;
+      filtered_info.point = ros_point;
+      filtered_info.distance_to_path = distance_to_path;
+      filtered_points_info_.push_back(filtered_info);
+    }
+  }
+
+  // Extract the filtered cloud by removing the indices to be filtered
+  pcl::ExtractIndices<pcl::PointXYZ> extract_indices;
+  extract_indices.setInputCloud(transformed_cloud);
+  extract_indices.setIndices(indices_to_remove);
+  extract_indices.setNegative(true);  // Keep points NOT in the indices_to_remove
+  extract_indices.filter(*filtered_cloud);
+
+  // Transform filtered points back to original coordinate frame (base_link)
+  pcl::PointCloud<pcl::PointXYZ>::Ptr final_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  if (!filtered_cloud->points.empty()) {
+    const auto inverse_transform = eigen_transform.inverse();
+    pcl::transformPointCloud(*filtered_cloud, *final_filtered_cloud, inverse_transform);
+  } else {
+    final_filtered_cloud->clear();
+  }
+
+  RCLCPP_DEBUG(
+    get_logger(),
+    "Pointcloud filtering stages: input=%lu -> transformed=%lu -> x_filtered=%lu -> "
+    "xy_filtered=%lu -> polygon_inside=%lu -> removed=%lu -> final=%lu",
+    input_cloud->size(), transformed_cloud->size(), x_filtered_indices->size(),
+    xy_filtered_indices->size(), inliers->indices.size(), indices_to_remove->indices.size(),
+    final_filtered_cloud->size());
+
+  // Update cloud properties for filtered data
   final_filtered_cloud->width = final_filtered_cloud->points.size();
   final_filtered_cloud->height = 1;
-  final_filtered_cloud->is_dense = true;
+  final_filtered_cloud->is_dense = input_cloud->is_dense;
 
   // Convert back to ROS PointCloud2
+  sensor_msgs::msg::PointCloud2 filtered_pointcloud;
   pcl::toROSMsg(*final_filtered_cloud, filtered_pointcloud);
   filtered_pointcloud.header = input_pointcloud.header;
 
