@@ -101,7 +101,6 @@ struct TriggerThreshold
   };
   double brake_delay_s{1.0};
   double dist_error_m{0.25};
-  double th_time_to_departure_s{2.0};
   MinMax th_vel_mps{autoware_utils::kmph2mps(5.0), autoware_utils::kmph2mps(30.0)};
   MinMax th_acc_mps2{-1.0, -2.5};
   MinMax th_jerk_mps3{-1.0, -1.5};

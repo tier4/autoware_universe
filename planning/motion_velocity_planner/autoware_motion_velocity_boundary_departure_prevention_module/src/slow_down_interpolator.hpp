@@ -35,11 +35,7 @@ public:
     double expected_decel;
   };
 
-  explicit SlowDownInterpolator(const TriggerThreshold & th_trigger)
-  : th_trigger_(th_trigger),
-    time_jerk_limited_s_(th_trigger_.th_acc_mps2.max / th_trigger_.th_jerk_mps3.max)
-  {
-  }
+  explicit SlowDownInterpolator(const TriggerThreshold & th_trigger) : th_trigger_(th_trigger) {}
 
   /**
    * @brief Calculates a deceleration plan for the ego vehicle toward the boundary.
@@ -106,53 +102,7 @@ private:
     const double lat_dist_to_bound_m, const double expected_decel_mps2,
     const SideKey side_key) const;
 
-  /**
-   * @brief Calculate the minimum velocity where emergency jerk-limited stopping
-   *        takes as long as a comfortable constant deceleration stop.
-   *
-   * This function finds the velocity at which the total stopping time using
-   * emergency deceleration with jerk ramp-in (i.e., time = a_e / j_e) matches
-   * the time required to stop using comfortable constant deceleration
-   * (i.e., time = v / a_c). This represents the velocity at which switching to
-   * emergency braking will preserve the same time-to-stop experience as a
-   * comfortable stop.
-   *
-   * @return Expected minimum velocity [m/s] at which the ego vehicle can begin
-   *         emergency jerk-limited braking and still match the time duration
-   *         of a comfortable deceleration profile.
-   */
-  [[nodiscard]] tl::expected<double, std::string> calc_expected_min_velocity() const;
-
-  /**
-   * @brief Estimate the total stopping distance using jerk-limited braking with delay and error
-   * margin.
-   *
-   * This function computes the expected stopping distance by accounting for:
-   * - The forward distance traveled during the brake delay period (at current velocity or a minimum
-   * threshold).
-   * - The theoretical stopping distance under a jerk-limited deceleration profile (s = 1/3 * a *
-   * t²).
-   * - An additional safety margin to account for braking error or uncertainty.
-   *
-   * The jerk-limited stop is modeled as a symmetric profile that ramps acceleration from 0 to max
-   * (a_e), then back to 0, with time t_e = a_e / j_e. No constant acceleration plateau is assumed.
-   *
-   * @param curr_vel The current ego vehicle velocity [m/s] at the time of evaluation.
-   * @return Total expected stopping distance [m]. Returns tl::unexpected if any component is
-   * invalid (negative).
-   */
-  [[nodiscard]] tl::expected<double, std::string> calc_expected_stop_distance(
-    const double curr_vel) const;
-
-  [[nodiscard]] double calc_max_accel_jerk_time() const;
-
-  static double calc_time_to_departure(const double vel_mps, const double lon_dist_to_bound_m);
-
-  [[nodiscard]] bool is_exceeded_ttd_th(
-    const double vel_mps, const double lon_dist_to_bound_m) const;
-
   TriggerThreshold th_trigger_;
-  double time_jerk_limited_s_{std::numeric_limits<double>::max()};
 };
 
 }  // namespace autoware::motion_velocity_planner::experimental::utils
