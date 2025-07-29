@@ -33,12 +33,23 @@
       </include>
     </group>
 
+    <!-- trajectory generator -->
+    <group>
+      <push-ros-namespace namespace="trajectory_generator"/>
+      <include file="$(find-pkg-share autoware_diffusion_planner)/launch/diffusion_planner.launch.xml">
+      </include>
+      <include file="$(find-pkg-share autoware_trajectory_optimizer)/launch/trajectory_optimizer.launch.xml">
+        <arg name="input_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
+        <arg name="output_traj" value="/planning/scenario_planning/trajectory"/>
+      </include>
+    </group>
+
     <!-- planning validator -->
     <group>
       <include file="$(find-pkg-share autoware_planning_validator)/launch/planning_validator.launch.xml">
         <arg name="container_type" value="component_container_mt"/>
         <arg name="input_trajectory" value="/planning/scenario_planning/velocity_smoother/trajectory"/>
-        <arg name="output_trajectory" value="/planning/scenario_planning/trajectory"/>
+        <arg name="output_trajectory" value="/planning/scenario_planning/trajectory/unused"/>
         <arg name="planning_validator_param_path" value="$(var planning_validator_param_path)"/>
         <arg name="planning_validator_latency_checker_param_path" value="$(var planning_validator_latency_checker_param_path)"/>
         <arg name="planning_validator_trajectory_checker_param_path" value="$(var planning_validator_trajectory_checker_param_path)"/>
