@@ -343,7 +343,7 @@ bool Tracker::isConfident(
 {
   // check the number of measurements. if the measurement is too small, definitely not confident
   const int count = getTotalMeasurementCount();
-  if (count < 2) {
+  if (count < 4) {
     return false;
   }
 
