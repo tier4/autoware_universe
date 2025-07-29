@@ -255,6 +255,15 @@ private:
    */
   uint8_t stringToLabel(const std::string & label_string) const;
 
+  /**
+   * @brief Classify pointcloud points for planning factors
+   * @param input_pointcloud Input pointcloud to classify
+   * @param rtc_is_registered Whether RTC interface is registered
+   * @return Vector of filtered point information for planning factors
+   */
+  std::vector<FilteredPointInfo> classifyPointCloudForPlanningFactors(
+    const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered);
+
   // ========== Utility Functions ==========
 
   /**
@@ -269,7 +278,7 @@ private:
    * @brief Create planning factors for filtered objects and points
    * @return Planning factor array
    */
-  autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(bool is_currently_stopped);
+  autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors();
 
   // ========== Debug Visualization Functions ==========
 
@@ -342,7 +351,7 @@ private:
 
   // Classification and filtering state
   ObjectClassification latest_classification_;
-  std::vector<FilteredPointInfo> filtered_points_info_;
+  std::vector<FilteredPointInfo> would_be_filtered_points_;
 
   // RTC state management
   bool previous_rtc_activated_objects_{};  ///< Previous RTC activation state for object processing

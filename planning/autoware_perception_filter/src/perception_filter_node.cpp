@@ -309,6 +309,14 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     updateFilteringPolygonStatus();
   }
 
+  // If rtc_is_registered is true, classify the pointcloud for planning factors
+  if (rtc_is_registered) {
+    would_be_filtered_points_ = classifyPointCloudForPlanningFactors(*msg, rtc_is_registered);
+  } else {
+    would_be_filtered_points_.clear();
+  }
+
+  // Execute existing filtering logic (no changes)
   auto filtered_pointcloud = filterPointCloud(*msg);
   filtered_pointcloud_pub_->publish(filtered_pointcloud);
   published_time_publisher_->publish_if_subscribed(
@@ -345,8 +353,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
       skip_reason += "filtering polygon not active";
     }
     RCLCPP_DEBUG(get_logger(), "%s", skip_reason.c_str());
-    // Clear filtered points info when filtering is not active
-    filtered_points_info_.clear();
     return input_pointcloud;
   }
 
@@ -357,7 +363,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
 
   pcl::fromROSMsg(input_pointcloud, *input_cloud);
-  filtered_points_info_.clear();
 
   geometry_msgs::msg::TransformStamped transform;
   try {
@@ -433,12 +438,6 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     // 2. Outside safety distance (beyond pointcloud_safety_distance)
     if (is_near_path && is_outside_safety_distance) {
       indices_to_remove->indices.push_back(i);
-
-      // Store information about filtered points for planning factors
-      FilteredPointInfo filtered_info;
-      filtered_info.point = ros_point;
-      filtered_info.distance_to_path = distance_to_path;
-      filtered_points_info_.push_back(filtered_info);
     }
   }
 
@@ -477,8 +476,8 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   filtered_pointcloud.header = input_pointcloud.header;
 
   RCLCPP_DEBUG(
-    get_logger(), "Pointcloud filtering: input points=%zu, output points=%zu, filtered points=%zu",
-    input_cloud->points.size(), final_filtered_cloud->points.size(), filtered_points_info_.size());
+    get_logger(), "Pointcloud filtering: input points=%zu, output points=%zu",
+    input_cloud->points.size(), final_filtered_cloud->points.size());
 
   return filtered_pointcloud;
 }
@@ -815,7 +814,7 @@ visualization_msgs::msg::Marker PerceptionFilterNode::createObjectMarker(
 }
 
 autoware_internal_planning_msgs::msg::PlanningFactorArray
-PerceptionFilterNode::createPlanningFactors(bool /*is_currently_stopped*/)
+PerceptionFilterNode::createPlanningFactors()
 {
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
   planning_factors.header.stamp = this->now();
@@ -829,17 +828,16 @@ PerceptionFilterNode::createPlanningFactors(bool /*is_currently_stopped*/)
     objects_to_be_filtered.push_back(object.object_id);
   }
 
-
   // Create PlanningFactor when there are objects that would be filtered when RTC is approved
   // OR when there are points that would be filtered when RTC is approved
-  if (!objects_to_be_filtered.empty() || (filtering_active_ && !filtered_points_info_.empty())) {
+  if (!objects_to_be_filtered.empty() || !would_be_filtered_points_.empty()) {
     autoware_internal_planning_msgs::msg::PlanningFactor factor;
     factor.module = "supervised_perception_filter";
     factor.behavior = autoware_internal_planning_msgs::msg::PlanningFactor::STOP;
 
     // Set detail message based on what is being filtered
     const bool has_objects = !objects_to_be_filtered.empty();
-    const bool has_points = filtering_active_ && !filtered_points_info_.empty();
+    const bool has_points = !would_be_filtered_points_.empty();
 
     if (has_objects && has_points) {
       factor.detail = "Objects and pointcloud that would be filtered when RTC is approved";
@@ -882,15 +880,15 @@ PerceptionFilterNode::createPlanningFactors(bool /*is_currently_stopped*/)
       factor.safety_factors.factors.push_back(safety_factor);
     }
 
-    // Add pointcloud safety factors (include filtered points when filtering is active)
-    if (filtering_active_ && !filtered_points_info_.empty()) {
+    // Add pointcloud safety factors (only points that would be filtered when RTC is approved)
+    if (!would_be_filtered_points_.empty()) {
       autoware_internal_planning_msgs::msg::SafetyFactor pointcloud_safety_factor;
       pointcloud_safety_factor.type =
         autoware_internal_planning_msgs::msg::SafetyFactor::POINTCLOUD;
       pointcloud_safety_factor.is_safe = false;
 
-      // Add filtered points positions
-      for (const auto & filtered_info : filtered_points_info_) {
+      // Add would-be-filtered points positions
+      for (const auto & filtered_info : would_be_filtered_points_) {
         pointcloud_safety_factor.points.push_back(filtered_info.point);
       }
 
@@ -900,8 +898,8 @@ PerceptionFilterNode::createPlanningFactors(bool /*is_currently_stopped*/)
     planning_factors.factors.push_back(factor);
 
     RCLCPP_DEBUG(
-      get_logger(), "Planning factors published with %zu objects and %zu filtered points",
-      objects_to_be_filtered.size(), filtered_points_info_.size());
+      get_logger(), "Planning factors published with %zu objects and %zu would-be-filtered points",
+      objects_to_be_filtered.size(), would_be_filtered_points_.size());
   }
 
   return planning_factors;
@@ -1250,6 +1248,111 @@ autoware::universe_utils::Polygon2d PerceptionFilterNode::createPathPolygon(
   }
 
   return polygon;
+}
+
+std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanningFactors(
+  const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered)
+{
+  std::vector<FilteredPointInfo> would_be_filtered_points;
+
+  if (!rtc_is_registered || input_pointcloud.data.empty()) {
+    return would_be_filtered_points;
+  }
+  const double filtering_distance = 50.0;  // Fixed filtering distance in meters
+  const autoware::universe_utils::Polygon2d filtering_polygon =
+    createPathPolygon(*planning_trajectory_, 0.0, filtering_distance, max_filter_distance_);
+
+  // Convert ROS PointCloud2 to PCL format
+  pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr polygon_points(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+  pcl::fromROSMsg(input_pointcloud, *input_cloud);
+
+  geometry_msgs::msg::TransformStamped transform;
+  try {
+    transform = tf_buffer_->lookupTransform(
+      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Failed to get transform from base_link to map: %s. Cannot classify pointcloud.", ex.what());
+    return would_be_filtered_points;
+  }
+
+  // transform the pointcloud to the map frame
+  const auto eigen_transform = tf2::transformToEigen(transform.transform).cast<float>();
+  pcl::transformPointCloud(*input_cloud, *transformed_cloud, eigen_transform);
+
+  const auto bbox =
+    boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(filtering_polygon.outer());
+
+  // Rough filter on the X/Y axis using indices-based approach
+  pcl::IndicesPtr x_filtered_indices(new pcl::Indices());
+  pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
+  passthrough_filter.setInputCloud(transformed_cloud);
+  passthrough_filter.setFilterFieldName("x");
+  passthrough_filter.setFilterLimits(
+    static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
+  passthrough_filter.filter(*x_filtered_indices);
+
+  pcl::IndicesPtr xy_filtered_indices(new pcl::Indices());
+  passthrough_filter.setInputCloud(transformed_cloud);
+  passthrough_filter.setFilterFieldName("y");
+  passthrough_filter.setIndices(x_filtered_indices);
+  passthrough_filter.setFilterLimits(
+    static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
+  passthrough_filter.filter(*xy_filtered_indices);
+
+  // Prepare polygon hull for CropHull filter
+  std::vector<pcl::Vertices> polygon_vertices;
+  polygon_vertices.emplace_back();
+  auto polygon_i = 0;
+  for (const auto & p : filtering_polygon.outer()) {
+    polygon_vertices.back().vertices.push_back(polygon_i++);
+    polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
+  }
+
+  // Use CropHull for polygon-based filtering
+  pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
+  pcl::CropHull<pcl::PointXYZ> crop_hull;
+  crop_hull.setInputCloud(transformed_cloud);
+  crop_hull.setIndices(xy_filtered_indices);
+  crop_hull.setHullCloud(polygon_points);
+  crop_hull.setHullIndices(polygon_vertices);
+  crop_hull.setDim(2);  // 2D polygon filtering
+  crop_hull.filter(inliers->indices);
+
+  // For points inside the polygon, check distance to path and safety distance
+  for (const auto i : inliers->indices) {
+    const auto & point = transformed_cloud->points[i];
+    geometry_msgs::msg::Point ros_point;
+    ros_point.x = point.x;
+    ros_point.y = point.y;
+    ros_point.z = point.z;
+
+    // Check if the point is within the filtering polygon
+    autoware::universe_utils::Point2d point_2d(ros_point.x, ros_point.y);
+    const bool is_inside_polygon = boost::geometry::within(point_2d, filtering_polygon);
+
+    // Check if the point is near the path (within max_filter_distance)
+    const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
+    const bool is_near_path = (distance_to_path <= max_filter_distance_);
+
+    // Check if the point is outside the safety distance
+    const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
+
+    // If the point is inside the polygon AND near the path AND outside the safety distance,
+    // it would be filtered by the perception filter.
+    if (is_inside_polygon && is_near_path && is_outside_safety_distance) {
+      FilteredPointInfo filtered_info;
+      filtered_info.point = ros_point;
+      filtered_info.distance_to_path = distance_to_path;
+      would_be_filtered_points.push_back(filtered_info);
+    }
+  }
+
+  return would_be_filtered_points;
 }
 
 void PerceptionFilterNode::updateFilteringPolygonStatus()
