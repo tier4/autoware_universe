@@ -14,6 +14,8 @@
 
 #include "autoware/pointcloud_preprocessor/vector_map_filter/vector_map_inside_area_filter_node.hpp"
 
+#include <Eigen/src/Core/util/Constants.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -84,12 +86,7 @@ VectorMapInsideAreaFilterComponent::VectorMapInsideAreaFilterComponent(
 
   // Set tf
   {
-    rclcpp::Clock::SharedPtr ros_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
-    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(ros_clock);
-    auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
-      get_node_base_interface(), get_node_timers_interface());
-    tf_buffer_->setCreateTimerInterface(timer_interface);
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    managed_tf_buffer_ = std::make_shared<autoware_utils::ManagedTransformBuffer>(this, false);
   }
 }
 
@@ -122,13 +119,12 @@ void VectorMapInsideAreaFilterComponent::filter(
     const std::string base_link_frame = "base_link";
     z_threshold_in_base_link = z_threshold_;
     if (input->header.frame_id != base_link_frame) {
-      try {
-        // get z difference from baselink to input frame
-        const auto transform =
-          tf_buffer_->lookupTransform(input->header.frame_id, base_link_frame, input->header.stamp);
-        *z_threshold_in_base_link += transform.transform.translation.z;
-      } catch (const tf2::TransformException & e) {
-        RCLCPP_WARN(get_logger(), "Failed to transform z_threshold to base_link frame");
+      Eigen::Matrix4f eigen_transform;
+      auto success =
+        managed_tf_buffer_->get_transform(input->header.frame_id, base_link_frame, eigen_transform);
+      if (success) {
+        *z_threshold_in_base_link += eigen_transform(2, 3);  // z translation
+      } else {
         z_threshold_in_base_link = std::nullopt;
       }
     }

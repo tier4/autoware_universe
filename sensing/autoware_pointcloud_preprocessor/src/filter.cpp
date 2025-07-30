@@ -72,7 +72,6 @@ autoware::pointcloud_preprocessor::Filter::Filter(
   {
     tf_input_frame_ = static_cast<std::string>(declare_parameter("input_frame", ""));
     tf_output_frame_ = static_cast<std::string>(declare_parameter("output_frame", ""));
-    has_static_tf_only_ = static_cast<bool>(declare_parameter("has_static_tf_only", false));
     max_queue_size_ = static_cast<std::size_t>(declare_parameter("max_queue_size", 5));
 
     // ---[ Optional parameters
@@ -115,30 +114,20 @@ autoware::pointcloud_preprocessor::Filter::Filter(
   subscribe(filter_name);
 
   // Set tf_listener, tf_buffer.
-  setupTF();
+  setup_tf();
 
   // Set parameter service callback
   set_param_res_filter_ = this->add_on_set_parameters_callback(
-    std::bind(&Filter::filterParamCallback, this, std::placeholders::_1));
+    std::bind(&Filter::filter_param_callback, this, std::placeholders::_1));
 
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
   RCLCPP_DEBUG(this->get_logger(), "[Filter Constructor] successfully created.");
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void autoware::pointcloud_preprocessor::Filter::setupTF()
+void autoware::pointcloud_preprocessor::Filter::setup_tf()
 {
-  // Always consider static TF if in & out frames are same
-  if (tf_input_frame_ == tf_output_frame_) {
-    if (!has_static_tf_only_) {
-      RCLCPP_INFO(
-        this->get_logger(),
-        "Input and output frames are the same. Overriding has_static_tf_only to true.");
-    }
-    has_static_tf_only_ = true;
-  }
-  managed_tf_buffer_ =
-    std::make_unique<autoware_utils::ManagedTransformBuffer>(this, has_static_tf_only_);
+  managed_tf_buffer_ = std::make_unique<autoware_utils::ManagedTransformBuffer>(this, false);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -206,7 +195,7 @@ void autoware::pointcloud_preprocessor::Filter::unsubscribe()
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TODO(sykwer): Temporary Implementation: Delete this function definition when all the filter nodes
 // conform to new API.
-void autoware::pointcloud_preprocessor::Filter::computePublish(
+void autoware::pointcloud_preprocessor::Filter::compute_publish(
   const PointCloud2ConstPtr & input, const IndicesPtr & indices)
 {
   // The code when `is_agnocast_publish_node_` is `true` is identical to the code written below the
@@ -254,7 +243,7 @@ void autoware::pointcloud_preprocessor::Filter::computePublish(
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 rcl_interfaces::msg::SetParametersResult
-autoware::pointcloud_preprocessor::Filter::filterParamCallback(
+autoware::pointcloud_preprocessor::Filter::filter_param_callback(
   const std::vector<rclcpp::Parameter> & p)
 {
   std::scoped_lock lock(mutex_);
@@ -280,12 +269,12 @@ void autoware::pointcloud_preprocessor::Filter::input_indices_callback(
   const PointCloud2ConstPtr cloud, const PointIndicesConstPtr indices)
 {
   // If cloud is given, check if it's valid
-  if (!isValid(cloud)) {
+  if (!is_valid(cloud)) {
     RCLCPP_ERROR(this->get_logger(), "[input_indices_callback] Invalid input!");
     return;
   }
   // If indices are given, check if they are valid
-  if (indices && !isValid(indices)) {
+  if (indices && !is_valid(indices)) {
     RCLCPP_ERROR(this->get_logger(), "[input_indices_callback] Invalid indices!");
     return;
   }
@@ -334,7 +323,7 @@ void autoware::pointcloud_preprocessor::Filter::input_indices_callback(
     vindices.reset(new std::vector<int>(indices->indices));
   }
 
-  computePublish(cloud_tf, vindices);
+  compute_publish(cloud_tf, vindices);
 }
 
 // Returns false in error cases
@@ -350,11 +339,12 @@ bool autoware::pointcloud_preprocessor::Filter::calculate_transform_matrix(
     this->get_logger(), "[get_transform_matrix] Transforming input dataset from %s to %s.",
     from.header.frame_id.c_str(), target_frame.c_str());
 
-  if (!managed_tf_buffer_->get_transform(
-        target_frame, from.header.frame_id, transform_info.eigen_transform)) {
+  Eigen::Matrix4f eigen_transform;
+  if (!managed_tf_buffer_->get_transform(target_frame, from.header.frame_id, eigen_transform)) {
     return false;
   }
 
+  transform_info.eigen_transform = eigen_transform;
   transform_info.need_transform = true;
   return true;
 }
@@ -433,12 +423,12 @@ void autoware::pointcloud_preprocessor::Filter::faster_input_indices_callback(
     return;
   }
 
-  if (!isValid(cloud)) {
+  if (!is_valid(cloud)) {
     RCLCPP_ERROR(this->get_logger(), "[input_indices_callback] Invalid input!");
     return;
   }
 
-  if (indices && !isValid(indices)) {
+  if (indices && !is_valid(indices)) {
     RCLCPP_ERROR(this->get_logger(), "[input_indices_callback] Invalid indices!");
     return;
   }

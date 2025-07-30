@@ -59,8 +59,6 @@ PointCloudDataSynchronizerComponent::PointCloudDataSynchronizerComponent(
   std::string synchronized_pointcloud_postfix;
   {
     output_frame_ = declare_parameter<std::string>("output_frame");
-    has_static_tf_only_ = declare_parameter<bool>(
-      "has_static_tf_only", false);  // TODO(amadeuszsz): remove default value
     keep_input_frame_in_synchronized_pointcloud_ =
       declare_parameter<bool>("keep_input_frame_in_synchronized_pointcloud");
     if (output_frame_.empty() && !keep_input_frame_in_synchronized_pointcloud_) {
@@ -112,8 +110,7 @@ PointCloudDataSynchronizerComponent::PointCloudDataSynchronizerComponent(
 
   // tf2 listener
   {
-    managed_tf_buffer_ =
-      std::make_unique<autoware_utils::ManagedTransformBuffer>(this, has_static_tf_only_);
+    managed_tf_buffer_ = std::make_unique<autoware_utils::ManagedTransformBuffer>(this, false);
   }
 
   // Subscribers
@@ -198,7 +195,8 @@ std::string PointCloudDataSynchronizerComponent::replaceSyncTopicNamePostfix(
     // not found '/': this is not a namespaced topic
     RCLCPP_WARN_STREAM(
       get_logger(),
-      "The topic name is not namespaced. The postfix will be added to the end of the topic name.");
+      "The topic name is not namespaced. The postfix will be added to the end of the topic "
+      "name.");
     return original_topic_name + postfix;
   } else {
     // replace the last element with the new postfix

@@ -118,8 +118,7 @@ RANSACGroundFilterComponent::RANSACGroundFilterComponent(const rclcpp::NodeOptio
 
   pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS);
 
-  managed_tf_buffer_ =
-    std::make_unique<autoware_utils::ManagedTransformBuffer>(this, has_static_tf_only_);
+  managed_tf_buffer_ = std::make_unique<autoware_utils::ManagedTransformBuffer>(this, true);
 
   bool use_time_keeper = declare_parameter<bool>("publish_processing_time_detail");
   if (use_time_keeper) {

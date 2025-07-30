@@ -82,8 +82,6 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 namespace autoware::pointcloud_preprocessor
 {
@@ -139,9 +137,6 @@ private:
   /** \brief Output TF frame the concatenated points should be transformed to. */
   std::string output_frame_;
   bool keep_input_frame_in_synchronized_pointcloud_;
-
-  /** \brief The flag to indicate if only static TF are used. */
-  bool has_static_tf_only_;
 
   /** \brief Input point cloud topics. */
   // XmlRpc::XmlRpcValue input_topics_;

@@ -309,6 +309,9 @@ void DistortionCorrector<T>::undistort_pointcloud(
   bool use_imu, std::optional<AngleConversion> angle_conversion_opt,
   sensor_msgs::msg::PointCloud2 & pointcloud)
 {
+  timestamp_mismatch_count_ = 0;
+  timestamp_mismatch_fraction_ = 0.0;
+
   if (!is_pointcloud_valid(pointcloud)) return;
   if (twist_queue_.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
@@ -342,32 +345,33 @@ void DistortionCorrector<T>::undistort_pointcloud(
   // If there is a point in a pointcloud that cannot be associated, record it to issue a warning
   bool is_twist_time_stamp_too_late = false;
   bool is_imu_time_stamp_too_late = false;
+  constexpr double time_diff = 0.1;
 
   for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_time_stamp) {
     bool is_twist_valid = true;
     bool is_imu_valid = true;
 
-    const double global_point_stamp =
+    const double current_point_stamp =
       pointcloud.header.stamp.sec + 1e-9 * (pointcloud.header.stamp.nanosec + *it_time_stamp);
 
     // Get closest twist information
-    while (it_twist != std::end(twist_queue_) - 1 && global_point_stamp > twist_stamp) {
+    while (it_twist != std::end(twist_queue_) - 1 && current_point_stamp > twist_stamp) {
       ++it_twist;
       twist_stamp = rclcpp::Time(it_twist->header.stamp).seconds();
     }
-    if (std::abs(global_point_stamp - twist_stamp) > 0.1) {
+    if (std::abs(current_point_stamp - twist_stamp) > time_diff) {
       is_twist_time_stamp_too_late = true;
       is_twist_valid = false;
     }
 
     // Get closest IMU information
     if (use_imu && !angular_velocity_queue_.empty()) {
-      while (it_imu != std::end(angular_velocity_queue_) - 1 && global_point_stamp > imu_stamp) {
+      while (it_imu != std::end(angular_velocity_queue_) - 1 && current_point_stamp > imu_stamp) {
         ++it_imu;
         imu_stamp = rclcpp::Time(it_imu->header.stamp).seconds();
       }
 
-      if (std::abs(global_point_stamp - imu_stamp) > 0.1) {
+      if (std::abs(current_point_stamp - imu_stamp) > time_diff) {
         is_imu_time_stamp_too_late = true;
         is_imu_valid = false;
       }
@@ -375,7 +379,9 @@ void DistortionCorrector<T>::undistort_pointcloud(
       is_imu_valid = false;
     }
 
-    auto time_offset = static_cast<float>(global_point_stamp - prev_time_stamp_sec);
+    if (!is_twist_valid || (use_imu && !is_imu_valid)) ++timestamp_mismatch_count_;
+
+    auto time_offset = static_cast<float>(current_point_stamp - prev_time_stamp_sec);
 
     // Undistort a single point based on the strategy
     undistort_point(it_x, it_y, it_z, it_twist, it_imu, time_offset, is_twist_valid, is_imu_valid);
@@ -403,8 +409,13 @@ void DistortionCorrector<T>::undistort_pointcloud(
       ++it_distance;
     }
 
-    prev_time_stamp_sec = global_point_stamp;
+    prev_time_stamp_sec = current_point_stamp;
   }
+
+  const auto total_points = pointcloud.width * pointcloud.height;
+  timestamp_mismatch_fraction_ = total_points > 0 ? static_cast<float>(timestamp_mismatch_count_) /
+                                                      static_cast<float>(total_points)
+                                                  : 0.0f;
 
   warn_if_timestamp_is_too_late(is_twist_time_stamp_too_late, is_imu_time_stamp_too_late);
 }

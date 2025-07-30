@@ -21,6 +21,7 @@
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
+#include <autoware_utils/ros/managed_transform_buffer.hpp>
 
 #include <lanelet2_core/geometry/Polygon.h>
 
@@ -48,8 +49,7 @@ private:
   float z_threshold_;
 
   // tf2 listener
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::shared_ptr<autoware_utils::ManagedTransformBuffer> managed_tf_buffer_;
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW

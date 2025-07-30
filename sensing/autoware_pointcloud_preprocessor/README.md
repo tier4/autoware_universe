@@ -9,6 +9,7 @@ The `autoware_pointcloud_preprocessor` is a package that includes the following 
 - concatenating pointclouds
 - correcting distortion
 - downsampling
+- densifying pointclouds
 
 ## Inner-workings / Algorithms
 
