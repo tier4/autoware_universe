@@ -363,6 +363,12 @@
     </group>
   </group>
 
+  <!-- camera only -->
+  <arg name="use_camera_only" default="true" description="use camera only perception pipeline"/>
+  <group if="$(var use_camera_only)">
+    <include file="$(find-pkg-share autoware_camera_streampetr)/launch/tensorrt_stream_petr_x2.lanch.xml"/>
+  </group>
+
   <!-- perception evaluator -->
   <group if="$(var use_perception_online_evaluator)">
     <include file="$(find-pkg-share autoware_perception_online_evaluator)/launch/perception_online_evaluator.launch.xml"/>
