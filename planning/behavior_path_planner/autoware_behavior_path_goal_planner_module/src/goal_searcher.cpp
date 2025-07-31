@@ -38,155 +38,173 @@
 namespace autoware::behavior_path_planner
 {
 
-// Helper function to crop a linestring based on a reference pose and search range
-lanelet::ConstLineString3d cropLineString(
-  const lanelet::ConstLineString3d & line, const Pose & pose, const double backward_length,
-  const double forward_length)
+std::vector<Pose> resampleBoundaryWithinRange(
+  const lanelet::ConstLineString3d & boundary, const Pose & reference_pose,
+  const double backward_length, const double forward_length, const double interval)
 {
-  // Find the closest point on the linestring to the pose
-  const auto closest_pose_opt = goal_planner_utils::calcClosestPose(line, pose.position);
-  if (!closest_pose_opt) {
-    return line;
-  }
-
-  // Find the closest segment index
-  double min_distance = std::numeric_limits<double>::max();
-  size_t closest_segment_idx = 0;
-
-  for (size_t i = 0; i < line.size() - 1; ++i) {
-    const auto & p1 = line[i];
-
-    // Calculate distance from pose to line segment
-    const double dx1 = pose.position.x - p1.x();
-    const double dy1 = pose.position.y - p1.y();
-    const double dist1 = std::hypot(dx1, dy1);
-
-    if (dist1 < min_distance) {
-      min_distance = dist1;
-      closest_segment_idx = i;
-    }
-  }
-
-  // Calculate cumulative distances along the linestring
-  std::vector<double> cumulative_distances;
-  cumulative_distances.push_back(0.0);
-
-  for (size_t i = 1; i < line.size(); ++i) {
-    const auto & p1 = line[i - 1];
-    const auto & p2 = line[i];
-    const double dist = std::hypot(p2.x() - p1.x(), p2.y() - p1.y());
-    cumulative_distances.push_back(cumulative_distances.back() + dist);
-  }
-
-  // Find the distance to the closest point
-  const double closest_distance = cumulative_distances[closest_segment_idx];
-
-  // Find start and end indices for cropping
-  const double start_distance = std::max(0.0, closest_distance - backward_length);
-  const double end_distance =
-    std::min(cumulative_distances.back(), closest_distance + forward_length);
-
-  size_t start_idx = 0;
-  size_t end_idx = line.size() - 1;
-
-  for (size_t i = 0; i < cumulative_distances.size() - 1; ++i) {
-    if (
-      cumulative_distances[i] <= start_distance && start_distance <= cumulative_distances[i + 1]) {
-      start_idx = i;
-    }
-    if (cumulative_distances[i] <= end_distance && end_distance <= cumulative_distances[i + 1]) {
-      end_idx = i + 1;
-      break;
-    }
-  }
-
-  // Create cropped linestring
-  lanelet::LineString3d cropped_line(lanelet::utils::getId());
-  for (size_t i = start_idx; i <= end_idx && i < line.size(); ++i) {
-    // Need to create a non-const point from const point
-    lanelet::Point3d point(lanelet::utils::getId(), line[i].x(), line[i].y(), line[i].z());
-    cropped_line.push_back(point);
-  }
-
-  return lanelet::ConstLineString3d(cropped_line);
-}
-
-// Helper function to resample a linestring at regular intervals
-std::vector<Pose> resampleBoundaryPoints(
-  const lanelet::ConstLineString3d & boundary, const double interval)
-{
-  std::vector<Pose> resampled_poses;
+  using autoware::motion_utils::findNearestIndex;
+  using autoware_utils::calc_azimuth_angle;
+  using autoware_utils::calc_distance2d;
+  using autoware_utils::create_quaternion_from_yaw;
 
   if (boundary.size() < 2) {
-    return resampled_poses;
+    return {};
   }
 
-  // Calculate cumulative distances for resampling
-  std::vector<double> cumulative_distances;
-  cumulative_distances.push_back(0.0);
-  for (size_t i = 1; i < boundary.size(); ++i) {
-    const auto & p1 = boundary[i - 1];
-    const auto & p2 = boundary[i];
-    const double dist = std::hypot(p2.x() - p1.x(), p2.y() - p1.y());
-    cumulative_distances.push_back(cumulative_distances.back() + dist);
+  // Convert linestring to pose vector for easier manipulation
+  std::vector<Pose> boundary_poses;
+  boundary_poses.reserve(boundary.size());
+
+  for (size_t i = 0; i < boundary.size(); ++i) {
+    Pose pose;
+    pose.position.x = boundary[i].x();
+    pose.position.y = boundary[i].y();
+    pose.position.z = boundary[i].z();
+
+    // Calculate orientation based on direction to next point
+    if (i < boundary.size() - 1) {
+      geometry_msgs::msg::Point next_point;
+      next_point.x = boundary[i + 1].x();
+      next_point.y = boundary[i + 1].y();
+      next_point.z = boundary[i + 1].z();
+
+      const auto azimuth = calc_azimuth_angle(pose.position, next_point);
+      pose.orientation = create_quaternion_from_yaw(azimuth);
+    } else if (i > 0) {
+      // Use previous segment's direction for the last point
+      geometry_msgs::msg::Point prev_point;
+      prev_point.x = boundary[i - 1].x();
+      prev_point.y = boundary[i - 1].y();
+      prev_point.z = boundary[i - 1].z();
+
+      const auto azimuth = calc_azimuth_angle(prev_point, pose.position);
+      pose.orientation = create_quaternion_from_yaw(azimuth);
+    }
+
+    boundary_poses.push_back(std::move(pose));
   }
 
-  // Resample boundary at regular intervals
-  const double total_length = cumulative_distances.back();
-  for (double s = 0.0; s <= total_length; s += interval) {
-    // Find the segment containing this distance
-    size_t segment_idx = 0;
-    for (size_t i = 0; i < cumulative_distances.size() - 1; ++i) {
-      if (cumulative_distances[i] <= s && s <= cumulative_distances[i + 1]) {
+  // Find exact projection point on boundary
+  const auto projection_opt = goal_planner_utils::calcClosestPose(boundary, reference_pose.position);
+  if (!projection_opt) {
+    return {};
+  }
+  const auto & projection_pose = projection_opt.value();
+
+  // Find which segment contains the projection
+  size_t segment_idx = 0;
+  double min_dist_to_segment = std::numeric_limits<double>::max();
+  
+  for (size_t i = 0; i < boundary_poses.size() - 1; ++i) {
+    const auto & p1 = boundary_poses[i].position;
+    const auto & p2 = boundary_poses[i + 1].position;
+    
+    // Check if projection is between p1 and p2
+    const double seg_length = calc_distance2d(p1, p2);
+    if (seg_length > 0.0) {
+      const double dot = ((projection_pose.position.x - p1.x) * (p2.x - p1.x) + 
+                          (projection_pose.position.y - p1.y) * (p2.y - p1.y)) / (seg_length * seg_length);
+      if (dot >= 0.0 && dot <= 1.0) {
+        // Projection is within this segment
         segment_idx = i;
         break;
       }
     }
+    
+    // If not within segment, check distance to endpoints
+    const double dist_to_p1 = calc_distance2d(projection_pose.position, p1);
+    if (dist_to_p1 < min_dist_to_segment) {
+      min_dist_to_segment = dist_to_p1;
+      segment_idx = i;
+    }
+  }
 
-    // Interpolate position
-    const auto & p1 = boundary[segment_idx];
-    const auto & p2 = boundary[std::min(segment_idx + 1, boundary.size() - 1)];
-    const double segment_length =
-      cumulative_distances[segment_idx + 1] - cumulative_distances[segment_idx];
-    const double ratio =
-      (segment_length > 0.0) ? (s - cumulative_distances[segment_idx]) / segment_length : 0.0;
+  // Calculate arc length from start to projection point
+  double arc_length_to_projection = 0.0;
+  for (size_t i = 0; i < segment_idx; ++i) {
+    arc_length_to_projection += calc_distance2d(boundary_poses[i].position, boundary_poses[i + 1].position);
+  }
+  
+  // Add partial segment length
+  arc_length_to_projection += calc_distance2d(boundary_poses[segment_idx].position, projection_pose.position);
 
-    Pose boundary_pose;
-    boundary_pose.position.x = p1.x() + ratio * (p2.x() - p1.x());
-    boundary_pose.position.y = p1.y() + ratio * (p2.y() - p1.y());
-    boundary_pose.position.z = p1.z() + ratio * (p2.z() - p1.z());
+  // Calculate total arc length of boundary
+  double total_boundary_length = 0.0;
+  for (size_t i = 0; i < boundary_poses.size() - 1; ++i) {
+    total_boundary_length += calc_distance2d(boundary_poses[i].position, boundary_poses[i + 1].position);
+  }
 
-    // Calculate orientation from current point to next point
-    if (segment_idx < boundary.size() - 1) {
-      geometry_msgs::msg::Point from_point;
-      from_point.x = boundary_pose.position.x;
-      from_point.y = boundary_pose.position.y;
-      from_point.z = boundary_pose.position.z;
+  // Calculate start and end arc lengths for the range
+  const double start_arc_length = std::max(0.0, arc_length_to_projection - backward_length);
+  const double end_arc_length = std::min(total_boundary_length, arc_length_to_projection + forward_length);
 
-      geometry_msgs::msg::Point to_point;
-      to_point.x = p2.x();
-      to_point.y = p2.y();
-      to_point.z = p2.z();
+  if (end_arc_length <= start_arc_length) {
+    return {};
+  }
 
-      const double azimuth = autoware_utils::calc_azimuth_angle(from_point, to_point);
-      boundary_pose.orientation = autoware_utils::create_quaternion_from_yaw(azimuth);
-    } else if (segment_idx > 0) {
-      // For the last point, use the orientation from the previous segment
-      geometry_msgs::msg::Point from_point;
-      from_point.x = p1.x();
-      from_point.y = p1.y();
-      from_point.z = p1.z();
+  // Resample at regular intervals within the range
+  std::vector<Pose> resampled_poses;
+  const double range_length = end_arc_length - start_arc_length;
+  const size_t num_samples = static_cast<size_t>(std::ceil(range_length / interval)) + 1;
+  resampled_poses.reserve(num_samples);
 
-      geometry_msgs::msg::Point to_point;
-      to_point.x = boundary_pose.position.x;
-      to_point.y = boundary_pose.position.y;
-      to_point.z = boundary_pose.position.z;
+  // Build cumulative arc lengths for easier interpolation
+  std::vector<double> cumulative_lengths;
+  cumulative_lengths.reserve(boundary_poses.size());
+  cumulative_lengths.push_back(0.0);
+  
+  for (size_t i = 1; i < boundary_poses.size(); ++i) {
+    cumulative_lengths.push_back(
+      cumulative_lengths.back() + 
+      calc_distance2d(boundary_poses[i - 1].position, boundary_poses[i].position));
+  }
 
-      const double azimuth = autoware_utils::calc_azimuth_angle(from_point, to_point);
-      boundary_pose.orientation = autoware_utils::create_quaternion_from_yaw(azimuth);
+  for (double s = 0.0; s <= range_length; s += interval) {
+    const double target_arc_length = start_arc_length + s;
+
+    // Find segment containing target arc length
+    const auto seg_it = std::lower_bound(
+      cumulative_lengths.begin(), cumulative_lengths.end(), target_arc_length);
+    
+    if (seg_it == cumulative_lengths.end()) {
+      // Beyond the end, use last pose
+      resampled_poses.push_back(boundary_poses.back());
+      continue;
+    }
+    
+    const size_t seg_idx = std::distance(cumulative_lengths.begin(), seg_it);
+    if (seg_idx == 0) {
+      // At or before start, use first pose
+      resampled_poses.push_back(boundary_poses.front());
+      continue;
     }
 
-    resampled_poses.push_back(boundary_pose);
+    // Interpolate within the segment
+    const size_t idx1 = seg_idx - 1;
+    const size_t idx2 = seg_idx;
+    const double seg_start = cumulative_lengths[idx1];
+    const double seg_end = cumulative_lengths[idx2];
+    const double seg_length = seg_end - seg_start;
+
+    if (seg_length > 0.0) {
+      const double ratio = (target_arc_length - seg_start) / seg_length;
+
+      // Interpolate pose
+      Pose interpolated_pose;
+      const auto & p1 = boundary_poses[idx1];
+      const auto & p2 = boundary_poses[idx2];
+
+      interpolated_pose.position.x = p1.position.x + ratio * (p2.position.x - p1.position.x);
+      interpolated_pose.position.y = p1.position.y + ratio * (p2.position.y - p1.position.y);
+      interpolated_pose.position.z = p1.position.z + ratio * (p2.position.z - p1.position.z);
+
+      // Use the segment's orientation
+      interpolated_pose.orientation = p1.orientation;
+
+      resampled_poses.push_back(std::move(interpolated_pose));
+    } else {
+      resampled_poses.push_back(boundary_poses[idx1]);
+    }
   }
 
   return resampled_poses;
@@ -396,19 +414,16 @@ GoalCandidates GoalSearcher::search(
   // Create a pose offset forward by base_link2front from reference goal pose
   const Pose front_ref_pose = calc_offset_pose(reference_goal_pose, base_link2front, 0.0, 0.0);
 
-  // Crop the boundary based on search range
-  const auto cropped_boundary =
-    cropLineString(boundary, front_ref_pose, backward_length, forward_length);
-
   // used in createAreaPolygon for search area visualization.
   std::vector<Pose> min_margin_from_boundary_goal_poses{};
 
-  // Convert cropped boundary to poses with proper orientation
+  // Resample boundary within search range
   const double longitudinal_interval = use_bus_stop_area
                                          ? parameters_.bus_stop_area.goal_search_interval
                                          : parameters_.goal_search_interval;
 
-  const auto boundary_poses = resampleBoundaryPoints(cropped_boundary, longitudinal_interval);
+  const auto boundary_poses = resampleBoundaryWithinRange(
+    boundary, front_ref_pose, backward_length, forward_length, longitudinal_interval);
 
   size_t goal_id = 0;
   for (const auto & front_pose : boundary_poses) {
@@ -438,7 +453,6 @@ GoalCandidates GoalSearcher::search(
 
       const auto transformed_vehicle_footprint = autoware_utils::transform_vector(
         vehicle_footprint_, autoware_utils::pose2transform(goal_pose));
-      // transformed_vehicle_footprintの値をprint
 
       if (
         use_bus_stop_area && !goal_planner_utils::isWithinAreas(
