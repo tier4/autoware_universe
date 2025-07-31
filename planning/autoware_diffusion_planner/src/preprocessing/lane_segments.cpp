@@ -125,7 +125,7 @@ void add_traffic_light_one_hot_encoding_to_segment(
     one_hot_encoding_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, POINTS_PER_SEGMENT>(0, 0);
 }
 
-Eigen::Matrix<float, 1, 5> get_traffic_signal_row_vector(
+Eigen::Matrix<float, 1, TRAFFIC_LIGHT_ONE_HOT_DIM> get_traffic_signal_row_vector(
   const autoware_perception_msgs::msg::TrafficLightGroup & signal)
 {
   const auto is_green = autoware::traffic_light_utils::hasTrafficLightCircleColor(

@@ -77,7 +77,8 @@ struct ColLaneIDMaps
  * @param traffic_light_id_map Map of lanelet IDs to traffic signal information.
  * @param lanelet_map_ptr Shared pointer to the lanelet map.
  * @param current_lanes List of current lanelets to extract.
- * @return A flattened vector containing the transformed route segments in ego-centric coordinates.
+ * @return Flattened vectors containing the transformed route segments in ego-centric coordinates
+ * and speed limits.
  */
 std::pair<std::vector<float>, std::vector<float>> get_route_segments(
   const Eigen::MatrixXf & map_lane_segments_matrix, const Eigen::Matrix4f & transform_matrix,
