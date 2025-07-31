@@ -54,7 +54,8 @@ inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, 21, 4};
 inline constexpr std::array<int64_t, 2> EGO_CURRENT_STATE_SHAPE = {1, 10};
 inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {1, 32, 21, 11};
 inline constexpr std::array<int64_t, 3> STATIC_OBJECTS_SHAPE = {1, 5, 10};
-inline constexpr std::array<int64_t, 4> LANES_SHAPE = {1, 70, POINTS_PER_SEGMENT, SEGMENT_POINT_DIM};
+inline constexpr std::array<int64_t, 4> LANES_SHAPE = {
+  1, 70, POINTS_PER_SEGMENT, SEGMENT_POINT_DIM};
 inline constexpr std::array<int64_t, 3> LANES_HAS_SPEED_LIMIT_SHAPE = {1, 70, 1};
 inline constexpr std::array<int64_t, 3> LANES_SPEED_LIMIT_SHAPE = {1, 70, 1};
 inline constexpr std::array<int64_t, 4> ROUTE_LANES_SHAPE = {
