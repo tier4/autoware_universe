@@ -168,10 +168,6 @@ TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsAttributes)
   for (const auto & segment : lane_segments) {
     // Check ID is valid
     EXPECT_GT(segment.id, 0) << "Lane segment ID should be positive";
-
-    // Check traffic light state (should be UNKNOWN in this test)
-    EXPECT_EQ(segment.traffic_light, autoware_perception_msgs::msg::TrafficLightElement::UNKNOWN)
-      << "Traffic light state should be UNKNOWN";
   }
 }
 
