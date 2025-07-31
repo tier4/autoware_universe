@@ -57,22 +57,11 @@ TEST(PlanningFactorTest, NodeTestWithPredictedObjects)
       [&planning_factor_msg](
         autoware_internal_planning_msgs::msg::PlanningFactorArray::SharedPtr msg) {
         planning_factor_msg = msg;
-        RCLCPP_INFO(
+        RCLCPP_INFO_ONCE(
           rclcpp::get_logger("test_node"), "Received PlanningFactorArray with %zu factors",
           msg->factors.size());
 
-        RCLCPP_INFO_STREAM(rclcpp::get_logger("test_node"), "Planning factors:");
-        for (const auto & factor : msg->factors) {
-          RCLCPP_INFO_STREAM(rclcpp::get_logger("test_node"), "  Module: " << factor.module);
-          RCLCPP_INFO_STREAM(
-            rclcpp::get_logger("test_node"),
-            "    Is driving forward: " << factor.is_driving_forward);
-          RCLCPP_INFO_STREAM(rclcpp::get_logger("test_node"), "    Behavior: " << factor.behavior);
-          RCLCPP_INFO_STREAM(rclcpp::get_logger("test_node"), "    Detail: " << factor.detail);
-          RCLCPP_INFO_STREAM(
-            rclcpp::get_logger("test_node"),
-            "    Safety factors: " << factor.safety_factors.factors.size());
-        }
+        RCLCPP_INFO_ONCE(rclcpp::get_logger("test_node"), "Planning factors:");
         if (msg->factors.empty()) {
           RCLCPP_WARN(rclcpp::get_logger("test_node"), "No planning factors received.");
         }
@@ -154,13 +143,11 @@ TEST(PlanningFactorTest, NodeTestWithPredictedObjects)
   test_manager->publishInput(test_target_node, input_odometry_topic, odometry, 1);
   test_manager->publishInput(test_target_node, input_trajectory_topic, trajectory, 1);
 
-  // spin once
   rclcpp::spin_some(test_target_node);
   rclcpp::spin_some(test_manager->getTestNode());
 
-  // Wait for messages to be processed
   for (size_t i = 0; i < 10; ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     objects.header.stamp = test_node->get_clock()->now();
     odometry.header.stamp = test_node->get_clock()->now();
     trajectory.header.stamp = test_node->get_clock()->now();
@@ -183,12 +170,17 @@ TEST(PlanningFactorTest, NodeTestWithPredictedObjects)
   const auto & planning_factor = planning_factor_msg->factors.front();
   EXPECT_EQ(planning_factor.behavior, autoware_internal_planning_msgs::msg::PlanningFactor::NONE);
   EXPECT_NEAR(planning_factor.control_points.front().pose.position.x, 20.0, 20.0);
+  EXPECT_NEAR(planning_factor.control_points.front().pose.position.y, 0.0, 1.0);
+  EXPECT_NEAR(planning_factor.control_points.front().pose.position.z, 0.0, 1.0);
   EXPECT_EQ(planning_factor.safety_factors.factors.size(), 1);
 
   const auto & safety_factor = planning_factor.safety_factors.factors.front();
   EXPECT_EQ(safety_factor.type, autoware_internal_planning_msgs::msg::SafetyFactor::OBJECT);
   EXPECT_FALSE(safety_factor.is_safe);
   EXPECT_EQ(safety_factor.points.size(), 1);
+  EXPECT_NEAR(safety_factor.points.front().x, initial_pose.position.x, 2.0);
+  EXPECT_NEAR(safety_factor.points.front().y, initial_pose.position.y, 1.0);
+  EXPECT_NEAR(safety_factor.points.front().z, initial_pose.position.z, 1.0);
   EXPECT_EQ(safety_factor.object_id, objects.objects.front().object_id);
 
   rclcpp::shutdown();
