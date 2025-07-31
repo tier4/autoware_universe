@@ -9,7 +9,7 @@ generate_parameter_library(road_user_stop_module_parameters
   param/road_user_stop_module_parameters.yaml
 )
 
-pluginlib_export_plugin_description_file(autoware_motion_velocity_planner plugins.xml)
+pluginlib_export_plugin_description_file(autoware_motion_velocity_planner_node_universe plugins.xml)
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   DIRECTORY src

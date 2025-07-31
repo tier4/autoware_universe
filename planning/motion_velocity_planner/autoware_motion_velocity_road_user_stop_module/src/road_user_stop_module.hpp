@@ -15,17 +15,16 @@
 #ifndef ROAD_USER_STOP_MODULE_HPP_
 #define ROAD_USER_STOP_MODULE_HPP_
 
+#include "autoware_utils/geometry/geometry.hpp"
 #include "path_length_buffer.hpp"
 #include "type_alias.hpp"
 #include "types.hpp"
 
-#include <autoware/motion_velocity_planner_common/planner_data.hpp>
-#include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
-#include <autoware/motion_velocity_planner_common/polygon_utils.hpp>
-#include <autoware/motion_velocity_planner_common/utils.hpp>
-#include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
+#include <autoware/motion_velocity_planner_common_universe/plugin_module_interface.hpp>
+#include <autoware/motion_velocity_planner_common_universe/polygon_utils.hpp>
+#include <autoware/motion_velocity_planner_common_universe/utils.hpp>
+#include <autoware/motion_velocity_planner_common_universe/velocity_planning_result.hpp>
 #include <autoware_motion_velocity_road_user_stop_module/road_user_stop_module_parameters.hpp>
-#include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
@@ -54,12 +53,6 @@ public:
     const std::shared_ptr<const PlannerData> planner_data) override;
   std::string get_module_name() const override { return module_name_; }
   void publish_planning_factor() override;
-  RequiredSubscriptionInfo getRequiredSubscriptions() const override
-  {
-    RequiredSubscriptionInfo required_subscription_info;
-    required_subscription_info.predicted_objects = true;
-    return required_subscription_info;
-  }
 
 private:
   // parameter listener
@@ -68,9 +61,8 @@ private:
   rclcpp::Clock::SharedPtr clock_{};
 
   std::string module_name_;
-  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
-    processing_time_detail_pub_{};
-  mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{};
+  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr processing_time_detail_pub_{};
+  mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{};
 
   mutable std::unordered_map<std::string, TrackedObject> tracked_objects_;
   mutable DebugData debug_data_;

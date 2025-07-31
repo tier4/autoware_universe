@@ -17,7 +17,7 @@
 
 #include "type_alias.hpp"
 
-#include <autoware_utils_rclcpp/parameter.hpp>
+#include <autoware_utils/ros/parameter.hpp>
 #include <rclcpp/time.hpp>
 
 #include <autoware_perception_msgs/msg/shape.hpp>
@@ -38,7 +38,7 @@
 namespace autoware::motion_velocity_planner
 {
 
-using autoware_utils_rclcpp::get_or_declare_parameter;
+using autoware_utils::get_or_declare_parameter;
 struct CommonParam
 {
   double max_accel{};
@@ -104,8 +104,8 @@ struct StopObstacle
 
 struct RelevantLaneletData
 {
-  std::vector<autoware_utils_geometry::Polygon2d> polygons_for_vru;
-  std::vector<autoware_utils_geometry::Polygon2d> polygons_for_opposing_traffic;
+  std::vector<Polygon2d> polygons_for_vru;
+  std::vector<Polygon2d> polygons_for_opposing_traffic;
   lanelet::ConstLanelets ego_lanelets;
   lanelet::ConstLanelets opposite_lanelets;
 };
@@ -160,14 +160,14 @@ struct DebugData
   lanelet::ConstLanelets opposite_lanelets;
 
   // Lanelet polygons
-  std::vector<autoware_utils_geometry::Polygon2d> intersection_polygons;
-  std::vector<autoware_utils_geometry::Polygon2d> polygons_for_vru;
-  std::vector<autoware_utils_geometry::Polygon2d> polygons_for_opposing_traffic;
+  std::vector<Polygon2d> intersection_polygons;
+  std::vector<Polygon2d> polygons_for_vru;
+  std::vector<Polygon2d> polygons_for_opposing_traffic;
 
   // Trajectory polygon with margins
-  std::vector<autoware_utils_geometry::Polygon2d> trajectory_polygons;
+  std::vector<Polygon2d> trajectory_polygons;
   std::vector<PredictedObject> filtered_objects;
-  std::vector<autoware_utils_geometry::Polygon2d> object_polygons;  // object polygons for debug
+  std::vector<Polygon2d> object_polygons;  // object polygons for debug
   std::optional<size_t> stop_index;
   std::optional<geometry_msgs::msg::Point> stop_point;  // for planning factor
   std::optional<PredictedObject> stop_target_object;    // object causing stop

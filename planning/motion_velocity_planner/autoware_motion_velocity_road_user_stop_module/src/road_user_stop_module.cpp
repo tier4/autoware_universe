@@ -17,7 +17,6 @@
 #include "types.hpp"
 #include "utils.hpp"
 
-#include <autoware/lanelet2_utils/intersection.hpp>
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/marker/marker_helper.hpp>
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
@@ -31,9 +30,9 @@
 #include <autoware/universe_utils/system/stop_watch.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
-#include <autoware_utils_geometry/boost_polygon_utils.hpp>
-#include <autoware_utils_rclcpp/parameter.hpp>
-#include <autoware_utils_visualization/marker_helper.hpp>
+#include <autoware_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware_utils/ros/marker_helper.hpp>
+#include <autoware_utils/ros/parameter.hpp>
 #include <pluginlib/class_list_macros.hpp>
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -74,9 +73,9 @@ std::vector<TrajectoryPoint> resample_trajectory_points(
   return autoware::motion_utils::convertToTrajectoryPointArray(resampled_traj);
 }
 
-autoware_utils_geometry::Point2d convert_point(const Point & p)
+autoware_utils::Point2d convert_point(const Point & p)
 {
-  return autoware_utils_geometry::Point2d{p.x, p.y};
+  return autoware_utils::Point2d{p.x, p.y};
 }
 
 double calc_minimum_distance_to_stop(
@@ -111,10 +110,10 @@ void RoadUserStopModule::init(rclcpp::Node & node, const std::string & module_na
 
   debug_publisher_ = node.create_publisher<MarkerArray>("~/road_user_stop/debug_markers", 1);
 
-  processing_time_detail_pub_ = node.create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
+  processing_time_detail_pub_ = node.create_publisher<autoware_utils::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms/road_user_stop", 1);
 
-  time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(processing_time_detail_pub_);
+  time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(processing_time_detail_pub_);
 }
 
 void RoadUserStopModule::update_tracked_objects(
@@ -181,7 +180,7 @@ std::vector<StopObstacle> RoadUserStopModule::filter_stop_obstacles(
   const std::vector<Polygon2d> & decimated_traj_polygons, const RelevantLaneletData & lanelet_data,
   const rclcpp::Time & current_time, const double dist_to_bumper)
 {
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   update_tracked_objects(planner_data->objects, current_time);
 
   std::set<std::string> current_object_ids;
@@ -270,7 +269,7 @@ VelocityPlanningResult RoadUserStopModule::plan(
   [[maybe_unused]] const std::vector<TrajectoryPoint> & smoothed_trajectory_points,
   const std::shared_ptr<const PlannerData> planner_data)
 {
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   // Initialize
   VelocityPlanningResult result;
@@ -287,8 +286,7 @@ VelocityPlanningResult RoadUserStopModule::plan(
   // 1.1 Decimate trajectory points to reduce computational cost
   const auto param = param_listener_->get_params();
   const auto decimated_traj_points = [&]() {
-    autoware_utils_debug::ScopedTimeTrack st_debug(
-      "decimate_trajectory_points_from_ego", *time_keeper_);
+    autoware_utils::ScopedTimeTrack st_debug("decimate_trajectory_points_from_ego", *time_keeper_);
     const auto traj_point = utils::decimate_trajectory_points_from_ego(
       trajectory_points, planner_data->current_odometry.pose.pose,
       planner_data->ego_nearest_dist_threshold, planner_data->ego_nearest_yaw_threshold,
@@ -361,7 +359,7 @@ bool RoadUserStopModule::is_object_on_road(
   const auto & obj_pose = object.kinematics.initial_pose_with_covariance.pose;
 
   // get object polygon
-  auto object_polygon = autoware_utils_geometry::to_polygon2d(obj_pose, object.shape);
+  auto object_polygon = autoware_utils::to_polygon2d(obj_pose, object.shape);
 
   // check if object was previously inside detection area for polygon expansion
   const std::string object_id = autoware::universe_utils::toHexString(object.object_id);
@@ -374,7 +372,7 @@ bool RoadUserStopModule::is_object_on_road(
     // expand object polygon to reduce chattering
     // expansion_length is in meters - absolute distance to expand outward from centroid
     if (expansion_length > 0.0) {
-      object_polygon = autoware_utils_geometry::expand_polygon(object_polygon, expansion_length);
+      object_polygon = autoware_utils::expand_polygon(object_polygon, expansion_length);
     }
   }
 
@@ -424,7 +422,7 @@ bool RoadUserStopModule::is_near_crosswalk(
       // additional check using geometry distance calculation
       const auto crosswalk_polygon = to_polygon_2d(crosswalk.polygon2d().basicPolygon());
 
-      const autoware_utils_geometry::Point2d object_point_2d{obj_pos.x, obj_pos.y};
+      const autoware_utils::Point2d object_point_2d{obj_pos.x, obj_pos.y};
       const double distance = boost::geometry::distance(object_point_2d, crosswalk_polygon);
 
       if (distance < param.obstacle_filtering.crosswalk.margin) {
@@ -495,7 +493,7 @@ lanelet::ConstLanelets RoadUserStopModule::get_ego_lanelets(
   const std::vector<TrajectoryPoint> & smoothed_trajectory_points,
   const std::shared_ptr<const PlannerData> & planner_data) const
 {
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   const auto & route_handler = planner_data->route_handler;
   const auto & vehicle_info = planner_data->vehicle_info_;
   // from trajectory points
@@ -537,7 +535,7 @@ RelevantLaneletData RoadUserStopModule::get_relevant_lanelet_data(
   const lanelet::ConstLanelets & ego_lanelets,
   const std::shared_ptr<const PlannerData> planner_data) const
 {
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   const auto param = param_listener_->get_params();
   const auto & route_handler = planner_data->route_handler;
   const auto lanelet_map = route_handler->getLaneletMapPtr();
@@ -667,12 +665,12 @@ std::optional<Point> RoadUserStopModule::plan_stop(
   const std::vector<TrajectoryPoint> & trajectory_points,
   const std::vector<StopObstacle> & stop_obstacles, const double dist_to_bumper)
 {
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   if (stop_obstacles.empty()) {
     // delete marker
     const auto markers =
       autoware::motion_utils::createDeletedStopVirtualWallMarker(clock_->now(), 0);
-    autoware_utils_visualization::append_marker_array(markers, &debug_data_.stop_wall_marker);
+    autoware_utils::append_marker_array(markers, &debug_data_.stop_wall_marker);
 
     prev_stop_distance_info_ = std::nullopt;
     return std::nullopt;
@@ -731,7 +729,7 @@ std::optional<Point> RoadUserStopModule::plan_stop(
     // delete marker
     const auto markers =
       autoware::motion_utils::createDeletedStopVirtualWallMarker(clock_->now(), 0);
-    autoware_utils_visualization::append_marker_array(markers, &debug_data_.stop_wall_marker);
+    autoware_utils::append_marker_array(markers, &debug_data_.stop_wall_marker);
 
     prev_stop_distance_info_ = std::nullopt;
     return std::nullopt;
@@ -826,13 +824,12 @@ std::optional<StopObstacle> RoadUserStopModule::pick_stop_obstacle_from_predicte
   debug_data_.filtered_objects.push_back(predicted_object);
 
   // calculate collision point and distance
-  const auto & obj_pose =
-    object->get_predicted_current_pose(clock_->now(), predicted_objects_stamp);
+  const auto & obj_pose = object->get_predicted_pose(clock_->now(), predicted_objects_stamp);
 
   // use pre-calculated trajectory polygons
   auto collision_point = polygon_utils::get_collision_point(
-    decimated_traj_points, decimated_traj_polygons, obj_pose.position, clock_->now(),
-    autoware_utils_geometry::to_polygon2d(obj_pose, predicted_object.shape), dist_to_bumper);
+    decimated_traj_points, decimated_traj_polygons, obj_pose, clock_->now(), predicted_object.shape,
+    dist_to_bumper);
 
   if (!collision_point.has_value()) {
     return std::nullopt;
@@ -902,7 +899,7 @@ std::optional<Point> RoadUserStopModule::calc_stop_point(
   const auto markers = autoware::motion_utils::createStopVirtualWallMarker(
     output_traj_points.at(*zero_vel_idx).pose, "road user stop", clock_->now(), 0, dist_to_bumper,
     "", planner_data->is_driving_forward);
-  autoware_utils_visualization::append_marker_array(markers, &debug_data_.stop_wall_marker);
+  autoware_utils::append_marker_array(markers, &debug_data_.stop_wall_marker);
 
   // update debug data
   debug_data_.stop_index = zero_vel_idx.value();
@@ -1082,7 +1079,7 @@ std::vector<Polygon2d> RoadUserStopModule::get_trajectory_polygons(
   const bool enable_to_consider_current_pose, const double time_to_convergence,
   const double decimate_trajectory_step_length) const
 {
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   if (trajectory_polygon_for_inside_map_.count(lat_margin) == 0) {
     const auto traj_polys = polygon_utils::create_one_step_polygons(
       decimated_traj_points, vehicle_info, current_ego_pose, lat_margin,
@@ -1119,7 +1116,7 @@ double RoadUserStopModule::calc_margin_from_obstacle_on_curve(
       break;
     }
     sum_short_traj_length +=
-      autoware_utils_geometry::calc_distance2d(traj_points.at(i), traj_points.at(i + 1));
+      autoware_utils::calc_distance2d(traj_points.at(i), traj_points.at(i + 1));
   }
   std::reverse(short_traj_points.begin(), short_traj_points.end());
   if (short_traj_points.size() < 2) {
@@ -1129,15 +1126,14 @@ double RoadUserStopModule::calc_margin_from_obstacle_on_curve(
   // calculate collision index between straight line from ego pose and object
   const auto calculate_distance_from_straight_ego_path =
     [&](const auto & ego_pose, const auto & object_polygon) {
-      const auto forward_ego_pose = autoware_utils_geometry::calc_offset_pose(
+      const auto forward_ego_pose = autoware_utils::calc_offset_pose(
         ego_pose, param.stop_planning.longitudinal_margin.default_margin + 3.0, 0.0, 0.0);
-      const auto ego_straight_segment = autoware_utils_geometry::Segment2d{
+      const auto ego_straight_segment = autoware_utils::Segment2d{
         convert_point(ego_pose.position), convert_point(forward_ego_pose.position)};
       return boost::geometry::distance(ego_straight_segment, object_polygon);
     };
   const auto resampled_short_traj_points = resample_trajectory_points(short_traj_points, 0.5);
-  const auto object_polygon =
-    autoware_utils_geometry::to_polygon2d(stop_obstacle.pose, stop_obstacle.shape);
+  const auto object_polygon = autoware_utils::to_polygon2d(stop_obstacle.pose, stop_obstacle.shape);
   const auto collision_idx = [&]() -> std::optional<size_t> {
     for (size_t i = 0; i < resampled_short_traj_points.size(); ++i) {
       const double dist_to_obj = calculate_distance_from_straight_ego_path(
@@ -1157,7 +1153,7 @@ double RoadUserStopModule::calc_margin_from_obstacle_on_curve(
 
   // calculate margin from obstacle
   const double partial_segment_length = [&]() {
-    const double collision_segment_length = autoware_utils_geometry::calc_distance2d(
+    const double collision_segment_length = autoware_utils::calc_distance2d(
       resampled_short_traj_points.at(collision_idx.value() - 1),
       resampled_short_traj_points.at(collision_idx.value()));
     const double prev_dist = calculate_distance_from_straight_ego_path(
@@ -1181,7 +1177,7 @@ double RoadUserStopModule::calc_margin_from_obstacle_on_curve(
 
 void RoadUserStopModule::publish_debug_info()
 {
-  autoware_utils_debug::ScopedTimeTrack st_debug(__func__, *time_keeper_);
+  autoware_utils::ScopedTimeTrack st_debug(__func__, *time_keeper_);
   const auto debug_markers = create_debug_marker_array();
   debug_publisher_->publish(debug_markers);
 

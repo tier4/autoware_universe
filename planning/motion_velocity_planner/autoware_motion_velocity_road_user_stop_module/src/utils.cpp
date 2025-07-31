@@ -19,9 +19,9 @@
 namespace autoware::motion_velocity_planner::road_user_stop::utils
 {
 
-autoware_utils_geometry::Polygon2d to_polygon_2d(const lanelet::BasicPolygon2d & poly)
+Polygon2d to_polygon_2d(const lanelet::BasicPolygon2d & poly)
 {
-  autoware_utils_geometry::Polygon2d polygon;
+  Polygon2d polygon;
   auto & outer = polygon.outer();
 
   outer.reserve(poly.size());
@@ -32,9 +32,9 @@ autoware_utils_geometry::Polygon2d to_polygon_2d(const lanelet::BasicPolygon2d &
   return polygon;
 }
 
-autoware_utils_geometry::Polygon2d to_polygon_2d(const lanelet::BasicPolygon3d & poly)
+Polygon2d to_polygon_2d(const lanelet::BasicPolygon3d & poly)
 {
-  autoware_utils_geometry::Polygon2d polygon;
+  Polygon2d polygon;
   auto & outer = polygon.outer();
 
   outer.reserve(poly.size());

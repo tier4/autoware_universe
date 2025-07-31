@@ -15,7 +15,8 @@
 #ifndef UTILS_HPP_
 #define UTILS_HPP_
 
-#include <autoware_utils_geometry/boost_polygon_utils.hpp>
+#include "autoware_utils/geometry/boost_polygon_utils.hpp"
+#include "type_alias.hpp"
 
 #include <lanelet2_core/primitives/Polygon.h>
 
@@ -23,18 +24,18 @@ namespace autoware::motion_velocity_planner::road_user_stop::utils
 {
 
 /**
- * @brief Convert a lanelet2 BasicPolygon2d to autoware_utils_geometry Polygon2d.
+ * @brief Convert a lanelet2 BasicPolygon2d to Polygon2d.
  * @param poly Lanelet2 BasicPolygon2d.
  * @return A Polygon2d with the same point sequence.
  */
-autoware_utils_geometry::Polygon2d to_polygon_2d(const lanelet::BasicPolygon2d & poly);
+Polygon2d to_polygon_2d(const lanelet::BasicPolygon2d & poly);
 
 /**
- * @brief Convert a lanelet2 BasicPolygon3d to autoware_utils_geometry Polygon2d.
+ * @brief Convert a lanelet2 BasicPolygon3d to Polygon2d.
  * @param poly Lanelet2 BasicPolygon3d.
  * @return A Polygon2d with the same point sequence (z-coordinate ignored).
  */
-autoware_utils_geometry::Polygon2d to_polygon_2d(const lanelet::BasicPolygon3d & poly);
+Polygon2d to_polygon_2d(const lanelet::BasicPolygon3d & poly);
 
 }  // namespace autoware::motion_velocity_planner::road_user_stop::utils
 

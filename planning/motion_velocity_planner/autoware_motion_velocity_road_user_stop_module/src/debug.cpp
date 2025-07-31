@@ -51,11 +51,11 @@ void add_polygon_to_marker(Marker & marker, const Polygon2d & polygon, const dou
 
 MarkerArray RoadUserStopModule::create_debug_marker_array() const
 {
-  autoware_utils_debug::ScopedTimeTrack st_debug("create_debug_marker_array", *time_keeper_);
+  autoware_utils::ScopedTimeTrack st_debug("create_debug_marker_array", *time_keeper_);
   MarkerArray debug_marker_array;
 
   if (!debug_data_.ego_lanelets.empty()) {
-    autoware_utils_debug::ScopedTimeTrack st_debug_marker(
+    autoware_utils::ScopedTimeTrack st_debug_marker(
       "create_debug_marker_array/ego_lanelets", *time_keeper_);
     std_msgs::msg::ColorRGBA pink_color;
     pink_color.r = 1.0;
@@ -69,7 +69,7 @@ MarkerArray RoadUserStopModule::create_debug_marker_array() const
   }
 
   if (!debug_data_.trajectory_polygons.empty()) {
-    autoware_utils_debug::ScopedTimeTrack st_debug_marker(
+    autoware_utils::ScopedTimeTrack st_debug_marker(
       "create_debug_marker_array/trajectory_polygons", *time_keeper_);
     int traj_poly_id = 0;
     for (const auto & polygon : debug_data_.trajectory_polygons) {
@@ -87,7 +87,7 @@ MarkerArray RoadUserStopModule::create_debug_marker_array() const
   }
 
   if (!debug_data_.object_polygons.empty()) {
-    autoware_utils_debug::ScopedTimeTrack st_debug_marker(
+    autoware_utils::ScopedTimeTrack st_debug_marker(
       "create_debug_marker_array/object_polygons", *time_keeper_);
     int obj_poly_id = 0;
     for (const auto & polygon : debug_data_.object_polygons) {
@@ -105,7 +105,7 @@ MarkerArray RoadUserStopModule::create_debug_marker_array() const
   }
 
   if (!debug_data_.polygons_for_vru.empty()) {
-    autoware_utils_debug::ScopedTimeTrack st_debug_marker(
+    autoware_utils::ScopedTimeTrack st_debug_marker(
       "create_debug_marker_array/polygons_for_vru", *time_keeper_);
     int vru_poly_id = 0;
     for (const auto & polygon : debug_data_.polygons_for_vru) {
@@ -123,7 +123,7 @@ MarkerArray RoadUserStopModule::create_debug_marker_array() const
   }
 
   if (!debug_data_.polygons_for_opposing_traffic.empty()) {
-    autoware_utils_debug::ScopedTimeTrack st_debug_marker(
+    autoware_utils::ScopedTimeTrack st_debug_marker(
       "create_debug_marker_array/polygons_for_opposing_traffic", *time_keeper_);
     int opposing_poly_id = 0;
     for (const auto & polygon : debug_data_.polygons_for_opposing_traffic) {

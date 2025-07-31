@@ -17,31 +17,30 @@
 
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
-#include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
-#include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <tier4_planning_msgs/msg/planning_factor.hpp>
+#include <tier4_planning_msgs/msg/safety_factor_array.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 namespace autoware::motion_velocity_planner
 {
 using autoware::vehicle_info_utils::VehicleInfo;
-using autoware_internal_planning_msgs::msg::PlanningFactor;
-using autoware_internal_planning_msgs::msg::SafetyFactor;
-using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::Shape;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_utils::LineString2d;
-using autoware_utils_geometry::Polygon2d;
+using autoware_utils::Point2d;
+using autoware_utils::Polygon2d;
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Pose;
 using nav_msgs::msg::Odometry;
+using tier4_planning_msgs::msg::SafetyFactor;
 using unique_identifier_msgs::msg::UUID;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
