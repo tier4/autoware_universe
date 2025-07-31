@@ -99,7 +99,6 @@ void add_traffic_light_one_hot_encoding_to_segment(
   const auto lane_id_itr = col_id_mapping.matrix_col_to_lane_id.find(row_idx);
   if (lane_id_itr == col_id_mapping.matrix_col_to_lane_id.end()) {
     throw std::invalid_argument("Invalid lane row to lane id mapping");
-    return;
   }
   const auto assigned_lanelet = lanelet_map_ptr->laneletLayer.get(lane_id_itr->second);
   auto tl_reg_elems = assigned_lanelet.regulatoryElementsAs<const lanelet::TrafficLight>();
@@ -141,7 +140,6 @@ Eigen::Matrix<float, 1, 5> get_traffic_signal_row_vector(
     static_cast<float>(is_green) + static_cast<float>(is_amber) + static_cast<float>(is_red) >
     1.f) {
     throw std::invalid_argument("more than one traffic light");
-    return {0.f, 0.f, 0.f, 1.f, 0.f};
   }
   return {
     static_cast<float>(is_green), static_cast<float>(is_amber), static_cast<float>(is_red),
