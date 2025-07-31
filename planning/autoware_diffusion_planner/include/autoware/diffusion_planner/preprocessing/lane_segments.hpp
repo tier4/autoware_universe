@@ -79,7 +79,7 @@ struct ColLaneIDMaps
  * @param current_lanes List of current lanelets to extract.
  * @return A flattened vector containing the transformed route segments in ego-centric coordinates.
  */
-std::vector<float> get_route_segments(
+std::pair<std::vector<float>, std::vector<float>> get_route_segments(
   const Eigen::MatrixXf & map_lane_segments_matrix, const Eigen::Matrix4f & transform_matrix,
   const ColLaneIDMaps & col_id_mapping,
   const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
@@ -172,7 +172,7 @@ void add_traffic_light_one_hot_encoding_to_segment(
  * @param signal The traffic light group message.
  * @return Row vector with one-hot encoding for [green, amber, red, unknown].
  */
-Eigen::RowVector4f get_traffic_signal_row_vector(
+Eigen::Matrix<float, 1, TRAFFIC_LIGHT_ONE_HOT_DIM> get_traffic_signal_row_vector(
   const autoware_perception_msgs::msg::TrafficLightGroup & signal);
 
 /**
