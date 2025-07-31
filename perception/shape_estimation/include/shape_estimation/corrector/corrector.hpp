@@ -20,6 +20,7 @@
 #include "shape_estimation/corrector/car_corrector.hpp"
 #include "shape_estimation/corrector/corrector_interface.hpp"
 #include "shape_estimation/corrector/no_corrector.hpp"
+#include "shape_estimation/corrector/reference_object_based_corrector.hpp"
 #include "shape_estimation/corrector/reference_shape_size_corrector.hpp"
 #include "shape_estimation/corrector/trailer_corrector.hpp"
 #include "shape_estimation/corrector/truck_corrector.hpp"
