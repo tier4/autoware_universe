@@ -29,6 +29,7 @@
 #include <map>
 #include <memory>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace autoware::diffusion_planner::preprocess
