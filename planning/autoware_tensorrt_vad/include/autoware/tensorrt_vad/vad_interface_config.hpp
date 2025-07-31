@@ -23,6 +23,7 @@ public:
   float default_patch_angle;
   int32_t default_command;
   std::vector<float> default_shift;
+  std::vector<float> default_can_bus;
   std::array<float, 3> image_normalization_param_mean;
   std::array<float, 3> image_normalization_param_std;
   Eigen::Matrix4f vad2base;
@@ -38,6 +39,7 @@ public:
     double default_patch_angle_,
     int32_t default_command_,
     const std::vector<double>& default_shift_,
+    const std::vector<double>& default_can_bus_,
     const std::vector<double>& image_normalization_param_mean_,
     const std::vector<double>& image_normalization_param_std_,
     const std::vector<double>& vad2base_,
@@ -58,6 +60,9 @@ public:
     // default_shift: copy and convert
     default_shift.clear();
     for (auto v : default_shift_) default_shift.push_back(static_cast<float>(v));
+    // default_can_bus: copy and convert
+    default_can_bus.clear();
+    for (auto v : default_can_bus_) default_can_bus.push_back(static_cast<float>(v));
     // normalization mean/std: 3 elements
     for (int i = 0; i < 3; ++i) {
       image_normalization_param_mean[i] = static_cast<float>(image_normalization_param_mean_[i]);

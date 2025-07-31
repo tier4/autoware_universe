@@ -3,8 +3,7 @@
 #include <vector>
 #include <tf2_msgs/msg/tf_message.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
-#include <geometry_msgs/msg/transform_stamped.hpp>
-#include "vad_interface.hpp"
+#include "autoware/tensorrt_vad/vad_interface.hpp"
 
 namespace autoware::tensorrt_vad {
 
@@ -74,6 +73,7 @@ TEST(VadLidar2ImgTest, DummyInputOutput)
     double default_patch_angle = -1.0353195667266846;
     int32_t default_command = 0;
     std::vector<double> default_shift = {0.0, 0.0};
+    std::vector<double> default_can_bus = {-42274.0312, 89140.4531, 6.92498255, -0.00156072155, -0.0132345976, -0.475291312, 0.879727542, 0.158691406, -2.24609375, -9.72595215, 0.0, 0.0, 0.00481297961, 0.0, 2.15303349, 0.0, 5.19237747, 303.230896};
     std::vector<double> image_normalization_param_mean = {103.530, 116.280, 123.675};
     std::vector<double> image_normalization_param_std = {1.0, 1.0, 1.0};
     std::vector<double> vad2base = {
@@ -97,6 +97,7 @@ TEST(VadLidar2ImgTest, DummyInputOutput)
         default_patch_angle,
         default_command,
         default_shift,
+        default_can_bus,
         image_normalization_param_mean,
         image_normalization_param_std,
         vad2base,
@@ -104,7 +105,7 @@ TEST(VadLidar2ImgTest, DummyInputOutput)
     VadInterface vad_interface(vad_interface_config, tf_buffer);
     float scale_width = static_cast<float>(target_image_width) / static_cast<float>(input_image_width);
     float scale_height = static_cast<float>(target_image_height) / static_cast<float>(input_image_height);
-    auto result = vad_interface.process_lidar2img(tf_static, camera_infos, scale_width, scale_height);
+    auto result = vad_interface.process_lidar2img(camera_infos, scale_width, scale_height);
     ASSERT_EQ(result.size(), expected.size());
     for (size_t i = 0; i < expected.size(); ++i) {
         EXPECT_NEAR(result[i], expected[i], 1e-2);

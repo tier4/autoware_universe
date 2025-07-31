@@ -32,6 +32,8 @@
 
 #include "tensor.h"
 
+#include <autoware/tensorrt_common/tensorrt_common.hpp>
+
 namespace nv {
 using namespace nvinfer1;
 
@@ -39,15 +41,15 @@ struct Net {
   ICudaEngine* engine;
   IExecutionContext* context;
   nv::TensorMap bindings;
-  bool use_cuda_graph = false;
-  cudaGraph_t graph;
-  cudaGraphExec_t graph_exec;
+  std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common;
 
   Net(
-    std::string engine_path, 
     IRuntime* runtime, 
-    nv::TensorMap& ext
-  ) {
+    nv::TensorMap& ext,
+    std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_to_own
+  ): trt_common{std::move(trt_common_to_own)}
+  {
+    std::string engine_path = trt_common->getTrtCommonConfig()->engine_path.string();
     std::ifstream engine_file(engine_path, std::ios::binary);
     if (!engine_file) {
       throw std::runtime_error("Error opening engine file: " + engine_path);
@@ -63,30 +65,25 @@ struct Net {
     engine = runtime->deserializeCudaEngine(engineData.data(), fsize);
     context = engine->createExecutionContext(); 
 
-    int nb = engine->getNbIOTensors();  
+    int32_t nb = trt_common->getNbIOTensors();
 
-    for( int n=0; n<nb; n++ ) {
-      std::string name = engine->getIOTensorName(n);
-      Dims d = engine->getTensorShape(name.c_str());      
+    for (int32_t n = 0; n < nb; n++) {
+      std::string name = trt_common->getIOTensorName(n);
+      Dims d = trt_common->getTensorShape(name.c_str());
       DataType dtype = engine->getTensorDataType(name.c_str());
-      if( ext.find(name) != ext.end() ) {
+      
+      if (ext.find(name) != ext.end()) {
         // use external memory
-        context->setTensorAddress(name.c_str(), ext[name]->ptr);
+        trt_common->setTensorAddress(name.c_str(), ext[name]->ptr);
       } else {
         bindings[name] = std::make_shared<Tensor>(name, d, dtype);
-        // bindings[name]->iomode = engine->getTensorIOMode(name.c_str());
-        std::cout << *(bindings[name]) << std::endl;
-        context->setTensorAddress(name.c_str(), bindings[name]->ptr);
-      }      
+        trt_common->setTensorAddress(name.c_str(), bindings[name]->ptr);
+      }
     }
   }
 
   void Enqueue(cudaStream_t stream) {
-    if( this->use_cuda_graph ) {
-      cudaGraphLaunch(graph_exec, stream);
-    } else {
-      context->enqueueV3(stream);
-    }  
+    trt_common->enqueueV3(stream);
   }
 
   ~Net() {
@@ -98,32 +95,12 @@ struct Net {
           engine->destroy();
           engine = nullptr;
       }
-      if (use_cuda_graph) {
-          cudaGraphDestroy(graph);
-          cudaGraphExecDestroy(graph_exec);
-      }
       
       // bindingsの各Tensorのメモリを解放
       for (auto& pair : bindings) {
           pair.second.reset();
       }
       bindings.clear();
-  }
-
-  void EnableCudaGraph(cudaStream_t stream) {    
-    // run first time to avoid allocation
-    this->Enqueue(stream);
-    cudaStreamSynchronize(stream);
-
-    cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
-    this->Enqueue(stream);
-    cudaStreamEndCapture(stream, &graph);
-    this->use_cuda_graph = true;
-#if CUDART_VERSION < 12000
-    cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0);
-#else
-    cudaGraphInstantiate(&graph_exec, graph, 0);
-#endif
   }
 }; // class Net
 

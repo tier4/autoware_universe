@@ -1,0 +1,10 @@
+/**:
+  ros__parameters:
+    node_params:
+      use_raw: [false, false, false, false, false, false] # per camera: if true, use raw image data, otherwise use compressed images
+    model_params:
+      plugins_path: "/home/autoware/ghq/github.com/Shin-kyoto/DL4AGX/AV-Solutions/vad-trt/app/demo/libplugins.so"
+      default_command: 2  # 0: TURN RIGHT, 1: TURN LEFT, 2: KEEP FORWARD
+    sync_params:
+      front_camera_id: 0  # ID of the front camera (anchor camera) for synchronization
+      sync_tolerance_ms: 100.0  # Synchronization tolerance in milliseconds

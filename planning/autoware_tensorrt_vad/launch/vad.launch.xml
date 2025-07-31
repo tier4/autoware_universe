@@ -1,6 +1,10 @@
 <?xml version="1.0"?>
 <launch>
   <arg name="log_level" default="info"/>
+  <arg name="rviz" default="false" description="launch rviz"/>
+  <arg name="rviz_respawn" default="true" description="respawn rviz"/>
+
+  <arg name="model_path" default="/home/autoware/ghq/github.com/Shin-kyoto/DL4AGX_ns_rosbag/DL4AGX/AV-Solutions/vad-trt/app/autoware_tensorrt_vad/build/autoware_tensorrt_vad"/>
 
   <arg name="camera_info0" default="/sensing/camera/camera0/camera_info"/>
   <arg name="camera_info1" default="/sensing/camera/camera1/camera_info"/>
@@ -15,12 +19,21 @@
   <arg name="image3" default="/sensing/camera/camera3/image_rect_color"/>
   <arg name="image4" default="/sensing/camera/camera4/image_rect_color"/>
   <arg name="image5" default="/sensing/camera/camera5/image_rect_color"/>
-  <arg name="output/objects" default="detection/objects"/>
-  <arg name="output/trajectory" default="planning/trajectory"/>
+
+  <arg name="kinematic_state" default="/localization/kinematic_state"/>
+  <arg name="acceleration" default="/localization/acceleration"/>
+
+  <arg name="output/objects" default="perception/object_recognition/detection/vad/objects"/>
+  <arg name="output/trajectory" default="planning/vad/trajectory"/>
+  <arg name="output/trajectories" default="planning/vad/trajectories"/>
 
   <node pkg="autoware_tensorrt_vad" exec="vad_node" name="vad" output="screen" args="--ros-args --log-level $(var log_level)">
+    <param from="$(find-pkg-share autoware_tensorrt_vad)/config/vad_tiny.param.yaml"/>
+    <param from="$(find-pkg-share autoware_tensorrt_vad)/config/ml_package_vad_tiny.param.yaml"/>
+    
     <remap from="~/output/objects" to="$(var output/objects)"/>
     <remap from="~/output/trajectory" to="$(var output/trajectory)"/>
+    <remap from="~/output/trajectories" to="$(var output/trajectories)"/>
 
     <remap from="~/input/camera_info0" to="$(var camera_info0)"/>
     <remap from="~/input/camera_info1" to="$(var camera_info1)"/>
@@ -34,5 +47,23 @@
     <remap from="~/input/image3" to="$(var image3)"/>
     <remap from="~/input/image4" to="$(var image4)"/>
     <remap from="~/input/image5" to="$(var image5)"/>
+    
+    <remap from="~/input/kinematic_state" to="$(var kinematic_state)"/>
+    <remap from="~/input/acceleration" to="$(var acceleration)"/>
   </node>
+
+  <!-- Rviz for individual node testing-->
+  <arg name="rviz_config_name" default="perception.rviz" description="rviz config name"/>
+  <arg name="rviz_config" default="$(find-pkg-share autoware_launch)/rviz/$(var rviz_config_name)" description="rviz config path"/>
+  <group>
+    <node
+      pkg="rviz2"
+      exec="rviz2"
+      name="rviz2"
+      output="screen"
+      if="$(var rviz)"
+      args="-d $(var rviz_config) -s $(find-pkg-share autoware_launch)/rviz/image/autoware.png"
+      respawn="$(var rviz_respawn)"
+    />
+  </group>
 </launch>

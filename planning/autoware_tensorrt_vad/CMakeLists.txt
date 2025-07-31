@@ -61,6 +61,7 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
     lib/tensor.cpp
     lib/vad_interface.cpp
     lib/vad_model.cpp
+    lib/synchronization_strategy.cpp
 )
 
 # ライブラリのリンク設定

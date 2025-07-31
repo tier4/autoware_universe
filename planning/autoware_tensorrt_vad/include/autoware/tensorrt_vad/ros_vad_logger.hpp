@@ -26,7 +26,7 @@ namespace autoware::tensorrt_vad
  * 
  * 使用例:
  * auto ros_logger = std::make_shared<RosVadLogger>(node);
- * VadConfig config;
+ * VadModelConfig config;
  * // configを設定...
  * VadModel model(config, ros_logger);
  */

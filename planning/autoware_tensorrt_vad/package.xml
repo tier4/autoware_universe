@@ -12,6 +12,11 @@
   <!-- ROS2 core dependencies -->
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_planning_msgs</depend>
+  <depend>autoware_internal_planning_msgs</depend>
+  <depend>autoware_tensorrt_common</depend>
+  <depend>autoware_utils_uuid</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
   <depend>eigen3_cmake_module</depend>
   <depend>geometry_msgs</depend>
   <depend>libeigen3-dev</depend>

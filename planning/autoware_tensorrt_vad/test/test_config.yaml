@@ -8,11 +8,9 @@ test_config:
     backbone:
       name: "backbone"
       engine_file: "../../test/test_data/engines/vadv1.extract_img_feat.fp16.engine"
-      use_graph: true
     head:
       name: "head"
       engine_file: "../../test/test_data/engines/vadv1_prev.pts_bbox_head.forward.engine"
-      use_graph: true
       inputs:
         img_feats:
           net: "backbone"
@@ -20,7 +18,6 @@ test_config:
     head_no_prev:
       name: "head_no_prev"
       engine_file: "../../test/test_data/engines/vadv1.pts_bbox_head.forward.engine"
-      use_graph: true
       inputs:
         img_feats:
           net: "backbone"

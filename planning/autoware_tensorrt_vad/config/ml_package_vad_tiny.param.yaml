@@ -1,0 +1,110 @@
+/**:
+  ros__parameters:
+    node_params:
+      num_cameras: 6
+    interface_params:
+      # # awsim
+      # input_image_width: 1920
+      # input_image_height: 1080
+      # # autoware xx1
+      input_image_width: 1466
+      input_image_height: 1122
+      # nuScenes
+      # input_image_width: 1653
+      # input_image_height: 940
+      target_image_width: 640
+      target_image_height: 384
+      point_cloud_range: [-15.0, -30.0, -2.0, 15.0, 30.0, 2.0]
+      bev_h: 100
+      bev_w: 100
+      default_patch_angle: 0.0
+      default_shift: [0.0, 0.0]
+      # default_can_bus[0:3] x, y, z in_map_coordinate
+      # default_can_bus[3:7] quaternion(x, y, z, w)
+      # default_can_bus[7:10] ax, ay, az
+      # default_can_bus[10:13] angular velocity(vx, vy, vz)
+      # default_can_bus[13:16] linear velocity(vx, vy, vz)
+      # default_can_bus[16] yaw[rad]
+      # default_can_bus[17] patch_angle(difference between yaw and prev_yaw)[deg]
+      default_can_bus: [-42274.0312, 89140.4531, 6.92498255, -0.00156072155, -0.0132345976, -0.475291312, 0.879727542, 0.158691406, -2.24609375, -9.72595215, 0.0, 0.0, 0.00481297961, 0.0, 2.15303349, 0.0, 5.19237747, 303.230896]
+      image_normalization_param_mean: [103.530, 116.280, 123.675]
+      image_normalization_param_std: [1.0, 1.0, 1.0]
+      autoware_to_vad_camera_mapping: [0, 0, # FRONT
+                                       4, 1, # FRONT_RIGHT
+                                       2, 2, # FRONT_LEFT
+                                       1, 3, # BACK
+                                       3, 4, # BACK_LEFT
+                                       5, 5] # BACK_RIGHT
+      # # nuScenes
+      # vad2base: [0.0, 1.0, 0.0, 0.0,
+      #           -1.0, 0.0, 0.0, 0.0,
+      #            0.0, 0.0, 1.0, 1.2,
+      #            0.0, 0.0, 0.0, 1.0]
+      # autoware
+      vad2base: [0.0, 1.0, 0.0, 0.0,
+                -1.0, 0.0, 0.0, 0.0,
+                 0.0, 0.0, 1.0, 0.0,
+                 0.0, 0.0, 0.0, 1.0]
+      # params for output
+      trajectory_timestep: 1.0 # [s]
+    model_params:
+      # Engine paths with hierarchical structure
+      nets:
+        backbone:
+          name: "backbone"
+          onnx_path: "./data/sim_vadv1.extract_img_feat.onnx"
+          engine_path: "./data/vad-tiny_backbone.engine"
+          precision: "fp16"
+        head:
+          name: "head"
+          onnx_path: "./data/sim_vadv1_prev.pts_bbox_head.forward.onnx"
+          engine_path: "./data/vad-tiny_head.engine"
+          precision: "fp32"
+          inputs:
+            "input_feature": "mlvl_feats.0"
+            "net": "backbone"
+            "name": "out.0"
+        head_no_prev:
+          name: "head_no_prev"
+          onnx_path: "./data/sim_vadv1.pts_bbox_head.forward.onnx"
+          engine_path: "./data/vad-tiny_head_no_prev.engine"
+          precision: "fp32"
+          inputs:
+            "input_feature": "mlvl_feats.0"
+            "net": "backbone"
+            "name": "out.0"
+      network_io_params:
+        # カメラ・特徴量関連
+        num_cameras: 6                    # カメラ数
+        
+        # BEV (Bird's Eye View) 関連
+        bev_h: 100                        # BEVグリッド高さ
+        bev_w: 100                        # BEVグリッド幅
+        bev_feature_dim: 256              # 特徴次元
+        
+        # 画像処理関連（interface_paramsから参照）
+        target_image_width: 640           # ターゲット画像幅
+        target_image_height: 384          # ターゲット画像高さ
+        downsample_factor: 32             # 画像特徴量のダウンサンプリング係数
+        
+        # Transformer・検出関連
+        num_decoder_layers: 3             # Transformerデコーダ層数
+        
+        # 軌道予測関連
+        prediction_num_queries: 300                  # 検出クエリ数（最大物体数）
+        prediction_num_classes: 10                   # 物体クラス数
+        prediction_bbox_pred_dim: 10                 # 3Dボックス予測次元数 (cx,cy,w,l,cz,h,sin,cos,vx,vy)
+        prediction_trajectory_modes: 6    # 各物体の軌道予測モード数
+        prediction_timesteps: 6           # 予測タイムステップ数
+
+        # planning
+        planning_ego_commands: 3          # 自車制御コマンド数 (右折、左折、直進)
+        planning_timesteps: 6
+        
+        # Map element detection
+        map_num_queries: 100              # マップ要素検出クエリ数
+        map_num_class: 3                  # マップ要素クラス数
+        map_points_per_polylines: 20      # ポリライン毎のポイント数
+              
+        # can_bus
+        can_bus_dim: 18                   # CANバスデータ次元数
