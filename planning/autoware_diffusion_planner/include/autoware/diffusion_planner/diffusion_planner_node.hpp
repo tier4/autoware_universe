@@ -59,6 +59,7 @@
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRules.h>
 
+#include <deque>
 #include <map>
 #include <memory>
 #include <optional>
