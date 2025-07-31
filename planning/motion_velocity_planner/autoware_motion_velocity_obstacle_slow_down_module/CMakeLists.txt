@@ -10,9 +10,6 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 )
 
 if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-
   ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
     test/test_planning_factor.cpp
   )
