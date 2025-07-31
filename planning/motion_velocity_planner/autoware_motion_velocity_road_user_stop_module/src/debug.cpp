@@ -17,6 +17,7 @@
 #include <autoware/universe_utils/ros/marker_helper.hpp>
 #include <autoware_lanelet2_extension/visualization/visualization.hpp>
 
+#include <geometry_msgs/msg/polygon.hpp>
 #include <std_msgs/msg/color_rgba.hpp>
 
 #include <lanelet2_core/geometry/Polygon.h>
@@ -62,10 +63,33 @@ MarkerArray RoadUserStopModule::create_debug_marker_array() const
     pink_color.g = 0.0;
     pink_color.b = 1.0;
     pink_color.a = 0.999;
-    const auto ego_lanelets_markers = lanelet::visualization::laneletsAsTriangleMarkerArray(
-      "ego_lanelets", debug_data_.ego_lanelets, pink_color);
 
-    appendMarkerArray(ego_lanelets_markers, &debug_marker_array);
+    int ego_lanelet_id = 0;
+    for (const auto & lanelet : debug_data_.ego_lanelets) {
+      Marker ego_lanelet_marker = createDefaultMarker(
+        "map", clock_->now(), "ego_lanelets", ego_lanelet_id++, Marker::LINE_STRIP,
+        autoware::universe_utils::createMarkerScale(0.1, 0, 0), pink_color);
+
+      ego_lanelet_marker.lifetime = rclcpp::Duration::from_seconds(0.3);
+
+      geometry_msgs::msg::Polygon polygon;
+      lanelet::visualization::lanelet2Polygon(lanelet, &polygon);
+
+      for (const auto & point32 : polygon.points) {
+        Point point;
+        point.x = point32.x;
+        point.y = point32.y;
+        point.z = point32.z;
+        ego_lanelet_marker.points.push_back(point);
+      }
+
+      // close the polygon
+      if (!ego_lanelet_marker.points.empty()) {
+        ego_lanelet_marker.points.push_back(ego_lanelet_marker.points.front());
+      }
+
+      debug_marker_array.markers.push_back(ego_lanelet_marker);
+    }
   }
 
   if (!debug_data_.trajectory_polygons.empty()) {
