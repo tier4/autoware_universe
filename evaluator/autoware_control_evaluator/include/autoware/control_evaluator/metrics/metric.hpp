@@ -153,7 +153,8 @@ static const std::unordered_map<Metric, std::string> metric_descriptions = {
    "Distance to the closest object[m], the objects outside of the distance_filter_thr_m (default: "
    "30m) are ignored"},
   {Metric::longitudinal_velocity_deviation,
-   "Longitudinal velocity deviation from the reference trajectory[m]"},
+   "Longitudinal velocity deviation from the reference trajectory[m], positive value means the "
+   "actual velocity is larger than the planned velocity."},
 };
 
 namespace details
