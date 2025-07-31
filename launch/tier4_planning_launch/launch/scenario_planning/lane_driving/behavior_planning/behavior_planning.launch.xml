@@ -226,8 +226,7 @@
   </node_container>
 
   <group if="$(eval &quot;'$(var behavior_path_planner_type)' == 'behavior_path_planner'&quot;)">
-    <load_composable_node target="/planning/scenario_planning/lane_driving/behavior_planning/behavior_planning_container">
-      <composable_node pkg="autoware_behavior_path_planner" plugin="autoware::behavior_path_planner::BehaviorPathPlannerNode" name="behavior_path_planner" namespace="">
+      <node pkg="autoware_behavior_path_planner" exec="autoware_behavior_path_planner_node" name="behavior_path_planner" namespace="" launch-prefix="konsole -e gdb -ex run --args">
         <remap from="~/input/route" to="$(var input_route_topic_name)"/>
         <remap from="~/input/vector_map" to="$(var input_vector_map_topic_name)"/>
         <remap from="~/input/perception" to="/perception/object_recognition/objects"/>
@@ -261,10 +260,7 @@
         <param from="$(var behavior_path_planner_drivable_area_expansion_param_path)"/>
         <param from="$(var behavior_path_planner_scene_module_manager_param_path)"/>
         <param from="$(var behavior_path_planner_common_param_path)"/>
-        <!-- composable node config -->
-        <extra_arg name="use_intra_process_comms" value="false"/>
-      </composable_node>
-    </load_composable_node>
+      </node>
   </group>
 
   <group if="$(eval &quot;'$(var behavior_path_planner_type)' == 'path_generator'&quot;)">
