@@ -24,18 +24,14 @@ PredictedCarPoseTool::PredictedCarPoseTool()
   shortcut_key_ = 'c';
 
   topic_property_ = new rviz_common::properties::StringProperty(
-    "Topic", "/planning/dummy_objects",
-    "The topic on which to publish dummy object info.", getPropertyContainer(),
-    SLOT(updateTopic()), this);
+    "Topic", "/planning/dummy_objects", "The topic on which to publish dummy object info.",
+    getPropertyContainer(), SLOT(updateTopic()), this);
   std_dev_x_ = new rviz_common::properties::FloatProperty(
-    "X std deviation", 0.03, "X standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "X std deviation", 0.03, "X standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_y_ = new rviz_common::properties::FloatProperty(
-    "Y std deviation", 0.03, "Y standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "Y std deviation", 0.03, "Y standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_z_ = new rviz_common::properties::FloatProperty(
-    "Z std deviation", 0.03, "Z standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "Z std deviation", 0.03, "Z standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_theta_ = new rviz_common::properties::FloatProperty(
     "Theta std deviation", 5.0 * M_PI / 180.0, "Theta standard deviation for initial pose [rad]",
     getPropertyContainer());
@@ -49,12 +45,12 @@ PredictedCarPoseTool::PredictedCarPoseTool()
     "Min velocity", -33.3, "Min velocity [m/s]", getPropertyContainer());
   accel_ = new rviz_common::properties::FloatProperty(
     "Acceleration", 0.0, "Acceleration [m/s^2]", getPropertyContainer());
-  width_ = new rviz_common::properties::FloatProperty(
-    "Width", 1.8, "Width [m]", getPropertyContainer());
-  length_ = new rviz_common::properties::FloatProperty(
-    "Length", 4.0, "Length [m]", getPropertyContainer());
-  height_ = new rviz_common::properties::FloatProperty(
-    "Height", 2.0, "Height [m]", getPropertyContainer());
+  width_ =
+    new rviz_common::properties::FloatProperty("Width", 1.8, "Width [m]", getPropertyContainer());
+  length_ =
+    new rviz_common::properties::FloatProperty("Length", 4.0, "Length [m]", getPropertyContainer());
+  height_ =
+    new rviz_common::properties::FloatProperty("Height", 2.0, "Height [m]", getPropertyContainer());
   std_dev_x_->setMin(0);
   std_dev_y_->setMin(0);
   std_dev_z_->setMin(0);
@@ -78,7 +74,7 @@ void PredictedCarPoseTool::onInitialize()
 {
   InteractiveObjectTool::onInitialize();
   setName("2D Predicted Car");
-  setIcon(loadPixmap("package://rviz_default_plugins/icons/classes/Pose.png"));
+  setIcon(QPixmap("package://rviz_default_plugins/icons/classes/Pose.png"));
 }
 
 DummyObject PredictedCarPoseTool::createObjectMsg() const
@@ -95,9 +91,6 @@ DummyObject PredictedCarPoseTool::createObjectMsg() const
   initial_pose_covariance[7] = std_dev_y_->getFloat() * std_dev_y_->getFloat();
   initial_pose_covariance[14] = std_dev_z_->getFloat() * std_dev_z_->getFloat();
   initial_pose_covariance[35] = std_dev_theta_->getFloat() * std_dev_theta_->getFloat();
-  object.initial_state.pose_covariance.covariance = initial_pose_covariance;
-  object.initial_state.twist_covariance.covariance = initial_twist_covariance;
-  object.initial_state.accel_covariance.covariance = initial_accel_covariance;
 
   object.action = DummyObject::PREDICT;  // Always predict for predicted tools
   object.classification.label = ObjectClassification::CAR;
@@ -114,18 +107,14 @@ PredictedPedestrianPoseTool::PredictedPedestrianPoseTool()
   shortcut_key_ = 'p';
 
   topic_property_ = new rviz_common::properties::StringProperty(
-    "Topic", "/planning/dummy_objects",
-    "The topic on which to publish dummy object info.", getPropertyContainer(),
-    SLOT(updateTopic()), this);
+    "Topic", "/planning/dummy_objects", "The topic on which to publish dummy object info.",
+    getPropertyContainer(), SLOT(updateTopic()), this);
   std_dev_x_ = new rviz_common::properties::FloatProperty(
-    "X std deviation", 0.03, "X standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "X std deviation", 0.03, "X standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_y_ = new rviz_common::properties::FloatProperty(
-    "Y std deviation", 0.03, "Y standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "Y std deviation", 0.03, "Y standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_z_ = new rviz_common::properties::FloatProperty(
-    "Z std deviation", 0.03, "Z standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "Z std deviation", 0.03, "Z standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_theta_ = new rviz_common::properties::FloatProperty(
     "Theta std deviation", 5.0 * M_PI / 180.0, "Theta standard deviation for initial pose [rad]",
     getPropertyContainer());
@@ -139,12 +128,12 @@ PredictedPedestrianPoseTool::PredictedPedestrianPoseTool()
     "Min velocity", -10.0, "Min velocity [m/s]", getPropertyContainer());
   accel_ = new rviz_common::properties::FloatProperty(
     "Acceleration", 0.0, "Acceleration [m/s^2]", getPropertyContainer());
-  width_ = new rviz_common::properties::FloatProperty(
-    "Width", 0.6, "Width [m]", getPropertyContainer());
-  length_ = new rviz_common::properties::FloatProperty(
-    "Length", 0.6, "Length [m]", getPropertyContainer());
-  height_ = new rviz_common::properties::FloatProperty(
-    "Height", 1.8, "Height [m]", getPropertyContainer());
+  width_ =
+    new rviz_common::properties::FloatProperty("Width", 0.6, "Width [m]", getPropertyContainer());
+  length_ =
+    new rviz_common::properties::FloatProperty("Length", 0.6, "Length [m]", getPropertyContainer());
+  height_ =
+    new rviz_common::properties::FloatProperty("Height", 1.8, "Height [m]", getPropertyContainer());
   std_dev_x_->setMin(0);
   std_dev_y_->setMin(0);
   std_dev_z_->setMin(0);
@@ -168,7 +157,7 @@ void PredictedPedestrianPoseTool::onInitialize()
 {
   InteractiveObjectTool::onInitialize();
   setName("2D Predicted Pedestrian");
-  setIcon(loadPixmap("package://rviz_default_plugins/icons/classes/Pose.png"));
+  setIcon(QPixmap("package://rviz_default_plugins/icons/classes/Pose.png"));
 }
 
 DummyObject PredictedPedestrianPoseTool::createObjectMsg() const
@@ -185,9 +174,6 @@ DummyObject PredictedPedestrianPoseTool::createObjectMsg() const
   initial_pose_covariance[7] = std_dev_y_->getFloat() * std_dev_y_->getFloat();
   initial_pose_covariance[14] = std_dev_z_->getFloat() * std_dev_z_->getFloat();
   initial_pose_covariance[35] = std_dev_theta_->getFloat() * std_dev_theta_->getFloat();
-  object.initial_state.pose_covariance.covariance = initial_pose_covariance;
-  object.initial_state.twist_covariance.covariance = initial_twist_covariance;
-  object.initial_state.accel_covariance.covariance = initial_accel_covariance;
 
   object.action = DummyObject::PREDICT;  // Always predict for predicted tools
   object.classification.label = ObjectClassification::PEDESTRIAN;
@@ -204,18 +190,14 @@ PredictedBusPoseTool::PredictedBusPoseTool()
   shortcut_key_ = 'b';
 
   topic_property_ = new rviz_common::properties::StringProperty(
-    "Topic", "/planning/dummy_objects",
-    "The topic on which to publish dummy object info.", getPropertyContainer(),
-    SLOT(updateTopic()), this);
+    "Topic", "/planning/dummy_objects", "The topic on which to publish dummy object info.",
+    getPropertyContainer(), SLOT(updateTopic()), this);
   std_dev_x_ = new rviz_common::properties::FloatProperty(
-    "X std deviation", 0.03, "X standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "X std deviation", 0.03, "X standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_y_ = new rviz_common::properties::FloatProperty(
-    "Y std deviation", 0.03, "Y standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "Y std deviation", 0.03, "Y standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_z_ = new rviz_common::properties::FloatProperty(
-    "Z std deviation", 0.03, "Z standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "Z std deviation", 0.03, "Z standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_theta_ = new rviz_common::properties::FloatProperty(
     "Theta std deviation", 5.0 * M_PI / 180.0, "Theta standard deviation for initial pose [rad]",
     getPropertyContainer());
@@ -229,12 +211,12 @@ PredictedBusPoseTool::PredictedBusPoseTool()
     "Min velocity", -33.3, "Min velocity [m/s]", getPropertyContainer());
   accel_ = new rviz_common::properties::FloatProperty(
     "Acceleration", 0.0, "Acceleration [m/s^2]", getPropertyContainer());
-  width_ = new rviz_common::properties::FloatProperty(
-    "Width", 2.5, "Width [m]", getPropertyContainer());
+  width_ =
+    new rviz_common::properties::FloatProperty("Width", 2.5, "Width [m]", getPropertyContainer());
   length_ = new rviz_common::properties::FloatProperty(
     "Length", 10.0, "Length [m]", getPropertyContainer());
-  height_ = new rviz_common::properties::FloatProperty(
-    "Height", 3.5, "Height [m]", getPropertyContainer());
+  height_ =
+    new rviz_common::properties::FloatProperty("Height", 3.5, "Height [m]", getPropertyContainer());
   std_dev_x_->setMin(0);
   std_dev_y_->setMin(0);
   std_dev_z_->setMin(0);
@@ -258,7 +240,7 @@ void PredictedBusPoseTool::onInitialize()
 {
   InteractiveObjectTool::onInitialize();
   setName("2D Predicted Bus");
-  setIcon(loadPixmap("package://rviz_default_plugins/icons/classes/Pose.png"));
+  setIcon(QPixmap("package://rviz_default_plugins/icons/classes/Pose.png"));
 }
 
 DummyObject PredictedBusPoseTool::createObjectMsg() const
@@ -275,9 +257,6 @@ DummyObject PredictedBusPoseTool::createObjectMsg() const
   initial_pose_covariance[7] = std_dev_y_->getFloat() * std_dev_y_->getFloat();
   initial_pose_covariance[14] = std_dev_z_->getFloat() * std_dev_z_->getFloat();
   initial_pose_covariance[35] = std_dev_theta_->getFloat() * std_dev_theta_->getFloat();
-  object.initial_state.pose_covariance.covariance = initial_pose_covariance;
-  object.initial_state.twist_covariance.covariance = initial_twist_covariance;
-  object.initial_state.accel_covariance.covariance = initial_accel_covariance;
 
   object.action = DummyObject::PREDICT;  // Always predict for predicted tools
   object.classification.label = ObjectClassification::BUS;
@@ -294,18 +273,14 @@ PredictedBikePoseTool::PredictedBikePoseTool()
   shortcut_key_ = 'k';
 
   topic_property_ = new rviz_common::properties::StringProperty(
-    "Topic", "/planning/dummy_objects",
-    "The topic on which to publish dummy object info.", getPropertyContainer(),
-    SLOT(updateTopic()), this);
+    "Topic", "/planning/dummy_objects", "The topic on which to publish dummy object info.",
+    getPropertyContainer(), SLOT(updateTopic()), this);
   std_dev_x_ = new rviz_common::properties::FloatProperty(
-    "X std deviation", 0.03, "X standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "X std deviation", 0.03, "X standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_y_ = new rviz_common::properties::FloatProperty(
-    "Y std deviation", 0.03, "Y standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "Y std deviation", 0.03, "Y standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_z_ = new rviz_common::properties::FloatProperty(
-    "Z std deviation", 0.03, "Z standard deviation for initial pose [m]",
-    getPropertyContainer());
+    "Z std deviation", 0.03, "Z standard deviation for initial pose [m]", getPropertyContainer());
   std_dev_theta_ = new rviz_common::properties::FloatProperty(
     "Theta std deviation", 5.0 * M_PI / 180.0, "Theta standard deviation for initial pose [rad]",
     getPropertyContainer());
@@ -319,12 +294,12 @@ PredictedBikePoseTool::PredictedBikePoseTool()
     "Min velocity", -16.66, "Min velocity [m/s]", getPropertyContainer());
   accel_ = new rviz_common::properties::FloatProperty(
     "Acceleration", 0.0, "Acceleration [m/s^2]", getPropertyContainer());
-  width_ = new rviz_common::properties::FloatProperty(
-    "Width", 0.8, "Width [m]", getPropertyContainer());
-  length_ = new rviz_common::properties::FloatProperty(
-    "Length", 2.0, "Length [m]", getPropertyContainer());
-  height_ = new rviz_common::properties::FloatProperty(
-    "Height", 1.5, "Height [m]", getPropertyContainer());
+  width_ =
+    new rviz_common::properties::FloatProperty("Width", 0.8, "Width [m]", getPropertyContainer());
+  length_ =
+    new rviz_common::properties::FloatProperty("Length", 2.0, "Length [m]", getPropertyContainer());
+  height_ =
+    new rviz_common::properties::FloatProperty("Height", 1.5, "Height [m]", getPropertyContainer());
   std_dev_x_->setMin(0);
   std_dev_y_->setMin(0);
   std_dev_z_->setMin(0);
@@ -352,7 +327,7 @@ void PredictedBikePoseTool::onInitialize()
 {
   InteractiveObjectTool::onInitialize();
   setName("2D Predicted Bike");
-  setIcon(loadPixmap("package://rviz_default_plugins/icons/classes/Pose.png"));
+  setIcon(QPixmap("package://rviz_default_plugins/icons/classes/Pose.png"));
 }
 
 DummyObject PredictedBikePoseTool::createObjectMsg() const
@@ -369,9 +344,6 @@ DummyObject PredictedBikePoseTool::createObjectMsg() const
   initial_pose_covariance[7] = std_dev_y_->getFloat() * std_dev_y_->getFloat();
   initial_pose_covariance[14] = std_dev_z_->getFloat() * std_dev_z_->getFloat();
   initial_pose_covariance[35] = std_dev_theta_->getFloat() * std_dev_theta_->getFloat();
-  object.initial_state.pose_covariance.covariance = initial_pose_covariance;
-  object.initial_state.twist_covariance.covariance = initial_twist_covariance;
-  object.initial_state.accel_covariance.covariance = initial_accel_covariance;
 
   object.action = DummyObject::PREDICT;  // Always predict for predicted tools
   object.classification.label = label_->getOptionInt();
