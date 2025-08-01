@@ -204,21 +204,19 @@ std::optional<lanelet::LineString3d> generate_blind_ego_side_path_boundary_befor
     const auto intersection_point_opt = find_intersection_point(path_segment, lane_entry_line);
     if (intersection_point_opt) {
       const auto & point = intersection_point_opt.value();
-      points.push_back(
-        lanelet::Point3d{
-          lanelet::InvalId, lanelet::BasicPoint3d{point.x(), point.y(), p1.point.pose.position.z}});
+      points.push_back(lanelet::Point3d{
+        lanelet::InvalId, lanelet::BasicPoint3d{point.x(), point.y(), p1.point.pose.position.z}});
       break;
     }
     const auto sign = (turn_direction == TurnDirection::Left) ? 1.0 : -1.0;
     const double blind_side_direction =
       autoware_utils_geometry::get_rpy(p1.point.pose).z + sign * M_PI / 2.0;
-    points.push_back(
-      lanelet::Point3d{
-        lanelet::InvalId,
-        lanelet::BasicPoint3d{
-          p1.point.pose.position.x + ego_width / 2.0 * std::cos(blind_side_direction),
-          p1.point.pose.position.y + ego_width / 2.0 * std::sin(blind_side_direction),
-          p1.point.pose.position.z}});
+    points.push_back(lanelet::Point3d{
+      lanelet::InvalId,
+      lanelet::BasicPoint3d{
+        p1.point.pose.position.x + ego_width / 2.0 * std::cos(blind_side_direction),
+        p1.point.pose.position.y + ego_width / 2.0 * std::sin(blind_side_direction),
+        p1.point.pose.position.z}});
   }
   if (points.size() < 2) {
     return std::nullopt;
@@ -595,16 +593,14 @@ std::optional<lanelet::ConstLanelet> generate_ego_path_polygon(
     const auto yaw = autoware_utils_geometry::get_rpy(pose).z;
     const auto left_dir = yaw + M_PI / 2.0;
     const auto right_dir = yaw - M_PI / 2.0;
-    lefts.push_back(
-      lanelet::Point3d{
-        lanelet::InvalId, lanelet::BasicPoint3d{
-                            point.x + std::cos(left_dir) * ego_width / 2.0,
-                            point.y + std::sin(left_dir) * ego_width / 2.0, point.z}});
-    rights.push_back(
-      lanelet::Point3d{
-        lanelet::InvalId, lanelet::BasicPoint3d{
-                            point.x + std::cos(right_dir) * ego_width / 2.0,
-                            point.y + std::sin(right_dir) * ego_width / 2.0, point.z}});
+    lefts.push_back(lanelet::Point3d{
+      lanelet::InvalId, lanelet::BasicPoint3d{
+                          point.x + std::cos(left_dir) * ego_width / 2.0,
+                          point.y + std::sin(left_dir) * ego_width / 2.0, point.z}});
+    rights.push_back(lanelet::Point3d{
+      lanelet::InvalId, lanelet::BasicPoint3d{
+                          point.x + std::cos(right_dir) * ego_width / 2.0,
+                          point.y + std::sin(right_dir) * ego_width / 2.0, point.z}});
   }
   if (lefts.size() < 2 || rights.size() < 2) {
     return std::nullopt;
