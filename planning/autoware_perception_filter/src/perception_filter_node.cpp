@@ -250,7 +250,7 @@ void PerceptionFilterNode::onObjects(
     filtered_objects_pub_, filtered_objects.header.stamp);
 
   // Publish planning factors
-  planning_factors_pub_->publish(createPlanningFactors(is_currently_stopped));
+  planning_factors_pub_->publish(createPlanningFactors());
 
   // Publish debug markers
   publishDebugMarkers(*msg, rtc_is_activated);
