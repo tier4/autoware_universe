@@ -43,6 +43,7 @@ workflows:
       updates:
         - jobs.build-and-test-differential-cuda.with.runner: ubuntu-22.04-m
         - jobs.clang-tidy-differential-cuda.with.runner: ubuntu-22.04-m
+        - jobs.build-and-test-packages-above-differential.with.runner: ubuntu-22.04-m
     clang-tidy-differential.yaml:
       updates:
         - on.workflow_call.inputs.runner.default: ubuntu-22.04-m
