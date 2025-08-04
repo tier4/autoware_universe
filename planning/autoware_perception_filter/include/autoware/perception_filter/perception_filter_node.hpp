@@ -57,25 +57,6 @@ namespace autoware::perception_filter
 {
 
 /**
- * @brief Structure to hold common point cloud processing results
- * @details Contains transformed point cloud, polygon-filtered indices, and distance calculations
- */
-struct PointCloudProcessingResult
-{
-  pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud;  ///< Point cloud transformed to map frame
-  pcl::PointIndices::Ptr polygon_inside_indices;  ///< Indices of points inside filtering polygon
-  std::vector<double>
-    distances_to_path;  ///< Distance to planning path for each point inside polygon
-  bool success;         ///< Whether processing completed successfully
-
-  PointCloudProcessingResult() : success(false)
-  {
-    transformed_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
-    polygon_inside_indices = pcl::PointIndices::Ptr(new pcl::PointIndices);
-  }
-};
-
-/**
  * @brief Perception filter node for supervised object and pointcloud filtering
  * @details Filters perception data based on proximity to planned trajectory with RTC approval
  */
@@ -143,19 +124,6 @@ private:
    * @details Deactivates polygon when ego vehicle passes through it
    */
   void updateFilteringPolygonStatus();
-
-  /**
-   * @brief Common point cloud processing for both filtering and classification
-   * @param input_pointcloud Input point cloud to process
-   * @param filtering_polygon Polygon to filter points within
-   * @return PointCloudProcessingResult containing transformed cloud, filtered indices, and
-   * distances
-   * @details Performs coordinate transformation, bounding box filtering, polygon filtering, and
-   * distance calculation
-   */
-  PointCloudProcessingResult processPointCloudCommon(
-    const sensor_msgs::msg::PointCloud2 & input_pointcloud,
-    const autoware::universe_utils::Polygon2d & filtering_polygon);
 
   /**
    * @brief Classify pointcloud points for planning factors with proper coordinate transformation

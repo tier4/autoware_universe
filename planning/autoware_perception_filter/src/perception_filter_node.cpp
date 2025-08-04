@@ -180,92 +180,6 @@ void PerceptionFilterNode::updateRTCStatus(
   rtc_interface_->publishCooperateStatus(this->now());
 }
 
-PointCloudProcessingResult PerceptionFilterNode::processPointCloudCommon(
-  const sensor_msgs::msg::PointCloud2 & input_pointcloud,
-  const autoware::universe_utils::Polygon2d & filtering_polygon)
-{
-  PointCloudProcessingResult result;
-
-  if (input_pointcloud.data.empty() || !planning_trajectory_) {
-    return result;
-  }
-
-  // Convert ROS PointCloud2 to PCL format
-  pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::PointCloud<pcl::PointXYZ>::Ptr polygon_points(new pcl::PointCloud<pcl::PointXYZ>);
-
-  pcl::fromROSMsg(input_pointcloud, *input_cloud);
-
-  geometry_msgs::msg::TransformStamped transform;
-  try {
-    transform = tf_buffer_->lookupTransform(
-      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN(
-      get_logger(), "Failed to get transform from base_link to map: %s. Cannot process pointcloud.",
-      ex.what());
-    return result;
-  }
-
-  // Transform the pointcloud to the map frame
-  const auto eigen_transform = tf2::transformToEigen(transform.transform).cast<float>();
-  pcl::transformPointCloud(*input_cloud, *result.transformed_cloud, eigen_transform);
-
-  const auto bbox =
-    boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(filtering_polygon.outer());
-
-  // Rough filter on the X/Y axis using indices-based approach
-  pcl::IndicesPtr x_filtered_indices(new pcl::Indices());
-  pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
-  passthrough_filter.setInputCloud(result.transformed_cloud);
-  passthrough_filter.setFilterFieldName("x");
-  passthrough_filter.setFilterLimits(
-    static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
-  passthrough_filter.filter(*x_filtered_indices);
-
-  pcl::IndicesPtr xy_filtered_indices(new pcl::Indices());
-  passthrough_filter.setInputCloud(result.transformed_cloud);
-  passthrough_filter.setFilterFieldName("y");
-  passthrough_filter.setIndices(x_filtered_indices);
-  passthrough_filter.setFilterLimits(
-    static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
-  passthrough_filter.filter(*xy_filtered_indices);
-
-  // Prepare polygon hull for CropHull filter
-  std::vector<pcl::Vertices> polygon_vertices;
-  polygon_vertices.emplace_back();
-  auto polygon_i = 0;
-  for (const auto & p : filtering_polygon.outer()) {
-    polygon_vertices.back().vertices.push_back(polygon_i++);
-    polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
-  }
-
-  // Use CropHull for polygon-based filtering
-  pcl::CropHull<pcl::PointXYZ> crop_hull;
-  crop_hull.setInputCloud(result.transformed_cloud);
-  crop_hull.setIndices(xy_filtered_indices);
-  crop_hull.setHullCloud(polygon_points);
-  crop_hull.setHullIndices(polygon_vertices);
-  crop_hull.setDim(2);  // 2D polygon filtering
-  crop_hull.filter(result.polygon_inside_indices->indices);
-
-  // Calculate distances to path for all points inside polygon
-  result.distances_to_path.reserve(result.polygon_inside_indices->indices.size());
-  for (const auto i : result.polygon_inside_indices->indices) {
-    const auto & point = result.transformed_cloud->points[i];
-    geometry_msgs::msg::Point ros_point;
-    ros_point.x = point.x;
-    ros_point.y = point.y;
-    ros_point.z = point.z;
-
-    const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
-    result.distances_to_path.push_back(distance_to_path);
-  }
-
-  result.success = true;
-  return result;
-}
-
 void PerceptionFilterNode::onObjects(
   const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg)
 {
@@ -449,7 +363,8 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   }
 
   // Use common processing function
-  auto processing_result = processPointCloudCommon(input_pointcloud, filtering_polygon.polygon);
+  auto processing_result = processPointCloudCommon(
+    input_pointcloud, filtering_polygon.polygon, planning_trajectory, *tf_buffer_);
   if (!processing_result.success) {
     return input_pointcloud;
   }
@@ -539,7 +454,8 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     createPathPolygon(*planning_trajectory_, 0.0, filtering_distance, max_filter_distance_);
 
   // Use common processing function
-  auto processing_result = processPointCloudCommon(input_pointcloud, filtering_polygon);
+  auto processing_result =
+    processPointCloudCommon(input_pointcloud, filtering_polygon, planning_trajectory_, *tf_buffer_);
   if (!processing_result.success) {
     return would_be_filtered_points;
   }

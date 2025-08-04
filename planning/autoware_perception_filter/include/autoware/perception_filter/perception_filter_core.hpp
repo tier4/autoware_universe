@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_CORE_HPP_
 #define AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_CORE_HPP_
 
-#include <autoware_utils_geometry/boost_geometry.hpp>
+#include <autoware/universe_utils/geometry/boost_geometry.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -26,11 +26,22 @@
 
 #include <boost/geometry.hpp>
 
+// PCL includes for point cloud processing
+#include <pcl/PointIndices.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+
 #include <array>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
+
+// Forward declaration for TF2
+namespace tf2_ros
+{
+class Buffer;
+}
 
 namespace autoware::perception_filter
 {
@@ -41,10 +52,10 @@ namespace autoware::perception_filter
  */
 struct FilteringPolygon
 {
-  autoware_utils_geometry::Polygon2d polygon;  ///< Filtering range polygon
-  double start_distance_along_path;            ///< Start distance along the path [m]
-  double end_distance_along_path;              ///< End distance along the path [m]
-  bool is_active;                              ///< Whether the polygon is currently active
+  autoware::universe_utils::Polygon2d polygon;  ///< Filtering range polygon
+  double start_distance_along_path;             ///< Start distance along the path [m]
+  double end_distance_along_path;               ///< End distance along the path [m]
+  bool is_active;                               ///< Whether the polygon is currently active
 };
 
 /**
@@ -69,6 +80,25 @@ struct FilteredPointInfo
 {
   geometry_msgs::msg::Point point;  ///< Filtered point coordinates
   double distance_to_path;          ///< Distance from point to path [m]
+};
+
+/**
+ * @brief Structure to hold common point cloud processing results
+ * @details Contains transformed point cloud, polygon-filtered indices, and distance calculations
+ */
+struct PointCloudProcessingResult
+{
+  pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud;  ///< Point cloud transformed to map frame
+  pcl::PointIndices::Ptr polygon_inside_indices;  ///< Indices of points inside filtering polygon
+  std::vector<double>
+    distances_to_path;  ///< Distance to planning path for each point inside polygon
+  bool success;         ///< Whether processing completed successfully
+
+  PointCloudProcessingResult() : success(false)
+  {
+    transformed_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    polygon_inside_indices = pcl::PointIndices::Ptr(new pcl::PointIndices);
+  }
 };
 
 // ========== Core Filtering Functions ==========
@@ -100,9 +130,25 @@ ObjectClassification classifyObjectsWithinRadius(
  * @param width Half-width of polygon [m]
  * @return Generated polygon
  */
-autoware_utils_geometry::Polygon2d createPathPolygon(
+autoware::universe_utils::Polygon2d createPathPolygon(
   const autoware_planning_msgs::msg::Trajectory & trajectory, double start_distance,
   double end_distance, double width);
+
+/**
+ * @brief Process point cloud with common filtering operations
+ * @param input_pointcloud Input point cloud to process
+ * @param filtering_polygon Polygon to filter points within
+ * @param planning_trajectory Planning trajectory for distance calculation
+ * @param tf_buffer TF buffer for coordinate transformation
+ * @return PointCloudProcessingResult containing transformed cloud, filtered indices, and distances
+ * @details Performs coordinate transformation, bounding box filtering, polygon filtering, and
+ * distance calculation
+ */
+PointCloudProcessingResult processPointCloudCommon(
+  const sensor_msgs::msg::PointCloud2 & input_pointcloud,
+  const autoware::universe_utils::Polygon2d & filtering_polygon,
+  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
+  const tf2_ros::Buffer & tf_buffer);
 
 // ========== Distance and Proximity Calculation Functions ==========
 
