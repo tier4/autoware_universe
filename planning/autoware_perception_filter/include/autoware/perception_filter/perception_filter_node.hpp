@@ -111,11 +111,17 @@ private:
   void initializeRTCInterface();
 
   /**
-   * @brief Update RTC status based on vehicle state
-   * @param is_currently_stopped Whether vehicle is currently stopped
-   * @param is_just_stopped Whether vehicle just stopped (transition)
+   * @brief Check RTC interface state and detect activation changes
+   * @param last_state Reference to the last RTC state variable
+   * @param context_name Name for logging context (e.g., "object filtering", "pointcloud filtering")
+   * @return true if RTC just became active, false otherwise
    */
-  void updateRTCStatus(const bool is_currently_stopped, const bool is_just_stopped);
+  bool checkRTCStateChange(bool & last_state, const std::string & context_name);
+
+  /**
+   * @brief Update RTC status based on vehicle state
+   */
+  void updateRTCStatus();
 
   // ========== Polygon-based Filtering Functions ==========
 
@@ -219,9 +225,8 @@ private:
   std::vector<FilteredPointInfo> would_be_filtered_points_;
 
   // RTC state management
-  bool previous_rtc_activated_objects_{};  ///< Previous RTC activation state for object processing
-  bool previous_rtc_activated_pointcloud_{};  ///< Previous RTC activation state for pointcloud
-                                              ///< processing
+  bool last_objects_rtc_state_{};     ///< Previous RTC activation state for object processing
+  bool last_pointcloud_rtc_state_{};  ///< Previous RTC activation state for pointcloud processing
   std::set<std::array<uint8_t, 16>>
     frozen_filter_object_ids_;  ///< Object IDs frozen at RTC approval time
   bool filtering_active_{};     ///< Whether filtering is currently active

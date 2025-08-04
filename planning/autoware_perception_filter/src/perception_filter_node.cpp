@@ -164,9 +164,40 @@ void PerceptionFilterNode::initializeRTCInterface()
   rtc_uuid_ = autoware::universe_utils::generateUUID();
 }
 
-void PerceptionFilterNode::updateRTCStatus(
-  const bool is_currently_stopped, const bool is_just_stopped)
+/**
+ * @brief Check RTC interface state and detect activation changes
+ * @param last_state Reference to the last RTC state variable
+ * @param context_name Name for logging context (e.g., "object filtering", "pointcloud filtering")
+ * @return true if RTC just became active, false otherwise
+ */
+bool PerceptionFilterNode::checkRTCStateChange(bool & last_state, const std::string & context_name)
 {
+  const bool rtc_is_registered = rtc_interface_ && rtc_interface_->isRegistered(rtc_uuid_);
+  const bool rtc_is_activated =
+    rtc_interface_ && rtc_is_registered && rtc_interface_->isActivated(rtc_uuid_);
+
+  // Detect if RTC was just activated (transition from inactive to active)
+  const bool rtc_became_active = rtc_is_activated && !last_state;
+
+  // Store current state for next comparison
+  last_state = rtc_is_activated;
+
+  // Log RTC state changes for debugging
+  if (rtc_became_active) {
+    RCLCPP_INFO(get_logger(), "RTC interface just activated for %s", context_name.c_str());
+  } else if (last_state && !rtc_is_activated) {
+    RCLCPP_DEBUG(get_logger(), "RTC interface deactivated for %s", context_name.c_str());
+  }
+
+  return rtc_became_active;
+}
+
+void PerceptionFilterNode::updateRTCStatus()
+{
+  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0);
+  const bool is_just_stopped = is_currently_stopped && !ego_previously_stopped_;
+  ego_previously_stopped_ = is_currently_stopped;
+
   if (!is_currently_stopped) {
     // Clear RTC status and publish empty status when vehicle is not stopped
     rtc_interface_->clearCooperateStatus();
@@ -214,21 +245,12 @@ void PerceptionFilterNode::onObjects(
     return;
   }
 
-  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0);
-  const bool is_just_stopped = is_currently_stopped && !ego_previously_stopped_;
-  ego_previously_stopped_ = is_currently_stopped;
-
-  // Update RTC status
-  updateRTCStatus(is_currently_stopped, is_just_stopped);
-
-  const bool rtc_is_registered = rtc_interface_ && rtc_interface_->isRegistered(rtc_uuid_);
-  const bool rtc_is_activated =
-    rtc_interface_ && rtc_is_registered && rtc_interface_->isActivated(rtc_uuid_);
-  const bool rtc_just_activated = rtc_is_activated && !previous_rtc_activated_objects_;
-  previous_rtc_activated_objects_ = rtc_is_activated;
+  // Check RTC interface state and detect activation changes
+  const bool rtc_became_active_in_objects =
+    checkRTCStateChange(last_objects_rtc_state_, "object filtering");
 
   // Add objects from latest classification to frozen list if RTC just activated
-  if (rtc_just_activated) {
+  if (rtc_became_active_in_objects) {
     for (const auto & object : latest_classification_.pass_through_would_filter) {
       std::array<uint8_t, 16> uuid_array;
       std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
@@ -246,8 +268,9 @@ void PerceptionFilterNode::onObjects(
   }
 
   auto classification = classifyObjectsWithinRadius(
-    *latest_objects_, planning_trajectory_, *ego_pose, rtc_is_registered, frozen_filter_object_ids_,
-    max_filter_distance_, object_classification_radius_, ignore_object_classes_);
+    *latest_objects_, planning_trajectory_, *ego_pose, rtc_interface_->isRegistered(rtc_uuid_),
+    frozen_filter_object_ids_, max_filter_distance_, object_classification_radius_,
+    ignore_object_classes_);
   latest_classification_ = classification;
 
   // Create filtered objects message
@@ -311,20 +334,11 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     return;
   }
 
-  const bool rtc_is_registered = rtc_interface_ && rtc_interface_->isRegistered(rtc_uuid_);
-  const bool rtc_is_activated =
-    rtc_interface_ && rtc_is_registered && rtc_interface_->isActivated(rtc_uuid_);
-  const bool rtc_just_activated = rtc_is_activated && !previous_rtc_activated_pointcloud_;
-  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0);
-  const bool is_just_stopped = is_currently_stopped && !ego_previously_stopped_;
+  // Check RTC interface state and detect activation changes
+  const bool rtc_became_active_in_pointcloud =
+    checkRTCStateChange(last_pointcloud_rtc_state_, "pointcloud filtering");
 
-  previous_rtc_activated_pointcloud_ = rtc_is_activated;
-  ego_previously_stopped_ = is_currently_stopped;
-
-  // Update RTC status
-  updateRTCStatus(is_currently_stopped, is_just_stopped);
-
-  if (rtc_just_activated) {
+  if (rtc_became_active_in_pointcloud) {
     RCLCPP_DEBUG(get_logger(), "RTC just activated - creating filtering polygon");
     createFilteringPolygon();
   }
@@ -335,8 +349,9 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   }
 
   // If rtc_is_registered is true, classify the pointcloud for planning factors
-  if (rtc_is_registered) {
-    would_be_filtered_points_ = classifyPointCloudForPlanningFactors(*msg, rtc_is_registered);
+  if (rtc_interface_->isRegistered(rtc_uuid_)) {
+    would_be_filtered_points_ =
+      classifyPointCloudForPlanningFactors(*msg, rtc_interface_->isRegistered(rtc_uuid_));
   } else {
     would_be_filtered_points_.clear();
   }
@@ -532,6 +547,9 @@ void PerceptionFilterNode::onPlanningTrajectory(
 
 void PerceptionFilterNode::onTimer()
 {
+  // Update RTC status
+  updateRTCStatus();
+
   // Check if required data is available for debug markers
   if (!latest_objects_ || !planning_trajectory_) {
     return;
