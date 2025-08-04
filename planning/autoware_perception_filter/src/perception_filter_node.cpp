@@ -180,6 +180,92 @@ void PerceptionFilterNode::updateRTCStatus(
   rtc_interface_->publishCooperateStatus(this->now());
 }
 
+PointCloudProcessingResult PerceptionFilterNode::processPointCloudCommon(
+  const sensor_msgs::msg::PointCloud2 & input_pointcloud,
+  const autoware::universe_utils::Polygon2d & filtering_polygon)
+{
+  PointCloudProcessingResult result;
+
+  if (input_pointcloud.data.empty() || !planning_trajectory_) {
+    return result;
+  }
+
+  // Convert ROS PointCloud2 to PCL format
+  pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr polygon_points(new pcl::PointCloud<pcl::PointXYZ>);
+
+  pcl::fromROSMsg(input_pointcloud, *input_cloud);
+
+  geometry_msgs::msg::TransformStamped transform;
+  try {
+    transform = tf_buffer_->lookupTransform(
+      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN(
+      get_logger(), "Failed to get transform from base_link to map: %s. Cannot process pointcloud.",
+      ex.what());
+    return result;
+  }
+
+  // Transform the pointcloud to the map frame
+  const auto eigen_transform = tf2::transformToEigen(transform.transform).cast<float>();
+  pcl::transformPointCloud(*input_cloud, *result.transformed_cloud, eigen_transform);
+
+  const auto bbox =
+    boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(filtering_polygon.outer());
+
+  // Rough filter on the X/Y axis using indices-based approach
+  pcl::IndicesPtr x_filtered_indices(new pcl::Indices());
+  pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
+  passthrough_filter.setInputCloud(result.transformed_cloud);
+  passthrough_filter.setFilterFieldName("x");
+  passthrough_filter.setFilterLimits(
+    static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
+  passthrough_filter.filter(*x_filtered_indices);
+
+  pcl::IndicesPtr xy_filtered_indices(new pcl::Indices());
+  passthrough_filter.setInputCloud(result.transformed_cloud);
+  passthrough_filter.setFilterFieldName("y");
+  passthrough_filter.setIndices(x_filtered_indices);
+  passthrough_filter.setFilterLimits(
+    static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
+  passthrough_filter.filter(*xy_filtered_indices);
+
+  // Prepare polygon hull for CropHull filter
+  std::vector<pcl::Vertices> polygon_vertices;
+  polygon_vertices.emplace_back();
+  auto polygon_i = 0;
+  for (const auto & p : filtering_polygon.outer()) {
+    polygon_vertices.back().vertices.push_back(polygon_i++);
+    polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
+  }
+
+  // Use CropHull for polygon-based filtering
+  pcl::CropHull<pcl::PointXYZ> crop_hull;
+  crop_hull.setInputCloud(result.transformed_cloud);
+  crop_hull.setIndices(xy_filtered_indices);
+  crop_hull.setHullCloud(polygon_points);
+  crop_hull.setHullIndices(polygon_vertices);
+  crop_hull.setDim(2);  // 2D polygon filtering
+  crop_hull.filter(result.polygon_inside_indices->indices);
+
+  // Calculate distances to path for all points inside polygon
+  result.distances_to_path.reserve(result.polygon_inside_indices->indices.size());
+  for (const auto i : result.polygon_inside_indices->indices) {
+    const auto & point = result.transformed_cloud->points[i];
+    geometry_msgs::msg::Point ros_point;
+    ros_point.x = point.x;
+    ros_point.y = point.y;
+    ros_point.z = point.z;
+
+    const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
+    result.distances_to_path.push_back(distance_to_path);
+  }
+
+  result.success = true;
+  return result;
+}
+
 void PerceptionFilterNode::onObjects(
   const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg)
 {
@@ -362,79 +448,19 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     return input_pointcloud;
   }
 
-  // Convert ROS PointCloud2 to PCL format
-  pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::PointCloud<pcl::PointXYZ>::Ptr polygon_points(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-
-  pcl::fromROSMsg(input_pointcloud, *input_cloud);
-
-  geometry_msgs::msg::TransformStamped transform;
-  try {
-    transform = tf_buffer_->lookupTransform(
-      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN(
-      get_logger(), "Failed to get transform from base_link to map: %s. Cannot filter pointcloud.",
-      ex.what());
+  // Use common processing function
+  auto processing_result = processPointCloudCommon(input_pointcloud, filtering_polygon.polygon);
+  if (!processing_result.success) {
     return input_pointcloud;
   }
 
-  // transform the pointcloud to the map frame
-  const auto eigen_transform = tf2::transformToEigen(transform.transform).cast<float>();
-  pcl::transformPointCloud(*input_cloud, *transformed_cloud, eigen_transform);
-
-  const auto bbox = boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(
-    filtering_polygon.polygon.outer());
-
-  // Rough filter on the X/Y axis using indices-based approach
-  pcl::IndicesPtr x_filtered_indices(new pcl::Indices());
-  pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
-  passthrough_filter.setInputCloud(transformed_cloud);
-  passthrough_filter.setFilterFieldName("x");
-  passthrough_filter.setFilterLimits(
-    static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
-  passthrough_filter.filter(*x_filtered_indices);
-
-  pcl::IndicesPtr xy_filtered_indices(new pcl::Indices());
-  passthrough_filter.setInputCloud(transformed_cloud);
-  passthrough_filter.setFilterFieldName("y");
-  passthrough_filter.setIndices(x_filtered_indices);
-  passthrough_filter.setFilterLimits(
-    static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
-  passthrough_filter.filter(*xy_filtered_indices);
-
-  // Prepare polygon hull for CropHull filter
-  std::vector<pcl::Vertices> polygon_vertices;
-  polygon_vertices.emplace_back();
-  auto polygon_i = 0;
-  for (const auto & p : filtering_polygon.polygon.outer()) {
-    polygon_vertices.back().vertices.push_back(polygon_i++);
-    polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
-  }
-
-  // Use CropHull for polygon-based filtering
-  pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-  pcl::CropHull<pcl::PointXYZ> crop_hull;
-  crop_hull.setInputCloud(transformed_cloud);
-  crop_hull.setIndices(xy_filtered_indices);
-  crop_hull.setHullCloud(polygon_points);
-  crop_hull.setHullIndices(polygon_vertices);
-  crop_hull.setDim(2);  // 2D polygon filtering
-  crop_hull.filter(inliers->indices);
-
   // Filter points based on distance from planning trajectory
   pcl::PointIndices::Ptr indices_to_remove(new pcl::PointIndices());
-  for (const auto i : inliers->indices) {
-    const auto & point = transformed_cloud->points[i];
-    geometry_msgs::msg::Point ros_point;
-    ros_point.x = point.x;
-    ros_point.y = point.y;
-    ros_point.z = point.z;
+  for (size_t idx = 0; idx < processing_result.polygon_inside_indices->indices.size(); ++idx) {
+    const auto i = processing_result.polygon_inside_indices->indices[idx];
+    const double distance_to_path = processing_result.distances_to_path[idx];
 
     // For points inside the polygon, check distance to path and safety distance
-    const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory);
     const bool is_near_path = (distance_to_path <= max_filter_distance);
     const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance);
 
@@ -447,8 +473,9 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   }
 
   // Extract the filtered cloud by removing the indices to be filtered
+  pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::ExtractIndices<pcl::PointXYZ> extract_indices;
-  extract_indices.setInputCloud(transformed_cloud);
+  extract_indices.setInputCloud(processing_result.transformed_cloud);
   extract_indices.setIndices(indices_to_remove);
   extract_indices.setNegative(true);  // Keep points NOT in the indices_to_remove
   extract_indices.filter(*filtered_cloud);
@@ -456,6 +483,17 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   // Transform filtered points back to original coordinate frame (base_link)
   pcl::PointCloud<pcl::PointXYZ>::Ptr final_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
   if (!filtered_cloud->points.empty()) {
+    geometry_msgs::msg::TransformStamped transform;
+    try {
+      transform = tf_buffer_->lookupTransform(
+        "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(
+        get_logger(), "Failed to get transform for inverse transformation: %s", ex.what());
+      return input_pointcloud;
+    }
+
+    const auto eigen_transform = tf2::transformToEigen(transform.transform).cast<float>();
     const auto inverse_transform = eigen_transform.inverse();
     pcl::transformPointCloud(*filtered_cloud, *final_filtered_cloud, inverse_transform);
   } else {
@@ -464,16 +502,16 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 
   RCLCPP_DEBUG(
     get_logger(),
-    "Pointcloud filtering stages: input=%lu -> transformed=%lu -> x_filtered=%lu -> "
-    "xy_filtered=%lu -> polygon_inside=%lu -> removed=%lu -> final=%lu",
-    input_cloud->size(), transformed_cloud->size(), x_filtered_indices->size(),
-    xy_filtered_indices->size(), inliers->indices.size(), indices_to_remove->indices.size(),
+    "Pointcloud filtering stages: input=%zu -> transformed=%zu -> polygon_inside=%zu -> "
+    "removed=%zu -> final=%zu",
+    processing_result.transformed_cloud->size(), processing_result.transformed_cloud->size(),
+    processing_result.polygon_inside_indices->indices.size(), indices_to_remove->indices.size(),
     final_filtered_cloud->size());
 
   // Update cloud properties for filtered data
   final_filtered_cloud->width = final_filtered_cloud->points.size();
   final_filtered_cloud->height = 1;
-  final_filtered_cloud->is_dense = input_cloud->is_dense;
+  final_filtered_cloud->is_dense = true;  // Assume dense after filtering
 
   // Convert back to ROS PointCloud2
   sensor_msgs::msg::PointCloud2 filtered_pointcloud;
@@ -482,7 +520,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 
   RCLCPP_DEBUG(
     get_logger(), "Pointcloud filtering: input points=%zu, output points=%zu",
-    input_cloud->points.size(), final_filtered_cloud->points.size());
+    processing_result.transformed_cloud->points.size(), final_filtered_cloud->points.size());
 
   return filtered_pointcloud;
 }
@@ -495,70 +533,16 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
   if (!rtc_is_registered || input_pointcloud.data.empty() || !planning_trajectory_) {
     return would_be_filtered_points;
   }
+
   const double filtering_distance = 50.0;  // Fixed filtering distance in meters
   const autoware::universe_utils::Polygon2d filtering_polygon =
     createPathPolygon(*planning_trajectory_, 0.0, filtering_distance, max_filter_distance_);
 
-  // Convert ROS PointCloud2 to PCL format
-  pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::PointCloud<pcl::PointXYZ>::Ptr polygon_points(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-
-  pcl::fromROSMsg(input_pointcloud, *input_cloud);
-
-  geometry_msgs::msg::TransformStamped transform;
-  try {
-    transform = tf_buffer_->lookupTransform(
-      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN(
-      get_logger(),
-      "Failed to get transform from base_link to map: %s. Cannot classify pointcloud.", ex.what());
+  // Use common processing function
+  auto processing_result = processPointCloudCommon(input_pointcloud, filtering_polygon);
+  if (!processing_result.success) {
     return would_be_filtered_points;
   }
-
-  // transform the pointcloud to the map frame
-  const auto eigen_transform = tf2::transformToEigen(transform.transform).cast<float>();
-  pcl::transformPointCloud(*input_cloud, *transformed_cloud, eigen_transform);
-
-  const auto bbox =
-    boost::geometry::return_envelope<autoware_utils_geometry::Box2d>(filtering_polygon.outer());
-
-  // Rough filter on the X/Y axis using indices-based approach
-  pcl::IndicesPtr x_filtered_indices(new pcl::Indices());
-  pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
-  passthrough_filter.setInputCloud(transformed_cloud);
-  passthrough_filter.setFilterFieldName("x");
-  passthrough_filter.setFilterLimits(
-    static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
-  passthrough_filter.filter(*x_filtered_indices);
-
-  pcl::IndicesPtr xy_filtered_indices(new pcl::Indices());
-  passthrough_filter.setInputCloud(transformed_cloud);
-  passthrough_filter.setFilterFieldName("y");
-  passthrough_filter.setIndices(x_filtered_indices);
-  passthrough_filter.setFilterLimits(
-    static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
-  passthrough_filter.filter(*xy_filtered_indices);
-
-  // Prepare polygon hull for CropHull filter
-  std::vector<pcl::Vertices> polygon_vertices;
-  polygon_vertices.emplace_back();
-  auto polygon_i = 0;
-  for (const auto & p : filtering_polygon.outer()) {
-    polygon_vertices.back().vertices.push_back(polygon_i++);
-    polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
-  }
-
-  // Use CropHull for polygon-based filtering
-  pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-  pcl::CropHull<pcl::PointXYZ> crop_hull;
-  crop_hull.setInputCloud(transformed_cloud);
-  crop_hull.setIndices(xy_filtered_indices);
-  crop_hull.setHullCloud(polygon_points);
-  crop_hull.setHullIndices(polygon_vertices);
-  crop_hull.setDim(2);  // 2D polygon filtering
-  crop_hull.filter(inliers->indices);
 
   // For points inside the polygon, check distance to path and safety distance
   int points_checked = 0;
@@ -567,20 +551,22 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
   int points_outside_safety = 0;
   int points_would_be_filtered = 0;
 
-  for (const auto i : inliers->indices) {
+  for (size_t idx = 0; idx < processing_result.polygon_inside_indices->indices.size(); ++idx) {
     points_checked++;
-    const auto & point = transformed_cloud->points[i];
+    const auto i = processing_result.polygon_inside_indices->indices[idx];
+    const auto & point = processing_result.transformed_cloud->points[i];
     geometry_msgs::msg::Point ros_point;
     ros_point.x = point.x;
     ros_point.y = point.y;
     ros_point.z = point.z;
+
+    const double distance_to_path = processing_result.distances_to_path[idx];
 
     // Check if the point is within the filtering polygon
     autoware::universe_utils::Point2d point_2d(ros_point.x, ros_point.y);
     const bool is_inside_polygon = boost::geometry::within(point_2d, filtering_polygon);
 
     // Check if the point is near the path (within max_filter_distance)
-    const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory_);
     const bool is_near_path = (distance_to_path <= max_filter_distance_);
 
     // Check if the point is outside the safety distance
@@ -600,6 +586,13 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
       points_would_be_filtered++;
     }
   }
+
+  RCLCPP_DEBUG(
+    get_logger(),
+    "PointCloud classification: checked=%d, inside_polygon=%d, near_path=%d, outside_safety=%d, "
+    "would_be_filtered=%d",
+    points_checked, points_inside_polygon, points_near_path, points_outside_safety,
+    points_would_be_filtered);
 
   return would_be_filtered_points;
 }
