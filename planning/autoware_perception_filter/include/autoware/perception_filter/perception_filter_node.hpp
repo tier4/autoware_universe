@@ -98,6 +98,11 @@ private:
    */
   void onPlanningTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
 
+  /**
+   * @brief Timer callback for debug markers
+   */
+  void onTimer();
+
   // ========== RTC Interface Functions ==========
 
   /**
@@ -155,9 +160,9 @@ private:
 
   /**
    * @brief Get current ego vehicle pose
-   * @return Ego pose in map frame
+   * @return Ego pose in map frame, or std::nullopt if not available
    */
-  geometry_msgs::msg::Pose getCurrentEgoPose() const;
+  std::optional<geometry_msgs::msg::Pose> getCurrentEgoPose() const;
 
   // ========== ROS Communication Members ==========
 
@@ -165,6 +170,9 @@ private:
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr objects_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
   rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr planning_trajectory_sub_;
+
+  // Timer
+  rclcpp::TimerBase::SharedPtr debug_timer_;
 
   // Publishers
   rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr
@@ -236,6 +244,9 @@ private:
 
   // Object classification parameters
   std::vector<std::string> ignore_object_classes_;  ///< Object classes to ignore during filtering
+
+  // Debug parameters
+  double debug_timer_period_;  ///< Debug timer period in seconds
 };
 
 }  // namespace autoware::perception_filter

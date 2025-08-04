@@ -14,3 +14,6 @@
     # Available classes: UNKNOWN, CAR, TRUCK, BUS, TRAILER, MOTORCYCLE, BICYCLE, PEDESTRIAN
     # Example: ignore_object_classes: ["PEDESTRIAN", "BICYCLE"]  # Ignore pedestrians and bicycles
     ignore_object_classes: []  # Empty list means no objects are ignored
+
+    # Debug parameters
+    debug_timer_period: 0.1  # [s] Debug timer period (10Hz default)

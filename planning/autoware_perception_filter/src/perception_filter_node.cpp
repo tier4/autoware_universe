@@ -48,6 +48,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -82,6 +83,9 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     getOrDeclareParameter<double>(*this, "object_classification_radius");
   ignore_object_classes_ =
     getOrDeclareParameter<std::vector<std::string>>(*this, "ignore_object_classes");
+
+  // Debug parameters
+  debug_timer_period_ = getOrDeclareParameter<double>(*this, "debug_timer_period");  // 10Hz default
 
   // Initialize polygon-based filtering management
   filtering_polygon_.is_active = false;
@@ -130,6 +134,11 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
 
   // Initialize published time publisher
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+
+  // Initialize timer for debug markers (after all publishers are initialized)
+  debug_timer_ = create_wall_timer(
+    std::chrono::duration<double>(debug_timer_period_),
+    std::bind(&PerceptionFilterNode::onTimer, this));
 
   // Log ignored object classes configuration
   if (!ignore_object_classes_.empty()) {
@@ -228,8 +237,16 @@ void PerceptionFilterNode::onObjects(
   }
 
   const auto ego_pose = getCurrentEgoPose();
+  if (!ego_pose) {
+    RCLCPP_DEBUG(get_logger(), "Ego pose not available for object classification");
+    // If ego pose is not available, publish input objects as-is
+    filtered_objects_pub_->publish(*msg);
+    published_time_publisher_->publish_if_subscribed(filtered_objects_pub_, msg->header.stamp);
+    return;
+  }
+
   auto classification = classifyObjectsWithinRadius(
-    *latest_objects_, planning_trajectory_, ego_pose, rtc_is_registered, frozen_filter_object_ids_,
+    *latest_objects_, planning_trajectory_, *ego_pose, rtc_is_registered, frozen_filter_object_ids_,
     max_filter_distance_, object_classification_radius_, ignore_object_classes_);
   latest_classification_ = classification;
 
@@ -256,12 +273,6 @@ void PerceptionFilterNode::onObjects(
   // Publish planning factors
   planning_factors_pub_->publish(
     createPlanningFactors(classification, would_be_filtered_points_, planning_trajectory_));
-
-  // Publish debug markers
-  auto debug_markers = createDebugMarkers(
-    *msg, classification, rtc_is_activated, ego_pose, filtering_polygon_.polygon,
-    filtering_polygon_created_);
-  debug_markers_pub_->publish(debug_markers);
 
   // Publish processing time
   const auto processing_time = std::chrono::duration<double, std::milli>(
@@ -519,6 +530,49 @@ void PerceptionFilterNode::onPlanningTrajectory(
   planning_trajectory_ = msg;
 }
 
+void PerceptionFilterNode::onTimer()
+{
+  // Check if required data is available for debug markers
+  if (!latest_objects_ || !planning_trajectory_) {
+    return;
+  }
+
+  // Check if publishers are available
+  if (!debug_markers_pub_) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "Debug markers publisher not available");
+    return;
+  }
+
+  // Check if TF buffer is available
+  if (!tf_buffer_) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "TF buffer not available");
+    return;
+  }
+
+  // Get ego pose with proper error handling
+  auto ego_pose = getCurrentEgoPose();
+  if (!ego_pose) {
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 5000, "Ego pose not available for debug markers");
+    return;
+  }
+
+  // Check RTC interface state safely
+  bool rtc_activated = false;
+  if (rtc_interface_) {
+    rtc_activated =
+      rtc_interface_->isRegistered(rtc_uuid_) && rtc_interface_->isActivated(rtc_uuid_);
+  }
+
+  // Create debug markers using the latest data
+  auto debug_markers = createDebugMarkers(
+    *latest_objects_, latest_classification_, rtc_activated, *ego_pose, filtering_polygon_.polygon,
+    filtering_polygon_created_);
+
+  // Publish debug markers
+  debug_markers_pub_->publish(debug_markers);
+}
+
 void PerceptionFilterNode::createFilteringPolygon()
 {
   if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
@@ -555,9 +609,14 @@ void PerceptionFilterNode::updateFilteringPolygonStatus()
   }
 
   // Check if ego vehicle has passed through the filtering polygon
-  const auto ego_pose = getCurrentEgoPose();
+  auto ego_pose = getCurrentEgoPose();
+  if (!ego_pose) {
+    RCLCPP_WARN(get_logger(), "Ego pose not available for polygon status update");
+    return;
+  }
+
   const double current_distance_along_path =
-    getDistanceAlongPath(ego_pose.position, planning_trajectory_, ego_pose);
+    getDistanceAlongPath(ego_pose->position, planning_trajectory_, *ego_pose);
 
   RCLCPP_DEBUG(
     get_logger(), "updateFilteringPolygonStatus: current_distance=%.2f m, polygon_end=%.2f m",
@@ -572,28 +631,27 @@ void PerceptionFilterNode::updateFilteringPolygonStatus()
   }
 }
 
-geometry_msgs::msg::Pose PerceptionFilterNode::getCurrentEgoPose() const
+std::optional<geometry_msgs::msg::Pose> PerceptionFilterNode::getCurrentEgoPose() const
 {
-  geometry_msgs::msg::Pose ego_pose;
+  if (!tf_buffer_) {
+    return std::nullopt;
+  }
 
   try {
     const auto transform = tf_buffer_->lookupTransform(
       "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
 
+    geometry_msgs::msg::Pose ego_pose;
     ego_pose.position.x = transform.transform.translation.x;
     ego_pose.position.y = transform.transform.translation.y;
     ego_pose.position.z = transform.transform.translation.z;
     ego_pose.orientation = transform.transform.rotation;
+
+    return ego_pose;
   } catch (const tf2::TransformException & ex) {
     RCLCPP_DEBUG(get_logger(), "Failed to get ego pose: %s", ex.what());
-    // Return default pose at origin
-    ego_pose.position.x = 0.0;
-    ego_pose.position.y = 0.0;
-    ego_pose.position.z = 0.0;
-    ego_pose.orientation.w = 1.0;
+    return std::nullopt;
   }
-
-  return ego_pose;
 }
 
 bool PerceptionFilterNode::isDataReadyForObjects()
