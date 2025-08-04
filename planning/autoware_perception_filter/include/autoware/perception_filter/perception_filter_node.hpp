@@ -15,6 +15,9 @@
 #ifndef AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_NODE_HPP_
 #define AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_NODE_HPP_
 
+#include "autoware/perception_filter/perception_filter_core.hpp"
+#include "autoware/perception_filter/perception_filter_utils.hpp"
+
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
 #include <autoware/rtc_interface/rtc_interface.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
@@ -49,42 +52,6 @@
 
 namespace autoware::perception_filter
 {
-
-/**
- * @brief RTC approval filtering range polygon structure
- * @details Defines a polygon-based filtering area that is activated when RTC is approved
- */
-struct FilteringPolygon
-{
-  autoware::universe_utils::Polygon2d polygon;  ///< Filtering range polygon
-  double start_distance_along_path;             ///< Start distance along the path [m]
-  double end_distance_along_path;               ///< End distance along the path [m]
-  bool is_active;                               ///< Whether the polygon is currently active
-};
-
-/**
- * @brief Object classification structure for filtering decisions
- * @details Categorizes objects based on filtering behavior and RTC status
- */
-struct ObjectClassification
-{
-  std::vector<autoware_perception_msgs::msg::PredictedObject>
-    pass_through_always;  ///< Objects that always pass through
-  std::vector<autoware_perception_msgs::msg::PredictedObject>
-    pass_through_would_filter;  ///< Objects passing now but would be filtered if RTC approved
-  std::vector<autoware_perception_msgs::msg::PredictedObject>
-    currently_filtered;  ///< Objects currently being filtered
-};
-
-/**
- * @brief Information about filtered points for planning factors
- * @details Stores point data and distance information for filtered pointcloud points
- */
-struct FilteredPointInfo
-{
-  geometry_msgs::msg::Point point;  ///< Filtered point coordinates
-  double distance_to_path;          ///< Distance from point to path [m]
-};
 
 /**
  * @brief Perception filter node for supervised object and pointcloud filtering
@@ -128,48 +95,6 @@ private:
    */
   void onPlanningTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
 
-  // ========== Core Filtering Functions ==========
-
-  /**
-   * @brief Filter point cloud data based on trajectory proximity
-   * @param input_pointcloud Input point cloud to be filtered
-   * @return Filtered point cloud
-   * @details Removes points within filtering distance but outside safety distance.
-   * When RTC is approved, uses polygon-based filtering for more precise control.
-   */
-  sensor_msgs::msg::PointCloud2 filterPointCloud(
-    const sensor_msgs::msg::PointCloud2 & input_pointcloud);
-
-  // ========== Distance and Proximity Calculation Functions ==========
-
-  /**
-   * @brief Calculate minimum distance from predicted object to trajectory
-   * @param object Predicted object to calculate distance from
-   * @param path Trajectory to calculate distance to
-   * @return Minimum distance from object boundary to path [m]
-   * @details Uses object shape polygon for accurate distance calculation
-   */
-  double getMinDistanceToPath(
-    const autoware_perception_msgs::msg::PredictedObject & object,
-    const autoware_planning_msgs::msg::Trajectory & path);
-
-  /**
-   * @brief Calculate minimum distance from point to trajectory
-   * @param point Point to calculate distance from
-   * @param path Trajectory to calculate distance to
-   * @return Minimum distance from point to path [m]
-   * @details Handles coordinate transformation between base_link and map frames
-   */
-  double getMinDistanceToPath(
-    const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path);
-
-  /**
-   * @brief Calculate distance along the path from ego vehicle to given point
-   * @param point Point to calculate distance along path for
-   * @return Signed distance along the path from ego to the point [m]
-   * @details Positive values indicate points ahead of ego, negative values behind
-   */
-  double getDistanceAlongPath(const geometry_msgs::msg::Point & point) const;
   // ========== RTC Interface Functions ==========
 
   /**
@@ -198,71 +123,30 @@ private:
   void updateFilteringPolygonStatus();
 
   /**
-   * @brief Create a polygon around trajectory segment
-   * @param trajectory Input trajectory
-   * @param start_distance Start distance along path [m]
-   * @param end_distance End distance along path [m]
-   * @param width Half-width of polygon [m]
-   * @return Generated polygon
-   */
-  autoware::universe_utils::Polygon2d createPathPolygon(
-    const autoware_planning_msgs::msg::Trajectory & trajectory, double start_distance,
-    double end_distance, double width) const;
-
-  // ========== Object Classification Functions ==========
-
-  /**
-   * @brief Classify objects within radius for filtering decisions
-   * @param input_objects Objects to classify
-   * @param rtc_is_registered Whether RTC interface is registered
-   * @return Object classification result
-   */
-  ObjectClassification classifyObjectsWithinRadius(
-    const autoware_perception_msgs::msg::PredictedObjects & input_objects, bool rtc_is_registered);
-
-  /**
-   * @brief Calculate distance from ego vehicle to object
-   * @param object Object to calculate distance to
-   * @return Distance from ego to object [m]
-   */
-  double getDistanceFromEgo(const autoware_perception_msgs::msg::PredictedObject & object);
-
-  /**
-   * @brief Check if object should be ignored based on class
-   * @param object Object to check
-   * @return True if object should be ignored, false otherwise
-   */
-  bool shouldIgnoreObject(const autoware_perception_msgs::msg::PredictedObject & object) const;
-
-  /**
-   * @brief Get most probable classification label for object
-   * @param object Object to get label for
-   * @return Most probable classification label
-   */
-  uint8_t getMostProbableLabel(const autoware_perception_msgs::msg::PredictedObject & object) const;
-
-  /**
-   * @brief Convert classification label to string
-   * @param label Classification label
-   * @return String representation of label
-   */
-  std::string labelToString(uint8_t label) const;
-
-  /**
-   * @brief Convert string to classification label
-   * @param label_string String representation of label
-   * @return Classification label
-   */
-  uint8_t stringToLabel(const std::string & label_string) const;
-
-  /**
-   * @brief Classify pointcloud points for planning factors
+   * @brief Classify pointcloud points for planning factors with proper coordinate transformation
    * @param input_pointcloud Input pointcloud to classify
    * @param rtc_is_registered Whether RTC interface is registered
    * @return Vector of filtered point information for planning factors
    */
   std::vector<FilteredPointInfo> classifyPointCloudForPlanningFactors(
     const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered);
+
+  /**
+   * @brief Filter point cloud data based on trajectory proximity with proper coordinate
+   * transformation
+   * @param input_pointcloud Input point cloud to be filtered
+   * @param planning_trajectory Planning trajectory for distance calculation
+   * @param filtering_polygon Filtering polygon for RTC-based filtering
+   * @param filtering_polygon_created Whether filtering polygon is created
+   * @param max_filter_distance Maximum distance from path to filter objects [m]
+   * @param pointcloud_safety_distance Minimum safety distance for pointcloud filtering [m]
+   * @return Filtered point cloud
+   */
+  sensor_msgs::msg::PointCloud2 filterPointCloud(
+    const sensor_msgs::msg::PointCloud2 & input_pointcloud,
+    const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
+    const FilteringPolygon & filtering_polygon, bool filtering_polygon_created,
+    double max_filter_distance, double pointcloud_safety_distance);
 
   // ========== Utility Functions ==========
 
@@ -271,36 +155,6 @@ private:
    * @return Ego pose in map frame
    */
   geometry_msgs::msg::Pose getCurrentEgoPose() const;
-
-  // ========== Planning Factor Functions ==========
-
-  /**
-   * @brief Create planning factors for filtered objects and points
-   * @return Planning factor array
-   */
-  autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors();
-
-  // ========== Debug Visualization Functions ==========
-
-  /**
-   * @brief Publish debug visualization markers
-   * @param input_objects Input objects for visualization
-   * @param rtc_activated Whether RTC is currently activated
-   */
-  void publishDebugMarkers(
-    const autoware_perception_msgs::msg::PredictedObjects & input_objects, bool rtc_activated);
-
-  /**
-   * @brief Create visualization marker for objects
-   * @param objects Objects to visualize
-   * @param frame_id Frame ID for marker
-   * @param id Marker ID
-   * @param color RGBA color array
-   * @return Visualization marker
-   */
-  visualization_msgs::msg::Marker createObjectMarker(
-    const autoware_perception_msgs::msg::PredictedObjects & objects, const std::string & frame_id,
-    int id, const std::array<double, 4> & color);
 
   // ========== ROS Communication Members ==========
 
