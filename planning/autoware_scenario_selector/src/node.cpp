@@ -475,7 +475,7 @@ ScenarioSelectorNode::ScenarioSelectorNode(const rclcpp::NodeOptions & node_opti
 
   sub_operation_mode_state_ =
     decltype(sub_operation_mode_state_)::element_type::create_subscription(
-      this, "input/operation_mode_state", rclcpp::QoS{1});
+      this, "input/operation_mode_state", rclcpp::QoS{1}.transient_local());
 
   // Output
   pub_scenario_ =
