@@ -170,7 +170,7 @@ void update_critical_departure_points(
   CriticalDeparturePoints & critical_departure_points,
   const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj,
   const double th_point_merge_distance_m, const double offset_from_ego,
-  const double th_pt_shift_dist_m, const double th_pt_shift_angle_rad);
+  const double th_pt_shift_dist_m, const double th_pt_shift_angle_rad, const bool is_critical_departure_persist);
 
 /**
  * @brief Build slow-down segments ahead of the ego vehicle.

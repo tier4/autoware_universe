@@ -280,7 +280,8 @@ void update_critical_departure_points(
   CriticalDeparturePoints & critical_departure_points,
   const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj,
   const double th_point_merge_distance_m, const double offset_from_ego,
-  const double th_pt_shift_dist_m, const double th_pt_shift_angle_rad)
+  const double th_pt_shift_dist_m, const double th_pt_shift_angle_rad,
+  const bool is_critical_departure_persist)
 {
   for (auto & crit_dpt_pt_mut : critical_departure_points) {
     crit_dpt_pt_mut.dist_on_traj =
@@ -300,6 +301,10 @@ void update_critical_departure_points(
   }
   utils::remove_if(
     critical_departure_points, [](const DeparturePoint & pt) { return pt.can_be_removed; });
+
+  if (is_critical_departure_persist) {
+    return;
+  }
 
   for (const auto side_key : g_side_keys) {
     for (const auto & dpt_pt : new_departure_points[side_key]) {

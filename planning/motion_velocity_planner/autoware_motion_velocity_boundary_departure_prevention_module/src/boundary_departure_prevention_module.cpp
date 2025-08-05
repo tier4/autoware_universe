@@ -489,11 +489,37 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
     output_.closest_projections_to_bound, lon_offset_m(planner_data->is_driving_forward));
   toc_curr_watch("get_departure_points");
 
+  const auto is_critical_departure_persist = std::invoke([&]() {
+    if (!last_no_critical_dpt_time_ptr_) {
+      last_no_critical_dpt_time_ptr_ = std::make_unique<double>(clock_ptr_->now().seconds());
+      return false;
+    }
+
+    const auto is_found =
+      std::any_of(g_side_keys.begin(), g_side_keys.end(), [&](const auto side_key) {
+        return std::any_of(
+          output_.closest_projections_to_bound[side_key].rbegin(),
+          output_.closest_projections_to_bound[side_key].rend(),
+          [&](const ClosestProjectionToBound & pt) {
+            return pt.departure_type == DepartureType::CRITICAL_DEPARTURE;
+          });
+      });
+
+    if (!is_found) {
+      *last_no_critical_dpt_time_ptr_ = clock_ptr_->now().seconds();
+      return false;
+    }
+
+    const auto t_diff = clock_ptr_->now().seconds() - *last_no_critical_dpt_time_ptr_;
+    return t_diff >= node_param_.on_time_buffer_s.departure;
+  });
+
   utils::update_critical_departure_points(
     output_.departure_points, output_.critical_departure_points, *ref_traj_pts_opt,
     node_param_.bdc_param.th_point_merge_distance_m,
     ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward),
-    node_param_.th_pt_shift_dist_m, node_param_.th_pt_shift_angle_rad);
+    node_param_.th_pt_shift_dist_m, node_param_.th_pt_shift_angle_rad,
+    is_critical_departure_persist);
   toc_curr_watch("update_critical_departure_points");
 
   const auto is_departure_persist = std::invoke([&]() {
@@ -508,7 +534,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
     }
 
     const auto t_diff = clock_ptr_->now().seconds() - *last_lost_time_ptr_;
-    return t_diff >= node_param_.on_time_buffer_s;
+    return t_diff >= node_param_.on_time_buffer_s.near_boundary;
   });
 
   if (output_.departure_intervals.empty() && is_departure_persist) {
@@ -532,7 +558,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
         return false;
       }
       const auto t_diff = clock_ptr_->now().seconds() - *last_found_time_ptr_;
-      return t_diff >= node_param_.off_time_buffer_s;
+      return t_diff >= node_param_.off_time_buffer_s.near_boundary;
     });
 
     utils::update_departure_intervals(
