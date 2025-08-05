@@ -489,11 +489,8 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
     output_.closest_projections_to_bound, lon_offset_m(planner_data->is_driving_forward));
   toc_curr_watch("get_departure_points");
 
-  utils::update_critical_departure_points(
-    output_.departure_points, output_.critical_departure_points, *ref_traj_pts_opt,
-    node_param_.bdc_param.th_point_merge_distance_m,
-    ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward),
-    node_param_.th_pt_shift_dist_m, node_param_.th_pt_shift_angle_rad);
+  update_critical_departure_points(
+    *ref_traj_pts_opt, ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward));
   toc_curr_watch("update_critical_departure_points");
 
   const auto is_departure_persist = std::invoke([&]() {
@@ -508,7 +505,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
     }
 
     const auto t_diff = clock_ptr_->now().seconds() - *last_lost_time_ptr_;
-    return t_diff >= node_param_.on_time_buffer_s;
+    return t_diff >= node_param_.on_time_buffer_s.near_boundary;
   });
 
   if (output_.departure_intervals.empty() && is_departure_persist) {
@@ -612,6 +609,73 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
   VelocityPlanningResult result;
   result.slowdown_intervals = slowdown_intervals;
   return result;
+}
+
+void BoundaryDeparturePreventionModule::update_critical_departure_points(
+  const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj, const double offset_from_ego)
+{
+  for (auto & crit_dpt_pt_mut : output_.critical_departure_points) {
+    crit_dpt_pt_mut.dist_on_traj =
+      trajectory::closest(aw_ref_traj, crit_dpt_pt_mut.point_on_prev_traj);
+    if (crit_dpt_pt_mut.dist_on_traj < offset_from_ego) {
+      crit_dpt_pt_mut.can_be_removed = true;
+      continue;
+    }
+
+    const auto updated_point = aw_ref_traj.compute(crit_dpt_pt_mut.dist_on_traj);
+    if (
+      const auto is_shifted_opt = utils::is_point_shifted(
+        crit_dpt_pt_mut.point_on_prev_traj.pose, updated_point.pose, node_param_.th_pt_shift_dist_m,
+        node_param_.th_pt_shift_angle_rad)) {
+      crit_dpt_pt_mut.can_be_removed = true;
+    }
+  }
+
+  utils::remove_if(
+    output_.critical_departure_points, [](const DeparturePoint & pt) { return pt.can_be_removed; });
+
+  const auto is_critical_departure_persist = std::invoke([&]() {
+    if (!last_no_critical_dpt_time_ptr_) {
+      last_no_critical_dpt_time_ptr_ = std::make_unique<double>(clock_ptr_->now().seconds());
+      return false;
+    }
+
+    const auto is_found =
+      std::any_of(g_side_keys.begin(), g_side_keys.end(), [&](const auto side_key) {
+        return std::any_of(
+          output_.closest_projections_to_bound[side_key].rbegin(),
+          output_.closest_projections_to_bound[side_key].rend(),
+          [&](const ClosestProjectionToBound & pt) {
+            return pt.departure_type == DepartureType::CRITICAL_DEPARTURE;
+          });
+      });
+
+    if (!is_found) {
+      *last_no_critical_dpt_time_ptr_ = clock_ptr_->now().seconds();
+      return false;
+    }
+
+    const auto t_diff = clock_ptr_->now().seconds() - *last_no_critical_dpt_time_ptr_;
+    return t_diff >= node_param_.on_time_buffer_s.departure;
+  });
+
+  if (!is_critical_departure_persist) {
+    return;
+  }
+
+  auto new_critical_departure_point = utils::find_new_critical_departure_points(
+    output_.departure_points, output_.critical_departure_points, aw_ref_traj,
+    node_param_.bdc_param.th_point_merge_distance_m);
+
+  if (new_critical_departure_point.empty()) {
+    return;
+  }
+
+  std::move(
+    new_critical_departure_point.begin(), new_critical_departure_point.end(),
+    std::back_inserter(output_.critical_departure_points));
+
+  std::sort(output_.critical_departure_points.begin(), output_.critical_departure_points.end());
 }
 
 std::unordered_map<DepartureType, bool> BoundaryDeparturePreventionModule::get_diagnostics(
