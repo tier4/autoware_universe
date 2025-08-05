@@ -140,6 +140,10 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     std::chrono::duration<double>(debug_timer_period_),
     std::bind(&PerceptionFilterNode::onTimer, this));
 
+  // Set parameter callback
+  set_param_res_ = this->add_on_set_parameters_callback(
+    std::bind(&PerceptionFilterNode::onParameter, this, std::placeholders::_1));
+
   // Log ignored object classes configuration
   if (!ignore_object_classes_.empty()) {
     std::string ignored_classes_str = "";
@@ -155,6 +159,33 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   }
 
   RCLCPP_DEBUG(get_logger(), "PerceptionFilterNode initialized");
+}
+
+rcl_interfaces::msg::SetParametersResult PerceptionFilterNode::onParameter(
+  const std::vector<rclcpp::Parameter> & parameters)
+{
+  using autoware_utils::update_param;
+
+  // Update filtering parameters
+  update_param<bool>(parameters, "enable_object_filtering", enable_object_filtering_);
+  update_param<bool>(parameters, "enable_pointcloud_filtering", enable_pointcloud_filtering_);
+  update_param<double>(parameters, "max_filter_distance", max_filter_distance_);
+  update_param<double>(parameters, "pointcloud_safety_distance", pointcloud_safety_distance_);
+  update_param<double>(parameters, "object_classification_radius", object_classification_radius_);
+  update_param<std::vector<std::string>>(
+    parameters, "ignore_object_classes", ignore_object_classes_);
+
+  // Update debug parameters
+  update_param<double>(parameters, "debug_timer_period", debug_timer_period_);
+
+  // Update stop velocity threshold
+  update_param<double>(parameters, "stop_velocity_threshold", stop_velocity_threshold_);
+
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  result.reason = "success";
+
+  return result;
 }
 
 void PerceptionFilterNode::initializeRTCInterface()
@@ -192,6 +223,8 @@ bool PerceptionFilterNode::checkRTCStateChange(bool & last_state, const std::str
   return rtc_became_active;
 }
 
+// TODO(Sugahara): don't publish the cooperate status when the approvable(造語) object does not
+// exist
 void PerceptionFilterNode::updateRTCStatus()
 {
   const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0);

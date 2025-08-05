@@ -24,6 +24,7 @@
 #include <autoware/universe_utils/ros/parameter.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
+#include <autoware_utils/ros/update_param.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -97,6 +98,14 @@ private:
    * @param msg Trajectory message
    */
   void onPlanningTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
+
+  /**
+   * @brief Parameter update callback
+   * @param parameters Vector of parameters to update
+   * @return SetParametersResult indicating success or failure
+   */
+  rcl_interfaces::msg::SetParametersResult onParameter(
+    const std::vector<rclcpp::Parameter> & parameters);
 
   /**
    * @brief Timer callback for debug markers
@@ -200,6 +209,9 @@ private:
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
   // ========== Core System Members ==========
+
+  // Parameter callback handle
+  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   // TF buffer and listener for coordinate transformations
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
