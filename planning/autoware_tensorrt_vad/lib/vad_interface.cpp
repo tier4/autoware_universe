@@ -13,7 +13,7 @@ VadInterface::VadInterface(const VadInterfaceConfig& config, std::shared_ptr<tf2
     target_image_height_(config.target_image_height),
     input_image_width_(config.input_image_width),
     input_image_height_(config.input_image_height),
-    point_cloud_range_(config.point_cloud_range),
+    detection_range_(config.detection_range),
     bev_h_(config.bev_h),
     bev_w_(config.bev_w),
     default_patch_angle_(config.default_patch_angle),
@@ -23,6 +23,7 @@ VadInterface::VadInterface(const VadInterfaceConfig& config, std::shared_ptr<tf2
     image_normalization_param_std_(config.image_normalization_param_std),
     vad2base_(config.vad2base),
     base2vad_(config.base2vad),
+    map_colors_(config.map_colors),
     current_longitudinal_velocity_mps_(0.0f),
     prev_can_bus_(config.default_can_bus)
 {
@@ -83,6 +84,9 @@ VadOutputTopicData VadInterface::convert_output(
   // Convert trajectory
   output_topic_data.trajectory = process_trajectory(
     vad_output_data.predicted_trajectory_, stamp, trajectory_timestep, base2map_transform);
+
+  // Convert map_points from VAD coordinate system to Autoware coordinate system
+  output_topic_data.map_points = process_map_points(vad_output_data.map_polylines_, stamp, base2map_transform);
 
   return output_topic_data;
 }
@@ -374,8 +378,8 @@ ShiftData VadInterface::process_shift(
   float delta_y = can_bus[1] - prev_can_bus[1];  // translation difference
   float patch_angle_rad = can_bus[16];  // current patch_angle[rad]
 
-  float real_w = point_cloud_range_[3] - point_cloud_range_[0];
-  float real_h = point_cloud_range_[4] - point_cloud_range_[1];
+  float real_w = detection_range_[3] - detection_range_[0];
+  float real_h = detection_range_[4] - detection_range_[1];
   float grid_length[] = {real_h / bev_h_, real_w / bev_w_};
 
   float ego_angle = patch_angle_rad / M_PI * 180.0;
@@ -563,6 +567,92 @@ autoware_planning_msgs::msg::Trajectory VadInterface::process_trajectory(
   trajectory_msg.points = create_trajectory_points(predicted_trajectory, trajectory_timestep, base2map_transform);
 
   return trajectory_msg;
+}
+
+
+/**
+ * @brief Process map points from VAD to Autoware coordinate system.
+ * @param vad_map_polylines vector of MapPolyline
+ * @param stamp timestamp in this frame
+ * @param base2map_transform base_link to map transformation matrix
+ * @return visualization_msgs::msg::MarkerArray 
+ */
+visualization_msgs::msg::MarkerArray VadInterface::process_map_points(
+    const std::vector<MapPolyline>& vad_map_polylines,
+    const rclcpp::Time& stamp,
+    const Eigen::Matrix4f& base2map_transform) const
+{
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    int32_t marker_id = 0;
+    for (const auto& map_polyline : vad_map_polylines) {
+        const std::string& type = map_polyline.type;
+        const auto& polyline = map_polyline.points;
+
+        if (polyline.empty()) {
+            ++marker_id;
+            continue;  // if polyline is empty, skip
+        }
+
+        visualization_msgs::msg::Marker marker;
+        marker.ns = type;  // namespace shows the type of the polyline
+        marker.id = marker_id++;  // set unique ID for each marker
+        marker.header.frame_id = "map";
+        marker.header.stamp = stamp;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+        
+        // orientation is fixed.
+        marker.pose.orientation.w = 1.0;
+
+        // Set color based on type
+        auto color_it = map_colors_.find(type);
+        if (color_it != map_colors_.end()) {
+            const auto& color = color_it->second;
+            marker.color.r = color[0];
+            marker.color.g = color[1];
+            marker.color.b = color[2];
+        } else {
+            // use white color as default
+            marker.color.r = 1.0f;
+            marker.color.g = 1.0f;
+            marker.color.b = 1.0f;
+        }
+        marker.color.a = 0.8;
+
+        // Transform each point in the polyline and add to the marker
+        for (const auto& point : polyline) {
+            if (point.size() >= 2) {
+                float vad_x = point[0];
+                float vad_y = point[1];
+                
+                auto [aw_x, aw_y, aw_z] = vad2aw_xyz(vad_x, vad_y, 0.0f);
+                
+                Eigen::Vector4f base_point(aw_x, aw_y, 0.0f, 1.0f);
+                Eigen::Vector4f map_point = base2map_transform * base_point;
+                
+                geometry_msgs::msg::Point geometry_point;
+                geometry_point.x = map_point[0];
+                geometry_point.y = map_point[1];
+                geometry_point.z = map_point[2];
+                
+                marker.points.push_back(geometry_point);
+            }
+        }
+
+        // Decide how to display the marker
+        if (marker.points.size() >= 2) {
+            // If there are 2 or more points, display as a line
+            marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+            marker.scale.x = 0.1; // Line thickness
+        } else {
+            // If polyline does not have 2 or more points, skip
+            continue;
+        }
+
+        marker_array.markers.push_back(marker);
+    }
+
+    return marker_array;
 }
 
 float VadInterface::calculate_current_longitudinal_velocity(

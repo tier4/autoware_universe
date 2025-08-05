@@ -37,10 +37,13 @@
 #include "autoware_internal_planning_msgs/msg/candidate_trajectories.hpp"
 #include "autoware_internal_planning_msgs/msg/candidate_trajectory.hpp"
 #include "autoware_internal_planning_msgs/msg/generator_info.hpp"
+#include "autoware_perception_msgs/msg/predicted_objects.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "autoware_planning_msgs/msg/trajectory_point.hpp"
 #include "autoware_utils_uuid/uuid_helper.hpp"
 #include "geometry_msgs/msg/quaternion.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+#include "visualization_msgs/msg/marker.hpp"
 
 #include "vad_model.hpp" 
 
@@ -108,7 +111,8 @@ struct VadOutputTopicData
 {
   autoware_internal_planning_msgs::msg::CandidateTrajectories candidate_trajectories;
   autoware_planning_msgs::msg::Trajectory trajectory;
-  // autoware_perception_msgs::msg::DetectedObjects objects;
+  visualization_msgs::msg::MarkerArray map_points;  // Transformed map points in Autoware coordinate system
+  autoware_perception_msgs::msg::PredictedObjects objects;
 };
 
 // 各process_*メソッドの戻り値となるデータ構造
@@ -147,6 +151,12 @@ public:
     double trajectory_timestep,
     const Eigen::Matrix4f & base2map_transform) const;
 
+  // Convert map_points from VAD coordinate system to Autoware coordinate system
+  visualization_msgs::msg::MarkerArray process_map_points(
+    const std::vector<MapPolyline> & vad_map_polylines,
+    const rclcpp::Time & stamp,
+    const Eigen::Matrix4f & base2map_transform) const;
+
   Lidar2ImgData process_lidar2img(
     const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr> & camera_infos,
     float scale_width, float scale_height) const;
@@ -168,7 +178,7 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   int32_t target_image_width_, target_image_height_;
   int32_t input_image_width_, input_image_height_;
-  std::array<float, 6> point_cloud_range_;
+  std::array<float, 6> detection_range_;
   int32_t bev_h_, bev_w_;
   float default_patch_angle_;
   int32_t default_command_;
@@ -178,6 +188,7 @@ private:
   Eigen::Matrix4f vad2base_;
   Eigen::Matrix4f base2vad_;
   std::unordered_map<int32_t, int32_t> autoware_to_vad_camera_mapping_;
+  std::map<std::string, std::array<float, 3>> map_colors_;  // Map type to RGB color
   
   // Current longitudinal velocity for trajectory initial point
   float current_longitudinal_velocity_mps_;

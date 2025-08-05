@@ -14,7 +14,7 @@
       # input_image_height: 940
       target_image_width: 640
       target_image_height: 384
-      point_cloud_range: [-15.0, -30.0, -2.0, 15.0, 30.0, 2.0]
+      detection_range: [-15.0, -30.0, -2.0, 15.0, 30.0, 2.0]
       bev_h: 100
       bev_w: 100
       default_patch_angle: 0.0
@@ -52,13 +52,13 @@
       nets:
         backbone:
           name: "backbone"
-          onnx_path: "./data/sim_vadv1.extract_img_feat.onnx"
-          engine_path: "./data/vad-tiny_backbone.engine"
+          onnx_path: "$(var model_path)/sim_vadv1.extract_img_feat.onnx"
+          engine_path: "$(var model_path)/vad-tiny_backbone.engine"
           precision: "fp16"
         head:
           name: "head"
-          onnx_path: "./data/sim_vadv1_prev.pts_bbox_head.forward.onnx"
-          engine_path: "./data/vad-tiny_head.engine"
+          onnx_path: "$(var model_path)/sim_vadv1_prev.pts_bbox_head.forward.onnx"
+          engine_path: "$(var model_path)/vad-tiny_head.engine"
           precision: "fp32"
           inputs:
             "input_feature": "mlvl_feats.0"
@@ -66,8 +66,8 @@
             "name": "out.0"
         head_no_prev:
           name: "head_no_prev"
-          onnx_path: "./data/sim_vadv1.pts_bbox_head.forward.onnx"
-          engine_path: "./data/vad-tiny_head_no_prev.engine"
+          onnx_path: "$(var model_path)/sim_vadv1.pts_bbox_head.forward.onnx"
+          engine_path: "$(var model_path)/vad-tiny_head_no_prev.engine"
           precision: "fp32"
           inputs:
             "input_feature": "mlvl_feats.0"

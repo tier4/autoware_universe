@@ -20,11 +20,9 @@ protected:
 
         // ダミーのテスト設定
         config_.plugins_path = "/tmp/test_plugin.so";
-        config_.warm_up_num = 1;
         
         NetConfig backbone_config;
         backbone_config.name = "backbone";
-        backbone_config.engine_file = "/tmp/test_backbone.engine";
         
         config_.nets_config.push_back(backbone_config);
     }
@@ -35,7 +33,7 @@ protected:
     }
 
     std::shared_ptr<MockVadLogger> mock_logger_;
-    VadModelConfig config_;
+    VadConfig config_;
 };
 
 // 1. VadInputData構造体の基本的な検証
@@ -82,17 +80,15 @@ TEST_F(VadModelTest, VadOutputDataStructure)
     EXPECT_EQ(output_data.predicted_trajectory_.size(), 12);
 }
 
-// 3. VadModelConfig構造体の検証
-TEST_F(VadModelTest, VadModelConfigStructure)
+// 3. VadConfig構造体の検証
+TEST_F(VadModelTest, VadConfigStructure)
 {
     EXPECT_EQ(config_.plugins_path, "/tmp/test_plugin.so");
-    EXPECT_EQ(config_.warm_up_num, 1);
     EXPECT_EQ(config_.nets_config.size(), 1);
     
     // ネットワーク設定の検証
     const auto& net_conf = config_.nets_config[0];
     EXPECT_EQ(net_conf.name, "backbone");
-    EXPECT_EQ(net_conf.engine_file, "/tmp/test_backbone.engine");
 }
 
 }  // namespace autoware::tensorrt_vad

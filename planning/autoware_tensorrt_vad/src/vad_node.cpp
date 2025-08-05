@@ -72,7 +72,7 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
       declare_parameter<int32_t>("interface_params.input_image_height"),
       declare_parameter<int32_t>("interface_params.target_image_width"),
       declare_parameter<int32_t>("interface_params.target_image_height"),
-      declare_parameter<std::vector<double>>("interface_params.point_cloud_range"),
+      declare_parameter<std::vector<double>>("interface_params.detection_range"),
       declare_parameter<int32_t>("interface_params.bev_h"),
       declare_parameter<int32_t>("interface_params.bev_w"),
       declare_parameter<double>("interface_params.default_patch_angle"),
@@ -82,7 +82,9 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
       declare_parameter<std::vector<double>>("interface_params.image_normalization_param_mean"),
       declare_parameter<std::vector<double>>("interface_params.image_normalization_param_std"),
       declare_parameter<std::vector<double>>("interface_params.vad2base"),
-      declare_parameter<std::vector<int64_t>>("interface_params.autoware_to_vad_camera_mapping")
+      declare_parameter<std::vector<int64_t>>("interface_params.autoware_to_vad_camera_mapping"),
+      declare_parameter<std::vector<std::string>>("model_params.map_classes"),
+      declare_parameter<std::vector<double>>("interface_params.map_colors")
     ),
     front_camera_id_(declare_parameter<int32_t>("sync_params.front_camera_id")),
     trajectory_timestep_(declare_parameter<double>("interface_params.trajectory_timestep")),
@@ -97,9 +99,14 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
       this->create_publisher<autoware_internal_planning_msgs::msg::CandidateTrajectories>(
           "~/output/trajectories", rclcpp::QoS(1));
 
-  objects_publisher_ =
-      this->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
+  predicted_objects_publisher_ =
+      this->create_publisher<autoware_perception_msgs::msg::PredictedObjects>(
           "~/output/objects",
+          rclcpp::QoS(1));
+
+  map_points_publisher_ =
+      this->create_publisher<visualization_msgs::msg::MarkerArray>(
+          "~/output/map",
           rclcpp::QoS(1));
 
   // Create QoS profiles for sensor data (best effort for compatibility with typical sensor topics)
@@ -234,7 +241,6 @@ void VadNode::initialize_vad_model()
   // load configs
   VadConfig vad_config = load_vad_config();
   auto [backbone_trt_config, head_trt_config, head_no_prev_trt_config] = load_trt_common_configs();
-  VadModelConfig vad_model_config = load_vad_model_config();
 
   // Initialize VAD interface and model
   auto tf_buffer_shared = std::shared_ptr<tf2_ros::Buffer>(&tf_buffer_, [](tf2_ros::Buffer*){});
@@ -243,7 +249,6 @@ void VadNode::initialize_vad_model()
   // Create RosVadLogger using the logger
   auto ros_logger = std::make_shared<RosVadLogger>(this->get_logger());
   vad_model_ptr_ = std::make_unique<VadModel<RosVadLogger>>(
-    vad_model_config,
     vad_config,
     backbone_trt_config,
     head_trt_config,
@@ -254,10 +259,64 @@ void VadNode::initialize_vad_model()
   RCLCPP_INFO(this->get_logger(), "VAD model and interface initialized successfully");
 }
 
-VadModelConfig VadNode::load_vad_model_config()
+VadConfig VadNode::load_vad_config()
 {
-  VadModelConfig vad_model_config;
-  vad_model_config.plugins_path = this->declare_parameter<std::string>("model_params.plugins_path");
+  VadConfig vad_config;
+  vad_config.num_cameras = this->declare_parameter<int32_t>("model_params.network_io_params.num_cameras");
+  vad_config.bev_h = this->declare_parameter<int32_t>("model_params.network_io_params.bev_h");
+  vad_config.bev_w = this->declare_parameter<int32_t>("model_params.network_io_params.bev_w");
+  vad_config.bev_feature_dim = this->declare_parameter<int32_t>("model_params.network_io_params.bev_feature_dim");
+  vad_config.target_image_width = this->declare_parameter<int32_t>("model_params.network_io_params.target_image_width");
+  vad_config.target_image_height = this->declare_parameter<int32_t>("model_params.network_io_params.target_image_height");
+  vad_config.downsample_factor = this->declare_parameter<int32_t>("model_params.network_io_params.downsample_factor");
+  vad_config.num_decoder_layers = this->declare_parameter<int32_t>("model_params.network_io_params.num_decoder_layers");
+  vad_config.prediction_num_queries = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_num_queries");
+  vad_config.prediction_num_classes = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_num_classes");
+  vad_config.prediction_bbox_pred_dim = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_bbox_pred_dim");
+  vad_config.prediction_trajectory_modes = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_trajectory_modes");
+  vad_config.prediction_timesteps = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_timesteps");
+  vad_config.planning_ego_commands = this->declare_parameter<int32_t>("model_params.network_io_params.planning_ego_commands");
+  vad_config.planning_timesteps = this->declare_parameter<int32_t>("model_params.network_io_params.planning_timesteps");
+  vad_config.map_num_queries = this->declare_parameter<int32_t>("model_params.network_io_params.map_num_queries");
+  vad_config.map_num_class = this->declare_parameter<int32_t>("model_params.network_io_params.map_num_class");
+  vad_config.map_points_per_polylines = this->declare_parameter<int32_t>("model_params.network_io_params.map_points_per_polylines");
+  
+  // Load detection range from interface_params (already declared in VadInterfaceConfig)
+  auto detection_range = this->get_parameter("interface_params.detection_range").as_double_array();
+  vad_config.detection_range.clear();
+  vad_config.detection_range.reserve(detection_range.size());
+  for (double val : detection_range) {
+    vad_config.detection_range.push_back(static_cast<float>(val));
+  }
+
+  auto map_classes = this->get_parameter("model_params.map_classes").as_string_array();
+  auto map_thresholds = this->declare_parameter<std::vector<double>>("model_params.map_confidence_thresholds");
+  
+  if (map_classes.size() != map_thresholds.size()) {
+    RCLCPP_ERROR(this->get_logger(), "map_classes and map_confidence_thresholds must have the same size");
+  }
+  vad_config.map_class_names = map_classes;
+  vad_config.map_num_classes = static_cast<int32_t>(map_classes.size());
+  
+  vad_config.map_confidence_thresholds.clear();
+  for (size_t i = 0; i < map_classes.size(); ++i) {
+    vad_config.map_confidence_thresholds[map_classes[i]] = static_cast<float>(map_thresholds[i]);
+  }
+  
+  // オブジェクトクラスごとの信頼度閾値を読み込み
+  vad_config.object_confidence_thresholds["car"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.car");
+  vad_config.object_confidence_thresholds["truck"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.truck");
+  vad_config.object_confidence_thresholds["construction_vehicle"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.construction_vehicle");
+  vad_config.object_confidence_thresholds["bus"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.bus");
+  vad_config.object_confidence_thresholds["trailer"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.trailer");
+  vad_config.object_confidence_thresholds["barrier"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.barrier");
+  vad_config.object_confidence_thresholds["motorcycle"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.motorcycle");
+  vad_config.object_confidence_thresholds["bicycle"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.bicycle");
+  vad_config.object_confidence_thresholds["pedestrian"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.pedestrian");
+  vad_config.object_confidence_thresholds["traffic_cone"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.traffic_cone");
+  
+  vad_config.can_bus_dim = this->declare_parameter<int32_t>("model_params.network_io_params.can_bus_dim");
+  vad_config.plugins_path = this->declare_parameter<std::string>("model_params.plugins_path");
 
   // backbone configuration
   NetConfig backbone_config;
@@ -285,10 +344,11 @@ VadModelConfig VadNode::load_vad_model_config()
   head_no_prev_config.inputs[input_feature_no_prev]["net"] = net_param_no_prev;
   head_no_prev_config.inputs[input_feature_no_prev]["name"] = name_param_no_prev;
 
-  vad_model_config.nets_config.push_back(backbone_config);
-  vad_model_config.nets_config.push_back(head_config);
-  vad_model_config.nets_config.push_back(head_no_prev_config);
-  return vad_model_config;
+  vad_config.nets_config.push_back(backbone_config);
+  vad_config.nets_config.push_back(head_config);
+  vad_config.nets_config.push_back(head_no_prev_config);
+  
+  return vad_config;
 }
 
 std::tuple<
@@ -323,43 +383,6 @@ std::tuple<
   return {backbone_trt_config, head_trt_config, head_no_prev_trt_config};
 }
 
-VadConfig VadNode::load_vad_config()
-{
-  VadConfig vad_config;
-  vad_config.num_cameras = this->declare_parameter<int32_t>("model_params.network_io_params.num_cameras");
-  vad_config.bev_h = this->declare_parameter<int32_t>("model_params.network_io_params.bev_h");
-  vad_config.bev_w = this->declare_parameter<int32_t>("model_params.network_io_params.bev_w");
-  vad_config.bev_feature_dim = this->declare_parameter<int32_t>("model_params.network_io_params.bev_feature_dim");
-  vad_config.target_image_width = this->declare_parameter<int32_t>("model_params.network_io_params.target_image_width");
-  vad_config.target_image_height = this->declare_parameter<int32_t>("model_params.network_io_params.target_image_height");
-  vad_config.downsample_factor = this->declare_parameter<int32_t>("model_params.network_io_params.downsample_factor");
-  vad_config.num_decoder_layers = this->declare_parameter<int32_t>("model_params.network_io_params.num_decoder_layers");
-  vad_config.prediction_num_queries = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_num_queries");
-  vad_config.prediction_num_classes = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_num_classes");
-  vad_config.prediction_bbox_pred_dim = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_bbox_pred_dim");
-  vad_config.prediction_trajectory_modes = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_trajectory_modes");
-  vad_config.prediction_timesteps = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_timesteps");
-  vad_config.planning_ego_commands = this->declare_parameter<int32_t>("model_params.network_io_params.planning_ego_commands");
-  vad_config.planning_timesteps = this->declare_parameter<int32_t>("model_params.network_io_params.planning_timesteps");
-  vad_config.map_num_queries = this->declare_parameter<int32_t>("model_params.network_io_params.map_num_queries");
-  vad_config.map_num_class = this->declare_parameter<int32_t>("model_params.network_io_params.map_num_class");
-  vad_config.map_points_per_polylines = this->declare_parameter<int32_t>("model_params.network_io_params.map_points_per_polylines");
-  vad_config.can_bus_dim = this->declare_parameter<int32_t>("model_params.network_io_params.can_bus_dim");
-  return vad_config;
-}
-
-void VadNode::publish_trajectories(const autoware_internal_planning_msgs::msg::CandidateTrajectories & candidate_trajectories)
-{
-  auto candidate_trajectories_msg = std::make_unique<autoware_internal_planning_msgs::msg::CandidateTrajectories>(candidate_trajectories);
-  candidate_trajectories_publisher_->publish(std::move(candidate_trajectories_msg));
-}
-
-void VadNode::publish_trajectory(const autoware_planning_msgs::msg::Trajectory & trajectory)
-{
-  auto trajectory_msg = std::make_unique<autoware_planning_msgs::msg::Trajectory>(trajectory);
-  trajectory_publisher_->publish(std::move(trajectory_msg));
-}
-
 std::optional<VadOutputTopicData> VadNode::execute_inference(const VadInputTopicData & vad_input_topic_data)
 {
   if (!vad_interface_ptr_ || !vad_model_ptr_) {
@@ -389,12 +412,18 @@ std::optional<VadOutputTopicData> VadNode::execute_inference(const VadInputTopic
 void VadNode::publish(const VadOutputTopicData & vad_output_topic_data)
 {
   // Publish selected trajectory
-  publish_trajectory(vad_output_topic_data.trajectory);
+  trajectory_publisher_->publish(vad_output_topic_data.trajectory);
 
   // Publish candidate trajectories
-  publish_trajectories(vad_output_topic_data.candidate_trajectories);
+  candidate_trajectories_publisher_->publish(vad_output_topic_data.candidate_trajectories);
 
-  RCLCPP_DEBUG(this->get_logger(), "Published trajectories");
+  // // Publish predicted objects
+  // predicted_objects_publisher_->publish(vad_output_topic_data.objects);
+
+  // Publish map points
+  map_points_publisher_->publish(vad_output_topic_data.map_points);
+
+  RCLCPP_DEBUG(this->get_logger(), "Published trajectories and predicted objects");
 }
 
 void VadNode::create_camera_image_subscribers(const rclcpp::QoS& sensor_qos)

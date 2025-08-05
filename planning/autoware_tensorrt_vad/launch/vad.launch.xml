@@ -3,8 +3,8 @@
   <arg name="log_level" default="info"/>
   <arg name="rviz" default="false" description="launch rviz"/>
   <arg name="rviz_respawn" default="true" description="respawn rviz"/>
-
-  <arg name="model_path" default="/home/autoware/ghq/github.com/Shin-kyoto/DL4AGX_ns_rosbag/DL4AGX/AV-Solutions/vad-trt/app/autoware_tensorrt_vad/build/autoware_tensorrt_vad"/>
+  <arg name="data_path" default="$(env HOME)/autoware_data" description="packages data and artifacts directory path"/>
+  <arg name="model_path" default="$(var data_path)/vad"/>
 
   <arg name="camera_info0" default="/sensing/camera/camera0/camera_info"/>
   <arg name="camera_info1" default="/sensing/camera/camera1/camera_info"/>
@@ -23,17 +23,19 @@
   <arg name="kinematic_state" default="/localization/kinematic_state"/>
   <arg name="acceleration" default="/localization/acceleration"/>
 
-  <arg name="output/objects" default="perception/object_recognition/detection/vad/objects"/>
+  <arg name="output/objects" default="perception/object_recognition/vad/objects"/>
   <arg name="output/trajectory" default="planning/vad/trajectory"/>
   <arg name="output/trajectories" default="planning/vad/trajectories"/>
+  <arg name="output/map" default="debug/vad/map"/>
 
   <node pkg="autoware_tensorrt_vad" exec="vad_node" name="vad" output="screen" args="--ros-args --log-level $(var log_level)">
-    <param from="$(find-pkg-share autoware_tensorrt_vad)/config/vad_tiny.param.yaml"/>
-    <param from="$(find-pkg-share autoware_tensorrt_vad)/config/ml_package_vad_tiny.param.yaml"/>
-    
+    <param from="$(find-pkg-share autoware_tensorrt_vad)/config/vad_tiny.param.yaml" allow_substs="true"/>
+    <param from="$(find-pkg-share autoware_tensorrt_vad)/config/ml_package_vad_tiny.param.yaml" allow_substs="true"/>
+
     <remap from="~/output/objects" to="$(var output/objects)"/>
     <remap from="~/output/trajectory" to="$(var output/trajectory)"/>
     <remap from="~/output/trajectories" to="$(var output/trajectories)"/>
+    <remap from="~/output/map" to="$(var output/map)"/>
 
     <remap from="~/input/camera_info0" to="$(var camera_info0)"/>
     <remap from="~/input/camera_info1" to="$(var camera_info1)"/>

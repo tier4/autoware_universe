@@ -15,18 +15,30 @@
 #ifndef AUTOWARE_TENSORRT_VAD_ROS_VAD_LOGGER_HPP_
 #define AUTOWARE_TENSORRT_VAD_ROS_VAD_LOGGER_HPP_
 
-#include "autoware/tensorrt_vad/vad_model.hpp"
 #include <rclcpp/rclcpp.hpp>
+#include <string>
 
 namespace autoware::tensorrt_vad
 {
+
+// VadLogger interface definition
+class VadLogger {
+public:
+  virtual ~VadLogger() = default;
+  
+  // 各ログレベルのメソッドを純粋仮想関数として定義
+  virtual void debug(const std::string& message) = 0;
+  virtual void info(const std::string& message) = 0;
+  virtual void warn(const std::string& message) = 0;
+  virtual void error(const std::string& message) = 0;
+};
 
 /**
  * @brief ROS2用のVadLogger実装
  * 
  * 使用例:
  * auto ros_logger = std::make_shared<RosVadLogger>(node);
- * VadModelConfig config;
+ * VadConfig config;
  * // configを設定...
  * VadModel model(config, ros_logger);
  */

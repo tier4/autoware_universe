@@ -21,41 +21,64 @@
 #include <memory>
 #include <functional>
 #include <unordered_map>
+#include <array>
 #include <cuda_runtime.h>
 #include <NvInfer.h>
 #include <dlfcn.h>
-#include "net.h"
+#include "networks/net.hpp"
+#include "networks/backbone.hpp"
+#include "networks/head.hpp"
 #include <map>
 
 #include <autoware/tensorrt_common/tensorrt_common.hpp>
+#include "ros_vad_logger.hpp"
+#include "vad_config.hpp"
 
 namespace autoware::tensorrt_vad
 {
 
-// ロガーインターフェース
-class VadLogger {
-public:
-  virtual ~VadLogger() = default;
-  
-  // 各ログレベルのメソッドを純粋仮想関数として定義
-  virtual void debug(const std::string& message) = 0;
-  virtual void info(const std::string& message) = 0;
-  virtual void warn(const std::string& message) = 0;
-  virtual void error(const std::string& message) = 0;
+/**
+ * @brief 予測軌道を表現する構造体
+ */
+struct PredictedTrajectory {
+    std::array<std::array<float, 2>, 6> trajectory;  // 6タイムステップ × 2座標（x, y）
+    float confidence;                                 // この軌道の信頼度
+    
+    PredictedTrajectory() : confidence(0.0f) {
+        // 軌道座標を0で初期化
+        for (int32_t i = 0; i < 6; ++i) {
+            trajectory[i][0] = 0.0f;
+            trajectory[i][1] = 0.0f;
+        }
+    }
 };
 
-// Loggerクラス（VadModel内で使用）
-class Logger : public nvinfer1::ILogger {
-private:
-    std::shared_ptr<VadLogger> custom_logger_;
+/**
+ * @brief each map polyline type and its points
+ */
+struct MapPolyline {
+    std::string type;                               // polyline type（"divider", "ped_crossing", "boundary"）
+    std::vector<std::vector<float>> points;         // polyline points（each point has [x, y]）
 
-public:
-    Logger(std::shared_ptr<VadLogger> logger) : custom_logger_(logger) {}
+    MapPolyline() = default;
     
-    void log(nvinfer1::ILogger::Severity severity, const char* msg) noexcept override {
-        // Only print error messages
-        if (severity == nvinfer1::ILogger::Severity::kERROR && custom_logger_) {
-            custom_logger_->error(std::string(msg));
+    MapPolyline(const std::string& map_type, const std::vector<std::vector<float>>& map_points)
+        : type(map_type), points(map_points) {}
+};
+
+/**
+ * @brief バウンディングボックスとその予測軌道を表現する構造体
+ */
+struct BBox {
+    std::array<float, 10> bbox;                      // [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
+    float confidence;                                // オブジェクトの信頼度
+    int32_t object_class;                           // オブジェクトクラス（0-9）
+    std::array<PredictedTrajectory, 6> trajectories; // 6つの予測軌道
+    
+    BBox() : confidence(0.0f), object_class(-1) {
+        // bbox座標を0で初期化
+        for (int32_t i = 0; i < 10; ++i) {
+            bbox[i] = 0.0f;
         }
     }
 };
@@ -90,60 +113,34 @@ struct VadOutputData
   // key: command index (int32_t), value: trajectory (std::vector<float>)
   std::map<int32_t, std::vector<float>> predicted_trajectories_{};
 
-  // // 検出されたオブジェクト
-  // std::vector<std::vector<float>> detected_objects_{};
+  // map polylines (each polyline has map_type and points)
+  std::vector<MapPolyline> map_polylines_{};
 
-  // // コマンドインデックス（選択された軌道のインデックス）
-  // int32_t selected_command_index_{2};
+  // // 検出されたオブジェクト
+  // std::vector<BBox> predicted_objects_{};
 };
 
 // 後処理関数
 
-std::vector<std::vector<std::vector<std::vector<float>>>> postprocess_traj_preds(
-    const std::vector<float>& all_traj_preds_flat);
+// Helper functions for map prediction processing
+std::vector<std::vector<float>> process_map_class_scores(const std::vector<float>& cls_preds_flat, const VadConfig& vad_config);
+std::vector<std::vector<std::vector<float>>> process_map_points(const std::vector<float>& pts_preds_flat, const VadConfig& vad_config);
+std::vector<MapPolyline>
+select_confident_map_polylines(
+    const std::vector<std::vector<float>>& cls_scores,
+    const std::vector<std::vector<std::vector<float>>>& pts_preds,
+    const VadConfig& vad_config);
 
-std::vector<std::vector<float>> postprocess_traj_cls_scores(
-    const std::vector<float>& all_traj_cls_scores_flat);
+std::vector<MapPolyline> postprocess_map_preds(
+    const std::vector<float>& all_map_cls_preds_flat,
+    const std::vector<float>& all_map_pts_preds_flat,
+    const VadConfig& vad_config);
 
-std::vector<std::vector<float>> postprocess_bbox_preds(
-    const std::vector<float>& all_bbox_preds_flat);
-
-// config for Net class
-struct NetConfig
-{
-  std::string name;
-  std::map<std::string, std::map<std::string, std::string>> inputs;
-};
-
-// config for VadModel class
-struct VadModelConfig
-{
-  std::string plugins_path;
-  std::vector<NetConfig> nets_config;
-};
-
-// NetworkIO configuration parameters
-struct VadConfig
-{
-  int32_t num_cameras;
-  int32_t bev_h, bev_w;
-  int32_t bev_feature_dim;
-  int32_t num_decoder_layers;
-  int32_t prediction_num_queries;
-  int32_t prediction_num_classes;
-  int32_t prediction_bbox_pred_dim;
-  int32_t prediction_trajectory_modes;
-  int32_t prediction_timesteps;
-  int32_t planning_ego_commands;
-  int32_t planning_timesteps;
-  int32_t can_bus_dim;
-  int32_t target_image_width;
-  int32_t target_image_height;
-  int32_t downsample_factor;
-  int32_t map_num_queries;
-  int32_t map_num_class;
-  int32_t map_points_per_polylines;
-};
+// Helper function to parse external input configuration
+inline std::pair<std::string, std::string> parse_external_inputs(const std::pair<std::string, std::map<std::string, std::string>>& input_pair) {
+  const auto& ext_map = input_pair.second;
+  return {ext_map.at("net"), ext_map.at("name")};
+}
 
 // VADモデルクラス - CUDA/TensorRTを用いた推論を担当
 template<typename LoggerType>
@@ -151,32 +148,21 @@ class VadModel
 {
 public:
   VadModel(
-    const VadModelConfig& config,
     const VadConfig& vad_config,
     const autoware::tensorrt_common::TrtCommonConfig& backbone_config,
     const autoware::tensorrt_common::TrtCommonConfig& head_config,
     const autoware::tensorrt_common::TrtCommonConfig& head_no_prev_config,
     std::shared_ptr<LoggerType> logger)
-    : stream_(nullptr), initialized_(false), is_first_frame_(true), config_(config), logger_(std::move(logger))
+    : stream_(nullptr), is_first_frame_(true), 
+      vad_config_(vad_config), logger_(std::move(logger)), head_trt_config_(head_config)
   {
     // loggerはVadLoggerを継承したclassのみ受け取る
     static_assert(std::is_base_of_v<VadLogger, LoggerType>, 
       "LoggerType must be VadLogger or derive from VadLogger.");    
-    // 初期化を実行
-    runtime_ = create_runtime();
     
     cudaStreamCreate(&stream_);
 
-    // TensorRTエンジン初期化
-    auto [backbone_trt, head_trt_tmp, head_no_prev_trt] = init_tensorrt(vad_config, backbone_config, head_config, head_no_prev_config);
-    if (!backbone_trt || !head_trt_tmp || !head_no_prev_trt) {
-      logger_->error("Failed to initialize TensorRT engines");
-      initialized_ = false;
-      return;
-    }
-    head_trt_ = std::move(head_trt_tmp);
-    nets_ = init_engines(config.nets_config, std::move(backbone_trt), std::move(head_no_prev_trt));
-    initialized_ = true;
+    nets_ = init_engines(vad_config_.nets_config, vad_config_, backbone_config, head_config, head_no_prev_config);
   }
 
   // デストラクタ
@@ -189,78 +175,6 @@ public:
     
     // netsのクリーンアップ
     nets_.clear();
-    
-    initialized_ = false;
-  }
-
-  // TensorRT初期化API（事前ビルド方式）
-  std::tuple<
-    std::unique_ptr<autoware::tensorrt_common::TrtCommon>,
-    std::unique_ptr<autoware::tensorrt_common::TrtCommon>,
-    std::unique_ptr<autoware::tensorrt_common::TrtCommon>
-  > init_tensorrt(
-      const VadConfig& vad_config,
-      const autoware::tensorrt_common::TrtCommonConfig& backbone_config,
-      const autoware::tensorrt_common::TrtCommonConfig& head_config,
-      const autoware::tensorrt_common::TrtCommonConfig& head_no_prev_config) {
-    logger_->info("Initializing TensorRT with pre-build strategy");
-    // NetworkIO arrays generation
-    std::vector<tensorrt_common::NetworkIO> backbone_network_io = generate_network_io_backbone(vad_config);
-    std::vector<tensorrt_common::NetworkIO> head_network_io = generate_network_io_head(vad_config);
-    std::vector<tensorrt_common::NetworkIO> head_no_prev_network_io = generate_network_io_head_no_prev(vad_config);
-
-    // Build all engines first (this takes time but done only once)
-    logger_->info("Building all TensorRT engines (this may take several minutes)...");
-
-    // 1. Build backbone engine (permanent)
-    auto backbone_trt = build_engine(backbone_config, backbone_network_io, "backbone");
-    if (!backbone_trt) {
-      logger_->error("Failed to build backbone engine");
-      return {nullptr, nullptr, nullptr};
-    }
-
-    // 2. Build head engine
-    auto head_trt = build_engine(head_config, head_network_io, "head");
-    if (!head_trt) {
-      logger_->error("Failed to build head engine");
-      return {nullptr, nullptr, nullptr};
-    }
-    // After building, unload head engine to save GPU memory
-    logger_->info("Releasing head engine to save GPU memory");
-
-    // 3. Build head_no_prev engine
-    auto head_no_prev_trt = build_engine(head_no_prev_config, head_no_prev_network_io, "head_no_prev");
-    if (!head_no_prev_trt) {
-      logger_->error("Failed to build head_no_prev engine");
-      return {nullptr, nullptr, nullptr};
-    }
-
-    logger_->info("TensorRT pre-build initialization completed successfully");
-    logger_->info("Ready for inference with dynamic head engine loading");
-    return {std::move(backbone_trt), std::move(head_trt), std::move(head_no_prev_trt)};
-  }
-
-  // エンジンビルド専用メソッド
-  std::unique_ptr<autoware::tensorrt_common::TrtCommon> build_engine(
-      const autoware::tensorrt_common::TrtCommonConfig& config,
-      const std::vector<tensorrt_common::NetworkIO>& network_io,
-      const std::string& engine_name) {
-    logger_->info("Building " + engine_name + " engine...");
-    try {
-      auto trt = std::make_unique<autoware::tensorrt_common::TrtCommon>(
-        config, std::make_shared<autoware::tensorrt_common::Profiler>(),
-        std::vector<std::string>{config_.plugins_path});
-      auto network_io_ptr = std::make_unique<std::vector<tensorrt_common::NetworkIO>>(network_io);
-      if (!trt->setup(nullptr, std::move(network_io_ptr))) {
-        logger_->error("Failed to setup " + engine_name + " TrtCommon");
-        return nullptr;
-      }
-      logger_->info(engine_name + " engine built successfully");
-      return trt;
-    } catch (const std::exception& e) {
-      logger_->error("Exception building " + engine_name + " engine: " + std::string(e.what()));
-      return nullptr;
-    }
   }
 
   // メイン推論API
@@ -296,140 +210,52 @@ public:
   }
 
   // メンバ変数
-  std::unique_ptr<nvinfer1::IRuntime, std::function<void(nvinfer1::IRuntime*)>> runtime_;
   cudaStream_t stream_;
-  std::unordered_map<std::string, std::shared_ptr<nv::Net>> nets_;
-  bool initialized_;
+  std::unordered_map<std::string, std::shared_ptr<Net>> nets_;
 
   // 前回のBEV特徴量保存用
-  std::shared_ptr<nv::Tensor> saved_prev_bev_;
+  std::shared_ptr<Tensor> saved_prev_bev_;
   bool is_first_frame_;
 
   // 設定情報の保存
-  VadModelConfig config_;
+  VadConfig vad_config_;
 
   // ロガーインスタンス
   std::shared_ptr<VadLogger> logger_;
 
 private:
-  std::unique_ptr<autoware::tensorrt_common::TrtCommon> head_trt_;
-  std::unique_ptr<nvinfer1::IRuntime, std::function<void(nvinfer1::IRuntime*)>> create_runtime() {
-    static std::unique_ptr<Logger> logger_instance = std::make_unique<Logger>(logger_);
-    auto runtime_deleter = []([[maybe_unused]] nvinfer1::IRuntime *runtime) {};
-    std::unique_ptr<nvinfer1::IRuntime, decltype(runtime_deleter)> runtime{
-        nvinfer1::createInferRuntime(*logger_instance), runtime_deleter};
-    return runtime;
-  }
+  autoware::tensorrt_common::TrtCommonConfig head_trt_config_;
 
-  // Backbone NetworkIO設定生成関数
-  std::vector<tensorrt_common::NetworkIO> generate_network_io_backbone(const VadConfig& vad_config) {
-    int32_t downsampled_image_height = vad_config.target_image_height / vad_config.downsample_factor;
-    int32_t downsampled_image_width = vad_config.target_image_width / vad_config.downsample_factor;
-    nvinfer1::Dims camera_input_dims{4, {vad_config.num_cameras, 3, vad_config.target_image_height, vad_config.target_image_width}};
-    nvinfer1::Dims backbone_output_dims{5, {vad_config.num_cameras, 1, vad_config.bev_feature_dim, downsampled_image_height, downsampled_image_width}};
-    std::vector<tensorrt_common::NetworkIO> backbone_network_io;
-    backbone_network_io.emplace_back("img", camera_input_dims);
-    backbone_network_io.emplace_back("out.0", backbone_output_dims);
-    return backbone_network_io;
-  }
-
-  // Head NetworkIO設定生成関数
-  std::vector<tensorrt_common::NetworkIO> generate_network_io_head(const VadConfig& vad_config) {
-    int32_t downsampled_image_height = vad_config.target_image_height / vad_config.downsample_factor;
-    int32_t downsampled_image_width = vad_config.target_image_width / vad_config.downsample_factor;
-    nvinfer1::Dims mlvl_dims{5, {1, vad_config.num_cameras, vad_config.bev_feature_dim, downsampled_image_height, downsampled_image_width}};
-    nvinfer1::Dims can_bus_dims{2, {1, vad_config.can_bus_dim}};
-    nvinfer1::Dims lidar2img_dims{3, {vad_config.num_cameras, 4, 4}};
-    nvinfer1::Dims shift_dims{2, {1, 2}};
-    nvinfer1::Dims prev_bev_dims{3, {vad_config.bev_h * vad_config.bev_w, 1, vad_config.bev_feature_dim}};
-    nvinfer1::Dims ego_fut_preds_dims{4, {1, vad_config.planning_ego_commands, vad_config.planning_timesteps, 2}};
-    nvinfer1::Dims traj_preds_dims{5, {3, 1, vad_config.prediction_num_queries, vad_config.prediction_trajectory_modes, vad_config.prediction_timesteps*2}};
-    nvinfer1::Dims traj_cls_dims{4, {3, 1, vad_config.prediction_num_queries, vad_config.prediction_trajectory_modes}};
-    nvinfer1::Dims bbox_preds_dims{4, {3, 1, vad_config.prediction_num_queries, vad_config.prediction_bbox_pred_dim}};
-    nvinfer1::Dims all_cls_scores_dims{4, {3, 1, vad_config.prediction_num_queries, vad_config.prediction_num_classes}};
-    nvinfer1::Dims map_all_cls_scores_dims{4, {3, 1, vad_config.map_num_queries, vad_config.map_num_class}};
-    nvinfer1::Dims map_all_pts_preds_dims{5, {3, 1, vad_config.map_num_queries, vad_config.map_points_per_polylines, 2}};
-    nvinfer1::Dims map_all_bbox_preds_dims{4, {3, 1, vad_config.map_num_queries, 4}};
-    std::vector<tensorrt_common::NetworkIO> head_network_io;
-    head_network_io.emplace_back("mlvl_feats.0", mlvl_dims);
-    head_network_io.emplace_back("img_metas.0[can_bus]", can_bus_dims);
-    head_network_io.emplace_back("img_metas.0[lidar2img]", lidar2img_dims);
-    head_network_io.emplace_back("img_metas.0[shift]", shift_dims);
-    head_network_io.emplace_back("prev_bev", prev_bev_dims);
-    head_network_io.emplace_back("out.bev_embed", prev_bev_dims);
-    head_network_io.emplace_back("out.ego_fut_preds", ego_fut_preds_dims);
-    head_network_io.emplace_back("out.all_traj_preds", traj_preds_dims);
-    head_network_io.emplace_back("out.all_traj_cls_scores", traj_cls_dims);
-    head_network_io.emplace_back("out.all_bbox_preds", bbox_preds_dims);
-    head_network_io.emplace_back("out.all_cls_scores", all_cls_scores_dims);
-    head_network_io.emplace_back("out.map_all_cls_scores", map_all_cls_scores_dims);
-    head_network_io.emplace_back("out.map_all_pts_preds", map_all_pts_preds_dims);
-    head_network_io.emplace_back("out.map_all_bbox_preds", map_all_bbox_preds_dims);
-    return head_network_io;
-  }
-
-  // Head No Previous NetworkIO設定生成関数
-  std::vector<tensorrt_common::NetworkIO> generate_network_io_head_no_prev(const VadConfig& vad_config) {
-    int32_t downsampled_image_height = vad_config.target_image_height / vad_config.downsample_factor;
-    int32_t downsampled_image_width = vad_config.target_image_width / vad_config.downsample_factor;
-    nvinfer1::Dims mlvl_dims{5, {1, vad_config.num_cameras, vad_config.bev_feature_dim, downsampled_image_height, downsampled_image_width}};
-    nvinfer1::Dims can_bus_dims{2, {1, vad_config.can_bus_dim}};
-    nvinfer1::Dims lidar2img_dims{3, {vad_config.num_cameras, 4, 4}};
-    nvinfer1::Dims shift_dims{2, {1, 2}};
-    nvinfer1::Dims prev_bev_dims{3, {vad_config.bev_h * vad_config.bev_w, 1, vad_config.bev_feature_dim}};
-    nvinfer1::Dims ego_fut_preds_dims{4, {1, vad_config.planning_ego_commands, vad_config.planning_timesteps, 2}};
-    nvinfer1::Dims traj_preds_dims{5, {3, 1, vad_config.prediction_num_queries, vad_config.prediction_trajectory_modes, vad_config.prediction_timesteps*2}};
-    nvinfer1::Dims traj_cls_dims{4, {3, 1, vad_config.prediction_num_queries, vad_config.prediction_trajectory_modes}};
-    nvinfer1::Dims bbox_preds_dims{4, {3, 1, vad_config.prediction_num_queries, vad_config.prediction_bbox_pred_dim}};
-    nvinfer1::Dims all_cls_scores_dims{4, {3, 1, vad_config.prediction_num_queries, vad_config.prediction_num_classes}};
-    nvinfer1::Dims map_all_cls_scores_dims{4, {3, 1, vad_config.map_num_queries, vad_config.map_num_class}};
-    nvinfer1::Dims map_all_pts_preds_dims{5, {3, 1, vad_config.map_num_queries, vad_config.map_points_per_polylines, 2}};
-    nvinfer1::Dims map_all_bbox_preds_dims{4, {3, 1, vad_config.map_num_queries, 4}};
-    std::vector<tensorrt_common::NetworkIO> head_no_prev_network_io;
-    head_no_prev_network_io.emplace_back("mlvl_feats.0", mlvl_dims);
-    head_no_prev_network_io.emplace_back("img_metas.0[can_bus]", can_bus_dims);
-    head_no_prev_network_io.emplace_back("img_metas.0[lidar2img]", lidar2img_dims);
-    head_no_prev_network_io.emplace_back("img_metas.0[shift]", shift_dims);
-    head_no_prev_network_io.emplace_back("out.bev_embed", prev_bev_dims);
-    head_no_prev_network_io.emplace_back("out.ego_fut_preds", ego_fut_preds_dims);
-    head_no_prev_network_io.emplace_back("out.all_traj_preds", traj_preds_dims);
-    head_no_prev_network_io.emplace_back("out.all_traj_cls_scores", traj_cls_dims);
-    head_no_prev_network_io.emplace_back("out.all_bbox_preds", bbox_preds_dims);
-    head_no_prev_network_io.emplace_back("out.all_cls_scores", all_cls_scores_dims);
-    head_no_prev_network_io.emplace_back("out.map_all_cls_scores", map_all_cls_scores_dims);
-    head_no_prev_network_io.emplace_back("out.map_all_pts_preds", map_all_pts_preds_dims);
-    head_no_prev_network_io.emplace_back("out.map_all_bbox_preds", map_all_bbox_preds_dims);
-    return head_no_prev_network_io;
-  }
-
-  std::unordered_map<std::string, std::shared_ptr<nv::Net>> init_engines(
+  std::unordered_map<std::string, std::shared_ptr<Net>> init_engines(
       const std::vector<NetConfig>& nets_config,
-      std::unique_ptr<autoware::tensorrt_common::TrtCommon> backbone_trt,
-      std::unique_ptr<autoware::tensorrt_common::TrtCommon> head_no_prev_trt) {
+      const VadConfig& vad_config,
+      const autoware::tensorrt_common::TrtCommonConfig& backbone_config,
+      const autoware::tensorrt_common::TrtCommonConfig& head_config,
+      const autoware::tensorrt_common::TrtCommonConfig& head_no_prev_config) {
     
-    std::unordered_map<std::string, std::shared_ptr<nv::Net>> nets;
+    std::unordered_map<std::string, std::shared_ptr<Net>> nets;
     
     for (const auto& engine : nets_config) {
-      if (engine.name == "head") {
-        continue;  // headは後で初期化
-      }
-      std::unordered_map<std::string, std::shared_ptr<nv::Tensor>> external_bindings;
+      std::unordered_map<std::string, std::shared_ptr<Tensor>> external_bindings;
       // reuse memory
       for (const auto& input_pair : engine.inputs) {
         const std::string& k = input_pair.first;
-        const auto& ext_map = input_pair.second;      
-        std::string ext_net = ext_map.at("net");
-        std::string ext_name = ext_map.at("name");
-        logger_->info(k + " <- " + ext_net + "[" + ext_name + "]");
-        external_bindings[k] = nets[ext_net]->bindings[ext_name];
+        auto [external_network, external_input_name] = parse_external_inputs(input_pair);
+        logger_->info(k + " <- " + external_network + "[" + external_input_name + "]");
+        external_bindings[k] = nets[external_network]->bindings[external_input_name];
       }
 
       if (engine.name == "backbone") {
-        nets[engine.name] = std::make_shared<nv::Net>(
-          runtime_.get(), external_bindings, std::move(backbone_trt));
+        nets[engine.name] = std::make_shared<Backbone>(
+          vad_config, backbone_config, vad_config_.plugins_path, logger_);
+        nets[engine.name]->set_input_tensor(external_bindings);
       } else if (engine.name == "head_no_prev") {
-        nets[engine.name] = std::make_shared<nv::Net>(
-          runtime_.get(), external_bindings, std::move(head_no_prev_trt));
+        nets[engine.name] = std::make_shared<Head>(
+          vad_config, head_no_prev_config, NetworkType::HEAD_NO_PREV, vad_config_.plugins_path, logger_);
+        nets[engine.name]->set_input_tensor(external_bindings);
+      } else if (engine.name == "head") {
+        nets[engine.name] = std::make_shared<Head>(
+          vad_config, head_config, NetworkType::HEAD, vad_config_.plugins_path, logger_);
       }
     }
     
@@ -454,9 +280,9 @@ private:
     cudaStreamSynchronize(stream_);
   }
 
-  std::shared_ptr<nv::Tensor> save_prev_bev(const std::string& head_name) {
+  std::shared_ptr<Tensor> save_prev_bev(const std::string& head_name) {
     auto bev_embed = nets_[head_name]->bindings["out.bev_embed"];
-    auto prev_bev = std::make_shared<nv::Tensor>("prev_bev", bev_embed->dim, bev_embed->dtype);
+    auto prev_bev = std::make_shared<Tensor>("prev_bev", bev_embed->dim, bev_embed->dtype, logger_);
     cudaMemcpyAsync(prev_bev->ptr, bev_embed->ptr, bev_embed->nbytes(), 
                     cudaMemcpyDeviceToDevice, stream_);
     return prev_bev;
@@ -476,39 +302,36 @@ private:
   }
 
   void load_head() {
-    auto head_engine = std::find_if(config_.nets_config.begin(), config_.nets_config.end(),
+    auto head_engine = std::find_if(vad_config_.nets_config.begin(), vad_config_.nets_config.end(),
         [](const NetConfig& engine) { return engine.name == "head"; });
     
-    if (head_engine == config_.nets_config.end()) {
+    if (head_engine == vad_config_.nets_config.end()) {
       logger_->error("Head engine configuration not found");
       return;
     }
     
-    std::unordered_map<std::string, std::shared_ptr<nv::Tensor>> external_bindings;
+    std::unordered_map<std::string, std::shared_ptr<Tensor>> external_bindings;
     for (const auto& input_pair : head_engine->inputs) {
       const std::string& k = input_pair.first;
-      const auto& ext_map = input_pair.second;      
-      std::string ext_net = ext_map.at("net");
-      std::string ext_name = ext_map.at("name");
-      logger_->info(k + " <- " + ext_net + "[" + ext_name + "]");
-      external_bindings[k] = nets_[ext_net]->bindings[ext_name];
+      auto [external_network, external_input_name] = parse_external_inputs(input_pair);
+      logger_->info(k + " <- " + external_network + "[" + external_input_name + "]");
+      external_bindings[k] = nets_[external_network]->bindings[external_input_name];
     }
 
-    // head_trtを使ってNetを生成
-    nets_["head"] = std::make_shared<nv::Net>(runtime_.get(), external_bindings, std::move(head_trt_));
+    nets_["head"]->set_input_tensor(external_bindings);
   }
 
   VadOutputData postprocess(const std::string& head_name, int32_t cmd) {
     std::vector<float> ego_fut_preds = nets_[head_name]->bindings["out.ego_fut_preds"]->cpu<float>();
+    std::vector<float> map_all_cls_preds_flat = nets_[head_name]->bindings["out.map_all_cls_scores"]->cpu<float>();
     std::vector<float> map_all_pts_preds_flat = nets_[head_name]->bindings["out.map_all_pts_preds"]->cpu<float>();
     std::vector<float> all_traj_preds_flat = nets_[head_name]->bindings["out.all_traj_preds"]->cpu<float>();
     std::vector<float> all_traj_cls_scores_flat = nets_[head_name]->bindings["out.all_traj_cls_scores"]->cpu<float>();
     std::vector<float> all_bbox_preds_flat = nets_[head_name]->bindings["out.all_bbox_preds"]->cpu<float>();
-    
-    // flat -> structured
-    auto traj_preds = postprocess_traj_preds(all_traj_preds_flat);
-    auto traj_cls_scores = postprocess_traj_cls_scores(all_traj_cls_scores_flat);
-    auto bbox_preds = postprocess_bbox_preds(all_bbox_preds_flat);
+    std::vector<float> all_cls_scores_flat = nets_[head_name]->bindings["out.all_cls_scores"]->cpu<float>();
+        
+    std::vector<MapPolyline> map_polylines = postprocess_map_preds(
+        map_all_cls_preds_flat, map_all_pts_preds_flat, vad_config_);
     
     // Extract planning for the given command
     std::vector<float> planning(
@@ -539,7 +362,7 @@ private:
       all_trajectories[command_idx] = trajectory;
     }
     
-    return VadOutputData{planning, all_trajectories};
+    return VadOutputData{planning, all_trajectories, map_polylines};
   }
 };
 

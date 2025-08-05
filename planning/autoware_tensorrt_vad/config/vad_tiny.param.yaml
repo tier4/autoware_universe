@@ -2,9 +2,26 @@
   ros__parameters:
     node_params:
       use_raw: [false, false, false, false, false, false] # per camera: if true, use raw image data, otherwise use compressed images
+    interface_params:
+      map_colors: [0.3922, 0.5843, 0.9294,  # divider: cornflowerblue
+                   1.0, 0.0, 0.0,           # ped_crossing: red  
+                   0.4392, 0.5020, 0.5647]  # boundary: slategrey
     model_params:
       plugins_path: "/home/autoware/ghq/github.com/Shin-kyoto/DL4AGX/AV-Solutions/vad-trt/app/demo/libplugins.so"
       default_command: 2  # 0: TURN RIGHT, 1: TURN LEFT, 2: KEEP FORWARD
+      map_classes: ["divider", "ped_crossing", "boundary"]
+      map_confidence_thresholds: [0.9, 0.9, 0.9]
+      object_confidence_thresholds:
+        car: 0.3
+        truck: 0.3
+        construction_vehicle: 0.3
+        bus: 0.3
+        trailer: 0.3
+        barrier: 0.5
+        motorcycle: 0.25
+        bicycle: 0.25
+        pedestrian: 0.3
+        traffic_cone: 0.4
     sync_params:
       front_camera_id: 0  # ID of the front camera (anchor camera) for synchronization
       sync_tolerance_ms: 100.0  # Synchronization tolerance in milliseconds

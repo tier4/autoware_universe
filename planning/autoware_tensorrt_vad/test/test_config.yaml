@@ -7,17 +7,23 @@ test_config:
   nets:
     backbone:
       name: "backbone"
-      engine_file: "../../test/test_data/engines/vadv1.extract_img_feat.fp16.engine"
+      onnx_file: "/home/autoware/ghq/github.com/Shin-kyoto/DL4AGX/AV-Solutions/vad-trt/app/demo/onnx_files/vadv1.extract_img_feat/sim_vadv1.extract_img_feat.onnx"
+      engine_file: "/tmp/test_vadv1.extract_img_feat.fp16.engine"
+      precision: "fp16"
     head:
       name: "head"
-      engine_file: "../../test/test_data/engines/vadv1_prev.pts_bbox_head.forward.engine"
+      onnx_file: "/home/autoware/ghq/github.com/Shin-kyoto/DL4AGX/AV-Solutions/vad-trt/app/demo/onnx_files/vadv1_prev.pts_bbox_head.forward/sim_vadv1_prev.pts_bbox_head.forward.onnx"
+      engine_file: "/tmp/test_vadv1_prev.pts_bbox_head.forward.engine"
+      precision: "fp32"
       inputs:
         img_feats:
           net: "backbone"
           name: "out.img_feats"
     head_no_prev:
       name: "head_no_prev"
-      engine_file: "../../test/test_data/engines/vadv1.pts_bbox_head.forward.engine"
+      onnx_file: "/home/autoware/ghq/github.com/Shin-kyoto/DL4AGX/AV-Solutions/vad-trt/app/demo/onnx_files/vadv1.pts_bbox_head.forward/sim_vadv1.pts_bbox_head.forward.onnx"
+      engine_file: "/tmp/test_vadv1.pts_bbox_head.forward.engine"
+      precision: "fp32"
       inputs:
         img_feats:
           net: "backbone"

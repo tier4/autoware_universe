@@ -31,6 +31,7 @@
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/generator_info.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
@@ -64,21 +65,15 @@ public:
 
 private:
   // Config loading function
-  VadModelConfig load_vad_model_config();
   VadConfig load_vad_config();
   std::tuple<
     autoware::tensorrt_common::TrtCommonConfig,
     autoware::tensorrt_common::TrtCommonConfig,
     autoware::tensorrt_common::TrtCommonConfig
   > load_trt_common_configs();
-  VadModelConfig load_net_configs();
   void initialize_vad_model();
   void create_camera_image_subscribers(const rclcpp::QoS& sensor_qos);
   void create_camera_info_subscribers(const rclcpp::QoS& camera_info_qos);
-
-  // Publisher methods
-  void publish_trajectory(const autoware_planning_msgs::msg::Trajectory & trajectory);
-  void publish_trajectories(const autoware_internal_planning_msgs::msg::CandidateTrajectories & candidate_trajectories);
 
   // Callback methods
   void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr msg, std::size_t camera_id);
@@ -107,8 +102,6 @@ private:
   // VAD model
   std::unique_ptr<VadModel<RosVadLogger>> vad_model_ptr_{};
 
-
-
   // VAD interface
   std::unique_ptr<VadInterface> vad_interface_ptr_{};
   VadInterfaceConfig vad_interface_config_;
@@ -123,7 +116,8 @@ private:
   // Publishers
   rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr trajectory_publisher_;
   rclcpp::Publisher<autoware_internal_planning_msgs::msg::CandidateTrajectories>::SharedPtr candidate_trajectories_publisher_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_publisher_;
+  rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr predicted_objects_publisher_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr map_points_publisher_;
 
   // Current frame data accumulation
   VadInputTopicData vad_input_topic_data_current_frame_;
