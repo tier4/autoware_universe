@@ -683,7 +683,7 @@ void StaticObstacleAvoidanceModule::updateEgoBehavior(
 
   const auto insert_velocity = [this, &data, &path]() {
     if (data.yield_required) {
-      insertWaitPoint(isBestEffort(parameters_->policy_deceleration), path);
+      insertWaitPoint(isBestEffort(parameters_->policy_deceleration_avoidance), path);
       return;
     }
 
@@ -692,21 +692,21 @@ void StaticObstacleAvoidanceModule::updateEgoBehavior(
     }
 
     if (!data.found_avoidance_path) {
-      insertWaitPoint(isBestEffort(parameters_->policy_deceleration), path);
+      insertWaitPoint(isBestEffort(parameters_->policy_deceleration_avoidance), path);
       return;
     }
 
     if (isWaitingApproval() && path_shifter_.getShiftLines().empty()) {
-      insertWaitPoint(isBestEffort(parameters_->policy_deceleration), path);
+      insertWaitPoint(isBestEffort(parameters_->policy_deceleration_avoidance), path);
       return;
     }
 
-    insertStopPoint(isBestEffort(parameters_->policy_deceleration), path);
+    insertStopPoint(isBestEffort(parameters_->policy_deceleration_avoidance), path);
   };
 
   insert_velocity();
 
-  insertReturnDeadLine(isBestEffort(parameters_->policy_deceleration), path);
+  insertReturnDeadLine(isBestEffort(parameters_->policy_deceleration_return), path);
 
   setStopReason(StopReason::AVOIDANCE, path.path);
 }

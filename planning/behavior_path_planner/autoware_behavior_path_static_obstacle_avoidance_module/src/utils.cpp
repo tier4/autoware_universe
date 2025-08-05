@@ -1461,6 +1461,10 @@ void insertDecelPoint(
     return;
   }
 
+  if (offset < 0.0) {
+    return;
+  }
+
   const auto seg_idx =
     autoware::motion_utils::findNearestSegmentIndex(path.points, decel_point.value());
   const auto insert_idx =
@@ -1656,7 +1660,7 @@ void fillObjectStoppableJudge(
   ObjectData & object_data, const ObjectDataArray & registered_objects,
   const double feasible_stop_distance, const std::shared_ptr<AvoidanceParameters> & parameters)
 {
-  if (parameters->policy_deceleration == "reliable") {
+  if (parameters->policy_deceleration_avoidance == "reliable") {
     object_data.is_stoppable = true;
     return;
   }
