@@ -134,7 +134,7 @@ struct Param
   // New params
   TriggerThreshold th_trigger;
   int th_max_lateral_query_num{5};
-  double th_dist_hysteresis_m{1.0};
+  double th_point_merge_distance_m{1.0};
   double footprint_extra_margin{0.0};
   double th_cutoff_time_predicted_path_s{4.0};
   double th_cutoff_time_departure_s{2.0};
