@@ -56,6 +56,8 @@ private:
   tl::expected<VelocityPlanningResult, std::string> plan_slow_down_intervals(
     const TrajectoryPoints & raw_trajectory_points,
     const std::shared_ptr<const PlannerData> & planner_data);
+  void update_critical_departure_points(
+    const trajectory::Trajectory<TrajectoryPoint> & aw_ref_traj, const double offset_from_ego);
   std::unordered_map<DepartureType, bool> get_diagnostics(
     const double curr_vel, const double dist_with_offset_m);
   rclcpp::Clock::SharedPtr clock_ptr_;
@@ -79,6 +81,8 @@ private:
 
   std::unique_ptr<double> last_lost_time_ptr_;
   std::unique_ptr<double> last_found_time_ptr_;
+  std::unique_ptr<double> last_no_critical_dpt_time_ptr_;
+  std::unique_ptr<double> last_found_critical_dpt_time_ptr_;
 
   autoware_utils::InterProcessPollingSubscriber<Trajectory>::SharedPtr ego_pred_traj_polling_sub_;
   autoware_utils::InterProcessPollingSubscriber<Control>::SharedPtr control_cmd_polling_sub_;
