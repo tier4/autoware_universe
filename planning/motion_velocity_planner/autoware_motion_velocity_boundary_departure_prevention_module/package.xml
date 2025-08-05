@@ -18,7 +18,6 @@
   <depend>autoware_control_msgs</depend>
   <depend>autoware_motion_utils</depend>
   <depend>autoware_motion_velocity_planner_common_universe</depend>
-  <depend>autoware_signal_processing</depend>
   <depend>autoware_trajectory</depend>
   <depend>autoware_utils</depend>
   <depend>autoware_utils_rclcpp</depend>

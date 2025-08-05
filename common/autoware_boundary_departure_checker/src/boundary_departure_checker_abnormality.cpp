@@ -266,7 +266,6 @@ BoundaryDepartureChecker::get_closest_projections_to_boundaries_side(
       break;
     }
   }
-
   return min_to_bound;
 }
 
@@ -318,12 +317,12 @@ Side<DeparturePoints> BoundaryDepartureChecker::get_departure_points(
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  const auto th_new_point_min_distance_m = param_ptr_->th_new_point_min_distance_m;
+  const auto th_dist_hysteresis_m = param_ptr_->th_dist_hysteresis_m;
 
   Side<DeparturePoints> departure_points;
   for (const auto side_key : g_side_keys) {
     departure_points[side_key] = utils::get_departure_points(
-      projections_to_bound[side_key], th_new_point_min_distance_m, lon_offset_m);
+      projections_to_bound[side_key], th_dist_hysteresis_m, lon_offset_m);
   }
   return departure_points;
 }
