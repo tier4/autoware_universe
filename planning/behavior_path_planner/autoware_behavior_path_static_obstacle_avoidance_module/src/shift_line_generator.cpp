@@ -190,7 +190,7 @@ AvoidOutlines ShiftLineGenerator::generateAvoidOutline(
     constexpr double LON_DIST_BUFFER = 1e-3;
 
     // avoidance distance is not enough. unavoidable.
-    if (!isBestEffort(parameters_->policy_deceleration)) {
+    if (!isBestEffort(parameters_->policy_deceleration_avoidance)) {
       if (avoidance_distance < helper_->getMinAvoidanceDistance(avoiding_shift) + LON_DIST_BUFFER) {
         object.info = ObjectInfo::INSUFFICIENT_LONGITUDINAL_DISTANCE;
         return std::nullopt;

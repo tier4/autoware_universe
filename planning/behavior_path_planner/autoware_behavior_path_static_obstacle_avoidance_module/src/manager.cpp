@@ -193,7 +193,9 @@ void StaticObstacleAvoidanceModuleManager::updateModuleParams(
   {
     const std::string ns = "avoidance.policy.";
     updateParam<std::string>(parameters, ns + "make_approval_request", p->policy_approval);
-    updateParam<std::string>(parameters, ns + "deceleration", p->policy_deceleration);
+    updateParam<std::string>(
+      parameters, ns + "deceleration.avoidance", p->policy_deceleration_avoidance);
+    updateParam<std::string>(parameters, ns + "deceleration.return", p->policy_deceleration_return);
     updateParam<std::string>(parameters, ns + "lateral_margin", p->policy_lateral_margin);
     updateParam<bool>(
       parameters, ns + "use_shorten_margin_immediately", p->use_shorten_margin_immediately);
@@ -204,7 +206,17 @@ void StaticObstacleAvoidanceModuleManager::updateModuleParams(
         "invalid policy. please select 'per_shift_line' or 'per_avoidance_maneuver'.");
     }
 
-    if (p->policy_deceleration != "best_effort" && p->policy_deceleration != "reliable") {
+    if (
+      p->policy_deceleration_avoidance != "best_effort" &&
+      p->policy_deceleration_avoidance != "reliable") {
+      RCLCPP_ERROR(
+        rclcpp::get_logger(__func__),
+        "invalid deceleration policy. Please select 'best_effort' or 'reliable'.");
+    }
+
+    if (
+      p->policy_deceleration_return != "best_effort" &&
+      p->policy_deceleration_return != "reliable") {
       RCLCPP_ERROR(
         rclcpp::get_logger(__func__),
         "invalid deceleration policy. Please select 'best_effort' or 'reliable'.");

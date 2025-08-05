@@ -324,7 +324,10 @@ AvoidanceParameters getParameter(rclcpp::Node * node)
   {
     const std::string ns = "avoidance.policy.";
     p.policy_approval = getOrDeclareParameter<std::string>(*node, ns + "make_approval_request");
-    p.policy_deceleration = getOrDeclareParameter<std::string>(*node, ns + "deceleration");
+    p.policy_deceleration_avoidance =
+      getOrDeclareParameter<std::string>(*node, ns + "deceleration.avoidance");
+    p.policy_deceleration_return =
+      getOrDeclareParameter<std::string>(*node, ns + "deceleration.return");
     p.policy_lateral_margin = getOrDeclareParameter<std::string>(*node, ns + "lateral_margin");
     p.use_shorten_margin_immediately =
       getOrDeclareParameter<bool>(*node, ns + "use_shorten_margin_immediately");
@@ -333,7 +336,14 @@ AvoidanceParameters getParameter(rclcpp::Node * node)
       throw std::domain_error("invalid policy. please select 'best_effort' or 'reliable'.");
     }
 
-    if (p.policy_deceleration != "best_effort" && p.policy_deceleration != "reliable") {
+    if (
+      p.policy_deceleration_avoidance != "best_effort" &&
+      p.policy_deceleration_avoidance != "reliable") {
+      throw std::domain_error("invalid policy. please select 'best_effort' or 'reliable'.");
+    }
+
+    if (
+      p.policy_deceleration_return != "best_effort" && p.policy_deceleration_return != "reliable") {
       throw std::domain_error("invalid policy. please select 'best_effort' or 'reliable'.");
     }
 

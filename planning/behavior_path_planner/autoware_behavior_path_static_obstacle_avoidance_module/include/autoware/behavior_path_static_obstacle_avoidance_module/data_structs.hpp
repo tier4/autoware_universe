@@ -308,8 +308,9 @@ struct AvoidanceParameters
   // policy
   std::string policy_approval{"per_shift_line"};
 
-  // policy
-  std::string policy_deceleration{"best_effort"};
+  std::string policy_deceleration_avoidance{"best_effort"};
+
+  std::string policy_deceleration_return{"best_effort"};
 
   // policy
   std::string policy_lateral_margin{"best_effort"};
