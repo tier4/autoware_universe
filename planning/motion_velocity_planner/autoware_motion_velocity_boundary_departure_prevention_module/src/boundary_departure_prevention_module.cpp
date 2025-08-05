@@ -87,8 +87,6 @@ void BoundaryDeparturePreventionModule::init(
 
       stat.summary(lvl, msg);
     });
-  last_found_time_ptr_ = std::make_unique<double>(clock_ptr_->now().seconds());
-  last_lost_time_ptr_ = std::make_unique<double>(clock_ptr_->now().seconds());
 }
 
 void BoundaryDeparturePreventionModule::update_parameters(
@@ -300,7 +298,7 @@ VelocityPlanningResult BoundaryDeparturePreventionModule::plan(
 
     updater_ptr_->force_update();
     if (!result_opt) {
-      RCLCPP_WARN(logger_, "Planning skipped: %s", result_opt.error().c_str());
+      RCLCPP_DEBUG(logger_, "Planning skipped: %s", result_opt.error().c_str());
       return {};
     }
 
@@ -388,7 +386,8 @@ std::optional<std::string> BoundaryDeparturePreventionModule::is_data_timeout(
 
 bool BoundaryDeparturePreventionModule::is_autonomous_mode() const
 {
-  return op_mode_state_ptr_->is_autonomous_mode_available;
+  return (op_mode_state_ptr_->mode == OperationModeState::AUTONOMOUS) &&
+         op_mode_state_ptr_->is_autoware_control_enabled;
 }
 
 std::optional<std::string> BoundaryDeparturePreventionModule::is_route_changed()
@@ -488,79 +487,33 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
 
   utils::update_critical_departure_points(
     output_.departure_points, output_.critical_departure_points, *ref_traj_pts_opt,
-    node_param_.bdc_param.th_new_point_min_distance_m,
+    node_param_.bdc_param.th_dist_hysteresis_m,
     ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward),
-    node_param_.th_pt_shift_dist_m, node_param_.th_pt_shift_angle_rad,
-    utils::calc_abs_dist_to_stop(
-      std::max(curr_odom.twist.twist.linear.x, node_param_.bdc_param.th_trigger.th_vel_mps.min),
-      node_param_.bdc_param.th_trigger.th_acc_mps2.max));
+    node_param_.th_pt_shift_dist_m, node_param_.th_pt_shift_angle_rad);
   toc_curr_watch("update_critical_departure_points");
-
-  const auto is_departure_persist = std::invoke([&]() {
-    const auto is_found =
-      std::any_of(g_side_keys.begin(), g_side_keys.end(), [&](const auto side_key) {
-        return !closest_projections_to_bound_opt.value()[side_key].empty();
-      });
-
-    if (!is_found) {
-      *last_lost_time_ptr_ = clock_ptr_->now().seconds();
-      return false;
-    }
-
-    const auto t_diff = clock_ptr_->now().seconds() - *last_lost_time_ptr_;
-    return t_diff >= node_param_.on_time_buffer_s;
-  });
 
   if (output_.departure_intervals.empty()) {
     output_.departure_intervals = utils::init_departure_intervals(
-      *ref_traj_pts_opt, output_.departure_points, curr_odom.twist.twist.linear.x,
+      *ref_traj_pts_opt, output_.departure_points,
       ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward),
-      node_param_.slow_down_types, is_departure_persist);
+      node_param_.slow_down_types);
   } else {
     auto & departure_intervals_mut = output_.departure_intervals;
     const auto & ref_traj_front_pt = raw_trajectory_points.front();
-
-    const auto is_reset_interval = std::invoke([&]() {
-      const auto is_departure_found = std::any_of(
-        g_side_keys.begin(), g_side_keys.end(),
-        [&](const auto side_key) { return !output_.departure_points[side_key].empty(); });
-
-      if (is_departure_found) {
-        *last_found_time_ptr_ = clock_ptr_->now().seconds();
-        return false;
-      }
-      const auto t_diff = clock_ptr_->now().seconds() - *last_found_time_ptr_;
-      return t_diff >= node_param_.off_time_buffer_s;
-    });
-
     utils::update_departure_intervals(
       departure_intervals_mut, output_.departure_points, *ref_traj_pts_opt,
       vehicle_info.vehicle_length_m, ref_traj_front_pt,
       ego_dist_on_traj_with_offset_m(!planner_data->is_driving_forward),
       node_param_.th_pt_shift_dist_m, node_param_.th_pt_shift_angle_rad,
-      node_param_.slow_down_types, is_reset_interval, is_departure_persist);
-
-    if (is_reset_interval) {
-      *last_found_time_ptr_ = clock_ptr_->now().seconds();
-    }
-    const auto reset_lost_time =
-      std::any_of(g_side_keys.begin(), g_side_keys.end(), [&](const auto side_key) {
-        return output_.departure_intervals.empty() || output_.departure_points[side_key].empty();
-      });
-
-    if (reset_lost_time) {
-      *last_lost_time_ptr_ = clock_ptr_->now().seconds();
-    }
+      node_param_.slow_down_types);
   }
-
   toc_curr_watch("update_departure_intervals");
 
   slow_down_wall_marker_.markers.clear();
 
-  fmt::print("Size of departure intervals: {}\n", output_.departure_intervals.size());
   output_.slowdown_intervals = utils::get_slow_down_intervals(
     *ref_traj_pts_opt, output_.departure_intervals, *slow_down_interpolator_ptr_, vehicle_info,
-    curr_odom.twist.twist.linear.x, node_param_.bdc_param.th_trigger,
+    output_.abnormalities_data.boundary_segments, curr_odom.twist.twist.linear.x,
     ego_dist_on_traj_with_offset_m(planner_data->is_driving_forward));
   toc_curr_watch("get_slow_down_interval");
 
@@ -569,11 +522,12 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
     const auto & [start_pose, end_pose, vel] = slowdown_interval;
     slowdown_intervals.emplace_back(start_pose.position, end_pose.position, vel);
     const auto markers_start = autoware::motion_utils::createSlowDownVirtualWallMarker(
-      start_pose, "bdp_start", clock_ptr_->now(), static_cast<int32_t>(idx), 0.0, "",
-      planner_data->is_driving_forward);
+      start_pose, "boundary_departure_prevention_start", clock_ptr_->now(),
+      static_cast<int32_t>(idx), ego_dist_on_traj_with_offset_m(planner_data->is_driving_forward),
+      "", planner_data->is_driving_forward);
     autoware_utils::append_marker_array(markers_start, &slow_down_wall_marker_);
     const auto markers_end = autoware::motion_utils::createSlowDownVirtualWallMarker(
-      end_pose, "bdp_end", clock_ptr_->now(),
+      end_pose, "boundary_departure_prevention_end", clock_ptr_->now(),
       static_cast<int32_t>(idx + output_.departure_intervals.size() + 1), 0.0, "",
       planner_data->is_driving_forward);
     autoware_utils::append_marker_array(markers_end, &slow_down_wall_marker_);
@@ -581,7 +535,7 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
 
   for (auto && [idx, critical_pt] : output_.critical_departure_points | ranges::views::enumerate) {
     const auto markers_end = autoware::motion_utils::createStopVirtualWallMarker(
-      critical_pt.point_on_prev_traj.pose, "bdp_stop", clock_ptr_->now(),
+      critical_pt.point_on_prev_traj.pose, "boundary_departure_prevention_end", clock_ptr_->now(),
       static_cast<int32_t>(idx + output_.departure_intervals.size() + 1), 0.0, "",
       planner_data->is_driving_forward);
     autoware_utils::append_marker_array(markers_end, &slow_down_wall_marker_);

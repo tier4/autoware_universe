@@ -26,7 +26,6 @@
 #include <range/v3/view.hpp>
 #include <tl_expected/expected.hpp>
 
-#include <fmt/format.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
 
 #include <algorithm>
@@ -51,7 +50,7 @@ using autoware::boundary_departure_checker::utils::to_segment_2d;
 namespace bg = boost::geometry;
 
 DeparturePoint create_departure_point(
-  const ClosestProjectionToBound & projection_to_bound, const double th_new_point_min_distance_m,
+  const ClosestProjectionToBound & projection_to_bound, const double th_dist_hysteresis_m,
   const double lon_offset_m)
 {
   DeparturePoint point;
@@ -59,7 +58,7 @@ DeparturePoint create_departure_point(
   point.lat_dist_to_bound = projection_to_bound.lat_dist;
   point.departure_type = projection_to_bound.departure_type;
   point.point = projection_to_bound.pt_on_bound;
-  point.th_dist_hysteresis = th_new_point_min_distance_m;
+  point.th_dist_hysteresis = th_dist_hysteresis_m;
   point.dist_on_traj = projection_to_bound.lon_dist_on_ref_traj - lon_offset_m;
   point.idx_from_ego_traj = projection_to_bound.ego_sides_idx;
   point.can_be_removed = (point.departure_type == DepartureType::NONE) || point.dist_on_traj <= 0.0;
@@ -589,15 +588,14 @@ ProjectionToBound find_closest_segment(
 }
 
 ProjectionsToBound get_closest_boundary_segments_from_side(
-  const TrajectoryPoints & ego_pred_traj, const BoundarySideWithIdx & boundaries,
-  const EgoSides & ego_sides_from_footprints)
+  const BoundarySideWithIdx & boundaries, const EgoSides & ego_sides_from_footprints)
 {
   ProjectionsToBound side;
   for (const auto & side_key : g_side_keys) {
     side[side_key].reserve(ego_sides_from_footprints.size());
   }
 
-  for (size_t i = 0; i < ego_pred_traj.size(); ++i) {
+  for (size_t i = 0; i < ego_sides_from_footprints.size(); ++i) {
     const auto & fp = ego_sides_from_footprints[i];
 
     const auto & ego_lb = fp.left.second;
@@ -606,8 +604,8 @@ ProjectionsToBound get_closest_boundary_segments_from_side(
     const auto rear_seg = Segment2d(ego_lb, ego_rb);
 
     for (const auto & side_key : g_side_keys) {
-      auto closest_bound = find_closest_segment(fp[side_key], rear_seg, i, boundaries[side_key]);
-      closest_bound.time_from_start = rclcpp::Duration(ego_pred_traj[i].time_from_start).seconds();
+      const auto closest_bound =
+        find_closest_segment(fp[side_key], rear_seg, i, boundaries[side_key]);
       side[side_key].push_back(closest_bound);
     }
   }
@@ -635,13 +633,13 @@ double compute_braking_distance(
 
 DeparturePoints get_departure_points(
   const std::vector<ClosestProjectionToBound> & projections_to_bound,
-  const double th_new_point_min_distance_m, const double lon_offset_m)
+  const double th_dist_hysteresis_m, const double lon_offset_m)
 {
   DeparturePoints departure_points;
   departure_points.reserve(projections_to_bound.size());
   for (const auto & projection_to_bound : projections_to_bound) {
     const auto point =
-      create_departure_point(projection_to_bound, th_new_point_min_distance_m, lon_offset_m);
+      create_departure_point(projection_to_bound, th_dist_hysteresis_m, lon_offset_m);
 
     if (point.can_be_removed) {
       continue;
@@ -652,78 +650,6 @@ DeparturePoints get_departure_points(
 
   std::sort(departure_points.begin(), departure_points.end());
   erase_after_first_match(departure_points);
-
-  DeparturePoints filtered_points;
-  size_t i = 0;
-  while (i < departure_points.size()) {
-    const auto & current = departure_points[i];
-    filtered_points.push_back(current);
-
-    size_t j = i + 1;
-    while (j < departure_points.size() &&
-           departure_points[j].departure_type != DepartureType::CRITICAL_DEPARTURE &&
-           std::abs(departure_points[j].dist_on_traj - current.dist_on_traj) <=
-             current.th_dist_hysteresis) {
-      if (
-        current.departure_type == DepartureType::APPROACHING_DEPARTURE ||
-        departure_points[j].departure_type == DepartureType::APPROACHING_DEPARTURE) {
-        filtered_points.back().departure_type = DepartureType::APPROACHING_DEPARTURE;
-      }
-      ++j;
-    }
-    i = j;
-  }
-
-  return filtered_points;
-}
-
-tl::expected<std::vector<lanelet::LineString3d>, std::string> get_uncrossable_linestrings_near_pose(
-  const lanelet::LaneletMapPtr & lanelet_map_ptr, const Pose & ego_pose,
-  const double search_distance, const std::vector<std::string> & uncrossable_boundary_types)
-{
-  if (!lanelet_map_ptr) {
-    return tl::make_unexpected("lanelet_map_ptr is null");
-  }
-
-  if (search_distance < 0.0) {
-    return tl::make_unexpected("Search distance must be non-negative.");
-  }
-
-  const auto p = lanelet::BasicPoint2d(ego_pose.position.x, ego_pose.position.y);
-
-  if (!std::isfinite(p.x()) || !std::isfinite(p.y())) {
-    return tl::make_unexpected("ego_pose contains non-finite values.");
-  }
-
-  const auto offset = lanelet::BasicPoint2d(search_distance, search_distance);
-  auto bbox = lanelet::BoundingBox2d(p - offset, p + offset);
-
-  auto nearby_linestrings = lanelet_map_ptr->lineStringLayer.search(bbox);
-
-  const auto remove_itr = std::remove_if(
-    nearby_linestrings.begin(), nearby_linestrings.end(),
-    [&](const auto & ls) { return !is_uncrossable_type(uncrossable_boundary_types, ls); });
-
-  nearby_linestrings.erase(remove_itr, nearby_linestrings.end());
-
-  if (nearby_linestrings.empty()) {
-    return tl::make_unexpected(
-      "No nearby uncrossable boundaries within " + std::to_string(search_distance) + " meter.");
-  }
-
-  return nearby_linestrings;
-}
-
-TrajectoryPoints trim_pred_path(const TrajectoryPoints & ego_pred_traj, const double cutoff_time_s)
-{
-  TrajectoryPoints trimmed_traj;
-  trimmed_traj.reserve(ego_pred_traj.size());
-  for (const auto & p : ego_pred_traj) {
-    trimmed_traj.push_back(p);
-    if (rclcpp::Duration(p.time_from_start).seconds() > cutoff_time_s) {
-      break;
-    }
-  }
-  return trimmed_traj;
+  return departure_points;
 }
 }  // namespace autoware::boundary_departure_checker::utils

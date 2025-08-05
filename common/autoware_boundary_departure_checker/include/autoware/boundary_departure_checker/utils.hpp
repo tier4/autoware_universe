@@ -357,14 +357,12 @@ ProjectionToBound find_closest_segment(
  *
  * The result is organized per side, and each footprint index corresponds to a projection result.
  *
- * @param ego_pred_traj           Predicted trajectory of the ego vehicle.
  * @param boundaries                 Preprocessed R-tree indexed boundary segments.
  * @param ego_sides_from_footprints List of left/right segments derived from ego footprint polygons.
  * @return Closest projections to boundaries, separated by side.
  */
 ProjectionsToBound get_closest_boundary_segments_from_side(
-  const TrajectoryPoints & ego_pred_traj, const BoundarySideWithIdx & boundaries,
-  const EgoSides & ego_sides_from_footprints);
+  const BoundarySideWithIdx & boundaries, const EgoSides & ego_sides_from_footprints);
 
 /**
  * @brief Estimate braking distance using jerk, acceleration, and braking delay constraints.
@@ -403,7 +401,7 @@ double compute_braking_distance(
  * - Retains only points up to and including the first CRITICAL_DEPARTURE point (if any).
  *
  * @param projections_to_bound  List of lateral projections to road boundaries.
- * @param th_new_point_min_distance_m  Threshold distance used for hysteresis logic in departure
+ * @param th_dist_hysteresis_m  Threshold distance used for hysteresis logic in departure
  * classification.
  * @param lon_offset_m          Longitudinal offset from ego base link to the reference
  * trajectory.
@@ -411,26 +409,7 @@ double compute_braking_distance(
  */
 DeparturePoints get_departure_points(
   const std::vector<ClosestProjectionToBound> & projections_to_bound,
-  const double th_new_point_min_distance_m, const double lon_offset_m);
-
-/**
- * @brief Find nearby uncrossable linestrings around the given pose.
- *
- * Searches for linestrings within a square area centered at the ego pose.
- * Filters results to include only those tagged with uncrossable boundary types.
- *
- * @param lanelet_map_ptr Shared pointer to the lanelet map.
- * @param ego_pose Center of the search area.
- * @param search_distance Distance from the pose to define the square search area (in meters).
- * @param uncrossable_boundary_types List of boundary type tags considered uncrossable.
- * @return List of uncrossable linestrings near the given pose, or an error string if none found.
- */
-tl::expected<std::vector<lanelet::LineString3d>, std::string> get_uncrossable_linestrings_near_pose(
-  const lanelet::LaneletMapPtr & lanelet_map_ptr, const Pose & ego_pose,
-  const double search_distance,
-  const std::vector<std::string> & uncrossable_boundary_types = {"road_border"});
-
-TrajectoryPoints trim_pred_path(const TrajectoryPoints & ego_pred_traj, const double cutoff_time_s);
+  const double th_dist_hysteresis_m, const double lon_offset_m);
 }  // namespace autoware::boundary_departure_checker::utils
 
 #endif  // AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__UTILS_HPP_
