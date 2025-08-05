@@ -5,6 +5,7 @@
   <arg name="rviz_respawn" default="true" description="respawn rviz"/>
   <arg name="data_path" default="$(env HOME)/autoware_data" description="packages data and artifacts directory path"/>
   <arg name="model_path" default="$(var data_path)/vad"/>
+  <arg name="plugins_path" default="$(find-pkg-share autoware_tensorrt_plugins)"/>
 
   <arg name="camera_info0" default="/sensing/camera/camera0/camera_info"/>
   <arg name="camera_info1" default="/sensing/camera/camera1/camera_info"/>

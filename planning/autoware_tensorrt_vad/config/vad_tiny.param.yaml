@@ -7,7 +7,7 @@
                    1.0, 0.0, 0.0,           # ped_crossing: red  
                    0.4392, 0.5020, 0.5647]  # boundary: slategrey
     model_params:
-      plugins_path: "/home/autoware/ghq/github.com/Shin-kyoto/DL4AGX/AV-Solutions/vad-trt/app/demo/libplugins.so"
+      plugins_path: "$(var plugins_path)/libautoware_tensorrt_plugins.so"
       default_command: 2  # 0: TURN RIGHT, 1: TURN LEFT, 2: KEEP FORWARD
       map_classes: ["divider", "ped_crossing", "boundary"]
       map_confidence_thresholds: [0.9, 0.9, 0.9]
