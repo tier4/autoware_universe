@@ -17,6 +17,7 @@
 #include "autoware/perception_filter/perception_filter_core.hpp"
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <algorithm>
 #include <array>
@@ -94,6 +95,10 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory)
 {
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
+
+  // Set header with current timestamp
+  planning_factors.header.stamp = rclcpp::Clock().now();
+  planning_factors.header.frame_id = "map";
 
   // Get UUIDs of objects that pass through now but would be filtered if RTC approved
   std::vector<unique_identifier_msgs::msg::UUID> objects_to_be_filtered;

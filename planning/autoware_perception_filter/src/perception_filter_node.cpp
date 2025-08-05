@@ -326,10 +326,6 @@ void PerceptionFilterNode::onObjects(
   published_time_publisher_->publish_if_subscribed(
     filtered_objects_pub_, filtered_objects.header.stamp);
 
-  // Publish planning factors
-  planning_factors_pub_->publish(
-    createPlanningFactors(classification, would_be_filtered_points_, planning_trajectory_));
-
   // Publish processing time
   const auto processing_time = std::chrono::duration<double, std::milli>(
                                  std::chrono::high_resolution_clock::now() - start_time)
@@ -582,6 +578,19 @@ void PerceptionFilterNode::onTimer()
 {
   // Update RTC status
   updateRTCStatus();
+
+  // Publish planning factors (always publish, even if empty)
+  autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
+  if (latest_objects_ && planning_trajectory_) {
+    // If we have the required data, create planning factors
+    planning_factors = createPlanningFactors(
+      latest_classification_, would_be_filtered_points_, planning_trajectory_);
+  } else {
+    // If data is not ready, publish empty planning factors with timestamp
+    planning_factors.header.stamp = this->now();
+    planning_factors.header.frame_id = "map";
+  }
+  planning_factors_pub_->publish(planning_factors);
 
   // Check if required data is available for debug markers
   if (!latest_objects_ || !planning_trajectory_) {
