@@ -60,4 +60,4 @@ cudaMemPool_t create_memory_pool(
 
 }  // namespace autoware::cuda_utils
 
-#endif  // AUTOWARE__CUDA_UTILS__CUDA_UTILS_HPP_
+#endif  // AUTOWARE__CUDA_UTILS__CUDA_MEMORY_POOL_HPP_
