@@ -296,7 +296,6 @@ template <typename TReturnType>
 __global__ void classify_point_by_return_type_kernel(
   const uint8_t * __restrict__ data, const size_t num_points, const int num_voxels,
   const size_t step, const size_t offset, const ReturnTypeCandidates primary_return_type,
-  const ReturnTypeCandidates secondary_return_type,
   const ::cuda::std::optional<int> * __restrict__ point_indices,
   const int * __restrict__ voxel_indices, size_t * __restrict__ primary_returns,
   size_t * __restrict__ secondary_returns, bool * __restrict__ is_primary_returns,
@@ -329,7 +328,8 @@ __global__ void classify_point_by_return_type_kernel(
 
   auto is_primary_return_type = find(primary_return_type, return_type);
   is_primary_returns[point_index.value()] = is_primary_return_type;
-  auto is_secondary_return_type = find(secondary_return_type, return_type);
+  auto is_secondary_return_type =
+    !is_primary_return_type;  // categorize all non-primary return type as secondary
   is_secondary_returns[point_index.value()] = is_secondary_return_type;
 
   if (is_primary_return_type) {
@@ -444,8 +444,7 @@ size_t get_offset(const T & fields, const std::string & field_name)
 }
 }  // namespace
 
-CudaPolarVoxelOutlierFilter::CudaPolarVoxelOutlierFilter()
-: primary_return_type_dev_(std::nullopt), secondary_return_type_dev_(std::nullopt)
+CudaPolarVoxelOutlierFilter::CudaPolarVoxelOutlierFilter() : primary_return_type_dev_(std::nullopt)
 {
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 
@@ -503,9 +502,9 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     generate_field_data_composer<::cuda::std::optional<int>>(num_points, stream_, mem_pool_);
 
   FieldDataComposer<double> resolutions{};
-  resolutions.radius = params.radius_resolution;
-  resolutions.azimuth = params.azimuth_resolution;
-  resolutions.elevation = params.elevation_resolution;
+  resolutions.radius = params.radial_resolution_m;
+  resolutions.azimuth = params.azimuth_resolution_rad;
+  resolutions.elevation = params.elevation_resolution_rad;
 
   int num_total_voxels = 0;
   CudaPooledUniquePtr<::cuda::std::optional<int>> point_indices = nullptr;
@@ -554,9 +553,9 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     grid_dim = dim3((num_points + block_dim.x - 1) / block_dim.x);
     classify_point_by_return_type_kernel<uint8_t><<<grid_dim, block_dim, 0, stream_>>>(
       input_cloud->data.get(), num_points, num_total_voxels, input_cloud->point_step,
-      return_type_offset, primary_return_type_dev_.value(), secondary_return_type_dev_.value(),
-      point_indices.get(), voxel_indices.get(), num_primary_returns.get(),
-      num_secondary_returns.get(), is_primary_returns.get(), is_secondary_returns.get());
+      return_type_offset, primary_return_type_dev_.value(), point_indices.get(),
+      voxel_indices.get(), num_primary_returns.get(), num_secondary_returns.get(),
+      is_primary_returns.get(), is_secondary_returns.get());
   }
 
   // Collect valid point indices and visibility statistics

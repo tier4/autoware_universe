@@ -186,10 +186,6 @@ public:
   {
     set_return_types(primary_types, primary_return_type_dev_);
   }
-  void set_secondary_return_types(const std::vector<int64_t> & secondary_types)
-  {
-    set_return_types(secondary_types, secondary_return_type_dev_);
-  }
 
 protected:
   enum class ReductionType : uint8_t { Min, Max, Sum };
@@ -199,7 +195,6 @@ protected:
   CubExecutor cub_executor_;
 
   std::optional<ReturnTypeCandidates> primary_return_type_dev_;
-  std::optional<ReturnTypeCandidates> secondary_return_type_dev_;
   static constexpr int invalid_index_ = -1;
 
   FilterReturn filter(
