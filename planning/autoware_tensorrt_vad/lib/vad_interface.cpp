@@ -91,10 +91,9 @@ VadOutputTopicData VadInterface::convert_output(
   return output_topic_data;
 }
 
-std::optional<Eigen::Matrix4f> VadInterface::lookup_base2cam(tf2_ros::Buffer & buffer, int32_t autoware_camera_id) const
+std::optional<Eigen::Matrix4f> VadInterface::lookup_base2cam(tf2_ros::Buffer & buffer, const std::string & source_frame) const
 {
   std::string target_frame = "base_link";
-  std::string source_frame = "camera" + std::to_string(autoware_camera_id) + "/camera_optical_link";
 
   try {
     geometry_msgs::msg::TransformStamped lookup_result =
@@ -177,7 +176,7 @@ Lidar2ImgData VadInterface::process_lidar2img(
       continue;
     }
 
-    auto base2cam_opt = lookup_base2cam(*tf_buffer_, autoware_camera_id);
+    auto base2cam_opt = lookup_base2cam(*tf_buffer_, camera_infos[autoware_camera_id]->header.frame_id);
     if (!base2cam_opt) continue;
     Eigen::Matrix4f base2cam = *base2cam_opt;
 

@@ -197,7 +197,7 @@ private:
   std::vector<float> prev_can_bus_;
 
   // --- 内部処理関数 ---
-  std::optional<Eigen::Matrix4f> lookup_base2cam(tf2_ros::Buffer & buffer, int32_t autoware_camera_id) const;
+  std::optional<Eigen::Matrix4f> lookup_base2cam(tf2_ros::Buffer & buffer, const std::string & source_frame) const;
   Eigen::Matrix4f create_viewpad(const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info) const;
   Eigen::Matrix4f apply_scaling(const Eigen::Matrix4f & lidar2img, float scale_width, float scale_height) const;
   std::vector<float> matrix_to_flat(const Eigen::Matrix4f & matrix) const;
