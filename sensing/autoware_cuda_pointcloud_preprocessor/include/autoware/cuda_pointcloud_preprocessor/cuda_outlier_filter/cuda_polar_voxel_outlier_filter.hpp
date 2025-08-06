@@ -39,12 +39,12 @@ namespace autoware::cuda_pointcloud_preprocessor
 struct CudaPolarVoxelOutlierFilterParameters
 {
   // Polar voxel parameters
-  double radius_resolution;     // Resolution in radial direction (meters)
-  double azimuth_resolution;    // Resolution in azimuth direction (radians)
-  double elevation_resolution;  // Resolution in elevation direction (radians)
+  double radial_resolution_m;     // Resolution in radial direction (meters)
+  double azimuth_resolution_rad;    // Resolution in azimuth direction (radians)
+  double elevation_resolution_rad;  // Resolution in elevation direction (radians)
   int voxel_points_threshold;   // Minimum points required per voxel
-  double min_radius;            // Minimum radius to consider
-  double max_radius;            // Maximum radius to consider
+  double min_radius_m;            // Minimum radius to consider
+  double max_radius_m;            // Maximum radius to consider
 
   // Return type classification parameters
   bool use_return_type_classification;  // Whether to use return type classification
@@ -176,10 +176,6 @@ public:
   {
     set_return_types(primary_types, primary_return_type_dev_);
   }
-  void set_secondary_return_types(const std::vector<int64_t> & secondary_types)
-  {
-    set_return_types(secondary_types, secondary_return_type_dev_);
-  }
 
 protected:
   enum class ReductionType : uint8_t { Min, Max, Sum };
@@ -188,7 +184,6 @@ protected:
   CubExecutor cub_executor_;
 
   std::optional<ReturnTypeCandidates> primary_return_type_dev_;
-  std::optional<ReturnTypeCandidates> secondary_return_type_dev_;
   static constexpr int invalid_index_ = -1;
 
   void set_return_types(

@@ -25,12 +25,12 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
 {
   // set initial parameters
   {
-    filter_params_.radius_resolution = declare_parameter<double>("radius_resolution");
-    filter_params_.azimuth_resolution = declare_parameter<double>("azimuth_resolution");
-    filter_params_.elevation_resolution = declare_parameter<double>("elevation_resolution");
+    filter_params_.radial_resolution_m = declare_parameter<double>("radial_resolution_m");
+    filter_params_.azimuth_resolution_rad = declare_parameter<double>("azimuth_resolution_rad");
+    filter_params_.elevation_resolution_rad = declare_parameter<double>("elevation_resolution_rad");
     filter_params_.voxel_points_threshold = declare_parameter<int>("voxel_points_threshold");
-    filter_params_.min_radius = declare_parameter<double>("min_radius");
-    filter_params_.max_radius = declare_parameter<double>("max_radius");
+    filter_params_.min_radius_m = declare_parameter<double>("min_radius_m");
+    filter_params_.max_radius_m = declare_parameter<double>("max_radius_m");
     filter_params_.use_return_type_classification =
       declare_parameter<bool>("use_return_type_classification");
     filter_params_.filter_secondary_returns = declare_parameter<bool>("filter_secondary_returns");
@@ -45,12 +45,10 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
       declare_parameter<double>("filter_ratio_warn_threshold", 0.7);
 
     primary_return_types_ = declare_parameter<std::vector<int>>("primary_return_types");
-    secondary_return_types_ = declare_parameter<std::vector<int>>("secondary_return_types");
   }
 
   cuda_polar_voxel_outlier_filter_ = std::make_unique<CudaPolarVoxelOutlierFilter>();
   cuda_polar_voxel_outlier_filter_->set_primary_return_types(primary_return_types_);
-  cuda_polar_voxel_outlier_filter_->set_secondary_return_types(secondary_return_types_);
 
   std::string diagnostics_hardware_id =
     declare_parameter<std::string>("hardware_id", "cuda_polar_voxel_outlier_filter");
@@ -141,29 +139,30 @@ rcl_interfaces::msg::SetParametersResult CudaPolarVoxelOutlierFilterNode::param_
   using autoware::pointcloud_preprocessor::get_param;
   std::scoped_lock lock(param_mutex_);
 
-  if (get_param(p, "radius_resolution", filter_params_.radius_resolution)) {
+  if (get_param(p, "radial_resolution_m", filter_params_.radial_resolution_m)) {
     RCLCPP_DEBUG(
-      get_logger(), "Setting new radius resolution to: %f.", filter_params_.radius_resolution);
+      get_logger(), "Setting new radius resolution to: %f.", filter_params_.radial_resolution_m);
   }
-  if (get_param(p, "azimuth_resolution", filter_params_.azimuth_resolution)) {
+  if (get_param(p, "azimuth_resolution_rad", filter_params_.azimuth_resolution_rad)) {
     RCLCPP_DEBUG(
-      get_logger(), "Setting new azimuth resolution to: %f.", filter_params_.azimuth_resolution);
+      get_logger(), "Setting new azimuth resolution to: %f.",
+      filter_params_.azimuth_resolution_rad);
   }
-  if (get_param(p, "elevation_resolution", filter_params_.elevation_resolution)) {
+  if (get_param(p, "elevation_resolution_rad", filter_params_.elevation_resolution_rad)) {
     RCLCPP_DEBUG(
       get_logger(), "Setting new elevation resolution to: %f.",
-      filter_params_.elevation_resolution);
+      filter_params_.elevation_resolution_rad);
   }
   if (get_param(p, "voxel_points_threshold", filter_params_.voxel_points_threshold)) {
     RCLCPP_DEBUG(
       get_logger(), "Setting new voxel points threshold to: %d.",
       filter_params_.voxel_points_threshold);
   }
-  if (get_param(p, "min_radius", filter_params_.min_radius)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new min radius to: %f.", filter_params_.min_radius);
+  if (get_param(p, "min_radius_m", filter_params_.min_radius_m)) {
+    RCLCPP_DEBUG(get_logger(), "Setting new min radius to: %f.", filter_params_.min_radius_m);
   }
-  if (get_param(p, "max_radius", filter_params_.max_radius)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new max radius to: %f.", filter_params_.max_radius);
+  if (get_param(p, "max_radius", filter_params_.max_radius_m)) {
+    RCLCPP_DEBUG(get_logger(), "Setting new max radius to: %f.", filter_params_.max_radius_m);
   }
   if (get_param(
         p, "use_return_type_classification", filter_params_.use_return_type_classification)) {
@@ -205,10 +204,6 @@ rcl_interfaces::msg::SetParametersResult CudaPolarVoxelOutlierFilterNode::param_
   if (get_param(p, "primary_return_types", primary_return_types_)) {
     RCLCPP_DEBUG(get_logger(), "Setting new primary return types");
     cuda_polar_voxel_outlier_filter_->set_primary_return_types(primary_return_types_);
-  }
-  if (get_param(p, "secondary_return_types", secondary_return_types_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new secondary return types");
-    cuda_polar_voxel_outlier_filter_->set_secondary_return_types(secondary_return_types_);
   }
 
   rcl_interfaces::msg::SetParametersResult result;
