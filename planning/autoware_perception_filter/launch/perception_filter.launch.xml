@@ -8,6 +8,7 @@
   <arg name="debug_filtering_markers" default="/perception_filter_node/debug/filtering_markers"/>
   <arg name="debug_objects_processing_time" default="/perception_filter_node/debug/objects_processing_time_ms"/>
   <arg name="debug_pointcloud_processing_time" default="/perception_filter_node/debug/pointcloud_processing_time_ms"/>
+  <arg name="debug_processing_time_detail" default="/perception_filter_node/debug/processing_time_detail"/>
   <arg name="perception_filter_param_path" default="$(find-pkg-share autoware_launch)/config/planning/perception_filter/perception_filter.param.yaml"/>
 
   <node pkg="autoware_perception_filter" exec="autoware_perception_filter_node" name="perception_filter_node" output="both">
@@ -19,6 +20,7 @@
     <remap from="debug/filtering_markers" to="$(var debug_filtering_markers)"/>
     <remap from="debug/objects_processing_time_ms" to="$(var debug_objects_processing_time)"/>
     <remap from="debug/pointcloud_processing_time_ms" to="$(var debug_pointcloud_processing_time)"/>
+    <remap from="debug/processing_time_detail" to="$(var debug_processing_time_detail)"/>
     <param from="$(var perception_filter_param_path)"/>
   </node>
 </launch>
