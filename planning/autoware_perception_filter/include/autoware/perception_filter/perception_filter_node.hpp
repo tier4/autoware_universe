@@ -23,6 +23,7 @@
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/ros/parameter.hpp>
 #include <autoware/universe_utils/ros/uuid_helper.hpp>
+#include <autoware/universe_utils/system/time_keeper.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/ros/update_param.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
@@ -204,6 +205,13 @@ private:
     objects_processing_time_pub_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pointcloud_processing_time_pub_;
+
+  // Processing time detail publisher for TimeKeeper
+  rclcpp::Publisher<tier4_debug_msgs::msg::ProcessingTimeTree>::SharedPtr
+    processing_time_detail_pub_;
+
+  // TimeKeeper for processing time tracking
+  std::shared_ptr<autoware::universe_utils::TimeKeeper> time_keeper_;
 
   // Published time publisher
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
