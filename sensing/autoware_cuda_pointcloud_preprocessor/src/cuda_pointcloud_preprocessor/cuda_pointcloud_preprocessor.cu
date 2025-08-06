@@ -126,7 +126,6 @@ void CudaPointcloudPreprocessor::setRingOutlierFilterParameters(
   ring_outlier_parameters_ = ring_outlier_parameters;
 }
 
-
 void CudaPointcloudPreprocessor::setRingOutlierFilterActive(const bool enable_filter)
 {
   enable_ring_outlier_filter_ = enable_filter;
@@ -415,8 +414,8 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
       threads_per_block_, blocks_per_grid, stream_);
   } else {
     thrust::fill(
-      thrust::device, device_ring_outlier_mask,
-      device_ring_outlier_mask + num_organized_points_, 1);
+      thrust::device, device_ring_outlier_mask, device_ring_outlier_mask + num_organized_points_,
+      1);
   }
 
   combineMasksLaunch(
