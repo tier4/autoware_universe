@@ -6,6 +6,8 @@
   <arg name="output_filtered_objects" default="/perception/object_recognition/filtered_objects"/>
   <arg name="output_filtered_pointcloud" default="/perception/obstacle_segmentation/filtered_pointcloud"/>
   <arg name="debug_filtering_markers" default="/perception_filter_node/debug/filtering_markers"/>
+  <arg name="debug_objects_processing_time" default="/perception_filter_node/debug/objects_processing_time_ms"/>
+  <arg name="debug_pointcloud_processing_time" default="/perception_filter_node/debug/pointcloud_processing_time_ms"/>
   <arg name="perception_filter_param_path" default="$(find-pkg-share autoware_launch)/config/planning/perception_filter/perception_filter.param.yaml"/>
 
   <node pkg="autoware_perception_filter" exec="autoware_perception_filter_node" name="perception_filter_node" output="both">
@@ -15,6 +17,8 @@
     <remap from="output/filtered_objects" to="$(var output_filtered_objects)"/>
     <remap from="output/filtered_pointcloud" to="$(var output_filtered_pointcloud)"/>
     <remap from="debug/filtering_markers" to="$(var debug_filtering_markers)"/>
+    <remap from="debug/objects_processing_time_ms" to="$(var debug_objects_processing_time)"/>
+    <remap from="debug/pointcloud_processing_time_ms" to="$(var debug_pointcloud_processing_time)"/>
     <param from="$(var perception_filter_param_path)"/>
   </node>
 </launch>

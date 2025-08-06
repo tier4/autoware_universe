@@ -135,7 +135,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   // Initialize published time publisher
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 
-  // Initialize timer for debug markers (after all publishers are initialized)
+  // Initialize timer for debug markers
   debug_timer_ = create_wall_timer(
     std::chrono::duration<double>(debug_timer_period_),
     std::bind(&PerceptionFilterNode::onTimer, this));
