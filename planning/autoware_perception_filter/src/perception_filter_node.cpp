@@ -101,7 +101,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     std::bind(&PerceptionFilterNode::onObjects, this, std::placeholders::_1));
 
   pointcloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-    "input/pointcloud", rclcpp::QoS{1},
+    "input/pointcloud", rclcpp::QoS{1}.reliability(rclcpp::ReliabilityPolicy::BestEffort),
     std::bind(&PerceptionFilterNode::onPointCloud, this, std::placeholders::_1));
 
   planning_trajectory_sub_ = create_subscription<autoware_planning_msgs::msg::Trajectory>(
