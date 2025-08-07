@@ -49,8 +49,7 @@ protected:
 private:
   CudaPolarVoxelOutlierFilterParameters filter_params_;
   // rclcpp always returns integer array as std::vector<int64_t>, so declare the same type here
-  std::vector<int64_t> primary_return_types_;    // Return types considered as primary returns
-  std::vector<int64_t> secondary_return_types_;  // Return types considered as secondary returns
+  std::vector<int64_t> primary_return_types_;  // Return types considered as primary returns
   std::mutex param_mutex_;
 
   // Diagnostics members
