@@ -12,16 +12,16 @@
       map_classes: ["divider", "ped_crossing", "boundary"]
       map_confidence_thresholds: [0.9, 0.9, 0.9]
       object_confidence_thresholds:
-        car: 0.3
-        truck: 0.3
-        construction_vehicle: 0.3
-        bus: 0.3
-        trailer: 0.3
+        car: 0.5
+        truck: 0.5
+        construction_vehicle: 0.9
+        bus: 0.5
+        trailer: 0.5
         barrier: 0.5
-        motorcycle: 0.25
-        bicycle: 0.25
-        pedestrian: 0.3
-        traffic_cone: 0.4
+        motorcycle: 0.5
+        bicycle: 0.5
+        pedestrian: 0.9
+        traffic_cone: 0.5
     sync_params:
       front_camera_id: 0  # ID of the front camera (anchor camera) for synchronization
       sync_tolerance_ms: 100.0  # Synchronization tolerance in milliseconds

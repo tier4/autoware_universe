@@ -88,6 +88,9 @@ VadOutputTopicData VadInterface::convert_output(
   // Convert map_points from VAD coordinate system to Autoware coordinate system
   output_topic_data.map_points = process_map_points(vad_output_data.map_polylines_, stamp, base2map_transform);
 
+  // Convert predicted objects from BBox to PredictedObjects
+  output_topic_data.objects = process_predicted_objects(vad_output_data.predicted_objects_, stamp, base2map_transform);
+
   return output_topic_data;
 }
 

@@ -418,7 +418,7 @@ void VadNode::publish(const VadOutputTopicData & vad_output_topic_data)
   candidate_trajectories_publisher_->publish(vad_output_topic_data.candidate_trajectories);
 
   // // Publish predicted objects
-  // predicted_objects_publisher_->publish(vad_output_topic_data.objects);
+  predicted_objects_publisher_->publish(vad_output_topic_data.objects);
 
   // Publish map points
   map_points_publisher_->publish(vad_output_topic_data.map_points);
