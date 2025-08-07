@@ -117,7 +117,7 @@ struct VadOutputData
   std::vector<MapPolyline> map_polylines_{};
 
   // // 検出されたオブジェクト
-  // std::vector<BBox> predicted_objects_{};
+  std::vector<BBox> predicted_objects_{};
 };
 
 // 後処理関数
@@ -135,6 +135,25 @@ std::vector<MapPolyline> postprocess_map_preds(
     const std::vector<float>& all_map_cls_preds_flat,
     const std::vector<float>& all_map_pts_preds_flat,
     const VadConfig& vad_config);
+
+// Helper functions for trajectory prediction processing
+std::vector<std::vector<float>> postprocess_class_scores(const std::vector<float>& all_cls_scores_flat);
+
+std::vector<std::vector<std::vector<std::vector<float>>>> postprocess_traj_preds(
+    const std::vector<float>& all_traj_preds_flat);
+
+std::vector<std::vector<float>> postprocess_traj_cls_scores(
+    const std::vector<float>& all_traj_cls_scores_flat);
+
+std::vector<std::vector<float>> postprocess_bbox_preds(
+    const std::vector<float>& all_bbox_preds_flat);
+
+std::vector<BBox> postprocess_bboxes(
+    const std::vector<float>& all_cls_scores_flat,
+    const std::vector<float>& all_traj_preds_flat,
+    const std::vector<float>& all_traj_cls_scores_flat,
+    const std::vector<float>& all_bbox_preds_flat,
+    const std::map<std::string, float>& object_confidence_thresholds);
 
 // Helper function to parse external input configuration
 inline std::pair<std::string, std::string> parse_external_inputs(const std::pair<std::string, std::map<std::string, std::string>>& input_pair) {
@@ -329,7 +348,11 @@ private:
     std::vector<float> all_traj_cls_scores_flat = nets_[head_name]->bindings["out.all_traj_cls_scores"]->cpu<float>();
     std::vector<float> all_bbox_preds_flat = nets_[head_name]->bindings["out.all_bbox_preds"]->cpu<float>();
     std::vector<float> all_cls_scores_flat = nets_[head_name]->bindings["out.all_cls_scores"]->cpu<float>();
-        
+
+    // Process detected objects using postprocess_bboxes and apply confidence thresholding
+    auto filtered_bboxes = postprocess_bboxes(
+        all_cls_scores_flat, all_traj_preds_flat, all_traj_cls_scores_flat, all_bbox_preds_flat, vad_config_.object_confidence_thresholds);
+
     std::vector<MapPolyline> map_polylines = postprocess_map_preds(
         map_all_cls_preds_flat, map_all_pts_preds_flat, vad_config_);
     
@@ -362,7 +385,7 @@ private:
       all_trajectories[command_idx] = trajectory;
     }
     
-    return VadOutputData{planning, all_trajectories, map_polylines};
+    return VadOutputData{planning, all_trajectories, map_polylines, filtered_bboxes};
   }
 };
 
