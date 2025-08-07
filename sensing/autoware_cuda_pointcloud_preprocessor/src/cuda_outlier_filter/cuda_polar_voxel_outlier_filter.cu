@@ -181,6 +181,59 @@ __global__ void polar_to_polar_voxel_kernel(
   output[point_index] = static_cast<int>(floor(field_data / resolutions[field_index]));
 }
 
+template <typename TCartesianData, typename TPolarData>
+__global__ void cartesian_to_polar_voxel_kernel(
+  const uint8_t * __restrict__ data, const size_t num_points, const uint32_t step,
+  const FieldDataComposer<size_t> offsets, const FieldDataComposer<double> resolutions,
+  const double min_radius, const double max_radius,
+  FieldDataComposer<::cuda::std::optional<int> *> outputs)
+{
+  size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (point_index >= num_points) {
+    return;
+  }
+
+  TCartesianData x =
+    get_element_value<TCartesianData>(data, point_index, step, offsets[FieldDataIndex::radius]);
+  TCartesianData y =
+    get_element_value<TCartesianData>(data, point_index, step, offsets[FieldDataIndex::azimuth]);
+  TCartesianData z =
+    get_element_value<TCartesianData>(data, point_index, step, offsets[FieldDataIndex::elevation]);
+
+  // treat 3 field (radius, azimuth, elevation) in parallel using
+  // y dimension
+  auto field_index = static_cast<FieldDataIndex>(blockIdx.y);
+
+  auto field_data = static_cast<TPolarData>(0);
+  switch (field_index) {
+    case FieldDataIndex::radius:
+      field_data = sqrt(x * x + y * y + z * z);
+      break;
+    case FieldDataIndex::azimuth:
+      field_data = atan2(y, x);
+      break;
+    case FieldDataIndex::elevation:
+      field_data = atan2(z, sqrt(x * x + y * y));
+      break;
+  }
+
+  bool is_finite = isfinite(field_data);
+  bool is_valid_radius = (field_index == FieldDataIndex::radius)
+                           ? (min_radius <= field_data) && (field_data <= max_radius)
+                           : true;
+
+  auto output = outputs[field_index];
+  if (!is_finite || !is_valid_radius) {
+    // Assign invalid_index for points with invalid value and/or
+    // points outside radius range output[point_index] =
+    // invalid_index;
+    output[point_index] = ::cuda::std::nullopt;
+    return;
+  }
+
+  output[point_index] = static_cast<int>(floor(field_data / resolutions[field_index]));
+}
+
 __global__ void calculate_voxel_index_kernel(
   const FieldDataComposer<::cuda::std::optional<int> *> field_indices, const size_t num_points,
   const FieldDataComposer<int> field_dimensions, ::cuda::std::optional<int> * point_indices,
@@ -408,16 +461,43 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter_po
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
   const CudaPolarVoxelOutlierFilterParameters & params)
 {
-  if (!primary_return_type_dev_ || !secondary_return_type_dev_) {
+  return filter(input_cloud, params, PolarDataType::PreComputed);
+}
+
+CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter_point_xyzirc(
+  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
+  const CudaPolarVoxelOutlierFilterParameters & params)
+{
+  return filter(input_cloud, params, PolarDataType::DeriveFromCartesian);
+}
+
+CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
+  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
+  const CudaPolarVoxelOutlierFilterParameters & params, const PolarDataType polar_type)
+{
+  if (!primary_return_type_dev_) {
     return FilterReturn{nullptr, nullptr, 0., 0.};
   }
 
   size_t num_points = input_cloud->width * input_cloud->height;
 
   FieldDataComposer<size_t> offsets{};
-  offsets.radius = get_offset(input_cloud->fields, "distance");
-  offsets.azimuth = get_offset(input_cloud->fields, "azimuth");
-  offsets.elevation = get_offset(input_cloud->fields, "elevation");
+  switch (polar_type) {
+    case PolarDataType::PreComputed:
+      offsets.radius = get_offset(input_cloud->fields, "distance");
+      offsets.azimuth = get_offset(input_cloud->fields, "azimuth");
+      offsets.elevation = get_offset(input_cloud->fields, "elevation");
+      break;
+    case PolarDataType::DeriveFromCartesian:
+      // Though struct member names assume polar coordinates one,
+      // fill offset for cartesian coordinates to compute polar coordinates
+      offsets.radius = get_offset(input_cloud->fields, "x");
+      offsets.azimuth = get_offset(input_cloud->fields, "y");
+      offsets.elevation = get_offset(input_cloud->fields, "z");
+      break;
+    default:
+      throw std::runtime_error("undefined polar_data_type is specified");
+  }
 
   auto [radius_idx, azimuth_idx, elevation_idx, polar_voxel_indices] =
     generate_field_data_composer<::cuda::std::optional<int>>(num_points, stream_, mem_pool_);
@@ -442,9 +522,20 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter_po
     dim3 block_dim(512);
     dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x, 3, 1);
 
-    polar_to_polar_voxel_kernel<float><<<grid_dim, block_dim, 0, stream_>>>(
-      input_cloud->data.get(), num_points, input_cloud->point_step, offsets, resolutions,
-      params.min_radius, params.max_radius, polar_voxel_indices);
+    switch (polar_type) {
+      case PolarDataType::PreComputed:
+        polar_to_polar_voxel_kernel<float><<<grid_dim, block_dim, 0, stream_>>>(
+          input_cloud->data.get(), num_points, input_cloud->point_step, offsets, resolutions,
+          params.min_radius_m, params.max_radius_m, polar_voxel_indices);
+        break;
+      case PolarDataType::DeriveFromCartesian:
+        cartesian_to_polar_voxel_kernel<float, float><<<grid_dim, block_dim, 0, stream_>>>(
+          input_cloud->data.get(), num_points, input_cloud->point_step, offsets, resolutions,
+          params.min_radius_m, params.max_radius_m, polar_voxel_indices);
+        break;
+      default:
+        throw std::runtime_error("undefined polar_data_type is specified");
+    }
 
     // calculate unique voxel index that each point belongs to
     std::tie(num_total_voxels, point_indices, voxel_indices) =
