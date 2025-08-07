@@ -459,6 +459,22 @@ TrajectoryPoints trim_pred_path(const TrajectoryPoints & ego_pred_traj, const do
 double calc_judge_line_dist_with_jerk_limit(
   const double velocity, const double acceleration, const double max_stop_acceleration,
   const double max_stop_jerk, const double delay_response_time);
+
+/**
+ * @brief Find the closest valid projection to a boundary within threshold.
+ *
+ * @param projections_to_bound Lateral projections from ego side to boundary for each abnormality.
+ * @param abnormality_to_check Abnormality types to consider during the search.
+ * @param th_dist_to_boundary_m Side-specific threshold distances (min and max) to the boundary.
+ * @param side_key Side to evaluate (left or right).
+ * @param idx Index of the ego side to check within projections.
+ * @return Closest projection to boundary, if found.
+ */
+std::optional<ClosestProjectionToBound> find_min_to_bound(
+  const Abnormalities<ProjectionsToBound> & projections_to_bound,
+  const std::vector<AbnormalityType> & abnormality_to_check,
+  const Side<TriggerThreshold::MinMax> & th_dist_to_boundary_m, const SideKey side_key,
+  const size_t idx);
 }  // namespace autoware::boundary_departure_checker::utils
 
 #endif  // AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__UTILS_HPP_

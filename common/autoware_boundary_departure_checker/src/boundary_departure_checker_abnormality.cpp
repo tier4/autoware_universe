@@ -210,56 +210,17 @@ BoundaryDepartureChecker::get_closest_projections_to_boundaries_side(
 
   std::vector<ClosestProjectionToBound> min_to_bound;
 
-  const auto is_on_bound = [this](const double lat_dist, const SideKey side_key) {
-    return lat_dist < param_ptr_->th_trigger.th_dist_to_boundary_m[side_key].min;
-  };
-
-  const auto is_close_to_bound = [&](const double lat_dist, const SideKey side_key) {
-    return lat_dist <= param_ptr_->th_trigger.th_dist_to_boundary_m[side_key].max;
-  };
-
   const auto fp_size = projections_to_bound[abnormality_to_check.front()][side_key].size();
   min_to_bound.reserve(fp_size);
   for (size_t idx = 0; idx < fp_size; ++idx) {
-    std::unique_ptr<ClosestProjectionToBound> min_pt;
-    for (const auto abnormality_type : abnormality_to_check) {
-      const auto pt = projections_to_bound[abnormality_type][side_key][idx];
-      if (pt.ego_sides_idx != idx) {
-        continue;
-      }
+    auto min_pt = utils::find_min_to_bound(
+      projections_to_bound, abnormality_to_check, param_ptr_->th_trigger.th_dist_to_boundary_m,
+      side_key, idx);
 
-      const auto create_min_pt =
-        [](const auto pt, const auto dpt_type, const auto abnormality_type) {
-          std::unique_ptr<ClosestProjectionToBound> min_pt =
-            std::make_unique<ClosestProjectionToBound>(pt);
-          min_pt->departure_type = dpt_type;
-          min_pt->abnormality_type = abnormality_type;
-          min_pt->time_from_start = pt.time_from_start;
-          return min_pt;
-        };
-
-      if (abnormality_type == AbnormalityType::NORMAL && is_on_bound(pt.lat_dist, side_key)) {
-        min_pt = create_min_pt(pt, DepartureType::CRITICAL_DEPARTURE, abnormality_type);
-        break;
-      }
-
-      if (!is_close_to_bound(pt.lat_dist, side_key)) {
-        continue;
-      }
-
-      if (!min_pt || pt.lat_dist < min_pt->lat_dist) {
-        min_pt = create_min_pt(pt, DepartureType::NEAR_BOUNDARY, abnormality_type);
-      }
-    }
     if (!min_pt) {
       continue;
     }
 
-    if (
-      !min_to_bound.empty() && min_pt->departure_type != DepartureType::CRITICAL_DEPARTURE &&
-      std::abs(min_to_bound.back().lon_dist_on_ref_traj - min_pt->lon_dist_on_ref_traj) < 0.5) {
-      continue;
-    }
     min_pt->lon_dist_on_ref_traj =
       trajectory::closest(aw_ref_traj, utils::to_geom_pt(min_pt->pt_on_ego));
 
@@ -315,23 +276,6 @@ BoundaryDepartureChecker::get_closest_projections_to_boundaries(
       return tl::make_unexpected(min_to_bound_opt.error());
     }
     min_to_bound[side_key] = *min_to_bound_opt;
-
-    if (min_to_bound[side_key].size() <= 1) {
-      continue;
-    }
-
-    if (min_to_bound[side_key].back().departure_type != DepartureType::CRITICAL_DEPARTURE) {
-      continue;
-    }
-
-    for (auto itr = std::next(min_to_bound[side_key].rbegin());
-         itr != min_to_bound[side_key].rend(); ++itr) {
-      if (
-        min_to_bound[side_key].back().lon_dist_on_ref_traj - itr->lon_dist_on_ref_traj <
-        max_braking_dist) {
-        itr->departure_type = DepartureType::APPROACHING_DEPARTURE;
-      }
-    }
   }
 
   return min_to_bound;

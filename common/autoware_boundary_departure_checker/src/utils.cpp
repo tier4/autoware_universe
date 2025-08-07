@@ -770,4 +770,45 @@ double calc_judge_line_dist_with_jerk_limit(
   const double x3 = -1.0 * std::pow(v2, 2) / (2.0 * max_stop_acceleration);
   return std::max(0.0, x1 + x2 + x3);
 }
+std::optional<ClosestProjectionToBound> find_min_to_bound(
+  const Abnormalities<ProjectionsToBound> & projections_to_bound,
+  const std::vector<AbnormalityType> & abnormality_to_check,
+  const Side<TriggerThreshold::MinMax> & th_dist_to_boundary_m, const SideKey side_key,
+  const size_t idx)
+{
+  std::optional<ClosestProjectionToBound> prev_proj;
+  for (const auto abnormality_type : abnormality_to_check) {
+    const auto & projections = projections_to_bound[abnormality_type][side_key];
+    const auto & pt = projections_to_bound[abnormality_type][side_key][idx];
+    if (idx >= projections.size()) {
+      continue;
+    }
+
+    if (pt.ego_sides_idx != idx) {
+      continue;
+    }
+
+    if (pt.lat_dist > th_dist_to_boundary_m[side_key].max) {
+      continue;
+    }
+
+    ClosestProjectionToBound min_pt(pt);
+    min_pt.abnormality_type = abnormality_type;
+    min_pt.time_from_start = pt.time_from_start;
+
+    if (
+      abnormality_type == AbnormalityType::NORMAL &&
+      pt.lat_dist < th_dist_to_boundary_m[side_key].min) {
+      min_pt.departure_type = DepartureType::CRITICAL_DEPARTURE;
+      return min_pt;
+    }
+
+    min_pt.departure_type = DepartureType::NEAR_BOUNDARY;
+    if (!prev_proj || min_pt.lat_dist < prev_proj->lat_dist) {
+      prev_proj = min_pt;
+    }
+  }
+
+  return prev_proj;
+};
 }  // namespace autoware::boundary_departure_checker::utils
