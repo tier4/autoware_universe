@@ -791,8 +791,9 @@ CudaPolarVoxelOutlierFilter::calculate_voxel_index(
     //// NOTE: equivalent operation can be achieved cud::DeviceFor::Forereach that is introduced
     /// from / cub v2.4.0
     minus_one_kernel<<<grid_dim, block_dim, 0, stream_>>>(voxel_indices.get(), num_points);
+
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));  // Make sure Device to Host copy complete
   }
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));  // Make sure Device to Host copy complete
 
   return std::make_tuple(valid_voxel_num, std::move(point_indices), std::move(voxel_indices));
 }
