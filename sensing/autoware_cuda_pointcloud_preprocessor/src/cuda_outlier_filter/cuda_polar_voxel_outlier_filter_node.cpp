@@ -107,6 +107,13 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
     noise_cloud = std::move(filter_return.noise_cloud);
     filter_ratio_ = filter_return.filter_ratio;
     visibility_ = filter_return.visibility;
+  } else if (autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzirc(
+               *msg)) {
+    auto filter_return = cuda_polar_voxel_outlier_filter_->filter_point_xyzirc(msg, filter_params_);
+    filtered_cloud = std::move(filter_return.filtered_cloud);
+    noise_cloud = std::move(filter_return.noise_cloud);
+    filter_ratio_ = filter_return.filter_ratio;
+    visibility_ = filter_return.visibility;
   } else {
     RCLCPP_DEBUG(get_logger(), "Using PointXYZ format, computing polar coordinates");
     // TODO(manato): filter_point_xyz(msg);
@@ -114,6 +121,10 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
       get_logger(),
       "PointXYZ format has not been supported by "
       "autoware_cuda_pointcloud_preprocessor::cuda_polar_voxel_outlier_filter yet.");
+  }
+
+  if (filtered_cloud.get() == nullptr) {
+    return;
   }
 
   // Publish results
