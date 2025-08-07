@@ -59,9 +59,9 @@ public:
    *         - expected deceleration.
    *         Returns an error message if the deceleration exceeds the threshold.
    */
-  [[nodiscard]] tl::expected<SlowDownPlan, std::string> get_interp_to_point(
+  [[nodiscard]] SlowDownPlan get_interp_to_point(
     const double curr_vel, const double curr_acc, const double lon_dist_to_bound_m,
-    double lat_dist_to_bound_m, const SideKey side_key) const;
+    double lat_dist_to_bound_m, const DepartureType departure_type, const SideKey side_key) const;
 
 private:
   [[nodiscard]] double interp_velocity(
@@ -83,11 +83,7 @@ private:
   static std::optional<double> find_feasible_accel(
     double gap, double v0, double vt, double a0, double a_comf, double a_max, double j_comf);
 
-  [[nodiscard]] std::optional<double> get_comfort_distance(
-    const double lon_dist_to_dpt_pt, const double v_0, const double v_target,
-    const double a_0) const;
-
-  static tl::expected<double, std::string> calc_velocity_with_profile(
+  static double calc_velocity_with_profile(
     const double a_0, const double v_0, const double v_target, const double j_brake,
     const double a_brake, const double lon_dist_to_dpt_pt);
 

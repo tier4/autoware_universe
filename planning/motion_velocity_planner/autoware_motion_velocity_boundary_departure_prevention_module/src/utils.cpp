@@ -352,16 +352,21 @@ std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
       continue;
     }
 
+    const auto is_departing =
+      std::any_of(candidates.begin(), candidates.end(), [](const auto & candidate) {
+        return candidate.departure_type == DepartureType::APPROACHING_DEPARTURE;
+      });
+
     const auto lat_dist_to_bound_m = lat_dist_to_bound_itr->lat_dist_to_bound;
 
-    const auto vel_opt = slow_down_interpolator.get_interp_to_point(
-      curr_vel, curr_acc, lon_dist_to_bound_m, lat_dist_to_bound_m, departure_interval.side_key);
+    const auto slow_down = slow_down_interpolator.get_interp_to_point(
+      curr_vel, curr_acc, lon_dist_to_bound_m, lat_dist_to_bound_m,
+      (is_departing ? DepartureType::APPROACHING_DEPARTURE : DepartureType::NEAR_BOUNDARY),
+      departure_interval.side_key);
 
-    if (!vel_opt) {
-      continue;
-    }
+    const auto vel = slow_down.target_vel_mps;
+    const auto rel_dist_m = slow_down.rel_dist_m;
 
-    const auto rel_dist_m = vel_opt->rel_dist_m;
     const auto start_pose = std::invoke([&]() {
       if (ego_dist_on_traj_m + rel_dist_m < lon_dist_to_bound_m) {
         return ref_traj_pts.compute(ego_dist_on_traj_m + rel_dist_m).pose;
@@ -371,7 +376,6 @@ std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
 
     const auto & end_pose = departure_interval.end.pose;
 
-    const auto vel = vel_opt->target_vel_mps;
     slowdown_intervals.emplace_back(start_pose, end_pose, vel);
   }
 

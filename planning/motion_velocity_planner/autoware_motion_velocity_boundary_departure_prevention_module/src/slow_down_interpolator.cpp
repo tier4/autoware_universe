@@ -21,56 +21,52 @@
 
 namespace autoware::motion_velocity_planner::experimental::utils
 {
-using Response = SlowDownInterpolator::Response;
-tl::expected<SlowDownInterpolator::SlowDownPlan, std::string>
-SlowDownInterpolator::get_interp_to_point(
+SlowDownInterpolator::SlowDownPlan SlowDownInterpolator::get_interp_to_point(
   const double curr_vel, const double curr_acc, const double lon_dist_to_bound_m,
-  const double lat_dist_to_bound_m, const SideKey side_key) const
+  const double lat_dist_to_bound_m, [[maybe_unused]] const DepartureType departure_type,
+  const SideKey side_key) const
 {
   const auto target_vel = interp_velocity(curr_vel, lat_dist_to_bound_m, side_key);
 
-  if (lon_dist_to_bound_m < 0.0) return tl::make_unexpected("Point behind ego.");  // already past
+  if (lon_dist_to_bound_m < 0.0) return {0.0, curr_vel, curr_acc};  // already past
 
   const auto a_comfort = th_trigger_.th_acc_mps2.min;
   const auto j_comfort = th_trigger_.th_jerk_mps3.min;
   const auto a_max = th_trigger_.th_acc_mps2.max;
   const auto j_max = th_trigger_.th_jerk_mps3.max;
 
-  const auto comfort_dist_opt =
-    get_comfort_distance(lon_dist_to_bound_m, curr_vel, target_vel, curr_acc);
-
-  if (comfort_dist_opt) {
-    const auto d_comfort = std::clamp(*comfort_dist_opt, 0.0, lon_dist_to_bound_m);
-    const auto v_brake_opt =
+  if (departure_type == DepartureType::NEAR_BOUNDARY) {
+    const auto d_comfort = d_slow(curr_vel, target_vel, curr_acc, a_comfort, j_comfort);
+    const auto v_brake =
       calc_velocity_with_profile(curr_acc, curr_vel, target_vel, j_comfort, a_comfort, d_comfort);
-    if (v_brake_opt) {
-      return tl::expected<SlowDownPlan, std::string>(
-        SlowDownPlan{d_comfort, *v_brake_opt, a_comfort});
-    }
+
+    const auto decel_limit_vel = std::max(curr_vel, th_trigger_.th_vel_mps.min);
+    const auto stop_decel = (decel_limit_vel * decel_limit_vel) / (2.0 * d_comfort);
+    return (stop_decel < std::abs(th_trigger_.th_acc_mps2.max))
+             ? SlowDownPlan{d_comfort, v_brake, a_comfort}
+             : SlowDownPlan{lon_dist_to_bound_m, curr_vel, curr_acc};
+  }
+
+  const auto d_comfort = d_slow(curr_vel, target_vel, curr_acc, a_comfort, j_comfort);
+  if (d_comfort <= lon_dist_to_bound_m) {
+    const auto v_brake =
+      calc_velocity_with_profile(curr_acc, curr_vel, target_vel, j_comfort, a_comfort, d_comfort);
+    return {d_comfort, v_brake, a_comfort};
   }
 
   const auto a_feasible_opt = find_feasible_accel(
     lon_dist_to_bound_m, curr_vel, target_vel, curr_acc, a_comfort, a_max, j_comfort);
   if (a_feasible_opt) {
-    const auto d_feasible = std::clamp(
-      d_slow(curr_vel, target_vel, curr_acc, *a_feasible_opt, j_comfort), 0.0, lon_dist_to_bound_m);
-    const auto v_brake_opt = calc_velocity_with_profile(
-      curr_acc, curr_vel, target_vel, j_comfort, *a_feasible_opt,
-      std::clamp(d_feasible, 0.0, lon_dist_to_bound_m));
-    if (v_brake_opt) {
-      return tl::expected<SlowDownPlan, std::string>(
-        SlowDownPlan{d_feasible, *v_brake_opt, a_feasible_opt.value()});
-    }
+    const auto v_brake = calc_velocity_with_profile(
+      curr_acc, curr_vel, target_vel, j_comfort, *a_feasible_opt, lon_dist_to_bound_m);
+    return {lon_dist_to_bound_m, v_brake, *a_feasible_opt};
   }
 
-  const auto d_hard =
-    std::clamp(d_slow(curr_vel, target_vel, curr_acc, a_max, j_max), 0.0, lon_dist_to_bound_m);
-  const auto v_brake_opt =
-    calc_velocity_with_profile(curr_acc, curr_vel, target_vel, j_max, a_max, 0.0);
+  const auto d_hard = d_slow(curr_vel, target_vel, curr_acc, a_max, j_max);
+  const auto v_brake =
+    calc_velocity_with_profile(curr_acc, curr_vel, target_vel, j_max, a_max, std::max(d_hard, 0.0));
 
-  return v_brake_opt
-           ? tl::expected<SlowDownPlan, std::string>(SlowDownPlan{d_hard, *v_brake_opt, a_max})
-           : tl::make_unexpected("Failed to calculate velocity profile: " + v_brake_opt.error());
+  return {d_hard, v_brake, a_max};
 }
 
 double SlowDownInterpolator::interp_velocity(
@@ -187,19 +183,7 @@ double SlowDownInterpolator::d_slow(
   return s_brake + s_const_acc_stop;
 }
 
-std::optional<double> SlowDownInterpolator::get_comfort_distance(
-  const double lon_dist_to_dpt_pt, const double v_0, const double v_target, const double a_0) const
-{
-  const auto a_comfort = th_trigger_.th_acc_mps2.min;
-  const auto j_comfort = th_trigger_.th_jerk_mps3.min;
-  const auto d_comfort = d_slow(v_0, v_target, a_0, a_comfort, j_comfort);
-  if (d_comfort <= lon_dist_to_dpt_pt) {
-    return d_comfort;
-  }
-  return std::nullopt;
-}
-
-tl::expected<double, std::string> SlowDownInterpolator::calc_velocity_with_profile(
+double SlowDownInterpolator::calc_velocity_with_profile(
   const double a_0, const double v_0, const double v_target, const double j_brake,
   const double a_brake, const double lon_dist_to_dpt_pt)
 {
@@ -215,10 +199,7 @@ tl::expected<double, std::string> SlowDownInterpolator::calc_velocity_with_profi
     auto d = [&](double t) { return s_t(t, j_brake, a_lim, v_0) - lon_dist_to_dpt_pt; };
     if (d(0.0) * d(t_brake) < 0.0) {  // sign change ⇒ lies inside
       const auto t_hit_opt = find_reach_time(j_brake, a_lim, v_0, lon_dist_to_dpt_pt, 0.0, t_brake);
-      if (!t_hit_opt) {
-        return tl::make_unexpected("Failed to find reach time. " + t_hit_opt.error());
-      }
-      return std::max(v_target, v_t(*t_hit_opt, j_brake, a_lim, v_0));
+      return !t_hit_opt ? v_0 : std::max(v_target, v_t(*t_hit_opt, j_brake, a_lim, v_0));
     }
   }
 
