@@ -5,12 +5,6 @@
   <arg name="image_topic_name" default="image_raw" description="options `image_raw`, `image_rect_color`"/>
   <arg name="yolox_node_name" default="tensorrt_yolox$(var camera_id)"/>
   <arg name="image_transport_decompressor_node_name" default="image_transport_decompressor_node$(var camera_id)"/>
-
-  <arg name="data_path" default="$(env HOME)/autoware_data" description="packages data and artifacts directory path"/>
-
-  <arg name="input/image" default="/sensing/camera/camera0/image_rect_color"/>
-  <arg name="output/objects" default="/perception/object_recognition/detection/rois0"/>
-  <arg name="output/mask" default="/perception/object_recognition/detection/mask0"/>
   <arg
     name="model_name"
     default="yolox-sPlus-T4-960x960-debris"
@@ -20,7 +14,7 @@
   <arg name="input/image" default="/sensing/camera/camera$(var camera_id)/$(var image_topic_name)"/>
   <arg name="output/objects" default="/perception/object_recognition/detection/rois$(var camera_id)"/>
   <arg name="output/mask" default="/perception/object_recognition/detection/mask$(var camera_id)"/>
-  <arg name="use_bytetrack" default="false" description="use bytetrack for tracking, if false, only detection is performed"/>
+  <arg name="use_bytetrack" default="true" description="use bytetrack for tracking, if false, only detection is performed"/>
   <let name="yolox_output_objects" value="$(var output/objects)" unless="$(var use_bytetrack)"/>
   <let name="yolox_output_objects" value="/perception/object_recognition/detection/yolox/rois$(var camera_id)" if="$(var use_bytetrack)"/>
   <arg name="bytetrack_param_path" default="$(find-pkg-share autoware_bytetrack)/config/bytetrack.param.yaml"/>
