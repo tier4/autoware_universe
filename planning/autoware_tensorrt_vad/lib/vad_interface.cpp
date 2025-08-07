@@ -657,6 +657,192 @@ visualization_msgs::msg::MarkerArray VadInterface::process_map_points(
     return marker_array;
 }
 
+autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_objects(
+    const std::vector<BBox> & bboxes,
+    const rclcpp::Time & stamp,
+    const Eigen::Matrix4f & base2map_transform) const
+{
+  autoware_perception_msgs::msg::PredictedObjects predicted_objects;
+  // Set header
+  predicted_objects.header.stamp = stamp;
+  predicted_objects.header.frame_id = "map";
+  
+  // オブジェクトクラス名のマッピング
+  const std::vector<std::string> class_names = {
+    "car", "truck", "construction_vehicle", "bus", "trailer", 
+    "barrier", "motorcycle", "bicycle", "pedestrian", "traffic_cone"
+  };
+  for (const auto& bbox : bboxes) {
+    autoware_perception_msgs::msg::PredictedObject predicted_object;
+    
+    // Set object ID
+    predicted_object.object_id = autoware_utils_uuid::generate_uuid();
+    
+    // Set existence probability
+    predicted_object.existence_probability = bbox.confidence;
+    
+    // Set classification
+    autoware_perception_msgs::msg::ObjectClassification classification;
+    if (bbox.object_class >= 0 && bbox.object_class < static_cast<int32_t>(class_names.size())) {
+      // クラス名をAutoware標準の値にマッピング
+      if (class_names[bbox.object_class] == "car") {
+        classification.label = autoware_perception_msgs::msg::ObjectClassification::CAR;
+      } else if (class_names[bbox.object_class] == "truck" || class_names[bbox.object_class] == "trailer") {
+        classification.label = autoware_perception_msgs::msg::ObjectClassification::TRUCK;
+      } else if (class_names[bbox.object_class] == "bus") {
+        classification.label = autoware_perception_msgs::msg::ObjectClassification::BUS;
+      } else if (class_names[bbox.object_class] == "bicycle") {
+        classification.label = autoware_perception_msgs::msg::ObjectClassification::BICYCLE;
+      } else if (class_names[bbox.object_class] == "motorcycle") {
+        classification.label = autoware_perception_msgs::msg::ObjectClassification::MOTORCYCLE;
+      } else if (class_names[bbox.object_class] == "pedestrian") {
+        classification.label = autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN;
+      } else {
+        classification.label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+      }
+    } else {
+      classification.label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+    }
+    classification.probability = bbox.confidence;
+    predicted_object.classification.push_back(classification);
+
+    // Set kinematics (position and orientation)
+    // BBox format: [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
+    float z_offset = +1.9f;
+    float vad_x = bbox.bbox[0];
+    float vad_y = bbox.bbox[1];
+    float vad_z = bbox.bbox[4] + z_offset;
+    auto [aw_x, aw_y, aw_z] = vad2aw_xyz(vad_x, vad_y, vad_z);
+    Eigen::Vector4f position_base(aw_x, aw_y, aw_z, 1.0f);
+    Eigen::Vector4f position_map = base2map_transform * position_base;
+    predicted_object.kinematics.initial_pose_with_covariance.pose.position.x = position_map.x();
+    predicted_object.kinematics.initial_pose_with_covariance.pose.position.y = position_map.y();
+    predicted_object.kinematics.initial_pose_with_covariance.pose.position.z = position_map.z();
+
+    float sin_theta = bbox.bbox[6];
+    float cos_theta = bbox.bbox[7];
+    float vad_yaw = std::atan2(sin_theta, cos_theta);
+
+    // TODO(Shin-kyoto): base2map_transformから車両の回転を取得
+    Eigen::Matrix3f rotation_matrix = base2map_transform.block<3, 3>(0, 0);
+    float transform_yaw = std::atan2(rotation_matrix(1, 0), rotation_matrix(0, 0));
+    float map_yaw = vad_yaw + transform_yaw;
+
+    float predicted_path_yaw = map_yaw;
+    float max_confidence = 0.0f;
+    bool found_valid_path = false;
+    for (int32_t mode = 0; mode < 6; ++mode) {
+      const auto& pred_traj = bbox.trajectories[mode];
+      if (pred_traj.confidence > max_confidence) {
+        // 最初の2点から方向を計算
+        float traj_vad_x1 = pred_traj.trajectory[0][0] + vad_x;
+        float traj_vad_y1 = pred_traj.trajectory[0][1] + vad_y;
+        float traj_vad_x2 = pred_traj.trajectory[1][0] + vad_x;
+        float traj_vad_y2 = pred_traj.trajectory[1][1] + vad_y;
+
+        auto [traj_aw_x1, traj_aw_y1, traj_aw_z1] = vad2aw_xyz(traj_vad_x1, traj_vad_y1, aw_z);
+        auto [traj_aw_x2, traj_aw_y2, traj_aw_z2] = vad2aw_xyz(traj_vad_x2, traj_vad_y2, aw_z);
+
+        Eigen::Vector4f pos1_base(traj_aw_x1, traj_aw_y1, traj_aw_z1, 1.0f);
+        Eigen::Vector4f pos2_base(traj_aw_x2, traj_aw_y2, traj_aw_z2, 1.0f);
+        Eigen::Vector4f pos1_map = base2map_transform * pos1_base;
+        Eigen::Vector4f pos2_map = base2map_transform * pos2_base;
+
+        float dx = pos2_map.x() - pos1_map.x();
+        float dy = pos2_map.y() - pos1_map.y();
+        if (std::sqrt(dx*dx + dy*dy) > 0.01) {
+          predicted_path_yaw = std::atan2(dy, dx);
+          max_confidence = pred_traj.confidence;
+          found_valid_path = true;
+        }
+      }
+    }
+
+        // TODO(Shin-kyoto): update yaw by predicted path
+        float final_yaw = found_valid_path ? predicted_path_yaw : map_yaw;
+
+
+        predicted_object.kinematics.initial_pose_with_covariance.pose.orientation = 
+            create_quaternion_from_yaw(final_yaw);
+        // Set shape
+        predicted_object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+        predicted_object.shape.dimensions.x = bbox.bbox[3];  // length
+        predicted_object.shape.dimensions.y = bbox.bbox[2];  // width
+        predicted_object.shape.dimensions.z = bbox.bbox[5];  // height
+
+        // Set velocity
+        float v_x = bbox.bbox[8];
+        float v_y = bbox.bbox[9];
+        auto [aw_vx, aw_vy, aw_vz] = vad2aw_xyz(v_x, v_y, 0.0f);
+
+        predicted_object.kinematics.initial_twist_with_covariance.twist.linear.x = aw_vx;
+        predicted_object.kinematics.initial_twist_with_covariance.twist.linear.y = aw_vy;
+        predicted_object.kinematics.initial_twist_with_covariance.twist.linear.z = 0.0f;
+        // Set predicted trajectories
+        for (int32_t mode = 0; mode < 6; ++mode) {
+          const auto& pred_traj = bbox.trajectories[mode];
+          
+          autoware_perception_msgs::msg::PredictedPath predicted_path;
+          predicted_path.confidence = pred_traj.confidence;
+          
+          // Set time step (assuming 0.1 seconds per step for future trajectory)
+          predicted_path.time_step.sec = 0;
+          predicted_path.time_step.nanosec = 100000000;  // 0.1 seconds in nanoseconds
+          
+          // 軌道の各点を変換
+          for (int32_t ts = 0; ts < 6; ++ts) {
+            geometry_msgs::msg::Pose pose;
+            
+            // predicted trajectoryは相対座標（ego座標系）なので、agent中心に変換
+            float traj_vad_x = pred_traj.trajectory[ts][0] + vad_x;  // agent中心からの相対座標
+            float traj_vad_y = pred_traj.trajectory[ts][1] + vad_y;  // agent中心からの相対座標
+            auto [traj_aw_x, traj_aw_y, traj_aw_z] = vad2aw_xyz(traj_vad_x, traj_vad_y, aw_z);
+            
+            // map座標系に変換
+            Eigen::Vector4f traj_position_base(traj_aw_x, traj_aw_y, traj_aw_z, 1.0f);
+            Eigen::Vector4f traj_position_map = base2map_transform * traj_position_base;
+            
+            pose.position.x = traj_position_map.x();
+            pose.position.y = traj_position_map.y();
+            pose.position.z = traj_position_map.z();
+            
+            // 軌道の向きを計算（次の点への方向）
+            // デフォルトはオブジェクトの向き（修正されたfinal_yawを使用）
+            float traj_yaw = final_yaw;
+            
+            if (ts < 5) {  // 次の点がある場合
+              float next_vad_x = pred_traj.trajectory[ts + 1][0] + vad_x;
+              float next_vad_y = pred_traj.trajectory[ts + 1][1] + vad_y;
+              auto [next_aw_x, next_aw_y, next_aw_z] = vad2aw_xyz(next_vad_x, next_vad_y, aw_z);
+              
+              // 次の点もmap座標系に変換
+              Eigen::Vector4f next_position_base(next_aw_x, next_aw_y, next_aw_z, 1.0f);
+              Eigen::Vector4f next_position_map = base2map_transform * next_position_base;
+              
+              // map座標系での方向ベクトルを計算
+              float dx = next_position_map.x() - traj_position_map.x();
+              float dy = next_position_map.y() - traj_position_map.y();
+              if (std::sqrt(dx*dx + dy*dy) > 0.01) {  // 十分な距離がある場合
+                traj_yaw = std::atan2(dy, dx);
+              }
+            }
+            
+            pose.orientation = create_quaternion_from_yaw(traj_yaw);
+            
+            predicted_path.path.push_back(pose);
+          }
+          
+          // 軌道に点が含まれている場合のみ追加
+          if (!predicted_path.path.empty()) {
+            predicted_object.kinematics.predicted_paths.push_back(predicted_path);
+          }
+        }      
+
+      predicted_objects.objects.push_back(predicted_object);
+    }
+  return predicted_objects;
+}
+
 float VadInterface::calculate_current_longitudinal_velocity(
   const std::vector<float> & can_bus,
   const std::vector<float> & prev_can_bus,
