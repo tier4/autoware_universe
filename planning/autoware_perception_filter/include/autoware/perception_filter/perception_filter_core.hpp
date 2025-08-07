@@ -16,6 +16,7 @@
 #define AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_CORE_HPP_
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
+#include <autoware/universe_utils/system/time_keeper.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -140,6 +141,7 @@ autoware::universe_utils::Polygon2d createPathPolygon(
  * @param filtering_polygon Polygon to filter points within
  * @param planning_trajectory Planning trajectory for distance calculation
  * @param tf_buffer TF buffer for coordinate transformation
+ * @param time_keeper Time keeper for detailed performance measurement
  * @return PointCloudProcessingResult containing transformed cloud, filtered indices, and distances
  * @details Performs coordinate transformation, bounding box filtering, polygon filtering, and
  * distance calculation
@@ -148,7 +150,7 @@ PointCloudProcessingResult processPointCloudCommon(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud,
   const autoware::universe_utils::Polygon2d & filtering_polygon,
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-  const tf2_ros::Buffer & tf_buffer);
+  const tf2_ros::Buffer & tf_buffer, autoware::universe_utils::TimeKeeper & time_keeper);
 
 // ========== Distance and Proximity Calculation Functions ==========
 

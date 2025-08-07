@@ -16,6 +16,7 @@
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware/universe_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
@@ -232,7 +233,7 @@ PointCloudProcessingResult processPointCloudCommon(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud,
   const autoware::universe_utils::Polygon2d & filtering_polygon,
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-  const tf2_ros::Buffer & tf_buffer)
+  const tf2_ros::Buffer & tf_buffer, autoware::universe_utils::TimeKeeper & time_keeper)
 {
   PointCloudProcessingResult result;
 
@@ -243,7 +244,6 @@ PointCloudProcessingResult processPointCloudCommon(
   // Convert ROS PointCloud2 to PCL format
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr polygon_points(new pcl::PointCloud<pcl::PointXYZ>);
-
   pcl::fromROSMsg(input_pointcloud, *input_cloud);
 
   geometry_msgs::msg::TransformStamped transform;
@@ -264,50 +264,62 @@ PointCloudProcessingResult processPointCloudCommon(
 
   // Rough filter on the X/Y axis using indices-based approach
   pcl::IndicesPtr x_filtered_indices(new pcl::Indices());
-  pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
-  passthrough_filter.setInputCloud(result.transformed_cloud);
-  passthrough_filter.setFilterFieldName("x");
-  passthrough_filter.setFilterLimits(
-    static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
-  passthrough_filter.filter(*x_filtered_indices);
-
   pcl::IndicesPtr xy_filtered_indices(new pcl::Indices());
-  passthrough_filter.setInputCloud(result.transformed_cloud);
-  passthrough_filter.setFilterFieldName("y");
-  passthrough_filter.setIndices(x_filtered_indices);
-  passthrough_filter.setFilterLimits(
-    static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
-  passthrough_filter.filter(*xy_filtered_indices);
+  {
+    autoware::universe_utils::ScopedTimeTrack st_passthrough("passthrough_filter", time_keeper);
+    pcl::PassThrough<pcl::PointXYZ> passthrough_filter;
+    passthrough_filter.setInputCloud(result.transformed_cloud);
+    passthrough_filter.setFilterFieldName("x");
+    passthrough_filter.setFilterLimits(
+      static_cast<float>(bbox.min_corner().x()), static_cast<float>(bbox.max_corner().x()));
+    passthrough_filter.filter(*x_filtered_indices);
+
+    passthrough_filter.setInputCloud(result.transformed_cloud);
+    passthrough_filter.setFilterFieldName("y");
+    passthrough_filter.setIndices(x_filtered_indices);
+    passthrough_filter.setFilterLimits(
+      static_cast<float>(bbox.min_corner().y()), static_cast<float>(bbox.max_corner().y()));
+    passthrough_filter.filter(*xy_filtered_indices);
+  }
 
   // Prepare polygon hull for CropHull filter
   std::vector<pcl::Vertices> polygon_vertices;
-  polygon_vertices.emplace_back();
-  auto polygon_i = 0;
-  for (const auto & p : filtering_polygon.outer()) {
-    polygon_vertices.back().vertices.push_back(polygon_i++);
-    polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
+  {
+    autoware::universe_utils::ScopedTimeTrack st_polygon_prep("prepare_polygon_hull", time_keeper);
+    polygon_vertices.emplace_back();
+    auto polygon_i = 0;
+    for (const auto & p : filtering_polygon.outer()) {
+      polygon_vertices.back().vertices.push_back(polygon_i++);
+      polygon_points->push_back({static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0});
+    }
   }
 
   // Use CropHull for polygon-based filtering
-  pcl::CropHull<pcl::PointXYZ> crop_hull;
-  crop_hull.setInputCloud(result.transformed_cloud);
-  crop_hull.setIndices(xy_filtered_indices);
-  crop_hull.setHullCloud(polygon_points);
-  crop_hull.setHullIndices(polygon_vertices);
-  crop_hull.setDim(2);  // 2D polygon filtering
-  crop_hull.filter(result.polygon_inside_indices->indices);
+  {
+    autoware::universe_utils::ScopedTimeTrack st_crop_hull("crop_hull_filter", time_keeper);
+    pcl::CropHull<pcl::PointXYZ> crop_hull;
+    crop_hull.setInputCloud(result.transformed_cloud);
+    crop_hull.setIndices(xy_filtered_indices);
+    crop_hull.setHullCloud(polygon_points);
+    crop_hull.setHullIndices(polygon_vertices);
+    crop_hull.setDim(2);  // 2D polygon filtering
+    crop_hull.filter(result.polygon_inside_indices->indices);
+  }
 
   // Calculate distances to path for all points inside polygon
-  result.distances_to_path.reserve(result.polygon_inside_indices->indices.size());
-  for (const auto i : result.polygon_inside_indices->indices) {
-    const auto & point = result.transformed_cloud->points[i];
-    geometry_msgs::msg::Point ros_point;
-    ros_point.x = point.x;
-    ros_point.y = point.y;
-    ros_point.z = point.z;
+  {
+    autoware::universe_utils::ScopedTimeTrack st_distance_calc("calculate_distances", time_keeper);
+    result.distances_to_path.reserve(result.polygon_inside_indices->indices.size());
+    for (const auto i : result.polygon_inside_indices->indices) {
+      const auto & point = result.transformed_cloud->points[i];
+      geometry_msgs::msg::Point ros_point;
+      ros_point.x = point.x;
+      ros_point.y = point.y;
+      ros_point.z = point.z;
 
-    const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory);
-    result.distances_to_path.push_back(distance_to_path);
+      const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory);
+      result.distances_to_path.push_back(distance_to_path);
+    }
   }
 
   result.success = true;
