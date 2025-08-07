@@ -239,14 +239,15 @@ struct DepartureInterval
 {
   TrajectoryPoint start;
   TrajectoryPoint end;
-  SideKey side_key;
-  double start_dist_on_traj;
-  double end_dist_on_traj;
+  SideKey side_key{};
+  double start_dist_on_traj{std::numeric_limits<double>::max()};
+  double end_dist_on_traj{std::numeric_limits<double>::max()};
+  double min_lat_dist_to_bound{std::numeric_limits<double>::max()};
+  double lon_dist_to_min_lat{std::numeric_limits<double>::max()};
+  DepartureType departure_type{DepartureType::NONE};
 
   bool start_at_traj_front{false};
   bool has_merged{false};
-
-  DeparturePoints candidates;
 };
 using DepartureIntervals = std::vector<DepartureInterval>;
 

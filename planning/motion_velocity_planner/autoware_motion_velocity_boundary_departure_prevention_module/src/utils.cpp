@@ -58,13 +58,17 @@ DepartureIntervals init_departure_intervals(
     DepartureInterval interval;
     interval.start = aw_ref_traj.compute(departure_points[idx].dist_on_traj);
     interval.start_dist_on_traj = departure_points[idx].dist_on_traj;
-    interval.candidates.push_back(departure_points[idx]);
+    DeparturePoints candidates;
+    candidates.push_back(departure_points[idx]);
     interval.side_key = side_key;
 
     size_t idx_end = idx + 1;
 
     while (idx_end < departure_points.size()) {
       const auto & curr = departure_points[idx_end];
+      if (curr.departure_type == DepartureType::APPROACHING_DEPARTURE) {
+        interval.departure_type = DepartureType::APPROACHING_DEPARTURE;
+      }
       if (
         curr.departure_type != DepartureType::NEAR_BOUNDARY &&
         curr.departure_type != DepartureType::APPROACHING_DEPARTURE) {
@@ -87,20 +91,29 @@ DepartureIntervals init_departure_intervals(
       if (diff >= vehicle_length_m) {
         break;
       }
-      interval.candidates.push_back(curr);
+      candidates.push_back(curr);
       ++idx_end;
     }
-    if (interval.candidates.size() < 2) {
-      ++idx;
-      continue;
+
+    if (candidates.size() > 1) {
+      std::sort(candidates.begin(), candidates.end());
     }
 
-    std::sort(interval.candidates.begin(), interval.candidates.end());
+    const auto lat_dist_to_bound_itr = std::min_element(
+      candidates.begin(), candidates.end(),
+      [](const DeparturePoint & pt1, const DeparturePoint & pt2) {
+        return pt1.lat_dist_to_bound < pt2.lat_dist_to_bound;
+      });
 
-    interval.start_dist_on_traj = interval.candidates.front().dist_on_traj - vehicle_length_m;
+    interval.start_dist_on_traj = candidates.front().dist_on_traj - vehicle_length_m;
     interval.start = aw_ref_traj.compute(interval.start_dist_on_traj);
-    interval.end_dist_on_traj = interval.candidates.back().dist_on_traj;
+    interval.end_dist_on_traj = candidates.back().dist_on_traj;
     interval.end = aw_ref_traj.compute(interval.end_dist_on_traj);
+    if (interval.departure_type == DepartureType::NONE) {
+      interval.departure_type = DepartureType::NEAR_BOUNDARY;
+    }
+    interval.min_lat_dist_to_bound = lat_dist_to_bound_itr->lat_dist_to_bound;
+    interval.lon_dist_to_min_lat = lat_dist_to_bound_itr->dist_on_traj;
     departure_intervals.push_back(interval);
     idx = idx_end + 1;
   }
@@ -338,21 +351,14 @@ std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
   std::vector<std::tuple<Pose, Pose, double>> slowdown_intervals;
 
   for (const auto & departure_interval : departure_intervals) {
-    const auto slow_down_dist_on_traj_m = departure_interval.end_dist_on_traj;
-    const auto lon_dist_to_bound_m = slow_down_dist_on_traj_m - ego_dist_on_traj_m;
+    const auto lon_dist_to_bound_m = departure_interval.lon_dist_to_min_lat - ego_dist_on_traj_m;
 
-    const auto & candidates = departure_interval.candidates;
-    const auto lat_dist_to_bound_itr = std::min_element(
-      candidates.begin(), candidates.end(),
-      [](const DeparturePoint & pt1, const DeparturePoint & pt2) {
-        return pt1.lat_dist_to_bound < pt2.lat_dist_to_bound;
-      });
-
-    if (lat_dist_to_bound_itr == candidates.end()) {
+    if (lon_dist_to_bound_m < 0.0) {
       continue;
     }
 
-    const auto lat_dist_to_bound_m = lat_dist_to_bound_itr->lat_dist_to_bound;
+
+    const auto lat_dist_to_bound_m = departure_interval.min_lat_dist_to_bound;
 
     const auto vel_opt = slow_down_interpolator.get_interp_to_point(
       curr_vel, curr_acc, lon_dist_to_bound_m, lat_dist_to_bound_m, departure_interval.side_key);
@@ -364,7 +370,7 @@ std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
     const auto rel_dist_m = vel_opt->rel_dist_m;
     const auto start_pose = std::invoke([&]() {
       if (ego_dist_on_traj_m + rel_dist_m < lon_dist_to_bound_m) {
-        return ref_traj_pts.compute(ego_dist_on_traj_m + rel_dist_m).pose;
+        return ref_traj_pts.compute(ego_dist_on_traj_m).pose;
       }
       return departure_interval.start.pose;
     });
@@ -374,8 +380,7 @@ std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
     const auto vel = vel_opt->target_vel_mps;
     slowdown_intervals.emplace_back(start_pose, end_pose, vel);
   }
-
-  return slowdown_intervals;
+return slowdown_intervals;
 }
 
 std::optional<std::pair<double, double>> is_point_shifted(
