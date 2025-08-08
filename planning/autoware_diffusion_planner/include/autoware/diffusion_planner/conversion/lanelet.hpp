@@ -17,6 +17,8 @@
 
 #include "autoware/diffusion_planner/polyline.hpp"
 
+#include <autoware_lanelet2_extension/regulatory_elements/Forward.hpp>
+
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <geometry_msgs/msg/detail/point__struct.hpp>
 
@@ -181,17 +183,21 @@ struct LaneSegment
   bool is_intersection{false};
   std::vector<BoundarySegment> left_boundaries;
   std::vector<BoundarySegment> right_boundaries;
+  std::vector<lanelet::format_v2::TrafficLightConstPtr> traffic_lights;
   std::optional<float> speed_limit_mps{std::nullopt};
 
   LaneSegment(
     int64_t id, Polyline polyline, bool is_intersection,
     const std::vector<BoundarySegment> & left_boundaries,
-    const std::vector<BoundarySegment> & right_boundaries, std::optional<float> speed_limit_mps)
+    const std::vector<BoundarySegment> & right_boundaries,
+    const std::vector<lanelet::format_v2::TrafficLightConstPtr> & traffic_lights,
+    std::optional<float> speed_limit_mps)
   : id(id),
     polyline(std::move(polyline)),
     is_intersection(is_intersection),
     left_boundaries(left_boundaries),
     right_boundaries(right_boundaries),
+    traffic_lights(traffic_lights),
     speed_limit_mps(speed_limit_mps)
   {
   }
