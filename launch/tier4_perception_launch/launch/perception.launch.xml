@@ -366,7 +366,7 @@
   <!-- camera only -->
   <arg name="use_camera_only" default="true" description="use camera only perception pipeline"/>
   <group if="$(var use_camera_only)">
-    <include file="$(find-pkg-share autoware_camera_streampetr)/launch/tensorrt_stream_petr_x2.lanuch.xml">
+    <include file="$(find-pkg-share autoware_camera_streampetr)/launch/tensorrt_stream_petr_x2.launch.xml">
       <arg name="model_path" value="/opt/autoware/mlmodels/streampetr"/>
       <arg name="rviz" value="false"/>
       <arg name="debug_mode" value="true"/>
