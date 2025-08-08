@@ -83,7 +83,7 @@
   <let name="detected_object_feature_remover/output/objects" value="$(var output/rule_detector/objects)"/>
 
   <!-- Jetson AGX -->
-  <!-- <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/multiple_yolox.launch.xml">
+  <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/multiple_yolox.launch.xml">
     <arg name="image_raw0" value="$(var input/camera0/image)"/>
     <arg name="image_raw1" value="$(var input/camera1/image)"/>
     <arg name="image_raw2" value="$(var input/camera2/image)"/>
@@ -92,8 +92,8 @@
     <arg name="image_raw5" value="$(var input/camera5/image)"/>
     <arg name="image_raw6" value="$(var input/camera6/image)"/>
     <arg name="image_raw7" value="$(var input/camera7/image)"/>
-    <arg name="image_number" value="$(var number_of_cameras)"/>
-  </include> -->
+    <arg name="image_number" value="3"/>
+  </include>
 
   <!-- PointPainting -->
   <group if="$(eval &quot;'$(var lidar_detection_model_type)'=='pointpainting'&quot;)">
