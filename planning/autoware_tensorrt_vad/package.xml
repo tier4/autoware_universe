@@ -20,7 +20,6 @@
   <depend>image_transport</depend>
   <depend>eigen3_cmake_module</depend>
   <depend>geometry_msgs</depend>
-  <depend>libeigen3-dev</depend>
   <depend>nav_msgs</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
