@@ -2,6 +2,23 @@
 Changelog for package autoware_object_merger
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.47.0 (2025-08-11)
+-------------------
+* fix(autoware_object_merger): add merger priority_mode (`#11042 <https://github.com/autowarefoundation/autoware_universe/issues/11042>`_)
+  * fix: add merger priority_mode
+  fix: add priority mode into launch
+  fix: add class based priority matrix
+  fix: adjust priority matrix
+  * fix: add Confidence mode support
+  * docs: schema update
+  * fix: launch
+  * fix: schema json
+  ---------
+* Contributors: badai nguyen
+
+0.46.0 (2025-06-20)
+-------------------
+
 0.45.0 (2025-05-22)
 -------------------
 * Merge remote-tracking branch 'origin/main' into tmp/notbot/bump_version_base

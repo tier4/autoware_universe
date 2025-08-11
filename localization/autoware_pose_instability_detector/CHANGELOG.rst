@@ -2,6 +2,18 @@
 Changelog for package autoware_pose_instability_detector
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.47.0 (2025-08-11)
+-------------------
+* feat(pose instability detector): change diag level (`#11095 <https://github.com/autowarefoundation/autoware_universe/issues/11095>`_)
+  * change diag level
+  * fix readme
+  * fix test.cpp
+  ---------
+* Contributors: Yamato Ando
+
+0.46.0 (2025-06-20)
+-------------------
+
 0.45.0 (2025-05-22)
 -------------------
 * Merge remote-tracking branch 'origin/main' into tmp/notbot/bump_version_base

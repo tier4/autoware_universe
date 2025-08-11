@@ -2,6 +2,16 @@
 Changelog for package autoware_tensorrt_classifier
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.47.0 (2025-08-11)
+-------------------
+
+0.46.0 (2025-06-20)
+-------------------
+* Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base
+* feat(autoware_tensorrt_classifier): split cuda and cpp (`#10632 <https://github.com/autowarefoundation/autoware_universe/issues/10632>`_)
+  split cuda and cpp
+* Contributors: Masato Saeki, TaikiYamada4
+
 0.45.0 (2025-05-22)
 -------------------
 * Merge remote-tracking branch 'origin/main' into tmp/notbot/bump_version_base
