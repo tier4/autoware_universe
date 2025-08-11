@@ -8,11 +8,11 @@ repositories:
   core/autoware_adapi_msgs:
     type: git
     url: https://github.com/autowarefoundation/autoware_adapi_msgs.git
-    version: 12287684e096a02d279299a7e6cb44740fc34467
+    version: 1.9.0
   core/autoware_internal_msgs:
     type: git
     url: https://github.com/autowarefoundation/autoware_internal_msgs.git
-    version: 1.11.0
+    version: 1.12.0
   core/autoware_cmake:
     type: git
     url: https://github.com/autowarefoundation/autoware_cmake.git
@@ -24,11 +24,15 @@ repositories:
   core/autoware_lanelet2_extension:
     type: git
     url: https://github.com/autowarefoundation/autoware_lanelet2_extension.git
-    version: 0.8.0
+    version: 0.9.0
   core/autoware_core:
     type: git
     url: https://github.com/autowarefoundation/autoware_core.git
-    version: 1.2.0
+    version: 1.4.0
+  core/autoware_rviz_plugins:
+    type: git
+    url: https://github.com/autowarefoundation/autoware_rviz_plugins.git
+    version: 0.1.0
   # universe
   universe/external/tier4_autoware_msgs:
     type: git
