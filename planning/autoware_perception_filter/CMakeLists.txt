@@ -33,8 +33,8 @@ include_directories(include)
 
 # Create library for core functionality
 ament_auto_add_library(${PROJECT_NAME}_core SHARED
-  src/perception_filter_core.cpp
-  src/perception_filter_utils.cpp
+  src/core/perception_filter_core.cpp
+  src/utils/perception_filter_utils.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_core
@@ -44,7 +44,7 @@ target_link_libraries(${PROJECT_NAME}_core
 
 # Create executable
 ament_auto_add_executable(${PROJECT_NAME}_node
-  src/perception_filter_node.cpp
+  src/node.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_node
