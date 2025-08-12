@@ -16,11 +16,11 @@ This package provides a perception filter node that filters perception data base
 
 ### Output
 
-| Name                                           | Type                                                        | Description                                                              |
-| ---------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `output/filtered_objects`                      | `autoware_perception_msgs::msg::PredictedObjects`           | Filtered predicted objects                                               |
-| `output/filtered_pointcloud`                   | `sensor_msgs::msg::PointCloud2`                             | Filtered obstacle pointcloud                                             |
-| `/planning/planning_factors/perception_filter` | `autoware_internal_planning_msgs::msg::PlanningFactorArray` | Planning factors for objects that would be filtered when RTC is approved |
+| Name                                                      | Type                                                        | Description                                                                     |
+| --------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `output/filtered_objects`                                 | `autoware_perception_msgs::msg::PredictedObjects`           | Filtered predicted objects                                                      |
+| `output/filtered_pointcloud`                              | `sensor_msgs::msg::PointCloud2`                             | Filtered obstacle pointcloud                                                    |
+| `/planning/planning_factors/supervised_perception_filter` | `autoware_internal_planning_msgs::msg::PlanningFactorArray` | Planning factors for objects/points that would be filtered when RTC is approved |
 
 ### Debug Visualization Topics
 
@@ -49,13 +49,14 @@ This package provides a perception filter node that filters perception data base
 | `pointcloud_safety_distance`   | double   | 1.0           | Minimum distance for pointcloud filtering [m]           |
 | `object_classification_radius` | double   | 50.0          | Radius from ego vehicle for object classification [m]   |
 | `stop_velocity_threshold`      | double   | 0.001         | Velocity threshold to consider vehicle as stopped [m/s] |
-| `ignore_object_classes`        | string[] | []            | List of object classes to ignore during filtering       |
+| `ignore_object_classes`        | string[] | ["UNKNOWN"]   | List of object classes to ignore during filtering       |
+| `processing_rate`              | double   | 10.0          | Processing execution rate [Hz]                          |
 
 ### Object Classification Parameters
 
 | Name                    | Type     | Default Value | Description                                       |
 | ----------------------- | -------- | ------------- | ------------------------------------------------- |
-| `ignore_object_classes` | string[] | []            | List of object classes to ignore during filtering |
+| `ignore_object_classes` | string[] | ["UNKNOWN"]   | List of object classes to ignore during filtering |
 
 **Available Object Classes:**
 
@@ -77,7 +78,7 @@ ignore_object_classes: ["PEDESTRIAN", "BICYCLE"]
 # Ignore all vehicle types except cars
 ignore_object_classes: ["TRUCK", "BUS", "TRAILER", "MOTORCYCLE"]
 
-# No objects are ignored (default behavior)
+# No objects are ignored
 ignore_object_classes: []
 ```
 
@@ -85,97 +86,24 @@ ignore_object_classes: []
 
 ### Overview
 
-The perception filter integrates with Autoware's launch system through a topic name switching strategy. This allows the system to seamlessly switch between filtered and unfiltered perception data based on the `use_perception_filter` launch argument.
+The perception filter is integrated into the overall Autoware launch hierarchy. The topic name switching flag `use_perception_filter` is provided by upper-level launch files (e.g., `autoware_launch`). This package's local launch file does not define `use_perception_filter`; instead, it accepts explicit input/output topic remaps via arguments.
 
-### Launch Arguments
+### Launch Arguments in this package
 
-| Name                    | Type | Default Value | Description                                  |
-| ----------------------- | ---- | ------------- | -------------------------------------------- |
-| `use_perception_filter` | bool | false         | Enable/disable perception filter integration |
+| Name                         | Type | Default Value                                           | Description                      |
+| ---------------------------- | ---- | ------------------------------------------------------- | -------------------------------- |
+| `input/objects`              | str  | `/perception/object_recognition/objects`                | Objects input topic              |
+| `input/pointcloud`           | str  | `/perception/obstacle_segmentation/pointcloud`          | Pointcloud input topic           |
+| `input/planning_trajectory`  | str  | `/planning/scenario_planning/trajectory`                | Planning trajectory input        |
+| `output/filtered_objects`    | str  | `/perception/object_recognition/filtered_objects`       | Filtered objects output topic    |
+| `output/filtered_pointcloud` | str  | `/perception/obstacle_segmentation/filtered_pointcloud` | Filtered pointcloud output topic |
 
-### Topic Remapping Strategy
+### Topic Remapping Strategy (upper-level)
 
-When `use_perception_filter` is enabled, the following topic remapping occurs:
+When `use_perception_filter` is enabled in upper-level launch:
 
-#### Objects Topic
-
-- Filtered mode (`use_perception_filter:=true`): Planning modules subscribe to `/perception/object_recognition/filtered_objects`
-- Normal mode (`use_perception_filter:=false`): Planning modules subscribe to `/perception/object_recognition/objects`
-
-#### Pointcloud Topic
-
-- Filtered mode (`use_perception_filter:=true`): Planning modules subscribe to `/perception/obstacle_segmentation/filtered_pointcloud`
-- Normal mode (`use_perception_filter:=false`): Planning modules subscribe to `/perception/obstacle_segmentation/pointcloud`
-
-#### Argument Propagation Flow
-
-```mermaid
-graph TD
-    subgraph "Upper Launch Files"
-        UL[autoware.launch.xml<br/>planning_simulator.launch.xml]
-    end
-
-    subgraph "Main Launch Files"
-        PL[planning.launch.xml]
-        CL[control.launch.xml]
-    end
-
-    subgraph "Planning Modules"
-        SP[scenario_planning.launch.xml]
-        PV[planning_validator.launch.xml]
-        PE[planning_evaluator.launch.xml]
-    end
-
-    subgraph "Control Modules"
-        CE[control_evaluator.launch.xml]
-    end
-
-    subgraph "Final Components"
-        BP[behavior_planning]
-        MP[motion_planning]
-        AEB[autonomous_emergency_braking]
-        CD[collision_detector]
-        OCC[obstacle_collision_checker]
-        PPC[predicted_path_checker]
-        CEV[control_evaluator]
-    end
-
-    UL -->|use_perception_filter| PL
-    UL -->|use_perception_filter| CL
-
-    PL -->|use_perception_filter| SP
-    PL -->|use_perception_filter| PV
-    PL -->|use_perception_filter| PE
-
-    CL -->|input_objects_topic_name<br/>input_pointcloud_topic_name| AEB
-    CL -->|input_objects_topic_name<br/>input_pointcloud_topic_name| CD
-    CL -->|input_pointcloud_topic_name| OCC
-    CL -->|input_objects_topic_name| PPC
-    CL -->|input_objects_topic_name| CE
-
-    SP -->|input_objects_topic_name<br/>input_pointcloud_topic_name| BP
-    SP -->|input_objects_topic_name<br/>input_pointcloud_topic_name| MP
-
-    CE -->|input_objects_topic_name| CEV
-
-    classDef upper fill:#e1f5fe
-    classDef main fill:#f3e5f5
-    classDef module fill:#fff3e0
-    classDef component fill:#f0f4ff
-
-    class UL upper
-    class PL,CL main
-    class SP,PV,PE,CE module
-    class BP,MP,AEB,CD,OCC,PPC,CEV component
-```
-
-### Integration Points
-
-The topic switching is implemented at multiple levels in the launch hierarchy:
-
-1. **autoware.launch.xml**: Defines conditional topic variables
-2. **tier4_planning_component.launch.xml**: Receives and passes topic arguments
-3. **Planning modules**: Use remapped topics for perception input
+- Objects: Planning modules subscribe to `/perception/object_recognition/filtered_objects` (otherwise `/perception/object_recognition/objects`)
+- Pointcloud: Planning modules subscribe to `/perception/obstacle_segmentation/filtered_pointcloud` (otherwise `/perception/obstacle_segmentation/pointcloud`)
 
 ### Example Usage
 
@@ -253,8 +181,6 @@ The filtering behavior is controlled by the RTC interface activation status:
 
 #### RTC Status Update
 
-The node continuously updates its RTC status when the vehicle is stopped:
-
 ```cpp
 void updateRTCStatus()
 {
@@ -267,24 +193,6 @@ void updateRTCStatus()
     rtc_uuid_, safe, state, start_distance, finish_distance, this->now());
   rtc_interface_->publishCooperateStatus(this->now());
 }
-```
-
-#### External Control Examples
-
-Activate filtering via RTC:
-
-```bash
-# Send activation command
-ros2 service call /planning/cooperate_commands/supervised_perception_filter/cooperate_commands \
-  tier4_rtc_msgs/srv/CooperateCommands \
-  "{commands: [{uuid: [UUID], command: {type: 1}}]}"  # type 1 = ACTIVATE
-```
-
-Check RTC status:
-
-```bash
-# Monitor RTC status
-ros2 topic echo /planning/cooperate_status/supervised_perception_filter/cooperate_status
 ```
 
 ### Path-based Filtering
