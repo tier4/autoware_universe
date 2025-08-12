@@ -198,10 +198,8 @@ private:
   rclcpp::Publisher<autoware_internal_planning_msgs::msg::PlanningFactorArray>::SharedPtr
     planning_factors_pub_;
 
-  // Debug visualization publishers
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_markers_pub_;
 
-  // Processing time publishers
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     objects_processing_time_pub_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
@@ -211,10 +209,8 @@ private:
   rclcpp::Publisher<tier4_debug_msgs::msg::ProcessingTimeTree>::SharedPtr
     processing_time_detail_pub_;
 
-  // TimeKeeper for processing time tracking
   std::shared_ptr<autoware::universe_utils::TimeKeeper> time_keeper_;
 
-  // Published time publisher
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
   // ========== Core System Members ==========
@@ -265,6 +261,7 @@ private:
   // Distance and safety parameters
   double max_filter_distance_;           ///< Maximum distance from path to filter objects [m]
   double pointcloud_safety_distance_;    ///< Minimum safety distance for pointcloud filtering [m]
+  double filtering_distance_;            ///< Length ahead along path to build filtering polygon [m]
   double object_classification_radius_;  ///< Radius for object classification [m]
   double stop_velocity_threshold_;       ///< Velocity threshold for stop detection [m/s]
 

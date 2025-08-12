@@ -78,6 +78,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   enable_pointcloud_filtering_ = getOrDeclareParameter<bool>(*this, "enable_pointcloud_filtering");
   max_filter_distance_ = getOrDeclareParameter<double>(*this, "max_filter_distance");
   pointcloud_safety_distance_ = getOrDeclareParameter<double>(*this, "pointcloud_safety_distance");
+  filtering_distance_ = getOrDeclareParameter<double>(*this, "filtering_distance");
   object_classification_radius_ =
     getOrDeclareParameter<double>(*this, "object_classification_radius");
   ignore_object_classes_ =
@@ -85,7 +86,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   stop_velocity_threshold_ = getOrDeclareParameter<double>(*this, "stop_velocity_threshold");
 
   // Debug parameters
-  processing_rate_ = getOrDeclareParameter<double>(*this, "processing_rate");  // 10Hz default
+  processing_rate_ = getOrDeclareParameter<double>(*this, "processing_rate");
 
   // Initialize polygon-based filtering management
   filtering_polygon_.is_active = false;
@@ -119,7 +120,6 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     create_publisher<autoware_internal_planning_msgs::msg::PlanningFactorArray>(
       "/planning/planning_factors/supervised_perception_filter", rclcpp::QoS{1});
 
-  // Initialize debug visualization publishers
   debug_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
     "debug/filtering_markers", rclcpp::QoS{1});
 
@@ -136,11 +136,8 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   processing_time_detail_pub_ = create_publisher<tier4_debug_msgs::msg::ProcessingTimeTree>(
     "debug/processing_time_detail", rclcpp::QoS{1});
 
-  // Initialize TimeKeeper for processing time tracking
-  // time_keeper_ =
-  // std::make_shared<autoware::universe_utils::TimeKeeper>(processing_time_detail_pub_);
   time_keeper_ =
-    std::make_shared<autoware::universe_utils::TimeKeeper>(processing_time_detail_pub_, &std::cerr);
+    std::make_shared<autoware::universe_utils::TimeKeeper>(processing_time_detail_pub_);
 
   // Initialize published time publisher
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
@@ -181,6 +178,7 @@ rcl_interfaces::msg::SetParametersResult PerceptionFilterNode::onParameter(
   update_param<bool>(parameters, "enable_pointcloud_filtering", enable_pointcloud_filtering_);
   update_param<double>(parameters, "max_filter_distance", max_filter_distance_);
   update_param<double>(parameters, "pointcloud_safety_distance", pointcloud_safety_distance_);
+  update_param<double>(parameters, "filtering_distance", filtering_distance_);
   update_param<double>(parameters, "object_classification_radius", object_classification_radius_);
   update_param<std::vector<std::string>>(
     parameters, "ignore_object_classes", ignore_object_classes_);
@@ -588,8 +586,7 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
   // Create filtering polygon
   const autoware::universe_utils::Polygon2d filtering_polygon = [this]() {
     autoware::universe_utils::ScopedTimeTrack st_polygon("create_filtering_polygon", *time_keeper_);
-    const double filtering_distance = 50.0;  // Fixed filtering distance in meters
-    return createPathPolygon(*planning_trajectory_, 0.0, filtering_distance, max_filter_distance_);
+    return createPathPolygon(*planning_trajectory_, 0.0, filtering_distance_, max_filter_distance_);
   }();
 
   // Use common processing function
@@ -747,16 +744,14 @@ void PerceptionFilterNode::createFilteringPolygon()
     return;
   }
 
-  const double filtering_distance = 50.0;  // Fixed filtering distance in meters
-
   // Create polygon from trajectory with max_filter_distance width
   {
     autoware::universe_utils::ScopedTimeTrack st_polygon("create_path_polygon", *time_keeper_);
     filtering_polygon_.polygon =
-      createPathPolygon(*planning_trajectory_, 0.0, filtering_distance, max_filter_distance_);
+      createPathPolygon(*planning_trajectory_, 0.0, filtering_distance_, max_filter_distance_);
   }
   filtering_polygon_.start_distance_along_path = 0.0;
-  filtering_polygon_.end_distance_along_path = filtering_distance;
+  filtering_polygon_.end_distance_along_path = filtering_distance_;
   filtering_polygon_.is_active = true;
   filtering_polygon_created_ = true;
 
