@@ -92,7 +92,7 @@ void RearCollisionChecker::init(
   setup_diag();
 }
 
-void RearCollisionChecker::validate(bool & is_critical)
+void RearCollisionChecker::validate()
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   const auto start_time = clock_->now();
@@ -100,8 +100,6 @@ void RearCollisionChecker::validate(bool & is_critical)
   DebugData debug_data;
 
   context_->validation_status->is_valid_rear_collision_check = is_safe(debug_data);
-
-  is_critical = false;
 
   post_process();
 
@@ -113,46 +111,34 @@ void RearCollisionChecker::validate(bool & is_critical)
 
 void RearCollisionChecker::setup_diag()
 {
-  context_->add_diag(
-    "rear_collision_check", context_->validation_status->is_valid_rear_collision_check,
-    "obstacle detected behind the vehicle");
+  if (!context_->diag_updater) return;
+
+  const auto & status = context_->validation_status->is_valid_rear_collision_check;
+  context_->diag_updater->add("rear_collision_check", [&](auto & stat) {
+    const std::string msg = "obstacle detected behind the vehicle";
+    set_diag_status(stat, status, msg);
+  });
 }
 
-void RearCollisionChecker::fill_rss_distance(PointCloudObjects & objects) const
+void RearCollisionChecker::set_diag_status(
+  DiagnosticStatusWrapper & stat, const bool & is_ok, const std::string & msg) const
 {
-  const auto p = param_listener_->get_params();
-  const auto & max_deceleration_ego = p.common.ego.max_deceleration;
-  const auto & current_velocity = context_->data->current_kinematics->twist.twist.linear.x;
-
-  for (auto & object : objects) {
-    if (object.is_vru) {
-      const auto & delay_object = p.common.vulnerable_road_user.reaction_time;
-      const auto & max_deceleration_object = p.common.vulnerable_road_user.max_deceleration;
-      const auto stop_distance_object =
-        delay_object * object.velocity +
-        0.5 * std::pow(object.velocity, 2.0) / std::abs(max_deceleration_object);
-      const auto stop_distance_ego =
-        0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
-
-      object.rss_distance = stop_distance_object - stop_distance_ego;
-      object.safe = object.rss_distance < object.relative_distance_with_delay_compensation;
-      object.ignore = object.moving_time < p.common.filter.moving_time ||
-                      object.velocity > p.common.vulnerable_road_user.max_velocity;
-    } else {
-      const auto & delay_object = p.common.vehicle.reaction_time;
-      const auto & max_deceleration_object = p.common.vehicle.max_deceleration;
-      const auto stop_distance_object =
-        delay_object * object.velocity +
-        0.5 * std::pow(object.velocity, 2.0) / std::abs(max_deceleration_object);
-      const auto stop_distance_ego =
-        0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
-
-      object.rss_distance = stop_distance_object - stop_distance_ego;
-      object.safe = object.rss_distance < object.relative_distance_with_delay_compensation;
-      object.ignore = object.moving_time < p.common.filter.moving_time ||
-                      object.velocity > p.common.vehicle.max_velocity;
-    }
+  if (is_ok) {
+    stat.summary(DiagnosticStatus::OK, "validated.");
+    return;
   }
+
+  const auto invalid_count = context_->validation_status->invalid_count;
+  const auto count_threshold = context_->params.diag_error_count_threshold;
+  if (invalid_count < count_threshold) {
+    const auto warn_msg =
+      msg + " (invalid count is less than error threshold: " + std::to_string(invalid_count) +
+      " < " + std::to_string(count_threshold) + ")";
+    stat.summary(DiagnosticStatus::WARN, warn_msg);
+    return;
+  }
+
+  stat.summary(DiagnosticStatus::ERROR, msg);
 }
 
 void RearCollisionChecker::fill_velocity(PointCloudObject & pointcloud_object)
@@ -445,68 +431,15 @@ auto RearCollisionChecker::get_pointcloud_object(
 }
 
 auto RearCollisionChecker::get_pointcloud_objects(
-  const lanelet::ConstLanelets & current_lanes, const Behavior & shift_behavior,
-  const Behavior & turn_behavior, DebugData & debug) -> PointCloudObjects
+  const std::function<std::pair<double, double>()> & func_range_calculation,
+  const std::function<PointCloudObjects(const double, const double)> & func_object_filtering,
+  const std::function<void(PointCloudObjects &)> & func_safety_check) -> PointCloudObjects
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  const auto p = param_listener_->get_params();
-
-  PointCloudObjects objects{};
-
-  const auto obstacle_pointcloud = filter_pointcloud(debug);
-
-  const auto max_deceleration_ego = p.common.ego.max_deceleration;
-  const auto current_velocity = context_->data->current_kinematics->twist.twist.linear.x;
-
-  {
-    const auto delay_object = p.common.vulnerable_road_user.reaction_time;
-    const auto max_deceleration_object = p.common.vulnerable_road_user.max_deceleration;
-
-    const auto stop_distance_object = delay_object * p.common.vulnerable_road_user.max_velocity +
-                                      0.5 *
-                                        std::pow(p.common.vulnerable_road_user.max_velocity, 2.0) /
-                                        std::abs(max_deceleration_object);
-    const auto stop_distance_ego =
-      0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
-
-    const auto forward_distance = p.common.pointcloud.range.buffer +
-                                  std::max(
-                                    context_->vehicle_info.max_longitudinal_offset_m,
-                                    (p.common.blind_spot.check.front ? stop_distance_ego : 0.0));
-    const auto backward_distance = p.common.pointcloud.range.buffer -
-                                   context_->vehicle_info.min_longitudinal_offset_m +
-                                   std::max(0.0, stop_distance_object - stop_distance_ego);
-
-    const auto objects_at_blind_spot = get_pointcloud_objects_at_blind_spot(
-      current_lanes, turn_behavior, forward_distance, backward_distance, obstacle_pointcloud,
-      debug);
-    objects.insert(objects.end(), objects_at_blind_spot.begin(), objects_at_blind_spot.end());
-  }
-
-  {
-    const auto delay_object = p.common.vehicle.reaction_time;
-    const auto max_deceleration_object = p.common.vehicle.max_deceleration;
-
-    const auto stop_distance_object =
-      delay_object * p.common.vehicle.max_velocity +
-      0.5 * std::pow(p.common.vehicle.max_velocity, 2.0) / std::abs(max_deceleration_object);
-    const auto stop_distance_ego =
-      0.5 * std::pow(current_velocity, 2.0) / std::abs(max_deceleration_ego);
-
-    const auto forward_distance = p.common.pointcloud.range.buffer +
-                                  std::max(
-                                    context_->vehicle_info.max_longitudinal_offset_m,
-                                    (p.common.adjacent_lane.check.front ? stop_distance_ego : 0.0));
-    const auto backward_distance = p.common.pointcloud.range.buffer -
-                                   context_->vehicle_info.min_longitudinal_offset_m +
-                                   std::max(0.0, stop_distance_object - stop_distance_ego);
-
-    const auto objects_on_adjacent_lane = get_pointcloud_objects_on_adjacent_lane(
-      current_lanes, shift_behavior, forward_distance, backward_distance, obstacle_pointcloud,
-      debug);
-    objects.insert(objects.end(), objects_on_adjacent_lane.begin(), objects_on_adjacent_lane.end());
-  }
+  const auto [forward_distance, backward_distance] = func_range_calculation();
+  auto objects = func_object_filtering(forward_distance, backward_distance);
+  func_safety_check(objects);
 
   return objects;
 }
@@ -573,8 +506,6 @@ auto RearCollisionChecker::get_pointcloud_objects_on_adjacent_lane(
         return objects;
       }
 
-      opt_pointcloud_object.value().is_vru = false;
-
       opt_pointcloud_object.value().relative_distance =
         opt_pointcloud_object.value().absolute_distance - ego_to_furthest_point -
         std::abs(context_->vehicle_info.min_longitudinal_offset_m);
@@ -617,8 +548,6 @@ auto RearCollisionChecker::get_pointcloud_objects_on_adjacent_lane(
       if (!opt_pointcloud_object.has_value()) {
         continue;
       }
-
-      opt_pointcloud_object.value().is_vru = false;
 
       opt_pointcloud_object.value().relative_distance =
         opt_pointcloud_object.value().absolute_distance - ego_to_furthest_point -
@@ -685,8 +614,6 @@ auto RearCollisionChecker::get_pointcloud_objects_at_blind_spot(
     return objects;
   }
 
-  opt_pointcloud_object.value().is_vru = true;
-
   const auto ego_coordinate_on_arc =
     lanelet::utils::getArcCoordinates(current_lanes, context_->data->current_kinematics->pose.pose);
 
@@ -741,6 +668,9 @@ bool RearCollisionChecker::is_safe(const PointCloudObjects & objects, DebugData 
 
 bool RearCollisionChecker::is_safe(DebugData & debug)
 {
+  using std::placeholders::_1;
+  using std::placeholders::_2;
+
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   const auto p = param_listener_->get_params();
@@ -764,9 +694,9 @@ bool RearCollisionChecker::is_safe(DebugData & debug)
   }
 
   const auto is_unsafe_holding = (now - last_unsafe_time_).seconds() < p.common.off_time_buffer;
-  const auto turn_behavior =
+  const auto [turn_behavior, distance_to_turn] =
     utils::check_turn_behavior(current_lanes, is_unsafe_holding, context_, p, debug);
-  const auto shift_behavior =
+  const auto [shift_behavior, distance_to_shift] =
     utils::check_shift_behavior(current_lanes, is_unsafe_holding, context_, p, debug);
 
   {
@@ -783,15 +713,59 @@ bool RearCollisionChecker::is_safe(DebugData & debug)
     debug.is_active = true;
   }
 
-  PredictedObjects objects_on_target_lane;
+  const auto obstacle_pointcloud = filter_pointcloud(debug);
   PointCloudObjects pointcloud_objects{};
 
   {
-    time_keeper_->start_track("pointcloud_base");
-    pointcloud_objects =
-      get_pointcloud_objects(current_lanes, shift_behavior, turn_behavior, debug);
-    fill_rss_distance(pointcloud_objects);
-    time_keeper_->end_track("pointcloud_base");
+    time_keeper_->start_track("adjacent_lane");
+
+    const auto delay_object = p.common.adjacent_lane.participants.reaction_time;
+    const auto max_deceleration_object = p.common.adjacent_lane.participants.max_deceleration;
+    const auto max_velocity_object = p.common.adjacent_lane.participants.max_velocity;
+
+    const auto func_range_calculation = std::bind(
+      p.common.adjacent_lane.metric == "ttc" ? utils::get_range_for_ttc : utils::get_range_for_rss,
+      context_, distance_to_shift, delay_object, max_deceleration_object, max_velocity_object, p);
+    const auto func_object_filtering = std::bind(
+      &RearCollisionChecker::get_pointcloud_objects_on_adjacent_lane, this, current_lanes,
+      shift_behavior, _1, _2, obstacle_pointcloud, std::ref(debug));
+    const auto func_safety_check = std::bind(
+      p.common.adjacent_lane.metric == "ttc" ? utils::fill_time_to_collision
+                                             : utils::fill_rss_distance,
+      _1, context_, distance_to_shift, delay_object, max_deceleration_object, max_velocity_object,
+      p);
+
+    auto objects =
+      get_pointcloud_objects(func_range_calculation, func_object_filtering, func_safety_check);
+    pointcloud_objects.insert(pointcloud_objects.end(), objects.begin(), objects.end());
+
+    time_keeper_->end_track("adjacent_lane");
+  }
+
+  {
+    time_keeper_->start_track("blind_spot");
+
+    const auto delay_object = p.common.blind_spot.participants.reaction_time;
+    const auto max_deceleration_object = p.common.blind_spot.participants.max_deceleration;
+    const auto max_velocity_object = p.common.blind_spot.participants.max_velocity;
+
+    const auto func_range_calculation = std::bind(
+      p.common.blind_spot.metric == "ttc" ? utils::get_range_for_ttc : utils::get_range_for_rss,
+      context_, distance_to_turn, delay_object, max_deceleration_object, max_velocity_object, p);
+    const auto func_object_filtering = std::bind(
+      &RearCollisionChecker::get_pointcloud_objects_at_blind_spot, this, current_lanes,
+      turn_behavior, _1, _2, obstacle_pointcloud, std::ref(debug));
+    const auto func_safety_check = std::bind(
+      p.common.blind_spot.metric == "ttc" ? utils::fill_time_to_collision
+                                          : utils::fill_rss_distance,
+      _1, context_, distance_to_turn, delay_object, max_deceleration_object, max_velocity_object,
+      p);
+
+    auto objects =
+      get_pointcloud_objects(func_range_calculation, func_object_filtering, func_safety_check);
+    pointcloud_objects.insert(pointcloud_objects.end(), objects.begin(), objects.end());
+
+    time_keeper_->end_track("blind_spot");
   }
 
   {
