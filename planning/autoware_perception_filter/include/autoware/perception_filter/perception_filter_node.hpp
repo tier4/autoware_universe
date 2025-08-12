@@ -39,6 +39,7 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tier4_debug_msgs/msg/processing_time_tree.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -271,7 +272,7 @@ private:
   std::vector<std::string> ignore_object_classes_;  ///< Object classes to ignore during filtering
 
   // Debug parameters
-  double debug_timer_period_;  ///< Debug timer period in seconds
+  double processing_rate_;  ///< Processing execution rate in Hz
 };
 
 }  // namespace autoware::perception_filter
