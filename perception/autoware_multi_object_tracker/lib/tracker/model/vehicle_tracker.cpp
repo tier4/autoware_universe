@@ -19,12 +19,12 @@
 
 #include "autoware/multi_object_tracker/tracker/model/vehicle_tracker.hpp"
 
+#include "autoware/multi_object_tracker/object_model/object_model.hpp"
 #include "autoware/multi_object_tracker/object_model/shapes.hpp"
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
-#include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/math/normalization.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
 #include <autoware_utils/ros/msg_covariance.hpp>
@@ -44,10 +44,23 @@ VehicleTracker::VehicleTracker(
   const object_model::ObjectModel & object_model, const rclcpp::Time & time,
   const types::DynamicObject & object)
 : Tracker(time, object),
-  object_model_(object_model),
   logger_(rclcpp::get_logger("VehicleTracker")),
+  object_model_(object_model),
   tracking_offset_(Eigen::Vector2d::Zero())
 {
+  // set tracker type based on object model
+  if (object_model.type == object_model::ObjectModelType::NormalVehicle) {
+    tracker_type_ = TrackerType::NORMAL_VEHICLE;
+  } else if (object_model.type == object_model::ObjectModelType::BigVehicle) {
+    tracker_type_ = TrackerType::BIG_VEHICLE;
+  } else if (object_model.type == object_model::ObjectModelType::Bicycle) {
+    tracker_type_ = TrackerType::BICYCLE;
+  } else {
+    // not supported object model type
+    RCLCPP_ERROR(logger_, "Unsupported object model type: %d", static_cast<int>(object_model.type));
+    tracker_type_ = TrackerType::UNKNOWN;
+  }
+
   // velocity deviation threshold
   //   if the predicted velocity is close to the observed velocity,
   //   the observed velocity is used as the measurement.
@@ -189,6 +202,9 @@ bool VehicleTracker::measureWithPose(
   constexpr double gain = 0.1;
   object_.pose.position.z = (1.0 - gain) * object_.pose.position.z + gain * object.pose.position.z;
 
+  // remove cached object
+  removeCache();
+
   return is_updated;
 }
 
@@ -220,6 +236,7 @@ bool VehicleTracker::measureWithShape(const types::DynamicObject & object)
 
   // set shape type, which is bounding box
   object_.shape.type = object.shape.type;
+  object_.area = types::getArea(object.shape);
 
   // set maximum and minimum size
   limitObjectExtension(object_model_);
@@ -260,8 +277,29 @@ bool VehicleTracker::measure(
 
   // update object
   types::DynamicObject updating_object = in_object;
+  // turn 180 deg if the updating object heads opposite direction
+  {
+    const double this_yaw = motion_model_.getStateElement(IDX::YAW);
+    const double updating_yaw = tf2::getYaw(updating_object.pose.orientation);
+    double yaw_diff = updating_yaw - this_yaw;
+    while (yaw_diff > M_PI) yaw_diff -= 2 * M_PI;
+    while (yaw_diff < -M_PI) yaw_diff += 2 * M_PI;
+    if (std::abs(yaw_diff) > M_PI_2) {
+      tf2::Quaternion q;
+      q.setRPY(0, 0, updating_yaw + M_PI);
+      updating_object.pose.orientation = tf2::toMsg(q);
+      updating_object.anchor_point.x = -updating_object.anchor_point.x;
+      updating_object.anchor_point.y = -updating_object.anchor_point.y;
+    }
+  }
+
+  // update tracking offset
   shapes::calcAnchorPointOffset(object_, tracking_offset_, updating_object);
+
+  // update pose
   measureWithPose(updating_object, channel_info);
+
+  // update shape
   if (channel_info.trust_extension) {
     measureWithShape(updating_object);
   }
@@ -270,8 +308,13 @@ bool VehicleTracker::measure(
 }
 
 bool VehicleTracker::getTrackedObject(
-  const rclcpp::Time & time, types::DynamicObject & object) const
+  const rclcpp::Time & time, types::DynamicObject & object,
+  [[maybe_unused]] const bool to_publish) const
 {
+  // try to return cached object
+  if (getCachedObject(time, object)) {
+    return true;
+  }
   object = object_;
   object.time = time;
 
@@ -285,11 +328,8 @@ bool VehicleTracker::getTrackedObject(
     return false;
   }
 
-  // set shape
-  const auto origin_yaw = tf2::getYaw(object_.pose.orientation);
-  const auto ekf_pose_yaw = tf2::getYaw(pose.orientation);
-  object.shape.footprint =
-    autoware_utils::rotate_polygon(object.shape.footprint, origin_yaw - ekf_pose_yaw);
+  // cache object
+  updateCache(object, time);
 
   return true;
 }

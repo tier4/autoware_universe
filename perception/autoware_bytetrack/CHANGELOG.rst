@@ -2,6 +2,18 @@
 Changelog for package autoware_bytetrack
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.47.0 (2025-08-11)
+-------------------
+* feat: enhance bytracker classification management (`#10898 <https://github.com/autowarefoundation/autoware_universe/issues/10898>`_)
+  * feat: enhance bytracker classification management
+  * fix a bug in score reset after switching label
+  * feat: update the score rule for same label
+  ---------
+* Contributors: Yuxuan Liu
+
+0.46.0 (2025-06-20)
+-------------------
+
 0.45.0 (2025-05-22)
 -------------------
 * Merge remote-tracking branch 'origin/main' into tmp/notbot/bump_version_base
