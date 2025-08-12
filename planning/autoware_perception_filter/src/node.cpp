@@ -14,12 +14,12 @@
 
 #include "autoware/perception_filter/perception_filter_node.hpp"
 
-#include <autoware_utils_geometry/boost_geometry.hpp>
+#include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
-#include <geometry_msgs/msg/detail/transform_stamped__struct.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tier4_debug_msgs/msg/processing_time_tree.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -29,9 +29,7 @@
 
 // Add PCL headers for pointcloud processing
 #include <pcl/common/transforms.h>
-#include <pcl/filters/crop_hull.h>
 #include <pcl/filters/extract_indices.h>
-#include <pcl/filters/passthrough.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -42,11 +40,11 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <boost/geometry.hpp>
-#include <boost/geometry/algorithms/detail/envelope/interface.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -84,9 +82,10 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     getOrDeclareParameter<double>(*this, "object_classification_radius");
   ignore_object_classes_ =
     getOrDeclareParameter<std::vector<std::string>>(*this, "ignore_object_classes");
+  stop_velocity_threshold_ = getOrDeclareParameter<double>(*this, "stop_velocity_threshold");
 
   // Debug parameters
-  debug_timer_period_ = getOrDeclareParameter<double>(*this, "debug_timer_period");  // 10Hz default
+  processing_rate_ = getOrDeclareParameter<double>(*this, "processing_rate");  // 10Hz default
 
   // Initialize polygon-based filtering management
   filtering_polygon_.is_active = false;
@@ -146,9 +145,9 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   // Initialize published time publisher
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 
-  // Initialize timer for debug markers
+  // Initialize timer for processing loop
   debug_timer_ = create_wall_timer(
-    std::chrono::duration<double>(debug_timer_period_),
+    std::chrono::duration<double>(1.0 / processing_rate_),
     std::bind(&PerceptionFilterNode::onTimer, this));
 
   // Set parameter callback
@@ -187,7 +186,7 @@ rcl_interfaces::msg::SetParametersResult PerceptionFilterNode::onParameter(
     parameters, "ignore_object_classes", ignore_object_classes_);
 
   // Update debug parameters
-  update_param<double>(parameters, "debug_timer_period", debug_timer_period_);
+  update_param<double>(parameters, "processing_rate", processing_rate_);
 
   // Update stop velocity threshold
   update_param<double>(parameters, "stop_velocity_threshold", stop_velocity_threshold_);
@@ -234,11 +233,11 @@ bool PerceptionFilterNode::checkRTCStateChange(bool & last_state, const std::str
   return rtc_became_active;
 }
 
-// TODO(Sugahara): don't publish the cooperate status when the approvable(造語) object does not
-// exist
+// TODO(Sugahara): don't publish the cooperate status when the approvable object does not exist
 void PerceptionFilterNode::updateRTCStatus()
 {
-  const bool is_currently_stopped = vehicle_stop_checker_.isVehicleStopped(1.0);
+  const bool is_currently_stopped =
+    vehicle_stop_checker_.isVehicleStopped(stop_velocity_threshold_);
   const bool is_just_stopped = is_currently_stopped && !ego_previously_stopped_;
   ego_previously_stopped_ = is_currently_stopped;
 
@@ -642,14 +641,6 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
           would_be_filtered_points.push_back(filtered_info);
         }
       }
-
-      // RCLCPP_DEBUG(
-      //   get_logger(),
-      //   "PointCloud classification: checked=%d, inside_polygon=%d, near_path=%d, "
-      //   "outside_safety=%d, "
-      //   "would_be_filtered=%d",
-      //   points_checked, points_inside_polygon, points_near_path, points_outside_safety,
-      //   points_would_be_filtered);
     }
   }
 
