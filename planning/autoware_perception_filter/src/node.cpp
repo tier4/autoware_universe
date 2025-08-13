@@ -231,7 +231,8 @@ bool PerceptionFilterNode::checkRTCStateChange(bool & last_state, const std::str
   return rtc_became_active;
 }
 
-// TODO(Sugahara): don't publish the cooperate status when the approvable object does not exist
+// TODO(Sugahara): Skip publishing cooperate status when no filterable objects exist in the
+// classification
 void PerceptionFilterNode::updateRTCStatus()
 {
   const bool is_currently_stopped =
