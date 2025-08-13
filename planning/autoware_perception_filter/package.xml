@@ -5,6 +5,9 @@
   <version>0.1.0</version>
   <description>Perception filter package that filters perception data based on external approval</description>
   <maintainer email="kyoichi.sugahara@tier4.jp">Kyoichi Sugahara</maintainer>
+  <maintainer email="satoshi.ota@tier4.jp">Satoshi Ota</maintainer>
+  <maintainer email="takumi.odashima@tier4.jp">Takumi Odashima</maintainer>
+
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
