@@ -53,10 +53,11 @@ namespace autoware::perception_filter
  */
 struct FilteringPolygon
 {
-  autoware::universe_utils::Polygon2d polygon;  ///< Filtering range polygon
-  double start_distance_along_path;             ///< Start distance along the path [m]
-  double end_distance_along_path;               ///< End distance along the path [m]
-  bool is_active;                               ///< Whether the polygon is currently active
+  autoware::universe_utils::Polygon2d polygon;    ///< Filtering range polygon
+  double start_distance_along_path;               ///< Start distance along the path [m]
+  double end_distance_along_path;                 ///< End distance along the path [m]
+  bool is_active;                                 ///< Whether the polygon is currently active
+  geometry_msgs::msg::Pose ego_pose_at_creation;  ///< Ego pose when polygon was created
 };
 
 /**

@@ -744,12 +744,22 @@ void PerceptionFilterNode::createFilteringPolygon()
     return;
   }
 
+  // Get current ego pose for reference point
+  auto ego_pose = getCurrentEgoPose();
+  if (!ego_pose) {
+    RCLCPP_ERROR(get_logger(), "Cannot get ego pose for filtering polygon creation");
+    return;
+  }
+
   // Create polygon from trajectory with max_filter_distance width
   {
     autoware::universe_utils::ScopedTimeTrack st_polygon("create_path_polygon", *time_keeper_);
     filtering_polygon_.polygon =
       createPathPolygon(*planning_trajectory_, 0.0, filtering_distance_, max_filter_distance_);
   }
+
+  // Store ego pose at creation time and calculate distances
+  filtering_polygon_.ego_pose_at_creation = *ego_pose;
   filtering_polygon_.start_distance_along_path = 0.0;
   filtering_polygon_.end_distance_along_path = filtering_distance_;
   filtering_polygon_.is_active = true;
@@ -758,9 +768,11 @@ void PerceptionFilterNode::createFilteringPolygon()
   RCLCPP_DEBUG(
     get_logger(),
     "Filtering polygon created successfully: start=%.2f m, end=%.2f m, width=%.2f m, "
-    "polygon_points=%zu",
+    "polygon_points=%zu, ego_pose_at_creation=(%.2f, %.2f)",
     filtering_polygon_.start_distance_along_path, filtering_polygon_.end_distance_along_path,
-    max_filter_distance_, filtering_polygon_.polygon.outer().size());
+    max_filter_distance_, filtering_polygon_.polygon.outer().size(),
+    filtering_polygon_.ego_pose_at_creation.position.x,
+    filtering_polygon_.ego_pose_at_creation.position.y);
 }
 
 void PerceptionFilterNode::updateFilteringPolygonStatus()
@@ -783,7 +795,14 @@ void PerceptionFilterNode::updateFilteringPolygonStatus()
 
   const double current_distance_along_path = [this, &ego_pose]() {
     autoware::universe_utils::ScopedTimeTrack st_distance("get_distance_along_path", *time_keeper_);
-    return getDistanceAlongPath(ego_pose->position, planning_trajectory_, *ego_pose);
+    if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
+      return 0.0;
+    }
+
+    // Calculate distance from polygon creation point to current ego position
+    return autoware::motion_utils::calcSignedArcLength(
+      planning_trajectory_->points, filtering_polygon_.ego_pose_at_creation.position,
+      ego_pose->position);
   }();
 
   RCLCPP_DEBUG(
