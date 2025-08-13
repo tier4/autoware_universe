@@ -5,6 +5,7 @@
     enable_pointcloud_filtering: true
     max_filter_distance: 5.0  # [m]
     pointcloud_safety_distance: 1.0  # [m]
+    filtering_distance: 50.0  # [m] Length ahead along path to build filtering polygon
     object_classification_radius: 50.0  # [m]
 
     # RTC recreation on vehicle stop
