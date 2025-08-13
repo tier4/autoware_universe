@@ -104,6 +104,10 @@ Module getModuleType(const std::string & module_name)
     module.type = Module::START_PLANNER;
   } else if (module_name == "intersection_occlusion") {
     module.type = Module::INTERSECTION_OCCLUSION;
+  } else if (module_name == "supervised_perception_filter") {
+    module.type = Module::SUPERVISED_PERCEPTION_FILTER;
+  } else {
+    module.type = Module::NONE;
   }
   return module;
 }
