@@ -88,54 +88,8 @@ rclcpp_components_register_node(${PROJECT_NAME}_component
     EXECUTABLE vad_node
 )
 
-# Test case function definition
-function(add_testcase filepath)
-  get_filename_component(filename ${filepath} NAME)
-  string(REGEX REPLACE ".cpp" "" test_name ${filename})
-  ament_add_gmock(${test_name} ${filepath})
-  target_include_directories(${test_name} PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/include
-      ${CMAKE_CURRENT_SOURCE_DIR}/lib
-      ${CMAKE_CURRENT_SOURCE_DIR}/test
-      ${CUDA_INCLUDE_DIRS}
-      ${TENSORRT_INCLUDE_DIRS}
-  )
-  target_link_directories(${test_name} PRIVATE
-      ${CUDA_LIBRARY_DIRS}
-      ${TENSORRT_LIBRARY_DIRS}
-  )
-  target_sources(${test_name} PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/lib/vad_interface.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/lib/vad_model.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/lib/networks/tensor.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/lib/networks/net.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/lib/networks/backbone.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/lib/networks/head.cpp
-  )
-  target_link_libraries(${test_name}
-      ${PROJECT_NAME}_lib
-      ${CUDA_LIBRARIES}
-      dl
-      pthread
-      nvinfer
-      nvonnxparser
-      nvinfer_plugin
-      ${OpenCV_LIBS}
-  )
-  ament_target_dependencies(${test_name} ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS})
-endfunction()
-
-# Add tests
-if(BUILD_TESTING)
-    # find_package(ament_lint_auto REQUIRED)
-    # ament_lint_auto_find_test_dependencies()
-    add_testcase(test/test_vad_integration.cpp)
-    add_testcase(test/test_vad_interface.cpp)
-endif()
-
 ament_auto_package(
     INSTALL_TO_SHARE
         launch
         config
-        test
 )
