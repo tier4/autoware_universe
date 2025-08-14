@@ -50,19 +50,19 @@ std::vector<autoware::tensorrt_common::NetworkIO> Head::generate_network_io(cons
   nvinfer1::Dims map_all_pts_preds_dims{5, {3, 1, vad_config.map_num_queries, vad_config.map_points_per_polylines, 2}};
   nvinfer1::Dims map_all_bbox_preds_dims{4, {3, 1, vad_config.map_num_queries, 4}};
 
-  // 共通の NetworkIO 設定
+  // Common NetworkIO configuration
   std::vector<autoware::tensorrt_common::NetworkIO> network_io;
   network_io.emplace_back("mlvl_feats.0", mlvl_dims);
   network_io.emplace_back("img_metas.0[can_bus]", can_bus_dims);
   network_io.emplace_back("img_metas.0[lidar2img]", lidar2img_dims);
   network_io.emplace_back("img_metas.0[shift]", shift_dims);
   
-  // HEAD の場合のみ prev_bev を追加
+  // Add prev_bev only for HEAD network type
   if (network_type_ == NetworkType::HEAD) {
     network_io.emplace_back("prev_bev", prev_bev_dims);
   }
   
-  // 共通の出力テンソル設定
+  // Common output tensor configuration
   network_io.emplace_back("out.bev_embed", prev_bev_dims);
   network_io.emplace_back("out.ego_fut_preds", ego_fut_preds_dims);
   network_io.emplace_back("out.all_traj_preds", traj_preds_dims);

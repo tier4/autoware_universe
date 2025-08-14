@@ -26,7 +26,7 @@ class VadLogger {
 public:
   virtual ~VadLogger() = default;
   
-  // 各ログレベルのメソッドを純粋仮想関数として定義
+  // Define each log level method as pure virtual function
   virtual void debug(const std::string& message) = 0;
   virtual void info(const std::string& message) = 0;
   virtual void warn(const std::string& message) = 0;
@@ -34,13 +34,7 @@ public:
 };
 
 /**
- * @brief ROS2用のVadLogger実装
- * 
- * 使用例:
- * auto ros_logger = std::make_shared<RosVadLogger>(node);
- * VadConfig config;
- * // configを設定...
- * VadModel model(config, ros_logger);
+ * @brief VadLogger implementation for ROS2
  */
 class RosVadLogger : public VadLogger {
 private:

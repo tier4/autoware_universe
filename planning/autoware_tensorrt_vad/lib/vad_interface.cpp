@@ -27,7 +27,7 @@ VadInterface::VadInterface(const VadInterfaceConfig& config, std::shared_ptr<tf2
     current_longitudinal_velocity_mps_(0.0f),
     prev_can_bus_(config.default_can_bus)
 {
-  // AutowareカメラインデックスからVADカメラインデックスへのマッピング
+  // Mapping from Autoware camera index to VAD camera index
   autoware_to_vad_camera_mapping_ = config.autoware_to_vad_camera_mapping;
 }
 
@@ -102,15 +102,14 @@ std::optional<Eigen::Matrix4f> VadInterface::lookup_base2cam(tf2_ros::Buffer & b
     geometry_msgs::msg::TransformStamped lookup_result =
         buffer.lookupTransform(target_frame, source_frame, tf2::TimePointZero);
     
-    // geometry_msgs::msg::TransformからEigen::Matrix4fへの手動変換
     Eigen::Matrix4f transform_matrix = Eigen::Matrix4f::Identity();
     
-    // 並進部分
+    // Translation
     transform_matrix(0, 3) = lookup_result.transform.translation.x;
     transform_matrix(1, 3) = lookup_result.transform.translation.y;
     transform_matrix(2, 3) = lookup_result.transform.translation.z;
     
-    // 回転部分（クォータニオンから回転行列への変換）
+    // Rotation (quaternion to rotation matrix conversion)
     Eigen::Quaternionf q(
         lookup_result.transform.rotation.w,
         lookup_result.transform.rotation.x,
@@ -124,7 +123,7 @@ std::optional<Eigen::Matrix4f> VadInterface::lookup_base2cam(tf2_ros::Buffer & b
     return transform_matrix_inverse;
 
   } catch (const tf2::TransformException &ex) {
-    RCLCPP_ERROR(rclcpp::get_logger("VadInterface"), "TF変換の取得に失敗: %s -> %s. Reason: %s",
+    RCLCPP_ERROR(rclcpp::get_logger("VadInterface"), "Failed to get TF transformation: %s -> %s. Reason: %s",
                  source_frame.c_str(), target_frame.c_str(), ex.what());
     return std::nullopt;
   }
@@ -139,7 +138,7 @@ Eigen::Matrix4f VadInterface::create_viewpad(const sensor_msgs::msg::CameraInfo:
     }
   }
   
-  // viewpadを作成
+  // Create viewpad
   Eigen::Matrix4f viewpad = Eigen::Matrix4f::Zero();
   viewpad.block<3, 3>(0, 0) = k_matrix;
   viewpad(3, 3) = 1.0f;
@@ -171,9 +170,9 @@ Lidar2ImgData VadInterface::process_lidar2img(
     const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr> & camera_infos,
     float scale_width, float scale_height) const
 {
-  std::vector<float> frame_lidar2img(16 * 6, 0.0f); // 6カメラ分のスペースを確保
+  std::vector<float> frame_lidar2img(16 * 6, 0.0f); // Reserve space for 6 cameras
 
-  // 各カメラの処理
+  // Process each camera
   for (int32_t autoware_camera_id = 0; autoware_camera_id < 6; ++autoware_camera_id) {
     if (!camera_infos[autoware_camera_id]) {
       continue;
@@ -187,13 +186,12 @@ Lidar2ImgData VadInterface::process_lidar2img(
     Eigen::Matrix4f lidar2cam_rt = base2cam * vad2base_;
     Eigen::Matrix4f lidar2img = viewpad * lidar2cam_rt;
 
-    // スケーリングを適用
+    // Apply scaling
     Eigen::Matrix4f  lidar2img_scaled = apply_scaling(lidar2img, scale_width, scale_height);
 
-    // 結果を格納
     std::vector<float> lidar2img_flat = matrix_to_flat(lidar2img_scaled);
 
-    // lidar2imgの計算後、VADカメラIDの位置に格納
+    // Store result at VAD camera ID position after lidar2img calculation
     int32_t vad_camera_id = autoware_to_vad_camera_mapping_.at(autoware_camera_id);
     if (vad_camera_id >= 0 && vad_camera_id < 6) {
       std::copy(lidar2img_flat.begin(), lidar2img_flat.end(),
@@ -208,12 +206,12 @@ std::vector<float> VadInterface::normalize_image(unsigned char *image_data, int3
 {
   std::vector<float> normalized_image_data(width * height * 3);
   
-  // BGRの順で処理
+  // Process in BGR order
   for (int32_t c = 0; c < 3; ++c) {
     for (int32_t h = 0; h < height; ++h) {
       for (int32_t w = 0; w < width; ++w) {
         int32_t src_idx = (h * width + w) * 3 + (2 - c); // BGR -> RGB
-        int32_t dst_idx = c * height * width + h * width + w; // CHW形式
+        int32_t dst_idx = c * height * width + h * width + w; // CHW format
         float pixel_value = static_cast<float>(image_data[src_idx]);
         normalized_image_data[dst_idx] = (pixel_value - image_normalization_param_mean_[c]) / image_normalization_param_std_[c];
       }
@@ -227,53 +225,53 @@ CameraImagesData VadInterface::process_image(
   const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & images) const
 {
   std::vector<std::vector<float>> frame_images;
-  frame_images.resize(6); // VADカメラ順序で初期化
+  frame_images.resize(6); // Initialize in VAD camera order
 
-  // 各カメラの画像を処理
+  // Process each camera image
   for (int32_t autoware_idx = 0; autoware_idx < 6; ++autoware_idx) {
     const auto &image_msg = images[autoware_idx];
 
-    // sensor_msgs::msg::Image から cv::Mat を作成
+    // Create cv::Mat from sensor_msgs::msg::Image
     cv::Mat bgr_img;
     if (image_msg->encoding == "bgr8") {
-      // BGR8の場合、そのままデータを使用
+      // For BGR8, use data directly
       bgr_img = cv::Mat(image_msg->height, image_msg->width, CV_8UC3, 
                         const_cast<uint8_t*>(image_msg->data.data()), image_msg->step);
     } else {
-      throw std::runtime_error("サポートされていない画像エンコーディング: " + image_msg->encoding);
+      throw std::runtime_error("Unsupported image encoding: " + image_msg->encoding);
     }
 
     if (bgr_img.empty()) {
-      throw std::runtime_error("画像データのデコードに失敗しました: " + std::to_string(autoware_idx));
+      throw std::runtime_error("Failed to decode image data: " + std::to_string(autoware_idx));
     }
 
-    // RGBに変換
+    // Convert to RGB
     cv::Mat rgb_img;
     cv::cvtColor(bgr_img, rgb_img, cv::COLOR_BGR2RGB);
 
-    // サイズが目標と違う場合はリサイズする
+    // Resize if size differs from target
     if (rgb_img.cols != target_image_width_ || rgb_img.rows != target_image_height_) {
       cv::resize(rgb_img, rgb_img, cv::Size(target_image_width_, target_image_height_));
     }
 
-    // 画像を正規化
+    // Normalize image
     std::vector<float> normalized_image_data = normalize_image(rgb_img.data, rgb_img.cols, rgb_img.rows);
 
-    // VADカメラ順序で格納
+    // Store in VAD camera order
     int32_t vad_idx = autoware_to_vad_camera_mapping_.at(autoware_idx);
     frame_images[vad_idx] = normalized_image_data;
   }
 
-  // 画像データを連結
+  // Concatenate image data
   std::vector<float> concatenated_data;
   size_t single_camera_size = 3 * target_image_height_ * target_image_width_;
   concatenated_data.reserve(single_camera_size * 6);
 
-  // カメラの順序: {0, 1, 2, 3, 4, 5}
+  // Camera order: {0, 1, 2, 3, 4, 5}
   for (int32_t camera_idx = 0; camera_idx < 6; ++camera_idx) {
     const auto &img_data = frame_images[camera_idx];
     if (img_data.size() != single_camera_size) {
-      throw std::runtime_error("画像サイズが不正です: " +
+      throw std::runtime_error("Invalid image size: " +
                                std::to_string(camera_idx));
     }
     concatenated_data.insert(concatenated_data.end(), img_data.begin(),
@@ -342,14 +340,14 @@ CanBusData VadInterface::process_can_bus(
   auto [vad_vx, vad_vy, vad_vz] =
       aw2vad_xyz(kinematic_state->twist.twist.linear.x,
                 kinematic_state->twist.twist.linear.y,
-                0.0f); // z方向の速度は0とする
+                0.0f); // Set z-direction velocity to 0
 
   // velocity (13:16)
   can_bus[13] = vad_vx;
   can_bus[14] = vad_vy;
   can_bus[15] = vad_vz;
 
-  // patch_angle[rad]の計算 (16)
+  // Calculate patch_angle[rad] (16)
   double yaw = std::atan2(
       2.0 * (can_bus[6] * can_bus[5] + can_bus[3] * can_bus[4]),
       1.0 - 2.0 * (can_bus[4] * can_bus[4] + can_bus[5] * can_bus[5]));
@@ -357,12 +355,12 @@ CanBusData VadInterface::process_can_bus(
     yaw += 2 * M_PI;
   can_bus[16] = static_cast<float>(yaw);
 
-  // patch_angle[deg]の計算 (17)
+  // Calculate patch_angle[deg] (17)
   if (!prev_can_bus.empty()) {
     float prev_angle = prev_can_bus[16];
     can_bus[17] = (yaw - prev_angle) * 180.0f / M_PI;
   } else {
-    can_bus[17] = default_patch_angle_; // 最初のフレームのデフォルト値
+    can_bus[17] = default_patch_angle_; // Default value for first frame
   }
 
   return can_bus;
@@ -402,7 +400,7 @@ ShiftData VadInterface::process_shift(
 
 std::tuple<float, float, float> VadInterface::aw2vad_xyz(float aw_x, float aw_y, float aw_z) const
 {
-  // Autoware(base_link)座標[x, y, z]をVAD base_link座標に変換
+  // Convert Autoware(base_link) coordinates [x, y, z] to VAD base_link coordinates
   Eigen::Vector4f aw_xyz(aw_x, aw_y, aw_z, 1.0f);
   Eigen::Vector4f vad_xyz = base2vad_ * aw_xyz;
   return {vad_xyz[0], vad_xyz[1], vad_xyz[2]};
@@ -410,7 +408,7 @@ std::tuple<float, float, float> VadInterface::aw2vad_xyz(float aw_x, float aw_y,
 
 std::tuple<float, float, float> VadInterface::vad2aw_xyz(float vad_x, float vad_y, float vad_z) const
 {
-  // VAD base_link座標[x, y, z]をAutoware(base_link)座標に変換
+  // Convert VAD base_link coordinates [x, y, z] to Autoware(base_link) coordinates
   Eigen::Vector4f vad_xyz(vad_x, vad_y, vad_z, 1.0f);
   Eigen::Vector4f aw_xyz = vad2base_ * vad_xyz;
   return {aw_xyz[0], aw_xyz[1], aw_xyz[2]};
@@ -418,10 +416,10 @@ std::tuple<float, float, float> VadInterface::vad2aw_xyz(float vad_x, float vad_
 
 Eigen::Quaternionf VadInterface::aw2vad_quaternion(const Eigen::Quaternionf & q_aw) const
 {
-  // base2vad_の回転部分をクォータニオンに変換
+  // base2vad_ rotation part to quaternion conversion
   Eigen::Matrix3f rot = base2vad_.block<3,3>(0,0);
-  Eigen::Quaternionf q_v2a(rot); // base_link→vadの回転
-  Eigen::Quaternionf q_v2a_inv = q_v2a.conjugate(); // 単位クオータニオンなので逆=共役
+  Eigen::Quaternionf q_v2a(rot); // base_link→vad rotation
+  Eigen::Quaternionf q_v2a_inv = q_v2a.conjugate(); // For unit quaternion, inverse = conjugate
   // q_vad = q_v2a * q_aw * q_v2a_inv
   return q_v2a * q_aw * q_v2a_inv;
 }
@@ -443,20 +441,20 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> VadInterface::create_t
 {
   std::vector<autoware_planning_msgs::msg::TrajectoryPoint> points;
   
-  // base座標系の方向ベクトルをmap座標系に変換する関数内関数
+  // function to transform direction vector from base coordinate system to map coordinate system
   auto transform_direction_to_map = [&base2map_transform](float base_dx, float base_dy) -> float {
     Eigen::Vector3f base_direction(base_dx, base_dy, 0.0f);
     Eigen::Vector3f map_direction = base2map_transform.block<3, 3>(0, 0) * base_direction;
     return std::atan2(map_direction.y(), map_direction.x());
   };
   
-  // 0秒目の点 (0,0) を追加
+  // Add 0-second point (0,0)
   autoware_planning_msgs::msg::TrajectoryPoint initial_point;
   Eigen::Vector4f init_ego_position = base2map_transform * Eigen::Vector4f(0.0, 0.0, 0.0, 1.0);
   initial_point.pose.position.x = init_ego_position[0];
   initial_point.pose.position.y = init_ego_position[1];
   initial_point.pose.position.z = init_ego_position[2];
-  // 初期方向もmap座標系に変換（base座標系でx方向を向いている場合）
+  // Convert initial direction to map coordinate system (when facing x-direction in base coordinate system)
   initial_point.pose.orientation = create_quaternion_from_yaw(transform_direction_to_map(1.0f, 0.0f));
   initial_point.longitudinal_velocity_mps = 2.5;
   initial_point.lateral_velocity_mps = 0.0;
@@ -495,7 +493,7 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> VadInterface::create_t
       point.pose.orientation = prev_orientation;
     }
 
-    // 速度を計算（前の点との距離を時間間隔で割る）
+    // Calculate velocity (divide distance from previous point by time interval)
     auto distance = std::hypot(point.pose.position.x - prev_x, point.pose.position.y - prev_y);
     point.longitudinal_velocity_mps = static_cast<float>(distance / trajectory_timestep);
     
@@ -503,13 +501,13 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> VadInterface::create_t
     point.acceleration_mps2 = 0.0;
     point.heading_rate_rps = 0.0;
 
-    // time_from_startを設定（1秒, 2秒, 3秒, 4秒, 5秒, 6秒）
+    // Set time_from_start (1 second, 2 seconds, 3 seconds, 4 seconds, 5 seconds, 6 seconds)
     size_t point_index = i / 2;
     double time_sec = (point_index + 1) * trajectory_timestep;
     point.time_from_start.sec = static_cast<int32_t>(time_sec);
     point.time_from_start.nanosec = static_cast<uint32_t>((time_sec - point.time_from_start.sec) * 1e9);
 
-    // 次の計算のために現在の位置を保存
+    // Save current position for next calculation
     prev_x = point.pose.position.x;
     prev_y = point.pose.position.y;
     prev_orientation = point.pose.orientation;
@@ -526,25 +524,24 @@ autoware_internal_planning_msgs::msg::CandidateTrajectories VadInterface::proces
   double trajectory_timestep,
   const Eigen::Matrix4f & base2map_transform) const
 {
-  // CandidateTrajectories メッセージを作成
   autoware_internal_planning_msgs::msg::CandidateTrajectories candidate_trajectories_msg;
 
-  // 各コマンドの軌道をCandidateTrajectoryとして追加
+  // Add each command's trajectory as CandidateTrajectory
   for (const auto& [command_idx, trajectory] : predicted_trajectories) {
     autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_trajectory;
     
-    // ヘッダーを設定
+    // Set header
     candidate_trajectory.header.stamp = stamp;
     candidate_trajectory.header.frame_id = "map";
     
-    // generator_idを設定（ユニークなUUID）
+    // Set generator_id (unique UUID)
     candidate_trajectory.generator_id = autoware_utils_uuid::generate_uuid();
 
     candidate_trajectory.points = create_trajectory_points(trajectory, trajectory_timestep, base2map_transform);
 
     candidate_trajectories_msg.candidate_trajectories.push_back(candidate_trajectory);
 
-    // 各コマンドのGeneratorInfoを追加
+    // Add GeneratorInfo for each command
     autoware_internal_planning_msgs::msg::GeneratorInfo generator_info;
     generator_info.generator_id = autoware_utils_uuid::generate_uuid();
     generator_info.generator_name.data = "autoware_tensorrt_vad_cmd_" + std::to_string(command_idx);
@@ -562,7 +559,7 @@ autoware_planning_msgs::msg::Trajectory VadInterface::process_trajectory(
 {
   autoware_planning_msgs::msg::Trajectory trajectory_msg;
 
-  // ヘッダーを設定
+  // Set header
   trajectory_msg.header.stamp = stamp;
   trajectory_msg.header.frame_id = "map";
 
@@ -667,7 +664,7 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
   predicted_objects.header.stamp = stamp;
   predicted_objects.header.frame_id = "map";
   
-  // オブジェクトクラス名のマッピング
+  // Object class name mapping
   const std::vector<std::string> class_names = {
     "car", "truck", "construction_vehicle", "bus", "trailer", 
     "barrier", "motorcycle", "bicycle", "pedestrian", "traffic_cone"
@@ -684,7 +681,7 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
     // Set classification
     autoware_perception_msgs::msg::ObjectClassification classification;
     if (bbox.object_class >= 0 && bbox.object_class < static_cast<int32_t>(class_names.size())) {
-      // クラス名をAutoware標準の値にマッピング
+      // Map class name to Autoware standard values
       if (class_names[bbox.object_class] == "car") {
         classification.label = autoware_perception_msgs::msg::ObjectClassification::CAR;
       } else if (class_names[bbox.object_class] == "truck" || class_names[bbox.object_class] == "trailer") {
@@ -723,7 +720,7 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
     float cos_theta = bbox.bbox[7];
     float vad_yaw = std::atan2(sin_theta, cos_theta);
 
-    // TODO(Shin-kyoto): base2map_transformから車両の回転を取得
+    // TODO(Shin-kyoto): Get vehicle rotation from base2map_transform
     Eigen::Matrix3f rotation_matrix = base2map_transform.block<3, 3>(0, 0);
     float transform_yaw = std::atan2(rotation_matrix(1, 0), rotation_matrix(0, 0));
     float map_yaw = vad_yaw + transform_yaw;
@@ -734,7 +731,7 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
     for (int32_t mode = 0; mode < 6; ++mode) {
       const auto& pred_traj = bbox.trajectories[mode];
       if (pred_traj.confidence > max_confidence) {
-        // 最初の2点から方向を計算
+        // Calculate direction from first 2 points
         float traj_vad_x1 = pred_traj.trajectory[0][0] + vad_x;
         float traj_vad_y1 = pred_traj.trajectory[0][1] + vad_y;
         float traj_vad_x2 = pred_traj.trajectory[1][0] + vad_x;
@@ -789,16 +786,16 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
           predicted_path.time_step.sec = 0;
           predicted_path.time_step.nanosec = 100000000;  // 0.1 seconds in nanoseconds
           
-          // 軌道の各点を変換
+          // Transform each point of the trajectory
           for (int32_t ts = 0; ts < 6; ++ts) {
             geometry_msgs::msg::Pose pose;
             
-            // predicted trajectoryは相対座標（ego座標系）なので、agent中心に変換
-            float traj_vad_x = pred_traj.trajectory[ts][0] + vad_x;  // agent中心からの相対座標
-            float traj_vad_y = pred_traj.trajectory[ts][1] + vad_y;  // agent中心からの相対座標
+            // Predicted trajectory is in relative coordinates (ego coordinate system), so transform to agent center
+            float traj_vad_x = pred_traj.trajectory[ts][0] + vad_x;  // Relative coordinates from agent center
+            float traj_vad_y = pred_traj.trajectory[ts][1] + vad_y;  // Relative coordinates from agent center
             auto [traj_aw_x, traj_aw_y, traj_aw_z] = vad2aw_xyz(traj_vad_x, traj_vad_y, aw_z);
             
-            // map座標系に変換
+            // Transform to map coordinate system
             Eigen::Vector4f traj_position_base(traj_aw_x, traj_aw_y, traj_aw_z, 1.0f);
             Eigen::Vector4f traj_position_map = base2map_transform * traj_position_base;
             
@@ -806,23 +803,23 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
             pose.position.y = traj_position_map.y();
             pose.position.z = traj_position_map.z();
             
-            // 軌道の向きを計算（次の点への方向）
-            // デフォルトはオブジェクトの向き（修正されたfinal_yawを使用）
+            // Calculate trajectory direction (direction to next point)
+            // Default is object direction (using corrected final_yaw)
             float traj_yaw = final_yaw;
             
-            if (ts < 5) {  // 次の点がある場合
+            if (ts < 5) {  // If next point exists
               float next_vad_x = pred_traj.trajectory[ts + 1][0] + vad_x;
               float next_vad_y = pred_traj.trajectory[ts + 1][1] + vad_y;
               auto [next_aw_x, next_aw_y, next_aw_z] = vad2aw_xyz(next_vad_x, next_vad_y, aw_z);
               
-              // 次の点もmap座標系に変換
+              // Transform next point to map coordinate system
               Eigen::Vector4f next_position_base(next_aw_x, next_aw_y, next_aw_z, 1.0f);
               Eigen::Vector4f next_position_map = base2map_transform * next_position_base;
               
-              // map座標系での方向ベクトルを計算
+              // Calculate direction vector in map coordinate system
               float dx = next_position_map.x() - traj_position_map.x();
               float dy = next_position_map.y() - traj_position_map.y();
-              if (std::sqrt(dx*dx + dy*dy) > 0.01) {  // 十分な距離がある場合
+              if (std::sqrt(dx*dx + dy*dy) > 0.01) {
                 traj_yaw = std::atan2(dy, dx);
               }
             }
@@ -832,7 +829,7 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
             predicted_path.path.push_back(pose);
           }
           
-          // 軌道に点が含まれている場合のみ追加
+          // Add trajectory only if it contains points
           if (!predicted_path.path.empty()) {
             predicted_object.kinematics.predicted_paths.push_back(predicted_path);
           }
@@ -849,17 +846,17 @@ float VadInterface::calculate_current_longitudinal_velocity(
   double node_timestep) const
 {
   if (prev_can_bus.empty() || can_bus.size() < 3 || prev_can_bus.size() < 3) {
-    return 0.0f; // 前フレームのデータがない場合は0を返す
+    return 0.0f; // Return 0 if previous frame data is not available
   }
 
-  // can_busの位置データから速度を計算 (位置: indices 0, 1)
-  float delta_x = can_bus[0] - prev_can_bus[0];  // x方向の変位
-  float delta_y = can_bus[1] - prev_can_bus[1];  // y方向の変位
+  // Calculate velocity from position data in can_bus (position: indices 0, 1)
+  float delta_x = can_bus[0] - prev_can_bus[0];  // x-direction displacement
+  float delta_y = can_bus[1] - prev_can_bus[1];  // y-direction displacement
 
-  // 3次元での移動距離を計算
+  // Calculate 3D movement distance
   float distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
 
-  // 速度 = 距離 / 時間
+  // Velocity = distance / time
   float velocity = distance / static_cast<float>(node_timestep);
   
   return velocity;

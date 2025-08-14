@@ -122,7 +122,6 @@ private:
   // Current frame data accumulation
   VadInputTopicData vad_input_topic_data_current_frame_;
   
-  // 推論を実行するメソッド
   std::optional<VadOutputTopicData> execute_inference(const VadInputTopicData & vad_input_topic_data);
   std::optional<VadOutputTopicData> trigger_inference(VadInputTopicData vad_input_topic_data_current_frame);
   void publish(const VadOutputTopicData & vad_output_topic_data);

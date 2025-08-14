@@ -14,8 +14,6 @@
 
 #include "autoware/tensorrt_vad/vad_node.hpp"
 
-#include "autoware/tensorrt_vad/utils.hpp"
-
 #include <rclcpp_components/register_node_macro.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.hpp>
@@ -31,14 +29,14 @@ std::pair<Eigen::Matrix4f, Eigen::Matrix4f> get_transform_matrix(
   double y = msg.pose.pose.position.y;
   double z = msg.pose.pose.position.z;
 
-  // Create Eigen quaternion and normalize it just in case
+  // Create Eigen quaternion and normalize it
   Eigen::Quaternionf q = std::invoke([&msg]() -> Eigen::Quaternionf {
     double qx = msg.pose.pose.orientation.x;
     double qy = msg.pose.pose.orientation.y;
     double qz = msg.pose.pose.orientation.z;
     double qw = msg.pose.pose.orientation.w;
 
-    // Create Eigen quaternion and normalize it just in case
+    // Create Eigen quaternion and normalize it
     Eigen::Quaternionf q(qw, qx, qy, qz);
     return (q.norm() < std::numeric_limits<float>::epsilon()) ? Eigen::Quaternionf::Identity()
                                                               : q.normalized();
@@ -303,7 +301,7 @@ VadConfig VadNode::load_vad_config()
     vad_config.map_confidence_thresholds[map_classes[i]] = static_cast<float>(map_thresholds[i]);
   }
   
-  // オブジェクトクラスごとの信頼度閾値を読み込み
+  // Load object confidence thresholds by class
   vad_config.object_confidence_thresholds["car"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.car");
   vad_config.object_confidence_thresholds["truck"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.truck");
   vad_config.object_confidence_thresholds["construction_vehicle"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.construction_vehicle");
@@ -390,15 +388,14 @@ std::optional<VadOutputTopicData> VadNode::execute_inference(const VadInputTopic
     return std::nullopt;
   }
 
-  // VadInterfaceを通じてVadInputDataに変換
-  // scalingされた状態の画像を含む
+  // Convert to VadInputData through VadInterface
   const auto vad_input = vad_interface_ptr_->convert_input(vad_input_topic_data);
 
-  // VadModelで推論実行
+  // Execute inference with VadModel
   const auto vad_output = vad_model_ptr_->infer(vad_input);
 
   const auto [base2map_transform, map2base_transform] = get_transform_matrix(*vad_input_topic_data.kinematic_state);
-  // VadInterfaceを通じてROS型に変換
+  // Convert to ROS types through VadInterface
   if (vad_output.has_value()) {
     const auto vad_output_topic_data = vad_interface_ptr_->convert_output(
       *vad_output, this->now(), trajectory_timestep_, base2map_transform);
@@ -439,7 +436,7 @@ void VadNode::create_camera_image_subscribers(const rclcpp::QoS& sensor_qos)
         [this, i](const sensor_msgs::msg::Image::ConstSharedPtr msg) {
           this->image_callback(msg, i);
         };
-    // image_transport::create_subscription を使用
+
     const auto image_topic = resolve_topic_name("~/input/image" + std::to_string(i));
     camera_image_subs_[i] = image_transport::create_subscription(
         this,

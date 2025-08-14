@@ -115,7 +115,7 @@ struct VadOutputTopicData
   autoware_perception_msgs::msg::PredictedObjects objects;
 };
 
-// 各process_*メソッドの戻り値となるデータ構造
+// Data structures for return values of each process_* method
 using CameraImagesData = std::vector<float>;
 using ShiftData = std::vector<float>;
 using Lidar2ImgData = std::vector<float>;
@@ -123,7 +123,7 @@ using CanBusData = std::vector<float>;
 
 /**
  * @class VadInterface
- * @brief ROS topicデータをVADの入力形式に変換するインターフェース
+ * @brief Interface for converting VadInputTopicData (ROS topic data) to VADInputData format, and VadOutputData to VadOutputTopicData (ROS topic data).
  */
 
 class VadInterface {
@@ -202,7 +202,7 @@ private:
   // Previous can_bus data for velocity calculation and other processes
   std::vector<float> prev_can_bus_;
 
-  // --- 内部処理関数 ---
+  // --- Internal processing functions ---
   std::optional<Eigen::Matrix4f> lookup_base2cam(tf2_ros::Buffer & buffer, const std::string & source_frame) const;
   Eigen::Matrix4f create_viewpad(const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info) const;
   Eigen::Matrix4f apply_scaling(const Eigen::Matrix4f & lidar2img, float scale_width, float scale_height) const;

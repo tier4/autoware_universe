@@ -30,7 +30,6 @@ std::string toString(NetworkType type) {
   }
 }
 
-// エンジンビルド専用関数
 std::unique_ptr<autoware::tensorrt_common::TrtCommon> build_engine(
     const autoware::tensorrt_common::TrtCommonConfig& trt_common_config,
     const std::vector<autoware::tensorrt_common::NetworkIO>& network_io,

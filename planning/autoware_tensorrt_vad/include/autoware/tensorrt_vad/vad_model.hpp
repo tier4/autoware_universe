@@ -38,14 +38,14 @@ namespace autoware::tensorrt_vad
 {
 
 /**
- * @brief 予測軌道を表現する構造体
+ * @brief Structure representing predicted trajectory
  */
 struct PredictedTrajectory {
-    std::array<std::array<float, 2>, 6> trajectory;  // 6タイムステップ × 2座標（x, y）
-    float confidence;                                 // この軌道の信頼度
+    std::array<std::array<float, 2>, 6> trajectory;  // 6 time steps × 2 coordinates (x, y)
+    float confidence;                                 // Confidence of this trajectory
     
     PredictedTrajectory() : confidence(0.0f) {
-        // 軌道座標を0で初期化
+        // Initialize trajectory coordinates to 0
         for (int32_t i = 0; i < 6; ++i) {
             trajectory[i][0] = 0.0f;
             trajectory[i][1] = 0.0f;
@@ -57,8 +57,8 @@ struct PredictedTrajectory {
  * @brief each map polyline type and its points
  */
 struct MapPolyline {
-    std::string type;                               // polyline type（"divider", "ped_crossing", "boundary"）
-    std::vector<std::vector<float>> points;         // polyline points（each point has [x, y]）
+    std::string type;                               // polyline type ("divider", "ped_crossing", "boundary")
+    std::vector<std::vector<float>> points;         // polyline points (each point has [x, y])
 
     MapPolyline() = default;
     
@@ -67,60 +67,60 @@ struct MapPolyline {
 };
 
 /**
- * @brief バウンディングボックスとその予測軌道を表現する構造体
+ * @brief Structure representing bounding box and its predicted trajectory
  */
 struct BBox {
     std::array<float, 10> bbox;                      // [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
-    float confidence;                                // オブジェクトの信頼度
-    int32_t object_class;                           // オブジェクトクラス（0-9）
-    std::array<PredictedTrajectory, 6> trajectories; // 6つの予測軌道
+    float confidence;                                // Object confidence
+    int32_t object_class;                           // Object class (0-9)
+    std::array<PredictedTrajectory, 6> trajectories; // 6 predicted trajectories
     
     BBox() : confidence(0.0f), object_class(-1) {
-        // bbox座標を0で初期化
+        // Initialize bbox coordinates to 0
         for (int32_t i = 0; i < 10; ++i) {
             bbox[i] = 0.0f;
         }
     }
 };
 
-// VAD推論の入力データ構造
+// VAD inference input data structure
 struct VadInputData
 {
-  // カメラ画像データ（複数カメラ対応）
+  // Camera image data (multi-camera support)
   std::vector<float> camera_images_;
 
-  // シフト情報（img_metas.0[shift]）
+  // Shift information (img_metas.0[shift])
   std::vector<float> shift_;
 
-  // LiDAR座標系からカメラ画像座標系への変換行列（img_metas.0[lidar2img]）
+  // Transform matrix from LiDAR coordinate system to camera image coordinate system (img_metas.0[lidar2img])
   std::vector<float> lidar2img_;
 
-  // CAN-BUSデータ（車両状態情報：速度、角速度など）(img_metas.0[can_bus])
+  // CAN-BUS data (vehicle state information: velocity, angular velocity, etc.) (img_metas.0[can_bus])
   std::vector<float> can_bus_;
 
-  // コマンドインデックス（軌道選択用）
+  // Command index (for trajectory selection)
   int32_t command_{2};
 };
 
-// VAD推論の出力データ構造
+// VAD inference output data structure
 struct VadOutputData
 {
-  // 予測された軌道（6つの2D座標点、累積座標として表現）
+  // Predicted trajectory (6 2D coordinate points, expressed as cumulative coordinates)
   // planning[0,1] = 1st point (x,y), planning[2,3] = 2nd point (x,y), ...
   std::vector<float> predicted_trajectory_{};  // size: 12 (6 points * 2 coordinates)
 
-  // 複数のコマンドに対応した予測軌道のマップ
+  // Map of predicted trajectories for multiple commands
   // key: command index (int32_t), value: trajectory (std::vector<float>)
   std::map<int32_t, std::vector<float>> predicted_trajectories_{};
 
   // map polylines (each polyline has map_type and points)
   std::vector<MapPolyline> map_polylines_{};
 
-  // // 検出されたオブジェクト
+  // Predicted objects
   std::vector<BBox> predicted_objects_{};
 };
 
-// 後処理関数
+// Post-processing functions
 
 // Helper functions for map prediction processing
 std::vector<std::vector<float>> process_map_class_scores(const std::vector<float>& cls_preds_flat, const VadConfig& vad_config);
@@ -161,7 +161,7 @@ inline std::pair<std::string, std::string> parse_external_inputs(const std::pair
   return {ext_map.at("net"), ext_map.at("name")};
 }
 
-// VADモデルクラス - CUDA/TensorRTを用いた推論を担当
+// VAD model class - Handles inference using CUDA/TensorRT
 template<typename LoggerType>
 class VadModel
 {
@@ -175,7 +175,7 @@ public:
     : stream_(nullptr), is_first_frame_(true), 
       vad_config_(vad_config), logger_(std::move(logger)), head_trt_config_(head_config)
   {
-    // loggerはVadLoggerを継承したclassのみ受け取る
+    // Logger accepts only classes that inherit from VadLogger
     static_assert(std::is_base_of_v<VadLogger, LoggerType>, 
       "LoggerType must be VadLogger or derive from VadLogger.");    
     
@@ -184,7 +184,7 @@ public:
     nets_ = init_engines(vad_config_.nets_config, vad_config_, backbone_config, head_config, head_no_prev_config);
   }
 
-  // デストラクタ
+  // Destructor
   ~VadModel()
   {
     if (stream_) {
@@ -192,13 +192,13 @@ public:
       stream_ = nullptr;
     }
     
-    // netsのクリーンアップ
+    // Cleanup nets
     nets_.clear();
   }
 
-  // メイン推論API
+  // Main inference API
   [[nodiscard]] std::optional<VadOutputData> infer(const VadInputData & vad_input) {
-    // 最初のフレームかどうかでheadの名前を変更
+    // Change head name based on whether it's the first frame
     std::string head_name;
     if (is_first_frame_) {
       head_name = "head_no_prev";
@@ -206,19 +206,19 @@ public:
       head_name = "head";
     }
 
-    // bindingsにload
+    // Load to bindings
     load_inputs(vad_input, head_name);
 
-    // backboneとheadをenqueue
+    // Enqueue backbone and head
     enqueue(head_name);
 
-    // prev_bevを保存
+    // Save prev_bev
     saved_prev_bev_ = save_prev_bev(head_name);
 
-    // VadOutputDataに出力を変換
+    // Convert output to VadOutputData
     VadOutputData output = postprocess(head_name, vad_input.command_);
 
-    // 最初のフレームなら"head_no_prev"をリリースして"head"をload
+    // If it's the first frame, release "head_no_prev" and load "head"
     if (is_first_frame_) {
       release_network("head_no_prev");
       load_head();
@@ -228,18 +228,17 @@ public:
     return output;
   }
 
-  // メンバ変数
+  // Member variables
   cudaStream_t stream_;
   std::unordered_map<std::string, std::shared_ptr<Net>> nets_;
 
-  // 前回のBEV特徴量保存用
+  // Storage for previous BEV features
   std::shared_ptr<Tensor> saved_prev_bev_;
   bool is_first_frame_;
 
-  // 設定情報の保存
+  // Configuration information storage
   VadConfig vad_config_;
 
-  // ロガーインスタンス
   std::shared_ptr<VadLogger> logger_;
 
 private:
@@ -281,7 +280,7 @@ private:
     return nets;
   }
 
-  // infer関数で使用するヘルパー関数
+  // Helper functions used in infer function
   void load_inputs(const VadInputData& vad_input, const std::string& head_name) {
     nets_["backbone"]->bindings["img"]->load(vad_input.camera_images_, stream_);
     nets_[head_name]->bindings["img_metas.0[shift]"]->load(vad_input.shift_, stream_);
@@ -309,11 +308,11 @@ private:
 
   void release_network(const std::string& network_name) {
     if (nets_.find(network_name) != nets_.end()) {
-      // まずbindingsをクリア
+      // First clear bindings
       nets_[network_name]->bindings.clear();
       cudaStreamSynchronize(stream_);
       
-      // 次にNetオブジェクトを解放
+      // Then release Net object
       nets_[network_name].reset();
       nets_.erase(network_name);
       cudaStreamSynchronize(stream_);

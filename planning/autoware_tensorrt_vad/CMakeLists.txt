@@ -1,7 +1,5 @@
-# CMakeの最小バージョンを指定
 cmake_minimum_required(VERSION 3.14)
 
-# プロジェクト名を設定
 project(autoware_tensorrt_vad)
 
 find_package(autoware_cmake REQUIRED)
@@ -27,22 +25,22 @@ find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 
-# TensorRTの設定
+# TensorRT settings
 option(TRT_ROOT "$ENV{TRT_ROOT}")
 if(TRT_ROOT)
     set(TENSORRT_INCLUDE_DIRS ${TRT_ROOT}/include/)
     set(TENSORRT_LIBRARY_DIRS ${TRT_ROOT}/lib/)
 else()
-    # デフォルトのTensorRTパス
+    # Default TensorRT paths
     set(TENSORRT_INCLUDE_DIRS /usr/include/x86_64-linux-gnu)
     set(TENSORRT_LIBRARY_DIRS /usr/lib/x86_64-linux-gnu)
 endif()
 
-# CUDAの設定
+# CUDA settings
 set(CUDA_INCLUDE_DIRS ${CUDA_TOOLKIT_ROOT_DIR}/include)
 set(CUDA_LIBRARY_DIRS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
 
-# インクルードディレクトリの設定
+# Include directory settings
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/lib
@@ -50,13 +48,13 @@ include_directories(
     ${TENSORRT_INCLUDE_DIRS}
 )
 
-# リンクディレクトリの設定
+# Link directory settings
 link_directories(
     ${CUDA_LIBRARY_DIRS}
     ${TENSORRT_LIBRARY_DIRS}
 )
 
-# メインライブラリの追加（ヘッダーファイルは除外）
+# Add main library (excluding header files)
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
     lib/vad_interface.cpp
     lib/vad_model.cpp
@@ -67,7 +65,7 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
     lib/networks/tensor.cpp
 )
 
-# ライブラリのリンク設定
+# Library link settings
 target_link_libraries(${PROJECT_NAME}_lib
     nvinfer
     ${CUDA_LIBRARIES}
@@ -76,7 +74,7 @@ target_link_libraries(${PROJECT_NAME}_lib
     ${OpenCV_LIBS}
 )
 
-# コンポーネントの追加
+# Add component
 ament_auto_add_library(${PROJECT_NAME}_component SHARED
     src/vad_node.cpp
 )
@@ -90,7 +88,7 @@ rclcpp_components_register_node(${PROJECT_NAME}_component
     EXECUTABLE vad_node
 )
 
-# テスト用の関数定義
+# Test case function definition
 function(add_testcase filepath)
   get_filename_component(filename ${filepath} NAME)
   string(REGEX REPLACE ".cpp" "" test_name ${filename})
@@ -127,7 +125,7 @@ function(add_testcase filepath)
   ament_target_dependencies(${test_name} ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS})
 endfunction()
 
-# テストの追加
+# Add tests
 if(BUILD_TESTING)
     # find_package(ament_lint_auto REQUIRED)
     # ament_lint_auto_find_test_dependencies()

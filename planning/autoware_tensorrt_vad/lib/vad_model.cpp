@@ -166,13 +166,13 @@ postprocess_map_preds(
 
 std::vector<std::vector<std::vector<std::vector<float>>>> postprocess_traj_preds(
     const std::vector<float>& all_traj_preds_flat) {
-  const int32_t num_layers = 3;  // 3レイヤーの軌道予測
+  const int32_t num_layers = 3;  // 3-layer trajectory prediction
   const int32_t num_objects = 300;
   const int32_t num_fut_modes = 6;
   const int32_t num_fut_ts = 6;
   const int32_t traj_coords = 2;
   
-  // 最終層（インデックス2）のデータのみを使用
+  // Use only final layer (index 2) data
   const int32_t final_layer_idx = num_layers - 1; // = 2
   const int32_t layer_size = num_objects * num_fut_modes * num_fut_ts * traj_coords;
   const int32_t final_layer_offset = final_layer_idx * layer_size;
@@ -193,10 +193,10 @@ std::vector<std::vector<std::vector<std::vector<float>>>> postprocess_traj_preds
         traj_preds[obj][fut_mode][ts][1] = all_traj_preds_flat[idx_flat + 1];
       }
       
-      // cumsum to build trajectory in 3d space - planningと同じように累積和を計算
+      // cumsum to build trajectory in 3d space - calculate cumulative sum like planning
       for (int32_t ts = 1; ts < num_fut_ts; ++ts) {
-        traj_preds[obj][fut_mode][ts][0] += traj_preds[obj][fut_mode][ts-1][0];  // x座標の累積和
-        traj_preds[obj][fut_mode][ts][1] += traj_preds[obj][fut_mode][ts-1][1];  // y座標の累積和
+        traj_preds[obj][fut_mode][ts][0] += traj_preds[obj][fut_mode][ts-1][0];  // Cumulative sum of x coordinates
+        traj_preds[obj][fut_mode][ts][1] += traj_preds[obj][fut_mode][ts-1][1];  // Cumulative sum of y coordinates
       }
     }
   }
@@ -205,11 +205,11 @@ std::vector<std::vector<std::vector<std::vector<float>>>> postprocess_traj_preds
 
 std::vector<std::vector<float>> postprocess_traj_cls_scores(
     const std::vector<float>& all_traj_cls_scores_flat) {
-  const int32_t num_layers = 3;  // 3レイヤーの軌道分類スコア
+  const int32_t num_layers = 3;  // 3-layer trajectory classification scores
   const int32_t num_objects = 300;
-  const int32_t num_fut_modes = 6; // 6種類の将来軌道
+  const int32_t num_fut_modes = 6; // 6 types of future trajectories
   
-  // 最終層（インデックス2）のデータのみを使用
+  // Use only final layer (index 2) data
   const int32_t final_layer_idx = num_layers - 1; // = 2
   const int32_t layer_size = num_objects * num_fut_modes;
   const int32_t final_layer_offset = final_layer_idx * layer_size;
@@ -229,11 +229,11 @@ std::vector<std::vector<float>> postprocess_traj_cls_scores(
 
 std::vector<std::vector<float>> postprocess_bbox_preds(
     const std::vector<float>& all_bbox_preds_flat) {
-  const int32_t num_layers = 3;  // 3レイヤーのbbox予測
+  const int32_t num_layers = 3;  // 3-layer bbox prediction
   const int32_t num_objects = 300;
   const int32_t bbox_features = 10; // c_x,c_y,w,l,c_z,h,sin(theta),cos(theta),v_x,v_y
   
-  // 最終層（インデックス2）のデータのみを使用
+  // Use only final layer (index 2) data
   const int32_t final_layer_idx = num_layers - 1; // = 2
   const int32_t layer_size = num_objects * bbox_features;
   const int32_t final_layer_offset = final_layer_idx * layer_size;
@@ -252,17 +252,17 @@ std::vector<std::vector<float>> postprocess_bbox_preds(
 }
 
 /**
- * @brief オブジェクトのクラス予測のフラットな配列を解析し、スコアの2次元配列に変換する
- * 推論時は最終層（-1番目のlayer）のみを使用
+ * @brief Parse flat array of object class predictions and convert to 2D score array
+ * During inference, use only the final layer (-1st layer)
  */
 std::vector<std::vector<float>> 
 postprocess_class_scores(const std::vector<float>& all_cls_scores_flat) 
 {
-    const int32_t num_layers = 3; // 3レイヤーのオブジェクト分類予測
+    const int32_t num_layers = 3; // 3-layer object classification prediction
     const int32_t num_objects = 300;
-    const int32_t num_classes = 10; // オブジェクトクラス数　'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier',　'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
+    const int32_t num_classes = 10; // Number of object classes: 'car', 'truck', 'construction_vehicle', 'bus', 'trailer', 'barrier', 'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
     
-    // 最終層（インデックス2）のデータのみを使用
+    // Use only final layer (index 2) data
     const int32_t final_layer_idx = num_layers - 1; // = 2
     const int32_t layer_size = num_objects * num_classes;
     const int32_t final_layer_offset = final_layer_idx * layer_size;
@@ -280,12 +280,12 @@ postprocess_class_scores(const std::vector<float>& all_cls_scores_flat)
 }
 
 /**
- * @brief オブジェクトの全体的な後処理を行い、BBoxデータを生成する
- * @param all_cls_scores_flat オブジェクト分類スコアのフラット配列
- * @param all_traj_preds_flat 軌道予測のフラット配列
- * @param all_traj_cls_scores_flat 軌道分類スコアのフラット配列
- * @param all_bbox_preds_flat bounding box予測のフラット配列
- * @return 構造化されたBBoxデータのベクター
+ * @brief Perform overall object post-processing and generate BBox data
+ * @param all_cls_scores_flat Flat array of object classification scores
+ * @param all_traj_preds_flat Flat array of trajectory predictions
+ * @param all_traj_cls_scores_flat Flat array of trajectory classification scores
+ * @param all_bbox_preds_flat Flat array of bounding box predictions
+ * @return Vector of structured BBox data
  */
 std::vector<BBox> postprocess_bboxes(
     const std::vector<float>& all_cls_scores_flat,
@@ -294,7 +294,7 @@ std::vector<BBox> postprocess_bboxes(
     const std::vector<float>& all_bbox_preds_flat,
     const std::map<std::string, float>& object_confidence_thresholds)
 {
-    // 各種予測結果を構造化
+    // Structure each prediction result
     auto obj_cls_scores = postprocess_class_scores(all_cls_scores_flat);
     auto traj_preds = postprocess_traj_preds(all_traj_preds_flat);
     auto traj_cls_scores = postprocess_traj_cls_scores(all_traj_cls_scores_flat);
@@ -304,7 +304,7 @@ std::vector<BBox> postprocess_bboxes(
     std::vector<BBox> bboxes;
     bboxes.reserve(num_objects);
 
-    // ラベルIDとクラス名のマッピング（NuScenes標準クラス）
+    // Mapping of label IDs to class names (NuScenes standard classes)
     std::unordered_map<int32_t, std::string> label_to_class = {
       {0, "car"},
       {1, "truck"}, 
@@ -324,47 +324,47 @@ std::vector<BBox> postprocess_bboxes(
         // Bounding box parameters [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
         for (int32_t i = 0; i < 10; ++i) {
             if (i == 2 || i == 3 || i == 5) {
-                // w, l, hにはexp変換を適用
+                // Apply exp transformation to w, l, h
                 bbox.bbox[i] = std::exp(bbox_preds[obj][i]);
             } else {
                 bbox.bbox[i] = bbox_preds[obj][i];
             }
         }
         
-        // オブジェクトクラスと信頼度を決定
+        // Determine object class and confidence
         auto max_it = std::max_element(obj_cls_scores[obj].begin(), obj_cls_scores[obj].end());
         bbox.confidence = *max_it;
         bbox.object_class = std::distance(obj_cls_scores[obj].begin(), max_it);
         
-        // 信頼度フィルタリングを適用
+        // Apply confidence filtering
         auto class_it = label_to_class.find(bbox.object_class);
         if (class_it != label_to_class.end()) {
             std::string class_name = class_it->second;
             auto threshold_it = object_confidence_thresholds.find(class_name);
             if (threshold_it != object_confidence_thresholds.end()) {
                 float threshold = threshold_it->second;
-                // 閾値を満たさない場合はスキップ
+                // Skip if threshold is not met
                 if (bbox.confidence < threshold) {
                     continue;
                 }
             } else {
-                // 閾値が設定されていないクラスはスキップ
+                // Skip classes without threshold setting
                 continue;
             }
         } else {
-            // 未知のクラスはスキップ
+            // Skip unknown classes
             continue;
         }
         
-        // 6本の予測軌道を構造化
+        // Structure 6 predicted trajectories
         for (int32_t mode = 0; mode < 6; ++mode) {
             PredictedTrajectory pred_traj;
             pred_traj.confidence = traj_cls_scores[obj][mode];
             
-            // 6タイムステップの軌道データを設定
+            // Set 6 timestep trajectory data
             for (int32_t ts = 0; ts < 6; ++ts) {
-                pred_traj.trajectory[ts][0] = traj_preds[obj][mode][ts][0]; // x座標
-                pred_traj.trajectory[ts][1] = traj_preds[obj][mode][ts][1]; // y座標
+                pred_traj.trajectory[ts][0] = traj_preds[obj][mode][ts][0]; // x coordinate
+                pred_traj.trajectory[ts][1] = traj_preds[obj][mode][ts][1]; // y coordinate
             }
             
             bbox.trajectories[mode] = pred_traj;
