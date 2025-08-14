@@ -116,7 +116,6 @@ private:
   // Publishers
   rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr trajectory_publisher_;
   rclcpp::Publisher<autoware_internal_planning_msgs::msg::CandidateTrajectories>::SharedPtr candidate_trajectories_publisher_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr predicted_objects_publisher_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr map_points_publisher_;
 
   // Current frame data accumulation

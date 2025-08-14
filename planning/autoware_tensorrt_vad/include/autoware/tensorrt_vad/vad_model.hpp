@@ -348,10 +348,6 @@ private:
     std::vector<float> all_bbox_preds_flat = nets_[head_name]->bindings["out.all_bbox_preds"]->cpu<float>();
     std::vector<float> all_cls_scores_flat = nets_[head_name]->bindings["out.all_cls_scores"]->cpu<float>();
 
-    // Process detected objects using postprocess_bboxes and apply confidence thresholding
-    auto filtered_bboxes = postprocess_bboxes(
-        all_cls_scores_flat, all_traj_preds_flat, all_traj_cls_scores_flat, all_bbox_preds_flat, vad_config_.object_confidence_thresholds);
-
     std::vector<MapPolyline> map_polylines = postprocess_map_preds(
         map_all_cls_preds_flat, map_all_pts_preds_flat, vad_config_);
     
@@ -384,7 +380,7 @@ private:
       all_trajectories[command_idx] = trajectory;
     }
     
-    return VadOutputData{planning, all_trajectories, map_polylines, filtered_bboxes};
+    return VadOutputData{planning, all_trajectories, map_polylines};
   }
 };
 
