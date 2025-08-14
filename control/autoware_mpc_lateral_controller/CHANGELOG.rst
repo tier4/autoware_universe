@@ -2,6 +2,9 @@
 Changelog for package autoware_mpc_lateral_controller
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.47.1 (2025-08-14)
+-------------------
+
 0.47.0 (2025-08-11)
 -------------------
 * fix(mpc): update time from start in the predicted trajectory (`#10753 <https://github.com/autowarefoundation/autoware_universe/issues/10753>`_)

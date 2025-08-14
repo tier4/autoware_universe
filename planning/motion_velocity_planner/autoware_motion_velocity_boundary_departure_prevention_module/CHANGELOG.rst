@@ -2,6 +2,9 @@
 Changelog for package autoware_motion_velocity_boundary_departure_prevention_module
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.47.1 (2025-08-14)
+-------------------
+
 0.47.0 (2025-08-11)
 -------------------
 * feat(boundary_departure): slow down computation (`#11085 <https://github.com/autowarefoundation/autoware_universe/issues/11085>`_)

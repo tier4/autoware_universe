@@ -2,6 +2,9 @@
 Changelog for package autoware_control_performance_analysis
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.47.1 (2025-08-14)
+-------------------
+
 0.47.0 (2025-08-11)
 -------------------
 * feat: change planning output topic name to /planning/trajectory (`#11135 <https://github.com/autowarefoundation/autoware_universe/issues/11135>`_)

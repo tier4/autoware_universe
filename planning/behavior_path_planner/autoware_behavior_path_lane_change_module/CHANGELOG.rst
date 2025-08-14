@@ -2,6 +2,9 @@
 Changelog for package autoware_behavior_path_lane_change_module
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.47.1 (2025-08-14)
+-------------------
+
 0.47.0 (2025-08-11)
 -------------------
 * fix(lane_change): properly handle force activation when there is no valid LC path (`#11059 <https://github.com/autowarefoundation/autoware_universe/issues/11059>`_)
