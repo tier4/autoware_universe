@@ -74,37 +74,35 @@
             "net": "backbone"
             "name": "out.0"
       network_io_params:
-        # カメラ・特徴量関連
-        num_cameras: 6                    # カメラ数
+        num_cameras: 6                    # Number of cameras
         
-        # BEV (Bird's Eye View) 関連
-        bev_h: 100                        # BEVグリッド高さ
-        bev_w: 100                        # BEVグリッド幅
-        bev_feature_dim: 256              # 特徴次元
+        # BEV (Bird's Eye View) related parameters
+        bev_h: 100                        # BEV grid height
+        bev_w: 100                        # BEV grid width
+        bev_feature_dim: 256              # Feature dimension
         
-        # 画像処理関連（interface_paramsから参照）
-        target_image_width: 640           # ターゲット画像幅
-        target_image_height: 384          # ターゲット画像高さ
-        downsample_factor: 32             # 画像特徴量のダウンサンプリング係数
+        # Image processing related parameters
+        target_image_width: 640           # Target image width
+        target_image_height: 384          # Target image height
+        downsample_factor: 32             # Downsampling factor for image features
         
-        # Transformer・検出関連
-        num_decoder_layers: 3             # Transformerデコーダ層数
-        
-        # 軌道予測関連
-        prediction_num_queries: 300                  # 検出クエリ数（最大物体数）
-        prediction_num_classes: 10                   # 物体クラス数
-        prediction_bbox_pred_dim: 10                 # 3Dボックス予測次元数 (cx,cy,w,l,cz,h,sin,cos,vx,vy)
-        prediction_trajectory_modes: 6    # 各物体の軌道予測モード数
-        prediction_timesteps: 6           # 予測タイムステップ数
+        num_decoder_layers: 3             # Number of Transformer decoder layers
+
+        # Trajectory prediction related parameters
+        prediction_num_queries: 300       # Number of detection queries (maximum objects)
+        prediction_num_classes: 10        # Number of object classes
+        prediction_bbox_pred_dim: 10      # 3D box prediction dimension (cx,cy,w,l,cz,h,sin,cos,vx,vy)
+        prediction_trajectory_modes: 6    # Number of trajectory prediction modes per object
+        prediction_timesteps: 6           # Number of prediction timesteps
 
         # planning
-        planning_ego_commands: 3          # 自車制御コマンド数 (右折、左折、直進)
+        planning_ego_commands: 3          # Number of ego vehicle control commands (right turn, left turn, straight)
         planning_timesteps: 6
         
         # Map element detection
-        map_num_queries: 100              # マップ要素検出クエリ数
-        map_num_class: 3                  # マップ要素クラス数
-        map_points_per_polylines: 20      # ポリライン毎のポイント数
+        map_num_queries: 100              # Number of map element detection queries
+        map_num_class: 3                  # Number of map element classes
+        map_points_per_polylines: 20      # Number of points per polyline
               
         # can_bus
-        can_bus_dim: 18                   # CANバスデータ次元数
+        can_bus_dim: 18                   # CAN bus data dimension
