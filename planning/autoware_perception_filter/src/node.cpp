@@ -15,6 +15,7 @@
 #include "autoware/perception_filter/perception_filter_node.hpp"
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
