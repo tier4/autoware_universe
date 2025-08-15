@@ -41,6 +41,7 @@ struct VehicleCmdFilterParam
   LimitArray steer_lim;
   LimitArray steer_rate_lim;
   LimitArray actual_steer_diff_lim;
+  double lat_jerk_lim_for_steer_rate;
 };
 
 class VehicleCmdFilter
@@ -89,6 +90,7 @@ private:
   double getSteerLim() const;
   double getSteerRateLim() const;
   double getSteerDiffLim() const;
+  double getLatJerkLimForSteerRate() const;
 };
 
 }  // namespace autoware::control_command_gate

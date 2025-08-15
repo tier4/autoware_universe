@@ -145,12 +145,29 @@ void VehicleCmdFilter::limitLateralSteerRate(const double dt, Control & input) c
 {
   const float steer_rate_limit = getSteerRateLim();
 
-  // for steering angle rate
-  input.lateral.steering_tire_rotation_rate =
-    std::clamp(input.lateral.steering_tire_rotation_rate, -steer_rate_limit, steer_rate_limit);
+  // Calculate maximum allowable steering rate based on lateral jerk constraint
+  // Using the formula: j_y = (1/L) * V^2 * (dθ/dt)
+  // Where:
+  // - j_y: lateral jerk
+  // - L: wheel base
+  // - V: longitudinal velocity
+  // - dθ/dt: steering angle rate of change
+  // Rearranging: dθ/dt = j_y * L / V^2
+  const double lat_jerk_lim_for_steer_rate = getLatJerkLimForSteerRate();
+  const double velocity_sq = std::max(current_speed_ * current_speed_, 0.001);
+  const double max_steer_rate_from_jerk =
+    lat_jerk_lim_for_steer_rate * param_.wheel_base / velocity_sq;
 
-  // for steering angle
-  const float steer_diff_limit = steer_rate_limit * dt;
+  // Apply the more restrictive limit between basic rate limit and lateral jerk constraint
+  const float effective_steer_rate_lim =
+    std::min(static_cast<double>(steer_rate_limit), max_steer_rate_from_jerk);
+
+  // Limit steering angle rate
+  input.lateral.steering_tire_rotation_rate = std::clamp(
+    input.lateral.steering_tire_rotation_rate, -effective_steer_rate_lim, effective_steer_rate_lim);
+
+  // Limit steering angle change
+  const float steer_diff_limit = effective_steer_rate_lim * dt;
   float ds = input.lateral.steering_tire_angle - prev_cmd_.lateral.steering_tire_angle;
   ds = std::clamp(ds, -steer_diff_limit, steer_diff_limit);
   input.lateral.steering_tire_angle = prev_cmd_.lateral.steering_tire_angle + ds;
@@ -275,6 +292,11 @@ double VehicleCmdFilter::getSteerRateLim() const
 double VehicleCmdFilter::getSteerDiffLim() const
 {
   return interpolateFromSpeed(param_.actual_steer_diff_lim);
+}
+
+double VehicleCmdFilter::getLatJerkLimForSteerRate() const
+{
+  return param_.lat_jerk_lim_for_steer_rate;
 }
 
 }  // namespace autoware::control_command_gate
