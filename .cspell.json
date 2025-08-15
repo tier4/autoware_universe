@@ -1,5 +1,5 @@
 {
   "ignorePaths": ["pyproject.toml", "poetry.lock"],
   "ignoreRegExpList": [],
-  "words": ["rej55", "dkoldaev", "Dslots"]
+  "words": ["rej55", "Dslots"]
 }
