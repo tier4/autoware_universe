@@ -43,7 +43,8 @@ VehicleCmdFilterParam declare_filter_params(rclcpp::Node & node, const std::stri
   p.lat_acc_lim = node.declare_parameter<LimitArray>(ns + "lat_acc_lim");
   p.lat_jerk_lim = node.declare_parameter<LimitArray>(ns + "lat_jerk_lim");
   p.actual_steer_diff_lim = node.declare_parameter<LimitArray>(ns + "actual_steer_diff_lim");
-  p.lat_jerk_lim_for_steer_rate = node.declare_parameter<double>(ns + "lat_jerk_lim_for_steer_rate");
+  p.lat_jerk_lim_for_steer_rate =
+    node.declare_parameter<double>(ns + "lat_jerk_lim_for_steer_rate");
   return p;
 }
 
