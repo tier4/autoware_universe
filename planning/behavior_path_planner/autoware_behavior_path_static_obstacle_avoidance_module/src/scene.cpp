@@ -853,10 +853,10 @@ bool StaticObstacleAvoidanceModule::isSafePath(
     return false;
   }();
 
-  const auto is_within_current_lane = [&, this](const auto is_right) {
+  const auto is_within_current_lane = [&, this](const auto & check_lanes, const auto is_right) {
     if (avoid_data_.new_shift_line.empty()) return true;
 
-    const auto combine_lanelet = lanelet::utils::combineLaneletsShape(avoid_data_.current_lanelets);
+    const auto combine_lanelet = lanelet::utils::combineLaneletsShape(check_lanes);
     const auto bound = is_right
                          ? lanelet::utils::to2D(combine_lanelet.rightBound().basicLineString())
                          : lanelet::utils::to2D(combine_lanelet.leftBound().basicLineString());
@@ -891,7 +891,7 @@ bool StaticObstacleAvoidanceModule::isSafePath(
         std::all_of(check_lanes.begin(), check_lanes.end(), [this](const auto & lane) {
           return planner_data_->route_handler->getLeftLanelet(lane, true, false);
         });
-      if (!exist_adjacent_lane && !is_within_current_lane(false)) {
+      if (!exist_adjacent_lane && !is_within_current_lane(check_lanes, false)) {
         return false;
       }
     }
@@ -900,7 +900,7 @@ bool StaticObstacleAvoidanceModule::isSafePath(
         std::all_of(check_lanes.begin(), check_lanes.end(), [this](const auto & lane) {
           return planner_data_->route_handler->getRightLanelet(lane, true, false);
         });
-      if (!exist_adjacent_lane && !is_within_current_lane(true)) {
+      if (!exist_adjacent_lane && !is_within_current_lane(check_lanes, true)) {
         return false;
       }
     }
