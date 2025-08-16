@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef UTIL_HPP_
-#define UTIL_HPP_
+#ifndef AUTOWARE__BEHAVIOR_VELOCITY_INTERSECTION_MODULE__UTIL_HPP_
+#define AUTOWARE__BEHAVIOR_VELOCITY_INTERSECTION_MODULE__UTIL_HPP_
 
 #include "interpolated_path_info.hpp"
 
@@ -21,6 +21,8 @@
 #include <rclcpp/logger.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object_kinematics.hpp>
+#include <autoware_perception_msgs/msg/shape.hpp>
+#include <unique_identifier_msgs/msg/uuid.hpp>
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_routing/Forward.h>
@@ -136,6 +138,56 @@ getFirstPointInsidePolygonsByFootprint(
 std::vector<lanelet::CompoundPolygon3d> getPolygon3dFromLanelets(
   const lanelet::ConstLanelets & ll_vec);
 
+/*
+ * @brief along the interpolated_path, find the position where footprint approaches the lane
+ * boundary of merging_lanelet most closely, but upto the distance of min_distance_threshold
+ * @param merging_lanelet the target lanelet to which interpolated_path_info merges into
+ * @param min_distance_threshold the distance threshold that ego is allowed to approach toward the
+ * boundary
+ * @param turn_direction "left" or "right"
+ * @param search_start_idx the index which is used to start the search from
+ */
+std::optional<size_t> find_maximum_footprint_overshoot_position(
+  const InterpolatedPathInfo & interpolated_path_info,
+  const autoware_utils::LinearRing2d & local_footprint,
+  const lanelet::ConstLanelet & merging_lanelet, const double min_distance_threshold,
+  const std::string & turn_direction, const size_t search_start_idx);
+
+/**
+ * @brief convert uuid to string
+ */
+std::string to_string(const unique_identifier_msgs::msg::UUID & uuid);
+
+/**
+ * @brief create a one step polygon from the previous and next poses
+ */
+autoware_utils::Polygon2d createOneStepPolygon(
+  const geometry_msgs::msg::Pose & prev_pose, const geometry_msgs::msg::Pose & next_pose,
+  const autoware_perception_msgs::msg::Shape & shape);
+
+/**
+ * @brief get the previous lanelets
+ */
+lanelet::ConstLanelets getPrevLanelets(
+  const lanelet::ConstLanelets & lanelets_on_path, const std::set<lanelet::Id> & associative_ids);
+
+/**
+ * @brief generate a lanelet from the path
+ */
+lanelet::ConstLanelet generatePathLanelet(
+  const autoware_internal_planning_msgs::msg::PathWithLaneId & path, const size_t start_idx,
+  const size_t end_idx, const double width, const double interval);
+
+/**
+ * @brief get the first point inside the polygons
+ */
+std::optional<std::pair<size_t, const lanelet::CompoundPolygon3d &>> getFirstPointInsidePolygons(
+  const autoware_internal_planning_msgs::msg::PathWithLaneId & path,
+  const std::pair<size_t, size_t> lane_interval,
+  const std::vector<lanelet::CompoundPolygon3d> & polygons, const bool search_forward = true);
+
+double getHighestCurvature(const lanelet::ConstLineString3d & centerline);
+
 }  // namespace autoware::behavior_velocity_planner::util
 
-#endif  // UTIL_HPP_
+#endif  // AUTOWARE__BEHAVIOR_VELOCITY_INTERSECTION_MODULE__UTIL_HPP_
