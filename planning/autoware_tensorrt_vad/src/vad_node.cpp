@@ -97,6 +97,11 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
       this->create_publisher<autoware_internal_planning_msgs::msg::CandidateTrajectories>(
           "~/output/trajectories", rclcpp::QoS(1));
 
+  predicted_objects_publisher_ =
+      this->create_publisher<autoware_perception_msgs::msg::PredictedObjects>(
+          "~/output/objects",
+          rclcpp::QoS(1));
+
   map_points_publisher_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>(
           "~/output/map",
@@ -408,6 +413,9 @@ void VadNode::publish(const VadOutputTopicData & vad_output_topic_data)
 
   // Publish candidate trajectories
   candidate_trajectories_publisher_->publish(vad_output_topic_data.candidate_trajectories);
+
+  // // Publish predicted objects
+  predicted_objects_publisher_->publish(vad_output_topic_data.objects);
 
   // Publish map points
   map_points_publisher_->publish(vad_output_topic_data.map_points);

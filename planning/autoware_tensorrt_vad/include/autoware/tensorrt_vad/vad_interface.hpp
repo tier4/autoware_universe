@@ -157,6 +157,12 @@ public:
     const rclcpp::Time & stamp,
     const Eigen::Matrix4f & base2map_transform) const;
 
+  // Convert BBox objects to PredictedObjects
+  autoware_perception_msgs::msg::PredictedObjects process_predicted_objects(
+    const std::vector<BBox> & bboxes,
+    const rclcpp::Time & stamp,
+    const Eigen::Matrix4f & base2map_transform) const;
+
   Lidar2ImgData process_lidar2img(
     const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr> & camera_infos,
     float scale_width, float scale_height) const;
