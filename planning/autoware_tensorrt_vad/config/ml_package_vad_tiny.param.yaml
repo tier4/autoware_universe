@@ -37,6 +37,8 @@
       trajectory_timestep: 1.0 # [s]
     model_params:
       # Engine paths with hierarchical structure
+      map_class_names: ["divider", "ped_crossing", "boundary"]
+      object_class_names: ["car", "truck", "construction_vehicle", "bus", "trailer", "barrier", "motorcycle", "bicycle", "pedestrian", "traffic_cone"]
       nets:
         backbone:
           name: "backbone"

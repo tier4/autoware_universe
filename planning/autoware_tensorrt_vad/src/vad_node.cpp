@@ -81,13 +81,17 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
       declare_parameter<std::vector<double>>("interface_params.image_normalization_param_std"),
       declare_parameter<std::vector<double>>("interface_params.vad2base"),
       declare_parameter<std::vector<int64_t>>("interface_params.autoware_to_vad_camera_mapping"),
-      declare_parameter<std::vector<std::string>>("model_params.map_classes"),
+      declare_parameter<std::vector<std::string>>("model_params.map_class_names"),
       declare_parameter<std::vector<double>>("interface_params.map_colors")
     ),
     front_camera_id_(declare_parameter<int32_t>("sync_params.front_camera_id")),
     trajectory_timestep_(declare_parameter<double>("interface_params.trajectory_timestep")),
     vad_input_topic_data_current_frame_(num_cameras_)
 {
+  // Declare additional parameters that will be used in load_vad_config
+  declare_parameter<std::vector<std::string>>("model_params.object_class_names");
+  declare_parameter<std::vector<double>>("model_params.map_confidence_thresholds");
+  declare_parameter<std::vector<double>>("model_params.object_confidence_thresholds");
   // Publishers
   trajectory_publisher_ =
       this->create_publisher<autoware_planning_msgs::msg::Trajectory>(
@@ -287,32 +291,32 @@ VadConfig VadNode::load_vad_config()
     vad_config.detection_range.push_back(static_cast<float>(val));
   }
 
-  auto map_classes = this->get_parameter("model_params.map_classes").as_string_array();
-  auto map_thresholds = this->declare_parameter<std::vector<double>>("model_params.map_confidence_thresholds");
-  
-  if (map_classes.size() != map_thresholds.size()) {
-    RCLCPP_ERROR(this->get_logger(), "map_classes and map_confidence_thresholds must have the same size");
+  auto map_class_names = this->get_parameter("model_params.map_class_names").as_string_array();
+  auto map_thresholds = this->get_parameter("model_params.map_confidence_thresholds").as_double_array();
+
+  if (map_class_names.size() != map_thresholds.size()) {
+    RCLCPP_ERROR(this->get_logger(), "map_class_names and map_confidence_thresholds must have the same size");
   }
-  vad_config.map_class_names = map_classes;
-  vad_config.map_num_classes = static_cast<int32_t>(map_classes.size());
-  
+  vad_config.map_class_names = map_class_names;
+  vad_config.map_num_classes = static_cast<int32_t>(map_class_names.size());
+
   vad_config.map_confidence_thresholds.clear();
-  for (size_t i = 0; i < map_classes.size(); ++i) {
-    vad_config.map_confidence_thresholds[map_classes[i]] = static_cast<float>(map_thresholds[i]);
+  for (size_t i = 0; i < map_class_names.size(); ++i) {
+    vad_config.map_confidence_thresholds[map_class_names[i]] = static_cast<float>(map_thresholds[i]);
   }
   
   // Load object classes and confidence thresholds
-  auto object_classes = this->declare_parameter<std::vector<std::string>>("model_params.object_classes");
-  auto object_thresholds = this->declare_parameter<std::vector<double>>("model_params.object_confidence_thresholds");
-  
-  if (object_classes.size() != object_thresholds.size()) {
-    RCLCPP_ERROR(this->get_logger(), "object_classes and object_confidence_thresholds must have the same size");
+  auto object_class_names = this->get_parameter("model_params.object_class_names").as_string_array();
+  auto object_thresholds = this->get_parameter("model_params.object_confidence_thresholds").as_double_array();
+
+  if (object_class_names.size() != object_thresholds.size()) {
+    RCLCPP_ERROR(this->get_logger(), "object_class_names and object_confidence_thresholds must have the same size");
   }
-  vad_config.bbox_class_names = object_classes;
-  
+  vad_config.bbox_class_names = object_class_names;
+
   vad_config.object_confidence_thresholds.clear();
-  for (size_t i = 0; i < object_classes.size(); ++i) {
-    vad_config.object_confidence_thresholds[object_classes[i]] = static_cast<float>(object_thresholds[i]);
+  for (size_t i = 0; i < object_class_names.size(); ++i) {
+    vad_config.object_confidence_thresholds[object_class_names[i]] = static_cast<float>(object_thresholds[i]);
   }
   
   vad_config.can_bus_dim = this->declare_parameter<int32_t>("model_params.network_io_params.can_bus_dim");
