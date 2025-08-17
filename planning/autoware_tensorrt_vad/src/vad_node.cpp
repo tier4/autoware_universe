@@ -301,17 +301,19 @@ VadConfig VadNode::load_vad_config()
     vad_config.map_confidence_thresholds[map_classes[i]] = static_cast<float>(map_thresholds[i]);
   }
   
-  // Load object confidence thresholds by class
-  vad_config.object_confidence_thresholds["car"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.car");
-  vad_config.object_confidence_thresholds["truck"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.truck");
-  vad_config.object_confidence_thresholds["construction_vehicle"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.construction_vehicle");
-  vad_config.object_confidence_thresholds["bus"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.bus");
-  vad_config.object_confidence_thresholds["trailer"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.trailer");
-  vad_config.object_confidence_thresholds["barrier"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.barrier");
-  vad_config.object_confidence_thresholds["motorcycle"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.motorcycle");
-  vad_config.object_confidence_thresholds["bicycle"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.bicycle");
-  vad_config.object_confidence_thresholds["pedestrian"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.pedestrian");
-  vad_config.object_confidence_thresholds["traffic_cone"] = this->declare_parameter<float>("model_params.object_confidence_thresholds.traffic_cone");
+  // Load object classes and confidence thresholds
+  auto object_classes = this->declare_parameter<std::vector<std::string>>("model_params.object_classes");
+  auto object_thresholds = this->declare_parameter<std::vector<double>>("model_params.object_confidence_thresholds");
+  
+  if (object_classes.size() != object_thresholds.size()) {
+    RCLCPP_ERROR(this->get_logger(), "object_classes and object_confidence_thresholds must have the same size");
+  }
+  vad_config.bbox_class_names = object_classes;
+  
+  vad_config.object_confidence_thresholds.clear();
+  for (size_t i = 0; i < object_classes.size(); ++i) {
+    vad_config.object_confidence_thresholds[object_classes[i]] = static_cast<float>(object_thresholds[i]);
+  }
   
   vad_config.can_bus_dim = this->declare_parameter<int32_t>("model_params.network_io_params.can_bus_dim");
   vad_config.plugins_path = this->declare_parameter<std::string>("model_params.plugins_path");

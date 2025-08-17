@@ -56,6 +56,7 @@ struct VadConfig
   std::map<std::string, float> map_confidence_thresholds;
   std::map<std::string, float> object_confidence_thresholds;
   std::vector<std::string> map_class_names;
+  std::vector<std::string> bbox_class_names;
   int32_t map_num_classes;
   std::string plugins_path;
   std::vector<NetConfig> nets_config;

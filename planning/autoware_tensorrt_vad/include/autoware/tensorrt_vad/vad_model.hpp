@@ -137,23 +137,23 @@ std::vector<MapPolyline> postprocess_map_preds(
     const VadConfig& vad_config);
 
 // Helper functions for trajectory prediction processing
-std::vector<std::vector<float>> postprocess_class_scores(const std::vector<float>& all_cls_scores_flat);
+std::vector<std::vector<float>> postprocess_class_scores(const std::vector<float>& all_cls_scores_flat, const VadConfig& vad_config);
 
 std::vector<std::vector<std::vector<std::vector<float>>>> postprocess_traj_preds(
-    const std::vector<float>& all_traj_preds_flat);
+    const std::vector<float>& all_traj_preds_flat, const VadConfig& vad_config);
 
 std::vector<std::vector<float>> postprocess_traj_cls_scores(
-    const std::vector<float>& all_traj_cls_scores_flat);
+    const std::vector<float>& all_traj_cls_scores_flat, const VadConfig& vad_config);
 
 std::vector<std::vector<float>> postprocess_bbox_preds(
-    const std::vector<float>& all_bbox_preds_flat);
+    const std::vector<float>& all_bbox_preds_flat, const VadConfig& vad_config);
 
 std::vector<BBox> postprocess_bboxes(
     const std::vector<float>& all_cls_scores_flat,
     const std::vector<float>& all_traj_preds_flat,
     const std::vector<float>& all_traj_cls_scores_flat,
     const std::vector<float>& all_bbox_preds_flat,
-    const std::map<std::string, float>& object_confidence_thresholds);
+    const VadConfig& vad_config);
 
 // Helper function to parse external input configuration
 inline std::pair<std::string, std::string> parse_external_inputs(const std::pair<std::string, std::map<std::string, std::string>>& input_pair) {
@@ -350,7 +350,7 @@ private:
 
     // Process detected objects using postprocess_bboxes and apply confidence thresholding
     auto filtered_bboxes = postprocess_bboxes(
-        all_cls_scores_flat, all_traj_preds_flat, all_traj_cls_scores_flat, all_bbox_preds_flat, vad_config_.object_confidence_thresholds);
+        all_cls_scores_flat, all_traj_preds_flat, all_traj_cls_scores_flat, all_bbox_preds_flat, vad_config_);
 
     std::vector<MapPolyline> map_polylines = postprocess_map_preds(
         map_all_cls_preds_flat, map_all_pts_preds_flat, vad_config_);

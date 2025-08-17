@@ -11,17 +11,8 @@
       default_command: 2  # 0: TURN RIGHT, 1: TURN LEFT, 2: KEEP FORWARD
       map_classes: ["divider", "ped_crossing", "boundary"]
       map_confidence_thresholds: [0.9, 0.9, 0.9]
-      object_confidence_thresholds:
-        car: 0.5
-        truck: 0.5
-        construction_vehicle: 0.9
-        bus: 0.5
-        trailer: 0.5
-        barrier: 0.5
-        motorcycle: 0.5
-        bicycle: 0.5
-        pedestrian: 0.9
-        traffic_cone: 0.5
+      object_classes: ["car", "truck", "construction_vehicle", "bus", "trailer", "barrier", "motorcycle", "bicycle", "pedestrian", "traffic_cone"]
+      object_confidence_thresholds: [0.5, 0.5, 0.9, 0.5, 0.5, 0.5, 0.5, 0.5, 0.9, 0.5]
     sync_params:
       front_camera_id: 0  # ID of the front camera (anchor camera) for synchronization
       sync_tolerance_ms: 100.0  # Synchronization tolerance in milliseconds
