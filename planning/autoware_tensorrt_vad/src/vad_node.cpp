@@ -82,16 +82,18 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
       declare_parameter<std::vector<double>>("interface_params.vad2base"),
       declare_parameter<std::vector<int64_t>>("interface_params.autoware_to_vad_camera_mapping"),
       declare_parameter<std::vector<std::string>>("model_params.map_class_names"),
-      declare_parameter<std::vector<double>>("interface_params.map_colors")
+      declare_parameter<std::vector<double>>("interface_params.map_colors"),
+      declare_parameter<std::vector<std::string>>("class_mapping"),
+      declare_parameter<std::vector<std::string>>("model_params.object_class_names")
     ),
     front_camera_id_(declare_parameter<int32_t>("sync_params.front_camera_id")),
     trajectory_timestep_(declare_parameter<double>("interface_params.trajectory_timestep")),
     vad_input_topic_data_current_frame_(num_cameras_)
 {
   // Declare additional parameters that will be used in load_vad_config
-  declare_parameter<std::vector<std::string>>("model_params.object_class_names");
   declare_parameter<std::vector<double>>("model_params.map_confidence_thresholds");
   declare_parameter<std::vector<double>>("model_params.object_confidence_thresholds");
+  
   // Publishers
   trajectory_publisher_ =
       this->create_publisher<autoware_planning_msgs::msg::Trajectory>(

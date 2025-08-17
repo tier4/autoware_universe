@@ -195,6 +195,8 @@ private:
   Eigen::Matrix4f base2vad_;
   std::unordered_map<int32_t, int32_t> autoware_to_vad_camera_mapping_;
   std::map<std::string, std::array<float, 3>> map_colors_;  // Map type to RGB color
+  std::vector<std::string> class_mapping_;  // VAD class index to Autoware class name mapping (array index = VAD class index)
+  std::vector<std::string> bbox_class_names_;  // Object class names from VAD model
   
   // Current longitudinal velocity for trajectory initial point
   float current_longitudinal_velocity_mps_;

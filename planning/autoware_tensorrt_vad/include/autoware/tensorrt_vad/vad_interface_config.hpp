@@ -32,6 +32,8 @@ public:
   Eigen::Matrix4f base2vad;
   std::unordered_map<int32_t, int32_t> autoware_to_vad_camera_mapping;
   std::map<std::string, std::array<float, 3>> map_colors;  // Map type to RGB color
+  std::vector<std::string> class_mapping;  // VAD class index to Autoware class name mapping (array index = VAD class index)
+  std::vector<std::string> bbox_class_names;  // Object class names from VAD model
 
   // NOTE: double and int64_t are used because ROS 2's declare_parameter cannot accept std::vector<float> or std::vector<int32_t>
   VadInterfaceConfig(
@@ -48,7 +50,9 @@ public:
     const std::vector<double>& vad2base_,
     const std::vector<int64_t>& autoware_to_vad_camera_mapping_,
     const std::vector<std::string>& map_classes_,
-    const std::vector<double>& map_colors_)
+    const std::vector<double>& map_colors_,
+    const std::vector<std::string>& class_mapping_,
+    const std::vector<std::string>& bbox_class_names_)
     : input_image_width(input_image_width_),
       input_image_height(input_image_height_),
       target_image_width(target_image_width_),
@@ -56,7 +60,9 @@ public:
       bev_h(bev_h_),
       bev_w(bev_w_),
       default_patch_angle(static_cast<float>(default_patch_angle_)),
-      default_command(default_command_)
+      default_command(default_command_),
+      class_mapping(class_mapping_),
+      bbox_class_names(bbox_class_names_)
   {
     // detection_range: 6 elements
     for (int i = 0; i < 6; ++i) {

@@ -24,6 +24,8 @@ VadInterface::VadInterface(const VadInterfaceConfig& config, std::shared_ptr<tf2
     vad2base_(config.vad2base),
     base2vad_(config.base2vad),
     map_colors_(config.map_colors),
+    class_mapping_(config.class_mapping),
+    bbox_class_names_(config.bbox_class_names),
     current_longitudinal_velocity_mps_(0.0f),
     prev_can_bus_(config.default_can_bus)
 {
@@ -665,10 +667,6 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
   predicted_objects.header.frame_id = "map";
   
   // Object class name mapping
-  const std::vector<std::string> class_names = {
-    "car", "truck", "construction_vehicle", "bus", "trailer", 
-    "barrier", "motorcycle", "bicycle", "pedestrian", "traffic_cone"
-  };
   for (const auto& bbox : bboxes) {
     autoware_perception_msgs::msg::PredictedObject predicted_object;
     
@@ -680,19 +678,22 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
     
     // Set classification
     autoware_perception_msgs::msg::ObjectClassification classification;
-    if (bbox.object_class >= 0 && bbox.object_class < static_cast<int32_t>(class_names.size())) {
-      // Map class name to Autoware standard values
-      if (class_names[bbox.object_class] == "car") {
+    if (bbox.object_class >= 0 && bbox.object_class < static_cast<int32_t>(class_mapping_.size())) {
+      // Get Autoware class name from class mapping array using VAD class index
+      const std::string& autoware_class_name = class_mapping_[bbox.object_class];
+      
+      // Convert string to Autoware ObjectClassification enum
+      if (autoware_class_name == "CAR") {
         classification.label = autoware_perception_msgs::msg::ObjectClassification::CAR;
-      } else if (class_names[bbox.object_class] == "truck" || class_names[bbox.object_class] == "trailer") {
+      } else if (autoware_class_name == "TRUCK") {
         classification.label = autoware_perception_msgs::msg::ObjectClassification::TRUCK;
-      } else if (class_names[bbox.object_class] == "bus") {
+      } else if (autoware_class_name == "BUS") {
         classification.label = autoware_perception_msgs::msg::ObjectClassification::BUS;
-      } else if (class_names[bbox.object_class] == "bicycle") {
+      } else if (autoware_class_name == "BICYCLE") {
         classification.label = autoware_perception_msgs::msg::ObjectClassification::BICYCLE;
-      } else if (class_names[bbox.object_class] == "motorcycle") {
+      } else if (autoware_class_name == "MOTORCYCLE") {
         classification.label = autoware_perception_msgs::msg::ObjectClassification::MOTORCYCLE;
-      } else if (class_names[bbox.object_class] == "pedestrian") {
+      } else if (autoware_class_name == "PEDESTRIAN") {
         classification.label = autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN;
       } else {
         classification.label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
