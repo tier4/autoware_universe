@@ -42,6 +42,7 @@
   <depend>rclcpp_components</depend>
   <depend>std_msgs</depend>
   <depend>visualization_msgs</depend>
+  <depend>rosbag2_cpp</depend>
 
   <exec_depend>autoware_tensorrt_plugins</exec_depend>
 
