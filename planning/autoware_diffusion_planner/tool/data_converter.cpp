@@ -620,6 +620,34 @@ int main(int argc, char ** argv)
     sequence.data_list.push_back(frame_data);
   }
 
+  // Because FreeSpacePlanner sometimes changes goal_pose at the end, combine such things.
+  for (int64_t i = static_cast<int64_t>(sequences.size()) - 2; i >= 0; --i) {
+    const LaneletRoute & route_msg_l = sequences[i].route;
+    const LaneletRoute & route_msg_r = sequences[i + 1].route;
+
+    if (route_msg_l.start_pose != route_msg_r.start_pose) {
+      std::cout << "Route start pose mismatch: " << i << " != " << i + 1 << std::endl;
+      continue;
+    }
+
+    std::cout << "Concatenate sequence " << i << " and " << i + 1 << std::endl;
+    std::cout << "Before sequence[" << i << "].data_list.size()=" << sequences[i].data_list.size()
+              << " frames" << std::endl;
+
+    sequences[i].data_list.insert(
+      sequences[i].data_list.end(), sequences[i + 1].data_list.begin(),
+      sequences[i + 1].data_list.end());
+
+    std::cout << "After sequence[" << i << "].data_list.size()=" << sequences[i].data_list.size()
+              << " frames" << std::endl;
+
+    sequences.erase(sequences.begin() + i + 1);
+  }
+
+  const std::string map_name = std::filesystem::path(rosbag_path).stem();
+  const int64_t sequence_num = static_cast<int64_t>(sequences.size());
+  std::cout << "Total " << sequence_num << " sequences" << std::endl;
+
   // Process sequences
   for (int64_t seq_id = 0; seq_id < static_cast<int64_t>(sequences.size()); ++seq_id) {
     SequenceData & seq = sequences[seq_id];
