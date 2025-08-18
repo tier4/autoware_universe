@@ -84,6 +84,10 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
   noise_cloud_pub_ =
     std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
       *this, "~/debug/pointcloud_noise");
+
+  using std::placeholders::_1;
+  set_param_res_ = this->add_on_set_parameters_callback(
+    [this](const std::vector<rclcpp::Parameter> & p) { return param_callback(p); });
 }
 
 void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
