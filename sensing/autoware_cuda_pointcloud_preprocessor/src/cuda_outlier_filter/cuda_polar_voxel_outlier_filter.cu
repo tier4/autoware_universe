@@ -364,7 +364,7 @@ __global__ void point_validity_check_kernel(
   const ::cuda::std::optional<int> * __restrict__ point_indices,
   const int * __restrict__ voxel_indices, const bool * __restrict__ is_primary_returns,
   const bool * __restrict__ is_secondary_returns, const size_t num_points, const int num_voxels,
-  const bool filter_secondary_returns, bool * __restrict__ valid_points)
+  const bool filter_secondary_returns, bool * __restrict__ valid_points_mask)
 {
   size_t array_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (array_index >= num_points) {
@@ -380,7 +380,7 @@ __global__ void point_validity_check_kernel(
   auto voxel_index = voxel_indices[array_index];
   if (voxel_index < 0 || num_voxels <= voxel_index) {  // Invalid voxel index means this point is
                                                        // invalid
-    valid_points[point_index.value()] = false;
+    valid_points_mask[point_index.value()] = false;
   }
 
   // Voxel is kept if BOTH criteria are met
@@ -388,16 +388,17 @@ __global__ void point_validity_check_kernel(
     primary_meets_threshold[voxel_index] && secondary_meets_threshold[voxel_index];
 
   // Add primary returns
-  valid_points[point_index.value()] = (meet_criteria) && (is_primary_returns[point_index.value()]);
+  valid_points_mask[point_index.value()] =
+    (meet_criteria) && (is_primary_returns[point_index.value()]);
 
   // Add secondary returns only if not filtering them
   if (!filter_secondary_returns && is_secondary_returns[point_index.value()]) {
-    valid_points[point_index.value()] = meet_criteria;
+    valid_points_mask[point_index.value()] = meet_criteria;
   }
 }
 
 __global__ void copy_valid_points_kernel(
-  const uint8_t * __restrict__ input_cloud, const bool * __restrict__ valid_points,
+  const uint8_t * __restrict__ input_cloud, const bool * __restrict__ valid_points_mask,
   const int * __restrict__ filtered_indices, const size_t num_points, const size_t step,
   uint8_t * __restrict__ output_points)
 {
@@ -406,7 +407,7 @@ __global__ void copy_valid_points_kernel(
     return;
   }
 
-  bool is_valid = valid_points[point_index];
+  bool is_valid = valid_points_mask[point_index];
   int destination_index = filtered_indices[point_index];
 
   if (is_valid) {
@@ -559,7 +560,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   }
 
   // Collect valid point indices and visibility statistics
-  auto valid_points = autoware::cuda_utils::make_unique<bool>(num_points, stream_, mem_pool_);
+  auto valid_points_mask = autoware::cuda_utils::make_unique<bool>(num_points, stream_, mem_pool_);
   auto primary_meets_threshold =
     autoware::cuda_utils::make_unique<bool>(num_total_voxels, stream_, mem_pool_);
   auto secondary_meets_threshold =
@@ -581,7 +582,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     point_validity_check_kernel<<<grid_dim, block_dim, 0, stream_>>>(
       primary_meets_threshold.get(), secondary_meets_threshold.get(), point_indices.get(),
       voxel_indices.get(), is_primary_returns.get(), is_secondary_returns.get(), num_points,
-      num_total_voxels, params.filter_secondary_returns, valid_points.get());
+      num_total_voxels, params.filter_secondary_returns, valid_points_mask.get());
   }
 
   // Create filtered output
@@ -590,7 +591,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   auto filtered_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   {
     std::tie(filtered_indices, valid_count) =
-      calculate_filtered_point_indices(valid_points, num_points);
+      calculate_filtered_point_indices(valid_points_mask, num_points);
 
     filtered_cloud->header = input_cloud->header;
     filtered_cloud->fields = input_cloud->fields;
@@ -606,7 +607,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x);
 
     copy_valid_points_kernel<<<grid_dim, block_dim, 0, stream_>>>(
-      input_cloud->data.get(), valid_points.get(), filtered_indices.get(), num_points,
+      input_cloud->data.get(), valid_points_mask.get(), filtered_indices.get(), num_points,
       filtered_cloud->point_step, filtered_cloud->data.get());
   }
 
@@ -619,10 +620,10 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     dim3 block_dim(512);
     dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x);
 
-    bool_flip_kernel<<<grid_dim, block_dim, 0, stream_>>>(valid_points.get(), num_points);
+    bool_flip_kernel<<<grid_dim, block_dim, 0, stream_>>>(valid_points_mask.get(), num_points);
 
     std::tie(noise_indices, invalid_count) =
-      calculate_filtered_point_indices(valid_points, num_points);
+      calculate_filtered_point_indices(valid_points_mask, num_points);
 
     noise_cloud->header = input_cloud->header;
     noise_cloud->fields = input_cloud->fields;
@@ -635,7 +636,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     noise_cloud->data = cuda_blackboard::make_unique<std::uint8_t[]>(noise_cloud->row_step);
 
     copy_valid_points_kernel<<<grid_dim, block_dim, 0, stream_>>>(
-      input_cloud->data.get(), valid_points.get(), noise_indices.get(), num_points,
+      input_cloud->data.get(), valid_points_mask.get(), noise_indices.get(), num_points,
       noise_cloud->point_step, noise_cloud->data.get());
   }
 
@@ -800,9 +801,9 @@ CudaPolarVoxelOutlierFilter::calculate_voxel_index(
 
 std::tuple<CudaPooledUniquePtr<int>, size_t>
 CudaPolarVoxelOutlierFilter::calculate_filtered_point_indices(
-  const CudaPooledUniquePtr<bool> & valid_points, const size_t & num_points)
+  const CudaPooledUniquePtr<bool> & valid_points_mask, const size_t & num_points)
 {
-  // Scan valid_points to calculate the total number of filtered points and map from the source
+  // Scan valid_points_mask to calculate the total number of filtered points and map from the source
   // point index to filtered point index
   auto filtered_point_indices =
     autoware::cuda_utils::make_unique<int>(num_points, stream_, mem_pool_);
@@ -811,7 +812,7 @@ CudaPolarVoxelOutlierFilter::calculate_filtered_point_indices(
     return cub::DeviceScan::InclusiveSum(std::forward<decltype(args)>(args)...);
   };
   cub_executor_.run_with_temp_storage(
-    inclusive_scan, stream_, mem_pool_, valid_points.get(), filtered_point_indices.get(),
+    inclusive_scan, stream_, mem_pool_, valid_points_mask.get(), filtered_point_indices.get(),
     num_points, stream_);
 
   int num_filtered_points = 0;
