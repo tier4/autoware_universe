@@ -329,7 +329,8 @@ void save_npz_data(
   const std::vector<float> & ego_current, const std::vector<float> & ego_future,
   const std::vector<float> & neighbor_past, const std::vector<float> & neighbor_future,
   const std::vector<float> & static_objects, const std::vector<float> & lanes,
-  const std::vector<float> & route_lanes, const int64_t turn_indicator)
+  const std::vector<float> & lanes_speed_limit, const std::vector<float> & route_lanes,
+  const std::vector<float> & route_lanes_speed_limit, const int64_t turn_indicator)
 {
   namespace fs = std::filesystem;
 
@@ -375,10 +376,21 @@ void save_npz_data(
     static_cast<int>(LANE_NUM), static_cast<int>(LANE_LEN), static_cast<int>(SEGMENT_POINT_DIM)};
   aoba::SaveArrayAsNumpy(base_filename + "_lanes.npy", 3, lanes_shape, lanes.data());
 
+  // lanes_speed_limit (70, 20)
+  const int lanes_speed_shape[] = {static_cast<int>(LANE_NUM), static_cast<int>(LANE_LEN)};
+  aoba::SaveArrayAsNumpy(
+    base_filename + "_lanes_speed_limit.npy", 2, lanes_speed_shape, lanes_speed_limit.data());
+
   // route_lanes (25, 20, SEGMENT_POINT_DIM)
   const int route_shape[] = {
     static_cast<int>(ROUTE_NUM), static_cast<int>(ROUTE_LEN), static_cast<int>(SEGMENT_POINT_DIM)};
   aoba::SaveArrayAsNumpy(base_filename + "_route_lanes.npy", 3, route_shape, route_lanes.data());
+
+  // route_lanes_speed_limit (25, 20)
+  const int route_speed_shape[] = {static_cast<int>(ROUTE_NUM), static_cast<int>(ROUTE_LEN)};
+  aoba::SaveArrayAsNumpy(
+    base_filename + "_route_lanes_speed_limit.npy", 2, route_speed_shape,
+    route_lanes_speed_limit.data());
 
   // turn_indicator (1,)
   const int turn_shape[] = {1};
@@ -607,7 +619,8 @@ int main(int argc, char ** argv)
       // Save data
       save_npz_data(
         save_dir, token, ego_past, ego_current, ego_future, neighbor_past, neighbor_future,
-        static_objects, lanes, route_lanes, turn_indicator);
+        static_objects, lanes, lanes_speed_limit, route_lanes, route_lanes_speed_limit,
+        turn_indicator);
 
       if (i % 100 == 0) {
         std::cout << "Processed frame " << i << "/" << n << std::endl;
