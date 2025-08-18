@@ -76,13 +76,13 @@ private:
    * Statistics are efficiently collected during main filtering loop (single-pass optimization).
    * Only published when return type classification is enabled for PointXYZIRCAEDT input.
    */
-  void onVisibilityChecker(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  void on_visibility_check(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   /** \brief Diagnostics callback for filter ratio validation
    * Filter ratio represents the ratio of output points to input points.
    * Always published for both PointXYZ and PointXYZIRCAEDT input formats.
    */
-  void onFilterRatioChecker(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  void on_filter_ratio_check(diagnostic_updater::DiagnosticStatusWrapper & stat);
 };
 
 }  // namespace autoware::cuda_pointcloud_preprocessor

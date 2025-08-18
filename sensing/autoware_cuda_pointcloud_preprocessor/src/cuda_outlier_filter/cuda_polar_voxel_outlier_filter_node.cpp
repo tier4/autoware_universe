@@ -59,10 +59,10 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
   updater_.setHardwareID(diagnostics_hardware_id);
   updater_.add(
     std::string(this->get_namespace()) + ": visibility_validation", this,
-    &CudaPolarVoxelOutlierFilterNode::onVisibilityChecker);
+    &CudaPolarVoxelOutlierFilterNode::on_visibility_check);
   updater_.add(
     std::string(this->get_namespace()) + ": filter_ratio_validation", this,
-    &CudaPolarVoxelOutlierFilterNode::onFilterRatioChecker);
+    &CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check);
   updater_.setPeriod(0.1);
 
   // Create visibility publisher
@@ -224,7 +224,7 @@ rcl_interfaces::msg::SetParametersResult CudaPolarVoxelOutlierFilterNode::param_
   return result;
 }
 
-void CudaPolarVoxelOutlierFilterNode::onVisibilityChecker(
+void CudaPolarVoxelOutlierFilterNode::on_visibility_check(
   diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   // Take mutex so that node configuration will not be
@@ -253,7 +253,7 @@ void CudaPolarVoxelOutlierFilterNode::onVisibilityChecker(
   stat.summary(level, msg);
 }
 
-void CudaPolarVoxelOutlierFilterNode::onFilterRatioChecker(
+void CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check(
   diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   // Take mutex so that node configuration will not be
