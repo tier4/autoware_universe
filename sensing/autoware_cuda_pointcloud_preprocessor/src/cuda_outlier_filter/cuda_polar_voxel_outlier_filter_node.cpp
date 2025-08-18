@@ -54,8 +54,6 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
     declare_parameter<std::string>("hardware_id", "cuda_polar_voxel_outlier_filter");
 
   // Initialize diagnostics
-  visibility_ = -1.0;
-  filter_ratio_ = -1.0;
   updater_.setHardwareID(diagnostics_hardware_id);
   updater_.add(
     std::string(this->get_namespace()) + ": visibility_validation", this,
@@ -131,15 +129,17 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   filtered_cloud_pub_->publish(std::move(filtered_cloud));
   noise_cloud_pub_->publish(std::move(noise_cloud));
 
-  autoware_internal_debug_msgs::msg::Float32Stamped ratio_msg;
-  ratio_msg.data = static_cast<float>(filter_ratio_);
-  ratio_msg.stamp = now();
-  ratio_pub_->publish(ratio_msg);
+  if (ratio_pub_) {
+    autoware_internal_debug_msgs::msg::Float32Stamped ratio_msg;
+    ratio_msg.data = static_cast<float>(filter_ratio_.value_or(0.0));
+    ratio_msg.stamp = this->now();
+    ratio_pub_->publish(ratio_msg);
+  }
 
-  if (filter_params_.use_return_type_classification) {
+  if (visibility_pub_ && visibility_.has_value()) {
     autoware_internal_debug_msgs::msg::Float32Stamped visibility_msg;
-    visibility_msg.data = static_cast<float>(visibility_);
-    visibility_msg.stamp = now();
+    visibility_msg.data = static_cast<float>(visibility_.value());
+    visibility_msg.stamp = this->now();
     visibility_pub_->publish(visibility_msg);
   }
 }
@@ -233,24 +233,36 @@ void CudaPolarVoxelOutlierFilterNode::on_visibility_check(
 
   using diagnostic_msgs::msg::DiagnosticStatus;
 
-  // Add values
-  stat.add("value", std::to_string(visibility_));
-
-  auto level = DiagnosticStatus::OK;
-  std::string msg = "OK";
-  if (visibility_ < 0) {
-    level = DiagnosticStatus::STALE;
-    msg = "STALE";
-  } else if (visibility_ < filter_params_.visibility_error_threshold) {
-    level = DiagnosticStatus::ERROR;
-    msg =
-      "ERROR: critically low LiDAR visibility detected while filtering outliers in polar voxel "
-      "filter";
-  } else if (visibility_ < filter_params_.visibility_warn_threshold) {
-    level = DiagnosticStatus::WARN;
-    msg = "WARNING: low LiDAR visibility detected while filtering outliers in polar voxel filter";
+  if (!visibility_.has_value()) {
+    stat.summary(DiagnosticStatus::OK, "Visibility check disabled");
+    stat.add("visibility", "N/A (return type classification disabled)");
+    return;
   }
-  stat.summary(level, msg);
+
+  double visibility_value = visibility_.value();
+  stat.add("visibility", std::to_string(visibility_value));
+  stat.add(
+    "visibility_estimation_max_range_m",
+    std::to_string(filter_params_.visibility_estimation_max_range_m));
+  stat.add("visibility_error_threshold", std::to_string(filter_params_.visibility_error_threshold));
+  stat.add("visibility_warn_threshold", std::to_string(filter_params_.visibility_warn_threshold));
+
+  if (visibility_value < filter_params_.visibility_error_threshold) {
+    stat.summary(
+      DiagnosticStatus::ERROR, "Visibility is critically low within " +
+                                 std::to_string(filter_params_.visibility_estimation_max_range_m) +
+                                 "m range");
+  } else if (visibility_value < filter_params_.visibility_warn_threshold) {
+    stat.summary(
+      DiagnosticStatus::WARN, "Visibility is low within " +
+                                std::to_string(filter_params_.visibility_estimation_max_range_m) +
+                                "m range");
+  } else {
+    stat.summary(
+      DiagnosticStatus::OK, "Visibility is normal within " +
+                              std::to_string(filter_params_.visibility_estimation_max_range_m) +
+                              "m range");
+  }
 }
 
 void CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check(
@@ -262,22 +274,26 @@ void CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check(
 
   using diagnostic_msgs::msg::DiagnosticStatus;
 
-  // Add values
-  stat.add("value", std::to_string(filter_ratio_));
-
-  auto level = DiagnosticStatus::OK;
-  std::string msg = "OK";
-  if (filter_ratio_ < 0) {
-    level = DiagnosticStatus::STALE;
-    msg = "STALE";
-  } else if (filter_ratio_ < filter_params_.filter_ratio_error_threshold) {
-    level = DiagnosticStatus::ERROR;
-    msg = "ERROR: critically low filter ratio in polar voxel outlier filter";
-  } else if (filter_ratio_ < filter_params_.filter_ratio_warn_threshold) {
-    level = DiagnosticStatus::WARN;
-    msg = "WARNING: low filter ratio in polar voxel outlier filter";
+  if (!filter_ratio_.has_value()) {
+    stat.summary(DiagnosticStatus::WARN, "No filter ratio data");
+    stat.add("filter_ratio", "N/A");
+    return;
   }
-  stat.summary(level, msg);
+
+  // Add values
+  double ratio_value = filter_ratio_.value();
+  stat.add("filter_ratio", ratio_value);
+  stat.add("filter_ratio_error_threshold", filter_params_.filter_ratio_error_threshold);
+  stat.add("filter_ratio_warn_threshold", filter_params_.filter_ratio_warn_threshold);
+
+  if (ratio_value < filter_params_.filter_ratio_error_threshold) {
+    stat.summary(
+      DiagnosticStatus::ERROR, "Filter ratio is critically low - too many points filtered");
+  } else if (ratio_value < filter_params_.filter_ratio_warn_threshold) {
+    stat.summary(DiagnosticStatus::WARN, "Filter ratio is low - many points filtered");
+  } else {
+    stat.summary(DiagnosticStatus::OK, "Filter ratio is normal");
+  }
 }
 
 }  // namespace autoware::cuda_pointcloud_preprocessor

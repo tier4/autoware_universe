@@ -53,9 +53,9 @@ private:
   std::mutex param_mutex_;
 
   // Diagnostics members
-  double visibility_;    // Current visibility value
-  double filter_ratio_;  // Current filter ratio
   diagnostic_updater::Updater updater_{this};
+  std::optional<double> visibility_;    // Current visibility value
+  std::optional<double> filter_ratio_;  // Current filter ratio
 
   // CUDA sub
   std::shared_ptr<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>
