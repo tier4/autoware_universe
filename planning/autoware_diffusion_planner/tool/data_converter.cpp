@@ -73,6 +73,7 @@ struct FrameData
   TrackedObjects tracked_objects;
   Odometry kinematic_state;
   AccelWithCovarianceStamped acceleration;
+  TrafficLightGroupArray traffic_signals;
   TurnIndicatorsReport turn_indicator;
 };
 
@@ -104,7 +105,8 @@ T get_nearest_msg(const std::deque<T> & msgs, const builtin_interfaces::msg::Tim
       std::is_same_v<T, Odometry> || std::is_same_v<T, TrackedObjects> ||
       std::is_same_v<T, AccelWithCovarianceStamped>) {
       msg_stamp = msg.header.stamp;
-    } else if constexpr (std::is_same_v<T, TurnIndicatorsReport>) {
+    } else if constexpr (
+      std::is_same_v<T, TurnIndicatorsReport> || std::is_same_v<T, TrafficLightGroupArray>) {
       msg_stamp = msg.stamp;
     }
 
@@ -522,6 +524,8 @@ int main(int argc, char ** argv)
     // Find matching messages
     const Odometry kinematic = get_nearest_msg(kinematic_states, tracking.header.stamp);
     const AccelWithCovarianceStamped accel = get_nearest_msg(accelerations, tracking.header.stamp);
+    const TrafficLightGroupArray traffic_signal =
+      get_nearest_msg(traffic_signals, tracking.header.stamp);
     const TurnIndicatorsReport turn_ind = get_nearest_msg(turn_indicators, tracking.header.stamp);
 
     const FrameData frame_data{
@@ -530,6 +534,7 @@ int main(int argc, char ** argv)
       tracking,
       kinematic,
       accel,
+      traffic_signal,
       turn_ind};
 
     sequences[0].data_list.push_back(frame_data);
@@ -576,24 +581,13 @@ int main(int argc, char ** argv)
       const float center_x = ego_pos.x;
       const float center_y = ego_pos.y;
 
-      // Process traffic signals for this frame
+      // Process traffic signals for this frame using the traffic signals from FrameData
       std::map<lanelet::Id, preprocess::TrafficSignalStamped> traffic_light_id_map;
-
-      // Find and process traffic signals near this timestamp
       const auto current_stamp = seq.data_list[i].tracked_objects.header.stamp;
       const rclcpp::Time current_time(current_stamp);
 
-      for (const auto & traffic_signal_msg : traffic_signals) {
-        // Check if this traffic signal is within a reasonable time window
-        const rclcpp::Time signal_time(traffic_signal_msg.stamp);
-        const double time_diff = std::abs((current_time - signal_time).seconds());
-
-        if (time_diff < 1.0) {  // Within 1 second
-          auto msg_ptr = std::make_shared<TrafficLightGroupArray>(traffic_signal_msg);
-          preprocess::process_traffic_signals(
-            msg_ptr, traffic_light_id_map, current_time, 5.0, true);
-        }
-      }
+      auto msg_ptr = std::make_shared<TrafficLightGroupArray>(seq.data_list[i].traffic_signals);
+      preprocess::process_traffic_signals(msg_ptr, traffic_light_id_map, current_time, 5.0, true);
 
       // Get lanes data with speed limits
       const auto [lanes, lanes_speed_limit] = lane_segment_context.get_lane_segments(
