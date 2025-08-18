@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/conversion/ego.hpp"
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
@@ -22,6 +23,7 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <autoware/route_handler/route_handler.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -324,10 +326,9 @@ std::vector<float> process_neighbor_future(
 
 std::vector<float> process_lanes(
   const preprocess::LaneSegmentContext & lane_segment_context, const Point & ego_position,
-  const Eigen::Matrix4f & map2bl_matrix)
+  const Eigen::Matrix4f & map2bl_matrix,
+  const std::map<lanelet::Id, preprocess::TrafficSignalStamped> & traffic_light_id_map)
 {
-  const std::map<lanelet::Id, preprocess::TrafficSignalStamped>
-    traffic_light_id_map;  // Empty for now
   const float center_x = ego_position.x;
   const float center_y = ego_position.y;
   const auto [lanes_data, lanes_speed_limit] = lane_segment_context.get_lane_segments(
@@ -337,12 +338,35 @@ std::vector<float> process_lanes(
 }
 
 std::vector<float> process_route_lanes(
-  const preprocess::LaneSegmentContext & /* lane_segment_context */,
-  const LaneletRoute & /* route */, const Eigen::Matrix4f & /* map2bl_matrix */)
+  const preprocess::LaneSegmentContext & lane_segment_context,
+  const autoware::route_handler::RouteHandler & route_handler, const Point & ego_position,
+  const Eigen::Matrix4f & map2bl_matrix,
+  const std::map<lanelet::Id, preprocess::TrafficSignalStamped> & traffic_light_id_map)
 {
-  // For now, return placeholder data since we need route handler implementation
-  // This would need proper route lane processing like in diffusion_planner_node
-  std::vector<float> route_lanes_data(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
+  if (!route_handler.isHandlerReady()) {
+    std::vector<float> route_lanes_data(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
+    return route_lanes_data;
+  }
+
+  // Get current pose from ego position
+  geometry_msgs::msg::Pose current_pose;
+  current_pose.position = ego_position;
+  current_pose.orientation.w = 1.0;  // Identity quaternion
+
+  lanelet::ConstLanelet current_preferred_lane;
+  if (!route_handler.getClosestPreferredLaneletWithinRoute(current_pose, &current_preferred_lane)) {
+    std::vector<float> route_lanes_data(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
+    return route_lanes_data;
+  }
+
+  constexpr double backward_path_length = constants::BACKWARD_PATH_LENGTH_M;
+  constexpr double forward_path_length = constants::FORWARD_PATH_LENGTH_M;
+  const auto current_lanes = route_handler.getLaneletSequence(
+    current_preferred_lane, backward_path_length, forward_path_length);
+
+  const auto [route_lanes_data, route_lanes_speed_limit] =
+    lane_segment_context.get_route_segments(map2bl_matrix, traffic_light_id_map, current_lanes);
+
   return route_lanes_data;
 }
 
@@ -461,6 +485,12 @@ int main(int argc, char ** argv)
 
   const preprocess::LaneSegmentContext lane_segment_context(lanelet_map_ptr);
 
+  // Create route handler
+  autoware::route_handler::RouteHandler route_handler(map_bin_msg);
+
+  // Traffic light map for lane processing
+  std::map<lanelet::Id, preprocess::TrafficSignalStamped> traffic_light_id_map;
+
   rosbag_parser::RosbagParser rosbag_parser(rosbag_path);
   rosbag_parser.create_reader(rosbag_path);
 
@@ -519,6 +549,8 @@ int main(int argc, char ** argv)
     for (const LaneletRoute & route : route_msgs) {
       sequences.push_back({{}, route});
     }
+    // Set route to route handler
+    route_handler.setRoute(route_msgs[0]);
   } else {
     sequences.push_back({{}, LaneletRoute()});
   }
@@ -582,9 +614,10 @@ int main(int argc, char ** argv)
 
       // Process lanes and routes
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
-      const std::vector<float> lanes = process_lanes(lane_segment_context, ego_pos, map2bl);
-      const std::vector<float> route_lanes =
-        process_route_lanes(lane_segment_context, seq.data_list[i].route, map2bl);
+      const std::vector<float> lanes =
+        process_lanes(lane_segment_context, ego_pos, map2bl, traffic_light_id_map);
+      const std::vector<float> route_lanes = process_route_lanes(
+        lane_segment_context, route_handler, ego_pos, map2bl, traffic_light_id_map);
 
       // Create placeholder data for static objects
       const std::vector<float> static_objects(STATIC_NUM * 10, 0.0f);
