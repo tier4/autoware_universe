@@ -173,6 +173,7 @@
     <!-- Object segmentation module -->
     <group>
       <push-ros-namespace namespace="obstacle_segmentation"/>
+      <!-- delete include ground_segmentation.launch.py
       <include file="$(find-pkg-share tier4_perception_launch)/launch/obstacle_segmentation/ground_segmentation/ground_segmentation.launch.py">
         <arg name="base_frame" value="base_link"/>
         <arg name="use_intra_process" value="true"/>
@@ -183,6 +184,7 @@
         <arg name="use_single_frame_filter" value="$(var use_obstacle_segmentation_single_frame_filter)"/>
         <arg name="use_time_series_filter" value="$(var use_obstacle_segmentation_time_series_filter)"/>
       </include>
+      -->
     </group>
 
     <!-- Occupancy grid map module -->
@@ -191,6 +193,7 @@
       <let name="unfiltered_obstacle_pointcloud" value="/perception/obstacle_segmentation/pointcloud"/>
       <let name="unfiltered_obstacle_pointcloud" value="/perception/obstacle_segmentation/single_frame/pointcloud" if="$(var use_obstacle_segmentation_single_frame_filter)"/>
       <let name="unfiltered_obstacle_pointcloud" value="/perception/obstacle_segmentation/single_frame/pointcloud" if="$(var use_obstacle_segmentation_time_series_filter)"/>
+      <!-- delete include *_based_occupancy_grid_map.launch.xml files
       <include file="$(find-pkg-share tier4_perception_launch)/launch/occupancy_grid_map/probabilistic_occupancy_grid_map.launch.xml">
         <arg name="input/obstacle_pointcloud" value="$(var unfiltered_obstacle_pointcloud)"/>
         <arg name="input/raw_pointcloud" value="$(var perception_pointcloud)"/>
@@ -203,6 +206,7 @@
         <arg name="occupancy_grid_map_updater" value="$(var occupancy_grid_map_updater)"/>
         <arg name="occupancy_grid_map_updater_param_path" value="$(var occupancy_grid_map_updater_param_path)"/>
       </include>
+      -->
     </group>
 
     <!-- Object recognition module -->
@@ -211,6 +215,7 @@
       <!-- Detection module -->
       <group>
         <push-ros-namespace namespace="detection"/>
+        <!-- delete include detection.launch.xml
         <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/detection/detection.launch.xml">
           <arg name="mode" value="$(var mode)"/>
           <arg name="lidar_detection_model_type" value="$(var lidar_detection_model_type)"/>
@@ -268,11 +273,13 @@
           <arg name="objects_filter_method" value="$(var objects_filter_method)"/>
           <arg name="use_roi_based_cluster" value="$(var use_roi_based_cluster)"/>
         </include>
+        -->
       </group>
 
       <!-- Tracking module -->
       <group>
         <push-ros-namespace namespace="tracking"/>
+        <!-- delete include tracking.launch.xml
         <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/tracking/tracking.launch.xml">
           <arg name="mode" value="$(var mode)"/>
           <arg
@@ -288,14 +295,17 @@
           <arg name="use_detection_by_tracker" value="$(var use_detection_by_tracker)"/>
           <arg name="use_validator" value="$(var use_object_validator)"/>
         </include>
+        -->
       </group>
 
       <!-- Prediction module -->
       <group>
         <push-ros-namespace namespace="prediction"/>
+        <!-- delete include prediction.launch.xml
         <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/prediction/prediction.launch.xml">
           <arg name="use_vector_map" value="$(var use_vector_map)"/>
         </include>
+        -->
       </group>
     </group>
 
@@ -309,6 +319,7 @@
     <!-- Traffic light module -->
     <group if="$(var use_traffic_light_recognition)">
       <push-ros-namespace namespace="traffic_light_recognition"/>
+      <!-- delete include traffic_light.launch.xml
       <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light.launch.xml">
         <arg name="use_ml_detector" value="$(var traffic_light_recognition/use_ml_detector)"/>
         <arg name="ml_detection_model_type" value="$(var traffic_light_recognition/ml_detection_model_type)"/>
@@ -324,6 +335,7 @@
         <arg name="car_traffic_light_classifier_model_name" value="$(var car_traffic_light_classifier_model_name)"/>
         <arg name="pedestrian_traffic_light_classifier_model_name" value="$(var pedestrian_traffic_light_classifier_model_name)"/>
       </include>
+      -->
     </group>
   </group>
 
