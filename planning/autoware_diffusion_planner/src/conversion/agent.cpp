@@ -41,7 +41,7 @@ AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & 
   }
 }
 
-AgentState::AgentState(TrackedObject & object)
+AgentState::AgentState(const TrackedObject & object)
 {
   position_ = object.kinematics.pose_with_covariance.pose.position;
   shape_ = object.shape;

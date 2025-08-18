@@ -208,7 +208,7 @@ std::vector<float> process_neighbor_agents(
     const std::vector<TrackedObject> & objects = data_list[frame_idx].tracked_objects.objects;
     for (const TrackedObject & obj : objects) {
       const std::string obj_id = autoware_utils_uuid::to_hex_string(obj.object_id);
-      AgentState agent_state(const_cast<TrackedObject &>(obj));
+      AgentState agent_state(obj);
       agent_state.apply_transform(map2bl_matrix);
 
       agent_histories[obj_id].push_back(agent_state);
