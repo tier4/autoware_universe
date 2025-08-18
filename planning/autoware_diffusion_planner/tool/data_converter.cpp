@@ -16,6 +16,7 @@
 #include "autoware/diffusion_planner/conversion/ego.hpp"
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
+#include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "numpy.hpp"
 #include "rosbag_parser.hpp"
 
@@ -322,147 +323,26 @@ std::vector<float> process_neighbor_future(
 }
 
 std::vector<float> process_lanes(
-  const lanelet::LaneletMapPtr & lanelet_map, const Point & ego_position,
+  preprocess::LaneSegmentContext & lane_segment_context, const Point & ego_position,
   const Eigen::Matrix4f & map2bl_matrix)
 {
-  std::vector<float> lanes_data(LANE_NUM * LANE_LEN * SEGMENT_POINT_DIM, 0.0f);
-
-  if (!lanelet_map) {
-    return lanes_data;
-  }
-
-  const LaneletConverter converter(lanelet_map);
-  const std::vector<LaneSegment> lane_segments = converter.convert_to_lane_segments(LANE_LEN);
-
-  // Filter and sort lanes by distance to ego
-  std::vector<std::pair<LaneSegment, float>> lane_distances;
-  for (const LaneSegment & segment : lane_segments) {
-    const std::vector<LanePoint> & waypoints = segment.polyline.waypoints();
-    if (waypoints.empty()) continue;
-
-    // Calculate distance to first waypoint
-    const LanePoint & first_point = waypoints[0];
-    const float dx = first_point.x() - ego_position.x;
-    const float dy = first_point.y() - ego_position.y;
-    const float dist = std::sqrt(dx * dx + dy * dy);
-
-    // Only include lanes within reasonable range
-    if (dist < 100.0f) {  // 100m range
-      lane_distances.push_back({segment, dist});
-    }
-  }
-
-  // Sort by distance
-  std::sort(lane_distances.begin(), lane_distances.end(), [](const auto & a, const auto & b) {
-    return a.second < b.second;
-  });
-
-  // Fill lane data
-  for (int64_t lane_idx = 0;
-       lane_idx < std::min(static_cast<int64_t>(lane_distances.size()), LANE_NUM); ++lane_idx) {
-    const LaneSegment & lane_segment = lane_distances[lane_idx].first;
-    const std::vector<LanePoint> & waypoints = lane_segment.polyline.waypoints();
-    const std::vector<BoundarySegment> & left_boundary = lane_segment.left_boundaries;
-    const std::vector<BoundarySegment> & right_boundary = lane_segment.right_boundaries;
-
-    for (int64_t point_idx = 0;
-         point_idx < std::min(static_cast<int64_t>(waypoints.size()), LANE_LEN); ++point_idx) {
-      const LanePoint & point = waypoints[point_idx];
-      const int64_t base_idx =
-        lane_idx * LANE_LEN * SEGMENT_POINT_DIM + point_idx * SEGMENT_POINT_DIM;
-
-      // Transform to base_link frame
-      const Eigen::Vector4f pos_vec(point.x(), point.y(), point.z(), 1.0);
-      const Eigen::Vector4f transformed_pos = map2bl_matrix * pos_vec;
-
-      // Centerline point
-      lanes_data[base_idx + X] = transformed_pos.x();
-      lanes_data[base_idx + Y] = transformed_pos.y();
-      lanes_data[base_idx + dX] = point.dx();
-      lanes_data[base_idx + dY] = point.dy();
-
-      // Left boundary
-      if (
-        !left_boundary.empty() &&
-        point_idx < static_cast<int64_t>(left_boundary[0].waypoints().size())) {
-        const LanePoint & left_point = left_boundary[0].waypoints()[point_idx];
-        const Eigen::Vector4f left_pos_vec(left_point.x(), left_point.y(), left_point.z(), 1.0);
-        const Eigen::Vector4f transformed_left_pos = map2bl_matrix * left_pos_vec;
-        lanes_data[base_idx + LB_X] = transformed_left_pos.x();
-        lanes_data[base_idx + LB_Y] = transformed_left_pos.y();
-      }
-
-      // Right boundary
-      if (
-        !right_boundary.empty() &&
-        point_idx < static_cast<int64_t>(right_boundary[0].waypoints().size())) {
-        const LanePoint & right_point = right_boundary[0].waypoints()[point_idx];
-        const Eigen::Vector4f right_pos_vec(right_point.x(), right_point.y(), right_point.z(), 1.0);
-        const Eigen::Vector4f transformed_right_pos = map2bl_matrix * right_pos_vec;
-        lanes_data[base_idx + RB_X] = transformed_right_pos.x();
-        lanes_data[base_idx + RB_Y] = transformed_right_pos.y();
-      }
-
-      // Traffic lights (placeholder - need traffic light recognition)
-      lanes_data[base_idx + TRAFFIC_LIGHT_NO_TRAFFIC_LIGHT] = 1.0f;
-
-      // Speed limit
-      if (lane_segment.speed_limit_mps.has_value()) {
-        lanes_data[base_idx + SPEED_LIMIT] = lane_segment.speed_limit_mps.value();
-      }
-    }
-  }
+  const std::map<lanelet::Id, preprocess::TrafficSignalStamped>
+    traffic_light_id_map;  // Empty for now
+  const float center_x = ego_position.x;
+  const float center_y = ego_position.y;
+  const auto [lanes_data, lanes_speed_limit] = lane_segment_context.get_lane_segments(
+    map2bl_matrix, traffic_light_id_map, center_x, center_y, LANE_LEN);
 
   return lanes_data;
 }
 
 std::vector<float> process_route_lanes(
-  const lanelet::LaneletMapPtr & lanelet_map, const LaneletRoute & route,
-  const Point & /* ego_position */, const Eigen::Matrix4f & map2bl_matrix)
+  preprocess::LaneSegmentContext & /* lane_segment_context */, const LaneletRoute & /* route */,
+  const Eigen::Matrix4f & /* map2bl_matrix */)
 {
+  // For now, return placeholder data since we need route handler implementation
+  // This would need proper route lane processing like in diffusion_planner_node
   std::vector<float> route_lanes_data(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
-
-  if (!lanelet_map || route.segments.empty()) {
-    return route_lanes_data;
-  }
-
-  const LaneletConverter converter(lanelet_map);
-
-  // Extract route segments
-  std::vector<LaneSegment> route_segments;
-  for (const LaneletSegment & segment : route.segments) {
-    const lanelet::ConstLanelet lanelet_obj =
-      lanelet_map->laneletLayer.get(segment.preferred_primitive.id);
-    // Convert lanelet to LaneSegment (simplified)
-    // This would need proper implementation based on the existing conversion code
-    (void)lanelet_obj;  // Suppress unused variable warning for now
-  }
-
-  // Process route segments similar to regular lanes
-  for (int64_t route_idx = 0;
-       route_idx < std::min(static_cast<int64_t>(route_segments.size()), ROUTE_NUM); ++route_idx) {
-    const LaneSegment & lane_segment = route_segments[route_idx];
-    const std::vector<LanePoint> & waypoints = lane_segment.polyline.waypoints();
-
-    for (int64_t point_idx = 0;
-         point_idx < std::min(static_cast<int64_t>(waypoints.size()), ROUTE_LEN); ++point_idx) {
-      const LanePoint & point = waypoints[point_idx];
-      const int64_t base_idx =
-        route_idx * ROUTE_LEN * SEGMENT_POINT_DIM + point_idx * SEGMENT_POINT_DIM;
-
-      // Transform to base_link frame
-      const Eigen::Vector4f pos_vec(point.x(), point.y(), point.z(), 1.0);
-      const Eigen::Vector4f transformed_pos = map2bl_matrix * pos_vec;
-
-      route_lanes_data[base_idx + X] = transformed_pos.x();
-      route_lanes_data[base_idx + Y] = transformed_pos.y();
-      route_lanes_data[base_idx + dX] = point.dx();
-      route_lanes_data[base_idx + dY] = point.dy();
-
-      // Add other data similar to regular lanes...
-    }
-  }
-
   return route_lanes_data;
 }
 
@@ -563,8 +443,8 @@ int main(int argc, char ** argv)
   std::cout << "Step: " << step << ", Limit: " << limit << ", Min frames: " << min_frames
             << std::endl;
 
-  // Load Lanelet2 map using the proper method from test
-  lanelet::LaneletMapPtr lanelet_map;
+  // Load Lanelet2 map and create context like in diffusion_planner_node
+  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr = std::make_shared<lanelet::LaneletMap>();
   lanelet::traffic_rules::TrafficRulesPtr traffic_rules_ptr;
   lanelet::routing::RoutingGraphPtr routing_graph_ptr;
 
@@ -573,12 +453,13 @@ int main(int argc, char ** argv)
     autoware::test_utils::make_map_bin_msg(vector_map_path, 1.0);
 
   // Convert HADMapBin to lanelet map
-  lanelet_map = std::make_shared<lanelet::LaneletMap>();
   lanelet::utils::conversion::fromBinMsg(
-    map_bin_msg, lanelet_map, &traffic_rules_ptr, &routing_graph_ptr);
+    map_bin_msg, lanelet_map_ptr, &traffic_rules_ptr, &routing_graph_ptr);
 
-  std::cout << "Loaded lanelet2 map with " << lanelet_map->laneletLayer.size() << " lanelets"
+  std::cout << "Loaded lanelet2 map with " << lanelet_map_ptr->laneletLayer.size() << " lanelets"
             << std::endl;
+
+  preprocess::LaneSegmentContext lane_segment_context(lanelet_map_ptr);
 
   rosbag_parser::RosbagParser rosbag_parser(rosbag_path);
   rosbag_parser.create_reader(rosbag_path);
@@ -701,9 +582,9 @@ int main(int argc, char ** argv)
 
       // Process lanes and routes
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
-      const std::vector<float> lanes = process_lanes(lanelet_map, ego_pos, map2bl);
+      const std::vector<float> lanes = process_lanes(lane_segment_context, ego_pos, map2bl);
       const std::vector<float> route_lanes =
-        process_route_lanes(lanelet_map, seq.data_list[i].route, ego_pos, map2bl);
+        process_route_lanes(lane_segment_context, seq.data_list[i].route, map2bl);
 
       // Create placeholder data for static objects
       const std::vector<float> static_objects(STATIC_NUM * 10, 0.0f);
