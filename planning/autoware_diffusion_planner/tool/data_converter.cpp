@@ -306,8 +306,10 @@ void save_npz_data(
   const std::vector<float> & ego_current, const std::vector<float> & ego_future,
   const std::vector<float> & neighbor_past, const std::vector<float> & neighbor_future,
   const std::vector<float> & static_objects, const std::vector<float> & lanes,
-  const std::vector<float> & lanes_speed_limit, const std::vector<float> & route_lanes,
-  const std::vector<float> & route_lanes_speed_limit, const int64_t turn_indicator)
+  const std::vector<float> & lanes_speed_limit, const std::vector<bool> & lanes_has_speed_limit,
+  const std::vector<float> & route_lanes, const std::vector<float> & route_lanes_speed_limit,
+  const std::vector<bool> & route_lanes_has_speed_limit, const std::vector<float> & goal_pose,
+  const int64_t turn_indicator)
 {
   namespace fs = std::filesystem;
 
@@ -369,10 +371,33 @@ void save_npz_data(
     base_filename + "_route_lanes_speed_limit.npy", 2, route_speed_shape,
     route_lanes_speed_limit.data());
 
+  // lanes_has_speed_limit (70, 1) - convert bool to int32_t
+  std::vector<int32_t> lanes_has_int32(lanes_has_speed_limit.size());
+  std::transform(
+    lanes_has_speed_limit.begin(), lanes_has_speed_limit.end(), lanes_has_int32.begin(),
+    [](bool b) { return static_cast<int32_t>(b); });
+  const int lanes_has_shape[] = {static_cast<int>(LANE_NUM), 1};
+  aoba::SaveArrayAsNumpy(
+    base_filename + "_lanes_has_speed_limit.npy", 2, lanes_has_shape, lanes_has_int32.data());
+
+  // route_lanes_has_speed_limit (25, 1) - convert bool to int32_t
+  std::vector<int32_t> route_has_int32(route_lanes_has_speed_limit.size());
+  std::transform(
+    route_lanes_has_speed_limit.begin(), route_lanes_has_speed_limit.end(), route_has_int32.begin(),
+    [](bool b) { return static_cast<int32_t>(b); });
+  const int route_has_shape[] = {static_cast<int>(ROUTE_NUM), 1};
+  aoba::SaveArrayAsNumpy(
+    base_filename + "_route_lanes_has_speed_limit.npy", 2, route_has_shape, route_has_int32.data());
+
+  // goal_pose (3,)
+  const int goal_shape[] = {static_cast<int>(goal_pose.size())};
+  aoba::SaveArrayAsNumpy(base_filename + "_goal_pose.npy", 1, goal_shape, goal_pose.data());
+
   // turn_indicator (1,)
   const int turn_shape[] = {1};
-  const int turn_indicator_int = static_cast<int>(turn_indicator);
-  aoba::SaveArrayAsNumpy(base_filename + "_turn_indicator.npy", 1, turn_shape, &turn_indicator_int);
+  const int32_t turn_indicator_int32 = static_cast<int32_t>(turn_indicator);
+  aoba::SaveArrayAsNumpy(
+    base_filename + "_turn_indicator.npy", 1, turn_shape, &turn_indicator_int32);
 }
 
 int main(int argc, char ** argv)
@@ -674,6 +699,12 @@ int main(int argc, char ** argv)
       const auto [lanes, lanes_speed_limit] = lane_segment_context.get_lane_segments(
         map2bl, traffic_light_id_map, center_x, center_y, LANE_LEN);
 
+      // Create has_speed_limit flags based on speed_limit values
+      std::vector<bool> lanes_has_speed_limit(lanes_speed_limit.size());
+      for (size_t idx = 0; idx < lanes_speed_limit.size(); ++idx) {
+        lanes_has_speed_limit[idx] = (lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
+      }
+
       // Get route lanes data with speed limits
       std::vector<float> route_lanes(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
       std::vector<float> route_lanes_speed_limit(ROUTE_NUM * ROUTE_LEN, 0.0f);
@@ -698,12 +729,29 @@ int main(int argc, char ** argv)
         route_lanes_speed_limit = route_speed;
       }
 
+      // Create route_lanes_has_speed_limit based on speed_limit values
+      std::vector<bool> route_lanes_has_speed_limit(route_lanes_speed_limit.size());
+      for (size_t idx = 0; idx < route_lanes_speed_limit.size(); ++idx) {
+        route_lanes_has_speed_limit[idx] = (route_lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
+      }
+
       // Get goal pose
       const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
       const Eigen::Matrix4f goal_pose_matrix = utils::pose_to_matrix4f(goal_pose);
       const Eigen::Vector4f goal_pos_bl =
         map2bl * Eigen::Vector4f(
                    goal_pose_matrix(0, 3), goal_pose_matrix(1, 3), goal_pose_matrix(2, 3), 1.0);
+
+      // Get goal orientation in base_link frame
+      const Eigen::Quaternionf goal_quat(
+        goal_pose.orientation.w, goal_pose.orientation.x, goal_pose.orientation.y,
+        goal_pose.orientation.z);
+      const Eigen::Matrix3f goal_rot_map = goal_quat.toRotationMatrix();
+      const Eigen::Matrix3f goal_rot_bl = map2bl.block<3, 3>(0, 0) * goal_rot_map;
+      const float goal_yaw_bl = std::atan2(goal_rot_bl(1, 0), goal_rot_bl(0, 0));
+
+      // Convert goal pose to vector for saving
+      const std::vector<float> goal_pose_vec = {goal_pos_bl.x(), goal_pos_bl.y(), goal_yaw_bl};
 
       // Such data should be skipped.
       // (1)Ego vehicle is stopped
@@ -763,8 +811,8 @@ int main(int argc, char ** argv)
       // Save data
       save_npz_data(
         save_dir, token, ego_past, ego_current, ego_future, neighbor_past, neighbor_future,
-        static_objects, lanes, lanes_speed_limit, route_lanes, route_lanes_speed_limit,
-        turn_indicator);
+        static_objects, lanes, lanes_speed_limit, lanes_has_speed_limit, route_lanes,
+        route_lanes_speed_limit, route_lanes_has_speed_limit, goal_pose_vec, turn_indicator);
 
       if (i % 100 == 0) {
         std::cout << "Processed frame " << i << "/" << n << std::endl;
