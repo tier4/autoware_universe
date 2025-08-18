@@ -18,6 +18,7 @@
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
+#include "autoware/diffusion_planner/utils/utils.hpp"
 #include "numpy.hpp"
 #include "rosbag_parser.hpp"
 
@@ -115,20 +116,6 @@ T get_nearest_msg(const std::deque<T> & msgs, const builtin_interfaces::msg::Tim
   }
 
   return best_msg;
-}
-
-Eigen::Matrix4f get_transform_matrix(const Odometry & odometry)
-{
-  const geometry_msgs::msg::Point & pos = odometry.pose.pose.position;
-  const geometry_msgs::msg::Quaternion & ori = odometry.pose.pose.orientation;
-
-  const Eigen::Quaternionf quat(ori.w, ori.x, ori.y, ori.z);
-  Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
-  transform.block<3, 3>(0, 0) = quat.toRotationMatrix();
-  transform(0, 3) = pos.x;
-  transform(1, 3) = pos.y;
-  transform(2, 3) = pos.z;
-  return transform;
 }
 
 std::vector<float> create_ego_sequence(
@@ -560,8 +547,7 @@ int main(int argc, char ** argv)
       const std::string token = std::to_string(seq_id) + "_" + std::to_string(i);
 
       // Get transformation matrix
-      const Eigen::Matrix4f bl2map = get_transform_matrix(seq.data_list[i].kinematic_state);
-      const Eigen::Matrix4f map2bl = bl2map.inverse();
+      const auto [bl2map, map2bl] = utils::get_transform_matrix(seq.data_list[i].kinematic_state);
 
       // Create ego sequences
       const std::vector<float> ego_past =
