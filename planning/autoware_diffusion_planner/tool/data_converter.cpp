@@ -323,7 +323,7 @@ std::vector<float> process_neighbor_future(
 }
 
 std::vector<float> process_lanes(
-  preprocess::LaneSegmentContext & lane_segment_context, const Point & ego_position,
+  const preprocess::LaneSegmentContext & lane_segment_context, const Point & ego_position,
   const Eigen::Matrix4f & map2bl_matrix)
 {
   const std::map<lanelet::Id, preprocess::TrafficSignalStamped>
@@ -337,8 +337,8 @@ std::vector<float> process_lanes(
 }
 
 std::vector<float> process_route_lanes(
-  preprocess::LaneSegmentContext & /* lane_segment_context */, const LaneletRoute & /* route */,
-  const Eigen::Matrix4f & /* map2bl_matrix */)
+  const preprocess::LaneSegmentContext & /* lane_segment_context */,
+  const LaneletRoute & /* route */, const Eigen::Matrix4f & /* map2bl_matrix */)
 {
   // For now, return placeholder data since we need route handler implementation
   // This would need proper route lane processing like in diffusion_planner_node
@@ -459,7 +459,7 @@ int main(int argc, char ** argv)
   std::cout << "Loaded lanelet2 map with " << lanelet_map_ptr->laneletLayer.size() << " lanelets"
             << std::endl;
 
-  preprocess::LaneSegmentContext lane_segment_context(lanelet_map_ptr);
+  const preprocess::LaneSegmentContext lane_segment_context(lanelet_map_ptr);
 
   rosbag_parser::RosbagParser rosbag_parser(rosbag_path);
   rosbag_parser.create_reader(rosbag_path);
