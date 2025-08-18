@@ -165,34 +165,6 @@ std::vector<float> create_ego_sequence(
   return ego_sequence;
 }
 
-std::vector<float> create_ego_future_sequence(
-  const std::vector<FrameData> & data_list, const int64_t start_idx, const int64_t time_steps,
-  const Eigen::Matrix4f & map2bl_matrix)
-{
-  std::vector<float> ego_future;
-  ego_future.reserve(time_steps * 3);  // x, y, yaw
-
-  for (int64_t j = 0; j < time_steps; ++j) {
-    const int64_t index = std::min(start_idx + j, static_cast<int64_t>(data_list.size()) - 1);
-    const Point & pos = data_list[index].kinematic_state.pose.pose.position;
-    const Quaternion & ori = data_list[index].kinematic_state.pose.pose.orientation;
-
-    const Eigen::Vector4f pos_vec(pos.x, pos.y, pos.z, 1.0);
-    const Eigen::Vector4f transformed_pos = map2bl_matrix * pos_vec;
-
-    const Eigen::Quaternionf quat(ori.w, ori.x, ori.y, ori.z);
-    const Eigen::Matrix3f rot_matrix = quat.toRotationMatrix();
-    const Eigen::Matrix3f transformed_rot = map2bl_matrix.block<3, 3>(0, 0) * rot_matrix;
-    const float yaw = std::atan2(transformed_rot(1, 0), transformed_rot(0, 0));
-
-    ego_future.push_back(transformed_pos.x());
-    ego_future.push_back(transformed_pos.y());
-    ego_future.push_back(yaw);
-  }
-
-  return ego_future;
-}
-
 std::vector<float> process_neighbor_agents(
   const std::vector<FrameData> & data_list, const int64_t current_idx,
   const Eigen::Matrix4f & map2bl_matrix)
