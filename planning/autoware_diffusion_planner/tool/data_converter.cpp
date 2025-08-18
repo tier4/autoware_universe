@@ -89,17 +89,22 @@ int64_t parse_timestamp(const builtin_interfaces::msg::Time & stamp)
 }
 
 template <typename T>
-T get_nearest_msg(const std::deque<T> & msgs, const builtin_interfaces::msg::Time & target_stamp)
+bool check_and_update_msg(
+  std::deque<T> & msgs, const builtin_interfaces::msg::Time & target_stamp,
+  const std::string & topic_name, T & result_msg)
 {
   if (msgs.empty()) {
-    throw std::runtime_error("No messages available");
+    std::cout << "Cannot find " << topic_name << " msg" << std::endl;
+    return false;
   }
 
   const int64_t target_time = parse_timestamp(target_stamp);
   T best_msg = msgs.front();
   int64_t best_diff = std::numeric_limits<int64_t>::max();
+  int64_t best_index = 0;
 
-  for (const auto & msg : msgs) {
+  for (int64_t i = 0; i < static_cast<int64_t>(msgs.size()); ++i) {
+    const auto & msg = msgs[i];
     builtin_interfaces::msg::Time msg_stamp;
     if constexpr (
       std::is_same_v<T, Odometry> || std::is_same_v<T, TrackedObjects> ||
@@ -116,10 +121,20 @@ T get_nearest_msg(const std::deque<T> & msgs, const builtin_interfaces::msg::Tim
     if (diff < best_diff) {
       best_diff = diff;
       best_msg = msg;
+      best_index = i;
     }
   }
 
-  return best_msg;
+  if (best_diff > static_cast<int64_t>(0.2 * 1e9)) {  // Over 200 msec
+    std::cout << "Over 200 msec: " << topic_name << ", msgs.size()=" << msgs.size()
+              << ", diff=" << best_diff << std::endl;
+    return false;
+  }
+
+  // Remove processed messages (like Python version)
+  msgs.erase(msgs.begin(), msgs.begin() + best_index);
+  result_msg = best_msg;
+  return true;
 }
 
 std::vector<float> create_ego_sequence(
@@ -517,25 +532,63 @@ int main(int argc, char ** argv)
     sequences.push_back({{}, LaneletRoute()});
   }
 
-  // Process each tracked objects message
-  for (int64_t i = 0; i < static_cast<int64_t>(tracked_objects_msgs.size()); ++i) {
+  // Process each tracked objects message with synchronization like Python version
+  const int64_t n = static_cast<int64_t>(tracked_objects_msgs.size());
+  std::cout << "n=" << n << std::endl;
+
+  for (int64_t i = 0; i < n; ++i) {
     const TrackedObjects & tracking = tracked_objects_msgs[i];
+    const int64_t timestamp = parse_timestamp(tracking.header.stamp);
 
-    // Find matching messages
-    const Odometry kinematic = get_nearest_msg(kinematic_states, tracking.header.stamp);
-    const AccelWithCovarianceStamped accel = get_nearest_msg(accelerations, tracking.header.stamp);
-    const TrafficLightGroupArray traffic_signal =
-      get_nearest_msg(traffic_signals, tracking.header.stamp);
-    const TurnIndicatorsReport turn_ind = get_nearest_msg(turn_indicators, tracking.header.stamp);
+    // Find matching messages with synchronization check like Python version
+    Odometry kinematic;
+    AccelWithCovarianceStamped accel;
+    TrafficLightGroupArray traffic_signal;
+    TurnIndicatorsReport turn_ind;
 
-    const FrameData frame_data{
-      parse_timestamp(tracking.header.stamp),
-      sequences[0].route,  // Use first route for now
-      tracking,
-      kinematic,
-      accel,
-      traffic_signal,
-      turn_ind};
+    bool ok = true;
+
+    // Check all messages
+    ok =
+      ok && check_and_update_msg(
+              kinematic_states, tracking.header.stamp, "/localization/kinematic_state", kinematic);
+    ok = ok && check_and_update_msg(
+                 accelerations, tracking.header.stamp, "/localization/acceleration", accel);
+    ok = ok && check_and_update_msg(
+                 traffic_signals, tracking.header.stamp,
+                 "/perception/traffic_light_recognition/traffic_signals", traffic_signal);
+    ok = ok && check_and_update_msg(
+                 turn_indicators, tracking.header.stamp, "/vehicle/status/turn_indicators_status",
+                 turn_ind);
+
+    // Check kinematic_state covariance validation like Python version
+    if (ok) {
+      const std::array<double, 36> & covariance = kinematic.pose.covariance;
+      const double covariance_xx = covariance[0];
+      const double covariance_yy = covariance[7];
+
+      if (covariance_xx > 1e-1 || covariance_yy > 1e-1) {
+        std::cout << "Invalid kinematic_state covariance_xx=" << covariance_xx
+                  << ", covariance_yy=" << covariance_yy << std::endl;
+        ok = false;
+      }
+    }
+
+    // Handle frame based on validation result like Python version
+    if (!ok) {
+      if (sequences[0].data_list.empty()) {
+        // At the beginning of recording, some msgs may be missing - Skip this frame
+        std::cout << "Skip this frame i=" << i << "/n=" << n << std::endl;
+        continue;
+      } else {
+        // If the msg is missing in the middle of recording, we can use the msgs to this point
+        std::cout << "Finish at this frame i=" << i << "/n=" << n << std::endl;
+        break;
+      }
+    }
+
+    const FrameData frame_data{timestamp, sequences[0].route, tracking, kinematic,
+                               accel,     traffic_signal,     turn_ind};
 
     sequences[0].data_list.push_back(frame_data);
   }
