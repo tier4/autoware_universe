@@ -152,7 +152,7 @@ __global__ void polar_to_polar_voxel_kernel(
   const uint8_t * __restrict__ data, const size_t num_points, const uint32_t step,
   const FieldDataComposer<size_t> offsets, const FieldDataComposer<double> resolutions,
   const double min_radius, const double max_radius,
-  FieldDataComposer<::cuda::std::optional<int> *> outputs)
+  FieldDataComposer<::cuda::std::optional<int32_t> *> outputs)
 {
   size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_index >= num_points) {
@@ -186,7 +186,7 @@ __global__ void cartesian_to_polar_voxel_kernel(
   const uint8_t * __restrict__ data, const size_t num_points, const uint32_t step,
   const FieldDataComposer<size_t> offsets, const FieldDataComposer<double> resolutions,
   const double min_radius, const double max_radius,
-  FieldDataComposer<::cuda::std::optional<int> *> outputs)
+  FieldDataComposer<::cuda::std::optional<int32_t> *> outputs)
 {
   size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_index >= num_points) {
@@ -231,11 +231,11 @@ __global__ void cartesian_to_polar_voxel_kernel(
     return;
   }
 
-  output[point_index] = static_cast<int>(floor(field_data / resolutions[field_index]));
+  output[point_index] = static_cast<int32_t>(floor(field_data / resolutions[field_index]));
 }
 
 __global__ void calculate_voxel_index_kernel(
-  const FieldDataComposer<::cuda::std::optional<int> *> field_indices, const size_t num_points,
+  const FieldDataComposer<::cuda::std::optional<int32_t> *> field_indices, const size_t num_points,
   const FieldDataComposer<int> field_dimensions, ::cuda::std::optional<int> * point_indices,
   ::cuda::std::optional<int> * voxel_indices)
 {
@@ -499,7 +499,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   }
 
   auto [radius_idx, azimuth_idx, elevation_idx, polar_voxel_indices] =
-    generate_field_data_composer<::cuda::std::optional<int>>(num_points, stream_, mem_pool_);
+    generate_field_data_composer<::cuda::std::optional<int32_t>>(num_points, stream_, mem_pool_);
 
   FieldDataComposer<double> resolutions{};
   resolutions.radius = params.radial_resolution_m;
@@ -691,7 +691,7 @@ void CudaPolarVoxelOutlierFilter::set_return_types(
 // std::tuple<FieldDataComposer<int>, CudaPooledUniquePtr<::cuda::std::optional<int>>>
 std::tuple<int, CudaPooledUniquePtr<::cuda::std::optional<int>>, CudaPooledUniquePtr<int>>
 CudaPolarVoxelOutlierFilter::calculate_voxel_index(
-  const FieldDataComposer<::cuda::std::optional<int> *> & polar_voxel_indices,
+  const FieldDataComposer<::cuda::std::optional<int32_t> *> & polar_voxel_indices,
   const size_t & num_points)
 {
   // Step 1: determine the range of each field indices by taking min and max

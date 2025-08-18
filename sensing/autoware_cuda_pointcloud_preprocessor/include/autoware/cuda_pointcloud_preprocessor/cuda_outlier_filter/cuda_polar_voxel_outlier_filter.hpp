@@ -208,7 +208,7 @@ protected:
   // calculate_voxel_index(
   std::tuple<int, CudaPooledUniquePtr<::cuda::std::optional<int>>, CudaPooledUniquePtr<int>>
   calculate_voxel_index(
-    const FieldDataComposer<::cuda::std::optional<int> *> & polar_voxel_indices,
+    const FieldDataComposer<::cuda::std::optional<int32_t> *> & polar_voxel_indices,
     const size_t & num_points);
 
   std::tuple<CudaPooledUniquePtr<int>, size_t> calculate_filtered_point_indices(
