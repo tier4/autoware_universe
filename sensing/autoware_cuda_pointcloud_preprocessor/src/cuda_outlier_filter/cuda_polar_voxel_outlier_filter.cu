@@ -457,20 +457,6 @@ CudaPolarVoxelOutlierFilter::CudaPolarVoxelOutlierFilter() : primary_return_type
     autoware::cuda_utils::create_memory_pool(max_mem_pool_size_in_byte, current_device_id);
 }
 
-CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter_point_xyzircaedt(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
-  const CudaPolarVoxelOutlierFilterParameters & params)
-{
-  return filter(input_cloud, params, PolarDataType::PreComputed);
-}
-
-CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter_point_xyzirc(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
-  const CudaPolarVoxelOutlierFilterParameters & params)
-{
-  return filter(input_cloud, params, PolarDataType::DeriveFromCartesian);
-}
-
 CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
   const CudaPolarVoxelOutlierFilterParameters & params, const PolarDataType polar_type)

@@ -156,34 +156,14 @@ public:
     double filter_ratio;
     double visibility;
   };
+
+  enum class PolarDataType : uint8_t { PreComputed, DeriveFromCartesian };
+
   explicit CudaPolarVoxelOutlierFilter();
 
-  // /** \brief Filter using regular PointXYZ (compute polar coordinates)
-  //  * Uses simple occupancy threshold filtering - voxels with >= voxel_points_threshold points are
-  //  kept.
-  //  * No return type classification or ratio-based filtering is applied.
-  //  */
-  // void filterPointXyz(const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points);
-
-  /** \brief Filter using PointXYZIRCAEDT (use pre-computed polar coordinates)
-   * Uses advanced two-criteria filtering when return type classification is enabled:
-   * 1. Primary returns >= voxel_points_threshold
-   * 2. Primary-to-secondary ratio >= secondary_noise_threshold
-   * Both criteria must be satisfied for a voxel to be kept.
-   */
-  FilterReturn filter_point_xyzircaedt(
+  FilterReturn filter(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
-    const CudaPolarVoxelOutlierFilterParameters & params);
-
-  /** \brief Filter using PointXYZIRC (calculate polar coordinates from cartesian coordinates)
-   * Uses advanced two-criteria filtering when return type classification is enabled:
-   * 1. Primary returns >= voxel_points_threshold
-   * 2. Primary-to-secondary ratio >= secondary_noise_threshold
-   * Both criteria must be satisfied for a voxel to be kept.
-   */
-  FilterReturn filter_point_xyzirc(
-    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
-    const CudaPolarVoxelOutlierFilterParameters & params);
+    const CudaPolarVoxelOutlierFilterParameters & params, const PolarDataType polar_type);
 
   void set_primary_return_types(const std::vector<int64_t> & primary_types)
   {
@@ -192,17 +172,12 @@ public:
 
 protected:
   enum class ReductionType : uint8_t { Min, Max, Sum };
-  enum class PolarDataType : uint8_t { PreComputed, DeriveFromCartesian };
   cudaStream_t stream_{};
   cudaMemPool_t mem_pool_{};
   CubExecutor cub_executor_;
 
   std::optional<ReturnTypeCandidates> primary_return_type_dev_;
   static constexpr int invalid_index_ = -1;
-
-  FilterReturn filter(
-    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
-    const CudaPolarVoxelOutlierFilterParameters & params, const PolarDataType polar_type);
 
   void set_return_types(
     const std::vector<int64_t> & types, std::optional<ReturnTypeCandidates> & types_dev);

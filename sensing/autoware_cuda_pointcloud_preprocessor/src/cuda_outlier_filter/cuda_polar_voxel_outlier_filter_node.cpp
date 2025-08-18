@@ -105,29 +105,33 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   std::scoped_lock lock(param_mutex_);
 
   // Check if the input point cloud has PointXYZIRCAEDT layout (with pre-computed polar coordinates)
+  bool has_polar_coords =
+    autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzircaedt(*msg);
+  bool has_return_type =
+    autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzirc(*msg);
+
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> filtered_cloud;
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> noise_cloud;
-  if (autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzircaedt(
-        *msg)) {
+  if (has_polar_coords) {
     RCLCPP_DEBUG_ONCE(
-      get_logger(), "Using PointXYZIRCAEDT format with pre-computed polar coordinates");
-    auto filter_return =
-      cuda_polar_voxel_outlier_filter_->filter_point_xyzircaedt(msg, filter_params_);
+      get_logger(), "Processing PointXYZIRCAEDT format with pre-computed polar coordinates");
+    auto filter_return = cuda_polar_voxel_outlier_filter_->filter(
+      msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::PreComputed);
     filtered_cloud = std::move(filter_return.filtered_cloud);
     noise_cloud = std::move(filter_return.noise_cloud);
     filter_ratio_ = filter_return.filter_ratio;
     visibility_ = filter_return.visibility;
-  } else if (autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzirc(
-               *msg)) {
-    auto filter_return = cuda_polar_voxel_outlier_filter_->filter_point_xyzirc(msg, filter_params_);
+  } else if (has_return_type) {
+    RCLCPP_DEBUG_ONCE(
+      get_logger(), "Processing PointXYZIRC format, computing azimuth and elevation");
+    auto filter_return = cuda_polar_voxel_outlier_filter_->filter(
+      msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::DeriveFromCartesian);
     filtered_cloud = std::move(filter_return.filtered_cloud);
     noise_cloud = std::move(filter_return.noise_cloud);
     filter_ratio_ = filter_return.filter_ratio;
     visibility_ = filter_return.visibility;
   } else {
-    RCLCPP_DEBUG_ONCE(get_logger(), "Using PointXYZ format, computing polar coordinates");
-    // TODO(manato): filter_point_xyz(msg);
-    RCLCPP_INFO(
+    RCLCPP_ERROR(
       get_logger(),
       "PointXYZ format has not been supported by "
       "autoware_cuda_pointcloud_preprocessor::cuda_polar_voxel_outlier_filter yet.");
