@@ -123,7 +123,7 @@ std::vector<float> create_ego_sequence(
   const Eigen::Matrix4f & map2bl_matrix)
 {
   std::vector<float> ego_sequence;
-  ego_sequence.reserve(time_steps * 4);  // x, y, cos_yaw, sin_yaw
+  ego_sequence.reserve(time_steps * 3);  // x, y, yaw
 
   for (int64_t j = 0; j < time_steps; ++j) {
     const int64_t index = std::min(start_idx + j, static_cast<int64_t>(data_list.size()) - 1);
@@ -140,8 +140,7 @@ std::vector<float> create_ego_sequence(
 
     ego_sequence.push_back(transformed_pos.x());
     ego_sequence.push_back(transformed_pos.y());
-    ego_sequence.push_back(std::cos(yaw));
-    ego_sequence.push_back(std::sin(yaw));
+    ego_sequence.push_back(yaw);
   }
 
   return ego_sequence;
@@ -553,7 +552,7 @@ int main(int argc, char ** argv)
       const std::vector<float> ego_past =
         create_ego_sequence(seq.data_list, i - PAST_TIME_STEPS + 1, PAST_TIME_STEPS, map2bl);
       const std::vector<float> ego_future =
-        create_ego_future_sequence(seq.data_list, i + 1, FUTURE_TIME_STEPS, map2bl);
+        create_ego_sequence(seq.data_list, i + 1, FUTURE_TIME_STEPS, map2bl);
 
       // Create ego current state
       const EgoState ego_state(
