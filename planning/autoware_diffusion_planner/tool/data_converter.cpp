@@ -324,52 +324,6 @@ std::vector<float> process_neighbor_future(
   return neighbor_future;
 }
 
-std::vector<float> process_lanes(
-  const preprocess::LaneSegmentContext & lane_segment_context, const Point & ego_position,
-  const Eigen::Matrix4f & map2bl_matrix,
-  const std::map<lanelet::Id, preprocess::TrafficSignalStamped> & traffic_light_id_map)
-{
-  const float center_x = ego_position.x;
-  const float center_y = ego_position.y;
-  const auto [lanes_data, lanes_speed_limit] = lane_segment_context.get_lane_segments(
-    map2bl_matrix, traffic_light_id_map, center_x, center_y, LANE_LEN);
-
-  return lanes_data;
-}
-
-std::vector<float> process_route_lanes(
-  const preprocess::LaneSegmentContext & lane_segment_context,
-  const autoware::route_handler::RouteHandler & route_handler, const Point & ego_position,
-  const Eigen::Matrix4f & map2bl_matrix,
-  const std::map<lanelet::Id, preprocess::TrafficSignalStamped> & traffic_light_id_map)
-{
-  if (!route_handler.isHandlerReady()) {
-    std::vector<float> route_lanes_data(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
-    return route_lanes_data;
-  }
-
-  // Get current pose from ego position
-  geometry_msgs::msg::Pose current_pose;
-  current_pose.position = ego_position;
-  current_pose.orientation.w = 1.0;  // Identity quaternion
-
-  lanelet::ConstLanelet current_preferred_lane;
-  if (!route_handler.getClosestPreferredLaneletWithinRoute(current_pose, &current_preferred_lane)) {
-    std::vector<float> route_lanes_data(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
-    return route_lanes_data;
-  }
-
-  constexpr double backward_path_length = constants::BACKWARD_PATH_LENGTH_M;
-  constexpr double forward_path_length = constants::FORWARD_PATH_LENGTH_M;
-  const auto current_lanes = route_handler.getLaneletSequence(
-    current_preferred_lane, backward_path_length, forward_path_length);
-
-  const auto [route_lanes_data, route_lanes_speed_limit] =
-    lane_segment_context.get_route_segments(map2bl_matrix, traffic_light_id_map, current_lanes);
-
-  return route_lanes_data;
-}
-
 void save_npz_data(
   const std::string & output_path, const std::string & token, const std::vector<float> & ego_past,
   const std::vector<float> & ego_current, const std::vector<float> & ego_future,
@@ -614,10 +568,36 @@ int main(int argc, char ** argv)
 
       // Process lanes and routes
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
-      const std::vector<float> lanes =
-        process_lanes(lane_segment_context, ego_pos, map2bl, traffic_light_id_map);
-      const std::vector<float> route_lanes = process_route_lanes(
-        lane_segment_context, route_handler, ego_pos, map2bl, traffic_light_id_map);
+      const float center_x = ego_pos.x;
+      const float center_y = ego_pos.y;
+
+      // Get lanes data with speed limits
+      const auto [lanes, lanes_speed_limit] = lane_segment_context.get_lane_segments(
+        map2bl, traffic_light_id_map, center_x, center_y, LANE_LEN);
+
+      // Get route lanes data with speed limits
+      std::vector<float> route_lanes(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
+      std::vector<float> route_lanes_speed_limit(ROUTE_NUM * ROUTE_LEN, 0.0f);
+
+      assert(route_handler.isHandlerReady());
+
+      geometry_msgs::msg::Pose current_pose;
+      current_pose.position = ego_pos;
+      current_pose.orientation.w = 1.0;  // Identity quaternion
+
+      lanelet::ConstLanelet current_preferred_lane;
+      if (route_handler.getClosestPreferredLaneletWithinRoute(
+            current_pose, &current_preferred_lane)) {
+        constexpr double backward_path_length = constants::BACKWARD_PATH_LENGTH_M;
+        constexpr double forward_path_length = constants::FORWARD_PATH_LENGTH_M;
+        const auto current_lanes = route_handler.getLaneletSequence(
+          current_preferred_lane, backward_path_length, forward_path_length);
+
+        const auto [route_data, route_speed] =
+          lane_segment_context.get_route_segments(map2bl, traffic_light_id_map, current_lanes);
+        route_lanes = route_data;
+        route_lanes_speed_limit = route_speed;
+      }
 
       // Create placeholder data for static objects
       const std::vector<float> static_objects(STATIC_NUM * 10, 0.0f);
