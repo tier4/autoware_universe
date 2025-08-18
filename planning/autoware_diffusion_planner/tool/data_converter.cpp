@@ -662,7 +662,8 @@ int main(int argc, char ** argv)
       continue;
     }
 
-    // Process frames
+    // Process frames with stopping count tracking
+    int64_t stopping_count = 0;
     for (int64_t i = PAST_TIME_STEPS; i < n - FUTURE_TIME_STEPS; i += step) {
       const std::string token = std::to_string(seq_id) + "_" + std::to_string(i);
 
@@ -723,6 +724,63 @@ int main(int argc, char ** argv)
           lane_segment_context.get_route_segments(map2bl, traffic_light_id_map, current_lanes);
         route_lanes = route_data;
         route_lanes_speed_limit = route_speed;
+      }
+
+      // Get goal pose
+      const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
+      const Eigen::Matrix4f goal_pose_matrix = utils::pose_to_matrix4f(goal_pose);
+      const Eigen::Vector4f goal_pos_bl =
+        map2bl * Eigen::Vector4f(
+                   goal_pose_matrix(0, 3), goal_pose_matrix(1, 3), goal_pose_matrix(2, 3), 1.0);
+
+      // Such data should be skipped.
+      // (1)Ego vehicle is stopped
+      // (2)The lanelet segment in front is a red light
+      // (3)The GT trajectory is moving forward.
+
+      // (1)Ego vehicle is stopped
+      const bool is_stop = seq.data_list[i].kinematic_state.twist.twist.linear.x < 0.1;
+      if (is_stop) {
+        stopping_count++;
+      } else {
+        stopping_count = 0;
+      }
+
+      // if ego vehicle is stopped and close to goal, finish
+      const float ego_future_last_x = ego_future[(FUTURE_TIME_STEPS - 1) * 3 + 0];
+      const float ego_future_last_y = ego_future[(FUTURE_TIME_STEPS - 1) * 3 + 1];
+      const float distance_to_goal_pose = std::sqrt(
+        (ego_future_last_x - goal_pos_bl.x()) * (ego_future_last_x - goal_pos_bl.x()) +
+        (ego_future_last_y - goal_pos_bl.y()) * (ego_future_last_y - goal_pos_bl.y()));
+
+      if (stopping_count >= 10 && distance_to_goal_pose < 5.0) {
+        std::cout << "finish at " << i << " because stopping_count=" << stopping_count
+                  << " and distance_to_goal_pose=" << distance_to_goal_pose << std::endl;
+        break;
+      }
+
+      // Check for red light
+      const bool is_red_light =
+        route_lanes.size() >=
+            (1 * ROUTE_LEN * SEGMENT_POINT_DIM + 0 * SEGMENT_POINT_DIM + (SEGMENT_POINT_DIM - 3))
+          ? route_lanes
+                [1 * ROUTE_LEN * SEGMENT_POINT_DIM + 0 * SEGMENT_POINT_DIM +
+                 (SEGMENT_POINT_DIM - 3)] > 0.5
+          : false;  // next segment
+
+      float sum_mileage = 0.0;
+      for (int64_t j = 0; j < FUTURE_TIME_STEPS - 1; ++j) {
+        const float dx = ego_future[(j + 1) * 3 + 0] - ego_future[j * 3 + 0];
+        const float dy = ego_future[(j + 1) * 3 + 1] - ego_future[j * 3 + 1];
+        sum_mileage += std::sqrt(dx * dx + dy * dy);
+      }
+      const bool is_future_forward = sum_mileage > 0.1;
+
+      if (is_stop && is_red_light && is_future_forward) {
+        std::cout << "Skip this frame " << i
+                  << " because it is stop at red light and future trajectory is forward"
+                  << std::endl;
+        continue;
       }
 
       // Create placeholder data for static objects
