@@ -39,12 +39,13 @@ namespace autoware::cuda_pointcloud_preprocessor
 struct CudaPolarVoxelOutlierFilterParameters
 {
   // Polar voxel parameters
-  double radial_resolution_m;       // Resolution in radial direction (meters)
-  double azimuth_resolution_rad;    // Resolution in azimuth direction (radians)
-  double elevation_resolution_rad;  // Resolution in elevation direction (radians)
-  int voxel_points_threshold;       // Minimum points required per voxel
-  double min_radius_m;              // Minimum radius to consider
-  double max_radius_m;              // Maximum radius to consider
+  double radial_resolution_m;                // Resolution in radial direction (meters)
+  double azimuth_resolution_rad;             // Resolution in azimuth direction (radians)
+  double elevation_resolution_rad;           // Resolution in elevation direction (radians)
+  int voxel_points_threshold;                // Minimum points required per voxel
+  double min_radius_m;                       // Minimum radius to consider
+  double max_radius_m;                       // Maximum radius to consider
+  double visibility_estimation_max_range_m;  // Maximum range for visibility estimation (meters)
 
   // Return type classification parameters
   bool use_return_type_classification;  // Whether to use return type classification
@@ -57,6 +58,8 @@ struct CudaPolarVoxelOutlierFilterParameters
   double visibility_warn_threshold;     // Warning threshold for visibility diagnostics
   double filter_ratio_error_threshold;  // Error threshold for filter ratio diagnostics
   double filter_ratio_warn_threshold;   // Warning threshold for filter ratio diagnostics
+
+  bool publish_noise_cloud;  // Generate and publish noise cloud for debugging
 };
 
 // Helper struct to make passing data to CUDA Kernel easy

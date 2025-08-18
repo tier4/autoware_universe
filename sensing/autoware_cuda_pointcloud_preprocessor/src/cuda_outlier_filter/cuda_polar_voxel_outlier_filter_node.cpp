@@ -45,6 +45,7 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
       declare_parameter<double>("filter_ratio_warn_threshold", 0.7);
 
     primary_return_types_ = declare_parameter<std::vector<int>>("primary_return_types");
+    filter_params_.publish_noise_cloud = declare_parameter<bool>("publish_noise_cloud", false);
   }
 
   cuda_polar_voxel_outlier_filter_ = std::make_unique<CudaPolarVoxelOutlierFilter>();
@@ -81,9 +82,15 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
     std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
       *this, "~/output/pointcloud");
 
-  noise_cloud_pub_ =
-    std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
-      *this, "~/debug/pointcloud_noise");
+  // Create noise cloud publisher if enabled
+  if (filter_params_.publish_noise_cloud) {
+    noise_cloud_pub_ =
+      std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
+        *this, "~/debug/pointcloud_noise");
+    RCLCPP_INFO(get_logger(), "Noise cloud publishing enabled");
+  } else {
+    RCLCPP_INFO(get_logger(), "Noise cloud publishing disabled for performance optimization");
+  }
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
@@ -132,7 +139,9 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
 
   // Publish results
   filtered_cloud_pub_->publish(std::move(filtered_cloud));
-  noise_cloud_pub_->publish(std::move(noise_cloud));
+  if (filter_params_.publish_noise_cloud && noise_cloud_pub_) {
+    noise_cloud_pub_->publish(std::move(noise_cloud));
+  }
 
   if (ratio_pub_) {
     autoware_internal_debug_msgs::msg::Float32Stamped ratio_msg;
