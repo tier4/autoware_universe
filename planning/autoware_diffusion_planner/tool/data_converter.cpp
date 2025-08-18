@@ -18,6 +18,7 @@
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
+#include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 #include "numpy.hpp"
 #include "rosbag_parser.hpp"
@@ -31,6 +32,7 @@
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -440,9 +442,6 @@ int main(int argc, char ** argv)
   // Create route handler
   autoware::route_handler::RouteHandler route_handler(map_bin_msg);
 
-  // Traffic light map for lane processing
-  std::map<lanelet::Id, preprocess::TrafficSignalStamped> traffic_light_id_map;
-
   rosbag_parser::RosbagParser rosbag_parser(rosbag_path);
   rosbag_parser.create_reader(rosbag_path);
 
@@ -452,11 +451,15 @@ int main(int argc, char ** argv)
   std::deque<TrackedObjects> tracked_objects_msgs;
   std::deque<TurnIndicatorsReport> turn_indicators;
   std::vector<LaneletRoute> route_msgs;
+  std::deque<TrafficLightGroupArray> traffic_signals;
 
   const std::vector<std::string> target_topics = {
-    "/localization/kinematic_state", "/localization/acceleration",
-    "/perception/object_recognition/tracking/objects", "/planning/mission_planning/route",
-    "/vehicle/status/turn_indicators_status"};
+    "/localization/kinematic_state",
+    "/localization/acceleration",
+    "/perception/object_recognition/tracking/objects",
+    "/planning/mission_planning/route",
+    "/vehicle/status/turn_indicators_status",
+    "/perception/traffic_light_recognition/traffic_signals"};
 
   int64_t parse_count = 0;
   while (rosbag_parser.has_next() && (limit < 0 || parse_count < limit)) {
@@ -479,6 +482,10 @@ int main(int argc, char ** argv)
       const TurnIndicatorsReport turn_ind =
         rosbag_parser.deserialize_message<TurnIndicatorsReport>(msg);
       turn_indicators.push_back(turn_ind);
+    } else if (msg->topic_name == "/perception/traffic_light_recognition/traffic_signals") {
+      const TrafficLightGroupArray traffic_signal =
+        rosbag_parser.deserialize_message<TrafficLightGroupArray>(msg);
+      traffic_signals.push_back(traffic_signal);
     }
 
     parse_count++;
@@ -489,6 +496,7 @@ int main(int argc, char ** argv)
   std::cout << "Parsed " << tracked_objects_msgs.size() << " tracked objects" << std::endl;
   std::cout << "Parsed " << route_msgs.size() << " route messages" << std::endl;
   std::cout << "Parsed " << turn_indicators.size() << " turn indicator messages" << std::endl;
+  std::cout << "Parsed " << traffic_signals.size() << " traffic signal messages" << std::endl;
 
   if (tracked_objects_msgs.empty()) {
     std::cerr << "No tracked objects found in rosbag" << std::endl;
@@ -567,6 +575,25 @@ int main(int argc, char ** argv)
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
       const float center_x = ego_pos.x;
       const float center_y = ego_pos.y;
+
+      // Process traffic signals for this frame
+      std::map<lanelet::Id, preprocess::TrafficSignalStamped> traffic_light_id_map;
+
+      // Find and process traffic signals near this timestamp
+      const auto current_stamp = seq.data_list[i].tracked_objects.header.stamp;
+      const rclcpp::Time current_time(current_stamp);
+
+      for (const auto & traffic_signal_msg : traffic_signals) {
+        // Check if this traffic signal is within a reasonable time window
+        const rclcpp::Time signal_time(traffic_signal_msg.stamp);
+        const double time_diff = std::abs((current_time - signal_time).seconds());
+
+        if (time_diff < 1.0) {  // Within 1 second
+          auto msg_ptr = std::make_shared<TrafficLightGroupArray>(traffic_signal_msg);
+          preprocess::process_traffic_signals(
+            msg_ptr, traffic_light_id_map, current_time, 5.0, true);
+        }
+      }
 
       // Get lanes data with speed limits
       const auto [lanes, lanes_speed_limit] = lane_segment_context.get_lane_segments(
