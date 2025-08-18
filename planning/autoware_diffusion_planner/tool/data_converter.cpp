@@ -419,6 +419,7 @@ int main(int argc, char ** argv)
   int64_t step = 1;
   int64_t limit = -1;
   int64_t min_frames = 1700;
+  int64_t search_nearest_route = 1;
 
   // Parse optional arguments
   for (int64_t i = 4; i < argc; ++i) {
@@ -429,6 +430,8 @@ int main(int argc, char ** argv)
       limit = std::stoll(arg.substr(8));
     } else if (arg.find("--min_frames=") == 0) {
       min_frames = std::stoll(arg.substr(13));
+    } else if (arg.find("--search_nearest_route=") == 0) {
+      search_nearest_route = std::stoll(arg.substr(24));
     }
   }
 
@@ -436,7 +439,7 @@ int main(int argc, char ** argv)
   std::cout << "Vector map: " << vector_map_path << std::endl;
   std::cout << "Save directory: " << save_dir << std::endl;
   std::cout << "Step: " << step << ", Limit: " << limit << ", Min frames: " << min_frames
-            << std::endl;
+            << ", Search nearest route: " << search_nearest_route << std::endl;
 
   // Load Lanelet2 map and create context like in diffusion_planner_node
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr = std::make_shared<lanelet::LaneletMap>();
@@ -561,7 +564,29 @@ int main(int argc, char ** argv)
                  turn_indicators, tracking.header.stamp, "/vehicle/status/turn_indicators_status",
                  turn_ind);
 
-    // Check kinematic_state covariance validation like Python version
+    // Check route
+    int64_t max_route_index = -1;
+    if (search_nearest_route) {
+      // Find the latest route msg
+      int64_t max_route_timestamp = 0;
+      for (int64_t j = 0; j < static_cast<int64_t>(route_msgs.size()); ++j) {
+        const LaneletRoute & route_msg = route_msgs[j];
+        const int64_t route_stamp = parse_timestamp(route_msg.header.stamp);
+        if (max_route_timestamp <= route_stamp && route_stamp <= timestamp) {
+          max_route_timestamp = route_stamp;
+          max_route_index = j;
+        }
+      }
+      if (max_route_index == -1) {
+        std::cout << "Cannot find route msg at " << i << std::endl;
+        continue;
+      }
+    } else {
+      // Use the first route msg
+      max_route_index = 0;
+    }
+
+    // Check kinematic_state covariance validation
     if (ok) {
       const std::array<double, 36> & covariance = kinematic.pose.covariance;
       const double covariance_xx = covariance[0];
@@ -574,9 +599,11 @@ int main(int argc, char ** argv)
       }
     }
 
-    // Handle frame based on validation result like Python version
+    SequenceData & sequence = sequences[max_route_index];
+
+    // Handle frame based on validation result
     if (!ok) {
-      if (sequences[0].data_list.empty()) {
+      if (sequence.data_list.empty()) {
         // At the beginning of recording, some msgs may be missing - Skip this frame
         std::cout << "Skip this frame i=" << i << "/n=" << n << std::endl;
         continue;
@@ -587,10 +614,10 @@ int main(int argc, char ** argv)
       }
     }
 
-    const FrameData frame_data{timestamp, sequences[0].route, tracking, kinematic,
-                               accel,     traffic_signal,     turn_ind};
+    const FrameData frame_data{timestamp, sequence.route, tracking, kinematic,
+                               accel,     traffic_signal, turn_ind};
 
-    sequences[0].data_list.push_back(frame_data);
+    sequence.data_list.push_back(frame_data);
   }
 
   // Process sequences
