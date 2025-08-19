@@ -26,6 +26,7 @@
 #include <cuda_runtime.h>
 
 #include <cassert>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -138,8 +139,7 @@ struct FieldDataComposer
 
 struct ReturnTypeCandidates
 {
-  int64_t * return_types =
-    nullptr;  // This data type aligns the nature of rclcpp that return integer parameter as int64_t
+  int * return_types = nullptr;
   size_t num_candidates = 0;
 };
 
@@ -165,7 +165,7 @@ public:
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
     const CudaPolarVoxelOutlierFilterParameters & params, const PolarDataType polar_type);
 
-  void set_primary_return_types(const std::vector<int64_t> & primary_types)
+  void set_primary_return_types(const std::vector<int> & primary_types)
   {
     set_return_types(primary_types, primary_return_type_dev_);
   }
@@ -180,7 +180,7 @@ protected:
   static constexpr int invalid_index_ = -1;
 
   void set_return_types(
-    const std::vector<int64_t> & types, std::optional<ReturnTypeCandidates> & types_dev);
+    const std::vector<int> & types, std::optional<ReturnTypeCandidates> & types_dev);
 
   // std::tuple<FieldDataComposer<int>, CudaPooledUniquePtr<::cuda::std::optional<int>>>
   // calculate_voxel_index(

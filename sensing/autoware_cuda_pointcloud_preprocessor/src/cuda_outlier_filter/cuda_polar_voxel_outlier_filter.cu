@@ -703,7 +703,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 }
 
 void CudaPolarVoxelOutlierFilter::set_return_types(
-  const std::vector<int64_t> & types, std::optional<ReturnTypeCandidates> & types_dev)
+  const std::vector<int> & types, std::optional<ReturnTypeCandidates> & types_dev)
 {
   if (types_dev) {
     // Reset allocated region previously to reflesh the parameters

@@ -45,9 +45,16 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
       declare_parameter<double>("filter_ratio_error_threshold", 0.5);
     filter_params_.filter_ratio_warn_threshold =
       declare_parameter<double>("filter_ratio_warn_threshold", 0.7);
-
-    primary_return_types_ = declare_parameter<std::vector<int>>("primary_return_types");
     filter_params_.publish_noise_cloud = declare_parameter<bool>("publish_noise_cloud", false);
+
+    // rclcpp always returns integer array as std::vector<int64_t>
+    auto primary_return_types_param =
+      declare_parameter<std::vector<int64_t>>("primary_return_types");
+    primary_return_types_.clear();
+    primary_return_types_.reserve(primary_return_types_param.size());
+    for (const auto & val : primary_return_types_param) {
+      primary_return_types_.push_back(static_cast<int>(val));
+    }
   }
 
   cuda_polar_voxel_outlier_filter_ = std::make_unique<CudaPolarVoxelOutlierFilter>();
