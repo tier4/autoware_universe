@@ -344,7 +344,7 @@ void save_binary_data(
   const std::vector<bool> & lanes_has_speed_limit, const std::vector<float> & route_lanes,
   const std::vector<float> & route_lanes_speed_limit,
   const std::vector<bool> & route_lanes_has_speed_limit, const std::vector<float> & goal_pose,
-  const int64_t turn_indicator)
+  const int64_t turn_indicator, const Odometry & kinematic_state, const int64_t timestamp)
 {
   namespace fs = std::filesystem;
 
@@ -393,6 +393,24 @@ void save_binary_data(
   }
 
   file.close();
+
+  // Save JSON file with pose information (same as Python version)
+  const std::string json_filename = output_path + "/" + rosbag_dir_name + "_" + token + ".json";
+  std::ofstream json_file(json_filename);
+  if (json_file.is_open()) {
+    json_file << std::fixed << std::setprecision(15);
+    json_file << "{\n";
+    json_file << "  \"timestamp\": " << timestamp << ",\n";
+    json_file << "  \"x\": " << kinematic_state.pose.pose.position.x << ",\n";
+    json_file << "  \"y\": " << kinematic_state.pose.pose.position.y << ",\n";
+    json_file << "  \"z\": " << kinematic_state.pose.pose.position.z << ",\n";
+    json_file << "  \"qx\": " << kinematic_state.pose.pose.orientation.x << ",\n";
+    json_file << "  \"qy\": " << kinematic_state.pose.pose.orientation.y << ",\n";
+    json_file << "  \"qz\": " << kinematic_state.pose.pose.orientation.z << ",\n";
+    json_file << "  \"qw\": " << kinematic_state.pose.pose.orientation.w << "\n";
+    json_file << "}\n";
+    json_file.close();
+  }
 }
 
 int main(int argc, char ** argv)
@@ -818,7 +836,7 @@ int main(int argc, char ** argv)
         save_dir, rosbag_dir_name, token, ego_past, ego_current, ego_future, neighbor_past,
         neighbor_future, static_objects, lanes, lanes_speed_limit, lanes_has_speed_limit,
         route_lanes, route_lanes_speed_limit, route_lanes_has_speed_limit, goal_pose_vec,
-        turn_indicator);
+        turn_indicator, seq.data_list[i].kinematic_state, seq.data_list[i].timestamp);
 
       if (i % 100 == 0) {
         std::cout << "Processed frame " << i << "/" << n << std::endl;
