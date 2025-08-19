@@ -782,11 +782,10 @@ int main(int argc, char ** argv)
 
       // Check for red light (next segment)
       // route_tensor[:, 1, 0, -3] corresponds to second segment, first point, red light flag
-      const int64_t segment_idx = 1;                          // next segment
-      const int64_t point_idx = 0;                            // first point
-      const int64_t red_flag_offset = SEGMENT_POINT_DIM - 3;  // red light flag position
+      const int64_t segment_idx = 1;  // next segment
+      const int64_t point_idx = 0;    // first point
       const int64_t red_light_index = segment_idx * ROUTE_LEN * SEGMENT_POINT_DIM +
-                                      point_idx * SEGMENT_POINT_DIM + red_flag_offset;
+                                      point_idx * SEGMENT_POINT_DIM + TRAFFIC_LIGHT_RED;
       const bool is_red_light = route_lanes[red_light_index] > 0.5;
 
       float sum_mileage = 0.0;
