@@ -160,22 +160,27 @@ bool check_and_update_msg(
     }
 
     const int64_t msg_time = parse_timestamp(msg_stamp);
-    const int64_t diff = std::abs(target_time - msg_time);
+    const int64_t time_diff = target_time - msg_time;
 
-    if (diff < best_diff) {
-      best_diff = diff;
+    // Only consider past messages, break if future message is encountered
+    if (time_diff < 0) {
+      break;
+    }
+
+    if (time_diff < best_diff) {
+      best_diff = time_diff;
       best_msg = msg;
       best_index = i;
     }
   }
 
-  if (best_diff > static_cast<int64_t>(0.2 * 1e9)) {  // Over 200 msec
+  if (best_diff > static_cast<int64_t>(2e8)) {  // Over 200 msec
     std::cout << "Over 200 msec: " << topic_name << ", msgs.size()=" << msgs.size()
               << ", diff=" << best_diff << std::endl;
     return false;
   }
 
-  // Remove processed messages (like Python version)
+  // Remove processed messages
   msgs.erase(msgs.begin(), msgs.begin() + best_index);
   result_msg = best_msg;
   return true;
