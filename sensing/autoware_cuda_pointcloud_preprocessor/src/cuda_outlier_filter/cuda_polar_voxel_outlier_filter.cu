@@ -297,9 +297,11 @@ __global__ void classify_point_by_return_type_kernel(
   const uint8_t * __restrict__ data, const size_t num_points, const int num_voxels,
   const size_t step, const size_t offset, const ReturnTypeCandidates primary_return_type,
   const ::cuda::std::optional<int> * __restrict__ point_indices,
-  const int * __restrict__ voxel_indices, size_t * __restrict__ primary_returns,
-  size_t * __restrict__ secondary_returns, bool * __restrict__ is_primary_returns,
-  bool * __restrict__ is_secondary_returns)
+  const int * __restrict__ voxel_indices,
+  const ::cuda::std::optional<int> * __restrict__ radius_indices, const double radial_resolution_m,
+  const double visibility_estimation_max_range_m, size_t * __restrict__ primary_returns,
+  size_t * __restrict__ secondary_returns, int * __restrict__ is_in_visibility_range,
+  bool * __restrict__ is_primary_returns, bool * __restrict__ is_secondary_returns)
 {
   size_t array_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (array_index >= num_points) {
@@ -336,6 +338,17 @@ __global__ void classify_point_by_return_type_kernel(
     atomic_add_size_t(&(primary_returns[voxel_index]), 1);
   } else if (is_secondary_return_type) {
     atomic_add_size_t(&(secondary_returns[voxel_index]), 1);
+  }
+
+  // Add range information for visibility calculation
+  if (!radius_indices[point_index.value()].has_value()) {
+    atomicExch(&(is_in_visibility_range[voxel_index]), false);
+  } else {
+    double voxel_max_radius =
+      (radius_indices[point_index.value()].value() + 1) * radial_resolution_m;
+    atomicExch(
+      &(is_in_visibility_range[voxel_index]),
+      voxel_max_radius <= visibility_estimation_max_range_m);
   }
 }
 
@@ -425,6 +438,22 @@ __global__ void bool_flip_kernel(bool * __restrict__ flags, const size_t num_poi
   flags[point_index] = !flags[point_index];
 }
 
+__global__ void is_high_visibility_voxel_kernel(
+  const bool * __restrict__ primary_meets_threshold,
+  const bool * __restrict__ secondary_meets_threshold,
+  const int * __restrict__ is_in_visibility_range, const int num_voxels,
+  bool * __restrict__ is_high_visibility_voxels)
+{
+  size_t voxel_index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (voxel_index >= num_voxels) {
+    return;
+  }
+
+  is_high_visibility_voxels[voxel_index] = static_cast<bool>(is_in_visibility_range[voxel_index]) &&
+                                           primary_meets_threshold[voxel_index] &&
+                                           secondary_meets_threshold[voxel_index];
+}
+
 // Helper function to get field offset
 template <typename T>
 size_t get_offset(const T & fields, const std::string & field_name)
@@ -499,6 +528,9 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   // the number of points that have (primary|secondary) returns per voxels
   CudaPooledUniquePtr<size_t> num_primary_returns = nullptr;
   CudaPooledUniquePtr<size_t> num_secondary_returns = nullptr;
+  CudaPooledUniquePtr<int> is_in_visibility_range =
+    nullptr;  // Due to lack of bool support for CUDA's atomic operations, use int here
+
   // flags whether each points has (primary|secondary) return type (for later use)
   CudaPooledUniquePtr<bool> is_primary_returns = nullptr;
   CudaPooledUniquePtr<bool> is_secondary_returns = nullptr;
@@ -532,6 +564,8 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
       autoware::cuda_utils::make_unique<size_t>(num_total_voxels, stream_, mem_pool_);
     num_secondary_returns =
       autoware::cuda_utils::make_unique<size_t>(num_total_voxels, stream_, mem_pool_);
+    is_in_visibility_range =
+      autoware::cuda_utils::make_unique<int>(num_total_voxels, stream_, mem_pool_);
     is_primary_returns = autoware::cuda_utils::make_unique<bool>(num_points, stream_, mem_pool_);
     is_secondary_returns = autoware::cuda_utils::make_unique<bool>(num_points, stream_, mem_pool_);
 
@@ -541,8 +575,10 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     classify_point_by_return_type_kernel<uint8_t><<<grid_dim, block_dim, 0, stream_>>>(
       input_cloud->data.get(), num_points, num_total_voxels, input_cloud->point_step,
       return_type_offset, primary_return_type_dev_.value(), point_indices.get(),
-      voxel_indices.get(), num_primary_returns.get(), num_secondary_returns.get(),
-      is_primary_returns.get(), is_secondary_returns.get());
+      voxel_indices.get(), radius_idx.get(), resolutions.radius,
+      params.visibility_estimation_max_range_m, num_primary_returns.get(),
+      num_secondary_returns.get(), is_in_visibility_range.get(), is_primary_returns.get(),
+      is_secondary_returns.get());
   }
 
   // Collect valid point indices and visibility statistics
@@ -632,20 +668,35 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 
   double visibility = 0.0;
   if (params.use_return_type_classification) {
-    int total_voxels_with_points = num_total_voxels;
+    auto is_high_visibility_voxels =
+      autoware::cuda_utils::make_unique<bool>(num_total_voxels, stream_, mem_pool_);
 
-    // calculate the number of voxels that secondary test passed
-    int voxels_passed_secondary_test = 0;
-    auto reduction_result_tmp_dev = autoware::cuda_utils::make_unique<int>(stream_, mem_pool_);
+    dim3 block_dim(512);
+    dim3 grid_dim((num_total_voxels + block_dim.x - 1) / block_dim.x);
+
+    is_high_visibility_voxel_kernel<<<grid_dim, block_dim, 0, stream_>>>(
+      primary_meets_threshold.get(), secondary_meets_threshold.get(), is_in_visibility_range.get(),
+      num_total_voxels, is_high_visibility_voxels.get());
+
+    int num_high_visibility_voxels = 0;
+    auto tmp_high_visibility_voxels_dev =
+      autoware::cuda_utils::make_unique<int>(stream_, mem_pool_);
     reduce_and_copy_to_host(
-      ReductionType::Sum, secondary_meets_threshold.get(), num_total_voxels,
-      reduction_result_tmp_dev.get(), voxels_passed_secondary_test);
+      ReductionType::Sum, is_high_visibility_voxels.get(), num_total_voxels,
+      tmp_high_visibility_voxels_dev.get(), num_high_visibility_voxels);
+
+    int num_is_in_visibility_voxels = 0;
+    auto tmp_is_in_visibility_voxels_dev =
+      autoware::cuda_utils::make_unique<int>(stream_, mem_pool_);
+    reduce_and_copy_to_host(
+      ReductionType::Sum, is_in_visibility_range.get(), num_total_voxels,
+      tmp_is_in_visibility_voxels_dev.get(), num_is_in_visibility_voxels);
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));  // wait till device to host copy finish
 
-    visibility = total_voxels_with_points > 0 ? static_cast<double>(voxels_passed_secondary_test) /
-                                                  static_cast<double>(total_voxels_with_points)
-                                              : 0.0;
+    visibility = (num_is_in_visibility_voxels > 0)
+                   ? static_cast<double>(num_high_visibility_voxels) / (num_is_in_visibility_voxels)
+                   : 0.0;
   }
 
   return {std::move(filtered_cloud), std::move(noise_cloud), filter_ratio, visibility};

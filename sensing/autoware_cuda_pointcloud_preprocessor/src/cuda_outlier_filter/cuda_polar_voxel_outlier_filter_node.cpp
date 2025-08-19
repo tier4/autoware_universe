@@ -31,6 +31,8 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
     filter_params_.voxel_points_threshold = declare_parameter<int>("voxel_points_threshold");
     filter_params_.min_radius_m = declare_parameter<double>("min_radius_m");
     filter_params_.max_radius_m = declare_parameter<double>("max_radius_m");
+    filter_params_.visibility_estimation_max_range_m =
+      declare_parameter<double>("visibility_estimation_max_range_m", 20.0);
     filter_params_.use_return_type_classification =
       declare_parameter<bool>("use_return_type_classification");
     filter_params_.filter_secondary_returns = declare_parameter<bool>("filter_secondary_returns");
