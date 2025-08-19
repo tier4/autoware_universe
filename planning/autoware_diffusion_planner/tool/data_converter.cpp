@@ -392,6 +392,9 @@ void save_binary_data(
 
 int main(int argc, char ** argv)
 {
+  // Initialize ROS2 for route handler functionality
+  rclcpp::init(argc, argv);
+
   if (argc < 4) {
     std::cerr << "Usage: data_converter <rosbag_path> <vector_map_path> <save_dir> [--step=1] "
                  "[--limit=-1] [--min_frames=1700]"
@@ -505,6 +508,11 @@ int main(int argc, char ** argv)
   std::cout << "Parsed " << turn_indicators.size() << " turn indicator messages" << std::endl;
   std::cout << "Parsed " << traffic_signals.size() << " traffic signal messages" << std::endl;
 
+  if (route_msgs.empty()) {
+    std::cerr << "No route messages found in rosbag" << std::endl;
+    return 1;
+  }
+
   if (tracked_objects_msgs.empty()) {
     std::cerr << "No tracked objects found in rosbag" << std::endl;
     return 1;
@@ -512,14 +520,8 @@ int main(int argc, char ** argv)
 
   // Create sequences based on tracked objects (base topic at 10Hz)
   std::vector<SequenceData> sequences;
-  if (!route_msgs.empty()) {
-    for (const LaneletRoute & route : route_msgs) {
-      sequences.push_back({{}, route});
-    }
-    // Set route to route handler
-    route_handler.setRoute(route_msgs[0]);
-  } else {
-    sequences.push_back({{}, LaneletRoute()});
+  for (const LaneletRoute & route : route_msgs) {
+    sequences.push_back({{}, route});
   }
 
   // Process each tracked objects message with synchronization like Python version
@@ -647,6 +649,12 @@ int main(int argc, char ** argv)
       std::cout << "Skipping sequence with only " << n << " frames (min: " << min_frames << ")"
                 << std::endl;
       continue;
+    }
+
+    route_handler.setRoute(seq.route);
+    if (!route_handler.isHandlerReady()) {
+      std::cout << "Route handler is not ready for sequence " << seq_id + 1 << std::endl;
+      return 1;
     }
 
     // Process frames with stopping count tracking
@@ -817,4 +825,6 @@ int main(int argc, char ** argv)
   }
 
   std::cout << "Data conversion completed!" << std::endl;
+
+  rclcpp::shutdown();
 }
