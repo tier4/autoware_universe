@@ -393,6 +393,7 @@ __global__ void point_validity_check_kernel(
   if (voxel_index < 0 || num_voxels <= voxel_index) {  // Invalid voxel index means this point is
                                                        // invalid
     valid_points_mask[point_index.value()] = false;
+    return;
   }
 
   // Voxel is kept if BOTH criteria are met
