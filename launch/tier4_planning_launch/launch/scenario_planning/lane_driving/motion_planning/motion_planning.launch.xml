@@ -201,6 +201,7 @@
         <param from="$(var motion_velocity_planner_obstacle_velocity_limiter_param_path)"/>
         <param from="$(var motion_velocity_planner_run_out_param_path)"/>
         <param from="$(var motion_velocity_planner_boundary_departure_prevention_module_param_path)"/>
+        <param from="$(var motion_velocity_planner_road_user_stop_module_param_path)"/>
         <!-- <param from="$(var motion_velocity_planner_template_param_path)"/> -->
         <!-- composable node config -->
         <extra_arg name="use_intra_process_comms" value="false"/>
