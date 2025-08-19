@@ -18,6 +18,7 @@
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
+#include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 #include "numpy.hpp"
@@ -141,28 +142,13 @@ std::vector<float> create_ego_sequence(
   const std::vector<FrameData> & data_list, const int64_t start_idx, const int64_t time_steps,
   const Eigen::Matrix4f & map2bl_matrix)
 {
-  std::vector<float> ego_sequence;
-  ego_sequence.reserve(time_steps * 3);  // x, y, yaw
-
+  // Extract odometry messages from FrameData
+  std::deque<nav_msgs::msg::Odometry> odometry_deque;
   for (int64_t j = 0; j < time_steps; ++j) {
     const int64_t index = std::min(start_idx + j, static_cast<int64_t>(data_list.size()) - 1);
-    const Point & pos = data_list[index].kinematic_state.pose.pose.position;
-    const Quaternion & ori = data_list[index].kinematic_state.pose.pose.orientation;
-
-    const Eigen::Vector4f pos_vec(pos.x, pos.y, pos.z, 1.0);
-    const Eigen::Vector4f transformed_pos = map2bl_matrix * pos_vec;
-
-    const Eigen::Quaternionf quat(ori.w, ori.x, ori.y, ori.z);
-    const Eigen::Matrix3f rot_matrix = quat.toRotationMatrix();
-    const Eigen::Matrix3f transformed_rot = map2bl_matrix.block<3, 3>(0, 0) * rot_matrix;
-    const float yaw = std::atan2(transformed_rot(1, 0), transformed_rot(0, 0));
-
-    ego_sequence.push_back(transformed_pos.x());
-    ego_sequence.push_back(transformed_pos.y());
-    ego_sequence.push_back(yaw);
+    odometry_deque.push_back(data_list[index].kinematic_state);
   }
-
-  return ego_sequence;
+  return preprocess::create_ego_agent_past(odometry_deque, time_steps, map2bl_matrix);
 }
 
 std::vector<float> process_neighbor_agents(
@@ -327,8 +313,8 @@ void save_npz_data(
   aoba::SaveArrayAsNumpy(
     base_filename + "_ego_current_state.npy", 1, ego_current_shape, ego_current.data());
 
-  // ego_agent_future (80, 3)
-  const int ego_future_shape[] = {static_cast<int>(FUTURE_TIME_STEPS), 3};
+  // ego_agent_future (80, 4)
+  const int ego_future_shape[] = {static_cast<int>(FUTURE_TIME_STEPS), 4};
   aoba::SaveArrayAsNumpy(
     base_filename + "_ego_agent_future.npy", 2, ego_future_shape, ego_future.data());
 
@@ -702,7 +688,8 @@ int main(int argc, char ** argv)
       // Create has_speed_limit flags based on speed_limit values
       std::vector<bool> lanes_has_speed_limit(lanes_speed_limit.size());
       for (size_t idx = 0; idx < lanes_speed_limit.size(); ++idx) {
-        lanes_has_speed_limit[idx] = (lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
+        lanes_has_speed_limit[idx] =
+          (lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
       }
 
       // Get route lanes data with speed limits
@@ -732,7 +719,8 @@ int main(int argc, char ** argv)
       // Create route_lanes_has_speed_limit based on speed_limit values
       std::vector<bool> route_lanes_has_speed_limit(route_lanes_speed_limit.size());
       for (size_t idx = 0; idx < route_lanes_speed_limit.size(); ++idx) {
-        route_lanes_has_speed_limit[idx] = (route_lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
+        route_lanes_has_speed_limit[idx] =
+          (route_lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
       }
 
       // Get goal pose

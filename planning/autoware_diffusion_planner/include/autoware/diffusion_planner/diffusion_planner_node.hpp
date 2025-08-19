@@ -242,7 +242,6 @@ public:
    * @param map_to_ego_transform Transformation matrix from map to ego frame.
    * @return Vector of float values representing ego agent past.
    */
-  std::vector<float> create_ego_agent_past(const Eigen::Matrix4f & map_to_ego_transform);
 
   /**
    * @brief Replicate single sample data for batch processing.
