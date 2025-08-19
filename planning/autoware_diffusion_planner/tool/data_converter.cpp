@@ -45,8 +45,10 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -329,12 +331,13 @@ std::vector<float> process_neighbor_future(
 }
 
 void save_binary_data(
-  const std::string & output_path, const std::string & token, const std::vector<float> & ego_past,
-  const std::vector<float> & ego_current, const std::vector<float> & ego_future,
-  const std::vector<float> & neighbor_past, const std::vector<float> & neighbor_future,
-  const std::vector<float> & static_objects, const std::vector<float> & lanes,
-  const std::vector<float> & lanes_speed_limit, const std::vector<bool> & lanes_has_speed_limit,
-  const std::vector<float> & route_lanes, const std::vector<float> & route_lanes_speed_limit,
+  const std::string & output_path, const std::string & rosbag_dir_name, const std::string & token,
+  const std::vector<float> & ego_past, const std::vector<float> & ego_current,
+  const std::vector<float> & ego_future, const std::vector<float> & neighbor_past,
+  const std::vector<float> & neighbor_future, const std::vector<float> & static_objects,
+  const std::vector<float> & lanes, const std::vector<float> & lanes_speed_limit,
+  const std::vector<bool> & lanes_has_speed_limit, const std::vector<float> & route_lanes,
+  const std::vector<float> & route_lanes_speed_limit,
   const std::vector<bool> & route_lanes_has_speed_limit, const std::vector<float> & goal_pose,
   const int64_t turn_indicator)
 {
@@ -369,8 +372,8 @@ void save_binary_data(
 
   data.turn_indicator = static_cast<int32_t>(turn_indicator);
 
-  // Save to binary file
-  const std::string binary_filename = output_path + "/" + token + ".bin";
+  // Save to binary file with rosbag directory name prefix (same format as Python version)
+  const std::string binary_filename = output_path + "/" + rosbag_dir_name + "_" + token + ".bin";
   std::ofstream file(binary_filename, std::ios::binary);
   if (!file.is_open()) {
     std::cerr << "Failed to open file for writing: " << binary_filename << std::endl;
@@ -628,7 +631,7 @@ int main(int argc, char ** argv)
     sequences.erase(sequences.begin() + i + 1);
   }
 
-  const std::string map_name = std::filesystem::path(rosbag_path).stem();
+  const std::string rosbag_dir_name = std::filesystem::path(rosbag_path).filename();
   const int64_t sequence_num = static_cast<int64_t>(sequences.size());
   std::cout << "Total " << sequence_num << " sequences" << std::endl;
 
@@ -649,7 +652,10 @@ int main(int argc, char ** argv)
     // Process frames with stopping count tracking
     int64_t stopping_count = 0;
     for (int64_t i = PAST_TIME_STEPS; i < n - FUTURE_TIME_STEPS; i += step) {
-      const std::string token = std::to_string(seq_id) + "_" + std::to_string(i);
+      // Create token in same format as Python version: seq_id(8digits) + i(8digits)
+      std::ostringstream token_stream;
+      token_stream << std::setfill('0') << std::setw(8) << seq_id << std::setw(8) << i;
+      const std::string token = token_stream.str();
 
       // Get transformation matrix
       const auto [bl2map, map2bl] = utils::get_transform_matrix(seq.data_list[i].kinematic_state);
@@ -799,9 +805,10 @@ int main(int argc, char ** argv)
 
       // Save data
       save_binary_data(
-        save_dir, token, ego_past, ego_current, ego_future, neighbor_past, neighbor_future,
-        static_objects, lanes, lanes_speed_limit, lanes_has_speed_limit, route_lanes,
-        route_lanes_speed_limit, route_lanes_has_speed_limit, goal_pose_vec, turn_indicator);
+        save_dir, rosbag_dir_name, token, ego_past, ego_current, ego_future, neighbor_past,
+        neighbor_future, static_objects, lanes, lanes_speed_limit, lanes_has_speed_limit,
+        route_lanes, route_lanes_speed_limit, route_lanes_has_speed_limit, goal_pose_vec,
+        turn_indicator);
 
       if (i % 100 == 0) {
         std::cout << "Processed frame " << i << "/" << n << std::endl;
