@@ -711,8 +711,6 @@ int main(int argc, char ** argv)
       std::vector<float> route_lanes(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
       std::vector<float> route_lanes_speed_limit(ROUTE_NUM * ROUTE_LEN, 0.0f);
 
-      assert(route_handler.isHandlerReady());
-
       geometry_msgs::msg::Pose current_pose;
       current_pose.position = ego_pos;
       current_pose.orientation.w = 1.0;  // Identity quaternion
