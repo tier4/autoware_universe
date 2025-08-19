@@ -14,6 +14,7 @@
   <arg name="mode" default="lidar" description="options: `camera_lidar_radar_fusion`, `camera_lidar_fusion`, `lidar_radar_fusion`, `lidar` or `radar`"/>
   <arg name="use_radar_tracking_fusion" default="false" description="use radar tracking fusion"/>
   <let name="use_radar_tracking_fusion" value="false" if="$(eval '&quot;$(var mode)&quot;!=&quot;camera_lidar_radar_fusion&quot;')"/>
+  <let name="use_v2i_tracking_fusion" default="false" description="use v2i tracking fusion"/>
   <arg name="use_multi_channel_tracker_merger"/>
   <arg name="use_validator" description="use obstacle_pointcloud based validator"/>
 
@@ -31,21 +32,60 @@
   <arg name="input/radar/channel" default="radar"/>
   <arg name="input/radar/far_objects" default="/perception/object_recognition/detection/radar/far_objects"/>
   <arg name="input/radar/objects" default="/perception/object_recognition/detection/radar/objects"/>
+  <arg name="input/v2i/channel" default="v2i"/>
+  <arg name="input/v2i/far_objects" default="/perception/object_recognition/detection/v2i/far_objects"/>
+  <arg name="input/v2i/objects" default="/perception/object_recognition/detection/v2i/objects"/>
 
   <arg name="output/objects" default="$(var ns)/objects"/>
 
   <group unless="$(var use_multi_channel_tracker_merger)">
     <!-- Internal interface -->
+    <!-- radar common -->
     <let name="radar_tracker/input/objects" value="$(var input/radar/far_objects)"/>
     <let name="radar_tracker/output/objects" value="$(var ns)/radar/far_objects"/>
 
-    <let name="multi_object_tracker/output/objects" value="$(var output/objects)" unless="$(var use_radar_tracking_fusion)"/>
-    <let name="multi_object_tracker/output/objects" value="$(var ns)/near_objects" if="$(var use_radar_tracking_fusion)"/>
+    <!-- v2i common -->
+    <let name="v2i_tracker/input/objects" value="$(var input/v2i/far_objects)"/>
+    <let name="v2i_tracker/output/objects" value="$(var ns)/v2i/far_objects"/>
+    
+    
 
-    <let name="tracker_merger/input/main_objects" value="$(var multi_object_tracker/output/objects)"/>
-    <let name="tracker_merger/input/sub_objects" value="$(var radar_tracker/output/objects)"/>
-    <let name="tracker_merger/output/objects" value="$(var output/objects)"/>
+    <!-- radar & v2i -->
+    <grpup if="$(eval $(var use_radar_tracking_fusion)=='true' and $(var use_v2i_tracking_fusion)=='true')">
+      <let name="multi_object_tracker/output/objects" value="$(var ns)/near_objects"/>
 
+      <let name="tracker_merger/input/main_objects" value="$(var multi_object_tracker/output/objects)"/>
+      <let name="tracker_merger/input/sub_objects" value="$(var radar_tracker/output/objects)"/>
+      <let name="tracker_merger/output/objects" value="$(var ns)/camera_lidar_radar_objects"/>
+
+      <let name="v2i_tracker_merger/input/main_objects" value="$(var tracker_merger/output/objects)"/>
+      <let name="v2i_tracker_merger/input/sub_objects" value="$(var v2i_tracker/output/objects)"/>
+      <let name="v2i_tracker_merger/output/objects" value="$(var output/objects)"/>
+    </group>
+    <!-- radar -->
+    <grpup if="$(eval $(var use_radar_tracking_fusion)=='true' and $(var use_v2i_tracking_fusion)=='false')">
+      <let name="multi_object_tracker/output/objects" value="$(var ns)/near_objects"/>
+
+      <let name="tracker_merger/input/main_objects" value="$(var multi_object_tracker/output/objects)"/>
+      <let name="tracker_merger/input/sub_objects" value="$(var radar_tracker/output/objects)"/>
+      <let name="tracker_merger/output/objects" value="$(var output/objects)"/>
+
+    </group>
+    <!-- v2i -->
+    <grpup if="$(eval $(var use_radar_tracking_fusion)=='false' and $(var use_v2i_tracking_fusion)=='true')">
+      <let name="multi_object_tracker/output/objects" value="$(var ns)/near_objects"/>
+
+      <let name="v2i_tracker_merger/input/main_objects" value="$(var multi_object_tracker/output/objects)"/>
+      <let name="v2i_tracker_merger/input/sub_objects" value="$(var v2i_tracker/output/objects)"/>
+      <let name="v2i_tracker_merger/output/objects" value="$(var output/objects)"/>
+    </group>
+    <!-- none -->
+    <grpup if="$(eval $(var use_radar_tracking_fusion)=='true' and $(var use_v2i_tracking_fusion)=='true')">
+      <let name="multi_object_tracker/output/objects" value="$(var output/objects)"/>
+    </group>
+
+
+    
     <!-- Multi object tracking -->
     <include file="$(find-pkg-share autoware_multi_object_tracker)/launch/multi_object_tracker.launch.xml">
       <arg name="input/detection01/objects" value="$(var input/merged_detection/objects)"/>
@@ -75,6 +115,28 @@
         <arg name="output" value="$(var tracker_merger/output/objects)"/>
         <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_object_merger_data_association_matrix_param_path)"/>
         <arg name="node_param_file_path" value="$(var object_recognition_tracking_object_merger_node_param_path)"/>
+      </include>
+    </group>
+
+    <!-- Run with tracking merger to add far v2i information -->
+    <group if="$(var use_v2i_tracking_fusion)">
+      <!-- v2i long range dynamic object tracking -->
+      <include file="$(find-pkg-share autoware_v2i_object_tracker)/launch/v2i_object_tracker.launch.xml">
+        <arg name="input" value="$(var v2i_tracker/input/objects)"/>
+        <arg name="output" value="$(var v2i_tracker/output/objects)"/>
+        <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_v2i_object_tracker_data_association_matrix_param_path)"/>
+        <arg name="tracker_setting_path" value="$(var object_recognition_tracking_v2i_object_tracker_tracking_setting_param_path)"/>
+        <arg name="radar_object_tracker_param_path" value="$(var object_recognition_tracking_v2i_object_tracker_node_param_path)"/>
+      </include>
+
+      <!-- tracking object merger to merge near objects and far objects -->
+      <include file="$(find-pkg-share autoware_tracking_v2i_merger)/launch/decorative_tracker_merger.launch.xml">
+        <arg name="node_name" value="decorative_tracker_merger"/>
+        <arg name="input/main_object" value="$(var v2i_tracker_merger/input/main_objects)"/>
+        <arg name="input/sub_object" value="$(var v2i_tracker_merger/input/sub_objects)"/>
+        <arg name="output" value="$(var v2i_tracker_merger/output/objects)"/>
+        <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_v2i_merger_data_association_matrix_param_path)"/>
+        <arg name="node_param_file_path" value="$(var object_recognition_tracking_v2i_merger_node_param_path)"/>
       </include>
     </group>
   </group>
