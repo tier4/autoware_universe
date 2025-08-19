@@ -21,7 +21,6 @@
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
-#include "numpy.hpp"
 #include "rosbag_parser.hpp"
 
 #include <Eigen/Core>
@@ -45,6 +44,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
@@ -82,6 +82,47 @@ struct SequenceData
 {
   std::vector<FrameData> data_list;
   LaneletRoute route;
+};
+
+// Training data structure for binary file (all fixed size)
+struct TrainingDataBinary
+{
+  // Header information
+  uint32_t version;  // Data format version
+
+  // Fixed size data arrays
+  float ego_agent_past[21 * 4];               // (21, 4)
+  float ego_current_state[10];                // (10,)
+  float ego_agent_future[80 * 4];             // (80, 4)
+  float neighbor_agents_past[32 * 21 * 11];   // (32, 21, 11)
+  float neighbor_agents_future[32 * 80 * 3];  // (32, 80, 3)
+  float static_objects[5 * 10];               // (5, 10)
+  float lanes[70 * 20 * 13];                  // (70, 20, 13) - SEGMENT_POINT_DIM=13
+  float lanes_speed_limit[70 * 20];           // (70, 20)
+  int32_t lanes_has_speed_limit[70];          // (70,)
+  float route_lanes[25 * 20 * 13];            // (25, 20, 13) - SEGMENT_POINT_DIM=13
+  float route_lanes_speed_limit[25 * 20];     // (25, 20)
+  int32_t route_lanes_has_speed_limit[25];    // (25,)
+  float goal_pose[3];                         // (3,)
+  int32_t turn_indicator;                     // scalar
+
+  // Constructor with zero initialization
+  TrainingDataBinary() : version(1), turn_indicator(0)
+  {
+    std::fill(std::begin(ego_agent_past), std::end(ego_agent_past), 0.0f);
+    std::fill(std::begin(ego_current_state), std::end(ego_current_state), 0.0f);
+    std::fill(std::begin(ego_agent_future), std::end(ego_agent_future), 0.0f);
+    std::fill(std::begin(neighbor_agents_past), std::end(neighbor_agents_past), 0.0f);
+    std::fill(std::begin(neighbor_agents_future), std::end(neighbor_agents_future), 0.0f);
+    std::fill(std::begin(static_objects), std::end(static_objects), 0.0f);
+    std::fill(std::begin(lanes), std::end(lanes), 0.0f);
+    std::fill(std::begin(lanes_speed_limit), std::end(lanes_speed_limit), 0.0f);
+    std::fill(std::begin(lanes_has_speed_limit), std::end(lanes_has_speed_limit), 0);
+    std::fill(std::begin(route_lanes), std::end(route_lanes), 0.0f);
+    std::fill(std::begin(route_lanes_speed_limit), std::end(route_lanes_speed_limit), 0.0f);
+    std::fill(std::begin(route_lanes_has_speed_limit), std::end(route_lanes_has_speed_limit), 0);
+    std::fill(std::begin(goal_pose), std::end(goal_pose), 0.0f);
+  }
 };
 
 int64_t parse_timestamp(const builtin_interfaces::msg::Time & stamp)
@@ -287,7 +328,7 @@ std::vector<float> process_neighbor_future(
   return neighbor_future;
 }
 
-void save_npz_data(
+void save_binary_data(
   const std::string & output_path, const std::string & token, const std::vector<float> & ego_past,
   const std::vector<float> & ego_current, const std::vector<float> & ego_future,
   const std::vector<float> & neighbor_past, const std::vector<float> & neighbor_future,
@@ -301,89 +342,50 @@ void save_npz_data(
 
   fs::create_directories(output_path);
 
-  // Save individual arrays as .npy files (simulating npz format)
-  const std::string base_filename = output_path + "/" + token;
+  // Copy data to struct
+  TrainingDataBinary data;
 
-  // ego_agent_past (21, 4) - x, y, cos_yaw, sin_yaw
-  const int ego_past_shape[] = {static_cast<int>(PAST_TIME_STEPS), 4};
-  aoba::SaveArrayAsNumpy(base_filename + "_ego_agent_past.npy", 2, ego_past_shape, ego_past.data());
+  // Copy vector data to fixed arrays
+  std::copy(ego_past.begin(), ego_past.end(), data.ego_agent_past);
+  std::copy(ego_current.begin(), ego_current.end(), data.ego_current_state);
+  std::copy(ego_future.begin(), ego_future.end(), data.ego_agent_future);
+  std::copy(neighbor_past.begin(), neighbor_past.end(), data.neighbor_agents_past);
+  std::copy(neighbor_future.begin(), neighbor_future.end(), data.neighbor_agents_future);
+  std::copy(static_objects.begin(), static_objects.end(), data.static_objects);
+  std::copy(lanes.begin(), lanes.end(), data.lanes);
+  std::copy(lanes_speed_limit.begin(), lanes_speed_limit.end(), data.lanes_speed_limit);
+  std::copy(route_lanes.begin(), route_lanes.end(), data.route_lanes);
+  std::copy(
+    route_lanes_speed_limit.begin(), route_lanes_speed_limit.end(), data.route_lanes_speed_limit);
+  std::copy(goal_pose.begin(), goal_pose.end(), data.goal_pose);
 
-  // ego_current_state (10,)
-  const int ego_current_shape[] = {static_cast<int>(ego_current.size())};
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_ego_current_state.npy", 1, ego_current_shape, ego_current.data());
+  // Convert bool to int32_t and copy
+  for (size_t i = 0; i < lanes_has_speed_limit.size(); ++i) {
+    data.lanes_has_speed_limit[i] = static_cast<int32_t>(lanes_has_speed_limit[i]);
+  }
+  for (size_t i = 0; i < route_lanes_has_speed_limit.size(); ++i) {
+    data.route_lanes_has_speed_limit[i] = static_cast<int32_t>(route_lanes_has_speed_limit[i]);
+  }
 
-  // ego_agent_future (80, 4)
-  const int ego_future_shape[] = {static_cast<int>(FUTURE_TIME_STEPS), 4};
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_ego_agent_future.npy", 2, ego_future_shape, ego_future.data());
+  data.turn_indicator = static_cast<int32_t>(turn_indicator);
 
-  // neighbor_agents_past (32, 21, 11)
-  const int neighbor_past_shape[] = {
-    static_cast<int>(NEIGHBOR_NUM), static_cast<int>(PAST_TIME_STEPS), 11};
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_neighbor_agents_past.npy", 3, neighbor_past_shape, neighbor_past.data());
+  // Save to binary file
+  const std::string binary_filename = output_path + "/" + token + ".bin";
+  std::ofstream file(binary_filename, std::ios::binary);
+  if (!file.is_open()) {
+    std::cerr << "Failed to open file for writing: " << binary_filename << std::endl;
+    return;
+  }
 
-  // neighbor_agents_future (32, 80, 3)
-  const int neighbor_future_shape[] = {
-    static_cast<int>(NEIGHBOR_NUM), static_cast<int>(FUTURE_TIME_STEPS), 3};
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_neighbor_agents_future.npy", 3, neighbor_future_shape,
-    neighbor_future.data());
+  file.write(reinterpret_cast<const char *>(&data), sizeof(TrainingDataBinary));
 
-  // static_objects (5, 10)
-  const int static_shape[] = {static_cast<int>(STATIC_NUM), 10};
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_static_objects.npy", 2, static_shape, static_objects.data());
+  if (file.fail()) {
+    std::cerr << "Failed to write data to file: " << binary_filename << std::endl;
+    return;
+  }
 
-  // lanes (70, 20, SEGMENT_POINT_DIM)
-  const int lanes_shape[] = {
-    static_cast<int>(LANE_NUM), static_cast<int>(LANE_LEN), static_cast<int>(SEGMENT_POINT_DIM)};
-  aoba::SaveArrayAsNumpy(base_filename + "_lanes.npy", 3, lanes_shape, lanes.data());
-
-  // lanes_speed_limit (70, 20)
-  const int lanes_speed_shape[] = {static_cast<int>(LANE_NUM), static_cast<int>(LANE_LEN)};
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_lanes_speed_limit.npy", 2, lanes_speed_shape, lanes_speed_limit.data());
-
-  // route_lanes (25, 20, SEGMENT_POINT_DIM)
-  const int route_shape[] = {
-    static_cast<int>(ROUTE_NUM), static_cast<int>(ROUTE_LEN), static_cast<int>(SEGMENT_POINT_DIM)};
-  aoba::SaveArrayAsNumpy(base_filename + "_route_lanes.npy", 3, route_shape, route_lanes.data());
-
-  // route_lanes_speed_limit (25, 20)
-  const int route_speed_shape[] = {static_cast<int>(ROUTE_NUM), static_cast<int>(ROUTE_LEN)};
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_route_lanes_speed_limit.npy", 2, route_speed_shape,
-    route_lanes_speed_limit.data());
-
-  // lanes_has_speed_limit (70, 1) - convert bool to int32_t
-  std::vector<int32_t> lanes_has_int32(lanes_has_speed_limit.size());
-  std::transform(
-    lanes_has_speed_limit.begin(), lanes_has_speed_limit.end(), lanes_has_int32.begin(),
-    [](bool b) { return static_cast<int32_t>(b); });
-  const int lanes_has_shape[] = {static_cast<int>(LANE_NUM), 1};
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_lanes_has_speed_limit.npy", 2, lanes_has_shape, lanes_has_int32.data());
-
-  // route_lanes_has_speed_limit (25, 1) - convert bool to int32_t
-  std::vector<int32_t> route_has_int32(route_lanes_has_speed_limit.size());
-  std::transform(
-    route_lanes_has_speed_limit.begin(), route_lanes_has_speed_limit.end(), route_has_int32.begin(),
-    [](bool b) { return static_cast<int32_t>(b); });
-  const int route_has_shape[] = {static_cast<int>(ROUTE_NUM), 1};
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_route_lanes_has_speed_limit.npy", 2, route_has_shape, route_has_int32.data());
-
-  // goal_pose (3,)
-  const int goal_shape[] = {static_cast<int>(goal_pose.size())};
-  aoba::SaveArrayAsNumpy(base_filename + "_goal_pose.npy", 1, goal_shape, goal_pose.data());
-
-  // turn_indicator (1,)
-  const int turn_shape[] = {1};
-  const int32_t turn_indicator_int32 = static_cast<int32_t>(turn_indicator);
-  aoba::SaveArrayAsNumpy(
-    base_filename + "_turn_indicator.npy", 1, turn_shape, &turn_indicator_int32);
+  file.close();
+  std::cout << "Saved binary data to: " << binary_filename << std::endl;
 }
 
 int main(int argc, char ** argv)
@@ -492,6 +494,7 @@ int main(int argc, char ** argv)
     }
 
     parse_count++;
+    std::cout << "parse_count=" << parse_count << std::endl;
   }
 
   std::cout << "Parsed " << kinematic_states.size() << " kinematic states" << std::endl;
@@ -797,7 +800,7 @@ int main(int argc, char ** argv)
       const int64_t turn_indicator = seq.data_list[i].turn_indicator.report;
 
       // Save data
-      save_npz_data(
+      save_binary_data(
         save_dir, token, ego_past, ego_current, ego_future, neighbor_past, neighbor_future,
         static_objects, lanes, lanes_speed_limit, lanes_has_speed_limit, route_lanes,
         route_lanes_speed_limit, route_lanes_has_speed_limit, goal_pose_vec, turn_indicator);
