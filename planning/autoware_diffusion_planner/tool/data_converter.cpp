@@ -762,8 +762,8 @@ int main(int argc, char ** argv)
       }
 
       // if ego vehicle is stopped and close to goal, finish
-      const float ego_future_last_x = ego_future[(FUTURE_TIME_STEPS - 1) * 3 + 0];
-      const float ego_future_last_y = ego_future[(FUTURE_TIME_STEPS - 1) * 3 + 1];
+      const float ego_future_last_x = ego_future[(FUTURE_TIME_STEPS - 1) * 4 + 0];
+      const float ego_future_last_y = ego_future[(FUTURE_TIME_STEPS - 1) * 4 + 1];
       const float distance_to_goal_pose = std::sqrt(
         (ego_future_last_x - goal_pos_bl.x()) * (ego_future_last_x - goal_pos_bl.x()) +
         (ego_future_last_y - goal_pos_bl.y()) * (ego_future_last_y - goal_pos_bl.y()));
@@ -785,8 +785,8 @@ int main(int argc, char ** argv)
 
       float sum_mileage = 0.0;
       for (int64_t j = 0; j < FUTURE_TIME_STEPS - 1; ++j) {
-        const float dx = ego_future[(j + 1) * 3 + 0] - ego_future[j * 3 + 0];
-        const float dy = ego_future[(j + 1) * 3 + 1] - ego_future[j * 3 + 1];
+        const float dx = ego_future[(j + 1) * 4 + 0] - ego_future[j * 4 + 0];
+        const float dy = ego_future[(j + 1) * 4 + 1] - ego_future[j * 4 + 1];
         sum_mileage += std::sqrt(dx * dx + dy * dy);
       }
       const bool is_future_forward = sum_mileage > 0.1;
