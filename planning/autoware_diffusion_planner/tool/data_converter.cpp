@@ -385,7 +385,6 @@ void save_binary_data(
   }
 
   file.close();
-  std::cout << "Saved binary data to: " << binary_filename << std::endl;
 }
 
 int main(int argc, char ** argv)
@@ -494,7 +493,6 @@ int main(int argc, char ** argv)
     }
 
     parse_count++;
-    std::cout << "parse_count=" << parse_count << std::endl;
   }
 
   std::cout << "Parsed " << kinematic_states.size() << " kinematic states" << std::endl;
