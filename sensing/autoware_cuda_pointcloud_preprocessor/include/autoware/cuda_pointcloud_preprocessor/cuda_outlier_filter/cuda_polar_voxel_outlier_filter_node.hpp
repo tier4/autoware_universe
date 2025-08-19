@@ -52,9 +52,9 @@ private:
   std::mutex param_mutex_;
 
   // Diagnostics members
-  diagnostic_updater::Updater updater_{this};
   std::optional<double> visibility_;    // Current visibility value
   std::optional<double> filter_ratio_;  // Current filter ratio
+  diagnostic_updater::Updater updater_;
 
   // CUDA sub
   std::shared_ptr<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>
@@ -82,6 +82,8 @@ private:
    * Always published for both PointXYZ and PointXYZIRCAEDT input formats.
    */
   void on_filter_ratio_check(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
+  void update_parameter(const rclcpp::Parameter & param);
 };
 
 }  // namespace autoware::cuda_pointcloud_preprocessor

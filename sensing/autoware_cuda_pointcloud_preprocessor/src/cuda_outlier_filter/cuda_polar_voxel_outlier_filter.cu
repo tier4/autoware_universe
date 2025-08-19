@@ -17,7 +17,6 @@
 #include "autoware/cuda_utils/cuda_memory_pool.hpp"
 #include "autoware/cuda_utils/cuda_unique_ptr.hpp"
 
-#include <autoware/cuda_utils/cuda_check_error.hpp>
 #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
 #include <cub/cub.cuh>
 #include <cuda/functional>    // for cuda::proclaim_return_type

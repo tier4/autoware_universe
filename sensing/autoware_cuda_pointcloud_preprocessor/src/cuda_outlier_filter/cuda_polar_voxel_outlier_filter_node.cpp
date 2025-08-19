@@ -21,7 +21,7 @@ namespace autoware::cuda_pointcloud_preprocessor
 {
 CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
   const rclcpp::NodeOptions & node_options)
-: Node("cuda_polar_voxexl_outlier_filter", node_options)
+: Node("cuda_polar_voxexl_outlier_filter", node_options), updater_(this)
 {
   // set initial parameters
   {
@@ -171,82 +171,111 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   }
 }
 
+namespace
+{
+bool is_in_vector(const std::vector<std::string> & vec, const std::string & value)
+{
+  return std::find(vec.begin(), vec.end(), value) != vec.end();
+}
+}  // namespace
+
+void CudaPolarVoxelOutlierFilterNode::update_parameter(const rclcpp::Parameter & param)
+{
+  const auto & name = param.get_name();
+
+  if (name == "radial_resolution_m") {
+    filter_params_.radial_resolution_m = param.as_double();
+  } else if (name == "azimuth_resolution_rad") {
+    filter_params_.azimuth_resolution_rad = param.as_double();
+  } else if (name == "elevation_resolution_rad") {
+    filter_params_.elevation_resolution_rad = param.as_double();
+  } else if (name == "voxel_points_threshold") {
+    filter_params_.voxel_points_threshold = static_cast<int>(param.as_int());
+  } else if (name == "secondary_noise_threshold") {
+    filter_params_.secondary_noise_threshold = static_cast<int>(param.as_int());
+  } else if (name == "min_radius_m") {
+    filter_params_.min_radius_m = param.as_double();
+  } else if (name == "max_radius_m") {
+    filter_params_.max_radius_m = param.as_double();
+  } else if (name == "visibility_estimation_max_range_m") {
+    filter_params_.visibility_estimation_max_range_m = param.as_double();
+  } else if (name == "visibility_error_threshold") {
+    filter_params_.visibility_error_threshold = param.as_double();
+  } else if (name == "visibility_warn_threshold") {
+    filter_params_.visibility_warn_threshold = param.as_double();
+  } else if (name == "filter_ratio_error_threshold") {
+    filter_params_.filter_ratio_error_threshold = param.as_double();
+  } else if (name == "filter_ratio_warn_threshold") {
+    filter_params_.filter_ratio_warn_threshold = param.as_double();
+  } else if (name == "use_return_type_classification") {
+    filter_params_.use_return_type_classification = param.as_bool();
+  } else if (name == "filter_secondary_returns") {
+    filter_params_.filter_secondary_returns = param.as_bool();
+  } else if (name == "primary_return_types") {
+    auto values = param.as_integer_array();
+    primary_return_types_.clear();
+    for (const auto & val : values) {
+      primary_return_types_.push_back(static_cast<int>(val));
+    }
+    cuda_polar_voxel_outlier_filter_->set_primary_return_types(primary_return_types_);
+  } else if (name == "publish_noise_cloud") {
+    bool new_value = param.as_bool();
+    if (new_value != filter_params_.publish_noise_cloud) {
+      filter_params_.publish_noise_cloud = new_value;
+      // Recreate publisher if needed
+      if (filter_params_.publish_noise_cloud && !noise_cloud_pub_) {
+        noise_cloud_pub_ = std::make_unique<
+          cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
+          *this, "~/debug/pointcloud_noise");
+      }
+    }
+  }
+}
+
 rcl_interfaces::msg::SetParametersResult CudaPolarVoxelOutlierFilterNode::param_callback(
   const std::vector<rclcpp::Parameter> & p)
 {
-  using autoware::pointcloud_preprocessor::get_param;
   std::scoped_lock lock(param_mutex_);
 
-  if (get_param(p, "radial_resolution_m", filter_params_.radial_resolution_m)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting new radius resolution to: %f.", filter_params_.radial_resolution_m);
-  }
-  if (get_param(p, "azimuth_resolution_rad", filter_params_.azimuth_resolution_rad)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting new azimuth resolution to: %f.",
-      filter_params_.azimuth_resolution_rad);
-  }
-  if (get_param(p, "elevation_resolution_rad", filter_params_.elevation_resolution_rad)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting new elevation resolution to: %f.",
-      filter_params_.elevation_resolution_rad);
-  }
-  if (get_param(p, "voxel_points_threshold", filter_params_.voxel_points_threshold)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting new voxel points threshold to: %d.",
-      filter_params_.voxel_points_threshold);
-  }
-  if (get_param(p, "min_radius_m", filter_params_.min_radius_m)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new min radius to: %f.", filter_params_.min_radius_m);
-  }
-  if (get_param(p, "max_radius", filter_params_.max_radius_m)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new max radius to: %f.", filter_params_.max_radius_m);
-  }
-  if (get_param(
-        p, "use_return_type_classification", filter_params_.use_return_type_classification)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting use return type classification to: %s.",
-      filter_params_.use_return_type_classification ? "true" : "false");
-  }
-  if (get_param(p, "filter_secondary_returns", filter_params_.filter_secondary_returns)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting filter secondary returns to: %s.",
-      filter_params_.filter_secondary_returns ? "true" : "false");
-  }
-  if (get_param(p, "secondary_noise_threshold", filter_params_.secondary_noise_threshold)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting secondary noise threshold to: %d.",
-      filter_params_.secondary_noise_threshold);
-  }
-  if (get_param(p, "filter_ratio_error_threshold", filter_params_.filter_ratio_error_threshold)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting new filter ratio error threshold to: %f.",
-      filter_params_.filter_ratio_error_threshold);
-  }
-  if (get_param(p, "filter_ratio_warn_threshold", filter_params_.filter_ratio_warn_threshold)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting new filter ratio warning threshold to: %f.",
-      filter_params_.filter_ratio_warn_threshold);
-  }
-  if (get_param(p, "visibility_error_threshold", filter_params_.visibility_error_threshold)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting new visibility error threshold to: %f.",
-      filter_params_.visibility_error_threshold);
-  }
-  if (get_param(p, "visibility_warn_threshold", filter_params_.visibility_warn_threshold)) {
-    RCLCPP_DEBUG(
-      get_logger(), "Setting new visibility warning threshold to: %f.",
-      filter_params_.visibility_warn_threshold);
-  }
+  // Parameters that can be updated at runtime
+  static const std::vector<std::string> updatable_params = {
+    "radial_resolution_m",
+    "azimuth_resolution_rad",
+    "elevation_resolution_rad",
+    "voxel_points_threshold",
+    "min_radius_m",
+    "max_radius_m",
+    "visibility_estimation_max_range_m",
+    "use_return_type_classification",
+    "filter_secondary_returns",
+    "secondary_noise_threshold",
+    "primary_return_types",
+    "publish_noise_cloud",
+    "visibility_error_threshold",
+    "visibility_warn_threshold",
+    "filter_ratio_error_threshold",
+    "filter_ratio_warn_threshold"};
 
-  if (get_param(p, "primary_return_types", primary_return_types_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new primary return types");
-    cuda_polar_voxel_outlier_filter_->set_primary_return_types(primary_return_types_);
-  }
-
-  rcl_interfaces::msg::SetParametersResult result;
+  auto result = rcl_interfaces::msg::SetParametersResult{};
   result.successful = true;
-  result.reason = "success";
+
+  for (const auto & param : p) {
+    if (!is_in_vector(updatable_params, param.get_name())) {
+      result.successful = false;
+      result.reason = "Parameter " + param.get_name() + " is not updatable";
+      return result;
+    }
+
+    try {
+      update_parameter(param);
+
+      RCLCPP_DEBUG(get_logger(), "Updated parameter: %s", param.get_name().c_str());
+    } catch (const std::exception & e) {
+      result.successful = false;
+      result.reason = "Failed to update parameter " + param.get_name() + ": " + e.what();
+      return result;
+    }
+  }
 
   return result;
 }
