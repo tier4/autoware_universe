@@ -61,7 +61,7 @@ Lidar2ImgData InputTransformMatrixConverter::process_lidar2img(
     }
 
     // Use transformer to lookup base2cam transformation
-    auto base2cam_opt = transformer_.lookup_base2cam(camera_infos[autoware_camera_id]->header.frame_id);
+    auto base2cam_opt = coordinate_transformer_.lookup_base2cam(camera_infos[autoware_camera_id]->header.frame_id);
     if (!base2cam_opt) {
       RCLCPP_WARN(rclcpp::get_logger("InputTransformMatrixConverter"), 
                   "Failed to lookup transformation for camera %d", autoware_camera_id);

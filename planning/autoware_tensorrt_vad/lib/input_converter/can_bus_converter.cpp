@@ -17,7 +17,7 @@ CanBusData InputCanBusConverter::process_can_bus(
 
   // Apply Autoware to VAD base_link coordinate transformation to position
   auto [vad_x, vad_y, vad_z] =
-      transformer_.aw2vad_xyz(kinematic_state->pose.pose.position.x,
+      coordinate_transformer_.aw2vad_xyz(kinematic_state->pose.pose.position.x,
                              kinematic_state->pose.pose.position.y,
                              kinematic_state->pose.pose.position.z);
 
@@ -33,7 +33,7 @@ CanBusData InputCanBusConverter::process_can_bus(
       kinematic_state->pose.pose.orientation.y,
       kinematic_state->pose.pose.orientation.z);
 
-  Eigen::Quaternionf q_vad = transformer_.aw2vad_quaternion(q_aw);
+  Eigen::Quaternionf q_vad = coordinate_transformer_.aw2vad_quaternion(q_aw);
 
   // rotation (3:7)
   can_bus[3] = q_vad.x();
@@ -43,7 +43,7 @@ CanBusData InputCanBusConverter::process_can_bus(
 
   // Apply Autoware to VAD base_link coordinate transformation to acceleration
   auto [vad_ax, vad_ay, vad_az] =
-      transformer_.aw2vad_xyz(acceleration->accel.accel.linear.x,
+      coordinate_transformer_.aw2vad_xyz(acceleration->accel.accel.linear.x,
                              acceleration->accel.accel.linear.y,
                              acceleration->accel.accel.linear.z);
 
@@ -54,7 +54,7 @@ CanBusData InputCanBusConverter::process_can_bus(
 
   // Apply Autoware to VAD base_link coordinate transformation to angular velocity
   auto [vad_wx, vad_wy, vad_wz] =
-      transformer_.aw2vad_xyz(kinematic_state->twist.twist.angular.x,
+      coordinate_transformer_.aw2vad_xyz(kinematic_state->twist.twist.angular.x,
                              kinematic_state->twist.twist.angular.y,
                              kinematic_state->twist.twist.angular.z);
 
@@ -65,7 +65,7 @@ CanBusData InputCanBusConverter::process_can_bus(
 
   // Apply Autoware to VAD base_link coordinate transformation to velocity
   auto [vad_vx, vad_vy, vad_vz] =
-      transformer_.aw2vad_xyz(kinematic_state->twist.twist.linear.x,
+      coordinate_transformer_.aw2vad_xyz(kinematic_state->twist.twist.linear.x,
                              kinematic_state->twist.twist.linear.y,
                              0.0f); // Set z-direction velocity to 0
 

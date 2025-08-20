@@ -51,7 +51,7 @@ visualization_msgs::msg::Marker OutputMapConverter::create_polyline_marker(
       float vad_x = point[0];
       float vad_y = point[1];
       
-      auto [aw_x, aw_y, aw_z] = transformer_.vad2aw_xyz(vad_x, vad_y, 0.0f);
+      auto [aw_x, aw_y, aw_z] = coordinate_transformer_.vad2aw_xyz(vad_x, vad_y, 0.0f);
       
       Eigen::Vector4f base_point(aw_x, aw_y, 0.0f, 1.0f);
       Eigen::Vector4f map_point = base2map_transform * base_point;

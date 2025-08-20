@@ -29,7 +29,7 @@ public:
   virtual ~Converter() = default;
 
 protected:
-  const CoordinateTransformer& transformer_;  ///< Reference to coordinate transformer
+  const CoordinateTransformer& coordinate_transformer_;  ///< Reference to coordinate transformer
   const VadInterfaceConfig& config_;          ///< Reference to configuration parameters
 };
 
