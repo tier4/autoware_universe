@@ -100,10 +100,10 @@ struct TrainingDataBinary
   float neighbor_agents_future[32 * 80 * 3];  // (32, 80, 3)
   float static_objects[5 * 10];               // (5, 10)
   float lanes[70 * 20 * 13];                  // (70, 20, 13) - SEGMENT_POINT_DIM=13
-  float lanes_speed_limit[70 * 20];           // (70, 20)
+  float lanes_speed_limit[70];                // (70,)
   int32_t lanes_has_speed_limit[70];          // (70,)
   float route_lanes[25 * 20 * 13];            // (25, 20, 13) - SEGMENT_POINT_DIM=13
-  float route_lanes_speed_limit[25 * 20];     // (25, 20)
+  float route_lanes_speed_limit[25];          // (25,)
   int32_t route_lanes_has_speed_limit[25];    // (25,)
   float goal_pose[3];                         // (3,)
   int32_t turn_indicator;                     // scalar
@@ -725,6 +725,20 @@ int main(int argc, char ** argv)
 
       // Create has_speed_limit flags based on speed_limit values
       std::vector<bool> lanes_has_speed_limit(lanes_speed_limit.size());
+
+      // Debug: print lanes_speed_limit values for first few frames
+      if (i >= 21 && i <= 25) {
+        std::cout << "  lanes_speed_limit size: " << lanes_speed_limit.size() << std::endl;
+        std::cout << "  first 10 lanes_speed_limit values: ";
+        for (size_t j = 0; j < std::min(size_t(10), lanes_speed_limit.size()); ++j) {
+          std::cout << lanes_speed_limit[j] << " ";
+          if (std::isinf(lanes_speed_limit[j]) || std::isnan(lanes_speed_limit[j])) {
+            std::cout << "(INF/NAN!) ";
+          }
+        }
+        std::cout << std::endl;
+      }
+
       for (size_t idx = 0; idx < lanes_speed_limit.size(); ++idx) {
         lanes_has_speed_limit[idx] =
           (lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
@@ -732,7 +746,7 @@ int main(int argc, char ** argv)
 
       // Get route lanes data with speed limits
       std::vector<float> route_lanes(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
-      std::vector<float> route_lanes_speed_limit(ROUTE_NUM * ROUTE_LEN, 0.0f);
+      std::vector<float> route_lanes_speed_limit(ROUTE_NUM, 0.0f);
 
       geometry_msgs::msg::Pose current_pose;
       current_pose.position = ego_pos;
@@ -754,6 +768,21 @@ int main(int argc, char ** argv)
 
       // Create route_lanes_has_speed_limit based on speed_limit values
       std::vector<bool> route_lanes_has_speed_limit(route_lanes_speed_limit.size());
+
+      // Debug: print route_lanes_speed_limit values for first few frames
+      if (i >= 21 && i <= 25) {
+        std::cout << "  route_lanes_speed_limit size: " << route_lanes_speed_limit.size()
+                  << std::endl;
+        std::cout << "  first 10 route_lanes_speed_limit values: ";
+        for (size_t j = 0; j < std::min(size_t(10), route_lanes_speed_limit.size()); ++j) {
+          std::cout << route_lanes_speed_limit[j] << " ";
+          if (std::isinf(route_lanes_speed_limit[j]) || std::isnan(route_lanes_speed_limit[j])) {
+            std::cout << "(INF/NAN!) ";
+          }
+        }
+        std::cout << std::endl;
+      }
+
       for (size_t idx = 0; idx < route_lanes_speed_limit.size(); ++idx) {
         route_lanes_has_speed_limit[idx] =
           (route_lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
