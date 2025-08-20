@@ -139,6 +139,18 @@ __device__ void atomic_add_size_t(size_t * addr, size_t val)
   }
 }
 
+__device__ [[nodiscard]] inline bool meets_primary_threshold(
+  const size_t & count, const int & threshold)
+{
+  return count >= static_cast<int>(threshold);
+}
+
+__device__ [[nodiscard]] inline bool meets_secondary_threshold(
+  const size_t & count, const int & threshold)
+{
+  return count <= static_cast<int>(threshold);
+}
+
 template <typename T>
 __device__ T
 get_element_value(const uint8_t * data, const size_t index, const size_t step, const size_t offset)
@@ -363,11 +375,12 @@ __global__ void criterion_check_kernel(
   }
 
   // Check criterion 1: Primary returns meet the threshold
-  primary_meets_threshold[voxel_index] = primary_returns[voxel_index] >= voxel_points_threshold;
+  primary_meets_threshold[voxel_index] =
+    meets_primary_threshold(primary_returns[voxel_index], voxel_points_threshold);
 
   // Check criterion 2: Number of secondary returns is less than the threshold
   secondary_meets_threshold[voxel_index] =
-    secondary_returns[voxel_index] <= secondary_noise_threshold;
+    meets_secondary_threshold(secondary_returns[voxel_index], secondary_noise_threshold);
 }
 
 __global__ void point_validity_check_kernel(
@@ -438,20 +451,18 @@ __global__ void bool_flip_kernel(bool * __restrict__ flags, const size_t num_poi
   flags[point_index] = !flags[point_index];
 }
 
-__global__ void is_high_visibility_voxel_kernel(
-  const bool * __restrict__ primary_meets_threshold,
+__global__ void is_low_visibility_voxel_kernel(
   const bool * __restrict__ secondary_meets_threshold,
   const int * __restrict__ is_in_visibility_range, const int num_voxels,
-  bool * __restrict__ is_high_visibility_voxels)
+  bool * __restrict__ is_low_visibility_voxels)
 {
   size_t voxel_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (voxel_index >= num_voxels) {
     return;
   }
 
-  is_high_visibility_voxels[voxel_index] = static_cast<bool>(is_in_visibility_range[voxel_index]) &&
-                                           primary_meets_threshold[voxel_index] &&
-                                           secondary_meets_threshold[voxel_index];
+  is_low_visibility_voxels[voxel_index] = static_cast<bool>(is_in_visibility_range[voxel_index]) &&
+                                          !secondary_meets_threshold[voxel_index];
 }
 
 // Helper function to get field offset
@@ -668,35 +679,27 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 
   double visibility = 0.0;
   if (params.use_return_type_classification) {
-    auto is_high_visibility_voxels =
+    auto is_low_visibility_voxels =
       autoware::cuda_utils::make_unique<bool>(num_total_voxels, stream_, mem_pool_);
 
     dim3 block_dim(512);
     dim3 grid_dim((num_total_voxels + block_dim.x - 1) / block_dim.x);
 
-    is_high_visibility_voxel_kernel<<<grid_dim, block_dim, 0, stream_>>>(
-      primary_meets_threshold.get(), secondary_meets_threshold.get(), is_in_visibility_range.get(),
-      num_total_voxels, is_high_visibility_voxels.get());
+    is_low_visibility_voxel_kernel<<<grid_dim, block_dim, 0, stream_>>>(
+      secondary_meets_threshold.get(), is_in_visibility_range.get(), num_total_voxels,
+      is_low_visibility_voxels.get());
 
-    int num_high_visibility_voxels = 0;
-    auto tmp_high_visibility_voxels_dev =
-      autoware::cuda_utils::make_unique<int>(stream_, mem_pool_);
+    int low_visibility_voxels_count = 0;
+    auto tmp_low_visibility_voxels_dev = autoware::cuda_utils::make_unique<int>(stream_, mem_pool_);
     reduce_and_copy_to_host(
-      ReductionType::Sum, is_high_visibility_voxels.get(), num_total_voxels,
-      tmp_high_visibility_voxels_dev.get(), num_high_visibility_voxels);
-
-    int num_is_in_visibility_voxels = 0;
-    auto tmp_is_in_visibility_voxels_dev =
-      autoware::cuda_utils::make_unique<int>(stream_, mem_pool_);
-    reduce_and_copy_to_host(
-      ReductionType::Sum, is_in_visibility_range.get(), num_total_voxels,
-      tmp_is_in_visibility_voxels_dev.get(), num_is_in_visibility_voxels);
+      ReductionType::Sum, is_low_visibility_voxels.get(), num_total_voxels,
+      tmp_low_visibility_voxels_dev.get(), low_visibility_voxels_count);
 
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));  // wait till device to host copy finish
 
-    visibility = (num_is_in_visibility_voxels > 0)
-                   ? static_cast<double>(num_high_visibility_voxels) / (num_is_in_visibility_voxels)
-                   : 0.0;
+    visibility = std::max(
+      0.0, 1.0 - static_cast<double>(low_visibility_voxels_count) /
+                   static_cast<double>(params.visibility_estimation_max_secondary_voxel_count));
   }
 
   return {std::move(filtered_cloud), std::move(noise_cloud), filter_ratio, visibility};

@@ -47,6 +47,8 @@ struct CudaPolarVoxelOutlierFilterParameters
   double min_radius_m;                       // Minimum radius to consider
   double max_radius_m;                       // Maximum radius to consider
   double visibility_estimation_max_range_m;  // Maximum range for visibility estimation (meters)
+  int visibility_estimation_max_secondary_voxel_count;  // Maximum secondary voxel count for
+                                                        // visibility estimation
 
   // Return type classification parameters
   bool use_return_type_classification;  // Whether to use return type classification
