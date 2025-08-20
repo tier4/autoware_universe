@@ -721,7 +721,7 @@ int main(int argc, char ** argv)
 
       // Get lanes data with speed limits
       const auto [lanes, lanes_speed_limit] = lane_segment_context.get_lane_segments(
-        map2bl, traffic_light_id_map, center_x, center_y, LANE_LEN);
+        map2bl, traffic_light_id_map, center_x, center_y, LANE_NUM);
 
       // Create has_speed_limit flags based on speed_limit values
       std::vector<bool> lanes_has_speed_limit(lanes_speed_limit.size());
