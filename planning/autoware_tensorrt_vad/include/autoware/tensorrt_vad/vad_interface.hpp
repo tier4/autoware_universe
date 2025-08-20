@@ -24,6 +24,14 @@
 #include <cmath>
 
 #include "vad_interface_config.hpp"
+#include "coordinate_transformer.hpp"
+#include "input_converter/image_converter.hpp"
+#include "input_converter/transform_matrix_converter.hpp"
+#include "input_converter/can_bus_converter.hpp"
+#include "input_converter/bev_shift_converter.hpp"
+#include "output_converter/trajectory_converter.hpp"
+#include "output_converter/map_converter.hpp"
+#include "output_converter/objects_converter.hpp"
 
 #include "rclcpp/time.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -49,6 +57,18 @@
 
 namespace autoware::tensorrt_vad
 {
+
+// Forward declarations for converter classes
+namespace vad_interface {
+  class CoordinateTransformer;
+  class InputImageConverter;
+  class InputTransformMatrixConverter;
+  class InputCanBusConverter;
+  class InputBEVShiftConverter;
+  class OutputTrajectoryConverter;
+  class OutputMapConverter;
+  class OutputObjectsConverter;
+}
 
 /**
  * @class VadInputTopicData
@@ -138,65 +158,24 @@ public:
     double trajectory_timestep,
     const Eigen::Matrix4f & base2map_transform) const;
 
-  // Conversion methods for trajectories
-  autoware_internal_planning_msgs::msg::CandidateTrajectories process_candidate_trajectories(
-    const std::map<int32_t, std::vector<float>> & predicted_trajectories,
-    const rclcpp::Time & stamp,
-    double trajectory_timestep,
-    const Eigen::Matrix4f & base2map_transform) const;
-  
-  autoware_planning_msgs::msg::Trajectory process_trajectory(
-    const std::vector<float> & predicted_trajectory,
-    const rclcpp::Time & stamp,
-    double trajectory_timestep,
-    const Eigen::Matrix4f & base2map_transform) const;
-
-  // Convert map_points from VAD coordinate system to Autoware coordinate system
-  visualization_msgs::msg::MarkerArray process_map_points(
-    const std::vector<MapPolyline> & vad_map_polylines,
-    const rclcpp::Time & stamp,
-    const Eigen::Matrix4f & base2map_transform) const;
-
-  // Convert BBox objects to PredictedObjects
-  autoware_perception_msgs::msg::PredictedObjects process_predicted_objects(
-    const std::vector<BBox> & bboxes,
-    const rclcpp::Time & stamp,
-    const Eigen::Matrix4f & base2map_transform) const;
-
-  Lidar2ImgData process_lidar2img(
-    const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr> & camera_infos,
-    float scale_width, float scale_height) const;
-
-  CanBusData process_can_bus(
-    const nav_msgs::msg::Odometry::ConstSharedPtr & kinematic_state,
-    const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr & acceleration,
-    const std::vector<float> & prev_can_bus) const;
-
-  ShiftData process_shift(
-    const std::vector<float> & can_bus,
-    const std::vector<float> & prev_can_bus) const;
-
-  CameraImagesData process_image(
-    const std::vector<sensor_msgs::msg::Image::ConstSharedPtr> & images) const;
-
 
 private:
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  int32_t target_image_width_, target_image_height_;
-  int32_t input_image_width_, input_image_height_;
-  std::array<float, 6> detection_range_;
-  int32_t bev_h_, bev_w_;
-  float default_patch_angle_;
-  int32_t default_command_;
-  std::vector<float> default_shift_;
-  std::array<float, 3> image_normalization_param_mean_;
-  std::array<float, 3> image_normalization_param_std_;
-  Eigen::Matrix4f vad2base_;
-  Eigen::Matrix4f base2vad_;
-  std::unordered_map<int32_t, int32_t> autoware_to_vad_camera_mapping_;
-  std::map<std::string, std::array<float, 3>> map_colors_;  // Map type to RGB color
-  std::vector<std::string> class_mapping_;  // VAD class index to Autoware class name mapping (array index = VAD class index)
-  std::vector<std::string> bbox_class_names_;  // Object class names from VAD model
+  // Configuration
+  VadInterfaceConfig config_;
+  
+  // Coordinate transformer for all coordinate system conversions
+  std::unique_ptr<vad_interface::CoordinateTransformer> coordinate_transformer_;
+  
+  // Input converters
+  std::unique_ptr<vad_interface::InputImageConverter> input_image_converter_;
+  std::unique_ptr<vad_interface::InputTransformMatrixConverter> input_transform_matrix_converter_;
+  std::unique_ptr<vad_interface::InputCanBusConverter> input_can_bus_converter_;
+  std::unique_ptr<vad_interface::InputBEVShiftConverter> input_bev_shift_converter_;
+  
+  // Output converters
+  std::unique_ptr<vad_interface::OutputTrajectoryConverter> output_trajectory_converter_;
+  std::unique_ptr<vad_interface::OutputMapConverter> output_map_converter_;
+  std::unique_ptr<vad_interface::OutputObjectsConverter> output_objects_converter_;
   
   // Current longitudinal velocity for trajectory initial point
   float current_longitudinal_velocity_mps_;
@@ -204,41 +183,11 @@ private:
   // Previous can_bus data for velocity calculation and other processes
   std::vector<float> prev_can_bus_;
 
-  // --- Internal processing functions ---
-  std::optional<Eigen::Matrix4f> lookup_base2cam(tf2_ros::Buffer & buffer, const std::string & source_frame) const;
-  Eigen::Matrix4f create_viewpad(const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info) const;
-  Eigen::Matrix4f apply_scaling(const Eigen::Matrix4f & lidar2img, float scale_width, float scale_height) const;
-  std::vector<float> matrix_to_flat(const Eigen::Matrix4f & matrix) const;
-
-  std::vector<float> normalize_image(unsigned char *image_data, int32_t width, int32_t height) const;
-  
-  std::vector<float> calculate_can_bus(
-    const nav_msgs::msg::Odometry::ConstSharedPtr & kinematic_state,
-    const sensor_msgs::msg::Imu::ConstSharedPtr & imu_raw,
-    const std::vector<float> & prev_can_bus) const;
-  
-  std::vector<float> calculate_shift(
-    const std::vector<float> & can_bus,
-    const std::vector<float> & prev_can_bus) const;
-
-  std::tuple<float, float, float> aw2vad_xyz(float aw_x, float aw_y, float aw_z) const;
-  std::tuple<float, float, float> vad2aw_xyz(float vad_x, float vad_y, float vad_z) const;
-  Eigen::Quaternionf aw2vad_quaternion(const Eigen::Quaternionf & q_aw) const;
-
   // Calculate current longitudinal velocity from can_bus data
   float calculate_current_longitudinal_velocity(
     const std::vector<float> & can_bus,
     const std::vector<float> & prev_can_bus,
     double node_timestep) const;
-
-  // Helper function for trajectory conversion
-  geometry_msgs::msg::Quaternion create_quaternion_from_yaw(double yaw) const;
-  
-  // Helper function for creating trajectory points from predicted trajectory
-  std::vector<autoware_planning_msgs::msg::TrajectoryPoint> create_trajectory_points(
-    const std::vector<float> & predicted_trajectory,
-    double trajectory_timestep,
-    const Eigen::Matrix4f & base2map_transform) const;
 };
 
 }  // namespace autoware::tensorrt_vad
