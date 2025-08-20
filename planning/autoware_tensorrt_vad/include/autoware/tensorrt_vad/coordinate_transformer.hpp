@@ -66,12 +66,6 @@ public:
    */
   std::optional<Eigen::Matrix4f> lookup_base2cam(const std::string& source_frame) const;
 
-  /**
-   * @brief Get reference to TF buffer
-   * @return Reference to the TF buffer
-   */
-  tf2_ros::Buffer& get_tf_buffer() const;
-
 private:
   const Eigen::Matrix4f vad2base_;  ///< Transformation matrix from VAD to base_link
   const Eigen::Matrix4f base2vad_;  ///< Transformation matrix from base_link to VAD

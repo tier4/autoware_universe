@@ -75,9 +75,4 @@ std::optional<Eigen::Matrix4f> CoordinateTransformer::lookup_base2cam(const std:
   }
 }
 
-tf2_ros::Buffer& CoordinateTransformer::get_tf_buffer() const
-{
-  return *tf_buffer_;
-}
-
 } // namespace autoware::tensorrt_vad::vad_interface
