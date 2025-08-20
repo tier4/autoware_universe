@@ -8,20 +8,15 @@ namespace autoware::tensorrt_vad::vad_interface {
 
 /**
  * @brief Base class for all data converters
- * 
- * This abstract class provides common functionality for all converters:
- * - Access to coordinate transformation capabilities
- * - Access to configuration parameters
- * - Common interface for derived converter classes
  */
 class Converter {
 public:
   /**
    * @brief Constructor
-   * @param transformer Reference to coordinate transformer for coordinate conversions
+   * @param coordinate_transformer Reference to coordinate transformer for coordinate conversions
    * @param config Reference to configuration containing all necessary parameters
    */
-  Converter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config);
+  Converter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config);
   
   /**
    * @brief Virtual destructor to enable proper cleanup of derived classes
@@ -29,8 +24,8 @@ public:
   virtual ~Converter() = default;
 
 protected:
-  const CoordinateTransformer& coordinate_transformer_;  ///< Reference to coordinate transformer
-  const VadInterfaceConfig& config_;          ///< Reference to configuration parameters
+  const CoordinateTransformer& coordinate_transformer_;
+  const VadInterfaceConfig& config_;
 };
 
 } // namespace autoware::tensorrt_vad::vad_interface
