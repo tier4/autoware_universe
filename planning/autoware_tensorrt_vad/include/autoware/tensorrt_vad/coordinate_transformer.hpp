@@ -5,7 +5,6 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
-#include <rclcpp/rclcpp.hpp>
 #include <optional>
 #include <string>
 #include <tuple>
