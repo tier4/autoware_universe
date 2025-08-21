@@ -306,6 +306,10 @@ if(BUILD_TESTING)
     test/test_pickup_based_voxel_grid_downsample_filter_node.cpp
   )
 
+  ament_add_gtest(test_polar_voxel_outlier_filter_node
+    test/test_polar_voxel_outlier_filter_node.cpp
+  )
+
   target_link_libraries(test_utilities pointcloud_preprocessor_filter)
   target_link_libraries(test_distortion_corrector_node pointcloud_preprocessor_filter)
   target_link_libraries(test_concatenate_node_unit pointcloud_preprocessor_filter)
