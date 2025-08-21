@@ -184,9 +184,9 @@ DecisionResult RoundaboutModule::modifyPathVelocityDetail(PathWithLaneId * path)
       object_info->predicted_object().kinematics.initial_pose_with_covariance.pose,
       object_info->predicted_object().shape, ColorName::RED);
 
-    autoware_internal_planning_msgs::msg::SafetyFactor safety_factor;
+    tier4_planning_msgs::msg::SafetyFactor safety_factor;
     safety_factor.object_id = object_info->predicted_object().object_id;
-    safety_factor.type = autoware_internal_planning_msgs::msg::SafetyFactor::OBJECT;
+    safety_factor.type = tier4_planning_msgs::msg::SafetyFactor::OBJECT;
 
     safety_factor.ttc_begin = unsafe_info->interval_time.first;
     safety_factor.ttc_end = unsafe_info->interval_time.second;
@@ -324,7 +324,7 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const RoundaboutModule::PlannerParam & planner_param,
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
-  [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
+  [[maybe_unused]] tier4_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   [[maybe_unused]] RoundaboutModule::DebugData * debug_data)
 {
@@ -339,7 +339,7 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const RoundaboutModule::PlannerParam & planner_param,
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
-  [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
+  [[maybe_unused]] tier4_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   [[maybe_unused]] RoundaboutModule::DebugData * debug_data)
 {
@@ -353,7 +353,7 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const RoundaboutModule::PlannerParam & planner_param,
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
-  [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
+  [[maybe_unused]] tier4_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   [[maybe_unused]] RoundaboutModule::DebugData * debug_data)
 {
@@ -365,7 +365,7 @@ void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const CollisionStop & decision_result,
   [[maybe_unused]] const RoundaboutModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
-  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
+  tier4_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   RoundaboutModule::DebugData * debug_data)
 {
@@ -381,7 +381,7 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        tier4_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
         true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "collision stop");
     }
   }
@@ -393,7 +393,7 @@ void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const Safe & decision_result,
   [[maybe_unused]] const RoundaboutModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
-  autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
+  tier4_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
   planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
   RoundaboutModule::DebugData * debug_data)
 {
@@ -409,7 +409,7 @@ void reactRTCApprovalByDecisionResult(
       planning_factor_interface->add(
         path->points, path->points.at(decision_result.closest_idx).point.pose,
         path->points.at(stopline_idx).point.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
+        tier4_planning_msgs::msg::PlanningFactor::STOP, safety_factor_array,
         true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "");
     }
   }
