@@ -14,7 +14,7 @@
   <arg name="mode" default="lidar" description="options: `camera_lidar_radar_fusion`, `camera_lidar_fusion`, `lidar_radar_fusion`, `lidar` or `radar`"/>
   <arg name="use_radar_tracking_fusion" default="false" description="use radar tracking fusion"/>
   <let name="use_radar_tracking_fusion" value="false" if="$(eval '&quot;$(var mode)&quot;!=&quot;camera_lidar_radar_fusion&quot;')"/>
-  <let name="use_v2i_tracking_fusion" default="false" description="use v2i tracking fusion"/>
+  <arg name="use_v2i_tracking_fusion" default="false" description="use v2i tracking fusion"/>
   <arg name="use_multi_channel_tracker_merger"/>
   <arg name="use_validator" description="use obstacle_pointcloud based validator"/>
 
@@ -130,7 +130,7 @@
       </include>
 
       <!-- tracking object merger to merge near objects and far objects -->
-      <include file="$(find-pkg-share autoware_tracking_v2i_merger)/launch/decorative_tracker_merger.launch.xml">
+      <include file="$(find-pkg-share autoware_tracking_v2i_object_merger)/launch/decorative_tracker_merger.launch.xml">
         <arg name="node_name" value="decorative_tracker_merger"/>
         <arg name="input/main_object" value="$(var v2i_tracker_merger/input/main_objects)"/>
         <arg name="input/sub_object" value="$(var v2i_tracker_merger/input/sub_objects)"/>
