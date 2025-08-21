@@ -48,6 +48,8 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
     filter_params_.publish_noise_cloud = declare_parameter<bool>("publish_noise_cloud", false);
     filter_params_.visibility_estimation_max_secondary_voxel_count = static_cast<int>(
       declare_parameter<int64_t>("visibility_estimation_max_secondary_voxel_count", 0));
+    filter_params_.visualization_estimation_only =
+      declare_parameter<bool>("visualization_estimation_only", false);
 
     // rclcpp always returns integer array as std::vector<int64_t>
     auto primary_return_types_param =
@@ -106,11 +108,20 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
     [this](const std::vector<rclcpp::Parameter> & p) { return param_callback(p); });
+
+  RCLCPP_INFO(
+    get_logger(),
+    "Polar Voxel Outlier Filter initialized - supports PointXYZIRC and PointXYZIRCAEDT "
+    "%s",
+    filter_params_.visualization_estimation_only
+      ? " (visualization estimation only - no point cloud output)"
+      : "");
 }
 
 void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr msg)
 {
+  auto start = std::chrono::high_resolution_clock::now();
   // Take mutex so that node configuration will not be
   // ovewritten during one frame processing
   std::scoped_lock lock(param_mutex_);
@@ -152,10 +163,16 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
     return;
   }
 
-  // Publish results
-  filtered_cloud_pub_->publish(std::move(filtered_cloud));
-  if (filter_params_.publish_noise_cloud && noise_cloud_pub_) {
-    noise_cloud_pub_->publish(std::move(noise_cloud));
+  // Publish results (skip if visualization estimation only)
+  if (!filter_params_.visualization_estimation_only) {
+    filtered_cloud_pub_->publish(std::move(filtered_cloud));
+    if (filter_params_.publish_noise_cloud && noise_cloud_pub_) {
+      noise_cloud_pub_->publish(std::move(noise_cloud));
+    }
+  } else {
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Visualization estimation only mode - no point cloud output generated");
   }
 
   if (ratio_pub_) {
@@ -198,6 +215,8 @@ void CudaPolarVoxelOutlierFilterNode::update_parameter(const rclcpp::Parameter &
   } else if (name == "visibility_estimation_max_secondary_voxel_count") {
     filter_params_.visibility_estimation_max_secondary_voxel_count =
       static_cast<int>(param.as_int());
+  } else if (name == "visualization_estimation_only") {
+    filter_params_.visualization_estimation_only = param.as_bool();
   } else if (name == "min_radius_m") {
     filter_params_.min_radius_m = param.as_double();
   } else if (name == "max_radius_m") {
@@ -255,6 +274,7 @@ rcl_interfaces::msg::SetParametersResult CudaPolarVoxelOutlierFilterNode::param_
     "filter_secondary_returns",
     "secondary_noise_threshold",
     "visibility_estimation_max_secondary_voxel_count",
+    "visualization_estimation_only",
     "primary_return_types",
     "publish_noise_cloud",
     "visibility_error_threshold",
