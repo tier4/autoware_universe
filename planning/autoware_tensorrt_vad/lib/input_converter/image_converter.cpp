@@ -47,11 +47,13 @@ CameraImagesData InputImageConverter::process_image(
       bgr_img = cv::Mat(image_msg->height, image_msg->width, CV_8UC3, 
                         const_cast<uint8_t*>(image_msg->data.data()), image_msg->step);
     } else {
-      throw std::runtime_error("Unsupported image encoding: " + image_msg->encoding);
+      RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("InputImageConverter"), *rclcpp::Clock::make_shared(), 1000, "Unsupported image encoding: %s", image_msg->encoding.c_str());
+      continue;
     }
 
     if (bgr_img.empty()) {
-      throw std::runtime_error("Failed to decode image data: " + std::to_string(autoware_idx));
+      RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("InputImageConverter"), *rclcpp::Clock::make_shared(), 1000, "Failed to decode image data: %d", autoware_idx);
+      continue;
     }
 
     // Convert to RGB
@@ -80,7 +82,8 @@ CameraImagesData InputImageConverter::process_image(
   for (int32_t camera_idx = 0; camera_idx < 6; ++camera_idx) {
     const auto& img_data = frame_images[camera_idx];
     if (img_data.size() != single_camera_size) {
-      throw std::runtime_error("Invalid image size: " + std::to_string(camera_idx));
+      RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("InputImageConverter"), *rclcpp::Clock::make_shared(), 1000, "Invalid image size: %d", camera_idx);
+      continue;
     }
     concatenated_data.insert(concatenated_data.end(), img_data.begin(), img_data.end());
   }
