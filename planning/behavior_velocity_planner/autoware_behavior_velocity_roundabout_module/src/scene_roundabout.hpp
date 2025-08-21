@@ -197,7 +197,7 @@ private:
    * @{
    */
 
-  autoware_internal_planning_msgs::msg::SafetyFactorArray safety_factor_array_;
+  tier4_planning_msgs::msg::SafetyFactorArray safety_factor_array_;
 
   /** @}*/
 

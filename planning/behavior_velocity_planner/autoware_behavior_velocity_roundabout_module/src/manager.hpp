@@ -44,13 +44,6 @@ public:
 
   const char * getModuleName() override { return "roundabout"; }
 
-  RequiredSubscriptionInfo getRequiredSubscriptions() const override
-  {
-    RequiredSubscriptionInfo required_subscription_info;
-    required_subscription_info.predicted_objects = true;
-    return required_subscription_info;
-  }
-
 private:
   RoundaboutModule::PlannerParam roundabout_param_;
 
