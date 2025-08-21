@@ -43,6 +43,34 @@ Parameters can be set via YAML (see `config/vad_tiny.param.yaml` and `config/ml_
 
 ---
 
+## How to use
+
+### Step1. Download onnx
+
+- Please download onnx file from [this link](https://tier4inc-my.sharepoint.com/personal/taiki_tanaka_tier4_jp/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Ftaiki%5Ftanaka%5Ftier4%5Fjp%2FDocuments%2FAutonomousAIChallenge%2FMiscData%2FEnd2End%2Fvad&ga=1).
+
+- Please set onnx directory under `~/autoware_data`
+
+```sh
+❯ tree ~/autoware_data/vad
+/home/user_name/autoware_data/vad
+├── sim_vadv1.extract_img_feat.onnx
+├── sim_vadv1.pts_bbox_head.forward.onnx
+└── sim_vadv1_prev.pts_bbox_head.forward.onnx
+```
+
+### Step2. Build `autoware_tensorrt_vad`
+
+```sh
+colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release --packages-up-to autoware_tensorrt_vad
+```
+
+### Step3. Launch `autoware_tensorrt_vad`
+
+```sh
+ros2 launch autoware_tensorrt_vad vad.launch.xml use_sim_time:=true
+```
+
 ## Testing
 
 Unit tests are provided and can be run with:
