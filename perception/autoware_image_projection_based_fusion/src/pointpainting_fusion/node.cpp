@@ -186,7 +186,7 @@ PointPaintingFusionNode::PointPaintingFusionNode(const rclcpp::NodeOptions & opt
   autoware::lidar_centerpoint::DensificationParam densification_param(
     densification_world_frame_id, densification_num_past_frames);
   autoware::lidar_centerpoint::CenterPointConfig config(
-    class_names_.size(), point_feature_size, cloud_capacity, max_voxel_size, point_cloud_range,
+    class_names_.size(), point_feature_size, cloud_capacity, max_voxel_size, pointcloud_range,
     voxel_size, downsample_factor, encoder_in_feature_size, score_thresholds,
     circle_nms_dist_threshold, yaw_norm_thresholds, has_variance_);
 
