@@ -28,20 +28,69 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <deque>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <utility>
 
 namespace rosbag_parser
 {
 
+std::string determine_storage_id(const std::string & rosbag_path)
+{
+  std::filesystem::path path(rosbag_path);
+  std::filesystem::path metadata_path = path / "metadata.yaml";
+
+  // Check if metadata.yaml exists
+  if (!std::filesystem::exists(metadata_path)) {
+    // Fallback: check for .mcap files in the directory
+    if (std::filesystem::is_directory(path)) {
+      for (const auto & entry : std::filesystem::directory_iterator(path)) {
+        if (entry.path().extension() == ".mcap") {
+          return "mcap";
+        }
+      }
+    }
+    // Default to sqlite3
+    return "sqlite3";
+  }
+
+  // Read metadata.yaml file
+  std::ifstream file(metadata_path);
+  if (!file.is_open()) {
+    return "sqlite3";  // Default fallback
+  }
+
+  std::string line;
+  while (std::getline(file, line)) {
+    // Look for storage_identifier field
+    if (line.find("storage_identifier:") != std::string::npos) {
+      std::istringstream iss(line);
+      std::string key, value;
+      if (iss >> key >> value) {
+        // Remove quotes if present
+        if (value.front() == '"' && value.back() == '"') {
+          value = value.substr(1, value.length() - 2);
+        }
+        return value;
+      }
+    }
+  }
+
+  // Default to sqlite3 if not found
+  return "sqlite3";
+}
+
 class RosbagParser
 {
 public:
-  explicit RosbagParser(std::string rosbag_path)
-  : storage_options_({rosbag_path, "sqlite3"}),
-    converter_options_({"cdr", "cdr"}),
-    rosbag_path_(std::move(rosbag_path))
+  explicit RosbagParser(std::string rosbag_path) : rosbag_path_(std::move(rosbag_path))
   {
+    std::string storage_id = determine_storage_id(rosbag_path_);
+    storage_options_ = {rosbag_path_, storage_id};
+    converter_options_ = {"cdr", "cdr"};
+
     rosbag2_cpp::SerializationFormatConverterFactory factory;
     deserializer_ = factory.load_deserializer("cdr");
 
@@ -55,7 +104,7 @@ public:
   {
     rosbag2_storage::StorageOptions storage_options{};
     storage_options.uri = file_name;
-    storage_options.storage_id = "sqlite3";
+    storage_options.storage_id = determine_storage_id(file_name);
 
     try {
       reader_.open(storage_options, converter_options_);
@@ -70,7 +119,7 @@ public:
   {
     rosbag2_storage::StorageOptions storage_options{};
     storage_options.uri = file_name;
-    storage_options.storage_id = "sqlite3";
+    storage_options.storage_id = determine_storage_id(file_name);
 
     try {
       writer_.open(storage_options, converter_options_);
