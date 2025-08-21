@@ -247,8 +247,8 @@ __global__ void cartesian_to_polar_voxel_kernel(
 
 __global__ void calculate_voxel_index_kernel(
   const FieldDataComposer<::cuda::std::optional<int32_t> *> field_indices, const size_t num_points,
-  const FieldDataComposer<int> field_dimensions, ::cuda::std::optional<int> * point_indices,
-  ::cuda::std::optional<int> * voxel_indices)
+  const FieldDataComposer<int> field_dimensions, const FieldDataComposer<int> field_mins,
+  ::cuda::std::optional<int> * point_indices, ::cuda::std::optional<int> * voxel_indices)
 {
   size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_index >= num_points) {
@@ -258,6 +258,10 @@ __global__ void calculate_voxel_index_kernel(
   auto radius_idx = field_indices[FieldDataIndex::radius][point_index];
   auto azimuth_idx = field_indices[FieldDataIndex::azimuth][point_index];
   auto elevation_idx = field_indices[FieldDataIndex::elevation][point_index];
+
+  auto radius_idx_min = field_mins[FieldDataIndex::radius];
+  auto azimuth_idx_min = field_mins[FieldDataIndex::azimuth];
+  auto elevation_idx_min = field_mins[FieldDataIndex::elevation];
 
   auto radius_dim = field_dimensions[FieldDataIndex::radius];
   auto azimuth_dim = field_dimensions[FieldDataIndex::azimuth];
@@ -270,8 +274,14 @@ __global__ void calculate_voxel_index_kernel(
     return;
   }
 
-  voxel_indices[point_index] = elevation_idx.value() * (radius_dim * azimuth_dim) +
-                               azimuth_idx.value() * radius_dim + radius_idx.value();
+  // Because the following index calculation assumes all indices are zero started, positive values,
+  // make the conditions meet by subtracting the minimum values of each filed
+  auto radius_idx_shifted = radius_idx.value() - radius_idx_min;
+  auto azimuth_idx_shifted = azimuth_idx.value() - azimuth_idx_min;
+  auto elevation_idx_shifted = elevation_idx.value() - elevation_idx_min;
+
+  voxel_indices[point_index] = elevation_idx_shifted * (radius_dim * azimuth_dim) +
+                               azimuth_idx_shifted * radius_dim + radius_idx_shifted;
 }
 
 __global__ void subtract_left_optional_kernel(
@@ -782,8 +792,8 @@ CudaPolarVoxelOutlierFilter::calculate_voxel_index(
   dim3 block_dim(512);
   dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x);
   calculate_voxel_index_kernel<<<grid_dim, block_dim, 0, stream_>>>(
-    polar_voxel_indices, num_points, polar_voxel_range, point_indices.get(),
-    voxel_indices_raw.get());
+    polar_voxel_indices, num_points, polar_voxel_range, polar_voxel_indices_min,
+    point_indices.get(), voxel_indices_raw.get());
 
   // Step 3: Calculate the voxel indices on memory with corresponding point indices
   auto voxel_indices = autoware::cuda_utils::make_unique<int>(num_points, stream_, mem_pool_);
