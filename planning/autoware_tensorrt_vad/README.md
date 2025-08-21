@@ -47,7 +47,7 @@ Parameters can be set via YAML (see `config/vad_tiny.param.yaml` and `config/ml_
 
 ### Step1. Download onnx
 
-- Please download onnx file from [this link](https://tier4inc-my.sharepoint.com/personal/taiki_tanaka_tier4_jp/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Ftaiki%5Ftanaka%5Ftier4%5Fjp%2FDocuments%2FAutonomousAIChallenge%2FMiscData%2FEnd2End%2Fvad&ga=1).
+- Please download onnx file from [this link](https://tier4inc-my.sharepoint.com/:f:/g/personal/taiki_tanaka_tier4_jp/EvQZY6sIudNKnFJSAnuyS9ABpodIW_FSYk57BrenzhCtXg?e=T4RLVw).
 
 - Please set onnx directory under `~/autoware_data`
 
