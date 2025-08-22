@@ -63,6 +63,8 @@ using namespace nav_msgs::msg;
 constexpr int64_t PAST_TIME_STEPS = EGO_HISTORY_SHAPE[1];  // 21
 constexpr int64_t FUTURE_TIME_STEPS = OUTPUT_T;            // 80
 constexpr int64_t NEIGHBOR_NUM = NEIGHBOR_SHAPE[1];        // 32
+constexpr int64_t NEIGHBOR_PAST_DIM = NEIGHBOR_SHAPE[3];   // 11
+constexpr int64_t NEIGHBOR_FUTURE_DIM = 3;                 // x, y, yaw
 constexpr int64_t STATIC_NUM = STATIC_OBJECTS_SHAPE[1];    // 5
 constexpr int64_t LANE_NUM = LANES_SHAPE[1];               // 70
 constexpr int64_t LANE_LEN = POINTS_PER_SEGMENT;           // 20
@@ -93,20 +95,20 @@ struct TrainingDataBinary
   uint32_t version;  // Data format version
 
   // Fixed size data arrays
-  float ego_agent_past[21 * 4];               // (21, 4)
-  float ego_current_state[10];                // (10,)
-  float ego_agent_future[80 * 4];             // (80, 4)
-  float neighbor_agents_past[32 * 21 * 11];   // (32, 21, 11)
-  float neighbor_agents_future[32 * 80 * 3];  // (32, 80, 3)
-  float static_objects[5 * 10];               // (5, 10)
-  float lanes[70 * 20 * 13];                  // (70, 20, 13) - SEGMENT_POINT_DIM=13
-  float lanes_speed_limit[70];                // (70,)
-  int32_t lanes_has_speed_limit[70];          // (70,)
-  float route_lanes[25 * 20 * 13];            // (25, 20, 13) - SEGMENT_POINT_DIM=13
-  float route_lanes_speed_limit[25];          // (25,)
-  int32_t route_lanes_has_speed_limit[25];    // (25,)
-  float goal_pose[3];                         // (3,)
-  int32_t turn_indicator;                     // scalar
+  float ego_agent_past[EGO_HISTORY_SHAPE[1] * EGO_HISTORY_SHAPE[2]];
+  float ego_current_state[EGO_CURRENT_STATE_SHAPE[1]];
+  float ego_agent_future[FUTURE_TIME_STEPS * EGO_HISTORY_SHAPE[2]];
+  float neighbor_agents_past[NEIGHBOR_NUM * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM];
+  float neighbor_agents_future[NEIGHBOR_NUM * FUTURE_TIME_STEPS * NEIGHBOR_FUTURE_DIM];
+  float static_objects[STATIC_NUM * STATIC_OBJECTS_SHAPE[2]];
+  float lanes[LANE_NUM * LANE_LEN * SEGMENT_POINT_DIM];
+  float lanes_speed_limit[LANE_NUM];
+  int32_t lanes_has_speed_limit[LANE_NUM];
+  float route_lanes[ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM];
+  float route_lanes_speed_limit[ROUTE_NUM];
+  int32_t route_lanes_has_speed_limit[ROUTE_NUM];
+  float goal_pose[NEIGHBOR_FUTURE_DIM];
+  int32_t turn_indicator;
 
   // Constructor with zero initialization
   TrainingDataBinary() : version(1), turn_indicator(0)
@@ -199,11 +201,12 @@ std::vector<float> create_ego_sequence(
   return preprocess::create_ego_agent_past(odometry_deque, time_steps, map2bl_matrix);
 }
 
-std::vector<float> process_neighbor_agents(
+std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_future(
   const std::vector<FrameData> & data_list, const int64_t current_idx,
   const Eigen::Matrix4f & map2bl_matrix)
 {
-  std::vector<float> neighbor_data(NEIGHBOR_NUM * PAST_TIME_STEPS * 11, 0.0f);
+  std::vector<float> neighbor_past(NEIGHBOR_NUM * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM, 0.0f);
+  std::vector<float> neighbor_future(NEIGHBOR_NUM * FUTURE_TIME_STEPS * NEIGHBOR_FUTURE_DIM, 0.0f);
 
   // Track agents across multiple frames for past data
   std::map<std::string, std::vector<AgentState>> agent_histories;
@@ -240,7 +243,13 @@ std::vector<float> process_neighbor_agents(
     return a.second < b.second;
   });
 
-  // Fill neighbor data for closest agents
+  // Create mapping from object ID to agent index (maintaining sort order)
+  std::map<std::string, int64_t> object_id_to_idx;
+  for (int64_t i = 0; i < static_cast<int64_t>(agent_distances.size()) && i < NEIGHBOR_NUM; ++i) {
+    object_id_to_idx[agent_distances[i].first] = i;
+  }
+
+  // Fill neighbor past data for closest agents
   int64_t agent_idx = 0;
   for (const std::pair<std::string, float> & agent_distance : agent_distances) {
     if (agent_idx >= NEIGHBOR_NUM) {
@@ -249,61 +258,21 @@ std::vector<float> process_neighbor_agents(
 
     const std::vector<AgentState> & history = agent_histories[agent_distance.first];
     for (int64_t t = 0; t < PAST_TIME_STEPS; ++t) {
-      const int64_t base_idx = agent_idx * PAST_TIME_STEPS * 11 + t * 11;
+      const int64_t base_idx =
+        agent_idx * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM + t * NEIGHBOR_PAST_DIM;
 
       if (t < static_cast<int64_t>(history.size())) {
         const AgentState & state = history[t];
         const std::array<float, AGENT_STATE_DIM> data_array = state.as_array();
         for (size_t i = 0; i < data_array.size(); ++i) {
-          neighbor_data[base_idx + i] = data_array[i];
+          neighbor_past[base_idx + i] = data_array[i];
         }
       }
     }
     agent_idx++;
   }
 
-  return neighbor_data;
-}
-
-std::vector<float> process_neighbor_future(
-  const std::vector<FrameData> & data_list, const int64_t current_idx,
-  const Eigen::Matrix4f & map2bl_matrix)
-{
-  std::vector<float> neighbor_future(NEIGHBOR_NUM * FUTURE_TIME_STEPS * 3, 0.0f);
-
-  // Get current frame objects for tracking
-  if (current_idx >= static_cast<int64_t>(data_list.size())) {
-    return neighbor_future;
-  }
-
-  const std::vector<TrackedObject> & current_objects =
-    data_list[current_idx].tracked_objects.objects;
-  std::map<std::string, int64_t> object_id_to_idx;
-
-  // Create mapping of object IDs to indices (sorted by distance)
-  std::vector<std::pair<std::string, float>> agent_distances;
-  for (const TrackedObject & obj : current_objects) {
-    const std::string obj_id = autoware_utils_uuid::to_hex_string(obj.object_id);
-
-    const Eigen::Vector4f pos_vec(
-      obj.kinematics.pose_with_covariance.pose.position.x,
-      obj.kinematics.pose_with_covariance.pose.position.y,
-      obj.kinematics.pose_with_covariance.pose.position.z, 1.0);
-    const Eigen::Vector4f transformed_pos = map2bl_matrix * pos_vec;
-    const float dist = std::sqrt(
-      transformed_pos.x() * transformed_pos.x() + transformed_pos.y() * transformed_pos.y());
-    agent_distances.push_back({obj_id, dist});
-  }
-
-  std::sort(agent_distances.begin(), agent_distances.end(), [](const auto & a, const auto & b) {
-    return a.second < b.second;
-  });
-
-  for (int64_t i = 0; i < static_cast<int64_t>(agent_distances.size()) && i < NEIGHBOR_NUM; ++i) {
-    object_id_to_idx[agent_distances[i].first] = i;
-  }
-
-  // Fill future data
+  // Fill future data using the same agent ordering as past data
   for (int64_t t = 0; t < FUTURE_TIME_STEPS; ++t) {
     const int64_t future_frame_idx = current_idx + 1 + t;
     if (future_frame_idx >= static_cast<int64_t>(data_list.size())) {
@@ -316,9 +285,11 @@ std::vector<float> process_neighbor_future(
     for (const TrackedObject & obj : future_objects) {
       const std::string obj_id = autoware_utils_uuid::to_hex_string(obj.object_id);
 
+      // Only process objects that were in the past tracking (maintaining same agent ordering)
       if (object_id_to_idx.find(obj_id) != object_id_to_idx.end()) {
         const int64_t agent_idx = object_id_to_idx[obj_id];
-        const int64_t base_idx = agent_idx * FUTURE_TIME_STEPS * 3 + t * 3;
+        const int64_t base_idx =
+          agent_idx * FUTURE_TIME_STEPS * NEIGHBOR_FUTURE_DIM + t * NEIGHBOR_FUTURE_DIM;
 
         const Point & pos = obj.kinematics.pose_with_covariance.pose.position;
         const Quaternion & ori = obj.kinematics.pose_with_covariance.pose.orientation;
@@ -338,7 +309,7 @@ std::vector<float> process_neighbor_future(
     }
   }
 
-  return neighbor_future;
+  return std::make_pair(neighbor_past, neighbor_future);
 }
 
 void save_binary_data(
@@ -708,9 +679,9 @@ int main(int argc, char ** argv)
         seq.data_list[i].kinematic_state, seq.data_list[i].acceleration, 2.79f);
       const std::vector<float> ego_current = ego_state.as_array();
 
-      // Process neighbor agents
-      const std::vector<float> neighbor_past = process_neighbor_agents(seq.data_list, i, map2bl);
-      const std::vector<float> neighbor_future = process_neighbor_future(seq.data_list, i, map2bl);
+      // Process neighbor agents (both past and future with consistent agent ordering)
+      const auto [neighbor_past, neighbor_future] =
+        process_neighbor_agents_and_future(seq.data_list, i, map2bl);
 
       // Process lanes and routes
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
@@ -862,7 +833,7 @@ int main(int argc, char ** argv)
       }
 
       // Create placeholder data for static objects
-      const std::vector<float> static_objects(STATIC_NUM * 10, 0.0f);
+      const std::vector<float> static_objects(STATIC_NUM * STATIC_OBJECTS_SHAPE[2], 0.0f);
 
       const int64_t turn_indicator = seq.data_list[i].turn_indicator.report;
 
