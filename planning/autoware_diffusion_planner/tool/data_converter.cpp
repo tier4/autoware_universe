@@ -243,7 +243,9 @@ std::vector<float> process_neighbor_agents(
   // Fill neighbor data for closest agents
   int64_t agent_idx = 0;
   for (const std::pair<std::string, float> & agent_distance : agent_distances) {
-    if (agent_idx >= NEIGHBOR_NUM) break;
+    if (agent_idx >= NEIGHBOR_NUM) {
+      break;
+    }
 
     const std::vector<AgentState> & history = agent_histories[agent_distance.first];
     for (int64_t t = 0; t < PAST_TIME_STEPS; ++t) {
@@ -270,7 +272,9 @@ std::vector<float> process_neighbor_future(
   std::vector<float> neighbor_future(NEIGHBOR_NUM * FUTURE_TIME_STEPS * 3, 0.0f);
 
   // Get current frame objects for tracking
-  if (current_idx >= static_cast<int64_t>(data_list.size())) return neighbor_future;
+  if (current_idx >= static_cast<int64_t>(data_list.size())) {
+    return neighbor_future;
+  }
 
   const std::vector<TrackedObject> & current_objects =
     data_list[current_idx].tracked_objects.objects;
@@ -302,7 +306,9 @@ std::vector<float> process_neighbor_future(
   // Fill future data
   for (int64_t t = 0; t < FUTURE_TIME_STEPS; ++t) {
     const int64_t future_frame_idx = current_idx + 1 + t;
-    if (future_frame_idx >= static_cast<int64_t>(data_list.size())) break;
+    if (future_frame_idx >= static_cast<int64_t>(data_list.size())) {
+      break;
+    }
 
     const std::vector<TrackedObject> & future_objects =
       data_list[future_frame_idx].tracked_objects.objects;
