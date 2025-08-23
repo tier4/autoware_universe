@@ -184,7 +184,7 @@ private:
   std::vector<float> prev_can_bus_;
 
   // Cached VAD base_link (coordinate used in VAD output trajectory) to camera transformation matrix
-  std::optional<Lidar2ImgData> vadbase2img_transform_;
+  std::optional<Lidar2ImgData> vad_base2img_transform_;
 
   // Calculate current longitudinal velocity from can_bus data
   float calculate_current_longitudinal_velocity(

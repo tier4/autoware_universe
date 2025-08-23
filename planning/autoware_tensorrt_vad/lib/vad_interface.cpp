@@ -11,7 +11,7 @@ VadInterface::VadInterface(const VadInterfaceConfig& config, std::shared_ptr<tf2
   : config_(config),
     current_longitudinal_velocity_mps_(0.0f),
     prev_can_bus_(config.default_can_bus),
-    vadbase2img_transform_(std::nullopt)
+    vad_base2img_transform_(std::nullopt)
 {
   // Initialize coordinate transformer
   coordinate_transformer_ = std::make_unique<vad_interface::CoordinateTransformer>(
@@ -38,13 +38,13 @@ VadInputData VadInterface::convert_input(const VadInputTopicData & vad_input_top
   float scale_height = config_.target_image_height / static_cast<float>(config_.input_image_height);
 
   // Process lidar2img transformation using converter, with caching
-  if (!vadbase2img_transform_.has_value()) {
-    vadbase2img_transform_ = input_transform_matrix_converter_->process_lidar2img(
+  if (!vad_base2img_transform_.has_value()) {
+    vad_base2img_transform_ = input_transform_matrix_converter_->process_lidar2img(
       vad_input_topic_data.camera_infos,
       scale_width, scale_height
     );
   }
-  vad_input_data.lidar2img_ = vadbase2img_transform_.value();
+  vad_input_data.lidar2img_ = vad_base2img_transform_.value();
   
   // Process can_bus using converter
   vad_input_data.can_bus_ = input_can_bus_converter_->process_can_bus(
