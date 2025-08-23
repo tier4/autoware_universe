@@ -12,13 +12,13 @@ namespace autoware::tensorrt_vad::vad_interface {
 using Lidar2ImgData = std::vector<float>;
 
 /**
- * @brief InputTransformMatrixConverter handles lidar-to-image transformation matrix calculation
+ * @brief InputTransformMatrixConverter handles vad base_link to image (camera optical link) transformation matrix calculation
  * 
  * This class processes camera calibration data to create transformation matrices:
  * - TF lookup for base_link to camera frame transformations
  * - Camera intrinsics matrix processing (viewpad creation)
  * - Image scaling application for resized images
- * - Lidar-to-image transformation matrix calculation and flattening
+ * - vad base_link to image (camera optical link) transformation matrix calculation and flattening
  */
 class InputTransformMatrixConverter : public Converter {
 public:
@@ -50,7 +50,7 @@ private:
 
   /**
    * @brief Apply scaling transformation to lidar2img matrix
-   * @param lidar2img Original lidar-to-image transformation matrix
+   * @param lidar2img Original vad base_link to image (camera optical link) transformation matrix
    * @param scale_width Width scaling factor
    * @param scale_height Height scaling factor
    * @return Eigen::Matrix4f Scaled transformation matrix
