@@ -10,7 +10,8 @@ namespace autoware::tensorrt_vad
 VadInterface::VadInterface(const VadInterfaceConfig& config, std::shared_ptr<tf2_ros::Buffer> tf_buffer)
   : config_(config),
     current_longitudinal_velocity_mps_(0.0f),
-    prev_can_bus_(config.default_can_bus)
+    prev_can_bus_(config.default_can_bus),
+    vadbase2img_transform_(std::nullopt)
 {
   // Initialize coordinate transformer
   coordinate_transformer_ = std::make_unique<vad_interface::CoordinateTransformer>(
