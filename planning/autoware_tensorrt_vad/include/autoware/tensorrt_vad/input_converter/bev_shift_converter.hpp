@@ -37,6 +37,11 @@ public:
   ShiftData process_shift(
     const CanBusData& can_bus,
     const CanBusData& prev_can_bus) const;
+
+private:
+  // The width and length of the BEV feature map in meters (corresponds to the real-world width and length covered by the BEV grid)
+  float real_w_;
+  float real_h_;
 };
 
 } // namespace autoware::tensorrt_vad::vad_interface
