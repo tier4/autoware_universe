@@ -9,7 +9,6 @@ namespace autoware::tensorrt_vad
 
 VadInterface::VadInterface(const VadInterfaceConfig& config, std::shared_ptr<tf2_ros::Buffer> tf_buffer)
   : config_(config),
-    current_longitudinal_velocity_mps_(0.0f),
     prev_can_bus_(config.default_can_bus),
     vad_base2img_transform_(std::nullopt)
 {
@@ -56,11 +55,6 @@ VadInputData VadInterface::convert_input(const VadInputTopicData & vad_input_top
   // Process shift using converter
   vad_input_data.shift_ = input_bev_shift_converter_->process_shift(vad_input_data.can_bus_, prev_can_bus_);
   
-  // Calculate current longitudinal velocity (node_timestep = 100ms = 0.1s)
-  constexpr double node_timestep = 0.1;
-  current_longitudinal_velocity_mps_ = calculate_current_longitudinal_velocity(
-    vad_input_data.can_bus_, prev_can_bus_, node_timestep);
-  
   // Process image data using converter
   vad_input_data.camera_images_ = input_image_converter_->process_image(vad_input_topic_data.images);
   
@@ -96,28 +90,6 @@ VadOutputTopicData VadInterface::convert_output(
   output_topic_data.objects = output_objects_converter_->process_predicted_objects(vad_output_data.predicted_objects_, stamp, base2map_transform);
 
   return output_topic_data;
-}
-
-float VadInterface::calculate_current_longitudinal_velocity(
-  const std::vector<float> & can_bus,
-  const std::vector<float> & prev_can_bus,
-  double node_timestep) const
-{
-  if (prev_can_bus.empty() || can_bus.size() < 3 || prev_can_bus.size() < 3) {
-    return 0.0f; // Return 0 if previous frame data is not available
-  }
-
-  // Calculate velocity from position data in can_bus (position: indices 0, 1)
-  float delta_x = can_bus[0] - prev_can_bus[0];  // x-direction displacement
-  float delta_y = can_bus[1] - prev_can_bus[1];  // y-direction displacement
-
-  // Calculate 3D movement distance
-  float distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
-
-  // Velocity = distance / time
-  float velocity = distance / static_cast<float>(node_timestep);
-  
-  return velocity;
 }
 
 } // namespace autoware::tensorrt_vad

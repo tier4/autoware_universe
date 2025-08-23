@@ -40,18 +40,6 @@ public:
     const nav_msgs::msg::Odometry::ConstSharedPtr& kinematic_state,
     const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr& acceleration,
     const std::vector<float>& prev_can_bus) const;
-
-  /**
-   * @brief Calculate current longitudinal velocity from position changes
-   * @param can_bus Current frame's CAN-Bus data
-   * @param prev_can_bus Previous frame's CAN-Bus data
-   * @param node_timestep Time interval between frames (seconds)
-   * @return float Current longitudinal velocity in m/s
-   */
-  float calculate_current_longitudinal_velocity(
-    const std::vector<float>& can_bus,
-    const std::vector<float>& prev_can_bus,
-    double node_timestep) const;
 };
 
 } // namespace autoware::tensorrt_vad::vad_interface

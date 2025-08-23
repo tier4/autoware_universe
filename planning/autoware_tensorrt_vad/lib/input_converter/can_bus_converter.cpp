@@ -92,27 +92,4 @@ CanBusData InputCanBusConverter::process_can_bus(
 
   return can_bus;
 }
-
-float InputCanBusConverter::calculate_current_longitudinal_velocity(
-  const std::vector<float>& can_bus,
-  const std::vector<float>& prev_can_bus,
-  double node_timestep) const
-{
-  if (prev_can_bus.empty() || can_bus.size() < 3 || prev_can_bus.size() < 3) {
-    return 0.0f; // Return 0 if previous frame data is not available
-  }
-
-  // Calculate velocity from position data in can_bus (position: indices 0, 1)
-  float delta_x = can_bus[0] - prev_can_bus[0];  // x-direction displacement
-  float delta_y = can_bus[1] - prev_can_bus[1];  // y-direction displacement
-
-  // Calculate 3D movement distance
-  float distance = std::sqrt(delta_x * delta_x + delta_y * delta_y);
-
-  // Velocity = distance / time
-  float velocity = distance / static_cast<float>(node_timestep);
-  
-  return velocity;
-}
-
 } // namespace autoware::tensorrt_vad::vad_interface

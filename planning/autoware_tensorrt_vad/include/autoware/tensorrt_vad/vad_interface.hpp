@@ -177,20 +177,11 @@ private:
   std::unique_ptr<vad_interface::OutputMapConverter> output_map_converter_;
   std::unique_ptr<vad_interface::OutputObjectsConverter> output_objects_converter_;
   
-  // Current longitudinal velocity for trajectory initial point
-  float current_longitudinal_velocity_mps_;
-  
   // Previous can_bus data for velocity calculation and other processes
   std::vector<float> prev_can_bus_;
 
   // Cached VAD base_link (coordinate used in VAD output trajectory) to camera transformation matrix
   std::optional<Lidar2ImgData> vad_base2img_transform_;
-
-  // Calculate current longitudinal velocity from can_bus data
-  float calculate_current_longitudinal_velocity(
-    const std::vector<float> & can_bus,
-    const std::vector<float> & prev_can_bus,
-    double node_timestep) const;
 };
 
 }  // namespace autoware::tensorrt_vad
