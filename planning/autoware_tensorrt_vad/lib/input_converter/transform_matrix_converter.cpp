@@ -28,7 +28,7 @@ Eigen::Matrix4f InputTransformMatrixConverter::create_viewpad(
 }
 
 Eigen::Matrix4f InputTransformMatrixConverter::apply_scaling(
-  const Eigen::Matrix4f& lidar2img, float scale_width, float scale_height) const
+  const Eigen::Matrix4f& lidar2img, const float scale_width, const float scale_height) const
 {
   Eigen::Matrix4f scale_matrix = Eigen::Matrix4f::Identity();
   scale_matrix(0, 0) = scale_width;
@@ -50,7 +50,7 @@ std::vector<float> InputTransformMatrixConverter::matrix_to_flat(const Eigen::Ma
 
 Lidar2ImgData InputTransformMatrixConverter::process_lidar2img(
   const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos,
-  float scale_width, float scale_height) const
+  const float scale_width, const float scale_height) const
 {
   std::vector<float> frame_lidar2img(16 * 6, 0.0f); // Reserve space for 6 cameras
 

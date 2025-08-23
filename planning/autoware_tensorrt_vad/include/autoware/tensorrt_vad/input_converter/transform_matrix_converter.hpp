@@ -38,7 +38,7 @@ public:
    */
   Lidar2ImgData process_lidar2img(
     const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos,
-    float scale_width, float scale_height) const;
+    const float scale_width, const float scale_height) const;
 
 private:
   /**
@@ -55,7 +55,7 @@ private:
    * @param scale_height Height scaling factor
    * @return Eigen::Matrix4f Scaled transformation matrix
    */
-  Eigen::Matrix4f apply_scaling(const Eigen::Matrix4f& lidar2img, float scale_width, float scale_height) const;
+  Eigen::Matrix4f apply_scaling(const Eigen::Matrix4f& lidar2img, const float scale_width, const float scale_height) const;
 
   /**
    * @brief Convert 4x4 matrix to flattened vector in row-major order
