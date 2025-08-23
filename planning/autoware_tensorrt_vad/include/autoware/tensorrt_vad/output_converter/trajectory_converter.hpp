@@ -1,7 +1,7 @@
 #ifndef AUTOWARE_TENSORRT_VAD_OUTPUT_CONVERTER_TRAJECTORY_CONVERTER_HPP_
 #define AUTOWARE_TENSORRT_VAD_OUTPUT_CONVERTER_TRAJECTORY_CONVERTER_HPP_
 
-#include "../converter.hpp"
+#include "autoware/tensorrt_vad/converter.hpp"
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>

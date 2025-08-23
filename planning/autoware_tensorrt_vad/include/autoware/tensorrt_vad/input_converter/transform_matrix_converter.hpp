@@ -1,7 +1,7 @@
 #ifndef AUTOWARE_TENSORRT_VAD_INPUT_CONVERTER_TRANSFORM_MATRIX_CONVERTER_HPP_
 #define AUTOWARE_TENSORRT_VAD_INPUT_CONVERTER_TRANSFORM_MATRIX_CONVERTER_HPP_
 
-#include "../converter.hpp"
+#include "autoware/tensorrt_vad/converter.hpp"
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <vector>
 #include <optional>

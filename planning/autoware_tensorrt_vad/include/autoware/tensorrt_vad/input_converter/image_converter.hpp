@@ -1,7 +1,7 @@
 #ifndef AUTOWARE_TENSORRT_VAD_INPUT_CONVERTER_IMAGE_CONVERTER_HPP_
 #define AUTOWARE_TENSORRT_VAD_INPUT_CONVERTER_IMAGE_CONVERTER_HPP_
 
-#include "../converter.hpp"
+#include "autoware/tensorrt_vad/converter.hpp"
 #include <sensor_msgs/msg/image.hpp>
 #include <vector>
 #include <memory>
