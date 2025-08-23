@@ -75,6 +75,7 @@ CanBusData InputCanBusConverter::process_can_bus(
   can_bus[15] = vad_vz;
 
   // Calculate patch_angle[rad] (16)
+  // yaw = ArcTan(2 * (w * z + x * y) / (1 - 2 * (y ** 2 + z ** 2)))
   double yaw = std::atan2(
       2.0 * (can_bus[6] * can_bus[5] + can_bus[3] * can_bus[4]),
       1.0 - 2.0 * (can_bus[4] * can_bus[4] + can_bus[5] * can_bus[5]));
