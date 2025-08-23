@@ -150,7 +150,7 @@ void VadInputTopicData::reset()
 {
   frame_started_ = false;
   
-  // Reset all images and camera_infos using clear + resize (original implementation)
+  // Reset all images and camera_infos using clear + resize
   images.clear();
   images.resize(num_cameras_);
   camera_infos.clear();
