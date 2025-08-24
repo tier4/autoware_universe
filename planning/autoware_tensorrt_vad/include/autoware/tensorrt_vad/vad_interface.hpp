@@ -57,7 +57,7 @@ class VadInputTopicData
 {
 public:
   // Constructor: Initialize vectors with specified number of cameras
-  explicit VadInputTopicData(int32_t num_cameras);
+  explicit VadInputTopicData(const int32_t num_cameras);
 
   // Check if frame is complete
   bool is_complete() const;
@@ -66,8 +66,8 @@ public:
   void reset();
 
   // Setter methods with frame initialization
-  void set_image(std::size_t camera_id, const sensor_msgs::msg::Image::ConstSharedPtr& msg);
-  void set_camera_info(std::size_t camera_id, const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg);
+  void set_image(const std::size_t camera_id, const sensor_msgs::msg::Image::ConstSharedPtr& msg);
+  void set_camera_info(const std::size_t camera_id, const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg);
   void set_kinematic_state(const nav_msgs::msg::Odometry::ConstSharedPtr& msg);
   void set_acceleration(const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr& msg);
 
@@ -128,13 +128,13 @@ using CanBusData = std::vector<float>;
 class VadInterface {
 public:
   explicit VadInterface(const VadInterfaceConfig& config, 
-                        std::shared_ptr<tf2_ros::Buffer> tf_buffer);
+                        const std::shared_ptr<tf2_ros::Buffer> tf_buffer);
 
   VadInputData convert_input(const VadInputTopicData & vad_input_topic_data);
   VadOutputTopicData convert_output(
     const VadOutputData & vad_output_data, 
     const rclcpp::Time & stamp,
-    double trajectory_timestep,
+    const double trajectory_timestep,
     const Eigen::Matrix4f & base2map_transform) const;
 
 

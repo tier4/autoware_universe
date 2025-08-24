@@ -7,7 +7,7 @@
 namespace autoware::tensorrt_vad
 {
 
-VadInterface::VadInterface(const VadInterfaceConfig& config, std::shared_ptr<tf2_ros::Buffer> tf_buffer)
+VadInterface::VadInterface(const VadInterfaceConfig& config, const std::shared_ptr<tf2_ros::Buffer> tf_buffer)
   : config_(config),
     prev_can_bus_(config.default_can_bus),
     vad_base2img_transform_(std::nullopt)
@@ -70,7 +70,7 @@ VadInputData VadInterface::convert_input(const VadInputTopicData & vad_input_top
 VadOutputTopicData VadInterface::convert_output(
   const VadOutputData & vad_output_data,
   const rclcpp::Time & stamp,
-  double trajectory_timestep,
+  const double trajectory_timestep,
   const Eigen::Matrix4f & base2map_transform) const
 {
   VadOutputTopicData output_topic_data;
@@ -98,7 +98,7 @@ namespace autoware::tensorrt_vad
 {
 
 // VadInputTopicData class implementation
-VadInputTopicData::VadInputTopicData(int32_t num_cameras)
+VadInputTopicData::VadInputTopicData(const int32_t num_cameras)
   : images(num_cameras), camera_infos(num_cameras), num_cameras_(num_cameras)
 {
 }
@@ -141,7 +141,7 @@ void VadInputTopicData::ensure_frame_started(const rclcpp::Time& msg_stamp)
   }
 }
 
-void VadInputTopicData::set_image(std::size_t camera_id, const sensor_msgs::msg::Image::ConstSharedPtr& msg)
+void VadInputTopicData::set_image(const std::size_t camera_id, const sensor_msgs::msg::Image::ConstSharedPtr& msg)
 {
   if (camera_id < images.size()) {
     ensure_frame_started(msg->header.stamp);
@@ -149,7 +149,7 @@ void VadInputTopicData::set_image(std::size_t camera_id, const sensor_msgs::msg:
   }
 }
 
-void VadInputTopicData::set_camera_info(std::size_t camera_id, const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg)
+void VadInputTopicData::set_camera_info(const std::size_t camera_id, const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg)
 {
   if (camera_id < camera_infos.size()) {
     ensure_frame_started(msg->header.stamp);
