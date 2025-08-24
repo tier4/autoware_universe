@@ -20,13 +20,13 @@ geometry_msgs::msg::Quaternion OutputTrajectoryConverter::create_quaternion_from
 
 std::vector<autoware_planning_msgs::msg::TrajectoryPoint> OutputTrajectoryConverter::create_trajectory_points(
   const std::vector<float>& predicted_trajectory,
-  double trajectory_timestep,
+  const double trajectory_timestep,
   const Eigen::Matrix4f& base2map_transform) const
 {
   std::vector<autoware_planning_msgs::msg::TrajectoryPoint> points;
   
   // function to transform direction vector from base coordinate system to map coordinate system
-  auto transform_direction_to_map = [&base2map_transform](float base_dx, float base_dy) -> float {
+  auto transform_direction_to_map = [&base2map_transform](const float base_dx, const float base_dy) -> float {
     Eigen::Vector3f base_direction(base_dx, base_dy, 0.0f);
     Eigen::Vector3f map_direction = base2map_transform.block<3, 3>(0, 0) * base_direction;
     return std::atan2(map_direction.y(), map_direction.x());
@@ -105,7 +105,7 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> OutputTrajectoryConver
 autoware_internal_planning_msgs::msg::CandidateTrajectories OutputTrajectoryConverter::process_candidate_trajectories(
   const std::map<int32_t, std::vector<float>>& predicted_trajectories,
   const rclcpp::Time& stamp,
-  double trajectory_timestep,
+  const double trajectory_timestep,
   const Eigen::Matrix4f& base2map_transform) const
 {
   autoware_internal_planning_msgs::msg::CandidateTrajectories candidate_trajectories_msg;
@@ -138,7 +138,7 @@ autoware_internal_planning_msgs::msg::CandidateTrajectories OutputTrajectoryConv
 autoware_planning_msgs::msg::Trajectory OutputTrajectoryConverter::process_trajectory(
   const std::vector<float>& predicted_trajectory,
   const rclcpp::Time& stamp,
-  double trajectory_timestep,
+  const double trajectory_timestep,
   const Eigen::Matrix4f& base2map_transform) const
 {
   autoware_planning_msgs::msg::Trajectory trajectory_msg;

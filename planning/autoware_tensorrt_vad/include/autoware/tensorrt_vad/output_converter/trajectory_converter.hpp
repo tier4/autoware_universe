@@ -45,7 +45,7 @@ public:
   autoware_planning_msgs::msg::Trajectory process_trajectory(
     const std::vector<float>& predicted_trajectory,
     const rclcpp::Time& stamp,
-    double trajectory_timestep,
+    const double trajectory_timestep,
     const Eigen::Matrix4f& base2map_transform) const;
 
   /**
@@ -59,7 +59,7 @@ public:
   autoware_internal_planning_msgs::msg::CandidateTrajectories process_candidate_trajectories(
     const std::map<int32_t, std::vector<float>>& predicted_trajectories,
     const rclcpp::Time& stamp,
-    double trajectory_timestep,
+    const double trajectory_timestep,
     const Eigen::Matrix4f& base2map_transform) const;
 
 private:
@@ -79,7 +79,7 @@ private:
    */
   std::vector<autoware_planning_msgs::msg::TrajectoryPoint> create_trajectory_points(
     const std::vector<float>& predicted_trajectory,
-    double trajectory_timestep,
+    const double trajectory_timestep,
     const Eigen::Matrix4f& base2map_transform) const;
 };
 
