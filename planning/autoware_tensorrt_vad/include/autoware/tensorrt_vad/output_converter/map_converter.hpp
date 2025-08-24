@@ -51,7 +51,7 @@ private:
    */
   visualization_msgs::msg::Marker create_polyline_marker(
     const MapPolyline& map_polyline,
-    int32_t marker_id,
+    const int32_t marker_id,
     const rclcpp::Time& stamp,
     const Eigen::Matrix4f& base2map_transform) const;
 

@@ -20,7 +20,7 @@ std::array<float, 3> OutputMapConverter::get_color_for_type(const std::string& t
 
 visualization_msgs::msg::Marker OutputMapConverter::create_polyline_marker(
   const MapPolyline& map_polyline,
-  int32_t marker_id,
+  const int32_t marker_id,
   const rclcpp::Time& stamp,
   const Eigen::Matrix4f& base2map_transform) const
 {
