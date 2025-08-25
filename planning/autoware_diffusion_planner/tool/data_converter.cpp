@@ -60,16 +60,12 @@ using namespace geometry_msgs::msg;
 using namespace nav_msgs::msg;
 
 // Using constants from dimensions.hpp
-constexpr int64_t PAST_TIME_STEPS = EGO_HISTORY_SHAPE[1];  // 21
-constexpr int64_t FUTURE_TIME_STEPS = OUTPUT_T;            // 80
-constexpr int64_t NEIGHBOR_NUM = NEIGHBOR_SHAPE[1];        // 32
-constexpr int64_t NEIGHBOR_PAST_DIM = NEIGHBOR_SHAPE[3];   // 11
-constexpr int64_t NEIGHBOR_FUTURE_DIM = 3;                 // x, y, yaw
-constexpr int64_t STATIC_NUM = STATIC_OBJECTS_SHAPE[1];    // 5
-constexpr int64_t LANE_NUM = LANES_SHAPE[1];               // 70
-constexpr int64_t LANE_LEN = POINTS_PER_SEGMENT;           // 20
-constexpr int64_t ROUTE_NUM = ROUTE_LANES_SHAPE[1];        // 25
-constexpr int64_t ROUTE_LEN = POINTS_PER_SEGMENT;          // 20
+constexpr int64_t PAST_TIME_STEPS = EGO_HISTORY_SHAPE[1];
+constexpr int64_t NEIGHBOR_NUM = NEIGHBOR_SHAPE[1];
+constexpr int64_t NEIGHBOR_PAST_DIM = NEIGHBOR_SHAPE[3];
+constexpr int64_t NEIGHBOR_FUTURE_DIM = 3;  // x, y, yaw
+constexpr int64_t LANE_NUM = LANES_SHAPE[1];
+constexpr int64_t ROUTE_NUM = ROUTE_LANES_SHAPE[1];
 
 struct FrameData
 {
@@ -97,14 +93,14 @@ struct TrainingDataBinary
   // Fixed size data arrays
   float ego_agent_past[EGO_HISTORY_SHAPE[1] * EGO_HISTORY_SHAPE[2]];
   float ego_current_state[EGO_CURRENT_STATE_SHAPE[1]];
-  float ego_agent_future[FUTURE_TIME_STEPS * EGO_HISTORY_SHAPE[2]];
+  float ego_agent_future[OUTPUT_T * EGO_HISTORY_SHAPE[2]];
   float neighbor_agents_past[NEIGHBOR_NUM * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM];
-  float neighbor_agents_future[NEIGHBOR_NUM * FUTURE_TIME_STEPS * NEIGHBOR_FUTURE_DIM];
-  float static_objects[STATIC_NUM * STATIC_OBJECTS_SHAPE[2]];
-  float lanes[LANE_NUM * LANE_LEN * SEGMENT_POINT_DIM];
+  float neighbor_agents_future[NEIGHBOR_NUM * OUTPUT_T * NEIGHBOR_FUTURE_DIM];
+  float static_objects[STATIC_OBJECTS_SHAPE[1] * STATIC_OBJECTS_SHAPE[2]];
+  float lanes[LANE_NUM * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM];
   float lanes_speed_limit[LANE_NUM];
   int32_t lanes_has_speed_limit[LANE_NUM];
-  float route_lanes[ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM];
+  float route_lanes[ROUTE_NUM * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM];
   float route_lanes_speed_limit[ROUTE_NUM];
   int32_t route_lanes_has_speed_limit[ROUTE_NUM];
   float goal_pose[NEIGHBOR_FUTURE_DIM];
@@ -206,7 +202,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   const Eigen::Matrix4f & map2bl_matrix)
 {
   std::vector<float> neighbor_past(NEIGHBOR_NUM * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM, 0.0f);
-  std::vector<float> neighbor_future(NEIGHBOR_NUM * FUTURE_TIME_STEPS * NEIGHBOR_FUTURE_DIM, 0.0f);
+  std::vector<float> neighbor_future(NEIGHBOR_NUM * OUTPUT_T * NEIGHBOR_FUTURE_DIM, 0.0f);
 
   // Track agents across multiple frames for past data
   std::map<std::string, std::vector<AgentState>> agent_histories;
@@ -273,7 +269,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   }
 
   // Fill future data using the same agent ordering as past data
-  for (int64_t t = 0; t < FUTURE_TIME_STEPS; ++t) {
+  for (int64_t t = 0; t < OUTPUT_T; ++t) {
     const int64_t future_frame_idx = current_idx + 1 + t;
     if (future_frame_idx >= static_cast<int64_t>(data_list.size())) {
       break;
@@ -289,7 +285,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
       if (object_id_to_idx.find(obj_id) != object_id_to_idx.end()) {
         const int64_t agent_idx = object_id_to_idx[obj_id];
         const int64_t base_idx =
-          agent_idx * FUTURE_TIME_STEPS * NEIGHBOR_FUTURE_DIM + t * NEIGHBOR_FUTURE_DIM;
+          agent_idx * OUTPUT_T * NEIGHBOR_FUTURE_DIM + t * NEIGHBOR_FUTURE_DIM;
 
         const Point & pos = obj.kinematics.pose_with_covariance.pose.position;
         const Quaternion & ori = obj.kinematics.pose_with_covariance.pose.orientation;
@@ -659,7 +655,7 @@ int main(int argc, char ** argv)
 
     // Process frames with stopping count tracking
     int64_t stopping_count = 0;
-    for (int64_t i = PAST_TIME_STEPS; i < n - FUTURE_TIME_STEPS; i += step) {
+    for (int64_t i = PAST_TIME_STEPS; i < n - OUTPUT_T; i += step) {
       // Create token in same format as Python version: seq_id(8digits) + i(8digits)
       std::ostringstream token_stream;
       token_stream << std::setfill('0') << std::setw(8) << seq_id << std::setw(8) << i;
@@ -672,7 +668,7 @@ int main(int argc, char ** argv)
       const std::vector<float> ego_past =
         create_ego_sequence(seq.data_list, i - PAST_TIME_STEPS + 1, PAST_TIME_STEPS, map2bl);
       const std::vector<float> ego_future =
-        create_ego_sequence(seq.data_list, i + 1, FUTURE_TIME_STEPS, map2bl);
+        create_ego_sequence(seq.data_list, i + 1, OUTPUT_T, map2bl);
 
       // Create ego current state
       const EgoState ego_state(
@@ -722,7 +718,7 @@ int main(int argc, char ** argv)
       }
 
       // Get route lanes data with speed limits
-      std::vector<float> route_lanes(ROUTE_NUM * ROUTE_LEN * SEGMENT_POINT_DIM, 0.0f);
+      std::vector<float> route_lanes(ROUTE_NUM * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM, 0.0f);
       std::vector<float> route_lanes_speed_limit(ROUTE_NUM, 0.0f);
 
       geometry_msgs::msg::Pose current_pose;
@@ -797,8 +793,8 @@ int main(int argc, char ** argv)
       }
 
       // if ego vehicle is stopped and close to goal, finish
-      const float ego_future_last_x = ego_future[(FUTURE_TIME_STEPS - 1) * 4 + 0];
-      const float ego_future_last_y = ego_future[(FUTURE_TIME_STEPS - 1) * 4 + 1];
+      const float ego_future_last_x = ego_future[(OUTPUT_T - 1) * 4 + 0];
+      const float ego_future_last_y = ego_future[(OUTPUT_T - 1) * 4 + 1];
       const float distance_to_goal_pose = std::sqrt(
         (ego_future_last_x - goal_pos_bl.x()) * (ego_future_last_x - goal_pos_bl.x()) +
         (ego_future_last_y - goal_pos_bl.y()) * (ego_future_last_y - goal_pos_bl.y()));
@@ -813,12 +809,12 @@ int main(int argc, char ** argv)
       // route_tensor[:, 1, 0, -3] corresponds to second segment, first point, red light flag
       const int64_t segment_idx = 1;  // next segment
       const int64_t point_idx = 0;    // first point
-      const int64_t red_light_index = segment_idx * ROUTE_LEN * SEGMENT_POINT_DIM +
+      const int64_t red_light_index = segment_idx * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM +
                                       point_idx * SEGMENT_POINT_DIM + TRAFFIC_LIGHT_RED;
       const bool is_red_light = route_lanes[red_light_index] > 0.5;
 
       float sum_mileage = 0.0;
-      for (int64_t j = 0; j < FUTURE_TIME_STEPS - 1; ++j) {
+      for (int64_t j = 0; j < OUTPUT_T - 1; ++j) {
         const float dx = ego_future[(j + 1) * 4 + 0] - ego_future[j * 4 + 0];
         const float dy = ego_future[(j + 1) * 4 + 1] - ego_future[j * 4 + 1];
         sum_mileage += std::sqrt(dx * dx + dy * dy);
@@ -833,7 +829,8 @@ int main(int argc, char ** argv)
       }
 
       // Create placeholder data for static objects
-      const std::vector<float> static_objects(STATIC_NUM * STATIC_OBJECTS_SHAPE[2], 0.0f);
+      const std::vector<float> static_objects(
+        STATIC_OBJECTS_SHAPE[1] * STATIC_OBJECTS_SHAPE[2], 0.0f);
 
       const int64_t turn_indicator = seq.data_list[i].turn_indicator.report;
 
