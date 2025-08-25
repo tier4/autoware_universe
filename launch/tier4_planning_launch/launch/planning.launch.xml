@@ -5,10 +5,10 @@
   <arg name="use_perception_filter" default="false" description="launch perception filter for external approval"/>
 
   <!-- Conditional topic remapping based on perception filter usage -->
-  <!-- <let name="input_objects_topic_name" value="/perception/object_recognition/filtered_objects" if="$(var use_perception_filter)"/>
+  <let name="input_objects_topic_name" value="/perception/object_recognition/filtered_objects" if="$(var use_perception_filter)"/>
   <let name="input_objects_topic_name" value="/perception/object_recognition/objects" unless="$(var use_perception_filter)"/>
   <let name="input_pointcloud_topic_name" value="/perception/obstacle_segmentation/filtered_pointcloud" if="$(var use_perception_filter)"/>
-  <let name="input_pointcloud_topic_name" value="/perception/obstacle_segmentation/pointcloud" unless="$(var use_perception_filter)"/> -->
+  <let name="input_pointcloud_topic_name" value="/perception/obstacle_segmentation/pointcloud" unless="$(var use_perception_filter)"/>
 
   <!-- mission planner -->
   <arg name="mission_planner_param_path"/>
@@ -58,7 +58,6 @@
         <arg name="planning_validator_trajectory_checker_param_path" value="$(var planning_validator_trajectory_checker_param_path)"/>
         <arg name="planning_validator_intersection_collision_checker_param_path" value="$(var planning_validator_intersection_collision_checker_param_path)"/>
         <arg name="planning_validator_rear_collision_checker_param_path" value="$(var planning_validator_rear_collision_checker_param_path)"/>
-        <arg name="use_perception_filter" value="$(var use_perception_filter)"/>
       </include>
     </group>
 
