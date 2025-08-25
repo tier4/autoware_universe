@@ -46,7 +46,6 @@ autoware_perception_msgs::msg::ObjectClassification OutputObjectsConverter::conv
 
 float OutputObjectsConverter::calculate_object_orientation(
   const BBox& bbox,
-  [[maybe_unused]] const Eigen::Vector3f& base_position,
   float aw_z,
   const Eigen::Matrix4f& base2map_transform) const
 {
@@ -95,7 +94,6 @@ float OutputObjectsConverter::calculate_object_orientation(
 
 std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter::process_predicted_trajectories(
   const BBox& bbox,
-  [[maybe_unused]] const Eigen::Vector3f& base_position,
   float aw_z,
   const Eigen::Matrix4f& base2map_transform,
   float final_yaw) const
@@ -203,8 +201,7 @@ autoware_perception_msgs::msg::PredictedObjects OutputObjectsConverter::process_
     predicted_object.kinematics.initial_pose_with_covariance.pose.position.z = position_map.z();
 
     // Calculate object orientation
-    Eigen::Vector3f base_position(aw_x, aw_y, aw_z);
-    float final_yaw = calculate_object_orientation(bbox, base_position, aw_z, base2map_transform);
+    float final_yaw = calculate_object_orientation(bbox, aw_z, base2map_transform);
     predicted_object.kinematics.initial_pose_with_covariance.pose.orientation = autoware_utils::create_quaternion_from_yaw(final_yaw);
 
     // Set shape
@@ -223,7 +220,7 @@ autoware_perception_msgs::msg::PredictedObjects OutputObjectsConverter::process_
     predicted_object.kinematics.initial_twist_with_covariance.twist.linear.z = 0.0f;
 
     // Process predicted trajectories
-    auto predicted_paths = process_predicted_trajectories(bbox, base_position, aw_z, base2map_transform, final_yaw);
+    auto predicted_paths = process_predicted_trajectories(bbox, aw_z, base2map_transform, final_yaw);
     predicted_object.kinematics.predicted_paths = predicted_paths;
 
     predicted_objects.objects.push_back(predicted_object);
