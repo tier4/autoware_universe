@@ -26,6 +26,7 @@
   <depend>autoware_planning_msgs</depend>
   <depend>autoware_route_handler</depend>
   <depend>autoware_tensorrt_common</depend>
+  <depend>autoware_test_utils</depend>
   <depend>autoware_traffic_light_utils</depend>
   <depend>autoware_trajectory</depend>
   <depend>autoware_utils</depend>
@@ -40,9 +41,9 @@
   <depend>nlohmann-json-dev</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>rosbag2_cpp</depend>
   <depend>std_msgs</depend>
   <depend>visualization_msgs</depend>
-  <depend>rosbag2_cpp</depend>
 
   <exec_depend>autoware_tensorrt_plugins</exec_depend>
   <exec_depend>rosbag2_storage_mcap</exec_depend>
@@ -50,7 +51,6 @@
   <test_depend>ament_cmake_ros</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>autoware_lint_common</test_depend>
-  <depend>autoware_test_utils</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

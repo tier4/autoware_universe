@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef LOCALIZATION_EVALUATOR_UTILS__ROSBAG_PARSER_HPP_
-#define LOCALIZATION_EVALUATOR_UTILS__ROSBAG_PARSER_HPP_
+#ifndef PLANNING__AUTOWARE_DIFFUSION_PLANNER__TOOL__ROSBAG_PARSER_HPP_
+#define PLANNING__AUTOWARE_DIFFUSION_PLANNER__TOOL__ROSBAG_PARSER_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialized_message.hpp>
@@ -208,4 +208,4 @@ private:
 
 }  // namespace rosbag_parser
 
-#endif  // LOCALIZATION_EVALUATOR_UTILS__ROSBAG_PARSER_HPP_
+#endif  // PLANNING__AUTOWARE_DIFFUSION_PLANNER__TOOL__ROSBAG_PARSER_HPP_
