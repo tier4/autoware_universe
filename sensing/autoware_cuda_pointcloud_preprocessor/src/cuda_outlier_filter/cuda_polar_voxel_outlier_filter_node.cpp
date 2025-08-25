@@ -136,30 +136,28 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
 
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> filtered_cloud;
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> noise_cloud;
+  CudaPolarVoxelOutlierFilter::FilterReturn filter_return{};
   if (has_polar_coords) {
     RCLCPP_DEBUG_ONCE(
       get_logger(), "Processing PointXYZIRCAEDT format with pre-computed polar coordinates");
-    auto filter_return = cuda_polar_voxel_outlier_filter_->filter(
+    filter_return = cuda_polar_voxel_outlier_filter_->filter(
       msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::PreComputed);
-    filtered_cloud = std::move(filter_return.filtered_cloud);
-    noise_cloud = std::move(filter_return.noise_cloud);
-    filter_ratio_ = filter_return.filter_ratio;
-    visibility_ = filter_return.visibility;
   } else if (has_return_type) {
     RCLCPP_DEBUG_ONCE(
       get_logger(), "Processing PointXYZIRC format, computing azimuth and elevation");
-    auto filter_return = cuda_polar_voxel_outlier_filter_->filter(
+    filter_return = cuda_polar_voxel_outlier_filter_->filter(
       msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::DeriveFromCartesian);
-    filtered_cloud = std::move(filter_return.filtered_cloud);
-    noise_cloud = std::move(filter_return.noise_cloud);
-    filter_ratio_ = filter_return.filter_ratio;
-    visibility_ = filter_return.visibility;
   } else {
     RCLCPP_ERROR(
       get_logger(),
       "PointXYZ format has not been supported by "
       "autoware_cuda_pointcloud_preprocessor::cuda_polar_voxel_outlier_filter yet.");
   }
+
+  filtered_cloud = std::move(filter_return.filtered_cloud);
+  noise_cloud = std::move(filter_return.noise_cloud);
+  filter_ratio_ = filter_return.filter_ratio;
+  visibility_ = filter_return.visibility;
 
   if (filtered_cloud.get() == nullptr) {
     return;

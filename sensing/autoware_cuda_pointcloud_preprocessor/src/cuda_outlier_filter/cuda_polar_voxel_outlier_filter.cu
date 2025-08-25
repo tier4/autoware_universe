@@ -17,7 +17,6 @@
 #include "autoware/cuda_utils/cuda_memory_pool.hpp"
 #include "autoware/cuda_utils/cuda_unique_ptr.hpp"
 
-#include <autoware/cuda_utils/cuda_unique_ptr.hpp>
 #include <cub/cub.cuh>
 #include <cuda/functional>    // for cuda::proclaim_return_type
 #include <cuda/std/optional>  // for cuda::std::optional
@@ -183,8 +182,7 @@ __global__ void polar_to_polar_voxel_kernel(
 
   auto output = outputs[field_index];
   if (!is_finite || !is_valid_radius) {
-    // Assign invalid_index for points with invalid value and/or points outside radius range
-    // output[point_index] = invalid_index;
+    // Assign invalid index for points with invalid value and/or points outside radius range
     output[point_index] = ::cuda::std::nullopt;
     return;
   }
@@ -235,9 +233,8 @@ __global__ void cartesian_to_polar_voxel_kernel(
 
   auto output = outputs[field_index];
   if (!is_finite || !is_valid_radius) {
-    // Assign invalid_index for points with invalid value and/or
-    // points outside radius range output[point_index] =
-    // invalid_index;
+    // Assign invalid index for points with invalid value and/or
+    // points outside radius range
     output[point_index] = ::cuda::std::nullopt;
     return;
   }
@@ -630,33 +627,12 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 
   // Create filtered output
   size_t valid_count = 0;
-  CudaPooledUniquePtr<int> filtered_indices = nullptr;
   auto filtered_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   if (!params.visualization_estimation_only) {
-    std::tie(filtered_indices, valid_count) =
-      calculate_filtered_point_indices(valid_points_mask, num_points);
-
-    filtered_cloud->header = input_cloud->header;
-    filtered_cloud->fields = input_cloud->fields;
-    filtered_cloud->is_bigendian = input_cloud->is_bigendian;
-    filtered_cloud->point_step = input_cloud->point_step;
-    filtered_cloud->is_dense = input_cloud->is_dense;
-    filtered_cloud->height = 1;
-    filtered_cloud->width = valid_count;
-    filtered_cloud->row_step = filtered_cloud->width * filtered_cloud->point_step;
-    filtered_cloud->data = cuda_blackboard::make_unique<std::uint8_t[]>(filtered_cloud->row_step);
-
-    dim3 block_dim(512);
-    dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x);
-
-    copy_valid_points_kernel<<<grid_dim, block_dim, 0, stream_>>>(
-      input_cloud->data.get(), valid_points_mask.get(), filtered_indices.get(), num_points,
-      filtered_cloud->point_step, filtered_cloud->data.get());
+    valid_count = create_output(input_cloud, valid_points_mask, num_points, filtered_cloud);
   }
 
   // Create noise cloud with filtered-out points
-  size_t invalid_count = 0;
-  CudaPooledUniquePtr<int> noise_indices = nullptr;
   auto noise_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   if (!params.visualization_estimation_only && params.publish_noise_cloud) {
     // Flip valid flag to get filtered-out (= noise) points
@@ -665,22 +641,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 
     bool_flip_kernel<<<grid_dim, block_dim, 0, stream_>>>(valid_points_mask.get(), num_points);
 
-    std::tie(noise_indices, invalid_count) =
-      calculate_filtered_point_indices(valid_points_mask, num_points);
-
-    noise_cloud->header = input_cloud->header;
-    noise_cloud->fields = input_cloud->fields;
-    noise_cloud->is_bigendian = input_cloud->is_bigendian;
-    noise_cloud->point_step = input_cloud->point_step;
-    noise_cloud->is_dense = input_cloud->is_dense;
-    noise_cloud->height = 1;
-    noise_cloud->width = invalid_count;
-    noise_cloud->row_step = noise_cloud->width * noise_cloud->point_step;
-    noise_cloud->data = cuda_blackboard::make_unique<std::uint8_t[]>(noise_cloud->row_step);
-
-    copy_valid_points_kernel<<<grid_dim, block_dim, 0, stream_>>>(
-      input_cloud->data.get(), valid_points_mask.get(), noise_indices.get(), num_points,
-      noise_cloud->point_step, noise_cloud->data.get());
+    std::ignore = create_output(input_cloud, valid_points_mask, num_points, noise_cloud);
   }
 
   // Calculate filter ratio and visibility (only when return type classification is enabled)
@@ -739,7 +700,6 @@ void CudaPolarVoxelOutlierFilter::set_return_types(
   types_dev = ReturnTypeCandidates{return_type, types.size()};
 }
 
-// std::tuple<FieldDataComposer<int>, CudaPooledUniquePtr<::cuda::std::optional<int>>>
 std::tuple<int, CudaPooledUniquePtr<::cuda::std::optional<int>>, CudaPooledUniquePtr<int>>
 CudaPolarVoxelOutlierFilter::calculate_voxel_index(
   const FieldDataComposer<::cuda::std::optional<int32_t> *> & polar_voxel_indices,
@@ -910,6 +870,33 @@ void CudaPolarVoxelOutlierFilter::reduce_and_copy_to_host(
   // synchronization operation such as cudaStreamSynchronize
   CHECK_CUDA_ERROR(
     cudaMemcpyAsync(&result_host, result_dev, sizeof(U), cudaMemcpyDeviceToHost, stream_));
+}
+
+size_t CudaPolarVoxelOutlierFilter::create_output(
+  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
+  const CudaPooledUniquePtr<bool> & points_mask, const size_t & num_points,
+  std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_cloud)
+{
+  auto [filtered_indices, count] = calculate_filtered_point_indices(points_mask, num_points);
+
+  output_cloud->header = input_cloud->header;
+  output_cloud->fields = input_cloud->fields;
+  output_cloud->is_bigendian = input_cloud->is_bigendian;
+  output_cloud->point_step = input_cloud->point_step;
+  output_cloud->is_dense = input_cloud->is_dense;
+  output_cloud->height = 1;
+  output_cloud->width = count;
+  output_cloud->row_step = output_cloud->width * output_cloud->point_step;
+  output_cloud->data = cuda_blackboard::make_unique<std::uint8_t[]>(output_cloud->row_step);
+
+  dim3 block_dim(512);
+  dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x);
+
+  copy_valid_points_kernel<<<grid_dim, block_dim, 0, stream_>>>(
+    input_cloud->data.get(), points_mask.get(), filtered_indices.get(), num_points,
+    output_cloud->point_step, output_cloud->data.get());
+
+  return count;
 }
 
 }  // namespace autoware::cuda_pointcloud_preprocessor

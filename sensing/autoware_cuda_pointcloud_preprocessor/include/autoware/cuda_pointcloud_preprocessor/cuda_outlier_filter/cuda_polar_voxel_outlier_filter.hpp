@@ -175,12 +175,6 @@ public:
 
 protected:
   enum class ReductionType : uint8_t { Min, Max, Sum };
-  cudaStream_t stream_{};
-  cudaMemPool_t mem_pool_{};
-  CubExecutor cub_executor_;
-
-  std::optional<ReturnTypeCandidates> primary_return_type_dev_;
-  static constexpr int invalid_index_ = -1;
 
   void set_return_types(
     const std::vector<int> & types, std::optional<ReturnTypeCandidates> & types_dev);
@@ -209,6 +203,18 @@ protected:
   void reduce_and_copy_to_host(
     const ReductionType reduction_type, const T & dev_array, const size_t & array_length,
     U * result_dev, U & result_host);
+
+  size_t create_output(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
+    const CudaPooledUniquePtr<bool> & points_mask, const size_t & num_points,
+    std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_cloud);
+
+private:
+  cudaStream_t stream_{};
+  cudaMemPool_t mem_pool_{};
+  CubExecutor cub_executor_;
+
+  std::optional<ReturnTypeCandidates> primary_return_type_dev_;
 };
 }  // namespace autoware::cuda_pointcloud_preprocessor
 
