@@ -11,8 +11,8 @@ OutputObjectsConverter::OutputObjectsConverter(const CoordinateTransformer& tran
 }
 
 autoware_perception_msgs::msg::ObjectClassification OutputObjectsConverter::convert_classification(
-  int32_t object_class,
-  float confidence) const
+  const int32_t object_class,
+  const float confidence) const
 {
   autoware_perception_msgs::msg::ObjectClassification classification;
   

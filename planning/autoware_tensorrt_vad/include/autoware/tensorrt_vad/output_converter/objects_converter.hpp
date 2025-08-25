@@ -51,8 +51,8 @@ private:
    * @return autoware_perception_msgs::msg::ObjectClassification Autoware classification
    */
   autoware_perception_msgs::msg::ObjectClassification convert_classification(
-    int32_t object_class,
-    float confidence) const;
+    const int32_t object_class,
+    const float confidence) const;
 
   /**
    * @brief Process predicted trajectory for an object
