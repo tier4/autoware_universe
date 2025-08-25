@@ -126,6 +126,8 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   // ovewritten during one frame processing
   std::scoped_lock lock(param_mutex_);
 
+  validate_filter_inputs(msg);
+
   // Check if the input point cloud has PointXYZIRCAEDT layout (with pre-computed polar coordinates)
   bool has_polar_coords =
     autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzircaedt(*msg);
@@ -313,38 +315,30 @@ void CudaPolarVoxelOutlierFilterNode::on_visibility_check(
   // ovewritten during one frame processing
   std::scoped_lock lock(param_mutex_);
 
-  using diagnostic_msgs::msg::DiagnosticStatus;
-
   if (!visibility_.has_value()) {
-    stat.summary(DiagnosticStatus::OK, "Visibility check disabled");
-    stat.add("visibility", "N/A (return type classification disabled)");
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No visibility data available");
     return;
   }
 
   double visibility_value = visibility_.value();
-  stat.add("visibility", std::to_string(visibility_value));
-  stat.add(
-    "visibility_estimation_max_range_m",
-    std::to_string(filter_params_.visibility_estimation_max_range_m));
-  stat.add("visibility_error_threshold", std::to_string(filter_params_.visibility_error_threshold));
-  stat.add("visibility_warn_threshold", std::to_string(filter_params_.visibility_warn_threshold));
 
   if (visibility_value < filter_params_.visibility_error_threshold) {
     stat.summary(
-      DiagnosticStatus::ERROR, "Visibility is critically low within " +
-                                 std::to_string(filter_params_.visibility_estimation_max_range_m) +
-                                 "m range");
+      diagnostic_msgs::msg::DiagnosticStatus::ERROR,
+      "Low visibility detected - potential adverse weather conditions");
   } else if (visibility_value < filter_params_.visibility_warn_threshold) {
     stat.summary(
-      DiagnosticStatus::WARN, "Visibility is low within " +
-                                std::to_string(filter_params_.visibility_estimation_max_range_m) +
-                                "m range");
+      diagnostic_msgs::msg::DiagnosticStatus::WARN,
+      "Reduced visibility detected - monitor environmental conditions");
   } else {
-    stat.summary(
-      DiagnosticStatus::OK, "Visibility is normal within " +
-                              std::to_string(filter_params_.visibility_estimation_max_range_m) +
-                              "m range");
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Visibility within normal range");
   }
+
+  stat.add("Visibility", visibility_value);
+  stat.add("Error Threshold", filter_params_.visibility_error_threshold);
+  stat.add("Warning Threshold", filter_params_.visibility_warn_threshold);
+  stat.add("Estimation Range (m)", filter_params_.visibility_estimation_max_range_m);
+  stat.add("Max Secondary Voxels", filter_params_.visibility_estimation_max_secondary_voxel_count);
 }
 
 void CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check(
@@ -354,26 +348,50 @@ void CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check(
   // ovewritten during one frame processing
   std::scoped_lock lock(param_mutex_);
 
-  using diagnostic_msgs::msg::DiagnosticStatus;
-
   if (!filter_ratio_.has_value()) {
-    stat.summary(DiagnosticStatus::WARN, "No filter ratio data");
-    stat.add("filter_ratio", "N/A");
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No filter ratio data available");
     return;
   }
 
   double ratio_value = filter_ratio_.value();
-  stat.add("filter_ratio", ratio_value);
-  stat.add("filter_ratio_error_threshold", filter_params_.filter_ratio_error_threshold);
-  stat.add("filter_ratio_warn_threshold", filter_params_.filter_ratio_warn_threshold);
 
   if (ratio_value < filter_params_.filter_ratio_error_threshold) {
     stat.summary(
-      DiagnosticStatus::ERROR, "Filter ratio is critically low - too many points filtered");
+      diagnostic_msgs::msg::DiagnosticStatus::ERROR,
+      "Very low filter ratio - excessive noise or sensor malfunction");
   } else if (ratio_value < filter_params_.filter_ratio_warn_threshold) {
-    stat.summary(DiagnosticStatus::WARN, "Filter ratio is low - many points filtered");
+    stat.summary(
+      diagnostic_msgs::msg::DiagnosticStatus::WARN,
+      "Low filter ratio - increased noise levels detected");
   } else {
-    stat.summary(DiagnosticStatus::OK, "Filter ratio is normal");
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Filter ratio within normal range");
+  }
+
+  stat.add("Filter Ratio", ratio_value);
+  stat.add("Error Threshold", filter_params_.filter_ratio_error_threshold);
+  stat.add("Warning Threshold", filter_params_.filter_ratio_warn_threshold);
+  stat.add("Filtering Mode", filter_params_.use_return_type_classification ? "Advanced" : "Simple");
+  stat.add("Visualization Only", filter_params_.visualization_estimation_only ? "Yes" : "No");
+}
+
+void CudaPolarVoxelOutlierFilterNode::validate_filter_inputs(
+  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud)
+{
+  if (!input_cloud) {
+    RCLCPP_ERROR(get_logger(), "Input point cloud is null");
+    throw std::invalid_argument("Input point cloud is null");
+  }
+
+  bool has_return_type =
+    autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzirc(
+      *input_cloud);
+  if (filter_params_.use_return_type_classification && !has_return_type) {
+    RCLCPP_ERROR(
+      get_logger(),
+      "Advanced mode (use_return_type_classification=true) requires 'return_type' field. "
+      "Set use_return_type_classification=false for simple mode or ensure input has return_type "
+      "field.");
+    throw std::invalid_argument("Advanced mode requires return_type field");
   }
 }
 

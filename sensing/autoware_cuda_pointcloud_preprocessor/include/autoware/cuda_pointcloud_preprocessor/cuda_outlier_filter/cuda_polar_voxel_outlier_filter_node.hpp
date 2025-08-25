@@ -84,6 +84,8 @@ private:
   void on_filter_ratio_check(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   void update_parameter(const rclcpp::Parameter & param);
+
+  void validate_filter_inputs(const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud);
 };
 
 }  // namespace autoware::cuda_pointcloud_preprocessor
