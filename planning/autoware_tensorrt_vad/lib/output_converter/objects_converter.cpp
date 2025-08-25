@@ -44,23 +44,13 @@ autoware_perception_msgs::msg::ObjectClassification OutputObjectsConverter::conv
   return classification;
 }
 
-float OutputObjectsConverter::calculate_object_orientation(
+std::optional<float> OutputObjectsConverter::calculate_predicted_path_yaw(
   const BBox& bbox,
   const float aw_z,
   const Eigen::Matrix4f& base2map_transform) const
 {
-  float sin_theta = bbox.bbox[6];
-  float cos_theta = bbox.bbox[7];
-  float vad_yaw = std::atan2(sin_theta, cos_theta);
-
-  // Get vehicle rotation from base2map_transform
-  Eigen::Matrix3f rotation_matrix = base2map_transform.block<3, 3>(0, 0);
-  float transform_yaw = std::atan2(rotation_matrix(1, 0), rotation_matrix(0, 0));
-  float map_yaw = vad_yaw + transform_yaw;
-
-  float predicted_path_yaw = map_yaw;
   float max_confidence = 0.0f;
-  bool found_valid_path = false;
+  std::optional<float> predicted_path_yaw = std::nullopt;
 
   for (int32_t mode = 0; mode < 6; ++mode) {
     const auto& pred_traj = bbox.trajectories[mode];
@@ -84,12 +74,28 @@ float OutputObjectsConverter::calculate_object_orientation(
       if (std::sqrt(dx*dx + dy*dy) > 0.01) {
         predicted_path_yaw = std::atan2(dy, dx);
         max_confidence = pred_traj.confidence;
-        found_valid_path = true;
       }
     }
   }
 
-  return found_valid_path ? predicted_path_yaw : map_yaw;
+  return predicted_path_yaw;
+}
+
+float OutputObjectsConverter::calculate_object_orientation(
+  const BBox& bbox,
+  const float aw_z,
+  const Eigen::Matrix4f& base2map_transform) const
+{
+  float sin_theta = bbox.bbox[6];
+  float cos_theta = bbox.bbox[7];
+  float vad_yaw = std::atan2(sin_theta, cos_theta);
+
+  // Get vehicle rotation from base2map_transform
+  Eigen::Matrix3f rotation_matrix = base2map_transform.block<3, 3>(0, 0);
+  float transform_yaw = std::atan2(rotation_matrix(1, 0), rotation_matrix(0, 0));
+  float map_yaw = vad_yaw + transform_yaw;
+
+  return calculate_predicted_path_yaw(bbox, aw_z, base2map_transform).value_or(map_yaw);
 }
 
 std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter::process_predicted_trajectories(
