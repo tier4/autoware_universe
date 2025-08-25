@@ -64,9 +64,9 @@ private:
    */
   std::vector<autoware_perception_msgs::msg::PredictedPath> process_predicted_trajectories(
     const BBox& bbox,
-    float aw_z,
+    const float aw_z,
     const Eigen::Matrix4f& base2map_transform,
-    float final_yaw) const;
+    const float final_yaw) const;
 
   /**
    * @brief Calculate object orientation from trajectory or bbox
@@ -77,7 +77,7 @@ private:
    */
   float calculate_object_orientation(
     const BBox& bbox,
-    float aw_z,
+    const float aw_z,
     const Eigen::Matrix4f& base2map_transform) const;
 };
 

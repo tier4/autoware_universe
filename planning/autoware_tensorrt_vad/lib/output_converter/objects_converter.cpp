@@ -46,7 +46,7 @@ autoware_perception_msgs::msg::ObjectClassification OutputObjectsConverter::conv
 
 float OutputObjectsConverter::calculate_object_orientation(
   const BBox& bbox,
-  float aw_z,
+  const float aw_z,
   const Eigen::Matrix4f& base2map_transform) const
 {
   float sin_theta = bbox.bbox[6];
@@ -94,9 +94,9 @@ float OutputObjectsConverter::calculate_object_orientation(
 
 std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter::process_predicted_trajectories(
   const BBox& bbox,
-  float aw_z,
+  const float aw_z,
   const Eigen::Matrix4f& base2map_transform,
-  float final_yaw) const
+  const float final_yaw) const
 {
   std::vector<autoware_perception_msgs::msg::PredictedPath> predicted_paths;
 
