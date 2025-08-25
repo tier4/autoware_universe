@@ -388,7 +388,7 @@ void save_binary_data(
 
 int main(int argc, char ** argv)
 {
-  // Initialize ROS2 for route handler functionality
+  // Initialize for route handler functionality
   rclcpp::init(argc, argv);
 
   if (argc < 4) {
