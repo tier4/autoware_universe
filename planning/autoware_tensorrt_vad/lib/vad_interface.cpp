@@ -1,8 +1,5 @@
 #include "autoware/tensorrt_vad/vad_interface.hpp"
 #include <opencv2/opencv.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <tf2/exceptions.h>
-#include <cmath>
 
 namespace autoware::tensorrt_vad
 {
