@@ -1,5 +1,6 @@
 #include "autoware/tensorrt_vad/output_converter/objects_converter.hpp"
 #include <autoware_utils_uuid/uuid_helper.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 #include <cmath>
 
 namespace autoware::tensorrt_vad::vad_interface {
@@ -7,16 +8,6 @@ namespace autoware::tensorrt_vad::vad_interface {
 OutputObjectsConverter::OutputObjectsConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config)
   : Converter(transformer, config)
 {
-}
-
-geometry_msgs::msg::Quaternion OutputObjectsConverter::create_quaternion_from_yaw(double yaw) const
-{
-  geometry_msgs::msg::Quaternion q{};
-  q.x = 0.0;
-  q.y = 0.0;
-  q.z = std::sin(yaw * 0.5);
-  q.w = std::cos(yaw * 0.5);
-  return q;
 }
 
 autoware_perception_msgs::msg::ObjectClassification OutputObjectsConverter::convert_classification(
@@ -160,7 +151,7 @@ std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter
         }
       }
       
-      pose.orientation = create_quaternion_from_yaw(traj_yaw);
+      pose.orientation = autoware_utils::create_quaternion_from_yaw(traj_yaw);
       
       predicted_path.path.push_back(pose);
     }
@@ -214,7 +205,7 @@ autoware_perception_msgs::msg::PredictedObjects OutputObjectsConverter::process_
     // Calculate object orientation
     Eigen::Vector3f base_position(aw_x, aw_y, aw_z);
     float final_yaw = calculate_object_orientation(bbox, base_position, aw_z, base2map_transform);
-    predicted_object.kinematics.initial_pose_with_covariance.pose.orientation = create_quaternion_from_yaw(final_yaw);
+    predicted_object.kinematics.initial_pose_with_covariance.pose.orientation = autoware_utils::create_quaternion_from_yaw(final_yaw);
 
     // Set shape
     predicted_object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;

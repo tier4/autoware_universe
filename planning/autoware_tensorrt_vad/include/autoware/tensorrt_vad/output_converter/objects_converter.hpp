@@ -45,13 +45,6 @@ public:
 
 private:
   /**
-   * @brief Create quaternion from yaw angle
-   * @param yaw Yaw angle in radians
-   * @return geometry_msgs::msg::Quaternion Quaternion representation
-   */
-  geometry_msgs::msg::Quaternion create_quaternion_from_yaw(double yaw) const;
-
-  /**
    * @brief Convert VAD object class to Autoware classification
    * @param object_class VAD object class index
    * @param confidence Classification confidence

@@ -1,4 +1,5 @@
 #include "autoware/tensorrt_vad/output_converter/trajectory_converter.hpp"
+#include <autoware_utils/geometry/geometry.hpp>
 #include <cmath>
 
 namespace autoware::tensorrt_vad::vad_interface {
@@ -6,16 +7,6 @@ namespace autoware::tensorrt_vad::vad_interface {
 OutputTrajectoryConverter::OutputTrajectoryConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config)
   : Converter(transformer, config)
 {
-}
-
-geometry_msgs::msg::Quaternion OutputTrajectoryConverter::create_quaternion_from_yaw(double yaw) const
-{
-  geometry_msgs::msg::Quaternion q{};
-  q.x = 0.0;
-  q.y = 0.0;
-  q.z = std::sin(yaw * 0.5);
-  q.w = std::cos(yaw * 0.5);
-  return q;
 }
 
 std::vector<autoware_planning_msgs::msg::TrajectoryPoint> OutputTrajectoryConverter::create_trajectory_points(
@@ -39,7 +30,7 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> OutputTrajectoryConver
   initial_point.pose.position.y = init_ego_position[1];
   initial_point.pose.position.z = init_ego_position[2];
   // Convert initial direction to map coordinate system (when facing x-direction in base coordinate system)
-  initial_point.pose.orientation = create_quaternion_from_yaw(transform_direction_to_map(1.0f, 0.0f));
+  initial_point.pose.orientation = autoware_utils::create_quaternion_from_yaw(transform_direction_to_map(1.0f, 0.0f));
   initial_point.longitudinal_velocity_mps = 2.5;
   initial_point.lateral_velocity_mps = 0.0;
   initial_point.acceleration_mps2 = 0.0;
@@ -72,7 +63,7 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> OutputTrajectoryConver
       auto [aw_dx, aw_dy, aw_dz] = coordinate_transformer_.vad2aw_xyz(vad_dx, vad_dy, 0.0f);
       
       float yaw = transform_direction_to_map(aw_dx, aw_dy);
-      point.pose.orientation = create_quaternion_from_yaw(yaw);
+      point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
     } else {
       point.pose.orientation = prev_orientation;
     }

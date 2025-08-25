@@ -64,13 +64,6 @@ public:
 
 private:
   /**
-   * @brief Create quaternion from yaw angle
-   * @param yaw Yaw angle in radians
-   * @return geometry_msgs::msg::Quaternion Quaternion representation
-   */
-  geometry_msgs::msg::Quaternion create_quaternion_from_yaw(double yaw) const;
-
-  /**
    * @brief Generate trajectory points from VAD trajectory data
    * @param predicted_trajectory VAD trajectory data as flattened [x,y] pairs
    * @param trajectory_timestep Time interval between trajectory points (seconds)
