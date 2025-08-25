@@ -15,6 +15,7 @@
   <depend>autoware_internal_planning_msgs</depend>
   <depend>autoware_tensorrt_common</depend>
   <depend>autoware_tensorrt_plugins</depend>
+  <depend>autoware_utils</depend>
   <depend>autoware_utils_uuid</depend>
   <depend>cv_bridge</depend>
   <depend>image_transport</depend>
