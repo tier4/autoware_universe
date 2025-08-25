@@ -23,6 +23,7 @@
   <arg name="launch_scenario_simulator_v2_adapter"/>
   <arg name="vehicle_info_param_file"/>
   <arg name="raw_vehicle_cmd_converter_param_path"/>
+  <arg name="use_v2i_tracking_fusion"/>
 
   <arg name="perception/enable_detection_failure" default="true" description="enable to simulate detection failure when using dummy perception"/>
   <arg name="perception/enable_object_recognition" default="false" description="enable object recognition"/>
@@ -89,9 +90,24 @@
             <arg name="object_recognition_tracking_object_merger_data_association_matrix_param_path" value="$(var object_recognition_tracking_object_merger_data_association_matrix_param_path)"/>
             <arg name="object_recognition_tracking_object_merger_node_param_path" value="$(var object_recognition_tracking_object_merger_node_param_path)"/>
             <arg name="use_multi_channel_tracker_merger" value="false"/>
+            <arg name="mode" value="camera_lidar_radar_fusion"/>
             <arg name="use_radar_tracking_fusion" value="true"/>
             <arg name="use_detection_by_tracker" value="true"/>
             <arg name="use_validator" value="true"/>
+
+            <!-- v2i -->
+            <arg name="use_v2i_tracking_fusion" value="$(var use_v2i_tracking_fusion)"/>
+            <arg
+              name="object_recognition_tracking_v2i_object_tracker_data_association_matrix_param_path"
+              value="$(var object_recognition_tracking_v2i_object_tracker_data_association_matrix_param_path)"
+            />
+            <arg name="object_recognition_tracking_v2i_object_tracker_tracking_setting_param_path" value="$(var object_recognition_tracking_v2i_object_tracker_tracking_setting_param_path)"/>
+            <arg name="object_recognition_tracking_v2i_object_tracker_node_param_path" value="$(var object_recognition_tracking_v2i_object_tracker_node_param_path)"/>
+            <arg name="object_recognition_tracking_v2i_tracked_object_sorter_param_path" value="$(var object_recognition_tracking_v2i_tracked_object_sorter_param_path)"/>
+            <arg name="object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path" value="$(var object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path)"/>
+            <arg name="object_recognition_tracking_v2i_merger_data_association_matrix_param_path" value="$(var object_recognition_tracking_v2i_merger_data_association_matrix_param_path)"/>
+            <arg name="object_recognition_tracking_v2i_merger_node_param_path" value="$(var object_recognition_tracking_v2i_merger_node_param_path)"/>
+
           </include>
         </group>
         <!-- prediction module -->

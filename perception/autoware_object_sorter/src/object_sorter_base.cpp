@@ -14,7 +14,7 @@
 
 #include "object_sorter_base.hpp"
 
-#include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
@@ -102,7 +102,7 @@ void ObjectSorterBase<ObjsMsgType>::objectCallback(
     if (
       // NOTE: use the raw velocity in the topic for now
       std::abs(
-        autoware_utils_geometry::calc_norm(object.kinematics.twist_with_covariance.twist.linear)) <
+        autoware_utils::calc_norm(object.kinematics.twist_with_covariance.twist.linear)) <
       node_param_.min_velocity_threshold) {
       // Low velocity object
       continue;
