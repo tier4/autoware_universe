@@ -17,6 +17,7 @@
 
 #include "autoware/behavior_path_goal_planner_module/goal_candidate.hpp"
 #include "autoware/behavior_path_goal_planner_module/pull_over_planner/pull_over_planner_base.hpp"
+#include "autoware/behavior_path_planner_common/utils/path_safety_checker/path_safety_checker_parameters.hpp"
 #include "autoware_utils/geometry/boost_geometry.hpp"
 
 #include <autoware/boundary_departure_checker/boundary_departure_checker.hpp>
@@ -291,6 +292,18 @@ std::optional<lanelet::ConstLanelet> find_last_lane_change_completed_lanelet(
 lanelet::ConstLanelets get_reference_lanelets_for_pullover(
   const PathWithLaneId & path, const std::shared_ptr<const PlannerData> & planner_data,
   const double backward_length, const double forward_length);
+
+/**
+ * @brief Create predicted path from planning path with embedded velocities
+ * @param path Path with velocity information in each point
+ * @param time_horizon Time horizon for prediction [s]
+ * @param time_resolution Time step for prediction [s]
+ * @return Vector of poses with velocities over time
+ */
+std::vector<utils::path_safety_checker::PoseWithVelocityStamped> createPredictedPath(
+  const PathWithLaneId & path,
+  const double time_horizon,
+  const double time_resolution);
 
 }  // namespace autoware::behavior_path_planner::goal_planner_utils
 

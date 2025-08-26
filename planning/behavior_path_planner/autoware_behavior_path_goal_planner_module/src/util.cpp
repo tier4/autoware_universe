@@ -19,6 +19,8 @@
 #include "autoware_lanelet2_extension/regulatory_elements/bus_stop_area.hpp"
 
 #include <Eigen/Core>
+#include <autoware/motion_utils/trajectory/interpolation.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
@@ -614,9 +616,8 @@ double calcLateralDeviationBetweenPaths(
       reference_path.points, target_point.point.pose.position);
     lateral_deviation = std::max(
       lateral_deviation,
-      std::abs(
-        autoware_utils::calc_lateral_deviation(
-          reference_path.points[nearest_index].point.pose, target_point.point.pose.position)));
+      std::abs(autoware_utils::calc_lateral_deviation(
+        reference_path.points[nearest_index].point.pose, target_point.point.pose.position)));
   }
   return lateral_deviation;
 }
@@ -1074,9 +1075,8 @@ bool hasPreviousModulePathShapeChanged(
       // p.point.pose.position is not within the segment, skip lateral distance check
       continue;
     }
-    const double lateral_distance = std::abs(
-      autoware::motion_utils::calcLateralOffset(
-        last_upstream_module_output.path.points, p.point.pose.position, nearest_seg_idx));
+    const double lateral_distance = std::abs(autoware::motion_utils::calcLateralOffset(
+      last_upstream_module_output.path.points, p.point.pose.position, nearest_seg_idx));
     if (lateral_distance > LATERAL_DEVIATION_THRESH) {
       return true;
     }
@@ -1088,9 +1088,8 @@ bool hasDeviatedFromPath(
   const Point & ego_position, const BehaviorModuleOutput & upstream_module_output)
 {
   constexpr double LATERAL_DEVIATION_THRESH = 0.1;
-  return std::abs(
-           autoware::motion_utils::calcLateralOffset(
-             upstream_module_output.path.points, ego_position)) > LATERAL_DEVIATION_THRESH;
+  return std::abs(autoware::motion_utils::calcLateralOffset(
+           upstream_module_output.path.points, ego_position)) > LATERAL_DEVIATION_THRESH;
 }
 
 bool has_stopline_except_terminal(const PathWithLaneId & path)
@@ -1174,5 +1173,76 @@ lanelet::ConstLanelets get_reference_lanelets_for_pullover(
     acc_dist += lanelet::utils::getLaneletLength3d(next);
   }
   return route_lanes;
+}
+
+std::vector<utils::path_safety_checker::PoseWithVelocityStamped> createPredictedPath(
+  const PathWithLaneId & path, const double time_horizon, const double time_resolution)
+{
+  using autoware::behavior_path_planner::utils::path_safety_checker::PoseWithVelocityStamped;
+  using autoware::motion_utils::calcInterpolatedPose;
+  using autoware::motion_utils::calcSignedArcLength;
+
+  std::vector<PoseWithVelocityStamped> predicted_path;
+
+  if (path.points.empty()) {
+    return predicted_path;
+  }
+
+  // Calculate total path length
+  const double total_path_length = calcSignedArcLength(path.points, 0, path.points.size() - 1);
+
+  // Lambda function to interpolate velocity at a given distance
+  const auto interpolateVelocity = [&path](const double distance) -> double {
+    if (path.points.size() < 2) {
+      return path.points.front().point.longitudinal_velocity_mps;
+    }
+
+    double accumulated_distance = 0.0;
+    for (size_t i = 1; i < path.points.size(); ++i) {
+      const double segment_length = calcSignedArcLength(path.points, i - 1, i);
+
+      if (accumulated_distance + segment_length >= distance) {
+        // Interpolate within this segment
+        const double ratio = (distance - accumulated_distance) / segment_length;
+        const double v0 = path.points[i - 1].point.longitudinal_velocity_mps;
+        const double v1 = path.points[i].point.longitudinal_velocity_mps;
+        return v0 + ratio * (v1 - v0);
+      }
+      accumulated_distance += segment_length;
+    }
+
+    // Beyond path end, return last velocity
+    return path.points.back().point.longitudinal_velocity_mps;
+  };
+
+  // Generate predicted path based on time
+  double current_time = 0.0;
+  double current_distance = 0.0;
+
+  while (current_time < time_horizon) {
+    // If reached path end, stay at the end position with zero velocity
+    if (current_distance >= total_path_length) {
+      const auto end_pose = path.points.back().point.pose;
+      predicted_path.emplace_back(current_time, end_pose, 0.0);
+      current_time += time_resolution;
+      continue;
+    }
+
+    // Calculate pose at current distance
+    const auto pose = calcInterpolatedPose(path.points, current_distance);
+
+    // Interpolate velocity at current distance
+    const double velocity = interpolateVelocity(current_distance);
+
+    // Add to predicted path
+    predicted_path.emplace_back(current_time, pose, velocity);
+
+    // Update distance for next time step
+    const double delta_distance = velocity * time_resolution;
+    current_distance += delta_distance;
+    current_time += time_resolution;
+  }
+
+  return predicted_path;
 }
 }  // namespace autoware::behavior_path_planner::goal_planner_utils

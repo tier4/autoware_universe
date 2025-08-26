@@ -465,10 +465,9 @@ void LaneParkingPlanner::normal_pullover_planning_helper(
     const auto original_pose = planner_data->route_handler->getOriginalGoalPose();
     if (
       use_bus_stop_area &&
-      std::fabs(
-        autoware_utils::normalize_radian(
-          autoware_utils::get_rpy(original_pose).z -
-          autoware_utils::get_rpy(closest_start_pose.value()).z)) > pull_over_angle_threshold) {
+      std::fabs(autoware_utils::normalize_radian(
+        autoware_utils::get_rpy(original_pose).z -
+        autoware_utils::get_rpy(closest_start_pose.value()).z)) > pull_over_angle_threshold) {
       // reset and try bezier next time
       switch_bezier_ = true;
       path_candidates.clear();
@@ -2137,8 +2136,8 @@ TurnSignalInfo GoalPlannerModule::calcTurnSignalInfo(const PullOverContextData &
     }
     constexpr double distance_threshold = 1.0;
     const auto stop_point = pull_over_path.partial_paths().front().points.back();
-    const double distance_from_ego_to_stop_point = std::abs(
-      autoware::motion_utils::calcSignedArcLength(
+    const double distance_from_ego_to_stop_point =
+      std::abs(autoware::motion_utils::calcSignedArcLength(
         path.points, stop_point.point.pose.position, current_pose.position));
     return distance_from_ego_to_stop_point < distance_threshold;
   });
@@ -2441,9 +2440,8 @@ static std::vector<utils::path_safety_checker::ExtendedPredictedObject> filterOb
 
   std::vector<utils::path_safety_checker::ExtendedPredictedObject> refined_filtered_objects;
   for (const auto & within_filtered_object : within_filtered_objects) {
-    refined_filtered_objects.push_back(
-      utils::path_safety_checker::transform(
-        within_filtered_object, safety_check_time_horizon, safety_check_time_resolution));
+    refined_filtered_objects.push_back(utils::path_safety_checker::transform(
+      within_filtered_object, safety_check_time_horizon, safety_check_time_resolution));
   }
   return refined_filtered_objects;
 }
@@ -2463,9 +2461,6 @@ std::pair<bool, utils::path_safety_checker::CollisionCheckDebugMap> GoalPlannerM
   const auto & pull_over_path = pull_over_path_opt.value();
   const auto & current_pull_over_path = pull_over_path.getCurrentPath();
   const auto & current_pose = planner_data->self_odometry->pose.pose;
-  const double current_velocity = std::hypot(
-    planner_data->self_odometry->twist.twist.linear.x,
-    planner_data->self_odometry->twist.twist.linear.y);
   const auto & dynamic_object = planner_data->dynamic_object;
   const auto & route_handler = planner_data->route_handler;
   const lanelet::ConstLanelets current_lanes = utils::getExtendedCurrentLanes(
@@ -2483,14 +2478,12 @@ std::pair<bool, utils::path_safety_checker::CollisionCheckDebugMap> GoalPlannerM
   utils::parking_departure::updatePathProperty(temp_param, terminal_velocity_and_accel);
   // TODO(Sugahara): shoule judge is_object_front properly
   const bool is_object_front = true;
-  const bool limit_to_max_velocity = true;
-  const auto ego_seg_idx = planner_data->findEgoIndex(current_pull_over_path.points);
-  const auto ego_predicted_path_from_current_pose = createPredictedPath(
-    std::make_shared<EgoPredictedPathParams>(ego_predicted_path_params_),
-    current_pull_over_path.points, current_pose, current_velocity, ego_seg_idx, is_object_front,
-    limit_to_max_velocity);
-  const auto ego_predicted_path = filterPredictedPathAfterTargetPose(
-    ego_predicted_path_from_current_pose, pull_over_path.start_pose());
+  const auto parking_path = pull_over_path.parking_path();
+  const auto ego_predicted_path = goal_planner_utils::createPredictedPath(
+    parking_path,
+    is_object_front ? ego_predicted_path_params_.time_horizon_for_front_object
+                    : ego_predicted_path_params_.time_horizon_for_rear_object,
+    ego_predicted_path_params_.time_resolution);
 
   // ==========================================================================================
   // if ego is before the entry of pull_over_lanes, the beginning of the safety check area
@@ -2547,7 +2540,7 @@ std::pair<bool, utils::path_safety_checker::CollisionCheckDebugMap> GoalPlannerM
   const bool current_is_safe = std::invoke([&]() {
     if (parameters_.safety_check_params.method == "RSS") {
       return autoware::behavior_path_planner::utils::path_safety_checker::checkSafetyWithRSS(
-        current_pull_over_path, ego_predicted_path, filtered_objects, collision_check,
+        parking_path, ego_predicted_path, filtered_objects, collision_check,
         planner_data->parameters, safety_check_params_.rss_params,
         objects_filtering_params_.use_all_predicted_path, hysteresis_factor,
         safety_check_params_.collision_check_yaw_diff_threshold);
@@ -2620,9 +2613,8 @@ void GoalPlannerModule::setDebugData(const PullOverContextData & context_data)
                          ? create_marker_color(1.0, 1.0, 0.0, 0.999)   // yellow
                          : create_marker_color(0.0, 1.0, 0.0, 0.999);  // green
     const double z = planner_data_->route_handler->getGoalPose().position.z;
-    add_info_marker(
-      goal_planner_utils::createPullOverAreaMarkerArray(
-        goal_searcher_->getAreaPolygons(), header, color, z));
+    add_info_marker(goal_planner_utils::createPullOverAreaMarkerArray(
+      goal_searcher_->getAreaPolygons(), header, color, z));
 
     // Visualize goal candidates
     const auto goal_candidates_markers =
