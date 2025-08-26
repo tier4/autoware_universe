@@ -81,6 +81,25 @@ std::optional<float> OutputObjectsConverter::calculate_predicted_path_yaw(
   return predicted_path_yaw;
 }
 
+geometry_msgs::msg::Point OutputObjectsConverter::convert_position(
+  const BBox& bbox,
+  const Eigen::Matrix4f& base2map_transform) const
+{
+    geometry_msgs::msg::Point position;
+    // BBox format: [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
+    float z_offset = +1.9f;
+    float vad_x = bbox.bbox[0];
+    float vad_y = bbox.bbox[1];
+    float vad_z = bbox.bbox[4] + z_offset;
+    auto [aw_x, aw_y, aw_z] = coordinate_transformer_.vad2aw_xyz(vad_x, vad_y, vad_z);
+    Eigen::Vector4f position_base(aw_x, aw_y, aw_z, 1.0f);
+    Eigen::Vector4f position_map = base2map_transform * position_base;
+    position.x = position_map.x();
+    position.y = position_map.y();
+    position.z = position_map.z();
+    return position;
+}
+
 float OutputObjectsConverter::calculate_object_orientation(
   const BBox& bbox,
   const float aw_z,
@@ -96,6 +115,31 @@ float OutputObjectsConverter::calculate_object_orientation(
   float map_yaw = vad_yaw + transform_yaw;
 
   return calculate_predicted_path_yaw(bbox, aw_z, base2map_transform).value_or(map_yaw);
+}
+
+geometry_msgs::msg::Twist OutputObjectsConverter::convert_velocity(
+  const BBox& bbox) const
+{
+    geometry_msgs::msg::Twist twist;
+    float v_x = bbox.bbox[8];
+    float v_y = bbox.bbox[9];
+    auto [aw_vx, aw_vy, aw_vz] = coordinate_transformer_.vad2aw_xyz(v_x, v_y, 0.0f);
+
+    twist.linear.x = aw_vx;
+    twist.linear.y = aw_vy;
+    twist.linear.z = 0.0f;
+    return twist;
+}
+
+autoware_perception_msgs::msg::Shape OutputObjectsConverter::convert_shape(
+  const BBox& bbox)
+{
+    autoware_perception_msgs::msg::Shape shape;
+    shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+    shape.dimensions.x = bbox.bbox[3];  // length
+    shape.dimensions.y = bbox.bbox[2];  // width
+    shape.dimensions.z = bbox.bbox[5];  // height
+    return shape;
 }
 
 std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter::convert_predicted_paths(
@@ -192,37 +236,19 @@ autoware_perception_msgs::msg::PredictedObjects OutputObjectsConverter::process_
     // Set classification
     predicted_object.classification.push_back(convert_classification(bbox.object_class, bbox.confidence));
 
-    // Set kinematics (position and orientation)
-    // BBox format: [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
-    float z_offset = +1.9f;
-    float vad_x = bbox.bbox[0];
-    float vad_y = bbox.bbox[1];
-    float vad_z = bbox.bbox[4] + z_offset;
-    auto [aw_x, aw_y, aw_z] = coordinate_transformer_.vad2aw_xyz(vad_x, vad_y, vad_z);
-    Eigen::Vector4f position_base(aw_x, aw_y, aw_z, 1.0f);
-    Eigen::Vector4f position_map = base2map_transform * position_base;
-    predicted_object.kinematics.initial_pose_with_covariance.pose.position.x = position_map.x();
-    predicted_object.kinematics.initial_pose_with_covariance.pose.position.y = position_map.y();
-    predicted_object.kinematics.initial_pose_with_covariance.pose.position.z = position_map.z();
+    // Set position
+    predicted_object.kinematics.initial_pose_with_covariance.pose.position = convert_position(bbox, base2map_transform);
+    float aw_z = predicted_object.kinematics.initial_pose_with_covariance.pose.position.z;
 
-    // Calculate object orientation
+    // Set orientation
     float yaw = calculate_object_orientation(bbox, aw_z, base2map_transform);
     predicted_object.kinematics.initial_pose_with_covariance.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
 
     // Set shape
-    predicted_object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
-    predicted_object.shape.dimensions.x = bbox.bbox[3];  // length
-    predicted_object.shape.dimensions.y = bbox.bbox[2];  // width
-    predicted_object.shape.dimensions.z = bbox.bbox[5];  // height
+    predicted_object.shape = convert_shape(bbox);
 
     // Set velocity
-    float v_x = bbox.bbox[8];
-    float v_y = bbox.bbox[9];
-    auto [aw_vx, aw_vy, aw_vz] = coordinate_transformer_.vad2aw_xyz(v_x, v_y, 0.0f);
-
-    predicted_object.kinematics.initial_twist_with_covariance.twist.linear.x = aw_vx;
-    predicted_object.kinematics.initial_twist_with_covariance.twist.linear.y = aw_vy;
-    predicted_object.kinematics.initial_twist_with_covariance.twist.linear.z = 0.0f;
+    predicted_object.kinematics.initial_twist_with_covariance.twist = convert_velocity(bbox);
 
     // Process predicted trajectories
     predicted_object.kinematics.predicted_paths = convert_predicted_paths(bbox, aw_z, base2map_transform, yaw);

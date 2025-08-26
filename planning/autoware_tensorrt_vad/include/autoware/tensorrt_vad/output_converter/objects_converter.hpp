@@ -55,6 +55,22 @@ private:
     const float confidence) const;
 
   /**
+   * @brief Convert VAD bounding box to ROS Twist message
+   * @param bbox Bounding box data
+   * @return geometry_msgs::msg::Twist ROS Twist message
+   */
+  geometry_msgs::msg::Twist convert_velocity(
+    const BBox& bbox) const;
+
+  /**
+   * @brief Convert VAD bounding box to ROS Shape message
+   * @param bbox Bounding box data
+   * @return autoware_perception_msgs::msg::Shape ROS Shape message
+   */
+  static autoware_perception_msgs::msg::Shape convert_shape(
+    const BBox& bbox);
+
+  /**
    * @brief Process predicted trajectory for an object
    * @param bbox Bounding box containing trajectory data
    * @param aw_z Object z-coordinate in Autoware frame
@@ -67,6 +83,16 @@ private:
     const float aw_z,
     const Eigen::Matrix4f& base2map_transform,
     const float yaw) const;
+
+  /**
+   * @brief Convert VAD bounding box to ROS Point message
+   * @param bbox Bounding box data
+   * @param base2map_transform Transformation matrix from base_link to map frame
+   * @return geometry_msgs::msg::Point ROS Point message
+   */
+  geometry_msgs::msg::Point convert_position(
+    const BBox& bbox,
+    const Eigen::Matrix4f& base2map_transform) const;
 
   /**
    * @brief Calculate object orientation from trajectory or bbox
