@@ -59,14 +59,14 @@ private:
    * @param bbox Bounding box containing trajectory data
    * @param aw_z Object z-coordinate in Autoware frame
    * @param base2map_transform Transformation matrix from base_link to map frame
-   * @param final_yaw Object orientation for fallback direction
+   * @param yaw Object orientation for fallback direction
    * @return std::vector<autoware_perception_msgs::msg::PredictedPath> Predicted paths
    */
   std::vector<autoware_perception_msgs::msg::PredictedPath> process_predicted_trajectories(
     const BBox& bbox,
     const float aw_z,
     const Eigen::Matrix4f& base2map_transform,
-    const float final_yaw) const;
+    const float yaw) const;
 
   /**
    * @brief Calculate object orientation from trajectory or bbox

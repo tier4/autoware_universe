@@ -102,7 +102,7 @@ std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter
   const BBox& bbox,
   const float aw_z,
   const Eigen::Matrix4f& base2map_transform,
-  const float final_yaw) const
+  const float yaw) const
 {
   std::vector<autoware_perception_msgs::msg::PredictedPath> predicted_paths;
 
@@ -135,8 +135,8 @@ std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter
       pose.position.z = traj_position_map.z();
       
       // Calculate trajectory direction (direction to next point)
-      // Default is object direction (using corrected final_yaw)
-      float traj_yaw = final_yaw;
+      // Default is object direction (using corrected yaw)
+      float traj_yaw = yaw;
       
       if (ts < 5) {  // If next point exists
         float next_vad_x = pred_traj.trajectory[ts + 1][0] + bbox.bbox[0];
@@ -207,8 +207,8 @@ autoware_perception_msgs::msg::PredictedObjects OutputObjectsConverter::process_
     predicted_object.kinematics.initial_pose_with_covariance.pose.position.z = position_map.z();
 
     // Calculate object orientation
-    float final_yaw = calculate_object_orientation(bbox, aw_z, base2map_transform);
-    predicted_object.kinematics.initial_pose_with_covariance.pose.orientation = autoware_utils::create_quaternion_from_yaw(final_yaw);
+    float yaw = calculate_object_orientation(bbox, aw_z, base2map_transform);
+    predicted_object.kinematics.initial_pose_with_covariance.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
 
     // Set shape
     predicted_object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
