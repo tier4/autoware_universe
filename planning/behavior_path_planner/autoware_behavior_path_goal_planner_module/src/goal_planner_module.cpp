@@ -2480,7 +2480,7 @@ std::pair<bool, utils::path_safety_checker::CollisionCheckDebugMap> GoalPlannerM
   const bool is_object_front = true;
   const auto parking_path = pull_over_path.parking_path();
   const auto ego_predicted_path = goal_planner_utils::createPredictedPath(
-    parking_path,
+    parking_path, current_pull_over_path, current_pose,
     is_object_front ? ego_predicted_path_params_.time_horizon_for_front_object
                     : ego_predicted_path_params_.time_horizon_for_rear_object,
     ego_predicted_path_params_.time_resolution);

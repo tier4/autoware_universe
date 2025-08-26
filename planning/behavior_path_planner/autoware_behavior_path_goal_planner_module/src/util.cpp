@@ -1176,71 +1176,80 @@ lanelet::ConstLanelets get_reference_lanelets_for_pullover(
 }
 
 std::vector<utils::path_safety_checker::PoseWithVelocityStamped> createPredictedPath(
-  const PathWithLaneId & path, const double time_horizon, const double time_resolution)
+  const PathWithLaneId & parking_path, const PathWithLaneId & current_path,
+  const geometry_msgs::msg::Pose & current_pose, const double time_horizon,
+  const double time_resolution)
 {
   using autoware::behavior_path_planner::utils::path_safety_checker::PoseWithVelocityStamped;
   using autoware::motion_utils::calcInterpolatedPose;
   using autoware::motion_utils::calcSignedArcLength;
+  using autoware::motion_utils::findNearestIndex;
 
-  std::vector<PoseWithVelocityStamped> predicted_path;
-
-  if (path.points.empty()) {
-    return predicted_path;
+  if (parking_path.points.empty()) {
+    return {};
   }
 
-  // Calculate total path length
-  const double total_path_length = calcSignedArcLength(path.points, 0, path.points.size() - 1);
+  // Find indices on paths
+  const auto ego_idx = findNearestIndex(current_path.points, current_pose.position);
+  const auto & parking_start_pose = parking_path.points.front().point.pose;
+  const auto parking_start_idx = findNearestIndex(current_path.points, parking_start_pose.position);
 
-  // Lambda function to interpolate velocity at a given distance
-  const auto interpolateVelocity = [&path](const double distance) -> double {
-    if (path.points.size() < 2) {
-      return path.points.front().point.longitudinal_velocity_mps;
+  const auto total_length =
+    calcSignedArcLength(parking_path.points, 0, parking_path.points.size() - 1);
+
+  const auto & points = parking_path.points;
+
+  std::vector<double> cumulative_lengths;
+  cumulative_lengths.reserve(points.size());
+  cumulative_lengths.push_back(0.0);
+  for (size_t i = 1; i < points.size(); ++i) {
+    const auto length = autoware_utils::calc_distance2d(
+      points[i - 1].point.pose.position, points[i].point.pose.position);
+    cumulative_lengths.push_back(cumulative_lengths.back() + length);
+  }
+
+  const auto interpolate_velocity = [&](const double target_length) -> double {
+    if (points.size() < 2) {
+      return points.front().point.longitudinal_velocity_mps;
     }
-
-    double accumulated_distance = 0.0;
-    for (size_t i = 1; i < path.points.size(); ++i) {
-      const double segment_length = calcSignedArcLength(path.points, i - 1, i);
-
-      if (accumulated_distance + segment_length >= distance) {
-        // Interpolate within this segment
-        const double ratio = (distance - accumulated_distance) / segment_length;
-        const double v0 = path.points[i - 1].point.longitudinal_velocity_mps;
-        const double v1 = path.points[i].point.longitudinal_velocity_mps;
-        return v0 + ratio * (v1 - v0);
-      }
-      accumulated_distance += segment_length;
+    // Binary search for the target segment
+    const auto upper =
+      std::upper_bound(cumulative_lengths.begin(), cumulative_lengths.end(), target_length);
+    if (upper == cumulative_lengths.end()) {
+      return points.back().point.longitudinal_velocity_mps;
     }
-
-    // Beyond path end, return last velocity
-    return path.points.back().point.longitudinal_velocity_mps;
+    const auto idx = std::distance(cumulative_lengths.begin(), upper);
+    if (idx == 0) {
+      return points.front().point.longitudinal_velocity_mps;
+    }
+    // Linear interpolation between velocities
+    const auto segment_start_length = cumulative_lengths[idx - 1];
+    const auto segment_end_length = cumulative_lengths[idx];
+    const auto segment_length = segment_end_length - segment_start_length;
+    if (segment_length < 1e-6) return points[idx - 1].point.longitudinal_velocity_mps;
+    const auto ratio =
+      std::clamp((target_length - segment_start_length) / segment_length, 0.0, 1.0);
+    const auto & v0 = points[idx - 1].point.longitudinal_velocity_mps;
+    const auto & v1 = points[idx].point.longitudinal_velocity_mps;
+    return v0 + ratio * (v1 - v0);
   };
 
-  // Generate predicted path based on time
-  double current_time = 0.0;
-  double current_distance = 0.0;
-
-  while (current_time < time_horizon) {
-    // If reached path end, stay at the end position with zero velocity
-    if (current_distance >= total_path_length) {
-      const auto end_pose = path.points.back().point.pose;
-      predicted_path.emplace_back(current_time, end_pose, 0.0);
-      current_time += time_resolution;
-      continue;
+  // Generate predicted path using range-based approach
+  const auto start_length = [&]() -> double {
+    if (ego_idx < parking_start_idx) return 0.0;
+    const auto idx = findNearestIndex(parking_path.points, current_pose.position);
+    return calcSignedArcLength(parking_path.points, 0, idx);
+  }();
+  std::vector<PoseWithVelocityStamped> predicted_path;
+  predicted_path.reserve(static_cast<size_t>(time_horizon / time_resolution) + 1);
+  for (double t = 0.0, length = start_length; t < time_horizon; t += time_resolution) {
+    if (length >= total_length) {
+      break;
     }
-
-    // Calculate pose at current distance
-    const auto pose = calcInterpolatedPose(path.points, current_distance);
-
-    // Interpolate velocity at current distance
-    const double velocity = interpolateVelocity(current_distance);
-
-    // Add to predicted path
-    predicted_path.emplace_back(current_time, pose, velocity);
-
-    // Update distance for next time step
-    const double delta_distance = velocity * time_resolution;
-    current_distance += delta_distance;
-    current_time += time_resolution;
+    const auto pose = calcInterpolatedPose(parking_path.points, length);
+    const auto velocity = interpolate_velocity(length);
+    predicted_path.emplace_back(t, pose, velocity);
+    length += velocity * time_resolution;
   }
 
   return predicted_path;

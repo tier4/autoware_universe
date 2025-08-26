@@ -295,13 +295,17 @@ lanelet::ConstLanelets get_reference_lanelets_for_pullover(
 
 /**
  * @brief Create predicted path from planning path with embedded velocities
- * @param path Path with velocity information in each point
+ * @param parking_path Path with velocity information (parking path)
+ * @param current_path Current reference path for index comparison
+ * @param current_pose Current vehicle pose
  * @param time_horizon Time horizon for prediction [s]
  * @param time_resolution Time step for prediction [s]
  * @return Vector of poses with velocities over time
  */
 std::vector<utils::path_safety_checker::PoseWithVelocityStamped> createPredictedPath(
-  const PathWithLaneId & path,
+  const PathWithLaneId & parking_path,
+  const PathWithLaneId & current_path,
+  const geometry_msgs::msg::Pose & current_pose,
   const double time_horizon,
   const double time_resolution);
 
