@@ -231,7 +231,8 @@ bool PerceptionFilterNode::checkRTCStateChange(bool & last_state, const std::str
   return rtc_became_active;
 }
 
-// TODO(Sugahara): don't publish the cooperate status when the object which can be overwritten does not exist
+// TODO(Sugahara): don't publish the cooperate status when the object which can be overwritten does
+// not exist
 void PerceptionFilterNode::updateRTCStatus()
 {
   const bool is_currently_stopped =
