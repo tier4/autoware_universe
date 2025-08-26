@@ -44,6 +44,11 @@ public:
     const Eigen::Matrix4f& base2map_transform) const;
 
 private:
+  // TODO(Shin-kyoto): tentative implementation. 
+  // offset for z is needed because VAD trained with nuScenes dataset outputs bbox in lidar coordinate, 
+  // but autoware needs bbox in base_link coordinate.
+  float z_offset_;
+
   /**
    * @brief Convert VAD object class to Autoware classification
    * @param object_class VAD object class index
@@ -73,14 +78,12 @@ private:
   /**
    * @brief Process predicted trajectory for an object
    * @param bbox Bounding box containing trajectory data
-   * @param aw_z Object z-coordinate in Autoware frame
    * @param base2map_transform Transformation matrix from base_link to map frame
    * @param yaw Object orientation for fallback direction
    * @return std::vector<autoware_perception_msgs::msg::PredictedPath> Predicted paths
    */
   std::vector<autoware_perception_msgs::msg::PredictedPath> convert_predicted_paths(
     const BBox& bbox,
-    const float aw_z,
     const Eigen::Matrix4f& base2map_transform,
     const float yaw) const;
 
@@ -97,25 +100,21 @@ private:
   /**
    * @brief Calculate object orientation from trajectory or bbox
    * @param bbox Bounding box data
-   * @param aw_z Object z-coordinate in Autoware frame
    * @param base2map_transform Transformation matrix from base_link to map frame
    * @return float Final yaw angle in map frame
    */
   float calculate_object_orientation(
     const BBox& bbox,
-    const float aw_z,
     const Eigen::Matrix4f& base2map_transform) const;
 
   /**
    * @brief Calculate predicted path yaw
    * @param bbox Bounding box data
-   * @param aw_z Object z-coordinate in Autoware frame
    * @param base2map_transform Transformation matrix from base_link to map frame
    * @return std::optional<float> Predicted path yaw angle in map frame if valid, otherwise std::nullopt
    */
    std::optional<float> calculate_predicted_path_yaw(
     const BBox& bbox,
-    const float aw_z,
     const Eigen::Matrix4f& base2map_transform) const;
 
   };
