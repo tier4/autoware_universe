@@ -246,7 +246,6 @@ private:
   bool last_pointcloud_rtc_state_{};  ///< Previous RTC activation state for pointcloud processing
   std::set<std::array<uint8_t, 16>>
     frozen_filter_object_ids_;  ///< Object IDs frozen at RTC approval time
-  bool filtering_active_{};     ///< Whether filtering is currently active
 
   // Polygon-based filtering management
   FilteringPolygon filtering_polygon_;  ///< Filtering polygon created at RTC approval
