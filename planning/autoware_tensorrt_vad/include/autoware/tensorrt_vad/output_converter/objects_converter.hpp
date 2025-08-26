@@ -62,7 +62,7 @@ private:
    * @param yaw Object orientation for fallback direction
    * @return std::vector<autoware_perception_msgs::msg::PredictedPath> Predicted paths
    */
-  std::vector<autoware_perception_msgs::msg::PredictedPath> process_predicted_trajectories(
+  std::vector<autoware_perception_msgs::msg::PredictedPath> convert_predicted_paths(
     const BBox& bbox,
     const float aw_z,
     const Eigen::Matrix4f& base2map_transform,

@@ -98,7 +98,7 @@ float OutputObjectsConverter::calculate_object_orientation(
   return calculate_predicted_path_yaw(bbox, aw_z, base2map_transform).value_or(map_yaw);
 }
 
-std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter::process_predicted_trajectories(
+std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter::convert_predicted_paths(
   const BBox& bbox,
   const float aw_z,
   const Eigen::Matrix4f& base2map_transform,
@@ -225,7 +225,7 @@ autoware_perception_msgs::msg::PredictedObjects OutputObjectsConverter::process_
     predicted_object.kinematics.initial_twist_with_covariance.twist.linear.z = 0.0f;
 
     // Process predicted trajectories
-    predicted_object.kinematics.predicted_paths = process_predicted_trajectories(bbox, aw_z, base2map_transform, yaw);
+    predicted_object.kinematics.predicted_paths = convert_predicted_paths(bbox, aw_z, base2map_transform, yaw);
 
     predicted_objects.objects.push_back(predicted_object);
   }
