@@ -383,7 +383,7 @@ void TrackerProcessor::mergeOverlappedTracker(const rclcpp::Time & time)
   // Second pass: merge overlapping trackers
   for (size_t i = 0; i < valid_trackers.size(); ++i) {
     auto & data1 = valid_trackers[i];
-    if (!data1.is_valid || !data1.tracker->isConfident(adaptive_threshold_cache_, ego_pose_, time))
+    if (!data1.is_valid || !data1.tracker->isConfident(time, adaptive_threshold_cache_, ego_pose_))
       continue;
 
     // Find nearby trackers using R-tree
@@ -463,7 +463,7 @@ bool TrackerProcessor::canMergeOverlappedTarget(
   }
 
   // 1. if the other is not confident, do not remove the target
-  if (!other.isConfident(adaptive_threshold_cache_, ego_pose_, time)) {
+  if (!other.isConfident(time, adaptive_threshold_cache_, ego_pose_)) {
     return false;
   }
 
@@ -512,7 +512,7 @@ void TrackerProcessor::getTrackedObjects(
   types::DynamicObject tracked_object;
   for (const auto & tracker : list_tracker_) {
     // check if the tracker is confident, if not, skip
-    if (!tracker->isConfident(adaptive_threshold_cache_, ego_pose_, std::nullopt)) continue;
+    if (!tracker->isConfident(time, adaptive_threshold_cache_, ego_pose_)) continue;
     // Get the tracked object, extrapolated to the given time
     constexpr bool to_publish = true;
     if (tracker->getTrackedObject(time, tracked_object, to_publish)) {
@@ -535,7 +535,7 @@ void TrackerProcessor::getTentativeObjects(
   types::DynamicObject tracked_object;
   for (const auto & tracker : list_tracker_) {
     // check if the tracker is confident, if so, skip
-    if (tracker->isConfident(adaptive_threshold_cache_, ego_pose_, std::nullopt)) continue;
+    if (tracker->isConfident(time, adaptive_threshold_cache_, ego_pose_)) continue;
     // Get the tracked object, extrapolated to the given time
     constexpr bool to_publish = false;
     if (tracker->getTrackedObject(time, tracked_object, to_publish)) {
