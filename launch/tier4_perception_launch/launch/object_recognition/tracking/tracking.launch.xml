@@ -41,7 +41,7 @@
   <arg name="input/radar/channel" default="radar"/>
   <arg name="input/radar/far_objects" default="/perception/object_recognition/detection/radar/far_objects"/>
   <arg name="input/radar/objects" default="/perception/object_recognition/detection/radar/objects"/>
-  <arg name="input/v2i/far_objects" default="/v2i/detection/radar/far_objects"/>
+  <arg name="input/v2i/far_objects" default="/v2i/dummy_pub"/>
 
   <arg name="output/objects" default="$(var ns)/objects"/>
 
@@ -54,10 +54,10 @@
     <let name="radar_tracker/output/objects" value="$(var ns)/radar/far_objects"/>
 
     <!-- v2i common -->
-    <let name="v2i_tracker/input/objects" value="$(var input/v2i/far_objects)"/>
-    <let name="v2i_tracker/output/objects" value="$(var ns)/v2i/far_objects"/>
+    <!-- <let name="v2i_tracker/input/objects" value="$(var input/v2i/far_objects)"/>
+    <let name="v2i_tracker/output/objects" value="$(var ns)/v2i/far_objects"/> -->
     
-    <let name="v2i_tracked_object_sorter/input/objects" value="$(var v2i_tracker/output/objects)"/>
+    <let name="v2i_tracked_object_sorter/input/objects" value="$(var input/v2i/far_objects)"/>
     <let name="v2i_tracked_object_sorter/output/objects" value="$(var ns)/v2i/sorted_tracked_objects"/>
 
     <let name="v2i_tracked_object_lanelet_filter/input/object" value="$(var v2i_tracked_object_sorter/output/objects)"/>
