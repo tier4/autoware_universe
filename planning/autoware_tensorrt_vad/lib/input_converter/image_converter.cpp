@@ -4,8 +4,8 @@
 
 namespace autoware::tensorrt_vad::vad_interface {
 
-InputImageConverter::InputImageConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config)
-  : Converter(transformer, config)
+InputImageConverter::InputImageConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config)
+  : Converter(coordinate_transformer, config)
 {
 }
 

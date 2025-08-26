@@ -5,8 +5,8 @@
 
 namespace autoware::tensorrt_vad::vad_interface {
 
-OutputObjectsConverter::OutputObjectsConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config)
-  : Converter(transformer, config)
+OutputObjectsConverter::OutputObjectsConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config)
+  : Converter(coordinate_transformer, config)
 {
 }
 

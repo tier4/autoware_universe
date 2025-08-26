@@ -23,10 +23,10 @@ class OutputMapConverter : public Converter {
 public:
   /**
    * @brief Constructor
-   * @param transformer Reference to coordinate transformer
+   * @param coordinate_transformer Reference to coordinate transformer
    * @param config Reference to VAD interface configuration
    */
-  OutputMapConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config);
+  OutputMapConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config);
 
   /**
    * @brief Process map polylines from VAD to visualization markers

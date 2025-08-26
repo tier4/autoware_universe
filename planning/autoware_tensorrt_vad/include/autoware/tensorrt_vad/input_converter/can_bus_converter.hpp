@@ -24,10 +24,10 @@ class InputCanBusConverter : public Converter {
 public:
   /**
    * @brief Constructor
-   * @param transformer Reference to coordinate transformer for coordinate conversions
+   * @param coordinate_transformer Reference to coordinate transformer for coordinate conversions
    * @param config Reference to configuration containing default values
    */
-  InputCanBusConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config);
+  InputCanBusConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config);
 
   /**
    * @brief Process odometry and acceleration data to generate CAN-Bus data

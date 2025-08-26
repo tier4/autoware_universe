@@ -23,10 +23,10 @@ class InputBEVShiftConverter : public Converter {
 public:
   /**
    * @brief Constructor
-   * @param transformer Reference to coordinate transformer
+   * @param coordinate_transformer Reference to coordinate transformer
    * @param config Reference to configuration containing BEV and detection range parameters
    */
-  InputBEVShiftConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config);
+  InputBEVShiftConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config);
 
   /**
    * @brief Calculate BEV shift from CAN-Bus data changes

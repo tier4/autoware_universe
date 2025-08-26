@@ -26,10 +26,10 @@ class OutputObjectsConverter : public Converter {
 public:
   /**
    * @brief Constructor
-   * @param transformer Reference to coordinate transformer
+   * @param coordinate_transformer Reference to coordinate transformer
    * @param config Reference to VAD interface configuration
    */
-  OutputObjectsConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config);
+  OutputObjectsConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config);
 
   /**
    * @brief Process predicted objects from VAD to ROS format

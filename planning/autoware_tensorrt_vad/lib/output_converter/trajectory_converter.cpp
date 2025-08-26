@@ -4,8 +4,8 @@
 
 namespace autoware::tensorrt_vad::vad_interface {
 
-OutputTrajectoryConverter::OutputTrajectoryConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config)
-  : Converter(transformer, config)
+OutputTrajectoryConverter::OutputTrajectoryConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config)
+  : Converter(coordinate_transformer, config)
 {
 }
 

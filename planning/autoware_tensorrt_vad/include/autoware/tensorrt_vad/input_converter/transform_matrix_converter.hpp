@@ -24,10 +24,10 @@ class InputTransformMatrixConverter : public Converter {
 public:
   /**
    * @brief Constructor
-   * @param transformer Reference to coordinate transformer (contains tf_buffer)
+   * @param coordinate_transformer Reference to coordinate transformer (contains tf_buffer)
    * @param config Reference to configuration containing camera parameters
    */
-  InputTransformMatrixConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config);
+  InputTransformMatrixConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config);
 
   /**
    * @brief Process camera info messages to generate lidar2img transformation matrices

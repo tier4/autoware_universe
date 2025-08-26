@@ -29,10 +29,10 @@ class OutputTrajectoryConverter : public Converter {
 public:
   /**
    * @brief Constructor
-   * @param transformer Reference to coordinate transformer for coordinate conversions
+   * @param coordinate_transformer Reference to coordinate transformer for coordinate conversions
    * @param config Reference to configuration containing trajectory parameters
    */
-  OutputTrajectoryConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config);
+  OutputTrajectoryConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config);
 
   /**
    * @brief Convert VAD predicted trajectory to ROS Trajectory message

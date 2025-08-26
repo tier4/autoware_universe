@@ -2,8 +2,8 @@
 
 namespace autoware::tensorrt_vad::vad_interface {
 
-InputBEVShiftConverter::InputBEVShiftConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config)
-  : Converter(transformer, config),
+InputBEVShiftConverter::InputBEVShiftConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config)
+  : Converter(coordinate_transformer, config),
     real_w_(config.detection_range[3] - config.detection_range[0]),
     real_h_(config.detection_range[4] - config.detection_range[1])
 {

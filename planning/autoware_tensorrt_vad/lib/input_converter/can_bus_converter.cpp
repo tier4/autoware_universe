@@ -3,8 +3,8 @@
 
 namespace autoware::tensorrt_vad::vad_interface {
 
-InputCanBusConverter::InputCanBusConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config)
-  : Converter(transformer, config)
+InputCanBusConverter::InputCanBusConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config)
+  : Converter(coordinate_transformer, config)
 {
 }
 

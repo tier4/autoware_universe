@@ -23,10 +23,10 @@ class InputImageConverter : public Converter {
 public:
   /**
    * @brief Constructor
-   * @param transformer Reference to coordinate transformer
+   * @param coordinate_transformer Reference to coordinate transformer
    * @param config Reference to configuration containing image parameters
    */
-  InputImageConverter(const CoordinateTransformer& transformer, const VadInterfaceConfig& config);
+  InputImageConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config);
 
   /**
    * @brief Process multiple camera images for VAD model input
