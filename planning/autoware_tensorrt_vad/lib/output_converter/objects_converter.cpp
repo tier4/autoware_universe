@@ -190,8 +190,7 @@ autoware_perception_msgs::msg::PredictedObjects OutputObjectsConverter::process_
     predicted_object.existence_probability = bbox.confidence;
     
     // Set classification
-    auto classification = convert_classification(bbox.object_class, bbox.confidence);
-    predicted_object.classification.push_back(classification);
+    predicted_object.classification.push_back(convert_classification(bbox.object_class, bbox.confidence));
 
     // Set kinematics (position and orientation)
     // BBox format: [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
@@ -226,8 +225,7 @@ autoware_perception_msgs::msg::PredictedObjects OutputObjectsConverter::process_
     predicted_object.kinematics.initial_twist_with_covariance.twist.linear.z = 0.0f;
 
     // Process predicted trajectories
-    auto predicted_paths = process_predicted_trajectories(bbox, aw_z, base2map_transform, final_yaw);
-    predicted_object.kinematics.predicted_paths = predicted_paths;
+    predicted_object.kinematics.predicted_paths = process_predicted_trajectories(bbox, aw_z, base2map_transform, yaw);
 
     predicted_objects.objects.push_back(predicted_object);
   }
