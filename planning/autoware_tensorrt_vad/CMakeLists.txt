@@ -59,6 +59,15 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
     lib/vad_interface.cpp
     lib/vad_model.cpp
     lib/synchronization_strategy.cpp
+    lib/coordinate_transformer.cpp
+    lib/converter.cpp
+    lib/input_converter/image_converter.cpp
+    lib/input_converter/transform_matrix_converter.cpp
+    lib/input_converter/can_bus_converter.cpp
+    lib/input_converter/bev_shift_converter.cpp
+    lib/output_converter/trajectory_converter.cpp
+    lib/output_converter/map_converter.cpp
+    lib/output_converter/objects_converter.cpp
     lib/networks/net.cpp
     lib/networks/backbone.cpp
     lib/networks/head.cpp
