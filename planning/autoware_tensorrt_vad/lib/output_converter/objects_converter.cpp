@@ -52,8 +52,7 @@ std::optional<float> OutputObjectsConverter::calculate_predicted_path_yaw(
   float max_confidence = 0.0f;
   std::optional<float> predicted_path_yaw = std::nullopt;
 
-  for (int32_t mode = 0; mode < 6; ++mode) {
-    const auto& pred_traj = bbox.trajectories[mode];
+  for (const auto& pred_traj : bbox.trajectories) {
     if (pred_traj.confidence > max_confidence) {
       // Calculate direction from first 2 points
       float traj_vad_x1 = pred_traj.trajectory[0][0] + bbox.bbox[0];
