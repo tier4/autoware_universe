@@ -150,9 +150,7 @@ std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter
   std::vector<autoware_perception_msgs::msg::PredictedPath> predicted_paths;
 
   // Set predicted trajectories
-  for (int32_t mode = 0; mode < 6; ++mode) {
-    const auto& pred_traj = bbox.trajectories[mode];
-    
+  for (const auto& pred_traj : bbox.trajectories) {
     autoware_perception_msgs::msg::PredictedPath predicted_path;
     predicted_path.confidence = pred_traj.confidence;
     
