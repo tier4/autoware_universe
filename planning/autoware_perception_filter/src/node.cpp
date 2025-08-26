@@ -506,8 +506,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   }();
 
   // Transform filtered points back to original coordinate frame (base_link)
-  pcl::PointCloud<pcl::PointXYZ>::Ptr final_filtered_cloud = [this, &filtered_cloud,
-                                                              &input_pointcloud]() {
+  pcl::PointCloud<pcl::PointXYZ>::Ptr final_filtered_cloud = [this, &filtered_cloud]() {
     autoware::universe_utils::ScopedTimeTrack st_transform(
       "transform_back_to_base_link", *time_keeper_);
     pcl::PointCloud<pcl::PointXYZ>::Ptr final_filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>);
