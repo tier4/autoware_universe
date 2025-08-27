@@ -706,10 +706,10 @@ autoware_perception_msgs::msg::PredictedObjects VadInterface::process_predicted_
 
     // Set kinematics (position and orientation)
     // BBox format: [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
-    float z_offset = +1.9f;
+    // Note: CARLA Tier4 models already include z-offset in training, no manual offset needed
     float vad_x = bbox.bbox[0];
     float vad_y = bbox.bbox[1];
-    float vad_z = bbox.bbox[4] + z_offset;
+    float vad_z = bbox.bbox[4];
     auto [aw_x, aw_y, aw_z] = vad2aw_xyz(vad_x, vad_y, vad_z);
     Eigen::Vector4f position_base(aw_x, aw_y, aw_z, 1.0f);
     Eigen::Vector4f position_map = base2map_transform * position_base;
