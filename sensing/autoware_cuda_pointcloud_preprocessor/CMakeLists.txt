@@ -144,12 +144,6 @@ rclcpp_components_register_node(cuda_pointcloud_preprocessor
   EXECUTABLE cuda_voxel_grid_downsample_filter_node
 )
 
-# ========== PolarVoxel outlier filter ==========
-rclcpp_components_register_node(cuda_pointcloud_preprocessor
-  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPolarVoxelOutlierFilterNode"
-  EXECUTABLE cuda_polar_voxel_outlier_filter_node
-)
-
 ################################################################################
 # Install
 install(DIRECTORY launch config
