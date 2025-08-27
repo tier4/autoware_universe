@@ -213,15 +213,6 @@ void ElasticBandSmoother::onPath(const Path::ConstSharedPtr path_ptr)
 
   // 4. set zero velocity after stop point
   setZeroVelocityAfterStopPoint(full_traj_points);
-  
-  auto it = std::find_if(
-    full_traj_points->begin(), full_traj_points->end(),
-    [](const TrajectoryPoint & p) { return p.longitudinal_velocity_mps < 1e-3; });
-
-  if (it != full_traj_points->end()) {
-    auto stop_point_idx = std::distance(full_traj_points->begin(), it);
-    std::cout << "full_traj_points have a stop-point at: " << stop_point_idx << std::endl;
-  }
 
   time_keeper_ptr_->toc(__func__, "");
   *time_keeper_ptr_ << "========================================";
