@@ -516,6 +516,16 @@ std::optional<std::vector<TrajectoryPoint>> MPTOptimizer::optimizeTrajectory(
     return std::nullopt;
   }
 
+  auto it = std::find_if(
+    mpt_traj_points->begin(), mpt_traj_points->end(),
+    [](const TrajectoryPoint & p) { return p.longitudinal_velocity_mps < 1e-3; });
+
+  if (it != mpt_traj_points->end()) {
+    auto stop_point_idx = std::distance(mpt_traj_points->begin(), it);
+    std::cout << "mpt_traj_points have a stop-point at: "
+              << stop_point_idx << std::endl;
+  }
+
   // 8. publish trajectories for debug
   publishDebugTrajectories(p.header, ref_points, *mpt_traj_points);
 

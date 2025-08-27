@@ -262,6 +262,15 @@ std::vector<TrajectoryPoint> EBPathSmoother::smoothTrajectory(
 
   prev_eb_traj_points_ptr_ = std::make_shared<std::vector<TrajectoryPoint>>(*eb_traj_points);
 
+  auto it = std::find_if(
+    eb_traj_points->begin(), eb_traj_points->end(),
+    [](const TrajectoryPoint & p) { return p.longitudinal_velocity_mps < 1e-3; });
+
+  if (it != eb_traj_points->end()) {
+    auto stop_point_idx = std::distance(eb_traj_points->begin(), it);
+    std::cout << "eb_traj_points have a stop-point at: " << stop_point_idx << std::endl;
+  }
+
   // 8. publish eb trajectory
   const auto eb_traj =
     autoware::motion_utils::convertToTrajectory(*eb_traj_points, createHeader(clock_.now()));
