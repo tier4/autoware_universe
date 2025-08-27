@@ -20,17 +20,21 @@
 #include <autoware/lanelet2_utils/topology.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <range/v3/all.hpp>
 
 #include <boost/geometry/algorithms/area.hpp>
 #include <boost/geometry/algorithms/distance.hpp>
+#include <boost/geometry/algorithms/envelope.hpp>
 #include <boost/geometry/algorithms/length.hpp>
+#include <boost/geometry/index/rtree.hpp>
 
 #include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/geometry/Point.h>
 #include <lanelet2_core/geometry/Polygon.h>
 
 #include <algorithm>
+#include <limits>
 #include <list>
 #include <memory>
 #include <optional>
@@ -133,6 +137,11 @@ std::optional<Point2d> find_intersection_point(L1 && line1, L2 && line2)
     return std::nullopt;
   }
   return intersection_points.front();
+}
+
+bool is_private_lanelet(const lanelet::ConstLanelet & lanelet)
+{
+  return std::strcmp(lanelet.attributeOr("location", "else"), "private") == 0;
 }
 }  // namespace
 
@@ -459,9 +468,18 @@ generate_blind_side_lanelets_before_turning(
   }
   */
   const auto intersection_lane = lanelet_map_ptr->laneletLayer.get(intersection_lane_id);
+
+  const auto is_private_intersection = is_private_lanelet(intersection_lane);
+  const auto validate_lane_attribute = [is_private_intersection](
+                                         const lanelet::ConstLanelet & lanelet) {
+    return is_private_intersection
+             ? is_private_lanelet(lanelet)  // If intersection is private, lane must also be private
+             : true;                        // ...otherwise, it's always true (allowed).
+  };
+
   const auto previous_lane_opt =
     helper::previous_lane_straight_priority(intersection_lane, routing_graph_ptr);
-  if (previous_lane_opt) {
+  if (previous_lane_opt && validate_lane_attribute(previous_lane_opt.value())) {
     const auto & previous_lane = previous_lane_opt.value();
     road_lanelets.push_back(previous_lane);
     blind_side_lanelets.push_back(blind_side_getter_function(route_handler, previous_lane));
@@ -474,7 +492,7 @@ generate_blind_side_lanelets_before_turning(
     const auto & last_road_lane = road_lanelets.front();
     const auto prev_lane_opt =
       helper::previous_lane_straight_priority(last_road_lane, routing_graph_ptr);
-    if (!prev_lane_opt) {
+    if (!prev_lane_opt || !validate_lane_attribute(prev_lane_opt.value())) {
       return std::make_pair(road_lanelets, blind_side_lanelets);
     }
     const auto & prev_lane = prev_lane_opt.value();
@@ -681,4 +699,56 @@ std::optional<StopPoints> generate_stop_points(
     std::nullopt, stop_points_list.instant_stopline, stop_points_list.critical_stopline};
 }
 
+std::optional<double> calc_ego_to_blind_spot_lanelet_lateral_gap(
+  const autoware_utils::LinearRing2d & ego_footprint,
+  const lanelet::ConstLanelets & last_lanelets_before_turning,
+  const autoware::experimental::lanelet2_utils::TurnDirection & turn_direction)
+{
+  const auto front_idx = (turn_direction == TurnDirection::Left)
+                           ? vehicle_info_utils::VehicleInfo::FrontLeftIndex
+                           : vehicle_info_utils::VehicleInfo::FrontRightIndex;
+  const auto rear_idx = (turn_direction == TurnDirection::Left)
+                          ? vehicle_info_utils::VehicleInfo::RearLeftIndex
+                          : vehicle_info_utils::VehicleInfo::RearRightIndex;
+  const auto ego_side =
+    autoware_utils::Segment2d{ego_footprint[front_idx], ego_footprint[rear_idx]};
+
+  std::vector<autoware_utils::Point2d> line;
+  for (const auto & ll : last_lanelets_before_turning) {
+    const auto & attention_area_road_boundary = lanelet::utils::to2D(
+      (turn_direction == TurnDirection::Left) ? ll.leftBound() : ll.rightBound());
+    const auto ll_2d = lanelet::utils::to2D(attention_area_road_boundary);
+
+    for (const auto & ls : ll_2d) {
+      line.emplace_back(ls.x(), ls.y());
+    }
+  }
+
+  if (line.size() < 2) {
+    return std::nullopt;
+  }
+
+  std::vector<autoware_utils::Segment2d> segments;
+  segments.reserve(line.size() - 1);
+  for (const auto & [p1, p2] : ranges::views::zip(line, line | ranges::views::drop(1))) {
+    segments.emplace_back(p1, p2);
+  }
+
+  bg::index::rtree<autoware_utils::Segment2d, bg::index::rstar<16>> segments_before_turning{
+    segments.begin(), segments.end()};
+
+  std::vector<autoware_utils::Segment2d> candidate_segments;
+  constexpr size_t max_candidate_size = 5;
+  candidate_segments.reserve(max_candidate_size);
+  segments_before_turning.query(
+    bg::index::nearest(ego_side, max_candidate_size), std::back_inserter(candidate_segments));
+
+  auto min_blind_side_distance = std::numeric_limits<double>::max();
+  for (const auto & [candidate_segment, candidate_idx] : candidate_segments) {
+    min_blind_side_distance =
+      std::min(min_blind_side_distance, bg::distance(ego_side, candidate_segment));
+  }
+
+  return min_blind_side_distance;
+}
 }  // namespace autoware::behavior_velocity_planner
