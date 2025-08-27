@@ -355,10 +355,20 @@ private:
     std::vector<MapPolyline> map_polylines = postprocess_map_preds(
         map_all_cls_preds_flat, map_all_pts_preds_flat, vad_config_);
     
+    // Detect number of available modes
+    const int32_t num_modes = ego_fut_preds.size() / 12;
+    
+    // Ensure command index is valid for the model
+    int32_t safe_cmd = cmd;
+    if (safe_cmd >= num_modes) {
+      // If requested command exceeds available modes, use the closest available
+      safe_cmd = std::min(cmd, num_modes - 1);
+    }
+    
     // Extract planning for the given command
     std::vector<float> planning(
-        ego_fut_preds.begin() + cmd * 12,
-        ego_fut_preds.begin() + (cmd + 1) * 12
+        ego_fut_preds.begin() + safe_cmd * 12,
+        ego_fut_preds.begin() + (safe_cmd + 1) * 12
     );
     
     // cumsum to build trajectory in 3d space
@@ -367,9 +377,12 @@ private:
       planning[i * 2 + 1] += planning[(i-1) * 2 + 1];
     }
     
-    // Extract all trajectories for all 3 commands
+    // Extract all available trajectory modes
+    // ego_fut_preds size = num_modes * 6 timesteps * 2 coordinates = num_modes * 12
     std::map<int32_t, std::vector<float>> all_trajectories;
-    for (int32_t command_idx = 0; command_idx < 3; command_idx++) {
+    // num_modes already declared above
+    
+    for (int32_t command_idx = 0; command_idx < num_modes; command_idx++) {
       std::vector<float> trajectory(
           ego_fut_preds.begin() + command_idx * 12,
           ego_fut_preds.begin() + (command_idx + 1) * 12
