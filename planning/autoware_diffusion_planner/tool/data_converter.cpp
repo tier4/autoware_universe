@@ -206,7 +206,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   const int64_t start_idx = std::max(static_cast<int64_t>(0), current_idx - PAST_TIME_STEPS + 1);
   std::cerr << "create agent_data_past" << std::endl;
   autoware::diffusion_planner::AgentData agent_data_past(
-    data_list[start_idx].tracked_objects, NEIGHBOR_NUM, PAST_TIME_STEPS);
+    data_list[start_idx].tracked_objects, NEIGHBOR_NUM, PAST_TIME_STEPS, true);
   for (int64_t t = 1; t < PAST_TIME_STEPS; ++t) {
     std::cerr << "t=" << t << std::endl;
     const int64_t frame_idx = start_idx + t;
