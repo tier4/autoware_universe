@@ -63,7 +63,7 @@ using namespace nav_msgs::msg;
 constexpr int64_t PAST_TIME_STEPS = EGO_HISTORY_SHAPE[1];
 constexpr int64_t NEIGHBOR_NUM = NEIGHBOR_SHAPE[1];
 constexpr int64_t NEIGHBOR_PAST_DIM = NEIGHBOR_SHAPE[3];
-constexpr int64_t NEIGHBOR_FUTURE_DIM = 3;  // x, y, yaw
+constexpr int64_t NEIGHBOR_FUTURE_DIM = 4;  // x, y, cos(yaw), sin(yaw)
 constexpr int64_t LANE_NUM = LANES_SHAPE[1];
 constexpr int64_t ROUTE_NUM = ROUTE_LANES_SHAPE[1];
 
@@ -201,106 +201,74 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   const std::vector<FrameData> & data_list, const int64_t current_idx,
   const Eigen::Matrix4f & map2bl_matrix)
 {
-  std::vector<float> neighbor_past(NEIGHBOR_NUM * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM, 0.0f);
-  std::vector<float> neighbor_future(NEIGHBOR_NUM * OUTPUT_T * NEIGHBOR_FUTURE_DIM, 0.0f);
-
-  // Track agents across multiple frames for past data
-  std::map<std::string, std::vector<AgentState>> agent_histories;
-
-  // Collect past data
-  for (int64_t t = 0; t < PAST_TIME_STEPS; ++t) {
-    const int64_t frame_idx =
-      std::max(static_cast<int64_t>(0), current_idx - PAST_TIME_STEPS + 1 + t);
+  std::cerr << "start process_neighbor_agents_and_future" << std::endl;
+  // Build agent histories using AgentData::update_histories
+  const int64_t start_idx = std::max(static_cast<int64_t>(0), current_idx - PAST_TIME_STEPS + 1);
+  std::cerr << "create agent_data_past" << std::endl;
+  autoware::diffusion_planner::AgentData agent_data_past(
+    data_list[start_idx].tracked_objects, NEIGHBOR_NUM, PAST_TIME_STEPS);
+  for (int64_t t = 1; t < PAST_TIME_STEPS; ++t) {
+    std::cerr << "t=" << t << std::endl;
+    const int64_t frame_idx = start_idx + t;
     if (frame_idx >= static_cast<int64_t>(data_list.size())) {
       break;
     }
+    std::cerr << "before agent_data_past.update_histories(data_list[frame_idx].tracked_objects)"
+              << std::endl;
+    agent_data_past.update_histories(data_list[frame_idx].tracked_objects);
+    std::cerr << "after agent_data_past.update_histories(data_list[frame_idx].tracked_objects)"
+              << std::endl;
+  }
+  agent_data_past.apply_transform(map2bl_matrix);
+  agent_data_past.trim_to_k_closest_agents();
+  const std::vector<float> neighbor_past = agent_data_past.as_vector();
 
-    const std::vector<TrackedObject> & objects = data_list[frame_idx].tracked_objects.objects;
-    for (const TrackedObject & obj : objects) {
-      const std::string obj_id = autoware_utils_uuid::to_hex_string(obj.object_id);
-      AgentState agent_state(obj);
-      agent_state.apply_transform(map2bl_matrix);
-
-      agent_histories[obj_id].push_back(agent_state);
-    }
+  // Build id -> AgentHistory map for future filling
+  const std::vector<AgentHistory> agent_histories = agent_data_past.get_histories();
+  std::unordered_map<std::string, AgentHistory> id_to_history;
+  for (size_t i = 0; i < agent_histories.size(); ++i) {
+    id_to_history[agent_histories[i].object_id()] = AgentHistory(
+      agent_histories[i].get_latest_state(), agent_histories[i].label_id(), 0.0, OUTPUT_T, false);
   }
 
-  // Sort agents by distance to ego (at current frame)
-  std::vector<std::pair<std::string, float>> agent_distances;
-  for (const auto & [obj_id, history] : agent_histories) {
-    if (!history.empty()) {
-      const auto & last_state = history.back();
-      float dist = std::sqrt(last_state.x() * last_state.x() + last_state.y() * last_state.y());
-      agent_distances.push_back({obj_id, dist});
-    }
-  }
-
-  std::sort(agent_distances.begin(), agent_distances.end(), [](const auto & a, const auto & b) {
-    return a.second < b.second;
-  });
-
-  // Create mapping from object ID to agent index (maintaining sort order)
-  std::map<std::string, int64_t> object_id_to_idx;
-  for (int64_t i = 0; i < static_cast<int64_t>(agent_distances.size()) && i < NEIGHBOR_NUM; ++i) {
-    object_id_to_idx[agent_distances[i].first] = i;
-  }
-
-  // Fill neighbor past data for closest agents
-  int64_t agent_idx = 0;
-  for (const std::pair<std::string, float> & agent_distance : agent_distances) {
-    if (agent_idx >= NEIGHBOR_NUM) {
-      break;
-    }
-
-    const std::vector<AgentState> & history = agent_histories[agent_distance.first];
-    for (int64_t t = 0; t < PAST_TIME_STEPS; ++t) {
-      const int64_t base_idx =
-        agent_idx * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM + t * NEIGHBOR_PAST_DIM;
-
-      if (t < static_cast<int64_t>(history.size())) {
-        const AgentState & state = history[t];
-        const std::array<float, AGENT_STATE_DIM> data_array = state.as_array();
-        for (size_t i = 0; i < data_array.size(); ++i) {
-          neighbor_past[base_idx + i] = data_array[i];
+  // Future data: use AgentHistory for each agent
+  std::vector<float> neighbor_future(NEIGHBOR_NUM * OUTPUT_T * NEIGHBOR_FUTURE_DIM, 0.0f);
+  for (int64_t agent_idx = 0; agent_idx < static_cast<int64_t>(agent_histories.size());
+       ++agent_idx) {
+    const std::string & agent_id_str = agent_histories[agent_idx].object_id();
+    AgentHistory & future_history = id_to_history[agent_id_str];
+    std::cerr << "agent_id_str=" << agent_id_str << std::endl;
+    std::cerr << future_history.object_id() << std::endl;
+    for (int64_t t = 1; t <= OUTPUT_T; ++t) {
+      const int64_t future_frame_idx = current_idx + t;
+      if (future_frame_idx >= static_cast<int64_t>(data_list.size())) {
+        break;
+      }
+      // Find object with same id in future frame
+      const auto & future_objects = data_list[future_frame_idx].tracked_objects.objects;
+      bool found = false;
+      for (const auto & obj : future_objects) {
+        const std::string obj_id = autoware_utils_uuid::to_hex_string(obj.object_id);
+        if (obj_id == agent_id_str) {
+          std::cerr << "before future_history.update(0.0, obj)" << std::endl;
+          future_history.update(0.0, obj);
+          std::cerr << "after future_history.update(0.0, obj)" << std::endl;
+          found = true;
+          break;
         }
       }
+      if (!found) {
+        future_history.update_empty();
+      }
     }
-    agent_idx++;
-  }
+    future_history.apply_transform(map2bl_matrix);
 
-  // Fill future data using the same agent ordering as past data
-  for (int64_t t = 0; t < OUTPUT_T; ++t) {
-    const int64_t future_frame_idx = current_idx + 1 + t;
-    if (future_frame_idx >= static_cast<int64_t>(data_list.size())) {
-      break;
-    }
-
-    const std::vector<TrackedObject> & future_objects =
-      data_list[future_frame_idx].tracked_objects.objects;
-
-    for (const TrackedObject & obj : future_objects) {
-      const std::string obj_id = autoware_utils_uuid::to_hex_string(obj.object_id);
-
-      // Only process objects that were in the past tracking (maintaining same agent ordering)
-      if (object_id_to_idx.find(obj_id) != object_id_to_idx.end()) {
-        const int64_t agent_idx = object_id_to_idx[obj_id];
-        const int64_t base_idx =
-          agent_idx * OUTPUT_T * NEIGHBOR_FUTURE_DIM + t * NEIGHBOR_FUTURE_DIM;
-
-        const Point & pos = obj.kinematics.pose_with_covariance.pose.position;
-        const Quaternion & ori = obj.kinematics.pose_with_covariance.pose.orientation;
-
-        const Eigen::Vector4f pos_vec(pos.x, pos.y, pos.z, 1.0);
-        const Eigen::Vector4f transformed_pos = map2bl_matrix * pos_vec;
-
-        const Eigen::Quaternionf quat(ori.w, ori.x, ori.y, ori.z);
-        const Eigen::Matrix3f rot_matrix = quat.toRotationMatrix();
-        const Eigen::Matrix3f transformed_rot = map2bl_matrix.block<3, 3>(0, 0) * rot_matrix;
-        const float yaw = std::atan2(transformed_rot(1, 0), transformed_rot(0, 0));
-
-        neighbor_future[base_idx + 0] = transformed_pos.x();
-        neighbor_future[base_idx + 1] = transformed_pos.y();
-        neighbor_future[base_idx + 2] = yaw;
+    // Fill future array for this agent
+    const std::vector<float> arr = future_history.as_array();
+    for (int64_t t = 0; t < OUTPUT_T; ++t) {
+      const int64_t base_idx = agent_idx * OUTPUT_T * NEIGHBOR_FUTURE_DIM + t * NEIGHBOR_FUTURE_DIM;
+      for (int64_t d = 0; d < NEIGHBOR_FUTURE_DIM; ++d) {
+        neighbor_future[base_idx + d] = arr[t * AGENT_STATE_DIM + d];
       }
     }
   }

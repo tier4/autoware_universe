@@ -155,6 +155,11 @@ struct AgentState
  */
 struct AgentHistory
 {
+  AgentHistory()
+  : queue_(0), object_id_(""), label_id_(0), autoware_label_(0), latest_time_(0.0), max_size_(0)
+  {
+  }
+
   /**
    * @brief Construct a new Agent History filling the latest state by input state.
    *
@@ -202,7 +207,7 @@ struct AgentHistory
    * @param current_time The current timestamp.
    * @param object The object info.
    */
-  void update(double current_time, TrackedObject & object);
+  void update(double current_time, const TrackedObject & object);
   /**
    * @brief Update history with input state and latest time.
    *
