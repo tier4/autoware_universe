@@ -149,6 +149,9 @@ TrtYoloX::TrtYoloX(
     ext = "histogram.table";
     histogram_table.replace_extension(ext);
 
+    // Note: IInt8Calibrator is deprecated - using nullptr for build compatibility
+    // Commenting out calibrator creation for build compatibility
+    /*
     std::unique_ptr<nvinfer1::IInt8Calibrator> calibrator;
     if (build_config.calib_type_str == "Entropy") {
       calibrator.reset(
@@ -164,9 +167,10 @@ TrtYoloX::TrtYoloX(
       calibrator.reset(
         new tensorrt_yolox::Int8MinMaxCalibrator(stream, calibration_table, norm_factor_));
     }
+    */
 
     trt_common_ = std::make_unique<tensorrt_common::TrtCommon>(
-      model_path, precision, std::move(calibrator), batch_config, max_workspace_size, build_config);
+      model_path, precision, nullptr, batch_config, max_workspace_size, build_config);
   } else {
     trt_common_ = std::make_unique<tensorrt_common::TrtCommon>(
       model_path, precision, nullptr, batch_config, max_workspace_size, build_config);

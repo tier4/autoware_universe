@@ -16,7 +16,6 @@
 
 #include "lidar_apollo_instance_segmentation/feature_map.hpp"
 
-#include <NvCaffeParser.h>
 #include <NvInfer.h>
 #include <pcl_conversions/pcl_conversions.h>
 
