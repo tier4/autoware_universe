@@ -49,7 +49,7 @@ struct CudaPolarVoxelOutlierFilterParameters
   double visibility_estimation_max_range_m;  // Maximum range for visibility estimation (meters)
   int visibility_estimation_max_secondary_voxel_count;  // Maximum secondary voxel count for
                                                         // visibility estimation
-  bool visualization_estimation_only;  // Only estimate visibility without pointcloud processing
+  bool visibility_estimation_only;  // Only estimate visibility without pointcloud processing
 
   // Return type classification parameters
   bool use_return_type_classification;  // Whether to use return type classification

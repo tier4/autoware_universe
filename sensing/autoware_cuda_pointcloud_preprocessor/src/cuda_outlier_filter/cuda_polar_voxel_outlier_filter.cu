@@ -649,13 +649,13 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   // Create filtered output
   size_t valid_count = 0;
   auto filtered_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-  if (!params.visualization_estimation_only) {
+  if (!params.visibility_estimation_only) {
     valid_count = create_output(input_cloud, valid_points_mask, num_points, filtered_cloud);
   }
 
   // Create noise cloud with filtered-out points
   auto noise_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-  if (!params.visualization_estimation_only && params.publish_noise_cloud) {
+  if (!params.visibility_estimation_only && params.publish_noise_cloud) {
     // Flip valid flag to get filtered-out (= noise) points
     dim3 block_dim(512);
     dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x);
