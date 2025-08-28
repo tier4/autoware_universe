@@ -34,6 +34,8 @@ namespace autoware::cuda_pointcloud_preprocessor
 {
 class CudaPolarVoxelOutlierFilterNode : public rclcpp::Node
 {
+  static constexpr double diagnostics_update_period_sec = 0.1;
+
 public:
   explicit CudaPolarVoxelOutlierFilterNode(const rclcpp::NodeOptions & node_options);
 
@@ -45,6 +47,40 @@ protected:
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
+
+  /** \brief Diagnostics callback for visibility validation
+   * Visibility represents the percentage of voxels that pass the primary-to-secondary ratio test.
+   * Statistics are efficiently collected during main filtering loop (single-pass optimization).
+   * Only published when return type classification is enabled for PointXYZIRCAEDT input.
+   */
+  void on_visibility_check(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
+  /** \brief Diagnostics callback for filter ratio validation
+   * Filter ratio represents the ratio of output points to input points.
+   * Always published for both PointXYZ and PointXYZIRCAEDT input formats.
+   */
+  void on_filter_ratio_check(diagnostic_updater::DiagnosticStatusWrapper & stat);
+
+  void update_parameter(const rclcpp::Parameter & param);
+
+  void validate_filter_inputs(const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud);
+  void voidvalidate_return_type_field(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud);
+  void validate_intensity_field(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud);
+  void validate_return_type_field(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud);
+  bool has_field(
+    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input, const std::string & field_name);
+
+  // Parameter validation helpers (static, private)
+  static bool validate_positive_double(const rclcpp::Parameter & param, std::string & reason);
+  static bool validate_non_negative_double(const rclcpp::Parameter & param, std::string & reason);
+  static bool validate_positive_int(const rclcpp::Parameter & param, std::string & reason);
+  static bool validate_non_negative_int(const rclcpp::Parameter & param, std::string & reason);
+  static bool validate_intensity_threshold(const rclcpp::Parameter & param, std::string & reason);
+  static bool validate_primary_return_types(const rclcpp::Parameter & param, std::string & reason);
+  static bool validate_normalized(const rclcpp::Parameter & param, std::string & reason);
 
 private:
   CudaPolarVoxelOutlierFilterParameters filter_params_;
@@ -69,23 +105,6 @@ private:
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr ratio_pub_;
 
   std::unique_ptr<CudaPolarVoxelOutlierFilter> cuda_polar_voxel_outlier_filter_{};
-
-  /** \brief Diagnostics callback for visibility validation
-   * Visibility represents the percentage of voxels that pass the primary-to-secondary ratio test.
-   * Statistics are efficiently collected during main filtering loop (single-pass optimization).
-   * Only published when return type classification is enabled for PointXYZIRCAEDT input.
-   */
-  void on_visibility_check(diagnostic_updater::DiagnosticStatusWrapper & stat);
-
-  /** \brief Diagnostics callback for filter ratio validation
-   * Filter ratio represents the ratio of output points to input points.
-   * Always published for both PointXYZ and PointXYZIRCAEDT input formats.
-   */
-  void on_filter_ratio_check(diagnostic_updater::DiagnosticStatusWrapper & stat);
-
-  void update_parameter(const rclcpp::Parameter & param);
-
-  void validate_filter_inputs(const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud);
 };
 
 }  // namespace autoware::cuda_pointcloud_preprocessor

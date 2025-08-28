@@ -36,6 +36,8 @@ namespace autoware::cuda_pointcloud_preprocessor
 {
 namespace
 {
+constexpr size_t point_cloud_height_organized = 1;
+
 struct ValidAndNotEqualTo
 {
   /**
@@ -182,12 +184,16 @@ __global__ void polar_to_polar_voxel_kernel(
     get_element_value<TFieldData>(data, point_index, step, offsets[field_index]);
 
   bool is_finite = isfinite(field_data);
-  bool is_valid_radius = (field_index == FieldDataIndex::radius)
-                           ? (min_radius <= field_data) && (field_data <= max_radius)
-                           : true;
+  bool is_within_radius_range = (field_index == FieldDataIndex::radius)
+                                  ? (min_radius <= field_data) && (field_data <= max_radius)
+                                  : true;
+  bool has_sufficient_radius =
+    (field_index == FieldDataIndex::radius)
+      ? ::cuda::std::abs(field_data) >= ::cuda::std::numeric_limits<TFieldData>::epsilon()
+      : true;
 
   auto output = outputs[field_index];
-  if (!is_finite || !is_valid_radius) {
+  if (!is_finite || !is_within_radius_range || !has_sufficient_radius) {
     // Assign invalid index for points with invalid value and/or points outside radius range
     output[point_index] = ::cuda::std::nullopt;
     return;
@@ -233,12 +239,16 @@ __global__ void cartesian_to_polar_voxel_kernel(
   }
 
   bool is_finite = isfinite(field_data);
-  bool is_valid_radius = (field_index == FieldDataIndex::radius)
-                           ? (min_radius <= field_data) && (field_data <= max_radius)
-                           : true;
+  bool is_within_radius_range = (field_index == FieldDataIndex::radius)
+                                  ? (min_radius <= field_data) && (field_data <= max_radius)
+                                  : true;
+  bool has_sufficient_radius =
+    (field_index == FieldDataIndex::radius)
+      ? ::cuda::std::abs(field_data) >= ::cuda::std::numeric_limits<TPolarData>::epsilon()
+      : true;
 
   auto output = outputs[field_index];
-  if (!is_finite || !is_valid_radius) {
+  if (!is_finite || !is_within_radius_range || !has_sufficient_radius) {
     // Assign invalid index for points with invalid value and/or
     // points outside radius range
     output[point_index] = ::cuda::std::nullopt;
@@ -905,7 +915,7 @@ size_t CudaPolarVoxelOutlierFilter::create_output(
   output_cloud->is_bigendian = input_cloud->is_bigendian;
   output_cloud->point_step = input_cloud->point_step;
   output_cloud->is_dense = input_cloud->is_dense;
-  output_cloud->height = 1;
+  output_cloud->height = point_cloud_height_organized;
   output_cloud->width = count;
   output_cloud->row_step = output_cloud->width * output_cloud->point_step;
   output_cloud->data = cuda_blackboard::make_unique<std::uint8_t[]>(output_cloud->row_step);
