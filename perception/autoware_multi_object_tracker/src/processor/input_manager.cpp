@@ -77,28 +77,11 @@ void InputStream::onMessage(
 
   // object shape processing
   for (auto & object : dynamic_objects.objects) {
-    const auto label =
-      autoware::object_recognition_utils::getHighestProbLabel(object.classification);
-    if (label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN) {
-      continue;
-    }
-
-    // check object shape type, bounding box, cylinder, polygon
     const auto object_type = object.shape.type;
-    if (object_type == autoware_perception_msgs::msg::Shape::POLYGON) {
-      // convert convex hull to bounding box
-      if (!shapes::convertConvexHullToBoundingBox(object, object)) {
-        RCLCPP_WARN(
-          node_.get_logger(),
-          "InputManager::onMessage %s: Failed to convert convex hull to bounding box.",
-          channel_.long_name.c_str());
-        continue;
-      }
-    } else if (object_type == autoware_perception_msgs::msg::Shape::CYLINDER) {
+    if (object_type == autoware_perception_msgs::msg::Shape::CYLINDER) {
       // convert cylinder dimension to bounding box dimension
       object.shape.dimensions.y = object.shape.dimensions.x;
     }
-    // else, it is bounding box and nothing to do
   }
 
   // Normalize the object uncertainty
