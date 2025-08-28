@@ -133,6 +133,22 @@ bool VehicleTracker::predict(const rclcpp::Time & time)
 bool VehicleTracker::measureWithPose(
   const types::DynamicObject & object, const types::InputChannel & channel_info)
 {
+  // if the incoming object shape is polygon, convert it to bounding box
+  if (object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
+    types::DynamicObject converted_object;
+    const double yaw = tf2::getYaw(object.pose.orientation);
+    if (shapes::convertConvexHullToBoundingBox(object, yaw, converted_object)) {
+      converted_object.kinematics.orientation_availability =
+        types::OrientationAvailability::AVAILABLE;
+      converted_object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+      measureWithPose(converted_object, channel_info);
+      return true;
+    } else {
+      // failed to convert, do not update
+      return false;
+    }
+  }
+
   // get measurement yaw angle to update
   bool is_yaw_available =
     object.kinematics.orientation_availability != types::OrientationAvailability::UNAVAILABLE &&

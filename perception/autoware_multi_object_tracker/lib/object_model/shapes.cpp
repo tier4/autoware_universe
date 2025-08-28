@@ -181,13 +181,32 @@ bool get2dPrecisionRecallGIoU(
  * @param output_object: output bounding box objects
  */
 bool convertConvexHullToBoundingBox(
-  const types::DynamicObject & input_object, types::DynamicObject & output_object)
+  const types::DynamicObject & input_object, const double yaw, types::DynamicObject & output_object)
 {
   // check footprint size
-  const auto & points = input_object.shape.footprint.points;
-  if (points.size() < 3) {
+  const auto & input_points = input_object.shape.footprint.points;
+  if (input_points.size() < 3) {
     return false;
   }
+  // initialize output object
+  output_object = input_object;
+
+  // rotate given footprint points to the given yaw angle
+  const double object_yaw = tf2::getYaw(input_object.pose.orientation);
+  const double theta = yaw - object_yaw;
+  const double cos_theta = std::cos(theta);
+  const double sin_theta = std::sin(theta);
+  std::vector<geometry_msgs::msg::Point32> points;
+  points.reserve(input_points.size());
+  for (const auto & point : input_points) {
+    geometry_msgs::msg::Point32 rotated_point;
+    rotated_point.x = point.x * cos_theta - point.y * sin_theta;
+    rotated_point.y = point.x * sin_theta + point.y * cos_theta;
+    rotated_point.z = point.z;
+    points.push_back(rotated_point);
+  }
+  // output object orientation is set to the given yaw angle
+  output_object.pose.orientation = tf2::toMsg(tf2::Quaternion(0, 0, sin(yaw / 2), cos(yaw / 2)));
 
   // Pre-allocate boundary values using first point
   float max_x = points[0].x;
@@ -214,14 +233,12 @@ bool convertConvexHullToBoundingBox(
   const double center_y = (max_y + min_y) * 0.5;
 
   // transform to global for the object's position
-  const double yaw = tf2::getYaw(input_object.pose.orientation);
   const double cos_yaw = cos(yaw);
   const double sin_yaw = sin(yaw);
   const double dx = center_x * cos_yaw - center_y * sin_yaw;
   const double dy = center_x * sin_yaw + center_y * cos_yaw;
 
   // set output parameters - avoid unnecessary copying
-  output_object = input_object;
   output_object.pose.position.x += dx;
   output_object.pose.position.y += dy;
 
