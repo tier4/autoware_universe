@@ -60,12 +60,9 @@ using namespace geometry_msgs::msg;
 using namespace nav_msgs::msg;
 
 // Using constants from dimensions.hpp
-constexpr int64_t PAST_TIME_STEPS = EGO_HISTORY_SHAPE[1];
-constexpr int64_t NEIGHBOR_NUM = NEIGHBOR_SHAPE[1];
+constexpr int64_t PAST_TIME_STEPS = INPUT_T + 1;
 constexpr int64_t NEIGHBOR_PAST_DIM = NEIGHBOR_SHAPE[3];
 constexpr int64_t NEIGHBOR_FUTURE_DIM = 4;  // x, y, cos(yaw), sin(yaw)
-constexpr int64_t LANE_NUM = LANES_SHAPE[1];
-constexpr int64_t ROUTE_NUM = ROUTE_LANES_SHAPE[1];
 
 struct FrameData
 {
@@ -94,15 +91,15 @@ struct TrainingDataBinary
   float ego_agent_past[EGO_HISTORY_SHAPE[1] * EGO_HISTORY_SHAPE[2]];
   float ego_current_state[EGO_CURRENT_STATE_SHAPE[1]];
   float ego_agent_future[OUTPUT_T * EGO_HISTORY_SHAPE[2]];
-  float neighbor_agents_past[NEIGHBOR_NUM * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM];
-  float neighbor_agents_future[NEIGHBOR_NUM * OUTPUT_T * NEIGHBOR_FUTURE_DIM];
+  float neighbor_agents_past[MAX_NUM_NEIGHBORS * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM];
+  float neighbor_agents_future[MAX_NUM_NEIGHBORS * OUTPUT_T * NEIGHBOR_FUTURE_DIM];
   float static_objects[STATIC_OBJECTS_SHAPE[1] * STATIC_OBJECTS_SHAPE[2]];
-  float lanes[LANE_NUM * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM];
-  float lanes_speed_limit[LANE_NUM];
-  int32_t lanes_has_speed_limit[LANE_NUM];
-  float route_lanes[ROUTE_NUM * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM];
-  float route_lanes_speed_limit[ROUTE_NUM];
-  int32_t route_lanes_has_speed_limit[ROUTE_NUM];
+  float lanes[NUM_SEGMENTS_IN_LANE * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM];
+  float lanes_speed_limit[NUM_SEGMENTS_IN_LANE];
+  int32_t lanes_has_speed_limit[NUM_SEGMENTS_IN_LANE];
+  float route_lanes[NUM_SEGMENTS_IN_ROUTE * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM];
+  float route_lanes_speed_limit[NUM_SEGMENTS_IN_ROUTE];
+  int32_t route_lanes_has_speed_limit[NUM_SEGMENTS_IN_ROUTE];
   float goal_pose[NEIGHBOR_FUTURE_DIM];
   int32_t turn_indicator;
 
@@ -204,7 +201,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   // Build agent histories using AgentData::update_histories
   const int64_t start_idx = std::max(static_cast<int64_t>(0), current_idx - PAST_TIME_STEPS + 1);
   autoware::diffusion_planner::AgentData agent_data_past(
-    data_list[start_idx].tracked_objects, NEIGHBOR_NUM, PAST_TIME_STEPS, true);
+    data_list[start_idx].tracked_objects, MAX_NUM_NEIGHBORS, PAST_TIME_STEPS, true);
   for (int64_t t = 1; t < PAST_TIME_STEPS; ++t) {
     const int64_t frame_idx = start_idx + t;
     if (frame_idx >= static_cast<int64_t>(data_list.size())) {
@@ -225,7 +222,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   }
 
   // Future data: use AgentHistory for each agent
-  std::vector<float> neighbor_future(NEIGHBOR_NUM * OUTPUT_T * NEIGHBOR_FUTURE_DIM, 0.0f);
+  std::vector<float> neighbor_future(MAX_NUM_NEIGHBORS * OUTPUT_T * NEIGHBOR_FUTURE_DIM, 0.0f);
   for (int64_t agent_idx = 0; agent_idx < static_cast<int64_t>(agent_histories.size());
        ++agent_idx) {
     const std::string & agent_id_str = agent_histories[agent_idx].object_id();
@@ -651,7 +648,7 @@ int main(int argc, char ** argv)
 
       // Get lanes data with speed limits
       const auto [lanes, lanes_speed_limit] = lane_segment_context.get_lane_segments(
-        map2bl, traffic_light_id_map, center_x, center_y, LANE_NUM);
+        map2bl, traffic_light_id_map, center_x, center_y, NUM_SEGMENTS_IN_LANE);
 
       // Create has_speed_limit flags based on speed_limit values
       std::vector<bool> lanes_has_speed_limit(lanes_speed_limit.size());
@@ -675,8 +672,9 @@ int main(int argc, char ** argv)
       }
 
       // Get route lanes data with speed limits
-      std::vector<float> route_lanes(ROUTE_NUM * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM, 0.0f);
-      std::vector<float> route_lanes_speed_limit(ROUTE_NUM, 0.0f);
+      std::vector<float> route_lanes(
+        NUM_SEGMENTS_IN_ROUTE * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM, 0.0f);
+      std::vector<float> route_lanes_speed_limit(NUM_SEGMENTS_IN_ROUTE, 0.0f);
 
       geometry_msgs::msg::Pose current_pose;
       current_pose.position = ego_pos;
