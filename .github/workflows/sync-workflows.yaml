@@ -1,0 +1,103 @@
+name: Sync Workflows
+
+on:
+  schedule:
+    # Run every day at midnight JST (15:00 UTC, since JST = UTC+9)
+    - cron: 0 15 * * *
+  workflow_dispatch:
+jobs:
+  sync-workflows:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate token
+        id: generate-token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.PRIVATE_KEY }}
+
+      - name: Set git config
+        uses: autowarefoundation/autoware-github-actions/set-git-config@v1
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Install Python and Poetry
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry v1.8.3
+        run: |
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=1.8.3 python3 -
+          poetry install
+
+      - name: Sync workflows from upstream
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          poetry run python -m scripts.sync_workflows
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        id: create-pr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          reviewers: rej55
+          commit-message: |
+            feat: sync workflows from upstream
+
+            Automated workflow sync from autowarefoundation/autoware_universe to tier4/autoware_universe
+
+            Scheduled run: ${{ github.run_id }}
+          title: "feat: sync workflows from upstream"
+          body: |
+            ## 🔄 Automated Workflow Sync
+
+            This PR contains workflow updates synced from the upstream repository [`autowarefoundation/autoware_universe`](https://github.com/autowarefoundation/autoware_universe) to [`tier4/autoware_universe`](https://github.com/tier4/autoware_universe).
+
+            ### Changes
+            - Synced workflows according to `workflow_sync_setting.yaml`
+            - Applied any necessary modifications for TIER IV environment
+
+            **Triggered by**: Scheduled run at midnight JST
+            **Run ID**: [${{ github.run_id }}](https://github.com/tier4/autoware_universe/actions/runs/${{ github.run_id }})
+            **Timestamp**: ${{ github.event.repository.updated_at }}
+
+            ---
+            *This PR was created automatically by the workflow sync process.*
+          branch: sync-workflows/automated-${{ github.run_id }}
+          delete-branch: true
+
+      - name: Report sync results
+        if: always()
+        run: |
+          echo "## Workflow Sync Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.changes.outputs.has_changes }}" == "true" ]; then
+            echo "✅ **Changes detected and processed**" >> $GITHUB_STEP_SUMMARY
+            echo "📝 **Pull request created** for review" >> $GITHUB_STEP_SUMMARY
+            if [ -n "${{ steps.create-pr.outputs.pull-request-url }}" ]; then
+              echo "🔗 **PR Link**: ${{ steps.create-pr.outputs.pull-request-url }}" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "ℹ️ **No changes needed** - workflows are up to date" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "**Japan time**: $(TZ='Asia/Tokyo' date +"%Y-%m-%d %H:%M:%S JST")" >> $GITHUB_STEP_SUMMARY
