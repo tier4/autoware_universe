@@ -201,23 +201,16 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   const std::vector<FrameData> & data_list, const int64_t current_idx,
   const Eigen::Matrix4f & map2bl_matrix)
 {
-  std::cerr << "start process_neighbor_agents_and_future" << std::endl;
   // Build agent histories using AgentData::update_histories
   const int64_t start_idx = std::max(static_cast<int64_t>(0), current_idx - PAST_TIME_STEPS + 1);
-  std::cerr << "create agent_data_past" << std::endl;
   autoware::diffusion_planner::AgentData agent_data_past(
     data_list[start_idx].tracked_objects, NEIGHBOR_NUM, PAST_TIME_STEPS, true);
   for (int64_t t = 1; t < PAST_TIME_STEPS; ++t) {
-    std::cerr << "t=" << t << std::endl;
     const int64_t frame_idx = start_idx + t;
     if (frame_idx >= static_cast<int64_t>(data_list.size())) {
       break;
     }
-    std::cerr << "before agent_data_past.update_histories(data_list[frame_idx].tracked_objects)"
-              << std::endl;
     agent_data_past.update_histories(data_list[frame_idx].tracked_objects);
-    std::cerr << "after agent_data_past.update_histories(data_list[frame_idx].tracked_objects)"
-              << std::endl;
   }
   agent_data_past.apply_transform(map2bl_matrix);
   agent_data_past.trim_to_k_closest_agents();
@@ -237,8 +230,6 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
        ++agent_idx) {
     const std::string & agent_id_str = agent_histories[agent_idx].object_id();
     AgentHistory & future_history = id_to_history[agent_id_str];
-    std::cerr << "agent_id_str=" << agent_id_str << std::endl;
-    std::cerr << future_history.object_id() << std::endl;
     for (int64_t t = 1; t <= OUTPUT_T; ++t) {
       const int64_t future_frame_idx = current_idx + t;
       if (future_frame_idx >= static_cast<int64_t>(data_list.size())) {
@@ -250,9 +241,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
       for (const auto & obj : future_objects) {
         const std::string obj_id = autoware_utils_uuid::to_hex_string(obj.object_id);
         if (obj_id == agent_id_str) {
-          std::cerr << "before future_history.update(0.0, obj)" << std::endl;
           future_history.update(0.0, obj);
-          std::cerr << "after future_history.update(0.0, obj)" << std::endl;
           found = true;
           break;
         }
