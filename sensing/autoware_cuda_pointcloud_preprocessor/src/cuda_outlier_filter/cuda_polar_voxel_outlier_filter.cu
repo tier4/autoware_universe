@@ -150,6 +150,12 @@ __device__ [[nodiscard]] inline bool meets_secondary_threshold(
   return count <= static_cast<int>(threshold);
 }
 
+__device__ [[nodiscard]] inline bool meets_intensity_threshold(
+  const uint8_t intensity, const uint8_t threshold)
+{
+  return intensity <= threshold;
+}
+
 template <typename T>
 __device__ T
 get_element_value(const uint8_t * data, const size_t index, const size_t step, const size_t offset)
@@ -310,10 +316,11 @@ __global__ void minus_one_kernel(int * __restrict__ indices, const size_t num_po
   indices[point_index] -= 1;
 }
 
-template <typename TReturnType>
-__global__ void classify_point_by_return_type_kernel(
+template <typename TReturnType, typename TIntensity>
+__global__ void classify_point_by_return_type_and_intensity_kernel(
   const uint8_t * __restrict__ data, const size_t num_points, const int num_voxels,
-  const size_t step, const size_t offset, const ReturnTypeCandidates primary_return_type,
+  const size_t step, const size_t return_type_offset, const size_t intensity_offset,
+  const ReturnTypeCandidates primary_return_type, const uint8_t intensity_threshold,
   const ::cuda::std::optional<int> * __restrict__ point_indices,
   const int * __restrict__ voxel_indices,
   const ::cuda::std::optional<int> * __restrict__ radius_indices, const double radial_resolution_m,
@@ -336,7 +343,10 @@ __global__ void classify_point_by_return_type_kernel(
     return;
   }
 
-  auto return_type = get_element_value<TReturnType>(data, point_index.value(), step, offset);
+  auto return_type =
+    get_element_value<TReturnType>(data, point_index.value(), step, return_type_offset);
+
+  auto intensity = get_element_value<TIntensity>(data, point_index.value(), step, intensity_offset);
 
   auto find = [] __device__(ReturnTypeCandidates candidates, TReturnType value) -> bool {
     bool is_found = false;
@@ -348,9 +358,8 @@ __global__ void classify_point_by_return_type_kernel(
 
   auto is_primary_return_type = find(primary_return_type, return_type);
   is_primary_returns[point_index.value()] = is_primary_return_type;
-  auto is_secondary_return_type =
-    !is_primary_return_type;  // categorize all non-primary return type as secondary
-  is_secondary_returns[point_index.value()] = is_secondary_return_type;
+  auto is_secondary_return_type = meets_intensity_threshold(intensity, intensity_threshold);
+  is_secondary_returns[point_index.value()] = !is_primary_return_type && is_secondary_return_type;
 
   if (is_primary_return_type) {
     atomic_add_size_t(&(primary_returns[voxel_index]), 1);
@@ -395,8 +404,8 @@ __global__ void point_validity_check_kernel(
   const bool * __restrict__ secondary_meets_threshold,
   const ::cuda::std::optional<int> * __restrict__ point_indices,
   const int * __restrict__ voxel_indices, const bool * __restrict__ is_primary_returns,
-  const bool * __restrict__ is_secondary_returns, const size_t num_points, const int num_voxels,
-  const bool filter_secondary_returns, bool * __restrict__ valid_points_mask)
+  const size_t num_points, const int num_voxels, const bool filter_secondary_returns,
+  bool * __restrict__ valid_points_mask)
 {
   size_t array_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (array_index >= num_points) {
@@ -417,17 +426,27 @@ __global__ void point_validity_check_kernel(
   }
 
   // Voxel is kept if BOTH criteria are met
-  auto meet_criteria =
+  auto meet_voxel_criteria =
     primary_meets_threshold[voxel_index] && secondary_meets_threshold[voxel_index];
 
-  // Add primary returns
-  valid_points_mask[point_index.value()] =
-    (meet_criteria) && (is_primary_returns[point_index.value()]);
+  // -----
+  // NOTE: The following one line expression is equivalent to:
+  // -----
+  // bool is_valid;
+  // if (!meet_voxel_criteria) {
+  //   is_valid = false;
+  // } else {
+  //   if (!filter_secondary_returns) {
+  //     is_valid = true;
+  //   } else {
+  //     is_valid = is_primary_returns[point_index.value()];
+  //   }
+  // }
+  // valid_points_mask[point_index.value()] = is_valid;
+  // -----
 
-  // Add secondary returns only if not filtering them
-  if (!filter_secondary_returns && is_secondary_returns[point_index.value()]) {
-    valid_points_mask[point_index.value()] = meet_criteria;
-  }
+  valid_points_mask[point_index.value()] =
+    meet_voxel_criteria && (!filter_secondary_returns || is_primary_returns[point_index.value()]);
 }
 
 __global__ void copy_valid_points_kernel(
@@ -589,14 +608,16 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 
     // Add points to appropriate vector based on return type
     size_t return_type_offset = get_offset(input_cloud->fields, "return_type");
+    size_t intensity_offset = get_offset(input_cloud->fields, "intensity");
     grid_dim = dim3((num_points + block_dim.x - 1) / block_dim.x);
-    classify_point_by_return_type_kernel<uint8_t><<<grid_dim, block_dim, 0, stream_>>>(
-      input_cloud->data.get(), num_points, num_total_voxels, input_cloud->point_step,
-      return_type_offset, primary_return_type_dev_.value(), point_indices.get(),
-      voxel_indices.get(), radius_idx.get(), resolutions.radius,
-      params.visibility_estimation_max_range_m, num_primary_returns.get(),
-      num_secondary_returns.get(), is_in_visibility_range.get(), is_primary_returns.get(),
-      is_secondary_returns.get());
+    classify_point_by_return_type_and_intensity_kernel<uint8_t, uint8_t>
+      <<<grid_dim, block_dim, 0, stream_>>>(
+        input_cloud->data.get(), num_points, num_total_voxels, input_cloud->point_step,
+        return_type_offset, intensity_offset, primary_return_type_dev_.value(),
+        static_cast<uint8_t>(params.intensity_threshold), point_indices.get(), voxel_indices.get(),
+        radius_idx.get(), resolutions.radius, params.visibility_estimation_max_range_m,
+        num_primary_returns.get(), num_secondary_returns.get(), is_in_visibility_range.get(),
+        is_primary_returns.get(), is_secondary_returns.get());
   }
 
   // Collect valid point indices and visibility statistics
@@ -621,8 +642,8 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 
     point_validity_check_kernel<<<grid_dim, block_dim, 0, stream_>>>(
       primary_meets_threshold.get(), secondary_meets_threshold.get(), point_indices.get(),
-      voxel_indices.get(), is_primary_returns.get(), is_secondary_returns.get(), num_points,
-      num_total_voxels, params.filter_secondary_returns, valid_points_mask.get());
+      voxel_indices.get(), is_primary_returns.get(), num_points, num_total_voxels,
+      params.filter_secondary_returns, valid_points_mask.get());
   }
 
   // Create filtered output

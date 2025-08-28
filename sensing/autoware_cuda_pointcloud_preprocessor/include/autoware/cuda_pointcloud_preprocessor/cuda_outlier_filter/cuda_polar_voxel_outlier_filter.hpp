@@ -55,6 +55,7 @@ struct CudaPolarVoxelOutlierFilterParameters
   bool use_return_type_classification;  // Whether to use return type classification
   bool filter_secondary_returns;        // Whether to filter secondary returns
   int secondary_noise_threshold;        // Threshold for primary to secondary return classification
+  int intensity_threshold;              // Maximum intensity for secondary returns
 
   // Diagnostics parameters
   double visibility_error_threshold;  // Threshold for visibility diagnostics

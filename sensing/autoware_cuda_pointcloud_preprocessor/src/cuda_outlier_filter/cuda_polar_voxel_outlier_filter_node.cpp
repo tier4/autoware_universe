@@ -37,6 +37,7 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
       declare_parameter<bool>("use_return_type_classification");
     filter_params_.filter_secondary_returns = declare_parameter<bool>("filter_secondary_returns");
     filter_params_.secondary_noise_threshold = declare_parameter<int>("secondary_noise_threshold");
+    filter_params_.intensity_threshold = declare_parameter<uint8_t>("intensity_threshold", 1);
     filter_params_.visibility_error_threshold =
       declare_parameter<double>("visibility_error_threshold", 0.5);
     filter_params_.visibility_warn_threshold =
@@ -212,6 +213,8 @@ void CudaPolarVoxelOutlierFilterNode::update_parameter(const rclcpp::Parameter &
     filter_params_.voxel_points_threshold = static_cast<int>(param.as_int());
   } else if (name == "secondary_noise_threshold") {
     filter_params_.secondary_noise_threshold = static_cast<int>(param.as_int());
+  } else if (name == "intensity_threshold") {
+    filter_params_.intensity_threshold = static_cast<int>(param.as_int());
   } else if (name == "visibility_estimation_max_secondary_voxel_count") {
     filter_params_.visibility_estimation_max_secondary_voxel_count =
       static_cast<int>(param.as_int());
@@ -273,6 +276,7 @@ rcl_interfaces::msg::SetParametersResult CudaPolarVoxelOutlierFilterNode::param_
     "use_return_type_classification",
     "filter_secondary_returns",
     "secondary_noise_threshold",
+    "intensity_threshold",
     "visibility_estimation_max_secondary_voxel_count",
     "visualization_estimation_only",
     "primary_return_types",
