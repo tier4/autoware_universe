@@ -59,6 +59,12 @@ list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=compute_89")
 # __host__ or __device__ annotation on lambda requires --extended-lambda nvcc flag
 list(APPEND CUDA_NVCC_FLAGS "--extended-lambda")
 
+# NOTE(manato): adding `--fmad=false` can reduce numerical discrepancies between CPU implementations
+# and GPU implementations of the filters. But a slight performance impact can also be introduced
+# To prioritize performance, the flag is disabled
+#
+# list(APPEND CUDA_NVCC_FLAGS "--fmad=false")
+
 ################################################################################
 ### cuda_pointcloud_preprocessor ###
 cuda_add_library(cuda_pointcloud_preprocessor_lib SHARED
@@ -74,13 +80,6 @@ cuda_add_library(cuda_pointcloud_preprocessor_lib SHARED
   src/cuda_downsample_filter/cuda_voxel_grid_downsample_filter.cu
   src/cuda_outlier_filter/cuda_polar_voxel_outlier_filter.cu
 )
-
-# target_compile_options(
-#   # __host__ or __device__ annotation on lambda requires --extended-lambda nvcc flag
-#   cuda_pointcloud_preprocessor_lib
-#   PRIVATE
-#   $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda>
-# )
 
 target_link_libraries(cuda_pointcloud_preprocessor_lib
   ${autoware_pointcloud_preprocessor_TARGETS}

@@ -39,3 +39,13 @@ See [the original implementation in autoware_cuda_pointcloud_preprocessor](../..
 ### Core Parameters (Schema-based)
 
 {{ json_to_markdown("sensing/autoware_pointcloud_preprocessor/schema/polar_voxel_outlier_filter.schema.json") }}
+
+## Assumptions / Known limits
+Due to differences in floating-point arithmetic between CPUs and GPUs, the outputs of `autoware::pointcloud_preprocessor::PolarVoxelOutlierFilterComponent` and this filter may not be identical.
+
+Adding compiler options, such as the following, can reduce numerical discrepancies, though a slight performance impact can also be introduced, and it is still difficult to acquire complete identical results.
+```CMake
+list(APPEND CUDA_NVCC_FLAGS "--fmad=false")
+```
+
+To prioritize performance, these compiler options are not enabled.
