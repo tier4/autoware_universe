@@ -166,23 +166,12 @@ get_element_value(const uint8_t * data, const size_t index, const size_t step, c
 }
 
 template <typename TFieldData>
-__global__ void polar_to_polar_voxel_kernel(
-  const uint8_t * __restrict__ data, const size_t num_points, const uint32_t step,
-  const FieldDataComposer<size_t> offsets, const FieldDataComposer<double> resolutions,
-  const double min_radius, const double max_radius,
-  FieldDataComposer<::cuda::std::optional<int32_t> *> outputs)
+__device__ void assign_polar_index(
+  const TFieldData & field_data, const size_t & point_index, const FieldDataIndex & field_index,
+  const double & min_radius, const double & max_radius,
+  const FieldDataComposer<double> & resolutions,
+  FieldDataComposer<::cuda::std::optional<int32_t> *> & outputs)
 {
-  size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (point_index >= num_points) {
-    return;
-  }
-
-  // treat 3 field (radius, azimuth, elevation) in parallel using y dimension
-  auto field_index = static_cast<FieldDataIndex>(blockIdx.y);
-
-  TFieldData field_data =
-    get_element_value<TFieldData>(data, point_index, step, offsets[field_index]);
-
   bool is_finite = isfinite(field_data);
   bool is_within_radius_range = (field_index == FieldDataIndex::radius)
                                   ? (min_radius <= field_data) && (field_data <= max_radius)
@@ -199,7 +188,33 @@ __global__ void polar_to_polar_voxel_kernel(
     return;
   }
 
-  output[point_index] = static_cast<int>(floor(field_data / resolutions[field_index]));
+  if constexpr (::cuda::std::is_same<TFieldData, double>::value) {
+    output[point_index] = static_cast<int32_t>(floor(field_data / resolutions[field_index]));
+  } else {
+    output[point_index] = static_cast<int32_t>(floorf(field_data / resolutions[field_index]));
+  }
+}
+
+template <typename TFieldData>
+__global__ void polar_to_polar_voxel_kernel(
+  const uint8_t * __restrict__ data, const size_t num_points, const uint32_t step,
+  const FieldDataComposer<size_t> offsets, const FieldDataComposer<double> resolutions,
+  const double min_radius, const double max_radius,
+  FieldDataComposer<::cuda::std::optional<int32_t> *> outputs)
+{
+  auto point_index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (point_index >= num_points) {
+    return;
+  }
+
+  // treat 3 field (radius, azimuth, elevation) in parallel using y dimension
+  auto field_index = static_cast<FieldDataIndex>(blockIdx.y);
+
+  TFieldData field_data =
+    get_element_value<TFieldData>(data, point_index, step, offsets[field_index]);
+
+  assign_polar_index(
+    field_data, point_index, field_index, min_radius, max_radius, resolutions, outputs);
 }
 
 template <typename TCartesianData, typename TPolarData>
@@ -226,36 +241,34 @@ __global__ void cartesian_to_polar_voxel_kernel(
   auto field_index = static_cast<FieldDataIndex>(blockIdx.y);
 
   auto field_data = static_cast<TPolarData>(0);
-  switch (field_index) {
-    case FieldDataIndex::radius:
-      field_data = sqrt(x * x + y * y + z * z);
-      break;
-    case FieldDataIndex::azimuth:
-      field_data = atan2(y, x);
-      break;
-    case FieldDataIndex::elevation:
-      field_data = atan2(z, sqrt(x * x + y * y));
-      break;
+  if constexpr (::cuda::std::is_same<TPolarData, double>::value) {
+    switch (field_index) {
+      case FieldDataIndex::radius:
+        field_data = sqrt(x * x + y * y + z * z);
+        break;
+      case FieldDataIndex::azimuth:
+        field_data = atan2(y, x);
+        break;
+      case FieldDataIndex::elevation:
+        field_data = atan2(z, sqrt(x * x + y * y));
+        break;
+    }
+  } else {
+    switch (field_index) {
+      case FieldDataIndex::radius:
+        field_data = sqrtf(x * x + y * y + z * z);
+        break;
+      case FieldDataIndex::azimuth:
+        field_data = atan2f(y, x);
+        break;
+      case FieldDataIndex::elevation:
+        field_data = atan2f(z, sqrtf(x * x + y * y));
+        break;
+    }
   }
 
-  bool is_finite = isfinite(field_data);
-  bool is_within_radius_range = (field_index == FieldDataIndex::radius)
-                                  ? (min_radius <= field_data) && (field_data <= max_radius)
-                                  : true;
-  bool has_sufficient_radius =
-    (field_index == FieldDataIndex::radius)
-      ? ::cuda::std::abs(field_data) >= ::cuda::std::numeric_limits<TPolarData>::epsilon()
-      : true;
-
-  auto output = outputs[field_index];
-  if (!is_finite || !is_within_radius_range || !has_sufficient_radius) {
-    // Assign invalid index for points with invalid value and/or
-    // points outside radius range
-    output[point_index] = ::cuda::std::nullopt;
-    return;
-  }
-
-  output[point_index] = static_cast<int32_t>(floor(field_data / resolutions[field_index]));
+  assign_polar_index(
+    field_data, point_index, field_index, min_radius, max_radius, resolutions, outputs);
 }
 
 __global__ void calculate_voxel_index_kernel(
