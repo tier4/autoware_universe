@@ -308,7 +308,7 @@ __global__ void subtract_left_optional_kernel(
 
   // Specially handle the very first element
   if (array_index == 0) {
-    output_array[array_index] == input_array[array_index].has_value();
+    output_array[array_index] = input_array[array_index].has_value();
     return;
   }
 
