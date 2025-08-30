@@ -224,7 +224,7 @@ __global__ void cartesian_to_polar_voxel_kernel(
   const double min_radius, const double max_radius,
   FieldDataComposer<::cuda::std::optional<int32_t> *> outputs)
 {
-  size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto point_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_index >= num_points) {
     return;
   }
@@ -276,7 +276,7 @@ __global__ void calculate_voxel_index_kernel(
   const FieldDataComposer<int> field_dimensions, const FieldDataComposer<int> field_mins,
   ::cuda::std::optional<int> * point_indices, ::cuda::std::optional<int> * voxel_indices)
 {
-  size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto point_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_index >= num_points) {
     return;
   }
@@ -314,7 +314,7 @@ __global__ void subtract_left_optional_kernel(
   const ::cuda::std::optional<int> * __restrict__ input_array, const size_t array_length,
   bool * __restrict__ output_array)
 {
-  size_t array_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto array_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (array_index >= array_length) {
     return;
   }
@@ -331,7 +331,7 @@ __global__ void subtract_left_optional_kernel(
 
 __global__ void minus_one_kernel(int * __restrict__ indices, const size_t num_points)
 {
-  size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto point_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_index >= num_points) {
     return;
   }
@@ -351,7 +351,7 @@ __global__ void classify_point_by_return_type_and_intensity_kernel(
   size_t * __restrict__ secondary_returns, int * __restrict__ is_in_visibility_range,
   bool * __restrict__ is_primary_returns, bool * __restrict__ is_secondary_returns)
 {
-  size_t array_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto array_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (array_index >= num_points) {
     return;
   }
@@ -408,7 +408,7 @@ __global__ void criterion_check_kernel(
   const int secondary_noise_threshold, bool * __restrict__ primary_meets_threshold,
   bool * __restrict__ secondary_meets_threshold)
 {
-  size_t voxel_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto voxel_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (voxel_index >= num_total_voxels) {
     return;
   }
@@ -430,7 +430,7 @@ __global__ void point_validity_check_kernel(
   const size_t num_points, const int num_voxels, const bool filter_secondary_returns,
   bool * __restrict__ valid_points_mask)
 {
-  size_t array_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto array_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (array_index >= num_points) {
     return;
   }
@@ -477,7 +477,7 @@ __global__ void copy_valid_points_kernel(
   const int * __restrict__ filtered_indices, const size_t num_points, const size_t step,
   uint8_t * __restrict__ output_points)
 {
-  size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto point_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_index >= num_points) {
     return;
   }
@@ -492,7 +492,7 @@ __global__ void copy_valid_points_kernel(
 
 __global__ void bool_flip_kernel(bool * __restrict__ flags, const size_t num_points)
 {
-  size_t point_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto point_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (point_index >= num_points) {
     return;
   }
@@ -505,7 +505,7 @@ __global__ void is_low_visibility_voxel_kernel(
   const int * __restrict__ is_in_visibility_range, const int num_voxels,
   bool * __restrict__ is_low_visibility_voxels)
 {
-  size_t voxel_index = blockIdx.x * blockDim.x + threadIdx.x;
+  auto voxel_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (voxel_index >= num_voxels) {
     return;
   }
