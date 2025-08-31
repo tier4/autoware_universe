@@ -196,7 +196,7 @@ std::vector<float> create_ego_sequence(
 
 std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_future(
   const std::vector<FrameData> & data_list, const int64_t current_idx,
-  const Eigen::Matrix4f & map2bl_matrix)
+  const Eigen::Matrix4f & map2bl_matrix, const Eigen::Matrix4f & bl2map_matrix)
 {
   // Build agent histories using AgentData::update_histories
   const int64_t start_idx = std::max(static_cast<int64_t>(0), current_idx - PAST_TIME_STEPS + 1);
@@ -221,6 +221,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   for (size_t i = 0; i < agent_histories.size(); ++i) {
     id_to_history[agent_histories[i].object_id()] = AgentHistory(
       agent_histories[i].get_latest_state(), agent_histories[i].label_id(), 0.0, OUTPUT_T, false);
+    id_to_history[agent_histories[i].object_id()].apply_transform(bl2map_matrix);
   }
 
   // Future data: use AgentHistory for each agent
@@ -246,7 +247,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
         }
       }
       if (!found) {
-        future_history.update_empty();
+        break;
       }
     }
     future_history.apply_transform(map2bl_matrix);
@@ -256,6 +257,9 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
     for (int64_t t = 0; t < OUTPUT_T; ++t) {
       const int64_t base_idx = agent_idx * OUTPUT_T * NEIGHBOR_FUTURE_DIM + t * NEIGHBOR_FUTURE_DIM;
       for (int64_t d = 0; d < NEIGHBOR_FUTURE_DIM; ++d) {
+        if (t * AGENT_STATE_DIM + d >= arr.size()) {
+          break;
+        }
         neighbor_future[base_idx + d] = arr[t * AGENT_STATE_DIM + d];
       }
     }
@@ -633,7 +637,7 @@ int main(int argc, char ** argv)
 
       // Process neighbor agents (both past and future with consistent agent ordering)
       const auto [neighbor_past, neighbor_future] =
-        process_neighbor_agents_and_future(seq.data_list, i, map2bl);
+        process_neighbor_agents_and_future(seq.data_list, i, map2bl, bl2map);
 
       // Process lanes and routes
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
