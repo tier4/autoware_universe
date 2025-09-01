@@ -724,21 +724,14 @@ int main(int argc, char ** argv)
 
       // Get goal pose
       const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
-      const Eigen::Matrix4f goal_pose_matrix = utils::pose_to_matrix4f(goal_pose);
-      const Eigen::Vector4f goal_pos_bl =
-        map2bl * Eigen::Vector4f(
-                   goal_pose_matrix(0, 3), goal_pose_matrix(1, 3), goal_pose_matrix(2, 3), 1.0);
-
-      // Get goal orientation in base_link frame
-      const Eigen::Quaternionf goal_quat(
-        goal_pose.orientation.w, goal_pose.orientation.x, goal_pose.orientation.y,
-        goal_pose.orientation.z);
-      const Eigen::Matrix3f goal_rot_map = goal_quat.toRotationMatrix();
-      const Eigen::Matrix3f goal_rot_bl = map2bl.block<3, 3>(0, 0) * goal_rot_map;
-      const float goal_yaw_bl = std::atan2(goal_rot_bl(1, 0), goal_rot_bl(0, 0));
-
-      // Convert goal pose to vector for saving
-      const std::vector<float> goal_pose_vec = {goal_pos_bl.x(), goal_pos_bl.y(), goal_yaw_bl};
+      const Eigen::Matrix4f goal_pose_in_map = utils::pose_to_matrix4f(goal_pose);
+      const Eigen::Matrix4f goal_pose_in_bl = map2bl * goal_pose_in_map;
+      const Eigen::Matrix3f goal_rot_bl = goal_pose_in_bl.block<3, 3>(0, 0);
+      const Eigen::Vector3f euler = goal_rot_bl.eulerAngles(0, 1, 2);
+      const float goal_x = goal_pose_in_bl(0, 3);
+      const float goal_y = goal_pose_in_bl(1, 3);
+      const float yaw = euler(2) + M_PI;
+      const std::vector<float> goal_pose_vec = {goal_x, goal_y, std::cos(yaw), std::sin(yaw)};
 
       // Such data should be skipped.
       // (1)Ego vehicle is stopped
@@ -757,8 +750,8 @@ int main(int argc, char ** argv)
       const float ego_future_last_x = ego_future[(OUTPUT_T - 1) * 4 + 0];
       const float ego_future_last_y = ego_future[(OUTPUT_T - 1) * 4 + 1];
       const float distance_to_goal_pose = std::sqrt(
-        (ego_future_last_x - goal_pos_bl.x()) * (ego_future_last_x - goal_pos_bl.x()) +
-        (ego_future_last_y - goal_pos_bl.y()) * (ego_future_last_y - goal_pos_bl.y()));
+        (ego_future_last_x - goal_x) * (ego_future_last_x - goal_x) +
+        (ego_future_last_y - goal_y) * (ego_future_last_y - goal_y));
 
       if (stopping_count >= 10 && distance_to_goal_pose < 5.0) {
         std::cout << "finish at " << i << " because stopping_count=" << stopping_count
