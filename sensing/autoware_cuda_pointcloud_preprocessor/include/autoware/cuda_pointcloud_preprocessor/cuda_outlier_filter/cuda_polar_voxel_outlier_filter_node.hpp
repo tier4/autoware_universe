@@ -29,6 +29,8 @@
 
 #include <mutex>
 #include <vector>
+#include <string>
+#include <memory>
 
 namespace autoware::cuda_pointcloud_preprocessor
 {

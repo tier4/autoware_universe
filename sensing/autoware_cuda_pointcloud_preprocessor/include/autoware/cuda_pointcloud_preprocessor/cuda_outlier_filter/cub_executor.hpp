@@ -20,6 +20,7 @@
 #include "autoware/cuda_utils/cuda_unique_ptr.hpp"
 
 #include <cuda_runtime.h>
+#include <utility>
 
 namespace autoware::cuda_pointcloud_preprocessor
 {
