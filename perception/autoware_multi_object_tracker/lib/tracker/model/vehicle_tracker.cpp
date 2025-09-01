@@ -141,6 +141,7 @@ bool VehicleTracker::measureWithPose(
       converted_object.kinematics.orientation_availability =
         types::OrientationAvailability::AVAILABLE;
       converted_object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+      // object_.shape.footprint = converted_object.shape.footprint;
       measureWithPose(converted_object, channel_info);
       return true;
     } else {
@@ -170,7 +171,7 @@ bool VehicleTracker::measureWithPose(
   //   constexpr double threshold_long_diff = 1.0;  // [m]
   //   constexpr double threshold_lat_diff = 0.5;  // [m]
 
-  //   // project mearsured box to the tracker coordinate, yaw is already aligned
+  //   // project measured box to the tracker coordinate, yaw is already aligned
 
   // }
 
@@ -243,6 +244,7 @@ bool VehicleTracker::measureWithPose(
   // set shape type, which is bounding box
   object_.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   object_.area = types::getArea(object.shape);
+  object_.shape.footprint = object.shape.footprint;
 
   return is_updated;
 }
