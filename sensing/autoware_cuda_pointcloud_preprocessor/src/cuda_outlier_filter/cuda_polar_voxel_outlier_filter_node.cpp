@@ -49,25 +49,25 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
     filter_params_.min_radius_m = declare_parameter<double>("min_radius_m");
     filter_params_.max_radius_m = declare_parameter<double>("max_radius_m");
     filter_params_.visibility_estimation_max_range_m =
-      declare_parameter<double>("visibility_estimation_max_range_m", 20.0);
+      declare_parameter<double>("visibility_estimation_max_range_m");
     filter_params_.use_return_type_classification =
       declare_parameter<bool>("use_return_type_classification");
     filter_params_.filter_secondary_returns = declare_parameter<bool>("filter_secondary_returns");
     filter_params_.secondary_noise_threshold = declare_parameter<int>("secondary_noise_threshold");
-    filter_params_.intensity_threshold = declare_parameter<uint8_t>("intensity_threshold", 1);
+    filter_params_.intensity_threshold = declare_parameter<uint8_t>("intensity_threshold");
     filter_params_.visibility_error_threshold =
-      declare_parameter<double>("visibility_error_threshold", 0.5);
+      declare_parameter<double>("visibility_error_threshold");
     filter_params_.visibility_warn_threshold =
-      declare_parameter<double>("visibility_warn_threshold", 0.7);
+      declare_parameter<double>("visibility_warn_threshold");
     filter_params_.filter_ratio_error_threshold =
-      declare_parameter<double>("filter_ratio_error_threshold", 0.5);
+      declare_parameter<double>("filter_ratio_error_threshold");
     filter_params_.filter_ratio_warn_threshold =
-      declare_parameter<double>("filter_ratio_warn_threshold", 0.7);
-    filter_params_.publish_noise_cloud = declare_parameter<bool>("publish_noise_cloud", false);
+      declare_parameter<double>("filter_ratio_warn_threshold");
+    filter_params_.publish_noise_cloud = declare_parameter<bool>("publish_noise_cloud");
     filter_params_.visibility_estimation_max_secondary_voxel_count = static_cast<int>(
-      declare_parameter<int64_t>("visibility_estimation_max_secondary_voxel_count", 0));
+      declare_parameter<int64_t>("visibility_estimation_max_secondary_voxel_count"));
     filter_params_.visibility_estimation_only =
-      declare_parameter<bool>("visibility_estimation_only", false);
+      declare_parameter<bool>("visibility_estimation_only");
 
     // rclcpp always returns integer array as std::vector<int64_t>
     auto primary_return_types_param =
