@@ -136,8 +136,8 @@ bool VehicleTracker::measureWithPose(
   // if the incoming object shape is polygon, convert it to bounding box
   if (object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
     types::DynamicObject converted_object;
-    const double yaw = tf2::getYaw(object.pose.orientation);
-    if (shapes::convertConvexHullToBoundingBox(object, yaw, converted_object)) {
+    const double tracker_yaw = motion_model_.getYawState();
+    if (shapes::convertConvexHullToBoundingBox(object, tracker_yaw, converted_object)) {
       converted_object.kinematics.orientation_availability =
         types::OrientationAvailability::AVAILABLE;
       converted_object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
@@ -155,6 +155,24 @@ bool VehicleTracker::measureWithPose(
     channel_info.trust_orientation;
 
   bool is_velocity_available = object.kinematics.has_twist;
+
+  // // check if the object is partially detected
+  // // 1. compair the given object bounding box is close to the tracker bounding box
+  // //    (if the size is very different, it is likely to be partially detected)
+  // // 2a. if fully detected, use the given bounding box as is
+  // // 2b. if partially detected, determine which part is close to the tracker bounding box
+  // //    (if the front or rear is close)
+  // // 3. determine update function based on flags
+  // bool is_partially_detected = false;
+  // bool is_closer_at_front = false;
+  // bool is_closer_at_rear = false;
+  // {
+  //   constexpr double threshold_long_diff = 1.0;  // [m]
+  //   constexpr double threshold_lat_diff = 0.5;  // [m]
+
+  //   // project mearsured box to the tracker coordinate, yaw is already aligned
+
+  // }
 
   // update
   bool is_updated = false;

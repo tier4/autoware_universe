@@ -200,8 +200,8 @@ bool convertConvexHullToBoundingBox(
   points.reserve(input_points.size());
   for (const auto & point : input_points) {
     geometry_msgs::msg::Point32 rotated_point;
-    rotated_point.x = point.x * cos_theta - point.y * sin_theta;
-    rotated_point.y = point.x * sin_theta + point.y * cos_theta;
+    rotated_point.x = point.x * cos_theta + point.y * sin_theta;
+    rotated_point.y = -point.x * sin_theta + point.y * cos_theta;
     rotated_point.z = point.z;
     points.push_back(rotated_point);
   }
