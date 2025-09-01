@@ -579,14 +579,6 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
       throw std::runtime_error("undefined polar_data_type is specified");
   }
 
-  auto [radius_idx, azimuth_idx, elevation_idx, polar_voxel_indices] =
-    generate_field_data_composer<::cuda::std::optional<int32_t>>(num_points, stream_, mem_pool_);
-
-  FieldDataComposer<double> resolutions{};
-  resolutions.radius = params.radial_resolution_m;
-  resolutions.azimuth = params.azimuth_resolution_rad;
-  resolutions.elevation = params.elevation_resolution_rad;
-
   int num_total_voxels = 0;
   CudaPooledUniquePtr<::cuda::std::optional<int>> point_indices = nullptr;
   CudaPooledUniquePtr<int> voxel_indices = nullptr;
@@ -602,6 +594,14 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 
   // First pass: count points in each polar voxel using pre-computed coordinates
   {
+    auto [radius_idx, azimuth_idx, elevation_idx, polar_voxel_indices] =
+      generate_field_data_composer<::cuda::std::optional<int32_t>>(num_points, stream_, mem_pool_);
+
+    FieldDataComposer<double> resolutions{};
+    resolutions.radius = params.radial_resolution_m;
+    resolutions.azimuth = params.azimuth_resolution_rad;
+    resolutions.elevation = params.elevation_resolution_rad;
+
     dim3 block_dim(512);
     dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x, 3, 1);
 
