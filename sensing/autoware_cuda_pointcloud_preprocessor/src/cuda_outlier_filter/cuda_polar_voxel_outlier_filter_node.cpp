@@ -139,7 +139,6 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
 void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr msg)
 {
-  auto start = std::chrono::high_resolution_clock::now();
   // Take mutex so that node configuration will not be
   // ovewritten during one frame processing
   std::scoped_lock lock(param_mutex_);

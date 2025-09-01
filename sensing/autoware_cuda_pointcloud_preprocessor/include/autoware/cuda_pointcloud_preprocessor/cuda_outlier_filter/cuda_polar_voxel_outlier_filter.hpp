@@ -165,10 +165,31 @@ public:
 
   explicit CudaPolarVoxelOutlierFilter();
 
+  /**
+   * \brief Filters a point cloud based on polar voxel grid parameters.
+   *
+   * This function performs the main filtering process, dividing the point cloud into a
+   * polar voxel grid and removing voxels with insufficient points.
+   *
+   * \param input_cloud A shared pointer to the input point cloud.
+   * \param params Parameters controlling the filtering process (resolution, thresholds, etc.).
+   * \param polar_type Specifies how polar data is handled (pre-computed or derived from Cartesian).
+   *
+   * \return A FilterReturn struct containing the filtered cloud, noise cloud, filter ratio, and
+   * visibility.
+   */
   FilterReturn filter(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
     const CudaPolarVoxelOutlierFilterParameters & params, const PolarDataType polar_type);
 
+  /**
+   * \brief Sets the primary return types for filtering.
+   *
+   * This function sets the return types that are considered as primary returns,
+   * used for filtering secondary returns or noise.
+   *
+   * \param primary_types A vector of integers representing the primary return types.
+   */
   void set_primary_return_types(const std::vector<int> & primary_types)
   {
     set_return_types(primary_types, primary_return_type_dev_);
@@ -177,16 +198,39 @@ public:
 protected:
   enum class ReductionType : uint8_t { Min, Max, Sum };
 
+  /** \brief Copy `types`, which lies on the host memory, to `types_dev`, which is on the device
+   *  memory
+   */
   void set_return_types(
     const std::vector<int> & types, std::optional<ReturnTypeCandidates> & types_dev);
 
-  // std::tuple<FieldDataComposer<int>, CudaPooledUniquePtr<::cuda::std::optional<int>>>
-  // calculate_voxel_index(
+  /**
+   * \brief Calculates the voxel index for each point in the point cloud.
+   *
+   * This function determines the index of the voxel that each point belongs to within the polar
+   * voxel grid.
+   *
+   * \param polar_voxel_indices A pointer to the array of polar voxel indices.
+   * \param num_points The number of points in the point cloud.
+   *
+   * \return A tuple containing the number of valid voxels, the point index array, and
+   * corresopnding voxel index array for each points
+   */
   std::tuple<int, CudaPooledUniquePtr<::cuda::std::optional<int>>, CudaPooledUniquePtr<int>>
   calculate_voxel_index(
     const FieldDataComposer<::cuda::std::optional<int32_t> *> & polar_voxel_indices,
     const size_t & num_points);
 
+  /**
+   * \brief Calculates the indices of points after filtering
+   *
+   * This function identifies the points that meet the criteria for being considered valid points.
+   *
+   * \param valid_points A pointer to the array indicating valid points.
+   * \param num_points The number of points in the point cloud.
+   *
+   * \return A tuple containing the filtered(valid) point indices and the number of valid points.
+   */
   std::tuple<CudaPooledUniquePtr<int>, size_t> calculate_filtered_point_indices(
     const CudaPooledUniquePtr<bool> & valid_points, const size_t & num_points);
 
@@ -199,12 +243,29 @@ protected:
    * cudaStreamSynchronize is called. Hence, this function takes it as argument because allocating
    * such region in the function may cause potential memory release before synchronization (i.e.,
    * memory copy complete)
+   * \param reduction_type The type of reduction operation to perform (Min, Max, Sum).
+   * \param dev_array The array to reduce on the device.
+   * \param array_length The length of the array.
+   * \param result_dev A pointer to the device memory where the result will be stored.
+   * \param result_host A pointer to the host memory where the result will be copied.
    */
   template <typename T, typename U>
   void reduce_and_copy_to_host(
     const ReductionType reduction_type, const T & dev_array, const size_t & array_length,
     U * result_dev, U & result_host);
 
+  /**
+   * \brief Creates the output point cloud from the filtered points.
+   *
+   * This function creates a new point cloud containing the filtered points.
+   *
+   * \param input_cloud A shared pointer to the input point cloud.
+   * \param points_mask A unique pointer to the mask indicating the filtered points.
+   * \param num_points The number of points in the point cloud.
+   * \param output_cloud A unique pointer to the output point cloud.
+   *
+   * \return The number of points in the output point cloud.
+   */
   size_t create_output(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
     const CudaPooledUniquePtr<bool> & points_mask, const size_t & num_points,

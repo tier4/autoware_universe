@@ -40,13 +40,15 @@ public:
   explicit CudaPolarVoxelOutlierFilterNode(const rclcpp::NodeOptions & node_options);
 
 protected:
-  void pointcloud_callback(const cuda_blackboard::CudaPointCloud2::ConstSharedPtr msg);
-
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
+
+  /** \brief main callback for pointcloud processing
+   */
+  void pointcloud_callback(const cuda_blackboard::CudaPointCloud2::ConstSharedPtr msg);
 
   /** \brief Diagnostics callback for visibility validation
    * Visibility represents the percentage of voxels that pass the primary-to-secondary ratio test.
@@ -61,8 +63,7 @@ protected:
    */
   void on_filter_ratio_check(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
-  void update_parameter(const rclcpp::Parameter & param);
-
+  // Utility functions to validate inputs
   void validate_filter_inputs(const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud);
   void voidvalidate_return_type_field(
     const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud);
