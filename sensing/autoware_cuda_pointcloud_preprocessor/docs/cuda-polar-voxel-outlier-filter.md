@@ -39,7 +39,7 @@ See [the original implementation in autoware_cuda_pointcloud_preprocessor](../..
 
 ### Core Parameters (Schema-based)
 
-{{ json_to_markdown("sensing/autoware_pointcloud_preprocessor/schema/polar_voxel_outlier_filter.schema.json") }}
+{{ json_to_markdown("sensing/autoware_pointcloud_preprocessor/schema/polar_voxel_outlier_filter_node.schema.json") }}
 
 ## Assumptions / Known limits
 
