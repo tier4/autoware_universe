@@ -658,20 +658,6 @@ int main(int argc, char ** argv)
 
       // Create has_speed_limit flags based on speed_limit values
       std::vector<bool> lanes_has_speed_limit(lanes_speed_limit.size());
-
-      // Debug: print lanes_speed_limit values for first few frames
-      if (i >= 21 && i <= 25) {
-        std::cout << "  lanes_speed_limit size: " << lanes_speed_limit.size() << std::endl;
-        std::cout << "  first 10 lanes_speed_limit values: ";
-        for (size_t j = 0; j < std::min(size_t(10), lanes_speed_limit.size()); ++j) {
-          std::cout << lanes_speed_limit[j] << " ";
-          if (std::isinf(lanes_speed_limit[j]) || std::isnan(lanes_speed_limit[j])) {
-            std::cout << "(INF/NAN!) ";
-          }
-        }
-        std::cout << std::endl;
-      }
-
       for (size_t idx = 0; idx < lanes_speed_limit.size(); ++idx) {
         lanes_has_speed_limit[idx] =
           (lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
