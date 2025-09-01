@@ -121,6 +121,11 @@ private:
 
   lanelet::LaneletMapPtr lanelet_map_ptr_{nullptr};
 
+  std::vector<autoware_planning_msgs::msg::LaneletPrimitive> sortPrimitivesLeftToRight(
+    const route_handler::RouteHandler & route_handler,
+    autoware_planning_msgs::msg::LaneletPrimitive preferred_primitive,
+    std::vector<autoware_planning_msgs::msg::LaneletPrimitive> primitives);
+
   void on_odometry(const Odometry::ConstSharedPtr msg);
   void on_operation_mode_state(const OperationModeState::ConstSharedPtr msg);
   void on_map(const LaneletMapBin::ConstSharedPtr msg);
@@ -140,7 +145,7 @@ private:
 
   void change_state(RouteState::_state_type state);
   void change_route();
-  void change_route(const LaneletRoute & route, bool emphasise_goal_lanes = false);
+  void change_route(const LaneletRoute & route, bool emphasise_goal_lanes = true);
   void cancel_route();
   LaneletRoute create_route(const SetLaneletRoute::Request & req);
   LaneletRoute create_route(const SetWaypointRoute::Request & req);
