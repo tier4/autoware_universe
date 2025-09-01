@@ -607,12 +607,6 @@ int main(int argc, char ** argv)
       continue;
     }
 
-    route_handler.setRoute(seq.route);
-    if (!route_handler.isHandlerReady()) {
-      std::cout << "Route handler is not ready for sequence " << seq_id + 1 << std::endl;
-      return 1;
-    }
-
     // Process frames with stopping count tracking
     int64_t stopping_count = 0;
     for (int64_t i = PAST_TIME_STEPS; i < n - OUTPUT_T; i += step) {
@@ -620,6 +614,12 @@ int main(int argc, char ** argv)
       std::ostringstream token_stream;
       token_stream << std::setfill('0') << std::setw(8) << seq_id << std::setw(8) << i;
       const std::string token = token_stream.str();
+
+      route_handler.setRoute(seq.data_list[i].route);
+      if (!route_handler.isHandlerReady()) {
+        std::cout << "Route handler is not ready for sequence " << seq_id + 1 << std::endl;
+        return 1;
+      }
 
       // Get transformation matrix
       const auto [bl2map, map2bl] = utils::get_transform_matrix(seq.data_list[i].kinematic_state);
