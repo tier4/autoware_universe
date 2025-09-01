@@ -688,21 +688,6 @@ int main(int argc, char ** argv)
 
       // Create route_lanes_has_speed_limit based on speed_limit values
       std::vector<bool> route_lanes_has_speed_limit(route_lanes_speed_limit.size());
-
-      // Debug: print route_lanes_speed_limit values for first few frames
-      if (i >= 21 && i <= 25) {
-        std::cout << "  route_lanes_speed_limit size: " << route_lanes_speed_limit.size()
-                  << std::endl;
-        std::cout << "  first 10 route_lanes_speed_limit values: ";
-        for (size_t j = 0; j < std::min(size_t(10), route_lanes_speed_limit.size()); ++j) {
-          std::cout << route_lanes_speed_limit[j] << " ";
-          if (std::isinf(route_lanes_speed_limit[j]) || std::isnan(route_lanes_speed_limit[j])) {
-            std::cout << "(INF/NAN!) ";
-          }
-        }
-        std::cout << std::endl;
-      }
-
       for (size_t idx = 0; idx < route_lanes_speed_limit.size(); ++idx) {
         route_lanes_has_speed_limit[idx] =
           (route_lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
