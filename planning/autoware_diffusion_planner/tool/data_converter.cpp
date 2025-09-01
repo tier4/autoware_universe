@@ -609,7 +609,7 @@ int main(int argc, char ** argv)
 
     // Process frames with stopping count tracking
     int64_t stopping_count = 0;
-    for (int64_t i = PAST_TIME_STEPS; i < n - OUTPUT_T; i += step) {
+    for (int64_t i = PAST_TIME_STEPS; i < n; i += step) {
       // Create token in same format as Python version: seq_id(8digits) + i(8digits)
       std::ostringstream token_stream;
       token_stream << std::setfill('0') << std::setw(8) << seq_id << std::setw(8) << i;
