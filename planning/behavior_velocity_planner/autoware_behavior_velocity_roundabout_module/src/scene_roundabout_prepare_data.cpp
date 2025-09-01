@@ -125,9 +125,9 @@ std::optional<RoundaboutStopLines> RoundaboutModule::generateRoundaboutStopLines
   autoware_internal_planning_msgs::msg::PathWithLaneId * original_path) const
 {
   const double stopline_margin = planner_param_.common.default_stopline_margin;
-  const double max_accel = planner_param_.common.max_accel;
-  const double max_jerk = planner_param_.common.max_jerk;
-  const double delay_response_time = planner_param_.common.delay_response_time;
+  const double max_accel = planner_data_->max_stop_acceleration_threshold;
+  const double max_jerk = planner_data_->max_stop_jerk_threshold;
+  const double delay_response_time = planner_data_->delay_response_time;
 
   const auto first_attention_area = first_attention_lane.polygon3d();
   const auto & path_ip = interpolated_path_info.path;

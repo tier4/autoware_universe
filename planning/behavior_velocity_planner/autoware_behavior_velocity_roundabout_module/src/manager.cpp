@@ -51,10 +51,6 @@ RoundaboutModuleManager::RoundaboutModuleManager(rclcpp::Node & node)
       get_or_declare_parameter<double>(node, ns + ".common.default_stopline_margin");
     rp.common.path_interpolation_ds =
       get_or_declare_parameter<double>(node, ns + ".common.path_interpolation_ds");
-    rp.common.max_accel = get_or_declare_parameter<double>(node, ns + ".common.max_accel");
-    rp.common.max_jerk = get_or_declare_parameter<double>(node, ns + ".common.max_jerk");
-    rp.common.delay_response_time =
-      get_or_declare_parameter<double>(node, ns + ".common.delay_response_time");
     rp.common.enable_pass_judge_before_default_stopline = get_or_declare_parameter<bool>(
       node, ns + ".common.enable_pass_judge_before_default_stopline");
   }

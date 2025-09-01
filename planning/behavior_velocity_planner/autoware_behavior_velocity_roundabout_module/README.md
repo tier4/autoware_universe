@@ -139,9 +139,6 @@ stateDiagram-v2
 | .attention_area_angle_threshold            | double | [rad] Absolute heading difference threshold between object direction and lane direction   |
 | .default_stopline_margin                   | double | [m] Margin to place default stopline behind the first attention boundary                  |
 | .path_interpolation_ds                     | double | [m] Path interpolation step for geometric checks and stopline insertion                   |
-| .max_accel                                 | double | [m/s^2] Acceleration limit (usually negative decel) used for braking distance computation |
-| .max_jerk                                  | double | [m/s^3] Jerk limit used for braking distance computation                                  |
-| .delay_response_time                       | double | [s] Reaction delay before braking considered in pass-judge/stopline computation           |
 | .enable_pass_judge_before_default_stopline | bool   | [-] If true, allow pass-judge before reaching the default stopline                        |
 
 ### collision_detection

@@ -103,9 +103,9 @@ DecisionResult RoundaboutModule::modifyPathVelocityDetail(PathWithLaneId * path)
 
   const auto closest_idx = roundabout_stoplines.closest_idx;
   const auto can_smoothly_stop_at = [&](const auto & stop_line_idx) {
-    const double max_accel = planner_param_.common.max_accel;
-    const double max_jerk = planner_param_.common.max_jerk;
-    const double delay_response_time = planner_param_.common.delay_response_time;
+    const double max_accel = planner_data_->max_stop_acceleration_threshold;
+    const double max_jerk = planner_data_->max_stop_jerk_threshold;
+    const double delay_response_time = planner_data_->delay_response_time;
     const double velocity = planner_data_->current_velocity->twist.linear.x;
     const double acceleration = planner_data_->current_acceleration->accel.accel.linear.x;
     const double braking_dist = planning_utils::calcJudgeLineDistWithJerkLimit(
