@@ -36,7 +36,7 @@ inline double adjust_resolution_to_circle(double requested_resolution)
 
 CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
   const rclcpp::NodeOptions & node_options)
-: Node("cuda_polar_voxexl_outlier_filter", node_options), updater_(this)
+: Node("cuda_polar_voxel_outlier_filter", node_options), updater_(this)
 {
   // set initial parameters
   {
@@ -140,7 +140,7 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr msg)
 {
   // Take mutex so that node configuration will not be
-  // ovewritten during one frame processing
+  // overwritten during one frame processing
   std::scoped_lock lock(param_mutex_);
 
   if (!msg) {
@@ -412,7 +412,7 @@ void CudaPolarVoxelOutlierFilterNode::on_visibility_check(
   diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   // Take mutex so that node configuration will not be
-  // ovewritten during one frame processing
+  // overwritten during one frame processing
   std::scoped_lock lock(param_mutex_);
 
   if (!visibility_.has_value()) {
@@ -445,7 +445,7 @@ void CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check(
   diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   // Take mutex so that node configuration will not be
-  // ovewritten during one frame processing
+  // overwritten during one frame processing
   std::scoped_lock lock(param_mutex_);
 
   if (!filter_ratio_.has_value()) {

@@ -124,7 +124,7 @@ struct FieldDataComposer
     }
   }
 
-  // Cosnt version (read-only element)
+  // Const version (read-only element)
   __host__ __device__ const T & operator[](FieldDataIndex i) const
   {
     switch (i) {
@@ -214,7 +214,7 @@ protected:
    * \param num_points The number of points in the point cloud.
    *
    * \return A tuple containing the number of valid voxels, the point index array, and
-   * corresopnding voxel index array for each points
+   * corresponding voxel index array for each points
    */
   std::tuple<int, CudaPooledUniquePtr<::cuda::std::optional<int>>, CudaPooledUniquePtr<int>>
   calculate_voxel_index(
@@ -234,11 +234,11 @@ protected:
   std::tuple<CudaPooledUniquePtr<int>, size_t> calculate_filtered_point_indices(
     const CudaPooledUniquePtr<bool> & valid_points, const size_t & num_points);
 
-  /** \bried perform device reduction operation on the specified array on the device and copy the
+  /** \brief perform device reduction operation on the specified array on the device and copy the
    *  result to the host.
    *
    *  Since this function calls cudaMemcpyAsync and does not call cudaStreamSynchronize inside
-   * (to make synchronization controll under the contoll of caller), the device memory region that
+   * (to make synchronization controll under the caller), the device memory region that
    * the reduction result will be stored needs to be valid (not released) until
    * cudaStreamSynchronize is called. Hence, this function takes it as argument because allocating
    * such region in the function may cause potential memory release before synchronization (i.e.,

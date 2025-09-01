@@ -59,6 +59,7 @@ list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=compute_89")
 # __host__ or __device__ annotation on lambda requires --extended-lambda nvcc flag
 list(APPEND CUDA_NVCC_FLAGS "--extended-lambda")
 
+# cSpell: ignore fmad
 # NOTE(manato): adding `--fmad=false` can reduce numerical discrepancies between CPU implementations
 # and GPU implementations of the filters. But a slight performance impact can also be introduced
 # To prioritize performance, the flag is disabled

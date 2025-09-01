@@ -59,7 +59,7 @@ public:
    * allocates the storage (if needed) and finally executes the CUB API (lambda) with the allocated
    * storage.
    *
-   * \param cub_lambda The laumbda wrapping CUB API so that type deduction occurs inside this
+   * \param cub_lambda The lambda wrapping CUB API so that type deduction occurs inside this
    *                   function.
    * \param stream CUDA stream for execution.
    * \param mem_pool CUDA memory pool for temporary storage allocation.
