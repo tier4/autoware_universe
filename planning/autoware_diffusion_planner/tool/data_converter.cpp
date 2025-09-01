@@ -712,11 +712,9 @@ int main(int argc, char ** argv)
       const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
       const Eigen::Matrix4f goal_pose_in_map = utils::pose_to_matrix4f(goal_pose);
       const Eigen::Matrix4f goal_pose_in_bl = map2bl * goal_pose_in_map;
-      const Eigen::Matrix3f goal_rot_bl = goal_pose_in_bl.block<3, 3>(0, 0);
-      const Eigen::Vector3f euler = goal_rot_bl.eulerAngles(0, 1, 2);
       const float goal_x = goal_pose_in_bl(0, 3);
       const float goal_y = goal_pose_in_bl(1, 3);
-      const float yaw = euler(2) + M_PI;
+      const float yaw = std::atan2(goal_pose_in_bl(1, 0), goal_pose_in_bl(0, 0));
       const std::vector<float> goal_pose_vec = {goal_x, goal_y, std::cos(yaw), std::sin(yaw)};
 
       // Such data should be skipped.
