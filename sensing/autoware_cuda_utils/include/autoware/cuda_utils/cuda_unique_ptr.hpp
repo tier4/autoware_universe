@@ -57,7 +57,7 @@ template <typename T>
 using CudaPooledUniquePtr = std::unique_ptr<T, std::function<void(T *)>>;
 
 template <typename T>
-CudaPooledUniquePtr<T> make_unique(const std::size_t n, cudaStream_t & stream, cudaMemPool_t & pool)
+CudaPooledUniquePtr<T> make_unique(const std::size_t n, cudaStream_t stream, cudaMemPool_t pool)
 {
   using U = typename std::remove_extent_t<T>;
   T * ptr = nullptr;
@@ -79,7 +79,7 @@ CudaPooledUniquePtr<T> make_unique(const std::size_t n, cudaStream_t & stream, c
 }
 
 template <typename T>
-CudaPooledUniquePtr<T> make_unique(cudaStream_t & stream, cudaMemPool_t & pool)
+CudaPooledUniquePtr<T> make_unique(cudaStream_t stream, cudaMemPool_t pool)
 {
   return make_unique<T>(1, stream, pool);
 }
