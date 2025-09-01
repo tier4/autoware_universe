@@ -555,6 +555,11 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   }
 
   size_t num_points = input_cloud->width * input_cloud->height;
+  if (num_points == 0) {
+    // sometimes topic might contain zero point even the pointer is valid
+    // For such cases, this filter do nothing
+    return FilterReturn{nullptr, nullptr, 0., 0.};
+  }
 
   FieldDataComposer<size_t> offsets{};
   switch (polar_type) {
