@@ -24,8 +24,8 @@ This node re implements of the function of `autoware::pointcloud_preprocessor::P
 | `~/output/pointcloud`      | `sensor_msgs::msg::PointCloud2`                  | Processed pointcloud's topic             |
 | `~/output/pointcloud/cuda` | `negotiated_interfaces/msg/NegotiatedTopicsInfo` | Processed pointcloud's negotiation topic |
 
-
 #### Additional Debug Topics
+
 | Name                            | Type                                                | Description                                                                    |
 |---------------------------------|-----------------------------------------------------|--------------------------------------------------------------------------------|
 | `~/debug/filter_ratio`          | `autoware_internal_debug_msgs::msg::Float32Stamped` | Ratio of output to input points                                                |
@@ -34,6 +34,7 @@ This node re implements of the function of `autoware::pointcloud_preprocessor::P
 | `~/debug/pointcloud_noise/cuda` | `negotiated_interfaces/msg/NegotiatedTopicsInfo`    | Negotiation topic                                                              |
 
 ## Parameters
+
 See [the original implementation in autoware_cuda_pointcloud_preprocessor](../../autoware_pointcloud_preprocessor/docs/polar-voxel-outlier-filter.md) for the detail.
 
 ### Core Parameters (Schema-based)
@@ -41,9 +42,11 @@ See [the original implementation in autoware_cuda_pointcloud_preprocessor](../..
 {{ json_to_markdown("sensing/autoware_pointcloud_preprocessor/schema/polar_voxel_outlier_filter.schema.json") }}
 
 ## Assumptions / Known limits
+
 Due to differences in floating-point arithmetic between CPUs and GPUs, the outputs of `autoware::pointcloud_preprocessor::PolarVoxelOutlierFilterComponent` and this filter may not be identical.
 
 Adding compiler options, such as the following, can reduce numerical discrepancies, though a slight performance impact can also be introduced, and it is still difficult to acquire complete identical results.
+
 ```CMake
 list(APPEND CUDA_NVCC_FLAGS "--fmad=false")
 ```
