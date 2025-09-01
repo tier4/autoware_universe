@@ -677,9 +677,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   // Create filtered output
   size_t valid_count = 0;
   auto filtered_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-  if (!params.visibility_estimation_only) {
-    valid_count = create_output(input_cloud, valid_points_mask, num_points, filtered_cloud);
-  }
+  valid_count = create_output(input_cloud, valid_points_mask, num_points, filtered_cloud);
 
   // Create noise cloud with filtered-out points
   auto noise_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
