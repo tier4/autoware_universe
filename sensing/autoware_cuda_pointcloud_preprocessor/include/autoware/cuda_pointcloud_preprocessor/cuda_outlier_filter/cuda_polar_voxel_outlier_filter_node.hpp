@@ -27,10 +27,10 @@
 
 #include <autoware_internal_debug_msgs/msg/float32_stamped.hpp>
 
-#include <mutex>
-#include <vector>
-#include <string>
 #include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
 
 namespace autoware::cuda_pointcloud_preprocessor
 {
