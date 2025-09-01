@@ -172,7 +172,7 @@ public:
    * polar voxel grid and removing voxels with insufficient points.
    *
    * \param input_cloud A shared pointer to the input point cloud.
-   * \param params Parameters controlling the filtering process (resolution, thresholds, etc.).
+   * \param params Parameters controling the filtering process (resolution, thresholds, etc.).
    * \param polar_type Specifies how polar data is handled (pre-computed or derived from Cartesian).
    *
    * \return A FilterReturn struct containing the filtered cloud, noise cloud, filter ratio, and
@@ -238,7 +238,7 @@ protected:
    *  result to the host.
    *
    *  Since this function calls cudaMemcpyAsync and does not call cudaStreamSynchronize inside
-   * (to make synchronization controll under the caller), the device memory region that
+   * (to make synchronization control under the caller), the device memory region that
    * the reduction result will be stored needs to be valid (not released) until
    * cudaStreamSynchronize is called. Hence, this function takes it as argument because allocating
    * such region in the function may cause potential memory release before synchronization (i.e.,
