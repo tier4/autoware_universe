@@ -47,7 +47,7 @@ void transform_selected_rows(
   const Eigen::Matrix4f & transform_matrix, Eigen::MatrixXf & output_matrix, int64_t num_segments,
   int64_t row_idx, bool do_translation = true);
 uint8_t identify_current_light_status(
-  int turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements);
+  const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements);
 }  // namespace
 
 // LaneSegmentContext implementation
@@ -331,7 +331,7 @@ void transform_selected_rows(
  * @return int The color of the relevant traffic light (0=UNKNOWN, 1=RED, 2=AMBER, 3=GREEN, 4=WHITE)
  */
 uint8_t identify_current_light_status(
-  int turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements)
+  const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements)
 {
   // If not intersection, return WHITE (which means no traffic light is present)
   if (turn_direction == -1) {
