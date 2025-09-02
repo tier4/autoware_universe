@@ -160,8 +160,8 @@
       <!-- tracking object merger to merge near objects and far objects -->
       <include file="$(find-pkg-share autoware_tracking_v2i_object_merger)/launch/decorative_tracker_merger.launch.xml">
         <arg name="node_name" value="decorative_v2i_tracker_merger"/>
-        <!-- <arg name="input/main_object" value="$(var v2i_tracker_merger/input/main_objects)"/> -->
-        <arg name="input/main_object" value="/v2i/dummy_pub"/>
+        <arg name="input/main_object" value="$(var v2i_tracker_merger/input/main_objects)"/>
+        <!-- <arg name="input/main_object" value="/v2i/dummy_pub"/> -->
         <arg name="input/sub_object" value="$(var v2i_tracker_merger/input/sub_objects)"/>
         <arg name="output" value="$(var v2i_tracker_merger/output/objects)"/>
         <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_v2i_merger_data_association_matrix_param_path)"/>

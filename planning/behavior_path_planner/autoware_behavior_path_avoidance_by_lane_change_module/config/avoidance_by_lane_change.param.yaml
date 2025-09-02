@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     avoidance_by_lane_change:
-      execute_object_longitudinal_margin: 80.0
+      execute_object_longitudinal_margin: 80.0    #TODO V2Iの情報得ることで変わるかも？
       execute_only_when_lane_change_finish_before_object: false
 
       # avoidance is performed for the object type with true
