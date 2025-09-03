@@ -40,7 +40,7 @@ VadInputData VadInterface::convert_input(const VadInputTopicData & vad_input_top
       scale_width, scale_height
     );
   }
-  vad_input_data.lidar2img_ = vad_base2img_transform_.value();
+  vad_input_data.vad_base2img_ = vad_base2img_transform_.value();
   
   // Process can_bus using converter
   vad_input_data.can_bus_ = input_can_bus_converter_->process_can_bus(

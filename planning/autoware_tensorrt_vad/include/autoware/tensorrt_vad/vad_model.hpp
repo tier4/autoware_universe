@@ -93,7 +93,7 @@ struct VadInputData
   std::vector<float> shift_;
 
   // Transform matrix from LiDAR coordinate system to camera image coordinate system (img_metas.0[lidar2img])
-  std::vector<float> lidar2img_;
+  std::vector<float> vad_base2img_;
 
   // CAN-BUS data (vehicle state information: velocity, angular velocity, etc.) (img_metas.0[can_bus])
   std::vector<float> can_bus_;
@@ -284,7 +284,7 @@ private:
   void load_inputs(const VadInputData& vad_input, const std::string& head_name) {
     nets_["backbone"]->bindings["img"]->load(vad_input.camera_images_, stream_);
     nets_[head_name]->bindings["img_metas.0[shift]"]->load(vad_input.shift_, stream_);
-    nets_[head_name]->bindings["img_metas.0[lidar2img]"]->load(vad_input.lidar2img_, stream_);
+    nets_[head_name]->bindings["img_metas.0[lidar2img]"]->load(vad_input.vad_base2img_, stream_);
     nets_[head_name]->bindings["img_metas.0[can_bus]"]->load(vad_input.can_bus_, stream_);
 
     if (head_name == "head") {
