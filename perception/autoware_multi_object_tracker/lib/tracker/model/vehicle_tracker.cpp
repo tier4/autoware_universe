@@ -164,16 +164,92 @@ bool VehicleTracker::measureWithPose(
   // // 2b. if partially detected, determine which part is close to the tracker bounding box
   // //    (if the front or rear is close)
   // // 3. determine update function based on flags
-  // bool is_partially_detected = false;
-  // bool is_closer_at_front = false;
-  // bool is_closer_at_rear = false;
-  // {
-  //   constexpr double threshold_long_diff = 1.0;  // [m]
-  //   constexpr double threshold_lat_diff = 0.5;  // [m]
+  bool is_partially_detected = false;
+  double front_rear_weight = 0.5;  // 0: rear, 1: front
+  // double left_right_weight = 0.5;  // 0: right, 1: left
+  {
+    // project measured box to the tracker coordinate, yaw is already aligned
+    types::DynamicObject tracker_object;
+    getTrackedObject(getLatestMeasurementTime(), tracker_object, false);
+    const double tracker_yaw = motion_model_.getYawState();
+    const double cos_yaw = std::cos(tracker_yaw);
+    const double sin_yaw = std::sin(tracker_yaw);
+    const double dx = object.pose.position.x - tracker_object.pose.position.x;
+    const double dy = object.pose.position.y - tracker_object.pose.position.y;
+    const double local_x = dx * cos_yaw + dy * sin_yaw;
+    // const double local_y = -dx * sin_yaw + dy * cos_yaw;
 
-  //   // project measured box to the tracker coordinate, yaw is already aligned
+    // // pseudo union bounding box
+    // double left_bound = std::min(
+    //   tracker_object.pose.position.x - tracker_object.shape.dimensions.y * 0.5,
+    //   object.pose.position.x - object.shape.dimensions.y * 0.5);
+    // double right_bound = std::max(
+    //   tracker_object.pose.position.x + tracker_object.shape.dimensions.y * 0.5,
+    //   object.pose.position.x + object.shape.dimensions.y * 0.5);
+    // double front_bound = std::max(
+    //   tracker_object.pose.position.y + tracker_object.shape.dimensions.x * 0.5,
+    //   object.pose.position.y + object.shape.dimensions.x * 0.5);
+    // double rear_bound = std::min(
+    //   tracker_object.pose.position.y - tracker_object.shape.dimensions.x * 0.5,
+    //   object.pose.position.y - object.shape.dimensions.x * 0.5);
+    // double union_length = front_bound - rear_bound;
+    // double union_width = right_bound - left_bound;
+    // double union_cx = (left_bound + right_bound) * 0.5;
+    // double union_cy = (front_bound + rear_bound) * 0.5;
+    // double union_area = union_length * union_width;
 
-  // }
+    // pseudo intersection bounding box
+    double intersect_left = std::max(
+      tracker_object.pose.position.x - tracker_object.shape.dimensions.y * 0.5,
+      object.pose.position.x - object.shape.dimensions.y * 0.5);
+    double intersect_right = std::min(
+      tracker_object.pose.position.x + tracker_object.shape.dimensions.y * 0.5,
+      object.pose.position.x + object.shape.dimensions.y * 0.5);
+    double intersect_front = std::min(
+      tracker_object.pose.position.y + tracker_object.shape.dimensions.x * 0.5,
+      object.pose.position.y + object.shape.dimensions.x * 0.5);
+    double intersect_rear = std::max(
+      tracker_object.pose.position.y - tracker_object.shape.dimensions.x * 0.5,
+      object.pose.position.y - object.shape.dimensions.x * 0.5);
+    double intersect_length = std::max(0.0, intersect_front - intersect_rear);
+    double intersect_width = std::max(0.0, intersect_right - intersect_left);
+    // double intersect_cx = (intersect_left + intersect_right) * 0.5;
+    // double intersect_cy = (intersect_front + intersect_rear) * 0.5;
+    double intersect_area = intersect_length * intersect_width;
+
+    // precision to determine partial detection
+    // double target_area = object.shape.dimensions.x * object.shape.dimensions.y;
+    double source_area = tracker_object.shape.dimensions.x * tracker_object.shape.dimensions.y;
+    // double precision = target_area < 1e-6 ? 0.0 : intersect_area / target_area;
+    double recall = source_area < 1e-6 ? 0.0 : intersect_area / source_area;
+
+    constexpr double min_recall_for_full_detection = 0.7;
+    constexpr double min_length_ratio_for_partial_detection = 0.7;
+    if (
+      recall < min_recall_for_full_detection &&
+      (tracker_object.shape.dimensions.x * min_length_ratio_for_partial_detection >
+       object.shape.dimensions.x)) {
+      is_partially_detected = true;
+
+      // determine which part is close to the tracker bounding box
+      double front_diff =
+        local_x + object.shape.dimensions.x * 0.5 - tracker_object.shape.dimensions.x * 0.5;
+      double rear_diff =
+        local_x - object.shape.dimensions.x * 0.5 + tracker_object.shape.dimensions.x * 0.5;
+      double front_rear_sum = std::abs(front_diff) + std::abs(rear_diff);
+      front_rear_weight = front_rear_sum < 1e-1 ? 0.5 : std::abs(rear_diff) / front_rear_sum;
+
+      // double left_diff =
+      //   local_y + object.shape.dimensions.y * 0.5 - tracker_object.shape.dimensions.y * 0.5;
+      // double right_diff =
+      //   local_y - object.shape.dimensions.y * 0.5 + tracker_object.shape.dimensions.y * 0.5;
+      // double left_right_sum = std::abs(left_diff) + std::abs(right_diff);
+      // left_right_weight = left_right_sum < 1e-1 ? 0.5 : std::abs(right_diff) / left_right_sum;
+
+    } else {
+      is_partially_detected = false;
+    }
+  }
 
   // update
   bool is_updated = false;
@@ -186,22 +262,42 @@ bool VehicleTracker::measureWithPose(
     constexpr double min_length = 1.0;  // minimum length to avoid division by zero
     const double length = std::max(object.shape.dimensions.x, min_length);
 
-    if (is_yaw_available && is_velocity_available) {
-      // update with yaw angle and velocity
-      is_updated = motion_model_.updateStatePoseHeadVel(
-        x, y, yaw, object.pose_covariance, vel_x, vel_y, object.twist_covariance, length);
-    } else if (is_yaw_available && !is_velocity_available) {
-      // update with yaw angle, but without velocity
-      is_updated = motion_model_.updateStatePoseHead(x, y, yaw, object.pose_covariance, length);
-    } else if (!is_yaw_available && is_velocity_available) {
-      // update without yaw angle, but with velocity
-      is_updated = motion_model_.updateStatePoseVel(
-        x, y, object.pose_covariance, yaw, vel_x, vel_y, object.twist_covariance, length);
+    if (is_partially_detected) {
+      // update for partially detected object
+
+      if (front_rear_weight > 0.35) {
+        double front_length = object.shape.dimensions.x * 0.5;
+
+        double xf = x + front_length * std::cos(yaw) + front_length * std::sin(yaw);
+        double yf = y - front_length * std::sin(yaw) + front_length * std::cos(yaw);
+        is_updated = motion_model_.updateStatePoseFront(xf, yf, object.pose_covariance);
+      } else {
+        double rear_length = object.shape.dimensions.x * 0.5;
+
+        double xr = x - rear_length * std::cos(yaw) - rear_length * std::sin(yaw);
+        double yr = y + rear_length * std::sin(yaw) - rear_length * std::cos(yaw);
+        is_updated = motion_model_.updateStatePoseRear(xr, yr, object.pose_covariance);
+      }
+
     } else {
-      // update without yaw angle and velocity
-      is_updated = motion_model_.updateStatePose(
-        x, y, object.pose_covariance, length);  // update without yaw angle and velocity
+      if (is_yaw_available && is_velocity_available) {
+        // update with yaw angle and velocity
+        is_updated = motion_model_.updateStatePoseHeadVel(
+          x, y, yaw, object.pose_covariance, vel_x, vel_y, object.twist_covariance, length);
+      } else if (is_yaw_available && !is_velocity_available) {
+        // update with yaw angle, but without velocity
+        is_updated = motion_model_.updateStatePoseHead(x, y, yaw, object.pose_covariance, length);
+      } else if (!is_yaw_available && is_velocity_available) {
+        // update without yaw angle, but with velocity
+        is_updated = motion_model_.updateStatePoseVel(
+          x, y, object.pose_covariance, yaw, vel_x, vel_y, object.twist_covariance, length);
+      } else {
+        // update without yaw angle and velocity
+        is_updated = motion_model_.updateStatePose(
+          x, y, object.pose_covariance, length);  // update without yaw angle and velocity
+      }
     }
+
     motion_model_.limitStates();
   }
 
