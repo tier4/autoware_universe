@@ -162,9 +162,9 @@ void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
   const auto assigned_lanelet = lanelet_map_ptr_->laneletLayer.get(lane_id_itr->second);
   auto tl_reg_elems = assigned_lanelet.regulatoryElementsAs<const lanelet::TrafficLight>();
 
-  const Eigen::Matrix<double, TRAFFIC_LIGHT_ONE_HOT_DIM, 1> traffic_light_one_hot_encoding = [&]() {
-    Eigen::Matrix<double, TRAFFIC_LIGHT_ONE_HOT_DIM, 1> encoding =
-      Eigen::Matrix<double, TRAFFIC_LIGHT_ONE_HOT_DIM, 1>::Zero();
+  const Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM> traffic_light_one_hot_encoding = [&]() {
+    Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM> encoding =
+      Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM>::Zero();
     if (tl_reg_elems.empty()) {
       encoding[TRAFFIC_LIGHT_NO_TRAFFIC_LIGHT - TRAFFIC_LIGHT] = 1.0;
       return encoding;
@@ -179,7 +179,7 @@ void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
 
     const auto & signal = traffic_light_stamped_info_itr->second.signal;
     const uint8_t traffic_color = identify_current_light_status(turn_direction, signal.elements);
-    return Eigen::Matrix<double, TRAFFIC_LIGHT_ONE_HOT_DIM, 1>{
+    return Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM>{
       traffic_color == TrafficLightElement::GREEN,    // 3
       traffic_color == TrafficLightElement::AMBER,    // 2
       traffic_color == TrafficLightElement::RED,      // 1
@@ -327,19 +327,11 @@ void transform_selected_rows(
     transformed_block.block(0, 0, 2, num_segments * POINTS_PER_SEGMENT);
 }
 
-/**
- * @brief Identify the current traffic light status based on turn direction and traffic light
- * elements.
- *
- * @param turn_direction Integer representing the turn direction (0=straight, 1=left, 2=right)
- * @param traffic_light_elements List of traffic light elements
- * @return int The color of the relevant traffic light (0=UNKNOWN, 1=RED, 2=AMBER, 3=GREEN, 4=WHITE)
- */
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements)
 {
   // If not intersection, return WHITE (which means no traffic light is present)
-  if (turn_direction == -1) {
+  if (turn_direction == LaneSegment::TURN_DIRECTION_NONE) {
     return TrafficLightElement::WHITE;
   }
 
@@ -363,10 +355,10 @@ uint8_t identify_current_light_status(
 
   // For multiple elements, find the one that matches the turn direction
   // Map turn direction to corresponding arrow shape
-  const std::map<int, uint8_t> direction_to_shape_map = {
-    {0, TrafficLightElement::UP_ARROW},    // straight
-    {1, TrafficLightElement::LEFT_ARROW},  // left
-    {2, TrafficLightElement::RIGHT_ARROW}  // right
+  const std::map<int64_t, uint8_t> direction_to_shape_map = {
+    {LaneSegment::TURN_DIRECTION_STRAIGHT, TrafficLightElement::UP_ARROW},  // straight
+    {LaneSegment::TURN_DIRECTION_LEFT, TrafficLightElement::LEFT_ARROW},    // left
+    {LaneSegment::TURN_DIRECTION_RIGHT, TrafficLightElement::RIGHT_ARROW}   // right
   };
 
   const auto target_shape_iter = direction_to_shape_map.find(turn_direction);
