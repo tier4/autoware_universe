@@ -318,8 +318,10 @@ void StaticObstacleAvoidanceModule::fillFundamentalData(
   // compensate lost object which was avoidance target. if the time hasn't passed more than
   // threshold since perception module lost the target yet, this module keeps it as avoidance
   // target.
-  utils::static_obstacle_avoidance::compensateLostTargetObjects(
-    registered_objects_, data, clock_->now(), planner_data_, parameters_);
+  if (planner_data_ && parameters_) {
+    utils::static_obstacle_avoidance::compensateLostTargetObjects(
+      registered_objects_, data, clock_->now(), planner_data_, parameters_);
+  }
 
   // once an object filtered for boundary clipping, this module keeps the information until the end
   // of execution.
@@ -1525,6 +1527,12 @@ void StaticObstacleAvoidanceModule::initVariables()
   resetPathCandidate();
   resetPathReference();
   arrived_path_end_ = false;
+  
+  // Clear object data arrays to prevent stale references
+  registered_objects_.clear();
+  clip_objects_.clear();
+  ego_stopped_objects_.clear();
+  stopped_objects_.clear();
 }
 
 void StaticObstacleAvoidanceModule::initRTCStatus()
