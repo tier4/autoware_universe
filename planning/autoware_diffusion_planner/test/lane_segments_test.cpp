@@ -18,8 +18,9 @@
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 
-#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <Eigen/Dense>
+
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 
 #include <gtest/gtest.h>
 
