@@ -336,7 +336,6 @@ lanelet::Lanelets LaneSegmentContext::filter_route_lanelets(
 
   const size_t num_lanelets = route_lanelets.size();
   for (size_t i = 0; i < num_lanelets; ++i) {
-    const lanelet::CompoundPolygon2d & centerlines = route_lanelets[i].polygon2d();
     const double distance = distance_to_lanelet(center_x, center_y, route_lanelets[i]);
     if (distance < closest_distance) {
       closest_distance = distance;
