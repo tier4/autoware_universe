@@ -181,7 +181,8 @@ bool get2dPrecisionRecallGIoU(
  * @param output_object: output bounding box objects
  */
 bool convertConvexHullToBoundingBox(
-  const types::DynamicObject & input_object, const double yaw, types::DynamicObject & output_object)
+  const types::DynamicObject & input_object, const double given_yaw,
+  types::DynamicObject & output_object)
 {
   // check footprint size
   const auto & input_points = input_object.shape.footprint.points;
@@ -193,7 +194,7 @@ bool convertConvexHullToBoundingBox(
 
   // rotate given footprint points to the given yaw angle
   const double object_yaw = tf2::getYaw(input_object.pose.orientation);
-  const double theta = yaw - object_yaw;
+  const double theta = given_yaw - object_yaw;
   const double cos_theta = std::cos(theta);
   const double sin_theta = std::sin(theta);
   std::vector<geometry_msgs::msg::Point32> points;
@@ -206,7 +207,8 @@ bool convertConvexHullToBoundingBox(
     points.push_back(rotated_point);
   }
   // output object orientation is set to the given yaw angle
-  output_object.pose.orientation = tf2::toMsg(tf2::Quaternion(0, 0, sin(yaw / 2), cos(yaw / 2)));
+  output_object.pose.orientation =
+    tf2::toMsg(tf2::Quaternion(0, 0, sin(given_yaw / 2), cos(given_yaw / 2)));
 
   // Pre-allocate boundary values using first point
   float max_x = points[0].x;
@@ -229,8 +231,8 @@ bool convertConvexHullToBoundingBox(
   const double center_y = (max_y + min_y) * 0.5;
 
   // transform to global for the object's position
-  const double cos_yaw = cos(yaw);
-  const double sin_yaw = sin(yaw);
+  const double cos_yaw = cos(given_yaw);
+  const double sin_yaw = sin(given_yaw);
   const double dx = center_x * cos_yaw - center_y * sin_yaw;
   const double dy = center_x * sin_yaw + center_y * cos_yaw;
 

@@ -131,18 +131,18 @@ bool VehicleTracker::predict(const rclcpp::Time & time)
 }
 
 bool VehicleTracker::measureWithPose(
-  const types::DynamicObject & object, const types::InputChannel & channel_info)
+  const types::DynamicObject & object_in, const types::InputChannel & channel_info)
 {
+  types::DynamicObject object = object_in;
   // if the incoming object shape is polygon, convert it to bounding box
-  if (object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
-    types::DynamicObject converted_object;
+  if (object_in.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
     const double tracker_yaw = motion_model_.getYawState();
-    if (shapes::convertConvexHullToBoundingBox(object, tracker_yaw, converted_object)) {
-      converted_object.kinematics.orientation_availability =
-        types::OrientationAvailability::AVAILABLE;
-      converted_object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
-      // object_.shape.footprint = converted_object.shape.footprint;
-      measureWithPose(converted_object, channel_info);
+    if (shapes::convertConvexHullToBoundingBox(object_in, tracker_yaw, object)) {
+      object.kinematics.orientation_availability = types::OrientationAvailability::AVAILABLE;
+      object.shape.type =
+        autoware_perception_msgs::msg::Shape::BOUNDING_BOX;  // not to fall into infinite loop
+      object_.shape.type = autoware_perception_msgs::msg::Shape::POLYGON;  // keep origin shape info
+      measureWithPose(object, channel_info);
       return true;
     } else {
       // failed to convert, do not update
@@ -212,11 +212,6 @@ bool VehicleTracker::measureWithPose(
       (1.0 - gain) * object_.pose.position.z + gain * object.pose.position.z;
   }
 
-  if (object.shape.type != autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
-    // do not update shape if the input is not a bounding box
-    return false;
-  }
-
   // check object size abnormality
   constexpr double size_max_multiplier = 1.5;
   constexpr double size_min_multiplier = 0.25;
@@ -242,7 +237,6 @@ bool VehicleTracker::measureWithPose(
   limitObjectExtension(object_model_);
 
   // set shape type, which is bounding box
-  object_.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   object_.area = types::getArea(object.shape);
   object_.shape.footprint = object.shape.footprint;
 
@@ -299,6 +293,7 @@ bool VehicleTracker::getTrackedObject(
     // if there is no cached object, predict and update cache
     object = object_;
     object.time = time;
+    object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
 
     // predict from motion model
     auto & pose = object.pose;
