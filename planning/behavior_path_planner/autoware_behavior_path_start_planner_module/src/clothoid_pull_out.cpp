@@ -1400,7 +1400,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
 
     // crop backward path
     const size_t start_segment_idx =
-      autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
+      autoware::motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
         clothoid_path.points, start_pose, common_parameters.ego_nearest_dist_threshold,
         common_parameters.ego_nearest_yaw_threshold);
 
@@ -1469,12 +1469,13 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     temp_pull_out_path.end_pose = target_pose;
 
     if (isPullOutPathCollided(
-          temp_pull_out_path, planner_data, parameters_.shift_collision_check_distance_from_end)) {
-      RCLCPP_WARN(
+          temp_pull_out_path, planner_data,
+          parameters_.clothoid_collision_check_distance_from_end)) {
+      RCLCPP_INFO(
         rclcpp::get_logger("ClothoidPullOut"),
         "Collision detected for steer angle %.2f deg with margin %.2f m. Continuing to next "
         "candidate.",
-        rad2deg(steer_angle), parameters_.shift_collision_check_distance_from_end);
+        rad2deg(steer_angle), parameters_.clothoid_collision_check_distance_from_end);
       planner_debug_data.conditions_evaluation.emplace_back("collision");
       continue;
     }
