@@ -12,20 +12,20 @@ OutputTrajectoryConverter::OutputTrajectoryConverter(const CoordinateTransformer
 std::vector<autoware_planning_msgs::msg::TrajectoryPoint> OutputTrajectoryConverter::create_trajectory_points(
   const std::vector<float>& predicted_trajectory,
   const double trajectory_timestep,
-  const Eigen::Matrix4f& base2map_transform) const
+  const Eigen::Matrix4d& base2map_transform) const
 {
   std::vector<autoware_planning_msgs::msg::TrajectoryPoint> points;
   
   // function to transform direction vector from base coordinate system to map coordinate system
   auto transform_direction_to_map = [&base2map_transform](const float base_dx, const float base_dy) -> float {
-    Eigen::Vector3f base_direction(base_dx, base_dy, 0.0f);
-    Eigen::Vector3f map_direction = base2map_transform.block<3, 3>(0, 0) * base_direction;
+    Eigen::Vector3d base_direction(static_cast<double>(base_dx), static_cast<double>(base_dy), 0.0);
+    Eigen::Vector3d map_direction = base2map_transform.block<3, 3>(0, 0) * base_direction;
     return std::atan2(map_direction.y(), map_direction.x());
   };
   
   // Add 0-second point (0,0)
   autoware_planning_msgs::msg::TrajectoryPoint initial_point;
-  Eigen::Vector4f init_ego_position = base2map_transform * Eigen::Vector4f(0.0, 0.0, 0.0, 1.0);
+  Eigen::Vector4d init_ego_position = base2map_transform * Eigen::Vector4d(0.0, 0.0, 0.0, 1.0);
   initial_point.pose.position.x = init_ego_position[0];
   initial_point.pose.position.y = init_ego_position[1];
   initial_point.pose.position.z = init_ego_position[2];
@@ -50,8 +50,8 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> OutputTrajectoryConver
     float vad_y = predicted_trajectory[i + 1];
 
     auto [aw_x, aw_y, aw_z] = coordinate_transformer_.vad2aw_xyz(vad_x, vad_y, 0.0f);
-    Eigen::Vector4f base_link_position(aw_x, aw_y, 0.0, 1.0);
-    Eigen::Vector4f map_position = base2map_transform * base_link_position;
+    Eigen::Vector4d base_link_position(static_cast<double>(aw_x), static_cast<double>(aw_y), 0.0, 1.0);
+    Eigen::Vector4d map_position = base2map_transform * base_link_position;
 
     point.pose.position.x = map_position[0];
     point.pose.position.y = map_position[1];
@@ -97,7 +97,7 @@ autoware_internal_planning_msgs::msg::CandidateTrajectories OutputTrajectoryConv
   const std::map<int32_t, std::vector<float>>& predicted_trajectories,
   const rclcpp::Time& stamp,
   const double trajectory_timestep,
-  const Eigen::Matrix4f& base2map_transform) const
+  const Eigen::Matrix4d& base2map_transform) const
 {
   autoware_internal_planning_msgs::msg::CandidateTrajectories candidate_trajectories_msg;
 
@@ -130,7 +130,7 @@ autoware_planning_msgs::msg::Trajectory OutputTrajectoryConverter::process_traje
   const std::vector<float>& predicted_trajectory,
   const rclcpp::Time& stamp,
   const double trajectory_timestep,
-  const Eigen::Matrix4f& base2map_transform) const
+  const Eigen::Matrix4d& base2map_transform) const
 {
   autoware_planning_msgs::msg::Trajectory trajectory_msg;
 

@@ -41,7 +41,7 @@ public:
   autoware_perception_msgs::msg::PredictedObjects process_predicted_objects(
     const std::vector<BBox>& bboxes,
     const rclcpp::Time& stamp,
-    const Eigen::Matrix4f& base2map_transform) const;
+    const Eigen::Matrix4d& base2map_transform) const;
 
 private:
   // TODO(Shin-kyoto): tentative implementation. 
@@ -84,7 +84,7 @@ private:
    */
   std::vector<autoware_perception_msgs::msg::PredictedPath> convert_predicted_paths(
     const BBox& bbox,
-    const Eigen::Matrix4f& base2map_transform,
+    const Eigen::Matrix4d& base2map_transform,
     const float yaw) const;
 
   /**
@@ -95,7 +95,7 @@ private:
    */
   geometry_msgs::msg::Point convert_position(
     const BBox& bbox,
-    const Eigen::Matrix4f& base2map_transform) const;
+    const Eigen::Matrix4d& base2map_transform) const;
 
   /**
    * @brief Calculate object orientation from trajectory or bbox
@@ -105,7 +105,7 @@ private:
    */
   float calculate_object_orientation(
     const BBox& bbox,
-    const Eigen::Matrix4f& base2map_transform) const;
+    const Eigen::Matrix4d& base2map_transform) const;
 
   /**
    * @brief Calculate predicted path yaw
@@ -115,7 +115,7 @@ private:
    */
    std::optional<float> calculate_predicted_path_yaw(
     const BBox& bbox,
-    const Eigen::Matrix4f& base2map_transform) const;
+    const Eigen::Matrix4d& base2map_transform) const;
 
   };
 

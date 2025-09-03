@@ -22,7 +22,7 @@ visualization_msgs::msg::Marker OutputMapConverter::create_polyline_marker(
   const MapPolyline& map_polyline,
   const int32_t marker_id,
   const rclcpp::Time& stamp,
-  const Eigen::Matrix4f& base2map_transform) const
+  const Eigen::Matrix4d& base2map_transform) const
 {
   visualization_msgs::msg::Marker marker;
   
@@ -53,8 +53,8 @@ visualization_msgs::msg::Marker OutputMapConverter::create_polyline_marker(
       
       auto [aw_x, aw_y, aw_z] = coordinate_transformer_.vad2aw_xyz(vad_x, vad_y, 0.0f);
       
-      Eigen::Vector4f base_point(aw_x, aw_y, 0.0f, 1.0f);
-      Eigen::Vector4f map_point = base2map_transform * base_point;
+      Eigen::Vector4d base_point(static_cast<double>(aw_x), static_cast<double>(aw_y), 0.0, 1.0);
+      Eigen::Vector4d map_point = base2map_transform * base_point;
       
       geometry_msgs::msg::Point geometry_point;
       geometry_point.x = map_point[0];
@@ -81,7 +81,7 @@ visualization_msgs::msg::Marker OutputMapConverter::create_polyline_marker(
 visualization_msgs::msg::MarkerArray OutputMapConverter::process_map_points(
   const std::vector<MapPolyline>& vad_map_polylines,
   const rclcpp::Time& stamp,
-  const Eigen::Matrix4f& base2map_transform) const
+  const Eigen::Matrix4d& base2map_transform) const
 {
   visualization_msgs::msg::MarkerArray marker_array;
 

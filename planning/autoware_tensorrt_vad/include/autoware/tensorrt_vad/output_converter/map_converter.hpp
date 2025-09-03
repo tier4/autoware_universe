@@ -38,7 +38,7 @@ public:
   visualization_msgs::msg::MarkerArray process_map_points(
     const std::vector<MapPolyline>& vad_map_polylines,
     const rclcpp::Time& stamp,
-    const Eigen::Matrix4f& base2map_transform) const;
+    const Eigen::Matrix4d& base2map_transform) const;
 
 private:
   /**
@@ -53,7 +53,7 @@ private:
     const MapPolyline& map_polyline,
     const int32_t marker_id,
     const rclcpp::Time& stamp,
-    const Eigen::Matrix4f& base2map_transform) const;
+    const Eigen::Matrix4d& base2map_transform) const;
 
   /**
    * @brief Get color for a specific map type

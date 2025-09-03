@@ -46,7 +46,7 @@ public:
     const std::vector<float>& predicted_trajectory,
     const rclcpp::Time& stamp,
     const double trajectory_timestep,
-    const Eigen::Matrix4f& base2map_transform) const;
+    const Eigen::Matrix4d& base2map_transform) const;
 
   /**
    * @brief Convert VAD candidate trajectories to ROS CandidateTrajectories message
@@ -60,7 +60,7 @@ public:
     const std::map<int32_t, std::vector<float>>& predicted_trajectories,
     const rclcpp::Time& stamp,
     const double trajectory_timestep,
-    const Eigen::Matrix4f& base2map_transform) const;
+    const Eigen::Matrix4d& base2map_transform) const;
 
 private:
   /**
@@ -73,7 +73,7 @@ private:
   std::vector<autoware_planning_msgs::msg::TrajectoryPoint> create_trajectory_points(
     const std::vector<float>& predicted_trajectory,
     const double trajectory_timestep,
-    const Eigen::Matrix4f& base2map_transform) const;
+    const Eigen::Matrix4d& base2map_transform) const;
 };
 
 } // namespace autoware::tensorrt_vad::vad_interface

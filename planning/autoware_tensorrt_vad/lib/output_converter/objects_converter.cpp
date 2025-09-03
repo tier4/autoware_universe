@@ -47,7 +47,7 @@ autoware_perception_msgs::msg::ObjectClassification OutputObjectsConverter::conv
 
 std::optional<float> OutputObjectsConverter::calculate_predicted_path_yaw(
   const BBox& bbox,
-  const Eigen::Matrix4f& base2map_transform) const
+  const Eigen::Matrix4d& base2map_transform) const
 {
   float max_confidence = 0.0f;
   std::optional<float> predicted_path_yaw = std::nullopt;
@@ -64,10 +64,10 @@ std::optional<float> OutputObjectsConverter::calculate_predicted_path_yaw(
       auto [traj_aw_x1, traj_aw_y1, traj_aw_z1] = coordinate_transformer_.vad2aw_xyz(traj_vad_x1, traj_vad_y1, vad_z);
       auto [traj_aw_x2, traj_aw_y2, traj_aw_z2] = coordinate_transformer_.vad2aw_xyz(traj_vad_x2, traj_vad_y2, vad_z);
 
-      Eigen::Vector4f pos1_base(traj_aw_x1, traj_aw_y1, traj_aw_z1, 1.0f);
-      Eigen::Vector4f pos2_base(traj_aw_x2, traj_aw_y2, traj_aw_z2, 1.0f);
-      Eigen::Vector4f pos1_map = base2map_transform * pos1_base;
-      Eigen::Vector4f pos2_map = base2map_transform * pos2_base;
+      Eigen::Vector4d pos1_base(static_cast<double>(traj_aw_x1), static_cast<double>(traj_aw_y1), static_cast<double>(traj_aw_z1), 1.0);
+      Eigen::Vector4d pos2_base(static_cast<double>(traj_aw_x2), static_cast<double>(traj_aw_y2), static_cast<double>(traj_aw_z2), 1.0);
+      Eigen::Vector4d pos1_map = base2map_transform * pos1_base;
+      Eigen::Vector4d pos2_map = base2map_transform * pos2_base;
 
       float dx = pos2_map.x() - pos1_map.x();
       float dy = pos2_map.y() - pos1_map.y();
@@ -83,7 +83,7 @@ std::optional<float> OutputObjectsConverter::calculate_predicted_path_yaw(
 
 geometry_msgs::msg::Point OutputObjectsConverter::convert_position(
   const BBox& bbox,
-  const Eigen::Matrix4f& base2map_transform) const
+  const Eigen::Matrix4d& base2map_transform) const
 {
     geometry_msgs::msg::Point position;
     // BBox format: [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
@@ -93,8 +93,8 @@ geometry_msgs::msg::Point OutputObjectsConverter::convert_position(
     float vad_z = bbox.bbox[4] + bbox.bbox[5] * 0.5f; // z + h / 2. object center
     vad_z += z_offset_;
     auto [aw_x, aw_y, aw_z] = coordinate_transformer_.vad2aw_xyz(vad_x, vad_y, vad_z);
-    Eigen::Vector4f position_base(aw_x, aw_y, aw_z, 1.0f);
-    Eigen::Vector4f position_map = base2map_transform * position_base;
+    Eigen::Vector4d position_base(static_cast<double>(aw_x), static_cast<double>(aw_y), static_cast<double>(aw_z), 1.0);
+    Eigen::Vector4d position_map = base2map_transform * position_base;
     position.x = position_map.x();
     position.y = position_map.y();
     position.z = position_map.z();
@@ -103,14 +103,14 @@ geometry_msgs::msg::Point OutputObjectsConverter::convert_position(
 
 float OutputObjectsConverter::calculate_object_orientation(
   const BBox& bbox,
-  const Eigen::Matrix4f& base2map_transform) const
+  const Eigen::Matrix4d& base2map_transform) const
 {
   float sin_theta = bbox.bbox[6];
   float cos_theta = bbox.bbox[7];
   float vad_yaw = std::atan2(sin_theta, cos_theta);
 
   // Get vehicle rotation from base2map_transform
-  Eigen::Matrix3f rotation_matrix = base2map_transform.block<3, 3>(0, 0);
+  Eigen::Matrix3d rotation_matrix = base2map_transform.block<3, 3>(0, 0);
   float transform_yaw = std::atan2(rotation_matrix(1, 0), rotation_matrix(0, 0));
   float map_yaw = vad_yaw + transform_yaw;
 
@@ -144,7 +144,7 @@ autoware_perception_msgs::msg::Shape OutputObjectsConverter::convert_shape(
 
 std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter::convert_predicted_paths(
   const BBox& bbox,
-  const Eigen::Matrix4f& base2map_transform,
+  const Eigen::Matrix4d& base2map_transform,
   const float yaw) const
 {
   std::vector<autoware_perception_msgs::msg::PredictedPath> predicted_paths;
@@ -170,8 +170,8 @@ std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter
       auto [traj_aw_x, traj_aw_y, traj_aw_z] = coordinate_transformer_.vad2aw_xyz(traj_vad_x, traj_vad_y, traj_vad_z);
 
       // Transform to map coordinate system
-      Eigen::Vector4f traj_position_base(traj_aw_x, traj_aw_y, traj_aw_z, 1.0f);
-      Eigen::Vector4f traj_position_map = base2map_transform * traj_position_base;
+      Eigen::Vector4d traj_position_base(static_cast<double>(traj_aw_x), static_cast<double>(traj_aw_y), static_cast<double>(traj_aw_z), 1.0);
+      Eigen::Vector4d traj_position_map = base2map_transform * traj_position_base;
       
       pose.position.x = traj_position_map.x();
       pose.position.y = traj_position_map.y();
@@ -187,8 +187,8 @@ std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter
         auto [next_aw_x, next_aw_y, next_aw_z] = coordinate_transformer_.vad2aw_xyz(next_vad_x, next_vad_y, traj_vad_z);
         
         // Transform next point to map coordinate system
-        Eigen::Vector4f next_position_base(next_aw_x, next_aw_y, next_aw_z, 1.0f);
-        Eigen::Vector4f next_position_map = base2map_transform * next_position_base;
+        Eigen::Vector4d next_position_base(static_cast<double>(next_aw_x), static_cast<double>(next_aw_y), static_cast<double>(next_aw_z), 1.0);
+        Eigen::Vector4d next_position_map = base2map_transform * next_position_base;
         
         // Calculate direction vector in map coordinate system
         float dx = next_position_map.x() - traj_position_map.x();
@@ -213,7 +213,7 @@ std::vector<autoware_perception_msgs::msg::PredictedPath> OutputObjectsConverter
 autoware_perception_msgs::msg::PredictedObjects OutputObjectsConverter::process_predicted_objects(
   const std::vector<BBox>& bboxes,
   const rclcpp::Time& stamp,
-  const Eigen::Matrix4f& base2map_transform) const
+  const Eigen::Matrix4d& base2map_transform) const
 {
   autoware_perception_msgs::msg::PredictedObjects predicted_objects;
   // Set header
