@@ -183,7 +183,7 @@ bool check_and_update_msg(
 
 std::vector<float> create_ego_sequence(
   const std::vector<FrameData> & data_list, const int64_t start_idx, const int64_t time_steps,
-  const Eigen::Matrix4f & map2bl_matrix)
+  const Eigen::Matrix4d & map2bl_matrix)
 {
   // Extract odometry messages from FrameData
   std::deque<nav_msgs::msg::Odometry> odometry_deque;
@@ -196,7 +196,7 @@ std::vector<float> create_ego_sequence(
 
 std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_future(
   const std::vector<FrameData> & data_list, const int64_t current_idx,
-  const Eigen::Matrix4f & map2bl_matrix, const Eigen::Matrix4f & bl2map_matrix)
+  const Eigen::Matrix4d & map2bl_matrix, const Eigen::Matrix4d & bl2map_matrix)
 {
   // Build agent histories using AgentData::update_histories
   const int64_t start_idx = std::max(static_cast<int64_t>(0), current_idx - PAST_TIME_STEPS + 1);
@@ -695,8 +695,8 @@ int main(int argc, char ** argv)
 
       // Get goal pose
       const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
-      const Eigen::Matrix4f goal_pose_in_map = utils::pose_to_matrix4f(goal_pose);
-      const Eigen::Matrix4f goal_pose_in_bl = map2bl * goal_pose_in_map;
+      const Eigen::Matrix4d goal_pose_in_map = utils::pose_to_matrix4f(goal_pose);
+      const Eigen::Matrix4d goal_pose_in_bl = map2bl * goal_pose_in_map;
       const float goal_x = goal_pose_in_bl(0, 3);
       const float goal_y = goal_pose_in_bl(1, 3);
       const float yaw = std::atan2(goal_pose_in_bl(1, 0), goal_pose_in_bl(0, 0));
