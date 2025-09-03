@@ -9,7 +9,7 @@
 
 namespace autoware::tensorrt_vad::vad_interface {
 
-using Lidar2ImgData = std::vector<float>;
+using VadBase2ImgData = std::vector<float>;
 
 /**
  * @brief InputTransformMatrixConverter handles vad base_link to image (camera optical link) transformation matrix calculation
@@ -34,9 +34,9 @@ public:
    * @param camera_infos Vector of ROS CameraInfo messages from multiple cameras
    * @param scale_width Width scaling factor for image resizing
    * @param scale_height Height scaling factor for image resizing
-   * @return Lidar2ImgData Flattened transformation matrices for all cameras
+   * @return VadBase2ImgData Flattened transformation matrices for all cameras
    */
-  Lidar2ImgData process_lidar2img(
+  VadBase2ImgData process_lidar2img(
     const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos,
     const float scale_width, const float scale_height) const;
 

@@ -48,7 +48,7 @@ std::vector<float> InputTransformMatrixConverter::matrix_to_flat(const Eigen::Ma
   return flat;
 }
 
-Lidar2ImgData InputTransformMatrixConverter::process_lidar2img(
+VadBase2ImgData InputTransformMatrixConverter::process_lidar2img(
   const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos,
   const float scale_width, const float scale_height) const
 {

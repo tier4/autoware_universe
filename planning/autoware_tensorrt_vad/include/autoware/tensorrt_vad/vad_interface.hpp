@@ -117,7 +117,7 @@ struct VadOutputTopicData
 // Data structures for return values of each process_* method
 using CameraImagesData = std::vector<float>;
 using ShiftData = std::vector<float>;
-using Lidar2ImgData = std::vector<float>;
+using VadBase2ImgData = std::vector<float>;
 using CanBusData = std::vector<float>;
 
 /**
@@ -160,7 +160,7 @@ private:
   std::vector<float> prev_can_bus_;
 
   // Cached VAD base_link (coordinate used in VAD output trajectory) to camera transformation matrix
-  std::optional<Lidar2ImgData> vad_base2img_transform_;
+  std::optional<VadBase2ImgData> vad_base2img_transform_;
 };
 
 }  // namespace autoware::tensorrt_vad
