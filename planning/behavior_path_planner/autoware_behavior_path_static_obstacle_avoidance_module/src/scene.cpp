@@ -1527,7 +1527,7 @@ void StaticObstacleAvoidanceModule::initVariables()
   resetPathCandidate();
   resetPathReference();
   arrived_path_end_ = false;
-  
+
   // Clear object data arrays to prevent stale references
   registered_objects_.clear();
   clip_objects_.clear();
