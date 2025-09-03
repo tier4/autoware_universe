@@ -727,7 +727,7 @@ void CudaPolarVoxelOutlierFilter::set_return_types(
   const std::vector<int> & types, std::optional<ReturnTypeCandidates> & types_dev)
 {
   if (types_dev) {
-    // Reset allocated region previously to reflesh the parameters
+    // Reset previously allocated region to refresh the parameters
     CHECK_CUDA_ERROR(cudaFreeAsync(types_dev.value().return_types, stream_));
   }
 
@@ -829,7 +829,7 @@ CudaPolarVoxelOutlierFilter::calculate_voxel_index(
     subtract_left_optional_kernel<<<grid_dim, block_dim, 0, stream_>>>(
       voxel_indices_raw.get(), num_points, voxel_indices_bool.get());
 
-    // calculate mapped index (from geometry-based liner voxel indices to memory-based indices)
+    // calculate mapped index (from geometry-based linear voxel indices to memory-based indices)
     auto inclusive_sum = [](auto &&... args) {
       return cub::DeviceScan::InclusiveSum(std::forward<decltype(args)>(args)...);
     };
@@ -844,7 +844,7 @@ CudaPolarVoxelOutlierFilter::calculate_voxel_index(
         (num_points - 1),  // the end of array contains the number of valid voxels
       sizeof(int), cudaMemcpyDeviceToHost, stream_));
 
-    // Since the current polar_voxel_index_seq contains index value starting from 1,
+    // Since the current voxel_indices contain index values starting from 1,
     //  Subtract 1 from all elements to make 0 started index
     //// NOTE: equivalent operation can be achieved cud::DeviceFor::Forereach that is introduced
     /// from / cub v2.4.0
