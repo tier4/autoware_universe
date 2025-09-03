@@ -155,6 +155,24 @@ get_element_value(const uint8_t * data, const size_t index, const size_t step, c
   return *reinterpret_cast<const T *>(data + index * step + offset);
 }
 
+template <typename T>
+__device__ bool check_within_radius_range(
+  const FieldDataIndex & field_index, const T & field_data, const double & min_val,
+  const double & max_val)
+{
+  return (field_index == FieldDataIndex::radius)
+           ? (min_val <= field_data) && (field_data <= max_val)
+           : true;
+}
+
+template <typename T>
+__device__ bool check_sufficient_radius(const FieldDataIndex & field_index, const T & field_data)
+{
+  return (field_index == FieldDataIndex::radius)
+           ? ::cuda::std::abs(field_data) >= ::cuda::std::numeric_limits<T>::epsilon()
+           : true;
+}
+
 template <typename TFieldData>
 __device__ void assign_polar_index(
   const TFieldData & field_data, const size_t & point_index, const FieldDataIndex & field_index,
@@ -163,13 +181,10 @@ __device__ void assign_polar_index(
   FieldDataComposer<::cuda::std::optional<int32_t> *> & outputs)
 {
   bool is_finite = isfinite(field_data);
-  bool is_within_radius_range = (field_index == FieldDataIndex::radius)
-                                  ? (min_radius <= field_data) && (field_data <= max_radius)
-                                  : true;
-  bool has_sufficient_radius =
-    (field_index == FieldDataIndex::radius)
-      ? ::cuda::std::abs(field_data) >= ::cuda::std::numeric_limits<TFieldData>::epsilon()
-      : true;
+  bool is_within_radius_range =
+    check_within_radius_range(field_index, field_data, min_radius, max_radius);
+
+  bool has_sufficient_radius = check_sufficient_radius(field_index, field_data);
 
   auto output = outputs[field_index];
   if (!is_finite || !is_within_radius_range || !has_sufficient_radius) {
