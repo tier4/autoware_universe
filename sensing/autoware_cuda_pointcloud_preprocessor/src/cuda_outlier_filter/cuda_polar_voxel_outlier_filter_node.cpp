@@ -103,7 +103,7 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
   ratio_pub_ = create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
     "~/debug/filter_ratio", rclcpp::SensorDataQoS());
 
-  sub_ =
+  pointcloud_sub_ =
     std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
       *this, "~/input/pointcloud",
       std::bind(
