@@ -181,7 +181,8 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   filter_ratio_ = filter_return.filter_ratio;
   visibility_ = filter_return.visibility;
 
-  if (filtered_cloud.get() == nullptr) {
+  if (!filtered_cloud) {
+    // filtered_cloud contains nullptr
     return;
   }
 
