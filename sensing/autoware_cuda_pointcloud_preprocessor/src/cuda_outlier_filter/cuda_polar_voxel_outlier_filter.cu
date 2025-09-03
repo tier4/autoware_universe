@@ -57,17 +57,7 @@ struct ValidAndNotEqualTo
   __host__ __device__ bool operator()(
     const ::cuda::std::optional<DataType> & lhs, const ::cuda::std::optional<DataType> & rhs)
   {
-    bool ret = false;
-    if (!rhs) {
-      ret = false;
-    } else {  // rhs has value
-      if (!lhs) {
-        ret = true;
-      } else {
-        ret = lhs.value() != rhs.value();
-      }
-    }
-    return ret;
+    return rhs && (!lhs || lhs.value() != rhs.value());
   }
 };
 
