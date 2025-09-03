@@ -9,22 +9,17 @@ InputTransformMatrixConverter::InputTransformMatrixConverter(
 {
 }
 
-Eigen::Matrix4f InputTransformMatrixConverter::create_viewpad(
+Eigen::Matrix4f InputTransformMatrixConverter::create_cam2img(
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info) const
 {
-  Eigen::Matrix3f k_matrix;
-  for (int32_t i = 0; i < 3; ++i) {
-    for (int32_t j = 0; j < 3; ++j) {
-      k_matrix(i, j) = camera_info->k[i * 3 + j];
-    }
-  }
-  
-  // Create viewpad
-  Eigen::Matrix4f viewpad = Eigen::Matrix4f::Zero();
-  viewpad.block<3, 3>(0, 0) = k_matrix;
-  viewpad(3, 3) = 1.0f;
-  
-  return viewpad;
+  // Create cam2img matrix directly from camera_info->k
+  Eigen::Matrix4f cam2img;
+  cam2img << camera_info->k[0], camera_info->k[1], camera_info->k[2], 0.0f,
+             camera_info->k[3], camera_info->k[4], camera_info->k[5], 0.0f,
+             camera_info->k[6], camera_info->k[7], camera_info->k[8], 0.0f,
+             0.0f,              0.0f,              0.0f,              1.0f;
+
+  return cam2img;
 }
 
 Eigen::Matrix4f InputTransformMatrixConverter::apply_scaling(
@@ -69,13 +64,13 @@ VadBase2ImgData InputTransformMatrixConverter::process_vad_base2img(
     }
     Eigen::Matrix4f base2cam = *base2cam_opt;
 
-    Eigen::Matrix4f viewpad = create_viewpad(camera_infos[autoware_camera_id]);
+    Eigen::Matrix4f cam2img = create_cam2img(camera_infos[autoware_camera_id]);
     
     // Get vad2base transformation from config through coordinate transformer
     // The coordinate transformer uses vad2base internally, but we need to access it for vad2cam calculation
     // Calculate vad2cam transformation: vad2img = cam2img * base2cam * vad2base
     Eigen::Matrix4f vad2cam_rt = base2cam * config_.vad2base;
-    Eigen::Matrix4f vad_base2img = viewpad * vad2cam_rt;
+    Eigen::Matrix4f vad_base2img = cam2img * vad2cam_rt;
 
     // Apply scaling
     Eigen::Matrix4f vad_base2img_scaled = apply_scaling(vad_base2img, scale_width, scale_height);

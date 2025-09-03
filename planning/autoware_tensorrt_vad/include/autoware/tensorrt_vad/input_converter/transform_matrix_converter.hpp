@@ -16,7 +16,7 @@ using VadBase2ImgData = std::vector<float>;
  * 
  * This class processes camera calibration data to create transformation matrices:
  * - TF lookup for base_link to camera frame transformations
- * - Camera intrinsics matrix processing (viewpad creation)
+ * - Camera intrinsics matrix processing (cam2img matrix creation)
  * - Image scaling application for resized images
  * - vad base_link to image (camera optical link) transformation matrix calculation and flattening
  */
@@ -42,11 +42,11 @@ public:
 
 private:
   /**
-   * @brief Create viewpad matrix from camera intrinsics
+   * @brief Create cam2img(4x4 camera_link to camera_optical_link matrix, as known as viewpad) matrix from camera intrinsics
    * @param camera_info Camera calibration information
-   * @return Eigen::Matrix4f 4x4 viewpad matrix with intrinsics and padding
+   * @return Eigen::Matrix4f 4x4 cam2img matrix with intrinsics and padding
    */
-  Eigen::Matrix4f create_viewpad(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info) const;
+  Eigen::Matrix4f create_cam2img(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info) const;
 
   /**
    * @brief Apply scaling transformation to vad base_link (coordinate used in VAD inference) to image (camera optical link) transformation matrix
