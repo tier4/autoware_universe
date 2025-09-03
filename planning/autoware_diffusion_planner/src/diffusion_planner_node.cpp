@@ -445,8 +445,6 @@ InputDataMap DiffusionPlanner::create_input_data()
   // route data on ego reference frame
   {
     const auto & current_pose = ego_kinematic_state->pose.pose;
-    constexpr double backward_path_length{constants::BACKWARD_PATH_LENGTH_M};
-    constexpr double forward_path_length{constants::FORWARD_PATH_LENGTH_M};
     lanelet::ConstLanelet current_preferred_lane;
 
     if (
@@ -457,11 +455,9 @@ InputDataMap DiffusionPlanner::create_input_data()
         "failed to find closest lanelet within route!!!");
       return {};
     }
-    auto current_lanes = route_handler_->getLaneletSequence(
-      current_preferred_lane, backward_path_length, forward_path_length);
 
     const auto [route_lanes, route_lanes_speed_limit] = lane_segment_context_->get_route_segments(
-      map_to_ego_transform, traffic_light_id_map_, current_lanes);
+      map_to_ego_transform, traffic_light_id_map_, *route_ptr_, center_x, center_y);
     input_data_map["route_lanes"] = replicate_for_batch(route_lanes);
     input_data_map["route_lanes_speed_limit"] = replicate_for_batch(route_lanes_speed_limit);
   }

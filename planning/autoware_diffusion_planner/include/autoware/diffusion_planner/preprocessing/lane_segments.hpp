@@ -46,6 +46,7 @@
 namespace autoware::diffusion_planner::preprocess
 {
 using autoware_planning_msgs::msg::LaneletRoute;
+using autoware_planning_msgs::msg::LaneletSegment;
 /**
  * @brief Represents a column index with its associated distance and whether it is inside a mask
  * range.
@@ -94,7 +95,7 @@ public:
   std::pair<std::vector<float>, std::vector<float>> get_route_segments(
     const Eigen::Matrix4d & transform_matrix,
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
-    const lanelet::ConstLanelets & current_lanes) const;
+    const LaneletRoute & route, const double center_x, const double center_y) const;
 
   /**
    * @brief Get lane segments and transform them to ego-centric coordinates.
