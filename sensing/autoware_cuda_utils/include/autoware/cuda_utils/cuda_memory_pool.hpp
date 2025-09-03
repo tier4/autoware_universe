@@ -34,12 +34,11 @@ namespace autoware::cuda_utils
  *
  * \param max_mem_pool_size_in_byte The maximum size of the memory pool in bytes. WHen more than the
  * this value of memory are held by the memory pool, the allocator will try to release memory.
- * Defaults to 1GB.
- * \param device_id The ID of the CUDA device to create the memory pool on. Defaults to 0.
+ * \param device_id The ID of the CUDA device to create the memory pool on.
  * \return A CUDA memory pool handler.
  */
 cudaMemPool_t create_memory_pool(
-  const size_t & max_mem_pool_size_in_byte = 1e9, const int device_id = 0)
+  const size_t & max_mem_pool_size_in_byte, const int device_id)
 {
   cudaMemPool_t mem_pool;
 
