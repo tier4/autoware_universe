@@ -49,8 +49,6 @@ void transform_selected_rows(
   int64_t row_idx, bool do_translation = true);
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements);
-lanelet::Lanelets filter_route(
-  lanelet::Lanelets & route, const double center_x, const double center_y);
 }  // namespace
 
 // LaneSegmentContext implementation
@@ -80,12 +78,7 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_route_
 
   std::vector<float> speed_limit_vector(ROUTE_LANES_SHAPE[1]);
 
-  lanelet::Lanelets route_lanelets;
-  for (const LaneletSegment & route_segment : route.segments) {
-    route_lanelets.push_back(
-      lanelet_map_ptr_->laneletLayer.get(route_segment.preferred_primitive.id));
-  }
-  route_lanelets = filter_route(route_lanelets, center_x, center_y);
+  const lanelet::Lanelets route_lanelets = filter_route_lanelets(route, center_x, center_y);
 
   // Add traffic light one-hot encoding to the route segments
   for (const lanelet::Lanelet & route_segment : route_lanelets) {
@@ -316,6 +309,51 @@ Eigen::MatrixXd LaneSegmentContext::transform_points_and_add_traffic_info(
   return output_matrix;
 }
 
+lanelet::Lanelets LaneSegmentContext::filter_route_lanelets(
+  const LaneletRoute & route, const double center_x, const double center_y) const
+{
+  lanelet::Lanelets route_lanelets;
+  for (const LaneletSegment & route_segment : route.segments) {
+    route_lanelets.push_back(
+      lanelet_map_ptr_->laneletLayer.get(route_segment.preferred_primitive.id));
+  }
+
+  double closest_distance = std::numeric_limits<double>::max();
+  size_t closest_index = 0;
+
+  auto distance_to_lanelet =
+    [](const double x, const double y, const lanelet::ConstLanelet & lanelet) {
+      double distance = std::numeric_limits<double>::max();
+      for (const lanelet::ConstPoint2d & point : lanelet.centerline()) {
+        const double diff_x = point.x() - x;
+        const double diff_y = point.y() - y;
+        const double curr_distance = std::sqrt(diff_x * diff_x + diff_y * diff_y);
+        distance = std::min(distance, curr_distance);
+      }
+      return distance;
+    };
+
+  const size_t num_lanelets = route_lanelets.size();
+  for (size_t i = 0; i < num_lanelets; ++i) {
+    const lanelet::CompoundPolygon2d & centerlines = route_lanelets[i].polygon2d();
+    const double distance = distance_to_lanelet(center_x, center_y, route_lanelets[i]);
+    if (distance < closest_distance) {
+      closest_distance = distance;
+      closest_index = i;
+    }
+  }
+
+  lanelet::Lanelets filtered_route;
+  for (size_t i = closest_index; i < num_lanelets; ++i) {
+    const double distance = distance_to_lanelet(center_x, center_y, route_lanelets[i]);
+    if (distance > autoware::diffusion_planner::constants::LANE_MASK_RANGE_M) {
+      break;
+    }
+    filtered_route.push_back(route_lanelets[i]);
+  }
+  return filtered_route;
+}
+
 // Internal functions implementation
 namespace
 {
@@ -485,45 +523,6 @@ Eigen::MatrixXd process_segment_to_matrix(const LaneSegment & segment)
   }
 
   return segment_data;
-}
-
-lanelet::Lanelets filter_route(
-  lanelet::Lanelets & route, const double center_x, const double center_y)
-{
-  double closest_distance = std::numeric_limits<double>::max();
-  size_t closest_index = 0;
-
-  auto distance_to_lanelet =
-    [](const double x, const double y, const lanelet::ConstLanelet & lanelet) {
-      double distance = std::numeric_limits<double>::max();
-      for (const lanelet::ConstPoint2d & point : lanelet.centerline()) {
-        const double diff_x = point.x() - x;
-        const double diff_y = point.y() - y;
-        const double curr_distance = std::sqrt(diff_x * diff_x + diff_y * diff_y);
-        distance = std::min(distance, curr_distance);
-      }
-      return distance;
-    };
-
-  const size_t num_lanelets = route.size();
-  for (size_t i = 0; i < num_lanelets; ++i) {
-    const lanelet::CompoundPolygon2d & centerlines = route[i].polygon2d();
-    const double distance = distance_to_lanelet(center_x, center_y, route[i]);
-    if (distance < closest_distance) {
-      closest_distance = distance;
-      closest_index = i;
-    }
-  }
-
-  lanelet::Lanelets filtered_route;
-  for (size_t i = closest_index; i < num_lanelets; ++i) {
-    const double distance = distance_to_lanelet(center_x, center_y, route[i]);
-    if (distance > autoware::diffusion_planner::constants::LANE_MASK_RANGE_M) {
-      break;
-    }
-    filtered_route.push_back(route[i]);
-  }
-  return filtered_route;
 }
 
 }  // namespace

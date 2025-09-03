@@ -165,6 +165,20 @@ private:
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
     const std::vector<ColWithDistance> & distances, int64_t m) const;
 
+  /**
+   * @brief Filter route lanelets starting from the closest lanelet to the center point.
+   *
+   * This function extracts lanelets from the route, finds the lanelet closest to the center point,
+   * and returns consecutive lanelets from that point onwards that are within the lane mask range.
+   *
+   * @param route The lanelet route to filter.
+   * @param center_x X-coordinate of the center point.
+   * @param center_y Y-coordinate of the center point.
+   * @return Filtered lanelets starting from the closest lanelet to the center, within mask range.
+   */
+  lanelet::Lanelets filter_route_lanelets(
+    const LaneletRoute & route, const double center_x, const double center_y) const;
+
   // variables
   Eigen::MatrixXd map_lane_segments_matrix_;
   ColLaneIDMaps col_id_mapping_;
