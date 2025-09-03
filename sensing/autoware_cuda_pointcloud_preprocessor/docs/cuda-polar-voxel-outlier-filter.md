@@ -6,7 +6,7 @@ This node is a CUDA accelerated version of the `PolarVoxelOutlierFilter` availab
 
 ## Inner-workings / Algorithms
 
-This node re implements of the function of `autoware::pointcloud_preprocessor::PolarVoxelOutlierFilterComponent`, which filters outlier based on polar coordinate space instead of Cartesian coordinate space.
+This node is an alternative implementation to `autoware::pointcloud_preprocessor::PolarVoxelOutlierFilterComponent`, which filters outliers based on voxels in polar coordinate space instead of Cartesian coordinate space.
 
 ## Inputs / Outputs
 
