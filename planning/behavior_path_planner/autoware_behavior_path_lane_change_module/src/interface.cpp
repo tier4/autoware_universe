@@ -166,7 +166,7 @@ BehaviorModuleOutput LaneChangeInterface::planWaitingApproval()
   path_reference_ = std::make_shared<PathWithLaneId>(out.reference_path);
   stop_pose_ = module_type_->getStopPose();
 
-  {
+  if (parameters_->l2_overwrite.enable) {
     // When we manually make the vehicle far away from the lane change line,
     // We would like to abort the lane change.
     // We accomplish this by not updating RTC Status and make it to be inactive.
@@ -179,17 +179,15 @@ BehaviorModuleOutput LaneChangeInterface::planWaitingApproval()
       double normalize_length = std::sqrt(
         std::pow(front_point.x - back_point.x, 2) + std::pow(front_point.y - back_point.y, 2));
       double over_shoot = dot_product / (normalize_length)-normalize_length;
-      if (over_shoot > 5.0) {
+      if (over_shoot > parameters_->l2_overwrite.rewrite_overshoot_threshold) {
         RCLCPP_DEBUG(getLogger(), "%s", "overshooting from lane change");
         path_candidate_ = std::make_shared<PathWithLaneId>();
-        // updateRTCStatus(
-        //   std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(), false,
-        //   State::FAILED);
         module_type_->resetParameters();
         return out;
       }
     }
   }
+
   if (!module_type_->isValidPath()) {
     path_candidate_ = std::make_shared<PathWithLaneId>();
     updateRTCStatus(
