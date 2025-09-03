@@ -14,6 +14,7 @@
 
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 
+#include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>  // for lanelet::autoware::RoadMarking
@@ -119,7 +120,9 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_lane_s
   }
   std::vector<ColWithDistance> distances;
   // Step 1: Compute distances
-  compute_distances(transform_matrix, distances, center_x, center_y, 100.0f);
+  compute_distances(
+    transform_matrix, distances, center_x, center_y,
+    autoware::diffusion_planner::constants::LANE_MASK_RANGE_M);
   // Step 2: Sort indices by distance
   std::sort(distances.begin(), distances.end(), [](const auto & a, const auto & b) {
     return a.distance_squared < b.distance_squared;
@@ -212,7 +215,7 @@ void LaneSegmentContext::apply_transforms(
 
 void LaneSegmentContext::compute_distances(
   const Eigen::Matrix4d & transform_matrix, std::vector<ColWithDistance> & distances,
-  const float center_x, const float center_y, const float mask_range) const
+  const double center_x, const double center_y, const double mask_range) const
 {
   const auto cols = map_lane_segments_matrix_.cols();
   if (cols % POINTS_PER_SEGMENT != 0) {

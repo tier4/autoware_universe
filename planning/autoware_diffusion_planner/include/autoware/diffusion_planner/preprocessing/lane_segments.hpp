@@ -148,7 +148,7 @@ private:
    */
   void compute_distances(
     const Eigen::Matrix4d & transform_matrix, std::vector<ColWithDistance> & distances,
-    const float center_x, const float center_y, const float mask_range = 100.0) const;
+    const double center_x, const double center_y, const double mask_range) const;
 
   /**
    * @brief Transform and select columns from input matrix based on distances.
