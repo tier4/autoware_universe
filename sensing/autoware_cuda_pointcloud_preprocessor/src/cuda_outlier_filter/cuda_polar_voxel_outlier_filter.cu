@@ -442,22 +442,6 @@ __global__ void point_validity_check_kernel(
   auto meet_voxel_criteria =
     primary_meets_threshold[voxel_index] && secondary_meets_threshold[voxel_index];
 
-  // -----
-  // NOTE: The following one line expression is equivalent to:
-  // -----
-  // bool is_valid;
-  // if (!meet_voxel_criteria) {
-  //   is_valid = false;
-  // } else {
-  //   if (!filter_secondary_returns) {
-  //     is_valid = true;
-  //   } else {
-  //     is_valid = is_primary_returns[point_index.value()];
-  //   }
-  // }
-  // valid_points_mask[point_index.value()] = is_valid;
-  // -----
-
   valid_points_mask[point_index.value()] =
     meet_voxel_criteria && (!filter_secondary_returns || is_primary_returns[point_index.value()]);
 }
