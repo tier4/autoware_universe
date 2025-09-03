@@ -28,12 +28,12 @@ Eigen::Matrix4f InputTransformMatrixConverter::create_viewpad(
 }
 
 Eigen::Matrix4f InputTransformMatrixConverter::apply_scaling(
-  const Eigen::Matrix4f& lidar2img, const float scale_width, const float scale_height) const
+  const Eigen::Matrix4f& vad_base2img, const float scale_width, const float scale_height) const
 {
   Eigen::Matrix4f scale_matrix = Eigen::Matrix4f::Identity();
   scale_matrix(0, 0) = scale_width;
   scale_matrix(1, 1) = scale_height;
-  return scale_matrix * lidar2img;
+  return scale_matrix * vad_base2img;
 }
 
 std::vector<float> InputTransformMatrixConverter::matrix_to_flat(const Eigen::Matrix4f& matrix) const
@@ -48,11 +48,11 @@ std::vector<float> InputTransformMatrixConverter::matrix_to_flat(const Eigen::Ma
   return flat;
 }
 
-VadBase2ImgData InputTransformMatrixConverter::process_lidar2img(
+VadBase2ImgData InputTransformMatrixConverter::process_vad_base2img(
   const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos,
   const float scale_width, const float scale_height) const
 {
-  std::vector<float> frame_lidar2img(16 * 6, 0.0f); // Reserve space for 6 cameras
+  std::vector<float> frame_vad_base2img(16 * 6, 0.0f); // Reserve space for 6 cameras
 
   // Process each camera
   for (int32_t autoware_camera_id = 0; autoware_camera_id < 6; ++autoware_camera_id) {
@@ -72,25 +72,25 @@ VadBase2ImgData InputTransformMatrixConverter::process_lidar2img(
     Eigen::Matrix4f viewpad = create_viewpad(camera_infos[autoware_camera_id]);
     
     // Get vad2base transformation from config through coordinate transformer
-    // The coordinate transformer uses vad2base internally, but we need to access it for lidar2cam calculation
-    // Calculate lidar2cam transformation: viewpad * base2cam * vad2base
-    Eigen::Matrix4f lidar2cam_rt = base2cam * config_.vad2base;
-    Eigen::Matrix4f lidar2img = viewpad * lidar2cam_rt;
+    // The coordinate transformer uses vad2base internally, but we need to access it for vad2cam calculation
+    // Calculate vad2cam transformation: vad2img = cam2img * base2cam * vad2base
+    Eigen::Matrix4f vad2cam_rt = base2cam * config_.vad2base;
+    Eigen::Matrix4f vad_base2img = viewpad * vad2cam_rt;
 
     // Apply scaling
-    Eigen::Matrix4f lidar2img_scaled = apply_scaling(lidar2img, scale_width, scale_height);
+    Eigen::Matrix4f vad_base2img_scaled = apply_scaling(vad_base2img, scale_width, scale_height);
 
-    std::vector<float> lidar2img_flat = matrix_to_flat(lidar2img_scaled);
+    std::vector<float> vad_base2img_flat = matrix_to_flat(vad_base2img_scaled);
 
-    // Store result at VAD camera ID position after lidar2img calculation
+    // Store result at VAD camera ID position after vad_base2img calculation
     int32_t vad_camera_id = config_.autoware_to_vad_camera_mapping.at(autoware_camera_id);
     if (vad_camera_id >= 0 && vad_camera_id < 6) {
-      std::copy(lidar2img_flat.begin(), lidar2img_flat.end(),
-                frame_lidar2img.begin() + vad_camera_id * 16);
+      std::copy(vad_base2img_flat.begin(), vad_base2img_flat.end(),
+                frame_vad_base2img.begin() + vad_camera_id * 16);
     }
   }
 
-  return frame_lidar2img;
+  return frame_vad_base2img;
 }
 
 } // namespace autoware::tensorrt_vad::vad_interface

@@ -30,13 +30,13 @@ public:
   InputTransformMatrixConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config);
 
   /**
-   * @brief Process camera info messages to generate lidar2img transformation matrices
+   * @brief Process camera info messages to generate vad base_link (coordinate used in VAD inference) to image (camera optical link) transformation matrices
    * @param camera_infos Vector of ROS CameraInfo messages from multiple cameras
    * @param scale_width Width scaling factor for image resizing
    * @param scale_height Height scaling factor for image resizing
    * @return VadBase2ImgData Flattened transformation matrices for all cameras
    */
-  VadBase2ImgData process_lidar2img(
+  VadBase2ImgData process_vad_base2img(
     const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos,
     const float scale_width, const float scale_height) const;
 
@@ -49,13 +49,13 @@ private:
   Eigen::Matrix4f create_viewpad(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info) const;
 
   /**
-   * @brief Apply scaling transformation to lidar2img matrix
-   * @param lidar2img Original vad base_link to image (camera optical link) transformation matrix
+   * @brief Apply scaling transformation to vad base_link (coordinate used in VAD inference) to image (camera optical link) transformation matrix
+   * @param vad_base2img Original vad base_link to image (camera optical link) transformation matrix
    * @param scale_width Width scaling factor
    * @param scale_height Height scaling factor
    * @return Eigen::Matrix4f Scaled transformation matrix
    */
-  Eigen::Matrix4f apply_scaling(const Eigen::Matrix4f& lidar2img, const float scale_width, const float scale_height) const;
+  Eigen::Matrix4f apply_scaling(const Eigen::Matrix4f& vad_base2img, const float scale_width, const float scale_height) const;
 
   /**
    * @brief Convert 4x4 matrix to flattened vector in row-major order
