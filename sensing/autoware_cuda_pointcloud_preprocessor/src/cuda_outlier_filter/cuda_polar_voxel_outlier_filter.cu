@@ -547,8 +547,10 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   size_t num_points = input_cloud->width * input_cloud->height;
   if (num_points == 0) {
     // sometimes topic might contain zero point even the pointer is valid
-    // For such cases, this filter do nothing
-    return FilterReturn{nullptr, nullptr, 0., 0.};
+    // For such cases, this filter returns empty results
+    auto empty_filtered_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
+    auto empty_noise_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
+    return FilterReturn{std::move(empty_filtered_cloud), std::move(empty_noise_cloud), 0., 0.};
   }
 
   FieldDataComposer<size_t> offsets{};
