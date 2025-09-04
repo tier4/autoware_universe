@@ -68,7 +68,7 @@ VadOutputTopicData VadInterface::convert_output(
   const VadOutputData & vad_output_data,
   const rclcpp::Time & stamp,
   const double trajectory_timestep,
-  const Eigen::Matrix4f & base2map_transform) const
+  const Eigen::Matrix4d & base2map_transform) const
 {
   VadOutputTopicData output_topic_data;
 
