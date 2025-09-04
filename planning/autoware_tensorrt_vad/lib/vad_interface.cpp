@@ -35,26 +35,26 @@ VadInputData VadInterface::convert_input(const VadInputTopicData & vad_input_top
       vad_input_topic_data.camera_infos
     );
   }
-  vad_input_data.vad_base2img_ = vad_base2img_transform_.value();
+  vad_input_data.vad_base2img = vad_base2img_transform_.value();
   
   // Process can_bus using converter
-  vad_input_data.can_bus_ = input_can_bus_converter_->process_can_bus(
+  vad_input_data.can_bus = input_can_bus_converter_->process_can_bus(
     vad_input_topic_data.kinematic_state,
     vad_input_topic_data.acceleration,
     prev_can_bus_
   );
   
   // Process shift using converter
-  vad_input_data.shift_ = input_bev_shift_converter_->process_shift(vad_input_data.can_bus_, prev_can_bus_);
+  vad_input_data.shift = input_bev_shift_converter_->process_shift(vad_input_data.can_bus, prev_can_bus_);
   
   // Process image data using converter
-  vad_input_data.camera_images_ = input_image_converter_->process_image(vad_input_topic_data.images);
+  vad_input_data.camera_images = input_image_converter_->process_image(vad_input_topic_data.images);
   
   // Set default command
-  vad_input_data.command_ = config_.default_command;
+  vad_input_data.command = config_.default_command;
   
   // Update prev_can_bus_ for next iteration
-  prev_can_bus_ = vad_input_data.can_bus_;
+  prev_can_bus_ = vad_input_data.can_bus;
   
   return vad_input_data;
 }
@@ -69,17 +69,17 @@ VadOutputTopicData VadInterface::convert_output(
 
   // Convert candidate trajectories using converter
   vad_output_topic_data.candidate_trajectories = output_trajectory_converter_->process_candidate_trajectories(
-    vad_output_data.predicted_trajectories_, stamp, trajectory_timestep, base2map_transform);
+    vad_output_data.predicted_trajectories, stamp, trajectory_timestep, base2map_transform);
   
   // Convert trajectory using converter
   vad_output_topic_data.trajectory = output_trajectory_converter_->process_trajectory(
-    vad_output_data.predicted_trajectory_, stamp, trajectory_timestep, base2map_transform);
+    vad_output_data.predicted_trajectory, stamp, trajectory_timestep, base2map_transform);
 
   // Convert map_points using converter
-  vad_output_topic_data.map_points = output_map_converter_->process_map_points(vad_output_data.map_polylines_, stamp, base2map_transform);
+  vad_output_topic_data.map_points = output_map_converter_->process_map_points(vad_output_data.map_polylines, stamp, base2map_transform);
 
   // Convert predicted objects using converter
-  vad_output_topic_data.objects = output_objects_converter_->process_predicted_objects(vad_output_data.predicted_objects_, stamp, base2map_transform);
+  vad_output_topic_data.objects = output_objects_converter_->process_predicted_objects(vad_output_data.predicted_objects, stamp, base2map_transform);
 
   return vad_output_topic_data;
 }

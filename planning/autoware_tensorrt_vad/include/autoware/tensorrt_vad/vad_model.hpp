@@ -87,19 +87,19 @@ struct BBox {
 struct VadInputData
 {
   // Camera image data (multi-camera support)
-  std::vector<float> camera_images_;
+  std::vector<float> camera_images;
 
   // Shift information (img_metas.0[shift])
-  std::vector<float> shift_;
+  std::vector<float> shift;
 
   // Transform matrix from coordinate used in VAD inference to camera image coordinate system (img_metas.0[lidar2img])
-  std::vector<float> vad_base2img_;
+  std::vector<float> vad_base2img;
 
   // CAN-BUS data (vehicle state information: velocity, angular velocity, etc.) (img_metas.0[can_bus])
-  std::vector<float> can_bus_;
+  std::vector<float> can_bus;
 
   // Command index (for trajectory selection)
-  int32_t command_{2};
+  int32_t command{2};
 };
 
 // VAD inference output data structure
@@ -107,17 +107,17 @@ struct VadOutputData
 {
   // Predicted trajectory (6 2D coordinate points, expressed as cumulative coordinates)
   // planning[0,1] = 1st point (x,y), planning[2,3] = 2nd point (x,y), ...
-  std::vector<float> predicted_trajectory_{};  // size: 12 (6 points * 2 coordinates)
+  std::vector<float> predicted_trajectory{};  // size: 12 (6 points * 2 coordinates)
 
   // Map of predicted trajectories for multiple commands
   // key: command index (int32_t), value: trajectory (std::vector<float>)
-  std::map<int32_t, std::vector<float>> predicted_trajectories_{};
+  std::map<int32_t, std::vector<float>> predicted_trajectories{};
 
   // map polylines (each polyline has map_type and points)
-  std::vector<MapPolyline> map_polylines_{};
+  std::vector<MapPolyline> map_polylines{};
 
   // Predicted objects
-  std::vector<BBox> predicted_objects_{};
+  std::vector<BBox> predicted_objects{};
 };
 
 // Post-processing functions
@@ -216,7 +216,7 @@ public:
     saved_prev_bev_ = save_prev_bev(head_name);
 
     // Convert output to VadOutputData
-    VadOutputData output = postprocess(head_name, vad_input_data.command_);
+    VadOutputData output = postprocess(head_name, vad_input_data.command);
 
     // If it's the first frame, release "head_no_prev" and load "head"
     if (is_first_frame_) {
@@ -282,10 +282,10 @@ private:
 
   // Helper functions used in infer function
   void load_inputs(const VadInputData& vad_input_data, const std::string& head_name) {
-    nets_["backbone"]->bindings["img"]->load(vad_input_data.camera_images_, stream_);
-    nets_[head_name]->bindings["img_metas.0[shift]"]->load(vad_input_data.shift_, stream_);
-    nets_[head_name]->bindings["img_metas.0[lidar2img]"]->load(vad_input_data.vad_base2img_, stream_);
-    nets_[head_name]->bindings["img_metas.0[can_bus]"]->load(vad_input_data.can_bus_, stream_);
+    nets_["backbone"]->bindings["img"]->load(vad_input_data.camera_images, stream_);
+    nets_[head_name]->bindings["img_metas.0[shift]"]->load(vad_input_data.shift, stream_);
+    nets_[head_name]->bindings["img_metas.0[lidar2img]"]->load(vad_input_data.vad_base2img, stream_);
+    nets_[head_name]->bindings["img_metas.0[can_bus]"]->load(vad_input_data.can_bus, stream_);
 
     if (head_name == "head") {
       nets_["head"]->bindings["prev_bev"] = saved_prev_bev_;
