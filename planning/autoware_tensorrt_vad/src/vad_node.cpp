@@ -473,6 +473,6 @@ void VadNode::create_camera_info_subscribers(const rclcpp::QoS& camera_info_qos)
 
 }  // namespace autoware::tensorrt_vad
 
-// Register the component with the ROS2 component system
+// Register the component with the ROS 2 component system
 // NOLINTNEXTLINE(readability-identifier-naming,cppcoreguidelines-avoid-non-const-global-variables)
 RCLCPP_COMPONENTS_REGISTER_NODE(autoware::tensorrt_vad::VadNode)

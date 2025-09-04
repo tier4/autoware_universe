@@ -34,7 +34,7 @@ public:
 };
 
 /**
- * @brief VadLogger implementation for ROS2
+ * @brief VadLogger implementation for ROS 2
  */
 class RosVadLogger : public VadLogger {
 private:
