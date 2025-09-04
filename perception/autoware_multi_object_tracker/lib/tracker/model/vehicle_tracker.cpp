@@ -297,8 +297,20 @@ bool VehicleTracker::measureWithPose(
           x, y, object.pose_covariance, length);  // update without yaw angle and velocity
       }
     }
+  }
 
-    motion_model_.limitStates();
+  // update motion model to limit states
+  {
+    bool is_flipped = false;
+    motion_model_.limitStates(is_flipped);
+
+    if (is_flipped) {
+      // rotate footprint
+      for (auto & p : object_.shape.footprint.points) {
+        p.x = -p.x;
+        p.y = -p.y;
+      }
+    }
   }
 
   // position z

@@ -394,15 +394,17 @@ bool BicycleMotionModel::updateStateLength(
   return true;
 }
 
-bool BicycleMotionModel::limitStates()
+bool BicycleMotionModel::limitStates(bool & is_flipped)
 {
   StateVec X_t;
   StateMat P_t;
   ekf_.getX(X_t);
   ekf_.getP(P_t);
 
+  is_flipped = false;
   // maximum reverse velocity
   if (motion_params_.max_reverse_vel < 0 && X_t(IDX::U) < motion_params_.max_reverse_vel) {
+    is_flipped = true;
     // rotate the object orientation by 180 degrees
     // replace X1 and Y1 with X2 and Y2
     const double x_center =

@@ -122,7 +122,7 @@ public:
 
   bool adjustPosition(const double & delta_x, const double & delta_y);
 
-  bool limitStates();
+  bool limitStates(bool & is_flipped);
 
   bool predictStateStep(const double dt, KalmanFilter & ekf) const override;
 
