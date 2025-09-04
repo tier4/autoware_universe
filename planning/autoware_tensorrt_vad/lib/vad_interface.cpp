@@ -29,15 +29,10 @@ VadInputData VadInterface::convert_input(const VadInputTopicData & vad_input_top
 {
   VadInputData vad_input_data;
 
-  // Calculate scaling factors
-  float scale_width = config_.target_image_width / static_cast<float>(config_.input_image_width);
-  float scale_height = config_.target_image_height / static_cast<float>(config_.input_image_height);
-
   // Process vad_base2img transformation using converter, with caching
   if (!vad_base2img_transform_.has_value()) {
     vad_base2img_transform_ = input_transform_matrix_converter_->process_vad_base2img(
-      vad_input_topic_data.camera_infos,
-      scale_width, scale_height
+      vad_input_topic_data.camera_infos
     );
   }
   vad_input_data.vad_base2img_ = vad_base2img_transform_.value();

@@ -32,13 +32,10 @@ public:
   /**
    * @brief Process camera info messages to generate vad base_link (coordinate used in VAD inference) to image (camera optical link) transformation matrices
    * @param camera_infos Vector of ROS CameraInfo messages from multiple cameras
-   * @param scale_width Width scaling factor for image resizing
-   * @param scale_height Height scaling factor for image resizing
    * @return VadBase2ImgData Flattened transformation matrices for all cameras
    */
   VadBase2ImgData process_vad_base2img(
-    const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos,
-    const float scale_width, const float scale_height) const;
+    const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos) const;
 
 private:
   /**
@@ -47,6 +44,14 @@ private:
    * @return Eigen::Matrix4f 4x4 cam2img matrix with intrinsics and padding
    */
   Eigen::Matrix4f create_cam2img(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info) const;
+
+
+  /**
+   * @brief Calculate scaling factors from original image (width, height) and target image (width, height)
+   * @param camera_info Camera calibration information containing original image (width, height)
+   * @return std::pair<float, float> Scale factors for width and height
+   */
+  std::pair<float, float> calculate_scale(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info) const;
 
   /**
    * @brief Apply scaling transformation to vad base_link (coordinate used in VAD inference) to image (camera optical link) transformation matrix

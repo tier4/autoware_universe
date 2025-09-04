@@ -66,8 +66,6 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
     tf_buffer_(this->get_clock()),
     num_cameras_(declare_parameter<int32_t>("node_params.num_cameras")),
     vad_interface_config_(
-      declare_parameter<int32_t>("interface_params.input_image_width"),
-      declare_parameter<int32_t>("interface_params.input_image_height"),
       declare_parameter<int32_t>("interface_params.target_image_width"),
       declare_parameter<int32_t>("interface_params.target_image_height"),
       declare_parameter<std::vector<double>>("interface_params.detection_range"),

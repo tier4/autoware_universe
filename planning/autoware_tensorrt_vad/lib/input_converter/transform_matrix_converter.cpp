@@ -22,6 +22,15 @@ Eigen::Matrix4f InputTransformMatrixConverter::create_cam2img(
   return cam2img;
 }
 
+
+std::pair<float, float> InputTransformMatrixConverter::calculate_scale(
+  const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info) const
+{
+  const float scale_width = config_.target_image_width / static_cast<float>(camera_info->width);
+  const float scale_height = config_.target_image_height / static_cast<float>(camera_info->height);
+  return std::make_pair(scale_width, scale_height);
+}
+
 Eigen::Matrix4f InputTransformMatrixConverter::apply_scaling(
   const Eigen::Matrix4f& vad_base2img, const float scale_width, const float scale_height) const
 {
@@ -44,8 +53,7 @@ std::vector<float> InputTransformMatrixConverter::matrix_to_flat(const Eigen::Ma
 }
 
 VadBase2ImgData InputTransformMatrixConverter::process_vad_base2img(
-  const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos,
-  const float scale_width, const float scale_height) const
+  const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos) const
 {
   std::vector<float> frame_vad_base2img(16 * 6, 0.0f); // Reserve space for 6 cameras
 
@@ -71,6 +79,9 @@ VadBase2ImgData InputTransformMatrixConverter::process_vad_base2img(
     // Calculate vad2cam transformation: vad2img = cam2img * base2cam * vad2base
     Eigen::Matrix4f vad2cam_rt = base2cam * config_.vad2base;
     Eigen::Matrix4f vad_base2img = cam2img * vad2cam_rt;
+
+    // Calculate scaling factors from camera_info
+    auto [scale_width, scale_height] = calculate_scale(camera_infos[autoware_camera_id]);
 
     // Apply scaling
     Eigen::Matrix4f vad_base2img_scaled = apply_scaling(vad_base2img, scale_width, scale_height);

@@ -15,8 +15,6 @@ namespace autoware::tensorrt_vad {
 
 class VadInterfaceConfig {
 public:
-  int32_t input_image_width;
-  int32_t input_image_height;
   int32_t target_image_width;
   int32_t target_image_height;
   std::array<float, 6> detection_range;
@@ -37,7 +35,6 @@ public:
 
   // NOTE: double and int64_t are used because ROS 2's declare_parameter cannot accept std::vector<float> or std::vector<int32_t>
   VadInterfaceConfig(
-    int32_t input_image_width_, int32_t input_image_height_,
     int32_t target_image_width_, int32_t target_image_height_,
     const std::vector<double>& detection_range_,
     int32_t bev_h_, int32_t bev_w_,
@@ -53,9 +50,7 @@ public:
     const std::vector<double>& map_colors_,
     const std::vector<std::string>& class_mapping_,
     const std::vector<std::string>& bbox_class_names_)
-    : input_image_width(input_image_width_),
-      input_image_height(input_image_height_),
-      target_image_width(target_image_width_),
+    : target_image_width(target_image_width_),
       target_image_height(target_image_height_),
       bev_h(bev_h_),
       bev_w(bev_w_),

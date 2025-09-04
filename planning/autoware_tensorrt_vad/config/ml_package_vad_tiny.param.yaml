@@ -4,8 +4,6 @@
       num_cameras: 6
     interface_params:
       # autoware
-      input_image_width: 1466
-      input_image_height: 1122
       target_image_width: 640
       target_image_height: 384
       detection_range: [-15.0, -30.0, -2.0, 15.0, 30.0, 2.0]
