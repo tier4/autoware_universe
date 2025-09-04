@@ -234,8 +234,8 @@ void LaneSegmentContext::compute_distances(
 
   auto is_inside = [&](const double x, const double y) {
     return (
-      x > center_x - mask_range * 1.1 && x < center_x + mask_range * 1.1 &&
-      y > center_y - mask_range * 1.1 && y < center_y + mask_range * 1.1);
+      x > center_x - mask_range && x < center_x + mask_range && y > center_y - mask_range &&
+      y < center_y + mask_range);
   };
 
   distances.clear();
