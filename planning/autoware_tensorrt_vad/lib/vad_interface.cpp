@@ -70,23 +70,23 @@ VadOutputTopicData VadInterface::convert_output(
   const double trajectory_timestep,
   const Eigen::Matrix4d & base2map_transform) const
 {
-  VadOutputTopicData output_topic_data;
+  VadOutputTopicData vad_output_topic_data;
 
   // Convert candidate trajectories using converter
-  output_topic_data.candidate_trajectories = output_trajectory_converter_->process_candidate_trajectories(
+  vad_output_topic_data.candidate_trajectories = output_trajectory_converter_->process_candidate_trajectories(
     vad_output_data.predicted_trajectories_, stamp, trajectory_timestep, base2map_transform);
   
   // Convert trajectory using converter
-  output_topic_data.trajectory = output_trajectory_converter_->process_trajectory(
+  vad_output_topic_data.trajectory = output_trajectory_converter_->process_trajectory(
     vad_output_data.predicted_trajectory_, stamp, trajectory_timestep, base2map_transform);
 
   // Convert map_points using converter
-  output_topic_data.map_points = output_map_converter_->process_map_points(vad_output_data.map_polylines_, stamp, base2map_transform);
+  vad_output_topic_data.map_points = output_map_converter_->process_map_points(vad_output_data.map_polylines_, stamp, base2map_transform);
 
   // Convert predicted objects using converter
-  output_topic_data.objects = output_objects_converter_->process_predicted_objects(vad_output_data.predicted_objects_, stamp, base2map_transform);
+  vad_output_topic_data.objects = output_objects_converter_->process_predicted_objects(vad_output_data.predicted_objects_, stamp, base2map_transform);
 
-  return output_topic_data;
+  return vad_output_topic_data;
 }
 
 } // namespace autoware::tensorrt_vad

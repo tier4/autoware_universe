@@ -197,7 +197,7 @@ public:
   }
 
   // Main inference API
-  [[nodiscard]] std::optional<VadOutputData> infer(const VadInputData & vad_input) {
+  [[nodiscard]] std::optional<VadOutputData> infer(const VadInputData & vad_input_data) {
     // Change head name based on whether it's the first frame
     std::string head_name;
     if (is_first_frame_) {
@@ -207,7 +207,7 @@ public:
     }
 
     // Load to bindings
-    load_inputs(vad_input, head_name);
+    load_inputs(vad_input_data, head_name);
 
     // Enqueue backbone and head
     enqueue(head_name);
@@ -216,7 +216,7 @@ public:
     saved_prev_bev_ = save_prev_bev(head_name);
 
     // Convert output to VadOutputData
-    VadOutputData output = postprocess(head_name, vad_input.command_);
+    VadOutputData output = postprocess(head_name, vad_input_data.command_);
 
     // If it's the first frame, release "head_no_prev" and load "head"
     if (is_first_frame_) {
@@ -281,11 +281,11 @@ private:
   }
 
   // Helper functions used in infer function
-  void load_inputs(const VadInputData& vad_input, const std::string& head_name) {
-    nets_["backbone"]->bindings["img"]->load(vad_input.camera_images_, stream_);
-    nets_[head_name]->bindings["img_metas.0[shift]"]->load(vad_input.shift_, stream_);
-    nets_[head_name]->bindings["img_metas.0[lidar2img]"]->load(vad_input.vad_base2img_, stream_);
-    nets_[head_name]->bindings["img_metas.0[can_bus]"]->load(vad_input.can_bus_, stream_);
+  void load_inputs(const VadInputData& vad_input_data, const std::string& head_name) {
+    nets_["backbone"]->bindings["img"]->load(vad_input_data.camera_images_, stream_);
+    nets_[head_name]->bindings["img_metas.0[shift]"]->load(vad_input_data.shift_, stream_);
+    nets_[head_name]->bindings["img_metas.0[lidar2img]"]->load(vad_input_data.vad_base2img_, stream_);
+    nets_[head_name]->bindings["img_metas.0[can_bus]"]->load(vad_input_data.can_bus_, stream_);
 
     if (head_name == "head") {
       nets_["head"]->bindings["prev_bev"] = saved_prev_bev_;
