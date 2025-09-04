@@ -26,16 +26,9 @@ inline float sigmoid(float x) {
 }
 
 // Denormalize 2D points using PC range
-inline std::vector<float> denormalize_2d_pts(const std::vector<float>& pts, 
-                                            const std::vector<float>& detection_range) {
-  if (pts.size() != 2) {
-    throw std::invalid_argument("pts must have 2 elements: x, y");
-  }
-  if (detection_range.size() != 6) {
-    throw std::invalid_argument("detection_range must have 6 elements");
-  }
-  
-  std::vector<float> denormalized_pts = pts;
+inline std::array<float, 2> denormalize_2d_pts(const std::array<float, 2>& pts, 
+                                              const std::array<float, 6>& detection_range) {
+  std::array<float, 2> denormalized_pts;
   
   // x = normalized_x * (x_max[3] - x_min[0]) + x_min[0]
   denormalized_pts[0] = pts[0] * (detection_range[3] - detection_range[0]) + detection_range[0];
@@ -97,12 +90,12 @@ process_map_points(const std::vector<float>& pts_preds_flat,
 
     for (int32_t q = 0; q < num_query; ++q) {
         for (int32_t p = 0; p < fixed_num_pts; ++p) {
-            std::vector<float> pt(pts_coords);
+            std::array<float, 2> pt;
             for (int32_t d = 0; d < pts_coords; ++d) {
                 int32_t flat_idx = final_layer_offset + q * fixed_num_pts * pts_coords + p * pts_coords + d;
                 pt[d] = pts_preds_flat[flat_idx];
             }
-            std::vector<float> denormalized_pt = denormalize_2d_pts(pt, vad_config.detection_range);
+            std::array<float, 2> denormalized_pt = denormalize_2d_pts(pt, vad_config.detection_range);
             for (int32_t d = 0; d < pts_coords; ++d) {
                 pts_preds[q][p][d] = denormalized_pt[d];
             }

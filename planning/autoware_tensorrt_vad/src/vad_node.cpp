@@ -282,10 +282,8 @@ VadConfig VadNode::load_vad_config()
   
   // Load detection range from interface_params (already declared in VadInterfaceConfig)
   auto detection_range = this->get_parameter("interface_params.detection_range").as_double_array();
-  vad_config.detection_range.clear();
-  vad_config.detection_range.reserve(detection_range.size());
-  for (double val : detection_range) {
-    vad_config.detection_range.push_back(static_cast<float>(val));
+  for (size_t i = 0; i < 6 && i < detection_range.size(); ++i) {
+    vad_config.detection_range[i] = static_cast<float>(detection_range[i]);
   }
 
   auto map_class_names = this->get_parameter("model_params.map_class_names").as_string_array();

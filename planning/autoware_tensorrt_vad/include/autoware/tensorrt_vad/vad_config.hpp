@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <array>
 
 namespace autoware::tensorrt_vad
 {
@@ -52,7 +53,7 @@ struct VadConfig
   int32_t map_num_class;
   int32_t map_points_per_polylines;
   
-  std::vector<float> detection_range;
+  std::array<float, 6> detection_range;
   std::map<std::string, float> map_confidence_thresholds;
   std::map<std::string, float> object_confidence_thresholds;
   std::vector<std::string> map_class_names;
