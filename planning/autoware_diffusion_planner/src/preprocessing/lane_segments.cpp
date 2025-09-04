@@ -378,11 +378,6 @@ void transform_selected_rows(
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements)
 {
-  // If not intersection, return WHITE (which means no traffic light is present)
-  if (turn_direction == LaneSegment::TURN_DIRECTION_NONE) {
-    return TrafficLightElement::WHITE;
-  }
-
   // Filter out ineffective elements (color == 0 which is UNKNOWN)
   std::vector<TrafficLightElement> effective_elements;
   for (const auto & element : traffic_light_elements) {
