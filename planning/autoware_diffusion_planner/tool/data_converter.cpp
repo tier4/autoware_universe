@@ -25,7 +25,6 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
-#include <autoware/route_handler/route_handler.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -370,6 +369,7 @@ int main(int argc, char ** argv)
   // Parse optional arguments
   for (int64_t i = 4; i < argc; ++i) {
     const std::string arg = argv[i];
+    std::cout << "arg[" << i << "] = " << arg << std::endl;
     if (arg.find("--step=") == 0) {
       step = std::stoll(arg.substr(7));
     } else if (arg.find("--limit=") == 0) {
@@ -377,7 +377,7 @@ int main(int argc, char ** argv)
     } else if (arg.find("--min_frames=") == 0) {
       min_frames = std::stoll(arg.substr(13));
     } else if (arg.find("--search_nearest_route=") == 0) {
-      search_nearest_route = std::stoll(arg.substr(24));
+      search_nearest_route = std::stoll(arg.substr(23));
     }
   }
 
@@ -404,9 +404,6 @@ int main(int argc, char ** argv)
             << std::endl;
 
   const preprocess::LaneSegmentContext lane_segment_context(lanelet_map_ptr);
-
-  // Create route handler
-  autoware::route_handler::RouteHandler route_handler(map_bin_msg);
 
   rosbag_parser::RosbagParser rosbag_parser(rosbag_path);
   rosbag_parser.create_reader(rosbag_path);
@@ -615,12 +612,6 @@ int main(int argc, char ** argv)
       token_stream << std::setfill('0') << std::setw(8) << seq_id << std::setw(8) << i;
       const std::string token = token_stream.str();
 
-      route_handler.setRoute(seq.data_list[i].route);
-      if (!route_handler.isHandlerReady()) {
-        std::cout << "Route handler is not ready for sequence " << seq_id + 1 << std::endl;
-        return 1;
-      }
-
       // Get transformation matrix
       const auto [bl2map, map2bl] = utils::get_transform_matrix(seq.data_list[i].kinematic_state);
 
@@ -650,7 +641,7 @@ int main(int argc, char ** argv)
       const rclcpp::Time current_time(current_stamp);
 
       auto msg_ptr = std::make_shared<TrafficLightGroupArray>(seq.data_list[i].traffic_signals);
-      preprocess::process_traffic_signals(msg_ptr, traffic_light_id_map, current_time, 5.0, true);
+      preprocess::process_traffic_signals(msg_ptr, traffic_light_id_map, current_time, 5.0, false);
 
       // Get lanes data with speed limits
       const auto [lanes, lanes_speed_limit] = lane_segment_context.get_lane_segments(
@@ -672,19 +663,10 @@ int main(int argc, char ** argv)
       current_pose.position = ego_pos;
       current_pose.orientation.w = 1.0;  // Identity quaternion
 
-      lanelet::ConstLanelet current_preferred_lane;
-      if (route_handler.getClosestPreferredLaneletWithinRoute(
-            current_pose, &current_preferred_lane)) {
-        constexpr double backward_path_length = constants::BACKWARD_PATH_LENGTH_M;
-        constexpr double forward_path_length = constants::FORWARD_PATH_LENGTH_M;
-        const auto current_lanes = route_handler.getLaneletSequence(
-          current_preferred_lane, backward_path_length, forward_path_length);
-
-        const auto [route_data, route_speed] =
-          lane_segment_context.get_route_segments(map2bl, traffic_light_id_map, current_lanes);
-        route_lanes = route_data;
-        route_lanes_speed_limit = route_speed;
-      }
+      const auto [route_data, route_speed] = lane_segment_context.get_route_segments(
+        map2bl, traffic_light_id_map, seq.data_list[i].route, center_x, center_y);
+      route_lanes = route_data;
+      route_lanes_speed_limit = route_speed;
 
       // Create route_lanes_has_speed_limit based on speed_limit values
       std::vector<bool> route_lanes_has_speed_limit(route_lanes_speed_limit.size());
