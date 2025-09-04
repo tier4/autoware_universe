@@ -159,6 +159,7 @@ bool VehicleTracker::measureWithPose(
 
   // check if the object is partially detected, and compensate the position
   bool is_long_partial_detect = false;
+  bool is_lat_partial_detect = false;
   bool is_close_to_front = true;
   {
     // project measured box to the tracker coordinate, yaw is already aligned
@@ -228,6 +229,8 @@ bool VehicleTracker::measureWithPose(
       if (
         tracker_object.shape.dimensions.y * min_length_ratio_for_partial_detection >
         object.shape.dimensions.y) {
+        is_lat_partial_detect = true;
+
         double left_diff =
           local_y + (object.shape.dimensions.y - tracker_object.shape.dimensions.y) * 0.5;
         double right_diff =
@@ -252,6 +255,8 @@ bool VehicleTracker::measureWithPose(
         p.x += comp_diff_x;
         p.y += comp_diff_y;
       }
+
+      // model pose covariance increase due to compensation
     }
   }
 
@@ -299,19 +304,7 @@ bool VehicleTracker::measureWithPose(
     }
   }
 
-  // update motion model to limit states
-  {
-    bool is_flipped = false;
-    motion_model_.limitStates(is_flipped);
 
-    if (is_flipped) {
-      // rotate footprint
-      for (auto & p : object_.shape.footprint.points) {
-        p.x = -p.x;
-        p.y = -p.y;
-      }
-    }
-  }
 
   // position z
   {
@@ -337,7 +330,9 @@ bool VehicleTracker::measureWithPose(
     constexpr double gain_inv = 1.0 - gain;
     auto & object_extension = object_.shape.dimensions;
     object_extension.x = motion_model_.getLength();  // tracked by motion model
-    object_extension.y = gain_inv * object_extension.y + gain * object.shape.dimensions.y;
+    if (!is_lat_partial_detect) {
+      object_extension.y = gain_inv * object_extension.y + gain * object.shape.dimensions.y;
+    }
     object_extension.z = gain_inv * object_extension.z + gain * object.shape.dimensions.z;
   }
 
@@ -347,6 +342,20 @@ bool VehicleTracker::measureWithPose(
   // set shape type, which is bounding box
   object_.area = types::getArea(object.shape);
   object_.shape.footprint = object.shape.footprint;
+
+  // update motion model to limit states
+  {
+    bool is_flipped = false;
+    motion_model_.limitStates(is_flipped);
+
+    if (is_flipped) {
+      // rotate footprint
+      for (auto & p : object_.shape.footprint.points) {
+        p.x = -p.x;
+        p.y = -p.y;
+      }
+    }
+  }
 
   return is_updated;
 }
