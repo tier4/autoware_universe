@@ -48,19 +48,19 @@ public:
         : logger_(logger) {}
 
     void debug(const std::string& message) override {
-        RCLCPP_DEBUG(logger_, "%s", message.c_str());
+        RCLCPP_DEBUG_THROTTLE(logger_, *rclcpp::Clock::make_shared(), 5000, "%s", message.c_str());
     }
 
     void info(const std::string& message) override {
-        RCLCPP_INFO(logger_, "%s", message.c_str());
+        RCLCPP_INFO_THROTTLE(logger_, *rclcpp::Clock::make_shared(), 5000, "%s", message.c_str());
     }
 
     void warn(const std::string& message) override {
-        RCLCPP_WARN(logger_, "%s", message.c_str());
+        RCLCPP_WARN_THROTTLE(logger_, *rclcpp::Clock::make_shared(), 5000, "%s", message.c_str());
     }
 
     void error(const std::string& message) override {
-        RCLCPP_ERROR(logger_, "%s", message.c_str());
+        RCLCPP_ERROR_THROTTLE(logger_, *rclcpp::Clock::make_shared(), 5000, "%s", message.c_str());
     }
 };
 

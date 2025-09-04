@@ -143,14 +143,14 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
   // Initialize VAD model on first complete frame
   initialize_vad_model();
 
-  RCLCPP_INFO(this->get_logger(), "VAD Node has been initialized - VAD model will be initialized after first callback");
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "VAD Node has been initialized - VAD model will be initialized after first callback");
 }
 
 void VadNode::image_callback(const sensor_msgs::msg::Image::ConstSharedPtr msg, std::size_t camera_id)
 {
   // Validate camera_id
   if (static_cast<int32_t>(camera_id) >= num_cameras_) {
-    RCLCPP_ERROR(this->get_logger(), "Invalid camera_id: %zu. Expected 0-%d", camera_id, num_cameras_ - 1);
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Invalid camera_id: %zu. Expected 0-%d", camera_id, num_cameras_ - 1);
     return;
   }
 
@@ -161,34 +161,34 @@ void VadNode::image_callback(const sensor_msgs::msg::Image::ConstSharedPtr msg, 
     anchor_callback();
   }
 
-  RCLCPP_DEBUG(this->get_logger(), "Received image from camera %zu", camera_id);
+  RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Received image from camera %zu", camera_id);
 }
 
 void VadNode::camera_info_callback(const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg, std::size_t camera_id)
 {
   // Validate camera_id
   if (static_cast<int32_t>(camera_id) >= num_cameras_) {
-    RCLCPP_ERROR(this->get_logger(), "Invalid camera_id: %zu. Expected 0-%d", camera_id, num_cameras_ - 1);
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Invalid camera_id: %zu. Expected 0-%d", camera_id, num_cameras_ - 1);
     return;
   }
 
   vad_input_topic_data_current_frame_.set_camera_info(camera_id, msg);
 
-  RCLCPP_DEBUG(this->get_logger(), "Received camera info from camera %zu", camera_id);
+  RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Received camera info from camera %zu", camera_id);
 }
 
 void VadNode::odometry_callback(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
 {
   vad_input_topic_data_current_frame_.set_kinematic_state(msg);
 
-  RCLCPP_DEBUG(this->get_logger(), "Received odometry data");
+  RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Received odometry data");
 }
 
 void VadNode::acceleration_callback(const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr msg)
 {
   vad_input_topic_data_current_frame_.set_acceleration(msg);
 
-  RCLCPP_DEBUG(this->get_logger(), "Received acceleration data");
+  RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Received acceleration data");
 }
 
 void VadNode::tf_static_callback(const tf2_msgs::msg::TFMessage::ConstSharedPtr msg)
@@ -198,7 +198,7 @@ void VadNode::tf_static_callback(const tf2_msgs::msg::TFMessage::ConstSharedPtr 
     tf_buffer_.setTransform(transform, "default_authority", true);
   }
 
-  RCLCPP_DEBUG(this->get_logger(), "Received TF static data");
+  RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Received TF static data");
 }
 
 void VadNode::anchor_callback()
@@ -209,7 +209,7 @@ void VadNode::anchor_callback()
       publish(vad_output_topic_data.value());
     }
   } else {
-    RCLCPP_ERROR(this->get_logger(), "Synchronization strategy indicates data is not ready for inference");
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Synchronization strategy indicates data is not ready for inference");
   }
   
   vad_input_topic_data_current_frame_.reset();
@@ -255,7 +255,7 @@ void VadNode::initialize_vad_model()
     ros_logger
   );
 
-  RCLCPP_INFO(this->get_logger(), "VAD model and interface initialized successfully");
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "VAD model and interface initialized successfully");
 }
 
 VadConfig VadNode::load_vad_config()
@@ -292,7 +292,7 @@ VadConfig VadNode::load_vad_config()
   auto map_thresholds = this->get_parameter("model_params.map_confidence_thresholds").as_double_array();
 
   if (map_class_names.size() != map_thresholds.size()) {
-    RCLCPP_ERROR(this->get_logger(), "map_class_names and map_confidence_thresholds must have the same size");
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "map_class_names and map_confidence_thresholds must have the same size");
   }
   vad_config.map_class_names = map_class_names;
   vad_config.map_num_classes = static_cast<int32_t>(map_class_names.size());
@@ -307,7 +307,7 @@ VadConfig VadNode::load_vad_config()
   auto object_thresholds = this->get_parameter("model_params.object_confidence_thresholds").as_double_array();
 
   if (object_class_names.size() != object_thresholds.size()) {
-    RCLCPP_ERROR(this->get_logger(), "object_class_names and object_confidence_thresholds must have the same size");
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "object_class_names and object_confidence_thresholds must have the same size");
   }
   vad_config.bbox_class_names = object_class_names;
 
@@ -376,10 +376,10 @@ std::tuple<
   autoware::tensorrt_common::TrtCommonConfig head_no_prev_trt_config(
       head_no_prev_onnx_path, head_no_prev_precision, head_no_prev_engine_path, 5ULL << 30U);
 
-  RCLCPP_INFO(this->get_logger(), "TrtCommon configurations loaded (5GB workspace):");
-  RCLCPP_INFO(this->get_logger(), "  Backbone - ONNX: %s, Precision: %s", backbone_onnx_path.c_str(), backbone_precision.c_str());
-  RCLCPP_INFO(this->get_logger(), "  Head - ONNX: %s, Precision: %s", head_onnx_path.c_str(), head_precision.c_str());
-  RCLCPP_INFO(this->get_logger(), "  Head No Prev - ONNX: %s, Precision: %s", head_no_prev_onnx_path.c_str(), head_no_prev_precision.c_str());
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "TrtCommon configurations loaded (5GB workspace):");
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "  Backbone - ONNX: %s, Precision: %s", backbone_onnx_path.c_str(), backbone_precision.c_str());
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "  Head - ONNX: %s, Precision: %s", head_onnx_path.c_str(), head_precision.c_str());
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "  Head No Prev - ONNX: %s, Precision: %s", head_no_prev_onnx_path.c_str(), head_no_prev_precision.c_str());
 
   return {backbone_trt_config, head_trt_config, head_no_prev_trt_config};
 }
@@ -387,7 +387,7 @@ std::tuple<
 std::optional<VadOutputTopicData> VadNode::execute_inference(const VadInputTopicData & vad_input_topic_data)
 {
   if (!vad_interface_ptr_ || !vad_model_ptr_) {
-    RCLCPP_ERROR(this->get_logger(), "VAD interface or model not initialized");
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "VAD interface or model not initialized");
     return std::nullopt;
   }
 
@@ -423,7 +423,7 @@ void VadNode::publish(const VadOutputTopicData & vad_output_topic_data)
   // Publish map points
   map_points_publisher_->publish(vad_output_topic_data.map_points);
 
-  RCLCPP_DEBUG(this->get_logger(), "Published trajectories and predicted objects");
+  RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Published trajectories and predicted objects");
 }
 
 void VadNode::create_camera_image_subscribers(const rclcpp::QoS& sensor_qos)
