@@ -347,6 +347,12 @@ void StaticObstacleAvoidanceModule::fillAvoidanceTargetObjects(
   using utils::static_obstacle_avoidance::separateObjectsByPath;
   using utils::static_obstacle_avoidance::updateRoadShoulderDistance;
 
+  // Check if helper is properly initialized
+  if (!helper_ || !helper_->isInitialized()) {
+    RCLCPP_WARN_THROTTLE(getLogger(), *clock_, 1000, "Helper is not initialized. Skipping object detection.");
+    return;
+  }
+
   // Separate dynamic objects based on whether they are inside or outside of the expanded lanelets.
   constexpr double MARGIN = 10.0;
   const auto forward_detection_range = [&]() {
@@ -362,8 +368,18 @@ void StaticObstacleAvoidanceModule::fillAvoidanceTargetObjects(
       data.distance_to_red_traffic_light.value());
   }();
 
+  // Get previous paths with safety checks
+  const auto prev_reference_path = helper_->getPreviousReferencePath();
+  const auto prev_spline_path = helper_->getPreviousSplineShiftPath().path;
+  
+  // Check if paths are valid
+  if (prev_reference_path.points.empty() || prev_spline_path.points.empty()) {
+    RCLCPP_WARN_THROTTLE(getLogger(), *clock_, 1000, "Previous paths are empty. Skipping object separation.");
+    return;
+  }
+
   const auto [object_within_target_lane, object_outside_target_lane] = separateObjectsByPath(
-    helper_->getPreviousReferencePath(), helper_->getPreviousSplineShiftPath().path, planner_data_,
+    prev_reference_path, prev_spline_path, planner_data_,
     data, parameters_, forward_detection_range + MARGIN, debug);
 
   for (const auto & object : object_outside_target_lane.objects) {
@@ -421,9 +437,27 @@ ObjectData StaticObstacleAvoidanceModule::createObjectData(
   using boost::geometry::return_centroid;
 
   const auto & path_points = data.reference_path.points;
+  
+  // Safety check for empty path
+  if (path_points.empty()) {
+    RCLCPP_WARN_THROTTLE(getLogger(), *clock_, 1000, "Reference path is empty in createObjectData.");
+    ObjectData object_data{};
+    object_data.object = object;
+    return object_data;
+  }
+  
   const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
   const auto object_closest_index =
     autoware::motion_utils::findNearestIndex(path_points, object_pose.position);
+  
+  // Additional safety check for valid index
+  if (object_closest_index >= path_points.size()) {
+    RCLCPP_WARN_THROTTLE(getLogger(), *clock_, 1000, "Invalid closest index in createObjectData.");
+    ObjectData object_data{};
+    object_data.object = object;
+    return object_data;
+  }
+  
   const auto object_closest_pose = path_points.at(object_closest_index).point.pose;
   const auto object_type = utils::getHighestProbLabel(object.classification);
   const auto object_parameter = parameters_->object_parameters.at(object_type);
