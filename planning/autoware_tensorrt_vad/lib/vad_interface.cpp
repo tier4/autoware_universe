@@ -6,7 +6,7 @@ namespace autoware::tensorrt_vad
 
 VadInterface::VadInterface(const VadInterfaceConfig& config, const std::shared_ptr<tf2_ros::Buffer> tf_buffer)
   : config_(config),
-    prev_can_bus_(config.default_can_bus),
+    prev_can_bus_(),
     vad_base2img_transform_(std::nullopt)
 {
   // Initialize coordinate transformer

@@ -40,6 +40,10 @@ public:
     const nav_msgs::msg::Odometry::ConstSharedPtr& kinematic_state,
     const geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr& acceleration,
     const std::vector<float>& prev_can_bus) const;
+
+private:
+  // Default delta yaw value when previous CAN-Bus data is not available
+  float default_delta_yaw_;
 };
 
 } // namespace autoware::tensorrt_vad::vad_interface

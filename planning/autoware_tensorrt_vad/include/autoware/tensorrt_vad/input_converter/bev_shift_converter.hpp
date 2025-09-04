@@ -42,6 +42,10 @@ private:
   // The width and length of the BEV feature map in meters (corresponds to the real-world width and length covered by the BEV grid)
   float real_w_;
   float real_h_;
+  
+  // Default delta values when previous CAN-Bus data is not available
+  float default_delta_x_;
+  float default_delta_y_;
 };
 
 } // namespace autoware::tensorrt_vad::vad_interface

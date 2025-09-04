@@ -4,7 +4,8 @@
 namespace autoware::tensorrt_vad::vad_interface {
 
 InputCanBusConverter::InputCanBusConverter(const CoordinateTransformer& coordinate_transformer, const VadInterfaceConfig& config)
-  : Converter(coordinate_transformer, config)
+  : Converter(coordinate_transformer, config),
+    default_delta_yaw_(0.0f)
 {
 }
 
@@ -84,12 +85,14 @@ CanBusData InputCanBusConverter::process_can_bus(
   can_bus[16] = static_cast<float>(yaw);
 
   // Calculate patch_angle[deg] (17)
+  float delta_yaw = default_delta_yaw_;
+  
   if (!prev_can_bus.empty()) {
     float prev_angle = prev_can_bus[16];
-    can_bus[17] = (yaw - prev_angle) * 180.0f / M_PI;
-  } else {
-    can_bus[17] = config_.default_patch_angle; // Default value for first frame
+    delta_yaw = yaw - prev_angle;
   }
+  
+  can_bus[17] = delta_yaw * 180.0f / M_PI;
 
   return can_bus;
 }
