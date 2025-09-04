@@ -225,26 +225,35 @@ bool VehicleTracker::measureWithPose(
 
     constexpr double min_recall_for_full_detection = 0.7;
     constexpr double min_length_ratio_for_partial_detection = 0.7;
-    if (
-      recall < min_recall_for_full_detection &&
-      (tracker_object.shape.dimensions.x * min_length_ratio_for_partial_detection >
-       object.shape.dimensions.x)) {
-      is_partially_detected = true;
+    if (recall < min_recall_for_full_detection) {
+      // if length is small, snap front or rear
+      if (
+        tracker_object.shape.dimensions.x * min_length_ratio_for_partial_detection >
+        object.shape.dimensions.x) {
+        is_partially_detected = true;
 
-      // determine which part is close to the tracker bounding box
-      double front_diff =
-        local_x + object.shape.dimensions.x * 0.5 - tracker_object.shape.dimensions.x * 0.5;
-      double rear_diff =
-        local_x - object.shape.dimensions.x * 0.5 + tracker_object.shape.dimensions.x * 0.5;
-      double front_rear_sum = std::abs(front_diff) + std::abs(rear_diff);
-      front_rear_weight = front_rear_sum < 1e-1 ? 0.5 : std::abs(rear_diff) / front_rear_sum;
+        // determine which part is close to the tracker bounding box
+        double front_diff =
+          local_x + (object.shape.dimensions.x - tracker_object.shape.dimensions.x) * 0.5;
+        double rear_diff =
+          local_x - (object.shape.dimensions.x - tracker_object.shape.dimensions.x) * 0.5;
+        double front_rear_sum = std::abs(front_diff) + std::abs(rear_diff);
+        front_rear_weight = front_rear_sum < 1e-1 ? 0.5 : std::abs(rear_diff) / front_rear_sum;
+      }
 
-      // double left_diff =
-      //   local_y + object.shape.dimensions.y * 0.5 - tracker_object.shape.dimensions.y * 0.5;
-      // double right_diff =
-      //   local_y - object.shape.dimensions.y * 0.5 + tracker_object.shape.dimensions.y * 0.5;
-      // double left_right_sum = std::abs(left_diff) + std::abs(right_diff);
-      // left_right_weight = left_right_sum < 1e-1 ? 0.5 : std::abs(right_diff) / left_right_sum;
+      // if width is small, snap left or right
+      if (
+        tracker_object.shape.dimensions.y * min_length_ratio_for_partial_detection >
+        object.shape.dimensions.y) {
+        is_partially_detected = true;
+
+        // double left_diff =
+        //   local_y + object.shape.dimensions.y * 0.5 - tracker_object.shape.dimensions.y * 0.5;
+        // double right_diff =
+        //   local_y - object.shape.dimensions.y * 0.5 + tracker_object.shape.dimensions.y * 0.5;
+        // double left_right_sum = std::abs(left_diff) + std::abs(right_diff);
+        // left_right_weight = left_right_sum < 1e-1 ? 0.5 : std::abs(right_diff) / left_right_sum;
+      }
 
     } else {
       is_partially_detected = false;
