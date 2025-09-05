@@ -38,6 +38,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -356,6 +357,15 @@ private:
   };
 
   geometry_msgs::msg::Quaternion calc_orientation(const Point & src_point, const Point & dst_point);
+
+  double calculateRoundaboutBackwardLength(
+    const lanelet::ConstLanelet & current_lanelet, const RouteHandler & route_handler,
+    double default_backward_length);
+
+  double calculateMaxDistanceToEntry(
+    const lanelet::ConstLanelet & start_lanelet,
+    const std::shared_ptr<const lanelet::autoware::Roundabout> & roundabout,
+    const RouteHandler & route_handler);
 
   rclcpp::Logger logger_{
     rclcpp::get_logger("behavior_path_planner").get_child("turn_signal_decider")};

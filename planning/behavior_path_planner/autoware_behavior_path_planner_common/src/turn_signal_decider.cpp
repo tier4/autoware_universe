@@ -32,6 +32,7 @@
 #include <queue>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -84,11 +85,21 @@ TurnIndicatorsCommand TurnSignalDecider::getTurnSignal(
     return turn_signal_info.turn_signal;
   }
 
-  // Get current lanelets
   const double forward_length = parameters.forward_path_length;
   const double nearest_dist_threshold = parameters.ego_nearest_dist_threshold;
   const double nearest_yaw_threshold = parameters.ego_nearest_yaw_threshold;
-  const double backward_length = 50.0;
+  double backward_length = 50.0;
+
+  // In roundabouts, backward length is needed to adjust the backward length to ensure proper path
+  // planning.
+  lanelet::ConstLanelet current_lanelet;
+  if (route_handler->getClosestLaneletWithConstrainsWithinRoute(
+        current_pose, &current_lanelet, nearest_dist_threshold, nearest_yaw_threshold)) {
+    backward_length =
+      calculateRoundaboutBackwardLength(current_lanelet, *route_handler, backward_length);
+  }
+
+  // Get current lanelets
   const lanelet::ConstLanelets current_lanes =
     utils::calcLaneAroundPose(route_handler, current_pose, forward_length, backward_length);
 
@@ -331,7 +342,10 @@ std::optional<TurnSignalInfo> TurnSignalDecider::getRoundaboutTurnSignalInfo(
                                     base_link2front_;
     const double search_distance =
       entry_lanelet.attributeOr("turn_signal_distance", base_search_distance);
-    if (search_distance <= dist_to_front_pose) continue;  // Skip if the front point is too far
+    if (
+      search_distance <= dist_to_front_pose &&
+      !roundabout_desired_start_point_association_.count(entry_lanelet.id()))
+      continue;  // Skip if the front point is too far
 
     const auto back_pose = calculateLaneBackPose(centerline);
     auto [iter, inserted] =
@@ -1014,6 +1028,84 @@ std::pair<TurnSignalInfo, bool> TurnSignalDecider::getBehaviorTurnSignalInfo(
   }
 
   return std::make_pair(turn_signal_info, false);
+}
+
+double TurnSignalDecider::calculateRoundaboutBackwardLength(
+  const lanelet::ConstLanelet & current_lanelet, const RouteHandler & route_handler,
+  double default_backward_length)
+{
+  const auto roundabouts = current_lanelet.regulatoryElementsAs<lanelet::autoware::Roundabout>();
+  double max_backward_length = default_backward_length;
+
+  // Process each roundabout that contains the current lanelet
+  for (const auto & roundabout : roundabouts) {
+    if (
+      roundabout->isInternalLanelet(current_lanelet.id()) ||
+      roundabout->isExitLanelet(current_lanelet.id())) {
+      // Calculate the maximum distance from current lanelet to any entry lanelet
+      const double distance_to_entry =
+        calculateMaxDistanceToEntry(current_lanelet, roundabout, route_handler);
+      max_backward_length = std::max(max_backward_length, distance_to_entry);
+    }
+  }
+
+  return max_backward_length;
+}
+
+double TurnSignalDecider::calculateMaxDistanceToEntry(
+  const lanelet::ConstLanelet & start_lanelet,
+  const std::shared_ptr<const lanelet::autoware::Roundabout> & roundabout,
+  const RouteHandler & route_handler)
+{
+  // Structure to hold lanelet and accumulated distance information
+  struct SearchNode
+  {
+    lanelet::ConstLanelet lanelet;
+    double accumulated_distance = 0.0;
+  };
+
+  std::vector<SearchNode> search_stack;
+  search_stack.push_back({start_lanelet, 0.0});
+  std::unordered_set<lanelet::Id> visited_lanelets;
+  visited_lanelets.insert(start_lanelet.id());
+
+  double max_total_distance = 0.0;
+
+  while (!search_stack.empty()) {
+    const SearchNode current_node = search_stack.back();
+    search_stack.pop_back();
+
+    const double accumulated_distance_with_current_lanelet =
+      current_node.accumulated_distance +
+      lanelet::geometry::length(lanelet::utils::to2D(current_node.lanelet.centerline3d()));
+
+    // Get all previous lanelets within the route
+    lanelet::ConstLanelets previous_lanelets;
+    if (!route_handler.getPreviousLaneletsWithinRoute(current_node.lanelet, &previous_lanelets)) {
+      continue;  // No previous lanelets found, this path ends here
+    }
+
+    // Process each previous lanelet
+    for (const auto & prev_lanelet : previous_lanelets) {
+      if (roundabout->isEntryLanelet(prev_lanelet.id())) {
+        // Found an entry lanelet - calculate total distance including entry lanelet length
+        const double entry_lanelet_length =
+          lanelet::geometry::length(lanelet::utils::to2D(prev_lanelet.centerline3d()));
+        max_total_distance = std::max(
+          max_total_distance, accumulated_distance_with_current_lanelet + entry_lanelet_length);
+
+      } else if (roundabout->isRoundaboutLanelet(prev_lanelet.id())) {
+        // Found another roundabout lanelet - continue search if not yet visited
+        if (visited_lanelets.count(prev_lanelet.id())) {
+          continue;  // Already processed this lanelet
+        }
+        visited_lanelets.insert(prev_lanelet.id());
+        search_stack.push_back({prev_lanelet, accumulated_distance_with_current_lanelet});
+      }
+    }
+  }
+
+  return max_total_distance;
 }
 
 }  // namespace autoware::behavior_path_planner
