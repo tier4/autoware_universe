@@ -122,11 +122,8 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_lane_s
     throw std::invalid_argument(
       "Input matrix must have at least FULL_MATRIX_ROWS rows and m must be greater than 0.");
   }
-  std::vector<ColWithDistance> distances;
   // Step 1: Compute distances
-  compute_distances(
-    transform_matrix, distances, center_x, center_y,
-    autoware::diffusion_planner::constants::LANE_MASK_RANGE_M);
+  std::vector<ColWithDistance> distances = compute_distances(transform_matrix, center_x, center_y);
   // Step 2: Sort indices by distance
   std::sort(distances.begin(), distances.end(), [](const auto & a, const auto & b) {
     return a.distance_squared < b.distance_squared;
@@ -217,9 +214,8 @@ void LaneSegmentContext::apply_transforms(
   output_matrix.row(RB_Y) = output_matrix.row(RB_Y) - output_matrix.row(Y);
 }
 
-void LaneSegmentContext::compute_distances(
-  const Eigen::Matrix4d & transform_matrix, std::vector<ColWithDistance> & distances,
-  const double center_x, const double center_y, const double mask_range) const
+std::vector<ColWithDistance> LaneSegmentContext::compute_distances(
+  const Eigen::Matrix4d & transform_matrix, const float center_x, const float center_y) const
 {
   const auto cols = map_lane_segments_matrix_.cols();
   if (cols % POINTS_PER_SEGMENT != 0) {
@@ -233,12 +229,13 @@ void LaneSegmentContext::compute_distances(
   };
 
   auto is_inside = [&](const double x, const double y) {
+    using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
     return (
-      x > center_x - mask_range && x < center_x + mask_range && y > center_y - mask_range &&
-      y < center_y + mask_range);
+      x > center_x - LANE_MASK_RANGE_M && x < center_x + LANE_MASK_RANGE_M &&
+      y > center_y - LANE_MASK_RANGE_M && y < center_y + LANE_MASK_RANGE_M);
   };
 
-  distances.clear();
+  std::vector<ColWithDistance> distances;
   distances.reserve(cols / POINTS_PER_SEGMENT);
   for (int64_t i = 0; i < cols; i += POINTS_PER_SEGMENT) {
     // Directly access input matrix as raw memory
@@ -257,6 +254,8 @@ void LaneSegmentContext::compute_distances(
 
     distances.push_back({static_cast<int64_t>(i), distance_squared, inside});
   }
+
+  return distances;
 }
 
 Eigen::MatrixXd LaneSegmentContext::transform_points_and_add_traffic_info(
@@ -399,6 +398,7 @@ uint8_t identify_current_light_status(
   // For multiple elements, find the one that matches the turn direction
   // Map turn direction to corresponding arrow shape
   const std::map<int64_t, uint8_t> direction_to_shape_map = {
+    {LaneSegment::TURN_DIRECTION_NONE, TrafficLightElement::UNKNOWN},       // none
     {LaneSegment::TURN_DIRECTION_STRAIGHT, TrafficLightElement::UP_ARROW},  // straight
     {LaneSegment::TURN_DIRECTION_LEFT, TrafficLightElement::LEFT_ARROW},    // left
     {LaneSegment::TURN_DIRECTION_RIGHT, TrafficLightElement::RIGHT_ARROW}   // right
