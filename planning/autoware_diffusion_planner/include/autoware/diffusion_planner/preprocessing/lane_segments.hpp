@@ -59,15 +59,6 @@ struct ColWithDistance
 };
 
 /**
- * @brief Maps between lanelet IDs and matrix column indices.
- */
-struct ColLaneIDMaps
-{
-  std::map<lanelet::Id, int64_t> lane_id_to_matrix_col;  //!< Lanelet ID to matrix column index.
-  std::map<int64_t, lanelet::Id> matrix_col_to_lane_id;  //!< Matrix column index to lanelet ID.
-};
-
-/**
  * @brief Context class that encapsulates static lane segment processing data and operations.
  *
  * This class combines the commonly used static parameters (matrix, mappings, and lanelet map)
@@ -118,14 +109,13 @@ private:
    *
    * @param traffic_light_id_map Map of lanelet IDs to traffic signal information.
    * @param segment_matrix The segment matrix to modify (in-place).
-   * @param row_idx The row index in the matrix corresponding to the segment.
+   * @param lane_segment The lane segment containing traffic light information.
    * @param col_counter The column counter for the segment.
-   * @param turn_direction The turn direction for the segment.
    */
   void add_traffic_light_one_hot_encoding_to_segment(
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
-    Eigen::MatrixXd & segment_matrix, const int64_t row_idx, const int64_t col_counter,
-    const int64_t turn_direction) const;
+    Eigen::MatrixXd & segment_matrix, const autoware::diffusion_planner::LaneSegment & lane_segment,
+    const int64_t col_counter) const;
 
   /**
    * @brief Apply coordinate transforms to the output matrix for all segments.
@@ -180,8 +170,6 @@ private:
   // variables
   const std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   const std::vector<autoware::diffusion_planner::LaneSegment> lane_segments_;
-  Eigen::MatrixXd map_lane_segments_matrix_;
-  ColLaneIDMaps col_id_mapping_;
 };
 
 }  // namespace autoware::diffusion_planner::preprocess
