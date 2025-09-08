@@ -43,9 +43,6 @@ namespace
 using namespace autoware_perception_msgs::msg;
 
 Eigen::MatrixXd process_segment_to_matrix(const LaneSegment & segment);
-void transform_selected_rows(
-  const Eigen::Matrix4d & transform_matrix, Eigen::MatrixXd & output_matrix, int64_t num_segments,
-  int64_t row_idx, bool do_translation = true);
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements);
 }  // namespace
@@ -131,22 +128,69 @@ void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
     one_hot_encoding_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, POINTS_PER_SEGMENT>(0, 0);
 }
 
-void LaneSegmentContext::apply_transforms(
-  const Eigen::Matrix4d & transform_matrix, Eigen::MatrixXd & output_matrix,
-  int64_t num_segments) const
+void LaneSegmentContext::transform_single_segment(
+  const Eigen::Matrix4d & transform_matrix, Eigen::MatrixXd & segment_matrix) const
 {
-  // transform the x and y coordinates
-  transform_selected_rows(transform_matrix, output_matrix, num_segments, X);
-  // the dx and dy coordinates do not require translation
-  transform_selected_rows(transform_matrix, output_matrix, num_segments, dX, false);
-  transform_selected_rows(transform_matrix, output_matrix, num_segments, LB_X);
-  transform_selected_rows(transform_matrix, output_matrix, num_segments, RB_X);
+  // segment_matrix is expected to be in format (SEGMENT_POINT_DIM x POINTS_PER_SEGMENT)
+  const int64_t num_points = segment_matrix.cols();
 
-  // subtract center from boundaries
-  output_matrix.row(LB_X) = output_matrix.row(LB_X) - output_matrix.row(X);
-  output_matrix.row(LB_Y) = output_matrix.row(LB_Y) - output_matrix.row(Y);
-  output_matrix.row(RB_X) = output_matrix.row(RB_X) - output_matrix.row(X);
-  output_matrix.row(RB_Y) = output_matrix.row(RB_Y) - output_matrix.row(Y);
+  // Transform x, y coordinates (with translation)
+  {
+    Eigen::MatrixXd xy_points(4, num_points);
+    xy_points.setZero();
+    xy_points.row(0) = segment_matrix.row(X);  // x coordinates
+    xy_points.row(1) = segment_matrix.row(Y);  // y coordinates
+    xy_points.row(3).setOnes();                // homogeneous coordinates (w=1 for translation)
+
+    Eigen::MatrixXd transformed_xy = transform_matrix * xy_points;
+    segment_matrix.row(X) = transformed_xy.row(0);
+    segment_matrix.row(Y) = transformed_xy.row(1);
+  }
+
+  // Transform dx, dy coordinates (without translation)
+  {
+    Eigen::MatrixXd dxy_points(4, num_points);
+    dxy_points.setZero();
+    dxy_points.row(0) = segment_matrix.row(dX);  // dx coordinates
+    dxy_points.row(1) = segment_matrix.row(dY);  // dy coordinates
+    // dxy_points.row(3) remains zero (w=0 for no translation)
+
+    Eigen::MatrixXd transformed_dxy = transform_matrix * dxy_points;
+    segment_matrix.row(dX) = transformed_dxy.row(0);
+    segment_matrix.row(dY) = transformed_dxy.row(1);
+  }
+
+  // Transform left boundary coordinates (with translation)
+  {
+    Eigen::MatrixXd lb_points(4, num_points);
+    lb_points.setZero();
+    lb_points.row(0) = segment_matrix.row(LB_X);  // left boundary x coordinates
+    lb_points.row(1) = segment_matrix.row(LB_Y);  // left boundary y coordinates
+    lb_points.row(3).setOnes();                   // homogeneous coordinates (w=1 for translation)
+
+    Eigen::MatrixXd transformed_lb = transform_matrix * lb_points;
+    segment_matrix.row(LB_X) = transformed_lb.row(0);
+    segment_matrix.row(LB_Y) = transformed_lb.row(1);
+  }
+
+  // Transform right boundary coordinates (with translation)
+  {
+    Eigen::MatrixXd rb_points(4, num_points);
+    rb_points.setZero();
+    rb_points.row(0) = segment_matrix.row(RB_X);  // right boundary x coordinates
+    rb_points.row(1) = segment_matrix.row(RB_Y);  // right boundary y coordinates
+    rb_points.row(3).setOnes();                   // homogeneous coordinates (w=1 for translation)
+
+    Eigen::MatrixXd transformed_rb = transform_matrix * rb_points;
+    segment_matrix.row(RB_X) = transformed_rb.row(0);
+    segment_matrix.row(RB_Y) = transformed_rb.row(1);
+  }
+
+  // Subtract center from boundaries (make them relative to centerline)
+  segment_matrix.row(LB_X) = segment_matrix.row(LB_X) - segment_matrix.row(X);
+  segment_matrix.row(LB_Y) = segment_matrix.row(LB_Y) - segment_matrix.row(Y);
+  segment_matrix.row(RB_X) = segment_matrix.row(RB_X) - segment_matrix.row(X);
+  segment_matrix.row(RB_Y) = segment_matrix.row(RB_Y) - segment_matrix.row(Y);
 }
 
 std::vector<ColWithDistance> LaneSegmentContext::compute_distances(
@@ -288,6 +332,9 @@ LaneSegmentContext::create_tensor_data_from_indices(
     // Transpose to match expected format (SEGMENT_POINT_DIM x POINTS_PER_SEGMENT)
     segment_matrix.transposeInPlace();
 
+    // Transform this single segment immediately
+    transform_single_segment(transform_matrix, segment_matrix);
+
     output_matrix.block(
       0, added_segments * POINTS_PER_SEGMENT, SEGMENT_POINT_DIM, POINTS_PER_SEGMENT) =
       segment_matrix;
@@ -298,9 +345,6 @@ LaneSegmentContext::create_tensor_data_from_indices(
     speed_limit_vector[added_segments] = lane_segment.speed_limit_mps.value_or(0.0f);
     ++added_segments;
   }
-
-  // Transform the segments
-  apply_transforms(transform_matrix, output_matrix, added_segments);
 
   // Convert to float vector
   const Eigen::MatrixXf output_matrix_f = output_matrix.cast<float>().eval();
@@ -357,23 +401,6 @@ lanelet::Lanelets LaneSegmentContext::filter_route_lanelets(
 // Internal functions implementation
 namespace
 {
-
-void transform_selected_rows(
-  const Eigen::Matrix4d & transform_matrix, Eigen::MatrixXd & output_matrix, int64_t num_segments,
-  int64_t row_idx, bool do_translation)
-{
-  Eigen::MatrixXd xy_block(4, num_segments * POINTS_PER_SEGMENT);
-  xy_block.setZero();
-  xy_block.block(0, 0, 2, num_segments * POINTS_PER_SEGMENT) =
-    output_matrix.block(row_idx, 0, 2, num_segments * POINTS_PER_SEGMENT);
-
-  xy_block.row(3) = do_translation ? Eigen::MatrixXd::Ones(1, num_segments * POINTS_PER_SEGMENT)
-                                   : Eigen::MatrixXd::Zero(1, num_segments * POINTS_PER_SEGMENT);
-
-  Eigen::MatrixXd transformed_block = transform_matrix * xy_block;
-  output_matrix.block(row_idx, 0, 2, num_segments * POINTS_PER_SEGMENT) =
-    transformed_block.block(0, 0, 2, num_segments * POINTS_PER_SEGMENT);
-}
 
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements)
