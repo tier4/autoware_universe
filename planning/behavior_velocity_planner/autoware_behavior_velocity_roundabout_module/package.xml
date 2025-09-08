@@ -6,6 +6,7 @@
   <description>The autoware_behavior_velocity_roundabout_module package</description>
 
   <maintainer email="yukinari.hisaki.2@tier4.jp">Hisaki Yukinari</maintainer>
+  <maintainer email="mamoru.sobue@tier4.jp">Mamoru Sobue</maintainer>
   <maintainer email="sho.iwasawa.2@tier4.jp">Sho Iwasawa</maintainer>
 
   <license>Apache License 2.0</license>
