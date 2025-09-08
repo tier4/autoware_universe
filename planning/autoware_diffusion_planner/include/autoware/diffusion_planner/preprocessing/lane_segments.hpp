@@ -167,6 +167,46 @@ private:
   lanelet::Lanelets filter_route_lanelets(
     const LaneletRoute & route, const double center_x, const double center_y) const;
 
+  /**
+   * @brief Select route segment indices based on route and constraints.
+   *
+   * @param route The lanelet route to process.
+   * @param center_x X-coordinate of the center point.
+   * @param center_y Y-coordinate of the center point.
+   * @param max_segments Maximum number of segments to select.
+   * @return Vector of lane segment indices.
+   */
+  std::vector<int64_t> select_route_segment_indices(
+    const LaneletRoute & route, const double center_x, const double center_y,
+    const int64_t max_segments) const;
+
+  /**
+   * @brief Select lane segment indices based on distances and constraints.
+   *
+   * @param transform_matrix Transformation matrix to apply to the points.
+   * @param center_x X-coordinate of the center point.
+   * @param center_y Y-coordinate of the center point.
+   * @param max_segments Maximum number of segments to select.
+   * @return Vector of lane segment indices.
+   */
+  std::vector<int64_t> select_lane_segment_indices(
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+    const int64_t max_segments) const;
+
+  /**
+   * @brief Create tensor data from selected segment indices.
+   *
+   * @param transform_matrix Transformation matrix to apply to the points.
+   * @param traffic_light_id_map Map of lanelet IDs to traffic signal information.
+   * @param segment_indices Vector of segment indices to process.
+   * @param max_segments Maximum number of segments for output tensor.
+   * @return Pair of lane tensor data and speed limit vector.
+   */
+  std::pair<std::vector<float>, std::vector<float>> create_tensor_data_from_indices(
+    const Eigen::Matrix4d & transform_matrix,
+    const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
+    const std::vector<int64_t> & segment_indices, const int64_t max_segments) const;
+
   // variables
   const std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   const std::vector<autoware::diffusion_planner::LaneSegment> lane_segments_;

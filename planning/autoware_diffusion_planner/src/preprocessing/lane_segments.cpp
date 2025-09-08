@@ -65,60 +65,13 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_route_
   const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
   const LaneletRoute & route, const double center_x, const double center_y) const
 {
-  const auto total_route_points = ROUTE_LANES_SHAPE[1] * POINTS_PER_SEGMENT;
-  Eigen::MatrixXd full_route_segment_matrix(SEGMENT_POINT_DIM, total_route_points);
-  full_route_segment_matrix.setZero();
-  int64_t added_route_segments = 0;
+  // Step 1: Select route segment indices
+  const std::vector<int64_t> segment_indices =
+    select_route_segment_indices(route, center_x, center_y, ROUTE_LANES_SHAPE[1]);
 
-  std::vector<float> speed_limit_vector(ROUTE_LANES_SHAPE[1]);
-
-  const lanelet::Lanelets route_lanelets = filter_route_lanelets(route, center_x, center_y);
-
-  // Create a map from lanelet ID to segment index for quick lookup
-  std::map<lanelet::Id, size_t> id_to_segment_idx;
-  for (size_t i = 0; i < lane_segments_.size(); ++i) {
-    id_to_segment_idx[lane_segments_[i].id] = i;
-  }
-
-  // Add traffic light one-hot encoding to the route segments
-  for (const lanelet::Lanelet & route_segment : route_lanelets) {
-    if (added_route_segments >= ROUTE_LANES_SHAPE[1]) {
-      break;
-    }
-
-    const auto segment_idx_itr = id_to_segment_idx.find(route_segment.id());
-    if (segment_idx_itr == id_to_segment_idx.end()) {
-      continue;
-    }
-
-    const size_t seg_idx = segment_idx_itr->second;
-    const auto & lane_segment = lane_segments_[seg_idx];
-
-    // Process segment to matrix
-    Eigen::MatrixXd segment_matrix = process_segment_to_matrix(lane_segment);
-    if (segment_matrix.rows() != POINTS_PER_SEGMENT || segment_matrix.cols() != SEGMENT_POINT_DIM) {
-      continue;
-    }
-
-    // Transpose to match expected format (SEGMENT_POINT_DIM x POINTS_PER_SEGMENT)
-    segment_matrix.transposeInPlace();
-
-    full_route_segment_matrix.block(
-      0, added_route_segments * POINTS_PER_SEGMENT, SEGMENT_POINT_DIM, POINTS_PER_SEGMENT) =
-      segment_matrix;
-
-    add_traffic_light_one_hot_encoding_to_segment(
-      traffic_light_id_map, full_route_segment_matrix, lane_segment, added_route_segments);
-
-    speed_limit_vector[added_route_segments] = lane_segment.speed_limit_mps.value_or(0.0f);
-    ++added_route_segments;
-  }
-  // Transform the route segments.
-  apply_transforms(transform_matrix, full_route_segment_matrix, added_route_segments);
-  return {
-    {full_route_segment_matrix.data(),
-     full_route_segment_matrix.data() + full_route_segment_matrix.size()},
-    speed_limit_vector};
+  // Step 2: Create tensor data from indices
+  return create_tensor_data_from_indices(
+    transform_matrix, traffic_light_id_map, segment_indices, ROUTE_LANES_SHAPE[1]);
 }
 
 std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_lane_segments(
@@ -129,34 +82,14 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_lane_s
   if (m <= 0) {
     throw std::invalid_argument("m must be greater than 0.");
   }
-  // Step 1: Compute distances
-  std::vector<ColWithDistance> distances = compute_distances(transform_matrix, center_x, center_y);
-  // Step 2: Sort indices by distance
-  std::sort(distances.begin(), distances.end(), [](const auto & a, const auto & b) {
-    return a.distance_squared < b.distance_squared;
-  });
-  // Step 3: Apply transformation to selected rows
-  const Eigen::MatrixXd ego_centric_lane_segments =
-    transform_points_and_add_traffic_info(transform_matrix, traffic_light_id_map, distances, m);
 
-  // Extract lane tensor data
-  const auto total_lane_points = LANES_SHAPE[1] * POINTS_PER_SEGMENT;
-  Eigen::MatrixXd lane_matrix(SEGMENT_POINT_DIM, total_lane_points);
-  lane_matrix.block(0, 0, SEGMENT_POINT_DIM, total_lane_points) =
-    ego_centric_lane_segments.block(0, 0, SEGMENT_POINT_DIM, total_lane_points);
-  const Eigen::MatrixXf lane_matrix_f = lane_matrix.cast<float>().eval();
-  std::vector<float> lane_tensor_data(
-    lane_matrix_f.data(), lane_matrix_f.data() + lane_matrix_f.size());
+  // Step 1: Select lane segment indices
+  const std::vector<int64_t> segment_indices =
+    select_lane_segment_indices(transform_matrix, center_x, center_y, LANES_SHAPE[1]);
 
-  // Extract lane speed tensor data
-  const auto total_speed_points = LANES_SPEED_LIMIT_SHAPE[1];
-  std::vector<float> lane_speed_vector(total_speed_points);
-  for (int64_t i = 0; i < total_speed_points; ++i) {
-    const int64_t segment_idx = distances[i].index;
-    lane_speed_vector[i] = lane_segments_[segment_idx].speed_limit_mps.value_or(0.0f);
-  }
-
-  return {lane_tensor_data, lane_speed_vector};
+  // Step 2: Create tensor data from indices
+  return create_tensor_data_from_indices(
+    transform_matrix, traffic_light_id_map, segment_indices, LANES_SHAPE[1]);
 }
 
 void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
@@ -313,6 +246,113 @@ Eigen::MatrixXd LaneSegmentContext::transform_points_and_add_traffic_info(
 
   apply_transforms(transform_matrix, output_matrix, added_segments);
   return output_matrix;
+}
+
+std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
+  const LaneletRoute & route, const double center_x, const double center_y,
+  const int64_t max_segments) const
+{
+  std::vector<int64_t> selected_indices;
+  const lanelet::Lanelets route_lanelets = filter_route_lanelets(route, center_x, center_y);
+
+  // Create a map from lanelet ID to segment index for quick lookup
+  std::map<lanelet::Id, size_t> id_to_segment_idx;
+  for (size_t i = 0; i < lane_segments_.size(); ++i) {
+    id_to_segment_idx[lane_segments_[i].id] = i;
+  }
+
+  // Select route segment indices
+  for (const lanelet::Lanelet & route_segment : route_lanelets) {
+    if (selected_indices.size() >= static_cast<size_t>(max_segments)) {
+      break;
+    }
+
+    const auto segment_idx_itr = id_to_segment_idx.find(route_segment.id());
+    if (segment_idx_itr == id_to_segment_idx.end()) {
+      continue;
+    }
+
+    selected_indices.push_back(static_cast<int64_t>(segment_idx_itr->second));
+  }
+
+  return selected_indices;
+}
+
+std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
+  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+  const int64_t max_segments) const
+{
+  // Step 1: Compute distances
+  std::vector<ColWithDistance> distances = compute_distances(transform_matrix, center_x, center_y);
+  // Step 2: Sort indices by distance
+  std::sort(distances.begin(), distances.end(), [](const auto & a, const auto & b) {
+    return a.distance_squared < b.distance_squared;
+  });
+
+  // Step 3: Select indices that are inside the mask
+  std::vector<int64_t> selected_indices;
+  for (const auto & distance : distances) {
+    if (!distance.inside) {
+      continue;
+    }
+    selected_indices.push_back(distance.index);
+    if (selected_indices.size() >= static_cast<size_t>(max_segments)) {
+      break;
+    }
+  }
+
+  return selected_indices;
+}
+
+std::pair<std::vector<float>, std::vector<float>>
+LaneSegmentContext::create_tensor_data_from_indices(
+  const Eigen::Matrix4d & transform_matrix,
+  const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
+  const std::vector<int64_t> & segment_indices, const int64_t max_segments) const
+{
+  const auto total_points = max_segments * POINTS_PER_SEGMENT;
+  Eigen::MatrixXd output_matrix(SEGMENT_POINT_DIM, total_points);
+  output_matrix.setZero();
+
+  std::vector<float> speed_limit_vector(max_segments, 0.0f);
+
+  int64_t added_segments = 0;
+  for (const int64_t segment_idx : segment_indices) {
+    if (added_segments >= max_segments) {
+      break;
+    }
+
+    const auto & lane_segment = lane_segments_[segment_idx];
+
+    // Process segment to matrix
+    Eigen::MatrixXd segment_matrix = process_segment_to_matrix(lane_segment);
+    if (segment_matrix.rows() != POINTS_PER_SEGMENT || segment_matrix.cols() != SEGMENT_POINT_DIM) {
+      continue;
+    }
+
+    // Transpose to match expected format (SEGMENT_POINT_DIM x POINTS_PER_SEGMENT)
+    segment_matrix.transposeInPlace();
+
+    output_matrix.block(
+      0, added_segments * POINTS_PER_SEGMENT, SEGMENT_POINT_DIM, POINTS_PER_SEGMENT) =
+      segment_matrix;
+
+    add_traffic_light_one_hot_encoding_to_segment(
+      traffic_light_id_map, output_matrix, lane_segment, added_segments);
+
+    speed_limit_vector[added_segments] = lane_segment.speed_limit_mps.value_or(0.0f);
+    ++added_segments;
+  }
+
+  // Transform the segments
+  apply_transforms(transform_matrix, output_matrix, added_segments);
+
+  // Convert to float vector
+  const Eigen::MatrixXf output_matrix_f = output_matrix.cast<float>().eval();
+  std::vector<float> tensor_data(
+    output_matrix_f.data(), output_matrix_f.data() + output_matrix_f.size());
+
+  return {tensor_data, speed_limit_vector};
 }
 
 lanelet::Lanelets LaneSegmentContext::filter_route_lanelets(
