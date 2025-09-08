@@ -213,10 +213,10 @@ void LaneSegmentContext::add_line_type_encoding_to_segment(
   Eigen::MatrixXd right_mat = right.replicate(1, POINTS_PER_SEGMENT);
 
   segment_matrix.block<LINE_TYPE_NUM, POINTS_PER_SEGMENT>(
-    COORDINATE_DIM + TRAFFIC_LIGHT_ONE_HOT_DIM, col_counter * POINTS_PER_SEGMENT) =
+    LINE_TYPE_LEFT_START, col_counter * POINTS_PER_SEGMENT) =
     left_mat.block<LINE_TYPE_NUM, POINTS_PER_SEGMENT>(0, 0);
   segment_matrix.block<LINE_TYPE_NUM, POINTS_PER_SEGMENT>(
-    COORDINATE_DIM + TRAFFIC_LIGHT_ONE_HOT_DIM + LINE_TYPE_NUM, col_counter * POINTS_PER_SEGMENT) =
+    LINE_TYPE_RIGHT_START, col_counter * POINTS_PER_SEGMENT) =
     right_mat.block<LINE_TYPE_NUM, POINTS_PER_SEGMENT>(0, 0);
 }
 

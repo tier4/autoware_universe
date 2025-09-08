@@ -51,7 +51,9 @@ inline constexpr int64_t TRAFFIC_LIGHT_YELLOW = 9;
 inline constexpr int64_t TRAFFIC_LIGHT_RED = 10;
 inline constexpr int64_t TRAFFIC_LIGHT_WHITE = 11;
 inline constexpr int64_t TRAFFIC_LIGHT_NO_TRAFFIC_LIGHT = 12;
-inline constexpr int64_t SEGMENT_POINT_DIM = 13 + 2 * LINE_TYPE_NUM;  // 13 + 2*10 = 33
+inline constexpr int64_t LINE_TYPE_LEFT_START = 13;
+inline constexpr int64_t LINE_TYPE_RIGHT_START = LINE_TYPE_LEFT_START + LINE_TYPE_NUM;
+inline constexpr int64_t SEGMENT_POINT_DIM = LINE_TYPE_RIGHT_START + LINE_TYPE_NUM;
 
 inline constexpr int64_t INPUT_T = 20;
 inline constexpr int64_t OUTPUT_T = 80;  // Output timestamp number
