@@ -140,20 +140,6 @@ private:
     const Eigen::Matrix4d & transform_matrix, const float center_x, const float center_y) const;
 
   /**
-   * @brief Transform and select columns from input matrix based on distances.
-   *
-   * @param transform_matrix Transformation matrix to apply to the points.
-   * @param traffic_light_id_map Map of lanelet IDs to traffic signal information.
-   * @param distances Vector of columns with distances, used to select columns.
-   * @param m Maximum number of columns (segments) to select.
-   * @return The transformed matrix
-   */
-  Eigen::MatrixXd transform_points_and_add_traffic_info(
-    const Eigen::Matrix4d & transform_matrix,
-    const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
-    const std::vector<ColWithDistance> & distances, int64_t m) const;
-
-  /**
    * @brief Filter route lanelets starting from the closest lanelet to the center point.
    *
    * This function extracts lanelets from the route, finds the lanelet closest to the center point,
