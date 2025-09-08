@@ -54,7 +54,8 @@ uint8_t identify_current_light_status(
 
 // LaneSegmentContext implementation
 LaneSegmentContext::LaneSegmentContext(const std::shared_ptr<lanelet::LaneletMap> & lanelet_map_ptr)
-: lane_segments_(convert_to_lane_segments(lanelet_map_ptr, POINTS_PER_SEGMENT))
+: lanelet_map_ptr_(lanelet_map_ptr),
+  lane_segments_(convert_to_lane_segments(lanelet_map_ptr, POINTS_PER_SEGMENT))
 {
   if (lane_segments_.empty()) {
     throw std::runtime_error("No lane segments found in the map");
