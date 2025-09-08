@@ -35,9 +35,6 @@ inline constexpr int64_t COORDINATE_DIM = 2 * 4;  // (x, y) * (center, diff, lef
 inline constexpr int64_t SEGMENT_POINT_DIM =
   COORDINATE_DIM + TRAFFIC_LIGHT_ONE_HOT_DIM + 2 * LINE_TYPE_NUM;
 
-// (5=SPEED_LIMIT, LANE_ID, TURN_DIRECTION, LEFT_LINE_TYPE, RIGHT_LINE_TYPE)
-inline constexpr int64_t FULL_MATRIX_ROWS = COORDINATE_DIM + TRAFFIC_LIGHT_ONE_HOT_DIM + 5;
-
 inline constexpr int64_t EGO_AGENT_PAST_IDX_X = 0;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_Y = 1;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_COS = 2;
@@ -58,9 +55,7 @@ inline constexpr int64_t TRAFFIC_LIGHT_YELLOW = 9;
 inline constexpr int64_t TRAFFIC_LIGHT_RED = 10;
 inline constexpr int64_t TRAFFIC_LIGHT_WHITE = 11;
 inline constexpr int64_t TRAFFIC_LIGHT_NO_TRAFFIC_LIGHT = 12;
-inline constexpr int64_t SPEED_LIMIT = 13;
-inline constexpr int64_t LANE_ID = 14;
-inline constexpr int64_t TURN_DIRECTION = 15;
+inline constexpr int64_t LINE_TYPE_START = 13;
 
 inline constexpr int64_t INPUT_T = 20;
 inline constexpr int64_t OUTPUT_T = 80;  // Output timestamp number

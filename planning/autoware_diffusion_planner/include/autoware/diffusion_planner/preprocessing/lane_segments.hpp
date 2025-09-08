@@ -127,6 +127,19 @@ private:
     const int64_t turn_direction) const;
 
   /**
+   * @brief Add line type one-hot encoding to a segment matrix.
+   *
+   * This function adds one-hot encoded representations of the left and right lane boundary
+   * line types (e.g., solid, dashed, etc.) to the specified segment in the matrix.
+   *
+   * @param segment_matrix The segment matrix to modify (in-place).
+   * @param row_idx The row index in the matrix corresponding to the segment.
+   * @param col_counter The column counter for the segment.
+   */
+  void add_line_type_encoding_to_segment(
+    Eigen::MatrixXd & segment_matrix, const int64_t row_idx, const int64_t col_counter) const;
+
+  /**
    * @brief Apply coordinate transforms to the output matrix for all segments.
    *
    * @param transform_matrix Transformation matrix to apply to the points.
