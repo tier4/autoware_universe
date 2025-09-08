@@ -632,8 +632,8 @@ int main(int argc, char ** argv)
 
       // Process lanes and routes
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
-      const float center_x = ego_pos.x;
-      const float center_y = ego_pos.y;
+      const double center_x = ego_pos.x;
+      const double center_y = ego_pos.y;
 
       // Process traffic signals for this frame using the traffic signals from FrameData
       std::map<lanelet::Id, preprocess::TrafficSignalStamped> traffic_light_id_map;

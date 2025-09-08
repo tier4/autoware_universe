@@ -28,9 +28,9 @@ constexpr size_t POINT_STATE_DIM = 7;
 enum PolylineLabel { LANE = 0, ROAD_LINE = 1, ROAD_EDGE = 2, CROSSWALK = 3 };
 
 // Normalize a 3D direction vector (shared utility)
-inline void normalize_direction(float & dx, float & dy, float & dz)
+inline void normalize_direction(double & dx, double & dy, double & dz)
 {
-  const float magnitude = std::sqrt(dx * dx + dy * dy + dz * dz);
+  const double magnitude = std::sqrt(dx * dx + dy * dy + dz * dz);
   if (magnitude > 1e-6f) {
     dx /= magnitude;
     dy /= magnitude;
@@ -41,7 +41,7 @@ inline void normalize_direction(float & dx, float & dy, float & dz)
 struct LanePoint
 {
   // Construct a new instance filling all elements by `0.0f`.
-  LanePoint() : data_({0.0f}) {}
+  LanePoint() : data_({0.0}) {}
 
   /**
    * @brief Construct a new instance with specified values.
@@ -55,8 +55,8 @@ struct LanePoint
    * @param label Label.
    */
   LanePoint(
-    const float x, const float y, const float z, const float dx, const float dy, const float dz,
-    const float label)
+    const double x, const double y, const double z, const double dx, const double dy, const double dz,
+    const double label)
   : data_({x, y, z, dx, dy, dz, label}), x_(x), y_(y), z_(z), dx_(x), dy_(y), dz_(z), label_(label)
   {
   }
@@ -68,55 +68,55 @@ struct LanePoint
   static size_t dim() { return POINT_STATE_DIM; }
 
   // Return the x position of the point.
-  [[nodiscard]] float x() const { return x_; }
+  [[nodiscard]] double x() const { return x_; }
 
   // Return the y position of the point.
-  [[nodiscard]] float y() const { return y_; }
+  [[nodiscard]] double y() const { return y_; }
 
   // Return the z position of the point.
-  [[nodiscard]] float z() const { return z_; }
+  [[nodiscard]] double z() const { return z_; }
 
   // Return the x direction of the point.
-  [[nodiscard]] float dx() const { return dx_; }
+  [[nodiscard]] double dx() const { return dx_; }
 
   // Return the y direction of the point.
-  [[nodiscard]] float dy() const { return dy_; }
+  [[nodiscard]] double dy() const { return dy_; }
 
   // Return the z direction of the point.
-  [[nodiscard]] float dz() const { return dz_; }
+  [[nodiscard]] double dz() const { return dz_; }
 
   // Return the label of the point.
-  [[nodiscard]] float label() const { return label_; }
+  [[nodiscard]] double label() const { return label_; }
 
   /**
    * @brief Return the distance between myself and another one.
    *
    * @param other Another point.
-   * @return float Distance between myself and another one.
+   * @return double Distance between myself and another one.
    */
-  [[nodiscard]] float distance(const LanePoint & other) const
+  [[nodiscard]] double distance(const LanePoint & other) const
   {
     return std::hypot(x_ - other.x(), y_ - other.y(), z_ - other.z());
   }
 
   // Return the address pointer of data array.
-  [[nodiscard]] const float * data_ptr() const noexcept { return data_.data(); }
+  [[nodiscard]] const double * data_ptr() const noexcept { return data_.data(); }
 
-  [[nodiscard]] LanePoint lerp(const LanePoint & other, float t) const
+  [[nodiscard]] LanePoint lerp(const LanePoint & other, double t) const
   {
     // Interpolate position
-    float new_x = x_ + t * (other.x_ - x_);
-    float new_y = y_ + t * (other.y_ - y_);
-    float new_z = z_ + t * (other.z_ - z_);
+    double new_x = x_ + t * (other.x_ - x_);
+    double new_y = y_ + t * (other.y_ - y_);
+    double new_z = z_ + t * (other.z_ - z_);
 
     // Calculate direction vector from interpolated positions
-    float new_dx = other.x_ - x_;
-    float new_dy = other.y_ - y_;
-    float new_dz = other.z_ - z_;
+    double new_dx = other.x_ - x_;
+    double new_dy = other.y_ - y_;
+    double new_dz = other.z_ - z_;
 
     // Check if points are too close
-    const float magnitude_sq = new_dx * new_dx + new_dy * new_dy + new_dz * new_dz;
-    if (magnitude_sq < 1e-12f) {
+    const double magnitude_sq = new_dx * new_dx + new_dy * new_dy + new_dz * new_dz;
+    if (magnitude_sq < 1e-12) {
       // If points are too close, use the first point's direction
       new_dx = dx_;
       new_dy = dy_;
@@ -126,14 +126,14 @@ struct LanePoint
     }
 
     // Interpolate label
-    float new_label = label_ + t * (other.label_ - label_);
+    double new_label = label_ + t * (other.label_ - label_);
 
     return LanePoint{new_x, new_y, new_z, new_dx, new_dy, new_dz, new_label};
   }
 
 private:
-  std::array<float, POINT_STATE_DIM> data_;
-  float x_{0.0f}, y_{0.0f}, z_{0.0f}, dx_{0.0f}, dy_{0.0f}, dz_{0.0f}, label_{0.0f};
+  std::array<double, POINT_STATE_DIM> data_;
+  double x_{0.0}, y_{0.0}, z_{0.0}, dx_{0.0}, dy_{0.0}, dz_{0.0}, label_{0.0};
 };
 
 enum class MapType {
@@ -172,9 +172,9 @@ public:
 
   [[nodiscard]] const MapType & polyline_type() const { return polyline_type_; }
 
-  [[nodiscard]] std::vector<std::array<float, 3>> xyz() const
+  [[nodiscard]] std::vector<std::array<double, 3>> xyz() const
   {
-    std::vector<std::array<float, 3>> coords;
+    std::vector<std::array<double, 3>> coords;
     coords.reserve(waypoints_.size());
     for (const auto & pt : waypoints_) {
       coords.push_back({pt.x(), pt.y(), pt.z()});
@@ -182,9 +182,9 @@ public:
     return coords;
   }
 
-  [[nodiscard]] std::vector<std::array<float, 2>> xy() const
+  [[nodiscard]] std::vector<std::array<double, 2>> xy() const
   {
-    std::vector<std::array<float, 2>> coords;
+    std::vector<std::array<double, 2>> coords;
     coords.reserve(waypoints_.size());
     for (const auto & pt : waypoints_) {
       coords.push_back({pt.x(), pt.y()});
@@ -192,16 +192,16 @@ public:
     return coords;
   }
 
-  [[nodiscard]] std::vector<std::array<float, 3>> dxyz() const
+  [[nodiscard]] std::vector<std::array<double, 3>> dxyz() const
   {
     if (waypoints_.empty()) return {};
 
-    std::vector<std::array<float, 3>> directions(waypoints_.size(), {0.0f, 0.0f, 0.0f});
+    std::vector<std::array<double, 3>> directions(waypoints_.size(), {0.0f, 0.0f, 0.0f});
     for (size_t i = 1; i < waypoints_.size(); ++i) {
-      float dx = waypoints_[i].x() - waypoints_[i - 1].x();
-      float dy = waypoints_[i].y() - waypoints_[i - 1].y();
-      float dz = waypoints_[i].z() - waypoints_[i - 1].z();
-      float norm = std::sqrt(dx * dx + dy * dy + dz * dz);
+      double dx = waypoints_[i].x() - waypoints_[i - 1].x();
+      double dy = waypoints_[i].y() - waypoints_[i - 1].y();
+      double dz = waypoints_[i].z() - waypoints_[i - 1].z();
+      double norm = std::sqrt(dx * dx + dy * dy + dz * dz);
       if (norm > 1e-6f) {
         directions[i] = {dx / norm, dy / norm, dz / norm};
       }
@@ -209,15 +209,15 @@ public:
     return directions;
   }
 
-  [[nodiscard]] std::vector<std::array<float, 2>> dxy() const
+  [[nodiscard]] std::vector<std::array<double, 2>> dxy() const
   {
     if (waypoints_.empty()) return {};
 
-    std::vector<std::array<float, 2>> directions(waypoints_.size(), {0.0f, 0.0f});
+    std::vector<std::array<double, 2>> directions(waypoints_.size(), {0.0f, 0.0f});
     for (size_t i = 1; i < waypoints_.size(); ++i) {
-      float dx = waypoints_[i].x() - waypoints_[i - 1].x();
-      float dy = waypoints_[i].y() - waypoints_[i - 1].y();
-      float norm = std::sqrt(dx * dx + dy * dy);
+      double dx = waypoints_[i].x() - waypoints_[i - 1].x();
+      double dy = waypoints_[i].y() - waypoints_[i - 1].y();
+      double norm = std::sqrt(dx * dx + dy * dy);
       if (norm > 1e-6f) {
         directions[i] = {dx / norm, dy / norm};
       }
@@ -225,22 +225,22 @@ public:
     return directions;
   }
 
-  [[nodiscard]] std::vector<std::array<float, FULL_DIM3D>> as_full_array() const
+  [[nodiscard]] std::vector<std::array<double, FULL_DIM3D>> as_full_array() const
   {
-    std::vector<std::array<float, FULL_DIM3D>> result;
+    std::vector<std::array<double, FULL_DIM3D>> result;
     result.reserve(waypoints_.size());
 
     auto dirs3d = dxyz();
     for (size_t i = 0; i < waypoints_.size(); ++i) {
       const auto & pt = waypoints_[i];
-      std::array<float, FULL_DIM3D> entry = {
+      std::array<double, FULL_DIM3D> entry = {
         pt.x(),
         pt.y(),
         pt.z(),
         dirs3d[i][0],
         dirs3d[i][1],
         dirs3d[i][2],
-        static_cast<float>(polyline_type_)};
+        static_cast<double>(polyline_type_)};
       result.push_back(entry);
     }
     return result;
@@ -268,7 +268,7 @@ struct PolylineData
    */
   PolylineData(
     const std::vector<LanePoint> & points, const size_t min_num_polyline,
-    const size_t max_num_point, const float distance_threshold)
+    const size_t max_num_point, const double distance_threshold)
   : num_point_(max_num_point), distance_threshold_(distance_threshold)
   {
     std::size_t point_cnt = 0;
@@ -322,7 +322,7 @@ struct PolylineData
   }
 
   // Return the address pointer of data array.
-  [[nodiscard]] const float * data_ptr() const noexcept { return data_.data(); }
+  [[nodiscard]] const double * data_ptr() const noexcept { return data_.data(); }
 
 private:
   /**
@@ -391,8 +391,8 @@ private:
 
   size_t num_polyline_{0};
   size_t num_point_{0};
-  std::vector<float> data_;
-  const float distance_threshold_;
+  std::vector<double> data_;
+  const double distance_threshold_;
 };
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__POLYLINE_HPP_

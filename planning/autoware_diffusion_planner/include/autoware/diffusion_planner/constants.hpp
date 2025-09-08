@@ -19,7 +19,7 @@ namespace autoware::diffusion_planner::constants
 {
 
 // Velocity thresholds
-constexpr float MOVING_VELOCITY_THRESHOLD_MPS = 0.2f;
+constexpr double MOVING_VELOCITY_THRESHOLD_MPS = 0.2f;
 
 // Time constants
 constexpr double PREDICTION_TIME_STEP_S = 0.1;
@@ -35,8 +35,8 @@ constexpr double FORWARD_PATH_LENGTH_M = 150.0;
 struct VisualizationParams
 {
   static constexpr double DEBUG_MARKER_LIFETIME_S = 0.2;
-  static constexpr float ROUTE_MARKER_ALPHA = 0.8f;
-  static constexpr float MAP_MARKER_ALPHA = 0.8f;
+  static constexpr double ROUTE_MARKER_ALPHA = 0.8f;
+  static constexpr double MAP_MARKER_ALPHA = 0.8f;
 };
 
 }  // namespace autoware::diffusion_planner::constants

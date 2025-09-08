@@ -109,8 +109,8 @@ public:
    */
   std::pair<std::vector<float>, std::vector<float>> get_lane_segments(
     const Eigen::Matrix4d & transform_matrix,
-    const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map, const float center_x,
-    const float center_y, const int64_t m) const;
+    const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map, const double center_x,
+    const double center_y, const int64_t m) const;
 
 private:
   /**

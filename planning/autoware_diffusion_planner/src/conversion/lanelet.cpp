@@ -62,11 +62,11 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
     return input;
   }
   // Step 1: Compute cumulative distances
-  std::vector<float> arc_lengths(input.size(), 0.0f);
+  std::vector<double> arc_lengths(input.size(), 0.0);
   for (size_t i = 1; i < input.size(); ++i) {
     arc_lengths[i] = arc_lengths[i - 1] + input[i].distance(input[i - 1]);
   }
-  float total_length = arc_lengths.back();
+  double total_length = arc_lengths.back();
 
   // Step 2: Generate target arc lengths
   std::vector<LanePoint> result;
@@ -82,11 +82,11 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
     return result;
   }
 
-  float step = total_length / static_cast<float>(num_points - 1);
+  double step = total_length / static_cast<double>(num_points - 1);
   size_t seg_idx = 0;
 
   for (size_t i = 1; i < num_points - 1; ++i) {
-    float target = static_cast<float>(i) * step;
+    double target = static_cast<double>(i) * step;
 
     // Find the correct segment containing the target arc length
     while (seg_idx + 1 < arc_lengths.size() && arc_lengths[seg_idx + 1] < target) {
@@ -99,15 +99,15 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
     }
 
     // Interpolate between input[seg_idx] and input[seg_idx + 1]
-    float seg_start = arc_lengths[seg_idx];
-    float seg_end = arc_lengths[seg_idx + 1];
-    float seg_length = seg_end - seg_start;
+    double seg_start = arc_lengths[seg_idx];
+    double seg_end = arc_lengths[seg_idx + 1];
+    double seg_length = seg_end - seg_start;
 
     // Calculate interpolation parameter, handling zero-length segments
-    float safe_seg_length = std::max(seg_length, 1e-6f);
-    float t = (target - seg_start) / safe_seg_length;
+    double safe_seg_length = std::max(seg_length, 1e-6);
+    double t = (target - seg_start) / safe_seg_length;
     // Clamp t to [0, 1] to ensure we don't extrapolate
-    t = std::max(0.0f, std::min(1.0f, t));
+    t = std::max(0.0, std::min(1.0, t));
     result.push_back(input[seg_idx].lerp(input[seg_idx + 1], t));
   }
   // Always include the last point
@@ -117,9 +117,9 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
   // Helper lambda to update a point's direction vector
   auto update_point_direction =
     [](std::vector<LanePoint> & points, size_t point_idx, size_t from_idx, size_t to_idx) {
-      float dx = points[to_idx].x() - points[from_idx].x();
-      float dy = points[to_idx].y() - points[from_idx].y();
-      float dz = points[to_idx].z() - points[from_idx].z();
+      double dx = points[to_idx].x() - points[from_idx].x();
+      double dy = points[to_idx].y() - points[from_idx].y();
+      double dz = points[to_idx].z() - points[from_idx].z();
 
       normalize_direction(dx, dy, dz);
 
@@ -162,17 +162,17 @@ std::vector<LanePoint> from_geometry(
         distance > distance_threshold) {
       continue;
     }
-    float dx{0.0f};
-    float dy{0.0f};
-    float dz{0.0f};
+    double dx{0.0};
+    double dy{0.0};
+    double dz{0.0};
     if (itr == geometry.begin()) {
-      dx = 0.0f;
-      dy = 0.0f;
-      dz = 0.0f;
+      dx = 0.0;
+      dy = 0.0;
+      dz = 0.0;
     } else {
-      dx = static_cast<float>(itr->x() - (itr - 1)->x());
-      dy = static_cast<float>(itr->y() - (itr - 1)->y());
-      dz = static_cast<float>(itr->z() - (itr - 1)->z());
+      dx = static_cast<double>(itr->x() - (itr - 1)->x());
+      dy = static_cast<double>(itr->y() - (itr - 1)->y());
+      dz = static_cast<double>(itr->z() - (itr - 1)->z());
       normalize_direction(dx, dy, dz);
     }
     output.emplace_back(
