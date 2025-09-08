@@ -19,17 +19,12 @@
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
 #include <tf2/utils.h>
 
-#include <tuple>
-
-#ifdef ROS_DISTRO_GALACTIC
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#else
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#endif
-
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -112,15 +107,6 @@ visualization_msgs::msg::MarkerArray createPoseMarkerArray(
   return msg;
 }
 
-constexpr std::tuple<float, float, float> white()
-{
-  constexpr uint64_t code = 0xfdfdfd;
-  constexpr float r = static_cast<int>(code >> 16) / 255.0;
-  constexpr float g = static_cast<int>((code << 48) >> 56) / 255.0;
-  constexpr float b = static_cast<int>((code << 56) >> 56) / 255.0;
-  return {r, g, b};
-}
-
 constexpr std::tuple<float, float, float> green()
 {
   constexpr uint64_t code = 0x5fa641;
@@ -142,15 +128,6 @@ constexpr std::tuple<float, float, float> yellow()
 constexpr std::tuple<float, float, float> red()
 {
   constexpr uint64_t code = 0xba1c30;
-  constexpr float r = static_cast<int>(code >> 16) / 255.0;
-  constexpr float g = static_cast<int>((code << 48) >> 56) / 255.0;
-  constexpr float b = static_cast<int>((code << 56) >> 56) / 255.0;
-  return {r, g, b};
-}
-
-constexpr std::tuple<float, float, float> light_blue()
-{
-  constexpr uint64_t code = 0x96cde6;
   constexpr float r = static_cast<int>(code >> 16) / 255.0;
   constexpr float g = static_cast<int>((code << 48) >> 56) / 255.0;
   constexpr float b = static_cast<int>((code << 56) >> 56) / 255.0;
