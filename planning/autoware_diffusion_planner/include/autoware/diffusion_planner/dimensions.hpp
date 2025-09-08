@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__DIMENSIONS_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__DIMENSIONS_HPP_
 
+#include "autoware/diffusion_planner/conversion/lanelet.hpp"
+
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -28,8 +30,13 @@ inline constexpr int64_t POINTS_PER_SEGMENT = 20;  //!< Number of points in each
 // Number of columns in a segment matrix
 // (X,Y,dX,dY,LeftBoundX,LeftBoundY,RightBoundX,RightBoundY,TrafficLightEncoding(Dim5),Speed Limit)
 inline constexpr int64_t TRAFFIC_LIGHT_ONE_HOT_DIM = 5;
-inline constexpr int64_t SEGMENT_POINT_DIM = 8 + TRAFFIC_LIGHT_ONE_HOT_DIM;
-inline constexpr int64_t FULL_MATRIX_ROWS = SEGMENT_POINT_DIM + 3;
+inline constexpr int64_t COORDINATE_DIM = 2 * 4;  // (x, y) * (center, diff, left, right)
+
+inline constexpr int64_t SEGMENT_POINT_DIM =
+  COORDINATE_DIM + TRAFFIC_LIGHT_ONE_HOT_DIM + 2 * LINE_TYPE_NUM;
+
+// (5=SPEED_LIMIT, LANE_ID, TURN_DIRECTION, LEFT_LINE_TYPE, RIGHT_LINE_TYPE)
+inline constexpr int64_t FULL_MATRIX_ROWS = COORDINATE_DIM + TRAFFIC_LIGHT_ONE_HOT_DIM + 5;
 
 inline constexpr int64_t EGO_AGENT_PAST_IDX_X = 0;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_Y = 1;
