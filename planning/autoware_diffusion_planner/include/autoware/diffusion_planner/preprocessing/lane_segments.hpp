@@ -118,15 +118,6 @@ private:
     const int64_t col_counter) const;
 
   /**
-   * @brief Transform a single segment matrix to ego-centric coordinates.
-   *
-   * @param transform_matrix Transformation matrix to apply to the points.
-   * @param segment_matrix Single segment matrix to transform (in-place).
-   */
-  void transform_single_segment(
-    const Eigen::Matrix4d & transform_matrix, Eigen::MatrixXd & segment_matrix) const;
-
-  /**
    * @brief Compute distances of lane segments from a center point.
    *
    * @param transform_matrix Transformation matrix to apply to the points.

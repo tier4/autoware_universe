@@ -42,7 +42,6 @@ namespace
 {
 using namespace autoware_perception_msgs::msg;
 
-Eigen::MatrixXd process_segment_to_matrix(const LaneSegment & segment);
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements);
 }  // namespace
@@ -126,71 +125,6 @@ void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
   segment_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, POINTS_PER_SEGMENT>(
     TRAFFIC_LIGHT, col_counter * POINTS_PER_SEGMENT) =
     one_hot_encoding_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, POINTS_PER_SEGMENT>(0, 0);
-}
-
-void LaneSegmentContext::transform_single_segment(
-  const Eigen::Matrix4d & transform_matrix, Eigen::MatrixXd & segment_matrix) const
-{
-  // segment_matrix is expected to be in format (SEGMENT_POINT_DIM x POINTS_PER_SEGMENT)
-  const int64_t num_points = segment_matrix.cols();
-
-  // Transform x, y coordinates (with translation)
-  {
-    Eigen::MatrixXd xy_points(4, num_points);
-    xy_points.setZero();
-    xy_points.row(0) = segment_matrix.row(X);  // x coordinates
-    xy_points.row(1) = segment_matrix.row(Y);  // y coordinates
-    xy_points.row(3).setOnes();                // homogeneous coordinates (w=1 for translation)
-
-    Eigen::MatrixXd transformed_xy = transform_matrix * xy_points;
-    segment_matrix.row(X) = transformed_xy.row(0);
-    segment_matrix.row(Y) = transformed_xy.row(1);
-  }
-
-  // Transform dx, dy coordinates (without translation)
-  {
-    Eigen::MatrixXd dxy_points(4, num_points);
-    dxy_points.setZero();
-    dxy_points.row(0) = segment_matrix.row(dX);  // dx coordinates
-    dxy_points.row(1) = segment_matrix.row(dY);  // dy coordinates
-    // dxy_points.row(3) remains zero (w=0 for no translation)
-
-    Eigen::MatrixXd transformed_dxy = transform_matrix * dxy_points;
-    segment_matrix.row(dX) = transformed_dxy.row(0);
-    segment_matrix.row(dY) = transformed_dxy.row(1);
-  }
-
-  // Transform left boundary coordinates (with translation)
-  {
-    Eigen::MatrixXd lb_points(4, num_points);
-    lb_points.setZero();
-    lb_points.row(0) = segment_matrix.row(LB_X);  // left boundary x coordinates
-    lb_points.row(1) = segment_matrix.row(LB_Y);  // left boundary y coordinates
-    lb_points.row(3).setOnes();                   // homogeneous coordinates (w=1 for translation)
-
-    Eigen::MatrixXd transformed_lb = transform_matrix * lb_points;
-    segment_matrix.row(LB_X) = transformed_lb.row(0);
-    segment_matrix.row(LB_Y) = transformed_lb.row(1);
-  }
-
-  // Transform right boundary coordinates (with translation)
-  {
-    Eigen::MatrixXd rb_points(4, num_points);
-    rb_points.setZero();
-    rb_points.row(0) = segment_matrix.row(RB_X);  // right boundary x coordinates
-    rb_points.row(1) = segment_matrix.row(RB_Y);  // right boundary y coordinates
-    rb_points.row(3).setOnes();                   // homogeneous coordinates (w=1 for translation)
-
-    Eigen::MatrixXd transformed_rb = transform_matrix * rb_points;
-    segment_matrix.row(RB_X) = transformed_rb.row(0);
-    segment_matrix.row(RB_Y) = transformed_rb.row(1);
-  }
-
-  // Subtract center from boundaries (make them relative to centerline)
-  segment_matrix.row(LB_X) = segment_matrix.row(LB_X) - segment_matrix.row(X);
-  segment_matrix.row(LB_Y) = segment_matrix.row(LB_Y) - segment_matrix.row(Y);
-  segment_matrix.row(RB_X) = segment_matrix.row(RB_X) - segment_matrix.row(X);
-  segment_matrix.row(RB_Y) = segment_matrix.row(RB_Y) - segment_matrix.row(Y);
 }
 
 std::vector<ColWithDistance> LaneSegmentContext::compute_distances(
@@ -323,21 +257,63 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
     const auto & lane_segment = lane_segments_[segment_idx];
 
-    // Process segment to matrix
-    Eigen::MatrixXd segment_matrix = process_segment_to_matrix(lane_segment);
-    if (segment_matrix.rows() != POINTS_PER_SEGMENT || segment_matrix.cols() != SEGMENT_POINT_DIM) {
+    // Check if segment has valid data
+    if (
+      lane_segment.polyline.is_empty() || lane_segment.left_boundaries.empty() ||
+      lane_segment.right_boundaries.empty()) {
       continue;
     }
 
-    // Transpose to match expected format (SEGMENT_POINT_DIM x POINTS_PER_SEGMENT)
-    segment_matrix.transposeInPlace();
+    const auto & centerlines = lane_segment.polyline.waypoints();
+    const auto & left_boundaries = lane_segment.left_boundaries.front().waypoints();
+    const auto & right_boundaries = lane_segment.right_boundaries.front().waypoints();
 
-    // Transform this single segment immediately
-    transform_single_segment(transform_matrix, segment_matrix);
+    if (
+      centerlines.size() != POINTS_PER_SEGMENT || left_boundaries.size() != POINTS_PER_SEGMENT ||
+      right_boundaries.size() != POINTS_PER_SEGMENT) {
+      continue;
+    }
 
-    output_matrix.block(
-      0, added_segments * POINTS_PER_SEGMENT, SEGMENT_POINT_DIM, POINTS_PER_SEGMENT) =
-      segment_matrix;
+    // Process each point in the segment
+    for (int64_t i = 0; i < POINTS_PER_SEGMENT; ++i) {
+      const int64_t col_idx = added_segments * POINTS_PER_SEGMENT + i;
+
+      // Extract and transform centerline coordinates
+      Eigen::Vector4d center_point(centerlines[i].x(), centerlines[i].y(), centerlines[i].z(), 1.0);
+      Eigen::Vector4d transformed_center = transform_matrix * center_point;
+      output_matrix(X, col_idx) = transformed_center.x();
+      output_matrix(Y, col_idx) = transformed_center.y();
+
+      // Calculate and transform direction vectors (no translation)
+      if (i < POINTS_PER_SEGMENT - 1) {
+        const double dx = centerlines[i + 1].x() - centerlines[i].x();
+        const double dy = centerlines[i + 1].y() - centerlines[i].y();
+        const double dz = centerlines[i + 1].z() - centerlines[i].z();
+        Eigen::Vector4d direction_vec(dx, dy, dz, 0.0);  // w=0 for no translation
+        Eigen::Vector4d transformed_direction = transform_matrix * direction_vec;
+        output_matrix(dX, col_idx) = transformed_direction.x();
+        output_matrix(dY, col_idx) = transformed_direction.y();
+      } else {
+        output_matrix(dX, col_idx) = 0.0;
+        output_matrix(dY, col_idx) = 0.0;
+      }
+
+      // Extract and transform left boundary coordinates
+      Eigen::Vector4d left_point(
+        left_boundaries[i].x(), left_boundaries[i].y(), left_boundaries[i].z(), 1.0);
+      Eigen::Vector4d transformed_left = transform_matrix * left_point;
+      // Make relative to centerline
+      output_matrix(LB_X, col_idx) = transformed_left.x() - transformed_center.x();
+      output_matrix(LB_Y, col_idx) = transformed_left.y() - transformed_center.y();
+
+      // Extract and transform right boundary coordinates
+      Eigen::Vector4d right_point(
+        right_boundaries[i].x(), right_boundaries[i].y(), right_boundaries[i].z(), 1.0);
+      Eigen::Vector4d transformed_right = transform_matrix * right_point;
+      // Make relative to centerline
+      output_matrix(RB_X, col_idx) = transformed_right.x() - transformed_center.x();
+      output_matrix(RB_Y, col_idx) = transformed_right.y() - transformed_center.y();
+    }
 
     add_traffic_light_one_hot_encoding_to_segment(
       traffic_light_id_map, output_matrix, lane_segment, added_segments);
@@ -471,45 +447,6 @@ uint8_t identify_current_light_status(
 
   // If no matching direction or circle, return the element with highest confidence
   return get_max_confidence_color(effective_elements);
-}
-
-Eigen::MatrixXd process_segment_to_matrix(const LaneSegment & segment)
-{
-  if (
-    segment.polyline.is_empty() || segment.left_boundaries.empty() ||
-    segment.right_boundaries.empty()) {
-    return {};
-  }
-  const auto & centerlines = segment.polyline.waypoints();
-  const auto & left_boundaries = segment.left_boundaries.front().waypoints();
-  const auto & right_boundaries = segment.right_boundaries.front().waypoints();
-
-  if (
-    centerlines.size() != POINTS_PER_SEGMENT || left_boundaries.size() != POINTS_PER_SEGMENT ||
-    right_boundaries.size() != POINTS_PER_SEGMENT) {
-    throw std::runtime_error(
-      "Segment data size mismatch: centerlines, left boundaries, and right boundaries must have "
-      "POINTS_PER_SEGMENT points");
-  }
-
-  Eigen::MatrixXd segment_data(POINTS_PER_SEGMENT, SEGMENT_POINT_DIM);
-  segment_data.setZero();
-
-  // Build each row
-  for (int64_t i = 0; i < POINTS_PER_SEGMENT; ++i) {
-    segment_data(i, X) = centerlines[i].x();
-    segment_data(i, Y) = centerlines[i].y();
-    segment_data(i, dX) =
-      i < POINTS_PER_SEGMENT - 1 ? centerlines[i + 1].x() - centerlines[i].x() : 0.0f;
-    segment_data(i, dY) =
-      i < POINTS_PER_SEGMENT - 1 ? centerlines[i + 1].y() - centerlines[i].y() : 0.0f;
-    segment_data(i, LB_X) = left_boundaries[i].x();
-    segment_data(i, LB_Y) = left_boundaries[i].y();
-    segment_data(i, RB_X) = right_boundaries[i].x();
-    segment_data(i, RB_Y) = right_boundaries[i].y();
-  }
-
-  return segment_data;
 }
 
 }  // namespace
