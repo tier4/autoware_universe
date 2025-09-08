@@ -91,14 +91,14 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_route_
       0, added_route_segments * POINTS_PER_SEGMENT, SEGMENT_POINT_DIM, POINTS_PER_SEGMENT) =
       map_lane_segments_matrix_.block(0, row_idx, SEGMENT_POINT_DIM, POINTS_PER_SEGMENT);
 
-    const int64_t turn_direction = lane_segments_[row_idx].turn_direction;
+    const int64_t turn_direction = lane_segments_[row_idx / POINTS_PER_SEGMENT].turn_direction;
     add_traffic_light_one_hot_encoding_to_segment(
       traffic_light_id_map, full_route_segment_matrix, row_idx, added_route_segments,
       turn_direction);
     add_line_type_encoding_to_segment(full_route_segment_matrix, row_idx, added_route_segments);
 
     speed_limit_vector[added_route_segments] =
-      lane_segments_[row_idx].speed_limit_mps.value_or(0.0f);
+      lane_segments_[row_idx / POINTS_PER_SEGMENT].speed_limit_mps.value_or(0.0f);
     ++added_route_segments;
   }
   // Transform the route segments.
@@ -141,9 +141,8 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_lane_s
   const auto total_speed_points = LANES_SPEED_LIMIT_SHAPE[1];
   std::vector<float> lane_speed_vector(total_speed_points);
   for (int64_t i = 0; i < total_speed_points; ++i) {
-    const int64_t idx = distances[i].index;
-    const auto segment = lane_segments_[idx];
-    lane_speed_vector[i] = segment.speed_limit_mps.value_or(0.0f);
+    const int64_t row_idx = distances[i].index / POINTS_PER_SEGMENT;
+    lane_speed_vector[i] = lane_segments_[row_idx].speed_limit_mps.value_or(0.0f);
   }
 
   return {lane_tensor_data, lane_speed_vector};
@@ -319,7 +318,8 @@ Eigen::MatrixXd LaneSegmentContext::transform_points_and_add_traffic_info(
       map_lane_segments_matrix_.block<SEGMENT_POINT_DIM, POINTS_PER_SEGMENT>(
         0, col_idx_in_original_map);
 
-    const int64_t turn_direction = lane_segments_[col_idx_in_original_map].turn_direction;
+    const int64_t turn_direction =
+      lane_segments_[col_idx_in_original_map / POINTS_PER_SEGMENT].turn_direction;
     add_traffic_light_one_hot_encoding_to_segment(
       traffic_light_id_map, output_matrix, col_idx_in_original_map, added_segments, turn_direction);
     add_line_type_encoding_to_segment(output_matrix, col_idx_in_original_map, added_segments);
@@ -452,9 +452,9 @@ Eigen::MatrixXd process_segments_to_matrix(
   for (int64_t i = 0; i < static_cast<int64_t>(lane_segments.size()); ++i) {
     const auto & mat = all_segment_matrices[i];
     stacked_matrix.middleRows(current_row, mat.rows()) = mat;
-    const int64_t lane_id = lane_segments[i].id;
-    col_id_mapping.lane_id_to_matrix_col.emplace(lane_id, current_row);
-    col_id_mapping.matrix_col_to_lane_id.emplace(current_row, lane_id);
+    const auto id = lane_segments[i].id;
+    col_id_mapping.lane_id_to_matrix_col.emplace(id, current_row);
+    col_id_mapping.matrix_col_to_lane_id.emplace(current_row, id);
     current_row += POINTS_PER_SEGMENT;
   }
   return stacked_matrix.transpose();

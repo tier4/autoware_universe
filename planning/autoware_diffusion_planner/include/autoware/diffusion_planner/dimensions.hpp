@@ -30,10 +30,6 @@ inline constexpr int64_t POINTS_PER_SEGMENT = 20;  //!< Number of points in each
 // Number of columns in a segment matrix
 // (X,Y,dX,dY,LeftBoundX,LeftBoundY,RightBoundX,RightBoundY,TrafficLightEncoding(Dim5),Speed Limit)
 inline constexpr int64_t TRAFFIC_LIGHT_ONE_HOT_DIM = 5;
-inline constexpr int64_t COORDINATE_DIM = 2 * 4;  // (x, y) * (center, diff, left, right)
-
-inline constexpr int64_t SEGMENT_POINT_DIM =
-  COORDINATE_DIM + TRAFFIC_LIGHT_ONE_HOT_DIM + 2 * LINE_TYPE_NUM;
 
 inline constexpr int64_t EGO_AGENT_PAST_IDX_X = 0;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_Y = 1;
@@ -55,7 +51,7 @@ inline constexpr int64_t TRAFFIC_LIGHT_YELLOW = 9;
 inline constexpr int64_t TRAFFIC_LIGHT_RED = 10;
 inline constexpr int64_t TRAFFIC_LIGHT_WHITE = 11;
 inline constexpr int64_t TRAFFIC_LIGHT_NO_TRAFFIC_LIGHT = 12;
-inline constexpr int64_t LINE_TYPE_START = 13;
+inline constexpr int64_t SEGMENT_POINT_DIM = 13 + 2 * LINE_TYPE_NUM;  // 13 + 2*10 = 33
 
 inline constexpr int64_t INPUT_T = 20;
 inline constexpr int64_t OUTPUT_T = 80;  // Output timestamp number
