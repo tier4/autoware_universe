@@ -191,7 +191,8 @@ void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
 void LaneSegmentContext::add_line_type_encoding_to_segment(
   Eigen::MatrixXd & segment_matrix, const int64_t row_idx, const int64_t col_counter) const
 {
-  const autoware::diffusion_planner::LaneSegment & lane_segment = lane_segments_[row_idx];
+  const autoware::diffusion_planner::LaneSegment & lane_segment =
+    lane_segments_[row_idx / POINTS_PER_SEGMENT];
 
   auto encode = [](const int64_t line_type) {
     Eigen::Vector<double, LINE_TYPE_NUM> onehot = Eigen::Vector<double, LINE_TYPE_NUM>::Zero();
@@ -201,11 +202,11 @@ void LaneSegmentContext::add_line_type_encoding_to_segment(
     return onehot;
   };
 
-  auto left = encode(static_cast<int64_t>(lane_segment.left_line_type));
-  auto right = encode(static_cast<int64_t>(lane_segment.right_line_type));
+  const Eigen::Vector<double, LINE_TYPE_NUM> left = encode(lane_segment.left_line_type);
+  const Eigen::Vector<double, LINE_TYPE_NUM> right = encode(lane_segment.right_line_type);
 
-  Eigen::MatrixXd left_mat = left.replicate(1, POINTS_PER_SEGMENT);
-  Eigen::MatrixXd right_mat = right.replicate(1, POINTS_PER_SEGMENT);
+  const Eigen::MatrixXd left_mat = left.replicate(1, POINTS_PER_SEGMENT);
+  const Eigen::MatrixXd right_mat = right.replicate(1, POINTS_PER_SEGMENT);
 
   segment_matrix.block<LINE_TYPE_NUM, POINTS_PER_SEGMENT>(
     LINE_TYPE_LEFT_START, col_counter * POINTS_PER_SEGMENT) =
