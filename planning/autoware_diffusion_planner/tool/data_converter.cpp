@@ -25,6 +25,7 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -390,17 +391,10 @@ int main(int argc, char ** argv)
             << ", Search nearest route: " << search_nearest_route << std::endl;
 
   // Load Lanelet2 map and create context like in diffusion_planner_node
-  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr = std::make_shared<lanelet::LaneletMap>();
-  lanelet::traffic_rules::TrafficRulesPtr traffic_rules_ptr;
-  lanelet::routing::RoutingGraphPtr routing_graph_ptr;
-
-  // Create HADMapBin message from the OSM file
-  const autoware_map_msgs::msg::LaneletMapBin map_bin_msg =
-    autoware::test_utils::make_map_bin_msg(vector_map_path, 1.0);
-
-  // Convert HADMapBin to lanelet map
-  lanelet::utils::conversion::fromBinMsg(
-    map_bin_msg, lanelet_map_ptr, &traffic_rules_ptr, &routing_graph_ptr);
+  lanelet::ErrorMessages errors{};
+  lanelet::projection::MGRSProjector projector{};
+  const std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr =
+    lanelet::load(vector_map_path, projector, &errors);
 
   std::cout << "Loaded lanelet2 map with " << lanelet_map_ptr->laneletLayer.size() << " lanelets"
             << std::endl;
