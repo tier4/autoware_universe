@@ -160,6 +160,19 @@ class GroundSegmentationPipeline:
                         "output_frame": LaunchConfiguration("base_frame"),
                         "timeout_sec": 1.0,
                         "input_twist_topic_type": "odom",
+                        "debug_mode": False,
+                        "has_static_tf_only": False,
+                        "rosbag_length": 10.0,
+                        "maximum_queue_size": 5,
+                        "timeout_sec": 0.2,
+                        "is_motion_compensated": True,
+                        "publish_synchronized_pointcloud": True,
+                        "keep_input_frame_in_synchronized_pointcloud": True,
+                        "publish_previous_but_late_pointcloud": False,
+                        "synchronized_pointcloud_postfix": "pointcloud",
+                        "matching_strategy.type": "advanced",
+                        "matching_strategy.lidar_timestamp_offsets": [0.0, 0.0, 0.0],
+                        "matching_strategy.lidar_timestamp_noise_window": [0.1, 0.1, 0.1],
                     }
                 ],
                 extra_arguments=[
@@ -516,6 +529,19 @@ class GroundSegmentationPipeline:
                     "input_topics": input_topics,
                     "output_frame": LaunchConfiguration("base_frame"),
                     "input_twist_topic_type": "odom",
+                    "debug_mode": False,
+                    "has_static_tf_only": False,
+                    "rosbag_length": 10.0,
+                    "maximum_queue_size": 5,
+                    "timeout_sec": 0.2,
+                    "is_motion_compensated": True,
+                    "publish_synchronized_pointcloud": True,
+                    "keep_input_frame_in_synchronized_pointcloud": True,
+                    "publish_previous_but_late_pointcloud": False,
+                    "synchronized_pointcloud_postfix": "pointcloud",
+                    "matching_strategy.type": "advanced",
+                    "matching_strategy.lidar_timestamp_offsets": [0.0, 0.0],
+                    "matching_strategy.lidar_timestamp_noise_window": [0.1, 0.1],
                 }
             ],
             extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
@@ -546,20 +572,6 @@ def launch_setup(context, *args, **kwargs):
                     relay_topic if pipeline.use_time_series_filter else pipeline.output_topic
                 ),
                 context=context,
-            )
-        )
-    if pipeline.use_time_series_filter:
-        components.extend(
-            pipeline.create_time_series_outlier_filter_components(
-                input_topic=(
-                    relay_topic
-                    if pipeline.use_single_frame_filter
-                    else pipeline.single_frame_obstacle_seg_output
-                ),
-                output_topic=pipeline.output_topic,
-                ogm_outlier_filter_param=ParameterFile(
-                    LaunchConfiguration("ogm_outlier_filter_param_path").perform(context)
-                ),
             )
         )
     pointcloud_container_loader = LoadComposableNodes(
