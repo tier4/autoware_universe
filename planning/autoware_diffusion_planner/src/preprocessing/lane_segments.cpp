@@ -287,8 +287,8 @@ LaneSegmentContext::create_tensor_data_from_indices(
       continue;
     }
 
-    const Eigen::Vector<double, LINE_TYPE_NUM> left = encode(lane_segment.left_line_type);
-    const Eigen::Vector<double, LINE_TYPE_NUM> right = encode(lane_segment.right_line_type);
+    const Eigen::Vector<double, LINE_TYPE_NUM> lt_left = encode(lane_segment.left_line_type);
+    const Eigen::Vector<double, LINE_TYPE_NUM> lt_right = encode(lane_segment.right_line_type);
 
     // Process each point in the segment
     for (int64_t i = 0; i < POINTS_PER_SEGMENT; ++i) {
@@ -319,10 +319,10 @@ LaneSegmentContext::create_tensor_data_from_indices(
       // Traffic Light (8-13) out of loop
 
       // Left LineType (14-23)
-      output_matrix.block<LINE_TYPE_NUM, 1>(LINE_TYPE_LEFT_START, col_idx) = left;
+      output_matrix.block<LINE_TYPE_NUM, 1>(LINE_TYPE_LEFT_START, col_idx) = lt_left;
 
       // Right LineType (24-33)
-      output_matrix.block<LINE_TYPE_NUM, 1>(LINE_TYPE_RIGHT_START, col_idx) = right;
+      output_matrix.block<LINE_TYPE_NUM, 1>(LINE_TYPE_RIGHT_START, col_idx) = lt_right;
     }
 
     add_traffic_light_one_hot_encoding_to_segment(
