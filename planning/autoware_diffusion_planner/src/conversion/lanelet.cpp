@@ -147,9 +147,7 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
 
 // Template function for converting any geometry type to lane points
 template <typename GeometryType>
-std::vector<LanePoint> from_geometry(
-  const GeometryType & geometry, const geometry_msgs::msg::Point & position,
-  double distance_threshold) noexcept
+std::vector<LanePoint> from_geometry(const GeometryType & geometry) noexcept
 {
   if (geometry.size() == 0) {
     return {};
@@ -157,11 +155,6 @@ std::vector<LanePoint> from_geometry(
 
   std::vector<LanePoint> output;
   for (auto itr = geometry.begin(); itr != geometry.end(); ++itr) {
-    if (auto distance =
-          std::hypot(itr->x() - position.x, itr->y() - position.y, itr->z() - position.z);
-        distance > distance_threshold) {
-      continue;
-    }
     double dx{0.0};
     double dy{0.0};
     double dz{0.0};
@@ -179,16 +172,6 @@ std::vector<LanePoint> from_geometry(
       itr->x(), itr->y(), itr->z(), dx, dy, dz, 0.0);  // TODO(danielsanchezaran): Label ID
   }
   return output;
-}
-
-template <typename GeometryType>
-std::vector<LanePoint> from_geometry(const GeometryType & geometry) noexcept
-{
-  geometry_msgs::msg::Point position;
-  position.x = 0.0;
-  position.y = 0.0;
-  position.z = 0.0;
-  return from_geometry(geometry, position, std::numeric_limits<double>::max());
 }
 }  // namespace
 
