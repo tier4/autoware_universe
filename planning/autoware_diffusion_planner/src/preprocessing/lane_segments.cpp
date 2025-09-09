@@ -249,6 +249,10 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
   std::vector<float> speed_limit_vector(max_segments, 0.0f);
 
+  auto convert_to_vector4d = [](const LanePoint & point) {
+    return Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
+  };
+
   int64_t added_segments = 0;
   for (const int64_t segment_idx : segment_indices) {
     if (added_segments >= max_segments) {
@@ -279,41 +283,27 @@ LaneSegmentContext::create_tensor_data_from_indices(
     for (int64_t i = 0; i < POINTS_PER_SEGMENT; ++i) {
       const int64_t col_idx = added_segments * POINTS_PER_SEGMENT + i;
 
-      // Extract and transform centerline coordinates
-      Eigen::Vector4d center_point(centerlines[i].x(), centerlines[i].y(), centerlines[i].z(), 1.0);
-      Eigen::Vector4d transformed_center = transform_matrix * center_point;
-      output_matrix(X, col_idx) = transformed_center.x();
-      output_matrix(Y, col_idx) = transformed_center.y();
+      // Center (0, 1)
+      const Eigen::Vector4d center = transform_matrix * convert_to_vector4d(centerlines[i]);
+      output_matrix(X, col_idx) = center.x();
+      output_matrix(Y, col_idx) = center.y();
 
-      // Calculate and transform direction vectors (no translation)
-      if (i < POINTS_PER_SEGMENT - 1) {
-        const double dx = centerlines[i + 1].x() - centerlines[i].x();
-        const double dy = centerlines[i + 1].y() - centerlines[i].y();
-        const double dz = centerlines[i + 1].z() - centerlines[i].z();
-        Eigen::Vector4d direction_vec(dx, dy, dz, 0.0);  // w=0 for no translation
-        Eigen::Vector4d transformed_direction = transform_matrix * direction_vec;
-        output_matrix(dX, col_idx) = transformed_direction.x();
-        output_matrix(dY, col_idx) = transformed_direction.y();
-      } else {
-        output_matrix(dX, col_idx) = 0.0;
-        output_matrix(dY, col_idx) = 0.0;
+      // Direction (2, 3)
+      if (i > 1) {
+        const int64_t col_idx_prev = added_segments * POINTS_PER_SEGMENT + (i - 1);
+        output_matrix(dX, col_idx) = output_matrix(X, col_idx) - output_matrix(X, col_idx_prev);
+        output_matrix(dY, col_idx) = output_matrix(Y, col_idx) - output_matrix(Y, col_idx_prev);
       }
 
-      // Extract and transform left boundary coordinates
-      Eigen::Vector4d left_point(
-        left_boundary[i].x(), left_boundary[i].y(), left_boundary[i].z(), 1.0);
-      Eigen::Vector4d transformed_left = transform_matrix * left_point;
-      // Make relative to centerline
-      output_matrix(LB_X, col_idx) = transformed_left.x() - transformed_center.x();
-      output_matrix(LB_Y, col_idx) = transformed_left.y() - transformed_center.y();
+      // Left (4, 5)
+      const Eigen::Vector4d left = transform_matrix * convert_to_vector4d(left_boundary[i]);
+      output_matrix(LB_X, col_idx) = left.x() - center.x();
+      output_matrix(LB_Y, col_idx) = left.y() - center.y();
 
-      // Extract and transform right boundary coordinates
-      Eigen::Vector4d right_point(
-        right_boundary[i].x(), right_boundary[i].y(), right_boundary[i].z(), 1.0);
-      Eigen::Vector4d transformed_right = transform_matrix * right_point;
-      // Make relative to centerline
-      output_matrix(RB_X, col_idx) = transformed_right.x() - transformed_center.x();
-      output_matrix(RB_Y, col_idx) = transformed_right.y() - transformed_center.y();
+      // Right (6, 7)
+      const Eigen::Vector4d right = transform_matrix * convert_to_vector4d(right_boundary[i]);
+      output_matrix(RB_X, col_idx) = right.x() - center.x();
+      output_matrix(RB_Y, col_idx) = right.y() - center.y();
     }
 
     add_traffic_light_one_hot_encoding_to_segment(
