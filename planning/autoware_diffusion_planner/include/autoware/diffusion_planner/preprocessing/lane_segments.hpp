@@ -45,8 +45,11 @@
 
 namespace autoware::diffusion_planner::preprocess
 {
+using autoware::diffusion_planner::LanePoint;
+using autoware::diffusion_planner::LaneSegment;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::LaneletSegment;
+
 /**
  * @brief Represents a column index with its associated distance and whether it is inside a mask
  * range.

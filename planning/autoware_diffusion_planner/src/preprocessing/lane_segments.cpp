@@ -255,7 +255,7 @@ LaneSegmentContext::create_tensor_data_from_indices(
       break;
     }
 
-    const auto & lane_segment = lane_segments_[segment_idx];
+    const LaneSegment & lane_segment = lane_segments_[segment_idx];
 
     // Check if segment has valid data
     if (
@@ -264,13 +264,14 @@ LaneSegmentContext::create_tensor_data_from_indices(
       continue;
     }
 
-    const auto & centerlines = lane_segment.polyline.waypoints();
-    const auto & left_boundaries = lane_segment.left_boundaries.front().waypoints();
-    const auto & right_boundaries = lane_segment.right_boundaries.front().waypoints();
+    const std::vector<LanePoint> & centerlines = lane_segment.polyline.waypoints();
+    const std::vector<LanePoint> & left_boundary = lane_segment.left_boundaries.front().waypoints();
+    const std::vector<LanePoint> & right_boundary =
+      lane_segment.right_boundaries.front().waypoints();
 
     if (
-      centerlines.size() != POINTS_PER_SEGMENT || left_boundaries.size() != POINTS_PER_SEGMENT ||
-      right_boundaries.size() != POINTS_PER_SEGMENT) {
+      centerlines.size() != POINTS_PER_SEGMENT || left_boundary.size() != POINTS_PER_SEGMENT ||
+      right_boundary.size() != POINTS_PER_SEGMENT) {
       continue;
     }
 
@@ -300,7 +301,7 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
       // Extract and transform left boundary coordinates
       Eigen::Vector4d left_point(
-        left_boundaries[i].x(), left_boundaries[i].y(), left_boundaries[i].z(), 1.0);
+        left_boundary[i].x(), left_boundary[i].y(), left_boundary[i].z(), 1.0);
       Eigen::Vector4d transformed_left = transform_matrix * left_point;
       // Make relative to centerline
       output_matrix(LB_X, col_idx) = transformed_left.x() - transformed_center.x();
@@ -308,7 +309,7 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
       // Extract and transform right boundary coordinates
       Eigen::Vector4d right_point(
-        right_boundaries[i].x(), right_boundaries[i].y(), right_boundaries[i].z(), 1.0);
+        right_boundary[i].x(), right_boundary[i].y(), right_boundary[i].z(), 1.0);
       Eigen::Vector4d transformed_right = transform_matrix * right_point;
       // Make relative to centerline
       output_matrix(RB_X, col_idx) = transformed_right.x() - transformed_center.x();
