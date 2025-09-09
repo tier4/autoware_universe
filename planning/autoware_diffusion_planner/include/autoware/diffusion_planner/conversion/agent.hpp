@@ -155,11 +155,6 @@ struct AgentState
  */
 struct AgentHistory
 {
-  AgentHistory()
-  : queue_(0), object_id_(""), label_id_(0), autoware_label_(0), latest_time_(0.0), max_size_(0)
-  {
-  }
-
   /**
    * @brief Construct a new Agent History filling the latest state by input state.
    *
