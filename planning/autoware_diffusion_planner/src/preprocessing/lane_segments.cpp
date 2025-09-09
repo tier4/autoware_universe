@@ -304,6 +304,11 @@ LaneSegmentContext::create_tensor_data_from_indices(
       const Eigen::Vector4d right = transform_matrix * convert_to_vector4d(right_boundary[i]);
       output_matrix(RB_X, col_idx) = right.x() - center.x();
       output_matrix(RB_Y, col_idx) = right.y() - center.y();
+
+      // Traffic Light (8-13) out of loop
+
+      // Left LineType (14-23)
+      
     }
 
     add_traffic_light_one_hot_encoding_to_segment(
