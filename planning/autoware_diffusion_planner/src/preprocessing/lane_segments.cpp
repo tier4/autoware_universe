@@ -94,7 +94,6 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_route_
     add_traffic_light_one_hot_encoding_to_segment(
       traffic_light_id_map, full_route_segment_matrix, row_idx, added_route_segments,
       turn_direction);
-    add_line_type_encoding_to_segment(full_route_segment_matrix, row_idx, added_route_segments);
 
     speed_limit_vector[added_route_segments] =
       lane_segments_[seg_idx].speed_limit_mps.value_or(0.0f);
@@ -186,34 +185,6 @@ void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
   segment_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, POINTS_PER_SEGMENT>(
     TRAFFIC_LIGHT, col_counter * POINTS_PER_SEGMENT) =
     one_hot_encoding_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, POINTS_PER_SEGMENT>(0, 0);
-}
-
-void LaneSegmentContext::add_line_type_encoding_to_segment(
-  Eigen::MatrixXd & segment_matrix, const int64_t row_idx, const int64_t col_counter) const
-{
-  const autoware::diffusion_planner::LaneSegment & lane_segment =
-    lane_segments_[row_idx / POINTS_PER_SEGMENT];
-
-  auto encode = [](const int64_t line_type) {
-    Eigen::Vector<double, LINE_TYPE_NUM> onehot = Eigen::Vector<double, LINE_TYPE_NUM>::Zero();
-    if (line_type >= 0 && line_type < LINE_TYPE_NUM) {
-      onehot[line_type] = 1.0;
-    }
-    return onehot;
-  };
-
-  const Eigen::Vector<double, LINE_TYPE_NUM> left = encode(lane_segment.left_line_type);
-  const Eigen::Vector<double, LINE_TYPE_NUM> right = encode(lane_segment.right_line_type);
-
-  const Eigen::MatrixXd left_mat = left.replicate(1, POINTS_PER_SEGMENT);
-  const Eigen::MatrixXd right_mat = right.replicate(1, POINTS_PER_SEGMENT);
-
-  segment_matrix.block<LINE_TYPE_NUM, POINTS_PER_SEGMENT>(
-    LINE_TYPE_LEFT_START, col_counter * POINTS_PER_SEGMENT) =
-    left_mat.block<LINE_TYPE_NUM, POINTS_PER_SEGMENT>(0, 0);
-  segment_matrix.block<LINE_TYPE_NUM, POINTS_PER_SEGMENT>(
-    LINE_TYPE_RIGHT_START, col_counter * POINTS_PER_SEGMENT) =
-    right_mat.block<LINE_TYPE_NUM, POINTS_PER_SEGMENT>(0, 0);
 }
 
 void LaneSegmentContext::apply_transforms(
@@ -313,7 +284,6 @@ Eigen::MatrixXd LaneSegmentContext::transform_points_and_add_traffic_info(
       lane_segments_[col_idx_in_original_map / POINTS_PER_SEGMENT].turn_direction;
     add_traffic_light_one_hot_encoding_to_segment(
       traffic_light_id_map, output_matrix, col_idx_in_original_map, added_segments, turn_direction);
-    add_line_type_encoding_to_segment(output_matrix, col_idx_in_original_map, added_segments);
 
     ++added_segments;
     if (added_segments >= num_segments) {
@@ -470,6 +440,17 @@ Eigen::MatrixXd process_segment_to_matrix(const LaneSegment & segment)
       "POINTS_PER_SEGMENT points");
   }
 
+  auto encode = [](const int64_t line_type) {
+    Eigen::Vector<double, LINE_TYPE_NUM> onehot = Eigen::Vector<double, LINE_TYPE_NUM>::Zero();
+    if (line_type >= 0 && line_type < LINE_TYPE_NUM) {
+      onehot[line_type] = 1.0;
+    }
+    return onehot;
+  };
+
+  const Eigen::Vector<double, LINE_TYPE_NUM> left = encode(segment.left_line_type);
+  const Eigen::Vector<double, LINE_TYPE_NUM> right = encode(segment.right_line_type);
+
   Eigen::MatrixXd segment_data(POINTS_PER_SEGMENT, SEGMENT_POINT_DIM);
   segment_data.setZero();
 
@@ -485,6 +466,10 @@ Eigen::MatrixXd process_segment_to_matrix(const LaneSegment & segment)
     segment_data(i, LB_Y) = left_boundaries[i].y();
     segment_data(i, RB_X) = right_boundaries[i].x();
     segment_data(i, RB_Y) = right_boundaries[i].y();
+    for (int64_t j = 0; j < LINE_TYPE_NUM; ++j) {
+      segment_data(i, LINE_TYPE_LEFT_START + j) = left(j);
+      segment_data(i, LINE_TYPE_RIGHT_START + j) = right(j);
+    }
   }
 
   return segment_data;
