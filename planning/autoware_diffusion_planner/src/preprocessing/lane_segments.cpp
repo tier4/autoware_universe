@@ -289,10 +289,10 @@ LaneSegmentContext::create_tensor_data_from_indices(
       output_matrix(Y, col_idx) = center.y();
 
       // Direction (2, 3)
-      if (i > 1) {
-        const int64_t col_idx_prev = added_segments * POINTS_PER_SEGMENT + (i - 1);
-        output_matrix(dX, col_idx) = output_matrix(X, col_idx) - output_matrix(X, col_idx_prev);
-        output_matrix(dY, col_idx) = output_matrix(Y, col_idx) - output_matrix(Y, col_idx_prev);
+      if (i > 0) {
+        const int64_t col_idx_p = added_segments * POINTS_PER_SEGMENT + (i - 1);
+        output_matrix(dX, col_idx_p) = output_matrix(X, col_idx) - output_matrix(X, col_idx_p);
+        output_matrix(dY, col_idx_p) = output_matrix(Y, col_idx) - output_matrix(Y, col_idx_p);
       }
 
       // Left (4, 5)
