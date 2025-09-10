@@ -97,7 +97,8 @@ ObjectClassification classifyObjectsWithinRadius(
       }
 
       // Check if object is within classification radius
-      const double distance_from_ego = getDistanceFromEgo(object, ego_pose);
+      const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
+      const double distance_from_ego = autoware::universe_utils::calcDistance2d(object_pos, ego_pose.position);
       if (distance_from_ego <= object_classification_radius) {
         const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory);
         const bool would_be_filtered = distance_to_path <= max_filter_distance;

@@ -89,16 +89,6 @@ double getMinDistanceToPath(
   const autoware_planning_msgs::msg::Trajectory & path);
 
 
-/**
- * @brief Calculate distance from ego vehicle to object
- * @param object Object to calculate distance to
- * @param ego_pose Current ego vehicle pose
- * @return Distance from ego to object [m]
- */
-double getDistanceFromEgo(
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const geometry_msgs::msg::Pose & ego_pose);
-
 // ========== Object Classification Helper Functions ==========
 
 /**

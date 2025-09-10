@@ -312,13 +312,6 @@ double getMinDistanceToPath(
 }
 
 
-double getDistanceFromEgo(
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const geometry_msgs::msg::Pose & ego_pose)
-{
-  const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
-  return autoware::universe_utils::calcDistance2d(object_pos, ego_pose.position);
-}
 
 // ========== Object Classification Helper Functions ==========
 
