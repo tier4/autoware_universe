@@ -45,12 +45,6 @@ set(CUDA_LIBRARY_DIRS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
 set(CMAKE_CUDA_ARCHITECTURES 75 80 86)
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 
-# Separate compile options for C++ and CUDA
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
-
-# Explicitly disable Werror for CUDA
-set(CMAKE_CUDA_FLAGS "")
-
 # Include directory settings
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
