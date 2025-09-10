@@ -80,20 +80,6 @@ struct VadOutputData
 
 // Post-processing functions
 
-// Helper functions for map prediction processing
-std::vector<std::vector<float>> process_map_class_scores(const std::vector<float>& cls_preds_flat, const VadConfig& vad_config);
-std::vector<std::vector<std::vector<float>>> process_map_points(const std::vector<float>& pts_preds_flat, const VadConfig& vad_config);
-std::vector<MapPolyline>
-select_confident_map_polylines(
-    const std::vector<std::vector<float>>& cls_scores,
-    const std::vector<std::vector<std::vector<float>>>& pts_preds,
-    const VadConfig& vad_config);
-
-std::vector<MapPolyline> postprocess_map_preds(
-    const std::vector<float>& all_map_cls_preds_flat,
-    const std::vector<float>& all_map_pts_preds_flat,
-    const VadConfig& vad_config);
-
 // Helper functions for trajectory prediction processing
 std::vector<std::vector<float>> postprocess_class_scores(const std::vector<float>& all_cls_scores_flat, const VadConfig& vad_config);
 
