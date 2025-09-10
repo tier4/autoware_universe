@@ -1,4 +1,4 @@
-#include "autoware/tensorrt_vad/networks/preprocess/multi_camera_preprocess.hpp" // 設定構造体の定義などを共有
+#include "autoware/tensorrt_vad/networks/preprocess/multi_camera_preprocess_kernel.hpp" // CUDAカーネル用の設定構造体と宣言
 
 /**
  * @brief bilinear interpolationを用いて画像リサイズを行うデバイス関数

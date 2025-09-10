@@ -192,7 +192,7 @@ public:
                   std::to_string(preprocess_config.input_width) + "x" + std::to_string(preprocess_config.input_height) + 
                   ", output=" + std::to_string(preprocess_config.output_width) + "x" + std::to_string(preprocess_config.output_height) + 
                   ", cameras=" + std::to_string(preprocess_config.num_cameras));
-    preprocessor_ = std::make_unique<MultiCameraPreprocessor>(preprocess_config);
+    preprocessor_ = std::make_unique<MultiCameraPreprocessor>(preprocess_config, logger_);
     logger_->info("MultiCameraPreprocessor initialized successfully");
   }
 

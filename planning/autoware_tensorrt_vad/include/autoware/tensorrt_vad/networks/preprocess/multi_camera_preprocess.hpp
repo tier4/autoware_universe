@@ -1,34 +1,13 @@
 #ifndef AUTOWARE_TENSORRT_VAD_MULTI_CAMERA_PREPROCESS_HPP_
 #define AUTOWARE_TENSORRT_VAD_MULTI_CAMERA_PREPROCESS_HPP_
 
-#include <cuda_runtime.h>
 #include <vector>
-#include <cstdint>
 #include <opencv2/core/mat.hpp>  // cv::Matを使用するためにインクルード
-
-/**
- * @struct MultiCameraPreprocessConfig
- * @brief CUDAによる前処理に必要な設定パラメータを保持する構造体
- */
-struct MultiCameraPreprocessConfig {
-    int32_t input_width;
-    int32_t input_height;
-    int32_t output_width;
-    int32_t output_height;
-    int32_t num_cameras;
-    float scale_x;
-    float scale_y;
-    float mean[3];
-    float inverse_std[3];
-};
-
-// CUDAカーネルを起動するホスト側ラッパー関数の前方宣言
-cudaError_t launch_multi_camera_preprocess_kernel(
-    uint8_t** d_input_images,
-    float* d_output,
-    const MultiCameraPreprocessConfig& config,
-    cudaStream_t stream
-);
+#include <memory>
+#include <string>
+#include <cuda_runtime.h>
+#include "autoware/tensorrt_vad/ros_vad_logger.hpp"
+#include "autoware/tensorrt_vad/networks/preprocess/multi_camera_preprocess_kernel.hpp"
 
 /**
  * @class MultiCameraPreprocessor
@@ -41,7 +20,10 @@ cudaError_t launch_multi_camera_preprocess_kernel(
  */
 class MultiCameraPreprocessor {
 public:
-    explicit MultiCameraPreprocessor(const MultiCameraPreprocessConfig& config);
+    // Template constructor to accept shared_ptr<LoggerType>
+    template<typename LoggerType>
+    MultiCameraPreprocessor(const MultiCameraPreprocessConfig& config, std::shared_ptr<LoggerType> logger);
+    
     ~MultiCameraPreprocessor();
 
     // コピーコンストラクタとコピー代入演算子を禁止し、リソースの二重解放を防ぐ
@@ -68,11 +50,62 @@ public:
     cudaError_t validate_input(const std::vector<cv::Mat>& camera_images) const;
 
     MultiCameraPreprocessConfig config_;
+    std::shared_ptr<autoware::tensorrt_vad::VadLogger> logger_;  // Direct VadLogger pointer
 
     // --- GPU Buffers ---
     // 入力バッファ (コンストラクタで確保)
     uint8_t* d_input_buffer_{nullptr};      // 全ての生入力画像を格納する単一の連続バッファ
     uint8_t** d_input_image_ptrs_{nullptr}; // d_input_buffer_内の各画像の開始位置を指すポインタ配列
 };
+
+// Template method implementations (must be in header for templates)
+template<typename LoggerType>
+MultiCameraPreprocessor::MultiCameraPreprocessor(const MultiCameraPreprocessConfig& config, std::shared_ptr<LoggerType> logger) 
+    : config_(config), logger_(std::static_pointer_cast<autoware::tensorrt_vad::VadLogger>(logger)) {
+    
+    // Logger accepts only classes that inherit from VadLogger
+    static_assert(std::is_base_of_v<autoware::tensorrt_vad::VadLogger, LoggerType>, 
+        "LoggerType must be VadLogger or derive from VadLogger.");
+    
+    logger_->debug("MultiCameraPreprocessor config: input=" + 
+                   std::to_string(config_.input_width) + "x" + std::to_string(config_.input_height) + 
+                   ", output=" + std::to_string(config_.output_width) + "x" + std::to_string(config_.output_height) + 
+                   ", cameras=" + std::to_string(config_.num_cameras));
+    
+    // --- Allocate Input Buffers ---
+    const size_t single_input_size = static_cast<size_t>(config_.input_width) * config_.input_height * 3;
+    const size_t total_input_size = single_input_size * config_.num_cameras;
+    
+    cudaError_t err = cudaMalloc(&d_input_buffer_, total_input_size);
+    if (err != cudaSuccess) {
+        logger_->error("Failed to allocate input buffer of size " + std::to_string(total_input_size) + ": " + cudaGetErrorString(err));
+        return;
+    }
+    
+    err = cudaMalloc(&d_input_image_ptrs_, config_.num_cameras * sizeof(uint8_t*));
+    if (err != cudaSuccess) {
+        logger_->error("Failed to allocate input image pointers: " + std::string(cudaGetErrorString(err)));
+        cudaFree(d_input_buffer_);
+        d_input_buffer_ = nullptr;
+        return;
+    }
+
+    std::vector<uint8_t*> h_input_ptrs(config_.num_cameras);
+    for (int32_t i = 0; i < config_.num_cameras; ++i) {
+        h_input_ptrs[i] = d_input_buffer_ + i * single_input_size;
+    }
+    
+    err = cudaMemcpy(d_input_image_ptrs_, h_input_ptrs.data(), config_.num_cameras * sizeof(uint8_t*), cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        logger_->error("Failed to copy input image pointers to device: " + std::string(cudaGetErrorString(err)));
+        cudaFree(d_input_buffer_);
+        cudaFree(d_input_image_ptrs_);
+        d_input_buffer_ = nullptr;
+        d_input_image_ptrs_ = nullptr;
+        return;
+    }
+    
+    logger_->debug("MultiCameraPreprocessor initialized successfully");
+}
 
 #endif // AUTOWARE_TENSORRT_VAD_MULTI_CAMERA_PREPROCESS_HPP_
