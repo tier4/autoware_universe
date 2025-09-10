@@ -9,9 +9,17 @@ MultiCameraPreprocessor::~MultiCameraPreprocessor() {
         cudaFree(d_input_buffer_);
         d_input_buffer_ = nullptr;
     }
+    if (d_resized_buffer_) {
+        cudaFree(d_resized_buffer_);
+        d_resized_buffer_ = nullptr;
+    }
     if (d_input_image_ptrs_) {
         cudaFree(d_input_image_ptrs_);
         d_input_image_ptrs_ = nullptr;
+    }
+    if (d_resized_image_ptrs_) {
+        cudaFree(d_resized_image_ptrs_);
+        d_resized_image_ptrs_ = nullptr;
     }
 }
 
@@ -65,8 +73,7 @@ cudaError_t MultiCameraPreprocessor::preprocess_images(
     float* d_output_buffer,
     cudaStream_t stream)
 {
-    // Debug: Log configuration
-    logger_->debug("Starting CUDA preprocessing for " + std::to_string(camera_images.size()) + " cameras");
+    logger_->debug("Starting separated CUDA preprocessing for " + std::to_string(camera_images.size()) + " cameras");
     
     // Step 0: Validate input data
     cudaError_t validation_status = validate_input(camera_images);
@@ -75,18 +82,14 @@ cudaError_t MultiCameraPreprocessor::preprocess_images(
         return validation_status;
     }
     
-    // Debug: Log validation success
-    logger_->debug("Input validation passed for " + std::to_string(camera_images.size()) + " cameras");
+    logger_->debug("Input validation passed");
 
     // Step 1: Copy image data from host (cv::Mat) to pre-allocated device buffer
     const size_t single_input_size = static_cast<size_t>(config_.input_width) * config_.input_height * 3;
     for (int32_t i = 0; i < config_.num_cameras; ++i) {
         const auto& img = camera_images.at(i);
-        
-        // Calculate destination pointer within the large input buffer
         uint8_t* d_dst = d_input_buffer_ + i * single_input_size;
         
-        // Copy data asynchronously
         cudaError_t copy_result = cudaMemcpyAsync(d_dst, img.data, single_input_size, cudaMemcpyHostToDevice, stream);
         if (copy_result != cudaSuccess) {
             logger_->error("cudaMemcpyAsync failed for camera " + std::to_string(i) + ": " + cudaGetErrorString(copy_result));
@@ -94,21 +97,36 @@ cudaError_t MultiCameraPreprocessor::preprocess_images(
         }
     }
     
-    logger_->debug("Image data copied to GPU successfully");
+    logger_->debug("Image data copied to GPU");
 
-    // Step 2: Launch custom kernel for resize + BGR->RGB conversion + normalization + concatenation
-    cudaError_t kernel_result = launch_multi_camera_preprocess_kernel(
+    // Step 2: Launch resize kernel
+    cudaError_t resize_result = launch_multi_camera_resize_kernel(
         d_input_image_ptrs_,
+        d_resized_image_ptrs_,
+        config_,
+        stream
+    );
+    
+    if (resize_result != cudaSuccess) {
+        logger_->error("Resize kernel launch failed: " + std::string(cudaGetErrorString(resize_result)));
+        return resize_result;
+    }
+    
+    logger_->debug("Resize kernel completed");
+
+    // Step 3: Launch normalization kernel
+    cudaError_t normalize_result = launch_multi_camera_normalize_kernel(
+        d_resized_image_ptrs_,
         d_output_buffer,
         config_,
         stream
     );
     
-    if (kernel_result != cudaSuccess) {
-        logger_->error("CUDA kernel launch failed: " + std::string(cudaGetErrorString(kernel_result)));
-    } else {
-        logger_->debug("CUDA kernel launched successfully");
+    if (normalize_result != cudaSuccess) {
+        logger_->error("Normalization kernel launch failed: " + std::string(cudaGetErrorString(normalize_result)));
+        return normalize_result;
     }
     
-    return kernel_result;
+    logger_->debug("Separated kernel preprocessing completed successfully");
+    return cudaSuccess;
 }

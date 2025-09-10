@@ -1,7 +1,7 @@
 #include "autoware/tensorrt_vad/networks/preprocess/multi_camera_preprocess_kernel.hpp" // Configuration structures and declarations for CUDA kernel
 
 /**
- * @brief Device function for image resize using bilinear interpolation
+ * @brief Optimized device function for bilinear interpolation (forceinlined for performance)
  *
  * @param src_img Source image pixel data (BGR)
  * @param src_width Source image width
@@ -12,7 +12,7 @@
  * @param scale_y Scale factor in y direction (src_height / dst_height)
  * @return uint3 Resized pixel value (BGR)
  */
-__device__ uint3 bilinear_interpolation_resize(
+__device__ __forceinline__ uint3 bilinear_interpolation(
     uint8_t* src_img, 
     int32_t src_width, 
     int32_t src_height,
@@ -22,95 +22,83 @@ __device__ uint3 bilinear_interpolation_resize(
     float scale_y)
 {
     // Convert output coordinates to input coordinate system
-    float src_x = (dst_x + 0.5f) * scale_x - 0.5f;
-    float src_y = (dst_y + 0.5f) * scale_y - 0.5f;
+    const float src_x = (dst_x + 0.5f) * scale_x - 0.5f;
+    const float src_y = (dst_y + 0.5f) * scale_y - 0.5f;
     
     // Clamp boundaries
-    src_x = fmaxf(0.0f, fminf(src_x, src_width - 1.0f));
-    src_y = fmaxf(0.0f, fminf(src_y, src_height - 1.0f));
+    const float clamped_x = fmaxf(0.0f, fminf(src_x, src_width - 1.0f));
+    const float clamped_y = fmaxf(0.0f, fminf(src_y, src_height - 1.0f));
     
-    // Coordinates of four neighboring pixels
-    int32_t x0 = static_cast<int32_t>(floorf(src_x));
-    int32_t y0 = static_cast<int32_t>(floorf(src_y));
-    int32_t x1 = static_cast<int32_t>(fminf(static_cast<float>(x0 + 1), static_cast<float>(src_width - 1)));
-    int32_t y1 = static_cast<int32_t>(fminf(static_cast<float>(y0 + 1), static_cast<float>(src_height - 1)));
+    // Coordinates of four neighboring pixels (using GPU optimized functions)
+    const int32_t x0 = __float2int_rd(clamped_x);
+    const int32_t y0 = __float2int_rd(clamped_y);
+    const int32_t x1 = min(x0 + 1, src_width - 1);
+    const int32_t y1 = min(y0 + 1, src_height - 1);
     
     // Interpolation weights
-    float dx = src_x - x0;
-    float dy = src_y - y0;
+    const float dx = clamped_x - x0;
+    const float dy = clamped_y - y0;
     
-    // Get values of four neighboring pixels (BGR format)
-    int32_t idx_00 = (y0 * src_width + x0) * 3;
-    int32_t idx_10 = (y0 * src_width + x1) * 3;
-    int32_t idx_01 = (y1 * src_width + x0) * 3;
-    int32_t idx_11 = (y1 * src_width + x1) * 3;
+    // Precompute weight products for better instruction-level parallelism
+    const float w00 = (1.0f - dx) * (1.0f - dy);
+    const float w10 = dx * (1.0f - dy);
+    const float w01 = (1.0f - dx) * dy;
+    const float w11 = dx * dy;
+    
+    // Calculate pixel indices
+    const int32_t idx_00 = (y0 * src_width + x0) * 3;
+    const int32_t idx_10 = (y0 * src_width + x1) * 3;
+    const int32_t idx_01 = (y1 * src_width + x0) * 3;
+    const int32_t idx_11 = (y1 * src_width + x1) * 3;
     
     uint3 result;
     
-    // B channel
-    float b00 = src_img[idx_00 + 0];
-    float b10 = src_img[idx_10 + 0];
-    float b01 = src_img[idx_01 + 0];
-    float b11 = src_img[idx_11 + 0];
-    result.x = static_cast<uint8_t>(
-        b00 * (1 - dx) * (1 - dy) + b10 * dx * (1 - dy) + 
-        b01 * (1 - dx) * dy + b11 * dx * dy);
+    // Interpolate each channel (B, G, R) using GPU optimized rounding
+    result.x = __float2uint_rn(
+        src_img[idx_00] * w00 + src_img[idx_10] * w10 + 
+        src_img[idx_01] * w01 + src_img[idx_11] * w11);
     
-    // G channel
-    float g00 = src_img[idx_00 + 1];
-    float g10 = src_img[idx_10 + 1];
-    float g01 = src_img[idx_01 + 1];
-    float g11 = src_img[idx_11 + 1];
-    result.y = static_cast<uint8_t>(
-        g00 * (1 - dx) * (1 - dy) + g10 * dx * (1 - dy) + 
-        g01 * (1 - dx) * dy + g11 * dx * dy);
+    result.y = __float2uint_rn(
+        src_img[idx_00 + 1] * w00 + src_img[idx_10 + 1] * w10 + 
+        src_img[idx_01 + 1] * w01 + src_img[idx_11 + 1] * w11);
     
-    // R channel
-    float r00 = src_img[idx_00 + 2];
-    float r10 = src_img[idx_10 + 2];
-    float r01 = src_img[idx_01 + 2];
-    float r11 = src_img[idx_11 + 2];
-    result.z = static_cast<uint8_t>(
-        r00 * (1 - dx) * (1 - dy) + r10 * dx * (1 - dy) + 
-        r01 * (1 - dx) * dy + r11 * dx * dy);
+    result.z = __float2uint_rn(
+        src_img[idx_00 + 2] * w00 + src_img[idx_10 + 2] * w10 + 
+        src_img[idx_01 + 2] * w01 + src_img[idx_11 + 2] * w11);
     
     return result;
 }
 
 /**
- * @brief CUDA kernel for batch preprocessing of images from multiple cameras
+ * @brief CUDA kernel for resizing multiple camera images using bilinear interpolation
  *
- * This kernel uses one block grid (blockIdx.z) per camera to perform parallel processing.
- * Each thread handles one pixel of the output image, performing the following fused operations:
- * - Resize using bilinear interpolation
- * - Rearrange channels from BGR format to RGB format (bgr2rgb)
- * - Normalize each channel ((pixel - mean) * inv_std) (normalization)
- * - Finally, write the results to a contiguous output buffer (CHW planar format)
- * This concatenates image data from multiple cameras into a single tensor.
+ * This kernel is specialized for resize operations only, storing results in intermediate buffer.
+ * Each thread handles one pixel of the output image.
  *
- * @param d_input_images Array of pointers to device input BGR images (uint8_t*)
- * @param d_output Single device output buffer (float*) to store all processed results
+ * @param d_input_images Array of pointers to input images on device (BGR uint8_t format)
+ * @param d_resized_images Array of pointers to output resized images on device (BGR uint8_t format)
  * @param config Configuration structure containing parameters needed for preprocessing
  */
-__global__ void multi_camera_preprocess_kernel(
+__global__ void multi_camera_resize_kernel(
     uint8_t** d_input_images,
-    float* d_output,
+    uint8_t** d_resized_images,
     const MultiCameraPreprocessConfig config)
 {
     const int32_t x = blockIdx.x * blockDim.x + threadIdx.x;
     const int32_t y = blockIdx.y * blockDim.y + threadIdx.y;
     const int32_t camera_idx = blockIdx.z;
 
-    // Exit early if thread is outside output image bounds (boundary check)
+    // Early exit for out-of-bounds threads
     if (x >= config.output_width || y >= config.output_height || camera_idx >= config.num_cameras) {
         return;
     }
 
-    // Get pointer to input image for the camera this thread is responsible for
+    // Get input and output images for this camera
     uint8_t* input_img = d_input_images[camera_idx];
+    uint8_t* output_img = d_resized_images[camera_idx];
     
-    // Resize using bilinear interpolation
-    uint3 resized_pixel = bilinear_interpolation_resize(
+    // Perform bilinear interpolation (now inlined for performance)
+    uint3 resized_pixel = bilinear_interpolation(
         input_img, 
         config.input_width, 
         config.input_height,
@@ -118,38 +106,98 @@ __global__ void multi_camera_preprocess_kernel(
         config.scale_x, 
         config.scale_y);
     
-    // Get BGR pixel values as float and convert BGR->RGB
-    const float b_val = static_cast<float>(resized_pixel.x);
-    const float g_val = static_cast<float>(resized_pixel.y);
-    const float r_val = static_cast<float>(resized_pixel.z);
+    // Calculate output index for this pixel (keep BGR format)
+    const int32_t out_idx = (y * config.output_width + x) * 3;
+    
+    // Write resized pixel to output buffer (maintain BGR format for next stage)
+    output_img[out_idx]     = resized_pixel.x; // B
+    output_img[out_idx + 1] = resized_pixel.y; // G
+    output_img[out_idx + 2] = resized_pixel.z; // R
+}
 
-    // Normalize (applied in BGR->RGB order)
-    const float norm_r = (r_val - config.mean[0]) * config.inverse_std[0];
-    const float norm_g = (g_val - config.mean[1]) * config.inverse_std[1];
-    const float norm_b = (b_val - config.mean[2]) * config.inverse_std[2];
+/**
+ * @brief CUDA kernel for BGR->RGB conversion, normalization, and CHW formatting
+ *
+ * This kernel is specialized for normalization operations, reading from intermediate buffer.
+ * Each thread handles one pixel of the resized image.
+ *
+ * @param d_resized_images Array of pointers to resized images on device (BGR uint8_t format)
+ * @param d_output Final output buffer (RGB float CHW format)
+ * @param config Configuration structure containing parameters needed for preprocessing
+ */
+__global__ void multi_camera_normalize_kernel(
+    uint8_t** d_resized_images,
+    float* d_output,
+    const MultiCameraPreprocessConfig config)
+{
+    const int32_t x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int32_t y = blockIdx.y * blockDim.y + threadIdx.y;
+    const int32_t camera_idx = blockIdx.z;
 
-    // Write to corresponding position in output buffer in CHW (Planar) format
-    // This writing approach creates one large tensor with concatenated data from all cameras
+    // Early exit for out-of-bounds threads
+    if (x >= config.output_width || y >= config.output_height || camera_idx >= config.num_cameras) {
+        return;
+    }
+
+    // Get resized image for this camera
+    uint8_t* resized_img = d_resized_images[camera_idx];
+    
+    // Calculate input index (BGR format)
+    const int32_t in_idx = (y * config.output_width + x) * 3;
+    
+    // Read BGR pixel values
+    const uint8_t b = resized_img[in_idx];
+    const uint8_t g = resized_img[in_idx + 1];
+    const uint8_t r = resized_img[in_idx + 2];
+    
+    // Convert to float and normalize (BGR -> RGB conversion)
+    const float norm_r = (static_cast<float>(r) - config.mean[0]) * config.inverse_std[0];
+    const float norm_g = (static_cast<float>(g) - config.mean[1]) * config.inverse_std[1];
+    const float norm_b = (static_cast<float>(b) - config.mean[2]) * config.inverse_std[2];
+
+    // Calculate output indices for CHW planar format
     const int32_t single_camera_plane_size = config.output_width * config.output_height;
     const int32_t single_camera_total_size = 3 * single_camera_plane_size;
     const int32_t out_pixel_offset = y * config.output_width + x;
-
     const int32_t out_idx_base = camera_idx * single_camera_total_size;
 
-    d_output[out_idx_base + 0 * single_camera_plane_size + out_pixel_offset] = norm_r; // R channel
-    d_output[out_idx_base + 1 * single_camera_plane_size + out_pixel_offset] = norm_g; // G channel
-    d_output[out_idx_base + 2 * single_camera_plane_size + out_pixel_offset] = norm_b; // B channel
+    // Write to output buffer (CHW format: R, G, B planes)
+    d_output[out_idx_base + 0 * single_camera_plane_size + out_pixel_offset] = norm_r;
+    d_output[out_idx_base + 1 * single_camera_plane_size + out_pixel_offset] = norm_g;
+    d_output[out_idx_base + 2 * single_camera_plane_size + out_pixel_offset] = norm_b;
 }
 
+/**
+ * @brief Launch resize kernel to resize input images to target dimensions
+ */
+cudaError_t launch_multi_camera_resize_kernel(
+    uint8_t** d_input_images,
+    uint8_t** d_resized_images,
+    const MultiCameraPreprocessConfig& config,
+    cudaStream_t stream)
+{
+    // Define threads per block (e.g., 16x16 = 256 threads)
+    const dim3 threads_per_block(16, 16, 1);
+
+    // Calculate required number of blocks (3D grid: width, height, number of cameras)
+    const dim3 blocks_per_grid(
+        (config.output_width + threads_per_block.x - 1) / threads_per_block.x,
+        (config.output_height + threads_per_block.y - 1) / threads_per_block.y,
+        config.num_cameras);
+
+    // Launch resize kernel
+    multi_camera_resize_kernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
+        d_input_images, d_resized_images, config);
+
+    // Check and return errors related to kernel launch
+    return cudaGetLastError();
+}
 
 /**
- * @brief Host-side wrapper function for launching multi_camera_preprocess_kernel
- *
- * Calculates grid and block dimensions required for CUDA kernel execution
- * and launches the kernel asynchronously.
+ * @brief Launch normalization kernel to convert BGR->RGB, normalize, and format as CHW
  */
-cudaError_t launch_multi_camera_preprocess_kernel(
-    uint8_t** d_input_images,
+cudaError_t launch_multi_camera_normalize_kernel(
+    uint8_t** d_resized_images,
     float* d_output,
     const MultiCameraPreprocessConfig& config,
     cudaStream_t stream)
@@ -163,19 +211,9 @@ cudaError_t launch_multi_camera_preprocess_kernel(
         (config.output_height + threads_per_block.y - 1) / threads_per_block.y,
         config.num_cameras);
 
-    // Launch CUDA kernel
-    // The config structure is passed by value.
-    // When parameters are passed by value to CUDA kernels, the CUDA runtime automatically 
-    // copies the data from host (CPU) to device (GPU) special high-speed memory space 
-    // (such as constant memory)
-    // Reason 1 for copying each time: Small data size - MultiCameraPreprocessConfig structure 
-    // consists of only a few int32_t and float values, with a total size of just a few dozen bytes.
-    // Reason 2 for copying each time: Fast copy - CUDA runtime is optimized to perform extremely 
-    // fast copies of such small data (typically up to a few hundred bytes). The time required 
-    // for this copy is negligible compared to copying entire image data, NPP resize processing, 
-    // or kernel execution time.
-    multi_camera_preprocess_kernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
-        d_input_images, d_output, config);
+    // Launch normalization kernel
+    multi_camera_normalize_kernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
+        d_resized_images, d_output, config);
 
     // Check and return errors related to kernel launch
     return cudaGetLastError();

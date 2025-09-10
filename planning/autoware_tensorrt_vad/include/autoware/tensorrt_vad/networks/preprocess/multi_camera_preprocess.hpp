@@ -55,6 +55,10 @@ public:
     // Input buffers (allocated in constructor)
     uint8_t* d_input_buffer_{nullptr};      // Single continuous buffer storing all raw input images
     uint8_t** d_input_image_ptrs_{nullptr}; // Pointer array pointing to start positions of each image within d_input_buffer_
+    
+    // Intermediate buffers for separated kernel processing
+    uint8_t* d_resized_buffer_{nullptr};       // Buffer for resized images (BGR uint8_t format)
+    uint8_t** d_resized_image_ptrs_{nullptr};  // Pointer array for resized image positions
 };
 
 // Template method implementations (must be in header for templates)
@@ -75,9 +79,21 @@ MultiCameraPreprocessor::MultiCameraPreprocessor(const MultiCameraPreprocessConf
     const size_t single_input_size = static_cast<size_t>(config_.input_width) * config_.input_height * 3;
     const size_t total_input_size = single_input_size * config_.num_cameras;
     
+    // --- Allocate Resized Buffers ---
+    const size_t single_resized_size = static_cast<size_t>(config_.output_width) * config_.output_height * 3;
+    const size_t total_resized_size = single_resized_size * config_.num_cameras;
+    
     cudaError_t err = cudaMalloc(&d_input_buffer_, total_input_size);
     if (err != cudaSuccess) {
         logger_->error("Failed to allocate input buffer of size " + std::to_string(total_input_size) + ": " + cudaGetErrorString(err));
+        return;
+    }
+    
+    err = cudaMalloc(&d_resized_buffer_, total_resized_size);
+    if (err != cudaSuccess) {
+        logger_->error("Failed to allocate resized buffer of size " + std::to_string(total_resized_size) + ": " + cudaGetErrorString(err));
+        cudaFree(d_input_buffer_);
+        d_input_buffer_ = nullptr;
         return;
     }
     
@@ -85,26 +101,61 @@ MultiCameraPreprocessor::MultiCameraPreprocessor(const MultiCameraPreprocessConf
     if (err != cudaSuccess) {
         logger_->error("Failed to allocate input image pointers: " + std::string(cudaGetErrorString(err)));
         cudaFree(d_input_buffer_);
+        cudaFree(d_resized_buffer_);
         d_input_buffer_ = nullptr;
+        d_resized_buffer_ = nullptr;
+        return;
+    }
+    
+    err = cudaMalloc(&d_resized_image_ptrs_, config_.num_cameras * sizeof(uint8_t*));
+    if (err != cudaSuccess) {
+        logger_->error("Failed to allocate resized image pointers: " + std::string(cudaGetErrorString(err)));
+        cudaFree(d_input_buffer_);
+        cudaFree(d_resized_buffer_);
+        cudaFree(d_input_image_ptrs_);
+        d_input_buffer_ = nullptr;
+        d_resized_buffer_ = nullptr;
+        d_input_image_ptrs_ = nullptr;
         return;
     }
 
+    // Setup pointer arrays for both input and resized buffers
     std::vector<uint8_t*> h_input_ptrs(config_.num_cameras);
+    std::vector<uint8_t*> h_resized_ptrs(config_.num_cameras);
     for (int32_t i = 0; i < config_.num_cameras; ++i) {
         h_input_ptrs[i] = d_input_buffer_ + i * single_input_size;
+        h_resized_ptrs[i] = d_resized_buffer_ + i * single_resized_size;
     }
     
     err = cudaMemcpy(d_input_image_ptrs_, h_input_ptrs.data(), config_.num_cameras * sizeof(uint8_t*), cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
         logger_->error("Failed to copy input image pointers to device: " + std::string(cudaGetErrorString(err)));
         cudaFree(d_input_buffer_);
+        cudaFree(d_resized_buffer_);
         cudaFree(d_input_image_ptrs_);
+        cudaFree(d_resized_image_ptrs_);
         d_input_buffer_ = nullptr;
+        d_resized_buffer_ = nullptr;
         d_input_image_ptrs_ = nullptr;
+        d_resized_image_ptrs_ = nullptr;
         return;
     }
     
-    logger_->debug("MultiCameraPreprocessor initialized successfully");
+    err = cudaMemcpy(d_resized_image_ptrs_, h_resized_ptrs.data(), config_.num_cameras * sizeof(uint8_t*), cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        logger_->error("Failed to copy resized image pointers to device: " + std::string(cudaGetErrorString(err)));
+        cudaFree(d_input_buffer_);
+        cudaFree(d_resized_buffer_);
+        cudaFree(d_input_image_ptrs_);
+        cudaFree(d_resized_image_ptrs_);
+        d_input_buffer_ = nullptr;
+        d_resized_buffer_ = nullptr;
+        d_input_image_ptrs_ = nullptr;
+        d_resized_image_ptrs_ = nullptr;
+        return;
+    }
+    
+    logger_->info("MultiCameraPreprocessor initialized successfully with separated kernel support");
 }
 
 #endif // AUTOWARE_TENSORRT_VAD_MULTI_CAMERA_PREPROCESS_HPP_
