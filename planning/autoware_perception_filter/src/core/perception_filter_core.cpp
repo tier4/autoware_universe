@@ -14,6 +14,8 @@
 
 #include "autoware/perception_filter/perception_filter_core.hpp"
 
+#include "autoware/perception_filter/perception_filter_utils.hpp"
+
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/system/time_keeper.hpp>
@@ -36,6 +38,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <set>
@@ -326,152 +329,5 @@ PointCloudProcessingResult processPointCloudCommon(
   return result;
 }
 
-double getMinDistanceToPath(
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const autoware_planning_msgs::msg::Trajectory & path)
-{
-  if (path.points.empty()) {
-    return std::numeric_limits<double>::max();
-  }
-
-  const auto object_polygon = autoware::universe_utils::toPolygon2d(object);
-  double min_distance = std::numeric_limits<double>::max();
-
-  for (size_t i = 0; i < path.points.size() - 1; ++i) {
-    const auto & current_pose = path.points[i].pose;
-    const auto & next_pose = path.points[i + 1].pose;
-
-    autoware::universe_utils::LineString2d line_segment;
-    line_segment.push_back(
-      autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
-    line_segment.push_back(
-      autoware::universe_utils::Point2d(next_pose.position.x, next_pose.position.y));
-
-    double distance;
-    if (boost::geometry::distance(line_segment[0], line_segment[1]) < 1e-6) {
-      // Calculate distance to point
-      distance = boost::geometry::distance(
-        object_polygon,
-        autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
-    } else {
-      // Calculate distance to line segment
-      distance = boost::geometry::distance(object_polygon, line_segment);
-    }
-    min_distance = std::min(min_distance, distance);
-  }
-
-  // Also check distance to the last point
-  if (!path.points.empty()) {
-    const auto & last_pose = path.points.back().pose;
-    const double distance = boost::geometry::distance(
-      object_polygon,
-      autoware::universe_utils::Point2d(last_pose.position.x, last_pose.position.y));
-    min_distance = std::min(min_distance, distance);
-  }
-
-  return min_distance;
-}
-
-double getMinDistanceToPath(
-  const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path)
-{
-  double min_distance = std::numeric_limits<double>::max();
-
-  for (const auto & path_point : path.points) {
-    const double dx = point.x - path_point.pose.position.x;
-    const double dy = point.y - path_point.pose.position.y;
-    const double distance = std::sqrt(dx * dx + dy * dy);
-    min_distance = std::min(min_distance, distance);
-  }
-
-  return min_distance;
-}
-
-double getDistanceFromEgo(
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const geometry_msgs::msg::Pose & ego_pose)
-{
-  const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
-
-  const double dx = object_pos.x - ego_pose.position.x;
-  const double dy = object_pos.y - ego_pose.position.y;
-
-  return std::sqrt(dx * dx + dy * dy);
-}
-
-bool shouldIgnoreObject(
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const std::vector<std::string> & ignore_object_classes)
-{
-  if (ignore_object_classes.empty()) {
-    return false;  // No classes to ignore
-  }
-
-  const uint8_t object_label = getMostProbableLabel(object);
-  const std::string label_string = labelToString(object_label);
-
-  // Check if the object's label is in the ignore list
-  return std::find(ignore_object_classes.begin(), ignore_object_classes.end(), label_string) !=
-         ignore_object_classes.end();
-}
-
-uint8_t getMostProbableLabel(const autoware_perception_msgs::msg::PredictedObject & object)
-{
-  if (object.classification.empty()) {
-    return autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
-  }
-
-  // Find the classification with the highest probability
-  double highest_probability = 0.0;
-  uint8_t most_probable_label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
-
-  for (const auto & classification : object.classification) {
-    if (classification.probability > highest_probability) {
-      highest_probability = classification.probability;
-      most_probable_label = classification.label;
-    }
-  }
-
-  return most_probable_label;
-}
-
-std::string labelToString(uint8_t label)
-{
-  using autoware_perception_msgs::msg::ObjectClassification;
-  switch (label) {
-    case ObjectClassification::UNKNOWN:
-      return "UNKNOWN";
-    case ObjectClassification::CAR:
-      return "CAR";
-    case ObjectClassification::TRUCK:
-      return "TRUCK";
-    case ObjectClassification::BUS:
-      return "BUS";
-    case ObjectClassification::TRAILER:
-      return "TRAILER";
-    case ObjectClassification::MOTORCYCLE:
-      return "MOTORCYCLE";
-    case ObjectClassification::BICYCLE:
-      return "BICYCLE";
-    case ObjectClassification::PEDESTRIAN:
-      return "PEDESTRIAN";
-    default:
-      return "UNKNOWN";
-  }
-}
-
-uint8_t stringToLabel(const std::string & label_string)
-{
-  using autoware_perception_msgs::msg::ObjectClassification;
-  if (label_string == "UNKNOWN") return ObjectClassification::UNKNOWN;
-  if (label_string == "CAR") return ObjectClassification::CAR;
-  if (label_string == "TRUCK") return ObjectClassification::TRUCK;
-  if (label_string == "BUS") return ObjectClassification::BUS;
-  if (label_string == "TRAILER") return ObjectClassification::TRAILER;
-  if (label_string == "MOTORCYCLE") return ObjectClassification::MOTORCYCLE;
-  if (label_string == "BICYCLE") return ObjectClassification::BICYCLE;
-  if (label_string == "PEDESTRIAN") return ObjectClassification::PEDESTRIAN;
-  return ObjectClassification::UNKNOWN;
-}
 
 }  // namespace autoware::perception_filter
