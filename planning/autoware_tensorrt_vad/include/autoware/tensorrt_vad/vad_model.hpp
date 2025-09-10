@@ -25,6 +25,7 @@
 #include <cuda_runtime.h>
 #include <NvInfer.h>
 #include <dlfcn.h>
+#include <opencv2/core/mat.hpp>
 #include "networks/net.hpp"
 #include "networks/backbone.hpp"
 #include "networks/head.hpp"
@@ -33,6 +34,7 @@
 #include <autoware/tensorrt_common/tensorrt_common.hpp>
 #include "ros_vad_logger.hpp"
 #include "vad_config.hpp"
+#include "networks/preprocess/multi_camera_preprocess.hpp"
 
 namespace autoware::tensorrt_vad
 {
@@ -87,7 +89,7 @@ struct BBox {
 struct VadInputData
 {
   // Camera image data (multi-camera support)
-  std::vector<float> camera_images;
+  std::vector<cv::Mat> camera_images;
 
   // Shift information (img_metas.0[shift])
   std::vector<float> shift;
@@ -182,6 +184,16 @@ public:
     cudaStreamCreate(&stream_);
 
     nets_ = init_engines(vad_config_.nets_config, vad_config_, backbone_config, head_config, head_no_prev_config);
+    
+    // Initialize MultiCameraPreprocessor
+    MultiCameraPreprocessConfig preprocess_config = vad_config_.create_multi_camera_preprocess_config();
+    // Debug: Print preprocessor configuration
+    logger_->info("Creating MultiCameraPreprocessor with config: input=" + 
+                  std::to_string(preprocess_config.input_width) + "x" + std::to_string(preprocess_config.input_height) + 
+                  ", output=" + std::to_string(preprocess_config.output_width) + "x" + std::to_string(preprocess_config.output_height) + 
+                  ", cameras=" + std::to_string(preprocess_config.num_cameras));
+    preprocessor_ = std::make_unique<MultiCameraPreprocessor>(preprocess_config, logger_);
+    logger_->info("MultiCameraPreprocessor initialized successfully");
   }
 
   // Destructor
@@ -243,6 +255,7 @@ public:
 
 private:
   autoware::tensorrt_common::TrtCommonConfig head_trt_config_;
+  std::unique_ptr<MultiCameraPreprocessor> preprocessor_;
 
   std::unordered_map<std::string, std::shared_ptr<Net>> init_engines(
       const std::vector<NetConfig>& nets_config,
@@ -282,7 +295,17 @@ private:
 
   // Helper functions used in infer function
   void load_inputs(const VadInputData& vad_input_data, const std::string& head_name) {
-    nets_["backbone"]->bindings["img"]->load(vad_input_data.camera_images, stream_);
+    // Use MultiCameraPreprocessor to process camera images
+    cudaError_t preprocess_result = preprocessor_->preprocess_images(
+        vad_input_data.camera_images, 
+        static_cast<float*>(nets_["backbone"]->bindings["img"]->ptr), 
+        stream_);
+    
+    if (preprocess_result != cudaSuccess) {
+      logger_->error("CUDA preprocessing failed: " + std::string(cudaGetErrorString(preprocess_result)));
+      return;
+    }
+    
     nets_[head_name]->bindings["img_metas.0[shift]"]->load(vad_input_data.shift, stream_);
     nets_[head_name]->bindings["img_metas.0[lidar2img]"]->load(vad_input_data.vad_base2img, stream_);
     nets_[head_name]->bindings["img_metas.0[can_bus]"]->load(vad_input_data.can_bus, stream_);
