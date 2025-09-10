@@ -34,56 +34,12 @@
 #include <autoware/tensorrt_common/tensorrt_common.hpp>
 #include "ros_vad_logger.hpp"
 #include "vad_config.hpp"
+#include "data_types.hpp"
 #include "networks/preprocess/multi_camera_preprocess.hpp"
+#include "networks/postprocess/map_postprocess.hpp"
 
 namespace autoware::tensorrt_vad
 {
-
-/**
- * @brief Structure representing predicted trajectory
- */
-struct PredictedTrajectory {
-    std::array<std::array<float, 2>, 6> trajectory;  // 6 time steps × 2 coordinates (x, y)
-    float confidence;                                 // Confidence of this trajectory
-    
-    PredictedTrajectory() : confidence(0.0f) {
-        // Initialize trajectory coordinates to 0
-        for (int32_t i = 0; i < 6; ++i) {
-            trajectory[i][0] = 0.0f;
-            trajectory[i][1] = 0.0f;
-        }
-    }
-};
-
-/**
- * @brief each map polyline type and its points
- */
-struct MapPolyline {
-    std::string type;                               // polyline type ("divider", "ped_crossing", "boundary")
-    std::vector<std::vector<float>> points;         // polyline points (each point has [x, y])
-
-    MapPolyline() = default;
-    
-    MapPolyline(const std::string& map_type, const std::vector<std::vector<float>>& map_points)
-        : type(map_type), points(map_points) {}
-};
-
-/**
- * @brief Structure representing bounding box and its predicted trajectory
- */
-struct BBox {
-    std::array<float, 10> bbox;                      // [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
-    float confidence;                                // Object confidence
-    int32_t object_class;                           // Object class (0-9)
-    std::array<PredictedTrajectory, 6> trajectories; // 6 predicted trajectories
-    
-    BBox() : confidence(0.0f), object_class(-1) {
-        // Initialize bbox coordinates to 0
-        for (int32_t i = 0; i < 10; ++i) {
-            bbox[i] = 0.0f;
-        }
-    }
-};
 
 // VAD inference input data structure
 struct VadInputData
@@ -194,6 +150,15 @@ public:
                   ", cameras=" + std::to_string(preprocess_config.num_cameras));
     preprocessor_ = std::make_unique<MultiCameraPreprocessor>(preprocess_config, logger_);
     logger_->info("MultiCameraPreprocessor initialized successfully");
+    
+    // Initialize MapPostprocessor
+    MapPostprocessConfig map_postprocess_config = vad_config_.create_map_postprocess_config();
+    logger_->info("Creating MapPostprocessor with config: queries=" + 
+                  std::to_string(map_postprocess_config.map_num_queries) + 
+                  ", classes=" + std::to_string(map_postprocess_config.map_num_classes) + 
+                  ", points_per_polyline=" + std::to_string(map_postprocess_config.map_points_per_polylines));
+    map_postprocessor_ = std::make_unique<MapPostprocessor>(map_postprocess_config, logger_);
+    logger_->info("MapPostprocessor initialized successfully");
   }
 
   // Destructor
@@ -256,6 +221,7 @@ public:
 private:
   autoware::tensorrt_common::TrtCommonConfig head_trt_config_;
   std::unique_ptr<MultiCameraPreprocessor> preprocessor_;
+  std::unique_ptr<MapPostprocessor> map_postprocessor_;
 
   std::unordered_map<std::string, std::shared_ptr<Net>> init_engines(
       const std::vector<NetConfig>& nets_config,
@@ -364,8 +330,6 @@ private:
 
   VadOutputData postprocess(const std::string& head_name, int32_t cmd) {
     std::vector<float> ego_fut_preds = nets_[head_name]->bindings["out.ego_fut_preds"]->cpu<float>();
-    std::vector<float> map_all_cls_preds_flat = nets_[head_name]->bindings["out.map_all_cls_scores"]->cpu<float>();
-    std::vector<float> map_all_pts_preds_flat = nets_[head_name]->bindings["out.map_all_pts_preds"]->cpu<float>();
     std::vector<float> all_traj_preds_flat = nets_[head_name]->bindings["out.all_traj_preds"]->cpu<float>();
     std::vector<float> all_traj_cls_scores_flat = nets_[head_name]->bindings["out.all_traj_cls_scores"]->cpu<float>();
     std::vector<float> all_bbox_preds_flat = nets_[head_name]->bindings["out.all_bbox_preds"]->cpu<float>();
@@ -375,8 +339,11 @@ private:
     auto filtered_bboxes = postprocess_bboxes(
         all_cls_scores_flat, all_traj_preds_flat, all_traj_cls_scores_flat, all_bbox_preds_flat, vad_config_);
 
-    std::vector<MapPolyline> map_polylines = postprocess_map_preds(
-        map_all_cls_preds_flat, map_all_pts_preds_flat, vad_config_);
+    // Process map polylines using CUDA postprocessor
+    std::vector<MapPolyline> map_polylines = map_postprocessor_->postprocess_map_preds(
+        static_cast<const float*>(nets_[head_name]->bindings["out.map_all_cls_scores"]->ptr),
+        static_cast<const float*>(nets_[head_name]->bindings["out.map_all_pts_preds"]->ptr),
+        stream_);
     
     // Extract planning for the given command
     std::vector<float> planning(

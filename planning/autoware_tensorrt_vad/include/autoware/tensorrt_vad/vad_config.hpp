@@ -23,6 +23,9 @@
 
 #include "networks/preprocess/multi_camera_preprocess.hpp"
 
+// Forward declarations for postprocessing configs
+struct MapPostprocessConfig;
+
 namespace autoware::tensorrt_vad
 {
 
@@ -72,6 +75,9 @@ struct VadConfig
   
   // Helper method to create MultiCameraPreprocessConfig
   MultiCameraPreprocessConfig create_multi_camera_preprocess_config() const;
+  
+  // Helper method to create MapPostprocessConfig
+  MapPostprocessConfig create_map_postprocess_config() const;
 };
 
 }  // namespace autoware::tensorrt_vad
