@@ -29,18 +29,18 @@ public:
     MultiCameraPreprocessor(const MultiCameraPreprocessor&) = delete;
     MultiCameraPreprocessor& operator=(const MultiCameraPreprocessor&) = delete;
 
-  /**
-   * @brief Batch preprocess multiple camera images (cv::Mat) on GPU.
-   * @param camera_images Host-side input images (cv::Mat) vector. Should be BGR8 format.
-   * @param d_output_buffer Pointer to device output buffer. Results are written here in CHW format.
-   * @param stream CUDA stream to use for execution.
-   * @return cudaError_t Execution status.
-   */
-  cudaError_t preprocess_images(
-      const std::vector<cv::Mat>& camera_images,
-      float* d_output_buffer,
-      cudaStream_t stream
-  );
+    /**
+     * @brief Batch preprocess multiple camera images (cv::Mat) on GPU.
+     * @param camera_images Host-side input images (cv::Mat) vector. Should be BGR8 format.
+     * @param d_output_buffer Pointer to device output buffer. Results are written here in CHW format.
+     * @param stream CUDA stream to use for execution.
+     * @return cudaError_t Execution status.
+     */
+    cudaError_t preprocess_images(
+        const std::vector<cv::Mat>& camera_images,
+        float* d_output_buffer,
+        cudaStream_t stream
+    );
   
 private:
     /**
