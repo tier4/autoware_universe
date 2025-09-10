@@ -23,12 +23,12 @@
 
 #include "networks/preprocess/multi_camera_preprocess.hpp"
 
+namespace autoware::tensorrt_vad
+{
+
 // Forward declarations for postprocessing configs
 struct MapPostprocessConfig;
 struct ObjectPostprocessConfig;
-
-namespace autoware::tensorrt_vad
-{
 
 // config for Net class
 struct NetConfig

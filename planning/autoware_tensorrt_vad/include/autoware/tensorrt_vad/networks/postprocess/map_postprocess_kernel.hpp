@@ -8,6 +8,8 @@
 #include <array>
 #include <map>
 
+namespace autoware::tensorrt_vad {
+
 /**
  * @struct MapPostprocessConfig
  * @brief Configuration parameters required for map CUDA postprocessing
@@ -70,5 +72,7 @@ cudaError_t launch_map_postprocess_kernel(
     int32_t* d_output_valid_flags,
     const MapPostprocessConfig& config,
     cudaStream_t stream);
+
+}  // namespace autoware::tensorrt_vad
 
 #endif // AUTOWARE_TENSORRT_VAD_MAP_POSTPROCESS_KERNEL_HPP_

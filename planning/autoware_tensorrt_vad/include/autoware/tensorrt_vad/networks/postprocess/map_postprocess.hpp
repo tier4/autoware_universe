@@ -8,6 +8,8 @@
 #include "autoware/tensorrt_vad/data_types.hpp"
 #include "autoware/tensorrt_vad/networks/postprocess/map_postprocess_kernel.hpp"
 
+namespace autoware::tensorrt_vad {
+
 /**
  * @class MapPostprocessor
  * @brief GPU postprocessing pipeline for map predictions
@@ -116,5 +118,7 @@ MapPostprocessor::MapPostprocessor(const MapPostprocessConfig& config, std::shar
     
     logger_->info("MapPostprocessor initialized successfully");
 }
+
+}  // namespace autoware::tensorrt_vad
 
 #endif // AUTOWARE_TENSORRT_VAD_MAP_POSTPROCESS_HPP_

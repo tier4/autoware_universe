@@ -8,6 +8,8 @@
 #include "autoware/tensorrt_vad/data_types.hpp"
 #include "autoware/tensorrt_vad/networks/postprocess/object_postprocess_kernel.hpp"
 
+namespace autoware::tensorrt_vad {
+
 /**
  * @class ObjectPostprocessor
  * @brief GPU postprocessing pipeline for object predictions
@@ -142,5 +144,7 @@ ObjectPostprocessor::ObjectPostprocessor(const ObjectPostprocessConfig& config, 
     
     logger_->info("ObjectPostprocessor initialized successfully");
 }
+
+}  // namespace autoware::tensorrt_vad
 
 #endif // AUTOWARE_TENSORRT_VAD_OBJECT_POSTPROCESS_HPP_

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace autoware::tensorrt_vad {
+
 // Note: Template constructor implementation is in the header file
 
 ObjectPostprocessor::~ObjectPostprocessor() {
@@ -193,3 +195,5 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::copy_object_resul
     logger_->debug("Created " + std::to_string(bboxes.size()) + " valid BBox objects from GPU results");
     return bboxes;
 }
+
+} // namespace autoware::tensorrt_vad

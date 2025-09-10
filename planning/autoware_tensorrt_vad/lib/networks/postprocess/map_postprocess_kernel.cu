@@ -4,6 +4,8 @@
 #include <device_launch_parameters.h>
 #include <cmath>
 
+namespace autoware::tensorrt_vad {
+
 __device__ inline void denormalize_2d_pts_cuda(
     float* output_pt, 
     const float* input_pt,
@@ -46,7 +48,7 @@ __global__ void map_postprocess_kernel(
     // Since map_num_classes is around 3, it's fine to use a for loop within the thread
     for (int32_t c = 0; c < config.map_num_classes; ++c) {
         const int32_t cls_flat_idx = cls_final_layer_offset + query_idx * config.map_num_classes + c;
-        const float score = autoware::tensorrt_vad::cuda_utils::sigmoid_cuda(map_cls_preds_flat[cls_flat_idx]);
+        const float score = cuda_utils::sigmoid_cuda(map_cls_preds_flat[cls_flat_idx]);
         d_output_cls_scores[query_idx * config.map_num_classes + c] = score;
         
         if (score > max_score) {
@@ -108,3 +110,5 @@ cudaError_t launch_map_postprocess_kernel(
     
     return cudaGetLastError();
 }
+
+}  // namespace autoware::tensorrt_vad

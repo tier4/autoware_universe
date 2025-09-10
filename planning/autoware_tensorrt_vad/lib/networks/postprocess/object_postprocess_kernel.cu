@@ -4,6 +4,9 @@
 #include <device_launch_parameters.h>
 #include <cmath>
 #include <cfloat>
+#include "autoware/tensorrt_vad/networks/postprocess/cuda_utils.hpp"
+
+namespace autoware::tensorrt_vad {
 
 // Namespace for physical bounds in postprocessing
 namespace physical_limits {
@@ -90,7 +93,7 @@ __global__ void object_postprocess_kernel(
         if (i == 2 || i == 3 || i == 5) {
             // Clamp input to prevent extreme values before exp using namespace constant
             bbox_value = fmaxf(-physical_limits::MAX_BBOX_EXP_INPUT, fminf(physical_limits::MAX_BBOX_EXP_INPUT, bbox_value));
-            bbox_value = autoware::tensorrt_vad::cuda_utils::exp_cuda(bbox_value);
+            bbox_value = cuda_utils::exp_cuda(bbox_value);
             
             // Additional safety: ensure reasonable bbox dimensions using namespace constants
             bbox_value = fmaxf(physical_limits::MIN_BBOX_DIMENSION, fminf(physical_limits::MAX_BBOX_DIMENSION, bbox_value));
@@ -108,7 +111,7 @@ __global__ void object_postprocess_kernel(
         // Clamp input to prevent extreme values using namespace constant
         raw_traj_score = fmaxf(-physical_limits::MAX_CLASSIFICATION_INPUT, fminf(physical_limits::MAX_CLASSIFICATION_INPUT, raw_traj_score));
         
-        const float traj_score = autoware::tensorrt_vad::cuda_utils::sigmoid_cuda(raw_traj_score);
+        const float traj_score = cuda_utils::sigmoid_cuda(raw_traj_score);
         d_output_traj_scores[obj_idx * config.prediction_trajectory_modes + mode] = traj_score;
         
         // Process trajectory points
@@ -181,3 +184,5 @@ cudaError_t launch_object_postprocess_kernel(
     
     return cudaGetLastError();
 }
+
+}  // namespace autoware::tensorrt_vad

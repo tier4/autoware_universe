@@ -7,6 +7,8 @@
 #include <string>
 #include <map>
 
+namespace autoware::tensorrt_vad {
+
 /**
  * @struct ObjectPostprocessConfig
  * @brief Configuration parameters required for object CUDA postprocessing
@@ -75,5 +77,7 @@ cudaError_t launch_object_postprocess_kernel(
     int32_t* d_output_valid_flags,
     const ObjectPostprocessConfig& config,
     cudaStream_t stream);
+
+}  // namespace autoware::tensorrt_vad
 
 #endif // AUTOWARE_TENSORRT_VAD_OBJECT_POSTPROCESS_KERNEL_HPP_

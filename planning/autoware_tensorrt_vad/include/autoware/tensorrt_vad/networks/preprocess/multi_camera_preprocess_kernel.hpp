@@ -4,6 +4,8 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 
+namespace autoware::tensorrt_vad {
+
 /**
  * @struct MultiCameraPreprocessConfig
  * @brief Configuration parameters required for CUDA preprocessing
@@ -47,5 +49,7 @@ cudaError_t launch_multi_camera_normalize_kernel(
     float* d_output,
     const MultiCameraPreprocessConfig& config,
     cudaStream_t stream);
+
+}  // namespace autoware::tensorrt_vad
 
 #endif // AUTOWARE_TENSORRT_VAD_MULTI_CAMERA_PREPROCESS_KERNEL_HPP_

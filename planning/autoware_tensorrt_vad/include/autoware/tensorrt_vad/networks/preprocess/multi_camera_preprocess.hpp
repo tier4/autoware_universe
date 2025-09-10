@@ -9,6 +9,8 @@
 #include "autoware/tensorrt_vad/ros_vad_logger.hpp"
 #include "autoware/tensorrt_vad/networks/preprocess/multi_camera_preprocess_kernel.hpp"
 
+namespace autoware::tensorrt_vad {
+
 /**
  * @class MultiCameraPreprocessor
  * @brief GPU preprocessing pipeline for multiple camera images
@@ -142,5 +144,7 @@ MultiCameraPreprocessor::MultiCameraPreprocessor(const MultiCameraPreprocessConf
     
     logger_->info("MultiCameraPreprocessor initialized successfully with separated kernel support");
 }
+
+}  // namespace autoware::tensorrt_vad
 
 #endif // AUTOWARE_TENSORRT_VAD_MULTI_CAMERA_PREPROCESS_HPP_

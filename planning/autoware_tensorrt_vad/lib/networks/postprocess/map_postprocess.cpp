@@ -3,6 +3,8 @@
 #include <cmath>
 #include <stdexcept>
 
+namespace autoware::tensorrt_vad {
+
 MapPostprocessor::~MapPostprocessor()
 {
     cleanup_cuda_resources();
@@ -152,3 +154,5 @@ std::vector<autoware::tensorrt_vad::MapPolyline> MapPostprocessor::copy_map_resu
     
     return map_polylines;
 }
+
+} // namespace autoware::tensorrt_vad

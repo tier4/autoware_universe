@@ -2,6 +2,8 @@
 #include <stdexcept>
 #include <thread>
 
+namespace autoware::tensorrt_vad {
+
 // Note: Template constructor and logging method implementations are now in the header file
 
 MultiCameraPreprocessor::~MultiCameraPreprocessor() {
@@ -134,3 +136,5 @@ cudaError_t MultiCameraPreprocessor::preprocess_images(
     logger_->debug("Separated kernel preprocessing completed successfully");
     return cudaSuccess;
 }
+
+}  // namespace autoware::tensorrt_vad
