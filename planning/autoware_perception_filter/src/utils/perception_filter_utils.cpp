@@ -36,7 +36,6 @@
 namespace autoware::perception_filter
 {
 
-
 autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
   const ObjectClassification & classification,
   const std::vector<FilteredPointInfo> & would_be_filtered_points,
@@ -310,8 +309,6 @@ double getMinDistanceToPath(
 
   return min_distance;
 }
-
-
 
 // ========== Object Classification Helper Functions ==========
 

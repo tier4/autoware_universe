@@ -153,7 +153,6 @@ PointCloudProcessingResult processPointCloudCommon(
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
   const tf2_ros::Buffer & tf_buffer, autoware::universe_utils::TimeKeeper & time_keeper);
 
-
 }  // namespace autoware::perception_filter
 
 #endif  // AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_CORE_HPP_

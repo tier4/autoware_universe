@@ -88,7 +88,6 @@ double getMinDistanceToPath(
   const autoware_perception_msgs::msg::PredictedObject & object,
   const autoware_planning_msgs::msg::Trajectory & path);
 
-
 // ========== Object Classification Helper Functions ==========
 
 /**

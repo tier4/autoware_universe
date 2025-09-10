@@ -98,7 +98,8 @@ ObjectClassification classifyObjectsWithinRadius(
 
       // Check if object is within classification radius
       const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
-      const double distance_from_ego = autoware::universe_utils::calcDistance2d(object_pos, ego_pose.position);
+      const double distance_from_ego =
+        autoware::universe_utils::calcDistance2d(object_pos, ego_pose.position);
       if (distance_from_ego <= object_classification_radius) {
         const double distance_to_path = getMinDistanceToPath(object, *planning_trajectory);
         const bool would_be_filtered = distance_to_path <= max_filter_distance;
@@ -322,7 +323,8 @@ PointCloudProcessingResult processPointCloudCommon(
       ros_point.y = point.y;
       ros_point.z = point.z;
 
-      const double distance_to_path = std::abs(autoware::motion_utils::calcLateralOffset(planning_trajectory->points, ros_point));
+      const double distance_to_path =
+        std::abs(autoware::motion_utils::calcLateralOffset(planning_trajectory->points, ros_point));
       result.distances_to_path.push_back(distance_to_path);
     }
   }
@@ -330,6 +332,5 @@ PointCloudProcessingResult processPointCloudCommon(
   result.success = true;
   return result;
 }
-
 
 }  // namespace autoware::perception_filter
