@@ -1,15 +1,9 @@
 #include "autoware/tensorrt_vad/networks/postprocess/object_postprocess_kernel.hpp"
+#include "autoware/tensorrt_vad/networks/postprocess/cuda_utils.hpp"
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <cmath>
 #include <cfloat>
-
-// Namespace for mathematical safety thresholds
-namespace math_limits {
-    // Mathematically derived thresholds using standard library constants
-    constexpr float EXP_MAX_ARG = 88.72f;  // logf(FLT_MAX) ≈ 88.72f
-    constexpr float SIGMOID_MAX_ARG = 88.0f;  // Conservative threshold for sigmoid stability
-}
 
 // Namespace for physical bounds in postprocessing
 namespace physical_limits {
@@ -18,29 +12,6 @@ namespace physical_limits {
     constexpr float MIN_BBOX_DIMENSION = 0.01f;          // Minimum realistic bbox dimension (1cm)
     constexpr float MAX_BBOX_DIMENSION = 1000.0f;        // Maximum realistic bbox dimension (1km)
     constexpr float MAX_COORDINATE_VALUE = 10000.0f;     // Maximum reasonable coordinate value (10km)
-}
-
-// CUDA device functions with rigorous overflow/underflow protection using constexpr constants
-__device__ inline float sigmoid_cuda(float x) {
-    // Use conservative threshold for sigmoid stability
-    if (x > math_limits::SIGMOID_MAX_ARG) {
-        return 1.0f;
-    } else if (x < -math_limits::SIGMOID_MAX_ARG) {
-        return 0.0f;
-    } else {
-        return 1.0f / (1.0f + expf(-x));
-    }
-}
-
-__device__ inline float exp_cuda(float x) {
-    // Use mathematically derived threshold based on FLT_MAX
-    if (x > math_limits::EXP_MAX_ARG) {
-        return FLT_MAX; // Return maximum float value instead of infinity
-    } else if (x < -math_limits::EXP_MAX_ARG) {
-        return 0.0f; // Underflow to zero
-    } else {
-        return expf(x);
-    }
 }
 
 /**
@@ -92,7 +63,7 @@ __global__ void object_postprocess_kernel(
         // Clamp input to prevent extreme values using namespace constant
         raw_score = fmaxf(-physical_limits::MAX_CLASSIFICATION_INPUT, fminf(physical_limits::MAX_CLASSIFICATION_INPUT, raw_score));
         
-        const float score = sigmoid_cuda(raw_score);
+        const float score = autoware::tensorrt_vad::cuda_utils::sigmoid_cuda(raw_score);
         d_output_cls_scores[obj_idx * config.prediction_num_classes + c] = score;
         
         if (score > max_score) {
@@ -119,7 +90,7 @@ __global__ void object_postprocess_kernel(
         if (i == 2 || i == 3 || i == 5) {
             // Clamp input to prevent extreme values before exp using namespace constant
             bbox_value = fmaxf(-physical_limits::MAX_BBOX_EXP_INPUT, fminf(physical_limits::MAX_BBOX_EXP_INPUT, bbox_value));
-            bbox_value = exp_cuda(bbox_value);
+            bbox_value = autoware::tensorrt_vad::cuda_utils::exp_cuda(bbox_value);
             
             // Additional safety: ensure reasonable bbox dimensions using namespace constants
             bbox_value = fmaxf(physical_limits::MIN_BBOX_DIMENSION, fminf(physical_limits::MAX_BBOX_DIMENSION, bbox_value));
@@ -137,7 +108,7 @@ __global__ void object_postprocess_kernel(
         // Clamp input to prevent extreme values using namespace constant
         raw_traj_score = fmaxf(-physical_limits::MAX_CLASSIFICATION_INPUT, fminf(physical_limits::MAX_CLASSIFICATION_INPUT, raw_traj_score));
         
-        const float traj_score = sigmoid_cuda(raw_traj_score);
+        const float traj_score = autoware::tensorrt_vad::cuda_utils::sigmoid_cuda(raw_traj_score);
         d_output_traj_scores[obj_idx * config.prediction_trajectory_modes + mode] = traj_score;
         
         // Process trajectory points
