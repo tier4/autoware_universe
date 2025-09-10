@@ -16,6 +16,7 @@
 #define AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_UTILS_HPP_
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
+#include <autoware/universe_utils/geometry/geometry.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -38,18 +39,6 @@ struct FilteredPointInfo;
 struct ObjectClassification;
 
 
-/**
- * @brief Calculate distance along the path from ego vehicle to given point
- * @param point Point to calculate distance along path for
- * @param planning_trajectory Planning trajectory
- * @param ego_pose Current ego vehicle pose
- * @return Signed distance along the path from ego to the point [m]
- * @details Positive values indicate points ahead of ego, negative values behind
- */
-double getDistanceAlongPath(
-  const geometry_msgs::msg::Point & point,
-  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-  const geometry_msgs::msg::Pose & ego_pose);
 
 /**
  * @brief Create planning factors for filtered objects and points

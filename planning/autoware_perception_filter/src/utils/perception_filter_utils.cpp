@@ -16,8 +16,10 @@
 
 #include "autoware/perception_filter/perception_filter_core.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware/universe_utils/geometry/geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <boost/geometry.hpp>
@@ -34,64 +36,6 @@
 namespace autoware::perception_filter
 {
 
-double getDistanceAlongPath(
-  const geometry_msgs::msg::Point & point,
-  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-  const geometry_msgs::msg::Pose & ego_pose)
-{
-  if (!planning_trajectory || planning_trajectory->points.empty()) {
-    return 0.0;
-  }
-
-  // Find the closest point on the trajectory to the ego vehicle
-  double min_ego_distance = std::numeric_limits<double>::max();
-  size_t ego_closest_index = 0;
-
-  for (size_t i = 0; i < planning_trajectory->points.size(); ++i) {
-    const auto & path_point = planning_trajectory->points[i].pose.position;
-    const double dx = ego_pose.position.x - path_point.x;
-    const double dy = ego_pose.position.y - path_point.y;
-    const double distance = std::sqrt(dx * dx + dy * dy);
-
-    if (distance < min_ego_distance) {
-      min_ego_distance = distance;
-      ego_closest_index = i;
-    }
-  }
-
-  // Find the closest point on the trajectory to the given point
-  double min_point_distance = std::numeric_limits<double>::max();
-  size_t point_closest_index = 0;
-
-  for (size_t i = 0; i < planning_trajectory->points.size(); ++i) {
-    const auto & path_point = planning_trajectory->points[i].pose.position;
-    const double dx = point.x - path_point.x;
-    const double dy = point.y - path_point.y;
-    const double distance = std::sqrt(dx * dx + dy * dy);
-
-    if (distance < min_point_distance) {
-      min_point_distance = distance;
-      point_closest_index = i;
-    }
-  }
-
-  // Calculate cumulative distance along path
-  double cumulative_distance = 0.0;
-  const size_t start_index = std::min(ego_closest_index, point_closest_index);
-  const size_t end_index = std::max(ego_closest_index, point_closest_index);
-  const bool is_point_ahead = (point_closest_index >= ego_closest_index);
-
-  for (size_t i = start_index; i < end_index; ++i) {
-    const auto & current_point = planning_trajectory->points[i].pose.position;
-    const auto & next_point = planning_trajectory->points[i + 1].pose.position;
-    const double dx = next_point.x - current_point.x;
-    const double dy = next_point.y - current_point.y;
-    const double segment_distance = std::sqrt(dx * dx + dy * dy);
-    cumulative_distance += segment_distance;
-  }
-
-  return is_point_ahead ? cumulative_distance : -cumulative_distance;
-}
 
 autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
   const ObjectClassification & classification,
@@ -389,9 +333,7 @@ double getMinDistanceToPath(
   double min_distance = std::numeric_limits<double>::max();
 
   for (const auto & path_point : path.points) {
-    const double dx = point.x - path_point.pose.position.x;
-    const double dy = point.y - path_point.pose.position.y;
-    const double distance = std::sqrt(dx * dx + dy * dy);
+    const double distance = autoware::universe_utils::calcDistance2d(point, path_point.pose.position);
     min_distance = std::min(min_distance, distance);
   }
 
@@ -403,11 +345,7 @@ double getDistanceFromEgo(
   const geometry_msgs::msg::Pose & ego_pose)
 {
   const auto & object_pos = object.kinematics.initial_pose_with_covariance.pose.position;
-
-  const double dx = object_pos.x - ego_pose.position.x;
-  const double dy = object_pos.y - ego_pose.position.y;
-
-  return std::sqrt(dx * dx + dy * dy);
+  return autoware::universe_utils::calcDistance2d(object_pos, ego_pose.position);
 }
 
 // ========== Object Classification Helper Functions ==========

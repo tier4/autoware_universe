@@ -14,6 +14,7 @@
 
 #include "autoware/perception_filter/perception_filter_node.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -783,7 +784,9 @@ void PerceptionFilterNode::updateFilteringPolygonStatus()
 
   const double current_distance_along_path = [this, &ego_pose]() {
     autoware::universe_utils::ScopedTimeTrack st_distance("get_distance_along_path", *time_keeper_);
-    return getDistanceAlongPath(ego_pose->position, planning_trajectory_, *ego_pose);
+    // Note: This calculates distance from ego position to ego position, which should be 0
+    return autoware::motion_utils::calcSignedArcLength(
+      planning_trajectory_->points, ego_pose->position, ego_pose->position);
   }();
 
   RCLCPP_DEBUG(
