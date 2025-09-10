@@ -16,6 +16,7 @@
 
 #include "autoware/perception_filter/perception_filter_utils.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/system/time_keeper.hpp>
@@ -320,7 +321,7 @@ PointCloudProcessingResult processPointCloudCommon(
       ros_point.y = point.y;
       ros_point.z = point.z;
 
-      const double distance_to_path = getMinDistanceToPath(ros_point, *planning_trajectory);
+      const double distance_to_path = std::abs(autoware::motion_utils::calcLateralOffset(planning_trajectory->points, ros_point));
       result.distances_to_path.push_back(distance_to_path);
     }
   }

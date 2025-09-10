@@ -289,56 +289,28 @@ double getMinDistanceToPath(
     return std::numeric_limits<double>::max();
   }
 
+  // Convert object to polygon using autoware_universe_utils
   const auto object_polygon = autoware::universe_utils::toPolygon2d(object);
-  double min_distance = std::numeric_limits<double>::max();
 
-  for (size_t i = 0; i < path.points.size() - 1; ++i) {
-    const auto & current_pose = path.points[i].pose;
-    const auto & next_pose = path.points[i + 1].pose;
-
-    autoware::universe_utils::LineString2d line_segment;
-    line_segment.push_back(
-      autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
-    line_segment.push_back(
-      autoware::universe_utils::Point2d(next_pose.position.x, next_pose.position.y));
-
-    double distance;
-    if (boost::geometry::distance(line_segment[0], line_segment[1]) < 1e-6) {
-      // Calculate distance to point
-      distance = boost::geometry::distance(
-        object_polygon,
-        autoware::universe_utils::Point2d(current_pose.position.x, current_pose.position.y));
-    } else {
-      // Calculate distance to line segment
-      distance = boost::geometry::distance(object_polygon, line_segment);
-    }
-    min_distance = std::min(min_distance, distance);
+  // Convert trajectory to linestring for distance calculation
+  autoware::universe_utils::LineString2d trajectory_line;
+  for (const auto & point : path.points) {
+    autoware::universe_utils::Point2d bg_point;
+    bg_point.x() = point.pose.position.x;
+    bg_point.y() = point.pose.position.y;
+    trajectory_line.push_back(bg_point);
   }
 
-  // Also check distance to the last point
-  if (!path.points.empty()) {
-    const auto & last_pose = path.points.back().pose;
-    const double distance = boost::geometry::distance(
-      object_polygon,
-      autoware::universe_utils::Point2d(last_pose.position.x, last_pose.position.y));
+  // Calculate minimum distance between object polygon and trajectory line using boost::geometry
+  double min_distance = std::numeric_limits<double>::max();
+  for (const auto & vertex : object_polygon.outer()) {
+    const double distance = boost::geometry::distance(vertex, trajectory_line);
     min_distance = std::min(min_distance, distance);
   }
 
   return min_distance;
 }
 
-double getMinDistanceToPath(
-  const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path)
-{
-  double min_distance = std::numeric_limits<double>::max();
-
-  for (const auto & path_point : path.points) {
-    const double distance = autoware::universe_utils::calcDistance2d(point, path_point.pose.position);
-    min_distance = std::min(min_distance, distance);
-  }
-
-  return min_distance;
-}
 
 double getDistanceFromEgo(
   const autoware_perception_msgs::msg::PredictedObject & object,

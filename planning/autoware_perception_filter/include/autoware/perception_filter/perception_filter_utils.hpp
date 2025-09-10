@@ -38,8 +38,6 @@ namespace autoware::perception_filter
 struct FilteredPointInfo;
 struct ObjectClassification;
 
-
-
 /**
  * @brief Create planning factors for filtered objects and points
  * @param classification Object classification result
@@ -81,23 +79,15 @@ visualization_msgs::msg::Marker createObjectMarker(
   int id, const std::array<double, 4> & color);
 
 /**
- * @brief Calculate minimum distance from predicted object to trajectory
+ * @brief Calculate minimum distance from predicted object polygon to trajectory
  * @param object Predicted object to calculate distance from
  * @param path Trajectory to calculate distance to
- * @return Minimum distance from object boundary to path [m]
+ * @return Minimum distance from object polygon to trajectory [m]
  */
 double getMinDistanceToPath(
   const autoware_perception_msgs::msg::PredictedObject & object,
   const autoware_planning_msgs::msg::Trajectory & path);
 
-/**
- * @brief Calculate minimum distance from point to trajectory
- * @param point Point to calculate distance from
- * @param path Trajectory to calculate distance to
- * @return Minimum distance from point to path [m]
- */
-double getMinDistanceToPath(
-  const geometry_msgs::msg::Point & point, const autoware_planning_msgs::msg::Trajectory & path);
 
 /**
  * @brief Calculate distance from ego vehicle to object
