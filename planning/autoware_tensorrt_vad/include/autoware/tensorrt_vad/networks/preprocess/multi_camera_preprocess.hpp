@@ -2,7 +2,7 @@
 #define AUTOWARE_TENSORRT_VAD_MULTI_CAMERA_PREPROCESS_HPP_
 
 #include <vector>
-#include <opencv2/core/mat.hpp>  // cv::Matを使用するためにインクルード
+#include <opencv2/core/mat.hpp>
 #include <memory>
 #include <string>
 #include <cuda_runtime.h>
@@ -11,12 +11,11 @@
 
 /**
  * @class MultiCameraPreprocessor
- * @brief 複数カメラ画像のGPU前処理パイプラインを管理するクラス
+ * @brief GPU preprocessing pipeline for multiple camera images
  *
- * このクラスは、ホストからのcv::Mat画像の受け取り、デバイスへのコピー、
- * カスタムCUDAカーネルによるリサイズ・変換・正規化・結合までの一連の流れをカプセル化します。
- * NPPに依存せず、独自のbilinear interpolationを使用してリサイズを行います。
- * リソースはコンストラクタで確保(RAII)、デストラクタで解放されます。
+ * This class encapsulates the entire flow from receiving cv::Mat images from host,
+ * copying to device, custom CUDA kernel-based resize/BGR2RGB convert/normalize/concatenate operations.
+ * Resources are allocated in constructor (RAII) and released in destructor.
  */
 class MultiCameraPreprocessor {
 public:
@@ -26,16 +25,16 @@ public:
     
     ~MultiCameraPreprocessor();
 
-    // コピーコンストラクタとコピー代入演算子を禁止し、リソースの二重解放を防ぐ
+    // Prohibit copy constructor and copy assignment operator to prevent double deallocation
     MultiCameraPreprocessor(const MultiCameraPreprocessor&) = delete;
     MultiCameraPreprocessor& operator=(const MultiCameraPreprocessor&) = delete;
 
   /**
-   * @brief 複数台のカメラ画像(cv::Mat)をGPUで一括前処理します。
-   * @param camera_images ホスト側の入力画像(cv::Mat)のベクトル。BGR8フォーマットであること。
-   * @param d_output_buffer デバイス上の出力バッファへのポインタ。結果はここにCHW形式で書き込まれる。
-   * @param stream 実行に使用するCUDAストリーム。
-   * @return cudaError_t 実行ステータス。
+   * @brief Batch preprocess multiple camera images (cv::Mat) on GPU.
+   * @param camera_images Host-side input images (cv::Mat) vector. Should be BGR8 format.
+   * @param d_output_buffer Pointer to device output buffer. Results are written here in CHW format.
+   * @param stream CUDA stream to use for execution.
+   * @return cudaError_t Execution status.
    */
   cudaError_t preprocess_images(
       const std::vector<cv::Mat>& camera_images,
@@ -43,9 +42,9 @@ public:
       cudaStream_t stream
   );private:
     /**
-     * @brief 入力画像ベクトルが有効か検証します（サイズ、フォーマットなど）。
-     * @param camera_images 検証対象の画像ベクトル。
-     * @return cudaError_t 検証結果。成功時はcudaSuccess。
+     * @brief Validates input image vector (size, format, etc.).
+     * @param camera_images Image vector to validate.
+     * @return cudaError_t Validation result. cudaSuccess if successful.
      */
     cudaError_t validate_input(const std::vector<cv::Mat>& camera_images) const;
 
@@ -53,9 +52,9 @@ public:
     std::shared_ptr<autoware::tensorrt_vad::VadLogger> logger_;  // Direct VadLogger pointer
 
     // --- GPU Buffers ---
-    // 入力バッファ (コンストラクタで確保)
-    uint8_t* d_input_buffer_{nullptr};      // 全ての生入力画像を格納する単一の連続バッファ
-    uint8_t** d_input_image_ptrs_{nullptr}; // d_input_buffer_内の各画像の開始位置を指すポインタ配列
+    // Input buffers (allocated in constructor)
+    uint8_t* d_input_buffer_{nullptr};      // Single continuous buffer storing all raw input images
+    uint8_t** d_input_image_ptrs_{nullptr}; // Pointer array pointing to start positions of each image within d_input_buffer_
 };
 
 // Template method implementations (must be in header for templates)

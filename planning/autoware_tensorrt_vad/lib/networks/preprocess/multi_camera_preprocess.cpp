@@ -68,7 +68,7 @@ cudaError_t MultiCameraPreprocessor::preprocess_images(
     // Debug: Log configuration
     logger_->debug("Starting CUDA preprocessing for " + std::to_string(camera_images.size()) + " cameras");
     
-    // Step 0: 入力データを検証
+    // Step 0: Validate input data
     cudaError_t validation_status = validate_input(camera_images);
     if (validation_status != cudaSuccess) {
         logger_->error("Input validation failed with error: " + std::string(cudaGetErrorString(validation_status)));
@@ -78,15 +78,15 @@ cudaError_t MultiCameraPreprocessor::preprocess_images(
     // Debug: Log validation success
     logger_->debug("Input validation passed for " + std::to_string(camera_images.size()) + " cameras");
 
-    // Step 1: ホスト(cv::Mat)から事前に確保したデバイスバッファへ画像データをコピー
+    // Step 1: Copy image data from host (cv::Mat) to pre-allocated device buffer
     const size_t single_input_size = static_cast<size_t>(config_.input_width) * config_.input_height * 3;
     for (int32_t i = 0; i < config_.num_cameras; ++i) {
         const auto& img = camera_images.at(i);
         
-        // 大きな入力バッファ内のコピー先ポインタを計算
+        // Calculate destination pointer within the large input buffer
         uint8_t* d_dst = d_input_buffer_ + i * single_input_size;
         
-        // データを非同期にコピー
+        // Copy data asynchronously
         cudaError_t copy_result = cudaMemcpyAsync(d_dst, img.data, single_input_size, cudaMemcpyHostToDevice, stream);
         if (copy_result != cudaSuccess) {
             logger_->error("cudaMemcpyAsync failed for camera " + std::to_string(i) + ": " + cudaGetErrorString(copy_result));
@@ -96,7 +96,7 @@ cudaError_t MultiCameraPreprocessor::preprocess_images(
     
     logger_->debug("Image data copied to GPU successfully");
 
-    // Step 2: resize + BGR->RGB変換 + 正規化 + 結合を行うカスタムカーネルを起動
+    // Step 2: Launch custom kernel for resize + BGR->RGB conversion + normalization + concatenation
     cudaError_t kernel_result = launch_multi_camera_preprocess_kernel(
         d_input_image_ptrs_,
         d_output_buffer,

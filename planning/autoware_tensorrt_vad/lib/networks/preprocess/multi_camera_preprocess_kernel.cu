@@ -1,16 +1,16 @@
-#include "autoware/tensorrt_vad/networks/preprocess/multi_camera_preprocess_kernel.hpp" // CUDAカーネル用の設定構造体と宣言
+#include "autoware/tensorrt_vad/networks/preprocess/multi_camera_preprocess_kernel.hpp" // Configuration structures and declarations for CUDA kernel
 
 /**
- * @brief bilinear interpolationを用いて画像リサイズを行うデバイス関数
+ * @brief Device function for image resize using bilinear interpolation
  *
- * @param src_img 元画像のピクセルデータ
- * @param src_width 元画像の幅
- * @param src_height 元画像の高さ
- * @param dst_x 出力画像のx座標
- * @param dst_y 出力画像のy座標
- * @param scale_x x方向のスケールファクター (src_width / dst_width)
- * @param scale_y y方向のスケールファクター (src_height / dst_height)
- * @return uint3 リサイズされたピクセル値 (BGR)
+ * @param src_img Source image pixel data (BGR)
+ * @param src_width Source image width
+ * @param src_height Source image height
+ * @param dst_x Output image x-coordinate
+ * @param dst_y Output image y-coordinate
+ * @param scale_x Scale factor in x direction (src_width / dst_width)
+ * @param scale_y Scale factor in y direction (src_height / dst_height)
+ * @return uint3 Resized pixel value (BGR)
  */
 __device__ uint3 bilinear_interpolation_resize(
     uint8_t* src_img, 
@@ -21,25 +21,25 @@ __device__ uint3 bilinear_interpolation_resize(
     float scale_x, 
     float scale_y)
 {
-    // 出力座標を入力座標系にマッピング
+    // Convert output coordinates to input coordinate system
     float src_x = (dst_x + 0.5f) * scale_x - 0.5f;
     float src_y = (dst_y + 0.5f) * scale_y - 0.5f;
     
-    // 境界をクランプ
+    // Clamp boundaries
     src_x = fmaxf(0.0f, fminf(src_x, src_width - 1.0f));
     src_y = fmaxf(0.0f, fminf(src_y, src_height - 1.0f));
     
-    // 4つの近傍ピクセルの座標
+    // Coordinates of four neighboring pixels
     int32_t x0 = static_cast<int32_t>(floorf(src_x));
     int32_t y0 = static_cast<int32_t>(floorf(src_y));
     int32_t x1 = static_cast<int32_t>(fminf(static_cast<float>(x0 + 1), static_cast<float>(src_width - 1)));
     int32_t y1 = static_cast<int32_t>(fminf(static_cast<float>(y0 + 1), static_cast<float>(src_height - 1)));
     
-    // 補間の重み
+    // Interpolation weights
     float dx = src_x - x0;
     float dy = src_y - y0;
     
-    // 4つの近傍ピクセルの値を取得 (BGRフォーマット)
+    // Get values of four neighboring pixels (BGR format)
     int32_t idx_00 = (y0 * src_width + x0) * 3;
     int32_t idx_10 = (y0 * src_width + x1) * 3;
     int32_t idx_01 = (y1 * src_width + x0) * 3;
@@ -47,7 +47,7 @@ __device__ uint3 bilinear_interpolation_resize(
     
     uint3 result;
     
-    // Bチャンネル
+    // B channel
     float b00 = src_img[idx_00 + 0];
     float b10 = src_img[idx_10 + 0];
     float b01 = src_img[idx_01 + 0];
@@ -56,7 +56,7 @@ __device__ uint3 bilinear_interpolation_resize(
         b00 * (1 - dx) * (1 - dy) + b10 * dx * (1 - dy) + 
         b01 * (1 - dx) * dy + b11 * dx * dy);
     
-    // Gチャンネル
+    // G channel
     float g00 = src_img[idx_00 + 1];
     float g10 = src_img[idx_10 + 1];
     float g01 = src_img[idx_01 + 1];
@@ -65,7 +65,7 @@ __device__ uint3 bilinear_interpolation_resize(
         g00 * (1 - dx) * (1 - dy) + g10 * dx * (1 - dy) + 
         g01 * (1 - dx) * dy + g11 * dx * dy);
     
-    // Rチャンネル
+    // R channel
     float r00 = src_img[idx_00 + 2];
     float r10 = src_img[idx_10 + 2];
     float r01 = src_img[idx_01 + 2];
@@ -78,19 +78,19 @@ __device__ uint3 bilinear_interpolation_resize(
 }
 
 /**
- * @brief 複数カメラからの画像を一括で前処理するCUDAカーネル
+ * @brief CUDA kernel for batch preprocessing of images from multiple cameras
  *
- * このカーネルは、カメラごとに1つのブロックグリッド(blockIdx.z)を使用して並列処理を実行します。
- * 各スレッドは出力画像の1ピクセルを担当し、以下の処理を融合して行います。
- * - bilinear interpolationを使ったリサイズ
- * - BGRフォーマットからRGBフォーマットにチャンネルを並べ替える (bgr2rgb)
- * - 各チャンネルを正規化する ((pixel - mean) * inv_std) (normalization)
- * - 最終的な連続した出力バッファに結果を書き込む (CHW planar format)
- * これにより、複数カメラの画像データが1つのテンソルに結合(concatenate)されます。
+ * This kernel uses one block grid (blockIdx.z) per camera to perform parallel processing.
+ * Each thread handles one pixel of the output image, performing the following fused operations:
+ * - Resize using bilinear interpolation
+ * - Rearrange channels from BGR format to RGB format (bgr2rgb)
+ * - Normalize each channel ((pixel - mean) * inv_std) (normalization)
+ * - Finally, write the results to a contiguous output buffer (CHW planar format)
+ * This concatenates image data from multiple cameras into a single tensor.
  *
- * @param d_input_images デバイス上の入力BGR画像(uint8_t*)を指すポインタの配列
- * @param d_output すべての処理結果を格納する単一のデバイス上の出力バッファ(float*)
- * @param config 前処理に必要なパラメータを含む設定構造体
+ * @param d_input_images Array of pointers to device input BGR images (uint8_t*)
+ * @param d_output Single device output buffer (float*) to store all processed results
+ * @param config Configuration structure containing parameters needed for preprocessing
  */
 __global__ void multi_camera_preprocess_kernel(
     uint8_t** d_input_images,
@@ -101,15 +101,15 @@ __global__ void multi_camera_preprocess_kernel(
     const int32_t y = blockIdx.y * blockDim.y + threadIdx.y;
     const int32_t camera_idx = blockIdx.z;
 
-    // グリッド内のスレッドが出力画像の範囲外であれば、何もせずに終了 (境界チェック)
+    // Exit early if thread is outside output image bounds (boundary check)
     if (x >= config.output_width || y >= config.output_height || camera_idx >= config.num_cameras) {
         return;
     }
 
-    // このスレッドが担当するカメラの入力画像へのポインタを取得
+    // Get pointer to input image for the camera this thread is responsible for
     uint8_t* input_img = d_input_images[camera_idx];
     
-    // bilinear interpolationを使ってリサイズ
+    // Resize using bilinear interpolation
     uint3 resized_pixel = bilinear_interpolation_resize(
         input_img, 
         config.input_width, 
@@ -118,35 +118,35 @@ __global__ void multi_camera_preprocess_kernel(
         config.scale_x, 
         config.scale_y);
     
-    // BGRピクセル値をfloat型として取得し、BGR->RGB変換
+    // Get BGR pixel values as float and convert BGR->RGB
     const float b_val = static_cast<float>(resized_pixel.x);
     const float g_val = static_cast<float>(resized_pixel.y);
     const float r_val = static_cast<float>(resized_pixel.z);
 
-    // 正規化 (BGR->RGBの順番で実施)
+    // Normalize (applied in BGR->RGB order)
     const float norm_r = (r_val - config.mean[0]) * config.inverse_std[0];
     const float norm_g = (g_val - config.mean[1]) * config.inverse_std[1];
     const float norm_b = (b_val - config.mean[2]) * config.inverse_std[2];
 
-    // CHW (Planar) フォーマットで出力バッファの対応する位置に書き込む
-    // この書き込み方により、全カメラのデータが連結された一つの大きなテンソルが形成される
+    // Write to corresponding position in output buffer in CHW (Planar) format
+    // This writing approach creates one large tensor with concatenated data from all cameras
     const int32_t single_camera_plane_size = config.output_width * config.output_height;
     const int32_t single_camera_total_size = 3 * single_camera_plane_size;
     const int32_t out_pixel_offset = y * config.output_width + x;
 
     const int32_t out_idx_base = camera_idx * single_camera_total_size;
 
-    d_output[out_idx_base + 0 * single_camera_plane_size + out_pixel_offset] = norm_r; // Rチャンネル
-    d_output[out_idx_base + 1 * single_camera_plane_size + out_pixel_offset] = norm_g; // Gチャンネル
-    d_output[out_idx_base + 2 * single_camera_plane_size + out_pixel_offset] = norm_b; // Bチャンネル
+    d_output[out_idx_base + 0 * single_camera_plane_size + out_pixel_offset] = norm_r; // R channel
+    d_output[out_idx_base + 1 * single_camera_plane_size + out_pixel_offset] = norm_g; // G channel
+    d_output[out_idx_base + 2 * single_camera_plane_size + out_pixel_offset] = norm_b; // B channel
 }
 
 
 /**
- * @brief multi_camera_preprocess_kernelを起動するためのホスト側ラッパー関数
+ * @brief Host-side wrapper function for launching multi_camera_preprocess_kernel
  *
- * CUDAカーネルの実行に必要なグリッドとブロックのディメンションを計算し、
- * カーネルを非同期に起動します。
+ * Calculates grid and block dimensions required for CUDA kernel execution
+ * and launches the kernel asynchronously.
  */
 cudaError_t launch_multi_camera_preprocess_kernel(
     uint8_t** d_input_images,
@@ -154,23 +154,29 @@ cudaError_t launch_multi_camera_preprocess_kernel(
     const MultiCameraPreprocessConfig& config,
     cudaStream_t stream)
 {
-    // 1ブロックあたりのスレッド数を定義 (例: 16x16 = 256スレッド)
+    // Define threads per block (e.g., 16x16 = 256 threads)
     const dim3 threads_per_block(16, 16, 1);
 
-    // 必要なブロック数を計算 (3Dグリッド: 幅, 高さ, カメラ数)
+    // Calculate required number of blocks (3D grid: width, height, number of cameras)
     const dim3 blocks_per_grid(
         (config.output_width + threads_per_block.x - 1) / threads_per_block.x,
         (config.output_height + threads_per_block.y - 1) / threads_per_block.y,
         config.num_cameras);
 
-    // CUDAカーネルを起動
-    // config構造体は値渡しされる。
-    // CUDAカーネルにパラメータを値渡しすると、CUDAランタイムがそのデータをホスト（CPU側）からデバイス（GPU側）の非常に高速な特殊メモリ空間（コンスタントメモリなど）に自動的にコピーされる
-    // 毎回コピーするほうが良い理由1: データが小さい: MultiCameraPreprocessConfig 構造体は、数個の int32_t と float だけで構成されており、サイズは数十バイト程度と非常に小さいです。
-    // 毎回コピーするほうが良い理由2: コピーが高速: CUDAランタイムは、このような小さなデータ（通常は数百バイトまで）のコピーを極めて高速に行うように最適化されています。このコピーにかかる時間は、画像データ全体のコピーやNPPのリサイズ処理、カーネル本体の実行時間と比較すると、無視できるほどわずかです。
+    // Launch CUDA kernel
+    // The config structure is passed by value.
+    // When parameters are passed by value to CUDA kernels, the CUDA runtime automatically 
+    // copies the data from host (CPU) to device (GPU) special high-speed memory space 
+    // (such as constant memory)
+    // Reason 1 for copying each time: Small data size - MultiCameraPreprocessConfig structure 
+    // consists of only a few int32_t and float values, with a total size of just a few dozen bytes.
+    // Reason 2 for copying each time: Fast copy - CUDA runtime is optimized to perform extremely 
+    // fast copies of such small data (typically up to a few hundred bytes). The time required 
+    // for this copy is negligible compared to copying entire image data, NPP resize processing, 
+    // or kernel execution time.
     multi_camera_preprocess_kernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
         d_input_images, d_output, config);
 
-    // カーネル起動に関するエラーをチェックして返す
+    // Check and return errors related to kernel launch
     return cudaGetLastError();
 }

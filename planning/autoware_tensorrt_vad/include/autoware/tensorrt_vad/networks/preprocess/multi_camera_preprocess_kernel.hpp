@@ -6,7 +6,7 @@
 
 /**
  * @struct MultiCameraPreprocessConfig
- * @brief CUDAによる前処理に必要な設定パラメータを保持する構造体
+ * @brief Configuration parameters required for CUDA preprocessing
  */
 struct MultiCameraPreprocessConfig {
     int32_t input_width;
@@ -20,7 +20,7 @@ struct MultiCameraPreprocessConfig {
     float inverse_std[3];
 };
 
-// CUDAカーネルを起動するホスト側ラッパー関数の宣言
+// Declaration of host-side wrapper function to launch CUDA kernel
 cudaError_t launch_multi_camera_preprocess_kernel(
     uint8_t** d_input_images,
     float* d_output,
