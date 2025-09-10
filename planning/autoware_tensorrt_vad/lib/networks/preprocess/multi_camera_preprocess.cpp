@@ -5,6 +5,10 @@
 // Note: Template constructor and logging method implementations are now in the header file
 
 MultiCameraPreprocessor::~MultiCameraPreprocessor() {
+    cleanup_cuda_resources();
+}
+
+void MultiCameraPreprocessor::cleanup_cuda_resources() {
     if (d_input_buffer_) {
         cudaFree(d_input_buffer_);
         d_input_buffer_ = nullptr;

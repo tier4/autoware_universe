@@ -50,6 +50,12 @@ private:
      */
     cudaError_t validate_input(const std::vector<cv::Mat>& camera_images) const;
 
+    /**
+     * @brief Cleanup allocated CUDA memory resources.
+     * Called when allocation fails or in destructor.
+     */
+    void cleanup_cuda_resources();
+
     MultiCameraPreprocessConfig config_;
     std::shared_ptr<autoware::tensorrt_vad::VadLogger> logger_;  // Direct VadLogger pointer
 
@@ -94,30 +100,21 @@ MultiCameraPreprocessor::MultiCameraPreprocessor(const MultiCameraPreprocessConf
     err = cudaMalloc(&d_resized_buffer_, total_resized_size);
     if (err != cudaSuccess) {
         logger_->error("Failed to allocate resized buffer of size " + std::to_string(total_resized_size) + ": " + cudaGetErrorString(err));
-        cudaFree(d_input_buffer_);
-        d_input_buffer_ = nullptr;
+        cleanup_cuda_resources();
         return;
     }
     
     err = cudaMalloc(&d_input_image_ptrs_, config_.num_cameras * sizeof(uint8_t*));
     if (err != cudaSuccess) {
         logger_->error("Failed to allocate input image pointers: " + std::string(cudaGetErrorString(err)));
-        cudaFree(d_input_buffer_);
-        cudaFree(d_resized_buffer_);
-        d_input_buffer_ = nullptr;
-        d_resized_buffer_ = nullptr;
+        cleanup_cuda_resources();
         return;
     }
     
     err = cudaMalloc(&d_resized_image_ptrs_, config_.num_cameras * sizeof(uint8_t*));
     if (err != cudaSuccess) {
         logger_->error("Failed to allocate resized image pointers: " + std::string(cudaGetErrorString(err)));
-        cudaFree(d_input_buffer_);
-        cudaFree(d_resized_buffer_);
-        cudaFree(d_input_image_ptrs_);
-        d_input_buffer_ = nullptr;
-        d_resized_buffer_ = nullptr;
-        d_input_image_ptrs_ = nullptr;
+        cleanup_cuda_resources();
         return;
     }
 
@@ -132,28 +129,14 @@ MultiCameraPreprocessor::MultiCameraPreprocessor(const MultiCameraPreprocessConf
     err = cudaMemcpy(d_input_image_ptrs_, h_input_ptrs.data(), config_.num_cameras * sizeof(uint8_t*), cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
         logger_->error("Failed to copy input image pointers to device: " + std::string(cudaGetErrorString(err)));
-        cudaFree(d_input_buffer_);
-        cudaFree(d_resized_buffer_);
-        cudaFree(d_input_image_ptrs_);
-        cudaFree(d_resized_image_ptrs_);
-        d_input_buffer_ = nullptr;
-        d_resized_buffer_ = nullptr;
-        d_input_image_ptrs_ = nullptr;
-        d_resized_image_ptrs_ = nullptr;
+        cleanup_cuda_resources();
         return;
     }
     
     err = cudaMemcpy(d_resized_image_ptrs_, h_resized_ptrs.data(), config_.num_cameras * sizeof(uint8_t*), cudaMemcpyHostToDevice);
     if (err != cudaSuccess) {
         logger_->error("Failed to copy resized image pointers to device: " + std::string(cudaGetErrorString(err)));
-        cudaFree(d_input_buffer_);
-        cudaFree(d_resized_buffer_);
-        cudaFree(d_input_image_ptrs_);
-        cudaFree(d_resized_image_ptrs_);
-        d_input_buffer_ = nullptr;
-        d_resized_buffer_ = nullptr;
-        d_input_image_ptrs_ = nullptr;
-        d_resized_image_ptrs_ = nullptr;
+        cleanup_cuda_resources();
         return;
     }
     
