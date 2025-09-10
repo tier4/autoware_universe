@@ -4,12 +4,8 @@ project(autoware_tensorrt_vad)
 
 find_package(autoware_cmake REQUIRED)
 
-# Disable strict compilation flags that interfere with CUDA
-set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
-
 autoware_package(
     SKIP_LINT
-    SKIP_BUILD_WARNINGS
 )
 
 # Set C++17 standard to match Autoware Universe
