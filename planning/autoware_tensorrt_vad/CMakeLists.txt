@@ -3,110 +3,80 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_tensorrt_vad)
 
 find_package(autoware_cmake REQUIRED)
-autoware_package(
-    SKIP_LINT
-)
+autoware_package()
 
-# Set C++17 standard to match Autoware Universe
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-endif()
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+add_compile_options(-Wno-deprecated-declarations)
 
-find_package(ament_cmake_auto REQUIRED)
-ament_auto_find_build_dependencies()
+option(CUDA_VERBOSE "Verbose output of CUDA modules" OFF)
 
-# Find additional dependencies for components
-find_package(CUDA REQUIRED)
-find_package(eigen3_cmake_module REQUIRED)
-find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
-
-# TensorRT settings
-option(TRT_ROOT "$ENV{TRT_ROOT}")
-if(TRT_ROOT)
-    set(TENSORRT_INCLUDE_DIRS ${TRT_ROOT}/include/)
-    set(TENSORRT_LIBRARY_DIRS ${TRT_ROOT}/lib/)
+# set flags for CUDA availability
+option(CUDA_AVAIL "CUDA available" OFF)
+find_package(CUDA)
+if(CUDA_FOUND)
+  find_library(CUBLAS_LIBRARIES cublas HINTS
+    ${CUDA_TOOLKIT_ROOT_DIR}/lib64
+    ${CUDA_TOOLKIT_ROOT_DIR}/lib
+  )
+  if(CUDA_VERBOSE)
+    message("CUDA is available!")
+    message("CUDA Libs: ${CUDA_LIBRARIES}")
+    message("CUDA Headers: ${CUDA_INCLUDE_DIRS}")
+  endif()
+  set(CUDA_AVAIL ON)
 else()
-    # Default TensorRT paths
-    set(TENSORRT_INCLUDE_DIRS /usr/include/x86_64-linux-gnu)
-    set(TENSORRT_LIBRARY_DIRS /usr/lib/x86_64-linux-gnu)
+  message("CUDA NOT FOUND")
+  set(CUDA_AVAIL OFF)
 endif()
 
-# Enable CUDA language
-enable_language(CUDA)
+# set flags for TensorRT availability
+option(TRT_AVAIL "TensorRT available" OFF)
+# try to find the tensorRT modules
+find_library(NVINFER nvinfer)
+find_library(NVONNXPARSER nvonnxparser)
+if(NVINFER AND NVONNXPARSER)
+  if(CUDA_VERBOSE)
+    message("TensorRT is available!")
+    message("NVINFER: ${NVINFER}")
+    message("NVONNXPARSER: ${NVONNXPARSER}")
+  endif()
+  set(TRT_AVAIL ON)
+else()
+  message("TensorRT is NOT available")
+  set(TRT_AVAIL OFF)
+endif()
 
-# CUDA settings
-set(CUDA_INCLUDE_DIRS ${CUDA_TOOLKIT_ROOT_DIR}/include)
-set(CUDA_LIBRARY_DIRS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
+if(TRT_AVAIL AND CUDA_AVAIL)
+  find_package(ament_cmake_auto REQUIRED)
+  ament_auto_find_build_dependencies()
 
-# Set CUDA architecture
-set(CMAKE_CUDA_ARCHITECTURES 75 80 86)
-set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
+  # Find additional dependencies
+  find_package(eigen3_cmake_module REQUIRED)
+  find_package(Eigen3 REQUIRED)
+  find_package(OpenCV REQUIRED)
 
-# Include directory settings
-include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib
+  include_directories(
+    include
     ${CUDA_INCLUDE_DIRS}
-    ${TENSORRT_INCLUDE_DIRS}
-    ${OpenCV_INCLUDE_DIRS}
-)
+  )
 
-# Link directory settings
-link_directories(
-    ${CUDA_LIBRARY_DIRS}
-    ${TENSORRT_LIBRARY_DIRS}
-)
+  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS} "-g -G")
+  endif()
 
-# Compile CUDA kernel separately
-set_source_files_properties(
+  # CUDA architecture settings
+  list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_75,code=sm_75")
+  list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_80,code=sm_80")
+  list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_86,code=sm_86")
+
+  cuda_add_library(${PROJECT_NAME}_cuda_lib SHARED
     lib/networks/preprocess/multi_camera_preprocess_kernel.cu
-    PROPERTIES 
-    LANGUAGE CUDA
-    COMPILE_FLAGS "-w"
-)
+  )
 
-# Create separate CUDA library to isolate compilation issues
-add_library(${PROJECT_NAME}_cuda_lib STATIC
-    lib/networks/preprocess/multi_camera_preprocess_kernel.cu
-)
-
-set_target_properties(${PROJECT_NAME}_cuda_lib PROPERTIES
-    CUDA_RESOLVE_DEVICE_SYMBOLS ON
-    POSITION_INDEPENDENT_CODE ON
-    CUDA_RUNTIME_LIBRARY Shared
-    CUDA_STANDARD 17
-    CUDA_STANDARD_REQUIRED ON
-)
-
-target_include_directories(${PROJECT_NAME}_cuda_lib PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib
-    ${CUDA_INCLUDE_DIRS}
-    ${TENSORRT_INCLUDE_DIRS}
-    ${OpenCV_INCLUDE_DIRS}
-)
-
-# Link OpenCV to CUDA library if needed
-target_link_libraries(${PROJECT_NAME}_cuda_lib PRIVATE
+  target_link_libraries(${PROJECT_NAME}_cuda_lib
     ${OpenCV_LIBS}
-)
+  )
 
-# Override all inherited compile options for CUDA library
-set_target_properties(${PROJECT_NAME}_cuda_lib PROPERTIES
-    COMPILE_OPTIONS ""
-    COMPILE_FLAGS ""
-)
-
-# Set minimal CUDA-specific compile options
-target_compile_options(${PROJECT_NAME}_cuda_lib PRIVATE
-    $<$<COMPILE_LANGUAGE:CUDA>:-w>
-)
-
-# Add main library (excluding CUDA files)
-ament_auto_add_library(${PROJECT_NAME}_lib SHARED
+  ament_auto_add_library(${PROJECT_NAME}_lib SHARED
     lib/vad_interface.cpp
     lib/vad_model.cpp
     lib/vad_config.cpp
@@ -125,40 +95,54 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
     lib/networks/head.cpp
     lib/networks/tensor.cpp
     lib/networks/preprocess/multi_camera_preprocess.cpp
-)
+  )
 
-# Set properties for the main library
-set_target_properties(${PROJECT_NAME}_lib PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-)
-
-# Library link settings
-target_link_libraries(${PROJECT_NAME}_lib
-    ${PROJECT_NAME}_cuda_lib
-    nvinfer
+  target_link_libraries(${PROJECT_NAME}_lib
+    ${NVINFER}
+    ${NVONNXPARSER}
     ${CUDA_LIBRARIES}
-    cuda
-    cudart
+    ${CUBLAS_LIBRARIES}
     ${OpenCV_LIBS}
-)
+    ${PROJECT_NAME}_cuda_lib
+  )
 
-# Add component
-ament_auto_add_library(${PROJECT_NAME}_component SHARED
+  target_include_directories(${PROJECT_NAME}_lib
+    SYSTEM PUBLIC
+    ${CUDA_INCLUDE_DIRS}
+  )
+
+  ament_auto_add_library(${PROJECT_NAME}_component SHARED
     src/vad_node.cpp
-)
+  )
 
-target_link_libraries(${PROJECT_NAME}_component
+  target_link_libraries(${PROJECT_NAME}_component
     ${PROJECT_NAME}_lib
-)
+  )
 
-rclcpp_components_register_node(${PROJECT_NAME}_component
+  rclcpp_components_register_node(${PROJECT_NAME}_component
     PLUGIN "autoware::tensorrt_vad::VadNode"
     EXECUTABLE vad_node
-)
+  )
 
-ament_auto_package(
+  install(
+    TARGETS ${PROJECT_NAME}_cuda_lib
+    DESTINATION lib
+  )
+
+  ament_auto_package(
     USE_SCOPED_HEADER_INSTALL_DIR
     INSTALL_TO_SHARE
         launch
         config
-)
+  )
+
+else()
+  find_package(ament_cmake_auto REQUIRED)
+  ament_auto_find_build_dependencies()
+
+  ament_auto_package(
+    INSTALL_TO_SHARE
+        launch
+        config
+  )
+endif()
