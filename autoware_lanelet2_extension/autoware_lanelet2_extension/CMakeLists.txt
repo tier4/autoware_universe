@@ -16,6 +16,7 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   lib/message_conversion.cpp
   lib/mgrs_projector.cpp
   lib/query.cpp
+  lib/roundabout.cpp
   lib/road_marking.cpp
   lib/speed_bump.cpp
   lib/transverse_mercator_projector.cpp
