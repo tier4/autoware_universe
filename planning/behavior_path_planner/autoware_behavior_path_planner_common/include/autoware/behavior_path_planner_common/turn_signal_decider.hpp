@@ -150,15 +150,6 @@ public:
     roundabout_angle_threshold_deg_ = roundabout_angle_threshold_deg;
     roundabout_backward_depth_ = roundabout_backward_depth;
   }
-  void setParameters(
-    const double base_link2front, const double intersection_search_distance,
-    const double turn_signal_search_time, const double intersection_angle_threshold_deg)
-  {
-    base_link2front_ = base_link2front;
-    intersection_search_distance_ = intersection_search_distance;
-    turn_signal_search_time_ = turn_signal_search_time;
-    intersection_angle_threshold_deg_ = intersection_angle_threshold_deg;
-  }
 
   std::pair<bool, bool> getIntersectionTurnSignalFlag();
   std::pair<Pose, double> getIntersectionPoseAndDistance();
