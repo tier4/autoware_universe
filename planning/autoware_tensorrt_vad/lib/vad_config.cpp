@@ -14,6 +14,7 @@
 
 #include "autoware/tensorrt_vad/vad_config.hpp"
 #include "autoware/tensorrt_vad/networks/postprocess/map_postprocess.hpp"
+#include "autoware/tensorrt_vad/networks/postprocess/object_postprocess.hpp"
 
 namespace autoware::tensorrt_vad
 {
@@ -52,6 +53,22 @@ MapPostprocessConfig VadConfig::create_map_postprocess_config() const
   config.detection_range = detection_range;
   config.map_class_names = map_class_names;
   config.map_confidence_thresholds = map_confidence_thresholds;
+  
+  return config;
+}
+
+ObjectPostprocessConfig VadConfig::create_object_postprocess_config() const
+{
+  ObjectPostprocessConfig config;
+  
+  config.prediction_num_queries = prediction_num_queries;
+  config.prediction_num_classes = prediction_num_classes;
+  config.prediction_bbox_pred_dim = prediction_bbox_pred_dim;
+  config.prediction_trajectory_modes = prediction_trajectory_modes;
+  config.prediction_timesteps = prediction_timesteps;
+  config.num_decoder_layers = num_decoder_layers;
+  config.bbox_class_names = bbox_class_names;
+  config.object_confidence_thresholds = object_confidence_thresholds;
   
   return config;
 }

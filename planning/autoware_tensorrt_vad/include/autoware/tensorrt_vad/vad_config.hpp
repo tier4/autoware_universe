@@ -25,6 +25,7 @@
 
 // Forward declarations for postprocessing configs
 struct MapPostprocessConfig;
+struct ObjectPostprocessConfig;
 
 namespace autoware::tensorrt_vad
 {
@@ -78,6 +79,9 @@ struct VadConfig
   
   // Helper method to create MapPostprocessConfig
   MapPostprocessConfig create_map_postprocess_config() const;
+  
+  // Helper method to create ObjectPostprocessConfig
+  ObjectPostprocessConfig create_object_postprocess_config() const;
 };
 
 }  // namespace autoware::tensorrt_vad

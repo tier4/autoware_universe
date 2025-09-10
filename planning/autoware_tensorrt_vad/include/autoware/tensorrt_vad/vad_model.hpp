@@ -37,6 +37,7 @@
 #include "data_types.hpp"
 #include "networks/preprocess/multi_camera_preprocess.hpp"
 #include "networks/postprocess/map_postprocess.hpp"
+#include "networks/postprocess/object_postprocess.hpp"
 
 namespace autoware::tensorrt_vad
 {
@@ -77,27 +78,6 @@ struct VadOutputData
   // Predicted objects
   std::vector<BBox> predicted_objects{};
 };
-
-// Post-processing functions
-
-// Helper functions for trajectory prediction processing
-std::vector<std::vector<float>> postprocess_class_scores(const std::vector<float>& all_cls_scores_flat, const VadConfig& vad_config);
-
-std::vector<std::vector<std::vector<std::vector<float>>>> postprocess_traj_preds(
-    const std::vector<float>& all_traj_preds_flat, const VadConfig& vad_config);
-
-std::vector<std::vector<float>> postprocess_traj_cls_scores(
-    const std::vector<float>& all_traj_cls_scores_flat, const VadConfig& vad_config);
-
-std::vector<std::vector<float>> postprocess_bbox_preds(
-    const std::vector<float>& all_bbox_preds_flat, const VadConfig& vad_config);
-
-std::vector<BBox> postprocess_bboxes(
-    const std::vector<float>& all_cls_scores_flat,
-    const std::vector<float>& all_traj_preds_flat,
-    const std::vector<float>& all_traj_cls_scores_flat,
-    const std::vector<float>& all_bbox_preds_flat,
-    const VadConfig& vad_config);
 
 // Helper function to parse external input configuration
 inline std::pair<std::string, std::string> parse_external_inputs(const std::pair<std::string, std::map<std::string, std::string>>& input_pair) {
@@ -145,6 +125,14 @@ public:
                   ", points_per_polyline=" + std::to_string(map_postprocess_config.map_points_per_polylines));
     map_postprocessor_ = std::make_unique<MapPostprocessor>(map_postprocess_config, logger_);
     logger_->info("MapPostprocessor initialized successfully");
+    
+    // Initialize ObjectPostprocessor
+    ObjectPostprocessConfig object_postprocess_config = vad_config_.create_object_postprocess_config();
+    logger_->info("Creating ObjectPostprocessor with config: queries=" + 
+                  std::to_string(object_postprocess_config.prediction_num_queries) + 
+                  ", classes=" + std::to_string(object_postprocess_config.prediction_num_classes));
+    object_postprocessor_ = std::make_unique<ObjectPostprocessor>(object_postprocess_config, logger_);
+    logger_->info("ObjectPostprocessor initialized successfully");
   }
 
   // Destructor
@@ -208,6 +196,7 @@ private:
   autoware::tensorrt_common::TrtCommonConfig head_trt_config_;
   std::unique_ptr<MultiCameraPreprocessor> preprocessor_;
   std::unique_ptr<MapPostprocessor> map_postprocessor_;
+  std::unique_ptr<ObjectPostprocessor> object_postprocessor_;
 
   std::unordered_map<std::string, std::shared_ptr<Net>> init_engines(
       const std::vector<NetConfig>& nets_config,
@@ -316,14 +305,14 @@ private:
 
   VadOutputData postprocess(const std::string& head_name, int32_t cmd) {
     std::vector<float> ego_fut_preds = nets_[head_name]->bindings["out.ego_fut_preds"]->cpu<float>();
-    std::vector<float> all_traj_preds_flat = nets_[head_name]->bindings["out.all_traj_preds"]->cpu<float>();
-    std::vector<float> all_traj_cls_scores_flat = nets_[head_name]->bindings["out.all_traj_cls_scores"]->cpu<float>();
-    std::vector<float> all_bbox_preds_flat = nets_[head_name]->bindings["out.all_bbox_preds"]->cpu<float>();
-    std::vector<float> all_cls_scores_flat = nets_[head_name]->bindings["out.all_cls_scores"]->cpu<float>();
 
-    // Process detected objects using postprocess_bboxes and apply confidence thresholding
-    auto filtered_bboxes = postprocess_bboxes(
-        all_cls_scores_flat, all_traj_preds_flat, all_traj_cls_scores_flat, all_bbox_preds_flat, vad_config_);
+    // Process detected objects using CUDA postprocessor
+    std::vector<BBox> filtered_bboxes = object_postprocessor_->postprocess_objects(
+        static_cast<const float*>(nets_[head_name]->bindings["out.all_cls_scores"]->ptr),
+        static_cast<const float*>(nets_[head_name]->bindings["out.all_traj_preds"]->ptr),
+        static_cast<const float*>(nets_[head_name]->bindings["out.all_traj_cls_scores"]->ptr),
+        static_cast<const float*>(nets_[head_name]->bindings["out.all_bbox_preds"]->ptr),
+        stream_);
 
     // Process map polylines using CUDA postprocessor
     std::vector<MapPolyline> map_polylines = map_postprocessor_->postprocess_map_preds(
