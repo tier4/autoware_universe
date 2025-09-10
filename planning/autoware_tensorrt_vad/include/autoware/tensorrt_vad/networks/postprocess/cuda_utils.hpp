@@ -49,6 +49,6 @@ namespace autoware::tensorrt_vad::cuda_utils {
             return expf(x);  // Safe range for standard expf()
         }
     }
-}
+} // namespace autoware::tensorrt_vad::cuda_utils
 
 #endif  // AUTOWARE_TENSORRT_VAD_CUDA_UTILS_HPP_
