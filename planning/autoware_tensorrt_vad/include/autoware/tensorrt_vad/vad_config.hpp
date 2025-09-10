@@ -21,6 +21,8 @@
 #include <map>
 #include <array>
 
+#include "networks/preprocess/multi_camera_preprocess.hpp"
+
 namespace autoware::tensorrt_vad
 {
 
@@ -61,6 +63,15 @@ struct VadConfig
   int32_t map_num_classes;
   std::string plugins_path;
   std::vector<NetConfig> nets_config;
+  
+  // Parameters for MultiCameraPreprocessor
+  int32_t input_image_width;
+  int32_t input_image_height;
+  std::array<float, 3> image_normalization_param_mean;
+  std::array<float, 3> image_normalization_param_std;
+  
+  // Helper method to create MultiCameraPreprocessConfig
+  MultiCameraPreprocessConfig create_multi_camera_preprocess_config() const;
 };
 
 }  // namespace autoware::tensorrt_vad

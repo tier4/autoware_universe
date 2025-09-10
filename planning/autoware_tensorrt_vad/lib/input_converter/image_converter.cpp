@@ -33,8 +33,8 @@ std::vector<float> InputImageConverter::normalize_image(
 CameraImagesData InputImageConverter::process_image(
   const std::vector<sensor_msgs::msg::Image::ConstSharedPtr>& images) const
 {
-  std::vector<std::vector<float>> frame_images;
-  frame_images.resize(6); // Initialize in VAD camera order
+  std::vector<cv::Mat> processed_images;
+  processed_images.resize(6); // Initialize in VAD camera order
 
   // Process each camera image
   for (int32_t autoware_idx = 0; autoware_idx < 6; ++autoware_idx) {
@@ -56,39 +56,15 @@ CameraImagesData InputImageConverter::process_image(
       continue;
     }
 
-    // Convert to RGB
-    cv::Mat rgb_img;
-    cv::cvtColor(bgr_img, rgb_img, cv::COLOR_BGR2RGB);
-
-    // Resize if size differs from target
-    if (rgb_img.cols != config_.target_image_width || rgb_img.rows != config_.target_image_height) {
-      cv::resize(rgb_img, rgb_img, cv::Size(config_.target_image_width, config_.target_image_height));
-    }
-
-    // Normalize image
-    std::vector<float> normalized_image_data = normalize_image(rgb_img.data, rgb_img.cols, rgb_img.rows);
+    // Clone the data to ensure memory continuity
+    cv::Mat processed_img = bgr_img.clone();
 
     // Store in VAD camera order
     int32_t vad_idx = config_.autoware_to_vad_camera_mapping.at(autoware_idx);
-    frame_images[vad_idx] = normalized_image_data;
+    processed_images[vad_idx] = processed_img;
   }
 
-  // Concatenate image data
-  std::vector<float> concatenated_data;
-  size_t single_camera_size = 3 * config_.target_image_height * config_.target_image_width;
-  concatenated_data.reserve(single_camera_size * 6);
-
-  // Camera order: {0, 1, 2, 3, 4, 5}
-  for (int32_t camera_idx = 0; camera_idx < 6; ++camera_idx) {
-    const auto& img_data = frame_images[camera_idx];
-    if (img_data.size() != single_camera_size) {
-      RCLCPP_ERROR_THROTTLE(rclcpp::get_logger("autoware_tensorrt_vad"), *rclcpp::Clock::make_shared(), 5000, "Invalid image size: %d", camera_idx);
-      continue;
-    }
-    concatenated_data.insert(concatenated_data.end(), img_data.begin(), img_data.end());
-  }
-
-  return concatenated_data;
+  return processed_images;
 }
 
 } // namespace autoware::tensorrt_vad::vad_interface

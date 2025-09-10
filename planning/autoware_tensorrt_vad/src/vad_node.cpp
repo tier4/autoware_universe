@@ -316,6 +316,20 @@ VadConfig VadNode::load_vad_config()
   
   vad_config.can_bus_dim = this->declare_parameter<int32_t>("model_params.network_io_params.can_bus_dim");
   vad_config.plugins_path = this->declare_parameter<std::string>("model_params.plugins_path");
+  
+  // Load input image parameters from interface_params
+  vad_config.input_image_width = this->declare_parameter<int32_t>("interface_params.input_image_width");
+  vad_config.input_image_height = this->declare_parameter<int32_t>("interface_params.input_image_height");
+  
+  // Load image normalization parameters from interface_params (already declared)
+  auto image_mean = this->get_parameter("interface_params.image_normalization_param_mean").as_double_array();
+  auto image_std = this->get_parameter("interface_params.image_normalization_param_std").as_double_array();
+  for (size_t i = 0; i < 3 && i < image_mean.size(); ++i) {
+    vad_config.image_normalization_param_mean[i] = static_cast<float>(image_mean[i]);
+  }
+  for (size_t i = 0; i < 3 && i < image_std.size(); ++i) {
+    vad_config.image_normalization_param_std[i] = static_cast<float>(image_std[i]);
+  }
 
   // backbone configuration
   NetConfig backbone_config;

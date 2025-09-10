@@ -3,12 +3,13 @@
 
 #include "autoware/tensorrt_vad/converter.hpp"
 #include <sensor_msgs/msg/image.hpp>
+#include <opencv2/core/mat.hpp>
 #include <vector>
 #include <memory>
 
 namespace autoware::tensorrt_vad::vad_interface {
 
-using CameraImagesData = std::vector<float>;
+using CameraImagesData = std::vector<cv::Mat>;
 
 /**
  * @brief InputImageConverter handles camera image data processing and normalization
@@ -31,7 +32,7 @@ public:
   /**
    * @brief Process multiple camera images for VAD model input
    * @param images Vector of ROS Image messages from multiple cameras
-   * @return CameraImagesData Concatenated normalized image data in CHW format
+   * @return CameraImagesData Vector of cv::Mat images processed for VAD model
    */
   CameraImagesData process_image(
     const std::vector<sensor_msgs::msg::Image::ConstSharedPtr>& images) const;
