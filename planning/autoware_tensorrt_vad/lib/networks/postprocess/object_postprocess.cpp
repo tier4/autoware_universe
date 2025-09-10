@@ -162,11 +162,11 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::copy_object_resul
         // Find max classification score and corresponding class
         float max_score = 0.0f;
         int32_t max_class = -1;
-        for (int32_t c = 0; c < config_.prediction_num_classes; ++c) {
-            const float score = h_cls_scores.at(obj * config_.prediction_num_classes + c);
+        for (int32_t class_idx = 0; class_idx < config_.prediction_num_classes; ++class_idx) {
+            const float score = h_cls_scores.at(obj * config_.prediction_num_classes + class_idx);
             if (score > max_score) {
                 max_score = score;
-                max_class = c;
+                max_class = class_idx;
             }
         }
 
