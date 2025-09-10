@@ -31,10 +31,12 @@ namespace autoware::dummy_perception_publisher
 
 static constexpr double epsilon = 0.001;
 static constexpr double step = 0.05;
-static constexpr double vertical_theta_step = (1.0 / 180.0) * M_PI;
+// static constexpr double vertical_theta_step = (1.0 / 180.0) * M_PI;
+static constexpr double vertical_theta_step = (0.1 / 180.0) * M_PI;  // 1.0 → 0.1 (10倍密度)
 static constexpr double vertical_min_theta = (-15.0 / 180.0) * M_PI;
 static constexpr double vertical_max_theta = (15.0 / 180.0) * M_PI;
-static constexpr double horizontal_theta_step = (0.1 / 180.0) * M_PI;
+// static constexpr double horizontal_theta_step = (0.1 / 180.0) * M_PI;
+static constexpr double horizontal_theta_step = (0.01 / 180.0) * M_PI;  // 0.1 → 0.01 (10倍密度)
 static constexpr double horizontal_min_theta = (-180.0 / 180.0) * M_PI;
 static constexpr double horizontal_max_theta = (180.0 / 180.0) * M_PI;
 

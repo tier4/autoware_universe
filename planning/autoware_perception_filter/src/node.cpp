@@ -138,7 +138,7 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     "debug/processing_time_detail", rclcpp::QoS{1});
 
   time_keeper_ =
-    std::make_shared<autoware::universe_utils::TimeKeeper>(processing_time_detail_pub_);
+    std::make_shared<autoware::universe_utils::TimeKeeper>(processing_time_detail_pub_, &std::cerr);
 
   // Initialize published time publisher
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
@@ -151,22 +151,6 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   // Set parameter callback
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&PerceptionFilterNode::onParameter, this, std::placeholders::_1));
-
-  // Log ignored object classes configuration
-  if (!ignore_object_classes_.empty()) {
-    std::string ignored_classes_str = "";
-    for (size_t i = 0; i < ignore_object_classes_.size(); ++i) {
-      if (i > 0) ignored_classes_str += ", ";
-      ignored_classes_str += ignore_object_classes_[i];
-    }
-    RCLCPP_INFO(get_logger(), "Ignoring object classes: %s", ignored_classes_str.c_str());
-  } else {
-    RCLCPP_INFO(
-      get_logger(),
-      "No object classes are ignored (all classes will be filtered if conditions are met)");
-  }
-
-  RCLCPP_DEBUG(get_logger(), "PerceptionFilterNode initialized");
 }
 
 rcl_interfaces::msg::SetParametersResult PerceptionFilterNode::onParameter(

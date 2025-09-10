@@ -310,8 +310,6 @@ double getMinDistanceToPath(
   return min_distance;
 }
 
-// ========== Object Classification Helper Functions ==========
-
 bool shouldIgnoreObject(
   const autoware_perception_msgs::msg::PredictedObject & object,
   const std::vector<std::string> & ignore_object_classes)
