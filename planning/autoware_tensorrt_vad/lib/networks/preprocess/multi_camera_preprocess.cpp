@@ -34,7 +34,7 @@ cudaError_t MultiCameraPreprocessor::validate_input(const std::vector<cv::Mat>& 
     const size_t expected_input_size = static_cast<size_t>(config_.input_width) * config_.input_height * 3;
     
     for (size_t i = 0; i < camera_images.size(); ++i) {
-        const auto& img = camera_images[i];
+        const auto& img = camera_images.at(i);
         
         // Check if image is empty
         if (img.empty()) {
