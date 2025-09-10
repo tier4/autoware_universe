@@ -40,7 +40,9 @@ public:
       const std::vector<cv::Mat>& camera_images,
       float* d_output_buffer,
       cudaStream_t stream
-  );private:
+  );
+  
+private:
     /**
      * @brief Validates input image vector (size, format, etc.).
      * @param camera_images Image vector to validate.
