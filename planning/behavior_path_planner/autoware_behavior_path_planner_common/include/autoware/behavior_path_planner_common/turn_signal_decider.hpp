@@ -125,7 +125,7 @@ public:
     const double turn_signal_search_time, const double intersection_angle_threshold_deg,
     const std::string roundabout_on_entry, const std::string roundabout_on_exit,
     const bool roundabout_entry_indicator_persistence, const double roundabout_search_distance,
-    const double roundabout_angle_threshold_deg)
+    const double roundabout_angle_threshold_deg, const int roundabout_backward_depth)
   {
     base_link2front_ = base_link2front;
     intersection_search_distance_ = intersection_search_distance;
@@ -148,6 +148,7 @@ public:
     roundabout_entry_indicator_persistence_ = roundabout_entry_indicator_persistence;
     roundabout_search_distance_ = roundabout_search_distance;
     roundabout_angle_threshold_deg_ = roundabout_angle_threshold_deg;
+    roundabout_backward_depth_ = roundabout_backward_depth;
   }
   void setParameters(
     const double base_link2front, const double intersection_search_distance,
@@ -360,12 +361,12 @@ private:
 
   double calculateRoundaboutBackwardLength(
     const lanelet::ConstLanelet & current_lanelet, const RouteHandler & route_handler,
-    double default_backward_length);
+    double default_backward_length, int max_backward_depth);
 
   double calculateMaxDistanceToEntry(
     const lanelet::ConstLanelet & start_lanelet,
     const std::shared_ptr<const lanelet::autoware::Roundabout> & roundabout,
-    const RouteHandler & route_handler);
+    const RouteHandler & route_handler, int max_backward_depth);
 
   rclcpp::Logger logger_{
     rclcpp::get_logger("behavior_path_planner").get_child("turn_signal_decider")};
@@ -386,6 +387,7 @@ private:
   bool roundabout_entry_indicator_persistence_{false};
   double roundabout_search_distance_{0.0};
   double roundabout_angle_threshold_deg_{0.0};
+  int roundabout_backward_depth_{0};
 };
 }  // namespace autoware::behavior_path_planner
 

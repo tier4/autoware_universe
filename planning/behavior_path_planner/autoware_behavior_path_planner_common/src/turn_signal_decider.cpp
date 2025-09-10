@@ -95,8 +95,8 @@ TurnIndicatorsCommand TurnSignalDecider::getTurnSignal(
   lanelet::ConstLanelet current_lanelet;
   if (route_handler->getClosestLaneletWithConstrainsWithinRoute(
         current_pose, &current_lanelet, nearest_dist_threshold, nearest_yaw_threshold)) {
-    backward_length =
-      calculateRoundaboutBackwardLength(current_lanelet, *route_handler, backward_length);
+    backward_length = calculateRoundaboutBackwardLength(
+      current_lanelet, *route_handler, backward_length, roundabout_backward_depth_);
   }
 
   // Get current lanelets
@@ -1032,7 +1032,7 @@ std::pair<TurnSignalInfo, bool> TurnSignalDecider::getBehaviorTurnSignalInfo(
 
 double TurnSignalDecider::calculateRoundaboutBackwardLength(
   const lanelet::ConstLanelet & current_lanelet, const RouteHandler & route_handler,
-  double default_backward_length)
+  double default_backward_length, int max_backward_depth)
 {
   const auto roundabouts = current_lanelet.regulatoryElementsAs<lanelet::autoware::Roundabout>();
   double max_backward_length = default_backward_length;
@@ -1044,7 +1044,7 @@ double TurnSignalDecider::calculateRoundaboutBackwardLength(
       roundabout->isExitLanelet(current_lanelet.id())) {
       // Calculate the maximum distance from current lanelet to any entry lanelet
       const double distance_to_entry =
-        calculateMaxDistanceToEntry(current_lanelet, roundabout, route_handler);
+        calculateMaxDistanceToEntry(current_lanelet, roundabout, route_handler, max_backward_depth);
       max_backward_length = std::max(max_backward_length, distance_to_entry);
     }
   }
@@ -1055,17 +1055,18 @@ double TurnSignalDecider::calculateRoundaboutBackwardLength(
 double TurnSignalDecider::calculateMaxDistanceToEntry(
   const lanelet::ConstLanelet & start_lanelet,
   const std::shared_ptr<const lanelet::autoware::Roundabout> & roundabout,
-  const RouteHandler & route_handler)
+  const RouteHandler & route_handler, int max_backward_depth)
 {
   // Structure to hold lanelet and accumulated distance information
   struct SearchNode
   {
     lanelet::ConstLanelet lanelet;
     double accumulated_distance = 0.0;
+    int depth = 0;
   };
 
   std::vector<SearchNode> search_stack;
-  search_stack.push_back({start_lanelet, 0.0});
+  search_stack.push_back({start_lanelet, 0.0, 0});
   std::unordered_set<lanelet::Id> visited_lanelets;
   visited_lanelets.insert(start_lanelet.id());
 
@@ -1078,6 +1079,11 @@ double TurnSignalDecider::calculateMaxDistanceToEntry(
     const double accumulated_distance_with_current_lanelet =
       current_node.accumulated_distance +
       lanelet::geometry::length(lanelet::utils::to2D(current_node.lanelet.centerline3d()));
+
+    // Optional depth guard (skip expanding children when reaching the configured depth)
+    if (max_backward_depth >= 0 && current_node.depth >= max_backward_depth) {
+      continue;
+    }
 
     // Get all previous lanelets within the route
     lanelet::ConstLanelets previous_lanelets;
@@ -1100,7 +1106,8 @@ double TurnSignalDecider::calculateMaxDistanceToEntry(
           continue;  // Already processed this lanelet
         }
         visited_lanelets.insert(prev_lanelet.id());
-        search_stack.push_back({prev_lanelet, accumulated_distance_with_current_lanelet});
+        search_stack.push_back(
+          {prev_lanelet, accumulated_distance_with_current_lanelet, current_node.depth + 1});
       }
     }
   }
