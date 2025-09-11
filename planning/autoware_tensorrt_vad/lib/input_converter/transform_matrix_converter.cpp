@@ -55,10 +55,11 @@ std::vector<float> InputTransformMatrixConverter::matrix_to_flat(const Eigen::Ma
 VadBase2ImgData InputTransformMatrixConverter::process_vad_base2img(
   const std::vector<sensor_msgs::msg::CameraInfo::ConstSharedPtr>& camera_infos) const
 {
-  std::vector<float> frame_vad_base2img(16 * 6, 0.0f); // Reserve space for 6 cameras
+  const int32_t num_cameras = static_cast<int32_t>(config_.autoware_to_vad_camera_mapping.size());
+  std::vector<float> frame_vad_base2img(16 * num_cameras, 0.0f); // Reserve space for cameras
 
   // Process each camera
-  for (int32_t autoware_camera_id = 0; autoware_camera_id < 6; ++autoware_camera_id) {
+  for (int32_t autoware_camera_id = 0; autoware_camera_id < num_cameras; ++autoware_camera_id) {
     if (!camera_infos[autoware_camera_id]) {
       continue;
     }
@@ -90,7 +91,7 @@ VadBase2ImgData InputTransformMatrixConverter::process_vad_base2img(
 
     // Store result at VAD camera ID position after vad_base2img calculation
     int32_t vad_camera_id = config_.autoware_to_vad_camera_mapping.at(autoware_camera_id);
-    if (vad_camera_id >= 0 && vad_camera_id < 6) {
+    if (vad_camera_id >= 0 && vad_camera_id < num_cameras) {
       std::copy(vad_base2img_flat.begin(), vad_base2img_flat.end(),
                 frame_vad_base2img.begin() + vad_camera_id * 16);
     }

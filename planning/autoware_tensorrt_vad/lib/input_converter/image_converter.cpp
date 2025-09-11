@@ -34,10 +34,11 @@ CameraImagesData InputImageConverter::process_image(
   const std::vector<sensor_msgs::msg::Image::ConstSharedPtr>& images) const
 {
   std::vector<cv::Mat> processed_images;
-  processed_images.resize(6); // Initialize in VAD camera order
+  const int32_t num_cameras = static_cast<int32_t>(config_.autoware_to_vad_camera_mapping.size());
+  processed_images.resize(num_cameras); // Initialize in VAD camera order
 
   // Process each camera image
-  for (int32_t autoware_idx = 0; autoware_idx < 6; ++autoware_idx) {
+  for (int32_t autoware_idx = 0; autoware_idx < num_cameras; ++autoware_idx) {
     const auto& image_msg = images[autoware_idx];
 
     // Create cv::Mat from sensor_msgs::msg::Image
