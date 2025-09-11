@@ -57,11 +57,7 @@ namespace autoware::perception_filter
 {
 
 PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_options)
-: Node("perception_filter_node", node_options),
-  vehicle_stop_checker_(this),
-  planning_trajectory_(nullptr),
-  latest_pointcloud_(nullptr),
-  latest_classification_(ObjectClassification{})
+: Node("perception_filter_node", node_options), vehicle_stop_checker_(this)
 {
   // Initialize glog
   if (!google::IsGoogleLoggingInitialized()) {
@@ -85,17 +81,12 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   ignore_object_classes_ =
     getOrDeclareParameter<std::vector<std::string>>(*this, "ignore_object_classes");
   stop_velocity_threshold_ = getOrDeclareParameter<double>(*this, "stop_velocity_threshold");
-
-  // Debug parameters
   processing_rate_ = getOrDeclareParameter<double>(*this, "processing_rate");
 
-  // Initialize polygon-based filtering management
-  filtering_polygon_.is_active = false;
-  filtering_polygon_.start_distance_along_path = 0.0;
-  filtering_polygon_.end_distance_along_path = 0.0;
-
-  // Initialize RTC interface
-  initializeRTCInterface();
+  // Initialize RTC interface for supervised perception filtering
+  rtc_interface_ =
+    std::make_unique<autoware::rtc_interface::RTCInterface>(this, "supervised_perception_filter");
+  rtc_uuid_ = autoware::universe_utils::generateUUID();
 
   // Initialize subscribers
   objects_sub_ = create_subscription<autoware_perception_msgs::msg::PredictedObjects>(
@@ -124,7 +115,6 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   debug_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
     "debug/filtering_markers", rclcpp::QoS{1});
 
-  // Initialize processing time publishers
   objects_processing_time_pub_ =
     create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/objects_processing_time_ms", rclcpp::QoS{1});
@@ -133,22 +123,18 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
     create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pointcloud_processing_time_ms", rclcpp::QoS{1});
 
-  // Initialize processing time detail publisher for TimeKeeper
   processing_time_detail_pub_ = create_publisher<tier4_debug_msgs::msg::ProcessingTimeTree>(
     "debug/processing_time_detail", rclcpp::QoS{1});
 
   time_keeper_ =
     std::make_shared<autoware::universe_utils::TimeKeeper>(processing_time_detail_pub_, &std::cerr);
 
-  // Initialize published time publisher
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 
-  // Initialize timer for processing loop
   debug_timer_ = create_wall_timer(
     std::chrono::duration<double>(1.0 / processing_rate_),
     std::bind(&PerceptionFilterNode::onTimer, this));
 
-  // Set parameter callback
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&PerceptionFilterNode::onParameter, this, std::placeholders::_1));
 }
@@ -179,13 +165,6 @@ rcl_interfaces::msg::SetParametersResult PerceptionFilterNode::onParameter(
   result.reason = "success";
 
   return result;
-}
-
-void PerceptionFilterNode::initializeRTCInterface()
-{
-  rtc_interface_ =
-    std::make_unique<autoware::rtc_interface::RTCInterface>(this, "supervised_perception_filter");
-  rtc_uuid_ = autoware::universe_utils::generateUUID();
 }
 
 /**

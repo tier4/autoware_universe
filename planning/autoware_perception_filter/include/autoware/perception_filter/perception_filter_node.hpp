@@ -114,13 +114,6 @@ private:
    */
   void onTimer();
 
-  // ========== RTC Interface Functions ==========
-
-  /**
-   * @brief Initialize RTC interface
-   */
-  void initializeRTCInterface();
-
   /**
    * @brief Check RTC interface state and detect activation changes
    * @param last_state Reference to the last RTC state variable
@@ -228,28 +221,29 @@ private:
 
   // Vehicle state monitoring
   autoware::motion_utils::VehicleStopChecker vehicle_stop_checker_;
-  bool ego_previously_stopped_{};
+  bool ego_previously_stopped_{false};
 
   // ========== State Variables ==========
 
   // Latest received data
-  autoware_planning_msgs::msg::Trajectory::ConstSharedPtr planning_trajectory_;
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr latest_pointcloud_;
-  autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr latest_objects_;
+  autoware_planning_msgs::msg::Trajectory::ConstSharedPtr planning_trajectory_{nullptr};
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr latest_pointcloud_{nullptr};
+  autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr latest_objects_{nullptr};
 
   // Classification and filtering state
-  ObjectClassification latest_classification_;
+  ObjectClassification latest_classification_{};
   std::vector<FilteredPointInfo> would_be_filtered_points_;
 
   // RTC state management
-  bool last_objects_rtc_state_{};     ///< Previous RTC activation state for object processing
-  bool last_pointcloud_rtc_state_{};  ///< Previous RTC activation state for pointcloud processing
+  bool last_objects_rtc_state_{false};  ///< Previous RTC activation state for object processing
+  bool last_pointcloud_rtc_state_{
+    false};  ///< Previous RTC activation state for pointcloud processing
   std::set<std::array<uint8_t, 16>>
     frozen_filter_object_ids_;  ///< Object IDs frozen at RTC approval time
 
   // Polygon-based filtering management
-  FilteringPolygon filtering_polygon_;  ///< Filtering polygon created at RTC approval
-  bool filtering_polygon_created_{};    ///< Whether the filtering polygon has been created
+  FilteringPolygon filtering_polygon_{};  ///< Filtering polygon created at RTC approval
+  bool filtering_polygon_created_{false};  ///< Whether the filtering polygon has been created
 
   // ========== Configuration Parameters ==========
 
