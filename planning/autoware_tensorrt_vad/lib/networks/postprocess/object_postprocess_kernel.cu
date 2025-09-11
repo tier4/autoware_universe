@@ -31,6 +31,7 @@ __global__ void object_postprocess_kernel(
     float* d_output_trajectories,
     float* d_output_traj_scores,
     int32_t* d_output_valid_flags,
+    int32_t* d_output_max_class_indices,
     ObjectPostprocessConfig config) {
     
     const int32_t obj_idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -83,6 +84,9 @@ __global__ void object_postprocess_kernel(
     }
     
     d_output_valid_flags[obj_idx] = is_valid ? 1 : 0;
+    
+    // Store the max class index for each object
+    d_output_max_class_indices[obj_idx] = max_class_idx;
     
     // Process bbox predictions (apply exp to w, l, h with safety checks)
     for (int32_t i = 0; i < config.prediction_bbox_pred_dim; ++i) {
@@ -163,6 +167,7 @@ cudaError_t launch_object_postprocess_kernel(
     float* d_output_trajectories,
     float* d_output_traj_scores,
     int32_t* d_output_valid_flags,
+    int32_t* d_output_max_class_indices,
     const ObjectPostprocessConfig& config,
     cudaStream_t stream) {
     
@@ -179,6 +184,7 @@ cudaError_t launch_object_postprocess_kernel(
         d_output_trajectories,
         d_output_traj_scores,
         d_output_valid_flags,
+        d_output_max_class_indices,
         config
     );
     

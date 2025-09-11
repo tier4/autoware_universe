@@ -61,6 +61,7 @@ struct ObjectPostprocessConfig {
  * @param d_output_trajectories Device buffer for output trajectories [num_queries, traj_modes, timesteps, 2]
  * @param d_output_traj_scores Device buffer for output trajectory scores [num_queries, traj_modes]
  * @param d_output_valid_flags Device buffer for valid object flags [num_queries]
+ * @param d_output_max_class_indices Device buffer for max class indices [num_queries]
  * @param config Postprocessing configuration parameters
  * @param stream CUDA stream for asynchronous execution
  * @return cudaError_t CUDA error code
@@ -75,6 +76,7 @@ cudaError_t launch_object_postprocess_kernel(
     float* d_output_trajectories,
     float* d_output_traj_scores,
     int32_t* d_output_valid_flags,
+    int32_t* d_output_max_class_indices,
     const ObjectPostprocessConfig& config,
     cudaStream_t stream);
 

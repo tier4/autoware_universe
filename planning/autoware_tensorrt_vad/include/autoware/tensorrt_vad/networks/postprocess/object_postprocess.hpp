@@ -82,6 +82,7 @@ private:
     float* d_obj_trajectories_{nullptr};        // [num_queries, traj_modes, timesteps, 2]
     float* d_obj_traj_scores_{nullptr};         // [num_queries, traj_modes]
     int32_t* d_obj_valid_flags_{nullptr};       // [num_queries]
+    int32_t* d_obj_max_class_indices_{nullptr}; // [num_queries] - max class index for each object
 };
 
 // Template method implementations (must be in header for templates)
@@ -138,6 +139,15 @@ ObjectPostprocessor::ObjectPostprocessor(const ObjectPostprocessConfig& config, 
     err = cudaMalloc(&d_obj_valid_flags_, valid_flags_size);
     if (err != cudaSuccess) {
         logger_->error("Failed to allocate object valid flags buffer: " + std::string(cudaGetErrorString(err)));
+        cleanup_cuda_resources();
+        return;
+    }
+    
+    // Allocate max class indices buffer
+    const size_t max_class_indices_size = static_cast<size_t>(config_.prediction_num_queries) * sizeof(int32_t);
+    err = cudaMalloc(&d_obj_max_class_indices_, max_class_indices_size);
+    if (err != cudaSuccess) {
+        logger_->error("Failed to allocate object max class indices buffer: " + std::string(cudaGetErrorString(err)));
         cleanup_cuda_resources();
         return;
     }

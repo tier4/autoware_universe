@@ -32,6 +32,10 @@ void ObjectPostprocessor::cleanup_cuda_resources() {
         cudaFree(d_obj_valid_flags_);
         d_obj_valid_flags_ = nullptr;
     }
+    if (d_obj_max_class_indices_) {
+        cudaFree(d_obj_max_class_indices_);
+        d_obj_max_class_indices_ = nullptr;
+    }
 }
 
 std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::postprocess_objects(
@@ -54,6 +58,7 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::postprocess_objec
         d_obj_trajectories_,
         d_obj_traj_scores_,
         d_obj_valid_flags_,
+        d_obj_max_class_indices_,
         config_,
         stream
     );
@@ -72,6 +77,7 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::postprocess_objec
         d_obj_trajectories_,
         d_obj_traj_scores_,
         d_obj_valid_flags_,
+        d_obj_max_class_indices_,
         stream
     );
 }
@@ -82,6 +88,7 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::copy_object_resul
     const float* d_trajectories,
     const float* d_traj_scores,
     const int32_t* d_valid_flags,
+    const int32_t* d_max_class_indices,
     cudaStream_t stream)
 {
     logger_->debug("Copying object results from GPU to host");
@@ -99,6 +106,7 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::copy_object_resul
     std::vector<float> h_trajectories(trajectories_size);
     std::vector<float> h_traj_scores(traj_scores_size);
     std::vector<int32_t> h_valid_flags(valid_flags_size);
+    std::vector<int32_t> h_max_class_indices(valid_flags_size);
 
     // Copy data from device to host
     cudaError_t copy_result;
@@ -133,6 +141,12 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::copy_object_resul
         return {};
     }
 
+    copy_result = cudaMemcpyAsync(h_max_class_indices.data(), d_max_class_indices, valid_flags_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream);
+    if (copy_result != cudaSuccess) {
+        logger_->error("Failed to copy max_class_indices from device: " + std::string(cudaGetErrorString(copy_result)));
+        return {};
+    }
+
     // Synchronize stream
     cudaError_t sync_result = cudaStreamSynchronize(stream);
     if (sync_result != cudaSuccess) {
@@ -159,15 +173,13 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::copy_object_resul
             bbox.bbox.at(i) = h_bbox_preds.at(obj * config_.prediction_bbox_pred_dim + i);
         }
 
-        // Find max classification score and corresponding class
+        // Get max class index directly from kernel output (no need for CPU-side max finding)
+        const int32_t max_class = h_max_class_indices.at(obj);
+        
+        // Get confidence score for the max class
         float max_score = 0.0f;
-        int32_t max_class = -1;
-        for (int32_t class_idx = 0; class_idx < config_.prediction_num_classes; ++class_idx) {
-            const float score = h_cls_scores.at(obj * config_.prediction_num_classes + class_idx);
-            if (score > max_score) {
-                max_score = score;
-                max_class = class_idx;
-            }
+        if (max_class >= 0 && max_class < config_.prediction_num_classes) {
+            max_score = h_cls_scores.at(obj * config_.prediction_num_classes + max_class);
         }
 
         bbox.confidence = max_score;
