@@ -69,11 +69,7 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
       declare_parameter<int32_t>("interface_params.target_image_width"),
       declare_parameter<int32_t>("interface_params.target_image_height"),
       declare_parameter<std::vector<double>>("interface_params.detection_range"),
-      declare_parameter<int32_t>("interface_params.bev_h"),
-      declare_parameter<int32_t>("interface_params.bev_w"),
       declare_parameter<int32_t>("model_params.default_command"),
-      declare_parameter<std::vector<double>>("interface_params.image_normalization_param_mean"),
-      declare_parameter<std::vector<double>>("interface_params.image_normalization_param_std"),
       declare_parameter<std::vector<double>>("interface_params.vad2base"),
       declare_parameter<std::vector<int64_t>>("interface_params.autoware_to_vad_camera_mapping"),
       declare_parameter<std::vector<std::string>>("model_params.map_class_names"),
@@ -261,12 +257,12 @@ void VadNode::initialize_vad_model()
 VadConfig VadNode::load_vad_config()
 {
   VadConfig vad_config;
-  vad_config.num_cameras = this->declare_parameter<int32_t>("model_params.network_io_params.num_cameras");
+  vad_config.num_cameras = this->get_parameter("node_params.num_cameras").as_int();
   vad_config.bev_h = this->declare_parameter<int32_t>("model_params.network_io_params.bev_h");
   vad_config.bev_w = this->declare_parameter<int32_t>("model_params.network_io_params.bev_w");
   vad_config.bev_feature_dim = this->declare_parameter<int32_t>("model_params.network_io_params.bev_feature_dim");
-  vad_config.target_image_width = this->declare_parameter<int32_t>("model_params.network_io_params.target_image_width");
-  vad_config.target_image_height = this->declare_parameter<int32_t>("model_params.network_io_params.target_image_height");
+  vad_config.target_image_width = this->get_parameter("interface_params.target_image_width").as_int();
+  vad_config.target_image_height = this->get_parameter("interface_params.target_image_height").as_int();
   vad_config.downsample_factor = this->declare_parameter<int32_t>("model_params.network_io_params.downsample_factor");
   vad_config.num_decoder_layers = this->declare_parameter<int32_t>("model_params.network_io_params.num_decoder_layers");
   vad_config.prediction_num_queries = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_num_queries");
@@ -321,9 +317,9 @@ VadConfig VadNode::load_vad_config()
   vad_config.input_image_width = this->declare_parameter<int32_t>("interface_params.input_image_width");
   vad_config.input_image_height = this->declare_parameter<int32_t>("interface_params.input_image_height");
   
-  // Load image normalization parameters from interface_params (already declared)
-  auto image_mean = this->get_parameter("interface_params.image_normalization_param_mean").as_double_array();
-  auto image_std = this->get_parameter("interface_params.image_normalization_param_std").as_double_array();
+  // Load image normalization parameters from model_params
+  auto image_mean = this->declare_parameter<std::vector<double>>("model_params.image_normalization_param_mean");
+  auto image_std = this->declare_parameter<std::vector<double>>("model_params.image_normalization_param_std");
   for (size_t i = 0; i < 3 && i < image_mean.size(); ++i) {
     vad_config.image_normalization_param_mean[i] = static_cast<float>(image_mean[i]);
   }

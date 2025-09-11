@@ -9,27 +9,6 @@ InputImageConverter::InputImageConverter(const CoordinateTransformer& coordinate
 {
 }
 
-std::vector<float> InputImageConverter::normalize_image(
-  unsigned char* image_data, int32_t width, int32_t height) const
-{
-  std::vector<float> normalized_image_data(width * height * 3);
-  
-  // Process in BGR order
-  for (int32_t c = 0; c < 3; ++c) {
-    for (int32_t h = 0; h < height; ++h) {
-      for (int32_t w = 0; w < width; ++w) {
-        int32_t src_idx = (h * width + w) * 3 + (2 - c); // BGR -> RGB
-        int32_t dst_idx = c * height * width + h * width + w; // CHW format
-        float pixel_value = static_cast<float>(image_data[src_idx]);
-        normalized_image_data[dst_idx] = (pixel_value - config_.image_normalization_param_mean[c]) / 
-                                        config_.image_normalization_param_std[c];
-      }
-    }
-  }
-  
-  return normalized_image_data;
-}
-
 CameraImagesData InputImageConverter::process_image(
   const std::vector<sensor_msgs::msg::Image::ConstSharedPtr>& images) const
 {

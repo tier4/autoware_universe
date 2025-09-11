@@ -18,11 +18,7 @@ public:
   int32_t target_image_width;
   int32_t target_image_height;
   std::array<float, 6> detection_range;
-  int32_t bev_h;
-  int32_t bev_w;
   int32_t default_command;
-  std::array<float, 3> image_normalization_param_mean;
-  std::array<float, 3> image_normalization_param_std;
   Eigen::Matrix4f vad2base;
   Eigen::Matrix4f base2vad;
   std::unordered_map<int32_t, int32_t> autoware_to_vad_camera_mapping;
@@ -34,10 +30,7 @@ public:
   VadInterfaceConfig(
     int32_t target_image_width_, int32_t target_image_height_,
     const std::vector<double>& detection_range_,
-    int32_t bev_h_, int32_t bev_w_,
     int32_t default_command_,
-    const std::vector<double>& image_normalization_param_mean_,
-    const std::vector<double>& image_normalization_param_std_,
     const std::vector<double>& vad2base_,
     const std::vector<int64_t>& autoware_to_vad_camera_mapping_,
     const std::vector<std::string>& map_classes_,
@@ -46,8 +39,6 @@ public:
     const std::vector<std::string>& bbox_class_names_)
     : target_image_width(target_image_width_),
       target_image_height(target_image_height_),
-      bev_h(bev_h_),
-      bev_w(bev_w_),
       default_command(default_command_),
       class_mapping(class_mapping_),
       bbox_class_names(bbox_class_names_)
@@ -55,11 +46,6 @@ public:
     // detection_range: 6 elements
     for (int i = 0; i < 6; ++i) {
       detection_range[i] = static_cast<float>(detection_range_[i]);
-    }
-    // normalization mean/std: 3 elements
-    for (int i = 0; i < 3; ++i) {
-      image_normalization_param_mean[i] = static_cast<float>(image_normalization_param_mean_[i]);
-      image_normalization_param_std[i] = static_cast<float>(image_normalization_param_std_[i]);
     }
     // vad2base: 16 elements, row-major
     vad2base = Eigen::Matrix4f::Identity();
