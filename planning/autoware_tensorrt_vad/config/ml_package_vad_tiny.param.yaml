@@ -58,8 +58,6 @@
         bev_feature_dim: 256              # Feature dimension
         
         # Image processing related parameters
-        target_image_width: 640           # Target image width
-        target_image_height: 384          # Target image height
         downsample_factor: 32             # Downsampling factor for image features
         
         num_decoder_layers: 3             # Number of Transformer decoder layers

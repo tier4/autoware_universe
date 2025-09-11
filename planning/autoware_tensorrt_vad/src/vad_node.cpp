@@ -261,8 +261,8 @@ VadConfig VadNode::load_vad_config()
   vad_config.bev_h = this->declare_parameter<int32_t>("model_params.network_io_params.bev_h");
   vad_config.bev_w = this->declare_parameter<int32_t>("model_params.network_io_params.bev_w");
   vad_config.bev_feature_dim = this->declare_parameter<int32_t>("model_params.network_io_params.bev_feature_dim");
-  vad_config.target_image_width = this->declare_parameter<int32_t>("model_params.network_io_params.target_image_width");
-  vad_config.target_image_height = this->declare_parameter<int32_t>("model_params.network_io_params.target_image_height");
+  vad_config.target_image_width = this->get_parameter("interface_params.target_image_width").as_int();
+  vad_config.target_image_height = this->get_parameter("interface_params.target_image_height").as_int();
   vad_config.downsample_factor = this->declare_parameter<int32_t>("model_params.network_io_params.downsample_factor");
   vad_config.num_decoder_layers = this->declare_parameter<int32_t>("model_params.network_io_params.num_decoder_layers");
   vad_config.prediction_num_queries = this->declare_parameter<int32_t>("model_params.network_io_params.prediction_num_queries");
