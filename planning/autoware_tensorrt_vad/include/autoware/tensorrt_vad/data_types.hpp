@@ -50,7 +50,7 @@ struct MapPolyline {
 struct BBox {
     std::array<float, 10> bbox;                      // [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
     float confidence;                                // Object confidence
-    int32_t object_class;                           // Object class (0-9)
+    int32_t object_class;                           // Object class
     std::vector<PredictedTrajectory> trajectories;   // Dynamic number of predicted trajectories
     
     // Default constructor
