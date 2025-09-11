@@ -20,6 +20,7 @@
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <boost/geometry.hpp>
@@ -30,6 +31,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -382,6 +384,17 @@ uint8_t stringToLabel(const std::string & label_string)
   if (label_string == "BICYCLE") return ObjectClassification::BICYCLE;
   if (label_string == "PEDESTRIAN") return ObjectClassification::PEDESTRIAN;
   return ObjectClassification::UNKNOWN;
+}
+
+std::optional<geometry_msgs::msg::Pose> getEgoPose(
+  autoware::universe_utils::TransformListener & transform_listener)
+{
+  const auto tf = transform_listener.getLatestTransform("map", "base_link");
+  if (!tf) {
+    return std::optional<geometry_msgs::msg::Pose>{};
+  }
+  return std::optional<geometry_msgs::msg::Pose>{
+    autoware::universe_utils::transform2pose(*tf).pose};
 }
 
 }  // namespace autoware::perception_filter

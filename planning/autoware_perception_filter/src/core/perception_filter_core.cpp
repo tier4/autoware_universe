@@ -18,6 +18,7 @@
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
+#include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -239,7 +240,8 @@ PointCloudProcessingResult processPointCloudCommon(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud,
   const autoware::universe_utils::Polygon2d & filtering_polygon,
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-  const tf2_ros::Buffer & tf_buffer, autoware::universe_utils::TimeKeeper & time_keeper)
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener,
+  autoware::universe_utils::TimeKeeper & time_keeper)
 {
   PointCloudProcessingResult result;
 
@@ -252,14 +254,13 @@ PointCloudProcessingResult processPointCloudCommon(
   pcl::PointCloud<pcl::PointXYZ>::Ptr polygon_points(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(input_pointcloud, *input_cloud);
 
-  geometry_msgs::msg::TransformStamped transform;
-  try {
-    transform = tf_buffer.lookupTransform(
-      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-  } catch (const tf2::TransformException & ex) {
+  const auto transform_opt = transform_listener->getTransform(
+    "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+  if (!transform_opt) {
     // Return failure result if transform lookup fails
     return result;
   }
+  const auto transform = *transform_opt;
 
   // Transform the pointcloud to the map frame
   const auto eigen_transform = tf2::transformToEigen(transform.transform).cast<float>();

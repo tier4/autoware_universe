@@ -14,6 +14,8 @@
 
 #include "autoware/perception_filter/perception_filter_node.hpp"
 
+#include "autoware/perception_filter/perception_filter_utils.hpp"
+
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
@@ -167,6 +169,25 @@ rcl_interfaces::msg::SetParametersResult PerceptionFilterNode::onParameter(
   return result;
 }
 
+void PerceptionFilterNode::publishPassthroughObjects(
+  const autoware_perception_msgs::msg::PredictedObjects & msg,
+  const std::chrono::high_resolution_clock::time_point & start_time)
+{
+  // Publish input objects as-is
+  filtered_objects_pub_->publish(msg);
+  published_time_publisher_->publish_if_subscribed(filtered_objects_pub_, msg.header.stamp);
+
+  // Publish processing time even when data is not ready
+  const auto processing_time = std::chrono::duration<double, std::milli>(
+                                 std::chrono::high_resolution_clock::now() - start_time)
+                                 .count();
+
+  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
+  processing_time_msg.stamp = this->now();
+  processing_time_msg.data = processing_time;
+  objects_processing_time_pub_->publish(processing_time_msg);
+}
+
 bool PerceptionFilterNode::checkRTCStateChange(bool & last_state)
 {
   const bool rtc_is_activated =
@@ -218,20 +239,18 @@ void PerceptionFilterNode::onObjects(
   const auto start_time = std::chrono::high_resolution_clock::now();
   latest_objects_ = msg;
 
-  if (!isDataReadyForObjects() || !enable_object_filtering_) {
-    // If data is not ready, publish input objects as-is
-    filtered_objects_pub_->publish(*msg);
-    published_time_publisher_->publish_if_subscribed(filtered_objects_pub_, msg->header.stamp);
+  // Early validation and publish passthrough if conditions not met
+  if (!enable_object_filtering_ || !isDataReadyForObjects()) {
+    publishPassthroughObjects(*msg, start_time);
+    return;
+  }
 
-    // Publish processing time even when data is not ready
-    const auto processing_time = std::chrono::duration<double, std::milli>(
-                                   std::chrono::high_resolution_clock::now() - start_time)
-                                   .count();
+  // Get ego pose (only if filtering is enabled and data is ready)
+  const auto ego_pose = autoware::perception_filter::getEgoPose(*transform_listener_);
 
-    autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-    processing_time_msg.stamp = this->now();
-    processing_time_msg.data = processing_time;
-    objects_processing_time_pub_->publish(processing_time_msg);
+  if (!ego_pose) {
+    RCLCPP_DEBUG(get_logger(), "Ego pose not available for object classification");
+    publishPassthroughObjects(*msg, start_time);
     return;
   }
 
@@ -248,25 +267,6 @@ void PerceptionFilterNode::onObjects(
         frozen_filter_object_ids_.insert(uuid_array);
       }
     }
-  }
-
-  // Get ego pose
-  const auto ego_pose = [this]() {
-    autoware::universe_utils::ScopedTimeTrack st_ego("get_ego_pose", *time_keeper_);
-    const auto tf = transform_listener_->getLatestTransform("map", "base_link");
-    if (!tf) {
-      return std::optional<geometry_msgs::msg::Pose>{};
-    }
-    return std::optional<geometry_msgs::msg::Pose>{
-      autoware::universe_utils::transform2pose(*tf).pose};
-  }();
-
-  if (!ego_pose) {
-    RCLCPP_DEBUG(get_logger(), "Ego pose not available for object classification");
-    // If ego pose is not available, publish input objects as-is
-    filtered_objects_pub_->publish(*msg);
-    published_time_publisher_->publish_if_subscribed(filtered_objects_pub_, msg->header.stamp);
-    return;
   }
 
   // Classify objects
@@ -410,11 +410,11 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   }
 
   // Use common processing function
-  auto processing_result = [this, &input_pointcloud, &filtering_polygon, &planning_trajectory]() {
+  const auto processing_result = [this, &input_pointcloud, &filtering_polygon, &planning_trajectory]() {
     autoware::universe_utils::ScopedTimeTrack st_process(
       "process_pointcloud_common", *time_keeper_);
     return processPointCloudCommon(
-      input_pointcloud, filtering_polygon.polygon, planning_trajectory, *tf_buffer_, *time_keeper_);
+      input_pointcloud, filtering_polygon.polygon, planning_trajectory, transform_listener_, *time_keeper_);
   }();
   if (!processing_result.success) {
     return input_pointcloud;
@@ -464,18 +464,18 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 
     if (!filtered_cloud->points.empty()) {
       // TF lookup for inverse transform
-      geometry_msgs::msg::TransformStamped transform;
-      {
+      const auto transform_opt = [this]() {
         autoware::universe_utils::ScopedTimeTrack st_tf_lookup("tf_lookup_inverse", *time_keeper_);
-        try {
-          transform = tf_buffer_->lookupTransform(
-            "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-        } catch (const tf2::TransformException & ex) {
-          RCLCPP_WARN(
-            get_logger(), "Failed to get transform for inverse transformation: %s", ex.what());
-          return final_filtered_cloud;
-        }
+        return transform_listener_->getLatestTransform("map", "base_link");
+      }();
+
+      if (!transform_opt) {
+        RCLCPP_WARN(
+          get_logger(), "Failed to get transform for inverse transformation");
+        return final_filtered_cloud;
       }
+
+      const auto transform = *transform_opt;
 
       // Apply inverse transformation
       {
@@ -540,11 +540,11 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
   }();
 
   // Use common processing function
-  auto processing_result = [this, &input_pointcloud, &filtering_polygon]() {
+  const auto processing_result = [this, &input_pointcloud, &filtering_polygon]() {
     autoware::universe_utils::ScopedTimeTrack st_process(
       "process_pointcloud_common_classify", *time_keeper_);
     return processPointCloudCommon(
-      input_pointcloud, filtering_polygon, planning_trajectory_, *tf_buffer_, *time_keeper_);
+      input_pointcloud, filtering_polygon, planning_trajectory_, transform_listener_, *time_keeper_);
   }();
   if (!processing_result.success) {
     return would_be_filtered_points;

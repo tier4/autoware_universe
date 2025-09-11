@@ -16,6 +16,7 @@
 #define AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_CORE_HPP_
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
+#include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <autoware/universe_utils/system/time_keeper.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -151,7 +152,8 @@ PointCloudProcessingResult processPointCloudCommon(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud,
   const autoware::universe_utils::Polygon2d & filtering_polygon,
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-  const tf2_ros::Buffer & tf_buffer, autoware::universe_utils::TimeKeeper & time_keeper);
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener,
+  autoware::universe_utils::TimeKeeper & time_keeper);
 
 }  // namespace autoware::perception_filter
 

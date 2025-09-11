@@ -134,6 +134,15 @@ private:
    */
   void updateRTCStatus();
 
+  /**
+   * @brief Publish passthrough objects with processing time measurement
+   * @param msg Objects message to publish
+   * @param start_time Start time for processing time calculation
+   */
+  void publishPassthroughObjects(
+    const autoware_perception_msgs::msg::PredictedObjects & msg,
+    const std::chrono::high_resolution_clock::time_point & start_time);
+
   // ========== Polygon-based Filtering Functions ==========
 
   /**
