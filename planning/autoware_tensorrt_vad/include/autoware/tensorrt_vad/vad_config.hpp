@@ -22,6 +22,8 @@
 #include <array>
 
 #include "networks/preprocess/multi_camera_preprocess.hpp"
+#include "networks/postprocess/map_postprocess_kernel.hpp"
+#include "networks/postprocess/object_postprocess_kernel.hpp"
 
 namespace autoware::tensorrt_vad
 {
@@ -72,6 +74,12 @@ struct VadConfig
   
   // Helper method to create MultiCameraPreprocessConfig
   MultiCameraPreprocessConfig create_multi_camera_preprocess_config() const;
+  
+  // Helper method to create MapPostprocessConfig
+  MapPostprocessConfig create_map_postprocess_config() const;
+  
+  // Helper method to create ObjectPostprocessConfig
+  ObjectPostprocessConfig create_object_postprocess_config() const;
 };
 
 }  // namespace autoware::tensorrt_vad

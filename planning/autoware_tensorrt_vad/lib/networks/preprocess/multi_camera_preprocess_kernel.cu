@@ -1,5 +1,7 @@
 #include "autoware/tensorrt_vad/networks/preprocess/multi_camera_preprocess_kernel.hpp" // Configuration structures and declarations for CUDA kernel
 
+namespace autoware::tensorrt_vad {
+
 /**
  * @brief Optimized device function for bilinear interpolation (forceinlined for performance)
  *
@@ -218,3 +220,5 @@ cudaError_t launch_multi_camera_normalize_kernel(
     // Check and return errors related to kernel launch
     return cudaGetLastError();
 }
+
+}  // namespace autoware::tensorrt_vad

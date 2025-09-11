@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "autoware/tensorrt_vad/vad_config.hpp"
+#include "autoware/tensorrt_vad/networks/postprocess/map_postprocess.hpp"
+#include "autoware/tensorrt_vad/networks/postprocess/object_postprocess.hpp"
 
 namespace autoware::tensorrt_vad
 {
@@ -36,6 +38,37 @@ MultiCameraPreprocessConfig VadConfig::create_multi_camera_preprocess_config() c
     config.mean[i] = image_normalization_param_mean[i];
     config.inverse_std[i] = 1.0f / image_normalization_param_std[i];
   }
+  
+  return config;
+}
+
+MapPostprocessConfig VadConfig::create_map_postprocess_config() const
+{
+  MapPostprocessConfig config;
+  
+  config.map_num_queries = map_num_queries;
+  config.map_num_classes = map_num_classes;
+  config.map_points_per_polylines = map_points_per_polylines;
+  config.num_decoder_layers = num_decoder_layers;
+  config.detection_range = detection_range;
+  config.map_class_names = map_class_names;
+  config.map_confidence_thresholds = map_confidence_thresholds;
+  
+  return config;
+}
+
+ObjectPostprocessConfig VadConfig::create_object_postprocess_config() const
+{
+  ObjectPostprocessConfig config;
+  
+  config.prediction_num_queries = prediction_num_queries;
+  config.prediction_num_classes = prediction_num_classes;
+  config.prediction_bbox_pred_dim = prediction_bbox_pred_dim;
+  config.prediction_trajectory_modes = prediction_trajectory_modes;
+  config.prediction_timesteps = prediction_timesteps;
+  config.num_decoder_layers = num_decoder_layers;
+  config.bbox_class_names = bbox_class_names;
+  config.object_confidence_thresholds = object_confidence_thresholds;
   
   return config;
 }

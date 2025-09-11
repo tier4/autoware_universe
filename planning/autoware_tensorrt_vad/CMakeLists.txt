@@ -70,6 +70,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
 
   cuda_add_library(${PROJECT_NAME}_cuda_lib SHARED
     lib/networks/preprocess/multi_camera_preprocess_kernel.cu
+    lib/networks/postprocess/map_postprocess_kernel.cu
+    lib/networks/postprocess/object_postprocess_kernel.cu
   )
 
   target_link_libraries(${PROJECT_NAME}_cuda_lib
@@ -78,7 +80,6 @@ if(TRT_AVAIL AND CUDA_AVAIL)
 
   ament_auto_add_library(${PROJECT_NAME}_lib SHARED
     lib/vad_interface.cpp
-    lib/vad_model.cpp
     lib/vad_config.cpp
     lib/synchronization_strategy.cpp
     lib/coordinate_transformer.cpp
@@ -95,6 +96,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     lib/networks/head.cpp
     lib/networks/tensor.cpp
     lib/networks/preprocess/multi_camera_preprocess.cpp
+    lib/networks/postprocess/map_postprocess.cpp
+    lib/networks/postprocess/object_postprocess.cpp
   )
 
   target_link_libraries(${PROJECT_NAME}_lib
