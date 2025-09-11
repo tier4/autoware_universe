@@ -37,15 +37,6 @@ public:
   CameraImagesData process_image(
     const std::vector<sensor_msgs::msg::Image::ConstSharedPtr>& images) const;
 
-private:
-  /**
-   * @brief Normalize single image data using configuration parameters
-   * @param image_data Raw image data (RGB format)
-   * @param width Image width
-   * @param height Image height
-   * @return std::vector<float> Normalized image data in CHW format
-   */
-  std::vector<float> normalize_image(unsigned char* image_data, int32_t width, int32_t height) const;
 };
 
 } // namespace autoware::tensorrt_vad::vad_interface

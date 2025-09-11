@@ -70,8 +70,6 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
       declare_parameter<int32_t>("interface_params.target_image_height"),
       declare_parameter<std::vector<double>>("interface_params.detection_range"),
       declare_parameter<int32_t>("model_params.default_command"),
-      declare_parameter<std::vector<double>>("interface_params.image_normalization_param_mean"),
-      declare_parameter<std::vector<double>>("interface_params.image_normalization_param_std"),
       declare_parameter<std::vector<double>>("interface_params.vad2base"),
       declare_parameter<std::vector<int64_t>>("interface_params.autoware_to_vad_camera_mapping"),
       declare_parameter<std::vector<std::string>>("model_params.map_class_names"),
@@ -319,9 +317,9 @@ VadConfig VadNode::load_vad_config()
   vad_config.input_image_width = this->declare_parameter<int32_t>("interface_params.input_image_width");
   vad_config.input_image_height = this->declare_parameter<int32_t>("interface_params.input_image_height");
   
-  // Load image normalization parameters from interface_params (already declared)
-  auto image_mean = this->get_parameter("interface_params.image_normalization_param_mean").as_double_array();
-  auto image_std = this->get_parameter("interface_params.image_normalization_param_std").as_double_array();
+  // Load image normalization parameters from model_params
+  auto image_mean = this->declare_parameter<std::vector<double>>("model_params.image_normalization_param_mean");
+  auto image_std = this->declare_parameter<std::vector<double>>("model_params.image_normalization_param_std");
   for (size_t i = 0; i < 3 && i < image_mean.size(); ++i) {
     vad_config.image_normalization_param_mean[i] = static_cast<float>(image_mean[i]);
   }
