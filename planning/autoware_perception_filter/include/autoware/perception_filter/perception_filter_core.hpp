@@ -67,11 +67,11 @@ struct FilteringPolygon
 struct ObjectClassification
 {
   std::vector<autoware_perception_msgs::msg::PredictedObject>
-    pass_through_always;  ///< Objects that always pass through
+    kept_objects;  ///< Objects that are always kept (never filtered)
   std::vector<autoware_perception_msgs::msg::PredictedObject>
-    pass_through_would_filter;  ///< Objects passing now but would be filtered if RTC approved
+    would_be_removed;  ///< Objects that would be removed if RTC is approved
   std::vector<autoware_perception_msgs::msg::PredictedObject>
-    currently_filtered;  ///< Objects currently being filtered
+    removed_objects;  ///< Objects that are currently removed/filtered
 };
 
 /**

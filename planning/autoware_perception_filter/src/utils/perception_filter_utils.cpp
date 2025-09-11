@@ -49,7 +49,7 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
 
   // Get UUIDs of objects that pass through now but would be filtered if RTC approved
   std::vector<unique_identifier_msgs::msg::UUID> objects_to_be_filtered;
-  for (const auto & object : classification.pass_through_would_filter) {
+  for (const auto & object : classification.would_be_removed) {
     objects_to_be_filtered.push_back(object.object_id);
   }
 
@@ -91,7 +91,7 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
       safety_factor.object_id = uuid;
 
       // Add object position
-      for (const auto & object : classification.pass_through_would_filter) {
+      for (const auto & object : classification.would_be_removed) {
         if (object.object_id.uuid == uuid.uuid) {
           geometry_msgs::msg::Point point;
           point.x = object.kinematics.initial_pose_with_covariance.pose.position.x;
@@ -181,11 +181,11 @@ visualization_msgs::msg::MarkerArray createDebugMarkers(
 
   // Create markers for different object categories
   create_object_markers(
-    classification.pass_through_always, "always_pass", "ALWAYS PASS", {0.0, 0.0, 1.0, 0.8});
+    classification.kept_objects, "always_pass", "ALWAYS PASS", {0.0, 0.0, 1.0, 0.8});
   create_object_markers(
-    classification.pass_through_would_filter, "would_filter", "WOULD FILTER", {1.0, 1.0, 0.0, 0.8});
+    classification.would_be_removed, "would_filter", "WOULD FILTER", {1.0, 1.0, 0.0, 0.8});
   create_object_markers(
-    classification.currently_filtered, "filtered", "FILTERED", {1.0, 0.0, 0.0, 0.8});
+    classification.removed_objects, "filtered", "FILTERED", {1.0, 0.0, 0.0, 0.8});
 
   // Create filtering polygon marker if available
   if (filtering_polygon_created && !filtering_polygon.outer().empty()) {
@@ -240,10 +240,9 @@ visualization_msgs::msg::MarkerArray createDebugMarkers(
   status_marker.color.a = 1.0;
 
   std::string status_text = rtc_activated ? "RTC: ACTIVATED" : "RTC: NOT ACTIVATED";
-  status_text += "\nAlways Pass: " + std::to_string(classification.pass_through_always.size());
-  status_text +=
-    "\nWould Filter: " + std::to_string(classification.pass_through_would_filter.size());
-  status_text += "\nFiltered: " + std::to_string(classification.currently_filtered.size());
+  status_text += "\nAlways Pass: " + std::to_string(classification.kept_objects.size());
+  status_text += "\nWould Filter: " + std::to_string(classification.would_be_removed.size());
+  status_text += "\nFiltered: " + std::to_string(classification.removed_objects.size());
 
   status_marker.text = status_text;
   marker_array.markers.push_back(status_marker);

@@ -173,16 +173,6 @@ private:
     const FilteringPolygon & filtering_polygon, bool filtering_polygon_created,
     double max_filter_distance, double pointcloud_safety_distance);
 
-  // ========== Utility Functions ==========
-
-  /**
-   * @brief Get current ego vehicle pose
-   * @return Ego pose in map frame, or std::nullopt if not available
-   */
-  std::optional<geometry_msgs::msg::Pose> getCurrentEgoPose() const;
-
-  // ========== ROS Communication Members ==========
-
   // Subscribers
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr objects_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
@@ -218,9 +208,8 @@ private:
   // Parameter callback handle
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
-  // TF buffer and listener for coordinate transformations
-  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
+  // Transform listener for coordinate transformations
+  std::shared_ptr<autoware::universe_utils::TransformListener> transform_listener_;
 
   // RTC interface for approval-based filtering
   std::unique_ptr<autoware::rtc_interface::RTCInterface> rtc_interface_;

@@ -60,7 +60,7 @@ ObjectClassification classifyObjectsWithinRadius(
 
   // If frozen list is empty and RTC not registered, pass through all objects
   if (frozen_filter_object_ids.empty() && !rtc_is_registered) {
-    classification.pass_through_always = input_objects.objects;
+    classification.kept_objects = input_objects.objects;
     return classification;
   }
 
@@ -71,9 +71,9 @@ ObjectClassification classifyObjectsWithinRadius(
       std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
 
       if (frozen_filter_object_ids.find(uuid_array) != frozen_filter_object_ids.end()) {
-        classification.currently_filtered.push_back(object);
+        classification.removed_objects.push_back(object);
       } else {
-        classification.pass_through_always.push_back(object);
+        classification.kept_objects.push_back(object);
       }
     }
     return classification;
@@ -86,13 +86,13 @@ ObjectClassification classifyObjectsWithinRadius(
 
       // Check if object is in frozen filter list
       if (frozen_filter_object_ids.find(uuid_array) != frozen_filter_object_ids.end()) {
-        classification.currently_filtered.push_back(object);
+        classification.removed_objects.push_back(object);
         continue;
       }
 
       // Check if object should be ignored
       if (!shouldIgnoreObject(object, ignore_object_classes)) {
-        classification.pass_through_always.push_back(object);
+        classification.kept_objects.push_back(object);
         continue;
       }
 
@@ -105,12 +105,12 @@ ObjectClassification classifyObjectsWithinRadius(
         const bool would_be_filtered = distance_to_path <= max_filter_distance;
 
         if (would_be_filtered) {
-          classification.pass_through_would_filter.push_back(object);
+          classification.would_be_removed.push_back(object);
         } else {
-          classification.pass_through_always.push_back(object);
+          classification.kept_objects.push_back(object);
         }
       } else {
-        classification.pass_through_always.push_back(object);
+        classification.kept_objects.push_back(object);
       }
     }
   }
