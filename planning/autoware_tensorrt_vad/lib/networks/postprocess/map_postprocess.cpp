@@ -24,6 +24,10 @@ void MapPostprocessor::cleanup_cuda_resources()
         cudaFree(d_map_valid_flags_);
         d_map_valid_flags_ = nullptr;
     }
+    if (d_map_max_class_indices_) {
+        cudaFree(d_map_max_class_indices_);
+        d_map_max_class_indices_ = nullptr;
+    }
 }
 
 std::vector<autoware::tensorrt_vad::MapPolyline> MapPostprocessor::postprocess_map_preds(
@@ -40,6 +44,7 @@ std::vector<autoware::tensorrt_vad::MapPolyline> MapPostprocessor::postprocess_m
         d_map_cls_scores_,
         d_map_points_,
         d_map_valid_flags_,
+        d_map_max_class_indices_,
         config_,
         stream
     );
@@ -50,7 +55,7 @@ std::vector<autoware::tensorrt_vad::MapPolyline> MapPostprocessor::postprocess_m
     }
     
     // Copy results from device to host and create MapPolyline objects
-    auto result = copy_map_results_to_host(d_map_cls_scores_, d_map_points_, d_map_valid_flags_, stream);
+    auto result = copy_map_results_to_host(d_map_cls_scores_, d_map_points_, d_map_valid_flags_, d_map_max_class_indices_, stream);
     
     logger_->debug("CUDA map postprocessing completed with " + std::to_string(result.size()) + " polylines");
     
@@ -61,6 +66,7 @@ std::vector<autoware::tensorrt_vad::MapPolyline> MapPostprocessor::copy_map_resu
     const float* d_cls_scores,
     const float* d_points,
     const int32_t* d_valid_flags,
+    const int32_t* d_max_class_indices,
     cudaStream_t stream)
 {
     const int32_t num_queries = config_.map_num_queries;
@@ -71,6 +77,7 @@ std::vector<autoware::tensorrt_vad::MapPolyline> MapPostprocessor::copy_map_resu
     std::vector<float> h_cls_scores(num_queries * num_classes);
     std::vector<float> h_points(num_queries * points_per_polyline * 2);
     std::vector<int32_t> h_valid_flags(num_queries);
+    std::vector<int32_t> h_max_class_indices(num_queries);
     
     // Copy from device to host
     cudaError_t err = cudaMemcpyAsync(h_cls_scores.data(), d_cls_scores, 
@@ -97,6 +104,14 @@ std::vector<autoware::tensorrt_vad::MapPolyline> MapPostprocessor::copy_map_resu
         return {};
     }
     
+    err = cudaMemcpyAsync(h_max_class_indices.data(), d_max_class_indices,
+                         h_max_class_indices.size() * sizeof(int32_t),
+                         cudaMemcpyDeviceToHost, stream);
+    if (err != cudaSuccess) {
+        logger_->error("Failed to copy max_class_indices from device: " + std::string(cudaGetErrorString(err)));
+        return {};
+    }
+    
     // Wait for all copies to complete
     err = cudaStreamSynchronize(stream);
     if (err != cudaSuccess) {
@@ -113,21 +128,8 @@ std::vector<autoware::tensorrt_vad::MapPolyline> MapPostprocessor::copy_map_resu
             continue; // Skip invalid polylines
         }
         
-        // Find the class with highest confidence
-        float max_score = 0.0f;
-        int32_t max_class_idx = 0;
-        
-        for (int32_t c = 0; c < num_classes; ++c) {
-            const int32_t score_idx = query_idx * num_classes + c;
-            if (score_idx >= static_cast<int32_t>(h_cls_scores.size())) {
-                continue;
-            }
-            const float score = h_cls_scores.at(score_idx);
-            if (score > max_score) {
-                max_score = score;
-                max_class_idx = c;
-            }
-        }
+        // Get max class index directly from kernel output (no need for CPU-side max finding)
+        const int32_t max_class_idx = h_max_class_indices.at(query_idx);
         
         // Get class name
         if (max_class_idx >= static_cast<int32_t>(config_.map_class_names.size())) {

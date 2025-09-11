@@ -26,6 +26,7 @@ __global__ void map_postprocess_kernel(
     float* d_output_cls_scores,
     float* d_output_points,
     int32_t* d_output_valid_flags,
+    int32_t* d_output_max_class_indices,
     MapPostprocessConfig config) {
     
     const int32_t query_idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -66,6 +67,9 @@ __global__ void map_postprocess_kernel(
     
     d_output_valid_flags[query_idx] = is_valid ? 1 : 0;
     
+    // Store the max class index for each query
+    d_output_max_class_indices[query_idx] = max_class_idx;
+    
     // Process points (denormalize)
     // Since map_points_per_polylines is around 20, it's fine to use a for loop within the thread
     for (int32_t p = 0; p < config.map_points_per_polylines; ++p) {
@@ -93,6 +97,7 @@ cudaError_t launch_map_postprocess_kernel(
     float* d_output_cls_scores,
     float* d_output_points,
     int32_t* d_output_valid_flags,
+    int32_t* d_output_max_class_indices,
     const MapPostprocessConfig& config,
     cudaStream_t stream) {
     
@@ -105,6 +110,7 @@ cudaError_t launch_map_postprocess_kernel(
         d_output_cls_scores,
         d_output_points,
         d_output_valid_flags,
+        d_output_max_class_indices,
         config
     );
     

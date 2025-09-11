@@ -55,6 +55,7 @@ private:
      * @param d_cls_scores Device buffer with classification scores
      * @param d_points Device buffer with denormalized points
      * @param d_valid_flags Device buffer with valid polyline flags
+     * @param d_max_class_indices Device buffer with max class indices for each query
      * @param stream CUDA stream for synchronization
      * @return std::vector<MapPolyline> Processed map polylines
      */
@@ -62,6 +63,7 @@ private:
         const float* d_cls_scores,
         const float* d_points,
         const int32_t* d_valid_flags,
+        const int32_t* d_max_class_indices,
         cudaStream_t stream
     );
 
@@ -72,6 +74,7 @@ private:
     float* d_map_cls_scores_{nullptr};          // [num_queries, num_classes]
     float* d_map_points_{nullptr};              // [num_queries, points_per_polylines, 2]
     int32_t* d_map_valid_flags_{nullptr};       // [num_queries]
+    int32_t* d_map_max_class_indices_{nullptr}; // [num_queries] - max class index for each query
 };
 
 // Template method implementations (must be in header for templates)
@@ -112,6 +115,15 @@ MapPostprocessor::MapPostprocessor(const MapPostprocessConfig& config, std::shar
     err = cudaMalloc(&d_map_valid_flags_, map_flags_size);
     if (err != cudaSuccess) {
         logger_->error("Failed to allocate map valid flags buffer: " + std::string(cudaGetErrorString(err)));
+        cleanup_cuda_resources();
+        return;
+    }
+    
+    // Allocate max class indices buffer
+    const size_t max_class_indices_size = static_cast<size_t>(config_.map_num_queries) * sizeof(int32_t);
+    err = cudaMalloc(&d_map_max_class_indices_, max_class_indices_size);
+    if (err != cudaSuccess) {
+        logger_->error("Failed to allocate map max class indices buffer: " + std::string(cudaGetErrorString(err)));
         cleanup_cuda_resources();
         return;
     }

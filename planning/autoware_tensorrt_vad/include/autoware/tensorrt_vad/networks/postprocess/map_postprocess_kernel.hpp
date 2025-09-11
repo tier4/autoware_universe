@@ -60,6 +60,7 @@ struct MapPostprocessConfig {
  * @param d_output_cls_scores Device buffer for output classification scores [num_queries, num_classes]
  * @param d_output_points Device buffer for output denormalized points [num_queries, points_per_polylines, 2]
  * @param d_output_valid_flags Device buffer for valid polyline flags [num_queries]
+ * @param d_output_max_class_indices Device buffer for max class indices [num_queries]
  * @param config Postprocessing configuration parameters (will be converted internally)
  * @param stream CUDA stream for asynchronous execution
  * @return cudaError_t CUDA error code
@@ -70,6 +71,7 @@ cudaError_t launch_map_postprocess_kernel(
     float* d_output_cls_scores,
     float* d_output_points,
     int32_t* d_output_valid_flags,
+    int32_t* d_output_max_class_indices,
     const MapPostprocessConfig& config,
     cudaStream_t stream);
 
