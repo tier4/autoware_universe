@@ -116,11 +116,18 @@ private:
 
   /**
    * @brief Check RTC interface state and detect activation changes
-   * @param last_state Reference to the last RTC state variable
-   * @param context_name Name for logging context (e.g., "object filtering", "pointcloud filtering")
-   * @return true if RTC just became active, false otherwise
+   *
+   * This function checks the current RTC (Run Time Configuration) interface state
+   * and detects transitions from inactive to active state. The function updates
+   * the provided last_state reference with the current activation state.
+   *
+   * @param[in,out] last_state Reference to the last known RTC activation state.
+   *                           This will be updated with the current state after comparison.
+   *
+   * @return true if RTC just became active (transition from inactive to active), false otherwise
+   *
    */
-  bool checkRTCStateChange(bool & last_state, const std::string & context_name);
+  bool checkRTCStateChange(bool & last_state);
 
   /**
    * @brief Update RTC status based on vehicle state
@@ -242,7 +249,7 @@ private:
     frozen_filter_object_ids_;  ///< Object IDs frozen at RTC approval time
 
   // Polygon-based filtering management
-  FilteringPolygon filtering_polygon_{};  ///< Filtering polygon created at RTC approval
+  FilteringPolygon filtering_polygon_{};   ///< Filtering polygon created at RTC approval
   bool filtering_polygon_created_{false};  ///< Whether the filtering polygon has been created
 
   // ========== Configuration Parameters ==========

@@ -167,30 +167,14 @@ rcl_interfaces::msg::SetParametersResult PerceptionFilterNode::onParameter(
   return result;
 }
 
-/**
- * @brief Check RTC interface state and detect activation changes
- * @param last_state Reference to the last RTC state variable
- * @param context_name Name for logging context (e.g., "object filtering", "pointcloud filtering")
- * @return true if RTC just became active, false otherwise
- */
-bool PerceptionFilterNode::checkRTCStateChange(bool & last_state, const std::string & context_name)
+bool PerceptionFilterNode::checkRTCStateChange(bool & last_state)
 {
-  const bool rtc_is_registered = rtc_interface_ && rtc_interface_->isRegistered(rtc_uuid_);
   const bool rtc_is_activated =
-    rtc_interface_ && rtc_is_registered && rtc_interface_->isActivated(rtc_uuid_);
+    rtc_interface_->isRegistered(rtc_uuid_) && rtc_interface_->isActivated(rtc_uuid_);
 
-  // Detect if RTC was just activated (transition from inactive to active)
   const bool rtc_became_active = rtc_is_activated && !last_state;
-
   // Store current state for next comparison
   last_state = rtc_is_activated;
-
-  // Log RTC state changes for debugging
-  if (rtc_became_active) {
-    RCLCPP_INFO(get_logger(), "RTC interface just activated for %s", context_name.c_str());
-  } else if (last_state && !rtc_is_activated) {
-    RCLCPP_DEBUG(get_logger(), "RTC interface deactivated for %s", context_name.c_str());
-  }
 
   return rtc_became_active;
 }
@@ -255,8 +239,7 @@ void PerceptionFilterNode::onObjects(
   // Check RTC interface state and detect activation changes
   {
     autoware::universe_utils::ScopedTimeTrack st_rtc("check_rtc_state", *time_keeper_);
-    const bool rtc_became_active_in_objects =
-      checkRTCStateChange(last_objects_rtc_state_, "object filtering");
+    const bool rtc_became_active_in_objects = checkRTCStateChange(last_objects_rtc_state_);
 
     // Add objects from latest classification to frozen list if RTC just activated
     if (rtc_became_active_in_objects) {
@@ -356,8 +339,7 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   // Check RTC interface state and detect activation changes
   {
     autoware::universe_utils::ScopedTimeTrack st_rtc("check_rtc_state_pointcloud", *time_keeper_);
-    const bool rtc_became_active_in_pointcloud =
-      checkRTCStateChange(last_pointcloud_rtc_state_, "pointcloud filtering");
+    const bool rtc_became_active_in_pointcloud = checkRTCStateChange(last_pointcloud_rtc_state_);
 
     if (rtc_became_active_in_pointcloud) {
       RCLCPP_DEBUG(get_logger(), "RTC just activated - creating filtering polygon");
