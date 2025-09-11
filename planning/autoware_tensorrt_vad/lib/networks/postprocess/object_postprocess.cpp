@@ -166,7 +166,8 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::copy_object_resul
             continue;
         }
 
-        autoware::tensorrt_vad::BBox bbox;
+        // Create BBox with dynamic trajectory modes and timesteps from config
+        autoware::tensorrt_vad::BBox bbox(config_.prediction_trajectory_modes, config_.prediction_timesteps);
 
         // Copy bbox predictions [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
         for (int32_t i = 0; i < config_.prediction_bbox_pred_dim; ++i) {
@@ -185,20 +186,17 @@ std::vector<autoware::tensorrt_vad::BBox> ObjectPostprocessor::copy_object_resul
         bbox.confidence = max_score;
         bbox.object_class = max_class;
 
-        // Copy trajectory predictions
+        // Copy trajectory predictions (trajectories already initialized in constructor)
         for (int32_t mode = 0; mode < config_.prediction_trajectory_modes; ++mode) {
-            autoware::tensorrt_vad::PredictedTrajectory pred_traj;
-            pred_traj.confidence = h_traj_scores.at(obj * config_.prediction_trajectory_modes + mode);
+            bbox.trajectories[mode].confidence = h_traj_scores.at(obj * config_.prediction_trajectory_modes + mode);
 
             // Copy trajectory points
             for (int32_t ts = 0; ts < config_.prediction_timesteps; ++ts) {
                 const int32_t traj_idx = obj * config_.prediction_trajectory_modes * config_.prediction_timesteps * 2 + 
                                         mode * config_.prediction_timesteps * 2 + ts * 2;
-                pred_traj.trajectory.at(ts).at(0) = h_trajectories.at(traj_idx);     // x
-                pred_traj.trajectory.at(ts).at(1) = h_trajectories.at(traj_idx + 1); // y
+                bbox.trajectories[mode].trajectory[ts][0] = h_trajectories.at(traj_idx);     // x
+                bbox.trajectories[mode].trajectory[ts][1] = h_trajectories.at(traj_idx + 1); // y
             }
-
-            bbox.trajectories.at(mode) = pred_traj;
         }
 
         bboxes.push_back(bbox);
