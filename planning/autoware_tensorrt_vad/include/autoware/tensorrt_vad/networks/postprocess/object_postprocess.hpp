@@ -61,6 +61,7 @@ private:
      * @param d_trajectories Device buffer with trajectory data
      * @param d_traj_scores Device buffer with trajectory scores
      * @param d_valid_flags Device buffer with valid object flags
+     * @param d_max_class_indices Device buffer with max class indices for each object
      * @param stream CUDA stream for synchronization
      * @return std::vector<BBox> Processed object bounding boxes
      */
@@ -70,6 +71,7 @@ private:
         const float* d_trajectories,
         const float* d_traj_scores,
         const int32_t* d_valid_flags,
+        const int32_t* d_max_class_indices,
         cudaStream_t stream
     );
 
