@@ -42,43 +42,6 @@
 namespace autoware::tensorrt_vad
 {
 
-// VAD inference input data structure
-struct VadInputData
-{
-  // Camera image data (multi-camera support)
-  std::vector<cv::Mat> camera_images;
-
-  // Shift information (img_metas.0[shift])
-  std::vector<float> shift;
-
-  // Transform matrix from coordinate used in VAD inference to camera image coordinate system (img_metas.0[lidar2img])
-  std::vector<float> vad_base2img;
-
-  // CAN-BUS data (vehicle state information: velocity, angular velocity, etc.) (img_metas.0[can_bus])
-  std::vector<float> can_bus;
-
-  // Command index (for trajectory selection)
-  int32_t command{2};
-};
-
-// VAD inference output data structure
-struct VadOutputData
-{
-  // Predicted trajectory (6 2D coordinate points, expressed as cumulative coordinates)
-  // planning[0,1] = 1st point (x,y), planning[2,3] = 2nd point (x,y), ...
-  std::vector<float> predicted_trajectory{};  // size: 12 (6 points * 2 coordinates)
-
-  // Map of predicted trajectories for multiple commands
-  // key: command index (int32_t), value: trajectory (std::vector<float>)
-  std::map<int32_t, std::vector<float>> predicted_trajectories{};
-
-  // map polylines (each polyline has map_type and points)
-  std::vector<MapPolyline> map_polylines{};
-
-  // Predicted objects
-  std::vector<BBox> predicted_objects{};
-};
-
 // Helper function to parse external input configuration
 inline std::pair<std::string, std::string> parse_external_inputs(const std::pair<std::string, std::map<std::string, std::string>>& input_pair) {
   const auto& ext_map = input_pair.second;
