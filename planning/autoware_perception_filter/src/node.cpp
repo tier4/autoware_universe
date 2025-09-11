@@ -20,6 +20,9 @@
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/create_timer_ros.h>
+#include <tf2_ros/transform_listener.h>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -70,6 +73,12 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
 
   // Initialize transform listener
   transform_listener_ = std::make_shared<autoware::universe_utils::TransformListener>(this);
+
+  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
+    this->get_node_base_interface(), this->get_node_timers_interface());
+  tf_buffer_->setCreateTimerInterface(timer_interface);
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   // Declare parameters using get_or_declare_parameter
   using autoware::universe_utils::getOrDeclareParameter;
@@ -240,16 +249,8 @@ void PerceptionFilterNode::onObjects(
   latest_objects_ = msg;
 
   // Early validation and publish passthrough if conditions not met
-  if (!enable_object_filtering_ || !isDataReadyForObjects()) {
-    publishPassthroughObjects(*msg, start_time);
-    return;
-  }
-
-  // Get ego pose (only if filtering is enabled and data is ready)
-  const auto ego_pose = autoware::perception_filter::getEgoPose(*transform_listener_);
-
-  if (!ego_pose) {
-    RCLCPP_DEBUG(get_logger(), "Ego pose not available for object classification");
+  const auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
+  if (!enable_object_filtering_ || !isDataReadyForObjects() || !ego_pose) {
     publishPassthroughObjects(*msg, start_time);
     return;
   }
@@ -641,16 +642,7 @@ void PerceptionFilterNode::onTimer()
     return;
   }
 
-  // Get ego pose with proper error handling
-  auto ego_pose = [this]() {
-    autoware::universe_utils::ScopedTimeTrack st_ego("get_ego_pose_timer", *time_keeper_);
-    const auto tf = transform_listener_->getLatestTransform("map", "base_link");
-    if (!tf) {
-      return std::optional<geometry_msgs::msg::Pose>{};
-    }
-    return std::optional<geometry_msgs::msg::Pose>{
-      autoware::universe_utils::transform2pose(*tf).pose};
-  }();
+  auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
   if (!ego_pose) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 5000, "Ego pose not available for debug markers");
@@ -720,16 +712,7 @@ void PerceptionFilterNode::updateFilteringPolygonStatus()
     return;
   }
 
-  // Check if ego vehicle has passed through the filtering polygon
-  auto ego_pose = [this]() {
-    autoware::universe_utils::ScopedTimeTrack st_ego("get_ego_pose_polygon_status", *time_keeper_);
-    const auto tf = transform_listener_->getLatestTransform("map", "base_link");
-    if (!tf) {
-      return std::optional<geometry_msgs::msg::Pose>{};
-    }
-    return std::optional<geometry_msgs::msg::Pose>{
-      autoware::universe_utils::transform2pose(*tf).pose};
-  }();
+  auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
   if (!ego_pose) {
     RCLCPP_WARN(get_logger(), "Ego pose not available for polygon status update");
     return;

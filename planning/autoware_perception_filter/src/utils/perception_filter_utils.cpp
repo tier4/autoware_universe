@@ -20,8 +20,9 @@
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
-#include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2/exceptions.h>
 
 #include <boost/geometry.hpp>
 
@@ -387,14 +388,23 @@ uint8_t stringToLabel(const std::string & label_string)
 }
 
 std::optional<geometry_msgs::msg::Pose> getEgoPose(
-  autoware::universe_utils::TransformListener & transform_listener)
+  const tf2_ros::Buffer & tf_buffer)
 {
-  const auto tf = transform_listener.getLatestTransform("map", "base_link");
-  if (!tf) {
+  geometry_msgs::msg::TransformStamped transform;
+  try {
+    transform = tf_buffer.lookupTransform(
+      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+  } catch (const tf2::TransformException & ex) {
     return std::optional<geometry_msgs::msg::Pose>{};
   }
-  return std::optional<geometry_msgs::msg::Pose>{
-    autoware::universe_utils::transform2pose(*tf).pose};
+
+  geometry_msgs::msg::Pose pose;
+  pose.position.x = transform.transform.translation.x;
+  pose.position.y = transform.transform.translation.y;
+  pose.position.z = transform.transform.translation.z;
+  pose.orientation = transform.transform.rotation;
+
+  return std::optional<geometry_msgs::msg::Pose>{pose};
 }
 
 }  // namespace autoware::perception_filter

@@ -17,13 +17,14 @@
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
-#include <autoware/universe_utils/ros/transform_listener.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <tf2_ros/buffer.h>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <array>
@@ -124,12 +125,12 @@ std::string labelToString(uint8_t label);
 uint8_t stringToLabel(const std::string & label_string);
 
 /**
- * @brief Get ego vehicle pose from transform listener
- * @param transform_listener Transform listener for getting latest transform
+ * @brief Get ego vehicle pose from TF buffer
+ * @param tf_buffer TF buffer for getting transform
  * @return Optional ego pose, empty if transform is not available
  */
 std::optional<geometry_msgs::msg::Pose> getEgoPose(
-  autoware::universe_utils::TransformListener & transform_listener);
+  const tf2_ros::Buffer & tf_buffer);
 
 }  // namespace autoware::perception_filter
 

@@ -39,6 +39,8 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 #include <tier4_debug_msgs/msg/processing_time_tree.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -219,6 +221,10 @@ private:
 
   // Transform listener for coordinate transformations
   std::shared_ptr<autoware::universe_utils::TransformListener> transform_listener_;
+
+  // TF2 buffer and listener for coordinate transformations
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   // RTC interface for approval-based filtering
   std::unique_ptr<autoware::rtc_interface::RTCInterface> rtc_interface_;
