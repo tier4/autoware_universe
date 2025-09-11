@@ -9,8 +9,6 @@
       target_image_width: 640
       target_image_height: 384
       detection_range: [-15.0, -30.0, -2.0, 15.0, 30.0, 2.0]
-      bev_h: 100
-      bev_w: 100
       image_normalization_param_mean: [103.530, 116.280, 123.675]
       image_normalization_param_std: [1.0, 1.0, 1.0]
       autoware_to_vad_camera_mapping: [0, 0, # FRONT

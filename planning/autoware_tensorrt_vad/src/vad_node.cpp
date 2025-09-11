@@ -69,8 +69,6 @@ VadNode::VadNode(const rclcpp::NodeOptions & options)
       declare_parameter<int32_t>("interface_params.target_image_width"),
       declare_parameter<int32_t>("interface_params.target_image_height"),
       declare_parameter<std::vector<double>>("interface_params.detection_range"),
-      declare_parameter<int32_t>("interface_params.bev_h"),
-      declare_parameter<int32_t>("interface_params.bev_w"),
       declare_parameter<int32_t>("model_params.default_command"),
       declare_parameter<std::vector<double>>("interface_params.image_normalization_param_mean"),
       declare_parameter<std::vector<double>>("interface_params.image_normalization_param_std"),
