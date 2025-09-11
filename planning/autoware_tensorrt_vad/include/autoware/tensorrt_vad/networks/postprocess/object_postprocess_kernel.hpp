@@ -15,12 +15,12 @@ namespace autoware::tensorrt_vad {
  */
 struct ObjectPostprocessConfig {
     // VAD configuration parameters
-    int32_t prediction_num_queries;      // 300 (number of objects)
-    int32_t prediction_num_classes;      // 10 (number of object classes)
-    int32_t prediction_bbox_pred_dim;    // 10 (bbox prediction dimension)
-    int32_t prediction_trajectory_modes; // 6 (number of trajectory modes)
-    int32_t prediction_timesteps;        // 6 (number of prediction timesteps)
-    int32_t num_decoder_layers;          // 3 (number of decoder layers)
+    int32_t prediction_num_queries;      // Number of detection queries (maximum objects)
+    int32_t prediction_num_classes;      // Number of object classes
+    int32_t prediction_bbox_pred_dim;    // Bounding box prediction dimension
+    int32_t prediction_trajectory_modes; // Number of trajectory prediction modes per object
+    int32_t prediction_timesteps;        // Number of prediction timesteps
+    int32_t num_decoder_layers;          // Number of decoder layers
     
     // Class names and confidence thresholds
     std::vector<std::string> bbox_class_names;
@@ -28,7 +28,7 @@ struct ObjectPostprocessConfig {
     
     // Additional members for CUDA kernel (computed at runtime)
     int32_t bbox_class_count;
-    float object_confidence_thresholds_array[16];  // Max 16 classes (adjustable)
+    float object_confidence_thresholds_array[16];  // Configurable max classes (adjustable)
     
     // Helper method to prepare kernel data
     void prepare_for_kernel() {

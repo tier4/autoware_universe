@@ -12,12 +12,19 @@ namespace autoware::tensorrt_vad
  * @brief Structure representing predicted trajectory
  */
 struct PredictedTrajectory {
-    std::array<std::array<float, 2>, 6> trajectory;  // 6 time steps × 2 coordinates (x, y)
-    float confidence;                                 // Confidence of this trajectory
+    std::vector<std::array<float, 2>> trajectory;    // Dynamic timesteps × 2 coordinates (x, y)
+    float confidence;                                // Confidence of this trajectory
     
+    // Default constructor
     PredictedTrajectory() : confidence(0.0f) {
+        // Default to empty trajectory
+    }
+    
+    // Constructor with specific number of timesteps
+    explicit PredictedTrajectory(size_t timesteps) : confidence(0.0f) {
+        trajectory.resize(timesteps);
         // Initialize trajectory coordinates to 0
-        for (int32_t i = 0; i < 6; ++i) {
+        for (size_t i = 0; i < timesteps; ++i) {
             trajectory[i][0] = 0.0f;
             trajectory[i][1] = 0.0f;
         }
@@ -43,13 +50,28 @@ struct MapPolyline {
 struct BBox {
     std::array<float, 10> bbox;                      // [c_x, c_y, w, l, c_z, h, sin(theta), cos(theta), v_x, v_y]
     float confidence;                                // Object confidence
-    int32_t object_class;                           // Object class (0-9)
-    std::array<PredictedTrajectory, 6> trajectories; // 6 predicted trajectories
+    int32_t object_class;                           // Object class
+    std::vector<PredictedTrajectory> trajectories;   // Dynamic number of predicted trajectories
     
+    // Default constructor
     BBox() : confidence(0.0f), object_class(-1) {
         // Initialize bbox coordinates to 0
         for (int32_t i = 0; i < 10; ++i) {
             bbox[i] = 0.0f;
+        }
+    }
+    
+    // Constructor with specific number of trajectory modes and timesteps
+    BBox(size_t trajectory_modes, size_t timesteps) : confidence(0.0f), object_class(-1) {
+        // Initialize bbox coordinates to 0
+        for (int32_t i = 0; i < 10; ++i) {
+            bbox[i] = 0.0f;
+        }
+        
+        // Initialize trajectories with specified modes and timesteps
+        trajectories.reserve(trajectory_modes);
+        for (size_t i = 0; i < trajectory_modes; ++i) {
+            trajectories.emplace_back(timesteps);
         }
     }
 };
