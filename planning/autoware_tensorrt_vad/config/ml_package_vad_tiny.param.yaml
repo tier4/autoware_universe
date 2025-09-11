@@ -54,8 +54,6 @@
             "net": "backbone"
             "name": "out.0"
       network_io_params:
-        num_cameras: 6                    # Number of cameras
-        
         # BEV (Bird's Eye View) related parameters
         bev_h: 100                        # BEV grid height
         bev_w: 100                        # BEV grid width

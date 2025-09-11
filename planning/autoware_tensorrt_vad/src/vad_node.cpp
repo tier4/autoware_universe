@@ -261,7 +261,7 @@ void VadNode::initialize_vad_model()
 VadConfig VadNode::load_vad_config()
 {
   VadConfig vad_config;
-  vad_config.num_cameras = this->declare_parameter<int32_t>("model_params.network_io_params.num_cameras");
+  vad_config.num_cameras = this->get_parameter("node_params.num_cameras").as_int();
   vad_config.bev_h = this->declare_parameter<int32_t>("model_params.network_io_params.bev_h");
   vad_config.bev_w = this->declare_parameter<int32_t>("model_params.network_io_params.bev_w");
   vad_config.bev_feature_dim = this->declare_parameter<int32_t>("model_params.network_io_params.bev_feature_dim");
