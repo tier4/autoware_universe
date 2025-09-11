@@ -26,7 +26,7 @@ struct MapPostprocessConfig {
     // Additional members for CUDA kernel (computed at runtime)
     int32_t map_class_count;
     float detection_range_array[6];  // Flat array version for CUDA
-    float map_confidence_thresholds_array[16];  // Flat array version for CUDA (max 16 classes)
+    float map_confidence_thresholds_array[16];  // Flat array version for CUDA (configurable max classes)
     
     // Helper method to prepare kernel data
     void prepare_for_kernel() {
