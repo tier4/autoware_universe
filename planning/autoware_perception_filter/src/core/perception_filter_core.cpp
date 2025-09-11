@@ -241,10 +241,6 @@ PointCloudProcessingResult processPointCloudCommon(
 {
   PointCloudProcessingResult result;
 
-  if (input_pointcloud.data.empty() || !planning_trajectory) {
-    return result;
-  }
-
   // Convert ROS PointCloud2 to PCL format
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr polygon_points(new pcl::PointCloud<pcl::PointXYZ>);

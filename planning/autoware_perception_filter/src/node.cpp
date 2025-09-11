@@ -320,7 +320,7 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   const auto start_time = std::chrono::high_resolution_clock::now();
   latest_pointcloud_ = msg;
 
-  if (!isDataReadyForPointCloud() || !enable_pointcloud_filtering_) {
+  if (!isDataReadyForPointCloud() || !enable_pointcloud_filtering_ || latest_pointcloud_->data.empty()) {
     publishPassthroughMessage(
       *msg, filtered_pointcloud_pub_, pointcloud_processing_time_pub_, start_time);
     return;
