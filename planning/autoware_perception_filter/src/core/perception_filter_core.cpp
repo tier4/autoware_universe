@@ -18,8 +18,8 @@
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
-#include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <autoware/universe_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -124,10 +124,6 @@ autoware::universe_utils::Polygon2d createPathPolygon(
   double end_distance, double width)
 {
   autoware::universe_utils::Polygon2d polygon;
-
-  if (trajectory.points.empty()) {
-    return polygon;
-  }
 
   // Calculate cumulative distances to find start and end indices
   double cumulative_distance = 0.0;

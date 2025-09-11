@@ -327,13 +327,10 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   }
 
   // Check RTC interface state and detect activation changes
-  {
-    const bool rtc_became_active_in_pointcloud = checkRTCStateChange(last_pointcloud_rtc_state_);
+  const bool rtc_became_active_in_pointcloud = checkRTCStateChange(last_pointcloud_rtc_state_);
 
-    if (rtc_became_active_in_pointcloud) {
-      RCLCPP_DEBUG(get_logger(), "RTC just activated - creating filtering polygon");
-      createFilteringPolygon();
-    }
+  if (rtc_became_active_in_pointcloud) {
+    createFilteringPolygon();
   }
 
   // Update filtering polygon status
@@ -364,7 +361,9 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   {
     autoware::universe_utils::ScopedTimeTrack st_publish(
       "publish_filtered_pointcloud", *time_keeper_);
+
     filtered_pointcloud_pub_->publish(filtered_pointcloud);
+
     published_time_publisher_->publish_if_subscribed(
       filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
   }
@@ -661,15 +660,6 @@ void PerceptionFilterNode::onTimer()
 void PerceptionFilterNode::createFilteringPolygon()
 {
   autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
-
-  if (!planning_trajectory_ || planning_trajectory_->points.empty()) {
-    RCLCPP_ERROR(
-      get_logger(),
-      "Cannot create filtering polygon: planning_trajectory_valid=%s, trajectory_points=%zu",
-      planning_trajectory_ ? "true" : "false",
-      planning_trajectory_ ? planning_trajectory_->points.size() : 0);
-    return;
-  }
 
   // Create polygon from trajectory with max_filter_distance width
   {
