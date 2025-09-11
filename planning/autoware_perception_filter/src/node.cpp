@@ -13,16 +13,12 @@
 // limitations under the License.
 
 #include "autoware/perception_filter/perception_filter_node.hpp"
-
 #include "autoware/perception_filter/perception_filter_utils.hpp"
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/create_timer_ros.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -33,6 +29,9 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <glog/logging.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/create_timer_ros.h>
+#include <tf2_ros/transform_listener.h>
 
 // Add PCL headers for pointcloud processing
 #include <pcl/common/transforms.h>
@@ -178,15 +177,17 @@ rcl_interfaces::msg::SetParametersResult PerceptionFilterNode::onParameter(
   return result;
 }
 
-void PerceptionFilterNode::publishPassthroughObjects(
-  const autoware_perception_msgs::msg::PredictedObjects & msg,
-  const std::chrono::high_resolution_clock::time_point & start_time)
+template <typename MessageType, typename PublisherType>
+void PerceptionFilterNode::publishPassthroughMessage(
+  const MessageType & msg, const std::shared_ptr<PublisherType> & publisher,
+  const std::shared_ptr<rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>> &
+    time_publisher,
+  const std::chrono::high_resolution_clock::time_point & start_time) const
 {
-  // Publish input objects as-is
-  filtered_objects_pub_->publish(msg);
-  published_time_publisher_->publish_if_subscribed(filtered_objects_pub_, msg.header.stamp);
+  // Publish input message as-is
+  publisher->publish(msg);
+  published_time_publisher_->publish_if_subscribed(publisher, msg.header.stamp);
 
-  // Publish processing time even when data is not ready
   const auto processing_time = std::chrono::duration<double, std::milli>(
                                  std::chrono::high_resolution_clock::now() - start_time)
                                  .count();
@@ -194,7 +195,7 @@ void PerceptionFilterNode::publishPassthroughObjects(
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = this->now();
   processing_time_msg.data = processing_time;
-  objects_processing_time_pub_->publish(processing_time_msg);
+  time_publisher->publish(processing_time_msg);
 }
 
 bool PerceptionFilterNode::checkRTCStateChange(bool & last_state)
@@ -251,22 +252,20 @@ void PerceptionFilterNode::onObjects(
   // Early validation and publish passthrough if conditions not met
   const auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
   if (!enable_object_filtering_ || !isDataReadyForObjects() || !ego_pose) {
-    publishPassthroughObjects(*msg, start_time);
+    publishPassthroughMessage(
+      *msg, filtered_objects_pub_, objects_processing_time_pub_, start_time);
     return;
   }
 
   // Check RTC interface state and detect activation changes
-  {
-    autoware::universe_utils::ScopedTimeTrack st_rtc("check_rtc_state", *time_keeper_);
-    const bool rtc_became_active_in_objects = checkRTCStateChange(last_objects_rtc_state_);
+  const bool rtc_became_active_in_objects = checkRTCStateChange(last_objects_rtc_state_);
 
-    // Add objects from latest classification to frozen list if RTC just activated
-    if (rtc_became_active_in_objects) {
-      for (const auto & object : latest_classification_.would_be_removed) {
-        std::array<uint8_t, 16> uuid_array;
-        std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
-        frozen_filter_object_ids_.insert(uuid_array);
-      }
+  // Add objects from latest classification to frozen list if RTC just activated
+  if (rtc_became_active_in_objects) {
+    for (const auto & object : latest_classification_.would_be_removed) {
+      std::array<uint8_t, 16> uuid_array;
+      std::copy(object.object_id.uuid.begin(), object.object_id.uuid.end(), uuid_array.begin());
+      frozen_filter_object_ids_.insert(uuid_array);
     }
   }
 
@@ -322,28 +321,13 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   latest_pointcloud_ = msg;
 
   if (!isDataReadyForPointCloud() || !enable_pointcloud_filtering_) {
-    RCLCPP_DEBUG(
-      get_logger(),
-      "PointCloud filtering skipped: isDataReadyForPointCloud=%s, enable_pointcloud_filtering_=%s",
-      isDataReadyForPointCloud() ? "true" : "false",
-      enable_pointcloud_filtering_ ? "true" : "false");
-    filtered_pointcloud_pub_->publish(*msg);
-    published_time_publisher_->publish_if_subscribed(filtered_pointcloud_pub_, msg->header.stamp);
-
-    const auto processing_time = std::chrono::duration<double, std::milli>(
-                                   std::chrono::high_resolution_clock::now() - start_time)
-                                   .count();
-
-    autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-    processing_time_msg.stamp = this->now();
-    processing_time_msg.data = processing_time;
-    pointcloud_processing_time_pub_->publish(processing_time_msg);
+    publishPassthroughMessage(
+      *msg, filtered_pointcloud_pub_, pointcloud_processing_time_pub_, start_time);
     return;
   }
 
   // Check RTC interface state and detect activation changes
   {
-    autoware::universe_utils::ScopedTimeTrack st_rtc("check_rtc_state_pointcloud", *time_keeper_);
     const bool rtc_became_active_in_pointcloud = checkRTCStateChange(last_pointcloud_rtc_state_);
 
     if (rtc_became_active_in_pointcloud) {
@@ -411,11 +395,13 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   }
 
   // Use common processing function
-  const auto processing_result = [this, &input_pointcloud, &filtering_polygon, &planning_trajectory]() {
+  const auto processing_result = [this, &input_pointcloud, &filtering_polygon,
+                                  &planning_trajectory]() {
     autoware::universe_utils::ScopedTimeTrack st_process(
       "process_pointcloud_common", *time_keeper_);
     return processPointCloudCommon(
-      input_pointcloud, filtering_polygon.polygon, planning_trajectory, transform_listener_, *time_keeper_);
+      input_pointcloud, filtering_polygon.polygon, planning_trajectory, transform_listener_,
+      *time_keeper_);
   }();
   if (!processing_result.success) {
     return input_pointcloud;
@@ -471,8 +457,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
       }();
 
       if (!transform_opt) {
-        RCLCPP_WARN(
-          get_logger(), "Failed to get transform for inverse transformation");
+        RCLCPP_WARN(get_logger(), "Failed to get transform for inverse transformation");
         return final_filtered_cloud;
       }
 
@@ -545,7 +530,8 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     autoware::universe_utils::ScopedTimeTrack st_process(
       "process_pointcloud_common_classify", *time_keeper_);
     return processPointCloudCommon(
-      input_pointcloud, filtering_polygon, planning_trajectory_, transform_listener_, *time_keeper_);
+      input_pointcloud, filtering_polygon, planning_trajectory_, transform_listener_,
+      *time_keeper_);
   }();
   if (!processing_result.success) {
     return would_be_filtered_points;

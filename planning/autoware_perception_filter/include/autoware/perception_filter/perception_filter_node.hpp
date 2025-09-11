@@ -39,8 +39,6 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 #include <tier4_debug_msgs/msg/processing_time_tree.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -137,13 +135,18 @@ private:
   void updateRTCStatus();
 
   /**
-   * @brief Publish passthrough objects with processing time measurement
-   * @param msg Objects message to publish
+   * @brief Template function for publishing passthrough messages with processing time measurement
+   * @param msg Message to publish
+   * @param publisher Publisher for the message
+   * @param time_publisher Publisher for processing time
    * @param start_time Start time for processing time calculation
    */
-  void publishPassthroughObjects(
-    const autoware_perception_msgs::msg::PredictedObjects & msg,
-    const std::chrono::high_resolution_clock::time_point & start_time);
+  template <typename MessageType, typename PublisherType>
+  void publishPassthroughMessage(
+    const MessageType & msg, const std::shared_ptr<PublisherType> & publisher,
+    const std::shared_ptr<rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>> &
+      time_publisher,
+    const std::chrono::high_resolution_clock::time_point & start_time) const;
 
   // ========== Polygon-based Filtering Functions ==========
 
