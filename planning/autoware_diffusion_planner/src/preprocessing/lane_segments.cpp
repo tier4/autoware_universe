@@ -128,13 +128,14 @@ void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
 }
 
 std::vector<ColWithDistance> LaneSegmentContext::compute_distances(
-  const Eigen::Matrix4d & transform_matrix, const float center_x, const float center_y) const
+  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
 {
-  auto compute_squared_distance = [](double x, double y, const Eigen::Matrix4d & transform_matrix) {
-    Eigen::Vector4d p(x, y, 0.0, 1.0);
-    Eigen::Vector4d p_transformed = transform_matrix * p;
-    return p_transformed.head<2>().squaredNorm();
-  };
+  auto compute_squared_distance =
+    [](double x, double y, double z, const Eigen::Matrix4d & transform_matrix) {
+      Eigen::Vector4d p(x, y, z, 1.0);
+      Eigen::Vector4d p_transformed = transform_matrix * p;
+      return p_transformed.head<2>().squaredNorm();
+    };
 
   auto is_inside = [&](const double x, const double y) {
     using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
@@ -155,24 +156,29 @@ std::vector<ColWithDistance> LaneSegmentContext::compute_distances(
     }
 
     // Compute mean, first, and last points
-    double mean_x = 0.0, mean_y = 0.0;
+    double mean_x = 0.0, mean_y = 0.0, mean_z = 0.0;
     for (const auto & point : centerlines) {
       mean_x += point.x();
       mean_y += point.y();
+      mean_z += point.z();
     }
     mean_x /= centerlines.size();
     mean_y /= centerlines.size();
+    mean_z /= centerlines.size();
 
     const double first_x = centerlines[0].x();
     const double first_y = centerlines[0].y();
+    const double first_z = centerlines[0].z();
     const double last_x = centerlines[POINTS_PER_SEGMENT - 1].x();
     const double last_y = centerlines[POINTS_PER_SEGMENT - 1].y();
+    const double last_z = centerlines[POINTS_PER_SEGMENT - 1].z();
 
     const bool inside =
       is_inside(mean_x, mean_y) || is_inside(first_x, first_y) || is_inside(last_x, last_y);
 
-    const double distance_first = compute_squared_distance(first_x, first_y, transform_matrix);
-    const double distance_last = compute_squared_distance(last_x, last_y, transform_matrix);
+    const double distance_first =
+      compute_squared_distance(first_x, first_y, first_z, transform_matrix);
+    const double distance_last = compute_squared_distance(last_x, last_y, last_z, transform_matrix);
     const double distance_squared = std::min(distance_last, distance_first);
 
     distances.push_back({static_cast<int64_t>(i), distance_squared, inside});

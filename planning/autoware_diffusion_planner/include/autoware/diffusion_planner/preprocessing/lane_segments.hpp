@@ -129,7 +129,7 @@ private:
    * @return Output vector to store column indices, distances, and mask inclusion.
    */
   std::vector<ColWithDistance> compute_distances(
-    const Eigen::Matrix4d & transform_matrix, const float center_x, const float center_y) const;
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const;
 
   /**
    * @brief Filter route lanelets starting from the closest lanelet to the center point.
