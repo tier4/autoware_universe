@@ -637,50 +637,79 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     pcl::transformPointCloud(*transformed_cloud, *transformed_cloud, eigen_transform);
   }
 
-  // Classify points based on polygon membership
+  // Classify points based on polygon membership with 2-stage filtering
   {
     autoware::universe_utils::ScopedTimeTrack st_classify("classify_points", *time_keeper_);
 
     size_t points_would_be_filtered = 0;
     size_t points_in_traj_min_polygons = 0;
 
-    for (const auto & point : transformed_cloud->points) {
-      // Create geometry_msgs::Point for point info
-      geometry_msgs::msg::Point ros_point;
-      ros_point.x = point.x;
-      ros_point.y = point.y;
-      ros_point.z = point.z;
+    // Step 1: Create crop box polygon for combined_traj_min_polygon
+    std::vector<autoware::universe_utils::Polygon2d> min_polygon_crop_box;
+    if (!combined_traj_min_polygon.outer().empty()) {
+      // Calculate AABB of combined_traj_min_polygon and create crop box polygon
+      using Point2D = boost::geometry::model::point<double, 2, boost::geometry::cs::cartesian>;
+      boost::geometry::model::box<Point2D> min_polygon_bbox;
+      boost::geometry::envelope(combined_traj_min_polygon, min_polygon_bbox);
 
-      // Check if the point is inside combined_traj_min_polygon
-      bool is_inside_traj_min_polygons = false;
-      if (!combined_traj_min_polygon.outer().empty()) {
-        // Convert point to boost::geometry::model::point
-        boost::geometry::model::point<double, 2, boost::geometry::cs::cartesian> boost_point(
-          point.x, point.y);
-        is_inside_traj_min_polygons =
-          boost::geometry::within(boost_point, combined_traj_min_polygon);
-      }
+      // Create crop box polygon from AABB
+      autoware::universe_utils::Polygon2d crop_box_polygon;
+      crop_box_polygon.outer().push_back(autoware::universe_utils::Point2d(
+        min_polygon_bbox.min_corner().get<0>(), min_polygon_bbox.min_corner().get<1>()));
+      crop_box_polygon.outer().push_back(autoware::universe_utils::Point2d(
+        min_polygon_bbox.max_corner().get<0>(), min_polygon_bbox.min_corner().get<1>()));
+      crop_box_polygon.outer().push_back(autoware::universe_utils::Point2d(
+        min_polygon_bbox.max_corner().get<0>(), min_polygon_bbox.max_corner().get<1>()));
+      crop_box_polygon.outer().push_back(autoware::universe_utils::Point2d(
+        min_polygon_bbox.min_corner().get<0>(), min_polygon_bbox.max_corner().get<1>()));
+      crop_box_polygon.outer().push_back(autoware::universe_utils::Point2d(
+        min_polygon_bbox.min_corner().get<0>(), min_polygon_bbox.min_corner().get<1>()));
+      min_polygon_crop_box.push_back(crop_box_polygon);
+    }
 
-      if (is_inside_traj_min_polygons) {
+    // Step 2: Get points outside crop box (keep_inside=false)
+    std::vector<autoware::universe_utils::Polygon2d> empty_traj_polygons;
+    const auto crop_box_outside_cloud =
+      autoware::perception_filter::filterByTrajectoryPolygonsCropBox(
+        transformed_cloud, empty_traj_polygons, base_link_trajectory_points, min_polygon_crop_box,
+        0.0, false);
+
+    // Step 3: Get points inside crop box (keep_inside=true)
+    const auto crop_box_inside_cloud =
+      autoware::perception_filter::filterByTrajectoryPolygonsCropBox(
+        transformed_cloud, empty_traj_polygons, base_link_trajectory_points, min_polygon_crop_box,
+        0.0, true);
+
+    // Step 4: Add points outside crop box to would_be_filtered_points
+    for (const auto & point : crop_box_outside_cloud->points) {
+      FilteredPointInfo filtered_info;
+      filtered_info.point.x = point.x;
+      filtered_info.point.y = point.y;
+      filtered_info.point.z = point.z;
+      would_be_filtered_points.push_back(filtered_info);
+    }
+
+    // Step 5: Perform strict polygon inside/outside check for points inside crop box
+    for (const auto & point : crop_box_inside_cloud->points) {
+      using Point2D = boost::geometry::model::point<double, 2, boost::geometry::cs::cartesian>;
+      Point2D boost_point(point.x, point.y);
+
+      if (boost::geometry::within(boost_point, combined_traj_min_polygon)) {
         points_in_traj_min_polygons++;
-      }
-
-      // If the point is inside traj_max_polygons (already filtered by crop box filtering)
-      // AND outside traj_min_polygons, it would be filtered by the perception filter.
-      if (!is_inside_traj_min_polygons) {
+      } else {
         FilteredPointInfo filtered_info;
-        filtered_info.point = ros_point;
-        filtered_info.distance_to_path = 0.0;  // Not used, set to 0
+        filtered_info.point.x = point.x;
+        filtered_info.point.y = point.y;
+        filtered_info.point.z = point.z;
         would_be_filtered_points.push_back(filtered_info);
-        points_would_be_filtered++;
       }
     }
 
+    points_would_be_filtered = would_be_filtered_points.size();
+
     // Log classification results
     RCLCPP_DEBUG(
-      get_logger(),
-      "Point classification results: total=%zu, in_traj_min_polygons=%zu, "
-      "would_be_filtered=%zu (traj_max_inside AND traj_min_outside)",
+      get_logger(), "2-stage crop box filtering: total=%zu, in_polygon=%zu, would_be_filtered=%zu",
       transformed_cloud->points.size(), points_in_traj_min_polygons, points_would_be_filtered);
   }
 

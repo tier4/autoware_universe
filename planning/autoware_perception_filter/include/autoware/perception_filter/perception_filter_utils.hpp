@@ -152,6 +152,7 @@ std::vector<autoware::universe_utils::Polygon2d> createTrajectoryPolygons(
  * @param trajectory_points Trajectory points for height calculation
  * @param crop_box_polygons Pre-calculated crop box polygons for XY bounds
  * @param height_margin Height margin for Z-axis filtering [m]
+ * @param keep_inside If true, keep points inside crop box; if false, keep points outside crop box
  * @return Filtered pointcloud
  */
 pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
@@ -159,7 +160,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
   const std::vector<autoware::universe_utils::Polygon2d> & crop_box_polygons,
-  const double height_margin = 0.0);
+  const double height_margin = 0.0, const bool keep_inside = true);
 
 /**
  * @brief Transform trajectory points from map frame to base_link frame

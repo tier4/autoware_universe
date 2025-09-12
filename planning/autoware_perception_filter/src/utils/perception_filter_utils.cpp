@@ -469,14 +469,11 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
   const std::vector<autoware::universe_utils::Polygon2d> & crop_box_polygons,
-  const double height_margin)
+  const double height_margin, const bool keep_inside)
 {
   if (traj_polygons.empty() || trajectory_points.empty() || crop_box_polygons.empty()) {
     return std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
   }
-
-  pcl::CropBox<pcl::PointXYZ> crop_filter;
-  crop_filter.setInputCloud(input_pointcloud_ptr);
 
   // Use pre-calculated crop box polygon for XY bounds
   const auto & crop_box = crop_box_polygons.front();
@@ -500,17 +497,24 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
     highest_traj_height = std::max(highest_traj_height, trajectory_point.pose.position.z);
   }
 
-  // Set crop box bounds
-  crop_filter.setMin(Eigen::Vector4f(
-    static_cast<float>(x_min), static_cast<float>(y_min),
-    static_cast<float>(lowest_traj_height - height_margin), 1.0f));
-  crop_filter.setMax(Eigen::Vector4f(
-    static_cast<float>(x_max), static_cast<float>(y_max),
-    static_cast<float>(highest_traj_height + height_margin), 1.0f));
-
-  // Apply filter
+  // Apply filter with keep_inside control
   auto filtered_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
-  crop_filter.filter(*filtered_pointcloud_ptr);
+  for (const auto & point : input_pointcloud_ptr->points) {
+    // Check if point is inside crop box bounds
+    bool is_inside_crop_box =
+      (point.x >= x_min && point.x <= x_max && point.y >= y_min && point.y <= y_max &&
+       point.z >= (lowest_traj_height - height_margin) &&
+       point.z <= (highest_traj_height + height_margin));
+
+    // Keep points based on keep_inside parameter
+    if ((keep_inside && is_inside_crop_box) || (!keep_inside && !is_inside_crop_box)) {
+      filtered_pointcloud_ptr->points.push_back(point);
+    }
+  }
+
+  filtered_pointcloud_ptr->width = filtered_pointcloud_ptr->points.size();
+  filtered_pointcloud_ptr->height = 1;
+  filtered_pointcloud_ptr->is_dense = true;
 
   return filtered_pointcloud_ptr;
 }

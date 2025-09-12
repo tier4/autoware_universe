@@ -77,12 +77,11 @@ struct ObjectClassification
 
 /**
  * @brief Information about filtered points for planning factors
- * @details Stores point data and distance information for filtered pointcloud points
+ * @details Stores point data for filtered pointcloud points
  */
 struct FilteredPointInfo
 {
   geometry_msgs::msg::Point point;  ///< Filtered point coordinates
-  double distance_to_path;          ///< Distance from point to path [m]
 };
 
 /**
