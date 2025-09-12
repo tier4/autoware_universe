@@ -185,10 +185,14 @@ private:
    * @brief Classify pointcloud points for planning factors with proper coordinate transformation
    * @param input_pointcloud Input pointcloud to classify
    * @param rtc_is_registered Whether RTC interface is registered
+   * @param traj_polygons trajectory polygons in base_link frame
+   * @param base_link_trajectory_points trajectory points in base_link frame
    * @return Vector of filtered point information for planning factors
    */
   std::vector<FilteredPointInfo> classifyPointCloudForPlanningFactors(
-    const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered);
+    const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered,
+    const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
+    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & base_link_trajectory_points);
 
   /**
    * @brief Filter point cloud data based on trajectory proximity with proper coordinate

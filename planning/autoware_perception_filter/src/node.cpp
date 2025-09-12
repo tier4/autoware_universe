@@ -40,16 +40,11 @@
 #include <tf2_ros/transform_listener.h>
 
 // Add PCL headers for pointcloud processing
-#include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl_conversions/pcl_conversions.h>
 
 // Add autoware_universe_utils and boost geometry for object shape and distance calculation
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/ros/parameter.hpp>
-#include <tf2_eigen/tf2_eigen.hpp>
 
 #include <boost/geometry.hpp>
 
@@ -340,6 +335,8 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   // Check RTC interface state and detect activation changes
   const bool rtc_became_active_in_pointcloud = checkRTCStateChange(last_pointcloud_rtc_state_);
 
+  // TODO(Sugahara): prepare trajectory and polygon and transform frame so that debug information
+  // can be published from this function
   if (rtc_became_active_in_pointcloud) {
     createFilteringPolygon();
   }
@@ -354,8 +351,16 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   if (rtc_interface_->isRegistered(rtc_uuid_)) {
     autoware::universe_utils::ScopedTimeTrack st_classify(
       "classify_pointcloud_planning_factors", *time_keeper_);
-    would_be_filtered_points_ =
-      classifyPointCloudForPlanningFactors(*msg, rtc_interface_->isRegistered(rtc_uuid_));
+
+    // Generate trajectory polygons and points outside the classification function
+    const auto traj_polygons = autoware::perception_filter::generateTrajectoryPolygons(
+      planning_trajectory_, max_filter_distance_, transform_listener_);
+    const auto base_link_trajectory_points =
+      autoware::perception_filter::transformTrajectoryToBaseLink(
+        planning_trajectory_->points, transform_listener_);
+
+    would_be_filtered_points_ = classifyPointCloudForPlanningFactors(
+      *msg, rtc_interface_->isRegistered(rtc_uuid_), traj_polygons, base_link_trajectory_points);
   } else {
     would_be_filtered_points_.clear();
   }
@@ -519,7 +524,9 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 }
 
 std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanningFactors(
-  const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered)
+  const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered,
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & base_link_trajectory_points)
 {
   autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -529,99 +536,9 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     return would_be_filtered_points;
   }
 
-  // Create trajectory polygons in base_link frame
-  const std::vector<autoware::universe_utils::Polygon2d> traj_polygons = [this]() {
-    autoware::universe_utils::ScopedTimeTrack st_polygon(
-      "create_trajectory_polygons", *time_keeper_);
-
-    // Get transform from map to base_link
-    const auto transform_opt = transform_listener_->getTransform(
-      "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-    if (!transform_opt) {
-      std::cerr << "Failed to get transform from map to base_link" << std::endl;
-      return std::vector<autoware::universe_utils::Polygon2d>();
-    }
-
-    // Transform trajectory points to base_link frame first
-    std::vector<autoware_planning_msgs::msg::TrajectoryPoint> base_link_trajectory_points;
-    const auto eigen_transform = tf2::transformToEigen(transform_opt->transform);
-
-    for (const auto & map_point : planning_trajectory_->points) {
-      autoware_planning_msgs::msg::TrajectoryPoint base_link_point = map_point;
-
-      // Transform position
-      Eigen::Vector3d map_pos_3d(
-        map_point.pose.position.x, map_point.pose.position.y, map_point.pose.position.z);
-      Eigen::Vector3d base_link_pos_3d = eigen_transform * map_pos_3d;
-
-      base_link_point.pose.position.x = base_link_pos_3d.x();
-      base_link_point.pose.position.y = base_link_pos_3d.y();
-      base_link_point.pose.position.z = base_link_pos_3d.z();
-
-      // Transform orientation (quaternion)
-      Eigen::Quaterniond map_quat(
-        map_point.pose.orientation.w, map_point.pose.orientation.x, map_point.pose.orientation.y,
-        map_point.pose.orientation.z);
-
-      // Extract rotation part from transform
-      Eigen::Matrix3d rotation_matrix = eigen_transform.rotation();
-      Eigen::Quaterniond base_link_quat(rotation_matrix * map_quat.toRotationMatrix());
-
-      base_link_point.pose.orientation.w = base_link_quat.w();
-      base_link_point.pose.orientation.x = base_link_quat.x();
-      base_link_point.pose.orientation.y = base_link_quat.y();
-      base_link_point.pose.orientation.z = base_link_quat.z();
-
-      base_link_trajectory_points.push_back(base_link_point);
-    }
-
-    // Create polygons in base_link frame
-    auto base_link_polygons = autoware::perception_filter::createTrajectoryPolygons(
-      base_link_trajectory_points, max_filter_distance_);
-
-    return base_link_polygons;
-  }();
-
-  // Publish trajectory polygon visualization markers
-  if (!traj_polygons.empty()) {
-    auto traj_polygon_markers = createTrajectoryPolygonMarkers(traj_polygons, "base_link");
-    polygon_debug_markers_pub_->publish(traj_polygon_markers);
-  }
-
   // Convert sensor_msgs::PointCloud2 to PCL pointcloud
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(input_pointcloud, *input_pcl_cloud);
-
-  // Transform trajectory points to base_link frame for height calculation
-  const auto base_link_trajectory_points = [this]() {
-    std::vector<autoware_planning_msgs::msg::TrajectoryPoint> base_link_points;
-
-    // Get transform from map to base_link
-    const auto transform_opt = transform_listener_->getTransform(
-      "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-    if (!transform_opt) {
-      return base_link_points;
-    }
-
-    const auto eigen_transform = tf2::transformToEigen(transform_opt->transform);
-
-    for (const auto & map_point : planning_trajectory_->points) {
-      autoware_planning_msgs::msg::TrajectoryPoint base_link_point = map_point;
-
-      // Transform position
-      Eigen::Vector3d map_pos_3d(
-        map_point.pose.position.x, map_point.pose.position.y, map_point.pose.position.z);
-      Eigen::Vector3d base_link_pos_3d = eigen_transform * map_pos_3d;
-
-      base_link_point.pose.position.x = base_link_pos_3d.x();
-      base_link_point.pose.position.y = base_link_pos_3d.y();
-      base_link_point.pose.position.z = base_link_pos_3d.z();
-
-      base_link_points.push_back(base_link_point);
-    }
-
-    return base_link_points;
-  }();
 
   // Calculate crop box bounding polygon for visualization
   std::vector<autoware::universe_utils::Polygon2d> crop_box_polygons;
@@ -653,12 +570,6 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     boost::geometry::correct(bounding_polygon);
 
     crop_box_polygons.push_back(bounding_polygon);
-  }
-
-  // Publish crop box polygon visualization markers
-  if (!crop_box_polygons.empty()) {
-    auto crop_box_markers = createCropBoxPolygonMarkers(crop_box_polygons, "base_link");
-    polygon_debug_markers_pub_->publish(crop_box_markers);
   }
 
   // Apply crop box filtering using trajectory polygons

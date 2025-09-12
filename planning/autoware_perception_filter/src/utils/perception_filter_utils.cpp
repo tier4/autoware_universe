@@ -20,13 +20,15 @@
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 #include <boost/geometry.hpp>
+
 #include <pcl/filters/crop_box.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 
@@ -34,10 +36,12 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::perception_filter
@@ -504,12 +508,89 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
     static_cast<float>(x_max), static_cast<float>(y_max),
     static_cast<float>(highest_traj_height + height_margin), 1.0f));
 
-
   // Apply filter
   auto filtered_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
   crop_filter.filter(*filtered_pointcloud_ptr);
 
   return filtered_pointcloud_ptr;
+}
+
+std::vector<autoware_planning_msgs::msg::TrajectoryPoint> transformTrajectoryToBaseLink(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & map_trajectory_points,
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener)
+{
+  std::vector<autoware_planning_msgs::msg::TrajectoryPoint> base_link_trajectory_points;
+
+  if (map_trajectory_points.empty()) {
+    return base_link_trajectory_points;
+  }
+
+  // Get transform from map to base_link
+  const auto transform_opt = transform_listener->getTransform(
+    "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+  if (!transform_opt) {
+    std::cerr << "Failed to get transform from map to base_link" << std::endl;
+    return base_link_trajectory_points;
+  }
+
+  const auto eigen_transform = tf2::transformToEigen(transform_opt->transform);
+
+  // Transform trajectory points to base_link frame
+  for (const auto & map_point : map_trajectory_points) {
+    autoware_planning_msgs::msg::TrajectoryPoint base_link_point = map_point;
+
+    // Transform position
+    Eigen::Vector3d map_pos_3d(
+      map_point.pose.position.x, map_point.pose.position.y, map_point.pose.position.z);
+    Eigen::Vector3d base_link_pos_3d = eigen_transform * map_pos_3d;
+
+    base_link_point.pose.position.x = base_link_pos_3d.x();
+    base_link_point.pose.position.y = base_link_pos_3d.y();
+    base_link_point.pose.position.z = base_link_pos_3d.z();
+
+    // Transform orientation (quaternion)
+    Eigen::Quaterniond map_quat(
+      map_point.pose.orientation.w, map_point.pose.orientation.x, map_point.pose.orientation.y,
+      map_point.pose.orientation.z);
+
+    // Extract rotation part from transform
+    Eigen::Matrix3d rotation_matrix = eigen_transform.rotation();
+    Eigen::Quaterniond base_link_quat(rotation_matrix * map_quat.toRotationMatrix());
+
+    base_link_point.pose.orientation.w = base_link_quat.w();
+    base_link_point.pose.orientation.x = base_link_quat.x();
+    base_link_point.pose.orientation.y = base_link_quat.y();
+    base_link_point.pose.orientation.z = base_link_quat.z();
+
+    base_link_trajectory_points.push_back(base_link_point);
+  }
+
+  return base_link_trajectory_points;
+}
+
+std::vector<autoware::universe_utils::Polygon2d> generateTrajectoryPolygons(
+  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
+  double max_filter_distance,
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener)
+{
+  std::vector<autoware::universe_utils::Polygon2d> traj_polygons;
+
+  if (!planning_trajectory || planning_trajectory->points.empty()) {
+    return traj_polygons;
+  }
+
+  // Transform trajectory points to base_link frame
+  const auto base_link_trajectory_points =
+    transformTrajectoryToBaseLink(planning_trajectory->points, transform_listener);
+
+  if (base_link_trajectory_points.empty()) {
+    return traj_polygons;
+  }
+
+  // Create polygons in base_link frame
+  traj_polygons = createTrajectoryPolygons(base_link_trajectory_points, max_filter_distance);
+
+  return traj_polygons;
 }
 
 }  // namespace autoware::perception_filter

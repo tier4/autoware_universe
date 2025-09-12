@@ -17,6 +17,7 @@
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
@@ -24,10 +25,10 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 #include <tf2_ros/buffer.h>
 
 #include <array>
@@ -157,6 +158,28 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
   const double height_margin = 0.0);
+
+/**
+ * @brief Transform trajectory points from map frame to base_link frame
+ * @param map_trajectory_points Trajectory points in map frame
+ * @param transform_listener Transform listener for coordinate transformation
+ * @return Transformed trajectory points in base_link frame
+ */
+std::vector<autoware_planning_msgs::msg::TrajectoryPoint> transformTrajectoryToBaseLink(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & map_trajectory_points,
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener);
+
+/**
+ * @brief Generate trajectory polygons in base_link frame for planning factors
+ * @param planning_trajectory Planning trajectory in map frame
+ * @param max_filter_distance Maximum filter distance for polygon creation
+ * @param transform_listener Transform listener for coordinate transformation
+ * @return Vector of trajectory polygons in base_link frame
+ */
+std::vector<autoware::universe_utils::Polygon2d> generateTrajectoryPolygons(
+  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
+  double max_filter_distance,
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener);
 
 }  // namespace autoware::perception_filter
 
