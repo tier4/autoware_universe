@@ -23,6 +23,12 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <pcl/common/transforms.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <Eigen/Dense>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tier4_debug_msgs/msg/processing_time_tree.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -518,61 +524,146 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     return would_be_filtered_points;
   }
 
-  // Create filtering polygon
-  const autoware::universe_utils::Polygon2d filtering_polygon = [this]() {
-    autoware::universe_utils::ScopedTimeTrack st_polygon("create_filtering_polygon", *time_keeper_);
-    return createPathPolygon(*planning_trajectory_, 0.0, filtering_distance_, max_filter_distance_);
+  // Create trajectory polygons in base_link frame
+  const std::vector<autoware::universe_utils::Polygon2d> traj_polygons = [this]() {
+    autoware::universe_utils::ScopedTimeTrack st_polygon("create_trajectory_polygons", *time_keeper_);
+
+    // Get transform from map to base_link
+    const auto transform_opt = transform_listener_->getTransform(
+      "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+    if (!transform_opt) {
+      std::cerr << "Failed to get transform from map to base_link" << std::endl;
+      return std::vector<autoware::universe_utils::Polygon2d>();
+    }
+
+    // Create polygons in map frame first
+    auto map_polygons = autoware::perception_filter::createTrajectoryPolygons(
+      planning_trajectory_->points, max_filter_distance_);
+
+    // Transform polygons to base_link frame
+    std::vector<autoware::universe_utils::Polygon2d> base_link_polygons;
+    const auto eigen_transform = tf2::transformToEigen(transform_opt->transform);
+
+    for (const auto & map_polygon : map_polygons) {
+      autoware::universe_utils::Polygon2d base_link_polygon;
+      for (const auto & map_point : map_polygon.outer()) {
+        // Convert to 3D point for transformation
+        Eigen::Vector3d map_point_3d(map_point.x(), map_point.y(), 0.0);
+        Eigen::Vector3d base_link_point_3d = eigen_transform * map_point_3d;
+
+        // Add to base_link polygon
+        boost::geometry::append(base_link_polygon,
+          autoware::universe_utils::Point2d(base_link_point_3d.x(), base_link_point_3d.y()));
+      }
+      base_link_polygons.push_back(base_link_polygon);
+    }
+
+
+    return base_link_polygons;
   }();
 
-  // Use common processing function
-  const auto processing_result = [this, &input_pointcloud, &filtering_polygon]() {
-    autoware::universe_utils::ScopedTimeTrack st_process(
-      "process_pointcloud_common_classify", *time_keeper_);
-    return processPointCloudCommon(
-      input_pointcloud, filtering_polygon, planning_trajectory_, transform_listener_,
-      *time_keeper_);
+  // Convert sensor_msgs::PointCloud2 to PCL pointcloud
+  pcl::PointCloud<pcl::PointXYZ>::Ptr input_pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::fromROSMsg(input_pointcloud, *input_pcl_cloud);
+
+
+  // Transform trajectory points to base_link frame for height calculation
+  const auto base_link_trajectory_points = [this]() {
+    std::vector<autoware_planning_msgs::msg::TrajectoryPoint> base_link_points;
+
+    // Get transform from map to base_link
+    const auto transform_opt = transform_listener_->getTransform(
+      "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+    if (!transform_opt) {
+      return base_link_points;
+    }
+
+    const auto eigen_transform = tf2::transformToEigen(transform_opt->transform);
+
+    for (const auto & map_point : planning_trajectory_->points) {
+      autoware_planning_msgs::msg::TrajectoryPoint base_link_point = map_point;
+
+      // Transform position
+      Eigen::Vector3d map_pos_3d(
+        map_point.pose.position.x,
+        map_point.pose.position.y,
+        map_point.pose.position.z);
+      Eigen::Vector3d base_link_pos_3d = eigen_transform * map_pos_3d;
+
+      base_link_point.pose.position.x = base_link_pos_3d.x();
+      base_link_point.pose.position.y = base_link_pos_3d.y();
+      base_link_point.pose.position.z = base_link_pos_3d.z();
+
+      base_link_points.push_back(base_link_point);
+    }
+
+
+    return base_link_points;
   }();
-  if (!processing_result.success) {
-    return would_be_filtered_points;
+
+  // Apply crop box filtering using trajectory polygons
+  const auto filtered_pcl_cloud = [this, &input_pcl_cloud, &traj_polygons, &base_link_trajectory_points]() {
+    autoware::universe_utils::ScopedTimeTrack st_crop("crop_box_filtering", *time_keeper_);
+    const auto result = autoware::perception_filter::filterByTrajectoryPolygonsCropBox(
+      input_pcl_cloud, traj_polygons, base_link_trajectory_points, 10.0);
+
+
+    return result;
+  }();
+
+  // Convert filtered PCL pointcloud back to sensor_msgs
+  sensor_msgs::msg::PointCloud2 filtered_pointcloud;
+  pcl::toROSMsg(*filtered_pcl_cloud, filtered_pointcloud);
+  filtered_pointcloud.header = input_pointcloud.header;
+
+  // Transform pointcloud to map frame for distance calculation
+  pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+  {
+    autoware::universe_utils::ScopedTimeTrack st_transform("transform_pointcloud", *time_keeper_);
+
+    // Get transform from base_link to map
+    const auto transform_opt = transform_listener_->getTransform(
+      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+    if (!transform_opt) {
+      return would_be_filtered_points;
+    }
+
+    // Convert sensor_msgs to PCL
+    pcl::fromROSMsg(filtered_pointcloud, *transformed_cloud);
+
+    // Apply transform
+    const auto eigen_transform = tf2::transformToEigen(transform_opt->transform).cast<float>();
+    pcl::transformPointCloud(*transformed_cloud, *transformed_cloud, eigen_transform);
   }
 
-  // Classify points
+  // Calculate distances to path and classify points
   {
     autoware::universe_utils::ScopedTimeTrack st_classify("classify_points", *time_keeper_);
-    // For points inside the polygon, check distance to path and safety distance
-    // Remove debug counters to improve performance
-    for (size_t idx = 0; idx < processing_result.polygon_inside_indices->indices.size(); ++idx) {
-      const auto i = processing_result.polygon_inside_indices->indices[idx];
-      const auto & point = processing_result.transformed_cloud->points[i];
-      const double distance_to_path = processing_result.distances_to_path[idx];
 
+    for (const auto & point : transformed_cloud->points) {
+      // Create geometry_msgs::Point for distance calculation
       geometry_msgs::msg::Point ros_point;
       ros_point.x = point.x;
       ros_point.y = point.y;
       ros_point.z = point.z;
 
-      // Distance and condition checks
-      {
-        // Points are already filtered to be inside polygon by processPointCloudCommon
-        // No need to check boost::geometry::within again
-        // autoware::universe_utils::Point2d point_2d(ros_point.x, ros_point.y);
-        // const bool is_inside_polygon = boost::geometry::within(point_2d, filtering_polygon);
-        const bool is_inside_polygon = true;  // All points in this loop are inside polygon
+      // Calculate distance to path
+      const double distance_to_path = autoware::motion_utils::calcLateralOffset(
+        planning_trajectory_->points, ros_point);
 
-        // Check if the point is near the path (within max_filter_distance)
-        const bool is_near_path = (distance_to_path <= max_filter_distance_);
+      // Check if the point is near the path (within max_filter_distance)
+      const bool is_near_path = (std::abs(distance_to_path) <= max_filter_distance_);
 
-        // Check if the point is outside the safety distance
-        const bool is_outside_safety_distance = (distance_to_path > pointcloud_safety_distance_);
+      // Check if the point is outside the safety distance
+      const bool is_outside_safety_distance = (std::abs(distance_to_path) > pointcloud_safety_distance_);
 
-        // If the point is inside the polygon AND near the path AND outside the safety distance,
-        // it would be filtered by the perception filter.
-        if (is_inside_polygon && is_near_path && is_outside_safety_distance) {
-          FilteredPointInfo filtered_info;
-          filtered_info.point = ros_point;
-          filtered_info.distance_to_path = distance_to_path;
-          would_be_filtered_points.push_back(filtered_info);
-        }
+      // If the point is near the path AND outside the safety distance,
+      // it would be filtered by the perception filter.
+      if (is_near_path && is_outside_safety_distance) {
+        FilteredPointInfo filtered_info;
+        filtered_info.point = ros_point;
+        filtered_info.distance_to_path = std::abs(distance_to_path);
+        would_be_filtered_points.push_back(filtered_info);
       }
     }
   }

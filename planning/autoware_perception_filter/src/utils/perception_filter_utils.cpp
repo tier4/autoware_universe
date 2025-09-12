@@ -504,6 +504,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
     static_cast<float>(x_max), static_cast<float>(y_max),
     static_cast<float>(highest_traj_height + height_margin), 1.0f));
 
+
   // Apply filter
   auto filtered_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
   crop_filter.filter(*filtered_pointcloud_ptr);
