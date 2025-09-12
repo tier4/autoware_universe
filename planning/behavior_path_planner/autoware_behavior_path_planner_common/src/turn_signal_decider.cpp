@@ -348,7 +348,7 @@ std::optional<TurnSignalInfo> TurnSignalDecider::getRoundaboutTurnSignalInfo(
       continue;  // Skip if the front point is too far
 
     const auto back_pose = calculateLaneBackPose(centerline);
-    auto [iter, inserted] =
+    const auto [iter, inserted] =
       roundabout_desired_start_point_association_.try_emplace(entry_lanelet.id(), current_pose);
     TurnSignalInfo turn_signal_info;
     turn_signal_info.desired_start_point = iter->second;
