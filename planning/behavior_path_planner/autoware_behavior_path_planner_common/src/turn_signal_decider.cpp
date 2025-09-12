@@ -438,7 +438,7 @@ std::optional<TurnSignalInfo> TurnSignalDecider::getRoundaboutTurnSignalInfo(
       base_link2front_;
     if (dist_to_desired_start_point >= 0.0) continue;  // Skip if the front point is too far
     // update map if necessary
-    auto [iter, inserted] = roundabout_desired_start_point_association_.try_emplace(
+    const auto [iter, inserted] = roundabout_desired_start_point_association_.try_emplace(
       exit_lanelet.id(), desired_start_point);
 
     TurnSignalInfo turn_signal_info;
