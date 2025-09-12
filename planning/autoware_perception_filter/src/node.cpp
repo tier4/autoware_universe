@@ -15,26 +15,26 @@
 #include "autoware/perception_filter/perception_filter_node.hpp"
 #include "autoware/perception_filter/perception_filter_utils.hpp"
 
+#include <Eigen/Dense>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
-#include <pcl/common/transforms.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <tf2_eigen/tf2_eigen.hpp>
-#include <Eigen/Dense>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tier4_debug_msgs/msg/processing_time_tree.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <glog/logging.h>
+#include <pcl/common/transforms.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/create_timer_ros.h>
 #include <tf2_ros/transform_listener.h>
@@ -130,6 +130,9 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
 
   debug_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
     "debug/filtering_markers", rclcpp::QoS{1});
+
+  polygon_debug_markers_pub_ =
+    create_publisher<visualization_msgs::msg::MarkerArray>("debug/polygon_markers", rclcpp::QoS{1});
 
   objects_processing_time_pub_ =
     create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
@@ -326,7 +329,9 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   const auto start_time = std::chrono::high_resolution_clock::now();
   latest_pointcloud_ = msg;
 
-  if (!isDataReadyForPointCloud() || !enable_pointcloud_filtering_ || latest_pointcloud_->data.empty()) {
+  if (
+    !isDataReadyForPointCloud() || !enable_pointcloud_filtering_ ||
+    latest_pointcloud_->data.empty()) {
     publishPassthroughMessage(
       *msg, filtered_pointcloud_pub_, pointcloud_processing_time_pub_, start_time);
     return;
@@ -526,7 +531,8 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
 
   // Create trajectory polygons in base_link frame
   const std::vector<autoware::universe_utils::Polygon2d> traj_polygons = [this]() {
-    autoware::universe_utils::ScopedTimeTrack st_polygon("create_trajectory_polygons", *time_keeper_);
+    autoware::universe_utils::ScopedTimeTrack st_polygon(
+      "create_trajectory_polygons", *time_keeper_);
 
     // Get transform from map to base_link
     const auto transform_opt = transform_listener_->getTransform(
@@ -536,36 +542,55 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
       return std::vector<autoware::universe_utils::Polygon2d>();
     }
 
-    // Create polygons in map frame first
-    auto map_polygons = autoware::perception_filter::createTrajectoryPolygons(
-      planning_trajectory_->points, max_filter_distance_);
-
-    // Transform polygons to base_link frame
-    std::vector<autoware::universe_utils::Polygon2d> base_link_polygons;
+    // Transform trajectory points to base_link frame first
+    std::vector<autoware_planning_msgs::msg::TrajectoryPoint> base_link_trajectory_points;
     const auto eigen_transform = tf2::transformToEigen(transform_opt->transform);
 
-    for (const auto & map_polygon : map_polygons) {
-      autoware::universe_utils::Polygon2d base_link_polygon;
-      for (const auto & map_point : map_polygon.outer()) {
-        // Convert to 3D point for transformation
-        Eigen::Vector3d map_point_3d(map_point.x(), map_point.y(), 0.0);
-        Eigen::Vector3d base_link_point_3d = eigen_transform * map_point_3d;
+    for (const auto & map_point : planning_trajectory_->points) {
+      autoware_planning_msgs::msg::TrajectoryPoint base_link_point = map_point;
 
-        // Add to base_link polygon
-        boost::geometry::append(base_link_polygon,
-          autoware::universe_utils::Point2d(base_link_point_3d.x(), base_link_point_3d.y()));
-      }
-      base_link_polygons.push_back(base_link_polygon);
+      // Transform position
+      Eigen::Vector3d map_pos_3d(
+        map_point.pose.position.x, map_point.pose.position.y, map_point.pose.position.z);
+      Eigen::Vector3d base_link_pos_3d = eigen_transform * map_pos_3d;
+
+      base_link_point.pose.position.x = base_link_pos_3d.x();
+      base_link_point.pose.position.y = base_link_pos_3d.y();
+      base_link_point.pose.position.z = base_link_pos_3d.z();
+
+      // Transform orientation (quaternion)
+      Eigen::Quaterniond map_quat(
+        map_point.pose.orientation.w, map_point.pose.orientation.x, map_point.pose.orientation.y,
+        map_point.pose.orientation.z);
+
+      // Extract rotation part from transform
+      Eigen::Matrix3d rotation_matrix = eigen_transform.rotation();
+      Eigen::Quaterniond base_link_quat(rotation_matrix * map_quat.toRotationMatrix());
+
+      base_link_point.pose.orientation.w = base_link_quat.w();
+      base_link_point.pose.orientation.x = base_link_quat.x();
+      base_link_point.pose.orientation.y = base_link_quat.y();
+      base_link_point.pose.orientation.z = base_link_quat.z();
+
+      base_link_trajectory_points.push_back(base_link_point);
     }
 
+    // Create polygons in base_link frame
+    auto base_link_polygons = autoware::perception_filter::createTrajectoryPolygons(
+      base_link_trajectory_points, max_filter_distance_);
 
     return base_link_polygons;
   }();
 
+  // Publish trajectory polygon visualization markers
+  if (!traj_polygons.empty()) {
+    auto traj_polygon_markers = createTrajectoryPolygonMarkers(traj_polygons, "base_link");
+    polygon_debug_markers_pub_->publish(traj_polygon_markers);
+  }
+
   // Convert sensor_msgs::PointCloud2 to PCL pointcloud
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(input_pointcloud, *input_pcl_cloud);
-
 
   // Transform trajectory points to base_link frame for height calculation
   const auto base_link_trajectory_points = [this]() {
@@ -585,9 +610,7 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
 
       // Transform position
       Eigen::Vector3d map_pos_3d(
-        map_point.pose.position.x,
-        map_point.pose.position.y,
-        map_point.pose.position.z);
+        map_point.pose.position.x, map_point.pose.position.y, map_point.pose.position.z);
       Eigen::Vector3d base_link_pos_3d = eigen_transform * map_pos_3d;
 
       base_link_point.pose.position.x = base_link_pos_3d.x();
@@ -597,16 +620,61 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
       base_link_points.push_back(base_link_point);
     }
 
-
     return base_link_points;
   }();
 
+  // Calculate crop box bounding polygon for visualization
+  std::vector<autoware::universe_utils::Polygon2d> crop_box_polygons;
+  if (!traj_polygons.empty() && !base_link_trajectory_points.empty()) {
+    // Calculate XY bounding box from trajectory polygons (same logic as in
+    // filterByTrajectoryPolygonsCropBox)
+    double x_min = std::numeric_limits<double>::max();
+    double x_max = std::numeric_limits<double>::lowest();
+    double y_min = std::numeric_limits<double>::max();
+    double y_max = std::numeric_limits<double>::lowest();
+
+    for (const auto & poly : traj_polygons) {
+      for (const auto & point : poly.outer()) {
+        x_min = std::min(x_min, point.x());
+        x_max = std::max(x_max, point.x());
+        y_min = std::min(y_min, point.y());
+        y_max = std::max(y_max, point.y());
+      }
+    }
+
+    // Create bounding box polygon
+    autoware::universe_utils::Polygon2d bounding_polygon;
+    boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_min, y_min));
+    boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_max, y_min));
+    boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_max, y_max));
+    boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_min, y_max));
+    boost::geometry::append(
+      bounding_polygon, autoware::universe_utils::Point2d(x_min, y_min));  // Close polygon
+    boost::geometry::correct(bounding_polygon);
+
+    crop_box_polygons.push_back(bounding_polygon);
+  }
+
+  // Publish crop box polygon visualization markers
+  if (!crop_box_polygons.empty()) {
+    auto crop_box_markers = createCropBoxPolygonMarkers(crop_box_polygons, "base_link");
+    polygon_debug_markers_pub_->publish(crop_box_markers);
+  }
+
   // Apply crop box filtering using trajectory polygons
-  const auto filtered_pcl_cloud = [this, &input_pcl_cloud, &traj_polygons, &base_link_trajectory_points]() {
+  const auto filtered_pcl_cloud = [this, &input_pcl_cloud, &traj_polygons,
+                                   &base_link_trajectory_points]() {
     autoware::universe_utils::ScopedTimeTrack st_crop("crop_box_filtering", *time_keeper_);
+
+    RCLCPP_DEBUG(
+      get_logger(), "Pointcloud filtering input: %zu points", input_pcl_cloud->points.size());
+
     const auto result = autoware::perception_filter::filterByTrajectoryPolygonsCropBox(
       input_pcl_cloud, traj_polygons, base_link_trajectory_points, 10.0);
 
+    RCLCPP_DEBUG(
+      get_logger(), "Pointcloud filtering output: %zu points (filtered: %zu points)",
+      result->points.size(), input_pcl_cloud->points.size() - result->points.size());
 
     return result;
   }();
@@ -640,6 +708,10 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
   {
     autoware::universe_utils::ScopedTimeTrack st_classify("classify_points", *time_keeper_);
 
+    size_t points_near_path = 0;
+    size_t points_outside_safety = 0;
+    size_t points_would_be_filtered = 0;
+
     for (const auto & point : transformed_cloud->points) {
       // Create geometry_msgs::Point for distance calculation
       geometry_msgs::msg::Point ros_point;
@@ -648,14 +720,21 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
       ros_point.z = point.z;
 
       // Calculate distance to path
-      const double distance_to_path = autoware::motion_utils::calcLateralOffset(
-        planning_trajectory_->points, ros_point);
+      const double distance_to_path =
+        autoware::motion_utils::calcLateralOffset(planning_trajectory_->points, ros_point);
 
       // Check if the point is near the path (within max_filter_distance)
       const bool is_near_path = (std::abs(distance_to_path) <= max_filter_distance_);
+      if (is_near_path) {
+        points_near_path++;
+      }
 
       // Check if the point is outside the safety distance
-      const bool is_outside_safety_distance = (std::abs(distance_to_path) > pointcloud_safety_distance_);
+      const bool is_outside_safety_distance =
+        (std::abs(distance_to_path) > pointcloud_safety_distance_);
+      if (is_outside_safety_distance) {
+        points_outside_safety++;
+      }
 
       // If the point is near the path AND outside the safety distance,
       // it would be filtered by the perception filter.
@@ -664,8 +743,17 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
         filtered_info.point = ros_point;
         filtered_info.distance_to_path = std::abs(distance_to_path);
         would_be_filtered_points.push_back(filtered_info);
+        points_would_be_filtered++;
       }
     }
+
+    // Log classification results
+    RCLCPP_DEBUG(
+      get_logger(),
+      "Point classification results: total=%zu, near_path=%zu, outside_safety=%zu, "
+      "would_be_filtered=%zu",
+      transformed_cloud->points.size(), points_near_path, points_outside_safety,
+      points_would_be_filtered);
   }
 
   return would_be_filtered_points;
@@ -834,6 +922,104 @@ bool PerceptionFilterNode::isDataReadyForPointCloud()
   }
 
   return true;
+}
+
+visualization_msgs::msg::MarkerArray PerceptionFilterNode::createTrajectoryPolygonMarkers(
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
+  const std::string & frame_id)
+{
+  visualization_msgs::msg::MarkerArray marker_array;
+
+  for (size_t i = 0; i < traj_polygons.size(); ++i) {
+    const auto & polygon = traj_polygons[i];
+
+    // Create line strip marker for polygon outline
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = this->now();
+    marker.ns = "trajectory_polygons";
+    marker.id = static_cast<int>(i);
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+
+    // Set marker properties
+    marker.scale.x = 0.1;  // Line width
+    marker.color.r = 0.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
+    marker.color.a = 0.8;
+
+    // Add polygon points to marker
+    for (const auto & point : polygon.outer()) {
+      geometry_msgs::msg::Point p;
+      p.x = point.x();
+      p.y = point.y();
+      p.z = 0.0;  // Ground level
+      marker.points.push_back(p);
+    }
+
+    // Close the polygon by adding the first point again
+    if (!polygon.outer().empty()) {
+      geometry_msgs::msg::Point first_point;
+      first_point.x = polygon.outer()[0].x();
+      first_point.y = polygon.outer()[0].y();
+      first_point.z = 0.0;
+      marker.points.push_back(first_point);
+    }
+
+    marker_array.markers.push_back(marker);
+  }
+
+  return marker_array;
+}
+
+visualization_msgs::msg::MarkerArray PerceptionFilterNode::createCropBoxPolygonMarkers(
+  const std::vector<autoware::universe_utils::Polygon2d> & bounding_polygons,
+  const std::string & frame_id)
+{
+  visualization_msgs::msg::MarkerArray marker_array;
+
+  for (size_t i = 0; i < bounding_polygons.size(); ++i) {
+    const auto & polygon = bounding_polygons[i];
+
+    // Create line strip marker for crop box outline
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = this->now();
+    marker.ns = "crop_box_polygons";
+    marker.id = static_cast<int>(i);
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+
+    // Set marker properties
+    marker.scale.x = 0.15;  // Line width
+    marker.color.r = 1.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
+    marker.color.a = 0.8;
+
+    // Add polygon points to marker
+    for (const auto & point : polygon.outer()) {
+      geometry_msgs::msg::Point p;
+      p.x = point.x();
+      p.y = point.y();
+      p.z = 0.0;  // Ground level
+      marker.points.push_back(p);
+    }
+
+    // Close the polygon by adding the first point again
+    if (!polygon.outer().empty()) {
+      geometry_msgs::msg::Point first_point;
+      first_point.x = polygon.outer()[0].x();
+      first_point.y = polygon.outer()[0].y();
+      first_point.z = 0.0;
+      marker.points.push_back(first_point);
+    }
+
+    marker_array.markers.push_back(marker);
+  }
+
+  return marker_array;
 }
 
 }  // namespace autoware::perception_filter

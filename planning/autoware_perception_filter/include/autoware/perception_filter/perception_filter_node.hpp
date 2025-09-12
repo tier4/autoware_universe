@@ -162,6 +162,26 @@ private:
   void updateFilteringPolygonStatus();
 
   /**
+   * @brief Create visualization markers for trajectory polygons
+   * @param traj_polygons Vector of trajectory polygons to visualize
+   * @param frame_id Frame ID for the markers
+   * @return MarkerArray containing polygon visualization markers
+   */
+  visualization_msgs::msg::MarkerArray createTrajectoryPolygonMarkers(
+    const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
+    const std::string & frame_id);
+
+  /**
+   * @brief Create visualization markers for crop box bounding polygons
+   * @param bounding_polygons Vector of bounding polygons for crop boxes
+   * @param frame_id Frame ID for the markers
+   * @return MarkerArray containing crop box visualization markers
+   */
+  visualization_msgs::msg::MarkerArray createCropBoxPolygonMarkers(
+    const std::vector<autoware::universe_utils::Polygon2d> & bounding_polygons,
+    const std::string & frame_id);
+
+  /**
    * @brief Classify pointcloud points for planning factors with proper coordinate transformation
    * @param input_pointcloud Input pointcloud to classify
    * @param rtc_is_registered Whether RTC interface is registered
@@ -203,6 +223,7 @@ private:
     planning_factors_pub_;
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_markers_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr polygon_debug_markers_pub_;
 
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     objects_processing_time_pub_;
