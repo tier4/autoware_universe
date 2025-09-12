@@ -23,6 +23,9 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <boost/geometry.hpp>
+#include <pcl/filters/crop_box.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
@@ -455,6 +458,57 @@ std::vector<autoware::universe_utils::Polygon2d> createTrajectoryPolygons(
   }
 
   return output_polygons;
+}
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
+  const double height_margin)
+{
+  if (traj_polygons.empty() || trajectory_points.empty()) {
+    return std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  }
+
+  pcl::CropBox<pcl::PointXYZ> crop_filter;
+  crop_filter.setInputCloud(input_pointcloud_ptr);
+
+  // Calculate XY bounding box from trajectory polygons
+  double x_min = std::numeric_limits<double>::max();
+  double x_max = std::numeric_limits<double>::lowest();
+  double y_min = std::numeric_limits<double>::max();
+  double y_max = std::numeric_limits<double>::lowest();
+
+  for (const auto & poly : traj_polygons) {
+    for (const auto & point : poly.outer()) {
+      x_min = std::min(x_min, point.x());
+      x_max = std::max(x_max, point.x());
+      y_min = std::min(y_min, point.y());
+      y_max = std::max(y_max, point.y());
+    }
+  }
+
+  // Calculate Z bounds from trajectory points
+  double lowest_traj_height = std::numeric_limits<double>::max();
+  double highest_traj_height = std::numeric_limits<double>::lowest();
+  for (const auto & trajectory_point : trajectory_points) {
+    lowest_traj_height = std::min(lowest_traj_height, trajectory_point.pose.position.z);
+    highest_traj_height = std::max(highest_traj_height, trajectory_point.pose.position.z);
+  }
+
+  // Set crop box bounds
+  crop_filter.setMin(Eigen::Vector4f(
+    static_cast<float>(x_min), static_cast<float>(y_min),
+    static_cast<float>(lowest_traj_height - height_margin), 1.0f));
+  crop_filter.setMax(Eigen::Vector4f(
+    static_cast<float>(x_max), static_cast<float>(y_max),
+    static_cast<float>(highest_traj_height + height_margin), 1.0f));
+
+  // Apply filter
+  auto filtered_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  crop_filter.filter(*filtered_pointcloud_ptr);
+
+  return filtered_pointcloud_ptr;
 }
 
 }  // namespace autoware::perception_filter

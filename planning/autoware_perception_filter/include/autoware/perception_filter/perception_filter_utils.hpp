@@ -24,6 +24,8 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <tf2_ros/buffer.h>
@@ -141,6 +143,20 @@ std::optional<geometry_msgs::msg::Pose> getEgoPose(const tf2_ros::Buffer & tf_bu
 std::vector<autoware::universe_utils::Polygon2d> createTrajectoryPolygons(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & traj_points,
   const double lat_margin);
+
+/**
+ * @brief Filter pointcloud using trajectory polygons with crop box filtering
+ * @param input_pointcloud_ptr Input pointcloud to filter
+ * @param traj_polygons Trajectory polygons for filtering
+ * @param trajectory_points Trajectory points for height calculation
+ * @param height_margin Height margin for Z-axis filtering [m]
+ * @return Filtered pointcloud
+ */
+pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
+  const double height_margin = 0.0);
 
 }  // namespace autoware::perception_filter
 
