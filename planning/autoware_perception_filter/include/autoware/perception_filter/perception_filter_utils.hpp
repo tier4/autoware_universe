@@ -190,6 +190,14 @@ std::vector<autoware::universe_utils::Polygon2d> generateTrajectoryPolygons(
 std::vector<autoware::universe_utils::Polygon2d> generateCropBoxPolygons(
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons);
 
+/**
+ * @brief Combine multiple trajectory polygons into a single polygon using union operation
+ * @param polygons Vector of polygons to combine
+ * @return Combined polygon (union of all input polygons)
+ */
+autoware::universe_utils::Polygon2d combineTrajectoryPolygons(
+  const std::vector<autoware::universe_utils::Polygon2d> & polygons);
+
 }  // namespace autoware::perception_filter
 
 #endif  // AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_UTILS_HPP_

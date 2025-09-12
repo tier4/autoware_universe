@@ -369,13 +369,17 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       autoware::perception_filter::transformTrajectoryToBaseLink(
         resampled_trajectory.points, transform_listener_);
 
+    // Combine traj_min_polygons into a single polygon
+    const auto combined_traj_min_polygon =
+      autoware::perception_filter::combineTrajectoryPolygons(traj_min_polygons);
+
     // Generate crop box polygons using utility function
     const auto crop_box_polygons =
       autoware::perception_filter::generateCropBoxPolygons(traj_max_polygons);
 
     would_be_filtered_points_ = classifyPointCloudForPlanningFactors(
-      *msg, rtc_interface_->isRegistered(rtc_uuid_), traj_max_polygons, base_link_trajectory_points,
-      crop_box_polygons);
+      *msg, rtc_interface_->isRegistered(rtc_uuid_), traj_max_polygons, combined_traj_min_polygon,
+      base_link_trajectory_points, crop_box_polygons);
 
     // Publish debug markers for trajectory polygons and crop box polygons
     {
@@ -385,12 +389,19 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       if (!traj_max_polygons.empty()) {
         auto traj_polygon_markers =
           createTrajectoryPolygonMarkers(traj_max_polygons, "base_link", "trajectory_polygons_max");
-        auto traj_min_polygon_markers =
-          createTrajectoryPolygonMarkers(traj_min_polygons, "base_link", "trajectory_polygons_min");
 
-        traj_polygon_markers.markers.insert(
-          traj_polygon_markers.markers.end(), traj_min_polygon_markers.markers.begin(),
-          traj_min_polygon_markers.markers.end());
+        // Create marker for combined traj_min_polygon
+        if (!combined_traj_min_polygon.outer().empty()) {
+          std::vector<autoware::universe_utils::Polygon2d> combined_polygon_vector;
+          combined_polygon_vector.push_back(combined_traj_min_polygon);
+          auto traj_min_polygon_markers = createTrajectoryPolygonMarkers(
+            combined_polygon_vector, "base_link", "trajectory_polygons_min");
+
+          traj_polygon_markers.markers.insert(
+            traj_polygon_markers.markers.end(), traj_min_polygon_markers.markers.begin(),
+            traj_min_polygon_markers.markers.end());
+        }
+
         polygon_debug_markers_pub_->publish(traj_polygon_markers);
       }
 
@@ -565,6 +576,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanningFactors(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered,
   const std::vector<autoware::universe_utils::Polygon2d> & traj_max_polygons,
+  const autoware::universe_utils::Polygon2d & combined_traj_min_polygon,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & base_link_trajectory_points,
   const std::vector<autoware::universe_utils::Polygon2d> & crop_box_polygons)
 {
@@ -625,44 +637,40 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     pcl::transformPointCloud(*transformed_cloud, *transformed_cloud, eigen_transform);
   }
 
-  // Calculate distances to path and classify points
+  // Classify points based on polygon membership
   {
     autoware::universe_utils::ScopedTimeTrack st_classify("classify_points", *time_keeper_);
 
-    size_t points_near_path = 0;
-    size_t points_outside_safety = 0;
     size_t points_would_be_filtered = 0;
+    size_t points_in_traj_min_polygons = 0;
 
     for (const auto & point : transformed_cloud->points) {
-      // Create geometry_msgs::Point for distance calculation
+      // Create geometry_msgs::Point for point info
       geometry_msgs::msg::Point ros_point;
       ros_point.x = point.x;
       ros_point.y = point.y;
       ros_point.z = point.z;
 
-      // Calculate distance to path
-      const double distance_to_path =
-        autoware::motion_utils::calcLateralOffset(planning_trajectory_->points, ros_point);
-
-      // Check if the point is near the path (within max_filter_distance)
-      const bool is_near_path = (std::abs(distance_to_path) <= max_filter_distance_);
-      if (is_near_path) {
-        points_near_path++;
+      // Check if the point is inside combined_traj_min_polygon
+      bool is_inside_traj_min_polygons = false;
+      if (!combined_traj_min_polygon.outer().empty()) {
+        // Convert point to boost::geometry::model::point
+        boost::geometry::model::point<double, 2, boost::geometry::cs::cartesian> boost_point(
+          point.x, point.y);
+        is_inside_traj_min_polygons =
+          boost::geometry::within(boost_point, combined_traj_min_polygon);
       }
 
-      // Check if the point is outside the safety distance
-      const bool is_outside_safety_distance =
-        (std::abs(distance_to_path) > pointcloud_safety_distance_);
-      if (is_outside_safety_distance) {
-        points_outside_safety++;
+      if (is_inside_traj_min_polygons) {
+        points_in_traj_min_polygons++;
       }
 
-      // If the point is near the path AND outside the safety distance,
-      // it would be filtered by the perception filter.
-      if (is_near_path && is_outside_safety_distance) {
+      // If the point is inside traj_max_polygons (already filtered by crop box filtering)
+      // AND outside traj_min_polygons, it would be filtered by the perception filter.
+      if (!is_inside_traj_min_polygons) {
         FilteredPointInfo filtered_info;
         filtered_info.point = ros_point;
-        filtered_info.distance_to_path = std::abs(distance_to_path);
+        filtered_info.distance_to_path = 0.0;  // Not used, set to 0
         would_be_filtered_points.push_back(filtered_info);
         points_would_be_filtered++;
       }
@@ -671,10 +679,9 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     // Log classification results
     RCLCPP_DEBUG(
       get_logger(),
-      "Point classification results: total=%zu, near_path=%zu, outside_safety=%zu, "
-      "would_be_filtered=%zu",
-      transformed_cloud->points.size(), points_near_path, points_outside_safety,
-      points_would_be_filtered);
+      "Point classification results: total=%zu, in_traj_min_polygons=%zu, "
+      "would_be_filtered=%zu (traj_max_inside AND traj_min_outside)",
+      transformed_cloud->points.size(), points_in_traj_min_polygons, points_would_be_filtered);
   }
 
   return would_be_filtered_points;

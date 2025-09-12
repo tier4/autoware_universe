@@ -631,4 +631,40 @@ std::vector<autoware::universe_utils::Polygon2d> generateCropBoxPolygons(
   return crop_box_polygons;
 }
 
+autoware::universe_utils::Polygon2d combineTrajectoryPolygons(
+  const std::vector<autoware::universe_utils::Polygon2d> & polygons)
+{
+  autoware::universe_utils::Polygon2d combined_polygon;
+
+  if (polygons.empty()) {
+    return combined_polygon;
+  }
+
+  if (polygons.size() == 1) {
+    return polygons[0];
+  }
+
+  // Use boost::geometry::union_ to combine all polygons
+  autoware::universe_utils::MultiPolygon2d result_polygons;
+
+  // Start with the first polygon
+  autoware::universe_utils::MultiPolygon2d temp_polygons;
+  temp_polygons.push_back(polygons[0]);
+
+  // Union with each subsequent polygon
+  for (size_t i = 1; i < polygons.size(); ++i) {
+    autoware::universe_utils::MultiPolygon2d current_result;
+    boost::geometry::union_(temp_polygons, polygons[i], current_result);
+    temp_polygons = current_result;
+  }
+
+  // If we have a result, take the first (largest) polygon
+  if (!temp_polygons.empty()) {
+    combined_polygon = temp_polygons[0];
+    boost::geometry::correct(combined_polygon);
+  }
+
+  return combined_polygon;
+}
+
 }  // namespace autoware::perception_filter
