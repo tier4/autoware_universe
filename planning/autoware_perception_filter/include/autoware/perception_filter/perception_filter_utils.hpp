@@ -150,6 +150,7 @@ std::vector<autoware::universe_utils::Polygon2d> createTrajectoryPolygons(
  * @param input_pointcloud_ptr Input pointcloud to filter
  * @param traj_polygons Trajectory polygons for filtering
  * @param trajectory_points Trajectory points for height calculation
+ * @param crop_box_polygons Pre-calculated crop box polygons for XY bounds
  * @param height_margin Height margin for Z-axis filtering [m]
  * @return Filtered pointcloud
  */
@@ -157,6 +158,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
+  const std::vector<autoware::universe_utils::Polygon2d> & crop_box_polygons,
   const double height_margin = 0.0);
 
 /**
@@ -177,9 +179,16 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> transformTrajectoryToB
  * @return Vector of trajectory polygons in base_link frame
  */
 std::vector<autoware::universe_utils::Polygon2d> generateTrajectoryPolygons(
-  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-  double max_filter_distance,
+  const autoware_planning_msgs::msg::Trajectory & planning_trajectory, double max_filter_distance,
   const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener);
+
+/**
+ * @brief Generate crop box polygons from trajectory polygons
+ * @param traj_polygons Trajectory polygons to create crop box from
+ * @return Vector of crop box polygons (bounding boxes)
+ */
+std::vector<autoware::universe_utils::Polygon2d> generateCropBoxPolygons(
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons);
 
 }  // namespace autoware::perception_filter
 

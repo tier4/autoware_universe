@@ -468,28 +468,28 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
+  const std::vector<autoware::universe_utils::Polygon2d> & crop_box_polygons,
   const double height_margin)
 {
-  if (traj_polygons.empty() || trajectory_points.empty()) {
+  if (traj_polygons.empty() || trajectory_points.empty() || crop_box_polygons.empty()) {
     return std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
   }
 
   pcl::CropBox<pcl::PointXYZ> crop_filter;
   crop_filter.setInputCloud(input_pointcloud_ptr);
 
-  // Calculate XY bounding box from trajectory polygons
+  // Use pre-calculated crop box polygon for XY bounds
+  const auto & crop_box = crop_box_polygons.front();
   double x_min = std::numeric_limits<double>::max();
   double x_max = std::numeric_limits<double>::lowest();
   double y_min = std::numeric_limits<double>::max();
   double y_max = std::numeric_limits<double>::lowest();
 
-  for (const auto & poly : traj_polygons) {
-    for (const auto & point : poly.outer()) {
-      x_min = std::min(x_min, point.x());
-      x_max = std::max(x_max, point.x());
-      y_min = std::min(y_min, point.y());
-      y_max = std::max(y_max, point.y());
-    }
+  for (const auto & point : crop_box.outer()) {
+    x_min = std::min(x_min, point.x());
+    x_max = std::max(x_max, point.x());
+    y_min = std::min(y_min, point.y());
+    y_max = std::max(y_max, point.y());
   }
 
   // Calculate Z bounds from trajectory points
@@ -569,19 +569,18 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> transformTrajectoryToB
 }
 
 std::vector<autoware::universe_utils::Polygon2d> generateTrajectoryPolygons(
-  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-  double max_filter_distance,
+  const autoware_planning_msgs::msg::Trajectory & planning_trajectory, double max_filter_distance,
   const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener)
 {
   std::vector<autoware::universe_utils::Polygon2d> traj_polygons;
 
-  if (!planning_trajectory || planning_trajectory->points.empty()) {
+  if (planning_trajectory.points.empty()) {
     return traj_polygons;
   }
 
   // Transform trajectory points to base_link frame
   const auto base_link_trajectory_points =
-    transformTrajectoryToBaseLink(planning_trajectory->points, transform_listener);
+    transformTrajectoryToBaseLink(planning_trajectory.points, transform_listener);
 
   if (base_link_trajectory_points.empty()) {
     return traj_polygons;
@@ -591,6 +590,45 @@ std::vector<autoware::universe_utils::Polygon2d> generateTrajectoryPolygons(
   traj_polygons = createTrajectoryPolygons(base_link_trajectory_points, max_filter_distance);
 
   return traj_polygons;
+}
+
+std::vector<autoware::universe_utils::Polygon2d> generateCropBoxPolygons(
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons)
+{
+  std::vector<autoware::universe_utils::Polygon2d> crop_box_polygons;
+
+  if (traj_polygons.empty()) {
+    return crop_box_polygons;
+  }
+
+  // Calculate XY bounding box from trajectory polygons
+  double x_min = std::numeric_limits<double>::max();
+  double x_max = std::numeric_limits<double>::lowest();
+  double y_min = std::numeric_limits<double>::max();
+  double y_max = std::numeric_limits<double>::lowest();
+
+  for (const auto & poly : traj_polygons) {
+    for (const auto & point : poly.outer()) {
+      x_min = std::min(x_min, point.x());
+      x_max = std::max(x_max, point.x());
+      y_min = std::min(y_min, point.y());
+      y_max = std::max(y_max, point.y());
+    }
+  }
+
+  // Create bounding box polygon
+  autoware::universe_utils::Polygon2d bounding_polygon;
+  boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_min, y_min));
+  boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_max, y_min));
+  boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_max, y_max));
+  boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_min, y_max));
+  boost::geometry::append(
+    bounding_polygon, autoware::universe_utils::Point2d(x_min, y_min));  // Close polygon
+  boost::geometry::correct(bounding_polygon);
+
+  crop_box_polygons.push_back(bounding_polygon);
+
+  return crop_box_polygons;
 }
 
 }  // namespace autoware::perception_filter

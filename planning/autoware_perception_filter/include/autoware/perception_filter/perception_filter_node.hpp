@@ -187,12 +187,14 @@ private:
    * @param rtc_is_registered Whether RTC interface is registered
    * @param traj_polygons trajectory polygons in base_link frame
    * @param base_link_trajectory_points trajectory points in base_link frame
+   * @param crop_box_polygons crop box polygons for visualization
    * @return Vector of filtered point information for planning factors
    */
   std::vector<FilteredPointInfo> classifyPointCloudForPlanningFactors(
     const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered,
     const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
-    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & base_link_trajectory_points);
+    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & base_link_trajectory_points,
+    const std::vector<autoware::universe_utils::Polygon2d> & crop_box_polygons);
 
   /**
    * @brief Filter point cloud data based on trajectory proximity with proper coordinate

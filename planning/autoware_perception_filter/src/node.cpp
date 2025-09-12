@@ -16,6 +16,8 @@
 #include "autoware/perception_filter/perception_filter_utils.hpp"
 
 #include <Eigen/Dense>
+#include <autoware/motion_utils/resample/resample.hpp>
+#include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
@@ -352,15 +354,43 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     autoware::universe_utils::ScopedTimeTrack st_classify(
       "classify_pointcloud_planning_factors", *time_keeper_);
 
+    // Resample trajectory
+    constexpr double resample_interval = 0.5;
+
+    const auto resampled_trajectory = autoware::motion_utils::resampleTrajectory(
+      *planning_trajectory_, resample_interval, false, true, true);
+
     // Generate trajectory polygons and points outside the classification function
     const auto traj_polygons = autoware::perception_filter::generateTrajectoryPolygons(
-      planning_trajectory_, max_filter_distance_, transform_listener_);
+      resampled_trajectory, max_filter_distance_, transform_listener_);
     const auto base_link_trajectory_points =
       autoware::perception_filter::transformTrajectoryToBaseLink(
-        planning_trajectory_->points, transform_listener_);
+        resampled_trajectory.points, transform_listener_);
+
+    // Generate crop box polygons using utility function
+    const auto crop_box_polygons =
+      autoware::perception_filter::generateCropBoxPolygons(traj_polygons);
 
     would_be_filtered_points_ = classifyPointCloudForPlanningFactors(
-      *msg, rtc_interface_->isRegistered(rtc_uuid_), traj_polygons, base_link_trajectory_points);
+      *msg, rtc_interface_->isRegistered(rtc_uuid_), traj_polygons, base_link_trajectory_points,
+      crop_box_polygons);
+
+    // Publish debug markers for trajectory polygons and crop box polygons
+    {
+      autoware::universe_utils::ScopedTimeTrack st_debug("publish_debug_polygons", *time_keeper_);
+
+      // Publish trajectory polygon markers
+      if (!traj_polygons.empty()) {
+        auto traj_polygon_markers = createTrajectoryPolygonMarkers(traj_polygons, "base_link");
+        polygon_debug_markers_pub_->publish(traj_polygon_markers);
+      }
+
+      // Publish crop box polygon markers
+      if (!crop_box_polygons.empty()) {
+        auto crop_box_markers = createCropBoxPolygonMarkers(crop_box_polygons, "base_link");
+        polygon_debug_markers_pub_->publish(crop_box_markers);
+      }
+    }
   } else {
     would_be_filtered_points_.clear();
   }
@@ -526,7 +556,8 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
 std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanningFactors(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered,
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
-  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & base_link_trajectory_points)
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & base_link_trajectory_points,
+  const std::vector<autoware::universe_utils::Polygon2d> & crop_box_polygons)
 {
   autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -540,48 +571,18 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(input_pointcloud, *input_pcl_cloud);
 
-  // Calculate crop box bounding polygon for visualization
-  std::vector<autoware::universe_utils::Polygon2d> crop_box_polygons;
-  if (!traj_polygons.empty() && !base_link_trajectory_points.empty()) {
-    // Calculate XY bounding box from trajectory polygons (same logic as in
-    // filterByTrajectoryPolygonsCropBox)
-    double x_min = std::numeric_limits<double>::max();
-    double x_max = std::numeric_limits<double>::lowest();
-    double y_min = std::numeric_limits<double>::max();
-    double y_max = std::numeric_limits<double>::lowest();
-
-    for (const auto & poly : traj_polygons) {
-      for (const auto & point : poly.outer()) {
-        x_min = std::min(x_min, point.x());
-        x_max = std::max(x_max, point.x());
-        y_min = std::min(y_min, point.y());
-        y_max = std::max(y_max, point.y());
-      }
-    }
-
-    // Create bounding box polygon
-    autoware::universe_utils::Polygon2d bounding_polygon;
-    boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_min, y_min));
-    boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_max, y_min));
-    boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_max, y_max));
-    boost::geometry::append(bounding_polygon, autoware::universe_utils::Point2d(x_min, y_max));
-    boost::geometry::append(
-      bounding_polygon, autoware::universe_utils::Point2d(x_min, y_min));  // Close polygon
-    boost::geometry::correct(bounding_polygon);
-
-    crop_box_polygons.push_back(bounding_polygon);
-  }
+  // Use crop box polygons passed as parameter (generated by generateCropBoxPolygons)
 
   // Apply crop box filtering using trajectory polygons
   const auto filtered_pcl_cloud = [this, &input_pcl_cloud, &traj_polygons,
-                                   &base_link_trajectory_points]() {
+                                   &base_link_trajectory_points, &crop_box_polygons]() {
     autoware::universe_utils::ScopedTimeTrack st_crop("crop_box_filtering", *time_keeper_);
 
     RCLCPP_DEBUG(
       get_logger(), "Pointcloud filtering input: %zu points", input_pcl_cloud->points.size());
 
     const auto result = autoware::perception_filter::filterByTrajectoryPolygonsCropBox(
-      input_pcl_cloud, traj_polygons, base_link_trajectory_points, 10.0);
+      input_pcl_cloud, traj_polygons, base_link_trajectory_points, crop_box_polygons, 10.0);
 
     RCLCPP_DEBUG(
       get_logger(), "Pointcloud filtering output: %zu points (filtered: %zu points)",
