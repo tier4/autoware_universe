@@ -17,15 +17,16 @@
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <tf2_ros/buffer.h>
 #include <visualization_msgs/msg/marker_array.hpp>
+
+#include <tf2_ros/buffer.h>
 
 #include <array>
 #include <cstdint>
@@ -129,8 +130,17 @@ uint8_t stringToLabel(const std::string & label_string);
  * @param tf_buffer TF buffer for getting transform
  * @return Optional ego pose, empty if transform is not available
  */
-std::optional<geometry_msgs::msg::Pose> getEgoPose(
-  const tf2_ros::Buffer & tf_buffer);
+std::optional<geometry_msgs::msg::Pose> getEgoPose(const tf2_ros::Buffer & tf_buffer);
+
+/**
+ * @brief Create filtering polygons from trajectory points with lateral margin
+ * @param traj_points Trajectory points to create polygons from
+ * @param lat_margin Lateral margin for polygon creation [m]
+ * @return Vector of filtering polygons for each trajectory point
+ */
+std::vector<autoware::universe_utils::Polygon2d> createTrajectoryPolygons(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & traj_points,
+  const double lat_margin);
 
 }  // namespace autoware::perception_filter
 

@@ -21,10 +21,11 @@
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <tf2_ros/buffer.h>
-#include <tf2/exceptions.h>
 
 #include <boost/geometry.hpp>
+
+#include <tf2/exceptions.h>
+#include <tf2_ros/buffer.h>
 
 #include <algorithm>
 #include <array>
@@ -387,8 +388,7 @@ uint8_t stringToLabel(const std::string & label_string)
   return ObjectClassification::UNKNOWN;
 }
 
-std::optional<geometry_msgs::msg::Pose> getEgoPose(
-  const tf2_ros::Buffer & tf_buffer)
+std::optional<geometry_msgs::msg::Pose> getEgoPose(const tf2_ros::Buffer & tf_buffer)
 {
   geometry_msgs::msg::TransformStamped transform;
   try {
@@ -405,6 +405,56 @@ std::optional<geometry_msgs::msg::Pose> getEgoPose(
   pose.orientation = transform.transform.rotation;
 
   return std::optional<geometry_msgs::msg::Pose>{pose};
+}
+
+std::vector<autoware::universe_utils::Polygon2d> createTrajectoryPolygons(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & traj_points,
+  const double lat_margin)
+{
+  std::vector<autoware::universe_utils::Polygon2d> output_polygons;
+
+  if (traj_points.empty()) {
+    return output_polygons;
+  }
+
+  autoware::universe_utils::Polygon2d accumulated_polygon;
+
+  for (size_t i = 0; i < traj_points.size(); ++i) {
+    const auto & pose = traj_points.at(i).pose;
+
+    // Create left and right offset points from trajectory point
+    const auto left_point =
+      autoware::universe_utils::calcOffsetPose(pose, 0.0, lat_margin, 0.0).position;
+    const auto right_point =
+      autoware::universe_utils::calcOffsetPose(pose, 0.0, -lat_margin, 0.0).position;
+
+    // Create current step polygon (rectangle-like shape)
+    autoware::universe_utils::Polygon2d current_polygon;
+    boost::geometry::append(
+      current_polygon, autoware::universe_utils::Point2d(left_point.x, left_point.y));
+    boost::geometry::append(
+      current_polygon, autoware::universe_utils::Point2d(right_point.x, right_point.y));
+    boost::geometry::append(
+      current_polygon,
+      autoware::universe_utils::Point2d(left_point.x, left_point.y));  // Close polygon
+
+    // Add current polygon points to accumulated polygon
+    for (const auto & point : current_polygon.outer()) {
+      boost::geometry::append(accumulated_polygon, point);
+    }
+
+    // Calculate convex hull of accumulated polygon
+    autoware::universe_utils::Polygon2d hull_polygon;
+    boost::geometry::convex_hull(accumulated_polygon, hull_polygon);
+    boost::geometry::correct(hull_polygon);
+
+    output_polygons.push_back(hull_polygon);
+
+    // Update accumulated polygon for next iteration (keep only current polygon for next step)
+    accumulated_polygon = std::move(current_polygon);
+  }
+
+  return output_polygons;
 }
 
 }  // namespace autoware::perception_filter
