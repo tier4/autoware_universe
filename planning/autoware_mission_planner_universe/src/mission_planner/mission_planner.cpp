@@ -255,10 +255,7 @@ void MissionPlanner::set_preferred_lane(
   if (state_.state != RouteState::UNSET && state_.state != RouteState::SET) {
     res->status.success = false;
     throw service_utils::ServiceException(
-      ResponseCode::ERROR_INVALID_STATE,
-      fmt::format(
-        "The lanelet route cannot be set in the current state: {}",
-        route_state_to_string(state_.state)));
+      ResponseCode::ERROR_INVALID_STATE, "The route cannot be set in the current state.");
   }
   if (!is_mission_planner_ready_) {
     res->status.success = false;
