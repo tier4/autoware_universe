@@ -165,11 +165,12 @@ private:
    * @brief Create visualization markers for trajectory polygons
    * @param traj_polygons Vector of trajectory polygons to visualize
    * @param frame_id Frame ID for the markers
+   * @param marker_namespace Namespace for the markers
    * @return MarkerArray containing polygon visualization markers
    */
   visualization_msgs::msg::MarkerArray createTrajectoryPolygonMarkers(
     const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
-    const std::string & frame_id);
+    const std::string & frame_id, const std::string & marker_namespace);
 
   /**
    * @brief Create visualization markers for crop box bounding polygons
@@ -192,7 +193,7 @@ private:
    */
   std::vector<FilteredPointInfo> classifyPointCloudForPlanningFactors(
     const sensor_msgs::msg::PointCloud2 & input_pointcloud, bool rtc_is_registered,
-    const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
+    const std::vector<autoware::universe_utils::Polygon2d> & traj_max_polygons,
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & base_link_trajectory_points,
     const std::vector<autoware::universe_utils::Polygon2d> & crop_box_polygons);
 
