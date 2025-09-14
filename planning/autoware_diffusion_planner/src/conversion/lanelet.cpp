@@ -185,20 +185,17 @@ std::vector<LaneSegment> convert_to_lane_segments(
     if (!is_lane_like(lanelet_subtype)) {
       continue;
     }
-    Polyline centerline(MapType::Unused);
     std::vector<BoundarySegment> left_boundary_segments;
     std::vector<BoundarySegment> right_boundary_segments;
     // TODO(Daniel): avoid unnecessary copy and creation
-    centerline.assign_waypoints(
+    const Polyline centerline(
       interpolate_points(from_geometry(lanelet.centerline3d()), num_lane_points));
     const auto left_bound = lanelet.leftBound3d();
     const auto left_points = from_geometry(left_bound);
-    left_boundary_segments.emplace_back(
-      MapType::Unused, interpolate_points(left_points, num_lane_points));
+    left_boundary_segments.emplace_back(interpolate_points(left_points, num_lane_points));
     const auto right_bound = lanelet.rightBound3d();
     const auto right_points = from_geometry(right_bound);
-    right_boundary_segments.emplace_back(
-      MapType::Unused, interpolate_points(right_points, num_lane_points));
+    right_boundary_segments.emplace_back(interpolate_points(right_points, num_lane_points));
 
     const std::string left_line_type_str = lanelet.leftBound().attributeOr("type", "");
     const std::string right_line_type_str = lanelet.rightBound().attributeOr("type", "");

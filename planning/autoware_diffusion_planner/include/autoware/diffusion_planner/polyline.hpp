@@ -121,29 +121,12 @@ private:
   double x_{0.0}, y_{0.0}, z_{0.0}, dx_{0.0}, dy_{0.0}, dz_{0.0}, label_{0.0};
 };
 
-enum class MapType {
-  Lane,
-  Crosswalk,
-  Unused,
-  // ...
-};
-
 class Polyline
 {
 public:
-  static constexpr std::array<int, 3> XYZ_IDX = {0, 1, 2};
-  static constexpr std::array<int, 2> XY_IDX = {0, 1};
-  static constexpr int FULL_DIM3D = 7;
-  static constexpr int FULL_DIM2D = 5;
-
   Polyline() = default;
 
-  explicit Polyline(MapType type) : polyline_type_(type) {}
-
-  Polyline(MapType type, const std::vector<LanePoint> & points)
-  : polyline_type_(type), waypoints_(points)
-  {
-  }
+  explicit Polyline(const std::vector<LanePoint> & points) : waypoints_(points) {}
 
   void assign_waypoints(const std::vector<LanePoint> & points) { waypoints_ = points; }
 
@@ -155,84 +138,7 @@ public:
 
   [[nodiscard]] const std::vector<LanePoint> & waypoints() const { return waypoints_; }
 
-  [[nodiscard]] const MapType & polyline_type() const { return polyline_type_; }
-
-  [[nodiscard]] std::vector<std::array<double, 3>> xyz() const
-  {
-    std::vector<std::array<double, 3>> coords;
-    coords.reserve(waypoints_.size());
-    for (const auto & pt : waypoints_) {
-      coords.push_back({pt.x(), pt.y(), pt.z()});
-    }
-    return coords;
-  }
-
-  [[nodiscard]] std::vector<std::array<double, 2>> xy() const
-  {
-    std::vector<std::array<double, 2>> coords;
-    coords.reserve(waypoints_.size());
-    for (const auto & pt : waypoints_) {
-      coords.push_back({pt.x(), pt.y()});
-    }
-    return coords;
-  }
-
-  [[nodiscard]] std::vector<std::array<double, 3>> dxyz() const
-  {
-    if (waypoints_.empty()) return {};
-
-    std::vector<std::array<double, 3>> directions(waypoints_.size(), {0.0f, 0.0f, 0.0f});
-    for (size_t i = 1; i < waypoints_.size(); ++i) {
-      double dx = waypoints_[i].x() - waypoints_[i - 1].x();
-      double dy = waypoints_[i].y() - waypoints_[i - 1].y();
-      double dz = waypoints_[i].z() - waypoints_[i - 1].z();
-      double norm = std::sqrt(dx * dx + dy * dy + dz * dz);
-      if (norm > 1e-6f) {
-        directions[i] = {dx / norm, dy / norm, dz / norm};
-      }
-    }
-    return directions;
-  }
-
-  [[nodiscard]] std::vector<std::array<double, 2>> dxy() const
-  {
-    if (waypoints_.empty()) return {};
-
-    std::vector<std::array<double, 2>> directions(waypoints_.size(), {0.0f, 0.0f});
-    for (size_t i = 1; i < waypoints_.size(); ++i) {
-      double dx = waypoints_[i].x() - waypoints_[i - 1].x();
-      double dy = waypoints_[i].y() - waypoints_[i - 1].y();
-      double norm = std::sqrt(dx * dx + dy * dy);
-      if (norm > 1e-6f) {
-        directions[i] = {dx / norm, dy / norm};
-      }
-    }
-    return directions;
-  }
-
-  [[nodiscard]] std::vector<std::array<double, FULL_DIM3D>> as_full_array() const
-  {
-    std::vector<std::array<double, FULL_DIM3D>> result;
-    result.reserve(waypoints_.size());
-
-    auto dirs3d = dxyz();
-    for (size_t i = 0; i < waypoints_.size(); ++i) {
-      const auto & pt = waypoints_[i];
-      std::array<double, FULL_DIM3D> entry = {
-        pt.x(),
-        pt.y(),
-        pt.z(),
-        dirs3d[i][0],
-        dirs3d[i][1],
-        dirs3d[i][2],
-        static_cast<double>(polyline_type_)};
-      result.push_back(entry);
-    }
-    return result;
-  }
-
 private:
-  MapType polyline_type_{MapType::Unused};
   std::vector<LanePoint> waypoints_;
 };
 
