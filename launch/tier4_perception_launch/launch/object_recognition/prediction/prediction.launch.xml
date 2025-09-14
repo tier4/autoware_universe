@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
 <launch>
   <arg name="use_vector_map" default="false" description="use vector map in prediction"/>
-  <arg name="input/objects" default="/perception/object_recognition/tracking/objects"/>
+  <!-- <arg name="input/objects" default="/perception/object_recognition/tracking/objects"/> -->
+  <arg name="input/objects" default="/perception/object_recognition/tracking/fusion/objects"/>
 
   <group if="$(var use_vector_map)">
     <set_remap from="objects" to="/perception/object_recognition/objects"/>
