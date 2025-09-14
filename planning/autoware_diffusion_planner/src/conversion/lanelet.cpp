@@ -202,7 +202,6 @@ std::vector<LaneSegment> convert_to_lane_segments(
                                                 : LINE_TYPE_VIRTUAL);
 
     const auto & attrs = lanelet.attributes();
-    const bool is_intersection = attrs.find("turn_direction") != attrs.end();
     std::optional<float> speed_limit_mps =
       attrs.find("speed_limit") != attrs.end()
         ? std::make_optional(
@@ -214,7 +213,7 @@ std::vector<LaneSegment> convert_to_lane_segments(
       {"straight", LaneSegment::TURN_DIRECTION_STRAIGHT},
       {"left", LaneSegment::TURN_DIRECTION_LEFT},
       {"right", LaneSegment::TURN_DIRECTION_RIGHT}};
-    if (is_intersection) {
+    if (attrs.find("turn_direction") != attrs.end()) {
       const std::string turn_direction_str = attrs.at("turn_direction").value();
       const auto itr = turn_direction_map.find(turn_direction_str);
       if (itr != turn_direction_map.end()) {
@@ -233,8 +232,8 @@ std::vector<LaneSegment> convert_to_lane_segments(
                                   : traffic_light_list.front()->id());
 
     lane_segments.emplace_back(
-      lanelet.id(), centerline, is_intersection, left_boundary, right_boundary, left_line_type,
-      right_line_type, speed_limit_mps, turn_direction, traffic_light_id);
+      lanelet.id(), centerline, left_boundary, right_boundary, left_line_type, right_line_type,
+      speed_limit_mps, turn_direction, traffic_light_id);
   }
   return lane_segments;
 }

@@ -54,7 +54,6 @@ struct LaneSegment
 {
   int64_t id;
   Polyline centerline;
-  bool is_intersection{false};
   Polyline left_boundary;
   Polyline right_boundary;
   LineType left_line_type;
@@ -71,12 +70,11 @@ struct LaneSegment
   static const int64_t TRAFFIC_LIGHT_ID_NONE = -1;
 
   LaneSegment(
-    int64_t id, const Polyline & centerline, bool is_intersection, const Polyline & left_boundary,
+    int64_t id, const Polyline & centerline, const Polyline & left_boundary,
     const Polyline & right_boundary, LineType left_line_type, LineType right_line_type,
     std::optional<float> speed_limit_mps, int64_t turn_direction, int64_t traffic_light_id)
   : id(id),
     centerline(centerline),
-    is_intersection(is_intersection),
     left_boundary(left_boundary),
     right_boundary(right_boundary),
     left_line_type(left_line_type),

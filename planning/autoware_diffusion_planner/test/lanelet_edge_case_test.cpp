@@ -206,7 +206,6 @@ TEST_F(LaneletEdgeCaseTest, ConvertLaneletIntersectionAttributes)
     auto segments = convert_to_lane_segments(lanelet_map_ptr_, 10);
 
     ASSERT_EQ(segments.size(), 1);
-    EXPECT_TRUE(segments[0].is_intersection);
   }
 }
 
