@@ -86,20 +86,12 @@ TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsBasic)
     EXPECT_EQ(segment.polyline.size(), static_cast<size_t>(num_lane_points))
       << "Lane polyline should have " << num_lane_points << " points";
 
-    // Check boundaries
-    EXPECT_FALSE(segment.left_boundaries.empty()) << "Left boundaries should not be empty";
-    EXPECT_FALSE(segment.right_boundaries.empty()) << "Right boundaries should not be empty";
-
     // Each boundary should have the expected number of points
-    for (const auto & left_boundary : segment.left_boundaries) {
-      EXPECT_EQ(left_boundary.size(), static_cast<size_t>(num_lane_points))
-        << "Left boundary should have " << num_lane_points << " points";
-    }
+    EXPECT_EQ(segment.left_boundary.size(), static_cast<size_t>(num_lane_points))
+      << "Left boundary should have " << num_lane_points << " points";
 
-    for (const auto & right_boundary : segment.right_boundaries) {
-      EXPECT_EQ(right_boundary.size(), static_cast<size_t>(num_lane_points))
-        << "Right boundary should have " << num_lane_points << " points";
-    }
+    EXPECT_EQ(segment.right_boundary.size(), static_cast<size_t>(num_lane_points))
+      << "Right boundary should have " << num_lane_points << " points";
   }
 }
 
@@ -265,25 +257,22 @@ TEST_F(LaneletIntegrationTest, CheckForNaNAndInfiniteValues)
     }
 
     // Check boundaries
-    for (const auto & boundary : segment.left_boundaries) {
-      for (size_t i = 0; i < boundary.waypoints().size(); ++i) {
-        const auto & point = boundary.waypoints()[i];
-        EXPECT_FALSE(std::isnan(point.x()) || std::isnan(point.y()) || std::isnan(point.z()))
-          << "NaN found in left boundary at point " << i << " of segment " << segment.id;
-        EXPECT_FALSE(std::isinf(point.x()) || std::isinf(point.y()) || std::isinf(point.z()))
-          << "Infinite value found in left boundary at point " << i << " of segment " << segment.id;
-      }
+    EXPECT_FALSE(segment.left_boundary.is_empty()) << "Left boundary should not be empty";
+    for (size_t i = 0; i < segment.left_boundary.waypoints().size(); ++i) {
+      const auto & point = segment.left_boundary.waypoints()[i];
+      EXPECT_FALSE(std::isnan(point.x()) || std::isnan(point.y()) || std::isnan(point.z()))
+        << "NaN found in left boundary at point " << i << " of segment " << segment.id;
+      EXPECT_FALSE(std::isinf(point.x()) || std::isinf(point.y()) || std::isinf(point.z()))
+        << "Infinite value found in left boundary at point " << i << " of segment " << segment.id;
     }
 
-    for (const auto & boundary : segment.right_boundaries) {
-      for (size_t i = 0; i < boundary.waypoints().size(); ++i) {
-        const auto & point = boundary.waypoints()[i];
-        EXPECT_FALSE(std::isnan(point.x()) || std::isnan(point.y()) || std::isnan(point.z()))
-          << "NaN found in right boundary at point " << i << " of segment " << segment.id;
-        EXPECT_FALSE(std::isinf(point.x()) || std::isinf(point.y()) || std::isinf(point.z()))
-          << "Infinite value found in right boundary at point " << i << " of segment "
-          << segment.id;
-      }
+    EXPECT_FALSE(segment.right_boundary.is_empty()) << "Right boundary should not be empty";
+    for (size_t i = 0; i < segment.right_boundary.waypoints().size(); ++i) {
+      const auto & point = segment.right_boundary.waypoints()[i];
+      EXPECT_FALSE(std::isnan(point.x()) || std::isnan(point.y()) || std::isnan(point.z()))
+        << "NaN found in right boundary at point " << i << " of segment " << segment.id;
+      EXPECT_FALSE(std::isinf(point.x()) || std::isinf(point.y()) || std::isinf(point.z()))
+        << "Infinite value found in right boundary at point " << i << " of segment " << segment.id;
     }
   }
 }
@@ -377,32 +366,28 @@ TEST_F(LaneletIntegrationTest, CheckReasonableCoordinateRanges)
     }
 
     // Also check boundaries
-    for (const auto & boundary : segment.left_boundaries) {
-      for (size_t i = 0; i < boundary.waypoints().size(); ++i) {
-        const auto & point = boundary.waypoints()[i];
-        EXPECT_GE(point.x(), min_x_allowed)
-          << "Left boundary X out of bounds at point " << i << " of segment " << segment.id;
-        EXPECT_LE(point.x(), max_x_allowed)
-          << "Left boundary X out of bounds at point " << i << " of segment " << segment.id;
-        EXPECT_GE(point.y(), min_y_allowed)
-          << "Left boundary Y out of bounds at point " << i << " of segment " << segment.id;
-        EXPECT_LE(point.y(), max_y_allowed)
-          << "Left boundary Y out of bounds at point " << i << " of segment " << segment.id;
-      }
+    for (size_t i = 0; i < segment.left_boundary.waypoints().size(); ++i) {
+      const auto & point = segment.left_boundary.waypoints()[i];
+      EXPECT_GE(point.x(), min_x_allowed)
+        << "Left boundary X out of bounds at point " << i << " of segment " << segment.id;
+      EXPECT_LE(point.x(), max_x_allowed)
+        << "Left boundary X out of bounds at point " << i << " of segment " << segment.id;
+      EXPECT_GE(point.y(), min_y_allowed)
+        << "Left boundary Y out of bounds at point " << i << " of segment " << segment.id;
+      EXPECT_LE(point.y(), max_y_allowed)
+        << "Left boundary Y out of bounds at point " << i << " of segment " << segment.id;
     }
 
-    for (const auto & boundary : segment.right_boundaries) {
-      for (size_t i = 0; i < boundary.waypoints().size(); ++i) {
-        const auto & point = boundary.waypoints()[i];
-        EXPECT_GE(point.x(), min_x_allowed)
-          << "Right boundary X out of bounds at point " << i << " of segment " << segment.id;
-        EXPECT_LE(point.x(), max_x_allowed)
-          << "Right boundary X out of bounds at point " << i << " of segment " << segment.id;
-        EXPECT_GE(point.y(), min_y_allowed)
-          << "Right boundary Y out of bounds at point " << i << " of segment " << segment.id;
-        EXPECT_LE(point.y(), max_y_allowed)
-          << "Right boundary Y out of bounds at point " << i << " of segment " << segment.id;
-      }
+    for (size_t i = 0; i < segment.right_boundary.waypoints().size(); ++i) {
+      const auto & point = segment.right_boundary.waypoints()[i];
+      EXPECT_GE(point.x(), min_x_allowed)
+        << "Right boundary X out of bounds at point " << i << " of segment " << segment.id;
+      EXPECT_LE(point.x(), max_x_allowed)
+        << "Right boundary X out of bounds at point " << i << " of segment " << segment.id;
+      EXPECT_GE(point.y(), min_y_allowed)
+        << "Right boundary Y out of bounds at point " << i << " of segment " << segment.id;
+      EXPECT_LE(point.y(), max_y_allowed)
+        << "Right boundary Y out of bounds at point " << i << " of segment " << segment.id;
     }
   }
 }

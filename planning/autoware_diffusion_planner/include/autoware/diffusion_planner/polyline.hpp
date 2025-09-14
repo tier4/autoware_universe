@@ -142,7 +142,5 @@ private:
   std::vector<LanePoint> waypoints_;
 };
 
-using BoundarySegment = Polyline;
-
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__POLYLINE_HPP_

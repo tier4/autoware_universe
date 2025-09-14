@@ -266,15 +266,14 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
     // Check if segment has valid data
     if (
-      lane_segment.polyline.is_empty() || lane_segment.left_boundaries.empty() ||
-      lane_segment.right_boundaries.empty()) {
+      lane_segment.polyline.is_empty() || lane_segment.left_boundary.is_empty() ||
+      lane_segment.right_boundary.is_empty()) {
       continue;
     }
 
     const std::vector<LanePoint> & centerlines = lane_segment.polyline.waypoints();
-    const std::vector<LanePoint> & left_boundary = lane_segment.left_boundaries.front().waypoints();
-    const std::vector<LanePoint> & right_boundary =
-      lane_segment.right_boundaries.front().waypoints();
+    const std::vector<LanePoint> & left_boundary = lane_segment.left_boundary.waypoints();
+    const std::vector<LanePoint> & right_boundary = lane_segment.right_boundary.waypoints();
 
     if (
       centerlines.size() != POINTS_PER_SEGMENT || left_boundary.size() != POINTS_PER_SEGMENT ||
