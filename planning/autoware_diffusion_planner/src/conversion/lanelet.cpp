@@ -186,12 +186,12 @@ std::vector<LaneSegment> convert_to_lane_segments(
     if (!is_lane_like(lanelet_subtype)) {
       continue;
     }
-    Polyline lane_polyline(MapType::Unused);
+    Polyline centerline(MapType::Unused);
     std::vector<BoundarySegment> left_boundary_segments;
     std::vector<BoundarySegment> right_boundary_segments;
     // TODO(Daniel): avoid unnecessary copy and creation
-    const auto points = from_geometry(lanelet.centerline3d());
-    lane_polyline.assign_waypoints(interpolate_points(points, num_lane_points));
+    centerline.assign_waypoints(
+      interpolate_points(from_geometry(lanelet.centerline3d()), num_lane_points));
     const auto left_bound = lanelet.leftBound3d();
     const auto left_points = from_geometry(left_bound);
     left_boundary_segments.emplace_back(
@@ -242,7 +242,7 @@ std::vector<LaneSegment> convert_to_lane_segments(
                                   : traffic_light_list.front()->id());
 
     lane_segments.emplace_back(
-      lanelet.id(), lane_polyline, is_intersection, left_boundary_segments, right_boundary_segments,
+      lanelet.id(), centerline, is_intersection, left_boundary_segments, right_boundary_segments,
       left_line_type, right_line_type, speed_limit_mps, turn_direction, traffic_light_id);
   }
   return lane_segments;
