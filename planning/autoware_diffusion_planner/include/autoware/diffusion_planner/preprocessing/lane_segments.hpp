@@ -98,13 +98,12 @@ public:
    * @param traffic_light_id_map Map of lanelet IDs to traffic signal information.
    * @param center_x X-coordinate of the center point.
    * @param center_y Y-coordinate of the center point.
-   * @param m Maximum number of columns (segments) to select.
    * @return Flattened vectors containing the transformed lane segments and speed limits.
    */
   std::pair<std::vector<float>, std::vector<float>> get_lane_segments(
     const Eigen::Matrix4d & transform_matrix,
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map, const double center_x,
-    const double center_y, const int64_t m) const;
+    const double center_y) const;
 
 private:
   /**
