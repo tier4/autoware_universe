@@ -55,9 +55,9 @@ struct LanePoint
    * @param label Label.
    */
   LanePoint(
-    const double x, const double y, const double z, const double dx, const double dy, const double dz,
-    const double label)
-  : data_({x, y, z, dx, dy, dz, label}), x_(x), y_(y), z_(z), dx_(x), dy_(y), dz_(z), label_(label)
+    const double x, const double y, const double z, const double dx, const double dy,
+    const double dz)
+  : data_({x, y, z, dx, dy, dz, 0.0}), x_(x), y_(y), z_(z), dx_(dx), dy_(dy), dz_(dz), label_(0.0)
   {
   }
 
@@ -76,18 +76,6 @@ struct LanePoint
   // Return the z position of the point.
   [[nodiscard]] double z() const { return z_; }
 
-  // Return the x direction of the point.
-  [[nodiscard]] double dx() const { return dx_; }
-
-  // Return the y direction of the point.
-  [[nodiscard]] double dy() const { return dy_; }
-
-  // Return the z direction of the point.
-  [[nodiscard]] double dz() const { return dz_; }
-
-  // Return the label of the point.
-  [[nodiscard]] double label() const { return label_; }
-
   /**
    * @brief Return the distance between myself and another one.
    *
@@ -96,11 +84,11 @@ struct LanePoint
    */
   [[nodiscard]] double distance(const LanePoint & other) const
   {
-    return std::hypot(x_ - other.x(), y_ - other.y(), z_ - other.z());
+    const double diff_x = x_ - other.x();
+    const double diff_y = y_ - other.y();
+    const double diff_z = z_ - other.z();
+    return std::sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
   }
-
-  // Return the address pointer of data array.
-  [[nodiscard]] const double * data_ptr() const noexcept { return data_.data(); }
 
   [[nodiscard]] LanePoint lerp(const LanePoint & other, double t) const
   {
@@ -125,10 +113,7 @@ struct LanePoint
       normalize_direction(new_dx, new_dy, new_dz);
     }
 
-    // Interpolate label
-    double new_label = label_ + t * (other.label_ - label_);
-
-    return LanePoint{new_x, new_y, new_z, new_dx, new_dy, new_dz, new_label};
+    return LanePoint{new_x, new_y, new_z, new_dx, new_dy, new_dz};
   }
 
 private:
@@ -253,146 +238,5 @@ private:
 
 using BoundarySegment = Polyline;
 
-struct PolylineData
-{
-  /**
-   * @brief Construct a new PolylineData instance.
-   *
-   * @param points Source points vector.
-   * @param min_num_polyline The minimum number of polylines should be generated. If the number of
-   * polylines, resulting in separating input points, is less than this value, empty polylines will
-   * be added.
-   * @param max_num_point The maximum number of points that each polyline can include. If the
-   * polyline contains fewer points than this value, empty points will be added.
-   * @param distance_threshold The distance threshold to separate polylines.
-   */
-  PolylineData(
-    const std::vector<LanePoint> & points, const size_t min_num_polyline,
-    const size_t max_num_point, const double distance_threshold)
-  : num_point_(max_num_point), distance_threshold_(distance_threshold)
-  {
-    std::size_t point_cnt = 0;
-
-    // point_cnt > PointNum at a to a new polyline group
-    // distance > threshold -> add to a new polyline group
-    for (std::size_t i = 0; i < points.size(); ++i) {
-      auto & cur_point = points.at(i);
-
-      if (i == 0) {
-        add_new_polyline(cur_point, point_cnt);
-        continue;
-      }
-
-      if (point_cnt >= num_point_) {
-        add_new_polyline(cur_point, point_cnt);
-      } else if (const auto & prev_point = points.at(i - 1);
-                 cur_point.distance(prev_point) >= distance_threshold_ ||
-                 cur_point.label() != prev_point.label()) {
-        if (point_cnt < num_point_) {
-          add_empty_points(point_cnt);
-        }
-        add_new_polyline(cur_point, point_cnt);
-      } else {
-        add_point(cur_point, point_cnt);
-      }
-    }
-    add_empty_points(point_cnt);
-
-    if (num_polyline_ < min_num_polyline) {
-      add_empty_polyline(min_num_polyline - num_polyline_);
-    }
-  }
-
-  // Return the number of polylines `K`.
-  [[nodiscard]] size_t num_polyline() const { return num_polyline_; }
-
-  // Return the number of points contained in each polyline `P`.
-  [[nodiscard]] size_t num_point() const { return num_point_; }
-
-  // Return the number of point dimensions `D`.
-  static size_t state_dim() { return POINT_STATE_DIM; }
-
-  // Return the number of all elements `K*P*D`.
-  [[nodiscard]] size_t size() const { return num_polyline_ * num_point_ * state_dim(); }
-
-  // Return the data shape ordering in `(K, P, D)`.
-  [[nodiscard]] std::tuple<size_t, size_t, size_t> shape() const
-  {
-    return {num_polyline_, num_point_, state_dim()};
-  }
-
-  // Return the address pointer of data array.
-  [[nodiscard]] const double * data_ptr() const noexcept { return data_.data(); }
-
-private:
-  /**
-   * @brief Add a new polyline group filled by empty points. This member function increments
-   * `PolylineNum` by `num_polyline` internally.
-   *
-   * @param num_polyline The number of polylines to add.
-   */
-  void add_empty_polyline(size_t num_polyline)
-  {
-    for (size_t i = 0; i < num_polyline; ++i) {
-      size_t point_cnt = 0;
-      auto empty_point = LanePoint::empty();
-      add_new_polyline(empty_point, point_cnt);
-      add_empty_points(point_cnt);
-    }
-  }
-
-  /**
-   * @brief Add a new polyline group with the specified point. This member function increments
-   * `PolylineNum` by `1` internally.
-   *
-   * @param point LanePoint instance.
-   * @param point_cnt The current count of points, which will be reset to `1`.
-   */
-  void add_new_polyline(const LanePoint & point, size_t & point_cnt)
-  {
-    const auto s = point.data_ptr();
-    for (size_t d = 0; d < state_dim(); ++d) {
-      data_.push_back(*(s + d));
-    }
-    ++num_polyline_;
-    point_cnt = 1;
-  }
-
-  /**
-   * @brief Add `(PointNum - point_cnt)` empty points filled by `0.0`.
-   *
-   * @param point_cnt The number of current count of points, which will be reset to `PointNum`.
-   */
-  void add_empty_points(size_t & point_cnt)
-  {
-    const auto s = LanePoint::empty().data_ptr();
-    for (std::size_t n = point_cnt; n < num_point_; ++n) {
-      for (std::size_t d = 0; d < state_dim(); ++d) {
-        data_.push_back(*(s + d));
-      }
-    }
-    point_cnt = num_point_;
-  }
-
-  /**
-   * @brief Add the specified point and increment `point_cnt` by `1`.
-   *
-   * @param point
-   * @param point_cnt
-   */
-  void add_point(const LanePoint & point, std::size_t & point_cnt)
-  {
-    const auto s = point.data_ptr();
-    for (size_t d = 0; d < state_dim(); ++d) {
-      data_.push_back(*(s + d));
-    }
-    ++point_cnt;
-  }
-
-  size_t num_polyline_{0};
-  size_t num_point_{0};
-  std::vector<double> data_;
-  const double distance_threshold_;
-};
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__POLYLINE_HPP_

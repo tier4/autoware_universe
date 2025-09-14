@@ -123,9 +123,8 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
 
       normalize_direction(dx, dy, dz);
 
-      points[point_idx] = LanePoint(
-        points[point_idx].x(), points[point_idx].y(), points[point_idx].z(), dx, dy, dz,
-        points[point_idx].label());
+      points[point_idx] =
+        LanePoint(points[point_idx].x(), points[point_idx].y(), points[point_idx].z(), dx, dy, dz);
     };
 
   if (result.size() > 1) {
@@ -169,7 +168,7 @@ std::vector<LanePoint> from_geometry(const GeometryType & geometry) noexcept
       normalize_direction(dx, dy, dz);
     }
     output.emplace_back(
-      itr->x(), itr->y(), itr->z(), dx, dy, dz, 0.0);  // TODO(danielsanchezaran): Label ID
+      itr->x(), itr->y(), itr->z(), dx, dy, dz);  // TODO(danielsanchezaran): Label ID
   }
   return output;
 }

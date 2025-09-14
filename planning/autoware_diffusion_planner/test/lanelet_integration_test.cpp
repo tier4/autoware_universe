@@ -262,14 +262,6 @@ TEST_F(LaneletIntegrationTest, CheckForNaNAndInfiniteValues)
         << "Infinite value found in y coordinate at point " << i << " of segment " << segment.id;
       EXPECT_FALSE(std::isinf(point.z()))
         << "Infinite value found in z coordinate at point " << i << " of segment " << segment.id;
-
-      // Check direction vectors
-      EXPECT_FALSE(std::isnan(point.dx()) || std::isinf(point.dx()))
-        << "Invalid dx value at point " << i << " of segment " << segment.id;
-      EXPECT_FALSE(std::isnan(point.dy()) || std::isinf(point.dy()))
-        << "Invalid dy value at point " << i << " of segment " << segment.id;
-      EXPECT_FALSE(std::isnan(point.dz()) || std::isinf(point.dz()))
-        << "Invalid dz value at point " << i << " of segment " << segment.id;
     }
 
     // Check boundaries
