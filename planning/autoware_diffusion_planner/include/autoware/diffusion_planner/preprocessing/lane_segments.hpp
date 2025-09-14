@@ -149,15 +149,13 @@ private:
   /**
    * @brief Select lane segment indices based on distances and constraints.
    *
-   * @param transform_matrix Transformation matrix to apply to the points.
    * @param center_x X-coordinate of the center point.
    * @param center_y Y-coordinate of the center point.
    * @param max_segments Maximum number of segments to select.
    * @return Vector of lane segment indices.
    */
   std::vector<int64_t> select_lane_segment_indices(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-    const int64_t max_segments) const;
+    const double center_x, const double center_y, const int64_t max_segments) const;
 
   /**
    * @brief Create tensor data from selected segment indices.

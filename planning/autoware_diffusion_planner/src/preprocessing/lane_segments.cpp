@@ -77,7 +77,7 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_lane_s
 {
   // Step 1: Select lane segment indices
   const std::vector<int64_t> segment_indices =
-    select_lane_segment_indices(transform_matrix, center_x, center_y, NUM_SEGMENTS_IN_LANE);
+    select_lane_segment_indices(center_x, center_y, NUM_SEGMENTS_IN_LANE);
 
   // Step 2: Create tensor data from indices
   return create_tensor_data_from_indices(
@@ -154,17 +154,9 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
 }
 
 std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
-  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-  const int64_t max_segments) const
+  const double center_x, const double center_y, const int64_t max_segments) const
 {
   // Step 1: Compute distances
-  auto compute_squared_distance =
-    [](double x, double y, double z, const Eigen::Matrix4d & transform_matrix) {
-      Eigen::Vector4d p(x, y, z, 1.0);
-      Eigen::Vector4d p_transformed = transform_matrix * p;
-      return p_transformed.head<2>().squaredNorm();
-    };
-
   auto is_inside = [&](const double x, const double y) {
     using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
     return (
@@ -184,30 +176,26 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
     }
 
     // Compute mean, first, and last points
-    double mean_x = 0.0, mean_y = 0.0, mean_z = 0.0;
+    double mean_x = 0.0, mean_y = 0.0;
+    double distance_squared = 0.0;
     for (const LanePoint & point : centerline) {
       mean_x += point.x();
       mean_y += point.y();
-      mean_z += point.z();
+      const double diff_x = point.x() - center_x;
+      const double diff_y = point.y() - center_y;
+      distance_squared += diff_x * diff_x + diff_y * diff_y;
     }
     mean_x /= centerline.size();
     mean_y /= centerline.size();
-    mean_z /= centerline.size();
+    distance_squared /= centerline.size();
 
     const double first_x = centerline[0].x();
     const double first_y = centerline[0].y();
-    const double first_z = centerline[0].z();
     const double last_x = centerline[POINTS_PER_SEGMENT - 1].x();
     const double last_y = centerline[POINTS_PER_SEGMENT - 1].y();
-    const double last_z = centerline[POINTS_PER_SEGMENT - 1].z();
 
     const bool inside =
       is_inside(mean_x, mean_y) || is_inside(first_x, first_y) || is_inside(last_x, last_y);
-
-    const double distance_first =
-      compute_squared_distance(first_x, first_y, first_z, transform_matrix);
-    const double distance_last = compute_squared_distance(last_x, last_y, last_z, transform_matrix);
-    const double distance_squared = std::min(distance_last, distance_first);
 
     distances.push_back({static_cast<int64_t>(i), distance_squared, inside});
   }
