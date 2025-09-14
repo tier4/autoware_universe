@@ -123,9 +123,41 @@ void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
     one_hot_encoding_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, POINTS_PER_SEGMENT>(0, 0);
 }
 
-std::vector<ColWithDistance> LaneSegmentContext::compute_distances(
-  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
+std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
+  const LaneletRoute & route, const double center_x, const double center_y,
+  const int64_t max_segments) const
 {
+  std::vector<int64_t> selected_indices;
+  const lanelet::Lanelets route_lanelets = filter_route_lanelets(route, center_x, center_y);
+
+  // Create a map from lanelet ID to segment index for quick lookup
+  std::map<lanelet::Id, size_t> id_to_segment_idx;
+  for (size_t i = 0; i < lane_segments_.size(); ++i) {
+    id_to_segment_idx[lane_segments_[i].id] = i;
+  }
+
+  // Select route segment indices
+  for (const lanelet::Lanelet & route_segment : route_lanelets) {
+    if (selected_indices.size() >= static_cast<size_t>(max_segments)) {
+      break;
+    }
+
+    const auto segment_idx_itr = id_to_segment_idx.find(route_segment.id());
+    if (segment_idx_itr == id_to_segment_idx.end()) {
+      continue;
+    }
+
+    selected_indices.push_back(static_cast<int64_t>(segment_idx_itr->second));
+  }
+
+  return selected_indices;
+}
+
+std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
+  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+  const int64_t max_segments) const
+{
+  // Step 1: Compute distances
   auto compute_squared_distance =
     [](double x, double y, double z, const Eigen::Matrix4d & transform_matrix) {
       Eigen::Vector4d p(x, y, z, 1.0);
@@ -180,45 +212,6 @@ std::vector<ColWithDistance> LaneSegmentContext::compute_distances(
     distances.push_back({static_cast<int64_t>(i), distance_squared, inside});
   }
 
-  return distances;
-}
-
-std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
-  const LaneletRoute & route, const double center_x, const double center_y,
-  const int64_t max_segments) const
-{
-  std::vector<int64_t> selected_indices;
-  const lanelet::Lanelets route_lanelets = filter_route_lanelets(route, center_x, center_y);
-
-  // Create a map from lanelet ID to segment index for quick lookup
-  std::map<lanelet::Id, size_t> id_to_segment_idx;
-  for (size_t i = 0; i < lane_segments_.size(); ++i) {
-    id_to_segment_idx[lane_segments_[i].id] = i;
-  }
-
-  // Select route segment indices
-  for (const lanelet::Lanelet & route_segment : route_lanelets) {
-    if (selected_indices.size() >= static_cast<size_t>(max_segments)) {
-      break;
-    }
-
-    const auto segment_idx_itr = id_to_segment_idx.find(route_segment.id());
-    if (segment_idx_itr == id_to_segment_idx.end()) {
-      continue;
-    }
-
-    selected_indices.push_back(static_cast<int64_t>(segment_idx_itr->second));
-  }
-
-  return selected_indices;
-}
-
-std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
-  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-  const int64_t max_segments) const
-{
-  // Step 1: Compute distances
-  std::vector<ColWithDistance> distances = compute_distances(transform_matrix, center_x, center_y);
   // Step 2: Sort indices by distance
   std::sort(distances.begin(), distances.end(), [](const auto & a, const auto & b) {
     return a.distance_squared < b.distance_squared;

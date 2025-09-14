@@ -120,17 +120,6 @@ private:
     const int64_t col_counter) const;
 
   /**
-   * @brief Compute distances of lane segments from a center point.
-   *
-   * @param transform_matrix Transformation matrix to apply to the points.
-   * @param center_x X-coordinate of the center point.
-   * @param center_y Y-coordinate of the center point.
-   * @return Output vector to store column indices, distances, and mask inclusion.
-   */
-  std::vector<ColWithDistance> compute_distances(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const;
-
-  /**
    * @brief Filter route lanelets starting from the closest lanelet to the center point.
    *
    * This function extracts lanelets from the route, finds the lanelet closest to the center point,
