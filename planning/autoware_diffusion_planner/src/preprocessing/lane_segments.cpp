@@ -177,29 +177,29 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
 
   for (size_t i = 0; i < lane_segments_.size(); ++i) {
     const LaneSegment & segment = lane_segments_[i];
-    const std::vector<LanePoint> & centerlines = segment.polyline.waypoints();
+    const std::vector<LanePoint> & centerline = segment.centerline.waypoints();
 
-    if (centerlines.size() != POINTS_PER_SEGMENT) {
+    if (centerline.size() != POINTS_PER_SEGMENT) {
       continue;
     }
 
     // Compute mean, first, and last points
     double mean_x = 0.0, mean_y = 0.0, mean_z = 0.0;
-    for (const LanePoint & point : centerlines) {
+    for (const LanePoint & point : centerline) {
       mean_x += point.x();
       mean_y += point.y();
       mean_z += point.z();
     }
-    mean_x /= centerlines.size();
-    mean_y /= centerlines.size();
-    mean_z /= centerlines.size();
+    mean_x /= centerline.size();
+    mean_y /= centerline.size();
+    mean_z /= centerline.size();
 
-    const double first_x = centerlines[0].x();
-    const double first_y = centerlines[0].y();
-    const double first_z = centerlines[0].z();
-    const double last_x = centerlines[POINTS_PER_SEGMENT - 1].x();
-    const double last_y = centerlines[POINTS_PER_SEGMENT - 1].y();
-    const double last_z = centerlines[POINTS_PER_SEGMENT - 1].z();
+    const double first_x = centerline[0].x();
+    const double first_y = centerline[0].y();
+    const double first_z = centerline[0].z();
+    const double last_x = centerline[POINTS_PER_SEGMENT - 1].x();
+    const double last_y = centerline[POINTS_PER_SEGMENT - 1].y();
+    const double last_z = centerline[POINTS_PER_SEGMENT - 1].z();
 
     const bool inside =
       is_inside(mean_x, mean_y) || is_inside(first_x, first_y) || is_inside(last_x, last_y);
@@ -266,17 +266,17 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
     // Check if segment has valid data
     if (
-      lane_segment.polyline.is_empty() || lane_segment.left_boundary.is_empty() ||
+      lane_segment.centerline.is_empty() || lane_segment.left_boundary.is_empty() ||
       lane_segment.right_boundary.is_empty()) {
       continue;
     }
 
-    const std::vector<LanePoint> & centerlines = lane_segment.polyline.waypoints();
+    const std::vector<LanePoint> & centerline = lane_segment.centerline.waypoints();
     const std::vector<LanePoint> & left_boundary = lane_segment.left_boundary.waypoints();
     const std::vector<LanePoint> & right_boundary = lane_segment.right_boundary.waypoints();
 
     if (
-      centerlines.size() != POINTS_PER_SEGMENT || left_boundary.size() != POINTS_PER_SEGMENT ||
+      centerline.size() != POINTS_PER_SEGMENT || left_boundary.size() != POINTS_PER_SEGMENT ||
       right_boundary.size() != POINTS_PER_SEGMENT) {
       continue;
     }
@@ -289,7 +289,7 @@ LaneSegmentContext::create_tensor_data_from_indices(
       const int64_t col_idx = added_segments * POINTS_PER_SEGMENT + i;
 
       // Center (0, 1)
-      const Eigen::Vector4d center = transform_matrix * convert_to_vector4d(centerlines[i]);
+      const Eigen::Vector4d center = transform_matrix * convert_to_vector4d(centerline[i]);
       output_matrix(X, col_idx) = center.x();
       output_matrix(Y, col_idx) = center.y();
 

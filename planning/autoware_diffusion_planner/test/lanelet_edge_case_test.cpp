@@ -131,7 +131,7 @@ TEST_F(LaneletEdgeCaseTest, ConvertLaneletWithNaNInfCoordinates)
 
   // Should handle NaN/Inf gracefully
   ASSERT_EQ(segments.size(), 1);
-  const auto & polyline = segments[0].polyline;
+  const auto & polyline = segments[0].centerline;
 
   // Check that NaN/Inf propagated through
   bool has_nan = false;
@@ -160,7 +160,7 @@ TEST_F(LaneletEdgeCaseTest, ConvertZeroLengthLanelet)
 
   ASSERT_EQ(segments.size(), 1);
   // Should still create a segment, even if degenerate
-  EXPECT_GE(segments[0].polyline.size(), 2);
+  EXPECT_GE(segments[0].centerline.size(), 2);
 }
 
 // Test edge case: Very large number of interpolation points
@@ -180,7 +180,7 @@ TEST_F(LaneletEdgeCaseTest, ConvertLaneletManyInterpolationPoints)
 
   ASSERT_EQ(segments.size(), 1);
   // Should create many interpolated points
-  EXPECT_GT(segments[0].polyline.size(), 1000);
+  EXPECT_GT(segments[0].centerline.size(), 1000);
 }
 
 // Test edge case: Lanelet with intersection attribute edge cases

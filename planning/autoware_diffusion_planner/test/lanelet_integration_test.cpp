@@ -83,7 +83,7 @@ TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsBasic)
 
   // Check that each lane segment has the expected number of points
   for (const auto & segment : lane_segments) {
-    EXPECT_EQ(segment.polyline.size(), static_cast<size_t>(num_lane_points))
+    EXPECT_EQ(segment.centerline.size(), static_cast<size_t>(num_lane_points))
       << "Lane polyline should have " << num_lane_points << " points";
 
     // Each boundary should have the expected number of points
@@ -107,7 +107,7 @@ TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsWithDifferentPointCounts)
       << "Lane segments should not be empty for " << num_points << " points";
 
     for (const auto & segment : lane_segments) {
-      EXPECT_EQ(segment.polyline.size(), static_cast<size_t>(num_points))
+      EXPECT_EQ(segment.centerline.size(), static_cast<size_t>(num_points))
         << "Lane polyline should have " << num_points << " points";
     }
   }
@@ -124,7 +124,7 @@ TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsInterpolation)
 
   // For each segment, verify that interpolated points maintain proper spacing
   for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.polyline.waypoints();
+    const auto & waypoints = segment.centerline.waypoints();
 
     // Check that points are properly spaced (not all at the same location)
     bool has_spacing = false;
@@ -171,7 +171,7 @@ TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsConsistency)
     EXPECT_EQ(lane_segments_1[i].id, lane_segments_2[i].id)
       << "Segment IDs should be consistent across calls";
 
-    EXPECT_EQ(lane_segments_1[i].polyline.size(), lane_segments_2[i].polyline.size())
+    EXPECT_EQ(lane_segments_1[i].centerline.size(), lane_segments_2[i].centerline.size())
       << "Polyline sizes should be consistent";
   }
 }
@@ -189,7 +189,7 @@ TEST_F(LaneletIntegrationTest, CheckPointSpacingConsistency)
   const float spacing_tolerance_ratio = 0.3f;
 
   for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.polyline.waypoints();
+    const auto & waypoints = segment.centerline.waypoints();
 
     if (waypoints.size() < 3) continue;
 
@@ -235,7 +235,7 @@ TEST_F(LaneletIntegrationTest, CheckForNaNAndInfiniteValues)
 
   for (const auto & segment : lane_segments) {
     // Check polyline points
-    const auto & waypoints = segment.polyline.waypoints();
+    const auto & waypoints = segment.centerline.waypoints();
     for (size_t i = 0; i < waypoints.size(); ++i) {
       const auto & point = waypoints[i];
 
@@ -339,7 +339,7 @@ TEST_F(LaneletIntegrationTest, CheckReasonableCoordinateRanges)
 
   // Check all interpolated points are within the original map bounds
   for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.polyline.waypoints();
+    const auto & waypoints = segment.centerline.waypoints();
 
     for (size_t i = 0; i < waypoints.size(); ++i) {
       const auto & point = waypoints[i];
@@ -405,7 +405,7 @@ TEST_F(LaneletIntegrationTest, CheckPointOrdering)
   const float max_point_jump = 50.0f;
 
   for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.polyline.waypoints();
+    const auto & waypoints = segment.centerline.waypoints();
 
     for (size_t i = 1; i < waypoints.size(); ++i) {
       float dist = waypoints[i - 1].distance(waypoints[i]);
