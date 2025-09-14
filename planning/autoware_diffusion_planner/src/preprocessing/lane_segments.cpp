@@ -176,8 +176,8 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   distances.reserve(lane_segments_.size());
 
   for (size_t i = 0; i < lane_segments_.size(); ++i) {
-    const auto & segment = lane_segments_[i];
-    const auto & centerlines = segment.polyline.waypoints();
+    const LaneSegment & segment = lane_segments_[i];
+    const std::vector<LanePoint> & centerlines = segment.polyline.waypoints();
 
     if (centerlines.size() != POINTS_PER_SEGMENT) {
       continue;
@@ -185,7 +185,7 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
 
     // Compute mean, first, and last points
     double mean_x = 0.0, mean_y = 0.0, mean_z = 0.0;
-    for (const auto & point : centerlines) {
+    for (const LanePoint & point : centerlines) {
       mean_x += point.x();
       mean_y += point.y();
       mean_z += point.z();
