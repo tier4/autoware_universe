@@ -979,7 +979,9 @@ PathWithLaneId getCenterLinePath(
     return reference_path;
   }
 
-  const auto arc_coordinates = lanelet::utils::getArcCoordinates(lanelet_sequence, pose);
+  const auto & lanelet_map_ptr = route_handler.getLaneletMapPtr();
+  const auto arc_coordinates =
+    lanelet::utils::getArcCoordinatesOnEgoCenterline(lanelet_sequence, pose, lanelet_map_ptr);
   const double s = arc_coordinates.length;
   const double s_backward = std::max(0., s - backward_path_length);
   double s_forward = s + forward_path_length;
@@ -990,8 +992,8 @@ PathWithLaneId getCenterLinePath(
   }
 
   if (route_handler.isInGoalRouteSection(lanelet_sequence.back())) {
-    const auto goal_arc_coordinates =
-      lanelet::utils::getArcCoordinates(lanelet_sequence, route_handler.getGoalPose());
+    const auto goal_arc_coordinates = lanelet::utils::getArcCoordinatesOnEgoCenterline(
+      lanelet_sequence, route_handler.getGoalPose(), lanelet_map_ptr);
     s_forward = std::clamp(s_forward, 0.0, goal_arc_coordinates.length);
   }
 
