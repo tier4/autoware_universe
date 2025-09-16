@@ -72,7 +72,7 @@ visualization_msgs::msg::MarkerArray createDebugMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & input_objects,
   const ObjectClassification & classification, bool rtc_activated,
   const geometry_msgs::msg::Pose & ego_pose,
-  const autoware::universe_utils::Polygon2d & filtering_polygon, bool filtering_polygon_created);
+  const std::vector<autoware::universe_utils::Polygon2d> & filtering_polygon, bool filtering_polygon_created);
 
 /**
  * @brief Create visualization marker for objects

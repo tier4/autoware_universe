@@ -55,7 +55,7 @@ namespace autoware::perception_filter
  */
 struct FilteringPolygon
 {
-  autoware::universe_utils::Polygon2d polygon;  ///< Filtering range polygon
+  std::vector<autoware::universe_utils::Polygon2d> polygon;  ///< Filtering range polygons
   double start_distance_along_path;             ///< Start distance along the path [m]
   double end_distance_along_path;               ///< End distance along the path [m]
   bool is_active;                               ///< Whether the polygon is currently active

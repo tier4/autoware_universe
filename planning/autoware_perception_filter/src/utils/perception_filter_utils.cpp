@@ -143,7 +143,7 @@ visualization_msgs::msg::MarkerArray createDebugMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & input_objects,
   const ObjectClassification & classification, bool rtc_activated,
   const geometry_msgs::msg::Pose & ego_pose,
-  const autoware::universe_utils::Polygon2d & filtering_polygon, bool filtering_polygon_created)
+  const std::vector<autoware::universe_utils::Polygon2d> & filtering_polygon, bool filtering_polygon_created)
 {
   visualization_msgs::msg::MarkerArray marker_array;
 
@@ -201,39 +201,44 @@ visualization_msgs::msg::MarkerArray createDebugMarkers(
     classification.removed_objects, "filtered", "FILTERED", {1.0, 0.0, 0.0, 0.8});
 
   // Create filtering polygon marker if available
-  if (filtering_polygon_created && !filtering_polygon.outer().empty()) {
-    visualization_msgs::msg::Marker polygon_marker;
-    polygon_marker.header.frame_id = "map";
-    polygon_marker.ns = "filtering_polygon";
-    polygon_marker.id = 0;
-    polygon_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
-    polygon_marker.action = visualization_msgs::msg::Marker::ADD;
-    polygon_marker.scale.x = 0.3;
-    polygon_marker.color.r = 0.0;
-    polygon_marker.color.g = 1.0;
-    polygon_marker.color.b = 0.0;
-    polygon_marker.color.a = 0.8;
+  if (filtering_polygon_created && !filtering_polygon.empty()) {
+    for (size_t i = 0; i < filtering_polygon.size(); ++i) {
+      const auto & polygon = filtering_polygon[i];
+      if (polygon.outer().empty()) continue;
 
-    // Add polygon points to create a closed polygon
-    for (const auto & point : filtering_polygon.outer()) {
-      geometry_msgs::msg::Point ros_point;
-      ros_point.x = point.x();
-      ros_point.y = point.y();
-      ros_point.z = 0.1;
-      polygon_marker.points.push_back(ros_point);
+      visualization_msgs::msg::Marker polygon_marker;
+      polygon_marker.header.frame_id = "map";
+      polygon_marker.ns = "filtering_polygon";
+      polygon_marker.id = static_cast<int>(i);
+      polygon_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+      polygon_marker.action = visualization_msgs::msg::Marker::ADD;
+      polygon_marker.scale.x = 0.3;
+      polygon_marker.color.r = 0.0;
+      polygon_marker.color.g = 1.0;
+      polygon_marker.color.b = 0.0;
+      polygon_marker.color.a = 0.8;
+
+      // Add polygon points to create a closed polygon
+      for (const auto & point : polygon.outer()) {
+        geometry_msgs::msg::Point ros_point;
+        ros_point.x = point.x();
+        ros_point.y = point.y();
+        ros_point.z = 0.1;
+        polygon_marker.points.push_back(ros_point);
+      }
+
+      // Close the polygon by adding the first point again
+      if (!polygon.outer().empty()) {
+        const auto & first_point = polygon.outer().front();
+        geometry_msgs::msg::Point ros_point;
+        ros_point.x = first_point.x();
+        ros_point.y = first_point.y();
+        ros_point.z = 0.1;
+        polygon_marker.points.push_back(ros_point);
+      }
+
+      marker_array.markers.push_back(polygon_marker);
     }
-
-    // Close the polygon by adding the first point again
-    if (!filtering_polygon.outer().empty()) {
-      const auto & first_point = filtering_polygon.outer().front();
-      geometry_msgs::msg::Point ros_point;
-      ros_point.x = first_point.x();
-      ros_point.y = first_point.y();
-      ros_point.z = 0.1;
-      polygon_marker.points.push_back(ros_point);
-    }
-
-    marker_array.markers.push_back(polygon_marker);
   }
 
   // Create status text marker above ego vehicle

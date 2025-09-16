@@ -365,6 +365,7 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       resampled_trajectory, max_filter_distance_, transform_listener_);
     const auto traj_min_polygons = autoware::perception_filter::generateTrajectoryPolygons(
       resampled_trajectory, pointcloud_safety_distance_, transform_listener_);
+
     const auto base_link_trajectory_points =
       autoware::perception_filter::transformTrajectoryToBaseLink(
         resampled_trajectory.points, transform_listener_);
@@ -376,8 +377,6 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     // Generate difference polygons (traj_max_polygons - traj_min_polygons)
     const auto difference_polygons =
       autoware::perception_filter::createDifferencePolygons(traj_max_polygons, traj_min_polygons);
-
-    std::cerr << "difference_polygons: " << difference_polygons.size() << std::endl;
 
     // Generate crop box polygons using utility function
     const auto crop_box_polygons =
@@ -508,8 +507,10 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
                                   &planning_trajectory]() {
     autoware::universe_utils::ScopedTimeTrack st_process(
       "process_pointcloud_common", *time_keeper_);
+    // Combine multiple polygons into a single polygon for processing
+    const auto combined_polygon = autoware::perception_filter::combineTrajectoryPolygons(filtering_polygon.polygon);
     return processPointCloudCommon(
-      input_pointcloud, filtering_polygon.polygon, planning_trajectory, transform_listener_,
+      input_pointcloud, combined_polygon, planning_trajectory, transform_listener_,
       *time_keeper_);
   }();
   if (!processing_result.success) {
@@ -835,22 +836,26 @@ void PerceptionFilterNode::createFilteringPolygon()
   autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   // Create polygon from trajectory with max_filter_distance width
-  {
-    autoware::universe_utils::ScopedTimeTrack st_polygon("create_path_polygon", *time_keeper_);
-    filtering_polygon_.polygon =
-      createPathPolygon(*planning_trajectory_, 0.0, filtering_distance_, max_filter_distance_);
-  }
+  constexpr double resample_interval = 0.5;
+  const auto resampled_trajectory = autoware::motion_utils::resampleTrajectory(
+    *planning_trajectory_, resample_interval, false, true, true);
+  filtering_polygon_.polygon = autoware::perception_filter::generateTrajectoryPolygons(
+    resampled_trajectory, max_filter_distance_, transform_listener_);
   filtering_polygon_.start_distance_along_path = 0.0;
   filtering_polygon_.end_distance_along_path = filtering_distance_;
   filtering_polygon_.is_active = true;
   filtering_polygon_created_ = true;
 
+  size_t total_points = 0;
+  for (const auto & polygon : filtering_polygon_.polygon) {
+    total_points += polygon.outer().size();
+  }
   RCLCPP_DEBUG(
     get_logger(),
     "Filtering polygon created successfully: start=%.2f m, end=%.2f m, width=%.2f m, "
-    "polygon_points=%zu",
+    "polygon_count=%zu, total_points=%zu",
     filtering_polygon_.start_distance_along_path, filtering_polygon_.end_distance_along_path,
-    max_filter_distance_, filtering_polygon_.polygon.outer().size());
+    max_filter_distance_, filtering_polygon_.polygon.size(), total_points);
 }
 
 void PerceptionFilterNode::updateFilteringPolygonStatus()
