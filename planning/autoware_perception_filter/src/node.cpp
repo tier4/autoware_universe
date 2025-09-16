@@ -377,6 +377,30 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     const auto crop_box_polygons =
       autoware::perception_filter::generateCropBoxPolygons(traj_max_polygons);
 
+    {
+      autoware::universe_utils::ScopedTimeTrack st_publish("filtering_pointcloud", *time_keeper_);
+
+      // Convert sensor_msgs::PointCloud2 to pcl::PointCloud<pcl::PointXYZ>
+      pcl::PointCloud<pcl::PointXYZ>::Ptr input_pointcloud_ptr =
+        std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+      pcl::fromROSMsg(*msg, *input_pointcloud_ptr);
+
+      // Wrap single polygon in vector for the function call
+      const std::vector<autoware::universe_utils::Polygon2d> polygon_vector = {
+        combined_traj_min_polygon};
+      const auto pointcloud =
+        filterByMultiTrajectoryPolygon(input_pointcloud_ptr, polygon_vector, time_keeper_.get());
+    }
+
+    // const auto traj_min_polygons_for_crop_box =
+    //   autoware::perception_filter::generateCropBoxPolygons(traj_min_polygons);
+
+    // Get points inside crop box (keep_inside=true)
+
+    // const auto result = autoware::perception_filter::filterByTrajectoryPolygonsCropBox(
+    //   *msg, traj_min_polygons, base_link_trajectory_points, traj_min_polygons_for_crop_box, 10.0,
+    //   true);
+
     would_be_filtered_points_ = classifyPointCloudForPlanningFactors(
       *msg, rtc_interface_->isRegistered(rtc_uuid_), traj_max_polygons, combined_traj_min_polygon,
       base_link_trajectory_points, crop_box_polygons);
@@ -612,31 +636,6 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     return result;
   }();
 
-  // Convert filtered PCL pointcloud back to sensor_msgs
-  sensor_msgs::msg::PointCloud2 filtered_pointcloud;
-  pcl::toROSMsg(*filtered_pcl_cloud, filtered_pointcloud);
-  filtered_pointcloud.header = input_pointcloud.header;
-
-  // Transform pointcloud to map frame for distance calculation
-  pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-  {
-    autoware::universe_utils::ScopedTimeTrack st_transform("transform_pointcloud", *time_keeper_);
-
-    // Get transform from base_link to map
-    const auto transform_opt = transform_listener_->getTransform(
-      "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-    if (!transform_opt) {
-      return would_be_filtered_points;
-    }
-
-    // Convert sensor_msgs to PCL
-    pcl::fromROSMsg(filtered_pointcloud, *transformed_cloud);
-
-    // Apply transform
-    const auto eigen_transform = tf2::transformToEigen(transform_opt->transform).cast<float>();
-    pcl::transformPointCloud(*transformed_cloud, *transformed_cloud, eigen_transform);
-  }
-
   // Classify points based on polygon membership with 2-stage filtering
   {
     autoware::universe_utils::ScopedTimeTrack st_classify("classify_points", *time_keeper_);
@@ -668,17 +667,23 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     }
 
     // Step 2: Get points outside crop box (keep_inside=false)
-    std::vector<autoware::universe_utils::Polygon2d> empty_traj_polygons;
     const auto crop_box_outside_cloud =
       autoware::perception_filter::filterByTrajectoryPolygonsCropBox(
-        transformed_cloud, empty_traj_polygons, base_link_trajectory_points, min_polygon_crop_box,
-        0.0, false);
+        filtered_pcl_cloud, traj_max_polygons, base_link_trajectory_points, min_polygon_crop_box,
+        10.0, false);
 
     // Step 3: Get points inside crop box (keep_inside=true)
     const auto crop_box_inside_cloud =
       autoware::perception_filter::filterByTrajectoryPolygonsCropBox(
-        transformed_cloud, empty_traj_polygons, base_link_trajectory_points, min_polygon_crop_box,
-        0.0, true);
+        filtered_pcl_cloud, traj_max_polygons, base_link_trajectory_points, min_polygon_crop_box,
+        10.0, true);
+
+    RCLCPP_ERROR(
+      get_logger(),
+      "Crop box filtering results: filtered_pcl_cloud=%zu, crop_box_outside_cloud=%zu, "
+      "crop_box_inside_cloud=%zu",
+      filtered_pcl_cloud->points.size(), crop_box_outside_cloud->points.size(),
+      crop_box_inside_cloud->points.size());
 
     // Step 4: Add points outside crop box to would_be_filtered_points
     for (const auto & point : crop_box_outside_cloud->points) {
@@ -690,13 +695,16 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
     }
 
     // Step 5: Perform strict polygon inside/outside check for points inside crop box
+    size_t points_inside_polygon = 0;
+    size_t points_outside_polygon = 0;
     for (const auto & point : crop_box_inside_cloud->points) {
       using Point2D = boost::geometry::model::point<double, 2, boost::geometry::cs::cartesian>;
       Point2D boost_point(point.x, point.y);
 
       if (boost::geometry::within(boost_point, combined_traj_min_polygon)) {
-        points_in_traj_min_polygons++;
+        points_inside_polygon++;
       } else {
+        points_outside_polygon++;
         FilteredPointInfo filtered_info;
         filtered_info.point.x = point.x;
         filtered_info.point.y = point.y;
@@ -705,12 +713,21 @@ std::vector<FilteredPointInfo> PerceptionFilterNode::classifyPointCloudForPlanni
       }
     }
 
+    points_in_traj_min_polygons = points_inside_polygon;
+
+    RCLCPP_ERROR(
+      get_logger(),
+      "Strict polygon filtering results: crop_box_inside_cloud=%zu, points_inside_polygon=%zu, "
+      "points_outside_polygon=%zu",
+      crop_box_inside_cloud->points.size(), points_inside_polygon, points_outside_polygon);
+
     points_would_be_filtered = would_be_filtered_points.size();
 
-    // Log classification results
-    RCLCPP_DEBUG(
-      get_logger(), "2-stage crop box filtering: total=%zu, in_polygon=%zu, would_be_filtered=%zu",
-      transformed_cloud->points.size(), points_in_traj_min_polygons, points_would_be_filtered);
+    // Log final classification results
+    RCLCPP_ERROR(
+      get_logger(),
+      "Final 2-stage filtering results: total=%zu, in_polygon=%zu, would_be_filtered=%zu",
+      filtered_pcl_cloud->points.size(), points_in_traj_min_polygons, points_would_be_filtered);
   }
 
   return would_be_filtered_points;

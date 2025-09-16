@@ -18,6 +18,7 @@
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
+#include <autoware/universe_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
@@ -198,6 +199,18 @@ std::vector<autoware::universe_utils::Polygon2d> generateCropBoxPolygons(
  */
 autoware::universe_utils::Polygon2d combineTrajectoryPolygons(
   const std::vector<autoware::universe_utils::Polygon2d> & polygons);
+
+/**
+ * @brief Filter pointcloud using multiple trajectory polygons with R-tree optimization
+ * @param input_pointcloud_ptr Input pointcloud to filter
+ * @param traj_polygons Vector of trajectory polygons for filtering
+ * @param time_keeper Optional time keeper for performance measurement
+ * @return Filtered pointcloud containing points inside any of the polygons
+ */
+pcl::PointCloud<pcl::PointXYZ>::Ptr filterByMultiTrajectoryPolygon(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
+  autoware::universe_utils::TimeKeeper * time_keeper = nullptr);
 
 }  // namespace autoware::perception_filter
 

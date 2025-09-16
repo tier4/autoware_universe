@@ -25,6 +25,7 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <boost/geometry.hpp>
+#include <boost/geometry/index/rtree.hpp>
 
 #include <pcl/filters/crop_box.h>
 #include <pcl/point_cloud.h>
@@ -41,6 +42,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -669,6 +671,85 @@ autoware::universe_utils::Polygon2d combineTrajectoryPolygons(
   }
 
   return combined_polygon;
+}
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr filterByMultiTrajectoryPolygon(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
+  autoware::universe_utils::TimeKeeper * time_keeper)
+{
+  auto ret_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  ret_pointcloud_ptr->header = input_pointcloud_ptr->header;
+
+  // Define types for Boost.Geometry
+  namespace bg = boost::geometry;
+  namespace bgi = boost::geometry::index;
+  using BoostPoint2D = bg::model::point<double, 2, bg::cs::cartesian>;
+  using BoostValue = std::pair<BoostPoint2D, size_t>;  // point + index
+
+  // Build R-tree from input points
+  std::vector<BoostValue> rtree_data;
+  rtree_data.reserve(input_pointcloud_ptr->points.size());
+
+  {
+    std::unique_ptr<autoware::universe_utils::ScopedTimeTrack> st_rtree_build;
+    if (time_keeper) {
+      st_rtree_build =
+        std::make_unique<autoware::universe_utils::ScopedTimeTrack>("rtree_build", *time_keeper);
+    }
+    std::transform(
+      input_pointcloud_ptr->points.begin(), input_pointcloud_ptr->points.end(),
+      std::back_inserter(rtree_data), [i = 0](const pcl::PointXYZ & pt) mutable {
+        return std::make_pair(BoostPoint2D(pt.x, pt.y), i++);
+      });
+  }
+
+  bgi::rtree<BoostValue, bgi::quadratic<16>> rtree(rtree_data.begin(), rtree_data.end());
+
+  std::unordered_set<size_t> selected_indices;
+
+  {
+    std::unique_ptr<autoware::universe_utils::ScopedTimeTrack> st_polygon_query;
+    if (time_keeper) {
+      st_polygon_query =
+        std::make_unique<autoware::universe_utils::ScopedTimeTrack>("polygon_query", *time_keeper);
+    }
+    std::for_each(
+      traj_polygons.begin(), traj_polygons.end(),
+      [&](const autoware::universe_utils::Polygon2d & one_step_polygon) {
+        bg::model::box<BoostPoint2D> bbox;
+        bg::envelope(one_step_polygon, bbox);
+
+        std::vector<BoostValue> result_s;
+        rtree.query(bgi::intersects(bbox), std::back_inserter(result_s));
+
+        for (const auto & val : result_s) {
+          const BoostPoint2D & pt = val.first;
+          if (bg::within(pt, one_step_polygon)) {
+            selected_indices.insert(val.second);
+          }
+        }
+      });
+  }
+
+  {
+    std::unique_ptr<autoware::universe_utils::ScopedTimeTrack> st_result_build;
+    if (time_keeper) {
+      st_result_build =
+        std::make_unique<autoware::universe_utils::ScopedTimeTrack>("result_build", *time_keeper);
+    }
+    ret_pointcloud_ptr->points.reserve(selected_indices.size());
+    std::transform(
+      selected_indices.begin(), selected_indices.end(),
+      std::back_inserter(ret_pointcloud_ptr->points),
+      [&](const size_t idx) { return input_pointcloud_ptr->points[idx]; });
+
+    ret_pointcloud_ptr->width = ret_pointcloud_ptr->points.size();
+    ret_pointcloud_ptr->height = 1;
+    ret_pointcloud_ptr->is_dense = true;
+  }
+
+  return ret_pointcloud_ptr;
 }
 
 }  // namespace autoware::perception_filter
