@@ -887,13 +887,41 @@ void PerceptionFilterNode::updateFilteringPolygonStatus()
     return;
   }
 
-  // const double current_distance_along_path = [this, &ego_pose]() {
-  //   autoware::universe_utils::ScopedTimeTrack st_distance("get_distance_along_path",
-  //   *time_keeper_);
-  //   // Calculate distance from ego position to ego position along the trajectory
-  //   return autoware::motion_utils::calcSignedArcLength(
-  //     planning_trajectory_->points, ego_pose->position, ego_pose->position);
-  // }();
+  // Calculate current ego_pose distance along the trajectory
+  const double current_ego_distance = [this, &ego_pose]() {
+    return autoware::motion_utils::calcSignedArcLength(
+      planning_trajectory_->points, 0, ego_pose->position);
+  }();
+
+  // Calculate end_pose distance along the trajectory
+  const double end_pose_distance = [this]() {
+    return autoware::motion_utils::calcSignedArcLength(
+      planning_trajectory_->points, 0, filtering_polygon_.end_pose.position);
+  }();
+
+  // Check if end_pose has been passed
+  if (current_ego_distance >= end_pose_distance) {
+    RCLCPP_INFO(get_logger(), "Ego pose has passed end_pose, deactivating filtering polygon");
+    filtering_polygon_.is_active = false;
+    return;
+  }
+
+  // Calculate start_pose distance along the trajectory
+  const double start_pose_distance = [this]() {
+    return autoware::motion_utils::calcSignedArcLength(
+      planning_trajectory_->points, 0, filtering_polygon_.start_pose.position);
+  }();
+
+  // Advance start_pose by the amount ego_pose has advanced
+  const double ego_advancement = current_ego_distance - start_pose_distance;
+  if (ego_advancement > 0) {
+    const double new_start_distance = start_pose_distance + ego_advancement;
+    if (new_start_distance < end_pose_distance) {
+      filtering_polygon_.start_pose = autoware::motion_utils::calcInterpolatedPose(
+        planning_trajectory_->points, new_start_distance);
+      RCLCPP_DEBUG(get_logger(), "Updated start_pose by advancement: %.2f m", ego_advancement);
+    }
+  }
 }
 
 bool PerceptionFilterNode::isDataReadyForObjects()
