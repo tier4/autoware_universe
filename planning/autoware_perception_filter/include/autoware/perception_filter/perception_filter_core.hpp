@@ -56,9 +56,9 @@ namespace autoware::perception_filter
 struct FilteringPolygon
 {
   std::vector<autoware::universe_utils::Polygon2d> polygon;  ///< Filtering range polygons
-  double start_distance_along_path;             ///< Start distance along the path [m]
-  double end_distance_along_path;               ///< End distance along the path [m]
-  bool is_active;                               ///< Whether the polygon is currently active
+  autoware_planning_msgs::msg::Trajectory trajectory;        ///< Associated trajectory
+  geometry_msgs::msg::Pose ego_pose;  ///< Ego vehicle pose at polygon creation
+  bool is_active;                     ///< Whether the polygon is currently active
 };
 
 /**

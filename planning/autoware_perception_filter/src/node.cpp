@@ -508,10 +508,10 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
     autoware::universe_utils::ScopedTimeTrack st_process(
       "process_pointcloud_common", *time_keeper_);
     // Combine multiple polygons into a single polygon for processing
-    const auto combined_polygon = autoware::perception_filter::combineTrajectoryPolygons(filtering_polygon.polygon);
+    const auto combined_polygon =
+      autoware::perception_filter::combineTrajectoryPolygons(filtering_polygon.polygon);
     return processPointCloudCommon(
-      input_pointcloud, combined_polygon, planning_trajectory, transform_listener_,
-      *time_keeper_);
+      input_pointcloud, combined_polygon, planning_trajectory, transform_listener_, *time_keeper_);
   }();
   if (!processing_result.success) {
     return input_pointcloud;
@@ -841,21 +841,13 @@ void PerceptionFilterNode::createFilteringPolygon()
     *planning_trajectory_, resample_interval, false, true, true);
   filtering_polygon_.polygon = autoware::perception_filter::generateTrajectoryPolygons(
     resampled_trajectory, max_filter_distance_, transform_listener_);
-  filtering_polygon_.start_distance_along_path = 0.0;
-  filtering_polygon_.end_distance_along_path = filtering_distance_;
+  filtering_polygon_.trajectory = resampled_trajectory;
+  auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
+  if (ego_pose) {
+    filtering_polygon_.ego_pose = *ego_pose;
+  }
   filtering_polygon_.is_active = true;
   filtering_polygon_created_ = true;
-
-  size_t total_points = 0;
-  for (const auto & polygon : filtering_polygon_.polygon) {
-    total_points += polygon.outer().size();
-  }
-  RCLCPP_DEBUG(
-    get_logger(),
-    "Filtering polygon created successfully: start=%.2f m, end=%.2f m, width=%.2f m, "
-    "polygon_count=%zu, total_points=%zu",
-    filtering_polygon_.start_distance_along_path, filtering_polygon_.end_distance_along_path,
-    max_filter_distance_, filtering_polygon_.polygon.size(), total_points);
 }
 
 void PerceptionFilterNode::updateFilteringPolygonStatus()
@@ -872,24 +864,13 @@ void PerceptionFilterNode::updateFilteringPolygonStatus()
     return;
   }
 
-  const double current_distance_along_path = [this, &ego_pose]() {
-    autoware::universe_utils::ScopedTimeTrack st_distance("get_distance_along_path", *time_keeper_);
-    // Note: This calculates distance from ego position to ego position, which should be 0
-    return autoware::motion_utils::calcSignedArcLength(
-      planning_trajectory_->points, ego_pose->position, ego_pose->position);
-  }();
-
-  RCLCPP_DEBUG(
-    get_logger(), "updateFilteringPolygonStatus: current_distance=%.2f m, polygon_end=%.2f m",
-    current_distance_along_path, filtering_polygon_.end_distance_along_path);
-
-  // If ego has moved beyond the end of the filtering polygon, deactivate it
-  if (current_distance_along_path > filtering_polygon_.end_distance_along_path) {
-    filtering_polygon_.is_active = false;
-    RCLCPP_DEBUG(
-      get_logger(), "Filtering polygon deactivated: ego distance=%.2f m, polygon end=%.2f m",
-      current_distance_along_path, filtering_polygon_.end_distance_along_path);
-  }
+  // const double current_distance_along_path = [this, &ego_pose]() {
+  //   autoware::universe_utils::ScopedTimeTrack st_distance("get_distance_along_path",
+  //   *time_keeper_);
+  //   // Calculate distance from ego position to ego position along the trajectory
+  //   return autoware::motion_utils::calcSignedArcLength(
+  //     planning_trajectory_->points, ego_pose->position, ego_pose->position);
+  // }();
 }
 
 bool PerceptionFilterNode::isDataReadyForObjects()

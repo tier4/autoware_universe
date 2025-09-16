@@ -286,7 +286,7 @@ private:
     frozen_filter_object_ids_;  ///< Object IDs frozen at RTC approval time
 
   // Polygon-based filtering management
-  FilteringPolygon filtering_polygon_{};   ///< Filtering polygon created at RTC approval
+  FilteringPolygon filtering_polygon_;     ///< Filtering polygon created at RTC approval
   bool filtering_polygon_created_{false};  ///< Whether the filtering polygon has been created
 
   // ========== Configuration Parameters ==========
