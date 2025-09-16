@@ -57,7 +57,7 @@ using autoware_planning_msgs::msg::LaneletSegment;
 struct ColWithDistance
 {
   int64_t index;            //!< Column index in the input matrix.
-  double distance_squared;  //!< Squared distance from the center.
+  float distance_squared;  //!< Squared distance from the center.
 };
 
 /**
@@ -154,7 +154,8 @@ private:
    * @return Vector of lane segment indices.
    */
   std::vector<int64_t> select_lane_segment_indices(
-    const double center_x, const double center_y, const int64_t max_segments) const;
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+    const int64_t max_segments) const;
 
   /**
    * @brief Create tensor data from selected segment indices.

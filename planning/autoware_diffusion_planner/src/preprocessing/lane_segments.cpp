@@ -77,7 +77,7 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_lane_s
 {
   // Step 1: Select lane segment indices
   const std::vector<int64_t> segment_indices =
-    select_lane_segment_indices(center_x, center_y, NUM_SEGMENTS_IN_LANE);
+    select_lane_segment_indices(transform_matrix, center_x, center_y, NUM_SEGMENTS_IN_LANE);
 
   // Step 2: Create tensor data from indices
   return create_tensor_data_from_indices(
@@ -154,7 +154,8 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
 }
 
 std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
-  const double center_x, const double center_y, const int64_t max_segments) const
+  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+  const int64_t max_segments) const
 {
   // Step 1: Compute distances
   auto is_inside = [&](const double x, const double y) {
@@ -177,12 +178,15 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
 
     // Compute mean, first, and last points
     double mean_x = 0.0, mean_y = 0.0;
-    double distance_squared = 0.0;
+    float distance_squared = 0.0;
     for (const LanePoint & point : centerline) {
       mean_x += point.x();
       mean_y += point.y();
-      const double diff_x = point.x() - center_x;
-      const double diff_y = point.y() - center_y;
+
+      const Eigen::Vector4d transformed_point =
+        transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
+      const float diff_x = transformed_point.x();
+      const float diff_y = transformed_point.y();
       distance_squared += diff_x * diff_x + diff_y * diff_y;
     }
     mean_x /= centerline.size();
