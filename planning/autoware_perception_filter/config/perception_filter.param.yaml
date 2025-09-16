@@ -5,7 +5,8 @@
     enable_pointcloud_filtering: true
     max_filter_distance: 5.0  # [m]
     pointcloud_safety_distance: 1.0  # [m]
-    filtering_distance: 50.0  # [m] Length ahead along path to build filtering polygon
+    filtering_start_distance: -10.0  # [m] Distance from ego pose for filtering start (negative = behind, positive = ahead)
+    filtering_end_distance: 30.0  # [m] Distance ahead of ego pose for filtering end
     object_classification_radius: 50.0  # [m]
 
     # RTC recreation on vehicle stop

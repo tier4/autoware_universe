@@ -205,7 +205,6 @@ private:
    * @param input_pointcloud Input point cloud to be filtered
    * @param planning_trajectory Planning trajectory for distance calculation
    * @param filtering_polygon Filtering polygon for RTC-based filtering
-   * @param filtering_polygon_created Whether filtering polygon is created
    * @param max_filter_distance Maximum distance from path to filter objects [m]
    * @param pointcloud_safety_distance Minimum safety distance for pointcloud filtering [m]
    * @return Filtered point cloud
@@ -213,8 +212,8 @@ private:
   sensor_msgs::msg::PointCloud2 filterPointCloud(
     const sensor_msgs::msg::PointCloud2 & input_pointcloud,
     const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-    const FilteringPolygon & filtering_polygon, bool filtering_polygon_created,
-    double max_filter_distance, double pointcloud_safety_distance);
+    const FilteringPolygon & filtering_polygon, double max_filter_distance,
+    double pointcloud_safety_distance);
 
   // Subscribers
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr objects_sub_;
@@ -286,8 +285,7 @@ private:
     frozen_filter_object_ids_;  ///< Object IDs frozen at RTC approval time
 
   // Polygon-based filtering management
-  FilteringPolygon filtering_polygon_;     ///< Filtering polygon created at RTC approval
-  bool filtering_polygon_created_{false};  ///< Whether the filtering polygon has been created
+  FilteringPolygon filtering_polygon_;  ///< Filtering polygon created at RTC approval
 
   // ========== Configuration Parameters ==========
 
@@ -296,9 +294,11 @@ private:
   bool enable_pointcloud_filtering_;  ///< Enable pointcloud filtering functionality
 
   // Distance and safety parameters
-  double max_filter_distance_;           ///< Maximum distance from path to filter objects [m]
-  double pointcloud_safety_distance_;    ///< Minimum safety distance for pointcloud filtering [m]
-  double filtering_distance_;            ///< Length ahead along path to build filtering polygon [m]
+  double max_filter_distance_;         ///< Maximum distance from path to filter objects [m]
+  double pointcloud_safety_distance_;  ///< Minimum safety distance for pointcloud filtering [m]
+  double filtering_start_distance_;  ///< Distance from ego pose for filtering start [m] (negative =
+                                     ///< behind, positive = ahead)
+  double filtering_end_distance_;    ///< Distance ahead of ego pose for filtering end [m]
   double object_classification_radius_;  ///< Radius for object classification [m]
   double stop_velocity_threshold_;       ///< Velocity threshold for stop detection [m/s]
 

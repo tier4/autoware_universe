@@ -143,7 +143,7 @@ visualization_msgs::msg::MarkerArray createDebugMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & input_objects,
   const ObjectClassification & classification, bool rtc_activated,
   const geometry_msgs::msg::Pose & ego_pose,
-  const std::vector<autoware::universe_utils::Polygon2d> & filtering_polygon, bool filtering_polygon_created)
+  const std::vector<autoware::universe_utils::Polygon2d> & filtering_polygon)
 {
   visualization_msgs::msg::MarkerArray marker_array;
 
@@ -201,7 +201,7 @@ visualization_msgs::msg::MarkerArray createDebugMarkers(
     classification.removed_objects, "filtered", "FILTERED", {1.0, 0.0, 0.0, 0.8});
 
   // Create filtering polygon marker if available
-  if (filtering_polygon_created && !filtering_polygon.empty()) {
+  if (!filtering_polygon.empty()) {
     for (size_t i = 0; i < filtering_polygon.size(); ++i) {
       const auto & polygon = filtering_polygon[i];
       if (polygon.outer().empty()) continue;

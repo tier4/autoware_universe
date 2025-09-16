@@ -18,6 +18,7 @@
 #include <Eigen/Dense>
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
+#include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/ros/transform_listener.hpp>
@@ -88,7 +89,8 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   enable_pointcloud_filtering_ = getOrDeclareParameter<bool>(*this, "enable_pointcloud_filtering");
   max_filter_distance_ = getOrDeclareParameter<double>(*this, "max_filter_distance");
   pointcloud_safety_distance_ = getOrDeclareParameter<double>(*this, "pointcloud_safety_distance");
-  filtering_distance_ = getOrDeclareParameter<double>(*this, "filtering_distance");
+  filtering_start_distance_ = getOrDeclareParameter<double>(*this, "filtering_start_distance");
+  filtering_end_distance_ = getOrDeclareParameter<double>(*this, "filtering_end_distance");
   object_classification_radius_ =
     getOrDeclareParameter<double>(*this, "object_classification_radius");
   ignore_object_classes_ =
@@ -165,7 +167,8 @@ rcl_interfaces::msg::SetParametersResult PerceptionFilterNode::onParameter(
   update_param<bool>(parameters, "enable_pointcloud_filtering", enable_pointcloud_filtering_);
   update_param<double>(parameters, "max_filter_distance", max_filter_distance_);
   update_param<double>(parameters, "pointcloud_safety_distance", pointcloud_safety_distance_);
-  update_param<double>(parameters, "filtering_distance", filtering_distance_);
+  update_param<double>(parameters, "filtering_start_distance", filtering_start_distance_);
+  update_param<double>(parameters, "filtering_end_distance", filtering_end_distance_);
   update_param<double>(parameters, "object_classification_radius", object_classification_radius_);
   update_param<std::vector<std::string>>(
     parameters, "ignore_object_classes", ignore_object_classes_);
@@ -337,16 +340,15 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   // Check RTC interface state and detect activation changes
   const bool rtc_became_active_in_pointcloud = checkRTCStateChange(last_pointcloud_rtc_state_);
 
+  // Update filtering polygon status
+  if (filtering_polygon_.is_active) {
+    updateFilteringPolygonStatus();
+  }
+
   // TODO(Sugahara): prepare trajectory and polygon and transform frame so that debug information
   // can be published from this function
   if (rtc_became_active_in_pointcloud) {
     createFilteringPolygon();
-  }
-
-  // Update filtering polygon status
-  if (filtering_polygon_created_) {
-    autoware::universe_utils::ScopedTimeTrack st_polygon("update_filtering_polygon", *time_keeper_);
-    updateFilteringPolygonStatus();
   }
 
   // If rtc_is_registered is true, classify the pointcloud for planning factors
@@ -462,8 +464,8 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   auto filtered_pointcloud = [this, &msg]() {
     autoware::universe_utils::ScopedTimeTrack st_filter("filter_pointcloud", *time_keeper_);
     return filterPointCloud(
-      *msg, planning_trajectory_, filtering_polygon_, filtering_polygon_created_,
-      max_filter_distance_, pointcloud_safety_distance_);
+      *msg, planning_trajectory_, filtering_polygon_, max_filter_distance_,
+      pointcloud_safety_distance_);
   }();
 
   // Publish filtered pointcloud
@@ -491,14 +493,12 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
 sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
   const sensor_msgs::msg::PointCloud2 & input_pointcloud,
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory,
-  const FilteringPolygon & filtering_polygon, bool filtering_polygon_created,
-  double max_filter_distance, double pointcloud_safety_distance)
+  const FilteringPolygon & filtering_polygon, double max_filter_distance,
+  double pointcloud_safety_distance)
 {
   autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  if (
-    input_pointcloud.data.empty() || !filtering_polygon_created || !filtering_polygon.is_active ||
-    !planning_trajectory) {
+  if (input_pointcloud.data.empty() || !filtering_polygon.is_active || !planning_trajectory) {
     return input_pointcloud;
   }
 
@@ -820,7 +820,7 @@ void PerceptionFilterNode::onTimer()
     autoware::universe_utils::ScopedTimeTrack st_markers("create_debug_markers", *time_keeper_);
     return createDebugMarkers(
       *latest_objects_, latest_classification_, rtc_activated, *ego_pose,
-      filtering_polygon_.polygon, filtering_polygon_created_);
+      filtering_polygon_.polygon);
   }();
 
   // Publish debug markers
@@ -845,16 +845,39 @@ void PerceptionFilterNode::createFilteringPolygon()
   auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
   if (ego_pose) {
     filtering_polygon_.ego_pose = *ego_pose;
+
+    // Calculate trajectory points at specified distances from ego pose
+    const auto nearest_segment_idx = autoware::motion_utils::findNearestSegmentIndex(
+      resampled_trajectory.points, ego_pose->position);
+
+    if (nearest_segment_idx) {
+      // Calculate distance from trajectory start to ego pose
+      const double ego_distance_from_start = autoware::motion_utils::calcSignedArcLength(
+        resampled_trajectory.points, 0, nearest_segment_idx);
+
+      // Calculate start pose (filtering_start_distance behind ego, negative value means ahead)
+      const double start_distance = ego_distance_from_start + filtering_start_distance_;
+      if (start_distance >= 0) {
+        filtering_polygon_.start_pose =
+          autoware::motion_utils::calcInterpolatedPose(resampled_trajectory.points, start_distance);
+      }
+
+      // Calculate end pose (filtering_end_distance ahead of ego)
+      const double end_distance = ego_distance_from_start + filtering_end_distance_;
+      filtering_polygon_.end_pose =
+        autoware::motion_utils::calcInterpolatedPose(resampled_trajectory.points, end_distance);
+    }
+  } else {
+    RCLCPP_WARN(get_logger(), "Ego pose not available for polygon creation");
   }
   filtering_polygon_.is_active = true;
-  filtering_polygon_created_ = true;
 }
 
 void PerceptionFilterNode::updateFilteringPolygonStatus()
 {
   autoware::universe_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  if (!filtering_polygon_created_ || !filtering_polygon_.is_active) {
+  if (!filtering_polygon_.is_active) {
     return;
   }
 

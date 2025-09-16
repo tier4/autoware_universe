@@ -65,14 +65,13 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
  * @param rtc_activated Whether RTC is currently activated
  * @param ego_pose Current ego vehicle pose
  * @param filtering_polygon Filtering polygon for visualization
- * @param filtering_polygon_created Whether filtering polygon is created
  * @return Visualization marker array
  */
 visualization_msgs::msg::MarkerArray createDebugMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & input_objects,
   const ObjectClassification & classification, bool rtc_activated,
   const geometry_msgs::msg::Pose & ego_pose,
-  const std::vector<autoware::universe_utils::Polygon2d> & filtering_polygon, bool filtering_polygon_created);
+  const std::vector<autoware::universe_utils::Polygon2d> & filtering_polygon);
 
 /**
  * @brief Create visualization marker for objects
