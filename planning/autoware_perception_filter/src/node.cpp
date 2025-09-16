@@ -373,12 +373,19 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     const auto combined_traj_min_polygon =
       autoware::perception_filter::combineTrajectoryPolygons(traj_min_polygons);
 
+    // Generate difference polygons (traj_max_polygons - traj_min_polygons)
+    const auto difference_polygons =
+      autoware::perception_filter::createDifferencePolygons(traj_max_polygons, traj_min_polygons);
+
+    std::cerr << "difference_polygons: " << difference_polygons.size() << std::endl;
+
     // Generate crop box polygons using utility function
     const auto crop_box_polygons =
       autoware::perception_filter::generateCropBoxPolygons(traj_max_polygons);
 
     {
-      autoware::universe_utils::ScopedTimeTrack st_publish("filtering_pointcloud", *time_keeper_);
+      autoware::universe_utils::ScopedTimeTrack st_publish(
+        "inside_traj_min_polygon", *time_keeper_);
 
       // Convert sensor_msgs::PointCloud2 to pcl::PointCloud<pcl::PointXYZ>
       pcl::PointCloud<pcl::PointXYZ>::Ptr input_pointcloud_ptr =
@@ -390,6 +397,19 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
         combined_traj_min_polygon};
       const auto pointcloud =
         filterByMultiTrajectoryPolygon(input_pointcloud_ptr, polygon_vector, time_keeper_.get());
+    }
+
+    {
+      autoware::universe_utils::ScopedTimeTrack st_publish(
+        "inside_difference_polygon", *time_keeper_);
+
+      // Convert sensor_msgs::PointCloud2 to pcl::PointCloud<pcl::PointXYZ>
+      pcl::PointCloud<pcl::PointXYZ>::Ptr input_pointcloud_ptr =
+        std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+      pcl::fromROSMsg(*msg, *input_pointcloud_ptr);
+
+      const auto pointcloud = filterByMultiTrajectoryPolygon(
+        input_pointcloud_ptr, difference_polygons, time_keeper_.get());
     }
 
     // const auto traj_min_polygons_for_crop_box =

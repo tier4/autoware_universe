@@ -212,6 +212,16 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByMultiTrajectoryPolygon(
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
   autoware::universe_utils::TimeKeeper * time_keeper = nullptr);
 
+/**
+ * @brief Create difference polygon by subtracting min_polygons from max_polygons
+ * @param max_polygons Vector of larger polygons (outer boundary)
+ * @param min_polygons Vector of smaller polygons to subtract (inner boundary)
+ * @return Vector of difference polygons (max_polygons - min_polygons)
+ */
+std::vector<autoware::universe_utils::Polygon2d> createDifferencePolygons(
+  const std::vector<autoware::universe_utils::Polygon2d> & max_polygons,
+  const std::vector<autoware::universe_utils::Polygon2d> & min_polygons);
+
 }  // namespace autoware::perception_filter
 
 #endif  // AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_UTILS_HPP_

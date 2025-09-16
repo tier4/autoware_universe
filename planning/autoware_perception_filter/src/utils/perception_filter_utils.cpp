@@ -752,4 +752,49 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByMultiTrajectoryPolygon(
   return ret_pointcloud_ptr;
 }
 
+std::vector<autoware::universe_utils::Polygon2d> createDifferencePolygons(
+  const std::vector<autoware::universe_utils::Polygon2d> & max_polygons,
+  const std::vector<autoware::universe_utils::Polygon2d> & min_polygons)
+{
+  std::vector<autoware::universe_utils::Polygon2d> difference_polygons;
+
+  if (max_polygons.empty()) {
+    return difference_polygons;
+  }
+
+  // If min_polygons is empty, return max_polygons as is
+  if (min_polygons.empty()) {
+    return max_polygons;
+  }
+
+  // Combine all max_polygons into a single polygon using union
+  autoware::universe_utils::Polygon2d combined_max_polygon;
+  if (max_polygons.size() == 1) {
+    combined_max_polygon = max_polygons[0];
+  } else {
+    combined_max_polygon = combineTrajectoryPolygons(max_polygons);
+  }
+
+  // Combine all min_polygons into a single polygon using union
+  autoware::universe_utils::Polygon2d combined_min_polygon;
+  if (min_polygons.size() == 1) {
+    combined_min_polygon = min_polygons[0];
+  } else {
+    combined_min_polygon = combineTrajectoryPolygons(min_polygons);
+  }
+
+  // Perform difference operation using boost::geometry::difference
+  autoware::universe_utils::MultiPolygon2d result_polygons;
+  boost::geometry::difference(combined_max_polygon, combined_min_polygon, result_polygons);
+
+  // Convert MultiPolygon2d to vector of Polygon2d
+  for (const auto & polygon : result_polygons) {
+    autoware::universe_utils::Polygon2d corrected_polygon = polygon;
+    boost::geometry::correct(corrected_polygon);
+    difference_polygons.push_back(corrected_polygon);
+  }
+
+  return difference_polygons;
+}
+
 }  // namespace autoware::perception_filter
