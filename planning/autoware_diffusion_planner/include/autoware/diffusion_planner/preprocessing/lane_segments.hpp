@@ -58,7 +58,6 @@ struct ColWithDistance
 {
   int64_t index;            //!< Column index in the input matrix.
   double distance_squared;  //!< Squared distance from the center.
-  bool inside;              //!< Whether the column is within the mask range.
 };
 
 /**

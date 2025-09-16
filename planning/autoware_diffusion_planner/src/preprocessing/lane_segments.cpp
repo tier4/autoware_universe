@@ -197,7 +197,11 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
     const bool inside =
       is_inside(mean_x, mean_y) || is_inside(first_x, first_y) || is_inside(last_x, last_y);
 
-    distances.push_back({static_cast<int64_t>(i), distance_squared, inside});
+    if (!inside) {
+      continue;
+    }
+
+    distances.push_back({static_cast<int64_t>(i), distance_squared});
   }
 
   // Step 2: Sort indices by distance
@@ -208,9 +212,6 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   // Step 3: Select indices that are inside the mask
   std::vector<int64_t> selected_indices;
   for (const auto & distance : distances) {
-    if (!distance.inside) {
-      continue;
-    }
     selected_indices.push_back(distance.index);
     if (selected_indices.size() >= static_cast<size_t>(max_segments)) {
       break;
