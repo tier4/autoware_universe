@@ -850,4 +850,38 @@ autoware_planning_msgs::msg::Trajectory cutTrajectoryByFilteringDistance(
   return cut_trajectory;
 }
 
+autoware_planning_msgs::msg::Trajectory cutTrajectoryByPoses(
+  const autoware_planning_msgs::msg::Trajectory & trajectory,
+  const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & end_pose)
+{
+  // Initialize cut trajectory with input trajectory
+  auto cut_trajectory = trajectory;
+
+  // Find nearest indices to start and end poses
+  const size_t start_idx =
+    autoware::motion_utils::findNearestIndex(trajectory.points, start_pose.position);
+  const size_t end_idx =
+    autoware::motion_utils::findNearestIndex(trajectory.points, end_pose.position);
+
+  // Ensure start_idx is before end_idx
+  const size_t actual_start_idx = std::min(start_idx, end_idx);
+  const size_t actual_end_idx = std::max(start_idx, end_idx);
+
+  if (actual_start_idx >= actual_end_idx) {
+    RCLCPP_WARN(
+      rclcpp::get_logger("perception_filter_utils"),
+      "Invalid trajectory range: start_idx >= end_idx");
+    return cut_trajectory;
+  }
+
+  // Create cut trajectory
+  cut_trajectory.points.clear();
+  cut_trajectory.points.insert(
+    cut_trajectory.points.end(),
+    trajectory.points.begin() + actual_start_idx,
+    trajectory.points.begin() + actual_end_idx + 1);
+
+  return cut_trajectory;
+}
+
 }  // namespace autoware::perception_filter

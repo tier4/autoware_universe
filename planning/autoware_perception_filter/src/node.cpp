@@ -404,7 +404,7 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       // Convert PCL pointcloud to ROS PointCloud2 message
       auto filtered_ros_cloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
       pcl::toROSMsg(*filtered_pcl_cloud, *filtered_ros_cloud);
-      filtered_ros_cloud->header = msg->header;  // Copy header from original message
+      filtered_ros_cloud->header = msg->header;
       would_be_filtered_point_cloud_ = filtered_ros_cloud;
     }
 
@@ -437,13 +437,33 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     would_be_filtered_point_cloud_ = nullptr;
   }
 
-  // Execute filtering logic
-  auto filtered_pointcloud = [this, &msg]() {
-    autoware::universe_utils::ScopedTimeTrack st_filter("filter_pointcloud", *time_keeper_);
-    return filterPointCloud(
-      *msg, planning_trajectory_, filtering_polygon_, max_filter_distance_,
-      pointcloud_safety_distance_);
-  }();
+  const auto cut_trajectory = autoware::perception_filter::cutTrajectoryByPoses(
+    *planning_trajectory_, filtering_polygon_.start_pose, filtering_polygon_.end_pose);
+
+  const auto traj_max_polygons = autoware::perception_filter::generateTrajectoryPolygons(
+    cut_trajectory, max_filter_distance_, transform_listener_);
+  const auto traj_min_polygons = autoware::perception_filter::generateTrajectoryPolygons(
+    cut_trajectory, pointcloud_safety_distance_, transform_listener_);
+
+  // Combine traj_min_polygons into a single polygon
+  const auto combined_traj_min_polygon =
+    autoware::perception_filter::combineTrajectoryPolygons(traj_min_polygons);
+
+  // Generate difference polygons (traj_max_polygons - traj_min_polygons)
+  const auto difference_polygons =
+    autoware::perception_filter::createDifferencePolygons(traj_max_polygons, traj_min_polygons);
+  // Convert sensor_msgs::PointCloud2 to pcl::PointCloud<pcl::PointXYZ>
+  pcl::PointCloud<pcl::PointXYZ>::Ptr input_pointcloud_ptr =
+    std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  pcl::fromROSMsg(*msg, *input_pointcloud_ptr);
+
+  const auto filtered_pcl_pointcloud =
+    filterByMultiTrajectoryPolygon(input_pointcloud_ptr, difference_polygons, time_keeper_.get());
+
+  // Convert PCL pointcloud to ROS PointCloud2 message
+  sensor_msgs::msg::PointCloud2 filtered_pointcloud;
+  pcl::toROSMsg(*filtered_pcl_pointcloud, filtered_pointcloud);
+  filtered_pointcloud.header = msg->header;
 
   // Publish filtered pointcloud
   {

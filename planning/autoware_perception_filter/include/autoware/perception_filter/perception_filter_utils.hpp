@@ -234,6 +234,17 @@ autoware_planning_msgs::msg::Trajectory cutTrajectoryByFilteringDistance(
   const geometry_msgs::msg::Pose & ego_pose, const double filtering_start_distance,
   const double filtering_end_distance);
 
+/**
+ * @brief Cut trajectory between specified start and end poses
+ * @param trajectory Input trajectory to cut
+ * @param start_pose Start pose for cutting
+ * @param end_pose End pose for cutting
+ * @return Cut trajectory containing only the points between start_pose and end_pose
+ */
+autoware_planning_msgs::msg::Trajectory cutTrajectoryByPoses(
+  const autoware_planning_msgs::msg::Trajectory & trajectory,
+  const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & end_pose);
+
 }  // namespace autoware::perception_filter
 
 #endif  // AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_UTILS_HPP_
