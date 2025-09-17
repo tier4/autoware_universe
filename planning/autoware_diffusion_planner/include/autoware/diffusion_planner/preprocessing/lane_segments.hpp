@@ -106,9 +106,19 @@ public:
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
     const std::vector<int64_t> & segment_indices, const int64_t max_segments) const;
 
+  /**
+   * @brief Get the mapping from lanelet ID to array index.
+   *
+   * @return Map of lanelet IDs to their corresponding array indices.
+   */
+  const std::map<lanelet::Id, size_t> & get_lanelet_id_to_array_index() const
+  {
+    return lanelet_id_to_array_index_;
+  }
+
 private:
-  const std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   const std::vector<autoware::diffusion_planner::LaneSegment> lane_segments_;
+  const std::map<lanelet::Id, size_t> lanelet_id_to_array_index_;
 };
 
 }  // namespace autoware::diffusion_planner::preprocess

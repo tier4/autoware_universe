@@ -42,6 +42,8 @@ namespace
 {
 using namespace autoware_perception_msgs::msg;
 
+std::map<lanelet::Id, size_t> create_lane_id_to_array_index_map(
+  const std::vector<LaneSegment> & lane_segments);
 bool is_segment_inside(const LaneSegment & segment, const double center_x, const double center_y);
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements);
@@ -49,8 +51,8 @@ uint8_t identify_current_light_status(
 
 // LaneSegmentContext implementation
 LaneSegmentContext::LaneSegmentContext(const std::shared_ptr<lanelet::LaneletMap> & lanelet_map_ptr)
-: lanelet_map_ptr_(lanelet_map_ptr),
-  lane_segments_(convert_to_lane_segments(lanelet_map_ptr, POINTS_PER_SEGMENT))
+: lane_segments_(convert_to_lane_segments(lanelet_map_ptr, POINTS_PER_SEGMENT)),
+  lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lane_segments_))
 {
   if (lane_segments_.empty()) {
     throw std::runtime_error("No lane segments found in the map");
@@ -61,23 +63,20 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   const LaneletRoute & route, const double center_x, const double center_y,
   const int64_t max_segments) const
 {
-  // Create a map from lanelet ID to segment index for quick lookup
-  std::map<lanelet::Id, size_t> id_to_segment_idx;
-  for (size_t i = 0; i < lane_segments_.size(); ++i) {
-    id_to_segment_idx[lane_segments_[i].id] = i;
-  }
-
-  std::vector<int64_t> indices_in_array;
+  std::vector<int64_t> array_indices;
   double closest_distance = std::numeric_limits<double>::max();
   size_t closest_index = 0;
   for (size_t i = 0; i < route.segments.size(); ++i) {
     // add index
-    const int64_t id_in_lanelet = route.segments[i].preferred_primitive.id;
-    const int64_t id_in_array = id_to_segment_idx[id_in_lanelet];
-    indices_in_array.push_back(id_in_array);
+    const int64_t lanelet_id = route.segments[i].preferred_primitive.id;
+    if (lanelet_id_to_array_index_.count(lanelet_id) == 0) {
+      continue;
+    }
+    const int64_t array_index = lanelet_id_to_array_index_.at(lanelet_id);
+    array_indices.push_back(array_index);
 
     // calculate closest index
-    const LaneSegment & route_segment = lane_segments_[id_in_array];
+    const LaneSegment & route_segment = lane_segments_[array_index];
     double distance = std::numeric_limits<double>::max();
     for (const LanePoint & point : route_segment.centerline) {
       const double diff_x = point.x() - center_x;
@@ -94,8 +93,8 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   std::vector<int64_t> selected_indices;
 
   // Select route segment indices
-  for (size_t i = closest_index; i < indices_in_array.size(); ++i) {
-    const int64_t segment_idx = indices_in_array[i];
+  for (size_t i = closest_index; i < array_indices.size(); ++i) {
+    const int64_t segment_idx = array_indices[i];
 
     if (!is_segment_inside(lane_segments_[segment_idx], center_x, center_y)) {
       continue;
@@ -294,6 +293,16 @@ LaneSegmentContext::create_tensor_data_from_indices(
 // Internal functions implementation
 namespace
 {
+
+std::map<lanelet::Id, size_t> create_lane_id_to_array_index_map(
+  const std::vector<LaneSegment> & lane_segments)
+{
+  std::map<lanelet::Id, size_t> lane_id_to_index;
+  for (size_t i = 0; i < lane_segments.size(); ++i) {
+    lane_id_to_index[lane_segments[i].id] = i;
+  }
+  return lane_id_to_index;
+}
 
 bool is_segment_inside(const LaneSegment & segment, const double center_x, const double center_y)
 {
