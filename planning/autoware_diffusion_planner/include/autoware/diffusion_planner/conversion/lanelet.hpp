@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -49,6 +50,9 @@ const std::map<std::string, LineType> LINE_TYPE_MAP = {
   {"line_thin", LINE_TYPE_LINE_THIN},     {"pedestrian_marking", LINE_TYPE_PEDESTRIAN_MARKING},
   {"road_border", LINE_TYPE_ROAD_BORDER}, {"road_shoulder", LINE_TYPE_ROAD_SHOULDER},
   {"virtual", LINE_TYPE_VIRTUAL},         {"zebra_marking", LINE_TYPE_ZEBRA_MARKING}};
+
+const std::set<std::string> ACCEPTABLE_LANE_SUBTYPES = {
+  "road", "highway", "road_shoulder", "bicycle_lane"};
 
 using LanePoint = Eigen::Vector3d;
 using Polyline = std::vector<LanePoint>;

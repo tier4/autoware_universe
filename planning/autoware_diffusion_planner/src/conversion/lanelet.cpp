@@ -59,18 +59,6 @@ inline LanePoint point_lerp(const LanePoint & lhs, const LanePoint & rhs, double
   return LanePoint{new_x, new_y, new_z};
 }
 
-inline bool is_lane_like(const lanelet::Optional<std::string> & subtype)
-{
-  if (!subtype) {
-    return false;
-  }
-  const auto & subtype_str = subtype.value();
-  return (
-    subtype_str == "road" || subtype_str == "highway" || subtype_str == "road_shoulder" ||
-    subtype_str == "bicycle_lane");
-  // subtype_str == "pedestrian_lane" || subtype_str == "bicycle_lane" || subtype_str == "walkway"
-}
-
 std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, size_t num_points)
 {
   if (input.size() < 2 || num_points < 2) {
@@ -150,7 +138,7 @@ std::vector<LaneSegment> convert_to_lane_segments(
   // parse lanelet layers
   for (const auto & lanelet : lanelet_map_ptr->laneletLayer) {
     const auto lanelet_subtype = to_subtype_name(lanelet);
-    if (!is_lane_like(lanelet_subtype)) {
+    if (!lanelet_subtype || ACCEPTABLE_LANE_SUBTYPES.count(lanelet_subtype.value()) == 0) {
       continue;
     }
     const Polyline centerline(
