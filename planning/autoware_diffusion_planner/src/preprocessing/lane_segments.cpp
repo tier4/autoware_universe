@@ -180,11 +180,11 @@ LaneSegmentContext::create_tensor_data_from_indices(
   };
 
   auto encode = [](const int64_t line_type) {
-    Eigen::Vector<double, LINE_TYPE_NUM> onehot = Eigen::Vector<double, LINE_TYPE_NUM>::Zero();
+    Eigen::Vector<double, LINE_TYPE_NUM> one_hot = Eigen::Vector<double, LINE_TYPE_NUM>::Zero();
     if (line_type >= 0 && line_type < LINE_TYPE_NUM) {
-      onehot[line_type] = 1.0;
+      one_hot[line_type] = 1.0;
     }
-    return onehot;
+    return one_hot;
   };
 
   int64_t added_segments = 0;
