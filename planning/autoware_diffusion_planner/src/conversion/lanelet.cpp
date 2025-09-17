@@ -42,6 +42,14 @@ inline lanelet::Optional<std::string> to_subtype_name(
                                          : lanelet::Optional<std::string>();
 }
 
+inline double point_distance(const LanePoint & lhs, const LanePoint & rhs)
+{
+  const double diff_x = lhs.x() - rhs.x();
+  const double diff_y = lhs.y() - rhs.y();
+  const double diff_z = lhs.z() - rhs.z();
+  return std::sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
+}
+
 inline bool is_lane_like(const lanelet::Optional<std::string> & subtype)
 {
   if (!subtype) {
@@ -63,9 +71,9 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
   // Step 1: Compute cumulative distances
   std::vector<double> arc_lengths(input.size(), 0.0);
   for (size_t i = 1; i < input.size(); ++i) {
-    arc_lengths[i] = arc_lengths[i - 1] + input[i].distance(input[i - 1]);
+    arc_lengths[i] = arc_lengths[i - 1] + point_distance(input[i], input[i - 1]);
   }
-  double total_length = arc_lengths.back();
+  const double total_length = arc_lengths.back();
 
   // Step 2: Generate target arc lengths
   std::vector<LanePoint> result;

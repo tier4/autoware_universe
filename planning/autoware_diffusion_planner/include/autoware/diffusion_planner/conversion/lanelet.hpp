@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__CONVERSION__LANELET_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__CONVERSION__LANELET_HPP_
 
+#include <Eigen/Core>
+
 #include <lanelet2_core/LaneletMap.h>
 
 #include <cstdint>
@@ -80,20 +82,6 @@ struct LanePoint
 
   // Return the z position of the point.
   [[nodiscard]] double z() const { return z_; }
-
-  /**
-   * @brief Return the distance between myself and another one.
-   *
-   * @param other Another point.
-   * @return double Distance between myself and another one.
-   */
-  [[nodiscard]] double distance(const LanePoint & other) const
-  {
-    const double diff_x = x_ - other.x();
-    const double diff_y = y_ - other.y();
-    const double diff_z = z_ - other.z();
-    return std::sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
-  }
 
   [[nodiscard]] LanePoint lerp(const LanePoint & other, double t) const
   {

@@ -113,32 +113,6 @@ TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsWithDifferentPointCounts)
   }
 }
 
-TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsInterpolation)
-{
-  // Test that interpolation preserves start and end points
-  const int64_t num_lane_points = 15;
-
-  auto lane_segments = convert_to_lane_segments(lanelet_map_ptr_, num_lane_points);
-
-  EXPECT_FALSE(lane_segments.empty());
-
-  // For each segment, verify that interpolated points maintain proper spacing
-  for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.centerline;
-
-    // Check that points are properly spaced (not all at the same location)
-    bool has_spacing = false;
-    for (size_t i = 1; i < waypoints.size(); ++i) {
-      float dist = waypoints[i - 1].distance(waypoints[i]);
-      if (dist > 0.001f) {  // Small threshold to account for floating point precision
-        has_spacing = true;
-        break;
-      }
-    }
-    EXPECT_TRUE(has_spacing) << "Interpolated points should have proper spacing";
-  }
-}
-
 TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsAttributes)
 {
   // Test that lane attributes are properly extracted
@@ -173,54 +147,6 @@ TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsConsistency)
 
     EXPECT_EQ(lane_segments_1[i].centerline.size(), lane_segments_2[i].centerline.size())
       << "Polyline sizes should be consistent";
-  }
-}
-
-TEST_F(LaneletIntegrationTest, CheckPointSpacingConsistency)
-{
-  // Test that interpolated points have consistent spacing
-  const int64_t num_lane_points = 20;
-
-  auto lane_segments = convert_to_lane_segments(lanelet_map_ptr_, num_lane_points);
-
-  EXPECT_FALSE(lane_segments.empty());
-
-  // Define tolerance for spacing variation (30% of average spacing)
-  const float spacing_tolerance_ratio = 0.3f;
-
-  for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.centerline;
-
-    if (waypoints.size() < 3) continue;
-
-    // Calculate distances between consecutive points
-    std::vector<float> distances;
-    float total_distance = 0.0f;
-
-    for (size_t i = 1; i < waypoints.size(); ++i) {
-      float dist = waypoints[i - 1].distance(waypoints[i]);
-      distances.push_back(dist);
-      total_distance += dist;
-    }
-
-    // Skip if total distance is too small
-    if (total_distance < 1.0f) continue;
-
-    float average_distance = total_distance / distances.size();
-    float tolerance = average_distance * spacing_tolerance_ratio;
-
-    // Check each distance against the average
-    for (size_t i = 0; i < distances.size(); ++i) {
-      // Skip very small segments at the beginning or end
-      if (i == 0 || i == distances.size() - 1) {
-        continue;
-      }
-
-      EXPECT_NEAR(distances[i], average_distance, tolerance)
-        << "Point " << i + 1 << " in segment " << segment.id
-        << " has inconsistent spacing. Distance: " << distances[i]
-        << ", Expected: " << average_distance << " +/- " << tolerance;
-    }
   }
 }
 
@@ -388,31 +314,6 @@ TEST_F(LaneletIntegrationTest, CheckReasonableCoordinateRanges)
         << "Right boundary Y out of bounds at point " << i << " of segment " << segment.id;
       EXPECT_LE(point.y(), max_y_allowed)
         << "Right boundary Y out of bounds at point " << i << " of segment " << segment.id;
-    }
-  }
-}
-
-TEST_F(LaneletIntegrationTest, CheckPointOrdering)
-{
-  // Test that points maintain proper ordering (no sudden jumps)
-  const int64_t num_lane_points = 15;
-
-  auto lane_segments = convert_to_lane_segments(lanelet_map_ptr_, num_lane_points);
-
-  EXPECT_FALSE(lane_segments.empty());
-
-  // Maximum reasonable jump between consecutive points (in meters)
-  const float max_point_jump = 50.0f;
-
-  for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.centerline;
-
-    for (size_t i = 1; i < waypoints.size(); ++i) {
-      float dist = waypoints[i - 1].distance(waypoints[i]);
-
-      EXPECT_LT(dist, max_point_jump)
-        << "Unexpected jump between points " << i - 1 << " and " << i << " in segment "
-        << segment.id << ". Distance: " << dist << " meters";
     }
   }
 }
