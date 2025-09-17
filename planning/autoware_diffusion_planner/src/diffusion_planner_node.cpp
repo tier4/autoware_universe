@@ -870,6 +870,41 @@ void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
   is_map_loaded_ = true;
 }
 
+std::vector<int64_t> DiffusionPlanner::select_route_segment_indices_by_route_handler(
+  const nav_msgs::msg::Odometry & ego_kinematic_state) const
+{
+  const geometry_msgs::msg::Pose & current_pose = ego_kinematic_state.pose.pose;
+  constexpr double backward_path_length{constants::BACKWARD_PATH_LENGTH_M};
+  constexpr double forward_path_length{constants::FORWARD_PATH_LENGTH_M};
+  lanelet::ConstLanelet current_preferred_lane;
+
+  if (
+    !route_handler_->isHandlerReady() ||
+    !route_handler_->getClosestPreferredLaneletWithinRoute(current_pose, &current_preferred_lane)) {
+    return {};
+  }
+  const lanelet::ConstLanelets current_lanes = route_handler_->getLaneletSequence(
+    current_preferred_lane, backward_path_length, forward_path_length);
+  const std::map<lanelet::Id, size_t> lanelet_id_to_array_index_map =
+    lane_segment_context_->get_lanelet_id_to_array_index();
+
+  std::vector<int64_t> selected_indices;
+  for (const lanelet::ConstLanelet & route_segment : current_lanes) {
+    const auto itr = lanelet_id_to_array_index_map.find(route_segment.id());
+    if (itr == lanelet_id_to_array_index_map.end()) {
+      continue;
+    }
+
+    const size_t array_index = itr->second;
+    selected_indices.push_back(array_index);
+    if (selected_indices.size() >= NUM_SEGMENTS_IN_ROUTE) {
+      break;
+    }
+  }
+
+  return selected_indices;
+}
+
 }  // namespace autoware::diffusion_planner
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(autoware::diffusion_planner::DiffusionPlanner)
