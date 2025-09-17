@@ -189,6 +189,13 @@ std::vector<PhaseMetrics> calc_shift_phase_metrics(
  * If the lanes or necessary data are unavailable, returns `std::numeric_limits<double>::max()` for
  * both values.
  */
+
+std::vector<double> calc_min_lane_change_lengths(
+  const LCParamPtr & lc_param_ptr, const std::vector<double> & shift_intervals);
+  
+std::vector<double> calc_shift_intervals(
+  const CommonDataPtr & common_data_ptr, const lanelet::ConstLanelets & lanes);
+
 std::pair<MinMaxValue, MinMaxValue> calc_lc_length_and_dist_buffer(
   const CommonDataPtr & common_data_ptr, const lanelet::ConstLanelets & lanes);
 }  // namespace autoware::behavior_path_planner::utils::lane_change::calculation

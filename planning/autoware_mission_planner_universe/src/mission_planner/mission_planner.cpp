@@ -314,9 +314,9 @@ void MissionPlanner::set_preferred_lane(
 
   change_state(is_reroute ? RouteState::REROUTING : RouteState::ROUTING);
 
-  const DIRECTION override_direction = req->lane_change_direction == 0   ? DIRECTION::MANUAL_LEFT
-                                       : req->lane_change_direction == 1 ? DIRECTION::MANUAL_RIGHT
-                                                                         : DIRECTION::AUTO;
+  // const DIRECTION override_direction = req->lane_change_direction == 0   ? DIRECTION::MANUAL_LEFT
+  //                                      : req->lane_change_direction == 1 ? DIRECTION::MANUAL_RIGHT
+  //                                                                        : DIRECTION::AUTO;
 
   lanelet::ConstLanelet closest_lanelet;
   const bool found_closest_lane = planner_->getRouteHandler().getClosestLaneletWithinRoute(
@@ -378,7 +378,7 @@ void MissionPlanner::set_preferred_lane(
   boost::uuids::uuid uuid = gen();
   std::copy(uuid.begin(), uuid.end(), route.uuid.uuid.begin());
 
-  change_route(route, override_direction != DIRECTION::AUTO);
+  change_route(route, true);
   change_state(RouteState::SET);
 
   res->status.success = true;

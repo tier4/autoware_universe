@@ -275,6 +275,7 @@ double calc_distance_buffer(const LCParamPtr & lc_param_ptr, const std::vector<d
   const auto backward_buffer = calc_stopping_distance(lc_param_ptr);
   const auto lengths_sum = std::accumulate(lc_lengths.begin(), lc_lengths.end(), 0.0);
   const auto num_of_lane_changes = static_cast<double>(lc_lengths.size());
+
   return lengths_sum + (num_of_lane_changes * finish_judge_buffer) +
          ((num_of_lane_changes - 1.0) * backward_buffer);
 }
@@ -283,13 +284,28 @@ std::vector<double> calc_shift_intervals(
   const CommonDataPtr & common_data_ptr, const lanelet::ConstLanelets & lanes)
 {
   if (!common_data_ptr || !common_data_ptr->is_data_available() || lanes.empty()) {
+    RCLCPP_DEBUG(
+    get_logger(),
+    "common_data_ptr: %d, !common_data_ptr->is_data_available() %d, lanes.empty(): %d",
+    common_data_ptr ? 1 : 0, common_data_ptr && !common_data_ptr->is_data_available() ? 1 : 0,
+    lanes.empty() ? 1 : 0);
     return {};
   }
+
+  RCLCPP_DEBUG(get_logger(), "SUCCESS");
 
   const auto & route_handler_ptr = common_data_ptr->route_handler_ptr;
   const auto direction = common_data_ptr->direction;
 
-  return route_handler_ptr->getLateralIntervalsToPreferredLane(lanes.back(), direction);
+  RCLCPP_DEBUG(
+    get_logger(), "lanes.back().id(): %ld, direction: %d", lanes.back().id(), static_cast<int>(direction));
+
+  std::vector<double> shift_intervals = route_handler_ptr->getLateralIntervalsToPreferredLane(lanes.back(), direction);
+
+  RCLCPP_DEBUG(
+    get_logger(), "shift_intervals.size(): %zu", shift_intervals.size());
+
+  return shift_intervals;
 }
 
 std::pair<MinMaxValue, MinMaxValue> calc_lc_length_and_dist_buffer(
@@ -298,19 +314,25 @@ std::pair<MinMaxValue, MinMaxValue> calc_lc_length_and_dist_buffer(
   if (!common_data_ptr || !common_data_ptr->is_data_available() || lanes.empty()) {
     return {};
   }
-  const auto shift_intervals = calculation::calc_shift_intervals(common_data_ptr, lanes);
-  const auto min_lc_lengths =
+  const std::vector<double> shift_intervals = calculation::calc_shift_intervals(common_data_ptr, lanes);
+  const std::vector<double> min_lc_lengths =
     calculation::calc_min_lane_change_lengths(common_data_ptr->lc_param_ptr, shift_intervals);
-  const auto min_lc_length =
+  const double min_lc_length =
     !min_lc_lengths.empty() ? min_lc_lengths.front() : std::numeric_limits<double>::max();
-  const auto min_dist_buffer =
+
+  RCLCPP_DEBUG(
+  get_logger(),
+  "min_lc_lengths: size %zu, value %f",
+  min_lc_lengths.size(), min_lc_length);
+
+  const double min_dist_buffer =
     calculation::calc_distance_buffer(common_data_ptr->lc_param_ptr, min_lc_lengths);
 
-  const auto max_lc_lengths =
+  const std::vector<double> max_lc_lengths =
     calculation::calc_max_lane_change_lengths(common_data_ptr, shift_intervals);
-  const auto max_lc_length =
+  const double max_lc_length =
     !max_lc_lengths.empty() ? max_lc_lengths.front() : std::numeric_limits<double>::max();
-  const auto max_dist_buffer =
+  const double max_dist_buffer =
     calculation::calc_distance_buffer(common_data_ptr->lc_param_ptr, max_lc_lengths);
 
   return {{min_lc_length, max_lc_length}, {min_dist_buffer, max_dist_buffer}};

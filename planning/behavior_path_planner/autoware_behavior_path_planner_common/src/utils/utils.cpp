@@ -1083,8 +1083,17 @@ lanelet::ConstLanelets getCurrentLanesFromPath(
 
   lanelet::ConstLanelet current_lane;
   lanelet::utils::query::getClosestLanelet(reference_lanes, current_pose, &current_lane);
+  
+  std::cout << "current_lane id: " << current_lane.id() << std::endl;
+
   auto current_lanes = route_handler->getLaneletSequence(
     current_lane, current_pose, p.backward_path_length, p.forward_path_length);
+
+  std::string lanelet_str = "current_lanes: ";
+  for (const auto & lanelet : current_lanes) {
+   lanelet_str += std::to_string(lanelet.id()) + ",";
+  }
+  std::cout << lanelet_str << std::endl;
 
   // Extend the 'current_lanes' with previous lanes until it contains 'front_lane_ids'
   // if the extended prior lanes is in same lane sequence with current lanes
