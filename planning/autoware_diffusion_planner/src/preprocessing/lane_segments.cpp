@@ -42,6 +42,7 @@ namespace
 {
 using namespace autoware_perception_msgs::msg;
 
+bool is_segment_inside(const LaneSegment & segment, const double center_x, const double center_y);
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements);
 }  // namespace
@@ -158,29 +159,12 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   }
 
   std::vector<int64_t> selected_indices;
-  auto is_inside = [&](const double x, const double y) {
-    using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
-    return (
-      x > center_x - LANE_MASK_RANGE_M && x < center_x + LANE_MASK_RANGE_M &&
-      y > center_y - LANE_MASK_RANGE_M && y < center_y + LANE_MASK_RANGE_M);
-  };
 
   // Select route segment indices
   for (size_t i = closest_index; i < indices_in_array.size(); ++i) {
     const int64_t segment_idx = indices_in_array[i];
-    const LaneSegment & route_segment = lane_segments_[segment_idx];
-    const std::vector<LanePoint> & centerline = route_segment.centerline;
 
-    const double mean_x = route_segment.mean_point.x();
-    const double mean_y = route_segment.mean_point.y();
-    const double first_x = centerline[0].x();
-    const double first_y = centerline[0].y();
-    const double last_x = centerline[POINTS_PER_SEGMENT - 1].x();
-    const double last_y = centerline[POINTS_PER_SEGMENT - 1].y();
-
-    const bool inside =
-      is_inside(mean_x, mean_y) || is_inside(first_x, first_y) || is_inside(last_x, last_y);
-    if (!inside) {
+    if (!is_segment_inside(lane_segments_[segment_idx], center_x, center_y)) {
       continue;
     }
 
@@ -198,23 +182,17 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   const int64_t max_segments) const
 {
   // Step 1: Compute distances
-  auto is_inside = [&](const double x, const double y) {
-    using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
-    return (
-      x > center_x - LANE_MASK_RANGE_M && x < center_x + LANE_MASK_RANGE_M &&
-      y > center_y - LANE_MASK_RANGE_M && y < center_y + LANE_MASK_RANGE_M);
-  };
-
   std::vector<ColWithDistance> distances;
   distances.reserve(lane_segments_.size());
 
   for (size_t i = 0; i < lane_segments_.size(); ++i) {
     const LaneSegment & segment = lane_segments_[i];
-    const std::vector<LanePoint> & centerline = segment.centerline;
 
-    if (centerline.size() != POINTS_PER_SEGMENT) {
+    if (!is_segment_inside(segment, center_x, center_y)) {
       continue;
     }
+
+    const std::vector<LanePoint> & centerline = segment.centerline;
 
     float distance_squared = 0.0;
     for (const LanePoint & point : centerline) {
@@ -225,20 +203,6 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
       distance_squared += diff_x * diff_x + diff_y * diff_y;
     }
     distance_squared /= centerline.size();
-
-    const double mean_x = segment.mean_point.x();
-    const double mean_y = segment.mean_point.y();
-    const double first_x = centerline[0].x();
-    const double first_y = centerline[0].y();
-    const double last_x = centerline[POINTS_PER_SEGMENT - 1].x();
-    const double last_y = centerline[POINTS_PER_SEGMENT - 1].y();
-
-    const bool inside =
-      is_inside(mean_x, mean_y) || is_inside(first_x, first_y) || is_inside(last_x, last_y);
-
-    if (!inside) {
-      continue;
-    }
 
     distances.push_back({static_cast<int64_t>(i), distance_squared});
   }
@@ -365,6 +329,27 @@ LaneSegmentContext::create_tensor_data_from_indices(
 // Internal functions implementation
 namespace
 {
+
+bool is_segment_inside(const LaneSegment & segment, const double center_x, const double center_y)
+{
+  auto is_inside = [&](const double x, const double y) {
+    using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
+    return (
+      x > center_x - LANE_MASK_RANGE_M && x < center_x + LANE_MASK_RANGE_M &&
+      y > center_y - LANE_MASK_RANGE_M && y < center_y + LANE_MASK_RANGE_M);
+  };
+
+  const double mean_x = segment.mean_point.x();
+  const double mean_y = segment.mean_point.y();
+  const double first_x = segment.centerline.front().x();
+  const double first_y = segment.centerline.front().y();
+  const double last_x = segment.centerline.back().x();
+  const double last_y = segment.centerline.back().y();
+
+  const bool inside =
+    is_inside(mean_x, mean_y) || is_inside(first_x, first_y) || is_inside(last_x, last_y);
+  return inside;
+}
 
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements)
