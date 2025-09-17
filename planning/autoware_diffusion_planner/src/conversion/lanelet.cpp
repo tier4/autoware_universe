@@ -132,17 +132,11 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
   return result;
 }
 
-// Template function for converting any geometry type to lane points
-template <typename GeometryType>
-std::vector<LanePoint> from_geometry(const GeometryType & geometry) noexcept
+std::vector<LanePoint> convert_to_polyline(const lanelet::ConstLineString3d & line_string) noexcept
 {
-  if (geometry.size() == 0) {
-    return {};
-  }
-
   std::vector<LanePoint> output;
-  for (auto itr = geometry.begin(); itr != geometry.end(); ++itr) {
-    output.emplace_back(itr->x(), itr->y(), itr->z());
+  for (const lanelet::Point3d::ConstType & point : line_string) {
+    output.emplace_back(point.x(), point.y(), point.z());
   }
   return output;
 }
@@ -160,11 +154,11 @@ std::vector<LaneSegment> convert_to_lane_segments(
       continue;
     }
     const Polyline centerline(
-      interpolate_points(from_geometry(lanelet.centerline3d()), num_lane_points));
-    const auto left_points = from_geometry(lanelet.leftBound3d());
-    const Polyline left_boundary(interpolate_points(left_points, num_lane_points));
-    const auto right_points = from_geometry(lanelet.rightBound3d());
-    const Polyline right_boundary(interpolate_points(right_points, num_lane_points));
+      interpolate_points(convert_to_polyline(lanelet.centerline3d()), num_lane_points));
+    const Polyline left_boundary(
+      interpolate_points(convert_to_polyline(lanelet.leftBound3d()), num_lane_points));
+    const Polyline right_boundary(
+      interpolate_points(convert_to_polyline(lanelet.rightBound3d()), num_lane_points));
 
     const std::string left_line_type_str = lanelet.leftBound().attributeOr("type", "");
     const std::string right_line_type_str = lanelet.rightBound().attributeOr("type", "");
@@ -175,8 +169,8 @@ std::vector<LaneSegment> convert_to_lane_segments(
       (LINE_TYPE_MAP.count(right_line_type_str) ? LINE_TYPE_MAP.at(right_line_type_str)
                                                 : LINE_TYPE_VIRTUAL);
 
-    const auto & attrs = lanelet.attributes();
-    std::optional<float> speed_limit_mps =
+    const lanelet::AttributeMap & attrs = lanelet.attributes();
+    const std::optional<float> speed_limit_mps =
       attrs.find("speed_limit") != attrs.end()
         ? std::make_optional(
             autoware_utils_math::kmph2mps(std::stof(attrs.at("speed_limit").value())))
