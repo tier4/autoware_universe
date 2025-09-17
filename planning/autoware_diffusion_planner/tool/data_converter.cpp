@@ -640,8 +640,11 @@ int main(int argc, char ** argv)
       preprocess::process_traffic_signals(msg_ptr, traffic_light_id_map, current_time, 5.0, false);
 
       // Get lanes data with speed limits
-      const auto [lanes, lanes_speed_limit] =
-        lane_segment_context.get_lane_segments(map2bl, traffic_light_id_map, center_x, center_y);
+      const std::vector<int64_t> lane_segment_indices =
+        lane_segment_context.select_lane_segment_indices(
+          map2bl, center_x, center_y, NUM_SEGMENTS_IN_LANE);
+      const auto [lanes, lanes_speed_limit] = lane_segment_context.create_tensor_data_from_indices(
+        map2bl, traffic_light_id_map, lane_segment_indices, NUM_SEGMENTS_IN_LANE);
 
       // Create has_speed_limit flags based on speed_limit values
       std::vector<bool> lanes_has_speed_limit(lanes_speed_limit.size());

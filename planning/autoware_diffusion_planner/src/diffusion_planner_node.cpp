@@ -457,8 +457,10 @@ InputDataMap DiffusionPlanner::create_input_data()
 
   // map data on ego reference frame
   {
-    const auto [lanes, lanes_speed_limit] = lane_segment_context_->get_lane_segments(
-      map_to_ego_transform, traffic_light_id_map_, center_x, center_y);
+    const std::vector<int64_t> segment_indices = lane_segment_context_->select_lane_segment_indices(
+      map_to_ego_transform, center_x, center_y, NUM_SEGMENTS_IN_LANE);
+    const auto [lanes, lanes_speed_limit] = lane_segment_context_->create_tensor_data_from_indices(
+      map_to_ego_transform, traffic_light_id_map_, segment_indices, NUM_SEGMENTS_IN_LANE);
     input_data_map["lanes"] = replicate_for_batch(lanes);
     input_data_map["lanes_speed_limit"] = replicate_for_batch(lanes_speed_limit);
   }
