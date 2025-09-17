@@ -55,8 +55,9 @@ namespace autoware::perception_filter
  */
 struct FilteringPolygon
 {
-  std::vector<autoware::universe_utils::Polygon2d> polygon;  ///< Filtering range polygons
-  autoware_planning_msgs::msg::Trajectory trajectory;        ///< Associated trajectory
+  std::vector<autoware::universe_utils::Polygon2d> max_polygon;  ///< Filtering range polygons
+  std::vector<autoware::universe_utils::Polygon2d> min_polygon;  ///< Safety range polygons
+  autoware_planning_msgs::msg::Trajectory trajectory;            ///< Associated trajectory
   geometry_msgs::msg::Pose ego_pose;    ///< Ego vehicle pose at polygon creation
   geometry_msgs::msg::Pose start_pose;  ///< Start pose at filtering_start_distance behind ego
   geometry_msgs::msg::Pose end_pose;    ///< End pose at filtering_end_distance ahead of ego

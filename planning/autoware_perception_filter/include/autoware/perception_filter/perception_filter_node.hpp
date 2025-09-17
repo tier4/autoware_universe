@@ -275,6 +275,7 @@ private:
 
   // Classification and filtering state
   ObjectClassification latest_classification_{};
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr would_be_filtered_point_cloud_{nullptr};
   std::vector<FilteredPointInfo> would_be_filtered_points_;
 
   // RTC state management

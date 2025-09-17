@@ -351,8 +351,12 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     createFilteringPolygon();
   }
 
-  // If rtc_is_registered is true, classify the pointcloud for planning factors
-  if (rtc_interface_->isRegistered(rtc_uuid_)) {
+  // When RTC is ready for approval (but not yet approved), publish pointcloud that will be filtered
+  // upon approval as planning factors
+  if (
+    rtc_interface_->isRegistered(rtc_uuid_) &&
+    vehicle_stop_checker_.isVehicleStopped(stop_velocity_threshold_) &&
+    !rtc_interface_->isActivated(rtc_uuid_)) {
     autoware::universe_utils::ScopedTimeTrack st_classify(
       "classify_pointcloud_planning_factors", *time_keeper_);
 
@@ -362,15 +366,52 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     const auto resampled_trajectory = autoware::motion_utils::resampleTrajectory(
       *planning_trajectory_, resample_interval, false, true, true);
 
+    // Cut trajectory by filtering distances from ego pose
+    auto cut_trajectory = resampled_trajectory;
+    const auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
+    if (ego_pose) {
+      const auto nearest_segment_idx = autoware::motion_utils::findNearestSegmentIndex(
+        resampled_trajectory.points, ego_pose->position);
+
+      if (nearest_segment_idx) {
+        // Calculate distance from trajectory start to ego pose
+        const double ego_distance_from_start = autoware::motion_utils::calcSignedArcLength(
+          resampled_trajectory.points, 0, nearest_segment_idx);
+
+        // Calculate start and end distances for cutting
+        const double start_distance = ego_distance_from_start + filtering_start_distance_;
+        const double end_distance = ego_distance_from_start + filtering_end_distance_;
+
+        // Find indices for cutting by converting distance to pose first
+        const auto start_pose =
+          autoware::motion_utils::calcInterpolatedPose(resampled_trajectory.points, start_distance);
+        const auto end_pose =
+          autoware::motion_utils::calcInterpolatedPose(resampled_trajectory.points, end_distance);
+
+        const auto start_idx = autoware::motion_utils::findNearestIndex(
+          resampled_trajectory.points, start_pose.position);
+        const auto end_idx =
+          autoware::motion_utils::findNearestIndex(resampled_trajectory.points, end_pose.position);
+
+        if (start_idx < end_idx) {
+          // Create cut trajectory
+          cut_trajectory.points.clear();
+          cut_trajectory.points.insert(
+            cut_trajectory.points.end(), resampled_trajectory.points.begin() + start_idx,
+            resampled_trajectory.points.begin() + end_idx + 1);
+        }
+      }
+    }
+
     // Generate trajectory polygons and points outside the classification function
     const auto traj_max_polygons = autoware::perception_filter::generateTrajectoryPolygons(
-      resampled_trajectory, max_filter_distance_, transform_listener_);
+      cut_trajectory, max_filter_distance_, transform_listener_);
     const auto traj_min_polygons = autoware::perception_filter::generateTrajectoryPolygons(
-      resampled_trajectory, pointcloud_safety_distance_, transform_listener_);
+      cut_trajectory, pointcloud_safety_distance_, transform_listener_);
 
     const auto base_link_trajectory_points =
       autoware::perception_filter::transformTrajectoryToBaseLink(
-        resampled_trajectory.points, transform_listener_);
+        cut_trajectory.points, transform_listener_);
 
     // Combine traj_min_polygons into a single polygon
     const auto combined_traj_min_polygon =
@@ -379,26 +420,6 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     // Generate difference polygons (traj_max_polygons - traj_min_polygons)
     const auto difference_polygons =
       autoware::perception_filter::createDifferencePolygons(traj_max_polygons, traj_min_polygons);
-
-    // Generate crop box polygons using utility function
-    const auto crop_box_polygons =
-      autoware::perception_filter::generateCropBoxPolygons(traj_max_polygons);
-
-    {
-      autoware::universe_utils::ScopedTimeTrack st_publish(
-        "inside_traj_min_polygon", *time_keeper_);
-
-      // Convert sensor_msgs::PointCloud2 to pcl::PointCloud<pcl::PointXYZ>
-      pcl::PointCloud<pcl::PointXYZ>::Ptr input_pointcloud_ptr =
-        std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
-      pcl::fromROSMsg(*msg, *input_pointcloud_ptr);
-
-      // Wrap single polygon in vector for the function call
-      const std::vector<autoware::universe_utils::Polygon2d> polygon_vector = {
-        combined_traj_min_polygon};
-      const auto pointcloud =
-        filterByMultiTrajectoryPolygon(input_pointcloud_ptr, polygon_vector, time_keeper_.get());
-    }
 
     {
       autoware::universe_utils::ScopedTimeTrack st_publish(
@@ -409,22 +430,15 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
         std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
       pcl::fromROSMsg(*msg, *input_pointcloud_ptr);
 
-      const auto pointcloud = filterByMultiTrajectoryPolygon(
+      const auto filtered_pcl_cloud = filterByMultiTrajectoryPolygon(
         input_pointcloud_ptr, difference_polygons, time_keeper_.get());
+
+      // Convert PCL pointcloud to ROS PointCloud2 message
+      auto filtered_ros_cloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
+      pcl::toROSMsg(*filtered_pcl_cloud, *filtered_ros_cloud);
+      filtered_ros_cloud->header = msg->header;  // Copy header from original message
+      would_be_filtered_point_cloud_ = filtered_ros_cloud;
     }
-
-    // const auto traj_min_polygons_for_crop_box =
-    //   autoware::perception_filter::generateCropBoxPolygons(traj_min_polygons);
-
-    // Get points inside crop box (keep_inside=true)
-
-    // const auto result = autoware::perception_filter::filterByTrajectoryPolygonsCropBox(
-    //   *msg, traj_min_polygons, base_link_trajectory_points, traj_min_polygons_for_crop_box, 10.0,
-    //   true);
-
-    would_be_filtered_points_ = classifyPointCloudForPlanningFactors(
-      *msg, rtc_interface_->isRegistered(rtc_uuid_), traj_max_polygons, combined_traj_min_polygon,
-      base_link_trajectory_points, crop_box_polygons);
 
     // Publish debug markers for trajectory polygons and crop box polygons
     {
@@ -449,15 +463,10 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
 
         polygon_debug_markers_pub_->publish(traj_polygon_markers);
       }
-
-      // Publish crop box polygon markers
-      if (!crop_box_polygons.empty()) {
-        auto crop_box_markers = createCropBoxPolygonMarkers(crop_box_polygons, "base_link");
-        polygon_debug_markers_pub_->publish(crop_box_markers);
-      }
     }
   } else {
     would_be_filtered_points_.clear();
+    would_be_filtered_point_cloud_ = nullptr;
   }
 
   // Execute filtering logic
@@ -509,7 +518,7 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
       "process_pointcloud_common", *time_keeper_);
     // Combine multiple polygons into a single polygon for processing
     const auto combined_polygon =
-      autoware::perception_filter::combineTrajectoryPolygons(filtering_polygon.polygon);
+      autoware::perception_filter::combineTrajectoryPolygons(filtering_polygon.max_polygon);
     return processPointCloudCommon(
       input_pointcloud, combined_polygon, planning_trajectory, transform_listener_, *time_keeper_);
   }();
@@ -820,7 +829,7 @@ void PerceptionFilterNode::onTimer()
     autoware::universe_utils::ScopedTimeTrack st_markers("create_debug_markers", *time_keeper_);
     return createDebugMarkers(
       *latest_objects_, latest_classification_, rtc_activated, *ego_pose,
-      filtering_polygon_.polygon);
+      filtering_polygon_.max_polygon);
   }();
 
   // Publish debug markers
@@ -839,7 +848,7 @@ void PerceptionFilterNode::createFilteringPolygon()
   constexpr double resample_interval = 0.5;
   const auto resampled_trajectory = autoware::motion_utils::resampleTrajectory(
     *planning_trajectory_, resample_interval, false, true, true);
-  filtering_polygon_.polygon = autoware::perception_filter::generateTrajectoryPolygons(
+  filtering_polygon_.max_polygon = autoware::perception_filter::generateTrajectoryPolygons(
     resampled_trajectory, max_filter_distance_, transform_listener_);
   filtering_polygon_.trajectory = resampled_trajectory;
   auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
