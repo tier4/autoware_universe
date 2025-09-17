@@ -42,15 +42,6 @@ inline lanelet::Optional<std::string> to_subtype_name(
                                          : lanelet::Optional<std::string>();
 }
 
-inline LanePoint point_lerp(const LanePoint & lhs, const LanePoint & rhs, double t)
-{
-  // Interpolate position
-  const double new_x = lhs.x() + t * (rhs.x() - lhs.x());
-  const double new_y = lhs.y() + t * (rhs.y() - lhs.y());
-  const double new_z = lhs.z() + t * (rhs.z() - lhs.z());
-  return LanePoint{new_x, new_y, new_z};
-}
-
 std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, size_t num_points)
 {
   if (input.size() < 2 || num_points < 2) {
@@ -101,10 +92,9 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
 
     // Calculate interpolation parameter, handling zero-length segments
     const double safe_seg_length = std::max(seg_length, 1e-6);
-    double t = (target - seg_start) / safe_seg_length;
-    // Clamp t to [0, 1] to ensure we don't extrapolate
-    t = std::max(0.0, std::min(1.0, t));
-    result.push_back(point_lerp(input[seg_idx], input[seg_idx + 1], t));
+    const double t = std::clamp((target - seg_start) / safe_seg_length, 0.0, 1.0);
+    const LanePoint new_point = input[seg_idx] + t * (input[seg_idx + 1] - input[seg_idx]);
+    result.push_back(new_point);
   }
   // Always include the last point
   result.push_back(input.back());
