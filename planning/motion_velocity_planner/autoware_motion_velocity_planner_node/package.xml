@@ -29,7 +29,7 @@
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
   <depend>grid_map_core</depend>
-  <depend>lanelet2_extensiogit stn</depend>
+  <depend>lanelet2_extension</depend>
   <depend>libboost-dev</depend>
   <depend>pcl_conversions</depend>
   <depend>pluginlib</depend>
