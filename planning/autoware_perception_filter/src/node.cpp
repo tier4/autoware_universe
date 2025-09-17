@@ -433,7 +433,6 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       }
     }
   } else {
-    would_be_filtered_points_.clear();
     would_be_filtered_point_cloud_ = nullptr;
   }
 
@@ -775,7 +774,7 @@ void PerceptionFilterNode::onTimer()
       autoware::universe_utils::ScopedTimeTrack st_planning(
         "create_planning_factors", *time_keeper_);
       planning_factors = createPlanningFactors(
-        latest_classification_, would_be_filtered_points_, planning_trajectory_);
+        latest_classification_, would_be_filtered_point_cloud_, planning_trajectory_);
     }
   } else {
     // If data is not ready, publish empty planning factors with timestamp

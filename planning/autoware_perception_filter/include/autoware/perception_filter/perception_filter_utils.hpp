@@ -26,6 +26,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <pcl/point_cloud.h>
@@ -49,13 +50,13 @@ struct ObjectClassification;
 /**
  * @brief Create planning factors for filtered objects and points
  * @param classification Object classification result
- * @param would_be_filtered_points Points that would be filtered when RTC is approved
+ * @param would_be_filtered_point_cloud Point cloud that would be filtered when RTC is approved
  * @param planning_trajectory Planning trajectory for control points
  * @return Planning factor array
  */
 autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
   const ObjectClassification & classification,
-  const std::vector<FilteredPointInfo> & would_be_filtered_points,
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & would_be_filtered_point_cloud,
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory);
 
 /**

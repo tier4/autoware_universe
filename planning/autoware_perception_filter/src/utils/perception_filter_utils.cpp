@@ -31,6 +31,7 @@
 #include <pcl/filters/crop_box.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 
@@ -52,7 +53,7 @@ namespace autoware::perception_filter
 
 autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
   const ObjectClassification & classification,
-  const std::vector<FilteredPointInfo> & would_be_filtered_points,
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & would_be_filtered_point_cloud,
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory)
 {
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
@@ -69,20 +70,21 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
 
   // Create PlanningFactor when there are objects that would be filtered when RTC is approved
   // OR when there are points that would be filtered when RTC is approved
-  if (!objects_to_be_filtered.empty() || !would_be_filtered_points.empty()) {
+  const bool has_pointcloud =
+    would_be_filtered_point_cloud && !would_be_filtered_point_cloud->data.empty();
+  if (!objects_to_be_filtered.empty() || has_pointcloud) {
     autoware_internal_planning_msgs::msg::PlanningFactor factor;
     factor.module = "supervised_perception_filter";
     factor.behavior = autoware_internal_planning_msgs::msg::PlanningFactor::STOP;
 
     // Set detail message based on what is being filtered
     const bool has_objects = !objects_to_be_filtered.empty();
-    const bool has_points = !would_be_filtered_points.empty();
 
-    if (has_objects && has_points) {
+    if (has_objects && has_pointcloud) {
       factor.detail = "Objects and pointcloud that would be filtered when RTC is approved";
     } else if (has_objects) {
       factor.detail = "Objects that would be filtered when RTC is approved";
-    } else if (has_points) {
+    } else if (has_pointcloud) {
       factor.detail = "Pointcloud that would be filtered when RTC is approved";
     }
 
@@ -120,15 +122,23 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
     }
 
     // Add pointcloud safety factors (only points that would be filtered when RTC is approved)
-    if (!would_be_filtered_points.empty()) {
+    if (has_pointcloud) {
       autoware_internal_planning_msgs::msg::SafetyFactor pointcloud_safety_factor;
       pointcloud_safety_factor.type =
         autoware_internal_planning_msgs::msg::SafetyFactor::POINTCLOUD;
       pointcloud_safety_factor.is_safe = false;
 
+      // Convert PointCloud2 to PCL and add point positions
+      pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+      pcl::fromROSMsg(*would_be_filtered_point_cloud, *pcl_cloud);
+
       // Add would-be-filtered points positions
-      for (const auto & filtered_info : would_be_filtered_points) {
-        pointcloud_safety_factor.points.push_back(filtered_info.point);
+      for (const auto & point : pcl_cloud->points) {
+        geometry_msgs::msg::Point ros_point;
+        ros_point.x = point.x;
+        ros_point.y = point.y;
+        ros_point.z = point.z;
+        pointcloud_safety_factor.points.push_back(ros_point);
       }
 
       factor.safety_factors.factors.push_back(pointcloud_safety_factor);
@@ -877,8 +887,7 @@ autoware_planning_msgs::msg::Trajectory cutTrajectoryByPoses(
   // Create cut trajectory
   cut_trajectory.points.clear();
   cut_trajectory.points.insert(
-    cut_trajectory.points.end(),
-    trajectory.points.begin() + actual_start_idx,
+    cut_trajectory.points.end(), trajectory.points.begin() + actual_start_idx,
     trajectory.points.begin() + actual_end_idx + 1);
 
   return cut_trajectory;
