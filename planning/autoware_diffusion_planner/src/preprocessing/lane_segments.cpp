@@ -127,27 +127,74 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   const LaneletRoute & route, const double center_x, const double center_y,
   const int64_t max_segments) const
 {
-  std::vector<int64_t> selected_indices;
-  const lanelet::Lanelets route_lanelets = filter_route_lanelets(route, center_x, center_y);
-
   // Create a map from lanelet ID to segment index for quick lookup
   std::map<lanelet::Id, size_t> id_to_segment_idx;
   for (size_t i = 0; i < lane_segments_.size(); ++i) {
     id_to_segment_idx[lane_segments_[i].id] = i;
   }
 
-  // Select route segment indices
-  for (const lanelet::Lanelet & route_segment : route_lanelets) {
-    if (selected_indices.size() >= static_cast<size_t>(max_segments)) {
-      break;
-    }
+  std::vector<int64_t> indices_in_array;
+  double closest_distance = std::numeric_limits<double>::max();
+  size_t closest_index = 0;
+  for (size_t i = 0; i < route.segments.size(); ++i) {
+    // add index
+    const int64_t id_in_lanelet = route.segments[i].preferred_primitive.id;
+    const int64_t id_in_array = id_to_segment_idx[id_in_lanelet];
+    indices_in_array.push_back(id_in_array);
 
-    const auto segment_idx_itr = id_to_segment_idx.find(route_segment.id());
-    if (segment_idx_itr == id_to_segment_idx.end()) {
+    // calculate closest index
+    const LaneSegment & route_segment = lane_segments_[id_in_array];
+    double distance = std::numeric_limits<double>::max();
+    for (const LanePoint & point : route_segment.centerline.waypoints()) {
+      const double diff_x = point.x() - center_x;
+      const double diff_y = point.y() - center_y;
+      const double curr_distance = std::sqrt(diff_x * diff_x + diff_y * diff_y);
+      distance = std::min(distance, curr_distance);
+    }
+    if (distance < closest_distance) {
+      closest_distance = distance;
+      closest_index = i;
+    }
+  }
+
+  std::vector<int64_t> selected_indices;
+  auto is_inside = [&](const double x, const double y) {
+    using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
+    return (
+      x > center_x - LANE_MASK_RANGE_M && x < center_x + LANE_MASK_RANGE_M &&
+      y > center_y - LANE_MASK_RANGE_M && y < center_y + LANE_MASK_RANGE_M);
+  };
+
+  // Select route segment indices
+  for (size_t i = closest_index; i < indices_in_array.size(); ++i) {
+    const int64_t segment_idx = indices_in_array[i];
+    const LaneSegment & route_segment = lane_segments_[segment_idx];
+    const std::vector<LanePoint> & centerline = route_segment.centerline.waypoints();
+
+    // Compute mean, first, and last points
+    double mean_x = 0.0, mean_y = 0.0;
+    for (const LanePoint & point : centerline) {
+      mean_x += point.x();
+      mean_y += point.y();
+    }
+    mean_x /= centerline.size();
+    mean_y /= centerline.size();
+
+    const double first_x = centerline[0].x();
+    const double first_y = centerline[0].y();
+    const double last_x = centerline[POINTS_PER_SEGMENT - 1].x();
+    const double last_y = centerline[POINTS_PER_SEGMENT - 1].y();
+
+    const bool inside =
+      is_inside(mean_x, mean_y) || is_inside(first_x, first_y) || is_inside(last_x, last_y);
+    if (!inside) {
       continue;
     }
 
-    selected_indices.push_back(static_cast<int64_t>(segment_idx_itr->second));
+    selected_indices.push_back(segment_idx);
+    if (selected_indices.size() >= static_cast<size_t>(max_segments)) {
+      break;
+    }
   }
 
   return selected_indices;
@@ -325,50 +372,6 @@ LaneSegmentContext::create_tensor_data_from_indices(
     output_matrix_f.data(), output_matrix_f.data() + output_matrix_f.size());
 
   return {tensor_data, speed_limit_vector};
-}
-
-lanelet::Lanelets LaneSegmentContext::filter_route_lanelets(
-  const LaneletRoute & route, const double center_x, const double center_y) const
-{
-  lanelet::Lanelets route_lanelets;
-  for (const LaneletSegment & route_segment : route.segments) {
-    route_lanelets.push_back(
-      lanelet_map_ptr_->laneletLayer.get(route_segment.preferred_primitive.id));
-  }
-
-  double closest_distance = std::numeric_limits<double>::max();
-  size_t closest_index = 0;
-
-  auto distance_to_lanelet =
-    [](const double x, const double y, const lanelet::ConstLanelet & lanelet) {
-      double distance = std::numeric_limits<double>::max();
-      for (const lanelet::ConstPoint2d & point : lanelet.centerline()) {
-        const double diff_x = point.x() - x;
-        const double diff_y = point.y() - y;
-        const double curr_distance = std::sqrt(diff_x * diff_x + diff_y * diff_y);
-        distance = std::min(distance, curr_distance);
-      }
-      return distance;
-    };
-
-  const size_t num_lanelets = route_lanelets.size();
-  for (size_t i = 0; i < num_lanelets; ++i) {
-    const double distance = distance_to_lanelet(center_x, center_y, route_lanelets[i]);
-    if (distance < closest_distance) {
-      closest_distance = distance;
-      closest_index = i;
-    }
-  }
-
-  lanelet::Lanelets filtered_route;
-  for (size_t i = closest_index; i < num_lanelets; ++i) {
-    const double distance = distance_to_lanelet(center_x, center_y, route_lanelets[i]);
-    if (distance > autoware::diffusion_planner::constants::LANE_MASK_RANGE_M) {
-      break;
-    }
-    filtered_route.push_back(route_lanelets[i]);
-  }
-  return filtered_route;
 }
 
 // Internal functions implementation

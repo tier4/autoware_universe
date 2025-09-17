@@ -119,20 +119,6 @@ private:
     const int64_t col_counter) const;
 
   /**
-   * @brief Filter route lanelets starting from the closest lanelet to the center point.
-   *
-   * This function extracts lanelets from the route, finds the lanelet closest to the center point,
-   * and returns consecutive lanelets from that point onwards that are within the lane mask range.
-   *
-   * @param route The lanelet route to filter.
-   * @param center_x X-coordinate of the center point.
-   * @param center_y Y-coordinate of the center point.
-   * @return Filtered lanelets starting from the closest lanelet to the center, within mask range.
-   */
-  lanelet::Lanelets filter_route_lanelets(
-    const LaneletRoute & route, const double center_x, const double center_y) const;
-
-  /**
    * @brief Select route segment indices based on route and constraints.
    *
    * @param route The lanelet route to process.
