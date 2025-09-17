@@ -84,7 +84,8 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
     const double seg_length = seg_end - seg_start;
 
     // Calculate interpolation parameter, handling zero-length segments
-    const double safe_seg_length = std::max(seg_length, 1e-6);
+    constexpr double epsilon = 1e-6;
+    const double safe_seg_length = std::max(seg_length, epsilon);
     const double t = std::clamp((target - seg_start) / safe_seg_length, 0.0, 1.0);
     const LanePoint new_point = input[seg_idx] + t * (input[seg_idx + 1] - input[seg_idx]);
     result.push_back(new_point);
@@ -98,6 +99,7 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
 std::vector<LanePoint> convert_to_polyline(const lanelet::ConstLineString3d & line_string) noexcept
 {
   std::vector<LanePoint> output;
+  output.reserve(line_string.size());
   for (const lanelet::Point3d::ConstType & point : line_string) {
     output.emplace_back(point.x(), point.y(), point.z());
   }
