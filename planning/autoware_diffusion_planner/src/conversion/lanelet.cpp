@@ -82,11 +82,11 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
     return result;
   }
 
-  double step = total_length / static_cast<double>(num_points - 1);
+  const double step = total_length / static_cast<double>(num_points - 1);
   size_t seg_idx = 0;
 
   for (size_t i = 1; i < num_points - 1; ++i) {
-    double target = static_cast<double>(i) * step;
+    const double target = static_cast<double>(i) * step;
 
     // Find the correct segment containing the target arc length
     while (seg_idx + 1 < arc_lengths.size() && arc_lengths[seg_idx + 1] < target) {
@@ -99,12 +99,12 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
     }
 
     // Interpolate between input[seg_idx] and input[seg_idx + 1]
-    double seg_start = arc_lengths[seg_idx];
-    double seg_end = arc_lengths[seg_idx + 1];
-    double seg_length = seg_end - seg_start;
+    const double seg_start = arc_lengths[seg_idx];
+    const double seg_end = arc_lengths[seg_idx + 1];
+    const double seg_length = seg_end - seg_start;
 
     // Calculate interpolation parameter, handling zero-length segments
-    double safe_seg_length = std::max(seg_length, 1e-6);
+    const double safe_seg_length = std::max(seg_length, 1e-6);
     double t = (target - seg_start) / safe_seg_length;
     // Clamp t to [0, 1] to ensure we don't extrapolate
     t = std::max(0.0, std::min(1.0, t));
@@ -112,27 +112,6 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
   }
   // Always include the last point
   result.push_back(input.back());
-
-  // Recalculate direction vectors based on actual interpolated positions
-  // Helper lambda to update a point's direction vector
-  auto update_point_direction = [](std::vector<LanePoint> & points, size_t point_idx) {
-    points[point_idx] =
-      LanePoint(points[point_idx].x(), points[point_idx].y(), points[point_idx].z());
-  };
-
-  if (result.size() > 1) {
-    // Handle first point direction (points to next)
-    update_point_direction(result, 0);
-
-    // Handle middle points (point to next)
-    for (size_t i = 1; i < result.size() - 1; ++i) {
-      update_point_direction(result, i);
-    }
-
-    // Handle last point direction (from previous)
-    size_t last_idx = result.size() - 1;
-    update_point_direction(result, last_idx);
-  }
 
   return result;
 }
