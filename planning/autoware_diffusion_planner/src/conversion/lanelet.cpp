@@ -115,30 +115,23 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
 
   // Recalculate direction vectors based on actual interpolated positions
   // Helper lambda to update a point's direction vector
-  auto update_point_direction =
-    [](std::vector<LanePoint> & points, size_t point_idx, size_t from_idx, size_t to_idx) {
-      double dx = points[to_idx].x() - points[from_idx].x();
-      double dy = points[to_idx].y() - points[from_idx].y();
-      double dz = points[to_idx].z() - points[from_idx].z();
-
-      normalize_direction(dx, dy, dz);
-
-      points[point_idx] =
-        LanePoint(points[point_idx].x(), points[point_idx].y(), points[point_idx].z(), dx, dy, dz);
-    };
+  auto update_point_direction = [](std::vector<LanePoint> & points, size_t point_idx) {
+    points[point_idx] =
+      LanePoint(points[point_idx].x(), points[point_idx].y(), points[point_idx].z());
+  };
 
   if (result.size() > 1) {
     // Handle first point direction (points to next)
-    update_point_direction(result, 0, 0, 1);
+    update_point_direction(result, 0);
 
     // Handle middle points (point to next)
     for (size_t i = 1; i < result.size() - 1; ++i) {
-      update_point_direction(result, i, i, i + 1);
+      update_point_direction(result, i);
     }
 
     // Handle last point direction (from previous)
     size_t last_idx = result.size() - 1;
-    update_point_direction(result, last_idx, last_idx - 1, last_idx);
+    update_point_direction(result, last_idx);
   }
 
   return result;
@@ -154,21 +147,7 @@ std::vector<LanePoint> from_geometry(const GeometryType & geometry) noexcept
 
   std::vector<LanePoint> output;
   for (auto itr = geometry.begin(); itr != geometry.end(); ++itr) {
-    double dx{0.0};
-    double dy{0.0};
-    double dz{0.0};
-    if (itr == geometry.begin()) {
-      dx = 0.0;
-      dy = 0.0;
-      dz = 0.0;
-    } else {
-      dx = static_cast<double>(itr->x() - (itr - 1)->x());
-      dy = static_cast<double>(itr->y() - (itr - 1)->y());
-      dz = static_cast<double>(itr->z() - (itr - 1)->z());
-      normalize_direction(dx, dy, dz);
-    }
-    output.emplace_back(
-      itr->x(), itr->y(), itr->z(), dx, dy, dz);  // TODO(danielsanchezaran): Label ID
+    output.emplace_back(itr->x(), itr->y(), itr->z());
   }
   return output;
 }
