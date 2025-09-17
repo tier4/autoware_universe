@@ -656,10 +656,10 @@ int main(int argc, char ** argv)
       // Get route lanes data with speed limits
       const std::vector<int64_t> segment_indices =
         lane_segment_context.select_route_segment_indices(
-          seq.data_list[i].route, center_x, center_y, ROUTE_LANES_SHAPE[1]);
+          seq.data_list[i].route, center_x, center_y, NUM_SEGMENTS_IN_ROUTE);
       const auto [route_lanes, route_lanes_speed_limit] =
         lane_segment_context.create_tensor_data_from_indices(
-          map2bl, traffic_light_id_map, segment_indices, ROUTE_LANES_SHAPE[1]);
+          map2bl, traffic_light_id_map, segment_indices, NUM_SEGMENTS_IN_ROUTE);
 
       // Create route_lanes_has_speed_limit based on speed_limit values
       std::vector<bool> route_lanes_has_speed_limit(route_lanes_speed_limit.size());
