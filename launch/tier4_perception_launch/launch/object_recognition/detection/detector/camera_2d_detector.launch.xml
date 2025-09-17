@@ -48,14 +48,14 @@
     <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/yolox.launch.xml">
       <arg name="yolox_node_name" value="tensorrt_yolox$(var camera_index)"/>
       <arg name="image_transport_decompressor_node_name" value="image_transport_decompressor_node$(var camera_index)"/>
-      <arg name="input/image" value="$(var image_raw0)"/>
+      <arg name="input/image" value="$(var image_raw1)"/>
       <arg name="output/objects" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="model_dir" value="$(var yolox_model_dir)"/>
       <arg name="model_name" value="$(var yolox_model_name)"/>
     </include>
 
     <include file="$(find-pkg-share autoware_bytetrack)/launch/bytetrack.launch.xml" if="$(var use_bytetrack)">
-      <arg name="in_image" value="$(var image_raw0)"/>
+      <arg name="in_image" value="$(var image_raw1)"/>
       <arg name="detection_rect" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="tracked_rect" value="rois$(var camera_index)"/>
       <arg name="enable_visualizer" value="$(var enable_visualizer)"/>
@@ -68,14 +68,14 @@
     <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/yolox.launch.xml">
       <arg name="yolox_node_name" value="tensorrt_yolox$(var camera_index)"/>
       <arg name="image_transport_decompressor_node_name" value="image_transport_decompressor_node$(var camera_index)"/>
-      <arg name="input/image" value="$(var image_raw0)"/>
+      <arg name="input/image" value="$(var image_raw2)"/>
       <arg name="output/objects" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="model_dir" value="$(var yolox_model_dir)"/>
       <arg name="model_name" value="$(var yolox_model_name)"/>
     </include>
 
     <include file="$(find-pkg-share autoware_bytetrack)/launch/bytetrack.launch.xml" if="$(var use_bytetrack)">
-      <arg name="in_image" value="$(var image_raw0)"/>
+      <arg name="in_image" value="$(var image_raw2)"/>
       <arg name="detection_rect" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="tracked_rect" value="rois$(var camera_index)"/>
       <arg name="enable_visualizer" value="$(var enable_visualizer)"/>
@@ -88,14 +88,14 @@
     <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/yolox.launch.xml">
       <arg name="yolox_node_name" value="tensorrt_yolox$(var camera_index)"/>
       <arg name="image_transport_decompressor_node_name" value="image_transport_decompressor_node$(var camera_index)"/>
-      <arg name="input/image" value="$(var image_raw0)"/>
+      <arg name="input/image" value="$(var image_raw3)"/>
       <arg name="output/objects" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="model_dir" value="$(var yolox_model_dir)"/>
       <arg name="model_name" value="$(var yolox_model_name)"/>
     </include>
 
     <include file="$(find-pkg-share autoware_bytetrack)/launch/bytetrack.launch.xml" if="$(var use_bytetrack)">
-      <arg name="in_image" value="$(var image_raw0)"/>
+      <arg name="in_image" value="$(var image_raw3)"/>
       <arg name="detection_rect" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="tracked_rect" value="rois$(var camera_index)"/>
       <arg name="enable_visualizer" value="$(var enable_visualizer)"/>
@@ -108,14 +108,14 @@
     <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/yolox.launch.xml">
       <arg name="yolox_node_name" value="tensorrt_yolox$(var camera_index)"/>
       <arg name="image_transport_decompressor_node_name" value="image_transport_decompressor_node$(var camera_index)"/>
-      <arg name="input/image" value="$(var image_raw0)"/>
+      <arg name="input/image" value="$(var image_raw4)"/>
       <arg name="output/objects" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="model_dir" value="$(var yolox_model_dir)"/>
       <arg name="model_name" value="$(var yolox_model_name)"/>
     </include>
 
     <include file="$(find-pkg-share autoware_bytetrack)/launch/bytetrack.launch.xml" if="$(var use_bytetrack)">
-      <arg name="in_image" value="$(var image_raw0)"/>
+      <arg name="in_image" value="$(var image_raw4)"/>
       <arg name="detection_rect" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="tracked_rect" value="rois$(var camera_index)"/>
       <arg name="enable_visualizer" value="$(var enable_visualizer)"/>
@@ -128,14 +128,14 @@
     <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/yolox.launch.xml">
       <arg name="yolox_node_name" value="tensorrt_yolox$(var camera_index)"/>
       <arg name="image_transport_decompressor_node_name" value="image_transport_decompressor_node$(var camera_index)"/>
-      <arg name="input/image" value="$(var image_raw0)"/>
+      <arg name="input/image" value="$(var image_raw5)"/>
       <arg name="output/objects" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="model_dir" value="$(var yolox_model_dir)"/>
       <arg name="model_name" value="$(var yolox_model_name)"/>
     </include>
 
     <include file="$(find-pkg-share autoware_bytetrack)/launch/bytetrack.launch.xml" if="$(var use_bytetrack)">
-      <arg name="in_image" value="$(var image_raw0)"/>
+      <arg name="in_image" value="$(var image_raw5)"/>
       <arg name="detection_rect" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="tracked_rect" value="rois$(var camera_index)"/>
       <arg name="enable_visualizer" value="$(var enable_visualizer)"/>
@@ -148,14 +148,14 @@
     <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/yolox.launch.xml">
       <arg name="yolox_node_name" value="tensorrt_yolox$(var camera_index)"/>
       <arg name="image_transport_decompressor_node_name" value="image_transport_decompressor_node$(var camera_index)"/>
-      <arg name="input/image" value="$(var image_raw0)"/>
+      <arg name="input/image" value="$(var image_raw5)"/>
       <arg name="output/objects" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="model_dir" value="$(var yolox_model_dir)"/>
       <arg name="model_name" value="$(var yolox_model_name)"/>
     </include>
 
     <include file="$(find-pkg-share autoware_bytetrack)/launch/bytetrack.launch.xml" if="$(var use_bytetrack)">
-      <arg name="in_image" value="$(var image_raw0)"/>
+      <arg name="in_image" value="$(var image_raw6)"/>
       <arg name="detection_rect" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="tracked_rect" value="rois$(var camera_index)"/>
       <arg name="enable_visualizer" value="$(var enable_visualizer)"/>
@@ -168,14 +168,14 @@
     <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/yolox.launch.xml">
       <arg name="yolox_node_name" value="tensorrt_yolox$(var camera_index)"/>
       <arg name="image_transport_decompressor_node_name" value="image_transport_decompressor_node$(var camera_index)"/>
-      <arg name="input/image" value="$(var image_raw0)"/>
+      <arg name="input/image" value="$(var image_raw7)"/>
       <arg name="output/objects" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="model_dir" value="$(var yolox_model_dir)"/>
       <arg name="model_name" value="$(var yolox_model_name)"/>
     </include>
 
     <include file="$(find-pkg-share autoware_bytetrack)/launch/bytetrack.launch.xml" if="$(var use_bytetrack)">
-      <arg name="in_image" value="$(var image_raw0)"/>
+      <arg name="in_image" value="$(var image_raw7)"/>
       <arg name="detection_rect" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="tracked_rect" value="rois$(var camera_index)"/>
       <arg name="enable_visualizer" value="$(var enable_visualizer)"/>
@@ -188,14 +188,14 @@
     <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/yolox.launch.xml">
       <arg name="yolox_node_name" value="tensorrt_yolox$(var camera_index)"/>
       <arg name="image_transport_decompressor_node_name" value="image_transport_decompressor_node$(var camera_index)"/>
-      <arg name="input/image" value="$(var image_raw0)"/>
+      <arg name="input/image" value="$(var image_raw8)"/>
       <arg name="output/objects" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="model_dir" value="$(var yolox_model_dir)"/>
       <arg name="model_name" value="$(var yolox_model_name)"/>
     </include>
 
     <include file="$(find-pkg-share autoware_bytetrack)/launch/bytetrack.launch.xml" if="$(var use_bytetrack)">
-      <arg name="in_image" value="$(var image_raw0)"/>
+      <arg name="in_image" value="$(var image_raw8)"/>
       <arg name="detection_rect" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="tracked_rect" value="rois$(var camera_index)"/>
       <arg name="enable_visualizer" value="$(var enable_visualizer)"/>
@@ -208,14 +208,14 @@
     <include file="$(find-pkg-share autoware_tensorrt_yolox)/launch/yolox.launch.xml">
       <arg name="yolox_node_name" value="tensorrt_yolox$(var camera_index)"/>
       <arg name="image_transport_decompressor_node_name" value="image_transport_decompressor_node$(var camera_index)"/>
-      <arg name="input/image" value="$(var image_raw0)"/>
+      <arg name="input/image" value="$(var image_raw9)"/>
       <arg name="output/objects" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="model_dir" value="$(var yolox_model_dir)"/>
       <arg name="model_name" value="$(var yolox_model_name)"/>
     </include>
 
     <include file="$(find-pkg-share autoware_bytetrack)/launch/bytetrack.launch.xml" if="$(var use_bytetrack)">
-      <arg name="in_image" value="$(var image_raw0)"/>
+      <arg name="in_image" value="$(var image_raw9)"/>
       <arg name="detection_rect" value="$(var tensorrt_yolox_ns)rois$(var camera_index)"/>
       <arg name="tracked_rect" value="rois$(var camera_index)"/>
       <arg name="enable_visualizer" value="$(var enable_visualizer)"/>
