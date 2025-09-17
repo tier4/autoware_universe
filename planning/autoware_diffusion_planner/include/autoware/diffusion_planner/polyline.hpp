@@ -121,26 +121,7 @@ private:
   double x_{0.0}, y_{0.0}, z_{0.0}, dx_{0.0}, dy_{0.0}, dz_{0.0}, label_{0.0};
 };
 
-class Polyline
-{
-public:
-  Polyline() = default;
-
-  explicit Polyline(const std::vector<LanePoint> & points) : waypoints_(points) {}
-
-  void assign_waypoints(const std::vector<LanePoint> & points) { waypoints_ = points; }
-
-  void clear() { waypoints_.clear(); }
-
-  [[nodiscard]] bool is_empty() const { return waypoints_.empty(); }
-
-  [[nodiscard]] size_t size() const { return waypoints_.size(); }
-
-  [[nodiscard]] const std::vector<LanePoint> & waypoints() const { return waypoints_; }
-
-private:
-  std::vector<LanePoint> waypoints_;
-};
+using Polyline = std::vector<LanePoint>;
 
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__POLYLINE_HPP_

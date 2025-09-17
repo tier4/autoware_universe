@@ -124,7 +124,7 @@ TEST_F(LaneletIntegrationTest, ConvertToLaneSegmentsInterpolation)
 
   // For each segment, verify that interpolated points maintain proper spacing
   for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.centerline.waypoints();
+    const auto & waypoints = segment.centerline;
 
     // Check that points are properly spaced (not all at the same location)
     bool has_spacing = false;
@@ -189,7 +189,7 @@ TEST_F(LaneletIntegrationTest, CheckPointSpacingConsistency)
   const float spacing_tolerance_ratio = 0.3f;
 
   for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.centerline.waypoints();
+    const auto & waypoints = segment.centerline;
 
     if (waypoints.size() < 3) continue;
 
@@ -235,7 +235,7 @@ TEST_F(LaneletIntegrationTest, CheckForNaNAndInfiniteValues)
 
   for (const auto & segment : lane_segments) {
     // Check polyline points
-    const auto & waypoints = segment.centerline.waypoints();
+    const auto & waypoints = segment.centerline;
     for (size_t i = 0; i < waypoints.size(); ++i) {
       const auto & point = waypoints[i];
 
@@ -257,18 +257,18 @@ TEST_F(LaneletIntegrationTest, CheckForNaNAndInfiniteValues)
     }
 
     // Check boundaries
-    EXPECT_FALSE(segment.left_boundary.is_empty()) << "Left boundary should not be empty";
-    for (size_t i = 0; i < segment.left_boundary.waypoints().size(); ++i) {
-      const auto & point = segment.left_boundary.waypoints()[i];
+    EXPECT_FALSE(segment.left_boundary.empty()) << "Left boundary should not be empty";
+    for (size_t i = 0; i < segment.left_boundary.size(); ++i) {
+      const auto & point = segment.left_boundary[i];
       EXPECT_FALSE(std::isnan(point.x()) || std::isnan(point.y()) || std::isnan(point.z()))
         << "NaN found in left boundary at point " << i << " of segment " << segment.id;
       EXPECT_FALSE(std::isinf(point.x()) || std::isinf(point.y()) || std::isinf(point.z()))
         << "Infinite value found in left boundary at point " << i << " of segment " << segment.id;
     }
 
-    EXPECT_FALSE(segment.right_boundary.is_empty()) << "Right boundary should not be empty";
-    for (size_t i = 0; i < segment.right_boundary.waypoints().size(); ++i) {
-      const auto & point = segment.right_boundary.waypoints()[i];
+    EXPECT_FALSE(segment.right_boundary.empty()) << "Right boundary should not be empty";
+    for (size_t i = 0; i < segment.right_boundary.size(); ++i) {
+      const auto & point = segment.right_boundary[i];
       EXPECT_FALSE(std::isnan(point.x()) || std::isnan(point.y()) || std::isnan(point.z()))
         << "NaN found in right boundary at point " << i << " of segment " << segment.id;
       EXPECT_FALSE(std::isinf(point.x()) || std::isinf(point.y()) || std::isinf(point.z()))
@@ -339,7 +339,7 @@ TEST_F(LaneletIntegrationTest, CheckReasonableCoordinateRanges)
 
   // Check all interpolated points are within the original map bounds
   for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.centerline.waypoints();
+    const auto & waypoints = segment.centerline;
 
     for (size_t i = 0; i < waypoints.size(); ++i) {
       const auto & point = waypoints[i];
@@ -366,8 +366,8 @@ TEST_F(LaneletIntegrationTest, CheckReasonableCoordinateRanges)
     }
 
     // Also check boundaries
-    for (size_t i = 0; i < segment.left_boundary.waypoints().size(); ++i) {
-      const auto & point = segment.left_boundary.waypoints()[i];
+    for (size_t i = 0; i < segment.left_boundary.size(); ++i) {
+      const auto & point = segment.left_boundary[i];
       EXPECT_GE(point.x(), min_x_allowed)
         << "Left boundary X out of bounds at point " << i << " of segment " << segment.id;
       EXPECT_LE(point.x(), max_x_allowed)
@@ -378,8 +378,8 @@ TEST_F(LaneletIntegrationTest, CheckReasonableCoordinateRanges)
         << "Left boundary Y out of bounds at point " << i << " of segment " << segment.id;
     }
 
-    for (size_t i = 0; i < segment.right_boundary.waypoints().size(); ++i) {
-      const auto & point = segment.right_boundary.waypoints()[i];
+    for (size_t i = 0; i < segment.right_boundary.size(); ++i) {
+      const auto & point = segment.right_boundary[i];
       EXPECT_GE(point.x(), min_x_allowed)
         << "Right boundary X out of bounds at point " << i << " of segment " << segment.id;
       EXPECT_LE(point.x(), max_x_allowed)
@@ -405,7 +405,7 @@ TEST_F(LaneletIntegrationTest, CheckPointOrdering)
   const float max_point_jump = 50.0f;
 
   for (const auto & segment : lane_segments) {
-    const auto & waypoints = segment.centerline.waypoints();
+    const auto & waypoints = segment.centerline;
 
     for (size_t i = 1; i < waypoints.size(); ++i) {
       float dist = waypoints[i - 1].distance(waypoints[i]);

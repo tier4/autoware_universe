@@ -145,7 +145,7 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
     // calculate closest index
     const LaneSegment & route_segment = lane_segments_[id_in_array];
     double distance = std::numeric_limits<double>::max();
-    for (const LanePoint & point : route_segment.centerline.waypoints()) {
+    for (const LanePoint & point : route_segment.centerline) {
       const double diff_x = point.x() - center_x;
       const double diff_y = point.y() - center_y;
       const double curr_distance = std::sqrt(diff_x * diff_x + diff_y * diff_y);
@@ -169,7 +169,7 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   for (size_t i = closest_index; i < indices_in_array.size(); ++i) {
     const int64_t segment_idx = indices_in_array[i];
     const LaneSegment & route_segment = lane_segments_[segment_idx];
-    const std::vector<LanePoint> & centerline = route_segment.centerline.waypoints();
+    const std::vector<LanePoint> & centerline = route_segment.centerline;
 
     // Compute mean, first, and last points
     double mean_x = 0.0, mean_y = 0.0;
@@ -217,7 +217,7 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
 
   for (size_t i = 0; i < lane_segments_.size(); ++i) {
     const LaneSegment & segment = lane_segments_[i];
-    const std::vector<LanePoint> & centerline = segment.centerline.waypoints();
+    const std::vector<LanePoint> & centerline = segment.centerline;
 
     if (centerline.size() != POINTS_PER_SEGMENT) {
       continue;
@@ -306,14 +306,14 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
     // Check if segment has valid data
     if (
-      lane_segment.centerline.is_empty() || lane_segment.left_boundary.is_empty() ||
-      lane_segment.right_boundary.is_empty()) {
+      lane_segment.centerline.empty() || lane_segment.left_boundary.empty() ||
+      lane_segment.right_boundary.empty()) {
       continue;
     }
 
-    const std::vector<LanePoint> & centerline = lane_segment.centerline.waypoints();
-    const std::vector<LanePoint> & left_boundary = lane_segment.left_boundary.waypoints();
-    const std::vector<LanePoint> & right_boundary = lane_segment.right_boundary.waypoints();
+    const std::vector<LanePoint> & centerline = lane_segment.centerline;
+    const std::vector<LanePoint> & left_boundary = lane_segment.left_boundary;
+    const std::vector<LanePoint> & right_boundary = lane_segment.right_boundary;
 
     if (
       centerline.size() != POINTS_PER_SEGMENT || left_boundary.size() != POINTS_PER_SEGMENT ||

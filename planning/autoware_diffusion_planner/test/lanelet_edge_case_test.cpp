@@ -136,7 +136,7 @@ TEST_F(LaneletEdgeCaseTest, ConvertLaneletWithNaNInfCoordinates)
   // Check that NaN/Inf propagated through
   bool has_nan = false;
   bool has_inf = false;
-  for (const auto & point : polyline.waypoints()) {
+  for (const auto & point : polyline) {
     if (std::isnan(point.x()) || std::isnan(point.y())) has_nan = true;
     if (std::isinf(point.x()) || std::isinf(point.y())) has_inf = true;
   }
