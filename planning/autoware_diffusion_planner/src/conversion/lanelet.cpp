@@ -35,13 +35,6 @@ namespace autoware::diffusion_planner
 
 namespace
 {
-inline lanelet::Optional<std::string> to_subtype_name(
-  const lanelet::ConstLanelet & lanelet) noexcept
-{
-  return lanelet.hasAttribute("subtype") ? lanelet.attribute("subtype").as<std::string>()
-                                         : lanelet::Optional<std::string>();
-}
-
 std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, size_t num_points)
 {
   if (input.size() < 2 || num_points < 2) {
@@ -119,7 +112,10 @@ std::vector<LaneSegment> convert_to_lane_segments(
   lane_segments.reserve(lanelet_map_ptr->laneletLayer.size());
   // parse lanelet layers
   for (const auto & lanelet : lanelet_map_ptr->laneletLayer) {
-    const auto lanelet_subtype = to_subtype_name(lanelet);
+    if (!lanelet.hasAttribute("subtype")) {
+      continue;
+    }
+    const auto lanelet_subtype = lanelet.attribute("subtype").as<std::string>();
     if (!lanelet_subtype || ACCEPTABLE_LANE_SUBTYPES.count(lanelet_subtype.value()) == 0) {
       continue;
     }
