@@ -16,6 +16,7 @@
 
 #include "autoware/perception_filter/perception_filter_core.hpp"
 
+#include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 #include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
@@ -800,6 +801,53 @@ std::vector<autoware::universe_utils::Polygon2d> createDifferencePolygons(
   }
 
   return difference_polygons;
+}
+
+autoware_planning_msgs::msg::Trajectory cutTrajectoryByFilteringDistance(
+  const autoware_planning_msgs::msg::Trajectory & trajectory,
+  const geometry_msgs::msg::Pose & ego_pose, const double filtering_start_distance,
+  const double filtering_end_distance)
+{
+  // Initialize cut trajectory with input trajectory
+  auto cut_trajectory = trajectory;
+
+  // Find nearest segment index to ego pose
+  const auto nearest_segment_idx =
+    autoware::motion_utils::findNearestSegmentIndex(trajectory.points, ego_pose.position);
+
+  if (!nearest_segment_idx) {
+    // If nearest segment is not found, return original trajectory
+    return cut_trajectory;
+  }
+
+  // Calculate distance from trajectory start to ego pose
+  const double ego_distance_from_start =
+    autoware::motion_utils::calcSignedArcLength(trajectory.points, 0, nearest_segment_idx);
+
+  // Calculate start and end distances for cutting
+  const double start_distance = ego_distance_from_start + filtering_start_distance;
+  const double end_distance = ego_distance_from_start + filtering_end_distance;
+
+  // Find indices for cutting by converting distance to pose first
+  const auto start_pose =
+    autoware::motion_utils::calcInterpolatedPose(trajectory.points, start_distance);
+  const auto end_pose =
+    autoware::motion_utils::calcInterpolatedPose(trajectory.points, end_distance);
+
+  const auto start_idx =
+    autoware::motion_utils::findNearestIndex(trajectory.points, start_pose.position);
+  const auto end_idx =
+    autoware::motion_utils::findNearestIndex(trajectory.points, end_pose.position);
+
+  if (start_idx < end_idx) {
+    // Create cut trajectory
+    cut_trajectory.points.clear();
+    cut_trajectory.points.insert(
+      cut_trajectory.points.end(), trajectory.points.begin() + start_idx,
+      trajectory.points.begin() + end_idx + 1);
+  }
+
+  return cut_trajectory;
 }
 
 }  // namespace autoware::perception_filter

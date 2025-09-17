@@ -367,41 +367,9 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       *planning_trajectory_, resample_interval, false, true, true);
 
     // Cut trajectory by filtering distances from ego pose
-    auto cut_trajectory = resampled_trajectory;
     const auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
-    if (ego_pose) {
-      const auto nearest_segment_idx = autoware::motion_utils::findNearestSegmentIndex(
-        resampled_trajectory.points, ego_pose->position);
-
-      if (nearest_segment_idx) {
-        // Calculate distance from trajectory start to ego pose
-        const double ego_distance_from_start = autoware::motion_utils::calcSignedArcLength(
-          resampled_trajectory.points, 0, nearest_segment_idx);
-
-        // Calculate start and end distances for cutting
-        const double start_distance = ego_distance_from_start + filtering_start_distance_;
-        const double end_distance = ego_distance_from_start + filtering_end_distance_;
-
-        // Find indices for cutting by converting distance to pose first
-        const auto start_pose =
-          autoware::motion_utils::calcInterpolatedPose(resampled_trajectory.points, start_distance);
-        const auto end_pose =
-          autoware::motion_utils::calcInterpolatedPose(resampled_trajectory.points, end_distance);
-
-        const auto start_idx = autoware::motion_utils::findNearestIndex(
-          resampled_trajectory.points, start_pose.position);
-        const auto end_idx =
-          autoware::motion_utils::findNearestIndex(resampled_trajectory.points, end_pose.position);
-
-        if (start_idx < end_idx) {
-          // Create cut trajectory
-          cut_trajectory.points.clear();
-          cut_trajectory.points.insert(
-            cut_trajectory.points.end(), resampled_trajectory.points.begin() + start_idx,
-            resampled_trajectory.points.begin() + end_idx + 1);
-        }
-      }
-    }
+    auto cut_trajectory = autoware::perception_filter::cutTrajectoryByFilteringDistance(
+      resampled_trajectory, *ego_pose, filtering_start_distance_, filtering_end_distance_);
 
     // Generate trajectory polygons and points outside the classification function
     const auto traj_max_polygons = autoware::perception_filter::generateTrajectoryPolygons(
@@ -855,26 +823,21 @@ void PerceptionFilterNode::createFilteringPolygon()
   if (ego_pose) {
     filtering_polygon_.ego_pose = *ego_pose;
 
-    // Calculate trajectory points at specified distances from ego pose
-    const auto nearest_segment_idx = autoware::motion_utils::findNearestSegmentIndex(
-      resampled_trajectory.points, ego_pose->position);
+    // Cut trajectory by filtering distances from ego pose
+    const auto cut_trajectory = autoware::perception_filter::cutTrajectoryByFilteringDistance(
+      resampled_trajectory, *ego_pose, filtering_start_distance_, filtering_end_distance_);
 
-    if (nearest_segment_idx) {
-      // Calculate distance from trajectory start to ego pose
-      const double ego_distance_from_start = autoware::motion_utils::calcSignedArcLength(
-        resampled_trajectory.points, 0, nearest_segment_idx);
-
-      // Calculate start pose (filtering_start_distance behind ego, negative value means ahead)
-      const double start_distance = ego_distance_from_start + filtering_start_distance_;
-      if (start_distance >= 0) {
-        filtering_polygon_.start_pose =
-          autoware::motion_utils::calcInterpolatedPose(resampled_trajectory.points, start_distance);
+    if (!cut_trajectory.points.empty()) {
+      // Set start and end poses from cut trajectory
+      filtering_polygon_.start_pose = cut_trajectory.points.front().pose;
+      filtering_polygon_.end_pose = cut_trajectory.points.back().pose;
+    } else {
+      RCLCPP_WARN(get_logger(), "Cut trajectory is empty, using original trajectory bounds");
+      // Fallback to original trajectory bounds if cut trajectory is empty
+      if (!resampled_trajectory.points.empty()) {
+        filtering_polygon_.start_pose = resampled_trajectory.points.front().pose;
+        filtering_polygon_.end_pose = resampled_trajectory.points.back().pose;
       }
-
-      // Calculate end pose (filtering_end_distance ahead of ego)
-      const double end_distance = ego_distance_from_start + filtering_end_distance_;
-      filtering_polygon_.end_pose =
-        autoware::motion_utils::calcInterpolatedPose(resampled_trajectory.points, end_distance);
     }
   } else {
     RCLCPP_WARN(get_logger(), "Ego pose not available for polygon creation");

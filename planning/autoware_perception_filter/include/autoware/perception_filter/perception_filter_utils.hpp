@@ -221,6 +221,19 @@ std::vector<autoware::universe_utils::Polygon2d> createDifferencePolygons(
   const std::vector<autoware::universe_utils::Polygon2d> & max_polygons,
   const std::vector<autoware::universe_utils::Polygon2d> & min_polygons);
 
+/**
+ * @brief Cut trajectory by filtering distances from ego pose
+ * @param trajectory Input trajectory to cut
+ * @param ego_pose Ego vehicle pose in map frame
+ * @param filtering_start_distance Start distance from ego pose for cutting [m]
+ * @param filtering_end_distance End distance from ego pose for cutting [m]
+ * @return Cut trajectory containing only the specified distance range
+ */
+autoware_planning_msgs::msg::Trajectory cutTrajectoryByFilteringDistance(
+  const autoware_planning_msgs::msg::Trajectory & trajectory,
+  const geometry_msgs::msg::Pose & ego_pose, const double filtering_start_distance,
+  const double filtering_end_distance);
+
 }  // namespace autoware::perception_filter
 
 #endif  // AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_UTILS_HPP_
