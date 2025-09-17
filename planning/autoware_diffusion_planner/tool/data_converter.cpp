@@ -651,18 +651,12 @@ int main(int argc, char ** argv)
       }
 
       // Get route lanes data with speed limits
-      std::vector<float> route_lanes(
-        NUM_SEGMENTS_IN_ROUTE * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM, 0.0f);
-      std::vector<float> route_lanes_speed_limit(NUM_SEGMENTS_IN_ROUTE, 0.0f);
-
-      geometry_msgs::msg::Pose current_pose;
-      current_pose.position = ego_pos;
-      current_pose.orientation.w = 1.0;  // Identity quaternion
-
-      const auto [route_data, route_speed] = lane_segment_context.get_route_segments(
-        map2bl, traffic_light_id_map, seq.data_list[i].route, center_x, center_y);
-      route_lanes = route_data;
-      route_lanes_speed_limit = route_speed;
+      const std::vector<int64_t> segment_indices =
+        lane_segment_context.select_route_segment_indices(
+          seq.data_list[i].route, center_x, center_y, ROUTE_LANES_SHAPE[1]);
+      const auto [route_lanes, route_lanes_speed_limit] =
+        lane_segment_context.create_tensor_data_from_indices(
+          map2bl, traffic_light_id_map, segment_indices, ROUTE_LANES_SHAPE[1]);
 
       // Create route_lanes_has_speed_limit based on speed_limit values
       std::vector<bool> route_lanes_has_speed_limit(route_lanes_speed_limit.size());

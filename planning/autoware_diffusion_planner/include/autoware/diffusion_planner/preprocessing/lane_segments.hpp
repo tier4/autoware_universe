@@ -68,19 +68,6 @@ public:
   explicit LaneSegmentContext(const std::shared_ptr<lanelet::LaneletMap> & lanelet_map_ptr);
 
   /**
-   * @brief Get route segments and transform them to ego-centric coordinates.
-   *
-   * @param transform_matrix Transformation matrix to apply to the points.
-   * @param traffic_light_id_map Map of lanelet IDs to traffic signal information.
-   * @param current_lanes List of current lanelets to extract.
-   * @return Flattened vectors containing the transformed route segments and speed limits.
-   */
-  std::pair<std::vector<float>, std::vector<float>> get_route_segments(
-    const Eigen::Matrix4d & transform_matrix,
-    const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
-    const LaneletRoute & route, const double center_x, const double center_y) const;
-
-  /**
    * @brief Get lane segments and transform them to ego-centric coordinates.
    *
    * @param transform_matrix Transformation matrix to apply to the points.
@@ -94,7 +81,6 @@ public:
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map, const double center_x,
     const double center_y) const;
 
-private:
   /**
    * @brief Select route segment indices based on route and constraints.
    *
@@ -134,7 +120,7 @@ private:
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
     const std::vector<int64_t> & segment_indices, const int64_t max_segments) const;
 
-  // variables
+private:
   const std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   const std::vector<autoware::diffusion_planner::LaneSegment> lane_segments_;
 };

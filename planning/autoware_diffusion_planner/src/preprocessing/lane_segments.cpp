@@ -57,20 +57,6 @@ LaneSegmentContext::LaneSegmentContext(const std::shared_ptr<lanelet::LaneletMap
   }
 }
 
-std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_route_segments(
-  const Eigen::Matrix4d & transform_matrix,
-  const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
-  const LaneletRoute & route, const double center_x, const double center_y) const
-{
-  // Step 1: Select route segment indices
-  const std::vector<int64_t> segment_indices =
-    select_route_segment_indices(route, center_x, center_y, ROUTE_LANES_SHAPE[1]);
-
-  // Step 2: Create tensor data from indices
-  return create_tensor_data_from_indices(
-    transform_matrix, traffic_light_id_map, segment_indices, ROUTE_LANES_SHAPE[1]);
-}
-
 std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_lane_segments(
   const Eigen::Matrix4d & transform_matrix,
   const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map, const double center_x,

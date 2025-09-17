@@ -58,8 +58,11 @@ TEST_F(LaneSegmentsTest, LaneSegmentContextFunctionality)
   /////////
   // Act //
   /////////
+  const std::vector<int64_t> segment_indices =
+    context.select_route_segment_indices(route, center_x, center_y, ROUTE_LANES_SHAPE[1]);
   const std::pair<std::vector<float>, std::vector<float>> result =
-    context.get_route_segments(transform_matrix, traffic_light_id_map, route, center_x, center_y);
+    context.create_tensor_data_from_indices(
+      transform_matrix, traffic_light_id_map, segment_indices, ROUTE_LANES_SHAPE[1]);
 
   ////////////
   // Assert //
