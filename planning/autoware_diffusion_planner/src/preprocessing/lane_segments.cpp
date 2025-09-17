@@ -171,15 +171,8 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
     const LaneSegment & route_segment = lane_segments_[segment_idx];
     const std::vector<LanePoint> & centerline = route_segment.centerline;
 
-    // Compute mean, first, and last points
-    double mean_x = 0.0, mean_y = 0.0;
-    for (const LanePoint & point : centerline) {
-      mean_x += point.x();
-      mean_y += point.y();
-    }
-    mean_x /= centerline.size();
-    mean_y /= centerline.size();
-
+    const double mean_x = route_segment.mean_point.x();
+    const double mean_y = route_segment.mean_point.y();
     const double first_x = centerline[0].x();
     const double first_y = centerline[0].y();
     const double last_x = centerline[POINTS_PER_SEGMENT - 1].x();
@@ -223,23 +216,18 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
       continue;
     }
 
-    // Compute mean, first, and last points
-    double mean_x = 0.0, mean_y = 0.0;
     float distance_squared = 0.0;
     for (const LanePoint & point : centerline) {
-      mean_x += point.x();
-      mean_y += point.y();
-
       const Eigen::Vector4d transformed_point =
         transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
       const float diff_x = transformed_point.x();
       const float diff_y = transformed_point.y();
       distance_squared += diff_x * diff_x + diff_y * diff_y;
     }
-    mean_x /= centerline.size();
-    mean_y /= centerline.size();
     distance_squared /= centerline.size();
 
+    const double mean_x = segment.mean_point.x();
+    const double mean_y = segment.mean_point.y();
     const double first_x = centerline[0].x();
     const double first_y = centerline[0].y();
     const double last_x = centerline[POINTS_PER_SEGMENT - 1].x();
@@ -262,7 +250,7 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
 
   // Step 3: Select indices that are inside the mask
   std::vector<int64_t> selected_indices;
-  for (const auto & distance : distances) {
+  for (const ColWithDistance & distance : distances) {
     selected_indices.push_back(distance.index);
     if (selected_indices.size() >= static_cast<size_t>(max_segments)) {
       break;

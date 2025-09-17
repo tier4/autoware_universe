@@ -126,6 +126,12 @@ std::vector<LaneSegment> convert_to_lane_segments(
     const Polyline right_boundary(
       interpolate_points(convert_to_polyline(lanelet.rightBound3d()), num_lane_points));
 
+    LanePoint mean_point(0.0, 0.0, 0.0);
+    for (const LanePoint & p : centerline) {
+      mean_point += p;
+    }
+    mean_point /= static_cast<double>(centerline.size());
+
     const std::string left_line_type_str = lanelet.leftBound().attributeOr("type", "");
     const std::string right_line_type_str = lanelet.rightBound().attributeOr("type", "");
     const LineType left_line_type =
@@ -166,8 +172,8 @@ std::vector<LaneSegment> convert_to_lane_segments(
                                   : traffic_light_list.front()->id());
 
     lane_segments.emplace_back(
-      lanelet.id(), centerline, left_boundary, right_boundary, left_line_type, right_line_type,
-      speed_limit_mps, turn_direction, traffic_light_id);
+      lanelet.id(), centerline, left_boundary, right_boundary, mean_point, left_line_type,
+      right_line_type, speed_limit_mps, turn_direction, traffic_light_id);
   }
   return lane_segments;
 }

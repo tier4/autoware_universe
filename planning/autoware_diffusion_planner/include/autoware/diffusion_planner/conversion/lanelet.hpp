@@ -63,6 +63,7 @@ struct LaneSegment
   Polyline centerline;
   Polyline left_boundary;
   Polyline right_boundary;
+  LanePoint mean_point;
   LineType left_line_type;
   LineType right_line_type;
   std::optional<float> speed_limit_mps{std::nullopt};
@@ -78,12 +79,14 @@ struct LaneSegment
 
   LaneSegment(
     int64_t id, const Polyline & centerline, const Polyline & left_boundary,
-    const Polyline & right_boundary, LineType left_line_type, LineType right_line_type,
-    std::optional<float> speed_limit_mps, int64_t turn_direction, int64_t traffic_light_id)
+    const Polyline & right_boundary, const LanePoint & mean_point, LineType left_line_type,
+    LineType right_line_type, std::optional<float> speed_limit_mps, int64_t turn_direction,
+    int64_t traffic_light_id)
   : id(id),
     centerline(centerline),
     left_boundary(left_boundary),
     right_boundary(right_boundary),
+    mean_point(mean_point),
     left_line_type(left_line_type),
     right_line_type(right_line_type),
     speed_limit_mps(speed_limit_mps),
