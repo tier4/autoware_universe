@@ -46,11 +46,8 @@
   <depend>diagnostic_msgs</depend>
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
-<<<<<<< HEAD
-=======
   <depend>lanelet2_extension</depend>
   <depend>grid_map_core</depend>
->>>>>>> eed5fa22d7 (add grdi map core dependency)
   <depend>libboost-dev</depend>
   <depend>pcl_conversions</depend>
   <depend>pluginlib</depend>
