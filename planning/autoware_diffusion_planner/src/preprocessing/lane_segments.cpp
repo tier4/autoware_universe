@@ -85,45 +85,6 @@ std::pair<std::vector<float>, std::vector<float>> LaneSegmentContext::get_lane_s
     transform_matrix, traffic_light_id_map, segment_indices, NUM_SEGMENTS_IN_LANE);
 }
 
-void LaneSegmentContext::add_traffic_light_one_hot_encoding_to_segment(
-  const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
-  Eigen::MatrixXd & segment_matrix, const autoware::diffusion_planner::LaneSegment & lane_segment,
-  const int64_t col_counter) const
-{
-  const Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM> traffic_light_one_hot_encoding = [&]() {
-    Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM> encoding =
-      Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM>::Zero();
-    if (lane_segment.traffic_light_id == LaneSegment::TRAFFIC_LIGHT_ID_NONE) {
-      encoding[TRAFFIC_LIGHT_NO_TRAFFIC_LIGHT - TRAFFIC_LIGHT] = 1.0;
-      return encoding;
-    }
-
-    const auto traffic_light_stamped_info_itr =
-      traffic_light_id_map.find(lane_segment.traffic_light_id);
-    if (traffic_light_stamped_info_itr == traffic_light_id_map.end()) {
-      encoding[TRAFFIC_LIGHT_WHITE - TRAFFIC_LIGHT] = 1.0;
-      return encoding;
-    }
-
-    const auto & signal = traffic_light_stamped_info_itr->second.signal;
-    const uint8_t traffic_color =
-      identify_current_light_status(lane_segment.turn_direction, signal.elements);
-    return Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM>{
-      traffic_color == TrafficLightElement::GREEN,    // 3
-      traffic_color == TrafficLightElement::AMBER,    // 2
-      traffic_color == TrafficLightElement::RED,      // 1
-      traffic_color == TrafficLightElement::UNKNOWN,  // 0
-      traffic_color == TrafficLightElement::WHITE     // 4
-    };
-  }();
-
-  Eigen::MatrixXd one_hot_encoding_matrix =
-    traffic_light_one_hot_encoding.replicate(1, POINTS_PER_SEGMENT);
-  segment_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, POINTS_PER_SEGMENT>(
-    TRAFFIC_LIGHT, col_counter * POINTS_PER_SEGMENT) =
-    one_hot_encoding_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, POINTS_PER_SEGMENT>(0, 0);
-}
-
 std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   const LaneletRoute & route, const double center_x, const double center_y,
   const int64_t max_segments) const
@@ -273,6 +234,33 @@ LaneSegmentContext::create_tensor_data_from_indices(
       continue;
     }
 
+    const Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM> traffic_light_one_hot_encoding = [&]() {
+      Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM> encoding =
+        Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM>::Zero();
+      if (lane_segment.traffic_light_id == LaneSegment::TRAFFIC_LIGHT_ID_NONE) {
+        encoding[TRAFFIC_LIGHT_NO_TRAFFIC_LIGHT - TRAFFIC_LIGHT] = 1.0;
+        return encoding;
+      }
+
+      const auto traffic_light_stamped_info_itr =
+        traffic_light_id_map.find(lane_segment.traffic_light_id);
+      if (traffic_light_stamped_info_itr == traffic_light_id_map.end()) {
+        encoding[TRAFFIC_LIGHT_WHITE - TRAFFIC_LIGHT] = 1.0;
+        return encoding;
+      }
+
+      const auto & signal = traffic_light_stamped_info_itr->second.signal;
+      const uint8_t traffic_color =
+        identify_current_light_status(lane_segment.turn_direction, signal.elements);
+      return Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM>{
+        traffic_color == TrafficLightElement::GREEN,    // 3
+        traffic_color == TrafficLightElement::AMBER,    // 2
+        traffic_color == TrafficLightElement::RED,      // 1
+        traffic_color == TrafficLightElement::UNKNOWN,  // 0
+        traffic_color == TrafficLightElement::WHITE     // 4
+      };
+    }();
+
     const Eigen::Vector<double, LINE_TYPE_NUM> lt_left = encode(lane_segment.left_line_type);
     const Eigen::Vector<double, LINE_TYPE_NUM> lt_right = encode(lane_segment.right_line_type);
 
@@ -302,7 +290,9 @@ LaneSegmentContext::create_tensor_data_from_indices(
       output_matrix(RB_X, col_idx) = right.x() - center.x();
       output_matrix(RB_Y, col_idx) = right.y() - center.y();
 
-      // Traffic Light (8-13) out of loop
+      // Traffic Light (8-13)
+      output_matrix.block<TRAFFIC_LIGHT_ONE_HOT_DIM, 1>(TRAFFIC_LIGHT, col_idx) =
+        traffic_light_one_hot_encoding;
 
       // Left LineType (14-23)
       output_matrix.block<LINE_TYPE_NUM, 1>(LINE_TYPE_LEFT_START, col_idx) = lt_left;
@@ -310,9 +300,6 @@ LaneSegmentContext::create_tensor_data_from_indices(
       // Right LineType (24-33)
       output_matrix.block<LINE_TYPE_NUM, 1>(LINE_TYPE_RIGHT_START, col_idx) = lt_right;
     }
-
-    add_traffic_light_one_hot_encoding_to_segment(
-      traffic_light_id_map, output_matrix, lane_segment, added_segments);
 
     speed_limit_vector[added_segments] = lane_segment.speed_limit_mps.value_or(0.0f);
     ++added_segments;

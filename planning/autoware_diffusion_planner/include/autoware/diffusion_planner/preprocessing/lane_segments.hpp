@@ -106,19 +106,6 @@ public:
 
 private:
   /**
-   * @brief Add traffic light one-hot encoding to a segment matrix.
-   *
-   * @param traffic_light_id_map Map of lanelet IDs to traffic signal information.
-   * @param segment_matrix The segment matrix to modify (in-place).
-   * @param lane_segment The lane segment containing traffic light information.
-   * @param col_counter The column counter for the segment.
-   */
-  void add_traffic_light_one_hot_encoding_to_segment(
-    const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
-    Eigen::MatrixXd & segment_matrix, const autoware::diffusion_planner::LaneSegment & lane_segment,
-    const int64_t col_counter) const;
-
-  /**
    * @brief Select route segment indices based on route and constraints.
    *
    * @param route The lanelet route to process.
