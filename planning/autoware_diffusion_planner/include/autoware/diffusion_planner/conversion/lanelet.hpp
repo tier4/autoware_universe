@@ -15,8 +15,6 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__CONVERSION__LANELET_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__CONVERSION__LANELET_HPP_
 
-#include "autoware/diffusion_planner/polyline.hpp"
-
 #include <lanelet2_core/LaneletMap.h>
 
 #include <cstdint>
@@ -49,6 +47,69 @@ const std::map<std::string, LineType> LINE_TYPE_MAP = {
   {"line_thin", LINE_TYPE_LINE_THIN},     {"pedestrian_marking", LINE_TYPE_PEDESTRIAN_MARKING},
   {"road_border", LINE_TYPE_ROAD_BORDER}, {"road_shoulder", LINE_TYPE_ROAD_SHOULDER},
   {"virtual", LINE_TYPE_VIRTUAL},         {"zebra_marking", LINE_TYPE_ZEBRA_MARKING}};
+
+struct LanePoint
+{
+  static constexpr size_t POINT_DIM = 3;
+
+  // Construct a new instance filling all elements by `0.0f`.
+  LanePoint() : data_({0.0}) {}
+
+  /**
+   * @brief Construct a new instance with specified values.
+   *
+   * @param x X position.
+   * @param y Y position.
+   * @param z Z position.
+   */
+  LanePoint(const double x, const double y, const double z) : data_({x, y, z}), x_(x), y_(y), z_(z)
+  {
+  }
+
+  // Construct a new instance filling all elements by `0.0f`.
+  static LanePoint empty() noexcept { return {}; }
+
+  // Return the point state dimensions `D`.
+  static size_t dim() { return POINT_DIM; }
+
+  // Return the x position of the point.
+  [[nodiscard]] double x() const { return x_; }
+
+  // Return the y position of the point.
+  [[nodiscard]] double y() const { return y_; }
+
+  // Return the z position of the point.
+  [[nodiscard]] double z() const { return z_; }
+
+  /**
+   * @brief Return the distance between myself and another one.
+   *
+   * @param other Another point.
+   * @return double Distance between myself and another one.
+   */
+  [[nodiscard]] double distance(const LanePoint & other) const
+  {
+    const double diff_x = x_ - other.x();
+    const double diff_y = y_ - other.y();
+    const double diff_z = z_ - other.z();
+    return std::sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
+  }
+
+  [[nodiscard]] LanePoint lerp(const LanePoint & other, double t) const
+  {
+    // Interpolate position
+    const double new_x = x_ + t * (other.x_ - x_);
+    const double new_y = y_ + t * (other.y_ - y_);
+    const double new_z = z_ + t * (other.z_ - z_);
+    return LanePoint{new_x, new_y, new_z};
+  }
+
+private:
+  std::array<double, POINT_DIM> data_;
+  double x_{0.0}, y_{0.0}, z_{0.0};
+};
+
+using Polyline = std::vector<LanePoint>;
 
 struct LaneSegment
 {

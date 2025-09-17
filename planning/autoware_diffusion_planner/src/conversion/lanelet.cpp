@@ -14,7 +14,6 @@
 
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
 
-#include "autoware/diffusion_planner/polyline.hpp"
 #include "autoware_utils_math/unit_conversion.hpp"
 
 #include <autoware_lanelet2_extension/regulatory_elements/Forward.hpp>

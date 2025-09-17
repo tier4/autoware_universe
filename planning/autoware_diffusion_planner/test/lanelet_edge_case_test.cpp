@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
-#include "autoware/diffusion_planner/polyline.hpp"
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
