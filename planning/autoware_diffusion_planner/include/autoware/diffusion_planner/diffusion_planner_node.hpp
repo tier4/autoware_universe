@@ -115,6 +115,7 @@ struct DiffusionPlannerParams
   bool update_traffic_light_group_info;
   bool keep_last_traffic_light_group_info;
   double traffic_light_group_msg_timeout_seconds;
+  bool use_route_handler;
   int batch_size;
   std::vector<double> temperature_list;
 };
