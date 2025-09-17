@@ -51,16 +51,6 @@ using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::LaneletSegment;
 
 /**
- * @brief Represents a column index with its associated distance and whether it is inside a mask
- * range.
- */
-struct ColWithDistance
-{
-  int64_t index;            //!< Column index in the input matrix.
-  float distance_squared;  //!< Squared distance from the center.
-};
-
-/**
  * @brief Context class that encapsulates static lane segment processing data and operations.
  *
  * This class combines the commonly used static parameters (matrix, mappings, and lanelet map)

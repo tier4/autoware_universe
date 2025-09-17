@@ -142,6 +142,12 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
   const int64_t max_segments) const
 {
+  struct ColWithDistance
+  {
+    int64_t index;           //!< Column index in the input matrix.
+    float distance_squared;  //!< Squared distance from the center.
+  };
+
   // Step 1: Compute distances
   std::vector<ColWithDistance> distances;
   distances.reserve(lane_segments_.size());
