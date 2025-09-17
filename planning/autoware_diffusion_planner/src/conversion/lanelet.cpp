@@ -50,6 +50,15 @@ inline double point_distance(const LanePoint & lhs, const LanePoint & rhs)
   return std::sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
 }
 
+inline LanePoint point_lerp(const LanePoint & lhs, const LanePoint & rhs, double t)
+{
+  // Interpolate position
+  const double new_x = lhs.x() + t * (rhs.x() - lhs.x());
+  const double new_y = lhs.y() + t * (rhs.y() - lhs.y());
+  const double new_z = lhs.z() + t * (rhs.z() - lhs.z());
+  return LanePoint{new_x, new_y, new_z};
+}
+
 inline bool is_lane_like(const lanelet::Optional<std::string> & subtype)
 {
   if (!subtype) {
@@ -115,7 +124,7 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
     double t = (target - seg_start) / safe_seg_length;
     // Clamp t to [0, 1] to ensure we don't extrapolate
     t = std::max(0.0, std::min(1.0, t));
-    result.push_back(input[seg_idx].lerp(input[seg_idx + 1], t));
+    result.push_back(point_lerp(input[seg_idx], input[seg_idx + 1], t));
   }
   // Always include the last point
   result.push_back(input.back());

@@ -83,15 +83,6 @@ struct LanePoint
   // Return the z position of the point.
   [[nodiscard]] double z() const { return z_; }
 
-  [[nodiscard]] LanePoint lerp(const LanePoint & other, double t) const
-  {
-    // Interpolate position
-    const double new_x = x_ + t * (other.x_ - x_);
-    const double new_y = y_ + t * (other.y_ - y_);
-    const double new_z = z_ + t * (other.z_ - z_);
-    return LanePoint{new_x, new_y, new_z};
-  }
-
 private:
   std::array<double, POINT_DIM> data_;
   double x_{0.0}, y_{0.0}, z_{0.0};
