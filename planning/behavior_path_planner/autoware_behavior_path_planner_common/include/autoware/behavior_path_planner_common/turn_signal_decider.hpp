@@ -354,7 +354,7 @@ private:
     const lanelet::ConstLanelet & current_lanelet, const RouteHandler & route_handler,
     double default_backward_length, int max_backward_depth);
 
-  double calculateMaxDistanceToEntry(
+  double calculateMaxDistanceToDesiredStartPoint(
     const lanelet::ConstLanelet & start_lanelet,
     const std::shared_ptr<const lanelet::autoware::Roundabout> & roundabout,
     const RouteHandler & route_handler, int max_backward_depth);

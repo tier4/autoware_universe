@@ -1043,8 +1043,8 @@ double TurnSignalDecider::calculateRoundaboutBackwardLength(
       roundabout->isInternalLanelet(current_lanelet.id()) ||
       roundabout->isExitLanelet(current_lanelet.id())) {
       // Calculate the maximum distance from current lanelet to any entry lanelet
-      const double distance_to_entry =
-        calculateMaxDistanceToEntry(current_lanelet, roundabout, route_handler, max_backward_depth);
+      const double distance_to_entry = calculateMaxDistanceToDesiredStartPoint(
+        current_lanelet, roundabout, route_handler, max_backward_depth);
       max_backward_length = std::max(max_backward_length, distance_to_entry);
     }
   }
@@ -1052,7 +1052,7 @@ double TurnSignalDecider::calculateRoundaboutBackwardLength(
   return max_backward_length;
 }
 
-double TurnSignalDecider::calculateMaxDistanceToEntry(
+double TurnSignalDecider::calculateMaxDistanceToDesiredStartPoint(
   const lanelet::ConstLanelet & start_lanelet,
   const std::shared_ptr<const lanelet::autoware::Roundabout> & roundabout,
   const RouteHandler & route_handler, int max_backward_depth)
@@ -1071,6 +1071,7 @@ double TurnSignalDecider::calculateMaxDistanceToEntry(
   visited_lanelets.insert(start_lanelet.id());
 
   double max_total_distance = 0.0;
+  std::set<lanelet::Id> desired_start_lanelet_ids;
 
   while (!search_stack.empty()) {
     const SearchNode current_node = search_stack.back();
@@ -1093,22 +1094,31 @@ double TurnSignalDecider::calculateMaxDistanceToEntry(
 
     // Process each previous lanelet
     for (const auto & prev_lanelet : previous_lanelets) {
+      if (visited_lanelets.count(prev_lanelet.id())) {
+        continue;  // Already processed this lanelet
+      }
       if (roundabout->isEntryLanelet(prev_lanelet.id())) {
-        // Found an entry lanelet - calculate total distance including entry lanelet length
-        const double entry_lanelet_length =
+        // Found an entry lanelet - get the desired start point if available
+        const auto it = roundabout_desired_start_point_association_.find(prev_lanelet.id());
+        if (it != roundabout_desired_start_point_association_.end()) {
+          // Try to find the lanelet that contains the desired start point
+          lanelet::ConstLanelet desired_start_lanelet;
+          if (route_handler.getClosestLaneletWithinRoute(it->second, &desired_start_lanelet)) {
+            desired_start_lanelet_ids.insert(desired_start_lanelet.id());
+          }
+        }
+      } else if (desired_start_lanelet_ids.count(prev_lanelet.id())) {
+        // Found a previously identified desired start lanelet - update max distance
+        const double desired_start_lanelet_length =
           lanelet::geometry::length(lanelet::utils::to2D(prev_lanelet.centerline3d()));
         max_total_distance = std::max(
-          max_total_distance, accumulated_distance_with_current_lanelet + entry_lanelet_length);
-
-      } else if (roundabout->isRoundaboutLanelet(prev_lanelet.id())) {
-        // Found another roundabout lanelet - continue search if not yet visited
-        if (visited_lanelets.count(prev_lanelet.id())) {
-          continue;  // Already processed this lanelet
-        }
-        visited_lanelets.insert(prev_lanelet.id());
-        search_stack.push_back(
-          {prev_lanelet, accumulated_distance_with_current_lanelet, current_node.depth + 1});
+          max_total_distance,
+          accumulated_distance_with_current_lanelet + desired_start_lanelet_length);
       }
+      // Found another roundabout lanelet - continue search if not yet visited
+      visited_lanelets.insert(prev_lanelet.id());
+      search_stack.push_back(
+        {prev_lanelet, accumulated_distance_with_current_lanelet, current_node.depth + 1});
     }
   }
 
