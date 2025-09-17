@@ -393,6 +393,7 @@ InputDataMap DiffusionPlanner::create_input_data()
     return {};
   }
 
+  route_handler_->setRoute(*route_ptr_);
   if (params_.update_traffic_light_group_info) {
     const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
     preprocess::process_traffic_signals(
@@ -467,9 +468,11 @@ InputDataMap DiffusionPlanner::create_input_data()
 
   // route data on ego reference frame
   {
+    const bool use_route_handler = true;
     const std::vector<int64_t> segment_indices =
-      lane_segment_context_->select_route_segment_indices(
-        *route_ptr_, center_x, center_y, NUM_SEGMENTS_IN_ROUTE);
+      (use_route_handler ? select_route_segment_indices_by_route_handler(*ego_kinematic_state)
+                         : lane_segment_context_->select_route_segment_indices(
+                             *route_ptr_, center_x, center_y, NUM_SEGMENTS_IN_ROUTE));
     const auto [route_lanes, route_lanes_speed_limit] =
       lane_segment_context_->create_tensor_data_from_indices(
         map_to_ego_transform, traffic_light_id_map_, segment_indices, NUM_SEGMENTS_IN_ROUTE);
@@ -479,7 +482,7 @@ InputDataMap DiffusionPlanner::create_input_data()
 
   // goal pose
   {
-    const auto & goal_pose = route_ptr_->goal_pose;
+    const auto & goal_pose = route_handler_->getGoalPose();
 
     // Convert goal pose to 4x4 transformation matrix
     const Eigen::Matrix4d goal_pose_map_4x4 = utils::pose_to_matrix4f(goal_pose);
@@ -867,6 +870,7 @@ void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
   // Create LaneSegmentContext with the static data
   lane_segment_context_ = std::make_unique<preprocess::LaneSegmentContext>(lanelet_map_ptr);
 
+  route_handler_->setMap(*map_msg);
   is_map_loaded_ = true;
 }
 
