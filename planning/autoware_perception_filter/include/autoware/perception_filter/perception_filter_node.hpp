@@ -152,25 +152,32 @@ private:
 
   /**
    * @brief Create filtering polygon when RTC is activated
+   * @param ego_pose Current ego vehicle pose
    */
-  void createFilteringPolygon();
+  void createFilteringPolygon(const geometry_msgs::msg::Pose & ego_pose);
 
   /**
    * @brief Update filtering polygon activation status
    * @details Deactivates polygon when ego vehicle passes through it
+   * @param ego_pose Current ego vehicle pose
    */
-  void updateFilteringPolygonStatus();
+  void updateFilteringPolygonStatus(const geometry_msgs::msg::Pose & ego_pose);
 
   /**
-   * @brief Create visualization markers for trajectory polygons
+   * @brief Create visualization markers for trajectory polygons with custom color
    * @param traj_polygons Vector of trajectory polygons to visualize
    * @param frame_id Frame ID for the markers
    * @param marker_namespace Namespace for the markers
+   * @param r Red color component (0.0-1.0)
+   * @param g Green color component (0.0-1.0)
+   * @param b Blue color component (0.0-1.0)
+   * @param a Alpha color component (0.0-1.0)
    * @return MarkerArray containing polygon visualization markers
    */
   visualization_msgs::msg::MarkerArray createTrajectoryPolygonMarkers(
     const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
-    const std::string & frame_id, const std::string & marker_namespace);
+    const std::string & frame_id, const std::string & marker_namespace, double r, double g,
+    double b, double a);
 
   /**
    * @brief Create visualization markers for crop box bounding polygons
