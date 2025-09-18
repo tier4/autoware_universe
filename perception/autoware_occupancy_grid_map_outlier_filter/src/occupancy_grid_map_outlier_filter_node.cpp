@@ -250,7 +250,7 @@ OccupancyGridMapOutlierFilterComponent::OccupancyGridMapOutlierFilterComponent(
   tf2_ = std::make_shared<tf2_ros::Buffer>(get_clock());
   tf2_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf2_);
 
-  /* Subscriber and publisher */
+  /* Subscribers */
   pointcloud_sub_.subscribe(this, "~/input/pointcloud", rmw_qos_profile_sensor_data);
   occupancy_grid_map_sub_.subscribe(
     this, "~/input/occupancy_grid_map", rclcpp::QoS{1}.get_rmw_qos_profile());
@@ -258,7 +258,13 @@ OccupancyGridMapOutlierFilterComponent::OccupancyGridMapOutlierFilterComponent(
   sync_ptr_->registerCallback(std::bind(
     &OccupancyGridMapOutlierFilterComponent::onOccupancyGridMapAndPointCloud2, this,
     std::placeholders::_1, std::placeholders::_2));
-  pointcloud_pub_ = create_publisher<PointCloud2>("~/output/pointcloud", rclcpp::SensorDataQoS());
+
+  /* Publisher */
+  rclcpp::PublisherOptions pointcloud_pub_options = rclcpp::PublisherOptions();
+  pointcloud_pub_options.qos_overriding_options =
+    rclcpp::QosOverridingOptions::with_default_policies();
+
+  pointcloud_pub_ = create_publisher<PointCloud2>("~/output/pointcloud", rclcpp::SensorDataQoS(), pointcloud_pub_options);
 
   /* Radius search 2d filter */
   if (use_radius_search_2d_filter) {
