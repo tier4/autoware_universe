@@ -29,6 +29,7 @@
 #include <boost/geometry/index/rtree.hpp>
 
 #include <pcl/filters/crop_box.h>
+#include <pcl/filters/extract_indices.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -511,6 +512,50 @@ std::vector<autoware::universe_utils::Polygon2d> generateCropBoxPolygons(
   return crop_box_polygons;
 }
 
+std::vector<autoware::universe_utils::Polygon2d> generateSegmentedCropBoxPolygons(
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons)
+{
+  std::vector<autoware::universe_utils::Polygon2d> segmented_crop_box_polygons;
+
+  if (traj_polygons.empty()) {
+    return segmented_crop_box_polygons;
+  }
+
+  // Create a crop box for each trajectory polygon
+  for (const auto & poly : traj_polygons) {
+    if (poly.outer().empty()) {
+      continue;
+    }
+
+    // Calculate bounding box for this polygon
+    double x_min = std::numeric_limits<double>::max();
+    double x_max = std::numeric_limits<double>::lowest();
+    double y_min = std::numeric_limits<double>::max();
+    double y_max = std::numeric_limits<double>::lowest();
+
+    for (const auto & point : poly.outer()) {
+      x_min = std::min(x_min, point.x());
+      x_max = std::max(x_max, point.x());
+      y_min = std::min(y_min, point.y());
+      y_max = std::max(y_max, point.y());
+    }
+
+    // Create crop box for this polygon
+    autoware::universe_utils::Polygon2d crop_box;
+    boost::geometry::append(crop_box, autoware::universe_utils::Point2d(x_min, y_min));
+    boost::geometry::append(crop_box, autoware::universe_utils::Point2d(x_max, y_min));
+    boost::geometry::append(crop_box, autoware::universe_utils::Point2d(x_max, y_max));
+    boost::geometry::append(crop_box, autoware::universe_utils::Point2d(x_min, y_max));
+    boost::geometry::append(
+      crop_box, autoware::universe_utils::Point2d(x_min, y_min));  // Close polygon
+    boost::geometry::correct(crop_box);
+
+    segmented_crop_box_polygons.push_back(crop_box);
+  }
+
+  return segmented_crop_box_polygons;
+}
+
 autoware::universe_utils::Polygon2d combineTrajectoryPolygons(
   const std::vector<autoware::universe_utils::Polygon2d> & polygons)
 {
@@ -806,6 +851,167 @@ std::vector<autoware::universe_utils::Polygon2d> transformPolygonsToMap(
   }
 
   return map_polygons;
+}
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr extractPointsOutsideCropBox(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const autoware::universe_utils::Polygon2d & crop_box_polygon)
+{
+  auto filtered_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+
+  if (input_pointcloud_ptr->points.empty() || crop_box_polygon.outer().empty()) {
+    return filtered_pointcloud_ptr;
+  }
+
+  // Calculate bounding box from crop box polygon
+  double x_min = std::numeric_limits<double>::max();
+  double x_max = std::numeric_limits<double>::lowest();
+  double y_min = std::numeric_limits<double>::max();
+  double y_max = std::numeric_limits<double>::lowest();
+
+  for (const auto & point : crop_box_polygon.outer()) {
+    x_min = std::min(x_min, point.x());
+    x_max = std::max(x_max, point.x());
+    y_min = std::min(y_min, point.y());
+    y_max = std::max(y_max, point.y());
+  }
+
+  // Create PCL CropBox filter
+  pcl::CropBox<pcl::PointXYZ> crop_box_filter;
+
+  // Set crop box parameters (center and size)
+  const double center_x = (x_min + x_max) / 2.0;
+  const double center_y = (y_min + y_max) / 2.0;
+  const double center_z = 0.0;  // Z center at ground level
+
+  const double size_x = x_max - x_min;
+  const double size_y = y_max - y_min;
+  const double size_z = 100.0;  // Large Z size to include all points vertically
+
+  // Set the crop box center and size
+  crop_box_filter.setTranslation(Eigen::Vector3f(center_x, center_y, center_z));
+  crop_box_filter.setInputCloud(input_pointcloud_ptr);
+
+  // Set crop box size (half-widths)
+  crop_box_filter.setMin(Eigen::Vector4f(-size_x / 2.0, -size_y / 2.0, -size_z / 2.0, 1.0));
+  crop_box_filter.setMax(Eigen::Vector4f(size_x / 2.0, size_y / 2.0, size_z / 2.0, 1.0));
+
+  // First, get points inside the crop box
+  auto points_inside_cropbox = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  crop_box_filter.filter(*points_inside_cropbox);
+
+  // Get indices of points inside the crop box
+  pcl::PointIndices::Ptr indices_inside = std::make_shared<pcl::PointIndices>();
+  crop_box_filter.getRemovedIndices(*indices_inside);
+
+  // Use ExtractIndices to get points outside the crop box
+  pcl::ExtractIndices<pcl::PointXYZ> extract_indices;
+  extract_indices.setInputCloud(input_pointcloud_ptr);
+  extract_indices.setIndices(indices_inside);
+  extract_indices.setNegative(true);  // Extract points NOT in the indices (outside crop box)
+  extract_indices.filter(*filtered_pointcloud_ptr);
+
+  // Set pointcloud properties
+  filtered_pointcloud_ptr->width = filtered_pointcloud_ptr->points.size();
+  filtered_pointcloud_ptr->height = 1;
+  filtered_pointcloud_ptr->is_dense = true;
+  filtered_pointcloud_ptr->header = input_pointcloud_ptr->header;
+
+  return filtered_pointcloud_ptr;
+}
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr extractPointsInsideCropBox(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const autoware::universe_utils::Polygon2d & crop_box_polygon)
+{
+  auto filtered_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+
+  if (input_pointcloud_ptr->points.empty() || crop_box_polygon.outer().empty()) {
+    return filtered_pointcloud_ptr;
+  }
+
+  // Calculate bounding box from crop box polygon
+  double x_min = std::numeric_limits<double>::max();
+  double x_max = std::numeric_limits<double>::lowest();
+  double y_min = std::numeric_limits<double>::max();
+  double y_max = std::numeric_limits<double>::lowest();
+
+  for (const auto & point : crop_box_polygon.outer()) {
+    x_min = std::min(x_min, point.x());
+    x_max = std::max(x_max, point.x());
+    y_min = std::min(y_min, point.y());
+    y_max = std::max(y_max, point.y());
+  }
+
+  // Create PCL CropBox filter
+  pcl::CropBox<pcl::PointXYZ> crop_box_filter;
+
+  // Set crop box parameters (center and size)
+  const double center_x = (x_min + x_max) / 2.0;
+  const double center_y = (y_min + y_max) / 2.0;
+  const double center_z = 0.0;  // Z center at ground level
+
+  const double size_x = x_max - x_min;
+  const double size_y = y_max - y_min;
+  const double size_z = 100.0;  // Large Z size to include all points vertically
+
+  // Set the crop box center and size
+  crop_box_filter.setTranslation(Eigen::Vector3f(center_x, center_y, center_z));
+  crop_box_filter.setInputCloud(input_pointcloud_ptr);
+
+  // Set crop box size (half-widths)
+  crop_box_filter.setMin(Eigen::Vector4f(-size_x/2.0, -size_y/2.0, -size_z/2.0, 1.0));
+  crop_box_filter.setMax(Eigen::Vector4f(size_x/2.0, size_y/2.0, size_z/2.0, 1.0));
+
+  // Get points inside the crop box
+  crop_box_filter.filter(*filtered_pointcloud_ptr);
+
+  // Set pointcloud properties
+  filtered_pointcloud_ptr->width = filtered_pointcloud_ptr->points.size();
+  filtered_pointcloud_ptr->height = 1;
+  filtered_pointcloud_ptr->is_dense = true;
+  filtered_pointcloud_ptr->header = input_pointcloud_ptr->header;
+
+  return filtered_pointcloud_ptr;
+}
+
+pcl::PointIndices::Ptr extractIndicesInsideCropBox(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const autoware::universe_utils::Polygon2d & crop_box_polygon)
+{
+  auto indices_inside = std::make_shared<pcl::PointIndices>();
+
+  if (input_pointcloud_ptr->points.empty() || crop_box_polygon.outer().empty()) {
+    return indices_inside;
+  }
+
+  // Calculate bounding box
+  double x_min = std::numeric_limits<double>::max();
+  double x_max = std::numeric_limits<double>::lowest();
+  double y_min = std::numeric_limits<double>::max();
+  double y_max = std::numeric_limits<double>::lowest();
+
+  for (const auto & point : crop_box_polygon.outer()) {
+    x_min = std::min(x_min, point.x());
+    x_max = std::max(x_max, point.x());
+    y_min = std::min(y_min, point.y());
+    y_max = std::max(y_max, point.y());
+  }
+
+  pcl::CropBox<pcl::PointXYZ> crop_box_filter;
+  crop_box_filter.setInputCloud(input_pointcloud_ptr);
+
+  // Set Min/Max in absolute coordinates
+  crop_box_filter.setMin(Eigen::Vector4f(x_min, y_min, -100.0, 1.0));
+  crop_box_filter.setMax(Eigen::Vector4f(x_max, y_max, 100.0, 1.0));
+
+  // Set to keep points inside the box
+  crop_box_filter.setNegative(false);
+
+  // Filter and get indices
+  crop_box_filter.filter(indices_inside->indices);
+
+  return indices_inside;
 }
 
 }  // namespace autoware::perception_filter

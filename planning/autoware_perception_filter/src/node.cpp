@@ -56,6 +56,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -335,12 +336,18 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   const auto start_time = std::chrono::high_resolution_clock::now();
   latest_pointcloud_ = msg;
 
+  RCLCPP_DEBUG(get_logger(), "onPointCloud: Processing started - Input point count: %zu", msg->data.size());
+
   // Initialize debug marker array for visualization
   visualization_msgs::msg::MarkerArray debug_markers;
 
   if (
     !isDataReadyForPointCloud() || !enable_pointcloud_filtering_ ||
     latest_pointcloud_->data.empty()) {
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Early return - isDataReadyForPointCloud: %s, enable_pointcloud_filtering: %s, data.empty: %s",
+                 isDataReadyForPointCloud() ? "true" : "false",
+                 enable_pointcloud_filtering_ ? "true" : "false",
+                 latest_pointcloud_->data.empty() ? "true" : "false");
     publishPassthroughMessage(
       *msg, filtered_pointcloud_pub_, pointcloud_processing_time_pub_, start_time);
     return;
@@ -353,24 +360,34 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   const bool rtc_is_activated =
     rtc_interface_->isRegistered(rtc_uuid_) && rtc_interface_->isActivated(rtc_uuid_);
 
+  RCLCPP_DEBUG(get_logger(), "onPointCloud: RTC state - rtc_became_active: %s, is_stopped: %s, filtering_polygon_is_active: %s, rtc_is_activated: %s",
+               rtc_became_active_in_pointcloud ? "true" : "false",
+               is_stopped ? "true" : "false",
+               filtering_polygon_is_active ? "true" : "false",
+               rtc_is_activated ? "true" : "false");
+
   auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
   if (!ego_pose) {
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Early return - ego_pose could not be obtained");
     RCLCPP_WARN(get_logger(), "Ego pose not available for polygon status update");
     return;
   }
 
   // Update filtering polygon status
   if (filtering_polygon_is_active) {
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Updating filtering polygon status");
     updateFilteringPolygonStatus(*ego_pose);
   }
 
   if (rtc_became_active_in_pointcloud) {
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: RTC became active, creating filtering polygon");
     createFilteringPolygon(*ego_pose);
   }
 
   // When RTC is ready for approval (but not yet approved), publish pointcloud that will be filtered
   // upon approval as planning factors
   if (is_stopped && !rtc_is_activated) {
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Starting pointcloud processing for planning factors");
     autoware::universe_utils::ScopedTimeTrack st_classify(
       "prepare_pointcloud_for_planning_factors", *time_keeper_);
 
@@ -444,10 +461,14 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       autoware::universe_utils::ScopedTimeTrack st_publish(
         "calculate_would_be_filtered_point_cloud", *time_keeper_);
 
+      RCLCPP_DEBUG(get_logger(), "onPointCloud: Starting pointcloud filtering for planning factors");
+
       // Convert ROS pointcloud to PCL pointcloud
       pcl::PointCloud<pcl::PointXYZ>::Ptr input_pointcloud_ptr =
         std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
       pcl::fromROSMsg(*msg, *input_pointcloud_ptr);
+
+      RCLCPP_DEBUG(get_logger(), "onPointCloud: Input pointcloud conversion completed - Point count: %zu", input_pointcloud_ptr->points.size());
 
       RCLCPP_DEBUG(
         get_logger(), "Pointcloud filtering (planning factors): input points=%zu",
@@ -456,6 +477,9 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       // Filter pointcloud using multiple trajectory polygons
       const auto [filtered_pcl_cloud, indices_in_polygons] = filterByMultiTrajectoryPolygon(
         input_pointcloud_ptr, difference_polygons, time_keeper_.get());
+
+      RCLCPP_DEBUG(get_logger(), "onPointCloud: Planning factors filtering completed - Filtered point count: %zu, Indices in polygons: %zu",
+                   filtered_pcl_cloud->points.size(), indices_in_polygons->indices.size());
 
       RCLCPP_DEBUG(
         get_logger(),
@@ -469,19 +493,24 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       would_be_filtered_point_cloud_ = filtered_ros_cloud;
     }
   } else {
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Skipping planning factors processing - is_stopped: %s, rtc_is_activated: %s",
+                 is_stopped ? "true" : "false", rtc_is_activated ? "true" : "false");
     would_be_filtered_point_cloud_ = nullptr;
   }
 
   if (filtering_polygon_.is_active) {
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Starting filtering processing with active polygon");
     autoware::universe_utils::ScopedTimeTrack st_publish("filter_pointcloud", *time_keeper_);
     pcl::PointCloud<pcl::PointXYZ>::Ptr input_pointcloud_ptr =
       std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
     pcl::fromROSMsg(*msg, *input_pointcloud_ptr);
 
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Input pointcloud for active polygon - Point count: %zu", input_pointcloud_ptr->points.size());
+
     RCLCPP_DEBUG(
       get_logger(), "Pointcloud filtering (active polygon): input points=%zu",
       input_pointcloud_ptr->points.size());
-    constexpr double resample_interval = 0.5;
+    constexpr double resample_interval = 3.0;
     const auto resampled_trajectory = autoware::motion_utils::resampleTrajectory(
       *planning_trajectory_, resample_interval, false, true, true);
 
@@ -495,6 +524,137 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
 
     const auto difference_polygons =
       autoware::perception_filter::createDifferencePolygons(traj_max_polygons, traj_min_polygons);
+
+    // Debug: Print trajectory polygons coordinates
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Trajectory polygon coordinates (%zu polygons):", traj_max_polygons.size());
+    for (size_t i = 0; i < std::min(static_cast<size_t>(3), traj_max_polygons.size()); ++i) {
+      const auto & polygon = traj_max_polygons[i];
+      RCLCPP_DEBUG(get_logger(), "  Trajectory polygon[%zu] (%zu points):", i, polygon.outer().size());
+      for (size_t j = 0; j < std::min(static_cast<size_t>(4), polygon.outer().size()); ++j) {
+        const auto & point = polygon.outer()[j];
+        RCLCPP_DEBUG(get_logger(), "    Point[%zu]: (%.3f, %.3f)", j, point.x(), point.y());
+      }
+    }
+
+    // Generate segmented crop box polygons for efficient filtering based on trajectory length
+    const auto crop_box_polygons =
+      autoware::perception_filter::generateSegmentedCropBoxPolygons(traj_max_polygons);
+
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Crop box polygon generation completed - Polygon count: %zu", crop_box_polygons.size());
+
+    // Apply crop box filtering to keep points inside of any crop box polygon
+    pcl::PointCloud<pcl::PointXYZ>::Ptr crop_box_filtered_pointcloud;
+    {
+      autoware::universe_utils::ScopedTimeTrack st_cropbox("crop_box_filtering", *time_keeper_);
+
+      const size_t initial_point_count = input_pointcloud_ptr->points.size();
+      RCLCPP_DEBUG(get_logger(), "onPointCloud: Starting crop box filtering - Input point count: %zu", initial_point_count);
+
+      // Collect all indices from all crop box polygons
+      std::unordered_set<int> all_indices_set;
+
+      // For each crop box polygon, collect indices of points inside it
+      for (size_t i = 0; i < crop_box_polygons.size(); ++i) {
+        const auto & crop_box_polygon = crop_box_polygons[i];
+        const size_t before_count = all_indices_set.size();
+
+        // Extract indices of points that are inside this crop box polygon
+        auto indices_inside_current_polygon =
+          autoware::perception_filter::extractIndicesInsideCropBox(
+            input_pointcloud_ptr, crop_box_polygon);
+
+        // Add indices to the set (automatically handles duplicates)
+        for (const auto & index : indices_inside_current_polygon->indices) {
+          all_indices_set.insert(index);
+        }
+
+        const size_t after_count = all_indices_set.size();
+        const size_t added_count = after_count - before_count;
+        const size_t current_polygon_count = indices_inside_current_polygon->indices.size();
+
+        RCLCPP_DEBUG(get_logger(), "onPointCloud: Polygon[%zu] filtering - Before: %zu points, After: %zu points, Added: %zu points (In polygon: %zu points)",
+                     i, before_count, after_count, added_count, current_polygon_count);
+      }
+
+      // Convert set to vector for PCL ExtractIndices
+      pcl::PointIndices::Ptr final_indices = std::make_shared<pcl::PointIndices>();
+      final_indices->indices.reserve(all_indices_set.size());
+      for (const auto & index : all_indices_set) {
+        final_indices->indices.push_back(index);
+      }
+
+      // Extract points using the combined indices
+      pcl::ExtractIndices<pcl::PointXYZ> extract_indices;
+      extract_indices.setInputCloud(input_pointcloud_ptr);
+      extract_indices.setIndices(final_indices);
+      extract_indices.setNegative(false);  // Extract points in the indices
+
+      crop_box_filtered_pointcloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+      extract_indices.filter(*crop_box_filtered_pointcloud);
+
+      const size_t final_point_count = crop_box_filtered_pointcloud->points.size();
+      const double keep_ratio = initial_point_count > 0 ?
+        (static_cast<double>(final_point_count) / initial_point_count) * 100.0 : 0.0;
+
+      RCLCPP_DEBUG(get_logger(), "onPointCloud: Crop box filtering completed - Input: %zu points, Output: %zu points (points in crop box), Keep ratio: %.1f%%",
+                   initial_point_count, final_point_count, keep_ratio);
+    }
+
+    // Filter pointcloud to keep points that are NOT in difference_polygons
+    // First, get points that ARE in difference_polygons using the updated function
+    const auto [points_in_difference_polygons, indices_in_polygons] =
+      filterByMultiTrajectoryPolygon(
+        crop_box_filtered_pointcloud, difference_polygons, time_keeper_.get());
+
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Active polygon filtering result - Points in polygons: %zu, Indices count: %zu",
+                 points_in_difference_polygons->points.size(), indices_in_polygons->indices.size());
+
+    RCLCPP_DEBUG(
+      get_logger(),
+      "Pointcloud filtering (active polygon): points_in_difference_polygons=%zu, "
+      "indices_in_polygons=%zu",
+      points_in_difference_polygons->points.size(), indices_in_polygons->indices.size());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_pcl_pointcloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+    {
+      autoware::universe_utils::ScopedTimeTrack st_debug("extract_indices", *time_keeper_);
+      pcl::ExtractIndices<pcl::PointXYZ> extract_indices;
+      extract_indices.setInputCloud(crop_box_filtered_pointcloud);
+      extract_indices.setIndices(indices_in_polygons);
+      extract_indices.setNegative(true);  // ポリゴン内の点を除去
+      extract_indices.filter(*filtered_pcl_pointcloud);
+    }
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: Final filtering with active polygon completed - Final point count: %zu", filtered_pcl_pointcloud->points.size());
+
+    RCLCPP_DEBUG(
+      get_logger(), "Pointcloud filtering (active polygon): final filtered points=%zu",
+      filtered_pcl_pointcloud->points.size());
+
+    // Convert PCL pointcloud to ROS PointCloud2 message
+    sensor_msgs::msg::PointCloud2 filtered_pointcloud;
+    pcl::toROSMsg(*filtered_pcl_pointcloud, filtered_pointcloud);
+    filtered_pointcloud.header = msg->header;
+
+    // Publish filtered pointcloud
+    {
+      autoware::universe_utils::ScopedTimeTrack st_publish(
+        "publish_filtered_pointcloud", *time_keeper_);
+
+      RCLCPP_DEBUG(get_logger(), "onPointCloud: Publishing filtered pointcloud");
+      filtered_pointcloud_pub_->publish(filtered_pointcloud);
+
+      published_time_publisher_->publish_if_subscribed(
+        filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
+      // Publish processing time
+      const auto processing_time = std::chrono::duration<double, std::milli>(
+                                     std::chrono::high_resolution_clock::now() - start_time)
+                                     .count();
+
+      autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
+      processing_time_msg.stamp = this->now();
+      processing_time_msg.data = processing_time;
+      pointcloud_processing_time_pub_->publish(processing_time_msg);
+    }
 
     // Debug visualization for active polygon filtering
     {
@@ -513,6 +673,11 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       auto min_polygon_markers = createTrajectoryPolygonMarkers(
         traj_min_polygons_transformed, "map", "traj_min_polygons", 0.0, 1.0, 0.0, 0.8);
 
+      // Create crop box polygon markers
+      const auto crop_box_polygons_transformed =
+        autoware::perception_filter::transformPolygonsToMap(crop_box_polygons, transform_listener_);
+      auto crop_box_markers = createCropBoxPolygonMarkers(crop_box_polygons_transformed, "map");
+
       // Combine markers into debug marker array
       debug_markers.markers.insert(
         debug_markers.markers.end(), difference_markers.markers.begin(),
@@ -520,61 +685,20 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       debug_markers.markers.insert(
         debug_markers.markers.end(), min_polygon_markers.markers.begin(),
         min_polygon_markers.markers.end());
-    }
-
-    // Filter pointcloud to keep points that are NOT in difference_polygons
-    // First, get points that ARE in difference_polygons using the updated function
-    const auto [points_in_difference_polygons, indices_in_polygons] =
-      filterByMultiTrajectoryPolygon(input_pointcloud_ptr, difference_polygons, time_keeper_.get());
-
-    RCLCPP_DEBUG(
-      get_logger(),
-      "Pointcloud filtering (active polygon): points_in_difference_polygons=%zu, "
-      "indices_in_polygons=%zu",
-      points_in_difference_polygons->points.size(), indices_in_polygons->indices.size());
-
-    pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_pcl_pointcloud(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::ExtractIndices<pcl::PointXYZ> extract_indices;
-    extract_indices.setInputCloud(input_pointcloud_ptr);
-    extract_indices.setIndices(indices_in_polygons);
-    extract_indices.setNegative(true);  // ポリゴン内の点を除去
-    extract_indices.filter(*filtered_pcl_pointcloud);
-
-    RCLCPP_DEBUG(
-      get_logger(), "Pointcloud filtering (active polygon): final filtered points=%zu",
-      filtered_pcl_pointcloud->points.size());
-
-    // Convert PCL pointcloud to ROS PointCloud2 message
-    sensor_msgs::msg::PointCloud2 filtered_pointcloud;
-    pcl::toROSMsg(*filtered_pcl_pointcloud, filtered_pointcloud);
-    filtered_pointcloud.header = msg->header;
-
-    // Publish filtered pointcloud
-    {
-      autoware::universe_utils::ScopedTimeTrack st_publish(
-        "publish_filtered_pointcloud", *time_keeper_);
-
-      filtered_pointcloud_pub_->publish(filtered_pointcloud);
-
-      published_time_publisher_->publish_if_subscribed(
-        filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
-      // Publish processing time
-      const auto processing_time = std::chrono::duration<double, std::milli>(
-                                     std::chrono::high_resolution_clock::now() - start_time)
-                                     .count();
-
-      autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-      processing_time_msg.stamp = this->now();
-      processing_time_msg.data = processing_time;
-      pointcloud_processing_time_pub_->publish(processing_time_msg);
+      debug_markers.markers.insert(
+        debug_markers.markers.end(), crop_box_markers.markers.begin(),
+        crop_box_markers.markers.end());
     }
   } else {
+    RCLCPP_DEBUG(get_logger(), "onPointCloud: No active polygon, executing passthrough processing");
     publishPassthroughMessage(
       *msg, filtered_pointcloud_pub_, pointcloud_processing_time_pub_, start_time);
   }
 
   // Publish debug markers
   polygon_debug_markers_pub_->publish(debug_markers);
+
+  RCLCPP_DEBUG(get_logger(), "onPointCloud: Processing completed");
 }
 
 sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(

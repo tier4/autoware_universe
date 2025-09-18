@@ -168,6 +168,14 @@ std::vector<autoware::universe_utils::Polygon2d> generateCropBoxPolygons(
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons);
 
 /**
+ * @brief Generate crop box polygon from trajectory polygons
+ * @param traj_polygons Trajectory polygons to create crop box from
+ * @return Vector containing a single crop box polygon
+ */
+std::vector<autoware::universe_utils::Polygon2d> generateSegmentedCropBoxPolygons(
+  const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons);
+
+/**
  * @brief Combine multiple trajectory polygons into a single polygon using union operation
  * @param polygons Vector of polygons to combine
  * @return Combined polygon (union of all input polygons)
@@ -243,6 +251,36 @@ std::vector<autoware::universe_utils::Polygon2d> transformPolygonsToMap(
 std::optional<Eigen::Matrix4d> getEigenTransform(
   const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener,
   const std::string & target_frame, const std::string & source_frame);
+
+/**
+ * @brief Extract points outside of a single crop box polygon
+ * @param input_pointcloud_ptr Input pointcloud to filter
+ * @param crop_box_polygon Single crop box polygon to check against
+ * @return Pointcloud containing only points outside the crop box polygon
+ */
+pcl::PointCloud<pcl::PointXYZ>::Ptr extractPointsOutsideCropBox(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const autoware::universe_utils::Polygon2d & crop_box_polygon);
+
+/**
+ * @brief Extract points inside of a single crop box polygon
+ * @param input_pointcloud_ptr Input pointcloud to filter
+ * @param crop_box_polygon Single crop box polygon to check against
+ * @return Pointcloud containing only points inside the crop box polygon
+ */
+pcl::PointCloud<pcl::PointXYZ>::Ptr extractPointsInsideCropBox(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const autoware::universe_utils::Polygon2d & crop_box_polygon);
+
+/**
+ * @brief Extract indices of points inside of a single crop box polygon
+ * @param input_pointcloud_ptr Input pointcloud to filter
+ * @param crop_box_polygon Single crop box polygon to check against
+ * @return Indices of points inside the crop box polygon
+ */
+pcl::PointIndices::Ptr extractIndicesInsideCropBox(
+  const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
+  const autoware::universe_utils::Polygon2d & crop_box_polygon);
 
 }  // namespace autoware::perception_filter
 
