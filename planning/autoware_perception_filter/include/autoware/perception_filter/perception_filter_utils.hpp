@@ -29,6 +29,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <pcl/PointIndices.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <tf2_ros/buffer.h>
@@ -38,6 +39,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::perception_filter
@@ -205,9 +207,11 @@ autoware::universe_utils::Polygon2d combineTrajectoryPolygons(
  * @param input_pointcloud_ptr Input pointcloud to filter
  * @param traj_polygons Vector of trajectory polygons for filtering
  * @param time_keeper Optional time keeper for performance measurement
- * @return Filtered pointcloud containing points inside any of the polygons
+ * @return Pair of filtered pointcloud containing points inside any of the polygons and their
+ * indices
  */
-pcl::PointCloud<pcl::PointXYZ>::Ptr filterByMultiTrajectoryPolygon(
+std::pair<pcl::PointCloud<pcl::PointXYZ>::Ptr, pcl::PointIndices::Ptr>
+filterByMultiTrajectoryPolygon(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
   autoware::universe_utils::TimeKeeper * time_keeper = nullptr);

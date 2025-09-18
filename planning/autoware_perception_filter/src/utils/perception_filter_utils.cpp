@@ -689,12 +689,15 @@ autoware::universe_utils::Polygon2d combineTrajectoryPolygons(
   return combined_polygon;
 }
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr filterByMultiTrajectoryPolygon(
+std::pair<pcl::PointCloud<pcl::PointXYZ>::Ptr, pcl::PointIndices::Ptr>
+filterByMultiTrajectoryPolygon(
   const pcl::PointCloud<pcl::PointXYZ>::Ptr & input_pointcloud_ptr,
   const std::vector<autoware::universe_utils::Polygon2d> & traj_polygons,
   autoware::universe_utils::TimeKeeper * time_keeper)
 {
   auto ret_pointcloud_ptr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  auto indices_to_remove = std::make_shared<pcl::PointIndices>();
+
   ret_pointcloud_ptr->header = input_pointcloud_ptr->header;
 
   // Define types for Boost.Geometry
@@ -754,6 +757,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByMultiTrajectoryPolygon(
       st_result_build =
         std::make_unique<autoware::universe_utils::ScopedTimeTrack>("result_build", *time_keeper);
     }
+
     ret_pointcloud_ptr->points.reserve(selected_indices.size());
     std::transform(
       selected_indices.begin(), selected_indices.end(),
@@ -763,9 +767,14 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByMultiTrajectoryPolygon(
     ret_pointcloud_ptr->width = ret_pointcloud_ptr->points.size();
     ret_pointcloud_ptr->height = 1;
     ret_pointcloud_ptr->is_dense = true;
+
+    indices_to_remove->indices.reserve(selected_indices.size());
+    std::copy(
+      selected_indices.begin(), selected_indices.end(),
+      std::back_inserter(indices_to_remove->indices));
   }
 
-  return ret_pointcloud_ptr;
+  return std::make_pair(ret_pointcloud_ptr, indices_to_remove);
 }
 
 std::vector<autoware::universe_utils::Polygon2d> createDifferencePolygons(
