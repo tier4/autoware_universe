@@ -396,6 +396,46 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     const auto difference_polygons =
       autoware::perception_filter::createDifferencePolygons(traj_max_polygons, traj_min_polygons);
 
+    // Debug visualization for planning factors filtering
+    {
+      autoware::universe_utils::ScopedTimeTrack st_debug(
+        "create_debug_markers_planning_factors", *time_keeper_);
+
+      // Convert single polygon to vector for transformation
+      std::vector<autoware::universe_utils::Polygon2d> combined_min_polygon_vector;
+      if (!combined_traj_min_polygon.outer().empty()) {
+        combined_min_polygon_vector.push_back(combined_traj_min_polygon);
+      }
+      const auto combined_min_polygon_vector_transformed =
+        autoware::perception_filter::transformPolygonsToMap(
+          combined_min_polygon_vector, transform_listener_);
+
+      const auto difference_polygons_transformed =
+        autoware::perception_filter::transformPolygonsToMap(
+          difference_polygons, transform_listener_);
+
+      // Create markers for difference polygons (red) with coordinate transformation
+      auto difference_markers = createTrajectoryPolygonMarkers(
+        difference_polygons_transformed, "map", "difference_polygons_planning_factors", 1.0, 0.0,
+        0.0, 0.8);
+
+      // Create markers for combined minimum polygon (green) with coordinate transformation
+      auto min_polygon_markers = createTrajectoryPolygonMarkers(
+        combined_min_polygon_vector_transformed, "map", "combined_min_polygon_planning_factors",
+        0.0, 1.0, 0.0, 0.8);
+
+      // Combine and publish markers
+      visualization_msgs::msg::MarkerArray combined_markers;
+      combined_markers.markers.insert(
+        combined_markers.markers.end(), difference_markers.markers.begin(),
+        difference_markers.markers.end());
+      combined_markers.markers.insert(
+        combined_markers.markers.end(), min_polygon_markers.markers.begin(),
+        min_polygon_markers.markers.end());
+
+      polygon_debug_markers_pub_->publish(combined_markers);
+    }
+
     // 7. Point cloud filtering process
     {
       autoware::universe_utils::ScopedTimeTrack st_publish(
@@ -406,9 +446,18 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
         std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
       pcl::fromROSMsg(*msg, *input_pointcloud_ptr);
 
+      RCLCPP_DEBUG(
+        get_logger(), "Pointcloud filtering (planning factors): input points=%zu",
+        input_pointcloud_ptr->points.size());
+
       // Filter pointcloud using multiple trajectory polygons
       const auto [filtered_pcl_cloud, indices_in_polygons] = filterByMultiTrajectoryPolygon(
         input_pointcloud_ptr, difference_polygons, time_keeper_.get());
+
+      RCLCPP_DEBUG(
+        get_logger(),
+        "Pointcloud filtering (planning factors): filtered points=%zu, indices_in_polygons=%zu",
+        filtered_pcl_cloud->points.size(), indices_in_polygons->indices.size());
 
       // Convert PCL pointcloud back to ROS pointcloud message
       auto filtered_ros_cloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
@@ -425,8 +474,16 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     pcl::PointCloud<pcl::PointXYZ>::Ptr input_pointcloud_ptr =
       std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
     pcl::fromROSMsg(*msg, *input_pointcloud_ptr);
+
+    RCLCPP_DEBUG(
+      get_logger(), "Pointcloud filtering (active polygon): input points=%zu",
+      input_pointcloud_ptr->points.size());
+    constexpr double resample_interval = 0.5;
+    const auto resampled_trajectory = autoware::motion_utils::resampleTrajectory(
+      *planning_trajectory_, resample_interval, false, true, true);
+
     const auto cut_trajectory = autoware::perception_filter::cutTrajectoryByPoses(
-      *planning_trajectory_, filtering_polygon_.start_pose, filtering_polygon_.end_pose);
+      resampled_trajectory, filtering_polygon_.start_pose, filtering_polygon_.end_pose);
 
     const auto traj_max_polygons = autoware::perception_filter::generateTrajectoryPolygons(
       cut_trajectory, max_filter_distance_, transform_listener_);
@@ -436,10 +493,44 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     const auto difference_polygons =
       autoware::perception_filter::createDifferencePolygons(traj_max_polygons, traj_min_polygons);
 
+    // Debug visualization for active polygon filtering
+    {
+      autoware::universe_utils::ScopedTimeTrack st_debug(
+        "create_debug_markers_active_polygon", *time_keeper_);
+
+      const auto difference_polygons_transformed =
+        autoware::perception_filter::transformPolygonsToMap(
+          difference_polygons, transform_listener_);
+      const auto traj_min_polygons_transformed =
+        autoware::perception_filter::transformPolygonsToMap(traj_min_polygons, transform_listener_);
+      // Create markers for difference polygons (blue) with coordinate transformation
+      auto difference_markers = createTrajectoryPolygonMarkers(
+        difference_polygons_transformed, "map", "difference_polygons_active", 0.0, 0.0, 1.0, 0.8);
+
+      auto min_polygon_markers = createTrajectoryPolygonMarkers(
+        traj_min_polygons_transformed, "map", "traj_min_polygons", 0.0, 1.0, 0.0, 0.8);
+
+      visualization_msgs::msg::MarkerArray combined_markers;
+      combined_markers.markers.insert(
+        combined_markers.markers.end(), difference_markers.markers.begin(),
+        difference_markers.markers.end());
+      combined_markers.markers.insert(
+        combined_markers.markers.end(), min_polygon_markers.markers.begin(),
+        min_polygon_markers.markers.end());
+
+      polygon_debug_markers_pub_->publish(combined_markers);
+    }
+
     // Filter pointcloud to keep points that are NOT in difference_polygons
     // First, get points that ARE in difference_polygons using the updated function
     const auto [points_in_difference_polygons, indices_in_polygons] =
       filterByMultiTrajectoryPolygon(input_pointcloud_ptr, difference_polygons, time_keeper_.get());
+
+    RCLCPP_DEBUG(
+      get_logger(),
+      "Pointcloud filtering (active polygon): points_in_difference_polygons=%zu, "
+      "indices_in_polygons=%zu",
+      points_in_difference_polygons->points.size(), indices_in_polygons->indices.size());
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_pcl_pointcloud(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::ExtractIndices<pcl::PointXYZ> extract_indices;
@@ -447,6 +538,10 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
     extract_indices.setIndices(indices_in_polygons);
     extract_indices.setNegative(true);  // ポリゴン内の点を除去
     extract_indices.filter(*filtered_pcl_pointcloud);
+
+    RCLCPP_DEBUG(
+      get_logger(), "Pointcloud filtering (active polygon): final filtered points=%zu",
+      filtered_pcl_pointcloud->points.size());
 
     // Convert PCL pointcloud to ROS PointCloud2 message
     sensor_msgs::msg::PointCloud2 filtered_pointcloud;
@@ -552,7 +647,8 @@ sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
       // TF lookup for inverse transform
       const auto transform_opt = [this]() {
         autoware::universe_utils::ScopedTimeTrack st_tf_lookup("tf_lookup_inverse", *time_keeper_);
-        return transform_listener_->getLatestTransform("map", "base_link");
+        return transform_listener_->getTransform(
+          "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
       }();
 
       if (!transform_opt) {

@@ -250,6 +250,27 @@ autoware_planning_msgs::msg::Trajectory cutTrajectoryByPoses(
   const autoware_planning_msgs::msg::Trajectory & trajectory,
   const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & end_pose);
 
+/**
+ * @brief Transform polygons from base_link frame to map frame
+ * @param base_link_polygons Vector of polygons in base_link frame
+ * @param transform_listener Transform listener for coordinate transformation
+ * @return Vector of transformed polygons in map frame
+ */
+std::vector<autoware::universe_utils::Polygon2d> transformPolygonsToMap(
+  const std::vector<autoware::universe_utils::Polygon2d> & base_link_polygons,
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener);
+
+/**
+ * @brief Get Eigen transform matrix between two frames
+ * @param transform_listener Transform listener for coordinate transformation
+ * @param target_frame Target frame name
+ * @param source_frame Source frame name
+ * @return Optional Eigen transform matrix, empty if transform is not available
+ */
+std::optional<Eigen::Matrix4d> getEigenTransform(
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener,
+  const std::string & target_frame, const std::string & source_frame);
+
 }  // namespace autoware::perception_filter
 
 #endif  // AUTOWARE__PERCEPTION_FILTER__PERCEPTION_FILTER_UTILS_HPP_

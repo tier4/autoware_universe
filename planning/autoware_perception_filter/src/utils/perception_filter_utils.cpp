@@ -537,6 +537,23 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr filterByTrajectoryPolygonsCropBox(
   return filtered_pointcloud_ptr;
 }
 
+std::optional<Eigen::Matrix4d> getEigenTransform(
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener,
+  const std::string & target_frame, const std::string & source_frame)
+{
+  // Get transform between frames
+  const auto transform_opt = transform_listener->getTransform(
+    target_frame, source_frame, rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+  if (!transform_opt) {
+    std::cerr << "Failed to get transform from " << source_frame << " to " << target_frame
+              << std::endl;
+    return std::nullopt;
+  }
+
+  const auto eigen_transform = tf2::transformToEigen(transform_opt->transform);
+  return std::make_optional(eigen_transform.matrix());
+}
+
 std::vector<autoware_planning_msgs::msg::TrajectoryPoint> transformTrajectoryToBaseLink(
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & map_trajectory_points,
   const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener)
@@ -547,15 +564,13 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> transformTrajectoryToB
     return base_link_trajectory_points;
   }
 
-  // Get transform from map to base_link
-  const auto transform_opt = transform_listener->getTransform(
-    "base_link", "map", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
-  if (!transform_opt) {
-    std::cerr << "Failed to get transform from map to base_link" << std::endl;
+  // Get transform from map to base_link using common helper
+  const auto transform_matrix_opt = getEigenTransform(transform_listener, "base_link", "map");
+  if (!transform_matrix_opt) {
     return base_link_trajectory_points;
   }
 
-  const auto eigen_transform = tf2::transformToEigen(transform_opt->transform);
+  const Eigen::Matrix4d eigen_transform = transform_matrix_opt.value();
 
   // Transform trajectory points to base_link frame
   for (const auto & map_point : map_trajectory_points) {
@@ -564,7 +579,8 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> transformTrajectoryToB
     // Transform position
     Eigen::Vector3d map_pos_3d(
       map_point.pose.position.x, map_point.pose.position.y, map_point.pose.position.z);
-    Eigen::Vector3d base_link_pos_3d = eigen_transform * map_pos_3d;
+    Eigen::Vector3d base_link_pos_3d =
+      eigen_transform.block<3, 3>(0, 0) * map_pos_3d + eigen_transform.block<3, 1>(0, 3);
 
     base_link_point.pose.position.x = base_link_pos_3d.x();
     base_link_point.pose.position.y = base_link_pos_3d.y();
@@ -576,7 +592,7 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> transformTrajectoryToB
       map_point.pose.orientation.z);
 
     // Extract rotation part from transform
-    Eigen::Matrix3d rotation_matrix = eigen_transform.rotation();
+    Eigen::Matrix3d rotation_matrix = eigen_transform.block<3, 3>(0, 0);
     Eigen::Quaterniond base_link_quat(rotation_matrix * map_quat.toRotationMatrix());
 
     base_link_point.pose.orientation.w = base_link_quat.w();
@@ -900,6 +916,54 @@ autoware_planning_msgs::msg::Trajectory cutTrajectoryByPoses(
     trajectory.points.begin() + actual_end_idx + 1);
 
   return cut_trajectory;
+}
+
+std::vector<autoware::universe_utils::Polygon2d> transformPolygonsToMap(
+  const std::vector<autoware::universe_utils::Polygon2d> & base_link_polygons,
+  const std::shared_ptr<autoware::universe_utils::TransformListener> & transform_listener)
+{
+  std::vector<autoware::universe_utils::Polygon2d> map_polygons;
+
+  if (base_link_polygons.empty()) {
+    return map_polygons;
+  }
+
+  // Get transform from base_link to map using common helper
+  const auto transform_matrix_opt = getEigenTransform(transform_listener, "map", "base_link");
+  if (!transform_matrix_opt) {
+    return map_polygons;
+  }
+
+  const Eigen::Matrix4d eigen_transform = transform_matrix_opt.value();
+
+  // Transform each polygon from base_link to map frame
+  for (const auto & base_link_polygon : base_link_polygons) {
+    autoware::universe_utils::Polygon2d map_polygon;
+
+    // Transform each point in the polygon
+    for (const auto & base_link_point : base_link_polygon.outer()) {
+      // Convert boost::geometry point to Eigen vector
+      Eigen::Vector3d base_link_pos_3d(base_link_point.x(), base_link_point.y(), 0.0);
+
+      // Transform to map frame
+      Eigen::Vector3d map_pos_3d =
+        eigen_transform.block<3, 3>(0, 0) * base_link_pos_3d + eigen_transform.block<3, 1>(0, 3);
+
+      // Create new point in map frame
+      autoware::universe_utils::Point2d map_point;
+      map_point.x() = map_pos_3d.x();
+      map_point.y() = map_pos_3d.y();
+
+      // Add point to map polygon
+      boost::geometry::append(map_polygon, map_point);
+    }
+
+    // Correct the polygon geometry
+    boost::geometry::correct(map_polygon);
+    map_polygons.push_back(map_polygon);
+  }
+
+  return map_polygons;
 }
 
 }  // namespace autoware::perception_filter
