@@ -239,6 +239,7 @@ private:
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_markers_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr polygon_debug_markers_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr object_debug_markers_pub_;
 
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     objects_processing_time_pub_;
@@ -314,6 +315,25 @@ private:
 
   // Debug parameters
   double processing_rate_;  ///< Processing execution rate in Hz
+
+  // Debug visualization methods
+  /**
+   * @brief Create debug visualization markers
+   * @return Visualization marker array
+   */
+  visualization_msgs::msg::MarkerArray createDebugMarkers();
+
+  /**
+   * @brief Create visualization marker for objects
+   * @param objects Objects to visualize
+   * @param frame_id Frame ID for marker
+   * @param id Marker ID
+   * @param color RGBA color array
+   * @return Visualization marker
+   */
+  visualization_msgs::msg::Marker createObjectMarker(
+    const autoware_perception_msgs::msg::PredictedObjects & objects, const std::string & frame_id,
+    int id, const std::array<double, 4> & color);
 };
 
 }  // namespace autoware::perception_filter

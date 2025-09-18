@@ -136,6 +136,9 @@ PerceptionFilterNode::PerceptionFilterNode(const rclcpp::NodeOptions & node_opti
   polygon_debug_markers_pub_ =
     create_publisher<visualization_msgs::msg::MarkerArray>("debug/polygon_markers", rclcpp::QoS{1});
 
+  object_debug_markers_pub_ =
+    create_publisher<visualization_msgs::msg::MarkerArray>("debug/object_markers", rclcpp::QoS{1});
+
   objects_processing_time_pub_ =
     create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/objects_processing_time_ms", rclcpp::QoS{1});
@@ -875,44 +878,10 @@ void PerceptionFilterNode::onTimer()
     planning_factors_pub_->publish(planning_factors);
   }
 
-  // Check if required data is available for debug markers
-  if (!latest_objects_ || !planning_trajectory_) {
-    return;
-  }
-
-  // Check if publishers are available
-  if (!debug_markers_pub_) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "Debug markers publisher not available");
-    return;
-  }
-
-  auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
-  if (!ego_pose) {
-    RCLCPP_DEBUG_THROTTLE(
-      get_logger(), *get_clock(), 5000, "Ego pose not available for debug markers");
-    return;
-  }
-
-  // Check RTC interface state safely
-  bool rtc_activated = false;
-  if (rtc_interface_) {
-    rtc_activated =
-      rtc_interface_->isRegistered(rtc_uuid_) && rtc_interface_->isActivated(rtc_uuid_);
-  }
-
-  // Create debug markers using the latest data
-  auto debug_markers = [this, &ego_pose, &rtc_activated]() {
-    autoware::universe_utils::ScopedTimeTrack st_markers("create_debug_markers", *time_keeper_);
-    return createDebugMarkers(
-      *latest_objects_, latest_classification_, rtc_activated, *ego_pose,
-      filtering_polygon_.max_polygon);
-  }();
-
-  // Publish debug markers
   {
-    autoware::universe_utils::ScopedTimeTrack st_publish_markers(
-      "publish_debug_markers", *time_keeper_);
-    debug_markers_pub_->publish(debug_markers);
+    autoware::universe_utils::ScopedTimeTrack st_markers("publish_debug_markers", *time_keeper_);
+    auto debug_markers = createDebugMarkers();
+    object_debug_markers_pub_->publish(debug_markers);
   }
 }
 
@@ -1120,6 +1089,178 @@ visualization_msgs::msg::MarkerArray PerceptionFilterNode::createCropBoxPolygonM
   }
 
   return marker_array;
+}
+
+visualization_msgs::msg::MarkerArray PerceptionFilterNode::createDebugMarkers()
+{
+  visualization_msgs::msg::MarkerArray marker_array;
+
+  // Check if required data is available
+  if (!latest_objects_ || !planning_trajectory_) {
+    return marker_array;
+  }
+
+  // Get ego pose
+  auto ego_pose = autoware::perception_filter::getEgoPose(*tf_buffer_);
+  if (!ego_pose) {
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 5000, "Ego pose not available for debug markers");
+    return marker_array;
+  }
+
+  // Get RTC activation status
+  const bool rtc_activated =
+    rtc_interface_->isRegistered(rtc_uuid_) && rtc_interface_->isActivated(rtc_uuid_);
+
+  // First, delete all previous markers
+  visualization_msgs::msg::Marker delete_marker;
+  delete_marker.header.frame_id = "map";
+  delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+  marker_array.markers.push_back(delete_marker);
+
+  int marker_id = 0;
+
+  // Helper lambda to create object markers with text
+  auto create_object_markers =
+    [&](
+      const std::vector<autoware_perception_msgs::msg::PredictedObject> & objects,
+      const std::string & ns_prefix, const std::string & text,
+      const std::array<double, 4> & color) {
+      if (objects.empty()) return;
+
+      autoware_perception_msgs::msg::PredictedObjects objects_msg;
+      objects_msg.header = latest_objects_->header;
+      objects_msg.objects = objects;
+
+      auto object_marker = createObjectMarker(objects_msg, "map", marker_id++, color);
+      object_marker.ns = ns_prefix + "_objects";
+      marker_array.markers.push_back(object_marker);
+
+      // Add text markers
+      for (size_t i = 0; i < objects.size(); ++i) {
+        const auto & object = objects[i];
+        visualization_msgs::msg::Marker text_marker;
+        text_marker.header.frame_id = "map";
+        text_marker.ns = ns_prefix + "_text";
+        text_marker.id = static_cast<int>(i);
+        text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+        text_marker.action = visualization_msgs::msg::Marker::ADD;
+        text_marker.pose.position = object.kinematics.initial_pose_with_covariance.pose.position;
+        text_marker.pose.position.z += 2.0;  // Display above object
+        text_marker.scale.z = 0.5;
+        text_marker.color.r = color[0];
+        text_marker.color.g = color[1];
+        text_marker.color.b = color[2];
+        text_marker.color.a = 1.0;
+        text_marker.text = text;
+        marker_array.markers.push_back(text_marker);
+      }
+    };
+
+  // Create markers for different object categories
+  create_object_markers(
+    latest_classification_.kept_objects, "always_pass", "ALWAYS PASS", {0.0, 0.0, 1.0, 0.8});
+  create_object_markers(
+    latest_classification_.would_be_removed, "would_filter", "WOULD FILTER", {1.0, 1.0, 0.0, 0.8});
+  create_object_markers(
+    latest_classification_.removed_objects, "filtered", "FILTERED", {1.0, 0.0, 0.0, 0.8});
+
+  // Create filtering polygon marker if available
+  if (!filtering_polygon_.max_polygon.empty()) {
+    for (size_t i = 0; i < filtering_polygon_.max_polygon.size(); ++i) {
+      const auto & polygon = filtering_polygon_.max_polygon[i];
+      if (polygon.outer().empty()) continue;
+
+      visualization_msgs::msg::Marker polygon_marker;
+      polygon_marker.header.frame_id = "map";
+      polygon_marker.ns = "filtering_polygon";
+      polygon_marker.id = static_cast<int>(i);
+      polygon_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+      polygon_marker.action = visualization_msgs::msg::Marker::ADD;
+      polygon_marker.scale.x = 0.3;
+      polygon_marker.color.r = 0.0;
+      polygon_marker.color.g = 1.0;
+      polygon_marker.color.b = 0.0;
+      polygon_marker.color.a = 0.8;
+
+      // Add polygon points to create a closed polygon
+      for (const auto & point : polygon.outer()) {
+        geometry_msgs::msg::Point ros_point;
+        ros_point.x = point.x();
+        ros_point.y = point.y();
+        ros_point.z = 0.1;
+        polygon_marker.points.push_back(ros_point);
+      }
+
+      // Close the polygon by adding the first point again
+      if (!polygon.outer().empty()) {
+        const auto & first_point = polygon.outer().front();
+        geometry_msgs::msg::Point ros_point;
+        ros_point.x = first_point.x();
+        ros_point.y = first_point.y();
+        ros_point.z = 0.1;
+        polygon_marker.points.push_back(ros_point);
+      }
+
+      marker_array.markers.push_back(polygon_marker);
+    }
+  }
+
+  // Create status text marker above ego vehicle
+  visualization_msgs::msg::Marker status_marker;
+  status_marker.header.frame_id = "map";
+  status_marker.ns = "rtc_status";
+  status_marker.id = 0;
+  status_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+  status_marker.action = visualization_msgs::msg::Marker::ADD;
+  status_marker.pose.position.x = ego_pose->position.x;
+  status_marker.pose.position.y = ego_pose->position.y;
+  status_marker.pose.position.z = ego_pose->position.z + 3.0;  // 3m above ego vehicle
+  status_marker.scale.z = 1.0;
+  status_marker.color.r = rtc_activated ? 0.0 : 1.0;
+  status_marker.color.g = rtc_activated ? 1.0 : 0.0;
+  status_marker.color.b = 0.0;
+  status_marker.color.a = 1.0;
+
+  std::string status_text = rtc_activated ? "RTC: ACTIVATED" : "RTC: NOT ACTIVATED";
+  status_text += "\nAlways Pass: " + std::to_string(latest_classification_.kept_objects.size());
+  status_text +=
+    "\nWould Filter: " + std::to_string(latest_classification_.would_be_removed.size());
+  status_text += "\nFiltered: " + std::to_string(latest_classification_.removed_objects.size());
+
+  status_marker.text = status_text;
+  marker_array.markers.push_back(status_marker);
+
+  return marker_array;
+}
+
+visualization_msgs::msg::Marker PerceptionFilterNode::createObjectMarker(
+  const autoware_perception_msgs::msg::PredictedObjects & objects, const std::string & frame_id,
+  int id, const std::array<double, 4> & color)
+{
+  visualization_msgs::msg::Marker marker;
+  marker.header.frame_id = frame_id;
+  marker.ns = "perception_filter_debug";
+  marker.id = id;
+  marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.scale.x = 0.5;
+  marker.scale.y = 0.5;
+  marker.scale.z = 0.5;
+  marker.color.a = color[3];
+  marker.color.r = color[0];
+  marker.color.g = color[1];
+  marker.color.b = color[2];
+
+  for (const auto & object : objects.objects) {
+    geometry_msgs::msg::Point point;
+    point.x = object.kinematics.initial_pose_with_covariance.pose.position.x;
+    point.y = object.kinematics.initial_pose_with_covariance.pose.position.y;
+    point.z = object.kinematics.initial_pose_with_covariance.pose.position.z;
+    marker.points.push_back(point);
+  }
+
+  return marker;
 }
 
 }  // namespace autoware::perception_filter

@@ -62,33 +62,6 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray createPlanningFactors(
   const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr & planning_trajectory);
 
 /**
- * @brief Create debug visualization markers
- * @param input_objects Input objects for visualization
- * @param classification Object classification result
- * @param rtc_activated Whether RTC is currently activated
- * @param ego_pose Current ego vehicle pose
- * @param filtering_polygon Filtering polygon for visualization
- * @return Visualization marker array
- */
-visualization_msgs::msg::MarkerArray createDebugMarkers(
-  const autoware_perception_msgs::msg::PredictedObjects & input_objects,
-  const ObjectClassification & classification, bool rtc_activated,
-  const geometry_msgs::msg::Pose & ego_pose,
-  const std::vector<autoware::universe_utils::Polygon2d> & filtering_polygon);
-
-/**
- * @brief Create visualization marker for objects
- * @param objects Objects to visualize
- * @param frame_id Frame ID for marker
- * @param id Marker ID
- * @param color RGBA color array
- * @return Visualization marker
- */
-visualization_msgs::msg::Marker createObjectMarker(
-  const autoware_perception_msgs::msg::PredictedObjects & objects, const std::string & frame_id,
-  int id, const std::array<double, 4> & color);
-
-/**
  * @brief Calculate minimum distance from predicted object polygon to trajectory
  * @param object Predicted object to calculate distance from
  * @param path Trajectory to calculate distance to
