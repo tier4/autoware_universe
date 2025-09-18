@@ -332,6 +332,9 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
   const auto start_time = std::chrono::high_resolution_clock::now();
   latest_pointcloud_ = msg;
 
+  // Initialize debug marker array for visualization
+  visualization_msgs::msg::MarkerArray debug_markers;
+
   if (
     !isDataReadyForPointCloud() || !enable_pointcloud_filtering_ ||
     latest_pointcloud_->data.empty()) {
@@ -424,16 +427,13 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
         combined_min_polygon_vector_transformed, "map", "combined_min_polygon_planning_factors",
         0.0, 1.0, 0.0, 0.8);
 
-      // Combine and publish markers
-      visualization_msgs::msg::MarkerArray combined_markers;
-      combined_markers.markers.insert(
-        combined_markers.markers.end(), difference_markers.markers.begin(),
+      // Combine markers into debug marker array
+      debug_markers.markers.insert(
+        debug_markers.markers.end(), difference_markers.markers.begin(),
         difference_markers.markers.end());
-      combined_markers.markers.insert(
-        combined_markers.markers.end(), min_polygon_markers.markers.begin(),
+      debug_markers.markers.insert(
+        debug_markers.markers.end(), min_polygon_markers.markers.begin(),
         min_polygon_markers.markers.end());
-
-      polygon_debug_markers_pub_->publish(combined_markers);
     }
 
     // 7. Point cloud filtering process
@@ -510,15 +510,13 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
       auto min_polygon_markers = createTrajectoryPolygonMarkers(
         traj_min_polygons_transformed, "map", "traj_min_polygons", 0.0, 1.0, 0.0, 0.8);
 
-      visualization_msgs::msg::MarkerArray combined_markers;
-      combined_markers.markers.insert(
-        combined_markers.markers.end(), difference_markers.markers.begin(),
+      // Combine markers into debug marker array
+      debug_markers.markers.insert(
+        debug_markers.markers.end(), difference_markers.markers.begin(),
         difference_markers.markers.end());
-      combined_markers.markers.insert(
-        combined_markers.markers.end(), min_polygon_markers.markers.begin(),
+      debug_markers.markers.insert(
+        debug_markers.markers.end(), min_polygon_markers.markers.begin(),
         min_polygon_markers.markers.end());
-
-      polygon_debug_markers_pub_->publish(combined_markers);
     }
 
     // Filter pointcloud to keep points that are NOT in difference_polygons
@@ -557,21 +555,23 @@ void PerceptionFilterNode::onPointCloud(const sensor_msgs::msg::PointCloud2::Con
 
       published_time_publisher_->publish_if_subscribed(
         filtered_pointcloud_pub_, filtered_pointcloud.header.stamp);
+      // Publish processing time
+      const auto processing_time = std::chrono::duration<double, std::milli>(
+                                     std::chrono::high_resolution_clock::now() - start_time)
+                                     .count();
+
+      autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
+      processing_time_msg.stamp = this->now();
+      processing_time_msg.data = processing_time;
+      pointcloud_processing_time_pub_->publish(processing_time_msg);
     }
   } else {
     publishPassthroughMessage(
       *msg, filtered_pointcloud_pub_, pointcloud_processing_time_pub_, start_time);
   }
 
-  // Publish processing time
-  const auto processing_time = std::chrono::duration<double, std::milli>(
-                                 std::chrono::high_resolution_clock::now() - start_time)
-                                 .count();
-
-  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-  processing_time_msg.stamp = this->now();
-  processing_time_msg.data = processing_time;
-  pointcloud_processing_time_pub_->publish(processing_time_msg);
+  // Publish debug markers
+  polygon_debug_markers_pub_->publish(debug_markers);
 }
 
 sensor_msgs::msg::PointCloud2 PerceptionFilterNode::filterPointCloud(
@@ -979,15 +979,10 @@ void PerceptionFilterNode::updateFilteringPolygonStatus(const geometry_msgs::msg
       planning_trajectory_->points, 0, filtering_polygon_.ego_pose.position);
   }();
 
-  const double start_pose_distance = [this]() {
-    return autoware::motion_utils::calcSignedArcLength(
-      planning_trajectory_->points, 0, filtering_polygon_.start_pose.position);
-  }();
-
   // Advance start_pose by the amount ego_pose has advanced
   const double ego_advancement = current_ego_distance - original_ego_distance;
   if (ego_advancement > 0) {
-    const double new_start_distance = start_pose_distance + ego_advancement;
+    const double new_start_distance = original_ego_distance + ego_advancement;
     if (new_start_distance < end_pose_distance) {
       filtering_polygon_.start_pose = autoware::motion_utils::calcInterpolatedPose(
         planning_trajectory_->points, new_start_distance);
@@ -1052,6 +1047,7 @@ visualization_msgs::msg::MarkerArray PerceptionFilterNode::createTrajectoryPolyg
     marker.color.g = g;
     marker.color.b = b;
     marker.color.a = a;
+    marker.lifetime = rclcpp::Duration::from_seconds(1.0);
 
     // Add polygon points to marker
     for (const auto & point : polygon.outer()) {
