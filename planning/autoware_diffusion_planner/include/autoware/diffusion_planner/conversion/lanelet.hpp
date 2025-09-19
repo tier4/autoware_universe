@@ -52,7 +52,7 @@ const std::map<std::string, LineType> LINE_TYPE_MAP = {
   {"virtual", LINE_TYPE_VIRTUAL},         {"zebra_marking", LINE_TYPE_ZEBRA_MARKING}};
 
 const std::set<std::string> ACCEPTABLE_LANE_SUBTYPES = {
-  "road", "highway", "road_shoulder", "bicycle_lane"};
+  "road", "highway", "road_shoulder", "bicycle_lane", "pedestrian_lane", "crosswalk"};
 
 using LanePoint = Eigen::Vector3d;
 using Polyline = std::vector<LanePoint>;

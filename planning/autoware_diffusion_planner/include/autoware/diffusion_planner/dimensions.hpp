@@ -23,7 +23,7 @@
 
 namespace autoware::diffusion_planner
 {
-inline constexpr int64_t NUM_SEGMENTS_IN_LANE = 70;
+inline constexpr int64_t NUM_SEGMENTS_IN_LANE = 140;
 inline constexpr int64_t NUM_SEGMENTS_IN_ROUTE = 25;
 inline constexpr int64_t MAX_NUM_NEIGHBORS = 32;
 inline constexpr int64_t POINTS_PER_SEGMENT = 20;  //!< Number of points in each lane segment.
