@@ -27,7 +27,6 @@
 #include <Eigen/Geometry>
 #include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_test_utils/autoware_test_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
@@ -39,6 +38,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_io/Io.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
