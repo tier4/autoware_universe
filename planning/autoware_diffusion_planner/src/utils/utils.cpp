@@ -34,33 +34,6 @@ Eigen::Matrix3d quaternion_to_matrix(const geometry_msgs::msg::Quaternion & q_ms
 }
 }  // namespace
 
-std::pair<Eigen::Matrix4d, Eigen::Matrix4d> get_transform_matrix(
-  const nav_msgs::msg::Odometry & msg)
-{
-  // Extract position
-  double x = msg.pose.pose.position.x;
-  double y = msg.pose.pose.position.y;
-  double z = msg.pose.pose.position.z;
-
-  // Rotation matrix (3x3)
-  Eigen::Matrix3d R = quaternion_to_matrix(msg.pose.pose.orientation);
-
-  // Translation vector
-  Eigen::Vector3d t(x, y, z);
-
-  // Base_link → Map (forward)
-  Eigen::Matrix4d bl2map = Eigen::Matrix4d::Identity();
-  bl2map.block<3, 3>(0, 0) = R;
-  bl2map.block<3, 1>(0, 3) = t;
-
-  // Map → Base_link (inverse)
-  Eigen::Matrix4d map2bl = Eigen::Matrix4d::Identity();
-  map2bl.block<3, 3>(0, 0) = R.transpose();
-  map2bl.block<3, 1>(0, 3) = -R.transpose() * t;
-
-  return {bl2map, map2bl};
-}
-
 std::vector<float> create_float_data(const std::vector<int64_t> & shape, float fill)
 {
   size_t total_size = 1;
@@ -135,6 +108,23 @@ geometry_msgs::msg::Pose shift_x(const geometry_msgs::msg::Pose & pose, const do
   shifted_pose.position.z += shift_global.z();
 
   return shifted_pose;
+}
+
+Eigen::Matrix4d inverse(const Eigen::Matrix4d & mat)
+{
+  Eigen::Matrix4d inv = Eigen::Matrix4d::Identity();
+  Eigen::Matrix3d R = mat.block<3, 3>(0, 0);
+  Eigen::Vector3d t = mat.block<3, 1>(0, 3);
+
+  // Inverse rotation
+  Eigen::Matrix3d R_inv = R.transpose();
+  // Inverse translation
+  Eigen::Vector3d t_inv = -R_inv * t;
+
+  inv.block<3, 3>(0, 0) = R_inv;
+  inv.block<3, 1>(0, 3) = t_inv;
+
+  return inv;
 }
 
 }  // namespace autoware::diffusion_planner::utils

@@ -609,7 +609,9 @@ int main(int argc, char ** argv)
       const std::string token = token_stream.str();
 
       // Get transformation matrix
-      const auto [bl2map, map2bl] = utils::get_transform_matrix(seq.data_list[i].kinematic_state);
+      const Eigen::Matrix4d bl2map =
+        utils::pose_to_matrix4f(seq.data_list[i].kinematic_state.pose.pose);
+      const Eigen::Matrix4d map2bl = utils::inverse(bl2map);
 
       // Create ego sequences
       const std::vector<float> ego_past =
