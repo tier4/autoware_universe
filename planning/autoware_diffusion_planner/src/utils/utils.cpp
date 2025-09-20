@@ -25,6 +25,15 @@
 
 namespace autoware::diffusion_planner::utils
 {
+
+namespace
+{
+Eigen::Matrix3d quaternion_to_matrix(const geometry_msgs::msg::Quaternion & q_msg)
+{
+  return Eigen::Quaterniond(q_msg.w, q_msg.x, q_msg.y, q_msg.z).toRotationMatrix();
+}
+}  // namespace
+
 std::pair<Eigen::Matrix4d, Eigen::Matrix4d> get_transform_matrix(
   const nav_msgs::msg::Odometry & msg)
 {
@@ -33,21 +42,8 @@ std::pair<Eigen::Matrix4d, Eigen::Matrix4d> get_transform_matrix(
   double y = msg.pose.pose.position.y;
   double z = msg.pose.pose.position.z;
 
-  // Create Eigen quaternion and normalize it just in case
-  Eigen::Quaterniond q = std::invoke([&msg]() -> Eigen::Quaterniond {
-    double qx = msg.pose.pose.orientation.x;
-    double qy = msg.pose.pose.orientation.y;
-    double qz = msg.pose.pose.orientation.z;
-    double qw = msg.pose.pose.orientation.w;
-
-    // Create Eigen quaternion and normalize it just in case
-    Eigen::Quaterniond q(qw, qx, qy, qz);
-    return (q.norm() < std::numeric_limits<float>::epsilon()) ? Eigen::Quaterniond::Identity()
-                                                              : q.normalized();
-  });
-
   // Rotation matrix (3x3)
-  Eigen::Matrix3d R = q.toRotationMatrix();
+  Eigen::Matrix3d R = quaternion_to_matrix(msg.pose.pose.orientation);
 
   // Translation vector
   Eigen::Vector3d t(x, y, z);
@@ -99,21 +95,8 @@ Eigen::Matrix4d pose_to_matrix4f(const geometry_msgs::msg::Pose & pose)
   double y = pose.position.y;
   double z = pose.position.z;
 
-  // Create Eigen quaternion and normalize it just in case
-  Eigen::Quaterniond q = std::invoke([&pose]() -> Eigen::Quaterniond {
-    double qx = pose.orientation.x;
-    double qy = pose.orientation.y;
-    double qz = pose.orientation.z;
-    double qw = pose.orientation.w;
-
-    // Create Eigen quaternion and normalize it just in case
-    Eigen::Quaterniond q(qw, qx, qy, qz);
-    return (q.norm() < std::numeric_limits<float>::epsilon()) ? Eigen::Quaterniond::Identity()
-                                                              : q.normalized();
-  });
-
   // Rotation matrix (3x3)
-  Eigen::Matrix3d R = q.toRotationMatrix();
+  Eigen::Matrix3d R = quaternion_to_matrix(pose.orientation);
 
   // Translation vector
   Eigen::Vector3d t(x, y, z);
@@ -132,6 +115,26 @@ std::pair<float, float> rotation_matrix_to_cos_sin(const Eigen::Matrix3d & rotat
   // Using atan2 to get the yaw angle from the rotation matrix
   const float yaw = std::atan2(rotation_matrix(1, 0), rotation_matrix(0, 0));
   return {std::cos(yaw), std::sin(yaw)};
+}
+
+geometry_msgs::msg::Pose shift_x(const geometry_msgs::msg::Pose & pose, const double shift_length)
+{
+  // Rotation matrix (3x3)
+  Eigen::Matrix3d R = quaternion_to_matrix(pose.orientation);
+
+  // Shift along the x-axis in the local frame
+  Eigen::Vector3d shift_local(shift_length, 0.0, 0.0);
+
+  // Transform shift to the global frame
+  Eigen::Vector3d shift_global = R * shift_local;
+
+  // Create new pose
+  geometry_msgs::msg::Pose shifted_pose = pose;
+  shifted_pose.position.x += shift_global.x();
+  shifted_pose.position.y += shift_global.y();
+  shifted_pose.position.z += shift_global.z();
+
+  return shifted_pose;
 }
 
 }  // namespace autoware::diffusion_planner::utils
