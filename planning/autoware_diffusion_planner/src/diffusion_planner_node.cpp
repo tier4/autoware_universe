@@ -415,8 +415,6 @@ InputDataMap DiffusionPlanner::create_input_data()
     }
   }
 
-  ego_kinematic_state_ = *ego_kinematic_state;
-
   // random sample trajectories
   {
     for (int64_t b = 0; b < params_.batch_size; b++) {
@@ -597,14 +595,12 @@ void DiffusionPlanner::publish_predictions(const std::vector<float> & prediction
 
   // Other agents prediction
   if (params_.predict_neighbor_trajectory && agent_data_.has_value()) {
-    auto reduced_agent_data = agent_data_.value();
-    reduced_agent_data.trim_to_k_closest_agents(ego_kinematic_state_.pose.pose.position);
     const size_t single_batch_output_size =
       std::accumulate(OUTPUT_SHAPE.begin() + 1, OUTPUT_SHAPE.end(), 1UL, std::multiplies<>());
     const std::vector<float> single_batch_predictions(
       predictions.begin(), predictions.begin() + single_batch_output_size);
     auto predicted_objects = postprocess::create_predicted_objects(
-      single_batch_predictions, reduced_agent_data, this->now(), ego_to_map_transform_);
+      single_batch_predictions, agent_data_.value(), this->now(), ego_to_map_transform_);
     pub_objects_->publish(predicted_objects);
   }
 }

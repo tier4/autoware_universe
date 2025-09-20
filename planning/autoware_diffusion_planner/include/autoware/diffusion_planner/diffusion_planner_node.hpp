@@ -267,9 +267,6 @@ private:
   std::vector<int64_t> select_route_segment_indices_by_route_handler(
     const nav_msgs::msg::Odometry & ego_kinematic_state) const;
 
-  // current state
-  Odometry ego_kinematic_state_;
-
   // ego history for ego_agent_past
   std::deque<Odometry> ego_history_;
 
