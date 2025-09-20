@@ -426,18 +426,21 @@ InputDataMap DiffusionPlanner::create_input_data()
     }
   }
 
+  const geometry_msgs::msg::Pose & pose_center = utils::shift_x(
+    ego_kinematic_state->pose.pose,
+    (vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m));
+
+  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_center);
+  const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
+  const auto & center_x = static_cast<float>(pose_center.position.x);
+  const auto & center_y = static_cast<float>(pose_center.position.y);
+  ego_to_map_transform_ = ego_to_map_transform;
+
   // Add current state to ego history
-  ego_history_.push_back(*ego_kinematic_state);
+  ego_history_.push_back(pose_center);
   if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
     ego_history_.pop_front();
   }
-
-  const Eigen::Matrix4d ego_to_map_transform =
-    utils::pose_to_matrix4f(ego_kinematic_state->pose.pose);
-  const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
-  const auto & center_x = static_cast<float>(ego_kinematic_state->pose.pose.position.x);
-  const auto & center_y = static_cast<float>(ego_kinematic_state->pose.pose.position.y);
-  ego_to_map_transform_ = ego_to_map_transform;
 
   // Ego history
   {

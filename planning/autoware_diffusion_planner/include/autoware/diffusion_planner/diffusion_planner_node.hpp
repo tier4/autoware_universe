@@ -90,6 +90,7 @@ using autoware::vehicle_info_utils::VehicleInfo;
 using builtin_interfaces::msg::Duration;
 using builtin_interfaces::msg::Time;
 using geometry_msgs::msg::Point;
+using geometry_msgs::msg::Pose;
 using preprocess::TrafficSignalStamped;
 using rcl_interfaces::msg::SetParametersResult;
 using std_msgs::msg::ColorRGBA;
@@ -268,7 +269,7 @@ private:
     const nav_msgs::msg::Odometry & ego_kinematic_state) const;
 
   // ego history for ego_agent_past
-  std::deque<Odometry> ego_history_;
+  std::deque<Pose> ego_history_;
 
   // TensorRT
   std::unique_ptr<TrtConvCalib> trt_common_;
