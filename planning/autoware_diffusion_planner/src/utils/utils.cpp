@@ -28,8 +28,21 @@ namespace autoware::diffusion_planner::utils
 
 namespace
 {
+
+inline double square(double x)
+{
+  return x * x;
+}
+
 Eigen::Matrix3d quaternion_to_matrix(const geometry_msgs::msg::Quaternion & q_msg)
 {
+  const double norm =
+    std::sqrt(square(q_msg.w) + square(q_msg.x) + square(q_msg.y) + square(q_msg.z));
+  constexpr double kEpsilon = 1e-6;
+  if (norm < kEpsilon) {
+    throw std::runtime_error("Quaternion norm is too small");
+  }
+
   return Eigen::Quaterniond(q_msg.w, q_msg.x, q_msg.y, q_msg.z).toRotationMatrix();
 }
 }  // namespace
@@ -112,19 +125,7 @@ geometry_msgs::msg::Pose shift_x(const geometry_msgs::msg::Pose & pose, const do
 
 Eigen::Matrix4d inverse(const Eigen::Matrix4d & mat)
 {
-  Eigen::Matrix4d inv = Eigen::Matrix4d::Identity();
-  Eigen::Matrix3d R = mat.block<3, 3>(0, 0);
-  Eigen::Vector3d t = mat.block<3, 1>(0, 3);
-
-  // Inverse rotation
-  Eigen::Matrix3d R_inv = R.transpose();
-  // Inverse translation
-  Eigen::Vector3d t_inv = -R_inv * t;
-
-  inv.block<3, 3>(0, 0) = R_inv;
-  inv.block<3, 1>(0, 3) = t_inv;
-
-  return inv;
+  return Eigen::Isometry3d(mat).inverse().matrix();
 }
 
 }  // namespace autoware::diffusion_planner::utils
