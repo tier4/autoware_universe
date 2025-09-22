@@ -119,6 +119,14 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
     float distance_squared;  //!< Squared distance from the center.
   };
 
+  auto calc_distance = [&](const LanePoint & point) {
+    const Eigen::Vector4d transformed_point =
+      transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
+    const float diff_x = transformed_point.x();
+    const float diff_y = transformed_point.y();
+    return std::sqrt(diff_x * diff_x + diff_y * diff_y);
+  };
+
   // Step 1: Compute distances
   std::vector<ColWithDistance> distances;
   distances.reserve(lane_segments_.size());
@@ -132,16 +140,9 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
 
     const std::vector<LanePoint> & centerline = segment.centerline;
 
-    float distance_squared = 0.0;
-    for (const LanePoint & point : centerline) {
-      const Eigen::Vector4d transformed_point =
-        transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
-      const float diff_x = transformed_point.x();
-      const float diff_y = transformed_point.y();
-      distance_squared += diff_x * diff_x + diff_y * diff_y;
-    }
-    distance_squared /= centerline.size();
-
+    // -1 is the same as next first point, so use -2
+    const float distance_squared =
+      std::min(calc_distance(centerline.front()), calc_distance(centerline[centerline.size() - 2]));
     distances.push_back({static_cast<int64_t>(i), distance_squared});
   }
 
