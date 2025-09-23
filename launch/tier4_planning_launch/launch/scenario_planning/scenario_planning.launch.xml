@@ -1,14 +1,9 @@
 <launch>
   <arg name="enable_all_modules_auto_mode"/>
   <arg name="is_simulation"/>
-  <arg name="use_perception_filter" default="false"/>
-
-  <!-- Conditional topic remapping based on perception filter usage -->
-  <let name="input_objects_topic_name" value="/perception/object_recognition/filtered_objects" if="$(var use_perception_filter)"/>
-  <let name="input_objects_topic_name" value="/perception/object_recognition/objects" unless="$(var use_perception_filter)"/>
-  <let name="input_pointcloud_topic_name" value="/perception/obstacle_segmentation/filtered_pointcloud" if="$(var use_perception_filter)"/>
-  <let name="input_pointcloud_topic_name" value="/perception/obstacle_segmentation/pointcloud" unless="$(var use_perception_filter)"/>
-
+  <!-- Input topic parameters -->
+  <arg name="input_objects_topic_name"/>
+  <arg name="input_pointcloud_topic_name"/>
   <!-- scenario selector -->
   <group>
     <include file="$(find-pkg-share autoware_scenario_selector)/launch/scenario_selector.launch.xml">
