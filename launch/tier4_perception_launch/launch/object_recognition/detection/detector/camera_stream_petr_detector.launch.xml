@@ -41,7 +41,7 @@
   <let name="input/camera_rear_center/info" value="/sensing/camera/camera9/camera_info"/>
 
   <arg name="input/kinematic_state" default="/localization/kinematic_state"/>
-  <arg name="output/objects" default="/perception/object_recognition/streampetr/objects"/>
+  <arg name="output/objects" default="/perception/object_recognition/camera_streampetr/objects"/>
 
   <!-- NODE directly launch -->
   <node pkg="autoware_camera_streampetr" exec="autoware_camera_streampetr_node" name="stream_petr" output="screen">
