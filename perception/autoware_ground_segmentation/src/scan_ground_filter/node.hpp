@@ -15,13 +15,10 @@
 #ifndef SCAN_GROUND_FILTER__NODE_HPP_
 #define SCAN_GROUND_FILTER__NODE_HPP_
 
-#include "data.hpp"
-#include "grid_ground_filter.hpp"
-
-#include <autoware/pointcloud_preprocessor/filter.hpp>
-#include <autoware/pointcloud_preprocessor/transform_info.hpp>
+#include "autoware/pointcloud_preprocessor/filter.hpp"
+#include "autoware/pointcloud_preprocessor/transform_info.hpp"
 #include <autoware_utils/system/time_keeper.hpp>
-#include <autoware_vehicle_info_utils/vehicle_info.hpp>
+#include "autoware_vehicle_info_utils/vehicle_info.hpp"
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
@@ -36,7 +33,8 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 #endif
 
-#include <algorithm>
+#include <tf2_ros/transform_listener.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -68,9 +66,17 @@ private:
     float radius;  // cylindrical coords on XY Plane
     PointLabel point_state{PointLabel::INIT};
     uint16_t grid_id;   // id of grid in vertical
-    size_t data_index;  // index of this point data in the source pointcloud
+    size_t orig_index;  // index of this point in the source pointcloud
   };
   using PointCloudVector = std::vector<PointData>;
+
+  struct GridCenter
+  {
+    float radius;
+    float avg_height;
+    float max_height;
+    uint16_t grid_id;
+  };
 
   struct PointsCentroid
   {
@@ -82,16 +88,15 @@ private:
     float height_min;
     uint32_t point_num;
     uint16_t grid_id;
-    std::vector<size_t> pcl_indices;
+    pcl::PointIndices pcl_indices;
     std::vector<float> height_list;
-    std::vector<float> radius_list;
 
     PointsCentroid()
     : radius_sum(0.0f),
       height_sum(0.0f),
       radius_avg(0.0f),
       height_avg(0.0f),
-      height_max(-10.0f),
+      height_max(0.0f),
       height_min(10.0f),
       point_num(0),
       grid_id(0)
@@ -104,11 +109,11 @@ private:
       height_sum = 0.0f;
       radius_avg = 0.0f;
       height_avg = 0.0f;
-      height_max = -10.0f;
+      height_max = 0.0f;
       height_min = 10.0f;
       point_num = 0;
       grid_id = 0;
-      pcl_indices.clear();
+      pcl_indices.indices.clear();
       height_list.clear();
     }
 
@@ -122,21 +127,25 @@ private:
       height_max = height_max < height ? height : height_max;
       height_min = height_min > height ? height : height_min;
     }
-
-    void addPoint(const float radius, const float height, const size_t index)
+    void addPoint(const float radius, const float height, const uint index)
     {
-      pcl_indices.push_back(index);
+      pcl_indices.indices.push_back(index);
       height_list.push_back(height);
       addPoint(radius, height);
     }
 
-    float getAverageSlope() const { return std::atan2(height_avg, radius_avg); }
+    float getAverageSlope() { return std::atan2(height_avg, radius_avg); }
+
     float getAverageHeight() const { return height_avg; }
+
     float getAverageRadius() const { return radius_avg; }
+
     float getMaxHeight() const { return height_max; }
+
     float getMinHeight() const { return height_min; }
-    const std::vector<size_t> & getIndicesRef() const { return pcl_indices; }
-    const std::vector<float> & getHeightListRef() const { return height_list; }
+
+    pcl::PointIndices & getIndicesRef() { return pcl_indices; }
+    std::vector<float> & getHeightListRef() { return height_list; }
   };
 
   void filter(
@@ -144,56 +153,59 @@ private:
 
   // TODO(taisa1): Temporary Implementation: Remove this interface when all the filter nodes
   // conform to new API
-  void faster_filter(
+  virtual void faster_filter(
     const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output,
-    const autoware::pointcloud_preprocessor::TransformInfo & transform_info) override;
+    const autoware::pointcloud_preprocessor::TransformInfo & transform_info);
 
-  // data accessor
-  PclDataAccessor data_accessor_;
+  tf2_ros::Buffer tf_buffer_{get_clock()};
+  tf2_ros::TransformListener tf_listener_{tf_buffer_};
+
+  int x_offset_;
+  int y_offset_;
+  int z_offset_;
+  int intensity_offset_;
+  int intensity_type_;
+  bool offset_initialized_;
+
+  void set_field_offsets(const PointCloud2ConstPtr & input);
+
+  void get_point_from_global_offset(
+    const PointCloud2ConstPtr & input, pcl::PointXYZ & point, size_t global_offset);
 
   const uint16_t gnd_grid_continual_thresh_ = 3;
   bool elevation_grid_mode_;
   float non_ground_height_threshold_;
+  float grid_size_rad_;
+  float tan_grid_size_rad_;
+  float grid_size_m_;
   float low_priority_region_x_;
-  float center_pcl_shift_;  // virtual center of pcl to center mass
-
-  // common parameters
-  float radial_divider_angle_rad_;  // distance in rads between dividers
+  uint16_t gnd_grid_buffer_size_;
+  float grid_mode_switch_grid_id_;
+  float grid_mode_switch_angle_rad_;
+  float virtual_lidar_z_;
+  float detection_range_z_max_;
+  float center_pcl_shift_;             // virtual center of pcl to center mass
+  float grid_mode_switch_radius_;      // non linear grid size switching distance
+  double global_slope_max_angle_rad_;  // radians
+  double local_slope_max_angle_rad_;   // radians
+  double global_slope_max_ratio_;
+  double local_slope_max_ratio_;
+  double radial_divider_angle_rad_;         // distance in rads between dividers
+  double split_points_distance_tolerance_;  // distance in meters between concentric divisions
+  double split_points_distance_tolerance_square_;
+  double                     // minimum height threshold regardless the slope,
+    split_height_distance_;  // useful for close points
+  bool use_virtual_ground_point_;
+  bool use_recheck_ground_cluster_;  // to enable recheck ground cluster
+  bool use_lowest_point_;  // to select lowest point for reference in recheck ground cluster,
+                           // otherwise select middle point
   size_t radial_dividers_num_;
   VehicleInfo vehicle_info_;
 
-  // common thresholds
-  float global_slope_max_angle_rad_;  // radians
-  float local_slope_max_angle_rad_;   // radians
-  float global_slope_max_ratio_;
-  float local_slope_max_ratio_;
-  float split_points_distance_tolerance_;  // distance in meters between concentric divisions
-
-  // non-grid mode parameters
-  bool use_virtual_ground_point_;
-  float                      // minimum height threshold regardless the slope,
-    split_height_distance_;  // useful for close points
-
-  // grid mode parameters
-  bool use_recheck_ground_cluster_;  // to enable recheck ground cluster
-  float recheck_start_distance_;     // distance to start rechecking ground cluster
-  bool use_lowest_point_;  // to select lowest point for reference in recheck ground cluster,
-                           // otherwise select middle point
-  float detection_range_z_max_;
-
-  // grid parameters
-  float grid_size_m_;
-  float grid_mode_switch_radius_;  // non linear grid size switching distance
-  uint16_t gnd_grid_buffer_size_;
-  float virtual_lidar_z_;
-
-  // grid ground filter processor
-  std::unique_ptr<GridGroundFilter> grid_ground_filter_ptr_;
-
   // time keeper related
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
+  rclcpp::Publisher<autoware::universe_utils::ProcessingTimeDetail>::SharedPtr
     detailed_processing_time_publisher_;
-  std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
+  std::shared_ptr<autoware::universe_utils::TimeKeeper> time_keeper_;
 
   /*!
    * Output transformed PointCloud from in_cloud_ptr->header.frame_id to in_target_frame
@@ -212,13 +224,17 @@ private:
    */
   void convertPointcloud(
     const PointCloud2ConstPtr & in_cloud,
-    std::vector<PointCloudVector> & out_radial_ordered_points) const;
-
+    std::vector<PointCloudVector> & out_radial_ordered_points);
+  void convertPointcloudGridScan(
+    const PointCloud2ConstPtr & in_cloud,
+    std::vector<PointCloudVector> & out_radial_ordered_points);
   /*!
    * Output ground center of front wheels as the virtual ground point
    * @param[out] point Virtual ground origin point
    */
-  void calcVirtualGroundOrigin(pcl::PointXYZ & point) const;
+  void calcVirtualGroundOrigin(pcl::PointXYZ & point);
+
+  float calcGridSize(const PointData & p);
 
   /*!
    * Classifies Points in the PointCloud as Ground and Not Ground
@@ -227,10 +243,34 @@ private:
    * @param out_no_ground_indices Returns the indices of the points
    *     classified as not ground in the original PointCloud
    */
+
+  void initializeFirstGndGrids(
+    const float h, const float r, const uint16_t id, std::vector<GridCenter> & gnd_grids);
+
+  void checkContinuousGndGrid(
+    PointData & p, const pcl::PointXYZ & p_orig_point,
+    const std::vector<GridCenter> & gnd_grids_list);
+  void checkDiscontinuousGndGrid(
+    PointData & p, const pcl::PointXYZ & p_orig_point,
+    const std::vector<GridCenter> & gnd_grids_list);
+  void checkBreakGndGrid(
+    PointData & p, const pcl::PointXYZ & p_orig_point,
+    const std::vector<GridCenter> & gnd_grids_list);
   void classifyPointCloud(
-    const PointCloud2ConstPtr & in_cloud,
-    const std::vector<PointCloudVector> & in_radial_ordered_clouds,
-    pcl::PointIndices & out_no_ground_indices) const;
+    const PointCloud2ConstPtr & in_cloud, std::vector<PointCloudVector> & in_radial_ordered_clouds,
+    pcl::PointIndices & out_no_ground_indices);
+  void classifyPointCloudGridScan(
+    const PointCloud2ConstPtr & in_cloud, std::vector<PointCloudVector> & in_radial_ordered_clouds,
+    pcl::PointIndices & out_no_ground_indices);
+  /*!
+   * Re-classifies point of ground cluster based on their height
+   * @param gnd_cluster Input ground cluster for re-checking
+   * @param non_ground_threshold Height threshold for ground and non-ground points classification
+   * @param non_ground_indices Output non-ground PointCloud indices
+   */
+  void recheckGroundCluster(
+    PointsCentroid & gnd_cluster, const float non_ground_threshold, const bool use_lowest_point,
+    pcl::PointIndices & non_ground_indices);
   /*!
    * Returns the resulting complementary PointCloud, one with the points kept
    * and the other removed as indicated in the indices
@@ -240,18 +280,18 @@ private:
    */
   void extractObjectPoints(
     const PointCloud2ConstPtr & in_cloud_ptr, const pcl::PointIndices & in_indices,
-    PointCloud2 & out_object_cloud) const;
+    PointCloud2 & out_object_cloud);
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
-  rcl_interfaces::msg::SetParametersResult onParameter(
-    const std::vector<rclcpp::Parameter> & param);
+  rcl_interfaces::msg::SetParametersResult onParameter(const std::vector<rclcpp::Parameter> & p);
 
   // debugger
-  std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{nullptr};
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{nullptr};
+  std::unique_ptr<autoware::universe_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{
+    nullptr};
+  std::unique_ptr<autoware::universe_utils::DebugPublisher> debug_publisher_ptr_{nullptr};
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
