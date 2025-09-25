@@ -51,8 +51,8 @@ jobs:
         if: env.SHOULD_PROCEED == 'true'
         uses: actions/create-github-app-token@v1
         with:
-          app_id: ${{ secrets.APP_ID }}
-          private_key: ${{ secrets.PRIVATE_KEY }}
+          app_id: ${{ secrets.INTERNAL_APP_ID }}
+          private_key: ${{ secrets.INTERNAL_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
       - name: Checkout repository
