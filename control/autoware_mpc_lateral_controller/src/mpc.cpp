@@ -828,8 +828,7 @@ Trajectory MPC::calculatePredictedTrajectory(
   const auto clipped_trajectory =
     MPCUtils::clipTrajectoryByLength(predicted_mpc_trajectory, predicted_length);
 
-  const auto predicted_trajectory =
-    MPCUtils::convertToAutowareTrajectory(clipped_trajectory, m_vehicle_model_ptr->getWheelbase());
+  const auto predicted_trajectory = MPCUtils::convertToAutowareTrajectory(clipped_trajectory);
 
   return predicted_trajectory;
 }

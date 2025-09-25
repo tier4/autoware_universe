@@ -24,7 +24,6 @@
 #include <gtest/gtest.h>
 #include <tf2/LinearMath/Quaternion.h>
 
-#include <cmath>
 #include <memory>
 #include <tuple>
 
@@ -136,7 +135,7 @@ INSTANTIATE_TEST_SUITE_P(
     std::make_tuple(
       make_linear_trajectory(make_trajectory_point(0, 0), make_trajectory_point(10, 0), 11, 1.0),
       make_linear_trajectory(make_trajectory_point(0, 0), make_trajectory_point(10, 1.01), 11, 1.0),
-      1.01, true),
+      1.01, false),
 
     std::make_tuple(
       make_linear_trajectory(make_trajectory_point(0, 0), make_trajectory_point(10, 0), 11, -1.0),
@@ -153,7 +152,7 @@ INSTANTIATE_TEST_SUITE_P(
       make_linear_trajectory(make_trajectory_point(0, 0), make_trajectory_point(10, 0), 11, -1.0),
       make_linear_trajectory(
         make_trajectory_point(0, 0), make_trajectory_point(10, 1.01), 11, -1.0),
-      1.01, true),
+      1.01, false),
 
     std::make_tuple(
       make_linear_trajectory(make_trajectory_point(0, 0), make_trajectory_point(10, 0), 11, 1.0),

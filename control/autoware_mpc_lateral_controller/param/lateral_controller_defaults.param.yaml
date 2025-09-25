@@ -15,6 +15,8 @@
     extend_trajectory_for_end_yaw_control: false  # flag of trajectory extending for terminal yaw control
 
     # -- mpc optimization --
+
+
     qp_solver_type: "osqp"                       # optimization solver option (unconstraint_fast or osqp)
     mpc_prediction_horizon: 50                   # prediction horizon step
     mpc_prediction_dt: 0.1                       # prediction horizon period [s]
@@ -42,6 +44,15 @@
     mpc_velocity_time_constant: 0.3              # time constant used for velocity smoothing
     mpc_min_prediction_length: 5.0               # minimum prediction length
 
+
+    k_p: 0.5
+    k_i: 0.12
+    k_d: 0.015
+    int_min: -1.0
+    int_max: 1.0
+
+
+    
     # -- vehicle model --
     vehicle_model_type: "kinematics" # vehicle model type for mpc prediction. option is kinematics, kinematics_no_delay, and dynamics
     input_delay: 0.24                # steering input delay time for delay compensation

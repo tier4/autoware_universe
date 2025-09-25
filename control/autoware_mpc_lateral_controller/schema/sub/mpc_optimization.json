@@ -11,6 +11,31 @@
           "description": "QP solver option. described below in detail.",
           "default": "osqp"
         },
+        "k_p": {
+          "type": "number",
+          "description": "p gain for longitudinal control",
+          "default": "0.5"
+        },
+        "k_i": {
+          "type": "number",
+          "description": "i gain for longitudinal control",
+          "default": "0.0"
+        },
+        "k_d": {
+          "type": "number",
+          "description": "d gain for longitudinal control",
+          "default": "0.015"
+        },
+        "int_min": {
+          "type": "number",
+          "description": "max value of PID's output acceleration during DRIVE state [m/s^2]",
+          "default": "-1.0"
+        },
+        "int_max": {
+          "type": "number",
+          "description": "min value of PID's output acceleration during DRIVE state [m/s^2]",
+          "default": "1.0"
+        },
         "mpc_prediction_horizon": {
           "type": "integer",
           "description": "total prediction step for MPC",
@@ -139,6 +164,11 @@
       },
       "required": [
         "qp_solver_type",
+        "kp",
+        "ki",
+        "kd",
+        "max_out",
+        "min_out",
         "mpc_prediction_horizon",
         "mpc_prediction_dt",
         "mpc_weight_lat_error",

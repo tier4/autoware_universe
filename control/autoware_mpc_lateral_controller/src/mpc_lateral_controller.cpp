@@ -15,6 +15,8 @@
 #include "autoware/mpc_lateral_controller/mpc_lateral_controller.hpp"
 
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
+#include "autoware/mpc_lateral_controller/mpc.hpp"
+#include "autoware/mpc_lateral_controller/mpc_utils.hpp"
 #include "autoware/mpc_lateral_controller/qp_solver/qp_solver_osqp.hpp"
 #include "autoware/mpc_lateral_controller/qp_solver/qp_solver_unconstraint_fast.hpp"
 #include "autoware/mpc_lateral_controller/vehicle_model/vehicle_model_bicycle_dynamics.hpp"
@@ -31,6 +33,15 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <cmath>
+
+namespace {
+// Truncate to 3 decimals, e.g. 0.328978 -> 0.328  (toward zero)
+inline double truncate3(double x) {
+  constexpr double scale = 1000.0;
+  return std::trunc(x * scale) / scale;
+}
+}
 
 namespace autoware::motion::control::mpc_lateral_controller
 {
@@ -48,6 +59,7 @@ MpcLateralController::MpcLateralController(
   m_mpc = std::make_unique<MPC>(node);
 
   m_mpc->m_ctrl_period = node.get_parameter("ctrl_period").as_double();
+  m_lat_ctrl_period = node.get_parameter("ctrl_period").as_double();
 
   auto & p_filt = m_trajectory_filtering_param;
   p_filt.enable_path_smoothing = dp_bool("enable_path_smoothing");
@@ -59,6 +71,19 @@ MpcLateralController::MpcLateralController(
 
   m_mpc->m_use_steer_prediction = dp_bool("use_steer_prediction");
   m_mpc->m_param.steer_tau = dp_double("vehicle_model_steer_tau");
+
+  /*PID Parameters*/
+
+  // /* PID Parameters */
+  pid_kp_ = dp_double("k_p");
+  pid_ki_ = dp_double("k_i");
+  pid_kd_ = dp_double("k_d");
+  pid_int_min_ = dp_double("int_min");
+  pid_int_max_ = dp_double("int_max");
+  error_tresh = dp_double("error_tresh");
+
+  steer_counter = dp_double("steer_counter");
+
 
   /* stop state parameters */
   m_stop_state_entry_ego_speed = dp_double("stop_state_entry_ego_speed");
@@ -246,6 +271,8 @@ void MpcLateralController::setupDiag()
   diag_updater_->add("MPC_solve_checker", [&](auto & stat) { setStatus(stat); });
 }
 
+
+
 trajectory_follower::LateralOutput MpcLateralController::run(
   trajectory_follower::InputData const & input_data)
 {
@@ -257,6 +284,36 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   if (enable_auto_steering_offset_removal_) {
     m_current_steering.steering_tire_angle -= steering_offset_->getOffset();
   }
+
+  // //1-get the dt
+  // double steer_dt = getDt();
+
+
+  // RCLCPP_ERROR(logger_, " THE DTTT IS %f. ", steer_dt);
+
+  // const auto current_pose_latt = m_current_kinematic_state.pose.pose;
+
+  // 2-define the control period
+  MPCData pid_mpc_data;
+
+  const auto reference_trajectory =
+    m_mpc->applyVelocityDynamicsFilter(m_mpc->m_reference_trajectory, m_current_kinematic_state);
+
+  const auto [get_data_result, mpc_pid_data] =
+    m_mpc->getData(reference_trajectory, m_current_steering, m_current_kinematic_state);
+
+
+  // data.nearest_pose = ????????
+
+  // MPCUtils::calcNearestPoseInterp(
+  //       traj, current_pose_latt, &(pid_mpc_data.nearest_pose), &(pid_mpc_data.nearest_idx),
+  //       &(pid_mpc_data.nearest_time), ego_nearest_dist_threshold, ego_nearest_yaw_threshold)
+
+  // //3-get the lateral error
+  double steer_lat_error = mpc_pid_data.lateral_err;
+  // double steer_yaw_error = mpc_pid_data.yaw_err;
+
+  // RCLCPP_ERROR(logger_, " THE ERROR IS %f and %f. ", steer_lat_error, steer_yaw_error);
 
   Lateral ctrl_cmd;
   Trajectory predicted_traj;
@@ -303,16 +360,49 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     ctrl_cmd.steering_tire_angle += steering_offset_->getOffset();
   }
 
+
+
+
+// ...
+// current_steer_buffer.push_back(truncate3(m_current_steering.steering_tire_angle));
+// if (current_steer_buffer.size() > 5) {
+//     current_steer_buffer.pop_front();
+// }
+
+
+//   double diff_error;
+//   double p_int;
+//   if (m_is_first_time) {
+//     diff_error = 0;
+//     m_is_first_time = false;
+//   } else {
+//     diff_error = (steer_lat_error - steer_prev_error) / steer_dt;
+//   }
+
+//   int_error = int_error + (steer_lat_error * steer_dt);
+//   p_int = std::clamp(int_error, pid_int_min_, pid_int_max_);
+
+
+
+
+  const auto filtered_pid_steer = m_mpc->m_lpf_steer_pid.filter(ctrl_cmd.steering_tire_angle);
+
+
+
+  ctrl_cmd.steering_tire_angle = filtered_pid_steer;
+
+
   publishPredictedTraj(predicted_traj);
   publishDebugValues(debug_values);
 
   const auto createLateralOutput =
     [this](
       const auto & cmd, const bool is_mpc_solved,
-      const auto & cmd_horizon) -> trajectory_follower::LateralOutput {
+      const auto & cmd_horizon, const auto & lateral_error) -> trajectory_follower::LateralOutput {
     trajectory_follower::LateralOutput output;
     output.control_cmd = createCtrlCmdMsg(cmd);
     output.control_cmd_horizon = createCtrlCmdHorizonMsg(cmd_horizon);
+    output.lateral_error = lateral_error;
     // To be sure current steering of the vehicle is desired steering angle, we need to check
     // following conditions.
     // 1. At the last loop, mpc should be solved because command should be optimized output.
@@ -326,22 +416,24 @@ trajectory_follower::LateralOutput MpcLateralController::run(
 
   if (isStoppedState()) {
     // Reset input buffer
-    debug_throttle("Stopped state detected, use previous control command");
     for (auto & value : m_mpc->m_input_buffer) {
       value = m_ctrl_cmd_prev.steering_tire_angle;
     }
     // Use previous command value as previous raw steer command
     m_mpc->m_raw_steer_cmd_prev = m_ctrl_cmd_prev.steering_tire_angle;
-    return createLateralOutput(m_ctrl_cmd_prev, false, ctrl_cmd_horizon);
+    return createLateralOutput(m_ctrl_cmd_prev, false, ctrl_cmd_horizon, steer_lat_error);
   }
 
   if (!mpc_solved_status.result) {
-    debug_throttle("MPC is not solved, use stop control command");
     ctrl_cmd = getStopControlCommand();
   }
 
   m_ctrl_cmd_prev = ctrl_cmd;
-  return createLateralOutput(ctrl_cmd, mpc_solved_status.result, ctrl_cmd_horizon);
+  steer_prev_error = steer_lat_error;
+  
+
+
+  return createLateralOutput(ctrl_cmd, mpc_solved_status.result, ctrl_cmd_horizon, steer_lat_error);
 }
 
 bool MpcLateralController::isSteerConverged(const Lateral & cmd) const
@@ -432,6 +524,21 @@ Lateral MpcLateralController::getInitialControlCommand() const
   return cmd;
 }
 
+double MpcLateralController::getDt()
+{
+  double dt;
+  if (!m_prev_control_time) {
+    dt = m_lat_ctrl_period;
+    m_prev_control_time = std::make_shared<rclcpp::Time>(clock_->now());
+  } else {
+    dt = (clock_->now() - *m_prev_control_time).seconds();
+    *m_prev_control_time = clock_->now();
+  }
+  const double max_dt = m_lat_ctrl_period * 2.0;
+  const double min_dt = m_lat_ctrl_period * 0.5;
+  return std::max(std::min(dt, max_dt), min_dt);
+}
+
 bool MpcLateralController::isStoppedState() const
 {
   const double current_vel = m_current_kinematic_state.twist.twist.linear.x;
@@ -443,7 +550,6 @@ bool MpcLateralController::isStoppedState() const
 
   const auto latest_published_cmd = m_ctrl_cmd_prev;  // use prev_cmd as a latest published command
   if (m_keep_steer_control_until_converged && !isSteerConverged(latest_published_cmd)) {
-    debug_throttle("steering is not converged.");
     return false;  // not stopState: keep control
   }
 

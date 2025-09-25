@@ -31,6 +31,7 @@ struct LateralOutput
   Lateral control_cmd;
   LateralHorizon control_cmd_horizon;
   LateralSyncData sync_data;
+  double lateral_error;
 };
 
 class LateralControllerBase

@@ -45,6 +45,8 @@
 #include "visualization_msgs/msg/marker_array.hpp"
 #include <autoware_control_msgs/msg/detail/control_horizon__struct.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include "autoware/mpc_lateral_controller/mpc.hpp"
+
 
 #include <memory>
 #include <string>
@@ -78,6 +80,8 @@ public:
 private:
   rclcpp::TimerBase::SharedPtr timer_control_;
   double timeout_thr_sec_;
+  // double error_threshold;
+  // double error_compensation; 
   bool enable_control_cmd_horizon_pub_{false};
   boost::optional<LongitudinalOutput> longitudinal_output_{boost::none};
 
@@ -87,6 +91,7 @@ private:
 
   std::shared_ptr<trajectory_follower::LongitudinalControllerBase> longitudinal_controller_;
   std::shared_ptr<trajectory_follower::LateralControllerBase> lateral_controller_;
+  std::unique_ptr<autoware::motion::control::mpc_lateral_controller::MPC> mm_mpc_;
 
   // Subscribers
   autoware_utils::InterProcessPollingSubscriber<autoware_planning_msgs::msg::Trajectory>

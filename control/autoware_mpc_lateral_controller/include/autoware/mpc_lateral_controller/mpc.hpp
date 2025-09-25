@@ -171,6 +171,7 @@ struct MPCData
   MPCData() = default;
 };
 
+
 /**
  * MPC matrix with the following format:
  * Xex = Aex * X0 + Bex * Uex * Wex
@@ -224,21 +225,12 @@ private:
   double m_raw_steer_cmd_pprev = 0.0;  // Raw output computed two iterations ago.
   double m_lateral_error_prev = 0.0;   // Previous lateral error for derivative calculation.
   double m_yaw_error_prev = 0.0;       // Previous heading error for derivative calculation.
+  double m_steer_pid_error_prev = 0.0; 
 
   bool m_is_forward_shift = true;  // Flag indicating if the shift is in the forward direction.
 
   rclcpp::Publisher<Trajectory>::SharedPtr m_debug_frenet_predicted_trajectory_pub;
   rclcpp::Publisher<Trajectory>::SharedPtr m_debug_resampled_reference_trajectory_pub;
-  /**
-   * @brief Get variables for MPC calculation.
-   * @param trajectory The reference trajectory.
-   * @param current_steer The current steering report.
-   * @param current_kinematics The current vehicle kinematics.
-   * @return A pair of a boolean flag indicating success and the MPC data.
-   */
-  std::pair<ResultWithReason, MPCData> getData(
-    const MPCTrajectory & trajectory, const SteeringReport & current_steer,
-    const Odometry & current_kinematics);
 
   /**
    * @brief Get the initial state for MPC.
@@ -289,15 +281,6 @@ private:
    */
   std::pair<ResultWithReason, MPCTrajectory> resampleMPCTrajectoryByTime(
     const double start_time, const double prediction_dt, const MPCTrajectory & input) const;
-
-  /**
-   * @brief Apply the velocity dynamics filter to the trajectory using the current kinematics.
-   * @param trajectory The input trajectory.
-   * @param current_kinematics The current vehicle kinematics.
-   * @return The filtered trajectory.
-   */
-  MPCTrajectory applyVelocityDynamicsFilter(
-    const MPCTrajectory & trajectory, const Odometry & current_kinematics) const;
 
   /**
    * @brief Get the prediction time step for MPC. If the trajectory length is shorter than
@@ -434,6 +417,9 @@ public:
   double ego_nearest_dist_threshold = 3.0;  // Threshold for nearest index search based on distance.
   double ego_nearest_yaw_threshold = M_PI_2;  // Threshold for nearest index search based on yaw.
 
+  Butterworth2dFilter m_lpf_steer_pid; 
+
+
   bool m_use_delayed_initial_state =
     true;  // Flag to use x0_delayed as initial state for predicted trajectory
 
@@ -456,6 +442,27 @@ public:
     const SteeringReport & current_steer, const Odometry & current_kinematics, Lateral & ctrl_cmd,
     Trajectory & predicted_trajectory, Float32MultiArrayStamped & diagnostic,
     LateralHorizon & ctrl_cmd_horizon);
+
+
+    /**
+ * @brief Get variables for MPC calculation.
+ * @param trajectory The reference trajectory.
+ * @param current_steer The current steering report.
+ * @param current_kinematics The current vehicle kinematics.
+ * @return A pair of a boolean flag indicating success and the MPC data.
+ */
+std::pair<ResultWithReason, MPCData> getData(
+  const MPCTrajectory & trajectory, const SteeringReport & current_steer,
+  const Odometry & current_kinematics);
+
+/**
+ * @brief Apply the velocity dynamics filter to the trajectory using the current kinematics.
+ * @param trajectory The input trajectory.
+ * @param current_kinematics The current vehicle kinematics.
+ * @return The filtered trajectory.
+ */
+MPCTrajectory applyVelocityDynamicsFilter(
+  const MPCTrajectory & trajectory, const Odometry & current_kinematics) const;
 
   /**
    * @brief Set the reference trajectory to be followed.
@@ -510,6 +517,7 @@ public:
     m_lpf_steering_cmd.initialize(m_ctrl_period, steering_lpf_cutoff_hz);
     m_lpf_lateral_error.initialize(m_ctrl_period, error_deriv_lpf_cutoff_hz);
     m_lpf_yaw_error.initialize(m_ctrl_period, error_deriv_lpf_cutoff_hz);
+    m_lpf_steer_pid.initialize(m_ctrl_period, steering_lpf_cutoff_hz);
   }
 
   /**
