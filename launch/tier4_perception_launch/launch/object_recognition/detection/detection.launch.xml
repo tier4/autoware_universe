@@ -42,6 +42,8 @@
   <arg name="use_irregular_object_detector"/>
   <arg name="irregular_object_detector_fusion_camera_ids" default="[0]"/>
   <arg name="ml_camera_lidar_merger_priority_mode"/>
+  <arg name="use_camera_stream_petr"/>
+  <arg name="is_simulation"/>
 
   <!-- External interfaces -->
   <arg name="number_of_cameras"/>
@@ -106,6 +108,7 @@
   <let name="object_merger/input/ml_detected_objects" value="$(var lidar_ml_detector/output/objects)" unless="$(var use_validator)"/>
 
   <!-- Module switching -->
+  <let name="switch/detector/camera_stream_petr" value="false"/>
   <let name="switch/detector/camera_lidar" value="false"/>
   <let name="switch/detector/lidar_dnn" value="false"/>
   <let name="switch/detector/lidar_rule" value="false"/>
@@ -127,6 +130,7 @@
 
   <group scoped="false" if="$(eval '&quot;$(var mode)&quot;==&quot;camera_lidar_radar_fusion&quot;')">
     <let name="switch/filter/pointcloud" value="true"/>
+    <let name="switch/detector/camera_stream_petr" value="true" if="$(var use_camera_stream_petr)"/>
     <let name="switch/detector/camera_lidar" value="true"/>
     <let name="switch/detector/lidar_dnn" value="true"/>
     <let name="switch/detector/radar" value="true" unless="$(var use_radar_tracking_fusion)"/>
@@ -141,6 +145,7 @@
   </group>
   <group scoped="false" if="$(eval '&quot;$(var mode)&quot;==&quot;camera_lidar_fusion&quot;')">
     <let name="switch/filter/pointcloud" value="true"/>
+    <let name="switch/detector/camera_stream_petr" value="true" if="$(var use_camera_stream_petr)"/>
     <let name="switch/detector/camera_lidar" value="true"/>
     <let name="switch/detector/lidar_dnn" value="true"/>
     <let name="switch/merger/camera_lidar" value="true" unless="$(var use_multi_channel_tracker_merger)"/>
@@ -174,6 +179,12 @@
   </group>
 
   <!-- Detector -->
+  <group if="$(var switch/detector/camera_stream_petr)">
+    <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/detection/detector/camera_stream_petr_detector.launch.xml">
+      <arg name="is_simulation" value="$(var is_simulation)"/>
+    </include>
+  </group>
+
   <group if="$(var switch/detector/camera_lidar)">
     <!-- Camera-Lidar detectors -->
     <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/detection/detector/camera_lidar_detector.launch.xml">

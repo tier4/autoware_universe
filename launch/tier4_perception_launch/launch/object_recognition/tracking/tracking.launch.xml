@@ -23,6 +23,7 @@
   <arg name="use_multi_channel_tracker_merger"/>
   <arg name="use_validator" description="use obstacle_pointcloud based validator"/>
   <arg name="use_short_range_detection"/>
+  <arg name="is_simulation"/>
 
   <!-- External interface -->
   <arg name="lidar_detection_model_type" default="centerpoint"/>
