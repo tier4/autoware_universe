@@ -194,11 +194,11 @@ void StreamPetrNode::camera_image_callback(
     stop_watch_ptr_->tic("latency/total");
   }
 
-  const auto objects_sub_count =
-    pub_objects_->get_subscription_count() + pub_objects_->get_intra_process_subscription_count();
-  if (objects_sub_count < 1) {
-    return;  // No subscribers, skip processing
-  }
+  // const auto objects_sub_count =
+  //   pub_objects_->get_subscription_count() + pub_objects_->get_intra_process_subscription_count();
+  // if (objects_sub_count < 1) {
+  //   return;  // No subscribers, skip processing
+  // }
   if (!data_store_->check_if_all_camera_info_received()) {
     return;
   }
