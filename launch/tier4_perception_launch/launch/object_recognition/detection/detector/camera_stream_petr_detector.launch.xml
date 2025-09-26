@@ -12,6 +12,7 @@
   <arg name="debug_mode" default="true"/>
 
   <let name="is_compressed_image" value="true" if="$(var is_simulation)"/>
+  <arg name="is_distorted_image" default="false"/>
 
   <!-- interface -->
   <let name="input/camera_front_center/image" value="/sensing/camera/camera8/image_raw"/>
@@ -26,22 +27,43 @@
   <let name="input/camera_rear_right/info" value="/sensing/camera/camera7/camera_info"/>
   <let name="input/camera_rear_center/image" value="/sensing/camera/camera9/image_raw"/>
   <let name="input/camera_rear_center/info" value="/sensing/camera/camera9/camera_info"/>
+  <!-- <arg name="input/kinematic_state" default="/localization/kinematic_state"/> -->
+  <arg name="output/objects" default="/perception/object_recognition/detection/camera_streampetr/objects"/>
 
-  <let name="input/camera_front_center/image" value="/sensing/camera/camera8/image_raw/compressed" if="$(var is_compressed_image)"/>
-  <let name="input/camera_front_center/info" value="/sensing/camera/camera8/camera_info"/>
-  <let name="input/camera_front_left/image" value="/sensing/camera/camera0/image_raw/compressed" if="$(var is_compressed_image)"/>
-  <let name="input/camera_front_left/info" value="/sensing/camera/camera0/camera_info"/>
-  <let name="input/camera_front_right/image" value="/sensing/camera/camera6/image_raw/compressed" if="$(var is_compressed_image)"/>
-  <let name="input/camera_front_right/info" value="/sensing/camera/camera6/camera_info"/>
-  <let name="input/camera_rear_left/image" value="/sensing/camera/camera10/image_raw/compressed" if="$(var is_compressed_image)"/>
-  <let name="input/camera_rear_left/info" value="/sensing/camera/camera10/camera_info"/>
-  <let name="input/camera_rear_right/image" value="/sensing/camera/camera7/image_raw/compressed" if="$(var is_compressed_image)"/>
-  <let name="input/camera_rear_right/info" value="/sensing/camera/camera7/camera_info"/>
-  <let name="input/camera_rear_center/image" value="/sensing/camera/camera9/image_raw/compressed" if="$(var is_compressed_image)"/>
-  <let name="input/camera_rear_center/info" value="/sensing/camera/camera9/camera_info"/>
-
-  <arg name="input/kinematic_state" default="/localization/kinematic_state"/>
-  <arg name="output/objects" default="/perception/object_recognition/camera_streampetr/objects"/>
+  <!-- image decompressor -->
+  <group if="$(var is_compressed_image)">
+    <arg name="img_decompressor_param_file" default="$(find-pkg-share autoware_image_transport_decompressor)/config/image_transport_decompressor.param.yaml"/>
+    <node pkg="autoware_image_transport_decompressor" exec="image_transport_decompressor_node" name="image_transport_decompressor_node_0">
+      <remap from="~/input/compressed_image" to="/sensing/camera/camera8/image_raw/compressed"/>
+      <remap from="~/output/raw_image" to="/sensing/camera/camera8/image_raw"/>
+      <param name="encoding" value="default"/>
+    </node>
+    <node pkg="autoware_image_transport_decompressor" exec="image_transport_decompressor_node" name="image_transport_decompressor_node_1">
+      <remap from="~/input/compressed_image" to="/sensing/camera/camera0/image_raw/compressed"/>
+      <remap from="~/output/raw_image" to="/sensing/camera/camera0/image_raw"/>
+      <param name="encoding" value="default"/>
+    </node>
+    <node pkg="autoware_image_transport_decompressor" exec="image_transport_decompressor_node" name="image_transport_decompressor_node_2">
+      <remap from="~/input/compressed_image" to="/sensing/camera/camera6/image_raw/compressed"/>
+      <remap from="~/output/raw_image" to="/sensing/camera/camera6/image_raw"/>
+      <param name="encoding" value="default"/>
+    </node>
+    <node pkg="autoware_image_transport_decompressor" exec="image_transport_decompressor_node" name="image_transport_decompressor_node_3">
+      <remap from="~/input/compressed_image" to="/sensing/camera/camera10/image_raw/compressed"/>
+      <remap from="~/output/raw_image" to="/sensing/camera/camera10/image_raw"/>
+      <param name="encoding" value="default"/>
+    </node>
+    <node pkg="autoware_image_transport_decompressor" exec="image_transport_decompressor_node" name="image_transport_decompressor_node_4">
+      <remap from="~/input/compressed_image" to="/sensing/camera/camera7/image_raw/compressed"/>
+      <remap from="~/output/raw_image" to="/sensing/camera/camera7/image_raw"/>
+      <param name="encoding" value="default"/>
+    </node>
+    <node pkg="autoware_image_transport_decompressor" exec="image_transport_decompressor_node" name="image_transport_decompressor_node_5">
+      <remap from="~/input/compressed_image" to="/sensing/camera/camera9/image_raw/compressed"/>
+      <remap from="~/output/raw_image" to="/sensing/camera/camera9/image_raw"/>
+      <param name="encoding" value="default"/>
+    </node>
+  </group>
 
   <!-- NODE directly launch -->
   <node pkg="autoware_camera_streampetr" exec="autoware_camera_streampetr_node" name="stream_petr" output="screen">
@@ -51,7 +73,7 @@
     <param name="model_params.backbone_path" value="$(var model_path)/simplify_extract_img_feat.onnx"/>
     <param name="model_params.head_path" value="$(var model_path)/simplify_pts_head_memory.onnx"/>
     <param name="model_params.position_embedding_path" value="$(var model_path)/simplify_position_embedding.onnx"/>
-    <remap from="~/input/kinematic_state" to="/localization/kinematic_state"/>
+    <!-- <remap from="~/input/kinematic_state" to="/localization/kinematic_state"/> -->
 
     <!-- Image of ~/input/camerai will be the ith image in the model input -->
     <!-- ["CAM_FRONT", "CAM_BACK", "CAM_FRONT_LEFT", "CAM_BACK_LEFT", "CAM_FRONT_RIGHT", "CAM_BACK_RIGHT"]  -->
@@ -68,15 +90,16 @@
     <remap from="~/input/camera3/image" to="$(var input/camera_rear_left/image)"/>
     <remap from="~/input/camera4/image" to="$(var input/camera_front_right/image)"/>
     <remap from="~/input/camera5/image" to="$(var input/camera_rear_right/image)"/>
-  
-    <remap from="~/output/objects"  to="$(var output/objects)"/>
-  
-    <param name="anchor_camera_id" value="0" />   <!-- The forward pass begins once every anchor camera topic reaches. Choose this as the camera that causes the shortest differnce in min and max timestamp between cameras-->
-    <param name="is_compressed_image" value="false" />   <!-- Whether the input image is compressed. -->
-    <param name="is_distorted_image" value="true" />   <!-- Whether the input image is compressed. -->
+
+    <remap from="~/output/objects" to="$(var output/objects)"/>
+
+    <param name="anchor_camera_id" value="0"/>
+    <!-- The forward pass begins once every anchor camera topic reaches. Choose this as the camera that causes the shortest differnce in min and max timestamp between cameras-->
+    <param name="is_compressed_image" value="$(var is_compressed_image)"/>
+    <!-- Whether the input image is compressed. -->
+    <param name="is_distorted_image" value="$(var is_distorted_image)"/>
+    <!-- Whether the input image is distorted. -->
     <param name="multithreading" value="false"/>
     <param name="downsample_factor" value="0.3"/>
-
   </node>
-
 </launch>
