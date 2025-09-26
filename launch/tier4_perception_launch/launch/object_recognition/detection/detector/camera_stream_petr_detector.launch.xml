@@ -95,7 +95,7 @@
 
     <param name="anchor_camera_id" value="0"/>
     <!-- The forward pass begins once every anchor camera topic reaches. Choose this as the camera that causes the shortest differnce in min and max timestamp between cameras-->
-    <param name="is_compressed_image" value="$(var is_compressed_image)"/>
+    <param name="is_compressed_image" value="false"/>
     <!-- Whether the input image is compressed. -->
     <param name="is_distorted_image" value="$(var is_distorted_image)"/>
     <!-- Whether the input image is distorted. -->
