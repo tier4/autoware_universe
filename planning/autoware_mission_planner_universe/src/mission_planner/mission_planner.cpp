@@ -314,6 +314,10 @@ void MissionPlanner::set_preferred_lane(
 
   change_state(is_reroute ? RouteState::REROUTING : RouteState::ROUTING);
 
+  const DIRECTION override_direction = req->lane_change_direction == 0   ? DIRECTION::MANUAL_LEFT
+                                       : req->lane_change_direction == 1 ? DIRECTION::MANUAL_RIGHT
+                                                                         : DIRECTION::AUTO;
+
   lanelet::ConstLanelet closest_lanelet;
   const bool found_closest_lane = planner_->getRouteHandler().getClosestLaneletWithinRoute(
     odometry_->pose.pose, &closest_lanelet);
@@ -359,69 +363,10 @@ void MissionPlanner::set_preferred_lane(
   boost::uuids::uuid uuid = gen();
   std::copy(uuid.begin(), uuid.end(), route.uuid.uuid.begin());
 
-  change_route(route);
+  change_route(route, override_direction != DIRECTION::AUTO);
   change_state(RouteState::SET);
 
   res->status.success = true;
-}
-
-std::vector<autoware_planning_msgs::msg::LaneletPrimitive> 
-MissionPlanner::sortPrimitivesLeftToRight(
-    const route_handler::RouteHandler & route_handler,
-    autoware_planning_msgs::msg::LaneletPrimitive preferred_primitive,
-    std::vector<autoware_planning_msgs::msg::LaneletPrimitive> primitives)
-{
-  using Primitive = autoware_planning_msgs::msg::LaneletPrimitive;
-
-  std::deque<Primitive> sorted_primitives;
-
-  auto find_primitive = [&](lanelet::Id id) -> std::optional<Primitive> {
-    auto it = std::find_if(
-      primitives.begin(), primitives.end(),
-      [&](const Primitive &p) { return p.id == id; });
-    if (it != primitives.end()) return *it;
-    return std::nullopt;
-  };
-
-  lanelet::ConstLanelet current = route_handler.getLaneletsFromId(preferred_primitive.id);
-  std::cerr << "Walk left lanes\n";
-  // Walk left lanes
-  for (auto left = route_handler.getLeftLanelet(current, true, true);
-        left;
-        left = route_handler.getLeftLanelet(*left, true, true)) {
-    if (auto match = find_primitive(left->id())) {
-      std::cerr << "\t\t" << left->id() << std::endl;
-      sorted_primitives.push_front(*match);
-    }
-  }
-
-  sorted_primitives.push_back(preferred_primitive);
-
-  std::cerr << "Walk right lanes\n";
-  // Walk right lanes
-  for (auto right = route_handler.getRightLanelet(current, true);
-        right;
-        right = route_handler.getRightLanelet(*right, true, true)) {
-    if (auto match = find_primitive(right->id())) {
-      std::cerr << "\t\t" << right->id() << std::endl;
-      sorted_primitives.push_back(*match);
-    }
-  }
-
-  std::cerr << "\tOriginal primitive: ";
-  for (const auto &primitive : primitives) {
-    std::cerr << "\t\t" << primitive.id << ", ";
-  }
-  std::cerr << std::endl;
-
-  std::vector<autoware_planning_msgs::msg::LaneletPrimitive> result{sorted_primitives.begin(), sorted_primitives.end()};
-  std::cerr << "\tSorted primitive: ";
-  for (const auto &primitive : result) {
-    std::cerr << "\t\t" << primitive.id << ", ";
-  }
-  std::cerr << std::endl;
-
-  return {sorted_primitives.begin(), sorted_primitives.end()};
 }
 
 void MissionPlanner::on_set_lanelet_route(
@@ -466,7 +411,7 @@ void MissionPlanner::on_set_lanelet_route(
   }
 
   change_state(is_reroute ? RouteState::REROUTING : RouteState::ROUTING);
-  auto route = create_route(*req);
+  const auto route = create_route(*req);
 
   if (route.segments.empty()) {
     cancel_route();
@@ -480,18 +425,6 @@ void MissionPlanner::on_set_lanelet_route(
     change_state(RouteState::SET);
     throw service_utils::ServiceException(
       ResponseCode::ERROR_REROUTE_FAILED, "New route is not safe. Reroute failed.");
-  }
-  
-  // --- Sort segments left-to-right at the very beginning ---
-  auto route_handler = planner_->getRouteHandler();
-
-  for (auto & segment : route.segments) {
-    std::cerr << "Preferred primitive: " << segment.preferred_primitive.id << std::endl;
-    segment.primitives = sortPrimitivesLeftToRight(
-      route_handler,
-      segment.preferred_primitive,
-      segment.primitives
-    );
   }
 
   change_route(route);

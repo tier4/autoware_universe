@@ -77,7 +77,7 @@ LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
       break;
     }
   }
-  
+
   bool route_updated = false;
   for (auto iter = start_iter; iter != final_iter; ++iter) {
     auto & current_segment = *iter;
@@ -103,7 +103,7 @@ LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
       });
     if (next_it == next_segment.primitives.end()) {
       throw std::runtime_error(
-        "ManualLaneChangeHandler: Preferred primitive not found in next segment. next_it.id: " + std::to_string(next_segment.preferred_primitive.id));
+        "ManualLaneChangeHandler: Preferred primitive not found in next segment.");
     }
 
     std::size_t current_index = std::distance(current_segment.primitives.begin(), current_it);
