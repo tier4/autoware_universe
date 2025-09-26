@@ -149,6 +149,7 @@ private:
     double engage_acceleration;           // use this acceleration when start moving [m/ss]
     double engage_exit_ratio;             // exit engage sequence
                                           // when the speed exceeds ratio x engage_vel.
+    double engage_exit_acceleration;      // exit engage sequence when the acceleration under this parametor [m/ss]
     double stopping_velocity;             // change target velocity to this value before v=0 point.
     double stopping_distance;             // distance for the stopping_velocity
     double extract_ahead_dist;            // forward waypoints distance from current position [m]

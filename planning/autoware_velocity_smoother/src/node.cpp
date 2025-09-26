@@ -189,6 +189,7 @@ rcl_interfaces::msg::SetParametersResult VelocitySmootherNode::onParameter(
     update_param("engage_velocity", p.engage_velocity);
     update_param("engage_acceleration", p.engage_acceleration);
     update_param("engage_exit_ratio", p.engage_exit_ratio);
+    update_param("engage_exit_acceleration", p.engage_exit_acceleration);
     update_param("stopping_velocity", p.stopping_velocity);
     update_param("stopping_distance", p.stopping_distance);
     update_param("extract_ahead_dist", p.extract_ahead_dist);
@@ -295,6 +296,7 @@ void VelocitySmootherNode::initCommonParam()
   p.engage_acceleration = declare_parameter<double>("engage_acceleration");
   p.engage_exit_ratio = declare_parameter<double>("engage_exit_ratio");
   p.engage_exit_ratio = std::min(std::max(p.engage_exit_ratio, 0.0), 1.0);
+  p.engage_exit_acceleration = declare_parameter<double>("engage_exit_acceleration");
   p.stopping_velocity = declare_parameter<double>("stopping_velocity");
   p.stopping_distance = declare_parameter<double>("stopping_distance");
   p.extract_ahead_dist = declare_parameter<double>("extract_ahead_dist");
@@ -828,15 +830,15 @@ std::pair<Motion, VelocitySmootherNode::InitializeType> VelocitySmootherNode::ca
   // if current vehicle velocity is low && base_desired speed is high,
   // use engage_velocity for engage vehicle
   const double engage_vel_thr = node_param_.engage_velocity * node_param_.engage_exit_ratio;
-  if (vehicle_speed < engage_vel_thr) {
+  if (vehicle_speed < engage_vel_thr && vehicle_acceleration > node_param_.engage_exit_acceleration) {
     if (target_vel >= node_param_.engage_velocity) {
       const double stop_dist = trajectory_utils::calcStopDistance(input_traj, input_closest);
       if (stop_dist > node_param_.stop_dist_to_prohibit_engage) {
         RCLCPP_DEBUG(
           get_logger(),
-          "calcInitialMotion : vehicle speed is low (%.3f), and desired speed is high (%.3f). Use "
+          "calcInitialMotion : vehicle speed is low (%.3f), and desired speed is high (%.3f), and acc is high (%.3f). Use "
           "engage speed (%.3f) until vehicle speed reaches engage_vel_thr (%.3f). stop_dist = %.3f",
-          vehicle_speed, target_vel, node_param_.engage_velocity, engage_vel_thr, stop_dist);
+          vehicle_speed, target_vel, vehicle_acceleration, node_param_.engage_velocity, engage_vel_thr, stop_dist);
         const double engage_acceleration =
           external_velocity_limit_.acceleration_request.request
             ? external_velocity_limit_.acceleration_request.max_acceleration
