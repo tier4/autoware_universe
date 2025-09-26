@@ -13,27 +13,12 @@
 // limitations under the License.
 
 #include "node.hpp"
-
-#include "grid_ground_filter.hpp"
-
-#include <autoware_utils/geometry/geometry.hpp>
-#include <autoware_utils/math/normalization.hpp>
-#include <autoware_utils/math/unit_conversion.hpp>
-#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace autoware::ground_segmentation
 {
-using autoware::pointcloud_preprocessor::get_param;
-using autoware::vehicle_info_utils::VehicleInfoUtils;
-using autoware_utils::calc_distance3d;
-using autoware_utils::deg2rad;
-using autoware_utils::normalize_degree;
-using autoware_utils::normalize_radian;
-using autoware_utils::ScopedTimeTrack;
 
 ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions & options)
 : autoware::pointcloud_preprocessor::Filter("ScanGroundFilter", options)
@@ -82,8 +67,7 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
 
   // initialize debug tool
   {
-    using autoware::universe_utils::DebugPublisher;
-    using autoware::universe_utils::StopWatch;
+
     stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
     debug_publisher_ptr_ = std::make_unique<DebugPublisher>(this, "scan_ground_filter");
     stop_watch_ptr_->tic("cyclic_time");
@@ -92,10 +76,10 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
     bool use_time_keeper = declare_parameter<bool>("publish_processing_time_detail");
     if (use_time_keeper) {
       detailed_processing_time_publisher_ =
-        this->create_publisher<autoware::universe_utils::ProcessingTimeDetail>(
+        this->create_publisher<ProcessingTimeDetail>(
           "~/debug/processing_time_detail_ms", 1);
-      auto time_keeper = autoware::universe_utils::TimeKeeper(detailed_processing_time_publisher_);
-      time_keeper_ = std::make_shared<autoware::universe_utils::TimeKeeper>(time_keeper);
+      auto time_keeper = TimeKeeper(detailed_processing_time_publisher_);
+      time_keeper_ = std::make_shared<TimeKeeper>(time_keeper);
     }
   }
 }
@@ -667,9 +651,9 @@ void ScanGroundFilterComponent::faster_filter(
   if (debug_publisher_ptr_ && stop_watch_ptr_) {
     const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
     const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    debug_publisher_ptr_->publish<Float64Stamped>(
       "debug/cyclic_time_ms", cyclic_time_ms);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    debug_publisher_ptr_->publish<Float64Stamped>(
       "debug/processing_time_ms", processing_time_ms);
   }
 }

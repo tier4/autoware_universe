@@ -20,6 +20,14 @@
 #include <autoware_utils/system/time_keeper.hpp>
 #include "autoware_vehicle_info_utils/vehicle_info.hpp"
 
+#include <autoware_utils/geometry/geometry.hpp>
+#include <autoware_utils/math/normalization.hpp>
+#include <autoware_utils/math/unit_conversion.hpp>
+#include <autoware/universe_utils/math/normalization.hpp>
+#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <autoware/universe_utils/geometry/geometry.hpp>
+
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <pcl/filters/extract_indices.h>
@@ -43,7 +51,23 @@ class ScanGroundFilterTest;
 
 namespace autoware::ground_segmentation
 {
+using autoware::pointcloud_preprocessor::get_param;
+using autoware::vehicle_info_utils::VehicleInfoUtils;
+using autoware_utils::calc_distance3d;
+using autoware_utils::deg2rad;
+using autoware_utils::normalize_degree;
+using autoware_utils::normalize_radian;
+using autoware_utils::ScopedTimeTrack;
+using autoware::universe_utils::normalizeRadian;
+using autoware_internal_debug_msgs::msg::Float64Stamped;
 using autoware::vehicle_info_utils::VehicleInfo;
+using autoware_utils::DebugPublisher;
+using autoware_utils::StopWatch;
+using autoware_utils::PublishedTimePublisher;
+using autoware_utils::ProcessingTimeDetail;
+using autoware_utils::TimeKeeper;
+using autoware::universe_utils::calcDistance3d;
+
 
 class ScanGroundFilterComponent : public autoware::pointcloud_preprocessor::Filter
 {
@@ -203,9 +227,9 @@ private:
   VehicleInfo vehicle_info_;
 
   // time keeper related
-  rclcpp::Publisher<autoware::universe_utils::ProcessingTimeDetail>::SharedPtr
+  rclcpp::Publisher<ProcessingTimeDetail>::SharedPtr
     detailed_processing_time_publisher_;
-  std::shared_ptr<autoware::universe_utils::TimeKeeper> time_keeper_;
+  std::shared_ptr<TimeKeeper> time_keeper_;
 
   /*!
    * Output transformed PointCloud from in_cloud_ptr->header.frame_id to in_target_frame
@@ -289,9 +313,9 @@ private:
   rcl_interfaces::msg::SetParametersResult onParameter(const std::vector<rclcpp::Parameter> & p);
 
   // debugger
-  std::unique_ptr<autoware::universe_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{
+  std::unique_ptr<StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{
     nullptr};
-  std::unique_ptr<autoware::universe_utils::DebugPublisher> debug_publisher_ptr_{nullptr};
+  std::unique_ptr<DebugPublisher> debug_publisher_ptr_{nullptr};
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
