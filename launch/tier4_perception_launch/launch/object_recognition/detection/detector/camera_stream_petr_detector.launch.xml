@@ -12,7 +12,7 @@
   <arg name="debug_mode" default="true"/>
 
   <let name="is_compressed_image" value="true" if="$(var is_simulation)"/>
-  <arg name="is_distorted_image" default="false"/>
+  <arg name="is_distorted_image" default="true"/>
 
   <!-- interface -->
   <let name="input/camera_front_center/image" value="/sensing/camera/camera8/image_raw"/>
@@ -28,7 +28,7 @@
   <let name="input/camera_rear_center/image" value="/sensing/camera/camera9/image_raw"/>
   <let name="input/camera_rear_center/info" value="/sensing/camera/camera9/camera_info"/>
   <!-- <arg name="input/kinematic_state" default="/localization/kinematic_state"/> -->
-  <arg name="output/objects" default="/perception/object_recognition/detection/camera_streampetr/objects"/>
+  <let name="output/objects" value="/perception/object_recognition/detection/camera_streampetr/objects"/>
 
   <!-- image decompressor -->
   <group if="$(var is_compressed_image)">
