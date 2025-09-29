@@ -426,9 +426,10 @@ InputDataMap DiffusionPlanner::create_input_data()
     }
   }
 
-  const geometry_msgs::msg::Pose & pose_center = utils::shift_x(
-    ego_kinematic_state->pose.pose,
-    (vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m));
+  // const geometry_msgs::msg::Pose & pose_center = utils::shift_x(
+  //   ego_kinematic_state->pose.pose,
+  //   (vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m));
+  const geometry_msgs::msg::Pose & pose_center = ego_kinematic_state->pose.pose;
 
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_center);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
