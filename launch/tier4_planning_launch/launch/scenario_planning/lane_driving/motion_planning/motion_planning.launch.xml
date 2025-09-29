@@ -141,6 +141,21 @@
       </load_composable_node>
     </group>
 
+    <group if="$(eval &quot;'$(var motion_path_planner_type)' == 'frenetix'&quot;)">
+      <node pkg="autoware_frenetix_planner" exec="frenetix_planner_node" name="frenetix" namespace="">
+        <!-- topic remap -->
+        <remap from="~/input/reference_path" to="path_smoother/path"/>
+        <remap from="~/input/odometry" to="/localization/kinematic_state"/>
+        <remap from="~/input/objects" to="$(var input_objects_topic_name)"/>
+        <remap from="~/input/vector_map" to="/map/vector_map"/>
+        <remap from="~/output/trajectory" to="path_optimizer/trajectory"/>
+        <!-- params -->
+        <param from="$(var common_param_path)"/>
+        <param from="$(var vehicle_param_file)"/>
+        <param from="$(var nearest_search_param_path)"/>
+      </node>
+    </group>
+
     <group if="$(eval &quot;'$(var motion_path_planner_type)' == 'none' and '$(var motion_path_smoother_type)' != 'none'&quot;)">
       <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
         <composable_node pkg="autoware_planning_topic_converter" plugin="autoware::planning_topic_converter::PathToTrajectory" name="smoothed_path_to_trajectory_converter" namespace="">

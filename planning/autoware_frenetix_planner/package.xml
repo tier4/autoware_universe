@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>autoware_frenetix_planner</name>
+  <version>0.0.0</version>
+  <description>Node for trajectory sampling in Frenet frame</description>
+  <author email="korbinian.moller@tum.de">Korbinian Moller</author>
+  <maintainer email="maxime.clement@tier4.jp">Maxime CLEMENT</maintainer>
+  <license>Apache License 2.0</license>
+
+  <depend>autoware_lanelet2_extension_python</depend>
+  <depend>autoware_map_msgs</depend>
+  <depend>autoware_perception_msgs</depend>
+  <depend>autoware_planning_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>rclpy</depend>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
