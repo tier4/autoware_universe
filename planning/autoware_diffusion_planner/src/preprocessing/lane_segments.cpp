@@ -292,8 +292,9 @@ LaneSegmentContext::create_tensor_data_from_indices(
 }
 
 std::vector<float> LaneSegmentContext::create_line_tensor(
-  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-  const int64_t num_elements, const int64_t num_points) const
+  const std::vector<std::vector<LanePoint>> & polylines, const Eigen::Matrix4d & transform_matrix,
+  const double center_x, const double center_y, const int64_t num_elements,
+  const int64_t num_points) const
 {
   using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
 
@@ -303,17 +304,17 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
       y > center_y - LANE_MASK_RANGE_M && y < center_y + LANE_MASK_RANGE_M);
   };
 
-  struct PolygonWithDistance
+  struct PolylineWithDistance
   {
-    Polygon polygon;
+    Polyline polyline;
     double min_distance;
   };
 
-  std::vector<PolygonWithDistance> result_list;
+  std::vector<PolylineWithDistance> result_list;
 
-  for (const auto & polygon : lanelet_map_.polygons) {
+  for (const auto & polyline : polylines) {
     bool inside_at_least_one = false;
-    for (const auto & point : polygon) {
+    for (const auto & point : polyline) {
       if (judge_inside(point.x(), point.y())) {
         inside_at_least_one = true;
         break;
@@ -323,26 +324,26 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
       continue;
     }
 
-    Polygon transformed_polygon;
-    for (const auto & point : polygon) {
+    std::vector<LanePoint> transformed_polyline;
+    for (const auto & point : polyline) {
       const Eigen::Vector4d transformed_point =
         transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
-      transformed_polygon.push_back(
+      transformed_polyline.push_back(
         Eigen::Vector3d(transformed_point.x(), transformed_point.y(), transformed_point.z()));
     }
 
     double min_distance = std::numeric_limits<double>::max();
-    for (const auto & point : transformed_polygon) {
+    for (const auto & point : transformed_polyline) {
       const double distance = std::sqrt(point.x() * point.x() + point.y() * point.y());
       min_distance = std::min(min_distance, distance);
     }
 
-    result_list.push_back({transformed_polygon, min_distance});
+    result_list.push_back({transformed_polyline, min_distance});
   }
 
   std::sort(
     result_list.begin(), result_list.end(),
-    [](const PolygonWithDistance & a, const PolygonWithDistance & b) {
+    [](const PolylineWithDistance & a, const PolylineWithDistance & b) {
       return a.min_distance < b.min_distance;
     });
 
@@ -350,11 +351,11 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
   std::vector<float> tensor_data(num_elements * num_points * 2, 0.0f);
   const size_t max_elements_size = std::min(static_cast<size_t>(num_elements), result_list.size());
   for (size_t i = 0; i < max_elements_size; ++i) {
-    const auto & polygon = result_list[i].polygon;
-    const size_t max_points_size = std::min(static_cast<size_t>(num_points), polygon.size());
+    const auto & polyline = result_list[i].polyline;
+    const size_t max_points_size = std::min(static_cast<size_t>(num_points), polyline.size());
 
     for (size_t j = 0; j < max_points_size; ++j) {
-      const auto & point = polygon[j];
+      const auto & point = polyline[j];
       const size_t base_index = (i * num_points + j) * 2;
       tensor_data[base_index + 0] = static_cast<float>(point.x());
       tensor_data[base_index + 1] = static_cast<float>(point.y());

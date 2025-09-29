@@ -116,9 +116,27 @@ public:
     return lanelet_id_to_array_index_;
   }
 
+  // Create polygon and linestring tensor data
+  std::vector<float> create_polygon_tensor(
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+    const int64_t num_elements, const int64_t num_points) const
+  {
+    return create_line_tensor(
+      lanelet_map_.polygons, transform_matrix, center_x, center_y, num_elements, num_points);
+  }
+  std::vector<float> create_line_string_tensor(
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+    const int64_t num_elements, const int64_t num_points) const
+  {
+    return create_line_tensor(
+      lanelet_map_.line_strings, transform_matrix, center_x, center_y, num_elements, num_points);
+  }
+
+private:
   /**
    * @brief Create line tensor data from polygon data.
    *
+   * @param polylines Vector of polylines to process.
    * @param transform_matrix Transformation matrix to apply to the points.
    * @param center_x X-coordinate of the center point.
    * @param center_y Y-coordinate of the center point.
@@ -127,10 +145,10 @@ public:
    * @return Vector of float tensor data.
    */
   std::vector<float> create_line_tensor(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-    const int64_t num_elements, const int64_t num_points) const;
+    const std::vector<std::vector<LanePoint>> & polylines, const Eigen::Matrix4d & transform_matrix,
+    const double center_x, const double center_y, const int64_t num_elements,
+    const int64_t num_points) const;
 
-private:
   const autoware::diffusion_planner::LaneletMap lanelet_map_;
   const std::map<lanelet::Id, size_t> lanelet_id_to_array_index_;
 };
