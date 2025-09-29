@@ -104,8 +104,7 @@
     <let name="input/detection01/objects" value="$(var input/lidar_dnn_validated/objects)" if="$(var use_validator)"/>
     <let name="input/detection01/objects" value="$(var input/lidar_dnn/objects)" unless="$(var use_validator)"/>
 
-    <let name="input/detection02/channel" value="$(var input/lidar_dnn_short_range/channel)" if="$(var use_short_range_detection)"/>
-    <let name="input/detection02/channel" value="none" unless="$(var use_short_range_detection)"/>
+    <let name="input/detection02/channel" value="$(var input/lidar_dnn_short_range/channel)"/>
     <let name="input/detection02/objects" value="$(var input/lidar_dnn_short_range/objects)"/>
 
     <let name="input/detection03/channel" value="$(var input/camera_lidar_rule_detector/channel)"/>
