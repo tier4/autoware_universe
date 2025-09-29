@@ -32,7 +32,28 @@
   <arg name="input/pointcloud"/>
   <arg name="output/objects"/>
   <arg name="output/short_range_objects"/>
+  <arg name="short_range_centerpoint/input/pointcloud" default="short_range_centerpoint/pointcloud"/>
 
+  <arg name="input_frame" default="base_link"/>
+  <arg name="output_frame" default="base_link"/>
+  <group>
+    <load_composable_node target="$(var node/pointcloud_container)">
+      <composable_node pkg="autoware_pointcloud_preprocessor" plugin="autoware::pointcloud_preprocessor::CropBoxFilterComponent" name="crop_box_filter_node">
+        <remap from="input" to="$(var input/pointcloud)"/>
+        <remap from="output" to="$(var short_range_centerpoint/input/pointcloud)"/>
+        <param name="input_frame" value="$(var input_frame)"/>
+        <param name="output_frame" value="$(var output_frame)"/>
+        <param name="min_x" value="-50.0"/>
+        <param name="max_x" value="50.0"/>
+        <param name="min_y" value="-50.0"/>
+        <param name="max_y" value="50.0"/>
+        <param name="min_z" value="-100.0"/>
+        <param name="max_z" value="100.0"/>
+        <param name="negative" value="False"/>
+        <param name="processing_time_threshold_sec" value="0.01"/>
+      </composable_node>
+    </load_composable_node>
+  </group>
   <!-- short_range detection -->
   <group if="$(var use_short_range_detection)">
     <!-- short_range CenterPoint -->
