@@ -117,7 +117,7 @@ public:
   }
 
 private:
-  const autoware::diffusion_planner::LaneletMap lane_segments_;
+  const autoware::diffusion_planner::LaneletMap lanelet_map_;
   const std::map<lanelet::Id, size_t> lanelet_id_to_array_index_;
 };
 

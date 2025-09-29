@@ -51,10 +51,10 @@ uint8_t identify_current_light_status(
 
 // LaneSegmentContext implementation
 LaneSegmentContext::LaneSegmentContext(const std::shared_ptr<lanelet::LaneletMap> & lanelet_map_ptr)
-: lane_segments_(convert_to_lane_segments(lanelet_map_ptr)),
-  lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lane_segments_.lane_segments))
+: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr)),
+  lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments))
 {
-  if (lane_segments_.lane_segments.empty()) {
+  if (lanelet_map_.lane_segments.empty()) {
     throw std::runtime_error("No lane segments found in the map");
   }
 }
@@ -76,7 +76,7 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
     array_indices.push_back(array_index);
 
     // calculate closest index
-    const LaneSegment & route_segment = lane_segments_.lane_segments[array_index];
+    const LaneSegment & route_segment = lanelet_map_.lane_segments[array_index];
     double distance = std::numeric_limits<double>::max();
     for (const LanePoint & point : route_segment.centerline) {
       const double diff_x = point.x() - center_x;
@@ -96,7 +96,7 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   for (size_t i = closest_index; i < array_indices.size(); ++i) {
     const int64_t segment_idx = array_indices[i];
 
-    if (!is_segment_inside(lane_segments_.lane_segments[segment_idx], center_x, center_y)) {
+    if (!is_segment_inside(lanelet_map_.lane_segments[segment_idx], center_x, center_y)) {
       continue;
     }
 
@@ -129,10 +129,10 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
 
   // Step 1: Compute distances
   std::vector<ColWithDistance> distances;
-  distances.reserve(lane_segments_.lane_segments.size());
+  distances.reserve(lanelet_map_.lane_segments.size());
 
-  for (size_t i = 0; i < lane_segments_.lane_segments.size(); ++i) {
-    const LaneSegment & segment = lane_segments_.lane_segments[i];
+  for (size_t i = 0; i < lanelet_map_.lane_segments.size(); ++i) {
+    const LaneSegment & segment = lanelet_map_.lane_segments[i];
 
     if (!is_segment_inside(segment, center_x, center_y)) {
       continue;
@@ -193,7 +193,7 @@ LaneSegmentContext::create_tensor_data_from_indices(
       break;
     }
 
-    const LaneSegment & lane_segment = lane_segments_.lane_segments[segment_idx];
+    const LaneSegment & lane_segment = lanelet_map_.lane_segments[segment_idx];
 
     // Check if segment has valid data
     if (

@@ -109,7 +109,7 @@ std::vector<LanePoint> convert_to_polyline(const T & line_string) noexcept
 }
 }  // namespace
 
-LaneletMap convert_to_lane_segments(const lanelet::LaneletMapConstPtr lanelet_map_ptr)
+LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lanelet_map_ptr)
 {
   LaneletMap lanelet_map;
   lanelet_map.lane_segments.reserve(lanelet_map_ptr->laneletLayer.size());

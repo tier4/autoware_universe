@@ -110,7 +110,7 @@ struct LaneletMap
  * @param lanelet_map_ptr Pointer of loaded lanelet map.
  * @return LaneletMap
  */
-[[nodiscard]] LaneletMap convert_to_lane_segments(
+[[nodiscard]] LaneletMap convert_to_internal_lanelet_map(
   const lanelet::LaneletMapConstPtr lanelet_map_ptr);
 
 }  // namespace autoware::diffusion_planner
