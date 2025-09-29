@@ -120,6 +120,7 @@ struct DiffusionPlannerParams
   int batch_size;
   std::vector<double> temperature_list;
   int64_t velocity_smoothing_window;
+  bool shift_x;
 };
 struct DiffusionPlannerDebugParams
 {

@@ -13,6 +13,7 @@
     use_route_handler: true
     build_only: false
     batch_size: 1
+    shift_x: false
     temperature: [0.5]
     velocity_smoothing_window: 1
     debug_params:

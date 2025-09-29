@@ -133,6 +133,7 @@ void DiffusionPlanner::set_up_params()
   params_.temperature_list = this->declare_parameter<std::vector<double>>("temperature", {0.5});
   params_.velocity_smoothing_window =
     this->declare_parameter<int64_t>("velocity_smoothing_window", 1);
+  params_.shift_x = this->declare_parameter<bool>("shift_x", false);
 
   // debug params
   debug_params_.publish_debug_map =
@@ -165,6 +166,7 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<std::vector<double>>(parameters, "temperature", temp_params.temperature_list);
     update_param<int64_t>(
       parameters, "velocity_smoothing_window", temp_params.velocity_smoothing_window);
+    update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     params_ = temp_params;
   }
 
@@ -426,10 +428,11 @@ InputDataMap DiffusionPlanner::create_input_data()
     }
   }
 
-  // const geometry_msgs::msg::Pose & pose_center = utils::shift_x(
-  //   ego_kinematic_state->pose.pose,
-  //   (vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m));
-  const geometry_msgs::msg::Pose & pose_center = ego_kinematic_state->pose.pose;
+  const geometry_msgs::msg::Pose & pose_center =
+    params_.shift_x ? utils::shift_x(
+                        ego_kinematic_state->pose.pose,
+                        (vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m))
+                    : ego_kinematic_state->pose.pose;
 
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_center);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
