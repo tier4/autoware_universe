@@ -291,6 +291,79 @@ LaneSegmentContext::create_tensor_data_from_indices(
   return {tensor_data, speed_limit_vector};
 }
 
+std::vector<float> LaneSegmentContext::create_line_tensor(
+  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+  const int64_t num_elements, const int64_t num_points) const
+{
+  using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
+
+  auto judge_inside = [&](const double x, const double y) -> bool {
+    return (
+      x > center_x - LANE_MASK_RANGE_M && x < center_x + LANE_MASK_RANGE_M &&
+      y > center_y - LANE_MASK_RANGE_M && y < center_y + LANE_MASK_RANGE_M);
+  };
+
+  struct PolygonWithDistance
+  {
+    Polygon polygon;
+    double min_distance;
+  };
+
+  std::vector<PolygonWithDistance> result_list;
+
+  for (const auto & polygon : lanelet_map_.polygons) {
+    bool inside_at_least_one = false;
+    for (const auto & point : polygon) {
+      if (judge_inside(point.x(), point.y())) {
+        inside_at_least_one = true;
+        break;
+      }
+    }
+    if (!inside_at_least_one) {
+      continue;
+    }
+
+    Polygon transformed_polygon;
+    for (const auto & point : polygon) {
+      const Eigen::Vector4d transformed_point =
+        transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
+      transformed_polygon.push_back(
+        Eigen::Vector3d(transformed_point.x(), transformed_point.y(), transformed_point.z()));
+    }
+
+    double min_distance = std::numeric_limits<double>::max();
+    for (const auto & point : transformed_polygon) {
+      const double distance = std::sqrt(point.x() * point.x() + point.y() * point.y());
+      min_distance = std::min(min_distance, distance);
+    }
+
+    result_list.push_back({transformed_polygon, min_distance});
+  }
+
+  std::sort(
+    result_list.begin(), result_list.end(),
+    [](const PolygonWithDistance & a, const PolygonWithDistance & b) {
+      return a.min_distance < b.min_distance;
+    });
+
+  // Create tensor data
+  std::vector<float> tensor_data(num_elements * num_points * 2, 0.0f);
+  const size_t max_elements_size = std::min(static_cast<size_t>(num_elements), result_list.size());
+  for (size_t i = 0; i < max_elements_size; ++i) {
+    const auto & polygon = result_list[i].polygon;
+    const size_t max_points_size = std::min(static_cast<size_t>(num_points), polygon.size());
+
+    for (size_t j = 0; j < max_points_size; ++j) {
+      const auto & point = polygon[j];
+      const size_t base_index = (i * num_points + j) * 2;
+      tensor_data[base_index + 0] = static_cast<float>(point.x());
+      tensor_data[base_index + 1] = static_cast<float>(point.y());
+    }
+  }
+
+  return tensor_data;
+}
+
 // Internal functions implementation
 namespace
 {

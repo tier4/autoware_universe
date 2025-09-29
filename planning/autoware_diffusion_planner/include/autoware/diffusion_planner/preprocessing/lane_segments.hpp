@@ -116,6 +116,20 @@ public:
     return lanelet_id_to_array_index_;
   }
 
+  /**
+   * @brief Create line tensor data from polygon data.
+   *
+   * @param transform_matrix Transformation matrix to apply to the points.
+   * @param center_x X-coordinate of the center point.
+   * @param center_y Y-coordinate of the center point.
+   * @param num_elements Maximum number of elements to include.
+   * @param num_points Number of points per element.
+   * @return Vector of float tensor data.
+   */
+  std::vector<float> create_line_tensor(
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+    const int64_t num_elements, const int64_t num_points) const;
+
 private:
   const autoware::diffusion_planner::LaneletMap lanelet_map_;
   const std::map<lanelet::Id, size_t> lanelet_id_to_array_index_;
