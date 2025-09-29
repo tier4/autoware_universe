@@ -287,6 +287,8 @@ private:
   CudaUniquePtr<float[]> route_lanes_d_;
   CudaUniquePtr<bool[]> route_lanes_has_speed_limit_d_;
   CudaUniquePtr<float[]> route_lanes_speed_limit_d_;
+  CudaUniquePtr<float[]> polygons_d_;
+  CudaUniquePtr<float[]> line_strings_d_;
   CudaUniquePtr<float[]> goal_pose_d_;
   CudaUniquePtr<float[]> ego_shape_d_;
   CudaUniquePtr<float[]> output_d_;                // shape: [1, 11, 80, 4]

@@ -230,6 +230,13 @@ void DiffusionPlanner::init_pointers()
     batch_size * std::accumulate(
                    ROUTE_LANES_SPEED_LIMIT_SHAPE.begin() + 1, ROUTE_LANES_SPEED_LIMIT_SHAPE.end(),
                    1L, std::multiplies<>());
+  const size_t polygons_size =
+    batch_size *
+    std::accumulate(POLYGONS_SHAPE.begin() + 1, POLYGONS_SHAPE.end(), 1L, std::multiplies<>());
+  const size_t line_strings_size =
+    batch_size *
+    std::accumulate(
+      LINE_STRINGS_SHAPE.begin() + 1, LINE_STRINGS_SHAPE.end(), 1L, std::multiplies<>());
   const size_t goal_pose_size =
     batch_size *
     std::accumulate(GOAL_POSE_SHAPE.begin() + 1, GOAL_POSE_SHAPE.end(), 1L, std::multiplies<>());
@@ -257,6 +264,8 @@ void DiffusionPlanner::init_pointers()
     autoware::cuda_utils::make_unique<bool[]>(route_lanes_has_speed_limit_size);
   route_lanes_speed_limit_d_ =
     autoware::cuda_utils::make_unique<float[]>(route_lanes_speed_limit_size);
+  polygons_d_ = autoware::cuda_utils::make_unique<float[]>(polygons_size);
+  line_strings_d_ = autoware::cuda_utils::make_unique<float[]>(line_strings_size);
   goal_pose_d_ = autoware::cuda_utils::make_unique<float[]>(goal_pose_size);
   ego_shape_d_ = autoware::cuda_utils::make_unique<float[]>(ego_shape_size);
 
@@ -320,6 +329,9 @@ void DiffusionPlanner::load_engine(const std::string & model_path)
     profile_dims.emplace_back(
       make_dynamic_dims("lanes_has_speed_limit", to_dynamic_dims(LANES_HAS_SPEED_LIMIT_SHAPE)));
     profile_dims.emplace_back(make_dynamic_dims("route_lanes", to_dynamic_dims(ROUTE_LANES_SHAPE)));
+    profile_dims.emplace_back(make_dynamic_dims("polygons", to_dynamic_dims(POLYGONS_SHAPE)));
+    profile_dims.emplace_back(
+      make_dynamic_dims("line_strings", to_dynamic_dims(LINE_STRINGS_SHAPE)));
     profile_dims.emplace_back(make_dynamic_dims(
       "route_lanes_has_speed_limit", to_dynamic_dims(ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE)));
     profile_dims.emplace_back(
@@ -339,6 +351,8 @@ void DiffusionPlanner::load_engine(const std::string & model_path)
     network_io.emplace_back("lanes_has_speed_limit", to_dynamic_dims(LANES_HAS_SPEED_LIMIT_SHAPE));
     network_io.emplace_back("lanes_speed_limit", to_dynamic_dims(LANES_SPEED_LIMIT_SHAPE));
     network_io.emplace_back("route_lanes", to_dynamic_dims(ROUTE_LANES_SHAPE));
+    network_io.emplace_back("polygons", to_dynamic_dims(POLYGONS_SHAPE));
+    network_io.emplace_back("line_strings", to_dynamic_dims(LINE_STRINGS_SHAPE));
     network_io.emplace_back(
       "route_lanes_has_speed_limit", to_dynamic_dims(ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE));
     network_io.emplace_back(
@@ -624,6 +638,8 @@ std::vector<float> DiffusionPlanner::do_inference_trt(InputDataMap & input_data_
   auto lanes_speed_limit = input_data_map["lanes_speed_limit"];
   auto route_lanes = input_data_map["route_lanes"];
   auto route_lanes_speed_limit = input_data_map["route_lanes_speed_limit"];
+  auto polygons = input_data_map["polygons"];
+  auto line_strings = input_data_map["line_strings"];
   auto goal_pose = input_data_map["goal_pose"];
   auto ego_shape = input_data_map["ego_shape"];
 
@@ -663,6 +679,11 @@ std::vector<float> DiffusionPlanner::do_inference_trt(InputDataMap & input_data_
     cudaMemcpyHostToDevice));
   CHECK_CUDA_ERROR(cudaMemcpy(
     route_lanes_d_.get(), route_lanes.data(), route_lanes.size() * sizeof(float),
+    cudaMemcpyHostToDevice));
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    polygons_d_.get(), polygons.data(), polygons.size() * sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    line_strings_d_.get(), line_strings.data(), line_strings.size() * sizeof(float),
     cudaMemcpyHostToDevice));
   // Copy uint8_t array to bool array on device
   // Note: sizeof(bool) might be implementation-specific, but CUDA typically uses 1 byte for bool
@@ -723,6 +744,10 @@ std::vector<float> DiffusionPlanner::do_inference_trt(InputDataMap & input_data_
     "lanes_speed_limit", to_dims_with_batch(LANES_SPEED_LIMIT_SHAPE));
   set_input_shapes &=
     network_trt_ptr_->setInputShape("route_lanes", to_dims_with_batch(ROUTE_LANES_SHAPE));
+  set_input_shapes &=
+    network_trt_ptr_->setInputShape("polygons", to_dims_with_batch(POLYGONS_SHAPE));
+  set_input_shapes &=
+    network_trt_ptr_->setInputShape("line_strings", to_dims_with_batch(LINE_STRINGS_SHAPE));
   set_input_shapes &= network_trt_ptr_->setInputShape(
     "route_lanes_speed_limit", to_dims_with_batch(ROUTE_LANES_SPEED_LIMIT_SHAPE));
   set_input_shapes &= network_trt_ptr_->setInputShape(
@@ -750,6 +775,8 @@ std::vector<float> DiffusionPlanner::do_inference_trt(InputDataMap & input_data_
   network_trt_ptr_->setTensorAddress("route_lanes_speed_limit", route_lanes_speed_limit_d_.get());
   network_trt_ptr_->setTensorAddress(
     "route_lanes_has_speed_limit", route_lanes_has_speed_limit_d_.get());
+  network_trt_ptr_->setTensorAddress("polygons", polygons_d_.get());
+  network_trt_ptr_->setTensorAddress("line_strings", line_strings_d_.get());
   network_trt_ptr_->setTensorAddress("goal_pose", goal_pose_d_.get());
   network_trt_ptr_->setTensorAddress("ego_shape", ego_shape_d_.get());
 
@@ -843,6 +870,15 @@ void DiffusionPlanner::on_timer()
     input_data_map["route_lanes"], ROUTE_LANES_SHAPE[1], ROUTE_LANES_SHAPE[2], ROUTE_LANES_SHAPE[3],
     batch_idx);
   diagnostics_inference_->add_key_value("valid_route_count", valid_route_count);
+
+  const int64_t valid_polygon_count = postprocess::count_valid_elements(
+    input_data_map["polygons"], POLYGONS_SHAPE[1], POLYGONS_SHAPE[2], POLYGONS_SHAPE[3], batch_idx);
+  diagnostics_inference_->add_key_value("valid_polygon_count", valid_polygon_count);
+
+  const int64_t valid_line_string_count = postprocess::count_valid_elements(
+    input_data_map["line_strings"], LINE_STRINGS_SHAPE[1], LINE_STRINGS_SHAPE[2],
+    LINE_STRINGS_SHAPE[3], batch_idx);
+  diagnostics_inference_->add_key_value("valid_line_string_count", valid_line_string_count);
 
   const int64_t valid_neighbor_count = postprocess::count_valid_elements(
     input_data_map["neighbor_agents_past"], NEIGHBOR_SHAPE[1], NEIGHBOR_SHAPE[2], NEIGHBOR_SHAPE[3],
