@@ -196,7 +196,7 @@ LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lan
   // parse line string layers
   for (const auto & line_string : lanelet_map_ptr->lineStringLayer) {
     const std::string line_string_type = line_string.attributeOr("type", "");
-    if (line_string_type != "stopline") {
+    if (line_string_type != "stop_line") {
       continue;
     }
     const Polyline polyline(
