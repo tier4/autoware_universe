@@ -19,10 +19,14 @@
   <arg name="use_crosswalk_traffic_light_estimator" default="true" description="output pedestrian's traffic light signals"/>
   <arg name="crosswalk_traffic_light_estimator_param_file" default="$(find-pkg-share autoware_crosswalk_traffic_light_estimator)/config/crosswalk_traffic_light_estimator.param.yaml"/>
   <arg name="image_number" default="1" description="choose image raw number(1-2)"/>
-  <arg name="namespace1" default="camera6"/>
-  <arg name="namespace2" default="camera7"/>
+  <arg name="namespace1" default="camera4"/>
+  <arg name="namespace2" default="camera5"/>
+  <arg name="namespace3" default="camera6"/>
+  <arg name="namespace4" default="camera7"/>
   <let name="all_camera_namespaces" value="[$(var namespace1)]" if="$(eval &quot; '$(var image_number)' == '1' &quot;)"/>
   <let name="all_camera_namespaces" value="[$(var namespace1), $(var namespace2)]" if="$(eval &quot; '$(var image_number)' >= '2' &quot;)"/>
+  <let name="all_camera_namespaces" value="[$(var namespace1), $(var namespace2), $(var namespace3)]" if="$(eval &quot; '$(var image_number)' >= '3' &quot;)"/>
+  <let name="all_camera_namespaces" value="[$(var namespace1), $(var namespace2), $(var namespace3), $(var namespace4)]" if="$(eval &quot; '$(var image_number)' >= '4' &quot;)"/>
 
   <arg name="fine_detector_param_path" default="$(find-pkg-share traffic_light_fine_detector)/config/traffic_light_fine_detector.param.yaml"/>
   <arg name="car_classifier_param_path" default="$(find-pkg-share traffic_light_classifier)/config/car_traffic_light_classifier.param.yaml"/>
@@ -49,7 +53,7 @@
           <arg name="expect/rois" value="expect/rois"/>
           <arg name="output/rois" value="$(var map_based_detector_output_topic)"/>
           <!-- This parameter should be configured differently for each camera considering their delay. -->
-          <arg name="min_timestamp_offset" value="-0.3"/>
+          <arg name="min_timestamp_offset" value="-0.04"/>
           <arg name="max_timestamp_offset" value="0.0"/>
         </include>
       </group>
@@ -134,6 +138,116 @@
         <arg name="input/car/traffic_signals" value="classified/car/traffic_signals"/>
         <arg name="input/pedestrian/traffic_signals" value="classified/pedestrian/traffic_signals"/>
         <arg name="output/traffic_signals" value="$(var output/traffic_signals2)"/>
+      </include>
+    </group>
+  </group>
+
+  <!-- namespace3 camera TLR pipeline -->
+  <group if="$(eval &quot; '$(var image_number)' >= '3' &quot;)">
+    <push-ros-namespace namespace="$(var namespace3)"/>
+    <let name="input/image" value="/sensing/camera/$(var namespace3)/image_raw"/>
+    <let name="input/camera_info" value="/sensing/camera/$(var namespace3)/camera_info"/>
+    <let name="output/rois3" value="/perception/traffic_light_recognition/$(var namespace3)/detection/rois"/>
+    <let name="output/traffic_signals3" value="/perception/traffic_light_recognition/$(var namespace3)/classification/traffic_signals"/>
+    <let name="output/car/traffic_signals3" value="/perception/traffic_light_recognition/$(var namespace3)/classification/car/traffic_signals"/>
+    <let name="output/pedestrian/traffic_signals3" value="/perception/traffic_light_recognition/$(var namespace3)/classification/pedestrian/traffic_signals"/>
+    <let name="map_based_detector_output_topic" value="rough/rois" if="$(var enable_fine_detection)"/>
+    <let name="map_based_detector_output_topic" value="rois" unless="$(var enable_fine_detection)"/>
+
+    <group unless="$(var fusion_only)">
+      <node pkg="topic_tools" exec="relay" name="traffic_light_camera_info_relay" args="$(var input/camera_info) camera_info"/>
+      <group>
+        <push-ros-namespace namespace="detection"/>
+        <include file="$(find-pkg-share traffic_light_map_based_detector)/launch/traffic_light_map_based_detector.launch.xml">
+          <arg name="input/camera_info" value="$(var input/camera_info)"/>
+          <arg name="expect/rois" value="expect/rois"/>
+          <arg name="output/rois" value="$(var map_based_detector_output_topic)"/>
+          <!-- This parameter should be configured differently for each camera considering their delay. -->
+          <arg name="min_timestamp_offset" value="-0.04"/>
+          <arg name="max_timestamp_offset" value="0.0"/>
+        </include>
+      </group>
+
+      <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light_node_container.launch.py">
+        <arg name="input/image" value="$(var input/image)"/>
+        <arg name="enable_image_decompressor" value="$(var enable_image_decompressor)"/>
+        <arg name="enable_fine_detection" value="$(var enable_fine_detection)"/>
+        <arg name="use_intra_process" value="true"/>
+        <arg name="use_multithread" value="true"/>
+        <arg name="fine_detector_param_path" value="$(var fine_detector_param_path)"/>
+        <arg name="car_classifier_param_path" value="$(var car_classifier_param_path)"/>
+        <arg name="pedestrian_classifier_param_path" value="$(var pedestrian_classifier_param_path)"/>
+        <arg name="output/rois" value="$(var output/rois3)"/>
+        <arg name="output/traffic_signals" value="$(var output/traffic_signals3)"/>
+        <arg name="output/car/traffic_signals" value="$(var output/car/traffic_signals3)"/>
+        <arg name="output/pedestrian/traffic_signals" value="$(var output/pedestrian/traffic_signals3)"/>
+      </include>
+    </group>
+
+    <group>
+      <push-ros-namespace namespace="classification"/>
+      <include file="$(find-pkg-share traffic_light_occlusion_predictor)/launch/traffic_light_occlusion_predictor.launch.xml">
+        <arg name="input/camera_info" value="$(var input/camera_info)"/>
+        <arg name="input/cloud" value="$(var input/cloud)"/>
+        <arg name="input/rois" value="$(var output/rois3)"/>
+        <arg name="input/car/traffic_signals" value="classified/car/traffic_signals"/>
+        <arg name="input/pedestrian/traffic_signals" value="classified/pedestrian/traffic_signals"/>
+        <arg name="output/traffic_signals" value="$(var output/traffic_signals3)"/>
+      </include>
+    </group>
+  </group>
+
+  <!-- namespace4 camera TLR pipeline -->
+  <group if="$(eval &quot; '$(var image_number)' >= '4' &quot;)">
+    <push-ros-namespace namespace="$(var namespace4)"/>
+    <let name="input/image" value="/sensing/camera/$(var namespace4)/image_raw"/>
+    <let name="input/camera_info" value="/sensing/camera/$(var namespace4)/camera_info"/>
+    <let name="output/rois4" value="/perception/traffic_light_recognition/$(var namespace4)/detection/rois"/>
+    <let name="output/traffic_signals4" value="/perception/traffic_light_recognition/$(var namespace4)/classification/traffic_signals"/>
+    <let name="output/car/traffic_signals4" value="/perception/traffic_light_recognition/$(var namespace4)/classification/car/traffic_signals"/>
+    <let name="output/pedestrian/traffic_signals4" value="/perception/traffic_light_recognition/$(var namespace4)/classification/pedestrian/traffic_signals"/>
+    <let name="map_based_detector_output_topic" value="rough/rois" if="$(var enable_fine_detection)"/>
+    <let name="map_based_detector_output_topic" value="rois" unless="$(var enable_fine_detection)"/>
+
+    <group unless="$(var fusion_only)">
+      <node pkg="topic_tools" exec="relay" name="traffic_light_camera_info_relay" args="$(var input/camera_info) camera_info"/>
+      <group>
+        <push-ros-namespace namespace="detection"/>
+        <include file="$(find-pkg-share traffic_light_map_based_detector)/launch/traffic_light_map_based_detector.launch.xml">
+          <arg name="input/camera_info" value="$(var input/camera_info)"/>
+          <arg name="expect/rois" value="expect/rois"/>
+          <arg name="output/rois" value="$(var map_based_detector_output_topic)"/>
+          <!-- This parameter should be configured differently for each camera considering their delay. -->
+          <arg name="min_timestamp_offset" value="-0.04"/>
+          <arg name="max_timestamp_offset" value="0.0"/>
+        </include>
+      </group>
+
+      <include file="$(find-pkg-share tier4_perception_launch)/launch/traffic_light_recognition/traffic_light_node_container.launch.py">
+        <arg name="input/image" value="$(var input/image)"/>
+        <arg name="enable_image_decompressor" value="$(var enable_image_decompressor)"/>
+        <arg name="enable_fine_detection" value="$(var enable_fine_detection)"/>
+        <arg name="use_intra_process" value="true"/>
+        <arg name="use_multithread" value="true"/>
+        <arg name="fine_detector_param_path" value="$(var fine_detector_param_path)"/>
+        <arg name="car_classifier_param_path" value="$(var car_classifier_param_path)"/>
+        <arg name="pedestrian_classifier_param_path" value="$(var pedestrian_classifier_param_path)"/>
+        <arg name="output/rois" value="$(var output/rois4)"/>
+        <arg name="output/traffic_signals" value="$(var output/traffic_signals4)"/>
+        <arg name="output/car/traffic_signals" value="$(var output/car/traffic_signals4)"/>
+        <arg name="output/pedestrian/traffic_signals" value="$(var output/pedestrian/traffic_signals4)"/>
+      </include>
+    </group>
+
+    <group>
+      <push-ros-namespace namespace="classification"/>
+      <include file="$(find-pkg-share traffic_light_occlusion_predictor)/launch/traffic_light_occlusion_predictor.launch.xml">
+        <arg name="input/camera_info" value="$(var input/camera_info)"/>
+        <arg name="input/cloud" value="$(var input/cloud)"/>
+        <arg name="input/rois" value="$(var output/rois4)"/>
+        <arg name="input/car/traffic_signals" value="classified/car/traffic_signals"/>
+        <arg name="input/pedestrian/traffic_signals" value="classified/pedestrian/traffic_signals"/>
+        <arg name="output/traffic_signals" value="$(var output/traffic_signals4)"/>
       </include>
     </group>
   </group>
