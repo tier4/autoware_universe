@@ -23,7 +23,7 @@
 
 namespace autoware::diffusion_planner
 {
-inline constexpr int64_t NUM_SEGMENTS_IN_LANE = 70;
+inline constexpr int64_t NUM_SEGMENTS_IN_LANE = 140;
 inline constexpr int64_t NUM_SEGMENTS_IN_ROUTE = 25;
 inline constexpr int64_t NUM_POLYGONS = 10;
 inline constexpr int64_t NUM_LINE_STRINGS = 10;
