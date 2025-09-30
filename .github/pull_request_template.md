@@ -1,5 +1,18 @@
 ## Description
 
+## Effects for products
+
+<!--
+Write the effects of your PR for each products.
+If your PR has parameter changes, please explain how to tune them.
+-->
+
+### Bus
+
+### Taxi
+
+### Cargo Transport
+
 ## Related links
 
 **Parent Issue:**
