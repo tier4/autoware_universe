@@ -37,9 +37,22 @@ namespace autoware::motion_velocity_planner::run_out
 
 namespace
 {
+/// @brief return true if the given type string is contained in the vector of strings
 bool contains_type(const std::vector<std::string> & types, const std::string & type)
 {
   return std::find(types.begin(), types.end(), type) != types.end();
+}
+
+/// @brief return true if the given type and subtype strings match one of the string in the vector
+/// @details the strings in the vector are assumed to have format "type.subtype" or just "type"
+bool contains_type(
+  const std::vector<std::string> & types, const std::string & type, const std::string & subtype)
+{
+  if (subtype.empty()) {
+    return contains_type(types, type);
+  }
+  const auto full_type_str = type + "." + subtype;
+  return std::find(types.begin(), types.end(), full_type_str) != types.end();
 }
 }  // namespace
 
@@ -70,6 +83,11 @@ void add_ignore_and_cut_lanelets(
           data.cut_predicted_paths_segments.push_back(convert(ll.polygon2d().segment(i)));
         }
       }
+      if (contains_type(params.strict_cut_lanelet_subtypes, lanelet_subtype)) {
+        for (auto i = 0UL; i < ll.polygon2d().numSegments(); ++i) {
+          data.strict_cut_predicted_paths_segments.push_back(convert(ll.polygon2d().segment(i)));
+        }
+      }
       if (contains_type(params.ignore_objects_lanelet_subtypes, lanelet_subtype)) {
         universe_utils::LinearRing2d polygon;
         boost::geometry::convert(ll.polygon2d().basicPolygon(), polygon);
@@ -90,21 +108,28 @@ void add_ignore_and_cut_polygons(
 {
   for (const auto & p : polygons) {
     const auto polygon_type = p.attributeOr(lanelet::AttributeName::Type, std::string());
+    const auto polygon_subtype = p.attributeOr(lanelet::AttributeName::Subtype, std::string());
     for (const auto label : labels) {
       const auto & params = params_per_label[label];
-      if (contains_type(params.cut_polygon_types, polygon_type)) {
+      if (contains_type(params.cut_polygon_types, polygon_type, polygon_subtype)) {
         for (auto i = 0UL; i < p.numSegments(); ++i) {
           data_per_label[label].cut_predicted_paths_segments.push_back(convert(p.segment(i)));
         }
       }
-      if (contains_type(params.ignore_objects_polygon_types, polygon_type)) {
+      if (contains_type(params.strict_cut_polygon_types, polygon_type, polygon_subtype)) {
+        for (auto i = 0UL; i < p.numSegments(); ++i) {
+          data_per_label[label].strict_cut_predicted_paths_segments.push_back(
+            convert(p.segment(i)));
+        }
+      }
+      if (contains_type(params.ignore_objects_polygon_types, polygon_type, polygon_subtype)) {
         universe_utils::LinearRing2d polygon;
         for (const auto & pt : p) {
           polygon.emplace_back(pt.x(), pt.y());
         }
         data_per_label[label].ignore_objects_polygons.push_back(polygon);
       }
-      if (contains_type(params.ignore_collisions_polygon_types, polygon_type)) {
+      if (contains_type(params.ignore_collisions_polygon_types, polygon_type, polygon_subtype)) {
         universe_utils::LinearRing2d polygon;
         for (const auto & pt : p) {
           polygon.emplace_back(pt.x(), pt.y());
@@ -127,6 +152,13 @@ void add_cut_segments(
       if (std::find(types.begin(), types.end(), attribute) != types.end()) {
         for (auto i = 0UL; i < ls.numSegments(); ++i) {
           data_per_label[label].cut_predicted_paths_segments.push_back(convert(ls.segment(i)));
+        }
+      }
+      const auto & strict_types = params.strict_cut_linestring_types;
+      if (std::find(strict_types.begin(), strict_types.end(), attribute) != strict_types.end()) {
+        for (auto i = 0UL; i < ls.numSegments(); ++i) {
+          data_per_label[label].strict_cut_predicted_paths_segments.push_back(
+            convert(ls.segment(i)));
         }
       }
     }
@@ -173,11 +205,17 @@ FilteringDataPerLabel calculate_filtering_data(
   for (const auto label : target_labels) {
     auto & data = data_per_label[label];
     std::vector<SegmentNode> nodes;
+    std::vector<SegmentNode> strict_nodes;
     nodes.reserve(data.cut_predicted_paths_segments.size());
+    strict_nodes.reserve(data.strict_cut_predicted_paths_segments.size());
     for (auto i = 0UL; i < data.cut_predicted_paths_segments.size(); ++i) {
       nodes.emplace_back(data.cut_predicted_paths_segments[i], i);
     }
+    for (auto i = 0UL; i < data.strict_cut_predicted_paths_segments.size(); ++i) {
+      strict_nodes.emplace_back(data.strict_cut_predicted_paths_segments[i], i);
+    }
     data.cut_predicted_paths_rtree = SegmentRtree(nodes);
+    data.strict_cut_predicted_paths_rtree = SegmentRtree(strict_nodes);
   }
   for (const auto label : target_labels) {
     auto & data = data_per_label[label];

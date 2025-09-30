@@ -140,6 +140,8 @@ GoalPlannerParameters GoalPlannerModuleManager::initGoalPlannerParameters(
     const std::string ns = base_ns + "pull_over.";
     p.pull_over_minimum_request_length =
       node->declare_parameter<double>(ns + "minimum_request_length");
+    p.approximate_pull_over_distance =
+      node->declare_parameter<double>(ns + "approximate_pull_over_distance");
     p.pull_over_prepare_length = node->declare_parameter<double>(ns + "pull_over_prepare_length");
     p.pull_over_velocity = node->declare_parameter<double>(ns + "pull_over_velocity");
     p.pull_over_minimum_velocity =
@@ -147,6 +149,8 @@ GoalPlannerParameters GoalPlannerModuleManager::initGoalPlannerParameters(
     p.decide_path_distance = node->declare_parameter<double>(ns + "decide_path_distance");
     p.maximum_deceleration = node->declare_parameter<double>(ns + "maximum_deceleration");
     p.maximum_jerk = node->declare_parameter<double>(ns + "maximum_jerk");
+    p.low_velocity_threshold = node->declare_parameter<double>(ns + "low_velocity_threshold");
+    p.stopping_distance_buffer = node->declare_parameter<double>(ns + "stopping_distance_buffer");
     p.path_priority = node->declare_parameter<std::string>(ns + "path_priority");
     p.efficient_path_order =
       node->declare_parameter<std::vector<std::string>>(ns + "efficient_path_order");
@@ -420,6 +424,12 @@ GoalPlannerParameters GoalPlannerModuleManager::initGoalPlannerParameters(
   {
     const std::string ns = base_ns + "debug.";
     p.print_debug_info = node->declare_parameter<bool>(ns + "print_debug_info");
+  }
+
+  // path decision state controller
+  {
+    const std::string ns = base_ns + "path_decision_state_controller.";
+    p.check_collision_duration = node->declare_parameter<double>(ns + "check_collision_duration");
   }
 
   // validation of parameters
@@ -853,6 +863,12 @@ void GoalPlannerModuleManager::updateModuleParams(
   {
     const std::string ns = base_ns + "debug.";
     update_param<bool>(parameters, ns + "print_debug_info", p->print_debug_info);
+  }
+
+  // path decision state controller
+  {
+    const std::string ns = base_ns + "path_decision_state_controller.";
+    update_param<double>(parameters, ns + "check_collision_duration", p->check_collision_duration);
   }
 
   std::for_each(observers_.begin(), observers_.end(), [&p](const auto & observer) {
