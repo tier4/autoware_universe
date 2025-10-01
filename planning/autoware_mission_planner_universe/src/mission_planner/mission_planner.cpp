@@ -232,7 +232,7 @@ void MissionPlanner::on_modified_goal(const PoseWithUuidStamped::ConstSharedPtr 
   }
 
   change_state(RouteState::REROUTING);
-  const auto route = create_route(*msg);
+  auto route = create_route(*msg);
 
   if (route.segments.empty()) {
     cancel_route();
@@ -314,10 +314,6 @@ void MissionPlanner::set_preferred_lane(
 
   change_state(is_reroute ? RouteState::REROUTING : RouteState::ROUTING);
 
-  const DIRECTION override_direction = req->lane_change_direction == 0   ? DIRECTION::MANUAL_LEFT
-                                       : req->lane_change_direction == 1 ? DIRECTION::MANUAL_RIGHT
-                                                                         : DIRECTION::AUTO;
-
   lanelet::ConstLanelet closest_lanelet;
   const bool found_closest_lane = planner_->getRouteHandler().getClosestLaneletWithinRoute(
     odometry_->pose.pose, &closest_lanelet);
@@ -378,7 +374,7 @@ void MissionPlanner::set_preferred_lane(
   boost::uuids::uuid uuid = gen();
   std::copy(uuid.begin(), uuid.end(), route.uuid.uuid.begin());
 
-  change_route(route, override_direction != DIRECTION::AUTO);
+  change_route(route);
   change_state(RouteState::SET);
 
   res->status.success = true;
@@ -424,6 +420,48 @@ MissionPlanner::sortPrimitivesLeftToRight(
     sorted_primitives.begin(), sorted_primitives.end()};
 
   return result;
+}
+
+void MissionPlanner::setAdjacentLaneletsForTurningSegments(LaneletRoute & route) {
+  // loop through route segments
+  for (auto & segment : route.segments) {
+    // turns segments only have one primitive right now, so if check if front element is turn
+    if (segment.primitives.size() != 1) continue;
+    const auto & current_primitive = segment.primitives.front();
+    // get lanelet of segment
+    const auto current_lanelet = planner_->getRouteHandler().getLaneletMapPtr()->laneletLayer.get(current_primitive.id);
+    // check if lanelet is turning
+    std::string current_turning_dir = current_lanelet.attributeOr("turn_direction", "none");
+    if (current_turning_dir == "none") continue;
+
+    std::deque<autoware_planning_msgs::msg::LaneletPrimitive> sorted_primitives;
+    // if turning, get sorted left and right primitives
+    // Walk left lanes
+    lanelet::ConstLanelet current = planner_->getRouteHandler().getLaneletsFromId(current_primitive.id);
+    RCLCPP_INFO_STREAM(get_logger(), "Setting adjacent lanelets for turning segment with lanelet ID: " << current.id());
+    for (auto left = planner_->getRouteHandler().getLeftLanelet(current, true); left;
+      left = planner_->getRouteHandler().getLeftLanelet(*left, true)) {
+      auto match = planner_->getRouteHandler().getLaneletMapPtr()->laneletLayer.get(left->id());
+      autoware_planning_msgs::msg::LaneletPrimitive match_primitive;
+      match_primitive.id = match.id();
+      match_primitive.primitive_type = "lane";
+      sorted_primitives.push_front(match_primitive);
+    }
+
+    sorted_primitives.push_back(current_primitive);
+
+    // Walk right lanes
+    for (auto right = planner_->getRouteHandler().getRightLanelet(current, true); right;
+      right = planner_->getRouteHandler().getRightLanelet(*right, true, true)) {
+      auto match = planner_->getRouteHandler().getLaneletMapPtr()->laneletLayer.get(right->id());
+      autoware_planning_msgs::msg::LaneletPrimitive match_primitive;
+      match_primitive.id = match.id();
+      match_primitive.primitive_type = "lane";
+      sorted_primitives.push_back(match_primitive);
+    }
+    // set route.segment to sorted container
+    segment.primitives = std::vector<LaneletPrimitive>(sorted_primitives.begin(), sorted_primitives.end());
+  }
 }
 
 void MissionPlanner::on_set_lanelet_route(
@@ -551,7 +589,7 @@ void MissionPlanner::on_set_waypoint_route(
   }
 
   change_state(is_reroute ? RouteState::REROUTING : RouteState::ROUTING);
-  const auto route = create_route(*req);
+  auto route = create_route(*req);
 
   if (route.segments.empty()) {
     cancel_route();
@@ -589,15 +627,19 @@ void MissionPlanner::change_route()
   // pub_marker_->publish();
 }
 
-void MissionPlanner::change_route(const LaneletRoute & route, bool emphasise_goal_lanes)
+void MissionPlanner::change_route(LaneletRoute & route, bool emphasise_goal_lanes)
 {
+  planner_->updateRoute(route);
+  setAdjacentLaneletsForTurningSegments(route);
+  planner_->updateRoute(route);  // update again to reflect the changes
+
   PoseWithUuidStamped goal;
   goal.header = route.header;
   goal.pose = route.goal_pose;
   goal.uuid = route.uuid;
-
+  
   current_route_ = std::make_shared<LaneletRoute>(route);
-  planner_->updateRoute(route);
+
   arrival_checker_.set_goal(goal);
 
   pub_route_->publish(route);

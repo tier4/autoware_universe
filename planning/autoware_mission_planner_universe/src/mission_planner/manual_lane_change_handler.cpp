@@ -123,9 +123,10 @@ LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
     const bool next_segment_is_left_turn = (next_turning_dir == "left");
     const bool next_segment_is_right_turn = (next_turning_dir == "right");
 
+    const bool next_segment_is_turn = next_segment_is_left_turn || next_segment_is_right_turn;
+
     const bool current_segment_shift_not_available =
-      left_shift_not_available || right_shift_not_available || next_segment_is_left_turn ||
-      next_segment_is_right_turn;
+      left_shift_not_available || right_shift_not_available || next_segment_is_turn;
 
     if (current_segment_shift_not_available) {
       std::string shift_unavailable_reason =
@@ -135,8 +136,10 @@ LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
                                     : "next segment is right turn";
       RCLCPP_INFO_STREAM(
         logger_, "Cannot shift on the current segment (ID: "
-                   << current_segment.preferred_primitive.id << ")");
-      break;
+                   << current_segment.preferred_primitive.id << ") due to : " << shift_unavailable_reason);
+      RCLCPP_INFO_STREAM(
+        logger_, "Next segment ID: " << next_segment.preferred_primitive.id);
+      continue;
     }
 
     if (override_direction == DIRECTION::MANUAL_LEFT && current_index > 0) {

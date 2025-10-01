@@ -115,9 +115,11 @@ private:
   LaneletRoute::ConstSharedPtr current_route_;
 
   ManualLaneChangeHandler manual_lane_change_handler_{
-    &current_route_, [&](const int64_t id) {
+    &current_route_, 
+    [&](const int64_t id) {
       return planner_->getRouteHandler().getLaneletMapPtr()->laneletLayer.get(id);
-    }};
+    }
+  };
 
   lanelet::LaneletMapPtr lanelet_map_ptr_{nullptr};
 
@@ -125,6 +127,8 @@ private:
     const route_handler::RouteHandler & route_handler,
     autoware_planning_msgs::msg::LaneletPrimitive preferred_primitive,
     std::vector<autoware_planning_msgs::msg::LaneletPrimitive> primitives);
+
+  void setAdjacentLaneletsForTurningSegments(LaneletRoute & route);
 
   void on_odometry(const Odometry::ConstSharedPtr msg);
   void on_operation_mode_state(const OperationModeState::ConstSharedPtr msg);
@@ -145,7 +149,7 @@ private:
 
   void change_state(RouteState::_state_type state);
   void change_route();
-  void change_route(const LaneletRoute & route, bool emphasise_goal_lanes = false);
+  void change_route(LaneletRoute & route, bool emphasise_goal_lanes = true);
   void cancel_route();
   LaneletRoute create_route(const SetLaneletRoute::Request & req);
   LaneletRoute create_route(const SetWaypointRoute::Request & req);
