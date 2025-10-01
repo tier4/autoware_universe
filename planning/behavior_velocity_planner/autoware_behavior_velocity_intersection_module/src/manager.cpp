@@ -83,8 +83,6 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
         get_or_declare_parameter<bool>(node, ns + ".stuck_vehicle.target_type.motorcycle");
       ip.stuck_vehicle.target_type.bicycle =
         get_or_declare_parameter<bool>(node, ns + ".stuck_vehicle.target_type.bicycle");
-      ip.stuck_vehicle.target_type.pedestrian =
-        get_or_declare_parameter<bool>(node, ns + ".stuck_vehicle.target_type.pedestrian");
       ip.stuck_vehicle.target_type.unknown =
         get_or_declare_parameter<bool>(node, ns + ".stuck_vehicle.target_type.unknown");
     }
@@ -125,8 +123,6 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
         get_or_declare_parameter<bool>(node, ns + ".yield_stuck.target_type.motorcycle");
       ip.yield_stuck.target_type.bicycle =
         get_or_declare_parameter<bool>(node, ns + ".yield_stuck.target_type.bicycle");
-      ip.yield_stuck.target_type.bicycle =
-        get_or_declare_parameter<bool>(node, ns + ".yield_stuck.target_type.pedestrian");
       ip.yield_stuck.target_type.unknown =
         get_or_declare_parameter<bool>(node, ns + ".yield_stuck.target_type.unknown");
     }
@@ -168,8 +164,6 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
         get_or_declare_parameter<bool>(node, ns + ".collision_detection.target_type.motorcycle");
       ip.collision_detection.target_type.bicycle =
         get_or_declare_parameter<bool>(node, ns + ".collision_detection.target_type.bicycle");
-      ip.collision_detection.target_type.bicycle =
-        get_or_declare_parameter<bool>(node, ns + ".collision_detection.target_type.pedestrian");
       ip.collision_detection.target_type.unknown =
         get_or_declare_parameter<bool>(node, ns + ".collision_detection.target_type.unknown");
     }
