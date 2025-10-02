@@ -100,11 +100,13 @@ struct TrainingDataBinary
   float route_lanes[NUM_SEGMENTS_IN_ROUTE * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM];
   float route_lanes_speed_limit[NUM_SEGMENTS_IN_ROUTE];
   int32_t route_lanes_has_speed_limit[NUM_SEGMENTS_IN_ROUTE];
+  float polygons[NUM_POLYGONS * POINTS_PER_POLYGON * 2];
+  float line_strings[NUM_LINE_STRINGS * POINTS_PER_LINE_STRING * 2];
   float goal_pose[NEIGHBOR_FUTURE_DIM];
   int32_t turn_indicator;
 
   // Constructor with zero initialization
-  TrainingDataBinary() : version(1), turn_indicator(0)
+  TrainingDataBinary() : version(2), turn_indicator(0)
   {
     std::fill(std::begin(ego_agent_past), std::end(ego_agent_past), 0.0f);
     std::fill(std::begin(ego_current_state), std::end(ego_current_state), 0.0f);
@@ -118,6 +120,8 @@ struct TrainingDataBinary
     std::fill(std::begin(route_lanes), std::end(route_lanes), 0.0f);
     std::fill(std::begin(route_lanes_speed_limit), std::end(route_lanes_speed_limit), 0.0f);
     std::fill(std::begin(route_lanes_has_speed_limit), std::end(route_lanes_has_speed_limit), 0);
+    std::fill(std::begin(polygons), std::end(polygons), 0.0f);
+    std::fill(std::begin(line_strings), std::end(line_strings), 0.0f);
     std::fill(std::begin(goal_pose), std::end(goal_pose), 0.0f);
   }
 };
@@ -278,7 +282,8 @@ void save_binary_data(
   const std::vector<float> & lanes, const std::vector<float> & lanes_speed_limit,
   const std::vector<bool> & lanes_has_speed_limit, const std::vector<float> & route_lanes,
   const std::vector<float> & route_lanes_speed_limit,
-  const std::vector<bool> & route_lanes_has_speed_limit, const std::vector<float> & goal_pose,
+  const std::vector<bool> & route_lanes_has_speed_limit, const std::vector<float> & polygons,
+  const std::vector<float> & line_strings, const std::vector<float> & goal_pose,
   const int64_t turn_indicator, const Odometry & kinematic_state, const int64_t timestamp)
 {
   namespace fs = std::filesystem;
@@ -300,6 +305,8 @@ void save_binary_data(
   std::copy(route_lanes.begin(), route_lanes.end(), data.route_lanes);
   std::copy(
     route_lanes_speed_limit.begin(), route_lanes_speed_limit.end(), data.route_lanes_speed_limit);
+  std::copy(polygons.begin(), polygons.end(), data.polygons);
+  std::copy(line_strings.begin(), line_strings.end(), data.line_strings);
   std::copy(goal_pose.begin(), goal_pose.end(), data.goal_pose);
 
   // Convert bool to int32_t and copy
@@ -552,6 +559,10 @@ int main(int argc, char ** argv)
       }
     }
 
+    // Shift kinematic pose to center
+    // const double wheel_base = 2.75;
+    // kinematic.pose.pose = utils::shift_x(kinematic.pose.pose, (wheel_base / 2.0));
+
     const FrameData frame_data{timestamp, sequence.route, tracking, kinematic,
                                accel,     traffic_signal, turn_ind};
 
@@ -670,6 +681,11 @@ int main(int argc, char ** argv)
           (route_lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
       }
 
+      const std::vector<float> polygons = lane_segment_context.create_polygon_tensor(
+        map2bl, center_x, center_y, NUM_POLYGONS, POINTS_PER_POLYGON);
+      const std::vector<float> line_strings = lane_segment_context.create_line_string_tensor(
+        map2bl, center_x, center_y, NUM_LINE_STRINGS, POINTS_PER_LINE_STRING);
+
       // Get goal pose
       const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
       const Eigen::Matrix4d goal_pose_in_map = utils::pose_to_matrix4f(goal_pose);
@@ -738,8 +754,9 @@ int main(int argc, char ** argv)
       save_binary_data(
         save_dir, rosbag_dir_name, token, ego_past, ego_current, ego_future, neighbor_past,
         neighbor_future, static_objects, lanes, lanes_speed_limit, lanes_has_speed_limit,
-        route_lanes, route_lanes_speed_limit, route_lanes_has_speed_limit, goal_pose_vec,
-        turn_indicator, seq.data_list[i].kinematic_state, seq.data_list[i].timestamp);
+        route_lanes, route_lanes_speed_limit, route_lanes_has_speed_limit, polygons, line_strings,
+        goal_pose_vec, turn_indicator, seq.data_list[i].kinematic_state,
+        seq.data_list[i].timestamp);
 
       if (i % 100 == 0) {
         std::cout << "Processed frame " << i << "/" << n << std::endl;

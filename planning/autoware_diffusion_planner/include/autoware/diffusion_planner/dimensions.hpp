@@ -23,11 +23,15 @@
 
 namespace autoware::diffusion_planner
 {
-inline constexpr int64_t NUM_SEGMENTS_IN_LANE = 70;
+inline constexpr int64_t NUM_SEGMENTS_IN_LANE = 140;
 inline constexpr int64_t NUM_SEGMENTS_IN_ROUTE = 25;
+inline constexpr int64_t NUM_POLYGONS = 10;
+inline constexpr int64_t NUM_LINE_STRINGS = 10;
 inline constexpr int64_t MAX_NUM_NEIGHBORS = 32;
 inline constexpr int64_t MAX_NUM_AGENTS = MAX_NUM_NEIGHBORS + 1;  // Including ego
-inline constexpr int64_t POINTS_PER_SEGMENT = 20;  //!< Number of points in each lane segment.
+inline constexpr int64_t POINTS_PER_SEGMENT = 20;
+inline constexpr int64_t POINTS_PER_POLYGON = 40;
+inline constexpr int64_t POINTS_PER_LINE_STRING = 20;
 // Number of columns in a segment matrix
 // (X,Y,dX,dY,LeftBoundX,LeftBoundY,RightBoundX,RightBoundY,TrafficLightEncoding(Dim5),Speed Limit)
 inline constexpr int64_t TRAFFIC_LIGHT_ONE_HOT_DIM = 5;
@@ -78,6 +82,9 @@ inline constexpr std::array<int64_t, 3> ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE = {
   1, NUM_SEGMENTS_IN_ROUTE, 1};
 inline constexpr std::array<int64_t, 3> ROUTE_LANES_SPEED_LIMIT_SHAPE = {
   1, NUM_SEGMENTS_IN_ROUTE, 1};
+inline constexpr std::array<int64_t, 4> POLYGONS_SHAPE = {1, NUM_POLYGONS, POINTS_PER_POLYGON, 2};
+inline constexpr std::array<int64_t, 4> LINE_STRINGS_SHAPE = {
+  1, NUM_LINE_STRINGS, POINTS_PER_LINE_STRING, 2};
 inline constexpr std::array<int64_t, 2> GOAL_POSE_SHAPE = {1, POSE_DIM};
 inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, 3};
 }  // namespace autoware::diffusion_planner
