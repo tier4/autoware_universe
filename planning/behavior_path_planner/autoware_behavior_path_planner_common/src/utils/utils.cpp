@@ -82,6 +82,7 @@ using autoware_perception_msgs::msg::Shape;
 using autoware_utils::LineString2d;
 using autoware_utils::Point2d;
 using geometry_msgs::msg::PoseWithCovarianceStamped;
+using route_handler::Direction;
 
 std::optional<lanelet::Polygon3d> getPolygonByPoint(
   const std::shared_ptr<RouteHandler> & route_handler, const lanelet::ConstPoint3d & point,
@@ -644,6 +645,62 @@ double getDistanceToNextIntersection(
   }
 
   return std::numeric_limits<double>::max();
+}
+
+std::optional<double> calc_distance_to_next_turn_direction_lane(
+  const Pose & current_pose, const RouteHandler & route_handler,
+  const lanelet::ConstLanelets & lanelets, const route_handler::Direction shift_direction)
+{
+  if (
+    shift_direction != route_handler::Direction::LEFT &&
+    shift_direction != route_handler::Direction::RIGHT) {
+    return std::nullopt;
+  }
+
+  lanelet::ConstLanelet current_lanelet;
+  if (!lanelet::utils::query::getClosestLanelet(lanelets, current_pose, &current_lanelet)) {
+    return std::nullopt;
+  }
+
+  const auto current_llt_itr = std::find_if(
+    lanelets.begin(), lanelets.end(),
+    [&current_lanelet](const auto & llt) { return llt.id() == current_lanelet.id(); });
+
+  // case 1: current lanelet is not in lanelets
+  if (current_llt_itr == lanelets.end()) {
+    return std::nullopt;
+  }
+
+  const auto shift_direction_str = to_enum_str(shift_direction);
+
+  const auto is_same_direction_shift_and_turn_lane = [&shift_direction_str](const auto & llt) {
+    const std::string turn_direction = llt.attributeOr("turn_direction", "else");
+    return turn_direction == shift_direction_str;
+  };
+
+  // case 2: current lanelet is in lanelets. We also search the succeeding lane after final lane.
+  const auto nearest_turn_llt_itr =
+    std::find_if(current_llt_itr, lanelets.end(), [&](const auto & llt) {
+      const auto next_lanelets = route_handler.getNextLanelets(llt);
+      return std::any_of(
+        next_lanelets.begin(), next_lanelets.end(), is_same_direction_shift_and_turn_lane);
+    });
+
+  if (nearest_turn_llt_itr == lanelets.end()) {
+    return std::nullopt;
+  }
+
+  const auto distance_covered =
+    lanelet::utils::getArcCoordinates({*current_llt_itr}, current_pose).length;
+  const auto remaining_dist_on_current_lane =
+    lanelet::utils::getLaneletLength3d(*current_llt_itr) - distance_covered;
+  const auto dist_to_next_turn_direction_lane = std::accumulate(
+    std::next(current_llt_itr), std::next(nearest_turn_llt_itr), 0.0,
+    [](const auto & sum, const auto & llt) {
+      return sum + lanelet::utils::getLaneletLength3d(llt);
+    });
+
+  return remaining_dist_on_current_lane + dist_to_next_turn_direction_lane;
 }
 
 double getDistanceToCrosswalk(

@@ -20,6 +20,7 @@
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
+#include <magic_enum.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_point_with_lane_id.hpp>
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
@@ -133,6 +134,26 @@ Pose to_geom_msg_pose(const LaneletPointType & src_point, const lanelet::ConstLa
 
 // distance (arclength) calculation
 
+/**
+ * @brief Convert an enum value to its string name.
+ * @tparam enum_type The enum type.
+ * @param value The enum value to convert.
+ * @return The name of the enum value as a string.
+ * @note Requires magic_enum. The enum type must be supported by magic_enum.
+ */
+template <typename E, typename = std::enable_if_t<std::is_enum_v<E>>>
+std::string to_enum_str(const E & value, const bool to_lower_case = true)
+{
+  auto value_str = std::string(magic_enum::enum_name(value));
+
+  if (to_lower_case) {
+    std::transform(value_str.begin(), value_str.end(), value_str.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+  }
+  return value_str;
+}
+
 double l2Norm(const Vector3 vector);
 
 double getDistanceToEndOfLane(const Pose & current_pose, const lanelet::ConstLanelets & lanelets);
@@ -145,6 +166,21 @@ double getDistanceToEndOfLane(const Pose & current_pose, const lanelet::ConstLan
  */
 double getDistanceToNextIntersection(
   const Pose & current_pose, const lanelet::ConstLanelets & lanelets);
+
+/**
+ * @brief Calculates the remaining distance to the start of the lane with turn direction.
+ *
+ * @param current_pose The ego vehicle's current pose.
+ * @param route_handler The route handler containing the full map and routing information.
+ * @param lanelets The sequence of candidate lanelets to search along (e.g., the current path).
+ * @param shift_direction The intended shift direction (must be LEFT or RIGHT).
+ * @return std::optional<double> The distance (in meters) to the start of the turn lane, or
+ * std::nullopt if the shift direction is invalid, the current lanelet is not found,
+ * or no succeeding turn lanelet is found in the path.
+ */
+std::optional<double> calc_distance_to_next_turn_direction_lane(
+  const Pose & current_pose, const RouteHandler & route_handler,
+  const lanelet::ConstLanelets & lanelets, const route_handler::Direction shift_direction);
 
 /**
  * @brief Calculates the distance to the next crosswalk.
