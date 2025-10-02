@@ -103,10 +103,10 @@ struct TrainingDataBinary
   float polygons[NUM_POLYGONS * POINTS_PER_POLYGON * 2];
   float line_strings[NUM_LINE_STRINGS * POINTS_PER_LINE_STRING * 2];
   float goal_pose[NEIGHBOR_FUTURE_DIM];
-  int32_t turn_indicator;
+  int32_t turn_indicators[PAST_TIME_STEPS];
 
   // Constructor with zero initialization
-  TrainingDataBinary() : version(2), turn_indicator(0)
+  TrainingDataBinary() : version(2)
   {
     std::fill(std::begin(ego_agent_past), std::end(ego_agent_past), 0.0f);
     std::fill(std::begin(ego_current_state), std::end(ego_current_state), 0.0f);
@@ -123,6 +123,7 @@ struct TrainingDataBinary
     std::fill(std::begin(polygons), std::end(polygons), 0.0f);
     std::fill(std::begin(line_strings), std::end(line_strings), 0.0f);
     std::fill(std::begin(goal_pose), std::end(goal_pose), 0.0f);
+    std::fill(std::begin(turn_indicators), std::end(turn_indicators), 0);
   }
 };
 
@@ -284,7 +285,8 @@ void save_binary_data(
   const std::vector<float> & route_lanes_speed_limit,
   const std::vector<bool> & route_lanes_has_speed_limit, const std::vector<float> & polygons,
   const std::vector<float> & line_strings, const std::vector<float> & goal_pose,
-  const int64_t turn_indicator, const Odometry & kinematic_state, const int64_t timestamp)
+  const std::vector<int32_t> & turn_indicators, const Odometry & kinematic_state,
+  const int64_t timestamp)
 {
   namespace fs = std::filesystem;
 
@@ -317,7 +319,7 @@ void save_binary_data(
     data.route_lanes_has_speed_limit[i] = static_cast<int32_t>(route_lanes_has_speed_limit[i]);
   }
 
-  data.turn_indicator = static_cast<int32_t>(turn_indicator);
+  std::copy(turn_indicators.begin(), turn_indicators.end(), data.turn_indicators);
 
   // Save to binary file with rosbag directory name prefix (same format as Python version)
   const std::string binary_filename = output_path + "/" + rosbag_dir_name + "_" + token + ".bin";
@@ -748,14 +750,19 @@ int main(int argc, char ** argv)
       const std::vector<float> static_objects(
         STATIC_OBJECTS_SHAPE[1] * STATIC_OBJECTS_SHAPE[2], 0.0f);
 
-      const int64_t turn_indicator = seq.data_list[i].turn_indicator.report;
+      // const int64_t turn_indicator = seq.data_list[i].turn_indicator.report;
+      std::vector<int32_t> turn_indicators(PAST_TIME_STEPS);
+      for (int64_t t = 0; t < PAST_TIME_STEPS; ++t) {
+        turn_indicators[t] =
+          seq.data_list[std::max(int64_t(0), i - PAST_TIME_STEPS + 1 + t)].turn_indicator.report;
+      }
 
       // Save data
       save_binary_data(
         save_dir, rosbag_dir_name, token, ego_past, ego_current, ego_future, neighbor_past,
         neighbor_future, static_objects, lanes, lanes_speed_limit, lanes_has_speed_limit,
         route_lanes, route_lanes_speed_limit, route_lanes_has_speed_limit, polygons, line_strings,
-        goal_pose_vec, turn_indicator, seq.data_list[i].kinematic_state,
+        goal_pose_vec, turn_indicators, seq.data_list[i].kinematic_state,
         seq.data_list[i].timestamp);
 
       if (i % 100 == 0) {
