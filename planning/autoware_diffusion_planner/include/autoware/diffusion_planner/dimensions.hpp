@@ -60,7 +60,7 @@ inline constexpr int64_t LINE_TYPE_LEFT_START = 13;
 inline constexpr int64_t LINE_TYPE_RIGHT_START = LINE_TYPE_LEFT_START + LINE_TYPE_NUM;
 inline constexpr int64_t SEGMENT_POINT_DIM = LINE_TYPE_RIGHT_START + LINE_TYPE_NUM;
 
-inline constexpr int64_t INPUT_T = 20;
+inline constexpr int64_t INPUT_T = 30;
 inline constexpr int64_t OUTPUT_T = 80;  // Output timestamp number
 inline constexpr int64_t POSE_DIM = 4;   // x, y, cos(yaw), sin(yaw)
 inline constexpr std::array<int64_t, 4> OUTPUT_SHAPE = {1, MAX_NUM_AGENTS, OUTPUT_T, POSE_DIM};
@@ -87,5 +87,6 @@ inline constexpr std::array<int64_t, 4> LINE_STRINGS_SHAPE = {
   1, NUM_LINE_STRINGS, POINTS_PER_LINE_STRING, 2};
 inline constexpr std::array<int64_t, 2> GOAL_POSE_SHAPE = {1, POSE_DIM};
 inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, 3};
+inline constexpr std::array<int64_t, 2> TURN_INDICATORS_SHAPE = {1, INPUT_T};
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__DIMENSIONS_HPP_
