@@ -118,18 +118,18 @@ public:
 
   // Create polygon and linestring tensor data
   std::vector<float> create_polygon_tensor(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-    const int64_t num_elements, const int64_t num_points) const
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
   {
     return create_line_tensor(
-      lanelet_map_.polygons, transform_matrix, center_x, center_y, num_elements, num_points);
+      lanelet_map_.polygons, transform_matrix, center_x, center_y, NUM_POLYGONS,
+      POINTS_PER_POLYGON);
   }
   std::vector<float> create_line_string_tensor(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
-    const int64_t num_elements, const int64_t num_points) const
+    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
   {
     return create_line_tensor(
-      lanelet_map_.line_strings, transform_matrix, center_x, center_y, num_elements, num_points);
+      lanelet_map_.line_strings, transform_matrix, center_x, center_y, NUM_LINE_STRINGS,
+      POINTS_PER_LINE_STRING);
   }
 
 private:

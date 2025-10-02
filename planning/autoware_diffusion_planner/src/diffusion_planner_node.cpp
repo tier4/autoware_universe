@@ -512,15 +512,15 @@ InputDataMap DiffusionPlanner::create_input_data()
 
   // polygons
   {
-    const auto & polygons = lane_segment_context_->create_polygon_tensor(
-      map_to_ego_transform, center_x, center_y, NUM_POLYGONS, POINTS_PER_POLYGON);
+    const auto & polygons =
+      lane_segment_context_->create_polygon_tensor(map_to_ego_transform, center_x, center_y);
     input_data_map["polygons"] = replicate_for_batch(polygons);
   }
 
   // line strings
   {
-    const auto & line_strings = lane_segment_context_->create_line_string_tensor(
-      map_to_ego_transform, center_x, center_y, NUM_LINE_STRINGS, POINTS_PER_LINE_STRING);
+    const auto & line_strings =
+      lane_segment_context_->create_line_string_tensor(map_to_ego_transform, center_x, center_y);
     input_data_map["line_strings"] = replicate_for_batch(line_strings);
   }
 

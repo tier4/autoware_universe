@@ -681,10 +681,10 @@ int main(int argc, char ** argv)
           (route_lanes_speed_limit[idx] > std::numeric_limits<float>::epsilon());
       }
 
-      const std::vector<float> polygons = lane_segment_context.create_polygon_tensor(
-        map2bl, center_x, center_y, NUM_POLYGONS, POINTS_PER_POLYGON);
-      const std::vector<float> line_strings = lane_segment_context.create_line_string_tensor(
-        map2bl, center_x, center_y, NUM_LINE_STRINGS, POINTS_PER_LINE_STRING);
+      const std::vector<float> polygons =
+        lane_segment_context.create_polygon_tensor(map2bl, center_x, center_y);
+      const std::vector<float> line_strings =
+        lane_segment_context.create_line_string_tensor(map2bl, center_x, center_y);
 
       // Get goal pose
       const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
