@@ -83,7 +83,8 @@ __global__ void resizeAndExtractRoi_kernel(
   float w10 = di * (1.0f - dj);
   float w11 = di * dj;
 
-  // Loop over the three color channels
+// Loop over the three color channels
+#pragma unroll
   for (int c = 0; c < 3; ++c) {
     float v00 = 0.0f, v01 = 0.0f, v10 = 0.0f, v11 = 0.0f;
 
@@ -141,22 +142,25 @@ __global__ void remap_kernel(
   // Check if the thread corresponds to a valid pixel in output
   if (x >= output_width || y >= output_height) return;
 
-  // Get the mapping coordinates for this output pixel
+  // Get the mapping coordinates for this output pixel.
+  // Skip the first y rows with (y * output_width) and then skip the first x columns by adding x
   int map_idx = y * output_width + x;
   float src_x = map_x[map_idx];
   float src_y = map_y[map_idx];
 
   // Check if the mapped coordinates are valid in the input image
-  if (src_x < 0 || src_y < 0 || src_x >= input_width - 1 || src_y >= input_height - 1) {
+  // Skip the first y rows with (y * output_width) and then skip the first x columns by adding x.
+  // Then skip the first 3 channels by multiplying by 3
+  int out_idx = (y * output_width + x) * 3;
+  if (src_x < 0 || src_y < 0 || src_x >= input_width || src_y >= input_height) {
     // Set to black for out-of-bounds pixels
-    int out_idx = (y * output_width + x) * 3;
     output_img[out_idx] = 0;
     output_img[out_idx + 1] = 0;
     output_img[out_idx + 2] = 0;
     return;
   }
 
-  // Bilinear interpolation
+  // Bilinear interpolation in unit square (0,0), (0,1), (1,0), (1,1)
   int x0 = static_cast<int>(floorf(src_x));
   int y0 = static_cast<int>(floorf(src_y));
   int x1 = x0 + 1;
@@ -171,7 +175,8 @@ __global__ void remap_kernel(
   float w10 = dx * (1.0f - dy);
   float w11 = dx * dy;
 
-  // Process each color channel
+// Process each color channel
+#pragma unroll
   for (int c = 0; c < 3; ++c) {
     float v00 = 0.0f, v01 = 0.0f, v10 = 0.0f, v11 = 0.0f;
 
@@ -187,16 +192,17 @@ __global__ void remap_kernel(
 
     // Interpolate and store the result
     float interpolated_value = w00 * v00 + w01 * v01 + w10 * v10 + w11 * v11;
-    output_img[(y * output_width + x) * 3 + c] = static_cast<std::uint8_t>(interpolated_value);
+    // Clamp the interpolated value to [0, 255] range
+    interpolated_value = fmaxf(0.0f, fminf(255.0f, interpolated_value));
+    output_img[out_idx + c] = static_cast<std::uint8_t>(interpolated_value);
   }
 }
 
 cudaError_t remap_launch(
-  const std::uint8_t * input_img, std::uint8_t * output_img,
-  int output_height, int output_width,  // Output (destination) image dimensions
-  int input_height, int input_width,    // Input (source) image dimensions
-  const float * map_x, const float * map_y,
-  cudaStream_t stream)
+  const std::uint8_t * input_img, std::uint8_t * output_img, int output_height,
+  int output_width,                   // Output (destination) image dimensions
+  int input_height, int input_width,  // Input (source) image dimensions
+  const float * map_x, const float * map_y, cudaStream_t stream)
 {
   // Define the block and grid dimensions based on output size
   dim3 threads(16, 16);
