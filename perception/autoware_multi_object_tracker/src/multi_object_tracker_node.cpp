@@ -173,22 +173,29 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
         return it != TRACKER_TYPE_MAP.end() ? it->second : TrackerType::UNKNOWN;
       };
 
-      config.tracker_map.insert(std::make_pair(
-        Label::CAR, getTrackerType(this->declare_parameter<std::string>("car_tracker"))));
-      config.tracker_map.insert(std::make_pair(
-        Label::TRUCK, getTrackerType(this->declare_parameter<std::string>("truck_tracker"))));
-      config.tracker_map.insert(std::make_pair(
-        Label::BUS, getTrackerType(this->declare_parameter<std::string>("bus_tracker"))));
-      config.tracker_map.insert(std::make_pair(
-        Label::TRAILER, getTrackerType(this->declare_parameter<std::string>("trailer_tracker"))));
-      config.tracker_map.insert(std::make_pair(
-        Label::PEDESTRIAN,
-        getTrackerType(this->declare_parameter<std::string>("pedestrian_tracker"))));
-      config.tracker_map.insert(std::make_pair(
-        Label::BICYCLE, getTrackerType(this->declare_parameter<std::string>("bicycle_tracker"))));
-      config.tracker_map.insert(std::make_pair(
-        Label::MOTORCYCLE,
-        getTrackerType(this->declare_parameter<std::string>("motorcycle_tracker"))));
+      config.tracker_map.insert(
+        std::make_pair(
+          Label::CAR, getTrackerType(this->declare_parameter<std::string>("car_tracker"))));
+      config.tracker_map.insert(
+        std::make_pair(
+          Label::TRUCK, getTrackerType(this->declare_parameter<std::string>("truck_tracker"))));
+      config.tracker_map.insert(
+        std::make_pair(
+          Label::BUS, getTrackerType(this->declare_parameter<std::string>("bus_tracker"))));
+      config.tracker_map.insert(
+        std::make_pair(
+          Label::TRAILER, getTrackerType(this->declare_parameter<std::string>("trailer_tracker"))));
+      config.tracker_map.insert(
+        std::make_pair(
+          Label::PEDESTRIAN,
+          getTrackerType(this->declare_parameter<std::string>("pedestrian_tracker"))));
+      config.tracker_map.insert(
+        std::make_pair(
+          Label::BICYCLE, getTrackerType(this->declare_parameter<std::string>("bicycle_tracker"))));
+      config.tracker_map.insert(
+        std::make_pair(
+          Label::MOTORCYCLE,
+          getTrackerType(this->declare_parameter<std::string>("motorcycle_tracker"))));
       config.tracker_map.insert(
         std::make_pair(Label::UNKNOWN, TrackerType::UNKNOWN));  // Default for unknown objects
 
