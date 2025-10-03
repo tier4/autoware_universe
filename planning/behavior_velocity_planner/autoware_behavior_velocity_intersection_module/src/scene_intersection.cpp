@@ -222,6 +222,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
   if (!first_attention_stopline_idx_opt || !occlusion_peeking_stopline_idx_opt) {
     return InternalError{"occlusion stop line is null"};
   }
+  const auto first_attention_stopline_idx = first_attention_stopline_idx_opt.value();
   const auto occlusion_stopline_idx = occlusion_peeking_stopline_idx_opt.value();
 
   // ==========================================================================================
@@ -438,7 +439,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
         temporal_stop_before_attention_required,
         closest_idx,
         occlusion_stopline_idx,
-        occlusion_wo_tl_pass_judge_line_idx,
+        first_attention_stopline_idx,
         occlusion_diag};
     }
 
@@ -1333,42 +1334,26 @@ IntersectionModule::PassJudgeStatus IntersectionModule::isOverPassJudgeLinesStat
   const auto & current_pose = planner_data_->current_odometry->pose;
   const auto closest_idx = intersection_stoplines.closest_idx;
   const auto original_pass_judge_line_idx = intersection_stoplines.pass_judge_line;
-  const auto occlusion_wo_tl_pass_judge_line_idx =
-    intersection_stoplines.occlusion_wo_tl_pass_judge_line;
   const auto occlusion_stopline_idx = intersection_stoplines.occlusion_peeking_stopline.value();
   const size_t pass_judge_line_idx = [&]() {
     if (planner_param_.occlusion.enable) {
-      if (has_traffic_light_) {
-        // ==========================================================================================
-        // if ego passed the original_pass_judge_line while it is peeking to occlusion, then its
-        // position is changed to occlusion_stopline_idx, because otherwise peeking is terminated.
-        // even if occlusion is cleared by peeking, its position should be occlusion_stopline_idx as
-        // before
-        // ==========================================================================================
-        if (passed_judge_line_while_peeking_) {
-          return occlusion_stopline_idx;
-        }
-        const bool is_over_original_pass_judge_line =
-          util::isOverTargetIndex(path, closest_idx, current_pose, original_pass_judge_line_idx);
-        if (is_occlusion_state && is_over_original_pass_judge_line) {
-          passed_judge_line_while_peeking_ = true;
-          return occlusion_stopline_idx;
-        }
-        // ==========================================================================================
-        // Otherwise it is original_pass_judge_line
-        // ==========================================================================================
-        return original_pass_judge_line_idx;
+      // ==========================================================================================
+      // if ego passed the original_pass_judge_line while it is peeking to occlusion, then its
+      // position is changed to occlusion_stopline_idx, because otherwise peeking is terminated.
+      // even if occlusion is cleared by peeking, its position should be occlusion_stopline_idx as
+      // before
+      // ==========================================================================================
+      if (passed_judge_line_while_peeking_) {
+        return occlusion_stopline_idx;
       }
-      if (is_occlusion_state) {
-        // ==========================================================================================
-        // if there is no traffic light and occlusion is detected, pass_judge position is beyond
-        // the boundary of first attention area
-        // ==========================================================================================
-        return occlusion_wo_tl_pass_judge_line_idx;
+      const bool is_over_original_pass_judge_line =
+        util::isOverTargetIndex(path, closest_idx, current_pose, original_pass_judge_line_idx);
+      if (is_occlusion_state && is_over_original_pass_judge_line) {
+        passed_judge_line_while_peeking_ = true;
+        return occlusion_stopline_idx;
       }
       // ==========================================================================================
-      // if there is no traffic light and occlusion is not detected, pass_judge position is
-      // default position
+      // Otherwise it is original_pass_judge_line
       // ==========================================================================================
       return original_pass_judge_line_idx;
     }
