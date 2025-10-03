@@ -12,6 +12,7 @@ def generate_launch_description():
                 ("~/input/reference_path", "/planning/scenario_planning/lane_driving/motion_planning/path_smoother/path"),
                 ("~/input/odometry", "/localization/kinematic_state"),
                 ("~/input/acceleration", "/localization/acceleration"),
+                ("~/input/control_cmd", "/control/command/control_cmd"),
                 ("~/input/objects", "/perception/object_recognition/objects"),
                 ("~/input/vector_map", "/map/vector_map"),
                 ("~/output/trajectory", "/frenetix_planner/trajectory"),

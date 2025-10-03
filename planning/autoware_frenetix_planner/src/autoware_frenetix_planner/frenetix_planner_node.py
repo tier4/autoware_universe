@@ -3,6 +3,7 @@ import lanelet2  # noqa: F401 # isort: skip
 from autoware_map_msgs.msg import LaneletMapBin
 from autoware_planning_msgs.msg import Path
 from autoware_planning_msgs.msg import Trajectory
+from autoware_control_msgs.msg import Control
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import AccelWithCovarianceStamped
 import numpy as np
@@ -41,17 +42,27 @@ class FrenetixPlanner(Node):
         self.get_logger().info(f"Received objects message with {len(objects_msg.points)} points.")
 
     # Callback for synchronized odometry and acceleration messages
-    def kinematic_state_callback(self, odometry_msg, accel_msg):
+    def kinematic_state_callback(self, odometry_msg, accel_msg, control_msg):
+        
         # Extract position and orientation from odometry
         position = odometry_msg.pose.pose.position
         orientation = odometry_msg.pose.pose.orientation
+        
         # Extract velocity from odometry
         velocity = odometry_msg.twist.twist.linear.x
+        
         # Extract acceleration from accel_msg
         acceleration = accel_msg.accel.accel.linear.x
 
+        # Extract control command (steering angle) if available
+        steering_angle = control_msg.lateral.steering_tire_angle if control_msg else 0.0
+
         # Set/update ego state in planner
-        if self.planner.set_kinematic_state(position, orientation, velocity=velocity, acceleration=acceleration):
+        if self.planner.set_cartesian_state(position, orientation, 
+                                            velocity=velocity, 
+                                            acceleration=acceleration, 
+                                            steering_angle=steering_angle,
+                                            timestamp=odometry_msg.header.stamp.sec + odometry_msg.header.stamp.nanosec * 1e-9):
             self.get_logger().debug("Synchronized kinematic state set/updated.")
 
     # Callback for vector map messages
@@ -60,6 +71,15 @@ class FrenetixPlanner(Node):
         # Conversion from binary map message to lanelet map would happen here
         # self.lanelet_map_ = fromBinMsg(map_msg)
         # self.get_logger().info("Lanelet map converted.")
+
+    # Timer callback to publish trajectory
+    def timer_callback_publish_trajectory(self):
+        trajectory_msg = self.planner.cyclic_plan()
+        if trajectory_msg is not None:
+            self.trajectory_pub.publish(trajectory_msg)
+            self.get_logger().info(f"Published trajectory with {len(trajectory_msg.points)} points.")
+        else:
+            self.get_logger().info("No trajectory to publish.")
 
     # Set up all topic subscribers
     def _init_subscriber(self):
@@ -73,7 +93,8 @@ class FrenetixPlanner(Node):
         # Use message_filters for synchronized kinematic state
         self.odom_sub = Subscriber(self, Odometry, "~/input/odometry")
         self.accel_sub = Subscriber(self, AccelWithCovarianceStamped, "~/input/acceleration")
-        self.ksts = ApproximateTimeSynchronizer([self.odom_sub, self.accel_sub], queue_size=10, slop=0.05)
+        self.control_sub = Subscriber(self, Control, "~/input/control_cmd")
+        self.ksts = ApproximateTimeSynchronizer([self.odom_sub, self.accel_sub, self.control_sub], queue_size=10, slop=0.05, allow_headerless=True)
         self.ksts.registerCallback(self.kinematic_state_callback)
 
         map_qos = rclpy.qos.QoSProfile(
@@ -88,7 +109,8 @@ class FrenetixPlanner(Node):
 
     # Set up all topic publishers
     def _init_publisher(self):
-        self.trajectory_pub_ = self.create_publisher(Trajectory, "~/output/trajectory", 1)
+        self.trajectory_pub = self.create_publisher(Trajectory, "~/output/trajectory", 1)
+        self.timer_trajectory_pub = self.create_timer(0.1, self.timer_callback_publish_trajectory)
         self.get_logger().info("Trajectory publisher set up.")
 
 # Main entry point for the node

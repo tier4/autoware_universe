@@ -1,5 +1,8 @@
+from dataclasses import dataclass
+from typing import List, Optional
+import copy
 import numpy as np
-import rclpy
+import threading
 from tf_transformations import euler_from_quaternion
 
 # Import frenetix core functions
@@ -10,23 +13,44 @@ import frenetix.trajectory_functions.cost_functions as cf
 from autoware_frenetix_planner.sampling_matrix import SamplingHandler
 from autoware_frenetix_planner.sampling_matrix import generate_sampling_matrix
 
-# import commonroad clcs for coordinate system ToDo Move to C++
 from commonroad_clcs.clcs import CurvilinearCoordinateSystem
 from commonroad_clcs.config import CLCSParams
 
+@dataclass
+class CartesianState:
+    """
+    Represents the current cartesian kinematic state of the ego vehicle.
+    """
+    position: List[float]           # [x, y] in meters
+    orientation: float              # heading/yaw in radians
+    velocity: float                 # longitudinal velocity in m/s
+    acceleration: float             # longitudinal acceleration in m/s^2
+    steering_angle: Optional[float] = None  # steering angle in radians
+    timestamp: Optional[float] = None       # ROS time (float seconds)
+
+@dataclass
+class CurvilinearState:
+    """
+    Represents the current curvilinear state of the ego vehicle.
+    """
+    s: float                       # longitudinal position along reference path
+    s_dot: float                   # longitudinal velocity
+    s_ddot: float                  # longitudinal acceleration
+    d: float                       # lateral offset from reference path
+    d_dot: float                   # lateral velocity
+    d_ddot: float                  # lateral acceleration
+    timestamp: Optional[float] = None  # ROS time (float seconds)
 
 class FrenetixMotionPlanner:
-  """
-  This Class is used to interface with the Frenetix planner.
-  It is used to set the reference path, set the vehicle parameters, set the cost weights,
-  set the initial state, set the desired velocity, and plan the trajectory.
-  It also contains functions to set the reference path and coordinate system, and to
-  generate the sampling matrix.
-  """
+    """
+    This Class is used to interface with the Frenetix planner.
+    It manages the reference path, vehicle parameters, cost weights,
+    and both cartesian and curvilinear ego states.
+    """
 
-  def __init__(self, logger):
-    # Initialize parameters
-    self.params = {
+    def __init__(self, logger):
+        # Initialize parameters
+        self.params = {
             "planning_horizon": 3.0,
             "sampling_dt": 0.1,
             "t_min": 1.1,
@@ -58,146 +82,167 @@ class FrenetixMotionPlanner:
                 "velocity_offset": 0.2,
             }
         }
-    
-    # Initialize variables
-    self.optimal_trajectory = None
-    self.desired_velocity = self.params['desired_velocity']
-    self.coordinate_system_cpp = None
-    self.reference_path = None
-    self.last_endpoint = None
-    self.endpoint_threshold = 1.0
-    self.x_0 = None
-    self.x_0_previous = None
-    self.x_cl = None
-    self.logger = logger
+        
+        # Initialize variables
+        self.position_lock = threading.Lock()
+        self.optimal_trajectory = None
+        self.desired_velocity = self.params['desired_velocity']
+        self.coordinate_system_cpp = None
+        self.reference_path = None
+        self.last_endpoint = None
+        self.endpoint_threshold = 1.0
+        self.cartesian_state: Optional[CartesianState] = None
+        self.previous_position = None
+        self.curvilinear_state: Optional[CurvilinearState] = None
+        self.curvilinear_state_previous: Optional[CurvilinearState] = None
+        self.logger = logger
 
-    # Initialize the sampling handler
-    self.sampling_handler = SamplingHandler(dt=self.params['sampling_dt'], 
-                                            max_sampling_number=3,
-                                            t_min=self.params['t_min'], 
-                                            horizon=self.params['planning_horizon'],
-                                            delta_d_max=self.params['d_max'],
-                                            delta_d_min=self.params['d_min'],
-                                            d_ego_pos=False)
+        # Initialize the sampling handler
+        self.sampling_handler = SamplingHandler(dt=self.params['sampling_dt'], 
+                                                max_sampling_number=3,
+                                                t_min=self.params['t_min'], 
+                                                horizon=self.params['planning_horizon'],
+                                                delta_d_max=self.params['d_max'],
+                                                delta_d_min=self.params['d_min'],
+                                                d_ego_pos=False)
 
-  
-    # Initialize the trajectory handler
-    self.handler: frenetix.TrajectoryHandler = frenetix.TrajectoryHandler(dt=self.params['sampling_dt'])
-    self.coordinate_system_cpp: frenetix.CoordinateSystemWrapper
+        # Initialize the trajectory handler
+        self.handler: frenetix.TrajectoryHandler = frenetix.TrajectoryHandler(dt=self.params['sampling_dt'])
+        self.coordinate_system_cpp: frenetix.CoordinateSystemWrapper
 
-    # Set the cost weights and feasibility functions
-    self._trajectory_handler_set_constant_cost_functions()
-    self._trajectory_handler_set_constant_feasibility_functions()
-    self._trajectory_handler_set_changing_cost_functions()
+        # Set the cost weights and feasibility functions
+        self._trajectory_handler_set_constant_cost_functions()
+        self._trajectory_handler_set_constant_feasibility_functions()
+        # self._trajectory_handler_set_changing_cost_functions()
 
-  
-  def set_reference_path(self, reference_path=None):
-    """
-    Sets the reference path and coordinate system only if the endpoint changes significantly.
-    :param points: list of Path points, each with pose.position.x and pose.position.y
-    """
-    if reference_path is None or len(reference_path) == 0:
-        self.logger.info("Received empty reference path, ignoring.")
+    def set_reference_path(self, reference_path=None):
+        """
+        Sets the reference path and coordinate system only if the endpoint changes significantly.
+        :param reference_path: np.ndarray of shape (N, 2)
+        """
+        if reference_path is None or len(reference_path) == 0:
+            self.logger.info("Received empty reference path, ignoring.")
+            return False
+
+        current_endpoint = reference_path[-1]
+
+        if self.reference_path is None or self.last_endpoint is None:
+            self.reference_path = reference_path
+            self.last_endpoint = current_endpoint
+            self.logger.info(f"Reference path set. Endpoint: {current_endpoint}")
+            self._set_reference_and_coordinate_system(self.reference_path)
+            return True
+
+        dist = np.linalg.norm(current_endpoint - self.last_endpoint)
+        if dist > self.endpoint_threshold:
+            self.reference_path = reference_path
+            self.logger.info(f"Reference path endpoint changed by {dist:.2f} m. Updating path. New endpoint: {current_endpoint}")
+            self.last_endpoint = current_endpoint
+            self._set_reference_and_coordinate_system(self.reference_path)
+            return True
+
+        self.logger.debug(f"Reference path endpoint changed only by {dist:.2f} m (< threshold {self.endpoint_threshold} m), ignoring update.")
         return False
 
-    # Get current endpoint
-    current_endpoint = reference_path[-1]
+    def set_cartesian_state(self, position, orientation, velocity=None, acceleration=None, steering_angle=None, timestamp=None):
+        """
+        Sets the ego vehicle's cartesian state and checks for large jumps.
+        :param position: object with .x and .y attributes
+        :param orientation: quaternion as [x, y, z, w]
+        :param velocity: float (optional)
+        :param acceleration: float (optional)
+        :param steering_angle: float (optional)
+        :param timestamp: ROS time (float seconds)
+        :return: True if state updated, False otherwise
+        """
+        try:
+            pose_orientation_euler = euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])[2]
+        except Exception as e:
+            self.logger.error(f"Failed to convert quaternion to euler: {e}")
+            return False
 
-    # If no reference path has been set yet, set everything
-    if self.reference_path is None or self.last_endpoint is None:
-        self.reference_path = reference_path
-        self.last_endpoint = current_endpoint
-        self.logger.info(f"Reference path set. Endpoint: {current_endpoint}")
-        self._set_reference_and_coordinate_system(self.reference_path)
+        velocity_threshold = 0.05  # m/s
+        velocity_value = 0.0 if velocity is not None and abs(velocity) < velocity_threshold else (velocity if velocity is not None else 0.0)
+        acceleration_value = acceleration if acceleration is not None else 0.0
+
+        new_state = CartesianState(
+            position=[position.x, position.y],
+            orientation=pose_orientation_euler,
+            velocity=velocity_value,
+            acceleration=acceleration_value,
+            steering_angle=steering_angle,
+            timestamp=timestamp
+        )
+
+        # Debug message for current cartesian state
+        self.logger.debug(
+            f"Cartesian state: pos=({new_state.position[0]:.2f}, {new_state.position[1]:.2f}), "
+            f"orientation={new_state.orientation:.2f}, vel={new_state.velocity:.2f}, acc={new_state.acceleration:.2f}, "
+            f"steering={new_state.steering_angle}, stamp={new_state.timestamp}"
+        )
+
+        # Jump detection using previous position
+        if self.previous_position is not None:
+            prev_pos = np.array(self.previous_position)
+            curr_pos = np.array(new_state.position)
+            dist = np.linalg.norm(curr_pos - prev_pos)
+            if dist > 2.0:
+                self.logger.warn(f"Ego position jump detected: {dist:.2f}m. Reference path will be reset! New ego position: ({curr_pos[0]:.2f}, {curr_pos[1]:.2f})")
+                self.reference_path = None
+
+        self.previous_position = [position.x, position.y]
+        self.cartesian_state = new_state
+
         return True
 
-    # Compute Euclidean distance between last and current endpoint
-    dist = np.linalg.norm(current_endpoint - self.last_endpoint)
+    def set_curvilinear_state(self, s, s_dot, s_ddot, d, d_dot, d_ddot, theta, kappa=None, timestamp=None):
+        """
+        Sets the ego vehicle's curvilinear state.
+        :param s: longitudinal position
+        :param s_dot: longitudinal velocity
+        :param s_ddot: longitudinal acceleration
+        :param d: lateral offset
+        :param d_dot: lateral velocity
+        :param d_ddot: lateral acceleration
+        :param theta: heading in curvilinear frame
+        :param kappa: curvature (optional)
+        :param timestamp: ROS time (float seconds)
+        """
+        new_state = CurvilinearState(
+            s=s,
+            s_dot=s_dot,
+            s_ddot=s_ddot,
+            d=d,
+            d_dot=d_dot,
+            d_ddot=d_ddot,
+            theta=theta,
+            kappa=kappa,
+            timestamp=timestamp
+        )
 
-    # Only update if endpoint changed significantly
-    if dist > self.endpoint_threshold:
-        self.reference_path = reference_path
-        self.logger.info(f"Reference path endpoint changed by {dist:.2f} m. Updating path. New endpoint: {current_endpoint}")
-        self.last_endpoint = current_endpoint
-        self._set_reference_and_coordinate_system(self.reference_path)
-        return True
+        self.logger.debug(
+            f"Curvilinear state: s={s:.2f}, s_dot={s_dot:.2f}, s_ddot={s_ddot:.2f}, "
+            f"d={d:.2f}, d_dot={d_dot:.2f}, d_ddot={d_ddot:.2f}, theta={theta:.2f}, kappa={kappa}, stamp={timestamp}"
+        )
 
-    # Otherwise, do nothing
-    self.logger.debug(f"Reference path endpoint changed only by {dist:.2f} m (< threshold {self.endpoint_threshold} m), ignoring update.")
+        self.curvilinear_state_previous = self.curvilinear_state
+        self.curvilinear_state = new_state
 
-  def set_kinematic_state(self, position, orientation, velocity=None, acceleration=None):
-    """
-    Sets the ego vehicle's kinematic state and checks for large jumps.
-    :param position: object with .x and .y attributes
-    :param orientation: quaternion as [x, y, z, w]
-    :param velocity: float (optional)
-    :param acceleration: float (optional)
-    :return: True if state updated, False otherwise
-    """
-    # Convert quaternion to euler yaw
-    try:
-        pose_orientation_euler = euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])[2]
-    except Exception as e:
-        self.logger.error(f"Failed to convert quaternion to euler: {e}")
-        return False
+    def _set_reference_and_coordinate_system(self, reference_path: np.ndarray):
+        """
+        Sets the reference path and the coordinate system.
+        :param reference_path: new reference_path as np.ndarray
+        """
+        if reference_path is not None:
+            self.reference_path = reference_path
+            # params = CLCSParams()
+            # params.subdivision.max_curvature = 0.20
+            # params.default_proj_domain_limit = float(int(1e5))
+            # self.coordinate_system = CurvilinearCoordinateSystem(reference_path, params=params, preprocess_path=False)
+            self.coordinate_system_cpp = frenetix.CoordinateSystemWrapper(reference_path)
 
-    perception_velocity = velocity if velocity is not None else 0.0
-
-    # Save previous state for jump detection
-    if not hasattr(self, "x_0_previous") or self.x_0_previous is None:
-        self.x_0_previous = None
-
-    # Initialize x_0 dict if needed
-    if not hasattr(self, "x_0") or self.x_0 is None:
-        self.x_0 = {}
-
-    # Set current state
-    self.x_0['position'] = [position.x, position.y]
-    self.x_0['orientation'] = pose_orientation_euler
-
-    # Velocity logic: Use numpy to threshold velocity
-    velocity_threshold = 0.05  # m/s, adjust as needed
-    self.x_0['velocity'] = np.where(np.abs(perception_velocity) < velocity_threshold, 0.0, perception_velocity)
-    self.last_x_0_velocity = perception_velocity
-
-    # Acceleration
-    self.x_0['acceleration'] = acceleration if acceleration is not None else 0.0
-
-    # Debug message for current kinematic state
-    self.logger.debug(
-        f"Kinematic state: pos=({self.x_0['position'][0]:.2f}, {self.x_0['position'][1]:.2f}), "
-        f"orientation={self.x_0['orientation']:.2f}, vel={self.x_0['velocity']:.2f}, acc={self.x_0['acceleration']:.2f}"
-    )
-
-    # Jump detection using previous state
-    if self.x_0_previous is not None:
-        prev_pos = np.array(self.x_0_previous['position'])
-        curr_pos = np.array(self.x_0['position'])
-        dist = np.linalg.norm(curr_pos - prev_pos)
-        if dist > 2.0:
-            self.logger.warn(f"Ego position jump detected: {dist:.2f}m. Reference path will be reset!")
-            self.reference_path = None
-    # Update previous state
-    self.x_0_previous = self.x_0.copy()
-
-    return True
-      
-
-  def _set_reference_and_coordinate_system(self, reference_path: np.ndarray):
-      """
-      Sets the reference path and the coordinate system.
-      :param reference_path: new reference_path as np.ndarray
-      """
-      if reference_path is not None:
-          self.reference_path = reference_path
-          params = CLCSParams()
-          params.subdivision.max_curvature = 0.20
-          params.default_proj_domain_limit = float(int(1e5))
-          self.coordinate_system = CurvilinearCoordinateSystem(reference_path, params=params, preprocess_path=False)
-          self.coordinate_system_cpp = frenetix.CoordinateSystemWrapper(reference_path)
-
-  # Set constant feasibility functions
-  def _trajectory_handler_set_constant_feasibility_functions(self):
+    # Set constant feasibility functions
+    def _trajectory_handler_set_constant_feasibility_functions(self):
         """
         Sets the constant feasibility functions for the trajectory handler
         """
@@ -217,8 +262,9 @@ class FrenetixMotionPlanner:
                                                                               velocityDeltaMax=self.params['v_delta_max'],
                                                                               wholeTrajectory=False
                                                                               ))
-  # Set constant cost functions
-  def _trajectory_handler_set_constant_cost_functions(self):
+
+    # Set constant cost functions
+    def _trajectory_handler_set_constant_cost_functions(self):
         """
         Sets the constant cost functions for the trajectory handler
         """
@@ -250,11 +296,11 @@ class FrenetixMotionPlanner:
         if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
             self.handler.add_cost_function(cf.CalculateDistanceToReferencePathCost(name, self.params['cost_weights'][name]))
 
-  # Set changing cost functions
-  def _trajectory_handler_set_changing_cost_functions(self):
+    # Set changing cost functions
+    def _trajectory_handler_set_changing_cost_functions(self):
         self.handler.add_function(frenetix.trajectory_functions.FillCoordinates(
             lowVelocityMode=False,
-            initialOrientation=self.x_0["orientation"],
+            initialOrientation=self.cartesian_state.orientation,
             coordinateSystem=self.coordinate_system_cpp,
             horizon=self.planning_horizon
         ))
@@ -291,8 +337,8 @@ class FrenetixMotionPlanner:
             ))
 
 
-  # Calculate sampling matrix
-  def _generate_sampling_matrix(self, samp_level: int):
+    # Calculate sampling matrix
+    def _generate_sampling_matrix(self, samp_level: int):
         x_0_lon = self.x_cl[0]
         x_0_lat = self.x_cl[1]
 
@@ -316,6 +362,54 @@ class FrenetixMotionPlanner:
                                                    ddd1_range=0.0)
 
         return sampling_matrix
+  
+    def plan(self):
+
+      
+      self.trajectory_handler_set_changing_functions()
+
+      if self.coordinate_system is None or self.reference_path is None:
+          self.logger.warn("Reference path or coordinate system not set, cannot plan.")
+          return None
+      
+    def cyclic_plan(self):
+
+      if self.cartesian_state is None:
+          self.logger.debug("Cartesian state not set, cannot plan.")
+          return None
+        
+      with self.position_lock:
+        cartesian_state = copy.deepcopy(self.cartesian_state)
+
+      cartesian_state_frenetix = frenetix.CartesianPlannerState(np.asarray(cartesian_state.position), 
+                                                                cartesian_state.orientation, 
+                                                                cartesian_state.velocity, 
+                                                                cartesian_state.acceleration, 
+                                                                cartesian_state.steering_angle)
+
+      curvilinear_state_frenetix = frenetix.compute_initial_state(coordinate_system=self.coordinate_system_cpp,
+                                                                  x_0=cartesian_state_frenetix,
+                                                                  wheelbase=self.params['wheelbase'],
+                                                                  low_velocity_mode=True)
+      
+      self.curvilinear_state = CurvilinearState(s=curvilinear_state_frenetix.x0_lon[0],
+                                                s_dot=curvilinear_state_frenetix.x0_lon[1],
+                                                s_ddot=curvilinear_state_frenetix.x0_lon[2],
+                                                d=curvilinear_state_frenetix.x0_lat[0],
+                                                d_dot=curvilinear_state_frenetix.x0_lat[1],
+                                                d_ddot=curvilinear_state_frenetix.x0_lat[2],
+                                                timestamp=cartesian_state.timestamp)
+
+      self.logger.warn(
+          f"Curvilinear state: s={self.curvilinear_state.s:.2f}, s_dot={self.curvilinear_state.s_dot:.2f}, s_ddot={self.curvilinear_state.s_ddot:.2f}, "
+          f"d={self.curvilinear_state.d:.2f}, d_dot={self.curvilinear_state.d_dot:.2f}, d_ddot={self.curvilinear_state.d_ddot:.2f}, "
+          f"stamp={self.curvilinear_state.timestamp}"
+      )
+      
+      return None
+
+
+
 
 
 
