@@ -2,7 +2,7 @@
 <package format="3">
   <name>autoware_frenetix_planner</name>
   <version>0.0.0</version>
-  <description>Node for trajectory sampling in Frenet frame</description>
+  <description>Node for trajectory sampling in Frenet frame using Frenetix</description>
   <author email="korbinian.moller@tum.de">Korbinian Moller</author>
   <maintainer email="maxime.clement@tier4.jp">Maxime CLEMENT</maintainer>
   <license>Apache License 2.0</license>

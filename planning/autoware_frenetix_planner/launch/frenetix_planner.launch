@@ -1,0 +1,21 @@
+<launch>
+  <arg name="input_path" default="/path_smoother/path"/>
+  <arg name="input_odometry" default="/localization/kinematic_state"/>
+  <arg name="input_objects" default="/perception/object_recognition/objects"/>
+  <arg name="input_vector_map" default="/map/vector_map"/>
+  <arg name="output_trajectory" default="/frenetix_planner/trajectory"/>
+
+  <node
+    pkg="autoware_frenetix_planner"
+    executable="frenetix_planner_node"
+    name="frenetix_planner"
+    output="screen"
+  >
+    <remap from="~/input/reference_path" to="$(arg input_path)" />
+    <remap from="~/input/odometry" to="$(arg input_odometry)" />
+    <remap from="~/input/objects" to="$(arg input_objects)" />
+    <remap from="~/input/vector_map" to="$(arg input_vector_map)" />
+    <remap from="~/output/trajectory" to="$(arg output_trajectory)" />
+    <param name="update_rate" value="10.0" />
+  </node>
+</launch>
