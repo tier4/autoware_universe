@@ -243,6 +243,10 @@ void DiffusionPlanner::init_pointers()
   const size_t ego_shape_size =
     batch_size *
     std::accumulate(EGO_SHAPE_SHAPE.begin() + 1, EGO_SHAPE_SHAPE.end(), 1L, std::multiplies<>());
+  const size_t turn_indicators_size =
+    batch_size *
+    std::accumulate(
+      TURN_INDICATORS_SHAPE.begin() + 1, TURN_INDICATORS_SHAPE.end(), 1L, std::multiplies<>());
   const size_t output_size =
     batch_size *
     std::accumulate(OUTPUT_SHAPE.begin() + 1, OUTPUT_SHAPE.end(), 1L, std::multiplies<>());
@@ -268,6 +272,7 @@ void DiffusionPlanner::init_pointers()
   line_strings_d_ = autoware::cuda_utils::make_unique<float[]>(line_strings_size);
   goal_pose_d_ = autoware::cuda_utils::make_unique<float[]>(goal_pose_size);
   ego_shape_d_ = autoware::cuda_utils::make_unique<float[]>(ego_shape_size);
+  turn_indicators_d_ = autoware::cuda_utils::make_unique<float[]>(turn_indicators_size);
 
   // Output
   output_d_ = autoware::cuda_utils::make_unique<float[]>(output_size);
@@ -338,6 +343,8 @@ void DiffusionPlanner::load_engine(const std::string & model_path)
       make_dynamic_dims("route_lanes_speed_limit", to_dynamic_dims(ROUTE_LANES_SPEED_LIMIT_SHAPE)));
     profile_dims.emplace_back(make_dynamic_dims("goal_pose", to_dynamic_dims(GOAL_POSE_SHAPE)));
     profile_dims.emplace_back(make_dynamic_dims("ego_shape", to_dynamic_dims(EGO_SHAPE_SHAPE)));
+    profile_dims.emplace_back(
+      make_dynamic_dims("turn_indicators", to_dynamic_dims(TURN_INDICATORS_SHAPE)));
   }
 
   std::vector<autoware::tensorrt_common::NetworkIO> network_io;
@@ -359,6 +366,7 @@ void DiffusionPlanner::load_engine(const std::string & model_path)
       "route_lanes_speed_limit", to_dynamic_dims(ROUTE_LANES_SPEED_LIMIT_SHAPE));
     network_io.emplace_back("goal_pose", to_dynamic_dims(GOAL_POSE_SHAPE));
     network_io.emplace_back("ego_shape", to_dynamic_dims(EGO_SHAPE_SHAPE));
+    network_io.emplace_back("turn_indicators", to_dynamic_dims(TURN_INDICATORS_SHAPE));
 
     // Output with dynamic batch dimension
     network_io.emplace_back("prediction", to_dynamic_dims(OUTPUT_SHAPE));
@@ -402,6 +410,7 @@ InputDataMap DiffusionPlanner::create_input_data()
   auto ego_acceleration = sub_current_acceleration_.take_data();
   auto traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
+  auto turn_indicators_ptr = sub_turn_indicators_.take_data();
 
   route_ptr_ = (!route_ptr_ || temp_route_ptr) ? temp_route_ptr : route_ptr_;
 
@@ -411,10 +420,16 @@ InputDataMap DiffusionPlanner::create_input_data()
     objects = std::make_shared<TrackedObjects>(empty_object_list);
   }
 
-  if (!objects || !ego_kinematic_state || !ego_acceleration || !route_ptr_) {
-    RCLCPP_WARN_THROTTLE(
+  if (
+    !objects || !ego_kinematic_state || !ego_acceleration || !route_ptr_ || !turn_indicators_ptr) {
+    RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-      "No tracked objects or ego kinematic state or route data received");
+      "There is no input data. objects: "
+        << (objects ? "true" : "false")
+        << ", ego_kinematic_state: " << (ego_kinematic_state ? "true" : "false")
+        << ", ego_acceleration: " << (ego_acceleration ? "true" : "false")
+        << ", route: " << (route_ptr_ ? "true" : "false")
+        << ", turn_indicators: " << (turn_indicators_ptr ? "true" : "false"));
     return {};
   }
 
@@ -458,6 +473,11 @@ InputDataMap DiffusionPlanner::create_input_data()
   ego_history_.push_back(pose_center);
   if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
     ego_history_.pop_front();
+  }
+
+  turn_indicators_history_.push_back(*turn_indicators_ptr);
+  if (turn_indicators_history_.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
+    turn_indicators_history_.pop_front();
   }
 
   // Ego history
@@ -555,6 +575,17 @@ InputDataMap DiffusionPlanner::create_input_data()
       vehicle_info_.left_overhang_m + vehicle_info_.wheel_tread_m + vehicle_info_.right_overhang_m);
     std::vector<float> single_ego_shape = {wheel_base, vehicle_length, vehicle_width};
     input_data_map["ego_shape"] = replicate_for_batch(single_ego_shape);
+  }
+
+  // turn indicators
+  {
+    std::vector<float> single_turn_indicators(INPUT_T + 1, 0.0f);
+    for (int64_t t = 0; t < INPUT_T + 1; ++t) {
+      const int64_t index =
+        std::max(static_cast<int64_t>(turn_indicators_history_.size()) - 1 - t, (int64_t)0);
+      single_turn_indicators[INPUT_T - t] = turn_indicators_history_[index].report;
+    }
+    input_data_map["turn_indicators"] = replicate_for_batch(single_turn_indicators);
   }
 
   return input_data_map;
@@ -656,6 +687,7 @@ std::vector<float> DiffusionPlanner::do_inference_trt(InputDataMap & input_data_
   auto line_strings = input_data_map["line_strings"];
   auto goal_pose = input_data_map["goal_pose"];
   auto ego_shape = input_data_map["ego_shape"];
+  auto turn_indicators = input_data_map["turn_indicators"];
 
   // Allocate bool array for lane speed limits
   // Note: Using std::vector<uint8_t> instead of std::vector<bool> to ensure contiguous memory
@@ -728,6 +760,9 @@ std::vector<float> DiffusionPlanner::do_inference_trt(InputDataMap & input_data_
   CHECK_CUDA_ERROR(cudaMemcpy(
     ego_shape_d_.get(), ego_shape.data(), ego_shape.size() * sizeof(float),
     cudaMemcpyHostToDevice));
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    turn_indicators_d_.get(), turn_indicators.data(), turn_indicators.size() * sizeof(float),
+    cudaMemcpyHostToDevice));
 
   // Set input shapes for current batch size
   auto to_dims_with_batch = [batch_size](auto const & arr) {
@@ -770,6 +805,8 @@ std::vector<float> DiffusionPlanner::do_inference_trt(InputDataMap & input_data_
     network_trt_ptr_->setInputShape("goal_pose", to_dims_with_batch(GOAL_POSE_SHAPE));
   set_input_shapes &=
     network_trt_ptr_->setInputShape("ego_shape", to_dims_with_batch(EGO_SHAPE_SHAPE));
+  set_input_shapes &=
+    network_trt_ptr_->setInputShape("turn_indicators", to_dims_with_batch(TURN_INDICATORS_SHAPE));
 
   if (!set_input_shapes) {
     RCLCPP_ERROR(
@@ -793,6 +830,7 @@ std::vector<float> DiffusionPlanner::do_inference_trt(InputDataMap & input_data_
   network_trt_ptr_->setTensorAddress("line_strings", line_strings_d_.get());
   network_trt_ptr_->setTensorAddress("goal_pose", goal_pose_d_.get());
   network_trt_ptr_->setTensorAddress("ego_shape", ego_shape_d_.get());
+  network_trt_ptr_->setTensorAddress("turn_indicators", turn_indicators_d_.get());
 
   // Output
   network_trt_ptr_->setTensorAddress("prediction", output_d_.get());
