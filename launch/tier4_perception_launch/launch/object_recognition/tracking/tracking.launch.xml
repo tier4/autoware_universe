@@ -110,6 +110,17 @@
     </group>
 
     <!-- Run with tracking merger to add far v2i information -->
+    <include file="$(find-pkg-share autoware_object_sorter)/launch/tracked_object_sorter.launch.xml">
+      <arg name="input/objects" value="$(var v2i_tracked_object_sorter/input/objects)"/>
+      <arg name="output/objects" value="$(var v2i_tracked_object_sorter/output/objects)"/>
+      <arg name="param_path" value="$(var object_recognition_tracking_v2i_tracked_object_sorter_param_path)"/>
+    </include>
+
+    <include file="$(find-pkg-share autoware_detected_object_validation)/launch/tracked_object_lanelet_filter.launch.xml">
+      <arg name="input/object" value="$(var v2i_tracked_object_lanelet_filter/input/object)"/>
+      <arg name="output/object" value="$(var v2i_tracked_object_lanelet_filter/output/object)"/>
+      <arg name="filtering_range_param" value="$(var object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path)"/>
+    </include>
     <group if="$(var use_v2i_tracking_fusion)">
 
       <let name="v2i_tracker_merger/input/main_objects" value="$(var ns)/camera_lidar_radar_objects" if="$(var use_radar_tracking_fusion)"/>
@@ -128,7 +139,7 @@
         <arg name="radar_object_tracker_param_path" value="$(var object_recognition_tracking_v2i_object_tracker_node_param_path)"/>
       </include> -->
 
-      <include file="$(find-pkg-share autoware_object_sorter)/launch/tracked_object_sorter.launch.xml">
+      <!-- <include file="$(find-pkg-share autoware_object_sorter)/launch/tracked_object_sorter.launch.xml">
         <arg name="input/objects" value="$(var v2i_tracked_object_sorter/input/objects)"/>
         <arg name="output/objects" value="$(var v2i_tracked_object_sorter/output/objects)"/>
         <arg name="param_path" value="$(var object_recognition_tracking_v2i_tracked_object_sorter_param_path)"/>
@@ -138,7 +149,7 @@
         <arg name="input/object" value="$(var v2i_tracked_object_lanelet_filter/input/object)"/>
         <arg name="output/object" value="$(var v2i_tracked_object_lanelet_filter/output/object)"/>
         <arg name="filtering_range_param" value="$(var object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path)"/>
-      </include>
+      </include> -->
 
       <!-- tracking object merger to merge near objects and far objects -->
       <include file="$(find-pkg-share autoware_tracking_v2i_object_merger)/launch/decorative_tracker_merger.launch.xml">
