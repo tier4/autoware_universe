@@ -13,9 +13,6 @@ import frenetix.trajectory_functions.cost_functions as cf
 from autoware_frenetix_planner.sampling_matrix import SamplingHandler
 from autoware_frenetix_planner.sampling_matrix import generate_sampling_matrix
 
-from commonroad_clcs.clcs import CurvilinearCoordinateSystem
-from commonroad_clcs.config import CLCSParams
-
 @dataclass
 class CartesianState:
     """
@@ -62,7 +59,7 @@ class FrenetixMotionPlanner:
             "desired_velocity": 8.33,
             "delta_max": 0.6,
             "wheelbase": 2.7,
-            "v_switch": 8.0,
+            "v_switch": 3.0,
             "a_max": 3.0,
             "v_delta_max": 2.0,
             "length": 4.7,
@@ -79,7 +76,7 @@ class FrenetixMotionPlanner:
                 "distance_to_reference_path": 0.1,
                 "prediction": 0.5,
                 "distance_to_obstacles": 0.5,
-                "velocity_offset": 0.2,
+                "velocity_offset": 1.0,
             }
         }
         
@@ -104,7 +101,7 @@ class FrenetixMotionPlanner:
                                                 horizon=self.params['planning_horizon'],
                                                 delta_d_max=self.params['d_max'],
                                                 delta_d_min=self.params['d_min'],
-                                                d_ego_pos=False)
+                                                d_ego_pos=True)
 
         # Initialize the trajectory handler
         self.handler: frenetix.TrajectoryHandler = frenetix.TrajectoryHandler(dt=self.params['sampling_dt'])
@@ -228,6 +225,25 @@ class FrenetixMotionPlanner:
         self.curvilinear_state_previous = self.curvilinear_state
         self.curvilinear_state = new_state
 
+    def set_desired_velocity(self, desired_velocity: float, current_speed: float = None,
+                             v_limit: float = 36):
+      """
+      Sets desired velocity and calculates velocity for each sample
+      :param desired_velocity: velocity in m/s
+      :param current_speed: velocity in m/s
+      :param v_limit: limit velocity due to behavior planner in m/s
+      :return: velocity in m/s
+      """
+      self.desired_velocity = desired_velocity
+
+      min_v = max(0.001, current_speed - self.params['a_max'] * self.params['planning_horizon'])
+      max_v = min(min(current_speed + (self.params['a_max'] / 6.0) * self.params['planning_horizon'], v_limit),
+                  self.params['v_max'])
+
+      self.sampling_handler.set_v_sampling(min_v, max_v)
+
+      self.logger.debug('Sampled interval of velocity: {:.2f} m/s - {:.2f} m/s'.format(min_v, max_v))
+
     def _set_reference_and_coordinate_system(self, reference_path: np.ndarray):
         """
         Sets the reference path and the coordinate system.
@@ -302,7 +318,7 @@ class FrenetixMotionPlanner:
             lowVelocityMode=False,
             initialOrientation=self.cartesian_state.orientation,
             coordinateSystem=self.coordinate_system_cpp,
-            horizon=self.planning_horizon
+            horizon=self.params['planning_horizon']
         ))
 
         # name = "prediction"
@@ -325,10 +341,10 @@ class FrenetixMotionPlanner:
         #     self.obstacle_positions = None
 
         name = "velocity_offset"
-        if name in self.cost_weights.keys() and self.cost_weights[name] > 0:
+        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
             self.handler.add_cost_function(cf.CalculateVelocityOffsetCost(
                 name,
-                self.cost_weights[name],
+                self.params['cost_weights'][name],
                 self.desired_velocity,
                 0.1,
                 1.1,
@@ -339,43 +355,102 @@ class FrenetixMotionPlanner:
 
     # Calculate sampling matrix
     def _generate_sampling_matrix(self, samp_level: int):
-        x_0_lon = self.x_cl[0]
-        x_0_lat = self.x_cl[1]
 
-        N = int(self.planning_horizon / self.sampling_dt)
-        t1_range = np.array(list(self.sampling_handler.t_sampling.to_range(samp_level).union({N*self.sampling_dt})))
-        ss1_range = np.array(list(self.sampling_handler.v_sampling.to_range(samp_level).union({x_0_lon[1]})))
-        d1_range = np.array(list(self.sampling_handler.d_sampling.to_range(samp_level).union({x_0_lat[0]})))
+        N = int(self.params['planning_horizon'] / self.params['sampling_dt'])
+        t1_range = np.array(list(self.sampling_handler.t_sampling.to_range(samp_level).union({N*self.params['sampling_dt']})))
+        ss1_range = np.array(list(self.sampling_handler.v_sampling.to_range(samp_level).union({self.curvilinear_state.s_dot})))
+        d1_range = np.array(list(self.sampling_handler.d_sampling.to_range(samp_level).union({self.curvilinear_state.d})))
 
         sampling_matrix = generate_sampling_matrix(t0_range=0.0,
                                                    t1_range=t1_range,
-                                                   s0_range=x_0_lon[0],
-                                                   ss0_range=x_0_lon[1],
-                                                   sss0_range=x_0_lon[2],
+                                                   s0_range=self.curvilinear_state.s,
+                                                   ss0_range=self.curvilinear_state.s_dot,
+                                                   sss0_range=self.curvilinear_state.s_ddot,
                                                    ss1_range=ss1_range,
                                                    sss1_range=0,
-                                                   d0_range=x_0_lat[0],
-                                                   dd0_range=x_0_lat[1],
-                                                   ddd0_range=x_0_lat[2],
+                                                   d0_range=self.curvilinear_state.d,
+                                                   dd0_range=self.curvilinear_state.d_dot,
+                                                   ddd0_range=self.curvilinear_state.d_ddot,
                                                    d1_range=d1_range,
                                                    dd1_range=0.0,
                                                    ddd1_range=0.0)
 
         return sampling_matrix
   
-    def plan(self):
+    def _plan(self):
 
-      
-      self.trajectory_handler_set_changing_functions()
+        # set desired velocity
+        self.set_desired_velocity(desired_velocity=10, current_speed=self.curvilinear_state.s_dot)
 
-      if self.coordinate_system is None or self.reference_path is None:
-          self.logger.warn("Reference path or coordinate system not set, cannot plan.")
-          return None
+        # set current d position for lateral sampling
+        self.sampling_handler.set_d_sampling(self.curvilinear_state.d)
+
+        # set changing cost functions
+        self._trajectory_handler_set_changing_cost_functions()
+
+        # Initialization of while loop
+        optimal_trajectory = None
+        feasible_trajectories = []
+        infeasible_trajectories = []
+        sampling_level = self.params['sampling_min']
+        max_sampling_level = self.params['sampling_max']
+
+        # sample until trajectory has been found or sampling sets are empty
+        while optimal_trajectory is None and sampling_level < max_sampling_level:
+            self.handler.reset_Trajectories()
+
+            # generate sampling matrix with current sampling level
+            sampling_matrix = self._generate_sampling_matrix(sampling_level)
+
+            # generate trajectories
+            self.handler.generate_trajectories(sampling_matrix, False)
+
+            self.handler.evaluate_all_current_functions_concurrent(True)
+
+            feasible_trajectories = []
+            infeasible_trajectories = []
+            for trajectory in self.handler.get_sorted_trajectories():
+                # check if trajectory is feasible
+                # feasible_trajectories.append(trajectory)
+                if trajectory.feasible:
+                    feasible_trajectories.append(trajectory)
+                elif trajectory.valid:
+                    infeasible_trajectories.append(trajectory)
+
+            optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else None
+
+            # increase sampling level (i.e., density) if no optimal trajectory could be found
+            sampling_level += 1
+
+          # --- Debug message with all relevant planning info ---
+        self.logger.debug(
+          f"Planning finished: "
+          f"sampling_level={sampling_level-1}, "
+          f"num_feasible={len(feasible_trajectories)}, "
+          f"num_infeasible={len(infeasible_trajectories)}, "
+          f"optimal_trajectory_found={'yes' if optimal_trajectory is not None else 'no'}"
+          )
+        
+        if optimal_trajectory is not None:
+          self.logger.warn(
+              f"Optimal trajectory: cost={optimal_trajectory.cost:.2f}, "
+              f"length={len(optimal_trajectory.cartesian.x)}, "
+              f"max velocity={max(optimal_trajectory.cartesian.v)}"
+          )
+          return optimal_trajectory
+        else:
+            self.logger.warn("No feasible trajectory found in Frenetix planning cycle.")
+            return None
+
       
     def cyclic_plan(self):
 
+      if self.coordinate_system_cpp is None or self.reference_path is None:
+          self.logger.warn("Reference path or coordinate system not set, cannot plan.")
+          return None
+
       if self.cartesian_state is None:
-          self.logger.debug("Cartesian state not set, cannot plan.")
+          self.logger.warn("Cartesian state not set, cannot plan.")
           return None
         
       with self.position_lock:
@@ -400,13 +475,16 @@ class FrenetixMotionPlanner:
                                                 d_ddot=curvilinear_state_frenetix.x0_lat[2],
                                                 timestamp=cartesian_state.timestamp)
 
-      self.logger.warn(
+      # plan optimal trajectory
+      optimal_trajectory = self._plan()
+
+      self.logger.debug(
           f"Curvilinear state: s={self.curvilinear_state.s:.2f}, s_dot={self.curvilinear_state.s_dot:.2f}, s_ddot={self.curvilinear_state.s_ddot:.2f}, "
           f"d={self.curvilinear_state.d:.2f}, d_dot={self.curvilinear_state.d_dot:.2f}, d_ddot={self.curvilinear_state.d_ddot:.2f}, "
           f"stamp={self.curvilinear_state.timestamp}"
       )
       
-      return None
+      return optimal_trajectory
 
 
 
