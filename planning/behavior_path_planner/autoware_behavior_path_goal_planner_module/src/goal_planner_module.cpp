@@ -1638,12 +1638,6 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsCandidate(
   output.drivable_area_info = utils::combineDrivableAreaInfo(
     current_drivable_area_info, getPreviousModuleOutput().drivable_area_info);
 
-  if (!context_data.pull_over_path_opt) {
-    return output;
-  }
-
-  setDebugData(context_data);
-
   return output;
 }
 
@@ -1656,7 +1650,9 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsOutput(PullOverContextData
 
   // if pull over path candidates generation is not finished, use previous module output
   if (context_data.lane_parking_response.pull_over_path_candidates.empty()) {
-    return getPreviousModuleOutput();
+    auto stop_path = getPreviousModuleOutput();
+    stop_path.path = generateStopPath(context_data, "no path candidate");
+    return stop_path;
   }
 
   /**
@@ -1741,9 +1737,6 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsOutput(PullOverContextData
     }
   }
 
-  // For debug
-  setDebugData(context_data);
-
   if (!pull_over_path_with_velocity_opt) {
     return output;
   }
@@ -1768,6 +1761,7 @@ void GoalPlannerModule::postProcess()
     LaneParkingResponse{}, FreespaceParkingResponse{});
   const auto & context_data =
     context_data_.has_value() ? context_data_.value() : context_data_dummy;
+  setDebugData(context_data);
 
   const bool has_decided_path =
     path_decision_controller_.get_current_state().state == PathDecisionState::DecisionKind::DECIDED;
