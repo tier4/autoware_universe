@@ -48,7 +48,7 @@ class FrenetixMotionPlanner:
     def __init__(self, logger):
         # Initialize parameters
         self.params = {
-            "planning_horizon": 3.0,
+            "planning_horizon": 8.0,
             "sampling_dt": 0.1,
             "t_min": 1.1,
             "d_min": -3.0,
@@ -60,23 +60,26 @@ class FrenetixMotionPlanner:
             "delta_max": 0.6,
             "wheelbase": 2.7,
             "v_switch": 3.0,
-            "a_max": 3.0,
+            "a_max": 7.0,
             "v_delta_max": 2.0,
-            "length": 4.7,
-            "width": 1.8,
+            "length": 5.0,
+            "width": 2.0,
             "wb_rear_axle": 1.0,
             "v_max": 30.0,
             "cost_weights": {
-                "acceleration": 1.0,
-                "jerk": 0.5,
-                "lateral_jerk": 0.3,
-                "longitudinal_jerk": 0.3,
-                "orientation_offset": 0.2,
-                "lane_center_offset": 0.2,
-                "distance_to_reference_path": 0.1,
-                "prediction": 0.5,
-                "distance_to_obstacles": 0.5,
-                "velocity_offset": 1.0,
+                "acceleration": 0.0,
+                "jerk": 0.0,
+                "lateral_jerk": 0.0,
+                "longitudinal_jerk": 5.0,
+                "orientation_offset": 0.0,
+                "lane_center_offset": 0.0,
+                "distance_to_reference_path": 1.0,
+                "prediction": 0.0,
+                "distance_to_obstacles": 0.0,
+                "velocity_offset": 0.0,
+                "positive_velocity_offset": 10.0,
+                "negative_velocity_offset": 0.5,
+                "cartesian_lateral_acceleration": 5.0
             }
         }
         
@@ -93,6 +96,11 @@ class FrenetixMotionPlanner:
         self.curvilinear_state: Optional[CurvilinearState] = None
         self.curvilinear_state_previous: Optional[CurvilinearState] = None
         self.logger = logger
+
+        # Planning cycle control
+        self.planning_counter = 0
+        self.planning_interval = 3  # Plan every 3 cycles (300ms if called every 100ms)
+        self.last_planned_trajectory = None
 
         # Initialize the sampling handler
         self.sampling_handler = SamplingHandler(dt=self.params['sampling_dt'], 
@@ -171,24 +179,24 @@ class FrenetixMotionPlanner:
             timestamp=timestamp
         )
 
-        # Debug message for current cartesian state
-        self.logger.debug(
-            f"Cartesian state: pos=({new_state.position[0]:.2f}, {new_state.position[1]:.2f}), "
-            f"orientation={new_state.orientation:.2f}, vel={new_state.velocity:.2f}, acc={new_state.acceleration:.2f}, "
-            f"steering={new_state.steering_angle}, stamp={new_state.timestamp}"
-        )
-
         # Jump detection using previous position
         if self.previous_position is not None:
             prev_pos = np.array(self.previous_position)
             curr_pos = np.array(new_state.position)
             dist = np.linalg.norm(curr_pos - prev_pos)
             if dist > 2.0:
-                self.logger.warn(f"Ego position jump detected: {dist:.2f}m. Reference path will be reset! New ego position: ({curr_pos[0]:.2f}, {curr_pos[1]:.2f})")
+                self.logger.debug(f"Ego position jump detected: {dist:.2f}m. Reference path will be reset! New ego position: ({curr_pos[0]:.2f}, {curr_pos[1]:.2f})")
                 self.reference_path = None
 
         self.previous_position = [position.x, position.y]
         self.cartesian_state = new_state
+
+        # Debug message for current cartesian state
+        self.logger.debug(
+            f"Cartesian state: pos=({self.cartesian_state.position[0]:.2f}, {self.cartesian_state.position[1]:.2f}), "
+            f"orientation={self.cartesian_state.orientation:.2f}, vel={self.cartesian_state.velocity:.2f}, acc={self.cartesian_state.acceleration:.2f}, "
+            f"steering={self.cartesian_state.steering_angle}, stamp={self.cartesian_state.timestamp}"
+        )
 
         return True
 
@@ -217,10 +225,7 @@ class FrenetixMotionPlanner:
             timestamp=timestamp
         )
 
-        self.logger.debug(
-            f"Curvilinear state: s={s:.2f}, s_dot={s_dot:.2f}, s_ddot={s_ddot:.2f}, "
-            f"d={d:.2f}, d_dot={d_dot:.2f}, d_ddot={d_ddot:.2f}, theta={theta:.2f}, kappa={kappa}, stamp={timestamp}"
-        )
+        
 
         self.curvilinear_state_previous = self.curvilinear_state
         self.curvilinear_state = new_state
@@ -237,12 +242,12 @@ class FrenetixMotionPlanner:
       self.desired_velocity = desired_velocity
 
       min_v = max(0.001, current_speed - self.params['a_max'] * self.params['planning_horizon'])
-      max_v = min(min(current_speed + (self.params['a_max'] / 6.0) * self.params['planning_horizon'], v_limit),
+      max_v = min(min(current_speed + (self.params['a_max'] / 5.0) * self.params['planning_horizon'], v_limit),
                   self.params['v_max'])
 
       self.sampling_handler.set_v_sampling(min_v, max_v)
 
-      self.logger.debug('Sampled interval of velocity: {:.2f} m/s - {:.2f} m/s'.format(min_v, max_v))
+      self.logger.warn('Sampled interval of velocity: {:.2f} m/s - {:.2f} m/s'.format(min_v, max_v))
 
     def _set_reference_and_coordinate_system(self, reference_path: np.ndarray):
         """
@@ -264,19 +269,19 @@ class FrenetixMotionPlanner:
         """
         self.handler.add_feasability_function(ff.CheckYawRateConstraint(deltaMax=self.params['delta_max'],
                                                                         wheelbase=self.params['wheelbase'],
-                                                                        wholeTrajectory=False
+                                                                        wholeTrajectory=True
                                                                         ))
         self.handler.add_feasability_function(ff.CheckAccelerationConstraint(switchingVelocity=self.params['v_switch'],
                                                                              maxAcceleration=self.params['a_max'],
-                                                                             wholeTrajectory=False)
+                                                                             wholeTrajectory=True)
                                                                              )
         self.handler.add_feasability_function(ff.CheckCurvatureConstraint(deltaMax=self.params['delta_max'],
                                                                           wheelbase=self.params['wheelbase'],
-                                                                          wholeTrajectory=False
+                                                                          wholeTrajectory=True
                                                                           ))
         self.handler.add_feasability_function(ff.CheckCurvatureRateConstraint(wheelbase=self.params['wheelbase'],
                                                                               velocityDeltaMax=self.params['v_delta_max'],
-                                                                              wholeTrajectory=False
+                                                                              wholeTrajectory=True
                                                                               ))
 
     # Set constant cost functions
@@ -311,6 +316,10 @@ class FrenetixMotionPlanner:
         name = "distance_to_reference_path"
         if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
             self.handler.add_cost_function(cf.CalculateDistanceToReferencePathCost(name, self.params['cost_weights'][name]))
+
+        name = "cartesian_lateral_acceleration"
+        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
+            self.handler.add_cost_function(cf.CalculateCartesianLateralAccelerationCost(name, self.params['cost_weights'][name], latAccRef=2.0))
 
     # Set changing cost functions
     def _trajectory_handler_set_changing_cost_functions(self):
@@ -352,6 +361,30 @@ class FrenetixMotionPlanner:
                 norm_order=2
             ))
 
+        name = "positive_velocity_offset"
+        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
+            self.handler.add_cost_function(cf.CalculatePositiveVelocityOffsetCost(
+                name,
+                self.params['cost_weights'][name],
+                self.desired_velocity,
+                0.1,
+                3.0,
+                limit_to_t_min=False,
+                norm_order=2
+            ))
+
+        name = "negative_velocity_offset"
+        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
+            self.handler.add_cost_function(cf.CalculateNegativeVelocityOffsetCost(
+                name,
+                self.params['cost_weights'][name],
+                self.desired_velocity,
+                0.1,
+                4.0,
+                limit_to_t_min=True,
+                norm_order=2
+            ))
+
 
     # Calculate sampling matrix
     def _generate_sampling_matrix(self, samp_level: int):
@@ -361,10 +394,12 @@ class FrenetixMotionPlanner:
         ss1_range = np.array(list(self.sampling_handler.v_sampling.to_range(samp_level).union({self.curvilinear_state.s_dot})))
         d1_range = np.array(list(self.sampling_handler.d_sampling.to_range(samp_level).union({self.curvilinear_state.d})))
 
+        self.logger.debug(f"Sampling velocity range (ss1_range): {ss1_range}")
+
         sampling_matrix = generate_sampling_matrix(t0_range=0.0,
                                                    t1_range=t1_range,
                                                    s0_range=self.curvilinear_state.s,
-                                                   ss0_range=self.curvilinear_state.s_dot,
+                                                   ss0_range=max(self.curvilinear_state.s_dot, 0.2),
                                                    sss0_range=self.curvilinear_state.s_ddot,
                                                    ss1_range=ss1_range,
                                                    sss1_range=0,
@@ -379,8 +414,14 @@ class FrenetixMotionPlanner:
   
     def _plan(self):
 
+
+        desired_velocity = 5.0
+
+        # if self.curvilinear_state.s > 50:
+        #     desired_velocity = 0.0
+
         # set desired velocity
-        self.set_desired_velocity(desired_velocity=10, current_speed=self.curvilinear_state.s_dot)
+        self.set_desired_velocity(desired_velocity=desired_velocity, current_speed=self.curvilinear_state.s_dot)
 
         # set current d position for lateral sampling
         self.sampling_handler.set_d_sampling(self.curvilinear_state.d)
@@ -409,15 +450,39 @@ class FrenetixMotionPlanner:
 
             feasible_trajectories = []
             infeasible_trajectories = []
-            for trajectory in self.handler.get_sorted_trajectories():
+            for idx, trajectory in enumerate(self.handler.get_sorted_trajectories()):
                 # check if trajectory is feasible
-                # feasible_trajectories.append(trajectory)
+                max_vel = max(trajectory.cartesian.v)
+                cost = trajectory.cost
                 if trajectory.feasible:
                     feasible_trajectories.append(trajectory)
+                    self.logger.debug(f"Feasible trajectory {idx}: max_velocity={max_vel:.2f} m/s, cost={cost:.2f}")
                 elif trajectory.valid:
+                    self.logger.debug(f"Infeasible trajectory {idx}: max_velocity={max_vel:.2f} m/s, cost={cost:.2f}")
                     infeasible_trajectories.append(trajectory)
 
-            optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else None
+            # debug trajectories
+
+            if self.curvilinear_state.s_dot < 1.0:
+              optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else infeasible_trajectories[0]
+            else:
+              optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else None
+
+            if optimal_trajectory is not None:
+              self.logger.debug(f"Cartesian (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.theta]}")
+              self.logger.warn(f"Cartesian (v): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.v]}")
+              self.logger.warn(f"max velocity evaluation: {max(optimal_trajectory.cartesian.v):.4f}")
+              self.logger.warn(f"max acceleration evaluation: {max(optimal_trajectory.cartesian.a):.4f}")
+              self.logger.debug(f"Curvilinear (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.theta]}")
+              self.logger.debug(f"Curvilinear (s): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s]}")
+              self.logger.debug(f"Curvilinear (s_dot): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s_dot]}")
+              self.logger.debug(f"Curvilinear (d): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.d]}") 
+              self.logger.debug(f"Curvilinear (d_dot): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.d_dot]}")
+
+              for key in optimal_trajectory.costMap.keys():
+                self.logger.warn(f"{key} cost evaluation: {optimal_trajectory.costMap[key][0]:.2f}")
+
+              # self.logger.warn(f"cartesian Lateral Acceleration cost evaluation: {optimal_trajectory.costMap['cartesian_lateral_acceleration'][1]:.2f}")
 
             # increase sampling level (i.e., density) if no optimal trajectory could be found
             sampling_level += 1
@@ -432,7 +497,7 @@ class FrenetixMotionPlanner:
           )
         
         if optimal_trajectory is not None:
-          self.logger.warn(
+          self.logger.debug(
               f"Optimal trajectory: cost={optimal_trajectory.cost:.2f}, "
               f"length={len(optimal_trajectory.cartesian.x)}, "
               f"max velocity={max(optimal_trajectory.cartesian.v)}"
@@ -444,47 +509,71 @@ class FrenetixMotionPlanner:
 
       
     def cyclic_plan(self):
+        """
+        Plans a trajectory cyclically. Only replans every planning_interval cycles,
+        otherwise returns the last planned trajectory.
+        """
+        if self.coordinate_system_cpp is None or self.reference_path is None:
+            self.logger.warn("Reference path or coordinate system not set, cannot plan.")
+            return None
 
-      if self.coordinate_system_cpp is None or self.reference_path is None:
-          self.logger.warn("Reference path or coordinate system not set, cannot plan.")
-          return None
+        if self.cartesian_state is None:
+            self.logger.warn("Cartesian state not set, cannot plan.")
+            return None
 
-      if self.cartesian_state is None:
-          self.logger.warn("Cartesian state not set, cannot plan.")
-          return None
+        # Increment planning counter
+        self.planning_counter += 1
+
+        # Check if we should plan a new trajectory
+        should_plan = (self.planning_counter % self.planning_interval == 0) or (self.last_planned_trajectory is None)
+
+        if not should_plan:
+            # Return last planned trajectory
+            self.logger.debug(f"Using cached trajectory (cycle {self.planning_counter})")
+            return self.last_planned_trajectory
+
+        # Plan new trajectory
+        self.logger.info(f"Planning new trajectory (cycle {self.planning_counter})")
         
-      with self.position_lock:
-        cartesian_state = copy.deepcopy(self.cartesian_state)
+        with self.position_lock:
+            cartesian_state = copy.deepcopy(self.cartesian_state)
 
-      cartesian_state_frenetix = frenetix.CartesianPlannerState(np.asarray(cartesian_state.position), 
-                                                                cartesian_state.orientation, 
-                                                                cartesian_state.velocity, 
-                                                                cartesian_state.acceleration, 
-                                                                cartesian_state.steering_angle)
+        cartesian_state_frenetix = frenetix.CartesianPlannerState(np.asarray(cartesian_state.position), 
+                                                                  cartesian_state.orientation, 
+                                                                  cartesian_state.velocity, 
+                                                                  cartesian_state.acceleration, 
+                                                                  cartesian_state.steering_angle)
 
-      curvilinear_state_frenetix = frenetix.compute_initial_state(coordinate_system=self.coordinate_system_cpp,
-                                                                  x_0=cartesian_state_frenetix,
-                                                                  wheelbase=self.params['wheelbase'],
-                                                                  low_velocity_mode=True)
-      
-      self.curvilinear_state = CurvilinearState(s=curvilinear_state_frenetix.x0_lon[0],
-                                                s_dot=curvilinear_state_frenetix.x0_lon[1],
-                                                s_ddot=curvilinear_state_frenetix.x0_lon[2],
-                                                d=curvilinear_state_frenetix.x0_lat[0],
-                                                d_dot=curvilinear_state_frenetix.x0_lat[1],
-                                                d_ddot=curvilinear_state_frenetix.x0_lat[2],
-                                                timestamp=cartesian_state.timestamp)
+        curvilinear_state_frenetix = frenetix.compute_initial_state(coordinate_system=self.coordinate_system_cpp,
+                                                                    x_0=cartesian_state_frenetix,
+                                                                    wheelbase=self.params['wheelbase'],
+                                                                    low_velocity_mode=False)
+        
+        self.curvilinear_state = CurvilinearState(s=curvilinear_state_frenetix.x0_lon[0],
+                                                  s_dot=curvilinear_state_frenetix.x0_lon[1],
+                                                  s_ddot=curvilinear_state_frenetix.x0_lon[2],
+                                                  d=curvilinear_state_frenetix.x0_lat[0],
+                                                  d_dot=curvilinear_state_frenetix.x0_lat[1],
+                                                  d_ddot=curvilinear_state_frenetix.x0_lat[2],
+                                                  timestamp=cartesian_state.timestamp)
+        
+        self.logger.debug(
+              f"Curvilinear state: s={self.curvilinear_state.s:.2f}, s_dot={self.curvilinear_state.s_dot:.2f}, s_ddot={self.curvilinear_state.s_ddot:.2f}, "
+              f"d={self.curvilinear_state.d:.2f}, d_dot={self.curvilinear_state.d_dot:.2f}, d_ddot={self.curvilinear_state.d_ddot:.2f}, "
+              f"stamp={self.curvilinear_state.timestamp}"
+          )
 
-      # plan optimal trajectory
-      optimal_trajectory = self._plan()
-
-      self.logger.debug(
-          f"Curvilinear state: s={self.curvilinear_state.s:.2f}, s_dot={self.curvilinear_state.s_dot:.2f}, s_ddot={self.curvilinear_state.s_ddot:.2f}, "
-          f"d={self.curvilinear_state.d:.2f}, d_dot={self.curvilinear_state.d_dot:.2f}, d_ddot={self.curvilinear_state.d_ddot:.2f}, "
-          f"stamp={self.curvilinear_state.timestamp}"
-      )
-      
-      return optimal_trajectory
+        # plan optimal trajectory
+        optimal_trajectory = self._plan()
+        
+        # Cache the planned trajectory
+        if optimal_trajectory is not None:
+            self.last_planned_trajectory = optimal_trajectory
+            self.logger.debug(f"New trajectory planned and cached")
+        else:
+            self.logger.warn(f"Planning failed, keeping last trajectory")
+        
+        return optimal_trajectory
 
 
 

@@ -46,7 +46,7 @@ class FrenetixPlanner(Node):
         self.get_logger().info(f"Received objects message with {len(objects_msg.points)} points.")
 
     # Callback for synchronized odometry and acceleration messages
-    def kinematic_state_callback(self, odometry_msg, accel_msg, control_msg):
+    def kinematic_state_callback(self, odometry_msg, accel_msg, control_msg=None):
         
         # Extract position and orientation from odometry
         position = odometry_msg.pose.pose.position
@@ -96,8 +96,8 @@ class FrenetixPlanner(Node):
         # Use message_filters for synchronized kinematic state
         self.odom_sub = Subscriber(self, Odometry, "~/input/odometry")
         self.accel_sub = Subscriber(self, AccelWithCovarianceStamped, "~/input/acceleration")
-        self.control_sub = Subscriber(self, Control, "~/input/control_cmd")
-        self.ksts = ApproximateTimeSynchronizer([self.odom_sub, self.accel_sub, self.control_sub], queue_size=10, slop=0.05, allow_headerless=True)
+        # self.control_sub = Subscriber(self, Control, "~/input/control_cmd")
+        self.ksts = ApproximateTimeSynchronizer([self.odom_sub, self.accel_sub], queue_size=10, slop=0.1, allow_headerless=True)
         self.ksts.registerCallback(self.kinematic_state_callback)
 
         map_qos = rclpy.qos.QoSProfile(
