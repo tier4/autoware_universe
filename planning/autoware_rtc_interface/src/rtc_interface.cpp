@@ -192,17 +192,19 @@ std::vector<CooperateResponse> RTCInterface::validateCooperateCommands(
       if (itr->state.type == State::WAITING_FOR_EXECUTION || itr->state.type == State::RUNNING) {
         response.success = true;
       } else {
-        RCLCPP_WARN_STREAM(
-          getLogger(), "[validateCooperateCommands] uuid : "
-                         << uuid_to_string(command.uuid)
-                         << " state is not WAITING_FOR_EXECUTION or RUNNING. state : "
-                         << itr->state.type << std::endl);
+        RCLCPP_WARN_STREAM_THROTTLE(
+          getLogger(), *clock_, 5000,
+          "[validateCooperateCommands] uuid : "
+            << uuid_to_string(command.uuid)
+            << " state is not WAITING_FOR_EXECUTION or RUNNING. state : " << itr->state.type
+            << std::endl);
         response.success = false;
       }
     } else {
-      RCLCPP_WARN_STREAM(
-        getLogger(), "[validateCooperateCommands] uuid : " << uuid_to_string(command.uuid)
-                                                           << " is not found." << std::endl);
+      RCLCPP_WARN_STREAM_THROTTLE(
+        getLogger(), *clock_, 5000,
+        "[validateCooperateCommands] uuid : " << uuid_to_string(command.uuid) << " is not found."
+                                              << std::endl);
       response.success = false;
     }
     responses.push_back(response);
@@ -275,9 +277,10 @@ void RTCInterface::updateCooperateStatus(
     registered_status_.statuses.push_back(status);
 
     if (state != State::WAITING_FOR_EXECUTION)
-      RCLCPP_WARN_STREAM(
-        getLogger(), "[updateCooperateStatus]  Cannot register "
-                       << state_to_string(state) << " as initial state" << std::endl);
+      RCLCPP_WARN_STREAM_THROTTLE(
+        getLogger(), *clock_, 5000,
+        "[updateCooperateStatus]  Cannot register " << state_to_string(state) << " as initial state"
+                                                    << std::endl);
 
     return;
   }
@@ -314,11 +317,11 @@ void RTCInterface::updateCooperateStatus(
     return;
   }
 
-  RCLCPP_WARN_STREAM(
-    getLogger(), "[updateCooperateStatus] uuid : " << uuid_to_string(uuid)
-                                                   << " cannot transit from "
-                                                   << state_to_string(itr->state.type) << " to "
-                                                   << state_to_string(state) << std::endl);
+  RCLCPP_WARN_STREAM_THROTTLE(
+    getLogger(), *clock_, 5000,
+    "[updateCooperateStatus] uuid : " << uuid_to_string(uuid) << " cannot transit from "
+                                      << state_to_string(itr->state.type) << " to "
+                                      << state_to_string(state) << std::endl);
 }
 
 void RTCInterface::removeCooperateStatus(const UUID & uuid)
@@ -335,8 +338,8 @@ void RTCInterface::removeCooperateStatus(const UUID & uuid)
     return;
   }
 
-  RCLCPP_WARN_STREAM(
-    getLogger(),
+  RCLCPP_WARN_STREAM_THROTTLE(
+    getLogger(), *clock_, 5000,
     "[removeCooperateStatus] uuid : " << uuid_to_string(uuid) << " is not found." << std::endl);
 }
 
@@ -387,8 +390,9 @@ bool RTCInterface::isActivated(const UUID & uuid) const
     return itr->command_status.type == Command::ACTIVATE;
   }
 
-  RCLCPP_WARN_STREAM(
-    getLogger(), "[isActivated] uuid : " << uuid_to_string(uuid) << " is not found." << std::endl);
+  RCLCPP_WARN_STREAM_THROTTLE(
+    getLogger(), *clock_, 5000,
+    "[isActivated] uuid : " << uuid_to_string(uuid) << " is not found." << std::endl);
   return false;
 }
 
@@ -407,8 +411,8 @@ bool RTCInterface::isForceActivated(const UUID & uuid) const
     return !itr->safe || itr->requested;
   }
 
-  RCLCPP_WARN_STREAM(
-    getLogger(),
+  RCLCPP_WARN_STREAM_THROTTLE(
+    getLogger(), *clock_, 5000,
     "[isForceActivated] uuid : " << uuid_to_string(uuid) << " is not found" << std::endl);
   return false;
 }
@@ -427,8 +431,8 @@ bool RTCInterface::isForceDeactivated(const UUID & uuid) const
     return itr->command_status.type == Command::DEACTIVATE && itr->safe && !itr->auto_mode;
   }
 
-  RCLCPP_WARN_STREAM(
-    getLogger(),
+  RCLCPP_WARN_STREAM_THROTTLE(
+    getLogger(), *clock_, 5000,
     "[isForceDeactivated] uuid : " << uuid_to_string(uuid) << " is not found" << std::endl);
   return false;
 }
@@ -453,8 +457,9 @@ bool RTCInterface::isRTCEnabled(const UUID & uuid) const
     return !itr->auto_mode;
   }
 
-  RCLCPP_WARN_STREAM(
-    getLogger(), "[isRTCEnabled] uuid : " << uuid_to_string(uuid) << " is not found." << std::endl);
+  RCLCPP_WARN_STREAM_THROTTLE(
+    getLogger(), *clock_, 5000,
+    "[isRTCEnabled] uuid : " << uuid_to_string(uuid) << " is not found." << std::endl);
   return is_auto_mode_enabled_;
 }
 
@@ -469,8 +474,9 @@ bool RTCInterface::isTerminated(const UUID & uuid) const
     return itr->state.type == State::SUCCEEDED || itr->state.type == State::FAILED;
   }
 
-  RCLCPP_WARN_STREAM(
-    getLogger(), "[isTerminated] uuid : " << uuid_to_string(uuid) << " is not found." << std::endl);
+  RCLCPP_WARN_STREAM_THROTTLE(
+    getLogger(), *clock_, 5000,
+    "[isTerminated] uuid : " << uuid_to_string(uuid) << " is not found." << std::endl);
   return is_auto_mode_enabled_;
 }
 
