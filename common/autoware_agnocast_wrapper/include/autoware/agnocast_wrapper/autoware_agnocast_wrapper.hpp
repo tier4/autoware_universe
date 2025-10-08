@@ -313,9 +313,8 @@ class ROS2PollingSubscriber : public PollingSubscriber<MessageT>
 public:
   explicit ROS2PollingSubscriber(
     rclcpp::Node * node, const std::string & topic_name, const rclcpp::QoS & qos)
-  : subscriber_(
-      autoware_utils::InterProcessPollingSubscriber<MessageT>::create_subscription(
-        node, topic_name, qos))
+  : subscriber_(autoware_utils::InterProcessPollingSubscriber<MessageT>::create_subscription(
+      node, topic_name, qos))
   {
   }
 
