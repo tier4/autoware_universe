@@ -41,7 +41,7 @@ class GroundSegmentationPipeline:
             self.ground_segmentation_param = yaml.safe_load(f)["/**"]["ros__parameters"]
 
         self.single_frame_obstacle_seg_output = (
-            "/perception/obstacle_segmentation/single_frame/pointcloud"
+            "/perception/obstacle_segmentation/single_frame/pointcloud_raw"
         )
         self.output_topic = "/perception/obstacle_segmentation/pointcloud"
         self.use_single_frame_filter = LaunchConfiguration("use_single_frame_filter").perform(
@@ -164,7 +164,6 @@ class GroundSegmentationPipeline:
                         "has_static_tf_only": False,
                         "rosbag_length": 10.0,
                         "maximum_queue_size": 5,
-                        "timeout_sec": 0.2,
                         "is_motion_compensated": True,
                         "publish_synchronized_pointcloud": True,
                         "keep_input_frame_in_synchronized_pointcloud": True,
@@ -299,8 +298,8 @@ class GroundSegmentationPipeline:
                 parameters=[
                     self.ground_segmentation_param["common_ground_filter"]["parameters"],
                     self.vehicle_info,
-                    {"input_frame": "base_link"},
-                    {"output_frame": "base_link"},
+                    {"input_frame": ""},
+                    {"output_frame": ""},
                 ],
                 extra_arguments=[
                     {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
@@ -390,7 +389,7 @@ class GroundSegmentationPipeline:
                 ],
                 parameters=[
                     {
-                        "use_lane_filter": False,
+                        "use_lane_filter": True,
                         "use_sequential_load": False,
                         "sequential_map_load_num": 1,
                         "use_inpaint": True,
@@ -533,7 +532,7 @@ class GroundSegmentationPipeline:
                     "has_static_tf_only": False,
                     "rosbag_length": 10.0,
                     "maximum_queue_size": 5,
-                    "timeout_sec": 0.2,
+                    "timeout_sec": 0.1,
                     "is_motion_compensated": True,
                     "publish_synchronized_pointcloud": True,
                     "keep_input_frame_in_synchronized_pointcloud": True,
