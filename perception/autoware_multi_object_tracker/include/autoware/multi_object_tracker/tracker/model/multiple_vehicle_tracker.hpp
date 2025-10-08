@@ -23,7 +23,6 @@
 #include "autoware/multi_object_tracker/tracker/model/tracker_base.hpp"
 #include "autoware/multi_object_tracker/tracker/model/vehicle_tracker.hpp"
 
-#include <autoware/kalman_filter/kalman_filter.hpp>
 #include <rclcpp/time.hpp>
 
 namespace autoware::multi_object_tracker
@@ -37,6 +36,8 @@ private:
 
 public:
   MultipleVehicleTracker(const rclcpp::Time & time, const types::DynamicObject & object);
+
+  TrackerType getTrackerType() const override { return TrackerType::MULTIPLE_VEHICLE; }
 
   bool predict(const rclcpp::Time & time) override;
   bool measure(
