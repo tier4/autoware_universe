@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional
 import copy
+import uuid
 import numpy as np
 import threading
 from tf_transformations import euler_from_quaternion
@@ -64,7 +65,7 @@ class FrenetixMotionPlanner:
             "v_delta_max": 2.0,
             "length": 5.0,
             "width": 2.0,
-            "wb_rear_axle": 1.0,
+            "wb_rear_axle": 1.5,
             "v_max": 30.0,
             "cost_weights": {
                 "acceleration": 0.0,
@@ -74,8 +75,8 @@ class FrenetixMotionPlanner:
                 "orientation_offset": 0.0,
                 "lane_center_offset": 0.0,
                 "distance_to_reference_path": 1.0,
-                "prediction": 0.0,
-                "distance_to_obstacles": 0.0,
+                "prediction": 10.0,
+                "distance_to_obstacles": 10.0,
                 "velocity_offset": 0.0,
                 "positive_velocity_offset": 10.0,
                 "negative_velocity_offset": 0.5,
@@ -96,6 +97,12 @@ class FrenetixMotionPlanner:
         self.curvilinear_state: Optional[CurvilinearState] = None
         self.curvilinear_state_previous: Optional[CurvilinearState] = None
         self.logger = logger
+
+        # Obstacle and prediction settings
+        self.obstacle_positions = []
+        self.obstacle_predictions_covariance = [[0.1, 0.0], [0.0, 0.1]]
+        self.obstacle_predictions = {}  # Optimized obstacle predictions storage
+    
 
         # Planning cycle control
         self.planning_counter = 0
@@ -119,6 +126,101 @@ class FrenetixMotionPlanner:
         self._trajectory_handler_set_constant_cost_functions()
         self._trajectory_handler_set_constant_feasibility_functions()
         # self._trajectory_handler_set_changing_cost_functions()
+
+
+    def set_objects(self, objects_msg):
+        """
+        Processes predicted objects for collision checking and stores them in optimized format.
+        
+        Args:
+            objects_msg: PredictedObjects message containing obstacle predictions
+            
+        Returns:
+            bool: True if objects were successfully processed and updated, False otherwise
+        """
+        # Early exit for empty or invalid messages
+        if objects_msg is None or len(objects_msg.objects) == 0:
+            self.logger.debug("Received empty objects message, clearing predictions.")
+            self.obstacle_predictions = {}
+            self.obstacle_positions = np.zeros((0, 2), dtype=np.float64)
+            return False
+
+        # Initialize predictions dictionaries
+        predictions = {}
+
+        # Initialize obstacle positions
+        self.obstacle_positions = []
+
+        # Process each object in the message
+        for obj in objects_msg.objects:
+            try:
+                # Generate compact object ID (modulo to keep it manageable)
+                obj_id = uuid.UUID(bytes=np.array(obj.object_id.uuid).tobytes()).int % 100
+      
+                # Extract predicted path (use first prediction path if available)
+                if not obj.kinematics.predicted_paths:
+                    self.logger.debug(f"Object {obj_id} has no predicted paths, skipping.")
+                    continue
+                    
+                predicted_path = obj.kinematics.predicted_paths[0].path
+                path_length = len(predicted_path)
+                
+                if path_length == 0:
+                    self.logger.debug(f"Object {obj_id} has empty predicted path, skipping.")
+                    continue
+                
+                # Store current position for distance cost functions
+                self.obstacle_positions.append([predicted_path[0].position.x, predicted_path[0].position.y])
+                
+                # Pre-allocate array for better performance
+                pwc_list = [None] * path_length
+                
+                # Loop to extract all data and create C++ objects
+                for i, path_point in enumerate(predicted_path):
+                    
+                    # Extract position
+                    position = np.array([path_point.position.x, 
+                                         path_point.position.y, 
+                                         path_point.position.z], 
+                                         dtype=np.float64)
+                    
+                    # Extract orientation
+                    orientation = np.array([path_point.orientation.x, 
+                                            path_point.orientation.y, 
+                                            path_point.orientation.z, 
+                                            path_point.orientation.w], 
+                                            dtype=np.float64)
+
+                    # Create 6x6 covariance matrix from 2x2 position covariance
+                    covariance_matrix = np.zeros((6, 6), dtype=np.float64)
+                    covariance_matrix[:2, :2] = np.array(self.obstacle_predictions_covariance, dtype=np.float64)
+                    
+                    # Create PoseWithCovariance object for C++
+                    pwc = frenetix.PoseWithCovariance(position, orientation, covariance_matrix)
+                    pwc_list[i] = pwc
+                
+                # Store Frenetix compatible prediction data
+                predictions[obj_id] = frenetix.PredictedObject(
+                    int(obj_id),
+                    pwc_list,
+                    round(obj.shape.dimensions.x, 2), 
+                    round(obj.shape.dimensions.y, 2)
+                )
+                
+            except Exception as e:
+                self.logger.error(f"Failed to process object {obj_id}: {e}")
+                continue
+        
+        # Log processing results
+        self.logger.debug(f"Successfully processed {len(predictions)} obstacles", 
+                         throttle_duration_sec=1.0)
+        
+        # Update predictions and current positions
+        self.obstacle_predictions = predictions
+        self.obstacle_positions = np.array(self.obstacle_positions, dtype=np.float64)
+
+        return len(predictions) > 0
+
 
     def set_reference_path(self, reference_path=None):
         """
@@ -199,36 +301,6 @@ class FrenetixMotionPlanner:
         )
 
         return True
-
-    def set_curvilinear_state(self, s, s_dot, s_ddot, d, d_dot, d_ddot, theta, kappa=None, timestamp=None):
-        """
-        Sets the ego vehicle's curvilinear state.
-        :param s: longitudinal position
-        :param s_dot: longitudinal velocity
-        :param s_ddot: longitudinal acceleration
-        :param d: lateral offset
-        :param d_dot: lateral velocity
-        :param d_ddot: lateral acceleration
-        :param theta: heading in curvilinear frame
-        :param kappa: curvature (optional)
-        :param timestamp: ROS time (float seconds)
-        """
-        new_state = CurvilinearState(
-            s=s,
-            s_dot=s_dot,
-            s_ddot=s_ddot,
-            d=d,
-            d_dot=d_dot,
-            d_ddot=d_ddot,
-            theta=theta,
-            kappa=kappa,
-            timestamp=timestamp
-        )
-
-        
-
-        self.curvilinear_state_previous = self.curvilinear_state
-        self.curvilinear_state = new_state
 
     def set_desired_velocity(self, desired_velocity: float, current_speed: float = None,
                              v_limit: float = 36):
@@ -331,35 +403,29 @@ class FrenetixMotionPlanner:
         ))
 
         # name = "prediction"
-        # if name in self.cost_weights.keys():
+        # if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
         #     self.handler.add_cost_function(
-        #         cf.CalculateCollisionProbabilityFast(name, self.cost_weights[name], self.obstacle_predictions,
-        #                                              self.vehicle_params['length'], self.vehicle_params['width'], self.vehicle_params['wb_rear_axle']))
+        #         cf.CalculateCollisionProbabilityFast(name, self.params['cost_weights'][name], self.obstacle_predictions,
+        #                                              self.params['length'], self.params['width'], self.params['wb_rear_axle']))
+        
+        name = "distance_to_obstacles"
+        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0 and self.obstacle_positions is not None:
+            # convert obstacle positions to numpy array
+            self.obstacle_positions = np.array(self.obstacle_positions, dtype=np.float64)
 
-        # """
-        # :param obstacle_positions: Array of obstacle positions at the current time step
-        #                            such as [[x1, y1], [x2, y2], [x3, y3], [x4, y4], [x5, y5]]
-        #                            it means that there are 5 obstacles at the current time step
-        # """
-        # name = "distance_to_obstacles"
-        # if name in self.cost_weights.keys() and self.cost_weights[name] > 0 and self.obstacle_positions is not None:
-        #     # convert obstacle positions to numpy array
-        #     self.obstacle_positions = np.array(self.obstacle_positions)
+            self.handler.add_cost_function(cf.CalculateDistanceToObstacleCost(name, self.params['cost_weights'][name], self.obstacle_positions))
 
-        #     self.handler.add_cost_function(cf.CalculateDistanceToObstacleCost(name, self.cost_weights[name], self.obstacle_positions))
-        #     self.obstacle_positions = None
-
-        name = "velocity_offset"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-            self.handler.add_cost_function(cf.CalculateVelocityOffsetCost(
-                name,
-                self.params['cost_weights'][name],
-                self.desired_velocity,
-                0.1,
-                1.1,
-                limit_to_t_min=False,
-                norm_order=2
-            ))
+        # name = "velocity_offset"
+        # if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
+        #     self.handler.add_cost_function(cf.CalculateVelocityOffsetCost(
+        #         name,
+        #         self.params['cost_weights'][name],
+        #         self.desired_velocity,
+        #         0.1,
+        #         1.1,
+        #         limit_to_t_min=False,
+        #         norm_order=2
+        #     ))
 
         name = "positive_velocity_offset"
         if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:

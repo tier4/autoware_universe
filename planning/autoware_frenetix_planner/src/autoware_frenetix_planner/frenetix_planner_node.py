@@ -1,8 +1,11 @@
+
+import sys
 import lanelet2  # noqa: F401 # isort: skip
 # from autoware_lanelet2_extension_python.utility.utilities import fromBinMsg
 from autoware_map_msgs.msg import LaneletMapBin
 from autoware_planning_msgs.msg import Path
 from autoware_planning_msgs.msg import Trajectory
+from autoware_perception_msgs.msg import PredictedObjects
 from autoware_control_msgs.msg import Control
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import AccelWithCovarianceStamped, Pose, Point, Quaternion
@@ -29,6 +32,7 @@ class FrenetixPlanner(Node):
         self.planner = FrenetixMotionPlanner(logger=self.get_logger())
         self.get_logger().info("FrenetixMotionPlanner initialized.")
         self.car_altitude = 0.0  # Default altitude for trajectory points
+        self.objects = None  # Store the latest objects message
 
     # Callback for reference path messages
     def reference_path_callback(self, reference_trajectory_msg):
@@ -43,7 +47,7 @@ class FrenetixPlanner(Node):
 
     # Callback for objects messages
     def objects_callback(self, objects_msg):
-        self.get_logger().info(f"Received objects message with {len(objects_msg.points)} points.")
+        self.objects = objects_msg
 
     # Callback for synchronized odometry and acceleration messages
     def kinematic_state_callback(self, odometry_msg, accel_msg, control_msg=None):
@@ -79,6 +83,12 @@ class FrenetixPlanner(Node):
 
     # Timer callback to publish trajectory
     def timer_callback_publish_trajectory(self):
+        
+        # Convert the latest objects to Frenetix format and set in planner
+        if self.planner.set_objects(self.objects):
+            self.get_logger().warn("Objects set/updated.")
+        
+        # Generate trajectory using the planner
         frenetix_trajectory = self.planner.cyclic_plan()
         trajectory_msg = self.convert_frenetix_to_autoware_trajectory(frenetix_trajectory, car_altitude=self.car_altitude)
         if trajectory_msg:
@@ -87,16 +97,16 @@ class FrenetixPlanner(Node):
     # Set up all topic subscribers
     def _init_subscriber(self):
         self.reference_trajectory_sub_ = self.create_subscription(
-            Path, "~/input/reference_path", self.reference_path_callback, 1
+            Path, "/input/reference_path", self.reference_path_callback, 1
         )
         self.predicted_objects_sub_ = self.create_subscription(
-            Trajectory, "~/input/objects", self.objects_callback, 1
+            PredictedObjects, "/input/objects", self.objects_callback, 1
         )
 
         # Use message_filters for synchronized kinematic state
-        self.odom_sub = Subscriber(self, Odometry, "~/input/odometry")
-        self.accel_sub = Subscriber(self, AccelWithCovarianceStamped, "~/input/acceleration")
-        # self.control_sub = Subscriber(self, Control, "~/input/control_cmd")
+        self.odom_sub = Subscriber(self, Odometry, "/input/odometry")
+        self.accel_sub = Subscriber(self, AccelWithCovarianceStamped, "/input/acceleration")
+        # self.control_sub = Subscriber(self, Control, "/input/control_cmd")
         self.ksts = ApproximateTimeSynchronizer([self.odom_sub, self.accel_sub], queue_size=10, slop=0.1, allow_headerless=True)
         self.ksts.registerCallback(self.kinematic_state_callback)
 
@@ -106,13 +116,13 @@ class FrenetixPlanner(Node):
             durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL,
         )
         self.map_sub_ = self.create_subscription(
-            LaneletMapBin, "~/input/vector_map", self.vector_map_callback, map_qos
+            LaneletMapBin, "/input/vector_map", self.vector_map_callback, map_qos
         )
         self.get_logger().info("All subscribers set up.")
 
     # Set up all topic publishers
     def _init_publisher(self):
-        self.trajectory_pub = self.create_publisher(Trajectory, "~/output/trajectory", 1)
+        self.trajectory_pub = self.create_publisher(Trajectory, "/output/trajectory", 1)
         self.timer_trajectory_pub = self.create_timer(0.1, self.timer_callback_publish_trajectory)
         self.get_logger().info("Trajectory publisher set up.")
 
@@ -184,7 +194,7 @@ class FrenetixPlanner(Node):
 
 # Main entry point for the node
 def main():
-    rclpy.init()
+    rclpy.init(args=sys.argv)
     node = FrenetixPlanner()
     rclpy.spin(node)
     rclpy.shutdown()
