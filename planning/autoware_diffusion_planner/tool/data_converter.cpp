@@ -730,6 +730,10 @@ int main(int argc, char ** argv)
       const int64_t red_light_index = segment_idx * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM +
                                       point_idx * SEGMENT_POINT_DIM + TRAFFIC_LIGHT_RED;
       const bool is_red_light = route_lanes[red_light_index] > 0.5;
+      const int64_t yellow_light_index = segment_idx * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM +
+                                         point_idx * SEGMENT_POINT_DIM + TRAFFIC_LIGHT_YELLOW;
+      const bool is_yellow_light = route_lanes[yellow_light_index] > 0.5;
+      const bool is_red_or_yellow = is_red_light || is_yellow_light;
 
       float sum_mileage = 0.0;
       for (int64_t j = 0; j < OUTPUT_T - 1; ++j) {
@@ -737,12 +741,17 @@ int main(int argc, char ** argv)
         const float dy = ego_future[(j + 1) * 4 + 1] - ego_future[j * 4 + 1];
         sum_mileage += std::sqrt(dx * dx + dy * dy);
       }
-      const bool is_future_forward = sum_mileage > 0.1;
+      const bool is_future_forward = sum_mileage > 1.0;
 
-      if (is_stop && is_red_light && is_future_forward) {
+      if (is_stop && is_red_or_yellow && is_future_forward) {
         std::cout << "Skip this frame " << i
-                  << " because it is stop at red light and future trajectory is forward"
+                  << " because it is stop at red or yellow light and future trajectory is forward"
                   << std::endl;
+        continue;
+      }
+      if (stopping_count >= 10 && is_red_or_yellow) {
+        std::cout << "Skip this frame " << i << " because stopping_count=" << stopping_count
+                  << " and red or yellow light" << std::endl;
         continue;
       }
 
