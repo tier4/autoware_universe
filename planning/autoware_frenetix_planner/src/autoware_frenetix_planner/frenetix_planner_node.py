@@ -86,7 +86,7 @@ class FrenetixPlanner(Node):
         
         # Convert the latest objects to Frenetix format and set in planner
         if self.planner.set_objects(self.objects):
-            self.get_logger().warn("Objects set/updated.")
+            self.get_logger().debug("Objects set/updated.")
         
         # Generate trajectory using the planner
         frenetix_trajectory = self.planner.cyclic_plan()

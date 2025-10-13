@@ -13,6 +13,7 @@ import frenetix.trajectory_functions.feasability_functions as ff
 import frenetix.trajectory_functions.cost_functions as cf
 from autoware_frenetix_planner.sampling_matrix import SamplingHandler
 from autoware_frenetix_planner.sampling_matrix import generate_sampling_matrix
+from autoware_frenetix_planner.trajectory_logger import TrajectoryLogger
 
 @dataclass
 class CartesianState:
@@ -127,6 +128,9 @@ class FrenetixMotionPlanner:
         self._trajectory_handler_set_constant_feasibility_functions()
         # self._trajectory_handler_set_changing_cost_functions()
 
+        # Initialize the trajectory logger
+        self.trajectory_logger = TrajectoryLogger(save_dir="/workspace/src/universe/autoware_universe/planning/autoware_frenetix_planner/test/logs")
+
 
     def set_objects(self, objects_msg):
         """
@@ -181,7 +185,7 @@ class FrenetixMotionPlanner:
                     # Extract position
                     position = np.array([path_point.position.x, 
                                          path_point.position.y, 
-                                         path_point.position.z], 
+                                         0.0], 
                                          dtype=np.float64)
                     
                     # Extract orientation
@@ -402,27 +406,26 @@ class FrenetixMotionPlanner:
             horizon=self.params['planning_horizon']
         ))
 
-        # name = "prediction"
-        # if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-        #     self.handler.add_cost_function(
-        #         cf.CalculateCollisionProbabilityFast(name, self.params['cost_weights'][name], self.obstacle_predictions,
-        #                                              self.params['length'], self.params['width'], self.params['wb_rear_axle']))
+        name = "prediction"
+        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
+            self.handler.add_cost_function(
+                cf.CalculateCollisionProbabilityFast(name, self.params['cost_weights'][name], self.obstacle_predictions,
+                                                     self.params['length'], self.params['width'], self.params['wb_rear_axle']))
         
-        name = "distance_to_obstacles"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0 and self.obstacle_positions is not None:
-            # convert obstacle positions to numpy array
-            self.obstacle_positions = np.array(self.obstacle_positions, dtype=np.float64)
+        # name = "distance_to_obstacles"
+        # if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0 and self.obstacle_positions is not None:
+        #     # convert obstacle positions to numpy array
+        #     self.obstacle_positions = np.array(self.obstacle_positions, dtype=np.float64)
+        #     self.handler.add_cost_function(cf.CalculateDistanceToObstacleCost(name, self.params['cost_weights'][name], self.obstacle_positions))
 
-            self.handler.add_cost_function(cf.CalculateDistanceToObstacleCost(name, self.params['cost_weights'][name], self.obstacle_positions))
-
-        # name = "velocity_offset"
+        # name = "positive_velocity_offset"
         # if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-        #     self.handler.add_cost_function(cf.CalculateVelocityOffsetCost(
+        #     self.handler.add_cost_function(cf.CalculatePositiveVelocityOffsetCost(
         #         name,
         #         self.params['cost_weights'][name],
         #         self.desired_velocity,
         #         0.1,
-        #         1.1,
+        #         3.0,
         #         limit_to_t_min=False,
         #         norm_order=2
         #     ))
@@ -529,6 +532,12 @@ class FrenetixMotionPlanner:
 
             # debug trajectories
 
+            self.trajectory_logger.log_trajectories(optimal_trajectory=optimal_trajectory, 
+                                                    feasible_trajectories=feasible_trajectories, 
+                                                    infeasible_trajectories=infeasible_trajectories, 
+                                                    reference_path=self.reference_path, 
+                                                    obstacle_positions=self.obstacle_positions)
+
             if self.curvilinear_state.s_dot < 1.0:
               optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else infeasible_trajectories[0]
             else:
@@ -538,7 +547,7 @@ class FrenetixMotionPlanner:
               self.logger.debug(f"Cartesian (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.theta]}")
               self.logger.warn(f"Cartesian (v): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.v]}")
               self.logger.warn(f"max velocity evaluation: {max(optimal_trajectory.cartesian.v):.4f}")
-              self.logger.warn(f"max acceleration evaluation: {max(optimal_trajectory.cartesian.a):.4f}")
+              self.logger.debug(f"max acceleration evaluation: {max(optimal_trajectory.cartesian.a):.4f}")
               self.logger.debug(f"Curvilinear (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.theta]}")
               self.logger.debug(f"Curvilinear (s): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s]}")
               self.logger.debug(f"Curvilinear (s_dot): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s_dot]}")
@@ -640,7 +649,6 @@ class FrenetixMotionPlanner:
             self.logger.warn(f"Planning failed, keeping last trajectory")
         
         return optimal_trajectory
-
 
 
 
