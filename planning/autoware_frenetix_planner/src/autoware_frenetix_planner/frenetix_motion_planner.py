@@ -129,7 +129,8 @@ class FrenetixMotionPlanner:
         # self._trajectory_handler_set_changing_cost_functions()
 
         # Initialize the trajectory logger
-        self.trajectory_logger = TrajectoryLogger(save_dir="/workspace/src/universe/autoware_universe/planning/autoware_frenetix_planner/test/logs")
+        self.trajectory_logger = TrajectoryLogger(save_dir="/workspace/src/universe/autoware_universe/planning/autoware_frenetix_planner/test/logs",
+                                                  mode="trajectories")
 
 
     def set_objects(self, objects_msg):
@@ -532,11 +533,13 @@ class FrenetixMotionPlanner:
 
             # debug trajectories
 
-            self.trajectory_logger.log_trajectories(optimal_trajectory=optimal_trajectory, 
-                                                    feasible_trajectories=feasible_trajectories, 
-                                                    infeasible_trajectories=infeasible_trajectories, 
-                                                    reference_path=self.reference_path, 
-                                                    obstacle_positions=self.obstacle_positions)
+            self.trajectory_logger.save_debug_data(optimal_trajectory=optimal_trajectory, 
+                                                  feasible_trajectories=feasible_trajectories,  
+                                                  reference_path=self.reference_path, 
+                                                  obstacle_positions=self.obstacle_positions,
+                                                  cartesian_state=self.cartesian_state,
+                                                  curvilinear_state=self.curvilinear_state,
+                                                  )
 
             if self.curvilinear_state.s_dot < 1.0:
               optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else infeasible_trajectories[0]
