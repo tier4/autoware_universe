@@ -197,9 +197,9 @@ private:
 
   bool hasRightOfWay(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state) const;
 
-  void insertStopVelocityAtStopLine(Trajectory & path, const double end_line_s);
+  void insertStopVelocityAtStopLine(const double end_line_s);
 
-  void insertStopVelocityAtEndLine(Trajectory & path, const double end_line_s);
+  void insertStopVelocityAtEndLine(const double end_line_s);
 
   std::string stateToString(const State state) const;
 };

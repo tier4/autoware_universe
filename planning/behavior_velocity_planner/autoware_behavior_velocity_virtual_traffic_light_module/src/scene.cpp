@@ -172,20 +172,22 @@ void VirtualTrafficLightModule::setModuleState(
 
 bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * _path)
 {
-  auto path = Trajectory::Builder{}.build(_path->points);
-  if (!path) {
-    return false;
+  {
+    auto path = Trajectory::Builder{}.build(_path->points);
+    if (!path) {
+      return false;
+    }
+
+    // Copy data
+    module_data_ = {};
+    module_data_.head_pose = calcHeadPose(
+      planner_data_->current_odometry->pose,
+      planner_data_->vehicle_info_.max_longitudinal_offset_m);
+    module_data_.path = *path;
   }
 
   // Initialize
   setInfrastructureCommand({});
-
-  module_data_ = {};
-
-  // Copy data
-  module_data_.head_pose = calcHeadPose(
-    planner_data_->current_odometry->pose, planner_data_->vehicle_info_.max_longitudinal_offset_m);
-  module_data_.path = *path;
 
   // Calculate path index of end line
   // NOTE: In order to deal with u-turn or self-crossing path, only start/stop lines before the end
@@ -231,8 +233,9 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * _path)
     logInfoThrottle(
       5000, "no message received for instrument (ID: %ld), stop at stop line (ID: %s)",
       map_data_.instrument_id, map_data_.stop_line_id_for_log.c_str());
-    insertStopVelocityAtStopLine(*path, end_line_s);
+    insertStopVelocityAtStopLine(end_line_s);
     updateInfrastructureCommand();
+    _path->points = module_data_.path->restore();
     return true;
   }
 
@@ -242,8 +245,9 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * _path)
     logInfoThrottle(
       5000, "no right of way for instrument (ID: %ld) is given, stop at stop line (ID: %s)",
       map_data_.instrument_id, map_data_.stop_line_id_for_log.c_str());
-    insertStopVelocityAtStopLine(*path, end_line_s);
+    insertStopVelocityAtStopLine(end_line_s);
     updateInfrastructureCommand();
+    _path->points = module_data_.path->restore();
     return true;
   }
 
@@ -254,10 +258,11 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * _path)
       logWarnThrottle(
         5000, "virtual traffic light state is timeout, stop at stop line (ID: %s)",
         map_data_.stop_line_id_for_log.c_str());
-      insertStopVelocityAtStopLine(*path, end_line_s);
+      insertStopVelocityAtStopLine(end_line_s);
     }
 
     updateInfrastructureCommand();
+    _path->points = module_data_.path->restore();
     return true;
   }
 
@@ -275,8 +280,9 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * _path)
       "virtual traffic light state is timeout after stop line, insert stop velocity at stop line "
       "(ID: %s)",
       map_data_.stop_line_id_for_log.c_str());
-    insertStopVelocityAtStopLine(*path, end_line_s);
+    insertStopVelocityAtStopLine(end_line_s);
     updateInfrastructureCommand();
+    _path->points = module_data_.path->restore();
     return true;
   }
 
@@ -285,7 +291,7 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * _path)
     logInfoThrottle(
       5000, "finalization isn't completed, insert stop velocity at end line (ID: %s)",
       map_data_.stop_line_id_for_log.c_str());
-    insertStopVelocityAtEndLine(*path, end_line_s);
+    insertStopVelocityAtEndLine(end_line_s);
 
     if (isNearAnyEndLine(end_line_s) && planner_data_->isVehicleStopped()) {
       setModuleState<State::FINALIZING>(end_line_id);
@@ -294,7 +300,7 @@ bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * _path)
 
   updateInfrastructureCommand();
 
-  _path->points = path->restore();
+  _path->points = module_data_.path->restore();
 
   return true;
 }
@@ -326,7 +332,7 @@ std::optional<std::pair<double, int64_t>> VirtualTrafficLightModule::getPathInde
       });
 
     if (collision.empty()) {
-      return std::nullopt;
+      continue;
     }
     const auto collision_s = collision.front();
 
@@ -391,15 +397,15 @@ bool VirtualTrafficLightModule::hasRightOfWay(
   return state.approval;
 }
 
-void VirtualTrafficLightModule::insertStopVelocityAtStopLine(
-  Trajectory & path, const double end_line_s)
+void VirtualTrafficLightModule::insertStopVelocityAtStopLine(const double end_line_s)
 {
-  const auto collision = findLastCollisionBeforeEndLine(path, *map_data_.stop_line, end_line_s);
+  const auto collision =
+    findLastCollisionBeforeEndLine(*module_data_.path, *map_data_.stop_line, end_line_s);
   const auto offset = -planner_data_->vehicle_info_.max_longitudinal_offset_m;
 
   geometry_msgs::msg::Pose stop_pose{};
   if (!collision) {
-    path.longitudinal_velocity_mps() = 0.0;
+    module_data_.path->longitudinal_velocity_mps() = 0.0;
     stop_pose = planner_data_->current_odometry->pose;
   } else {
     const auto ego_s = experimental::trajectory::find_nearest_index(
@@ -409,18 +415,24 @@ void VirtualTrafficLightModule::insertStopVelocityAtStopLine(
     const auto is_stopped = planner_data_->isVehicleStopped();
 
     if (stop_distance < planner_param_.hold_stop_margin_distance && is_stopped) {
-      path.longitudinal_velocity_mps().range(ego_s, path.length()).set(0.0);
+      module_data_.path->longitudinal_velocity_mps()
+        .range(ego_s, module_data_.path->length())
+        .set(0.0);
     } else {
-      path.longitudinal_velocity_mps().range(*collision + offset, path.length()).set(0.0);
+      module_data_.path->longitudinal_velocity_mps()
+        .range(std::max(0., *collision + offset), module_data_.path->length())
+        .set(0.0);
     }
 
     // for virtual wall
-    stop_pose = path.compute(*collision + offset).point.pose;
+    stop_pose =
+      module_data_.path->compute(std::clamp(*collision + offset, 0.0, module_data_.path->length()))
+        .point.pose;
   }
 
   // Set StopReason
   planning_factor_interface_->add(
-    path.restore(), planner_data_->current_odometry->pose, stop_pose,
+    module_data_.path->restore(), planner_data_->current_odometry->pose, stop_pose,
     autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
     autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
     0.0 /*shift distance*/, "");
@@ -430,10 +442,10 @@ void VirtualTrafficLightModule::insertStopVelocityAtStopLine(
     calcHeadPose(stop_pose, planner_data_->vehicle_info_.max_longitudinal_offset_m);
 }
 
-void VirtualTrafficLightModule::insertStopVelocityAtEndLine(
-  Trajectory & path, const double end_line_s)
+void VirtualTrafficLightModule::insertStopVelocityAtEndLine(const double end_line_s)
 {
-  const auto collision = findLastCollisionBeforeEndLine(path, map_data_.end_lines, end_line_s);
+  const auto collision =
+    findLastCollisionBeforeEndLine(*module_data_.path, map_data_.end_lines, end_line_s);
 
   geometry_msgs::msg::Pose stop_pose{};
   if (!collision) {
@@ -442,17 +454,21 @@ void VirtualTrafficLightModule::insertStopVelocityAtEndLine(
       return;
     }
 
-    path.longitudinal_velocity_mps() = 0.0;
+    module_data_.path->longitudinal_velocity_mps() = 0.0;
     stop_pose = planner_data_->current_odometry->pose;
   } else {
     const auto offset = -planner_data_->vehicle_info_.max_longitudinal_offset_m;
-    path.longitudinal_velocity_mps().range(*collision + offset, path.length()).set(0.0);
-    stop_pose = path.compute(*collision + offset).point.pose;
+    module_data_.path->longitudinal_velocity_mps()
+      .range(std::max(0., *collision + offset), module_data_.path->length())
+      .set(0.0);
+    stop_pose =
+      module_data_.path->compute(std::clamp(*collision + offset, 0.0, module_data_.path->length()))
+        .point.pose;
   }
 
   // Set StopReason
   planning_factor_interface_->add(
-    path.restore(), planner_data_->current_odometry->pose, stop_pose,
+    module_data_.path->restore(), planner_data_->current_odometry->pose, stop_pose,
     autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
     autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
     0.0 /*shift distance*/, "");
