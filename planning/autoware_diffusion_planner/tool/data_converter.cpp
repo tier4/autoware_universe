@@ -717,7 +717,7 @@ int main(int argc, char ** argv)
         (ego_future_last_x - goal_x) * (ego_future_last_x - goal_x) +
         (ego_future_last_y - goal_y) * (ego_future_last_y - goal_y));
 
-      if (stopping_count >= 10 && distance_to_goal_pose < 5.0) {
+      if (stopping_count > INPUT_T && distance_to_goal_pose < 5.0) {
         std::cout << "finish at " << i << " because stopping_count=" << stopping_count
                   << " and distance_to_goal_pose=" << distance_to_goal_pose << std::endl;
         break;
@@ -749,7 +749,7 @@ int main(int argc, char ** argv)
                   << std::endl;
         continue;
       }
-      if (stopping_count >= 10 && is_red_or_yellow) {
+      if (stopping_count > INPUT_T && is_red_or_yellow) {
         std::cout << "Skip this frame " << i << " because stopping_count=" << stopping_count
                   << " and red or yellow light" << std::endl;
         continue;
