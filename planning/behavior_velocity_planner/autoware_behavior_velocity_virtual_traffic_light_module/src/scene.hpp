@@ -186,11 +186,9 @@ private:
 
   bool hasRightOfWay(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state) const;
 
-  void insertStopVelocityAtStopLine(
-    Trajectory & path, const double end_line_s, const PlannerData & planner_data);
+  void insertStopVelocityAtStopLine(const double end_line_s, const PlannerData & planner_data);
 
-  void insertStopVelocityAtEndLine(
-    Trajectory & path, const double end_line_s, const PlannerData & planner_data);
+  void insertStopVelocityAtEndLine(const double end_line_s, const PlannerData & planner_data);
 
   std::string stateToString(const State state) const;
 };
