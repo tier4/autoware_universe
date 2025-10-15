@@ -56,11 +56,11 @@ visualization_msgs::msg::MarkerArray createNoDrivableLaneMarkers(
     auto marker = create_default_marker(
       "map", now, "path_polygon intersection points", uid, Marker::POINTS,
       create_marker_scale(0.25, 0.25, 0.0), create_marker_color(1.0, 0.0, 0.0, 0.999));
-    const auto & p_first = debug_data.path_polygon_intersection.first_intersection_point;
+    const auto & p_first = debug_data.first_intersection_point;
     if (p_first) {
       marker.points.push_back(create_point(p_first->x, p_first->y, p_first->z));
     }
-    const auto & p_second = debug_data.path_polygon_intersection.second_intersection_point;
+    const auto & p_second = debug_data.second_intersection_point;
     if (p_second) {
       marker.points.push_back(create_point(p_second->x, p_second->y, p_second->z));
     }
