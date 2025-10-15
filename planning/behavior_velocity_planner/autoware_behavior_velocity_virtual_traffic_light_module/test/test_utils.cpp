@@ -28,23 +28,32 @@ using autoware::behavior_velocity_planner::virtual_traffic_light::calcHeadPose;
 using autoware::behavior_velocity_planner::virtual_traffic_light::convertToGeomPoint;
 using autoware::behavior_velocity_planner::virtual_traffic_light::createKeyValue;
 using autoware::behavior_velocity_planner::virtual_traffic_light::findLastCollisionBeforeEndLine;
-using autoware::behavior_velocity_planner::virtual_traffic_light::insertStopVelocityAtCollision;
-using autoware::behavior_velocity_planner::virtual_traffic_light::insertStopVelocityFromStart;
-using autoware::behavior_velocity_planner::virtual_traffic_light::SegmentIndexWithPoint;
 using autoware::behavior_velocity_planner::virtual_traffic_light::toAutowarePoints;
 
-autoware_internal_planning_msgs::msg::PathWithLaneId generateStraightPath()
+using Trajectory = autoware::experimental::trajectory::Trajectory<
+  autoware_internal_planning_msgs::msg::PathPointWithLaneId>;
+
+Trajectory generateStraightPath()
 {
-  autoware_internal_planning_msgs::msg::PathWithLaneId path;
+  std::vector<autoware_internal_planning_msgs::msg::PathPointWithLaneId> path_points;
   for (size_t i = 0; i < 10; ++i) {
     autoware_internal_planning_msgs::msg::PathPointWithLaneId point;
     point.point.pose.position.x = static_cast<double>(i);
     point.point.pose.position.y = 0;
     point.point.pose.position.z = 0;
     point.point.longitudinal_velocity_mps = 10.0;
-    path.points.push_back(point);
+    path_points.push_back(point);
   }
-  return path;
+  return *Trajectory::Builder{}.build(path_points);
+}
+
+lanelet::ConstLineString3d generateLineString(const std::vector<lanelet::BasicPoint3d> & points)
+{
+  lanelet::Points3d lanelet_points(points.size());
+  for (size_t i = 0; i < points.size(); ++i) {
+    lanelet_points[i] = lanelet::Point3d{lanelet::InvalId, points[i]};
+  }
+  return lanelet::ConstLineString3d{lanelet::InvalId, lanelet_points};
 }
 
 TEST(VirtualTrafficLightTest, CreateKeyValue)
@@ -166,299 +175,65 @@ TEST(VirtualTrafficLightTest, ConvertToGeomPoint)
   EXPECT_DOUBLE_EQ(geom_point.z, 0.0);  // z is not set in convertToGeomPoint
 }
 
-TEST(VirtualTrafficLightTest, InsertStopVelocityFromStart)
-{
-  autoware_internal_planning_msgs::msg::PathWithLaneId path;
-  autoware_internal_planning_msgs::msg::PathPointWithLaneId point;
-  point.point.longitudinal_velocity_mps = 10.0;
-  path.points.push_back(point);
-
-  insertStopVelocityFromStart(&path);
-  for (const auto & p : path.points) {
-    EXPECT_DOUBLE_EQ(p.point.longitudinal_velocity_mps, 0.0);
-  }
-}
-
-TEST(VirtualTrafficLightTest, InsertStopVelocityAtCollision)
-{
-  // 1) insert stop velocity at first point
-  {
-    std::cout << "----- insert stop velocity at first point -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 0.0;
-    SegmentIndexWithPoint collision;
-    collision.index = 0;
-    collision.point.x = 0.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value(), 0);
-    const auto & point = path.points.at(result.value());
-    EXPECT_DOUBLE_EQ(point.point.longitudinal_velocity_mps, 0.0);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.x, 0.0 + offset);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.y, 0);
-  }
-
-  // 2) insert stop velocity at middle point
-  {
-    std::cout << "----- insert stop velocity at middle point -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 0.0;
-    SegmentIndexWithPoint collision;
-    collision.index = 5;
-    collision.point.x = 5.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value(), 5);
-    const auto & point = path.points.at(result.value());
-    EXPECT_DOUBLE_EQ(point.point.longitudinal_velocity_mps, 0.0);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.x, 5.0 + offset);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.y, 0);
-  }
-
-  // 3) insert stop velocity at last
-  // NOTE: autoware::motion_utils::calcLongitudinalOffsetToSegment() return std::nan("");
-  //       so cannot insert stop velocity at last point.
-  // todo(someone): We need to review whether this is the correct specification.
-  {
-    std::cout << "----- insert stop velocity at last -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 0.0;
-    SegmentIndexWithPoint collision;
-    collision.index = 9;
-    collision.point.x = 9.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_FALSE(result.has_value());
-  }
-
-  // 4) insert stop velocity at middle point with offset 0.01
-  {
-    std::cout << "----- insert stop velocity at middle point with offset 0.01 -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 0.01;
-    SegmentIndexWithPoint collision;
-    collision.index = 5;
-    collision.point.x = 5.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value(), 6);
-    const auto & point = path.points.at(result.value());
-    EXPECT_DOUBLE_EQ(point.point.longitudinal_velocity_mps, 0.0);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.x, 5.0 + offset);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.y, 0);
-  }
-
-  // 5) insert stop velocity at middle point with offset 0.5
-  {
-    std::cout << "----- insert stop velocity at middle point with offset 0.4 -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 0.4;
-    SegmentIndexWithPoint collision;
-    collision.index = 5;
-    collision.point.x = 5.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value(), 6);
-    const auto & point = path.points.at(result.value());
-    EXPECT_DOUBLE_EQ(point.point.longitudinal_velocity_mps, 0.0);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.x, 5.0 + offset);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.y, 0);
-  }
-
-  // 6) insert stop velocity at middle point with offset 1.0
-  {
-    std::cout << "----- insert stop velocity at middle point with offset 1.0 -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 1.0;
-    SegmentIndexWithPoint collision;
-    collision.index = 5;
-    collision.point.x = 5.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value(), 6);
-    const auto & point = path.points.at(result.value());
-    EXPECT_DOUBLE_EQ(point.point.longitudinal_velocity_mps, 0.0);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.x, 5.0 + offset);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.y, 0);
-  }
-}
-
-TEST(VirtualTrafficLightTest, insertStopVelocityAtCollision)
-{
-  // 1) insert stop velocity at first point
-  {
-    std::cout << "----- insert stop velocity at first point -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 0.0;
-    SegmentIndexWithPoint collision;
-    collision.index = 0;
-    collision.point.x = 0.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value(), 0);
-    const auto & point = path.points.at(result.value());
-    EXPECT_DOUBLE_EQ(point.point.longitudinal_velocity_mps, 0.0);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.x, 0.0 + offset);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.y, 0);
-  }
-
-  // 2) insert stop velocity at middle point
-  {
-    std::cout << "----- insert stop velocity at middle point -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 0.0;
-    SegmentIndexWithPoint collision;
-    collision.index = 5;
-    collision.point.x = 5.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value(), 5);
-    const auto & point = path.points.at(result.value());
-    EXPECT_DOUBLE_EQ(point.point.longitudinal_velocity_mps, 0.0);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.x, 5.0 + offset);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.y, 0);
-  }
-
-  // 3) insert stop velocity at last
-  // NOTE: autoware::motion_utils::calcLongitudinalOffsetToSegment() return std::nan("");
-  //       so cannot insert stop velocity at last point.
-  // todo(someone): We need to review whether this is the correct specification.
-  {
-    std::cout << "----- insert stop velocity at last -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 0.0;
-    SegmentIndexWithPoint collision;
-    collision.index = 9;
-    collision.point.x = 9.0;
-    collision.point.y = 0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_FALSE(result.has_value());
-  }
-
-  // 4) insert stop velocity at middle with offset
-  {
-    std::cout << "----- insert stop velocity at middle point with 0.5 offset -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = 0.5;
-    SegmentIndexWithPoint collision;
-    collision.index = 5;
-    collision.point.x = 5.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value(), 6);
-    const auto & point = path.points.at(result.value());
-    EXPECT_DOUBLE_EQ(point.point.longitudinal_velocity_mps, 0.0);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.x, 5.0 + offset);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.y, 0);
-  }
-
-  // 5) insert stop velocity at middle with negative offset
-  {
-    std::cout << "----- insert stop velocity at middle point with -0.5 offset -----" << std::endl;
-    auto path = generateStraightPath();
-    const double offset = -0.5;
-    SegmentIndexWithPoint collision;
-    collision.index = 5;
-    collision.point.x = 5.0;
-    collision.point.y = 0.0;
-    const auto result = insertStopVelocityAtCollision(collision, offset, &path);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value(), 5);
-    const auto & point = path.points.at(result.value());
-    EXPECT_DOUBLE_EQ(point.point.longitudinal_velocity_mps, 0.0);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.x, 5.0 + offset);
-    EXPECT_DOUBLE_EQ(point.point.pose.position.y, 0);
-  }
-}
-
 TEST(VirtualTrafficLightTest, FindLastCollisionBeforeEndLine)
 {
   // LineString3d
   // 1) find first collision point
   {
     std::cout << "----- find first collision point -----" << std::endl;
-    autoware_utils::LineString3d target_line;
-    target_line.emplace_back(0.0, -1.0, 0.0);
-    target_line.emplace_back(0.0, 1.0, 0.0);
+    const auto target_line = generateLineString({{0.0, -1.0, 0.0}, {0.0, 1.0, 0.0}});
 
     const auto path = generateStraightPath();
 
-    const auto result =
-      findLastCollisionBeforeEndLine(path.points, target_line, path.points.size() - 1);
+    const auto result = findLastCollisionBeforeEndLine(path, target_line, path.length());
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value().index, 1);
+    EXPECT_EQ(result.value(), 0.0);
   }
 
   // 2-1)  find middle collision point
   {
     std::cout << "----- find middle collision point -----" << std::endl;
 
-    autoware_utils::LineString3d target_line;
-    target_line.emplace_back(5.0, -1.0, 0.0);
-    target_line.emplace_back(5.0, 1.0, 0.0);
+    const auto target_line = generateLineString({{5.0, -1.0, 0.0}, {5.0, 1.0, 0.0}});
 
     const auto path = generateStraightPath();
 
     // target line intersects with p5-p6
-    const auto result =
-      findLastCollisionBeforeEndLine(path.points, target_line, path.points.size() - 1);
+    const auto result = findLastCollisionBeforeEndLine(path, target_line, path.length());
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value().index, 6);
+    EXPECT_EQ(result.value(), 5.0);
   }
 
   // 2-2)  find middle collision point
   {
     std::cout << "----- find middle collision point -----" << std::endl;
 
-    autoware_utils::LineString3d target_line;
-    target_line.emplace_back(4.5, -1.0, 0.0);
-    target_line.emplace_back(4.5, 1.0, 0.0);
+    const auto target_line = generateLineString({{4.5, -1.0, 0.0}, {4.5, 1.0, 0.0}});
 
     const auto path = generateStraightPath();
 
     // target line intersects with p4-p5
-    const auto result =
-      findLastCollisionBeforeEndLine(path.points, target_line, path.points.size() - 1);
+    const auto result = findLastCollisionBeforeEndLine(path, target_line, path.length());
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value().index, 5);
+    EXPECT_EQ(result.value(), 4.5);
   }
 
-  // std::vector<autoware_utils::LineString3d>
+  // std::vector<lanelet::ConstLineString3d>
   // 3) find middle collision point with multi target lines
   {
     std::cout << "----- find collision point with multi target lines -----" << std::endl;
 
-    std::vector<autoware_utils::LineString3d> target_lines;
-    {
-      autoware_utils::LineString3d target_line1;
+    std::vector<lanelet::ConstLineString3d> target_lines;
+    target_lines.push_back(generateLineString({{3.5, -1.0, 0.0}, {3.5, 1.0, 0.0}}));
+    target_lines.push_back(generateLineString({{6.5, -1.0, 0.0}, {6.5, 1.0, 0.0}}));
 
-      target_line1.emplace_back(3.5, -1.0, 0.0);
-      target_line1.emplace_back(3.5, 1.0, 0.0);
+    const auto path = generateStraightPath();
 
-      autoware_utils::LineString3d target_line2;
-      target_line2.emplace_back(6.5, -1.0, 0.0);
-      target_line2.emplace_back(6.5, 1.0, 0.0);
-
-      target_lines.push_back(target_line1);
-      target_lines.push_back(target_line2);
-
-      const auto path = generateStraightPath();
-
-      // NOTE: the name of this function is findLastCollisionBeforeEndLine, but it returns the
-      // collision with the first line added to multiple lines
-      // the first target line intersects with p3-p4
-      const auto result =
-        findLastCollisionBeforeEndLine(path.points, target_lines, path.points.size() - 1);
-      ASSERT_TRUE(result.has_value());
-      EXPECT_EQ(result.value().index, 4);
-    }
+    // NOTE: the name of this function is findLastCollisionBeforeEndLine, but it returns the
+    // collision with the first line added to multiple lines
+    // the first target line intersects with p3-p4
+    const auto result = findLastCollisionBeforeEndLine(path, target_lines, path.length());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result.value(), 3.5);
   }
 }
