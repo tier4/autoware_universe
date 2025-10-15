@@ -110,6 +110,9 @@ bool NoDrivableLaneModule::modifyPathVelocity(PathWithLaneId * _path)
       return false;
     }
   }
+
+  _path->points = path->restore();
+
   return true;
 }
 
