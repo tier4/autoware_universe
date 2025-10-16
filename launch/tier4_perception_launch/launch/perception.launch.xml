@@ -37,6 +37,7 @@
   <arg name="traffic_light_arbiter_param_path"/>
   <arg name="traffic_light_multi_camera_fusion_param_path"/>
   <arg name="lidar_detection_model"/>
+  <arg name="sensor_model" description="sensor model name"/>
 
   <!-- ML model parameters -->
   <arg name="lidar_detection_model_type" default="$(eval &quot;'$(var lidar_detection_model)'.split('/')[0]&quot;)"/>
@@ -87,11 +88,7 @@
   <arg name="use_roi_based_cluster" default="true" description="use roi_based_cluster in clustering"/>
   <arg name="use_low_intensity_cluster_filter" default="true" description="use low_intensity_cluster_filter in clustering"/>
   <arg name="use_image_segmentation_based_filter" default="false" description="use image_segmentation_based_filter in clustering"/>
-  <arg
-    name="use_empty_dynamic_object_publisher"
-    default="true"
-    description="if use_empty_dynamic_object_publisher:=true, /perception/object_recognition/objects topic has an empty DynamicObjectArray"
-  />
+  <arg name="use_empty_dynamic_object_publisher" default="true" description="if use_empty_dynamic_object_publisher:=true, /perception/object_recognition/objects topic has an empty DynamicObjectArray" />
   <arg name="use_object_validator" default="true" description="use obstacle_pointcloud based object validator"/>
   <arg name="objects_validation_method" default="obstacle_pointcloud" description="options: `obstacle_pointcloud` or `occupancy_grid`"/>
   <arg name="use_perception_online_evaluator" default="false" description="use perception online evaluator"/>
@@ -106,33 +103,17 @@
   <arg name="traffic_light_recognition/whole_image_detector_model_name" default="yolox_s_car_ped_tl_detector_960_960_batch_1.onnx"/>
   <arg name="traffic_light_recognition/fusion_only" default="false"/>
   <arg name="all_traffic_light_camera" default="[camera6, camera7]" description="choose camera which use for traffic light recognition"/>
-  <arg
-    name="traffic_light_fine_detector_model_path"
-    default="$(var data_path)/traffic_light_fine_detector"
-    description="options: `tlr_yolox_s_batch_**`. The batch number must be either one of 1, 4, 6"
-  />
+  <arg name="traffic_light_fine_detector_model_path" default="$(var data_path)/traffic_light_fine_detector" description="options: `tlr_yolox_s_batch_**`. The batch number must be either one of 1, 4, 6" />
   <arg name="traffic_light_fine_detector_model_name" default="tlr_car_ped_yolox_s_batch_6" description="options: `tlr_car_ped_yolox_s_batch_**`. The batch number must be either one of 1, 4, 6"/>
   <arg name="traffic_light_classifier_model_path" default="$(var data_path)/traffic_light_classifier" description="classifier onnx model path"/>
-  <arg
-    name="car_traffic_light_classifier_model_name"
-    default="traffic_light_classifier_mobilenetv2_batch_6"
-    description="options: `traffic_light_classifier_mobilenetv2_batch_*` or `traffic_light_classifier_efficientNet_b1_batch_*`. The batch number must be either one of 1, 4, 6"
-  />
-  <arg
-    name="pedestrian_traffic_light_classifier_model_name"
-    default="ped_traffic_light_classifier_mobilenetv2_batch_6"
-    description="options: `ped_traffic_light_classifier_mobilenetv2_batch_*` or `ped_traffic_light_classifier_efficientNet_b1_batch_*`. The batch number must be either one of 1, 4, 6"
-  />
+  <arg name="car_traffic_light_classifier_model_name" default="traffic_light_classifier_mobilenetv2_batch_6" description="options: `traffic_light_classifier_mobilenetv2_batch_*` or `traffic_light_classifier_efficientNet_b1_batch_*`. The batch number must be either one of 1, 4, 6" />
+  <arg name="pedestrian_traffic_light_classifier_model_name" default="ped_traffic_light_classifier_mobilenetv2_batch_6" description="options: `ped_traffic_light_classifier_mobilenetv2_batch_*` or `ped_traffic_light_classifier_efficientNet_b1_batch_*`. The batch number must be either one of 1, 4, 6" />
 
   <!-- Whether to use detection by tracker -->
   <arg name="use_detection_by_tracker" default="true"/>
 
   <!-- Radar parameters -->
-  <arg
-    name="use_radar_tracking_fusion"
-    default="true"
-    description="if use_radar_tracking_fusion:=true, radar information is merged in tracking launch. Otherwise, radar information is merged in detection launch."
-  />
+  <arg name="use_radar_tracking_fusion" default="true" description="if use_radar_tracking_fusion:=true, radar information is merged in tracking launch. Otherwise, radar information is merged in detection launch." />
   <arg name="input/radar" default="/sensing/radar/detected_objects"/>
 
   <!-- Object merger method: whether to enable multi-channel tracker merger -->
@@ -154,12 +135,7 @@
     <group if="$(var downsample_perception_common_pointcloud)">
       <push-ros-namespace namespace="common"/>
       <load_composable_node target="$(var pointcloud_container_name)">
-        <composable_node
-          pkg="autoware_pointcloud_preprocessor"
-          plugin="autoware::pointcloud_preprocessor::PickupBasedVoxelGridDownsampleFilterComponent"
-          name="pointcloud_downsample_node"
-          namespace=""
-        >
+        <composable_node pkg="autoware_pointcloud_preprocessor" plugin="autoware::pointcloud_preprocessor::PickupBasedVoxelGridDownsampleFilterComponent" name="pointcloud_downsample_node" namespace="">
           <remap from="input" to="$(var input/pointcloud)"/>
           <remap from="output" to="$(var downsampled_pointcloud)"/>
           <param name="voxel_size_x" value="$(var common_downsample_voxel_size_x)"/>
@@ -173,7 +149,8 @@
     <!-- Object segmentation module -->
     <group>
       <push-ros-namespace namespace="obstacle_segmentation"/>
-      <include file="$(find-pkg-share tier4_perception_launch)/launch/obstacle_segmentation/ground_segmentation/ground_segmentation.launch.py">
+      <let name="sensor_launch_pkg" value="$(var sensor_model)_launch"/>
+      <include file="$(find-pkg-share $(var sensor_launch_pkg))/launch/ground_segmentation/ground_segmentation.launch.py">
         <arg name="base_frame" value="base_link"/>
         <arg name="debug_mode" value="false"/>
         <arg name="use_intra_process" value="true"/>
@@ -191,14 +168,14 @@
 
     <!-- Object recognition module -->
     <!-- None -->
-      <!-- Detection module -->
-      <!-- None -->
+    <!-- Detection module -->
+    <!-- None -->
 
-      <!-- Tracking module -->
-      <!-- None -->
+    <!-- Tracking module -->
+    <!-- None -->
 
-      <!-- Prediction module -->
-      <!-- None -->
+    <!-- Prediction module -->
+    <!-- None -->
 
     <group if="$(var use_empty_dynamic_object_publisher)">
       <push-ros-namespace namespace="object_recognition"/>
@@ -213,5 +190,6 @@
 
   <!-- perception evaluator -->
   <group if="$(var use_perception_online_evaluator)">
-    <include file="$(find-pkg-share autoware_perception_online_evaluator)/launch/perception_online_evaluator.launch.xml"/>  </group>
+    <include file="$(find-pkg-share autoware_perception_online_evaluator)/launch/perception_online_evaluator.launch.xml"/>
+  </group>
 </launch>
