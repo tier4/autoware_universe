@@ -23,6 +23,12 @@ There is a temporary parameter `prioritize_internal_signals_when_arrows_present`
 | UNKNOWN               | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN      |
 | Not Received          | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN      |
 
+### Source priority
+
+As an alternative to the signal matching option, one of the sources can be prioritized. There are three priority modes for signal selection: 'external' prioritizes external signals, 'perception' prioritizes perception signals, 'confidence' uses confidence-based selection.
+
+Note, this option will not be effective if signal matching is enabled.
+
 ### Inputs / Outputs
 
 #### Input
