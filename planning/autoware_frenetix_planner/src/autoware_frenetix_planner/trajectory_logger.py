@@ -55,12 +55,13 @@ class TrajectoryLogger:
 
         self.log_counter += 1
 
-    def _save_trajectories_data(self, optimal_trajectory, feasible_trajectories, reference_path, obstacle_positions=None, **kwargs):
+    def _save_trajectories_data(self, optimal_trajectory, feasible_trajectories, infeasible_trajectories, reference_path, obstacle_positions=None, **kwargs):
         """Saves pre-computed trajectory data."""
         data_to_save = {
             "data_mode": "trajectories",
             "optimal_trajectory": self._serialize_trajectory(optimal_trajectory),
-            "feasible_trajectories": [self._serialize_trajectory(t) for t in feasible_trajectories[:200]],
+            "feasible_trajectories": [self._serialize_trajectory(t) for t in feasible_trajectories[:]],
+            "infeasible_trajectories": [self._serialize_trajectory(t) for t in infeasible_trajectories[:100]],
             "reference_path": reference_path.tolist() if reference_path is not None else [],
             "obstacle_positions": obstacle_positions.tolist() if obstacle_positions is not None else []
         }

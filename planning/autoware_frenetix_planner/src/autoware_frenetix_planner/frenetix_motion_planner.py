@@ -1,10 +1,10 @@
-from dataclasses import dataclass
-from typing import List, Optional
+from typing import Optional
 import copy
 import uuid
 import numpy as np
 import threading
 from tf_transformations import euler_from_quaternion
+from autoware_frenetix_planner.config import CartesianState, CurvilinearState
 
 # Import frenetix core functions
 import frenetix
@@ -15,31 +15,6 @@ from autoware_frenetix_planner.sampling_matrix import SamplingHandler
 from autoware_frenetix_planner.sampling_matrix import generate_sampling_matrix
 from autoware_frenetix_planner.trajectory_logger import TrajectoryLogger
 
-@dataclass
-class CartesianState:
-    """
-    Represents the current cartesian kinematic state of the ego vehicle.
-    """
-    position: List[float]           # [x, y] in meters
-    orientation: float              # heading/yaw in radians
-    velocity: float                 # longitudinal velocity in m/s
-    acceleration: float             # longitudinal acceleration in m/s^2
-    steering_angle: Optional[float] = None  # steering angle in radians
-    timestamp: Optional[float] = None       # ROS time (float seconds)
-
-@dataclass
-class CurvilinearState:
-    """
-    Represents the current curvilinear state of the ego vehicle.
-    """
-    s: float                       # longitudinal position along reference path
-    s_dot: float                   # longitudinal velocity
-    s_ddot: float                  # longitudinal acceleration
-    d: float                       # lateral offset from reference path
-    d_dot: float                   # lateral velocity
-    d_ddot: float                  # lateral acceleration
-    timestamp: Optional[float] = None  # ROS time (float seconds)
-
 class FrenetixMotionPlanner:
     """
     This Class is used to interface with the Frenetix planner.
@@ -47,48 +22,17 @@ class FrenetixMotionPlanner:
     and both cartesian and curvilinear ego states.
     """
 
-    def __init__(self, logger):
+    def __init__(self, logger, params, logging_enabled=True):
+        self.logger = logger
+
         # Initialize parameters
-        self.params = {
-            "planning_horizon": 8.0,
-            "sampling_dt": 0.1,
-            "t_min": 1.1,
-            "d_min": -3.0,
-            "d_max": 3.0,
-            "sampling_min": 2,
-            "sampling_max": 3,
-            "velocity_limit": 20.0,
-            "desired_velocity": 8.33,
-            "delta_max": 0.6,
-            "wheelbase": 2.7,
-            "v_switch": 3.0,
-            "a_max": 7.0,
-            "v_delta_max": 2.0,
-            "length": 5.0,
-            "width": 2.0,
-            "wb_rear_axle": 1.5,
-            "v_max": 30.0,
-            "cost_weights": {
-                "acceleration": 0.0,
-                "jerk": 0.0,
-                "lateral_jerk": 0.0,
-                "longitudinal_jerk": 5.0,
-                "orientation_offset": 0.0,
-                "lane_center_offset": 0.0,
-                "distance_to_reference_path": 1.0,
-                "prediction": 10.0,
-                "distance_to_obstacles": 10.0,
-                "velocity_offset": 0.0,
-                "positive_velocity_offset": 10.0,
-                "negative_velocity_offset": 0.5,
-                "cartesian_lateral_acceleration": 5.0
-            }
-        }
-        
+        self.params = params
+        self.logger.info("Planner initialized with provided parameters.")
+
         # Initialize variables
         self.position_lock = threading.Lock()
         self.optimal_trajectory = None
-        self.desired_velocity = self.params['desired_velocity']
+        self.desired_velocity = self.params.desired_velocity
         self.coordinate_system_cpp = None
         self.reference_path = None
         self.last_endpoint = None
@@ -97,7 +41,7 @@ class FrenetixMotionPlanner:
         self.previous_position = None
         self.curvilinear_state: Optional[CurvilinearState] = None
         self.curvilinear_state_previous: Optional[CurvilinearState] = None
-        self.logger = logger
+        
 
         # Obstacle and prediction settings
         self.obstacle_positions = []
@@ -111,16 +55,16 @@ class FrenetixMotionPlanner:
         self.last_planned_trajectory = None
 
         # Initialize the sampling handler
-        self.sampling_handler = SamplingHandler(dt=self.params['sampling_dt'], 
+        self.sampling_handler = SamplingHandler(dt=self.params.sampling_dt, 
                                                 max_sampling_number=3,
-                                                t_min=self.params['t_min'], 
-                                                horizon=self.params['planning_horizon'],
-                                                delta_d_max=self.params['d_max'],
-                                                delta_d_min=self.params['d_min'],
+                                                t_min=self.params.t_min, 
+                                                horizon=self.params.planning_horizon,
+                                                delta_d_max=self.params.d_max,
+                                                delta_d_min=self.params.d_min,
                                                 d_ego_pos=True)
 
         # Initialize the trajectory handler
-        self.handler: frenetix.TrajectoryHandler = frenetix.TrajectoryHandler(dt=self.params['sampling_dt'])
+        self.handler: frenetix.TrajectoryHandler = frenetix.TrajectoryHandler(dt=self.params.sampling_dt)
         self.coordinate_system_cpp: frenetix.CoordinateSystemWrapper
 
         # Set the cost weights and feasibility functions
@@ -129,8 +73,25 @@ class FrenetixMotionPlanner:
         # self._trajectory_handler_set_changing_cost_functions()
 
         # Initialize the trajectory logger
-        self.trajectory_logger = TrajectoryLogger(save_dir="/workspace/src/universe/autoware_universe/planning/autoware_frenetix_planner/test/logs",
-                                                  mode="trajectories")
+        if logging_enabled:
+          self.trajectory_logger = TrajectoryLogger(save_dir="/workspace/src/universe/autoware_universe/planning/autoware_frenetix_planner/test/logs",
+                                                    mode="trajectories")
+          
+    # Method to update parameters at runtime
+    def update_params(self, new_params):
+        """
+        Updates the planner's parameters and re-initializes components that depend on them.
+        """
+        self.logger.info("Updating planner parameters...")
+        self.params = new_params
+        
+        # Re-initialize components that depend on the parameters
+        self._trajectory_handler_set_constant_cost_functions()
+
+        # Re-initialize feasibility functions if they depend on parameters
+        self._trajectory_handler_set_constant_feasibility_functions()
+
+        self.logger.info("Planner parameters updated successfully.")
 
 
     def set_objects(self, objects_msg):
@@ -318,9 +279,9 @@ class FrenetixMotionPlanner:
       """
       self.desired_velocity = desired_velocity
 
-      min_v = max(0.001, current_speed - self.params['a_max'] * self.params['planning_horizon'])
-      max_v = min(min(current_speed + (self.params['a_max'] / 5.0) * self.params['planning_horizon'], v_limit),
-                  self.params['v_max'])
+      min_v = max(0.001, current_speed - self.params.a_max * self.params.planning_horizon)
+      max_v = min(min(current_speed + (self.params.a_max / 5.0) * self.params.planning_horizon, v_limit),
+                  self.params.v_max)
 
       self.sampling_handler.set_v_sampling(min_v, max_v)
 
@@ -344,20 +305,20 @@ class FrenetixMotionPlanner:
         """
         Sets the constant feasibility functions for the trajectory handler
         """
-        self.handler.add_feasability_function(ff.CheckYawRateConstraint(deltaMax=self.params['delta_max'],
-                                                                        wheelbase=self.params['wheelbase'],
+        self.handler.add_feasability_function(ff.CheckYawRateConstraint(deltaMax=self.params.delta_max,
+                                                                        wheelbase=self.params.wheelbase,
                                                                         wholeTrajectory=True
                                                                         ))
-        self.handler.add_feasability_function(ff.CheckAccelerationConstraint(switchingVelocity=self.params['v_switch'],
-                                                                             maxAcceleration=self.params['a_max'],
+        self.handler.add_feasability_function(ff.CheckAccelerationConstraint(switchingVelocity=self.params.v_switch,
+                                                                             maxAcceleration=self.params.a_max,
                                                                              wholeTrajectory=True)
                                                                              )
-        self.handler.add_feasability_function(ff.CheckCurvatureConstraint(deltaMax=self.params['delta_max'],
-                                                                          wheelbase=self.params['wheelbase'],
+        self.handler.add_feasability_function(ff.CheckCurvatureConstraint(deltaMax=self.params.delta_max,
+                                                                          wheelbase=self.params.wheelbase,
                                                                           wholeTrajectory=True
                                                                           ))
-        self.handler.add_feasability_function(ff.CheckCurvatureRateConstraint(wheelbase=self.params['wheelbase'],
-                                                                              velocityDeltaMax=self.params['v_delta_max'],
+        self.handler.add_feasability_function(ff.CheckCurvatureRateConstraint(wheelbase=self.params.wheelbase,
+                                                                              velocityDeltaMax=self.params.v_delta_max,
                                                                               wholeTrajectory=True
                                                                               ))
 
@@ -367,36 +328,36 @@ class FrenetixMotionPlanner:
         Sets the constant cost functions for the trajectory handler
         """
         name = "acceleration"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-            self.handler.add_cost_function(cf.CalculateAccelerationCost(name, self.params['cost_weights'][name]))
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
+            self.handler.add_cost_function(cf.CalculateAccelerationCost(name, self.params.cost_weights[name]))
 
         name = "jerk"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-            self.handler.add_cost_function(cf.CalculateJerkCost(name, self.params['cost_weights'][name]))
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
+            self.handler.add_cost_function(cf.CalculateJerkCost(name, self.params.cost_weights[name]))
 
         name = "lateral_jerk"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-            self.handler.add_cost_function(cf.CalculateLateralJerkCost(name, self.params['cost_weights'][name]))
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
+            self.handler.add_cost_function(cf.CalculateLateralJerkCost(name, self.params.cost_weights[name]))
 
         name = "longitudinal_jerk"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-            self.handler.add_cost_function(cf.CalculateLongitudinalJerkCost(name, self.params['cost_weights'][name]))
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
+            self.handler.add_cost_function(cf.CalculateLongitudinalJerkCost(name, self.params.cost_weights[name]))
 
         name = "orientation_offset"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-            self.handler.add_cost_function(cf.CalculateOrientationOffsetCost(name, self.params['cost_weights'][name]))
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
+            self.handler.add_cost_function(cf.CalculateOrientationOffsetCost(name, self.params.cost_weights[name]))
 
         name = "lane_center_offset"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-            self.handler.add_cost_function(cf.CalculateLaneCenterOffsetCost(name, self.params['cost_weights'][name]))
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
+            self.handler.add_cost_function(cf.CalculateLaneCenterOffsetCost(name, self.params.cost_weights[name]))
 
         name = "distance_to_reference_path"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-            self.handler.add_cost_function(cf.CalculateDistanceToReferencePathCost(name, self.params['cost_weights'][name]))
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
+            self.handler.add_cost_function(cf.CalculateDistanceToReferencePathCost(name, self.params.cost_weights[name]))
 
         name = "cartesian_lateral_acceleration"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
-            self.handler.add_cost_function(cf.CalculateCartesianLateralAccelerationCost(name, self.params['cost_weights'][name], latAccRef=2.0))
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
+            self.handler.add_cost_function(cf.CalculateCartesianLateralAccelerationCost(name, self.params.cost_weights[name], latAccRef=2.0))
 
     # Set changing cost functions
     def _trajectory_handler_set_changing_cost_functions(self):
@@ -404,26 +365,26 @@ class FrenetixMotionPlanner:
             lowVelocityMode=False,
             initialOrientation=self.cartesian_state.orientation,
             coordinateSystem=self.coordinate_system_cpp,
-            horizon=self.params['planning_horizon']
+            horizon=self.params.planning_horizon
         ))
 
         name = "prediction"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
             self.handler.add_cost_function(
-                cf.CalculateCollisionProbabilityFast(name, self.params['cost_weights'][name], self.obstacle_predictions,
-                                                     self.params['length'], self.params['width'], self.params['wb_rear_axle']))
-        
+                cf.CalculateCollisionProbabilityFast(name, self.params.cost_weights[name], self.obstacle_predictions,
+                                                     self.params.length, self.params.width, self.params.wb_rear_axle))
+
         # name = "distance_to_obstacles"
-        # if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0 and self.obstacle_positions is not None:
+        # if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0 and self.obstacle_positions is not None:
         #     # convert obstacle positions to numpy array
         #     self.obstacle_positions = np.array(self.obstacle_positions, dtype=np.float64)
-        #     self.handler.add_cost_function(cf.CalculateDistanceToObstacleCost(name, self.params['cost_weights'][name], self.obstacle_positions))
+        #     self.handler.add_cost_function(cf.CalculateDistanceToObstacleCost(name, self.params.cost_weights[name], self.obstacle_positions))
 
         # name = "positive_velocity_offset"
-        # if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
+        # if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
         #     self.handler.add_cost_function(cf.CalculatePositiveVelocityOffsetCost(
         #         name,
-        #         self.params['cost_weights'][name],
+        #         self.params.cost_weights[name],
         #         self.desired_velocity,
         #         0.1,
         #         3.0,
@@ -432,10 +393,10 @@ class FrenetixMotionPlanner:
         #     ))
 
         name = "positive_velocity_offset"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
             self.handler.add_cost_function(cf.CalculatePositiveVelocityOffsetCost(
                 name,
-                self.params['cost_weights'][name],
+                self.params.cost_weights[name],
                 self.desired_velocity,
                 0.1,
                 3.0,
@@ -444,10 +405,10 @@ class FrenetixMotionPlanner:
             ))
 
         name = "negative_velocity_offset"
-        if name in self.params['cost_weights'].keys() and self.params['cost_weights'][name] > 0:
+        if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
             self.handler.add_cost_function(cf.CalculateNegativeVelocityOffsetCost(
                 name,
-                self.params['cost_weights'][name],
+                self.params.cost_weights[name],
                 self.desired_velocity,
                 0.1,
                 4.0,
@@ -459,8 +420,8 @@ class FrenetixMotionPlanner:
     # Calculate sampling matrix
     def _generate_sampling_matrix(self, samp_level: int):
 
-        N = int(self.params['planning_horizon'] / self.params['sampling_dt'])
-        t1_range = np.array(list(self.sampling_handler.t_sampling.to_range(samp_level).union({N*self.params['sampling_dt']})))
+        N = int(self.params.planning_horizon / self.params.sampling_dt)
+        t1_range = np.array(list(self.sampling_handler.t_sampling.to_range(samp_level).union({N*self.params.sampling_dt})))
         ss1_range = np.array(list(self.sampling_handler.v_sampling.to_range(samp_level).union({self.curvilinear_state.s_dot})))
         d1_range = np.array(list(self.sampling_handler.d_sampling.to_range(samp_level).union({self.curvilinear_state.d})))
 
@@ -503,8 +464,8 @@ class FrenetixMotionPlanner:
         optimal_trajectory = None
         feasible_trajectories = []
         infeasible_trajectories = []
-        sampling_level = self.params['sampling_min']
-        max_sampling_level = self.params['sampling_max']
+        sampling_level = self.params.sampling_min
+        max_sampling_level = self.params.sampling_max
 
         # sample until trajectory has been found or sampling sets are empty
         while optimal_trajectory is None and sampling_level < max_sampling_level:
@@ -533,13 +494,14 @@ class FrenetixMotionPlanner:
 
             # debug trajectories
 
-            self.trajectory_logger.save_debug_data(optimal_trajectory=optimal_trajectory, 
-                                                  feasible_trajectories=feasible_trajectories,  
-                                                  reference_path=self.reference_path, 
-                                                  obstacle_positions=self.obstacle_positions,
-                                                  cartesian_state=self.cartesian_state,
-                                                  curvilinear_state=self.curvilinear_state,
-                                                  )
+            # self.trajectory_logger.save_debug_data(optimal_trajectory=optimal_trajectory, 
+            #                                       feasible_trajectories=feasible_trajectories,  
+            #                                       infeasible_trajectories=infeasible_trajectories,
+            #                                       reference_path=self.reference_path, 
+            #                                       obstacle_positions=self.obstacle_positions,
+            #                                       cartesian_state=self.cartesian_state,
+            #                                       curvilinear_state=self.curvilinear_state,
+            #                                       )
 
             if self.curvilinear_state.s_dot < 1.0:
               optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else infeasible_trajectories[0]
@@ -559,8 +521,6 @@ class FrenetixMotionPlanner:
 
               for key in optimal_trajectory.costMap.keys():
                 self.logger.warn(f"{key} cost evaluation: {optimal_trajectory.costMap[key][0]:.2f}")
-
-              # self.logger.warn(f"cartesian Lateral Acceleration cost evaluation: {optimal_trajectory.costMap['cartesian_lateral_acceleration'][1]:.2f}")
 
             # increase sampling level (i.e., density) if no optimal trajectory could be found
             sampling_level += 1
@@ -624,7 +584,7 @@ class FrenetixMotionPlanner:
 
         curvilinear_state_frenetix = frenetix.compute_initial_state(coordinate_system=self.coordinate_system_cpp,
                                                                     x_0=cartesian_state_frenetix,
-                                                                    wheelbase=self.params['wheelbase'],
+                                                                    wheelbase=self.params.wheelbase,
                                                                     low_velocity_mode=False)
         
         self.curvilinear_state = CurvilinearState(s=curvilinear_state_frenetix.x0_lon[0],

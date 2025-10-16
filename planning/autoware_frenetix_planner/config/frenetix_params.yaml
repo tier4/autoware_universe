@@ -1,0 +1,53 @@
+# frenetix_params.yaml
+# Configuration file for the Frenetix Motion Planner Node.
+# NOTE: All parameters listed here are mandatory for the node to start.
+
+/frenetix_planner:
+  ros__parameters:
+
+    # --- Planning Behavior ---
+    planning_horizon: 10.0      # [s] How far ahead to plan trajectories.
+    sampling_dt: 0.25           # [s] Time step between trajectory points.
+    t_min: 1.1                  # [s] Minimum time for longitudinal planning.
+    d_min: -3.0                 # [m] Minimum lateral offset for sampling (negative is left).
+    d_max: 3.0                  # [m] Maximum lateral offset for sampling (positive is right).
+    sampling_min: 2             # Initial sampling density level.
+    sampling_max: 3             # Maximum sampling density level.
+
+    # --- Vehicle & Physics ---
+    velocity_limit: 20.0        # [m/s] Absolute maximum velocity limit.
+    desired_velocity: 8.33      # [m/s] Target velocity
+    delta_max: 0.6              # [rad] Maximum steering angle.
+    wheelbase: 2.7              # [m] Vehicle wheelbase.
+    v_switch: 3.0               # [m/s] Velocity at which some constraints might change.
+    a_max: 7.0                  # [m/s^2] Maximum longitudinal acceleration/deceleration.
+    v_delta_max: 2.0            # [rad/s] Maximum rate of change for steering angle.
+    length: 5.0                 # [m] Vehicle length for collision checking.
+    width: 2.0                  # [m] Vehicle width for collision checking.
+    wb_rear_axle: 1.5           # [m] Distance from CG to rear axle.
+    v_max: 30.0                 # [m/s] Another velocity limit (can be used for different purposes).
+
+    # --- Cost Function Weights ---
+    # These weights determine the "desirability" of a trajectory.
+    # Higher values mean the planner will try harder to optimize for that criterion.
+    cost_weights:
+      # Safety Costs (should be high)
+      prediction: 10.0
+      distance_to_obstacles: 10.0
+
+      # Comfort Costs (lower for more aggressive driving)
+      acceleration: 0.0
+      jerk: 0.0
+      lateral_jerk: 0.0
+      longitudinal_jerk: 5.0
+      cartesian_lateral_acceleration: 5.0
+      
+      # Path Following Costs
+      orientation_offset: 0.0
+      lane_center_offset: 0.0
+      distance_to_reference_path: 1.0
+
+      # Velocity Costs
+      velocity_offset: 0.0
+      positive_velocity_offset: 10.0  # Penalty for driving slower than desired_velocity
+      negative_velocity_offset: 0.5   # Penalty for driving faster than desired_velocity

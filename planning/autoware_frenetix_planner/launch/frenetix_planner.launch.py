@@ -1,7 +1,13 @@
+import os
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
 def generate_launch_description():
+    
+    pkg_share_path = get_package_share_directory('autoware_frenetix_planner')
+    params_file_path = os.path.join(pkg_share_path, 'config', 'frenetix_params.yaml')
+
     return LaunchDescription([
         Node(
             package="autoware_frenetix_planner",
@@ -17,9 +23,7 @@ def generate_launch_description():
                 ("/input/vector_map", "/map/vector_map"),
                 ("/output/trajectory", "/planning/trajectory"),
             ],
-            parameters=[
-                {"update_rate": 10.0}
-            ],
+            parameters=[params_file_path],
             arguments=["--ros-args", "--log-level", "INFO"]
         )
     ])

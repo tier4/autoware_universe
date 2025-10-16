@@ -12,10 +12,13 @@ from geometry_msgs.msg import AccelWithCovarianceStamped, Pose, Point, Quaternio
 from autoware_planning_msgs.msg import TrajectoryPoint
 import numpy as np
 import rclpy
+from rclpy.parameter import Parameter
 from message_filters import Subscriber, ApproximateTimeSynchronizer
 from rclpy.node import Node
+from rcl_interfaces.msg import SetParametersResult
 import rclpy.qos
 from autoware_frenetix_planner.frenetix_motion_planner import FrenetixMotionPlanner
+from autoware_frenetix_planner.config import FrenetixPlannerParams, CostWeightsParams
 from tf_transformations import quaternion_from_euler
 from builtin_interfaces.msg import Duration
 
@@ -24,15 +27,116 @@ class FrenetixPlanner(Node):
 
     def __init__(self):
         super().__init__("frenetix_planner")
-        self.get_logger().info("Node initialized.")
-        self.lanelet_map_ = None  # Stores the received lanelet map
-        self._init_subscriber()   # Set up all topic subscribers
-        self._init_publisher()    # Set up all topic publishers
+        self.get_logger().info("Node initializing...")
+
+        # Declare and get parameters from the YAML file.
+        # The node will fail to start if the YAML is missing or incomplete.
+        self.params = self._declare_and_load_params()
+
+        # Initialize subscribers and publishers
+        self.lanelet_map_ = None
+        self._init_subscriber()
+        self._init_publisher()
         self.get_logger().info("Subscribers and publishers initialized.")
-        self.planner = FrenetixMotionPlanner(logger=self.get_logger())
+
+        # Instantiate the planner with the loaded parameters
+        self.planner = FrenetixMotionPlanner(logger=self.get_logger(), params=self.params)
         self.get_logger().info("FrenetixMotionPlanner initialized.")
-        self.car_altitude = 0.0  # Default altitude for trajectory points
-        self.objects = None  # Store the latest objects message
+        
+        # Set up a callback for runtime parameter changes
+        self.add_on_set_parameters_callback(self.parameters_callback)
+
+        self.car_altitude = 0.0
+        self.objects = None
+
+    def _declare_and_load_params(self) -> FrenetixPlannerParams:
+        """
+        Declares all required ROS 2 parameters with their explicit types and directly 
+        constructs the typed parameter dataclass object.
+        """
+
+        self.get_logger().info("Declaring parameters and building param object...")
+
+        # Helper function to declare a parameter with its type and get its value
+        def declare_and_get(name, param_type):
+            return self.declare_parameter(name, param_type).value
+
+        # Build the nested CostWeightsParams object first
+        cost_weights_params = CostWeightsParams(
+            acceleration=declare_and_get("cost_weights.acceleration", Parameter.Type.DOUBLE),
+            jerk=declare_and_get("cost_weights.jerk", Parameter.Type.DOUBLE),
+            lateral_jerk=declare_and_get("cost_weights.lateral_jerk", Parameter.Type.DOUBLE),
+            longitudinal_jerk=declare_and_get("cost_weights.longitudinal_jerk", Parameter.Type.DOUBLE),
+            orientation_offset=declare_and_get("cost_weights.orientation_offset", Parameter.Type.DOUBLE),
+            lane_center_offset=declare_and_get("cost_weights.lane_center_offset", Parameter.Type.DOUBLE),
+            distance_to_reference_path=declare_and_get("cost_weights.distance_to_reference_path", Parameter.Type.DOUBLE),
+            prediction=declare_and_get("cost_weights.prediction", Parameter.Type.DOUBLE),
+            distance_to_obstacles=declare_and_get("cost_weights.distance_to_obstacles", Parameter.Type.DOUBLE),
+            velocity_offset=declare_and_get("cost_weights.velocity_offset", Parameter.Type.DOUBLE),
+            positive_velocity_offset=declare_and_get("cost_weights.positive_velocity_offset", Parameter.Type.DOUBLE),
+            negative_velocity_offset=declare_and_get("cost_weights.negative_velocity_offset", Parameter.Type.DOUBLE),
+            cartesian_lateral_acceleration=declare_and_get("cost_weights.cartesian_lateral_acceleration", Parameter.Type.DOUBLE)
+        )
+
+        # Now build the main Parameters object
+        params = FrenetixPlannerParams(
+            # Double (float) parameters
+            planning_horizon=declare_and_get("planning_horizon", Parameter.Type.DOUBLE),
+            sampling_dt=declare_and_get("sampling_dt", Parameter.Type.DOUBLE),
+            t_min=declare_and_get("t_min", Parameter.Type.DOUBLE),
+            d_min=declare_and_get("d_min", Parameter.Type.DOUBLE),
+            d_max=declare_and_get("d_max", Parameter.Type.DOUBLE),
+            velocity_limit=declare_and_get("velocity_limit", Parameter.Type.DOUBLE),
+            desired_velocity=declare_and_get("desired_velocity", Parameter.Type.DOUBLE),
+            delta_max=declare_and_get("delta_max", Parameter.Type.DOUBLE),
+            wheelbase=declare_and_get("wheelbase", Parameter.Type.DOUBLE),
+            v_switch=declare_and_get("v_switch", Parameter.Type.DOUBLE),
+            a_max=declare_and_get("a_max", Parameter.Type.DOUBLE),
+            v_delta_max=declare_and_get("v_delta_max", Parameter.Type.DOUBLE),
+            length=declare_and_get("length", Parameter.Type.DOUBLE),
+            width=declare_and_get("width", Parameter.Type.DOUBLE),
+            wb_rear_axle=declare_and_get("wb_rear_axle", Parameter.Type.DOUBLE),
+            v_max=declare_and_get("v_max", Parameter.Type.DOUBLE),
+            
+            # Integer parameters
+            sampling_min=declare_and_get("sampling_min", Parameter.Type.INTEGER),
+            sampling_max=declare_and_get("sampling_max", Parameter.Type.INTEGER),
+            
+            # The nested parameter object
+            cost_weights=cost_weights_params
+        )
+
+        return params
+    
+    def parameters_callback(self, params) -> SetParametersResult:
+        """
+        This callback is triggered when a parameter is changed at runtime.
+        It dynamically updates the fields in the existing params object and
+        passes the updated parameters to the core planner.
+        """
+        self.get_logger().info("Parameter update request received...")
+
+        # Iterate through all changed parameters
+        for param in params:
+            keys = param.name.split('.')
+            
+            # Check if it is a nested parameter (e.g., 'cost_weights.prediction')
+            if len(keys) == 2:
+                parent_key, child_key = keys
+                # Get the nested param object (e.g., self.params.cost_weights)
+                nested_param_object = getattr(self.params, parent_key)
+                # Set the attribute on the nested object
+                setattr(nested_param_object, child_key, param.value)
+            else:
+                # It's a top-level parameter, set it directly on the main params object
+                setattr(self.params, param.name, param.value)
+
+        # Pass the entire, newly modified params object to the planner's update method
+        self.planner.update_params(self.params)
+        self.get_logger().info("Planner parameters updated successfully.")
+
+        # Signal that the parameter changes were successfully applied
+        return SetParametersResult(successful=True)
 
     # Callback for reference path messages
     def reference_path_callback(self, reference_trajectory_msg):
@@ -197,6 +301,8 @@ def main():
     rclpy.init(args=sys.argv)
     node = FrenetixPlanner()
     rclpy.spin(node)
+    # catch errors during initialization, e.g., missing parameters
+    rclpy.logging.get_logger("frenetix_planner_main").fatal(f"Node crashed: {e}")
     rclpy.shutdown()
 
 if __name__ == "__main__":
