@@ -25,6 +25,7 @@
 #include <Eigen/Geometry>
 #include <autoware/behavior_velocity_planner_common/utilization/boost_geometry_helper.hpp>
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
+#include <autoware/trajectory/path_point_with_lane_id.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -39,6 +40,9 @@ public:
   using TrafficSignal = autoware_perception_msgs::msg::TrafficLightGroup;
   using TrafficSignalElement = autoware_perception_msgs::msg::TrafficLightElement;
   using Time = rclcpp::Time;
+  using Trajectory = autoware::experimental::trajectory::Trajectory<
+    autoware_internal_planning_msgs::msg::PathPointWithLaneId>;
+
   enum class State { APPROACH, GO_OUT };
 
   struct DebugData
@@ -97,10 +101,7 @@ public:
 
   inline State getTrafficLightModuleState() const { return state_; }
 
-  inline std::optional<int> getFirstRefStopPathPointIndex() const
-  {
-    return first_ref_stop_path_point_index_;
-  }
+  inline std::optional<double> getFirstStopPointArcLength() const { return first_stop_point_s_; }
 
   void updateStopLine(const lanelet::ConstLineString3d & stop_line);
 
@@ -110,10 +111,8 @@ private:
   bool willTrafficLightTurnRedBeforeReachingStopLine(
     const double & distance_to_stop_line, const PlannerData & planner_data) const;
 
-  autoware_internal_planning_msgs::msg::PathWithLaneId insertStopPose(
-    const autoware_internal_planning_msgs::msg::PathWithLaneId & input,
-    const size_t & insert_target_point_idx, const Eigen::Vector2d & target_point,
-    const PlannerData & planner_data);
+  Trajectory insertStopVelocity(
+    const Trajectory & input, const double & stop_point_s, const PlannerData & planner_data) const;
 
   bool isPassthrough(const double & signed_arc_length, const PlannerData & planner_data) const;
 
@@ -149,7 +148,7 @@ private:
   // prevent stop chattering
   std::unique_ptr<Time> stop_signal_received_time_ptr_{};
 
-  std::optional<int> first_ref_stop_path_point_index_;
+  std::optional<double> first_stop_point_s_;
 
   std::optional<Time> traffic_signal_stamp_;
 

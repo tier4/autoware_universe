@@ -76,8 +76,6 @@ private:
 
   // Debug
   rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr pub_tl_state_;
-
-  std::optional<int> nearest_ref_stop_path_point_index_;
 };
 
 class TrafficLightModulePlugin : public PluginWrapper<TrafficLightModuleManager>
