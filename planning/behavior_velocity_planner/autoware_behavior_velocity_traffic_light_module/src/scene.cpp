@@ -89,7 +89,7 @@ bool TrafficLightModule::modifyPathVelocity(
   }
 
   // Calculate dist to stop point
-  const auto ego_s = experimental::trajectory::find_nearest_index(*path, self_pose->pose.position);
+  const auto ego_s = experimental::trajectory::find_nearest_index(path, self_pose->pose.position);
   const auto signed_arc_length_to_stop_point = *stop_point_s - ego_s;
   setDistance(signed_arc_length_to_stop_point);
 
@@ -243,6 +243,10 @@ void TrafficLightModule::updateTrafficSignal(const PlannerData & planner_data)
 bool TrafficLightModule::isPassthrough(
   const double & signed_arc_length, const PlannerData & planner_data) const
 {
+  if (is_prev_state_stop_) {
+    return false;
+  }
+
   const double max_acc = planner_data.max_stop_acceleration_threshold;
   const double max_jerk = planner_data.max_stop_jerk_threshold;
   const double delay_response_time = planner_data.delay_response_time;
@@ -265,7 +269,7 @@ bool TrafficLightModule::isPassthrough(
 
   const auto & enable_pass_judge = planner_param_.enable_pass_judge;
 
-  if (enable_pass_judge && !stoppable && !is_prev_state_stop_) {
+  if (enable_pass_judge && !stoppable) {
     // Cannot stop under acceleration and jerk limits.
     // However, ego vehicle can't enter the intersection while the light is yellow.
     // It is called dilemma zone. Make a stop decision to be safe.
@@ -281,9 +285,9 @@ bool TrafficLightModule::isPassthrough(
         logger_, *clock_, 1000, "[traffic_light] can pass through intersection during yellow lamp");
       return true;
     }
-  } else {
-    return false;
   }
+
+  return false;
 }
 
 bool TrafficLightModule::findValidTrafficSignal(
@@ -322,15 +326,17 @@ bool TrafficLightModule::isTrafficSignalTimedOut() const
 }
 
 Trajectory TrafficLightModule::insertStopVelocity(
-  const Trajectory & input, const double & stop_point_s, const PlannerData & planner_data) const
+  const Trajectory & input, const double & stop_point_s, const PlannerData & planner_data)
 {
   auto modified_path = input;
+
+  const auto stop_pose = modified_path.compute(stop_point_s).point.pose;
+  debug_data_.stop_poses.push_back(stop_pose);
 
   modified_path.longitudinal_velocity_mps().range(stop_point_s, modified_path.length()).set(0.0);
 
   planning_factor_interface_->add(
-    modified_path.restore(), planner_data.current_odometry->pose,
-    modified_path.compute(stop_point_s).point.pose,
+    modified_path.restore(), planner_data.current_odometry->pose, stop_pose,
     autoware_internal_planning_msgs::msg::PlanningFactor::STOP,
     autoware_internal_planning_msgs::msg::SafetyFactorArray{}, true /*is_driving_forward*/, 0.0,
     0.0 /*shift distance*/, "traffic_light");

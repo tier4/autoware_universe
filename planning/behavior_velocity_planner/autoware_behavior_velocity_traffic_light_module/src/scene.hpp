@@ -112,7 +112,7 @@ private:
     const double & distance_to_stop_line, const PlannerData & planner_data) const;
 
   Trajectory insertStopVelocity(
-    const Trajectory & input, const double & stop_point_s, const PlannerData & planner_data) const;
+    const Trajectory & input, const double & stop_point_s, const PlannerData & planner_data);
 
   bool isPassthrough(const double & signed_arc_length, const PlannerData & planner_data) const;
 
