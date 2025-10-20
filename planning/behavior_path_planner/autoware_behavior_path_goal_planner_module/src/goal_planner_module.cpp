@@ -727,6 +727,10 @@ void GoalPlannerModule::updateData()
     return;
   }
 
+  const auto & previous_module_path = getPreviousModuleOutput().path;
+  const auto & previous_module_reference_path = getPreviousModuleOutput().reference_path;
+  if (previous_module_path.points.empty() || previous_module_reference_path.points.empty()) return;
+
   if (!goal_searcher_) {
     goal_searcher_.emplace(GoalSearcher::create(parameters_, vehicle_footprint_, planner_data_));
   }
@@ -749,7 +753,7 @@ void GoalPlannerModule::updateData()
   }
 
   const lanelet::ConstLanelets current_lanes =
-    utils::getCurrentLanesFromPath(getPreviousModuleOutput().reference_path, planner_data_);
+    utils::getCurrentLanesFromPath(previous_module_reference_path, planner_data_);
 
   if (
     !trigger_thread_on_approach_ &&
@@ -769,8 +773,11 @@ void GoalPlannerModule::updateData()
     }
   }
 
+  const auto ego_segment_idx = planner_data_->findEgoSegmentIndex(previous_module_path.points);
+  if (previous_module_path.points[ego_segment_idx].lane_ids.empty()) return;
+  const auto ego_lane_id = previous_module_path.points[ego_segment_idx].lane_ids.front();
   const auto current_lane_change_state = lane_change_ctx_.get_next_state(
-    getPreviousModuleOutput().path, *(planner_data_->route_handler), clock_->now());
+    previous_module_path, ego_lane_id, *(planner_data_->route_handler), clock_->now());
   lane_change_ctx_.set_state(current_lane_change_state);
 
   if (getCurrentStatus() == ModuleStatus::IDLE) {
@@ -784,7 +791,7 @@ void GoalPlannerModule::updateData()
 
   resetPathCandidate();
   resetPathReference();
-  path_reference_ = std::make_shared<PathWithLaneId>(getPreviousModuleOutput().reference_path);
+  path_reference_ = std::make_shared<PathWithLaneId>(previous_module_reference_path);
 
   const bool found_pull_over_path =
     context_data_ ? context_data_.value().pull_over_path_opt.has_value() : false;
@@ -814,7 +821,7 @@ void GoalPlannerModule::updateData()
     dynamic_target_objects, parameters_.th_moving_object_velocity);
 
   const bool upstream_module_has_stopline_except_terminal =
-    goal_planner_utils::has_stopline_except_terminal(getPreviousModuleOutput().path);
+    goal_planner_utils::has_stopline_except_terminal(previous_module_path);
   const bool lane_change_status_changed = !lane_change_ctx_.is_in_consistent_transition();
   path_decision_controller_.transit_state(
     pull_over_path_recv, upstream_module_has_stopline_except_terminal, clock_->now(),
@@ -828,14 +835,32 @@ void GoalPlannerModule::updateData()
   // NOTE: currently occupancy_grid_map_ must be used after syncWithThreads
   goal_searcher.update(goal_candidates_, occupancy_grid_map_, planner_data_, static_target_objects);
 
+  // Update lane_parking_response only when NOT_DECIDED.
+  // freespace_parking_response is always updated.
+  const bool should_update_lane_parking =
+    new_decision_state.state == PathDecisionState::DecisionKind::NOT_DECIDED;
+
   if (context_data_) {
-    context_data_.value().update(
-      new_decision_state.is_stable_safe, static_target_objects, dynamic_target_objects,
-      prev_decision_state,
-      isStopped(
-        odometry_buffer_stopped_, planner_data_->self_odometry, parameters_.th_stopped_time,
-        parameters_.th_stopped_velocity),
-      std::move(lane_parking_response), std::move(freespace_parking_response));
+    if (should_update_lane_parking) {
+      // NOT_DECIDED: update both lane_parking and freespace_parking responses
+      context_data_.value().update(
+        new_decision_state.is_stable_safe, static_target_objects, dynamic_target_objects,
+        prev_decision_state,
+        isStopped(
+          odometry_buffer_stopped_, planner_data_->self_odometry, parameters_.th_stopped_time,
+          parameters_.th_stopped_velocity),
+        std::move(lane_parking_response), std::move(freespace_parking_response));
+    } else {
+      // DECIDING or DECIDED: keep lane_parking_response, update freespace_parking_response
+      context_data_.value().update(
+        new_decision_state.is_stable_safe, static_target_objects, dynamic_target_objects,
+        prev_decision_state,
+        isStopped(
+          odometry_buffer_stopped_, planner_data_->self_odometry, parameters_.th_stopped_time,
+          parameters_.th_stopped_velocity),
+        LaneParkingResponse(context_data_.value().lane_parking_response),
+        std::move(freespace_parking_response));
+    }
   } else {
     context_data_.emplace(
       new_decision_state.is_stable_safe, static_target_objects, dynamic_target_objects,
@@ -1537,7 +1562,7 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsCandidate(
 
   // NOTE: following block is intentionally dirty to refactor and extract only necessary codes in
   // planAsCandidate/planAsOutput/setOutput
-  BehaviorModuleOutput pull_over_output{};
+  BehaviorModuleOutput output{};
   {
     auto pull_over_path_with_velocity_opt = context_data.pull_over_path_opt;
     const bool is_freespace =
@@ -1594,46 +1619,13 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsCandidate(
       }
     }
 
-    // set output and status
-    {
-      if (!pull_over_path_with_velocity_opt) {
-        // situation : not safe against static objects use stop_path
-        // TODO(soblin): goal_candidates_.empty() is impossible
-        pull_over_output.path = generateStopPath(
-          context_data, (goal_candidates_.empty() ? "no goal candidate" : "no static safe path"));
-        RCLCPP_INFO_THROTTLE(
-          getLogger(), *clock_, 5000, "Not found safe pull_over path, generate stop path");
-      } else {
-        const auto & pull_over_path = pull_over_path_with_velocity_opt.value();
-        if (!context_data.is_stable_safe_path && isActivated()) {
-          // situation : not safe against dynamic objects after approval
-          // insert stop point in current path if ego is able to stop with acceleration and jerk
-          // constraints
-          pull_over_output.path = generateFeasibleStopPath(
-            pull_over_path.getCurrentPath(), "unsafe against dynamic objects");
-          RCLCPP_INFO_THROTTLE(
-            getLogger(), *clock_, 5000, "Not safe against dynamic objects, generate stop path");
-        } else {
-          // situation : (safe against static and dynamic objects) or (safe against static objects
-          // and before approval) don't stop keep stop if not enough time passed, because it takes
-          // time for the trajectory to be reflected
-          auto current_path = pull_over_path.getCurrentPath();
-          keepStoppedWithCurrentPath(context_data, current_path);
-          pull_over_output.path = current_path;
-        }
-
-        setModifiedGoal(context_data, pull_over_output);
-      }
-    }
-
     if (pull_over_path_with_velocity_opt) {
+      setModifiedGoal(context_data, output);
       path_candidate_ =
         std::make_shared<PathWithLaneId>(pull_over_path_with_velocity_opt.value().full_path());
     }
   }
 
-  BehaviorModuleOutput output{};
-  output.modified_goal = pull_over_output.modified_goal;
   output.path = generateStopPath(context_data, detail);
   output.reference_path = getPreviousModuleOutput().reference_path;
 
