@@ -14,9 +14,9 @@
     center_pcl_shift: 0.0
     sector_angle_deg: 1.0
     gnd_cell_buffer_size: 5
-    min_x: -100.0
-    max_x: 150.0
-    min_y: -70.0
-    max_y: 70.0
-    max_z: 2.5
+    min_x: -70.0
+    max_x: 120.0
+    min_y: -75.0
+    max_y: 75.0
+    max_z: 3.080
     min_z: -2.5
