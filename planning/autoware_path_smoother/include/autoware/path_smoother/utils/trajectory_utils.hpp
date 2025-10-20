@@ -170,6 +170,20 @@ std::optional<size_t> updateFrontPointForFix(
 void insertStopPoint(
   std::vector<TrajectoryPoint> & traj_points, const geometry_msgs::msg::Pose & input_stop_pose,
   const size_t stop_seg_idx);
+
+/// @brief apply the velocity profile of an input trajectory onto an output trajectory
+/// @details the velocity of each point in the output is replaced by the minimum velocity in the
+/// nearest segment in the input
+/// @param [inout] output_trajectory output trajectory points whose velocities are replaced
+/// @param [in] input_trajectory input trajectory points whose velocities are copied to the output
+/// @param [in] ego_pose ego pose used to skip the copy on trajectory points that are before the ego
+/// pose
+/// @param [in] ego_nearest_param ego nearest parameters
+void apply_input_velocity(
+  std::vector<TrajectoryPoint> & output_trajectory,
+  const std::vector<TrajectoryPoint> & input_trajectory, const geometry_msgs::msg::Pose & ego_pose,
+  const EgoNearestParam & ego_nearest_param);
+
 }  // namespace trajectory_utils
 }  // namespace autoware::path_smoother
 #endif  // AUTOWARE__PATH_SMOOTHER__UTILS__TRAJECTORY_UTILS_HPP_

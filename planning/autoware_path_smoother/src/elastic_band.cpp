@@ -453,4 +453,5 @@ std::optional<std::vector<TrajectoryPoint>> EBPathSmoother::convertOptimizedPoin
   time_keeper_ptr_->toc(__func__, "        ");
   return eb_traj_points;
 }
+
 }  // namespace autoware::path_smoother

@@ -14,14 +14,11 @@
 
 #include "autoware/path_smoother/elastic_band_smoother.hpp"
 
-#include "autoware/interpolation/spline_interpolation_points_2d.hpp"
 #include "autoware/motion_utils/trajectory/conversion.hpp"
-#include "autoware/path_smoother/utils/geometry_utils.hpp"
 #include "autoware/path_smoother/utils/trajectory_utils.hpp"
 #include "rclcpp/time.hpp"
 
-#include <chrono>
-#include <limits>
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -261,70 +258,8 @@ void ElasticBandSmoother::applyInputVelocity(
   const geometry_msgs::msg::Pose & ego_pose) const
 {
   time_keeper_ptr_->tic(__func__);
-
-  // crop forward for faster calculation
-  const double output_traj_length = autoware::motion_utils::calcArcLength(output_traj_points);
-  constexpr double margin_traj_length = 10.0;
-  const auto forward_cropped_input_traj_points = [&]() {
-    const size_t ego_seg_idx =
-      trajectory_utils::findEgoSegmentIndex(input_traj_points, ego_pose, ego_nearest_param_);
-    return autoware::motion_utils::cropForwardPoints(
-      input_traj_points, ego_pose.position, ego_seg_idx, output_traj_length + margin_traj_length);
-  }();
-
-  // update velocity
-  size_t input_traj_start_idx = 0;
-  for (size_t i = 0; i < output_traj_points.size(); i++) {
-    // crop backward for efficient calculation
-    const auto cropped_input_traj_points = std::vector<TrajectoryPoint>{
-      forward_cropped_input_traj_points.begin() + input_traj_start_idx,
-      forward_cropped_input_traj_points.end()};
-
-    const size_t nearest_seg_idx = trajectory_utils::findEgoSegmentIndex(
-      cropped_input_traj_points, output_traj_points.at(i).pose, ego_nearest_param_);
-    input_traj_start_idx = nearest_seg_idx;
-
-    // calculate velocity with zero order hold
-    const double velocity = cropped_input_traj_points.at(nearest_seg_idx).longitudinal_velocity_mps;
-    output_traj_points.at(i).longitudinal_velocity_mps = velocity;
-  }
-
-  // insert stop point explicitly
-  const auto stop_idx =
-    autoware::motion_utils::searchZeroVelocityIndex(forward_cropped_input_traj_points);
-  if (stop_idx) {
-    const auto & input_stop_pose = forward_cropped_input_traj_points.at(stop_idx.value()).pose;
-    // NOTE: autoware::motion_utils::findNearestSegmentIndex is used instead of
-    // trajectory_utils::findEgoSegmentIndex
-    //       for the case where input_traj_points is much longer than output_traj_points, and the
-    //       former has a stop point but the latter will not have.
-    const auto stop_seg_idx = autoware::motion_utils::findNearestSegmentIndex(
-      output_traj_points, input_stop_pose, ego_nearest_param_.dist_threshold,
-      ego_nearest_param_.yaw_threshold);
-
-    // calculate and insert stop pose on output trajectory
-    const bool is_stop_point_inside_trajectory = [&]() {
-      if (!stop_seg_idx) {
-        return false;
-      }
-      if (*stop_seg_idx == output_traj_points.size() - 2) {
-        const double signed_projected_length_to_segment =
-          autoware::motion_utils::calcLongitudinalOffsetToSegment(
-            output_traj_points, *stop_seg_idx, input_stop_pose.position);
-        const double segment_length = autoware::motion_utils::calcSignedArcLength(
-          output_traj_points, *stop_seg_idx, *stop_seg_idx + 1);
-        if (segment_length < signed_projected_length_to_segment) {
-          // NOTE: input_stop_pose is outside output_traj_points.
-          return false;
-        }
-      }
-      return true;
-    }();
-    if (is_stop_point_inside_trajectory) {
-      trajectory_utils::insertStopPoint(output_traj_points, input_stop_pose, *stop_seg_idx);
-    }
-  }
-
+  trajectory_utils::apply_input_velocity(
+    output_traj_points, input_traj_points, ego_pose, ego_nearest_param_);
   time_keeper_ptr_->toc(__func__, "    ");
 }
 
