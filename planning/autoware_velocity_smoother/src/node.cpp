@@ -63,6 +63,7 @@ VelocitySmootherNode::VelocitySmootherNode(const rclcpp::NodeOptions & node_opti
   pub_velocity_limit_ = create_publisher<VelocityLimit>(
     "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
   pub_dist_to_stopline_ = create_publisher<Float32Stamped>("~/distance_to_stopline", 1);
+  pub_dist_to_stopline_no_smoothing_ = create_publisher<Float32Stamped>("~/distance_to_stopline_no_smoothing", 1);
   sub_current_trajectory_ = create_subscription<Trajectory>(
     "~/input/trajectory", 1, std::bind(&VelocitySmootherNode::onCurrentTrajectory, this, _1));
 
@@ -494,6 +495,9 @@ void VelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstSharedPtr 
     return;
   }
 
+  // publish debug message
+  publishStopDistance(output, false);
+
   // Note that output velocity is resampled by linear interpolation
   auto output_resampled = resampling::resampleTrajectory(
     output, current_odometry_ptr_->twist.twist.linear.x, current_odometry_ptr_->pose.pose,
@@ -518,7 +522,7 @@ void VelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstSharedPtr 
   publishTrajectory(output_resampled);
 
   // publish debug message
-  publishStopDistance(output);
+  publishStopDistance(output, true);
   publishClosestState(output);
 
   // Publish Calculation Time
@@ -761,7 +765,7 @@ void VelocitySmootherNode::insertBehindVelocity(
   }
 }
 
-void VelocitySmootherNode::publishStopDistance(const TrajectoryPoints & trajectory) const
+void VelocitySmootherNode::publishStopDistance(const TrajectoryPoints & trajectory, const bool isResampled) const
 {
   const size_t closest = findNearestIndexFromEgo(trajectory);
 
@@ -777,7 +781,11 @@ void VelocitySmootherNode::publishStopDistance(const TrajectoryPoints & trajecto
   Float32Stamped dist_to_stopline{};
   dist_to_stopline.stamp = this->now();
   dist_to_stopline.data = std::clamp(stop_dist, -stop_dist_lim, stop_dist_lim);
-  pub_dist_to_stopline_->publish(dist_to_stopline);
+  if (isResampled) {
+    pub_dist_to_stopline_->publish(dist_to_stopline);
+  } else {
+    pub_dist_to_stopline_no_smoothing_->publish(dist_to_stopline);
+  }
 }
 
 std::pair<Motion, VelocitySmootherNode::InitializeType> VelocitySmootherNode::calcInitialMotion(
