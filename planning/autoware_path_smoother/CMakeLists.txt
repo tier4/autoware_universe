@@ -24,6 +24,7 @@ rclcpp_components_register_node(autoware_path_smoother
 if(BUILD_TESTING)
   ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
     test/test_${PROJECT_NAME}_node_interface.cpp
+    test/test_trajectory_utils.cpp
   )
   target_link_libraries(test_${PROJECT_NAME}
     ${PROJECT_NAME}
