@@ -13,6 +13,7 @@
   <depend>autoware_planning_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>rclpy</depend>
+  <exec_depend>autoware_frenetix_core_vendor</exec_depend>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
