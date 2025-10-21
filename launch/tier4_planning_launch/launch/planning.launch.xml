@@ -1,15 +1,6 @@
 <launch>
   <!-- planning module -->
 
-  <!-- Whether to use perception filter -->
-  <arg name="use_perception_filter" default="false" description="launch perception filter for external approval"/>
-
-  <!-- Conditional topic remapping based on perception filter usage -->
-  <let name="input_objects_topic_name" value="/perception/object_recognition/filtered_objects" if="$(var use_perception_filter)"/>
-  <let name="input_objects_topic_name" value="/perception/object_recognition/objects" unless="$(var use_perception_filter)"/>
-  <let name="input_pointcloud_topic_name" value="/perception/obstacle_segmentation/filtered_pointcloud" if="$(var use_perception_filter)"/>
-  <let name="input_pointcloud_topic_name" value="/perception/obstacle_segmentation/pointcloud" unless="$(var use_perception_filter)"/>
-
   <!-- mission planner -->
   <arg name="mission_planner_param_path"/>
   <!-- parking -->
@@ -76,17 +67,5 @@
     <group if="$(var launch_remaining_distance_time_calculator)">
       <include file="$(find-pkg-share autoware_remaining_distance_time_calculator)/launch/remaining_distance_time_calculator.launch.xml"/>
     </group>
-  </group>
-
-  <!-- Perception Filter -->
-  <group if="$(var use_perception_filter)">
-    <include file="$(find-pkg-share autoware_perception_filter)/launch/perception_filter.launch.xml">
-      <arg name="input_objects" value="/perception/object_recognition/objects"/>
-      <arg name="input_pointcloud" value="/perception/obstacle_segmentation/pointcloud"/>
-      <arg name="input_planning_trajectory" value="/planning/scenario_planning/trajectory"/>
-      <arg name="output_filtered_objects" value="/perception/object_recognition/filtered_objects"/>
-      <arg name="output_filtered_pointcloud" value="/perception/obstacle_segmentation/filtered_pointcloud"/>
-      <arg name="perception_filter_param_path" value="$(find-pkg-share autoware_launch)/config/planning/perception_filter/perception_filter.param.yaml"/>
-    </include>
   </group>
 </launch>

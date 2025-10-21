@@ -1,11 +1,6 @@
 <launch>
   <!-- if output_metrics=true, metrics are written to `<ros2_logging_directory>/autoware_metrics/<node_name>-<time_stamp>.json`. -->
   <arg name="output_metrics" default="false"/>
-  <arg name="use_perception_filter" default="false" description="launch perception filter for external approval"/>
-
-  <!-- Conditional topic remapping based on perception filter usage -->
-  <let name="input_objects_topic_name" value="/perception/object_recognition/filtered_objects" if="$(var use_perception_filter)"/>
-  <let name="input_objects_topic_name" value="/perception/object_recognition/objects" unless="$(var use_perception_filter)"/>
 
   <arg name="input/odometry" default="/localization/kinematic_state"/>
   <arg name="input/acceleration" default="/localization/acceleration"/>
@@ -27,7 +22,7 @@
       <remap from="~/input/acceleration" to="$(var input/acceleration)"/>
       <remap from="~/input/trajectory" to="$(var input/trajectory)"/>
       <remap from="~/input/reference_trajectory" to="$(var input/reference_trajectory)"/>
-      <remap from="~/input/objects" to="$(var input_objects_topic_name)"/>
+      <remap from="~/input/objects" to="$(var input/objects)"/>
       <remap from="~/input/modified_goal" to="$(var input/modified_goal)"/>
       <remap from="~/input/route" to="$(var input/route_topic)"/>
       <remap from="~/input/vector_map" to="$(var input/map_topic)"/>

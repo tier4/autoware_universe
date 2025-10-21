@@ -4,13 +4,6 @@
   <arg name="lateral_controller_mode"/>
   <arg name="longitudinal_controller_mode"/>
   <arg name="check_external_emergency_heartbeat"/>
-  <arg name="use_perception_filter" default="false" description="launch perception filter for external approval"/>
-
-  <!-- Conditional topic remapping based on perception filter usage -->
-  <let name="input_objects_topic_name" value="/perception/object_recognition/filtered_objects" if="$(var use_perception_filter)"/>
-  <let name="input_objects_topic_name" value="/perception/object_recognition/objects" unless="$(var use_perception_filter)"/>
-  <let name="input_pointcloud_topic_name" value="/perception/obstacle_segmentation/filtered_pointcloud" if="$(var use_perception_filter)"/>
-  <let name="input_pointcloud_topic_name" value="/perception/obstacle_segmentation/pointcloud" unless="$(var use_perception_filter)"/>
 
   <!-- external cmd selector and converter -->
   <arg name="launch_external_cmd_selector" default="true"/>
