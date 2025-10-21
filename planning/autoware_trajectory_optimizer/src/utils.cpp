@@ -24,8 +24,8 @@
 #include <autoware_utils_math/unit_conversion.hpp>
 #include <rclcpp/logging.hpp>
 
-#include <autoware_planning_msgs/msg/detail/trajectory_point__struct.hpp>
-#include <nav_msgs/msg/detail/odometry__struct.hpp>
+#include <autoware_planning_msgs/msg/trajectory_point.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <algorithm>
 #include <cmath>
