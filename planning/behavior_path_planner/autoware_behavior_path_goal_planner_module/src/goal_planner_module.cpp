@@ -1944,9 +1944,8 @@ PathWithLaneId GoalPlannerModule::generateStopPath(
       feasible_stop_path.points, stop_pose.position, -min_stop_distance.value());
     if (decel_start_point) {
       const auto pose = feasible_stop_path.points
-                          .at(
-                            autoware::motion_utils::findNearestIndex(
-                              feasible_stop_path.points, decel_start_point.value()))
+                          .at(autoware::motion_utils::findNearestIndex(
+                            feasible_stop_path.points, decel_start_point.value()))
                           .point.pose;
       set_blinker_decel_start_pose(std::make_optional<Pose>(pose), stop_pose);
     }
