@@ -2660,7 +2660,7 @@ void GoalPlannerModule::setDebugData(const PullOverContextData & context_data)
     const auto color = state == PathDecisionState::DecisionKind::DECIDED
                          ? create_marker_color(1.0, 1.0, 0.0, 0.999)  // yellow
                        : state == PathDecisionState::DecisionKind::DECIDING
-                         ? create_marker_color(0.5, 1.0, 0.0, 0.999)   // yellow-green
+                         ? create_marker_color(1.0, 0.5, 0.0, 0.999)   // orange
                          : create_marker_color(0.0, 1.0, 0.0, 0.999);  // green
     const double z = planner_data_->route_handler->getGoalPose().position.z;
     add_info_marker(
