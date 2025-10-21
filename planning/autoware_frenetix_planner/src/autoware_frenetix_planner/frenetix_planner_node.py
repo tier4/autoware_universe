@@ -1,7 +1,7 @@
 
 import sys
 import lanelet2  # noqa: F401 # isort: skip
-# from autoware_lanelet2_extension_python.utility.utilities import fromBinMsg
+from autoware_lanelet2_extension_python.utility.utilities import fromBinMsg
 from autoware_map_msgs.msg import LaneletMapBin
 from autoware_planning_msgs.msg import Path
 from autoware_planning_msgs.msg import Trajectory
@@ -182,8 +182,8 @@ class FrenetixPlanner(Node):
     def vector_map_callback(self, map_msg: LaneletMapBin):
         self.get_logger().info(f"Received vector map message: {getattr(map_msg, 'name_map', None)}")
         # Conversion from binary map message to lanelet map would happen here
-        # self.lanelet_map_ = fromBinMsg(map_msg)
-        # self.get_logger().info("Lanelet map converted.")
+        self.lanelet_map_ = fromBinMsg(map_msg)
+        self.get_logger().info("Lanelet map converted.")
 
     # Timer callback to publish trajectory
     def timer_callback_publish_trajectory(self):

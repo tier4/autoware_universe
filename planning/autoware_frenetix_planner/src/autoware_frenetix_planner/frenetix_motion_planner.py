@@ -22,7 +22,7 @@ class FrenetixMotionPlanner:
     and both cartesian and curvilinear ego states.
     """
 
-    def __init__(self, logger, params, logging_enabled=True):
+    def __init__(self, logger, params, logging_enabled=False):
         self.logger = logger
 
         # Initialize parameters
@@ -51,7 +51,7 @@ class FrenetixMotionPlanner:
 
         # Planning cycle control
         self.planning_counter = 0
-        self.planning_interval = 3  # Plan every 3 cycles (300ms if called every 100ms)
+        self.planning_interval = 2  # Plan every 2 cycles (200ms if called every 100ms)
         self.last_planned_trajectory = None
 
         # Initialize the sampling handler
@@ -76,6 +76,8 @@ class FrenetixMotionPlanner:
         if logging_enabled:
           self.trajectory_logger = TrajectoryLogger(save_dir="/workspace/src/universe/autoware_universe/planning/autoware_frenetix_planner/test/logs",
                                                     mode="trajectories")
+        else:
+            self.trajectory_logger = None
           
     # Method to update parameters at runtime
     def update_params(self, new_params):
@@ -372,7 +374,7 @@ class FrenetixMotionPlanner:
         if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0:
             self.handler.add_cost_function(
                 cf.CalculateCollisionProbabilityFast(name, self.params.cost_weights[name], self.obstacle_predictions,
-                                                     self.params.length, self.params.width, self.params.wb_rear_axle))
+                                                     self.params.length, self.params.width, self.params.wb_rear_axle, 0.5))
 
         # name = "distance_to_obstacles"
         # if name in self.params.cost_weights.keys() and self.params.cost_weights[name] > 0 and self.obstacle_positions is not None:
@@ -446,7 +448,7 @@ class FrenetixMotionPlanner:
     def _plan(self):
 
 
-        desired_velocity = 5.0
+        desired_velocity = self.params.desired_velocity
 
         # if self.curvilinear_state.s > 50:
         #     desired_velocity = 0.0
@@ -481,32 +483,33 @@ class FrenetixMotionPlanner:
 
             feasible_trajectories = []
             infeasible_trajectories = []
-            for idx, trajectory in enumerate(self.handler.get_sorted_trajectories()):
+            for trajectory in self.handler.get_sorted_trajectories():
                 # check if trajectory is feasible
-                max_vel = max(trajectory.cartesian.v)
-                cost = trajectory.cost
                 if trajectory.feasible:
                     feasible_trajectories.append(trajectory)
-                    self.logger.debug(f"Feasible trajectory {idx}: max_velocity={max_vel:.2f} m/s, cost={cost:.2f}")
                 elif trajectory.valid:
-                    self.logger.debug(f"Infeasible trajectory {idx}: max_velocity={max_vel:.2f} m/s, cost={cost:.2f}")
                     infeasible_trajectories.append(trajectory)
 
             # debug trajectories
+          
+            if self.trajectory_logger is not None:
+              self.trajectory_logger.save_debug_data(optimal_trajectory=optimal_trajectory, 
+                                                    feasible_trajectories=feasible_trajectories,  
+                                                    infeasible_trajectories=infeasible_trajectories,
+                                                    reference_path=self.reference_path, 
+                                                    obstacle_positions=self.obstacle_positions,
+                                                    cartesian_state=self.cartesian_state,
+                                                    curvilinear_state=self.curvilinear_state,
+                                                    )
 
-            # self.trajectory_logger.save_debug_data(optimal_trajectory=optimal_trajectory, 
-            #                                       feasible_trajectories=feasible_trajectories,  
-            #                                       infeasible_trajectories=infeasible_trajectories,
-            #                                       reference_path=self.reference_path, 
-            #                                       obstacle_positions=self.obstacle_positions,
-            #                                       cartesian_state=self.cartesian_state,
-            #                                       curvilinear_state=self.curvilinear_state,
-            #                                       )
-
-            if self.curvilinear_state.s_dot < 1.0:
-              optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else infeasible_trajectories[0]
-            else:
-              optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else None
+            try:
+              if self.curvilinear_state.s_dot < 1.0:
+                optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else infeasible_trajectories[0]
+              else:
+                optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else None
+            except Exception as e:
+              self.logger.error(f"No optimal trajectory found!")
+              optimal_trajectory = None
 
             if optimal_trajectory is not None:
               self.logger.debug(f"Cartesian (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.theta]}")

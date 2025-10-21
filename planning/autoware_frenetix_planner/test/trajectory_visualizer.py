@@ -129,7 +129,7 @@ class TrajectoryVisualizer(tk.Tk):
         self.fig.tight_layout()
 
         # initialize planner
-        self.planner = FrenetixMotionPlanner(logger=DummyLogger(), logging_enabled=False)
+        # self.planner = FrenetixMotionPlanner(logger=DummyLogger(), logging_enabled=False)
 
     def _validate_int(self, P):
         """Internal validation function for integer-only input in the spinbox."""
@@ -314,7 +314,7 @@ class TrajectoryVisualizer(tk.Tk):
         # Add black border by drawing a thicker black line underneath
         x_data, y_data = self.selected_line.get_data()
         border_width = self.selected_line.original_linewidth * 4.0 + 2
-        self.border_line, = self.ax.plot(x_data, y_data, color='black', linewidth=border_width, zorder=39, alpha=1.0)
+        self.border_line, = self.ax.plot(x_data, y_data, color='black', marker='o', markersize=border_width*1.5, linewidth=border_width, zorder=39, alpha=1.0)
 
         # Apply highlight to the original line
         self.selected_line.set_linewidth(self.selected_line.original_linewidth * 4.0)
