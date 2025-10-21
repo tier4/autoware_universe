@@ -20,6 +20,15 @@
 #include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 
+#include <autoware_lanelet2_extension/utility/message_conversion.hpp>
+#include <autoware_lanelet2_extension/utility/query.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+
+#include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/primitives/Lanelet.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -59,9 +68,15 @@ public:
     const std::vector<rclcpp::Parameter> & parameters) override;
 
 private:
-  // Generate bounds perpendicular to trajectory heading at each point
+  // Map callback to receive lanelet map
+  void on_map(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg);
+
+  // Generate bounds perpendicular to trajectory heading at each point (fallback)
   BoundsPair generate_bounds_from_trajectory(
     const TrajectoryPoints & traj_points, double lateral_offset_m) const;
+
+  // Generate bounds from lanelet map based on trajectory positions
+  BoundsPair generate_bounds_from_lanelet_map(const TrajectoryPoints & traj_points) const;
 
   // Create PlannerData from trajectory points and generated bounds
   autoware::path_optimizer::PlannerData create_planner_data(
@@ -85,6 +100,10 @@ private:
 
   // Debug data (for MPT optimizer)
   std::shared_ptr<autoware::path_optimizer::DebugData> debug_data_ptr_;
+
+  // Lanelet map subscription and storage
+  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr map_sub_;
+  lanelet::LaneletMapPtr lanelet_map_ptr_;
 };
 
 }  // namespace autoware::trajectory_optimizer::plugin
