@@ -348,11 +348,13 @@ private:
   PathDecisionStateController path_decision_controller_{getLogger()};
   std::optional<rclcpp::Time> decided_time_{};
 
-  // approximate distance from the start point to the end point of pull_over.
-  // this is used as an assumed value to decelerate, etc., before generating the actual path.
-  const double approximate_pull_over_distance_{20.0};
-  // ego may exceed the stop distance, so add a buffer
-  const double stop_distance_buffer_{2.0};
+  // save the frontmost deceleration start position before approve phase
+  struct BlinkerBeforePullOver
+  {
+    Pose desired;
+    std::optional<Pose> required;
+  };
+  std::optional<BlinkerBeforePullOver> blinker_before_pull_over_{};
 
   // debug
   mutable GoalPlannerDebugData debug_data_;
@@ -392,11 +394,11 @@ private:
 
   // stop or decelerate
   void deceleratePath(PullOverPath & pull_over_path) const;
-  void decelerateForTurnSignal(const Pose & stop_pose, PathWithLaneId & path) const;
+  std::optional<Pose> decelerateForTurnSignal(const Pose & stop_pose, PathWithLaneId & path) const;
   void decelerateBeforeSearchStart(
     const Pose & search_start_offset_pose, PathWithLaneId & path) const;
   PathWithLaneId generateStopPath(
-    const PullOverContextData & context_data, const std::string & detail) const;
+    const PullOverContextData & context_data, const std::string & detail);
   PathWithLaneId generateFeasibleStopPath(
     const PathWithLaneId & path, const std::string & detail) const;
 
@@ -443,6 +445,11 @@ private:
   void setModifiedGoal(
     const PullOverContextData & context_data, BehaviorModuleOutput & output) const;
   void setTurnSignalInfo(const PullOverContextData & context_data, BehaviorModuleOutput & output);
+  void setTurnSignalInfoForStopPath(
+    const BehaviorModuleOutput & stop_path, const Pose & decel_start_pose,
+    const std::optional<Pose> & stop_pose, BehaviorModuleOutput & output);
+  void set_blinker_decel_start_pose(
+    const std::optional<Pose> & decel_start_pose, const std::optional<Pose> & stop_pose);
 
   // new turn signal
   TurnSignalInfo calcTurnSignalInfo(const PullOverContextData & context_data);
