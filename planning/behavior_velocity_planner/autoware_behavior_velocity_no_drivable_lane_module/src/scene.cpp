@@ -20,6 +20,7 @@
 
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
 #include <autoware/trajectory/utils/find_nearest.hpp>
+#include <autoware/trajectory/utils/pretty_build.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -44,8 +45,7 @@ NoDrivableLaneModule::NoDrivableLaneModule(
 
 bool NoDrivableLaneModule::modifyPathVelocity(PathWithLaneId * _path)
 {
-  auto path = autoware::experimental::trajectory::Trajectory<PathPointWithLaneId>::Builder{}.build(
-    _path->points);
+  auto path = experimental::trajectory::pretty_build(_path->points);
   if (!path) {
     return false;
   }
