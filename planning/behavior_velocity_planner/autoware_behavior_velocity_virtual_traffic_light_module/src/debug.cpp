@@ -14,9 +14,9 @@
 
 #include "scene.hpp"
 
+#include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/motion_utils/marker/marker_helper.hpp>
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
-#include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_utils/math/constants.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 
@@ -92,7 +92,7 @@ visualization_msgs::msg::MarkerArray VirtualTrafficLightModule::createDebugMarke
       create_marker_scale(0.3, 0.0, 0.0), create_marker_color(1.0, 1.0, 1.0, 0.999));
 
     for (const auto & p : *m.stop_line) {
-      marker.points.push_back(lanelet::utils::conversion::toGeomMsgPt(p));
+      marker.points.push_back(experimental::lanelet2_utils::to_ros(p));
     }
 
     debug_marker_array.markers.push_back(marker);
@@ -105,7 +105,7 @@ visualization_msgs::msg::MarkerArray VirtualTrafficLightModule::createDebugMarke
       create_marker_scale(0.3, 0.0, 0.0), create_marker_color(0.0, 1.0, 0.0, 0.999));
 
     for (const auto & p : m.start_line) {
-      marker.points.push_back(lanelet::utils::conversion::toGeomMsgPt(p));
+      marker.points.push_back(experimental::lanelet2_utils::to_ros(p));
     }
 
     debug_marker_array.markers.push_back(marker);
@@ -119,8 +119,8 @@ visualization_msgs::msg::MarkerArray VirtualTrafficLightModule::createDebugMarke
 
     for (const auto & line : m.end_lines) {
       for (size_t i = 1; i < line.size(); ++i) {
-        marker.points.push_back(lanelet::utils::conversion::toGeomMsgPt(line[i - 1]));
-        marker.points.push_back(lanelet::utils::conversion::toGeomMsgPt(line[i]));
+        marker.points.push_back(experimental::lanelet2_utils::to_ros(line[i - 1]));
+        marker.points.push_back(experimental::lanelet2_utils::to_ros(line[i]));
       }
     }
 
