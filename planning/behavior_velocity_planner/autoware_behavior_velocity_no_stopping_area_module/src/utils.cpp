@@ -119,37 +119,40 @@ Polygon2d generate_ego_no_stopping_area_lane_polygon(
   const lanelet::autoware::NoStoppingArea & no_stopping_area_reg_elem, const double margin,
   const double max_polygon_length, const double path_expand_width)
 {
-  Polygon2d ego_area;  // open polygon
-
   const auto ego_s =
     experimental::trajectory::find_first_nearest_index(path, ego_pose, 3.0, M_PI_4);
   if (!ego_s) {
-    return ego_area;
+    return {};
   }
 
   // return if area size is not intentional
   if (no_stopping_area_reg_elem.noStoppingAreas().size() != 1) {
-    return ego_area;
+    return {};
   }
 
   const auto no_stopping_area = no_stopping_area_reg_elem.noStoppingAreas().front();
   const auto ego_area_intervals = experimental::trajectory::find_intervals(
     path, [&](const autoware_internal_planning_msgs::msg::PathPointWithLaneId & p) {
       const auto & pos = p.point.pose.position;
-      return bg::within(
+      return bg::covered_by(
         Point2d{pos.x, pos.y}, lanelet::utils::to2D(no_stopping_area).basicPolygon());
     });
   if (ego_area_intervals.empty()) {
-    return ego_area;
+    return {};
   }
 
   const auto [ego_area_start_s, ego_area_end_s] = ego_area_intervals.front();
-  constexpr auto interpolation_interval = 0.5;
+  if (ego_area_start_s - *ego_s > max_polygon_length) {
+    return {};
+  }
 
+  constexpr auto interpolation_interval = 0.5;
   const auto ego_area_bases = path.base_arange(
     {std::max({ego_area_start_s, *ego_s}),
      std::min({ego_area_end_s + margin, ego_area_start_s + max_polygon_length, path.length()})},
     interpolation_interval);
+
+  Polygon2d ego_area;
 
   const auto add_edge = [&](const auto begin, const auto end, const double offset) {
     for (auto it = begin; it != end; ++it) {
@@ -163,6 +166,7 @@ Polygon2d generate_ego_no_stopping_area_lane_polygon(
 
   add_edge(ego_area_bases.begin(), ego_area_bases.end(), path_expand_width);
   add_edge(ego_area_bases.rbegin(), ego_area_bases.rend(), -path_expand_width);
+
   bg::correct(ego_area);
 
   return ego_area;
