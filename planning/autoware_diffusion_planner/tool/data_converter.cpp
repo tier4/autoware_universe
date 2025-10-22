@@ -749,7 +749,7 @@ int main(int argc, char ** argv)
                   << std::endl;
         continue;
       }
-      if (stopping_count > INPUT_T && is_red_or_yellow) {
+      if (stopping_count > (INPUT_T + 5) && is_red_or_yellow) {
         std::cout << "Skip this frame " << i << " because stopping_count=" << stopping_count
                   << " and red or yellow light" << std::endl;
         continue;
