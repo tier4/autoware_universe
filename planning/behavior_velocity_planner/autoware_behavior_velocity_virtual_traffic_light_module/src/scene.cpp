@@ -17,6 +17,7 @@
 #include <autoware/behavior_velocity_planner_common/utilization/arc_lane_util.hpp>
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware/trajectory/utils/pretty_build.hpp>
 
 #include <memory>
 #include <string>
@@ -173,7 +174,7 @@ void VirtualTrafficLightModule::setModuleState(
 bool VirtualTrafficLightModule::modifyPathVelocity(PathWithLaneId * _path)
 {
   {
-    auto path = Trajectory::Builder{}.build(_path->points);
+    auto path = experimental::trajectory::pretty_build(_path->points);
     if (!path) {
       return false;
     }
