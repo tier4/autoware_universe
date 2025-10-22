@@ -15,7 +15,11 @@
 #ifndef SCENE_HPP_
 #define SCENE_HPP_
 
+#include "utils.hpp"
+
 #include <autoware/behavior_velocity_planner_common/scene_module_interface.hpp>
+#include <autoware/trajectory/path_point_with_lane_id.hpp>
+#include <autoware/trajectory/utils/find_nearest.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/virtual_traffic_light.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
@@ -41,6 +45,9 @@
 
 namespace autoware::behavior_velocity_planner
 {
+using virtual_traffic_light::findLastCollisionBeforeEndLine;
+using Trajectory = experimental::trajectory::Trajectory<PathPointWithLaneId>;
+
 class VirtualTrafficLightModule : public SceneModuleInterface
 {
 public:
@@ -54,20 +61,21 @@ public:
 
   struct MapData
   {
+    int64_t reg_elem_id{};
     std::string instrument_type{};
     std::string instrument_id{};
     std::vector<tier4_v2x_msgs::msg::KeyValue> custom_tags{};
     autoware_utils::Point3d instrument_center{};
-    std::optional<autoware_utils::LineString3d> stop_line{};
-    autoware_utils::LineString3d start_line{};
-    std::vector<autoware_utils::LineString3d> end_lines{};
+    lanelet::Optional<lanelet::ConstLineString3d> stop_line{};
+    lanelet::ConstLineString3d start_line{};
+    std::vector<lanelet::ConstLineString3d> end_lines{};
     std::string stop_line_id_for_log{};
   };
 
   struct ModuleData
   {
     geometry_msgs::msg::Pose head_pose{};
-    autoware_internal_planning_msgs::msg::PathWithLaneId path{};
+    std::optional<Trajectory> path{};
     std::optional<geometry_msgs::msg::Pose> stop_head_pose_at_stop_line;
     std::optional<geometry_msgs::msg::Pose> stop_head_pose_at_end_line;
   };
@@ -92,7 +100,7 @@ public:
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
       planning_factor_interface);
 
-  bool modifyPathVelocity(PathWithLaneId * path) override;
+  bool modifyPathVelocity(PathWithLaneId * _path) override;
 
   visualization_msgs::msg::MarkerArray createDebugMarkerArray() override;
   autoware::motion_utils::VirtualWalls createVirtualWalls() override;
@@ -107,19 +115,19 @@ public:
 
   void updateLoggerWithState();
 
-  std::vector<int64_t> getRegulatoryElementIds() const override { return {reg_elem_.id()}; }
+  std::vector<int64_t> getRegulatoryElementIds() const override { return {map_data_.reg_elem_id}; }
   std::vector<int64_t> getLaneletIds() const override { return {lane_id_}; }
   std::vector<int64_t> getLineIds() const override
   {
     std::vector<int64_t> line_ids;
 
-    line_ids.push_back(reg_elem_.getStartLine().id());
+    line_ids.push_back(map_data_.start_line.id());
 
-    if (reg_elem_.getStopLine()) {
-      line_ids.push_back(reg_elem_.getStopLine()->id());
+    if (map_data_.stop_line) {
+      line_ids.push_back(map_data_.stop_line->id());
     }
 
-    for (const auto & end_line : reg_elem_.getEndLines()) {
+    for (const auto & end_line : map_data_.end_lines) {
       line_ids.push_back(end_line.id());
     }
 
@@ -128,7 +136,6 @@ public:
 
 private:
   const int64_t lane_id_;
-  const lanelet::autoware::VirtualTrafficLight & reg_elem_;
   const lanelet::ConstLanelet lane_;
   const PlannerParam planner_param_;
   std::optional<tier4_v2x_msgs::msg::VirtualTrafficLightState> virtual_traffic_light_state_;
@@ -162,27 +169,39 @@ private:
 
   void updateInfrastructureCommand();
 
-  std::optional<std::pair<size_t, int64_t>> getPathIndexOfFirstEndLine();
+  std::optional<std::pair<double, int64_t>> getPathIndexOfFirstEndLine() const;
 
-  bool isBeforeStartLine(const size_t end_line_idx);
+  template <class T>
+  std::optional<double> calcArcLengthFromCollision(const double end_line_s, const T & line) const
+  {
+    const auto collision = findLastCollisionBeforeEndLine(*module_data_.path, line, end_line_s);
+    if (!collision) {
+      return std::nullopt;
+    }
 
-  bool isBeforeStopLine(const size_t end_line_idx);
+    const auto ego_s = experimental::trajectory::find_nearest_index(
+      *module_data_.path, planner_data_->current_odometry->pose.position);
 
-  bool isAfterAnyEndLine(const size_t end_line_idx);
+    return *collision - ego_s - planner_data_->vehicle_info_.max_longitudinal_offset_m;
+  }
 
-  bool isNearAnyEndLine(const size_t end_line_idx);
+  bool isBeforeStartLine(const double end_line_s) const;
 
-  bool isStateTimeout(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state);
+  bool isBeforeStopLine(const double end_line_s) const;
 
-  bool hasRightOfWay(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state);
+  bool isAfterAnyEndLine(const double end_line_s) const;
 
-  void insertStopVelocityAtStopLine(
-    autoware_internal_planning_msgs::msg::PathWithLaneId * path, const size_t end_line_idx);
+  bool isNearAnyEndLine(const double end_line_s) const;
 
-  void insertStopVelocityAtEndLine(
-    autoware_internal_planning_msgs::msg::PathWithLaneId * path, const size_t end_line_idx);
+  bool isStateTimeout(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state) const;
 
-  std::string stateToString(State state) const;
+  bool hasRightOfWay(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state) const;
+
+  void insertStopVelocityAtStopLine(const double end_line_s);
+
+  void insertStopVelocityAtEndLine(const double end_line_s);
+
+  std::string stateToString(const State state) const;
 };
 }  // namespace autoware::behavior_velocity_planner
 #endif  // SCENE_HPP_

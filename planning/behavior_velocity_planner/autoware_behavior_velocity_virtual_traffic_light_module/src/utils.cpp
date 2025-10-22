@@ -84,40 +84,31 @@ geometry_msgs::msg::Point convertToGeomPoint(const autoware_utils::Point3d & p)
   return geom_p;
 }
 
-void insertStopVelocityFromStart(autoware_internal_planning_msgs::msg::PathWithLaneId * path)
+std::optional<double> findLastCollisionBeforeEndLine(
+  const Trajectory & path, const lanelet::ConstLineString3d & target_line, const double end_line_s)
 {
-  for (auto & p : path->points) {
-    p.point.longitudinal_velocity_mps = 0.0;
+  auto cropped_path = path;
+  cropped_path.crop(0., end_line_s);
+
+  const auto collision = experimental::trajectory::crossed(cropped_path, target_line);
+  if (collision.empty()) {
+    return std::nullopt;
   }
+
+  return collision.front();
 }
 
-std::optional<size_t> insertStopVelocityAtCollision(
-  const SegmentIndexWithPoint & collision, const double offset,
-  autoware_internal_planning_msgs::msg::PathWithLaneId * path)
+std::optional<double> findLastCollisionBeforeEndLine(
+  const Trajectory & path, const std::vector<lanelet::ConstLineString3d> & target_lines,
+  const double end_line_s)
 {
-  const auto collision_offset = autoware::motion_utils::calcLongitudinalOffsetToSegment(
-    path->points, collision.index, collision.point);
-
-  const auto offset_segment =
-    arc_lane_utils::findOffsetSegment(*path, collision.index, offset + collision_offset);
-  if (!offset_segment) {
-    return {};
+  for (const auto & target_line : target_lines) {
+    if (const auto collision = findLastCollisionBeforeEndLine(path, target_line, end_line_s)) {
+      return collision;
+    }
   }
 
-  const auto interpolated_pose = arc_lane_utils::calcTargetPose(*path, *offset_segment);
-
-  if (offset_segment->second < 0) {
-    insertStopVelocityFromStart(path);
-    return 0;
-  }
-
-  auto insert_index = static_cast<size_t>(offset_segment->first + 1);
-  auto insert_point = path->points.at(insert_index);
-  insert_point.point.pose = interpolated_pose;
-  // Insert 0 velocity after stop point or replace velocity with 0
-  autoware::behavior_velocity_planner::planning_utils::insertVelocity(
-    *path, insert_point, 0.0, insert_index);
-  return insert_index;
+  return std::nullopt;
 }
 
 }  // namespace autoware::behavior_velocity_planner::virtual_traffic_light
