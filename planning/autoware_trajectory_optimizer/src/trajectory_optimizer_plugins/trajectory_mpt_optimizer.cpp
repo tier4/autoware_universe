@@ -16,9 +16,16 @@
 
 #include "autoware/trajectory_optimizer/utils.hpp"
 
+#include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils_math/unit_conversion.hpp>
 #include <autoware_utils_rclcpp/parameter.hpp>
+
+#include <boost/geometry/algorithms/disjoint.hpp>
+#include <boost/geometry/algorithms/envelope.hpp>
+
+#include <lanelet2_core/geometry/Lanelet.h>
+#include <lanelet2_core/primitives/BoundingBox.h>
 
 #include <cmath>
 #include <memory>
@@ -133,48 +140,81 @@ BoundsPair TrajectoryMPTOptimizer::generate_bounds_from_lanelet_map(
 {
   BoundsPair bounds;
 
-  if (!lanelet_map_ptr_) {
+  if (!lanelet_map_ptr_ || traj_points.empty()) {
     return bounds;
   }
 
-  bounds.left_bound.reserve(traj_points.size());
-  bounds.right_bound.reserve(traj_points.size());
+  constexpr double overlap_threshold = 0.01;
 
-  // Get all lanelets once
-  const auto all_lanelets = lanelet::utils::query::laneletLayer(lanelet_map_ptr_);
-
-  // Optimize: Query lanelet once, reuse for nearby consecutive points
-  lanelet::ConstLanelet current_lanelet;
-  bool has_valid_lanelet = false;
-  size_t points_since_last_query = 0;
-  constexpr size_t max_points_per_lanelet = 20;  // Re-query every 20 points as safety
-
+  // Step 1: Create trajectory linestring for spatial query
+  autoware_utils::LineString2d trajectory_ls;
+  trajectory_ls.reserve(traj_points.size());
   for (const auto & point : traj_points) {
-    // Re-query lanelet periodically or if we don't have one yet
-    if (!has_valid_lanelet || points_since_last_query >= max_points_per_lanelet) {
-      if (!lanelet::utils::query::getClosestLanelet(all_lanelets, point.pose, &current_lanelet)) {
-        RCLCPP_WARN_THROTTLE(
-          get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
-          "MPT Optimizer: Could not find closest lanelet, using fallback");
-        return BoundsPair{};
-      }
-      has_valid_lanelet = true;
-      points_since_last_query = 0;
-    }
-    points_since_last_query++;
-
-    // Get bounds from current lanelet
-    const auto left_bound_3d = current_lanelet.leftBound();
-    const auto right_bound_3d = current_lanelet.rightBound();
-
-    // Use middle point of each bound for simplicity and speed
-    const size_t left_idx = left_bound_3d.size() / 2;
-    const size_t right_idx = right_bound_3d.size() / 2;
-
-    bounds.left_bound.push_back(lanelet::utils::conversion::toGeomMsgPt(left_bound_3d[left_idx]));
-    bounds.right_bound.push_back(
-      lanelet::utils::conversion::toGeomMsgPt(right_bound_3d[right_idx]));
+    trajectory_ls.emplace_back(point.pose.position.x, point.pose.position.y);
   }
+
+  // Step 2: Use R-tree spatial index to get candidate lanelets (FAST!)
+  const auto candidate_lanelets = lanelet_map_ptr_->laneletLayer.search(
+    boost::geometry::return_envelope<lanelet::BoundingBox2d>(trajectory_ls));
+
+  if (candidate_lanelets.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+      "MPT Optimizer: No candidate lanelets found for trajectory");
+    return bounds;
+  }
+
+  // Step 3: Filter to lanelets that actually intersect trajectory
+  std::vector<lanelet::ConstLanelet> trajectory_lanelets;
+  for (const auto & lanelet : candidate_lanelets) {
+    // Check if trajectory intersects lanelet polygon
+    if (!boost::geometry::disjoint(trajectory_ls, lanelet.polygon2d().basicPolygon())) {
+      trajectory_lanelets.push_back(lanelet);
+    }
+  }
+
+  if (trajectory_lanelets.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+      "MPT Optimizer: No intersecting lanelets found for trajectory");
+    return bounds;
+  }
+
+  // Step 4: Extract ALL boundary points from these lanelets
+  // Left bound
+  for (const auto & lanelet : trajectory_lanelets) {
+    const auto left_bound_3d = lanelet.leftBound();
+    for (const auto & bound_point : left_bound_3d) {
+      const auto point = lanelet::utils::conversion::toGeomMsgPt(bound_point);
+      if (
+        bounds.left_bound.empty() ||
+        std::hypot(point.x - bounds.left_bound.back().x, point.y - bounds.left_bound.back().y) >
+          overlap_threshold) {
+        bounds.left_bound.push_back(point);
+      }
+    }
+  }
+
+  // Right bound
+  for (const auto & lanelet : trajectory_lanelets) {
+    const auto right_bound_3d = lanelet.rightBound();
+    for (const auto & bound_point : right_bound_3d) {
+      const auto point = lanelet::utils::conversion::toGeomMsgPt(bound_point);
+      if (
+        bounds.right_bound.empty() ||
+        std::hypot(point.x - bounds.right_bound.back().x, point.y - bounds.right_bound.back().y) >
+          overlap_threshold) {
+        bounds.right_bound.push_back(point);
+      }
+    }
+  }
+
+  RCLCPP_DEBUG(
+    get_node_ptr()->get_logger(),
+    "MPT Optimizer: Generated bounds from %zu lanelets (from %zu candidates), left=%zu pts, "
+    "right=%zu pts",
+    trajectory_lanelets.size(), candidate_lanelets.size(), bounds.left_bound.size(),
+    bounds.right_bound.size());
 
   return bounds;
 }
@@ -200,20 +240,16 @@ void TrajectoryMPTOptimizer::optimize_trajectory(
     return;
   }
 
-  // Generate bounds - use lanelet map if available, otherwise use perpendicular offset
-  const auto bounds = [&]() {
-    if (lanelet_map_ptr_) {
-      auto lanelet_bounds = generate_bounds_from_lanelet_map(traj_points);
-      if (!lanelet_bounds.left_bound.empty() && !lanelet_bounds.right_bound.empty()) {
-        RCLCPP_DEBUG(get_node_ptr()->get_logger(), "MPT Optimizer: Using lanelet-based bounds");
-        return lanelet_bounds;
-      }
-      RCLCPP_WARN_THROTTLE(
-        get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
-        "MPT Optimizer: Lanelet bounds extraction failed, falling back to perpendicular bounds");
-    }
-    return generate_bounds_from_trajectory(traj_points, mpt_params_.bounds_lateral_offset_m);
-  }();
+  // Generate bounds from lanelet map
+  const auto bounds = generate_bounds_from_lanelet_map(traj_points);
+
+  // If bounds extraction failed, skip optimization
+  if (bounds.left_bound.empty() || bounds.right_bound.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+      "MPT Optimizer: Failed to generate bounds from lanelet map, skipping optimization");
+    return;
+  }
 
   // Create planner data
   const auto planner_data = create_planner_data(traj_points, bounds, data);
