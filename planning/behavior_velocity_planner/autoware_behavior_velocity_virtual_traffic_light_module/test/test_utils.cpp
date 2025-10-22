@@ -15,6 +15,7 @@
 #include "../src/utils.hpp"
 
 #include <autoware/route_handler/route_handler.hpp>
+#include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 
 #include <gtest/gtest.h>
@@ -44,7 +45,7 @@ Trajectory generateStraightPath()
     point.point.longitudinal_velocity_mps = 10.0;
     path_points.push_back(point);
   }
-  return *Trajectory::Builder{}.build(path_points);
+  return *autoware::experimental::trajectory::pretty_build(path_points);
 }
 
 lanelet::ConstLineString3d generateLineString(const std::vector<lanelet::BasicPoint3d> & points)
