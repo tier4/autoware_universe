@@ -146,6 +146,8 @@ AvoidanceState StaticObstacleAvoidanceModule::getCurrentModuleState(
     }
   }
 
+  [[unused]] int var = 0;
+
   const bool has_shift_point = !path_shifter_.getShiftLines().empty();
   const bool has_base_offset =
     std::abs(path_shifter_.getBaseOffset()) > parameters_->lateral_execution_threshold;
