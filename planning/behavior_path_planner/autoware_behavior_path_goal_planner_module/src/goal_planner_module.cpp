@@ -1439,22 +1439,31 @@ void GoalPlannerModule::setTurnSignalInfo(
 }
 
 void GoalPlannerModule::setTurnSignalInfoForStopPath(
-  const BehaviorModuleOutput & stop_path, const Pose & blinker_decel_start_pose,
-  BehaviorModuleOutput & output)
+  const BehaviorModuleOutput & stop_path, const Pose & decel_start_pose,
+  const std::optional<Pose> & stop_pose, BehaviorModuleOutput & output)
 {
+  const auto original_signal = getPreviousModuleOutput().turn_signal_info;
+  const auto current_seg_idx = planner_data_->findEgoSegmentIndex(stop_path.path.points);
   auto preempt_turn_signal =
-    TurnSignalInfo(blinker_decel_start_pose, stop_path.path.points.back().point.pose);
+    TurnSignalInfo(decel_start_pose, stop_path.path.points.back().point.pose);
+  if (stop_pose) {
+    // if stop_pose is available, use it as required start
+    preempt_turn_signal.required_start_point = stop_pose.value();
+  }
   preempt_turn_signal.turn_signal.command = parameters_.parking_policy == ParkingPolicy::LEFT_SIDE
                                               ? TurnIndicatorsCommand::ENABLE_LEFT
                                               : TurnIndicatorsCommand::ENABLE_RIGHT;
-  output.turn_signal_info = preempt_turn_signal;
+  output.turn_signal_info = planner_data_->turn_signal_decider.overwrite_turn_signal(
+    stop_path.path, getEgoPose(), current_seg_idx, original_signal, preempt_turn_signal,
+    planner_data_->parameters.ego_nearest_dist_threshold,
+    planner_data_->parameters.ego_nearest_yaw_threshold);
 }
 
 void GoalPlannerModule::set_blinker_decel_start_pose(
-  const std::optional<Pose> & blinker_decel_start_pose)
+  const std::optional<Pose> & decel_start_pose, const std::optional<Pose> & stop_pose)
 {
-  if (!blinker_decel_start_pose_ && blinker_decel_start_pose) {
-    blinker_decel_start_pose_ = blinker_decel_start_pose.value();
+  if (!blinker_before_pull_over_ && decel_start_pose) {
+    blinker_before_pull_over_ = {decel_start_pose.value(), stop_pose};
   }
 }
 
@@ -1528,13 +1537,15 @@ BehaviorModuleOutput GoalPlannerModule::planPullOver(PullOverContextData & conte
                                                                              : "too far goal";
     auto stop_output = planPullOverAsCandidate(context_data, detail);
     const bool started_deceleration_for_blinker =
-      blinker_decel_start_pose_ &&
+      blinker_before_pull_over_ &&
       autoware::motion_utils::findNearestIndex(
         stop_output.path.points, planner_data_->self_odometry->pose.pose) >=
         autoware::motion_utils::findNearestIndex(
-          stop_output.path.points, blinker_decel_start_pose_.value());
+          stop_output.path.points, blinker_before_pull_over_->desired);
     if (started_deceleration_for_blinker) {
-      setTurnSignalInfoForStopPath(stop_output, blinker_decel_start_pose_.value(), stop_output);
+      setTurnSignalInfoForStopPath(
+        stop_output, blinker_before_pull_over_->desired, blinker_before_pull_over_->required,
+        stop_output);
     }
     return stop_output;
   }
@@ -1635,13 +1646,6 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsCandidate(
   current_drivable_area_info.drivable_lanes = target_drivable_lanes;
   output.drivable_area_info = utils::combineDrivableAreaInfo(
     current_drivable_area_info, getPreviousModuleOutput().drivable_area_info);
-
-  if (!context_data.pull_over_path_opt) {
-    return output;
-  }
-
-  setDebugData(context_data);
-
   return output;
 }
 
@@ -1915,7 +1919,7 @@ PathWithLaneId GoalPlannerModule::generateStopPath(
     return decel_pose;
   });
   if (!stop_pose_opt.has_value()) {
-    set_blinker_decel_start_pose(decel_pose);
+    set_blinker_decel_start_pose(decel_pose, std::nullopt);
     const auto feasible_stop_path =
       generateFeasibleStopPath(getPreviousModuleOutput().path, detail);
     return feasible_stop_path;
@@ -1939,7 +1943,7 @@ PathWithLaneId GoalPlannerModule::generateStopPath(
                             autoware::motion_utils::findNearestIndex(
                               feasible_stop_path.points, decel_start_point.value()))
                           .point.pose;
-      set_blinker_decel_start_pose(std::make_optional<Pose>(pose));
+      set_blinker_decel_start_pose(std::make_optional<Pose>(pose), stop_pose);
     }
     return feasible_stop_path;
   }
@@ -1947,7 +1951,7 @@ PathWithLaneId GoalPlannerModule::generateStopPath(
   // slow down for turn signal, insert stop point to stop_pose
   auto stop_path = extended_prev_path;
   const auto blinker_decel_start_pose = decelerateForTurnSignal(stop_pose, stop_path);
-  set_blinker_decel_start_pose(blinker_decel_start_pose);
+  set_blinker_decel_start_pose(blinker_decel_start_pose, stop_pose);
   stop_pose_ = PoseWithDetail(stop_pose, detail);
 
   // slow down before the search area.
@@ -2656,9 +2660,11 @@ void GoalPlannerModule::setDebugData(const PullOverContextData & context_data)
   };
   if (utils::isAllowedGoalModification(planner_data_->route_handler)) {
     // Visualize pull over areas
-    const auto color = path_decision_controller_.get_current_state().state ==
-                           PathDecisionState::DecisionKind::DECIDED
-                         ? create_marker_color(1.0, 1.0, 0.0, 0.999)   // yellow
+    const auto state = path_decision_controller_.get_current_state().state;
+    const auto color = state == PathDecisionState::DecisionKind::DECIDED
+                         ? create_marker_color(1.0, 1.0, 0.0, 0.999)  // yellow
+                       : state == PathDecisionState::DecisionKind::DECIDING
+                         ? create_marker_color(1.0, 0.5, 0.0, 0.999)   // orange
                          : create_marker_color(0.0, 1.0, 0.0, 0.999);  // green
     const double z = planner_data_->route_handler->getGoalPose().position.z;
     add_info_marker(
