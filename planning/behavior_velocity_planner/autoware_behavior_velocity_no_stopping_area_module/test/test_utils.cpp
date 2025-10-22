@@ -15,13 +15,12 @@
 #include "../src/utils.hpp"
 
 #include <autoware/behavior_velocity_planner_common/planner_data.hpp>
+#include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
 #include <rclcpp/clock.hpp>
 #include <rclcpp/logger.hpp>
 
-#include <autoware_internal_planning_msgs/msg/path_point_with_lane_id.hpp>
-#include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
@@ -67,8 +66,7 @@ autoware::behavior_velocity_planner::no_stopping_area::Trajectory generate_strai
     p.point.longitudinal_velocity_mps = velocity;
     path_points.push_back(p);
   }
-  return *autoware::behavior_velocity_planner::no_stopping_area::Trajectory::Builder{}.build(
-    path_points);
+  return *autoware::experimental::trajectory::pretty_build(path_points);
 }
 
 TEST(NoStoppingAreaTest, isTargetStuckVehicleType)

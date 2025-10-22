@@ -18,9 +18,8 @@
 
 #include <autoware/behavior_velocity_planner_common/planner_data.hpp>
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
-#include <autoware/interpolation/spline_interpolation.hpp>
-#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/utils/find_nearest.hpp>
+#include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <rclcpp/clock.hpp>
@@ -58,8 +57,7 @@ NoStoppingAreaModule::NoStoppingAreaModule(
 
 bool NoStoppingAreaModule::modifyPathVelocity(PathWithLaneId * _path)
 {
-  auto path = autoware::experimental::trajectory::Trajectory<PathPointWithLaneId>::Builder{}.build(
-    _path->points);
+  auto path = experimental::trajectory::pretty_build(_path->points);
   if (!path) {
     return false;
   }
