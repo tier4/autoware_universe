@@ -36,7 +36,7 @@ std::vector<geometry_msgs::msg::Point> make_bound(
 
 TEST(TestUtils, getStopLine)
 {
-  using autoware::behavior_velocity_planner::detection_area::get_stop_line_geometry2d;
+  using autoware::behavior_velocity_planner::detection_area::get_stop_line;
   lanelet::LineString3d line;
   line.push_back(lanelet::Point3d(lanelet::InvalId, 0.0, -1.0));
   line.push_back(lanelet::Point3d(lanelet::InvalId, 0.0, 1.0));
@@ -51,10 +51,9 @@ TEST(TestUtils, getStopLine)
     lanelet::autoware::DetectionArea::make(lanelet::InvalId, {}, detection_areas, line);
   // extended line
   for (auto extend_length = 0.0; extend_length < 2.0; extend_length += 0.1) {
-    autoware_internal_planning_msgs::msg::PathWithLaneId path;
-    path.left_bound = make_bound({-1.0, -1.0 - extend_length}, {1.0, -1.0 - extend_length});
-    path.right_bound = make_bound({-1.0, 1.0 + extend_length}, {1.0, 1.0 + extend_length});
-    const auto stop_line = get_stop_line_geometry2d(*detection_area, path);
+    const auto left_bound = make_bound({-1.0, -1.0 - extend_length}, {1.0, -1.0 - extend_length});
+    const auto right_bound = make_bound({-1.0, 1.0 + extend_length}, {1.0, 1.0 + extend_length});
+    const auto stop_line = get_stop_line(*detection_area, left_bound, right_bound);
     ASSERT_EQ(stop_line.size(), 2UL);
     EXPECT_EQ(stop_line[0].x(), line[0].x());
     EXPECT_EQ(stop_line[0].y(), line[0].y() - extend_length);
@@ -161,29 +160,25 @@ TEST(TestUtils, hasEnoughBrakingDistance)
 {
   using autoware::behavior_velocity_planner::detection_area::has_enough_braking_distance;
   // prepare a stop pose 10m away from the self pose
-  geometry_msgs::msg::Pose self_pose;
-  self_pose.position.x = 0.0;
-  self_pose.position.y = 0.0;
-  geometry_msgs::msg::Pose line_pose;
-  line_pose.position.x = 10.0;
-  line_pose.position.y = 0.0;
+  const auto self_s = 0.0;
+  const auto line_point_s = 10.0;
   // can always brake at zero velocity
   for (auto pass_judge_line_distance = 0.0; pass_judge_line_distance <= 20.0;
        pass_judge_line_distance += 0.1) {
     double current_velocity = 0.0;
     EXPECT_TRUE(has_enough_braking_distance(
-      self_pose, line_pose, pass_judge_line_distance, current_velocity));
+      self_s, line_point_s, pass_judge_line_distance, current_velocity));
   }
   // if velocity is not zero, can brake if the pass judge line distance is lower than 10m
   const double current_velocity = 5.0;
   for (auto pass_judge_line_distance = 0.0; pass_judge_line_distance < 10.0;
        pass_judge_line_distance += 0.1) {
     EXPECT_TRUE(has_enough_braking_distance(
-      self_pose, line_pose, pass_judge_line_distance, current_velocity));
+      self_s, line_point_s, pass_judge_line_distance, current_velocity));
   }
   for (auto pass_judge_line_distance = 10.0; pass_judge_line_distance <= 20.0;
        pass_judge_line_distance += 0.1) {
     EXPECT_FALSE(has_enough_braking_distance(
-      self_pose, line_pose, pass_judge_line_distance, current_velocity));
+      self_s, line_point_s, pass_judge_line_distance, current_velocity));
   }
 }
