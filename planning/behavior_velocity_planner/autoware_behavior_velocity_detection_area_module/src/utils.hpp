@@ -15,11 +15,11 @@
 #ifndef UTILS_HPP_
 #define UTILS_HPP_
 
+#include <autoware/trajectory/path_point_with_lane_id.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/detection_area.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
 #include <rclcpp/time.hpp>
 
-#include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
 #include <lanelet2_core/geometry/Point.h>
@@ -34,13 +34,31 @@
 namespace autoware::behavior_velocity_planner::detection_area
 {
 
+using Trajectory =
+  experimental::trajectory::Trajectory<autoware_internal_planning_msgs::msg::PathPointWithLaneId>;
+
 /// @brief get the extended stop line of the given detection area
 /// @param [in] detection_area detection area
-/// @param [in] path ego path
+/// @param [in] left_bound left bound of ego path
+/// @param [in] right_bound right bound of ego path
 /// @return extended stop line
-autoware_utils::LineString2d get_stop_line_geometry2d(
+autoware_utils::LineString2d get_stop_line(
   const lanelet::autoware::DetectionArea & detection_area,
-  const autoware_internal_planning_msgs::msg::PathWithLaneId & path);
+  const std::vector<geometry_msgs::msg::Point> & left_bound,
+  const std::vector<geometry_msgs::msg::Point> & right_bound);
+
+/**
+ * @brief Calculate the stop point on the path for a given stop line
+ * @param path ego path
+ * @param stop_line stop line
+ * @param margin [m] margin to keep between the stop point and the stop line
+ * @param vehicle_offset [m] offset of the vehicle front from the base link
+ * @param lane_ids lane ids to consider (if empty, consider all lanes)
+ * @return arc length of stop point along path (std::nullopt if not found)
+ */
+std::optional<double> get_stop_point(
+  const Trajectory & path, const autoware_utils::LineString2d & stop_line, const double margin,
+  const double vehicle_offset, const lanelet::Ids & lane_ids = {});
 
 /// @brief get the obstacle points found inside a detection area
 /// @param [in] detection_areas detection area polygons
@@ -61,14 +79,14 @@ bool can_clear_stop_state(
   const double state_clear_time);
 
 /// @brief return true if distance to brake is enough
-/// @param self_pose current ego pose
-/// @param line_pose stop pose
+/// @param self_s current ego position in arc length
+/// @param line_point_s arc length of stop point
 /// @param pass_judge_line_distance braking distance
 /// @param current_velocity current ego velocity
 /// @return true if the distance to brake is enough
 bool has_enough_braking_distance(
-  const geometry_msgs::msg::Pose & self_pose, const geometry_msgs::msg::Pose & line_pose,
-  const double pass_judge_line_distance, const double current_velocity);
+  const double self_s, const double line_point_s, const double pass_judge_line_distance,
+  const double current_velocity);
 
 /// @brief return the feasible stop distance by max acceleration
 /// @param [in] current_velocity current ego velocity
