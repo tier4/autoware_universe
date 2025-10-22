@@ -175,7 +175,7 @@ bool check_stop_lines_in_no_stopping_area(
 
   const auto not_stopping_intervals = experimental::trajectory::find_intervals(
     path, [&](const autoware_internal_planning_msgs::msg::PathPointWithLaneId & p) {
-      return p.point.longitudinal_velocity_mps > stop_vel;
+      return p.point.longitudinal_velocity_mps <= stop_vel;
     });
 
   // if the detected stop point is near goal, it's ignored.
