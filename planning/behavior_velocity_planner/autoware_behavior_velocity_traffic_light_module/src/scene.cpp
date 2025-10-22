@@ -20,6 +20,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware/trajectory/utils/find_nearest.hpp>
+#include <autoware/trajectory/utils/pretty_build.hpp>
 #include <rclcpp/duration.hpp>
 
 #include <boost/geometry/algorithms/distance.hpp>

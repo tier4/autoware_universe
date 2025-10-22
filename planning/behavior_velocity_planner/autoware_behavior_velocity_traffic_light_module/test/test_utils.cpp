@@ -15,6 +15,8 @@
 #include "../src/utils.hpp"
 #include "autoware_utils/geometry/geometry.hpp"
 
+#include <autoware/trajectory/utils/pretty_build.hpp>
+
 #include <gtest/gtest.h>
 
 namespace autoware::behavior_velocity_planner
@@ -50,7 +52,7 @@ generatePath(const geometry_msgs::msg::Pose & pose, const double bound_y_offset 
       .set__x(pose.position.x + 10.0)
       .set__y(pose.position.y - bound_y_offset)};
 
-  return {*Trajectory::Builder{}.build(path_points), left_bound, right_bound};
+  return {*experimental::trajectory::pretty_build(path_points), left_bound, right_bound};
 }
 
 TEST(BehaviorTrafficLightModuleUtilsTest, calcStopPoint)
