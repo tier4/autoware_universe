@@ -18,8 +18,11 @@
 
 #include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
+#include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils_math/unit_conversion.hpp>
 #include <autoware_utils_rclcpp/parameter.hpp>
+
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <boost/geometry/algorithms/disjoint.hpp>
 #include <boost/geometry/algorithms/envelope.hpp>
@@ -60,6 +63,10 @@ TrajectoryMPTOptimizer::TrajectoryMPTOptimizer(
   map_sub_ = node_ptr->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "/map/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrajectoryMPTOptimizer::on_map, this, std::placeholders::_1));
+
+  // Create debug marker publisher
+  debug_markers_pub_ = node_ptr->create_publisher<visualization_msgs::msg::MarkerArray>(
+    "~/debug/mpt_bounds_markers", 1);
 }
 
 void TrajectoryMPTOptimizer::set_up_params()
@@ -154,9 +161,19 @@ BoundsPair TrajectoryMPTOptimizer::generate_bounds_from_lanelet_map(
     trajectory_ls.emplace_back(point.pose.position.x, point.pose.position.y);
   }
 
+  RCLCPP_INFO(
+    get_node_ptr()->get_logger(),
+    "MPT Optimizer: Trajectory linestring has %zu points, first=(%.2f, %.2f), last=(%.2f, %.2f)",
+    trajectory_ls.size(), trajectory_ls.front().x(), trajectory_ls.front().y(),
+    trajectory_ls.back().x(), trajectory_ls.back().y());
+
   // Step 2: Use R-tree spatial index to get candidate lanelets (FAST!)
   const auto candidate_lanelets = lanelet_map_ptr_->laneletLayer.search(
     boost::geometry::return_envelope<lanelet::BoundingBox2d>(trajectory_ls));
+
+  RCLCPP_INFO(
+    get_node_ptr()->get_logger(), "MPT Optimizer: R-tree returned %zu candidate lanelets",
+    candidate_lanelets.size());
 
   if (candidate_lanelets.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -165,12 +182,8 @@ BoundsPair TrajectoryMPTOptimizer::generate_bounds_from_lanelet_map(
     return bounds;
   }
 
-  // Step 3: Find the primary lanelet (closest to trajectory start that intersects)
-  lanelet::ConstLanelet primary_lanelet;
-  bool found_primary = false;
-  double min_dist = std::numeric_limits<double>::max();
-
-  const auto & start_pose = traj_points.front().pose;
+  // Step 3: Find ALL lanelets that the trajectory actually passes through
+  std::vector<lanelet::ConstLanelet> trajectory_lanelets;
 
   for (const auto & lanelet : candidate_lanelets) {
     // Check subtype = "road"
@@ -182,88 +195,236 @@ BoundsPair TrajectoryMPTOptimizer::generate_bounds_from_lanelet_map(
     }
 
     // Check if trajectory intersects lanelet polygon
-    if (boost::geometry::disjoint(trajectory_ls, lanelet.polygon2d().basicPolygon())) {
-      continue;
+    if (!boost::geometry::disjoint(trajectory_ls, lanelet.polygon2d().basicPolygon())) {
+      trajectory_lanelets.push_back(lanelet);
     }
+  }
 
-    // Calculate distance from trajectory start to lanelet centerline
-    const auto centerline = lanelet.centerline();
-    for (const auto & cl_point : centerline) {
-      const double dx = cl_point.x() - start_pose.position.x;
-      const double dy = cl_point.y() - start_pose.position.y;
-      const double dist = std::hypot(dx, dy);
-      if (dist < min_dist) {
-        min_dist = dist;
-        primary_lanelet = lanelet;
-        found_primary = true;
+  RCLCPP_INFO(
+    get_node_ptr()->get_logger(),
+    "MPT Optimizer: Found %zu trajectory lanelets that intersect (from %zu candidates)",
+    trajectory_lanelets.size(), candidate_lanelets.size());
+
+  if (trajectory_lanelets.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+      "MPT Optimizer: No lanelets found that intersect trajectory");
+    return bounds;
+  }
+
+  // Step 4: Build DrivableLanes structure - start with all trajectory lanelets
+  // Then expand to include same-direction neighbors
+  std::vector<lanelet::ConstLanelet> same_direction_lanelets = trajectory_lanelets;
+
+  // Step 5: Recursively find all adjacent same-direction lanelets
+  // Keep expanding left and right until no more neighbors found
+  bool found_new_neighbor = true;
+  while (found_new_neighbor) {
+    found_new_neighbor = false;
+
+    for (const auto & candidate : candidate_lanelets) {
+      const bool is_road =
+        candidate.hasAttribute(lanelet::AttributeName::Subtype) &&
+        candidate.attribute(lanelet::AttributeName::Subtype) == lanelet::AttributeValueString::Road;
+      if (!is_road) {
+        continue;
+      }
+
+      // Check if already added
+      bool already_added = false;
+      for (const auto & existing : same_direction_lanelets) {
+        if (existing.id() == candidate.id()) {
+          already_added = true;
+          break;
+        }
+      }
+      if (already_added) {
+        continue;
+      }
+
+      // Check if this candidate shares a boundary with any existing lanelet
+      for (const auto & existing : same_direction_lanelets) {
+        // Left neighbor: candidate's right bound = existing's left bound
+        if (candidate.rightBound().id() == existing.leftBound().id()) {
+          same_direction_lanelets.push_back(candidate);
+          found_new_neighbor = true;
+          break;
+        }
+        // Right neighbor: candidate's left bound = existing's right bound
+        if (candidate.leftBound().id() == existing.rightBound().id()) {
+          same_direction_lanelets.push_back(candidate);
+          found_new_neighbor = true;
+          break;
+        }
       }
     }
   }
 
-  if (!found_primary) {
-    RCLCPP_WARN_THROTTLE(
-      get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
-      "MPT Optimizer: No primary lanelet found for trajectory");
-    return bounds;
-  }
+  // Step 6: For each trajectory point, find leftmost/rightmost lanelets, then get bounds
+  // This ensures we get the WIDEST bounds, not inner boundaries
+  bounds.left_bound.reserve(traj_points.size());
+  bounds.right_bound.reserve(traj_points.size());
 
-  // Step 4: Build DrivableLanes structure (like behavior planner does)
-  // Start with primary lanelet as both left and right
-  lanelet::ConstLanelet left_lanelet = primary_lanelet;
-  lanelet::ConstLanelet right_lanelet = primary_lanelet;
+  for (const auto & traj_point : traj_points) {
+    // Find which lanelets contain this trajectory point
+    std::vector<lanelet::ConstLanelet> containing_lanelets;
+    const autoware_utils::Point2d traj_pt_2d(
+      traj_point.pose.position.x, traj_point.pose.position.y);
 
-  // Step 5: Try to find adjacent lanelets that share boundaries
-  for (const auto & lanelet : candidate_lanelets) {
-    if (lanelet.id() == primary_lanelet.id()) {
+    for (const auto & ll : same_direction_lanelets) {
+      if (boost::geometry::within(traj_pt_2d, ll.polygon2d().basicPolygon())) {
+        containing_lanelets.push_back(ll);
+      }
+    }
+
+    // If no lanelet contains this point, find closest lanelet
+    if (containing_lanelets.empty()) {
+      double min_dist = std::numeric_limits<double>::max();
+      for (const auto & ll : same_direction_lanelets) {
+        const auto centerline = ll.centerline();
+        for (const auto & cl_pt : centerline) {
+          const double dist = std::hypot(
+            cl_pt.x() - traj_point.pose.position.x, cl_pt.y() - traj_point.pose.position.y);
+          if (dist < min_dist) {
+            min_dist = dist;
+            if (containing_lanelets.empty() || containing_lanelets.back().id() != ll.id()) {
+              containing_lanelets.clear();
+              containing_lanelets.push_back(ll);
+            }
+          }
+        }
+      }
+    }
+
+    if (containing_lanelets.empty()) {
       continue;
     }
 
-    const bool is_road =
-      lanelet.hasAttribute(lanelet::AttributeName::Subtype) &&
-      lanelet.attribute(lanelet::AttributeName::Subtype) == lanelet::AttributeValueString::Road;
-    if (!is_road) {
-      continue;
+    // Find leftmost and rightmost lanelets at this point
+    lanelet::ConstLanelet leftmost_ll = containing_lanelets.front();
+    lanelet::ConstLanelet rightmost_ll = containing_lanelets.front();
+
+    for (const auto & ll : containing_lanelets) {
+      // Check if ll has no left neighbor among containing lanelets
+      bool has_left_neighbor = false;
+      for (const auto & other : containing_lanelets) {
+        if (other.id() != ll.id() && other.rightBound().id() == ll.leftBound().id()) {
+          has_left_neighbor = true;
+          break;
+        }
+      }
+      if (!has_left_neighbor) {
+        leftmost_ll = ll;
+      }
+
+      // Check if ll has no right neighbor among containing lanelets
+      bool has_right_neighbor = false;
+      for (const auto & other : containing_lanelets) {
+        if (other.id() != ll.id() && other.leftBound().id() == ll.rightBound().id()) {
+          has_right_neighbor = true;
+          break;
+        }
+      }
+      if (!has_right_neighbor) {
+        rightmost_ll = ll;
+      }
     }
 
-    // Check if this lanelet is left neighbor (shares right bound with primary's left bound)
-    if (lanelet.rightBound().id() == primary_lanelet.leftBound().id()) {
-      left_lanelet = lanelet;
-    } else if (lanelet.leftBound().id() == primary_lanelet.rightBound().id()) {
-      right_lanelet = lanelet;
+    // Get closest point on leftmost lanelet's left bound
+    const auto left_bound_3d = leftmost_ll.leftBound();
+    double min_left_dist = std::numeric_limits<double>::max();
+    geometry_msgs::msg::Point closest_left_point;
+    for (const auto & bound_pt : left_bound_3d) {
+      const double dist = std::hypot(
+        bound_pt.x() - traj_point.pose.position.x, bound_pt.y() - traj_point.pose.position.y);
+      if (dist < min_left_dist) {
+        min_left_dist = dist;
+        closest_left_point = lanelet::utils::conversion::toGeomMsgPt(bound_pt);
+      }
     }
-  }
 
-  // Step 6: Extract bounds from DrivableLanes (leftmost left bound, rightmost right bound)
-  const auto left_bound_3d = left_lanelet.leftBound();
-  for (const auto & bound_point : left_bound_3d) {
-    const auto point = lanelet::utils::conversion::toGeomMsgPt(bound_point);
+    // Get closest point on rightmost lanelet's right bound
+    const auto right_bound_3d = rightmost_ll.rightBound();
+    double min_right_dist = std::numeric_limits<double>::max();
+    geometry_msgs::msg::Point closest_right_point;
+    for (const auto & bound_pt : right_bound_3d) {
+      const double dist = std::hypot(
+        bound_pt.x() - traj_point.pose.position.x, bound_pt.y() - traj_point.pose.position.y);
+      if (dist < min_right_dist) {
+        min_right_dist = dist;
+        closest_right_point = lanelet::utils::conversion::toGeomMsgPt(bound_pt);
+      }
+    }
+
+    // Add points with deduplication
     if (
       bounds.left_bound.empty() ||
-      std::hypot(point.x - bounds.left_bound.back().x, point.y - bounds.left_bound.back().y) >
-        overlap_threshold) {
-      bounds.left_bound.push_back(point);
+      std::hypot(
+        closest_left_point.x - bounds.left_bound.back().x,
+        closest_left_point.y - bounds.left_bound.back().y) > overlap_threshold) {
+      bounds.left_bound.push_back(closest_left_point);
     }
-  }
 
-  const auto right_bound_3d = right_lanelet.rightBound();
-  for (const auto & bound_point : right_bound_3d) {
-    const auto point = lanelet::utils::conversion::toGeomMsgPt(bound_point);
     if (
       bounds.right_bound.empty() ||
-      std::hypot(point.x - bounds.right_bound.back().x, point.y - bounds.right_bound.back().y) >
-        overlap_threshold) {
-      bounds.right_bound.push_back(point);
+      std::hypot(
+        closest_right_point.x - bounds.right_bound.back().x,
+        closest_right_point.y - bounds.right_bound.back().y) > overlap_threshold) {
+      bounds.right_bound.push_back(closest_right_point);
     }
   }
 
-  RCLCPP_DEBUG(
+  RCLCPP_INFO(
     get_node_ptr()->get_logger(),
-    "MPT Optimizer: Generated bounds from primary lanelet %ld (left: %ld, right: %ld), left=%zu "
-    "pts, right=%zu pts",
-    primary_lanelet.id(), left_lanelet.id(), right_lanelet.id(), bounds.left_bound.size(),
-    bounds.right_bound.size());
+    "MPT Optimizer: Generated bounds from %zu trajectory lanelets + %zu neighbors = %zu total, "
+    "left=%zu pts, right=%zu pts",
+    trajectory_lanelets.size(), same_direction_lanelets.size() - trajectory_lanelets.size(),
+    same_direction_lanelets.size(), bounds.left_bound.size(), bounds.right_bound.size());
 
   return bounds;
+}
+
+void TrajectoryMPTOptimizer::publish_bounds_markers(const BoundsPair & bounds) const
+{
+  using autoware_utils::create_default_marker;
+  using autoware_utils::create_marker_color;
+  using autoware_utils::create_marker_scale;
+  using visualization_msgs::msg::Marker;
+  using visualization_msgs::msg::MarkerArray;
+
+  MarkerArray marker_array;
+
+  if (bounds.left_bound.empty() || bounds.right_bound.empty()) {
+    RCLCPP_WARN(get_node_ptr()->get_logger(), "MPT Optimizer: Cannot publish empty bounds!");
+    return;
+  }
+
+  // Left bound marker (green)
+  auto left_marker = create_default_marker(
+    "map", get_node_ptr()->now(), "mpt_left_bound", 0, Marker::LINE_STRIP,
+    create_marker_scale(0.15, 0.0, 0.0), create_marker_color(0.0, 1.0, 0.0, 0.99));
+  left_marker.lifetime = rclcpp::Duration::from_seconds(0.5);
+  left_marker.points = bounds.left_bound;
+  marker_array.markers.push_back(left_marker);
+
+  // Right bound marker (red)
+  auto right_marker = create_default_marker(
+    "map", get_node_ptr()->now(), "mpt_right_bound", 1, Marker::LINE_STRIP,
+    create_marker_scale(0.15, 0.0, 0.0), create_marker_color(1.0, 0.0, 0.0, 0.99));
+  right_marker.lifetime = rclcpp::Duration::from_seconds(0.5);
+  right_marker.points = bounds.right_bound;
+  marker_array.markers.push_back(right_marker);
+
+  RCLCPP_INFO(
+    get_node_ptr()->get_logger(),
+    "Publishing bounds markers: left=%zu pts (%.2f,%.2f)->(%.2f,%.2f), right=%zu pts "
+    "(%.2f,%.2f)->(%.2f,%.2f)",
+    bounds.left_bound.size(), bounds.left_bound.front().x, bounds.left_bound.front().y,
+    bounds.left_bound.back().x, bounds.left_bound.back().y, bounds.right_bound.size(),
+    bounds.right_bound.front().x, bounds.right_bound.front().y, bounds.right_bound.back().x,
+    bounds.right_bound.back().y);
+
+  debug_markers_pub_->publish(marker_array);
 }
 
 void TrajectoryMPTOptimizer::optimize_trajectory(
@@ -297,6 +458,9 @@ void TrajectoryMPTOptimizer::optimize_trajectory(
       "MPT Optimizer: Failed to generate bounds from lanelet map, skipping optimization");
     return;
   }
+
+  // Publish debug markers for visualization
+  publish_bounds_markers(bounds);
 
   // Create planner data
   const auto planner_data = create_planner_data(traj_points, bounds, data);

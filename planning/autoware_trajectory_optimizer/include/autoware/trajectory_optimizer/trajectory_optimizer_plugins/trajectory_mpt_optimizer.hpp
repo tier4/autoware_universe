@@ -83,6 +83,9 @@ private:
     const TrajectoryPoints & traj_points, const BoundsPair & bounds,
     const TrajectoryOptimizerData & data) const;
 
+  // Publish debug markers for bounds visualization
+  void publish_bounds_markers(const BoundsPair & bounds) const;
+
   // MPT optimizer instance
   std::shared_ptr<autoware::path_optimizer::MPTOptimizer> mpt_optimizer_ptr_;
 
@@ -104,6 +107,9 @@ private:
   // Lanelet map subscription and storage
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr map_sub_;
   lanelet::LaneletMapPtr lanelet_map_ptr_;
+
+  // Debug marker publisher
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_markers_pub_;
 };
 
 }  // namespace autoware::trajectory_optimizer::plugin
