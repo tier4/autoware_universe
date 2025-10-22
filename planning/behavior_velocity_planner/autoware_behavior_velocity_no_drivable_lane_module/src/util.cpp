@@ -44,7 +44,11 @@ PathWithNoDrivableLanePolygonIntersection getPathIntersectionWithNoDrivableLaneP
 {
   PathWithNoDrivableLanePolygonIntersection path_no_drivable_lane_polygon_intersection;
 
-  auto intersects = experimental::trajectory::crossed(ego_path, polygon);
+  auto closed_polygon = polygon;
+  if (closed_polygon.front() != closed_polygon.back()) {
+    closed_polygon.push_back(closed_polygon.front());  // close polygon
+  }
+  auto intersects = experimental::trajectory::crossed(ego_path, closed_polygon);
 
   std::partial_sort(
     intersects.begin(), intersects.begin() + std::min(intersects.size(), max_num),
