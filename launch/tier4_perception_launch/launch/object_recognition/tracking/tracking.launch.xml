@@ -18,7 +18,11 @@
   <arg name="use_validator" description="use obstacle_pointcloud based validator"/>
 
   <!-- External interface -->
-  <arg name="multi_object_tracker_package" default="autoware_multi_object_tracker" description="multi object tracker package name: autoware_multi_object_tracker_beta or autoware_multi_object_tracker"/>
+  <arg
+    name="multi_object_tracker_package"
+    default="autoware_multi_object_tracker"
+    description="multi object tracker package name: autoware_multi_object_tracker_beta or autoware_multi_object_tracker"
+  />
   <arg name="lidar_detection_model_type" default="centerpoint"/>
   <arg name="input/merged_detection/channel" default="detected_objects"/>
   <arg name="input/merged_detection/objects" default="/perception/object_recognition/detection/objects"/>
