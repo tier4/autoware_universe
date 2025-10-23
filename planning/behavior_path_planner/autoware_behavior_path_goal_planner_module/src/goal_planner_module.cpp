@@ -328,6 +328,13 @@ void LaneParkingPlanner::onTimer()
     return;
   }
 
+  // clear existing candidates when starting regeneration
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    response_.pull_over_path_candidates.clear();
+    RCLCPP_INFO(getLogger(), "clearing pull over path candidates for regeneration");
+  }
+
   // generate valid pull over path candidates and calculate closest start pose
   const auto current_lanes = utils::getExtendedCurrentLanes(
     local_planner_data, parameters_.backward_goal_search_length,
@@ -345,6 +352,9 @@ void LaneParkingPlanner::onTimer()
       local_planner_data, goal_candidates, upstream_module_output, use_bus_stop_area, current_lanes,
       closest_start_pose, path_candidates);
   }
+  RCLCPP_INFO(
+    getLogger(), "LaneParkingPlanner generated %lu pull over path candidates",
+    path_candidates.size());
 
   // set response
   {
@@ -425,9 +435,10 @@ void LaneParkingPlanner::normal_pullover_planning_helper(
     const auto original_pose = planner_data->route_handler->getOriginalGoalPose();
     if (
       use_bus_stop_area &&
-      std::fabs(autoware_utils::normalize_radian(
-        autoware_utils::get_rpy(original_pose).z -
-        autoware_utils::get_rpy(closest_start_pose.value()).z)) > pull_over_angle_threshold) {
+      std::fabs(
+        autoware_utils::normalize_radian(
+          autoware_utils::get_rpy(original_pose).z -
+          autoware_utils::get_rpy(closest_start_pose.value()).z)) > pull_over_angle_threshold) {
       // reset and try bezier next time
       switch_bezier_ = true;
       path_candidates.clear();
@@ -450,6 +461,10 @@ void LaneParkingPlanner::bezier_planning_helper(
   autoware_utils::StopWatch timer;
   timer.tic("bezier");
   std::vector<PullOverPath> path_candidates_all;
+  // print goal_candidates.size()
+  RCLCPP_INFO(
+    getLogger(), "Trying to generate bezier paths for %lu goal candidates", goal_candidates.size());
+
   for (const auto & goal_candidate : goal_candidates) {
     auto bezier_pull_over_paths = bezier_pull_over_planner_->plans(
       goal_candidate, path_candidates_all.size(), planner_data, upstream_module_output);
@@ -801,6 +816,10 @@ void GoalPlannerModule::updateData()
   const auto new_decision_state = path_decision_controller_.get_current_state();
 
   auto [lane_parking_response, freespace_parking_response] = syncWithThreads();
+  // print lane_parking_response pull over path candidates size
+  RCLCPP_INFO(
+    getLogger(), "Lane parking response has %lu pull over path candidates",
+    lane_parking_response.pull_over_path_candidates.size());
 
   // NOTE: currently occupancy_grid_map_ must be used after syncWithThreads
   goal_searcher.update(goal_candidates_, occupancy_grid_map_, planner_data_, static_target_objects);
@@ -811,8 +830,10 @@ void GoalPlannerModule::updateData()
     new_decision_state.state == PathDecisionState::DecisionKind::NOT_DECIDED;
 
   if (context_data_) {
-    if (should_update_lane_parking) {
+    if (should_update_lane_parking || lane_parking_response.pull_over_path_candidates.empty()) {
       // NOT_DECIDED: update both lane_parking and freespace_parking responses
+      // debug print
+      RCLCPP_INFO(getLogger(), "Updating lane_parking and freespace_parking responses");
       context_data_.value().update(
         new_decision_state.is_stable_safe, static_target_objects, dynamic_target_objects,
         prev_decision_state,
@@ -822,6 +843,7 @@ void GoalPlannerModule::updateData()
         std::move(lane_parking_response), std::move(freespace_parking_response));
     } else {
       // DECIDING or DECIDED: keep lane_parking_response, update freespace_parking_response
+      RCLCPP_INFO(getLogger(), "Updating only freespace_parking response");
       context_data_.value().update(
         new_decision_state.is_stable_safe, static_target_objects, dynamic_target_objects,
         prev_decision_state,
@@ -832,6 +854,7 @@ void GoalPlannerModule::updateData()
         std::move(freespace_parking_response));
     }
   } else {
+    RCLCPP_INFO(getLogger(), "Creating new ContextData");
     context_data_.emplace(
       new_decision_state.is_stable_safe, static_target_objects, dynamic_target_objects,
       prev_decision_state,
@@ -1525,6 +1548,14 @@ BehaviorModuleOutput GoalPlannerModule::planPullOverAsCandidate(
 
   // if pull over path candidates generation is not finished, use previous module output
   if (context_data.lane_parking_response.pull_over_path_candidates.empty()) {
+    RCLCPP_INFO_THROTTLE(
+      getLogger(), *clock_, 5000,
+      " [pull_over] planPullOverAsCandidate() is called without pull over path candidates");
+    // Clear selected path since candidates are being regenerated
+    context_data.pull_over_path_opt = std::nullopt;
+    context_data.last_path_update_time = std::nullopt;
+    context_data.last_path_idx_increment_time = std::nullopt;
+
     auto stop_path = getPreviousModuleOutput();
     stop_path.path = generateStopPath(context_data, detail);
     return stop_path;
@@ -2106,8 +2137,8 @@ TurnSignalInfo GoalPlannerModule::calcTurnSignalInfo(const PullOverContextData &
     }
     constexpr double distance_threshold = 1.0;
     const auto stop_point = pull_over_path.partial_paths().front().points.back();
-    const double distance_from_ego_to_stop_point =
-      std::abs(autoware::motion_utils::calcSignedArcLength(
+    const double distance_from_ego_to_stop_point = std::abs(
+      autoware::motion_utils::calcSignedArcLength(
         path.points, stop_point.point.pose.position, current_pose.position));
     return distance_from_ego_to_stop_point < distance_threshold;
   });
@@ -2408,8 +2439,9 @@ static std::vector<utils::path_safety_checker::ExtendedPredictedObject> filterOb
 
   std::vector<utils::path_safety_checker::ExtendedPredictedObject> refined_filtered_objects;
   for (const auto & within_filtered_object : within_filtered_objects) {
-    refined_filtered_objects.push_back(utils::path_safety_checker::transform(
-      within_filtered_object, safety_check_time_horizon, safety_check_time_resolution));
+    refined_filtered_objects.push_back(
+      utils::path_safety_checker::transform(
+        within_filtered_object, safety_check_time_horizon, safety_check_time_resolution));
   }
   return refined_filtered_objects;
 }
@@ -2588,8 +2620,9 @@ void GoalPlannerModule::setDebugData(const PullOverContextData & context_data)
                          ? create_marker_color(1.0, 0.5, 0.0, 0.999)   // orange
                          : create_marker_color(0.0, 1.0, 0.0, 0.999);  // green
     const double z = planner_data_->route_handler->getGoalPose().position.z;
-    add_info_marker(goal_planner_utils::createPullOverAreaMarkerArray(
-      goal_searcher_->getAreaPolygons(), header, color, z));
+    add_info_marker(
+      goal_planner_utils::createPullOverAreaMarkerArray(
+        goal_searcher_->getAreaPolygons(), header, color, z));
 
     // Visualize goal candidates
     const auto goal_candidates_markers =

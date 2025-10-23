@@ -92,10 +92,13 @@ std::vector<PullOverPath> BezierPullOver::plans(
   const int shift_sampling_num = parameters_.shift_sampling_num;
   [[maybe_unused]] const double jerk_resolution =
     std::abs(max_jerk - min_jerk) / shift_sampling_num;
+  const auto & common_parameters = planner_data->parameters;
+  const double backward_path_length = common_parameters.backward_path_length;
+  const double forward_path_length = common_parameters.forward_path_length;
 
-  const auto road_lanes = utils::getExtendedCurrentLanesFromPath(
-    upstream_module_output.path, planner_data, backward_search_length, forward_search_length,
-    /*forward_only_in_route*/ false);
+  const auto road_lanes = goal_planner_utils::get_reference_lanelets_for_pullover(
+    upstream_module_output.path, planner_data, backward_search_length + backward_path_length,
+    forward_search_length + forward_path_length);
 
   const auto pull_over_lanes = goal_planner_utils::getPullOverLanes(
     *route_handler, left_side_parking_, backward_search_length, forward_search_length);
