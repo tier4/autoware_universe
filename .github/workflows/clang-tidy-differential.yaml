@@ -13,7 +13,7 @@ on:
       # Why is it a JSON string?
       # https://github.com/orgs/community/discussions/11692#discussioncomment-3541856
       runner:
-        default: "['ubuntu-24.04']"
+        default: ubuntu-22.04-m
         required: false
         type: string
       run-condition:
@@ -24,7 +24,7 @@ on:
 jobs:
   clang-tidy-differential:
     if: ${{ inputs.run-condition }}
-    runs-on: ${{ fromJson(inputs.runner) }}
+    runs-on: ${{ inputs.runner }}
     container: ${{ inputs.container }}${{ inputs.container-suffix }}
     steps:
       - name: Set PR fetch depth
