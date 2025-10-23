@@ -100,7 +100,7 @@ bool IntersectionModule::can_smoothly_stop_at(
   const double braking_distance = planning_utils::calcJudgeLineDistWithJerkLimit(
     planner_data_->current_velocity->twist.linear.x,
     planner_data_->current_acceleration->accel.accel.linear.x, planner_param_.common.max_accel,
-    planner_param_.common.max_jerk, 0.0);
+    planner_param_.common.max_jerk, planner_param_.common.delay_response_time);
 
   return autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, target_stop_idx) +
            planner_param_.common.stopline_overshoot_margin >
