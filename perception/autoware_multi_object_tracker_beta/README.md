@@ -95,21 +95,21 @@ Up to 12 detection inputs can be configured (detection01 through detection12). E
 
 ### Input Channel parameters
 
-{{ json_to_markdown("perception/autoware_multi_object_tracker/schema/input_channels.schema.json") }}
+{{ json_to_markdown("perception/autoware_multi_object_tracker_beta/schema/input_channels.schema.json") }}
 
 ### Core Parameters
 
 - Node
 
-{{ json_to_markdown("perception/autoware_multi_object_tracker/schema/multi_object_tracker_node.schema.json") }}
+{{ json_to_markdown("perception/autoware_multi_object_tracker_beta/schema/multi_object_tracker_node.schema.json") }}
 
 - Association
 
-{{ json_to_markdown("perception/autoware_multi_object_tracker/schema/data_association_matrix.schema.json") }}
+{{ json_to_markdown("perception/autoware_multi_object_tracker_beta/schema/data_association_matrix.schema.json") }}
 
 #### Simulation parameters
 
-{{ json_to_markdown("perception/autoware_multi_object_tracker/schema/simulation_tracker.schema.json") }}
+{{ json_to_markdown("perception/autoware_multi_object_tracker_beta/schema/simulation_tracker.schema.json") }}
 
 ## Assumptions / Known limits
 
@@ -126,7 +126,7 @@ Unit tests and benchmarks are included to evaluate tracker performance under var
 #### 1. Build with Tests
 
 ```bash
-colcon build --packages-select autoware_multi_object_tracker \
+colcon build --packages-select autoware_multi_object_tracker_beta \
   --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 
@@ -134,7 +134,7 @@ colcon build --packages-select autoware_multi_object_tracker \
 
 ```bash
 source install/setup.bash
-./build/autoware_multi_object_tracker/test_multi_object_tracker
+./build/autoware_multi_object_tracker_beta/test_multi_object_tracker
 ```
 
 This runs the default test (`SimulatedDataPerformanceTest` and `RealDataRosbagPerformanceTest`) and outputs timing data.
@@ -151,7 +151,7 @@ These optional profiling tests are compiled as disabled and can be run directly 
 To run a specific option profiling test:
 
 ```bash
-./build/autoware_multi_object_tracker/test_multi_object_tracker \
+./build/autoware_multi_object_tracker_beta/test_multi_object_tracker \
   --gtest_also_run_disabled_tests \
   --gtest_filter="*.*AssociationTest"
 ```
@@ -159,7 +159,7 @@ To run a specific option profiling test:
 To run multiple profiling tests together (separate with `:`):
 
 ```bash
-./build/autoware_multi_object_tracker/test_multi_object_tracker \
+./build/autoware_multi_object_tracker_beta/test_multi_object_tracker \
   --gtest_also_run_disabled_tests \
   --gtest_filter="*.*AssociationTest:*.*PerformanceVsPedestrianCount"
 ```

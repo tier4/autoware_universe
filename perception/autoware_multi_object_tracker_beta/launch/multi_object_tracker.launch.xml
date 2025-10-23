@@ -25,11 +25,11 @@
   <arg name="input/detection12/objects" default="input/objects12"/>
   <arg name="input/detection12/channel" default="none"/>
   <arg name="output/objects" default="objects"/>
-  <arg name="tracker_setting_path" default="$(find-pkg-share autoware_multi_object_tracker)/config/multi_object_tracker_node.param.yaml"/>
-  <arg name="data_association_matrix_path" default="$(find-pkg-share autoware_multi_object_tracker)/config/data_association_matrix.param.yaml"/>
-  <arg name="input_channels_path" default="$(find-pkg-share autoware_multi_object_tracker)/config/input_channels.param.yaml"/>
+  <arg name="tracker_setting_path" default="$(find-pkg-share autoware_multi_object_tracker_beta)/config/multi_object_tracker_node.param.yaml"/>
+  <arg name="data_association_matrix_path" default="$(find-pkg-share autoware_multi_object_tracker_beta)/config/data_association_matrix.param.yaml"/>
+  <arg name="input_channels_path" default="$(find-pkg-share autoware_multi_object_tracker_beta)/config/input_channels.param.yaml"/>
 
-  <node pkg="autoware_multi_object_tracker" exec="multi_object_tracker_node" name="multi_object_tracker" output="both">
+  <node pkg="autoware_multi_object_tracker_beta" exec="multi_object_tracker_node" name="multi_object_tracker" output="both">
     <param name="input/detection01/objects" value="$(var input/detection01/objects)"/>
     <param name="input/detection01/channel" value="$(var input/detection01/channel)"/>
     <param name="input/detection02/objects" value="$(var input/detection02/objects)"/>
