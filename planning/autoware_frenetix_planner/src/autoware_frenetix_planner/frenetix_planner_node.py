@@ -3,7 +3,7 @@ import sys
 import lanelet2  # noqa: F401 # isort: skip
 from autoware_lanelet2_extension_python.utility.utilities import fromBinMsg
 from autoware_map_msgs.msg import LaneletMapBin
-from autoware_planning_msgs.msg import Path
+from autoware_planning_msgs.msg import Path, LaneletRoute
 from autoware_planning_msgs.msg import Trajectory
 from autoware_perception_msgs.msg import PredictedObjects
 from autoware_control_msgs.msg import Control
@@ -34,7 +34,6 @@ class FrenetixPlanner(Node):
         self.params = self._declare_and_load_params()
 
         # Initialize subscribers and publishers
-        self.lanelet_map_ = None
         self._init_subscriber()
         self._init_publisher()
         self.get_logger().info("Subscribers and publishers initialized.")
@@ -48,6 +47,19 @@ class FrenetixPlanner(Node):
 
         self.car_altitude = 0.0
         self.objects = None
+        self.route_processed = False
+    
+    @property
+    def route(self):
+        return self.planner.route
+
+    @property
+    def lanelet_map(self):
+        return self.planner.lanelet_map
+    
+    @property
+    def logger(self):
+        return self.get_logger()
 
     def _declare_and_load_params(self) -> FrenetixPlannerParams:
         """
@@ -182,8 +194,50 @@ class FrenetixPlanner(Node):
     def vector_map_callback(self, map_msg: LaneletMapBin):
         self.get_logger().info(f"Received vector map message: {getattr(map_msg, 'name_map', None)}")
         # Conversion from binary map message to lanelet map would happen here
-        self.lanelet_map_ = fromBinMsg(map_msg)
+        lanelet_map = fromBinMsg(map_msg)
+        self.planner.set_lanelet_map(lanelet_map)
         self.get_logger().info("Lanelet map converted.")
+
+        if self.route and not self.route_processed:
+            self.planner.process_route()
+            self.route_processed = True
+
+    # Route callback - retrieves route information (lanelet IDs) from mission planner
+    def route_callback(self, route_msg):
+        """
+        Called when a new route is received.
+        Only processes the route if the lanelet IDs have changed.
+        """
+        
+        self.logger.debug("New route callback received.")
+
+        # Extract the list of IDs from the segments
+        try:
+            new_route = [seg.preferred_primitive.id for seg in route_msg.segments]
+        except AttributeError:
+            self.logger.error("Error parsing route message. 'segments' or 'preferred_primitive' not found.")
+            return
+        
+        if not new_route:
+            self.logger.warning("Received route, but it contains no lanelet segments.")
+            return
+        
+        # new route is different from current route
+        if not self.route or self.route != new_route:
+            self.logger.warn(f"New route received! {len(new_route)} lanelets.")
+            self.logger.warn(f"Route lanelet IDs: {new_route}")
+
+            # Update route in planner
+            self.planner.set_route(new_route)
+
+            # process route if map is ready
+            if self.lanelet_map:
+                self.planner.process_route()
+                self.route_processed = True
+
+        # IDs are identical, no action needed
+        else:
+            self.logger.debug("Route received, but IDs are identical. No action required.")
 
     # Timer callback to publish trajectory
     def timer_callback_publish_trajectory(self):
@@ -200,11 +254,27 @@ class FrenetixPlanner(Node):
 
     # Set up all topic subscribers
     def _init_subscriber(self):
+        
+        # reference path
         self.reference_trajectory_sub_ = self.create_subscription(
             Path, "/input/reference_path", self.reference_path_callback, 1
         )
+
+        # predicted objects
         self.predicted_objects_sub_ = self.create_subscription(
             PredictedObjects, "/input/objects", self.objects_callback, 1
+        )
+
+        route_qos = rclpy.qos.QoSProfile(
+            reliability=rclpy.qos.ReliabilityPolicy.RELIABLE,
+            history=rclpy.qos.HistoryPolicy.KEEP_LAST,
+            depth=1,
+            durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+
+        # route subscriber
+        self.route_sub_ = self.create_subscription(
+            LaneletRoute, "/input/route", self.route_callback, route_qos
         )
 
         # Use message_filters for synchronized kinematic state

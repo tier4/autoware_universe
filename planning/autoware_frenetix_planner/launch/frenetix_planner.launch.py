@@ -21,6 +21,7 @@ def generate_launch_description():
                 ("/input/control_cmd", "/control/command/control_cmd"),
                 ("/input/objects", "/perception/object_recognition/objects"),
                 ("/input/vector_map", "/map/vector_map"),
+                ("/input/route", "/planning/mission_planning/route"),
                 ("/output/trajectory", "/planning/trajectory"),
             ],
             parameters=[params_file_path],

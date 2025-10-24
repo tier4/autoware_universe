@@ -14,6 +14,8 @@ import frenetix.trajectory_functions.cost_functions as cf
 from autoware_frenetix_planner.sampling_matrix import SamplingHandler
 from autoware_frenetix_planner.sampling_matrix import generate_sampling_matrix
 from autoware_frenetix_planner.trajectory_logger import TrajectoryLogger
+import autoware_frenetix_planner.debug_map as dm
+from autoware_frenetix_planner.route_utils import process_route_to_drivable_area
 
 class FrenetixMotionPlanner:
     """
@@ -34,7 +36,9 @@ class FrenetixMotionPlanner:
         self.optimal_trajectory = None
         self.desired_velocity = self.params.desired_velocity
         self.coordinate_system_cpp = None
+        self.lanelet_map = None
         self.reference_path = None
+        self.route = None
         self.last_endpoint = None
         self.endpoint_threshold = 1.0
         self.cartesian_state: Optional[CartesianState] = None
@@ -78,7 +82,12 @@ class FrenetixMotionPlanner:
                                                     mode="trajectories")
         else:
             self.trajectory_logger = None
-          
+
+        # debug only
+        self.left = None
+        self.right = None
+        self.ax = None
+
     # Method to update parameters at runtime
     def update_params(self, new_params):
         """
@@ -95,6 +104,51 @@ class FrenetixMotionPlanner:
 
         self.logger.info("Planner parameters updated successfully.")
 
+    def set_lanelet_map(self, lanelet_map):
+        """
+        Sets the lanelet map for the planner.
+        :param lanelet_map: Lanelet2 map object
+        """
+        self.lanelet_map = lanelet_map
+        self.logger.info("Lanelet map set for the planner.")
+
+    def set_route(self, route):
+        """
+        Sets the current route for the planner.
+        :param route: List of lanelet IDs representing the route
+        """
+        self.route = route
+        self.logger.info(f"Route set with {len(route)} lanelets.")
+
+    def process_route(self):
+        """
+        Processes the current route to determine the drivable area. (if route and map is available)
+        """
+        if self.lanelet_map is None or self.route is None:
+            self.logger.error("Lanelet map or route not set. Cannot process drivable area.")
+            return None, None, None
+
+        all_drivable_ids, left_boundary, right_boundary = process_route_to_drivable_area(
+            self.lanelet_map, self.route)
+        
+        if self.left is not None:
+            for ln in self.left:
+                ln[0].remove()
+        
+        if self.right is not None:
+            for ln in self.right:
+                ln[0].remove()
+
+        if self.ax is None:
+          self.ax = dm.debug_map(self.lanelet_map)
+
+        self.left = dm.plot_line_string_list(self.ax, left_boundary, color='green', linewidth=3)
+        self.right = dm.plot_line_string_list(self.ax, right_boundary, color='red', linewidth=3)
+
+
+
+        self.logger.warn(f"Processed drivable area with {len(all_drivable_ids)} unique lanelet IDs.")
+        return all_drivable_ids, left_boundary, right_boundary
 
     def set_objects(self, objects_msg):
         """
