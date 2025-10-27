@@ -11,9 +11,9 @@
   <arg name="object_recognition_tracking_object_merger_node_param_path" description="node param file for radar and lidar object merger"/>
 
   <!-- V2i Tracking and Merger parameters -->
-  <arg name="object_recognition_tracking_v2i_object_tracker_data_association_matrix_param_path" description="association param file for v2i far object tracking"/>
+  <!-- <arg name="object_recognition_tracking_v2i_object_tracker_data_association_matrix_param_path" description="association param file for v2i far object tracking"/>
   <arg name="object_recognition_tracking_v2i_object_tracker_tracking_setting_param_path" description="tracking setting param file for v2i far object tracking"/>
-  <arg name="object_recognition_tracking_v2i_object_tracker_node_param_path" description="node param file for v2i far object tracking"/>
+  <arg name="object_recognition_tracking_v2i_object_tracker_node_param_path" description="node param file for v2i far object tracking"/> -->
   <arg name="object_recognition_tracking_v2i_tracked_object_sorter_param_path" description="param file for v2i distance and velocity filters"/>
   <arg name="object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path" description="param file for v2i lanelet filter"/>
   <arg name="object_recognition_tracking_v2i_merger_data_association_matrix_param_path" description="association param file for v2i and lidar object merger"/>
@@ -41,7 +41,7 @@
   <arg name="input/radar/channel" default="radar"/>
   <arg name="input/radar/far_objects" default="/perception/object_recognition/detection/radar/far_objects"/>
   <arg name="input/radar/objects" default="/perception/object_recognition/detection/radar/objects"/>
-  <arg name="input/v2i/far_objects" default="/v2i/dummy_pub_noise"/>
+  <arg name="input/v2i/far_objects" default="/v2i/smartpole"/>
 
   <arg name="output/objects_" default="$(var ns)/objects"/>
 
