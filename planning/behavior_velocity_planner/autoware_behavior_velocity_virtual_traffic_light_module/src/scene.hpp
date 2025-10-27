@@ -58,8 +58,6 @@ public:
 
   struct ModuleData
   {
-    geometry_msgs::msg::Pose head_pose{};
-    std::optional<Trajectory> path{};
     std::optional<geometry_msgs::msg::Pose> stop_head_pose_at_stop_line;
     std::optional<geometry_msgs::msg::Pose> stop_head_pose_at_end_line;
   };
@@ -157,38 +155,45 @@ private:
   void updateInfrastructureCommand();
 
   std::optional<std::pair<double, int64_t>> getPathIndexOfFirstEndLine(
-    const PlannerData & planner_data) const;
+    const Trajectory & path, const PlannerData & planner_data) const;
 
   template <class T>
   std::optional<double> calcArcLengthFromCollision(
-    const double end_line_s, const T & line, const PlannerData & planner_data) const
+    const Trajectory & path, const double end_line_s, const T & line,
+    const PlannerData & planner_data) const
   {
-    const auto collision = findLastCollisionBeforeEndLine(*module_data_.path, line, end_line_s);
+    const auto collision = findLastCollisionBeforeEndLine(path, line, end_line_s);
     if (!collision) {
       return std::nullopt;
     }
 
     const auto ego_s = experimental::trajectory::find_nearest_index(
-      *module_data_.path, planner_data.current_odometry->pose.position);
+      path, planner_data.current_odometry->pose.position);
 
     return *collision - ego_s - planner_data.vehicle_info_.max_longitudinal_offset_m;
   }
 
-  bool isBeforeStartLine(const double end_line_s, const PlannerData & planner_data) const;
+  bool isBeforeStartLine(
+    const Trajectory & path, const double end_line_s, const PlannerData & planner_data) const;
 
-  bool isBeforeStopLine(const double end_line_s, const PlannerData & planner_data) const;
+  bool isBeforeStopLine(
+    const Trajectory & path, const double end_line_s, const PlannerData & planner_data) const;
 
-  bool isAfterAnyEndLine(const double end_line_s, const PlannerData & planner_data) const;
+  bool isAfterAnyEndLine(
+    const Trajectory & path, const double end_line_s, const PlannerData & planner_data) const;
 
-  bool isNearAnyEndLine(const double end_line_s, const PlannerData & planner_data) const;
+  bool isNearAnyEndLine(
+    const Trajectory & path, const double end_line_s, const PlannerData & planner_data) const;
 
   bool isStateTimeout(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state) const;
 
   bool hasRightOfWay(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state) const;
 
-  void insertStopVelocityAtStopLine(const double end_line_s, const PlannerData & planner_data);
+  void insertStopVelocityAtStopLine(
+    Trajectory & path, const double end_line_s, const PlannerData & planner_data);
 
-  void insertStopVelocityAtEndLine(const double end_line_s, const PlannerData & planner_data);
+  void insertStopVelocityAtEndLine(
+    Trajectory & path, const double end_line_s, const PlannerData & planner_data);
 
   std::string stateToString(const State state) const;
 };
