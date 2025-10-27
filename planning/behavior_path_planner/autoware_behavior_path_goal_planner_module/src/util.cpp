@@ -1184,36 +1184,79 @@ lanelet::ConstLanelets get_reference_lanelets_for_pullover(
 {
   const auto & routing_graph = planner_data->route_handler->getRoutingGraphPtr();
   const auto & lanelet_map = planner_data->route_handler->getLaneletMapPtr();
+  const auto & route_handler = planner_data->route_handler;
+
+  // Get goal lane
+  lanelet::ConstLanelet goal_lane;
+  if (!route_handler->getGoalLanelet(&goal_lane)) {
+    return utils::getExtendedCurrentLanesFromPath(
+      path, planner_data, backward_length, forward_length,
+      /*forward_only_in_route*/ false);
+  }
+
+  // Find lane change complete lane
   const auto lane_change_complete_lane =
     find_last_lane_change_completed_lanelet(path, lanelet_map, routing_graph);
+
+  // If no lane change complete lane, get lanes from current path
   if (!lane_change_complete_lane) {
     return utils::getExtendedCurrentLanesFromPath(
       path, planner_data, backward_length, forward_length,
       /*forward_only_in_route*/ false);
   }
-  auto route_lanes = planner_data->route_handler->getLaneletSequence(
-    *lane_change_complete_lane, backward_length, forward_length);
-  const double remaining_distance =
-    forward_length + backward_length - lanelet::utils::getLaneletLength3d(route_lanes);
-  if (route_lanes.empty() || remaining_distance <= 0.0) {
-    return route_lanes;
+
+  const auto extend_forward = [&](
+                                const lanelet::ConstLanelet & start_lane, const double distance,
+                                lanelet::ConstLanelets & result) {
+    double acc_dist = 0.0;
+    auto current_lane = start_lane;
+    while (acc_dist < distance) {
+      const auto nexts = routing_graph->following(current_lane);
+      if (nexts.empty()) {
+        break;
+      }
+      current_lane = nexts.front();
+      if (lanelet::utils::contains(result, current_lane)) {
+        // loop detected
+        break;
+      }
+      result.push_back(current_lane);
+      acc_dist += lanelet::utils::getLaneletLength3d(current_lane);
+    }
+  };
+
+  lanelet::ConstLanelets result_lanes;
+
+  // Add backward lanes from lane_change_complete_lane
+  const auto backward_lanes = route_handler->getPrecedingLaneletSequence(
+    *lane_change_complete_lane, backward_length, {*lane_change_complete_lane});
+  // getPrecedingLaneletSequence returns vector<vector<ConstLanelet>>, flatten and reverse it
+  for (auto it = backward_lanes.rbegin(); it != backward_lanes.rend(); ++it) {
+    result_lanes.insert(result_lanes.end(), it->begin(), it->end());
   }
-  double acc_dist = 0.0;
-  auto last_lanelet = route_lanes.back();
-  while (acc_dist < remaining_distance) {
-    const auto nexts = routing_graph->following(last_lanelet);
+
+  result_lanes.push_back(*lane_change_complete_lane);
+
+  // Extend forward from lane_change_complete_lane
+  auto current_lane = *lane_change_complete_lane;
+  while (true) {
+    const auto nexts = routing_graph->following(current_lane);
     if (nexts.empty()) {
       break;
     }
-    const auto & next = nexts.front();
-    if (lanelet::utils::contains(route_lanes, next)) {
-      // loop
+    current_lane = nexts.front();
+    if (lanelet::utils::contains(result_lanes, current_lane)) {
+      // loop detected
       break;
     }
-    last_lanelet = next;
-    route_lanes.push_back(next);
-    acc_dist += lanelet::utils::getLaneletLength3d(next);
+    result_lanes.push_back(current_lane);
+
+    if (current_lane.id() == goal_lane.id()) {
+      extend_forward(goal_lane, forward_length, result_lanes);
+      break;
+    }
   }
-  return route_lanes;
+
+  return result_lanes;
 }
 }  // namespace autoware::behavior_path_planner::goal_planner_utils
