@@ -71,6 +71,16 @@ struct QPSmootherParams
   // Number of points from start to constrain (preserve initial state)
   int num_constrained_points_start{3};
   int num_constrained_points_end{3};  // Number of points from end to constrain
+
+  // Yaw smoothing (one-sided moving average, causal filter)
+  bool smooth_yaw{false};         // Apply one-sided moving average to yaw after QP
+  int smooth_yaw_window_size{5};  // Window size for one-sided moving average (e.g., 5, 7, 9)
+
+  // Trajectory cutting based on heading rate
+  bool cut_high_heading_rate{false};   // Enable trajectory cutting when high heading rate detected
+  double max_heading_rate_rad_s{0.5};  // Maximum allowed heading rate [rad/s]
+  int heading_rate_check_points{5};    // Number of points from end to check for high heading rate
+  int min_trajectory_length{10};  // Minimum trajectory length after cutting (revert if violated)
 };
 
 /**
@@ -149,6 +159,25 @@ private:
    */
   std::vector<double> compute_velocity_based_weights(
     const TrajectoryPoints & input_trajectory) const;
+
+  /**
+   * @brief Apply backward-looking (causal) moving average filter to trajectory yaw angles
+   * @param traj_points Trajectory to smooth (modified in-place)
+   * @param window_size Window size for backward moving average
+   * @note Handles ±π wrapping correctly via unwrap/wrap operations
+   * @note Causal filter only looks at past points, preventing contamination from future instability
+   */
+  void smooth_yaw_with_backward_moving_average(
+    TrajectoryPoints & traj_points, int window_size) const;
+
+  /**
+   * @brief Detect high heading rate and cut trajectory at first occurrence
+   * @param traj_points Trajectory to check and potentially cut (modified in-place)
+   * @param input_trajectory Original trajectory to revert to if cutting fails
+   * @return true if trajectory was cut, false otherwise
+   */
+  bool cut_trajectory_at_high_heading_rate(
+    TrajectoryPoints & traj_points, const TrajectoryPoints & input_trajectory) const;
 };
 
 }  // namespace autoware::trajectory_optimizer::plugin

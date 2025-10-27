@@ -205,6 +205,40 @@
               "default": 3,
               "minimum": 0,
               "description": "Number of points from the end of the trajectory to constrain as hard constraints"
+            },
+            "smooth_yaw": {
+              "type": "boolean",
+              "default": false,
+              "description": "Apply backward-looking (causal) moving average filter to yaw angles after QP smoothing"
+            },
+            "smooth_yaw_window_size": {
+              "type": "integer",
+              "default": 5,
+              "minimum": 1,
+              "description": "Window size for backward-looking moving average yaw smoothing"
+            },
+            "cut_high_heading_rate": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable trajectory cutting when high heading rate is detected at the end"
+            },
+            "max_heading_rate_rad_s": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0,
+              "description": "Maximum allowed heading rate for trajectory cutting [rad/s]"
+            },
+            "heading_rate_check_points": {
+              "type": "integer",
+              "default": 5,
+              "minimum": 1,
+              "description": "Number of points from the end to check for high heading rate"
+            },
+            "min_trajectory_length": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 2,
+              "description": "Minimum trajectory length after cutting (revert to original if violated)"
             }
           },
           "required": [
@@ -223,7 +257,13 @@
             "min_fidelity_weight",
             "max_fidelity_weight",
             "num_constrained_points_start",
-            "num_constrained_points_end"
+            "num_constrained_points_end",
+            "smooth_yaw",
+            "smooth_yaw_window_size",
+            "cut_high_heading_rate",
+            "max_heading_rate_rad_s",
+            "heading_rate_check_points",
+            "min_trajectory_length"
           ]
         },
         "trajectory_velocity_optimizer": {

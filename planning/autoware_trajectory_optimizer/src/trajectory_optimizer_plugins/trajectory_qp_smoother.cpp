@@ -22,6 +22,8 @@
 #include <autoware_utils_math/unit_conversion.hpp>
 #include <rclcpp/logging.hpp>
 
+#include <tf2/utils.h>
+
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -83,6 +85,22 @@ void TrajectoryQPSmoother::set_up_params()
   qp_params_.num_constrained_points_end =
     get_or_declare_parameter<int>(*node_ptr, "trajectory_qp_smoother.num_constrained_points_end");
 
+  // Yaw smoothing parameters
+  qp_params_.smooth_yaw =
+    get_or_declare_parameter<bool>(*node_ptr, "trajectory_qp_smoother.smooth_yaw");
+  qp_params_.smooth_yaw_window_size =
+    get_or_declare_parameter<int>(*node_ptr, "trajectory_qp_smoother.smooth_yaw_window_size");
+
+  // Trajectory cutting parameters
+  qp_params_.cut_high_heading_rate =
+    get_or_declare_parameter<bool>(*node_ptr, "trajectory_qp_smoother.cut_high_heading_rate");
+  qp_params_.max_heading_rate_rad_s =
+    get_or_declare_parameter<double>(*node_ptr, "trajectory_qp_smoother.max_heading_rate_rad_s");
+  qp_params_.heading_rate_check_points =
+    get_or_declare_parameter<int>(*node_ptr, "trajectory_qp_smoother.heading_rate_check_points");
+  qp_params_.min_trajectory_length =
+    get_or_declare_parameter<int>(*node_ptr, "trajectory_qp_smoother.min_trajectory_length");
+
   // Log configuration at startup
   RCLCPP_DEBUG(
     node_ptr->get_logger(),
@@ -139,6 +157,22 @@ rcl_interfaces::msg::SetParametersResult TrajectoryQPSmoother::on_parameter(
   update_param<int>(
     parameters, "trajectory_qp_smoother.num_constrained_points_end",
     qp_params_.num_constrained_points_end);
+
+  // Yaw smoothing parameter updates
+  update_param<bool>(parameters, "trajectory_qp_smoother.smooth_yaw", qp_params_.smooth_yaw);
+  update_param<int>(
+    parameters, "trajectory_qp_smoother.smooth_yaw_window_size", qp_params_.smooth_yaw_window_size);
+
+  // Trajectory cutting parameter updates
+  update_param<bool>(
+    parameters, "trajectory_qp_smoother.cut_high_heading_rate", qp_params_.cut_high_heading_rate);
+  update_param<double>(
+    parameters, "trajectory_qp_smoother.max_heading_rate_rad_s", qp_params_.max_heading_rate_rad_s);
+  update_param<int>(
+    parameters, "trajectory_qp_smoother.heading_rate_check_points",
+    qp_params_.heading_rate_check_points);
+  update_param<int>(
+    parameters, "trajectory_qp_smoother.min_trajectory_length", qp_params_.min_trajectory_length);
 
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
@@ -200,6 +234,16 @@ void TrajectoryQPSmoother::optimize_trajectory(
     const double yaw_threshold_rad =
       autoware_utils_math::deg2rad(qp_params_.orientation_correction_threshold_deg);
     utils::fix_trajectory_orientation(original_trajectory, smoothed_trajectory, yaw_threshold_rad);
+  }
+
+  // Apply yaw smoothing with backward-looking moving average if enabled
+  if (qp_params_.smooth_yaw) {
+    smooth_yaw_with_backward_moving_average(smoothed_trajectory, qp_params_.smooth_yaw_window_size);
+  }
+
+  // Check for high heading rate and cut trajectory if enabled
+  if (qp_params_.cut_high_heading_rate) {
+    cut_trajectory_at_high_heading_rate(smoothed_trajectory, original_trajectory);
   }
 
   traj_points = smoothed_trajectory;
@@ -378,6 +422,7 @@ void TrajectoryQPSmoother::prepare_osqp_matrices(
   // Constraints: fix points from start and end
   // Each point has 2 constraints (x, y)
   const int num_constraints = 2 * (num_points_start + num_points_end);
+
   A = Eigen::MatrixXd::Zero(num_constraints, num_variables);
   l_vec.resize(num_constraints);
   u_vec.resize(num_constraints);
@@ -548,6 +593,128 @@ std::vector<double> TrajectoryQPSmoother::compute_velocity_based_weights(
   }
 
   return weights;
+}
+
+void TrajectoryQPSmoother::smooth_yaw_with_backward_moving_average(
+  TrajectoryPoints & traj_points, int window_size) const
+{
+  if (traj_points.size() < 2 || window_size < 1) {
+    return;
+  }
+
+  const size_t N = traj_points.size();
+
+  // Extract yaw angles from quaternions
+  std::vector<double> yaw_angles(N);
+  for (size_t i = 0; i < N; ++i) {
+    yaw_angles[i] = tf2::getYaw(traj_points[i].pose.orientation);
+  }
+
+  // Unwrap angles to remove ±π discontinuities
+  for (size_t i = 1; i < N; ++i) {
+    double diff = yaw_angles[i] - yaw_angles[i - 1];
+    // Normalize difference to [-π, π]
+    while (diff > M_PI) {
+      diff -= 2.0 * M_PI;
+      yaw_angles[i] -= 2.0 * M_PI;
+    }
+    while (diff < -M_PI) {
+      diff += 2.0 * M_PI;
+      yaw_angles[i] += 2.0 * M_PI;
+    }
+  }
+
+  // Apply backward-looking (causal) moving average
+  std::vector<double> smoothed_yaw(N);
+  for (size_t i = 0; i < N; ++i) {
+    // Determine how many past points we can use (including current)
+    const size_t effective_window = std::min(static_cast<size_t>(window_size), i + 1);
+    const size_t start_idx = i + 1 - effective_window;
+
+    // Compute mean of past window
+    double sum = 0.0;
+    for (size_t j = start_idx; j <= i; ++j) {
+      sum += yaw_angles[j];
+    }
+    smoothed_yaw[i] = sum / static_cast<double>(effective_window);
+  }
+
+  // Wrap back to [-π, π] and convert to quaternions
+  for (size_t i = 0; i < N; ++i) {
+    double wrapped_yaw = std::fmod(smoothed_yaw[i], 2.0 * M_PI);
+    if (wrapped_yaw > M_PI) {
+      wrapped_yaw -= 2.0 * M_PI;
+    } else if (wrapped_yaw < -M_PI) {
+      wrapped_yaw += 2.0 * M_PI;
+    }
+    traj_points[i].pose.orientation =
+      autoware_utils_geometry::create_quaternion_from_yaw(wrapped_yaw);
+  }
+}
+
+bool TrajectoryQPSmoother::cut_trajectory_at_high_heading_rate(
+  TrajectoryPoints & traj_points, const TrajectoryPoints & input_trajectory) const
+{
+  const size_t N = traj_points.size();
+
+  // Need at least 2 points to compute heading rate
+  if (N < 2) {
+    return false;
+  }
+
+  // Determine how many points from the end to check
+  const size_t check_points =
+    std::min(static_cast<size_t>(qp_params_.heading_rate_check_points), N - 1);
+  const size_t start_check_idx = N - check_points;
+
+  const double dt = qp_params_.time_step_s;
+  const double max_heading_rate = qp_params_.max_heading_rate_rad_s;
+
+  // Search for first point with high heading rate
+  for (size_t i = start_check_idx; i < N - 1; ++i) {
+    const double yaw_i = tf2::getYaw(traj_points[i].pose.orientation);
+    const double yaw_ip1 = tf2::getYaw(traj_points[i + 1].pose.orientation);
+
+    // Compute shortest angular difference (handles ±π wrapping)
+    double dyaw = yaw_ip1 - yaw_i;
+    while (dyaw > M_PI) dyaw -= 2.0 * M_PI;
+    while (dyaw < -M_PI) dyaw += 2.0 * M_PI;
+
+    const double heading_rate = std::abs(dyaw) / dt;
+
+    if (heading_rate > max_heading_rate) {
+      // High heading rate detected at point i
+      // Cut trajectory at point i (keep points [0, i])
+      const size_t cut_length = i + 1;
+
+      // Check minimum trajectory length requirement
+      if (cut_length < static_cast<size_t>(qp_params_.min_trajectory_length)) {
+        RCLCPP_WARN_THROTTLE(
+          get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 5000,
+          "QP Smoother: High heading rate detected at point %zu (%.2f rad/s > %.2f rad/s), "
+          "but cutting would violate minimum length (%zu < %d). Reverting to input trajectory.",
+          i, heading_rate, max_heading_rate, cut_length, qp_params_.min_trajectory_length);
+
+        // Revert to original trajectory
+        traj_points = input_trajectory;
+        return false;
+      }
+
+      // Cut trajectory
+      traj_points.resize(cut_length);
+
+      RCLCPP_WARN_THROTTLE(
+        get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 1000,
+        "QP Smoother: High heading rate detected (%.2f rad/s > %.2f rad/s) at point %zu. "
+        "Trajectory cut from %zu to %zu points.",
+        heading_rate, max_heading_rate, i, N, cut_length);
+
+      return true;
+    }
+  }
+
+  // No high heading rate detected
+  return false;
 }
 
 }  // namespace autoware::trajectory_optimizer::plugin

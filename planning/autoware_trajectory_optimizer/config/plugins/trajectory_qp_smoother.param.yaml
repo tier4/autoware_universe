@@ -19,7 +19,7 @@
       osqp_verbose: false                     # Print solver output to console
 
       # Orientation correction
-      fix_orientation: true                   # Enable orientation correction
+      fix_orientation: false                  # Enable orientation correction
       orientation_correction_threshold_deg: 5.0  # Yaw threshold for correcting QP output orientation [deg]
 
       # Velocity-based fidelity weighting
@@ -31,4 +31,14 @@
 
       # Point constraints
       num_constrained_points_start: 3        # Number of points from start to constrain (preserves initial state)
-      num_constrained_points_end: 3          # Number of points from end to constrain
+      num_constrained_points_end: 0          # Number of points from end to constrain
+
+      # Yaw smoothing (backward-looking/causal moving average filter)
+      smooth_yaw: true                       # Apply causal moving average to yaw after QP smoothing
+      smooth_yaw_window_size: 5              # Window size for backward-looking moving average
+
+      # Trajectory cutting based on heading rate
+      cut_high_heading_rate: true            # Cut trajectory when high heading rate detected
+      max_heading_rate_rad_s: 0.05           # Maximum allowed heading rate [rad/s]
+      heading_rate_check_points: 20          # Number of points from end to check
+      min_trajectory_length: 5               # Minimum length after cutting (revert if violated)
