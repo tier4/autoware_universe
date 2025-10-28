@@ -40,7 +40,7 @@ void VoxelGeneratorTest::SetUp()
   voxel_size_ = std::vector<double>{0.32, 0.32, 10.0};
   downsample_factor_ = 1;
   encoder_in_feature_size_ = 9;
-  score_threshold_ = 0.35f;
+  score_thresholds_ = std::vector<float>{0.35, 0.35, 0.35, 0.35, 0.35};
   circle_nms_dist_threshold_ = 0.5f;
   yaw_norm_thresholds_ = std::vector<double>{0.5, 0.5, 0.5};
   has_variance_ = false;
@@ -115,7 +115,7 @@ TEST_F(VoxelGeneratorTest, SingleFrame)
 
   autoware::lidar_centerpoint::CenterPointConfig config(
     class_size_, point_feature_size_, cloud_capacity_, max_voxel_size_, point_cloud_range_,
-    voxel_size_, downsample_factor_, encoder_in_feature_size_, score_threshold_,
+    voxel_size_, downsample_factor_, encoder_in_feature_size_, score_thresholds_,
     circle_nms_dist_threshold_, yaw_norm_thresholds_, has_variance_);
 
   autoware::lidar_centerpoint::VoxelGenerator voxel_generator(param, config);
@@ -162,7 +162,7 @@ TEST_F(VoxelGeneratorTest, TwoFramesNoTf)
 
   autoware::lidar_centerpoint::CenterPointConfig config(
     class_size_, point_feature_size_, cloud_capacity_, max_voxel_size_, point_cloud_range_,
-    voxel_size_, downsample_factor_, encoder_in_feature_size_, score_threshold_,
+    voxel_size_, downsample_factor_, encoder_in_feature_size_, score_thresholds_,
     circle_nms_dist_threshold_, yaw_norm_thresholds_, has_variance_);
 
   autoware::lidar_centerpoint::VoxelGenerator voxel_generator(param, config);
@@ -196,7 +196,7 @@ TEST_F(VoxelGeneratorTest, TwoFrames)
 
   autoware::lidar_centerpoint::CenterPointConfig config(
     class_size_, point_feature_size_, cloud_capacity_, max_voxel_size_, point_cloud_range_,
-    voxel_size_, downsample_factor_, encoder_in_feature_size_, score_threshold_,
+    voxel_size_, downsample_factor_, encoder_in_feature_size_, score_thresholds_,
     circle_nms_dist_threshold_, yaw_norm_thresholds_, has_variance_);
 
   autoware::lidar_centerpoint::VoxelGenerator voxel_generator(param, config);

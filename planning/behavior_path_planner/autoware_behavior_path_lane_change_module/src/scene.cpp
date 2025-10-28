@@ -703,6 +703,7 @@ void NormalLaneChange::resetParameters()
   status_ = LaneChangeStatus();
   unsafe_hysteresis_count_ = 0;
   lane_change_debug_.reset();
+  set_signal_activation_time(true);
 
   RCLCPP_DEBUG(logger_, "reset all flags and debug information.");
 }
@@ -1030,8 +1031,8 @@ FilteredLanesObjects NormalLaneChange::filter_objects() const
   ranges::sort(target_lane_leading.stopped_at_bound, dist_comparator);
   ranges::sort(target_lane_leading.stopped, dist_comparator);
   ranges::sort(target_lane_leading.moving, dist_comparator);
-  ranges::sort(filtered_objects.target_lane_trailing, [&](const auto & obj1, const auto & obj2) {
-    return !dist_comparator(obj1, obj2);
+  ranges::sort(filtered_objects.target_lane_trailing, [](const auto & obj1, const auto & obj2) {
+    return obj2.dist_from_ego < obj1.dist_from_ego;
   });
 
   lane_change_debug_.filtered_objects = filtered_objects;

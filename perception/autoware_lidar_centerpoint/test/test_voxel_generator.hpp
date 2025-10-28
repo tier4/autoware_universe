@@ -58,7 +58,7 @@ public:
   std::vector<double> voxel_size_{};
   std::size_t downsample_factor_{};
   std::size_t encoder_in_feature_size_{};
-  float score_threshold_{};
+  std::vector<float> score_thresholds_{};
   float circle_nms_dist_threshold_{};
   std::vector<double> yaw_norm_thresholds_{};
   bool has_variance_{};

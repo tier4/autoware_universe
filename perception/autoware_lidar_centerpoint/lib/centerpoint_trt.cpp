@@ -40,7 +40,7 @@ CenterPointTRT::CenterPointTRT(
 : config_(config)
 {
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_);
-  post_proc_ptr_ = std::make_unique<PostProcessCUDA>(config_);
+  post_proc_ptr_ = std::make_unique<PostProcessCUDA>(config_, stream_);
 
   initPtr();
   initTrt(encoder_param, head_param);
@@ -219,7 +219,7 @@ bool CenterPointTRT::preprocess(
   const std::size_t random_offset = std::rand() % config_.cloud_capacity_;
   CHECK_CUDA_ERROR(shufflePoints_launch(
     points_aux_d_.get(), shuffle_indices_d_.get(), points_d_.get(), count, config_.cloud_capacity_,
-    random_offset, stream_));
+    random_offset, config_.point_feature_size_, stream_));
 
   CHECK_CUDA_ERROR(cudaMemsetAsync(num_voxels_d_.get(), 0, sizeof(unsigned int), stream_));
   CHECK_CUDA_ERROR(
@@ -235,18 +235,19 @@ bool CenterPointTRT::preprocess(
     points_d_.get(), config_.cloud_capacity_, config_.range_min_x_, config_.range_max_x_,
     config_.range_min_y_, config_.range_max_y_, config_.range_min_z_, config_.range_max_z_,
     config_.voxel_size_x_, config_.voxel_size_y_, config_.voxel_size_z_, config_.grid_size_y_,
-    config_.grid_size_x_, mask_d_.get(), voxels_buffer_d_.get(), stream_));
+    config_.grid_size_x_, mask_d_.get(), voxels_buffer_d_.get(), config_.point_feature_size_,
+    stream_));
 
   CHECK_CUDA_ERROR(generateBaseFeatures_launch(
     mask_d_.get(), voxels_buffer_d_.get(), config_.grid_size_y_, config_.grid_size_x_,
     config_.max_voxel_size_, num_voxels_d_.get(), voxels_d_.get(), num_points_per_voxel_d_.get(),
-    coordinates_d_.get(), stream_));
+    coordinates_d_.get(), config_.point_feature_size_, stream_));
 
   CHECK_CUDA_ERROR(generateFeatures_launch(
     voxels_d_.get(), num_points_per_voxel_d_.get(), coordinates_d_.get(), num_voxels_d_.get(),
     config_.max_voxel_size_, config_.voxel_size_x_, config_.voxel_size_y_, config_.voxel_size_z_,
     config_.range_min_x_, config_.range_min_y_, config_.range_min_z_, encoder_in_features_d_.get(),
-    stream_));
+    config_.encoder_in_feature_size_, stream_));
 
   return true;
 }
