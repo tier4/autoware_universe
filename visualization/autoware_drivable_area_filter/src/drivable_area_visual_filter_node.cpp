@@ -73,7 +73,11 @@ public:
 
   KDTree2D() = default;
 
-  void build(std::vector<KDItem> items) { root_ = buildRecursive(std::move(items), 0); }
+  void build(std::vector<KDItem> items)
+  {
+    items_ = std::move(items);
+    root_ = buildRecursive(items_.begin(), items_.end(), 0);
+  }
 
   const KDItem * nearest(const Pt2 & query) const
   {
@@ -86,23 +90,23 @@ public:
 
 private:
   std::unique_ptr<Node> root_;
+  std::vector<KDItem> items_;  // Store items to avoid copies during tree construction
 
-  static std::unique_ptr<Node> buildRecursive(std::vector<KDItem> items, int depth)
+  std::unique_ptr<Node> buildRecursive(
+    std::vector<KDItem>::iterator begin, std::vector<KDItem>::iterator end, int depth)
   {
-    if (items.empty()) return nullptr;
+    if (begin >= end) return nullptr;
     int axis = depth % 2;
     auto cmp = [axis](const KDItem & a, const KDItem & b) {
       return (axis == 0) ? (a.p.x < b.p.x) : (a.p.y < b.p.y);
     };
-    size_t mid = items.size() / 2;
-    std::nth_element(items.begin(), items.begin() + mid, items.end(), cmp);
+    auto mid = begin + (end - begin) / 2;
+    std::nth_element(begin, mid, end, cmp);
     std::unique_ptr<Node> node = std::make_unique<Node>();
     node->axis = axis;
-    node->item = items[mid];
-    std::vector<KDItem> left_items(items.begin(), items.begin() + mid);
-    std::vector<KDItem> right_items(items.begin() + mid + 1, items.end());
-    node->left = buildRecursive(std::move(left_items), depth + 1);
-    node->right = buildRecursive(std::move(right_items), depth + 1);
+    node->item = *mid;
+    node->left = buildRecursive(begin, mid, depth + 1);
+    node->right = buildRecursive(mid + 1, end, depth + 1);
     return node;
   }
 
