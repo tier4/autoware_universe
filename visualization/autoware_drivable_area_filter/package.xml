@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>drivable_area_visual_filter</name>
+  <version>0.0.1</version>
+  <description>Visualization-only drivable area filter using PredictedObjects and Lanelet2</description>
+
+  <maintainer email="dkoldaev@gmail.com">Dmitrii Koldaev</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <buildtool_depend>autoware_cmake</buildtool_depend>
+
+  <depend>autoware_lanelet2_extension</depend>
+  <depend>autoware_map_msgs</depend>
+  <depend>autoware_perception_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>lanelet2_core</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
