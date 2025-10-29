@@ -20,6 +20,7 @@
 #include "autoware_perception_msgs/msg/predicted_objects.hpp"
 #include "geometry_msgs/msg/pose.hpp"
 #include "geometry_msgs/msg/pose_array.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -30,11 +31,20 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
 // Lanelet2 includes
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_io/Io.h>
+
+// TF2 includes
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include <tf2/exceptions.h>
+#include <tf2/time.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 
 using std::size_t;
 
@@ -132,7 +142,7 @@ static inline double euclidDist(const Pt2 & a, const Pt2 & b)
 static inline double calculatePerpendicularDistance(
   const Pt2 & p, const Pt2 & line_start, const Pt2 & line_end, double & out_cross_product)
 {
-  // Road direction vector
+  // Road direction vector (NOT normalized yet)
   double vx = line_end.x - line_start.x;
   double vy = line_end.y - line_start.y;
   double v_len = std::hypot(vx, vy);
@@ -142,20 +152,19 @@ static inline double calculatePerpendicularDistance(
     return std::hypot(p.x - line_start.x, p.y - line_start.y);
   }
 
-  // Normalize direction vector
-  vx /= v_len;
-  vy /= v_len;
-
   // Vector from line_start to point
   double wx = p.x - line_start.x;
   double wy = p.y - line_start.y;
 
-  // Calculate cross product (determines left/right side)
-  // Positive = left side, Negative = right side (in standard coordinates)
-  out_cross_product = vx * wy - vy * wx;
+  // Calculate cross product with NON-normalized vector
+  // This gives us (signed area * 2)
+  double cross = vx * wy - vy * wx;
 
-  // Calculate perpendicular distance using cross product magnitude
-  double perp_dist = std::abs(out_cross_product);
+  // Perpendicular distance = |cross product| / |direction vector|
+  double perp_dist = std::abs(cross) / v_len;
+
+  // Store signed cross product for side determination
+  out_cross_product = cross;
 
   return perp_dist;
 }
@@ -168,15 +177,24 @@ public:
     this->declare_parameter<std::string>("input_objects_topic", "/input/objects");
     this->declare_parameter<std::string>("output_objects_topic", "/output/objects");
     this->declare_parameter<std::string>("map_topic", "/input/map");
+    this->declare_parameter<bool>("debug_mode", false);
+    this->declare_parameter<std::string>("map_frame", "map");
 
     this->get_parameter("input_objects_topic", input_objects_topic_);
     this->get_parameter("output_objects_topic", output_objects_topic_);
     this->get_parameter("map_topic", map_topic_);
+    this->get_parameter("debug_mode", debug_mode_);
+    this->get_parameter("map_frame", map_frame_);
 
     RCLCPP_INFO(
       this->get_logger(), "Publishing filtered poses to: '%s'", output_objects_topic_.c_str());
 
-    pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>(output_objects_topic_, 10);
+    // Initialize TF buffer and listener BEFORE subscriptions so transforms are available
+    tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+    pub_ = this->create_publisher<autoware_perception_msgs::msg::PredictedObjects>(
+      output_objects_topic_, 10);
 
     // Lanelet map subscription
     map_sub_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
@@ -193,10 +211,16 @@ private:
   std::string input_objects_topic_;
   std::string output_objects_topic_;
   std::string map_topic_;
+  bool debug_mode_;
+  std::string map_frame_;
 
-  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pub_;
+  rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr pub_;
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr obj_sub_;
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr map_sub_;
+
+  // TF
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   lanelet::LaneletMapPtr lanelet_map_ptr_;
   std::vector<KDItem> centerline_points_;
@@ -225,6 +249,10 @@ private:
       RCLCPP_INFO(
         this->get_logger(), "Received lanelet map. Centerline points: %zu",
         centerline_points_.size());
+
+      // Print example points for debugging coordinate systems
+      const auto & ex = centerline_points_.front();
+      RCLCPP_INFO(this->get_logger(), "Example centerline point: (%.3f, %.3f)", ex.p.x, ex.p.y);
     } else {
       RCLCPP_WARN(this->get_logger(), "Received lanelet map but no centerline points found");
     }
@@ -238,27 +266,61 @@ private:
         "Lanelet map not ready, skipping object filtering");
       return;  // map not ready
     }
-    geometry_msgs::msg::PoseArray out;
+
+    autoware_perception_msgs::msg::PredictedObjects out;
     out.header = msg->header;
-    out.poses.reserve(msg->objects.size());
+    out.objects.reserve(msg->objects.size());
 
     int filtered_count = 0;
     int total_count = 0;
 
     for (const auto & obj : msg->objects) {
       total_count++;
-      const auto & pose = obj.kinematics.initial_pose_with_covariance.pose;
-      Pt2 pcar{pose.position.x, pose.position.y};
 
+      // Transform object pose to map frame
+      geometry_msgs::msg::PoseStamped pose_in, pose_out;
+      pose_in.header = msg->header;
+      pose_in.pose = obj.kinematics.initial_pose_with_covariance.pose;
+
+      if (pose_in.header.frame_id.empty()) {
+        if (debug_mode_) {
+          RCLCPP_WARN(
+            this->get_logger(),
+            "objects message header.frame_id is empty; cannot transform reliably");
+        }
+        pose_out = pose_in;  // assume already in map frame
+      } else {
+        try {
+          pose_out = tf_buffer_->transform(pose_in, map_frame_, tf2::durationFromSec(0.05));
+        } catch (const tf2::TransformException & ex) {
+          RCLCPP_WARN_THROTTLE(
+            this->get_logger(), *this->get_clock(), 2000,
+            "TF transform failed for object %d: %s. Skipping this object.", total_count, ex.what());
+          filtered_count++;
+          continue;
+        }
+      }
+
+      Pt2 pcar{pose_out.pose.position.x, pose_out.pose.position.y};
+
+      if (debug_mode_ && total_count <= 5) {
+        RCLCPP_INFO(
+          this->get_logger(),
+          "Object %d original=(%.3f, %.3f) [hdr_frame=%s], transformed=(%.3f, %.3f) in frame '%s'",
+          total_count, pose_in.pose.position.x, pose_in.pose.position.y,
+          msg->header.frame_id.c_str(), pcar.x, pcar.y, map_frame_.c_str());
+      }
+
+      // KD-tree nearest centerline check
       const KDItem * nearest = kdtree_.nearest(pcar);
       if (!nearest) {
-        out.poses.push_back(pose);
+        out.objects.push_back(obj);  // keep if no nearest centerline found
         continue;
       }
 
       auto itll = lanelet_by_id_.find(nearest->lanelet_id);
       if (itll == lanelet_by_id_.end()) {
-        out.poses.push_back(pose);
+        out.objects.push_back(obj);  // keep if lanelet not found
         continue;
       }
 
@@ -266,49 +328,45 @@ private:
       const auto center = ll.centerline();
       size_t idx = nearest->idx_in_centerline;
 
-      // Get nearest centerline point
       Pt2 c_nearest{nearest->p.x, nearest->p.y};
-
-      // Get neighbor point to define road direction
       Pt2 c_neigh;
       if (idx + 1 < center.size()) {
         c_neigh = Pt2{center[idx + 1].x(), center[idx + 1].y()};
       } else if (idx > 0) {
         c_neigh = Pt2{center[idx - 1].x(), center[idx - 1].y()};
       } else {
-        // Single point centerline - accept the vehicle
-        out.poses.push_back(pose);
+        out.objects.push_back(obj);  // single point centerline
         continue;
       }
 
-      // Calculate perpendicular distance and determine which side vehicle is on
       double cross_product = 0.0;
       double d_perp = calculatePerpendicularDistance(pcar, c_nearest, c_neigh, cross_product);
 
-      // Determine which side of the centerline the vehicle is on
-      bool is_on_left = cross_product > 0.0;
-
-      // Calculate distance to left and right boundaries
       double d_left = estimateDistanceToLineStringBounds(c_nearest, ll.leftBound());
       double d_right = estimateDistanceToLineStringBounds(c_nearest, ll.rightBound());
+      double max_allowed = d_left + d_right;
 
-      // Apply correct filter: vehicle must be within the boundary on its side
-      bool is_valid = false;
-      if (is_on_left) {
-        is_valid = (d_perp <= d_left + 1e-6);
-      } else {
-        is_valid = (d_perp <= d_right + 1e-6);
+      bool is_valid = (d_perp <= max_allowed + 1e-6);
+
+      if (debug_mode_ && total_count <= 5) {
+        RCLCPP_INFO(
+          this->get_logger(),
+          "Object %d: car_pos=(%.2f, %.2f), nearest_center=(%.2f, %.2f), "
+          "neighbor=(%.2f, %.2f), perp_dist=%.2f, left_bound=%.2f, right_bound=%.2f, "
+          "cross_prod=%.2f, max_allowed=%.2f, valid=%d",
+          total_count, pcar.x, pcar.y, c_nearest.x, c_nearest.y, c_neigh.x, c_neigh.y, d_perp,
+          d_left, d_right, cross_product, max_allowed, is_valid);
       }
 
       if (is_valid) {
-        out.poses.push_back(pose);
+        out.objects.push_back(obj);
       } else {
         filtered_count++;
       }
     }
 
     RCLCPP_INFO_THROTTLE(
-      this->get_logger(), *this->get_clock(), 5000 /*ms*/, "Filtered %d/%d objects (%.1f%% kept)",
+      this->get_logger(), *this->get_clock(), 5000, "Filtered %d/%d objects (%.1f%% kept)",
       filtered_count, total_count,
       total_count > 0 ? 100.0 * (total_count - filtered_count) / total_count : 0.0);
 
