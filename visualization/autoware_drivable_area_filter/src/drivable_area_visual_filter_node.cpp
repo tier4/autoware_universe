@@ -277,6 +277,24 @@ private:
     for (const auto & obj : msg->objects) {
       total_count++;
 
+      // Only filter vehicles
+      if (!obj.classification.empty()) {
+        auto cls = obj.classification[0].label;
+        if (
+          cls != autoware_perception_msgs::msg::ObjectClassification::CAR &&
+          cls != autoware_perception_msgs::msg::ObjectClassification::TRUCK &&
+          cls != autoware_perception_msgs::msg::ObjectClassification::BUS &&
+          cls != autoware_perception_msgs::msg::ObjectClassification::TRAILER &&
+          cls != autoware_perception_msgs::msg::ObjectClassification::MOTORCYCLE) {
+          out.objects.push_back(obj);  // keep non-vehicles as-is
+          continue;
+        }
+      } else {
+        // No classification info; keep object as-is
+        out.objects.push_back(obj);
+        continue;
+      }
+
       // Transform object pose to map frame
       geometry_msgs::msg::PoseStamped pose_in, pose_out;
       pose_in.header = msg->header;
