@@ -6,6 +6,8 @@ import threading
 from tf_transformations import euler_from_quaternion
 from autoware_frenetix_planner.config import CartesianState, CurvilinearState
 
+from shapely.geometry import LineString, MultiLineString
+
 # Import frenetix core functions
 import frenetix
 import frenetix.trajectory_functions
@@ -15,7 +17,7 @@ from autoware_frenetix_planner.sampling_matrix import SamplingHandler
 from autoware_frenetix_planner.sampling_matrix import generate_sampling_matrix
 from autoware_frenetix_planner.trajectory_logger import TrajectoryLogger
 import autoware_frenetix_planner.debug_map as dm
-from autoware_frenetix_planner.route_utils import process_route_to_drivable_area
+from autoware_frenetix_planner.route_utils import process_route_to_drivable_area, convert_lanelet_linestrings_to_shapely
 
 class FrenetixMotionPlanner:
     """
@@ -51,6 +53,10 @@ class FrenetixMotionPlanner:
         self.obstacle_positions = []
         self.obstacle_predictions_covariance = [[0.1, 0.0], [0.0, 0.1]]
         self.obstacle_predictions = {}  # Optimized obstacle predictions storage
+
+        # driveable area
+        self.shapely_left_border: Optional[MultiLineString] = None
+        self.shapely_right_border: Optional[MultiLineString] = None
     
 
         # Planning cycle control
@@ -131,6 +137,11 @@ class FrenetixMotionPlanner:
         all_drivable_ids, left_boundary, right_boundary = process_route_to_drivable_area(
             self.lanelet_map, self.route)
         
+        # Convert boundaries to Shapely MultiLineStrings for further processing
+        self.logger.debug("Converting route boundaries to Shapely objects...")
+        self.shapely_left_border = convert_lanelet_linestrings_to_shapely(left_boundary, self.logger)
+        self.shapely_right_border = convert_lanelet_linestrings_to_shapely(right_boundary, self.logger)
+
         if self.left is not None:
             for ln in self.left:
                 ln[0].remove()
@@ -148,7 +159,6 @@ class FrenetixMotionPlanner:
 
 
         self.logger.warn(f"Processed drivable area with {len(all_drivable_ids)} unique lanelet IDs.")
-        return all_drivable_ids, left_boundary, right_boundary
 
     def set_objects(self, objects_msg):
         """

@@ -1,5 +1,8 @@
 ## map and debug
+import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from shapely.geometry import MultiLineString, LineString
 
 # Helper function to extract X/Y coordinates
 def get_xy_from_linestring(linestring):
@@ -25,6 +28,45 @@ def plot_line_string_list(ax, linestring_list, color='black', linewidth=1):
     for linestring in linestring_list:
         ln = plot_line_string(ax, linestring, color=color, linewidth=linewidth)
         lines.append(ln)
+    return lines
+
+def plot_shapely_line(ax, line: LineString, color='blue', linewidth=1):
+    """
+    Plots a single Shapely LineString on a given matplotlib axis.
+    """
+    if not line or line.is_empty:
+        return None
+    # .xy returns two separate arrays for x and y coordinates
+    x, y = line.xy
+    return ax.plot(x, y, color=color, linewidth=linewidth)
+
+def plot_shapely_multilinestring(ax, multi_line: MultiLineString, linewidth=2, use_distinct_colors=True):
+    """
+    Plots a Shapely MultiLineString on a given matplotlib axis.
+    
+    If use_distinct_colors is True, each component LineString will have a
+    different color from the 'viridis' colormap. Otherwise, 'blue' is used.
+    """
+    if not multi_line or multi_line.is_empty:
+        return []
+        
+    lines = []
+    # .geoms gives access to the individual geometries (LineStrings)
+    num_lines = len(multi_line.geoms)
+    
+    if use_distinct_colors and num_lines > 0:
+        # Get a list of colors from the 'viridis' colormap
+        colors = cm.viridis(np.linspace(0, 1, num_lines))
+    else:
+        # Use a single default color
+        colors = ['blue'] * num_lines
+
+    for line, color in zip(multi_line.geoms, colors):
+        if isinstance(line, LineString):
+            plotted_line = plot_shapely_line(ax, line, color=color, linewidth=linewidth)
+            if plotted_line:
+                lines.append(plotted_line)
+                
     return lines
 
 def debug_map(lanelet_map):

@@ -1,6 +1,8 @@
 import typing
 from dataclasses import dataclass
 import lanelet2.core  # For type hinting
+from shapely.geometry import LineString, MultiLineString
+from shapely.validation import make_valid
 
 
 @dataclass
@@ -149,3 +151,39 @@ def find_geometric_neighbor(lanelet_map: lanelet2.core.LaneletMap, lanelet: lane
                                        rightBound=candidate.leftBound.invert())
 
     return None  # No neighbor found in this direction
+
+def convert_lanelet_linestrings_to_shapely(linestrings: list, logger) -> typing.Optional[MultiLineString]:
+        """
+        Converts a list of lanelet2.core.LineString3d objects into a single
+        Shapely MultiLineString object for efficient geometric checks.
+        
+        Args:
+            linestrings: A list of lanelet2.core.LineString3d objects.
+            
+        Returns:
+            A MultiLineString object, or None if conversion fails.
+        """
+        shapely_lines = []
+        try:
+            for ls in linestrings:
+                # Extract 2D points (x, y) from the LineString3d
+                points = [(p.x, p.y) for p in ls]
+                if len(points) >= 2:
+                    shapely_lines.append(LineString(points))
+            
+            if not shapely_lines:
+                logger.warn("No valid LineStrings found to create MultiLineString.")
+                return None
+                
+            multi_line = MultiLineString(shapely_lines)
+            
+            # Ensure the geometry is valid
+            if not multi_line.is_valid:
+                logger.warn("Created MultiLineString is invalid, attempting to fix...")
+                multi_line = make_valid(multi_line)
+                
+            return multi_line
+            
+        except Exception as e:
+            logger.error(f"Failed to convert lanelet linestrings to Shapely: {e}")
+            return None
