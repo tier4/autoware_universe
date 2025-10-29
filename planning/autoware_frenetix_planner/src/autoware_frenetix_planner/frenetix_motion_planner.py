@@ -7,6 +7,7 @@ from tf_transformations import euler_from_quaternion
 from autoware_frenetix_planner.config import CartesianState, CurvilinearState
 
 from shapely.geometry import LineString, MultiLineString
+import time
 
 # Import frenetix core functions
 import frenetix
@@ -142,23 +143,22 @@ class FrenetixMotionPlanner:
         self.shapely_left_border = convert_lanelet_linestrings_to_shapely(left_boundary, self.logger)
         self.shapely_right_border = convert_lanelet_linestrings_to_shapely(right_boundary, self.logger)
 
-        if self.left is not None:
-            for ln in self.left:
-                ln[0].remove()
+        # if self.left is not None:
+        #     for ln in self.left:
+        #         ln[0].remove()
         
-        if self.right is not None:
-            for ln in self.right:
-                ln[0].remove()
+        # if self.right is not None:
+        #     for ln in self.right:
+        #         ln[0].remove()
 
         if self.ax is None:
-          self.ax = dm.debug_map(self.lanelet_map)
+            pass
+          # self.ax = dm.debug_map(self.lanelet_map)
 
-        self.left = dm.plot_line_string_list(self.ax, left_boundary, color='green', linewidth=3)
-        self.right = dm.plot_line_string_list(self.ax, right_boundary, color='red', linewidth=3)
+        # self.left = dm.plot_line_string_list(self.ax, left_boundary, color='green', linewidth=3)
+        # self.right = dm.plot_line_string_list(self.ax, right_boundary, color='red', linewidth=3)
 
-
-
-        self.logger.warn(f"Processed drivable area with {len(all_drivable_ids)} unique lanelet IDs.")
+        self.logger.debug(f"Processed drivable area with {len(all_drivable_ids)} unique lanelet IDs.")
 
     def set_objects(self, objects_msg):
         """
@@ -351,7 +351,7 @@ class FrenetixMotionPlanner:
 
       self.sampling_handler.set_v_sampling(min_v, max_v)
 
-      self.logger.warn('Sampled interval of velocity: {:.2f} m/s - {:.2f} m/s'.format(min_v, max_v))
+      self.logger.debug('Sampled interval of velocity: {:.2f} m/s - {:.2f} m/s'.format(min_v, max_v))
 
     def _set_reference_and_coordinate_system(self, reference_path: np.ndarray):
         """
@@ -508,9 +508,118 @@ class FrenetixMotionPlanner:
                                                    ddd1_range=0.0)
 
         return sampling_matrix
+    
+    def boundary_collision_check(self, trajectory) -> bool:
+        """
+        Checks if a given trajectory (as a buffered polygon) intersects
+        with the pre-computed shapely boundary linestrings.
+
+        Args:
+            trajectory: A Frenetix trajectory object.
+
+        Returns:
+            True if collision is detected, False otherwise.
+        """
+        # 1. Check if boundaries are available
+        if not self.shapely_left_border or not self.shapely_right_border:
+            self.logger.warn("Shapely boundaries not set. Skipping collision check.",
+                             throttle_duration_sec=5.0)
+            return False  # Assume no collision if boundaries are missing
+
+        # 2. Check for empty trajectory
+        if len(trajectory.cartesian.x) == 0:
+            return True  # Empty trajectory is invalid
+
+        try:
+            # 3. Create numpy array from trajectory points
+            # np.column_stack creates an N-by-2 array, which Shapely handles efficiently
+            traj_points = np.column_stack((trajectory.cartesian.x, 
+                                           trajectory.cartesian.y))
+            
+            if len(traj_points) < 2:
+                self.logger.debug("Trajectory has fewer than 2 points, cannot form LineString.")
+                return True  # Treat invalid trajectory as a collision
+
+            # Create LineString directly from numpy array
+            traj_line = LineString(traj_points)
+
+            # 4. Create the buffered polygon (swept path)
+            # We use half the vehicle width as the buffer radius.
+            # cap_style=2 (flat) is more realistic for a vehicle shape than round.
+            vehicle_half_width = self.params.width / 2.0
+            buffered_trajectory = traj_line.buffer(vehicle_half_width, cap_style=2) 
+
+            # 5. Perform the intersection check
+            if buffered_trajectory.intersects(self.shapely_left_border):
+                self.logger.debug("Trajectory COLLIDES with LEFT border.")
+                return True
+            
+            if buffered_trajectory.intersects(self.shapely_right_border):
+                self.logger.debug("Trajectory COLLIDES with RIGHT border.")
+                return True
+
+        except Exception as e:
+            self.logger.error(f"Error in static collision check: {e}")
+            return True  # Assume collision on error
+
+        # 6. No intersections found
+        return False
+    
+    def trajectories_collision_check(self, trajectories: list, check_all: bool = False):
+        """
+        Iterates through a list of trajectories and returns the first one
+        that does not collide (currently only map boundaries are considered).
+
+        Args:
+            trajectories: A list of Frenetix trajectory objects, assumed to be
+                          sorted by cost (best first).
+            check_all: If False (default), stop and return the first valid
+                       trajectory found. If True, check all trajectories
+                       and return the best valid one (if any) and a complete
+                       list of all colliding ones.
+
+        Returns:
+            A tuple:
+            (Optional[Trajectory]): The first/best collision-free trajectory, or None if all collide.
+            (list): A list of trajectories from the input that *did* collide.
+        """
+        self.logger.debug(f"Checking {len(trajectories)} trajectories for boundary collision (check_all={check_all})...")
+        colliding_trajectories = []
+        optimal_collision_free_trajectory = None
+        
+        for i, trajectory in enumerate(trajectories):
+            # Check for collision with the drivable area boundaries
+            if self.boundary_collision_check(trajectory):
+                # This trajectory collides, add it to the list
+                colliding_trajectories.append(trajectory)
+            else:
+                # This is a collision-free trajectory.
+                
+                if optimal_collision_free_trajectory is None:
+                    # This is the first collision-free one we've found.
+                    # We store it as the "best" one.
+                    self.logger.info(f"Collision-free trajectory found at index {i}.")
+                    optimal_collision_free_trajectory = trajectory
+                
+                if not check_all:
+                    # EFFICIENT MODE: We are not checking all.
+                    # Since we found the first valid one, we can stop
+                    # and return immediately.
+                    self.logger.debug("Stopping check early (check_all=False).")
+                    return optimal_collision_free_trajectory, colliding_trajectories
+        
+        # This point is reached if:
+        # 1. check_all=True (full loop completed)
+        # 2. check_all=False (full loop completed, meaning all trajectories collided)
+        
+        if optimal_collision_free_trajectory is None:
+            # This case happens if the for-loop completes and no valid trajectory was found.
+            self.logger.warn(f"All {len(trajectories)} 'feasible' trajectories collided with map boundary.")
+        
+        # Return the results after checking all (or all collided in efficient mode)
+        return optimal_collision_free_trajectory, colliding_trajectories
   
     def _plan(self):
-
 
         desired_velocity = self.params.desired_velocity
 
@@ -553,6 +662,9 @@ class FrenetixMotionPlanner:
                     feasible_trajectories.append(trajectory)
                 elif trajectory.valid:
                     infeasible_trajectories.append(trajectory)
+            
+            # dm.plot_trajectories(self.ax, feasible_trajectories, color='green', linewidth=0.5)
+            # dm.plot_trajectories(self.ax, collision_trajectories, color='red', linewidth=0.5)
 
             # debug trajectories
           
@@ -567,27 +679,34 @@ class FrenetixMotionPlanner:
                                                     )
 
             try:
+              # if vehicle is still very slow allow infeasible trajectories
               if self.curvilinear_state.s_dot < 1.0:
-                optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else infeasible_trajectories[0]
+                trajectories = feasible_trajectories if feasible_trajectories else infeasible_trajectories
               else:
-                optimal_trajectory = feasible_trajectories[0] if feasible_trajectories else None
+                trajectories = feasible_trajectories if feasible_trajectories else None
+
+              # check trajectories for collision
+              start = time.time()
+              optimal_trajectory, colliding = self.trajectories_collision_check(trajectories, check_all=False) 
+              self.logger.debug(f"Collision checking time: {time.time() - start:.4f} seconds.")
+
             except Exception as e:
               self.logger.error(f"No optimal trajectory found!")
               optimal_trajectory = None
 
-            if optimal_trajectory is not None:
-              self.logger.debug(f"Cartesian (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.theta]}")
-              self.logger.warn(f"Cartesian (v): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.v]}")
-              self.logger.warn(f"max velocity evaluation: {max(optimal_trajectory.cartesian.v):.4f}")
-              self.logger.debug(f"max acceleration evaluation: {max(optimal_trajectory.cartesian.a):.4f}")
-              self.logger.debug(f"Curvilinear (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.theta]}")
-              self.logger.debug(f"Curvilinear (s): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s]}")
-              self.logger.debug(f"Curvilinear (s_dot): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s_dot]}")
-              self.logger.debug(f"Curvilinear (d): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.d]}") 
-              self.logger.debug(f"Curvilinear (d_dot): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.d_dot]}")
+            # if optimal_trajectory is not None:
+            #   self.logger.debug(f"Cartesian (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.theta]}")
+            #   self.logger.warn(f"Cartesian (v): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.v]}")
+            #   self.logger.warn(f"max velocity evaluation: {max(optimal_trajectory.cartesian.v):.4f}")
+            #   self.logger.debug(f"max acceleration evaluation: {max(optimal_trajectory.cartesian.a):.4f}")
+            #   self.logger.debug(f"Curvilinear (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.theta]}")
+            #   self.logger.debug(f"Curvilinear (s): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s]}")
+            #   self.logger.debug(f"Curvilinear (s_dot): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s_dot]}")
+            #   self.logger.debug(f"Curvilinear (d): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.d]}") 
+            #   self.logger.debug(f"Curvilinear (d_dot): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.d_dot]}")
 
-              for key in optimal_trajectory.costMap.keys():
-                self.logger.warn(f"{key} cost evaluation: {optimal_trajectory.costMap[key][0]:.2f}")
+            #   for key in optimal_trajectory.costMap.keys():
+            #     self.logger.warn(f"{key} cost evaluation: {optimal_trajectory.costMap[key][0]:.2f}")
 
             # increase sampling level (i.e., density) if no optimal trajectory could be found
             sampling_level += 1
@@ -678,7 +797,7 @@ class FrenetixMotionPlanner:
         else:
             self.logger.warn(f"Planning failed, keeping last trajectory")
         
-        return optimal_trajectory
+        return self.last_planned_trajectory
 
 
 

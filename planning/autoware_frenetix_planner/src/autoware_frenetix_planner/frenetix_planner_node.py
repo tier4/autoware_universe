@@ -219,13 +219,13 @@ class FrenetixPlanner(Node):
             return
         
         if not new_route:
-            self.logger.warning("Received route, but it contains no lanelet segments.")
+            self.logger.warn("Received route, but it contains no lanelet segments.")
             return
         
         # new route is different from current route
         if not self.route or self.route != new_route:
-            self.logger.warn(f"New route received! {len(new_route)} lanelets.")
-            self.logger.warn(f"Route lanelet IDs: {new_route}")
+            self.logger.info(f"New route received! {len(new_route)} lanelets.")
+            self.logger.info(f"Route lanelet IDs: {new_route}")
 
             # Update route in planner
             self.planner.set_route(new_route)

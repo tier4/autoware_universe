@@ -69,6 +69,22 @@ def plot_shapely_multilinestring(ax, multi_line: MultiLineString, linewidth=2, u
                 
     return lines
 
+def plot_trajectory(ax, trajectory, color='blue'):
+    """
+    Plots a single trajectory on a given matplotlib axis.
+    """
+    return ax.plot(trajectory.cartesian.x, trajectory.cartesian.y, color=color, linewidth=2)
+
+def plot_trajectories(ax, trajectories, color='blue'):
+    """
+    Plots a list of trajectories on a given matplotlib axis.
+    """
+    lines = []
+    for traj in trajectories:
+        ln = plot_trajectory(ax, traj, color=color)
+        lines.append(ln)
+    return lines
+
 def debug_map(lanelet_map):
         
     print("=============== MAP DEBUG INFO START ===============")
