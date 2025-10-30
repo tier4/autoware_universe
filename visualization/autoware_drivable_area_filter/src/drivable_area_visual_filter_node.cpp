@@ -409,7 +409,6 @@ private:
 
     return (min_d == std::numeric_limits<double>::infinity()) ? 0.0 : min_d;
   }
-
 };
 
 int main(int argc, char ** argv)
