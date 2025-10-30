@@ -3,6 +3,7 @@ project(autoware_imu_corrector)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
+find_package(Boost REQUIRED)
 
 ament_auto_add_library(imu_corrector SHARED
   src/imu_corrector_core.cpp
@@ -36,7 +37,9 @@ endfunction()
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
-  add_testcase(test/test_gyro_bias_estimation_module.cpp)
+  # add_testcase(test/test_gyro_bias_estimation_module.cpp)
+  add_testcase(test/test_gyro_bias_estimator.cpp)
+  add_testcase(test/test_imu_corrector.cpp)
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE
