@@ -366,18 +366,25 @@ private:
 
       double d_left = estimateDistanceToLineStringBounds(c_nearest, ll.leftBound());
       double d_right = estimateDistanceToLineStringBounds(c_nearest, ll.rightBound());
-      double max_allowed = d_left + d_right;
+      double bound_allowed;
+      if (cross_product > 0.0) {
+        bound_allowed = d_left;
+      } else if (cross_product < 0.0) {
+        bound_allowed = d_right;
+      } else {
+        bound_allowed = std::max(d_left, d_right);
+      }
 
-      bool is_valid = (d_perp <= max_allowed + 1e-6);
+      bool is_valid = (d_perp <= bound_allowed + 1e-6);
 
       if (debug_mode_ && total_count <= 5) {
         RCLCPP_INFO(
           this->get_logger(),
           "Object %d: car_pos=(%.2f, %.2f), nearest_center=(%.2f, %.2f), "
           "neighbor=(%.2f, %.2f), perp_dist=%.2f, left_bound=%.2f, right_bound=%.2f, "
-          "cross_prod=%.2f, max_allowed=%.2f, valid=%d",
+          "cross_prod=%.2f, bound_allowed=%.2f, valid=%d",
           total_count, pcar.x, pcar.y, c_nearest.x, c_nearest.y, c_neigh.x, c_neigh.y, d_perp,
-          d_left, d_right, cross_product, max_allowed, is_valid);
+          d_left, d_right, cross_product, bound_allowed, is_valid);
       }
 
       if (is_valid) {
