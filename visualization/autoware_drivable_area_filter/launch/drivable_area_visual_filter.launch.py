@@ -15,6 +15,7 @@ def generate_launch_description():
                         "input_objects_topic": "/perception/object_recognition/objects",
                         "output_objects_topic": "/perception/object_recognition/lane_filtered/objects",
                         "map_topic": "/map/vector_map",
+                        "api_objects_topic": "/api/perception/lane_filtered/objects",
                     }
                 ],
             )

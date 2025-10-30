@@ -16,6 +16,7 @@ ament_target_dependencies(drivable_area_visual_filter_node
   autoware_map_msgs
   lanelet2_core
   autoware_lanelet2_extension
+  autoware_adapi_v1_msgs
 )
 
 install(TARGETS

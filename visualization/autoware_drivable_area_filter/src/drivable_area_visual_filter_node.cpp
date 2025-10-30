@@ -16,6 +16,8 @@
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 
+#include "autoware_adapi_v1_msgs/msg/dynamic_object.hpp"
+#include "autoware_adapi_v1_msgs/msg/dynamic_object_array.hpp"
 #include "autoware_map_msgs/msg/lanelet_map_bin.hpp"
 #include "autoware_perception_msgs/msg/predicted_objects.hpp"
 #include "geometry_msgs/msg/pose.hpp"
@@ -173,6 +175,108 @@ static inline double calculatePerpendicularDistance(
   return perp_dist;
 }
 
+// Convert classification
+inline auto convert(const autoware_perception_msgs::msg::ObjectClassification & classification)
+{
+  autoware_adapi_v1_msgs::msg::ObjectClassification adapi_classification;
+  adapi_classification.probability = static_cast<double>(classification.probability);
+
+  // Map labels (labels 0-7 are identical, 8-11 map to UNKNOWN)
+  if (classification.label <= autoware_perception_msgs::msg::ObjectClassification::PEDESTRIAN) {
+    adapi_classification.label = classification.label;
+  } else {
+    // ANIMAL, HAZARD, OVER_DRIVABLE, UNDER_DRIVABLE -> UNKNOWN
+    adapi_classification.label = autoware_adapi_v1_msgs::msg::ObjectClassification::UNKNOWN;
+  }
+
+  return adapi_classification;
+}
+
+// Convert shape
+inline auto convert(const autoware_perception_msgs::msg::Shape & shape)
+{
+  shape_msgs::msg::SolidPrimitive solid_primitive;
+
+  switch (shape.type) {
+    case autoware_perception_msgs::msg::Shape::BOUNDING_BOX:
+      solid_primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+      solid_primitive.dimensions.resize(3);
+      solid_primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_X] = shape.dimensions.x;
+      solid_primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Y] = shape.dimensions.y;
+      solid_primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Z] = shape.dimensions.z;
+      break;
+
+    case autoware_perception_msgs::msg::Shape::CYLINDER:
+      solid_primitive.type = shape_msgs::msg::SolidPrimitive::CYLINDER;
+      solid_primitive.dimensions.resize(2);
+      solid_primitive.dimensions[shape_msgs::msg::SolidPrimitive::CYLINDER_HEIGHT] =
+        shape.dimensions.z;
+      solid_primitive.dimensions[shape_msgs::msg::SolidPrimitive::CYLINDER_RADIUS] =
+        shape.dimensions.x / 2.0;
+      break;
+
+    case autoware_perception_msgs::msg::Shape::POLYGON:
+      solid_primitive.type = shape_msgs::msg::SolidPrimitive::PRISM;
+      solid_primitive.dimensions.resize(1);
+      solid_primitive.dimensions[shape_msgs::msg::SolidPrimitive::PRISM_HEIGHT] =
+        shape.dimensions.z;
+      solid_primitive.polygon = shape.footprint;
+      break;
+
+    default:
+      // Default to BOX
+      solid_primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+      solid_primitive.dimensions.resize(3);
+      solid_primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_X] = shape.dimensions.x;
+      solid_primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Y] = shape.dimensions.y;
+      solid_primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Z] = shape.dimensions.z;
+      break;
+  }
+
+  return solid_primitive;
+}
+
+// Convert PredictedObject to DynamicObject
+inline auto convert(const autoware_perception_msgs::msg::PredictedObject & predicted_object)
+{
+  autoware_adapi_v1_msgs::msg::DynamicObject dynamic_object;
+
+  // Copy UUID
+  dynamic_object.id = predicted_object.object_id;
+
+  // Convert existence probability
+  dynamic_object.existence_probability =
+    static_cast<double>(predicted_object.existence_probability);
+
+  // Convert classifications
+  dynamic_object.classification.reserve(predicted_object.classification.size());
+  for (const auto & pred_class : predicted_object.classification) {
+    dynamic_object.classification.push_back(convert(pred_class));
+  }
+
+  // Convert kinematics - extract from WithCovariance structures
+  dynamic_object.kinematics.pose = predicted_object.kinematics.initial_pose_with_covariance.pose;
+  dynamic_object.kinematics.twist = predicted_object.kinematics.initial_twist_with_covariance.twist;
+  dynamic_object.kinematics.accel =
+    predicted_object.kinematics.initial_acceleration_with_covariance.accel;
+
+  // Convert predicted paths
+  dynamic_object.kinematics.predicted_paths.reserve(
+    predicted_object.kinematics.predicted_paths.size());
+  for (const auto & pred_path : predicted_object.kinematics.predicted_paths) {
+    autoware_adapi_v1_msgs::msg::DynamicObjectPath dyn_path;
+    dyn_path.path = pred_path.path;
+    dyn_path.time_step = pred_path.time_step;
+    dyn_path.confidence = static_cast<double>(pred_path.confidence);
+    dynamic_object.kinematics.predicted_paths.push_back(dyn_path);
+  }
+
+  // Convert shape
+  dynamic_object.shape = convert(predicted_object.shape);
+
+  return dynamic_object;
+}
+
 class DrivableAreaVisualFilter : public rclcpp::Node
 {
 public:
@@ -181,12 +285,14 @@ public:
     this->declare_parameter<std::string>("input_objects_topic", "/input/objects");
     this->declare_parameter<std::string>("output_objects_topic", "/output/objects");
     this->declare_parameter<std::string>("map_topic", "/input/map");
+    this->declare_parameter<std::string>("api_objects_topic", "/api/objects");
     this->declare_parameter<bool>("debug_mode", false);
     this->declare_parameter<std::string>("map_frame", "map");
 
     this->get_parameter("input_objects_topic", input_objects_topic_);
     this->get_parameter("output_objects_topic", output_objects_topic_);
     this->get_parameter("map_topic", map_topic_);
+    this->get_parameter("api_objects_topic", api_objects_topic_);
     this->get_parameter("debug_mode", debug_mode_);
     this->get_parameter("map_frame", map_frame_);
 
@@ -199,6 +305,9 @@ public:
 
     pub_ = this->create_publisher<autoware_perception_msgs::msg::PredictedObjects>(
       output_objects_topic_, 10);
+
+    pub_api_ = this->create_publisher<autoware_adapi_v1_msgs::msg::DynamicObjectArray>(
+      api_objects_topic_, 10);
 
     // Lanelet map subscription
     map_sub_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
@@ -215,10 +324,13 @@ private:
   std::string input_objects_topic_;
   std::string output_objects_topic_;
   std::string map_topic_;
+  std::string api_objects_topic_;
+
   bool debug_mode_;
   std::string map_frame_;
 
   rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr pub_;
+  rclcpp::Publisher<autoware_adapi_v1_msgs::msg::DynamicObjectArray>::SharedPtr pub_api_;
   rclcpp::Subscription<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr obj_sub_;
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr map_sub_;
 
@@ -399,7 +511,15 @@ private:
       filtered_count, total_count,
       total_count > 0 ? 100.0 * (total_count - filtered_count) / total_count : 0.0);
 
+    // get api objects
+    autoware_adapi_v1_msgs::msg::DynamicObjectArray out_api;
+    out_api.header = out.header;
+    for (const auto & object : out.objects) {
+      out_api.objects.push_back(convert(object));
+    }
+
     pub_->publish(out);
+    pub_api_->publish(out_api);
   }
 
   double estimateDistanceToLineStringBounds(
