@@ -16,7 +16,6 @@
   <depend>geometry_msgs</depend>
   <depend>lanelet2_core</depend>
   <depend>rclcpp</depend>
-  <depend>rclcpp_components</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
