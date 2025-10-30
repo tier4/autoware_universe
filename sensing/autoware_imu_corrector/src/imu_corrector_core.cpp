@@ -62,9 +62,20 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & options)
 {
   transform_listener_ = std::make_shared<autoware_utils::TransformListener>(this);
 
-  angular_velocity_offset_x_imu_link_ = declare_parameter<double>("angular_velocity_offset_x", 0.0);
-  angular_velocity_offset_y_imu_link_ = declare_parameter<double>("angular_velocity_offset_y", 0.0);
-  angular_velocity_offset_z_imu_link_ = declare_parameter<double>("angular_velocity_offset_z", 0.0);
+  is_offline_calibration_ = declare_parameter<bool>("is_offline_calibration", false);
+
+  if (is_offline_calibration_) {
+    angular_velocity_offset_x_imu_link_ =
+      declare_parameter<double>("angular_velocity_offset_x", 0.0);
+    angular_velocity_offset_y_imu_link_ =
+      declare_parameter<double>("angular_velocity_offset_y", 0.0);
+    angular_velocity_offset_z_imu_link_ =
+      declare_parameter<double>("angular_velocity_offset_z", 0.0);
+  } else {
+    angular_velocity_offset_x_imu_link_ = 0.0;
+    angular_velocity_offset_y_imu_link_ = 0.0;
+    angular_velocity_offset_z_imu_link_ = 0.0;
+  }
 
   angular_velocity_stddev_xx_imu_link_ =
     declare_parameter<double>("angular_velocity_stddev_xx", 0.03);
@@ -77,8 +88,14 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & options)
 
   imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
     "input", rclcpp::QoS{1}, std::bind(&ImuCorrector::callback_imu, this, std::placeholders::_1));
-
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("output", rclcpp::QoS{10});
+  gyro_bias_sub_ = create_subscription<geometry_msgs::msg::Vector3Stamped>(
+    "gyro_bias", rclcpp::SensorDataQoS(),
+    std::bind(&ImuCorrector::callback_gyro_bias, this, std::placeholders::_1));
+  is_calibrated_pub_ =
+    create_publisher<tier4_calibration_msgs::msg::BoolStamped>("is_calibrated", rclcpp::QoS{1});
+  timer_ = create_wall_timer(
+    std::chrono::milliseconds(1000), std::bind(&ImuCorrector::callback_is_calibrated, this));
 }
 
 void ImuCorrector::callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr)
@@ -125,6 +142,43 @@ void ImuCorrector::callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_
     transform_covariance(imu_msg.angular_velocity_covariance);
 
   imu_pub_->publish(imu_msg_base_link);
+}
+
+void ImuCorrector::callback_gyro_bias(
+  const geometry_msgs::msg::Vector3Stamped::ConstSharedPtr gyro_bias_msg_ptr)
+{
+  const double elapsed_time =
+    std::abs(rclcpp::Time(gyro_bias_msg_ptr->header.stamp).seconds() - this->now().seconds());
+  if (elapsed_time < 10.0) {
+    angular_velocity_offset_x_imu_link_ = gyro_bias_msg_ptr->vector.x;
+    angular_velocity_offset_y_imu_link_ = gyro_bias_msg_ptr->vector.y;
+    angular_velocity_offset_z_imu_link_ = gyro_bias_msg_ptr->vector.z;
+    angular_velocity_offset_x_ = gyro_bias_msg_ptr->vector.x;
+    angular_velocity_offset_y_ = gyro_bias_msg_ptr->vector.y;
+    angular_velocity_offset_z_ = gyro_bias_msg_ptr->vector.z;
+  } else {
+    RCLCPP_ERROR(
+      this->get_logger(),
+      "/sensing/imu/gyro_bias timeout detected . Last data received %f[s] ago. Threshold: "
+      "10.000[s].",
+      elapsed_time);
+  }
+}
+
+void ImuCorrector::callback_is_calibrated()
+{
+  tier4_calibration_msgs::msg::BoolStamped is_calibrated_msg;
+  if (
+    angular_velocity_offset_x_imu_link_.has_value() &&
+    angular_velocity_offset_y_imu_link_.has_value() &&
+    angular_velocity_offset_z_imu_link_.has_value()) {
+    is_calibrated_msg.data = true;
+  } else {
+    is_calibrated_msg.data = false;
+  }
+  is_calibrated_msg.header.stamp = this->now();
+  is_calibrated_msg.header.frame_id = "";
+  is_calibrated_pub_->publish(is_calibrated_msg);
 }
 
 }  // namespace autoware::imu_corrector

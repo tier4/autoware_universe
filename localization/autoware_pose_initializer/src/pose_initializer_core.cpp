@@ -17,6 +17,7 @@
 #include "copy_vector_to_array.hpp"
 #include "ekf_localization_trigger_module.hpp"
 #include "gnss_module.hpp"
+#include "imu_calibration_check_module.hpp"
 #include "localization_module.hpp"
 #include "ndt_localization_trigger_module.hpp"
 #include "pose_error_check_module.hpp"
@@ -63,6 +64,9 @@ PoseInitializer::PoseInitializer(const rclcpp::NodeOptions & options)
   }
   if (declare_parameter<bool>("pose_error_check_enabled")) {
     pose_error_check_ = std::make_unique<PoseErrorCheckModule>(this);
+  }
+  if (declare_parameter<bool>("imu_calibration_check_enabled")) {
+    imu_calibration_check_ = std::make_unique<ImuCalibrationCheckModule>(this);
   }
   logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
 
@@ -153,6 +157,12 @@ void PoseInitializer::on_initialize(
     throw ServiceException(
       Initialize::Service::Response::ERROR_UNSAFE, "The vehicle is not stopped.");
   }
+
+  if (imu_calibration_check_ && !imu_calibration_check_->isImuCalibrated()) {
+    throw ServiceException(
+      Initialize::Service::Response::ERROR_UNSAFE, "IMU calibration is not completed.");
+  }
+
   try {
     if (req->method == Initialize::Service::Request::AUTO) {
       change_state(State::Message::INITIALIZING);

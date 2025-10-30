@@ -25,6 +25,11 @@ namespace autoware::imu_corrector
 class GyroBiasEstimationModuleTest : public ::testing::Test
 {
 protected:
+  GyroBiasEstimationModuleTest()
+  : module(1.0, 100, 0.01, 0.01, rclcpp::get_logger("test"), std::make_shared<rclcpp::Clock>())
+  {
+  }
+
   GyroBiasEstimationModule module;
 };
 
