@@ -191,7 +191,7 @@ public:
     this->get_parameter("map_frame", map_frame_);
 
     RCLCPP_INFO(
-      this->get_logger(), "Publishing filtered poses to: '%s'", output_objects_topic_.c_str());
+      this->get_logger(), "Publishing filtered objects to: '%s'", output_objects_topic_.c_str());
 
     // Initialize TF buffer and listener BEFORE subscriptions so transforms are available
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
