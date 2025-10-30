@@ -410,7 +410,6 @@ private:
     return (min_d == std::numeric_limits<double>::infinity()) ? 0.0 : min_d;
   }
 
-  lanelet::ConstLanelets road_lanelets_;
 };
 
 int main(int argc, char ** argv)
