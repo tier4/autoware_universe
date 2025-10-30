@@ -33,6 +33,7 @@ class LocalizationModule;
 class GnssModule;
 class EkfLocalizationTriggerModule;
 class NdtLocalizationTriggerModule;
+class ImuCalibrationCheckModule;
 
 class PoseInitializer : public rclcpp::Node
 {
@@ -57,6 +58,7 @@ private:
   std::unique_ptr<LocalizationModule> yabloc_;
   std::unique_ptr<StopCheckModule> stop_check_;
   std::unique_ptr<PoseErrorCheckModule> pose_error_check_;
+  std::unique_ptr<ImuCalibrationCheckModule> imu_calibration_check_;
   std::unique_ptr<EkfLocalizationTriggerModule> ekf_localization_trigger_;
   std::unique_ptr<NdtLocalizationTriggerModule> ndt_localization_trigger_;
   std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;

@@ -8,6 +8,7 @@
     stop_check_duration: 3.0 # [sec]
     pose_error_threshold: 5.0 # [m]
     pose_error_check_enabled: false # check initial pose error with gnss
+    imu_calibration_check_enabled: false # check imu calibration status before initialization
     ekf_enabled: $(var ekf_enabled)
     gnss_enabled: $(var gnss_enabled)
     yabloc_enabled: $(var yabloc_enabled)

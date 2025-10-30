@@ -20,6 +20,7 @@
   <depend>tf2</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>tf2_ros</depend>
+  <depend>tier4_calibration_msgs</depend>
 
   <test_depend>ament_cmake_gmock</test_depend>
   <test_depend>ament_cmake_gtest</test_depend>
