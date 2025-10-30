@@ -143,6 +143,33 @@ static inline double euclidDist(const Pt2 & a, const Pt2 & b)
   return std::hypot(a.x - b.x, a.y - b.y);
 }
 
+// Point-in-polygon test using ray casting algorithm
+static inline bool isPointInPolygon(const Pt2 & point, const lanelet::ConstLineString3d & polygon)
+{
+  if (polygon.size() < 3) return false;
+
+  int intersections = 0;
+  size_t n = polygon.size();
+
+  for (size_t i = 0; i < n; i++) {
+    const auto & p1 = polygon[i];
+    const auto & p2 = polygon[(i + 1) % n];
+
+    double x1 = p1.x(), y1 = p1.y();
+    double x2 = p2.x(), y2 = p2.y();
+
+    // Check if ray from point going right intersects with edge
+    if ((y1 > point.y) != (y2 > point.y)) {
+      double x_intersect = (x2 - x1) * (point.y - y1) / (y2 - y1) + x1;
+      if (point.x < x_intersect) {
+        intersections++;
+      }
+    }
+  }
+
+  return (intersections % 2) == 1;
+}
+
 // Calculate perpendicular distance from point to line defined by two points
 // Also returns the signed cross product to determine which side the point is on
 static inline double calculatePerpendicularDistance(
@@ -288,6 +315,7 @@ public:
     this->declare_parameter<std::string>("api_objects_topic", "/api/objects");
     this->declare_parameter<bool>("debug_mode", false);
     this->declare_parameter<std::string>("map_frame", "map");
+    this->declare_parameter<bool>("include_parking_lots", true);
 
     this->get_parameter("input_objects_topic", input_objects_topic_);
     this->get_parameter("output_objects_topic", output_objects_topic_);
@@ -295,9 +323,12 @@ public:
     this->get_parameter("api_objects_topic", api_objects_topic_);
     this->get_parameter("debug_mode", debug_mode_);
     this->get_parameter("map_frame", map_frame_);
+    this->get_parameter("include_parking_lots", include_parking_lots_);
 
     RCLCPP_INFO(
       this->get_logger(), "Publishing filtered objects to: '%s'", output_objects_topic_.c_str());
+    RCLCPP_INFO(
+      this->get_logger(), "Include parking lots: %s", include_parking_lots_ ? "true" : "false");
 
     // Initialize TF buffer and listener BEFORE subscriptions so transforms are available
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -327,6 +358,7 @@ private:
   std::string api_objects_topic_;
 
   bool debug_mode_;
+  bool include_parking_lots_;
   std::string map_frame_;
 
   rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr pub_;
@@ -342,6 +374,7 @@ private:
   std::vector<KDItem> centerline_points_;
   KDTree2D kdtree_;
   std::unordered_map<lanelet::Id, lanelet::Lanelet> lanelet_by_id_;
+  std::vector<lanelet::Area> parking_lot_areas_;
 
   void mapCallback(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr map_msg)
   {
@@ -350,7 +383,9 @@ private:
 
     centerline_points_.clear();
     lanelet_by_id_.clear();
+    parking_lot_areas_.clear();
 
+    // Extract lanelets
     for (const auto & ll : lanelet_map_ptr_->laneletLayer) {
       lanelet_by_id_.emplace(ll.id(), ll);
       const auto & center = ll.centerline();
@@ -358,6 +393,23 @@ private:
         KDItem it{{center[i].x(), center[i].y()}, ll.id(), i};
         centerline_points_.push_back(it);
       }
+    }
+
+    // Extract parking lot areas
+    if (include_parking_lots_) {
+      for (const auto & area : lanelet_map_ptr_->areaLayer) {
+        // Check if this is a parking lot area
+        auto subtype = area.attribute("subtype");
+        auto area_type = area.attribute("type");
+
+        if (
+          subtype.value() == "parking_lot" || subtype.value() == "parking_space" ||
+          area_type.value() == "parking_lot") {
+          parking_lot_areas_.push_back(area);
+        }
+      }
+
+      RCLCPP_INFO(this->get_logger(), "Found %zu parking lot areas", parking_lot_areas_.size());
     }
 
     if (!centerline_points_.empty()) {
@@ -372,6 +424,39 @@ private:
     } else {
       RCLCPP_WARN(this->get_logger(), "Received lanelet map but no centerline points found");
     }
+  }
+
+  bool isInParkingLot(const Pt2 & point)
+  {
+    if (!include_parking_lots_ || parking_lot_areas_.empty()) {
+      return false;
+    }
+
+    for (const auto & area : parking_lot_areas_) {
+      // Check outer bounds (outerBound() returns a vector)
+      const auto & outer_bounds = area.outerBound();
+      for (const auto & outer : outer_bounds) {
+        if (isPointInPolygon(point, outer)) {
+          // Check if point is NOT in any inner bounds (holes)
+          bool in_hole = false;
+          const auto & inner_bounds = area.innerBounds();
+          for (const auto & inner_bound_vec : inner_bounds) {
+            for (const auto & inner : inner_bound_vec) {
+              if (isPointInPolygon(point, inner)) {
+                in_hole = true;
+                break;
+              }
+            }
+            if (in_hole) break;
+          }
+          if (!in_hole) {
+            return true;  // Point is in parking lot and not in a hole
+          }
+        }
+      }
+    }
+
+    return false;
   }
 
   void objectsCallback(const autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr msg)
@@ -389,6 +474,7 @@ private:
 
     int filtered_count = 0;
     int total_count = 0;
+    int parking_lot_count = 0;
 
     for (const auto & obj : msg->objects) {
       total_count++;
@@ -501,15 +587,20 @@ private:
 
       if (is_valid) {
         out.objects.push_back(obj);
+      } else if (isInParkingLot(pcar)) {
+        out.objects.push_back(obj);
+        RCLCPP_INFO(this->get_logger(), "Object %d is in parking lot, keeping it", total_count);
+        parking_lot_count++;
       } else {
         filtered_count++;
       }
     }
 
     RCLCPP_INFO_THROTTLE(
-      this->get_logger(), *this->get_clock(), 5000, "Filtered %d/%d objects (%.1f%% kept)",
-      filtered_count, total_count,
-      total_count > 0 ? 100.0 * (total_count - filtered_count) / total_count : 0.0);
+      this->get_logger(), *this->get_clock(), 5000,
+      "Filtered %d/%d objects (%.1f%% kept), %d in parking lots", filtered_count, total_count,
+      total_count > 0 ? 100.0 * (total_count - filtered_count) / total_count : 0.0,
+      parking_lot_count);
 
     // get api objects
     autoware_adapi_v1_msgs::msg::DynamicObjectArray out_api;
