@@ -38,6 +38,36 @@
 #include <utility>
 #include <vector>
 
+#define debug(var)                                            \
+  do {                                                        \
+    std::cerr << "line:" << __LINE__ << ", " << #var << ": "; \
+    view(var);                                                \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T>> & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                          \
+  {                                     \
+    std::cerr << __LINE__ << std::endl; \
+  }
+
 namespace autoware::motion_velocity_planner
 {
 using autoware_utils::get_or_declare_parameter;
@@ -496,6 +526,11 @@ ObstacleSlowDownModule::create_slow_down_obstacle_for_predicted_object(
   const auto & obj_label = object->predicted_object.classification.at(0).label;
   slow_down_condition_counter_.add_current_uuid(obj_uuid);
 
+  if (obj_uuid_str != "b7cd87d8be68edbd4b6fadbbf14676cf") {
+    std::cerr << "not target obj_uuid_str: " << std::endl;
+    return std::nullopt;
+  }
+
   const bool is_prev_obstacle_slow_down =
     utils::get_obstacle_from_uuid(prev_slow_down_object_obstacles_, obj_uuid).has_value();
 
@@ -636,10 +671,14 @@ ObstacleSlowDownModule::create_slow_down_obstacle_for_predicted_object(
       }
     }
   }
+
   const auto predicted_object_pose =
     object->get_predicted_current_pose(clock_->now(), predicted_objects_stamp);
-  const auto signed_lateral_deviation = autoware_utils_geometry::calc_lateral_deviation(
-    traj_points[front_seg_idx].pose, predicted_object_pose.position);
+  const auto signed_lateral_deviation =
+    // motion_utils::calcLateralOffset(traj_points, predicted_object_pose.position);
+    autoware_utils_geometry::calc_lateral_deviation(
+      traj_points[front_seg_idx].pose, predicted_object_pose.position);
+  debug(signed_lateral_deviation);
   const auto side = signed_lateral_deviation > 0.0 ? Side::Left : Side::Right;
 
   return SlowDownObstacle{
@@ -773,6 +812,11 @@ std::vector<SlowdownInterval> ObstacleSlowDownModule::plan_slow_down(
       }
       return feasible_slow_down_vel;
     }();
+
+    // const auto prev_output_target_vel = prev_output->target_vel;
+    // debug(prev_output_target_vel);
+    // debug(feasible_slow_down_vel);
+    // debug(stable_slow_down_vel);
 
     if (std::none_of(
           slow_down_traj_points.begin() + (slow_down_start_idx ? *slow_down_start_idx : 0),
@@ -956,12 +1000,16 @@ ObstacleSlowDownModule::calculate_distance_to_slow_down_with_constraints(
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
+  std::cerr << "obstacle_id: " << autoware_utils_uuid::to_hex_string(obstacle.uuid) << std::endl;
+
   const double abs_ego_offset = planner_data->is_driving_forward
                                   ? std::abs(vehicle_info.max_longitudinal_offset_m)
                                   : std::abs(vehicle_info.min_longitudinal_offset_m);
   const double obstacle_vel = obstacle.velocity;
   // calculate slow down velocity
   const double slow_down_vel = calculate_slow_down_velocity(obstacle, prev_output, obstacle_motion);
+
+  const int int_motion = static_cast<int>(obstacle_motion);
 
   // calculate distance to collision points
   const double dist_to_front_collision =
@@ -1001,6 +1049,17 @@ ObstacleSlowDownModule::calculate_distance_to_slow_down_with_constraints(
     slow_down_vel * slow_down_planning_param_.time_margin_on_target_velocity);
   const double deceleration_dist = offset_dist_to_collision + dist_to_front_collision -
                                    abs_ego_offset - dist_to_ego - slow_down_prepare_dist;
+  if (autoware_utils_uuid::to_hex_string(obstacle.uuid) == "b7cd87d8be68edbd4b6fadbbf14676cf") {
+    debug(offset_dist_to_collision);
+    debug(dist_to_front_collision);
+    debug(abs_ego_offset);
+    debug(dist_to_ego);
+    debug(slow_down_prepare_dist);
+    std::cerr << "obstacle_class: " << obstacle.classification.label
+              << ", side: " << static_cast<int>(obstacle.side)
+              << ", obstacle_motion: " << int_motion << std::endl;
+  }
+
   const double slow_down_dist =
     dist_to_back_collision - dist_to_front_collision + slow_down_prepare_dist;
 
@@ -1031,12 +1090,18 @@ ObstacleSlowDownModule::calculate_distance_to_slow_down_with_constraints(
   const double filtered_dist_to_slow_down_end =
     apply_lowpass_filter(dist_to_slow_down_end, prev_output->end_point);
 
+  debug(slow_down_vel);
+  debug(deceleration_dist);
+  const double deceleration_dist_lpf = filtered_dist_to_slow_down_start - dist_to_ego;
+
   // calculate velocity considering constraints
   const double feasible_slow_down_vel = [&]() {
-    if (deceleration_dist < 0) {
+    if (deceleration_dist_lpf < 0) {
       if (prev_output) {
+        line();
         return prev_output->target_vel;
       }
+      line();
       return std::max(planner_data->current_odometry.twist.twist.linear.x, slow_down_vel);
     }
     if (planner_data->current_odometry.twist.twist.linear.x < slow_down_vel) {
@@ -1049,19 +1114,24 @@ ObstacleSlowDownModule::calculate_distance_to_slow_down_with_constraints(
         slow_down_planning_param_.slow_down_min_acc) {
         const double squared_vel =
           std::pow(planner_data->current_odometry.twist.twist.linear.x, 2) +
-          2 * deceleration_dist * slow_down_planning_param_.slow_down_min_acc;
+          2 * deceleration_dist_lpf * slow_down_planning_param_.slow_down_min_acc;
         if (squared_vel < 0) {
+          line();
           return slow_down_vel;
         }
+        line();
         return std::max(std::sqrt(squared_vel), slow_down_vel);
       }
       // TODO(murooka) Calculate more precisely. Final acceleration should be zero.
       const double min_feasible_slow_down_vel = calc_deceleration_velocity_from_distance_to_target(
         slow_down_planning_param_.slow_down_min_jerk, slow_down_planning_param_.slow_down_min_acc,
         planner_data->current_acceleration.accel.accel.linear.x,
-        planner_data->current_odometry.twist.twist.linear.x, deceleration_dist);
+        planner_data->current_odometry.twist.twist.linear.x, deceleration_dist_lpf);
+      line();
       return min_feasible_slow_down_vel;
     }();
+    debug(one_shot_feasible_slow_down_vel);
+
     if (prev_output) {
       // NOTE: If longitudinal controllability is not good, one_shot_slow_down_vel may be getting
       // larger since we use actual ego's velocity and acceleration for its calculation.
@@ -1074,10 +1144,14 @@ ObstacleSlowDownModule::calculate_distance_to_slow_down_with_constraints(
                2 * slow_down_planning_param_.slow_down_min_acc * start_point_diff));
       const double feasible_slow_down_vel =
         std::min(one_shot_feasible_slow_down_vel, prev_feasible_slow_down_vel);
+      debug(feasible_slow_down_vel);
+      debug(slow_down_vel);
       return std::max(slow_down_vel, feasible_slow_down_vel);
     }
+    line();
     return std::max(slow_down_vel, one_shot_feasible_slow_down_vel);
   }();
+  debug(feasible_slow_down_vel);
 
   return std::make_tuple(
     filtered_dist_to_slow_down_start, filtered_dist_to_slow_down_end, feasible_slow_down_vel);
