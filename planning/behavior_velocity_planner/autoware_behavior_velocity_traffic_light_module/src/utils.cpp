@@ -38,7 +38,7 @@ auto calcStopPoint(
     const auto stop_line = planning_utils::extendSegmentToBounds(
       {lanelet_stop_lines[i].basicPoint2d(), lanelet_stop_lines[i + 1].basicPoint2d()}, left_bound,
       right_bound);
-    const auto stop_point = experimental::trajectory::crossed(path, stop_line);
+    const auto stop_point = autoware::experimental::trajectory::crossed(path, stop_line);
     if (stop_point.empty()) {
       continue;
     }

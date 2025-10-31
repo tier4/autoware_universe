@@ -73,7 +73,7 @@ public:
 
 public:
   TrafficLightModule(
-    const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
+    const lanelet::Id lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
     lanelet::ConstLanelet lane, const lanelet::ConstLineString3d & initial_stop_line,
     const PlannerParam & planner_param, const rclcpp::Logger logger,
     const rclcpp::Clock::SharedPtr clock,
@@ -116,7 +116,7 @@ private:
   void updateTrafficSignal(const PlannerData & planner_data);
 
   // Lane id
-  const int64_t lane_id_;
+  const lanelet::Id lane_id_;
 
   // Key Feature
   const lanelet::TrafficLight & traffic_light_reg_elem_;

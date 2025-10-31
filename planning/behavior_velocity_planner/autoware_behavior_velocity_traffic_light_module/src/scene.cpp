@@ -34,7 +34,7 @@
 namespace autoware::behavior_velocity_planner
 {
 TrafficLightModule::TrafficLightModule(
-  const int64_t lane_id,
+  const lanelet::Id lane_id,
   const lanelet::TrafficLight & traffic_light_reg_elem,  //
   lanelet::ConstLanelet lane,                            //
   const lanelet::ConstLineString3d & initial_stop_line,  //
@@ -80,7 +80,8 @@ bool TrafficLightModule::modifyPathVelocity(
   }
 
   // Calculate dist to stop point
-  const auto ego_s = experimental::trajectory::find_nearest_index(path, self_pose->pose.position);
+  const auto ego_s =
+    autoware::experimental::trajectory::find_nearest_index(path, self_pose->pose.position);
   const auto signed_arc_length_to_stop_point = *stop_point_s - ego_s;
   setDistance(signed_arc_length_to_stop_point);
 

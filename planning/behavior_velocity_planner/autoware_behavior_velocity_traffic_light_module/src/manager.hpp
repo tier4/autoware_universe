@@ -22,7 +22,6 @@
 
 #include <functional>
 #include <memory>
-#include <optional>
 
 namespace autoware::behavior_velocity_planner
 {
