@@ -300,8 +300,7 @@ class FrenetixPlanner(Node):
         self.timer_trajectory_pub = self.create_timer(0.1, self.timer_callback_publish_trajectory)
         self.get_logger().info("Trajectory publisher set up.")
 
-    # convert frenetix trajecory to autoware trajectory message
-
+    # convert frenetix trajectory to autoware trajectory message
     def convert_frenetix_to_autoware_trajectory(self, opt_trajectory, car_altitude=0.0):
         """
         Converts a Frenetix optimal trajectory to an Autoware Trajectory message.
