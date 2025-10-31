@@ -15,12 +15,7 @@
 #include "manager.hpp"
 
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
-#include <autoware_lanelet2_extension/utility/utilities.hpp>
-#include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
-#include <autoware_utils/ros/parameter.hpp>
-
-#include <boost/geometry/algorithms/intersects.hpp>
 
 #include <lanelet2_core/geometry/LineString.h>
 
@@ -32,7 +27,6 @@
 
 namespace autoware::behavior_velocity_planner
 {
-using autoware_utils::get_or_declare_parameter;
 using lanelet::autoware::VirtualTrafficLight;
 
 VirtualTrafficLightModuleManager::VirtualTrafficLightModuleManager(rclcpp::Node & node)

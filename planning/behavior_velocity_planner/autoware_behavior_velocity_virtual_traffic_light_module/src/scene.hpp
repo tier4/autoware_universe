@@ -16,7 +16,6 @@
 #define SCENE_HPP_
 
 #include <autoware/behavior_velocity_planner_common/experimental/scene_module_interface.hpp>
-#include <autoware/trajectory/utils/find_nearest.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/virtual_traffic_light.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
 
@@ -45,11 +44,11 @@ public:
 
   struct MapData
   {
-    int64_t reg_elem_id{};
+    lanelet::Id reg_elem_id{};
     std::string instrument_type{};
     std::string instrument_id{};
     std::vector<tier4_v2x_msgs::msg::KeyValue> custom_tags{};
-    autoware_utils::Point3d instrument_center{};
+    lanelet::BasicPoint3d instrument_center{};
     lanelet::Optional<lanelet::ConstLineString3d> stop_line{};
     lanelet::ConstLineString3d start_line{};
     std::vector<lanelet::ConstLineString3d> end_lines{};
@@ -74,9 +73,9 @@ public:
 
 public:
   VirtualTrafficLightModule(
-    const int64_t module_id, const int64_t lane_id,
-    const lanelet::autoware::VirtualTrafficLight & reg_elem, lanelet::ConstLanelet lane,
-    const PlannerParam & planner_param, const rclcpp::Logger logger,
+    const lanelet::Id module_id, const lanelet::Id lane_id,
+    const lanelet::autoware::VirtualTrafficLight & reg_elem, const lanelet::ConstLanelet & lane,
+    const PlannerParam & planner_param, const rclcpp::Logger & logger,
     const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
@@ -120,7 +119,7 @@ public:
   }
 
 private:
-  const int64_t lane_id_;
+  const lanelet::Id lane_id_;
   const lanelet::ConstLanelet lane_;
   const PlannerParam planner_param_;
   std::optional<tier4_v2x_msgs::msg::VirtualTrafficLightState> virtual_traffic_light_state_;
@@ -132,7 +131,7 @@ private:
   rclcpp::Logger base_logger_;
 
   void setModuleState(
-    const State new_state, const std::optional<int64_t> end_line_id = std::nullopt);
+    const State new_state, const std::optional<lanelet::Id> end_line_id = std::nullopt);
 
   template <State StateValue>
   void setModuleState()
@@ -154,24 +153,8 @@ private:
 
   void updateInfrastructureCommand();
 
-  std::optional<std::pair<double, int64_t>> getPathIndexOfFirstEndLine(
+  std::optional<std::pair<lanelet::Id, double>> getFirstEndLine(
     const Trajectory & path, const PlannerData & planner_data) const;
-
-  template <class T>
-  std::optional<double> calcArcLengthFromCollision(
-    const Trajectory & path, const double end_line_s, const T & line,
-    const PlannerData & planner_data) const
-  {
-    const auto collision = findLastCollisionBeforeEndLine(path, line, end_line_s);
-    if (!collision) {
-      return std::nullopt;
-    }
-
-    const auto ego_s = experimental::trajectory::find_nearest_index(
-      path, planner_data.current_odometry->pose.position);
-
-    return *collision - ego_s - planner_data.vehicle_info_.max_longitudinal_offset_m;
-  }
 
   bool isBeforeStartLine(
     const Trajectory & path, const double end_line_s, const PlannerData & planner_data) const;
@@ -186,8 +169,6 @@ private:
     const Trajectory & path, const double end_line_s, const PlannerData & planner_data) const;
 
   bool isStateTimeout(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state) const;
-
-  bool hasRightOfWay(const tier4_v2x_msgs::msg::VirtualTrafficLightState & state) const;
 
   void insertStopVelocityAtStopLine(
     Trajectory & path, const double end_line_s, const PlannerData & planner_data);
