@@ -395,17 +395,46 @@ private:
       }
     }
 
-    // Extract parking lot areas
+    // Extract parking lot polygons
     if (include_parking_lots_) {
-      for (const auto & area : lanelet_map_ptr_->areaLayer) {
-        // Check if this is a parking lot area
-        auto subtype = area.attribute("subtype");
-        auto area_type = area.attribute("type");
+      RCLCPP_INFO(
+        this->get_logger(), "Scanning %zu polygons in the map...",
+        lanelet_map_ptr_->polygonLayer.size());
 
-        if (
-          subtype.value() == "parking_lot" || subtype.value() == "parking_space" ||
-          area_type.value() == "parking_lot") {
-          parking_lot_areas_.push_back(area);
+      for (const auto & polygon : lanelet_map_ptr_->polygonLayer) {
+        auto poly_type = polygon.attribute("type");
+
+        if (debug_mode_) {
+          RCLCPP_DEBUG(
+            this->get_logger(), "Polygon ID %ld: type='%s'", polygon.id(),
+            poly_type.value().c_str());
+        }
+
+        if (poly_type.value() == "parking_lot") {
+          // Convert polygon (Polygon3d) to LineString3d for area outer bound
+          lanelet::LineString3d linestring(lanelet::utils::getId());
+          for (const auto & pt : polygon) {
+            // Create a new Point3d from the ConstPoint3d coordinates
+            lanelet::Point3d new_pt(lanelet::utils::getId(), pt.x(), pt.y(), pt.z());
+            linestring.push_back(new_pt);
+          }
+
+          lanelet::LineStrings3d outer_bounds;
+          outer_bounds.push_back(linestring);
+
+          lanelet::Area parking_area(lanelet::utils::getId());
+          parking_area.setOuterBound(outer_bounds);
+          parking_lot_areas_.push_back(parking_area);
+
+          RCLCPP_INFO(
+            this->get_logger(), "Added parking lot polygon ID %ld with %zu points", polygon.id(),
+            polygon.size());
+
+          // Print first point for verification
+          if (!polygon.empty()) {
+            RCLCPP_INFO(
+              this->get_logger(), "  First point: (%.2f, %.2f)", polygon[0].x(), polygon[0].y());
+          }
         }
       }
 
@@ -589,7 +618,6 @@ private:
         out.objects.push_back(obj);
       } else if (isInParkingLot(pcar)) {
         out.objects.push_back(obj);
-        RCLCPP_INFO(this->get_logger(), "Object %d is in parking lot, keeping it", total_count);
         parking_lot_count++;
       } else {
         filtered_count++;
