@@ -43,6 +43,8 @@
   <arg name="input/radar/far_objects" default="/perception/object_recognition/detection/radar/far_objects"/>
   <arg name="input/radar/objects" default="/perception/object_recognition/detection/radar/objects"/>
   <arg name="input/radar/tracked_objects" default="/sensing/radar/tracked_objects"/>
+  <arg name="input/camera_streampetr/channel" default="camera_streampetr"/>
+  <arg name="input/camera_streampetr/objects" default="/perception/object_recognition/camera_only/objects"/>
 
   <arg name="output/objects" default="$(var ns)/objects"/>
 
@@ -104,9 +106,11 @@
     <let name="input/detection01/objects" value="$(var input/lidar_dnn_validated/objects)" if="$(var use_validator)"/>
     <let name="input/detection01/objects" value="$(var input/lidar_dnn/objects)" unless="$(var use_validator)"/>
 
-    <let name="input/detection02/channel" value="$(var input/lidar_dnn_short_range/channel)" if="$(var use_short_range_detection)"/>
-    <let name="input/detection02/channel" value="none" unless="$(var use_short_range_detection)"/>
-    <let name="input/detection02/objects" value="$(var input/lidar_dnn_short_range/objects)"/>
+    <!-- <let name="input/detection02/channel" value="$(var input/lidar_dnn_short_range/channel)" if="$(var use_short_range_detection)"/> -->
+    <!-- <let name="input/detection02/channel" value="none" unless="$(var use_short_range_detection)"/> -->
+    <!-- <let name="input/detection02/objects" value="$(var input/lidar_dnn_short_range/objects)"/> -->
+    <let name="input/detection02/channel" value="$(var input/camera_streampetr/channel)"/>
+    <let name="input/detection02/objects" value="$(var input/camera_streampetr/objects)"/>
 
     <let name="input/detection03/channel" value="$(var input/camera_lidar_rule_detector/channel)"/>
     <let name="input/detection03/objects" value="$(var input/camera_lidar_rule_detector/objects)"/>
