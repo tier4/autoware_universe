@@ -7,6 +7,7 @@ from autoware_planning_msgs.msg import Path, LaneletRoute
 from autoware_planning_msgs.msg import Trajectory
 from autoware_perception_msgs.msg import PredictedObjects
 from autoware_control_msgs.msg import Control
+from visualization_msgs.msg import MarkerArray
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import AccelWithCovarianceStamped, Pose, Point, Quaternion
 from autoware_planning_msgs.msg import TrajectoryPoint
@@ -18,7 +19,8 @@ from rclpy.node import Node
 from rcl_interfaces.msg import SetParametersResult
 import rclpy.qos
 from autoware_frenetix_planner.frenetix_motion_planner import FrenetixMotionPlanner
-from autoware_frenetix_planner.config import FrenetixPlannerParams, CostWeightsParams
+from autoware_frenetix_planner.config import FrenetixPlannerParams, CostWeightsParams, EvasiveParams
+from autoware_frenetix_planner.stop_check import compute_min_stop_distance
 from tf_transformations import quaternion_from_euler
 from builtin_interfaces.msg import Duration
 
@@ -48,6 +50,13 @@ class FrenetixPlanner(Node):
         self.car_altitude = 0.0
         self.objects = None
         self.route_processed = False
+
+        # Safety filter buffers
+        self.latest_autoware_traj = None
+        self.stop_wall_xy = None
+        self.last_selected_source = None
+        # Evasive mode state (latched when True until release condition is met)
+        self.evasive_active = False
     
     @property
     def route(self):
@@ -90,6 +99,17 @@ class FrenetixPlanner(Node):
             cartesian_lateral_acceleration=declare_and_get("cost_weights.cartesian_lateral_acceleration", Parameter.Type.DOUBLE)
         )
 
+        # Build the nested CostWeightsParams object first
+        evasive_params = EvasiveParams(
+            acc_min=declare_and_get("evasive.acc_min", Parameter.Type.DOUBLE),
+            jerk_acc=declare_and_get("evasive.jerk_acc", Parameter.Type.DOUBLE),
+            jerk_dec=declare_and_get("evasive.jerk_dec", Parameter.Type.DOUBLE),
+            stop_buffer=declare_and_get("evasive.stop_buffer", Parameter.Type.DOUBLE),
+            # Release condition thresholds
+            release_longitudinal_back=declare_and_get("evasive.release_back", Parameter.Type.DOUBLE),
+            release_lateral_center=declare_and_get("evasive.release_lat", Parameter.Type.DOUBLE),
+        )
+
         # Now build the main Parameters object
         params = FrenetixPlannerParams(
             # Double (float) parameters
@@ -115,7 +135,10 @@ class FrenetixPlanner(Node):
             sampling_max=declare_and_get("sampling_max", Parameter.Type.INTEGER),
             
             # The nested parameter object
-            cost_weights=cost_weights_params
+            cost_weights=cost_weights_params,
+
+            # The nested evasive parameters
+            evasive_params = evasive_params
         )
 
         return params
@@ -239,18 +262,54 @@ class FrenetixPlanner(Node):
         else:
             self.logger.debug("Route received, but IDs are identical. No action required.")
 
-    # Timer callback to publish trajectory
+    # Autoware trajectory callback
+    def autoware_trajectory_callback(self, traj_msg: Trajectory):
+        self.latest_autoware_traj = traj_msg
+
+    def stop_wall_callback(self, marker_array_msg: MarkerArray):
+        # marker cannot change if evasive mode is active
+        if marker_array_msg.markers is not None and len(marker_array_msg.markers) > 0 and not self.evasive_active:
+            position = marker_array_msg.markers[0].pose.position
+
+            if position.x == 0.0 and position.y == 0.0:
+                self.stop_wall_xy = None
+            else:
+                self.stop_wall_xy = [position.x, position.y]
+
     def timer_callback_publish_trajectory(self):
-        
-        # Convert the latest objects to Frenetix format and set in planner
+        # Update objects in planner
         if self.planner.set_objects(self.objects):
             self.get_logger().debug("Objects set/updated.")
-        
-        # Generate trajectory using the planner
+
+        # Generate Frenetix trajectory candidate
         frenetix_trajectory = self.planner.cyclic_plan()
-        trajectory_msg = self.convert_frenetix_to_autoware_trajectory(frenetix_trajectory, car_altitude=self.car_altitude)
-        if trajectory_msg:
-            self.trajectory_pub.publish(trajectory_msg)
+        frenetix_msg = self.convert_frenetix_to_autoware_trajectory(
+            frenetix_trajectory, car_altitude=self.car_altitude
+        )
+
+        # Update evasive mode based on latest Autoware trajectory and state
+        if self.latest_autoware_traj:
+            self.check_evasive_mode(self.latest_autoware_traj)
+        else:
+            # If no Autoware trajectory at all, prefer evasive mode
+            self.evasive_active = True
+
+        # Select output strictly by mode
+        if self.evasive_active:
+            selected_msg = frenetix_msg
+            src = "frenetix"
+        else:
+            selected_msg = self.latest_autoware_traj
+            src = "autoware"
+
+        # Publish if available
+        if selected_msg:
+            selected_msg.header.stamp = self.get_clock().now().to_msg()
+            if src != self.last_selected_source:
+                self.get_logger().warn(f"Evasive maneuver filter selected: {src} trajectory")
+                self.last_selected_source = src
+            self.trajectory_pub.publish(selected_msg)
+
 
     # Set up all topic subscribers
     def _init_subscriber(self):
@@ -292,6 +351,23 @@ class FrenetixPlanner(Node):
         self.map_sub_ = self.create_subscription(
             LaneletMapBin, "/input/vector_map", self.vector_map_callback, map_qos
         )
+
+        # subscribe to autoware trajectory for safety filtering
+        self.autoware_traj_sub_ = self.create_subscription(
+            Trajectory,
+            "/input/autoware_trajectory",
+            self.autoware_trajectory_callback,
+            1,
+        )
+
+        # subscribe to stop wall for safety filtering
+        self.stop_wall_sub_ = self.create_subscription(
+            MarkerArray,
+            "/input/stop_wall",
+            self.stop_wall_callback,
+            1,
+        )
+
         self.get_logger().info("All subscribers set up.")
 
     # Set up all topic publishers
@@ -364,6 +440,73 @@ class FrenetixPlanner(Node):
           )
 
         return trajectory_msg
+    
+    def check_evasive_mode(self, traj_msg: Trajectory) -> None:
+        """
+        Check the evasive mode state-machine.
+        - If evasive is active: only check release condition (stay in Frenetix until cleared).
+        - If evasive is inactive: validate Autoware trajectory and check trigger conditions.
+        This function updates self.evasive_active in-place and returns None.
+        """
+        
+        # --- If currently in evasive mode, only check release condition ---
+        if self.evasive_active:
+            
+            # Compute longitudinal distance to stop point and lateral offset to lane center
+            distance_to_stop_point, ego_d = self.planner.get_longitudinal_distance_to_point(self.stop_wall_xy)
+            self.get_logger().debug(f"[Evasive] LATCH: ego_d={ego_d:.2f} m, dist_stop={distance_to_stop_point:.2f} m")
+
+            # Release condition
+            if distance_to_stop_point < -self.params.evasive_params.release_longitudinal_back and abs(ego_d) < self.params.evasive_params.release_lateral_center:
+                self.evasive_active = False
+                self.stop_wall_xy = None
+                self.get_logger().warn("[Evasive] Released: obstacle passed and re-centered.")
+            return  # Stay latched otherwise
+
+        # --- If not in evasive mode, validate Autoware trajectory, then check trigger conditions ---
+        # Basic trajectory sanity (keep lean, avoid over-rejecting)
+        if traj_msg is None or not traj_msg.points:
+            # Missing or empty -> safer to enter evasive (we have our own trajectory)
+            self.evasive_active = True
+            self.get_logger().warn("[Evasive] Triggered: Autoware trajectory missing/empty.")
+            return
+
+        # If we do not have a stop wall, keep Autoware
+        if self.stop_wall_xy is None:
+            return
+
+        # Distance to stop point
+        distance_to_stop_point, ego_d = self.planner.get_longitudinal_distance_to_point(self.stop_wall_xy)
+
+        # Estimate minimal stopping distance + buffer
+        if self.planner.cartesian_state is not None:
+            try:
+                d_stop = compute_min_stop_distance(
+                    v0=self.planner.cartesian_state.velocity,
+                    a0=self.planner.cartesian_state.acceleration,
+                    acc_min=self.params.evasive_params.acc_min,
+                    jerk_acc=self.params.evasive_params.jerk_acc,
+                    jerk_dec=self.params.evasive_params.jerk_dec,
+                )
+                if d_stop is not None:
+                    d_stop += self.params.evasive_params.stop_buffer
+            except Exception as e:
+                # If computation fails, do not flip modes aggressively; keep Autoware
+                self.get_logger().error(f"[Evasive] Stop distance computation failed: {e}")
+                return
+        else:
+            # No ego kinematics -> cannot decide; keep Autoware
+            return
+
+        # Trigger condition: cannot stop smoothly before stop point
+        if d_stop is not None and distance_to_stop_point < d_stop:
+            self.evasive_active = True
+            self.get_logger().warn(
+                f"[Evasive] Triggered: dist_to_stop={distance_to_stop_point:.2f} m < "
+                f"min_stop={d_stop:.2f} m (with buffer)."
+            )
+        # else: keep Autoware (do nothing)
+
 
 # Main entry point for the node
 def main():

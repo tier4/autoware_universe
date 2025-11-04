@@ -278,7 +278,7 @@ class FrenetixMotionPlanner:
         if self.reference_path is None or self.last_endpoint is None:
             self.reference_path = reference_path
             self.last_endpoint = current_endpoint
-            self.logger.info(f"Reference path set. Endpoint: {current_endpoint}")
+            self.logger.debug(f"Reference path set. Endpoint: {current_endpoint}")
             self._set_reference_and_coordinate_system(self.reference_path)
             # Force replan
             self.force_replan = True
@@ -287,7 +287,7 @@ class FrenetixMotionPlanner:
         dist = np.linalg.norm(current_endpoint - self.last_endpoint)
         if dist > self.endpoint_threshold:
             self.reference_path = reference_path
-            self.logger.info(f"Reference path endpoint changed by {dist:.2f} m. Updating path. New endpoint: {current_endpoint}")
+            self.logger.debug(f"Reference path endpoint changed by {dist:.2f} m. Updating path. New endpoint: {current_endpoint}")
             self.last_endpoint = current_endpoint
             self._set_reference_and_coordinate_system(self.reference_path)
             # Force replan
@@ -612,7 +612,7 @@ class FrenetixMotionPlanner:
                 if optimal_collision_free_trajectory is None:
                     # This is the first collision-free one we've found.
                     # We store it as the "best" one.
-                    self.logger.info(f"Collision-free trajectory found at index {i}.")
+                    self.logger.debug(f"Collision-free trajectory found at index {i}.")
                     optimal_collision_free_trajectory = trajectory
                 
                 if not check_all:
@@ -632,6 +632,35 @@ class FrenetixMotionPlanner:
         
         # Return the results after checking all (or all collided in efficient mode)
         return optimal_collision_free_trajectory, colliding_trajectories
+    
+    def get_longitudinal_distance_to_point(self, array) -> float:
+        """
+        Calculates the longitudinal distance to the given point
+        from the current ego position along the reference path.
+        
+        Returns:
+            float: The longitudinal distance to the point.
+                   Returns np.inf if no point is present.
+        """
+        if self.coordinate_system_cpp is None:
+            return np.inf
+
+        try:
+            # Get the current ego position in the reference path
+            ego_position = self.coordinate_system_cpp.convert_to_curvilinear(self.cartesian_state.position[0], 
+                                                                            self.cartesian_state.position[1])
+
+            # Get the target point in the reference path
+            target_point = self.coordinate_system_cpp.convert_to_curvilinear(array[0], array[1])
+
+            # Calculate the longitudinal distance
+            longitudinal_distance = target_point[0] - ego_position[0]
+
+        except Exception as e:
+            self.logger.error(f"Error calculating longitudinal distance: {e}")
+            return np.inf, np.inf
+
+        return longitudinal_distance, ego_position[1]
   
     def _plan(self, planning_start_state_curvilinear: CurvilinearState):
 

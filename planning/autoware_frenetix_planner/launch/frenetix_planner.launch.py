@@ -22,6 +22,8 @@ def generate_launch_description():
                 ("/input/objects", "/perception/object_recognition/objects"),
                 ("/input/vector_map", "/map/vector_map"),
                 ("/input/route", "/planning/mission_planning/route"),
+                ("/input/autoware_trajectory", "/planning/scenario_planning/velocity_smoother/trajectory"), 
+                ("input/stop_wall", "/planning/scenario_planning/lane_driving/motion_planning/motion_velocity_planner/obstacle_stop/virtual_walls"),
                 ("/output/trajectory", "/planning/trajectory"),
             ],
             parameters=[params_file_path],
