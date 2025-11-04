@@ -54,9 +54,9 @@ private:
 
   bool is_offline_calibration_;
 
-  double angular_velocity_offset_x_imu_link_;
-  double angular_velocity_offset_y_imu_link_;
-  double angular_velocity_offset_z_imu_link_;
+  std::optional<double> angular_velocity_offset_x_imu_link_;
+  std::optional<double> angular_velocity_offset_y_imu_link_;
+  std::optional<double> angular_velocity_offset_z_imu_link_;
 
   double angular_velocity_stddev_xx_imu_link_;
   double angular_velocity_stddev_yy_imu_link_;
