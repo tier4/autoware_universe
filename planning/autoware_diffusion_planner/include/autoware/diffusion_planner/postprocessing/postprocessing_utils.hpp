@@ -76,10 +76,12 @@ Trajectory create_ego_trajectory(
  *
  * @param turn_indicator_logit The turn indicator logit from the model output.
  * @param stamp The ROS time stamp for the message.
+ * @param prev_report The previous turn indicators report value.
  * @return A TurnIndicatorsCommand message with the predicted turn indicators.
  */
 TurnIndicatorsCommand create_turn_indicators_command(
-  const std::vector<float> & turn_indicator_logit, const rclcpp::Time & stamp);
+  std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp,
+  const int64_t prev_report);
 
 /**
  * @brief Counts valid elements in a tensor with shape (B, len, dim2, dim3).

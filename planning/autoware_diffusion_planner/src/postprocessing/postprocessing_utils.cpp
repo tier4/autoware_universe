@@ -195,10 +195,14 @@ Trajectory create_ego_trajectory(
 }
 
 TurnIndicatorsCommand create_turn_indicators_command(
-  const std::vector<float> & turn_indicator_logit, const rclcpp::Time & stamp)
+  std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp,
+  const int64_t prev_report)
 {
   TurnIndicatorsCommand turn_indicators_cmd;
   turn_indicators_cmd.stamp = stamp;
+
+  // fix keep
+  turn_indicator_logit[TURN_INDICATOR_OUTPUT_KEEP] -= 1.0f;
 
   // Apply softmax to convert logit to probabilities
 
@@ -223,7 +227,7 @@ TurnIndicatorsCommand create_turn_indicators_command(
   // Find the class with highest probability
   const size_t max_idx = std::distance(
     probabilities.begin(), std::max_element(probabilities.begin(), probabilities.end()));
-  turn_indicators_cmd.command = max_idx;
+  turn_indicators_cmd.command = (max_idx == TURN_INDICATOR_OUTPUT_KEEP ? prev_report : max_idx);
 
   return turn_indicators_cmd;
 }

@@ -960,8 +960,11 @@ void DiffusionPlanner::on_timer()
 
   // Publish turn indicators
   const auto turn_indicator_logit = get_turn_indicator_logit();
+  const int64_t prev_report = turn_indicators_history_.empty()
+                                ? TurnIndicatorsReport::DISABLE
+                                : turn_indicators_history_.back().report;
   const auto turn_indicators_cmd =
-    postprocess::create_turn_indicators_command(turn_indicator_logit, this->now());
+    postprocess::create_turn_indicators_command(turn_indicator_logit, this->now(), prev_report);
   pub_turn_indicators_->publish(turn_indicators_cmd);
 
   // Publish diagnostics
