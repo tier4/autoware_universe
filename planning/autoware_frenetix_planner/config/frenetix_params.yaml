@@ -16,11 +16,11 @@
 
     # --- Vehicle & Physics ---
     velocity_limit: 20.0        # [m/s] Absolute maximum velocity limit.
-    desired_velocity: 8.33      # [m/s] Target velocity
+    desired_velocity: 5.0       # [m/s] Target velocity (18 km/h)
     delta_max: 0.6              # [rad] Maximum steering angle.
     wheelbase: 2.7              # [m] Vehicle wheelbase.
     v_switch: 3.0               # [m/s] Velocity at which some constraints might change.
-    a_max: 7.0                  # [m/s^2] Maximum longitudinal acceleration/deceleration.
+    a_max: 5.0                  # [m/s^2] Maximum longitudinal acceleration/deceleration.
     v_delta_max: 2.0            # [rad/s] Maximum rate of change for steering angle.
     length: 5.0                 # [m] Vehicle length for collision checking.
     width: 2.0                  # [m] Vehicle width for collision checking.

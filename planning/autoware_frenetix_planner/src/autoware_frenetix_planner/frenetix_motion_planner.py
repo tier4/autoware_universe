@@ -243,6 +243,11 @@ class FrenetixMotionPlanner:
                     round(obj.shape.dimensions.x, 2), 
                     round(obj.shape.dimensions.y, 2)
                 )
+
+                # check if obstacle has already been seen
+                if obj_id not in self.obstacle_predictions:
+                    self.logger.error(f"New obstacle detected: ID={obj_id}, forcing replan.")
+                    self.force_replan = True
                 
             except Exception as e:
                 self.logger.error(f"Failed to process object {obj_id}: {e}")
@@ -793,11 +798,6 @@ class FrenetixMotionPlanner:
             current_s = current_curvilinear_state.s
             current_d = current_curvilinear_state.d
 
-            # Check for completion
-            # end_s = old_s[-1]
-            # if end_s - current_s < self.replan_completion_s_threshold:
-            #     return True, f"Trajectory completion (s={current_s:.1f}, end_s={end_s:.1f})"
-
             # Check for remaining time
             current_index = np.argmin(np.abs(old_s - current_s))
             total_steps = len(old_s)
@@ -813,9 +813,6 @@ class FrenetixMotionPlanner:
             
             if deviation > self.replan_lat_deviation_threshold:
                 return True, f"Lateral deviation ({deviation:.2f}m > {self.replan_lat_deviation_threshold}m)"
-
-            # 4. TODO: Check for environment change (e.g., new obstacle invalidates path)
-            # This is more complex, would require re-evaluating trajectory cost
             
         except Exception as e:
             self.logger.error(f"Error in _should_replan check: {e}")
@@ -823,54 +820,6 @@ class FrenetixMotionPlanner:
 
         # 5. If no triggers hit, keep following
         return False, "Following"
-    
-    def _get_replan_start_state(self, current_curvilinear_state: CurvilinearState) -> Tuple[CurvilinearState, int]:
-        """
-        Determines the state from which to start the new plan.
-        This implements the "splicing" logic.
-
-        Returns:
-            A tuple: (CurvilinearState, int)
-            - The state to plan from (can be current or future state)
-            - The index on the old trajectory to splice at (0 if planning from current state)
-        """
-        # If we have no old trajectory, we must plan from the current ego state
-        if self.last_planned_trajectory is None:
-            self.logger.debug("No old trajectory, planning from current ego state.")
-            return current_curvilinear_state, 0
-
-        try:
-            # Find the point on the old trajectory that is N seconds in the future
-            # from our *current s* position
-            current_s = current_curvilinear_state.s
-            old_s = self.last_planned_trajectory.curvilinear.s
-            
-            # Find the index of the closest point on the old path
-            closest_index = np.argmin(np.abs(old_s - current_s))
-            
-            # Calculate how many steps in the future to start the plan
-            # This is the "splicing" point
-            splice_steps = int(self.replan_splice_time_s / self.params.sampling_dt)
-            replan_index = min(closest_index + splice_steps, len(old_s) - 1)
-
-            # Extract the state from the old trajectory at that future point
-            replan_state = CurvilinearState(
-                s=self.last_planned_trajectory.curvilinear.s[replan_index],
-                s_dot=self.last_planned_trajectory.curvilinear.s_dot[replan_index],
-                s_ddot=self.last_planned_trajectory.curvilinear.s_ddot[replan_index],
-                d=self.last_planned_trajectory.curvilinear.d[replan_index],
-                d_dot=self.last_planned_trajectory.curvilinear.d_dot[replan_index],
-                d_ddot=self.last_planned_trajectory.curvilinear.d_ddot[replan_index],
-            )
-            
-            self.logger.info(f"Planning from future state (index {replan_index}): s={replan_state.s:.2f}, d={replan_state.d:.2f}")
-            return replan_state, replan_index
-            
-        except Exception as e:
-            self.logger.error(f"Failed to get replan start state, planning from ego: {e}")
-            # Fallback: plan from the current ego state
-            return current_curvilinear_state, 0
-
   
     def cyclic_plan(self):
         """
@@ -892,12 +841,10 @@ class FrenetixMotionPlanner:
         # Decide IF a replan is needed
         if self.force_replan:
             replan_needed = True
-            reason = "Forced replan due to parameter or reference path change"
+            reason = "Forced replan due to parameter, reference path or obstacle information change"
             self.force_replan = False  # Reset the flag
         else:
-          # replan_needed, reason = self._should_replan(current_curvilinear_state)
-          replan_needed = True
-          reason = "Temporary override: always replan"
+          replan_needed, reason = self._should_replan(current_curvilinear_state)
 
         if not replan_needed:
             # No replan needed, just return the existing trajectory
@@ -907,36 +854,20 @@ class FrenetixMotionPlanner:
         # --- REPLANNING IS NEEDED ---
         self.logger.info(f"Replanning triggered. Reason: {reason}")
 
-        # Decide FROM WHERE to start the new plan (for splicing)
-        replan_start_state, replan_index = self._get_replan_start_state(current_curvilinear_state)
-
         # Try to plan new optimal trajectory
-        optimal_trajectory = self._plan(replan_start_state)
-        
+        optimal_trajectory = self._plan(current_curvilinear_state)
+
         # Process the new optimal trajectory
         if optimal_trajectory is not None:
-            
-            # Check if we have an old trajectory to splice with
-            if self.last_planned_trajectory is not None:
-                # --- Call C++ Splicing ---
-                self.logger.debug(f"Splicing new trajectory at index {replan_index} using C++.")
-                spliced_trajectory = self.handler.splice(
-                    self.last_planned_trajectory, 
-                    optimal_trajectory,     
-                    replan_index
-                )
-                self.last_planned_trajectory = spliced_trajectory
-                self.logger.debug("New trajectory planned, spliced, and cached")
-            else:
-                # This is the first plan, no splicing needed
-                self.last_planned_trajectory = optimal_trajectory
-                self.logger.debug("New (first) trajectory planned and cached")
-        
+            # safe optimal trajectory
+            self.last_planned_trajectory = optimal_trajectory
+            self.logger.debug("New trajectory planned and cached")
+
         else:
             self.logger.warn("Replanning failed, keeping old trajectory as fallback.")
             # Cache is not updated, we return the old valid plan
         
-        # Return the final C++ object
+        # Return the trajectory 
         return self.last_planned_trajectory
 
 
