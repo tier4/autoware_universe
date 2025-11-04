@@ -19,6 +19,7 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include <chrono>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -26,27 +27,18 @@
 namespace autoware::imu_corrector
 {
 GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & options)
-: rclcpp::Node("gyro_bias_validator", options),
-  gyro_bias_threshold_(declare_parameter<double>("gyro_bias_threshold")),
-  angular_velocity_offset_x_(declare_parameter<double>("angular_velocity_offset_x")),
-  angular_velocity_offset_y_(declare_parameter<double>("angular_velocity_offset_y")),
-  angular_velocity_offset_z_(declare_parameter<double>("angular_velocity_offset_z")),
-  timer_callback_interval_sec_(declare_parameter<double>("timer_callback_interval_sec")),
-  // diagnostics_updater_interval_sec_(declare_parameter<double>("diagnostics_updater_interval_sec")),
-  // straight_motion_ang_vel_upper_limit_(
-  //   declare_parameter<double>("straight_motion_ang_vel_upper_limit")),
-  // updater_(this),
-  gyro_bias_(std::nullopt)
+: rclcpp::Node("gyro_bias_validator", options), gyro_bias_(std::nullopt)
 {
+  using namespace std::chrono_literals;
   // updater_.setHardwareID(get_name());
   // updater_.add("gyro_bias_validator", this, &GyroBiasEstimator::update_diagnostics);
   // updater_.setPeriod(diagnostics_updater_interval_sec_);
 
-  const double timestamp_threshold = declare_parameter<double>("timestamp_threshold", 1.0);
+  const double timestamp_threshold = declare_parameter<double>("timestamp_threshold");
   const size_t data_num_threshold =
-    static_cast<size_t>(declare_parameter<int>("data_num_threshold", 100));
-  const double bias_change_threshold = declare_parameter<double>("bias_change_threshold", 0.01);
-  const double stddev_threshold = declare_parameter<double>("stddev_threshold", 0.01);
+    static_cast<size_t>(declare_parameter<int>("data_num_threshold"));
+  const double bias_change_threshold = declare_parameter<double>("bias_change_threshold");
+  const double stddev_threshold = declare_parameter<double>("stddev_threshold");
 
   gyro_bias_estimation_module_ = std::make_unique<GyroBiasEstimationModule>(
     timestamp_threshold, data_num_threshold, bias_change_threshold, stddev_threshold, get_logger(),
@@ -64,15 +56,14 @@ GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & options)
   gyro_bias_pub_ = create_publisher<Vector3Stamped>("~/output/gyro_bias", rclcpp::SensorDataQoS());
 
   // auto bound_timer_callback = std::bind(&GyroBiasEstimator::timer_callback, this);
-  auto period_control = std::chrono::duration_cast<std::chrono::nanoseconds>(
-    std::chrono::duration<double>(timer_callback_interval_sec_));
+  // auto period_control = std::chrono::duration_cast<std::chrono::nanoseconds>(
+  //   std::chrono::duration<double>(timer_callback_interval_sec_));
   // timer_ = std::make_shared<rclcpp::GenericTimer<decltype(bound_timer_callback)>>(
   //   this->get_clock(), period_control, std::move(bound_timer_callback),
   //   this->get_node_base_interface()->get_context());
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), std::chrono::milliseconds(1000),
-    std::bind(&GyroBiasEstimator::on_timer, this));
-  this->get_node_timers_interface()->add_timer(timer_, nullptr);
+  timer_ =
+    rclcpp::create_timer(this, get_clock(), 1000ms, std::bind(&GyroBiasEstimator::on_timer, this));
+  // this->get_node_timers_interface()->add_timer(timer_, nullptr);
 
   transform_listener_ = std::make_shared<autoware_utils::TransformListener>(this);
 
@@ -107,15 +98,9 @@ void GyroBiasEstimator::callback_imu(const Imu::ConstSharedPtr imu_msg_ptr)
 
   gyro_all_.push_back(gyro);
 
-  // Publish results for debugging
-  if (gyro_bias_ != std::nullopt) {
-    Vector3Stamped gyro_bias_msg;
-
-    gyro_bias_msg.header.stamp = this->now();
-    gyro_bias_msg.vector = gyro_bias_.value();
-
-    gyro_bias_pub_->publish(gyro_bias_msg);
-  }
+  // Update gyro bias estimation module
+  gyro_bias_estimation_module_->update_gyro(
+    rclcpp::Time(imu_msg_ptr->header.stamp).seconds(), gyro.vector);
 }
 
 void GyroBiasEstimator::callback_twist(

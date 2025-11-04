@@ -44,7 +44,7 @@ GyroBiasEstimationModule::GyroBiasEstimationModule(
 void GyroBiasEstimationModule::update_gyro(
   const double time, const geometry_msgs::msg::Vector3 & gyro)
 {
-  if (time - last_velocity_time_ > timestamp_threshold_) {
+  if (time - last_velocity_time_ < timestamp_threshold_) {
     if (is_stopped_) {
       gyro_buffer_.push_back(gyro);
     } else {

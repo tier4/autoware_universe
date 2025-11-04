@@ -35,6 +35,9 @@ namespace autoware::imu_corrector
 {
 class GyroBiasEstimator : public rclcpp::Node
 {
+public:
+  explicit GyroBiasEstimator(const rclcpp::NodeOptions & options);
+
 private:
   using Imu = sensor_msgs::msg::Imu;
   using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;
@@ -44,9 +47,7 @@ private:
   using Vector3 = geometry_msgs::msg::Vector3;
   using Odometry = nav_msgs::msg::Odometry;
 
-public:
-  explicit GyroBiasEstimator(const rclcpp::NodeOptions & options);
-
+private:
   void update_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
   void callback_imu(const Imu::ConstSharedPtr imu_msg_ptr);
   void callback_twist(const TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr);
@@ -65,11 +66,11 @@ public:
   rclcpp::Publisher<Vector3Stamped>::SharedPtr gyro_bias_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
-  const double gyro_bias_threshold_;
-  const double angular_velocity_offset_x_;
-  const double angular_velocity_offset_y_;
-  const double angular_velocity_offset_z_;
-  const double timer_callback_interval_sec_;
+  // const double gyro_bias_threshold_;
+  // const double angular_velocity_offset_x_;
+  // const double angular_velocity_offset_y_;
+  // const double angular_velocity_offset_z_;
+  // const double timer_callback_interval_sec_;
   // const double diagnostics_updater_interval_sec_;
   // const double straight_motion_ang_vel_upper_limit_;
 
@@ -101,7 +102,7 @@ public:
 protected:
   std::unique_ptr<GyroBiasEstimationModule> gyro_bias_estimation_module_;
   void on_timer();
-  void timer_callback();
+  // void timer_callback();
 };
 }  // namespace autoware::imu_corrector
 

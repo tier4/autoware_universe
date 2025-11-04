@@ -71,12 +71,7 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & options)
       declare_parameter<double>("angular_velocity_offset_y", 0.0);
     angular_velocity_offset_z_imu_link_ =
       declare_parameter<double>("angular_velocity_offset_z", 0.0);
-  } else {
-    angular_velocity_offset_x_imu_link_ = 0.0;
-    angular_velocity_offset_y_imu_link_ = 0.0;
-    angular_velocity_offset_z_imu_link_ = 0.0;
   }
-
   angular_velocity_stddev_xx_imu_link_ =
     declare_parameter<double>("angular_velocity_stddev_xx", 0.03);
   angular_velocity_stddev_yy_imu_link_ =
@@ -102,10 +97,15 @@ void ImuCorrector::callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_
 {
   sensor_msgs::msg::Imu imu_msg;
   imu_msg = *imu_msg_ptr;
-
-  imu_msg.angular_velocity.x -= angular_velocity_offset_x_imu_link_;
-  imu_msg.angular_velocity.y -= angular_velocity_offset_y_imu_link_;
-  imu_msg.angular_velocity.z -= angular_velocity_offset_z_imu_link_;
+  if (angular_velocity_offset_x_imu_link_ != std::nullopt) {
+    imu_msg.angular_velocity.x -= angular_velocity_offset_x_imu_link_.value();
+  }
+  if (angular_velocity_offset_y_imu_link_ != std::nullopt) {
+    imu_msg.angular_velocity.y -= angular_velocity_offset_y_imu_link_.value();
+  }
+  if (angular_velocity_offset_z_imu_link_ != std::nullopt) {
+    imu_msg.angular_velocity.z -= angular_velocity_offset_z_imu_link_.value();
+  }
 
   imu_msg.angular_velocity_covariance[COV_IDX::X_X] =
     angular_velocity_stddev_xx_imu_link_ * angular_velocity_stddev_xx_imu_link_;
@@ -153,9 +153,6 @@ void ImuCorrector::callback_gyro_bias(
     angular_velocity_offset_x_imu_link_ = gyro_bias_msg_ptr->vector.x;
     angular_velocity_offset_y_imu_link_ = gyro_bias_msg_ptr->vector.y;
     angular_velocity_offset_z_imu_link_ = gyro_bias_msg_ptr->vector.z;
-    angular_velocity_offset_x_ = gyro_bias_msg_ptr->vector.x;
-    angular_velocity_offset_y_ = gyro_bias_msg_ptr->vector.y;
-    angular_velocity_offset_z_ = gyro_bias_msg_ptr->vector.z;
   } else {
     RCLCPP_ERROR(
       this->get_logger(),
@@ -169,9 +166,9 @@ void ImuCorrector::callback_is_calibrated()
 {
   tier4_calibration_msgs::msg::BoolStamped is_calibrated_msg;
   if (
-    angular_velocity_offset_x_imu_link_.has_value() &&
-    angular_velocity_offset_y_imu_link_.has_value() &&
-    angular_velocity_offset_z_imu_link_.has_value()) {
+    angular_velocity_offset_x_imu_link_ != std::nullopt &&
+    angular_velocity_offset_y_imu_link_ != std::nullopt &&
+    angular_velocity_offset_z_imu_link_ != std::nullopt) {
     is_calibrated_msg.data = true;
   } else {
     is_calibrated_msg.data = false;
