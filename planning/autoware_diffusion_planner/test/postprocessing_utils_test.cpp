@@ -48,7 +48,7 @@ TEST(PostprocessingUtilsTest, CreateTrajectoryAndMultipleTrajectories)
   const bool enable_force_stop = false;
   const double stopping_threshold = 0.0;
   auto traj = postprocess::create_ego_trajectory(
-    data, stamp, transform, 0, velocity_smoothing_window, enable_force_stop, stopping_threshold);
+    data, stamp, 0, velocity_smoothing_window, enable_force_stop, stopping_threshold);
   ASSERT_EQ(traj.points.size(), expected_points);
 }
 

@@ -46,19 +46,17 @@ using unique_identifier_msgs::msg::UUID;
  * @param prediction The tensor prediction output.
  * @param ego_centric_agent_data The agent data in ego-centric coordinates.
  * @param stamp The ROS time stamp for the message.
- * @param transform_ego_to_map The transformation matrix from ego to map coordinates.
  * @return A PredictedObjects message containing predicted paths for each agent.
  */
 PredictedObjects create_predicted_objects(
   const std::vector<float> & prediction, const AgentData & ego_centric_agent_data,
-  const rclcpp::Time & stamp, const Eigen::Matrix4d & transform_ego_to_map);
+  const rclcpp::Time & stamp);
 
 /**
  * @brief Creates a Trajectory message from tensor prediction for a specific batch and agent.
  *
  * @param prediction The tensor prediction output.
  * @param stamp The ROS time stamp for the message.
- * @param transform_ego_to_map The transformation matrix from ego to map coordinates.
  * @param batch_index The batch index to extract.
  * @param velocity_smoothing_window The window size for velocity smoothing.
  * @param enable_force_stop Whether to enable force stop logic.
@@ -66,8 +64,7 @@ PredictedObjects create_predicted_objects(
  * @return A Trajectory message for the specified batch and agent.
  */
 Trajectory create_ego_trajectory(
-  const std::vector<float> & prediction, const rclcpp::Time & stamp,
-  const Eigen::Matrix4d & transform_ego_to_map, const int64_t batch_index,
+  const std::vector<float> & prediction, const rclcpp::Time & stamp, const int64_t batch_index,
   const int64_t velocity_smoothing_window, const bool enable_force_stop,
   const double stopping_threshold);
 

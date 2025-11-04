@@ -43,19 +43,6 @@ using autoware_planning_msgs::msg::TrajectoryPoint;
 namespace
 {
 /**
- * @brief Applies a transformation to a block of the output matrix.
- *
- * @param transform_matrix The transformation matrix to apply.
- * @param output_matrix The matrix to be transformed (in-place).
- * @param column_idx The column index of the block to transform.
- * @param row_idx The row index of the block to transform.
- * @param do_translation Whether to apply translation (true) or not (false).
- */
-void transform_output_matrix(
-  const Eigen::Matrix4d & transform_matrix, Eigen::MatrixXd & output_matrix, int64_t column_idx,
-  int64_t row_idx, bool do_translation = true);
-
-/**
  * @brief Extracts tensor data from tensor prediction into an Eigen matrix.
  *
  * @param prediction The tensor prediction output.
@@ -68,7 +55,6 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> get_tenso
  * @brief Converts a prediction matrix to a Trajectory message.
  *
  * @param prediction_matrix The prediction matrix for a single agent.
- * @param transform_ego_to_map The transformation matrix from ego to map coordinates.
  * @param stamp The ROS time stamp for the message.
  * @param velocity_smoothing_window The window size for velocity smoothing.
  * @param enable_force_stop Whether to enable force stop logic.
@@ -76,14 +62,14 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> get_tenso
  * @return A Trajectory message in map coordinates.
  */
 Trajectory get_trajectory_from_prediction_matrix(
-  const Eigen::MatrixXd & prediction_matrix, const Eigen::Matrix4d & transform_ego_to_map,
-  const rclcpp::Time & stamp, const int64_t velocity_smoothing_window, const bool enable_force_stop,
+  const Eigen::MatrixXd & prediction_matrix, const rclcpp::Time & stamp,
+  const int64_t velocity_smoothing_window, const bool enable_force_stop,
   const double stopping_threshold);
 };  // namespace
 
 PredictedObjects create_predicted_objects(
   const std::vector<float> & prediction, const AgentData & ego_centric_agent_data,
-  const rclcpp::Time & stamp, const Eigen::Matrix4d & transform_ego_to_map)
+  const rclcpp::Time & stamp)
 {
   auto trajectory_path_to_pose_path = [&](const Trajectory & trajectory, const double object_z)
     -> std::vector<geometry_msgs::msg::Pose> {
@@ -120,17 +106,12 @@ PredictedObjects create_predicted_objects(
     // Copy only the relevant part
     Eigen::MatrixXd prediction_matrix = tensor_data.block(
       batch_idx * MAX_NUM_AGENTS * OUTPUT_T + (neighbor_id + 1) * OUTPUT_T, 0, OUTPUT_T, POSE_DIM);
-    prediction_matrix.transposeInPlace();
-    postprocess::transform_output_matrix(transform_ego_to_map, prediction_matrix, 0, 0, true);
-    postprocess::transform_output_matrix(transform_ego_to_map, prediction_matrix, 0, 2, false);
-    prediction_matrix.transposeInPlace();
 
     constexpr int64_t velocity_smoothing_window = 1;
     constexpr bool enable_force_stop = false;  // Don't force stop for neighbors
     constexpr double stopping_threshold = 0.0;
     const Trajectory trajectory_points_in_map_reference = get_trajectory_from_prediction_matrix(
-      prediction_matrix, transform_ego_to_map, stamp, velocity_smoothing_window, enable_force_stop,
-      stopping_threshold);
+      prediction_matrix, stamp, velocity_smoothing_window, enable_force_stop, stopping_threshold);
 
     PredictedObject object;
     const TrackedObject & object_info =
@@ -164,8 +145,7 @@ PredictedObjects create_predicted_objects(
 }
 
 Trajectory create_ego_trajectory(
-  const std::vector<float> & prediction, const rclcpp::Time & stamp,
-  const Eigen::Matrix4d & transform_ego_to_map, const int64_t batch_index,
+  const std::vector<float> & prediction, const rclcpp::Time & stamp, const int64_t batch_index,
   const int64_t velocity_smoothing_window, const bool enable_force_stop,
   const double stopping_threshold)
 {
@@ -184,14 +164,8 @@ Trajectory create_ego_trajectory(
 
   // Extract and copy the block to ensure we have a proper matrix, not just a view
   Eigen::MatrixXd prediction_matrix = tensor_data.block(start_row, 0, OUTPUT_T, POSE_DIM).eval();
-  prediction_matrix.transposeInPlace();
-  postprocess::transform_output_matrix(transform_ego_to_map, prediction_matrix, 0, 0, true);
-  postprocess::transform_output_matrix(transform_ego_to_map, prediction_matrix, 0, 2, false);
-  prediction_matrix.transposeInPlace();
-
   return get_trajectory_from_prediction_matrix(
-    prediction_matrix, transform_ego_to_map, stamp, velocity_smoothing_window, enable_force_stop,
-    stopping_threshold);
+    prediction_matrix, stamp, velocity_smoothing_window, enable_force_stop, stopping_threshold);
 }
 
 TurnIndicatorsCommand create_turn_indicators_command(
@@ -289,17 +263,16 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> get_tenso
 }
 
 Trajectory get_trajectory_from_prediction_matrix(
-  const Eigen::MatrixXd & prediction_matrix, const Eigen::Matrix4d & transform_ego_to_map,
-  const rclcpp::Time & stamp, const int64_t velocity_smoothing_window, const bool enable_force_stop,
+  const Eigen::MatrixXd & prediction_matrix, const rclcpp::Time & stamp,
+  const int64_t velocity_smoothing_window, const bool enable_force_stop,
   const double stopping_threshold)
 {
   Trajectory trajectory;
   trajectory.header.stamp = stamp;
-  trajectory.header.frame_id = "map";
+  trajectory.header.frame_id = "base_link";
   constexpr double dt = 0.1;
-  Eigen::Vector4d ego_position = transform_ego_to_map * Eigen::Vector4d(0.0, 0.0, 0.0, 1.0);
-  double prev_x = ego_position(0);
-  double prev_y = ego_position(1);
+  double prev_x = 0.0;
+  double prev_y = 0.0;
   for (int64_t row = 0; row < prediction_matrix.rows(); ++row) {
     TrajectoryPoint p;
     p.time_from_start.sec = static_cast<int>(dt * static_cast<double>(row));
@@ -307,7 +280,7 @@ Trajectory get_trajectory_from_prediction_matrix(
       static_cast<int>((dt * static_cast<double>(row) - p.time_from_start.sec) * 1e9);
     p.pose.position.x = prediction_matrix(row, 0);
     p.pose.position.y = prediction_matrix(row, 1);
-    p.pose.position.z = ego_position.z();
+    p.pose.position.z = 0.0;
     auto yaw = std::atan2(prediction_matrix(row, 3), prediction_matrix(row, 2));
     yaw = static_cast<float>(autoware_utils::normalize_radian(yaw));
     p.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
@@ -364,21 +337,6 @@ Trajectory get_trajectory_from_prediction_matrix(
   trajectory.points.back().acceleration_mps2 = 0.0f;
 
   return trajectory;
-}
-
-void transform_output_matrix(
-  const Eigen::Matrix4d & transform_matrix, Eigen::MatrixXd & output_matrix, int64_t column_idx,
-  int64_t row_idx, bool do_translation)
-{
-  Eigen::Matrix<double, 4, OUTPUT_T> xy_block = Eigen::Matrix<double, 4, OUTPUT_T>::Zero();
-  xy_block.block<2, OUTPUT_T>(0, 0) =
-    output_matrix.block<2, OUTPUT_T>(row_idx, column_idx * OUTPUT_T);
-  xy_block.row(3) = do_translation ? Eigen::Matrix<double, 1, OUTPUT_T>::Ones()
-                                   : Eigen::Matrix<double, 1, OUTPUT_T>::Zero();
-
-  Eigen::Matrix<double, 4, OUTPUT_T> transformed_block = transform_matrix * xy_block;
-  output_matrix.block<2, OUTPUT_T>(row_idx, column_idx * OUTPUT_T) =
-    transformed_block.block<2, OUTPUT_T>(0, 0);
 }
 
 }  // namespace
