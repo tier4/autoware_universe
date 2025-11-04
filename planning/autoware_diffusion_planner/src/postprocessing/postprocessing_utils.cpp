@@ -195,14 +195,14 @@ Trajectory create_ego_trajectory(
 }
 
 TurnIndicatorsCommand create_turn_indicators_command(
-  std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp,
-  const int64_t prev_report)
+  std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp, const int64_t prev_report,
+  const float keep_offset)
 {
   TurnIndicatorsCommand turn_indicators_cmd;
   turn_indicators_cmd.stamp = stamp;
 
   // fix keep
-  turn_indicator_logit[TURN_INDICATOR_OUTPUT_KEEP] -= 1.0f;
+  turn_indicator_logit[TURN_INDICATOR_OUTPUT_KEEP] += keep_offset;
 
   // Apply softmax to convert logit to probabilities
 

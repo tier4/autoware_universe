@@ -94,6 +94,11 @@
           "default": 0.0,
           "description": "Threshold for keeping the stopping state [m/s]"
         },
+        "turn_indicator_keep_offset": {
+          "type": "number",
+          "default": -1.5,
+          "description": "Offset to add to the KEEP turn indicator logit for bias adjustment"
+        },
         "debug_params": {
           "type": "object",
           "properties": {
@@ -122,6 +127,7 @@
         "temperature",
         "velocity_smoothing_window",
         "stopping_threshold",
+        "turn_indicator_keep_offset",
         "debug_params"
       ]
     }

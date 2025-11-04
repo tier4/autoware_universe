@@ -121,6 +121,7 @@ struct DiffusionPlannerParams
   int64_t velocity_smoothing_window;
   bool shift_x;
   double stopping_threshold;
+  float turn_indicator_keep_offset;
 };
 struct DiffusionPlannerDebugParams
 {
