@@ -14,7 +14,10 @@
 
 #include "../src/gyro_bias_estimator.hpp"
 
+#include <geometry_msgs/msg/transform_stamped.hpp>
+
 #include <gtest/gtest.h>
+#include <tf2_ros/static_transform_broadcaster.h>
 
 #include <array>
 #include <random>
@@ -112,6 +115,24 @@ private:
   }
 };
 
+// Helper function to publish static TF
+void publishStaticTransform(const rclcpp::Node::SharedPtr & node)
+{
+  auto tf_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
+  geometry_msgs::msg::TransformStamped transform;
+  transform.header.stamp = node->now();
+  transform.header.frame_id = "base_link";
+  transform.child_frame_id = "imu_link";
+  transform.transform.translation.x = 0.0;
+  transform.transform.translation.y = 0.0;
+  transform.transform.translation.z = 0.0;
+  transform.transform.rotation.x = 0.0;
+  transform.transform.rotation.y = 0.0;
+  transform.transform.rotation.z = 0.0;
+  transform.transform.rotation.w = 1.0;
+  tf_broadcaster->sendTransform(transform);
+}
+
 std::array<double, 400> GenerateTestData(
   unsigned int seed = 42, double mean = 0.0, double stddev = 0.0001)
 {
@@ -134,14 +155,26 @@ double CalculateMedian(const std::array<double, 400> & data)
   return (sorted_data[mid - 1] + sorted_data[mid]) / 2.0;
 }
 
-// DT_1_3
-TEST(GyroBiasEstimatorTest, DT_1_3_1)
+// Test fixture to initialize ROS context once for all tests
+class GyroBiasEstimatorTestFixture : public ::testing::Test
 {
-  rclcpp::init(0, nullptr);
+protected:
+  static void SetUpTestSuite() { rclcpp::init(0, nullptr); }
+
+  static void TearDownTestSuite() { rclcpp::shutdown(); }
+};
+
+// DT_1_3
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_3_1)
+{
   sensor_msgs::msg::Imu imu;
   geometry_msgs::msg::TwistWithCovarianceStamped twist;
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.000104, false);
   auto test_node = rclcpp::Node::make_shared("test_node");
+
+  // Publish static TF
+  publishStaticTransform(test_node);
+
   auto imu_pub = test_node->create_publisher<sensor_msgs::msg::Imu>(
     "/gyro_bias_validator/input/imu_raw", rclcpp::SensorDataQoS());
   auto twist_pub = test_node->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
@@ -168,10 +201,10 @@ TEST(GyroBiasEstimatorTest, DT_1_3_1)
 
   for (int i = 1; i <= 401; i++) {
     RCLCPP_INFO(node->get_logger(), "Count i: %d", i);
-    imu.header.stamp = rclcpp::Clock().now();
     twist.header.stamp = rclcpp::Clock().now();
-    imu_pub->publish(imu);
     twist_pub->publish(twist);
+    imu.header.stamp = rclcpp::Clock().now();
+    imu_pub->publish(imu);
     executor.spin_some();
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     node->test_on_timer();
@@ -186,12 +219,10 @@ TEST(GyroBiasEstimatorTest, DT_1_3_1)
       ASSERT_EQ(node->get_estimation_module()->get_is_buffer_full(), true);
     }
   }
-  rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_3_2)
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_3_2)
 {
-  rclcpp::init(0, nullptr);
   sensor_msgs::msg::Imu imu;
   geometry_msgs::msg::TwistWithCovarianceStamped twist;
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.000104, true);
@@ -209,18 +240,19 @@ TEST(GyroBiasEstimatorTest, DT_1_3_2)
   ASSERT_GE(node->get_estimation_module()->get_min_duration_ms(), 900);  // 最小経過時間は900ms以上
   ASSERT_LE(
     node->get_estimation_module()->get_max_duration_ms(), 1100);  // 最大経過時間は1100ms以下
-
-  rclcpp::shutdown();
 }
 
 // DT_1_4
-TEST(GyroBiasEstimatorTest, DT_1_4_1)
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_4_1)
 {
-  rclcpp::init(0, nullptr);
   sensor_msgs::msg::Imu imu;
   geometry_msgs::msg::TwistWithCovarianceStamped twist;
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.000104, false);
   auto test_node = rclcpp::Node::make_shared("test_node");
+
+  // Publish static TF
+  publishStaticTransform(test_node);
+
   auto imu_pub = test_node->create_publisher<sensor_msgs::msg::Imu>(
     "/gyro_bias_validator/input/imu_raw", rclcpp::SensorDataQoS());
   auto twist_pub = test_node->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
@@ -283,14 +315,11 @@ TEST(GyroBiasEstimatorTest, DT_1_4_1)
       ASSERT_EQ(node->get_estimation_module()->get_buffer_size(), 0);
     }
   }
-
-  rclcpp::shutdown();
 }
 
 // DT_1_5
-TEST(GyroBiasEstimatorTest, DT_1_5_1)  // gyro_buffer_のx, y, zの標準偏差が閾値未満
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_5_1)  // gyro_buffer_のx, y, zの標準偏差が閾値未満
 {
-  rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.000104, false);  // 標準偏差の閾値を指定
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -315,12 +344,10 @@ TEST(GyroBiasEstimatorTest, DT_1_5_1)  // gyro_buffer_のx, y, zの標準偏差�
   executor.spin_some();
 
   ASSERT_EQ(node->get_estimation_module()->get_can_calibrate(), true);
-  rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_2)  // gyro_buffer_のx, y, zの標準偏差が全てちょうど閾値
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_5_2)  // gyro_buffer_のx, y, zの標準偏差が全てちょうど閾値
 {
-  rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031615, false);  // 標準偏差の閾値を指定
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -345,12 +372,10 @@ TEST(GyroBiasEstimatorTest, DT_1_5_2)  // gyro_buffer_のx, y, zの標準偏差�
   executor.spin_some();
 
   ASSERT_EQ(node->get_estimation_module()->get_can_calibrate(), true);
-  rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_3)  // gyro_buffer_のx, y, zの標準偏差が閾値超
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_5_3)  // gyro_buffer_のx, y, zの標準偏差が閾値超
 {
-  rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.000097, false);  // 標準偏差の閾値を指定
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -375,12 +400,12 @@ TEST(GyroBiasEstimatorTest, DT_1_5_3)  // gyro_buffer_のx, y, zの標準偏差�
   executor.spin_some();
 
   ASSERT_EQ(node->get_estimation_module()->get_can_calibrate(), false);
-  rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_4)  // gyro_buffer_のxの標準偏差がちょうど閾値、y, zは閾値未満
+TEST_F(
+  GyroBiasEstimatorTestFixture,
+  DT_1_5_4)  // gyro_buffer_のxの標準偏差がちょうど閾値、y, zは閾値未満
 {
-  rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031615, false);  // 標準偏差の閾値を指定
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -405,12 +430,10 @@ TEST(GyroBiasEstimatorTest, DT_1_5_4)  // gyro_buffer_のxの標準偏差がち�
   executor.spin_some();
 
   ASSERT_EQ(node->get_estimation_module()->get_can_calibrate(), true);
-  rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_5)  // gyro_buffer_のxの標準偏差が閾値超、y, zは閾値未満
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_5_5)  // gyro_buffer_のxの標準偏差が閾値超、y, zは閾値未満
 {
-  rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031614, false);  // 標準偏差の閾値を指定
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -435,12 +458,12 @@ TEST(GyroBiasEstimatorTest, DT_1_5_5)  // gyro_buffer_のxの標準偏差が閾�
   executor.spin_some();
 
   ASSERT_EQ(node->get_estimation_module()->get_can_calibrate(), false);
-  rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_6)  // gyro_buffer_のyの標準偏差がちょうど閾値、x, zは閾値未満
+TEST_F(
+  GyroBiasEstimatorTestFixture,
+  DT_1_5_6)  // gyro_buffer_のyの標準偏差がちょうど閾値、x, zは閾値未満
 {
-  rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031615, false);  // 標準偏差の閾値を指定
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -465,12 +488,10 @@ TEST(GyroBiasEstimatorTest, DT_1_5_6)  // gyro_buffer_のyの標準偏差がち�
   executor.spin_some();
 
   ASSERT_EQ(node->get_estimation_module()->get_can_calibrate(), true);
-  rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_7)  // gyro_buffer_のyの標準偏差が閾値超、x, zは閾値未満
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_5_7)  // gyro_buffer_のyの標準偏差が閾値超、x, zは閾値未満
 {
-  rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031614, false);  // 標準偏差の閾値を指定
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -495,12 +516,12 @@ TEST(GyroBiasEstimatorTest, DT_1_5_7)  // gyro_buffer_のyの標準偏差が閾�
   executor.spin_some();
 
   ASSERT_EQ(node->get_estimation_module()->get_can_calibrate(), false);
-  rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_8)  // gyro_buffer_のzの標準偏差がちょうど閾値、x, yは閾値未満
+TEST_F(
+  GyroBiasEstimatorTestFixture,
+  DT_1_5_8)  // gyro_buffer_のzの標準偏差がちょうど閾値、x, yは閾値未満
 {
-  rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031615, false);  // 標準偏差の閾値を指定
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -525,12 +546,10 @@ TEST(GyroBiasEstimatorTest, DT_1_5_8)  // gyro_buffer_のzの標準偏差がち�
   executor.spin_some();
 
   ASSERT_EQ(node->get_estimation_module()->get_can_calibrate(), true);
-  rclcpp::shutdown();
 }
 
-TEST(GyroBiasEstimatorTest, DT_1_5_9)  // gyro_buffer_のzの標準偏差が閾値超、x, yは閾値未満
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_5_9)  // gyro_buffer_のzの標準偏差が閾値超、x, yは閾値未満
 {
-  rclcpp::init(0, nullptr);
   auto node = std::make_shared<GyroBiasEstimatorTest>(0.0001031614, false);  // 標準偏差の閾値を指定
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
@@ -555,13 +574,11 @@ TEST(GyroBiasEstimatorTest, DT_1_5_9)  // gyro_buffer_のzの標準偏差が閾�
   executor.spin_some();
 
   ASSERT_EQ(node->get_estimation_module()->get_can_calibrate(), false);
-  rclcpp::shutdown();
 }
 
 // DT_1_6
-TEST(GyroBiasEstimatorTest, DT_1_6_1)
+TEST_F(GyroBiasEstimatorTestFixture, DT_1_6_1)
 {
-  rclcpp::init(0, nullptr);
   int count = 0;
   double gyro_bias_x = 0.0;
   double gyro_bias_y = 0.0;
@@ -622,6 +639,4 @@ TEST(GyroBiasEstimatorTest, DT_1_6_1)
   ASSERT_EQ(gyro_bias_x, median_x);
   ASSERT_EQ(gyro_bias_y, median_y);
   ASSERT_EQ(gyro_bias_z, median_z);
-
-  rclcpp::shutdown();
 }

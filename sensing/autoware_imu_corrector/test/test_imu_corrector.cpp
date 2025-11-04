@@ -14,7 +14,28 @@
 
 #include "../src/imu_corrector_core.hpp"
 
+#include <geometry_msgs/msg/transform_stamped.hpp>
+
 #include <gtest/gtest.h>
+#include <tf2_ros/static_transform_broadcaster.h>
+
+// Helper function to publish static TF
+void publishStaticTransform(const rclcpp::Node::SharedPtr & node)
+{
+  auto tf_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
+  geometry_msgs::msg::TransformStamped transform;
+  transform.header.stamp = node->now();
+  transform.header.frame_id = "base_link";
+  transform.child_frame_id = "imu_link";
+  transform.transform.translation.x = 0.0;
+  transform.transform.translation.y = 0.0;
+  transform.transform.translation.z = 0.0;
+  transform.transform.rotation.x = 0.0;
+  transform.transform.rotation.y = 0.0;
+  transform.transform.rotation.z = 0.0;
+  transform.transform.rotation.w = 1.0;
+  tf_broadcaster->sendTransform(transform);
+}
 
 class ImuCorrectorTest : public autoware::imu_corrector::ImuCorrector
 {
@@ -32,9 +53,9 @@ private:
     // テストに必要なパラメータを設定
     std::vector<rclcpp::Parameter> params{
       rclcpp::Parameter("is_offline_calibration", is_offline_calibration),
-      rclcpp::Parameter("angular_velocity_offset_x", 0.1),
-      rclcpp::Parameter("angular_velocity_offset_y", 0.2),
-      rclcpp::Parameter("angular_velocity_offset_z", 0.3),
+      rclcpp::Parameter("angular_velocity_offset_x", -0.1),
+      rclcpp::Parameter("angular_velocity_offset_y", -0.2),
+      rclcpp::Parameter("angular_velocity_offset_z", -0.3),
       rclcpp::Parameter("angular_velocity_stddev_xx", 0.03),
       rclcpp::Parameter("angular_velocity_stddev_yy", 0.03),
       rclcpp::Parameter("angular_velocity_stddev_zz", 0.03)};
@@ -58,7 +79,8 @@ TEST(ImuCorrectorTest, DT_1_7_1)
     [&imu_corrected, &test_node](const sensor_msgs::msg::Imu::ConstSharedPtr msg) {
       imu_corrected = *msg;
     });
-
+  // Publish static TF
+  publishStaticTransform(test_node);
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
   executor.add_node(test_node);
@@ -97,6 +119,8 @@ TEST(ImuCorrectorTest, DT_1_7_2)
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
   executor.add_node(test_node);
+  // Publish static TF
+  publishStaticTransform(test_node);
 
   imu.header.stamp = rclcpp::Clock().now();
   imu.header.frame_id = "imu_link";
@@ -135,6 +159,8 @@ TEST(ImuCorrectorTest, DT_1_7_3)
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
   executor.add_node(test_node);
+  // Publish static TF
+  publishStaticTransform(test_node);
 
   imu.header.stamp = rclcpp::Clock().now();
   imu.header.frame_id = "imu_link";
