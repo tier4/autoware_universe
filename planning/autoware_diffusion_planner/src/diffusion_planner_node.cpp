@@ -402,12 +402,14 @@ InputDataMap DiffusionPlanner::create_input_data()
     return {};
   }
 
+  latest_inference_stamp_ = ego_kinematic_state->header.stamp;
   ego_kinematic_state_ = *ego_kinematic_state;
 
   if (params_.update_traffic_light_group_info) {
+    const auto inference_time = get_inference_time();
     const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
     preprocess::process_traffic_signals(
-      traffic_signals, traffic_light_id_map_, this->now(), traffic_light_msg_timeout_s,
+      traffic_signals, traffic_light_id_map_, inference_time, traffic_light_msg_timeout_s,
       params_.keep_last_traffic_light_group_info);
     if (!traffic_signals) {
       RCLCPP_WARN_THROTTLE(
@@ -542,14 +544,21 @@ std::vector<float> DiffusionPlanner::replicate_for_batch(const std::vector<float
   return batch_data;
 }
 
+rclcpp::Time DiffusionPlanner::get_inference_time() const
+{
+  return rclcpp::Time(latest_inference_stamp_);
+}
+
 void DiffusionPlanner::publish_debug_markers(InputDataMap & input_data_map) const
 {
+  const auto stamp = get_inference_time();
+
   if (debug_params_.publish_debug_route) {
     auto lifetime = rclcpp::Duration::from_seconds(0.2);
     auto route_markers = utils::create_lane_marker(
       ego_to_map_transform_, input_data_map["route_lanes"],
-      std::vector<int64_t>(ROUTE_LANES_SHAPE.begin(), ROUTE_LANES_SHAPE.end()), this->now(),
-      lifetime, {0.8, 0.8, 0.8, 0.8}, "map", true);
+      std::vector<int64_t>(ROUTE_LANES_SHAPE.begin(), ROUTE_LANES_SHAPE.end()), stamp, lifetime,
+      {0.8, 0.8, 0.8, 0.8}, "map", true);
     pub_route_marker_->publish(route_markers);
   }
 
@@ -557,7 +566,7 @@ void DiffusionPlanner::publish_debug_markers(InputDataMap & input_data_map) cons
     auto lifetime = rclcpp::Duration::from_seconds(0.2);
     auto lane_markers = utils::create_lane_marker(
       ego_to_map_transform_, input_data_map["lanes"],
-      std::vector<int64_t>(LANES_SHAPE.begin(), LANES_SHAPE.end()), this->now(), lifetime,
+      std::vector<int64_t>(LANES_SHAPE.begin(), LANES_SHAPE.end()), stamp, lifetime,
       {0.1, 0.1, 0.7, 0.8}, "map", true);
     pub_lane_marker_->publish(lane_markers);
   }
@@ -566,6 +575,7 @@ void DiffusionPlanner::publish_debug_markers(InputDataMap & input_data_map) cons
 void DiffusionPlanner::publish_predictions(const std::vector<float> & predictions) const
 {
   CandidateTrajectories candidate_trajectories;
+  const auto inference_time = get_inference_time();
 
   // when ego is moving, enable force stop
   const bool enable_force_stop =
@@ -573,7 +583,7 @@ void DiffusionPlanner::publish_predictions(const std::vector<float> & prediction
 
   for (int i = 0; i < params_.batch_size; i++) {
     const Trajectory trajectory = postprocess::create_ego_trajectory(
-      predictions, this->now(), i, params_.velocity_smoothing_window, enable_force_stop,
+      predictions, inference_time, i, params_.velocity_smoothing_window, enable_force_stop,
       params_.stopping_threshold);
     if (i == 0) {
       pub_trajectory_->publish(trajectory);
@@ -606,7 +616,7 @@ void DiffusionPlanner::publish_predictions(const std::vector<float> & prediction
     const std::vector<float> single_batch_predictions(
       predictions.begin(), predictions.begin() + single_batch_output_size);
     auto predicted_objects = postprocess::create_predicted_objects(
-      single_batch_predictions, ego_centric_neighbor_agent_data_.value(), this->now());
+      single_batch_predictions, ego_centric_neighbor_agent_data_.value(), inference_time);
     pub_objects_->publish(predicted_objects);
   }
 }
@@ -814,7 +824,7 @@ void DiffusionPlanner::on_timer()
       "Waiting for map data...");
     diagnostics_inference_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "Map data not loaded");
-    diagnostics_inference_->publish(this->now());
+    diagnostics_inference_->publish(get_inference_time());
     return;
   }
 
@@ -826,7 +836,7 @@ void DiffusionPlanner::on_timer()
       "No input data available for inference");
     diagnostics_inference_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "No input data available for inference");
-    diagnostics_inference_->publish(this->now());
+    diagnostics_inference_->publish(get_inference_time());
     return;
   }
 
@@ -856,20 +866,21 @@ void DiffusionPlanner::on_timer()
       "Input data contains invalid values");
     diagnostics_inference_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "Input data contains invalid values");
-    diagnostics_inference_->publish(this->now());
+    diagnostics_inference_->publish(get_inference_time());
     return;
   }
   const auto predictions = do_inference_trt(input_data_map);
   publish_predictions(predictions);
 
+  const auto inference_time = get_inference_time();
   // Publish turn indicators
   const auto turn_indicator_logit = get_turn_indicator_logit();
   const auto turn_indicators_cmd =
-    postprocess::create_turn_indicators_command(turn_indicator_logit, this->now());
+    postprocess::create_turn_indicators_command(turn_indicator_logit, inference_time);
   pub_turn_indicators_->publish(turn_indicators_cmd);
 
   // Publish diagnostics
-  diagnostics_inference_->publish(this->now());
+  diagnostics_inference_->publish(inference_time);
 }
 
 void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)

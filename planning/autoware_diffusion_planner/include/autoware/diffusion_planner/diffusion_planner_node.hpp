@@ -252,6 +252,7 @@ private:
    * @return Vector replicated for the configured batch size.
    */
   std::vector<float> replicate_for_batch(const std::vector<float> & single_data);
+  rclcpp::Time get_inference_time() const;
 
   // ego history for ego_agent_past
   std::deque<Pose> ego_history_;
@@ -279,6 +280,7 @@ private:
 
   // Model input data
   nav_msgs::msg::Odometry ego_kinematic_state_;
+  Time latest_inference_stamp_{};
   std::optional<AgentData> agent_data_{std::nullopt};
   std::optional<AgentData> ego_centric_neighbor_agent_data_{std::nullopt};
 
