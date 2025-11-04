@@ -364,7 +364,7 @@ int main(int argc, char ** argv)
 
   if (argc < 4) {
     std::cerr << "Usage: data_converter <rosbag_path> <vector_map_path> <save_dir> [--step=1] "
-                 "[--limit=-1] [--min_frames=1700]"
+                 "[--limit=-1] [--min_frames=1700] [--convert_yellow=0] [--convert_red=0]"
               << std::endl;
     return 1;
   }
@@ -377,6 +377,8 @@ int main(int argc, char ** argv)
   int64_t limit = -1;
   int64_t min_frames = 1700;
   int64_t search_nearest_route = 1;
+  int64_t convert_yellow = 0;
+  int64_t convert_red = 0;
 
   // Parse optional arguments
   for (int64_t i = 4; i < argc; ++i) {
@@ -390,6 +392,10 @@ int main(int argc, char ** argv)
       min_frames = std::stoll(arg.substr(13));
     } else if (arg.find("--search_nearest_route=") == 0) {
       search_nearest_route = std::stoll(arg.substr(23));
+    } else if (arg.find("--convert_yellow=") == 0) {
+      convert_yellow = std::stoll(arg.substr(17));
+    } else if (arg.find("--convert_red=") == 0) {
+      convert_red = std::stoll(arg.substr(14));
     }
   }
 
@@ -397,7 +403,9 @@ int main(int argc, char ** argv)
   std::cout << "Vector map: " << vector_map_path << std::endl;
   std::cout << "Save directory: " << save_dir << std::endl;
   std::cout << "Step: " << step << ", Limit: " << limit << ", Min frames: " << min_frames
-            << ", Search nearest route: " << search_nearest_route << std::endl;
+            << ", Search nearest route: " << search_nearest_route
+            << ", Convert yellow: " << convert_yellow << ", Convert red: " << convert_red
+            << std::endl;
 
   // Load Lanelet2 map and create context like in diffusion_planner_node
   lanelet::ErrorMessages errors{};
@@ -729,10 +737,10 @@ int main(int argc, char ** argv)
       const int64_t point_idx = 0;    // first point
       const int64_t red_light_index = segment_idx * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM +
                                       point_idx * SEGMENT_POINT_DIM + TRAFFIC_LIGHT_RED;
-      const bool is_red_light = route_lanes[red_light_index] > 0.5;
+      const bool is_red_light = route_lanes[red_light_index] > 0.5 && !convert_red;
       const int64_t yellow_light_index = segment_idx * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM +
                                          point_idx * SEGMENT_POINT_DIM + TRAFFIC_LIGHT_YELLOW;
-      const bool is_yellow_light = route_lanes[yellow_light_index] > 0.5;
+      const bool is_yellow_light = route_lanes[yellow_light_index] > 0.5 && !convert_yellow;
       const bool is_red_or_yellow = is_red_light || is_yellow_light;
 
       float sum_mileage = 0.0;
