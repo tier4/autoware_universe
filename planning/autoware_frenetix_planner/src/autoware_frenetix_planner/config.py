@@ -40,6 +40,17 @@ class CurvilinearState(DictLikeDataClass):
     d_ddot: float                  # lateral acceleration
     timestamp: Optional[float] = None  # ROS time (float seconds)
 
+
+@dataclass
+class EvasiveParams(DictLikeDataClass):
+    """Holds all evasive maneuver parameters."""
+    acc_min: float
+    jerk_acc: float
+    jerk_dec: float
+    stop_buffer: float
+    release_longitudinal_back: float
+    release_lateral_center: float
+
 @dataclass
 class CostWeightsParams(DictLikeDataClass):
     """Holds all cost function weights."""
@@ -79,3 +90,5 @@ class FrenetixPlannerParams(DictLikeDataClass):
     wb_rear_axle: float
     v_max: float
     cost_weights: CostWeightsParams
+    evasive_params: EvasiveParams
+  

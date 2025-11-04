@@ -51,3 +51,14 @@
       velocity_offset: 0.0
       positive_velocity_offset: 10.0  # Penalty for driving slower than desired_velocity
       negative_velocity_offset: 0.5   # Penalty for driving faster than desired_velocity
+
+    # --- Evasive Maneuver Parameters ---
+    evasive:
+      acc_min: -2.5                 # [m/s^2] Minimum acceleration during evasive maneuvers.
+      jerk_acc: 1.0                 # [m/s^3] Maximum jerk when accelerating during evasive maneuvers.
+      jerk_dec: -1.0                # [m/s^3] Maximum jerk when decelerating during evasive maneuvers.
+      stop_buffer: 8.0              # [m] Additional buffer distance to stop before the obstacle.
+
+      # Release Conditions
+      release_back: 50.0            # [m] Distance behind stop point to release evasive mode.
+      release_lat: 0.5              # [m] Lateral distance from lane center to release evasive mode.
