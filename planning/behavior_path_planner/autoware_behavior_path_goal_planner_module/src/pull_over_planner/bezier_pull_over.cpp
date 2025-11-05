@@ -185,12 +185,13 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
   std::vector<std::tuple<double, double, double>> params;
   const size_t n_sample_v_init = 2;
   const size_t n_sample_v_final = 2;
+  const double min_v_coeff = 0.1;
   const size_t n_sample_acc = 1;
   for (unsigned i = 0; i <= n_sample_v_init; ++i) {
     for (unsigned j = 0; j <= n_sample_v_final; j++) {
       for (unsigned k = 0; k <= n_sample_acc; k++) {
-        const double v_init_coeff = i * (1.0 / n_sample_v_init);
-        const double v_final_coeff = j * 0.25 / (1.0 / n_sample_v_final);
+        const double v_init_coeff = std::max(min_v_coeff, i * (1.0 / n_sample_v_init));
+        const double v_final_coeff = std::max(min_v_coeff, j * 0.25 / (1.0 / n_sample_v_final));
         const double acc_coeff = k * (10.0 / n_sample_acc);
         params.emplace_back(v_init_coeff, v_final_coeff, acc_coeff);
       }
@@ -224,6 +225,10 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
     if (!path_shifter.generate(&shifted_path, offset_back)) {
       continue;
     }
+
+    // Save shift_path before bezier replacement for debugging
+    PathWithLaneId shift_path_before_bezier = shifted_path.path;
+
     const auto from_idx_opt =
       autoware::motion_utils::findNearestIndex(shifted_path.path.points, *shift_start_pose);
     const auto to_idx_opt =
@@ -239,6 +244,9 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
       autoware::motion_utils::calcCurvature(processed_prev_module_path->points);
     const auto & from_pose = shifted_path.path.points[from_idx].point.pose;
     const auto & to_pose = shifted_path.path.points[to_idx].point.pose;
+    const double from_yaw = tf2::getYaw(from_pose.orientation);
+    const double to_yaw = tf2::getYaw(to_pose.orientation);
+
     const autoware::sampler_common::State initial{
       {from_pose.position.x, from_pose.position.y},
       {0.0, 0.0},
@@ -254,6 +262,32 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
     const auto bezier_path =
       bezier_sampler::sample(initial, final, v_init_coeff, v_final_coeff, acc_coeff);
     const auto bezier_points = bezier_path.cartesianWithHeading(span);
+
+    // Check orientation difference between from_yaw and bezier first point
+    const double bezier_first_yaw = bezier_points[0].z();
+    const double yaw_diff = std::abs(bezier_first_yaw - from_yaw);
+    if (yaw_diff > 0.524) {
+      const auto velocity_at_0 = bezier_path.velocity(0.0);
+      RCLCPP_ERROR(
+        rclcpp::get_logger("BezierPullOver"),
+        "Orientation Mismatch: from_yaw=%.3f rad (%.1f deg), bezier[0]_yaw=%.3f rad (%.1f deg), "
+        "diff=%.3f rad (%.1f deg), velocity=(%.3f, %.3f)",
+        from_yaw, from_yaw * 180.0 / M_PI, bezier_first_yaw, bezier_first_yaw * 180.0 / M_PI,
+        yaw_diff, yaw_diff * 180.0 / M_PI, velocity_at_0.x(), velocity_at_0.y());
+    }
+
+    // Create bezier-only path for debugging
+    PathWithLaneId bezier_only_path;
+    for (unsigned i = 0; i + 1 < span; ++i) {
+      PathPointWithLaneId p;
+      p.point.pose.position.x = bezier_points[i].x();
+      p.point.pose.position.y = bezier_points[i].y();
+      p.point.pose.orientation =
+        autoware_utils::create_quaternion_from_rpy(0.0, 0.0, bezier_points[i].z());
+      bezier_only_path.points.push_back(p);
+    }
+
+    // Replace shift_path with bezier_path
     for (unsigned i = 0; i + 1 < span; ++i) {
       auto & p = shifted_path.path.points[from_idx + i];
       p.point.pose.position.x = bezier_points[i].x();
@@ -320,6 +354,12 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
       continue;
     }
     auto & pull_over_path = pull_over_path_opt.value();
+
+    // Store debug data
+    pull_over_path.debug_processed_prev_module_path = processed_prev_module_path;
+    pull_over_path.debug_shift_path_before_bezier = shift_path_before_bezier;
+    pull_over_path.debug_bezier_only_path = bezier_only_path;
+    pull_over_path.debug_bezier_start_idx = from_idx;
 
     // check if the parking path will leave drivable area and lanes
     const bool is_in_parking_lots = std::invoke([&]() -> bool {

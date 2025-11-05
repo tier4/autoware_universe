@@ -2630,10 +2630,37 @@ void GoalPlannerModule::setDebugData(const PullOverContextData & context_data)
       createPathMarkerArray(pull_over_path.full_path(), "full_path", 0, 0.0, 0.5, 0.9));
     add_debug_marker(
       createPathMarkerArray(pull_over_path.getCurrentPath(), "current_path", 0, 0.9, 0.5, 0.0));
+    // Visualize processed_prev_module_path (base path for PathShifter)
     if (pull_over_path.debug_processed_prev_module_path) {
       add_debug_marker(createPathMarkerArray(
         pull_over_path.debug_processed_prev_module_path.value(), "processed_prev_module_path", 0,
-        0.9, 0.5, 0.9));
+        0.9, 0.5, 0.9));  // purple
+    }
+
+    // Visualize shift_path before bezier replacement
+    if (pull_over_path.debug_shift_path_before_bezier) {
+      add_debug_marker(createPathMarkerArray(
+        pull_over_path.debug_shift_path_before_bezier.value(), "shift_path_before_bezier", 0, 0.0,
+        1.0, 1.0));  // cyan
+    }
+
+    // Visualize bezier-only path
+    if (pull_over_path.debug_bezier_only_path) {
+      add_debug_marker(createPathMarkerArray(
+        pull_over_path.debug_bezier_only_path.value(), "bezier_only_path", 0, 1.0, 0.0,
+        1.0));  // magenta
+    }
+
+    // Visualize bezier start point
+    if (
+      pull_over_path.debug_shift_path_before_bezier &&
+      pull_over_path.debug_bezier_start_idx <
+        pull_over_path.debug_shift_path_before_bezier->points.size()) {
+      const auto & bezier_start_point =
+        pull_over_path.debug_shift_path_before_bezier->points[pull_over_path.debug_bezier_start_idx]
+          .point.pose;
+      add_debug_marker(createPoseMarkerArray(
+        bezier_start_point, "bezier_start_point", 0, 1.0, 1.0, 0.0));  // yellow
     }
 
     // visualize each partial path

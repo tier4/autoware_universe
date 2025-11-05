@@ -92,6 +92,9 @@ public:
   std::vector<Pose> debug_poses{};
 
   std::optional<PathWithLaneId> debug_processed_prev_module_path;
+  std::optional<PathWithLaneId> debug_shift_path_before_bezier;  // shift_path before bezier replacement
+  std::optional<PathWithLaneId> debug_bezier_only_path;  // only the bezier part
+  size_t debug_bezier_start_idx{0};  // from_idx - where bezier replacement starts
 
 private:
   PullOverPath(

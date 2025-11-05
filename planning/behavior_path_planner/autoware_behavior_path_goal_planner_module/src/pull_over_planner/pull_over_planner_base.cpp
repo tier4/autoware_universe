@@ -14,6 +14,7 @@
 
 #include <autoware/behavior_path_goal_planner_module/pull_over_planner/pull_over_planner_base.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 
 #include <algorithm>
 #include <utility>
@@ -113,7 +114,12 @@ PullOverPath::PullOverPath(const PullOverPath & other)
   full_path_max_curvature_(other.full_path_max_curvature_),
   parking_path_max_curvature_(other.parking_path_max_curvature_),
   path_idx_(other.path_idx_),
-  pairs_terminal_velocity_and_accel_(other.pairs_terminal_velocity_and_accel_)
+  pairs_terminal_velocity_and_accel_(other.pairs_terminal_velocity_and_accel_),
+  debug_poses(other.debug_poses),
+  debug_processed_prev_module_path(other.debug_processed_prev_module_path),
+  debug_shift_path_before_bezier(other.debug_shift_path_before_bezier),
+  debug_bezier_only_path(other.debug_bezier_only_path),
+  debug_bezier_start_idx(other.debug_bezier_start_idx)
 {
 }
 
