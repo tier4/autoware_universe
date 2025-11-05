@@ -325,9 +325,9 @@ public:
     this->get_parameter("map_frame", map_frame_);
     this->get_parameter("include_parking_lots", include_parking_lots_);
 
-    RCLCPP_INFO(
+    RCLCPP_DEBUG(
       this->get_logger(), "Publishing filtered objects to: '%s'", output_objects_topic_.c_str());
-    RCLCPP_INFO(
+    RCLCPP_DEBUG(
       this->get_logger(), "Include parking lots: %s", include_parking_lots_ ? "true" : "false");
 
     // Initialize TF buffer and listener BEFORE subscriptions so transforms are available
@@ -397,7 +397,7 @@ private:
 
     // Extract parking lot polygons
     if (include_parking_lots_) {
-      RCLCPP_INFO(
+      RCLCPP_DEBUG(
         this->get_logger(), "Scanning %zu polygons in the map...",
         lanelet_map_ptr_->polygonLayer.size());
 
@@ -426,30 +426,30 @@ private:
           parking_area.setOuterBound(outer_bounds);
           parking_lot_areas_.push_back(parking_area);
 
-          RCLCPP_INFO(
+          RCLCPP_DEBUG(
             this->get_logger(), "Added parking lot polygon ID %ld with %zu points", polygon.id(),
             polygon.size());
 
           // Print first point for verification
           if (!polygon.empty()) {
-            RCLCPP_INFO(
+            RCLCPP_DEBUG(
               this->get_logger(), "  First point: (%.2f, %.2f)", polygon[0].x(), polygon[0].y());
           }
         }
       }
 
-      RCLCPP_INFO(this->get_logger(), "Found %zu parking lot areas", parking_lot_areas_.size());
+      RCLCPP_DEBUG(this->get_logger(), "Found %zu parking lot areas", parking_lot_areas_.size());
     }
 
     if (!centerline_points_.empty()) {
       kdtree_.build(centerline_points_);
-      RCLCPP_INFO(
+      RCLCPP_DEBUG(
         this->get_logger(), "Received lanelet map. Centerline points: %zu",
         centerline_points_.size());
 
       // Print example points for debugging coordinate systems
       const auto & ex = centerline_points_.front();
-      RCLCPP_INFO(this->get_logger(), "Example centerline point: (%.3f, %.3f)", ex.p.x, ex.p.y);
+      RCLCPP_DEBUG(this->get_logger(), "Example centerline point: (%.3f, %.3f)", ex.p.x, ex.p.y);
     } else {
       RCLCPP_WARN(this->get_logger(), "Received lanelet map but no centerline points found");
     }
@@ -553,7 +553,7 @@ private:
       Pt2 pcar{pose_out.pose.position.x, pose_out.pose.position.y};
 
       if (debug_mode_ && total_count <= 5) {
-        RCLCPP_INFO(
+        RCLCPP_DEBUG(
           this->get_logger(),
           "Object %d original=(%.3f, %.3f) [hdr_frame=%s], transformed=(%.3f, %.3f) in frame '%s'",
           total_count, pose_in.pose.position.x, pose_in.pose.position.y,
@@ -605,7 +605,7 @@ private:
       bool is_valid = (d_perp <= bound_allowed + 1e-6);
 
       if (debug_mode_ && total_count <= 5) {
-        RCLCPP_INFO(
+        RCLCPP_DEBUG(
           this->get_logger(),
           "Object %d: car_pos=(%.2f, %.2f), nearest_center=(%.2f, %.2f), "
           "neighbor=(%.2f, %.2f), perp_dist=%.2f, left_bound=%.2f, right_bound=%.2f, "
@@ -624,13 +624,14 @@ private:
       }
     }
 
-    RCLCPP_INFO_THROTTLE(
+    RCLCPP_DEBUG_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000,
       "Filtered %d/%d objects (%.1f%% kept), %d in parking lots", filtered_count, total_count,
       total_count > 0 ? 100.0 * (total_count - filtered_count) / total_count : 0.0,
       parking_lot_count);
 
     // get api objects
+
     autoware_adapi_v1_msgs::msg::DynamicObjectArray out_api;
     out_api.header = out.header;
     for (const auto & object : out.objects) {
