@@ -657,6 +657,10 @@ AvoidLineArray ShiftLineGenerator::extractShiftLinesFromLine(
     if (!found_first_start && std::abs(shift) > IS_ALREADY_SHIFTING_THR) {
       setStartData(al, 0.0, p, i, arcs.at(i));  // start length is overwritten later.
       found_first_start = true;
+      // RCLCPP_INFO(
+      //   rclcpp::get_logger(""),
+      //   "set start point at the first path point.                         y: %.3f, shift: %.3f",
+      //   p.position.y, al.start_shift_length);
     }
 
     // find the point where the gradient of the shift is changed
@@ -669,11 +673,20 @@ AvoidLineArray ShiftLineGenerator::extractShiftLinesFromLine(
 
     if (!found_first_start) {
       setStartData(al, 0.0, p, i, arcs.at(i));  // start length is overwritten later.
+      // RCLCPP_INFO(rclcpp::get_logger(""), "set start point at gradient change point.");
       found_first_start = true;
     } else {
       setEndData(al, shift, p, i, arcs.at(i));
       al.id = generate_uuid();
+
+      // if (al.start_shift_length > 1.0 || al.end_shift_length > 1.0) {
+      //   RCLCPP_INFO(
+      //     rclcpp::get_logger(""), "First shift line created. (%.3f, %.3f), %.3f, %.3f",
+      //     al.start.position.x, al.start.position.y, al.start_shift_length, al.end_shift_length);
+      // }
+
       merged_avoid_lines.push_back(al);
+      // RCLCPP_INFO(rclcpp::get_logger(""), "set end point at gradient change point.");
       setStartData(al, 0.0, p, i, arcs.at(i));  // start length is overwritten later.
     }
   }
@@ -685,6 +698,10 @@ AvoidLineArray ShiftLineGenerator::extractShiftLinesFromLine(
     al.id = generate_uuid();
     merged_avoid_lines.push_back(al);
   }
+
+  const double current_shift = helper_->getEgoLinearShift();
+
+  RCLCPP_INFO(rclcpp::get_logger(""), "current shift: %.3f", current_shift);
 
   return merged_avoid_lines;
 }
@@ -885,6 +902,14 @@ AvoidLineArray ShiftLineGenerator::applyMergeProcess(
 
   // sort by distance from ego.
   helper_->alignShiftLinesOrder(merged_shift_lines);
+
+  for (auto & al : merged_shift_lines) {
+    RCLCPP_INFO(
+      rclcpp::get_logger(""),
+      "xy values                              : (%.3f, %.3f, %.3f), to (%.3f, %.3f, %.3f) ",
+      al.start.position.x, al.start.position.y, al.start_shift_length, al.end.position.x,
+      al.end.position.y, al.end_shift_length);
+  }
 
   // debug visualize
   {
@@ -1377,6 +1402,14 @@ void ShiftLineGenerator::updateRegisteredRawShiftLines(const AvoidancePlanningDa
 
   AvoidLineArray avoid_lines;
 
+  // create a set of current target object IDs for quick lookup
+  const auto object_exists = [&data](const auto & shift_line) {
+    const auto & shift_object_id = shift_line.object.object.object_id;
+    return std::any_of(
+      data.target_objects.begin(), data.target_objects.end(),
+      [&shift_object_id](const auto & obj) { return obj.object.object_id == shift_object_id; });
+  };
+
   const auto has_large_offset = [this](const auto & s) {
     constexpr double THRESHOLD = 0.1;
     const auto ego_shift_length = helper_->getEgoLinearShift();
@@ -1396,15 +1429,29 @@ void ShiftLineGenerator::updateRegisteredRawShiftLines(const AvoidancePlanningDa
   const auto ego_idx = data.ego_closest_path_index;
 
   for (const auto & s : raw_registered_) {
-    // invalid
+    // invalid: corresponding object does not exist anymore
+    if (!object_exists(s)) {
+      RCLCPP_DEBUG(
+        rclcpp::get_logger("avoidance.shift_line_generator"),
+        "remove registered shift line because corresponding object (id=%s) no longer exists",
+        autoware_utils::to_hex_string(s.object.object.object_id).c_str());
+      continue;
+    }
+
+    // invalid: already passed
     if (s.end_idx < ego_idx) {
       continue;
     }
 
-    // invalid
+    // invalid: large position offset from expected
     if (has_large_offset(s)) {
       continue;
     }
+
+    RCLCPP_INFO(
+      rclcpp::get_logger("avoidance.shift_line_generator"),
+      "keep registered shift line (object id=%s)",
+      autoware_utils::to_hex_string(s.object.object.object_id).c_str());
 
     // valid
     avoid_lines.push_back(s);
