@@ -218,6 +218,9 @@ class TrajectoryVisualizer(tk.Tk):
         self.selected_line = None; self.border_line = None
         self.update_cost_display({}); self.update_state_display({})
 
+        # Load obstacle predictions
+        obstacle_predictions = self.loaded_data.get('obstacle_predictions', [])
+
         if self.current_mode == "recompute":
             # Recalculate trajectories from saved inputs
             cart_state = self.loaded_data.get('cartesian_state', {})
@@ -235,15 +238,16 @@ class TrajectoryVisualizer(tk.Tk):
             infeasible = self.loaded_data.get('infeasible_trajectories', [])
             ref_path = np.array(self.loaded_data.get('reference_path', []))
             obstacles = np.array(self.loaded_data.get('obstacle_positions', []))
-            self._plot_trajectories(optimal, feasible, infeasible, ref_path, obstacles)
+            self._plot_trajectories(optimal, feasible, infeasible, ref_path, obstacle_predictions)
         
         self.ax.set_xlabel('X [m]'); self.ax.set_ylabel('Y [m]'); self.ax.set_title(f'Debug Plot: {os.path.basename(filepath)}')
         self.ax.axis('equal'); self.ax.legend(); self.fig.tight_layout(); self.canvas.draw()
         self.update_selector_controls()
 
-    def _plot_trajectories(self, optimal_trajectory, feasible_trajectories, infeasible_trajectories, reference_path, obstacles):
+    def _plot_trajectories(self, optimal_trajectory, feasible_trajectories, infeasible_trajectories, reference_path, obstacle_predictions):
         if feasible_trajectories is None: feasible_trajectories = []
         if infeasible_trajectories is None: infeasible_trajectories = []
+        if obstacle_predictions is None: obstacle_predictions = []
         if reference_path.any(): self.ax.plot(reference_path[:, 0], reference_path[:, 1], 'g', label='Reference Path')
 
         for traj in infeasible_trajectories:
@@ -269,8 +273,20 @@ class TrajectoryVisualizer(tk.Tk):
             line, = self.ax.plot(x_data, y_data, '#0065bd', label='Optimal Trajectory', zorder=30, linewidth=3.5, alpha=1.0, picker=True, pickradius=5)
             self.plotted_lines[line] = self._serialize_trajectory(optimal_trajectory)
 
-        if obstacles.any(): self.ax.scatter(obstacles[:, 0], obstacles[:, 1], c='m', marker='x', label='Obstacles', zorder=5)
-    
+        # if obstacles.any(): self.ax.scatter(obstacles[:, 0], obstacles[:, 1], c='m', marker='x', label='Obstacles', zorder=10000)
+
+        # Plot predicted obstacle paths
+        first_pred = True
+        for obstacle in obstacle_predictions:
+            path = obstacle.get('predicted_path', [])
+            if path:
+                path_x = [step['position'][0] for step in path]
+                path_y = [step['position'][1] for step in path]
+                
+                label = 'Predicted Path' if first_pred else None
+                self.ax.plot(path_x, path_y, '-o', color='black', zorder=10000, label=label, markersize=2)
+                first_pred = False
+
     def update_selector_controls(self):
         num_feasible = len(self.feasible_lines)
         if num_feasible > 0:

@@ -48,6 +48,7 @@ class EvasiveParams(DictLikeDataClass):
     jerk_acc: float
     jerk_dec: float
     stop_buffer: float
+    velocity_threshold: float
     release_longitudinal_back: float
     release_lateral_center: float
 
@@ -90,5 +91,5 @@ class FrenetixPlannerParams(DictLikeDataClass):
     wb_rear_axle: float
     v_max: float
     cost_weights: CostWeightsParams
-    evasive_params: EvasiveParams
+    evasive: EvasiveParams
   

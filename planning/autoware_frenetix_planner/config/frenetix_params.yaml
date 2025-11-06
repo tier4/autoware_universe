@@ -12,15 +12,15 @@
     d_min: -3.0                 # [m] Minimum lateral offset for sampling (negative is left).
     d_max: 3.0                  # [m] Maximum lateral offset for sampling (positive is right).
     sampling_min: 2             # Initial sampling density level.
-    sampling_max: 3             # Maximum sampling density level.
+    sampling_max: 2             # Maximum sampling density level.
 
     # --- Vehicle & Physics ---
     velocity_limit: 20.0        # [m/s] Absolute maximum velocity limit.
-    desired_velocity: 5.0       # [m/s] Target velocity (18 km/h)
+    desired_velocity: 5.0       # [m/s] Target velocity 
     delta_max: 0.6              # [rad] Maximum steering angle.
     wheelbase: 2.7              # [m] Vehicle wheelbase.
     v_switch: 3.0               # [m/s] Velocity at which some constraints might change.
-    a_max: 5.0                  # [m/s^2] Maximum longitudinal acceleration/deceleration.
+    a_max: 2.5                  # [m/s^2] Maximum longitudinal acceleration/deceleration.
     v_delta_max: 2.0            # [rad/s] Maximum rate of change for steering angle.
     length: 5.0                 # [m] Vehicle length for collision checking.
     width: 2.0                  # [m] Vehicle width for collision checking.
@@ -32,8 +32,8 @@
     # Higher values mean the planner will try harder to optimize for that criterion.
     cost_weights:
       # Safety Costs (should be high)
-      prediction: 10.0
-      distance_to_obstacles: 10.0
+      prediction: 0.1
+      distance_to_obstacles: 0.0
 
       # Comfort Costs (lower for more aggressive driving)
       acceleration: 0.0
@@ -57,8 +57,11 @@
       acc_min: -2.5                 # [m/s^2] Minimum acceleration during evasive maneuvers.
       jerk_acc: 1.0                 # [m/s^3] Maximum jerk when accelerating during evasive maneuvers.
       jerk_dec: -1.0                # [m/s^3] Maximum jerk when decelerating during evasive maneuvers.
-      stop_buffer: 8.0              # [m] Additional buffer distance to stop before the obstacle.
+      stop_buffer: 10.0              # [m] Additional buffer distance to stop before the obstacle.
 
-      # Release Conditions
-      release_back: 50.0            # [m] Distance behind stop point to release evasive mode.
-      release_lat: 0.5              # [m] Lateral distance from lane center to release evasive mode.
+      # Trigger Conditions (any one can activate evasive mode)
+      velocity_threshold: 3.0       # [m/s] Velocity above which evasive mode can be triggered.
+
+      # Release Conditions (both must be met to exit evasive mode)
+      release_back: 10.0            # [m] Distance behind stop point to release evasive mode.
+      release_lat: 0.1              # [m] Lateral distance from lane center to release evasive mode.

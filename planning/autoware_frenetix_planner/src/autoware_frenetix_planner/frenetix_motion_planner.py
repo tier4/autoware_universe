@@ -236,12 +236,12 @@ class FrenetixMotionPlanner:
                     pwc = frenetix.PoseWithCovariance(position, orientation, covariance_matrix)
                     pwc_list[i] = pwc
                 
-                # Store Frenetix compatible prediction data
+                # Store Frenetix compatible prediction data (increase object size to ensure enough clearence)
                 predictions[obj_id] = frenetix.PredictedObject(
                     int(obj_id),
                     pwc_list,
-                    round(obj.shape.dimensions.x, 2), 
-                    round(obj.shape.dimensions.y, 2)
+                    round(obj.shape.dimensions.x, 2) * 2.0, 
+                    round(obj.shape.dimensions.y, 2) * 1.3
                 )
 
                 # check if obstacle has already been seen
@@ -632,8 +632,8 @@ class FrenetixMotionPlanner:
         
         # Return the results after checking all (or all collided in efficient mode)
         return optimal_collision_free_trajectory, colliding_trajectories
-    
-    def get_longitudinal_distance_to_point(self, array) -> float:
+
+    def get_longitudinal_distance_to_point(self, array) -> Tuple[float, float]:
         """
         Calculates the longitudinal distance to the given point
         from the current ego position along the reference path.
@@ -642,8 +642,8 @@ class FrenetixMotionPlanner:
             float: The longitudinal distance to the point.
                    Returns np.inf if no point is present.
         """
-        if self.coordinate_system_cpp is None:
-            return np.inf
+        if self.coordinate_system_cpp is None or self.cartesian_state is None or array is None:
+            return np.inf, np.inf
 
         try:
             # Get the current ego position in the reference path
@@ -683,7 +683,7 @@ class FrenetixMotionPlanner:
         max_sampling_level = self.params.sampling_max
 
         # sample until trajectory has been found or sampling sets are empty
-        while optimal_trajectory is None and sampling_level < max_sampling_level:
+        while optimal_trajectory is None and sampling_level <= max_sampling_level:
             self.handler.reset_Trajectories()
 
             # generate sampling matrix with current sampling level
@@ -702,21 +702,6 @@ class FrenetixMotionPlanner:
                     feasible_trajectories.append(trajectory)
                 elif trajectory.valid:
                     infeasible_trajectories.append(trajectory)
-            
-            # dm.plot_trajectories(self.ax, feasible_trajectories, color='green', linewidth=0.5)
-            # dm.plot_trajectories(self.ax, collision_trajectories, color='red', linewidth=0.5)
-
-            # debug trajectories
-          
-            if self.trajectory_logger is not None:
-              self.trajectory_logger.save_debug_data(optimal_trajectory=optimal_trajectory, 
-                                                    feasible_trajectories=feasible_trajectories,  
-                                                    infeasible_trajectories=infeasible_trajectories,
-                                                    reference_path=self.reference_path, 
-                                                    obstacle_positions=self.obstacle_positions,
-                                                    cartesian_state=self.cartesian_state,
-                                                    curvilinear_state=self.curvilinear_state,
-                                                    )
 
             try:
               # if vehicle is still very slow allow infeasible trajectories #
@@ -734,19 +719,14 @@ class FrenetixMotionPlanner:
               self.logger.error(f"No optimal trajectory found!")
               optimal_trajectory = None
 
-            # if optimal_trajectory is not None:
-            #   self.logger.debug(f"Cartesian (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.theta]}")
-            #   self.logger.warn(f"Cartesian (v): {[f'{ori:.4f}' for ori in optimal_trajectory.cartesian.v]}")
-            #   self.logger.warn(f"max velocity evaluation: {max(optimal_trajectory.cartesian.v):.4f}")
-            #   self.logger.debug(f"max acceleration evaluation: {max(optimal_trajectory.cartesian.a):.4f}")
-            #   self.logger.debug(f"Curvilinear (theta): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.theta]}")
-            #   self.logger.debug(f"Curvilinear (s): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s]}")
-            #   self.logger.debug(f"Curvilinear (s_dot): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.s_dot]}")
-            #   self.logger.debug(f"Curvilinear (d): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.d]}") 
-            #   self.logger.debug(f"Curvilinear (d_dot): {[f'{ori:.4f}' for ori in optimal_trajectory.curvilinear.d_dot]}")
-
-            #   for key in optimal_trajectory.costMap.keys():
-            #     self.logger.warn(f"{key} cost evaluation: {optimal_trajectory.costMap[key][0]:.2f}")
+            if self.trajectory_logger is not None:
+              self.trajectory_logger.save_debug_data(optimal_trajectory=optimal_trajectory, 
+                                                    feasible_trajectories=feasible_trajectories,  
+                                                    infeasible_trajectories=infeasible_trajectories,
+                                                    reference_path=self.reference_path, 
+                                                    obstacle_predictions=self.obstacle_predictions,
+                                                    cartesian_state=self.cartesian_state,
+                                                    )
 
             # increase sampling level (i.e., density) if no optimal trajectory could be found
             sampling_level += 1
@@ -766,6 +746,14 @@ class FrenetixMotionPlanner:
               f"length={len(optimal_trajectory.cartesian.x)}, "
               f"max velocity={max(optimal_trajectory.cartesian.v)}"
           )
+
+          try:
+            if optimal_trajectory.costMap['prediction'][0] > 800:
+                self.logger.warn(f"High collision cost in optimal trajectory: {optimal_trajectory.costMap['prediction'][0]:.2f}")
+                return None
+          except Exception as e:
+            self.logger.error(f"Error accessing collision cost: {e}, CostMap: {optimal_trajectory.costMap}")
+          
           return optimal_trajectory
         else:
             self.logger.warn("No feasible trajectory found in Frenetix planning cycle.")
@@ -851,14 +839,18 @@ class FrenetixMotionPlanner:
         return False, "Following"
   
     def cyclic_plan(self):
-        """
+        """p
         This is the main entry point from the node.
         It decides IF to replan, FROM WHERE to replan, and then calls _plan.
         If no replan is needed, it returns the previously cached trajectory.
         """
         if self.coordinate_system_cpp is None or self.reference_path is None:
-            self.logger.warn("Reference path or coordinate system not set, cannot plan.")
+            self.logger.error(f"Reference path or coordinate system not set, cannot plan. Cosy: "
+                              f"{self.coordinate_system_cpp is not None}, RefPath: {self.reference_path is not None}")
+            self.last_planned_trajectory = None
             return None
+        
+        self.logger.error(f"CoSy: {self.coordinate_system_cpp is not None}, RefPath: {self.reference_path is not None}")
 
         # Get the current ego state in curvilinear coordinates
         current_curvilinear_state = self._get_current_curvilinear_state()
@@ -881,7 +873,7 @@ class FrenetixMotionPlanner:
             return self.last_planned_trajectory
 
         # --- REPLANNING IS NEEDED ---
-        self.logger.info(f"Replanning triggered. Reason: {reason}")
+        self.logger.debug(f"Replanning triggered. Reason: {reason}")
 
         # Try to plan new optimal trajectory
         optimal_trajectory = self._plan(current_curvilinear_state)

@@ -15,7 +15,7 @@ setup(
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
-    install_requires=["setuptools", "rclpy", "frenetix"],
+    install_requires=["setuptools", "rclpy", "frenetix", "shapely"],
     zip_safe=True,
     author="Korbinian Moller",
     author_email="korbinian.moller@tum.de",

@@ -23,6 +23,7 @@ from autoware_frenetix_planner.config import FrenetixPlannerParams, CostWeightsP
 from autoware_frenetix_planner.stop_check import compute_min_stop_distance
 from tf_transformations import quaternion_from_euler
 from builtin_interfaces.msg import Duration
+from std_srvs.srv import SetBool
 
 # Main planner node class
 class FrenetixPlanner(Node):
@@ -38,6 +39,7 @@ class FrenetixPlanner(Node):
         # Initialize subscribers and publishers
         self._init_subscriber()
         self._init_publisher()
+        self._init_services()
         self.get_logger().info("Subscribers and publishers initialized.")
 
         # Instantiate the planner with the loaded parameters
@@ -105,6 +107,8 @@ class FrenetixPlanner(Node):
             jerk_acc=declare_and_get("evasive.jerk_acc", Parameter.Type.DOUBLE),
             jerk_dec=declare_and_get("evasive.jerk_dec", Parameter.Type.DOUBLE),
             stop_buffer=declare_and_get("evasive.stop_buffer", Parameter.Type.DOUBLE),
+            # Trigger conditions
+            velocity_threshold=declare_and_get("evasive.velocity_threshold", Parameter.Type.DOUBLE),
             # Release condition thresholds
             release_longitudinal_back=declare_and_get("evasive.release_back", Parameter.Type.DOUBLE),
             release_lateral_center=declare_and_get("evasive.release_lat", Parameter.Type.DOUBLE),
@@ -138,7 +142,7 @@ class FrenetixPlanner(Node):
             cost_weights=cost_weights_params,
 
             # The nested evasive parameters
-            evasive_params = evasive_params
+            evasive = evasive_params
         )
 
         return params
@@ -159,6 +163,9 @@ class FrenetixPlanner(Node):
             if len(keys) == 2:
                 parent_key, child_key = keys
                 # Get the nested param object (e.g., self.params.cost_weights)
+                if parent_key not in self.params:
+                    self.get_logger().error(f"Unknown parameter group: {parent_key}")
+                    return SetParametersResult(successful=False)
                 nested_param_object = getattr(self.params, parent_key)
                 # Set the attribute on the nested object
                 setattr(nested_param_object, child_key, param.value)
@@ -175,6 +182,11 @@ class FrenetixPlanner(Node):
 
     # Callback for reference path messages
     def reference_path_callback(self, reference_trajectory_msg):
+        # when we are in evasive mode, ignore reference path updates
+        # if self.evasive_active:
+        #     self.get_logger().warn("------- [Evasive] Ignoring reference path update -------")
+        #     return
+        
         self.get_logger().debug(f"Received reference path message with {len(reference_trajectory_msg.points)} points.")
         
         # convert points to numpy array [[x, y], ...]
@@ -182,7 +194,7 @@ class FrenetixPlanner(Node):
 
         # set/update reference path in planner
         if self.planner.set_reference_path(reference_path):
-          self.get_logger().info("Reference path set/updated.")
+          self.get_logger().debug("Reference path set/updated.")
 
     # Callback for objects messages
     def objects_callback(self, objects_msg):
@@ -292,7 +304,7 @@ class FrenetixPlanner(Node):
             self.check_evasive_mode(self.latest_autoware_traj)
         else:
             # If no Autoware trajectory at all, prefer evasive mode
-            self.evasive_active = True
+            self.get_logger().warn("No Autoware trajectory available! Waiting for trajectory ...")
 
         # Select output strictly by mode
         if self.evasive_active:
@@ -306,7 +318,7 @@ class FrenetixPlanner(Node):
         if selected_msg:
             selected_msg.header.stamp = self.get_clock().now().to_msg()
             if src != self.last_selected_source:
-                self.get_logger().warn(f"Evasive maneuver filter selected: {src} trajectory")
+                self.get_logger().info(f"Evasive maneuver filter selected: {src} trajectory")
                 self.last_selected_source = src
             self.trajectory_pub.publish(selected_msg)
 
@@ -376,6 +388,30 @@ class FrenetixPlanner(Node):
         self.timer_trajectory_pub = self.create_timer(0.1, self.timer_callback_publish_trajectory)
         self.get_logger().info("Trajectory publisher set up.")
 
+    # Set up services (if any)
+    def _init_services(self):
+        self.set_evasive_mode_service = self.create_service(
+            srv_type=SetBool,
+            srv_name='set_evasive_mode',
+            callback=self.set_evasive_mode_callback
+        )
+        self.get_logger().info("Services set up.")
+
+    def set_evasive_mode_callback(self, request, response):
+        """
+        Service callback to reset the evasive mode state.
+        """
+        if request.data:
+            self.evasive_active = True
+            self.get_logger().info("Evasive mode activated via service call.")
+        else:
+            self.evasive_active = False
+            self.stop_wall_xy = None
+            self.get_logger().info("Evasive mode deactivated via service call.")
+        
+        response.success = True
+        return response
+
     # convert frenetix trajectory to autoware trajectory message
     def convert_frenetix_to_autoware_trajectory(self, opt_trajectory, car_altitude=0.0):
         """
@@ -443,69 +479,107 @@ class FrenetixPlanner(Node):
     
     def check_evasive_mode(self, traj_msg: Trajectory) -> None:
         """
-        Check the evasive mode state-machine.
-        - If evasive is active: only check release condition (stay in Frenetix until cleared).
-        - If evasive is inactive: validate Autoware trajectory and check trigger conditions.
-        This function updates self.evasive_active in-place and returns None.
+        Evasive mode state machine.
+        - If evasive is active: check only the release condition (obstacle behind AND back on lane).
+        - If evasive is inactive: check only the trigger condition (cannot stop comfortably).
+        Side effects:
+          - Updates `self.evasive_active` in place.
+          - Clears `self.stop_wall_xy` only on release.
         """
-        
-        # --- If currently in evasive mode, only check release condition ---
+
+        log = self.get_logger()
+        ev = self.params.evasive
+
+        v0 = float(self.planner.cartesian_state.velocity)
+        a0 = float(self.planner.cartesian_state.acceleration)
+
+        # Distance to stop point (positive: ahead; negative: behind)
+        dist_to_stop, ego_d = self.planner.get_longitudinal_distance_to_point(self.stop_wall_xy)
+
+        # ---------------------------
+        # 1) ACTIVE --> release only
+        # ---------------------------
         if self.evasive_active:
-            
-            # Compute longitudinal distance to stop point and lateral offset to lane center
-            distance_to_stop_point, ego_d = self.planner.get_longitudinal_distance_to_point(self.stop_wall_xy)
-            self.get_logger().debug(f"[Evasive] LATCH: ego_d={ego_d:.2f} m, dist_stop={distance_to_stop_point:.2f} m")
+            log.warn("------------- [Evasive] Mode active -------------")
 
-            # Release condition
-            if distance_to_stop_point < -self.params.evasive_params.release_longitudinal_back and abs(ego_d) < self.params.evasive_params.release_lateral_center:
+            # Release the evasive mode if velocity is already low.
+            if v0 < 1.5 and abs(ego_d) < 0.5:
+                log.warn(
+                    f"[Evasive] Mode released: speed {v0:.2f} m/s < 1 m/s."
+                )
                 self.evasive_active = False
-                self.stop_wall_xy = None
-                self.get_logger().warn("[Evasive] Released: obstacle passed and re-centered.")
-            return  # Stay latched otherwise
+                self.stop_wall_xy = None  # cleared only when mode ends
+                log.warn("------------- [Evasive] Mode deactivated -------------")
+                return
 
-        # --- If not in evasive mode, validate Autoware trajectory, then check trigger conditions ---
-        # Basic trajectory sanity (keep lean, avoid over-rejecting)
-        if traj_msg is None or not traj_msg.points:
-            # Missing or empty -> safer to enter evasive (we have our own trajectory)
-            self.evasive_active = True
-            self.get_logger().warn("[Evasive] Triggered: Autoware trajectory missing/empty.")
-            return
+            # The stop wall is set externally and must not be cleared while active.
+            # Compute longitudinal distance to stop point and lateral offset to lane center.
+            dist_to_stop, ego_d = self.planner.get_longitudinal_distance_to_point(self.stop_wall_xy)
+            log.warn(
+                f"[Evasive] Status: lateral ego offset={ego_d:.2f} m, "
+                f"distance to stop point={dist_to_stop:.2f} m"
+            )
 
-        # If we do not have a stop wall, keep Autoware
+            # Release condition: obstacle sufficiently behind AND ego re-centered on lane.
+            if (dist_to_stop <= -ev.release_longitudinal_back           # assume that we have passed the obstacle
+                    and abs(ego_d) <= abs(ev.release_lateral_center)):  # ego is back near lane center
+                self.evasive_active = False
+                self.stop_wall_xy = None  # cleared only when mode ends
+                log.warn("[Evasive] Mode released: obstacle passed and ego re-centered.")
+                log.warn("------------- [Evasive] Mode deactivated -------------")
+            return  # stay latched otherwise
+
+        # --------------------------------
+        # 2) INACTIVE --> trigger only
+        # --------------------------------
+        # If no stop wall is tracked, nothing to evaluate --> stay with Autoware.
         if self.stop_wall_xy is None:
             return
 
-        # Distance to stop point
-        distance_to_stop_point, ego_d = self.planner.get_longitudinal_distance_to_point(self.stop_wall_xy)
-
-        # Estimate minimal stopping distance + buffer
-        if self.planner.cartesian_state is not None:
-            try:
-                d_stop = compute_min_stop_distance(
-                    v0=self.planner.cartesian_state.velocity,
-                    a0=self.planner.cartesian_state.acceleration,
-                    acc_min=self.params.evasive_params.acc_min,
-                    jerk_acc=self.params.evasive_params.jerk_acc,
-                    jerk_dec=self.params.evasive_params.jerk_dec,
-                )
-                if d_stop is not None:
-                    d_stop += self.params.evasive_params.stop_buffer
-            except Exception as e:
-                # If computation fails, do not flip modes aggressively; keep Autoware
-                self.get_logger().error(f"[Evasive] Stop distance computation failed: {e}")
-                return
-        else:
-            # No ego kinematics -> cannot decide; keep Autoware
+        # Ego kinematics required for stopping distance estimation.
+        if self.planner.cartesian_state is None:
             return
 
-        # Trigger condition: cannot stop smoothly before stop point
-        if d_stop is not None and distance_to_stop_point < d_stop:
-            self.evasive_active = True
-            self.get_logger().warn(
-                f"[Evasive] Triggered: dist_to_stop={distance_to_stop_point:.2f} m < "
-                f"min_stop={d_stop:.2f} m (with buffer)."
+        # Do not trigger at low speed: Autoware can brake, and evasive would not help.
+        if v0 < float(ev.velocity_threshold):
+            log.info(
+                f"[Evasive] No trigger: speed {v0:.2f} m/s < min_trigger_speed {float(ev.velocity_threshold):.2f} m/s."
             )
-        # else: keep Autoware (do nothing)
+            return
+
+        # Compute jerk/acc constrained minimal stopping distance (+ buffer).
+        try:
+            d_stop = compute_min_stop_distance(
+                v0=v0,
+                a0=a0,
+                acc_min=float(ev.acc_min),
+                jerk_acc=float(ev.jerk_acc),
+                jerk_dec=float(ev.jerk_dec),
+            )
+            if d_stop is not None:
+                d_stop += float(ev.stop_buffer)
+        except Exception as e:
+            # If computation fails, do not trigger aggressively; keep Autoware.
+            log.warn(f"[Evasive] Stop distance computation failed: {e}")
+            return
+
+        if d_stop is None:
+            log.info("[Evasive] No trigger: stopping distance estimator returned None.")
+            return
+
+        log.info(
+            f"[Evasive] Trigger check: distance_to_stop={dist_to_stop:.2f} m, "
+            f"min_stop_distance+buffer={d_stop:.2f} m, v0={v0:.2f} m/s, a0={a0:.2f} m/s^2"
+        )
+
+        # Trigger condition: cannot stop smoothly before the stop point.
+        if dist_to_stop < d_stop:
+            self.evasive_active = True
+            log.warn("------------- [Evasive] Mode activated -------------")
+            log.warn(
+                "[Evasive] Triggered: distance to stop point is shorter than required stopping distance."
+            )
+        # else: remain in Autoware mode
 
 
 # Main entry point for the node

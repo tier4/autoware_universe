@@ -19,8 +19,8 @@ class TrajectoryLogger:
             save_dir (str): The absolute path to the directory where data should be saved.
             mode (str): The logging mode. Either 'trajectories' or 'recompute'.
         """
-        if mode not in ['trajectories', 'recompute']:
-            raise ValueError("Mode must be either 'trajectories' or 'recompute'")
+        if mode not in ['trajectories']:
+            raise ValueError("Mode must be 'trajectories'")
             
         self.save_dir = save_dir
         self.mode = mode
@@ -50,33 +50,18 @@ class TrajectoryLogger:
         """
         if self.mode == 'trajectories':
             self._save_trajectories_data(**kwargs)
-        elif self.mode == 'recompute':
-            self._save_recompute_data(**kwargs)
 
         self.log_counter += 1
 
-    def _save_trajectories_data(self, optimal_trajectory, feasible_trajectories, infeasible_trajectories, reference_path, obstacle_positions=None, **kwargs):
+    def _save_trajectories_data(self, optimal_trajectory, feasible_trajectories, infeasible_trajectories, reference_path, obstacle_predictions=None, **kwargs):
         """Saves pre-computed trajectory data."""
         data_to_save = {
             "data_mode": "trajectories",
             "optimal_trajectory": self._serialize_trajectory(optimal_trajectory),
             "feasible_trajectories": [self._serialize_trajectory(t) for t in feasible_trajectories[:]],
-            "infeasible_trajectories": [self._serialize_trajectory(t) for t in infeasible_trajectories[:100]],
+            "infeasible_trajectories": [self._serialize_trajectory(t) for t in infeasible_trajectories[:0]],
             "reference_path": reference_path.tolist() if reference_path is not None else [],
-            "obstacle_positions": obstacle_positions.tolist() if obstacle_positions is not None else []
-        }
-        filepath = os.path.join(self.save_dir, f"plot_data_{self.log_counter:05d}.json")
-        with open(filepath, 'w') as f:
-            json.dump(data_to_save, f)
-
-    def _save_recompute_data(self, cartesian_state, curvilinear_state, reference_path, obstacle_positions=None, **kwargs):
-        """Saves planner inputs for offline recalculation."""
-        data_to_save = {
-            "data_mode": "recompute",
-            "cartesian_state": self._serialize_state(cartesian_state),
-            "curvilinear_state": self._serialize_state(curvilinear_state),
-            "reference_path": reference_path.tolist() if reference_path is not None else [],
-            "obstacle_positions": obstacle_positions.tolist() if obstacle_positions is not None else []
+            "obstacle_predictions": self._serialize_obstacle_predictions(obstacle_predictions)
         }
         filepath = os.path.join(self.save_dir, f"plot_data_{self.log_counter:05d}.json")
         with open(filepath, 'w') as f:
@@ -93,6 +78,39 @@ class TrajectoryLogger:
             },
             'costMap': trajectory.costMap
         }
+    
+    def _serialize_obstacle_predictions(self, obstacle_predictions):
+        """Converts a list of obstacle prediction objects into a serializable list."""
+        if not obstacle_predictions:
+            return []
+        
+        serialized_list = []
+
+        for obstacle in obstacle_predictions.values():
+            try:
+                serialized_path = []
+                if hasattr(obstacle, 'predictedPath') and obstacle.predictedPath:
+                    for step in obstacle.predictedPath:
+                        
+                        orientation_data = list(step.orientation)
+                        position_data = list(step.position)
+                        
+                        serialized_path.append({
+                            'orientation': orientation_data,
+                            'position': position_data
+                        })
+
+                serialized_obstacle = {
+                    'id': obstacle.object_id,
+                    'length': obstacle.length,
+                    'width': obstacle.width,
+                    'predicted_path': serialized_path
+                }
+                serialized_list.append(serialized_obstacle)
+            except Exception as e:
+                print(f"Warning: Could not serialize obstacle {getattr(obstacle, 'id', 'UNKNOWN')}. Error: {e}")
+        
+        return serialized_list
 
     def _serialize_state(self, state):
         """Converts a dataclass State object into a serializable dictionary."""
