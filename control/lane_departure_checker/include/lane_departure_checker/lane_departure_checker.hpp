@@ -95,6 +95,11 @@ public:
 
   void setParam(const Param & param) { param_ = param; }
 
+protected:
+  std::vector<LinearRing2d> createVehicleFootprints(
+    const geometry_msgs::msg::PoseWithCovariance & covariance, const TrajectoryPoints & trajectory,
+    const Param & param);
+
 private:
   Param param_;
   std::shared_ptr<vehicle_info_util::VehicleInfo> vehicle_info_ptr_;
@@ -107,10 +112,6 @@ private:
   static TrajectoryPoints resampleTrajectory(const Trajectory & trajectory, const double interval);
 
   static TrajectoryPoints cutTrajectory(const TrajectoryPoints & trajectory, const double length);
-
-  std::vector<LinearRing2d> createVehicleFootprints(
-    const geometry_msgs::msg::PoseWithCovariance & covariance, const TrajectoryPoints & trajectory,
-    const Param & param);
 
   static std::vector<LinearRing2d> createVehiclePassingAreas(
     const std::vector<LinearRing2d> & vehicle_footprints);

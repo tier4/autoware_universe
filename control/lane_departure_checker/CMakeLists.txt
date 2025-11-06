@@ -20,6 +20,18 @@ rclcpp_components_register_node(lane_departure_checker
   EXECUTABLE lane_departure_checker_node
 )
 
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  ament_lint_auto_find_test_dependencies()
+  find_package(ament_cmake_gmock REQUIRED)
+  ament_add_gmock(test_${PROJECT_NAME}
+    test/test_lane_departure_checker.cpp
+  )
+  target_link_libraries(test_${PROJECT_NAME}
+    lane_departure_checker
+  )
+endif()
+
 ament_auto_package(
   INSTALL_TO_SHARE
     launch
