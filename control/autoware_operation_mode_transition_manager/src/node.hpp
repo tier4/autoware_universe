@@ -88,6 +88,7 @@ private:
     const Odometry & kinematics, const Trajectory & trajectory,
     const OperationModeState & gate_operation_mode);
 
+  bool getCurrentControlMode() const;
   double transition_timeout_;
   double input_timeout_;
   OperationMode current_mode_;
