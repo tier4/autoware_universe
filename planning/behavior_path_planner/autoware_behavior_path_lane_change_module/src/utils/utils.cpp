@@ -1209,4 +1209,12 @@ bool is_valid_start_point(const lane_change::CommonDataPtr & common_data_ptr, co
   return boost::geometry::covered_by(lc_start_point, target_neighbor_poly) ||
          boost::geometry::covered_by(lc_start_point, target_lane_poly);
 }
+
+bool is_lanelet_in_lanelet_collections(
+  const lanelet::ConstLanelets & lanelet_collections, const lanelet::ConstLanelet & lanelet)
+{
+  return std::any_of(
+    lanelet_collections.begin(), lanelet_collections.end(),
+    [&](const auto & lane) { return lane.id() == lanelet.id(); });
+}
 }  // namespace autoware::behavior_path_planner::utils::lane_change
