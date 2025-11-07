@@ -69,8 +69,8 @@ def launch_setup(context, *args, **kwargs):
     container = ComposableNodeContainer(
         namespace="component_state_monitor",
         name="container",
-        package="rclcpp_components",
-        executable="component_container",
+        package="agnocastlib",
+        executable="agnocast_component_container_cie",
         composable_node_descriptions=[component],
     )
     return [container, *topic_monitor_nodes]

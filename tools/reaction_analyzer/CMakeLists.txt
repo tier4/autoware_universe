@@ -3,6 +3,7 @@ project(reaction_analyzer)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
+find_package(agnocastlib REQUIRED)
 
 find_package(PCL REQUIRED)
 find_package(Eigen3 REQUIRED)

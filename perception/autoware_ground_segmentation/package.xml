@@ -1,5 +1,4 @@
-<?xml version="1.0"?>
-<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<?xml version='1.0' encoding='utf-8'?>
 <package format="3">
   <name>autoware_ground_segmentation</name>
   <version>0.41.0</version>
@@ -10,15 +9,11 @@
   <maintainer email="dai.nguyen@tier4.jp">Dai Nguyen</maintainer>
   <maintainer email="yoshi.ri@tier4.jp">Yoshi Ri</maintainer>
   <license>Apache License 2.0</license>
-
-  <!-- Original authors -->
   <author>Open Perception</author>
   <author email="julius@kammerl.de">Julius Kammerl</author>
   <author email="william@osrfoundation.org">William Woodall</author>
-
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
   <buildtool_depend>autoware_cmake</buildtool_depend>
-
   <depend>ament_index_cpp</depend>
   <depend>autoware_pointcloud_preprocessor</depend>
   <depend>autoware_utils</depend>
@@ -35,10 +30,9 @@
   <depend>tf2_ros</depend>
   <depend>tf2_sensor_msgs</depend>
   <depend>yaml-cpp</depend>
-
+  <exec_depend>agnocastlib</exec_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>autoware_lint_common</test_depend>
-
   <export>
     <build_type>ament_cmake</build_type>
   </export>

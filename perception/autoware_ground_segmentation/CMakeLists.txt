@@ -3,6 +3,7 @@ project(autoware_ground_segmentation)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
+find_package(agnocastlib REQUIRED)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)

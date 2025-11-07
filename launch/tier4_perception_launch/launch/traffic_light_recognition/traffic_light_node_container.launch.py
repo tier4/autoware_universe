@@ -89,7 +89,7 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="traffic_light_node_container",
         namespace="",
-        package="rclcpp_components",
+        package="agnocastlib",
         executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=[
             ComposableNode(
@@ -245,13 +245,13 @@ def generate_launch_description():
 
     set_container_executable = SetLaunchConfiguration(
         "container_executable",
-        "component_container",
+        "agnocast_component_container_cie",
         condition=UnlessCondition(LaunchConfiguration("use_multithread")),
     )
 
     set_container_mt_executable = SetLaunchConfiguration(
         "container_executable",
-        "component_container_mt",
+        "agnocast_component_container_cie",
         condition=IfCondition(LaunchConfiguration("use_multithread")),
     )
 

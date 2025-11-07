@@ -3,6 +3,7 @@ project(autoware_component_state_monitor)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
+find_package(agnocastlib REQUIRED)
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/main.cpp

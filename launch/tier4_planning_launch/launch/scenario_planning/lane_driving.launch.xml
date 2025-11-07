@@ -10,7 +10,7 @@
       <push-ros-namespace namespace="behavior_planning"/>
       <group>
         <include file="$(find-pkg-share tier4_planning_launch)/launch/scenario_planning/lane_driving/behavior_planning/behavior_planning.launch.xml">
-          <arg name="container_type" value="component_container_mt"/>
+          <arg name="container_type" value="agnocast_component_container_cie"/>
           <arg name="enable_all_modules_auto_mode" value="$(var enable_all_modules_auto_mode)"/>
           <arg name="is_simulation" value="$(var is_simulation)"/>
           <!-- This condition should be true if run_out module is enabled and its detection method is Points -->
@@ -24,7 +24,7 @@
       <push-ros-namespace namespace="motion_planning"/>
       <group>
         <include file="$(find-pkg-share tier4_planning_launch)/launch/scenario_planning/lane_driving/motion_planning/motion_planning.launch.xml">
-          <arg name="container_type" value="component_container_mt"/>
+          <arg name="container_type" value="agnocast_component_container_cie"/>
         </include>
       </group>
     </group>

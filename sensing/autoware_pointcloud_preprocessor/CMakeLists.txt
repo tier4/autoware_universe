@@ -3,6 +3,7 @@ project(autoware_pointcloud_preprocessor)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
+find_package(agnocastlib REQUIRED)
 
 # Suppress CGAL warning
 set(CGAL_DATA_DIR ".")

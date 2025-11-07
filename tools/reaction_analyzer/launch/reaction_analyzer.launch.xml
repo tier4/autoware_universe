@@ -47,7 +47,7 @@
     </include>
   </group>
 
-  <node_container pkg="rclcpp_components" exec="component_container_mt" name="reaction_analyzer_container" namespace="" args="" output="screen">
+  <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="reaction_analyzer_container" namespace="" args="" output="screen">
     <composable_node pkg="reaction_analyzer" plugin="reaction_analyzer::ReactionAnalyzerNode" name="reaction_analyzer" namespace="">
       <param from="$(var reaction_analyzer_param_path)"/>
       <param name="running_mode" value="$(var running_mode)"/>

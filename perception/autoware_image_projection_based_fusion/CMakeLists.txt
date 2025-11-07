@@ -7,6 +7,7 @@ find_package(autoware_cmake REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 autoware_package()
+find_package(agnocastlib REQUIRED)
 
 find_package(OpenMP REQUIRED)
 if(OpenMP_FOUND)
