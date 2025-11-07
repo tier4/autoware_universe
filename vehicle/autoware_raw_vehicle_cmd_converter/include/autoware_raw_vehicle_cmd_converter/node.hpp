@@ -82,6 +82,7 @@ class RawVehicleCommandConverterNode : public rclcpp::Node
 public:
   explicit RawVehicleCommandConverterNode(const rclcpp::NodeOptions & node_options);
 
+private:
   //!< @brief topic publisher for low level vehicle command
   rclcpp::Publisher<ActuationCommandStamped>::SharedPtr pub_actuation_cmd_;
   rclcpp::Publisher<Steering>::SharedPtr pub_steering_status_;
@@ -102,7 +103,6 @@ public:
   autoware_utils::InterProcessPollingSubscriber<ControlHorizon> sub_control_horizon_{
     this, "~/input/control_horizon"};
 
-private:
   std::unique_ptr<double> current_steer_ptr_;
   ActuationStatusStamped::ConstSharedPtr actuation_status_ptr_;
   Odometry::ConstSharedPtr current_odometry_;
