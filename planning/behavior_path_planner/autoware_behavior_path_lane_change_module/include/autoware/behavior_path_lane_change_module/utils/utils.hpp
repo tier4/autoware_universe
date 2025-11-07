@@ -468,5 +468,8 @@ bool is_valid_start_point(const lane_change::CommonDataPtr & common_data_ptr, co
 std::vector<PoseWithVelocityStamped> convert_to_predicted_path(
   const CommonDataPtr & common_data_ptr, const lane_change::TrajectoryGroup & frenet_candidate,
   [[maybe_unused]] const size_t deceleration_sampling_num);
+
+bool is_lanelet_in_lanelet_collections(
+  const lanelet::ConstLanelets & lanelet_collections, const lanelet::ConstLanelet & lanelet);
 }  // namespace autoware::behavior_path_planner::utils::lane_change
 #endif  // AUTOWARE__BEHAVIOR_PATH_LANE_CHANGE_MODULE__UTILS__UTILS_HPP_
