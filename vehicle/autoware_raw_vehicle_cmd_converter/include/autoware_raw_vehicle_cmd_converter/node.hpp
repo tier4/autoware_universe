@@ -103,9 +103,6 @@ public:
     this, "~/input/control_horizon"};
 
 private:
-  rclcpp::TimerBase::SharedPtr timer_;
-
-  std::unique_ptr<TwistStamped> current_twist_ptr_;  // [m/s]
   std::unique_ptr<double> current_steer_ptr_;
   ActuationStatusStamped::ConstSharedPtr actuation_status_ptr_;
   Odometry::ConstSharedPtr current_odometry_;
