@@ -102,6 +102,7 @@ public:
   autoware_utils::InterProcessPollingSubscriber<ControlHorizon> sub_control_horizon_{
     this, "~/input/control_horizon"};
 
+private:
   rclcpp::TimerBase::SharedPtr timer_;
 
   std::unique_ptr<TwistStamped> current_twist_ptr_;  // [m/s]
