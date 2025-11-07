@@ -326,6 +326,8 @@ private:
   UUID generator_uuid_;
   VehicleInfo vehicle_info_;
 
+  std::vector<float> latest_z_vector_;
+
   std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
 };
 

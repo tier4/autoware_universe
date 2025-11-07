@@ -84,10 +84,11 @@ struct TransformedPoints
 };
 
 TransformedPoints transform_lane_points(
-  const LanePointData & data, const Eigen::Matrix4d & transform)
+  const LanePointData & data, const Eigen::Matrix4d & transform,
+  const float z_value)
 {
   Eigen::Matrix<double, 4, 3> points;
-  points << data.x, data.lb_x, data.rb_x, data.y, data.lb_y, data.rb_y, 0.0, 0.0, 0.0, 1.0, 1.0,
+  points << data.x, data.lb_x, data.rb_x, data.y, data.lb_y, data.rb_y, z_value, z_value, z_value, 1.0, 1.0,
     1.0;
 
   Eigen::Matrix<double, 4, 3> transformed = transform * points;
@@ -140,10 +141,10 @@ ColorRGBA get_traffic_light_color(float g, float y, float r, const ColorRGBA & o
 };
 
 MarkerArray create_lane_marker(
-  const Eigen::Matrix4d & transform_ego_to_map, const std::vector<float> & lane_vector,
-  const std::vector<int64_t> & shape, const Time & stamp, const rclcpp::Duration & lifetime,
-  const std::array<float, 4> colors, const std::string & frame_id,
-  const bool set_traffic_light_color)
+  const std::vector<float> & z_vector, const Eigen::Matrix4d & transform_ego_to_map,
+  const std::vector<float> & lane_vector, const std::vector<int64_t> & shape, const Time & stamp,
+  const rclcpp::Duration & lifetime, const std::array<float, 4> colors,
+  const std::string & frame_id, const bool set_traffic_light_color)
 {
   MarkerArray marker_array;
   const int64_t P = shape[2];
@@ -211,7 +212,8 @@ MarkerArray create_lane_marker(
       }
 
       // Transform points from ego to map frame
-      TransformedPoints transformed = transform_lane_points(point_data, transform_ego_to_map);
+      TransformedPoints transformed =
+        transform_lane_points(point_data, transform_ego_to_map, z_vector[l * P + p]);
 
       // Add points to respective markers
       add_point_to_marker(marker_centerline, transformed.x, transformed.y, transformed.z);

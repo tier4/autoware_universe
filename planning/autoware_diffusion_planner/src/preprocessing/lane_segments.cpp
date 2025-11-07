@@ -162,7 +162,7 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   return selected_indices;
 }
 
-std::pair<std::vector<float>, std::vector<float>>
+std::tuple<std::vector<float>, std::vector<float>, std::vector<float>>
 LaneSegmentContext::create_tensor_data_from_indices(
   const Eigen::Matrix4d & transform_matrix,
   const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
@@ -185,6 +185,8 @@ LaneSegmentContext::create_tensor_data_from_indices(
     }
     return one_hot;
   };
+
+  std::vector<float> z_vector;
 
   int64_t added_segments = 0;
   for (const int64_t segment_idx : segment_indices) {
@@ -249,6 +251,7 @@ LaneSegmentContext::create_tensor_data_from_indices(
       const Eigen::Vector4d center = transform_matrix * convert_to_vector4d(centerline[i]);
       output_matrix(X, col_idx) = center.x();
       output_matrix(Y, col_idx) = center.y();
+      z_vector.push_back(static_cast<float>(center.z()));
 
       // Direction (2, 3)
       if (i > 0) {
@@ -287,7 +290,7 @@ LaneSegmentContext::create_tensor_data_from_indices(
   std::vector<float> tensor_data(
     output_matrix_f.data(), output_matrix_f.data() + output_matrix_f.size());
 
-  return {tensor_data, speed_limit_vector};
+  return {tensor_data, speed_limit_vector, z_vector};
 }
 
 // Internal functions implementation

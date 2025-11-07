@@ -101,7 +101,7 @@ public:
    * @param max_segments Maximum number of segments for output tensor.
    * @return Pair of lane tensor data and speed limit vector.
    */
-  std::pair<std::vector<float>, std::vector<float>> create_tensor_data_from_indices(
+  std::tuple<std::vector<float>, std::vector<float>, std::vector<float>> create_tensor_data_from_indices(
     const Eigen::Matrix4d & transform_matrix,
     const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
     const std::vector<int64_t> & segment_indices, const int64_t max_segments) const;
