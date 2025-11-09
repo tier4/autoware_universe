@@ -40,8 +40,8 @@ def generate_launch_description():
     container = ComposableNodeContainer(
         name="pointcloud_preprocessor_container",
         namespace=ns,
-        package="agnocastlib",
-        executable="agnocast_component_container_cie",
+        package="rclcpp_components",
+        executable="component_container",
         composable_node_descriptions=[my_component],
         output="screen",
     )
