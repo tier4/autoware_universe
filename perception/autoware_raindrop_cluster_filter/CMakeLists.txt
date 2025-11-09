@@ -6,6 +6,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 # find dependencies
 find_package(autoware_cmake REQUIRED)
+find_package(callback_isolated_executor REQUIRED)
 autoware_package()
 
 # Targets

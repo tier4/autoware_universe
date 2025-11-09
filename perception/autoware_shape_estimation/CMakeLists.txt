@@ -16,6 +16,7 @@ find_package(Eigen3 REQUIRED)
 find_package(CUDA)
 find_package(CUDNN)
 find_package(TENSORRT)
+find_package(callback_isolated_executor REQUIRED)
 
 set(SHAPE_ESTIMATION_DEPENDENCIES
   PCL

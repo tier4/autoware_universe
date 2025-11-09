@@ -5,10 +5,13 @@
 
   <arg name="low_intensity_cluster_filter_param_path" default="$(find-pkg-share autoware_raindrop_cluster_filter)/config/low_intensity_cluster_filter.param.yaml"/>
 
-  <node pkg="autoware_raindrop_cluster_filter" exec="low_intensity_cluster_filter_node" name="low_intensity_cluster_filter_node" output="screen">
+  <node_container name="low_intensity_cluster_filter_container" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
+  <composable_node pkg="autoware_raindrop_cluster_filter" plugin="autoware::low_intensity_cluster_filter::LowIntensityClusterFilter" name="low_intensity_cluster_filter_node">
     <remap from="input/objects" to="$(var input/objects)"/>
     <remap from="output/objects" to="$(var output/objects)"/>
     <param name="input_obstacle_pointcloud" value="false"/>
     <param from="$(var low_intensity_cluster_filter_param_path)"/>
-  </node>
+  </composable_node>
+</node_container>
+
 </launch>

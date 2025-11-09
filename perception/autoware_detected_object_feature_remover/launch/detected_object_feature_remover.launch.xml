@@ -3,8 +3,11 @@
   <arg name="output"/>
   <arg name="node_name" default="detected_object_feature_remover"/>
 
-  <node pkg="autoware_detected_object_feature_remover" exec="detected_object_feature_remover_node" name="$(var node_name)" output="screen">
-    <remap from="~/input" to="$(var input)"/>
-    <remap from="~/output" to="$(var output)"/>
-  </node>
+  <node_container name="detected_object_feature_remover_container" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
+    <composable_node pkg="autoware_detected_object_feature_remover" plugin="autoware::detected_object_feature_remover::DetectedObjectFeatureRemover" name="$(var node_name)">
+      <remap from="~/input" to="$(var input)"/>
+      <remap from="~/output" to="$(var output)"/>
+    </composable_node>
+  </node_container>
+
 </launch>
