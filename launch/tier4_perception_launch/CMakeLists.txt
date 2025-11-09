@@ -3,7 +3,7 @@ project(tier4_perception_launch)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
-find_package(agnocastlib REQUIRED)
+find_package(callback_isolated_executor REQUIRED)
 
 ament_auto_package(
   INSTALL_TO_SHARE

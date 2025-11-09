@@ -69,7 +69,7 @@ def launch_setup(context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="scan_ground_filter_container",
         namespace="",
-        package="agnocastlib",
+        package="callback_isolated_executor",
         executable="agnocast_component_container_cie",
         composable_node_descriptions=nodes,
         output="screen",

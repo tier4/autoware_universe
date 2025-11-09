@@ -3,7 +3,7 @@ project(autoware_euclidean_cluster)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
-find_package(agnocastlib REQUIRED)
+find_package(callback_isolated_executor REQUIRED)
 
 find_package(PCL REQUIRED)
 

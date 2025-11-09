@@ -34,7 +34,7 @@
   <arg name="input/image6" default="/image_raw6"/>
   <arg name="input/image7" default="/image_raw7"/>
   <group>
-    <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="$(var pointcloud_container_name)" namespace="/">
+    <node_container pkg="callback_isolated_executor" exec="agnocast_component_container_cie" name="$(var pointcloud_container_name)" namespace="/">
       <composable_node pkg="autoware_image_projection_based_fusion" plugin="autoware::image_projection_based_fusion::RoiPointCloudFusionNode" name="roi_pointcloud_fusion">
         <param name="rois_number" value="$(var input/rois_number)"/>
         <param from="$(var param_path)"/>

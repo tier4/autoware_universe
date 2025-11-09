@@ -117,7 +117,7 @@ def launch_setup(context, *args, **kwargs):
     occupancy_grid_map_container = ComposableNodeContainer(
         name=LaunchConfiguration("individual_container_name"),
         namespace="",
-        package="agnocastlib",
+        package="callback_isolated_executor",
         executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=composable_nodes,
         condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),

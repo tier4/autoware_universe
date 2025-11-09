@@ -72,7 +72,7 @@ def launch_setup(context, *args, **kwargs):
 
     container = ComposableNodeContainer(
         name="euclidean_cluster_container",
-        package="agnocastlib",
+        package="callback_isolated_executor",
         namespace=ns,
         executable="agnocast_component_container_cie",
         composable_node_descriptions=[],

@@ -3,7 +3,7 @@ project(autoware_probabilistic_occupancy_grid_map)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
-find_package(agnocastlib REQUIRED)
+find_package(callback_isolated_executor REQUIRED)
 
 find_package(CUDA)
 find_package(eigen3_cmake_module REQUIRED)

@@ -5,7 +5,7 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(rclcpp REQUIRED)
-find_package(agnocastlib REQUIRED)
+find_package(callback_isolated_executor REQUIRED)
 
 include_directories(
   include
@@ -16,7 +16,7 @@ ament_export_include_directories(
 )
 
 ament_export_dependencies(
-  agnocastlib
+  callback_isolated_executor
 )
 
 install(

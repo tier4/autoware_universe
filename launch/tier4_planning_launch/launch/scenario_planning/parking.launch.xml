@@ -3,7 +3,7 @@
   <group if="$(var launch_parking_module)">
     <push-ros-namespace namespace="parking"/>
 
-    <node_container pkg="agnocastlib" exec="$(var container_type)" name="parking_container" namespace="" output="screen">
+    <node_container pkg="callback_isolated_executor" exec="$(var container_type)" name="parking_container" namespace="" output="screen">
       <composable_node pkg="autoware_costmap_generator" plugin="autoware::costmap_generator::CostmapGenerator" name="costmap_generator" namespace="">
         <!-- topic remap -->
         <remap from="~/input/objects" to="/perception/object_recognition/objects"/>

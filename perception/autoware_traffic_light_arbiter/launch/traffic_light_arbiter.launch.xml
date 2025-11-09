@@ -5,7 +5,7 @@
   <arg name="traffic_light_arbiter_param_path" default="$(find-pkg-share autoware_traffic_light_arbiter)/config/traffic_light_arbiter.param.yaml"/>
 
   <push-ros-namespace namespace="traffic_light_arbiter"/>
-  <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="container" namespace="">
+  <node_container pkg="callback_isolated_executor" exec="agnocast_component_container_cie" name="container" namespace="">
     <composable_node pkg="autoware_traffic_light_arbiter" plugin="autoware::TrafficLightArbiter" name="arbiter">
       <remap from="~/sub/vector_map" to="/map/vector_map"/>
       <remap from="~/sub/perception_traffic_signals" to="$(var perception_traffic_signals)"/>
