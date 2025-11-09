@@ -31,7 +31,7 @@
   <group>
   <node_container name="image_proj_fusion_container" namespace="" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
 
-    <composable_node pkg="autoware_image_projection_based_fusion" plugin="autoware::image_projection_based_fusion::SegmentPointCloudFusionNode" name="segmentation_pointcloud_fusion" output="screen">
+    <composable_node pkg="autoware_image_projection_based_fusion" plugin="autoware::image_projection_based_fusion::SegmentPointCloudFusionNode" name="segmentation_pointcloud_fusion">
       <param name="rois_number" value="$(var input/camera_number)"/>
       <param from="$(var semantic_segmentation_based_filter_param_path)"/>
       <param from="$(var sync_param_path)"/>

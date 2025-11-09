@@ -31,7 +31,7 @@
   <arg name="input/image6" default="/image_raw6"/>
   <arg name="input/image7" default="/image_raw7"/>
   <group>
-    <node_container name="roi_cluster_fusion_container" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
+    <node_container name="roi_cluster_fusion_container" namespace="" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
     <composable_node pkg="autoware_image_projection_based_fusion" plugin="autoware::image_projection_based_fusion::RoiClusterFusionNode" name="roi_cluster_fusion">
       <param name="rois_number" value="$(var input/rois_number)"/>
       <param from="$(var param_path)"/>

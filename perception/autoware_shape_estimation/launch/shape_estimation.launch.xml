@@ -8,7 +8,7 @@
   <!-- Parameter -->
   <arg name="config_file" default="$(find-pkg-share autoware_shape_estimation)/config/shape_estimation.param.yaml"/>
 
-  <node_container name="shape_estimation_container" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
+  <node_container name="shape_estimation_container" namespace="" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
     <composable_node pkg="autoware_shape_estimation" plugin="autoware::shape_estimation::ShapeEstimationNode" name="$(var node_name)">
       <remap from="input" to="$(var input/objects)"/>
       <remap from="objects" to="$(var output/objects)"/>
