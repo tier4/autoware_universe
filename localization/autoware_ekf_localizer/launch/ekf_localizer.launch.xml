@@ -18,11 +18,12 @@
   <arg name="output_twist_with_covariance_name" default="ekf_twist_with_covariance"/>
   <arg name="output_processing_time_ms" default="debug/processing_time_ms"/>
 
-  <node pkg="autoware_ekf_localizer" exec="autoware_ekf_localizer_node" output="both">
+<node_container name="ekf_container" namespace="" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
+
+  <composable_node pkg="autoware_ekf_localizer" plugin="autoware::ekf_localizer::EkfLocalizer" name="autoware_ekf_localizer">
+
     <remap from="in_pose_with_covariance" to="$(var input_pose_with_cov_name)"/>
-
     <remap from="in_twist_with_covariance" to="$(var input_twist_with_cov_name)"/>
-
     <remap from="initialpose" to="$(var input_initial_pose_name)"/>
     <remap from="trigger_node_srv" to="$(var input_trigger_node_service_name)"/>
 
@@ -36,5 +37,8 @@
     <remap from="debug/processing_time_ms" to="$(var output_processing_time_ms)"/>
 
     <param from="$(var param_file)"/>
-  </node>
+  </composable_node>
+
+</node_container>
+
 </launch>

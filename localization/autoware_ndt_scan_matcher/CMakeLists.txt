@@ -3,6 +3,7 @@ project(autoware_ndt_scan_matcher)
 
 # cspell:ignore multigrid
 
+find_package(callback_isolated_executor REQUIRED)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
