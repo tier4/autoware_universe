@@ -3,7 +3,6 @@ project(autoware_component_monitor)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
-find_package(agnocastlib REQUIRED)
 
 find_package(Boost REQUIRED COMPONENTS
   filesystem

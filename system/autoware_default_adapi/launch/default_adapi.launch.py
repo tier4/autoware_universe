@@ -59,8 +59,8 @@ def generate_launch_description():
     container = ComposableNodeContainer(
         namespace="adapi",
         name="container",
-        package="agnocastlib",
-        executable="agnocast_component_container_cie",
+        package="rclcpp_components",
+        executable="component_container_mt",
         ros_arguments=["--log-level", "adapi.container:=WARN"],
         composable_node_descriptions=components,
     )

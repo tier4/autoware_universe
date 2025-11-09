@@ -3,7 +3,6 @@ project(autoware_system_monitor)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
-find_package(agnocastlib REQUIRED)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(NVML)
