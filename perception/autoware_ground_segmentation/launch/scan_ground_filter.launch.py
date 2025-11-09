@@ -70,7 +70,7 @@ def launch_setup(context, *args, **kwargs):
         name="scan_ground_filter_container",
         namespace="",
         package="callback_isolated_executor",
-        executable="agnocast_component_container_cie",
+        executable="component_container_callback_isolated",
         composable_node_descriptions=nodes,
         output="screen",
         condition=LaunchConfigurationEquals("container", ""),

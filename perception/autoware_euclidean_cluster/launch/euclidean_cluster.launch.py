@@ -73,7 +73,7 @@ def launch_setup(context, *args, **kwargs):
         name="euclidean_cluster_container",
         namespace=ns,
         package="callback_isolated_executor",
-        executable="agnocast_component_container_cie",
+        executable="component_container_callback_isolated",
         composable_node_descriptions=[],
         output="screen",
         condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),

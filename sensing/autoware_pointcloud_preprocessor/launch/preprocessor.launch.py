@@ -141,7 +141,7 @@ def launch_setup(context, *args, **kwargs):
         name="pointcloud_preprocessor_container",
         namespace=ns,
         package="callback_isolated_executor",
-        executable="agnocast_component_container_cie",
+        executable="component_container_callback_isolated",
         composable_node_descriptions=concat_components + [cropbox_component],
         output="screen",
     )

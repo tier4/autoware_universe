@@ -42,7 +42,7 @@
   <arg name="use_intra_process" default="false" description="use ROS 2 component container communication"/>
   <arg name="use_multithread" default="true" description="use multithread"/>
 
-  <let name="container_executable" value="agnocast_component_container_cie"/>
+  <let name="container_executable" value="component_container_callback_isolated"/>
 
   <!-- temporary: control_command_gate migration -->
   <arg name="use_control_command_gate" default="false"/>
