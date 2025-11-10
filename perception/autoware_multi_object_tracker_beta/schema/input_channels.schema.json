@@ -1,0 +1,251 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for Input Channels",
+  "type": "object",
+  "definitions": {
+    "input_channel": {
+      "type": "object",
+      "properties": {
+        "flags": {
+          "type": "object",
+          "properties": {
+            "can_spawn_new_tracker": {
+              "type": "boolean",
+              "description": "Indicates if the input channel can spawn new trackers.",
+              "default": true
+            },
+            "can_trust_existence_probability": {
+              "type": "boolean",
+              "description": "Indicates if the input channel can trust the existence probability.",
+              "default": true
+            },
+            "can_trust_extension": {
+              "type": "boolean",
+              "description": "Indicates if the input channel can trust the object size(extension).",
+              "default": true
+            },
+            "can_trust_classification": {
+              "type": "boolean",
+              "description": "Indicates if the input channel can trust the object classification.",
+              "default": true
+            },
+            "can_trust_orientation": {
+              "type": "boolean",
+              "description": "Indicates if the input channel can trust the object orientation.",
+              "default": true
+            }
+          }
+        },
+        "optional": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name of the input channel.",
+              "default": "detected_objects"
+            },
+            "short_name": {
+              "type": "string",
+              "description": "The short name of the input channel.",
+              "default": "all"
+            }
+          }
+        }
+      },
+      "required": []
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "type": "object",
+          "properties": {
+            "input_channels": {
+              "type": "object",
+              "properties": {
+                "detected_objects": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "flags": {
+                      "can_spawn_new_tracker": true,
+                      "can_trust_existence_probability": true,
+                      "can_trust_extension": true,
+                      "can_trust_classification": true,
+                      "can_trust_orientation": true
+                    },
+                    "optional": {
+                      "name": "detected_objects",
+                      "short_name": "all"
+                    }
+                  }
+                },
+                "lidar_clustering": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "flags": {
+                      "can_spawn_new_tracker": true,
+                      "can_trust_existence_probability": false,
+                      "can_trust_extension": false,
+                      "can_trust_classification": false,
+                      "can_trust_orientation": false
+                    },
+                    "optional": {
+                      "name": "clustering",
+                      "short_name": "Lcl"
+                    }
+                  }
+                },
+                "lidar_centerpoint": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "flags": {
+                      "can_spawn_new_tracker": true,
+                      "can_trust_existence_probability": true,
+                      "can_trust_extension": true,
+                      "can_trust_classification": true,
+                      "can_trust_orientation": true
+                    },
+                    "optional": {
+                      "name": "centerpoint",
+                      "short_name": "Lcp"
+                    }
+                  }
+                },
+                "lidar_centerpoint_short_range": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "flags": {
+                      "can_spawn_new_tracker": true,
+                      "can_trust_existence_probability": true,
+                      "can_trust_extension": true,
+                      "can_trust_classification": true,
+                      "can_trust_orientation": true
+                    },
+                    "optional": {
+                      "name": "centerpoint_short_range",
+                      "short_name": "LcpS"
+                    }
+                  }
+                },
+                "lidar_apollo": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "topic": "/perception/object_recognition/detection/apollo/objects",
+                    "flags": {
+                      "can_spawn_new_tracker": true,
+                      "can_trust_existence_probability": true,
+                      "can_trust_extension": true,
+                      "can_trust_classification": true,
+                      "can_trust_orientation": true
+                    },
+                    "optional": {
+                      "name": "apollo",
+                      "short_name": "Lap"
+                    }
+                  }
+                },
+                "lidar_pointpainting": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "flags": {
+                      "can_spawn_new_tracker": true,
+                      "can_trust_existence_probability": true,
+                      "can_trust_extension": true,
+                      "can_trust_classification": true,
+                      "can_trust_orientation": true
+                    },
+                    "optional": {
+                      "name": "pointpainting",
+                      "short_name": "Lpp"
+                    }
+                  }
+                },
+                "camera_lidar_fusion": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "flags": {
+                      "can_spawn_new_tracker": true,
+                      "can_trust_existence_probability": false,
+                      "can_trust_extension": false,
+                      "can_trust_classification": true,
+                      "can_trust_orientation": false
+                    },
+                    "optional": {
+                      "name": "camera_lidar_fusion",
+                      "short_name": "CLf"
+                    }
+                  }
+                },
+                "camera_lidar_fusion_irregular": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "flags": {
+                      "can_spawn_new_tracker": true,
+                      "can_trust_existence_probability": false,
+                      "can_trust_extension": false,
+                      "can_trust_classification": true,
+                      "can_trust_orientation": false
+                    },
+                    "optional": {
+                      "name": "camera_lidar_fusion_irregular",
+                      "short_name": "Irreg"
+                    }
+                  }
+                },
+                "detection_by_tracker": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "flags": {
+                      "can_spawn_new_tracker": false,
+                      "can_trust_existence_probability": false,
+                      "can_trust_extension": false,
+                      "can_trust_classification": false,
+                      "can_trust_orientation": false
+                    },
+                    "optional": {
+                      "name": "detection_by_tracker",
+                      "short_name": "dbT"
+                    }
+                  }
+                },
+                "radar": {
+                  "$ref": "#/definitions/input_channel",
+                  "default": {
+                    "flags": {
+                      "can_spawn_new_tracker": true,
+                      "can_trust_existence_probability": true,
+                      "can_trust_extension": false,
+                      "can_trust_classification": true,
+                      "can_trust_orientation": false
+                    },
+                    "optional": {
+                      "name": "radar",
+                      "short_name": "Rad"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "detected_objects",
+                "lidar_clustering",
+                "lidar_centerpoint",
+                "lidar_centerpoint_short_range",
+                "lidar_apollo",
+                "lidar_pointpainting",
+                "camera_lidar_fusion",
+                "camera_lidar_fusion_irregular",
+                "detection_by_tracker",
+                "radar"
+              ]
+            }
+          },
+          "required": ["input_channels"]
+        }
+      },
+      "required": ["ros__parameters"]
+    }
+  },
+  "required": ["/**"]
+}

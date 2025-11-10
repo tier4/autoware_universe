@@ -37,6 +37,11 @@
   <arg name="traffic_light_arbiter_param_path"/>
   <arg name="traffic_light_multi_camera_fusion_param_path"/>
   <arg name="lidar_detection_model"/>
+  <arg
+    name="multi_object_tracker_package"
+    default="autoware_multi_object_tracker"
+    description="multi object tracker package name: autoware_multi_object_tracker_beta or autoware_multi_object_tracker"
+  />
 
   <!-- ML model parameters -->
   <arg name="lidar_detection_model_type" default="$(eval &quot;'$(var lidar_detection_model)'.split('/')[0]&quot;)"/>
@@ -275,6 +280,7 @@
         <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/tracking/tracking.launch.xml">
           <arg name="mode" value="$(var mode)"/>
           <arg name="lidar_detection_model_type" value="$(var lidar_detection_model_type)"/>
+          <arg name="multi_object_tracker_package" value="$(var multi_object_tracker_package)"/>
           <arg
             name="object_recognition_tracking_radar_object_tracker_data_association_matrix_param_path"
             value="$(var object_recognition_tracking_radar_object_tracker_data_association_matrix_param_path)"

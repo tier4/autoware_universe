@@ -18,6 +18,11 @@
   <arg name="use_validator" description="use obstacle_pointcloud based validator"/>
 
   <!-- External interface -->
+  <arg
+    name="multi_object_tracker_package"
+    default="autoware_multi_object_tracker"
+    description="multi object tracker package name: autoware_multi_object_tracker_beta or autoware_multi_object_tracker"
+  />
   <arg name="lidar_detection_model_type" default="centerpoint"/>
   <arg name="input/merged_detection/channel" default="detected_objects"/>
   <arg name="input/merged_detection/objects" default="/perception/object_recognition/detection/objects"/>
@@ -47,7 +52,7 @@
     <let name="tracker_merger/output/objects" value="$(var output/objects)"/>
 
     <!-- Multi object tracking -->
-    <include file="$(find-pkg-share autoware_multi_object_tracker)/launch/multi_object_tracker.launch.xml">
+    <include file="$(find-pkg-share $(var multi_object_tracker_package))/launch/multi_object_tracker.launch.xml">
       <arg name="input/detection01/objects" value="$(var input/merged_detection/objects)"/>
       <arg name="input/detection01/channel" value="$(var input/merged_detection/channel)"/>
       <arg name="output/objects" value="$(var multi_object_tracker/output/objects)"/>
@@ -128,7 +133,7 @@
     </group>
 
     <!-- Multi object tracking -->
-    <include file="$(find-pkg-share autoware_multi_object_tracker)/launch/multi_object_tracker.launch.xml">
+    <include file="$(find-pkg-share $(var multi_object_tracker_package))/launch/multi_object_tracker.launch.xml">
       <arg name="input/detection01/objects" value="$(var input/detection01/objects)"/>
       <arg name="input/detection01/channel" value="$(var input/detection01/channel)"/>
       <arg name="input/detection02/objects" value="$(var input/detection02/objects)"/>
