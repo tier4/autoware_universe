@@ -167,7 +167,8 @@ std::pair<std::vector<float>, std::vector<float>>
 LaneSegmentContext::create_tensor_data_from_indices(
   const Eigen::Matrix4d & transform_matrix,
   const std::map<lanelet::Id, TrafficSignalStamped> & traffic_light_id_map,
-  const std::vector<int64_t> & segment_indices, const int64_t max_segments) const
+  const std::vector<int64_t> & segment_indices, const int64_t max_segments,
+  const int64_t unknown_traffic_light_fallback) const
 {
   const auto total_points = max_segments * POINTS_PER_SEGMENT;
   Eigen::MatrixXd output_matrix(SEGMENT_POINT_DIM, total_points);
@@ -222,14 +223,16 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
       const auto traffic_light_stamped_info_itr =
         traffic_light_id_map.find(lane_segment.traffic_light_id);
-      if (traffic_light_stamped_info_itr == traffic_light_id_map.end()) {
-        encoding[TRAFFIC_LIGHT_WHITE - TRAFFIC_LIGHT] = 1.0;
-        return encoding;
+      uint8_t traffic_color = TrafficLightElement::UNKNOWN;
+      if (traffic_light_stamped_info_itr != traffic_light_id_map.end()) {
+        const auto & signal = traffic_light_stamped_info_itr->second.signal;
+        traffic_color = identify_current_light_status(lane_segment.turn_direction, signal.elements);
+      }
+      // If traffic color is UNKNOWN, use the fallback value from parameter
+      if (traffic_color == TrafficLightElement::UNKNOWN) {
+        traffic_color = static_cast<uint8_t>(unknown_traffic_light_fallback);
       }
 
-      const auto & signal = traffic_light_stamped_info_itr->second.signal;
-      const uint8_t traffic_color =
-        identify_current_light_status(lane_segment.turn_direction, signal.elements);
       return Eigen::Vector<double, TRAFFIC_LIGHT_ONE_HOT_DIM>{
         traffic_color == TrafficLightElement::GREEN,    // 3
         traffic_color == TrafficLightElement::AMBER,    // 2
