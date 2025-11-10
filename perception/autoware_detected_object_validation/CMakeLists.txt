@@ -17,6 +17,8 @@ find_package(Eigen3 REQUIRED)
 ### Find Boost Dependencies
 find_package(Boost REQUIRED)
 
+find_package(callback_isolated_executor REQUIRED)
+
 include_directories(
   include
   SYSTEM

@@ -5,10 +5,12 @@
   <arg name="output/object" default="out_objects"/>
   <arg name="filtering_range_param" default="$(find-pkg-share autoware_detected_object_validation)/config/object_lanelet_filter.param.yaml"/>
 
-  <node pkg="autoware_detected_object_validation" exec="object_lanelet_filter_node" name="object_lanelet_filter" output="screen">
-    <remap from="input/vector_map" to="$(var vector_map_topic)"/>
-    <remap from="input/object" to="$(var input/object)"/>
-    <remap from="output/object" to="$(var output/object)"/>
-    <param from="$(var filtering_range_param)"/>
-  </node>
+  <node_container name="object_lanelet_filter_container" namespace="" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
+    <composable_node pkg="autoware_detected_object_validation" plugin="autoware::detected_object_validation::lanelet_filter::ObjectLaneletFilterNode" name="object_lanelet_filter">
+      <remap from="input/vector_map" to="$(var vector_map_topic)"/>
+      <remap from="input/object" to="$(var input/object)"/>
+      <remap from="output/object" to="$(var output/object)"/>
+      <param from="$(var filtering_range_param)"/>
+    </composable_node>
+  </node_container>
 </launch>
