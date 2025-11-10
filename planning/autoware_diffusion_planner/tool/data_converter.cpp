@@ -667,7 +667,8 @@ int main(int argc, char ** argv)
         lane_segment_context.select_lane_segment_indices(
           map2bl, center_x, center_y, NUM_SEGMENTS_IN_LANE);
       const auto [lanes, lanes_speed_limit] = lane_segment_context.create_tensor_data_from_indices(
-        map2bl, traffic_light_id_map, lane_segment_indices, NUM_SEGMENTS_IN_LANE);
+        map2bl, traffic_light_id_map, lane_segment_indices, NUM_SEGMENTS_IN_LANE,
+        TrafficLightElement::UNKNOWN);
 
       // Create has_speed_limit flags based on speed_limit values
       std::vector<bool> lanes_has_speed_limit(lanes_speed_limit.size());
@@ -682,7 +683,8 @@ int main(int argc, char ** argv)
           seq.data_list[i].route, center_x, center_y, NUM_SEGMENTS_IN_ROUTE);
       const auto [route_lanes, route_lanes_speed_limit] =
         lane_segment_context.create_tensor_data_from_indices(
-          map2bl, traffic_light_id_map, segment_indices, NUM_SEGMENTS_IN_ROUTE);
+          map2bl, traffic_light_id_map, segment_indices, NUM_SEGMENTS_IN_ROUTE,
+          TrafficLightElement::UNKNOWN);
 
       // Create route_lanes_has_speed_limit based on speed_limit values
       std::vector<bool> route_lanes_has_speed_limit(route_lanes_speed_limit.size());
