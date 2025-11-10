@@ -13,6 +13,8 @@ endif()
 find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+find_package(callback_isolated_executor REQUIRED)
+
 include_directories(
   SYSTEM
     ${EIGEN3_INCLUDE_DIR}

@@ -9,15 +9,17 @@
   <arg name="distance_threshold_list_path" default="$(find-pkg-share autoware_object_merger)/config/overlapped_judge.param.yaml"/>
   <arg name="object_association_merger_param_path" default="$(find-pkg-share autoware_object_merger)/config/object_association_merger.param.yaml"/>
 
-  <node pkg="autoware_object_merger" exec="object_association_merger_node" name="$(var node_name)" output="screen">
-    <remap from="input/object0" to="$(var input/object0)"/>
-    <remap from="input/object1" to="$(var input/object1)"/>
-    <remap from="output/object" to="$(var output/object)"/>
-    <param from="$(var data_association_matrix_path)"/>
-    <param from="$(var distance_threshold_list_path)"/>
-    <param from="$(var object_association_merger_param_path)"/>
+  <node_container name="$(var node_name)_container" namespace="" pkg="callback_isolated_executor" exec="component_container_callback_isolated" output="screen">
+    <composable_node pkg="autoware_object_merger" plugin="autoware::object_merger::ObjectAssociationMergerNode" name="$(var node_name)">
+      <remap from="input/object0" to="$(var input/object0)"/>
+      <remap from="input/object1" to="$(var input/object1)"/>
+      <remap from="output/object" to="$(var output/object)"/>
+      <param from="$(var data_association_matrix_path)"/>
+      <param from="$(var distance_threshold_list_path)"/>
+      <param from="$(var object_association_merger_param_path)"/>
 
-    <!-- Be careful when moving this parameter to param.yaml, since this value depends on which part this launcher is called -->
-    <param name="priority_mode" value="$(var priority_mode)"/>
-  </node>
+      <!-- Be careful when moving this parameter to param.yaml, since this value depends on which part this launcher is called -->
+      <param name="priority_mode" value="$(var priority_mode)"/>
+    </composable_node>
+  </node_container>
 </launch>
