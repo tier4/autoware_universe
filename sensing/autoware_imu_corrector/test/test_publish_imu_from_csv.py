@@ -18,6 +18,8 @@ import pandas as pd
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
+from geometry_msgs.msg import TransformStamped
+from tf2_ros import StaticTransformBroadcaster
 
 
 class ImuPublisher(Node):
@@ -26,8 +28,32 @@ class ImuPublisher(Node):
         self.publisher_ = self.create_publisher(Imu, "/imu_raw", 10)
         self.timer = self.create_timer(0.005, self.timer_callback)
 
+        # 静的TFブロードキャスターを追加
+        self.tf_broadcaster = StaticTransformBroadcaster(self)
+        self.publish_static_transform()
+
         self.data = pd.read_csv("test/data/gyro_test_data.csv")
         self.current_index = 0
+
+    def publish_static_transform(self):
+        """base_link から imu_link への静的TFを発行"""
+        transform = TransformStamped()
+        transform.header.stamp = self.get_clock().now().to_msg()
+        transform.header.frame_id = "base_link"
+        transform.child_frame_id = "imu_link"
+        
+        # 位置（必要に応じて調整）
+        transform.transform.translation.x = 0.0
+        transform.transform.translation.y = 0.0
+        transform.transform.translation.z = 0.0
+        
+        # 回転（単位quaternion = 回転なし）
+        transform.transform.rotation.x = 0.0
+        transform.transform.rotation.y = 0.0
+        transform.transform.rotation.z = 0.0
+        transform.transform.rotation.w = 1.0
+        
+        self.tf_broadcaster.sendTransform(transform)
 
     def timer_callback(self):
         if self.current_index >= len(self.data):
