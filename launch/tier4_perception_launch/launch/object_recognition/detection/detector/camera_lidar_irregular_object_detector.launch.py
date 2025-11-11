@@ -19,8 +19,8 @@ from launch.actions import SetLaunchConfiguration
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import LoadComposableNodes
-from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 from launch_ros.substitutions import FindPackageShare
 import yaml
@@ -140,20 +140,28 @@ class SmallUnknownPipeline:
         return components
 
     def create_roi_pointcloud_fusion_node(self, input_topic, output_topic):
-        node = Node(
-            package="autoware_image_projection_based_fusion",
-            executable="roi_pointcloud_fusion_node",
-            name="roi_pointcloud_fusion",
-            remappings=[
-                ("input", input_topic),
-                ("output", output_topic),
-            ],
-            parameters=[
-                self.roi_pointcloud_fusion_sync_param,
-                self.roi_pointcloud_fusion_param,
+        container = ComposableNodeContainer(
+            package="callback_isolated_executor",
+            executable="component_container_callback_isolated",
+            name="roi_pointcloud_fusion_container",
+            namespace="/",
+            composable_node_descriptions=[
+                ComposableNode(
+                    package="autoware_image_projection_based_fusion",
+                    plugin="autoware::image_projection_based_fusion::RoiPointCloudFusionNode",
+                    name="roi_pointcloud_fusion",
+                    remappings=[
+                        ("input", input_topic),
+                        ("output", output_topic),
+                    ],
+                    parameters=[
+                        self.roi_pointcloud_fusion_sync_param,
+                        self.roi_pointcloud_fusion_param,
+                    ],
+                )
             ],
         )
-        return node
+        return container
 
 
 def launch_setup(context, *args, **kwargs):

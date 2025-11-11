@@ -5,10 +5,12 @@
   <arg name="output/objects" default="/perception/object_recognition/detection/validation/obstacle_pointcloud_based/objects"/>
   <arg name="obstacle_pointcloud_based_validator_param_path" default="$(find-pkg-share autoware_detected_object_validation)/config/obstacle_pointcloud_based_validator.param.yaml"/>
 
-  <node pkg="autoware_detected_object_validation" exec="obstacle_pointcloud_based_validator_node" name="obstacle_pointcloud_based_validator_node" output="screen">
-    <remap from="~/input/detected_objects" to="$(var input/detected_objects)"/>
-    <remap from="~/input/obstacle_pointcloud" to="$(var input/obstacle_pointcloud)"/>
-    <remap from="~/output/objects" to="$(var output/objects)"/>
-    <param from="$(var obstacle_pointcloud_based_validator_param_path)"/>
-  </node>
+  <node_container pkg="callback_isolated_executor" exec="component_container_callback_isolated" name="obstacle_pointcloud_based_validator_container" namespace="/">
+    <composable_node pkg="autoware_detected_object_validation" plugin="autoware::detected_object_validation::obstacle_pointcloud::ObstaclePointCloudBasedValidator" name="obstacle_pointcloud_based_validator_node">
+      <remap from="~/input/detected_objects" to="$(var input/detected_objects)"/>
+      <remap from="~/input/obstacle_pointcloud" to="$(var input/obstacle_pointcloud)"/>
+      <remap from="~/output/objects" to="$(var output/objects)"/>
+      <param from="$(var obstacle_pointcloud_based_validator_param_path)"/>
+    </composable_node>
+  </node_container>
 </launch>

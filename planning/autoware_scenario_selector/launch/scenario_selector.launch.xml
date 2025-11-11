@@ -12,18 +12,20 @@
   <!-- Parameter -->
   <arg name="config_file" default="$(find-pkg-share autoware_scenario_selector)/config/scenario_selector.param.yaml"/>
 
-  <node pkg="autoware_scenario_selector" exec="autoware_scenario_selector_node" name="scenario_selector" output="screen">
-    <remap from="input/lane_driving/trajectory" to="$(var input_lane_driving_trajectory)"/>
-    <remap from="input/parking/trajectory" to="$(var input_parking_trajectory)"/>
-    <remap from="input/lanelet_map" to="$(var input_lanelet_map)"/>
-    <remap from="input/route" to="$(var input_route)"/>
-    <remap from="input/odometry" to="$(var input_odometry)"/>
-    <remap from="input/operation_mode_state" to="$(var input_operation_mode_state)"/>
-    <remap from="is_parking_completed" to="$(var is_parking_completed)"/>
+  <node_container pkg="callback_isolated_executor" exec="component_container_callback_isolated" name="scenario_selector_container" namespace="/">
+    <composable_node pkg="autoware_scenario_selector" plugin="autoware::scenario_selector::ScenarioSelectorNode" name="scenario_selector">
+      <remap from="input/lane_driving/trajectory" to="$(var input_lane_driving_trajectory)"/>
+      <remap from="input/parking/trajectory" to="$(var input_parking_trajectory)"/>
+      <remap from="input/lanelet_map" to="$(var input_lanelet_map)"/>
+      <remap from="input/route" to="$(var input_route)"/>
+      <remap from="input/odometry" to="$(var input_odometry)"/>
+      <remap from="input/operation_mode_state" to="$(var input_operation_mode_state)"/>
+      <remap from="is_parking_completed" to="$(var is_parking_completed)"/>
 
-    <remap from="output/scenario" to="$(var output_scenario)"/>
-    <remap from="output/trajectory" to="$(var output_trajectory)"/>
-    <!-- Parameter -->
-    <param from="$(var config_file)"/>
-  </node>
+      <remap from="output/scenario" to="$(var output_scenario)"/>
+      <remap from="output/trajectory" to="$(var output_trajectory)"/>
+      <!-- Parameter -->
+      <param from="$(var config_file)"/>
+    </composable_node>
+  </node_container>
 </launch>
