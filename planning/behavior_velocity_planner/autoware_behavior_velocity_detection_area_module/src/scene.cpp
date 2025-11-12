@@ -94,7 +94,7 @@ void DetectionAreaModule::finalizeStopPoint(
     logInfo("state changed: GO -> STOP (%s)", policy_name.c_str());
   }
 
-  if (state_ == State::STOP && planner_param_.enable_detected_obstacle_logging) {
+  if (planner_param_.enable_detected_obstacle_logging) {
     print_detected_obstacle(debug_data_.obstacle_points, self_pose);
   }
 
