@@ -340,7 +340,28 @@ void MissionPlanner::set_preferred_lane(
   if (segment_it != route.segments.end()) {
     route.segments.erase(route.segments.begin(), segment_it);
   } else {
+    // ===========================================================================================
+    // When ego starts from road_border, there is no segment which contains the start_pose.
+    // But in check_reroute_safety() it is required to check whether ego is on the first segment of
+    // new route.
+    // So here we modify the start_pose a little bit to pass the check.
+    // ===========================================================================================
     RCLCPP_ERROR(get_logger(), "Failed to find the current segment on the new route.");
+    const auto first_segment = route.segments.front();
+    const auto first_lanelet =
+      lanelet_map_ptr_->laneletLayer.get(first_segment.primitives.front().id);
+    const auto & centerline_2d = lanelet::utils::to2D(first_lanelet.centerline());
+
+    if (!centerline_2d.empty()) {
+      const auto new_start_point = centerline_2d.front().basicPoint2d();
+      route.start_pose.position.x = new_start_point.x();
+      route.start_pose.position.y = new_start_point.y();
+      RCLCPP_ERROR(
+        get_logger(), "Modified route start_pose to x=%f, y=%f", route.start_pose.position.x,
+        route.start_pose.position.y);
+    } else {
+      RCLCPP_ERROR(get_logger(), "Failed to modify the start pose for fixing on the new route.");
+    }
   }
 
   if (is_reroute && is_autonomous_driving && !check_reroute_safety(*current_route_, route)) {
