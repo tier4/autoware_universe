@@ -66,7 +66,7 @@ using start_planner_utils::get_lane_ids_from_pose;
 using start_planner_utils::getPullOutLanes;
 using start_planner_utils::set_lane_ids_to_path_point;
 
-std::vector<geometry_msgs::msg::Point> correct_clothoid_by_rigid_transform(
+std::vector<geometry_msgs::msg::Point> ClothoidPullOut::correct_clothoid_by_rigid_transform(
   const std::vector<geometry_msgs::msg::Point> & clothoid_points,
   const ArcSegment & original_segment, const geometry_msgs::msg::Pose & start_pose)
 {
@@ -140,7 +140,7 @@ std::vector<geometry_msgs::msg::Point> correct_clothoid_by_rigid_transform(
 }
 
 std::pair<std::vector<geometry_msgs::msg::Pose>, geometry_msgs::msg::Pose>
-generate_clothoid_entry_with_yaw(
+ClothoidPullOut::generate_clothoid_entry_with_yaw(
   const ClothoidSegment & segment, const geometry_msgs::msg::Pose & start_pose, int num_points)
 {
   const double A = segment.A;
@@ -197,7 +197,7 @@ generate_clothoid_entry_with_yaw(
 }
 
 std::pair<std::vector<geometry_msgs::msg::Pose>, geometry_msgs::msg::Pose>
-generate_circular_segment_with_yaw(
+ClothoidPullOut::generate_circular_segment_with_yaw(
   const ClothoidSegment & segment, const geometry_msgs::msg::Pose & start_pose, int num_points)
 {
   double radius = segment.radius;
@@ -239,7 +239,7 @@ generate_circular_segment_with_yaw(
 }
 
 std::pair<std::vector<geometry_msgs::msg::Pose>, geometry_msgs::msg::Pose>
-generate_clothoid_exit_with_yaw(
+ClothoidPullOut::generate_clothoid_exit_with_yaw(
   const ClothoidSegment & segment, const geometry_msgs::msg::Pose & start_pose, int num_points)
 {
   double L = segment.L;
@@ -293,7 +293,7 @@ generate_clothoid_exit_with_yaw(
   return {poses, end_pose};
 }
 
-std::vector<geometry_msgs::msg::Point> generate_clothoid_path(
+std::vector<geometry_msgs::msg::Point> ClothoidPullOut::generate_clothoid_path(
   const std::vector<ClothoidSegment> & segments, double point_interval,
   const geometry_msgs::msg::Pose & start_pose)
 {
@@ -361,7 +361,7 @@ std::vector<geometry_msgs::msg::Point> generate_clothoid_path(
   return all_points;
 }
 
-std::optional<std::vector<geometry_msgs::msg::Point>> convert_arc_to_clothoid(
+std::optional<std::vector<geometry_msgs::msg::Point>> ClothoidPullOut::convert_arc_to_clothoid(
   const ArcSegment & arc_segment, const geometry_msgs::msg::Pose & start_pose, double A_min,
   double L_min, double point_interval)
 {
@@ -456,7 +456,7 @@ std::optional<std::vector<geometry_msgs::msg::Point>> convert_arc_to_clothoid(
   return clothoid_path;
 }
 
-std::optional<PathWithLaneId> create_path_with_lane_id_from_clothoid_paths(
+std::optional<PathWithLaneId> ClothoidPullOut::create_path_with_lane_id_from_clothoid_paths(
   const std::vector<std::vector<geometry_msgs::msg::Point>> & clothoid_paths, double velocity,
   double target_velocity, double acceleration, const lanelet::ConstLanelets & search_lanes,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
@@ -563,7 +563,7 @@ std::optional<PathWithLaneId> create_path_with_lane_id_from_clothoid_paths(
   return path_with_lane_id;
 }
 
-PathWithLaneId combine_path_with_centerline(
+PathWithLaneId ClothoidPullOut::combine_path_with_centerline(
   const PathWithLaneId & clothoid_path, const PathWithLaneId & centerline_path,
   const geometry_msgs::msg::Pose & target_pose)
 {
@@ -598,7 +598,7 @@ PathWithLaneId combine_path_with_centerline(
   return clothoid_path;
 }
 
-std::vector<geometry_msgs::msg::Pose> create_straight_path_to_end_pose(
+std::vector<geometry_msgs::msg::Pose> ClothoidPullOut::create_straight_path_to_end_pose(
   const geometry_msgs::msg::Pose & start_pose, double forward_distance, double backward_distance,
   double point_interval)
 {
@@ -664,7 +664,7 @@ std::vector<geometry_msgs::msg::Pose> create_straight_path_to_end_pose(
   return poses;
 }
 
-double calc_necessary_longitudinal_distance(
+double ClothoidPullOut::calc_necessary_longitudinal_distance(
   const double minimum_radius, const double initial_velocity, const double wheel_base,
   const double max_steer_angle_rate, const PathWithLaneId & centerline_path,
   const geometry_msgs::msg::Pose & start_pose)
@@ -861,7 +861,7 @@ double calc_necessary_longitudinal_distance(
   return best_distance;
 }
 
-std::optional<CompositeArcPath> calc_circular_path(
+std::optional<CompositeArcPath> ClothoidPullOut::calc_circular_path(
   const geometry_msgs::msg::Pose & start_pose, const double longitudinal_distance,
   const double lateral_distance, const double angle_diff, const double minimum_radius)
 {
@@ -897,6 +897,7 @@ std::optional<CompositeArcPath> calc_circular_path(
     RCLCPP_WARN(
       rclcpp::get_logger("ClothoidPullOut"),
       "Goal is too close to start arc center (distance: %.6f)", d_goal_Cr_rel);
+      failure_info_tmp_ = "goal is too close";
     return std::nullopt;
   }
 
@@ -913,6 +914,7 @@ std::optional<CompositeArcPath> calc_circular_path(
     RCLCPP_DEBUG(
       rclcpp::get_logger("ClothoidPullOut"), "Denominator too small (denominator: %.6f)",
       denominator);
+    failure_info_tmp_ = "Al-Kashi theorem infeasible";
     return std::nullopt;
   }
 
@@ -923,6 +925,7 @@ std::optional<CompositeArcPath> calc_circular_path(
     RCLCPP_DEBUG(
       rclcpp::get_logger("ClothoidPullOut"), "Calculated radius is negative (R_goal: %.3f)",
       R_goal);
+    failure_info_tmp_ = "second curve has negative radius";
     return std::nullopt;
   }
 
@@ -931,6 +934,7 @@ std::optional<CompositeArcPath> calc_circular_path(
       rclcpp::get_logger("ClothoidPullOut"),
       "Calculated radius is smaller than minimum (R_goal: %.3f < R_min: %.3f)", R_goal,
       minimum_radius);
+    failure_info_tmp_ = "second curve radius smaller than minimum";
     return std::nullopt;
   }
 
@@ -1038,6 +1042,7 @@ std::optional<CompositeArcPath> calc_circular_path(
     RCLCPP_WARN(
       rclcpp::get_logger("ClothoidPullOut"), "Circular path generation failed (segments: %zu)",
       composite_path.segments.size());
+    failure_info_tmp_ = "path segments insufficient";
     return std::nullopt;
   }
 
@@ -1155,6 +1160,9 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     // Calculate minimum radius based on the maximum steer angle
     const double minimum_radius = wheel_base / std::tan(steer_angle);
 
+    const int deg_int = static_cast<int>(std::lround(rad2deg(steer_angle)));
+    planner_debug_data.conditions_evaluation.emplace_back("[steer angle: " + std::to_string(deg_int) + " deg] ");
+
     const double longitudinal_distance = calc_necessary_longitudinal_distance(
       minimum_radius, initial_velocity, wheel_base, max_steer_angle_rate, centerline_path,
       start_pose);
@@ -1180,7 +1188,11 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
         "Continuing to next candidate.",
         rad2deg(steer_angle), relative_pose_info.longitudinal_distance_vehicle,
         relative_pose_info.lateral_distance_vehicle, relative_pose_info.angle_diff);
-      planner_debug_data.conditions_evaluation.emplace_back("circular path generation failed");
+      planner_debug_data.conditions_evaluation.back().append("circular path generation failed");
+      if (!failure_info_tmp_.empty()) {
+        planner_debug_data.conditions_evaluation.back().append(" (" + failure_info_tmp_ + ")");
+        failure_info_tmp_.clear();
+      }
       continue;
     }
 
@@ -1207,7 +1219,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
       parameters_.center_line_path_interval);
 
     if (!first_clothoid_points_opt) {
-      planner_debug_data.conditions_evaluation.emplace_back(
+      planner_debug_data.conditions_evaluation.back().append(
         "first segment clothoid conversion failed");
       continue;
     }
@@ -1251,7 +1263,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
       parameters_.center_line_path_interval);
 
     if (!second_clothoid_points_opt) {
-      planner_debug_data.conditions_evaluation.emplace_back(
+      planner_debug_data.conditions_evaluation.back().append(
         "second segment clothoid conversion failed");
       continue;
     }
@@ -1286,7 +1298,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
         "Failed to create clothoid path with lane ID for steer angle %.2f deg. Continuing to next "
         "candidate.",
         rad2deg(steer_angle));
-      planner_debug_data.conditions_evaluation.emplace_back("clothoid path creation failed");
+      planner_debug_data.conditions_evaluation.back().append("clothoid path creation failed");
       continue;
     }
 
@@ -1353,7 +1365,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
         rclcpp::get_logger("ClothoidPullOut"),
         "Lane departure detected for steer angle %.2f deg. Continuing to next candidate.",
         rad2deg(steer_angle));
-      planner_debug_data.conditions_evaluation.emplace_back("lane departure");
+      planner_debug_data.conditions_evaluation.back().append("lane departure");
       continue;
     }
 
@@ -1375,7 +1387,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
           rclcpp::get_logger("ClothoidPullOut"),
           "Cropped path is empty for steer angle %.2f deg. Continuing to next candidate.",
           rad2deg(steer_angle));
-        planner_debug_data.conditions_evaluation.emplace_back("cropped path is empty");
+        planner_debug_data.conditions_evaluation.back().append("cropped path is empty");
         continue;
       }
     } else {
@@ -1409,7 +1421,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
         rclcpp::get_logger("ClothoidPullOut"),
         "Cropped path is invalid for steer angle %.2f deg. Continuing to next candidate.",
         rad2deg(steer_angle));
-      planner_debug_data.conditions_evaluation.emplace_back("cropped path is invalid");
+      planner_debug_data.conditions_evaluation.back().append("cropped path is invalid");
       continue;
     }
 
@@ -1431,7 +1443,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
         "Collision detected for steer angle %.2f deg with margin %.2f m. Continuing to next "
         "candidate.",
         rad2deg(steer_angle), parameters_.clothoid_collision_check_distance_from_end);
-      planner_debug_data.conditions_evaluation.emplace_back("collision");
+      planner_debug_data.conditions_evaluation.back().append("collision");
       continue;
     }
 
@@ -1456,7 +1468,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
       "===========================================",
       rad2deg(steer_angle));
 
-    planner_debug_data.conditions_evaluation.emplace_back("success");
+    planner_debug_data.conditions_evaluation.back().append("success");
     return pull_out_path;
   }
 
