@@ -852,10 +852,57 @@ bool isNeverAvoidanceTarget(
       const auto is_disjoint_left_lane =
         boost::geometry::disjoint(object_polygon, left_lane.value().polygon2d().basicPolygon());
       if (is_disjoint_left_lane) {
-        object.info = ObjectInfo::IS_NOT_PARKING_OBJECT;
-        RCLCPP_DEBUG(
-          rclcpp::get_logger(logger_namespace), "object isn't on the edge lane. never avoid it.");
-        return true;
+        using lanelet::utils::to2D;
+        const auto most_left_lanelet = [&]() {
+          auto same_direction_lane =
+            planner_data->route_handler->getMostLeftLanelet(object.overhang_lanelet, true, true);
+          const lanelet::Attribute & sub_type =
+            same_direction_lane.attribute(lanelet::AttributeName::Subtype);
+          if (sub_type == "road_shoulder") {
+            return same_direction_lane;
+          }
+
+          const auto opposite_lanes =
+            planner_data->route_handler->getLeftOppositeLanelets(same_direction_lane);
+          if (opposite_lanes.empty()) {
+            return same_direction_lane;
+          }
+
+          return static_cast<lanelet::ConstLanelet>(
+            planner_data->route_handler->getMostRightLanelet(opposite_lanes.front()).invert());
+        }();
+        const auto object_polygon =
+          autoware_utils::to_polygon2d(object.getPose(), object.object.shape);
+        const auto object_to_left_boundary = boost::geometry::distance(
+          to2D(most_left_lanelet.leftBound().basicLineString()), object_polygon);
+        const auto object_to_same_lane_left_boundary = boost::geometry::distance(
+          to2D(object.overhang_lanelet.leftBound().basicLineString()), object_polygon);
+        const auto object_to_same_lane_right_boundary = boost::geometry::distance(
+          to2D(object.overhang_lanelet.rightBound().basicLineString()), object_polygon);
+
+        const auto same_lane_shift_ratio =
+          object_to_same_lane_right_boundary /
+          (object_to_same_lane_left_boundary + object_to_same_lane_right_boundary + 1e-6);
+
+        const double th_shift_ratio = 0.75;
+        const double th_object_to_boundary = 1.0;  // [m]
+        const double th_right_space = 1.0;         // [m]
+
+        const auto is_ambiguous_parking_object =
+          same_lane_shift_ratio > th_shift_ratio                   // biased to left side
+          && object_to_left_boundary < th_object_to_boundary       // close to left road shoulder
+          && object_to_same_lane_right_boundary > th_right_space;  // exist space on the right side
+
+        RCLCPP_INFO(
+          rclcpp::get_logger(logger_namespace),
+          "object disjoint with road shoulder. object_to_left_boundary: %f, same_lane_shift_ratio: "
+          "%f, object_to_same_lane_right_boundary: %f, object_to_same_lane_left_boundary: %f",
+          object_to_left_boundary, same_lane_shift_ratio, object_to_same_lane_right_boundary,
+          object_to_same_lane_left_boundary);
+        if (!is_ambiguous_parking_object) {
+          object.info = ObjectInfo::IS_NOT_PARKING_OBJECT;
+          return true;
+        }
       }
     }
 
