@@ -302,6 +302,7 @@ std::vector<geometry_msgs::msg::Point> ClothoidPullOut::generate_clothoid_path(
     RCLCPP_WARN(
       rclcpp::get_logger("ClothoidPullOut"),
       "No clothoid segments provided to generate_clothoid_path");
+    failure_info_tmp_ = "no clothoid segments provided";
     return {};
   }
 
@@ -418,6 +419,7 @@ std::optional<std::vector<geometry_msgs::msg::Point>> ClothoidPullOut::convert_a
     exit.description = "Exit clothoid (κ: 1/R → 0)";
     segments.push_back(exit);
   } else {
+    // Return failure if Case B is not implemented
     RCLCPP_DEBUG(
       rclcpp::get_logger("ClothoidPullOut"),
       "Case B is not implemented. Please use Case A conditions.");
@@ -426,15 +428,12 @@ std::optional<std::vector<geometry_msgs::msg::Point>> ClothoidPullOut::convert_a
       "Current parameters: total_angle=%.3f°, alpha_clothoid=%.3f°, required: total_angle >= %.3f°",
       total_angle * 180.0 / M_PI, alpha_clothoid * 180.0 / M_PI,
       2.0 * alpha_clothoid * 180.0 / M_PI);
-
-    // Return failure if Case B is not implemented
-    RCLCPP_DEBUG(
-      rclcpp::get_logger("ClothoidPullOut"), "Clothoid conversion failed! Case B not implemented.");
     RCLCPP_DEBUG(
       rclcpp::get_logger("ClothoidPullOut"),
       "Arc segment: radius=%.3f, center=(%.3f, %.3f), is_clockwise=%s", arc_segment.radius,
       arc_segment.center.x, arc_segment.center.y, arc_segment.is_clockwise ? "true" : "false");
-    return std::nullopt;
+      failure_info_tmp_ = "central angle of the arc path is small";
+      return std::nullopt;
   }
 
   // Generate clothoid path
@@ -450,6 +449,7 @@ std::optional<std::vector<geometry_msgs::msg::Point>> ClothoidPullOut::convert_a
       rclcpp::get_logger("ClothoidPullOut"),
       "Arc segment: radius=%.3f, center=(%.3f, %.3f), is_clockwise=%s", arc_segment.radius,
       arc_segment.center.x, arc_segment.center.y, arc_segment.is_clockwise ? "true" : "false");
+    failure_info_tmp_ = "generated clothoid path is empty";
     return std::nullopt;
   }
 
@@ -463,6 +463,7 @@ std::optional<PathWithLaneId> ClothoidPullOut::create_path_with_lane_id_from_clo
 {
   // Return nullopt if clothoid paths are empty
   if (clothoid_paths.empty()) {
+    failure_info_tmp_ = "no clothoid paths provided";
     return std::nullopt;
   }
 
@@ -484,6 +485,7 @@ std::optional<PathWithLaneId> ClothoidPullOut::create_path_with_lane_id_from_clo
 
   // Return nullopt if still empty after combination
   if (all_clothoid_points.empty()) {
+    failure_info_tmp_ = "process clothoid path failed";
     return std::nullopt;
   }
 
@@ -1221,6 +1223,10 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     if (!first_clothoid_points_opt) {
       planner_debug_data.conditions_evaluation.back().append(
         "first segment clothoid conversion failed");
+      if (!failure_info_tmp_.empty()) {
+        planner_debug_data.conditions_evaluation.back().append(" (" + failure_info_tmp_ + ")");
+        failure_info_tmp_.clear();
+      }
       continue;
     }
 
@@ -1265,6 +1271,10 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     if (!second_clothoid_points_opt) {
       planner_debug_data.conditions_evaluation.back().append(
         "second segment clothoid conversion failed");
+      if (!failure_info_tmp_.empty()) {
+        planner_debug_data.conditions_evaluation.back().append(" (" + failure_info_tmp_ + ")");
+        failure_info_tmp_.clear();
+      }
       continue;
     }
 
@@ -1299,6 +1309,10 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
         "candidate.",
         rad2deg(steer_angle));
       planner_debug_data.conditions_evaluation.back().append("clothoid path creation failed");
+      if (!failure_info_tmp_.empty()) {
+        planner_debug_data.conditions_evaluation.back().append(" (" + failure_info_tmp_ + ")");
+        failure_info_tmp_.clear();
+      }
       continue;
     }
 
@@ -1366,6 +1380,35 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
         "Lane departure detected for steer angle %.2f deg. Continuing to next candidate.",
         rad2deg(steer_angle));
       planner_debug_data.conditions_evaluation.back().append("lane departure");
+      
+      // Check each point on the path to find where lane departure occurs
+      for (const auto & point : path_clothoid_start_to_end.points) {
+        // Create a single-point path to check lane departure
+        PathWithLaneId single_point_path;
+        single_point_path.points.push_back(point);
+        
+        std::vector<lanelet::Id> temp_fused_id{};
+        std::optional<autoware_utils::Polygon2d> temp_fused_polygon = std::nullopt;
+
+        if (boundary_departure_checker_->checkPathWillLeaveLane(
+              lanelet_map_ptr, single_point_path, temp_fused_id, temp_fused_polygon)) {
+          // Calculate local coordinates relative to start_pose
+          const double dx = point.point.pose.position.x - start_pose.position.x;
+          const double dy = point.point.pose.position.y - start_pose.position.y;
+          const double start_yaw = tf2::getYaw(start_pose.orientation);
+
+          const double local_x = dx * std::cos(start_yaw) + dy * std::sin(start_yaw);
+          const double local_y = -dx * std::sin(start_yaw) + dy * std::cos(start_yaw);
+          
+          // Append departure point information
+          planner_debug_data.conditions_evaluation.back().append(
+            " (at local_x:" + std::to_string(local_x) + 
+            ", local_y:" + std::to_string(local_y) + ")");
+          
+          break;  // Only report the first departure point
+        }
+      }
+      
       continue;
     }
 
@@ -1444,6 +1487,38 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
         "candidate.",
         rad2deg(steer_angle), parameters_.clothoid_collision_check_distance_from_end);
       planner_debug_data.conditions_evaluation.back().append("collision");
+
+      // Check each point on the path to find where collision occurs
+      for (size_t i = 1; i <= clothoid_path.points.size(); ++i) {
+        // Create a partial path from start to current point
+        PathWithLaneId partial_path;
+        partial_path.points.assign(clothoid_path.points.begin(), clothoid_path.points.begin() + i);
+        
+        PullOutPath partial_check_path;
+        partial_check_path.partial_paths.push_back(partial_path);
+        partial_check_path.start_pose = clothoid_path.points.front().point.pose;
+        partial_check_path.end_pose = clothoid_path.points[i - 1].point.pose;
+
+        if (isPullOutPathCollided(
+              partial_check_path, planner_data, parameters_.shift_collision_check_distance_from_end)) {
+          // Calculate local coordinates relative to start_pose
+          const auto & collision_point = clothoid_path.points[i - 1];
+          const double dx = collision_point.point.pose.position.x - start_pose.position.x;
+          const double dy = collision_point.point.pose.position.y - start_pose.position.y;
+          const double start_yaw = tf2::getYaw(start_pose.orientation);
+
+          const double local_x = dx * std::cos(start_yaw) + dy * std::sin(start_yaw);
+          const double local_y = -dx * std::sin(start_yaw) + dy * std::cos(start_yaw);
+          
+          // Append collision point information
+          planner_debug_data.conditions_evaluation.back().append(
+            " (at local_x:" + std::to_string(local_x) + 
+            ", local_y:" + std::to_string(local_y) + ")");
+          
+          break;  // Only report the first collision point
+        }
+      }
+
       continue;
     }
 
