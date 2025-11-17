@@ -1266,9 +1266,13 @@ CrosswalkModule::getNearestStopFactorAndReason(
   if (nearest_stop_and_reason == stop_and_reason.end() || !nearest_stop_and_reason->first) {
     return {std::nullopt, ""};
   }
-  if (
-    previous_stop_pose_ && get_distance_to_stop(previous_stop_pose_) <
-                             get_distance_to_stop(nearest_stop_and_reason->first)) {
+  constexpr auto previous_stop_reuse_margin =
+    3.0;  // [m] reuse the previous stop pose if it is within the margin
+  const auto dist_to_stop = get_distance_to_stop(nearest_stop_and_reason->first);
+  const auto use_previous_stop_pose =
+    previous_stop_pose_ && dist_to_stop > get_distance_to_stop(previous_stop_pose_) &&
+    dist_to_stop - get_distance_to_stop(previous_stop_pose_) < 3.0;
+  if (use_previous_stop_pose) {
     previous_stop_pose_->target_object_ids = nearest_stop_and_reason->first->target_object_ids;
     return {previous_stop_pose_, nearest_stop_and_reason->second};
   }
