@@ -1272,7 +1272,9 @@ CrosswalkModule::getNearestStopFactorAndReason(
   const auto use_previous_stop_pose =
     previous_stop_pose_ && dist_to_stop > get_distance_to_stop(previous_stop_pose_) &&
     dist_to_stop - get_distance_to_stop(previous_stop_pose_) < previous_stop_reuse_margin;
-  if (use_previous_stop_pose) {
+  if (
+    previous_stop_pose_ && get_distance_to_stop(previous_stop_pose_) <
+                             get_distance_to_stop(nearest_stop_and_reason->first)) {
     previous_stop_pose_->target_object_ids = nearest_stop_and_reason->first->target_object_ids;
     return {previous_stop_pose_, nearest_stop_and_reason->second};
   }
