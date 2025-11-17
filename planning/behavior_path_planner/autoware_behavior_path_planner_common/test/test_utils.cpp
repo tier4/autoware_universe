@@ -560,3 +560,53 @@ TEST_F(BehaviorPathPlanningUtilTest, convertToSnakeCase)
   auto converted_string = convertToSnakeCase(input_string);
   EXPECT_EQ(converted_string, "test_string");
 }
+
+TEST_F(BehaviorPathPlanningUtilTest, setGoal)
+{
+  using autoware::behavior_path_planner::utils::set_goal;
+
+  const auto search_radius_range = 0.5;
+  const auto search_rad_range = 2.0;  // unused
+  const auto output_path_interval = 2.0;
+  const auto goal_lane_id = 5;
+  PathWithLaneId input;
+  PathPointWithLaneId p;
+  p.lane_ids = {goal_lane_id};
+  p.point.pose.position.x = 1.75;
+  for (const auto & y : {
+         7.0,
+         11.0,
+         11.5,
+       }) {
+    p.point.pose.position.y = y;
+    input.points.push_back(p);
+  }
+  PathWithLaneId::SharedPtr output_ptr = std::make_shared<PathWithLaneId>();
+  geometry_msgs::msg::Pose goal;
+  goal.position.x = 1.75;
+  goal.position.y = 11.6;
+  goal.position.z = 0.0;
+  goal.orientation.x = 0.0;
+  goal.orientation.y = 0.0;
+  goal.orientation.z = 0.70710678118658699;
+  goal.orientation.w = 0.70710678118650805;
+  const auto get_lanelet_by_id = [&](const int64_t &) {
+    lanelet::Lanelet ll(goal_lane_id);
+    lanelet::LineString3d left;
+    lanelet::LineString3d right;
+    left.push_back(lanelet::Point3d(0ul, 0.0, 0.0, 0.0));
+    left.push_back(lanelet::Point3d(1ul, 0.0, 1000.0, 0.0));
+    right.push_back(lanelet::Point3d(2ul, 3.5, 0.0, 0.0));
+    right.push_back(lanelet::Point3d(3ul, 3.5, 1000.0, 0.0));
+    ll.setLeftBound(left);
+    ll.setRightBound(right);
+    return ll;
+  };
+  set_goal(
+    search_radius_range, search_rad_range, output_path_interval, input, goal, goal_lane_id,
+    get_lanelet_by_id, output_ptr.get());
+  for (auto i = 0UL; i + 1 < output_ptr->points.size(); ++i) {
+    EXPECT_LT(
+      output_ptr->points[i].point.pose.position.y, output_ptr->points[i + 1].point.pose.position.y);
+  }
+}
