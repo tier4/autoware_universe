@@ -47,7 +47,7 @@
 #include "geometry_msgs/msg/accel_with_covariance_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "std_srvs/srv/set_bool.hpp"
-#include "tier4_planning_msgs/msg/velocity_limit.hpp"       // temporary
+#include "tier4_planning_msgs/msg/velocity_limit.hpp"  // temporary
 #include "visualization_msgs/msg/marker_array.hpp"
 
 #include <iostream>
@@ -71,7 +71,7 @@ using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::PoseStamped;
 using nav_msgs::msg::Odometry;
 using std_srvs::srv::SetBool;
-using tier4_planning_msgs::msg::VelocityLimit;      // temporary
+using tier4_planning_msgs::msg::VelocityLimit;  // temporary
 using visualization_msgs::msg::MarkerArray;
 
 struct Motion
