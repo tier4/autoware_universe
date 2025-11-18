@@ -582,6 +582,7 @@ void MpcLateralController::declareMPCparameters(rclcpp::Node & node)
   nw.lat_jerk = dp("mpc_weight_lat_jerk");
   nw.steer_rate = dp("mpc_weight_steer_rate");
   nw.steer_acc = dp("mpc_weight_steer_acc");
+  nw.input_deviation = dp("mpc_weight_input_deviation");
   nw.terminal_lat_error = dp("mpc_weight_terminal_lat_error");
   nw.terminal_heading_error = dp("mpc_weight_terminal_heading_error");
 
@@ -594,6 +595,7 @@ void MpcLateralController::declareMPCparameters(rclcpp::Node & node)
   lcw.lat_jerk = dp("mpc_low_curvature_weight_lat_jerk");
   lcw.steer_rate = dp("mpc_low_curvature_weight_steer_rate");
   lcw.steer_acc = dp("mpc_low_curvature_weight_steer_acc");
+  lcw.input_deviation = dp("mpc_low_curvature_weight_input_deviation");
   m_mpc->m_param.low_curvature_thresh_curvature = dp("mpc_low_curvature_thresh_curvature");
 
   m_mpc->m_param.zero_ff_steer_deg = dp("mpc_zero_ff_steer_deg");

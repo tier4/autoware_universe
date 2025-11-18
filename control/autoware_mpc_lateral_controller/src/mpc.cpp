@@ -193,6 +193,13 @@ Float32MultiArrayStamped MPC::generateDiagData(
   append_diag(runtime);                   // [19] runtime of the latest problem solved
   append_diag(objective_value);           // [20] objective value of the latest problem solved
 
+  // Add input deviation diagnostic data
+  if (m_has_prev_optimal_input && m_prev_optimal_input.size() > 0) {
+    append_diag(Uex(0) - m_prev_optimal_input(0));  // [21] first step input change
+  } else {
+    append_diag(0.0);  // [21] no previous solution
+  }
+
   return diagnostic;
 }
 
@@ -283,6 +290,12 @@ void MPC::resetPrevResult(const SteeringReport & current_steer)
   const float steer_lim_f = static_cast<float>(m_steer_lim);
   m_raw_steer_cmd_prev = std::clamp(current_steer.steering_tire_angle, -steer_lim_f, steer_lim_f);
   m_raw_steer_cmd_pprev = std::clamp(current_steer.steering_tire_angle, -steer_lim_f, steer_lim_f);
+
+  // Reset previous optimal solution
+  m_has_prev_optimal_input = false;
+  m_prev_optimal_input.resize(0);
+  m_prev_prediction_dt = 0.0;
+  m_prev_reference_trajectory = MPCTrajectory();
 }
 
 std::pair<ResultWithReason, MPCData> MPC::getData(
@@ -385,11 +398,18 @@ std::pair<bool, VectorXd> MPC::updateStateForDelayCompensation(
   MatrixXd x_curr = x0_orig;
   double mpc_curr_time = start_time;
   for (size_t i = 0; i < m_input_buffer.size(); ++i) {
+    // Clamp time to valid range to avoid interpolation errors at trajectory boundaries
+    // Add small margin (1ms) to stay well within interpolator's tolerance (also 1ms)
+    const double margin = 1e-3;
+    const double min_time = traj.relative_time.front() + margin;
+    const double max_time = traj.relative_time.back() - margin;
+    const double safe_time = std::clamp(mpc_curr_time, min_time, max_time);
+
     double k, v = 0.0;
     try {
       // NOTE: When driving backward, the curvature's sign should be reversed.
-      k = autoware::interpolation::lerp(traj.relative_time, traj.k, mpc_curr_time) * sign_vx;
-      v = autoware::interpolation::lerp(traj.relative_time, traj.vx, mpc_curr_time);
+      k = autoware::interpolation::lerp(traj.relative_time, traj.k, safe_time) * sign_vx;
+      v = autoware::interpolation::lerp(traj.relative_time, traj.vx, safe_time);
     } catch (const std::exception & e) {
       RCLCPP_ERROR(m_logger, "mpc resample failed at delay compensation, stop mpc: %s", e.what());
       return {false, {}};
@@ -588,9 +608,53 @@ std::pair<ResultWithReason, VectorXd> MPC::executeOptimization(
   MatrixXd H = MatrixXd::Zero(DIM_U_N, DIM_U_N);
   H.triangularView<Eigen::Upper>() = CB.transpose() * QCB;
   H.triangularView<Eigen::Upper>() += m.R1ex + m.R2ex;
-  H.triangularView<Eigen::Lower>() = H.transpose();
   MatrixXd f = (m.Cex * (m.Aex * x0 + m.Wex)).transpose() * QCB - m.Uref_ex.transpose() * m.R1ex;
   addSteerWeightF(prediction_dt, f);
+
+  // Add adaptive input deviation penalty
+  const double w_deviation_nominal = m_param.nominal_weight.input_deviation;
+  if (
+    m_has_prev_optimal_input && m_prev_optimal_input.size() == DIM_U_N &&
+    w_deviation_nominal > 1e-6) {
+    // Evaluate trajectory change
+    double trajectory_change = evaluateTrajectoryChange(traj, m_prev_reference_trajectory);
+
+    // Calculate adaptive weight
+    double w_deviation = calculateAdaptiveDeviationWeight(trajectory_change, w_deviation_nominal);
+
+    RCLCPP_INFO_THROTTLE(
+      m_logger, *m_clock, 1000,
+      "Input deviation penalty: traj_change=%.3f[m], weight=%.3f/%.3f (%.0f%%)",
+      trajectory_change, w_deviation, w_deviation_nominal,
+      (w_deviation / w_deviation_nominal) * 100.0);
+
+    if (w_deviation > 1e-6) {
+      // Calculate time shift
+      const int shift = std::max(1, static_cast<int>(std::round(m_ctrl_period / prediction_dt)));
+
+      VectorXd u_prev_shifted = VectorXd::Zero(DIM_U_N);
+
+      // Time-shifted correspondence
+      for (int i = 0; i < DIM_U_N; ++i) {
+        int prev_idx = i + shift;
+        if (prev_idx < DIM_U_N) {
+          u_prev_shifted(i) = m_prev_optimal_input(prev_idx);
+        } else {
+          // Out of range: use feedforward reference value
+          u_prev_shifted(i) = m.Uref_ex(i);
+        }
+      }
+
+      // Add to cost function: (u - u_prev_shifted)^T * w * I * (u - u_prev_shifted)
+      // H += w * I
+      H.triangularView<Eigen::Upper>() += w_deviation * MatrixXd::Identity(DIM_U_N, DIM_U_N);
+
+      // f -= w * u_prev_shifted
+      f.noalias() -= w_deviation * u_prev_shifted.transpose();
+    }
+  }
+
+  H.triangularView<Eigen::Lower>() = H.transpose();
 
   MatrixXd A = MatrixXd::Identity(DIM_U_N, DIM_U_N);
   for (int i = 1; i < DIM_U_N; i++) {
@@ -623,6 +687,13 @@ std::pair<ResultWithReason, VectorXd> MPC::executeOptimization(
   if (Uex.array().isNaN().any()) {
     return {ResultWithReason{false, "model Uex including NaN"}, {}};
   }
+
+  // Save optimal solution for next iteration
+  m_prev_optimal_input = Uex;
+  m_prev_prediction_dt = prediction_dt;
+  m_prev_reference_trajectory = traj;
+  m_has_prev_optimal_input = true;
+
   return {ResultWithReason{true}, Uex};
 }
 
@@ -851,5 +922,180 @@ bool MPC::isValid(const MPCMatrix & m) const
   }
 
   return true;
+}
+
+bool MPC::interpolateTrajectoryPoint(
+  const MPCTrajectory & traj, const double time, double & x, double & y, double & yaw) const
+{
+  if (traj.relative_time.empty()) {
+    return false;
+  }
+
+  const double min_time = traj.relative_time.front();
+  const double max_time = traj.relative_time.back();
+
+  // Add epsilon larger than interpolator's internal epsilon (1e-3) to prevent warnings
+  const double epsilon = 2e-3;  // 2ms safety margin (> interpolator's 1ms)
+
+  // Return false if time is outside the valid range (with safety margin)
+  // This is expected when comparing trajectories with different time ranges
+  if (time < min_time - epsilon || time > max_time + epsilon) {
+    return false;  // Not an error, just outside the available range
+  }
+
+  // Clamp time strictly within valid range to avoid any interpolator errors
+  const double safe_time = std::clamp(time, min_time, max_time);
+
+  try {
+    // Linear interpolation with clamped time
+    x = autoware::interpolation::lerp(traj.relative_time, traj.x, safe_time);
+    y = autoware::interpolation::lerp(traj.relative_time, traj.y, safe_time);
+    yaw = autoware::interpolation::lerp(traj.relative_time, traj.yaw, safe_time);
+    return true;
+  } catch (const std::exception & e) {
+    // This should not happen with clamped time, but catch it just in case
+    RCLCPP_DEBUG_THROTTLE(
+      m_logger, *m_clock, 5000,
+      "Trajectory interpolation exception at time=%.6f (clamped=%.6f, range=[%.6f, %.6f]): %s",
+      time, safe_time, min_time, max_time, e.what());
+    return false;
+  }
+}
+
+double MPC::evaluateTrajectoryChange(
+  const MPCTrajectory & current_traj, const MPCTrajectory & prev_traj) const
+{
+  if (prev_traj.empty() || current_traj.empty()) {
+    return 0.0;
+  }
+
+  // Find overlapping time range
+  const double current_start_time = current_traj.relative_time.front();
+  const double current_end_time = current_traj.relative_time.back();
+  const double prev_start_time = prev_traj.relative_time.front();
+  const double prev_end_time = prev_traj.relative_time.back();
+
+  const double overlap_start = std::max(current_start_time, prev_start_time);
+  const double overlap_end = std::min(current_end_time, prev_end_time);
+
+  if (overlap_start >= overlap_end) {
+    RCLCPP_DEBUG(m_logger, "No time overlap between trajectories");
+    return 0.0;
+  }
+
+  // Determine comparison time range (prioritize near future)
+  // Compare 1.0 second or 50% of overlap, whichever is smaller
+  // Add margin to avoid edge cases and floating point errors
+  const double time_margin = 0.02;  // 20ms margin for safety
+  const double safe_overlap_start = overlap_start + time_margin;
+  const double safe_overlap_end = overlap_end - time_margin;
+
+  if (safe_overlap_start >= safe_overlap_end) {
+    RCLCPP_DEBUG(m_logger, "Overlap range too small after margin adjustment");
+    return 0.0;
+  }
+
+  const double comparison_duration =
+    std::min(1.0, (safe_overlap_end - safe_overlap_start) * 0.5);
+  const double comparison_end = std::min(safe_overlap_end, safe_overlap_start + comparison_duration);
+
+  if (comparison_end <= safe_overlap_start) {
+    RCLCPP_DEBUG(m_logger, "Comparison range too small after duration calculation");
+    return 0.0;
+  }
+
+  // Determine number of samples
+  // 10 samples per second, minimum 3, maximum 15
+  const double comparison_span = comparison_end - safe_overlap_start;
+  int num_samples = static_cast<int>(std::ceil(comparison_span * 10.0));
+  num_samples = std::clamp(num_samples, 3, 15);
+
+  // Sampling interval
+  // Use slightly smaller span to ensure all samples are within valid range
+  const double safe_comparison_span = comparison_span * 0.99;  // 99% of span
+  const double dt_sample =
+    (num_samples > 1) ? safe_comparison_span / (num_samples - 1) : 0.0;
+
+  double total_lateral_change = 0.0;
+  double total_heading_change = 0.0;
+  double max_lateral_change = 0.0;
+  int valid_samples = 0;
+
+  for (int i = 0; i < num_samples; ++i) {
+    // Calculate sample time and clamp to ensure it's within valid range
+    const double sample_time = std::clamp(
+      safe_overlap_start + i * dt_sample,
+      safe_overlap_start,
+      comparison_end);
+
+    // Interpolate from current trajectory
+    double curr_x, curr_y, curr_yaw;
+    if (!interpolateTrajectoryPoint(current_traj, sample_time, curr_x, curr_y, curr_yaw)) {
+      continue;
+    }
+
+    // Interpolate from previous trajectory
+    double prev_x, prev_y, prev_yaw;
+    if (!interpolateTrajectoryPoint(prev_traj, sample_time, prev_x, prev_y, prev_yaw)) {
+      continue;
+    }
+
+    // Position change
+    const double dx = curr_x - prev_x;
+    const double dy = curr_y - prev_y;
+    const double lateral_change = std::sqrt(dx * dx + dy * dy);
+
+    // Heading change
+    const double heading_change = std::abs(normalize_radian(curr_yaw - prev_yaw));
+
+    total_lateral_change += lateral_change;
+    total_heading_change += heading_change;
+    max_lateral_change = std::max(max_lateral_change, lateral_change);
+    valid_samples++;
+  }
+
+  if (valid_samples == 0) {
+    RCLCPP_WARN_THROTTLE(
+      m_logger, *m_clock, 5000,
+      "Trajectory comparison failed: no valid samples (overlap=[%.3f, %.3f], comparison=[%.3f, %.3f])",
+      overlap_start, overlap_end, safe_overlap_start, comparison_end);
+    return 0.0;
+  }
+
+  // Calculate metric (average based)
+  const double avg_lateral_change = total_lateral_change / valid_samples;
+  const double avg_heading_change = total_heading_change / valid_samples;
+
+  // Composite metric: prioritize lateral change
+  // 1 rad heading change ≈ 1 m lateral change in importance
+  const double change_metric = avg_lateral_change + 1.0 * avg_heading_change;
+
+  // Log all trajectory comparisons for debugging
+  RCLCPP_INFO_THROTTLE(
+    m_logger, *m_clock, 1000,
+    "Trajectory change: samples=%d/%d, avg_lat=%.3fm, metric=%.3fm",
+    valid_samples, num_samples, avg_lateral_change, change_metric);
+
+  return change_metric;
+}
+
+double MPC::calculateAdaptiveDeviationWeight(
+  double trajectory_change, double nominal_weight) const
+{
+  // Thresholds for trajectory change
+  const double small_change = 0.05;  // 5cm average lateral change
+  const double large_change = 0.30;  // 30cm average lateral change (emergency)
+
+  if (trajectory_change < small_change) {
+    // Small change: full weight
+    return nominal_weight;
+  } else if (trajectory_change > large_change) {
+    // Large change (emergency): minimal or zero weight
+    return 0.0;
+  } else {
+    // Medium change: linear interpolation
+    double ratio = (large_change - trajectory_change) / (large_change - small_change);
+    return nominal_weight * ratio;
+  }
 }
 }  // namespace autoware::motion::control::mpc_lateral_controller

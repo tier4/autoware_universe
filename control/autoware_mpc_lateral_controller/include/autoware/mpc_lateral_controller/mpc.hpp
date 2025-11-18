@@ -86,6 +86,10 @@ struct MPCWeight
 
   // Weight for steering angle acceleration. Regulates the rate of change of steering rate.
   double steer_acc;
+
+  // Weight for input deviation from previous optimal solution. Penalizes sudden changes in the
+  // optimal control input sequence between consecutive MPC iterations.
+  double input_deviation;
 };
 
 struct MPCParam
@@ -399,6 +403,36 @@ private:
   VectorXd calcSteerRateLimitOnTrajectory(
     const MPCTrajectory & trajectory, const double current_velocity) const;
 
+  /**
+   * @brief Evaluate the magnitude of trajectory change between current and previous trajectories
+   * @param current_traj Current resampled MPC trajectory
+   * @param prev_traj Previous resampled MPC trajectory
+   * @return Trajectory change metric [m]
+   */
+  double evaluateTrajectoryChange(
+    const MPCTrajectory & current_traj, const MPCTrajectory & prev_traj) const;
+
+  /**
+   * @brief Interpolate trajectory point at specified time
+   * @param traj MPC trajectory
+   * @param time Target time
+   * @param[out] x Interpolated x position
+   * @param[out] y Interpolated y position
+   * @param[out] yaw Interpolated yaw angle
+   * @return true if interpolation succeeded
+   */
+  bool interpolateTrajectoryPoint(
+    const MPCTrajectory & traj, const double time, double & x, double & y, double & yaw) const;
+
+  /**
+   * @brief Calculate adaptive weight for input deviation penalty
+   * @param trajectory_change Magnitude of trajectory change
+   * @param nominal_weight Nominal weight for input deviation
+   * @return Adaptive weight [0, nominal_weight]
+   */
+  double calculateAdaptiveDeviationWeight(
+    double trajectory_change, double nominal_weight) const;
+
   //!< @brief logging with warn and return false
   template <typename... Args>
   inline bool fail_warn_throttle(Args &&... args) const
@@ -419,6 +453,12 @@ public:
   MPCParam m_param;                      // MPC design parameters.
   std::deque<double> m_input_buffer;     // MPC output buffer for delay time compensation.
   double m_raw_steer_cmd_prev = 0.0;     // Previous MPC raw output.
+
+  // Previous optimal solution for temporal smoothness
+  VectorXd m_prev_optimal_input;              // Previous optimal input sequence (Uex).
+  double m_prev_prediction_dt = 0.0;          // Previous prediction time step.
+  MPCTrajectory m_prev_reference_trajectory;  // Previous reference trajectory.
+  bool m_has_prev_optimal_input = false;      // Flag indicating if previous solution is available.
 
   /* Parameters for control */
   double m_steer_lim;    // Steering command limit [rad].
