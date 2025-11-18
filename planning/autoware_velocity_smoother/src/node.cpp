@@ -208,8 +208,6 @@ rcl_interfaces::msg::SetParametersResult VelocitySmootherNode::onParameter(
 
     update_param("force_acceleration.max_acc", p.force_acceleration_param.max_acceleration);
     update_param("force_acceleration.max_jerk", p.force_acceleration_param.max_jerk);
-    update_param(
-      "force_acceleration.max_lateral_acc", p.force_acceleration_param.max_lateral_acceleration);
     update_param("force_acceleration.engage_velocity", p.force_acceleration_param.engage_velocity);
     update_param(
       "force_acceleration.engage_acceleration", p.force_acceleration_param.engage_acceleration);
@@ -338,8 +336,6 @@ void VelocitySmootherNode::initCommonParam()
   p.force_acceleration_param.max_acceleration =
     declare_parameter<double>("force_acceleration.max_acc");
   p.force_acceleration_param.max_jerk = declare_parameter<double>("force_acceleration.max_jerk");
-  p.force_acceleration_param.max_lateral_acceleration =
-    declare_parameter<double>("force_acceleration.max_lateral_acc");
   p.force_acceleration_param.engage_velocity =
     declare_parameter<double>("force_acceleration.engage_velocity");
   p.force_acceleration_param.engage_acceleration =
