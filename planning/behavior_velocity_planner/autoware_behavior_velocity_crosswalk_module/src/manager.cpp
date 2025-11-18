@@ -36,6 +36,10 @@ CrosswalkModuleManager::CrosswalkModuleManager(rclcpp::Node & node)
 {
   const std::string ns(CrosswalkModuleManager::getModuleName());
 
+  sub_mot_slowdown_go_ =
+    autoware_utils::InterProcessPollingSubscriber<tier4_mutual_yielding_msgs::msg::CreepTrigger>::
+      create_subscription(&node, "~/input/mot_slowdown_go");
+
   // for crosswalk parameters
   auto & cp = crosswalk_planner_param_;
   cp.show_processing_time =

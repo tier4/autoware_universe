@@ -29,6 +29,7 @@
 #include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <tier4_mutual_yielding_msgs/msg/creep_trigger.hpp>
 
 #include <boost/assert.hpp>
 #include <boost/assign/list_of.hpp>
@@ -390,6 +391,12 @@ public:
   visualization_msgs::msg::MarkerArray createDebugMarkerArray() override;
   autoware::motion_utils::VirtualWalls createVirtualWalls() override;
 
+  void setMotSlowdownGoCommand(
+    const tier4_mutual_yielding_msgs::msg::CreepTrigger::ConstSharedPtr msg)
+  {
+    mot_slowdown_go_msg_ = msg;
+  }
+
 private:
   // main functions
   void applySlowDown(
@@ -406,6 +413,10 @@ private:
     const geometry_msgs::msg::Point & last_path_point_on_crosswalk);
 
   std::optional<geometry_msgs::msg::Pose> getDefaultStopPose(
+    const PathWithLaneId & ego_path,
+    const geometry_msgs::msg::Point & first_path_point_on_crosswalk) const;
+
+  std::optional<geometry_msgs::msg::Pose> getDeadlineStopPose(
     const PathWithLaneId & ego_path,
     const geometry_msgs::msg::Point & first_path_point_on_crosswalk) const;
 
@@ -458,6 +469,10 @@ private:
     PathWithLaneId & ego_path, const std::optional<StopPoseWithObjectUuids> & nearest_stop_factor,
     const std::optional<geometry_msgs::msg::Pose> & default_stop_pose,
     const std::string & reason) const;
+
+  void planCreeping(
+    PathWithLaneId & ego_path, const std::optional<StopPoseWithObjectUuids> & nearest_stop_factor,
+    geometry_msgs::msg::Pose deadline_stop_pose) const;
 
   // minor functions
   std::pair<double, double> getAttentionRange(
@@ -551,6 +566,11 @@ private:
   // occluded space time buffer
   std::optional<rclcpp::Time> current_initial_occlusion_time_;
   std::optional<rclcpp::Time> most_recent_occlusion_time_;
+
+  bool creeping_triggered_{false};
+  mutable bool yield_stack_{false};
+  mutable bool passed_pass_judge_{false};
+  tier4_mutual_yielding_msgs::msg::CreepTrigger::ConstSharedPtr mot_slowdown_go_msg_;
 
   struct
   {

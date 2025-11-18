@@ -255,6 +255,7 @@ bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path)
 
   // Calculate stop point with margin
   const auto default_stop_pose = getDefaultStopPose(*path, first_path_point_on_crosswalk);
+  const auto deadline_stop_pose = getDeadlineStopPose(*path, first_path_point_on_crosswalk);
 
   // Resample path sparsely for less computation cost
   constexpr double resample_interval = 4.0;
@@ -286,12 +287,72 @@ bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path)
   // NOTE: If no stop point is inserted, distance to the virtual stop line has to be calculated.
   setDistanceToStop(*path, default_stop_pose, nearest_stop_factor);
 
-  // plan Go/Stop
-  if (isActivated()) {
-    planGo(*path, nearest_stop_factor);
-  } else {
-    planStop(*path, nearest_stop_factor, default_stop_pose, reason);
+  const bool is_slowdown_go = [&]() {
+    if (!mot_slowdown_go_msg_) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, *clock_, 5000,
+        "mot_slowdown_go_msg_ is not received yet. slowdown_go is considered as false.");
+      return false;
+    }
+
+    const auto time_diff = (rclcpp::Time(mot_slowdown_go_msg_->stamp) - clock_->now()).seconds();
+    if (std::abs(time_diff) > 0.5) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, *clock_, 5000,
+        "mot_slowdown_go_msg_ is too old or from the future. time_diff: %f. slowdown_go is "
+        "considered as false.",
+        time_diff);
+      return false;
+    }
+
+    // TODO 壁までの距離の考慮
+
+    return true;
+  }();
+  creeping_triggered_ |= is_slowdown_go;
+
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 1000, "creeping_triggered_: %s", creeping_triggered_ ? "true" : "false");
+
+  if (creeping_triggered_) {
   }
+
+  if (creeping_triggered_ && deadline_stop_pose.has_value()) {
+    const bool has_moving_object = [&]() {
+      if (!nearest_stop_factor.has_value()) {
+        return false;
+      }
+      const double moving_threshold = planner_param_.stop_object_velocity;
+      const auto & objects = planner_data_->predicted_objects->objects;
+      for (const auto & uuid : nearest_stop_factor->target_object_ids) {
+        for (const auto & object : objects) {
+          if (object.object_id != uuid) {
+            continue;
+          }
+          const auto & twist = object.kinematics.initial_twist_with_covariance.twist.linear;
+          if (std::hypot(twist.x, twist.y) > moving_threshold) {
+            return true;
+          }
+          break;
+        }
+      }
+      return false;
+    }();
+    if (has_moving_object) {
+      yield_stack_ = true;
+    }
+
+    // plan Slow Down & Stop
+    planCreeping(*path, nearest_stop_factor, deadline_stop_pose.value());
+  } else {
+    // plan Go/Stop
+    if (isActivated()) {
+      planGo(*path, nearest_stop_factor);
+    } else {
+      planStop(*path, nearest_stop_factor, default_stop_pose, reason);
+    }
+  }
+
   recordTime(4);
 
   const auto collision_info_msg =
@@ -322,6 +383,18 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::getDefaultStopPose(
   return calcLongitudinalOffsetPose(
     ego_path.points, first_path_point_on_crosswalk,
     -planner_param_.stop_distance_from_crosswalk - base_link2front);
+}
+
+// NOTE: The stop point will be the returned point with the margin.
+std::optional<geometry_msgs::msg::Pose> CrosswalkModule::getDeadlineStopPose(
+  const PathWithLaneId & ego_path,
+  const geometry_msgs::msg::Point & first_path_point_on_crosswalk) const
+{
+  // const auto & ego_pos = planner_data_->current_odometry->pose.position;
+  const auto & base_link2front = planner_data_->vehicle_info_.max_longitudinal_offset_m;
+  return calcLongitudinalOffsetPose(
+    ego_path.points, first_path_point_on_crosswalk,
+    -planner_param_.stop_distance_from_crosswalk_limit - base_link2front);
 }
 
 std::optional<StopPoseWithObjectUuids> CrosswalkModule::checkStopForCrosswalkUsers(
@@ -1509,6 +1582,41 @@ void CrosswalkModule::setDistanceToStop(
     setDistance(std::max(dist_ego2stop, 0.0));
   } else {
     setDistance(std::numeric_limits<double>::lowest());
+  }
+}
+
+void CrosswalkModule::planCreeping(
+  PathWithLaneId & ego_path, const std::optional<StopPoseWithObjectUuids> & nearest_stop_factor,
+  geometry_msgs::msg::Pose deadline_stop_pose) const
+{
+  if (!nearest_stop_factor.has_value()) {
+    return;
+  }
+
+  // 通過判定
+  if (!yield_stack_ && planner_data_->current_acceleration->accel.accel.linear.x < -0.2) {
+    passed_pass_judge_ = true;
+  }
+
+  if (passed_pass_judge_) {
+    return;
+  } else {
+    // Plan slow down
+    const double creep_velocity = 3.0 / 3.6;  // 3km/h -> m/s
+    insertDecelPointWithDebugInfo(
+      nearest_stop_factor->stop_pose.position, creep_velocity, ego_path);
+
+    // Plan stop at deadline stop pose
+    insertDecelPointWithDebugInfo(deadline_stop_pose.position, 0.0, ego_path);
+
+    // Add planning factor
+    const SafetyFactorArray safety_factors = createSafetyFactorArray(nearest_stop_factor);
+
+    planning_factor_interface_->add(
+      ego_path.points, planner_data_->current_odometry->pose, deadline_stop_pose,
+      autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factors,
+      true /*is_driving_forward*/, 0.0 /*velocity*/, 0.0 /*shift distance*/,
+      yield_stack_ ? "yield" : "creeping");
   }
 }
 

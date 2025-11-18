@@ -21,9 +21,11 @@
 #include <autoware/behavior_velocity_planner_common/plugin_wrapper.hpp>
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
+#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
+#include <tier4_mutual_yielding_msgs/msg/creep_trigger.hpp>
 
 #include <functional>
 #include <memory>
@@ -52,6 +54,16 @@ public:
     return required_subscription_info;
   }
 
+  void plan(autoware_internal_planning_msgs::msg::PathWithLaneId * path) override
+  {
+    const auto mot_slowdown_go_msg = sub_mot_slowdown_go_->take_data();
+    for (const auto & scene_module : scene_modules_) {
+      std::static_pointer_cast<CrosswalkModule>(scene_module)
+        ->setMotSlowdownGoCommand(mot_slowdown_go_msg);
+    }
+    SceneModuleManagerInterfaceWithRTC::plan(path);
+  }
+
 private:
   CrosswalkModule::PlannerParam crosswalk_planner_param_{};
 
@@ -59,6 +71,8 @@ private:
 
   std::function<bool(const std::shared_ptr<SceneModuleInterfaceWithRTC> &)>
   getModuleExpiredFunction(const PathWithLaneId & path) override;
+  autoware_utils::InterProcessPollingSubscriber<
+    tier4_mutual_yielding_msgs::msg::CreepTrigger>::SharedPtr sub_mot_slowdown_go_;
 };
 
 class CrosswalkModulePlugin : public PluginWrapper<CrosswalkModuleManager>

@@ -1,0 +1,9 @@
+<library path="tier4_creep_trigger_button_rviz_plugin">
+  <class name="tier4_creep_trigger_button_rviz_plugin/CreepTriggerButtonPanel"
+         type="tier4_creep_trigger_button_rviz_plugin::CreepTriggerButtonPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      A simple panel with a button to publish CreepTrigger message
+    </description>
+  </class>
+</library>
