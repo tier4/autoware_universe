@@ -660,7 +660,9 @@ int main(int argc, char ** argv)
       const rclcpp::Time current_time(current_stamp);
 
       auto msg_ptr = std::make_shared<TrafficLightGroupArray>(seq.data_list[i].traffic_signals);
-      preprocess::process_traffic_signals(msg_ptr, traffic_light_id_map, current_time, 5.0, false);
+      const std::vector<autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr>
+        msg_vec{msg_ptr};
+      preprocess::process_traffic_signals(msg_vec, traffic_light_id_map, current_time, 5.0);
 
       // Get lanes data with speed limits
       const std::vector<int64_t> lane_segment_indices =
