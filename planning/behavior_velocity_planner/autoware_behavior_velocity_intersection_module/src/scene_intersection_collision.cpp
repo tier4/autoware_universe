@@ -508,8 +508,8 @@ std::string IntersectionModule::generateDetectionBlameDiagnosis(
       diag += fmt::format(
         "object {0} was judged as {1} when ego passed the pass judge line at time {2} "
         "previously with the estimated velocity {3}[m/s], but now at {4} collision is detected "
-        "after {5}~{6} seconds on the first attention lanelet of type {7} with the estimated "
-        "current velocity {8}[m/s]\n",
+        "after {5}~{6} seconds on the first attention lanelet with the estimated current velocity "
+        "{7}[m/s]\n",
         object_info->uuid_str,                                         // 0
         magic_enum::enum_name(decision_at_pass_judge_line.safe_type),  // 1
         decision_at_pass_judge_line_time,                              // 2
