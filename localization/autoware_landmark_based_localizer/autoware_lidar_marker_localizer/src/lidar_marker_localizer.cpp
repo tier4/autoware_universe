@@ -16,8 +16,8 @@
 
 #include <autoware/point_types/types.hpp>
 #include <autoware/pointcloud_preprocessor/utility/memory.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/transform/transforms.hpp>
-#include <autoware_utils_geometry/geometry.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <rclcpp/qos.hpp>
 
@@ -470,7 +470,7 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
     param_.marker_height_from_ground +
     center_intensity_grid_msg.info.height * center_intensity_grid_msg.info.resolution / 2.0;
   center_intensity_grid_msg.info.origin.orientation =
-    autoware_utils_geometry::create_quaternion_from_rpy(-M_PI / 2.0, 0.0, 0.0);
+    autoware_utils::create_quaternion_from_rpy(-M_PI / 2.0, 0.0, 0.0);
   center_intensity_grid_msg.data = std::vector<int8_t>(
     center_intensity_grid_msg.info.width * center_intensity_grid_msg.info.height, -1);
 
