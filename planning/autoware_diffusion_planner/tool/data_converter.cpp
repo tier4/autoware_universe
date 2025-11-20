@@ -167,7 +167,9 @@ std::vector<T> check_and_update_msg(
   }
 
   // Remove processed messages up to the selected index
-  msgs.erase(msgs.begin(), msgs.begin() + best_index);
+  if (best_index >= 0) {
+    msgs.erase(msgs.begin(), msgs.begin() + best_index);
+  }
   return result;
 }
 
