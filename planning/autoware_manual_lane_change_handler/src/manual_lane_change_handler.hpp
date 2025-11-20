@@ -25,10 +25,10 @@
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/int32_stamped.hpp>
 #include <autoware_planning_msgs/msg/lanelet_primitive.hpp>
-#include <autoware_planning_msgs/srv/set_lanelet_route.hpp>
 #include <autoware_planning_msgs/srv/set_preferred_primitive.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <tier4_external_api_msgs/srv/set_preferred_lane.hpp>
+#include <tier4_planning_msgs/srv/set_lanelet_route.hpp>
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
