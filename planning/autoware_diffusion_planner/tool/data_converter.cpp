@@ -482,7 +482,8 @@ int main(int argc, char ** argv)
   }
 
   if (!missing_topics.empty()) {
-    std::cout << "Skipping rosbag due to missing required topics:" << std::endl;
+    std::cout << "Skipping rosbag " << rosbag_path
+              << " due to missing required topics:" << std::endl;
     for (const auto & topic : missing_topics) {
       std::cout << "  - " << topic << std::endl;
     }
