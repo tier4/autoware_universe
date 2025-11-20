@@ -461,14 +461,34 @@ int main(int argc, char ** argv)
   std::cout << "Parsed " << turn_indicators.size() << " turn indicator messages" << std::endl;
   std::cout << "Parsed " << traffic_signals.size() << " traffic signal messages" << std::endl;
 
+  std::vector<std::string> missing_topics;
+  if (kinematic_states.empty()) {
+    missing_topics.emplace_back("/localization/kinematic_state");
+  }
+  if (accelerations.empty()) {
+    missing_topics.emplace_back("/localization/acceleration");
+  }
+  if (tracked_objects_msgs.empty()) {
+    missing_topics.emplace_back("/perception/object_recognition/tracking/objects");
+  }
   if (route_msgs.empty()) {
-    std::cerr << "No route messages found in rosbag" << std::endl;
-    return 1;
+    missing_topics.emplace_back("/planning/mission_planning/route");
+  }
+  if (turn_indicators.empty()) {
+    missing_topics.emplace_back("/vehicle/status/turn_indicators_status");
+  }
+  if (traffic_signals.empty()) {
+    missing_topics.emplace_back("/perception/traffic_light_recognition/traffic_signals");
   }
 
-  if (tracked_objects_msgs.empty()) {
-    std::cerr << "No tracked objects found in rosbag" << std::endl;
-    return 1;
+  if (!missing_topics.empty()) {
+    std::cout << "Skipping rosbag due to missing required topics:" << std::endl;
+    for (const auto & topic : missing_topics) {
+      std::cout << "  - " << topic << std::endl;
+    }
+    std::cout << "No training samples will be generated from this rosbag." << std::endl;
+    rclcpp::shutdown();
+    return 0;
   }
 
   // Create sequences based on tracked objects (base topic at 10Hz)
