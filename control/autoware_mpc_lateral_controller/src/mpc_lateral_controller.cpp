@@ -631,6 +631,7 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
     update_param(parameters, ns_nw + "lat_jerk", nw.lat_jerk);
     update_param(parameters, ns_nw + "steer_rate", nw.steer_rate);
     update_param(parameters, ns_nw + "steer_acc", nw.steer_acc);
+    update_param(parameters, ns_nw + "input_deviation", nw.input_deviation);
     update_param(parameters, ns_nw + "terminal_lat_error", nw.terminal_lat_error);
     update_param(parameters, ns_nw + "terminal_heading_error", nw.terminal_heading_error);
 
@@ -643,6 +644,7 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
     update_param(parameters, ns_lcw + "lat_jerk", lcw.lat_jerk);
     update_param(parameters, ns_lcw + "steer_rate", lcw.steer_rate);
     update_param(parameters, ns_lcw + "steer_acc", lcw.steer_acc);
+    update_param(parameters, ns_lcw + "input_deviation", lcw.input_deviation);
 
     update_param(
       parameters, "mpc_low_curvature_thresh_curvature", param.low_curvature_thresh_curvature);
