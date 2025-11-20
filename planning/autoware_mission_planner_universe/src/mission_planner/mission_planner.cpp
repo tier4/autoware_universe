@@ -23,6 +23,7 @@
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include <fmt/format.h>
 #include <lanelet2_core/geometry/LineString.h>
 
 #include <algorithm>
