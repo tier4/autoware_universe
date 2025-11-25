@@ -26,6 +26,7 @@
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tier4/creep_guidance_interface/creep_guidance_interface.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_multi_array_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
@@ -299,8 +300,17 @@ public:
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
       planning_factor_interface,
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
-      planning_factor_interface_for_occlusion);
+      planning_factor_interface_for_occlusion,
+    const std::shared_ptr<tier4::creep_guidance_interface::CreepGuidanceInterface>
+      creep_guidance_interface_intersection,
+    const std::shared_ptr<tier4::creep_guidance_interface::CreepGuidanceInterface>
+      creep_guidance_interface_occlusion);
 
+  ~IntersectionModule() override
+  {
+    creep_guidance_interface_intersection_->remove(module_id_);
+    creep_guidance_interface_occlusion_->remove(module_id_);
+  }
   /**
    ***********************************************************
    ***********************************************************
@@ -345,6 +355,11 @@ private:
 
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface_for_occlusion_;
+
+  const std::shared_ptr<tier4::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface_intersection_;
+  const std::shared_ptr<tier4::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface_occlusion_;
   /** @}*/
 
 private:

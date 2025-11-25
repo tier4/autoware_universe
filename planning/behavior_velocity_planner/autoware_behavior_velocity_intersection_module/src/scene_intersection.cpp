@@ -52,9 +52,15 @@ IntersectionModule::IntersectionModule(
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface,
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
-    planning_factor_interface_for_occlusion)
+    planning_factor_interface_for_occlusion,
+  const std::shared_ptr<tier4::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface_intersection,
+  const std::shared_ptr<tier4::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface_occlusion)
 : SceneModuleInterfaceWithRTC(module_id, logger, clock, time_keeper, planning_factor_interface),
   planning_factor_interface_for_occlusion_(planning_factor_interface_for_occlusion),
+  creep_guidance_interface_intersection_(creep_guidance_interface_intersection),
+  creep_guidance_interface_occlusion_(creep_guidance_interface_occlusion),
   planner_param_(planner_param),
   lane_id_(lane_id),
   associative_ids_(associative_ids),

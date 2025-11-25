@@ -309,6 +309,14 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
   planning_factor_interface_for_occlusion_ =
     std::make_shared<planning_factor_interface::PlanningFactorInterface>(
       &node, "intersection_occlusion", enable_console_output, throttle_duration_ms);
+
+  // Initialize creep guidance interface
+  creep_guidance_interface_intersection_ =
+    std::make_shared<tier4::creep_guidance_interface::CreepGuidanceInterface>(
+      &node, "intersection");
+  creep_guidance_interface_occlusion_ =
+    std::make_shared<tier4::creep_guidance_interface::CreepGuidanceInterface>(
+      &node, "intersection_occlusion");
 }
 
 void IntersectionModuleManager::launchNewModules(
@@ -349,7 +357,8 @@ void IntersectionModuleManager::launchNewModules(
     const auto new_module = std::make_shared<IntersectionModule>(
       module_id, lane_id, planner_data_, intersection_param_, associative_ids, turn_direction,
       has_traffic_light, node_, logger_.get_child("intersection_module"), clock_, time_keeper_,
-      planning_factor_interface_, planning_factor_interface_for_occlusion_);
+      planning_factor_interface_, planning_factor_interface_for_occlusion_,
+      creep_guidance_interface_intersection_, creep_guidance_interface_occlusion_);
     generate_uuid(module_id);
     /* set RTC status as non_occluded status initially */
     const UUID uuid = getUUID(new_module->getModuleId());
@@ -377,6 +386,8 @@ void IntersectionModuleManager::launchNewModules(
       occlusion_uuid, true, State::WAITING_FOR_EXECUTION, std::numeric_limits<double>::lowest(),
       std::numeric_limits<double>::lowest(), clock_->now(), false,
       override_occlusion_rtc_auto_mode);
+    creep_guidance_interface_intersection_->add(module_id);
+    creep_guidance_interface_occlusion_->add(module_id);
     registerModule(std::move(new_module));
   }
 }

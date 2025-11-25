@@ -42,6 +42,8 @@
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>tf2_geometry_msgs</depend>
+  <depend>tier4_creep_guidance_interface</depend>
+  <depend>tier4_creep_guidance_msgs</depend>
   <depend>tier4_planning_msgs</depend>
   <depend>visualization_msgs</depend>
 

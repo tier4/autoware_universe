@@ -23,6 +23,7 @@
 #include <autoware/behavior_velocity_planner_common/scene_module_interface.hpp>
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <tier4/creep_guidance_interface/creep_guidance_interface.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -54,6 +55,11 @@ private:
   IntersectionModule::PlannerParam intersection_param_;
   // additional for INTERSECTION_OCCLUSION
   RTCInterface occlusion_rtc_interface_;
+  // creep guidance interface
+  std::shared_ptr<tier4::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface_intersection_;
+  std::shared_ptr<tier4::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface_occlusion_;
 
   void launchNewModules(const autoware_internal_planning_msgs::msg::PathWithLaneId & path) override;
 
