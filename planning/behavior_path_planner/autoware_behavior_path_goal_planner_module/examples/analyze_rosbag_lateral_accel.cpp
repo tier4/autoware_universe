@@ -144,8 +144,7 @@ std::vector<PathPointWithLaneId> convertToPathPointWithLaneId(const PathWithLane
 
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
-
+  // Parse command line arguments BEFORE rclcpp::init to avoid ROS2 consuming them
   if (argc < 2) {
     std::cerr << "Usage: ros2 run autoware_behavior_path_goal_planner_module "
               << "analyze_rosbag_lateral_accel <rosbag_path> [options]" << std::endl;
@@ -186,6 +185,9 @@ int main(int argc, char ** argv)
       target_timestamp_nsec = std::stoll(argv[++i]);
     }
   }
+
+  // Initialize ROS2 after parsing our arguments
+  rclcpp::init(argc, argv);
 
   std::cout << "Opening rosbag: " << rosbag_path << std::endl;
 

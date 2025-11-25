@@ -1170,18 +1170,8 @@ int main(int argc, char ** argv)
     }
   }
 
-  // Apply max_display limit
-  const size_t num_paths_to_display = std::min(max_display, filtered_indices.size());
-  std::cout << "\n=== Display Info ===" << std::endl;
-  std::cout << "Total filtered paths: " << filtered_indices.size() << std::endl;
-  std::cout << "Displaying: " << num_paths_to_display << " paths" << std::endl;
-  if (num_paths_to_display < filtered_indices.size()) {
-    std::cout << "(Limited by max_display=" << max_display << ")" << std::endl;
-  }
-  std::cout << "==================\n" << std::endl;
-
   // Plot filtered paths on ax2
-  for (size_t rank = 0; rank < num_paths_to_display; ++rank) {
+  for (size_t rank = 0; rank < filtered_indices.size(); ++rank) {
     const auto idx = filtered_indices[rank];
     const auto & path = filtered_paths[idx];
     const auto goal_id = path.goal_id();
