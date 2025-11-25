@@ -83,6 +83,19 @@
             0, 255, 240, 150, 135, 60, 0, 160, 32, 240, 255, 0, 255, 139, 137, 137, 75, 0, 75, 150,
             240, 80, 230, 230, 250, 0, 175, 0, 0, 0, 0
           ]
+        },
+        "joint_inference": {
+          "type": "boolean",
+          "description": "If true, all input pointclouds are concatenated and processed together in a single inference. If false, each input pointcloud is processed independently with separate inference.",
+          "default": true
+        },
+        "input_topics": {
+          "type": "array",
+          "description": "List of input pointcloud topic names. Each topic will be subscribed and processed independently when joint_inference is false.",
+          "items": {
+            "type": "string"
+          },
+          "default": ["/sensing/lidar/top/pointcloud"]
         }
       },
       "required": [
@@ -96,7 +109,9 @@
         "interpolation_height",
         "score_threshold",
         "excluded_class_names",
-        "palette"
+        "palette",
+        "joint_inference",
+        "input_topics"
       ],
       "additionalProperties": false
     }

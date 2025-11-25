@@ -14,30 +14,85 @@ We trained the models using AWML [2].
 
 ### Input
 
-| Name                 | Type                            | Description       |
-| -------------------- | ------------------------------- | ----------------- |
-| `~/input/pointcloud` | `sensor_msgs::msg::PointCloud2` | Input pointcloud. |
+The node can be configured to process one or more LiDAR inputs in two modes:
+
+1. **Independent Inference Mode** (`joint_inference: false`, default):
+   - Each input topic is processed independently with its own inference instance
+   - Input topics are specified in the `input_topics` parameter
+
+2. **Joint Inference Mode** (`joint_inference: true`):
+   - All input pointclouds are concatenated and processed together in a single inference
+   - Not yet implemented
+
+| Name         | Type                            | Description                                |
+| ------------ | ------------------------------- | ------------------------------------------ |
+| Input topics | `sensor_msgs::msg::PointCloud2` | Multiple input pointclouds (configurable). |
 
 ### Output
 
-| Name                                   | Type                                                | Description                                                  |
-| -------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
-| `~/output/pointcloud/segmentation`     | `sensor_msgs::msg::PointCloud2`                     | XYZ cloud with class ID field.                               |
-| `~/output/pointcloud/visualization`    | `sensor_msgs::msg::PointCloud2`                     | XYZ cloud with RGB field.                                    |
-| `~/output/pointcloud/filtered`         | `sensor_msgs::msg::PointCloud2`                     | Input format cloud after removing specified point's class.   |
-| `debug/cyclic_time_ms`                 | `autoware_internal_debug_msgs::msg::Float64Stamped` | Cyclic time (ms).                                            |
-| `debug/pipeline_latency_ms`            | `autoware_internal_debug_msgs::msg::Float64Stamped` | Pipeline latency time (ms).                                  |
-| `debug/processing_time/preprocess_ms`  | `autoware_internal_debug_msgs::msg::Float64Stamped` | Preprocess (ms).                                             |
-| `debug/processing_time/inference_ms`   | `autoware_internal_debug_msgs::msg::Float64Stamped` | Inference time (ms).                                         |
-| `debug/processing_time/postprocess_ms` | `autoware_internal_debug_msgs::msg::Float64Stamped` | Postprocess time (ms).                                       |
-| `debug/processing_time/total_ms`       | `autoware_internal_debug_msgs::msg::Float64Stamped` | Total processing time (ms).                                  |
-| `/diagnostics`                         | `diagnostic_msgs::msg::DiagnosticArray`             | Node diagnostics with respect to processing time constraints |
+When `joint_inference: false` (Independent Inference Mode):
+For each input topic, the node generates separate output topics with the following naming pattern:
+
+- `~/output/<sanitized_topic_name>/segmentation`
+- `~/output/<sanitized_topic_name>/visualization`
+- `~/output/<sanitized_topic_name>/filtered`
+
+Where `<sanitized_topic_name>` is the input topic name with `/` replaced by `_`.
+
+Example: For input topic `/sensing/lidar/top/pointcloud`, outputs are:
+
+- `~/output/_sensing_lidar_top_pointcloud/segmentation`
+- `~/output/_sensing_lidar_top_pointcloud/visualization`
+- `~/output/_sensing_lidar_top_pointcloud/filtered`
+
+| Name                                           | Type                                                | Description                                                  |
+| ---------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| `~/output/<topic>/segmentation`                | `sensor_msgs::msg::PointCloud2`                     | XYZ cloud with class ID field.                               |
+| `~/output/<topic>/visualization`               | `sensor_msgs::msg::PointCloud2`                     | XYZ cloud with RGB field.                                    |
+| `~/output/<topic>/filtered`                    | `sensor_msgs::msg::PointCloud2`                     | Input format cloud after removing specified point's class.   |
+| `debug/<topic>/cyclic_time_ms`                 | `autoware_internal_debug_msgs::msg::Float64Stamped` | Cyclic time (ms).                                            |
+| `debug/<topic>/pipeline_latency_ms`            | `autoware_internal_debug_msgs::msg::Float64Stamped` | Pipeline latency time (ms).                                  |
+| `debug/<topic>/processing_time/preprocess_ms`  | `autoware_internal_debug_msgs::msg::Float64Stamped` | Preprocess (ms).                                             |
+| `debug/<topic>/processing_time/inference_ms`   | `autoware_internal_debug_msgs::msg::Float64Stamped` | Inference time (ms).                                         |
+| `debug/<topic>/processing_time/postprocess_ms` | `autoware_internal_debug_msgs::msg::Float64Stamped` | Postprocess time (ms).                                       |
+| `debug/<topic>/processing_time/total_ms`       | `autoware_internal_debug_msgs::msg::Float64Stamped` | Total processing time (ms).                                  |
+| `/diagnostics`                                 | `diagnostic_msgs::msg::DiagnosticArray`             | Node diagnostics with respect to processing time constraints |
 
 ## Parameters
 
 ### FRNet node
 
 {{ json_to_markdown("perception/autoware_lidar_frnet/schema/frnet.schema.json") }}
+
+### Multi-LiDAR Configuration
+
+The node supports processing multiple LiDAR inputs in two modes:
+
+#### Independent Inference Mode (`joint_inference: false`)
+
+Each input topic is processed independently with its own inference instance. This mode is useful when you want to process multiple LiDAR sensors separately.
+
+Configuration example in `frnet.param.yaml`:
+
+```yaml
+joint_inference: false
+input_topics:
+  - /sensing/lidar/top/pointcloud
+  - /sensing/lidar/front/pointcloud
+  - /sensing/lidar/rear/pointcloud
+```
+
+Output topics are automatically generated for each input:
+
+- `~/output/<sanitized_topic_name>/segmentation`
+- `~/output/<sanitized_topic_name>/visualization`
+- `~/output/<sanitized_topic_name>/filtered`
+
+#### Joint Inference Mode (`joint_inference: true`)
+
+**Note: This mode is not yet implemented.**
+
+In the future, this mode will concatenate all input pointclouds and process them together in a single inference.
 
 ### FRNet model
 

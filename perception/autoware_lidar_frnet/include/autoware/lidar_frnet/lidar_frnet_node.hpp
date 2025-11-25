@@ -30,6 +30,9 @@
 
 #include <memory>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace autoware::lidar_frnet
 {
@@ -39,20 +42,26 @@ class LIDAR_FRNET_PUBLIC LidarFRNetNode : public rclcpp::Node
 public:
   explicit LidarFRNetNode(const rclcpp::NodeOptions & options);
 
-  void cloudCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
+  void cloudCallback(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg, const std::string & topic_name);
   void diagnoseProcessingTime(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 private:
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_in_sub_{nullptr};
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_seg_pub_{nullptr};
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_viz_pub_{nullptr};
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_filtered_pub_{nullptr};
+  struct LidarProcessor
+  {
+    std::string topic_name;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_in_sub;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_seg_pub;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_viz_pub;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_filtered_pub;
+    std::unique_ptr<LidarFRNet> frnet;
+    std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr;
+    std::optional<double> last_processing_time_ms;
+  };
 
-  std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{nullptr};
   std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{nullptr};
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_pub_{nullptr};
 
-  std::unique_ptr<LidarFRNet> frnet_{nullptr};
   std::unique_ptr<diagnostic_updater::Updater> diag_updater_{nullptr};
 
   const ros_utils::PointCloudLayout cloud_seg_layout_;
@@ -60,8 +69,12 @@ private:
   const ros_utils::PointCloudLayout cloud_filtered_layout_;
 
   utils::DiagnosticParams diag_params_{};
-  std::optional<double> last_processing_time_ms_;
   std::optional<rclcpp::Time> last_in_time_processing_timestamp_;
+
+  // Multi-LiDAR support
+  bool joint_inference_{};
+  std::vector<std::string> input_topics_;
+  std::unordered_map<std::string, std::shared_ptr<LidarProcessor>> lidar_processors_;
 };
 
 }  // namespace autoware::lidar_frnet

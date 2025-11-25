@@ -21,6 +21,7 @@
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -58,30 +59,33 @@ LidarFRNetNode::LidarFRNetNode(const rclcpp::NodeOptions & options)
     declare_parameter<double>("max_acceptable_consecutive_delay_ms"),
     declare_parameter<double>("validation_callback_interval_ms"));
 
-  frnet_ = std::make_unique<LidarFRNet>(
-    trt_config, model_params, preprocessing_params, postprocessing_params, get_logger());
+  // Multi-LiDAR support parameters
+  joint_inference_ = declare_parameter<bool>("joint_inference", true);
+  input_topics_ = declare_parameter<std::vector<std::string>>("input_topics");
 
-  cloud_in_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-    "~/input/pointcloud", rclcpp::SensorDataQoS{}.keep_last(1),
-    std::bind(&LidarFRNetNode::cloudCallback, this, std::placeholders::_1));
+  if (input_topics_.empty()) {
+    RCLCPP_ERROR(
+      this->get_logger(), "input_topics parameter is empty. At least one topic is required.");
+    throw std::runtime_error("input_topics parameter is empty");
+  }
 
-  cloud_seg_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
-    "~/output/pointcloud/segmentation", rclcpp::SensorDataQoS{}.keep_last(1));
-  cloud_viz_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
-    "~/output/pointcloud/visualization", rclcpp::SensorDataQoS{}.keep_last(1));
-  cloud_filtered_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
-    "~/output/pointcloud/filtered", rclcpp::SensorDataQoS{}.keep_last(1));
+  if (joint_inference_) {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Joint inference mode: all pointclouds will be concatenated and processed together");
+    // TODO(Sugahara): Implement joint inference mode in the future
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Joint inference mode is not yet implemented. Falling back to independent inference mode.");
+    joint_inference_ = false;
+  }
 
   published_time_pub_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 
   // Initialize debug tool
   {
     using autoware_utils::DebugPublisher;
-    using autoware_utils::StopWatch;
-    stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
     debug_publisher_ptr_ = std::make_unique<DebugPublisher>(this, this->get_name());
-    stop_watch_ptr_->tic("cyclic");
-    stop_watch_ptr_->tic("processing/total");
   }
 
   // Setup diagnostics
@@ -92,27 +96,80 @@ LidarFRNetNode::LidarFRNetNode(const rclcpp::NodeOptions & options)
     diag_updater_->setPeriod(diag_params_.validation_callback_interval_ms * 1e-3);  // to seconds
   }
 
+  // Create processors for each input topic (independent inference mode)
+  if (!joint_inference_) {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Independent inference mode: each pointcloud will be processed separately");
+
+    for (const auto & topic_name : input_topics_) {
+      RCLCPP_INFO(this->get_logger(), "Setting up processor for topic: %s", topic_name.c_str());
+
+      auto processor = std::make_shared<LidarProcessor>();
+      processor->topic_name = topic_name;
+
+      // Create FRNet instance for this topic
+      processor->frnet = std::make_unique<LidarFRNet>(
+        trt_config, model_params, preprocessing_params, postprocessing_params, get_logger());
+
+      // Create stop watch for this topic
+      processor->stop_watch_ptr =
+        std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
+      processor->stop_watch_ptr->tic("cyclic");
+      processor->stop_watch_ptr->tic("processing/total");
+
+      // Create subscriber with topic-specific callback
+      processor->cloud_in_sub = create_subscription<sensor_msgs::msg::PointCloud2>(
+        topic_name, rclcpp::SensorDataQoS{}.keep_last(1),
+        [this, topic_name](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
+          this->cloudCallback(msg, topic_name);
+        });
+
+      // Create publishers with topic-specific names
+      std::string sanitized_topic_name = topic_name;
+      std::replace(sanitized_topic_name.begin(), sanitized_topic_name.end(), '/', '_');
+
+      processor->cloud_seg_pub = create_publisher<sensor_msgs::msg::PointCloud2>(
+        "~/output" + sanitized_topic_name + "/segmentation", rclcpp::SensorDataQoS{}.keep_last(1));
+      processor->cloud_viz_pub = create_publisher<sensor_msgs::msg::PointCloud2>(
+        "~/output" + sanitized_topic_name + "/visualization", rclcpp::SensorDataQoS{}.keep_last(1));
+      processor->cloud_filtered_pub = create_publisher<sensor_msgs::msg::PointCloud2>(
+        "~/output" + sanitized_topic_name + "/filtered", rclcpp::SensorDataQoS{}.keep_last(1));
+
+      lidar_processors_[topic_name] = processor;
+    }
+  }
+
   if (this->declare_parameter<bool>("build_only", false)) {
     RCLCPP_INFO(this->get_logger(), "TensorRT engine is built. Shutting down the node.");
     rclcpp::shutdown();
   }
 }
 
-void LidarFRNetNode::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
+void LidarFRNetNode::cloudCallback(
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg, const std::string & topic_name)
 {
-  if (stop_watch_ptr_) {
-    stop_watch_ptr_->toc("processing/total", true);
+  auto it = lidar_processors_.find(topic_name);
+  if (it == lidar_processors_.end()) {
+    RCLCPP_ERROR(this->get_logger(), "Processor not found for topic: %s", topic_name.c_str());
+    return;
+  }
+
+  auto & processor = it->second;
+
+  if (processor->stop_watch_ptr) {
+    processor->stop_watch_ptr->toc("processing/total", true);
   }
 
   const auto active_comm = utils::ActiveComm(
-    cloud_seg_pub_->get_subscription_count() +
-        cloud_seg_pub_->get_intra_process_subscription_count() >
+    processor->cloud_seg_pub->get_subscription_count() +
+        processor->cloud_seg_pub->get_intra_process_subscription_count() >
       0,
-    cloud_viz_pub_->get_subscription_count() +
-        cloud_viz_pub_->get_intra_process_subscription_count() >
+    processor->cloud_viz_pub->get_subscription_count() +
+        processor->cloud_viz_pub->get_intra_process_subscription_count() >
       0,
-    cloud_filtered_pub_->get_subscription_count() +
-        cloud_filtered_pub_->get_intra_process_subscription_count() >
+    processor->cloud_filtered_pub->get_subscription_count() +
+        processor->cloud_filtered_pub->get_intra_process_subscription_count() >
       0);
 
   if (!active_comm) {
@@ -124,31 +181,38 @@ void LidarFRNetNode::cloudCallback(const sensor_msgs::msg::PointCloud2::ConstSha
   auto cloud_viz_msg = ros_utils::getMsgFromLayout(*msg, cloud_viz_layout_);
   auto cloud_filtered_msg = ros_utils::getMsgFromLayout(*msg, cloud_filtered_layout_);
 
-  if (!frnet_->process(
+  if (!processor->frnet->process(
         *msg, cloud_seg_msg, cloud_viz_msg, cloud_filtered_msg, active_comm, proc_timing))
     return;
 
-  cloud_seg_pub_->publish(cloud_seg_msg);
-  cloud_viz_pub_->publish(cloud_viz_msg);
-  cloud_filtered_pub_->publish(cloud_filtered_msg);
-  published_time_pub_->publish_if_subscribed(cloud_seg_pub_, msg->header.stamp);
+  processor->cloud_seg_pub->publish(cloud_seg_msg);
+  processor->cloud_viz_pub->publish(cloud_viz_msg);
+  processor->cloud_filtered_pub->publish(cloud_filtered_msg);
+  published_time_pub_->publish_if_subscribed(processor->cloud_seg_pub, msg->header.stamp);
 
-  if (debug_publisher_ptr_ && stop_watch_ptr_) {
-    last_processing_time_ms_.emplace(stop_watch_ptr_->toc("processing/total", true));
-    const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic", true);
+  if (debug_publisher_ptr_ && processor->stop_watch_ptr) {
+    processor->last_processing_time_ms.emplace(
+      processor->stop_watch_ptr->toc("processing/total", true));
+    const double cyclic_time_ms = processor->stop_watch_ptr->toc("cyclic", true);
     const double pipeline_latency_ms =
       std::chrono::duration<double, std::milli>(
         std::chrono::nanoseconds((this->get_clock()->now() - msg->header.stamp).nanoseconds()))
         .count();
+
+    // Publish debug info with topic-specific prefix
+    std::string sanitized_topic_name = topic_name;
+    std::replace(sanitized_topic_name.begin(), sanitized_topic_name.end(), '/', '_');
+
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/cyclic_time_ms", cyclic_time_ms);
+      "debug" + sanitized_topic_name + "/cyclic_time_ms", cyclic_time_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/pipeline_latency_ms", pipeline_latency_ms);
+      "debug" + sanitized_topic_name + "/pipeline_latency_ms", pipeline_latency_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/processing_time/total_ms", *last_processing_time_ms_);
-    for (const auto & [topic, time_ms] : proc_timing) {
+      "debug" + sanitized_topic_name + "/processing_time/total_ms",
+      *processor->last_processing_time_ms);
+    for (const auto & [proc_topic, time_ms] : proc_timing) {
       debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-        topic, time_ms);
+        "debug" + sanitized_topic_name + "/" + proc_topic, time_ms);
     }
   }
 }
@@ -160,17 +224,28 @@ void LidarFRNetNode::diagnoseProcessingTime(diagnostic_updater::DiagnosticStatus
     diagnostic_msgs::msg::DiagnosticStatus::OK;
   std::stringstream message{"OK"};
 
-  // Check if the node has performed inference
-  if (last_processing_time_ms_) {
+  // Aggregate processing times across all processors
+  bool has_processed = false;
+  double max_processing_time_ms = 0.0;
+
+  for (const auto & [topic_name, processor] : lidar_processors_) {
+    if (processor->last_processing_time_ms) {
+      has_processed = true;
+      max_processing_time_ms =
+        std::max(max_processing_time_ms, *processor->last_processing_time_ms);
+    }
+  }
+
+  // Check if any processor has performed inference
+  if (has_processed) {
     // Check if processing time exceeds the limit
-    if (*last_processing_time_ms_ > diag_params_.max_allowed_processing_time_ms) {
+    if (max_processing_time_ms > diag_params_.max_allowed_processing_time_ms) {
       stat.add("is_processing_time_ms_in_expected_range", false);
 
       message.clear();
       message << "Processing time exceeds the acceptable limit of "
               << diag_params_.max_allowed_processing_time_ms << " ms by "
-              << (*last_processing_time_ms_ - diag_params_.max_allowed_processing_time_ms)
-              << " ms.";
+              << (max_processing_time_ms - diag_params_.max_allowed_processing_time_ms) << " ms.";
 
       // In case the processing starts with a delayed inference
       if (!last_in_time_processing_timestamp_) {
@@ -182,7 +257,7 @@ void LidarFRNetNode::diagnoseProcessingTime(diagnostic_updater::DiagnosticStatus
       stat.add("is_processing_time_ms_in_expected_range", true);
       last_in_time_processing_timestamp_.emplace(timestamp_now);
     }
-    stat.add("processing_time_ms", *last_processing_time_ms_);
+    stat.add("processing_time_ms", max_processing_time_ms);
 
     const double delayed_state_duration =
       std::chrono::duration<double, std::milli>(
