@@ -432,8 +432,8 @@ std::optional<std::vector<geometry_msgs::msg::Point>> ClothoidPullOut::convert_a
       rclcpp::get_logger("ClothoidPullOut"),
       "Arc segment: radius=%.3f, center=(%.3f, %.3f), is_clockwise=%s", arc_segment.radius,
       arc_segment.center.x, arc_segment.center.y, arc_segment.is_clockwise ? "true" : "false");
-      failure_info_tmp_ = "central angle of the arc path is small";
-      return std::nullopt;
+    failure_info_tmp_ = "central angle of the arc path is small";
+    return std::nullopt;
   }
 
   // Generate clothoid path
@@ -899,7 +899,7 @@ std::optional<CompositeArcPath> ClothoidPullOut::calc_circular_path(
     RCLCPP_WARN(
       rclcpp::get_logger("ClothoidPullOut"),
       "Goal is too close to start arc center (distance: %.6f)", d_goal_Cr_rel);
-      failure_info_tmp_ = "goal is too close";
+    failure_info_tmp_ = "goal is too close";
     return std::nullopt;
   }
 
@@ -1163,7 +1163,8 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     const double minimum_radius = wheel_base / std::tan(steer_angle);
 
     const int deg_int = static_cast<int>(std::lround(rad2deg(steer_angle)));
-    planner_debug_data.conditions_evaluation.emplace_back("[steer angle: " + std::to_string(deg_int) + " deg] ");
+    planner_debug_data.conditions_evaluation.emplace_back(
+      "[steer angle: " + std::to_string(deg_int) + " deg] ");
 
     const double longitudinal_distance = calc_necessary_longitudinal_distance(
       minimum_radius, initial_velocity, wheel_base, max_steer_angle_rate, centerline_path,
@@ -1370,45 +1371,37 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     }
 
     // check lane departure
+    std::optional<size_t> departure_point_index = std::nullopt;
     if (
       parameters_.check_clothoid_path_lane_departure &&
       boundary_departure_checker_->checkPathWillLeaveLane(
         lanelet_map_ptr, path_clothoid_start_to_end, fused_id_start_to_end,
-        fused_polygon_start_to_end)) {
+        fused_polygon_start_to_end, departure_point_index)) {
       RCLCPP_DEBUG(
         rclcpp::get_logger("ClothoidPullOut"),
         "Lane departure detected for steer angle %.2f deg. Continuing to next candidate.",
         rad2deg(steer_angle));
       planner_debug_data.conditions_evaluation.back().append("lane departure");
-      
-      // Check each point on the path to find where lane departure occurs
-      for (const auto & point : path_clothoid_start_to_end.points) {
-        // Create a single-point path to check lane departure
-        PathWithLaneId single_point_path;
-        single_point_path.points.push_back(point);
-        
-        std::vector<lanelet::Id> temp_fused_id{};
-        std::optional<autoware_utils::Polygon2d> temp_fused_polygon = std::nullopt;
 
-        if (boundary_departure_checker_->checkPathWillLeaveLane(
-              lanelet_map_ptr, single_point_path, temp_fused_id, temp_fused_polygon)) {
-          // Calculate local coordinates relative to start_pose
-          const double dx = point.point.pose.position.x - start_pose.position.x;
-          const double dy = point.point.pose.position.y - start_pose.position.y;
-          const double start_yaw = tf2::getYaw(start_pose.orientation);
+      // Append departure point information if available
+      if (
+        departure_point_index &&
+        *departure_point_index < path_clothoid_start_to_end.points.size()) {
+        const auto & point = path_clothoid_start_to_end.points[*departure_point_index];
 
-          const double local_x = dx * std::cos(start_yaw) + dy * std::sin(start_yaw);
-          const double local_y = -dx * std::sin(start_yaw) + dy * std::cos(start_yaw);
-          
-          // Append departure point information
-          planner_debug_data.conditions_evaluation.back().append(
-            " (at local_x:" + std::to_string(local_x) + 
-            ", local_y:" + std::to_string(local_y) + ")");
-          
-          break;  // Only report the first departure point
-        }
+        // Calculate local coordinates relative to start_pose
+        const double dx = point.point.pose.position.x - start_pose.position.x;
+        const double dy = point.point.pose.position.y - start_pose.position.y;
+        const double start_yaw = tf2::getYaw(start_pose.orientation);
+
+        const double local_x = dx * std::cos(start_yaw) + dy * std::sin(start_yaw);
+        const double local_y = -dx * std::sin(start_yaw) + dy * std::cos(start_yaw);
+
+        // Append departure point information
+        planner_debug_data.conditions_evaluation.back().append(
+          " (at local_x:" + std::to_string(local_x) + ", local_y:" + std::to_string(local_y) + ")");
       }
-      
+
       continue;
     }
 
@@ -1478,9 +1471,11 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     // Create PullOutPath for collision check
     const PullOutPath temp_pull_out_path{{clothoid_path}, {}, start_pose, target_pose};
 
+    std::optional<size_t> collision_point_index = std::nullopt;
     if (isPullOutPathCollided(
           temp_pull_out_path, planner_data,
-          parameters_.clothoid_collision_check_distance_from_end)) {
+          parameters_.clothoid_collision_check_distance_from_end,
+          collision_point_index)) {
       RCLCPP_INFO(
         rclcpp::get_logger("ClothoidPullOut"),
         "Collision detected for steer angle %.2f deg with margin %.2f m. Continuing to next "
@@ -1488,35 +1483,21 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
         rad2deg(steer_angle), parameters_.clothoid_collision_check_distance_from_end);
       planner_debug_data.conditions_evaluation.back().append("collision");
 
-      // Check each point on the path to find where collision occurs
-      for (size_t i = 1; i <= clothoid_path.points.size(); ++i) {
-        // Create a partial path from start to current point
-        PathWithLaneId partial_path;
-        partial_path.points.assign(clothoid_path.points.begin(), clothoid_path.points.begin() + i);
-        
-        PullOutPath partial_check_path;
-        partial_check_path.partial_paths.push_back(partial_path);
-        partial_check_path.start_pose = clothoid_path.points.front().point.pose;
-        partial_check_path.end_pose = clothoid_path.points[i - 1].point.pose;
+      // Append collision point information if available
+      if (collision_point_index && *collision_point_index < clothoid_path.points.size()) {
+        const auto & collision_point = clothoid_path.points[*collision_point_index];
 
-        if (isPullOutPathCollided(
-              partial_check_path, planner_data, parameters_.shift_collision_check_distance_from_end)) {
-          // Calculate local coordinates relative to start_pose
-          const auto & collision_point = clothoid_path.points[i - 1];
-          const double dx = collision_point.point.pose.position.x - start_pose.position.x;
-          const double dy = collision_point.point.pose.position.y - start_pose.position.y;
-          const double start_yaw = tf2::getYaw(start_pose.orientation);
+        // Calculate local coordinates relative to start_pose
+        const double dx = collision_point.point.pose.position.x - start_pose.position.x;
+        const double dy = collision_point.point.pose.position.y - start_pose.position.y;
+        const double start_yaw = tf2::getYaw(start_pose.orientation);
 
-          const double local_x = dx * std::cos(start_yaw) + dy * std::sin(start_yaw);
-          const double local_y = -dx * std::sin(start_yaw) + dy * std::cos(start_yaw);
-          
-          // Append collision point information
-          planner_debug_data.conditions_evaluation.back().append(
-            " (at local_x:" + std::to_string(local_x) + 
-            ", local_y:" + std::to_string(local_y) + ")");
-          
-          break;  // Only report the first collision point
-        }
+        const double local_x = dx * std::cos(start_yaw) + dy * std::sin(start_yaw);
+        const double local_y = -dx * std::sin(start_yaw) + dy * std::cos(start_yaw);
+
+        // Append collision point information
+        planner_debug_data.conditions_evaluation.back().append(
+          " (at local_x:" + std::to_string(local_x) + ", local_y:" + std::to_string(local_y) + ")");
       }
 
       continue;
