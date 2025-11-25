@@ -4,7 +4,7 @@
       use_raw: [false, false, false, false, false, false] # per camera: if true, use raw image data, otherwise use compressed images
     interface_params:
       map_colors: [0.3922, 0.5843, 0.9294,  # divider: cornflowerblue
-                   1.0, 0.0, 0.0,           # ped_crossing: red  
+                   1.0, 0.0, 0.0,           # ped_crossing: red
                    0.4392, 0.5020, 0.5647]  # boundary: slategrey
     model_params:
       plugins_path: "$(var plugins_path)/plugins/libautoware_tensorrt_plugins.so"

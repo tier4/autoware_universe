@@ -52,10 +52,10 @@
         bev_h: 100                        # BEV grid height
         bev_w: 100                        # BEV grid width
         bev_feature_dim: 256              # Feature dimension
-        
+
         # Image processing related parameters
         downsample_factor: 32             # Downsampling factor for image features
-        
+
         num_decoder_layers: 3             # Number of Transformer decoder layers
 
         # Trajectory prediction related parameters
@@ -68,11 +68,11 @@
         # planning
         planning_ego_commands: 3          # Number of ego vehicle control commands (right turn, left turn, straight)
         planning_timesteps: 6
-        
+
         # Map element detection
         map_num_queries: 100              # Number of map element detection queries
         map_num_class: 3                  # Number of map element classes
         map_points_per_polylines: 20      # Number of points per polyline
-              
+
         # can_bus
         can_bus_dim: 18                   # CAN bus data dimension
