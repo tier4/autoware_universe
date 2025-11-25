@@ -477,6 +477,8 @@ void IntersectionModuleManager::modifyPathVelocity(
 {
   SceneModuleManagerInterfaceWithRTC::modifyPathVelocity(path);
   planning_factor_interface_for_occlusion_->publish();
+  creep_guidance_interface_intersection_->publish_creep_status_array();
+  creep_guidance_interface_occlusion_->publish_creep_status_array();
 }
 
 void IntersectionModuleManager::setActivation()
