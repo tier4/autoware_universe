@@ -288,7 +288,8 @@ bool hasEnoughDistance(
 std::vector<PullOverPath> selectPullOverPaths(
   const std::vector<PullOverPath> & pull_over_path_candidates,
   const GoalCandidates & goal_candidates, const std::shared_ptr<const PlannerData> planner_data,
-  const GoalPlannerParameters & parameters, const BehaviorModuleOutput & upstream_module_output)
+  const GoalPlannerParameters & parameters, const BehaviorModuleOutput & upstream_module_output,
+  const size_t max_paths = SIZE_MAX)
 {
   using autoware::behavior_path_planner::utils::getExtendedCurrentLanesFromPath;
   using autoware::motion_utils::calcSignedArcLength;
@@ -429,9 +430,22 @@ std::vector<PullOverPath> selectPullOverPaths(
       });
   }
 
+  // Limit to top max_paths
+  const size_t num_paths_to_select = std::min(max_paths, sorted_path_indices.size());
+
   std::vector<PullOverPath> selected;
-  for (const auto & sorted_index : sorted_path_indices) {
-    selected.push_back(pull_over_path_candidates.at(sorted_index));
+  selected.reserve(num_paths_to_select);
+  for (size_t i = 0; i < num_paths_to_select; ++i) {
+    selected.push_back(pull_over_path_candidates.at(sorted_path_indices[i]));
+  }
+
+  if (max_paths == SIZE_MAX) {
+    std::cout << "selectPullOverPaths: Selected all " << selected.size() << " paths (no filter)"
+              << std::endl;
+  } else {
+    std::cout << "selectPullOverPaths: Selected " << selected.size() << " out of "
+              << sorted_path_indices.size() << " paths (limited to top " << max_paths << ")"
+              << std::endl;
   }
 
   return selected;
@@ -519,6 +533,116 @@ struct SortByWeightedDistance
 int main(int argc, char ** argv)
 {
   using autoware::behavior_path_planner::utils::getReferencePath;
+
+  // Parse command line arguments with named arguments support
+  // Usage: plot_map_case1 [--distance_threshold=5.0] [--max_num_paths=5] [--max_paths=unlimited] [--mode=yaw]
+  // Example: plot_map_case1 --distance_threshold=5.0 --max_num_paths=10 --max_paths=100 --mode=lateral
+  // Or positional: plot_map_case1 5.0 10 100 lateral
+  double distance_threshold = 5.0;     // default: 5.0m (for yaw/lateral check distance)
+  size_t max_num_paths = 5;            // default: 5 (for visualization)
+  size_t max_paths = SIZE_MAX;         // default: unlimited (no filter in selectPullOverPaths)
+  std::string filter_mode = "yaw";     // default: "yaw" ("yaw" or "lateral")
+
+  // Helper to parse named arguments
+  auto parseArg = [argc, argv](const std::string & name) -> std::string {
+    std::string prefix = "--" + name + "=";
+    for (int i = 1; i < argc; ++i) {
+      std::string arg = argv[i];
+      if (arg.find(prefix) == 0) {
+        return arg.substr(prefix.length());
+      }
+    }
+    return "";
+  };
+
+  // Parse named arguments first
+  std::string dist_str = parseArg("distance_threshold");
+  std::string max_num_str = parseArg("max_num_paths");
+  std::string max_paths_str = parseArg("max_paths");
+  std::string mode_str = parseArg("mode");
+
+  // Parse named or positional arguments
+  if (!dist_str.empty()) {
+    try {
+      distance_threshold = std::stod(dist_str);
+      std::cout << "Using distance_threshold: " << distance_threshold << " meters" << std::endl;
+    } catch (const std::exception & e) {
+      std::cerr << "Invalid --distance_threshold value" << std::endl;
+    }
+  } else if (argc > 1 && argv[1][0] != '-') {
+    try {
+      distance_threshold = std::stod(argv[1]);
+      std::cout << "Using distance_threshold: " << distance_threshold << " meters" << std::endl;
+    } catch (const std::exception & e) {
+      std::cerr << "Invalid distance_threshold argument" << std::endl;
+    }
+  }
+
+  if (!max_num_str.empty()) {
+    try {
+      max_num_paths = std::stoull(max_num_str);
+      std::cout << "Using max_num_paths: " << max_num_paths << std::endl;
+    } catch (const std::exception & e) {
+      std::cerr << "Invalid --max_num_paths value" << std::endl;
+    }
+  } else if (argc > 2 && argv[2][0] != '-') {
+    try {
+      max_num_paths = std::stoull(argv[2]);
+      std::cout << "Using max_num_paths: " << max_num_paths << std::endl;
+    } catch (const std::exception & e) {
+      std::cerr << "Invalid max_num_paths argument" << std::endl;
+    }
+  }
+
+  if (!max_paths_str.empty()) {
+    if (max_paths_str == "unlimited" || max_paths_str == "inf") {
+      max_paths = SIZE_MAX;
+      std::cout << "Using max_paths: unlimited (no filter)" << std::endl;
+    } else {
+      try {
+        max_paths = std::stoull(max_paths_str);
+        std::cout << "Using max_paths (selectPullOverPaths filter): " << max_paths << std::endl;
+      } catch (const std::exception & e) {
+        std::cerr << "Invalid --max_paths value" << std::endl;
+      }
+    }
+  } else if (argc > 3 && argv[3][0] != '-') {
+    try {
+      max_paths = std::stoull(argv[3]);
+      std::cout << "Using max_paths (selectPullOverPaths filter): " << max_paths << std::endl;
+    } catch (const std::exception & e) {
+      std::cerr << "Invalid max_paths argument" << std::endl;
+    }
+  }
+
+  if (!mode_str.empty()) {
+    filter_mode = mode_str;
+    if (filter_mode != "yaw" && filter_mode != "lateral") {
+      std::cerr << "Invalid --mode value (must be 'yaw' or 'lateral'), using default 'yaw'"
+                << std::endl;
+      filter_mode = "yaw";
+    } else {
+      std::cout << "Using filter mode: " << filter_mode << std::endl;
+    }
+  } else if (argc > 4 && argv[4][0] != '-') {
+    filter_mode = argv[4];
+    if (filter_mode != "yaw" && filter_mode != "lateral") {
+      std::cerr << "Invalid mode argument (must be 'yaw' or 'lateral'), using default 'yaw'"
+                << std::endl;
+      filter_mode = "yaw";
+    } else {
+      std::cout << "Using filter mode: " << filter_mode << std::endl;
+    }
+  }
+
+  std::cout << "\n=== Configuration ===" << std::endl;
+  std::cout << "distance_threshold: " << distance_threshold << " m" << std::endl;
+  std::cout << "max_num_paths: " << max_num_paths << std::endl;
+  std::cout << "max_paths: " << (max_paths == SIZE_MAX ? "unlimited" : std::to_string(max_paths))
+            << std::endl;
+  std::cout << "mode: " << filter_mode << std::endl;
+  std::cout << "=====================\n" << std::endl;
+
   rclcpp::init(argc, argv);
 
   auto node_options = rclcpp::NodeOptions{};
@@ -588,11 +712,10 @@ int main(int argc, char ** argv)
 
   pybind11::scoped_interpreter guard{};
   auto plt = matplotlibcpp17::pyplot::import();
-  auto [fig, axes] = plt.subplots(1, 2);
 
-  auto & ax1 = axes[0];
-  auto & ax2 = axes[1];
-  // auto & ax3 = axes[2];
+  // Set figure size for large display (16:9 aspect ratio)
+  auto [fig, axes] = plt.subplots(1, 1, Kwargs("figsize"_a = pybind11::make_tuple(20, 11.25)));
+  auto & ax2 = axes[0];
   const std::vector<lanelet::Id> ids{/*15213, 15214, */ 15225,
                                      15226,
                                      15224,
@@ -604,14 +727,15 @@ int main(int argc, char ** argv)
                                      15232};
   for (const auto & id : ids) {
     const auto lanelet = planner_data->route_handler->getLaneletMapPtr()->laneletLayer.get(id);
-    plot_lanelet(ax1, lanelet);
+    // plot_lanelet(ax1, lanelet);  // Temporarily disabled
     plot_lanelet(ax2, lanelet);
     // plot_lanelet(ax3, lanelet);
   }
 
   // plot_goal_candidates(ax1, goal_candidates, footprint);
 
-  // plot_path_with_lane_id(ax2, reference_path.path, "green", "reference_path");
+  // Plot reference path
+  plot_path_with_lane_id(ax2, reference_path.path, "green", "reference_path", 1.5);
 
   const auto start = std::chrono::steady_clock::now();
   std::vector<PullOverPath> candidates;
@@ -629,7 +753,7 @@ int main(int argc, char ** argv)
   }
 
   const auto filtered_paths = selectPullOverPaths(
-    candidates, goal_candidates, planner_data, goal_planner_parameter, reference_path);
+    candidates, goal_candidates, planner_data, goal_planner_parameter, reference_path, max_paths);
   std::cout << filtered_paths.size() << std::endl;
   const auto end = std::chrono::steady_clock::now();
   std::cout << "computed candidate bezier paths in "
@@ -658,15 +782,179 @@ int main(int argc, char ** argv)
   }
   */
   const auto original_goal_pos = planner_data->route_handler->getOriginalGoalPose().position;
-  ax1.plot(
-    Args(original_goal_pos.x, original_goal_pos.y),
-    Kwargs("marker"_a = "x", "label"_a = "goal", "markersize"_a = 20, "color"_a = "red"));
-  if (goal_planner_parameter.bus_stop_area.use_bus_stop_area) {
-    const auto bus_stop_area_polygons =
-      getBusStopAreaPolygons(planner_data, goal_planner_parameter);
-    for (const auto & bus_stop_area_polygon : bus_stop_area_polygons) {
-      plot_lanelet_polygon(ax1, bus_stop_area_polygon);
+  // ax1.plot(  // Temporarily disabled
+  //   Args(original_goal_pos.x, original_goal_pos.y),
+  //   Kwargs("marker"_a = "x", "label"_a = "goal", "markersize"_a = 20, "color"_a = "red"));
+  // if (goal_planner_parameter.bus_stop_area.use_bus_stop_area) {
+  //   const auto bus_stop_area_polygons =
+  //     getBusStopAreaPolygons(planner_data, goal_planner_parameter);
+  //   for (const auto & bus_stop_area_polygon : bus_stop_area_polygons) {
+  //     plot_lanelet_polygon(ax1, bus_stop_area_polygon);
+  //   }
+  // }
+
+  // Normalize angle to [-pi, pi]
+  auto normalizeAngle = [](double angle) {
+    while (angle > M_PI) angle -= 2.0 * M_PI;
+    while (angle < -M_PI) angle += 2.0 * M_PI;
+    return angle;
+  };
+
+  // Filter paths with high curvature change near start
+  auto calculateStartYawChange = [&normalizeAngle](
+                                   const PullOverPath & path, double distance_threshold = 5.0) {
+    const auto & points = path.full_path().points;
+    if (points.size() < 2) return 0.0;
+
+    const auto start_pose = path.start_pose();
+    double start_yaw = autoware_utils::get_rpy(start_pose).z;
+    double max_relative_yaw = 0.0;  // Maximum relative yaw from start
+
+    // Find start_pose index in the path
+    size_t start_idx = 0;
+    double min_dist = std::numeric_limits<double>::max();
+    for (size_t i = 0; i < points.size(); ++i) {
+      double dist = std::hypot(
+        points[i].point.pose.position.x - start_pose.position.x,
+        points[i].point.pose.position.y - start_pose.position.y);
+      if (dist < min_dist) {
+        min_dist = dist;
+        start_idx = i;
+      }
     }
+
+    // Calculate max relative yaw within distance_threshold from start_pose
+    double accumulated_distance = 0.0;
+    for (size_t i = start_idx + 1; i < points.size(); ++i) {
+      const auto & prev_point = points[i - 1].point.pose.position;
+      const auto & curr_point = points[i].point.pose.position;
+      accumulated_distance += std::hypot(curr_point.x - prev_point.x, curr_point.y - prev_point.y);
+
+      if (accumulated_distance > distance_threshold) {
+        break;
+      }
+
+      double yaw = autoware_utils::get_rpy(points[i].point.pose).z;
+      double relative_yaw = normalizeAngle(yaw - start_yaw);  // Relative to start_yaw
+      max_relative_yaw = std::max(max_relative_yaw, std::abs(relative_yaw));
+    }
+
+    return max_relative_yaw;
+  };
+
+  // Calculate maximum lateral distance deviation from start_pose within distance_threshold
+  auto calculateMaxLateralDistance = [](const PullOverPath & path, double distance_threshold = 5.0) {
+    const auto & points = path.full_path().points;
+    if (points.size() < 2) return 0.0;
+
+    const auto start_pose = path.start_pose();
+    const double start_x = start_pose.position.x;
+    const double start_y = start_pose.position.y;
+    const double start_yaw = autoware_utils::get_rpy(start_pose).z;
+
+    // Unit vector in the direction of start_pose
+    const double cos_yaw = std::cos(start_yaw);
+    const double sin_yaw = std::sin(start_yaw);
+
+    // Find start_pose index in the path
+    size_t start_idx = 0;
+    double min_dist = std::numeric_limits<double>::max();
+    for (size_t i = 0; i < points.size(); ++i) {
+      double dist = std::hypot(
+        points[i].point.pose.position.x - start_x,
+        points[i].point.pose.position.y - start_y);
+      if (dist < min_dist) {
+        min_dist = dist;
+        start_idx = i;
+      }
+    }
+
+    // Calculate max lateral distance within distance_threshold from start_pose
+    double max_lateral_distance = 0.0;
+    double accumulated_distance = 0.0;
+
+    for (size_t i = start_idx + 1; i < points.size(); ++i) {
+      const auto & prev_point = points[i - 1].point.pose.position;
+      const auto & curr_point = points[i].point.pose.position;
+      accumulated_distance += std::hypot(curr_point.x - prev_point.x, curr_point.y - prev_point.y);
+
+      if (accumulated_distance > distance_threshold) {
+        break;
+      }
+
+      // Vector from start_pose to current point
+      const double dx = curr_point.x - start_x;
+      const double dy = curr_point.y - start_y;
+
+      // Lateral distance (perpendicular to start_pose direction)
+      // lateral = dx * sin(yaw) - dy * cos(yaw) for right-hand coordinate system
+      const double lateral_distance = std::abs(dx * sin_yaw - dy * cos_yaw);
+      max_lateral_distance = std::max(max_lateral_distance, lateral_distance);
+    }
+
+    return max_lateral_distance;
+  };
+
+  // Calculate metrics for all paths based on filter mode
+  std::vector<std::pair<size_t, double>> path_metrics;
+
+  if (filter_mode == "yaw") {
+    // Calculate yaw change for all paths
+    for (size_t i = 0; i < filtered_paths.size(); ++i) {
+      double yaw_change = calculateStartYawChange(filtered_paths[i], distance_threshold);
+      path_metrics.push_back({i, yaw_change});
+    }
+
+    // Sort by yaw change (descending order)
+    std::sort(path_metrics.begin(), path_metrics.end(), [](const auto & a, const auto & b) {
+      return a.second > b.second;
+    });
+
+    std::cout << "\n=== Top 10 paths with highest yaw change ===" << std::endl;
+    for (size_t rank = 0; rank < std::min<size_t>(10, path_metrics.size()); ++rank) {
+      const auto & [idx, yaw_change] = path_metrics[rank];
+      std::cout << "Rank " << rank + 1 << ": Path " << idx << " - Yaw change: " << yaw_change
+                << " rad (" << (yaw_change * 180.0 / M_PI) << " deg)" << std::endl;
+    }
+  } else if (filter_mode == "lateral") {
+    // Calculate lateral distance for all paths
+    for (size_t i = 0; i < filtered_paths.size(); ++i) {
+      double lateral_dist = calculateMaxLateralDistance(filtered_paths[i], distance_threshold);
+      path_metrics.push_back({i, lateral_dist});
+    }
+
+    // Sort by lateral distance (descending order)
+    std::sort(path_metrics.begin(), path_metrics.end(), [](const auto & a, const auto & b) {
+      return a.second > b.second;
+    });
+
+    std::cout << "\n=== Top 10 paths with highest lateral distance ===" << std::endl;
+    for (size_t rank = 0; rank < std::min<size_t>(10, path_metrics.size()); ++rank) {
+      const auto & [idx, lateral_dist] = path_metrics[rank];
+      std::cout << "Rank " << rank + 1 << ": Path " << idx << " - Lateral distance: "
+                << lateral_dist << " m" << std::endl;
+    }
+  }
+
+  // Filter threshold: select paths with metric > threshold
+  const double yaw_change_threshold = 0.1;  // rad (about 5.7 degrees)
+  const double lateral_dist_threshold = 0.1;  // m
+  std::vector<size_t> high_curvature_indices;
+
+  for (const auto & [idx, metric] : path_metrics) {
+    if (filter_mode == "yaw" && metric > yaw_change_threshold) {
+      high_curvature_indices.push_back(idx);
+    } else if (filter_mode == "lateral" && metric > lateral_dist_threshold) {
+      high_curvature_indices.push_back(idx);
+    }
+  }
+
+  if (filter_mode == "yaw") {
+    std::cout << "\nFiltered " << high_curvature_indices.size() << " paths with yaw change > "
+              << yaw_change_threshold << " rad" << std::endl;
+  } else if (filter_mode == "lateral") {
+    std::cout << "\nFiltered " << high_curvature_indices.size() << " paths with lateral distance > "
+              << lateral_dist_threshold << " m" << std::endl;
   }
 
   for (auto i = 0; i < filtered_paths.size(); ++i) {
@@ -676,17 +964,162 @@ int main(int argc, char ** argv)
     const auto & color = (i == 0) ? "red" : g_colors.at(i % g_colors.size());
     const auto max_parking_curvature = filtered_path.parking_path_max_curvature();
     if (i == 0) {
-      plot_goal_candidate(ax1, filtered_path.modified_goal(), prio, footprint, color);
+      // plot_goal_candidate(ax1, filtered_path.modified_goal(), prio, footprint, color);  //
+      // Temporarily disabled
       plot_path_with_lane_id(ax2, filtered_path.full_path(), color, "most prio", 2.0);
-      for (const auto & path_point : filtered_path.full_path().points) {
-        const auto pose_footprint = autoware_utils_geometry::transform_vector(
-          footprint, autoware_utils::pose2transform(path_point.point.pose));
-        plot_footprint(ax2, pose_footprint, "blue");
+
+      // Visualize most prio start pose (arrow only, red)
+      const auto & most_prio_start_pose = filtered_path.start_pose();
+      std::vector<double> most_prio_start_x = {most_prio_start_pose.position.x};
+      std::vector<double> most_prio_start_y = {most_prio_start_pose.position.y};
+      const double most_prio_start_yaw = autoware_utils::get_rpy(most_prio_start_pose).z;
+      std::vector<double> most_prio_start_yaw_cos = {std::cos(most_prio_start_yaw)};
+      std::vector<double> most_prio_start_yaw_sin = {std::sin(most_prio_start_yaw)};
+
+      ax2.quiver(
+        Args(
+          most_prio_start_x, most_prio_start_y, most_prio_start_yaw_cos, most_prio_start_yaw_sin),
+        Kwargs(
+          "angles"_a = "xy", "scale_units"_a = "xy", "scale"_a = 1.5, "color"_a = "red",
+          "width"_a = 0.01, "zorder"_a = 15));
+
+      // Find yaw_check_end_pose (5m from start_pose)
+      const auto & points = filtered_path.full_path().points;
+      double accumulated_distance = 0.0;
+      geometry_msgs::msg::Pose yaw_check_end_pose;
+      bool found_end_pose = false;
+
+      // Find start_pose index in the path
+      size_t start_idx = 0;
+      double min_dist = std::numeric_limits<double>::max();
+      for (size_t j = 0; j < points.size(); ++j) {
+        double dist = std::hypot(
+          points[j].point.pose.position.x - most_prio_start_pose.position.x,
+          points[j].point.pose.position.y - most_prio_start_pose.position.y);
+        if (dist < min_dist) {
+          min_dist = dist;
+          start_idx = j;
+        }
+      }
+
+      // Calculate 5m from start_pose
+      for (size_t j = start_idx + 1; j < points.size(); ++j) {
+        const auto & prev_point = points[j - 1].point.pose.position;
+        const auto & curr_point = points[j].point.pose.position;
+        accumulated_distance +=
+          std::hypot(curr_point.x - prev_point.x, curr_point.y - prev_point.y);
+
+        if (accumulated_distance >= distance_threshold && !found_end_pose) {
+          yaw_check_end_pose = points[j].point.pose;
+          found_end_pose = true;
+          break;
+        }
+      }
+
+      // Draw yaw_check_end_pose (arrow only, blue)
+      if (found_end_pose) {
+        std::vector<double> end_x = {yaw_check_end_pose.position.x};
+        std::vector<double> end_y = {yaw_check_end_pose.position.y};
+        const double end_yaw = autoware_utils::get_rpy(yaw_check_end_pose).z;
+        std::vector<double> end_yaw_cos = {std::cos(end_yaw)};
+        std::vector<double> end_yaw_sin = {std::sin(end_yaw)};
+
+        ax2.quiver(
+          Args(end_x, end_y, end_yaw_cos, end_yaw_sin),
+          Kwargs(
+            "angles"_a = "xy", "scale_units"_a = "xy", "scale"_a = 1.5, "color"_a = "blue",
+            "width"_a = 0.01, "zorder"_a = 14));
       }
     } else if (i % 50 == 0) {
-      std::cout << "plotting " << i << "-th filtered path" << std::endl;
-      plot_goal_candidate(ax1, filtered_path.modified_goal(), prio, footprint, color);
-      plot_path_with_lane_id(ax1, filtered_path.full_path(), color, "", 2.0);
+      // std::cout << "plotting " << i << "-th filtered path" << std::endl;
+      // plot_goal_candidate(ax1, filtered_path.modified_goal(), prio, footprint, color);  //
+      // Temporarily disabled plot_path_with_lane_id(ax1, filtered_path.full_path(), color,
+      // "", 2.0);  // Temporarily disabled
+    }
+  }
+
+  // Plot high curvature paths on ax2
+  for (size_t rank = 0; rank < std::min<size_t>(max_num_paths, high_curvature_indices.size());
+       ++rank) {
+    const auto idx = high_curvature_indices[rank];
+    const auto & path = filtered_paths[idx];
+    const auto goal_id = path.goal_id();
+    const auto prio = goal_id2prio[goal_id];
+    const auto & color = g_colors.at(rank % g_colors.size());
+
+    plot_goal_candidate(ax2, path.modified_goal(), prio, footprint, color);
+
+    std::string label;
+    if (filter_mode == "yaw") {
+      label = "Rank " + std::to_string(rank + 1) +
+              " (yaw: " + std::to_string(path_metrics[rank].second * 180.0 / M_PI) + " deg)";
+    } else if (filter_mode == "lateral") {
+      label = "Rank " + std::to_string(rank + 1) +
+              " (lateral: " + std::to_string(path_metrics[rank].second) + " m)";
+    }
+
+    plot_path_with_lane_id(ax2, path.full_path(), color, label, 1.5);
+
+    // Visualize start pose (arrow only, red)
+    const auto & start_pose = path.start_pose();
+    std::vector<double> start_x = {start_pose.position.x};
+    std::vector<double> start_y = {start_pose.position.y};
+    const double start_yaw = autoware_utils::get_rpy(start_pose).z;
+    std::vector<double> start_yaw_cos = {std::cos(start_yaw)};
+    std::vector<double> start_yaw_sin = {std::sin(start_yaw)};
+
+    ax2.quiver(
+      Args(start_x, start_y, start_yaw_cos, start_yaw_sin),
+      Kwargs(
+        "angles"_a = "xy", "scale_units"_a = "xy", "scale"_a = 2.0, "color"_a = "red",
+        "width"_a = 0.008, "zorder"_a = 10));
+
+    // Find yaw_check_end_pose (5m from start_pose)
+    const auto & points = path.full_path().points;
+    double accumulated_distance = 0.0;
+    geometry_msgs::msg::Pose yaw_check_end_pose;
+    bool found_end_pose = false;
+
+    // Find start_pose index in the path
+    size_t start_idx = 0;
+    double min_dist = std::numeric_limits<double>::max();
+    for (size_t j = 0; j < points.size(); ++j) {
+      double dist = std::hypot(
+        points[j].point.pose.position.x - start_pose.position.x,
+        points[j].point.pose.position.y - start_pose.position.y);
+      if (dist < min_dist) {
+        min_dist = dist;
+        start_idx = j;
+      }
+    }
+
+    // Calculate 5m from start_pose
+    for (size_t j = start_idx + 1; j < points.size(); ++j) {
+      const auto & prev_point = points[j - 1].point.pose.position;
+      const auto & curr_point = points[j].point.pose.position;
+      accumulated_distance += std::hypot(curr_point.x - prev_point.x, curr_point.y - prev_point.y);
+
+      if (accumulated_distance >= distance_threshold
+        && !found_end_pose) {
+        yaw_check_end_pose = points[j].point.pose;
+        found_end_pose = true;
+        break;
+      }
+    }
+
+    // Draw yaw_check_end_pose (arrow only, blue)
+    if (found_end_pose) {
+      std::vector<double> end_x = {yaw_check_end_pose.position.x};
+      std::vector<double> end_y = {yaw_check_end_pose.position.y};
+      const double end_yaw = autoware_utils::get_rpy(yaw_check_end_pose).z;
+      std::vector<double> end_yaw_cos = {std::cos(end_yaw)};
+      std::vector<double> end_yaw_sin = {std::sin(end_yaw)};
+
+      ax2.quiver(
+        Args(end_x, end_y, end_yaw_cos, end_yaw_sin),
+        Kwargs(
+          "angles"_a = "xy", "scale_units"_a = "xy", "scale"_a = 2.0, "color"_a = "blue",
+          "width"_a = 0.008, "zorder"_a = 11));
     }
   }
   ax2.plot(
@@ -698,7 +1131,7 @@ int main(int argc, char ** argv)
     // plot_path_with_lane_id(ax2, centerline_path.value(), "red", "centerline_path");
   }
 
-  ax1.set_aspect(Args("equal"));
+  // ax1.set_aspect(Args("equal"));  // Temporarily disabled
   ax2.set_aspect(Args("equal"));
   ax2.legend();
   plt.show();
