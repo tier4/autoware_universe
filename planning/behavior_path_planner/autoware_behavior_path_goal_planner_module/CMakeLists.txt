@@ -42,7 +42,14 @@ if(BUILD_EXAMPLES)
     ament_auto_add_executable(${example_name} ${example_file})
     target_include_directories(${example_name} SYSTEM INTERFACE matplotlibcpp17::matplotlibcpp17)
     set_source_files_properties(${example_file} PROPERTIES COMPILE_FLAGS -Wno-error -Wno-attributes -Wno-unused-parameter)
+
+    # Link matplotlib for plot examples
     target_link_libraries(${example_name} matplotlibcpp17::matplotlibcpp17)
+
+    # Link rosbag2 for rosbag analysis example
+    if(example_name STREQUAL "analyze_rosbag_lateral_accel")
+      ament_target_dependencies(${example_name} rosbag2_cpp rosbag2_storage)
+    endif()
   endforeach()
 endif()
 

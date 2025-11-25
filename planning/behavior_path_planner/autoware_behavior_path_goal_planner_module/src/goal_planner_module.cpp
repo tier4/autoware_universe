@@ -1346,6 +1346,13 @@ std::optional<PullOverPath> GoalPlannerModule::selectPullOverPath(
       checkOccupancyGridCollision(parking_path, occupancy_grid_map_)) {
       continue;
     }
+
+    // Debug: Print lateral acceleration check details for selected path
+    goal_planner_utils::is_lateral_acceleration_acceptable_near_start(
+      parking_path.points, path.start_pose(), velocity_for_filtering,
+      parameters_.bezier_parking.lateral_acceleration_filtering_duration,
+      parameters_.bezier_parking.lateral_acceleration_threshold, true);
+
     return path;
   }
   return {};

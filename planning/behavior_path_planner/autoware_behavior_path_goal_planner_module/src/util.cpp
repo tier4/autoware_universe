@@ -1222,7 +1222,8 @@ lanelet::ConstLanelets get_reference_lanelets_for_pullover(
 
 bool is_lateral_acceleration_acceptable_near_start(
   const std::vector<PathPointWithLaneId> & path_points, const geometry_msgs::msg::Pose & start_pose,
-  const double velocity, const double duration, const double lateral_acceleration_threshold)
+  const double velocity, const double duration, const double lateral_acceleration_threshold,
+  const bool is_selected)
 {
   using autoware::motion_utils::calcLongitudinalOffsetPose;
 
@@ -1266,21 +1267,33 @@ bool is_lateral_acceleration_acceptable_near_start(
   const double radius = velocity_squared / lateral_acceleration_threshold;
   const double maximum_lateral_distance = radius * (1.0 - std::cos(maximum_yaw_difference));
 
-  // Reject if yaw threshold is exceeded
-  if (yaw_difference > maximum_yaw_difference) {
-    std::cerr << "Lateral Accel Check: lateral_distance = " << lateral_distance
+  // Print debug information for selected path or rejected paths
+  if (is_selected) {
+    std::cerr << "[SELECTED] Lateral Accel Check: lateral_distance = " << lateral_distance
               << ", maximum_lateral_distance = " << maximum_lateral_distance
               << ", yaw_difference = " << yaw_difference
               << ", maximum_yaw_difference = " << maximum_yaw_difference << std::endl;
+  }
+
+  // Reject if yaw threshold is exceeded
+  if (yaw_difference > maximum_yaw_difference) {
+    if (!is_selected) {
+      std::cerr << "Lateral Accel Check: lateral_distance = " << lateral_distance
+                << ", maximum_lateral_distance = " << maximum_lateral_distance
+                << ", yaw_difference = " << yaw_difference
+                << ", maximum_yaw_difference = " << maximum_yaw_difference << std::endl;
+    }
     return false;
   }
 
   // Reject if lateral distance threshold is exceeded
   if (lateral_distance > maximum_lateral_distance) {
-    std::cerr << "Lateral Accel Check: lateral_distance = " << lateral_distance
-              << ", maximum_lateral_distance = " << maximum_lateral_distance
-              << ", yaw_difference = " << yaw_difference
-              << ", maximum_yaw_difference = " << maximum_yaw_difference << std::endl;
+    if (!is_selected) {
+      std::cerr << "Lateral Accel Check: lateral_distance = " << lateral_distance
+                << ", maximum_lateral_distance = " << maximum_lateral_distance
+                << ", yaw_difference = " << yaw_difference
+                << ", maximum_yaw_difference = " << maximum_yaw_difference << std::endl;
+    }
     return false;
   }
 

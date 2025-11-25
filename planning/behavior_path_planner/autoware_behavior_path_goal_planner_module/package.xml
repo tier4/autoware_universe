@@ -32,6 +32,8 @@
   <depend>pluginlib</depend>
   <depend>range-v3</depend>
   <depend>rclcpp</depend>
+  <depend>rosbag2_cpp</depend>
+  <depend>rosbag2_storage</depend>
   <depend>visualization_msgs</depend>
 
   <test_depend>ament_cmake_ros</test_depend>

@@ -359,7 +359,7 @@ lanelet::ConstLanelets get_reference_lanelets_for_pullover(
 bool is_lateral_acceleration_acceptable_near_start(
   const std::vector<PathPointWithLaneId> & path_points,
   const geometry_msgs::msg::Pose & start_pose, const double velocity, const double duration,
-  const double lateral_acceleration_threshold);
+  const double lateral_acceleration_threshold, const bool is_selected = false);
 
 }  // namespace autoware::behavior_path_planner::goal_planner_utils
 
