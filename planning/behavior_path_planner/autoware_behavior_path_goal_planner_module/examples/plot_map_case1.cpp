@@ -535,13 +535,17 @@ int main(int argc, char ** argv)
   using autoware::behavior_path_planner::utils::getReferencePath;
 
   // Parse command line arguments with named arguments support
-  // Usage: plot_map_case1 [--distance_threshold=5.0] [--max_num_paths=5] [--max_paths=unlimited] [--mode=yaw]
-  // Example: plot_map_case1 --distance_threshold=5.0 --max_num_paths=10 --max_paths=100 --mode=lateral
-  // Or positional: plot_map_case1 5.0 10 100 lateral
+  // Usage: plot_map_case1 [--distance_threshold=5.0] [--yaw_threshold=0.1] [--lateral_threshold=0.1] [--max_paths=unlimited] [--mode=yaw] [--filter_type=positive] [--max_display=unlimited]
+  // Example: plot_map_case1 --distance_threshold=5.0 --yaw_threshold=0.2 --mode=yaw --max_paths=100
+  // Example: plot_map_case1 --distance_threshold=5.0 --lateral_threshold=0.5 --mode=lateral --filter_type=negative
+  // Example: plot_map_case1 --distance_threshold=5.0 --yaw_threshold=0.2 --lateral_threshold=0.5 --mode=both --max_display=50
   double distance_threshold = 5.0;     // default: 5.0m (for yaw/lateral check distance)
-  size_t max_num_paths = 5;            // default: 5 (for visualization)
+  double yaw_threshold = -1.0;         // default: -1.0 (negative = show all)
+  double lateral_threshold = -1.0;     // default: -1.0 (negative = show all)
   size_t max_paths = SIZE_MAX;         // default: unlimited (no filter in selectPullOverPaths)
-  std::string filter_mode = "yaw";     // default: "yaw" ("yaw" or "lateral")
+  std::string filter_mode = "yaw";     // default: "yaw" ("yaw", "lateral", or "both")
+  std::string filter_type = "positive"; // default: "positive" ("positive" or "negative")
+  size_t max_display = SIZE_MAX;       // default: unlimited (display all filtered paths)
 
   // Helper to parse named arguments
   auto parseArg = [argc, argv](const std::string & name) -> std::string {
@@ -555,13 +559,15 @@ int main(int argc, char ** argv)
     return "";
   };
 
-  // Parse named arguments first
+  // Parse named arguments only (no positional arguments)
   std::string dist_str = parseArg("distance_threshold");
-  std::string max_num_str = parseArg("max_num_paths");
+  std::string yaw_thresh_str = parseArg("yaw_threshold");
+  std::string lat_thresh_str = parseArg("lateral_threshold");
   std::string max_paths_str = parseArg("max_paths");
   std::string mode_str = parseArg("mode");
+  std::string filter_type_str = parseArg("filter_type");
+  std::string max_display_str = parseArg("max_display");
 
-  // Parse named or positional arguments
   if (!dist_str.empty()) {
     try {
       distance_threshold = std::stod(dist_str);
@@ -569,28 +575,23 @@ int main(int argc, char ** argv)
     } catch (const std::exception & e) {
       std::cerr << "Invalid --distance_threshold value" << std::endl;
     }
-  } else if (argc > 1 && argv[1][0] != '-') {
+  }
+
+  if (!yaw_thresh_str.empty()) {
     try {
-      distance_threshold = std::stod(argv[1]);
-      std::cout << "Using distance_threshold: " << distance_threshold << " meters" << std::endl;
+      yaw_threshold = std::stod(yaw_thresh_str);
+      std::cout << "Using yaw_threshold: " << yaw_threshold << " radians" << std::endl;
     } catch (const std::exception & e) {
-      std::cerr << "Invalid distance_threshold argument" << std::endl;
+      std::cerr << "Invalid --yaw_threshold value" << std::endl;
     }
   }
 
-  if (!max_num_str.empty()) {
+  if (!lat_thresh_str.empty()) {
     try {
-      max_num_paths = std::stoull(max_num_str);
-      std::cout << "Using max_num_paths: " << max_num_paths << std::endl;
+      lateral_threshold = std::stod(lat_thresh_str);
+      std::cout << "Using lateral_threshold: " << lateral_threshold << " meters" << std::endl;
     } catch (const std::exception & e) {
-      std::cerr << "Invalid --max_num_paths value" << std::endl;
-    }
-  } else if (argc > 2 && argv[2][0] != '-') {
-    try {
-      max_num_paths = std::stoull(argv[2]);
-      std::cout << "Using max_num_paths: " << max_num_paths << std::endl;
-    } catch (const std::exception & e) {
-      std::cerr << "Invalid max_num_paths argument" << std::endl;
+      std::cerr << "Invalid --lateral_threshold value" << std::endl;
     }
   }
 
@@ -606,41 +607,54 @@ int main(int argc, char ** argv)
         std::cerr << "Invalid --max_paths value" << std::endl;
       }
     }
-  } else if (argc > 3 && argv[3][0] != '-') {
-    try {
-      max_paths = std::stoull(argv[3]);
-      std::cout << "Using max_paths (selectPullOverPaths filter): " << max_paths << std::endl;
-    } catch (const std::exception & e) {
-      std::cerr << "Invalid max_paths argument" << std::endl;
-    }
   }
 
   if (!mode_str.empty()) {
     filter_mode = mode_str;
-    if (filter_mode != "yaw" && filter_mode != "lateral") {
-      std::cerr << "Invalid --mode value (must be 'yaw' or 'lateral'), using default 'yaw'"
+    if (filter_mode != "yaw" && filter_mode != "lateral" && filter_mode != "both") {
+      std::cerr << "Invalid --mode value (must be 'yaw', 'lateral', or 'both'), using default 'yaw'"
                 << std::endl;
       filter_mode = "yaw";
     } else {
       std::cout << "Using filter mode: " << filter_mode << std::endl;
     }
-  } else if (argc > 4 && argv[4][0] != '-') {
-    filter_mode = argv[4];
-    if (filter_mode != "yaw" && filter_mode != "lateral") {
-      std::cerr << "Invalid mode argument (must be 'yaw' or 'lateral'), using default 'yaw'"
+  }
+
+  if (!filter_type_str.empty()) {
+    filter_type = filter_type_str;
+    if (filter_type != "positive" && filter_type != "negative") {
+      std::cerr << "Invalid --filter_type value (must be 'positive' or 'negative'), using default 'positive'"
                 << std::endl;
-      filter_mode = "yaw";
+      filter_type = "positive";
     } else {
-      std::cout << "Using filter mode: " << filter_mode << std::endl;
+      std::cout << "Using filter type: " << filter_type << std::endl;
+    }
+  }
+
+  if (!max_display_str.empty()) {
+    if (max_display_str == "unlimited" || max_display_str == "inf") {
+      max_display = SIZE_MAX;
+      std::cout << "Using max_display: unlimited (display all filtered paths)" << std::endl;
+    } else {
+      try {
+        max_display = std::stoull(max_display_str);
+        std::cout << "Using max_display (plot display limit): " << max_display << std::endl;
+      } catch (const std::exception & e) {
+        std::cerr << "Invalid --max_display value" << std::endl;
+      }
     }
   }
 
   std::cout << "\n=== Configuration ===" << std::endl;
   std::cout << "distance_threshold: " << distance_threshold << " m" << std::endl;
-  std::cout << "max_num_paths: " << max_num_paths << std::endl;
+  std::cout << "yaw_threshold: " << (yaw_threshold >= 0.0 ? std::to_string(yaw_threshold) + " rad" : "disabled (show all)") << std::endl;
+  std::cout << "lateral_threshold: " << (lateral_threshold >= 0.0 ? std::to_string(lateral_threshold) + " m" : "disabled (show all)") << std::endl;
   std::cout << "max_paths: " << (max_paths == SIZE_MAX ? "unlimited" : std::to_string(max_paths))
             << std::endl;
   std::cout << "mode: " << filter_mode << std::endl;
+  std::cout << "filter_type: " << filter_type << std::endl;
+  std::cout << "max_display: " << (max_display == SIZE_MAX ? "unlimited" : std::to_string(max_display))
+            << std::endl;
   std::cout << "=====================\n" << std::endl;
 
   rclcpp::init(argc, argv);
@@ -895,66 +909,184 @@ int main(int argc, char ** argv)
     return max_lateral_distance;
   };
 
-  // Calculate metrics for all paths based on filter mode
-  std::vector<std::pair<size_t, double>> path_metrics;
+  // Calculate metrics for all paths
+  std::vector<std::tuple<size_t, double, double>> path_metrics;  // <idx, yaw_change, lateral_dist>
+
+  for (size_t i = 0; i < filtered_paths.size(); ++i) {
+    double yaw_change = calculateStartYawChange(filtered_paths[i], distance_threshold);
+    double lateral_dist = calculateMaxLateralDistance(filtered_paths[i], distance_threshold);
+    path_metrics.push_back({i, yaw_change, lateral_dist});
+  }
+
+  // Filter paths based on thresholds
+  std::vector<size_t> filtered_indices;
 
   if (filter_mode == "yaw") {
-    // Calculate yaw change for all paths
-    for (size_t i = 0; i < filtered_paths.size(); ++i) {
-      double yaw_change = calculateStartYawChange(filtered_paths[i], distance_threshold);
-      path_metrics.push_back({i, yaw_change});
+    // Filter by yaw threshold only
+    for (const auto & [idx, yaw_change, lateral_dist] : path_metrics) {
+      bool condition_met = (yaw_threshold < 0.0) ||
+                           (filter_type == "positive" ? yaw_change >= yaw_threshold : yaw_change < yaw_threshold);
+      if (condition_met) {
+        filtered_indices.push_back(idx);
+      }
+    }
+    // Sort by yaw change (descending order for positive, ascending for negative)
+    if (filter_type == "positive") {
+      std::sort(filtered_indices.begin(), filtered_indices.end(), [&path_metrics](size_t a, size_t b) {
+        return std::get<1>(path_metrics[a]) > std::get<1>(path_metrics[b]);
+      });
+    } else {
+      std::sort(filtered_indices.begin(), filtered_indices.end(), [&path_metrics](size_t a, size_t b) {
+        return std::get<1>(path_metrics[a]) < std::get<1>(path_metrics[b]);
+      });
     }
 
-    // Sort by yaw change (descending order)
-    std::sort(path_metrics.begin(), path_metrics.end(), [](const auto & a, const auto & b) {
-      return a.second > b.second;
-    });
+    std::cout << "\n=== Paths filtered by yaw threshold (" << filter_type << ") ===" << std::endl;
+    if (yaw_threshold < 0.0) {
+      std::cout << "No yaw threshold applied (showing all " << filtered_indices.size() << " paths)" << std::endl;
+    } else if (filter_type == "positive") {
+      std::cout << "Filtered " << filtered_indices.size() << " paths with yaw change >= "
+                << yaw_threshold << " rad (" << (yaw_threshold * 180.0 / M_PI) << " deg)" << std::endl;
+    } else {
+      std::cout << "Filtered " << filtered_indices.size() << " paths with yaw change < "
+                << yaw_threshold << " rad (" << (yaw_threshold * 180.0 / M_PI) << " deg)" << std::endl;
+    }
 
-    std::cout << "\n=== Top 10 paths with highest yaw change ===" << std::endl;
-    for (size_t rank = 0; rank < std::min<size_t>(10, path_metrics.size()); ++rank) {
-      const auto & [idx, yaw_change] = path_metrics[rank];
+    // Show top 10 paths
+    if (filter_type == "positive") {
+      std::cout << "\n=== Top 10 paths with highest yaw change ===" << std::endl;
+    } else {
+      std::cout << "\n=== Top 10 paths with lowest yaw change ===" << std::endl;
+    }
+    for (size_t rank = 0; rank < std::min<size_t>(10, filtered_indices.size()); ++rank) {
+      const auto idx = filtered_indices[rank];
+      const auto yaw_change = std::get<1>(path_metrics[idx]);
       std::cout << "Rank " << rank + 1 << ": Path " << idx << " - Yaw change: " << yaw_change
                 << " rad (" << (yaw_change * 180.0 / M_PI) << " deg)" << std::endl;
     }
+
   } else if (filter_mode == "lateral") {
-    // Calculate lateral distance for all paths
-    for (size_t i = 0; i < filtered_paths.size(); ++i) {
-      double lateral_dist = calculateMaxLateralDistance(filtered_paths[i], distance_threshold);
-      path_metrics.push_back({i, lateral_dist});
+    // Filter by lateral threshold only
+    for (const auto & [idx, yaw_change, lateral_dist] : path_metrics) {
+      bool condition_met = (lateral_threshold < 0.0) ||
+                           (filter_type == "positive" ? lateral_dist >= lateral_threshold : lateral_dist < lateral_threshold);
+      if (condition_met) {
+        filtered_indices.push_back(idx);
+      }
+    }
+    // Sort by lateral distance (descending order for positive, ascending for negative)
+    if (filter_type == "positive") {
+      std::sort(filtered_indices.begin(), filtered_indices.end(), [&path_metrics](size_t a, size_t b) {
+        return std::get<2>(path_metrics[a]) > std::get<2>(path_metrics[b]);
+      });
+    } else {
+      std::sort(filtered_indices.begin(), filtered_indices.end(), [&path_metrics](size_t a, size_t b) {
+        return std::get<2>(path_metrics[a]) < std::get<2>(path_metrics[b]);
+      });
     }
 
-    // Sort by lateral distance (descending order)
-    std::sort(path_metrics.begin(), path_metrics.end(), [](const auto & a, const auto & b) {
-      return a.second > b.second;
-    });
+    std::cout << "\n=== Paths filtered by lateral threshold (" << filter_type << ") ===" << std::endl;
+    if (lateral_threshold < 0.0) {
+      std::cout << "No lateral threshold applied (showing all " << filtered_indices.size() << " paths)" << std::endl;
+    } else if (filter_type == "positive") {
+      std::cout << "Filtered " << filtered_indices.size() << " paths with lateral distance >= "
+                << lateral_threshold << " m" << std::endl;
+    } else {
+      std::cout << "Filtered " << filtered_indices.size() << " paths with lateral distance < "
+                << lateral_threshold << " m" << std::endl;
+    }
 
-    std::cout << "\n=== Top 10 paths with highest lateral distance ===" << std::endl;
-    for (size_t rank = 0; rank < std::min<size_t>(10, path_metrics.size()); ++rank) {
-      const auto & [idx, lateral_dist] = path_metrics[rank];
+    // Show top 10 paths
+    if (filter_type == "positive") {
+      std::cout << "\n=== Top 10 paths with highest lateral distance ===" << std::endl;
+    } else {
+      std::cout << "\n=== Top 10 paths with lowest lateral distance ===" << std::endl;
+    }
+    for (size_t rank = 0; rank < std::min<size_t>(10, filtered_indices.size()); ++rank) {
+      const auto idx = filtered_indices[rank];
+      const auto lateral_dist = std::get<2>(path_metrics[idx]);
       std::cout << "Rank " << rank + 1 << ": Path " << idx << " - Lateral distance: "
                 << lateral_dist << " m" << std::endl;
     }
-  }
 
-  // Filter threshold: select paths with metric > threshold
-  const double yaw_change_threshold = 0.1;  // rad (about 5.7 degrees)
-  const double lateral_dist_threshold = 0.1;  // m
-  std::vector<size_t> high_curvature_indices;
+  } else if (filter_mode == "both") {
+    // Filter by both yaw OR lateral thresholds (either condition satisfies)
+    for (const auto & [idx, yaw_change, lateral_dist] : path_metrics) {
+      bool yaw_ok, lat_ok;
 
-  for (const auto & [idx, metric] : path_metrics) {
-    if (filter_mode == "yaw" && metric > yaw_change_threshold) {
-      high_curvature_indices.push_back(idx);
-    } else if (filter_mode == "lateral" && metric > lateral_dist_threshold) {
-      high_curvature_indices.push_back(idx);
+      if (filter_type == "positive") {
+        yaw_ok = (yaw_threshold >= 0.0) && (yaw_change >= yaw_threshold);
+        lat_ok = (lateral_threshold >= 0.0) && (lateral_dist >= lateral_threshold);
+      } else {
+        yaw_ok = (yaw_threshold >= 0.0) && (yaw_change < yaw_threshold);
+        lat_ok = (lateral_threshold >= 0.0) && (lateral_dist < lateral_threshold);
+      }
+
+      // If both thresholds are negative (not specified), show all paths
+      if (yaw_threshold < 0.0 && lateral_threshold < 0.0) {
+        filtered_indices.push_back(idx);
+      }
+      // If either threshold is met (OR condition)
+      else if (yaw_ok || lat_ok) {
+        filtered_indices.push_back(idx);
+      }
     }
-  }
+    // Sort by yaw change (primary), then lateral distance (secondary)
+    if (filter_type == "positive") {
+      std::sort(filtered_indices.begin(), filtered_indices.end(), [&path_metrics](size_t a, size_t b) {
+        auto yaw_a = std::get<1>(path_metrics[a]);
+        auto yaw_b = std::get<1>(path_metrics[b]);
+        if (std::abs(yaw_a - yaw_b) > 1e-6) {
+          return yaw_a > yaw_b;
+        }
+        return std::get<2>(path_metrics[a]) > std::get<2>(path_metrics[b]);
+      });
+    } else {
+      std::sort(filtered_indices.begin(), filtered_indices.end(), [&path_metrics](size_t a, size_t b) {
+        auto yaw_a = std::get<1>(path_metrics[a]);
+        auto yaw_b = std::get<1>(path_metrics[b]);
+        if (std::abs(yaw_a - yaw_b) > 1e-6) {
+          return yaw_a < yaw_b;
+        }
+        return std::get<2>(path_metrics[a]) < std::get<2>(path_metrics[b]);
+      });
+    }
 
-  if (filter_mode == "yaw") {
-    std::cout << "\nFiltered " << high_curvature_indices.size() << " paths with yaw change > "
-              << yaw_change_threshold << " rad" << std::endl;
-  } else if (filter_mode == "lateral") {
-    std::cout << "\nFiltered " << high_curvature_indices.size() << " paths with lateral distance > "
-              << lateral_dist_threshold << " m" << std::endl;
+    std::cout << "\n=== Paths filtered by yaw OR lateral thresholds (" << filter_type << ") ===" << std::endl;
+    if (yaw_threshold < 0.0 && lateral_threshold < 0.0) {
+      std::cout << "No thresholds applied (showing all " << filtered_indices.size() << " paths)" << std::endl;
+    } else {
+      std::cout << "Filtered " << filtered_indices.size() << " paths with ";
+      if (yaw_threshold >= 0.0) {
+        if (filter_type == "positive") {
+          std::cout << "yaw change >= " << yaw_threshold << " rad";
+        } else {
+          std::cout << "yaw change < " << yaw_threshold << " rad";
+        }
+      }
+      if (yaw_threshold >= 0.0 && lateral_threshold >= 0.0) {
+        std::cout << " OR ";
+      }
+      if (lateral_threshold >= 0.0) {
+        if (filter_type == "positive") {
+          std::cout << "lateral distance >= " << lateral_threshold << " m";
+        } else {
+          std::cout << "lateral distance < " << lateral_threshold << " m";
+        }
+      }
+      std::cout << std::endl;
+    }
+
+    // Show top 10 paths
+    std::cout << "\n=== Top 10 paths (sorted by yaw, then lateral) ===" << std::endl;
+    for (size_t rank = 0; rank < std::min<size_t>(10, filtered_indices.size()); ++rank) {
+      const auto idx = filtered_indices[rank];
+      const auto yaw_change = std::get<1>(path_metrics[idx]);
+      const auto lateral_dist = std::get<2>(path_metrics[idx]);
+      std::cout << "Rank " << rank + 1 << ": Path " << idx
+                << " - Yaw: " << yaw_change << " rad (" << (yaw_change * 180.0 / M_PI) << " deg)"
+                << ", Lateral: " << lateral_dist << " m" << std::endl;
+    }
   }
 
   for (auto i = 0; i < filtered_paths.size(); ++i) {
@@ -1038,10 +1170,19 @@ int main(int argc, char ** argv)
     }
   }
 
-  // Plot high curvature paths on ax2
-  for (size_t rank = 0; rank < std::min<size_t>(max_num_paths, high_curvature_indices.size());
-       ++rank) {
-    const auto idx = high_curvature_indices[rank];
+  // Apply max_display limit
+  const size_t num_paths_to_display = std::min(max_display, filtered_indices.size());
+  std::cout << "\n=== Display Info ===" << std::endl;
+  std::cout << "Total filtered paths: " << filtered_indices.size() << std::endl;
+  std::cout << "Displaying: " << num_paths_to_display << " paths" << std::endl;
+  if (num_paths_to_display < filtered_indices.size()) {
+    std::cout << "(Limited by max_display=" << max_display << ")" << std::endl;
+  }
+  std::cout << "==================\n" << std::endl;
+
+  // Plot filtered paths on ax2
+  for (size_t rank = 0; rank < num_paths_to_display; ++rank) {
+    const auto idx = filtered_indices[rank];
     const auto & path = filtered_paths[idx];
     const auto goal_id = path.goal_id();
     const auto prio = goal_id2prio[goal_id];
@@ -1050,12 +1191,19 @@ int main(int argc, char ** argv)
     plot_goal_candidate(ax2, path.modified_goal(), prio, footprint, color);
 
     std::string label;
+    const auto yaw_change = std::get<1>(path_metrics[idx]);
+    const auto lateral_dist = std::get<2>(path_metrics[idx]);
+
     if (filter_mode == "yaw") {
       label = "Rank " + std::to_string(rank + 1) +
-              " (yaw: " + std::to_string(path_metrics[rank].second * 180.0 / M_PI) + " deg)";
+              " (yaw: " + std::to_string(yaw_change * 180.0 / M_PI) + " deg)";
     } else if (filter_mode == "lateral") {
       label = "Rank " + std::to_string(rank + 1) +
-              " (lateral: " + std::to_string(path_metrics[rank].second) + " m)";
+              " (lateral: " + std::to_string(lateral_dist) + " m)";
+    } else if (filter_mode == "both") {
+      label = "Rank " + std::to_string(rank + 1) +
+              " (yaw: " + std::to_string(yaw_change * 180.0 / M_PI) + " deg" +
+              ", lat: " + std::to_string(lateral_dist) + " m)";
     }
 
     plot_path_with_lane_id(ax2, path.full_path(), color, label, 1.5);

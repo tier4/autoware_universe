@@ -1219,4 +1219,71 @@ lanelet::ConstLanelets get_reference_lanelets_for_pullover(
 
   return route_lanes;
 }
+
+bool is_lateral_acceleration_acceptable_near_start(
+  const std::vector<PathPointWithLaneId> & path_points, const geometry_msgs::msg::Pose & start_pose,
+  const double velocity, const double duration, const double lateral_acceleration_threshold)
+{
+  using autoware::motion_utils::calcLongitudinalOffsetPose;
+
+  // Early return for zero velocity
+  constexpr double epsilon = 1e-3;
+  if (velocity < epsilon) {
+    return true;
+  }
+
+  // Calculate evaluation point: arc_length = velocity × duration
+  const double arc_length = velocity * duration;
+  const auto check_pose_opt =
+    calcLongitudinalOffsetPose(path_points, start_pose.position, arc_length);
+
+  // Path too short - reject
+  if (!check_pose_opt) {
+    return false;
+  }
+
+  // Transform check pose to start_pose coordinate frame
+  const auto relative_pose =
+    autoware_utils::inverse_transform_pose(check_pose_opt.value(), start_pose);
+
+  // Extract geometric deviations in start_pose frame
+  const double lateral_distance = std::abs(relative_pose.position.y);
+  const double yaw_difference = std::abs(autoware_utils::get_rpy(relative_pose).z);
+
+  // Calculate dynamic thresholds based on lateral acceleration limit
+  // Physics: lateral_accel = v² / R, where R is radius of curvature
+  const double velocity_squared = velocity * velocity;
+
+  // From: R = arc_length / yaw_difference
+  // => yaw_difference_max = lateral_accel × arc_length / v²
+  const double maximum_yaw_difference =
+    lateral_acceleration_threshold * arc_length / velocity_squared;
+
+  // Calculate lateral distance threshold from maximum_yaw_difference
+  // From: R = v² / lateral_accel
+  // Lateral deviation from center on circular arc: lateral_distance = R × (1 - cos(yaw_difference))
+  // => lateral_distance_max = (v² / lateral_accel) × (1 - cos(yaw_difference_max))
+  const double radius = velocity_squared / lateral_acceleration_threshold;
+  const double maximum_lateral_distance = radius * (1.0 - std::cos(maximum_yaw_difference));
+
+  // Reject if yaw threshold is exceeded
+  if (yaw_difference > maximum_yaw_difference) {
+    std::cerr << "Lateral Accel Check: lateral_distance = " << lateral_distance
+              << ", maximum_lateral_distance = " << maximum_lateral_distance
+              << ", yaw_difference = " << yaw_difference
+              << ", maximum_yaw_difference = " << maximum_yaw_difference << std::endl;
+    return false;
+  }
+
+  // Reject if lateral distance threshold is exceeded
+  if (lateral_distance > maximum_lateral_distance) {
+    std::cerr << "Lateral Accel Check: lateral_distance = " << lateral_distance
+              << ", maximum_lateral_distance = " << maximum_lateral_distance
+              << ", yaw_difference = " << yaw_difference
+              << ", maximum_yaw_difference = " << maximum_yaw_difference << std::endl;
+    return false;
+  }
+
+  return true;
+}
 }  // namespace autoware::behavior_path_planner::goal_planner_utils
