@@ -450,6 +450,11 @@ void IntersectionModuleManager::sendRTC(const Time & stamp)
       occlusion_uuid, occlusion_safety, State::RUNNING, occlusion_distance, occlusion_distance,
       stamp);
 
+    creep_guidance_interface_intersection_->update_distance(
+      intersection_module->getModuleId(), scene_module->getDistance(), scene_module->getDistance());
+    creep_guidance_interface_occlusion_->update_distance(
+      intersection_module->getModuleId(), intersection_module->getOcclusionDistance(),
+      intersection_module->getOcclusionDistance());
     // ==========================================================================================
     // module debug data
     // ==========================================================================================
@@ -463,6 +468,8 @@ void IntersectionModuleManager::sendRTC(const Time & stamp)
   rtc_interface_.publishCooperateStatus(stamp);  // publishRTCStatus()
   occlusion_rtc_interface_.publishCooperateStatus(stamp);
 
+  creep_guidance_interface_intersection_->publish_creep_status_array();
+  creep_guidance_interface_occlusion_->publish_creep_status_array();
   // ==========================================================================================
   // publish module debug data
   // ==========================================================================================
@@ -477,8 +484,6 @@ void IntersectionModuleManager::modifyPathVelocity(
 {
   SceneModuleManagerInterfaceWithRTC::modifyPathVelocity(path);
   planning_factor_interface_for_occlusion_->publish();
-  creep_guidance_interface_intersection_->publish_creep_status_array();
-  creep_guidance_interface_occlusion_->publish_creep_status_array();
 }
 
 void IntersectionModuleManager::setActivation()

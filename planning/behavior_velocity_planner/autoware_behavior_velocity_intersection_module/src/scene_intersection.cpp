@@ -119,9 +119,6 @@ bool IntersectionModule::modifyPathVelocity(PathWithLaneId * path)
 
   initializeRTCStatus();
 
-  creep_guidance_interface_intersection_->update_distance(module_id_, getDistance(), getDistance());
-  creep_guidance_interface_occlusion_->update_distance(
-    module_id_, getOcclusionDistance(), getOcclusionDistance());
   const auto decision_result = modifyPathVelocityDetail(path);
   prev_decision_result_ = decision_result;
 
@@ -227,13 +224,23 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
   if (!collision_stopline_idx_opt) {
     return InternalError{"collision stop line is null"};
   }
-  const auto collision_stopline_idx = collision_stopline_idx_opt.value();
 
+  auto collision_stopline_idx = collision_stopline_idx_opt.value();
+  if (creep_guidance_interface_intersection_->recieved_activation_command(getModuleId())) {
+    collision_stopline_idx = first_attention_stopline_idx;
+    creep_guidance_interface_intersection_->update_state(
+      getModuleId(), tier4_creep_guidance_msgs::msg::State::ACTIVATED);
+  }
   const auto occlusion_peeking_stopline_idx_opt = intersection_stoplines.occlusion_peeking_stopline;
   if (!occlusion_peeking_stopline_idx_opt) {
     return InternalError{"occlusion stop line is null"};
   }
-  const auto occlusion_stopline_idx = occlusion_peeking_stopline_idx_opt.value();
+  auto occlusion_stopline_idx = occlusion_peeking_stopline_idx_opt.value();
+  if (creep_guidance_interface_occlusion_->recieved_activation_command(getModuleId())) {
+    occlusion_stopline_idx = first_attention_stopline_idx;
+    creep_guidance_interface_occlusion_->update_state(
+      getModuleId(), tier4_creep_guidance_msgs::msg::State::ACTIVATED);
+  }
 
   // ==========================================================================================
   // classify the objects to attention_area/intersection_area and update their position, velocity,
@@ -369,7 +376,9 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
   // ==========================================================================================
   const auto yield_stuck_status =
     isYieldStuckStatus(*path, interpolated_path_info, intersection_stoplines);
-  if (yield_stuck_status) {
+  if (
+    yield_stuck_status &&
+    !creep_guidance_interface_intersection_->recieved_activation_command(getModuleId())) {
     if (can_smoothly_stop_at(*path, closest_idx, yield_stuck_status->stuck_stopline_idx)) {
       return yield_stuck_status.value();
     }
