@@ -292,6 +292,50 @@ bool BoundaryDepartureChecker::checkPathWillLeaveLane(
   return !is_all_footprints_within(fused_lanelets_polygon.value());
 }
 
+bool BoundaryDepartureChecker::checkPathWillLeaveLane(
+  const lanelet::LaneletMapPtr lanelet_map_ptr, const PathWithLaneId & path,
+  std::vector<lanelet::Id> & fused_lanelets_id,
+  std::optional<autoware_utils::Polygon2d> & fused_lanelets_polygon,
+  std::optional<size_t> & departure_point_index) const
+{
+  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  const std::vector<LinearRing2d> vehicle_footprints =
+    utils::createVehicleFootprints(path, *vehicle_info_ptr_, param_.footprint_extra_margin);
+
+  auto is_all_footprints_within = [&](const auto & polygon) {
+    return std::all_of(
+      vehicle_footprints.begin(), vehicle_footprints.end(),
+      [&polygon](const auto & footprint) { return boost::geometry::within(footprint, polygon); });
+  };
+
+  // If lanelets polygon exists and all footprints are within it, the path doesn't leave the lane
+  if (fused_lanelets_polygon && is_all_footprints_within(fused_lanelets_polygon.value())) {
+    departure_point_index = std::nullopt;
+    return false;
+  }
+
+  // Update the lanelet polygon for the current path
+  if (!updateFusedLaneletPolygonForPath(
+        lanelet_map_ptr, path, fused_lanelets_id, fused_lanelets_polygon)) {
+    // If update fails, assume the path leaves the lane at the first point
+    departure_point_index = 0;
+    return true;
+  }
+
+  // Check each footprint to find the first one that is outside the lanelets polygon
+  for (size_t i = 0; i < vehicle_footprints.size(); ++i) {
+    if (!boost::geometry::within(vehicle_footprints[i], fused_lanelets_polygon.value())) {
+      departure_point_index = i;
+      return true;
+    }
+  }
+
+  // All footprints are within the lane
+  departure_point_index = std::nullopt;
+  return false;
+}
+
 PathWithLaneId BoundaryDepartureChecker::cropPointsOutsideOfLanes(
   const lanelet::LaneletMapPtr lanelet_map_ptr, const PathWithLaneId & path, const size_t end_index,
   std::vector<lanelet::Id> & fused_lanelets_id,
