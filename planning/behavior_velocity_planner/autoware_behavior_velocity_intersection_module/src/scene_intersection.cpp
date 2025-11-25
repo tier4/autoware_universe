@@ -119,6 +119,9 @@ bool IntersectionModule::modifyPathVelocity(PathWithLaneId * path)
 
   initializeRTCStatus();
 
+  creep_guidance_interface_intersection_->update_distance(module_id_, getDistance(), getDistance());
+  creep_guidance_interface_occlusion_->update_distance(
+    module_id_, getOcclusionDistance(), getOcclusionDistance());
   const auto decision_result = modifyPathVelocityDetail(path);
   prev_decision_result_ = decision_result;
 
