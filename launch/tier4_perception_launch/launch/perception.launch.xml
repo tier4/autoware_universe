@@ -26,8 +26,6 @@
   <arg name="object_recognition_tracking_multi_object_tracker_node_param_path"/>
   <arg name="object_recognition_tracking_radar_object_tracker_data_association_matrix_param_path"/>
   <arg name="object_recognition_tracking_radar_object_tracker_tracking_setting_param_path"/>
-  <arg name="object_recognition_tracking_v2i_object_tracker_data_association_matrix_param_path"/>
-  <arg name="object_recognition_tracking_v2i_object_tracker_tracking_setting_param_path"/>
   <arg name="object_recognition_tracking_v2i_tracked_object_sorter_param_path"/>
   <arg name="object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path"/>
   <arg name="obstacle_segmentation_ground_segmentation_param_path"/>
@@ -307,12 +305,6 @@
 
           <!-- v2i -->
           <arg name="use_v2i_tracking_fusion" value="$(var use_v2i_tracking_fusion)"/>
-          <!-- <arg
-            name="object_recognition_tracking_v2i_object_tracker_data_association_matrix_param_path"
-            value="$(var object_recognition_tracking_v2i_object_tracker_data_association_matrix_param_path)"
-          />
-          <arg name="object_recognition_tracking_v2i_object_tracker_tracking_setting_param_path" value="$(var object_recognition_tracking_v2i_object_tracker_tracking_setting_param_path)"/>
-          <arg name="object_recognition_tracking_v2i_object_tracker_node_param_path" value="$(var object_recognition_tracking_v2i_object_tracker_node_param_path)"/> -->
           <arg name="object_recognition_tracking_v2i_tracked_object_sorter_param_path" value="$(var object_recognition_tracking_v2i_tracked_object_sorter_param_path)"/>
           <arg name="object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path" value="$(var object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path)"/>
           <arg name="object_recognition_tracking_v2i_merger_data_association_matrix_param_path" value="$(var object_recognition_tracking_v2i_merger_data_association_matrix_param_path)"/>
