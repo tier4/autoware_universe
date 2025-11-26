@@ -39,7 +39,10 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
     getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection")),
   occlusion_rtc_interface_(
     &node, "intersection_occlusion",
-    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection_to_occlusion"))
+    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection_to_occlusion")),
+  intersection_creep_rtc_interface_(
+    &node, "intersection_creep",
+    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection_creep"))
 {
   const std::string ns(IntersectionModuleManager::getModuleName());
   auto & ip = intersection_param_;
@@ -354,8 +357,10 @@ void IntersectionModuleManager::launchNewModules(
     /* set RTC status as non_occluded status initially */
     const UUID uuid = getUUID(new_module->getModuleId());
     const auto occlusion_uuid = new_module->getOcclusionUUID();
+    const auto intersection_creep_uuid = new_module->getIntersectionCreepUUID();
     std::optional<bool> override_rtc_auto_mode;
     std::optional<bool> override_occlusion_rtc_auto_mode;
+    std::optional<bool> override_intersection_creep_rtc_auto_mode;
     constexpr auto key = "rtc_approval_required_v1";
     if (ll.hasAttribute(key)) {
       std::stringstream manual_modules(ll.attribute(key).value());
@@ -368,6 +373,9 @@ void IntersectionModuleManager::launchNewModules(
         if (manual_module == "intersection_occlusion") {
           override_occlusion_rtc_auto_mode = false;
         }
+        if (manual_module == "intersection_creep") {
+          override_intersection_creep_rtc_auto_mode = false;
+        }
       }
     }
     rtc_interface_.updateCooperateStatus(
@@ -377,6 +385,10 @@ void IntersectionModuleManager::launchNewModules(
       occlusion_uuid, true, State::WAITING_FOR_EXECUTION, std::numeric_limits<double>::lowest(),
       std::numeric_limits<double>::lowest(), clock_->now(), false,
       override_occlusion_rtc_auto_mode);
+    intersection_creep_rtc_interface_.updateCooperateStatus(
+      intersection_creep_uuid, true, State::WAITING_FOR_EXECUTION,
+      std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(), clock_->now(),
+      false, override_intersection_creep_rtc_auto_mode);
     registerModule(std::move(new_module));
   }
 }
@@ -438,6 +450,11 @@ void IntersectionModuleManager::sendRTC(const Time & stamp)
     occlusion_rtc_interface_.updateCooperateStatus(
       occlusion_uuid, occlusion_safety, State::RUNNING, occlusion_distance, occlusion_distance,
       stamp);
+    const auto intersection_creep_uuid = intersection_module->getIntersectionCreepUUID();
+    const auto intersection_creep_distance = scene_module->getDistance();
+    intersection_creep_rtc_interface_.updateCooperateStatus(
+      intersection_creep_uuid, safety, State::RUNNING, intersection_creep_distance,
+      intersection_creep_distance, stamp);
 
     // ==========================================================================================
     // module debug data
@@ -451,6 +468,7 @@ void IntersectionModuleManager::sendRTC(const Time & stamp)
   }
   rtc_interface_.publishCooperateStatus(stamp);  // publishRTCStatus()
   occlusion_rtc_interface_.publishCooperateStatus(stamp);
+  intersection_creep_rtc_interface_.publishCooperateStatus(stamp);
 
   // ==========================================================================================
   // publish module debug data
@@ -473,9 +491,12 @@ void IntersectionModuleManager::setActivation()
   for (const auto & scene_module : scene_modules_) {
     const auto intersection_module = std::dynamic_pointer_cast<IntersectionModule>(scene_module);
     const auto occlusion_uuid = intersection_module->getOcclusionUUID();
+    const auto intersection_creep_uuid = intersection_module->getIntersectionCreepUUID();
     scene_module->setActivation(rtc_interface_.isActivated(getUUID(scene_module->getModuleId())));
     intersection_module->setOcclusionActivation(
       occlusion_rtc_interface_.isActivated(occlusion_uuid));
+    intersection_module->setIntersectionCreepActivation(
+      intersection_creep_rtc_interface_.isActivated(intersection_creep_uuid));
     scene_module->setRTCEnabled(rtc_interface_.isRTCEnabled(getUUID(scene_module->getModuleId())));
   }
 }
@@ -495,6 +516,9 @@ void IntersectionModuleManager::deleteExpiredModules(
       const auto intersection_module = std::dynamic_pointer_cast<IntersectionModule>(*itr);
       const auto occlusion_uuid = intersection_module->getOcclusionUUID();
       occlusion_rtc_interface_.removeCooperateStatus(occlusion_uuid);
+      // intersection_creep
+      const auto intersection_creep_uuid = intersection_module->getIntersectionCreepUUID();
+      intersection_creep_rtc_interface_.removeCooperateStatus(intersection_creep_uuid);
       registered_module_id_set_.erase((*itr)->getModuleId());
       itr = scene_modules_.erase(itr);
     } else {

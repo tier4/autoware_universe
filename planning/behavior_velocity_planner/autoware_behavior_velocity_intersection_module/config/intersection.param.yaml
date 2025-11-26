@@ -117,6 +117,7 @@
       enable_rtc:
         intersection: false
         intersection_to_occlusion: false
+        intersection_creep: false
 
     merge_from_private:
       stopline_margin: 3.0

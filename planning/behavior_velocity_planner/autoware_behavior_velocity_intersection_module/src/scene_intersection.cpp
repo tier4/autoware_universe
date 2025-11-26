@@ -60,7 +60,8 @@ IntersectionModule::IntersectionModule(
   associative_ids_(associative_ids),
   turn_direction_(turn_direction),
   has_traffic_light_(has_traffic_light),
-  occlusion_uuid_(autoware_utils::generate_uuid())
+  occlusion_uuid_(autoware_utils::generate_uuid()),
+  intersection_creep_uuid_(autoware_utils::generate_uuid())
 {
   {
     collision_state_machine_.setMarginTime(

@@ -106,6 +106,10 @@ Module getModuleType(const std::string & module_name)
     module.type = Module::INTERSECTION_OCCLUSION;
   } else if (module_name == "supervised_perception_filter") {
     module.type = Module::SUPERVISED_PERCEPTION_FILTER;
+  } else if (module_name == "crosswalk_creep") {
+    module.type = Module::CROSSWALK_CREEP;
+  } else if (module_name == "intersection_creep") {
+    module.type = Module::INTERSECTION_CREEP;
   } else {
     module.type = Module::NONE;
   }

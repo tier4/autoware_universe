@@ -329,6 +329,11 @@ public:
   double getOcclusionDistance() const { return occlusion_stop_distance_; }
   void setOcclusionActivation(const bool activation) { occlusion_activated_ = activation; }
   bool isOcclusionFirstStopRequired() const { return occlusion_first_stop_required_; }
+  UUID getIntersectionCreepUUID() const { return intersection_creep_uuid_; }
+  void setIntersectionCreepActivation(const bool activation)
+  {
+    intersection_creep_activated_ = activation;
+  }
   InternalDebugData & getInternalDebugData() const { return internal_debug_data_; }
 
 private:
@@ -373,6 +378,8 @@ private:
 
   //! RTC uuid for INTERSECTION_OCCLUSION
   const UUID occlusion_uuid_;
+  //! RTC uuid for INTERSECTION_CREEP
+  const UUID intersection_creep_uuid_;
   /** @}*/
 
 private:
@@ -504,6 +511,7 @@ private:
   double occlusion_stop_distance_{0.0};
   bool occlusion_activated_{true};
   bool occlusion_first_stop_required_{false};
+  bool intersection_creep_activated_{true};
   /** @}*/
 
 private:

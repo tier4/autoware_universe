@@ -54,6 +54,8 @@ private:
   IntersectionModule::PlannerParam intersection_param_;
   // additional for INTERSECTION_OCCLUSION
   RTCInterface occlusion_rtc_interface_;
+  // additional for INTERSECTION_CREEP
+  RTCInterface intersection_creep_rtc_interface_;
 
   void launchNewModules(const autoware_internal_planning_msgs::msg::PathWithLaneId & path) override;
 
