@@ -1068,7 +1068,7 @@ std::optional<StopPoseWithObjectUuids> CrosswalkModule::checkStopForObstructionP
   }
 
   // skip stuck vehicle checking for crosswalk which is in intersection.
-  if (p.ignore_obstruction_prevention_in_intersection) {
+  if (p.ignore_in_intersection) {
     std::string turn_direction = road_.attributeOr("turn_direction", "else");
     if (turn_direction == "right" || turn_direction == "left" || turn_direction == "straight") {
       if (!road_.regulatoryElementsAs<const lanelet::TrafficLight>().empty()) {
