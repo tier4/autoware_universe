@@ -63,6 +63,7 @@ public:
       double max_accel;
       double max_jerk;
       double delay_response_time;
+      double creep_stopline_margin;
     } common;
 
     struct TurnDirection
@@ -511,7 +512,7 @@ private:
   double occlusion_stop_distance_{0.0};
   bool occlusion_activated_{true};
   bool occlusion_first_stop_required_{false};
-  bool intersection_creep_activated_{true};
+  bool intersection_creep_activated_{false};
   /** @}*/
 
 private:

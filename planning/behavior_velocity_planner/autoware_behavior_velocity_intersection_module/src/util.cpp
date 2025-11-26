@@ -158,7 +158,8 @@ std::optional<size_t> getFirstPointInsidePolygonByFootprint(
       path_footprint.at(vehicle_info_utils::VehicleInfo::FrontRightIndex)};
     if (
       bg::intersects(footprint_front_part, area_2d) || bg::within(footprint_front_part, area_2d)) {
-      return std::make_optional<size_t>(i);
+      if (i == 0) return std::nullopt;
+      return std::make_optional<size_t>(i - 1);
     }
   }
   return std::nullopt;

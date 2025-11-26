@@ -67,6 +67,8 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
     ip.common.max_jerk = get_or_declare_parameter<double>(node, ns + ".common.max_jerk");
     ip.common.delay_response_time =
       get_or_declare_parameter<double>(node, ns + ".common.delay_response_time");
+    ip.common.creep_stopline_margin =
+      get_or_declare_parameter<double>(node, ns + ".common.creep_stopline_margin");
   }
 
   // stuck
@@ -386,7 +388,7 @@ void IntersectionModuleManager::launchNewModules(
       std::numeric_limits<double>::lowest(), clock_->now(), false,
       override_occlusion_rtc_auto_mode);
     intersection_creep_rtc_interface_.updateCooperateStatus(
-      intersection_creep_uuid, true, State::WAITING_FOR_EXECUTION,
+      intersection_creep_uuid, false, State::WAITING_FOR_EXECUTION,
       std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(), clock_->now(),
       false, override_intersection_creep_rtc_auto_mode);
     registerModule(std::move(new_module));
@@ -453,7 +455,7 @@ void IntersectionModuleManager::sendRTC(const Time & stamp)
     const auto intersection_creep_uuid = intersection_module->getIntersectionCreepUUID();
     const auto intersection_creep_distance = scene_module->getDistance();
     intersection_creep_rtc_interface_.updateCooperateStatus(
-      intersection_creep_uuid, safety, State::RUNNING, intersection_creep_distance,
+      intersection_creep_uuid, false, State::RUNNING, intersection_creep_distance,
       intersection_creep_distance, stamp);
 
     // ==========================================================================================
