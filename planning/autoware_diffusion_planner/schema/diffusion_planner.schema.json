@@ -47,11 +47,6 @@
           "default": true,
           "description": "Predict trajectories for neighbor agents"
         },
-        "update_traffic_light_group_info": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable updating of traffic light group info"
-        },
         "traffic_light_group_msg_timeout_seconds": {
           "type": "number",
           "default": 0.2,
@@ -89,6 +84,11 @@
           "default": false,
           "description": "Whether to shift the ego center position by half wheel base and front overhang"
         },
+        "stopping_threshold": {
+          "type": "number",
+          "default": 0.0,
+          "description": "Threshold for keeping the stopping state [m/s]"
+        },
         "debug_params": {
           "type": "object",
           "properties": {
@@ -111,9 +111,11 @@
         "args_path",
         "planning_frequency_hz",
         "predict_neighbor_trajectory",
-        "update_traffic_light_group_info",
         "traffic_light_group_msg_timeout_seconds",
         "batch_size",
+        "temperature",
+        "velocity_smoothing_window",
+        "stopping_threshold",
         "debug_params"
       ]
     }

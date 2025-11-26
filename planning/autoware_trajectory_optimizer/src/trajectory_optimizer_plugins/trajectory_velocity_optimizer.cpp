@@ -27,17 +27,6 @@
 namespace autoware::trajectory_optimizer::plugin
 {
 
-TrajectoryVelocityOptimizer::TrajectoryVelocityOptimizer(
-  const std::string name, rclcpp::Node * node_ptr,
-  const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
-  const TrajectoryOptimizerParams & params)
-: TrajectoryOptimizerPluginBase(name, node_ptr, time_keeper, params)
-{
-  if (velocity_params_.smooth_velocities) {
-    set_up_velocity_smoother(node_ptr, time_keeper);
-  }
-}
-
 void TrajectoryVelocityOptimizer::set_up_velocity_smoother(
   rclcpp::Node * node_ptr, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
 {
@@ -49,9 +38,13 @@ void TrajectoryVelocityOptimizer::set_up_velocity_smoother(
 }
 
 void TrajectoryVelocityOptimizer::optimize_trajectory(
-  TrajectoryPoints & traj_points, [[maybe_unused]] const TrajectoryOptimizerParams & params,
+  TrajectoryPoints & traj_points, const TrajectoryOptimizerParams & params,
   const TrajectoryOptimizerData & data)
 {
+  if (!params.optimize_velocity) {
+    return;
+  }
+
   const auto & current_odometry = data.current_odometry;
   const auto & current_acceleration = data.current_acceleration;
   const auto & current_speed = current_odometry.twist.twist.linear.x;
@@ -161,3 +154,8 @@ rcl_interfaces::msg::SetParametersResult TrajectoryVelocityOptimizer::on_paramet
 }
 
 }  // namespace autoware::trajectory_optimizer::plugin
+
+#include <pluginlib/class_list_macros.hpp>
+PLUGINLIB_EXPORT_CLASS(
+  autoware::trajectory_optimizer::plugin::TrajectoryVelocityOptimizer,
+  autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase)

@@ -35,6 +35,7 @@
 #include <autoware_utils_rclcpp/parameter.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
 #include <pluginlib/class_list_macros.hpp>
+#include <tf2/utils.hpp>
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -48,7 +49,6 @@
 #include <boost/geometry/strategies/buffer.hpp>
 
 #include <lanelet2_routing/RoutingGraphContainer.h>
-#include <tf2/utils.h>
 
 #include <algorithm>
 #include <cmath>
@@ -485,14 +485,14 @@ VelocityPlanningResult RoadUserStopModule::plan(
   const auto decimated_traj_polygons = get_trajectory_polygons(
     decimated_traj_points, planner_data->vehicle_info_, planner_data->current_odometry.pose.pose,
     param.obstacle_filtering.trajectory_lateral_margin, p.enable_to_consider_current_pose,
-    p.time_to_convergence, p.decimate_trajectory_step_length);
+    p.time_to_convergence, p.decimate_trajectory_step_length, true /* from front bumper */);
   debug_data_.trajectory_polygons = decimated_traj_polygons;
 
   // Create trajectory polygons without lateral margin (0m width) for certain collision check
   const auto decimated_traj_polygons_no_margin = get_trajectory_polygons(
     decimated_traj_points, planner_data->vehicle_info_, planner_data->current_odometry.pose.pose,
     0.0, /* no lateral margin */ p.enable_to_consider_current_pose, p.time_to_convergence,
-    p.decimate_trajectory_step_length);
+    p.decimate_trajectory_step_length, false /* from front bumper */);
   debug_data_.trajectory_polygons_no_margin = decimated_traj_polygons_no_margin;
 
   // 2. Get relevant lanelets for VRU and opposite traffic detection
@@ -928,26 +928,7 @@ std::optional<Point> RoadUserStopModule::plan_stop(
   const auto stop_point = calc_stop_point(
     planner_data, trajectory_points, determined_stop_obstacle, determined_zero_vel_dist);
 
-  if (determined_stop_obstacle.has_value() && determined_stop_obstacle.value().velocity >= -0.5) {
-    return stop_point;
-  }
-
-  path_length_buffer_.update_buffer(
-    stop_point,
-    [trajectory_points](const Point & point) {
-      return autoware::motion_utils::calcSignedArcLength(trajectory_points, 0, point);
-    },
-    clock_->now(), determined_stop_obstacle.value(), determined_desired_stop_margin.value());
-
-  const auto buffered_stop = path_length_buffer_.get_nearest_active_item();
-  if (buffered_stop.has_value()) {
-    debug_data_.stop_index = std::nullopt;
-    debug_data_.stop_point = buffered_stop.value().stop_point;
-
-    return std::make_optional(buffered_stop.value().stop_point);
-  }
-
-  return std::nullopt;
+  return stop_point;
 }
 
 std::optional<StopObstacle> RoadUserStopModule::pick_stop_obstacle_from_predicted_object(
@@ -1291,14 +1272,21 @@ std::vector<Polygon2d> RoadUserStopModule::get_trajectory_polygons(
   const std::vector<TrajectoryPoint> & decimated_traj_points, const VehicleInfo & vehicle_info,
   const Pose & current_ego_pose, const double lat_margin,
   const bool enable_to_consider_current_pose, const double time_to_convergence,
-  const double decimate_trajectory_step_length) const
+  const double decimate_trajectory_step_length, const bool is_from_front_bumper) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   if (trajectory_polygon_for_inside_map_.count(lat_margin) == 0) {
-    const auto traj_polys = polygon_utils::create_one_step_polygons(
-      decimated_traj_points, vehicle_info, current_ego_pose, lat_margin,
-      enable_to_consider_current_pose, time_to_convergence, decimate_trajectory_step_length);
-    trajectory_polygon_for_inside_map_.emplace(lat_margin, traj_polys);
+    if (is_from_front_bumper) {
+      const auto traj_polys = road_user_stop::utils::create_one_step_polygons_from_front(
+        decimated_traj_points, vehicle_info, current_ego_pose, lat_margin,
+        enable_to_consider_current_pose, time_to_convergence, decimate_trajectory_step_length);
+      trajectory_polygon_for_inside_map_.emplace(lat_margin, traj_polys);
+    } else {
+      const auto traj_polys = polygon_utils::create_one_step_polygons(
+        decimated_traj_points, vehicle_info, current_ego_pose, lat_margin,
+        enable_to_consider_current_pose, time_to_convergence, decimate_trajectory_step_length);
+      trajectory_polygon_for_inside_map_.emplace(lat_margin, traj_polys);
+    }
   }
   return trajectory_polygon_for_inside_map_.at(lat_margin);
 }

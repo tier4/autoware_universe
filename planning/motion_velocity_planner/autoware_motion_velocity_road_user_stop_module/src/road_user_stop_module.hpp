@@ -15,7 +15,6 @@
 #ifndef ROAD_USER_STOP_MODULE_HPP_
 #define ROAD_USER_STOP_MODULE_HPP_
 
-#include "path_length_buffer.hpp"
 #include "type_alias.hpp"
 #include "types.hpp"
 
@@ -53,6 +52,7 @@ public:
     const std::vector<TrajectoryPoint> & smoothed_trajectory_points,
     const std::shared_ptr<const PlannerData> planner_data) override;
   std::string get_module_name() const override { return module_name_; }
+  std::string get_short_module_name() const override { return "road_user_stop"; }
   void publish_planning_factor() override;
   RequiredSubscriptionInfo getRequiredSubscriptions() const override
   {
@@ -82,9 +82,6 @@ private:
   std::optional<std::pair<std::vector<TrajectoryPoint>, double>> prev_stop_distance_info_{
     std::nullopt};
 
-  // Path length buffer for negative velocity obstacles
-  PathLengthBuffer path_length_buffer_;
-
   // helper functions
   bool is_target_object(const uint8_t label) const;
   bool is_object_on_road(
@@ -107,7 +104,7 @@ private:
     const std::vector<TrajectoryPoint> & decimated_traj_points, const VehicleInfo & vehicle_info,
     const Pose & current_ego_pose, const double lat_margin,
     const bool enable_to_consider_current_pose, const double time_to_convergence,
-    const double decimate_trajectory_step_length) const;
+    const double decimate_trajectory_step_length, const bool is_from_front_bumper) const;
 
   std::optional<Point> plan_stop(
     const std::shared_ptr<const PlannerData> planner_data,
