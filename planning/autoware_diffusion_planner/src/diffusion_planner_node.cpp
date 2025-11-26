@@ -157,6 +157,7 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<std::vector<double>>(parameters, "temperature", temp_params.temperature_list);
     update_param<int64_t>(
       parameters, "velocity_smoothing_window", temp_params.velocity_smoothing_window);
+    update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     update_param<double>(parameters, "stopping_threshold", temp_params.stopping_threshold);
     params_ = temp_params;
   }

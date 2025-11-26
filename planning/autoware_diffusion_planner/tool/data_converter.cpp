@@ -71,7 +71,7 @@ struct FrameData
   TrackedObjects tracked_objects;
   Odometry kinematic_state;
   AccelWithCovarianceStamped acceleration;
-  TrafficLightGroupArray traffic_signals;
+  std::vector<TrafficLightGroupArray> traffic_signals;
   TurnIndicatorsReport turn_indicator;
 };
 
@@ -103,10 +103,10 @@ struct TrainingDataBinary
   float polygons[NUM_POLYGONS * POINTS_PER_POLYGON * 2];
   float line_strings[NUM_LINE_STRINGS * POINTS_PER_LINE_STRING * 2];
   float goal_pose[NEIGHBOR_FUTURE_DIM];
-  int32_t turn_indicator;
+  int32_t turn_indicators[PAST_TIME_STEPS];
 
   // Constructor with zero initialization
-  TrainingDataBinary() : version(2), turn_indicator(0)
+  TrainingDataBinary() : version(2)
   {
     std::fill(std::begin(ego_agent_past), std::end(ego_agent_past), 0.0f);
     std::fill(std::begin(ego_current_state), std::end(ego_current_state), 0.0f);
@@ -123,6 +123,7 @@ struct TrainingDataBinary
     std::fill(std::begin(polygons), std::end(polygons), 0.0f);
     std::fill(std::begin(line_strings), std::end(line_strings), 0.0f);
     std::fill(std::begin(goal_pose), std::end(goal_pose), 0.0f);
+    std::fill(std::begin(turn_indicators), std::end(turn_indicators), 0);
   }
 };
 
@@ -132,19 +133,12 @@ int64_t parse_timestamp(const builtin_interfaces::msg::Time & stamp)
 }
 
 template <typename T>
-bool check_and_update_msg(
-  std::deque<T> & msgs, const builtin_interfaces::msg::Time & target_stamp,
-  const std::string & topic_name, T & result_msg)
+std::vector<T> check_and_update_msg(
+  std::deque<T> & msgs, const builtin_interfaces::msg::Time & target_stamp)
 {
-  if (msgs.empty()) {
-    std::cout << "Cannot find " << topic_name << " msg" << std::endl;
-    return false;
-  }
-
   const int64_t target_time = parse_timestamp(target_stamp);
-  T best_msg = msgs.front();
-  int64_t best_diff = std::numeric_limits<int64_t>::max();
-  int64_t best_index = 0;
+  std::vector<T> result;
+  int64_t best_index = -1;
 
   for (int64_t i = 0; i < static_cast<int64_t>(msgs.size()); ++i) {
     const auto & msg = msgs[i];
@@ -166,23 +160,17 @@ bool check_and_update_msg(
       break;
     }
 
-    if (time_diff < best_diff) {
-      best_diff = time_diff;
-      best_msg = msg;
+    if (time_diff <= static_cast<int64_t>(2e8)) {  // 200 msec within loop
+      result.push_back(msg);                       // collect all within threshold
       best_index = i;
     }
   }
 
-  if (best_diff > static_cast<int64_t>(2e8)) {  // Over 200 msec
-    std::cout << "Over 200 msec: " << topic_name << ", msgs.size()=" << msgs.size()
-              << ", diff=" << best_diff << std::endl;
-    return false;
+  // Remove processed messages up to the selected index
+  if (best_index >= 0) {
+    msgs.erase(msgs.begin(), msgs.begin() + best_index);
   }
-
-  // Remove processed messages
-  msgs.erase(msgs.begin(), msgs.begin() + best_index);
-  result_msg = best_msg;
-  return true;
+  return result;
 }
 
 std::vector<float> create_ego_sequence(
@@ -284,7 +272,8 @@ void save_binary_data(
   const std::vector<float> & route_lanes_speed_limit,
   const std::vector<bool> & route_lanes_has_speed_limit, const std::vector<float> & polygons,
   const std::vector<float> & line_strings, const std::vector<float> & goal_pose,
-  const int64_t turn_indicator, const Odometry & kinematic_state, const int64_t timestamp)
+  const std::vector<int32_t> & turn_indicators, const Odometry & kinematic_state,
+  const int64_t timestamp)
 {
   namespace fs = std::filesystem;
 
@@ -317,7 +306,7 @@ void save_binary_data(
     data.route_lanes_has_speed_limit[i] = static_cast<int32_t>(route_lanes_has_speed_limit[i]);
   }
 
-  data.turn_indicator = static_cast<int32_t>(turn_indicator);
+  std::copy(turn_indicators.begin(), turn_indicators.end(), data.turn_indicators);
 
   // Save to binary file with rosbag directory name prefix (same format as Python version)
   const std::string binary_filename = output_path + "/" + rosbag_dir_name + "_" + token + ".bin";
@@ -362,7 +351,7 @@ int main(int argc, char ** argv)
 
   if (argc < 4) {
     std::cerr << "Usage: data_converter <rosbag_path> <vector_map_path> <save_dir> [--step=1] "
-                 "[--limit=-1] [--min_frames=1700]"
+                 "[--limit=-1] [--min_frames=1700] [--convert_yellow=0] [--convert_red=0]"
               << std::endl;
     return 1;
   }
@@ -375,6 +364,8 @@ int main(int argc, char ** argv)
   int64_t limit = -1;
   int64_t min_frames = 1700;
   int64_t search_nearest_route = 1;
+  int64_t convert_yellow = 0;
+  int64_t convert_red = 0;
 
   // Parse optional arguments
   for (int64_t i = 4; i < argc; ++i) {
@@ -388,6 +379,10 @@ int main(int argc, char ** argv)
       min_frames = std::stoll(arg.substr(13));
     } else if (arg.find("--search_nearest_route=") == 0) {
       search_nearest_route = std::stoll(arg.substr(23));
+    } else if (arg.find("--convert_yellow=") == 0) {
+      convert_yellow = std::stoll(arg.substr(17));
+    } else if (arg.find("--convert_red=") == 0) {
+      convert_red = std::stoll(arg.substr(14));
     }
   }
 
@@ -395,7 +390,9 @@ int main(int argc, char ** argv)
   std::cout << "Vector map: " << vector_map_path << std::endl;
   std::cout << "Save directory: " << save_dir << std::endl;
   std::cout << "Step: " << step << ", Limit: " << limit << ", Min frames: " << min_frames
-            << ", Search nearest route: " << search_nearest_route << std::endl;
+            << ", Search nearest route: " << search_nearest_route
+            << ", Convert yellow: " << convert_yellow << ", Convert red: " << convert_red
+            << std::endl;
 
   // Load Lanelet2 map and create context like in diffusion_planner_node
   lanelet::ErrorMessages errors{};
@@ -464,14 +461,35 @@ int main(int argc, char ** argv)
   std::cout << "Parsed " << turn_indicators.size() << " turn indicator messages" << std::endl;
   std::cout << "Parsed " << traffic_signals.size() << " traffic signal messages" << std::endl;
 
+  std::vector<std::string> missing_topics;
+  if (kinematic_states.empty()) {
+    missing_topics.emplace_back("/localization/kinematic_state");
+  }
+  if (accelerations.empty()) {
+    missing_topics.emplace_back("/localization/acceleration");
+  }
+  if (tracked_objects_msgs.empty()) {
+    missing_topics.emplace_back("/perception/object_recognition/tracking/objects");
+  }
   if (route_msgs.empty()) {
-    std::cerr << "No route messages found in rosbag" << std::endl;
-    return 1;
+    missing_topics.emplace_back("/planning/mission_planning/route");
+  }
+  if (turn_indicators.empty()) {
+    missing_topics.emplace_back("/vehicle/status/turn_indicators_status");
+  }
+  if (traffic_signals.empty()) {
+    missing_topics.emplace_back("/perception/traffic_light_recognition/traffic_signals");
   }
 
-  if (tracked_objects_msgs.empty()) {
-    std::cerr << "No tracked objects found in rosbag" << std::endl;
-    return 1;
+  if (!missing_topics.empty()) {
+    std::cout << "Skipping rosbag " << rosbag_path
+              << " due to missing required topics:" << std::endl;
+    for (const auto & topic : missing_topics) {
+      std::cout << "  - " << topic << std::endl;
+    }
+    std::cout << "No training samples will be generated from this rosbag." << std::endl;
+    rclcpp::shutdown();
+    return 0;
   }
 
   // Create sequences based on tracked objects (base topic at 10Hz)
@@ -491,23 +509,43 @@ int main(int argc, char ** argv)
     // Find matching messages with synchronization check like Python version
     Odometry kinematic;
     AccelWithCovarianceStamped accel;
-    TrafficLightGroupArray traffic_signal;
+    std::vector<TrafficLightGroupArray> traffic_signal;
     TurnIndicatorsReport turn_ind;
 
     bool ok = true;
 
     // Check all messages
-    ok =
-      ok && check_and_update_msg(
-              kinematic_states, tracking.header.stamp, "/localization/kinematic_state", kinematic);
-    ok = ok && check_and_update_msg(
-                 accelerations, tracking.header.stamp, "/localization/acceleration", accel);
-    ok = ok && check_and_update_msg(
-                 traffic_signals, tracking.header.stamp,
-                 "/perception/traffic_light_recognition/traffic_signals", traffic_signal);
-    ok = ok && check_and_update_msg(
-                 turn_indicators, tracking.header.stamp, "/vehicle/status/turn_indicators_status",
-                 turn_ind);
+    const auto kinematic_vec = check_and_update_msg(kinematic_states, tracking.header.stamp);
+    if (!kinematic_vec.empty()) {
+      kinematic = kinematic_vec.back();
+    } else {
+      ok = false;
+      std::cout << "No matching kinematic_state for tracked_objects at " << i << std::endl;
+    }
+
+    const auto accel_vec = check_and_update_msg(accelerations, tracking.header.stamp);
+    if (!accel_vec.empty()) {
+      accel = accel_vec.back();
+    } else {
+      ok = false;
+      std::cout << "No matching acceleration for tracked_objects at " << i << std::endl;
+    }
+
+    const auto traffic_signal_vec = check_and_update_msg(traffic_signals, tracking.header.stamp);
+    if (!traffic_signal_vec.empty()) {
+      traffic_signal = traffic_signal_vec;
+    } else {
+      ok = false;
+      std::cout << "No matching traffic_signal for tracked_objects at " << i << std::endl;
+    }
+
+    const auto turn_ind_vec = check_and_update_msg(turn_indicators, tracking.header.stamp);
+    if (!turn_ind_vec.empty()) {
+      turn_ind = turn_ind_vec.back();
+    } else {
+      ok = false;
+      std::cout << "No matching turn_indicators for tracked_objects at " << i << std::endl;
+    }
 
     // Check route
     int64_t max_route_index = -1;
@@ -649,8 +687,13 @@ int main(int argc, char ** argv)
       const auto current_stamp = seq.data_list[i].tracked_objects.header.stamp;
       const rclcpp::Time current_time(current_stamp);
 
-      auto msg_ptr = std::make_shared<TrafficLightGroupArray>(seq.data_list[i].traffic_signals);
-      preprocess::process_traffic_signals(msg_ptr, traffic_light_id_map, current_time, 5.0, false);
+      std::vector<autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr> msg_vec;
+      for (const auto & traffic_signal_msg : seq.data_list[i].traffic_signals) {
+        msg_vec.push_back(
+          std::make_shared<autoware_perception_msgs::msg::TrafficLightGroupArray>(
+            traffic_signal_msg));
+      }
+      preprocess::process_traffic_signals(msg_vec, traffic_light_id_map, current_time, 5.0);
 
       // Get lanes data with speed limits
       const std::vector<int64_t> lane_segment_indices =
@@ -715,7 +758,7 @@ int main(int argc, char ** argv)
         (ego_future_last_x - goal_x) * (ego_future_last_x - goal_x) +
         (ego_future_last_y - goal_y) * (ego_future_last_y - goal_y));
 
-      if (stopping_count >= 10 && distance_to_goal_pose < 5.0) {
+      if (stopping_count > INPUT_T && distance_to_goal_pose < 5.0) {
         std::cout << "finish at " << i << " because stopping_count=" << stopping_count
                   << " and distance_to_goal_pose=" << distance_to_goal_pose << std::endl;
         break;
@@ -727,7 +770,11 @@ int main(int argc, char ** argv)
       const int64_t point_idx = 0;    // first point
       const int64_t red_light_index = segment_idx * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM +
                                       point_idx * SEGMENT_POINT_DIM + TRAFFIC_LIGHT_RED;
-      const bool is_red_light = route_lanes[red_light_index] > 0.5;
+      const bool is_red_light = route_lanes[red_light_index] > 0.5 && !convert_red;
+      const int64_t yellow_light_index = segment_idx * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM +
+                                         point_idx * SEGMENT_POINT_DIM + TRAFFIC_LIGHT_YELLOW;
+      const bool is_yellow_light = route_lanes[yellow_light_index] > 0.5 && !convert_yellow;
+      const bool is_red_or_yellow = is_red_light || is_yellow_light;
 
       float sum_mileage = 0.0;
       for (int64_t j = 0; j < OUTPUT_T - 1; ++j) {
@@ -735,12 +782,17 @@ int main(int argc, char ** argv)
         const float dy = ego_future[(j + 1) * 4 + 1] - ego_future[j * 4 + 1];
         sum_mileage += std::sqrt(dx * dx + dy * dy);
       }
-      const bool is_future_forward = sum_mileage > 0.1;
+      const bool is_future_forward = sum_mileage > 1.0;
 
-      if (is_stop && is_red_light && is_future_forward) {
+      if (is_stop && is_red_or_yellow && is_future_forward) {
         std::cout << "Skip this frame " << i
-                  << " because it is stop at red light and future trajectory is forward"
+                  << " because it is stop at red or yellow light and future trajectory is forward"
                   << std::endl;
+        continue;
+      }
+      if (stopping_count > (INPUT_T + 5) && is_red_or_yellow) {
+        std::cout << "Skip this frame " << i << " because stopping_count=" << stopping_count
+                  << " and red or yellow light" << std::endl;
         continue;
       }
 
@@ -748,14 +800,19 @@ int main(int argc, char ** argv)
       const std::vector<float> static_objects(
         STATIC_OBJECTS_SHAPE[1] * STATIC_OBJECTS_SHAPE[2], 0.0f);
 
-      const int64_t turn_indicator = seq.data_list[i].turn_indicator.report;
+      // const int64_t turn_indicator = seq.data_list[i].turn_indicator.report;
+      std::vector<int32_t> turn_indicators(PAST_TIME_STEPS);
+      for (int64_t t = 0; t < PAST_TIME_STEPS; ++t) {
+        turn_indicators[t] =
+          seq.data_list[std::max(int64_t(0), i - PAST_TIME_STEPS + 1 + t)].turn_indicator.report;
+      }
 
       // Save data
       save_binary_data(
         save_dir, rosbag_dir_name, token, ego_past, ego_current, ego_future, neighbor_past,
         neighbor_future, static_objects, lanes, lanes_speed_limit, lanes_has_speed_limit,
         route_lanes, route_lanes_speed_limit, route_lanes_has_speed_limit, polygons, line_strings,
-        goal_pose_vec, turn_indicator, seq.data_list[i].kinematic_state,
+        goal_pose_vec, turn_indicators, seq.data_list[i].kinematic_state,
         seq.data_list[i].timestamp);
 
       if (i % 100 == 0) {
