@@ -224,8 +224,8 @@ std::vector<CruiseObstacle> ObstacleCruiseModule::filter_cruise_obstacle_for_pre
     // 2. precise filtering for cruise
     const auto cruise_obstacle = create_cruise_obstacle(
       odometry, traj_points, decimated_traj_points, decimated_traj_polys, object,
-      predicted_objects_stamp, object->get_dist_to_traj_poly(decimated_traj_polys),
-      is_driving_forward, vehicle_info, trajectory_polygon_collision_check);
+      predicted_objects_stamp, is_driving_forward, vehicle_info,
+      trajectory_polygon_collision_check);
     if (cruise_obstacle) {
       cruise_obstacles.push_back(*cruise_obstacle);
       continue;
@@ -335,8 +335,7 @@ std::optional<CruiseObstacle> ObstacleCruiseModule::create_cruise_obstacle(
   const std::vector<TrajectoryPoint> & decimated_traj_points,
   const std::vector<Polygon2d> & decimated_traj_polys,
   const std::shared_ptr<PlannerData::Object> object, const rclcpp::Time & predicted_objects_stamp,
-  const double dist_from_obj_poly_to_traj_poly, const bool is_driving_forward,
-  const VehicleInfo & vehicle_info,
+  const bool is_driving_forward, const VehicleInfo & vehicle_info,
   const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check) const
 {
   const auto & obj_uuid = object->predicted_object.object_id;
@@ -357,17 +356,6 @@ std::optional<CruiseObstacle> ObstacleCruiseModule::create_cruise_obstacle(
     return std::nullopt;
   }
 
-  if (obstacle_filtering_param_.max_lat_margin < dist_from_obj_poly_to_traj_poly) {
-    const auto time_to_traj = dist_from_obj_poly_to_traj_poly /
-                              std::max(1e-6, object->get_lat_vel_relative_to_traj(traj_points));
-    if (time_to_traj > obstacle_filtering_param_.max_lateral_time_margin) {
-      RCLCPP_DEBUG(
-        logger_, "[Cruise] Ignore obstacle (%s) since it's far from trajectory.",
-        obj_uuid_str.substr(0, 4).c_str());
-      return std::nullopt;
-    }
-  }
-
   if (is_obstacle_crossing(traj_points, object)) {
     RCLCPP_DEBUG(
       logger_, "[Cruise] Ignore obstacle (%s) since it's crossing the ego's trajectory..",
@@ -376,13 +364,13 @@ std::optional<CruiseObstacle> ObstacleCruiseModule::create_cruise_obstacle(
   }
 
   const auto collision_points = [&]() -> std::optional<std::vector<polygon_utils::PointWithStamp>> {
-    constexpr double epsilon = 1e-6;
-    if (dist_from_obj_poly_to_traj_poly < epsilon) {
-      // obstacle is inside the trajectory
-      return create_collision_points_for_inside_cruise_obstacle(
-        traj_points, decimated_traj_points, decimated_traj_polys, object, predicted_objects_stamp,
-        is_driving_forward, vehicle_info, trajectory_polygon_collision_check);
+    const auto inside_collision_points = create_collision_points_for_inside_cruise_obstacle(
+      traj_points, decimated_traj_points, decimated_traj_polys, object, predicted_objects_stamp,
+      is_driving_forward, vehicle_info, trajectory_polygon_collision_check);
+    if (inside_collision_points) {
+      return inside_collision_points;
     }
+
     // obstacle is outside the trajectory
     // If the ego is stopping, do not plan cruise for outside obstacles. Stop will be planned.
     if (odometry.twist.twist.linear.x < 0.1) {
