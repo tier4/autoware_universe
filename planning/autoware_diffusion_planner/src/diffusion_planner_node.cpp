@@ -33,6 +33,7 @@
 
 #include <Eigen/src/Core/Matrix.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -568,10 +569,11 @@ InputDataMap DiffusionPlanner::create_input_data()
 
   // turn indicators
   {
+    // copy from back to front, and use the front value for padding if not enough history
     std::vector<float> single_turn_indicators(INPUT_T + 1, 0.0f);
     for (int64_t t = 0; t < INPUT_T + 1; ++t) {
-      const int64_t index =
-        std::max(static_cast<int64_t>(turn_indicators_history_.size()) - 1 - t, (int64_t)0);
+      const int64_t index = std::max(
+        static_cast<int64_t>(turn_indicators_history_.size()) - 1 - t, static_cast<int64_t>(0));
       single_turn_indicators[INPUT_T - t] = turn_indicators_history_[index].report;
     }
     input_data_map["turn_indicators"] = replicate_for_batch(single_turn_indicators);
