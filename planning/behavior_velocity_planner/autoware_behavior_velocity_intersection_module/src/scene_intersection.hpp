@@ -81,6 +81,7 @@ public:
       bool trailer;
       bool motorcycle;
       bool bicycle;
+      bool pedestrian;
       bool unknown;
     };
 

@@ -197,6 +197,9 @@ bool IntersectionModule::isTargetStuckVehicleType(
   if (label == autoware_perception_msgs::msg::ObjectClassification::BICYCLE && p.bicycle) {
     return true;
   }
+  if (label == autoware_perception_msgs::msg::ObjectClassification::BICYCLE && p.pedestrian) {
+    return true;
+  }
   if (label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN && p.unknown) {
     return true;
   }
@@ -225,6 +228,9 @@ bool IntersectionModule::isTargetYieldStuckVehicleType(
     return true;
   }
   if (label == autoware_perception_msgs::msg::ObjectClassification::BICYCLE && p.bicycle) {
+    return true;
+  }
+  if (label == autoware_perception_msgs::msg::ObjectClassification::BICYCLE && p.pedestrian) {
     return true;
   }
   if (label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN && p.unknown) {

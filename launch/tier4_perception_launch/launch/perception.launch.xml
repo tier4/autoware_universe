@@ -26,6 +26,8 @@
   <arg name="object_recognition_tracking_multi_object_tracker_node_param_path"/>
   <arg name="object_recognition_tracking_radar_object_tracker_data_association_matrix_param_path"/>
   <arg name="object_recognition_tracking_radar_object_tracker_tracking_setting_param_path"/>
+  <arg name="object_recognition_tracking_v2i_tracked_object_sorter_param_path"/>
+  <arg name="object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path"/>
   <arg name="obstacle_segmentation_ground_segmentation_param_path"/>
   <arg name="obstacle_segmentation_ground_segmentation_elevation_map_param_path"/>
   <arg name="object_recognition_detection_obstacle_pointcloud_based_validator_param_path"/>
@@ -137,6 +139,13 @@
     description="if use_radar_tracking_fusion:=true, radar information is merged in tracking launch. Otherwise, radar information is merged in detection launch."
   />
   <arg name="input/radar" default="/sensing/radar/detected_objects"/>
+
+  <!-- Radar parameters -->
+  <arg
+    name="use_v2i_tracking_fusion"
+    default="false"
+    description="if use_v2i_tracking_fusion:=true, v2i information is merged in tracking launch."
+  />
 
   <!-- Object merger method: whether to enable multi-channel tracker merger -->
   <arg name="use_multi_channel_tracker_merger" default="false" description="if it is true, replace the multi step merger to multi-channel tracker merger."/>
@@ -293,6 +302,14 @@
           <arg name="use_radar_tracking_fusion" value="$(var use_radar_tracking_fusion)"/>
           <arg name="use_detection_by_tracker" value="$(var use_detection_by_tracker)"/>
           <arg name="use_validator" value="$(var use_object_validator)"/>
+
+          <!-- v2i -->
+          <arg name="use_v2i_tracking_fusion" value="$(var use_v2i_tracking_fusion)"/>
+          <arg name="object_recognition_tracking_v2i_tracked_object_sorter_param_path" value="$(var object_recognition_tracking_v2i_tracked_object_sorter_param_path)"/>
+          <arg name="object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path" value="$(var object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path)"/>
+          <arg name="object_recognition_tracking_v2i_merger_data_association_matrix_param_path" value="$(var object_recognition_tracking_v2i_merger_data_association_matrix_param_path)"/>
+          <arg name="object_recognition_tracking_v2i_merger_node_param_path" value="$(var object_recognition_tracking_v2i_merger_node_param_path)"/>
+
         </include>
       </group>
 
