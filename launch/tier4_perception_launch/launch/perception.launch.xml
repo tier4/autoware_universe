@@ -157,6 +157,15 @@
   <arg name="traffic_light_recognition/classification/pedestrian/model_path"/>
   <arg name="traffic_light_recognition/classification/pedestrian/label_path"/>
 
+  <!-- camera 2d detector parameters -->
+  <arg
+    name="camera_2d_detector/model_path"
+    default="$(var data_path)/tensorrt_yolox/yolox-sPlus-opt-pseudoV2-T4-960x960-T4-seg16cls.onnx"
+    description="options `yolox-sPlus-T4-960x960-pseudo-finetune.onnx` if only detection is needed, `yolox-sPlus-opt-pseudoV2-T4-960x960-T4-seg16cls.onnx` if sematic segmentation is also needed"
+  />
+  <arg name="camera_2d_detector/label_path" default="$(var data_path)/tensorrt_yolox/label.txt" description="label path"/>
+  <arg name="camera_2d_detector/color_map_path" default="$(var data_path)/tensorrt_yolox/semseg_color_map.csv" description="color map path"/>
+
   <!-- Whether to use detection by tracker -->
   <arg name="use_detection_by_tracker" default="true"/>
 
@@ -170,6 +179,8 @@
 
   <!-- Object merger method: whether to enable multi-channel tracker merger -->
   <arg name="use_multi_channel_tracker_merger" default="false" description="if it is true, replace the multi step merger to multi-channel tracker merger."/>
+  <arg name="output/tracker_merged_objects" default="/perception/object_recognition/detection/objects"/>
+  <arg name="tracker_publish_merged_objects" default="false" description="whether to publish merged objects from tracker"/>
 
   <!-- Downsample pointcloud for perception usage -->
   <arg name="downsample_perception_common_pointcloud" default="false"/>
