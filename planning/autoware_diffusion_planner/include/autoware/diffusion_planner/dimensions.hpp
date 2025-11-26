@@ -60,7 +60,7 @@ inline constexpr int64_t LINE_TYPE_LEFT_START = 13;
 inline constexpr int64_t LINE_TYPE_RIGHT_START = LINE_TYPE_LEFT_START + LINE_TYPE_NUM;
 inline constexpr int64_t SEGMENT_POINT_DIM = LINE_TYPE_RIGHT_START + LINE_TYPE_NUM;
 
-inline constexpr int64_t INPUT_T = 20;
+inline constexpr int64_t INPUT_T = 30;
 inline constexpr int64_t OUTPUT_T = 80;  // Output timestamp number
 inline constexpr int64_t POSE_DIM = 4;   // x, y, cos(yaw), sin(yaw)
 inline constexpr std::array<int64_t, 4> OUTPUT_SHAPE = {1, MAX_NUM_AGENTS, OUTPUT_T, POSE_DIM};
