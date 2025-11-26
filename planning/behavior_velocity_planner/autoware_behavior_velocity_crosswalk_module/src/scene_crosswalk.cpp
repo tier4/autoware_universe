@@ -1062,6 +1062,11 @@ std::optional<StopPoseWithObjectUuids> CrosswalkModule::checkStopForObstructionP
     return {};
   }
 
+  // skip stuck vehicle checking entirely when disabled
+  if (!p.enable_obstruction_prevention) {
+    return {};
+  }
+
   // skip stuck vehicle checking for crosswalk which is in intersection.
   if (!p.enable_obstruction_prevention_in_intersection) {
     std::string turn_direction = road_.attributeOr("turn_direction", "else");
