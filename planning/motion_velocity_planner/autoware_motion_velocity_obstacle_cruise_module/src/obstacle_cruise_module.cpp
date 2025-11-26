@@ -554,6 +554,9 @@ ObstacleCruiseModule::create_collision_points_for_inside_cruise_obstacle(
       std::hypot(
         vehicle_info.vehicle_length_m,
         vehicle_info.vehicle_width_m * 0.5 + obstacle_filtering_param_.max_lat_margin));
+  if (collision_points.empty()) {
+    return std::nullopt;
+  }
   return collision_points;
 }
 
