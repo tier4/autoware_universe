@@ -14,6 +14,8 @@
     yabloc_enabled: $(var yabloc_enabled)
     ndt_enabled: $(var ndt_enabled)
     stop_check_enabled: $(var stop_check_enabled)
+    imu_calibration_check_enabled: $(var imu_calibration_check_enabled)
+
 
     # from gnss
     gnss_particle_covariance:
