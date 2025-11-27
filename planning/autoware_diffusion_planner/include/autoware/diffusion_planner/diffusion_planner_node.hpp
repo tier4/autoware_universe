@@ -113,8 +113,6 @@ struct DiffusionPlannerParams
   bool ignore_neighbors;
   bool ignore_unknown_neighbors;
   bool predict_neighbor_trajectory;
-  bool update_traffic_light_group_info;
-  bool keep_last_traffic_light_group_info;
   double traffic_light_group_msg_timeout_seconds;
   int batch_size;
   std::vector<double> temperature_list;
@@ -257,12 +255,6 @@ private:
    */
   std::vector<float> replicate_for_batch(const std::vector<float> & single_data);
 
-  // ego history for ego_agent_past
-  std::deque<Pose> ego_history_;
-
-  // Turn indicators history for turn_indicators
-  std::deque<TurnIndicatorsReport> turn_indicators_history_;
-
   // TensorRT
   std::unique_ptr<TrtConvCalib> trt_common_;
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> network_trt_ptr_{nullptr};
@@ -288,6 +280,8 @@ private:
   cudaStream_t stream_{nullptr};
 
   // Model input data
+  std::deque<Pose> ego_history_;
+  std::deque<TurnIndicatorsReport> turn_indicators_history_;
   nav_msgs::msg::Odometry ego_kinematic_state_;
   std::optional<AgentData> agent_data_{std::nullopt};
   std::optional<AgentData> ego_centric_neighbor_agent_data_{std::nullopt};
@@ -324,8 +318,8 @@ private:
   autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
     this, "~/input/tracked_objects"};
   autoware_utils::InterProcessPollingSubscriber<
-    autoware_perception_msgs::msg::TrafficLightGroupArray>
-    sub_traffic_signals_{this, "~/input/traffic_signals"};
+    autoware_perception_msgs::msg::TrafficLightGroupArray, autoware_utils::polling_policy::All>
+    sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
   autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
     this, "~/input/turn_indicators"};
   autoware_utils::InterProcessPollingSubscriber<
