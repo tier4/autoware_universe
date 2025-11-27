@@ -31,6 +31,3 @@
         0, 175, 0,      # vegetation (green)
         0, 0, 0,        # unknown (black)
       ]
-    # Multi-LiDAR support
-    joint_inference: false  # If true, all input pointclouds are concatenated and processed together. If false, each input is processed independently.
-    input_topics: ["/sensing/lidar/top/pointcloud"]  # List of input pointcloud topics

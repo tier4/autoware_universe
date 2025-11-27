@@ -72,8 +72,9 @@ LidarFRNetNode::LidarFRNetNode(const rclcpp::NodeOptions & options)
   if (joint_inference_) {
     RCLCPP_INFO(
       this->get_logger(),
-      "Joint inference mode: all pointclouds will be concatenated and processed together");
-    // TODO(Sugahara): Implement joint inference mode in the future
+      "Joint inference mode: pointclouds will be concatenated with source info and processed "
+      "together");
+    // TODO(Sugahara): Implement joint inference mode that considers point cloud source info
     RCLCPP_WARN(
       this->get_logger(),
       "Joint inference mode is not yet implemented. Falling back to independent inference mode.");

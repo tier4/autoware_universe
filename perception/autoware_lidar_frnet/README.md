@@ -45,6 +45,9 @@ Example: For input topic `/sensing/lidar/top/pointcloud`, outputs are:
 - `~/output/_sensing_lidar_top_pointcloud/visualization`
 - `~/output/_sensing_lidar_top_pointcloud/filtered`
 
+When `joint_inference: true` (Joint Inference Mode, not yet implemented):
+All input pointclouds will be concatenated with source information preserved, and processed together in a single inference that considers which LiDAR each point originated from.
+
 | Name                                           | Type                                                | Description                                                  |
 | ---------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
 | `~/output/<topic>/segmentation`                | `sensor_msgs::msg::PointCloud2`                     | XYZ cloud with class ID field.                               |
@@ -66,20 +69,24 @@ Example: For input topic `/sensing/lidar/top/pointcloud`, outputs are:
 
 ### Multi-LiDAR Configuration
 
-The node supports processing multiple LiDAR inputs in two modes:
+The node supports processing multiple LiDAR inputs in two modes, configured via launch file arguments.
 
-#### Independent Inference Mode (`joint_inference: false`)
+#### Independent Inference Mode (`joint_inference: false`, default)
 
-Each input topic is processed independently with its own inference instance. This mode is useful when you want to process multiple LiDAR sensors separately.
+Each input topic is processed independently with its own inference instance. This mode is useful when you want to process multiple LiDAR sensors separately without cross-sensor context.
 
-Configuration example in `frnet.param.yaml`:
+**Single LiDAR (default):**
 
-```yaml
-joint_inference: false
-input_topics:
-  - /sensing/lidar/top/pointcloud
-  - /sensing/lidar/front/pointcloud
-  - /sensing/lidar/rear/pointcloud
+```bash
+ros2 launch autoware_lidar_frnet lidar_frnet.launch.xml
+```
+
+**Multiple LiDARs:**
+
+```bash
+ros2 launch autoware_lidar_frnet lidar_frnet.launch.xml \
+  input_topics:="['/sensing/lidar/top/pointcloud', '/sensing/lidar/front/pointcloud', '/sensing/lidar/rear/pointcloud']" \
+  joint_inference:=false
 ```
 
 Output topics are automatically generated for each input:
@@ -88,11 +95,15 @@ Output topics are automatically generated for each input:
 - `~/output/<sanitized_topic_name>/visualization`
 - `~/output/<sanitized_topic_name>/filtered`
 
+Example: For input topic `/sensing/lidar/top/pointcloud`, outputs are:
+
+- `~/output/_sensing_lidar_top_pointcloud/segmentation`
+
 #### Joint Inference Mode (`joint_inference: true`)
 
 **Note: This mode is not yet implemented.**
 
-In the future, this mode will concatenate all input pointclouds and process them together in a single inference.
+In the future, this mode will concatenate all input pointclouds while preserving source information (which LiDAR each point came from), and process them together in a single inference. The inference will consider the point cloud source information to leverage cross-sensor context for improved segmentation accuracy.
 
 ### FRNet model
 

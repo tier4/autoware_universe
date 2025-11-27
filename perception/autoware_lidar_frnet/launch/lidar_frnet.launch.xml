@@ -1,10 +1,9 @@
 <?xml version="1.0"?>
 <launch>
-  <!-- Deprecated: Use input_topics parameter in frnet.param.yaml instead -->
-  <arg name="input/pointcloud" default="/sensing/lidar/top/pointcloud" description="Deprecated. Use input_topics parameter in config file."/>
-  <arg name="output/pointcloud/segmentation" default="segmentation"/>
-  <arg name="output/pointcloud/visualization" default="visualization"/>
-  <arg name="output/pointcloud/filtered" default="filtered"/>
+  <!-- Multi-LiDAR configuration -->
+  <arg name="input_topics" default="['/sensing/lidar/top/pointcloud']" description="List of input pointcloud topics (YAML array format)"/>
+  <arg name="joint_inference" default="false" description="If true, concatenated pointcloud with source info is processed in a single inference. If false, each input is processed independently."/>
+
   <arg name="data_path" default="$(env HOME)/autoware_data" description="packages data and artifacts directory path"/>
   <arg name="model_name" default="frnet" description="options: `frnet`"/>
   <arg name="model_path" default="$(var data_path)/lidar_frnet"/>
@@ -18,23 +17,23 @@
   <group if="$(var use_pointcloud_container)">
     <load_composable_node target="$(var pointcloud_container_name)">
       <composable_node pkg="autoware_lidar_frnet" plugin="autoware::lidar_frnet::LidarFRNetNode" name="lidar_frnet">
-        <!-- Note: Topic remapping is no longer used. Configure input_topics in frnet.param.yaml instead. -->
-        <!-- Output topics are now generated automatically based on input topics when joint_inference is false. -->
         <param from="$(var model_param_path)" allow_substs="true"/>
         <param from="$(var ml_package_param_path)"/>
         <param from="$(var diagnostics_param_path)"/>
         <param name="build_only" value="$(var build_only)"/>
+        <param name="joint_inference" value="$(var joint_inference)"/>
+        <param name="input_topics" value="$(var input_topics)"/>
       </composable_node>
     </load_composable_node>
   </group>
   <group unless="$(var use_pointcloud_container)">
     <node pkg="autoware_lidar_frnet" exec="autoware_lidar_frnet_node" name="lidar_frnet" output="screen">
-      <!-- Note: Topic remapping is no longer used. Configure input_topics in frnet.param.yaml instead. -->
-      <!-- Output topics are now generated automatically based on input topics when joint_inference is false. -->
       <param from="$(var model_param_path)" allow_substs="true"/>
       <param from="$(var ml_package_param_path)"/>
       <param from="$(var diagnostics_param_path)"/>
       <param name="build_only" value="$(var build_only)"/>
+      <param name="joint_inference" value="$(var joint_inference)"/>
+      <param name="input_topics" value="$(var input_topics)"/>
     </node>
   </group>
 </launch>
