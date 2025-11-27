@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    update_rate_hz: 50.0
+    trajectory_history_length_m: 5.0
+    resampling_resolution_m: 1.0
+    recompute_acceleration: false
+    enable_history_stitching: false
