@@ -24,6 +24,7 @@
 
 #include <autoware/behavior_velocity_planner_common/utilization/state_machine.hpp>
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
+#include <autoware/creep_guidance_interface/creep_guidance_interface.hpp>
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -63,6 +64,7 @@ public:
       double max_accel;
       double max_jerk;
       double delay_response_time;
+      double creep_stopline_margin;
     } common;
 
     struct TurnDirection
@@ -299,7 +301,9 @@ public:
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
       planning_factor_interface,
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
-      planning_factor_interface_for_occlusion);
+      planning_factor_interface_for_occlusion,
+    const std::shared_ptr<autoware::creep_guidance_interface::CreepGuidanceInterface>
+      creep_guidance_interface);
 
   /**
    ***********************************************************
@@ -345,6 +349,8 @@ private:
 
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface_for_occlusion_;
+  const std::shared_ptr<autoware::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface_;
   /** @}*/
 
 private:
