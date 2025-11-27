@@ -123,6 +123,7 @@
       <arg name="output/object" value="$(var v2i_tracked_object_lanelet_filter/output/object)"/>
       <arg name="filtering_range_param" value="$(var object_recognition_tracking_v2i_tracked_object_lanelet_filter_param_path)"/>
     </include>
+    
     <group if="$(var use_v2i_tracking_fusion)">
 
       <let name="v2i_tracker_merger/input/main_objects" value="$(var ns)/camera_lidar_radar_objects" if="$(var use_radar_tracking_fusion)"/>
