@@ -70,10 +70,6 @@ LidarFRNetNode::LidarFRNetNode(const rclcpp::NodeOptions & options)
   }
 
   if (joint_inference_) {
-    RCLCPP_INFO(
-      this->get_logger(),
-      "Joint inference mode: pointclouds will be concatenated with source info and processed "
-      "together");
     // TODO(Sugahara): Implement joint inference mode that considers point cloud source info
     RCLCPP_WARN(
       this->get_logger(),
@@ -99,10 +95,6 @@ LidarFRNetNode::LidarFRNetNode(const rclcpp::NodeOptions & options)
 
   // Create processors for each input topic (independent inference mode)
   if (!joint_inference_) {
-    RCLCPP_INFO(
-      this->get_logger(),
-      "Independent inference mode: each pointcloud will be processed separately");
-
     for (const auto & topic_name : input_topics_) {
       RCLCPP_INFO(this->get_logger(), "Setting up processor for topic: %s", topic_name.c_str());
 
@@ -119,7 +111,8 @@ LidarFRNetNode::LidarFRNetNode(const rclcpp::NodeOptions & options)
       processor->stop_watch_ptr->tic("cyclic");
       processor->stop_watch_ptr->tic("processing/total");
 
-      // Create subscriber with topic-specific callback
+      // TODO(Sugahara): Use cuda_blackboard for communication between LiDAR processors to reduce
+      // data transfer overhead Create subscriber with topic-specific callback
       processor->cloud_in_sub = create_subscription<sensor_msgs::msg::PointCloud2>(
         topic_name, rclcpp::SensorDataQoS{}.keep_last(1),
         [this, topic_name](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
