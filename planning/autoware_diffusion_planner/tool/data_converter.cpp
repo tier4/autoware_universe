@@ -71,7 +71,7 @@ struct FrameData
   TrackedObjects tracked_objects;
   Odometry kinematic_state;
   AccelWithCovarianceStamped acceleration;
-  TrafficLightGroupArray traffic_signals;
+  std::vector<TrafficLightGroupArray> traffic_signals;
   TurnIndicatorsReport turn_indicator;
 };
 
@@ -133,19 +133,12 @@ int64_t parse_timestamp(const builtin_interfaces::msg::Time & stamp)
 }
 
 template <typename T>
-bool check_and_update_msg(
-  std::deque<T> & msgs, const builtin_interfaces::msg::Time & target_stamp,
-  const std::string & topic_name, T & result_msg)
+std::vector<T> check_and_update_msg(
+  std::deque<T> & msgs, const builtin_interfaces::msg::Time & target_stamp)
 {
-  if (msgs.empty()) {
-    std::cout << "Cannot find " << topic_name << " msg" << std::endl;
-    return false;
-  }
-
   const int64_t target_time = parse_timestamp(target_stamp);
-  T best_msg = msgs.front();
-  int64_t best_diff = std::numeric_limits<int64_t>::max();
-  int64_t best_index = 0;
+  std::vector<T> result;
+  int64_t best_index = -1;
 
   for (int64_t i = 0; i < static_cast<int64_t>(msgs.size()); ++i) {
     const auto & msg = msgs[i];
@@ -167,23 +160,17 @@ bool check_and_update_msg(
       break;
     }
 
-    if (time_diff < best_diff) {
-      best_diff = time_diff;
-      best_msg = msg;
+    if (time_diff <= static_cast<int64_t>(2e8)) {  // 200 msec within loop
+      result.push_back(msg);                       // collect all within threshold
       best_index = i;
     }
   }
 
-  if (best_diff > static_cast<int64_t>(2e8)) {  // Over 200 msec
-    std::cout << "Over 200 msec: " << topic_name << ", msgs.size()=" << msgs.size()
-              << ", diff=" << best_diff << std::endl;
-    return false;
+  // Remove processed messages up to the selected index
+  if (best_index >= 0) {
+    msgs.erase(msgs.begin(), msgs.begin() + best_index);
   }
-
-  // Remove processed messages
-  msgs.erase(msgs.begin(), msgs.begin() + best_index);
-  result_msg = best_msg;
-  return true;
+  return result;
 }
 
 std::vector<float> create_ego_sequence(
@@ -474,14 +461,35 @@ int main(int argc, char ** argv)
   std::cout << "Parsed " << turn_indicators.size() << " turn indicator messages" << std::endl;
   std::cout << "Parsed " << traffic_signals.size() << " traffic signal messages" << std::endl;
 
+  std::vector<std::string> missing_topics;
+  if (kinematic_states.empty()) {
+    missing_topics.emplace_back("/localization/kinematic_state");
+  }
+  if (accelerations.empty()) {
+    missing_topics.emplace_back("/localization/acceleration");
+  }
+  if (tracked_objects_msgs.empty()) {
+    missing_topics.emplace_back("/perception/object_recognition/tracking/objects");
+  }
   if (route_msgs.empty()) {
-    std::cerr << "No route messages found in rosbag" << std::endl;
-    return 1;
+    missing_topics.emplace_back("/planning/mission_planning/route");
+  }
+  if (turn_indicators.empty()) {
+    missing_topics.emplace_back("/vehicle/status/turn_indicators_status");
+  }
+  if (traffic_signals.empty()) {
+    missing_topics.emplace_back("/perception/traffic_light_recognition/traffic_signals");
   }
 
-  if (tracked_objects_msgs.empty()) {
-    std::cerr << "No tracked objects found in rosbag" << std::endl;
-    return 1;
+  if (!missing_topics.empty()) {
+    std::cout << "Skipping rosbag " << rosbag_path
+              << " due to missing required topics:" << std::endl;
+    for (const auto & topic : missing_topics) {
+      std::cout << "  - " << topic << std::endl;
+    }
+    std::cout << "No training samples will be generated from this rosbag." << std::endl;
+    rclcpp::shutdown();
+    return 0;
   }
 
   // Create sequences based on tracked objects (base topic at 10Hz)
@@ -501,23 +509,43 @@ int main(int argc, char ** argv)
     // Find matching messages with synchronization check like Python version
     Odometry kinematic;
     AccelWithCovarianceStamped accel;
-    TrafficLightGroupArray traffic_signal;
+    std::vector<TrafficLightGroupArray> traffic_signal;
     TurnIndicatorsReport turn_ind;
 
     bool ok = true;
 
     // Check all messages
-    ok =
-      ok && check_and_update_msg(
-              kinematic_states, tracking.header.stamp, "/localization/kinematic_state", kinematic);
-    ok = ok && check_and_update_msg(
-                 accelerations, tracking.header.stamp, "/localization/acceleration", accel);
-    ok = ok && check_and_update_msg(
-                 traffic_signals, tracking.header.stamp,
-                 "/perception/traffic_light_recognition/traffic_signals", traffic_signal);
-    ok = ok && check_and_update_msg(
-                 turn_indicators, tracking.header.stamp, "/vehicle/status/turn_indicators_status",
-                 turn_ind);
+    const auto kinematic_vec = check_and_update_msg(kinematic_states, tracking.header.stamp);
+    if (!kinematic_vec.empty()) {
+      kinematic = kinematic_vec.back();
+    } else {
+      ok = false;
+      std::cout << "No matching kinematic_state for tracked_objects at " << i << std::endl;
+    }
+
+    const auto accel_vec = check_and_update_msg(accelerations, tracking.header.stamp);
+    if (!accel_vec.empty()) {
+      accel = accel_vec.back();
+    } else {
+      ok = false;
+      std::cout << "No matching acceleration for tracked_objects at " << i << std::endl;
+    }
+
+    const auto traffic_signal_vec = check_and_update_msg(traffic_signals, tracking.header.stamp);
+    if (!traffic_signal_vec.empty()) {
+      traffic_signal = traffic_signal_vec;
+    } else {
+      ok = false;
+      std::cout << "No matching traffic_signal for tracked_objects at " << i << std::endl;
+    }
+
+    const auto turn_ind_vec = check_and_update_msg(turn_indicators, tracking.header.stamp);
+    if (!turn_ind_vec.empty()) {
+      turn_ind = turn_ind_vec.back();
+    } else {
+      ok = false;
+      std::cout << "No matching turn_indicators for tracked_objects at " << i << std::endl;
+    }
 
     // Check route
     int64_t max_route_index = -1;
@@ -659,8 +687,13 @@ int main(int argc, char ** argv)
       const auto current_stamp = seq.data_list[i].tracked_objects.header.stamp;
       const rclcpp::Time current_time(current_stamp);
 
-      auto msg_ptr = std::make_shared<TrafficLightGroupArray>(seq.data_list[i].traffic_signals);
-      preprocess::process_traffic_signals(msg_ptr, traffic_light_id_map, current_time, 5.0, false);
+      std::vector<autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr> msg_vec;
+      for (const auto & traffic_signal_msg : seq.data_list[i].traffic_signals) {
+        msg_vec.push_back(
+          std::make_shared<autoware_perception_msgs::msg::TrafficLightGroupArray>(
+            traffic_signal_msg));
+      }
+      preprocess::process_traffic_signals(msg_vec, traffic_light_id_map, current_time, 5.0);
 
       // Get lanes data with speed limits
       const std::vector<int64_t> lane_segment_indices =
