@@ -190,16 +190,25 @@ std::vector<PullOverPath> BezierPullOver::generateBezierPath(
   const size_t n_sample_v_final = 2;
   const double min_v_coeff = 0.1;
   const size_t n_sample_acc = 1;
-  for (unsigned i = 0; i <= n_sample_v_init; ++i) {
+  // for (unsigned i = 0; i <= n_sample_v_init; ++i) {
     for (unsigned j = 0; j <= n_sample_v_final; j++) {
       for (unsigned k = 0; k <= n_sample_acc; k++) {
-        const double v_init_coeff = std::max(min_v_coeff, i * (1.0 / n_sample_v_init));
+        // const double v_init_coeff = std::max(min_v_coeff, i * (1.0 / n_sample_v_init));
+        const double v_init_coeff = 0.1;
         const double v_final_coeff = std::max(min_v_coeff, j * 0.25 / (1.0 / n_sample_v_final));
         const double acc_coeff = k * (10.0 / n_sample_acc);
+        // const double acc_coeff = 0.0;
         params.emplace_back(v_init_coeff, v_final_coeff, acc_coeff);
       }
     }
-  }
+  // }
+  // params.emplace_back(0.1, 0.1, 0.0);
+  // params.emplace_back(0.1, 0.1, 0.0);
+  // params.emplace_back(0.1, 0.1, 0.1);
+  // params.emplace_back(0.1, 0.1, 1.0);
+  // params.emplace_back(0.1, 0.1, 5.0);
+  // params.emplace_back(0.1, 0.1, 10.0);
+
 
   const auto drivable_lanes =
     utils::generateDrivableLanesWithShoulderLanes(road_lanes, pull_over_lanes);

@@ -1089,6 +1089,12 @@ int main(int argc, char ** argv)
     }
   }
 
+  // Display limitation info
+  std::cout << "\n=== Display Settings ===" << std::endl;
+  std::cout << "Total filtered paths: " << filtered_indices.size() << std::endl;
+  std::cout << "Max display limit: " << (max_display == SIZE_MAX ? "unlimited" : std::to_string(max_display)) << std::endl;
+  std::cout << "Paths to display: " << std::min(filtered_indices.size(), max_display) << std::endl;
+
   for (auto i = 0; i < filtered_paths.size(); ++i) {
     const auto & filtered_path = filtered_paths.at(i);
     const auto goal_id = filtered_path.goal_id();
@@ -1170,8 +1176,9 @@ int main(int argc, char ** argv)
     }
   }
 
-  // Plot filtered paths on ax2
-  for (size_t rank = 0; rank < filtered_indices.size(); ++rank) {
+  // Plot filtered paths on ax2 (limited by max_display)
+  const size_t num_paths_to_display = std::min(filtered_indices.size(), max_display);
+  for (size_t rank = 0; rank < num_paths_to_display; ++rank) {
     const auto idx = filtered_indices[rank];
     const auto & path = filtered_paths[idx];
     const auto goal_id = path.goal_id();

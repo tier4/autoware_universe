@@ -23,10 +23,14 @@
 #include <autoware_utils/geometry/geometry.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <rosidl_runtime_cpp/traits.hpp>
+
 #include <matplotlibcpp17/pyplot.h>
 #include <pybind11/pytypes.h>
+#include <yaml-cpp/yaml.h>
 
 #include <iostream>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -142,13 +146,209 @@ std::vector<PathPointWithLaneId> convertToPathPointWithLaneId(const PathWithLane
   return path_points;
 }
 
+void dumpMessagesToYaml(
+  const PathWithLaneId & path_msg,
+  const MarkerArray & marker_array,
+  const std::string & output_path)
+{
+  YAML::Node yaml;
+
+  // Dump PathWithLaneId message
+  yaml["path_with_lane_id"] = YAML::Load(rosidl_generator_traits::to_yaml(path_msg));
+
+  // Dump MarkerArray message
+  yaml["marker_array"] = YAML::Load(rosidl_generator_traits::to_yaml(marker_array));
+
+  std::ofstream fout(output_path);
+  fout << yaml;
+  fout.close();
+
+  std::cout << "Dumped messages to YAML file: " << output_path << std::endl;
+}
+
+// Helper function to convert YAML to PathWithLaneId
+PathWithLaneId yamlToPathWithLaneId(const YAML::Node & yaml_node)
+{
+  PathWithLaneId msg;
+
+  // Parse header
+  if (yaml_node["header"]) {
+    const auto & header = yaml_node["header"];
+    if (header["stamp"]) {
+      msg.header.stamp.sec = header["stamp"]["sec"].as<int32_t>();
+      msg.header.stamp.nanosec = header["stamp"]["nanosec"].as<uint32_t>();
+    }
+    if (header["frame_id"]) {
+      msg.header.frame_id = header["frame_id"].as<std::string>();
+    }
+  }
+
+  // Parse points
+  if (yaml_node["points"]) {
+    for (const auto & point_yaml : yaml_node["points"]) {
+      autoware_internal_planning_msgs::msg::PathPointWithLaneId point;
+
+      // Parse pose
+      if (point_yaml["point"]["pose"]) {
+        const auto & pose = point_yaml["point"]["pose"];
+        if (pose["position"]) {
+          point.point.pose.position.x = pose["position"]["x"].as<double>();
+          point.point.pose.position.y = pose["position"]["y"].as<double>();
+          point.point.pose.position.z = pose["position"]["z"].as<double>();
+        }
+        if (pose["orientation"]) {
+          point.point.pose.orientation.x = pose["orientation"]["x"].as<double>();
+          point.point.pose.orientation.y = pose["orientation"]["y"].as<double>();
+          point.point.pose.orientation.z = pose["orientation"]["z"].as<double>();
+          point.point.pose.orientation.w = pose["orientation"]["w"].as<double>();
+        }
+      }
+
+      // Parse longitudinal_velocity_mps
+      if (point_yaml["point"]["longitudinal_velocity_mps"]) {
+        point.point.longitudinal_velocity_mps =
+          point_yaml["point"]["longitudinal_velocity_mps"].as<float>();
+      }
+
+      // Parse lateral_velocity_mps
+      if (point_yaml["point"]["lateral_velocity_mps"]) {
+        point.point.lateral_velocity_mps =
+          point_yaml["point"]["lateral_velocity_mps"].as<float>();
+      }
+
+      // Parse heading_rate_rps
+      if (point_yaml["point"]["heading_rate_rps"]) {
+        point.point.heading_rate_rps =
+          point_yaml["point"]["heading_rate_rps"].as<float>();
+      }
+
+      // Parse lane_ids
+      if (point_yaml["lane_ids"]) {
+        for (const auto & id : point_yaml["lane_ids"]) {
+          point.lane_ids.push_back(id.as<int64_t>());
+        }
+      }
+
+      msg.points.push_back(point);
+    }
+  }
+
+  return msg;
+}
+
+// Helper function to convert YAML to MarkerArray
+MarkerArray yamlToMarkerArray(const YAML::Node & yaml_node)
+{
+  MarkerArray msg;
+
+  if (yaml_node["markers"]) {
+    for (const auto & marker_yaml : yaml_node["markers"]) {
+      visualization_msgs::msg::Marker marker;
+
+      // Parse header
+      if (marker_yaml["header"]) {
+        const auto & header = marker_yaml["header"];
+        if (header["stamp"]) {
+          marker.header.stamp.sec = header["stamp"]["sec"].as<int32_t>();
+          marker.header.stamp.nanosec = header["stamp"]["nanosec"].as<uint32_t>();
+        }
+        if (header["frame_id"]) {
+          marker.header.frame_id = header["frame_id"].as<std::string>();
+        }
+      }
+
+      // Parse basic marker fields
+      if (marker_yaml["ns"]) {
+        marker.ns = marker_yaml["ns"].as<std::string>();
+      }
+      if (marker_yaml["id"]) {
+        marker.id = marker_yaml["id"].as<int32_t>();
+      }
+      if (marker_yaml["type"]) {
+        marker.type = marker_yaml["type"].as<int32_t>();
+      }
+      if (marker_yaml["action"]) {
+        marker.action = marker_yaml["action"].as<int32_t>();
+      }
+
+      // Parse pose
+      if (marker_yaml["pose"]) {
+        const auto & pose = marker_yaml["pose"];
+        if (pose["position"]) {
+          marker.pose.position.x = pose["position"]["x"].as<double>();
+          marker.pose.position.y = pose["position"]["y"].as<double>();
+          marker.pose.position.z = pose["position"]["z"].as<double>();
+        }
+        if (pose["orientation"]) {
+          marker.pose.orientation.x = pose["orientation"]["x"].as<double>();
+          marker.pose.orientation.y = pose["orientation"]["y"].as<double>();
+          marker.pose.orientation.z = pose["orientation"]["z"].as<double>();
+          marker.pose.orientation.w = pose["orientation"]["w"].as<double>();
+        }
+      }
+
+      // Parse scale
+      if (marker_yaml["scale"]) {
+        const auto & scale = marker_yaml["scale"];
+        if (scale["x"]) marker.scale.x = scale["x"].as<double>();
+        if (scale["y"]) marker.scale.y = scale["y"].as<double>();
+        if (scale["z"]) marker.scale.z = scale["z"].as<double>();
+      }
+
+      // Parse color
+      if (marker_yaml["color"]) {
+        const auto & color = marker_yaml["color"];
+        if (color["r"]) marker.color.r = color["r"].as<float>();
+        if (color["g"]) marker.color.g = color["g"].as<float>();
+        if (color["b"]) marker.color.b = color["b"].as<float>();
+        if (color["a"]) marker.color.a = color["a"].as<float>();
+      }
+
+      msg.markers.push_back(marker);
+    }
+  }
+
+  return msg;
+}
+
+bool loadMessagesFromYaml(
+  const std::string & yaml_path,
+  PathWithLaneId & path_msg,
+  MarkerArray & marker_array)
+{
+  try {
+    YAML::Node yaml = YAML::LoadFile(yaml_path);
+
+    if (!yaml["path_with_lane_id"] || !yaml["marker_array"]) {
+      std::cerr << "Error: YAML file missing required fields (path_with_lane_id or marker_array)" << std::endl;
+      return false;
+    }
+
+    // Load PathWithLaneId message
+    path_msg = yamlToPathWithLaneId(yaml["path_with_lane_id"]);
+
+    // Load MarkerArray message
+    marker_array = yamlToMarkerArray(yaml["marker_array"]);
+
+    std::cout << "Loaded messages from YAML file: " << yaml_path << std::endl;
+    return true;
+  } catch (const std::exception & e) {
+    std::cerr << "Error loading YAML file: " << e.what() << std::endl;
+    return false;
+  }
+}
+
 int main(int argc, char ** argv)
 {
   // Parse command line arguments BEFORE rclcpp::init to avoid ROS2 consuming them
   if (argc < 2) {
     std::cerr << "Usage: ros2 run autoware_behavior_path_goal_planner_module "
-              << "analyze_rosbag_lateral_accel <rosbag_path> [options]" << std::endl;
+              << "analyze_rosbag_lateral_accel <input_path> [options]" << std::endl;
+    std::cerr << "Input:" << std::endl;
+    std::cerr << "  <input_path>              Path to rosbag or YAML file" << std::endl;
     std::cerr << "Options:" << std::endl;
+    std::cerr << "  --yaml                    Read input as YAML file instead of rosbag" << std::endl;
+    std::cerr << "  --dump-yaml <output_path> Dump messages to YAML file after reading rosbag" << std::endl;
     std::cerr << "  --threshold <value>       Lateral acceleration threshold [m/s^2] (default: "
               << DEFAULT_LATERAL_ACCELERATION_THRESHOLD << ")" << std::endl;
     std::cerr << "  --duration <value>        Filtering duration [s] (default: "
@@ -162,7 +362,7 @@ int main(int argc, char ** argv)
     return 1;
   }
 
-  const std::string rosbag_path = argv[1];
+  const std::string input_path = argv[1];
 
   // Parse command line arguments
   double lateral_acceleration_threshold = DEFAULT_LATERAL_ACCELERATION_THRESHOLD;
@@ -170,6 +370,8 @@ int main(int argc, char ** argv)
   double velocity = DEFAULT_VELOCITY;
   int64_t target_timestamp_sec = DEFAULT_TARGET_TIMESTAMP_SEC;
   int64_t target_timestamp_nsec = DEFAULT_TARGET_TIMESTAMP_NANOSEC;
+  bool use_yaml_input = false;
+  std::string dump_yaml_path = "";
 
   for (int i = 2; i < argc; ++i) {
     std::string arg = argv[i];
@@ -183,124 +385,148 @@ int main(int argc, char ** argv)
       target_timestamp_sec = std::stoll(argv[++i]);
     } else if (arg == "--timestamp-nsec" && i + 1 < argc) {
       target_timestamp_nsec = std::stoll(argv[++i]);
+    } else if (arg == "--yaml") {
+      use_yaml_input = true;
+    } else if (arg == "--dump-yaml" && i + 1 < argc) {
+      dump_yaml_path = argv[++i];
     }
   }
 
   // Initialize ROS2 after parsing our arguments
   rclcpp::init(argc, argv);
 
-  std::cout << "Opening rosbag: " << rosbag_path << std::endl;
-
-  // Setup rosbag reader
-  rosbag2_cpp::Reader reader;
-  rosbag2_storage::StorageOptions storage_options;
-  storage_options.uri = rosbag_path;
-  storage_options.storage_id = "sqlite3";
-
-  rosbag2_cpp::ConverterOptions converter_options;
-  converter_options.input_serialization_format = "cdr";
-  converter_options.output_serialization_format = "cdr";
-
-  try {
-    reader.open(storage_options, converter_options);
-  } catch (const std::exception & e) {
-    std::cerr << "Failed to open rosbag: " << e.what() << std::endl;
-    return 1;
-  }
-
-  // Target timestamp
-  const rclcpp::Time target_time(target_timestamp_sec, target_timestamp_nsec);
-  std::cout << "Target timestamp: " << target_time.seconds() << std::endl;
-
-  // Use seek to jump near target timestamp
-  const int64_t target_timestamp_ns = target_timestamp_sec * 1000000000LL + target_timestamp_nsec;
-  constexpr double SEEK_OFFSET = 1.0;  // Seek 1 second before target to ensure we don't miss it
-  const int64_t seek_timestamp_ns = target_timestamp_ns - static_cast<int64_t>(SEEK_OFFSET * 1e9);
-
-  std::cout << "Seeking to timestamp: " << (seek_timestamp_ns / 1e9) << std::endl;
-  try {
-    reader.seek(seek_timestamp_ns);
-    std::cout << "Seek successful!" << std::endl;
-  } catch (const std::exception & e) {
-    std::cout << "Seek failed (will read from start): " << e.what() << std::endl;
-  }
-
   // Storage for messages
   geometry_msgs::msg::Pose start_pose;
   std::vector<PathPointWithLaneId> path_points;
-  bool found_marker_array = false;
-  bool found_path = false;
+  PathWithLaneId path_msg;
+  MarkerArray marker_array;
 
-  rclcpp::Serialization<MarkerArray> marker_serialization;
-  rclcpp::Serialization<PathWithLaneId> path_serialization;
+  if (use_yaml_input) {
+    // Load from YAML file
+    std::cout << "Loading from YAML file: " << input_path << std::endl;
 
-  // Read rosbag with early termination
-  size_t message_count = 0;
-  bool started_target_window = false;
-  constexpr double TIME_WINDOW = 0.1;  // seconds
-
-  while (reader.has_next()) {
-    auto bag_message = reader.read_next();
-    message_count++;
-
-    const rclcpp::Time msg_time(
-      bag_message->time_stamp / 1000000000,  // seconds
-      bag_message->time_stamp % 1000000000   // nanoseconds
-    );
-
-    const double time_diff = (msg_time - target_time).seconds();
-
-    // Skip messages before target window
-    if (time_diff < -TIME_WINDOW) {
-      continue;
+    if (!loadMessagesFromYaml(input_path, path_msg, marker_array)) {
+      return 1;
     }
 
-    // We've reached the target window
-    if (!started_target_window) {
-      std::cout << "Found target time window! (message #" << message_count
-                << ", time: " << msg_time.seconds() << ")" << std::endl;
-      started_target_window = true;
+    start_pose = extractStartPoseFromMarkerArray(marker_array);
+    path_points = convertToPathPointWithLaneId(path_msg);
+  } else {
+    // Load from rosbag
+    std::cout << "Opening rosbag: " << input_path << std::endl;
+
+    // Setup rosbag reader
+    rosbag2_cpp::Reader reader;
+    rosbag2_storage::StorageOptions storage_options;
+    storage_options.uri = input_path;
+    storage_options.storage_id = "sqlite3";
+
+    rosbag2_cpp::ConverterOptions converter_options;
+    converter_options.input_serialization_format = "cdr";
+    converter_options.output_serialization_format = "cdr";
+
+    try {
+      reader.open(storage_options, converter_options);
+    } catch (const std::exception & e) {
+      std::cerr << "Failed to open rosbag: " << e.what() << std::endl;
+      return 1;
     }
 
-    // Exit early if we've passed the target window
-    if (time_diff > TIME_WINDOW) {
-      std::cout << "Passed target time window (message #" << message_count << ")" << std::endl;
-      break;
+    // Target timestamp
+    const rclcpp::Time target_time(target_timestamp_sec, target_timestamp_nsec);
+    std::cout << "Target timestamp: " << target_time.seconds() << std::endl;
+
+    // Use seek to jump near target timestamp
+    const int64_t target_timestamp_ns = target_timestamp_sec * 1000000000LL + target_timestamp_nsec;
+    constexpr double SEEK_OFFSET = 1.0;  // Seek 1 second before target to ensure we don't miss it
+    const int64_t seek_timestamp_ns = target_timestamp_ns - static_cast<int64_t>(SEEK_OFFSET * 1e9);
+
+    std::cout << "Seeking to timestamp: " << (seek_timestamp_ns / 1e9) << std::endl;
+    try {
+      reader.seek(seek_timestamp_ns);
+      std::cout << "Seek successful!" << std::endl;
+    } catch (const std::exception & e) {
+      std::cout << "Seek failed (will read from start): " << e.what() << std::endl;
     }
 
-    if (bag_message->topic_name == "/planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner/info/goal_planner") {
-      rclcpp::SerializedMessage serialized_msg(*bag_message->serialized_data);
-      MarkerArray marker_array;
-      marker_serialization.deserialize_message(&serialized_msg, &marker_array);
+    // Flags for message finding
+    bool found_marker_array = false;
+    bool found_path = false;
 
-      start_pose = extractStartPoseFromMarkerArray(marker_array);
-      found_marker_array = true;
-      std::cout << "Found MarkerArray at time: " << msg_time.seconds() << std::endl;
+    rclcpp::Serialization<MarkerArray> marker_serialization;
+    rclcpp::Serialization<PathWithLaneId> path_serialization;
+
+    // Read rosbag with early termination
+    size_t message_count = 0;
+    bool started_target_window = false;
+    constexpr double TIME_WINDOW = 0.1;  // seconds
+
+    while (reader.has_next()) {
+      auto bag_message = reader.read_next();
+      message_count++;
+
+      const rclcpp::Time msg_time(
+        bag_message->time_stamp / 1000000000,  // seconds
+        bag_message->time_stamp % 1000000000   // nanoseconds
+      );
+
+      const double time_diff = (msg_time - target_time).seconds();
+
+      // Skip messages before target window
+      if (time_diff < -TIME_WINDOW) {
+        continue;
+      }
+
+      // We've reached the target window
+      if (!started_target_window) {
+        std::cout << "Found target time window! (message #" << message_count
+                  << ", time: " << msg_time.seconds() << ")" << std::endl;
+        started_target_window = true;
+      }
+
+      // Exit early if we've passed the target window
+      if (time_diff > TIME_WINDOW) {
+        std::cout << "Passed target time window (message #" << message_count << ")" << std::endl;
+        break;
+      }
+
+      if (bag_message->topic_name == "/planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner/info/goal_planner") {
+        rclcpp::SerializedMessage serialized_msg(*bag_message->serialized_data);
+        marker_serialization.deserialize_message(&serialized_msg, &marker_array);
+
+        start_pose = extractStartPoseFromMarkerArray(marker_array);
+        found_marker_array = true;
+        std::cout << "Found MarkerArray at time: " << msg_time.seconds() << std::endl;
+      }
+
+      if (bag_message->topic_name == "/planning/scenario_planning/lane_driving/behavior_planning/path_with_lane_id") {
+        rclcpp::SerializedMessage serialized_msg(*bag_message->serialized_data);
+        path_serialization.deserialize_message(&serialized_msg, &path_msg);
+
+        path_points = convertToPathPointWithLaneId(path_msg);
+        found_path = true;
+        std::cout << "Found PathWithLaneId at time: " << msg_time.seconds() << std::endl;
+      }
+
+      if (found_marker_array && found_path) {
+        break;
+      }
     }
 
-    if (bag_message->topic_name == "/planning/scenario_planning/lane_driving/behavior_planning/path_with_lane_id") {
-      rclcpp::SerializedMessage serialized_msg(*bag_message->serialized_data);
-      PathWithLaneId path_msg;
-      path_serialization.deserialize_message(&serialized_msg, &path_msg);
-
-      path_points = convertToPathPointWithLaneId(path_msg);
-      found_path = true;
-      std::cout << "Found PathWithLaneId at time: " << msg_time.seconds() << std::endl;
+    if (!found_marker_array) {
+      std::cerr << "Error: Could not find MarkerArray message near target timestamp" << std::endl;
+      return 1;
     }
 
-    if (found_marker_array && found_path) {
-      break;
+    if (!found_path) {
+      std::cerr << "Error: Could not find PathWithLaneId message near target timestamp" << std::endl;
+      return 1;
     }
-  }
 
-  if (!found_marker_array) {
-    std::cerr << "Error: Could not find MarkerArray message near target timestamp" << std::endl;
-    return 1;
-  }
-
-  if (!found_path) {
-    std::cerr << "Error: Could not find PathWithLaneId message near target timestamp" << std::endl;
-    return 1;
+    // Dump to YAML if requested
+    if (!dump_yaml_path.empty()) {
+      dumpMessagesToYaml(path_msg, marker_array, dump_yaml_path);
+    }
   }
 
   // Apply lateral acceleration check
