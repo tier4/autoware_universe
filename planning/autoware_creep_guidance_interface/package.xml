@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>autoware_creep_guidance_interface</name>
+  <version>0.1.0</version>
+  <description>The autoware_creep_guidance_interface package</description>
+
+  <maintainer email="yukinari.hisaki.2@tier4.jp">Yukinari Hisaki</maintainer>
+
+  <license>Apache License 2.0</license>
+
+  <author email="yukinari.hisaki.2@tier4.jp">Yukinari Hisaki</author>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <buildtool_depend>autoware_cmake</buildtool_depend>
+
+  <depend>autoware_utils</depend>
+  <depend>rclcpp</depend>
+  <depend>tier4_creep_guidance_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
