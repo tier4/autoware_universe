@@ -29,6 +29,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -70,11 +71,14 @@ private:
 
   utils::DiagnosticParams diag_params_{};
   std::optional<rclcpp::Time> last_in_time_processing_timestamp_;
+  std::mutex
+    diagnostic_mutex_;  // Protects last_in_time_processing_timestamp_ and debug_publisher_ptr_
 
   // Multi-LiDAR support
   bool joint_inference_{};
   std::vector<std::string> input_topics_;
   std::unordered_map<std::string, std::shared_ptr<LidarProcessor>> lidar_processors_;
+  std::mutex processors_mutex_;  // Protects lidar_processors_ map access
 };
 
 }  // namespace autoware::lidar_frnet

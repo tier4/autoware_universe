@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -111,13 +112,20 @@ LidarFRNetNode::LidarFRNetNode(const rclcpp::NodeOptions & options)
       processor->stop_watch_ptr->tic("cyclic");
       processor->stop_watch_ptr->tic("processing/total");
 
+      // Create callback group for parallel processing of multiple LiDARs
+      // MutuallyExclusive allows callbacks in this group to run in parallel with other groups
+      auto callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+      rclcpp::SubscriptionOptions sub_options;
+      sub_options.callback_group = callback_group;
+
       // TODO(Sugahara): Use cuda_blackboard for communication between LiDAR processors to reduce
       // data transfer overhead Create subscriber with topic-specific callback
       processor->cloud_in_sub = create_subscription<sensor_msgs::msg::PointCloud2>(
         topic_name, rclcpp::SensorDataQoS{}.keep_last(1),
         [this, topic_name](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
           this->cloudCallback(msg, topic_name);
-        });
+        },
+        sub_options);
 
       // Create publishers with topic-specific names
       std::string sanitized_topic_name = topic_name;
@@ -130,7 +138,10 @@ LidarFRNetNode::LidarFRNetNode(const rclcpp::NodeOptions & options)
       processor->cloud_filtered_pub = create_publisher<sensor_msgs::msg::PointCloud2>(
         "~/output" + sanitized_topic_name + "/filtered", rclcpp::SensorDataQoS{}.keep_last(1));
 
-      lidar_processors_[topic_name] = processor;
+      {
+        std::lock_guard<std::mutex> lock(processors_mutex_);
+        lidar_processors_[topic_name] = processor;
+      }
     }
   }
 
@@ -143,13 +154,17 @@ LidarFRNetNode::LidarFRNetNode(const rclcpp::NodeOptions & options)
 void LidarFRNetNode::cloudCallback(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg, const std::string & topic_name)
 {
-  auto it = lidar_processors_.find(topic_name);
-  if (it == lidar_processors_.end()) {
-    RCLCPP_ERROR(this->get_logger(), "Processor not found for topic: %s", topic_name.c_str());
-    return;
+  // Find processor with mutex protection
+  std::shared_ptr<LidarProcessor> processor;
+  {
+    std::lock_guard<std::mutex> lock(processors_mutex_);
+    auto it = lidar_processors_.find(topic_name);
+    if (it == lidar_processors_.end()) {
+      RCLCPP_ERROR(this->get_logger(), "Processor not found for topic: %s", topic_name.c_str());
+      return;
+    }
+    processor = it->second;
   }
-
-  auto & processor = it->second;
 
   if (processor->stop_watch_ptr) {
     processor->stop_watch_ptr->toc("processing/total", true);
@@ -193,20 +208,23 @@ void LidarFRNetNode::cloudCallback(
         std::chrono::nanoseconds((this->get_clock()->now() - msg->header.stamp).nanoseconds()))
         .count();
 
-    // Publish debug info with topic-specific prefix
+    // Publish debug info with topic-specific prefix (protected by mutex)
     std::string sanitized_topic_name = topic_name;
     std::replace(sanitized_topic_name.begin(), sanitized_topic_name.end(), '/', '_');
 
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug" + sanitized_topic_name + "/cyclic_time_ms", cyclic_time_ms);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug" + sanitized_topic_name + "/pipeline_latency_ms", pipeline_latency_ms);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug" + sanitized_topic_name + "/processing_time/total_ms",
-      *processor->last_processing_time_ms);
-    for (const auto & [proc_topic, time_ms] : proc_timing) {
+    {
+      std::lock_guard<std::mutex> lock(diagnostic_mutex_);
       debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-        "debug" + sanitized_topic_name + "/" + proc_topic, time_ms);
+        "debug" + sanitized_topic_name + "/cyclic_time_ms", cyclic_time_ms);
+      debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+        "debug" + sanitized_topic_name + "/pipeline_latency_ms", pipeline_latency_ms);
+      debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+        "debug" + sanitized_topic_name + "/processing_time/total_ms",
+        *processor->last_processing_time_ms);
+      for (const auto & [proc_topic, time_ms] : proc_timing) {
+        debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+          "debug" + sanitized_topic_name + "/" + proc_topic, time_ms);
+      }
     }
   }
 }
@@ -222,42 +240,52 @@ void LidarFRNetNode::diagnoseProcessingTime(diagnostic_updater::DiagnosticStatus
   bool has_processed = false;
   double max_processing_time_ms = 0.0;
 
-  for (const auto & [topic_name, processor] : lidar_processors_) {
-    if (processor->last_processing_time_ms) {
-      has_processed = true;
-      max_processing_time_ms =
-        std::max(max_processing_time_ms, *processor->last_processing_time_ms);
+  {
+    std::lock_guard<std::mutex> lock(processors_mutex_);
+    for (const auto & [topic_name, processor] : lidar_processors_) {
+      if (processor->last_processing_time_ms) {
+        has_processed = true;
+        max_processing_time_ms =
+          std::max(max_processing_time_ms, *processor->last_processing_time_ms);
+      }
     }
   }
 
   // Check if any processor has performed inference
   if (has_processed) {
     // Check if processing time exceeds the limit
-    if (max_processing_time_ms > diag_params_.max_allowed_processing_time_ms) {
-      stat.add("is_processing_time_ms_in_expected_range", false);
+    {
+      std::lock_guard<std::mutex> lock(diagnostic_mutex_);
+      if (max_processing_time_ms > diag_params_.max_allowed_processing_time_ms) {
+        stat.add("is_processing_time_ms_in_expected_range", false);
 
-      message.clear();
-      message << "Processing time exceeds the acceptable limit of "
-              << diag_params_.max_allowed_processing_time_ms << " ms by "
-              << (max_processing_time_ms - diag_params_.max_allowed_processing_time_ms) << " ms.";
+        message.clear();
+        message << "Processing time exceeds the acceptable limit of "
+                << diag_params_.max_allowed_processing_time_ms << " ms by "
+                << (max_processing_time_ms - diag_params_.max_allowed_processing_time_ms) << " ms.";
 
-      // In case the processing starts with a delayed inference
-      if (!last_in_time_processing_timestamp_) {
+        // In case the processing starts with a delayed inference
+        if (!last_in_time_processing_timestamp_) {
+          last_in_time_processing_timestamp_.emplace(timestamp_now);
+        }
+
+        diag_level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      } else {
+        stat.add("is_processing_time_ms_in_expected_range", true);
         last_in_time_processing_timestamp_.emplace(timestamp_now);
       }
-
-      diag_level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-    } else {
-      stat.add("is_processing_time_ms_in_expected_range", true);
-      last_in_time_processing_timestamp_.emplace(timestamp_now);
     }
     stat.add("processing_time_ms", max_processing_time_ms);
 
-    const double delayed_state_duration =
-      std::chrono::duration<double, std::milli>(
-        std::chrono::nanoseconds(
-          (timestamp_now - *last_in_time_processing_timestamp_).nanoseconds()))
-        .count();
+    double delayed_state_duration = 0.0;
+    {
+      std::lock_guard<std::mutex> lock(diagnostic_mutex_);
+      delayed_state_duration =
+        std::chrono::duration<double, std::milli>(
+          std::chrono::nanoseconds(
+            (timestamp_now - *last_in_time_processing_timestamp_).nanoseconds()))
+          .count();
+    }
 
     // check consecutive delays
     if (delayed_state_duration > diag_params_.max_acceptable_consecutive_delay_ms) {
