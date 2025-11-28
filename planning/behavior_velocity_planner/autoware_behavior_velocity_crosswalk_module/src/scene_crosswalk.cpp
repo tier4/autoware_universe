@@ -314,40 +314,37 @@ bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path)
   RCLCPP_INFO_THROTTLE(
     logger_, *clock_, 1000, "creeping_triggered_: %s", creeping_triggered_ ? "true" : "false");
 
-  if (creeping_triggered_) {
-  }
-
-  if (creeping_triggered_ && deadline_stop_pose.has_value()) {
-    const bool has_moving_object = [&]() {
-      if (!nearest_stop_factor.has_value()) {
-        return false;
-      }
-      const double moving_threshold = planner_param_.stop_object_velocity;
-      const auto & objects = planner_data_->predicted_objects->objects;
-      for (const auto & uuid : nearest_stop_factor->target_object_ids) {
-        for (const auto & object : objects) {
-          if (object.object_id != uuid) {
-            continue;
-          }
-          const auto & twist = object.kinematics.initial_twist_with_covariance.twist.linear;
-          if (std::hypot(twist.x, twist.y) > moving_threshold) {
-            return true;
-          }
-          break;
-        }
-      }
-      return false;
-    }();
-    if (has_moving_object) {
-      yield_stack_ = true;
-    }
-
-    // plan Slow Down & Stop
-    planCreeping(*path, nearest_stop_factor, deadline_stop_pose.value());
+  // plan Go/Stop
+  if (isActivated()) {
+    planGo(*path, nearest_stop_factor);
   } else {
-    // plan Go/Stop
-    if (isActivated()) {
-      planGo(*path, nearest_stop_factor);
+    if (creeping_triggered_ && deadline_stop_pose.has_value()) {
+      const bool has_moving_object = [&]() {
+        if (!nearest_stop_factor.has_value()) {
+          return false;
+        }
+        const double moving_threshold = planner_param_.stop_object_velocity;
+        const auto & objects = planner_data_->predicted_objects->objects;
+        for (const auto & uuid : nearest_stop_factor->target_object_ids) {
+          for (const auto & object : objects) {
+            if (object.object_id != uuid) {
+              continue;
+            }
+            const auto & twist = object.kinematics.initial_twist_with_covariance.twist.linear;
+            if (std::hypot(twist.x, twist.y) > moving_threshold) {
+              return true;
+            }
+            break;
+          }
+        }
+        return false;
+      }();
+      if (has_moving_object) {
+        yield_stack_ = true;
+      }
+
+      // plan Slow Down & Stop
+      planCreeping(*path, nearest_stop_factor, deadline_stop_pose.value());
     } else {
       planStop(*path, nearest_stop_factor, default_stop_pose, reason);
     }
@@ -1593,16 +1590,39 @@ void CrosswalkModule::planCreeping(
     return;
   }
 
-  // 通過判定
-  if (!yield_stack_ && planner_data_->current_acceleration->accel.accel.linear.x < -0.2) {
-    passed_pass_judge_ = true;
+  const double creep_velocity = 3.0 / 3.6;  // 3km/h -> m/s
+
+  // 通過判定 (制動距離ベース)
+  if (!yield_stack_) {
+    const auto & ego_pos = planner_data_->current_odometry->pose.position;
+    const double ego_vel = std::max(0.0, planner_data_->current_velocity->twist.linear.x);
+    max_ego_speed_from_creep_triggered_ = std::max(max_ego_speed_from_creep_triggered_, ego_vel);
+    const double ego_acc = planner_data_->current_acceleration->accel.accel.linear.x;
+
+    // calculate distance to deadline stop pose
+    const double dist_to_deadline_stop =
+      calcSignedArcLength(ego_path.points, ego_pos, deadline_stop_pose.position);
+
+    // calculate braking distance
+    const auto & p = planner_param_;
+    const auto braking_distance = calcDecelDistWithJerkAndAccConstraints(
+      max_ego_speed_from_creep_triggered_, 0.0, ego_acc, p.min_acc_preferred, 10.0,
+      p.min_jerk_preferred);
+
+    RCLCPP_INFO(
+      logger_, "dist_to_deadline_stop: %.2f m, braking_distance: %.2f m", dist_to_deadline_stop,
+      braking_distance.has_value() ? braking_distance.value() : -1.0);
+
+    // if braking distance is greater than distance to deadline stop pose, can't stop anymore
+    if (braking_distance.has_value() && braking_distance.value() + 0.2 > dist_to_deadline_stop) {
+      passed_pass_judge_ = true;
+    }
   }
 
   if (passed_pass_judge_) {
     return;
   } else {
     // Plan slow down
-    const double creep_velocity = 3.0 / 3.6;  // 3km/h -> m/s
     insertDecelPointWithDebugInfo(
       nearest_stop_factor->stop_pose.position, creep_velocity, ego_path);
 

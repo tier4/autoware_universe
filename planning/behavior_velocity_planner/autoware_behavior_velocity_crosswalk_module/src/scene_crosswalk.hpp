@@ -544,6 +544,8 @@ private:
 
   lanelet::ConstLineStrings3d stop_lines_;
 
+  mutable double max_ego_speed_from_creep_triggered_{0.0};
+
   // Parameter
   const PlannerParam planner_param_;
 
