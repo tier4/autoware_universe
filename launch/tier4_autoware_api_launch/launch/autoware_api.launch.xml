@@ -19,9 +19,13 @@
 
   <!-- AD API -->
   <group>
+    <let name="debug_msg" value="[DEBUG] autoware_api.launch.xml: launch_default_adapi=$(var launch_default_adapi)"/>
+    <log message="$(var debug_msg)"/>
+    <log message="[DEBUG] autoware_api.launch.xml: Before including default_adapi.launch.py" if="$(var launch_default_adapi)"/>
     <include file="$(find-pkg-share autoware_default_adapi_universe)/launch/default_adapi.launch.py" if="$(var launch_default_adapi)">
       <arg name="config" value="$(var default_adapi_param_path)"/>
     </include>
+    <log message="[DEBUG] autoware_api.launch.xml: After including default_adapi.launch.py" if="$(var launch_default_adapi)"/>
     <include file="$(find-pkg-share autoware_adapi_adaptors)/launch/rviz_adaptors.launch.xml" if="$(var launch_rviz_adaptors)"/>
   </group>
 

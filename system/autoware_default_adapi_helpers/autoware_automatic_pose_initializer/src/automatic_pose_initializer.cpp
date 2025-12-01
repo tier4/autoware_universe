@@ -22,16 +22,28 @@ namespace autoware::automatic_pose_initializer
 AutomaticPoseInitializer::AutomaticPoseInitializer(const rclcpp::NodeOptions & options)
 : Node("autoware_automatic_pose_initializer", options)
 {
+  RCLCPP_INFO(get_logger(), "AutomaticPoseInitializer constructor started");
+
   const auto adaptor = autoware::component_interface_utils::NodeAdaptor(this);
   group_cli_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+  RCLCPP_INFO(get_logger(), "Initializing client and subscriber...");
   adaptor.init_cli(cli_initialize_, group_cli_);
-  adaptor.init_sub(sub_state_, [this](const State::Message::ConstSharedPtr msg) { state_ = *msg; });
+
+  RCLCPP_INFO(get_logger(), "Creating subscription for initialization_state...");
+  adaptor.init_sub(sub_state_, [this](const State::Message::ConstSharedPtr msg) {
+    RCLCPP_DEBUG(get_logger(), "Received initialization_state: state=%d", msg->state);
+    state_ = *msg;
+  });
+  RCLCPP_INFO(get_logger(), "Subscription created successfully");
 
   const auto period = rclcpp::Rate(1.0).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
 
   state_.stamp = now();
   state_.state = State::Message::UNKNOWN;
+
+  RCLCPP_INFO(get_logger(), "AutomaticPoseInitializer initialized with UNKNOWN state");
 }
 
 void AutomaticPoseInitializer::on_timer()
@@ -42,6 +54,7 @@ void AutomaticPoseInitializer::on_timer()
       const auto req = std::make_shared<Initialize::Service::Request>();
       cli_initialize_->call(req);
     } catch (const autoware::component_interface_utils::ServiceException & error) {
+      RCLCPP_ERROR(get_logger(), "service exception: %s", error.what());
     }
   }
   timer_->reset();

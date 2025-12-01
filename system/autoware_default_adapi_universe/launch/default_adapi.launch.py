@@ -26,13 +26,15 @@ from launch_ros.substitutions import FindPackageShare
 
 def create_api_node(package_name, node_name, class_name):
     fullname = pathlib.Path("adapi/node") / node_name
-    return ComposableNode(
+    node = ComposableNode(
         namespace=str(fullname.parent),
         name=str(fullname.name),
         package=package_name,
         plugin="autoware::default_adapi::" + class_name,
         parameters=[ParameterFile(LaunchConfiguration("config"))],
     )
+    print(f"[DEBUG] Created ComposableNode: {node_name}, condition={node.condition()}")
+    return node
 
 
 def get_default_config():
@@ -42,6 +44,7 @@ def get_default_config():
 
 
 def generate_launch_description():
+    print("[DEBUG] default_adapi.launch.py: generate_launch_description() called")
     components = [
         create_api_node("autoware_default_adapi", "interface", "InterfaceNode"),
         create_api_node("autoware_default_adapi", "localization", "LocalizationNode"),
@@ -63,6 +66,7 @@ def generate_launch_description():
         create_api_node("autoware_default_adapi_universe", "vehicle_info", "VehicleInfoNode"),
         create_api_node("autoware_default_adapi_universe", "vehicle_door", "VehicleDoorNode"),
     ]
+    print(f"[DEBUG] default_adapi.launch.py: Created {len(components)} components")
     container = ComposableNodeContainer(
         namespace="adapi",
         name="container",
@@ -71,5 +75,6 @@ def generate_launch_description():
         ros_arguments=["--log-level", "adapi.container:=WARN"],
         composable_node_descriptions=components,
     )
+    print(f"[DEBUG] default_adapi.launch.py: Created container with {len(components)} composable_node_descriptions")
     argument = DeclareLaunchArgument("config", default_value=get_default_config())
     return launch.LaunchDescription([argument, container])
