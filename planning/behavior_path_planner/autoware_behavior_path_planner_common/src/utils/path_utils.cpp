@@ -472,6 +472,95 @@ BehaviorModuleOutput getReferencePath(
     *route_handler, current_lanes_with_backward_margin, no_shift_pose, backward_length,
     p.forward_path_length, p);
 
+  // EXPERIMENTAL: Shift path to left for left turn
+  // This logic shifts the reference path to the left when approaching a left-turn lane.
+  // It starts shifting 'start_shift_dist' meters before the turn starts, maintains the shift
+  // during the turn, and gradually returns to the center 'end_shift_dist' meters after the turn
+  // ends. This mimics the behavior of moving closer to the inner side before making a left turn.
+  {
+    const double start_shift_dist = 30.0;  // Distance to start shifting before the left turn [m]
+    const double ramp_up_dist =
+      20.0;  // Distance to complete shifting [m] (must be <= start_shift_dist)
+    const double end_shift_dist = 5.0;  // Distance to finish shifting after the left turn [m]
+    const double max_shift = 0.5;       // Maximum shift amount to the left [m]
+
+    // Find the start and end indices of the left turn lane in the reference path
+    const auto get_left_turn_range = [&]() -> std::optional<std::pair<size_t, size_t>> {
+      std::optional<size_t> start_idx = std::nullopt;
+      std::optional<size_t> end_idx = std::nullopt;
+
+      for (size_t i = 0; i < reference_path.points.size(); ++i) {
+        bool is_left_turn = false;
+        for (const auto & id : reference_path.points.at(i).lane_ids) {
+          try {
+            const auto lane = route_handler->getLaneletMapPtr()->laneletLayer.get(id);
+            if (lane.attributeOr("turn_direction", std::string("none")) == "left") {
+              is_left_turn = true;
+              break;
+            }
+          } catch (...) {
+          }
+        }
+
+        if (is_left_turn) {
+          if (!start_idx) {
+            start_idx = i;
+          }
+          end_idx = i;
+        } else {
+          if (start_idx) {
+            break;
+          }
+        }
+      }
+
+      if (start_idx && end_idx) {
+        return std::make_pair(*start_idx, *end_idx);
+      }
+      return std::nullopt;
+    };
+
+    const auto left_turn_range = get_left_turn_range();
+
+    if (left_turn_range) {
+      const auto arc_lengths =
+        calcPathArcLengthArray(reference_path, 0, reference_path.points.size(), 0.0);
+      const double dist_start = arc_lengths.at(left_turn_range->first);
+      const double dist_end = arc_lengths.at(left_turn_range->second);
+
+      for (size_t i = 0; i < reference_path.points.size(); ++i) {
+        const double current_dist = arc_lengths.at(i);
+        double shift = 0.0;
+
+        // Calculate shift amount based on the relative position to the left turn section
+        if (current_dist < dist_start - start_shift_dist) {
+          // Before shift start
+          shift = 0.0;
+        } else if (current_dist < dist_start - start_shift_dist + ramp_up_dist) {
+          // Ramp up shift
+          const double ratio = (current_dist - (dist_start - start_shift_dist)) / ramp_up_dist;
+          shift = max_shift * ratio;
+        } else if (current_dist <= dist_end) {
+          // Maintain max shift (before and during the turn)
+          shift = max_shift;
+        } else if (current_dist < dist_end + end_shift_dist) {
+          // Ramp down shift
+          const double ratio = 1.0 - (current_dist - dist_end) / end_shift_dist;
+          shift = max_shift * ratio;
+        } else {
+          // After shift end
+          shift = 0.0;
+        }
+
+        // Apply shift to the point
+        if (shift > 1e-3) {
+          reference_path.points.at(i).point.pose = autoware_utils::calc_offset_pose(
+            reference_path.points.at(i).point.pose, 0.0, shift, 0.0);
+        }
+      }
+    }
+  }
+
   if (reference_path.points.empty()) {
     auto clock{rclcpp::Clock{RCL_ROS_TIME}};
     RCLCPP_WARN_THROTTLE(
