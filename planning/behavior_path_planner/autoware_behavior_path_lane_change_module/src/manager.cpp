@@ -232,6 +232,12 @@ LCParamPtr LaneChangeModuleManager::set_params(rclcpp::Node * node, const std::s
   p.frenet.th_average_curvature =
     get_or_declare_parameter<double>(*node, parameter("frenet.th_average_curvature"));
 
+  {
+    p.l2_overwrite.enable = get_or_declare_parameter<bool>(*node, parameter("l2_overwrite.enable"));
+    p.l2_overwrite.rewrite_overshoot_threshold = get_or_declare_parameter<double>(
+      *node, parameter("l2_overwrite.rewrite_overshoot_threshold"));
+  }
+
   // lane change cancel
   p.cancel.enable_on_prepare_phase =
     get_or_declare_parameter<bool>(*node, parameter("cancel.enable_on_prepare_phase"));
@@ -666,6 +672,13 @@ void LaneChangeModuleManager::updateModuleParams(const std::vector<rclcpp::Param
         "Parameter 'lateral_thresholds' is not updated because the given parameter array is "
         "empty.");
     }
+  }
+
+  {
+    const std::string ns = "lane_change.l2_overwrite.";
+    update_param<bool>(parameters, ns + "enable", p->l2_overwrite.enable);
+    update_param<double>(
+      parameters, ns + "rewrite_overshoot_threshold", p->l2_overwrite.rewrite_overshoot_threshold);
   }
 
   std::for_each(observers_.begin(), observers_.end(), [&p](const auto & observer) {
