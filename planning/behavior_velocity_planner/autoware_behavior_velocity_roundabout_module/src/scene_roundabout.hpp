@@ -112,6 +112,7 @@ public:
     std::optional<std::vector<lanelet::CompoundPolygon3d>> adjacent_area{std::nullopt};
     std::optional<lanelet::CompoundPolygon3d> first_attention_area{std::nullopt};
     std::optional<lanelet::CompoundPolygon3d> ego_lane{std::nullopt};
+    std::optional<std::vector<lanelet::CompoundPolygon3d>> internal_lanelet_range_area{std::nullopt};
 
     std::optional<geometry_msgs::msg::Polygon> candidate_collision_ego_lane_polygon{std::nullopt};
     std::optional<geometry_msgs::msg::Polygon> candidate_collision_object_polygon{std::nullopt};
@@ -408,6 +409,12 @@ private:
    * @attention this function has access to value() of roundabout_lanelets_
    */
   void updateObjectInfoManagerArea();
+
+  /**
+   * @brief check if there are objects in the internal lanelet range area
+   * @return true if objects are found in the internal lanelet range area
+   */
+  bool hasObjectsInInternalLaneletRangeArea() const;
 
   /**
    * @brief find the collision Interval/CollisionKnowledge of registered objects

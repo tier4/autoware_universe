@@ -162,6 +162,14 @@ visualization_msgs::msg::MarkerArray RoundaboutModule::createDebugMarkerArray()
       &debug_marker_array);
   }
 
+  if (debug_data_.internal_lanelet_range_area) {
+    append_marker_array(
+      ::createLaneletPolygonsMarkerArray(
+        debug_data_.internal_lanelet_range_area.value(), "internal_lanelet_range_area", lane_id_,
+        0.5, 0.0, 0.5),  // Purple color for internal lanelet range area
+      &debug_marker_array);
+  }
+
   if (debug_data_.first_attention_area) {
     append_marker_array(
       ::createLaneletPolygonsMarkerArray(

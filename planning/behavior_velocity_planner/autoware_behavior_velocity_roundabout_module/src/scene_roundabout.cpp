@@ -203,8 +203,15 @@ DecisionResult RoundaboutModule::modifyPathVelocityDetail(PathWithLaneId * path)
 
   const auto [has_collision, collision_position, too_late_detect_objects, misjudge_objects] =
     detectCollision(is_over_1st_pass_judge_line);
+
+  // Check if there are objects in the internal lanelet range area (from ego's entry to previous
+  // entry)
+  const bool has_objects_in_internal_range = hasObjectsInInternalLaneletRangeArea();
+
+  // Combine collision detection with internal lanelet range check
+  const bool should_stop = has_collision || has_objects_in_internal_range;
   collision_state_machine_.setStateWithMarginTime(
-    has_collision ? StateMachine::State::STOP : StateMachine::State::GO,
+    should_stop ? StateMachine::State::STOP : StateMachine::State::GO,
     logger_.get_child("collision state_machine"), *clock_);
   const bool has_collision_with_margin =
     collision_state_machine_.getState() == StateMachine::State::STOP;
@@ -219,7 +226,7 @@ DecisionResult RoundaboutModule::modifyPathVelocityDetail(PathWithLaneId * path)
         return CollisionStop{closest_idx, stop_line_idx};
       }
     }
-    if (has_collision) {
+    if (has_collision || has_objects_in_internal_range) {
       const std::string evasive_diag = generateEgoRiskEvasiveDiagnosis(
         *path, closest_idx, time_distance_array, too_late_detect_objects, misjudge_objects);
       debug_data_.too_late_stop_wall_pose = path->points.at(default_stopline_idx).point.pose;

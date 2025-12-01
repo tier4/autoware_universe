@@ -127,6 +127,35 @@ void RoundaboutModule::updateObjectInfoManagerArea()
   }
 }
 
+bool RoundaboutModule::hasObjectsInInternalLaneletRangeArea() const
+{
+  if (!roundabout_lanelets_) {
+    return false;
+  }
+  const auto & roundabout_lanelets = roundabout_lanelets_.value();
+  const auto & internal_lanelet_range = roundabout_lanelets.internal_lanelet_range();
+
+  if (internal_lanelet_range.empty()) {
+    return false;
+  }
+
+  for (const auto & predicted_object : planner_data_->predicted_objects->objects) {
+    if (!isTargetCollisionVehicleType(predicted_object)) {
+      continue;
+    }
+    const auto object_direction =
+      util::getObjectPoseWithVelocityDirection(predicted_object.kinematics);
+
+    const auto belong_internal_lanelet_id =
+      checkAngleForTargetLanelets(object_direction, internal_lanelet_range);
+
+    if (belong_internal_lanelet_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void RoundaboutModule::updateObjectInfoManagerCollision(
   const PathLanelets & path_lanelets,
   const RoundaboutModule::TimeDistanceArray & time_distance_array,

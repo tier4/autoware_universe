@@ -16,6 +16,7 @@
 #define ROUNDABOUT_LANELETS_HPP_
 
 #include <autoware/behavior_velocity_intersection_module/interpolated_path_info.hpp>
+#include <autoware_lanelet2_extension/regulatory_elements/roundabout.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
 
 #include <lanelet2_core/primitives/CompoundPolygon.h>
@@ -43,6 +44,18 @@ public:
     const autoware_utils::LinearRing2d & footprint, const double vehicle_length,
     [[maybe_unused]] lanelet::routing::RoutingGraphPtr routing_graph_ptr);
 
+  /**
+   * @brief Calculate internal lanelet range area from ego's entry lanelet to the previous entry
+   * lanelet
+   * @param entry_lanelet ego's entry lanelet
+   * @param roundabout_reg_elem the roundabout regulatory element
+   * @param routing_graph_ptr routing graph pointer
+   */
+  void calculateInternalLaneletRangeArea(
+    const lanelet::ConstLanelet & entry_lanelet,
+    const std::shared_ptr<const lanelet::autoware::Roundabout> & roundabout_reg_elem,
+    const lanelet::routing::RoutingGraphPtr & routing_graph_ptr);
+
   const lanelet::ConstLanelets & attention() const { return attention_; }
   const std::vector<std::optional<lanelet::ConstLineString3d>> & attention_stoplines() const
   {
@@ -62,6 +75,11 @@ public:
   const std::optional<lanelet::CompoundPolygon3d> & first_attention_area() const
   {
     return first_attention_area_;
+  }
+  const lanelet::ConstLanelets & internal_lanelet_range() const { return internal_lanelet_range_; }
+  const std::vector<lanelet::CompoundPolygon3d> & internal_lanelet_range_area() const
+  {
+    return internal_lanelet_range_area_;
   }
 
   /**
@@ -97,6 +115,13 @@ public:
    */
   std::optional<lanelet::ConstLanelet> first_attention_lane_{std::nullopt};
   std::optional<lanelet::CompoundPolygon3d> first_attention_area_{std::nullopt};
+
+  /**
+   * internal lanelets from ego's entry lanelet to the previous entry lanelet
+   * (includes previous entry lanelet, excludes ego's entry lanelet)
+   */
+  lanelet::ConstLanelets internal_lanelet_range_;
+  std::vector<lanelet::CompoundPolygon3d> internal_lanelet_range_area_;
 };
 
 /**

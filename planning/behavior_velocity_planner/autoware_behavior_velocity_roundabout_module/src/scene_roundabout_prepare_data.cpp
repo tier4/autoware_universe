@@ -82,12 +82,21 @@ Result<RoundaboutModule::BasicData, InternalError> RoundaboutModule::prepareRoun
   debug_data_.attention_area = roundabout_lanelets.attention_area();
   debug_data_.first_attention_area = roundabout_lanelets.first_attention_area();
   debug_data_.adjacent_area = roundabout_lanelets.adjacent_area();
+  if (!roundabout_lanelets.internal_lanelet_range_area().empty()) {
+    debug_data_.internal_lanelet_range_area = roundabout_lanelets.internal_lanelet_range_area();
+  }
 
   // ==========================================================================================
   // at the very first time of registration of this module, the path may not be conflicting with
   // the attention area, so update() is called to update the internal data
   // ==========================================================================================
   roundabout_lanelets.update(interpolated_path_info, footprint, baselink2front, routing_graph_ptr);
+
+  // ==========================================================================================
+  // Calculate internal lanelet range area from ego's entry lanelet to the previous entry lanelet
+  // ==========================================================================================
+  roundabout_lanelets.calculateInternalLaneletRangeArea(
+    assigned_lanelet, roundabout_reg_elem_, routing_graph_ptr);
 
   if (!roundabout_lanelets.first_attention_lane()) {
     // this is abnormal
