@@ -25,6 +25,7 @@
   <depend>autoware_route_handler</depend>
   <depend>autoware_utils</depend>
   <depend>autoware_vehicle_info_utils</depend>
+  <depend>fmt</depend>
   <depend>geometry_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
