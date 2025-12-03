@@ -51,6 +51,10 @@ void insert_point_in_predicted_trajectory(
   TrajectoryPoints & reversed_modified_predicted_trajectory_points, const Pose & reference_pose,
   const TrajectoryPoints & predicted_trajectory_points)
 {
+  if (predicted_trajectory_points.empty()) {
+    return;
+  }
+  // if predicted_trajectory has only one point, `calcInterpolatedPoint` returns the point itself.
   const auto point_to_interpolate = autoware::motion_utils::calcInterpolatedPoint(
     convertToTrajectory(predicted_trajectory_points), reference_pose);
   reversed_modified_predicted_trajectory_points.emplace_back(point_to_interpolate);
@@ -65,7 +69,7 @@ inline TrajectoryPoints reverse_trajectory_points(const TrajectoryPoints & traje
  * @brief Remove predicted trajectory points which are in front of the reference trajectory points
  *
  * To avoid front removal, modified predicted trajectory is given in reversed order.
- * @param[in] trajectory_points reference trajectory
+ * @param[in] trajectory_points reference trajectory of length at least 2
  * @param[inout] reversed_modified_predicted_trajectory_points modified predicted trajectory in
  * reversed order
  * @param[in] predicted_trajectory_points predicted trajectory
@@ -81,6 +85,10 @@ bool remove_front_trajectory_point(
     if (
       autoware::motion_utils::calcLongitudinalOffsetToSegment(
         trajectory_points, 0, point.pose.position) < 0.0) {
+      if (reversed_modified_predicted_trajectory_points.empty()) {
+        // no more points to remove
+        break;
+      }
       reversed_modified_predicted_trajectory_points.pop_back();
 
       predicted_trajectory_point_removed = true;
@@ -92,6 +100,13 @@ bool remove_front_trajectory_point(
   return predicted_trajectory_point_removed;
 }
 
+/**
+ * @brief Align the predicted trajectory with the reference trajectory by trimming the parts which
+ * are out of the reference trajectory range.
+ * @param trajectory_points reference trajectory
+ * @param predicted_trajectory_points predicted trajectory
+ * @return aligned predicted trajectory
+ */
 TrajectoryPoints align_trajectory_with_reference_trajectory(
   const TrajectoryPoints & trajectory_points, const TrajectoryPoints & predicted_trajectory_points)
 {
@@ -154,11 +169,13 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
     trajectory_points, reversed_modified_predicted_trajectory_points, predicted_trajectory_points);
 
   if (predicted_trajectory_point_removed) {
-    if (!trajectory_points.empty() && !predicted_trajectory_points.empty()) {
-      insert_point_in_predicted_trajectory(
-        reversed_modified_predicted_trajectory_points, trajectory_points.front().pose,
-        predicted_trajectory_points);
-    }
+    insert_point_in_predicted_trajectory(
+      reversed_modified_predicted_trajectory_points, trajectory_points.front().pose,
+      predicted_trajectory_points);
+  }
+
+  if (reversed_modified_predicted_trajectory_points.empty()) {
+    return TrajectoryPoints();
   }
 
   // If last point of predicted_trajectory is behind of end of trajectory, erase points which are
@@ -169,17 +186,11 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
   // predicted_trajectory:           p1-----//------pN-2-pNew
   // trajectory:                     t1-----//-----tN-1--tN
 
-  auto reversed_predicted_trajectory_points =
-    reverse_trajectory_points(predicted_trajectory_points);
+  // start from front trimmed predicted trajectory
+  const auto & reversed_predicted_trajectory_points = reversed_modified_predicted_trajectory_points;
   auto reversed_trajectory_points = reverse_trajectory_points(trajectory_points);
   auto modified_predicted_trajectory_points =
-    reverse_trajectory_points(reversed_modified_predicted_trajectory_points);
-
-  if (
-    reversed_trajectory_points.empty() || modified_predicted_trajectory_points.empty() ||
-    reversed_predicted_trajectory_points.empty()) {
-    return TrajectoryPoints();
-  }
+    reverse_trajectory_points(reversed_predicted_trajectory_points);
 
   auto reversed_predicted_trajectory_point_removed = remove_front_trajectory_point(
     reversed_trajectory_points, modified_predicted_trajectory_points,
