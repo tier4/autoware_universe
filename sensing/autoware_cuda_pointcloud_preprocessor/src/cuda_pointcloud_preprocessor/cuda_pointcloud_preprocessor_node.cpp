@@ -93,13 +93,14 @@ CudaPointcloudPreprocessorNode::CudaPointcloudPreprocessorNode(
   std::vector<CropBoxParameters> crop_box_parameters;
 
   for (std::size_t i = 0; i < crop_box_min_x_vector.size(); i++) {
-    CropBoxParameters parameters{};
+    CropBoxParameters parameters;
     parameters.min_x = static_cast<float>(crop_box_min_x_vector.at(i));
     parameters.min_y = static_cast<float>(crop_box_min_y_vector.at(i));
     parameters.min_z = static_cast<float>(crop_box_min_z_vector.at(i));
     parameters.max_x = static_cast<float>(crop_box_max_x_vector.at(i));
     parameters.max_y = static_cast<float>(crop_box_max_y_vector.at(i));
     parameters.max_z = static_cast<float>(crop_box_max_z_vector.at(i));
+    parameters.negative = 0;  // Default to positive mode (preserve inside)
     crop_box_parameters.push_back(parameters);
   }
 
