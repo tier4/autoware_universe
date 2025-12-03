@@ -20,6 +20,7 @@
 #include <autoware/behavior_velocity_planner_common/plugin_interface.hpp>
 #include <autoware/behavior_velocity_planner_common/plugin_wrapper.hpp>
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
+#include <autoware/creep_guidance_interface/creep_guidance_interface.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -54,11 +55,19 @@ public:
 
 private:
   CrosswalkModule::PlannerParam crosswalk_planner_param_{};
+  std::shared_ptr<autoware::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface_;
 
   void launchNewModules(const PathWithLaneId & path) override;
 
   std::function<bool(const std::shared_ptr<SceneModuleInterfaceWithRTC> &)>
   getModuleExpiredFunction(const PathWithLaneId & path) override;
+
+  /* called from SceneModuleInterfaceWithRTC::plan */
+  void sendRTC(const Time & stamp) override;
+  /* called from SceneModuleInterface::updateSceneModuleInstances */
+  void deleteExpiredModules(
+    const autoware_internal_planning_msgs::msg::PathWithLaneId & path) override;
 };
 
 class CrosswalkModulePlugin : public PluginWrapper<CrosswalkModuleManager>

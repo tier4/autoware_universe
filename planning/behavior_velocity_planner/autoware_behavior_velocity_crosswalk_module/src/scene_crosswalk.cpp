@@ -190,11 +190,14 @@ CrosswalkModule::CrosswalkModule(
   const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
-    planning_factor_interface)
+    planning_factor_interface,
+  const std::shared_ptr<autoware::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface)
 : SceneModuleInterfaceWithRTC(module_id, logger, clock, time_keeper, planning_factor_interface),
   module_id_(module_id),
   planner_param_(planner_param),
-  use_regulatory_element_(reg_elem_id)
+  use_regulatory_element_(reg_elem_id),
+  creep_guidance_interface_(creep_guidance_interface)
 {
   passed_safety_slow_point_ = false;
 
@@ -215,6 +218,8 @@ CrosswalkModule::CrosswalkModule(
 
   collision_info_pub_ = node.create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
     "~/debug/collision_info", 1);
+
+  creep_guidance_interface_->add(getModuleId());
 }
 
 bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path)
@@ -257,6 +262,7 @@ bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path)
 
   // Calculate stop point with margin
   const auto default_stop_pose = getDefaultStopPose(*path, first_path_point_on_crosswalk);
+  const auto deadline_stop_pose = getDeadlineStopPose(*path, first_path_point_on_crosswalk);
 
   // Resample path sparsely for less computation cost
   constexpr double resample_interval = 4.0;
@@ -289,11 +295,26 @@ bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path)
   setDistanceToStop(*path, default_stop_pose, nearest_stop_factor);
   set_previous_stop_pose(nearest_stop_factor);
 
+  const bool is_creep_activated =
+    creep_guidance_interface_->recieved_activation_command(getModuleId());
+
+  // RCLCPP_INFO(
+  //   logger_, "Crosswalk Module[%ld] creep activated: %s, deadline_stop_pose.has_value(): %s",
+  //   getModuleId(), is_creep_activated ? "Yes" : "No",
+  //   deadline_stop_pose.has_value() ? "Yes" : "No");
+
   // plan Go/Stop
   if (isActivated()) {
     planGo(*path, nearest_stop_factor);
   } else {
-    planStop(*path, nearest_stop_factor, default_stop_pose, reason);
+    if (is_creep_activated) {
+      if (deadline_stop_pose.has_value()) {
+        planCreeping(*path, nearest_stop_factor, deadline_stop_pose.value());
+      }
+      // If no deadline stop pose is available, already passed the stop line, so do nothing.
+    } else {
+      planStop(*path, nearest_stop_factor, default_stop_pose, reason);
+    }
   }
   recordTime(4);
 
@@ -325,6 +346,17 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::getDefaultStopPose(
   return calcLongitudinalOffsetPose(
     ego_path.points, first_path_point_on_crosswalk,
     -planner_param_.stop_distance_from_crosswalk - base_link2front);
+}
+
+std::optional<geometry_msgs::msg::Pose> CrosswalkModule::getDeadlineStopPose(
+  const PathWithLaneId & ego_path,
+  const geometry_msgs::msg::Point & first_path_point_on_crosswalk) const
+{
+  // const auto & ego_pos = planner_data_->current_odometry->pose.position;
+  const auto & base_link2front = planner_data_->vehicle_info_.max_longitudinal_offset_m;
+  return calcLongitudinalOffsetPose(
+    ego_path.points, first_path_point_on_crosswalk,
+    -planner_param_.stop_distance_from_crosswalk_limit - base_link2front);
 }
 
 std::optional<StopPoseWithObjectUuids> CrosswalkModule::checkStopForCrosswalkUsers(
@@ -1516,12 +1548,93 @@ void CrosswalkModule::setDistanceToStop(
   }();
 
   // Set distance
+  double raw_distance = std::numeric_limits<double>::lowest();
   if (stop_pos) {
     const auto & ego_pos = planner_data_->current_odometry->pose.position;
     const double dist_ego2stop = calcSignedArcLength(ego_path.points, ego_pos, *stop_pos);
+    raw_distance = dist_ego2stop;
     setDistance(std::max(dist_ego2stop, 0.0));
   } else {
     setDistance(std::numeric_limits<double>::lowest());
+  }
+
+  creep_guidance_interface_->update_distance(getModuleId(), raw_distance, raw_distance);
+}
+
+void CrosswalkModule::planCreeping(
+  PathWithLaneId & ego_path, const std::optional<StopPoseWithObjectUuids> & nearest_stop_factor,
+  geometry_msgs::msg::Pose deadline_stop_pose)
+{
+  if (!nearest_stop_factor.has_value()) {
+    return;
+  }
+
+  const double creep_velocity = 3.0 / 3.6;  // 3km/h
+
+  const bool has_moving_object = [&]() {
+    if (!nearest_stop_factor.has_value()) {
+      return false;
+    }
+    const double moving_threshold = planner_param_.stop_object_velocity;
+    const auto & objects = planner_data_->predicted_objects->objects;
+    for (const auto & uuid : nearest_stop_factor->target_object_ids) {
+      for (const auto & object : objects) {
+        if (object.object_id != uuid) {
+          continue;
+        }
+        const auto & twist = object.kinematics.initial_twist_with_covariance.twist.linear;
+        if (std::hypot(twist.x, twist.y) > moving_threshold) {
+          return true;
+        }
+        break;
+      }
+    }
+    return false;
+  }();
+  if (has_moving_object) {
+    yield_stuck_ = true;
+  }
+
+  if (!yield_stuck_) {
+    const auto & ego_pos = planner_data_->current_odometry->pose.position;
+    const auto ego_vel = std::max(0.0, planner_data_->current_velocity->twist.linear.x);
+    max_ego_speed_from_creep_triggered_ = std::max(max_ego_speed_from_creep_triggered_, ego_vel);
+
+    // calculate distance to deadline stop pose
+    const auto dist_to_deadline_stop =
+      calcSignedArcLength(ego_path.points, ego_pos, deadline_stop_pose.position);
+
+    // calculate braking distance
+    const auto & p = planner_param_;
+    const auto braking_distance = calcDecelDistWithJerkAndAccConstraints(
+      max_ego_speed_from_creep_triggered_, 0.0, 0.0, p.min_acc_preferred, 10.0,
+      p.min_jerk_preferred);
+
+    RCLCPP_DEBUG(
+      logger_, "dist_to_deadline_stop: %.2f m, braking_distance: %.2f m", dist_to_deadline_stop,
+      braking_distance.has_value() ? braking_distance.value() : -1.0);
+
+    // if braking distance is greater than distance to deadline stop pose, can't stop anymore
+    if (braking_distance.has_value() && braking_distance.value() + 0.2 > dist_to_deadline_stop) {
+      passed_pass_judge_ = true;
+      RCLCPP_DEBUG(logger_, "creep pass judge passed");
+    }
+  }
+
+  if (passed_pass_judge_) {
+    return;
+  } else {
+    insertDecelPointWithDebugInfo(
+      nearest_stop_factor->stop_pose.position, creep_velocity, ego_path);
+    insertDecelPointWithDebugInfo(deadline_stop_pose.position, 0.0, ego_path);
+
+    // Add planning factor
+    const SafetyFactorArray safety_factors = createSafetyFactorArray(nearest_stop_factor);
+    planning_factor_interface_->add(
+      ego_path.points, planner_data_->current_odometry->pose, deadline_stop_pose,
+      autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factors,
+      true /*is_driving_forward*/, 0.0 /*velocity*/, 0.0 /*shift distance*/,
+      yield_stuck_ ? "yield" : "creeping");
   }
 }
 
