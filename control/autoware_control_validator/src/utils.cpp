@@ -1,4 +1,4 @@
-// Copyright 2023 TIER IV, Inc.
+// Copyright 2023-2025 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,23 +19,15 @@
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
 #include "autoware_utils/geometry/geometry.hpp"
 
-#include <vector>
-
 namespace autoware::control_validator
 {
 
 using autoware::motion_utils::convertToTrajectory;
 using autoware_planning_msgs::msg::Trajectory;
-using autoware_planning_msgs::msg::TrajectoryPoint;
 using geometry_msgs::msg::Pose;
-using TrajectoryPoints = std::vector<TrajectoryPoint>;
 
-void shift_pose(Pose & pose, double longitudinal)
+namespace detail
 {
-  const auto yaw = tf2::getYaw(pose.orientation);
-  pose.position.x += std::cos(yaw) * longitudinal;
-  pose.position.y += std::sin(yaw) * longitudinal;
-}
 
 /**
  * @brief Insert interpolated point along the predicted_trajectory to the (modified) predicted
@@ -195,11 +187,21 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
   return aligned_trajectory_points;
 }
 
+}  // namespace detail
+
+void shift_pose(Pose & pose, double longitudinal)
+{
+  const auto yaw = tf2::getYaw(pose.orientation);
+  pose.position.x += std::cos(yaw) * longitudinal;
+  pose.position.y += std::sin(yaw) * longitudinal;
+}
+
 double calc_max_lateral_distance(
   const Trajectory & reference_trajectory, const Trajectory & predicted_trajectory)
 {
-  const auto aligned_predicted_trajectory_points = align_trajectory_with_reference_trajectory(
-    reference_trajectory.points, predicted_trajectory.points);
+  const auto aligned_predicted_trajectory_points =
+    detail::align_trajectory_with_reference_trajectory(
+      reference_trajectory.points, predicted_trajectory.points);
   double max_dist = 0;
   for (const auto & point : aligned_predicted_trajectory_points) {
     const auto p0 = autoware_utils::get_point(point);
