@@ -49,6 +49,9 @@ void clamp_trajectory_head(
   const TrajectoryPoints & segment_points, TrajectoryPoints & reversed_aligned_trajectory_points,
   const TrajectoryPoints & predicted_trajectory_points)
 {
+  if (segment_points.size() < 2) {
+    return;
+  }
   std::optional<TrajectoryPoint> opt_last_removed_point = std::nullopt;
   for (const auto & point : predicted_trajectory_points) {
     if (
