@@ -37,49 +37,43 @@ inline TrajectoryPoints reverse_trajectory_points(const TrajectoryPoints & traje
 }
 
 /**
- * @brief Remove predicted trajectory points which are in front of the reference segment
+ * @brief Remove trajectory points which are in front of the reference segment
  * and insert interpolated point at the boundary if needed.
  *
- * To avoid front removal and insertion, aligned trajectory is given in reversed order.
+ * To avoid front removal and insertion, trajectory is given in reversed order.
  * @param[in] segment_points reference segment trajectory of length at least 2
- * @param[inout] reversed_aligned_trajectory_points aligned trajectory in reversed order
- * @param[in] predicted_trajectory_points predicted trajectory
+ * @param[inout] reversed_trajectory_points trajectory in reversed order, possibly empty
  */
 void clamp_trajectory_head(
-  const TrajectoryPoints & segment_points, TrajectoryPoints & reversed_aligned_trajectory_points,
-  const TrajectoryPoints & predicted_trajectory_points)
+  const TrajectoryPoints & segment_points, TrajectoryPoints & reversed_trajectory_points)
 {
   if (segment_points.size() < 2) {
     return;
   }
   std::optional<TrajectoryPoint> opt_last_removed_point = std::nullopt;
-  for (const auto & point : predicted_trajectory_points) {
+  while (!reversed_trajectory_points.empty()) {
+    const auto & point = reversed_trajectory_points.back();
     if (
       autoware::motion_utils::calcLongitudinalOffsetToSegment(
-        segment_points, 0, point.pose.position) < 0.0) {
-      if (reversed_aligned_trajectory_points.empty()) {
-        // no more points to remove
-        break;
-      }
-      opt_last_removed_point.emplace(reversed_aligned_trajectory_points.back());
-      reversed_aligned_trajectory_points.pop_back();
-    } else {
+        segment_points, 0, point.pose.position) >= 0.0) {
+      // reached the overlapping boundary
       break;
     }
+    opt_last_removed_point.emplace(point);
+    reversed_trajectory_points.pop_back();
   }
-
-  if (reversed_aligned_trajectory_points.empty()) {
+  if (reversed_trajectory_points.empty() || !opt_last_removed_point.has_value()) {
+    // boundary segment does not exist and nothing to insert; either the predicted trajectory is
+    // fully consumed, or the referenced segment is ahead of the predicted trajectory
     return;
   }
-  if (opt_last_removed_point.has_value()) {
-    // we don't need the whole segments of the predicted trajectory for interpolation
-    TrajectoryPoints boundary_segment_points = {
-      opt_last_removed_point.value(), reversed_aligned_trajectory_points.back()};
-    auto interpolated_point = autoware::motion_utils::calcInterpolatedPoint(
-      autoware::motion_utils::convertToTrajectory(boundary_segment_points),
-      segment_points.front().pose);
-    reversed_aligned_trajectory_points.emplace_back(interpolated_point);
-  }
+  // we don't need the whole segments of the predicted trajectory for interpolation
+  TrajectoryPoints boundary_segment_points = {
+    opt_last_removed_point.value(), reversed_trajectory_points.back()};
+  auto interpolated_point = autoware::motion_utils::calcInterpolatedPoint(
+    autoware::motion_utils::convertToTrajectory(boundary_segment_points),
+    segment_points.front().pose);
+  reversed_trajectory_points.emplace_back(interpolated_point);
 }
 
 /**
@@ -115,7 +109,8 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
     reference_trajectory_points[reference_trajectory_points.size() - 1],
     reference_trajectory_points[reference_trajectory_points.size() - 2]};
 
-  // If no overlapping between reference_ and predicted_trajectory, return empty trajectory
+  // If no overlapping between reference_ and predicted_trajectory, return empty trajectory.
+  //
   // predicted_trajectory:   p1------------------pN
   // reference_trajectory:                           r1------------------rN
   //     OR
@@ -133,36 +128,28 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
     return TrajectoryPoints();
   }
 
-  auto reversed_aligned_trajectory_points = reverse_trajectory_points(predicted_trajectory_points);
-
   // If first point of predicted_trajectory is in front of reference_trajectory, remove points which
-  // are in front of reference_trajectory and insert pNew along the predicted_trajectory
+  // are in front of reference_trajectory and insert pNew along the predicted_trajectory.
+  //
   // predicted_trajectory:           p1-----p2-----p3----//------pN
   // reference_trajectory:                     r1--------//------rN
   // ↓
   // predicted_trajectory:                   pNew--p3----//------pN
   // reference_trajectory:                     r1--------//------rN
-  clamp_trajectory_head(
-    first_segment_points, reversed_aligned_trajectory_points, predicted_trajectory_points);
-
-  if (reversed_aligned_trajectory_points.empty()) {
-    return TrajectoryPoints();
-  }
+  auto reversed_aligned_trajectory_points = reverse_trajectory_points(predicted_trajectory_points);
+  clamp_trajectory_head(first_segment_points, reversed_aligned_trajectory_points);
 
   // If last point of predicted_trajectory is behind reference_trajectory, remove points which
   // are behind reference_trajectory and insert pNew along the predicted_trajectory
+  //
   // predicted_trajectory:           p1-----//------pN-2-----pN-1-----pN
   // reference_trajectory:           r1-----//-----rN-1--rN
   // ↓
   // predicted_trajectory:           p1-----//------pN-2-pNew
   // reference_trajectory:           r1-----//-----rN-1--rN
 
-  // Start from front-clamped predicted trajectory. This is nonempty (checked above).
-  const auto & reversed_predicted_trajectory_points = reversed_aligned_trajectory_points;
-  auto aligned_trajectory_points = reverse_trajectory_points(reversed_predicted_trajectory_points);
-
-  clamp_trajectory_head(
-    reversed_last_segment_points, aligned_trajectory_points, reversed_predicted_trajectory_points);
+  auto aligned_trajectory_points = reverse_trajectory_points(reversed_aligned_trajectory_points);
+  clamp_trajectory_head(reversed_last_segment_points, aligned_trajectory_points);
 
   return aligned_trajectory_points;
 }
