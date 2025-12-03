@@ -38,18 +38,22 @@ void shift_pose(Pose & pose, double longitudinal)
 }
 
 /**
- * @brief Insert interpolated point along the predicted_trajectory to the modified_trajectory
- * @param[inout] modified_trajectory modified trajectory
+ * @brief Insert interpolated point along the predicted_trajectory to the (modified) predicted
+ * trajectory
+ *
+ * To avoid front insertion, modified predicted trajectory is given in reversed order.
+ * @param[inout] reversed_modified_predicted_trajectory_points modified predicted trajectory in
+ * reversed order
  * @param[in] reference_pose reference pose
- * @param[in] predicted_trajectory predicted trajectory
+ * @param[in] predicted_trajectory_points predicted trajectory
  */
 void insert_point_in_predicted_trajectory(
-  TrajectoryPoints & modified_trajectory, const Pose & reference_pose,
-  const TrajectoryPoints & predicted_trajectory)
+  TrajectoryPoints & reversed_modified_predicted_trajectory_points, const Pose & reference_pose,
+  const TrajectoryPoints & predicted_trajectory_points)
 {
   const auto point_to_interpolate = autoware::motion_utils::calcInterpolatedPoint(
-    convertToTrajectory(predicted_trajectory), reference_pose);
-  modified_trajectory.insert(modified_trajectory.begin(), point_to_interpolate);
+    convertToTrajectory(predicted_trajectory_points), reference_pose);
+  reversed_modified_predicted_trajectory_points.emplace_back(point_to_interpolate);
 }
 
 inline TrajectoryPoints reverse_trajectory_points(const TrajectoryPoints & trajectory_points)
@@ -57,8 +61,19 @@ inline TrajectoryPoints reverse_trajectory_points(const TrajectoryPoints & traje
   return TrajectoryPoints(trajectory_points.crbegin(), trajectory_points.crend());
 }
 
+/**
+ * @brief Remove predicted trajectory points which are in front of the reference trajectory points
+ *
+ * To avoid front removal, modified predicted trajectory is given in reversed order.
+ * @param[in] trajectory_points reference trajectory
+ * @param[inout] reversed_modified_predicted_trajectory_points modified predicted trajectory in
+ * reversed order
+ * @param[in] predicted_trajectory_points predicted trajectory
+ * @return true if any point is removed, false otherwise
+ */
 bool remove_front_trajectory_point(
-  const TrajectoryPoints & trajectory_points, TrajectoryPoints & modified_trajectory_points,
+  const TrajectoryPoints & trajectory_points,
+  TrajectoryPoints & reversed_modified_predicted_trajectory_points,
   const TrajectoryPoints & predicted_trajectory_points)
 {
   bool predicted_trajectory_point_removed = false;
@@ -66,7 +81,7 @@ bool remove_front_trajectory_point(
     if (
       autoware::motion_utils::calcLongitudinalOffsetToSegment(
         trajectory_points, 0, point.pose.position) < 0.0) {
-      modified_trajectory_points.erase(modified_trajectory_points.begin());
+      reversed_modified_predicted_trajectory_points.pop_back();
 
       predicted_trajectory_point_removed = true;
     } else {
@@ -80,9 +95,7 @@ bool remove_front_trajectory_point(
 TrajectoryPoints align_trajectory_with_reference_trajectory(
   const TrajectoryPoints & trajectory_points, const TrajectoryPoints & predicted_trajectory_points)
 {
-  if (
-    trajectory_points.empty() || trajectory_points.size() < 2 ||
-    predicted_trajectory_points.empty()) {
+  if (trajectory_points.size() < 2 || predicted_trajectory_points.empty()) {
     return TrajectoryPoints();
   }
 
@@ -127,7 +140,8 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
     return TrajectoryPoints();
   }
 
-  TrajectoryPoints modified_trajectory_points = predicted_trajectory_points;  // copy construction
+  TrajectoryPoints reversed_modified_predicted_trajectory_points =
+    reverse_trajectory_points(predicted_trajectory_points);
 
   // If first point of predicted_trajectory is in front of start of trajectory, erase points which
   // are in front of trajectory start point and insert pNew along the predicted_trajectory
@@ -137,12 +151,13 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
   // predicted_trajectory:                   pNew--p3----//------pN
   // trajectory:                               t1--------//------tN
   auto predicted_trajectory_point_removed = remove_front_trajectory_point(
-    trajectory_points, modified_trajectory_points, predicted_trajectory_points);
+    trajectory_points, reversed_modified_predicted_trajectory_points, predicted_trajectory_points);
 
   if (predicted_trajectory_point_removed) {
     if (!trajectory_points.empty() && !predicted_trajectory_points.empty()) {
       insert_point_in_predicted_trajectory(
-        modified_trajectory_points, trajectory_points.front().pose, predicted_trajectory_points);
+        reversed_modified_predicted_trajectory_points, trajectory_points.front().pose,
+        predicted_trajectory_points);
     }
   }
 
@@ -157,25 +172,26 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
   auto reversed_predicted_trajectory_points =
     reverse_trajectory_points(predicted_trajectory_points);
   auto reversed_trajectory_points = reverse_trajectory_points(trajectory_points);
-  auto reversed_modified_trajectory_points = reverse_trajectory_points(modified_trajectory_points);
+  auto modified_predicted_trajectory_points =
+    reverse_trajectory_points(reversed_modified_predicted_trajectory_points);
 
   if (
-    reversed_trajectory_points.empty() || reversed_modified_trajectory_points.empty() ||
+    reversed_trajectory_points.empty() || modified_predicted_trajectory_points.empty() ||
     reversed_predicted_trajectory_points.empty()) {
     return TrajectoryPoints();
   }
 
   auto reversed_predicted_trajectory_point_removed = remove_front_trajectory_point(
-    reversed_trajectory_points, reversed_modified_trajectory_points,
+    reversed_trajectory_points, modified_predicted_trajectory_points,
     reversed_predicted_trajectory_points);
 
   if (reversed_predicted_trajectory_point_removed) {
     insert_point_in_predicted_trajectory(
-      reversed_modified_trajectory_points, reversed_trajectory_points.front().pose,
+      modified_predicted_trajectory_points, reversed_trajectory_points.front().pose,
       reversed_predicted_trajectory_points);
   }
 
-  return reverse_trajectory_points(reversed_modified_trajectory_points);
+  return modified_predicted_trajectory_points;
 }
 
 double calc_max_lateral_distance(
