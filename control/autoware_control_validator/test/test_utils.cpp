@@ -1,0 +1,185 @@
+// Copyright 2025 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "autoware/control_validator/utils.hpp"
+
+#include <tf2/LinearMath/Quaternion.hpp>
+
+#include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include <gtest/gtest.h>
+
+#include <cmath>
+#include <vector>
+
+using autoware_planning_msgs::msg::Trajectory;
+using autoware_planning_msgs::msg::TrajectoryPoint;
+
+namespace autoware::control_validator::detail
+{
+static TrajectoryPoints make_linear_trajectory(const std::vector<double> & xs, double y = 0.0)
+{
+  TrajectoryPoints points;
+  points.reserve(xs.size());
+  tf2::Quaternion q;
+  q.setRPY(0, 0, 0);
+  auto quat = tf2::toMsg(q);
+
+  for (double x : xs) {
+    TrajectoryPoint p;
+    p.pose.position.x = static_cast<float>(x);
+    p.pose.position.y = static_cast<float>(y);
+    p.pose.orientation = quat;
+    p.longitudinal_velocity_mps = 0.0f;
+    points.emplace_back(p);
+  }
+  return points;
+}
+
+static TrajectoryPoints make_linear_trajectory_range(double start, double end, size_t n)
+{
+  TrajectoryPoints points;
+  points.reserve(n);
+  tf2::Quaternion q;
+  q.setRPY(0, 0, 0);
+  auto quat = tf2::toMsg(q);
+  if (n < 2u) return points;
+  for (size_t i = 0; i < n; ++i) {
+    const double ratio = static_cast<double>(i) / static_cast<double>(n - 1);
+    const double x = start + ratio * (end - start);
+    TrajectoryPoint p;
+    p.pose.position.x = static_cast<float>(x);
+    p.pose.position.y = 0.0f;
+    p.pose.orientation = quat;
+    p.longitudinal_velocity_mps = 0.0f;
+    points.emplace_back(p);
+  }
+  return points;
+}
+
+TEST(align_trajectory_with_reference_trajectory, EmptyReferenceOrPredicted)
+{
+  // reference with fewer than 2 points -> empty
+  auto ref1 = make_linear_trajectory({0.0});
+  auto pred1 = make_linear_trajectory_range(0.0, 10.0, 11.0);
+  auto out1 = align_trajectory_with_reference_trajectory(ref1, pred1);
+  EXPECT_TRUE(out1.empty());
+
+  // predicted empty -> empty
+  auto ref2 = make_linear_trajectory_range(0.0, 10.0, 11.0);
+  auto pred2 = make_linear_trajectory({});
+  auto out2 = align_trajectory_with_reference_trajectory(ref2, pred2);
+  EXPECT_TRUE(out2.empty());
+}
+
+TEST(align_trajectory_with_reference_trajectory, IdenticalTrajectories_ReturnsSame)
+{
+  auto ref = make_linear_trajectory_range(0.0, 10.0, 11.0);
+  auto pred = make_linear_trajectory_range(0.0, 10.0, 11.0);
+  auto out = align_trajectory_with_reference_trajectory(ref, pred);
+  // identical inputs should produce identical aligned sequence
+  ASSERT_EQ(out.size(), pred.size());
+  for (size_t i = 0; i < out.size(); ++i) {
+    EXPECT_NEAR(out[i].pose.position.x, pred[i].pose.position.x, 1e-6);
+    EXPECT_NEAR(out[i].pose.position.y, pred[i].pose.position.y, 1e-6);
+  }
+}
+
+TEST(align_trajectory_with_reference_trajectory, NonOverlappingBeforeAfter_ReturnsEmpty)
+{
+  // predicted entirely before reference
+  auto ref = make_linear_trajectory_range(0.0, 10.0, 11.0);
+  auto pred_before = make_linear_trajectory_range(-20.0, -10.0, 11.0);
+  auto out_before = align_trajectory_with_reference_trajectory(ref, pred_before);
+  EXPECT_TRUE(out_before.empty());
+
+  // predicted entirely after reference
+  auto pred_after = make_linear_trajectory_range(20.0, 30.0, 11.0);
+  auto out_after = align_trajectory_with_reference_trajectory(ref, pred_after);
+  EXPECT_TRUE(out_after.empty());
+}
+
+TEST(align_trajectory_with_reference_trajectory, LargePredicted_IsClamped)
+{
+  // create a predicted trajectory larger than MAX_TRAJECTORY_SIZE (5000), expect result size <=
+  // 5000
+  const size_t large_n = 6000u;
+  TrajectoryPoints pred;
+  pred.reserve(large_n);
+  tf2::Quaternion q;
+  q.setRPY(0, 0, 0);
+  auto quat = tf2::toMsg(q);
+  for (size_t i = 0; i < large_n; ++i) {
+    TrajectoryPoint p;
+    p.pose.position.x = static_cast<float>(i * 0.01);
+    p.pose.position.y = 0.0f;
+    p.pose.orientation = quat;
+    pred.emplace_back(p);
+  }
+  // reference adequate
+  auto ref = make_linear_trajectory_range(0.0, 100.0, 101.0);
+
+  auto out = align_trajectory_with_reference_trajectory(ref, pred);
+  EXPECT_LE(out.size(), 5000u);
+}
+
+TEST(
+  align_trajectory_with_reference_trajectory,
+  PartialOverlap_StartInsertionProducesInterpolatedPoint)
+{
+  // reference from 0..10
+  auto ref = make_linear_trajectory_range(0.0, 10.0, 11.0);
+
+  // trim front
+  auto pred1 = make_linear_trajectory({-2.0, -1.0, 1.0, 2.0});
+  auto out1 = align_trajectory_with_reference_trajectory(ref, pred1);
+  auto expected1 = make_linear_trajectory({0.0, 1.0, 2.0});
+  ASSERT_EQ(out1.size(), expected1.size());
+  for (size_t i = 0; i < out1.size(); ++i) {
+    EXPECT_NEAR(out1[i].pose.position.x, expected1[i].pose.position.x, 1e-6);
+    EXPECT_NEAR(out1[i].pose.position.y, expected1[i].pose.position.y, 1e-6);
+  }
+
+  // trim back
+  auto pred2 = make_linear_trajectory({8.0, 9.0, 11.0, 12.0});
+  auto out2 = align_trajectory_with_reference_trajectory(ref, pred2);
+  auto expected2 = make_linear_trajectory({8.0, 9.0, 10.0});
+  ASSERT_EQ(out2.size(), expected2.size());
+  for (size_t i = 0; i < out2.size(); ++i) {
+    EXPECT_NEAR(out2[i].pose.position.x, expected2[i].pose.position.x, 1e-6);
+    EXPECT_NEAR(out2[i].pose.position.y, expected2[i].pose.position.y, 1e-6);
+  }
+
+  // trim both
+  auto pred3 = make_linear_trajectory({-5.0, 15.0});
+  auto out3 = align_trajectory_with_reference_trajectory(ref, pred3);
+  auto expected3 = make_linear_trajectory({0.0, 10.0});
+  ASSERT_EQ(out3.size(), expected3.size());
+  for (size_t i = 0; i < out3.size(); ++i) {
+    EXPECT_NEAR(out3[i].pose.position.x, expected3[i].pose.position.x, 1e-6);
+    EXPECT_NEAR(out3[i].pose.position.y, expected3[i].pose.position.y, 1e-6);
+  }
+
+  // no trim
+  auto pred4 = make_linear_trajectory({2.0, 4.0, 6.0, 8.0});
+  auto out4 = align_trajectory_with_reference_trajectory(ref, pred4);
+  ASSERT_EQ(out4.size(), pred4.size());
+  for (size_t i = 0; i < out4.size(); ++i) {
+    EXPECT_NEAR(out4[i].pose.position.x, pred4[i].pose.position.x, 1e-6);
+    EXPECT_NEAR(out4[i].pose.position.y, pred4[i].pose.position.y, 1e-6);
+  }
+}
+
+}  // namespace autoware::control_validator::detail
