@@ -73,12 +73,12 @@ TEST(align_trajectory_with_reference_trajectory, EmptyReferenceOrPredicted)
 {
   // reference with fewer than 2 points -> empty
   auto ref1 = make_linear_trajectory({0.0});
-  auto pred1 = make_linear_trajectory_range(0.0, 10.0, 11.0);
+  auto pred1 = make_linear_trajectory_range(0.0, 10.0, 11);
   auto out1 = align_trajectory_with_reference_trajectory(ref1, pred1);
   EXPECT_TRUE(out1.empty());
 
   // predicted empty -> empty
-  auto ref2 = make_linear_trajectory_range(0.0, 10.0, 11.0);
+  auto ref2 = make_linear_trajectory_range(0.0, 10.0, 11);
   auto pred2 = make_linear_trajectory({});
   auto out2 = align_trajectory_with_reference_trajectory(ref2, pred2);
   EXPECT_TRUE(out2.empty());
@@ -86,8 +86,8 @@ TEST(align_trajectory_with_reference_trajectory, EmptyReferenceOrPredicted)
 
 TEST(align_trajectory_with_reference_trajectory, IdenticalTrajectories_ReturnsSame)
 {
-  auto ref = make_linear_trajectory_range(0.0, 10.0, 11.0);
-  auto pred = make_linear_trajectory_range(0.0, 10.0, 11.0);
+  auto ref = make_linear_trajectory_range(0.0, 10.0, 11);
+  auto pred = make_linear_trajectory_range(0.0, 10.0, 11);
   auto out = align_trajectory_with_reference_trajectory(ref, pred);
   // identical inputs should produce identical aligned sequence
   ASSERT_EQ(out.size(), pred.size());
@@ -100,13 +100,13 @@ TEST(align_trajectory_with_reference_trajectory, IdenticalTrajectories_ReturnsSa
 TEST(align_trajectory_with_reference_trajectory, NonOverlappingBeforeAfter_ReturnsEmpty)
 {
   // predicted entirely before reference
-  auto ref = make_linear_trajectory_range(0.0, 10.0, 11.0);
-  auto pred_before = make_linear_trajectory_range(-20.0, -10.0, 11.0);
+  auto ref = make_linear_trajectory_range(0.0, 10.0, 11);
+  auto pred_before = make_linear_trajectory_range(-20.0, -10.0, 11);
   auto out_before = align_trajectory_with_reference_trajectory(ref, pred_before);
   EXPECT_TRUE(out_before.empty());
 
   // predicted entirely after reference
-  auto pred_after = make_linear_trajectory_range(20.0, 30.0, 11.0);
+  auto pred_after = make_linear_trajectory_range(20.0, 30.0, 11);
   auto out_after = align_trajectory_with_reference_trajectory(ref, pred_after);
   EXPECT_TRUE(out_after.empty());
 }
@@ -129,7 +129,7 @@ TEST(align_trajectory_with_reference_trajectory, LargePredicted_IsClamped)
     pred.emplace_back(p);
   }
   // reference adequate
-  auto ref = make_linear_trajectory_range(0.0, 100.0, 101.0);
+  auto ref = make_linear_trajectory_range(0.0, 100.0, 101);
 
   auto out = align_trajectory_with_reference_trajectory(ref, pred);
   EXPECT_LE(out.size(), 5000u);
@@ -140,7 +140,7 @@ TEST(
   PartialOverlap_StartInsertionProducesInterpolatedPoint)
 {
   // reference from 0..10
-  auto ref = make_linear_trajectory_range(0.0, 10.0, 11.0);
+  auto ref = make_linear_trajectory_range(0.0, 10.0, 11);
 
   // trim front
   auto pred1 = make_linear_trajectory({-2.0, -1.0, 1.0, 2.0});

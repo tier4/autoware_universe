@@ -149,7 +149,7 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
     return TrajectoryPoints();
   }
 
-  // If last point of predicted_trajectory is behind of reference_trajectory, remove points which
+  // If last point of predicted_trajectory is behind reference_trajectory, remove points which
   // are behind reference_trajectory and insert pNew along the predicted_trajectory
   // predicted_trajectory:           p1-----//------pN-2-----pN-1-----pN
   // reference_trajectory:           r1-----//-----rN-1--rN
