@@ -69,6 +69,25 @@ static TrajectoryPoints make_linear_trajectory_range(double start, double end, s
   return points;
 }
 
+static TrajectoryPoints make_planar_trajectory(const std::vector<std::pair<double, double>> & xys)
+{
+  TrajectoryPoints points;
+  points.reserve(xys.size());
+  tf2::Quaternion q;
+  q.setRPY(0, 0, 0);
+  auto quat = tf2::toMsg(q);
+
+  for (const auto & [x, y] : xys) {
+    TrajectoryPoint p;
+    p.pose.position.x = static_cast<float>(x);
+    p.pose.position.y = static_cast<float>(y);
+    p.pose.orientation = quat;
+    p.longitudinal_velocity_mps = 0.0f;
+    points.emplace_back(p);
+  }
+  return points;
+}
+
 TEST(align_trajectory_with_reference_trajectory, EmptyReferenceOrPredicted)
 {
   // reference with fewer than 2 points -> empty
@@ -180,6 +199,26 @@ TEST(
     EXPECT_NEAR(out4[i].pose.position.x, pred4[i].pose.position.x, 1e-6);
     EXPECT_NEAR(out4[i].pose.position.y, pred4[i].pose.position.y, 1e-6);
   }
+}
+
+TEST(align_trajectory_with_reference_trajectory, PartialOverlap_PlanarTrajectories)
+{
+  auto ref = make_planar_trajectory({{3.0, 0.0}, {2.0, 0.0}, {0.0, 2.0}, {0.0, 3.0}});
+
+  // predicted overlaps partially
+  auto pred1 = make_planar_trajectory({{5.0, 0.0}, {0.0, 5.0}});
+  auto out1 = align_trajectory_with_reference_trajectory(ref, pred1);
+  auto expected1 = make_planar_trajectory({{4.0, 1.0}, {1.0, 4.0}});
+  ASSERT_EQ(out1.size(), expected1.size());
+  for (size_t i = 0; i < out1.size(); ++i) {
+    EXPECT_NEAR(out1[i].pose.position.x, expected1[i].pose.position.x, 1e-6);
+    EXPECT_NEAR(out1[i].pose.position.y, expected1[i].pose.position.y, 1e-6);
+  }
+
+  // PATHOLOGICAL: 45-deg direction parallel, no overlap
+  auto pred2 = make_planar_trajectory({{5.0, 4.0}, {4.0, 5.0}});
+  auto out2 = align_trajectory_with_reference_trajectory(ref, pred2);
+  ASSERT_EQ(out2.size(), 0u);
 }
 
 }  // namespace autoware::control_validator::detail
