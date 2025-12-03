@@ -205,26 +205,17 @@ CudaVoxelGridDownsampleFilter::CudaVoxelGridDownsampleFilter(
   voxel_info_.voxel_size.y = voxel_size_y;
   voxel_info_.voxel_size.z = voxel_size_z;
 
-  // Calculate output offsets based on output format
-  if (output_point_xyzircaedt_) {
-    voxel_info_.output_offsets[0] = 0;
-    voxel_info_.output_offsets[1] = voxel_info_.output_offsets[0] + sizeof(InputPointType::x);
-    voxel_info_.output_offsets[2] = voxel_info_.output_offsets[1] + sizeof(InputPointType::y);
-    voxel_info_.output_offsets[3] = voxel_info_.output_offsets[2] + sizeof(InputPointType::z);
-    voxel_info_.output_offsets[4] =
-      voxel_info_.output_offsets[3] + sizeof(InputPointType::intensity);
-    voxel_info_.output_offsets[5] =
-      voxel_info_.output_offsets[4] + sizeof(InputPointType::return_type);
-  } else {
-    voxel_info_.output_offsets[0] = 0;
-    voxel_info_.output_offsets[1] = voxel_info_.output_offsets[0] + sizeof(OutputPointType::x);
-    voxel_info_.output_offsets[2] = voxel_info_.output_offsets[1] + sizeof(OutputPointType::y);
-    voxel_info_.output_offsets[3] = voxel_info_.output_offsets[2] + sizeof(OutputPointType::z);
-    voxel_info_.output_offsets[4] =
-      voxel_info_.output_offsets[3] + sizeof(OutputPointType::intensity);
-    voxel_info_.output_offsets[5] =
-      voxel_info_.output_offsets[4] + sizeof(OutputPointType::return_type);
-  }
+  // Calculate output offsets
+  // Note: Both InputPointType and OutputPointType have identical first 6 fields
+  // (x, y, z, intensity, return_type, channel) with the same offsets, so we calculate once
+  voxel_info_.output_offsets[0] = 0;
+  voxel_info_.output_offsets[1] = voxel_info_.output_offsets[0] + sizeof(OutputPointType::x);
+  voxel_info_.output_offsets[2] = voxel_info_.output_offsets[1] + sizeof(OutputPointType::y);
+  voxel_info_.output_offsets[3] = voxel_info_.output_offsets[2] + sizeof(OutputPointType::z);
+  voxel_info_.output_offsets[4] =
+    voxel_info_.output_offsets[3] + sizeof(OutputPointType::intensity);
+  voxel_info_.output_offsets[5] =
+    voxel_info_.output_offsets[4] + sizeof(OutputPointType::return_type);
 
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 
