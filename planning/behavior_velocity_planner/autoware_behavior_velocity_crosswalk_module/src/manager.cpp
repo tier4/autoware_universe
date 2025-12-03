@@ -195,6 +195,10 @@ CrosswalkModuleManager::CrosswalkModuleManager(rclcpp::Node & node)
     get_or_declare_parameter<double>(node, ns + ".parked_vehicles_stop.parked_velocity_threshold");
   cp.parked_vehicles_stop_vehicle_permanence_duration = get_or_declare_parameter<double>(
     node, ns + ".parked_vehicles_stop.vehicle_permanence_duration");
+
+  creep_guidance_interface_ =
+    std::make_shared<autoware::creep_guidance_interface::CreepGuidanceInterface>(
+      &node, "crosswalk");
 }
 
 void CrosswalkModuleManager::launchNewModules(const PathWithLaneId & path)
@@ -216,7 +220,8 @@ void CrosswalkModuleManager::launchNewModules(const PathWithLaneId & path)
     //       where both regulatory element and non-regulatory element crosswalks exist.
     registerModule(std::make_shared<CrosswalkModule>(
       node_, road_lanelet_id, crosswalk_lanelet_id, reg_elem_id, lanelet_map_ptr, p, logger, clock_,
-      time_keeper_, planning_factor_interface_));
+      time_keeper_, planning_factor_interface_, creep_guidance_interface_));
+
     generate_uuid(crosswalk_lanelet_id);
     const auto crosswalk_ll = lanelet_map_ptr->laneletLayer.get(crosswalk_lanelet_id);
     std::optional<bool> override_rtc_auto_mode;
@@ -273,6 +278,42 @@ CrosswalkModuleManager::getModuleExpiredFunction(const PathWithLaneId & path)
     return crosswalk_id_set.count(scene_module->getModuleId()) == 0;
   };
 }
+
+void CrosswalkModuleManager::sendRTC(const Time & stamp)
+{
+  for (const auto & scene_module : scene_modules_) {
+    const UUID uuid = getUUID(scene_module->getModuleId());
+    const auto state = !scene_module->isActivated() && scene_module->isSafe()
+                         ? State::WAITING_FOR_EXECUTION
+                         : State::RUNNING;
+    updateRTCStatus(uuid, scene_module->isSafe(), state, scene_module->getDistance(), stamp);
+  }
+  publishRTCStatus(stamp);
+  creep_guidance_interface_->publish_creep_status_array();
+}
+
+void CrosswalkModuleManager::deleteExpiredModules(
+  const autoware_internal_planning_msgs::msg::PathWithLaneId & path)
+{
+  const auto isModuleExpired = getModuleExpiredFunction(path);
+
+  auto itr = scene_modules_.begin();
+  while (itr != scene_modules_.end()) {
+    if (isModuleExpired(*itr)) {
+      const UUID uuid = getUUID((*itr)->getModuleId());
+      updateRTCStatus(
+        uuid, (*itr)->isSafe(), State::SUCCEEDED, std::numeric_limits<double>::lowest(),
+        clock_->now());
+      removeUUID((*itr)->getModuleId());
+      registered_module_id_set_.erase((*itr)->getModuleId());
+      creep_guidance_interface_->remove((*itr)->getModuleId());
+      itr = scene_modules_.erase(itr);
+    } else {
+      itr++;
+    }
+  }
+}
+
 }  // namespace autoware::behavior_velocity_planner
 
 #include <pluginlib/class_list_macros.hpp>

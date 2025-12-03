@@ -18,6 +18,7 @@
 #include "autoware/behavior_velocity_crosswalk_module/util.hpp"
 
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
+#include <autoware/creep_guidance_interface/creep_guidance_interface.hpp>
 #include <autoware/signal_processing/lowpass_filter_1d.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
@@ -383,7 +384,9 @@ public:
     const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
     const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
-      planning_factor_interface);
+      planning_factor_interface,
+    const std::shared_ptr<autoware::creep_guidance_interface::CreepGuidanceInterface>
+      creep_guidance_interface);
 
   bool modifyPathVelocity(PathWithLaneId * path) override;
 
@@ -406,6 +409,9 @@ private:
     const geometry_msgs::msg::Point & last_path_point_on_crosswalk);
 
   std::optional<geometry_msgs::msg::Pose> getDefaultStopPose(
+    const PathWithLaneId & ego_path,
+    const geometry_msgs::msg::Point & first_path_point_on_crosswalk) const;
+  std::optional<geometry_msgs::msg::Pose> getDeadlineStopPose(
     const PathWithLaneId & ego_path,
     const geometry_msgs::msg::Point & first_path_point_on_crosswalk) const;
 
@@ -450,6 +456,10 @@ private:
     const PathWithLaneId & ego_path,
     const std::optional<geometry_msgs::msg::Pose> & default_stop_pose,
     const std::optional<StopPoseWithObjectUuids> & stop_factor);
+
+  void planCreeping(
+    PathWithLaneId & ego_path, const std::optional<StopPoseWithObjectUuids> & nearest_stop_factor,
+    geometry_msgs::msg::Pose deadline_stop_pose);
 
   void planGo(
     PathWithLaneId & ego_path, const std::optional<StopPoseWithObjectUuids> & stop_factor) const;
@@ -560,6 +570,12 @@ private:
   // occluded space time buffer
   std::optional<rclcpp::Time> current_initial_occlusion_time_;
   std::optional<rclcpp::Time> most_recent_occlusion_time_;
+
+  const std::shared_ptr<autoware::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface_;
+  double max_ego_speed_from_creep_triggered_{0.0};
+  bool yield_stuck_{false};
+  bool passed_pass_judge_{false};
 
   std::optional<StopPoseWithObjectUuids> previous_stop_pose_;
 

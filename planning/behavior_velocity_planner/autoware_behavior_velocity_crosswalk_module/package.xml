@@ -36,6 +36,7 @@
   <depend>autoware_signal_processing</depend>
   <depend>autoware_utils</depend>
   <depend>autoware_vehicle_info_utils</depend>
+  <depend>autoware_creep_guidance_interface</depend>
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
   <depend>grid_map_core</depend>
