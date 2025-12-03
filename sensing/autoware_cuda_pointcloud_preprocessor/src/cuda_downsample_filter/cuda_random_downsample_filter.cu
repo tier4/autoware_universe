@@ -14,8 +14,11 @@
 
 #include "autoware/cuda_pointcloud_preprocessor/cuda_downsample_filter/cuda_random_downsample_filter.hpp"
 
+#include "autoware/cuda_pointcloud_preprocessor/common_kernels.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/point_types.hpp"
 #include "autoware/cuda_utils/cuda_check_error.hpp"
+
+#include <string>
 
 #include <sensor_msgs/msg/point_field.hpp>
 
@@ -55,11 +58,25 @@ __global__ void randomSampleKernel(
   output_point.channel = input_point.channel;
 }
 
+__global__ void randomSampleInputKernel(
+  const InputPointType * __restrict__ input_points, InputPointType * __restrict__ output_points,
+  const std::uint32_t * __restrict__ selected_indices, size_t num_samples)
+{
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= num_samples) {
+    return;
+  }
+
+  const std::uint32_t input_idx = selected_indices[idx];
+  // Copy all fields including extended ones
+  output_points[idx] = input_points[input_idx];
+}
+
 }  // namespace
 
 CudaRandomDownsampleFilter::CudaRandomDownsampleFilter(
-  size_t sample_num, int64_t max_mem_pool_size_in_byte)
-: sample_num_(sample_num)
+  size_t sample_num, int64_t max_mem_pool_size_in_byte, bool output_point_xyzircaedt)
+: sample_num_(sample_num), output_point_xyzircaedt_(output_point_xyzircaedt)
 {
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 
@@ -130,11 +147,22 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaRandomDownsampleFilter::fi
     return output;
   }
 
-  // Validate input point cloud layout
-  if (input_points->point_step != sizeof(InputPointType)) {
+  // Validate that data pointer is not null
+  if (!input_points->data) {
+    throw std::runtime_error("Input pointcloud data pointer is null.");
+  }
+
+  // Check input format and handle conversion if needed
+  const bool is_point_xyzirc = (input_points->point_step == sizeof(OutputPointType));
+  const bool is_point_xyzircaedt = (input_points->point_step == sizeof(InputPointType));
+
+  if (!is_point_xyzirc && !is_point_xyzircaedt) {
     throw std::runtime_error(
-      "Input pointcloud point_step does not match InputPointType size. "
-      "This filter requires PointXYZIRCAEDT format.");
+      "Input pointcloud point_step does not match expected format. "
+      "Expected PointXYZIRC (" +
+      std::to_string(sizeof(OutputPointType)) + " bytes) or PointXYZIRCAEDT (" +
+      std::to_string(sizeof(InputPointType)) + " bytes), but got " +
+      std::to_string(input_points->point_step) + " bytes.");
   }
 
   // Generate random seed
@@ -147,12 +175,31 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaRandomDownsampleFilter::fi
   // Allocate full index array for shuffling
   std::uint32_t * device_all_indices = allocateBufferFromPool<std::uint32_t>(num_input_points);
   std::uint32_t * device_selected_indices = allocateBufferFromPool<std::uint32_t>(num_samples);
-  OutputPointType * device_output_points = allocateBufferFromPool<OutputPointType>(num_samples);
 
-  // Copy input points to device
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    device_input_points, input_points->data.get(), num_input_points * sizeof(InputPointType),
-    cudaMemcpyHostToDevice, stream_));
+  // Copy and convert input points to device
+  // Note: cuda_blackboard::CudaPointCloud2::data is already on device memory when received
+  // from CudaBlackboardSubscriber, so we use DeviceToDevice copy
+  if (is_point_xyzirc) {
+    // Convert PointXYZIRC to PointXYZIRCAEDT format
+    OutputPointType * device_temp_points = allocateBufferFromPool<OutputPointType>(num_input_points);
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
+      device_temp_points, input_points->data.get(), num_input_points * sizeof(OutputPointType),
+      cudaMemcpyDeviceToDevice, stream_));
+
+    // Convert to InputPointType format
+    const int blocks_per_grid_convert = (num_input_points + threads_per_block_ - 1) / threads_per_block_;
+    convertPointXYZIRCToInputPointTypeLaunch(
+      device_temp_points, device_input_points, static_cast<int>(num_input_points), threads_per_block_,
+      blocks_per_grid_convert, stream_);
+
+    // Free temporary buffer
+    returnBufferToPool(device_temp_points);
+  } else {
+    // Direct copy for PointXYZIRCAEDT format
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
+      device_input_points, input_points->data.get(), num_input_points * sizeof(InputPointType),
+      cudaMemcpyDeviceToDevice, stream_));
+  }
 
   // Generate sequence of indices [0, 1, 2, ..., num_input_points-1]
   thrust::sequence(
@@ -170,20 +217,38 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaRandomDownsampleFilter::fi
     device_selected_indices, device_all_indices, num_samples * sizeof(std::uint32_t),
     cudaMemcpyDeviceToDevice, stream_));
 
+  // Allocate output buffer based on output format
+  void * device_output_points = nullptr;
+  if (output_point_xyzircaedt_) {
+    device_output_points = allocateBufferFromPool<InputPointType>(num_samples);
+  } else {
+    device_output_points = allocateBufferFromPool<OutputPointType>(num_samples);
+  }
+
   // Sample points using random indices
   const int blocks_per_grid_sample =
     (num_samples + threads_per_block_ - 1) / threads_per_block_;
-  randomSampleKernel<<<blocks_per_grid_sample, threads_per_block_, 0, stream_>>>(
-    device_input_points, device_output_points, device_selected_indices, num_samples);
+  if (output_point_xyzircaedt_) {
+    randomSampleInputKernel<<<blocks_per_grid_sample, threads_per_block_, 0, stream_>>>(
+      device_input_points, static_cast<InputPointType *>(device_output_points),
+      device_selected_indices, num_samples);
+  } else {
+    randomSampleKernel<<<blocks_per_grid_sample, threads_per_block_, 0, stream_>>>(
+      device_input_points, static_cast<OutputPointType *>(device_output_points),
+      device_selected_indices, num_samples);
+  }
 
   // Allocate output point cloud
   auto output = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-  output->data = cuda_blackboard::make_unique<std::uint8_t[]>(num_samples * sizeof(OutputPointType));
+  const size_t output_point_size =
+    output_point_xyzircaedt_ ? sizeof(InputPointType) : sizeof(OutputPointType);
+  output->data = cuda_blackboard::make_unique<std::uint8_t[]>(num_samples * output_point_size);
 
   // Copy output points from device
+  // Note: cuda_blackboard::make_unique creates device memory, so we use DeviceToDevice copy
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    output->data.get(), device_output_points, num_samples * sizeof(OutputPointType),
-    cudaMemcpyDeviceToHost, stream_));
+    output->data.get(), device_output_points, num_samples * output_point_size,
+    cudaMemcpyDeviceToDevice, stream_));
 
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
@@ -191,8 +256,8 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaRandomDownsampleFilter::fi
   output->header = input_points->header;
   output->width = num_samples;
   output->height = 1;
-  output->point_step = sizeof(OutputPointType);
-  output->row_step = num_samples * sizeof(OutputPointType);
+  output->point_step = output_point_size;
+  output->row_step = num_samples * output_point_size;
   output->is_dense = true;
   output->is_bigendian = input_points->is_bigendian;
 
@@ -219,11 +284,27 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaRandomDownsampleFilter::fi
   output->fields.push_back(
     make_point_field("channel", 14, sensor_msgs::msg::PointField::UINT16, 1));
 
+  if (output_point_xyzircaedt_) {
+    // Add extended fields for PointXYZIRCAEDT
+    output->fields.push_back(
+      make_point_field("azimuth", 16, sensor_msgs::msg::PointField::FLOAT32, 1));
+    output->fields.push_back(
+      make_point_field("elevation", 20, sensor_msgs::msg::PointField::FLOAT32, 1));
+    output->fields.push_back(
+      make_point_field("distance", 24, sensor_msgs::msg::PointField::FLOAT32, 1));
+    output->fields.push_back(
+      make_point_field("time_stamp", 28, sensor_msgs::msg::PointField::UINT32, 1));
+  }
+
   // Return buffers to pool
   returnBufferToPool(device_input_points);
   returnBufferToPool(device_all_indices);
   returnBufferToPool(device_selected_indices);
-  returnBufferToPool(device_output_points);
+  if (output_point_xyzircaedt_) {
+    returnBufferToPool(static_cast<InputPointType *>(device_output_points));
+  } else {
+    returnBufferToPool(static_cast<OutputPointType *>(device_output_points));
+  }
 
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 

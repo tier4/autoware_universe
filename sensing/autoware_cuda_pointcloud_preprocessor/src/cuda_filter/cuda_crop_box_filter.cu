@@ -29,14 +29,16 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace autoware::cuda_pointcloud_preprocessor
 {
 
 CudaCropBoxFilter::CudaCropBoxFilter(
-  const std::vector<CropBoxParameters> & crop_box_parameters,
-  int64_t max_mem_pool_size_in_byte)
-: crop_box_parameters_(crop_box_parameters)
+  const CropBoxParameters crop_box_parameters,
+  int64_t max_mem_pool_size_in_byte,
+  bool output_point_xyzircaedt)
+: crop_box_parameters_(crop_box_parameters), output_point_xyzircaedt_(output_point_xyzircaedt)
 {
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 
@@ -91,11 +93,22 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
     return output;
   }
 
-  // Validate input point cloud layout
-  if (input_points->point_step != sizeof(InputPointType)) {
+  // Validate that data pointer is not null
+  if (!input_points->data) {
+    throw std::runtime_error("Input pointcloud data pointer is null.");
+  }
+
+  // Check input format and handle conversion if needed
+  const bool is_point_xyzirc = (input_points->point_step == sizeof(OutputPointType));
+  const bool is_point_xyzircaedt = (input_points->point_step == sizeof(InputPointType));
+
+  if (!is_point_xyzirc && !is_point_xyzircaedt) {
     throw std::runtime_error(
-      "Input pointcloud point_step does not match InputPointType size. "
-      "This filter requires PointXYZIRCAEDT format.");
+      "Input pointcloud point_step does not match expected format. "
+      "Expected PointXYZIRC (" +
+      std::to_string(sizeof(OutputPointType)) + " bytes) or PointXYZIRCAEDT (" +
+      std::to_string(sizeof(InputPointType)) + " bytes), but got " +
+      std::to_string(input_points->point_step) + " bytes.");
   }
 
   // Allocate device buffers
@@ -104,17 +117,37 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
   std::uint8_t * device_nan_mask = allocateBufferFromPool<std::uint8_t>(num_points);
   std::uint32_t * device_indices = allocateBufferFromPool<std::uint32_t>(num_points);
   CropBoxParameters * device_crop_box_params =
-    allocateBufferFromPool<CropBoxParameters>(crop_box_parameters_.size());
+    allocateBufferFromPool<CropBoxParameters>(1);
 
-  // Copy input points to device
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    device_input_points, input_points->data.get(), num_points * sizeof(InputPointType),
-    cudaMemcpyHostToDevice, stream_));
+  // Copy and convert input points to device
+  // Note: cuda_blackboard::CudaPointCloud2::data is already on device memory when received
+  // from CudaBlackboardSubscriber, so we use DeviceToDevice copy
+  if (is_point_xyzirc) {
+    // Convert PointXYZIRC to PointXYZIRCAEDT format
+    OutputPointType * device_temp_points = allocateBufferFromPool<OutputPointType>(num_points);
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
+      device_temp_points, input_points->data.get(), num_points * sizeof(OutputPointType),
+      cudaMemcpyDeviceToDevice, stream_));
+
+    // Convert to InputPointType format
+    const int blocks_per_grid_convert = (num_points + threads_per_block_ - 1) / threads_per_block_;
+    convertPointXYZIRCToInputPointTypeLaunch(
+      device_temp_points, device_input_points, static_cast<int>(num_points), threads_per_block_,
+      blocks_per_grid_convert, stream_);
+
+    // Free temporary buffer
+    returnBufferToPool(device_temp_points);
+  } else {
+    // Direct copy for PointXYZIRCAEDT format
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
+      device_input_points, input_points->data.get(), num_points * sizeof(InputPointType),
+      cudaMemcpyDeviceToDevice, stream_));
+  }
 
   // Copy crop box parameters to device
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    device_crop_box_params, crop_box_parameters_.data(),
-    crop_box_parameters_.size() * sizeof(CropBoxParameters), cudaMemcpyHostToDevice, stream_));
+    device_crop_box_params, &crop_box_parameters_,
+    sizeof(CropBoxParameters), cudaMemcpyHostToDevice, stream_));
 
   // Initialize masks
   thrust::fill(
@@ -126,17 +159,11 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
 
   // Launch crop box kernel
   const int blocks_per_grid = (num_points + threads_per_block_ - 1) / threads_per_block_;
-  if (crop_box_parameters_.size() > 0) {
-    cropBoxLaunch(
-      device_input_points, device_crop_mask, device_nan_mask, static_cast<int>(num_points),
-      device_crop_box_params, static_cast<int>(crop_box_parameters_.size()),
-      threads_per_block_, blocks_per_grid, stream_);
-  } else {
-    // If no crop boxes, preserve all points
-    thrust::fill(
-      thrust::cuda::par_nosync.on(stream_), thrust::device_ptr<std::uint32_t>(device_crop_mask),
-      thrust::device_ptr<std::uint32_t>(device_crop_mask + num_points), 1U);
-  }
+  cropBoxLaunch(
+    device_input_points, device_crop_mask, device_nan_mask, static_cast<int>(num_points),
+    device_crop_box_params, 1,
+    threads_per_block_, blocks_per_grid, stream_);
+
 
   // Compute indices for output points using inclusive scan
   thrust::inclusive_scan(
@@ -157,15 +184,29 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
   // Allocate output point cloud
   auto output = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   if (num_output_points > 0) {
-    output->data = cuda_blackboard::make_unique<std::uint8_t[]>(
-      num_output_points * sizeof(OutputPointType));
+    if (output_point_xyzircaedt_) {
+      // Output PointXYZIRCAEDT format
+      output->data = cuda_blackboard::make_unique<std::uint8_t[]>(
+        num_output_points * sizeof(InputPointType));
 
-    // Extract points directly using the already-allocated device buffers
-    const int blocks_per_grid_extract = (num_points + threads_per_block_ - 1) / threads_per_block_;
-    extractPointsLaunch(
-      device_input_points, device_crop_mask, device_indices, static_cast<int>(num_points),
-      reinterpret_cast<OutputPointType *>(output->data.get()), threads_per_block_,
-      blocks_per_grid_extract, stream_);
+      // Extract points directly using the already-allocated device buffers
+      const int blocks_per_grid_extract = (num_points + threads_per_block_ - 1) / threads_per_block_;
+      extractInputPointsLaunch(
+        device_input_points, device_crop_mask, device_indices, static_cast<int>(num_points),
+        reinterpret_cast<InputPointType *>(output->data.get()), threads_per_block_,
+        blocks_per_grid_extract, stream_);
+    } else {
+      // Output PointXYZIRC format (default)
+      output->data = cuda_blackboard::make_unique<std::uint8_t[]>(
+        num_output_points * sizeof(OutputPointType));
+
+      // Extract points directly using the already-allocated device buffers
+      const int blocks_per_grid_extract = (num_points + threads_per_block_ - 1) / threads_per_block_;
+      extractPointsLaunch(
+        device_input_points, device_crop_mask, device_indices, static_cast<int>(num_points),
+        reinterpret_cast<OutputPointType *>(output->data.get()), threads_per_block_,
+        blocks_per_grid_extract, stream_);
+    }
   } else {
     output->data.reset();
   }
@@ -174,8 +215,8 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
   output->header = input_points->header;
   output->width = num_output_points;
   output->height = 1;
-  output->point_step = sizeof(OutputPointType);
-  output->row_step = num_output_points * sizeof(OutputPointType);
+  output->point_step = output_point_xyzircaedt_ ? sizeof(InputPointType) : sizeof(OutputPointType);
+  output->row_step = num_output_points * output->point_step;
   output->is_dense = true;
   output->is_bigendian = input_points->is_bigendian;
 
@@ -201,6 +242,18 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
     make_point_field("return_type", 13, sensor_msgs::msg::PointField::UINT8, 1));
   output->fields.push_back(
     make_point_field("channel", 14, sensor_msgs::msg::PointField::UINT16, 1));
+
+  if (output_point_xyzircaedt_) {
+    // Add extended fields for PointXYZIRCAEDT
+    output->fields.push_back(
+      make_point_field("azimuth", 16, sensor_msgs::msg::PointField::FLOAT32, 1));
+    output->fields.push_back(
+      make_point_field("elevation", 20, sensor_msgs::msg::PointField::FLOAT32, 1));
+    output->fields.push_back(
+      make_point_field("distance", 24, sensor_msgs::msg::PointField::FLOAT32, 1));
+    output->fields.push_back(
+      make_point_field("time_stamp", 28, sensor_msgs::msg::PointField::UINT32, 1));
+  }
 
   // Return buffers to pool
   returnBufferToPool(device_input_points);

@@ -40,8 +40,9 @@ class CudaCropBoxFilter
 {
 public:
   explicit CudaCropBoxFilter(
-    const std::vector<CropBoxParameters> & crop_box_parameters,
-    int64_t max_mem_pool_size_in_byte = 1e9);
+    const CropBoxParameters crop_box_parameters,
+    int64_t max_mem_pool_size_in_byte = 1e9,
+    bool output_point_xyzircaedt = false);
   ~CudaCropBoxFilter() = default;
 
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> filter(
@@ -54,7 +55,8 @@ private:
   template <typename T>
   void returnBufferToPool(T * buffer);
 
-  std::vector<CropBoxParameters> crop_box_parameters_;
+  CropBoxParameters crop_box_parameters_;
+  bool output_point_xyzircaedt_;
 
   cudaStream_t stream_{};
   cudaMemPool_t mem_pool_{};

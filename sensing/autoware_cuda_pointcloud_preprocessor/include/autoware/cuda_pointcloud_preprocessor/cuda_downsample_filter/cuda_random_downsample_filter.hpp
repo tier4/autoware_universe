@@ -33,7 +33,8 @@ class CudaRandomDownsampleFilter
 {
 public:
   explicit CudaRandomDownsampleFilter(
-    size_t sample_num, int64_t max_mem_pool_size_in_byte = 1e9);
+    size_t sample_num, int64_t max_mem_pool_size_in_byte = 1e9,
+    bool output_point_xyzircaedt = false);
   ~CudaRandomDownsampleFilter() = default;
 
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> filter(
@@ -47,6 +48,7 @@ private:
   void returnBufferToPool(T * buffer);
 
   size_t sample_num_;
+  bool output_point_xyzircaedt_;
   cudaStream_t stream_{};
   cudaMemPool_t mem_pool_{};
 
