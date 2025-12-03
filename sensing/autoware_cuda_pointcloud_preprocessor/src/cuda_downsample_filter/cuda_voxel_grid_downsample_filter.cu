@@ -339,14 +339,14 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaVoxelGridDownsampleFilter:
       "channel", voxel_info_.output_offsets[5], sensor_msgs::msg::PointField::UINT16, 1));
     if (output_point_xyzircaedt_) {
       // Add extended fields for PointXYZIRCAEDT
-      filtered_output->fields.push_back(generate_point_field(
-        "azimuth", 16, sensor_msgs::msg::PointField::FLOAT32, 1));
-      filtered_output->fields.push_back(generate_point_field(
-        "elevation", 20, sensor_msgs::msg::PointField::FLOAT32, 1));
-      filtered_output->fields.push_back(generate_point_field(
-        "distance", 24, sensor_msgs::msg::PointField::FLOAT32, 1));
-      filtered_output->fields.push_back(generate_point_field(
-        "time_stamp", 28, sensor_msgs::msg::PointField::UINT32, 1));
+      filtered_output->fields.push_back(
+        generate_point_field("azimuth", 16, sensor_msgs::msg::PointField::FLOAT32, 1));
+      filtered_output->fields.push_back(
+        generate_point_field("elevation", 20, sensor_msgs::msg::PointField::FLOAT32, 1));
+      filtered_output->fields.push_back(
+        generate_point_field("distance", 24, sensor_msgs::msg::PointField::FLOAT32, 1));
+      filtered_output->fields.push_back(
+        generate_point_field("time_stamp", 28, sensor_msgs::msg::PointField::UINT32, 1));
     }
     filtered_output->is_bigendian = input_points->is_bigendian;
     filtered_output->point_step = output_point_size;

@@ -11,4 +11,3 @@
     negative: [0]
     # Memory pool size in bytes (default: 1GB)
     max_mem_pool_size_in_byte: 1000000000
-

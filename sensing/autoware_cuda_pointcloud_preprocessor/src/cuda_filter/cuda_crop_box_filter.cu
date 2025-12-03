@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/cuda_pointcloud_preprocessor/cuda_filter/cuda_crop_box_filter.hpp"
-
 #include "autoware/cuda_pointcloud_preprocessor/common_kernels.hpp"
+#include "autoware/cuda_pointcloud_preprocessor/cuda_filter/cuda_crop_box_filter.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/point_types.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/types.hpp"
 #include "autoware/cuda_utils/cuda_check_error.hpp"
@@ -35,8 +34,7 @@ namespace autoware::cuda_pointcloud_preprocessor
 {
 
 CudaCropBoxFilter::CudaCropBoxFilter(
-  const CropBoxParameters crop_box_parameters,
-  int64_t max_mem_pool_size_in_byte,
+  const CropBoxParameters crop_box_parameters, int64_t max_mem_pool_size_in_byte,
   bool output_point_xyzircaedt)
 : crop_box_parameters_(crop_box_parameters), output_point_xyzircaedt_(output_point_xyzircaedt)
 {
@@ -116,8 +114,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
   std::uint32_t * device_crop_mask = allocateBufferFromPool<std::uint32_t>(num_points);
   std::uint8_t * device_nan_mask = allocateBufferFromPool<std::uint8_t>(num_points);
   std::uint32_t * device_indices = allocateBufferFromPool<std::uint32_t>(num_points);
-  CropBoxParameters * device_crop_box_params =
-    allocateBufferFromPool<CropBoxParameters>(1);
+  CropBoxParameters * device_crop_box_params = allocateBufferFromPool<CropBoxParameters>(1);
 
   // Copy and convert input points to device
   // Note: cuda_blackboard::CudaPointCloud2::data is already on device memory when received
@@ -146,8 +143,8 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
 
   // Copy crop box parameters to device
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    device_crop_box_params, &crop_box_parameters_,
-    sizeof(CropBoxParameters), cudaMemcpyHostToDevice, stream_));
+    device_crop_box_params, &crop_box_parameters_, sizeof(CropBoxParameters),
+    cudaMemcpyHostToDevice, stream_));
 
   // Initialize masks
   thrust::fill(
@@ -161,9 +158,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
   const int blocks_per_grid = (num_points + threads_per_block_ - 1) / threads_per_block_;
   cropBoxLaunch(
     device_input_points, device_crop_mask, device_nan_mask, static_cast<int>(num_points),
-    device_crop_box_params, 1,
-    threads_per_block_, blocks_per_grid, stream_);
-
+    device_crop_box_params, 1, threads_per_block_, blocks_per_grid, stream_);
 
   // Compute indices for output points using inclusive scan
   thrust::inclusive_scan(
@@ -186,22 +181,24 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
   if (num_output_points > 0) {
     if (output_point_xyzircaedt_) {
       // Output PointXYZIRCAEDT format
-      output->data = cuda_blackboard::make_unique<std::uint8_t[]>(
-        num_output_points * sizeof(InputPointType));
+      output->data =
+        cuda_blackboard::make_unique<std::uint8_t[]>(num_output_points * sizeof(InputPointType));
 
       // Extract points directly using the already-allocated device buffers
-      const int blocks_per_grid_extract = (num_points + threads_per_block_ - 1) / threads_per_block_;
+      const int blocks_per_grid_extract =
+        (num_points + threads_per_block_ - 1) / threads_per_block_;
       extractInputPointsLaunch(
         device_input_points, device_crop_mask, device_indices, static_cast<int>(num_points),
         reinterpret_cast<InputPointType *>(output->data.get()), threads_per_block_,
         blocks_per_grid_extract, stream_);
     } else {
       // Output PointXYZIRC format (default)
-      output->data = cuda_blackboard::make_unique<std::uint8_t[]>(
-        num_output_points * sizeof(OutputPointType));
+      output->data =
+        cuda_blackboard::make_unique<std::uint8_t[]>(num_output_points * sizeof(OutputPointType));
 
       // Extract points directly using the already-allocated device buffers
-      const int blocks_per_grid_extract = (num_points + threads_per_block_ - 1) / threads_per_block_;
+      const int blocks_per_grid_extract =
+        (num_points + threads_per_block_ - 1) / threads_per_block_;
       extractPointsLaunch(
         device_input_points, device_crop_mask, device_indices, static_cast<int>(num_points),
         reinterpret_cast<OutputPointType *>(output->data.get()), threads_per_block_,
@@ -268,4 +265,3 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaCropBoxFilter::filter(
 }
 
 }  // namespace autoware::cuda_pointcloud_preprocessor
-

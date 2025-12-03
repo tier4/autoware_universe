@@ -27,4 +27,3 @@
     <param from="$(var cuda_random_downsample_filter_param_file)"/>
   </node>
 </launch>
-

@@ -32,10 +32,8 @@ CudaCropBoxFilterNode::CudaCropBoxFilterNode(const rclcpp::NodeOptions & node_op
   const auto max_y = declare_parameter<double>("max_y");
   const auto max_z = declare_parameter<double>("max_z");
   const auto negative = declare_parameter<bool>("negative");
-  const bool output_point_xyzircaedt =
-    declare_parameter<bool>("output_point_xyzircaedt", false);
-  int64_t max_mem_pool_size_in_byte =
-    declare_parameter<int64_t>("max_mem_pool_size_in_byte", 1e9);
+  const bool output_point_xyzircaedt = declare_parameter<bool>("output_point_xyzircaedt", false);
+  int64_t max_mem_pool_size_in_byte = declare_parameter<int64_t>("max_mem_pool_size_in_byte", 1e9);
 
   if (max_mem_pool_size_in_byte < 0) {
     RCLCPP_ERROR(
@@ -53,13 +51,14 @@ CudaCropBoxFilterNode::CudaCropBoxFilterNode(const rclcpp::NodeOptions & node_op
   crop_box_parameter.max_z = static_cast<float>(max_z);
   crop_box_parameter.negative = negative ? 1 : 0;
 
-  sub_ = std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
-    *this, "~/input/pointcloud",
-    std::bind(
-      &CudaCropBoxFilterNode::cudaPointcloudCallback, this, std::placeholders::_1));
+  sub_ =
+    std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
+      *this, "~/input/pointcloud",
+      std::bind(&CudaCropBoxFilterNode::cudaPointcloudCallback, this, std::placeholders::_1));
 
-  pub_ = std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
-    *this, "~/output/pointcloud");
+  pub_ =
+    std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
+      *this, "~/output/pointcloud");
 
   cuda_crop_box_filter_ = std::make_unique<CudaCropBoxFilter>(
     crop_box_parameter, max_mem_pool_size_in_byte, output_point_xyzircaedt);
@@ -114,6 +113,4 @@ void CudaCropBoxFilterNode::cudaPointcloudCallback(
 }  // namespace autoware::cuda_pointcloud_preprocessor
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(
-  autoware::cuda_pointcloud_preprocessor::CudaCropBoxFilterNode)
-
+RCLCPP_COMPONENTS_REGISTER_NODE(autoware::cuda_pointcloud_preprocessor::CudaCropBoxFilterNode)

@@ -68,7 +68,8 @@ struct CropBoxParameters
   float max_y;
   float min_z;
   float max_z;
-  std::uint8_t negative;  // if 1, remove points within the box from the pointcloud; otherwise (0), remove points outside the box.
+  std::uint8_t negative;  // if 1, remove points within the box from the pointcloud; otherwise (0),
+                          // remove points outside the box.
 
   // Explicitly default constructor and destructor to ensure triviality for Thrust compatibility
   CropBoxParameters() = default;

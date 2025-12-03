@@ -26,23 +26,23 @@ CudaRandomDownsampleFilterNode::CudaRandomDownsampleFilterNode(
 {
   // Set initial parameters
   size_t sample_num = static_cast<size_t>(declare_parameter<int64_t>("sample_num"));
-  const bool output_point_xyzircaedt =
-    declare_parameter<bool>("output_point_xyzircaedt", false);
-  int64_t max_mem_pool_size_in_byte =
-    declare_parameter<int64_t>("max_mem_pool_size_in_byte", 1e9);
+  const bool output_point_xyzircaedt = declare_parameter<bool>("output_point_xyzircaedt", false);
+  int64_t max_mem_pool_size_in_byte = declare_parameter<int64_t>("max_mem_pool_size_in_byte", 1e9);
   if (max_mem_pool_size_in_byte < 0) {
     RCLCPP_ERROR(
       this->get_logger(), "Invalid pool size was specified. The value should be positive");
     return;
   }
 
-  sub_ = std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
-    *this, "~/input/pointcloud",
-    std::bind(
-      &CudaRandomDownsampleFilterNode::cudaPointcloudCallback, this, std::placeholders::_1));
+  sub_ =
+    std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
+      *this, "~/input/pointcloud",
+      std::bind(
+        &CudaRandomDownsampleFilterNode::cudaPointcloudCallback, this, std::placeholders::_1));
 
-  pub_ = std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
-    *this, "~/output/pointcloud");
+  pub_ =
+    std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
+      *this, "~/output/pointcloud");
 
   cuda_random_downsample_filter_ = std::make_unique<CudaRandomDownsampleFilter>(
     sample_num, max_mem_pool_size_in_byte, output_point_xyzircaedt);
@@ -99,4 +99,3 @@ void CudaRandomDownsampleFilterNode::cudaPointcloudCallback(
 #include "rclcpp_components/register_node_macro.hpp"
 RCLCPP_COMPONENTS_REGISTER_NODE(
   autoware::cuda_pointcloud_preprocessor::CudaRandomDownsampleFilterNode)
-
