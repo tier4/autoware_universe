@@ -118,10 +118,10 @@ TrajectoryPoints align_trajectory_with_reference_trajectory(
   //     OR
   // predicted_trajectory:                           p1------------------pN
   // reference_trajectory:   r1------------------rN
-  const bool & is_p_n_before_r1 =
+  const bool is_p_n_before_r1 =
     autoware::motion_utils::calcLongitudinalOffsetToSegment(
       first_segment_points, 0, predicted_trajectory_points.back().pose.position) < 0.0;
-  const bool & is_p1_behind_r_n =
+  const bool is_p1_behind_r_n =
     autoware::motion_utils::calcLongitudinalOffsetToSegment(
       reversed_last_segment_points, 0, predicted_trajectory_points.front().pose.position) < 0.0;
   const bool is_no_overlapping = (is_p_n_before_r1 || is_p1_behind_r_n);
