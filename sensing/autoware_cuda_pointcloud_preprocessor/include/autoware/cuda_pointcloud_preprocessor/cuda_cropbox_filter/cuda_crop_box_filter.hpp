@@ -40,8 +40,7 @@ class CudaCropBoxFilter
 {
 public:
   explicit CudaCropBoxFilter(
-    const CropBoxParameters crop_box_parameters,
-    int64_t max_mem_pool_size_in_byte = 1e9,
+    const CropBoxParameters crop_box_parameters, int64_t max_mem_pool_size_in_byte = 1e9,
     bool output_point_xyzircaedt = false);
   ~CudaCropBoxFilter() = default;
 

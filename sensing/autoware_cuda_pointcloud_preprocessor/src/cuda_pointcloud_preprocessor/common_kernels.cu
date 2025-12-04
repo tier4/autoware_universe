@@ -68,8 +68,8 @@ __global__ void cropBoxKernel(
       const std::uint8_t negative = crop_box_parameters.negative;
 
       // Check if point is inside the box
-      bool point_is_inside = (x > min_x && x < max_x) && (y > min_y && y < max_y) &&
-                             (z > min_z && z < max_z);
+      bool point_is_inside =
+        (x > min_x && x < max_x) && (y > min_y && y < max_y) && (z > min_z && z < max_z);
 
       // If negative mode (negative == 1): remove points within the box → preserve points outside
       // If positive mode (negative == 0): remove points outside the box → preserve points inside
@@ -111,8 +111,7 @@ __global__ void extractPointsKernel(
 
 __global__ void extractInputPointsKernel(
   InputPointType * __restrict__ input_points, std::uint32_t * __restrict__ masks,
-  std::uint32_t * __restrict__ indices, int num_points,
-  InputPointType * __restrict__ output_points)
+  std::uint32_t * __restrict__ indices, int num_points, InputPointType * __restrict__ output_points)
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_points && masks[idx] == 1) {
@@ -131,7 +130,7 @@ __global__ void convertPointXYZIRCToInputPointTypeKernel(
   if (idx < num_points) {
     const OutputPointType & input_point = input_points[idx];
     InputPointType & output_point = output_points[idx];
-    
+
     // Copy common fields
     output_point.x = input_point.x;
     output_point.y = input_point.y;
@@ -139,7 +138,7 @@ __global__ void convertPointXYZIRCToInputPointTypeKernel(
     output_point.intensity = input_point.intensity;
     output_point.return_type = input_point.return_type;
     output_point.channel = input_point.channel;
-    
+
     // Initialize extended fields with default values
     // Set distance to 1.0f so points are not skipped by crop box kernel
     // (which checks if distance == 0.0f)
@@ -187,8 +186,7 @@ void extractPointsLaunch(
 
 void extractInputPointsLaunch(
   InputPointType * input_points, std::uint32_t * masks, std::uint32_t * indices, int num_points,
-  InputPointType * output_points, int threads_per_block, int blocks_per_grid,
-  cudaStream_t & stream)
+  InputPointType * output_points, int threads_per_block, int blocks_per_grid, cudaStream_t & stream)
 {
   extractInputPointsKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
     input_points, masks, indices, num_points, output_points);

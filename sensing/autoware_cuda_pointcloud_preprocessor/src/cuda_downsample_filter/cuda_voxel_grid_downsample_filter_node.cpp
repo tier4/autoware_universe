@@ -26,8 +26,7 @@ CudaVoxelGridDownsampleFilterNode::CudaVoxelGridDownsampleFilterNode(
   float voxel_size_x = declare_parameter<float>("voxel_size_x");
   float voxel_size_y = declare_parameter<float>("voxel_size_y");
   float voxel_size_z = declare_parameter<float>("voxel_size_z");
-  const bool output_point_xyzircaedt =
-    declare_parameter<bool>("output_point_xyzircaedt", false);
+  const bool output_point_xyzircaedt = declare_parameter<bool>("output_point_xyzircaedt", false);
   int64_t max_mem_pool_size_in_byte = declare_parameter<int64_t>(
     "max_mem_pool_size_in_byte",
     1e9);  // 1GB in default

@@ -12,13 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/cuda_pointcloud_preprocessor/cuda_downsample_filter/cuda_random_downsample_filter.hpp"
-
 #include "autoware/cuda_pointcloud_preprocessor/common_kernels.hpp"
+#include "autoware/cuda_pointcloud_preprocessor/cuda_downsample_filter/cuda_random_downsample_filter.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/point_types.hpp"
 #include "autoware/cuda_utils/cuda_check_error.hpp"
-
-#include <string>
 
 #include <sensor_msgs/msg/point_field.hpp>
 
@@ -26,12 +23,13 @@
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
-#include <thrust/shuffle.h>
 #include <thrust/sequence.h>
+#include <thrust/shuffle.h>
 
 #include <cstdint>
 #include <memory>
 #include <random>
+#include <string>
 
 namespace autoware::cuda_pointcloud_preprocessor
 {
@@ -181,16 +179,18 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaRandomDownsampleFilter::fi
   // from CudaBlackboardSubscriber, so we use DeviceToDevice copy
   if (is_point_xyzirc) {
     // Convert PointXYZIRC to PointXYZIRCAEDT format
-    OutputPointType * device_temp_points = allocateBufferFromPool<OutputPointType>(num_input_points);
+    OutputPointType * device_temp_points =
+      allocateBufferFromPool<OutputPointType>(num_input_points);
     CHECK_CUDA_ERROR(cudaMemcpyAsync(
       device_temp_points, input_points->data.get(), num_input_points * sizeof(OutputPointType),
       cudaMemcpyDeviceToDevice, stream_));
 
     // Convert to InputPointType format
-    const int blocks_per_grid_convert = (num_input_points + threads_per_block_ - 1) / threads_per_block_;
+    const int blocks_per_grid_convert =
+      (num_input_points + threads_per_block_ - 1) / threads_per_block_;
     convertPointXYZIRCToInputPointTypeLaunch(
-      device_temp_points, device_input_points, static_cast<int>(num_input_points), threads_per_block_,
-      blocks_per_grid_convert, stream_);
+      device_temp_points, device_input_points, static_cast<int>(num_input_points),
+      threads_per_block_, blocks_per_grid_convert, stream_);
 
     // Free temporary buffer
     returnBufferToPool(device_temp_points);
@@ -226,8 +226,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaRandomDownsampleFilter::fi
   }
 
   // Sample points using random indices
-  const int blocks_per_grid_sample =
-    (num_samples + threads_per_block_ - 1) / threads_per_block_;
+  const int blocks_per_grid_sample = (num_samples + threads_per_block_ - 1) / threads_per_block_;
   if (output_point_xyzircaedt_) {
     randomSampleInputKernel<<<blocks_per_grid_sample, threads_per_block_, 0, stream_>>>(
       device_input_points, static_cast<InputPointType *>(device_output_points),
@@ -312,4 +311,3 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaRandomDownsampleFilter::fi
 }
 
 }  // namespace autoware::cuda_pointcloud_preprocessor
-
