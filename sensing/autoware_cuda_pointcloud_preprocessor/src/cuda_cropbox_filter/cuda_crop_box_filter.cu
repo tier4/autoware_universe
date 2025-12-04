@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/cuda_pointcloud_preprocessor/cuda_cropbox_filter/cuda_crop_box_filter.hpp"
-
 #include "autoware/cuda_pointcloud_preprocessor/common_kernels.hpp"
-#include "autoware/cuda_pointcloud_preprocessor/cuda_filter/cuda_crop_box_filter.hpp"
+#include "autoware/cuda_pointcloud_preprocessor/cuda_cropbox_filter/cuda_crop_box_filter.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/point_types.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/types.hpp"
 #include "autoware/cuda_utils/cuda_check_error.hpp"

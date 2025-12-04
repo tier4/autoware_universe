@@ -24,12 +24,12 @@
 #include <grid_map_ros/grid_map_ros.hpp>
 
 #include <cuda_runtime.h>
+#include <thrust/device_ptr.h>
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 #include <thrust/fill.h>
-#include <thrust/sort.h>
 #include <thrust/reduce.h>
-#include <thrust/device_ptr.h>
+#include <thrust/sort.h>
 
 #include <cstdint>
 #include <memory>
@@ -38,6 +38,23 @@
 namespace autoware::cuda_pointcloud_preprocessor
 {
 
+// CUDA kernel parameters struct (device-side)
+struct CostmapGridParams
+{
+  float grid_length_x;
+  float grid_length_y;
+  float grid_resolution;
+  float grid_position_x;
+  float grid_position_y;
+  float maximum_height_thres;
+  float minimum_height_thres;
+  float grid_min_value;
+  float grid_max_value;
+  int32_t grid_size_x;
+  int32_t grid_size_y;
+};
+
+// Host-side costmap parameters struct
 struct CostmapParameters
 {
   double grid_length_x;
@@ -89,7 +106,17 @@ private:
   static constexpr int threads_per_block_ = 512;
 };
 
+// CUDA kernel launch functions
+void assignPointsToGridCellsLaunch(
+  const InputPointType * input_points, int32_t * grid_indices, int num_points,
+  const CostmapGridParams * params, int threads_per_block, int blocks_per_grid,
+  cudaStream_t & stream);
+
+void calculateCostmapFromGridCellsLaunch(
+  const InputPointType * input_points, const int32_t * grid_indices, float * costmap_data,
+  int num_points, const CostmapGridParams * params, int threads_per_block, int blocks_per_grid,
+  cudaStream_t & stream);
+
 }  // namespace autoware::cuda_pointcloud_preprocessor
 
 #endif  // AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_POINTCLOUD2COSTMAP_FILTER__CUDA_POINTCLOUD2COSTMAP_FILTER_HPP_
-

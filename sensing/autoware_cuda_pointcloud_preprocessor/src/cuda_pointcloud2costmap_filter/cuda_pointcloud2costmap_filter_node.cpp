@@ -38,8 +38,7 @@ CudaPointcloud2CostmapFilterNode::CudaPointcloud2CostmapFilterNode(
   costmap_params_.grid_min_value = declare_parameter<double>("grid_min_value", 0.0);
   costmap_params_.grid_max_value = declare_parameter<double>("grid_max_value", 1.0);
 
-  int64_t max_mem_pool_size_in_byte =
-    declare_parameter<int64_t>("max_mem_pool_size_in_byte", 1e9);
+  int64_t max_mem_pool_size_in_byte = declare_parameter<int64_t>("max_mem_pool_size_in_byte", 1e9);
 
   if (max_mem_pool_size_in_byte < 0) {
     RCLCPP_ERROR(
@@ -48,17 +47,18 @@ CudaPointcloud2CostmapFilterNode::CudaPointcloud2CostmapFilterNode(
   }
 
   // Create subscriber
-  sub_ = std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
-    *this, "~/input/pointcloud",
-    std::bind(
-      &CudaPointcloud2CostmapFilterNode::cudaPointcloudCallback, this, std::placeholders::_1));
+  sub_ =
+    std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
+      *this, "~/input/pointcloud",
+      std::bind(
+        &CudaPointcloud2CostmapFilterNode::cudaPointcloudCallback, this, std::placeholders::_1));
 
   // Create publisher
   pub_costmap_ = this->create_publisher<grid_map_msgs::msg::GridMap>("~/output/grid_map", 1);
 
   // Create filter
-  cuda_pointcloud2costmap_filter_ = std::make_unique<CudaPointcloud2CostmapFilter>(
-    costmap_params_, max_mem_pool_size_in_byte);
+  cuda_pointcloud2costmap_filter_ =
+    std::make_unique<CudaPointcloud2CostmapFilter>(costmap_params_, max_mem_pool_size_in_byte);
 }
 
 void CudaPointcloud2CostmapFilterNode::cudaPointcloudCallback(
@@ -124,4 +124,3 @@ void CudaPointcloud2CostmapFilterNode::cudaPointcloudCallback(
 #include "rclcpp_components/register_node_macro.hpp"
 RCLCPP_COMPONENTS_REGISTER_NODE(
   autoware::cuda_pointcloud_preprocessor::CudaPointcloud2CostmapFilterNode)
-

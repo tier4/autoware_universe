@@ -246,16 +246,15 @@ void CostmapGenerator::onLaneletMapBin(
   if (param_->use_wayarea) {
     loadRoadAreasFromLaneletMap(lanelet_map_, primitives_polygons_);
   }
+
+  if (param_->use_parkinglot) {
+    loadParkingAreasFromLaneletMap(lanelet_map_, primitives_polygons_);
+  }
 }
 
 void CostmapGenerator::onCudaCostmap(const grid_map_msgs::msg::GridMap::ConstSharedPtr msg)
 {
   cuda_costmap_ = msg;
-}
-
-  if (param_->use_parkinglot) {
-    loadParkingAreasFromLaneletMap(lanelet_map_, primitives_polygons_);
-  }
 }
 
 void CostmapGenerator::update_data()

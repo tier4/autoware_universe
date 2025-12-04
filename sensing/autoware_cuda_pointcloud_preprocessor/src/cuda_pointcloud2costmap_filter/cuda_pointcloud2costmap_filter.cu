@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/cuda_pointcloud_preprocessor/cuda_pointcloud2costmap_filter/cuda_pointcloud2costmap_filter.hpp"
-
 #include "autoware/cuda_pointcloud_preprocessor/common_kernels.hpp"
+#include "autoware/cuda_pointcloud_preprocessor/cuda_pointcloud2costmap_filter/cuda_pointcloud2costmap_filter.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/point_types.hpp"
 #include "autoware/cuda_utils/cuda_check_error.hpp"
 
@@ -28,13 +27,116 @@
 namespace autoware::cuda_pointcloud_preprocessor
 {
 
+// CUDA kernels for pointcloud to costmap conversion
+__global__ void assignPointsToGridCellsKernel(
+  const InputPointType * __restrict__ input_points, int32_t * __restrict__ grid_indices,
+  int num_points, const CostmapGridParams * __restrict__ params)
+{
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < num_points) {
+    const InputPointType & point = input_points[idx];
+    const float x = point.x;
+    const float y = point.y;
+
+    // Check if point is valid
+    if (!isfinite(x) || !isfinite(y)) {
+      grid_indices[idx] = -1;  // Invalid index
+      return;
+    }
+
+    // Calculate grid index following the same logic as CPU version
+    // From points_to_costmap.cpp: fetchGridIndexFromPoint
+    const float origin_x_offset = params->grid_length_x / 2.0f - params->grid_position_x;
+    const float origin_y_offset = params->grid_length_y / 2.0f - params->grid_position_y;
+
+    // Coordinate conversion for making index. Set bottom left to the origin of coordinate (0, 0)
+    float mapped_x = (params->grid_length_x - origin_x_offset - x) / params->grid_resolution;
+    float mapped_y = (params->grid_length_y - origin_y_offset - y) / params->grid_resolution;
+
+    int32_t mapped_x_ind = static_cast<int32_t>(ceilf(mapped_x));
+    int32_t mapped_y_ind = static_cast<int32_t>(ceilf(mapped_y));
+
+    // Check if index is valid
+    if (
+      mapped_x_ind >= 0 && mapped_x_ind < params->grid_size_x && mapped_y_ind >= 0 &&
+      mapped_y_ind < params->grid_size_y) {
+      // Store as linear index: x * grid_size_y + y
+      grid_indices[idx] = mapped_x_ind * params->grid_size_y + mapped_y_ind;
+    } else {
+      grid_indices[idx] = -1;  // Invalid index
+    }
+  }
+}
+
+__global__ void calculateCostmapFromGridCellsKernel(
+  const InputPointType * __restrict__ input_points, const int32_t * __restrict__ grid_indices,
+  float * __restrict__ costmap_data, int num_points, const CostmapGridParams * __restrict__ params)
+{
+  // First, initialize all costmap cells to min_value
+  int grid_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int total_grid_cells = params->grid_size_x * params->grid_size_y;
+  if (grid_idx < total_grid_cells) {
+    costmap_data[grid_idx] = params->grid_min_value;
+  }
+
+  __syncthreads();
+
+  // Then, for each point, check if it should contribute to costmap
+  int point_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (point_idx < num_points) {
+    const int32_t grid_cell_idx = grid_indices[point_idx];
+    if (grid_cell_idx < 0 || grid_cell_idx >= total_grid_cells) {
+      return;  // Invalid grid cell
+    }
+
+    const InputPointType & point = input_points[point_idx];
+    const float z = point.z;
+
+    // Check if z is within height thresholds
+    if (z <= params->maximum_height_thres && z >= params->minimum_height_thres) {
+      // Use atomic operation to set costmap value to max_value
+      // This ensures thread safety when multiple points map to the same cell
+      atomicExch(&costmap_data[grid_cell_idx], params->grid_max_value);
+    }
+  }
+}
+
+// Kernel launch functions
+void assignPointsToGridCellsLaunch(
+  const InputPointType * input_points, int32_t * grid_indices, int num_points,
+  const CostmapGridParams * params, int threads_per_block, int blocks_per_grid,
+  cudaStream_t & stream)
+{
+  assignPointsToGridCellsKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(
+    input_points, grid_indices, num_points, params);
+}
+
+void calculateCostmapFromGridCellsLaunch(
+  const InputPointType * input_points, const int32_t * grid_indices, float * costmap_data,
+  int num_points, const CostmapGridParams * params, int threads_per_block, int blocks_per_grid,
+  cudaStream_t & stream)
+{
+  // Calculate blocks for grid cells (for initialization)
+  int total_grid_cells = params->grid_size_x * params->grid_size_y;
+  int blocks_for_grid = (total_grid_cells + threads_per_block - 1) / threads_per_block;
+
+  // Use max of blocks_for_grid and blocks_per_grid to handle both initialization and point
+  // processing
+  int total_blocks = (blocks_for_grid > blocks_per_grid) ? blocks_for_grid : blocks_per_grid;
+
+  calculateCostmapFromGridCellsKernel<<<total_blocks, threads_per_block, 0, stream>>>(
+    input_points, grid_indices, costmap_data, num_points, params);
+}
+
 CudaPointcloud2CostmapFilter::CudaPointcloud2CostmapFilter(
   const CostmapParameters & costmap_parameters, int64_t max_mem_pool_size_in_byte)
 : costmap_parameters_(costmap_parameters)
 {
   // Calculate grid size
-  grid_size_x_ = static_cast<int32_t>(std::ceil(costmap_parameters.grid_length_x / costmap_parameters.grid_resolution));
-  grid_size_y_ = static_cast<int32_t>(std::ceil(costmap_parameters.grid_length_y / costmap_parameters.grid_resolution));
+  grid_size_x_ = static_cast<int32_t>(
+    std::ceil(costmap_parameters.grid_length_x / costmap_parameters.grid_resolution));
+  grid_size_y_ = static_cast<int32_t>(
+    std::ceil(costmap_parameters.grid_length_y / costmap_parameters.grid_resolution));
 
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 
@@ -78,7 +180,8 @@ void CudaPointcloud2CostmapFilter::generateCostmap(
 
   if (num_points == 0) {
     // Initialize costmap with min_value
-    costmap_matrix = grid_map::Matrix::Constant(grid_size_x_, grid_size_y_, costmap_parameters_.grid_min_value);
+    costmap_matrix =
+      grid_map::Matrix::Constant(grid_size_x_, grid_size_y_, costmap_parameters_.grid_min_value);
     return;
   }
 
@@ -195,17 +298,20 @@ void CudaPointcloud2CostmapFilter::generateCostmap(
 }
 
 // Explicit template instantiations
-template InputPointType * CudaPointcloud2CostmapFilter::allocateBufferFromPool<InputPointType>(size_t);
-template OutputPointType * CudaPointcloud2CostmapFilter::allocateBufferFromPool<OutputPointType>(size_t);
+template InputPointType * CudaPointcloud2CostmapFilter::allocateBufferFromPool<InputPointType>(
+  size_t);
+template OutputPointType * CudaPointcloud2CostmapFilter::allocateBufferFromPool<OutputPointType>(
+  size_t);
 template int32_t * CudaPointcloud2CostmapFilter::allocateBufferFromPool<int32_t>(size_t);
 template float * CudaPointcloud2CostmapFilter::allocateBufferFromPool<float>(size_t);
-template CostmapGridParams * CudaPointcloud2CostmapFilter::allocateBufferFromPool<CostmapGridParams>(size_t);
+template CostmapGridParams *
+CudaPointcloud2CostmapFilter::allocateBufferFromPool<CostmapGridParams>(size_t);
 
 template void CudaPointcloud2CostmapFilter::returnBufferToPool<InputPointType>(InputPointType *);
 template void CudaPointcloud2CostmapFilter::returnBufferToPool<OutputPointType>(OutputPointType *);
 template void CudaPointcloud2CostmapFilter::returnBufferToPool<int32_t>(int32_t *);
 template void CudaPointcloud2CostmapFilter::returnBufferToPool<float>(float *);
-template void CudaPointcloud2CostmapFilter::returnBufferToPool<CostmapGridParams>(CostmapGridParams *);
+template void CudaPointcloud2CostmapFilter::returnBufferToPool<CostmapGridParams>(
+  CostmapGridParams *);
 
 }  // namespace autoware::cuda_pointcloud_preprocessor
-

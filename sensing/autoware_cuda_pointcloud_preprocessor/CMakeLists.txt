@@ -187,6 +187,65 @@ install(
   LIBRARY DESTINATION lib
 )
 
+################################################################################
+# Tests
+if(BUILD_TESTING)
+    find_package(ament_cmake_gtest REQUIRED)
+    find_package(PCL REQUIRED)
+    ament_find_gtest()
+
+    # Test library for CUDA filters
+    cuda_add_library(test_cuda_pointcloud_preprocessor_lib SHARED
+      test/test_cuda_crop_box_filter.cu
+      test/test_cuda_random_downsample_filter.cu
+      test/test_cuda_pointcloud2costmap_filter.cu
+    )
+
+    target_link_libraries(test_cuda_pointcloud_preprocessor_lib
+      cuda_pointcloud_preprocessor_lib
+      ${CUDA_LIBRARIES}
+      ${PCL_LIBRARIES}
+    )
+
+    target_include_directories(test_cuda_pointcloud_preprocessor_lib SYSTEM PRIVATE
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+      ${GTEST_INCLUDE_DIRS}
+      ${autoware_pointcloud_preprocessor_INCLUDE_DIRS}
+      ${autoware_point_types_INCLUDE_DIRS}
+      ${autoware_sensing_msgs_INCLUDE_DIRS}
+      ${cuda_blackboard_INCLUDE_DIRS}
+      ${sensor_msgs_INCLUDE_DIRS}
+      ${autoware_cuda_utils_INCLUDE_DIRS}
+      ${grid_map_ros_INCLUDE_DIRS}
+      ${grid_map_msgs_INCLUDE_DIRS}
+      ${PCL_INCLUDE_DIRS}
+    )
+
+    # Link dependencies from package.xml using ament_target_dependencies
+    # This ensures cuda_blackboard, autoware_cuda_utils, and autoware_pointcloud_preprocessor are linked
+    # autoware_pointcloud_preprocessor is needed to resolve undefined symbols from concatenate_data
+    # (which is transitively linked through cuda_pointcloud_preprocessor_lib)
+    ament_target_dependencies(test_cuda_pointcloud_preprocessor_lib
+      cuda_blackboard
+      autoware_cuda_utils
+      autoware_pointcloud_preprocessor
+    )
+
+    # Test executable that links to the test library
+    add_executable(test_cuda_pointcloud_preprocessor
+      test/test_main.cpp
+    )
+
+    target_link_libraries(test_cuda_pointcloud_preprocessor
+      test_cuda_pointcloud_preprocessor_lib
+      ${GTEST_LIBRARIES}
+      ${GTEST_MAIN_LIBRARIES}
+    )
+
+    ament_add_gtest_test(test_cuda_pointcloud_preprocessor)
+endif()
+
 ament_auto_package()
 
 # Set ROS_DISTRO macros
