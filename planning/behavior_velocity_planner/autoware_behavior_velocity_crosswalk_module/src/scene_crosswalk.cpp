@@ -1615,7 +1615,14 @@ void CrosswalkModule::planCreeping(
       braking_distance.has_value() ? braking_distance.value() : -1.0);
 
     // if braking distance is greater than distance to deadline stop pose, can't stop anymore
-    if (braking_distance.has_value() && braking_distance.value() + 0.2 > dist_to_deadline_stop) {
+    const auto allow_creep_pass = !rtc_enabled_;
+
+    // NOTE(odashima): add a margin to prevent deceleration near the pass judge point
+    // caused by latency, discretized path interval, etc.
+    const double creep_pass_margin = 0.2;  // [m]
+    if (
+      allow_creep_pass && braking_distance.has_value() &&
+      braking_distance.value() + creep_pass_margin > dist_to_deadline_stop) {
       passed_pass_judge_ = true;
       RCLCPP_DEBUG(logger_, "creep pass judge passed");
     }
