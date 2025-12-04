@@ -53,15 +53,7 @@
           "minimum": 0
         }
       },
-      "required": [
-        "min_x",
-        "min_y",
-        "min_z",
-        "max_x",
-        "max_y",
-        "max_z",
-        "negative"
-      ],
+      "required": ["min_x", "min_y", "min_z", "max_x", "max_y", "max_z", "negative"],
       "additionalProperties": false
     }
   },
@@ -80,4 +72,3 @@
   "required": ["/**"],
   "additionalProperties": false
 }
-

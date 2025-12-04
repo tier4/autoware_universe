@@ -27,4 +27,3 @@
     <param from="$(var cuda_pointcloud2costmap_filter_param_file)"/>
   </node>
 </launch>
-
