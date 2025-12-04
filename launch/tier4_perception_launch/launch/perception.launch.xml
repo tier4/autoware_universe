@@ -125,6 +125,9 @@
   <!-- Whether to use detection by tracker -->
   <arg name="use_detection_by_tracker" default="true"/>
 
+  <!-- V2I fusion planning -->
+  <arg name="use_v2i_fusion_planning" default="false" description="use V2I fusion planning"/>
+
   <!-- Radar parameters -->
   <arg
     name="use_radar_tracking_fusion"
@@ -294,6 +297,7 @@
         <push-ros-namespace namespace="prediction"/>
         <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/prediction/prediction.launch.xml">
           <arg name="use_vector_map" value="$(var use_vector_map)"/>
+          <arg name="use_v2i_fusion_planning" value="$(var use_v2i_fusion_planning)"/>
         </include>
       </group>
     </group>
