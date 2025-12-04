@@ -1469,7 +1469,7 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     // STEP 5-7: Collision check
     // ===================================================================
     // Create PullOutPath for collision check
-    const PullOutPath temp_pull_out_path{{clothoid_path}, {}, start_pose, target_pose};
+    PullOutPath temp_pull_out_path{{clothoid_path}, {}, start_pose, target_pose};
 
     std::optional<size_t> collision_point_index = std::nullopt;
     if (isPullOutPathCollided(
