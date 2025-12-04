@@ -1371,12 +1371,12 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     }
 
     // check lane departure
-    std::optional<size_t> departure_point_index = std::nullopt;
+    std::optional<geometry_msgs::msg::Pose> departure_pose = std::nullopt;
     if (
       parameters_.check_clothoid_path_lane_departure &&
       boundary_departure_checker_->checkPathWillLeaveLane(
         lanelet_map_ptr, path_clothoid_start_to_end, fused_id_start_to_end,
-        fused_polygon_start_to_end, departure_point_index)) {
+        fused_polygon_start_to_end, departure_pose)) {
       RCLCPP_DEBUG(
         rclcpp::get_logger("ClothoidPullOut"),
         "Lane departure detected for steer angle %.2f deg. Continuing to next candidate.",
@@ -1384,22 +1384,13 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
       planner_debug_data.conditions_evaluation.back().append("lane departure");
 
       // Append departure point information if available
-      if (
-        departure_point_index &&
-        *departure_point_index < path_clothoid_start_to_end.points.size()) {
-        const auto & point = path_clothoid_start_to_end.points[*departure_point_index];
-
-        // Calculate local coordinates relative to start_pose
-        const double dx = point.point.pose.position.x - start_pose.position.x;
-        const double dy = point.point.pose.position.y - start_pose.position.y;
-        const double start_yaw = tf2::getYaw(start_pose.orientation);
-
-        const double local_x = dx * std::cos(start_yaw) + dy * std::sin(start_yaw);
-        const double local_y = -dx * std::sin(start_yaw) + dy * std::cos(start_yaw);
-
-        // Append departure point information
+      if (departure_pose) {
+        const auto relative_departure_pose =
+          start_planner_utils::calculate_relative_pose_in_vehicle_coordinate(
+            start_pose, *departure_pose);
         planner_debug_data.conditions_evaluation.back().append(
-          " (at local_x:" + std::to_string(local_x) + ", local_y:" + std::to_string(local_y) + ")");
+          " (at local_x:" + std::to_string(relative_departure_pose.longitudinal_distance_vehicle) +
+          ", local_y:" + std::to_string(relative_departure_pose.lateral_distance_vehicle) + ")");
       }
 
       continue;
@@ -1471,11 +1462,10 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
     // Create PullOutPath for collision check
     PullOutPath temp_pull_out_path{{clothoid_path}, {}, start_pose, target_pose};
 
-    std::optional<size_t> collision_point_index = std::nullopt;
+    std::optional<geometry_msgs::msg::Pose> collision_pose = std::nullopt;
     if (isPullOutPathCollided(
-          temp_pull_out_path, planner_data,
-          parameters_.clothoid_collision_check_distance_from_end,
-          collision_point_index)) {
+          temp_pull_out_path, planner_data, parameters_.clothoid_collision_check_distance_from_end,
+          collision_pose)) {
       RCLCPP_INFO(
         rclcpp::get_logger("ClothoidPullOut"),
         "Collision detected for steer angle %.2f deg with margin %.2f m. Continuing to next "
@@ -1484,20 +1474,13 @@ std::optional<PullOutPath> ClothoidPullOut::plan(
       planner_debug_data.conditions_evaluation.back().append("collision");
 
       // Append collision point information if available
-      if (collision_point_index && *collision_point_index < clothoid_path.points.size()) {
-        const auto & collision_point = clothoid_path.points[*collision_point_index];
-
-        // Calculate local coordinates relative to start_pose
-        const double dx = collision_point.point.pose.position.x - start_pose.position.x;
-        const double dy = collision_point.point.pose.position.y - start_pose.position.y;
-        const double start_yaw = tf2::getYaw(start_pose.orientation);
-
-        const double local_x = dx * std::cos(start_yaw) + dy * std::sin(start_yaw);
-        const double local_y = -dx * std::sin(start_yaw) + dy * std::cos(start_yaw);
-
-        // Append collision point information
+      if (collision_pose) {
+        const auto relative_collision_pose =
+          start_planner_utils::calculate_relative_pose_in_vehicle_coordinate(
+            start_pose, *collision_pose);
         planner_debug_data.conditions_evaluation.back().append(
-          " (at local_x:" + std::to_string(local_x) + ", local_y:" + std::to_string(local_y) + ")");
+          " (at local_x:" + std::to_string(relative_collision_pose.longitudinal_distance_vehicle) +
+          ", local_y:" + std::to_string(relative_collision_pose.lateral_distance_vehicle) + ")");
       }
 
       continue;
