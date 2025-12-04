@@ -19,51 +19,16 @@
 namespace autoware::behavior_path_planner
 {
 bool PullOutPlannerBase::isPullOutPathCollided(
-  const autoware::behavior_path_planner::PullOutPath & pull_out_path,
-  const std::shared_ptr<const PlannerData> & planner_data,
-  double collision_check_distance_from_end) const
-{
-  autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
-
-  // check for collisions
-  const auto & dynamic_objects = planner_data->dynamic_object;
-  if (!dynamic_objects) {
-    return false;
-  }
-  const auto pull_out_lanes = start_planner_utils::getPullOutLanes(
-    planner_data, planner_data->parameters.backward_path_length + parameters_.max_back_distance);
-  // extract stop objects in pull out lane for collision check
-  const auto stop_objects = utils::path_safety_checker::filterObjectsByVelocity(
-    *dynamic_objects, parameters_.th_moving_object_velocity);
-  auto [pull_out_lane_stop_objects, others] = utils::path_safety_checker::separateObjectsByLanelets(
-    stop_objects, pull_out_lanes,
-    [](const auto & obj, const auto & lane, const auto yaw_threshold) {
-      return utils::path_safety_checker::isPolygonOverlapLanelet(obj, lane, yaw_threshold);
-    });
-  utils::path_safety_checker::filterObjectsByClass(
-    pull_out_lane_stop_objects, parameters_.object_types_to_check_for_path_generation);
-
-  const auto collision_check_section_path =
-    autoware::behavior_path_planner::start_planner_utils::extractCollisionCheckSection(
-      pull_out_path, collision_check_distance_from_end);
-  if (!collision_check_section_path) return true;
-
-  return utils::checkCollisionBetweenPathFootprintsAndObjects(
-    vehicle_footprint_, collision_check_section_path.value(), pull_out_lane_stop_objects,
-    collision_check_margin_);
-};
-
-bool PullOutPlannerBase::isPullOutPathCollided(
   autoware::behavior_path_planner::PullOutPath & pull_out_path,
   const std::shared_ptr<const PlannerData> & planner_data, double collision_check_distance_from_end,
-  std::optional<size_t> & collision_point_index) const
+  std::optional<geometry_msgs::msg::Pose> & collision_pose) const
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   // check for collisions
   const auto & dynamic_objects = planner_data->dynamic_object;
   if (!dynamic_objects) {
-    collision_point_index = std::nullopt;
+    collision_pose = std::nullopt;
     return false;
   }
   const auto pull_out_lanes = start_planner_utils::getPullOutLanes(
@@ -83,7 +48,7 @@ bool PullOutPlannerBase::isPullOutPathCollided(
     autoware::behavior_path_planner::start_planner_utils::extractCollisionCheckSection(
       pull_out_path, collision_check_distance_from_end);
   if (!collision_check_section_path) {
-    collision_point_index = 0;
+    collision_pose = std::nullopt;
     return true;
   }
 
@@ -93,12 +58,12 @@ bool PullOutPlannerBase::isPullOutPathCollided(
     const auto & p = path.points[i];
     if (utils::checkCollisionBetweenFootprintAndObjects(
           vehicle_footprint_, p.point.pose, pull_out_lane_stop_objects, collision_check_margin_)) {
-      collision_point_index = i;
+      collision_pose = p.point.pose;
       return true;
     }
   }
 
-  collision_point_index = std::nullopt;
+  collision_pose = std::nullopt;
   return false;
 };
 }  // namespace autoware::behavior_path_planner
