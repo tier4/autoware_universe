@@ -81,7 +81,8 @@ cuda_add_library(cuda_pointcloud_preprocessor_lib SHARED
   src/cuda_downsample_filter/cuda_voxel_grid_downsample_filter.cu
   src/cuda_downsample_filter/cuda_random_downsample_filter.cu
   src/cuda_outlier_filter/cuda_polar_voxel_outlier_filter.cu
-  src/cuda_filter/cuda_crop_box_filter.cu
+  src/cuda_cropbox_filter/cuda_crop_box_filter.cu
+  src/cuda_pointcloud2costmap_filter/cuda_pointcloud2costmap_filter.cu
 )
 
 target_link_libraries(cuda_pointcloud_preprocessor_lib
@@ -102,6 +103,8 @@ target_include_directories(cuda_pointcloud_preprocessor_lib SYSTEM PRIVATE
   ${tf2_INCLUDE_DIRS}
   ${tf2_msgs_INCLUDE_DIRS}
   ${autoware_cuda_utils_INCLUDE_DIRS}
+  ${grid_map_ros_INCLUDE_DIRS}
+  ${grid_map_msgs_INCLUDE_DIRS}
 )
 
 if("$ENV{ENABLE_AGNOCAST}")
@@ -122,7 +125,8 @@ ament_auto_add_library(cuda_pointcloud_preprocessor SHARED
   src/cuda_downsample_filter/cuda_voxel_grid_downsample_filter_node.cpp
   src/cuda_downsample_filter/cuda_random_downsample_filter_node.cpp
   src/cuda_outlier_filter/cuda_polar_voxel_outlier_filter_node.cpp
-  src/cuda_filter/cuda_crop_box_filter_node.cpp
+  src/cuda_cropbox_filter/cuda_crop_box_filter_node.cpp
+  src/cuda_pointcloud2costmap_filter/cuda_pointcloud2costmap_filter_node.cpp
 )
 
 target_link_libraries(cuda_pointcloud_preprocessor
@@ -166,9 +170,15 @@ rclcpp_components_register_node(cuda_pointcloud_preprocessor
   EXECUTABLE cuda_random_downsample_filter_node
 )
 
+# ========== Pointcloud2Costmap filter ==========
+rclcpp_components_register_node(cuda_pointcloud_preprocessor
+  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointcloud2CostmapFilterNode"
+  EXECUTABLE cuda_pointcloud2costmap_filter_node
+)
+
 ################################################################################
 # Install
-install(DIRECTORY launch config
+install(DIRECTORY launch config schema
   DESTINATION share/${PROJECT_NAME}
 )
 

@@ -49,6 +49,32 @@ void convertPointXYZIRCToInputPointTypeLaunch(
   const OutputPointType * input_points, InputPointType * output_points, int num_points,
   int threads_per_block, int blocks_per_grid, cudaStream_t & stream);
 
+// Pointcloud to costmap kernels
+struct CostmapGridParams
+{
+  float grid_length_x;
+  float grid_length_y;
+  float grid_resolution;
+  float grid_position_x;
+  float grid_position_y;
+  float maximum_height_thres;
+  float minimum_height_thres;
+  float grid_min_value;
+  float grid_max_value;
+  int32_t grid_size_x;
+  int32_t grid_size_y;
+};
+
+void assignPointsToGridCellsLaunch(
+  const InputPointType * input_points, int32_t * grid_indices, int num_points,
+  const CostmapGridParams * params, int threads_per_block, int blocks_per_grid,
+  cudaStream_t & stream);
+
+void calculateCostmapFromGridCellsLaunch(
+  const InputPointType * input_points, const int32_t * grid_indices, float * costmap_data,
+  int num_points, const CostmapGridParams * params, int threads_per_block, int blocks_per_grid,
+  cudaStream_t & stream);
+
 }  // namespace autoware::cuda_pointcloud_preprocessor
 
 #endif  // AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__COMMON_KERNELS_HPP_
