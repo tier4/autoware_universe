@@ -52,9 +52,12 @@ IntersectionModule::IntersectionModule(
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface,
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
-    planning_factor_interface_for_occlusion)
+    planning_factor_interface_for_occlusion,
+  const std::shared_ptr<autoware::creep_guidance_interface::CreepGuidanceInterface>
+    creep_guidance_interface)
 : SceneModuleInterfaceWithRTC(module_id, logger, clock, time_keeper, planning_factor_interface),
   planning_factor_interface_for_occlusion_(planning_factor_interface_for_occlusion),
+  creep_guidance_interface_(creep_guidance_interface),
   planner_param_(planner_param),
   lane_id_(lane_id),
   associative_ids_(associative_ids),
@@ -218,13 +221,26 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
   if (!collision_stopline_idx_opt) {
     return InternalError{"collision stop line is null"};
   }
-  const auto collision_stopline_idx = collision_stopline_idx_opt.value();
+  auto collision_stopline_idx = collision_stopline_idx_opt.value();
+
+  bool is_creep_activated = creep_guidance_interface_->recieved_activation_command(getModuleId());
+  if (is_creep_activated) {
+    creep_guidance_interface_->update_state(
+      getModuleId(), tier4_creep_guidance_msgs::msg::State::ACTIVATED);
+  }
+
+  if (is_creep_activated) {
+    collision_stopline_idx = intersection_stoplines.creep_stopline;
+  }
 
   const auto occlusion_peeking_stopline_idx_opt = intersection_stoplines.occlusion_peeking_stopline;
   if (!occlusion_peeking_stopline_idx_opt) {
     return InternalError{"occlusion stop line is null"};
   }
-  const auto occlusion_stopline_idx = occlusion_peeking_stopline_idx_opt.value();
+  auto occlusion_stopline_idx = occlusion_peeking_stopline_idx_opt.value();
+  if (is_creep_activated) {
+    occlusion_stopline_idx = intersection_stoplines.creep_stopline;
+  }
 
   // ==========================================================================================
   // classify the objects to attention_area/intersection_area and update their position, velocity,
@@ -360,7 +376,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
   // ==========================================================================================
   const auto yield_stuck_status =
     isYieldStuckStatus(*path, interpolated_path_info, intersection_stoplines);
-  if (yield_stuck_status) {
+  if (yield_stuck_status && !is_creep_activated) {
     if (can_smoothly_stop_at(*path, closest_idx, yield_stuck_status->stuck_stopline_idx)) {
       return yield_stuck_status.value();
     }
@@ -469,6 +485,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
       has_collision_with_margin,
       temporal_stop_before_creep_required,
       closest_idx,
+      collision_stopline_idx,
       occlusion_stopline_idx,
       first_attention_stopline_idx,
       occlusion_diag,
@@ -1089,7 +1106,7 @@ void reactRTCApprovalByDecisionResult(
     "OccludedAbsenceTrafficLight, approval = (default: %d, occlusion: %d)", rtc_default_approved,
     rtc_occlusion_approved);
   if (!rtc_default_approved && decision_result.collision_stop_tolerable) {
-    const auto stopline_idx = decision_result.closest_idx;
+    const auto stopline_idx = decision_result.collision_stopline_idx;
     planning_utils::setVelocityFromIndex(stopline_idx, 0.0, path);
 
     const auto stop_pose = path->points.at(stopline_idx).point.pose;
