@@ -76,15 +76,15 @@ void CreepGuidanceInterface::add(const int64_t id)
   status.command.type = Command::DEACTIVATE;
   status.start_distance = -100000.0;
   status.finish_distance = -100000.0;
-  registerd_status_.statuses.push_back(status);
+  registered_status_.statuses.push_back(status);
   RCLCPP_DEBUG(logger_, "Added creep guidance entry with id: %ld", id);
 }
 
 bool CreepGuidanceInterface::remove(const int64_t id)
 {
   auto it = get_registered(id);
-  if (it != registerd_status_.statuses.end()) {
-    registerd_status_.statuses.erase(it);
+  if (it != registered_status_.statuses.end()) {
+    registered_status_.statuses.erase(it);
     RCLCPP_DEBUG(logger_, "Removed creep guidance entry with id: %ld", id);
     return true;
   }
@@ -95,7 +95,7 @@ bool CreepGuidanceInterface::remove(const int64_t id)
 std::vector<CreepStatus>::iterator CreepGuidanceInterface::get_registered(const int64_t id)
 {
   return std::find_if(
-    registerd_status_.statuses.begin(), registerd_status_.statuses.end(),
+    registered_status_.statuses.begin(), registered_status_.statuses.end(),
     [id](const auto & s) { return s.id == id; });
 }
 
@@ -103,7 +103,7 @@ std::vector<CreepStatus>::const_iterator CreepGuidanceInterface::get_registered(
   const int64_t id) const
 {
   return std::find_if(
-    registerd_status_.statuses.begin(), registerd_status_.statuses.end(),
+    registered_status_.statuses.begin(), registered_status_.statuses.end(),
     [id](const auto & s) { return s.id == id; });
 }
 
@@ -111,7 +111,7 @@ void CreepGuidanceInterface::update_distance(
   const int64_t id, const double start_distance, const double finish_distance)
 {
   auto registered = get_registered(id);
-  if (registered != registerd_status_.statuses.end()) {
+  if (registered != registered_status_.statuses.end()) {
     registered->start_distance = static_cast<float>(start_distance);
     registered->finish_distance = static_cast<float>(finish_distance);
     RCLCPP_DEBUG(
@@ -125,7 +125,7 @@ void CreepGuidanceInterface::update_distance(
 void CreepGuidanceInterface::update_state(const int64_t id, const uint8_t state)
 {
   auto registered = get_registered(id);
-  if (registered != registerd_status_.statuses.end()) {
+  if (registered != registered_status_.statuses.end()) {
     registered->state.type = state;
     RCLCPP_DEBUG(logger_, "Updated state for id %ld: state=%u", id, state);
   } else {
@@ -136,7 +136,7 @@ void CreepGuidanceInterface::update_state(const int64_t id, const uint8_t state)
 void CreepGuidanceInterface::update_command(const int64_t id, const Command & command)
 {
   auto registered = get_registered(id);
-  if (registered != registerd_status_.statuses.end()) {
+  if (registered != registered_status_.statuses.end()) {
     registered->command = command;
     RCLCPP_DEBUG(logger_, "Updated command for id %ld: command_type=%u", id, command.type);
   } else {
@@ -147,7 +147,7 @@ void CreepGuidanceInterface::update_command(const int64_t id, const Command & co
 bool CreepGuidanceInterface::recieved_activation_command(const int64_t id) const
 {
   auto registered = get_registered(id);
-  if (registered != registerd_status_.statuses.end()) {
+  if (registered != registered_status_.statuses.end()) {
     return registered->command.type == Command::ACTIVATE;
   }
   RCLCPP_WARN(logger_, "Failed to get command: id %ld not found, returning false", id);
@@ -156,7 +156,7 @@ bool CreepGuidanceInterface::recieved_activation_command(const int64_t id) const
 
 void CreepGuidanceInterface::publish_creep_status_array() const
 {
-  CreepStatusArray status_array = registerd_status_;
+  CreepStatusArray status_array = registered_status_;
   status_array.stamp = clock_->now();
   pub_creep_status_array_->publish(status_array);
   RCLCPP_DEBUG(
@@ -169,7 +169,8 @@ void CreepGuidanceInterface::on_creep_trigger_command_service(
 {
   for (const auto & command : request->commands) {
     if (
-      module_ == command.module && get_registered(command.id) != registerd_status_.statuses.end()) {
+      module_ == command.module &&
+      get_registered(command.id) != registered_status_.statuses.end()) {
       update_command(command.id, command.command);
       CreepTriggerResponse success;
       success.id = command.id;

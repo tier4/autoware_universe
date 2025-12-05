@@ -59,7 +59,7 @@ Creates a new interface instance for the specified module.
 
 **Parameters:**
 
-- `node`: Pointer to the ROS2 node
+- `node`: Pointer to the ROS 2 node
 - `name`: Module name (supported values: "crosswalk", "intersection", "intersection_occlusion")
 
 ### Methods
@@ -89,9 +89,9 @@ Check if an activation command has been received for a registered entry. Returns
 
 #### `void publish_creep_status_array() const`
 
-Publish the current creep status array to the ROS2 topic.
+Publish the current creep status array to the ROS 2 topic.
 
-## ROS2 Interface
+## ROS 2 Interface
 
 ### Topics
 

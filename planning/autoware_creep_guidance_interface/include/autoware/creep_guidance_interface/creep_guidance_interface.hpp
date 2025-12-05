@@ -56,7 +56,7 @@ class CreepGuidanceInterface
 public:
   /**
    * @brief Constructor
-   * @param node Pointer to the ROS2 node
+   * @param node Pointer to the ROS 2 node
    * @param name Name of the creep guidance module (e.g., "crosswalk", "intersection")
    */
   CreepGuidanceInterface(rclcpp::Node * node, const std::string & name);
@@ -97,7 +97,7 @@ public:
   bool recieved_activation_command(const int64_t id) const;
 
   /**
-   * @brief Publish the current creep status array to the ROS2 topic
+   * @brief Publish the current creep status array to the ROS 2 topic
    */
   void publish_creep_status_array() const;
 
@@ -140,7 +140,7 @@ private:
   rclcpp::Clock::SharedPtr clock_;  //!< Clock for timestamping messages
   mutable rclcpp::Logger logger_;   //!< Logger for debug and info messages
 
-  CreepStatusArray registerd_status_;  //!< Array of registered creep guidance statuses
+  CreepStatusArray registered_status_;  //!< Array of registered creep guidance statuses
 
   Module module_;  //!< Module type (crosswalk, intersection, etc.)
 };
