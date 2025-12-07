@@ -73,6 +73,8 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(debug_processing_time_detail_pub_);
 
   set_up_params();
+  turn_indicator_manager_.set_hold_duration(
+    rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration));
   utils::check_weight_version(params_.args_path);
   normalization_map_ = utils::load_normalization_stats(params_.args_path);
 
@@ -133,6 +135,8 @@ void DiffusionPlanner::set_up_params()
   params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.0);
   params_.turn_indicator_keep_offset =
     this->declare_parameter<float>("turn_indicator_keep_offset", -1.5f);
+  params_.turn_indicator_hold_duration =
+    this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
 
   // debug params
   debug_params_.publish_debug_map =
@@ -163,7 +167,11 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(parameters, "stopping_threshold", temp_params.stopping_threshold);
     update_param<float>(
       parameters, "turn_indicator_keep_offset", temp_params.turn_indicator_keep_offset);
+    update_param<double>(
+      parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
     params_ = temp_params;
+    turn_indicator_manager_.set_hold_duration(
+      rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration));
   }
 
   {
@@ -958,9 +966,9 @@ void DiffusionPlanner::on_timer()
   const int64_t prev_report = turn_indicators_history_.empty()
                                 ? TurnIndicatorsReport::DISABLE
                                 : turn_indicators_history_.back().report;
-  const auto turn_indicators_cmd = postprocess::create_turn_indicators_command(
+  const auto turn_indicator_command = turn_indicator_manager_.evaluate(
     turn_indicator_logit, this->now(), prev_report, params_.turn_indicator_keep_offset);
-  pub_turn_indicators_->publish(turn_indicators_cmd);
+  pub_turn_indicators_->publish(turn_indicator_command);
 
   // Publish diagnostics
   diagnostics_inference_->publish(this->now());

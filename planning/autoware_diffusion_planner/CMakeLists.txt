@@ -80,6 +80,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     src/preprocessing/traffic_signals.cpp
     src/utils/utils.cpp
     src/utils/marker_utils.cpp
+    src/postprocessing/turn_indicator_manager.cpp
   )
 
   target_include_directories(autoware_diffusion_planner_component PUBLIC

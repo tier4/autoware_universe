@@ -15,6 +15,7 @@
     velocity_smoothing_window: 8
     stopping_threshold: 0.0
     turn_indicator_keep_offset: -1.25
+    turn_indicator_hold_duration: 1.0
     debug_params:
       publish_debug_route: true
       publish_debug_map: false

@@ -83,19 +83,6 @@ Trajectory create_ego_trajectory(
   const double stopping_threshold);
 
 /**
- * @brief Converts turn indicator logit to TurnIndicatorsCommand message.
- *
- * @param turn_indicator_logit The turn indicator logit from the model output.
- * @param stamp The ROS time stamp for the message.
- * @param prev_report The previous turn indicators report value.
- * @param keep_offset The offset to subtract from the KEEP indicator logit.
- * @return A TurnIndicatorsCommand message with the predicted turn indicators.
- */
-TurnIndicatorsCommand create_turn_indicators_command(
-  std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp, const int64_t prev_report,
-  const float keep_offset);
-
-/**
  * @brief Counts valid elements in a tensor with shape (B, len, dim2, dim3).
  * An element is considered valid if not all values in the (dim2, dim3) block are zero.
  *

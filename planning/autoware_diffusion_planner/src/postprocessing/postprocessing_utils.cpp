@@ -221,44 +221,6 @@ Trajectory create_ego_trajectory(
     stopping_threshold);
 }
 
-TurnIndicatorsCommand create_turn_indicators_command(
-  std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp, const int64_t prev_report,
-  const float keep_offset)
-{
-  TurnIndicatorsCommand turn_indicators_cmd;
-  turn_indicators_cmd.stamp = stamp;
-
-  // fix keep
-  turn_indicator_logit[TURN_INDICATOR_OUTPUT_KEEP] += keep_offset;
-
-  // Apply softmax to convert logit to probabilities
-
-  // Find the max value for numerical stability
-  const float max_logit =
-    *std::max_element(turn_indicator_logit.begin(), turn_indicator_logit.end());
-
-  std::vector<float> probabilities(turn_indicator_logit.size());
-  float sum = 0.0001f;  // Small value to avoid division by zero
-
-  // Compute exp(logit - max_logit) for numerical stability
-  for (size_t i = 0; i < turn_indicator_logit.size(); ++i) {
-    probabilities[i] = std::exp(turn_indicator_logit[i] - max_logit);
-    sum += probabilities[i];
-  }
-
-  // Normalize to get probabilities
-  for (float & prob : probabilities) {
-    prob /= sum;
-  }
-
-  // Find the class with highest probability
-  const size_t max_idx = std::distance(
-    probabilities.begin(), std::max_element(probabilities.begin(), probabilities.end()));
-  turn_indicators_cmd.command = (max_idx == TURN_INDICATOR_OUTPUT_KEEP ? prev_report : max_idx);
-
-  return turn_indicators_cmd;
-}
-
 int64_t count_valid_elements(
   const std::vector<float> & data, int64_t len, int64_t dim2, int64_t dim3, int64_t batch_idx)
 {
