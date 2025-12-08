@@ -14,6 +14,9 @@
 
 #include "manager.hpp"
 
+// Fix: Include the Autoware-specific traffic light definition
+#include "autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp"
+
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/ros/parameter.hpp>
@@ -46,6 +49,8 @@ TrafficLightModuleManager::TrafficLightModuleManager(rclcpp::Node & node)
     get_or_declare_parameter<bool>(node, ns + ".enable_pass_judge");
   planner_param_.yellow_lamp_period =
     get_or_declare_parameter<double>(node, ns + ".yellow_lamp_period");
+  planner_param_.enable_arrow_aware_yellow_passing =
+    get_or_declare_parameter<bool>(node, ns + ".enable_arrow_aware_yellow_passing");
   planner_param_.v2i_use_rest_time =
     get_or_declare_parameter<bool>(node, ns + ".v2i.use_rest_time");
   planner_param_.v2i_last_time_allowed_to_pass =
@@ -80,7 +85,7 @@ void TrafficLightModuleManager::modifyPathVelocity(
 
   if (planner_param_.v2i_use_rest_time) updateV2IRestTimeInfo();
 
-  nearest_ref_stop_path_point_index_ = static_cast<int>(path->points.size() - 1);
+  nearest_ref_stop_path_point_index_ = static_cast<int>(path->points.size()) - 1;
   for (const auto & scene_module : scene_modules_) {
     std::shared_ptr<TrafficLightModule> traffic_light_scene_module(
       std::dynamic_pointer_cast<TrafficLightModule>(scene_module));
@@ -113,7 +118,14 @@ void TrafficLightModuleManager::modifyPathVelocity(
 void TrafficLightModuleManager::launchNewModules(
   const autoware_internal_planning_msgs::msg::PathWithLaneId & path)
 {
-  for (const auto & traffic_light_reg_elem : planning_utils::getRegElemMapOnPath<TrafficLight>(
+  // Debug: Check if the parameter is loaded correctly (once at the start)
+  RCLCPP_DEBUG(
+    logger_, "[TrafficLight] Yellow Override Param (enable_arrow_aware_yellow_passing): %s",
+    planner_param_.enable_arrow_aware_yellow_passing ? "true" : "false");
+
+  // Fix: Use the Autoware-specific TrafficLight class which supports light_bulbs
+  for (const auto & traffic_light_reg_elem :
+       planning_utils::getRegElemMapOnPath<lanelet::autoware::AutowareTrafficLight>(
          path, planner_data_->route_handler_->getLaneletMapPtr(),
          planner_data_->current_odometry->pose)) {
     const auto stop_line = traffic_light_reg_elem.first->stopLine();
@@ -125,12 +137,63 @@ void TrafficLightModuleManager::launchNewModules(
       continue;
     }
 
+    const auto & lane = traffic_light_reg_elem.second;
+    const std::string turn_direction = lane.attributeOr("turn_direction", std::string(""));
+    const bool is_turn_lane = (turn_direction == "left" || turn_direction == "right");
+
+    bool has_static_arrow = false;
+    // reg_elem is now std::shared_ptr<const lanelet::autoware::AutowareTrafficLight>
+    const auto reg_elem = traffic_light_reg_elem.first;
+    bool found_in_subtype = false;
+    bool found_in_light_bulbs = false;
+
+    // Check 1: Check subtype of traffic_light primitive (e.g., way 2373)
+    for (const auto & light : reg_elem->trafficLights()) {
+      const auto & attributes = light.attributes();
+      if (attributes.find("subtype") != attributes.end()) {
+        const std::string subtype = attributes.at("subtype").value();
+        if (subtype.find("arrow") != std::string::npos) {
+          has_static_arrow = true;
+          found_in_subtype = true;
+          break;
+        }
+      }
+    }
+
+    // Check 2: Check attributes of nodes in light_bulbs (e.g., node 82263)
+    if (!has_static_arrow) {
+      // Fix: Use the public lightBulbs() API from AutowareTrafficLight
+      for (const auto & light_bulb_ls : reg_elem->lightBulbs()) {
+        for (const auto & node : light_bulb_ls) {  // node is Point3d
+          const auto & attributes = node.attributes();
+          if (attributes.find("arrow") != attributes.end()) {
+            has_static_arrow = true;
+            found_in_light_bulbs = true;
+            break;
+          }
+        }
+        if (has_static_arrow) {
+          break;
+        }
+      }
+    }
+
     // Use lanelet_id to unregister module when the route is changed
     const auto lane_id = traffic_light_reg_elem.second.id();
+
+    RCLCPP_DEBUG(
+      logger_,
+      "[TrafficLight Debug] LaneID %ld: is_turn_lane = %s (dir: %s), has_static_arrow = %s "
+      "(found_in_subtype: %s, found_in_light_bulbs: %s)",
+      lane_id, is_turn_lane ? "true" : "false", turn_direction.c_str(),
+      has_static_arrow ? "true" : "false", found_in_subtype ? "true" : "false",
+      found_in_light_bulbs ? "true" : "false");
+
     if (!isModuleRegisteredFromExistingAssociatedModule(lane_id)) {
       registerModule(std::make_shared<TrafficLightModule>(
         lane_id, *(traffic_light_reg_elem.first), traffic_light_reg_elem.second, planner_param_,
-        logger_.get_child("traffic_light_module"), clock_, time_keeper_,
+        is_turn_lane, has_static_arrow, logger_.get_child("traffic_light_module"), clock_,
+        time_keeper_,
         std::bind(
           &TrafficLightModuleManager::getV2IRestTimeToRedSignal, this,
           traffic_light_reg_elem.first->id()),

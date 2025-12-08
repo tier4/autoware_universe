@@ -70,6 +70,7 @@ This module is activated when there is traffic light in ego lane.
 | `stop_time_hysteresis` | double | [s] time threshold to decide stop planning for chattering prevention |
 | `yellow_lamp_period`   | double | [s] time for yellow lamp                                             |
 | `enable_pass_judge`    | bool   | [-] whether to use pass judge                                        |
+| `enable_arrow_aware_yellow_passing` | bool | [-] whether to use pass judge |
 
 #### Flowchart
 

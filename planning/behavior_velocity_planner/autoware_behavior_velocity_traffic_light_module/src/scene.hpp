@@ -71,6 +71,7 @@ public:
     double yellow_lamp_period;
     double stop_time_hysteresis;
     bool enable_pass_judge;
+    bool enable_arrow_aware_yellow_passing;
     // V2I Parameter
     bool v2i_use_rest_time;
     double v2i_last_time_allowed_to_pass;
@@ -84,8 +85,10 @@ public:
 public:
   TrafficLightModule(
     const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
-    lanelet::ConstLanelet lane, const PlannerParam & planner_param, const rclcpp::Logger logger,
-    const rclcpp::Clock::SharedPtr clock,
+    lanelet::ConstLanelet lane, const PlannerParam & planner_param,
+    const bool is_turn_lane,         // Check if lane is for left/right turn
+    const bool has_static_arrow,     // Check if traffic light has arrow light in map
+    const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
     const std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> &
       get_rest_time_to_red_signal,
@@ -137,6 +140,10 @@ private:
   const lanelet::TrafficLight & traffic_light_reg_elem_;
   lanelet::ConstLanelet lane_;
 
+  // Map based information
+  const bool is_turn_lane_;
+  const bool has_static_arrow_;
+
   // State
   State state_;
 
@@ -158,6 +165,11 @@ private:
 
   // Traffic Light State
   TrafficSignal looking_tl_state_;
+  TrafficSignal prev_looking_tl_state_;  // Store previous state
+
+  // Store how the current yellow sequence started
+  enum class YellowState { kNotYellow, kFromGreen, kFromRedArrow };
+  YellowState yellow_transition_state_;
 
   // V2I
   std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> get_rest_time_to_red_signal_;
