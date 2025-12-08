@@ -14,6 +14,7 @@
 
 #include "autoware/rtc_interface/rtc_interface.hpp"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -124,6 +125,8 @@ RTCInterface::RTCInterface(rclcpp::Node * node, const std::string & name, const 
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
+
+  time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>();
 
   constexpr double update_rate = 10.0;
   const auto period_ns = rclcpp::Rate(update_rate).period();
@@ -253,7 +256,12 @@ void RTCInterface::updateCooperateStatus(
   const double finish_distance, const rclcpp::Time & stamp, const bool requested,
   const std::optional<bool> & override_rtc_auto_mode)
 {
+  autoware_utils_debug::ScopedTimeTrack st("RTCInterface::updateCooperateStatus", *time_keeper_);
+
+  time_keeper_->start_track("lock mutex");
   std::lock_guard<std::mutex> lock(mutex_);
+  time_keeper_->end_track("lock mutex");
+
   // Find registered status which has same uuid
   auto itr = std::find_if(
     registered_status_.statuses.begin(), registered_status_.statuses.end(),
@@ -505,6 +513,12 @@ void RTCInterface::print() const
                            << std::boolalpha << " safe:" << status.safe
                            << " state:" << state_to_string(status.state.type) << std::endl);
   }
+}
+
+void RTCInterface::setTimeKeeper(
+  const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper)
+{
+  time_keeper_ = time_keeper;
 }
 
 }  // namespace autoware::rtc_interface

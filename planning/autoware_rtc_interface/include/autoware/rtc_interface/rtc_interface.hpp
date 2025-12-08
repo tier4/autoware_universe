@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__RTC_INTERFACE__RTC_INTERFACE_HPP_
 #define AUTOWARE__RTC_INTERFACE__RTC_INTERFACE_HPP_
 
+#include "autoware_utils_debug/time_keeper.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include "tier4_rtc_msgs/msg/auto_mode_status.hpp"
@@ -29,6 +30,7 @@
 #include "tier4_rtc_msgs/srv/cooperate_commands.hpp"
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -78,6 +80,7 @@ public:
   void lockCommandUpdate();
   void unlockCommandUpdate();
   void print() const;
+  void setTimeKeeper(const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper);
 
 private:
   void onCooperateCommandService(
@@ -114,6 +117,8 @@ private:
   std::string enable_auto_mode_namespace_ = "/planning/enable_auto_mode";
 
   mutable std::mutex mutex_;
+
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
 
 public:
   friend class RTCInterfaceTest;
