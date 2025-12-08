@@ -448,6 +448,146 @@ PathWithLaneId combinePath(const PathWithLaneId & path1, const PathWithLaneId & 
   return filtered_path;
 }
 
+void applyPreTurnLateralShift(
+  PathWithLaneId & path, const std::shared_ptr<const PlannerData> & planner_data)
+{
+  const auto & route_handler = planner_data->route_handler;
+  const auto & current_pose = planner_data->self_odometry->pose.pose;
+  const auto & p = planner_data->parameters;
+
+  // EXPERIMENTAL: Shift path to left for left turn
+  // This logic shifts the reference path to the left when approaching a left-turn lane.
+  // It starts shifting 'start_shift_dist' meters before the turn starts, maintains the shift
+  // during the turn, and gradually returns to the center 'end_shift_dist' meters after the turn
+  // ends. This mimics the behavior of moving closer to the inner side before making a left turn.
+  const double start_shift_dist = 30.0;  // Distance to start shifting before the turn [m]
+  const double ramp_up_dist =
+    10.0;  // Distance to complete shifting [m] (must be <= start_shift_dist)
+  const double return_to_center_dist =
+    0.0;                             // Distance to return to center before the turn starts [m]
+  const double target_margin = 0.3;  // Target margin from vehicle side to lane boundary [m]
+  const double vehicle_width = p.vehicle_width;
+
+  // Find the start and end indices of the turn lane in the reference path
+  const auto get_turn_range = [&]() -> std::optional<std::tuple<size_t, size_t, std::string>> {
+    std::optional<size_t> start_idx = std::nullopt;
+    std::optional<size_t> end_idx = std::nullopt;
+    std::string turn_dir = "none";
+
+    // Search for the turn from the ego position to handle consecutive turns correctly
+    const size_t ego_idx =
+      autoware::motion_utils::findNearestIndex(path.points, current_pose.position);
+
+    for (size_t i = ego_idx; i < path.points.size(); ++i) {
+      bool is_turn = false;
+      std::string current_dir = "none";
+      for (const auto & id : path.points.at(i).lane_ids) {
+        try {
+          const auto lane = route_handler->getLaneletMapPtr()->laneletLayer.get(id);
+          const auto dir = lane.attributeOr("turn_direction", std::string("none"));
+          if (dir == "left" || dir == "right") {
+            is_turn = true;
+            current_dir = dir;
+            break;
+          }
+        } catch (...) {
+        }
+      }
+
+      if (is_turn) {
+        if (!start_idx) {
+          start_idx = i;
+          turn_dir = current_dir;
+        }
+        end_idx = i;
+      } else {
+        if (start_idx) {
+          break;
+        }
+      }
+    }
+
+    if (start_idx && end_idx) {
+      return std::make_tuple(*start_idx, *end_idx, turn_dir);
+    }
+    return std::nullopt;
+  };
+
+  const auto turn_range = get_turn_range();
+
+  if (turn_range) {
+    const auto [start_idx, end_idx, direction] = *turn_range;
+    const auto arc_lengths = calcPathArcLengthArray(path, 0, path.points.size(), 0.0);
+    const double dist_start = arc_lengths.at(start_idx);
+
+    for (size_t i = 0; i < path.points.size(); ++i) {
+      const double current_dist = arc_lengths.at(i);
+      double ratio = 0.0;
+
+      // Calculate ratio based on the relative position to the turn section
+      if (current_dist < dist_start - start_shift_dist) {
+        ratio = 0.0;
+      } else if (current_dist < dist_start - start_shift_dist + ramp_up_dist) {
+        ratio = (current_dist - (dist_start - start_shift_dist)) / ramp_up_dist;
+      } else if (current_dist < dist_start - return_to_center_dist) {
+        ratio = 1.0;
+      } else if (current_dist < dist_start) {
+        ratio = (dist_start - current_dist) / return_to_center_dist;
+      } else {
+        ratio = 0.0;
+      }
+
+      double shift = 0.0;
+      if (ratio > 1e-3) {
+        // Calculate dynamic max shift based on distance to boundary
+        double dynamic_max_shift = 0.0;
+        bool lane_found = false;
+        lanelet::ConstLanelet lane;
+
+        if (!path.points.at(i).lane_ids.empty()) {
+          try {
+            lane = route_handler->getLaneletMapPtr()->laneletLayer.get(
+              path.points.at(i).lane_ids.front());
+            lane_found = true;
+          } catch (...) {
+          }
+        }
+
+        if (lane_found) {
+          const auto & p_pose = path.points.at(i).point.pose.position;
+          lanelet::BasicPoint2d p_basic(p_pose.x, p_pose.y);
+          double dist_to_bound = 100.0;
+
+          if (direction == "left") {
+            dist_to_bound = lanelet::geometry::distance2d(lane.leftBound(), p_basic);
+          } else {
+            dist_to_bound = lanelet::geometry::distance2d(lane.rightBound(), p_basic);
+          }
+
+          const double current_margin = dist_to_bound - vehicle_width / 2.0;
+          if (current_margin > target_margin) {
+            double required_shift = current_margin - target_margin;
+            // Cap the shift amount for safety
+            required_shift = std::min(required_shift, 1.0);
+
+            if (direction == "right") {
+              required_shift *= -1.0;
+            }
+            dynamic_max_shift = required_shift;
+          }
+        }
+        shift = dynamic_max_shift * ratio;
+      }
+
+      // Apply shift to the point
+      if (std::abs(shift) > 1e-3) {
+        path.points.at(i).point.pose =
+          autoware_utils::calc_offset_pose(path.points.at(i).point.pose, 0.0, shift, 0.0);
+      }
+    }
+  }
+}
+
 BehaviorModuleOutput getReferencePath(
   const lanelet::ConstLanelet & current_lane,
   const std::shared_ptr<const PlannerData> & planner_data)
@@ -472,94 +612,7 @@ BehaviorModuleOutput getReferencePath(
     *route_handler, current_lanes_with_backward_margin, no_shift_pose, backward_length,
     p.forward_path_length, p);
 
-  // EXPERIMENTAL: Shift path to left for left turn
-  // This logic shifts the reference path to the left when approaching a left-turn lane.
-  // It starts shifting 'start_shift_dist' meters before the turn starts, maintains the shift
-  // during the turn, and gradually returns to the center 'end_shift_dist' meters after the turn
-  // ends. This mimics the behavior of moving closer to the inner side before making a left turn.
-  {
-    const double start_shift_dist = 30.0;  // Distance to start shifting before the left turn [m]
-    const double ramp_up_dist =
-      20.0;  // Distance to complete shifting [m] (must be <= start_shift_dist)
-    const double end_shift_dist = 5.0;  // Distance to finish shifting after the left turn [m]
-    const double max_shift = 0.5;       // Maximum shift amount to the left [m]
-
-    // Find the start and end indices of the left turn lane in the reference path
-    const auto get_left_turn_range = [&]() -> std::optional<std::pair<size_t, size_t>> {
-      std::optional<size_t> start_idx = std::nullopt;
-      std::optional<size_t> end_idx = std::nullopt;
-
-      for (size_t i = 0; i < reference_path.points.size(); ++i) {
-        bool is_left_turn = false;
-        for (const auto & id : reference_path.points.at(i).lane_ids) {
-          try {
-            const auto lane = route_handler->getLaneletMapPtr()->laneletLayer.get(id);
-            if (lane.attributeOr("turn_direction", std::string("none")) == "left") {
-              is_left_turn = true;
-              break;
-            }
-          } catch (...) {
-          }
-        }
-
-        if (is_left_turn) {
-          if (!start_idx) {
-            start_idx = i;
-          }
-          end_idx = i;
-        } else {
-          if (start_idx) {
-            break;
-          }
-        }
-      }
-
-      if (start_idx && end_idx) {
-        return std::make_pair(*start_idx, *end_idx);
-      }
-      return std::nullopt;
-    };
-
-    const auto left_turn_range = get_left_turn_range();
-
-    if (left_turn_range) {
-      const auto arc_lengths =
-        calcPathArcLengthArray(reference_path, 0, reference_path.points.size(), 0.0);
-      const double dist_start = arc_lengths.at(left_turn_range->first);
-      const double dist_end = arc_lengths.at(left_turn_range->second);
-
-      for (size_t i = 0; i < reference_path.points.size(); ++i) {
-        const double current_dist = arc_lengths.at(i);
-        double shift = 0.0;
-
-        // Calculate shift amount based on the relative position to the left turn section
-        if (current_dist < dist_start - start_shift_dist) {
-          // Before shift start
-          shift = 0.0;
-        } else if (current_dist < dist_start - start_shift_dist + ramp_up_dist) {
-          // Ramp up shift
-          const double ratio = (current_dist - (dist_start - start_shift_dist)) / ramp_up_dist;
-          shift = max_shift * ratio;
-        } else if (current_dist <= dist_end) {
-          // Maintain max shift (before and during the turn)
-          shift = max_shift;
-        } else if (current_dist < dist_end + end_shift_dist) {
-          // Ramp down shift
-          const double ratio = 1.0 - (current_dist - dist_end) / end_shift_dist;
-          shift = max_shift * ratio;
-        } else {
-          // After shift end
-          shift = 0.0;
-        }
-
-        // Apply shift to the point
-        if (shift > 1e-3) {
-          reference_path.points.at(i).point.pose = autoware_utils::calc_offset_pose(
-            reference_path.points.at(i).point.pose, 0.0, shift, 0.0);
-        }
-      }
-    }
-  }
+  applyPreTurnLateralShift(reference_path, planner_data);
 
   if (reference_path.points.empty()) {
     auto clock{rclcpp::Clock{RCL_ROS_TIME}};
