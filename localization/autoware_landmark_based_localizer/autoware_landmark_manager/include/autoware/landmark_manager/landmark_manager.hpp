@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__LANDMARK_MANAGER__LANDMARK_MANAGER_HPP_
 #define AUTOWARE__LANDMARK_MANAGER__LANDMARK_MANAGER_HPP_
 
-#include "lanelet2_extension/localization/landmark.hpp"
+#include "autoware_lanelet2_extension/localization/landmark.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -43,6 +43,9 @@ public:
   void parse_landmarks(
     const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr & msg,
     const std::string & target_subtype);
+  void parse_landmarks(
+    const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr & msg,
+    const std::string & target_subtype, const std::vector<std::string> target_ids);
 
   [[nodiscard]] std::vector<landmark_manager::Landmark> get_landmarks() const;
 
