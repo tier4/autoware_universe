@@ -105,6 +105,7 @@ protected:
     const UUID & uuid, const bool safe, const uint8_t state, const double distance,
     const Time & stamp, const std::optional<bool> override_rtc_auto_mode = std::nullopt)
   {
+    rtc_interface_.setTimeKeeper(time_keeper_);
     rtc_interface_.updateCooperateStatus(
       uuid, safe, state, distance, distance, stamp, false, override_rtc_auto_mode);
   }
