@@ -49,29 +49,9 @@ SceneModuleManagerInterfaceWithRTC::SceneModuleManagerInterfaceWithRTC(
 void SceneModuleManagerInterfaceWithRTC::plan(
   autoware_internal_planning_msgs::msg::PathWithLaneId * path)
 {
-  autoware_utils_debug::ScopedTimeTrack st(
-    "SceneModuleManagerInterfaceWithRTC::plan (" + std::string(getModuleName()) + ")",
-    *time_keeper_);
-  {
-    autoware_utils_debug::ScopedTimeTrack st(
-      "SceneModuleManagerInterfaceWithRTC::setActivation (" + std::string(getModuleName()) + ")",
-      *time_keeper_);
-    setActivation();
-  }
-
-  {
-    autoware_utils_debug::ScopedTimeTrack st(
-      "SceneModuleManagerInterfaceWithRTC::modifyPathVelocity (" + std::string(getModuleName()) +
-        ")",
-      *time_keeper_);
-    modifyPathVelocity(path);
-  }
-  {
-    autoware_utils_debug::ScopedTimeTrack st(
-      "SceneModuleManagerInterfaceWithRTC::sendRTC (" + std::string(getModuleName()) + ")",
-      *time_keeper_);
-    sendRTC(path->header.stamp);
-  }
+  setActivation();
+  modifyPathVelocity(path);
+  sendRTC(path->header.stamp);
   publishObjectsOfInterestMarker();
 }
 
