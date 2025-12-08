@@ -349,7 +349,7 @@ std::vector<TrajectoryPoint> PathOptimizer::generateOptimizedTrajectory(
 
   // 3. publish debug marker
   publishDebugMarkerOfOptimization(optimized_traj_points);
-
+z
   return optimized_traj_points;
 }
 
