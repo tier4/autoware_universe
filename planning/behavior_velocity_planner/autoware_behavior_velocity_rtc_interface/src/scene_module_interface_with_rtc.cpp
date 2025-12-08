@@ -134,20 +134,35 @@ void SceneModuleManagerInterfaceWithRTC::publishObjectsOfInterestMarker()
 void SceneModuleManagerInterfaceWithRTC::deleteExpiredModules(
   const autoware_internal_planning_msgs::msg::PathWithLaneId & path)
 {
-  const auto isModuleExpired = getModuleExpiredFunction(path);
+  auto get_module_expired_function = [this, &path]() {
+    autoware_utils_debug::ScopedTimeTrack st(
+      "SceneModuleManagerInterfaceWithRTC::getModuleExpiredFunction (" +
+        std::string(getModuleName()) + ")",
+      *time_keeper_);
+    return getModuleExpiredFunction(path);
+  };
+  const auto isModuleExpired = get_module_expired_function();
+  std::vector<int64_t> expired_module_ids;
 
-  auto itr = scene_modules_.begin();
-  while (itr != scene_modules_.end()) {
-    if (isModuleExpired(*itr)) {
-      const UUID uuid = getUUID((*itr)->getModuleId());
-      updateRTCStatus(
-        uuid, (*itr)->isSafe(), State::SUCCEEDED, std::numeric_limits<double>::lowest(),
-        clock_->now());
-      removeUUID((*itr)->getModuleId());
-      registered_module_id_set_.erase((*itr)->getModuleId());
-      itr = scene_modules_.erase(itr);
-    } else {
-      itr++;
+  {
+    autoware_utils_debug::ScopedTimeTrack st(
+      "SceneModuleManagerInterfaceWithRTC::deleteExpiredModules (while loop) (" +
+        std::string(getModuleName()) + ")",
+      *time_keeper_);
+    auto itr = scene_modules_.begin();
+    while (itr != scene_modules_.end()) {
+      if (isModuleExpired(*itr)) {
+        const UUID uuid = getUUID((*itr)->getModuleId());
+        updateRTCStatus(
+          uuid, (*itr)->isSafe(), State::SUCCEEDED, std::numeric_limits<double>::lowest(),
+          clock_->now());
+        removeUUID((*itr)->getModuleId());
+        expired_module_ids.push_back((*itr)->getModuleId());
+        registered_module_id_set_.erase((*itr)->getModuleId());
+        itr = scene_modules_.erase(itr);
+      } else {
+        itr++;
+      }
     }
   }
 }
