@@ -48,4 +48,3 @@ private:
 }  // namespace autoware::cuda_pointcloud_preprocessor
 
 #endif  // AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_CROPBOX_FILTER__CUDA_CROP_BOX_FILTER_NODE_HPP_
-

@@ -21,9 +21,10 @@
 #include <cuda_blackboard/cuda_blackboard_publisher.hpp>
 #include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
-#include <grid_map_msgs/msg/grid_map.hpp>
 #include <grid_map_ros/GridMapRosConverter.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+#include <grid_map_msgs/msg/grid_map.hpp>
 
 #include <memory>
 #include <string>
@@ -54,4 +55,3 @@ private:
 }  // namespace autoware::cuda_pointcloud_preprocessor
 
 #endif  // AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_POINTCLOUD2COSTMAP_FILTER__CUDA_POINTCLOUD2COSTMAP_FILTER_NODE_HPP_
-

@@ -317,14 +317,17 @@ void CostmapGenerator::onTimer()
       autoware_utils::ScopedTimeTrack st("useCudaCostmap()", *time_keeper_);
       grid_map::GridMap cuda_grid_map;
       grid_map::GridMapRosConverter::fromMessage(*cuda_costmap_, cuda_grid_map);
-      
+
       // Extract the "points" layer from CUDA costmap
       if (cuda_grid_map.exists("points")) {
         // Check if geometry matches (within tolerance)
-        const double resolution_diff = std::abs(cuda_grid_map.getResolution() - costmap_.getResolution());
-        const double length_x_diff = std::abs(cuda_grid_map.getLength().x() - costmap_.getLength().x());
-        const double length_y_diff = std::abs(cuda_grid_map.getLength().y() - costmap_.getLength().y());
-        
+        const double resolution_diff =
+          std::abs(cuda_grid_map.getResolution() - costmap_.getResolution());
+        const double length_x_diff =
+          std::abs(cuda_grid_map.getLength().x() - costmap_.getLength().x());
+        const double length_y_diff =
+          std::abs(cuda_grid_map.getLength().y() - costmap_.getLength().y());
+
         if (resolution_diff < 1e-6 && length_x_diff < 1e-6 && length_y_diff < 1e-6) {
           // Geometry matches, directly copy the layer
           costmap_[LayerName::points] = cuda_grid_map["points"];
@@ -333,11 +336,11 @@ void CostmapGenerator::onTimer()
             this->get_logger(), *get_clock(), 5000,
             "CUDA costmap geometry does not match. Resolution: %.3f vs %.3f, "
             "Length X: %.3f vs %.3f, Length Y: %.3f vs %.3f. Falling back to CPU generation.",
-            cuda_grid_map.getResolution(), costmap_.getResolution(),
-            cuda_grid_map.getLength().x(), costmap_.getLength().x(),
-            cuda_grid_map.getLength().y(), costmap_.getLength().y());
+            cuda_grid_map.getResolution(), costmap_.getResolution(), cuda_grid_map.getLength().x(),
+            costmap_.getLength().x(), cuda_grid_map.getLength().y(), costmap_.getLength().y());
           if (points_) {
-            costmap_[LayerName::points] = generatePointsCostmap(points_, tf.transform.translation.z);
+            costmap_[LayerName::points] =
+              generatePointsCostmap(points_, tf.transform.translation.z);
           }
         }
       } else {
