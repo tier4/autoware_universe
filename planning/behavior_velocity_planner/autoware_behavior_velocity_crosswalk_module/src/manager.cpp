@@ -22,6 +22,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::behavior_velocity_planner
@@ -259,17 +260,42 @@ CrosswalkModuleManager::getModuleExpiredFunction(const PathWithLaneId & path)
 
   std::set<int64_t> crosswalk_id_set;
 
-  crosswalk_id_set = getCrosswalkIdSetOnPath(
-    planner_data_->current_odometry->pose, path, rh->getLaneletMapPtr(), rh->getOverallGraphPtr());
-
-  const auto crosswalk_reg_elem_map = planning_utils::getRegElemMapOnPath<Crosswalk>(
-    path, rh->getLaneletMapPtr(), planner_data_->current_odometry->pose);
-
-  for (const auto & crosswalk : crosswalk_reg_elem_map) {
-    crosswalk_id_set.insert(crosswalk.first->crosswalkLanelet().id());
+  {
+    autoware_utils_debug::ScopedTimeTrack st(
+      "CrosswalkModuleManager::getModuleExpiredFunction (getCrosswalkIdSetOnPath) (" +
+        std::string(getModuleName()) + ")",
+      *time_keeper_);
+    crosswalk_id_set = getCrosswalkIdSetOnPath(
+      planner_data_->current_odometry->pose, path, rh->getLaneletMapPtr(),
+      rh->getOverallGraphPtr());
   }
 
-  return [crosswalk_id_set](const std::shared_ptr<SceneModuleInterfaceWithRTC> & scene_module) {
+  std::unordered_map<typename std::shared_ptr<const Crosswalk>, lanelet::ConstLanelet>
+    crosswalk_reg_elem_map;
+  {
+    autoware_utils_debug::ScopedTimeTrack st(
+      "CrosswalkModuleManager::getModuleExpiredFunction (getRegElemMapOnPath) (" +
+        std::string(getModuleName()) + ")",
+      *time_keeper_);
+    crosswalk_reg_elem_map = planning_utils::getRegElemMapOnPath<Crosswalk>(
+      path, rh->getLaneletMapPtr(), planner_data_->current_odometry->pose);
+  }
+
+  {
+    autoware_utils_debug::ScopedTimeTrack st(
+      "CrosswalkModuleManager::getModuleExpiredFunction (for loop) (" +
+        std::string(getModuleName()) + ")",
+      *time_keeper_);
+    for (const auto & crosswalk : crosswalk_reg_elem_map) {
+      crosswalk_id_set.insert(crosswalk.first->crosswalkLanelet().id());
+    }
+  }
+
+  return [&, crosswalk_id_set](const std::shared_ptr<SceneModuleInterfaceWithRTC> & scene_module) {
+    autoware_utils_debug::ScopedTimeTrack st(
+      "CrosswalkModuleManager::getModuleExpiredFunction (return) (" + std::string(getModuleName()) +
+        ")",
+      *time_keeper_);
     return crosswalk_id_set.count(scene_module->getModuleId()) == 0;
   };
 }
