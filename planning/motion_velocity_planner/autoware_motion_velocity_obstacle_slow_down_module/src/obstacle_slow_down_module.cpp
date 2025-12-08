@@ -165,6 +165,14 @@ VelocityLimitClearCommand create_velocity_limit_clear_command(
   msg.command = true;
   return msg;
 }
+
+Float64Stamped create_float64_stamped(const rclcpp::Time & now, const float & data)
+{
+  Float64Stamped msg;
+  msg.stamp = now;
+  msg.data = data;
+  return msg;
+}
 }  // namespace
 
 void ObstacleSlowDownModule::init(rclcpp::Node & node, const std::string & module_name)
@@ -183,6 +191,8 @@ void ObstacleSlowDownModule::init(rclcpp::Node & node, const std::string & modul
     &node, "motion_velocity_planner_common");
 
   // common publisher
+  processing_time_publisher_ =
+    node.create_publisher<Float64Stamped>("~/debug/obstacle_slow_down/processing_time_ms", 1);
   virtual_wall_publisher_ =
     node.create_publisher<MarkerArray>("~/obstacle_slow_down/virtual_walls", 1);
   debug_publisher_ = node.create_publisher<MarkerArray>("~/obstacle_slow_down/debug_markers", 1);
@@ -298,6 +308,7 @@ VelocityPlanningResult ObstacleSlowDownModule::plan(
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
+  stop_watch_.tic();
   debug_data_ptr_ = std::make_shared<DebugData>();
   trajectory_polygon_for_lateral_dist_map_.clear();
 
@@ -925,6 +936,9 @@ void ObstacleSlowDownModule::publish_debug_info()
 
   // 4. objects of interest
   objects_of_interest_marker_interface_->publishMarkerArray();
+
+  // 5. processing time
+  processing_time_publisher_->publish(create_float64_stamped(clock_->now(), stop_watch_.toc()));
 }
 
 bool ObstacleSlowDownModule::is_slow_down_obstacle(const uint8_t label) const
