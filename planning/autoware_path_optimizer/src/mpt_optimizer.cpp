@@ -1232,9 +1232,14 @@ MPTOptimizer::ObjectiveMatrix MPTOptimizer::calcObjectiveMatrix(
 
   const size_t N_v = N_x + N_u + N_s;
 
+  RCLCPP_DEBUG(
+    logger_, "[calcObjectiveMatrix] N_ref=%zu, N_x=%zu, N_u=%zu, N_s=%zu, N_v=%zu", N_ref, N_x,
+    N_u, N_s, N_v);
+
   // generate T matrix and vector to shift optimization center
   // NOTE: Z is defined as time-series vector of shifted deviation
   //       error where Z = sparse_T_mat * X + T_vec
+  time_keeper_->start_track("objectiveMatrix_Tmatrix");
   std::vector<Eigen::Triplet<double>> triplet_T_vec;
   Eigen::VectorXd T_vec = Eigen::VectorXd::Zero(N_x);
   const double offset = mpt_param_.optimization_center_offset;
@@ -1249,13 +1254,17 @@ MPTOptimizer::ObjectiveMatrix MPTOptimizer::calcObjectiveMatrix(
   }
   Eigen::SparseMatrix<double> sparse_T_mat(N_x, N_x);
   sparse_T_mat.setFromTriplets(triplet_T_vec.begin(), triplet_T_vec.end());
+  time_keeper_->end_track("objectiveMatrix_Tmatrix");
 
   // NOTE: min J(v) = min (v'Hv + v'g)
+  time_keeper_->start_track("objectiveMatrix_Hx");
   Eigen::MatrixXd H_x = Eigen::MatrixXd::Zero(N_x, N_x);
   H_x.triangularView<Eigen::Upper>() =
     Eigen::MatrixXd(sparse_T_mat.transpose() * val_mat.Q * sparse_T_mat);
   H_x.triangularView<Eigen::Lower>() = H_x.transpose();
+  time_keeper_->end_track("objectiveMatrix_Hx");
 
+  time_keeper_->start_track("objectiveMatrix_Hg");
   Eigen::MatrixXd H = Eigen::MatrixXd::Zero(N_v, N_v);
   H.block(0, 0, N_x, N_x) = H_x;
   H.block(N_x, N_x, N_u, N_u) = val_mat.R;
@@ -1263,6 +1272,10 @@ MPTOptimizer::ObjectiveMatrix MPTOptimizer::calcObjectiveMatrix(
   Eigen::VectorXd g = Eigen::VectorXd::Zero(N_v);
   g.segment(0, N_x) = T_vec.transpose() * val_mat.Q * sparse_T_mat;
   g.segment(N_x + N_u, N_s) = mpt_param_.soft_collision_free_weight * Eigen::VectorXd::Ones(N_s);
+  time_keeper_->end_track("objectiveMatrix_Hg");
+
+  RCLCPP_DEBUG(
+    logger_, "[calcObjectiveMatrix] Matrix H size: %zu x %zu, Vector g size: %zu", N_v, N_v, N_v);
 
   ObjectiveMatrix obj_matrix;
   obj_matrix.hessian = H;
@@ -1303,6 +1316,10 @@ MPTOptimizer::ConstraintMatrix MPTOptimizer::calcConstraintMatrix(
     }
   }
 
+  RCLCPP_DEBUG(
+    logger_, "[calcConstraintMatrix] N_ref=%zu, N_collision_check=%zu, fixed_points=%zu",
+    N_ref, N_collision_check, fixed_points_indices.size());
+
   // calculate rows and cols of A
   size_t A_rows = 0;
   A_rows += N_x;
@@ -1319,21 +1336,29 @@ MPTOptimizer::ConstraintMatrix MPTOptimizer::calcConstraintMatrix(
     A_rows += N_u;
   }
 
+  RCLCPP_DEBUG(logger_, "[calcConstraintMatrix] Matrix A size: %zu x %zu", A_rows, N_v);
+
   // NOTE: The following takes 1 [ms]
+  time_keeper_->start_track("constraintMatrix_initialization");
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(A_rows, N_v);
   Eigen::VectorXd lb = Eigen::VectorXd::Constant(A_rows, -autoware::osqp_interface::INF);
   Eigen::VectorXd ub = Eigen::VectorXd::Constant(A_rows, autoware::osqp_interface::INF);
+  time_keeper_->end_track("constraintMatrix_initialization");
+  
   size_t A_rows_end = 0;
 
   // 1. State equation
+  time_keeper_->start_track("constraintMatrix_stateEquation");
   A.block(0, 0, N_x, N_x) = Eigen::MatrixXd::Identity(N_x, N_x) - mpt_mat.A;
   A.block(0, N_x, N_x, N_u) = -mpt_mat.B;
   lb.segment(0, N_x) = mpt_mat.W;
   ub.segment(0, N_x) = mpt_mat.W;
   A_rows_end += N_x;
+  time_keeper_->end_track("constraintMatrix_stateEquation");
 
   // 2. collision free
   // CX = C(Bv + w) + C \in R^{N_ref, N_ref * D_x}
+  time_keeper_->start_track("constraintMatrix_collisionFree");
   for (size_t l_idx = 0; l_idx < N_collision_check; ++l_idx) {
     // create C := [cos(beta) | l cos(beta)]
     Eigen::SparseMatrix<double> C_sparse_mat(N_ref, N_x);
@@ -1401,9 +1426,12 @@ MPTOptimizer::ConstraintMatrix MPTOptimizer::calcConstraintMatrix(
       A_rows_end += A_blk_rows;
     }
   }
+  time_keeper_->end_track("constraintMatrix_collisionFree");
 
   // 3. fixed points constraint
   // X = B v + w where point is fixed
+  time_keeper_->start_track("constraintMatrix_fixedPoints");
+  RCLCPP_DEBUG(logger_, "[calcConstraintMatrix] Fixed points count: %zu", fixed_points_indices.size());
   for (const size_t i : fixed_points_indices) {
     A.block(A_rows_end, D_x * i, D_x, D_x) = Eigen::MatrixXd::Identity(D_x, D_x);
 
@@ -1412,8 +1440,10 @@ MPTOptimizer::ConstraintMatrix MPTOptimizer::calcConstraintMatrix(
 
     A_rows_end += D_x;
   }
+  time_keeper_->end_track("constraintMatrix_fixedPoints");
 
   // 4. steer angle limit
+  time_keeper_->start_track("constraintMatrix_steerLimit");
   if (mpt_param_.steer_limit_constraint) {
     A.block(A_rows_end, N_x, N_u, N_u) = Eigen::MatrixXd::Identity(N_u, N_u);
 
@@ -1431,7 +1461,9 @@ MPTOptimizer::ConstraintMatrix MPTOptimizer::calcConstraintMatrix(
 
     // cppcheck-suppress unreadVariable
     A_rows_end += N_u;
-  }
+  }  
+  time_keeper_->end_track("constraintMatrix_steerLimit");
+  RCLCPP_DEBUG(logger_, "[calcConstraintMatrix] Final A_rows_end: %zu (expected: %zu)", A_rows_end, A_rows);
 
   return ConstraintMatrix{A, lb, ub};
 }
