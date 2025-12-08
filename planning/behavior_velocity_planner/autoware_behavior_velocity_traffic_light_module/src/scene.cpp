@@ -46,10 +46,8 @@ namespace autoware::behavior_velocity_planner
 {
 TrafficLightModule::TrafficLightModule(
   const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
-  lanelet::ConstLanelet lane, const PlannerParam & planner_param,
-  const bool is_turn_lane,
-  const bool has_static_arrow,
-  const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
+  lanelet::ConstLanelet lane, const PlannerParam & planner_param, const bool is_turn_lane,
+  const bool has_static_arrow, const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
   const std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> &
     get_rest_time_to_red_signal,
@@ -125,8 +123,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
 
     // Debug: Log the raw output of isStopSignal()
     RCLCPP_INFO_THROTTLE(
-      logger_, *clock_, 1000,
-      "[TrafficLight Debug] Lane %ld: isStopSignal() returned %s", lane_id_,
+      logger_, *clock_, 1000, "[TrafficLight Debug] Lane %ld: isStopSignal() returned %s", lane_id_,
       is_stop_signal ? "true (Wants STOP)" : "false (Wants PASS)");
 
     // Use V2I if available
@@ -282,8 +279,7 @@ bool TrafficLightModule::isStopSignal()
 
       // Check if conditions are met (Green->Yellow, turn lane, static arrow)
       if (
-        is_turn_lane_ && has_static_arrow_ &&
-        yellow_transition_state_ == YellowState::kFromGreen) {
+        is_turn_lane_ && has_static_arrow_ && yellow_transition_state_ == YellowState::kFromGreen) {
         // This is a "Green -> Yellow" sequence. This is the state we *do* want to override (pass).
         return false;  // Override (Pass)
       } else {

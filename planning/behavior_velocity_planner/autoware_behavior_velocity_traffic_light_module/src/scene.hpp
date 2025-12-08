@@ -86,8 +86,8 @@ public:
   TrafficLightModule(
     const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
     lanelet::ConstLanelet lane, const PlannerParam & planner_param,
-    const bool is_turn_lane,         // Check if lane is for left/right turn
-    const bool has_static_arrow,     // Check if traffic light has arrow light in map
+    const bool is_turn_lane,      // Check if lane is for left/right turn
+    const bool has_static_arrow,  // Check if traffic light has arrow light in map
     const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
     const std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> &
