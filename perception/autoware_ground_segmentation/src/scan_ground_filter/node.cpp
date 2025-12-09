@@ -45,8 +45,11 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
     elevation_grid_mode_ = declare_parameter<bool>("elevation_grid_mode");
 
     // common parameters
-    radial_divider_angle_rad_ =
-      static_cast<float>(deg2rad(declare_parameter<double>("radial_divider_angle_deg")));
+    // Replace radial_divider_angle_deg parameter usage with dynamic behavior
+    [[maybe_unused]] const double radial_divider_angle_deg =
+      declare_parameter<double>("radial_divider_angle_deg");
+    const float finest_radial_divider_angle_rad = static_cast<float>(deg2rad(0.0625));
+    radial_divider_angle_rad_ = finest_radial_divider_angle_rad;
     radial_dividers_num_ = std::ceil(2.0 * M_PI / radial_divider_angle_rad_);
 
     // common thresholds
@@ -184,6 +187,33 @@ void ScanGroundFilterComponent::convertPointcloud(
   }
 }
 
+float ScanGroundFilterComponent::getRadialDividerAngleRad(const float radius) const
+{
+  // Dynamic radial divider angle based on radius:
+  // 4 deg for < 5m
+  // 2 deg for < 10m
+  // 1 deg for < 20m
+  // 0.5 deg for < 40m
+  // 0.25 deg for < 60m
+  // 0.125 deg for < 80m
+  // 0.0625 deg for >= 80m
+  if (radius < 5.0f) {
+    return static_cast<float>(deg2rad(4.0));
+  } else if (radius < 10.0f) {
+    return static_cast<float>(deg2rad(2.0));
+  } else if (radius < 20.0f) {
+    return static_cast<float>(deg2rad(1.0));
+  } else if (radius < 40.0f) {
+    return static_cast<float>(deg2rad(0.5));
+  } else if (radius < 60.0f) {
+    return static_cast<float>(deg2rad(0.25));
+  } else if (radius < 80.0f) {
+    return static_cast<float>(deg2rad(0.125));
+  } else {
+    return static_cast<float>(deg2rad(0.0625));
+  }
+}
+
 void ScanGroundFilterComponent::calcVirtualGroundOrigin(pcl::PointXYZ & point) const
 {
   point.x = vehicle_info_.wheel_base_m;
@@ -248,9 +278,11 @@ void ScanGroundFilterComponent::classifyPointCloud(
       float height_from_gnd = point_curr.z - prev_gnd_point.z;
       float height_from_obj = point_curr.z - non_ground_cluster.getAverageHeight();
       bool calculate_slope = true;
+      // Use dynamic radial divider angle based on current point's radius
+      const float dynamic_radial_divider_angle_rad = getRadialDividerAngleRad(pd.radius);
       bool is_point_close_to_prev =
         (points_distance <
-         (pd.radius * radial_divider_angle_rad_ + split_points_distance_tolerance_));
+         (pd.radius * dynamic_radial_divider_angle_rad + split_points_distance_tolerance_));
 
       float global_slope_ratio = point_curr.z / pd.radius;
       // check points which is far enough from previous point
@@ -410,13 +442,19 @@ rcl_interfaces::msg::SetParametersResult ScanGroundFilterComponent::onParameter(
       get_logger(), "Setting local_slope_max_angle_rad to: %f.", local_slope_max_angle_rad_);
     RCLCPP_DEBUG(get_logger(), "Setting local_slope_max_ratio to: %f.", local_slope_max_ratio_);
   }
+  // Note: radial_divider_angle_deg parameter is no longer used for dynamic behavior
+  // The radial divider angle is now determined dynamically based on radius via getRadialDividerAngleRad()
+  // We always use the finest resolution (0.0625 deg) for maximum number of divisions
   double radial_divider_angle_deg{get_parameter("radial_divider_angle_deg").as_double()};
   if (get_param(param, "radial_divider_angle_deg", radial_divider_angle_deg)) {
-    radial_divider_angle_rad_ = deg2rad(radial_divider_angle_deg);
+    // Use finest resolution for maximum number of divisions
+    const float finest_radial_divider_angle_rad = static_cast<float>(deg2rad(0.0625));
+    radial_divider_angle_rad_ = finest_radial_divider_angle_rad;
     radial_dividers_num_ = std::ceil(2.0 * M_PI / radial_divider_angle_rad_);
     // grid_ptr_->initialize(grid_size_m_, radial_divider_angle_rad_);
     RCLCPP_DEBUG(
-      get_logger(), "Setting radial_divider_angle_rad to: %f.", radial_divider_angle_rad_);
+      get_logger(), "Setting radial_divider_angle_rad to: %f (finest resolution for max divisions).",
+      radial_divider_angle_rad_);
     RCLCPP_DEBUG(get_logger(), "Setting radial_dividers_num to: %zu.", radial_dividers_num_);
   }
   if (get_param(param, "split_points_distance_tolerance", split_points_distance_tolerance_)) {
