@@ -2,6 +2,28 @@
 Changelog for package tier4_autoware_api_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat(tier4_autoware_api_launch): add api mode (`#11121 <https://github.com/autowarefoundation/autoware_universe/issues/11121>`_)
+  * feat(tier4_autoware_api_launch): add api mode
+  * add description
+  ---------
+* Contributors: Ryohsuke Mitsudome, Takagi, Isamu
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* feat(tier4_autoware_api_launch): add arg for replacing default adapi … (`#10954 <https://github.com/autowarefoundation/autoware_universe/issues/10954>`_)
+  * feat(tier4_autoware_api_launch): add arg for replacing default adapi config
+  * Update launch/tier4_autoware_api_launch/launch/autoware_api.launch.xml
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+  ---------
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+* Contributors: Tetsuhiro Kawaguchi
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

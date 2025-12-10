@@ -2,6 +2,78 @@
 Changelog for package autoware_boundary_departure_checker
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* fix: tf2 uses hpp headers in rolling (and is backported) (`#11620 <https://github.com/autowarefoundation/autoware_universe/issues/11620>`_)
+* feat(turn_signal_decider): add threshold based on distance to lane bound for turning off blinker (`#11519 <https://github.com/autowarefoundation/autoware_universe/issues/11519>`_)
+  * feat(turn_signal_decider): add threshold based on distance to lane bound for turning off blinker
+  * fix default value in readme
+  * Update readme
+  * update parameter description
+  ---------
+* fix(boundary_departure): false activation for underpass/overpass areas (`#11323 <https://github.com/autowarefoundation/autoware_universe/issues/11323>`_)
+  * fix(boundary_departure): false activation for underpass/overpass areas
+  * fix precommit
+  ---------
+* fix(autoware_boundary_departure_checker): remove unused function (`#11189 <https://github.com/autowarefoundation/autoware_universe/issues/11189>`_)
+* fix(autoware_boundary_departure_checker): add missing dependency to magic_enum (`#11200 <https://github.com/autowarefoundation/autoware_universe/issues/11200>`_)
+* fix(autoware_boundary_departure_checker): remove unused function (`#11190 <https://github.com/autowarefoundation/autoware_universe/issues/11190>`_)
+* perf(boundary_departure): more efficient arc length calculations for ego footprint points (`#11136 <https://github.com/autowarefoundation/autoware_universe/issues/11136>`_)
+  * directly calculate lon_dist_on_ref_traj from the fp's trajectory point
+  * remove unused vehicle longitudinal offset argument
+  * remove unused trajectory argument
+  * substract the longitudinal offset of the projected ego point
+  * rename lon_dist_on_ref_traj to lon_dist_on_pred_traj
+  * revise and optimize the dist_on_traj to be the ego_dist_on_ref_traj
+  * remove unused find_new_critical_departure_points function
+  * remove offsets by the ego vehicle longitudinal offset
+  * refactor to use motion_utils instead of trajectory::closest (perf)
+  * remove last trajectory::closest (perf)
+  * fix braking_dist calculation
+  ---------
+* feat(boundary_departure_checker): improve steering abnormality (`#11130 <https://github.com/autowarefoundation/autoware_universe/issues/11130>`_)
+* fix(boundary_departure): refactor merge_departure_intervals function to avoid crashes (`#11129 <https://github.com/autowarefoundation/autoware_universe/issues/11129>`_)
+* Contributors: Maxime CLEMENT, Ryohsuke Mitsudome, Ryuta Kambe, Tim Clephas, Zulfaqar Azmi
+
+0.47.1 (2025-08-14)
+-------------------
+* fix(autoware_boundary_departure_checker): add missing dependency to magic_enum (`#11201 <https://github.com/autowarefoundation/autoware_universe/issues/11201>`_)
+* Contributors: Mete Fatih Cırıt
+
+0.47.0 (2025-08-11)
+-------------------
+* feat(boundary_departure): configurable departure points and type based on time (`#11073 <https://github.com/autowarefoundation/autoware_universe/issues/11073>`_)
+  * feat(boundary_departure): configurable departure points and type based on time
+  * Update planning/motion_velocity_planner/autoware_motion_velocity_boundary_departure_prevention_module/src/utils.hpp
+  Co-authored-by: Maxime CLEMENT <78338830+maxime-clem@users.noreply.github.com>
+  * move out is_departure_persist
+  * cutoff time based on decel
+  * refactoring
+  * refactoring
+  ---------
+  Co-authored-by: Maxime CLEMENT <78338830+maxime-clem@users.noreply.github.com>
+* fix(boundary_departure): merging multiple close by departure points (`#11083 <https://github.com/autowarefoundation/autoware_universe/issues/11083>`_)
+  * fix(boundary_departure): merging multiple closeby departure points
+  * removed nested loops and fix critical departure being merged together
+  Co-authored-by: mkquda <168697710+mkquda@users.noreply.github.com>
+  * refactoring
+  * refactor merge function
+  ---------
+  Co-authored-by: mkquda <168697710+mkquda@users.noreply.github.com>
+* style(pre-commit): update to clang-format-20 (`#11088 <https://github.com/autowarefoundation/autoware_universe/issues/11088>`_)
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(start_planner,boundary_departure_checker): remove micro inner rings after bg::union\_ (`#10971 <https://github.com/autowarefoundation/autoware_universe/issues/10971>`_)
+* feat(control_evaluator): boundary departure check in control evaluator (`#10859 <https://github.com/autowarefoundation/autoware_universe/issues/10859>`_)
+  * feat(control_evaluator): add boundary departure check
+  * slight refactoring
+  * fix node dying due to invalid linestring reference
+  * docstring fix
+  * Revise  metric's messages and move function call
+  * add comments to the extra margin
+  ---------
+* Contributors: Mehmet Dogru, Mete Fatih Cırıt, Zulfaqar Azmi
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

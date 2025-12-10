@@ -69,6 +69,12 @@ NetMonitor::NetMonitor(const rclcpp::NodeOptions & options)
   updater_.add("IP Packet Reassembles Failed", this, &NetMonitor::check_reassembles_failed);
   updater_.add("UDP Buf Errors", this, &NetMonitor::check_udp_buf_errors);
 
+  // Publisher
+  rclcpp::QoS durable_qos{1};
+  durable_qos.transient_local();
+  pub_network_status_ = this->create_publisher<tier4_external_api_msgs::msg::NetworkStatus>(
+    "~/network_status", durable_qos);
+
   nl80211_.init();
 
   // Run I/O service processing loop
@@ -177,16 +183,20 @@ void NetMonitor::check_usage(diagnostic_updater::DiagnosticStatusWrapper & statu
   // Remember start time to measure elapsed time
   const auto t_start = SystemMonitorUtility::startMeasurement();
 
-  int level = DiagStatus::OK;
+  int whole_level = DiagStatus::OK;
   int index = 0;
 
   for (const auto & network : network_list_) {
     // Skip if network is not supported
     if (network.is_invalid) continue;
 
-    level = network.is_running ? DiagStatus::OK : DiagStatus::ERROR;
-
+    // If any network in the list is disconnected or unavailable,
+    // the status summary is reported as ERROR.
+    int level = network.is_running ? DiagStatus::OK : DiagStatus::ERROR;
     status.add(fmt::format("Network {}: status", index), usage_messages_.at(level));
+
+    // The following "key - value" pairs are reported for recording purpose.
+    // They don't affect the status summary.
     status.add(fmt::format("Network {}: interface name", index), network.interface_name);
     status.addf(fmt::format("Network {}: rx_usage", index), "%.2f%%", network.rx_usage * 1e+2);
     status.addf(fmt::format("Network {}: tx_usage", index), "%.2f%%", network.tx_usage * 1e+2);
@@ -200,10 +210,11 @@ void NetMonitor::check_usage(diagnostic_updater::DiagnosticStatusWrapper & statu
     status.add(fmt::format("Network {}: tx_errors", index), network.tx_errors);
     status.add(fmt::format("Network {}: collisions", index), network.collisions);
 
+    whole_level = std::max(whole_level, level);
     ++index;
   }
 
-  status.summary(DiagStatus::OK, "OK");
+  status.summary(whole_level, usage_messages_.at(whole_level));
 
   // Measure elapsed time since start time and report
   SystemMonitorUtility::stopMeasurement(t_start, status);
@@ -374,6 +385,7 @@ void NetMonitor::on_timer()
 {
   // Update list of network information
   update_network_list();
+  publishNetworkStatus();
 }
 
 void NetMonitor::shutdown_nl80211()
@@ -734,6 +746,44 @@ void NetMonitor::close_connection()
 {
   // Close socket
   socket_->close();
+}
+
+void NetMonitor::publishNetworkStatus()
+{
+  tier4_external_api_msgs::msg::NetworkStatus network_status;
+  network_status.stamp = this->now();
+  network_status.hostname = hostname_;
+
+  for (const auto & network : network_list_) {
+    // Skip if network is not supported
+    if (network.is_invalid) continue;
+
+    auto & interface_status = network_status.interfaces.emplace_back();
+    interface_status.name = network.interface_name;
+    interface_status.rx_traffic = network.rx_traffic;
+    interface_status.tx_traffic = network.tx_traffic;
+    interface_status.capacity = network.speed;
+    interface_status.rx_errors = network.rx_errors;
+    interface_status.tx_errors = network.tx_errors;
+    interface_status.collisions = network.collisions;
+  }
+
+  uint64_t total_errors = 0;
+  uint64_t unit_errors = 0;
+  NetSnmp::Result ret = reassembles_failed_info_.check_metrics(total_errors, unit_errors);
+  if (ret != NetSnmp::Result::READ_ERROR) {
+    network_status.error_ip_packet_reassembles_failed = unit_errors;
+  }
+  ret = udp_rcvbuf_errors_info_.check_metrics(total_errors, unit_errors);
+  if (ret != NetSnmp::Result::READ_ERROR) {
+    network_status.error_udp_buf_rx = unit_errors;
+  }
+  ret = udp_sndbuf_errors_info_.check_metrics(total_errors, unit_errors);
+  if (ret != NetSnmp::Result::READ_ERROR) {
+    network_status.error_udp_buf_tx = unit_errors;
+  }
+
+  pub_network_status_->publish(network_status);
 }
 
 NetSnmp::NetSnmp(rclcpp::Node * node)

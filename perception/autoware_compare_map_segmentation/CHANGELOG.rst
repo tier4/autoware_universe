@@ -2,6 +2,21 @@
 Changelog for package autoware_compare_map_segmentation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat(autoware_compare_map_segmentation): add lanelet elevation filter (`#11289 <https://github.com/autowarefoundation/autoware_universe/issues/11289>`_)
+  * feat(autoware_compare_map_segmentation): add lanelet elevation filter
+  * feat(autoware_compare_map_segmentation): fix default height threshold
+  ---------
+* Contributors: Kaan Çolak, Ryohsuke Mitsudome
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

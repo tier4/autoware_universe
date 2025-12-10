@@ -24,7 +24,6 @@
 #include "autoware_utils/system/stop_watch.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "tf2/utils.h"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 
@@ -32,6 +31,7 @@
 #include <Eigen/Geometry>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <tf2/utils.hpp>
 
 #include "autoware_control_msgs/msg/control.hpp"
 #include "autoware_control_msgs/msg/control_horizon.hpp"
@@ -102,7 +102,7 @@ private:
     sub_accel_{this, "~/input/current_accel"};
 
   autoware_utils::InterProcessPollingSubscriber<OperationModeState> sub_operation_mode_{
-    this, "~/input/current_operation_mode"};
+    this, "~/input/current_operation_mode", rclcpp::QoS{1}.transient_local()};
 
   // Publishers
   rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr control_cmd_pub_;

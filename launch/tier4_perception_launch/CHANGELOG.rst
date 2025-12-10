@@ -2,6 +2,182 @@
 Changelog for package tier4_perception_launch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat(image_object_locator): add near range camera VRU detector to perception pipeline (`#11622 <https://github.com/autowarefoundation/autoware_universe/issues/11622>`_)
+  add near range camera VRU detector to perception pipeline
+* feat(mult object tracker): publish merged object if it is multi-channel mode (`#11386 <https://github.com/autowarefoundation/autoware_universe/issues/11386>`_)
+  * feat(multi_object_tracker): add support for merged object output and related parameters
+  * feat(multi_object_tracker): add function to convert DynamicObject to DetectedObject and implement merged object publishing
+  * fix(multi_object_tracker): prevent merged objects publisher from being in input channel topics
+  * fix(multi_object_tracker): improve warning message for merged objects publisher in input channel
+  * feat(multi_object_tracker): add is_simulation parameter to control merged object publishing
+  * fix(multi_object_tracker): correct ego_frame_id variable usage and declaration
+  * feat(multi_object_tracker): update getMergedObjects to accept transform and apply frame conversion
+  * feat(multi_object_tracker): optimize getMergedObjects for efficient frame transformation
+  * fix(multi_object_tracker): fix bug when merged_objects_pub\_ is nullptr
+  * feat(multi_object_tracker): refactor orientation availability conversion to improve code clarity
+  * fix(multi_object_tracker): remove redundant comment in publish method for clarity
+  * feat(multi_object_tracker): rename parameters for clarity and add publish_merged_objects option
+  * fix(multi_object_tracker): rename pruning parameters for consistency in schema
+  * Update perception/autoware_multi_object_tracker/src/processor/processor.cpp
+  Co-authored-by: Yoshi Ri <yoshiyoshidetteiu@gmail.com>
+  * feat(multi_object_tracker): replace 'is_simulation' with 'publish_merged_objects' in launch files and parameters
+  ---------
+  Co-authored-by: Yoshi Ri <yoshiyoshidetteiu@gmail.com>
+* fix(camera_2d_detector): typo (`#11380 <https://github.com/autowarefoundation/autoware_universe/issues/11380>`_)
+* feat(launch): add args to select the 2d camera detection model (`#11364 <https://github.com/autowarefoundation/autoware_universe/issues/11364>`_)
+  * add args
+  * add color map path
+  * give color_map_path to yolox.launch
+  Co-authored-by: badai nguyen  <94814556+badai-nguyen@users.noreply.github.com>
+  * give color_map_path to yolox.launch
+  Co-authored-by: badai nguyen  <94814556+badai-nguyen@users.noreply.github.com>
+  * give color_map_path to yolox.launch
+  Co-authored-by: badai nguyen  <94814556+badai-nguyen@users.noreply.github.com>
+  * give color_map_path to yolox.launch
+  Co-authored-by: badai nguyen  <94814556+badai-nguyen@users.noreply.github.com>
+  * give color_map_path to yolox.launch
+  Co-authored-by: badai nguyen  <94814556+badai-nguyen@users.noreply.github.com>
+  * give color_map_path to yolox.launch
+  Co-authored-by: badai nguyen  <94814556+badai-nguyen@users.noreply.github.com>
+  * give color_map_path to yolox.launch
+  Co-authored-by: badai nguyen  <94814556+badai-nguyen@users.noreply.github.com>
+  * give color_map_path to yolox.launch
+  Co-authored-by: badai nguyen  <94814556+badai-nguyen@users.noreply.github.com>
+  * give color_map_path to yolox.launch
+  Co-authored-by: badai nguyen  <94814556+badai-nguyen@users.noreply.github.com>
+  * fix output args
+  ---------
+  Co-authored-by: badai nguyen <94814556+badai-nguyen@users.noreply.github.com>
+* fix(camera_2d_detector): input image id typo (`#11375 <https://github.com/autowarefoundation/autoware_universe/issues/11375>`_)
+  * fix(camera_2d_detector): typo input image id
+  * fix: typo
+  ---------
+* fix(tier4_perception_launch): add yolox 2d detection launch with bytetrack (`#11104 <https://github.com/autowarefoundation/autoware_universe/issues/11104>`_)
+  * fix(tensorrt_yolox): add bytetrack option for launch
+  * style(pre-commit): autofix
+  * fix: update multi_yolox
+  * fix: bytetrack topics
+  * fix: disable when build only
+  * style(pre-commit): autofix
+  * revert all
+  * fix: add 2d detection launch
+  * style(pre-commit): autofix
+  * fix typo
+  * fix: string to int
+  * fix: adding bytetrack node name
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(fusion node): subscribe from concatenation info (`#11258 <https://github.com/autowarefoundation/autoware_universe/issues/11258>`_)
+  * chore: rename concatenate info to manager for clearity
+  * feat: add reference min max in the concatenated info
+  * chore: replace reading from diagnositc to concatenate info
+  * fix: qos settting
+  * chore: update for cuda pointcloud preprocessor
+  * chore: move info to matching strategy
+  * chore: clean code
+  * feat: move concat info in launcher
+  * chore: fix readme
+  * feat: sub to concat info in launcher
+  * chore: add concat info in irregular launch
+  ---------
+* feat(tier4_perception_launch): add an option to choose prediction model type (`#11232 <https://github.com/autowarefoundation/autoware_universe/issues/11232>`_)
+  * feat: add option to choose if launch map-based or simpl
+  * fix: modify data_path
+  ---------
+* Contributors: Kotaro Uetake, Masaki Baba, Masato Saeki, Ryohsuke Mitsudome, Taekjin LEE, Yi-Hsiang Fang (Vivid), badai nguyen
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* feat(perception_online_evaluator): add functionality to publish perception analytics info (`#11089 <https://github.com/autowarefoundation/autoware_universe/issues/11089>`_)
+  * feat: add functionality to calculate perception metrics for MOB in autoware_perception_online_evaluator
+  chore: configure settings for mob metrics calculation
+  * feat: change implementation from one topic per metric to all metrics published in one metric for better management by metric agent
+  refactor: rename FrameMetrics member to clarify variable meaning
+  refactor: use array/vector instead of unorder_map for FrameMetrics for better performance
+  chore: remap published topic name to match msg conventions
+  * fix: unittest error
+  * style(pre-commit): autofix
+  * refactor: replace MOB keyword with generalized expression of perception analytics
+  * chore: improve comment
+  * refactor: add a new autoware_perception_analytics_publisher_node to publish perception analytics info instead of using previous autoware_perception_online_evaluator_node
+  chore: modify default launch setting to match the refactoring
+  * style(pre-commit): autofix
+  * fix: add initialization for `latencies\_`
+  fix: use tf of objects timestamp instead of latest
+  feat: use ConstSharedPtr to avoid repeated copy of large message in `PerceptionAnalyticsCalculator::setPredictedObjects`
+  ---------
+  Co-authored-by: Jian Kang <jian.kang@tier4.jp>
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(multi_object_tracker): add irregular objects topic (`#11102 <https://github.com/autowarefoundation/autoware_universe/issues/11102>`_)
+  * fix(multi_object_tracker): add irregular objects topic
+  * fix: change channel order
+  * Update launch/tier4_perception_launch/launch/object_recognition/tracking/tracking.launch.xml
+  Co-authored-by: Taekjin LEE <technolojin@gmail.com>
+  * Update launch/tier4_perception_launch/launch/object_recognition/tracking/tracking.launch.xml
+  Co-authored-by: Taekjin LEE <technolojin@gmail.com>
+  * Update perception/autoware_multi_object_tracker/config/input_channels.param.yaml
+  Co-authored-by: Taekjin LEE <technolojin@gmail.com>
+  * Update launch/tier4_perception_launch/launch/object_recognition/tracking/tracking.launch.xml
+  Co-authored-by: Taekjin LEE <technolojin@gmail.com>
+  * fix: unused channels
+  * fix: schema
+  * docs: update readme
+  * style(pre-commit): autofix
+  * fix: short name
+  * feat: add lidar_centerpoint_short_range input channel with default flags
+  ---------
+  Co-authored-by: Taekjin LEE <technolojin@gmail.com>
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: Taekjin LEE <taekjin.lee@tier4.jp>
+* chore: sync files (`#11091 <https://github.com/autowarefoundation/autoware_universe/issues/11091>`_)
+  Co-authored-by: github-actions <github-actions@github.com>
+  Co-authored-by: M. Fatih Cırıt <mfc@autoware.org>
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(autoware_object_merger): add merger priority_mode (`#11042 <https://github.com/autowarefoundation/autoware_universe/issues/11042>`_)
+  * fix: add merger priority_mode
+  fix: add priority mode into launch
+  fix: add class based priority matrix
+  fix: adjust priority matrix
+  * fix: add Confidence mode support
+  * docs: schema update
+  * fix: launch
+  * fix: schema json
+  ---------
+* feat(tier4_perception_launch): add missing remappings to launch file (`#11037 <https://github.com/autowarefoundation/autoware_universe/issues/11037>`_)
+* feat(autoware_bevdet): implementation of bevdet using tensorrt (`#10441 <https://github.com/autowarefoundation/autoware_universe/issues/10441>`_)
+* feat(tracking): add short range detection support and update related parameters (`#10956 <https://github.com/autowarefoundation/autoware_universe/issues/10956>`_)
+  * feat(tracking): add short range detection support and update related parameters
+  * fix(tracking): correct spelling of short range in tracking parameters
+  ---------
+* fix(tier4_perception_launch): add one more camera fusion (`#10973 <https://github.com/autowarefoundation/autoware_universe/issues/10973>`_)
+  * fix(tier4_perception_launch): add one more camera fusion
+  * fix: missing launch
+  * feat(detection.launch): add support for additional camera inputs (camera8)
+  * fix: missing launch param
+  ---------
+  Co-authored-by: Taekjin LEE <taekjin.lee@tier4.jp>
+* fix(perception): update radar detection logic for multi-channel support (`#10942 <https://github.com/autowarefoundation/autoware_universe/issues/10942>`_)
+  * fix(detection.launch): update radar detection logic for multi-channel support
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat(radar pipeline): radar tracked object pipeline (`#10916 <https://github.com/autowarefoundation/autoware_universe/issues/10916>`_)
+  * refactor(tracking): update radar tracked objects input and adjust tracker merger references
+  * refactor(tracking): replace radar object tracker parameters with lanelet filter and update references in tracking pipeline
+  * style(pre-commit): autofix
+  * refactor(tracking): update radar tracked object sorter and adjust lanelet filter input
+  * refactor(tracking): update radar tracked object sorter parameter paths in launch files
+  * refactor(tracking): add radar tracking fusion argument and update radar switch condition
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* Contributors: Amadeusz Szymko, Kang, Taekjin LEE, awf-autoware-bot[bot], badai nguyen, rahulsundar-mcw
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

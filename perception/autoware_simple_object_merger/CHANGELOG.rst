@@ -2,6 +2,39 @@
 Changelog for package autoware_simple_object_merger
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat(image_object_locator): add near range camera VRU detector to perception pipeline (`#11622 <https://github.com/autowarefoundation/autoware_universe/issues/11622>`_)
+  add near range camera VRU detector to perception pipeline
+* fix(simple_object_merger): replace unexpected std::const_pointer_cast() into std::make_shared() (`#11399 <https://github.com/autowarefoundation/autoware_universe/issues/11399>`_)
+  fix: replace unexpected const_pointer_cast() into make_shared()
+  Co-authored-by: Masaki Baba <masaki.baba.2@tier4.jp>
+* chore(perception): add maintainer (`#11458 <https://github.com/autowarefoundation/autoware_universe/issues/11458>`_)
+  add maintainer
+* Contributors: Kotaro Uetake, Masaki Baba, Ryohsuke Mitsudome
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* style(pre-commit): update to clang-format-20 (`#11088 <https://github.com/autowarefoundation/autoware_universe/issues/11088>`_)
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(simple object merger): handle when tf could not get properly (`#10934 <https://github.com/autowarefoundation/autoware_universe/issues/10934>`_)
+  * fix(simple_object_merger): handle null transforms in object merging
+  * fix(simple_object_merger): optimize transformation handling for detected and tracked objects
+  ---------
+* fix(autoware_simple_object_merger): templatize simple object merger (`#10785 <https://github.com/autowarefoundation/autoware_universe/issues/10785>`_)
+  * templatize node and add merger for tracked objects
+  * add test
+  * refactor file name and structure, revert node name
+  * add missing include
+  * refactor: override onTimer method in object merger nodes
+  ---------
+  Co-authored-by: Taekjin LEE <taekjin.lee@tier4.jp>
+* Contributors: Masaki Baba, Mete Fatih Cırıt, Taekjin LEE
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

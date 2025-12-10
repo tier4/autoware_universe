@@ -2,6 +2,29 @@
 Changelog for package autoware_motion_velocity_out_of_lane_module
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* chore(out_of_lane): add Zulfaqar Azmi as maintainer (`#11553 <https://github.com/autowarefoundation/autoware_universe/issues/11553>`_)
+* fix(out_of_lane): improve logic to ignore some lanelets (`#11542 <https://github.com/autowarefoundation/autoware_universe/issues/11542>`_)
+* fix(out_of_lane): ensure the calculated stop pose is feasible (`#11442 <https://github.com/autowarefoundation/autoware_universe/issues/11442>`_)
+* fix(out_of_lane): ignore collisions inside the trajectory lanelets (`#11407 <https://github.com/autowarefoundation/autoware_universe/issues/11407>`_)
+* fix(out_of_lane): properly apply the objects.extra_width parameter (`#11358 <https://github.com/autowarefoundation/autoware_universe/issues/11358>`_)
+* Contributors: Maxime CLEMENT, Ryohsuke Mitsudome
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* style(pre-commit): update to clang-format-20 (`#11088 <https://github.com/autowarefoundation/autoware_universe/issues/11088>`_)
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat(out_of_lane): add safety factors to the published planning factor (`#11062 <https://github.com/autowarefoundation/autoware_universe/issues/11062>`_)
+* feat(out_of_lane): add objects.extra_width parameter (`#10923 <https://github.com/autowarefoundation/autoware_universe/issues/10923>`_)
+* feat(out_of_lane): cut trajectory footprints behind the current ego front (`#10949 <https://github.com/autowarefoundation/autoware_universe/issues/10949>`_)
+* feat(out_of_lane): validate predicted paths on lanelets (`#10882 <https://github.com/autowarefoundation/autoware_universe/issues/10882>`_)
+* Contributors: Maxime CLEMENT, Mete Fatih Cırıt
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

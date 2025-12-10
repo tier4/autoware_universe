@@ -2,6 +2,129 @@
 Changelog for package autoware_behavior_path_static_obstacle_avoidance_module
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat(autoware_lanelet2_utils): replace ported functions from autoware_lanelet2_extension (`#11593 <https://github.com/autowarefoundation/autoware_universe/issues/11593>`_)
+  Co-authored-by: Mamoru Sobue <hilo.soblin@gmail.com>
+* fix(staitc_obstacle_avoidance): fix crashes due to an exception (`#11591 <https://github.com/autowarefoundation/autoware_universe/issues/11591>`_)
+  fix exception
+* fix(static_obstacle_avoidance): fix parking violation detection (`#11561 <https://github.com/autowarefoundation/autoware_universe/issues/11561>`_)
+  * fix parking violation detection
+  * fix comment
+  * fix avoidance condition
+  ---------
+* refactor(static_obstacle_avoidance): revert PR `#10865 <https://github.com/autowarefoundation/autoware_universe/issues/10865>`_ (`#11557 <https://github.com/autowarefoundation/autoware_universe/issues/11557>`_)
+  * Revert "fix(static_obstacle_avoidance): fix filtering logic to avoid vehicle in T-intersection (`#10865 <https://github.com/autowarefoundation/autoware_universe/issues/10865>`_)"
+  This reverts commit 261e13f6e081734d9373b26c0609ba0da52f53f6.
+  * Remove debug output for unknown type object map size
+  Removed debug output for map size in the unknown type object handling.
+* fix(static_obstacle_avoidance): fill object info in appropriate location (`#11521 <https://github.com/autowarefoundation/autoware_universe/issues/11521>`_)
+* feat(static_obstacle_avoidance): enhance overhang distance calculation with vehicle dimensions (`#11487 <https://github.com/autowarefoundation/autoware_universe/issues/11487>`_)
+  * Revert "fix(static_obstacle_avoidance): ensure sufficient avoidance margin on high-curvature paths for parked vehicle avoidance (`#10902 <https://github.com/autowarefoundation/autoware_universe/issues/10902>`_)"
+  * feat(static_obstacle_avoidance): enhance overhang distance calculation with vehicle dimensions
+  - Updated `calcEnvelopeOverhangDistance` to include vehicle front and rear overhang parameters for more accurate obstacle avoidance.
+  - Introduced new utility functions for calculating lateral distances and filling midpoints of polygon edges.
+  - Improved the logic for determining overhang points based on the updated vehicle dimensions.
+  This change aims to ensure better obstacle avoidance performance by considering the vehicle's physical characteristics.
+  * fix(test_utils): update overhang distance calculation in tests to include additional parameters
+  - Modified calls to `calcEnvelopeOverhangDistance` in multiple test cases to include new parameters for improved accuracy.
+  - Ensured consistency in testing behavior for obstacle avoidance scenarios.
+  This change aligns the test cases with the recent enhancements made to the overhang distance calculation logic.
+  * refactor(static_obstacle_avoidance): update utility function calls for lateral distance and midpoint calculations
+  * refactor(static_obstacle_avoidance): rename utility functions for consistency in naming conventions
+  * fix(test_utils): update expected output size and values in overhang distance tests
+  - Adjusted the expected output size from 5 to 8 in the `calcEnvelopeOverhangDistance` test cases.
+  - Updated the expected values to reflect changes in the overhang distance calculations for improved accuracy.
+  This change ensures that the tests align with the latest logic in the overhang distance calculations.
+  ---------
+* feat(static_obstacle_avoidance): add handling for adjacent lane stop vehicles (`#11464 <https://github.com/autowarefoundation/autoware_universe/issues/11464>`_)
+  * feat(static_obstacle_avoidance): add handling for adjacent lane stop vehicles
+  - Introduced new object info for adjacent lane stop vehicles.
+  - Updated avoidance parameters to include policy for adjacent lane stop vehicles.
+  - Enhanced logic in helper functions to manage adjacent lane stop vehicle scenarios.
+  - Modified debug and utility functions to accommodate new conditions.
+  This update improves the obstacle avoidance capabilities by considering vehicles stopped in adjacent lanes.
+  * fix(static_obstacle_avoidance): refine logic for adjacent lane vehicle detection
+  - Updated condition to check for adjacent lane vehicles only when the object is not on the ego lane.
+  - Enhanced handling of adjacent lane stop vehicles based on the avoidance policy settings.
+  This change improves the accuracy of obstacle avoidance by ensuring proper identification of vehicles in adjacent lanes.
+  ---------
+* chore(static_obstacle_avoidance): update maintainer (`#11472 <https://github.com/autowarefoundation/autoware_universe/issues/11472>`_)
+  update maintainer
+* feat(static_obstacle_avoidance): avoidance for parking violation and vru (`#11455 <https://github.com/autowarefoundation/autoware_universe/issues/11455>`_)
+  * avoidance for parking violation
+  * fix default parameter for parking violation vehicle
+  * fix avoidance condition for vru
+  * fix schema
+  * add object info
+  * fix is_parked, is_parking_violation conditions
+  ---------
+* fix(static_obstacle_avoidance): fix multiple shift line generation algorithm (`#11302 <https://github.com/autowarefoundation/autoware_universe/issues/11302>`_)
+  * fix
+  * incorporate review
+  * add const
+  ---------
+* fix(static_obstacle_avoidance): correct method for determining whether the vehicle deviates into the oncoming lane during obstacle avoidance (`#11226 <https://github.com/autowarefoundation/autoware_universe/issues/11226>`_)
+  * refactor: use only the necessary parameters as function arguments
+  * fix: correct method for determining whether the vehicle deviates into the oncoming lane during obstacle avoidance
+  * fix: don't perform deviation checks outside shift sections in the avoidance module
+  ---------
+* fix(static_obstacle_avoidance): resolve issue where the same process was repeatedly executed (`#11225 <https://github.com/autowarefoundation/autoware_universe/issues/11225>`_)
+  fix: correct method for determining whether the vehicle deviates into the oncoming lane during obstacle avoidance
+* Contributors: Kotakku, Ryohsuke Mitsudome, Sarun MUKDAPITAK, Satoshi OTA, Yukinari Hisaki
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* fix(static_obstacle_avoidance): fix coding error (`#11106 <https://github.com/autowarefoundation/autoware_universe/issues/11106>`_)
+* style(pre-commit): update to clang-format-20 (`#11088 <https://github.com/autowarefoundation/autoware_universe/issues/11088>`_)
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(autoware_behavior_path_static_obstacle_avoidance_module): prevent chattering in avoidance decision (`#11046 <https://github.com/autowarefoundation/autoware_universe/issues/11046>`_)
+  Revert "fix(autoware_behavior_path_static_obstacle_avoidance_module): prevent chattering in avoidance decision"
+  This reverts commit 6b0d5865dc90add124c4f15c7d995ac3c95d9812.
+  update
+* fix(static_obstacle_avoidance): correct lane departure check during obstacle avoidance (`#11032 <https://github.com/autowarefoundation/autoware_universe/issues/11032>`_)
+* fix(static_obstacle_avoidance): load missing unstable classification parameter (`#11035 <https://github.com/autowarefoundation/autoware_universe/issues/11035>`_)
+  fix(static_obstacle_avoidance): load unstable_classification_time
+* style(pre-commit): autofix (`#10982 <https://github.com/autowarefoundation/autoware_universe/issues/10982>`_)
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(behavior_path_static_obstacle_avoidance_module): fix isWithinLanes (`#10948 <https://github.com/autowarefoundation/autoware_universe/issues/10948>`_)
+  * fix(behavior_path_static_obstacle_avoidance_module): fix isWithinLanes
+  * Update planning/behavior_path_planner/autoware_behavior_path_static_obstacle_avoidance_module/src/utils.cpp
+  Co-authored-by: Go Sakayori <go-sakayori@users.noreply.github.com>
+  ---------
+  Co-authored-by: Go Sakayori <go-sakayori@users.noreply.github.com>
+* fix(static_obstacle_avoidance): ensure sufficient avoidance margin on high-curvature paths for parked vehicle avoidance (`#10902 <https://github.com/autowarefoundation/autoware_universe/issues/10902>`_)
+  * fix: curvature based addtional margin
+  * fix: calculate proper overhang point
+  * fix: set offset to 0.0 when vehicle front overhangs beyond path end
+  * fix: test
+  ---------
+* fix(static_obstacle_avoidance): planning factor publish condition and control points duplication (`#10940 <https://github.com/autowarefoundation/autoware_universe/issues/10940>`_)
+  * fix planning factor publish condition and control points duplication
+  * fix coding style and access method for vector
+  ---------
+* feat(static_obstacle_avoidance): add infomation to PlanningFactor topic (`#10836 <https://github.com/autowarefoundation/autoware_universe/issues/10836>`_)
+  * feat(static_obstacle_avoidance): add planning factor test
+  * feat(static_obstacle_avoidance): add infomation of planning_factor_interface\_
+  * delete unnecessary file for test.
+  * refactor some variables.
+  * fix planning factor test namespace
+  ---------
+* fix(static_obstacle_avoidance): fix coding error (`#10890 <https://github.com/autowarefoundation/autoware_universe/issues/10890>`_)
+  fix error
+* feat(static_obstacle_avoidance): support separate lateral jerk constraints for avoidance and return maneuvers (`#10870 <https://github.com/autowarefoundation/autoware_universe/issues/10870>`_)
+  * feat(static_obstacle_avoidance): support separate lateral jerk constraints for avoidance and return maneuvers
+  * chore: renaming function
+  * chore: rewrite comment
+  * fix: json
+  ---------
+* fix(static_obstacle_avoidance): fix filtering logic to avoid vehicle in T-intersection (`#10865 <https://github.com/autowarefoundation/autoware_universe/issues/10865>`_)
+* Contributors: Kotakku, Mete Fatih Cırıt, Ryohsuke Mitsudome, Satoshi OTA, Yukinari Hisaki
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

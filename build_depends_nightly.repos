@@ -9,7 +9,11 @@ repositories:
   core/autoware_core:
     type: git
     url: https://github.com/tier4/autoware_core.git
-    version: beta/v0.50
+    version: beta/v0.60
+  core/autoware_cmake:
+    type: git
+    url: https://github.com/autowarefoundation/autoware_cmake.git
+    version: main
   core/autoware_adapi_msgs:
     type: git
     url: https://github.com/autowarefoundation/autoware_adapi_msgs.git
@@ -22,7 +26,7 @@ repositories:
   universe/external/tier4_autoware_msgs:
     type: git
     url: https://github.com/tier4/tier4_autoware_msgs.git
-    version: beta/v0.50
+    version: beta/v0.60
   universe/external/managed_transform_buffer:
     type: git
     url: https://github.com/autowarefoundation/managed_transform_buffer.git

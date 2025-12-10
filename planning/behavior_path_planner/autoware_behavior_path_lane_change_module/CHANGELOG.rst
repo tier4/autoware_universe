@@ -2,6 +2,104 @@
 Changelog for package autoware_behavior_path_lane_change_module
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat(autoware_lanelet2_utils): replace ported functions from autoware_lanelet2_extension (`#11593 <https://github.com/autowarefoundation/autoware_universe/issues/11593>`_)
+  Co-authored-by: Mamoru Sobue <hilo.soblin@gmail.com>
+* fix: tf2 uses hpp headers in rolling (and is backported) (`#11620 <https://github.com/autowarefoundation/autoware_universe/issues/11620>`_)
+* fix(lane_change): prevent path distortion by resetting lane change module when ego is not in either current or target lanes (`#11599 <https://github.com/autowarefoundation/autoware_universe/issues/11599>`_)
+  fix(lane_change): negating path distortion when ego is not in target lanes
+* fix(lane_change): turn signal when valid path is not available (`#11545 <https://github.com/autowarefoundation/autoware_universe/issues/11545>`_)
+  * fix(lane_change): turn signal when valid path is not available
+  * minor refactoring
+* feat(start_planner): supprt rtc force approval to bypass safety check  (`#11482 <https://github.com/autowarefoundation/autoware_universe/issues/11482>`_)
+  feat(start_planner): rtc force approval
+* fix(lane_change): include stopping object beside ego as target (`#11342 <https://github.com/autowarefoundation/autoware_universe/issues/11342>`_)
+  * fix(lane_change): include stopping object beside ego as target
+  * ahead car is completely ahead of ego
+  * compare ego min vertex against object's max vertex
+  * check all paths
+  * include header
+  * check all path and fix trailing object uses deceleration sampling
+  * updating readme
+  ---------
+* fix(lane_change): fix predicted path exceeding end point after approval (`#11360 <https://github.com/autowarefoundation/autoware_universe/issues/11360>`_)
+* feat(bpp, lane_change): enable prepare phase check even when ego is preparing (`#11307 <https://github.com/autowarefoundation/autoware_universe/issues/11307>`_)
+  * feat(bpp, lane_change): enable prepare phase check even when ego is preparing
+  * fix cpp check error
+  ---------
+* feat(lane_change_module): set none planning_factor behavior (`#11328 <https://github.com/autowarefoundation/autoware_universe/issues/11328>`_)
+* fix(bpp_common, lane_change): generate extended objects directly with highest confidence path. (`#11304 <https://github.com/autowarefoundation/autoware_universe/issues/11304>`_)
+  * fix(bpp_common, lane_change): generate extended objects directly with highest confidence path.
+  * handles multiple paths has equal highest confidence
+  ---------
+* docs(lane_change): correct sentence (`#11233 <https://github.com/autowarefoundation/autoware_universe/issues/11233>`_)
+  * docs(lane_change): correct sentence
+  * Update planning/behavior_path_planner/autoware_behavior_path_lane_change_module/README.md
+  Co-authored-by: Zulfaqar Azmi <93502286+zulfaqar-azmi-t4@users.noreply.github.com>
+  * Update planning/behavior_path_planner/autoware_behavior_path_lane_change_module/README.md
+  Co-authored-by: Zulfaqar Azmi <93502286+zulfaqar-azmi-t4@users.noreply.github.com>
+  * Update planning/behavior_path_planner/autoware_behavior_path_lane_change_module/README.md
+  Co-authored-by: Zulfaqar Azmi <93502286+zulfaqar-azmi-t4@users.noreply.github.com>
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: Zulfaqar Azmi <93502286+zulfaqar-azmi-t4@users.noreply.github.com>
+  Co-authored-by: pre-commit-ci-lite[bot] <117423508+pre-commit-ci-lite[bot]@users.noreply.github.com>
+* Contributors: Ryohsuke Mitsudome, Sarun MUKDAPITAK, Shumpei Wakabayashi, Tim Clephas, Yuki TAKAGI, Zulfaqar Azmi
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* fix(lane_change): properly handle force activation when there is no valid LC path (`#11059 <https://github.com/autowarefoundation/autoware_universe/issues/11059>`_)
+  * properly handle force activation when there is no valid LC path
+  * invoke lambda in place
+  ---------
+* fix(lane_change): prevent cancel if ego is near terminal end (`#10980 <https://github.com/autowarefoundation/autoware_universe/issues/10980>`_)
+* style(pre-commit): autofix (`#10982 <https://github.com/autowarefoundation/autoware_universe/issues/10982>`_)
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(lane_change): fix lc rtc update (`#10819 <https://github.com/autowarefoundation/autoware_universe/issues/10819>`_)
+  * update rtc status when no valid path
+  * Revert "chore(sync-files.yaml): not synchronize `github-release.yaml` (`#1776 <https://github.com/autowarefoundation/autoware_universe/issues/1776>`_)"
+  This reverts commit 871a8540ade845c7c9a193029d407b411a4d685b.
+  * reset lc module params when no valid path
+  ---------
+  Co-authored-by: GitHub Action <action@github.com>
+* feat(lane_change): add countermeasures for preventing high curvature lc path (`#10951 <https://github.com/autowarefoundation/autoware_universe/issues/10951>`_)
+  * add implementation for using entire remaining distance for frenet lc path
+  * refactor code
+  * update parameter decription
+  * capture by value
+  * fix for clang-tidy
+  ---------
+* fix(lane_change): add publish planning factor condition for abort and detail (`#10941 <https://github.com/autowarefoundation/autoware_universe/issues/10941>`_)
+  * add publish planning factor condition for abort and detail
+  * delete true condition for debugging
+  ---------
+* fix(lane_change): add curvature threshold for frenet planner (`#10920 <https://github.com/autowarefoundation/autoware_universe/issues/10920>`_)
+  * fix(lane_change): add curvature threshold for frenet planner
+  * Documentation
+  * fix broken link
+  * Add average curvature member variable
+  * add curvature in metrics
+  * rename paran
+  ---------
+* feat(lane_change): add infomation to PlanningFactor topic (`#10875 <https://github.com/autowarefoundation/autoware_universe/issues/10875>`_)
+  * add infomation to planning_factor_interface\_
+  * fix code sense analysis error
+  * Revert "fix code sense analysis error"
+  This reverts commit 2ff1288e58ce4004848cda5e5cec5d1b1d8426dd.
+  * delete unnecessary files for tests.
+  * delete dead functions for test.
+  ---------
+* fix(lane_change): fix code to prevent node crash (`#10866 <https://github.com/autowarefoundation/autoware_universe/issues/10866>`_)
+  * fix comparator for sort algorithm
+  * rearrange operands
+  ---------
+* Contributors: Kotakku, Ryohsuke Mitsudome, Zulfaqar Azmi, mkquda
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

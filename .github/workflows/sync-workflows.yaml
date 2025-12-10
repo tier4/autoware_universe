@@ -58,7 +58,7 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ steps.generate-token.outputs.token }}
-          reviewers: rej55,dkoldaev
+          reviewers: rej55
           commit-message: |
             feat: sync workflows from upstream
 

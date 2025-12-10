@@ -2,6 +2,37 @@
 Changelog for package autoware_planning_validator_test_utils
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* fix(intersection_collision_checker): use traffic light context for intersection collision detection (`#11238 <https://github.com/autowarefoundation/autoware_universe/issues/11238>`_)
+  * fix: subscribe traffic singals
+  * fix: add flag to check traffic signal
+  * fix: change traffic light check logic
+  * fix: use node clock
+  * fix: amber
+  * docs: validator
+  * docs: icc
+  * docs: icc
+  * docs: icc
+  * fix: typo
+  * docs: validator
+  * fix: add param
+  ---------
+* Contributors: Ryohsuke Mitsudome, Satoshi OTA
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* refactor(planning_validator): refactor planning validator configuration and error handling (`#11081 <https://github.com/autowarefoundation/autoware_universe/issues/11081>`_)
+  * refactor trajectory check error handling
+  * define set_diag_status function for each module locally
+  * update documentation
+  ---------
+* Contributors: mkquda
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

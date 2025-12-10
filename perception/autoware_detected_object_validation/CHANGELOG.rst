@@ -2,6 +2,29 @@
 Changelog for package autoware_detected_object_validation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat(autoware_lanelet2_utils): porting functions from lanelet2_extension to autoware_lanelet2_utils package (replacing usage) in perception component  (`#11387 <https://github.com/autowarefoundation/autoware_universe/issues/11387>`_)
+  Co-authored-by: Mamoru Sobue <hilo.soblin@gmail.com>
+* chore(perception): add maintainer (`#11458 <https://github.com/autowarefoundation/autoware_universe/issues/11458>`_)
+  add maintainer
+* Contributors: Masaki Baba, Ryohsuke Mitsudome, Sarun MUKDAPITAK
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* fix(autoware_detected_object_validation): templatize lanelet filter (`#10883 <https://github.com/autowarefoundation/autoware_universe/issues/10883>`_)
+  * templatize node and add filter for tracked objects
+  * add test for tracked objects
+  * Update README.md
+  ---------
+  Co-authored-by: Taekjin LEE <taekjin.lee@tier4.jp>
+  Co-authored-by: Taekjin LEE <technolojin@gmail.com>
+* Contributors: Masaki Baba
+
 0.46.0 (2025-06-20)
 -------------------
 * Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base

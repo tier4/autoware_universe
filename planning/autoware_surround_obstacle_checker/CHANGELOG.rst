@@ -2,6 +2,27 @@
 Changelog for package autoware_surround_obstacle_checker
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* fix: tf2 uses hpp headers in rolling (and is backported) (`#11620 <https://github.com/autowarefoundation/autoware_universe/issues/11620>`_)
+* Contributors: Ryohsuke Mitsudome, Tim Clephas
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* feat(surround_obstacle_checker): add safety factors to the published planning factor (`#11077 <https://github.com/autowarefoundation/autoware_universe/issues/11077>`_)
+  * feat(surround_obstacle_checker): add safety factors to the published planning factor
+  * distinguish between DynamicObject and PointCloud in planning factor, and add test
+  * fix typo
+  * use utils function
+  ---------
+  Co-authored-by: Kotakku <kotakkucu@gmail.com>
+* chore(surround_obstacle_checker): update maintainer (`#11078 <https://github.com/autowarefoundation/autoware_universe/issues/11078>`_)
+* Contributors: Kotakku, Satoshi OTA
+
 0.46.0 (2025-06-20)
 -------------------
 

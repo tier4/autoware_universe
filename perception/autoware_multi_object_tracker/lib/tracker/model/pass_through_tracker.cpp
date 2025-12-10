@@ -21,10 +21,10 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
-#include <autoware_utils/ros/msg_covariance.hpp>
+#include <autoware_utils_geometry/msg/covariance.hpp>
+#include <tf2/utils.hpp>
 
 #include <bits/stdc++.h>
-#include <tf2/utils.h>
 
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -39,6 +39,7 @@ PassThroughTracker::PassThroughTracker(
 : Tracker(time, object), logger_(rclcpp::get_logger("PassThroughTracker")), last_update_time_(time)
 {
   prev_observed_object_ = object;
+  tracker_type_ = TrackerType::PASS_THROUGH;
 }
 
 bool PassThroughTracker::predict(const rclcpp::Time & time)
@@ -75,8 +76,9 @@ bool PassThroughTracker::getTrackedObject(
   const rclcpp::Time & time, types::DynamicObject & object,
   [[maybe_unused]] const bool to_publish) const
 {
-  using autoware_utils::xyzrpy_covariance_index::XYZRPY_COV_IDX;
+  using autoware_utils_geometry::xyzrpy_covariance_index::XYZRPY_COV_IDX;
   object = object_;
+  object.time = time;
 
   object.pose_covariance[XYZRPY_COV_IDX::X_X] = 0.0;
   object.pose_covariance[XYZRPY_COV_IDX::X_Y] = 0.0;

@@ -38,7 +38,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
 
-#include <tf2/utils.h>
+#include <tf2/utils.hpp>
 
 namespace autoware::motion_velocity_planner
 {
@@ -51,7 +51,7 @@ OptimizationBasedPlanner::OptimizationBasedPlanner(
 : CruisePlannerInterface(node, common_param, cruise_planning_param)
 {
   smoothed_traj_sub_ = node.create_subscription<Trajectory>(
-    "/planning/scenario_planning/trajectory", rclcpp::QoS{1},
+    "/planning/trajectory", rclcpp::QoS{1},
     [this](const Trajectory::ConstSharedPtr msg) { smoothed_trajectory_ptr_ = msg; });
 
   // parameter
