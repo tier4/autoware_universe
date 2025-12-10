@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__LANDMARK_MANAGER__LANDMARK_MANAGER_HPP_
 #define AUTOWARE__LANDMARK_MANAGER__LANDMARK_MANAGER_HPP_
 
-#include "autoware_lanelet2_extension/localization/landmark.hpp"
+#include <lanelet2_extension/localization/landmark.hpp>
 
 #include <rclcpp/rclcpp.hpp>
 

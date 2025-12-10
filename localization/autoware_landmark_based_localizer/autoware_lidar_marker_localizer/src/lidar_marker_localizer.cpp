@@ -14,11 +14,11 @@
 
 #include "lidar_marker_localizer.hpp"
 
-#include <autoware/point_types/types.hpp>
-#include <autoware/pointcloud_preprocessor/utility/memory.hpp>
-#include <autoware_utils/geometry/geometry.hpp>
-#include <autoware_utils/ros/diagnostics_interface.hpp>
-#include <autoware_utils/transform/transforms.hpp>
+#include <autoware_point_types/types.hpp>
+// #include <autoware/pointcloud_preprocessor/utility/memory.hpp>
+#include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware/universe_utils/ros/diagnostics_interface.hpp>
+#include <autoware/universe_utils/transform/transforms.hpp>
 #include <pcl_ros/transforms.hpp>
 #include <rclcpp/qos.hpp>
 
@@ -94,7 +94,7 @@ LidarMarkerLocalizer::LidarMarkerLocalizer(const rclcpp::NodeOptions & node_opti
   param_.queue_size_for_debug_pub_msg =
     this->declare_parameter<int64_t>("queue_size_for_debug_pub_msg");
 
-  ekf_pose_buffer_ = std::make_unique<autoware::localization_util::SmartPoseBuffer>(
+  ekf_pose_buffer_ = std::make_unique<SmartPoseBuffer>(
     this->get_logger(), param_.self_pose_timeout_sec, param_.self_pose_distance_tolerance_m);
 
   rclcpp::CallbackGroup::SharedPtr points_callback_group;
@@ -150,7 +150,7 @@ LidarMarkerLocalizer::LidarMarkerLocalizer(const rclcpp::NodeOptions & node_opti
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, this, false);
 
   diagnostics_interface_.reset(
-    new autoware_utils::DiagnosticsInterface(this, "marker_detection_status"));
+    new autoware::universe_utils::DiagnosticsInterface(this, "marker_detection_status"));
 }
 
 void LidarMarkerLocalizer::initialize_diagnostics()
@@ -213,19 +213,19 @@ void LidarMarkerLocalizer::main_process(const PointCloud2::ConstSharedPtr & poin
   const builtin_interfaces::msg::Time sensor_ros_time = points_msg_ptr->header.stamp;
 
   // (0) Determine point cloud type
-  const bool is_xyziradrt =
-    autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyziradrt(
-      *points_msg_ptr);
-  const bool is_xyzirc =
-    autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzirc(
-      *points_msg_ptr);
+  // const bool is_xyziradrt =
+  //   autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyziradrt(
+  //     *points_msg_ptr);
+  // const bool is_xyzirc =
+  //   autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzirc(
+  //     *points_msg_ptr);
 
-  if (!is_xyziradrt && !is_xyzirc) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      this->get_logger(), *this->get_clock(), 1000,
-      "Unknown point cloud type. Cannot process this point cloud.");
-    return;
-  }
+  // if (!is_xyziradrt && !is_xyzirc) {
+  //   RCLCPP_WARN_STREAM_THROTTLE(
+  //     this->get_logger(), *this->get_clock(), 1000,
+  //     "Unknown point cloud type. Cannot process this point cloud.");
+  //   return;
+  // }
 
   // (1) check if the map have be received
   const std::vector<landmark_manager::Landmark> map_landmarks = landmark_manager_.get_landmarks();
@@ -242,7 +242,7 @@ void LidarMarkerLocalizer::main_process(const PointCloud2::ConstSharedPtr & poin
   }
 
   // (2) get Self Pose
-  const std::optional<autoware::localization_util::SmartPoseBuffer::InterpolateResult>
+  const std::optional<SmartPoseBuffer::InterpolateResult>
     interpolate_result = ekf_pose_buffer_->interpolate(sensor_ros_time);
 
   const bool is_received_self_pose = interpolate_result != std::nullopt;
@@ -262,11 +262,11 @@ void LidarMarkerLocalizer::main_process(const PointCloud2::ConstSharedPtr & poin
 
   // (3) detect marker
   std::vector<landmark_manager::Landmark> detected_landmarks;
-  if (is_xyziradrt) {
-    detected_landmarks = detect_landmarks<autoware::point_types::PointXYZIRADRT>(points_msg_ptr);
-  } else {
-    detected_landmarks = detect_landmarks<autoware::point_types::PointXYZIRC>(points_msg_ptr);
-  }
+  // if (is_xyziradrt) {
+    detected_landmarks = detect_landmarks<autoware_point_types::PointXYZIRADRT>(points_msg_ptr);
+  // } else {
+  //   detected_landmarks = detect_landmarks<autoware_point_types::PointXYZIRC>(points_msg_ptr);
+  // }
 
   const bool is_detected_marker = !detected_landmarks.empty();
   diagnostics_interface_->add_key_value("detect_marker_num", detected_landmarks.size());
@@ -274,7 +274,7 @@ void LidarMarkerLocalizer::main_process(const PointCloud2::ConstSharedPtr & poin
   // (4) check distance to the nearest marker
   const landmark_manager::Landmark nearest_marker = get_nearest_landmark(self_pose, map_landmarks);
   const Pose nearest_marker_pose_on_base_link =
-    autoware_utils::inverse_transform_pose(nearest_marker.pose, self_pose);
+    autoware::universe_utils::inverseTransformPose(nearest_marker.pose, self_pose);
 
   const double distance_from_self_pose_to_nearest_marker =
     std::abs(nearest_marker_pose_on_base_link.position.x);
@@ -316,7 +316,7 @@ void LidarMarkerLocalizer::main_process(const PointCloud2::ConstSharedPtr & poin
     pose_array_msg.header.stamp = sensor_ros_time;
     pose_array_msg.header.frame_id = "map";
     for (const landmark_manager::Landmark & landmark : detected_landmarks) {
-      const Pose detected_marker_on_map = autoware_utils::transform_pose(landmark.pose, self_pose);
+      const Pose detected_marker_on_map = autoware::universe_utils::transformPose(landmark.pose, self_pose);
       pose_array_msg.poses.push_back(detected_marker_on_map);
     }
     pub_marker_detected_->publish(pose_array_msg);
@@ -347,13 +347,13 @@ void LidarMarkerLocalizer::main_process(const PointCloud2::ConstSharedPtr & poin
   const landmark_manager::Landmark nearest_detected_landmark =
     get_nearest_landmark(self_pose, detected_landmarks);
 
-  if (is_xyziradrt) {
-    save_intensity<autoware::point_types::PointXYZIRADRT>(
+  // if (is_xyziradrt) {
+    save_intensity<autoware_point_types::PointXYZIRADRT>(
       points_msg_ptr, nearest_detected_landmark.pose);
-  } else {
-    save_intensity<autoware::point_types::PointXYZIRC>(
-      points_msg_ptr, nearest_detected_landmark.pose);
-  }
+  // } else {
+  //   save_intensity<autoware_point_types::PointXYZIRC>(
+  //     points_msg_ptr, nearest_detected_landmark.pose);
+  // }
 
   // (5) Apply diff pose to self pose
   // if z is needed to be corrected, set new_self_pose.position.z
@@ -390,12 +390,12 @@ void LidarMarkerLocalizer::service_trigger_node(
 // Helper functions to get ring/channel ID from different point types
 namespace
 {
-inline uint16_t get_ring_id(const autoware::point_types::PointXYZIRC & point)
-{
-  return point.channel;
-}
+// inline uint16_t get_ring_id(const autoware_point_types::PointXYZIRC & point)
+// {
+//   return point.channel;
+// }
 
-inline uint16_t get_ring_id(const autoware::point_types::PointXYZIRADRT & point)
+inline uint16_t get_ring_id(const autoware_point_types::PointXYZIRADRT & point)
 {
   return point.ring;
 }
@@ -465,10 +465,10 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
       center_intensity_grid_msg.info.origin.position.y +=
         center_intensity_grid_msg.info.height * center_intensity_grid_msg.info.resolution;
       center_intensity_grid_msg.info.origin.orientation =
-        autoware_utils_geometry::create_quaternion_from_rpy(M_PI, 0.0, 0.0);
+        autoware::universe_utils::createQuaternionFromRPY(M_PI, 0.0, 0.0);
     } else {
       center_intensity_grid_msg.info.origin.orientation =
-        autoware_utils_geometry::create_quaternion_from_rpy(0.0, 0.0, 0.0);
+        autoware::universe_utils::createQuaternionFromRPY(0.0, 0.0, 0.0);
     }
   } else {
     center_intensity_grid_msg.info.origin.position.y = param_.marker_to_vehicle_offset_y;
@@ -476,7 +476,7 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
       param_.marker_height_from_ground +
       center_intensity_grid_msg.info.height * center_intensity_grid_msg.info.resolution / 2.0;
     center_intensity_grid_msg.info.origin.orientation =
-      autoware_utils_geometry::create_quaternion_from_rpy(-M_PI / 2.0, 0.0, 0.0);
+      autoware::universe_utils::createQuaternionFromRPY(-M_PI / 2.0, 0.0, 0.0);
   }
   center_intensity_grid_msg.data = std::vector<int8_t>(
     center_intensity_grid_msg.info.width * center_intensity_grid_msg.info.height, -1);
@@ -601,7 +601,7 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
       }
       marker_pose_on_base_link.position.z = param_.marker_height_from_ground;
       marker_pose_on_base_link.orientation =
-        autoware_utils::create_quaternion_from_rpy(M_PI_2, 0.0, 0.0);  // TODO(YamatoAndo)
+        autoware::universe_utils::createQuaternionFromRPY(M_PI_2, 0.0, 0.0);  // TODO(YamatoAndo)
       detected_landmarks.push_back(landmark_manager::Landmark{"0", marker_pose_on_base_link});
     }
   }
@@ -650,7 +650,7 @@ landmark_manager::Landmark LidarMarkerLocalizer::get_nearest_landmark(
 
   for (const auto & landmark : landmarks) {
     const double curr_distance =
-      autoware_utils::calc_distance3d(landmark.pose.position, self_pose.position);
+      autoware::universe_utils::calcDistance3d(landmark.pose.position, self_pose.position);
 
     if (curr_distance > min_distance) {
       continue;
@@ -695,8 +695,8 @@ void LidarMarkerLocalizer::save_detected_marker_log(
     marker_points_msg_sensor_frame_ptr);
 
   // convert from ROSMsg to PCL
-  pcl::shared_ptr<pcl::PointCloud<autoware::point_types::PointXYZIRC>>
-    marker_points_sensor_frame_ptr(new pcl::PointCloud<autoware::point_types::PointXYZIRC>);
+  pcl::shared_ptr<pcl::PointCloud<autoware_point_types::PointXYZIRADRT>>
+    marker_points_sensor_frame_ptr(new pcl::PointCloud<autoware_point_types::PointXYZIRADRT>);
   pcl::fromROSMsg(*marker_points_msg_sensor_frame_ptr, *marker_points_sensor_frame_ptr);
 
   // to csv format
@@ -708,7 +708,7 @@ void LidarMarkerLocalizer::save_detected_marker_log(
     log_message << "," << point.y;
     log_message << "," << point.z;
     log_message << "," << point.intensity;
-    log_message << "," << point.channel;
+    log_message << "," << point.ring;
     log_message << std::endl;
   }
 
@@ -833,21 +833,21 @@ void LidarMarkerLocalizer::transform_sensor_measurement(
   }
 
   const geometry_msgs::msg::PoseStamped target_to_source_pose_stamped =
-    autoware_utils::transform2pose(transform);
+    autoware::universe_utils::transform2pose(transform);
   const Eigen::Matrix4f base_to_sensor_matrix =
-    autoware::localization_util::pose_to_matrix4f(target_to_source_pose_stamped.pose);
+    pose_to_matrix4f(target_to_source_pose_stamped.pose);
   pcl_ros::transformPointCloud(
     base_to_sensor_matrix, *sensor_points_input_ptr, *sensor_points_output_ptr);
 }
 
 // Explicit instantiation
+// template std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks<
+//   autoware_point_types::PointXYZIRC>(const PointCloud2::ConstSharedPtr &);
 template std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks<
-  autoware::point_types::PointXYZIRC>(const PointCloud2::ConstSharedPtr &);
-template std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks<
-  autoware::point_types::PointXYZIRADRT>(const PointCloud2::ConstSharedPtr &);
-template void LidarMarkerLocalizer::save_intensity<autoware::point_types::PointXYZIRC>(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr &, const Pose);
-template void LidarMarkerLocalizer::save_intensity<autoware::point_types::PointXYZIRADRT>(
+  autoware_point_types::PointXYZIRADRT>(const PointCloud2::ConstSharedPtr &);
+// template void LidarMarkerLocalizer::save_intensity<autoware_point_types::PointXYZIRC>(
+//   const sensor_msgs::msg::PointCloud2::ConstSharedPtr &, const Pose);
+template void LidarMarkerLocalizer::save_intensity<autoware_point_types::PointXYZIRADRT>(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr &, const Pose);
 
 }  // namespace autoware::lidar_marker_localizer

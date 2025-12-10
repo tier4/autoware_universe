@@ -16,6 +16,7 @@ ament_auto_add_library(autoware_universe_utils SHARED
   src/geometry/boost_polygon_utils.cpp
   src/math/sin_table.cpp
   src/math/trigonometry.cpp
+  src/ros/diagnostics_interface.cpp
   src/ros/msg_operation.cpp
   src/ros/marker_helper.cpp
   src/ros/logger_level_configure.cpp
