@@ -253,9 +253,6 @@ private:
    */
   std::vector<float> replicate_for_batch(const std::vector<float> & single_data);
 
-  // ego history for ego_agent_past
-  std::deque<Odometry> ego_history_;
-
   // TensorRT
   std::unique_ptr<TrtConvCalib> trt_common_;
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> network_trt_ptr_{nullptr};

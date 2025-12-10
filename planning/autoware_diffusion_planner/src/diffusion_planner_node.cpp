@@ -126,10 +126,10 @@ void DiffusionPlanner::set_up_params()
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
-  params_.temperature_list = this->declare_parameter<std::vector<double>>("temperature", {0.5});
+  params_.temperature_list = this->declare_parameter<std::vector<double>>("temperature", {0.0});
   params_.velocity_smoothing_window =
     this->declare_parameter<int64_t>("velocity_smoothing_window", 8);
-  params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.0);
+  params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
 
   // debug params
   debug_params_.publish_debug_map =
@@ -308,7 +308,6 @@ void DiffusionPlanner::load_engine(const std::string & model_path)
   std::vector<ProfileDims> profile_dims;
 
   {
-    profile_dims.emplace_back(make_static_dims("ego_agent_past", to_dims(EGO_HISTORY_SHAPE)));
     profile_dims.emplace_back(
       make_dynamic_dims("sampled_trajectories", to_dynamic_dims(SAMPLED_TRAJECTORIES_SHAPE)));
     profile_dims.emplace_back(
@@ -390,48 +389,6 @@ AgentData DiffusionPlanner::get_ego_centric_neighbor_agent_data(
   ego_centric_agent_data.apply_transform(map_to_ego_transform);
   ego_centric_agent_data.trim_to_k_closest_agents();
   return ego_centric_agent_data;
-}
-
-std::vector<float> DiffusionPlanner::create_ego_agent_past(
-  const Eigen::Matrix4f & map_to_ego_transform)
-{
-  const size_t max_timesteps = EGO_HISTORY_SHAPE[1];
-  const size_t features_per_timestep = EGO_HISTORY_SHAPE[2];  // 4 (x, y, cos, sin)
-  const size_t total_size = EGO_HISTORY_SHAPE[0] * max_timesteps * features_per_timestep;
-
-  std::vector<float> ego_agent_past(total_size, 0.0f);
-
-  // Fill ego history data
-  const size_t history_size = ego_history_.size();
-  const size_t start_idx = (history_size >= max_timesteps) ? history_size - max_timesteps : 0;
-
-  for (size_t i = start_idx; i < history_size; ++i) {
-    const auto & historical_pose = ego_history_[i].pose.pose;
-
-    // Convert pose to 4x4 matrix
-    const Eigen::Matrix4f pose_map_4x4 = utils::pose_to_matrix4f(historical_pose);
-
-    // Transform to ego frame
-    const Eigen::Matrix4f pose_ego_4x4 = map_to_ego_transform * pose_map_4x4;
-
-    // Extract position
-    const float x = pose_ego_4x4(0, 3);
-    const float y = pose_ego_4x4(1, 3);
-
-    // Extract heading as cos/sin
-    const auto [cos_yaw, sin_yaw] =
-      utils::rotation_matrix_to_cos_sin(pose_ego_4x4.block<3, 3>(0, 0));
-
-    // Store in flat array: [batch, timestep, features]
-    const size_t timestep_idx = i - start_idx;
-    const size_t base_idx = timestep_idx * features_per_timestep;
-    ego_agent_past[base_idx + 0] = x;
-    ego_agent_past[base_idx + 1] = y;
-    ego_agent_past[base_idx + 2] = cos_yaw;
-    ego_agent_past[base_idx + 3] = sin_yaw;
-  }
-
-  return ego_agent_past;
 }
 
 InputDataMap DiffusionPlanner::create_input_data()
