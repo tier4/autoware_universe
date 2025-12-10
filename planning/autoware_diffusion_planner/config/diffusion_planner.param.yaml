@@ -11,11 +11,12 @@
     build_only: false
     batch_size: 1
     shift_x: false
-    temperature: [0.5]
+    temperature: [0.0]
     velocity_smoothing_window: 8
-    stopping_threshold: 0.0
+    stopping_threshold: 0.3
     turn_indicator_keep_offset: -1.25
     turn_indicator_hold_duration: 1.0
+    velocity_smoothing_window: 8
     debug_params:
       publish_debug_route: true
       publish_debug_map: false

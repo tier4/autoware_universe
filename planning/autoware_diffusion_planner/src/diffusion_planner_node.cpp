@@ -128,11 +128,11 @@ void DiffusionPlanner::set_up_params()
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
-  params_.temperature_list = this->declare_parameter<std::vector<double>>("temperature", {0.5});
+  params_.temperature_list = this->declare_parameter<std::vector<double>>("temperature", {0.0});
   params_.velocity_smoothing_window =
     this->declare_parameter<int64_t>("velocity_smoothing_window", 8);
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
-  params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.0);
+  params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
   params_.turn_indicator_keep_offset =
     this->declare_parameter<float>("turn_indicator_keep_offset", -1.5f);
   params_.turn_indicator_hold_duration =
