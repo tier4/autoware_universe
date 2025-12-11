@@ -59,14 +59,15 @@
         <arg name="input_vector_map" value="/map/vector_map"/>
         <arg name="input_turn_indicators" value="/vehicle/status/turn_indicators_status"/>
         <!-- <arg name="output_trajectory" value="/planning/trajectory"/> -->
-        <arg name="output_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
-        <arg name="output_turn_indicators" value="/planning/turn_indicators_cmd"/>
+        <arg name="output_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories/unused"/>
+        <arg name="output_turn_indicators" value="/planning/turn_indicators_cmd/unused"/>
+        <arg name="output_predicted_objects" value="/perception/object_recognition/objects"/>
       </include>
-      <include file="$(find-pkg-share autoware_trajectory_optimizer)/launch/trajectory_optimizer.launch.xml">
+      <!-- <include file="$(find-pkg-share autoware_trajectory_optimizer)/launch/trajectory_optimizer.launch.xml">
         <arg name="input_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
         <arg name="output_traj" value="/planning/trajectory"/>
         <arg name="output_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
-      </include>
+      </include> -->
     </group>
 
     <!-- planning validator -->
@@ -74,7 +75,7 @@
       <include file="$(find-pkg-share autoware_planning_validator)/launch/planning_validator.launch.xml">
         <arg name="container_type" value="component_container_mt"/>
         <arg name="input_trajectory" value="/planning/scenario_planning/velocity_smoother/trajectory"/>
-        <arg name="output_trajectory" value="/planning/trajectory/unused"/>
+        <arg name="output_trajectory" value="/planning/trajectory"/>
         <arg name="input_objects_topic_name" value="$(var input_objects_topic_name)"/>
         <arg name="input_pointcloud_topic_name" value="$(var input_pointcloud_topic_name)"/>
         <arg name="planning_validator_param_path" value="$(var planning_validator_param_path)"/>

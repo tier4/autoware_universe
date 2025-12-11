@@ -354,13 +354,13 @@
       </group>
 
       <!-- Prediction module -->
-      <group>
+      <!-- <group>
         <push-ros-namespace namespace="prediction"/>
         <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/prediction/prediction.launch.xml">
           <arg name="use_vector_map" value="$(var use_vector_map)"/>
         </include>
       </group>
-    </group>
+    </group> -->
 
     <group if="$(var use_empty_dynamic_object_publisher)">
       <push-ros-namespace namespace="object_recognition"/>
