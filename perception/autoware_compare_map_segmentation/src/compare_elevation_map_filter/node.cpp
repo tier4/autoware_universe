@@ -89,6 +89,23 @@ void CompareElevationMapFilterComponent::filter(
   pcl::toROSMsg(*pcl_output, output);
   output.header.stamp = input->header.stamp;
   output.header.frame_id = elevation_map_.getFrameId();
+  /* added IRC for upstream ph2 */
+  if ((*input).fields.size() > 3) {
+    output.fields.resize(6);
+    output.fields[3].name = "intensity";
+    output.fields[3].offset = 12; //offsetof(PointXYZIRC, intensity);
+    output.fields[3].datatype = sensor_msgs::msg::PointField::UINT8;
+    output.fields[3].count = 1;
+    output.fields[4].name = "return_type";
+    output.fields[4].offset = 13; //offsetof(PointXYZIRC, return_type);
+    output.fields[4].datatype = sensor_msgs::msg::PointField::UINT8;
+    output.fields[4].count = 1;
+    output.fields[5].name = "channel";
+    output.fields[5].offset = 14; //offsetof(PointXYZIRC, channel);
+    output.fields[5].datatype = sensor_msgs::msg::PointField::UINT16;
+    output.fields[5].count = 1;
+    RCLCPP_INFO(get_logger(), "output fields.size(), %ld", output.fields.size());
+  }
 }
 }  // namespace autoware::compare_map_segmentation
 

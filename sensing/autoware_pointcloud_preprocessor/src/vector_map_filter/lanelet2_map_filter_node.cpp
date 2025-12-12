@@ -256,6 +256,22 @@ void Lanelet2MapFilterComponent::pointcloudCallback(const PointCloud2ConstPtr cl
     return;
   }
   auto output = std::make_unique<sensor_msgs::msg::PointCloud2>(*output_transformed_cloud_ptr);
+  /* added IRC for upstream ph2 */
+  if ((*cloud_msg).fields.size() > 3) {
+    (*output).fields.resize(6);
+    (*output).fields[3].name = "intensity";
+    (*output).fields[3].offset = 12; //offsetof(PointXYZIRC, intensity);
+    (*output).fields[3].datatype = sensor_msgs::msg::PointField::UINT8;
+    (*output).fields[3].count = 1;
+    (*output).fields[4].name = "return_type";
+    (*output).fields[4].offset = 13; //offsetof(PointXYZIRC, return_type);
+    (*output).fields[4].datatype = sensor_msgs::msg::PointField::UINT8;
+    (*output).fields[4].count = 1;
+    (*output).fields[5].name = "channel";
+    (*output).fields[5].offset = 14; //offsetof(PointXYZIRC, channel);
+    (*output).fields[5].datatype = sensor_msgs::msg::PointField::UINT16;
+    (*output).fields[5].count = 1;
+  }
   filtered_pointcloud_pub_->publish(std::move(output));
 }
 
