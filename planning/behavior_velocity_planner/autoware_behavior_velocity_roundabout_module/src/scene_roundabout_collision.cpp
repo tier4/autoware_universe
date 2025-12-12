@@ -139,41 +139,16 @@ bool RoundaboutModule::hasObjectsInInternalLaneletRangeArea() const
     return false;
   }
 
-  const double dist_margin = planner_param_.common.attention_area_margin;
-  const double detection_area_angle_thr = planner_param_.common.attention_area_angle_threshold;
-  // Threshold to consider a vehicle as stopped (m/s)
-  constexpr double stopped_velocity_threshold = 0.5;
-
   for (const auto & predicted_object : planner_data_->predicted_objects->objects) {
     if (!isTargetCollisionVehicleType(predicted_object)) {
       continue;
     }
 
-    const auto & obj_pose =
-      predicted_object.kinematics.initial_pose_with_covariance.pose;
-    const double obj_velocity =
-      std::fabs(predicted_object.kinematics.initial_twist_with_covariance.twist.linear.x);
-    const bool is_stopped = obj_velocity < stopped_velocity_threshold;
+    const auto & obj_pose = predicted_object.kinematics.initial_pose_with_covariance.pose;
 
     for (const auto & ll : internal_lanelet_range) {
       // First check if the object is within the lanelet
-      if (!lanelet::utils::isInLanelet(obj_pose, ll, dist_margin)) {
-        continue;
-      }
-
-      // For stopped vehicles, skip the angle check to avoid flickering
-      // due to perception noise in orientation
-      if (is_stopped) {
-        return true;
-      }
-
-      // For moving vehicles, also check the angle
-      const auto object_direction =
-        util::getObjectPoseWithVelocityDirection(predicted_object.kinematics);
-      const double ll_angle = lanelet::utils::getLaneletAngle(ll, obj_pose.position);
-      const double pose_angle = tf2::getYaw(object_direction.orientation);
-      const double angle_diff = autoware_utils::normalize_radian(ll_angle - pose_angle, -M_PI);
-      if (std::fabs(angle_diff) < detection_area_angle_thr) {
+      if (lanelet::utils::isInLanelet(obj_pose, ll)) {
         return true;
       }
     }
