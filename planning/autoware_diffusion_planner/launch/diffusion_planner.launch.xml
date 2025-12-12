@@ -13,6 +13,8 @@
   <arg name="input_vector_map" default="~/input/vector_map"/>
   <arg name="input_turn_indicators" default="~/input/turn_indicators"/>
   <arg name="build_only" default="false" description="shutdown node after TensorRT engine file is built"/>
+  <arg name="onnx_model_path" default="$(env HOME)/autoware_data/diffusion_planner/v2.0/diffusion_planner.onnx"/>
+  <arg name="args_path" default="$(env HOME)/autoware_data/diffusion_planner/v2.0/diffusion_planner.param.json"/>
 
   <node pkg="autoware_diffusion_planner" exec="autoware_diffusion_planner_node" name="diffusion_planner_node" output="both">
     <param from="$(var diffusion_planner_param_path)" allow_substs="true"/>
@@ -28,5 +30,7 @@
     <remap from="~/input/vector_map" to="$(var input_vector_map)"/>
     <remap from="~/input/turn_indicators" to="$(var input_turn_indicators)"/>
     <param name="build_only" value="$(var build_only)"/>
+    <param name="onnx_model_path" value="$(var onnx_model_path)"/>
+    <param name="args_path" value="$(var args_path)"/>
   </node>
 </launch>
