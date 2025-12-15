@@ -245,8 +245,7 @@ bool TrafficLightModuleManager::isModuleRegistered(
       continue;
     }
 
-    const auto & registered_traffic_light_reg_elem =
-      traffic_light_module->getTrafficLightRegElem();
+    const auto & registered_traffic_light_reg_elem = traffic_light_module->getTrafficLightRegElem();
     if (hasSameTrafficLight(traffic_light_reg_elem, registered_traffic_light_reg_elem)) {
       return true;
     }
