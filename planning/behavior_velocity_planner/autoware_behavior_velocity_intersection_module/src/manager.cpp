@@ -35,10 +35,11 @@ using autoware_utils::get_or_declare_parameter;
 IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
 : SceneModuleManagerInterfaceWithRTC(
     node, getModuleName(),
-    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection")),
+    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection"), true),
   occlusion_rtc_interface_(
     &node, "intersection_occlusion",
-    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection_to_occlusion"))
+    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection_to_occlusion"),
+    true)
 {
   const std::string ns(IntersectionModuleManager::getModuleName());
   auto & ip = intersection_param_;
@@ -65,6 +66,8 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
       get_or_declare_parameter<double>(node, ns + ".common.delay_response_time");
     ip.common.enable_pass_judge_before_default_stopline = get_or_declare_parameter<bool>(
       node, ns + ".common.enable_pass_judge_before_default_stopline");
+    ip.common.creep_stopline_margin =
+      get_or_declare_parameter<double>(node, ns + ".common.creep_stopline_margin");
   }
 
   // stuck
@@ -468,6 +471,10 @@ void IntersectionModuleManager::setActivation()
     scene_module->setActivation(rtc_interface_.isActivated(getUUID(scene_module->getModuleId())));
     intersection_module->setOcclusionActivation(
       occlusion_rtc_interface_.isActivated(occlusion_uuid));
+    intersection_module->setIntersectionCreepActivation(
+      rtc_interface_.isCreepTriggered(getUUID(scene_module->getModuleId())));
+    intersection_module->setOcclusionCreepActivation(
+      occlusion_rtc_interface_.isCreepTriggered(occlusion_uuid));
     scene_module->setRTCEnabled(rtc_interface_.isRTCEnabled(getUUID(scene_module->getModuleId())));
   }
 }
@@ -552,10 +559,11 @@ void MergeFromPrivateModuleManager::launchNewModules(
       if (next_lane_location != "private") {
         const auto associative_ids =
           planning_utils::getAssociativeIntersectionLanelets(ll, lanelet_map, routing_graph);
-        registerModule(std::make_shared<MergeFromPrivateRoadModule>(
-          module_id, lane_id, planner_data_, merge_from_private_area_param_, associative_ids,
-          logger_.get_child("merge_from_private_road_module"), clock_, time_keeper_,
-          planning_factor_interface_));
+        registerModule(
+          std::make_shared<MergeFromPrivateRoadModule>(
+            module_id, lane_id, planner_data_, merge_from_private_area_param_, associative_ids,
+            logger_.get_child("merge_from_private_road_module"), clock_, time_keeper_,
+            planning_factor_interface_));
         continue;
       }
     } else {
@@ -567,10 +575,11 @@ void MergeFromPrivateModuleManager::launchNewModules(
         if (conflicting_attr == "urban") {
           const auto associative_ids =
             planning_utils::getAssociativeIntersectionLanelets(ll, lanelet_map, routing_graph);
-          registerModule(std::make_shared<MergeFromPrivateRoadModule>(
-            module_id, lane_id, planner_data_, merge_from_private_area_param_, associative_ids,
-            logger_.get_child("merge_from_private_road_module"), clock_, time_keeper_,
-            planning_factor_interface_));
+          registerModule(
+            std::make_shared<MergeFromPrivateRoadModule>(
+              module_id, lane_id, planner_data_, merge_from_private_area_param_, associative_ids,
+              logger_.get_child("merge_from_private_road_module"), clock_, time_keeper_,
+              planning_factor_interface_));
           continue;
         }
       }

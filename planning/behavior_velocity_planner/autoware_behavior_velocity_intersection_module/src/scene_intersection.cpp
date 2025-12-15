@@ -222,7 +222,11 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
   if (!first_attention_stopline_idx_opt || !occlusion_peeking_stopline_idx_opt) {
     return InternalError{"occlusion stop line is null"};
   }
-  const auto occlusion_stopline_idx = occlusion_peeking_stopline_idx_opt.value();
+  auto occlusion_stopline_idx = occlusion_peeking_stopline_idx_opt.value();
+
+  if (occlusion_creep_activated_) {
+    occlusion_stopline_idx = intersection_stoplines.creep_stopline;
+  }
 
   // ==========================================================================================
   // classify the objects to attention_area/intersection_area and update their position, velocity,
@@ -359,9 +363,12 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
 
   const bool is_over_default_stopline = util::isOverTargetIndex(
     *path, closest_idx, planner_data_->current_odometry->pose, default_stopline_idx);
-  const auto collision_stopline_idx =
+  auto collision_stopline_idx =
     is_over_default_stopline ? intersection_stoplines.collision_stopline : default_stopline_idx;
 
+  if (intersection_creep_activated_) {
+    collision_stopline_idx = intersection_stoplines.creep_stopline;
+  }
   // ==========================================================================================
   // pseudo collision detection on green light
   // ==========================================================================================
@@ -376,7 +383,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
   // ==========================================================================================
   const auto is_yield_stuck_status =
     isYieldStuckStatus(*path, interpolated_path_info, intersection_stoplines);
-  if (is_yield_stuck_status) {
+  if (is_yield_stuck_status && !intersection_creep_activated_) {
     auto yield_stuck = is_yield_stuck_status.value();
     yield_stuck.occlusion_report = occlusion_diag;
     return yield_stuck;
@@ -465,6 +472,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
         has_collision_with_margin,
         temporal_stop_before_attention_required,
         closest_idx,
+        collision_stopline_idx,
         occlusion_stopline_idx,
         occlusion_wo_tl_pass_judge_line_idx,
         occlusion_diag};
@@ -1455,8 +1463,9 @@ IntersectionModule::PassJudgeStatus IntersectionModule::isOverPassJudgeLinesStat
   const auto second_pass_judge_line_idx_opt = intersection_stoplines.second_pass_judge_line;
   const std::optional<bool> is_over_2nd_pass_judge_line =
     second_pass_judge_line_idx_opt
-      ? std::make_optional(util::isOverTargetIndex(
-          path, closest_idx, current_pose, second_pass_judge_line_idx_opt.value()))
+      ? std::make_optional(
+          util::isOverTargetIndex(
+            path, closest_idx, current_pose, second_pass_judge_line_idx_opt.value()))
       : std::nullopt;
   bool safely_passed_2nd_judge_line_first_time = false;
   if (
@@ -1512,7 +1521,9 @@ std::pair<size_t, geometry_msgs::msg::Pose> IntersectionModule::holdStopPoseIfNe
   const size_t current_collision_stopline_idx) const
 {
   // check if previous decision was same type and inherit stop pose
-  if (std::holds_alternative<T>(prev_decision_result_)) {
+  if (
+    std::holds_alternative<T>(prev_decision_result_) && !intersection_creep_activated_ &&
+    !occlusion_creep_activated_) {
     const auto & prev_decision = std::get<T>(prev_decision_result_);
     const auto collision_stop_line_idx = autoware::motion_utils::findNearestIndex(
       path.points, prev_decision.collision_stop_pose.position);

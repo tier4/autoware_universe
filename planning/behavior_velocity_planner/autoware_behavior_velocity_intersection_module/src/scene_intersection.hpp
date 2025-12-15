@@ -64,6 +64,7 @@ public:
       double max_jerk;
       double delay_response_time;
       bool enable_pass_judge_before_default_stopline;
+      double creep_stopline_margin;
     } common;
 
     struct TurnDirection
@@ -351,6 +352,15 @@ public:
   bool isOcclusionFirstStopRequired() const { return occlusion_first_stop_required_; }
   InternalDebugData & getInternalDebugData() const { return internal_debug_data_; }
 
+  void setIntersectionCreepActivation(const bool activation)
+  {
+    intersection_creep_activated_ = activation;
+  }
+  void setOcclusionCreepActivation(const bool activation)
+  {
+    occlusion_creep_activated_ = activation;
+  }
+
 private:
   /**
    ***********************************************************
@@ -365,7 +375,6 @@ private:
 
   const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface_for_occlusion_;
-  /** @}*/
 
 private:
   /**
@@ -529,6 +538,9 @@ private:
   double occlusion_stop_distance_{0.0};
   bool occlusion_activated_{true};
   bool occlusion_first_stop_required_{false};
+
+  bool intersection_creep_activated_{false};
+  bool occlusion_creep_activated_{false};
   /** @}*/
 
 private:

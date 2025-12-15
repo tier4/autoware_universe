@@ -48,6 +48,8 @@ struct IntersectionStopLines
    */
   std::optional<size_t> first_attention_stopline{std::nullopt};
 
+  size_t creep_stopline{0};
+
   /**
    * second_attention_stopline is null if ego footprint along the path does not intersect with
    * second_attention_lane. if path[0] satisfies the condition, it is 0

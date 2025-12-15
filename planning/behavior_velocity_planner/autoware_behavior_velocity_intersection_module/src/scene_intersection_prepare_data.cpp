@@ -463,6 +463,10 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
   const auto first_attention_stopline_ip = first_footprint_inside_1st_attention_ip;
   const bool first_attention_stopline_valid = true;
 
+  const auto creep_stopline_ip = static_cast<size_t>(std::max(
+    0, static_cast<int>(first_attention_stopline_ip) -
+         static_cast<int>(std::ceil(planner_param_.common.creep_stopline_margin / ds))));
+
   // (5) 1st pass judge line position on interpolated path
   int first_pass_judge_ip_int =
     static_cast<int>(first_footprint_inside_1st_attention_ip) - std::ceil(braking_dist / ds);
@@ -549,6 +553,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
     size_t collision_stopline{0};
     size_t first_attention_stopline{0};
     size_t second_attention_stopline{0};
+    size_t creep_stopline{0};
     size_t occlusion_peeking_stopline{0};
     size_t first_pass_judge_line{0};
     size_t second_pass_judge_line{0};
@@ -564,6 +569,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
     {&collision_stopline_ip, &intersection_stoplines_temp.collision_stopline},
     {&first_attention_stopline_ip, &intersection_stoplines_temp.first_attention_stopline},
     {&second_attention_stopline_ip, &intersection_stoplines_temp.second_attention_stopline},
+    {&creep_stopline_ip, &intersection_stoplines_temp.creep_stopline},
     {&occlusion_peeking_line_ip, &intersection_stoplines_temp.occlusion_peeking_stopline},
     {&first_pass_judge_line_ip, &intersection_stoplines_temp.first_pass_judge_line},
     {&second_pass_judge_line_ip, &intersection_stoplines_temp.second_pass_judge_line},
@@ -602,6 +608,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
   if (first_attention_stopline_valid) {
     intersection_stoplines.first_attention_stopline =
       intersection_stoplines_temp.first_attention_stopline;
+    intersection_stoplines.creep_stopline = intersection_stoplines_temp.creep_stopline;
   }
   if (second_attention_stopline_valid) {
     intersection_stoplines.second_attention_stopline =
