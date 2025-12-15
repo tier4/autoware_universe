@@ -1,4 +1,4 @@
 /**:
   ros__parameters:
-    message_lifespan: 0.09
+    message_lifespan: 0.12  # threshold for removing non-unique records (records with newer ones from same camera)
     approximate_sync: false

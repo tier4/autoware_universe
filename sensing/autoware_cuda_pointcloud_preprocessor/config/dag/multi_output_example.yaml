@@ -1,0 +1,106 @@
+# Example DAG configuration demonstrating multiple outputs
+# This configuration publishes both the organized pointcloud and the final filtered output
+
+dag:
+  name: "multi_output_preprocessing"
+  
+  # External inputs (from ROS topics)
+  inputs:
+    - name: "pointcloud"
+      topic: "~/input/pointcloud"
+      type: "cuda_blackboard::CudaPointCloud2"
+    - name: "twist"
+      topic: "~/input/twist"
+      type: "geometry_msgs::msg::TwistWithCovarianceStamped"
+    - name: "imu"
+      topic: "~/input/imu"
+      type: "sensor_msgs::msg::Imu"
+  
+  # Processing nodes (filters)
+  nodes:
+    # Step 1: Organize the pointcloud
+    - id: "organize"
+      type: "OrganizeFilter"
+      inputs:
+        - source: "pointcloud"  # from external input
+      outputs:
+        - name: "organized"
+
+    # Step 2: Transform to base_link
+    - id: "transform"
+      type: "TransformFilter"
+      parameters:
+        target_frame: "base_link"
+      inputs:
+        - source: "organized"
+          from_node: "organize"
+      outputs:
+        - name: "transformed"
+
+    # Step 3: Crop box filtering
+    - id: "cropbox"
+      type: "CropBoxFilter"
+      parameters:
+        crop_boxes:
+          - min_x: -50.0
+            max_x: 50.0
+            min_y: -50.0
+            max_y: 50.0
+            min_z: -2.0
+            max_z: 3.0
+      inputs:
+        - source: "transformed"
+          from_node: "transform"
+      outputs:
+        - name: "cropped"
+
+    # Step 4: Distortion correction
+    - id: "distortion"
+      type: "DistortionFilter"
+      parameters:
+        undistortion_type: "2D"
+        use_imu: false
+      inputs:
+        - source: "cropped"
+          from_node: "cropbox"
+      outputs:
+        - name: "undistorted"
+
+    # Step 5: Ring outlier filter
+    - id: "ring_outlier"
+      type: "RingOutlierFilter"
+      parameters:
+        distance_ratio: 1.03
+        object_length_threshold: 0.1
+        enabled: true
+      inputs:
+        - source: "undistorted"
+          from_node: "distortion"
+      outputs:
+        - name: "filtered"
+
+    # Step 6: Finalize (apply all masks and compact)
+    - id: "finalize"
+      type: "FinalizeFilter"
+      inputs:
+        - source: "filtered"
+          from_node: "ring_outlier"
+      outputs:
+        - name: "output"
+  
+  # DAG outputs (published to ROS topics)
+  # This example publishes TWO outputs:
+  # 1. The organized pointcloud (after step 1)
+  # 2. The final filtered pointcloud (after all processing)
+  outputs:
+    - name: "organized_pointcloud"
+      source: "organized"
+      from_node: "organize"
+      topic: "~/output/organized"
+      type: "cuda_blackboard::CudaPointCloud2"
+    
+    - name: "preprocessed_pointcloud"
+      source: "output"
+      from_node: "finalize"
+      topic: "~/output/pointcloud"
+      type: "cuda_blackboard::CudaPointCloud2"

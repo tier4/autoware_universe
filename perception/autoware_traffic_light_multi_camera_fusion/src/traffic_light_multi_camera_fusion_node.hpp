@@ -124,6 +124,11 @@ private:
   it would be discarded
   */
   double message_lifespan_;
+  /*
+  for unique records (no newer record from the same frame_id exists), the erase threshold
+  is message_lifespan_unique_ which is expected to be longer than message_lifespan_
+  */
+  double message_lifespan_unique_;
 };
 }  // namespace autoware::traffic_light
 #endif  // TRAFFIC_LIGHT_MULTI_CAMERA_FUSION_NODE_HPP_

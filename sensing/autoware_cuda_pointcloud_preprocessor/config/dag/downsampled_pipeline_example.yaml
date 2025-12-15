@@ -1,0 +1,109 @@
+# DAG Configuration Example: Standard Pipeline with Downsampling
+#
+# This example shows how to add downsampling to the standard preprocessing pipeline.
+# Downsampling can be added at different stages:
+# - Early (after transform): Reduces data for all subsequent operations
+# - Late (after all filters): Reduces output density only
+#
+# This example shows early downsampling for maximum efficiency
+#
+# NOTE: OrganizeFilter and FinalizeFilter are INTERNALIZED
+#   - Organize happens automatically on external input
+#   - Finalize happens automatically before publishing
+
+dag:
+  name: "downsampled_preprocessing_pipeline"
+  version: "1.0"
+  
+  inputs:
+    - name: "pointcloud"
+      type: "cuda_blackboard::CudaPointCloud2"
+      topic: "~/input/pointcloud"
+      optional: false
+    
+    - name: "twist"
+      type: "geometry_msgs::msg::TwistWithCovarianceStamped"
+      topic: "~/input/twist"
+      optional: false
+    
+    - name: "angular_velocity"
+      type: "geometry_msgs::msg::Vector3Stamped"
+      topic: "~/input/imu"
+      optional: false
+  
+  nodes:
+    # Step 1: Transform to target frame (receives auto-organized pointcloud)
+    - id: "transform"
+      type: "TransformFilter"
+      inputs:
+        - source: "pointcloud"  # External input (already organized)
+      outputs:
+        - name: "transformed"
+      parameters:
+        target_frame: "base_link"
+    
+    # Step 2: Downsample EARLY (reduces computational cost for all subsequent steps)
+    # Adjust voxel size based on your needs:
+    # - Smaller voxel (0.05): More detail, higher compute
+    # - Larger voxel (0.2): Less detail, lower compute
+    - id: "downsample"
+      type: "DownsampleFilter"
+      inputs:
+        - source: "transformed"
+          from_node: "transform"
+      outputs:
+        - name: "downsampled"
+      parameters:
+        voxel_size_x: 0.1   # 10cm voxel in X
+        voxel_size_y: 0.1   # 10cm voxel in Y
+        voxel_size_z: 0.1   # 10cm voxel in Z
+    
+    # Step 3: Crop box filter (now operating on downsampled data)
+    - id: "cropbox"
+      type: "CropBoxFilter"
+      inputs:
+        - source: "downsampled"
+          from_node: "downsample"
+      outputs:
+        - name: "cropped"
+      parameters:
+        crop_boxes:
+          - min_x: -50.0
+            max_x: 50.0
+            min_y: -50.0
+            max_y: 50.0
+            min_z: -2.0
+            max_z: 3.0
+    
+    # Step 4: Distortion correction
+    - id: "distortion"
+      type: "DistortionFilter"
+      inputs:
+        - source: "cropped"
+          from_node: "cropbox"
+      outputs:
+        - name: "corrected"
+      parameters:
+        use_3d: false
+        use_imu: true
+    
+    # Step 5: Ring outlier filter (final filter)
+    - id: "ring_outlier"
+      type: "RingOutlierFilter"
+      inputs:
+        - source: "corrected"
+          from_node: "distortion"
+      outputs:
+        - name: "filtered"
+      parameters:
+        distance_ratio: 1.03
+        object_length_threshold: 0.05
+        enabled: true
+  
+  outputs:
+    - name: "output"
+      source: "filtered"
+      from_node: "ring_outlier"
+      topic: "~/output/pointcloud"
+      type: "cuda_blackboard::CudaPointCloud2"
+

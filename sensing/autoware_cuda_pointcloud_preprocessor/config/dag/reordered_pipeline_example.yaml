@@ -1,0 +1,102 @@
+# DAG Configuration Example: Reordered Pipeline
+# This configuration demonstrates downsampling BEFORE cropping (reversed order)
+
+dag:
+  name: "reordered_preprocessing"
+  version: "1.0"
+  
+  # External inputs
+  inputs:
+    - name: "pointcloud"
+      type: "sensor_msgs::msg::PointCloud2"
+      topic: "~/input/pointcloud"
+    - name: "twist"
+      type: "geometry_msgs::msg::TwistWithCovarianceStamped"
+      topic: "~/input/twist"
+  
+  # Processing nodes with reordered operations
+  nodes:
+    # Step 1: Organize pointcloud
+    - id: "organize"
+      type: "OrganizeFilter"
+      inputs:
+        - source: "pointcloud"
+      outputs:
+        - name: "organized"
+      parameters: {}
+    
+    # Step 2: Transform to base frame
+    - id: "transform"
+      type: "TransformFilter"
+      inputs:
+        - source: "organized"
+          from_node: "organize"
+      outputs:
+        - name: "transformed"
+      parameters:
+        target_frame: "base_link"
+    
+    # Step 3: Downsample FIRST (before cropping)
+    - id: "downsample"
+      type: "VoxelGridDownsampleFilter"
+      inputs:
+        - source: "transformed"
+          from_node: "transform"
+      outputs:
+        - name: "downsampled"
+      parameters:
+        voxel_size_x: 0.1
+        voxel_size_y: 0.1
+        voxel_size_z: 0.1
+    
+    # Step 4: Crop box AFTER downsampling
+    - id: "cropbox"
+      type: "CropBoxFilter"
+      inputs:
+        - source: "downsampled"
+          from_node: "downsample"  # Input from downsample instead of transform
+      outputs:
+        - name: "cropped"
+      parameters:
+        crop_boxes:
+          - min_x: -50.0
+            max_x: 50.0
+            min_y: -50.0
+            max_y: 50.0
+            min_z: -2.0
+            max_z: 5.0
+    
+    # Step 5: Distortion correction
+    - id: "distortion"
+      type: "DistortionCorrectionFilter"
+      inputs:
+        - source: "cropped"
+          from_node: "cropbox"
+        - source: "twist"
+      outputs:
+        - name: "undistorted"
+      parameters:
+        type: "2D"
+        use_imu: false
+    
+    # Step 6: Ring outlier filtering
+    - id: "ring_outlier"
+      type: "RingOutlierFilter"
+      inputs:
+        - source: "undistorted"
+          from_node: "distortion"
+      outputs:
+        - name: "filtered"
+      parameters:
+        distance_ratio: 1.03
+        object_length_threshold: 0.05
+        enabled: true
+  
+  # Output
+  outputs:
+    - name: "output"
+      source: "filtered"
+      from_node: "ring_outlier"
+      topic: "~/output/pointcloud"
+      type: "cuda_blackboard::CudaPointCloud2"
+

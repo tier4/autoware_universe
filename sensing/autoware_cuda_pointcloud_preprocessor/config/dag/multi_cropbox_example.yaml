@@ -1,0 +1,124 @@
+# Example DAG Configuration: Multiple CropBox Filters
+# Demonstrates that the refactored system supports multiple instances
+# of the same filter type with different parameters
+
+dag:
+  name: "multi_cropbox_example"
+  version: "1.0"
+  
+  inputs:
+    - name: "pointcloud"
+      type: "sensor_msgs::msg::PointCloud2"
+      topic: "~/input/pointcloud"
+      optional: false
+  
+  nodes:
+    # Step 1: Organize
+    - id: "organize"
+      type: "OrganizeFilter"
+      inputs:
+        - source: "pointcloud"
+      outputs:
+        - "organized"
+      parameters: {}
+    
+    # Step 2: First crop box - near field (0-20m)
+    - id: "cropbox_near"
+      type: "CropBoxFilter"
+      inputs:
+        - source: "organized"
+          from_node: "organize"
+      outputs:
+        - "cropped_near"
+      parameters:
+        crop_boxes:
+          - min_x: -20.0
+            min_y: -20.0
+            min_z: -2.0
+            max_x: 20.0
+            max_y: 20.0
+            max_z: 5.0
+    
+    # Step 3: Second crop box - far field (20-100m)
+    - id: "cropbox_far"
+      type: "CropBoxFilter"
+      inputs:
+        - source: "organized"
+          from_node: "organize"
+      outputs:
+        - "cropped_far"
+      parameters:
+        crop_boxes:
+          - min_x: -100.0
+            min_y: -100.0
+            min_z: -2.0
+            max_x: 100.0
+            max_y: 100.0
+            max_z: 5.0
+    
+    # Step 4: Third crop box - remove ego vehicle
+    - id: "cropbox_ego_remove"
+      type: "CropBoxFilter"
+      inputs:
+        - source: "organized"
+          from_node: "organize"
+      outputs:
+        - "cropped_no_ego"
+      parameters:
+        crop_boxes:
+          - min_x: -2.0
+            min_y: -1.0
+            min_z: -2.0
+            max_x: 2.0
+            max_y: 1.0
+            max_z: 0.5
+    
+    # Finalize near field
+    - id: "finalize_near"
+      type: "FinalizeFilter"
+      inputs:
+        - source: "cropped_near"
+          from_node: "cropbox_near"
+      outputs:
+        - "output_near"
+      parameters: {}
+    
+    # Finalize far field
+    - id: "finalize_far"
+      type: "FinalizeFilter"
+      inputs:
+        - source: "cropped_far"
+          from_node: "cropbox_far"
+      outputs:
+        - "output_far"
+      parameters: {}
+    
+    # Finalize no ego
+    - id: "finalize_no_ego"
+      type: "FinalizeFilter"
+      inputs:
+        - source: "cropped_no_ego"
+          from_node: "cropbox_ego_remove"
+      outputs:
+        - "output_no_ego"
+      parameters: {}
+  
+  outputs:
+    - name: "near_field"
+      source: "output_near"
+      from_node: "finalize_near"
+      topic: "~/output/near_field"
+      type: "cuda_blackboard::CudaPointCloud2"
+    
+    - name: "far_field"
+      source: "output_far"
+      from_node: "finalize_far"
+      topic: "~/output/far_field"
+      type: "cuda_blackboard::CudaPointCloud2"
+    
+    - name: "no_ego"
+      source: "output_no_ego"
+      from_node: "finalize_no_ego"
+      topic: "~/output/no_ego"
+      type: "cuda_blackboard::CudaPointCloud2"
+
