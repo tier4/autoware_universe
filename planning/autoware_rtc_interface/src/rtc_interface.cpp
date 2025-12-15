@@ -116,11 +116,13 @@ Module getModuleType(const std::string & module_name)
 
 namespace autoware::rtc_interface
 {
-RTCInterface::RTCInterface(rclcpp::Node * node, const std::string & name, const bool enable_rtc)
+RTCInterface::RTCInterface(
+  rclcpp::Node * node, const std::string & name, const bool enable_rtc, const bool creep_supported)
 : clock_{node->get_clock()},
   logger_{node->get_logger().get_child("RTCInterface[" + name + "]")},
   is_auto_mode_enabled_{!enable_rtc},
-  is_locked_{false}
+  is_locked_{false},
+  is_creep_supported_{creep_supported}
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -146,6 +148,10 @@ RTCInterface::RTCInterface(rclcpp::Node * node, const std::string & name, const 
   srv_auto_mode_ = node->create_service<AutoMode>(
     enable_auto_mode_namespace_ + "/" + name,
     std::bind(&RTCInterface::onAutoModeService, this, _1, _2), rmw_qos_profile_services_default,
+    callback_group_);
+  srv_creep_commands_ = node->create_service<CreepCommands>(
+    creep_commands_namespace_ + "/" + name,
+    std::bind(&RTCInterface::onCreepCommandService, this, _1, _2), rmw_qos_profile_services_default,
     callback_group_);
 
   // Module
@@ -239,6 +245,51 @@ void RTCInterface::onAutoModeService(
   response->success = true;
 }
 
+void RTCInterface::onCreepCommandService(
+  const CreepCommands::Request::SharedPtr request,
+  const CreepCommands::Response::SharedPtr responses)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  for (const auto & command : request->commands) {
+    CreepResponse response;
+    response.uuid = command.uuid;
+    response.module = command.module;
+
+    const auto itr = std::find_if(
+      registered_status_.statuses.begin(), registered_status_.statuses.end(),
+      [command](const auto & s) { return s.uuid == command.uuid; });
+
+    if (!is_creep_supported_) {
+      response.success = false;
+      RCLCPP_WARN_STREAM(
+        getLogger(), "[onCreepCommandService] creep is not supported." << std::endl);
+      responses->responses.push_back(response);
+      continue;
+    }
+
+    if (itr != registered_status_.statuses.end()) {
+      if (itr->state.type == State::WAITING_FOR_EXECUTION || itr->state.type == State::RUNNING) {
+        itr->creep_triggered = command.creep_enable;
+        response.success = true;
+      } else {
+        RCLCPP_WARN_STREAM(
+          getLogger(), "[onCreepCommandService] uuid : "
+                         << uuid_to_string(command.uuid)
+                         << " state is not WAITING_FOR_EXECUTION or RUNNING. state : "
+                         << itr->state.type << std::endl);
+        response.success = false;
+      }
+    } else {
+      RCLCPP_WARN_STREAM(
+        getLogger(), "[onCreepCommandService] uuid : " << uuid_to_string(command.uuid)
+                                                       << " is not found." << std::endl);
+      response.success = false;
+    }
+    responses->responses.push_back(response);
+  }
+}
+
 void RTCInterface::onTimer()
 {
   AutoModeStatus auto_mode_status;
@@ -267,6 +318,8 @@ void RTCInterface::updateCooperateStatus(
     status.safe = safe;
     status.requested = requested;
     status.command_status.type = Command::DEACTIVATE;
+    status.creep_supported = is_creep_supported_;
+    status.creep_triggered = false;
     status.state.type = State::WAITING_FOR_EXECUTION;
     status.start_distance = start_distance;
     status.finish_distance = finish_distance;
@@ -471,6 +524,34 @@ bool RTCInterface::isTerminated(const UUID & uuid) const
   RCLCPP_WARN_STREAM(
     getLogger(), "[isTerminated] uuid : " << uuid_to_string(uuid) << " is not found." << std::endl);
   return is_auto_mode_enabled_;
+}
+
+bool RTCInterface::isCreepTriggered(const UUID & uuid) const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!is_creep_supported_) {
+    return false;
+  }
+  const auto itr = std::find_if(
+    registered_status_.statuses.begin(), registered_status_.statuses.end(),
+    [uuid](const auto & s) { return s.uuid == uuid; });
+
+  if (itr != registered_status_.statuses.end()) {
+    if (itr->state.type != State::WAITING_FOR_EXECUTION && itr->state.type != State::RUNNING) {
+      return false;
+    }
+    return itr->creep_triggered;
+  }
+
+  RCLCPP_WARN_STREAM(
+    getLogger(),
+    "[isCreepTriggered] uuid : " << uuid_to_string(uuid) << " is not found." << std::endl);
+  return false;
+}
+
+bool RTCInterface::isCreepSupported() const
+{
+  return is_creep_supported_;
 }
 
 void RTCInterface::lockCommandUpdate()

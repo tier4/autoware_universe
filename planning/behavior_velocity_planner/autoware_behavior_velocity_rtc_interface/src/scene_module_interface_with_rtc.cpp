@@ -39,9 +39,9 @@ SceneModuleInterfaceWithRTC::SceneModuleInterfaceWithRTC(
 }
 
 SceneModuleManagerInterfaceWithRTC::SceneModuleManagerInterfaceWithRTC(
-  rclcpp::Node & node, const char * module_name, const bool enable_rtc)
+  rclcpp::Node & node, const char * module_name, const bool enable_rtc, const bool creep_supported)
 : SceneModuleManagerInterface<SceneModuleInterfaceWithRTC>(node, module_name),
-  rtc_interface_(&node, module_name, enable_rtc),
+  rtc_interface_(&node, module_name, enable_rtc, creep_supported),
   objects_of_interest_marker_interface_(&node, module_name)
 {
 }
