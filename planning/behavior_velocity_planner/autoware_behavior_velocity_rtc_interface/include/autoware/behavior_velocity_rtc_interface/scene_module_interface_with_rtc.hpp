@@ -60,13 +60,16 @@ public:
   virtual ~SceneModuleInterfaceWithRTC() = default;
 
   void setActivation(const bool activated) { activated_ = activated; }
+  void setCreepTriggered(const bool creep_triggered) { creep_triggered_ = creep_triggered; }
   void setRTCEnabled(const bool enable_rtc) { rtc_enabled_ = enable_rtc; }
   bool isActivated() const { return activated_; }
+  bool isCreepTriggered() const { return creep_triggered_; }
   bool isSafe() const { return safe_; }
   double getDistance() const { return distance_; }
 
 protected:
   bool activated_;
+  bool creep_triggered_;
   bool safe_;
   bool rtc_enabled_;
   double distance_;

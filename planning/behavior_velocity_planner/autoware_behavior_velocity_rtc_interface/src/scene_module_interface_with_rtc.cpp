@@ -73,6 +73,7 @@ void SceneModuleManagerInterfaceWithRTC::setActivation()
     const UUID uuid = getUUID(scene_module->getModuleId());
     scene_module->setActivation(rtc_interface_.isActivated(uuid));
     scene_module->setRTCEnabled(rtc_interface_.isRTCEnabled(uuid));
+    scene_module->setCreepTriggered(rtc_interface_.isCreepTriggered(uuid));
   }
 }
 
