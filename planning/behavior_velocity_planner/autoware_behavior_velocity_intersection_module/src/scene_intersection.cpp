@@ -774,7 +774,8 @@ void IntersectionModule::prepareRTCStatus(
 template <typename T>
 void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const bool rtc_default_approved,
-  [[maybe_unused]] const bool rtc_occlusion_approved, [[maybe_unused]] const T & decision_result,
+  [[maybe_unused]] const bool rtc_occlusion_approved, [[maybe_unused]] const bool creep_triggered,
+  [[maybe_unused]] const T & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
@@ -791,7 +792,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const bool rtc_default_approved,
-  [[maybe_unused]] const bool rtc_occlusion_approved,
+  [[maybe_unused]] const bool rtc_occlusion_approved, [[maybe_unused]] const bool creep_triggered,
   [[maybe_unused]] const InternalError & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   [[maybe_unused]] const double baselink2front,
@@ -808,7 +809,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const bool rtc_default_approved,
-  [[maybe_unused]] const bool rtc_occlusion_approved,
+  [[maybe_unused]] const bool rtc_occlusion_approved, [[maybe_unused]] const bool creep_triggered,
   [[maybe_unused]] const OverPassJudge & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   [[maybe_unused]] const double baselink2front,
@@ -825,7 +826,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const bool rtc_occlusion_approved,
-  const StuckStop & decision_result,
+  [[maybe_unused]] const bool creep_triggered, const StuckStop & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
@@ -872,7 +873,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const bool rtc_occlusion_approved,
-  const YieldStuckStop & decision_result,
+  [[maybe_unused]] const bool creep_triggered, const YieldStuckStop & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
@@ -906,7 +907,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const bool rtc_occlusion_approved,
-  const NonOccludedCollisionStop & decision_result,
+  [[maybe_unused]] const bool creep_triggered, const NonOccludedCollisionStop & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
@@ -951,7 +952,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const bool rtc_occlusion_approved,
-  const FirstWaitBeforeOcclusion & decision_result,
+  [[maybe_unused]] const bool creep_triggered, const FirstWaitBeforeOcclusion & decision_result,
   const IntersectionModule::PlannerParam & planner_param, const double baselink2front,
   autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
@@ -1004,7 +1005,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const bool rtc_occlusion_approved,
-  const PeekingTowardOcclusion & decision_result,
+  [[maybe_unused]] const bool creep_triggered, const PeekingTowardOcclusion & decision_result,
   const IntersectionModule::PlannerParam & planner_param, const double baselink2front,
   autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
@@ -1059,7 +1060,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const bool rtc_occlusion_approved,
-  const OccludedCollisionStop & decision_result,
+  [[maybe_unused]] const bool creep_triggered, const OccludedCollisionStop & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
@@ -1106,7 +1107,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const bool rtc_occlusion_approved,
-  const OccludedAbsenceTrafficLight & decision_result,
+  [[maybe_unused]] const bool creep_triggered, const OccludedAbsenceTrafficLight & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
@@ -1120,7 +1121,10 @@ void reactRTCApprovalByDecisionResult(
     "OccludedAbsenceTrafficLight, approval = (default: %d, occlusion: %d)", rtc_default_approved,
     rtc_occlusion_approved);
   if (!rtc_default_approved) {
-    const auto stopline_idx = decision_result.closest_idx;
+    auto stopline_idx = decision_result.closest_idx;
+    if (creep_triggered) {
+      stopline_idx = decision_result.collision_stopline_idx;
+    }
     planning_utils::setVelocityFromIndex(stopline_idx, 0.0, path);
     debug_data->collision_stop_wall_pose =
       planning_utils::getAheadPose(stopline_idx, baselink2front, *path);
@@ -1163,7 +1167,8 @@ void reactRTCApprovalByDecisionResult(
 
 template <>
 void reactRTCApprovalByDecisionResult(
-  const bool rtc_default_approved, const bool rtc_occlusion_approved, const Safe & decision_result,
+  const bool rtc_default_approved, const bool rtc_occlusion_approved,
+  [[maybe_unused]] const bool creep_triggered, const Safe & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
@@ -1207,7 +1212,7 @@ void reactRTCApprovalByDecisionResult(
 template <>
 void reactRTCApprovalByDecisionResult(
   const bool rtc_default_approved, const bool rtc_occlusion_approved,
-  const FullyPrioritized & decision_result,
+  [[maybe_unused]] const bool creep_triggered, const FullyPrioritized & decision_result,
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
@@ -1254,11 +1259,12 @@ void IntersectionModule::reactRTCApproval(
   autoware_internal_planning_msgs::msg::PathWithLaneId * path)
 {
   const double baselink2front = planner_data_->vehicle_info_.max_longitudinal_offset_m;
+  const bool creep_triggered = intersection_creep_activated_ || occlusion_creep_activated_;
   std::visit(
     VisitorSwitch{[&](const auto & decision) {
       reactRTCApprovalByDecisionResult(
-        activated_, occlusion_activated_, decision, planner_param_, baselink2front, path,
-        safety_factor_array_, planning_factor_interface_.get(),
+        activated_, occlusion_activated_, creep_triggered, decision, planner_param_, baselink2front,
+        path, safety_factor_array_, planning_factor_interface_.get(),
         planning_factor_interface_for_occlusion_.get(), &debug_data_);
     }},
     decision_result);
