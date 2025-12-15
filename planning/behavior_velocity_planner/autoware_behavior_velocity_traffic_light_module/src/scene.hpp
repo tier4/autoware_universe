@@ -84,7 +84,7 @@ public:
 
 public:
   TrafficLightModule(
-    const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
+    const int64_t lane_id, const lanelet::TrafficLightConstPtr & traffic_light_reg_elem,
     lanelet::ConstLanelet lane, const PlannerParam & planner_param,
     const bool is_turn_lane,      // Check if lane is for left/right turn
     const bool has_static_arrow,  // Check if traffic light has arrow light in map
@@ -101,6 +101,13 @@ public:
   autoware::motion_utils::VirtualWalls createVirtualWalls() override;
 
   inline TrafficSignal getTrafficSignal() const { return looking_tl_state_; }
+
+  inline lanelet::TrafficLightConstPtr getTrafficLightRegElem() const
+  {
+    return traffic_light_reg_elem_;
+  }
+
+  inline lanelet::ConstLanelet getLanelet() const { return lane_; }
 
   inline State getTrafficLightModuleState() const { return state_; }
 
@@ -137,7 +144,7 @@ private:
   const int64_t lane_id_;
 
   // Key Feature
-  const lanelet::TrafficLight & traffic_light_reg_elem_;
+  const lanelet::TrafficLightConstPtr traffic_light_reg_elem_;
   lanelet::ConstLanelet lane_;
 
   // Map based information

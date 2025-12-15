@@ -45,7 +45,7 @@
 namespace autoware::behavior_velocity_planner
 {
 TrafficLightModule::TrafficLightModule(
-  const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
+  const int64_t lane_id, const lanelet::TrafficLightConstPtr & traffic_light_reg_elem,
   lanelet::ConstLanelet lane, const PlannerParam & planner_param, const bool is_turn_lane,
   const bool has_static_arrow, const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
@@ -80,7 +80,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
   const auto & self_pose = planner_data_->current_odometry;
 
   // Get lanelet2 stop lines.
-  lanelet::ConstLineString3d lanelet_stop_lines = *(traffic_light_reg_elem_.stopLine());
+  lanelet::ConstLineString3d lanelet_stop_lines = *(traffic_light_reg_elem_->stopLine());
 
   // Calculate stop pose and insert index
   const auto stop_line = calcStopPointAndInsertIndex(
@@ -91,7 +91,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
   if (!stop_line.has_value()) {
     RCLCPP_WARN_STREAM_ONCE(
       logger_, "Failed to calculate stop point and insert index for regulatory element id "
-                 << traffic_light_reg_elem_.id());
+                 << traffic_light_reg_elem_->id());
     setSafe(true);
     setDistance(std::numeric_limits<double>::lowest());
     return false;
@@ -122,7 +122,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
     const bool is_stop_signal = isStopSignal();
 
     // Debug: Log the raw output of isStopSignal()
-    RCLCPP_INFO_THROTTLE(
+    RCLCPP_DEBUG_THROTTLE(
       logger_, *clock_, 1000, "[TrafficLight Debug] Lane %ld: isStopSignal() returned %s", lane_id_,
       is_stop_signal ? "true (Wants STOP)" : "false (Wants PASS)");
 
@@ -362,11 +362,11 @@ bool TrafficLightModule::findValidTrafficSignal(TrafficSignalStamped & valid_tra
 {
   // get traffic signal associated with the regulatory element id
   const auto traffic_signal_stamped_opt = planner_data_->getTrafficSignal(
-    traffic_light_reg_elem_.id(), false /* traffic light module does not keep last observation */);
+    traffic_light_reg_elem_->id(), false /* traffic light module does not keep last observation */);
   if (!traffic_signal_stamped_opt) {
     RCLCPP_WARN_STREAM_ONCE(
       logger_, "the traffic signal data associated with regulatory element id "
-                 << traffic_light_reg_elem_.id() << " is not received");
+                 << traffic_light_reg_elem_->id() << " is not received");
     return false;
   }
   valid_traffic_signal = traffic_signal_stamped_opt.value();
