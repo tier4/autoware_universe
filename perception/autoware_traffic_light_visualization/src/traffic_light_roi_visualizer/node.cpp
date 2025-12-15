@@ -44,9 +44,9 @@ TrafficLightRoiVisualizerNode::TrafficLightRoiVisualizerNode(const rclcpp::NodeO
       std::bind(&TrafficLightRoiVisualizerNode::imageRoiCallback, this, _1, _2, _3));
   }
 
-  using std::chrono_literals::operator""ms;
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), 100ms, std::bind(&TrafficLightRoiVisualizerNode::connectCb, this));
+  // using std::chrono_literals::operator""ms;
+  // timer_ = rclcpp::create_timer(
+  //   this, get_clock(), 100ms, std::bind(&TrafficLightRoiVisualizerNode::connectCb, this));
 
   if (use_image_transport_) {
     image_pub_ = image_transport::create_publisher(
@@ -55,8 +55,17 @@ TrafficLightRoiVisualizerNode::TrafficLightRoiVisualizerNode(const rclcpp::NodeO
     auto qos = rclcpp::QoS(1);
     simple_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("~/output/image", qos);
   }
+
+  image_sub_.subscribe(this, "~/input/image", "raw", rmw_qos_profile_sensor_data);
+  roi_sub_.subscribe(this, "~/input/rois", rclcpp::QoS{1}.get_rmw_qos_profile());
+  traffic_signals_sub_.subscribe(
+    this, "~/input/traffic_signals", rclcpp::QoS{1}.get_rmw_qos_profile());
+  if (use_high_accuracy_detection_) {
+    rough_roi_sub_.subscribe(this, "~/input/rough/rois", rclcpp::QoS{1}.get_rmw_qos_profile());
+  }
 }
 
+/*
 void TrafficLightRoiVisualizerNode::connectCb()
 {
   int num_subscribers = 0;
@@ -82,6 +91,7 @@ void TrafficLightRoiVisualizerNode::connectCb()
     }
   }
 }
+*/
 
 bool TrafficLightRoiVisualizerNode::createRect(
   cv::Mat & image, const tier4_perception_msgs::msg::TrafficLightRoi & tl_roi,

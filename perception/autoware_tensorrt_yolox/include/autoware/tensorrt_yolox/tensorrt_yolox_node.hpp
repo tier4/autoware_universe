@@ -43,6 +43,10 @@
 #include <utility>
 #include <vector>
 
+#include "NvJpegDecoder.h"
+#include <cudaEGL.h>
+#include "nvbufsurface.h"
+
 namespace autoware::tensorrt_yolox
 {
 // cspell: ignore Semseg
@@ -72,9 +76,52 @@ class TrtYoloXNode : public rclcpp::Node
 public:
   explicit TrtYoloXNode(const rclcpp::NodeOptions & node_options);
 
+  virtual ~TrtYoloXNode() {
+    freeGpuBuffers();
+  }
+
 private:
-  void onConnect();
+  // void onConnect();
   void onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg);
+
+  void onCompressedImage(const sensor_msgs::msg::CompressedImage::ConstSharedPtr input_compressed_image_msg);
+  bool decodeToGpu(const std::vector<uint8_t>& compressed_data, uint8_t*& d_bgr_ptr, uint32_t& width, uint32_t& height);
+  std::unique_ptr<NvJPEGDecoder> decoder_;
+  NvBufSurface* surf_rgba_ = nullptr;
+  uint8_t* d_bgr_ = nullptr;
+  size_t d_bgr_size_ = 0;
+
+  // Helper to clean up on node destruction
+  void freeGpuBuffers() {
+    if (surf_rgba_) {
+      // Unmap if mapped, then destroy
+      NvBufSurfaceUnMap(surf_rgba_, 0, 0); 
+      NvBufSurfaceDestroy(surf_rgba_);
+      surf_rgba_ = nullptr;
+    }
+    if (d_bgr_) {
+      cudaFree(d_bgr_);
+      d_bgr_ = nullptr;
+    }
+    d_bgr_size_ = 0;
+  }
+
+  bool initEGL() {
+    // 1. Get the default display
+    EGLDisplay egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (egl_display == EGL_NO_DISPLAY) {
+        printf("Failed to get EGL Display\n");
+        return false;
+    }
+
+    // 2. Initialize it
+    if (!eglInitialize(egl_display, NULL, NULL)) {
+        printf("Failed to initialize EGL\n");
+        return false;
+    }
+    return true;
+}
+
   bool readLabelFile(const std::string & label_path);
   void replaceLabelMap();
   void overlapSegmentByRoi(
@@ -88,8 +135,9 @@ private:
   rclcpp::Publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr objects_pub_;
 
   image_transport::Subscriber image_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr compressed_image_sub_;
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  // rclcpp::TimerBase::SharedPtr timer_;
 
   LabelMap label_map_;
   std::unique_ptr<tensorrt_yolox::TrtYoloX> trt_yolox_;

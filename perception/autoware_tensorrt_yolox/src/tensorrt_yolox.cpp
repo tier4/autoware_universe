@@ -378,7 +378,7 @@ bool TrtYoloX::setCudaDeviceId(const uint8_t gpu_id)
   }
 }
 
-void TrtYoloX::initPreprocessBuffer(int width, int height)
+void TrtYoloX::initPreprocessBuffer(uint32_t width, uint32_t height)
 {
   // if size of source input has been changed...
   if (src_width_ != -1 || src_height_ != -1) {
@@ -572,6 +572,71 @@ void TrtYoloX::preprocess(const std::vector<cv::Mat> & images)
   CHECK_CUDA_ERROR(cudaMemcpy(
     input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice));
   // No Need for Sync
+}
+
+bool TrtYoloX::doInference(
+  const uint8_t* gpu_image_ptr, uint32_t width, uint32_t height, 
+  ObjectArrays & objects, std::vector<cv::Mat> & masks, [[maybe_unused]] std::vector<cv::Mat> & color_masks)
+{
+  if (!setCudaDeviceId(gpu_id_)) {
+    return false;
+  }
+
+  // 1. Setup / Reallocate Internal Buffers if size changed
+  // This ensures input_d_, argmax_buf_d_, etc. are sized correctly for the incoming image
+  // We force use_gpu_preprocess_ logic here because we are definitely on GPU.
+  bool original_preprocess_flag = use_gpu_preprocess_;
+  use_gpu_preprocess_ = true; 
+  initPreprocessBuffer(width, height);
+  use_gpu_preprocess_ = original_preprocess_flag; // Restore state
+
+  // 2. Configure Input Dimensions for Batch Size 1
+  auto input_dims = trt_common_->getTensorShape(0);
+  input_dims.d[0] = 1; // Batch size 1
+  if (!trt_common_->setInputShape(0, input_dims)) {
+    return false;
+  }
+
+  const float input_h = static_cast<float>(input_dims.d[2]);
+  const float input_w = static_cast<float>(input_dims.d[3]);
+
+  // 3. Calculate Scale (Letterbox)
+  scales_.clear();
+  float scale = std::min(input_w / width, input_h / height);
+  scales_.emplace_back(scale);
+
+  // 4. Run Preprocessing Kernel (GPU -> GPU)
+  // We skip cudaMemcpyHostToDevice entirely!
+  // gpu_image_ptr: Raw BGR pointer from your Decompressor
+  // input_d_: TensorRT float input buffer
+  resize_bilinear_letterbox_nhwc_to_nchw32_batch_gpu(
+    input_d_.get(), 
+    const_cast<unsigned char *>(gpu_image_ptr), 
+    input_w, input_h, 3, 
+    width, height, 3, 
+    1, // Batch Size
+    static_cast<float>(norm_factor_), 
+    *stream_
+  );
+
+  // 5. Create Dummy Container for FeedForward
+  // The existing feedforward functions expect a vector of cv::Mat to determine
+  // batch size and to use .rows/.cols for coordinate restoration.
+  // We create a "Header Only" cv::Mat. It creates no data copy.
+  std::vector<cv::Mat> dummy_images;
+  // Create a Mat that wraps the raw pointer (just to hold size info, we won't access data on CPU)
+  // We use the pointer just to satisfy the constructor, but note that feedforward 
+  // ONLY accesses .rows and .cols from this Mat, it does not read the pixels.
+  cv::Mat wrapper(height, width, CV_8UC3, (void*)gpu_image_ptr); 
+  dummy_images.push_back(wrapper);
+  
+  // 6. Execute Inference
+  // We reuse the existing logic which handles NMS, decoding, and segmentation
+  if (needs_output_decode_) {
+    return feedforwardAndDecode(dummy_images, objects, masks, color_masks);
+  } else {
+    return feedforward(dummy_images, objects);
+  }
 }
 
 bool TrtYoloX::doInference(

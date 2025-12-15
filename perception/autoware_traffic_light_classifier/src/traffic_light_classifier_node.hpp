@@ -70,9 +70,9 @@ public:
   uint8_t classify_traffic_light_type_;
 
 private:
-  void connectCb();
+  // void connectCb();
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  // rclcpp::TimerBase::SharedPtr timer_;
   image_transport::SubscriberFilter image_sub_;
   message_filters::Subscriber<tier4_perception_msgs::msg::TrafficLightRoiArray> roi_sub_;
   typedef message_filters::sync_policies::ExactTime<

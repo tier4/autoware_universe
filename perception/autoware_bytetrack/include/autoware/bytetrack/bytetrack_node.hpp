@@ -44,7 +44,7 @@ public:
   explicit ByteTrackNode(const rclcpp::NodeOptions & node_options);
 
 private:
-  void on_connect();
+  // void on_connect();
   void on_rect(const tier4_perception_msgs::msg::DetectedObjectsWithFeature::ConstSharedPtr msg);
 
   rclcpp::Publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr objects_pub_;
@@ -53,7 +53,7 @@ private:
   rclcpp::Subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
     detection_rect_sub_;
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  // rclcpp::TimerBase::SharedPtr timer_;
 
   std::unique_ptr<autoware::bytetrack::ByteTrack> bytetrack_;
 };

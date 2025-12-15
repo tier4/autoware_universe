@@ -61,7 +61,7 @@ class TrafficLightRoiVisualizerNode : public rclcpp::Node
 {
 public:
   explicit TrafficLightRoiVisualizerNode(const rclcpp::NodeOptions & options);
-  void connectCb();
+  // void connectCb();
 
   void imageRoiCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr & input_image_msg,
@@ -158,7 +158,7 @@ private:
     int id, const tier4_perception_msgs::msg::TrafficLightRoiArray::ConstSharedPtr & rois,
     tier4_perception_msgs::msg::TrafficLightRoi & correspond_roi);
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  // rclcpp::TimerBase::SharedPtr timer_;
   image_transport::SubscriberFilter image_sub_;
   message_filters::Subscriber<tier4_perception_msgs::msg::TrafficLightRoiArray> roi_sub_;
   message_filters::Subscriber<tier4_perception_msgs::msg::TrafficLightRoiArray> rough_roi_sub_;

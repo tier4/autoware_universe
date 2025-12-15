@@ -123,6 +123,10 @@ public:
   bool doInference(
     const std::vector<cv::Mat> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
     std::vector<cv::Mat> & color_masks);
+  
+  bool doInference(
+    const uint8_t* gpu_image_ptr, uint32_t width, uint32_t height, 
+    ObjectArrays & objects, std::vector<cv::Mat> & masks, [[maybe_unused]] std::vector<cv::Mat> & color_masks);
 
   /**
    * @brief run inference including pre-process and post-process
@@ -149,7 +153,7 @@ public:
    * @warning if we don't allocate buffers using it, "preprocessGpu" allocates buffers at the
    * beginning
    */
-  void initPreprocessBuffer(int width, int height);
+  void initPreprocessBuffer(uint32_t width, uint32_t height);
 
   /**
    * @brief output TensorRT profiles for each layer

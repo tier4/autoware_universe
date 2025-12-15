@@ -39,8 +39,12 @@ ByteTrackNode::ByteTrackNode(const rclcpp::NodeOptions & node_options)
   this->bytetrack_ = std::make_unique<autoware::bytetrack::ByteTrack>(
     track_buffer_length, classification_decay_constant);
 
-  timer_ =
-    rclcpp::create_timer(this, get_clock(), 100ms, std::bind(&ByteTrackNode::on_connect, this));
+  detection_rect_sub_ =
+      this->create_subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
+        "~/in/rect", 1, std::bind(&ByteTrackNode::on_rect, this, _1));
+
+  // timer_ =
+  //   rclcpp::create_timer(this, get_clock(), 100ms, std::bind(&ByteTrackNode::on_connect, this));
 
   objects_pub_ = this->create_publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
     "~/out/objects", 1);
@@ -48,19 +52,19 @@ ByteTrackNode::ByteTrackNode(const rclcpp::NodeOptions & node_options)
     "~/out/objects/debug/uuid", 1);
 }
 
-void ByteTrackNode::on_connect()
-{
-  using std::placeholders::_1;
-  if (
-    objects_pub_->get_subscription_count() == 0 &&
-    objects_pub_->get_intra_process_subscription_count() == 0) {
-    detection_rect_sub_.reset();
-  } else if (!detection_rect_sub_) {
-    detection_rect_sub_ =
-      this->create_subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
-        "~/in/rect", 1, std::bind(&ByteTrackNode::on_rect, this, _1));
-  }
-}
+// void ByteTrackNode::on_connect()
+// {
+//   using std::placeholders::_1;
+//   if (
+//     objects_pub_->get_subscription_count() == 0 &&
+//     objects_pub_->get_intra_process_subscription_count() == 0) {
+//     detection_rect_sub_.reset();
+//   } else if (!detection_rect_sub_) {
+//     detection_rect_sub_ =
+//       this->create_subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
+//         "~/in/rect", 1, std::bind(&ByteTrackNode::on_rect, this, _1));
+//   }
+// }
 
 void ByteTrackNode::on_rect(
   const tier4_perception_msgs::msg::DetectedObjectsWithFeature::ConstSharedPtr msg)

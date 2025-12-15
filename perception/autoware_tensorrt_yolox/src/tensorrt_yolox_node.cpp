@@ -101,8 +101,12 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
   }
   RCLCPP_INFO(this->get_logger(), "GPU %d is selected for the inference!", gpu_id);
 
-  timer_ =
-    rclcpp::create_timer(this, get_clock(), 100ms, std::bind(&TrtYoloXNode::onConnect, this));
+  // image_sub_ = image_transport::create_subscription(
+  //     this, "~/in/image", std::bind(&TrtYoloXNode::onImage, this, _1), "raw",
+  //     rmw_qos_profile_sensor_data);
+
+  // timer_ =
+  //   rclcpp::create_timer(this, get_clock(), 100ms, std::bind(&TrtYoloXNode::onConnect, this));
 
   objects_pub_ = this->create_publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
     "~/out/objects", 1);
@@ -114,21 +118,211 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
     RCLCPP_INFO(this->get_logger(), "TensorRT engine file is built and exit.");
     rclcpp::shutdown();
   }
+
+  initEGL();
+  decoder_.reset(NvJPEGDecoder::createJPEGDecoder("jpegdec"));
+  compressed_image_sub_ = create_subscription<sensor_msgs::msg::CompressedImage>(
+    "~/in/compressed_image", rclcpp::SensorDataQoS(),
+    std::bind(&TrtYoloXNode::onCompressedImage, this, std::placeholders::_1));
 }
 
-void TrtYoloXNode::onConnect()
+// void TrtYoloXNode::onConnect()
+// {
+//   using std::placeholders::_1;
+//   if (
+//     objects_pub_->get_subscription_count() == 0 &&
+//     objects_pub_->get_intra_process_subscription_count() == 0 &&
+//     image_pub_.getNumSubscribers() == 0 && mask_pub_.getNumSubscribers() == 0 &&
+//     color_mask_pub_.getNumSubscribers() == 0) {
+//     image_sub_.shutdown();
+//   } else if (!image_sub_) {
+//     image_sub_ = image_transport::create_subscription(
+//       this, "~/in/image", std::bind(&TrtYoloXNode::onImage, this, _1), "raw",
+//       rmw_qos_profile_sensor_data);
+//   }
+// }
+
+bool TrtYoloXNode::decodeToGpu(const std::vector<uint8_t>& compressed_data, uint8_t*& d_bgr_ptr, uint32_t& width, uint32_t& height) 
 {
-  using std::placeholders::_1;
-  if (
-    objects_pub_->get_subscription_count() == 0 &&
-    objects_pub_->get_intra_process_subscription_count() == 0 &&
-    image_pub_.getNumSubscribers() == 0 && mask_pub_.getNumSubscribers() == 0 &&
-    color_mask_pub_.getNumSubscribers() == 0) {
-    image_sub_.shutdown();
-  } else if (!image_sub_) {
-    image_sub_ = image_transport::create_subscription(
-      this, "~/in/image", std::bind(&TrtYoloXNode::onImage, this, _1), "raw",
-      rmw_qos_profile_sensor_data);
+  struct ScopedResource {
+    NvBufSurface* surf = nullptr;
+    bool is_mapped = false;
+    CUgraphicsResource cuda_res = nullptr;
+
+    ~ScopedResource() {
+      if (cuda_res) {
+        cuGraphicsUnregisterResource(cuda_res);
+      }
+      if (surf) {
+        if (is_mapped) {
+          NvBufSurfaceUnMapEglImage(surf, 0);
+          surf->surfaceList[0].mappedAddr.eglImage = EGL_NO_IMAGE_KHR; 
+        }
+        NvBufSurfaceDestroy(surf);
+      }
+    }
+  } resources;
+
+  int fd_src = -1;
+  uint32_t pixfmt;
+  unsigned char* bitstream = const_cast<unsigned char*>(compressed_data.data());
+  
+  // 1. Decode
+  if (decoder_->decodeToFd(fd_src, bitstream, compressed_data.size(), pixfmt, width, height) < 0) {
+    RCLCPP_ERROR(this->get_logger(), "decodeToFd failed");
+    return false;
+  }
+
+  // 2. Wrap FD in NvBufSurface
+  NvBufSurface *surf_src = nullptr;
+  if (NvBufSurfaceFromFd(fd_src, (void**)&surf_src) != 0) {
+    RCLCPP_ERROR(this->get_logger(), "NvBufSurfaceFromFd failed");
+    return false;
+  }
+
+  // 3. Map to EGL Image
+  if (NvBufSurfaceMapEglImage(surf_src, 0) != 0) {
+    RCLCPP_ERROR(this->get_logger(), "NvBufSurfaceMapEglImage failed");
+    return false;
+  }
+  resources.is_mapped = true;
+
+  EGLImageKHR egl_image = surf_src->surfaceList[0].mappedAddr.eglImage;
+  if (egl_image == EGL_NO_IMAGE_KHR) {
+    RCLCPP_ERROR(this->get_logger(), "Invalid EGL Image");
+    return false;
+  }
+
+  // 4. Register with CUDA
+  CUgraphicsResource pResource = NULL;
+  CUresult cres = cuGraphicsEGLRegisterImage(&pResource, egl_image, CU_GRAPHICS_MAP_RESOURCE_FLAGS_NONE);
+  if (cres != CUDA_SUCCESS) {
+    RCLCPP_ERROR(this->get_logger(), "EGL Register failed");
+    return false;
+  }
+
+  // 5. Get Mapped Frame
+  CUeglFrame eglFrame;
+  cres = cuGraphicsResourceGetMappedEglFrame(&eglFrame, pResource, 0, 0);
+  if (cres != CUDA_SUCCESS) {
+    RCLCPP_ERROR(this->get_logger(), "GetMappedEglFrame failed");
+    return false;
+  }
+
+  // 6. Get Pointers & Pitches
+  uint8_t* d_y = (uint8_t*)eglFrame.frame.pPitch[0];
+  uint8_t* d_u = (uint8_t*)eglFrame.frame.pPitch[1];
+  uint8_t* d_v = (uint8_t*)eglFrame.frame.pPitch[2];
+
+  int y_pitch = surf_src->surfaceList[0].planeParams.pitch[0];
+  int uv_pitch = surf_src->surfaceList[0].planeParams.pitch[1];
+
+  // 7. Allocate Output BGR
+  size_t needed_size = width * height * 3;
+  if (!d_bgr_ || d_bgr_size_ < needed_size) {
+    if (d_bgr_) cudaFree(d_bgr_);
+    cudaMalloc(&d_bgr_, needed_size);
+    d_bgr_size_ = needed_size;
+  }
+
+  // 8. Launch Kernel
+  launchYuv420ToPackedBgr(d_y, d_u, d_v, d_bgr_, width, height, y_pitch, uv_pitch);
+
+  cudaError_t err = cudaDeviceSynchronize();
+  if (err != cudaSuccess) {
+    RCLCPP_ERROR(this->get_logger(), "Kernel/Sync Error: %s", cudaGetErrorString(err));
+    return false;
+  }
+
+  d_bgr_ptr = d_bgr_;
+  return true;
+}
+
+void TrtYoloXNode::onCompressedImage(
+  const sensor_msgs::msg::CompressedImage::ConstSharedPtr input_compressed_image_msg)
+{
+  stop_watch_ptr_->toc("processing_time", true);
+
+  uint8_t * gpu_bgr_ptr = nullptr;
+  uint32_t width = 0;
+  uint32_t height = 0;
+  if (!decodeToGpu(input_compressed_image_msg->data, gpu_bgr_ptr, width, height)) {
+      RCLCPP_ERROR(this->get_logger(), "GPU Decode failed");
+      return;
+  }
+
+  tensorrt_yolox::ObjectArrays objects;
+  std::vector<cv::Mat> masks = {cv::Mat(cv::Size(width, height), CV_8UC1, cv::Scalar(0))};
+  std::vector<cv::Mat> color_masks = {cv::Mat(cv::Size(width, height), CV_8UC3, cv::Scalar(0, 0, 0))};
+  if (!trt_yolox_->doInference(gpu_bgr_ptr, width, height, objects, masks, color_masks)) {
+    RCLCPP_WARN(this->get_logger(), "Fail to inference");
+    return;
+  }
+
+  tier4_perception_msgs::msg::DetectedObjectsWithFeature out_objects;
+  out_objects.header = input_compressed_image_msg->header;
+  
+  auto & mask = masks.at(0);
+
+  for (const auto & yolox_object : objects.at(0)) {
+    tier4_perception_msgs::msg::DetectedObjectWithFeature object;
+    object.feature.roi.x_offset = yolox_object.x_offset;
+    object.feature.roi.y_offset = yolox_object.y_offset;
+    object.feature.roi.width = yolox_object.width;
+    object.feature.roi.height = yolox_object.height;
+    object.object.existence_probability = yolox_object.score;
+    object.object.classification = autoware::object_recognition_utils::toObjectClassifications(
+      label_map_[yolox_object.type], 1.0f);
+    out_objects.feature_objects.push_back(object);
+
+    if (is_roi_overlap_segment_ && trt_yolox_->getMultitaskNum() > 0) {
+      overlapSegmentByRoi(yolox_object, mask, width, height);
+    }
+  }
+  objects_pub_->publish(out_objects);
+
+  if (trt_yolox_->getMultitaskNum() > 0) {
+    sensor_msgs::msg::Image::SharedPtr out_mask_msg =
+      cv_bridge::CvImage(std_msgs::msg::Header(), sensor_msgs::image_encodings::MONO8, mask).toImageMsg();
+    out_mask_msg->header = input_compressed_image_msg->header;
+
+    std::vector<std::pair<uint8_t, int>> compressed_data = perception_utils::runLengthEncoder(mask);
+    int step = sizeof(uint8_t) + sizeof(int);
+    out_mask_msg->data.resize(static_cast<int>(compressed_data.size()) * step);
+    for (size_t i = 0; i < compressed_data.size(); ++i) {
+      std::memcpy(&out_mask_msg->data[i * step], &compressed_data.at(i).first, sizeof(uint8_t));
+      std::memcpy(&out_mask_msg->data[i * step + 1], &compressed_data.at(i).second, sizeof(int));
+    }
+    mask_pub_.publish(out_mask_msg);
+  }
+
+  if (image_pub_.getNumSubscribers() > 0) {
+      cv::Mat debug_image(height, width, CV_8UC3);
+      cudaMemcpy(debug_image.data, gpu_bgr_ptr, width * height * 3, cudaMemcpyDeviceToHost);
+
+      for (const auto & object : out_objects.feature_objects) {
+        const auto left = std::max(0, static_cast<int>(object.feature.roi.x_offset));
+        const auto top = std::max(0, static_cast<int>(object.feature.roi.y_offset));
+        const auto right = std::min(static_cast<int>(object.feature.roi.x_offset + object.feature.roi.width), static_cast<int>(width));
+        const auto bottom = std::min(static_cast<int>(object.feature.roi.y_offset + object.feature.roi.height), static_cast<int>(height));
+        
+        cv::rectangle(
+          debug_image, cv::Point(left, top), cv::Point(right, bottom), 
+          cv::Scalar(0, 0, 255), 3, 8, 0);
+      }
+
+      sensor_msgs::msg::Image::SharedPtr out_img_msg = 
+        cv_bridge::CvImage(input_compressed_image_msg->header, "bgr8", debug_image).toImageMsg();
+      image_pub_.publish(out_img_msg);
+  }
+
+  if (debug_publisher_) {
+    const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
+    const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
+    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/cyclic_time_ms", cyclic_time_ms);
+    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/processing_time_ms", processing_time_ms);
   }
 }
 

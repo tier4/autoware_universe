@@ -631,5 +631,50 @@ void argmax_gpu(
     N, dst, src, d_h, d_w, s_c, s_h, s_w, batch);
 }
 
+__device__ inline uint8_t clamp(float v) {
+    return (uint8_t)fminf(fmaxf(v, 0.0f), 255.0f);
+}
+
+__global__ void yuv420ToPackedBgrKernel(
+    const uint8_t* __restrict__ y_plane, 
+    const uint8_t* __restrict__ u_plane,
+    const uint8_t* __restrict__ v_plane,
+    uint8_t* __restrict__ bgr_out, 
+    int width, int height, 
+    int y_pitch, int uv_pitch) 
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;    
+    if (x >= width || y >= height) return;
+
+    int y_idx = y * y_pitch + x;
+    int uv_idx = (y / 2) * uv_pitch + (x / 2);
+
+    float y_val = (float)y_plane[y_idx];
+    float u_val = (float)u_plane[uv_idx];
+    float v_val = (float)v_plane[uv_idx];
+
+    float c = y_val - 16.0f;
+    float d = u_val - 128.0f;
+    float e = v_val - 128.0f;
+
+    float r_f = 1.164f * c + 1.596f * e;
+    float g_f = 1.164f * c - 0.391f * d - 0.813f * e;
+    float b_f = 1.164f * c + 2.018f * d;
+
+    int pixel_idx = (y * width + x) * 3;
+    bgr_out[pixel_idx + 0] = clamp(b_f); // B
+    bgr_out[pixel_idx + 1] = clamp(g_f); // G
+    bgr_out[pixel_idx + 2] = clamp(r_f); // R
+}
+
+void launchYuv420ToPackedBgr(uint8_t* d_y, uint8_t* d_u, uint8_t* d_v, uint8_t* d_bgr, 
+                             int width, int height, int y_pitch, int uv_pitch) 
+{
+    dim3 block(32, 32);
+    dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+    yuv420ToPackedBgrKernel<<<grid, block>>>(d_y, d_u, d_v, d_bgr, width, height, y_pitch, uv_pitch);
+}
+
 }  // namespace tensorrt_yolox
 }  // namespace autoware

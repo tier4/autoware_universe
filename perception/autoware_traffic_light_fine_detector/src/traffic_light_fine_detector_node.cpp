@@ -95,11 +95,11 @@ TrafficLightFineDetectorNode::TrafficLightFineDetectorNode(const rclcpp::NodeOpt
   }
   RCLCPP_INFO(this->get_logger(), "GPU %d is selected for the inference!", gpu_id);
 
-  using std::chrono_literals::operator""ms;
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), 100ms, std::bind(&TrafficLightFineDetectorNode::connectCb, this));
+  // using std::chrono_literals::operator""ms;
+  // timer_ = rclcpp::create_timer(
+  //   this, get_clock(), 100ms, std::bind(&TrafficLightFineDetectorNode::connectCb, this));
 
-  std::lock_guard<std::mutex> lock(connect_mutex_);
+  // std::lock_guard<std::mutex> lock(connect_mutex_);
   output_roi_pub_ = this->create_publisher<TrafficLightRoiArray>("~/output/rois", 1);
   exe_time_pub_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
     "~/debug/exe_time_ms", 1);
@@ -117,8 +117,13 @@ TrafficLightFineDetectorNode::TrafficLightFineDetectorNode(const rclcpp::NodeOpt
     RCLCPP_INFO(get_logger(), "TensorRT engine is built and shutdown node.");
     rclcpp::shutdown();
   }
+
+  image_sub_.subscribe(this, "~/input/image", "raw", rmw_qos_profile_sensor_data);
+  rough_roi_sub_.subscribe(this, "~/input/rois", rclcpp::QoS{1}.get_rmw_qos_profile());
+  expect_roi_sub_.subscribe(this, "~/expect/rois", rclcpp::QoS{1}.get_rmw_qos_profile());
 }
 
+/*
 void TrafficLightFineDetectorNode::connectCb()
 {
   std::lock_guard<std::mutex> lock(connect_mutex_);
@@ -132,6 +137,7 @@ void TrafficLightFineDetectorNode::connectCb()
     expect_roi_sub_.subscribe(this, "~/expect/rois", rclcpp::QoS{1}.get_rmw_qos_profile());
   }
 }
+*/
 
 void TrafficLightFineDetectorNode::callback(
   const sensor_msgs::msg::Image::ConstSharedPtr in_image_msg,

@@ -52,8 +52,7 @@ void drawShape(
     position.y > image.rows) {
     // TODO(KhalilSelyan): This error message may flood the terminal logs, so commented out
     // temporarily. Need to consider a better way.
-
-    std::cerr << "Adjusted position is out of image bounds." << std::endl;
+    // std::cerr << "Adjusted position is out of image bounds." << std::endl;
     return;
   }
   cv::Rect rectangle(rect_position.x, rect_position.y, fill_rect_w, fill_rect_h);

@@ -59,7 +59,7 @@ class TrafficLightFineDetectorNode : public rclcpp::Node
 
 public:
   explicit TrafficLightFineDetectorNode(const rclcpp::NodeOptions & options);
-  void connectCb();
+  // void connectCb();
   /**
    * @brief main process function.
    *
@@ -146,10 +146,10 @@ private:
   image_transport::SubscriberFilter image_sub_;
   message_filters::Subscriber<TrafficLightRoiArray> rough_roi_sub_;
   message_filters::Subscriber<TrafficLightRoiArray> expect_roi_sub_;
-  std::mutex connect_mutex_;
+  // std::mutex connect_mutex_;
   rclcpp::Publisher<TrafficLightRoiArray>::SharedPtr output_roi_pub_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr exe_time_pub_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  // rclcpp::TimerBase::SharedPtr timer_;
 
   typedef message_filters::sync_policies::ExactTime<
     sensor_msgs::msg::Image, TrafficLightRoiArray, TrafficLightRoiArray>

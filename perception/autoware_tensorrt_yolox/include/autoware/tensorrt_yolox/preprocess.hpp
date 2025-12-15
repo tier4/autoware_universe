@@ -197,6 +197,10 @@ extern void multi_scale_resize_bilinear_letterbox_nhwc_to_nchw32_batch_gpu(
 extern void argmax_gpu(
   unsigned char * dst, float * src, int d_w, int d_h, int s_w, int s_h, int s_c, int batch,
   cudaStream_t stream);
+
+void launchYuv420ToPackedBgr(uint8_t* d_y, uint8_t* d_u, uint8_t* d_v, uint8_t* d_bgr, 
+                             int width, int height, int y_pitch, int uv_pitch);
+
 }  // namespace tensorrt_yolox
 }  // namespace autoware
 #endif  // AUTOWARE__TENSORRT_YOLOX__PREPROCESS_HPP_

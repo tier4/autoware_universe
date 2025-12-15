@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__IMAGE_TRANSPORT_DECOMPRESSOR__IMAGE_TRANSPORT_DECOMPRESSOR_HPP_
 #define AUTOWARE__IMAGE_TRANSPORT_DECOMPRESSOR__IMAGE_TRANSPORT_DECOMPRESSOR_HPP_
 
+#include "NvJpegDecoder.h"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <sensor_msgs/msg/compressed_image.hpp>
@@ -26,6 +28,7 @@
 
 namespace autoware::image_preprocessor
 {
+
 class ImageTransportDecompressor : public rclcpp::Node
 {
 public:
@@ -38,6 +41,8 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr compressed_image_sub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr raw_image_pub_;
   std::string encoding_;
+
+  std::unique_ptr<NvJPEGDecoder> jpeg_decoder_;
 };
 
 }  // namespace autoware::image_preprocessor

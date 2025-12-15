@@ -46,9 +46,9 @@ TrafficLightClassifierNodelet::TrafficLightClassifierNodelet(const rclcpp::NodeO
   traffic_signal_array_pub_ = this->create_publisher<tier4_perception_msgs::msg::TrafficLightArray>(
     "~/output/traffic_signals", rclcpp::QoS{1});
 
-  using std::chrono_literals::operator""ms;
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), 100ms, std::bind(&TrafficLightClassifierNodelet::connectCb, this));
+  // using std::chrono_literals::operator""ms;
+  // timer_ = rclcpp::create_timer(
+  //   this, get_clock(), 100ms, std::bind(&TrafficLightClassifierNodelet::connectCb, this));
 
   int classifier_type = this->declare_parameter<int>("classifier_type");
   if (classifier_type == TrafficLightClassifierNodelet::ClassifierType::HSVFilter) {
@@ -69,8 +69,12 @@ TrafficLightClassifierNodelet::TrafficLightClassifierNodelet(const rclcpp::NodeO
     RCLCPP_INFO(get_logger(), "TensorRT engine is built and shutdown node.");
     rclcpp::shutdown();
   }
+
+  image_sub_.subscribe(this, "~/input/image", "raw", rmw_qos_profile_sensor_data);
+  roi_sub_.subscribe(this, "~/input/rois", rclcpp::QoS{1}.get_rmw_qos_profile());
 }
 
+/*
 void TrafficLightClassifierNodelet::connectCb()
 {
   // set callbacks only when there are subscribers to this node
@@ -84,6 +88,7 @@ void TrafficLightClassifierNodelet::connectCb()
     roi_sub_.subscribe(this, "~/input/rois", rclcpp::QoS{1}.get_rmw_qos_profile());
   }
 }
+*/
 
 void TrafficLightClassifierNodelet::imageRoiCallback(
   const sensor_msgs::msg::Image::ConstSharedPtr & input_image_msg,
