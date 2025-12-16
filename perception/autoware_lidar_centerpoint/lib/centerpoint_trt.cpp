@@ -39,13 +39,13 @@ CenterPointTRT::CenterPointTRT(
   const DensificationParam & densification_param, const CenterPointConfig & config)
 : config_(config)
 {
+  cudaStreamCreate(&stream_);
+
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_);
   post_proc_ptr_ = std::make_unique<PostProcessCUDA>(config_, stream_);
 
   initPtr();
   initTrt(encoder_param, head_param);
-
-  cudaStreamCreate(&stream_);
 }
 
 CenterPointTRT::~CenterPointTRT()
@@ -214,6 +214,14 @@ bool CenterPointTRT::preprocess(
   if (!is_success) {
     return false;
   }
+
+  const auto points_capacity_size = config_.cloud_capacity_ * config_.point_feature_size_;
+  CHECK_CUDA_ERROR(
+    cudaMemsetAsync(points_aux_d_.get(), 0, points_capacity_size * sizeof(float), stream_));
+  CHECK_CUDA_ERROR(
+    cudaMemsetAsync(points_d_.get(), 0, points_capacity_size * sizeof(float), stream_));
+
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   const std::size_t count = vg_ptr_->generateSweepPoints(points_aux_d_.get(), stream_);
   const std::size_t random_offset = std::rand() % config_.cloud_capacity_;
