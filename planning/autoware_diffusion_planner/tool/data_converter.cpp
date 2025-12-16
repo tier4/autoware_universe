@@ -681,6 +681,7 @@ int main(int argc, char ** argv)
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
       const double center_x = ego_pos.x;
       const double center_y = ego_pos.y;
+      const double center_z = ego_pos.z;
 
       // Process traffic signals for this frame using the traffic signals from FrameData
       std::map<lanelet::Id, preprocess::TrafficSignalStamped> traffic_light_id_map;
@@ -712,7 +713,7 @@ int main(int argc, char ** argv)
       // Get route lanes data with speed limits
       const std::vector<int64_t> segment_indices =
         lane_segment_context.select_route_segment_indices(
-          seq.data_list[i].route, center_x, center_y, NUM_SEGMENTS_IN_ROUTE);
+          seq.data_list[i].route, center_x, center_y, center_z, NUM_SEGMENTS_IN_ROUTE);
       const auto [route_lanes, route_lanes_speed_limit] =
         lane_segment_context.create_tensor_data_from_indices(
           map2bl, traffic_light_id_map, segment_indices, NUM_SEGMENTS_IN_ROUTE);
