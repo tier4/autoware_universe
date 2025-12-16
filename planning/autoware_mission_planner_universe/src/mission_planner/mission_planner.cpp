@@ -484,6 +484,8 @@ void MissionPlanner::on_set_lanelet_route(
   change_state(RouteState::SET);
   res->status.success = true;
 
+  RCLCPP_INFO(
+    this->get_logger(), "Set lanelet route with %zu segments.", route.segments.size());
   publish_pose_log(odometry_->pose.pose, "initial");
   publish_pose_log(req->goal_pose, "goal");
 }
@@ -545,6 +547,8 @@ void MissionPlanner::on_set_waypoint_route(
   change_state(RouteState::SET);
   res->status.success = true;
 
+  RCLCPP_INFO(
+    this->get_logger(), "Set waypoint route with %zu segments.", route.segments.size());
   publish_pose_log(odometry_->pose.pose, "initial");
   publish_pose_log(req->goal_pose, "goal");
 }
