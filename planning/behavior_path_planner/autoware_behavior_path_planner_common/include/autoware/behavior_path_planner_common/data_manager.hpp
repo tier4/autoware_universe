@@ -240,6 +240,8 @@ struct PlannerData
       node.declare_parameter<double>("turn_signal_shift_length_threshold");
     parameters.turn_signal_remaining_shift_length_threshold =
       node.declare_parameter<double>("turn_signal_remaining_shift_length_threshold");
+    parameters.turn_signal_remaining_distance_to_bound_threshold =
+      node.declare_parameter<double>("turn_signal_remaining_distance_to_bound_threshold");
     parameters.turn_signal_on_swerving = node.declare_parameter<bool>("turn_signal_on_swerving");
 
     parameters.enable_akima_spline_first =
@@ -296,8 +298,8 @@ struct PlannerData
 
     return turn_signal_decider.getBehaviorTurnSignalInfo(
       shifted_path, shift_line, current_lanelets, route_handler, parameters, self_odometry,
-      current_shift_length, is_driving_forward, egos_lane_is_shifted, override_ego_stopped_check,
-      is_pull_out, is_lane_change, is_pull_over);
+      parameters.vehicle_info, current_shift_length, is_driving_forward, egos_lane_is_shifted,
+      override_ego_stopped_check, is_pull_out, is_lane_change, is_pull_over);
   }
 
   std::pair<TurnSignalInfo, bool> getBehaviorTurnSignalInfo(
@@ -308,8 +310,8 @@ struct PlannerData
   {
     return turn_signal_decider.getBehaviorTurnSignalInfo(
       path, shift_line, current_lanelets, route_handler, parameters, self_odometry,
-      current_shift_length, is_driving_forward, egos_lane_is_shifted, override_ego_stopped_check,
-      is_pull_out);
+      parameters.vehicle_info, current_shift_length, is_driving_forward, egos_lane_is_shifted,
+      override_ego_stopped_check, is_pull_out);
   }
 
   TurnIndicatorsCommand getTurnSignal(

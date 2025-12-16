@@ -88,9 +88,6 @@ struct CancelParameters
 
 struct CollisionCheckParameters
 {
-  bool enable_for_prepare_phase_in_general_lanes{false};
-  bool enable_for_prepare_phase_in_intersection{true};
-  bool enable_for_prepare_phase_in_turns{true};
   bool check_current_lane{true};
   bool check_other_lanes{true};
   bool use_all_predicted_paths{false};
@@ -110,6 +107,7 @@ struct SafetyParameters
   RSSparams rss_params_for_parked{};
   RSSparams rss_params_for_abort{};
   RSSparams rss_params_for_stuck{};
+  RSSparams rss_params_for_prepare{};
   ObjectTypesToCheck target_object_types{};
   CollisionCheckParameters collision_check{};
 };
@@ -155,6 +153,20 @@ struct TerminalPathParameters
   bool stop_at_boundary{false};
 };
 
+struct L2OverwriteParameters
+{
+  /**
+   * @brief Parameters for managing overwriting lane change behavior during L2 driving.
+   *
+   * If enabled, this allows manual driver intervention when the lane change module
+   * is stuck waiting for approval. The driver can manually take over and drive
+   * through unsafe paths. After manual intervention, the lane change module will
+   * reset and resume its operations.
+   */
+  bool enable{false};                       ///< Flag to enable or disable the overwrite mechanism.
+  double rewrite_overshoot_threshold{5.0};  ///< Threshold for overshoot during overwrite.
+};
+
 struct Parameters
 {
   TrajectoryParameters trajectory{};
@@ -163,6 +175,7 @@ struct Parameters
   DelayParameters delay{};
   TerminalPathParameters terminal_path{};
   FrenetPlannerParameters frenet{};
+  L2OverwriteParameters l2_overwrite{};
 
   // lane change parameters
   double time_limit{50.0};

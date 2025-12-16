@@ -153,6 +153,11 @@
                   "default": 5.0
                 }
               }
+            },
+            "reuse_margin": {
+              "type": "number",
+              "description": "[m] the previous stop distance is reused if before the newly calculated one but not further than this margin",
+              "default": 5.0
             }
           }
         },

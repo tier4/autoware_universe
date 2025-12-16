@@ -137,14 +137,6 @@ LCParamPtr LaneChangeModuleManager::set_params(rclcpp::Node * node, const std::s
       *node, parameter("safety_check.lane_expansion.right_offset"));
 
     // collision check
-    p.safety.collision_check.enable_for_prepare_phase_in_general_lanes =
-      get_or_declare_parameter<bool>(
-        *node, parameter("collision_check.enable_for_prepare_phase.general_lanes"));
-    p.safety.collision_check.enable_for_prepare_phase_in_intersection =
-      get_or_declare_parameter<bool>(
-        *node, parameter("collision_check.enable_for_prepare_phase.intersection"));
-    p.safety.collision_check.enable_for_prepare_phase_in_turns = get_or_declare_parameter<bool>(
-      *node, parameter("collision_check.enable_for_prepare_phase.turns"));
     p.safety.collision_check.check_current_lane =
       get_or_declare_parameter<bool>(*node, parameter("collision_check.check_current_lanes"));
     p.safety.collision_check.check_other_lanes =
@@ -177,6 +169,7 @@ LCParamPtr LaneChangeModuleManager::set_params(rclcpp::Node * node, const std::s
       params.extended_polygon_policy = get_or_declare_parameter<std::string>(
         *node, parameter(prefix + ".extended_polygon_policy"));
     };
+    set_rss_params(p.safety.rss_params_for_prepare, "safety_check.prepare");
     set_rss_params(p.safety.rss_params, "safety_check.execution");
     set_rss_params(p.safety.rss_params_for_parked, "safety_check.parked");
     set_rss_params(p.safety.rss_params_for_abort, "safety_check.cancel");
@@ -237,6 +230,12 @@ LCParamPtr LaneChangeModuleManager::set_params(rclcpp::Node * node, const std::s
     get_or_declare_parameter<double>(*node, parameter("frenet.th_curvature_smoothing"));
   p.frenet.th_average_curvature =
     get_or_declare_parameter<double>(*node, parameter("frenet.th_average_curvature"));
+
+  {
+    p.l2_overwrite.enable = get_or_declare_parameter<bool>(*node, parameter("l2_overwrite.enable"));
+    p.l2_overwrite.rewrite_overshoot_threshold = get_or_declare_parameter<double>(
+      *node, parameter("l2_overwrite.rewrite_overshoot_threshold"));
+  }
 
   // lane change cancel
   p.cancel.enable_on_prepare_phase =
@@ -452,15 +451,6 @@ void LaneChangeModuleManager::updateModuleParams(const std::vector<rclcpp::Param
   {
     const std::string ns = "lane_change.collision_check.";
     update_param<bool>(
-      parameters, ns + "enable_for_prepare_phase.general_lanes",
-      p->safety.collision_check.enable_for_prepare_phase_in_general_lanes);
-    update_param<bool>(
-      parameters, ns + "enable_for_prepare_phase.intersection",
-      p->safety.collision_check.enable_for_prepare_phase_in_intersection);
-    update_param<bool>(
-      parameters, ns + "enable_for_prepare_phase.turns",
-      p->safety.collision_check.enable_for_prepare_phase_in_turns);
-    update_param<bool>(
       parameters, ns + "check_current_lanes", p->safety.collision_check.check_current_lane);
     update_param<bool>(
       parameters, ns + "check_other_lanes", p->safety.collision_check.check_other_lanes);
@@ -548,6 +538,7 @@ void LaneChangeModuleManager::updateModuleParams(const std::vector<rclcpp::Param
     }
   };
 
+  update_rss_params("lane_change.safety_check.prepare.", p->safety.rss_params_for_prepare);
   update_rss_params("lane_change.safety_check.execution.", p->safety.rss_params);
   update_rss_params("lane_change.safety_check.parked.", p->safety.rss_params_for_parked);
   update_rss_params("lane_change.safety_check.cancel.", p->safety.rss_params_for_abort);
@@ -610,6 +601,13 @@ void LaneChangeModuleManager::updateModuleParams(const std::vector<rclcpp::Param
     update_param<double>(parameters, ns + "overhang_tolerance", p->cancel.overhang_tolerance);
     update_param<int>(
       parameters, ns + "unsafe_hysteresis_threshold", p->cancel.th_unsafe_hysteresis);
+  }
+
+  {
+    const std::string ns = "lane_change.l2_overwrite.";
+    update_param<bool>(parameters, ns + "enable", p->l2_overwrite.enable);
+    update_param<double>(
+      parameters, ns + "rewrite_overshoot_threshold", p->l2_overwrite.rewrite_overshoot_threshold);
   }
 
   std::for_each(observers_.begin(), observers_.end(), [&p](const auto & observer) {

@@ -33,6 +33,7 @@
 #include <queue>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -49,6 +50,13 @@ double calc_distance(
       path.points, input_point, nearest_dist_threshold, nearest_yaw_threshold);
   return autoware::motion_utils::calcSignedArcLength(
     path.points, current_pose.position, current_seg_idx, input_point.position, nearest_seg_idx);
+}
+
+std::string turn_indicator_command_str(const uint8_t command)
+{
+  if (command == TurnIndicatorsCommand::ENABLE_LEFT) return "left";
+  if (command == TurnIndicatorsCommand::ENABLE_RIGHT) return "right";
+  return "unknown";
 }
 
 /***
@@ -95,7 +103,8 @@ TurnIndicatorsCommand TurnSignalDecider::getTurnSignal(
   // Get closest intersection turn signal if exists
   const auto intersection_turn_signal_info = getIntersectionTurnSignalInfo(
     extended_path, current_pose, current_vel, ego_seg_idx, *route_handler, nearest_dist_threshold,
-    nearest_yaw_threshold);
+    nearest_yaw_threshold, parameters.turn_signal_minimum_search_distance,
+    turn_signal_info.turn_signal.command);
 
   if (intersection_turn_signal_info) {
     debug_data.intersection_turn_signal_info = *intersection_turn_signal_info;
@@ -141,47 +150,55 @@ std::pair<Pose, double> TurnSignalDecider::getIntersectionPoseAndDistance()
 std::optional<TurnSignalInfo> TurnSignalDecider::getIntersectionTurnSignalInfo(
   const PathWithLaneId & path, const Pose & current_pose, const double current_vel,
   const size_t current_seg_idx, const RouteHandler & route_handler,
-  const double nearest_dist_threshold, const double nearest_yaw_threshold)
+  const double nearest_dist_threshold, const double nearest_yaw_threshold,
+  const double th_search_dist_to_turn_direction_lane, const uint8_t turn_indicator_command)
 {
-  const auto requires_turn_signal = [&current_vel](
-                                      const auto & turn_direction, const bool is_in_turn_lane) {
-    constexpr double stop_velocity_threshold = 0.1;
-    return (
-      turn_direction == "right" || turn_direction == "left" ||
-      (turn_direction == "straight" && current_vel < stop_velocity_threshold && !is_in_turn_lane));
-  };
   // base search distance
   const double base_search_distance =
     intersection_search_time_ * current_vel + intersection_search_distance_;
 
   // unique lane ids
-  std::vector<lanelet::Id> unique_lane_ids;
-  for (size_t i = 0; i < path.points.size(); ++i) {
-    for (const auto & lane_id : path.points.at(i).lane_ids) {
-      if (
-        std::find(unique_lane_ids.begin(), unique_lane_ids.end(), lane_id) ==
-        unique_lane_ids.end()) {
-        unique_lane_ids.push_back(lane_id);
-      }
-    }
-  }
+  const std::vector<lanelet::Id> unique_lane_ids = utils::get_lanelet_id_from_path(path);
 
-  bool is_in_turn_lane = false;
-  for (const auto & lane_id : unique_lane_ids) {
-    const auto lanelet = route_handler.getLaneletsFromId(lane_id);
-    const std::string turn_direction = lanelet.attributeOr("turn_direction", "none");
-    if (turn_direction == "left" || turn_direction == "right") {
-      const auto & position = current_pose.position;
-      const lanelet::BasicPoint2d point(position.x, position.y);
-      if (lanelet::geometry::inside(lanelet, point)) {
-        is_in_turn_lane = true;
-        break;
-      }
+  const lanelet::ConstLanelets lanelet_sequence =
+    utils::get_lanelet_sequence_from_path(path, route_handler);
+
+  const std::string expected_turn_command = turn_indicator_command_str(turn_indicator_command);
+
+  const auto dist_to_next_turn_direction_lane = utils::calc_distance_to_next_turn_direction_lane(
+    current_pose, route_handler, lanelet_sequence, expected_turn_command);
+
+  const bool is_near_next_intersection =
+    dist_to_next_turn_direction_lane.value_or(std::numeric_limits<double>::max()) <
+    th_search_dist_to_turn_direction_lane;
+
+  const lanelet::ConstLanelets nearest_turn_direction_lanes =
+    utils::nearest_turn_direction_lane_within_route(current_pose, route_handler, lanelet_sequence);
+
+  const bool is_in_nearest_turn_direction_lane = std::any_of(
+    nearest_turn_direction_lanes.begin(), nearest_turn_direction_lanes.end(),
+    [&](const auto & llt) {
+      return std::string(llt.attributeOr("turn_direction", "else")) == expected_turn_command;
+    });
+
+  const auto requires_intersection_turn_signal = [&](const auto & turn_direction) -> bool {
+    if (utils::is_turn_direction_lane(turn_direction)) {
+      return true;
     }
-  }
+    constexpr double stop_velocity_threshold = 0.1;
+
+    if (!is_near_next_intersection && !is_in_nearest_turn_direction_lane) {
+      return false;
+    }
+
+    // if ego is near or in turn direction lane, if it stops, then we need turn signal for
+    // intersection.
+    return current_vel < stop_velocity_threshold;
+  };
+
   // combine consecutive lanes of the same turn direction
   // stores lanes that have already been combine
-  std::set<int> processed_lanes;
+  std::unordered_set<lanelet::Id> processed_lanes;
   // since combined_lane does not inherit id and attribute,
   // and ConstantLanelet does not rewrite the value,
   // we keep front_lane together as a representative.
@@ -194,7 +211,7 @@ std::optional<TurnSignalInfo> TurnSignalDecider::getIntersectionTurnSignalInfo(
     // Get the lane and its attribute
     const std::string lane_attribute =
       current_lane.attributeOr("turn_direction", std::string("none"));
-    if (!requires_turn_signal(lane_attribute, is_in_turn_lane)) continue;
+    if (!requires_intersection_turn_signal(lane_attribute)) continue;
 
     do {
       processed_lanes.insert(current_lane.id());
@@ -272,10 +289,12 @@ std::optional<TurnSignalInfo> TurnSignalDecider::getIntersectionTurnSignalInfo(
       // Vehicle is already passed this lane
       desired_start_point_map_.erase(lane_id);
       continue;
-    } else if (search_distance <= dist_to_front_point) {
+    }
+
+    if (search_distance <= dist_to_front_point) {
       continue;
     }
-    if (requires_turn_signal(lane_attribute, is_in_turn_lane)) {
+    if (requires_intersection_turn_signal(lane_attribute)) {
       // update map if necessary
       if (desired_start_point_map_.find(lane_id) == desired_start_point_map_.end()) {
         desired_start_point_map_.emplace(lane_id, current_pose);
@@ -599,11 +618,11 @@ geometry_msgs::msg::Pose TurnSignalDecider::get_required_end_point(
     autoware::motion_utils::resamplePoseVector(converted_centerline, resampling_arclength);
 
   const double terminal_yaw = tf2::getYaw(resampled_centerline.back().orientation);
-  for (size_t i = 0; i < resampled_centerline.size(); ++i) {
-    const double yaw = tf2::getYaw(resampled_centerline.at(i).orientation);
+  for (auto itr = resampled_centerline.rbegin(); itr != resampled_centerline.rend(); ++itr) {
+    const double yaw = tf2::getYaw(itr->orientation);
     const double yaw_diff = autoware_utils::normalize_radian(yaw - terminal_yaw);
-    if (std::fabs(yaw_diff) < autoware_utils::deg2rad(intersection_angle_threshold_deg_)) {
-      return resampled_centerline.at(i);
+    if (std::fabs(yaw_diff) >= autoware_utils::deg2rad(intersection_angle_threshold_deg_)) {
+      return *itr;
     }
   }
 
@@ -669,7 +688,8 @@ std::pair<TurnSignalInfo, bool> TurnSignalDecider::getBehaviorTurnSignalInfo(
   const lanelet::ConstLanelets & current_lanelets,
   const std::shared_ptr<RouteHandler> route_handler,
   const BehaviorPathPlannerParameters & parameters, const Odometry::ConstSharedPtr self_odometry,
-  const double current_shift_length, const bool is_driving_forward, const bool egos_lane_is_shifted,
+  const vehicle_info_utils::VehicleInfo & vehicle_info, const double current_shift_length,
+  const bool is_driving_forward, const bool egos_lane_is_shifted,
   const bool override_ego_stopped_check, const bool is_pull_out, const bool is_lane_change,
   const bool is_pull_over) const
 {
@@ -737,15 +757,10 @@ std::pair<TurnSignalInfo, bool> TurnSignalDecider::getBehaviorTurnSignalInfo(
 
   // If the vehicle does not shift anymore, we turn off the blinker
   if (
-    std::fabs(end_shift_length - current_shift_length) <
+    std::abs(end_shift_length - current_shift_length) <
     p.turn_signal_remaining_shift_length_threshold) {
     return std::make_pair(TurnSignalInfo(p_path_start, p_path_end), true);
   }
-
-  const auto get_command = [](const auto & shift_length) {
-    return shift_length > 0.0 ? TurnIndicatorsCommand::ENABLE_LEFT
-                              : TurnIndicatorsCommand::ENABLE_RIGHT;
-  };
 
   const auto signal_prepare_distance =
     std::max(ego_speed * p.turn_signal_search_time, p.turn_signal_minimum_search_distance);
@@ -762,13 +777,6 @@ std::pair<TurnSignalInfo, bool> TurnSignalDecider::getBehaviorTurnSignalInfo(
   const auto get_start_pose = [&](const auto & ego_to_shift_start) {
     return ego_to_shift_start > 0.0 ? ego_pose : blinker_start_pose;
   };
-
-  TurnSignalInfo turn_signal_info{};
-  turn_signal_info.desired_start_point = get_start_pose(ego_front_to_shift_start);
-  turn_signal_info.desired_end_point = blinker_end_pose;
-  turn_signal_info.required_start_point = blinker_start_pose;
-  turn_signal_info.required_end_point = blinker_end_pose;
-  turn_signal_info.turn_signal.command = get_command(relative_shift_length);
 
   if (!p.turn_signal_on_swerving) {
     return std::make_pair(TurnSignalInfo(p_path_start, p_path_end), false);
@@ -822,6 +830,27 @@ std::pair<TurnSignalInfo, bool> TurnSignalDecider::getBehaviorTurnSignalInfo(
       return std::make_pair(TurnSignalInfo(p_path_start, p_path_end), true);
     }
   }
+
+  const auto turn_signal_direction = relative_shift_length > 0.0 ? "left" : "right";
+
+  if (is_pull_out && !is_lane_change) {
+    const auto dist_to_bound_opt = utils::calc_point_dist_to_closest_lane_boundary(
+      *route_handler, ego_pose, vehicle_info, turn_signal_direction);
+    const bool is_close_to_bound =
+      dist_to_bound_opt.has_value() &&
+      std::abs(dist_to_bound_opt.value()) < p.turn_signal_remaining_distance_to_bound_threshold;
+
+    if (is_close_to_bound) {
+      return std::make_pair(TurnSignalInfo(p_path_start, p_path_end), true);
+    }
+  }
+
+  TurnSignalInfo turn_signal_info{};
+  turn_signal_info.desired_start_point = get_start_pose(ego_front_to_shift_start);
+  turn_signal_info.desired_end_point = blinker_end_pose;
+  turn_signal_info.required_start_point = blinker_start_pose;
+  turn_signal_info.required_end_point = blinker_end_pose;
+  turn_signal_info.turn_signal.command = g_signal_map.at(turn_signal_direction);
 
   return std::make_pair(turn_signal_info, false);
 }
