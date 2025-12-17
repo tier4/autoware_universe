@@ -14,7 +14,6 @@
 
 #include "manager.hpp"
 
-// Fix: Include the Autoware-specific traffic light definition
 #include "autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp"
 
 #include <autoware/behavior_velocity_planner_common/utilization/util.hpp>
@@ -217,7 +216,6 @@ TrafficLightModuleManager::getModuleExpiredFunction(
            [[maybe_unused]] const std::shared_ptr<SceneModuleInterfaceWithRTC> & scene_module) {
     const auto traffic_light_module = std::dynamic_pointer_cast<TrafficLightModule>(scene_module);
     const auto & traffic_light_reg_elem = traffic_light_module->getTrafficLightRegElem();
-    const auto & lane = traffic_light_module->getLanelet();
 
     for (const auto & id : lanelet_id_set) {
       const auto lane_on_path =
