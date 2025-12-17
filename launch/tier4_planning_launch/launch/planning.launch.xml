@@ -51,6 +51,8 @@
     <group>
       <push-ros-namespace namespace="trajectory_generator"/>
       <include file="$(find-pkg-share autoware_diffusion_planner)/launch/diffusion_planner.launch.xml">
+        <arg name="onnx_model_path" value="/opt/autoware/mlmodels/diffusion_planner/model.onnx"/>
+        <arg name="args_path" value="/opt/autoware/mlmodels/diffusion_planner/args.json"/>
         <arg name="input_odometry" value="/localization/kinematic_state"/>
         <arg name="input_acceleration" value="/localization/acceleration"/>
         <arg name="input_route" value="/planning/mission_planning/route"/>

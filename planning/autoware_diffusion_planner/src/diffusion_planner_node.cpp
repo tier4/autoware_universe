@@ -365,8 +365,7 @@ void DiffusionPlanner::load_engine(const std::string & model_path)
   auto network_io_ptr = std::make_unique<std::vector<NetworkIO>>(network_io);
   auto profile_dims_ptr = std::make_unique<std::vector<ProfileDims>>(profile_dims);
 
-  network_trt_ptr_ = std::make_unique<TrtCommon>(
-    trt_config, std::make_shared<Profiler>(), std::vector<std::string>{params_.plugins_path});
+  network_trt_ptr_ = std::make_unique<TrtCommon>(trt_config, std::make_shared<Profiler>());
 
   if (!network_trt_ptr_->setup(std::move(profile_dims_ptr), std::move(network_io_ptr))) {
     throw std::runtime_error("Failed to setup TRT engine." + params_.plugins_path);

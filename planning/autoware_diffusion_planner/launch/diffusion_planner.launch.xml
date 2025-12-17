@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
   <arg name="diffusion_planner_param_path" default="$(find-pkg-share autoware_diffusion_planner)/config/diffusion_planner.param.yaml"/>
-  <arg name="plugins_path" default="$(find-pkg-share autoware_tensorrt_plugins)/plugins/libautoware_tensorrt_plugins.so"/>
   <arg name="onnx_model_path" default="$(env HOME)/autoware_data/diffusion_planner/v2.0/diffusion_planner.onnx"/>
   <arg name="args_path" default="$(env HOME)/autoware_data/diffusion_planner/v2.0/diffusion_planner.param.json"/>
   <arg name="build_only" default="false"/>
@@ -21,7 +20,6 @@
 
   <node pkg="autoware_diffusion_planner" exec="autoware_diffusion_planner_node" name="diffusion_planner_node" output="both">
     <param from="$(var diffusion_planner_param_path)" allow_substs="true"/>
-    <param name="plugins_path" value="$(var plugins_path)"/>
     <param name="onnx_model_path" value="$(var onnx_model_path)"/>
     <param name="args_path" value="$(var args_path)"/>
     <param name="build_only" value="$(var build_only)"/>
