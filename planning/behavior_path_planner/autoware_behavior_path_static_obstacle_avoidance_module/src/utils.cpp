@@ -966,9 +966,6 @@ bool isSatisfiedWithVehicleCondition(
   const std::shared_ptr<const PlannerData> & planner_data,
   const std::shared_ptr<AvoidanceParameters> & parameters)
 {
-  object.behavior = getObjectBehavior(object, parameters);
-  object.is_on_ego_lane = isOnEgoLane(object, planner_data->route_handler);
-
   if (isNeverAvoidanceTarget(object, data, planner_data, parameters)) {
     return false;
   }
@@ -2012,6 +2009,8 @@ void filterTargetObjects(
         filtering_utils::isWithinIntersection(o, planner_data->route_handler);
       o.is_parked =
         filtering_utils::isParkedVehicle(o, data, planner_data->route_handler, parameters);
+      o.behavior = filtering_utils::getObjectBehavior(o, parameters);
+      o.is_on_ego_lane = filtering_utils::isOnEgoLane(o, planner_data->route_handler);
       o.is_adjacent_lane_stop_vehicle = filtering_utils::isAdjacentLaneStopVehicle(o);
       o.avoid_margin = filtering_utils::getAvoidMargin(o, planner_data, parameters);
 
