@@ -104,12 +104,12 @@
           </include>
         </group>
         <!-- prediction module -->
-        <!-- <group>
+        <group>
           <push-ros-namespace namespace="prediction"/>
           <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/prediction/prediction.launch.xml">
             <arg name="use_vector_map" value="true"/>
           </include>
-        </group> -->
+        </group>
       </group>
 
       <!-- perception evaluator -->
