@@ -125,9 +125,9 @@
 
   <!-- Downsample pointcloud for perception usage -->
   <arg name="downsample_perception_common_pointcloud" default="false"/>
-  <arg name="common_downsample_voxel_size_x" default="0.05"/>
-  <arg name="common_downsample_voxel_size_y" default="0.05"/>
-  <arg name="common_downsample_voxel_size_z" default="0.05"/>
+  <arg name="common_downsample_voxel_size_x" default="0.10"/>
+  <arg name="common_downsample_voxel_size_y" default="0.10"/>
+  <arg name="common_downsample_voxel_size_z" default="0.10"/>
 
   <!-- Perception module -->
   <group>

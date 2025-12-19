@@ -29,6 +29,7 @@
   <let name="validator/input/obstacle_pointcloud" value="$(var input/pointcloud_map/pointcloud)" if="$(var use_pointcloud_map)"/>
   <let name="validator/input/obstacle_pointcloud" value="$(var input/obstacle_segmentation/pointcloud)" unless="$(var use_pointcloud_map)"/>
   <let name="validator/output/objects" value="$(var lidar_detection_model)/validation/objects"/>
+  <let name="validator/output/objects" value="$(var output/objects)" if="$(var use_ml_only)"/>
 
   <let name="merger1/input/objects0" value="$(var validator/output/objects)" if="$(var use_validator)"/>
   <let name="merger1/input/objects0" value="$(var input/lidar_ml/objects)" unless="$(var use_validator)"/>
@@ -56,7 +57,7 @@
   </group>
 
   <!-- 1st merger: ML detection + pointcloud cluster -->
-  <group>
+  <group unless="$(var use_ml_only)">
     <include file="$(find-pkg-share object_merger)/launch/object_association_merger.launch.xml">
       <arg name="input/object0" value="$(var merger1/input/objects0)"/>
       <arg name="input/object1" value="$(var merger1/input/objects1)"/>
@@ -80,7 +81,7 @@
   </group>
 
   <!-- Filter -->
-  <group>
+  <group unless="$(var use_ml_only)">
     <include file="$(find-pkg-share tier4_perception_launch)/launch/object_recognition/detection/filter/object_filter.launch.xml" if="$(var use_object_filter)">
       <arg name="objects_filter_method" value="$(var objects_filter_method)"/>
       <arg name="input/objects" value="$(var filter/input/objects)"/>
