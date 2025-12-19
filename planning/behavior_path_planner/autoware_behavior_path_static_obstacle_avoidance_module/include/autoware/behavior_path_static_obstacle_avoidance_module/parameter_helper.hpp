@@ -157,6 +157,11 @@ AvoidanceParameters getParameter(rclcpp::Node * node)
     p.object_ignore_section_crosswalk_behind_distance =
       get_or_declare_parameter<double>(*node, ns + "ignore_area.crosswalk.behind_distance");
   }
+  {
+    const std::string ns = "avoidance.target_filtering.avoidance_for_adjacent_lane_stop_vehicle.";
+    p.policy_adjacent_lane_stop_vehicle =
+      get_or_declare_parameter<std::string>(*node, ns + "policy");
+  }
 
   {
     const std::string ns = "avoidance.target_filtering.freespace.";

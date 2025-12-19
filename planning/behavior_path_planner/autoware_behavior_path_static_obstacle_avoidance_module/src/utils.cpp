@@ -549,6 +549,13 @@ bool isParkedVehicle(
   return std::abs(object.to_centerline) >= parameters->threshold_distance_object_is_on_center;
 }
 
+bool isAdjacentLaneStopVehicle(const ObjectData & object)
+{
+  return !object.is_parked &&       //
+         !object.is_on_ego_lane &&  //
+         object.behavior == ObjectData::Behavior::NONE;
+}
+
 bool isCloseToStopFactor(
   ObjectData & object, const AvoidancePlanningData & data,
   const std::shared_ptr<const PlannerData> & planner_data,
@@ -603,6 +610,15 @@ bool isNeverAvoidanceTarget(
         rclcpp::get_logger(logger_namespace), "object belongs to ego lane. never avoid it.");
       return true;
     }
+  }
+
+  if (
+    object.is_adjacent_lane_stop_vehicle &&
+    parameters->policy_adjacent_lane_stop_vehicle == "ignore") {
+    object.info = ObjectInfo::IS_ADJACENT_LANE_STOP_VEHICLE;
+    RCLCPP_DEBUG(
+      rclcpp::get_logger(logger_namespace), "object is on the adjacent lane. never avoid it.");
+    return true;
   }
 
   if (object.behavior == ObjectData::Behavior::MERGING) {
@@ -744,6 +760,11 @@ bool isObviousAvoidanceTarget(
 
     if (!object.is_on_ego_lane && object.behavior == ObjectData::Behavior::NONE) {
       RCLCPP_DEBUG(rclcpp::get_logger(logger_namespace), "object is adjacent vehicle.");
+      if (
+        object.is_adjacent_lane_stop_vehicle &&
+        parameters->policy_adjacent_lane_stop_vehicle == "manual") {
+        object.info = ObjectInfo::IS_ADJACENT_LANE_STOP_VEHICLE;
+      }
       return true;
     }
   }
@@ -945,9 +966,6 @@ bool isSatisfiedWithVehicleCondition(
   const std::shared_ptr<const PlannerData> & planner_data,
   const std::shared_ptr<AvoidanceParameters> & parameters)
 {
-  object.behavior = getObjectBehavior(object, parameters);
-  object.is_on_ego_lane = isOnEgoLane(object, planner_data->route_handler);
-
   if (isNeverAvoidanceTarget(object, data, planner_data, parameters)) {
     return false;
   }
@@ -1991,6 +2009,9 @@ void filterTargetObjects(
         filtering_utils::isWithinIntersection(o, planner_data->route_handler);
       o.is_parked =
         filtering_utils::isParkedVehicle(o, data, planner_data->route_handler, parameters);
+      o.behavior = filtering_utils::getObjectBehavior(o, parameters);
+      o.is_on_ego_lane = filtering_utils::isOnEgoLane(o, planner_data->route_handler);
+      o.is_adjacent_lane_stop_vehicle = filtering_utils::isAdjacentLaneStopVehicle(o);
       o.avoid_margin = filtering_utils::getAvoidMargin(o, planner_data, parameters);
 
       if (filtering_utils::isNoNeedAvoidanceBehavior(o, parameters)) {
