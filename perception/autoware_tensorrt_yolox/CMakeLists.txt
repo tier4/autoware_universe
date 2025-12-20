@@ -10,6 +10,9 @@ endif()
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+# Explicitly find tf2_ros (propagation from autoware_object_recognition_utils is sometimes broken)
+find_package(tf2_ros REQUIRED)
+
 # TODO(amadeuszsz): Remove -Wno-deprecated-declarations once removing implicit quantization
 add_compile_options(-Wno-deprecated-declarations)
 
@@ -167,6 +170,7 @@ ament_auto_add_library(${PROJECT_NAME}_node SHARED
 
 ament_target_dependencies(${PROJECT_NAME}_node
   OpenCV
+  tf2_ros
 )
 
 target_link_libraries(${PROJECT_NAME}_node
