@@ -11,46 +11,66 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 # Debug output
-message(STATUS "=== DEBUG autoware_tensorrt_yolox ===")
+message(WARNING "=== DEBUG autoware_tensorrt_yolox ===")
 
-# Check if tf2_ros can be found
-find_package(tf2_ros QUIET)
-if(tf2_ros_FOUND)
-  message(WARNING "tf2_ros_FOUND: TRUE")
-  message(WARNING "tf2_ros_VERSION: ${tf2_ros_VERSION}")
-  message(WARNING "tf2_ros_INCLUDE_DIRS: ${tf2_ros_INCLUDE_DIRS}")
-else()
-  message(WARNING "tf2_ros_FOUND: FALSE")
-endif()
+# Check CMAKE paths
+message(WARNING "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
 
-# Check what ament_auto found
-message(WARNING "ament_auto FOUND_BUILD_DEPENDS: ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS}")
-
-# Check if autoware_object_recognition_utils package config was found
+# Try to find the package and see what files exist
 find_package(autoware_object_recognition_utils QUIET)
 if(autoware_object_recognition_utils_FOUND)
-  message(WARNING "autoware_object_recognition_utils package FOUND: TRUE")
-  message(WARNING "autoware_object_recognition_utils_DIR: ${autoware_object_recognition_utils_DIR}")
-  message(WARNING "autoware_object_recognition_utils_INCLUDE_DIRS: ${autoware_object_recognition_utils_INCLUDE_DIRS}")
-  message(WARNING "autoware_object_recognition_utils_LIBRARIES: ${autoware_object_recognition_utils_LIBRARIES}")
+  message(WARNING "Package FOUND")
+  message(WARNING "  _DIR: ${autoware_object_recognition_utils_DIR}")
   
-  # Only check target if it exists
+  # Check what files exist in that directory
+  if(EXISTS "${autoware_object_recognition_utils_DIR}")
+    file(GLOB config_files "${autoware_object_recognition_utils_DIR}/*.cmake")
+    message(WARNING "  Config files found:")
+    foreach(config_file ${config_files})
+      get_filename_component(filename ${config_file} NAME)
+      message(WARNING "    - ${filename}")
+    endforeach()
+    
+    # Read the main config file
+    set(main_config "${autoware_object_recognition_utils_DIR}/autoware_object_recognition_utilsConfig.cmake")
+    if(EXISTS "${main_config}")
+      file(READ "${main_config}" config_content)
+      message(WARNING "  Main config content (first 1000 chars):")
+      string(SUBSTRING "${config_content}" 0 1000 config_preview)
+      message(WARNING "${config_preview}")
+    endif()
+    
+    # Check for targets file
+    set(targets_file "${autoware_object_recognition_utils_DIR}/export_autoware_object_recognition_utilsTargets.cmake")
+    if(EXISTS "${targets_file}")
+      message(WARNING "  Targets file EXISTS:  ${targets_file}")
+      file(READ "${targets_file}" targets_content)
+      string(SUBSTRING "${targets_content}" 0 500 targets_preview)
+      message(WARNING "  Targets file preview:  ${targets_preview}")
+    else()
+      message(WARNING "  Targets file DOES NOT EXIST:  ${targets_file}")
+      # List all Targets files
+      file(GLOB targets_files "${autoware_object_recognition_utils_DIR}/*Targets.cmake")
+      message(WARNING "  All *Targets.cmake files:")
+      foreach(tf ${targets_files})
+        message(WARNING "    - ${tf}")
+      endforeach()
+    endif()
+  endif()
+  
+  # Check if target exists NOW
   if(TARGET autoware_object_recognition_utils)
-    message(WARNING "Target autoware_object_recognition_utils EXISTS")
-    get_target_property(obj_rec_interface autoware_object_recognition_utils INTERFACE_INCLUDE_DIRECTORIES)
-    message(WARNING "  INTERFACE_INCLUDE_DIRECTORIES: ${obj_rec_interface}")
-    get_target_property(obj_rec_link autoware_object_recognition_utils INTERFACE_LINK_LIBRARIES)
-    message(WARNING "  INTERFACE_LINK_LIBRARIES: ${obj_rec_link}")
+    message(WARNING "  Target EXISTS after find_package")
+    get_target_property(target_type autoware_object_recognition_utils TYPE)
+    message(WARNING "    Type: ${target_type}")
+    get_target_property(interface_libs autoware_object_recognition_utils INTERFACE_LINK_LIBRARIES)
+    message(WARNING "    INTERFACE_LINK_LIBRARIES:  ${interface_libs}")
   else()
-    message(WARNING "Target autoware_object_recognition_utils DOES NOT EXIST (package found but no target exported)")
+    message(WARNING "  Target DOES NOT EXIST after find_package")
   endif()
 else()
-  message(WARNING "autoware_object_recognition_utils package NOT FOUND")
+  message(WARNING "Package NOT FOUND")
 endif()
-
-# Check the install prefix to see where things are installed
-message(WARNING "CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
-message(WARNING "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
 
 message(WARNING "=== END DEBUG ===")
 
