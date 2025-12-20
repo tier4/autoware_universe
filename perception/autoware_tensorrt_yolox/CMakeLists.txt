@@ -16,31 +16,31 @@ message(STATUS "=== DEBUG autoware_tensorrt_yolox ===")
 # Check if tf2_ros can be found
 find_package(tf2_ros QUIET)
 if(tf2_ros_FOUND)
-  message(STATUS "tf2_ros_FOUND: TRUE")
-  message(STATUS "tf2_ros_VERSION: ${tf2_ros_VERSION}")
-  message(STATUS "tf2_ros_INCLUDE_DIRS: ${tf2_ros_INCLUDE_DIRS}")
+  message(WARNING "tf2_ros_FOUND: TRUE")
+  message(WARNING "tf2_ros_VERSION: ${tf2_ros_VERSION}")
+  message(WARNING "tf2_ros_INCLUDE_DIRS: ${tf2_ros_INCLUDE_DIRS}")
 else()
   message(WARNING "tf2_ros_FOUND: FALSE")
 endif()
 
 # Check what ament_auto found
-message(STATUS "ament_auto FOUND_BUILD_DEPENDS: ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS}")
+message(WARNING "ament_auto FOUND_BUILD_DEPENDS: ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS}")
 
 # Check if autoware_object_recognition_utils package config was found
 find_package(autoware_object_recognition_utils QUIET)
 if(autoware_object_recognition_utils_FOUND)
-  message(STATUS "autoware_object_recognition_utils package FOUND: TRUE")
-  message(STATUS "autoware_object_recognition_utils_DIR: ${autoware_object_recognition_utils_DIR}")
-  message(STATUS "autoware_object_recognition_utils_INCLUDE_DIRS: ${autoware_object_recognition_utils_INCLUDE_DIRS}")
-  message(STATUS "autoware_object_recognition_utils_LIBRARIES: ${autoware_object_recognition_utils_LIBRARIES}")
+  message(WARNING "autoware_object_recognition_utils package FOUND: TRUE")
+  message(WARNING "autoware_object_recognition_utils_DIR: ${autoware_object_recognition_utils_DIR}")
+  message(WARNING "autoware_object_recognition_utils_INCLUDE_DIRS: ${autoware_object_recognition_utils_INCLUDE_DIRS}")
+  message(WARNING "autoware_object_recognition_utils_LIBRARIES: ${autoware_object_recognition_utils_LIBRARIES}")
   
   # Only check target if it exists
   if(TARGET autoware_object_recognition_utils)
-    message(STATUS "Target autoware_object_recognition_utils EXISTS")
+    message(WARNING "Target autoware_object_recognition_utils EXISTS")
     get_target_property(obj_rec_interface autoware_object_recognition_utils INTERFACE_INCLUDE_DIRECTORIES)
-    message(STATUS "  INTERFACE_INCLUDE_DIRECTORIES: ${obj_rec_interface}")
+    message(WARNING "  INTERFACE_INCLUDE_DIRECTORIES: ${obj_rec_interface}")
     get_target_property(obj_rec_link autoware_object_recognition_utils INTERFACE_LINK_LIBRARIES)
-    message(STATUS "  INTERFACE_LINK_LIBRARIES: ${obj_rec_link}")
+    message(WARNING "  INTERFACE_LINK_LIBRARIES: ${obj_rec_link}")
   else()
     message(WARNING "Target autoware_object_recognition_utils DOES NOT EXIST (package found but no target exported)")
   endif()
@@ -49,10 +49,10 @@ else()
 endif()
 
 # Check the install prefix to see where things are installed
-message(STATUS "CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
-message(STATUS "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
+message(WARNING "CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
+message(WARNING "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
 
-message(STATUS "=== END DEBUG ===")
+message(WARNING "=== END DEBUG ===")
 
 # TODO(amadeuszsz): Remove -Wno-deprecated-declarations once removing implicit quantization
 add_compile_options(-Wno-deprecated-declarations)
