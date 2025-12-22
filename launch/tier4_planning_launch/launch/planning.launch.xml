@@ -48,7 +48,7 @@
     </group>
 
     <!-- trajectory generator -->
-    <!-- <group>
+    <group>
       <push-ros-namespace namespace="trajectory_generator"/>
       <include file="$(find-pkg-share autoware_diffusion_planner)/launch/diffusion_planner.launch.xml">
         <arg name="onnx_model_path" value="/opt/autoware/mlmodels/diffusion_planner/model.onnx"/>
@@ -70,7 +70,7 @@
         <arg name="output_traj" value="/planning/trajectory"/>
         <arg name="output_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
       </include> -->
-    </group> -->
+    </group>
 
     <!-- planning validator -->
     <group>
