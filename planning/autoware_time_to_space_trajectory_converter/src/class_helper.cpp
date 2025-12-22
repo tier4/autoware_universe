@@ -27,7 +27,6 @@
 #include <tf2/utils.h>
 
 #include <algorithm>
-#include <deque>
 #include <optional>
 #include <string>
 #include <vector>
@@ -303,29 +302,5 @@ std::vector<autoware_planning_msgs::msg::TrajectoryPoint> convert_spline_data_to
   }
 
   return traj_points;
-}
-std::vector<PlannerPoint> convert_odometry_history_to_planner_points(
-  const std::deque<nav_msgs::msg::Odometry> & odom_history)
-{
-  if (odom_history.empty()) {
-    return {};
-  }
-
-  std::vector<PlannerPoint> planner_points;
-  planner_points.reserve(odom_history.size());
-
-  for (auto it = odom_history.rbegin(); it != odom_history.rend(); ++it) {
-    decltype(planner_points)::value_type planner_pt;
-    planner_pt.pos.x = it->pose.pose.position.x;
-    planner_pt.pos.y = it->pose.pose.position.y;
-    planner_pt.pos.z = it->pose.pose.position.z;
-    planner_pt.v = it->twist.twist.linear.x;
-    planner_pt.a = 0.0;
-    planner_pt.yaw = tf2::getYaw(it->pose.pose.orientation);
-    planner_pt.t = 0.0;
-
-    planner_points.push_back(planner_pt);
-  }
-  return planner_points;
 }
 }  // namespace autoware::time_to_space_trajectory_converter::helper

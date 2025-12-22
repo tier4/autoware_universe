@@ -26,7 +26,6 @@
 #include <algorithm>
 #include <limits>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace autoware::time_to_space_trajectory_converter
@@ -80,80 +79,6 @@ std::vector<PlannerPoint> TimeToSpaceConverterNode::get_current_trajectory_point
   return helper::convert_msg_to_planner_points(*sub_traj_ptr_);
 }
 
-void TimeToSpaceConverterNode::update_history(const nav_msgs::msg::Odometry & odom)
-{
-  // 1. Check Distance Filter (Resampling)
-  if (!odom_history_.empty()) {
-    const auto & last_pos = odom_history_.front().pose.pose.position;
-    const auto & curr_pos = odom.pose.pose.position;
-
-    double dist_sq = (last_pos.x - curr_pos.x) * (last_pos.x - curr_pos.x) +
-                     (last_pos.y - curr_pos.y) * (last_pos.y - curr_pos.y);
-
-    // If we haven't moved enough, skip adding this point
-    const auto resampling_resolution_sq =
-      params_.resampling_resolution_m * params_.resampling_resolution_m;
-    if (dist_sq < resampling_resolution_sq) {
-      return;
-    }
-  }
-
-  // 2. Add New Point
-  odom_history_.push_front(odom);
-
-  // 3. Prune old points (Keep total length within limit)
-  double dist_accum = 0.0;
-  for (size_t i = 0; i < odom_history_.size() - 1; ++i) {
-    const auto & p1 = odom_history_[i].pose.pose.position;
-    const auto & p2 = odom_history_[i + 1].pose.pose.position;
-
-    dist_accum += std::hypot(p1.x - p2.x, p1.y - p2.y);
-
-    if (dist_accum > params_.history_length_m) {
-      // Remove everything older than this point
-      odom_history_.erase(odom_history_.begin() + static_cast<int>(i) + 1, odom_history_.end());
-      break;
-    }
-  }
-}
-
-std::vector<PlannerPoint> TimeToSpaceConverterNode::get_history_as_planner_points() const
-{
-  return helper::convert_odometry_history_to_planner_points(odom_history_);
-}
-
-std::vector<PlannerPoint> TimeToSpaceConverterNode::assemble_input_points()
-{
-  std::vector<PlannerPoint> combined_points;
-  auto current_points = get_current_trajectory_points();
-
-  if (params_.enable_history_stitching && !current_points.empty()) {
-    update_history(*sub_odom_ptr_);
-    auto history_points = get_history_as_planner_points();  // Returns [Oldest ... Newest]
-
-    if (!history_points.empty()) {
-      const auto & last_hist = history_points.back().pos;
-      const auto & first_curr = current_points.front().pos;
-
-      double dist_sq = (last_hist.x - first_curr.x) * (last_hist.x - first_curr.x) +
-                       (last_hist.y - first_curr.y) * (last_hist.y - first_curr.y);
-
-      const auto resampling_resolution_sq =
-        params_.resampling_resolution_m * params_.resampling_resolution_m;
-      if (dist_sq < resampling_resolution_sq) {
-        history_points.pop_back();
-      }
-    }
-
-    combined_points.reserve(history_points.size() + current_points.size());
-    combined_points.insert(combined_points.end(), history_points.begin(), history_points.end());
-    combined_points.insert(combined_points.end(), current_points.begin(), current_points.end());
-  } else {
-    combined_points = std::move(current_points);
-  }
-  return combined_points;
-}
-
 void TimeToSpaceConverterNode::on_timer()
 {
   take_data();
@@ -163,7 +88,7 @@ void TimeToSpaceConverterNode::on_timer()
     return;
   }
 
-  const auto combined_points = assemble_input_points();
+  const auto combined_points = get_current_trajectory_points();
 
   // 2. Combine History + Future Points
 
@@ -183,7 +108,6 @@ void TimeToSpaceConverterNode::on_timer()
   // 5. Time Shift (Crucial for Option B)
   // We need to shift timestamps so that t=0 corresponds to the CURRENT Ego Pose.
   // Points behind ego will become negative (History), points ahead positive (Future).
-
   double min_dist_sq = std::numeric_limits<double>::max();
   double ego_time_offset = 0.0;
   const auto & ego_pos = sub_odom_ptr_->pose.pose.position;

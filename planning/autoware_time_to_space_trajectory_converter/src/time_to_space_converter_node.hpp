@@ -65,11 +65,8 @@ private:
   void take_data();
   std::optional<std::string> has_invalid_data() const;
   void on_timer();
-  void update_history(const nav_msgs::msg::Odometry & odom);
 
   std::vector<PlannerPoint> get_current_trajectory_points() const;
-  std::vector<PlannerPoint> get_history_as_planner_points() const;
-  std::vector<PlannerPoint> assemble_input_points();
 
   rclcpp::TimerBase::SharedPtr timer_;
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
@@ -78,12 +75,6 @@ private:
   void warn_throttle(const char * fmt, Args... args)
   {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, fmt, args...);
-  }
-
-  template <typename... Args>
-  void debug_throttle(const char * fmt, Args... args)
-  {
-    RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000, fmt, args...);
   }
 };
 

@@ -35,10 +35,8 @@ struct SpatialPreprocessorConfig
 struct NodeParam
 {
   double update_rate_hz{50.0};
-  double history_length_m = 5.0;
   double resampling_resolution_m = 1.0;
   bool recompute_acceleration = true;
-  bool enable_history_stitching = false;
   SpatialPreprocessorConfig spatial;
 };
 

@@ -23,7 +23,6 @@
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
-#include <deque>
 #include <optional>
 #include <string>
 #include <vector>
@@ -56,13 +55,6 @@ autoware_planning_msgs::msg::Trajectory convert_spline_data_to_trajectory_msg(
 
 std::vector<autoware_planning_msgs::msg::TrajectoryPoint> convert_spline_data_to_trajectory_points(
   const SplineData & spline);
-
-/**
- * @brief Converts odometry history buffer into PlannerPoints for spline generation.
- * Iterates backwards (Oldest -> Newest) to prepare for prepending to trajectory.
- */
-std::vector<PlannerPoint> convert_odometry_history_to_planner_points(
-  const std::deque<nav_msgs::msg::Odometry> & odom_history);
 }  // namespace autoware::time_to_space_trajectory_converter::helper
 
 #endif  // CLASS_HELPER_HPP_
