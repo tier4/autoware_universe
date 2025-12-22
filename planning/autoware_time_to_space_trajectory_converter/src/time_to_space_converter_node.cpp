@@ -17,7 +17,6 @@
 #include "class_helper.hpp"
 #include "spatial_preprocessor.hpp"
 
-#include <autoware_utils_rclcpp/parameter.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
@@ -40,18 +39,11 @@ TimeToSpaceConverterNode::TimeToSpaceConverterNode(const rclcpp::NodeOptions & o
   pub_traj_ = create_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/time_to_space_converter/output/trajectory", qos);
 
-  const auto freq_hz =
-    autoware_utils_rclcpp::get_or_declare_parameter<double>(*this, "update_rate_hz");
-  history_length_m_ =
-    autoware_utils_rclcpp::get_or_declare_parameter<double>(*this, "trajectory_history_length_m");
-  resampling_resolution_m_ =
-    autoware_utils_rclcpp::get_or_declare_parameter<double>(*this, "resampling_resolution_m");
-  recompute_acceleration_ =
-    autoware_utils_rclcpp::get_or_declare_parameter<bool>(*this, "recompute_acceleration");
-  enable_history_stitching_ =
-    autoware_utils_rclcpp::get_or_declare_parameter<bool>(*this, "enable_history_stitching");
+  params_ = init_node_param(*this);
+  set_param_res_ = this->add_on_set_parameters_callback(
+    [&](const auto & rclcpp_param) { return update_node_param(rclcpp_param, params_); });
 
-  auto period_s = std::chrono::duration<double>(1.0 / freq_hz);
+  auto period_s = std::chrono::duration<double>(1.0 / params_.update_rate_hz);
   timer_ = rclcpp::create_timer(this, this->get_clock(), period_s, [this]() { on_timer(); });
 }
 
@@ -99,7 +91,9 @@ void TimeToSpaceConverterNode::update_history(const nav_msgs::msg::Odometry & od
                      (last_pos.y - curr_pos.y) * (last_pos.y - curr_pos.y);
 
     // If we haven't moved enough, skip adding this point
-    if (dist_sq < (resampling_resolution_m_ * resampling_resolution_m_)) {
+    const auto resampling_resolution_sq =
+      params_.resampling_resolution_m * params_.resampling_resolution_m;
+    if (dist_sq < resampling_resolution_sq) {
       return;
     }
   }
@@ -115,7 +109,7 @@ void TimeToSpaceConverterNode::update_history(const nav_msgs::msg::Odometry & od
 
     dist_accum += std::hypot(p1.x - p2.x, p1.y - p2.y);
 
-    if (dist_accum > history_length_m_) {
+    if (dist_accum > params_.history_length_m) {
       // Remove everything older than this point
       odom_history_.erase(odom_history_.begin() + static_cast<int>(i) + 1, odom_history_.end());
       break;
@@ -133,7 +127,7 @@ std::vector<PlannerPoint> TimeToSpaceConverterNode::assemble_input_points()
   std::vector<PlannerPoint> combined_points;
   auto current_points = get_current_trajectory_points();
 
-  if (enable_history_stitching_ && !current_points.empty()) {
+  if (params_.enable_history_stitching && !current_points.empty()) {
     update_history(*sub_odom_ptr_);
     auto history_points = get_history_as_planner_points();  // Returns [Oldest ... Newest]
 
@@ -144,7 +138,9 @@ std::vector<PlannerPoint> TimeToSpaceConverterNode::assemble_input_points()
       double dist_sq = (last_hist.x - first_curr.x) * (last_hist.x - first_curr.x) +
                        (last_hist.y - first_curr.y) * (last_hist.y - first_curr.y);
 
-      if (dist_sq < (resampling_resolution_m_ * resampling_resolution_m_)) {
+      const auto resampling_resolution_sq =
+        params_.resampling_resolution_m * params_.resampling_resolution_m;
+      if (dist_sq < resampling_resolution_sq) {
         history_points.pop_back();
       }
     }
@@ -174,16 +170,15 @@ void TimeToSpaceConverterNode::on_timer()
   // 3. Preprocess the UNIFIED path
   SplineData spatial_processed;
   if (
-    auto err = SpatialPreprocessor::process(
-      combined_points, spatial_processed, SpatialPreprocessorConfig{})) {
+    auto err = SpatialPreprocessor::process(combined_points, spatial_processed, params_.spatial)) {
     warn_throttle("Invalid preprocessing: %s", err->c_str());
     return;
   }
 
   // 4. Resample (Generates smooth path & velocity profile)
   // This spline currently starts at t=0 at the beginning of history (Oldest point)
-  auto resampled_spatial =
-    helper::resample(spatial_processed, resampling_resolution_m_, recompute_acceleration_);
+  auto resampled_spatial = helper::resample(
+    spatial_processed, params_.resampling_resolution_m, params_.recompute_acceleration);
 
   // 5. Time Shift (Crucial for Option B)
   // We need to shift timestamps so that t=0 corresponds to the CURRENT Ego Pose.
@@ -238,30 +233,6 @@ void TimeToSpaceConverterNode::on_timer()
     // (But usually fixing point 0 is enough to get it moving)
   }
   pub_traj_->publish(traj_msg);
-}
-
-rcl_interfaces::msg::SetParametersResult TimeToSpaceConverterNode::on_set_param(
-  const std::vector<rclcpp::Parameter> & params)
-{
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-
-  try {
-    autoware_utils_rclcpp::update_param<double>(
-      params, "trajectory_history_length_m", history_length_m_);
-    autoware_utils_rclcpp::update_param<double>(
-      params, "resampling_resolution_m", resampling_resolution_m_);
-    autoware_utils_rclcpp::update_param<bool>(
-      params, "recompute_acceleration", recompute_acceleration_);
-    autoware_utils_rclcpp::update_param<bool>(
-      params, "enable_history_stitching", enable_history_stitching_);
-  } catch (const rclcpp::exceptions::InvalidParameterTypeException & e) {
-    result.successful = false;
-    result.reason = e.what();
-  }
-
-  return result;
 }
 }  // namespace autoware::time_to_space_trajectory_converter
 

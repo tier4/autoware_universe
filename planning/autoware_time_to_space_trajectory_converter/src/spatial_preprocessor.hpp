@@ -16,6 +16,7 @@
 #define SPATIAL_PREPROCESSOR_HPP_
 
 #include "data_types.hpp"
+#include "parameters.hpp"
 
 #include <optional>
 #include <string>
@@ -23,18 +24,6 @@
 
 namespace autoware::time_to_space_trajectory_converter
 {
-
-/**
- * @brief Configuration parameters for spatial resampling logic.
- */
-struct SpatialPreprocessorConfig
-{
-  double min_knot_dist = 0.1;  ///< Minimum distance required to create a new spline knot.
-  double stop_v_thresh = 0.1;  ///< Velocity threshold below which ego is considered stopped.
-  double max_knot_yaw_diff = 0.05;
-  ///< If the car turns more than this(0.1 rad ~ = 5.7 degrees), force a knot
-};
-
 /**
  * @brief Logic core for converting raw time-series points into spatially distributed knots.
  *

@@ -19,13 +19,6 @@
 
 namespace autoware::time_to_space_trajectory_converter
 {
-// MotionState SplineData::get_state(size_t i) const
-// {
-//   if (wait_times[i] > g_geom_eps) return MotionState::STOPPED;
-//   if (std::abs(v[i]) < stop_v_thresh)
-//     return MotionState::CREEPING;  // Arbitrary visualization thresh
-//   return MotionState::MOVING;
-// }
 void SplineData::add_point(double new_s, const PlannerPoint & p, double wait_t)
 {
   s.push_back(new_s);
@@ -63,7 +56,7 @@ void SplineData::reset(size_t capacity)
 
 void SplineData::set_config(double v_thresh)
 {
-  stop_v_thresh = v_thresh;
+  th_stop_velocity_mps = v_thresh;
 }
 
 SplineSet SplineSet::build(const SplineData & input, bool recompute_accel)

@@ -5,3 +5,8 @@
     resampling_resolution_m: 1.0
     recompute_acceleration: false
     enable_history_stitching: false
+
+    spatial:
+      max_knot_yaw_diff_rad: 0.05  # Force a knot in the preprocessing if the car turns more than this
+      min_knot_dist_m: 0.1 # Minimum distance required to create a new spline knot.
+      th_stop_velocity_mps: 0.1 # Ego is considered stopped is velocity drops below the threshold.

@@ -57,7 +57,7 @@ struct SplineData
   std::vector<double> t;
 
   std::vector<double> wait_times;
-  double stop_v_thresh = 0.001;
+  double th_stop_velocity_mps = 0.001;
 
   [[nodiscard]] MotionState get_state(size_t i) const;
   void add_point(double new_s, const PlannerPoint & p, double wait_t);

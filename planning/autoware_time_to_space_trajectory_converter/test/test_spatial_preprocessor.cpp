@@ -31,8 +31,8 @@ protected:
   void SetUp() override
   {
     // Default config
-    config_.min_knot_dist = 1.0;
-    config_.stop_v_thresh = 0.1;
+    config_.min_knot_dist_m = 1.0;
+    config_.th_stop_velocity_mps = 0.1;
   }
 
   SpatialPreprocessorConfig config_;
@@ -217,7 +217,7 @@ TEST_F(SpatialPreprocessorTest, HandleInstantStop)
 // 2D Figure-8 path to test Euclidean integration
 TEST_F(SpatialPreprocessorTest, HandleInfinityLoop)
 {
-  config_.min_knot_dist = 1.0;
+  config_.min_knot_dist_m = 1.0;
   SpatialPreprocessor preprocessor(config_);
   auto input = generate_infinity_loop(5.0, 10.0);
 
@@ -251,7 +251,7 @@ TEST_F(SpatialPreprocessorTest, HandleInfinityLoop)
 // Very slow movement on a curve
 TEST_F(SpatialPreprocessorTest, HandleCreepingOnCurve)
 {
-  config_.stop_v_thresh = 1.0 / 3.6;  // Keep your low threshold
+  config_.th_stop_velocity_mps = 1.0 / 3.6;  // Keep your low threshold
 
   constexpr double creep_velocity = 1.1 / 3.6;
   constexpr double duration = 50.0;

@@ -33,7 +33,7 @@ std::optional<std::string> SpatialPreprocessor::process(
   const SpatialPreprocessorConfig & config)
 {
   output.reset(input.size());
-  output.set_config(config.stop_v_thresh);
+  output.set_config(config.th_stop_velocity_mps);
 
   if (input.empty()) {
     return "Input trajectory is empty.";
@@ -51,10 +51,10 @@ std::optional<std::string> SpatialPreprocessor::process(
     const auto delta_pos = input[i].pos - input[i - 1].pos;
     const double dist = delta_pos.norm2d();
     const double dt = input[i].t - input[i - 1].t;
-    const bool is_zero_velocity = std::abs(input[i].v) < config.stop_v_thresh;
+    const bool is_zero_velocity = std::abs(input[i].v) < config.th_stop_velocity_mps;
 
     if (is_zero_velocity) {
-      if (input[i - 1].v > config.stop_v_thresh) {
+      if (input[i - 1].v > config.th_stop_velocity_mps) {
         state.accum_s += dist;
       }
       accumulate_wait_time(input[i], dt, output, state);
@@ -89,10 +89,10 @@ void SpatialPreprocessor::accumulate_motion(
 {
   // Buffer tiny movements (creeping) until they are significant enough for the spline.
   state.accum_s += dist;
-  const bool is_exceed_dist_thresh = state.accum_s >= config.min_knot_dist;
+  const bool is_exceed_dist_thresh = state.accum_s >= config.min_knot_dist_m;
   const double yaw_diff =
     autoware_utils_math::normalize_radian(std::abs(pt.yaw - state.last_knot_yaw));
-  const bool is_exceed_yaw_th = yaw_diff >= config.max_knot_yaw_diff;
+  const bool is_exceed_yaw_th = yaw_diff >= config.max_knot_yaw_diff_rad;
 
   if (is_exceed_dist_thresh || (is_exceed_yaw_th && state.accum_s >= g_geom_eps)) {
     add_spline_knot(pt, output, state);

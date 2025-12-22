@@ -16,6 +16,7 @@
 #define TIME_TO_SPACE_CONVERTER_NODE_HPP_
 
 #include "data_types.hpp"
+#include "parameters.hpp"
 #include "stop_state_machine.hpp"
 
 #include <autoware_utils_debug/time_keeper.hpp>
@@ -56,17 +57,14 @@ private:
   double current_s_ = 0.0;
   double current_v_ = 0.0;
   StopStateMachine stop_state_machine_;
-  double history_length_m_ = 5.0;
-  double resampling_resolution_m_ = 1.0;
-  bool recompute_acceleration_ = true;
-  bool enable_history_stitching_ = false;
+  NodeParam params_;
+  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+
   std::deque<nav_msgs::msg::Odometry> odom_history_;
 
   void take_data();
   std::optional<std::string> has_invalid_data() const;
   void on_timer();
-  rcl_interfaces::msg::SetParametersResult on_set_param(
-    const std::vector<rclcpp::Parameter> & params);
   void update_history(const nav_msgs::msg::Odometry & odom);
 
   std::vector<PlannerPoint> get_current_trajectory_points() const;
