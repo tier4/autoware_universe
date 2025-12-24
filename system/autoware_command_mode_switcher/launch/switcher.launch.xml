@@ -10,15 +10,18 @@
   <arg name="~/control_mode/report" default="/vehicle/status/control_mode"/>
   <arg name="~/control_mode/request" default="/control/control_mode_request"/>
 
-  <node pkg="autoware_command_mode_switcher" exec="command_mode_switcher_node">
-    <param from="$(var config)"/>
-    <remap from="~/command_mode/status" to="$(var ~/command_mode/status)"/>
-    <remap from="~/command_mode/request" to="$(var ~/command_mode/request)"/>
-    <remap from="~/command_mode/transition/completed" to="$(var ~/command_mode/transition/completed)"/>
-    <remap from="~/source/status" to="$(var ~/source/status)"/>
-    <remap from="~/source/select" to="$(var ~/source/select)"/>
-    <remap from="~/election/status" to="$(var ~/election/status)"/>
-    <remap from="~/control_mode/report" to="$(var ~/control_mode/report)"/>
-    <remap from="~/control_mode/request" to="$(var ~/control_mode/request)"/>
-  </node>
+  <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="command_mode_switcher_container" namespace="">
+    <composable_node pkg="autoware_command_mode_switcher" plugin="autoware::command_mode_switcher::CommandModeSwitcher" name="control_command_gate_node" namespace="">
+      <param from="$(var config)"/>
+      <remap from="~/command_mode/status" to="$(var ~/command_mode/status)"/>
+      <remap from="~/command_mode/request" to="$(var ~/command_mode/request)"/>
+      <remap from="~/command_mode/transition/completed" to="$(var ~/command_mode/transition/completed)"/>
+      <remap from="~/source/status" to="$(var ~/source/status)"/>
+      <remap from="~/source/select" to="$(var ~/source/select)"/>
+      <remap from="~/election/status" to="$(var ~/election/status)"/>
+      <remap from="~/control_mode/report" to="$(var ~/control_mode/report)"/>
+      <remap from="~/control_mode/request" to="$(var ~/control_mode/request)"/>
+    </composable_node>
+    <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component_command_mode_switcher" namespace=""/>
+  </node_container>
 </launch>

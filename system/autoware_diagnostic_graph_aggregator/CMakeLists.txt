@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_diagnostic_graph_aggregator)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocastlib REQUIRED)
 autoware_package()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
@@ -28,6 +29,7 @@ ament_auto_add_library(aggregator SHARED
   "src/node/aggregator.cpp"
   "src/node/command_mode_mapping.cpp"
 )
+
 ament_auto_add_library(converter SHARED
   "src/node/converter.cpp"
 )
@@ -41,6 +43,9 @@ ament_auto_add_library(${PROJECT_NAME}_test SHARED
   src/tests/tests.cpp
 )
 target_include_directories(${PROJECT_NAME}_test PRIVATE src/common)
+
+ament_target_dependencies(aggregator agnocastlib)
+ament_target_dependencies(converter agnocastlib)
 
 rclcpp_components_register_node(aggregator
   PLUGIN "autoware::diagnostic_graph_aggregator::AggregatorNode"

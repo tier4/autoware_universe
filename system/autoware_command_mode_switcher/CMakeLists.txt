@@ -12,6 +12,10 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 )
 target_include_directories(${PROJECT_NAME} PRIVATE "src")
 
+ament_target_dependencies(${PROJECT_NAME}
+  agnocastlib
+)
+
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::command_mode_switcher::CommandModeSwitcher"
   EXECUTABLE "command_mode_switcher_node"

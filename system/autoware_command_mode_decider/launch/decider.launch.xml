@@ -11,7 +11,8 @@
   <arg name="~/mrm/state" default="/system/fail_safe/mrm_state"/>
   <arg name="~/control_mode/report" default="/vehicle/status/control_mode"/>
 
-  <node pkg="autoware_command_mode_decider" exec="command_mode_decider_node">
+  <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="command_mode_decider_container" namespace="">
+    <composable_node pkg="autoware_command_mode_decider" plugin="autoware::command_mode_decider::CommandModeDeciderBase" name="command_mode_decider_node" namespace="">
     <param from="$(var config)"/>
     <remap from="~/command_mode/transition/available" to="$(var ~/command_mode/transition/available)"/>
     <remap from="~/command_mode/availability" to="$(var ~/command_mode/availability)"/>
@@ -22,5 +23,7 @@
     <remap from="~/operation_mode/change_autoware_control" to="$(var ~/operation_mode/change_autoware_control)"/>
     <remap from="~/mrm/state" to="$(var ~/mrm/state)"/>
     <remap from="~/control_mode/report" to="$(var ~/control_mode/report)"/>
-  </node>
+    </composable_node>
+    <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component_command_mode_decider" namespace=""/>
+  </node_container>
 </launch>

@@ -13,17 +13,20 @@
   <!-- Parameter -->
   <arg name="config_file" default="$(find-pkg-share autoware_raw_vehicle_cmd_converter)/config/raw_vehicle_cmd_converter.param.yaml"/>
 
-  <node pkg="autoware_raw_vehicle_cmd_converter" exec="autoware_raw_vehicle_cmd_converter_node" name="raw_vehicle_cmd_converter" output="screen">
-    <param from="$(var config_file)" allow_substs="true"/>
-    <remap from="~/input/control_cmd" to="$(var input_control_cmd)"/>
-    <remap from="~/input/odometry" to="$(var input_odometry)"/>
-    <remap from="~/input/accel" to="$(var input_accel)"/>
-    <remap from="~/input/steering" to="$(var input_steering)"/>
-    <remap from="~/input/actuation_status" to="$(var input_actuation_status)"/>
-    <remap from="~/input/operation_mode_state" to="$(var input_operation_mode_state)"/>
-    <remap from="~/input/control_horizon" to="$(var input_control_horizon)"/>
-    <remap from="~/output/actuation_cmd" to="$(var output_actuation_cmd)"/>
-    <remap from="~/output/steering_status" to="$(var output_steering_status)"/>
-    <remap from="~/output/control_component_latency" to="$(var output_control_component_latency)"/>
-  </node>
+  <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="raw_vehicle_cmd_converter_container" namespace="">
+    <composable_node pkg="autoware_raw_vehicle_cmd_converter" plugin="autoware::raw_vehicle_cmd_converter::RawVehicleCommandConverterNode" name="raw_vehicle_cmd_converter" namespace="">
+      <param from="$(var config_file)" allow_substs="true"/>
+      <remap from="~/input/control_cmd" to="$(var input_control_cmd)"/>
+      <remap from="~/input/odometry" to="$(var input_odometry)"/>
+      <remap from="~/input/accel" to="$(var input_accel)"/>
+      <remap from="~/input/steering" to="$(var input_steering)"/>
+      <remap from="~/input/actuation_status" to="$(var input_actuation_status)"/>
+      <remap from="~/input/operation_mode_state" to="$(var input_operation_mode_state)"/>
+      <remap from="~/input/control_horizon" to="$(var input_control_horizon)"/>
+      <remap from="~/output/actuation_cmd" to="$(var output_actuation_cmd)"/>
+      <remap from="~/output/steering_status" to="$(var output_steering_status)"/>
+      <remap from="~/output/control_component_latency" to="$(var output_control_component_latency)"/>
+    </composable_node>
+    <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component_raw_vehicle_cmd_converter" namespace=""/>
+  </node_container>
 </launch>

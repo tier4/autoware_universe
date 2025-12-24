@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_imu_corrector)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocastlib REQUIRED)
 autoware_package()
 
 ament_auto_add_library(imu_corrector SHARED
@@ -16,6 +17,9 @@ ament_auto_add_library(gyro_bias_estimator SHARED
 target_include_directories(gyro_bias_estimator
   PUBLIC include
 )
+
+ament_target_dependencies(imu_corrector agnocastlib)
+ament_target_dependencies(gyro_bias_estimator agnocastlib)
 
 rclcpp_components_register_node(imu_corrector
   PLUGIN "autoware::imu_corrector::ImuCorrector"

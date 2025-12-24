@@ -7,12 +7,15 @@
   <arg name="param_file" default="$(find-pkg-share autoware_imu_corrector)/config/imu_corrector.param.yaml"/>
   <arg name="param_scale_file" default="$(find-pkg-share autoware_imu_corrector)/config/gyro_scale_estimator.param.yaml"/>
 
-  <node pkg="autoware_imu_corrector" exec="imu_corrector_node" output="both">
-    <remap from="input" to="$(var input_topic)"/>
-    <remap from="gyro_bias_input" to="$(var input_gyro_bias_topic)"/>
-    <remap from="gyro_scale_input" to="$(var input_gyro_scale_topic)"/>
-    <remap from="output" to="$(var output_topic)"/>
-    <param from="$(var param_file)"/>
-    <param from="$(var param_scale_file)"/>
-  </node>
+  <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="imu_corrector_container" namespace="">
+    <composable_node pkg="autoware_imu_corrector" plugin="autoware::imu_corrector::ImuCorrector" name="imu_corrector_node" namespace="">
+      <remap from="input" to="$(var input_topic)"/>
+      <remap from="gyro_bias_input" to="$(var input_gyro_bias_topic)"/>
+      <remap from="gyro_scale_input" to="$(var input_gyro_scale_topic)"/>
+      <remap from="output" to="$(var output_topic)"/>
+      <param from="$(var param_file)"/>
+      <param from="$(var param_scale_file)"/>
+    </composable_node>
+    <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component_imu_corrector" namespace=""/>
+  </node_container>
 </launch>

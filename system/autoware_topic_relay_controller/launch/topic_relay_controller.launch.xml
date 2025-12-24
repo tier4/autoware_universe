@@ -2,7 +2,11 @@
   <arg name="node_name_suffix" default="default" description="node name suffix"/>
   <arg name="config_file" default="$(find-pkg-share autoware_topic_relay_controller)/config/topic_relay_controller.param.yaml" description="config file path"/>
 
-  <node pkg="autoware_topic_relay_controller" exec="autoware_topic_relay_controller_node" name="topic_relay_controller_$(var node_name_suffix)" output="screen">
-    <param from="$(var config_file)"/>
-  </node>
+  <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="topic_relay_controller_$(var node_name_suffix)_container" namespace="">
+    <composable_node pkg="autoware_topic_relay_controller" plugin="autoware::topic_relay_controller::TopicRelayController" name="topic_relay_controller_$(var node_name_suffix)" namespace="">
+      <param from="$(var config_file)"/>
+    </composable_node>
+    <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component_topic_relay_controller" namespace=""/>
+  </node_container>
 </launch>
+  

@@ -10,15 +10,18 @@
   <arg name="imu_corrector_param_file" default="$(find-pkg-share autoware_imu_corrector)/config/imu_corrector.param.yaml"/>
   <arg name="gyro_scale_estimator_param_file" default="$(find-pkg-share autoware_imu_corrector)/config/gyro_scale_estimator.param.yaml"/>
 
-  <node pkg="autoware_imu_corrector" exec="gyro_bias_estimator_node" output="both">
-    <remap from="~/input/imu_raw" to="$(var input_imu_raw)"/>
-    <remap from="~/input/odom" to="$(var input_odom)"/>
-    <remap from="~/input/pose_ndt" to="$(var input_pose_ndt)"/>
-    <remap from="~/output/gyro_bias" to="$(var output_gyro_bias)"/>
-    <remap from="~/output/gyro_scale" to="$(var output_gyro_scale)"/>
-    <remap from="~/output/imu_scaled" to="$(var output_imu_scaled)"/>
-    <param from="$(var gyro_bias_estimator_param_file)"/>
-    <param from="$(var imu_corrector_param_file)"/>
-    <param from="$(var gyro_scale_estimator_param_file)"/>
-  </node>
+  <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="gyro_bias_estimator_container" namespace="">
+    <composable_node pkg="autoware_imu_corrector" plugin="autoware::imu_corrector::GyroBiasEstimator" name="gyro_bias_estimator_node" namespace="">
+      <remap from="~/input/imu_raw" to="$(var input_imu_raw)"/>
+      <remap from="~/input/odom" to="$(var input_odom)"/>
+      <remap from="~/input/pose_ndt" to="$(var input_pose_ndt)"/>
+      <remap from="~/output/gyro_bias" to="$(var output_gyro_bias)"/>
+      <remap from="~/output/gyro_scale" to="$(var output_gyro_scale)"/>
+      <remap from="~/output/imu_scaled" to="$(var output_imu_scaled)"/>
+      <param from="$(var gyro_bias_estimator_param_file)"/>
+      <param from="$(var imu_corrector_param_file)"/>
+      <param from="$(var gyro_scale_estimator_param_file)"/>
+    </composable_node>
+    <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component_gyro_bias_estimator" namespace=""/>
+  </node_container>
 </launch>

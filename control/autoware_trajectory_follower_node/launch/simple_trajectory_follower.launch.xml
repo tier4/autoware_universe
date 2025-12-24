@@ -11,4 +11,14 @@
     <remap from="input/trajectory" to="/planning/trajectory"/>
     <remap from="output/control_cmd" to="/vehicle/command/manual_control_cmd"/>
   </node>
+  <node_container pkg="agnocastlib" exec="agnocast_component_container_cie" name="simple_trajectory_follower_container" namespace="">
+    <composable_node pkg="autoware_trajectory_follower_node" plugin="simple_trajectory_follower::SimpleTrajectoryFollower" name="simple_trajectory_follower" namespace="">
+      <param from="$(find-pkg-share autoware_trajectory_follower_node)/config/simple_trajectory_follower.param.yaml" allow_substs="true"/>
+
+      <remap from="input/kinematics" to="/localization/kinematic_state"/>
+      <remap from="input/trajectory" to="/planning/trajectory"/>
+      <remap from="output/control_cmd" to="/vehicle/command/manual_control_cmd"/>
+    </composable_node>
+    <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component_simple_trajectory_follower" namespace=""/>
+  </node_container>
 </launch>
