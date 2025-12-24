@@ -4,7 +4,7 @@
 
 /adapi/node/motion:
   ros__parameters:
-    require_accept_start: false
+    require_accept_start: true
     stop_check_duration: 1.0
 
 /adapi/node/routing:
