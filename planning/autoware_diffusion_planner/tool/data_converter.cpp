@@ -619,8 +619,7 @@ int main(int argc, char ** argv)
     }
 
     // Shift kinematic pose to center
-    // const double wheel_base = 2.75;
-    // kinematic.pose.pose = utils::shift_x(kinematic.pose.pose, (wheel_base / 2.0));
+    // kinematic.pose.pose = utils::shift_x(kinematic.pose.pose, (ego_wheel_base / 2.0));
 
     const FrameData frame_data{timestamp, sequence.route, tracking, kinematic,
                                accel,     traffic_signal, turn_ind};
