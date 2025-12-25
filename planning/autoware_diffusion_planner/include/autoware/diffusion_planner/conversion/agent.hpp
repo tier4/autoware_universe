@@ -215,7 +215,7 @@ struct AgentData
    * @param num_timestamps Number of timestamps.
    */
   explicit AgentData(
-    const autoware_perception_msgs::msg::TrackedObjects & objects, const size_t num_timestamps = 21,
+    const autoware_perception_msgs::msg::TrackedObjects & objects,
     const bool ignore_unknown_agents = false);
 
   void update_histories(
@@ -231,7 +231,6 @@ struct AgentData
 private:
   void set_histories(const std::vector<AgentHistory> & histories);
   std::unordered_map<std::string, AgentHistory> histories_map_;
-  size_t time_length_{0};
 };
 
 // Convert histories to a flattened vector

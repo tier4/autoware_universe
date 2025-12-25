@@ -445,7 +445,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
 
   // Update neighbor agent data
   if (!agent_data_) {
-    agent_data_ = AgentData(*objects, NEIGHBOR_SHAPE[2], params_.ignore_unknown_neighbors);
+    agent_data_ = AgentData(*objects, params_.ignore_unknown_neighbors);
   } else {
     agent_data_->update_histories(*objects, params_.ignore_unknown_neighbors);
   }

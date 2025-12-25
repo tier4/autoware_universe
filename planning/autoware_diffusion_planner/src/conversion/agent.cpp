@@ -14,6 +14,8 @@
 
 #include "autoware/diffusion_planner/conversion/agent.hpp"
 
+#include "autoware/diffusion_planner/dimensions.hpp"
+
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -152,9 +154,7 @@ void AgentHistory::pad_history(bool pad_front)
 }
 
 AgentData::AgentData(
-  const autoware_perception_msgs::msg::TrackedObjects & objects, const size_t num_timestamps,
-  const bool ignore_unknown_agents)
-: time_length_(num_timestamps)
+  const autoware_perception_msgs::msg::TrackedObjects & objects, const bool ignore_unknown_agents)
 {
   std::vector<AgentHistory> histories;
   for (auto object : objects.objects) {
@@ -165,7 +165,7 @@ AgentData::AgentData(
     auto current_time = static_cast<double>(objects.header.stamp.sec) +
                         static_cast<double>(objects.header.stamp.nanosec) * 1e-9;
     histories.emplace_back(
-      agent_state, get_model_label(object), current_time, num_timestamps, true);
+      agent_state, get_model_label(object), current_time, INPUT_T_WITH_CURRENT, true);
   }
   set_histories(histories);
 }
@@ -194,7 +194,9 @@ void AgentData::update_histories(
     } else {
       auto agent_state = AgentState(object);
       histories_map_.emplace(
-        object_id, AgentHistory(agent_state, get_model_label(object), current_time, time_length_, true));
+        object_id,
+        AgentHistory(
+          agent_state, get_model_label(object), current_time, INPUT_T_WITH_CURRENT, true));
     }
     found_ids.push_back(object_id);
   }
@@ -232,7 +234,8 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
              autoware_utils_geometry::calc_distance2d(position, b.get_latest_state_position());
     });
   if (histories.size() > max_num_agent) {
-    histories.erase(histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent), histories.end());
+    histories.erase(
+      histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent), histories.end());
   }
   return histories;
 }
