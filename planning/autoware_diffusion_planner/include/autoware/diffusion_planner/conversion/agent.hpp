@@ -236,8 +236,7 @@ private:
 
 // Convert histories to a flattened vector
 inline std::vector<float> flatten_histories_to_vector(
-  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length,
-  bool pad_with_zeroes = true)
+  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length)
 {
   std::vector<float> data;
   data.reserve(histories.size() * time_length * AGENT_STATE_DIM);
@@ -247,9 +246,7 @@ inline std::vector<float> flatten_histories_to_vector(
     data.insert(data.end(), history_array.begin(), history_array.end());
   }
 
-  if (pad_with_zeroes) {
-    data.resize(max_num_agent * time_length * AGENT_STATE_DIM, 0.0f);
-  }
+  data.resize(max_num_agent * time_length * AGENT_STATE_DIM, 0.0f);
 
   return data;
 }
