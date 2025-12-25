@@ -101,21 +101,6 @@ struct AgentState
   // Return shape
   [[nodiscard]] autoware_perception_msgs::msg::Shape shape() const { return shape_; }
 
-  // Return the x position.
-  [[nodiscard]] float x() const { return static_cast<float>(position_.x); }
-
-  // Return the y position.
-  [[nodiscard]] float y() const { return static_cast<float>(position_.y); }
-
-  // Return the z position.
-  [[nodiscard]] float z() const { return static_cast<float>(position_.z); }
-
-  // Return the length of object size.
-  [[nodiscard]] float length() const { return static_cast<float>(shape_.dimensions.x); }
-
-  // Return the width of object size.
-  [[nodiscard]] float width() const { return static_cast<float>(shape_.dimensions.y); }
-
   // Return the cos of yaw.
   [[nodiscard]] float cos_yaw() const { return cos_yaw_; }
 

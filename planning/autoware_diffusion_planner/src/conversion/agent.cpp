@@ -80,14 +80,14 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
 [[nodiscard]] std::array<float, AGENT_STATE_DIM> AgentState::as_array() const noexcept
 {
   return {
-    x(),
-    y(),
+    static_cast<float>(position_.x),
+    static_cast<float>(position_.y),
     cos_yaw(),
     sin_yaw(),
     vx(),
     vy(),
-    width(),
-    length(),
+    static_cast<float>(shape_.dimensions.y),  // width
+    static_cast<float>(shape_.dimensions.x),  // length
     static_cast<float>(label_ == AgentLabel::VEHICLE),
     static_cast<float>(label_ == AgentLabel::PEDESTRIAN),
     static_cast<float>(label_ == AgentLabel::BICYCLE),
