@@ -111,6 +111,7 @@ struct FrameContext
   Eigen::Matrix4d ego_to_map_transform;
   AgentData ego_centric_neighbor_agent_data;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map;
+  rclcpp::Time frame_time;
 };
 
 struct DiffusionPlannerParams
@@ -222,7 +223,8 @@ private:
    * @param ego_to_map_transform Transform from ego to map frame for visualization.
    */
   void publish_debug_markers(
-    const InputDataMap & input_data_map, const Eigen::Matrix4d & ego_to_map_transform) const;
+    const InputDataMap & input_data_map, const Eigen::Matrix4d & ego_to_map_transform,
+    const rclcpp::Time & timestamp) const;
 
   /**
    * @brief Publish model predictions.
@@ -230,7 +232,8 @@ private:
    * @param frame_context Context of the current frame.
    */
   void publish_predictions(
-    const std::vector<float> & predictions, const FrameContext & frame_context) const;
+    const std::vector<float> & predictions, const FrameContext & frame_context,
+    const rclcpp::Time & timestamp) const;
 
   /**
    * @brief Run inference on input data output is stored on member output_d_.

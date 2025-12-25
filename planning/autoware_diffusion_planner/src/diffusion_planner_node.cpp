@@ -420,10 +420,11 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
     return std::nullopt;
   }
 
+  const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
   const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map;
   preprocess::process_traffic_signals(
-    traffic_signals, traffic_light_id_map, this->now(), traffic_light_msg_timeout_s);
+    traffic_signals, traffic_light_id_map, frame_time, traffic_light_msg_timeout_s);
   if (traffic_signals.empty()) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
@@ -461,7 +462,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
 
   const FrameContext frame_context{
     *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, ego_centric_neighbor_agent_data,
-    traffic_light_id_map};
+    traffic_light_id_map, frame_time};
 
   return frame_context;
 }
@@ -624,14 +625,15 @@ std::vector<float> DiffusionPlanner::replicate_for_batch(
 }
 
 void DiffusionPlanner::publish_debug_markers(
-  const InputDataMap & input_data_map, const Eigen::Matrix4d & ego_to_map_transform) const
+  const InputDataMap & input_data_map, const Eigen::Matrix4d & ego_to_map_transform,
+  const rclcpp::Time & timestamp) const
 {
   if (debug_params_.publish_debug_route) {
     auto lifetime = rclcpp::Duration::from_seconds(0.2);
     auto route_markers = utils::create_lane_marker(
       ego_to_map_transform, input_data_map.at("route_lanes"),
-      std::vector<int64_t>(ROUTE_LANES_SHAPE.begin(), ROUTE_LANES_SHAPE.end()), this->now(),
-      lifetime, {0.8, 0.8, 0.8, 0.8}, "map", true);
+      std::vector<int64_t>(ROUTE_LANES_SHAPE.begin(), ROUTE_LANES_SHAPE.end()), timestamp, lifetime,
+      {0.8, 0.8, 0.8, 0.8}, "map", true);
     pub_route_marker_->publish(route_markers);
   }
 
@@ -639,14 +641,15 @@ void DiffusionPlanner::publish_debug_markers(
     auto lifetime = rclcpp::Duration::from_seconds(0.2);
     auto lane_markers = utils::create_lane_marker(
       ego_to_map_transform, input_data_map.at("lanes"),
-      std::vector<int64_t>(LANES_SHAPE.begin(), LANES_SHAPE.end()), this->now(), lifetime,
+      std::vector<int64_t>(LANES_SHAPE.begin(), LANES_SHAPE.end()), timestamp, lifetime,
       {0.1, 0.1, 0.7, 0.8}, "map", true);
     pub_lane_marker_->publish(lane_markers);
   }
 }
 
 void DiffusionPlanner::publish_predictions(
-  const std::vector<float> & predictions, const FrameContext & frame_context) const
+  const std::vector<float> & predictions, const FrameContext & frame_context,
+  const rclcpp::Time & timestamp) const
 {
   CandidateTrajectories candidate_trajectories;
 
@@ -659,7 +662,7 @@ void DiffusionPlanner::publish_predictions(
 
   for (int i = 0; i < params_.batch_size; i++) {
     const Trajectory trajectory = postprocess::create_ego_trajectory(
-      agent_poses, this->now(), frame_context.ego_to_map_transform, i,
+      agent_poses, timestamp, frame_context.ego_to_map_transform, i,
       params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
     if (i == 0) {
       pub_trajectory_->publish(trajectory);
@@ -690,7 +693,7 @@ void DiffusionPlanner::publish_predictions(
     // Use batch 0 for neighbor predictions
     constexpr int64_t batch_idx = 0;
     auto predicted_objects = postprocess::create_predicted_objects(
-      agent_poses, frame_context.ego_centric_neighbor_agent_data, this->now(),
+      agent_poses, frame_context.ego_centric_neighbor_agent_data, timestamp,
       frame_context.ego_to_map_transform, batch_idx);
     pub_objects_->publish(predicted_objects);
   }
@@ -913,13 +916,14 @@ void DiffusionPlanner::on_timer()
 
   diagnostics_inference_->clear();
 
+  const rclcpp::Time current_time(get_clock()->now());
   if (!is_map_loaded_) {
     RCLCPP_INFO_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "Waiting for map data...");
     diagnostics_inference_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "Map data not loaded");
-    diagnostics_inference_->publish(this->now());
+    diagnostics_inference_->publish(current_time);
     return;
   }
 
@@ -931,13 +935,14 @@ void DiffusionPlanner::on_timer()
       "No input data available for inference");
     diagnostics_inference_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "No input data available for inference");
-    diagnostics_inference_->publish(this->now());
+    diagnostics_inference_->publish(current_time);
     return;
   }
 
+  const rclcpp::Time frame_time(frame_context->frame_time);
   InputDataMap input_data_map = create_input_data(*frame_context);
 
-  publish_debug_markers(input_data_map, frame_context->ego_to_map_transform);
+  publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
 
   // Calculate and record metrics for diagnostics using the proper logic
   const int64_t batch_idx = 0;
@@ -972,11 +977,11 @@ void DiffusionPlanner::on_timer()
       "Input data contains invalid values");
     diagnostics_inference_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::WARN, "Input data contains invalid values");
-    diagnostics_inference_->publish(this->now());
+    diagnostics_inference_->publish(current_time);
     return;
   }
   const auto predictions = do_inference_trt(input_data_map);
-  publish_predictions(predictions, *frame_context);
+  publish_predictions(predictions, *frame_context, frame_time);
 
   // Publish turn indicators
   const auto turn_indicator_logit = get_turn_indicator_logit();
@@ -984,11 +989,11 @@ void DiffusionPlanner::on_timer()
                                 ? TurnIndicatorsReport::DISABLE
                                 : turn_indicators_history_.back().report;
   const auto turn_indicator_command = turn_indicator_manager_.evaluate(
-    turn_indicator_logit, this->now(), prev_report, params_.turn_indicator_keep_offset);
+    turn_indicator_logit, frame_time, prev_report, params_.turn_indicator_keep_offset);
   pub_turn_indicators_->publish(turn_indicator_command);
 
   // Publish diagnostics
-  diagnostics_inference_->publish(this->now());
+  diagnostics_inference_->publish(frame_time);
 }
 
 void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
