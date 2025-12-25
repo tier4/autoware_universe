@@ -110,7 +110,6 @@ struct FrameContext
   geometry_msgs::msg::AccelWithCovarianceStamped ego_acceleration;
   Eigen::Matrix4d ego_to_map_transform;
   AgentData ego_centric_neighbor_agent_data;
-  std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map;
   rclcpp::Time frame_time;
 };
 
@@ -303,6 +302,7 @@ private:
   std::deque<Pose> ego_history_;
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
   std::optional<AgentData> agent_data_{std::nullopt};
+  std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
 
   // Node parameters
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
