@@ -73,8 +73,9 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_EmptyAgentData)
 
   const auto agent_poses = postprocess::parse_predictions(prediction);
   constexpr int64_t batch_idx = 0;
-  auto result =
-    postprocess::create_predicted_objects(agent_poses, agent_data, stamp, transform, batch_idx);
+  auto result = postprocess::create_predicted_objects(
+    agent_poses, agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity()), stamp,
+    transform, batch_idx);
 
   EXPECT_EQ(result.objects.size(), 0);
   EXPECT_EQ(result.header.frame_id, "map");
@@ -100,8 +101,9 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_MorePredictionsTh
 
   const auto agent_poses = postprocess::parse_predictions(prediction);
   constexpr int64_t batch_idx = 0;
-  auto result =
-    postprocess::create_predicted_objects(agent_poses, agent_data, stamp, transform, batch_idx);
+  auto result = postprocess::create_predicted_objects(
+    agent_poses, agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity()), stamp,
+    transform, batch_idx);
 
   // Should only create predictions for available objects (2)
   EXPECT_EQ(result.objects.size(), 2);

@@ -195,6 +195,7 @@ void AgentData::update_histories(
       auto agent_state = AgentState(object);
       histories_.emplace_back(
         agent_state, get_model_label(object), current_time, time_length_, true);
+      histories_idx_map_.emplace(object_id, histories_.size() - 1);
     }
     found_ids.push_back(object_id);
   }
@@ -211,26 +212,29 @@ void AgentData::update_histories(
   set_histories(histories_);
 }
 
-void AgentData::trim_to_k_closest_agents()
+std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
+  const Eigen::Matrix4d & transform) const
 {
+  std::vector<AgentHistory> histories = histories_;
+  for (auto & history : histories) {
+    history.apply_transform(transform);
+  }
+
   geometry_msgs::msg::Point position;
   position.x = 0.0;
   position.y = 0.0;
   position.z = 0.0;
-  trim_to_k_closest_agents(position);
-}
 
-void AgentData::trim_to_k_closest_agents(const geometry_msgs::msg::Point & position)
-{
   std::sort(
-    histories_.begin(), histories_.end(),
+    histories.begin(), histories.end(),
     [&position](const AgentHistory & a, const AgentHistory & b) {
       return autoware_utils_geometry::calc_distance2d(position, a.get_latest_state_position()) <
              autoware_utils_geometry::calc_distance2d(position, b.get_latest_state_position());
     });
-  auto k = std::min(num_agent_, max_num_agent_);
-  std::vector<AgentHistory> closest_agents(histories_.begin(), histories_.begin() + k);
-  set_histories(closest_agents);
+  if (histories.size() > max_num_agent_) {
+    histories.erase(histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent_), histories.end());
+  }
+  return histories;
 }
 
 void AgentData::set_histories(const std::vector<AgentHistory> & histories)
@@ -243,28 +247,6 @@ void AgentData::set_histories(const std::vector<AgentHistory> & histories)
   for (const auto & history : histories_) {
     histories_idx_map_.emplace(history.object_id(), agent_id++);
   }
-}
-
-std::vector<float> AgentData::build_data_vector(bool pad_with_zeroes) const noexcept
-{
-  std::vector<float> data;
-  data.reserve(histories_.size() * time_length_ * state_dim());
-
-  for (const auto & history : histories_) {
-    const auto history_array = history.as_array();
-    data.insert(data.end(), history_array.begin(), history_array.end());
-  }
-
-  if (pad_with_zeroes) {
-    data.resize(max_num_agent_ * time_length_ * state_dim(), 0.0f);
-  }
-
-  return data;
-}
-
-std::vector<float> AgentData::as_vector(bool pad_with_zeroes) const noexcept
-{
-  return build_data_vector(pad_with_zeroes);
 }
 
 }  // namespace autoware::diffusion_planner

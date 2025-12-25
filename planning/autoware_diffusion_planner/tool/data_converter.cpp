@@ -205,12 +205,13 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
     }
     agent_data_past.update_histories(data_list[frame_idx].tracked_objects, ignore_unknown_agents);
   }
-  agent_data_past.apply_transform(map2bl_matrix);
-  agent_data_past.trim_to_k_closest_agents();
-  const std::vector<float> neighbor_past = agent_data_past.as_vector();
+  const auto transformed_histories =
+    agent_data_past.transformed_and_trimmed_histories(map2bl_matrix);
+  const std::vector<float> neighbor_past = flatten_histories_to_vector(
+    transformed_histories, MAX_NUM_NEIGHBORS, PAST_TIME_STEPS);
 
   // Build id -> AgentHistory map for future filling
-  const std::vector<AgentHistory> agent_histories = agent_data_past.get_histories();
+  const std::vector<AgentHistory> agent_histories = transformed_histories;
   std::unordered_map<std::string, AgentHistory> id_to_history;
   for (size_t i = 0; i < agent_histories.size(); ++i) {
     id_to_history.emplace(

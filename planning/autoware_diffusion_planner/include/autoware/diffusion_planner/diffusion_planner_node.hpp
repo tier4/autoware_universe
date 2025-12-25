@@ -109,7 +109,7 @@ struct FrameContext
   nav_msgs::msg::Odometry ego_kinematic_state;
   geometry_msgs::msg::AccelWithCovarianceStamped ego_acceleration;
   Eigen::Matrix4d ego_to_map_transform;
-  AgentData ego_centric_neighbor_agent_data;
+  std::vector<AgentHistory> ego_centric_neighbor_histories;
   rclcpp::Time frame_time;
 };
 

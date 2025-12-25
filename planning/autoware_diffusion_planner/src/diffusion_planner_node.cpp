@@ -450,9 +450,8 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   } else {
     agent_data_->update_histories(*objects, params_.ignore_unknown_neighbors);
   }
-  auto ego_centric_neighbor_agent_data = agent_data_.value();
-  ego_centric_neighbor_agent_data.apply_transform(map_to_ego_transform);
-  ego_centric_neighbor_agent_data.trim_to_k_closest_agents();
+  const auto processed_neighbor_histories =
+    agent_data_->transformed_and_trimmed_histories(map_to_ego_transform);
 
   // Update traffic light map
   const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
@@ -462,7 +461,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   // Create frame context
   const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
   const FrameContext frame_context{
-    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, ego_centric_neighbor_agent_data,
+    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
     frame_time};
 
   return frame_context;
@@ -510,8 +509,9 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   }
   // Agent data on ego reference frame
   {
-    input_data_map["neighbor_agents_past"] =
-      replicate_for_batch(frame_context.ego_centric_neighbor_agent_data.as_vector());
+    const auto neighbor_agents_past = flatten_histories_to_vector(
+      frame_context.ego_centric_neighbor_histories, MAX_NUM_NEIGHBORS, INPUT_T + 1);
+    input_data_map["neighbor_agents_past"] = replicate_for_batch(neighbor_agents_past);
   }
   // Static objects
   // TODO(Daniel): add static objects
@@ -692,7 +692,7 @@ void DiffusionPlanner::publish_predictions(
     // Use batch 0 for neighbor predictions
     constexpr int64_t batch_idx = 0;
     auto predicted_objects = postprocess::create_predicted_objects(
-      agent_poses, frame_context.ego_centric_neighbor_agent_data, timestamp,
+      agent_poses, frame_context.ego_centric_neighbor_histories, timestamp,
       frame_context.ego_to_map_transform, batch_idx);
     pub_objects_->publish(predicted_objects);
   }

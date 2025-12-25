@@ -242,21 +242,12 @@ struct AgentData
     const autoware_perception_msgs::msg::TrackedObjects & objects, const size_t max_num_agent = 32,
     const size_t num_timestamps = 21, const bool ignore_unknown_agents = false);
 
-  void apply_transform(const Eigen::Matrix4d & transform)
-  {
-    for (auto & history : histories_) {
-      history.apply_transform(transform);
-    }
-  }
-
   void update_histories(
     const autoware_perception_msgs::msg::TrackedObjects & objects,
     const bool ignore_unknown_agents = false);
 
   static bool is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object);
 
-  void trim_to_k_closest_agents();
-  void trim_to_k_closest_agents(const geometry_msgs::msg::Point & position);
   // Return the number of classes `C`.
   static size_t num_class() { return 3; }
 
@@ -271,6 +262,7 @@ struct AgentData
 
   // Return the number of all elements `N*T*D`.
   size_t size() const { return num_agent_ * time_length_ * state_dim(); }
+  size_t max_num_agent() const { return max_num_agent_; }
 
   // Return the data shape ordering in (N, T, D).
   std::tuple<size_t, size_t, size_t> shape() const
@@ -278,21 +270,38 @@ struct AgentData
     return {num_agent_, time_length_, state_dim()};
   }
 
-  // Build the flattened data vector on demand
-  std::vector<float> as_vector(bool pad_with_zeroes = true) const noexcept;
-
-  std::vector<AgentHistory> get_histories() const { return histories_; }
+  // Transform histories, trim to max_num_agent_, and return the processed vector.
+  std::vector<AgentHistory> transformed_and_trimmed_histories(
+    const Eigen::Matrix4d & transform) const;
 
 private:
   void set_histories(const std::vector<AgentHistory> & histories);
-  std::vector<float> build_data_vector(bool pad_with_zeroes) const noexcept;
-
   std::vector<AgentHistory> histories_;
   std::unordered_map<std::string, size_t> histories_idx_map_;
   size_t num_agent_{0};
   size_t max_num_agent_{0};
   size_t time_length_{0};
 };
+
+// Convert histories to a flattened vector
+inline std::vector<float> flatten_histories_to_vector(
+  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length,
+  bool pad_with_zeroes = true)
+{
+  std::vector<float> data;
+  data.reserve(histories.size() * time_length * AGENT_STATE_DIM);
+
+  for (const auto & history : histories) {
+    const auto history_array = history.as_array();
+    data.insert(data.end(), history_array.begin(), history_array.end());
+  }
+
+  if (pad_with_zeroes) {
+    data.resize(max_num_agent * time_length * AGENT_STATE_DIM, 0.0f);
+  }
+
+  return data;
+}
 
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__CONVERSION__AGENT_HPP_

@@ -113,13 +113,11 @@ TEST_F(AgentTest, AgentDataTrimToClosestAgents)
 
   EXPECT_EQ(agent_data.num_agent(), 11);
 
-  // Trim to 5 closest agents
-  Point ego_position;
-  ego_position.x = 0.0;
-  ego_position.y = 0.0;
-  agent_data.trim_to_k_closest_agents(ego_position);
+  // Transform and trim to 5 closest agents
+  const auto trimmed =
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity());
 
-  EXPECT_EQ(agent_data.num_agent(), 5);
+  EXPECT_EQ(trimmed.size(), 5);
 }
 
 }  // namespace autoware::diffusion_planner::test
