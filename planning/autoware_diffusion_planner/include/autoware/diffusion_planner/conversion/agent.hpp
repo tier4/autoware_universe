@@ -247,11 +247,7 @@ struct AgentData
     for (auto & history : histories_) {
       history.apply_transform(transform);
     }
-    fill_data(histories_);
   }
-
-  // fill data array
-  void fill_data(const std::vector<AgentHistory> & histories, bool pad_with_zeroes = true);
 
   void update_histories(
     const autoware_perception_msgs::msg::TrackedObjects & objects,
@@ -282,21 +278,20 @@ struct AgentData
     return {num_agent_, time_length_, state_dim()};
   }
 
-  // Return the address pointer of data array.
-  const float * data_ptr() const noexcept { return data_.data(); }
-
-  // Copy the data to a vector
-  std::vector<float> as_vector() const noexcept { return data_; }
+  // Build the flattened data vector on demand
+  std::vector<float> as_vector(bool pad_with_zeroes = true) const noexcept;
 
   std::vector<AgentHistory> get_histories() const { return histories_; }
 
 private:
+  void set_histories(const std::vector<AgentHistory> & histories);
+  std::vector<float> build_data_vector(bool pad_with_zeroes) const noexcept;
+
   std::vector<AgentHistory> histories_;
   std::unordered_map<std::string, size_t> histories_idx_map_;
   size_t num_agent_{0};
   size_t max_num_agent_{0};
   size_t time_length_{0};
-  std::vector<float> data_;
 };
 
 }  // namespace autoware::diffusion_planner

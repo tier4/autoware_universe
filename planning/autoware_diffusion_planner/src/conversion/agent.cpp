@@ -167,7 +167,7 @@ AgentData::AgentData(
     histories.emplace_back(
       agent_state, get_model_label(object), current_time, num_timestamps, true);
   }
-  fill_data(histories);
+  set_histories(histories);
 }
 
 bool AgentData::is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object)
@@ -175,26 +175,6 @@ bool AgentData::is_unknown_object(const autoware_perception_msgs::msg::TrackedOb
   const auto autoware_label =
     autoware::object_recognition_utils::getHighestProbLabel(object.classification);
   return autoware_label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
-}
-
-void AgentData::fill_data(const std::vector<AgentHistory> & histories, bool pad_with_zeroes)
-{
-  num_agent_ = histories.size();
-  histories_ = histories;
-  histories_idx_map_.clear();
-  data_.clear();
-  data_.reserve(num_agent_ * time_length_ * state_dim());
-
-  size_t agent_id = 0;
-  for (auto & history : histories_) {
-    histories_idx_map_.emplace(history.object_id(), agent_id++);
-    for (const auto & v : history.as_array()) {
-      data_.push_back(v);
-    }
-  }
-  if (pad_with_zeroes) {
-    data_.resize(max_num_agent_ * time_length_ * state_dim(), 0.0f);
-  }
 }
 
 void AgentData::update_histories(
@@ -228,7 +208,7 @@ void AgentData::update_histories(
       }),
     histories_.end());
 
-  fill_data(histories_);
+  set_histories(histories_);
 }
 
 void AgentData::trim_to_k_closest_agents()
@@ -250,7 +230,41 @@ void AgentData::trim_to_k_closest_agents(const geometry_msgs::msg::Point & posit
     });
   auto k = std::min(num_agent_, max_num_agent_);
   std::vector<AgentHistory> closest_agents(histories_.begin(), histories_.begin() + k);
-  fill_data(closest_agents);
+  set_histories(closest_agents);
+}
+
+void AgentData::set_histories(const std::vector<AgentHistory> & histories)
+{
+  histories_ = histories;
+  num_agent_ = histories_.size();
+  histories_idx_map_.clear();
+
+  size_t agent_id = 0;
+  for (const auto & history : histories_) {
+    histories_idx_map_.emplace(history.object_id(), agent_id++);
+  }
+}
+
+std::vector<float> AgentData::build_data_vector(bool pad_with_zeroes) const noexcept
+{
+  std::vector<float> data;
+  data.reserve(histories_.size() * time_length_ * state_dim());
+
+  for (const auto & history : histories_) {
+    const auto history_array = history.as_array();
+    data.insert(data.end(), history_array.begin(), history_array.end());
+  }
+
+  if (pad_with_zeroes) {
+    data.resize(max_num_agent_ * time_length_ * state_dim(), 0.0f);
+  }
+
+  return data;
+}
+
+std::vector<float> AgentData::as_vector(bool pad_with_zeroes) const noexcept
+{
+  return build_data_vector(pad_with_zeroes);
 }
 
 }  // namespace autoware::diffusion_planner
