@@ -133,8 +133,6 @@ struct AgentState
 
   void apply_transform(const Eigen::Matrix4d & transform);
 
-  [[nodiscard]] std::string to_string() const;
-
   // Return the state attribute as an array.
   [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array() const noexcept;
 
@@ -254,8 +252,6 @@ struct AgentHistory
     }
   }
 
-  [[nodiscard]] std::string to_string() const;
-
   // private:
   FixedQueue<AgentState> queue_;
   std::string object_id_;
@@ -320,8 +316,6 @@ struct AgentData
   {
     return {num_agent_, time_length_, state_dim()};
   }
-
-  [[nodiscard]] std::string to_string() const;
 
   // Return the address pointer of data array.
   const float * data_ptr() const noexcept { return data_.data(); }

@@ -57,21 +57,6 @@ AgentState::AgentState(const TrackedObject & object)
   tracked_object_info_ = object;
 }
 
-// AgentState::AgentState(
-//   const geometry_msgs::msg::Point & position, const geometry_msgs::msg::Vector3 & dimension,
-//   float yaw, const geometry_msgs::msg::Vector3 & velocity, const AgentLabel & label,
-//   std::string object_id)
-// : position_(position),
-//   dimension_(dimension),
-//   yaw_(yaw),
-//   cos_yaw_(std::cos(yaw)),
-//   sin_yaw_(std::sin(yaw)),
-//   velocity_(velocity),
-//   label_(label),
-//   object_id_(std::move(object_id))
-// {
-// }
-
 void AgentState::apply_transform(const Eigen::Matrix4d & transform)
 {
   Eigen::Vector4d pos_vec(position_.x, position_.y, position_.z, 1.0);
@@ -89,23 +74,6 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
   const double velocity_norm = std::hypot(velocity_.x, velocity_.y);
   velocity_.x = velocity_norm * cos_yaw_;
   velocity_.y = velocity_norm * sin_yaw_;
-}
-
-[[nodiscard]] std::string AgentState::to_string() const
-{
-  constexpr std::array<const char *, AGENT_STATE_DIM> field_names = {
-    "x", "y", "cos_yaw", "sin_yaw", "vx", "vy", "L", "W", "v", "p", "b"};
-  std::ostringstream oss;
-  auto data = as_array();
-  oss << "AgentState: [";
-  for (size_t i = 0; i < AGENT_STATE_DIM; ++i) {
-    oss << field_names[i] << ": " << data[i];
-    if (i != AGENT_STATE_DIM - 1) {
-      oss << ", ";
-    }
-  }
-  oss << "]\n";
-  return oss.str();
 }
 
 // Return the state attribute as an array.
@@ -182,21 +150,6 @@ void AgentHistory::pad_history(bool pad_front)
       queue_.push_back(state);
     }
   }
-}
-
-[[nodiscard]] std::string AgentHistory::to_string() const
-{
-  std::ostringstream oss;
-  oss << "AgentHistory("
-      << "object_id: " << object_id_ << ", "
-      << "label_id: " << label_id_ << ", "
-      << "latest_time: " << latest_time_ << ", "
-      << "max_size: " << max_size_ << ")";
-  for (const auto & state : queue_) {
-    oss << "\n  " << state.to_string();
-  }
-  oss << "\n";
-  return oss.str();
 }
 
 AgentData::AgentData(
@@ -299,21 +252,6 @@ void AgentData::trim_to_k_closest_agents(const geometry_msgs::msg::Point & posit
   auto k = std::min(num_agent_, max_num_agent_);
   std::vector<AgentHistory> closest_agents(histories_.begin(), histories_.begin() + k);
   fill_data(closest_agents);
-}
-
-[[nodiscard]] std::string AgentData::to_string() const
-{
-  std::ostringstream oss;
-  oss << "AgentData("
-      << "num_agent: " << num_agent_ << ", "
-      << "time_length: " << time_length_ << ", "
-      << "state_dim: " << state_dim() << ", "
-      << "data_size: " << data_.size() << ")";
-  for (const auto & history : histories_) {
-    oss << "\n  " << history.to_string();
-  }
-  oss << "\n";
-  return oss.str();
 }
 
 }  // namespace autoware::diffusion_planner
