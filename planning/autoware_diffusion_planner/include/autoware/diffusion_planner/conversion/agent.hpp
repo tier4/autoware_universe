@@ -87,19 +87,12 @@ struct AgentState
    * @param velocity Velocity [m/s].
    * @param label Agent label
    */
-  // AgentState(
-  //   const geometry_msgs::msg::Point & position, const geometry_msgs::msg::Vector3 & dimension,
-  //   float yaw, const geometry_msgs::msg::Vector3 & velocity, const AgentLabel & label,
-  //   std::string object_id);
 
   // Construct a new instance filling all elements by `0.0f`.
   static AgentState empty() noexcept { return {}; }
 
   // Return the agent state dimensions `D`.
   static size_t dim() { return AGENT_STATE_DIM; }
-
-  // Return shape
-  [[nodiscard]] autoware_perception_msgs::msg::Shape shape() const { return shape_; }
 
   // Return TrackedObject info
   [[nodiscard]] TrackedObject tracked_object() const { return tracked_object_info_; }
@@ -110,7 +103,6 @@ struct AgentState
   [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array() const noexcept;
 
   geometry_msgs::msg::Point position_;
-  autoware_perception_msgs::msg::Shape shape_;
   double yaw_{0.0};
   double cos_yaw_{0.0};
   double sin_yaw_{0.0};

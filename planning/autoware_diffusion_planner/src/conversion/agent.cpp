@@ -44,7 +44,6 @@ AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & 
 AgentState::AgentState(const TrackedObject & object)
 {
   position_ = object.kinematics.pose_with_covariance.pose.position;
-  shape_ = object.shape;
   float yaw =
     autoware_utils_geometry::get_rpy(object.kinematics.pose_with_covariance.pose.orientation).z;
   yaw_ = yaw;
@@ -86,8 +85,8 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
     sin_yaw_,
     static_cast<float>(velocity_.x),
     static_cast<float>(velocity_.y),
-    static_cast<float>(shape_.dimensions.y),  // width
-    static_cast<float>(shape_.dimensions.x),  // length
+    static_cast<float>(tracked_object_info_.shape.dimensions.y),  // width
+    static_cast<float>(tracked_object_info_.shape.dimensions.x),  // length
     static_cast<float>(label_ == AgentLabel::VEHICLE),
     static_cast<float>(label_ == AgentLabel::PEDESTRIAN),
     static_cast<float>(label_ == AgentLabel::BICYCLE),
