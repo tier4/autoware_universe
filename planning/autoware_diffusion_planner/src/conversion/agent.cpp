@@ -152,9 +152,9 @@ void AgentHistory::pad_history(bool pad_front)
 }
 
 AgentData::AgentData(
-  const autoware_perception_msgs::msg::TrackedObjects & objects, const size_t max_num_agent,
-  const size_t num_timestamps, const bool ignore_unknown_agents)
-: max_num_agent_(max_num_agent), time_length_(num_timestamps)
+  const autoware_perception_msgs::msg::TrackedObjects & objects, const size_t num_timestamps,
+  const bool ignore_unknown_agents)
+: time_length_(num_timestamps)
 {
   std::vector<AgentHistory> histories;
   for (auto object : objects.objects) {
@@ -210,7 +210,7 @@ void AgentData::update_histories(
 }
 
 std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
-  const Eigen::Matrix4d & transform) const
+  const Eigen::Matrix4d & transform, size_t max_num_agent) const
 {
   std::vector<AgentHistory> histories;
   histories.reserve(histories_map_.size());
@@ -232,8 +232,8 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
       return autoware_utils_geometry::calc_distance2d(position, a.get_latest_state_position()) <
              autoware_utils_geometry::calc_distance2d(position, b.get_latest_state_position());
     });
-  if (histories.size() > max_num_agent_) {
-    histories.erase(histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent_), histories.end());
+  if (histories.size() > max_num_agent) {
+    histories.erase(histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent), histories.end());
   }
   return histories;
 }

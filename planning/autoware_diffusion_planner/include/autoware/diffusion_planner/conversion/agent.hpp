@@ -239,8 +239,8 @@ struct AgentData
    * @param num_timestamps Number of timestamps.
    */
   explicit AgentData(
-    const autoware_perception_msgs::msg::TrackedObjects & objects, const size_t max_num_agent = 32,
-    const size_t num_timestamps = 21, const bool ignore_unknown_agents = false);
+    const autoware_perception_msgs::msg::TrackedObjects & objects, const size_t num_timestamps = 21,
+    const bool ignore_unknown_agents = false);
 
   void update_histories(
     const autoware_perception_msgs::msg::TrackedObjects & objects,
@@ -262,7 +262,6 @@ struct AgentData
 
   // Return the number of all elements `N*T*D`.
   size_t size() const { return num_agent_ * time_length_ * state_dim(); }
-  size_t max_num_agent() const { return max_num_agent_; }
 
   // Return the data shape ordering in (N, T, D).
   std::tuple<size_t, size_t, size_t> shape() const
@@ -272,13 +271,12 @@ struct AgentData
 
   // Transform histories, trim to max_num_agent_, and return the processed vector.
   std::vector<AgentHistory> transformed_and_trimmed_histories(
-    const Eigen::Matrix4d & transform) const;
+    const Eigen::Matrix4d & transform, size_t max_num_agent) const;
 
 private:
   void set_histories(const std::vector<AgentHistory> & histories);
   std::unordered_map<std::string, AgentHistory> histories_map_;
   size_t num_agent_{0};
-  size_t max_num_agent_{0};
   size_t time_length_{0};
 };
 

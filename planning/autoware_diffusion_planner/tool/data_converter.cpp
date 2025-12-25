@@ -196,8 +196,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   const int64_t start_idx = std::max(static_cast<int64_t>(0), current_idx - PAST_TIME_STEPS + 1);
   const bool ignore_unknown_agents = true;
   autoware::diffusion_planner::AgentData agent_data_past(
-    data_list[start_idx].tracked_objects, MAX_NUM_NEIGHBORS, PAST_TIME_STEPS,
-    ignore_unknown_agents);
+    data_list[start_idx].tracked_objects, PAST_TIME_STEPS, ignore_unknown_agents);
   for (int64_t t = 1; t < PAST_TIME_STEPS; ++t) {
     const int64_t frame_idx = start_idx + t;
     if (frame_idx >= static_cast<int64_t>(data_list.size())) {
@@ -206,7 +205,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
     agent_data_past.update_histories(data_list[frame_idx].tracked_objects, ignore_unknown_agents);
   }
   const auto transformed_histories =
-    agent_data_past.transformed_and_trimmed_histories(map2bl_matrix);
+    agent_data_past.transformed_and_trimmed_histories(map2bl_matrix, MAX_NUM_NEIGHBORS);
   const std::vector<float> neighbor_past = flatten_histories_to_vector(
     transformed_histories, MAX_NUM_NEIGHBORS, PAST_TIME_STEPS);
 

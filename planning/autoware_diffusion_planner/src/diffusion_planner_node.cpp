@@ -445,13 +445,12 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
 
   // Update neighbor agent data
   if (!agent_data_) {
-    agent_data_ =
-      AgentData(*objects, NEIGHBOR_SHAPE[1], NEIGHBOR_SHAPE[2], params_.ignore_unknown_neighbors);
+    agent_data_ = AgentData(*objects, NEIGHBOR_SHAPE[2], params_.ignore_unknown_neighbors);
   } else {
     agent_data_->update_histories(*objects, params_.ignore_unknown_neighbors);
   }
   const auto processed_neighbor_histories =
-    agent_data_->transformed_and_trimmed_histories(map_to_ego_transform);
+    agent_data_->transformed_and_trimmed_histories(map_to_ego_transform, NEIGHBOR_SHAPE[1]);
 
   // Update traffic light map
   const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;

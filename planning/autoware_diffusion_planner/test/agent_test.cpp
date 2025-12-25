@@ -115,7 +115,7 @@ TEST_F(AgentTest, AgentDataTrimToClosestAgents)
 
   // Transform and trim to 5 closest agents
   const auto trimmed =
-    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity());
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), 5);
 
   EXPECT_EQ(trimmed.size(), 5);
 }
