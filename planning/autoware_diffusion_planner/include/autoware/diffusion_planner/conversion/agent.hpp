@@ -171,29 +171,8 @@ struct AgentHistory
    */
   void update(double current_time, const AgentState & state);
 
-  // Update history with all-zeros state, but latest time is not updated.
-  void update_empty() noexcept
-  {
-    const auto state = AgentState::empty();
-    queue_.push_back(state);
-  }
-
   // Return a history states as an array.
   [[nodiscard]] std::vector<float> as_array() const noexcept;
-
-  /**
-   * @brief Check whether the latest valid state is too old or not.
-   *
-   * @param current_time Current timestamp.
-   * @param threshold Time difference threshold value.
-   * @return true If the difference is greater than threshold.
-   * @return false Otherwise
-   */
-  [[nodiscard]] bool is_ancient(double current_time, double threshold) const
-  {
-    /* TODO: Raise error if the current time is smaller than latest */
-    return current_time - latest_time_ >= threshold;
-  }
 
   // Get the latest agent state at `T`.
   [[nodiscard]] const AgentState & get_latest_state() const { return queue_.back(); }
