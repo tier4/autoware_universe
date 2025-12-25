@@ -276,8 +276,7 @@ struct AgentData
 
 private:
   void set_histories(const std::vector<AgentHistory> & histories);
-  std::vector<AgentHistory> histories_;
-  std::unordered_map<std::string, size_t> histories_idx_map_;
+  std::unordered_map<std::string, AgentHistory> histories_map_;
   size_t num_agent_{0};
   size_t max_num_agent_{0};
   size_t time_length_{0};

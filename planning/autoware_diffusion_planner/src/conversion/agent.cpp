@@ -188,34 +188,35 @@ void AgentData::update_histories(
       continue;
     }
     auto object_id = autoware_utils_uuid::to_hex_string(object.object_id);
-    auto it = histories_idx_map_.find(object_id);
-    if (it != histories_idx_map_.end()) {
-      histories_[it->second].update(current_time, object);
+    auto it = histories_map_.find(object_id);
+    if (it != histories_map_.end()) {
+      it->second.update(current_time, object);
     } else {
       auto agent_state = AgentState(object);
-      histories_.emplace_back(
-        agent_state, get_model_label(object), current_time, time_length_, true);
-      histories_idx_map_.emplace(object_id, histories_.size() - 1);
+      histories_map_.emplace(
+        object_id, AgentHistory(agent_state, get_model_label(object), current_time, time_length_, true));
     }
     found_ids.push_back(object_id);
   }
   // Remove histories that are not found in the current objects
-  histories_.erase(
-    std::remove_if(
-      histories_.begin(), histories_.end(),
-      [&found_ids](const AgentHistory & history) {
-        return std::find(found_ids.begin(), found_ids.end(), history.object_id()) ==
-               found_ids.end();
-      }),
-    histories_.end());
-
-  set_histories(histories_);
+  for (auto it = histories_map_.begin(); it != histories_map_.end();) {
+    if (std::find(found_ids.begin(), found_ids.end(), it->first) == found_ids.end()) {
+      it = histories_map_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  num_agent_ = histories_map_.size();
 }
 
 std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
   const Eigen::Matrix4d & transform) const
 {
-  std::vector<AgentHistory> histories = histories_;
+  std::vector<AgentHistory> histories;
+  histories.reserve(histories_map_.size());
+  for (const auto & [_, history] : histories_map_) {
+    histories.push_back(history);
+  }
   for (auto & history : histories) {
     history.apply_transform(transform);
   }
@@ -239,14 +240,11 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
 
 void AgentData::set_histories(const std::vector<AgentHistory> & histories)
 {
-  histories_ = histories;
-  num_agent_ = histories_.size();
-  histories_idx_map_.clear();
-
-  size_t agent_id = 0;
-  for (const auto & history : histories_) {
-    histories_idx_map_.emplace(history.object_id(), agent_id++);
+  histories_map_.clear();
+  for (const auto & history : histories) {
+    histories_map_.emplace(history.object_id(), history);
   }
+  num_agent_ = histories_map_.size();
 }
 
 }  // namespace autoware::diffusion_planner
