@@ -134,14 +134,11 @@ struct AgentHistory
   // Return the history time length `T`.
   [[nodiscard]] size_t length() const { return max_size_; }
 
-  // Return the number of agent state dimensions `D`.
-  static size_t state_dim() { return AGENT_STATE_DIM; }
-
   // Return the data size of history `T * D`.
-  [[nodiscard]] size_t size() const { return max_size_ * state_dim(); }
+  [[nodiscard]] size_t size() const { return max_size_ * AGENT_STATE_DIM; }
 
   // Return the shape of history matrix ordering in `(T, D)`.
-  [[nodiscard]] std::tuple<size_t, size_t> shape() const { return {max_size_, state_dim()}; }
+  [[nodiscard]] std::tuple<size_t, size_t> shape() const { return {max_size_, AGENT_STATE_DIM}; }
 
   // Return the object id.
   [[nodiscard]] const std::string & object_id() const { return object_id_; }
@@ -247,27 +244,6 @@ struct AgentData
     const bool ignore_unknown_agents = false);
 
   static bool is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object);
-
-  // Return the number of classes `C`.
-  static size_t num_class() { return 3; }
-
-  // Return the number of agents `N`.
-  size_t num_agent() const { return num_agent_; }
-
-  // Return the timestamp length `T`.
-  size_t time_length() const { return time_length_; }
-
-  // Return the number of agent state dimensions `D`.
-  static size_t state_dim() { return AGENT_STATE_DIM; }
-
-  // Return the number of all elements `N*T*D`.
-  size_t size() const { return num_agent_ * time_length_ * state_dim(); }
-
-  // Return the data shape ordering in (N, T, D).
-  std::tuple<size_t, size_t, size_t> shape() const
-  {
-    return {num_agent_, time_length_, state_dim()};
-  }
 
   // Transform histories, trim to max_num_agent_, and return the processed vector.
   std::vector<AgentHistory> transformed_and_trimmed_histories(

@@ -73,15 +73,6 @@ TEST_F(AgentTest, AgentHistoryUpdate)
   EXPECT_FLOAT_EQ(agent_history.get_latest_state().y(), 3.0);
 }
 
-TEST_F(AgentTest, AgentDataInitialization)
-{
-  AgentData agent_data(tracked_objects_, 5, 10);
-
-  EXPECT_EQ(agent_data.num_agent(), 1);
-  EXPECT_EQ(agent_data.time_length(), 10);
-  EXPECT_EQ(agent_data.size(), 10 * AgentState::dim());
-}
-
 TEST_F(AgentTest, AgentDataUpdateHistories)
 {
   AgentData agent_data(tracked_objects_, 5, 10);
