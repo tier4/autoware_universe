@@ -101,18 +101,6 @@ struct AgentState
   // Return shape
   [[nodiscard]] autoware_perception_msgs::msg::Shape shape() const { return shape_; }
 
-  // Return the cos of yaw.
-  [[nodiscard]] float cos_yaw() const { return cos_yaw_; }
-
-  // Return the sin of yaw.
-  [[nodiscard]] float sin_yaw() const { return sin_yaw_; }
-
-  // Return the x velocity.
-  [[nodiscard]] float vx() const { return static_cast<float>(velocity_.x); }
-
-  // Return the y velocity.
-  [[nodiscard]] float vy() const { return static_cast<float>(velocity_.y); }
-
   // Return TrackedObject info
   [[nodiscard]] TrackedObject tracked_object() const { return tracked_object_info_; }
 

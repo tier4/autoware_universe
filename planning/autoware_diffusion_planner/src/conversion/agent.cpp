@@ -82,10 +82,10 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
   return {
     static_cast<float>(position_.x),
     static_cast<float>(position_.y),
-    cos_yaw(),
-    sin_yaw(),
-    vx(),
-    vy(),
+    cos_yaw_,
+    sin_yaw_,
+    static_cast<float>(velocity_.x),
+    static_cast<float>(velocity_.y),
     static_cast<float>(shape_.dimensions.y),  // width
     static_cast<float>(shape_.dimensions.x),  // length
     static_cast<float>(label_ == AgentLabel::VEHICLE),
