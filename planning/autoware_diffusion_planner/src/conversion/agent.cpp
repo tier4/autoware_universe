@@ -206,7 +206,6 @@ void AgentData::update_histories(
       ++it;
     }
   }
-  num_agent_ = histories_map_.size();
 }
 
 std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
@@ -244,7 +243,6 @@ void AgentData::set_histories(const std::vector<AgentHistory> & histories)
   for (const auto & history : histories) {
     histories_map_.emplace(history.object_id(), history);
   }
-  num_agent_ = histories_map_.size();
 }
 
 }  // namespace autoware::diffusion_planner

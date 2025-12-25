@@ -245,14 +245,13 @@ struct AgentData
 
   static bool is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object);
 
-  // Transform histories, trim to max_num_agent_, and return the processed vector.
+  // Transform histories, trim to max_num_agent, and return the processed vector.
   std::vector<AgentHistory> transformed_and_trimmed_histories(
     const Eigen::Matrix4d & transform, size_t max_num_agent) const;
 
 private:
   void set_histories(const std::vector<AgentHistory> & histories);
   std::unordered_map<std::string, AgentHistory> histories_map_;
-  size_t num_agent_{0};
   size_t time_length_{0};
 };
 
