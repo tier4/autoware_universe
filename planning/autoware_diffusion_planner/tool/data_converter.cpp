@@ -104,6 +104,7 @@ struct TrainingDataBinary
   float line_strings[NUM_LINE_STRINGS * POINTS_PER_LINE_STRING * 2];
   float goal_pose[NEIGHBOR_FUTURE_DIM];
   int32_t turn_indicators[PAST_TIME_STEPS];
+  float ego_shape[EGO_SHAPE_SHAPE[1]];
 
   // Constructor with zero initialization
   TrainingDataBinary() : version(2)
@@ -124,6 +125,7 @@ struct TrainingDataBinary
     std::fill(std::begin(line_strings), std::end(line_strings), 0.0f);
     std::fill(std::begin(goal_pose), std::end(goal_pose), 0.0f);
     std::fill(std::begin(turn_indicators), std::end(turn_indicators), 0);
+    std::fill(std::begin(ego_shape), std::end(ego_shape), 0.0f);
   }
 };
 
@@ -272,8 +274,8 @@ void save_binary_data(
   const std::vector<float> & route_lanes_speed_limit,
   const std::vector<bool> & route_lanes_has_speed_limit, const std::vector<float> & polygons,
   const std::vector<float> & line_strings, const std::vector<float> & goal_pose,
-  const std::vector<int32_t> & turn_indicators, const Odometry & kinematic_state,
-  const int64_t timestamp)
+  const std::vector<int32_t> & turn_indicators, const std::vector<float> & ego_shape,
+  const Odometry & kinematic_state, const int64_t timestamp)
 {
   namespace fs = std::filesystem;
 
@@ -307,6 +309,7 @@ void save_binary_data(
   }
 
   std::copy(turn_indicators.begin(), turn_indicators.end(), data.turn_indicators);
+  std::copy(ego_shape.begin(), ego_shape.end(), data.ego_shape);
 
   // Save to binary file with rosbag directory name prefix (same format as Python version)
   const std::string binary_filename = output_path + "/" + rosbag_dir_name + "_" + token + ".bin";
@@ -351,7 +354,8 @@ int main(int argc, char ** argv)
 
   if (argc < 4) {
     std::cerr << "Usage: data_converter <rosbag_path> <vector_map_path> <save_dir> [--step=1] "
-                 "[--limit=-1] [--min_frames=1700] [--convert_yellow=0] [--convert_red=0]"
+                 "[--limit=-1] [--min_frames=1700] [--convert_yellow=0] [--convert_red=0] "
+                 "[--ego_wheel_base=2.75] [--ego_length=4.34] [--ego_width=1.70]"
               << std::endl;
     return 1;
   }
@@ -366,6 +370,9 @@ int main(int argc, char ** argv)
   int64_t search_nearest_route = 1;
   int64_t convert_yellow = 0;
   int64_t convert_red = 0;
+  float ego_wheel_base = -1.0;
+  float ego_length = -1.0;
+  float ego_width = -1.0;
 
   // Parse optional arguments
   for (int64_t i = 4; i < argc; ++i) {
@@ -383,8 +390,22 @@ int main(int argc, char ** argv)
       convert_yellow = std::stoll(arg.substr(17));
     } else if (arg.find("--convert_red=") == 0) {
       convert_red = std::stoll(arg.substr(14));
+    } else if (arg.find("--ego_wheel_base=") == 0) {
+      ego_wheel_base = std::stof(arg.substr(17));
+    } else if (arg.find("--ego_length=") == 0) {
+      ego_length = std::stof(arg.substr(13));
+    } else if (arg.find("--ego_width=") == 0) {
+      ego_width = std::stof(arg.substr(12));
     }
   }
+
+  std::cout << "Ego wheel base: " << ego_wheel_base << ", Ego length: " << ego_length
+            << ", Ego width: " << ego_width << std::endl;
+  if (ego_wheel_base < 0.0 || ego_length < 0.0 || ego_width < 0.0) {
+    std::cerr << "Ego vehicle dimensions must be specified with positive values." << std::endl;
+    return 1;
+  }
+  const std::vector<float> ego_shape = {ego_wheel_base, ego_length, ego_width};
 
   std::cout << "Processing rosbag: " << rosbag_path << std::endl;
   std::cout << "Vector map: " << vector_map_path << std::endl;
@@ -813,7 +834,7 @@ int main(int argc, char ** argv)
         save_dir, rosbag_dir_name, token, ego_past, ego_current, ego_future, neighbor_past,
         neighbor_future, static_objects, lanes, lanes_speed_limit, lanes_has_speed_limit,
         route_lanes, route_lanes_speed_limit, route_lanes_has_speed_limit, polygons, line_strings,
-        goal_pose_vec, turn_indicators, seq.data_list[i].kinematic_state,
+        goal_pose_vec, turn_indicators, ego_shape, seq.data_list[i].kinematic_state,
         seq.data_list[i].timestamp);
 
       if (i % 100 == 0) {
