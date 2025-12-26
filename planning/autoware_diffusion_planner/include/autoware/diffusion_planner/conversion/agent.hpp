@@ -207,17 +207,6 @@ struct AgentHistory
  */
 struct AgentData
 {
-  /**
-   * @brief Construct a new instance.
-   *
-   * @param histories An array of histories for each object.
-   * @param num_agent Number of agents.
-   * @param num_timestamps Number of timestamps.
-   */
-  explicit AgentData(
-    const autoware_perception_msgs::msg::TrackedObjects & objects,
-    const bool ignore_unknown_agents = false);
-
   void update_histories(
     const autoware_perception_msgs::msg::TrackedObjects & objects,
     const bool ignore_unknown_agents = false);
@@ -229,7 +218,6 @@ struct AgentData
     const Eigen::Matrix4d & transform, size_t max_num_agent) const;
 
 private:
-  void set_histories(const std::vector<AgentHistory> & histories);
   std::unordered_map<std::string, AgentHistory> histories_map_;
 };
 

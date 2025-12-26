@@ -153,23 +153,6 @@ void AgentHistory::pad_history(bool pad_front)
   }
 }
 
-AgentData::AgentData(
-  const autoware_perception_msgs::msg::TrackedObjects & objects, const bool ignore_unknown_agents)
-{
-  std::vector<AgentHistory> histories;
-  for (auto object : objects.objects) {
-    if (ignore_unknown_agents && is_unknown_object(object)) {
-      continue;
-    }
-    auto agent_state = AgentState(object);
-    auto current_time = static_cast<double>(objects.header.stamp.sec) +
-                        static_cast<double>(objects.header.stamp.nanosec) * 1e-9;
-    histories.emplace_back(
-      agent_state, get_model_label(object), current_time, INPUT_T_WITH_CURRENT, true);
-  }
-  set_histories(histories);
-}
-
 bool AgentData::is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object)
 {
   const auto autoware_label =
@@ -238,14 +221,6 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
       histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent), histories.end());
   }
   return histories;
-}
-
-void AgentData::set_histories(const std::vector<AgentHistory> & histories)
-{
-  histories_map_.clear();
-  for (const auto & history : histories) {
-    histories_map_.emplace(history.object_id(), history);
-  }
 }
 
 }  // namespace autoware::diffusion_planner

@@ -301,7 +301,7 @@ private:
   // history data
   std::deque<Pose> ego_history_;
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
-  std::optional<AgentData> agent_data_{std::nullopt};
+  AgentData agent_data_;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
 
   // Node parameters
