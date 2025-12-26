@@ -120,7 +120,7 @@ struct AgentData
 {
   void update_histories(
     const autoware_perception_msgs::msg::TrackedObjects & objects,
-    const bool ignore_unknown_agents = false);
+    const bool ignore_unknown_agents);
 
   static bool is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object);
 
