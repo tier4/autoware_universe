@@ -59,14 +59,12 @@ AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & 
  */
 struct AgentState
 {
-  // Construct a new instance filling all elements by `0.0f`.
   AgentState() = default;
 
   explicit AgentState(const TrackedObject & object);
 
   void apply_transform(const Eigen::Matrix4d & transform);
 
-  // Return the state attribute as an array.
   [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array() const noexcept;
 
   geometry_msgs::msg::Point position;

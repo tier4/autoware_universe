@@ -46,7 +46,7 @@ AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & 
 AgentState::AgentState(const TrackedObject & object) : original_info(object)
 {
   position = object.kinematics.pose_with_covariance.pose.position;
-  float yaw =
+  const float yaw =
     autoware_utils_geometry::get_rpy(object.kinematics.pose_with_covariance.pose.orientation).z;
   cos_yaw = std::cos(yaw);
   sin_yaw = std::sin(yaw);
