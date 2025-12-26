@@ -75,12 +75,20 @@ public:
       bool unknown;
     };
 
+    struct StoppedVehicle
+    {
+      double object_observation_time;           // [s] time window to observe object movement
+      double object_stop_move_distance_threshold;  // [m] if object moves less than this, it's stopped
+      double yield_stuck_timeout;               // [s] how long ego must stop to confirm safety
+    };
+
     struct CollisionDetection
     {
       double collision_detection_hold_time;
       double min_predicted_path_confidence;
       double collision_start_margin_time;
       double collision_end_margin_time;
+      StoppedVehicle stopped_vehicle;
       TargetType target_type;
       struct VelocityProfile
       {
@@ -259,6 +267,19 @@ private:
   //! past perception failure at these time.
   std::optional<std::pair<rclcpp::Time, geometry_msgs::msg::Pose>>
     safely_passed_1st_judge_line_time_{std::nullopt};
+
+  /**
+   * @struct YieldState
+   * @brief manage yield status for stopped vehicles in internal lanelet range
+   */
+  struct YieldState
+  {
+    bool is_yielded{false};           //! true if ego has completed yield procedure
+    std::optional<rclcpp::Time> yield_start_time{std::nullopt};  //! when ego started waiting
+    //! position history for each object (uuid -> [(time, position)])
+    std::unordered_map<unique_identifier_msgs::msg::UUID, std::vector<std::pair<rclcpp::Time, geometry_msgs::msg::Point>>> object_position_history;
+  };
+  YieldState yield_state_;
   /** @}*/
 
 private:
@@ -411,10 +432,46 @@ private:
   void updateObjectInfoManagerArea();
 
   /**
-   * @brief check if there are objects in the internal lanelet range area
-   * @return true if objects are found in the internal lanelet range area
+   * @struct InternalAreaObjectsStatus
+   * @brief result of checking objects in internal lanelet range area
    */
-  bool hasObjectsInInternalLaneletRangeArea() const;
+  struct InternalAreaObjectsStatus
+  {
+    bool has_objects{false};        //! true if any objects are in the area
+    bool all_objects_stopped{true}; //! true if all objects are stopped (based on movement)
+  };
+
+  /**
+   * @brief check if there are objects in the internal lanelet range area and their status
+   * @return InternalAreaObjectsStatus containing object detection and movement status
+   */
+  InternalAreaObjectsStatus getInternalAreaObjectsStatus();
+
+  /**
+   * @brief check if an object is stopped based on its position history
+   * @param uuid the object's UUID
+   * @param current_position current position of the object
+   * @param current_time current time
+   * @return true if the object is considered stopped (moved less than threshold in observation window)
+   */
+  bool isObjectStopped(
+    const unique_identifier_msgs::msg::UUID & uuid,
+    const geometry_msgs::msg::Point & current_position,
+    const rclcpp::Time & current_time);
+
+  /**
+   * @brief process yield logic for stopped vehicles
+   * @param internal_status status of objects in internal area
+   * @param is_over_1st_pass_judge whether ego is over first pass judge line
+   * @param is_ego_stopped whether ego is currently stopped in yield zone
+   * @param current_time current time
+   * @return true if ego should stop, false if can proceed
+   */
+  bool processYieldForStoppedVehicles(
+    const InternalAreaObjectsStatus & internal_status,
+    const bool is_over_1st_pass_judge,
+    const bool is_ego_stopped,
+    const rclcpp::Time & current_time);
 
   /**
    * @brief find the collision Interval/CollisionKnowledge of registered objects

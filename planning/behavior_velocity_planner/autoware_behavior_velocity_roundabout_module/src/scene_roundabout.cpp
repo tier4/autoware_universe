@@ -204,12 +204,39 @@ DecisionResult RoundaboutModule::modifyPathVelocityDetail(PathWithLaneId * path)
   const auto [has_collision, collision_position, too_late_detect_objects, misjudge_objects] =
     detectCollision(is_over_1st_pass_judge_line);
 
-  // Check if there are objects in the internal lanelet range area (from ego's entry to previous
-  // entry)
-  const bool has_objects_in_internal_range = hasObjectsInInternalLaneletRangeArea();
+  // Check if there are objects in the internal lanelet range area and their status
+  const auto internal_area_status = getInternalAreaObjectsStatus();
 
-  // Combine collision detection with internal lanelet range check
-  const bool should_stop = has_collision || has_objects_in_internal_range;
+  // Determine if ego is stopped for yield processing
+  // Ego is considered stopped for yield if:
+  // 1. Velocity is low enough, AND
+  // 2. Ego is in the yield zone (from near default_stopline to before first_attention_stopline)
+  const double ego_velocity = planner_data_->current_velocity->twist.linear.x;
+  constexpr double stopped_velocity_threshold = 0.1;  // [m/s]
+  constexpr double stopline_approach_margin = 3.0;  // [m] how far before default_stopline to start yield
+
+  const double distance_to_default_stopline =
+    autoware::motion_utils::calcSignedArcLength(path->points, closest_idx, default_stopline_idx);
+  const double distance_to_first_attention_stopline =
+    autoware::motion_utils::calcSignedArcLength(
+      path->points, closest_idx, roundabout_stoplines.first_attention_stopline.value());
+
+  // Yield zone: from (default_stopline - margin) to first_attention_stopline
+  // This unified range covers both initial yield and re-yield scenarios
+  const bool is_in_yield_zone =
+    distance_to_default_stopline < stopline_approach_margin &&  // Near or past default_stopline
+    distance_to_first_attention_stopline >= 0.0;  // Not yet passed first_attention_stopline
+
+  const bool is_ego_stopped_for_yield =
+    std::abs(ego_velocity) < stopped_velocity_threshold && is_in_yield_zone;
+
+  // Process yield logic for stopped vehicles
+  const auto current_time = clock_->now();
+  const bool should_yield = processYieldForStoppedVehicles(
+    internal_area_status, is_over_1st_pass_judge_line, is_ego_stopped_for_yield, current_time);
+
+  // Combine collision detection with yield requirement
+  const bool should_stop = has_collision || should_yield;
   collision_state_machine_.setStateWithMarginTime(
     should_stop ? StateMachine::State::STOP : StateMachine::State::GO,
     logger_.get_child("collision state_machine"), *clock_);
@@ -226,7 +253,7 @@ DecisionResult RoundaboutModule::modifyPathVelocityDetail(PathWithLaneId * path)
         return CollisionStop{closest_idx, stop_line_idx};
       }
     }
-    if (has_collision || has_objects_in_internal_range) {
+    if (has_collision || internal_area_status.has_objects) {
       const std::string evasive_diag = generateEgoRiskEvasiveDiagnosis(
         *path, closest_idx, time_distance_array, too_late_detect_objects, misjudge_objects);
       debug_data_.too_late_stop_wall_pose = path->points.at(default_stopline_idx).point.pose;
@@ -239,7 +266,11 @@ DecisionResult RoundaboutModule::modifyPathVelocityDetail(PathWithLaneId * path)
   if (!has_collision_with_margin) {
     return Safe{closest_idx, default_stopline_idx};
   }
-  return CollisionStop{closest_idx, default_stopline_idx};
+
+  // Stop at current position if in yield zone (past default_stopline), otherwise at default_stopline
+  const auto stop_line_idx =
+    (distance_to_default_stopline < 0.0) ? closest_idx : default_stopline_idx;
+  return CollisionStop{closest_idx, stop_line_idx};
 }
 
 // template-specification based visitor pattern

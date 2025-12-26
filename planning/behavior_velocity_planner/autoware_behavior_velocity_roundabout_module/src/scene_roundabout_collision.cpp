@@ -37,6 +37,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -127,17 +128,25 @@ void RoundaboutModule::updateObjectInfoManagerArea()
   }
 }
 
-bool RoundaboutModule::hasObjectsInInternalLaneletRangeArea() const
+RoundaboutModule::InternalAreaObjectsStatus RoundaboutModule::getInternalAreaObjectsStatus()
 {
+  InternalAreaObjectsStatus status;
+
   if (!roundabout_lanelets_) {
-    return false;
+    return status;
   }
   const auto & roundabout_lanelets = roundabout_lanelets_.value();
   const auto & internal_lanelet_range = roundabout_lanelets.internal_lanelet_range();
 
   if (internal_lanelet_range.empty()) {
-    return false;
+    return status;
   }
+
+  const auto current_time = clock_->now();
+  bool all_stopped = true;
+
+  // Track which objects are currently in the internal area
+  std::unordered_set<unique_identifier_msgs::msg::UUID> current_objects_in_area;
 
   for (const auto & predicted_object : planner_data_->predicted_objects->objects) {
     if (!isTargetCollisionVehicleType(predicted_object)) {
@@ -147,13 +156,139 @@ bool RoundaboutModule::hasObjectsInInternalLaneletRangeArea() const
     const auto & obj_pose = predicted_object.kinematics.initial_pose_with_covariance.pose;
 
     for (const auto & ll : internal_lanelet_range) {
-      // First check if the object is within the lanelet
       if (lanelet::utils::isInLanelet(obj_pose, ll)) {
-        return true;
+        status.has_objects = true;
+        current_objects_in_area.insert(predicted_object.object_id);
+
+        // Check if this object is stopped based on position history
+        const bool is_stopped = isObjectStopped(
+          predicted_object.object_id, obj_pose.position, current_time);
+
+        if (!is_stopped) {
+          all_stopped = false;
+        }
+        break;  // Object found in one lanelet, no need to check others
       }
     }
   }
-  return false;
+
+  // Clean up position history for objects that left the internal area
+  for (auto it = yield_state_.object_position_history.begin();
+       it != yield_state_.object_position_history.end();) {
+    if (current_objects_in_area.find(it->first) == current_objects_in_area.end()) {
+      it = yield_state_.object_position_history.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  status.all_objects_stopped = all_stopped;
+  return status;
+}
+
+bool RoundaboutModule::isObjectStopped(
+  const unique_identifier_msgs::msg::UUID & uuid,
+  const geometry_msgs::msg::Point & current_position,
+  const rclcpp::Time & current_time)
+{
+  const double observation_time =
+    planner_param_.collision_detection.stopped_vehicle.object_observation_time;
+  const double move_threshold =
+    planner_param_.collision_detection.stopped_vehicle.object_stop_move_distance_threshold;
+
+  // Get or create position history for this object
+  auto & history = yield_state_.object_position_history[uuid];
+
+  // Add current position to history
+  history.emplace_back(current_time, current_position);
+
+  // Remove old entries outside the observation window
+  const auto cutoff_time = current_time - rclcpp::Duration::from_seconds(observation_time);
+  history.erase(
+    std::remove_if(
+      history.begin(), history.end(),
+      [&cutoff_time](const auto & entry) { return entry.first < cutoff_time; }),
+    history.end());
+
+  // Need at least some history to determine movement
+  if (history.size() < 2) {
+    return false;  // Not enough data yet, assume moving to be safe
+  }
+
+  // Calculate maximum displacement from first position in window
+  const auto & first_position = history.front().second;
+  double max_displacement = 0.0;
+
+  for (const auto & [time, position] : history) {
+    const double displacement = autoware_utils::calc_distance2d(first_position, position);
+    max_displacement = std::max(max_displacement, displacement);
+  }
+
+  // Object is stopped if it moved less than threshold during observation window
+  return max_displacement < move_threshold;
+}
+
+bool RoundaboutModule::processYieldForStoppedVehicles(
+  const InternalAreaObjectsStatus & internal_status,
+  const bool is_over_1st_pass_judge,
+  const bool is_ego_stopped,
+  const rclcpp::Time & current_time)
+{
+  const double yield_timeout =
+    planner_param_.collision_detection.stopped_vehicle.yield_stuck_timeout;
+
+  // No objects in internal area -> reset yield state, can proceed
+  if (!internal_status.has_objects) {
+    yield_state_.is_yielded = false;
+    yield_state_.yield_start_time = std::nullopt;
+    yield_state_.object_position_history.clear();
+    return false;
+  }
+
+  // Already yielded and passed first pass judge line -> can proceed
+  if (yield_state_.is_yielded && is_over_1st_pass_judge) {
+    return false;
+  }
+
+  // Already yielded but object started moving -> reset yield and stop
+  if (yield_state_.is_yielded && !internal_status.all_objects_stopped) {
+    yield_state_.is_yielded = false;
+    yield_state_.yield_start_time = std::nullopt;
+    return true;
+  }
+
+  // Already yielded and all objects still stopped -> can proceed
+  if (yield_state_.is_yielded) {
+    return false;
+  }
+
+  // Not yielded yet: ego must stop in yield zone
+  if (!is_ego_stopped) {
+    yield_state_.yield_start_time = std::nullopt;
+    return true;
+  }
+
+  // Ego is stopped but objects are moving -> keep waiting, reset timer
+  if (!internal_status.all_objects_stopped) {
+    yield_state_.yield_start_time = std::nullopt;
+    return true;
+  }
+
+  // All objects are stopped, start or continue yield timer
+  if (!yield_state_.yield_start_time) {
+    yield_state_.yield_start_time = current_time;
+    return true;
+  }
+
+  // Check if yield timeout has passed
+  const double waited_time = (current_time - yield_state_.yield_start_time.value()).seconds();
+  if (waited_time >= yield_timeout) {
+    yield_state_.is_yielded = true;
+    return false;
+  }
+
+  // Still waiting for timeout
+  return true;
 }
 
 void RoundaboutModule::updateObjectInfoManagerCollision(

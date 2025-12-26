@@ -103,6 +103,18 @@ RoundaboutModuleManager::RoundaboutModuleManager(rclcpp::Node & node)
         node, ns +
                 ".collision_detection.avoid_collision_by_acceleration.object_time_margin_to_"
                 "collision_point");
+
+    // stopped_vehicle
+    {
+      rp.collision_detection.stopped_vehicle.object_observation_time =
+        get_or_declare_parameter<double>(
+          node, ns + ".collision_detection.stopped_vehicle.object_observation_time");
+      rp.collision_detection.stopped_vehicle.object_stop_move_distance_threshold =
+        get_or_declare_parameter<double>(
+          node, ns + ".collision_detection.stopped_vehicle.object_stop_move_distance_threshold");
+      rp.collision_detection.stopped_vehicle.yield_stuck_timeout = get_or_declare_parameter<double>(
+        node, ns + ".collision_detection.stopped_vehicle.yield_stuck_timeout");
+    }
   }
 
   rp.debug.ttc = get_or_declare_parameter<std::vector<int64_t>>(node, ns + ".debug.ttc");
