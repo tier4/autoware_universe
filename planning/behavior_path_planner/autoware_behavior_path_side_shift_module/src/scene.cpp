@@ -27,6 +27,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace autoware::behavior_path_planner
 {
@@ -187,16 +188,74 @@ bool SideShiftModule::canTransitSuccessState()
   return false;
 }
 
+void SideShiftModule::apply_unit_lateral_offset_commands(
+  const std::vector<UnitLateralOffsetCommand::ConstSharedPtr> & commands, double unit_shift_width)
+{
+  double current_request = inserted_lateral_offset_;
+  for (const auto & command : commands) {
+    if (command->unit_lateral_offset_command == UnitLateralOffsetCommand::RESET) {
+      current_request = 0.0;
+    } else if (command->unit_lateral_offset_command == UnitLateralOffsetCommand::LEFT) {
+      current_request += unit_shift_width;
+    } else if (command->unit_lateral_offset_command == UnitLateralOffsetCommand::RIGHT) {
+      current_request -= unit_shift_width;
+    } else {
+      RCLCPP_ERROR_THROTTLE(
+        getLogger(), *clock_, 5000, "Invalid unit lateral offset command found!!!");
+    }
+  }
+  requested_lateral_offset_ = current_request;
+}
+
+double SideShiftModule::calculate_approximate_lanelet_width(
+  const lanelet::ConstLanelet & lane) const
+{
+  const double left_front_x = lane.leftBound().front().x();
+  const double left_front_y = lane.leftBound().front().y();
+  const double left_back_x = lane.leftBound().back().x();
+  const double left_back_y = lane.leftBound().back().y();
+  const double right_front_x = lane.rightBound().front().x();
+  const double right_front_y = lane.rightBound().front().y();
+  const double right_back_x = lane.rightBound().back().x();
+  const double right_back_y = lane.rightBound().back().y();
+
+  const double front_width =
+    std::hypot((right_front_x - left_front_x), (right_front_y - left_front_y));
+  const double back_width = std::hypot((right_back_x - left_back_x), (right_back_y - left_back_y));
+
+  return (front_width + back_width) / 2;
+}
+
 void SideShiftModule::updateData()
 {
-  if (
-    planner_data_->lateral_offset != nullptr &&
-    planner_data_->lateral_offset->stamp != latest_lateral_offset_stamp_) {
-    if (isReadyForNextRequest(parameters_->shift_request_time_limit)) {
-      lateral_offset_change_request_ = true;
-      requested_lateral_offset_ = planner_data_->lateral_offset->lateral_offset;
-      latest_lateral_offset_stamp_ = planner_data_->lateral_offset->stamp;
-    }
+  LateralOffset::ConstSharedPtr new_lateral_offset_input;
+  std::vector<UnitLateralOffsetCommand::ConstSharedPtr> new_unit_lateral_offset_commands;
+
+  if (isReadyForNextRequest(parameters_->shift_request_time_limit)) {
+    new_lateral_offset_input = lateral_offset_subscriber_->take_data();
+    new_unit_lateral_offset_commands = unit_lateral_offset_command_subscriber_->take_data();
+  }
+
+  if (new_lateral_offset_input || !new_unit_lateral_offset_commands.empty()) {
+    lateral_offset_change_request_ = true;
+  }
+
+  const auto reference_pose = prev_output_.shift_length.empty()
+                                ? planner_data_->self_odometry->pose.pose
+                                : utils::getUnshiftedEgoPose(getEgoPose(), prev_output_);
+
+  const auto & route_handler = planner_data_->route_handler;
+  lanelet::ConstLanelet current_lane;
+  if (!route_handler->getClosestLaneletWithinRoute(reference_pose, &current_lane)) {
+    RCLCPP_ERROR_THROTTLE(
+      getLogger(), *clock_, 5000, "failed to find closest lanelet within route!!!");
+  }
+
+  if (new_lateral_offset_input) {
+    requested_lateral_offset_ = new_lateral_offset_input->lateral_offset;
+  } else if (!new_unit_lateral_offset_commands.empty()) {
+    apply_unit_lateral_offset_commands(
+      new_unit_lateral_offset_commands, calculate_approximate_lanelet_width(current_lane) / 3);
   }
 
   if (getCurrentStatus() != ModuleStatus::RUNNING && getCurrentStatus() != ModuleStatus::IDLE) {
@@ -212,9 +271,6 @@ void SideShiftModule::updateData()
     return max_dist;
   }();
 
-  const auto reference_pose = prev_output_.shift_length.empty()
-                                ? planner_data_->self_odometry->pose.pose
-                                : utils::getUnshiftedEgoPose(getEgoPose(), prev_output_);
   if (getPreviousModuleOutput().reference_path.points.empty()) {
     return;
   }
@@ -228,14 +284,7 @@ void SideShiftModule::updateData()
 
   path_shifter_.setPath(reference_path_);
 
-  const auto & route_handler = planner_data_->route_handler;
   const auto & p = planner_data_->parameters;
-
-  lanelet::ConstLanelet current_lane;
-  if (!route_handler->getClosestLaneletWithinRoute(reference_pose, &current_lane)) {
-    RCLCPP_ERROR_THROTTLE(
-      getLogger(), *clock_, 5000, "failed to find closest lanelet within route!!!");
-  }
 
   // For current_lanes with desired length
   current_lanelets_ = route_handler->getLaneletSequence(

@@ -92,10 +92,16 @@ private:
 
   ShiftLine calcShiftLine() const;
 
+  double calculate_approximate_lanelet_width(const lanelet::ConstLanelet & lane) const;
+
   void replaceShiftLine();
 
   // const methods
   void publishPath(const PathWithLaneId & path) const;
+
+  void apply_unit_lateral_offset_commands(
+    const std::vector<UnitLateralOffsetCommand::ConstSharedPtr> & commands,
+    double unit_shift_width);
 
   // member
   PathWithLaneId refined_path_{};
