@@ -48,7 +48,6 @@ AgentState::AgentState(const TrackedObject & object)
   position_ = object.kinematics.pose_with_covariance.pose.position;
   float yaw =
     autoware_utils_geometry::get_rpy(object.kinematics.pose_with_covariance.pose.orientation).z;
-  yaw_ = yaw;
   cos_yaw_ = std::cos(yaw);
   sin_yaw_ = std::sin(yaw);
   velocity_ = object.kinematics.twist_with_covariance.twist.linear;
@@ -69,7 +68,6 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
   Eigen::Vector4d transformed_dir = transform * dir_vec;
   cos_yaw_ = transformed_dir.x();
   sin_yaw_ = transformed_dir.y();
-  yaw_ = std::atan2(sin_yaw_, cos_yaw_);
 
   const double velocity_norm = std::hypot(velocity_.x, velocity_.y);
   velocity_.x = velocity_norm * cos_yaw_;

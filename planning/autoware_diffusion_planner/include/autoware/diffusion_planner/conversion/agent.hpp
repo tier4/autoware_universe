@@ -89,7 +89,6 @@ struct AgentState
   [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array() const noexcept;
 
   geometry_msgs::msg::Point position_;
-  double yaw_{0.0};
   double cos_yaw_{0.0};
   double sin_yaw_{0.0};
   geometry_msgs::msg::Vector3 velocity_;
