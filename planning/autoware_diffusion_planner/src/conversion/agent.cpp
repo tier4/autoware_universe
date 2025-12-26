@@ -99,14 +99,12 @@ AgentHistory::AgentHistory(
   const AgentState & state, const double current_time, const size_t max_time_length,
   bool is_pad_history)
 : queue_(max_time_length),
-  object_id_(state.object_id_),
-  autoware_label_(state.autoware_label_),
   latest_time_(current_time),
   max_size_(max_time_length)
 {
   queue_.push_back(state);
   if (is_pad_history) {
-    while (!is_full()) {
+    while (queue_.size() < max_size_) {
       queue_.push_front(state);
     }
   }
@@ -115,7 +113,9 @@ AgentHistory::AgentHistory(
 void AgentHistory::update(double current_time, const TrackedObject & object)
 {
   AgentState state(object);
-  if (state.object_id_ != object_id_) {
+  if (
+    queue_.size() > 0 &&
+    queue_.back().object_id_ != autoware_utils_uuid::to_hex_string(object.object_id)) {
     throw std::runtime_error("Object ID mismatch");
   }
   queue_.push_back(state);

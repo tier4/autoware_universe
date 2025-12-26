@@ -121,9 +121,6 @@ struct AgentHistory
   // Return the data size of history `T * D`.
   [[nodiscard]] size_t size() const { return max_size_ * AGENT_STATE_DIM; }
 
-  // Return the object id.
-  [[nodiscard]] const std::string & object_id() const { return object_id_; }
-
   /**
    * @brief Update history with input state and latest time.
    *
@@ -143,8 +140,6 @@ struct AgentHistory
     return get_latest_state().position_;
   }
 
-  [[nodiscard]] bool is_full() const { return queue_.size() >= max_size_; }
-
   void apply_transform(const Eigen::Matrix4d & transform)
   {
     for (auto & state : queue_) {
@@ -154,8 +149,6 @@ struct AgentHistory
 
   // private:
   FixedQueue<AgentState> queue_;
-  std::string object_id_;
-  uint8_t autoware_label_;
   double latest_time_;
   size_t max_size_;
 };
