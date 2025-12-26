@@ -94,7 +94,6 @@ struct AgentState
   double sin_yaw_{0.0};
   geometry_msgs::msg::Vector3 velocity_;
   AgentLabel label_{AgentLabel::VEHICLE};
-  uint8_t autoware_label_;
   std::string object_id_;
   TrackedObject tracked_object_info_;
 };

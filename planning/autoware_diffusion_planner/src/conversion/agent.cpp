@@ -54,7 +54,6 @@ AgentState::AgentState(const TrackedObject & object)
   velocity_ = object.kinematics.twist_with_covariance.twist.linear;
   label_ = get_model_label(object);
   object_id_ = autoware_utils_uuid::to_hex_string(object.object_id);
-  autoware_label_ = autoware::object_recognition_utils::getHighestProbLabel(object.classification);
   tracked_object_info_ = object;
 }
 
