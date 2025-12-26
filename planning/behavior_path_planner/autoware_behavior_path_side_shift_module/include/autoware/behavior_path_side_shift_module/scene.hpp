@@ -87,26 +87,23 @@ private:
 
   void initVariables();
 
-  // non-const methods
+  // const methods
   BehaviorModuleOutput adjustDrivableArea(const ShiftedPath & path) const;
 
   ShiftLine calcShiftLine() const;
 
   double calculate_approximate_lanelet_width(const lanelet::ConstLanelet & lane) const;
 
-  void replaceShiftLine();
+  void publish_current_lateral_offset() const;
 
-  // const methods
-  void publishPath(const PathWithLaneId & path) const;
+  // non-const methods
+  void replaceShiftLine();
 
   void apply_unit_lateral_offset_commands(
     const std::vector<UnitLateralOffsetCommand::ConstSharedPtr> & commands,
     double unit_shift_width);
 
-  void publish_current_lateral_offset() const;
-
   // member
-  PathWithLaneId refined_path_{};
   PathWithLaneId reference_path_{};
   lanelet::ConstLanelets current_lanelets_;
   std::shared_ptr<SideShiftParameters> parameters_;
@@ -137,8 +134,6 @@ private:
   PathWithLaneId extendBackwardLength(const PathWithLaneId & original_path) const;
 
   mutable rclcpp::Time last_requested_shift_change_time_{clock_->now()};
-
-  rclcpp::Time latest_lateral_offset_stamp_;
 
   // debug
   mutable SideShiftDebugData debug_data_;

@@ -262,21 +262,9 @@ void SideShiftModule::updateData()
     return;
   }
 
-  // special for avoidance: take behind distance upt ot shift-start-point if it exist.
-  const auto longest_dist_to_shift_line = [&]() {
-    double max_dist = 0.0;
-    for (const auto & pnt : path_shifter_.getShiftLines()) {
-      max_dist = std::max(max_dist, autoware_utils::calc_distance2d(getEgoPose(), pnt.start));
-    }
-    return max_dist;
-  }();
-
   if (getPreviousModuleOutput().reference_path.points.empty()) {
     return;
   }
-  const auto centerline_path = utils::calcCenterLinePath(
-    planner_data_, reference_pose, longest_dist_to_shift_line,
-    getPreviousModuleOutput().reference_path);
 
   constexpr double resample_interval = 1.0;
   const auto backward_extened_path = extendBackwardLength(getPreviousModuleOutput().path);
@@ -296,10 +284,7 @@ void SideShiftModule::updateData()
 
 void SideShiftModule::replaceShiftLine()
 {
-  auto shift_lines = path_shifter_.getShiftLines();
-  if (shift_lines.size() > 0) {
-    shift_lines.clear();
-  }
+  std::vector<ShiftLine> shift_lines;
 
   const auto new_sl = calcShiftLine();
 
