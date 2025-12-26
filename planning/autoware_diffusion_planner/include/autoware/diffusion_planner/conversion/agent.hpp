@@ -108,12 +108,9 @@ struct AgentHistory
    * @brief Construct a new Agent History filling the latest state by input state.
    *
    * @param state Object current state.
-   * @param current_time Current timestamp.
    * @param max_time_length History length.
    */
-  AgentHistory(
-    const AgentState & state, const double current_time,
-    const size_t max_time_length, bool is_pad_history = true);
+  AgentHistory(const AgentState & state, const size_t max_time_length, bool is_pad_history = true);
 
   // Return the history time length `T`.
   [[nodiscard]] size_t length() const { return max_size_; }
@@ -124,10 +121,9 @@ struct AgentHistory
   /**
    * @brief Update history with input state and latest time.
    *
-   * @param current_time The current timestamp.
    * @param object The object info.
    */
-  void update(double current_time, const TrackedObject & object);
+  void update(const TrackedObject & object);
 
   // Return a history states as an array.
   [[nodiscard]] std::vector<float> as_array() const noexcept;
@@ -149,7 +145,6 @@ struct AgentHistory
 
   // private:
   FixedQueue<AgentState> queue_;
-  double latest_time_;
   size_t max_size_;
 };
 

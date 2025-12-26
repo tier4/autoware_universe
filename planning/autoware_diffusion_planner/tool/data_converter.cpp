@@ -214,7 +214,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   for (size_t i = 0; i < agent_histories.size(); ++i) {
     const auto object_id = agent_histories[i].get_latest_state().object_id_;
     id_to_history.emplace(
-      object_id, AgentHistory(agent_histories[i].get_latest_state(), 0.0, OUTPUT_T, false));
+      object_id, AgentHistory(agent_histories[i].get_latest_state(), OUTPUT_T, false));
     id_to_history.at(object_id).apply_transform(bl2map_matrix);
   }
 
@@ -235,7 +235,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
       for (const auto & obj : future_objects) {
         const std::string obj_id = autoware_utils_uuid::to_hex_string(obj.object_id);
         if (obj_id == agent_id_str) {
-          future_history.update(0.0, obj);
+          future_history.update(obj);
           found = true;
           break;
         }

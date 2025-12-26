@@ -96,11 +96,8 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
 }
 
 AgentHistory::AgentHistory(
-  const AgentState & state, const double current_time, const size_t max_time_length,
-  bool is_pad_history)
-: queue_(max_time_length),
-  latest_time_(current_time),
-  max_size_(max_time_length)
+  const AgentState & state, const size_t max_time_length, bool is_pad_history)
+: queue_(max_time_length), max_size_(max_time_length)
 {
   queue_.push_back(state);
   if (is_pad_history) {
@@ -110,7 +107,7 @@ AgentHistory::AgentHistory(
   }
 }
 
-void AgentHistory::update(double current_time, const TrackedObject & object)
+void AgentHistory::update(const TrackedObject & object)
 {
   AgentState state(object);
   if (
@@ -119,7 +116,6 @@ void AgentHistory::update(double current_time, const TrackedObject & object)
     throw std::runtime_error("Object ID mismatch");
   }
   queue_.push_back(state);
-  latest_time_ = current_time;
 }
 
 [[nodiscard]] std::vector<float> AgentHistory::as_array() const noexcept
@@ -143,8 +139,8 @@ bool AgentData::is_unknown_object(const autoware_perception_msgs::msg::TrackedOb
 void AgentData::update_histories(
   const autoware_perception_msgs::msg::TrackedObjects & objects, const bool ignore_unknown_agents)
 {
-  auto current_time = static_cast<double>(objects.header.stamp.sec) +
-                      static_cast<double>(objects.header.stamp.nanosec) * 1e-9;
+  // auto current_time = static_cast<double>(objects.header.stamp.sec) +
+  //                     static_cast<double>(objects.header.stamp.nanosec) * 1e-9;
   std::vector<std::string> found_ids;
   for (auto object : objects.objects) {
     if (ignore_unknown_agents && is_unknown_object(object)) {
@@ -153,11 +149,10 @@ void AgentData::update_histories(
     auto object_id = autoware_utils_uuid::to_hex_string(object.object_id);
     auto it = histories_map_.find(object_id);
     if (it != histories_map_.end()) {
-      it->second.update(current_time, object);
+      it->second.update(object);
     } else {
       auto agent_state = AgentState(object);
-      histories_map_.emplace(
-        object_id, AgentHistory(agent_state, current_time, INPUT_T_WITH_CURRENT, true));
+      histories_map_.emplace(object_id, AgentHistory(agent_state, INPUT_T_WITH_CURRENT, true));
     }
     found_ids.push_back(object_id);
   }
