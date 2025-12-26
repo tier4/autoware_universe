@@ -45,9 +45,9 @@
 #include <vector>
 namespace autoware::diffusion_planner
 {
+using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::TrackedObject;
 using autoware_perception_msgs::msg::TrackedObjects;
-using autoware_perception_msgs::msg::ObjectClassification;
 constexpr size_t AGENT_STATE_DIM = 11;
 
 enum AgentLabel { VEHICLE = 0, PEDESTRIAN = 1, BICYCLE = 2 };
@@ -79,28 +79,15 @@ struct AgentState
  */
 struct AgentHistory
 {
-  /**
-   * @brief Construct a new Agent History filling the latest state by input state.
-   *
-   * @param state Object current state.
-   * @param max_time_length History length.
-   */
-  AgentHistory(const AgentState & state, const size_t max_time_length, bool is_pad_history = true)
-  : queue_(max_time_length)
+  AgentHistory(const size_t max_size) : queue_(max_size) {}
+
+  void fill(const AgentState & state)
   {
-    queue_.push_back(state);
-    if (is_pad_history) {
-      while (!queue_.full()) {
-        queue_.push_front(state);
-      }
+    while (!queue_.full()) {
+      queue_.push_back(state);
     }
   }
 
-  /**
-   * @brief Update history with input state and latest time.
-   *
-   * @param object The object info.
-   */
   void update(const TrackedObject & object)
   {
     AgentState state(object);
@@ -112,7 +99,6 @@ struct AgentHistory
     queue_.push_back(state);
   }
 
-  // Return a history states as an array.
   [[nodiscard]] std::vector<float> as_array() const noexcept
   {
     std::vector<float> output;
@@ -124,7 +110,6 @@ struct AgentHistory
     return output;
   }
 
-  // Get the latest agent state at `T`.
   [[nodiscard]] const AgentState & get_latest_state() const { return queue_.back(); }
 
   void apply_transform(const Eigen::Matrix4d & transform)

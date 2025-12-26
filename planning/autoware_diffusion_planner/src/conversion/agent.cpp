@@ -118,8 +118,8 @@ void AgentData::update_histories(const TrackedObjects & objects, const bool igno
     if (it != histories_map_.end()) {
       it->second.update(object);
     } else {
-      auto agent_state = AgentState(object);
-      histories_map_.emplace(object_id, AgentHistory(agent_state, INPUT_T_WITH_CURRENT, true));
+      histories_map_.emplace(object_id, AgentHistory(INPUT_T_WITH_CURRENT));
+      histories_map_.at(object_id).fill(AgentState(object));
     }
     found_ids.push_back(object_id);
   }
