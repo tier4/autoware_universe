@@ -112,12 +112,6 @@ struct AgentHistory
    */
   AgentHistory(const AgentState & state, const size_t max_time_length, bool is_pad_history = true);
 
-  // Return the history time length `T`.
-  [[nodiscard]] size_t length() const { return max_size_; }
-
-  // Return the data size of history `T * D`.
-  [[nodiscard]] size_t size() const { return max_size_ * AGENT_STATE_DIM; }
-
   /**
    * @brief Update history with input state and latest time.
    *
