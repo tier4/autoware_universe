@@ -213,9 +213,8 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   std::unordered_map<std::string, AgentHistory> id_to_history;
   for (size_t i = 0; i < agent_histories.size(); ++i) {
     id_to_history.emplace(
-      agent_histories[i].object_id(), AgentHistory(
-                                        agent_histories[i].get_latest_state(),
-                                        agent_histories[i].label_id(), 0.0, OUTPUT_T, false));
+      agent_histories[i].object_id(),
+      AgentHistory(agent_histories[i].get_latest_state(), 0.0, OUTPUT_T, false));
     id_to_history.at(agent_histories[i].object_id()).apply_transform(bl2map_matrix);
   }
 

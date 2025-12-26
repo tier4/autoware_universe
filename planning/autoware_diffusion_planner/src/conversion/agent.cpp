@@ -96,11 +96,11 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
 }
 
 AgentHistory::AgentHistory(
-  const AgentState & state, const size_t label_id, const double current_time,
-  const size_t max_time_length, bool is_pad_history)
+  const AgentState & state, const double current_time, const size_t max_time_length,
+  bool is_pad_history)
 : queue_(max_time_length),
   object_id_(state.object_id_),
-  label_id_(label_id),
+  label_id_(state.label_),
   autoware_label_(state.autoware_label_),
   latest_time_(current_time),
   max_size_(max_time_length)
@@ -158,9 +158,7 @@ void AgentData::update_histories(
     } else {
       auto agent_state = AgentState(object);
       histories_map_.emplace(
-        object_id,
-        AgentHistory(
-          agent_state, get_model_label(object), current_time, INPUT_T_WITH_CURRENT, true));
+        object_id, AgentHistory(agent_state, current_time, INPUT_T_WITH_CURRENT, true));
     }
     found_ids.push_back(object_id);
   }

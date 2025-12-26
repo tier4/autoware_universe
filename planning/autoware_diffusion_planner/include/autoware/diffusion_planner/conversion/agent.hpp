@@ -122,13 +122,12 @@ struct AgentHistory
    * @brief Construct a new Agent History filling the latest state by input state.
    *
    * @param state Object current state.
-   * @param object_id Object ID.
    * @param label_id Label ID.
    * @param current_time Current timestamp.
    * @param max_time_length History length.
    */
   AgentHistory(
-    const AgentState & state, const size_t label_id, const double current_time,
+    const AgentState & state, const double current_time,
     const size_t max_time_length, bool is_pad_history = true);
 
   // Return the history time length `T`.
