@@ -43,7 +43,7 @@ AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & 
   }
 }
 
-AgentState::AgentState(const TrackedObject & object)
+AgentState::AgentState(const TrackedObject & object) : original_info(object)
 {
   position = object.kinematics.pose_with_covariance.pose.position;
   float yaw =
@@ -53,7 +53,6 @@ AgentState::AgentState(const TrackedObject & object)
   velocity = object.kinematics.twist_with_covariance.twist.linear;
   label = get_model_label(object);
   object_id = autoware_utils_uuid::to_hex_string(object.object_id);
-  original_info = object;
 }
 
 void AgentState::apply_transform(const Eigen::Matrix4d & transform)

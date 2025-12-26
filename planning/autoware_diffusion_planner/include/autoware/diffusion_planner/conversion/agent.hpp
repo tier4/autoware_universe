@@ -88,7 +88,7 @@ struct AgentState
   geometry_msgs::msg::Vector3 velocity;
   AgentLabel label{AgentLabel::VEHICLE};
   std::string object_id;
-  TrackedObject original_info;
+  const TrackedObject original_info;
 };
 
 /**
