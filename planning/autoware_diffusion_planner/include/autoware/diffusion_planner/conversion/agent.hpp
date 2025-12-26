@@ -52,20 +52,6 @@ constexpr size_t AGENT_STATE_DIM = 11;
 
 enum AgentLabel { VEHICLE = 0, PEDESTRIAN = 1, BICYCLE = 2 };
 
-// enum AgentDimLabels {
-//   X = 0,
-//   Y = 1,
-//   COS_YAW = 2,
-//   SIN_YAW = 3,
-//   VX = 4,
-//   VY = 5,
-//   L = 6,
-//   W = 7,
-//   LABEL_VEHICLE = 8,
-//   LABEL_PEDESTRIAN = 9,
-//   LABEL_BICYCLE = 10,
-// };
-
 AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & object);
 
 /**
@@ -122,7 +108,6 @@ struct AgentHistory
    * @brief Construct a new Agent History filling the latest state by input state.
    *
    * @param state Object current state.
-   * @param label_id Label ID.
    * @param current_time Current timestamp.
    * @param max_time_length History length.
    */
@@ -138,9 +123,6 @@ struct AgentHistory
 
   // Return the object id.
   [[nodiscard]] const std::string & object_id() const { return object_id_; }
-
-  // Return the label id.
-  [[nodiscard]] size_t label_id() const { return label_id_; }
 
   /**
    * @brief Update history with input state and latest time.
@@ -173,7 +155,6 @@ struct AgentHistory
   // private:
   FixedQueue<AgentState> queue_;
   std::string object_id_;
-  size_t label_id_;
   uint8_t autoware_label_;
   double latest_time_;
   size_t max_size_;

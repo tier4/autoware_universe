@@ -100,7 +100,6 @@ AgentHistory::AgentHistory(
   bool is_pad_history)
 : queue_(max_time_length),
   object_id_(state.object_id_),
-  label_id_(state.label_),
   autoware_label_(state.autoware_label_),
   latest_time_(current_time),
   max_size_(max_time_length)
