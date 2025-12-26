@@ -14,8 +14,7 @@
 
 #include "autoware/behavior_path_side_shift_module/manager.hpp"
 
-#include "autoware_utils/ros/update_param.hpp"
-
+#include <autoware_utils/ros/update_param.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -43,6 +42,15 @@ void SideShiftModuleManager::init(rclcpp::Node * node)
   p.publish_debug_marker = node->declare_parameter<bool>(ns + "publish_debug_marker");
 
   parameters_ = std::make_shared<SideShiftParameters>(p);
+
+  lateral_offset_publisher_ =
+    node->create_publisher<tier4_planning_msgs::msg::LateralOffset>("~/output/lateral_offset", 1);
+  lateral_offset_subscriber_ = autoware_utils::InterProcessPollingSubscriber<
+    LateralOffset, autoware_utils::polling_policy::Newest>::
+    create_subscription(node, "~/input/lateral_offset", rclcpp::QoS{1});
+  unit_lateral_offset_command_subscriber_ = autoware_utils::InterProcessPollingSubscriber<
+    UnitLateralOffsetCommand, autoware_utils::polling_policy::All>::
+    create_subscription(node, "~/input/unit_lateral_offset_command", rclcpp::QoS{10});
 }
 
 void SideShiftModuleManager::updateModuleParams(

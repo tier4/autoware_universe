@@ -18,7 +18,11 @@
 #include "autoware/behavior_path_planner_common/interface/scene_module_manager_interface.hpp"
 #include "autoware/behavior_path_side_shift_module/scene.hpp"
 
+#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+#include <tier4_planning_msgs/msg/lateral_offset.hpp>
+#include <tier4_planning_msgs/msg/unit_lateral_offset_command.hpp>
 
 #include <memory>
 #include <string>
@@ -39,13 +43,22 @@ public:
   {
     return std::make_unique<SideShiftModule>(
       name_, *node_, parameters_, rtc_interface_ptr_map_,
-      objects_of_interest_marker_interface_ptr_map_, planning_factor_interface_);
+      objects_of_interest_marker_interface_ptr_map_, planning_factor_interface_,
+      lateral_offset_publisher_, lateral_offset_subscriber_,
+      unit_lateral_offset_command_subscriber_);
   }
 
   void updateModuleParams(const std::vector<rclcpp::Parameter> & parameters) override;
 
 private:
   std::shared_ptr<SideShiftParameters> parameters_;
+
+  rclcpp::Publisher<LateralOffset>::SharedPtr lateral_offset_publisher_;
+  autoware_utils::InterProcessPollingSubscriber<
+    LateralOffset, autoware_utils::polling_policy::Newest>::SharedPtr lateral_offset_subscriber_;
+  autoware_utils::InterProcessPollingSubscriber<
+    UnitLateralOffsetCommand, autoware_utils::polling_policy::All>::SharedPtr
+    unit_lateral_offset_command_subscriber_;
 };
 
 }  // namespace autoware::behavior_path_planner

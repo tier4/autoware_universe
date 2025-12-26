@@ -19,10 +19,12 @@
 #include "autoware/behavior_path_planner_common/utils/path_shifter/path_shifter.hpp"
 #include "autoware/behavior_path_side_shift_module/data_structs.hpp"
 
+#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <tier4_planning_msgs/msg/lateral_offset.hpp>
+#include <tier4_planning_msgs/msg/unit_lateral_offset_command.hpp>
 
 #include <memory>
 #include <string>
@@ -36,6 +38,7 @@ using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using geometry_msgs::msg::Pose;
 using nav_msgs::msg::OccupancyGrid;
 using tier4_planning_msgs::msg::LateralOffset;
+using tier4_planning_msgs::msg::UnitLateralOffsetCommand;
 
 class SideShiftModule : public SceneModuleInterface
 {
@@ -46,7 +49,13 @@ public:
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
-    const std::shared_ptr<PlanningFactorInterface> planning_factor_interface);
+    const std::shared_ptr<PlanningFactorInterface> planning_factor_interface,
+    const rclcpp::Publisher<LateralOffset>::SharedPtr lateral_offset_publisher,
+    const autoware_utils::InterProcessPollingSubscriber<
+      LateralOffset, autoware_utils::polling_policy::Newest>::SharedPtr lateral_offset_subscriber,
+    const autoware_utils::InterProcessPollingSubscriber<
+      UnitLateralOffsetCommand, autoware_utils::polling_policy::All>::SharedPtr
+      unit_lateral_offset_command_subscriber);
 
   bool isExecutionRequested() const override;
   bool isExecutionReady() const override;
@@ -126,6 +135,13 @@ private:
   // debug
   mutable SideShiftDebugData debug_data_;
   void setDebugMarkersVisualization() const;
+
+  const rclcpp::Publisher<LateralOffset>::SharedPtr lateral_offset_publisher_;
+  const autoware_utils::InterProcessPollingSubscriber<
+    LateralOffset, autoware_utils::polling_policy::Newest>::SharedPtr lateral_offset_subscriber_;
+  const autoware_utils::InterProcessPollingSubscriber<
+    UnitLateralOffsetCommand, autoware_utils::polling_policy::All>::SharedPtr
+    unit_lateral_offset_command_subscriber_;
 };
 
 }  // namespace autoware::behavior_path_planner
