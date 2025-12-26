@@ -4,7 +4,7 @@
       common:
         attention_area_margin: 0.75
         attention_area_angle_threshold: 0.785
-        default_stopline_margin: 1.5
+        default_stopline_margin: 3.0
         path_interpolation_ds: 0.1
         enable_pass_judge_before_default_stopline: false
 
@@ -13,7 +13,11 @@
         collision_detection_hold_time: 0.5
         min_predicted_path_confidence: 0.05
         collision_start_margin_time: 3.0
-        collision_end_margin_time: 2.0
+        collision_end_margin_time: 1.0
+        stopped_vehicle:
+          object_observation_time: 2.0  # [s] time window to observe object movement
+          object_stop_move_distance_threshold: 0.5  # [m] if object moves less than this in observation time, it's stopped
+          yield_stuck_timeout: 3.0  # [s] how long ego must stop to confirm safety and proceed
         target_type:
           car: true
           bus: true
