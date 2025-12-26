@@ -324,10 +324,12 @@ void SideShiftModule::replaceShiftLine()
 BehaviorModuleOutput SideShiftModule::plan()
 {
   // Replace shift line
+  bool publish_output_topic = false;
   if (
     lateral_offset_change_request_ && ((shift_status_ == SideShiftStatus::BEFORE_SHIFT) ||
                                        (shift_status_ == SideShiftStatus::AFTER_SHIFT))) {
     replaceShiftLine();
+    publish_output_topic = true;
   } else if (shift_status_ != SideShiftStatus::BEFORE_SHIFT) {
     RCLCPP_DEBUG(getLogger(), "ego is shifting");
   } else {
@@ -358,6 +360,10 @@ BehaviorModuleOutput SideShiftModule::plan()
     setDebugMarkersVisualization();
   } else {
     debug_marker_.markers.clear();
+  }
+
+  if (publish_output_topic) {
+    publish_current_lateral_offset();
   }
 
   return output;
@@ -515,6 +521,15 @@ PathWithLaneId SideShiftModule::extendBackwardLength(const PathWithLaneId & orig
   }
 
   return extended_path;
+}
+
+void SideShiftModule::publish_current_lateral_offset() const
+{
+  LateralOffset current_lateral_offset;
+  current_lateral_offset.stamp = clock_->now();
+  current_lateral_offset.lateral_offset = inserted_lateral_offset_;
+
+  lateral_offset_publisher_->publish(current_lateral_offset);
 }
 
 void SideShiftModule::setDebugMarkersVisualization() const

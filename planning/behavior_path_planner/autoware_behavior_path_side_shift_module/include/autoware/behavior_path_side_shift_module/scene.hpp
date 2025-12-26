@@ -103,6 +103,8 @@ private:
     const std::vector<UnitLateralOffsetCommand::ConstSharedPtr> & commands,
     double unit_shift_width);
 
+  void publish_current_lateral_offset() const;
+
   // member
   PathWithLaneId refined_path_{};
   PathWithLaneId reference_path_{};
