@@ -102,11 +102,6 @@ struct AgentHistory
   // Get the latest agent state at `T`.
   [[nodiscard]] const AgentState & get_latest_state() const { return queue_.back(); }
 
-  [[nodiscard]] const geometry_msgs::msg::Point & get_latest_state_position() const
-  {
-    return get_latest_state().position;
-  }
-
   void apply_transform(const Eigen::Matrix4d & transform)
   {
     for (auto & state : queue_) {

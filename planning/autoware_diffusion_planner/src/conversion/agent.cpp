@@ -182,8 +182,8 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
   std::sort(
     histories.begin(), histories.end(),
     [&position](const AgentHistory & a, const AgentHistory & b) {
-      return autoware_utils_geometry::calc_distance2d(position, a.get_latest_state_position()) <
-             autoware_utils_geometry::calc_distance2d(position, b.get_latest_state_position());
+      return autoware_utils_geometry::calc_distance2d(position, a.get_latest_state().position) <
+             autoware_utils_geometry::calc_distance2d(position, b.get_latest_state().position);
     });
   if (histories.size() > max_num_agent) {
     histories.erase(
