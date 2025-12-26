@@ -74,12 +74,6 @@ struct AgentState
    * @param label Agent label
    */
 
-  // Construct a new instance filling all elements by `0.0f`.
-  static AgentState empty() noexcept { return {}; }
-
-  // Return the agent state dimensions `D`.
-  static size_t dim() { return AGENT_STATE_DIM; }
-
   // Return TrackedObject info
   [[nodiscard]] TrackedObject tracked_object() const { return tracked_object_info_; }
 

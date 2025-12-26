@@ -252,27 +252,6 @@ TEST_F(AgentEdgeCaseTest, AgentDataTrimExtremePositions)
   EXPECT_EQ(agent_data.num_agent(), 10);
 }
 
-// Test edge case: AgentHistory get object matrix
-TEST_F(AgentEdgeCaseTest, AgentHistoryGetObjectMatrixEdgeCases)
-{
-  constexpr size_t max_history = 10;
-  AgentState initial_state(tracked_object_);
-  AgentHistory history(initial_state, 0, 100.0, max_history);
-
-  // Add states with extreme values
-  for (int i = 1; i <= 5; ++i) {
-    tracked_object_.kinematics.pose_with_covariance.pose.position.x = std::pow(10.0, i);
-    tracked_object_.kinematics.twist_with_covariance.twist.linear.x = std::pow(10.0, -i);
-    history.update(100.0 + i, tracked_object_);
-  }
-
-  // Get array representation of the history data
-  auto array_data = history.as_array();
-
-  // Array should have correct size (max_history * AgentState::dim())
-  EXPECT_EQ(array_data.size(), max_history * AgentState::dim());
-}
-
 // Test edge case: Multiple classifications
 TEST_F(AgentEdgeCaseTest, AgentStateMultipleClassifications)
 {
