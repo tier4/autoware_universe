@@ -123,15 +123,6 @@ void AgentHistory::update(double current_time, const TrackedObject & object)
   latest_time_ = current_time;
 }
 
-void AgentHistory::update(double current_time, const AgentState & state)
-{
-  if (state.object_id_ != object_id_) {
-    throw std::runtime_error("Object ID mismatch");
-  }
-  queue_.push_back(state);
-  latest_time_ = current_time;
-}
-
 [[nodiscard]] std::vector<float> AgentHistory::as_array() const noexcept
 {
   std::vector<float> output;

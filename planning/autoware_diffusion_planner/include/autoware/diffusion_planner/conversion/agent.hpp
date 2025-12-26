@@ -137,24 +137,11 @@ struct AgentHistory
   // Return the data size of history `T * D`.
   [[nodiscard]] size_t size() const { return max_size_ * AGENT_STATE_DIM; }
 
-  // Return the shape of history matrix ordering in `(T, D)`.
-  [[nodiscard]] std::tuple<size_t, size_t> shape() const { return {max_size_, AGENT_STATE_DIM}; }
-
   // Return the object id.
   [[nodiscard]] const std::string & object_id() const { return object_id_; }
 
   // Return the label id.
   [[nodiscard]] size_t label_id() const { return label_id_; }
-
-  // Return autoware_label
-  [[nodiscard]] uint8_t autoware_label() const { return autoware_label_; }
-
-  /**
-   * @brief Return the last timestamp when non-empty state was pushed.
-   *
-   * @return double
-   */
-  [[nodiscard]] double latest_time() const { return latest_time_; }
 
   /**
    * @brief Update history with input state and latest time.
@@ -163,13 +150,6 @@ struct AgentHistory
    * @param object The object info.
    */
   void update(double current_time, const TrackedObject & object);
-  /**
-   * @brief Update history with input state and latest time.
-   *
-   * @param current_time The current timestamp.
-   * @param state The current agent state.
-   */
-  void update(double current_time, const AgentState & state);
 
   // Return a history states as an array.
   [[nodiscard]] std::vector<float> as_array() const noexcept;

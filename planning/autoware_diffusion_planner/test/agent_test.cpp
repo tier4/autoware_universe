@@ -49,16 +49,6 @@ TEST_F(AgentTest, AgentStateTransformation)
   EXPECT_FLOAT_EQ(agent_state.y(), 7.0);
 }
 
-TEST_F(AgentTest, AgentHistoryInitialization)
-{
-  AgentState agent_state(tracked_object_);
-  AgentHistory agent_history(agent_state, 0, 100.0, 10);
-
-  EXPECT_EQ(agent_history.length(), 10);
-  EXPECT_EQ(agent_history.label_id(), 0);
-  EXPECT_EQ(agent_history.object_id(), agent_state.object_id_);
-}
-
 TEST_F(AgentTest, AgentHistoryUpdate)
 {
   AgentState agent_state(tracked_object_);
