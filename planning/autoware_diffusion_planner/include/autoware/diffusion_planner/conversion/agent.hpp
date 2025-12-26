@@ -184,8 +184,6 @@ struct AgentHistory
 
   [[nodiscard]] bool is_full() const { return queue_.size() >= max_size_; }
 
-  void pad_history(bool pad_front = true);
-
   void apply_transform(const Eigen::Matrix4d & transform)
   {
     for (auto & state : queue_) {

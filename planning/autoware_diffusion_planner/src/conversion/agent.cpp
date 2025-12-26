@@ -107,7 +107,9 @@ AgentHistory::AgentHistory(
 {
   queue_.push_back(state);
   if (is_pad_history) {
-    pad_history();
+    while (!is_full()) {
+      queue_.push_front(state);
+    }
   }
 }
 
@@ -139,18 +141,6 @@ void AgentHistory::update(double current_time, const AgentState & state)
     }
   }
   return output;
-}
-
-void AgentHistory::pad_history(bool pad_front)
-{
-  auto state = (pad_front) ? queue_.front() : queue_.back();
-  while (!is_full()) {
-    if (pad_front) {
-      queue_.push_front(state);
-    } else {
-      queue_.push_back(state);
-    }
-  }
 }
 
 bool AgentData::is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object)
