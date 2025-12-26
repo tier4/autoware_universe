@@ -97,11 +97,11 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
 
 AgentHistory::AgentHistory(
   const AgentState & state, const size_t max_time_length, bool is_pad_history)
-: queue_(max_time_length), max_size_(max_time_length)
+: queue_(max_time_length)
 {
   queue_.push_back(state);
   if (is_pad_history) {
-    while (queue_.size() < max_size_) {
+    while (!queue_.full()) {
       queue_.push_front(state);
     }
   }

@@ -139,7 +139,6 @@ struct AgentHistory
 
   // private:
   FixedQueue<AgentState> queue_;
-  size_t max_size_;
 };
 
 /**
