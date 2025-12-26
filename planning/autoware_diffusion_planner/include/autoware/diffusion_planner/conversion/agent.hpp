@@ -64,19 +64,6 @@ struct AgentState
 
   explicit AgentState(const TrackedObject & object);
 
-  /**
-   * @brief Construct a new instance with specified values.
-   *
-   * @param position 3D position [m].
-   * @param dimension Box dimension [m].
-   * @param yaw Heading yaw angle [rad].
-   * @param velocity Velocity [m/s].
-   * @param label Agent label
-   */
-
-  // Return TrackedObject info
-  [[nodiscard]] TrackedObject tracked_object() const { return original_info; }
-
   void apply_transform(const Eigen::Matrix4d & transform);
 
   // Return the state attribute as an array.

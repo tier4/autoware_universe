@@ -158,7 +158,7 @@ PredictedObjects create_predicted_objects(
 
     PredictedObject object;
     const TrackedObject & object_info =
-      ego_centric_histories.at(neighbor_id).get_latest_state().tracked_object();
+      ego_centric_histories.at(neighbor_id).get_latest_state().original_info;
     {  // Extract path from prediction
       PredictedPath predicted_path;
       const double object_pose_z = object_info.kinematics.pose_with_covariance.pose.position.z;
