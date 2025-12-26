@@ -87,17 +87,44 @@ struct AgentHistory
    * @param state Object current state.
    * @param max_time_length History length.
    */
-  AgentHistory(const AgentState & state, const size_t max_time_length, bool is_pad_history = true);
+  AgentHistory(const AgentState & state, const size_t max_time_length, bool is_pad_history = true)
+  : queue_(max_time_length)
+  {
+    queue_.push_back(state);
+    if (is_pad_history) {
+      while (!queue_.full()) {
+        queue_.push_front(state);
+      }
+    }
+  }
 
   /**
    * @brief Update history with input state and latest time.
    *
    * @param object The object info.
    */
-  void update(const TrackedObject & object);
+  void update(const TrackedObject & object)
+  {
+    AgentState state(object);
+    if (
+      queue_.size() > 0 &&
+      queue_.back().object_id != autoware_utils_uuid::to_hex_string(object.object_id)) {
+      throw std::runtime_error("Object ID mismatch");
+    }
+    queue_.push_back(state);
+  }
 
   // Return a history states as an array.
-  [[nodiscard]] std::vector<float> as_array() const noexcept;
+  [[nodiscard]] std::vector<float> as_array() const noexcept
+  {
+    std::vector<float> output;
+    for (const auto & state : queue_) {
+      for (const auto & v : state.as_array()) {
+        output.push_back(v);
+      }
+    }
+    return output;
+  }
 
   // Get the latest agent state at `T`.
   [[nodiscard]] const AgentState & get_latest_state() const { return queue_.back(); }
@@ -109,7 +136,7 @@ struct AgentHistory
     }
   }
 
-  // private:
+private:
   FixedQueue<AgentState> queue_;
 };
 

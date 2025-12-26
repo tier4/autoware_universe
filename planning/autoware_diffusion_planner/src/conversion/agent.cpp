@@ -24,7 +24,7 @@ namespace autoware::diffusion_planner
 {
 AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & object)
 {
-  auto autoware_label =
+  const uint8_t autoware_label =
     autoware::object_recognition_utils::getHighestProbLabel(object.classification);
 
   switch (autoware_label) {
@@ -89,40 +89,6 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
     static_cast<float>(label == AgentLabel::PEDESTRIAN),
     static_cast<float>(label == AgentLabel::BICYCLE),
   };
-}
-
-AgentHistory::AgentHistory(
-  const AgentState & state, const size_t max_time_length, bool is_pad_history)
-: queue_(max_time_length)
-{
-  queue_.push_back(state);
-  if (is_pad_history) {
-    while (!queue_.full()) {
-      queue_.push_front(state);
-    }
-  }
-}
-
-void AgentHistory::update(const TrackedObject & object)
-{
-  AgentState state(object);
-  if (
-    queue_.size() > 0 &&
-    queue_.back().object_id != autoware_utils_uuid::to_hex_string(object.object_id)) {
-    throw std::runtime_error("Object ID mismatch");
-  }
-  queue_.push_back(state);
-}
-
-[[nodiscard]] std::vector<float> AgentHistory::as_array() const noexcept
-{
-  std::vector<float> output;
-  for (const auto & state : queue_) {
-    for (const auto & v : state.as_array()) {
-      output.push_back(v);
-    }
-  }
-  return output;
 }
 
 bool AgentData::is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object)
