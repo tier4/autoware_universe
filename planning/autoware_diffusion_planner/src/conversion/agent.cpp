@@ -22,7 +22,11 @@
 
 namespace autoware::diffusion_planner
 {
-AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & object)
+
+namespace
+{
+
+AgentLabel get_model_label(const TrackedObject & object)
 {
   const uint8_t autoware_label =
     autoware::object_recognition_utils::getHighestProbLabel(object.classification);
@@ -42,6 +46,15 @@ AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & 
       return AgentLabel::VEHICLE;
   }
 }
+
+bool is_unknown_object(const TrackedObject & object)
+{
+  const auto autoware_label =
+    autoware::object_recognition_utils::getHighestProbLabel(object.classification);
+  return autoware_label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+}
+
+}  // namespace
 
 AgentState::AgentState(const TrackedObject & object) : original_info(object)
 {
@@ -91,15 +104,7 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
   };
 }
 
-bool AgentData::is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object)
-{
-  const auto autoware_label =
-    autoware::object_recognition_utils::getHighestProbLabel(object.classification);
-  return autoware_label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
-}
-
-void AgentData::update_histories(
-  const autoware_perception_msgs::msg::TrackedObjects & objects, const bool ignore_unknown_agents)
+void AgentData::update_histories(const TrackedObjects & objects, const bool ignore_unknown_agents)
 {
   // auto current_time = static_cast<double>(objects.header.stamp.sec) +
   //                     static_cast<double>(objects.header.stamp.nanosec) * 1e-9;

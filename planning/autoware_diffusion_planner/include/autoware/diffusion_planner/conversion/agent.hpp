@@ -46,13 +46,11 @@
 namespace autoware::diffusion_planner
 {
 using autoware_perception_msgs::msg::TrackedObject;
-
+using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_perception_msgs::msg::ObjectClassification;
 constexpr size_t AGENT_STATE_DIM = 11;
 
 enum AgentLabel { VEHICLE = 0, PEDESTRIAN = 1, BICYCLE = 2 };
-
-AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & object);
 
 /**
  * @brief A class to represent a single state of an agent.
@@ -145,11 +143,7 @@ private:
  */
 struct AgentData
 {
-  void update_histories(
-    const autoware_perception_msgs::msg::TrackedObjects & objects,
-    const bool ignore_unknown_agents);
-
-  static bool is_unknown_object(const autoware_perception_msgs::msg::TrackedObject & object);
+  void update_histories(const TrackedObjects & objects, const bool ignore_unknown_agents);
 
   // Transform histories, trim to max_num_agent, and return the processed vector.
   std::vector<AgentHistory> transformed_and_trimmed_histories(
