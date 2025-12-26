@@ -45,50 +45,50 @@ AgentLabel get_model_label(const autoware_perception_msgs::msg::TrackedObject & 
 
 AgentState::AgentState(const TrackedObject & object)
 {
-  position_ = object.kinematics.pose_with_covariance.pose.position;
+  position = object.kinematics.pose_with_covariance.pose.position;
   float yaw =
     autoware_utils_geometry::get_rpy(object.kinematics.pose_with_covariance.pose.orientation).z;
-  cos_yaw_ = std::cos(yaw);
-  sin_yaw_ = std::sin(yaw);
-  velocity_ = object.kinematics.twist_with_covariance.twist.linear;
-  label_ = get_model_label(object);
-  object_id_ = autoware_utils_uuid::to_hex_string(object.object_id);
-  tracked_object_info_ = object;
+  cos_yaw = std::cos(yaw);
+  sin_yaw = std::sin(yaw);
+  velocity = object.kinematics.twist_with_covariance.twist.linear;
+  label = get_model_label(object);
+  object_id = autoware_utils_uuid::to_hex_string(object.object_id);
+  original_info = object;
 }
 
 void AgentState::apply_transform(const Eigen::Matrix4d & transform)
 {
-  Eigen::Vector4d pos_vec(position_.x, position_.y, position_.z, 1.0);
+  Eigen::Vector4d pos_vec(position.x, position.y, position.z, 1.0);
   Eigen::Vector4d transformed_pos = transform * pos_vec;
-  position_.x = transformed_pos.x();
-  position_.y = transformed_pos.y();
-  position_.z = transformed_pos.z();
+  position.x = transformed_pos.x();
+  position.y = transformed_pos.y();
+  position.z = transformed_pos.z();
 
-  Eigen::Vector4d dir_vec(cos_yaw_, sin_yaw_, 0.0, 0.0);
+  Eigen::Vector4d dir_vec(cos_yaw, sin_yaw, 0.0, 0.0);
   Eigen::Vector4d transformed_dir = transform * dir_vec;
-  cos_yaw_ = transformed_dir.x();
-  sin_yaw_ = transformed_dir.y();
+  cos_yaw = transformed_dir.x();
+  sin_yaw = transformed_dir.y();
 
-  const double velocity_norm = std::hypot(velocity_.x, velocity_.y);
-  velocity_.x = velocity_norm * cos_yaw_;
-  velocity_.y = velocity_norm * sin_yaw_;
+  const double velocity_norm = std::hypot(velocity.x, velocity.y);
+  velocity.x = velocity_norm * cos_yaw;
+  velocity.y = velocity_norm * sin_yaw;
 }
 
 // Return the state attribute as an array.
 [[nodiscard]] std::array<float, AGENT_STATE_DIM> AgentState::as_array() const noexcept
 {
   return {
-    static_cast<float>(position_.x),
-    static_cast<float>(position_.y),
-    cos_yaw_,
-    sin_yaw_,
-    static_cast<float>(velocity_.x),
-    static_cast<float>(velocity_.y),
-    static_cast<float>(tracked_object_info_.shape.dimensions.y),  // width
-    static_cast<float>(tracked_object_info_.shape.dimensions.x),  // length
-    static_cast<float>(label_ == AgentLabel::VEHICLE),
-    static_cast<float>(label_ == AgentLabel::PEDESTRIAN),
-    static_cast<float>(label_ == AgentLabel::BICYCLE),
+    static_cast<float>(position.x),
+    static_cast<float>(position.y),
+    cos_yaw,
+    sin_yaw,
+    static_cast<float>(velocity.x),
+    static_cast<float>(velocity.y),
+    static_cast<float>(original_info.shape.dimensions.y),  // width
+    static_cast<float>(original_info.shape.dimensions.x),  // length
+    static_cast<float>(label == AgentLabel::VEHICLE),
+    static_cast<float>(label == AgentLabel::PEDESTRIAN),
+    static_cast<float>(label == AgentLabel::BICYCLE),
   };
 }
 
@@ -109,7 +109,7 @@ void AgentHistory::update(const TrackedObject & object)
   AgentState state(object);
   if (
     queue_.size() > 0 &&
-    queue_.back().object_id_ != autoware_utils_uuid::to_hex_string(object.object_id)) {
+    queue_.back().object_id != autoware_utils_uuid::to_hex_string(object.object_id)) {
     throw std::runtime_error("Object ID mismatch");
   }
   queue_.push_back(state);

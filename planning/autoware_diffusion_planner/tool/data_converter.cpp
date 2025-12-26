@@ -212,7 +212,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   const std::vector<AgentHistory> agent_histories = transformed_histories;
   std::unordered_map<std::string, AgentHistory> id_to_history;
   for (size_t i = 0; i < agent_histories.size(); ++i) {
-    const auto object_id = agent_histories[i].get_latest_state().object_id_;
+    const auto object_id = agent_histories[i].get_latest_state().object_id;
     id_to_history.emplace(
       object_id, AgentHistory(agent_histories[i].get_latest_state(), OUTPUT_T, false));
     id_to_history.at(object_id).apply_transform(bl2map_matrix);
@@ -222,7 +222,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   std::vector<float> neighbor_future(MAX_NUM_NEIGHBORS * OUTPUT_T * NEIGHBOR_FUTURE_DIM, 0.0f);
   for (int64_t agent_idx = 0; agent_idx < static_cast<int64_t>(agent_histories.size());
        ++agent_idx) {
-    const std::string & agent_id_str = agent_histories[agent_idx].get_latest_state().object_id_;
+    const std::string & agent_id_str = agent_histories[agent_idx].get_latest_state().object_id;
     AgentHistory & future_history = id_to_history.at(agent_id_str);
     for (int64_t t = 1; t <= OUTPUT_T; ++t) {
       const int64_t future_frame_idx = current_idx + t;

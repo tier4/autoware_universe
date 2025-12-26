@@ -75,20 +75,20 @@ struct AgentState
    */
 
   // Return TrackedObject info
-  [[nodiscard]] TrackedObject tracked_object() const { return tracked_object_info_; }
+  [[nodiscard]] TrackedObject tracked_object() const { return original_info; }
 
   void apply_transform(const Eigen::Matrix4d & transform);
 
   // Return the state attribute as an array.
   [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array() const noexcept;
 
-  geometry_msgs::msg::Point position_;
-  double cos_yaw_{0.0};
-  double sin_yaw_{0.0};
-  geometry_msgs::msg::Vector3 velocity_;
-  AgentLabel label_{AgentLabel::VEHICLE};
-  std::string object_id_;
-  TrackedObject tracked_object_info_;
+  geometry_msgs::msg::Point position;
+  double cos_yaw{0.0};
+  double sin_yaw{0.0};
+  geometry_msgs::msg::Vector3 velocity;
+  AgentLabel label{AgentLabel::VEHICLE};
+  std::string object_id;
+  TrackedObject original_info;
 };
 
 /**
@@ -119,7 +119,7 @@ struct AgentHistory
 
   [[nodiscard]] const geometry_msgs::msg::Point & get_latest_state_position() const
   {
-    return get_latest_state().position_;
+    return get_latest_state().position;
   }
 
   void apply_transform(const Eigen::Matrix4d & transform)

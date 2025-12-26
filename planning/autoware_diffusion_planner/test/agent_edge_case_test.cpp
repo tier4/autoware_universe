@@ -275,7 +275,7 @@ TEST_F(AgentEdgeCaseTest, AgentStateMultipleClassifications)
 
   // Should handle multiple classifications
   // label_ is a member variable, not a method
-  EXPECT_EQ(agent_state.label_, AgentLabel::VEHICLE);
+  EXPECT_EQ(agent_state.label, AgentLabel::VEHICLE);
 }
 
 // Test edge case: Zero probability classification
@@ -292,7 +292,7 @@ TEST_F(AgentEdgeCaseTest, AgentStateZeroProbability)
   AgentState agent_state(tracked_object_);
 
   // Should handle zero probability
-  EXPECT_EQ(agent_state.label_, AgentLabel::VEHICLE);
+  EXPECT_EQ(agent_state.label, AgentLabel::VEHICLE);
 }
 
 }  // namespace autoware::diffusion_planner::test
