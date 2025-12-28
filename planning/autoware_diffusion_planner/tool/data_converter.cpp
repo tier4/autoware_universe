@@ -189,7 +189,7 @@ std::vector<float> create_ego_sequence(
 
 std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_future(
   const std::vector<FrameData> & data_list, const int64_t current_idx,
-  const Eigen::Matrix4d & map2bl_matrix, const Eigen::Matrix4d & bl2map_matrix)
+  const Eigen::Matrix4d & map2bl_matrix)
 {
   // Build agent histories using AgentData::update_histories
   const int64_t start_idx =
@@ -215,7 +215,6 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
     const auto object_id = agent_histories[i].get_latest_state().object_id;
     id_to_history.emplace(object_id, AgentHistory(OUTPUT_T));
     id_to_history.at(object_id).update(agent_histories[i].get_latest_state().original_info);
-    id_to_history.at(object_id).apply_transform(bl2map_matrix);
   }
 
   // Future data: use AgentHistory for each agent
@@ -693,7 +692,7 @@ int main(int argc, char ** argv)
 
       // Process neighbor agents (both past and future with consistent agent ordering)
       const auto [neighbor_past, neighbor_future] =
-        process_neighbor_agents_and_future(seq.data_list, i, map2bl, bl2map);
+        process_neighbor_agents_and_future(seq.data_list, i, map2bl);
 
       // Process lanes and routes
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
