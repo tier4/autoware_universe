@@ -428,10 +428,9 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
 
   // Get transforms
   const geometry_msgs::msg::Pose & pose_base_link =
-    params_.shift_x ? utils::shift_x(
-                        ego_kinematic_state->pose.pose,
-                        (vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m))
-                    : ego_kinematic_state->pose.pose;
+    params_.shift_x
+      ? utils::shift_x(ego_kinematic_state->pose.pose, vehicle_info_.wheel_base_m / 2.0)
+      : ego_kinematic_state->pose.pose;
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_base_link);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
@@ -489,10 +488,10 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   }
 
   const geometry_msgs::msg::Pose & pose_center =
-    params_.shift_x ? utils::shift_x(
-                        frame_context.ego_kinematic_state.pose.pose,
-                        (vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m))
-                    : frame_context.ego_kinematic_state.pose.pose;
+    params_.shift_x
+      ? utils::shift_x(
+          frame_context.ego_kinematic_state.pose.pose, vehicle_info_.wheel_base_m / 2.0)
+      : frame_context.ego_kinematic_state.pose.pose;
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_center);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
   const auto & center_x = static_cast<float>(pose_center.position.x);
@@ -668,9 +667,9 @@ void DiffusionPlanner::publish_predictions(
       agent_poses, timestamp, frame_context.ego_to_map_transform, i,
       params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
     if (params_.shift_x) {
+      // center to base_link
       for (auto & point : trajectory.points) {
-        point.pose = utils::shift_x(
-          point.pose, -(vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m));
+        point.pose = utils::shift_x(point.pose, -vehicle_info_.wheel_base_m / 2.0);
       }
     }
     if (i == 0) {
