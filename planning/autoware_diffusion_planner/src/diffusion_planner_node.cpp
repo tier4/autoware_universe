@@ -427,7 +427,11 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   }
 
   // Get transforms
-  const geometry_msgs::msg::Pose & pose_base_link = ego_kinematic_state->pose.pose;
+  const geometry_msgs::msg::Pose & pose_base_link =
+    params_.shift_x ? utils::shift_x(
+                        ego_kinematic_state->pose.pose,
+                        (vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m))
+                    : ego_kinematic_state->pose.pose;
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_base_link);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
@@ -660,9 +664,15 @@ void DiffusionPlanner::publish_predictions(
   const auto agent_poses = postprocess::parse_predictions(predictions);
 
   for (int i = 0; i < params_.batch_size; i++) {
-    const Trajectory trajectory = postprocess::create_ego_trajectory(
+    Trajectory trajectory = postprocess::create_ego_trajectory(
       agent_poses, timestamp, frame_context.ego_to_map_transform, i,
       params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
+    if (params_.shift_x) {
+      for (auto & point : trajectory.points) {
+        point.pose = utils::shift_x(
+          point.pose, -(vehicle_info_.wheel_base_m / 2.0 + vehicle_info_.front_overhang_m));
+      }
+    }
     if (i == 0) {
       pub_trajectory_->publish(trajectory);
     }
