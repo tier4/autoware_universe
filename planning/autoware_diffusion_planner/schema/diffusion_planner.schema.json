@@ -79,10 +79,25 @@
           "minimum": 1,
           "description": "Window size for velocity smoothing. Set to 1 to disable smoothing."
         },
+        "shift_x": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to shift the ego center position by half wheel base and front overhang"
+        },
         "stopping_threshold": {
           "type": "number",
           "default": 0.3,
           "description": "Threshold for keeping the stopping state [m/s]"
+        },
+        "turn_indicator_keep_offset": {
+          "type": "number",
+          "default": -1.5,
+          "description": "Offset to add to the KEEP turn indicator logit for bias adjustment"
+        },
+        "turn_indicator_hold_duration": {
+          "type": "number",
+          "default": 1.0,
+          "description": "Duration to hold the turn indicator command before allowing changes (seconds)"
         },
         "debug_params": {
           "type": "object",
@@ -111,6 +126,8 @@
         "temperature",
         "velocity_smoothing_window",
         "stopping_threshold",
+        "turn_indicator_keep_offset",
+        "turn_indicator_hold_duration",
         "debug_params"
       ]
     }

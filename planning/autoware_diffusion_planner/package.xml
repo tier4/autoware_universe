@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>autoware_diffusion_planner</name>
-  <version>0.48.0</version>
+  <version>0.49.0</version>
   <description>The autoware_diffusion_planner package</description>
 
   <maintainer email="daniel.sanchez@tier4.jp">Daniel Sanchez</maintainer>
@@ -19,6 +19,7 @@
   <depend>autoware_cuda_utils</depend>
   <depend>autoware_internal_planning_msgs</depend>
   <depend>autoware_lanelet2_extension</depend>
+  <depend>autoware_lanelet2_utils</depend>
   <depend>autoware_map_msgs</depend>
   <depend>autoware_motion_utils</depend>
   <depend>autoware_object_recognition_utils</depend>
@@ -40,10 +41,12 @@
   <depend>nlohmann-json-dev</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>rosbag2_cpp</depend>
   <depend>std_msgs</depend>
   <depend>visualization_msgs</depend>
 
   <exec_depend>autoware_tensorrt_plugins</exec_depend>
+  <exec_depend>rosbag2_storage_mcap</exec_depend>
 
   <test_depend>ament_cmake_ros</test_depend>
   <test_depend>ament_lint_auto</test_depend>
