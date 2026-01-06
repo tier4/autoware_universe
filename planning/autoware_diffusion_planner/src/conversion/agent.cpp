@@ -56,7 +56,8 @@ bool is_unknown_object(const TrackedObject & object)
 
 }  // namespace
 
-AgentState::AgentState(const TrackedObject & object) : original_info(object)
+AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timestamp)
+: timestamp(timestamp), original_info(object)
 {
   position = object.kinematics.pose_with_covariance.pose.position;
   const float yaw =
@@ -108,6 +109,7 @@ void AgentData::update_histories(const TrackedObjects & objects, const bool igno
 {
   // auto current_time = static_cast<double>(objects.header.stamp.sec) +
   //                     static_cast<double>(objects.header.stamp.nanosec) * 1e-9;
+  const rclcpp::Time objects_timestamp(objects.header.stamp);
   std::vector<std::string> found_ids;
   for (auto object : objects.objects) {
     if (ignore_unknown_agents && is_unknown_object(object)) {
@@ -116,10 +118,10 @@ void AgentData::update_histories(const TrackedObjects & objects, const bool igno
     auto object_id = autoware_utils_uuid::to_hex_string(object.object_id);
     auto it = histories_map_.find(object_id);
     if (it != histories_map_.end()) {
-      it->second.update(object);
+      it->second.update(object, objects_timestamp);
     } else {
       histories_map_.emplace(object_id, AgentHistory(INPUT_T_WITH_CURRENT));
-      histories_map_.at(object_id).fill(AgentState(object));
+      histories_map_.at(object_id).fill(AgentState(object, objects_timestamp));
     }
     found_ids.push_back(object_id);
   }
