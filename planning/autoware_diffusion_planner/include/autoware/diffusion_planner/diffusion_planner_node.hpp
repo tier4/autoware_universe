@@ -299,7 +299,7 @@ private:
   cudaStream_t stream_{nullptr};
 
   // history data
-  std::deque<Pose> ego_history_;
+  std::deque<nav_msgs::msg::Odometry> ego_history_;
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
   AgentData agent_data_;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;

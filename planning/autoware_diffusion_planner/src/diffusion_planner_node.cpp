@@ -426,16 +426,19 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
       "no traffic signal received. traffic light info will not be updated");
   }
 
+  Odometry kinematic_state = *ego_kinematic_state;
+  if (params_.shift_x) {
+    kinematic_state.pose.pose =
+      utils::shift_x(kinematic_state.pose.pose, vehicle_info_.wheel_base_m / 2.0);
+  }
+
   // Get transforms
-  const geometry_msgs::msg::Pose & pose_base_link =
-    params_.shift_x
-      ? utils::shift_x(ego_kinematic_state->pose.pose, vehicle_info_.wheel_base_m / 2.0)
-      : ego_kinematic_state->pose.pose;
+  const geometry_msgs::msg::Pose & pose_base_link = kinematic_state.pose.pose;
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_base_link);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
   // Update ego history
-  ego_history_.push_back(pose_base_link);
+  ego_history_.push_back(kinematic_state);
   if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
     ego_history_.pop_front();
   }

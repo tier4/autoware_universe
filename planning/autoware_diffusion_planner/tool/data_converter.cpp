@@ -179,12 +179,12 @@ std::vector<float> create_ego_sequence(
   const Eigen::Matrix4d & map2bl_matrix)
 {
   // Extract pose messages from FrameData
-  std::deque<geometry_msgs::msg::Pose> pose_deque;
+  std::deque<nav_msgs::msg::Odometry> odom_deque;
   for (int64_t j = 0; j < time_steps; ++j) {
     const int64_t index = std::min(start_idx + j, static_cast<int64_t>(data_list.size()) - 1);
-    pose_deque.push_back(data_list[index].kinematic_state.pose.pose);
+    odom_deque.push_back(data_list[index].kinematic_state);
   }
-  return preprocess::create_ego_agent_past(pose_deque, time_steps, map2bl_matrix);
+  return preprocess::create_ego_agent_past(odom_deque, time_steps, map2bl_matrix);
 }
 
 std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_future(
