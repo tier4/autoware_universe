@@ -170,7 +170,7 @@ jobs:
         run: |
           CHILDREN_FILE=".github/children-branches.yaml"
           CREATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          
+
           if [ ! -f "$CHILDREN_FILE" ]; then
             echo "Creating new children-branches.yaml"
             mkdir -p .github
@@ -193,7 +193,7 @@ jobs:
               echo "Added ${{ inputs.branch_name }} to children-branches.yaml"
             fi
           fi
-          
+
           echo "Current children-branches.yaml:"
           cat "$CHILDREN_FILE"
 

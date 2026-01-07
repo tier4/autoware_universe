@@ -108,7 +108,7 @@ jobs:
           CHILDREN=$(yq -o=json -I=0 '.children | map(.branch)' "$CHILDREN_FILE")
           echo "Found children branches: $CHILDREN"
           echo "children=$CHILDREN" >> $GITHUB_OUTPUT
-          
+
           # Check if there are any children
           COUNT=$(yq '.children | length' "$CHILDREN_FILE")
           if [ "$COUNT" -gt 0 ]; then
@@ -163,4 +163,3 @@ jobs:
               repo: context.repo.repo,
               body: "🤖: The created PR number is #${{ steps.cherry-pick.outputs.pr-number }} for ${{ matrix.child-branch }}"
             })
-

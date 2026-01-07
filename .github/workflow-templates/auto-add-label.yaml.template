@@ -91,4 +91,3 @@ jobs:
               labels: labels
             });
             console.log(`Labels added to PR: ${labels.join(', ')}`);
-
