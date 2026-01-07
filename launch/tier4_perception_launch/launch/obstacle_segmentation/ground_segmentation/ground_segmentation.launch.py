@@ -433,7 +433,7 @@ class GroundSegmentationPipeline:
         components.append(
             ComposableNode(
                 package="autoware_pointcloud_preprocessor",
-                plugin="autoware::pointcloud_preprocessor::VoxelGridDownsampleFilterComponent",
+                plugin="autoware::pointcloud_preprocessor::PickupBasedVoxelGridDownsampleFilterComponent",
                 name="voxel_grid_filter",
                 namespace="elevation_map",
                 remappings=[

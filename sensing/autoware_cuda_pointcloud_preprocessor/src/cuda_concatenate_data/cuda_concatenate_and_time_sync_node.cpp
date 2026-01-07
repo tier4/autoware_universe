@@ -32,6 +32,7 @@ template <>
 void PointCloudConcatenateDataSynchronizerComponentTemplated<
   CudaPointCloud2Traits>::initialize_pub_sub()
 {
+  std::cout << "=================================== PointCloudConcatenateDataSynchronizerComponentTemplated ===================================" << std::endl;
   concatenated_cloud_publisher_ =
     std::make_shared<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
       *this, "output");

@@ -125,10 +125,10 @@ public:
   bool is_close_to_neighbor_voxels(
     const pcl::PointXYZ & point, const double distance_threshold, const FilteredPointCloudPtr & map,
     VoxelGridPointXYZ & voxel) const;
-  bool is_in_voxel(
-    const pcl::PointXYZ & src_point, const pcl::PointXYZ & target_point,
-    const double distance_threshold, const FilteredPointCloudPtr & map,
-    VoxelGridPointXYZ & voxel) const;
+  // bool is_in_voxel(
+  //   const pcl::PointXYZ & src_point, const pcl::PointXYZ & target_point,
+  //   const double distance_threshold, const FilteredPointCloudPtr & map,
+  //   VoxelGridPointXYZ & voxel) const;
 
   void publish_downsampled_map(const pcl::PointCloud<pcl::PointXYZ> & downsampled_pc);
   std::string * tf_map_input_frame_;

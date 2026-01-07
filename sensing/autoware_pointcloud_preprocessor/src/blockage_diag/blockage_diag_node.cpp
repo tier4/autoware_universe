@@ -545,7 +545,7 @@ void BlockageDiagComponent::filter(
 
   publish_debug_info(debug_info);
 
-  pcl::toROSMsg(pcl_input, output);
+  // pcl::toROSMsg(pcl_input, output);
   output.header = input->header;
 }
 

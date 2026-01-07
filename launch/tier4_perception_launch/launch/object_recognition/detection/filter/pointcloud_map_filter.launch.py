@@ -76,7 +76,7 @@ class PointcloudMapFilterPipeline:
         components.append(
             ComposableNode(
                 package="autoware_pointcloud_preprocessor",
-                plugin="autoware::pointcloud_preprocessor::VoxelGridDownsampleFilterComponent",
+                plugin="autoware::pointcloud_preprocessor::PickupBasedVoxelGridDownsampleFilterComponent",
                 name="voxel_grid_downsample_filter",
                 remappings=[
                     ("input", LaunchConfiguration("input_topic")),

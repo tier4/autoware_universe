@@ -64,6 +64,8 @@ VoxelGridDownsampleFilterComponent::VoxelGridDownsampleFilterComponent(
   const rclcpp::NodeOptions & options)
 : Filter("VoxelGridDownsampleFilter", options)
 {
+  RCLCPP_INFO(get_logger(), "PickupBasedVoxelGridDownsampleFilterComponent is being used!! ========================================");
+
   // set initial parameters
   {
     voxel_size_x_ = declare_parameter<float>("voxel_size_x");
