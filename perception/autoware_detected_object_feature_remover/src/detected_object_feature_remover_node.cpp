@@ -22,19 +22,19 @@ DetectedObjectFeatureRemover::DetectedObjectFeatureRemover(const rclcpp::NodeOpt
 : Node("detected_object_feature_remover", node_options)
 {
   using std::placeholders::_1;
-  pub_ = this->create_publisher<DetectedObjects>("~/output", rclcpp::QoS(1));
+
+  pub_ = this->create_publisher<DetectedObjects>("~/output", 1);
+
   sub_ = this->create_subscription<DetectedObjectsWithFeature>(
     "~/input", 1, std::bind(&DetectedObjectFeatureRemover::objectCallback, this, _1));
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 }
 
 void DetectedObjectFeatureRemover::objectCallback(
-  const DetectedObjectsWithFeature::ConstSharedPtr input)
+  const agnocast::ipc_shared_ptr<DetectedObjectsWithFeature> & input)
 {
-  DetectedObjects output;
-  convert(*input, output);
-  pub_->publish(output);
-  published_time_publisher_->publish_if_subscribed(pub_, output.header.stamp);
+  auto output = pub_->borrow_loaned_message();
+  convert(*input, *output);
+  pub_->publish(std::move(output));
 }
 
 void DetectedObjectFeatureRemover::convert(
