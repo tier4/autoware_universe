@@ -4,6 +4,8 @@ project(autoware_multi_object_tracker)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+
 # Ignore -Wnonportable-include-path in Clang for mussp
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wno-nonportable-include-path)
@@ -65,6 +67,14 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 target_link_libraries(${PROJECT_NAME}
   Eigen3::Eigen
   glog::glog
+)
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(${PROJECT_NAME}
+  agnocastlib
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}

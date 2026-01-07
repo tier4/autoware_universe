@@ -65,8 +65,9 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
   bool use_time_keeper = declare_parameter<bool>("publish_processing_time_detail");
 
   // ROS interface - Publisher
-  tracked_objects_pub_ = create_publisher<autoware_perception_msgs::msg::TrackedObjects>(
-    "output/objects", rclcpp::QoS{1});
+  tracked_objects_pub_ =
+    agnocast::create_publisher<autoware_perception_msgs::msg::TrackedObjects>(
+      this, "output/objects", 1);
 
   // Odometry manager
   odometry_ =
@@ -433,43 +434,41 @@ void MultiObjectTracker::checkAndPublish(const rclcpp::Time & time)
   last_published_time_ = this->now();
 }
 
-void MultiObjectTracker::publish(const rclcpp::Time & time) const
+void MultiObjectTracker::publish(const rclcpp::Time & time)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
   debugger_->startPublishTime(this->now());
-  const auto subscriber_count = tracked_objects_pub_->get_subscription_count() +
-                                tracked_objects_pub_->get_intra_process_subscription_count();
-  if (subscriber_count < 1) {
-    return;
-  }
+
   // Create output msg
-  autoware_perception_msgs::msg::TrackedObjects output_msg;
-  output_msg.header.frame_id = world_frame_id_;
+  auto output_msg = tracked_objects_pub_->borrow_loaned_message();
+  output_msg->header.frame_id = world_frame_id_;
   const rclcpp::Time object_time = enable_delay_compensation_ ? this->now() : time;
-  processor_->getTrackedObjects(object_time, output_msg);
+  processor_->getTrackedObjects(object_time, *output_msg);
+
+  // Save size before publish (move)
+  const size_t output_objects_size = output_msg->objects.size();
 
   // Publish
   {
     std::unique_ptr<ScopedTimeTrack> st_pub_ptr;
     if (time_keeper_)
       st_pub_ptr = std::make_unique<ScopedTimeTrack>("tracker_publish", *time_keeper_);
-    tracked_objects_pub_->publish(output_msg);
+    tracked_objects_pub_->publish(std::move(output_msg));
   }
 
   {
     std::unique_ptr<ScopedTimeTrack> st_debug_ptr;
     if (time_keeper_)
       st_debug_ptr = std::make_unique<ScopedTimeTrack>("debug_publish", *time_keeper_);
-    published_time_publisher_->publish_if_subscribed(tracked_objects_pub_, output_msg.header.stamp);
 
     // Publish debugger information if enabled
     debugger_->endPublishTime(this->now(), time);
 
     // Update the diagnostic values
     const double min_extrapolation_time = (time - last_updated_time_).seconds();
-    debugger_->updateDiagnosticValues(min_extrapolation_time, output_msg.objects.size());
+    debugger_->updateDiagnosticValues(min_extrapolation_time, output_objects_size);
 
     if (debugger_->shouldPublishTentativeObjects()) {
       autoware_perception_msgs::msg::TrackedObjects tentative_output_msg;

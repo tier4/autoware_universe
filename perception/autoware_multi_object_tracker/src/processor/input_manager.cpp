@@ -49,7 +49,7 @@ InputStream::InputStream(
 }
 
 void InputStream::onMessage(
-  const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::DetectedObjects> & msg)
 {
   const autoware_perception_msgs::msg::DetectedObjects & objects = *msg;
   const rclcpp::Time timestamp = objects.header.stamp;
@@ -262,11 +262,12 @@ void InputManager::init(const std::vector<types::InputChannel> & input_channels)
     RCLCPP_INFO(
       node_.get_logger(), "InputManager::init Initializing %s input stream from %s",
       input_channels[i].long_name.c_str(), input_channels[i].input_topic.c_str());
-    std::function<void(const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr msg)>
+    std::function<void(
+      const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::DetectedObjects> &)>
       func = std::bind(&InputStream::onMessage, input_streams_.at(i), std::placeholders::_1);
     sub_objects_array_.at(i) =
-      node_.create_subscription<autoware_perception_msgs::msg::DetectedObjects>(
-        input_channels[i].input_topic, rclcpp::QoS{1}, func);
+      agnocast::create_subscription<autoware_perception_msgs::msg::DetectedObjects>(
+        &node_, input_channels[i].input_topic, rclcpp::QoS{1}, func);
   }
 
   // Check if any spawn enabled input streams

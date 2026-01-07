@@ -26,6 +26,7 @@
 #include "processor/input_manager.hpp"
 #include "processor/processor.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -64,7 +65,7 @@ public:
 
 private:
   // ROS interface
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr tracked_objects_pub_;
+  agnocast::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr tracked_objects_pub_;
 
   // debugger
   std::unique_ptr<TrackerDebugger> debugger_;
@@ -101,7 +102,7 @@ private:
   // publish processes
   void runProcess(const types::DynamicObjectList & detected_objects);
   void checkAndPublish(const rclcpp::Time & time);
-  void publish(const rclcpp::Time & time) const;
+  void publish(const rclcpp::Time & time);
   inline bool shouldTrackerPublish(const std::shared_ptr<const Tracker> tracker) const;
 };
 
