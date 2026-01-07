@@ -16,7 +16,6 @@
 #define AUTOWARE__DIFFUSION_PLANNER__CONVERSION__AGENT_HPP_
 
 #include "Eigen/Dense"
-#include "autoware/diffusion_planner/utils/fixed_queue.hpp"
 
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -34,6 +33,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -81,12 +81,12 @@ struct AgentState
  */
 struct AgentHistory
 {
-  AgentHistory(const size_t max_size) : queue_(max_size) {}
+  AgentHistory(const size_t max_size) : max_size_(max_size) {}
 
   void fill(const AgentState & state)
   {
-    while (!queue_.full()) {
-      queue_.push_back(state);
+    while (!full()) {
+      push_back(state);
     }
   }
 
@@ -98,7 +98,7 @@ struct AgentHistory
       queue_.back().object_id != autoware_utils_uuid::to_hex_string(object.object_id)) {
       throw std::runtime_error("Object ID mismatch");
     }
-    queue_.push_back(state);
+    push_back(state);
   }
 
   [[nodiscard]] std::vector<float> as_array() const noexcept
@@ -122,7 +122,18 @@ struct AgentHistory
   }
 
 private:
-  FixedQueue<AgentState> queue_;
+  void push_back(const AgentState & state)
+  {
+    if (full()) {
+      queue_.pop_front();
+    }
+    queue_.push_back(state);
+  }
+
+  bool full() const { return queue_.size() >= max_size_; }
+
+  std::deque<AgentState> queue_;
+  size_t max_size_{0};
 };
 
 /**
