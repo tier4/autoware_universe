@@ -134,6 +134,21 @@ public:
    */
   size_type size() const noexcept { return queue_.size(); }
 
+  /**
+   * @brief Returns the maximum size of the queue.
+   */
+  size_type max_size() const noexcept { return max_size_; }
+
+  /**
+   * @brief Returns whether the queue is empty.
+   */
+  bool empty() const noexcept { return queue_.empty(); }
+
+  /**
+   * @brief Returns whether the queue is full.
+   */
+  bool full() const noexcept { return queue_.size() >= max_size_; }
+
 private:
   std::deque<T> queue_;  ///< Underlying container.
   size_t max_size_{0};   ///< Maximum allowed size.

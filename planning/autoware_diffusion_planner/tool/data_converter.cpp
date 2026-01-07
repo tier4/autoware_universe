@@ -60,7 +60,6 @@ using namespace geometry_msgs::msg;
 using namespace nav_msgs::msg;
 
 // Using constants from dimensions.hpp
-constexpr int64_t PAST_TIME_STEPS = INPUT_T + 1;
 constexpr int64_t NEIGHBOR_PAST_DIM = NEIGHBOR_SHAPE[3];
 constexpr int64_t NEIGHBOR_FUTURE_DIM = 4;  // x, y, cos(yaw), sin(yaw)
 
@@ -91,7 +90,7 @@ struct TrainingDataBinary
   float ego_agent_past[EGO_HISTORY_SHAPE[1] * EGO_HISTORY_SHAPE[2]];
   float ego_current_state[EGO_CURRENT_STATE_SHAPE[1]];
   float ego_agent_future[OUTPUT_T * EGO_HISTORY_SHAPE[2]];
-  float neighbor_agents_past[MAX_NUM_NEIGHBORS * PAST_TIME_STEPS * NEIGHBOR_PAST_DIM];
+  float neighbor_agents_past[MAX_NUM_NEIGHBORS * INPUT_T_WITH_CURRENT * NEIGHBOR_PAST_DIM];
   float neighbor_agents_future[MAX_NUM_NEIGHBORS * OUTPUT_T * NEIGHBOR_FUTURE_DIM];
   float static_objects[STATIC_OBJECTS_SHAPE[1] * STATIC_OBJECTS_SHAPE[2]];
   float lanes[NUM_SEGMENTS_IN_LANE * POINTS_PER_SEGMENT * SEGMENT_POINT_DIM];
@@ -103,7 +102,7 @@ struct TrainingDataBinary
   float polygons[NUM_POLYGONS * POINTS_PER_POLYGON * 2];
   float line_strings[NUM_LINE_STRINGS * POINTS_PER_LINE_STRING * 2];
   float goal_pose[NEIGHBOR_FUTURE_DIM];
-  int32_t turn_indicators[PAST_TIME_STEPS];
+  int32_t turn_indicators[INPUT_T_WITH_CURRENT];
   float ego_shape[EGO_SHAPE_SHAPE[1]];
 
   // Constructor with zero initialization
@@ -180,51 +179,51 @@ std::vector<float> create_ego_sequence(
   const Eigen::Matrix4d & map2bl_matrix)
 {
   // Extract pose messages from FrameData
-  std::deque<geometry_msgs::msg::Pose> pose_deque;
+  std::deque<nav_msgs::msg::Odometry> odom_deque;
   for (int64_t j = 0; j < time_steps; ++j) {
     const int64_t index = std::min(start_idx + j, static_cast<int64_t>(data_list.size()) - 1);
-    pose_deque.push_back(data_list[index].kinematic_state.pose.pose);
+    odom_deque.push_back(data_list[index].kinematic_state);
   }
-  return preprocess::create_ego_agent_past(pose_deque, time_steps, map2bl_matrix);
+  return preprocess::create_ego_agent_past(odom_deque, time_steps, map2bl_matrix);
 }
 
 std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_future(
   const std::vector<FrameData> & data_list, const int64_t current_idx,
-  const Eigen::Matrix4d & map2bl_matrix, const Eigen::Matrix4d & bl2map_matrix)
+  const Eigen::Matrix4d & map2bl_matrix)
 {
   // Build agent histories using AgentData::update_histories
-  const int64_t start_idx = std::max(static_cast<int64_t>(0), current_idx - PAST_TIME_STEPS + 1);
+  const int64_t start_idx =
+    std::max(static_cast<int64_t>(0), current_idx - INPUT_T_WITH_CURRENT + 1);
   const bool ignore_unknown_agents = true;
-  autoware::diffusion_planner::AgentData agent_data_past(
-    data_list[start_idx].tracked_objects, MAX_NUM_NEIGHBORS, PAST_TIME_STEPS,
-    ignore_unknown_agents);
-  for (int64_t t = 1; t < PAST_TIME_STEPS; ++t) {
+  autoware::diffusion_planner::AgentData agent_data_past;
+  for (int64_t t = 0; t < INPUT_T_WITH_CURRENT; ++t) {
     const int64_t frame_idx = start_idx + t;
     if (frame_idx >= static_cast<int64_t>(data_list.size())) {
       break;
     }
     agent_data_past.update_histories(data_list[frame_idx].tracked_objects, ignore_unknown_agents);
   }
-  agent_data_past.apply_transform(map2bl_matrix);
-  agent_data_past.trim_to_k_closest_agents();
-  const std::vector<float> neighbor_past = agent_data_past.as_vector();
+  const auto transformed_histories =
+    agent_data_past.transformed_and_trimmed_histories(map2bl_matrix, MAX_NUM_NEIGHBORS);
+  const std::vector<float> neighbor_past =
+    flatten_histories_to_vector(transformed_histories, MAX_NUM_NEIGHBORS, INPUT_T_WITH_CURRENT);
 
   // Build id -> AgentHistory map for future filling
-  const std::vector<AgentHistory> agent_histories = agent_data_past.get_histories();
+  const std::vector<AgentHistory> agent_histories = transformed_histories;
   std::unordered_map<std::string, AgentHistory> id_to_history;
   for (size_t i = 0; i < agent_histories.size(); ++i) {
-    id_to_history.emplace(
-      agent_histories[i].object_id(), AgentHistory(
-                                        agent_histories[i].get_latest_state(),
-                                        agent_histories[i].label_id(), 0.0, OUTPUT_T, false));
-    id_to_history.at(agent_histories[i].object_id()).apply_transform(bl2map_matrix);
+    const auto object_id = agent_histories[i].get_latest_state().object_id;
+    id_to_history.emplace(object_id, AgentHistory(OUTPUT_T));
+    id_to_history.at(object_id).update(
+      agent_histories[i].get_latest_state().original_info,
+      agent_histories[i].get_latest_state().timestamp);
   }
 
   // Future data: use AgentHistory for each agent
   std::vector<float> neighbor_future(MAX_NUM_NEIGHBORS * OUTPUT_T * NEIGHBOR_FUTURE_DIM, 0.0f);
   for (int64_t agent_idx = 0; agent_idx < static_cast<int64_t>(agent_histories.size());
        ++agent_idx) {
-    const std::string & agent_id_str = agent_histories[agent_idx].object_id();
+    const std::string & agent_id_str = agent_histories[agent_idx].get_latest_state().object_id;
     AgentHistory & future_history = id_to_history.at(agent_id_str);
     for (int64_t t = 1; t <= OUTPUT_T; ++t) {
       const int64_t future_frame_idx = current_idx + t;
@@ -237,7 +236,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
       for (const auto & obj : future_objects) {
         const std::string obj_id = autoware_utils_uuid::to_hex_string(obj.object_id);
         if (obj_id == agent_id_str) {
-          future_history.update(0.0, obj);
+          future_history.update(obj, data_list[future_frame_idx].kinematic_state.header.stamp);
           found = true;
           break;
         }
@@ -671,7 +670,7 @@ int main(int argc, char ** argv)
 
     // Process frames with stopping count tracking
     int64_t stopping_count = 0;
-    for (int64_t i = PAST_TIME_STEPS; i < n; i += step) {
+    for (int64_t i = INPUT_T_WITH_CURRENT; i < n; i += step) {
       // Create token in same format as Python version: seq_id(8digits) + i(8digits)
       std::ostringstream token_stream;
       token_stream << std::setfill('0') << std::setw(8) << seq_id << std::setw(8) << i;
@@ -683,8 +682,8 @@ int main(int argc, char ** argv)
       const Eigen::Matrix4d map2bl = utils::inverse(bl2map);
 
       // Create ego sequences
-      const std::vector<float> ego_past =
-        create_ego_sequence(seq.data_list, i - PAST_TIME_STEPS + 1, PAST_TIME_STEPS, map2bl);
+      const std::vector<float> ego_past = create_ego_sequence(
+        seq.data_list, i - INPUT_T_WITH_CURRENT + 1, INPUT_T_WITH_CURRENT, map2bl);
       const std::vector<float> ego_future =
         create_ego_sequence(seq.data_list, i + 1, OUTPUT_T, map2bl);
 
@@ -695,7 +694,7 @@ int main(int argc, char ** argv)
 
       // Process neighbor agents (both past and future with consistent agent ordering)
       const auto [neighbor_past, neighbor_future] =
-        process_neighbor_agents_and_future(seq.data_list, i, map2bl, bl2map);
+        process_neighbor_agents_and_future(seq.data_list, i, map2bl);
 
       // Process lanes and routes
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
@@ -822,10 +821,10 @@ int main(int argc, char ** argv)
         STATIC_OBJECTS_SHAPE[1] * STATIC_OBJECTS_SHAPE[2], 0.0f);
 
       // const int64_t turn_indicator = seq.data_list[i].turn_indicator.report;
-      std::vector<int32_t> turn_indicators(PAST_TIME_STEPS);
-      for (int64_t t = 0; t < PAST_TIME_STEPS; ++t) {
-        turn_indicators[t] =
-          seq.data_list[std::max(int64_t(0), i - PAST_TIME_STEPS + 1 + t)].turn_indicator.report;
+      std::vector<int32_t> turn_indicators(INPUT_T_WITH_CURRENT);
+      for (int64_t t = 0; t < INPUT_T_WITH_CURRENT; ++t) {
+        turn_indicators[t] = seq.data_list[std::max(int64_t(0), i - INPUT_T_WITH_CURRENT + 1 + t)]
+                               .turn_indicator.report;
       }
 
       // Save data

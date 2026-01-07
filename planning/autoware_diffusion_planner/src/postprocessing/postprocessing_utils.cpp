@@ -110,7 +110,7 @@ std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
 
 PredictedObjects create_predicted_objects(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const AgentData & ego_centric_agent_data, const rclcpp::Time & stamp,
+  const std::vector<AgentHistory> & ego_centric_histories, const rclcpp::Time & stamp,
   const Eigen::Matrix4d & transform_ego_to_map, const int64_t batch_index)
 {
   auto trajectory_path_to_pose_path = [](const Trajectory & trajectory, const double object_z)
@@ -125,9 +125,6 @@ PredictedObjects create_predicted_objects(
     return pose_path;
   };
 
-  const std::vector<autoware::diffusion_planner::AgentHistory> objects_history =
-    ego_centric_agent_data.get_histories();
-
   PredictedObjects predicted_objects;
   predicted_objects.header.stamp = stamp;
   predicted_objects.header.frame_id = "map";
@@ -136,7 +133,7 @@ PredictedObjects create_predicted_objects(
 
   // ego_centric_agent_data contains neighbor history information ordered by distance.
   for (int64_t neighbor_id = 0; neighbor_id < MAX_NUM_NEIGHBORS; ++neighbor_id) {
-    if (static_cast<size_t>(neighbor_id) >= objects_history.size()) {
+    if (static_cast<size_t>(neighbor_id) >= ego_centric_histories.size()) {
       break;
     }
 
@@ -149,9 +146,9 @@ PredictedObjects create_predicted_objects(
       neighbor_poses.push_back(pose_in_map);
     }
 
-    const double base_x = objects_history.at(neighbor_id).get_latest_state_position().x;
-    const double base_y = objects_history.at(neighbor_id).get_latest_state_position().y;
-    const double base_z = objects_history.at(neighbor_id).get_latest_state_position().z;
+    const double base_x = ego_centric_histories.at(neighbor_id).get_latest_state().position.x;
+    const double base_y = ego_centric_histories.at(neighbor_id).get_latest_state().position.y;
+    const double base_z = ego_centric_histories.at(neighbor_id).get_latest_state().position.z;
     constexpr int64_t velocity_smoothing_window = 1;
     constexpr bool enable_force_stop = false;  // Don't force stop for neighbors
     constexpr double stopping_threshold = 0.0;
@@ -161,7 +158,7 @@ PredictedObjects create_predicted_objects(
 
     PredictedObject object;
     const TrackedObject & object_info =
-      objects_history.at(neighbor_id).get_latest_state().tracked_object();
+      ego_centric_histories.at(neighbor_id).get_latest_state().original_info;
     {  // Extract path from prediction
       PredictedPath predicted_path;
       const double object_pose_z = object_info.kinematics.pose_with_covariance.pose.position.z;

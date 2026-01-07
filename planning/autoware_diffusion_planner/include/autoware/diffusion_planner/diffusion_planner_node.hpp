@@ -109,7 +109,7 @@ struct FrameContext
   nav_msgs::msg::Odometry ego_kinematic_state;
   geometry_msgs::msg::AccelWithCovarianceStamped ego_acceleration;
   Eigen::Matrix4d ego_to_map_transform;
-  AgentData ego_centric_neighbor_agent_data;
+  std::vector<AgentHistory> ego_centric_neighbor_histories;
   rclcpp::Time frame_time;
 };
 
@@ -299,9 +299,9 @@ private:
   cudaStream_t stream_{nullptr};
 
   // history data
-  std::deque<Pose> ego_history_;
+  std::deque<nav_msgs::msg::Odometry> ego_history_;
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
-  std::optional<AgentData> agent_data_{std::nullopt};
+  AgentData agent_data_;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
 
   // Node parameters

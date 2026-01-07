@@ -426,16 +426,19 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
       "no traffic signal received. traffic light info will not be updated");
   }
 
+  Odometry kinematic_state = *ego_kinematic_state;
+  if (params_.shift_x) {
+    kinematic_state.pose.pose =
+      utils::shift_x(kinematic_state.pose.pose, vehicle_info_.wheel_base_m / 2.0);
+  }
+
   // Get transforms
-  const geometry_msgs::msg::Pose & pose_base_link =
-    params_.shift_x
-      ? utils::shift_x(ego_kinematic_state->pose.pose, vehicle_info_.wheel_base_m / 2.0)
-      : ego_kinematic_state->pose.pose;
+  const geometry_msgs::msg::Pose & pose_base_link = kinematic_state.pose.pose;
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_base_link);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
   // Update ego history
-  ego_history_.push_back(pose_base_link);
+  ego_history_.push_back(kinematic_state);
   if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
     ego_history_.pop_front();
   }
@@ -447,15 +450,9 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   }
 
   // Update neighbor agent data
-  if (!agent_data_) {
-    agent_data_ =
-      AgentData(*objects, NEIGHBOR_SHAPE[1], NEIGHBOR_SHAPE[2], params_.ignore_unknown_neighbors);
-  } else {
-    agent_data_->update_histories(*objects, params_.ignore_unknown_neighbors);
-  }
-  auto ego_centric_neighbor_agent_data = agent_data_.value();
-  ego_centric_neighbor_agent_data.apply_transform(map_to_ego_transform);
-  ego_centric_neighbor_agent_data.trim_to_k_closest_agents();
+  agent_data_.update_histories(*objects, params_.ignore_unknown_neighbors);
+  const auto processed_neighbor_histories =
+    agent_data_.transformed_and_trimmed_histories(map_to_ego_transform, NEIGHBOR_SHAPE[1]);
 
   // Update traffic light map
   const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
@@ -465,7 +462,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   // Create frame context
   const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
   const FrameContext frame_context{
-    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, ego_centric_neighbor_agent_data,
+    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
     frame_time};
 
   return frame_context;
@@ -513,8 +510,9 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   }
   // Agent data on ego reference frame
   {
-    input_data_map["neighbor_agents_past"] =
-      replicate_for_batch(frame_context.ego_centric_neighbor_agent_data.as_vector());
+    const auto neighbor_agents_past = flatten_histories_to_vector(
+      frame_context.ego_centric_neighbor_histories, MAX_NUM_NEIGHBORS, INPUT_T + 1);
+    input_data_map["neighbor_agents_past"] = replicate_for_batch(neighbor_agents_past);
   }
   // Static objects
   // TODO(Daniel): add static objects
@@ -701,7 +699,7 @@ void DiffusionPlanner::publish_predictions(
     // Use batch 0 for neighbor predictions
     constexpr int64_t batch_idx = 0;
     auto predicted_objects = postprocess::create_predicted_objects(
-      agent_poses, frame_context.ego_centric_neighbor_agent_data, timestamp,
+      agent_poses, frame_context.ego_centric_neighbor_histories, timestamp,
       frame_context.ego_to_map_transform, batch_idx);
     pub_objects_->publish(predicted_objects);
   }
