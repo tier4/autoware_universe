@@ -107,8 +107,6 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
 
 void AgentData::update_histories(const TrackedObjects & objects, const bool ignore_unknown_agents)
 {
-  // auto current_time = static_cast<double>(objects.header.stamp.sec) +
-  //                     static_cast<double>(objects.header.stamp.nanosec) * 1e-9;
   const rclcpp::Time objects_timestamp(objects.header.stamp);
   std::vector<std::string> found_ids;
   for (auto object : objects.objects) {
