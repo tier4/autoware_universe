@@ -80,8 +80,9 @@ void normalize_input_data(InputDataMap & input_data_map, const NormalizationMap 
 
 std::vector<float> create_ego_agent_past(
   const std::deque<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
-  const Eigen::Matrix4d & map_to_ego_transform)
+  const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & frame_time)
 {
+  (void)frame_time;
   const size_t features_per_timestep = 4;  // x, y, cos, sin
   const size_t total_size = num_timesteps * features_per_timestep;
 
@@ -120,17 +121,19 @@ std::vector<float> create_ego_agent_past(
 }
 
 std::vector<float> create_neighbor_agents_past(
-  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length)
+  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t num_timesteps,
+  const rclcpp::Time & frame_time)
 {
+  (void)frame_time;
   std::vector<float> data;
-  data.reserve(histories.size() * time_length * AGENT_STATE_DIM);
+  data.reserve(max_num_agent * num_timesteps * AGENT_STATE_DIM);
 
   for (const auto & history : histories) {
     const auto history_array = history.as_array();
     data.insert(data.end(), history_array.begin(), history_array.end());
   }
 
-  data.resize(max_num_agent * time_length * AGENT_STATE_DIM, 0.0f);
+  data.resize(max_num_agent * num_timesteps * AGENT_STATE_DIM, 0.0f);
 
   return data;
 }

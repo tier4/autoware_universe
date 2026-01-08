@@ -184,7 +184,8 @@ std::vector<float> create_ego_sequence(
     const int64_t index = std::min(start_idx + j, static_cast<int64_t>(data_list.size()) - 1);
     odom_deque.push_back(data_list[index].kinematic_state);
   }
-  return preprocess::create_ego_agent_past(odom_deque, time_steps, map2bl_matrix);
+  const rclcpp::Time frame_time(odom_deque.back().header.stamp);
+  return preprocess::create_ego_agent_past(odom_deque, time_steps, map2bl_matrix, frame_time);
 }
 
 std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_future(
@@ -205,8 +206,9 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   }
   const auto transformed_histories =
     agent_data_past.transformed_and_trimmed_histories(map2bl_matrix, MAX_NUM_NEIGHBORS);
+  const rclcpp::Time frame_time(data_list[current_idx].kinematic_state.header.stamp);
   const std::vector<float> neighbor_past = preprocess::create_neighbor_agents_past(
-    transformed_histories, MAX_NUM_NEIGHBORS, INPUT_T_WITH_CURRENT);
+    transformed_histories, MAX_NUM_NEIGHBORS, INPUT_T_WITH_CURRENT, frame_time);
 
   // Build id -> AgentHistory map for future filling
   const std::vector<AgentHistory> agent_histories = transformed_histories;

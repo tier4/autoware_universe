@@ -498,7 +498,8 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   // Ego history
   {
     const std::vector<float> single_ego_agent_past =
-      preprocess::create_ego_agent_past(ego_history_, EGO_HISTORY_SHAPE[1], map_to_ego_transform);
+      preprocess::create_ego_agent_past(
+        ego_history_, EGO_HISTORY_SHAPE[1], map_to_ego_transform, frame_context.frame_time);
     input_data_map["ego_agent_past"] = replicate_for_batch(single_ego_agent_past);
   }
   // Ego state
@@ -511,7 +512,8 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   // Agent data on ego reference frame
   {
     const auto neighbor_agents_past = preprocess::create_neighbor_agents_past(
-      frame_context.ego_centric_neighbor_histories, MAX_NUM_NEIGHBORS, INPUT_T + 1);
+      frame_context.ego_centric_neighbor_histories, MAX_NUM_NEIGHBORS, INPUT_T + 1,
+      frame_context.frame_time);
     input_data_map["neighbor_agents_past"] = replicate_for_batch(neighbor_agents_past);
   }
   // Static objects

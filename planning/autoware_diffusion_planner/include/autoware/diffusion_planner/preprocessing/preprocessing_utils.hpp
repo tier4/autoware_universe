@@ -17,8 +17,11 @@
 
 #include <Eigen/Core>
 
+#include "autoware/diffusion_planner/conversion/agent.hpp"
+
 // #include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <rclcpp/time.hpp>
 
 #include <cassert>
 #include <deque>
@@ -64,11 +67,12 @@ void normalize_input_data(
  * @param[in] odom_msgs        Deque of odometry messages
  * @param[in] num_timesteps       Number of timesteps to process
  * @param[in] map_to_ego_transform Transformation matrix from map to ego frame
+ * @param[in] frame_time          Reference time for interpolation (current frame)
  * @return Vector of floats containing [x, y, cos_yaw, sin_yaw] for each timestep
  */
 std::vector<float> create_ego_agent_past(
   const std::deque<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
-  const Eigen::Matrix4d & map_to_ego_transform);
+  const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & frame_time);
 
 /**
  * @brief Creates neighbor agent past trajectory data from agent histories.
@@ -76,13 +80,15 @@ std::vector<float> create_ego_agent_past(
  * This function flattens the past trajectories of tracked neighbor agents into a single
  * vector and pads it with zeros if there are fewer agents than max_num_agent.
  *
- * @param[in] histories      Vector of agent histories
- * @param[in] max_num_agent  Maximum number of agents to include
- * @param[in] time_length    Number of timesteps in each history
- * @return Vector of floats containing flattened agent histories
+ * @param[in] histories          Vector of agent histories in ego frame
+ * @param[in] max_num_agent      Maximum number of agents to include
+ * @param[in] num_timesteps      Number of timesteps to process
+ * @param[in] frame_time         Reference time for the current frame
+ * @return Vector of floats containing agent states for each timestep
  */
 std::vector<float> create_neighbor_agents_past(
-  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length);
+  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t num_timesteps,
+  const rclcpp::Time & frame_time);
 
 /**
  * @brief Creates random sampled trajectories for diffusion model input.
