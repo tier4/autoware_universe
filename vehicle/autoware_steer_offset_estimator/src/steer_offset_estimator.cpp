@@ -16,9 +16,19 @@
 
 #include "autoware/steer_offset_estimator/utils.hpp"
 
+#include <rclcpp/rclcpp/duration.hpp>
+#include <rclcpp/rclcpp/time.hpp>
 #include <tl_expected/expected.hpp>
 
+#include <range/v3/algorithm/find_if.hpp>
+#include <range/v3/view/reverse.hpp>
+
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <iterator>
+#include <numeric>
+#include <optional>
 #include <vector>
 namespace autoware::steer_offset_estimator
 {
@@ -62,19 +72,25 @@ SteerOffsetEstimator::update(
 
   double velocity = twist.linear.x;
   double angular_velocity = twist.angular.z;
-  double steering_angle = utils::calc_average_steer(steers);
+
+  update_steering_buffer(steers);
+  const auto steering_angle = get_steering_at_timestamp(
+    rclcpp::Time(previous_pose_->header.stamp));
 
   // Validate input data quality
   if (velocity < params_.min_velocity) {
     return tl::make_unexpected(SteerOffsetEstimationNotUpdated{"velocity is too low"});
   }
-  if (std::abs(steering_angle) > params_.max_steer) {
+  if (!steering_angle) {
+    return tl::make_unexpected(SteerOffsetEstimationNotUpdated{"steering angle is not available"});
+  }
+  if (std::abs(steering_angle.value()) > params_.max_steer) {
     return tl::make_unexpected(SteerOffsetEstimationNotUpdated{"steering angle is too large"});
   }
 
   // 1) Regressor and measurement for the regression model y = phi * theta + noise
   const double phi = velocity / params_.wheel_base;          // regressor
-  const double y = angular_velocity - phi * steering_angle;  // measurement for regression
+  const double y = angular_velocity - phi * steering_angle.value();  // measurement for regression
 
   // 2) Time update (process model): theta_k = theta_{k-1} + w,  w ~ N(0, Q)
   //    This inflates the PRIOR covariance to allow parameter drift.
@@ -104,10 +120,56 @@ SteerOffsetEstimator::update(
   updated_result.covariance = covariance_;
   updated_result.velocity = velocity;
   updated_result.angular_velocity = angular_velocity;
-  updated_result.steering_angle = steering_angle;
+  updated_result.steering_angle = steering_angle.value();
   updated_result.kalman_gain = K;
   updated_result.residual = residual;
   return updated_result;
+}
+
+void SteerOffsetEstimator::update_steering_buffer(
+  const std::vector<SteeringReport> & steers)
+{
+  for (const auto & steer : steers) {
+    if (rclcpp::Time(steer.stamp) < rclcpp::Time(steering_buffer_.back()->stamp)) {
+      continue;
+    }
+    steering_buffer_.emplace_back(std::make_shared<SteeringReport>(steer));
+  }
+
+  // Keep buffer size manageable
+  while (!steering_buffer_.empty() &&
+    (rclcpp::Time(steering_buffer_.back()->stamp) - rclcpp::Time(steering_buffer_.front()->stamp)).seconds()
+    > max_steering_buffer_s) {
+    steering_buffer_.pop_front();
+  }
+}
+
+std::optional<double> SteerOffsetEstimator::get_steering_at_timestamp(
+  const rclcpp::Time & timestamp) const
+{
+  if (steering_buffer_.empty()) return std::nullopt;
+
+  const auto upper = std::find_if(steering_buffer_.begin(), steering_buffer_.end(),
+    [&timestamp](const autoware_vehicle_msgs::msg::SteeringReport::SharedPtr & steer_ptr) {
+      return rclcpp::Time(steer_ptr->stamp) > timestamp;
+    });
+
+  const auto pivot = (upper == steering_buffer_.begin()) ? upper : std::prev(upper);
+
+  const int window = 2;
+  auto start = (std::distance(steering_buffer_.begin(), pivot) > window) ?
+    pivot - window : steering_buffer_.begin();
+  auto finish = (std::distance(pivot, steering_buffer_.end()) > window) ?
+    pivot + window + 1 : steering_buffer_.end();
+
+  const auto count = std::distance(start, finish);
+
+  if (count == 0) return std::nullopt;
+
+  double steering_sum = std::accumulate(start, finish, 0.0, [](double sum, const auto & steer_ptr) {
+      return sum + steer_ptr->steering_tire_angle;
+    });
+  return steering_sum / count;
 }
 
 }  // namespace autoware::steer_offset_estimator

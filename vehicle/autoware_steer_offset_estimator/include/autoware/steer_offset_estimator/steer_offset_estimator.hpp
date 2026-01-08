@@ -21,6 +21,9 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 
+#include <rclcpp/rclcpp/time.hpp>
+
+#include <deque>
 #include <optional>
 #include <string>
 #include <vector>
@@ -116,7 +119,16 @@ private:
   double estimated_offset_;                ///< Current estimated offset [rad]
   double covariance_;                      ///< Current estimation covariance
 
+  void update_steering_buffer(
+    const std::vector<SteeringReport> & steers);
+
+  [[nodiscard]] std::optional<double> get_steering_at_timestamp(
+    const rclcpp::Time & timestamp) const;
+
   std::optional<geometry_msgs::msg::PoseStamped> previous_pose_;
+  std::deque<autoware_vehicle_msgs::msg::SteeringReport::SharedPtr> steering_buffer_;
+
+  static constexpr double max_steering_buffer_s = 1.0;  ///< Max buffer time for steering reports [s]
 
 #ifdef ENABLE_PLOTLY
   plotly::Figure figure_;
