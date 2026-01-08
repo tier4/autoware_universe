@@ -32,6 +32,12 @@ namespace autoware::behavior_path_planner
 {
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 
+// State for tracking which path segment to publish
+enum class PathSegmentState {
+  FORWARD_ONLY,      // Publishing forward segment only (before cusp)
+  BACKWARD_ONLY      // Publishing backward segment only (after cusp)
+};
+
 class DirectionChangeModule : public SceneModuleInterface
 {
 public:
@@ -83,6 +89,10 @@ private:
 
   // Direction change data
   std::vector<size_t> cusp_point_indices_{};
+  
+  // Path segment state tracking for separate forward/backward publishing
+  PathSegmentState current_segment_state_{PathSegmentState::FORWARD_ONLY};
+  size_t first_cusp_index_{0};  // Store first cusp index for path splitting
 
   // Debug data
   mutable DirectionChangeDebugData debug_data_;
