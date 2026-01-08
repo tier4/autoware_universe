@@ -2,8 +2,6 @@
 # https://github.com/autowarefoundation/sync-file-templates
 # To make changes, update the source repository and follow the guidelines in its README.
 
-# Deprecated: Use concurrency in each workflow instead.
-
 name: cancel-previous-workflows
 
 on:
