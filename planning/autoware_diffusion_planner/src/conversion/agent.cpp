@@ -60,11 +60,12 @@ bool is_unknown_object(const TrackedObject & object)
 }  // namespace
 
 AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timestamp)
-: timestamp(timestamp), pose(Eigen::Matrix4d::Identity()), original_info(object)
+: timestamp(timestamp),
+  pose(utils::pose_to_matrix4f(object.kinematics.pose_with_covariance.pose)),
+  label(get_model_label(object)),
+  object_id(autoware_utils_uuid::to_hex_string(object.object_id)),
+  original_info(object)
 {
-  pose = utils::pose_to_matrix4f(object.kinematics.pose_with_covariance.pose);
-  label = get_model_label(object);
-  object_id = autoware_utils_uuid::to_hex_string(object.object_id);
 }
 
 // Return the state attribute as an array.
