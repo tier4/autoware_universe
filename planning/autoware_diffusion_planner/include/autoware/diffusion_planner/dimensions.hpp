@@ -60,6 +60,7 @@ inline constexpr int64_t LINE_TYPE_LEFT_START = 13;
 inline constexpr int64_t LINE_TYPE_RIGHT_START = LINE_TYPE_LEFT_START + LINE_TYPE_NUM;
 inline constexpr int64_t SEGMENT_POINT_DIM = LINE_TYPE_RIGHT_START + LINE_TYPE_NUM;
 
+inline constexpr double PLANNING_FREQUENCY = 10.0;  // Hz
 inline constexpr int64_t INPUT_T = 30;
 inline constexpr int64_t INPUT_T_WITH_CURRENT = INPUT_T + 1;  // Including current time step
 inline constexpr int64_t OUTPUT_T = 80;                       // Output timestamp number
