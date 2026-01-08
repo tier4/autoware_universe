@@ -67,11 +67,6 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
   object_id = autoware_utils_uuid::to_hex_string(object.object_id);
 }
 
-void AgentState::apply_transform(const Eigen::Matrix4d & transform)
-{
-  pose = transform * pose;
-}
-
 // Return the state attribute as an array.
 [[nodiscard]] std::array<float, AGENT_STATE_DIM> AgentState::as_array() const noexcept
 {

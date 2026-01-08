@@ -61,8 +61,6 @@ struct AgentState
 
   AgentState(const TrackedObject & object, const rclcpp::Time & timestamp);
 
-  void apply_transform(const Eigen::Matrix4d & transform);
-
   [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array() const noexcept;
 
   rclcpp::Time timestamp;
@@ -113,7 +111,7 @@ struct AgentHistory
   void apply_transform(const Eigen::Matrix4d & transform)
   {
     for (auto & state : queue_) {
-      state.apply_transform(transform);
+      state.pose = transform * state.pose;
     }
   }
 
