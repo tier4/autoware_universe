@@ -205,8 +205,8 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   }
   const auto transformed_histories =
     agent_data_past.transformed_and_trimmed_histories(map2bl_matrix, MAX_NUM_NEIGHBORS);
-  const std::vector<float> neighbor_past =
-    flatten_histories_to_vector(transformed_histories, MAX_NUM_NEIGHBORS, INPUT_T_WITH_CURRENT);
+  const std::vector<float> neighbor_past = preprocess::create_neighbor_agents_past(
+    transformed_histories, MAX_NUM_NEIGHBORS, INPUT_T_WITH_CURRENT);
 
   // Build id -> AgentHistory map for future filling
   const std::vector<AgentHistory> agent_histories = transformed_histories;

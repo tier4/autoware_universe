@@ -14,6 +14,7 @@
 
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 
+#include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
@@ -116,6 +117,22 @@ std::vector<float> create_ego_agent_past(
   }
 
   return ego_agent_past;
+}
+
+std::vector<float> create_neighbor_agents_past(
+  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length)
+{
+  std::vector<float> data;
+  data.reserve(histories.size() * time_length * AGENT_STATE_DIM);
+
+  for (const auto & history : histories) {
+    const auto history_array = history.as_array();
+    data.insert(data.end(), history_array.begin(), history_array.end());
+  }
+
+  data.resize(max_num_agent * time_length * AGENT_STATE_DIM, 0.0f);
+
+  return data;
 }
 
 std::vector<float> create_sampled_trajectories(const double temperature)

@@ -510,7 +510,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   }
   // Agent data on ego reference frame
   {
-    const auto neighbor_agents_past = flatten_histories_to_vector(
+    const auto neighbor_agents_past = preprocess::create_neighbor_agents_past(
       frame_context.ego_centric_neighbor_histories, MAX_NUM_NEIGHBORS, INPUT_T + 1);
     input_data_map["neighbor_agents_past"] = replicate_for_batch(neighbor_agents_past);
   }

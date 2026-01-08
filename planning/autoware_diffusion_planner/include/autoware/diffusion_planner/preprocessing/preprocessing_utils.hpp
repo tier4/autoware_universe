@@ -27,6 +27,11 @@
 #include <utility>
 #include <vector>
 
+namespace autoware::diffusion_planner
+{
+struct AgentHistory;
+}
+
 namespace autoware::diffusion_planner::preprocess
 {
 
@@ -64,6 +69,20 @@ void normalize_input_data(
 std::vector<float> create_ego_agent_past(
   const std::deque<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
   const Eigen::Matrix4d & map_to_ego_transform);
+
+/**
+ * @brief Creates neighbor agent past trajectory data from agent histories.
+ *
+ * This function flattens the past trajectories of tracked neighbor agents into a single
+ * vector and pads it with zeros if there are fewer agents than max_num_agent.
+ *
+ * @param[in] histories      Vector of agent histories
+ * @param[in] max_num_agent  Maximum number of agents to include
+ * @param[in] time_length    Number of timesteps in each history
+ * @return Vector of floats containing flattened agent histories
+ */
+std::vector<float> create_neighbor_agents_past(
+  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length);
 
 /**
  * @brief Creates random sampled trajectories for diffusion model input.
