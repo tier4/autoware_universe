@@ -34,7 +34,6 @@ protected:
     params_.wheel_base = 2.5;
     params_.min_velocity = 2.0;
     params_.max_steer = 0.5;
-    params_.forgetting_factor = 0.99;
 
     estimator_ = std::make_unique<SteerOffsetEstimator>(params_);
   }
@@ -79,7 +78,6 @@ TEST_F(TestSteerOffsetEstimator, Constructor)
   EXPECT_EQ(estimator_->get_parameters().wheel_base, params_.wheel_base);
   EXPECT_EQ(estimator_->get_parameters().min_velocity, params_.min_velocity);
   EXPECT_EQ(estimator_->get_parameters().max_steer, params_.max_steer);
-  EXPECT_EQ(estimator_->get_parameters().forgetting_factor, params_.forgetting_factor);
 }
 
 TEST_F(TestSteerOffsetEstimator, UpdateWithEmptyPoses)

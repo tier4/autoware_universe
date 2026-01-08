@@ -109,6 +109,8 @@ public:
   tl::expected<SteerOffsetEstimationUpdated, SteerOffsetEstimationNotUpdated> update(
     const std::vector<PoseStamped> & poses, const std::vector<SteeringReport> & steers);
 
+  [[nodiscard]] SteerOffsetEstimatorParameters get_parameters() const { return params_; }
+
 private:
   SteerOffsetEstimatorParameters params_;  ///< Estimator parameters
   double estimated_offset_;                ///< Current estimated offset [rad]
