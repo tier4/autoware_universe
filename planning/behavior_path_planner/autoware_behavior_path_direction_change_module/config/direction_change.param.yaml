@@ -1,0 +1,24 @@
+/**:
+  ros__parameters:
+    direction_change:
+      # Cusp detection parameters
+      cusp_detection_distance_threshold: 10.0  # [m] Distance threshold to detect approaching cusp
+      cusp_detection_angle_threshold_deg: 90.0  # [deg] Angle threshold to detect cusp point
+      cusp_approach_speed: 2.0  # [m/s] Speed limit when approaching cusp
+      cusp_stop_distance: 1.0  # [m] Distance from cusp to stop
+
+      # Reverse lane following parameters
+      reverse_speed_limit: 2.0  # [m/s] Maximum reverse speed
+      reverse_lookahead_distance: 20.0  # [m] Lookahead distance for reverse following
+      reverse_safety_margin: 0.5  # [m] Safety margin for reverse following
+
+      # Path generation parameters
+      path_resolution: 0.1  # [m] Resolution for path generation
+      backward_path_length: 10.0  # [m] Length of backward path segment
+      forward_path_length: 50.0  # [m] Length of forward path segment
+
+      # General parameters
+      enable_cusp_detection: true  # Enable cusp point detection
+      enable_reverse_following: true  # Enable reverse lane following
+      publish_debug_marker: false  # Publish debug markers for visualization
+

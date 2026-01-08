@@ -22,6 +22,7 @@
   <arg name="launch_sampling_planner_module" default="true"/>
   <arg name="launch_side_shift_module" default="true"/>
   <arg name="launch_bidirectional_traffic_module" default="true"/>
+  <arg name="launch_direction_change_module" default="true"/>
 
   <arg name="launch_crosswalk_module" default="true"/>
   <arg name="launch_walkway_module" default="true"/>
@@ -96,6 +97,11 @@
     name="behavior_path_planner_launch_modules"
     value="$(eval &quot;'$(var behavior_path_planner_launch_modules)' + 'autoware::behavior_path_planner::ExternalRequestLaneChangeLeftModuleManager, '&quot;)"
     if="$(var launch_external_request_lane_change_left_module)"
+  />
+    <let
+    name="behavior_path_planner_launch_modules"
+    value="$(eval &quot;'$(var behavior_path_planner_launch_modules)' + 'autoware::behavior_path_planner::DirectionChangeModuleManager, '&quot;)"
+    if="$(var launch_direction_change_module)"
   />
   <let
     name="behavior_path_planner_launch_modules"
@@ -259,6 +265,7 @@
         <param from="$(var behavior_path_planner_lane_change_module_param_path)"/>
         <param from="$(var behavior_path_planner_goal_planner_module_param_path)"/>
         <param from="$(var behavior_path_planner_start_planner_module_param_path)"/>
+        <param from="$(var behavior_path_planner_direction_change_module_param_path)"/>
         <param from="$(var behavior_path_planner_sampling_planner_module_param_path)"/>
         <param from="$(var behavior_path_planner_drivable_area_expansion_param_path)"/>
         <param from="$(var behavior_path_planner_scene_module_manager_param_path)"/>
