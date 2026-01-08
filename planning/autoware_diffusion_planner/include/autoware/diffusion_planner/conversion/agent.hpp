@@ -25,7 +25,6 @@
 #include <autoware_perception_msgs/msg/detail/tracked_objects__struct.hpp>
 #include <autoware_perception_msgs/msg/tracked_object.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
-#include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 
 #include <algorithm>
@@ -67,9 +66,7 @@ struct AgentState
   [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array() const noexcept;
 
   rclcpp::Time timestamp;
-  geometry_msgs::msg::Point position;
-  double cos_yaw{0.0};
-  double sin_yaw{0.0};
+  Eigen::Matrix4d pose{Eigen::Matrix4d::Identity()};
   AgentLabel label{AgentLabel::VEHICLE};
   std::string object_id;
   const TrackedObject original_info;

@@ -15,6 +15,9 @@
 #include "autoware/diffusion_planner/conversion/agent.hpp"
 
 #include "autoware/diffusion_planner/dimensions.hpp"
+#include "autoware/diffusion_planner/utils/utils.hpp"
+
+#include <geometry_msgs/msg/point.hpp>
 
 #include <algorithm>
 #include <string>
@@ -57,37 +60,25 @@ bool is_unknown_object(const TrackedObject & object)
 }  // namespace
 
 AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timestamp)
-: timestamp(timestamp), original_info(object)
+: timestamp(timestamp), pose(Eigen::Matrix4d::Identity()), original_info(object)
 {
-  position = object.kinematics.pose_with_covariance.pose.position;
-  const float yaw =
-    autoware_utils_geometry::get_rpy(object.kinematics.pose_with_covariance.pose.orientation).z;
-  cos_yaw = std::cos(yaw);
-  sin_yaw = std::sin(yaw);
+  pose = utils::pose_to_matrix4f(object.kinematics.pose_with_covariance.pose);
   label = get_model_label(object);
   object_id = autoware_utils_uuid::to_hex_string(object.object_id);
 }
 
 void AgentState::apply_transform(const Eigen::Matrix4d & transform)
 {
-  Eigen::Vector4d pos_vec(position.x, position.y, position.z, 1.0);
-  Eigen::Vector4d transformed_pos = transform * pos_vec;
-  position.x = transformed_pos.x();
-  position.y = transformed_pos.y();
-  position.z = transformed_pos.z();
-
-  Eigen::Vector4d dir_vec(cos_yaw, sin_yaw, 0.0, 0.0);
-  Eigen::Vector4d transformed_dir = transform * dir_vec;
-  cos_yaw = transformed_dir.x();
-  sin_yaw = transformed_dir.y();
+  pose = transform * pose;
 }
 
 // Return the state attribute as an array.
 [[nodiscard]] std::array<float, AGENT_STATE_DIM> AgentState::as_array() const noexcept
 {
+  const auto [cos_yaw, sin_yaw] = utils::rotation_matrix_to_cos_sin(pose.block<3, 3>(0, 0));
   return {
-    static_cast<float>(position.x),
-    static_cast<float>(position.y),
+    static_cast<float>(pose(0, 3)),  // position x
+    static_cast<float>(pose(1, 3)),  // position y
     cos_yaw,
     sin_yaw,
     0.0f,  // velocity x: always 0 because we do not use it
@@ -140,17 +131,13 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
     history.apply_transform(transform);
   }
 
-  geometry_msgs::msg::Point position;
-  position.x = 0.0;
-  position.y = 0.0;
-  position.z = 0.0;
-
-  std::sort(
-    histories.begin(), histories.end(),
-    [&position](const AgentHistory & a, const AgentHistory & b) {
-      return autoware_utils_geometry::calc_distance2d(position, a.get_latest_state().position) <
-             autoware_utils_geometry::calc_distance2d(position, b.get_latest_state().position);
-    });
+  std::sort(histories.begin(), histories.end(), [](const AgentHistory & a, const AgentHistory & b) {
+    const double ax = a.get_latest_state().pose(0, 3);
+    const double ay = a.get_latest_state().pose(1, 3);
+    const double bx = b.get_latest_state().pose(0, 3);
+    const double by = b.get_latest_state().pose(1, 3);
+    return (ax * ax + ay * ay) < (bx * bx + by * by);
+  });
   if (histories.size() > max_num_agent) {
     histories.erase(
       histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent), histories.end());

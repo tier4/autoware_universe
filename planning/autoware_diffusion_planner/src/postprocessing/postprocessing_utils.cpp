@@ -146,9 +146,9 @@ PredictedObjects create_predicted_objects(
       neighbor_poses.push_back(pose_in_map);
     }
 
-    const double base_x = ego_centric_histories.at(neighbor_id).get_latest_state().position.x;
-    const double base_y = ego_centric_histories.at(neighbor_id).get_latest_state().position.y;
-    const double base_z = ego_centric_histories.at(neighbor_id).get_latest_state().position.z;
+    const double base_x = ego_centric_histories.at(neighbor_id).get_latest_state().pose(0, 3);
+    const double base_y = ego_centric_histories.at(neighbor_id).get_latest_state().pose(1, 3);
+    const double base_z = ego_centric_histories.at(neighbor_id).get_latest_state().pose(2, 3);
     constexpr int64_t velocity_smoothing_window = 1;
     constexpr bool enable_force_stop = false;  // Don't force stop for neighbors
     constexpr double stopping_threshold = 0.0;
