@@ -1807,9 +1807,10 @@ std::optional<BehaviorModuleOutput> GoalPlannerModule::planPullOverOutputAsCandi
     context_data, {pull_over_path.start_pose(), pull_over_path.modified_goal_pose()}, {start, end});
   set_longitudinal_planning_factor(output.path);
 
-  if (context_data.is_stable_safe_path) {
+  if (context_data.is_stable_safe_path || is_safety_check_override_by_rtc_) {
     clearWaitingApproval();
   }
+
   return output;
 }
 
