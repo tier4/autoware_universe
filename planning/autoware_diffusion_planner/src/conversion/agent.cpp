@@ -64,7 +64,6 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
     autoware_utils_geometry::get_rpy(object.kinematics.pose_with_covariance.pose.orientation).z;
   cos_yaw = std::cos(yaw);
   sin_yaw = std::sin(yaw);
-  velocity = object.kinematics.twist_with_covariance.twist.linear;
   label = get_model_label(object);
   object_id = autoware_utils_uuid::to_hex_string(object.object_id);
 }
@@ -81,10 +80,6 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
   Eigen::Vector4d transformed_dir = transform * dir_vec;
   cos_yaw = transformed_dir.x();
   sin_yaw = transformed_dir.y();
-
-  const double velocity_norm = std::hypot(velocity.x, velocity.y);
-  velocity.x = velocity_norm * cos_yaw;
-  velocity.y = velocity_norm * sin_yaw;
 }
 
 // Return the state attribute as an array.
@@ -95,8 +90,8 @@ void AgentState::apply_transform(const Eigen::Matrix4d & transform)
     static_cast<float>(position.y),
     cos_yaw,
     sin_yaw,
-    static_cast<float>(velocity.x),
-    static_cast<float>(velocity.y),
+    0.0f,  // velocity x: always 0 because we do not use it
+    0.0f,  // velocity y: always 0 because we do not use it
     static_cast<float>(original_info.shape.dimensions.y),  // width
     static_cast<float>(original_info.shape.dimensions.x),  // length
     static_cast<float>(label == AgentLabel::VEHICLE),

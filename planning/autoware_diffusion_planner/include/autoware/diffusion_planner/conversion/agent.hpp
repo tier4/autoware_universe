@@ -70,7 +70,6 @@ struct AgentState
   geometry_msgs::msg::Point position;
   double cos_yaw{0.0};
   double sin_yaw{0.0};
-  geometry_msgs::msg::Vector3 velocity;
   AgentLabel label{AgentLabel::VEHICLE};
   std::string object_id;
   const TrackedObject original_info;
