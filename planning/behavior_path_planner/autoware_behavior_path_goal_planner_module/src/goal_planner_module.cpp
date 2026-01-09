@@ -1384,7 +1384,7 @@ void GoalPlannerModule::setOutput(
   }
 
   const auto & pull_over_path = selected_pull_over_path_with_velocity_opt.value();
-  if (!context_data.is_stable_safe_path && isActivated()) {
+  if (!context_data.is_stable_safe_path && isActivated() && !is_safety_check_override_by_rtc_) {
     // situation : not safe against dynamic objects after approval
     // insert stop point in current path if ego is able to stop with acceleration and jerk
     // constraints
