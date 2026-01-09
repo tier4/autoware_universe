@@ -478,15 +478,17 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   path_generator_->setAccelerationHalfLife(acceleration_exponential_half_life_);
 
   // subscribers
-  sub_objects_ = this->create_subscription<TrackedObjects>(
-    "~/input/objects", 1,
+  sub_objects_ = agnocast::create_subscription<TrackedObjects>(
+    this, "~/input/objects", rclcpp::QoS{1},
     std::bind(&MapBasedPredictionNode::objectsCallback, this, std::placeholders::_1));
-  sub_map_ = this->create_subscription<LaneletMapBin>(
-    "/vector_map", rclcpp::QoS{1}.transient_local(),
+  sub_map_ = agnocast::create_subscription<LaneletMapBin>(
+    this, "/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&MapBasedPredictionNode::mapCallback, this, std::placeholders::_1));
+  sub_traffic_signals_ =
+    std::make_shared<agnocast::PollingSubscriber<TrafficLightGroupArray>>(this, "/traffic_signals");
 
   // publishers
-  pub_objects_ = this->create_publisher<PredictedObjects>("~/output/objects", rclcpp::QoS{1});
+  pub_objects_ = agnocast::create_publisher<PredictedObjects>(this, "~/output/objects", rclcpp::QoS{1});
 
   // stopwatch
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
@@ -513,8 +515,8 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   // debug time keeper
   if (use_time_keeper) {
     detailed_processing_time_publisher_ =
-      this->create_publisher<autoware_utils::ProcessingTimeDetail>(
-        "~/debug/processing_time_detail_ms", 1);
+      agnocast::create_publisher<autoware_utils::ProcessingTimeDetail>(
+        this, "~/debug/processing_time_detail_ms", rclcpp::QoS{1});
     auto time_keeper = autoware_utils::TimeKeeper(detailed_processing_time_publisher_);
     time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(time_keeper);
     path_generator_->setTimeKeeper(time_keeper_);
@@ -524,7 +526,7 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   // debug marker
   if (use_debug_marker) {
     pub_debug_markers_ =
-      this->create_publisher<visualization_msgs::msg::MarkerArray>("maneuver", rclcpp::QoS{1});
+      agnocast::create_publisher<visualization_msgs::msg::MarkerArray>(this, "maneuver", rclcpp::QoS{1});
   }
   // dynamic reconfigure
   set_param_res_ = this->add_on_set_parameters_callback(
@@ -602,7 +604,8 @@ void MapBasedPredictionNode::updateDiagnostics(
   diagnostics_interface_ptr_->publish(timestamp);
 }
 
-void MapBasedPredictionNode::mapCallback(const LaneletMapBin::ConstSharedPtr msg)
+void MapBasedPredictionNode::mapCallback(
+  const agnocast::ipc_shared_ptr<LaneletMapBin> & msg)
 {
   RCLCPP_DEBUG(get_logger(), "[Map Based Prediction]: Start loading lanelet");
   lanelet_map_ptr_ = std::make_shared<lanelet::LaneletMap>();
@@ -615,13 +618,14 @@ void MapBasedPredictionNode::mapCallback(const LaneletMapBin::ConstSharedPtr msg
 }
 
 void MapBasedPredictionNode::trafficSignalsCallback(
-  const TrafficLightGroupArray::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<const TrafficLightGroupArray> & msg)
 {
   // load traffic signals to the predictor
   predictor_vru_->setTrafficSignal(*msg);
 }
 
-void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPtr in_objects)
+void MapBasedPredictionNode::objectsCallback(
+  const agnocast::ipc_shared_ptr<TrackedObjects> & in_objects)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
@@ -630,7 +634,7 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
   // take traffic_signal
   {
-    const auto msg = sub_traffic_signals_.take_data();
+    const auto msg = sub_traffic_signals_->take_data();
     if (msg) {
       trafficSignalsCallback(msg);
     }
@@ -753,15 +757,20 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 }
 
 void MapBasedPredictionNode::publish(
-  const PredictedObjects & output, const visualization_msgs::msg::MarkerArray & debug_markers) const
+  const PredictedObjects & output, const visualization_msgs::msg::MarkerArray & debug_markers)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  pub_objects_->publish(output);
-  if (published_time_publisher_)
-    published_time_publisher_->publish_if_subscribed(pub_objects_, output.header.stamp);
-  if (pub_debug_markers_) pub_debug_markers_->publish(debug_markers);
+  auto output_msg = pub_objects_->borrow_loaned_message();
+  *output_msg = output;
+  pub_objects_->publish(std::move(output_msg));
+  // Note: PublishedTimePublisher is not compatible with agnocast::Publisher
+  if (pub_debug_markers_) {
+    auto debug_msg = pub_debug_markers_->borrow_loaned_message();
+    *debug_msg = debug_markers;
+    pub_debug_markers_->publish(std::move(debug_msg));
+  }
 }
 
 void MapBasedPredictionNode::updateObjectData(TrackedObject & object)

@@ -4,6 +4,7 @@ project(autoware_map_based_prediction)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(glog REQUIRED)
 find_package(tf2 REQUIRED)
@@ -26,6 +27,14 @@ target_link_libraries(map_based_prediction_node
   glog::glog
   tf2::tf2
   tf2_geometry_msgs::tf2_geometry_msgs
+)
+
+target_include_directories(map_based_prediction_node PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(map_based_prediction_node
+  agnocastlib
 )
 
 rclcpp_components_register_node(map_based_prediction_node

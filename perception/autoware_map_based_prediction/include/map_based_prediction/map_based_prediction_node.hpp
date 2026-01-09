@@ -19,10 +19,10 @@
 #include "map_based_prediction/path_generator.hpp"
 #include "map_based_prediction/predictor_vru.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/ros/transform_listener.hpp>
 #include <autoware_utils/ros/update_param.hpp>
@@ -83,12 +83,11 @@ public:
 
 private:
   // ROS Publisher and Subscriber
-  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_markers_;
-  rclcpp::Subscription<TrackedObjects>::SharedPtr sub_objects_;
-  rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
-  autoware_utils::InterProcessPollingSubscriber<TrafficLightGroupArray> sub_traffic_signals_{
-    this, "/traffic_signals"};
+  agnocast::Publisher<PredictedObjects>::SharedPtr pub_objects_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_markers_;
+  agnocast::Subscription<TrackedObjects>::SharedPtr sub_objects_;
+  agnocast::Subscription<LaneletMapBin>::SharedPtr sub_map_;
+  agnocast::PollingSubscriber<TrafficLightGroupArray>::SharedPtr sub_traffic_signals_;
 
   // debug publisher
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
@@ -166,9 +165,10 @@ private:
 
   ////// Member Functions
   // Node callbacks
-  void mapCallback(const LaneletMapBin::ConstSharedPtr msg);
-  void trafficSignalsCallback(const TrafficLightGroupArray::ConstSharedPtr msg);
-  void objectsCallback(const TrackedObjects::ConstSharedPtr in_objects);
+  void mapCallback(const agnocast::ipc_shared_ptr<LaneletMapBin> & msg);
+  void trafficSignalsCallback(
+    const agnocast::ipc_shared_ptr<const TrafficLightGroupArray> & msg);
+  void objectsCallback(const agnocast::ipc_shared_ptr<TrackedObjects> & in_objects);
 
   // Diagnostics proccess
   void updateDiagnostics(const rclcpp::Time & timestamp, double processing_time_ms);
@@ -236,7 +236,7 @@ private:
 
   ////// Debugger
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
+  agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
     detailed_processing_time_publisher_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
   visualization_msgs::msg::Marker getDebugMarker(
@@ -245,7 +245,7 @@ private:
   //// Node functions
   void publish(
     const PredictedObjects & output,
-    const visualization_msgs::msg::MarkerArray & debug_markers) const;
+    const visualization_msgs::msg::MarkerArray & debug_markers);
 
   // NOTE: This function is copied from the motion_velocity_smoother package.
   // TODO(someone): Consolidate functions and move them to a common

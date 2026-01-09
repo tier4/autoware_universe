@@ -7,11 +7,14 @@
   <arg name="output_topic" default="objects"/>
   <arg name="input_topic" default="/perception/object_recognition/tracking/objects"/>
 
-  <node pkg="autoware_map_based_prediction" exec="map_based_prediction" name="map_based_prediction" output="both">
-    <param from="$(var param_path)"/>
-    <remap from="/vector_map" to="$(var vector_map_topic)"/>
-    <remap from="/traffic_signals" to="$(var traffic_signals_topic)"/>
-    <remap from="~/output/objects" to="$(var output_topic)"/>
-    <remap from="~/input/objects" to="$(var input_topic)"/>
-  </node>
+  <node_container pkg="agnocastlib" exec="agnocast_component_container" name="map_based_prediction_container" namespace="" output="both">
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so"/>
+    <composable_node pkg="autoware_map_based_prediction" plugin="autoware::map_based_prediction::MapBasedPredictionNode" name="map_based_prediction" namespace="">
+      <param from="$(var param_path)"/>
+      <remap from="/vector_map" to="$(var vector_map_topic)"/>
+      <remap from="/traffic_signals" to="$(var traffic_signals_topic)"/>
+      <remap from="~/output/objects" to="$(var output_topic)"/>
+      <remap from="~/input/objects" to="$(var input_topic)"/>
+    </composable_node>
+  </node_container>
 </launch>
