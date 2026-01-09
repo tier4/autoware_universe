@@ -15,13 +15,12 @@
 #ifndef AUTOWARE__STEER_OFFSET_ESTIMATOR__STEER_OFFSET_ESTIMATOR_HPP_
 #define AUTOWARE__STEER_OFFSET_ESTIMATOR__STEER_OFFSET_ESTIMATOR_HPP_
 
+#include <rclcpp/rclcpp/time.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
-
-#include <rclcpp/rclcpp/time.hpp>
 
 #include <deque>
 #include <optional>
@@ -119,16 +118,21 @@ private:
   double estimated_offset_;                ///< Current estimated offset [rad]
   double covariance_;                      ///< Current estimation covariance
 
-  void update_steering_buffer(
-    const std::vector<SteeringReport> & steers);
+  geometry_msgs::msg::Twist calculate_twist(const std::vector<PoseStamped> & poses);
+
+  void update_steering_buffer(const std::vector<SteeringReport> & steers);
 
   [[nodiscard]] std::optional<double> get_steering_at_timestamp(
     const rclcpp::Time & timestamp) const;
 
+  SteerOffsetEstimationUpdated estimate_offset(
+    const double velocity, const double angular_velocity, const double steering_angle);
+
   std::optional<geometry_msgs::msg::PoseStamped> previous_pose_;
   std::deque<autoware_vehicle_msgs::msg::SteeringReport::SharedPtr> steering_buffer_;
 
-  static constexpr double max_steering_buffer_s = 1.0;  ///< Max buffer time for steering reports [s]
+  static constexpr double max_steering_buffer_s =
+    1.0;  ///< Max buffer time for steering reports [s]
 
 #ifdef ENABLE_PLOTLY
   plotly::Figure figure_;
