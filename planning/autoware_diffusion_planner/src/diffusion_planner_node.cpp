@@ -133,7 +133,7 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<int64_t>("velocity_smoothing_window", 8);
   params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
   params_.turn_indicator_keep_offset =
-    this->declare_parameter<float>("turn_indicator_keep_offset", -1.5f);
+    this->declare_parameter<float>("turn_indicator_keep_offset", -1.25f);
   params_.turn_indicator_hold_duration =
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);

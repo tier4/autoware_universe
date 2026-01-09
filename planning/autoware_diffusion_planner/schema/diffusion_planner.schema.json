@@ -86,7 +86,7 @@
         },
         "turn_indicator_keep_offset": {
           "type": "number",
-          "default": -1.5,
+          "default": -1.25,
           "description": "Offset to add to the KEEP turn indicator logit for bias adjustment"
         },
         "turn_indicator_hold_duration": {
