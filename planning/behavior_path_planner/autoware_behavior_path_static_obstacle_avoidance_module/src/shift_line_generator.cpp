@@ -180,6 +180,9 @@ AvoidOutlines ShiftLineGenerator::generateAvoidOutline(
     // prepare distance is not enough. unavoidable.
     if (avoidance_distance < 1e-3) {
       object.info = ObjectInfo::INSUFFICIENT_LONGITUDINAL_DISTANCE;
+      if (helper_->getEgoSpeed() < 0.05) {
+        return std::make_pair(desire_shift_length, (object.longitudinal - constant_distance));
+      }
       return std::nullopt;
     }
 
@@ -203,6 +206,9 @@ AvoidOutlines ShiftLineGenerator::generateAvoidOutline(
     if (!isBestEffort(parameters_->policy_deceleration)) {
       if (avoidance_distance < helper_->getMinAvoidanceDistance(avoiding_shift) + LON_DIST_BUFFER) {
         object.info = ObjectInfo::INSUFFICIENT_LONGITUDINAL_DISTANCE;
+        if (helper_->getEgoSpeed() < 0.05) {
+          return std::make_pair(desire_shift_length, (object.longitudinal - constant_distance));
+        }
         return std::nullopt;
       } else {
         object.info = ObjectInfo::NEED_DECELERATION;
@@ -226,6 +232,9 @@ AvoidOutlines ShiftLineGenerator::generateAvoidOutline(
     if (
       avoidance_distance <
       helper_->getMinAvoidanceDistance(feasible_shift_length) + LON_DIST_BUFFER) {
+      if (helper_->getEgoSpeed() < 0.05) {
+        return std::make_pair(desire_shift_length, (object.longitudinal - constant_distance));
+      }
       object.info = ObjectInfo::INSUFFICIENT_LONGITUDINAL_DISTANCE;
       return std::nullopt;
     }
