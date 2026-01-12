@@ -74,7 +74,8 @@ TurnIndicatorsCommand TurnIndicatorManager::evaluate(
   const size_t max_idx = std::distance(
     probabilities.begin(), std::max_element(probabilities.begin(), probabilities.end()));
   const bool keep_selected = (max_idx == TURN_INDICATOR_OUTPUT_KEEP);
-  const uint8_t predicted_command = keep_selected ? prev_report : static_cast<uint8_t>(max_idx);
+  const uint8_t predicted_command =
+    keep_selected ? static_cast<uint8_t>(prev_report) : static_cast<uint8_t>(max_idx);
   command_msg.command = predicted_command;
 
   if (!keep_selected) {
