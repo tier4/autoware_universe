@@ -61,7 +61,7 @@ TurnIndicatorsCommand TurnIndicatorManager::evaluate(
     *std::max_element(turn_indicator_logit.begin(), turn_indicator_logit.end());
 
   std::vector<float> probabilities(turn_indicator_logit.size());
-  float sum = 0.0001f;
+  float sum = 0.0001f;  // small constant to avoid division by zero
   for (size_t i = 0; i < turn_indicator_logit.size(); ++i) {
     probabilities[i] = std::exp(turn_indicator_logit[i] - max_logit);
     sum += probabilities[i];
