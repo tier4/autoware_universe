@@ -75,6 +75,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   set_up_params();
   turn_indicator_manager_.set_hold_duration(
     rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration));
+  turn_indicator_manager_.set_keep_offset(params_.turn_indicator_keep_offset);
   utils::check_weight_version(params_.args_path);
   normalization_map_ = utils::load_normalization_stats(params_.args_path);
 
@@ -172,6 +173,7 @@ SetParametersResult DiffusionPlanner::on_parameter(
     params_ = temp_params;
     turn_indicator_manager_.set_hold_duration(
       rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration));
+    turn_indicator_manager_.set_keep_offset(params_.turn_indicator_keep_offset);
   }
 
   {
@@ -994,8 +996,8 @@ void DiffusionPlanner::on_timer()
   const int64_t prev_report = turn_indicators_history_.empty()
                                 ? TurnIndicatorsReport::DISABLE
                                 : turn_indicators_history_.back().report;
-  const auto turn_indicator_command = turn_indicator_manager_.evaluate(
-    turn_indicator_logit, frame_time, prev_report, params_.turn_indicator_keep_offset);
+  const auto turn_indicator_command =
+    turn_indicator_manager_.evaluate(turn_indicator_logit, frame_time, prev_report);
   pub_turn_indicators_->publish(turn_indicator_command);
 
   // Publish diagnostics

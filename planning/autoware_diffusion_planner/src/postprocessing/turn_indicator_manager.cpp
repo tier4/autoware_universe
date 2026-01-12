@@ -20,8 +20,9 @@
 
 namespace autoware::diffusion_planner::postprocess
 {
-TurnIndicatorManager::TurnIndicatorManager(const rclcpp::Duration & hold_duration)
-: hold_duration_(hold_duration)
+TurnIndicatorManager::TurnIndicatorManager(
+  const rclcpp::Duration & hold_duration, const float keep_offset)
+: hold_duration_(hold_duration), keep_offset_(keep_offset)
 {
 }
 
@@ -30,9 +31,13 @@ void TurnIndicatorManager::set_hold_duration(const rclcpp::Duration & hold_durat
   hold_duration_ = hold_duration;
 }
 
+void TurnIndicatorManager::set_keep_offset(const float keep_offset)
+{
+  keep_offset_ = keep_offset;
+}
+
 TurnIndicatorsCommand TurnIndicatorManager::evaluate(
-  std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp, const int64_t prev_report,
-  const float keep_offset)
+  std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp, const int64_t prev_report)
 {
   TurnIndicatorsCommand command_msg;
   command_msg.stamp = stamp;
@@ -50,7 +55,7 @@ TurnIndicatorsCommand TurnIndicatorManager::evaluate(
     }
   }
 
-  turn_indicator_logit[TURN_INDICATOR_OUTPUT_KEEP] += keep_offset;
+  turn_indicator_logit[TURN_INDICATOR_OUTPUT_KEEP] += keep_offset_;
 
   const float max_logit =
     *std::max_element(turn_indicator_logit.begin(), turn_indicator_logit.end());
