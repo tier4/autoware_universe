@@ -52,7 +52,7 @@ public:
    * @return TurnIndicatorsCommand with the selected command and stamp.
    */
   TurnIndicatorsCommand evaluate(
-    std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp, int64_t prev_report);
+    std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp, const int64_t prev_report);
 
   /**
    * @brief Updates the hold duration for the last non-keep command.
