@@ -107,7 +107,6 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
       test/ego_test.cpp
       test/lane_segments_test.cpp
       test/pre_processing_utils_test.cpp
-      test/fixed_queue_test.cpp
       test/postprocessing_utils_test.cpp
       test/utils_test.cpp
       test/marker_utils_test.cpp

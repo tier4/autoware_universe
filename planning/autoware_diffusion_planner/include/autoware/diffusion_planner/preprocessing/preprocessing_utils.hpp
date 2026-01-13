@@ -15,13 +15,12 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__PREPROCESSING_UTILS_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__PREPROCESSING_UTILS_HPP_
 
-#include <Eigen/Core>
-
 #include "autoware/diffusion_planner/conversion/agent.hpp"
 
-// #include <geometry_msgs/msg/pose.hpp>
-#include <nav_msgs/msg/odometry.hpp>
+#include <Eigen/Core>
 #include <rclcpp/time.hpp>
+
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <cassert>
 #include <deque>
