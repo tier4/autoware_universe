@@ -119,6 +119,12 @@ std::optional<double> SteerOffsetEstimator::get_steering_at_timestamp(
 {
   if (steering_buffer_.empty()) return std::nullopt;
 
+  // ensure latest steering info is not too old
+  constexpr double eps = 1e-3;
+  if ((timestamp - rclcpp::Time(steering_buffer_.back()->stamp)).seconds() > eps) {
+    return std::nullopt;
+  }
+
   const auto upper = std::find_if(
     steering_buffer_.begin(), steering_buffer_.end(),
     [&timestamp](const autoware_vehicle_msgs::msg::SteeringReport::SharedPtr & steer_ptr) {
@@ -157,8 +163,8 @@ SteerOffsetEstimationUpdated SteerOffsetEstimator::estimate_offset(
 
   // 3) Measurement update: compute denominator with PRIOR covariance
   //    denom = R + phi^2 * P_prior
-  double denom = params_.measurement_noise_covariance + phi * phi * P_prior;
-  if (denom < params_.denominator_floor) denom = params_.denominator_floor;  // numerical safety
+  const double denom =
+    std::max(params_.measurement_noise_covariance + phi * phi * P_prior, params_.denominator_floor);
 
   // 4) Kalman-like gain using PRIOR covariance
   const double K = (P_prior * phi) / denom;  // NOLINT
@@ -169,8 +175,8 @@ SteerOffsetEstimationUpdated SteerOffsetEstimator::estimate_offset(
 
   // 6) Covariance update (scalar Joseph form)
   //    P_k = P_prior - (P_prior * phi^2 * P_prior) / denom = (1 - K*phi) * P_prior
-  double P_new = P_prior - (P_prior * phi * phi * P_prior) / denom;  // NOLINT
-  if (P_new < params_.covariance_floor) P_new = params_.covariance_floor;
+  const double P_new =  // NOLINT
+    std::max(P_prior - (P_prior * phi * phi * P_prior) / denom, params_.covariance_floor);
   covariance_ = P_new;
 
   SteerOffsetEstimationUpdated updated_result;
