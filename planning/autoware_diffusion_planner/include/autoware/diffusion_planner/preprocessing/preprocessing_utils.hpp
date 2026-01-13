@@ -29,11 +29,6 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::diffusion_planner
-{
-struct AgentHistory;
-}
-
 namespace autoware::diffusion_planner::preprocess
 {
 
