@@ -132,7 +132,6 @@ void DiffusionPlanner::set_up_params()
   params_.temperature_list = this->declare_parameter<std::vector<double>>("temperature", {0.0});
   params_.velocity_smoothing_window =
     this->declare_parameter<int64_t>("velocity_smoothing_window", 8);
-  params_.shift_x = this->declare_parameter<bool>("shift_x", false);
   params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
   params_.turn_indicator_keep_offset =
     this->declare_parameter<float>("turn_indicator_keep_offset", -1.25f);
@@ -165,7 +164,6 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<std::vector<double>>(parameters, "temperature", temp_params.temperature_list);
     update_param<int64_t>(
       parameters, "velocity_smoothing_window", temp_params.velocity_smoothing_window);
-    update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     update_param<double>(parameters, "stopping_threshold", temp_params.stopping_threshold);
     update_param<float>(
       parameters, "turn_indicator_keep_offset", temp_params.turn_indicator_keep_offset);

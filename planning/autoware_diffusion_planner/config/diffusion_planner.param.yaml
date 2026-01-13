@@ -9,7 +9,6 @@
     predict_neighbor_trajectory: true
     traffic_light_group_msg_timeout_seconds: 0.2
     batch_size: 1
-    shift_x: false
     temperature: [0.0]
     velocity_smoothing_window: 8
     stopping_threshold: 0.3

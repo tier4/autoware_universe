@@ -127,7 +127,6 @@ struct DiffusionPlannerParams
   int batch_size;
   std::vector<double> temperature_list;
   int64_t velocity_smoothing_window;
-  bool shift_x;
   double stopping_threshold;
   float turn_indicator_keep_offset;
   double turn_indicator_hold_duration;
