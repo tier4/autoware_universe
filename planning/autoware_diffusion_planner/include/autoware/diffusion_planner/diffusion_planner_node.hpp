@@ -17,6 +17,7 @@
 
 #include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
+#include "autoware/diffusion_planner/postprocessing/turn_indicator_manager.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
 #include "autoware/diffusion_planner/utils/arg_reader.hpp"
@@ -108,7 +109,8 @@ struct FrameContext
   nav_msgs::msg::Odometry ego_kinematic_state;
   geometry_msgs::msg::AccelWithCovarianceStamped ego_acceleration;
   Eigen::Matrix4d ego_to_map_transform;
-  AgentData ego_centric_neighbor_agent_data;
+  std::vector<AgentHistory> ego_centric_neighbor_histories;
+  rclcpp::Time frame_time;
 };
 
 struct DiffusionPlannerParams
@@ -127,6 +129,9 @@ struct DiffusionPlannerParams
   int64_t velocity_smoothing_window;
   bool shift_x;
   double stopping_threshold;
+  float turn_indicator_keep_offset;
+  double turn_indicator_hold_duration;
+  bool shift_x;
 };
 struct DiffusionPlannerDebugParams
 {
@@ -218,7 +223,8 @@ private:
    * @param ego_to_map_transform Transform from ego to map frame for visualization.
    */
   void publish_debug_markers(
-    const InputDataMap & input_data_map, const Eigen::Matrix4d & ego_to_map_transform) const;
+    const InputDataMap & input_data_map, const Eigen::Matrix4d & ego_to_map_transform,
+    const rclcpp::Time & timestamp) const;
 
   /**
    * @brief Publish model predictions.
@@ -226,7 +232,8 @@ private:
    * @param frame_context Context of the current frame.
    */
   void publish_predictions(
-    const std::vector<float> & predictions, const FrameContext & frame_context) const;
+    const std::vector<float> & predictions, const FrameContext & frame_context,
+    const rclcpp::Time & timestamp) const;
 
   /**
    * @brief Run inference on input data output is stored on member output_d_.
@@ -293,9 +300,9 @@ private:
   cudaStream_t stream_{nullptr};
 
   // history data
-  std::deque<Pose> ego_history_;
+  std::deque<nav_msgs::msg::Odometry> ego_history_;
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
-  std::optional<AgentData> agent_data_{std::nullopt};
+  AgentData agent_data_;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
 
   // Node parameters
@@ -344,6 +351,8 @@ private:
   VehicleInfo vehicle_info_;
 
   std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
+  postprocess::TurnIndicatorManager turn_indicator_manager_{
+    rclcpp::Duration::from_seconds(0.0), 0.0f};
 };
 
 }  // namespace autoware::diffusion_planner
