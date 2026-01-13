@@ -146,15 +146,13 @@ std::vector<float> create_ego_agent_past(
 
   size_t odom_index = 0;
   for (size_t timestep_idx = 0; timestep_idx < num_timesteps; ++timestep_idx) {
-    const auto target_time = target_time_for_timestep(frame_time, timestep_idx, num_timesteps);
     if (odom_msgs.empty()) {
-      continue;
+      break;
     }
 
-    if (odom_index >= odom_msgs.size()) {
-      odom_index = odom_msgs.size() - 1;
-    }
+    const auto target_time = target_time_for_timestep(frame_time, timestep_idx, num_timesteps);
 
+    // Advance odom_index to the correct position
     while (odom_index + 1 < odom_msgs.size()) {
       const rclcpp::Time curr_time(odom_msgs[odom_index].header.stamp);
       const rclcpp::Time next_time(odom_msgs[odom_index + 1].header.stamp);
@@ -208,19 +206,16 @@ std::vector<float> create_neighbor_agents_past(
   const size_t agent_count = std::min(histories.size(), max_num_agent);
   for (size_t agent_idx = 0; agent_idx < agent_count; ++agent_idx) {
     const auto & history = histories[agent_idx];
+    if (history.size() == 0) {
+      continue;
+    }
     const size_t base_idx = agent_idx * num_timesteps * AGENT_STATE_DIM;
 
     size_t history_index = 0;
     for (size_t timestep_idx = 0; timestep_idx < num_timesteps; ++timestep_idx) {
       const auto target_time = target_time_for_timestep(frame_time, timestep_idx, num_timesteps);
-      if (history.size() == 0) {
-        continue;
-      }
 
-      if (history_index >= history.size()) {
-        history_index = history.size() - 1;
-      }
-
+      // Advance history_index to the correct position
       while (history_index + 1 < history.size()) {
         const auto & curr_time = history.at(history_index).timestamp;
         const auto & next_time = history.at(history_index + 1).timestamp;
