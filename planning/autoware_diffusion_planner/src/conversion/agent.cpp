@@ -109,11 +109,11 @@ void AgentData::update_histories(const TrackedObjects & objects, const bool igno
 {
   const rclcpp::Time objects_timestamp(objects.header.stamp);
   std::vector<std::string> found_ids;
-  for (auto object : objects.objects) {
+  for (const TrackedObject & object : objects.objects) {
     if (ignore_unknown_agents && is_unknown_object(object)) {
       continue;
     }
-    auto object_id = autoware_utils_uuid::to_hex_string(object.object_id);
+    const std::string object_id = autoware_utils_uuid::to_hex_string(object.object_id);
     auto it = histories_map_.find(object_id);
     if (it != histories_map_.end()) {
       it->second.update(object, objects_timestamp);

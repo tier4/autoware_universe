@@ -17,9 +17,9 @@
 
 #include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
+#include "autoware/diffusion_planner/postprocessing/turn_indicator_manager.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
-#include "autoware/diffusion_planner/postprocessing/turn_indicator_manager.hpp"
 #include "autoware/diffusion_planner/utils/arg_reader.hpp"
 
 #include <Eigen/Dense>
@@ -127,10 +127,10 @@ struct DiffusionPlannerParams
   int batch_size;
   std::vector<double> temperature_list;
   int64_t velocity_smoothing_window;
-  bool shift_x;
   double stopping_threshold;
   float turn_indicator_keep_offset;
   double turn_indicator_hold_duration;
+  bool shift_x;
 };
 struct DiffusionPlannerDebugParams
 {
@@ -351,7 +351,7 @@ private:
 
   std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
   postprocess::TurnIndicatorManager turn_indicator_manager_{
-    rclcpp::Duration::from_seconds(0.0)};
+    rclcpp::Duration::from_seconds(0.0), 0.0f};
 };
 
 }  // namespace autoware::diffusion_planner

@@ -75,7 +75,8 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_EmptyAgentData)
   const auto agent_poses = postprocess::parse_predictions(prediction);
   constexpr int64_t batch_idx = 0;
   auto result = postprocess::create_predicted_objects(
-    agent_poses, agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), NEIGHBOR_SHAPE[1]),
+    agent_poses,
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), NEIGHBOR_SHAPE[1]),
     stamp, transform, batch_idx);
 
   EXPECT_EQ(result.objects.size(), 0);
@@ -90,7 +91,7 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_MorePredictionsTh
   std::vector<float> prediction(
     OUTPUT_SHAPE[0] * OUTPUT_SHAPE[1] * OUTPUT_SHAPE[2] * OUTPUT_SHAPE[3], 1.0f);
 
-  // Create only 2 tracked objects
+  // Create only 2 tracked objects (same ID)
   TrackedObjects objects;
   objects.header.stamp = rclcpp::Time(0);
   objects.objects.push_back(tracked_object_);
@@ -104,11 +105,11 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_MorePredictionsTh
   const auto agent_poses = postprocess::parse_predictions(prediction);
   constexpr int64_t batch_idx = 0;
   auto result = postprocess::create_predicted_objects(
-    agent_poses, agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), NEIGHBOR_SHAPE[1]),
+    agent_poses,
+    agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), NEIGHBOR_SHAPE[1]),
     stamp, transform, batch_idx);
 
-  // Should only create predictions for available objects (2)
-  EXPECT_EQ(result.objects.size(), 2);
+  EXPECT_EQ(result.objects.size(), 1);
 }
 
 }  // namespace autoware::diffusion_planner::test

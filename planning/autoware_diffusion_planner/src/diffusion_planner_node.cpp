@@ -75,6 +75,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   set_up_params();
   turn_indicator_manager_.set_hold_duration(
     rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration));
+  turn_indicator_manager_.set_keep_offset(params_.turn_indicator_keep_offset);
   utils::check_weight_version(params_.args_path);
   normalization_map_ = utils::load_normalization_stats(params_.args_path);
 
@@ -131,12 +132,12 @@ void DiffusionPlanner::set_up_params()
   params_.temperature_list = this->declare_parameter<std::vector<double>>("temperature", {0.0});
   params_.velocity_smoothing_window =
     this->declare_parameter<int64_t>("velocity_smoothing_window", 8);
-  params_.shift_x = this->declare_parameter<bool>("shift_x", false);
   params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
   params_.turn_indicator_keep_offset =
-    this->declare_parameter<float>("turn_indicator_keep_offset", -1.5f);
+    this->declare_parameter<float>("turn_indicator_keep_offset", -1.25f);
   params_.turn_indicator_hold_duration =
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
+  params_.shift_x = this->declare_parameter<bool>("shift_x", false);
 
   // debug params
   debug_params_.publish_debug_map =
@@ -163,15 +164,16 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<std::vector<double>>(parameters, "temperature", temp_params.temperature_list);
     update_param<int64_t>(
       parameters, "velocity_smoothing_window", temp_params.velocity_smoothing_window);
-    update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     update_param<double>(parameters, "stopping_threshold", temp_params.stopping_threshold);
     update_param<float>(
       parameters, "turn_indicator_keep_offset", temp_params.turn_indicator_keep_offset);
     update_param<double>(
       parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
+    update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     params_ = temp_params;
     turn_indicator_manager_.set_hold_duration(
       rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration));
+    turn_indicator_manager_.set_keep_offset(params_.turn_indicator_keep_offset);
   }
 
   {
@@ -994,8 +996,8 @@ void DiffusionPlanner::on_timer()
   const int64_t prev_report = turn_indicators_history_.empty()
                                 ? TurnIndicatorsReport::DISABLE
                                 : turn_indicators_history_.back().report;
-  const auto turn_indicator_command = turn_indicator_manager_.evaluate(
-    turn_indicator_logit, frame_time, prev_report, params_.turn_indicator_keep_offset);
+  const auto turn_indicator_command =
+    turn_indicator_manager_.evaluate(turn_indicator_logit, frame_time, prev_report);
   pub_turn_indicators_->publish(turn_indicator_command);
 
   // Publish diagnostics

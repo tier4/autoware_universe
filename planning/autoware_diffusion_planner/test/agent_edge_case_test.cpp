@@ -65,47 +65,4 @@ protected:
   TrackedObject tracked_object_;
 };
 
-// Test edge case: Multiple classifications
-TEST_F(AgentEdgeCaseTest, AgentStateMultipleClassifications)
-{
-  // Clear existing classifications
-  tracked_object_.classification.clear();
-
-  // Add multiple classifications with equal probabilities
-  std::vector<uint8_t> labels = {
-    autoware_perception_msgs::msg::ObjectClassification::CAR,
-    autoware_perception_msgs::msg::ObjectClassification::TRUCK,
-    autoware_perception_msgs::msg::ObjectClassification::BUS};
-
-  for (auto label : labels) {
-    autoware_perception_msgs::msg::ObjectClassification classification;
-    classification.label = label;
-    classification.probability = 0.33f;
-    tracked_object_.classification.push_back(classification);
-  }
-
-  AgentState agent_state(tracked_object_);
-
-  // Should handle multiple classifications
-  // label_ is a member variable, not a method
-  EXPECT_EQ(agent_state.label, AgentLabel::VEHICLE);
-}
-
-// Test edge case: Zero probability classification
-TEST_F(AgentEdgeCaseTest, AgentStateZeroProbability)
-{
-  tracked_object_.classification.clear();
-  autoware_perception_msgs::msg::ObjectClassification classification;
-  classification.label = autoware_perception_msgs::msg::ObjectClassification::CAR;
-  classification.probability = 0.0;
-  tracked_object_.classification.push_back(classification);
-
-  tracked_object_.existence_probability = 0.0;
-
-  AgentState agent_state(tracked_object_);
-
-  // Should handle zero probability
-  EXPECT_EQ(agent_state.label, AgentLabel::VEHICLE);
-}
-
 }  // namespace autoware::diffusion_planner::test

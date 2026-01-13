@@ -81,7 +81,7 @@ struct AgentState
  */
 struct AgentHistory
 {
-  AgentHistory(const size_t max_size) : max_size_(max_size) {}
+  explicit AgentHistory(const size_t max_size) : max_size_(max_size) {}
 
   void fill(const AgentState & state)
   {
