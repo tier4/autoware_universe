@@ -17,7 +17,7 @@
 
 #include <Eigen/Dense>
 
-#include "nav_msgs/msg/odometry.hpp"
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <string>
 #include <unordered_map>
@@ -51,6 +51,14 @@ bool check_input_map(const std::unordered_map<std::string, std::vector<float>> &
  * @return A 4x4 transformation matrix representing the pose.
  */
 Eigen::Matrix4d pose_to_matrix4f(const geometry_msgs::msg::Pose & pose);
+
+/**
+ * @brief Converts a 4x4 transformation matrix to a geometry_msgs::msg::Pose.
+ *
+ * @param mat A 4x4 transformation matrix representing the pose.
+ * @return A pose containing position and orientation information.
+ */
+geometry_msgs::msg::Pose matrix4d_to_pose(const Eigen::Matrix4d & mat);
 
 /**
  * @brief Extracts yaw angle from rotation matrix and converts to cos/sin representation.

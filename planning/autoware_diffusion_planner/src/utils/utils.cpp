@@ -95,6 +95,23 @@ Eigen::Matrix4d pose_to_matrix4f(const geometry_msgs::msg::Pose & pose)
   return pose_matrix;
 }
 
+geometry_msgs::msg::Pose matrix4d_to_pose(const Eigen::Matrix4d & mat)
+{
+  geometry_msgs::msg::Pose pose;
+  pose.position.x = mat(0, 3);
+  pose.position.y = mat(1, 3);
+  pose.position.z = mat(2, 3);
+
+  const Eigen::Matrix3d rot = mat.block<3, 3>(0, 0);
+  const Eigen::Quaterniond q(rot);
+  pose.orientation.x = q.x();
+  pose.orientation.y = q.y();
+  pose.orientation.z = q.z();
+  pose.orientation.w = q.w();
+
+  return pose;
+}
+
 std::pair<float, float> rotation_matrix_to_cos_sin(const Eigen::Matrix3d & rotation_matrix)
 {
   // Extract yaw angle from rotation matrix and convert to cos/sin
