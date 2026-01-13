@@ -125,15 +125,21 @@ std::vector<float> create_neighbor_agents_past(
   const rclcpp::Time & frame_time)
 {
   (void)frame_time;
-  std::vector<float> data;
-  data.reserve(max_num_agent * num_timesteps * AGENT_STATE_DIM);
+  const size_t total_size = max_num_agent * num_timesteps * AGENT_STATE_DIM;
+  std::vector<float> data(total_size, 0.0f);
 
-  for (const auto & history : histories) {
+  const size_t agent_count = std::min(histories.size(), max_num_agent);
+  for (size_t agent_idx = 0; agent_idx < agent_count; ++agent_idx) {
+    const auto & history = histories[agent_idx];
     const auto history_array = history.as_array();
-    data.insert(data.end(), history_array.begin(), history_array.end());
-  }
+    const size_t base_idx = agent_idx * num_timesteps * AGENT_STATE_DIM;
+    const size_t max_agent_size = num_timesteps * AGENT_STATE_DIM;
+    const size_t copy_size = std::min(history_array.size(), max_agent_size);
 
-  data.resize(max_num_agent * num_timesteps * AGENT_STATE_DIM, 0.0f);
+    for (size_t i = 0; i < copy_size; ++i) {
+      data[base_idx + i] = history_array[i];
+    }
+  }
 
   return data;
 }
