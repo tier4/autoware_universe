@@ -36,7 +36,6 @@
 #include <iostream>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -105,6 +104,9 @@ struct AgentHistory
     }
     return output;
   }
+
+  size_t size() const { return queue_.size(); }
+  const AgentState & at(const size_t index) const { return queue_.at(index); }
 
   [[nodiscard]] const AgentState & get_latest_state() const { return queue_.back(); }
 

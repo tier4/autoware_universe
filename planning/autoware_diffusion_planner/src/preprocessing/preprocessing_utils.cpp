@@ -18,7 +18,11 @@
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
+#include <Eigen/Geometry>
+#include <autoware/universe_utils/geometry/geometry.hpp>
+
 #include <algorithm>
+#include <array>
 #include <deque>
 #include <limits>
 #include <random>
@@ -28,6 +32,59 @@
 
 namespace autoware::diffusion_planner::preprocess
 {
+namespace
+{
+rclcpp::Time target_time_for_timestep(
+  const rclcpp::Time & frame_time, size_t timestep_idx, size_t num_timesteps)
+{
+  const double offset_sec =
+    static_cast<double>(num_timesteps - 1 - timestep_idx) / PLANNING_FREQUENCY;
+  return frame_time - rclcpp::Duration::from_seconds(offset_sec);
+}
+
+double calc_time_ratio(
+  const rclcpp::Time & start_time, const rclcpp::Time & end_time, const rclcpp::Time & target_time)
+{
+  const auto duration_ns = static_cast<double>((end_time - start_time).nanoseconds());
+  if (duration_ns == 0.0) {
+    return 0.0;
+  }
+  const auto offset_ns = static_cast<double>((target_time - start_time).nanoseconds());
+  return std::clamp(offset_ns / duration_ns, 0.0, 1.0);
+}
+
+std::array<float, AGENT_STATE_DIM> interpolate_agent_state_array(
+  const AgentState & start_state, const AgentState & end_state, const double ratio)
+{
+  const double clamped_ratio = std::clamp(ratio, 0.0, 1.0);
+
+  const auto start_pose = utils::matrix4d_to_pose(start_state.pose);
+  const auto end_pose = utils::matrix4d_to_pose(end_state.pose);
+  const auto interp_pose =
+    autoware::universe_utils::calcInterpolatedPose(start_pose, end_pose, clamped_ratio, false);
+  const Eigen::Quaterniond interp_q(
+    interp_pose.orientation.w, interp_pose.orientation.x, interp_pose.orientation.y,
+    interp_pose.orientation.z);
+  const auto [cos_yaw, sin_yaw] = utils::rotation_matrix_to_cos_sin(interp_q.toRotationMatrix());
+
+  const auto & meta_state = (clamped_ratio <= 0.5) ? start_state : end_state;
+  return {
+    static_cast<float>(interp_pose.position.x),
+    static_cast<float>(interp_pose.position.y),
+    cos_yaw,
+    sin_yaw,
+    0.0f,
+    0.0f,
+    static_cast<float>(meta_state.original_info.shape.dimensions.y),
+    static_cast<float>(meta_state.original_info.shape.dimensions.x),
+    static_cast<float>(meta_state.label == AgentLabel::VEHICLE),
+    static_cast<float>(meta_state.label == AgentLabel::PEDESTRIAN),
+    static_cast<float>(meta_state.label == AgentLabel::BICYCLE),
+  };
+}
+
+}  // namespace
+
 void normalize_input_data(InputDataMap & input_data_map, const NormalizationMap & normalization_map)
 {
   auto normalize_vector = [](
@@ -82,20 +139,42 @@ std::vector<float> create_ego_agent_past(
   const std::deque<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
   const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & frame_time)
 {
-  (void)frame_time;
   const size_t features_per_timestep = 4;  // x, y, cos, sin
   const size_t total_size = num_timesteps * features_per_timestep;
 
   std::vector<float> ego_agent_past(total_size, 0.0f);
 
-  const size_t start_idx =
-    (odom_msgs.size() >= num_timesteps) ? odom_msgs.size() - num_timesteps : 0;
+  size_t odom_index = 0;
+  for (size_t timestep_idx = 0; timestep_idx < num_timesteps; ++timestep_idx) {
+    const auto target_time = target_time_for_timestep(frame_time, timestep_idx, num_timesteps);
+    if (odom_msgs.empty()) {
+      continue;
+    }
 
-  for (size_t i = start_idx; i < odom_msgs.size(); ++i) {
-    const auto & historical_pose = odom_msgs[i].pose.pose;
+    if (odom_index >= odom_msgs.size()) {
+      odom_index = odom_msgs.size() - 1;
+    }
+
+    while (odom_index + 1 < odom_msgs.size()) {
+      const rclcpp::Time curr_time(odom_msgs[odom_index].header.stamp);
+      const rclcpp::Time next_time(odom_msgs[odom_index + 1].header.stamp);
+      if (next_time <= target_time && curr_time <= next_time) {
+        ++odom_index;
+      } else {
+        break;
+      }
+    }
+
+    const size_t start_index = odom_index;
+    const size_t end_index = (start_index + 1 < odom_msgs.size()) ? start_index + 1 : start_index;
+    const rclcpp::Time start_time(odom_msgs[start_index].header.stamp);
+    const rclcpp::Time end_time(odom_msgs[end_index].header.stamp);
+    const double ratio = calc_time_ratio(start_time, end_time, target_time);
+    const auto interpolated_pose = autoware::universe_utils::calcInterpolatedPose(
+      odom_msgs[start_index].pose.pose, odom_msgs[end_index].pose.pose, ratio, false);
 
     // Convert pose to 4x4 matrix
-    const Eigen::Matrix4d pose_map_4x4 = utils::pose_to_matrix4f(historical_pose);
+    const Eigen::Matrix4d pose_map_4x4 = utils::pose_to_matrix4f(interpolated_pose);
 
     // Transform to ego frame
     const Eigen::Matrix4d pose_ego_4x4 = map_to_ego_transform * pose_map_4x4;
@@ -109,7 +188,6 @@ std::vector<float> create_ego_agent_past(
       utils::rotation_matrix_to_cos_sin(pose_ego_4x4.block<3, 3>(0, 0));
 
     // Store in flat array: [timestep, features]
-    const size_t timestep_idx = i - start_idx;
     const size_t base_idx = timestep_idx * features_per_timestep;
     ego_agent_past[base_idx + EGO_AGENT_PAST_IDX_X] = x;
     ego_agent_past[base_idx + EGO_AGENT_PAST_IDX_Y] = y;
@@ -124,20 +202,45 @@ std::vector<float> create_neighbor_agents_past(
   const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t num_timesteps,
   const rclcpp::Time & frame_time)
 {
-  (void)frame_time;
   const size_t total_size = max_num_agent * num_timesteps * AGENT_STATE_DIM;
   std::vector<float> data(total_size, 0.0f);
 
   const size_t agent_count = std::min(histories.size(), max_num_agent);
   for (size_t agent_idx = 0; agent_idx < agent_count; ++agent_idx) {
     const auto & history = histories[agent_idx];
-    const auto history_array = history.as_array();
     const size_t base_idx = agent_idx * num_timesteps * AGENT_STATE_DIM;
-    const size_t max_agent_size = num_timesteps * AGENT_STATE_DIM;
-    const size_t copy_size = std::min(history_array.size(), max_agent_size);
 
-    for (size_t i = 0; i < copy_size; ++i) {
-      data[base_idx + i] = history_array[i];
+    size_t history_index = 0;
+    for (size_t timestep_idx = 0; timestep_idx < num_timesteps; ++timestep_idx) {
+      const auto target_time = target_time_for_timestep(frame_time, timestep_idx, num_timesteps);
+      if (history.size() == 0) {
+        continue;
+      }
+
+      if (history_index >= history.size()) {
+        history_index = history.size() - 1;
+      }
+
+      while (history_index + 1 < history.size()) {
+        const auto & curr_time = history.at(history_index).timestamp;
+        const auto & next_time = history.at(history_index + 1).timestamp;
+        if (next_time <= target_time && curr_time <= next_time) {
+          ++history_index;
+        } else {
+          break;
+        }
+      }
+
+      const size_t start_index = history_index;
+      const size_t end_index = (start_index + 1 < history.size()) ? start_index + 1 : start_index;
+      const auto & start_state = history.at(start_index);
+      const auto & end_state = history.at(end_index);
+      const double ratio = calc_time_ratio(start_state.timestamp, end_state.timestamp, target_time);
+      const auto state_array = interpolate_agent_state_array(start_state, end_state, ratio);
+      const size_t timestep_base_idx = base_idx + timestep_idx * AGENT_STATE_DIM;
+      for (size_t dim_idx = 0; dim_idx < state_array.size(); ++dim_idx) {
+        data[timestep_base_idx + dim_idx] = state_array[dim_idx];
+      }
     }
   }
 
