@@ -16,11 +16,11 @@
 #define AUTOWARE__DIFFUSION_PLANNER__CONVERSION__AGENT_HPP_
 
 #include "Eigen/Dense"
-#include "autoware/diffusion_planner/utils/fixed_queue.hpp"
 
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
+#include <rclcpp/time.hpp>
 
 #include <autoware_perception_msgs/msg/detail/tracked_objects__struct.hpp>
 #include <autoware_perception_msgs/msg/tracked_object.hpp>
@@ -33,6 +33,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -59,12 +60,13 @@ struct AgentState
 {
   AgentState() = default;
 
-  explicit AgentState(const TrackedObject & object);
+  AgentState(const TrackedObject & object, const rclcpp::Time & timestamp);
 
   void apply_transform(const Eigen::Matrix4d & transform);
 
   [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array() const noexcept;
 
+  rclcpp::Time timestamp;
   geometry_msgs::msg::Point position;
   double cos_yaw{0.0};
   double sin_yaw{0.0};
@@ -79,24 +81,24 @@ struct AgentState
  */
 struct AgentHistory
 {
-  AgentHistory(const size_t max_size) : queue_(max_size) {}
+  explicit AgentHistory(const size_t max_size) : max_size_(max_size) {}
 
   void fill(const AgentState & state)
   {
-    while (!queue_.full()) {
-      queue_.push_back(state);
+    while (!full()) {
+      push_back(state);
     }
   }
 
-  void update(const TrackedObject & object)
+  void update(const TrackedObject & object, const rclcpp::Time & timestamp)
   {
-    AgentState state(object);
+    AgentState state(object, timestamp);
     if (
       queue_.size() > 0 &&
       queue_.back().object_id != autoware_utils_uuid::to_hex_string(object.object_id)) {
       throw std::runtime_error("Object ID mismatch");
     }
-    queue_.push_back(state);
+    push_back(state);
   }
 
   [[nodiscard]] std::vector<float> as_array() const noexcept
@@ -120,7 +122,18 @@ struct AgentHistory
   }
 
 private:
-  FixedQueue<AgentState> queue_;
+  void push_back(const AgentState & state)
+  {
+    if (full()) {
+      queue_.pop_front();
+    }
+    queue_.push_back(state);
+  }
+
+  bool full() const { return queue_.size() >= max_size_; }
+
+  std::deque<AgentState> queue_;
+  size_t max_size_{0};
 };
 
 /**

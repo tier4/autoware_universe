@@ -107,7 +107,6 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
       test/ego_test.cpp
       test/lane_segments_test.cpp
       test/pre_processing_utils_test.cpp
-      test/fixed_queue_test.cpp
       test/postprocessing_utils_test.cpp
       test/utils_test.cpp
       test/marker_utils_test.cpp
@@ -121,24 +120,6 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     target_link_libraries(test_diffusion_planner autoware_diffusion_planner_component)
     ament_target_dependencies(test_diffusion_planner
       autoware_test_utils
-    )
-  endif()
-
-  if(BUILD_TOOL)
-    add_executable(data_converter
-      tool/data_converter.cpp
-    )
-    target_include_directories(data_converter PUBLIC
-      ${CUDA_INCLUDE_DIRS}
-      ${autoware_cuda_utils_INCLUDE_DIRS}
-    )
-    target_link_libraries(data_converter
-      autoware_diffusion_planner_component
-      ${NVINFER}
-      ${NVONNXPARSER}
-      ${CUDA_LIBRARIES}
-      ${CUBLAS_LIBRARIES}
-      ${CUDNN_LIBRARY}
     )
   endif()
 endif()
