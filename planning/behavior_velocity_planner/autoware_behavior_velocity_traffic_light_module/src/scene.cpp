@@ -273,9 +273,9 @@ bool TrafficLightModule::isStopSignal()
         logger_, *clock_, 1000,
         "[TrafficLight Debug] Yellow Override Check (Lane %ld): Param=%s, is_yellow=%s, "
         "is_turn_lane_=%s, has_static_arrow_=%s, transition_state=%d",
-        lane_id_, planner_param_.enable_arrow_aware_yellow_passing ? "true" : "false",
-        "true", is_turn_lane_ ? "true" : "false",
-        has_static_arrow_ ? "true" : "false", static_cast<int>(yellow_transition_state_));
+        lane_id_, planner_param_.enable_arrow_aware_yellow_passing ? "true" : "false", "true",
+        is_turn_lane_ ? "true" : "false", has_static_arrow_ ? "true" : "false",
+        static_cast<int>(yellow_transition_state_));
 
       // Check if conditions are met (Green->Yellow, turn lane, static arrow)
       if (
