@@ -145,5 +145,22 @@ private:
   std::unordered_map<std::string, AgentHistory> histories_map_;
 };
 
+// Convert histories to a flattened vector
+inline std::vector<float> flatten_histories_to_vector(
+  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length)
+{
+  std::vector<float> data;
+  data.reserve(histories.size() * time_length * AGENT_STATE_DIM);
+
+  for (const auto & history : histories) {
+    const auto history_array = history.as_array();
+    data.insert(data.end(), history_array.begin(), history_array.end());
+  }
+
+  data.resize(max_num_agent * time_length * AGENT_STATE_DIM, 0.0f);
+
+  return data;
+}
+
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__CONVERSION__AGENT_HPP_
