@@ -186,9 +186,9 @@ PredictedObjects create_predicted_objects(
 
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const Eigen::Vector3d & base_position,
-  const int64_t batch_index, const int64_t velocity_smoothing_window,
-  const bool enable_force_stop, const double stopping_threshold)
+  const rclcpp::Time & stamp, const Eigen::Vector3d & base_position, const int64_t batch_index,
+  const int64_t velocity_smoothing_window, const bool enable_force_stop,
+  const double stopping_threshold)
 {
   const int64_t ego_index = 0;
 

@@ -15,8 +15,8 @@
 #ifndef LANE_SEGMENTS_TEST_HPP_
 #define LANE_SEGMENTS_TEST_HPP_
 
-#include "autoware/diffusion_planner/conversion/lanelet.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
+#include "autoware/diffusion_planner/preprocessing/lanelet.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
 
 #include <Eigen/Dense>

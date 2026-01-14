@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__POSTPROCESSING__POSTPROCESSING_UTILS_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__POSTPROCESSING__POSTPROCESSING_UTILS_HPP_
 
-#include "autoware/diffusion_planner/conversion/agent.hpp"
+#include "autoware/diffusion_planner/preprocessing/agent.hpp"
 
 #include <Eigen/Dense>
 #include <rclcpp/rclcpp.hpp>
@@ -53,7 +53,8 @@ std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
 /**
  * @brief Creates PredictedObjects message from parsed agent poses.
  *
- * @param agent_poses The parsed agent poses in map coordinates [batch][agent][timestep] -> pose matrix.
+ * @param agent_poses The parsed agent poses in map coordinates [batch][agent][timestep] -> pose
+ * matrix.
  * @param ego_centric_histories The agent histories in ego-centric coordinates.
  * @param stamp The ROS time stamp for the message.
  * @param batch_index The batch index to use.
@@ -67,7 +68,8 @@ PredictedObjects create_predicted_objects(
 /**
  * @brief Creates a Trajectory message from parsed agent poses for a specific batch and ego agent.
  *
- * @param agent_poses The parsed agent poses in map coordinates [batch][agent][timestep] -> pose matrix.
+ * @param agent_poses The parsed agent poses in map coordinates [batch][agent][timestep] -> pose
+ * matrix.
  * @param stamp The ROS time stamp for the message.
  * @param base_position The current ego position in map coordinates.
  * @param batch_index The batch index to extract.
@@ -78,9 +80,9 @@ PredictedObjects create_predicted_objects(
  */
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const Eigen::Vector3d & base_position,
-  const int64_t batch_index, const int64_t velocity_smoothing_window,
-  const bool enable_force_stop, const double stopping_threshold);
+  const rclcpp::Time & stamp, const Eigen::Vector3d & base_position, const int64_t batch_index,
+  const int64_t velocity_smoothing_window, const bool enable_force_stop,
+  const double stopping_threshold);
 
 /**
  * @brief Counts valid elements in a tensor with shape (B, len, dim2, dim3).

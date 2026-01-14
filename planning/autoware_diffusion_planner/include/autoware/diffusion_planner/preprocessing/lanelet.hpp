@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__DIFFUSION_PLANNER__CONVERSION__LANELET_HPP_
-#define AUTOWARE__DIFFUSION_PLANNER__CONVERSION__LANELET_HPP_
+#ifndef AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__LANELET_HPP_
+#define AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__LANELET_HPP_
 
 #include <Eigen/Core>
 
@@ -115,4 +115,4 @@ struct LaneletMap
 
 }  // namespace autoware::diffusion_planner
 
-#endif  // AUTOWARE__DIFFUSION_PLANNER__CONVERSION__LANELET_HPP_
+#endif  // AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__LANELET_HPP_

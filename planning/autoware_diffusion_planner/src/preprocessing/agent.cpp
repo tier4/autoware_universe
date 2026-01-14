@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/diffusion_planner/conversion/agent.hpp"
+#include "autoware/diffusion_planner/preprocessing/agent.hpp"
 
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/diffusion_planner/conversion/agent.hpp"
+#include "autoware/diffusion_planner/preprocessing/agent.hpp"
 
 #include <Eigen/Dense>
 #include <autoware_utils/geometry/geometry.hpp>

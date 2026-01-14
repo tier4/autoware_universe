@@ -25,8 +25,11 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <numeric>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace autoware::diffusion_planner
 {
@@ -46,9 +49,9 @@ TensorrtInference::TensorrtInference(
                          SAMPLED_TRAJECTORIES_SHAPE.begin() + 1, SAMPLED_TRAJECTORIES_SHAPE.end(),
                          1L, std::multiplies<>());
   const size_t ego_history_size =
-    batch_size_local * std::accumulate(
-                         EGO_HISTORY_SHAPE.begin() + 1, EGO_HISTORY_SHAPE.end(), 1L,
-                         std::multiplies<>());
+    batch_size_local *
+    std::accumulate(
+      EGO_HISTORY_SHAPE.begin() + 1, EGO_HISTORY_SHAPE.end(), 1L, std::multiplies<>());
   const size_t ego_current_state_size =
     batch_size_local *
     std::accumulate(
@@ -65,16 +68,16 @@ TensorrtInference::TensorrtInference(
     std::accumulate(LANES_SHAPE.begin() + 1, LANES_SHAPE.end(), 1L, std::multiplies<>());
   const size_t lanes_has_speed_limit_size =
     batch_size_local * std::accumulate(
-                         LANES_HAS_SPEED_LIMIT_SHAPE.begin() + 1,
-                         LANES_HAS_SPEED_LIMIT_SHAPE.end(), 1L, std::multiplies<>());
+                         LANES_HAS_SPEED_LIMIT_SHAPE.begin() + 1, LANES_HAS_SPEED_LIMIT_SHAPE.end(),
+                         1L, std::multiplies<>());
   const size_t lanes_speed_limit_size =
     batch_size_local *
     std::accumulate(
       LANES_SPEED_LIMIT_SHAPE.begin() + 1, LANES_SPEED_LIMIT_SHAPE.end(), 1L, std::multiplies<>());
   const size_t route_lanes_size =
-    batch_size_local * std::accumulate(
-                         ROUTE_LANES_SHAPE.begin() + 1, ROUTE_LANES_SHAPE.end(), 1L,
-                         std::multiplies<>());
+    batch_size_local *
+    std::accumulate(
+      ROUTE_LANES_SHAPE.begin() + 1, ROUTE_LANES_SHAPE.end(), 1L, std::multiplies<>());
   const size_t route_lanes_has_speed_limit_size =
     batch_size_local * std::accumulate(
                          ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE.begin() + 1,
@@ -105,8 +108,8 @@ TensorrtInference::TensorrtInference(
     std::accumulate(OUTPUT_SHAPE.begin() + 1, OUTPUT_SHAPE.end(), 1L, std::multiplies<>());
   const size_t turn_indicator_logit_size =
     batch_size_local * std::accumulate(
-                         TURN_INDICATOR_LOGIT_SHAPE.begin() + 1,
-                         TURN_INDICATOR_LOGIT_SHAPE.end(), 1L, std::multiplies<>());
+                         TURN_INDICATOR_LOGIT_SHAPE.begin() + 1, TURN_INDICATOR_LOGIT_SHAPE.end(),
+                         1L, std::multiplies<>());
 
   sampled_trajectories_d_ = autoware::cuda_utils::make_unique<float[]>(sampled_trajectories_size);
   ego_history_d_ = autoware::cuda_utils::make_unique<float[]>(ego_history_size);

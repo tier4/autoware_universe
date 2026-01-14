@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp"
+#include "autoware/diffusion_planner/preprocessing/agent.hpp"
 
 #include <Eigen/Dense>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -71,8 +71,7 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_EmptyAgentData)
   agent_data.update_histories(empty_objects, false);
   rclcpp::Time stamp(123, 0);
 
-  const auto agent_poses =
-    postprocess::parse_predictions(prediction, Eigen::Matrix4d::Identity());
+  const auto agent_poses = postprocess::parse_predictions(prediction, Eigen::Matrix4d::Identity());
   constexpr int64_t batch_idx = 0;
   auto result = postprocess::create_predicted_objects(
     agent_poses,
@@ -101,8 +100,7 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_MorePredictionsTh
   agent_data.update_histories(objects, false);
   rclcpp::Time stamp(123, 0);
 
-  const auto agent_poses =
-    postprocess::parse_predictions(prediction, Eigen::Matrix4d::Identity());
+  const auto agent_poses = postprocess::parse_predictions(prediction, Eigen::Matrix4d::Identity());
   constexpr int64_t batch_idx = 0;
   auto result = postprocess::create_predicted_objects(
     agent_poses,

@@ -71,8 +71,8 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
   # Add your component library
   ament_auto_add_library(autoware_diffusion_planner_component SHARED
     src/diffusion_planner_node.cpp
-    src/conversion/lanelet.cpp
-    src/conversion/agent.cpp
+    src/preprocessing/lanelet.cpp
+    src/preprocessing/agent.cpp
     src/inference/tensorrt_inference.cpp
     src/postprocessing/postprocessing_utils.cpp
     src/preprocessing/lane_segments.cpp

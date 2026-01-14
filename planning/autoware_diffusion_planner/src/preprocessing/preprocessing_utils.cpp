@@ -15,8 +15,8 @@
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 
 #include "autoware/diffusion_planner/constants.hpp"
-#include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
+#include "autoware/diffusion_planner/preprocessing/agent.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
 #include <Eigen/Geometry>
