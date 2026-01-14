@@ -74,6 +74,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     src/postprocessing/postprocessing_utils.cpp
     src/postprocessing/turn_indicator_manager.cpp
     src/preprocessing/agent.cpp
+    src/preprocessing/input_data_builder.cpp
     src/preprocessing/lane_segments.cpp
     src/preprocessing/lanelet.cpp
     src/preprocessing/preprocessing_utils.cpp

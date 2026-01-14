@@ -203,11 +203,11 @@ SetParametersResult DiffusionPlanner::on_parameter(
   return result;
 }
 
-std::optional<FrameContext> DiffusionPlanner::create_frame_context()
+std::optional<preprocess::FrameContext> DiffusionPlanner::create_frame_context()
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   auto temp_route_ptr = route_subscriber_.take_data();
-  const SensorMsgs curr_msgs{
+  const preprocess::SensorMsgs curr_msgs{
     sub_tracked_objects_.take_data(), sub_current_odometry_.take_data(),
     sub_current_acceleration_.take_data(), sub_traffic_signals_.take_data(),
     sub_turn_indicators_.take_data()};
@@ -273,168 +273,11 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
     traffic_light_msg_timeout_s);
 
   // Create frame context
-  const FrameContext frame_context{
+  const preprocess::FrameContext frame_context{
     std::move(curr_msgs), historical_data_, processed_neighbor_histories, ego_to_map_transform,
     map_to_ego_transform};
 
   return frame_context;
-}
-
-InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_context)
-{
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  InputDataMap input_data_map;
-
-  // random sample trajectories
-  {
-    for (int64_t b = 0; b < params_.batch_size; b++) {
-      const std::vector<float> sampled_trajectories =
-        preprocess::create_sampled_trajectories(params_.temperature_list[b]);
-      input_data_map["sampled_trajectories"].insert(
-        input_data_map["sampled_trajectories"].end(), sampled_trajectories.begin(),
-        sampled_trajectories.end());
-    }
-  }
-
-  Odometry kinematic_state = *(frame_context.sensor_msgs.ego_kinematic_states.back());
-  if (params_.shift_x) {
-    kinematic_state.pose.pose =
-      utils::shift_x(kinematic_state.pose.pose, vehicle_size_.wheel_base_m / 2.0);
-  }
-  const geometry_msgs::msg::Pose & pose_center = kinematic_state.pose.pose;
-  const rclcpp::Time frame_time(kinematic_state.header.stamp);
-  const Eigen::Matrix4d & map_to_ego_transform = frame_context.map_to_ego_transform;
-
-  // Ego history
-  {
-    const std::vector<float> single_ego_agent_past = preprocess::create_ego_agent_past(
-      frame_context.historical_data.ego_history, EGO_HISTORY_SHAPE[1], map_to_ego_transform,
-      frame_time);
-    input_data_map["ego_agent_past"] = replicate_for_batch(single_ego_agent_past);
-  }
-  // Ego state
-  {
-    const std::vector<float> ego_current_state = preprocess::create_ego_current_state(
-      kinematic_state, *(frame_context.sensor_msgs.ego_accelerations.back()),
-      static_cast<float>(vehicle_size_.wheel_base_m));
-    input_data_map["ego_current_state"] = replicate_for_batch(ego_current_state);
-  }
-  // Agent data on ego reference frame
-  {
-    const auto neighbor_agents_past = preprocess::create_neighbor_agents_past(
-      frame_context.ego_centric_neighbor_histories, MAX_NUM_NEIGHBORS, INPUT_T + 1, frame_time);
-    input_data_map["neighbor_agents_past"] = replicate_for_batch(neighbor_agents_past);
-  }
-  // Static objects
-  // TODO(Daniel): add static objects
-  {
-    std::vector<int64_t> single_batch_shape(
-      STATIC_OBJECTS_SHAPE.begin() + 1, STATIC_OBJECTS_SHAPE.end());
-    auto static_objects_data = utils::create_float_data(single_batch_shape, 0.0f);
-    input_data_map["static_objects"] = replicate_for_batch(static_objects_data);
-  }
-
-  // map data on ego reference frame
-  {
-    const std::vector<int64_t> segment_indices = lane_segment_context_->select_lane_segment_indices(
-      map_to_ego_transform, pose_center.position, NUM_SEGMENTS_IN_LANE);
-    const auto [lanes, lanes_speed_limit] = lane_segment_context_->create_tensor_data_from_indices(
-      map_to_ego_transform, frame_context.historical_data.traffic_light_id_map, segment_indices,
-      NUM_SEGMENTS_IN_LANE);
-    input_data_map["lanes"] = replicate_for_batch(lanes);
-    input_data_map["lanes_speed_limit"] = replicate_for_batch(lanes_speed_limit);
-  }
-
-  // route data on ego reference frame
-  {
-    const std::vector<int64_t> segment_indices =
-      lane_segment_context_->select_route_segment_indices(
-        *route_ptr_, pose_center.position, NUM_SEGMENTS_IN_ROUTE);
-    const auto [route_lanes, route_lanes_speed_limit] =
-      lane_segment_context_->create_tensor_data_from_indices(
-        map_to_ego_transform, frame_context.historical_data.traffic_light_id_map, segment_indices,
-        NUM_SEGMENTS_IN_ROUTE);
-    input_data_map["route_lanes"] = replicate_for_batch(route_lanes);
-    input_data_map["route_lanes_speed_limit"] = replicate_for_batch(route_lanes_speed_limit);
-  }
-
-  // polygons
-  {
-    const auto & polygons =
-      lane_segment_context_->create_polygon_tensor(map_to_ego_transform, pose_center.position);
-    input_data_map["polygons"] = replicate_for_batch(polygons);
-  }
-
-  // line strings
-  {
-    const auto & line_strings =
-      lane_segment_context_->create_line_string_tensor(map_to_ego_transform, pose_center.position);
-    input_data_map["line_strings"] = replicate_for_batch(line_strings);
-  }
-
-  // goal pose
-  {
-    const auto & goal_pose = route_ptr_->goal_pose;
-
-    // Convert goal pose to 4x4 transformation matrix
-    const Eigen::Matrix4d goal_pose_map_4x4 = utils::pose_to_matrix4f(goal_pose);
-
-    // Transform to ego frame
-    const Eigen::Matrix4d goal_pose_ego_4x4 = map_to_ego_transform * goal_pose_map_4x4;
-
-    // Extract relative position
-    const float x = goal_pose_ego_4x4(0, 3);
-    const float y = goal_pose_ego_4x4(1, 3);
-
-    // Extract heading as cos/sin from rotation matrix
-    const auto [cos_yaw, sin_yaw] =
-      utils::rotation_matrix_to_cos_sin(goal_pose_ego_4x4.block<3, 3>(0, 0));
-
-    std::vector<float> single_goal_pose = {x, y, cos_yaw, sin_yaw};
-    input_data_map["goal_pose"] = replicate_for_batch(single_goal_pose);
-  }
-
-  // ego shape
-  {
-    const float wheel_base = static_cast<float>(vehicle_size_.wheel_base_m);
-    const float vehicle_length = static_cast<float>(vehicle_size_.length_m);
-    const float vehicle_width = static_cast<float>(vehicle_size_.width_m);
-    std::vector<float> single_ego_shape = {wheel_base, vehicle_length, vehicle_width};
-    input_data_map["ego_shape"] = replicate_for_batch(single_ego_shape);
-  }
-
-  // turn indicators
-  {
-    // copy from back to front, and use the front value for padding if not enough history
-    std::vector<float> single_turn_indicators(INPUT_T + 1, 0.0f);
-    for (int64_t t = 0; t < INPUT_T + 1; ++t) {
-      const int64_t index = std::max(
-        static_cast<int64_t>(frame_context.historical_data.turn_indicators_history.size()) - 1 - t,
-        static_cast<int64_t>(0));
-      single_turn_indicators[INPUT_T - t] =
-        frame_context.historical_data.turn_indicators_history[index].report;
-    }
-    input_data_map["turn_indicators"] = replicate_for_batch(single_turn_indicators);
-  }
-
-  return input_data_map;
-}
-
-std::vector<float> DiffusionPlanner::replicate_for_batch(
-  const std::vector<float> & single_data) const
-{
-  const int batch_size = params_.batch_size;
-  const size_t single_size = single_data.size();
-  const size_t total_size = static_cast<size_t>(batch_size) * single_size;
-
-  std::vector<float> batch_data;
-  batch_data.reserve(total_size);
-
-  for (int i = 0; i < batch_size; ++i) {
-    batch_data.insert(batch_data.end(), single_data.begin(), single_data.end());
-  }
-
-  return batch_data;
 }
 
 void DiffusionPlanner::publish_debug_markers(
@@ -461,7 +304,7 @@ void DiffusionPlanner::publish_debug_markers(
 }
 
 void DiffusionPlanner::publish_predictions(
-  const std::vector<float> & predictions, const FrameContext & frame_context,
+  const std::vector<float> & predictions, const preprocess::FrameContext & frame_context,
   const rclcpp::Time & timestamp) const
 {
   CandidateTrajectories candidate_trajectories;
@@ -542,7 +385,7 @@ void DiffusionPlanner::on_timer()
   }
 
   // Prepare frame context and input data for the model
-  const std::optional<FrameContext> frame_context = create_frame_context();
+  const std::optional<preprocess::FrameContext> frame_context = create_frame_context();
   if (!frame_context) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
@@ -555,7 +398,9 @@ void DiffusionPlanner::on_timer()
 
   const rclcpp::Time frame_time(
     frame_context->sensor_msgs.ego_kinematic_states.back()->header.stamp);
-  InputDataMap input_data_map = create_input_data(*frame_context);
+  InputDataMap input_data_map = preprocess::create_input_data(
+    *frame_context, *lane_segment_context_, route_ptr_, vehicle_size_, params_.temperature_list,
+    params_.batch_size, params_.shift_x);
 
   publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
 

@@ -18,6 +18,7 @@
 #include "autoware/diffusion_planner/inference/tensorrt_inference.hpp"
 #include "autoware/diffusion_planner/postprocessing/turn_indicator_manager.hpp"
 #include "autoware/diffusion_planner/preprocessing/agent.hpp"
+#include "autoware/diffusion_planner/preprocessing/input_data_builder.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "autoware/diffusion_planner/preprocessing/lanelet.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
@@ -26,7 +27,6 @@
 
 #include <Eigen/Dense>
 #include <autoware/lanelet2_utils/conversion.hpp>
-#include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/update_param.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
@@ -90,46 +90,12 @@ using builtin_interfaces::msg::Time;
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Pose;
 using preprocess::InputDataMap;
-using preprocess::TrafficSignalStamped;
 using rcl_interfaces::msg::SetParametersResult;
 using std_msgs::msg::ColorRGBA;
 using unique_identifier_msgs::msg::UUID;
 using utils::NormalizationMap;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
-
-struct SensorMsgs
-{
-  std::vector<TrackedObjects::ConstSharedPtr> tracked_objects;
-  std::vector<Odometry::ConstSharedPtr> ego_kinematic_states;
-  std::vector<AccelWithCovarianceStamped::ConstSharedPtr> ego_accelerations;
-  std::vector<TrafficLightGroupArray::ConstSharedPtr> traffic_signals;
-  std::vector<TurnIndicatorsReport::ConstSharedPtr> turn_indicators;
-};
-
-struct HistoricalData
-{
-  std::deque<nav_msgs::msg::Odometry> ego_history;
-  std::deque<TurnIndicatorsReport> turn_indicators_history;
-  AgentData agent_data;
-  std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map;
-};
-
-struct VehicleSize
-{
-  double wheel_base_m;
-  double length_m;
-  double width_m;
-};
-
-struct FrameContext
-{
-  const SensorMsgs sensor_msgs;
-  const HistoricalData & historical_data;
-  const std::vector<AgentHistory> ego_centric_neighbor_histories;
-  const Eigen::Matrix4d ego_to_map_transform;
-  const Eigen::Matrix4d map_to_ego_transform;
-};
 
 struct DiffusionPlannerParams
 {
@@ -182,7 +148,7 @@ struct DiffusionPlannerDebugParams
  * - publish_debug_markers: Publish visualization markers for debugging.
  * - publish_predictions: Publish model predictions.
  * - on_parameter: Callback for dynamic parameter updates.
- * - create_input_data: Prepare input data for inference.
+ * - preprocess::create_input_data: Prepare input data for inference.
  *
  * @section Internal State
  * @brief
@@ -231,7 +197,7 @@ private:
    * @param frame_context Context of the current frame.
    */
   void publish_predictions(
-    const std::vector<float> & predictions, const FrameContext & frame_context,
+    const std::vector<float> & predictions, const preprocess::FrameContext & frame_context,
     const rclcpp::Time & timestamp) const;
 
   /**
@@ -245,27 +211,12 @@ private:
    * @brief Prepare input data for inference.
    * @return FrameContext containing preprocessed data.
    */
-  std::optional<FrameContext> create_frame_context();
-
-  /**
-   * @brief Build model input tensors from frame context.
-   * @param frame_context Preprocessed frame context.
-   * @return Map of input data for the model.
-   */
-  InputDataMap create_input_data(const FrameContext & frame_context);
-
-  // preprocessing
-  /**
-   * @brief Replicate single sample data for batch processing.
-   * @param single_data Single sample data.
-   * @return Vector replicated for the configured batch size.
-   */
-  std::vector<float> replicate_for_batch(const std::vector<float> & single_data) const;
+  std::optional<preprocess::FrameContext> create_frame_context();
 
   std::unique_ptr<TensorrtInference> tensorrt_inference_{nullptr};
 
   // history data
-  HistoricalData historical_data_;
+  preprocess::HistoricalData historical_data_;
 
   // Node parameters
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
@@ -309,7 +260,7 @@ private:
     vector_map_subscriber_{this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
   rclcpp::Subscription<HADMapBin>::SharedPtr sub_map_;
   UUID generator_uuid_;
-  VehicleSize vehicle_size_;
+  preprocess::VehicleSize vehicle_size_;
 
   std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
   postprocess::TurnIndicatorManager turn_indicator_manager_{
