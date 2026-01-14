@@ -394,7 +394,7 @@ void DiffusionPlanner::load_engine(const std::string & model_path)
 std::optional<FrameContext> DiffusionPlanner::create_frame_context()
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  auto objects = sub_tracked_objects_.take_data();
+  auto vec_objects = sub_tracked_objects_.take_data();
   auto vec_ego_kinematic_state = sub_current_odometry_.take_data();
   auto vec_ego_acceleration = sub_current_acceleration_.take_data();
   auto vec_traffic_signals = sub_traffic_signals_.take_data();
@@ -403,19 +403,13 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
 
   route_ptr_ = (!route_ptr_ || temp_route_ptr) ? temp_route_ptr : route_ptr_;
 
-  TrackedObjects empty_object_list;
-
-  if (params_.ignore_neighbors) {
-    objects = std::make_shared<TrackedObjects>(empty_object_list);
-  }
-
   if (
-    !objects || vec_ego_kinematic_state.empty() || vec_ego_acceleration.empty() || !route_ptr_ ||
-    !turn_indicators_ptr) {
+    vec_objects.empty() || vec_ego_kinematic_state.empty() || vec_ego_acceleration.empty() ||
+    !route_ptr_ || !turn_indicators_ptr) {
     RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "There is no input data. objects: "
-        << (objects ? "true" : "false")
+        << (!vec_objects.empty() ? "true" : "false")
         << ", ego_kinematic_state: " << (!vec_ego_kinematic_state.empty() ? "true" : "false")
         << ", ego_acceleration: " << (!vec_ego_acceleration.empty() ? "true" : "false")
         << ", route: " << (route_ptr_ ? "true" : "false")
@@ -453,7 +447,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   }
 
   // Update neighbor agent data
-  agent_data_.update_histories(*objects, params_.ignore_unknown_neighbors);
+  agent_data_.update_histories(*vec_objects.back(), params_.ignore_unknown_neighbors);
   const auto processed_neighbor_histories =
     agent_data_.transformed_and_trimmed_histories(map_to_ego_transform, NEIGHBOR_SHAPE[1]);
 

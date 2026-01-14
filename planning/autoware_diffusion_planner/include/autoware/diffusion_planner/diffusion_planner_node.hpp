@@ -334,8 +334,8 @@ private:
   autoware_utils::InterProcessPollingSubscriber<
     AccelWithCovarianceStamped, autoware_utils::polling_policy::All>
     sub_current_acceleration_{this, "~/input/acceleration"};
-  autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
-    this, "~/input/tracked_objects"};
+  autoware_utils::InterProcessPollingSubscriber<TrackedObjects, autoware_utils::polling_policy::All>
+    sub_tracked_objects_{this, "~/input/tracked_objects"};
   autoware_utils::InterProcessPollingSubscriber<
     TrafficLightGroupArray, autoware_utils::polling_policy::All>
     sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
