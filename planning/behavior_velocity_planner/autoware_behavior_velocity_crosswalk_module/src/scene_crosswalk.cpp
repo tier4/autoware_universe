@@ -533,7 +533,14 @@ std::optional<geometry_msgs::msg::Pose> CrosswalkModule::calcStopPose(
         p.min_jerk_for_no_stop_decision);
     return strong_brake_dist_opt ? strong_brake_dist_opt.value() : 0.0;
   }();
-  if (p.enable_no_stop_decision && std::max(selected_stop.dist, 0.1) < strong_brake_dist) {
+
+  const bool is_abandon_to_stop =
+    (p.enable_no_stop_decision && std::max(selected_stop.dist, 0.1) < strong_brake_dist);
+  const bool is_abandon_to_stop_for_creeping =
+    (std::max(selected_stop.dist, 0.1) < strong_brake_dist && !previous_stop_pose_.has_value());
+  if (
+    (!isCreepTriggered() && is_abandon_to_stop) ||
+    (isCreepTriggered() && is_abandon_to_stop_for_creeping)) {
     RCLCPP_INFO_THROTTLE(
       logger_, *clock_, 1000,
       "Abandon to stop. "
