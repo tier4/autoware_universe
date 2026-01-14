@@ -15,9 +15,8 @@
 #include "autoware/diffusion_planner/preprocessing/input_data_builder.hpp"
 
 #include "autoware/diffusion_planner/dimensions.hpp"
+#include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
-
-#include <rclcpp/time.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -42,6 +41,40 @@ std::vector<float> replicate_for_batch(const std::vector<float> & single_data, c
   return batch_data;
 }
 }  // namespace
+
+HistoricalData::HistoricalData(
+  bool ignore_unknown_neighbors_param, double traffic_light_group_msg_timeout_seconds_param)
+: ignore_unknown_neighbors(ignore_unknown_neighbors_param),
+  traffic_light_group_msg_timeout_seconds(traffic_light_group_msg_timeout_seconds_param)
+{
+}
+
+void HistoricalData::update_params(
+  bool ignore_unknown_neighbors_param, double traffic_light_group_msg_timeout_seconds_param)
+{
+  ignore_unknown_neighbors = ignore_unknown_neighbors_param;
+  traffic_light_group_msg_timeout_seconds = traffic_light_group_msg_timeout_seconds_param;
+}
+
+void HistoricalData::update_from_sensor_msgs(
+  const SensorMsgs & sensor_msgs, const rclcpp::Time & now)
+{
+  ego_history.push_back(*sensor_msgs.ego_kinematic_states.back());
+  if (ego_history.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
+    ego_history.pop_front();
+  }
+
+  turn_indicators_history.push_back(*sensor_msgs.turn_indicators.back());
+  if (turn_indicators_history.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
+    turn_indicators_history.pop_front();
+  }
+
+  agent_data.update_histories(*sensor_msgs.tracked_objects.back(), ignore_unknown_neighbors);
+
+  preprocess::process_traffic_signals(
+    sensor_msgs.traffic_signals, traffic_light_id_map, now,
+    traffic_light_group_msg_timeout_seconds);
+}
 
 InputDataMap create_input_data(
   const FrameContext & frame_context, const preprocess::LaneSegmentContext & lane_segment_context,
@@ -168,5 +201,4 @@ InputDataMap create_input_data(
 
   return input_data_map;
 }
-
 }  // namespace autoware::diffusion_planner::preprocess

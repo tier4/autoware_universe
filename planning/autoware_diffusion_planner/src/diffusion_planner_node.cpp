@@ -95,6 +95,8 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     vehicle_info.front_overhang_m + vehicle_info.wheel_base_m + vehicle_info.rear_overhang_m;
   vehicle_size_.width_m =
     vehicle_info.left_overhang_m + vehicle_info.wheel_tread_m + vehicle_info.right_overhang_m;
+  historical_data_.update_params(
+    params_.ignore_unknown_neighbors, params_.traffic_light_group_msg_timeout_seconds);
 
   timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
@@ -172,6 +174,8 @@ SetParametersResult DiffusionPlanner::on_parameter(
     const bool model_path_changed = temp_params.model_path != previous_model_path;
     const bool batch_size_changed = temp_params.batch_size != previous_batch_size;
     params_ = temp_params;
+    historical_data_.update_params(
+      params_.ignore_unknown_neighbors, params_.traffic_light_group_msg_timeout_seconds);
     turn_indicator_manager_.set_hold_duration(
       rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration));
     turn_indicator_manager_.set_keep_offset(params_.turn_indicator_keep_offset);
@@ -245,32 +249,10 @@ std::optional<preprocess::FrameContext> DiffusionPlanner::create_frame_context()
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_base_link);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
-  // Update ego history
-  historical_data_.ego_history.push_back(kinematic_state);
-  if (historical_data_.ego_history.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
-    historical_data_.ego_history.pop_front();
-  }
-
-  // Update turn indicators history
-  historical_data_.turn_indicators_history.push_back(*curr_msgs.turn_indicators.back());
-  if (
-    historical_data_.turn_indicators_history.size() >
-    static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
-    historical_data_.turn_indicators_history.pop_front();
-  }
-
-  // Update neighbor agent data
-  historical_data_.agent_data.update_histories(
-    *curr_msgs.tracked_objects.back(), params_.ignore_unknown_neighbors);
+  historical_data_.update_from_sensor_msgs(curr_msgs, kinematic_state.header.stamp);
   const auto processed_neighbor_histories =
     historical_data_.agent_data.transformed_and_trimmed_histories(
       map_to_ego_transform, NEIGHBOR_SHAPE[1]);
-
-  // Update traffic light map
-  const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
-  preprocess::process_traffic_signals(
-    curr_msgs.traffic_signals, historical_data_.traffic_light_id_map, this->now(),
-    traffic_light_msg_timeout_s);
 
   // Create frame context
   const preprocess::FrameContext frame_context{

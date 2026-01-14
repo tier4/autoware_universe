@@ -28,6 +28,7 @@
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <rclcpp/time.hpp>
 
 #include <deque>
 #include <map>
@@ -55,10 +56,20 @@ struct SensorMsgs
 
 struct HistoricalData
 {
+  HistoricalData() = default;
+  HistoricalData(bool ignore_unknown_neighbors, double traffic_light_group_msg_timeout_seconds);
+
+  void update_params(bool ignore_unknown_neighbors, double traffic_light_group_msg_timeout_seconds);
+
+  void update_from_sensor_msgs(
+    const SensorMsgs & sensor_msgs, const rclcpp::Time & now);
+
   std::deque<nav_msgs::msg::Odometry> ego_history;
   std::deque<TurnIndicatorsReport> turn_indicators_history;
   AgentData agent_data;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map;
+  bool ignore_unknown_neighbors{false};
+  double traffic_light_group_msg_timeout_seconds{0.0};
 };
 
 struct VehicleSize
