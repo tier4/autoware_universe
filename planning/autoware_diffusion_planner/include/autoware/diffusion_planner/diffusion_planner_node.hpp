@@ -109,6 +109,15 @@ struct FrameContext
   rclcpp::Time frame_time;
 };
 
+struct SensorMsgs
+{
+  std::vector<TrackedObjects::ConstSharedPtr> tracked_objects;
+  std::vector<Odometry::ConstSharedPtr> ego_kinematic_states;
+  std::vector<AccelWithCovarianceStamped::ConstSharedPtr> ego_accelerations;
+  std::vector<TrafficLightGroupArray::ConstSharedPtr> traffic_signals;
+  std::vector<TurnIndicatorsReport::ConstSharedPtr> turn_indicators;
+};
+
 struct DiffusionPlannerParams
 {
   std::string model_path;

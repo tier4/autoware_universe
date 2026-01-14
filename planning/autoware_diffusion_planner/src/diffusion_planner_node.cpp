@@ -202,35 +202,34 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   auto temp_route_ptr = route_subscriber_.take_data();
-  auto vec_objects = sub_tracked_objects_.take_data();
-  auto vec_ego_kinematic_state = sub_current_odometry_.take_data();
-  auto vec_ego_acceleration = sub_current_acceleration_.take_data();
-  auto vec_traffic_signals = sub_traffic_signals_.take_data();
-  auto vec_turn_indicators_ptr = sub_turn_indicators_.take_data();
+  const SensorMsgs curr_msgs{
+    sub_tracked_objects_.take_data(), sub_current_odometry_.take_data(),
+    sub_current_acceleration_.take_data(), sub_traffic_signals_.take_data(),
+    sub_turn_indicators_.take_data()};
 
   route_ptr_ = (!route_ptr_ || temp_route_ptr) ? temp_route_ptr : route_ptr_;
 
   if (
-    !route_ptr_ || vec_objects.empty() || vec_ego_kinematic_state.empty() ||
-    vec_ego_acceleration.empty() || vec_turn_indicators_ptr.empty()) {
+    !route_ptr_ || curr_msgs.tracked_objects.empty() || curr_msgs.ego_kinematic_states.empty() ||
+    curr_msgs.ego_accelerations.empty() || curr_msgs.turn_indicators.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "There is no input data"
         << ", route: " << (route_ptr_ ? "true" : "false")
-        << ", objects: " << (!vec_objects.empty() ? "true" : "false")
-        << ", ego_kinematic_state: " << (!vec_ego_kinematic_state.empty() ? "true" : "false")
-        << ", ego_acceleration: " << (!vec_ego_acceleration.empty() ? "true" : "false")
-        << ", turn_indicators: " << (!vec_turn_indicators_ptr.empty() ? "true" : "false"));
+        << ", objects: " << (!curr_msgs.tracked_objects.empty() ? "true" : "false")
+        << ", ego_kinematic_state: " << (!curr_msgs.ego_kinematic_states.empty() ? "true" : "false")
+        << ", ego_acceleration: " << (!curr_msgs.ego_accelerations.empty() ? "true" : "false")
+        << ", turn_indicators: " << (!curr_msgs.turn_indicators.empty() ? "true" : "false"));
     return std::nullopt;
   }
 
-  if (vec_traffic_signals.empty()) {
+  if (curr_msgs.traffic_signals.empty()) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "no traffic signal received. traffic light info will not be updated");
   }
 
-  Odometry kinematic_state = *(vec_ego_kinematic_state.back());
+  Odometry kinematic_state = *(curr_msgs.ego_kinematic_states.back());
   if (params_.shift_x) {
     kinematic_state.pose.pose =
       utils::shift_x(kinematic_state.pose.pose, vehicle_info_.wheel_base_m / 2.0);
@@ -248,26 +247,26 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   }
 
   // Update turn indicators history
-  turn_indicators_history_.push_back(*vec_turn_indicators_ptr.back());
+  turn_indicators_history_.push_back(*curr_msgs.turn_indicators.back());
   if (turn_indicators_history_.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
     turn_indicators_history_.pop_front();
   }
 
   // Update neighbor agent data
-  agent_data_.update_histories(*vec_objects.back(), params_.ignore_unknown_neighbors);
+  agent_data_.update_histories(*curr_msgs.tracked_objects.back(), params_.ignore_unknown_neighbors);
   const auto processed_neighbor_histories =
     agent_data_.transformed_and_trimmed_histories(map_to_ego_transform, NEIGHBOR_SHAPE[1]);
 
   // Update traffic light map
   const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
   preprocess::process_traffic_signals(
-    vec_traffic_signals, traffic_light_id_map_, this->now(), traffic_light_msg_timeout_s);
+    curr_msgs.traffic_signals, traffic_light_id_map_, this->now(), traffic_light_msg_timeout_s);
 
   // Create frame context
   const rclcpp::Time frame_time(kinematic_state.header.stamp);
   const FrameContext frame_context{
-    kinematic_state,      *(vec_ego_acceleration.back()), ego_to_map_transform,
-    map_to_ego_transform, processed_neighbor_histories,   frame_time};
+    kinematic_state,      *(curr_msgs.ego_accelerations.back()), ego_to_map_transform,
+    map_to_ego_transform, processed_neighbor_histories,          frame_time};
 
   return frame_context;
 }
