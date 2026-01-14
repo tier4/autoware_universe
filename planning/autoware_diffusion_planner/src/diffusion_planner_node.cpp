@@ -574,7 +574,7 @@ void DiffusionPlanner::on_timer()
     batch_idx);
   diagnostics_inference_->add_key_value("valid_neighbor_count", valid_neighbor_count);
 
-  // normalization of data
+  // Normalize input data
   preprocess::normalize_input_data(input_data_map, normalization_map_);
   if (!utils::check_input_map(input_data_map)) {
     RCLCPP_WARN_THROTTLE(
@@ -585,6 +585,8 @@ void DiffusionPlanner::on_timer()
     diagnostics_inference_->publish(current_time);
     return;
   }
+
+  // Run inference
   const auto inference_result = tensorrt_inference_->infer(input_data_map);
   if (!inference_result.outputs) {
     RCLCPP_WARN_STREAM_THROTTLE(
@@ -596,6 +598,8 @@ void DiffusionPlanner::on_timer()
     return;
   }
   const auto & [predictions, turn_indicator_logit] = inference_result.outputs.value();
+
+  // Publish predictions
   publish_predictions(predictions, *frame_context, frame_time);
 
   // Publish turn indicators
