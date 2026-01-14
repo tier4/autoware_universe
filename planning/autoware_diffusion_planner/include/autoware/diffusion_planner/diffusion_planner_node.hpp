@@ -78,6 +78,7 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::TrackedObjects;
+using autoware_perception_msgs::msg::TrafficLightGroupArray;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
@@ -335,7 +336,7 @@ private:
   autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
     this, "~/input/tracked_objects"};
   autoware_utils::InterProcessPollingSubscriber<
-    autoware_perception_msgs::msg::TrafficLightGroupArray, autoware_utils::polling_policy::All>
+    TrafficLightGroupArray, autoware_utils::polling_policy::All>
     sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
   autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
     this, "~/input/turn_indicators"};
