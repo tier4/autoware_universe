@@ -16,6 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -124,6 +127,34 @@ TEST_F(PreprocessingUtilsTest, HandlesSingleMeanStdForAllCols)
   EXPECT_FLOAT_EQ(input_data_map["f"][1], 1.0f);
   EXPECT_FLOAT_EQ(input_data_map["f"][2], 2.0f);
   EXPECT_FLOAT_EQ(input_data_map["f"][3], 3.0f);
+}
+
+TEST_F(PreprocessingUtilsTest, CreatesEgoCurrentState)
+{
+  nav_msgs::msg::Odometry odometry_msg;
+  geometry_msgs::msg::AccelWithCovarianceStamped acceleration_msg;
+
+  odometry_msg.twist.twist.linear.x = 3.0;
+  odometry_msg.twist.twist.linear.y = 0.0;
+  odometry_msg.twist.twist.angular.z = 0.1;
+
+  acceleration_msg.accel.accel.linear.x = 0.5;
+  acceleration_msg.accel.accel.linear.y = 0.2;
+
+  const auto ego_state =
+    preprocess::create_ego_current_state(odometry_msg, acceleration_msg, 2.5f);
+
+  ASSERT_EQ(ego_state.size(), 10U);
+  EXPECT_FLOAT_EQ(ego_state[0], 0.0f);
+  EXPECT_FLOAT_EQ(ego_state[1], 0.0f);
+  EXPECT_FLOAT_EQ(ego_state[2], 1.0f);
+  EXPECT_FLOAT_EQ(ego_state[3], 0.0f);
+  EXPECT_FLOAT_EQ(ego_state[4], 3.0f);
+  EXPECT_FLOAT_EQ(ego_state[5], 0.0f);
+  EXPECT_FLOAT_EQ(ego_state[6], 0.5f);
+  EXPECT_FLOAT_EQ(ego_state[7], 0.2f);
+  EXPECT_NEAR(ego_state[8], std::atan(0.1 * 2.5 / 3.0), 1e-5);
+  EXPECT_NEAR(ego_state[9], 0.1, 1e-5);
 }
 
 }  // namespace autoware::diffusion_planner::test

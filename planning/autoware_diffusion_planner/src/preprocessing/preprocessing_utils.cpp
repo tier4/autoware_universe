@@ -15,6 +15,7 @@
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 
 #include "autoware/diffusion_planner/conversion/agent.hpp"
+#include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
@@ -34,6 +35,9 @@ namespace autoware::diffusion_planner::preprocess
 {
 namespace
 {
+constexpr float kMaxYawRate = 0.95f;
+constexpr float kMaxSteerAngle = static_cast<float>((2.0 / 3.0) * M_PI);
+
 rclcpp::Time target_time_for_timestep(
   const rclcpp::Time & frame_time, size_t timestep_idx, size_t num_timesteps)
 {
@@ -133,6 +137,33 @@ void normalize_input_data(InputDataMap & input_data_map, const NormalizationMap 
     const auto & [mean, std_dev] = normalization_map.at(key);
     normalize_vector(value, mean, std_dev);
   }
+}
+
+std::vector<float> create_ego_current_state(
+  const nav_msgs::msg::Odometry & kinematic_state_msg,
+  const geometry_msgs::msg::AccelWithCovarianceStamped & acceleration_msg, float wheel_base)
+{
+  const auto & lin = kinematic_state_msg.twist.twist.linear;
+  const auto & ang = kinematic_state_msg.twist.twist.angular;
+
+  float yaw_rate = 0.0f;
+  float steering_angle = 0.0f;
+  const float linear_vel = std::hypot(lin.x, lin.y);
+  if (linear_vel < constants::MOVING_VELOCITY_THRESHOLD_MPS) {
+    yaw_rate = 0.0f;
+    steering_angle = 0.0f;
+  } else {
+    yaw_rate = std::clamp(static_cast<float>(ang.z), -kMaxYawRate, kMaxYawRate);
+    const float raw_steer = std::atan(yaw_rate * wheel_base / std::abs(linear_vel));
+    steering_angle = std::clamp(raw_steer, -kMaxSteerAngle, kMaxSteerAngle);
+  }
+
+  const float vx = static_cast<float>(lin.x);
+  const float vy = static_cast<float>(lin.y);
+  const float ax = static_cast<float>(acceleration_msg.accel.accel.linear.x);
+  const float ay = static_cast<float>(acceleration_msg.accel.accel.linear.y);
+
+  return {0.0f, 0.0f, 1.0f, 0.0f, vx, vy, ax, ay, steering_angle, yaw_rate};
 }
 
 std::vector<float> create_ego_agent_past(

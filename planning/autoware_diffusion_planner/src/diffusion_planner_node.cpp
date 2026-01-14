@@ -16,7 +16,6 @@
 
 #include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/conversion/agent.hpp"
-#include "autoware/diffusion_planner/conversion/ego.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/inference/tensorrt_inference.hpp"
 #include "autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp"
@@ -286,10 +285,10 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   }
   // Ego state
   {
-    EgoState ego_state(
+    const std::vector<float> ego_current_state = preprocess::create_ego_current_state(
       frame_context.ego_kinematic_state, frame_context.ego_acceleration,
       static_cast<float>(vehicle_info_.wheel_base_m));
-    input_data_map["ego_current_state"] = replicate_for_batch(ego_state.as_array());
+    input_data_map["ego_current_state"] = replicate_for_batch(ego_current_state);
   }
   // Agent data on ego reference frame
   {

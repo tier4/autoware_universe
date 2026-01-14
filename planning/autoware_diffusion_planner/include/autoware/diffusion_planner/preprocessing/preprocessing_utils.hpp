@@ -20,6 +20,7 @@
 #include <Eigen/Core>
 #include <rclcpp/time.hpp>
 
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <cassert>
@@ -67,6 +68,21 @@ void normalize_input_data(
 std::vector<float> create_ego_agent_past(
   const std::deque<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
   const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & frame_time);
+
+/**
+ * @brief Creates ego current state vector from kinematic and acceleration messages.
+ *
+ * This function converts current ego kinematics into a flat vector:
+ * [x, y, cos_yaw, sin_yaw, vx, vy, ax, ay, steering_angle, yaw_rate].
+ *
+ * @param[in] kinematic_state_msg Current odometry message.
+ * @param[in] acceleration_msg    Current acceleration message.
+ * @param[in] wheel_base          Vehicle wheel base.
+ * @return Vector of floats containing the ego state.
+ */
+std::vector<float> create_ego_current_state(
+  const nav_msgs::msg::Odometry & kinematic_state_msg,
+  const geometry_msgs::msg::AccelWithCovarianceStamped & acceleration_msg, float wheel_base);
 
 /**
  * @brief Creates neighbor agent past trajectory data from agent histories.

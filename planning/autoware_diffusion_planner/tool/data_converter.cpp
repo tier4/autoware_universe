@@ -14,7 +14,6 @@
 
 #include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/conversion/agent.hpp"
-#include "autoware/diffusion_planner/conversion/ego.hpp"
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
@@ -690,9 +689,8 @@ int main(int argc, char ** argv)
         create_ego_sequence(seq.data_list, i + 1, OUTPUT_T, map2bl);
 
       // Create ego current state
-      const EgoState ego_state(
+      const std::vector<float> ego_current = preprocess::create_ego_current_state(
         seq.data_list[i].kinematic_state, seq.data_list[i].acceleration, 2.79f);
-      const std::vector<float> ego_current = ego_state.as_array();
 
       // Process neighbor agents (both past and future with consistent agent ordering)
       const auto [neighbor_past, neighbor_future] =
