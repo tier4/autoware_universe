@@ -156,14 +156,10 @@ struct DiffusionPlannerDebugParams
  * - set_up_params: Initialize and declare node parameters.
  * - on_timer: Timer callback for periodic processing and publishing.
  * - on_map: Callback for receiving and processing map data.
- * - load_model: Load ONNX model from file.
  * - publish_debug_markers: Publish visualization markers for debugging.
  * - publish_predictions: Publish model predictions.
- * - do_inference: Run inference on input data and return predictions.
  * - on_parameter: Callback for dynamic parameter updates.
  * - create_input_data: Prepare input data for inference.
- * - create_trajectory: Convert predictions to a trajectory in map coordinates.
- * - create_ego_agent_past: Create a representation of the ego agent's past trajectory.
  *
  * @section Internal State
  * @brief
