@@ -45,9 +45,9 @@
 namespace autoware::behavior_velocity_planner
 {
 TrafficLightModule::TrafficLightModule(
-  const int64_t lane_id, const lanelet::TrafficLight & traffic_light_reg_elem,
-  lanelet::ConstLanelet lane, const PlannerParam & planner_param, const rclcpp::Logger logger,
-  const rclcpp::Clock::SharedPtr clock,
+  const int64_t lane_id, const lanelet::TrafficLightConstPtr & traffic_light_reg_elem,
+  lanelet::ConstLanelet lane, const PlannerParam & planner_param, const bool is_turn_lane,
+  const bool has_static_arrow, const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
   const std::function<std::optional<TrafficSignalTimeToRedStamped>(void)> &
     get_rest_time_to_red_signal,
@@ -57,12 +57,16 @@ TrafficLightModule::TrafficLightModule(
   lane_id_(lane_id),
   traffic_light_reg_elem_(traffic_light_reg_elem),
   lane_(lane),
+  is_turn_lane_(is_turn_lane),
+  has_static_arrow_(has_static_arrow),
   state_(State::APPROACH),
   debug_data_(),
   is_prev_state_stop_(false),
   get_rest_time_to_red_signal_(get_rest_time_to_red_signal)
 {
   planner_param_ = planner_param;
+  prev_looking_tl_state_.traffic_light_group_id = 0;
+  yellow_transition_state_ = YellowState::kNotYellow;
 }
 
 bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
@@ -76,7 +80,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
   const auto & self_pose = planner_data_->current_odometry;
 
   // Get lanelet2 stop lines.
-  lanelet::ConstLineString3d lanelet_stop_lines = *(traffic_light_reg_elem_.stopLine());
+  lanelet::ConstLineString3d lanelet_stop_lines = *(traffic_light_reg_elem_->stopLine());
 
   // Calculate stop pose and insert index
   const auto stop_line = calcStopPointAndInsertIndex(
@@ -87,7 +91,7 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
   if (!stop_line.has_value()) {
     RCLCPP_WARN_STREAM_ONCE(
       logger_, "Failed to calculate stop point and insert index for regulatory element id "
-                 << traffic_light_reg_elem_.id());
+                 << traffic_light_reg_elem_->id());
     setSafe(true);
     setDistance(std::numeric_limits<double>::lowest());
     return false;
@@ -117,6 +121,11 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
     // Check if stop is coming.
     const bool is_stop_signal = isStopSignal();
 
+    // Debug: Log the raw output of isStopSignal()
+    RCLCPP_DEBUG_THROTTLE(
+      logger_, *clock_, 1000, "[TrafficLight Debug] Lane %ld: isStopSignal() returned %s", lane_id_,
+      is_stop_signal ? "true (Wants STOP)" : "false (Wants PASS)");
+
     // Use V2I if available
     if (planner_param_.v2i_use_rest_time && !is_stop_signal) {
       bool is_v2i_handled = handleV2I(signed_arc_length_to_stop_point, [&]() {
@@ -143,6 +152,14 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
         : 0.0;
     const bool to_be_stopped =
       is_stop_signal && (is_prev_state_stop_ || time_diff > planner_param_.stop_time_hysteresis);
+
+    // Debug: Log the final decision after hysteresis
+    RCLCPP_DEBUG_THROTTLE(
+      logger_, *clock_, 1000,
+      "[TrafficLight Debug] Lane %ld: Final decision 'to_be_stopped' = %s (is_stop_signal: %s, "
+      "is_prev_state_stop_: %s, time_diff: %.2f)",
+      lane_id_, to_be_stopped ? "true" : "false", is_stop_signal ? "true" : "false",
+      is_prev_state_stop_ ? "true" : "false", time_diff);
 
     // Check if the vehicle is stopped and within a certain distance to the stop line
     if (planner_data_->isVehicleStopped()) {
@@ -198,12 +215,14 @@ bool TrafficLightModule::modifyPathVelocity(PathWithLaneId * path)
 
 bool TrafficLightModule::isStopSignal()
 {
+  // Store previous state before updating
+  prev_looking_tl_state_ = looking_tl_state_;
   updateTrafficSignal();
 
   // If there is no upcoming traffic signal information,
   //   SIMULATION: it will PASS to prevent stopping on the planning simulator
   //   or scenario simulator.
-  //   REAL ENVIRONMENT: it will STOP for safety in cases such that traffic light
+  //   REAL ENVIRONMENT: it will STOP for safety in cases such such as traffic light
   //   recognition is not working properly or the map is incorrect.
   if (!traffic_signal_stamp_) {
     if (planner_data_->is_simulation) {
@@ -215,6 +234,68 @@ bool TrafficLightModule::isStopSignal()
   // Stop if the traffic signal information has timed out
   if (isTrafficSignalTimedOut()) {
     return true;
+  }
+
+  // Check if current state is yellow
+  bool is_yellow_now = false;
+  for (const auto & element : looking_tl_state_.elements) {
+    if (
+      element.color == TrafficSignalElement::AMBER &&
+      (element.status == TrafficSignalElement::SOLID_ON ||
+       element.status == TrafficSignalElement::UNKNOWN))  // Status 0 (UNKNOWN) も許容
+    {
+      is_yellow_now = true;
+      break;
+    }
+  }
+
+  // Override for yellow light on turn lanes with static arrows
+  if (planner_param_.enable_arrow_aware_yellow_passing) {
+    if (is_yellow_now) {
+      // This is a yellow light. Check if this is the *start* of the yellow sequence.
+      if (yellow_transition_state_ == YellowState::kNotYellow) {
+        // This is the first frame of yellow. Determine how it started.
+        bool prev_had_green_circle = false;
+        for (const auto & element : prev_looking_tl_state_.elements) {
+          if (
+            element.shape == TrafficSignalElement::CIRCLE &&
+            element.color == TrafficSignalElement::GREEN) {
+            prev_had_green_circle = true;
+            break;
+          }
+        }
+
+        if (prev_had_green_circle) {
+          yellow_transition_state_ = YellowState::kFromGreen;
+        } else {
+          // If previous state was not Green Circle, assume it was Red or Red+Arrow.
+          // In either case, we must stop.
+          yellow_transition_state_ = YellowState::kFromRedArrow;
+        }
+      }
+
+      // Debug: Log the 4 conditions + transition state
+      RCLCPP_DEBUG_THROTTLE(
+        logger_, *clock_, 1000,
+        "[TrafficLight Debug] Yellow Override Check (Lane %ld): Param=%s, is_yellow=%s, "
+        "is_turn_lane_=%s, has_static_arrow_=%s, transition_state=%d",
+        lane_id_, planner_param_.enable_arrow_aware_yellow_passing ? "true" : "false", "true",
+        is_turn_lane_ ? "true" : "false", has_static_arrow_ ? "true" : "false",
+        static_cast<int>(yellow_transition_state_));
+
+      // Check if conditions are met (Green->Yellow, turn lane, static arrow)
+      if (
+        is_turn_lane_ && has_static_arrow_ && yellow_transition_state_ == YellowState::kFromGreen) {
+        // This is a "Green -> Yellow" sequence. This is the state we *do* want to override (pass).
+        return false;  // Override (Pass)
+      } else {
+        // This is a "Red+Arrow -> Yellow" sequence (or param/map mismatch).
+        // Do not return false. Fall through to normal stop logic.
+      }
+    } else {
+      // Not yellow. Reset the state.
+      yellow_transition_state_ = YellowState::kNotYellow;
+    }
   }
 
   // Check if the current traffic signal state requires stopping
@@ -287,11 +368,11 @@ bool TrafficLightModule::findValidTrafficSignal(TrafficSignalStamped & valid_tra
 {
   // get traffic signal associated with the regulatory element id
   const auto traffic_signal_stamped_opt = planner_data_->getTrafficSignal(
-    traffic_light_reg_elem_.id(), false /* traffic light module does not keep last observation */);
+    traffic_light_reg_elem_->id(), false /* traffic light module does not keep last observation */);
   if (!traffic_signal_stamped_opt) {
     RCLCPP_WARN_STREAM_ONCE(
       logger_, "the traffic signal data associated with regulatory element id "
-                 << traffic_light_reg_elem_.id() << " is not received");
+                 << traffic_light_reg_elem_->id() << " is not received");
     return false;
   }
   valid_traffic_signal = traffic_signal_stamped_opt.value();
