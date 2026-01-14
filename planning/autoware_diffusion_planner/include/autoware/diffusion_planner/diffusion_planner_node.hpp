@@ -312,8 +312,7 @@ private:
 
   // Lanelet map
   LaneletRoute::ConstSharedPtr route_ptr_;
-  std::unique_ptr<preprocess::LaneSegmentContext> lane_segment_context_;
-  bool is_map_loaded_{false};
+  std::unique_ptr<preprocess::LaneSegmentContext> lane_segment_context_{nullptr};
 
   // Node elements
   rclcpp::TimerBase::SharedPtr timer_;
