@@ -47,20 +47,9 @@ std::vector<float> replicate_for_batch(
 InputDataMap create_input_data(
   const FrameContext & frame_context, const preprocess::LaneSegmentContext & lane_segment_context,
   const LaneletRoute::ConstSharedPtr & route_ptr, const VehicleSize & vehicle_size,
-  const std::vector<double> & temperature_list, int batch_size, bool shift_x)
+  int batch_size, bool shift_x)
 {
   InputDataMap input_data_map;
-
-  // random sample trajectories
-  {
-    for (int64_t b = 0; b < batch_size; b++) {
-      const std::vector<float> sampled_trajectories =
-        preprocess::create_sampled_trajectories(temperature_list[b]);
-      input_data_map["sampled_trajectories"].insert(
-        input_data_map["sampled_trajectories"].end(), sampled_trajectories.begin(),
-        sampled_trajectories.end());
-    }
-  }
 
   Odometry kinematic_state = *(frame_context.sensor_msgs.ego_kinematic_states.back());
   if (shift_x) {

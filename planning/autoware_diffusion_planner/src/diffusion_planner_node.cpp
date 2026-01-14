@@ -399,8 +399,20 @@ void DiffusionPlanner::on_timer()
   const rclcpp::Time frame_time(
     frame_context->sensor_msgs.ego_kinematic_states.back()->header.stamp);
   InputDataMap input_data_map = preprocess::create_input_data(
-    *frame_context, *lane_segment_context_, route_ptr_, vehicle_size_, params_.temperature_list,
-    params_.batch_size, params_.shift_x);
+    *frame_context, *lane_segment_context_, route_ptr_, vehicle_size_, params_.batch_size,
+    params_.shift_x);
+
+  // random sample trajectories
+  {
+    auto & sampled_trajectories = input_data_map["sampled_trajectories"];
+    for (int64_t b = 0; b < params_.batch_size; b++) {
+      const std::vector<float> sampled_trajectories_one =
+        preprocess::create_sampled_trajectories(params_.temperature_list[b]);
+      sampled_trajectories.insert(
+        sampled_trajectories.end(), sampled_trajectories_one.begin(),
+        sampled_trajectories_one.end());
+    }
+  }
 
   publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
 

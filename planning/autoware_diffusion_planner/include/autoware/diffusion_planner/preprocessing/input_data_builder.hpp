@@ -80,7 +80,7 @@ struct FrameContext
 InputDataMap create_input_data(
   const FrameContext & frame_context, const preprocess::LaneSegmentContext & lane_segment_context,
   const LaneletRoute::ConstSharedPtr & route_ptr, const VehicleSize & vehicle_size,
-  const std::vector<double> & temperature_list, int batch_size, bool shift_x);
+  int batch_size, bool shift_x);
 
 }  // namespace autoware::diffusion_planner::preprocess
 
