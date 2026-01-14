@@ -36,10 +36,11 @@ using autoware_utils::get_or_declare_parameter;
 IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
 : SceneModuleManagerInterfaceWithRTC(
     node, getModuleName(),
-    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection")),
+    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection"), true),
   occlusion_rtc_interface_(
     &node, "intersection_occlusion",
-    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection_to_occlusion"))
+    getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection_to_occlusion"),
+    true)
 {
   const std::string ns(IntersectionModuleManager::getModuleName());
   auto & ip = intersection_param_;
@@ -66,6 +67,8 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
     ip.common.max_jerk = get_or_declare_parameter<double>(node, ns + ".common.max_jerk");
     ip.common.delay_response_time =
       get_or_declare_parameter<double>(node, ns + ".common.delay_response_time");
+    ip.common.creep_stopline_margin =
+      get_or_declare_parameter<double>(node, ns + ".common.creep_stopline_margin");
   }
 
   // stuck
@@ -379,6 +382,7 @@ void IntersectionModuleManager::launchNewModules(
       occlusion_uuid, true, State::WAITING_FOR_EXECUTION, std::numeric_limits<double>::lowest(),
       std::numeric_limits<double>::lowest(), clock_->now(), false,
       override_occlusion_rtc_auto_mode);
+
     registerModule(std::move(new_module));
   }
 }
@@ -478,6 +482,10 @@ void IntersectionModuleManager::setActivation()
     scene_module->setActivation(rtc_interface_.isActivated(getUUID(scene_module->getModuleId())));
     intersection_module->setOcclusionActivation(
       occlusion_rtc_interface_.isActivated(occlusion_uuid));
+    intersection_module->setIntersectionCreepActivation(
+      rtc_interface_.isCreepTriggered(getUUID(scene_module->getModuleId())));
+    intersection_module->setOcclusionCreepActivation(
+      occlusion_rtc_interface_.isCreepTriggered(occlusion_uuid));
     scene_module->setRTCEnabled(rtc_interface_.isRTCEnabled(getUUID(scene_module->getModuleId())));
   }
 }

@@ -59,6 +59,8 @@ struct IntersectionStopLines
    */
   size_t first_attention_stopline{0};
 
+  size_t creep_stopline{0};
+
   /**
    * occlusion_peeking_stopline is
    * - after `first_attention_stopline` by `peeking_offset` if it is feasible (E)
