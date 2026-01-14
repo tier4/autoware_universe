@@ -73,6 +73,8 @@ struct SteerOffsetEstimatorParameters
   double process_noise_covariance{0.01};      ///< Process noise covariance
   double denominator_floor{1.0e-12};          ///< Denominator floor value
   double covariance_floor{1.0e-12};           ///< Covariance floor value
+  double max_steer_buffer{1.0};               ///< Steering buffer duration [s]
+  double max_pose_lag{1.0};                   ///< Max valid pose age [s]
 };
 
 /**
@@ -154,9 +156,6 @@ private:
 
   std::optional<geometry_msgs::msg::PoseStamped> previous_pose_;
   std::deque<autoware_vehicle_msgs::msg::SteeringReport::SharedPtr> steering_buffer_;
-
-  static constexpr double max_steering_buffer_s =
-    1.0;  ///< Max buffer time for steering reports [s]
 
 #ifdef ENABLE_PLOTLY
   plotly::Figure figure_;

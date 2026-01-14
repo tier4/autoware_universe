@@ -79,21 +79,30 @@ geometry_msgs::msg::Twist SteerOffsetEstimator::calculate_twist(
 {
   geometry_msgs::msg::Twist twist;
 
-  // Determine which poses to use for motion calculation
-  if (!previous_pose_) {
-    // First call - need at least 2 poses to calculate motion
-    if (poses.size() < 2) {
-      previous_pose_ = poses.back();
-      throw std::logic_error("previous_pose has not been set");
-    }
-    // Use first pose as previous, last pose as current
-    twist = utils::calc_twist_from_pose(poses[0], poses.back());
-    previous_pose_ = poses.back();
-  } else {
-    // Subsequent calls - use stored previous pose and current pose
+  // if previous pose is too old, reset value
+  const double dt =
+    previous_pose_.has_value()
+      ? (rclcpp::Time(poses.back().header.stamp) - rclcpp::Time(previous_pose_->header.stamp))
+          .seconds()
+      : 0.0;
+  if (dt > params_.max_pose_lag) previous_pose_ = std::nullopt;
+
+  // If previous pose exists, use with current pose
+  if (previous_pose_) {
     twist = utils::calc_twist_from_pose(previous_pose_.value(), poses.back());
     previous_pose_ = poses.back();
+    return twist;
   }
+
+  // First call - need at least 2 poses to calculate motion
+  if (poses.size() < 2) {
+    previous_pose_ = poses.back();
+    throw std::logic_error("previous_pose has not been set");
+  }
+  // Use first pose as previous, last pose as current
+  twist = utils::calc_twist_from_pose(poses[0], poses.back());
+  previous_pose_ = poses.back();
+
   return twist;
 }
 
@@ -109,7 +118,7 @@ void SteerOffsetEstimator::update_steering_buffer(const std::vector<SteeringRepo
   // Keep buffer size manageable
   while (!steering_buffer_.empty() && (rclcpp::Time(steering_buffer_.back()->stamp) -
                                        rclcpp::Time(steering_buffer_.front()->stamp))
-                                          .seconds() > max_steering_buffer_s) {
+                                          .seconds() > params_.max_steer_buffer) {
     steering_buffer_.pop_front();
   }
 }

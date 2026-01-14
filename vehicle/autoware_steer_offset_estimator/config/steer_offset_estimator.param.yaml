@@ -9,3 +9,5 @@
     covariance_floor: 1.0e-12
     min_velocity: 1.0 # [m/s]
     max_steer: 0.03 # [rad]
+    max_steer_buffer: 2.0 # [s]
+    max_pose_lag: 0.5 # [s]

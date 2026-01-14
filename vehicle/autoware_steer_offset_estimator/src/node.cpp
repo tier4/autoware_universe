@@ -40,6 +40,8 @@ SteerOffsetEstimatorParameters load_parameters(rclcpp::Node * node)
     node->declare_parameter<double>("measurement_noise_covariance");
   parameters.denominator_floor = node->declare_parameter<double>("denominator_floor");
   parameters.covariance_floor = node->declare_parameter<double>("covariance_floor");
+  parameters.max_steer_buffer = node->declare_parameter<double>("max_steer_buffer");
+  parameters.max_pose_lag = node->declare_parameter<double>("max_pose_lag");
   return parameters;
 }
 

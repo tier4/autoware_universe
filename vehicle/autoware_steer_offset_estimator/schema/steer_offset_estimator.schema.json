@@ -56,6 +56,16 @@
           "type": "number",
           "description": "steer above this value is not used",
           "default": "0.03"
+        },
+        "max_steer_buffer": {
+          "type": "number",
+          "description": "duration to keep steering values in the buffer",
+          "default": "1.0"
+        },
+        "max_pose_lag": {
+          "type": "number",
+          "description": "max valid age of previous pose which can be used for twist calculation",
+          "default": "0.5"
         }
       },
       "required": [
@@ -67,7 +77,9 @@
         "denominator_floor",
         "covariance_floor",
         "min_velocity",
-        "max_steer"
+        "max_steer",
+        "max_steer_buffer",
+        "max_pose_lag"
       ]
     }
   },
