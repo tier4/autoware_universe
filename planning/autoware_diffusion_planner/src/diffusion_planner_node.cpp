@@ -399,8 +399,7 @@ void DiffusionPlanner::on_timer()
   const rclcpp::Time frame_time(
     frame_context->sensor_msgs.ego_kinematic_states.back()->header.stamp);
   InputDataMap input_data_map = preprocess::create_input_data(
-    *frame_context, *lane_segment_context_, route_ptr_, vehicle_size_, params_.batch_size,
-    params_.shift_x);
+    *frame_context, *lane_segment_context_, route_ptr_, vehicle_size_, params_.batch_size);
 
   // random sample trajectories
   {

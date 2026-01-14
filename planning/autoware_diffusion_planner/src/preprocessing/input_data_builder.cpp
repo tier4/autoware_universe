@@ -27,8 +27,7 @@ namespace autoware::diffusion_planner::preprocess
 {
 namespace
 {
-std::vector<float> replicate_for_batch(
-  const std::vector<float> & single_data, const int batch_size)
+std::vector<float> replicate_for_batch(const std::vector<float> & single_data, const int batch_size)
 {
   const size_t single_size = single_data.size();
   const size_t total_size = static_cast<size_t>(batch_size) * single_size;
@@ -46,16 +45,11 @@ std::vector<float> replicate_for_batch(
 
 InputDataMap create_input_data(
   const FrameContext & frame_context, const preprocess::LaneSegmentContext & lane_segment_context,
-  const LaneletRoute::ConstSharedPtr & route_ptr, const VehicleSize & vehicle_size,
-  int batch_size, bool shift_x)
+  const LaneletRoute::ConstSharedPtr & route_ptr, const VehicleSize & vehicle_size, int batch_size)
 {
   InputDataMap input_data_map;
 
   Odometry kinematic_state = *(frame_context.sensor_msgs.ego_kinematic_states.back());
-  if (shift_x) {
-    kinematic_state.pose.pose =
-      utils::shift_x(kinematic_state.pose.pose, vehicle_size.wheel_base_m / 2.0);
-  }
   const geometry_msgs::msg::Pose & pose_center = kinematic_state.pose.pose;
   const rclcpp::Time frame_time(kinematic_state.header.stamp);
   const Eigen::Matrix4d & map_to_ego_transform = frame_context.map_to_ego_transform;
@@ -169,8 +163,7 @@ InputDataMap create_input_data(
       single_turn_indicators[INPUT_T - t] =
         frame_context.historical_data.turn_indicators_history[index].report;
     }
-    input_data_map["turn_indicators"] =
-      replicate_for_batch(single_turn_indicators, batch_size);
+    input_data_map["turn_indicators"] = replicate_for_batch(single_turn_indicators, batch_size);
   }
 
   return input_data_map;
