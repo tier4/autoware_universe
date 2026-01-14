@@ -14,10 +14,10 @@
 
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 
-#include <gtest/gtest.h>
-
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+
+#include <gtest/gtest.h>
 
 #include <cmath>
 #include <limits>
@@ -141,8 +141,7 @@ TEST_F(PreprocessingUtilsTest, CreatesEgoCurrentState)
   acceleration_msg.accel.accel.linear.x = 0.5;
   acceleration_msg.accel.accel.linear.y = 0.2;
 
-  const auto ego_state =
-    preprocess::create_ego_current_state(odometry_msg, acceleration_msg, 2.5f);
+  const auto ego_state = preprocess::create_ego_current_state(odometry_msg, acceleration_msg, 2.5f);
 
   ASSERT_EQ(ego_state.size(), 10U);
   EXPECT_FLOAT_EQ(ego_state[0], 0.0f);

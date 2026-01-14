@@ -85,10 +85,12 @@ using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
 using autoware::vehicle_info_utils::VehicleInfo;
+using autoware_utils_diagnostics::DiagnosticsInterface;
 using builtin_interfaces::msg::Duration;
 using builtin_interfaces::msg::Time;
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Pose;
+using preprocess::InputDataMap;
 using preprocess::TrafficSignalStamped;
 using rcl_interfaces::msg::SetParametersResult;
 using std_msgs::msg::ColorRGBA;
@@ -96,8 +98,6 @@ using unique_identifier_msgs::msg::UUID;
 using utils::NormalizationMap;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
-using autoware_utils_diagnostics::DiagnosticsInterface;
-using preprocess::InputDataMap;
 
 struct FrameContext
 {

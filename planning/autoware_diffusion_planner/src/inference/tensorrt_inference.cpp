@@ -18,6 +18,7 @@
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 #include <autoware/tensorrt_common/utils.hpp>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>

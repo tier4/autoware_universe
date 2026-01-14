@@ -58,10 +58,7 @@ protected:
       autoware::experimental::lanelet2_utils::from_autoware_map_msgs(map_bin_msg_));
   }
 
-  void TearDown() override
-  {
-    lanelet_map_ptr_.reset();
-  }
+  void TearDown() override { lanelet_map_ptr_.reset(); }
 
   LaneletMapBin map_bin_msg_;
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
