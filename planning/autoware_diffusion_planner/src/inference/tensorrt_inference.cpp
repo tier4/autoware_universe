@@ -39,91 +39,74 @@ TensorrtInference::TensorrtInference(
   const std::string & model_path, const std::string & plugins_path, int batch_size)
 : batch_size_(batch_size), plugins_path_(plugins_path)
 {
-  init_pointers();
-  load_engine(model_path);
-  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
-}
-
-TensorrtInference::~TensorrtInference()
-{
-  if (stream_) {
-    cudaStreamDestroy(stream_);
-  }
-}
-
-int TensorrtInference::batch_size() const
-{
-  return batch_size_;
-}
-
-void TensorrtInference::init_pointers()
-{
-  const int batch_size = batch_size_;
+  const int batch_size_local = batch_size_;
 
   const size_t sampled_trajectories_size =
-    batch_size * std::accumulate(
-                   SAMPLED_TRAJECTORIES_SHAPE.begin() + 1, SAMPLED_TRAJECTORIES_SHAPE.end(), 1L,
-                   std::multiplies<>());
+    batch_size_local * std::accumulate(
+                         SAMPLED_TRAJECTORIES_SHAPE.begin() + 1, SAMPLED_TRAJECTORIES_SHAPE.end(),
+                         1L, std::multiplies<>());
   const size_t ego_history_size =
-    batch_size * std::accumulate(
-                   EGO_HISTORY_SHAPE.begin() + 1, EGO_HISTORY_SHAPE.end(), 1L, std::multiplies<>());
+    batch_size_local * std::accumulate(
+                         EGO_HISTORY_SHAPE.begin() + 1, EGO_HISTORY_SHAPE.end(), 1L,
+                         std::multiplies<>());
   const size_t ego_current_state_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(
       EGO_CURRENT_STATE_SHAPE.begin() + 1, EGO_CURRENT_STATE_SHAPE.end(), 1L, std::multiplies<>());
   const size_t neighbor_agents_past_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(NEIGHBOR_SHAPE.begin() + 1, NEIGHBOR_SHAPE.end(), 1L, std::multiplies<>());
   const size_t static_objects_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(
       STATIC_OBJECTS_SHAPE.begin() + 1, STATIC_OBJECTS_SHAPE.end(), 1L, std::multiplies<>());
   const size_t lanes_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(LANES_SHAPE.begin() + 1, LANES_SHAPE.end(), 1L, std::multiplies<>());
   const size_t lanes_has_speed_limit_size =
-    batch_size * std::accumulate(
-                   LANES_HAS_SPEED_LIMIT_SHAPE.begin() + 1, LANES_HAS_SPEED_LIMIT_SHAPE.end(), 1L,
-                   std::multiplies<>());
+    batch_size_local * std::accumulate(
+                         LANES_HAS_SPEED_LIMIT_SHAPE.begin() + 1,
+                         LANES_HAS_SPEED_LIMIT_SHAPE.end(), 1L, std::multiplies<>());
   const size_t lanes_speed_limit_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(
       LANES_SPEED_LIMIT_SHAPE.begin() + 1, LANES_SPEED_LIMIT_SHAPE.end(), 1L, std::multiplies<>());
   const size_t route_lanes_size =
-    batch_size * std::accumulate(
-                   ROUTE_LANES_SHAPE.begin() + 1, ROUTE_LANES_SHAPE.end(), 1L, std::multiplies<>());
+    batch_size_local * std::accumulate(
+                         ROUTE_LANES_SHAPE.begin() + 1, ROUTE_LANES_SHAPE.end(), 1L,
+                         std::multiplies<>());
   const size_t route_lanes_has_speed_limit_size =
-    batch_size * std::accumulate(
-                   ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE.begin() + 1,
-                   ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE.end(), 1L, std::multiplies<>());
+    batch_size_local * std::accumulate(
+                         ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE.begin() + 1,
+                         ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE.end(), 1L, std::multiplies<>());
   const size_t route_lanes_speed_limit_size =
-    batch_size * std::accumulate(
-                   ROUTE_LANES_SPEED_LIMIT_SHAPE.begin() + 1, ROUTE_LANES_SPEED_LIMIT_SHAPE.end(),
-                   1L, std::multiplies<>());
+    batch_size_local * std::accumulate(
+                         ROUTE_LANES_SPEED_LIMIT_SHAPE.begin() + 1,
+                         ROUTE_LANES_SPEED_LIMIT_SHAPE.end(), 1L, std::multiplies<>());
   const size_t polygons_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(POLYGONS_SHAPE.begin() + 1, POLYGONS_SHAPE.end(), 1L, std::multiplies<>());
   const size_t line_strings_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(
       LINE_STRINGS_SHAPE.begin() + 1, LINE_STRINGS_SHAPE.end(), 1L, std::multiplies<>());
   const size_t goal_pose_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(GOAL_POSE_SHAPE.begin() + 1, GOAL_POSE_SHAPE.end(), 1L, std::multiplies<>());
   const size_t ego_shape_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(EGO_SHAPE_SHAPE.begin() + 1, EGO_SHAPE_SHAPE.end(), 1L, std::multiplies<>());
   const size_t turn_indicators_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(
       TURN_INDICATORS_SHAPE.begin() + 1, TURN_INDICATORS_SHAPE.end(), 1L, std::multiplies<>());
   const size_t output_size =
-    batch_size *
+    batch_size_local *
     std::accumulate(OUTPUT_SHAPE.begin() + 1, OUTPUT_SHAPE.end(), 1L, std::multiplies<>());
   const size_t turn_indicator_logit_size =
-    batch_size * std::accumulate(
-                   TURN_INDICATOR_LOGIT_SHAPE.begin() + 1, TURN_INDICATOR_LOGIT_SHAPE.end(), 1L,
-                   std::multiplies<>());
+    batch_size_local * std::accumulate(
+                         TURN_INDICATOR_LOGIT_SHAPE.begin() + 1,
+                         TURN_INDICATOR_LOGIT_SHAPE.end(), 1L, std::multiplies<>());
 
   sampled_trajectories_d_ = autoware::cuda_utils::make_unique<float[]>(sampled_trajectories_size);
   ego_history_d_ = autoware::cuda_utils::make_unique<float[]>(ego_history_size);
@@ -146,6 +129,15 @@ void TensorrtInference::init_pointers()
 
   output_d_ = autoware::cuda_utils::make_unique<float[]>(output_size);
   turn_indicator_logit_d_ = autoware::cuda_utils::make_unique<float[]>(turn_indicator_logit_size);
+  load_engine(model_path);
+  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+}
+
+TensorrtInference::~TensorrtInference()
+{
+  if (stream_) {
+    cudaStreamDestroy(stream_);
+  }
 }
 
 void TensorrtInference::load_engine(const std::string & model_path)

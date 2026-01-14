@@ -37,6 +37,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -65,6 +66,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   debug_processing_time_detail_pub_ = this->create_publisher<autoware_utils::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms", 1);
   time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(debug_processing_time_detail_pub_);
+  diagnostics_inference_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
 
   set_up_params();
   turn_indicator_manager_.set_hold_duration(
@@ -73,8 +75,14 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   utils::check_weight_version(params_.args_path);
   normalization_map_ = utils::load_normalization_stats(params_.args_path);
 
+  diagnostics_inference_->update_level_and_message(
+    diagnostic_msgs::msg::DiagnosticStatus::WARN, "Loading model weights");
+  diagnostics_inference_->publish(get_clock()->now());
   tensorrt_inference_ = std::make_unique<TensorrtInference>(
     params_.model_path, params_.plugins_path, params_.batch_size);
+  diagnostics_inference_->update_level_and_message(
+    diagnostic_msgs::msg::DiagnosticStatus::OK, "Model weights loaded");
+  diagnostics_inference_->publish(get_clock()->now());
 
   if (params_.build_only) {
     RCLCPP_INFO(get_logger(), "Build only mode enabled. Exiting after loading model.");
@@ -94,8 +102,6 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   // Parameter Callback
   set_param_res_ = add_on_set_parameters_callback(
     std::bind(&DiffusionPlanner::on_parameter, this, std::placeholders::_1));
-
-  diagnostics_inference_ = std::make_unique<DiagnosticsInterface>(this, "inference_status");
 }
 
 void DiffusionPlanner::set_up_params()
@@ -137,6 +143,9 @@ SetParametersResult DiffusionPlanner::on_parameter(
   using autoware_utils::update_param;
   {
     DiffusionPlannerParams temp_params = params_;
+    const auto previous_model_path = params_.model_path;
+    const auto previous_batch_size = params_.batch_size;
+    update_param<std::string>(parameters, "onnx_model_path", temp_params.model_path);
     update_param<bool>(
       parameters, "ignore_unknown_neighbors", temp_params.ignore_unknown_neighbors);
     update_param<bool>(parameters, "ignore_neighbors", temp_params.ignore_neighbors);
@@ -155,10 +164,23 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(
       parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
     update_param<bool>(parameters, "shift_x", temp_params.shift_x);
+    const bool model_path_changed = temp_params.model_path != previous_model_path;
+    const bool batch_size_changed = temp_params.batch_size != previous_batch_size;
     params_ = temp_params;
     turn_indicator_manager_.set_hold_duration(
       rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration));
     turn_indicator_manager_.set_keep_offset(params_.turn_indicator_keep_offset);
+
+    if ((model_path_changed || batch_size_changed) && tensorrt_inference_) {
+      diagnostics_inference_->update_level_and_message(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN, "Loading model weights");
+      diagnostics_inference_->publish(get_clock()->now());
+      tensorrt_inference_ = std::make_unique<TensorrtInference>(
+        params_.model_path, params_.plugins_path, params_.batch_size);
+      diagnostics_inference_->update_level_and_message(
+        diagnostic_msgs::msg::DiagnosticStatus::OK, "Model weights loaded");
+      diagnostics_inference_->publish(get_clock()->now());
+    }
   }
 
   {

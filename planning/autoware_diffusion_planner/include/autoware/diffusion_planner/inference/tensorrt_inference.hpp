@@ -31,30 +31,62 @@
 
 namespace autoware::diffusion_planner
 {
+/**
+ * @class TensorrtInference
+ * @brief TensorRT inference wrapper for diffusion planner models.
+ */
 class TensorrtInference
 {
 public:
+  /**
+   * @struct InferenceResult
+   * @brief Output container with optional tensors and error message.
+   */
   struct InferenceResult
   {
+    /**
+     * @brief Output tensors when inference succeeds.
+     */
     std::optional<std::pair<std::vector<float>, std::vector<float>>> outputs;
+    /**
+     * @brief Error message for diagnostics when inference fails.
+     */
     std::string error_msg;
   };
 
+  /**
+   * @brief Initialize TensorRT engine and device buffers for the batch size.
+   * @param model_path Path to the TensorRT model file.
+   * @param plugins_path Path to TensorRT plugin shared libraries.
+   * @param batch_size Batch size for inference buffers and shapes.
+   */
   TensorrtInference(
     const std::string & model_path, const std::string & plugins_path, int batch_size);
   ~TensorrtInference();
 
+  /**
+   * @brief Run inference and return prediction and turn indicator logits.
+   * @param input_data_map Input tensor data keyed by input names.
+   * @return InferenceResult containing outputs or error message.
+   */
   InferenceResult infer(const preprocess::InputDataMap & input_data_map);
-  int batch_size() const;
-
-private:
-  void init_pointers();
+  /**
+   * @brief Load or rebuild the TensorRT engine from the given model path.
+   * @param model_path Path to the TensorRT model file.
+   */
   void load_engine(const std::string & model_path);
 
+private:
   int batch_size_{1};
+  /**
+   * @brief Plugins path used for TensorRT engine creation.
+   */
   std::string plugins_path_;
   std::unique_ptr<autoware::tensorrt_common::TrtConvCalib> trt_common_;
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> network_trt_ptr_{nullptr};
+  /**
+   * @brief Device buffers for model inputs/outputs.
+   */
   autoware::cuda_utils::CudaUniquePtr<float[]> sampled_trajectories_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> ego_history_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> ego_current_state_d_;
