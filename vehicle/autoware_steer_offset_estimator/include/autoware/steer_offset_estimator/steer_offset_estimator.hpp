@@ -118,13 +118,37 @@ private:
   double estimated_offset_;                ///< Current estimated offset [rad]
   double covariance_;                      ///< Current estimation covariance
 
+  /**
+   * @brief Calculate current twist info from consecutive pose data
+   * @param poses vector containing ego pose data
+   * @result twist information based on current and previous pose
+   */
   geometry_msgs::msg::Twist calculate_twist(const std::vector<PoseStamped> & poses);
 
+  /**
+   * @brief Update steering data buffer from latest steering report
+   * @param steers vector containing steering report data
+   */
   void update_steering_buffer(const std::vector<SteeringReport> & steers);
 
+  /**
+   * @brief Computes steering value at given time stamp
+   * @details This function finds the nearest data within the steering buffer to the given timestamp
+              and applies a windowed average around it to compute reiable steering value
+   * @param steers avg steering value at given timestamp, if not found will return a nullopt
+   */
   [[nodiscard]] std::optional<double> get_steering_at_timestamp(
     const rclcpp::Time & timestamp) const;
 
+  /**
+   * @brief Estimates steering offset based on current data
+   * @details This function applies Kalman Filter on the given data to estimate the steering offset
+              and updates the covariance and estimated_offset
+   * @param velocity ego linear velocity computed for latest pose data
+   * @param angular_velocity ego angular velocity computed for latest pose data
+   * @param steering_angle steering value computed at timestamp corresponding to pose data
+   * @result estimation result containing steering offset, covariance, and other data
+   */
   SteerOffsetEstimationUpdated estimate_offset(
     const double velocity, const double angular_velocity, const double steering_angle);
 
