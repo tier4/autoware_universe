@@ -99,16 +99,6 @@ using utils::NormalizationMap;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
-struct FrameContext
-{
-  nav_msgs::msg::Odometry ego_kinematic_state;
-  geometry_msgs::msg::AccelWithCovarianceStamped ego_acceleration;
-  Eigen::Matrix4d ego_to_map_transform;
-  Eigen::Matrix4d map_to_ego_transform;
-  std::vector<AgentHistory> ego_centric_neighbor_histories;
-  rclcpp::Time frame_time;
-};
-
 struct SensorMsgs
 {
   std::vector<TrackedObjects::ConstSharedPtr> tracked_objects;
@@ -124,6 +114,15 @@ struct HistoricalData
   std::deque<TurnIndicatorsReport> turn_indicators_history;
   AgentData agent_data;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map;
+};
+
+struct FrameContext
+{
+  const SensorMsgs sensor_msgs;
+  const HistoricalData & historical_data;
+  const std::vector<AgentHistory> ego_centric_neighbor_histories;
+  const Eigen::Matrix4d ego_to_map_transform;
+  const Eigen::Matrix4d map_to_ego_transform;
 };
 
 struct DiffusionPlannerParams

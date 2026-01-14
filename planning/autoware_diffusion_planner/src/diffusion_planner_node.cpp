@@ -268,10 +268,9 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
     traffic_light_msg_timeout_s);
 
   // Create frame context
-  const rclcpp::Time frame_time(kinematic_state.header.stamp);
   const FrameContext frame_context{
-    kinematic_state,      *(curr_msgs.ego_accelerations.back()), ego_to_map_transform,
-    map_to_ego_transform, processed_neighbor_histories,          frame_time};
+    std::move(curr_msgs), historical_data_, processed_neighbor_histories, ego_to_map_transform,
+    map_to_ego_transform};
 
   return frame_context;
 }
@@ -292,28 +291,33 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
     }
   }
 
-  const geometry_msgs::msg::Pose & pose_center = frame_context.ego_kinematic_state.pose.pose;
+  Odometry kinematic_state = *(frame_context.sensor_msgs.ego_kinematic_states.back());
+  if (params_.shift_x) {
+    kinematic_state.pose.pose =
+      utils::shift_x(kinematic_state.pose.pose, vehicle_info_.wheel_base_m / 2.0);
+  }
+  const geometry_msgs::msg::Pose & pose_center = kinematic_state.pose.pose;
+  const rclcpp::Time frame_time(kinematic_state.header.stamp);
   const Eigen::Matrix4d & map_to_ego_transform = frame_context.map_to_ego_transform;
 
   // Ego history
   {
     const std::vector<float> single_ego_agent_past = preprocess::create_ego_agent_past(
-      historical_data_.ego_history, EGO_HISTORY_SHAPE[1], map_to_ego_transform,
-      frame_context.frame_time);
+      frame_context.historical_data.ego_history, EGO_HISTORY_SHAPE[1], map_to_ego_transform,
+      frame_time);
     input_data_map["ego_agent_past"] = replicate_for_batch(single_ego_agent_past);
   }
   // Ego state
   {
     const std::vector<float> ego_current_state = preprocess::create_ego_current_state(
-      frame_context.ego_kinematic_state, frame_context.ego_acceleration,
+      kinematic_state, *(frame_context.sensor_msgs.ego_accelerations.back()),
       static_cast<float>(vehicle_info_.wheel_base_m));
     input_data_map["ego_current_state"] = replicate_for_batch(ego_current_state);
   }
   // Agent data on ego reference frame
   {
     const auto neighbor_agents_past = preprocess::create_neighbor_agents_past(
-      frame_context.ego_centric_neighbor_histories, MAX_NUM_NEIGHBORS, INPUT_T + 1,
-      frame_context.frame_time);
+      frame_context.ego_centric_neighbor_histories, MAX_NUM_NEIGHBORS, INPUT_T + 1, frame_time);
     input_data_map["neighbor_agents_past"] = replicate_for_batch(neighbor_agents_past);
   }
   // Static objects
@@ -330,7 +334,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
     const std::vector<int64_t> segment_indices = lane_segment_context_->select_lane_segment_indices(
       map_to_ego_transform, pose_center.position, NUM_SEGMENTS_IN_LANE);
     const auto [lanes, lanes_speed_limit] = lane_segment_context_->create_tensor_data_from_indices(
-      map_to_ego_transform, historical_data_.traffic_light_id_map, segment_indices,
+      map_to_ego_transform, frame_context.historical_data.traffic_light_id_map, segment_indices,
       NUM_SEGMENTS_IN_LANE);
     input_data_map["lanes"] = replicate_for_batch(lanes);
     input_data_map["lanes_speed_limit"] = replicate_for_batch(lanes_speed_limit);
@@ -343,7 +347,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
         *route_ptr_, pose_center.position, NUM_SEGMENTS_IN_ROUTE);
     const auto [route_lanes, route_lanes_speed_limit] =
       lane_segment_context_->create_tensor_data_from_indices(
-        map_to_ego_transform, historical_data_.traffic_light_id_map, segment_indices,
+        map_to_ego_transform, frame_context.historical_data.traffic_light_id_map, segment_indices,
         NUM_SEGMENTS_IN_ROUTE);
     input_data_map["route_lanes"] = replicate_for_batch(route_lanes);
     input_data_map["route_lanes_speed_limit"] = replicate_for_batch(route_lanes_speed_limit);
@@ -402,9 +406,10 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
     std::vector<float> single_turn_indicators(INPUT_T + 1, 0.0f);
     for (int64_t t = 0; t < INPUT_T + 1; ++t) {
       const int64_t index = std::max(
-        static_cast<int64_t>(historical_data_.turn_indicators_history.size()) - 1 - t,
+        static_cast<int64_t>(frame_context.historical_data.turn_indicators_history.size()) - 1 - t,
         static_cast<int64_t>(0));
-      single_turn_indicators[INPUT_T - t] = historical_data_.turn_indicators_history[index].report;
+      single_turn_indicators[INPUT_T - t] =
+        frame_context.historical_data.turn_indicators_history[index].report;
     }
     input_data_map["turn_indicators"] = replicate_for_batch(single_turn_indicators);
   }
@@ -460,7 +465,8 @@ void DiffusionPlanner::publish_predictions(
 
   // when ego is moving, enable force stop
   const bool enable_force_stop =
-    frame_context.ego_kinematic_state.twist.twist.linear.x > std::numeric_limits<double>::epsilon();
+    frame_context.sensor_msgs.ego_kinematic_states.back()->twist.twist.linear.x >
+    std::numeric_limits<double>::epsilon();
 
   // Parse predictions once: [batch][agent][timestep] -> pose
   const auto agent_poses =
@@ -544,7 +550,8 @@ void DiffusionPlanner::on_timer()
     return;
   }
 
-  const rclcpp::Time frame_time(frame_context->frame_time);
+  const rclcpp::Time frame_time(
+    frame_context->sensor_msgs.ego_kinematic_states.back()->header.stamp);
   InputDataMap input_data_map = create_input_data(*frame_context);
 
   publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
