@@ -207,9 +207,12 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
     return InternalError{"attention area is empty"};
   }
   const auto first_attention_area = intersection_lanelets.first_attention_area().value();
-  const auto default_stopline_idx_opt = intersection_stoplines.default_stopline;
+  auto default_stopline_idx_opt = intersection_stoplines.default_stopline;
   if (!default_stopline_idx_opt) {
     return InternalError{"default stop line is null"};
+  }
+  if (intersection_creep_activated_) {
+    default_stopline_idx_opt = intersection_stoplines.creep_stopline;
   }
   const auto default_stopline_idx = default_stopline_idx_opt.value();
   const auto first_attention_stopline_idx = intersection_stoplines.first_attention_stopline;
