@@ -397,7 +397,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   auto objects = sub_tracked_objects_.take_data();
   auto vec_ego_kinematic_state = sub_current_odometry_.take_data();
   auto vec_ego_acceleration = sub_current_acceleration_.take_data();
-  auto traffic_signals = sub_traffic_signals_.take_data();
+  auto vec_traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
 
@@ -423,7 +423,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
     return std::nullopt;
   }
 
-  if (traffic_signals.empty()) {
+  if (vec_traffic_signals.empty()) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "no traffic signal received. traffic light info will not be updated");
@@ -460,7 +460,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   // Update traffic light map
   const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
   preprocess::process_traffic_signals(
-    traffic_signals, traffic_light_id_map_, this->now(), traffic_light_msg_timeout_s);
+    vec_traffic_signals, traffic_light_id_map_, this->now(), traffic_light_msg_timeout_s);
 
   // Create frame context
   const rclcpp::Time frame_time(kinematic_state.header.stamp);
