@@ -43,7 +43,7 @@ TrafficDisplay::TrafficDisplay()
   // Load the traffic light image
   std::string package_path =
     ament_index_cpp::get_package_share_directory("autoware_overlay_rviz_plugin");
-  
+
   std::string image_path = package_path + "/assets/images/traffic.png";
   traffic_light_image_.load(image_path.c_str());
 
@@ -57,14 +57,20 @@ void TrafficDisplay::updateTrafficLightData(
   current_traffic_ = *msg;
 }
 
-QColor TrafficDisplay::getColorById(uint8_t color_id) const {
+QColor TrafficDisplay::getColorById(uint8_t color_id) const
+{
   using autoware_perception_msgs::msg::TrafficLightElement;
   switch (color_id) {
-    case TrafficLightElement::RED: return tl_red_;
-    case TrafficLightElement::AMBER: return tl_yellow_;
-    case TrafficLightElement::GREEN: return tl_green_;
-    case TrafficLightElement::WHITE: return Qt::white;
-    default: return tl_gray_;
+    case TrafficLightElement::RED:
+      return tl_red_;
+    case TrafficLightElement::AMBER:
+      return tl_yellow_;
+    case TrafficLightElement::GREEN:
+      return tl_green_;
+    case TrafficLightElement::WHITE:
+      return Qt::white;
+    default:
+      return tl_gray_;
   }
 }
 
@@ -92,7 +98,7 @@ void TrafficDisplay::drawTrafficLightIndicator(QPainter & painter, const QRectF 
   if (!current_traffic_.elements.empty()) {
     for (const auto & element : current_traffic_.elements) {
       QColor color = getColorById(element.color);
-      
+
       if (element.shape == TrafficLightElement::CIRCLE) {
         main_color = color;
         has_circle = true;
@@ -101,13 +107,26 @@ void TrafficDisplay::drawTrafficLightIndicator(QPainter & painter, const QRectF 
         has_arrow = true;
 
         switch (element.shape) {
-          case TrafficLightElement::LEFT_ARROW:       arrow_angle = 180.0; break;
-          case TrafficLightElement::RIGHT_ARROW:      arrow_angle = 0.0; break;
-          case TrafficLightElement::UP_ARROW:         arrow_angle = -90.0; break;
-          case TrafficLightElement::DOWN_ARROW:       arrow_angle = 90.0; break;
-          case TrafficLightElement::DOWN_LEFT_ARROW:  arrow_angle = 135.0; break;
-          case TrafficLightElement::DOWN_RIGHT_ARROW: arrow_angle = 45.0; break;
-          default: break;
+          case TrafficLightElement::LEFT_ARROW:
+            arrow_angle = 180.0;
+            break;
+          case TrafficLightElement::RIGHT_ARROW:
+            arrow_angle = 0.0;
+            break;
+          case TrafficLightElement::UP_ARROW:
+            arrow_angle = -90.0;
+            break;
+          case TrafficLightElement::DOWN_ARROW:
+            arrow_angle = 90.0;
+            break;
+          case TrafficLightElement::DOWN_LEFT_ARROW:
+            arrow_angle = 135.0;
+            break;
+          case TrafficLightElement::DOWN_RIGHT_ARROW:
+            arrow_angle = 45.0;
+            break;
+          default:
+            break;
         }
       }
     }
@@ -124,7 +143,7 @@ void TrafficDisplay::drawTrafficLightIndicator(QPainter & painter, const QRectF 
     double scale = 0.5;
     double w = circleRect.width() * scale;
     double h = circleRect.height() * scale;
-    
+
     QRectF innerRect(0, 0, w, h);
     innerRect.moveCenter(circleRect.center());
 
@@ -136,23 +155,23 @@ void TrafficDisplay::drawTrafficLightIndicator(QPainter & painter, const QRectF 
 
   float scaleFactor = 0.75;
   QSize scaledSize = imageToDraw.size() * scaleFactor;
-  
+
   QImage scaledTrafficImage =
     imageToDraw.scaled(scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
   painter.save();
-  
+
   painter.translate(circleRect.center());
-  
+
   if (has_arrow) {
     painter.rotate(arrow_angle);
   }
-  
-  QRectF targetRect(-scaledSize.width() / 2.0, -scaledSize.height() / 2.0, 
-                    scaledSize.width(), scaledSize.height());
-  
+
+  QRectF targetRect(
+    -scaledSize.width() / 2.0, -scaledSize.height() / 2.0, scaledSize.width(), scaledSize.height());
+
   painter.drawImage(targetRect, scaledTrafficImage);
-  
+
   painter.restore();
 }
 
