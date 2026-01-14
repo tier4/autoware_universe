@@ -141,11 +141,13 @@ VelocityPlanningResult ObstacleCruiseModule::plan(
   debug_data_ptr_ = std::make_shared<DebugData>();
 
   // filter obstacles of predicted objects
+  const auto decimated_trajectory_points =
+    planner_data->get_decimated_trajectory_points_from_ego(raw_trajectory_points);
   const auto cruise_obstacles = filter_cruise_obstacle_for_predicted_object(
-    planner_data->current_odometry, planner_data->ego_nearest_dist_threshold,
-    planner_data->ego_nearest_yaw_threshold, raw_trajectory_points, planner_data->objects,
-    rclcpp::Time(planner_data->predicted_objects_header.stamp), planner_data->is_driving_forward,
-    planner_data->vehicle_info_, planner_data->trajectory_polygon_collision_check);
+    planner_data->current_odometry, raw_trajectory_points, decimated_trajectory_points,
+    planner_data->objects, rclcpp::Time(planner_data->predicted_objects_header.stamp),
+    planner_data->is_driving_forward, planner_data->vehicle_info_,
+    planner_data->trajectory_polygon_collision_check);
 
   // plan cruise
   VelocityPlanningResult result;
@@ -187,8 +189,8 @@ std::unique_ptr<CruisePlannerInterface> ObstacleCruiseModule::create_cruise_plan
 }
 
 std::vector<CruiseObstacle> ObstacleCruiseModule::filter_cruise_obstacle_for_predicted_object(
-  const Odometry & odometry, const double ego_nearest_dist_threshold,
-  const double ego_nearest_yaw_threshold, const std::vector<TrajectoryPoint> & traj_points,
+  const Odometry & odometry, const std::vector<TrajectoryPoint> & traj_points,
+  const std::vector<TrajectoryPoint> & decimated_traj_points,
   const std::vector<std::shared_ptr<PlannerData::Object>> & objects,
   const rclcpp::Time & predicted_objects_stamp, const bool is_driving_forward,
   const VehicleInfo & vehicle_info,
@@ -199,9 +201,6 @@ std::vector<CruiseObstacle> ObstacleCruiseModule::filter_cruise_obstacle_for_pre
   const auto & current_pose = odometry.pose.pose;
 
   const auto & p = trajectory_polygon_collision_check;
-  const auto decimated_traj_points = utils::decimate_trajectory_points_from_ego(
-    traj_points, current_pose, ego_nearest_dist_threshold, ego_nearest_yaw_threshold,
-    p.decimate_trajectory_step_length, 0.0);
   const auto decimated_traj_polys = polygon_utils::create_one_step_polygons(
     decimated_traj_points, vehicle_info, current_pose, 0.0, p.enable_to_consider_current_pose,
     p.time_to_convergence, p.decimate_trajectory_step_length);

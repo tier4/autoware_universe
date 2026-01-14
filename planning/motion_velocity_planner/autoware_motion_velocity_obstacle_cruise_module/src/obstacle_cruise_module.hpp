@@ -87,8 +87,8 @@ private:
 
   std::unique_ptr<CruisePlannerInterface> create_cruise_planner(rclcpp::Node & node) const;
   std::vector<CruiseObstacle> filter_cruise_obstacle_for_predicted_object(
-    const Odometry & odometry, const double ego_nearest_dist_threshold,
-    const double ego_nearest_yaw_threshold, const std::vector<TrajectoryPoint> & traj_points,
+    const Odometry & odometry, const std::vector<TrajectoryPoint> & traj_points,
+    const std::vector<TrajectoryPoint> & decimated_traj_points,
     const std::vector<std::shared_ptr<PlannerData::Object>> & objects,
     const rclcpp::Time & predicted_objects_stamp, const bool is_driving_forward,
     const VehicleInfo & vehicle_info,

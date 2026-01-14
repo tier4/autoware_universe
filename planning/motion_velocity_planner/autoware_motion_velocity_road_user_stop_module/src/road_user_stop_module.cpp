@@ -471,9 +471,10 @@ VelocityPlanningResult RoadUserStopModule::plan(
   const auto decimated_traj_points = [&]() {
     autoware_utils_debug::ScopedTimeTrack st_debug(
       "decimate_trajectory_points_from_ego", *time_keeper_);
-    const auto traj_point = utils::decimate_trajectory_points_from_ego(
-      trajectory_points, planner_data->current_odometry.pose.pose,
-      planner_data->ego_nearest_dist_threshold, planner_data->ego_nearest_yaw_threshold,
+    const auto decimated_traj =
+      planner_data->get_decimated_trajectory_points_from_ego(trajectory_points);
+    const auto traj_point = utils::get_extended_trajectory_points(
+      decimated_traj,
       planner_data->trajectory_polygon_collision_check.decimate_trajectory_step_length,
       param.stop_planning.longitudinal_margin.default_margin);
 
