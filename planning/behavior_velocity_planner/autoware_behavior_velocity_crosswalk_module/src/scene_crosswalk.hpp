@@ -527,7 +527,7 @@ private:
 
   void set_previous_stop_pose(const std::optional<StopPoseWithObjectUuids> & current_stop_pose)
   {
-    if (!current_stop_pose) {
+    if (!current_stop_pose && !isCreepTriggered()) {
       previous_stop_pose_.reset();
       return;
     }
