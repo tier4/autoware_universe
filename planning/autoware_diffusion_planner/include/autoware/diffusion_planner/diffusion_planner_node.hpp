@@ -213,6 +213,7 @@ private:
    */
   std::optional<preprocess::FrameContext> create_frame_context();
 
+  // Inference engine
   std::unique_ptr<TensorrtInference> tensorrt_inference_{nullptr};
 
   // history data
