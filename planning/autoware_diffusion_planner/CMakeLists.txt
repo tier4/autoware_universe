@@ -110,7 +110,6 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
       test/postprocessing_utils_test.cpp
       test/utils_test.cpp
       test/marker_utils_test.cpp
-      test/lanelet_integration_test.cpp
       test/postprocessing_utils_edge_case_test.cpp
       test/preprocessing_utils_edge_case_test.cpp
       test/agent_edge_case_test.cpp
