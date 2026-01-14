@@ -84,7 +84,6 @@ using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
-using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_utils_diagnostics::DiagnosticsInterface;
 using builtin_interfaces::msg::Duration;
 using builtin_interfaces::msg::Time;
@@ -114,6 +113,13 @@ struct HistoricalData
   std::deque<TurnIndicatorsReport> turn_indicators_history;
   AgentData agent_data;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map;
+};
+
+struct VehicleSize
+{
+  double wheel_base_m;
+  double length_m;
+  double width_m;
 };
 
 struct FrameContext
@@ -185,7 +191,7 @@ struct DiffusionPlannerDebugParams
  * - Lanelet map and routing members: route_ptr_, lane_segment_context_.
  * - ROS 2 node elements: timer_, publishers, subscriptions, and time_keeper_.
  * - generator_uuid_: Unique identifier for the planner instance.
- * - vehicle_info_: Vehicle-specific parameters.
+ * - vehicle_size_: Vehicle size parameters.
  */
 class DiffusionPlanner : public rclcpp::Node
 {
@@ -303,7 +309,7 @@ private:
     vector_map_subscriber_{this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
   rclcpp::Subscription<HADMapBin>::SharedPtr sub_map_;
   UUID generator_uuid_;
-  VehicleInfo vehicle_info_;
+  VehicleSize vehicle_size_;
 
   std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
   postprocess::TurnIndicatorManager turn_indicator_manager_{

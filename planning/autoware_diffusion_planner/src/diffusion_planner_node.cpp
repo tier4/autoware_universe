@@ -89,7 +89,12 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     std::exit(EXIT_SUCCESS);
   }
 
-  vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  vehicle_size_.wheel_base_m = vehicle_info.wheel_base_m;
+  vehicle_size_.length_m =
+    vehicle_info.front_overhang_m + vehicle_info.wheel_base_m + vehicle_info.rear_overhang_m;
+  vehicle_size_.width_m =
+    vehicle_info.left_overhang_m + vehicle_info.wheel_tread_m + vehicle_info.right_overhang_m;
 
   timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
@@ -232,7 +237,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   Odometry kinematic_state = *(curr_msgs.ego_kinematic_states.back());
   if (params_.shift_x) {
     kinematic_state.pose.pose =
-      utils::shift_x(kinematic_state.pose.pose, vehicle_info_.wheel_base_m / 2.0);
+      utils::shift_x(kinematic_state.pose.pose, vehicle_size_.wheel_base_m / 2.0);
   }
 
   // Get transforms
@@ -294,7 +299,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   Odometry kinematic_state = *(frame_context.sensor_msgs.ego_kinematic_states.back());
   if (params_.shift_x) {
     kinematic_state.pose.pose =
-      utils::shift_x(kinematic_state.pose.pose, vehicle_info_.wheel_base_m / 2.0);
+      utils::shift_x(kinematic_state.pose.pose, vehicle_size_.wheel_base_m / 2.0);
   }
   const geometry_msgs::msg::Pose & pose_center = kinematic_state.pose.pose;
   const rclcpp::Time frame_time(kinematic_state.header.stamp);
@@ -311,7 +316,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   {
     const std::vector<float> ego_current_state = preprocess::create_ego_current_state(
       kinematic_state, *(frame_context.sensor_msgs.ego_accelerations.back()),
-      static_cast<float>(vehicle_info_.wheel_base_m));
+      static_cast<float>(vehicle_size_.wheel_base_m));
     input_data_map["ego_current_state"] = replicate_for_batch(ego_current_state);
   }
   // Agent data on ego reference frame
@@ -391,11 +396,9 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
 
   // ego shape
   {
-    const float wheel_base = static_cast<float>(vehicle_info_.wheel_base_m);
-    const float vehicle_length = static_cast<float>(
-      vehicle_info_.front_overhang_m + vehicle_info_.wheel_base_m + vehicle_info_.rear_overhang_m);
-    const float vehicle_width = static_cast<float>(
-      vehicle_info_.left_overhang_m + vehicle_info_.wheel_tread_m + vehicle_info_.right_overhang_m);
+    const float wheel_base = static_cast<float>(vehicle_size_.wheel_base_m);
+    const float vehicle_length = static_cast<float>(vehicle_size_.length_m);
+    const float vehicle_width = static_cast<float>(vehicle_size_.width_m);
     std::vector<float> single_ego_shape = {wheel_base, vehicle_length, vehicle_width};
     input_data_map["ego_shape"] = replicate_for_batch(single_ego_shape);
   }
@@ -483,7 +486,7 @@ void DiffusionPlanner::publish_predictions(
     if (params_.shift_x) {
       // center to base_link
       for (auto & point : trajectory.points) {
-        point.pose = utils::shift_x(point.pose, -vehicle_info_.wheel_base_m / 2.0);
+        point.pose = utils::shift_x(point.pose, -vehicle_size_.wheel_base_m / 2.0);
       }
     }
     if (i == 0) {
