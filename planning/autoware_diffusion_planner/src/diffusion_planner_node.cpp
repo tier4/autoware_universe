@@ -396,7 +396,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   auto objects = sub_tracked_objects_.take_data();
   auto vec_ego_kinematic_state = sub_current_odometry_.take_data();
-  auto ego_acceleration = sub_current_acceleration_.take_data();
+  auto vec_ego_acceleration = sub_current_acceleration_.take_data();
   auto traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
@@ -410,14 +410,14 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   }
 
   if (
-    !objects || vec_ego_kinematic_state.empty() || !ego_acceleration || !route_ptr_ ||
+    !objects || vec_ego_kinematic_state.empty() || vec_ego_acceleration.empty() || !route_ptr_ ||
     !turn_indicators_ptr) {
     RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "There is no input data. objects: "
         << (objects ? "true" : "false")
         << ", ego_kinematic_state: " << (!vec_ego_kinematic_state.empty() ? "true" : "false")
-        << ", ego_acceleration: " << (ego_acceleration ? "true" : "false")
+        << ", ego_acceleration: " << (!vec_ego_acceleration.empty() ? "true" : "false")
         << ", route: " << (route_ptr_ ? "true" : "false")
         << ", turn_indicators: " << (turn_indicators_ptr ? "true" : "false"));
     return std::nullopt;
@@ -465,8 +465,8 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   // Create frame context
   const rclcpp::Time frame_time(kinematic_state.header.stamp);
   const FrameContext frame_context{
-    kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
-    frame_time};
+    kinematic_state, *(vec_ego_acceleration.back()), ego_to_map_transform,
+    processed_neighbor_histories, frame_time};
 
   return frame_context;
 }

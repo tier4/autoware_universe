@@ -331,7 +331,8 @@ private:
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
   autoware_utils::InterProcessPollingSubscriber<Odometry, autoware_utils::polling_policy::All>
     sub_current_odometry_{this, "~/input/odometry", rclcpp::QoS{10}};
-  autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
+  autoware_utils::InterProcessPollingSubscriber<
+    AccelWithCovarianceStamped, autoware_utils::polling_policy::All>
     sub_current_acceleration_{this, "~/input/acceleration"};
   autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
     this, "~/input/tracked_objects"};
