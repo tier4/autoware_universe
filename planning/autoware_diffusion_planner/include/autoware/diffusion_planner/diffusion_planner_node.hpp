@@ -207,12 +207,6 @@ private:
    */
   SetParametersResult on_parameter(const std::vector<rclcpp::Parameter> & parameters);
 
-  /**
-   * @brief Prepare input data for inference.
-   * @return FrameContext containing preprocessed data.
-   */
-  std::optional<preprocess::FrameContext> create_frame_context();
-
   // Inference engine
   std::unique_ptr<TensorrtInference> tensorrt_inference_{nullptr};
 

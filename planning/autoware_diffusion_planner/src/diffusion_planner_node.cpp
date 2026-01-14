@@ -207,61 +207,6 @@ SetParametersResult DiffusionPlanner::on_parameter(
   return result;
 }
 
-std::optional<preprocess::FrameContext> DiffusionPlanner::create_frame_context()
-{
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  auto temp_route_ptr = route_subscriber_.take_data();
-  const preprocess::SensorMsgs curr_msgs{
-    sub_tracked_objects_.take_data(), sub_current_odometry_.take_data(),
-    sub_current_acceleration_.take_data(), sub_traffic_signals_.take_data(),
-    sub_turn_indicators_.take_data()};
-
-  route_ptr_ = (!route_ptr_ || temp_route_ptr) ? temp_route_ptr : route_ptr_;
-
-  if (
-    !route_ptr_ || curr_msgs.tracked_objects.empty() || curr_msgs.ego_kinematic_states.empty() ||
-    curr_msgs.ego_accelerations.empty() || curr_msgs.turn_indicators.empty()) {
-    RCLCPP_WARN_STREAM_THROTTLE(
-      get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-      "There is no input data"
-        << ", route: " << (route_ptr_ ? "true" : "false")
-        << ", objects: " << (!curr_msgs.tracked_objects.empty() ? "true" : "false")
-        << ", ego_kinematic_state: " << (!curr_msgs.ego_kinematic_states.empty() ? "true" : "false")
-        << ", ego_acceleration: " << (!curr_msgs.ego_accelerations.empty() ? "true" : "false")
-        << ", turn_indicators: " << (!curr_msgs.turn_indicators.empty() ? "true" : "false"));
-    return std::nullopt;
-  }
-
-  if (curr_msgs.traffic_signals.empty()) {
-    RCLCPP_WARN_THROTTLE(
-      this->get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-      "no traffic signal received. traffic light info will not be updated");
-  }
-
-  Odometry kinematic_state = *(curr_msgs.ego_kinematic_states.back());
-  if (params_.shift_x) {
-    kinematic_state.pose.pose =
-      utils::shift_x(kinematic_state.pose.pose, vehicle_size_.wheel_base_m / 2.0);
-  }
-
-  // Get transforms
-  const geometry_msgs::msg::Pose & pose_base_link = kinematic_state.pose.pose;
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_base_link);
-  const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
-
-  historical_data_.update_from_sensor_msgs(curr_msgs, kinematic_state.header.stamp);
-  const auto processed_neighbor_histories =
-    historical_data_.agent_data.transformed_and_trimmed_histories(
-      map_to_ego_transform, NEIGHBOR_SHAPE[1]);
-
-  // Create frame context
-  const preprocess::FrameContext frame_context{
-    std::move(curr_msgs), historical_data_, processed_neighbor_histories, ego_to_map_transform,
-    map_to_ego_transform};
-
-  return frame_context;
-}
-
 void DiffusionPlanner::publish_debug_markers(
   const InputDataMap & input_data_map, const Eigen::Matrix4d & ego_to_map_transform,
   const rclcpp::Time & timestamp) const
@@ -367,21 +312,63 @@ void DiffusionPlanner::on_timer()
   }
 
   // Prepare frame context and input data for the model
-  const std::optional<preprocess::FrameContext> frame_context = create_frame_context();
-  if (!frame_context) {
-    RCLCPP_WARN_THROTTLE(
+  auto temp_route_ptr = route_subscriber_.take_data();
+  const preprocess::SensorMsgs curr_msgs{
+    sub_tracked_objects_.take_data(), sub_current_odometry_.take_data(),
+    sub_current_acceleration_.take_data(), sub_traffic_signals_.take_data(),
+    sub_turn_indicators_.take_data()};
+
+  route_ptr_ = (!route_ptr_ || temp_route_ptr) ? temp_route_ptr : route_ptr_;
+
+  if (
+    !route_ptr_ || curr_msgs.tracked_objects.empty() || curr_msgs.ego_kinematic_states.empty() ||
+    curr_msgs.ego_accelerations.empty() || curr_msgs.turn_indicators.empty()) {
+    RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-      "No input data available for inference");
-    diagnostics_inference_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN, "No input data available for inference");
-    diagnostics_inference_->publish(current_time);
+      "There is no input data"
+        << ", route: " << (route_ptr_ ? "true" : "false")
+        << ", objects: " << (!curr_msgs.tracked_objects.empty() ? "true" : "false")
+        << ", ego_kinematic_state: " << (!curr_msgs.ego_kinematic_states.empty() ? "true" : "false")
+        << ", ego_acceleration: " << (!curr_msgs.ego_accelerations.empty() ? "true" : "false")
+        << ", turn_indicators: " << (!curr_msgs.turn_indicators.empty() ? "true" : "false"));
     return;
   }
 
-  const rclcpp::Time frame_time(
-    frame_context->sensor_msgs.ego_kinematic_states.back()->header.stamp);
+  if (curr_msgs.traffic_signals.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+      "no traffic signal received. traffic light info will not be updated");
+  }
+
+  Odometry kinematic_state = *(curr_msgs.ego_kinematic_states.back());
+  if (params_.shift_x) {
+    kinematic_state.pose.pose =
+      utils::shift_x(kinematic_state.pose.pose, vehicle_size_.wheel_base_m / 2.0);
+  }
+
+  // Get transforms
+  const rclcpp::Time frame_time(curr_msgs.ego_kinematic_states.back()->header.stamp);
+  const geometry_msgs::msg::Pose & pose_base_link =
+    curr_msgs.ego_kinematic_states.back()->pose.pose;
+  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_base_link);
+  const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
+
+  // Update historical data
+  historical_data_.update_from_sensor_msgs(curr_msgs, kinematic_state.header.stamp);
+
+  // Process neighbor histories
+  const auto processed_neighbor_histories =
+    historical_data_.agent_data.transformed_and_trimmed_histories(
+      map_to_ego_transform, NEIGHBOR_SHAPE[1]);
+
+  // Create frame context
+  const preprocess::FrameContext frame_context{
+    std::move(curr_msgs), historical_data_, processed_neighbor_histories, ego_to_map_transform,
+    map_to_ego_transform};
+
+  // Create input data
   InputDataMap input_data_map = preprocess::create_input_data(
-    *frame_context, *lane_segment_context_, route_ptr_, vehicle_size_, params_.batch_size);
+    frame_context, *lane_segment_context_, route_ptr_, vehicle_size_, params_.batch_size);
 
   // random sample trajectories
   {
@@ -395,7 +382,7 @@ void DiffusionPlanner::on_timer()
     }
   }
 
-  publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
+  publish_debug_markers(input_data_map, frame_context.ego_to_map_transform, frame_time);
 
   // Calculate and record metrics for diagnostics using the proper logic
   const int64_t batch_idx = 0;
@@ -448,7 +435,7 @@ void DiffusionPlanner::on_timer()
   const auto & [predictions, turn_indicator_logit] = inference_result.outputs.value();
 
   // Publish predictions
-  publish_predictions(predictions, *frame_context, frame_time);
+  publish_predictions(predictions, frame_context, frame_time);
 
   // Publish turn indicators
   const int64_t prev_report = historical_data_.turn_indicators_history.empty()
