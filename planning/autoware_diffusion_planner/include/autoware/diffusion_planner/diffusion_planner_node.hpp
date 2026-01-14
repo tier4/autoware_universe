@@ -333,14 +333,15 @@ private:
     sub_current_odometry_{this, "~/input/odometry", rclcpp::QoS{10}};
   autoware_utils::InterProcessPollingSubscriber<
     AccelWithCovarianceStamped, autoware_utils::polling_policy::All>
-    sub_current_acceleration_{this, "~/input/acceleration"};
+    sub_current_acceleration_{this, "~/input/acceleration", rclcpp::QoS{10}};
   autoware_utils::InterProcessPollingSubscriber<TrackedObjects, autoware_utils::polling_policy::All>
-    sub_tracked_objects_{this, "~/input/tracked_objects"};
+    sub_tracked_objects_{this, "~/input/tracked_objects", rclcpp::QoS{10}};
   autoware_utils::InterProcessPollingSubscriber<
     TrafficLightGroupArray, autoware_utils::polling_policy::All>
     sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
-  autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
-    this, "~/input/turn_indicators"};
+  autoware_utils::InterProcessPollingSubscriber<
+    TurnIndicatorsReport, autoware_utils::polling_policy::All>
+    sub_turn_indicators_{this, "~/input/turn_indicators", rclcpp::QoS{10}};
   autoware_utils::InterProcessPollingSubscriber<
     LaneletRoute, autoware_utils::polling_policy::Newest>
     route_subscriber_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};

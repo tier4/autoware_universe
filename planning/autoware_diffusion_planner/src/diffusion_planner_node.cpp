@@ -399,13 +399,13 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   auto vec_ego_acceleration = sub_current_acceleration_.take_data();
   auto vec_traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
-  auto turn_indicators_ptr = sub_turn_indicators_.take_data();
+  auto vec_turn_indicators_ptr = sub_turn_indicators_.take_data();
 
   route_ptr_ = (!route_ptr_ || temp_route_ptr) ? temp_route_ptr : route_ptr_;
 
   if (
     vec_objects.empty() || vec_ego_kinematic_state.empty() || vec_ego_acceleration.empty() ||
-    !route_ptr_ || !turn_indicators_ptr) {
+    !route_ptr_ || vec_turn_indicators_ptr.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "There is no input data. objects: "
@@ -413,7 +413,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
         << ", ego_kinematic_state: " << (!vec_ego_kinematic_state.empty() ? "true" : "false")
         << ", ego_acceleration: " << (!vec_ego_acceleration.empty() ? "true" : "false")
         << ", route: " << (route_ptr_ ? "true" : "false")
-        << ", turn_indicators: " << (turn_indicators_ptr ? "true" : "false"));
+        << ", turn_indicators: " << (!vec_turn_indicators_ptr.empty() ? "true" : "false"));
     return std::nullopt;
   }
 
@@ -441,7 +441,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   }
 
   // Update turn indicators history
-  turn_indicators_history_.push_back(*turn_indicators_ptr);
+  turn_indicators_history_.push_back(*vec_turn_indicators_ptr.back());
   if (turn_indicators_history_.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
     turn_indicators_history_.pop_front();
   }
