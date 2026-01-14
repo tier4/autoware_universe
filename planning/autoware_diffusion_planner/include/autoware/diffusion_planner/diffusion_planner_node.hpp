@@ -169,7 +169,7 @@ struct DiffusionPlannerDebugParams
  * @brief
  * - agent_data_: Optional input data for inference.
  * - params_, debug_params_, normalization_map_: Node and debug parameters, normalization info.
- * - Lanelet map and routing members: route_ptr_, lane_segment_context_, is_map_loaded_.
+ * - Lanelet map and routing members: route_ptr_, lane_segment_context_.
  * - ROS 2 node elements: timer_, publishers, subscriptions, and time_keeper_.
  * - generator_uuid_: Unique identifier for the planner instance.
  * - vehicle_info_: Vehicle-specific parameters.
