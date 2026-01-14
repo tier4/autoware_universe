@@ -24,24 +24,6 @@
 
 namespace autoware::diffusion_planner::preprocess
 {
-namespace
-{
-std::vector<float> replicate_for_batch(const std::vector<float> & single_data, const int batch_size)
-{
-  const size_t single_size = single_data.size();
-  const size_t total_size = static_cast<size_t>(batch_size) * single_size;
-
-  std::vector<float> batch_data;
-  batch_data.reserve(total_size);
-
-  for (int i = 0; i < batch_size; ++i) {
-    batch_data.insert(batch_data.end(), single_data.begin(), single_data.end());
-  }
-
-  return batch_data;
-}
-}  // namespace
-
 HistoricalData::HistoricalData(
   bool ignore_unknown_neighbors_param, double traffic_light_group_msg_timeout_seconds_param)
 : ignore_unknown_neighbors(ignore_unknown_neighbors_param),
@@ -78,7 +60,7 @@ void HistoricalData::update_from_sensor_msgs(
 
 InputDataMap create_input_data(
   const FrameContext & frame_context, const preprocess::LaneSegmentContext & lane_segment_context,
-  const LaneletRoute::ConstSharedPtr & route_ptr, const VehicleSize & vehicle_size, int batch_size)
+  const LaneletRoute::ConstSharedPtr & route_ptr, const VehicleSize & vehicle_size)
 {
   InputDataMap input_data_map;
 
@@ -92,20 +74,20 @@ InputDataMap create_input_data(
     const std::vector<float> single_ego_agent_past = preprocess::create_ego_agent_past(
       frame_context.historical_data.ego_history, EGO_HISTORY_SHAPE[1], map_to_ego_transform,
       frame_time);
-    input_data_map["ego_agent_past"] = replicate_for_batch(single_ego_agent_past, batch_size);
+    input_data_map["ego_agent_past"] = single_ego_agent_past;
   }
   // Ego state
   {
     const std::vector<float> ego_current_state = preprocess::create_ego_current_state(
       kinematic_state, *(frame_context.sensor_msgs.ego_accelerations.back()),
       static_cast<float>(vehicle_size.wheel_base_m));
-    input_data_map["ego_current_state"] = replicate_for_batch(ego_current_state, batch_size);
+    input_data_map["ego_current_state"] = ego_current_state;
   }
   // Agent data on ego reference frame
   {
     const auto neighbor_agents_past = preprocess::create_neighbor_agents_past(
       frame_context.ego_centric_neighbor_histories, MAX_NUM_NEIGHBORS, INPUT_T + 1, frame_time);
-    input_data_map["neighbor_agents_past"] = replicate_for_batch(neighbor_agents_past, batch_size);
+    input_data_map["neighbor_agents_past"] = neighbor_agents_past;
   }
   // Static objects
   // TODO(Daniel): add static objects
@@ -113,7 +95,7 @@ InputDataMap create_input_data(
     std::vector<int64_t> single_batch_shape(
       STATIC_OBJECTS_SHAPE.begin() + 1, STATIC_OBJECTS_SHAPE.end());
     auto static_objects_data = utils::create_float_data(single_batch_shape, 0.0f);
-    input_data_map["static_objects"] = replicate_for_batch(static_objects_data, batch_size);
+    input_data_map["static_objects"] = static_objects_data;
   }
 
   // map data on ego reference frame
@@ -123,8 +105,8 @@ InputDataMap create_input_data(
     const auto [lanes, lanes_speed_limit] = lane_segment_context.create_tensor_data_from_indices(
       map_to_ego_transform, frame_context.historical_data.traffic_light_id_map, segment_indices,
       NUM_SEGMENTS_IN_LANE);
-    input_data_map["lanes"] = replicate_for_batch(lanes, batch_size);
-    input_data_map["lanes_speed_limit"] = replicate_for_batch(lanes_speed_limit, batch_size);
+    input_data_map["lanes"] = lanes;
+    input_data_map["lanes_speed_limit"] = lanes_speed_limit;
   }
 
   // route data on ego reference frame
@@ -135,23 +117,22 @@ InputDataMap create_input_data(
       lane_segment_context.create_tensor_data_from_indices(
         map_to_ego_transform, frame_context.historical_data.traffic_light_id_map, segment_indices,
         NUM_SEGMENTS_IN_ROUTE);
-    input_data_map["route_lanes"] = replicate_for_batch(route_lanes, batch_size);
-    input_data_map["route_lanes_speed_limit"] =
-      replicate_for_batch(route_lanes_speed_limit, batch_size);
+    input_data_map["route_lanes"] = route_lanes;
+    input_data_map["route_lanes_speed_limit"] = route_lanes_speed_limit;
   }
 
   // polygons
   {
     const auto & polygons =
       lane_segment_context.create_polygon_tensor(map_to_ego_transform, pose_center.position);
-    input_data_map["polygons"] = replicate_for_batch(polygons, batch_size);
+    input_data_map["polygons"] = polygons;
   }
 
   // line strings
   {
     const auto & line_strings =
       lane_segment_context.create_line_string_tensor(map_to_ego_transform, pose_center.position);
-    input_data_map["line_strings"] = replicate_for_batch(line_strings, batch_size);
+    input_data_map["line_strings"] = line_strings;
   }
 
   // goal pose
@@ -173,7 +154,7 @@ InputDataMap create_input_data(
       utils::rotation_matrix_to_cos_sin(goal_pose_ego_4x4.block<3, 3>(0, 0));
 
     std::vector<float> single_goal_pose = {x, y, cos_yaw, sin_yaw};
-    input_data_map["goal_pose"] = replicate_for_batch(single_goal_pose, batch_size);
+    input_data_map["goal_pose"] = single_goal_pose;
   }
 
   // ego shape
@@ -182,7 +163,7 @@ InputDataMap create_input_data(
     const float vehicle_length = static_cast<float>(vehicle_size.length_m);
     const float vehicle_width = static_cast<float>(vehicle_size.width_m);
     std::vector<float> single_ego_shape = {wheel_base, vehicle_length, vehicle_width};
-    input_data_map["ego_shape"] = replicate_for_batch(single_ego_shape, batch_size);
+    input_data_map["ego_shape"] = single_ego_shape;
   }
 
   // turn indicators
@@ -196,7 +177,7 @@ InputDataMap create_input_data(
       single_turn_indicators[INPUT_T - t] =
         frame_context.historical_data.turn_indicators_history[index].report;
     }
-    input_data_map["turn_indicators"] = replicate_for_batch(single_turn_indicators, batch_size);
+    input_data_map["turn_indicators"] = single_turn_indicators;
   }
 
   return input_data_map;

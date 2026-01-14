@@ -367,8 +367,23 @@ void DiffusionPlanner::on_timer()
     map_to_ego_transform};
 
   // Create input data
-  InputDataMap input_data_map = preprocess::create_input_data(
-    frame_context, *lane_segment_context_, route_ptr_, vehicle_size_, params_.batch_size);
+  InputDataMap input_data_map =
+    preprocess::create_input_data(frame_context, *lane_segment_context_, route_ptr_, vehicle_size_);
+
+  // Replicate single batch data
+  {
+    const int batch_size = params_.batch_size;
+    for (auto & [key, value] : input_data_map) {
+      const size_t single_size = value.size();
+      const size_t total_size = static_cast<size_t>(batch_size) * single_size;
+      std::vector<float> batch_data(total_size);
+      auto out_it = batch_data.begin();
+      for (int i = 0; i < batch_size; ++i) {
+        out_it = std::copy(value.begin(), value.end(), out_it);
+      }
+      value = std::move(batch_data);
+    }
+  }
 
   // random sample trajectories
   {
