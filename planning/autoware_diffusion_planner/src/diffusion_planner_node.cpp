@@ -395,7 +395,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   auto objects = sub_tracked_objects_.take_data();
-  auto ego_kinematic_state = sub_current_odometry_.take_data();
+  auto vec_ego_kinematic_state = sub_current_odometry_.take_data();
   auto ego_acceleration = sub_current_acceleration_.take_data();
   auto traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
@@ -410,12 +410,13 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   }
 
   if (
-    !objects || !ego_kinematic_state || !ego_acceleration || !route_ptr_ || !turn_indicators_ptr) {
+    !objects || vec_ego_kinematic_state.empty() || !ego_acceleration || !route_ptr_ ||
+    !turn_indicators_ptr) {
     RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "There is no input data. objects: "
         << (objects ? "true" : "false")
-        << ", ego_kinematic_state: " << (ego_kinematic_state ? "true" : "false")
+        << ", ego_kinematic_state: " << (!vec_ego_kinematic_state.empty() ? "true" : "false")
         << ", ego_acceleration: " << (ego_acceleration ? "true" : "false")
         << ", route: " << (route_ptr_ ? "true" : "false")
         << ", turn_indicators: " << (turn_indicators_ptr ? "true" : "false"));
@@ -428,7 +429,7 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
       "no traffic signal received. traffic light info will not be updated");
   }
 
-  Odometry kinematic_state = *ego_kinematic_state;
+  Odometry kinematic_state = *(vec_ego_kinematic_state.back());
   if (params_.shift_x) {
     kinematic_state.pose.pose =
       utils::shift_x(kinematic_state.pose.pose, vehicle_info_.wheel_base_m / 2.0);
@@ -462,9 +463,9 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
     traffic_signals, traffic_light_id_map_, this->now(), traffic_light_msg_timeout_s);
 
   // Create frame context
-  const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
+  const rclcpp::Time frame_time(kinematic_state.header.stamp);
   const FrameContext frame_context{
-    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
+    kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
     frame_time};
 
   return frame_context;

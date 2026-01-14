@@ -329,8 +329,8 @@ private:
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_route_marker_{nullptr};
   rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_{nullptr};
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
-  autoware_utils::InterProcessPollingSubscriber<Odometry> sub_current_odometry_{
-    this, "~/input/odometry"};
+  autoware_utils::InterProcessPollingSubscriber<Odometry, autoware_utils::polling_policy::All>
+    sub_current_odometry_{this, "~/input/odometry", rclcpp::QoS{10}};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_current_acceleration_{this, "~/input/acceleration"};
   autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
