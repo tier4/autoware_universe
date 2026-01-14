@@ -703,9 +703,6 @@ int main(int argc, char ** argv)
 
       // Process lanes and routes
       const Point & ego_pos = seq.data_list[i].kinematic_state.pose.pose.position;
-      const double center_x = ego_pos.x;
-      const double center_y = ego_pos.y;
-      const double center_z = ego_pos.z;
 
       // Process traffic signals for this frame using the traffic signals from FrameData
       std::map<lanelet::Id, preprocess::TrafficSignalStamped> traffic_light_id_map;
@@ -722,8 +719,7 @@ int main(int argc, char ** argv)
 
       // Get lanes data with speed limits
       const std::vector<int64_t> lane_segment_indices =
-        lane_segment_context.select_lane_segment_indices(
-          map2bl, center_x, center_y, NUM_SEGMENTS_IN_LANE);
+        lane_segment_context.select_lane_segment_indices(map2bl, ego_pos, NUM_SEGMENTS_IN_LANE);
       const auto [lanes, lanes_speed_limit] = lane_segment_context.create_tensor_data_from_indices(
         map2bl, traffic_light_id_map, lane_segment_indices, NUM_SEGMENTS_IN_LANE);
 
@@ -737,7 +733,7 @@ int main(int argc, char ** argv)
       // Get route lanes data with speed limits
       const std::vector<int64_t> segment_indices =
         lane_segment_context.select_route_segment_indices(
-          seq.data_list[i].route, center_x, center_y, center_z, NUM_SEGMENTS_IN_ROUTE);
+          seq.data_list[i].route, ego_pos, NUM_SEGMENTS_IN_ROUTE);
       const auto [route_lanes, route_lanes_speed_limit] =
         lane_segment_context.create_tensor_data_from_indices(
           map2bl, traffic_light_id_map, segment_indices, NUM_SEGMENTS_IN_ROUTE);
@@ -750,9 +746,9 @@ int main(int argc, char ** argv)
       }
 
       const std::vector<float> polygons =
-        lane_segment_context.create_polygon_tensor(map2bl, center_x, center_y);
+        lane_segment_context.create_polygon_tensor(map2bl, ego_pos);
       const std::vector<float> line_strings =
-        lane_segment_context.create_line_string_tensor(map2bl, center_x, center_y);
+        lane_segment_context.create_line_string_tensor(map2bl, ego_pos);
 
       // Get goal pose
       const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;

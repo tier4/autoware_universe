@@ -295,9 +295,6 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
       : frame_context.ego_kinematic_state.pose.pose;
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_center);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
-  const auto & center_x = static_cast<float>(pose_center.position.x);
-  const auto & center_y = static_cast<float>(pose_center.position.y);
-  const auto & center_z = static_cast<float>(pose_center.position.z);
 
   // Ego history
   {
@@ -331,7 +328,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   // map data on ego reference frame
   {
     const std::vector<int64_t> segment_indices = lane_segment_context_->select_lane_segment_indices(
-      map_to_ego_transform, center_x, center_y, NUM_SEGMENTS_IN_LANE);
+      map_to_ego_transform, pose_center.position, NUM_SEGMENTS_IN_LANE);
     const auto [lanes, lanes_speed_limit] = lane_segment_context_->create_tensor_data_from_indices(
       map_to_ego_transform, traffic_light_id_map_, segment_indices, NUM_SEGMENTS_IN_LANE);
     input_data_map["lanes"] = replicate_for_batch(lanes);
@@ -342,7 +339,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   {
     const std::vector<int64_t> segment_indices =
       lane_segment_context_->select_route_segment_indices(
-        *route_ptr_, center_x, center_y, center_z, NUM_SEGMENTS_IN_ROUTE);
+        *route_ptr_, pose_center.position, NUM_SEGMENTS_IN_ROUTE);
     const auto [route_lanes, route_lanes_speed_limit] =
       lane_segment_context_->create_tensor_data_from_indices(
         map_to_ego_transform, traffic_light_id_map_, segment_indices, NUM_SEGMENTS_IN_ROUTE);
@@ -353,14 +350,14 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   // polygons
   {
     const auto & polygons =
-      lane_segment_context_->create_polygon_tensor(map_to_ego_transform, center_x, center_y);
+      lane_segment_context_->create_polygon_tensor(map_to_ego_transform, pose_center.position);
     input_data_map["polygons"] = replicate_for_batch(polygons);
   }
 
   // line strings
   {
     const auto & line_strings =
-      lane_segment_context_->create_line_string_tensor(map_to_ego_transform, center_x, center_y);
+      lane_segment_context_->create_line_string_tensor(map_to_ego_transform, pose_center.position);
     input_data_map["line_strings"] = replicate_for_batch(line_strings);
   }
 

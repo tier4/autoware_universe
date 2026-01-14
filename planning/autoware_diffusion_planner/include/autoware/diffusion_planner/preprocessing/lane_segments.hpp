@@ -71,26 +71,23 @@ public:
    * @brief Select route segment indices based on route and constraints.
    *
    * @param route The lanelet route to process.
-   * @param center_x X-coordinate of the center point.
-   * @param center_y Y-coordinate of the center point.
-   * @param center_z Z-coordinate of the center point.
+   * @param center Position of the center point.
    * @param max_segments Maximum number of segments to select.
    * @return Vector of lane segment indices.
    */
   std::vector<int64_t> select_route_segment_indices(
-    const LaneletRoute & route, const double center_x, const double center_y, const double center_z,
+    const LaneletRoute & route, const geometry_msgs::msg::Point & center,
     const int64_t max_segments) const;
 
   /**
    * @brief Select lane segment indices based on distances and constraints.
    *
-   * @param center_x X-coordinate of the center point.
-   * @param center_y Y-coordinate of the center point.
+   * @param center Position of the center point.
    * @param max_segments Maximum number of segments to select.
    * @return Vector of lane segment indices.
    */
   std::vector<int64_t> select_lane_segment_indices(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+    const Eigen::Matrix4d & transform_matrix, const geometry_msgs::msg::Point & center,
     const int64_t max_segments) const;
 
   /**
@@ -119,17 +116,16 @@ public:
 
   // Create polygon and linestring tensor data
   std::vector<float> create_polygon_tensor(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
+    const Eigen::Matrix4d & transform_matrix, const geometry_msgs::msg::Point & center) const
   {
     return create_line_tensor(
-      lanelet_map_.polygons, transform_matrix, center_x, center_y, NUM_POLYGONS,
-      POINTS_PER_POLYGON);
+      lanelet_map_.polygons, transform_matrix, center, NUM_POLYGONS, POINTS_PER_POLYGON);
   }
   std::vector<float> create_line_string_tensor(
-    const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
+    const Eigen::Matrix4d & transform_matrix, const geometry_msgs::msg::Point & center) const
   {
     return create_line_tensor(
-      lanelet_map_.line_strings, transform_matrix, center_x, center_y, NUM_LINE_STRINGS,
+      lanelet_map_.line_strings, transform_matrix, center, NUM_LINE_STRINGS,
       POINTS_PER_LINE_STRING);
   }
 
@@ -139,15 +135,14 @@ private:
    *
    * @param polylines Vector of polylines to process.
    * @param transform_matrix Transformation matrix to apply to the points.
-   * @param center_x X-coordinate of the center point.
-   * @param center_y Y-coordinate of the center point.
+   * @param center Position of the center point.
    * @param num_elements Maximum number of elements to include.
    * @param num_points Number of points per element.
    * @return Vector of float tensor data.
    */
   std::vector<float> create_line_tensor(
     const std::vector<std::vector<LanePoint>> & polylines, const Eigen::Matrix4d & transform_matrix,
-    const double center_x, const double center_y, const int64_t num_elements,
+    const geometry_msgs::msg::Point & center, const int64_t num_elements,
     const int64_t num_points) const;
 
   const autoware::diffusion_planner::LaneletMap lanelet_map_;

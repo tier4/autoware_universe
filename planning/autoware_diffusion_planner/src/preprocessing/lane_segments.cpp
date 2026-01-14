@@ -44,7 +44,7 @@ using autoware_perception_msgs::msg::TrafficLightElement;
 
 std::map<lanelet::Id, size_t> create_lane_id_to_array_index_map(
   const std::vector<LaneSegment> & lane_segments);
-bool is_segment_inside(const LaneSegment & segment, const double center_x, const double center_y);
+bool is_segment_inside(const LaneSegment & segment, const geometry_msgs::msg::Point & center);
 uint8_t identify_current_light_status(
   const int64_t turn_direction, const std::vector<TrafficLightElement> & traffic_light_elements);
 }  // namespace
@@ -61,7 +61,7 @@ LaneSegmentContext::LaneSegmentContext(
 }
 
 std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
-  const LaneletRoute & route, const double center_x, const double center_y, const double center_z,
+  const LaneletRoute & route, const geometry_msgs::msg::Point & center,
   const int64_t max_segments) const
 {
   std::vector<int64_t> array_indices;
@@ -80,9 +80,9 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
     const LaneSegment & route_segment = lanelet_map_.lane_segments[array_index];
     double distance = std::numeric_limits<double>::max();
     for (const LanePoint & point : route_segment.centerline) {
-      const double diff_x = point.x() - center_x;
-      const double diff_y = point.y() - center_y;
-      const double diff_z = point.z() - center_z;
+      const double diff_x = point.x() - center.x;
+      const double diff_y = point.y() - center.y;
+      const double diff_z = point.z() - center.z;
       const double curr_distance = std::sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
       distance = std::min(distance, curr_distance);
     }
@@ -99,7 +99,7 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
   for (size_t i = closest_index; i < array_indices.size(); ++i) {
     const int64_t segment_idx = array_indices[i];
 
-    if (!is_segment_inside(lanelet_map_.lane_segments[segment_idx], center_x, center_y)) {
+    if (!is_segment_inside(lanelet_map_.lane_segments[segment_idx], center)) {
       if (has_entered_valid_region) {
         break;
       } else {
@@ -119,7 +119,7 @@ std::vector<int64_t> LaneSegmentContext::select_route_segment_indices(
 }
 
 std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
-  const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y,
+  const Eigen::Matrix4d & transform_matrix, const geometry_msgs::msg::Point & center,
   const int64_t max_segments) const
 {
   struct ColWithDistance
@@ -143,7 +143,7 @@ std::vector<int64_t> LaneSegmentContext::select_lane_segment_indices(
   for (size_t i = 0; i < lanelet_map_.lane_segments.size(); ++i) {
     const LaneSegment & segment = lanelet_map_.lane_segments[i];
 
-    if (!is_segment_inside(segment, center_x, center_y)) {
+    if (!is_segment_inside(segment, center)) {
       continue;
     }
 
@@ -309,15 +309,15 @@ LaneSegmentContext::create_tensor_data_from_indices(
 
 std::vector<float> LaneSegmentContext::create_line_tensor(
   const std::vector<std::vector<LanePoint>> & polylines, const Eigen::Matrix4d & transform_matrix,
-  const double center_x, const double center_y, const int64_t num_elements,
+  const geometry_msgs::msg::Point & center, const int64_t num_elements,
   const int64_t num_points) const
 {
   using autoware::diffusion_planner::constants::LANE_MASK_RANGE_M;
 
   auto judge_inside = [&](const double x, const double y) -> bool {
     return (
-      x > center_x - LANE_MASK_RANGE_M && x < center_x + LANE_MASK_RANGE_M &&
-      y > center_y - LANE_MASK_RANGE_M && y < center_y + LANE_MASK_RANGE_M);
+      x > center.x - LANE_MASK_RANGE_M && x < center.x + LANE_MASK_RANGE_M &&
+      y > center.y - LANE_MASK_RANGE_M && y < center.y + LANE_MASK_RANGE_M);
   };
 
   struct PolylineWithDistance
@@ -395,12 +395,12 @@ std::map<lanelet::Id, size_t> create_lane_id_to_array_index_map(
   return lane_id_to_index;
 }
 
-bool is_segment_inside(const LaneSegment & segment, const double center_x, const double center_y)
+bool is_segment_inside(const LaneSegment & segment, const geometry_msgs::msg::Point & center)
 {
   for (const auto & point : segment.centerline) {
     if (
-      std::abs(point.x() - center_x) <= autoware::diffusion_planner::constants::LANE_MASK_RANGE_M &&
-      std::abs(point.y() - center_y) <= autoware::diffusion_planner::constants::LANE_MASK_RANGE_M) {
+      std::abs(point.x() - center.x) <= autoware::diffusion_planner::constants::LANE_MASK_RANGE_M &&
+      std::abs(point.y() - center.y) <= autoware::diffusion_planner::constants::LANE_MASK_RANGE_M) {
       return true;
     }
   }
