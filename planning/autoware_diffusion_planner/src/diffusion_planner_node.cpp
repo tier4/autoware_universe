@@ -394,25 +394,25 @@ void DiffusionPlanner::load_engine(const std::string & model_path)
 std::optional<FrameContext> DiffusionPlanner::create_frame_context()
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  auto temp_route_ptr = route_subscriber_.take_data();
   auto vec_objects = sub_tracked_objects_.take_data();
   auto vec_ego_kinematic_state = sub_current_odometry_.take_data();
   auto vec_ego_acceleration = sub_current_acceleration_.take_data();
   auto vec_traffic_signals = sub_traffic_signals_.take_data();
-  auto temp_route_ptr = route_subscriber_.take_data();
   auto vec_turn_indicators_ptr = sub_turn_indicators_.take_data();
 
   route_ptr_ = (!route_ptr_ || temp_route_ptr) ? temp_route_ptr : route_ptr_;
 
   if (
-    vec_objects.empty() || vec_ego_kinematic_state.empty() || vec_ego_acceleration.empty() ||
-    !route_ptr_ || vec_turn_indicators_ptr.empty()) {
+    !route_ptr_ || vec_objects.empty() || vec_ego_kinematic_state.empty() ||
+    vec_ego_acceleration.empty() || vec_turn_indicators_ptr.empty()) {
     RCLCPP_WARN_STREAM_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-      "There is no input data. objects: "
-        << (!vec_objects.empty() ? "true" : "false")
+      "There is no input data"
+        << ", route: " << (route_ptr_ ? "true" : "false")
+        << ", objects: " << (!vec_objects.empty() ? "true" : "false")
         << ", ego_kinematic_state: " << (!vec_ego_kinematic_state.empty() ? "true" : "false")
         << ", ego_acceleration: " << (!vec_ego_acceleration.empty() ? "true" : "false")
-        << ", route: " << (route_ptr_ ? "true" : "false")
         << ", turn_indicators: " << (!vec_turn_indicators_ptr.empty() ? "true" : "false"));
     return std::nullopt;
   }
