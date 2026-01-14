@@ -87,7 +87,8 @@ class SceneModuleManagerInterfaceWithRTC
 {
 public:
   SceneModuleManagerInterfaceWithRTC(
-    rclcpp::Node & node, const char * module_name, const bool enable_rtc = true);
+    rclcpp::Node & node, const char * module_name, const bool enable_rtc = true,
+    const bool creep_supported = false);
 
   void plan(autoware_internal_planning_msgs::msg::PathWithLaneId * path) override;
 
