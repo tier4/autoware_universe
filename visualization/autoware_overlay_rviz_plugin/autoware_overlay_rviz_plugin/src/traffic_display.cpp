@@ -43,8 +43,12 @@ TrafficDisplay::TrafficDisplay()
   // Load the traffic light image
   std::string package_path =
     ament_index_cpp::get_package_share_directory("autoware_overlay_rviz_plugin");
+
   std::string image_path = package_path + "/assets/images/traffic.png";
   traffic_light_image_.load(image_path.c_str());
+
+  std::string arrow_image_path = package_path + "/assets/images/arrow_signal.png";
+  traffic_light_arrow_image_.load(arrow_image_path.c_str());
 }
 
 void TrafficDisplay::updateTrafficLightData(
@@ -53,61 +57,122 @@ void TrafficDisplay::updateTrafficLightData(
   current_traffic_ = *msg;
 }
 
+QColor TrafficDisplay::getColorById(uint8_t color_id) const
+{
+  using autoware_perception_msgs::msg::TrafficLightElement;
+  switch (color_id) {
+    case TrafficLightElement::RED:
+      return tl_red_;
+    case TrafficLightElement::AMBER:
+      return tl_yellow_;
+    case TrafficLightElement::GREEN:
+      return tl_green_;
+    case TrafficLightElement::WHITE:
+      return Qt::white;
+    default:
+      return tl_gray_;
+  }
+}
+
 void TrafficDisplay::drawTrafficLightIndicator(QPainter & painter, const QRectF & backgroundRect)
 {
+  using autoware_perception_msgs::msg::TrafficLightElement;
+
   // Enable Antialiasing for smoother drawing
   painter.setRenderHint(QPainter::Antialiasing, true);
   painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-  painter.setBrush(QBrush(tl_gray_, Qt::SolidPattern));
-  painter.setPen(Qt::NoPen);
-  // Define the area for the circle (background)
   QRectF circleRect = QRectF(50, 50, 50, 50);
   circleRect.moveTopRight(QPointF(
     backgroundRect.right() - circleRect.width() - 75,
     backgroundRect.height() / 2 - circleRect.height() / 2));
-  painter.drawEllipse(circleRect);
+
+  painter.setPen(Qt::NoPen);
+
+  QColor main_color = tl_gray_;
+  QColor arrow_color = tl_gray_;
+  bool has_circle = false;
+  bool has_arrow = false;
+  qreal arrow_angle = 0.0;
 
   if (!current_traffic_.elements.empty()) {
-    switch (current_traffic_.elements[0].color) {
-      case 1:
-        painter.setBrush(QBrush(tl_red_));
-        painter.drawEllipse(circleRect);
-        break;
-      case 2:
-        painter.setBrush(QBrush(tl_yellow_));
-        painter.drawEllipse(circleRect);
-        break;
-      case 3:
-        painter.setBrush(QBrush(tl_green_));
-        painter.drawEllipse(circleRect);
-        break;
-      case 4:
-      default:
-        painter.setBrush(tl_gray_);
-        painter.drawEllipse(circleRect);
-        break;
+    for (const auto & element : current_traffic_.elements) {
+      QColor color = getColorById(element.color);
+
+      if (element.shape == TrafficLightElement::CIRCLE) {
+        main_color = color;
+        has_circle = true;
+      } else if (element.shape != TrafficLightElement::UNKNOWN) {
+        arrow_color = color;
+        has_arrow = true;
+
+        switch (element.shape) {
+          case TrafficLightElement::LEFT_ARROW:
+            arrow_angle = 180.0;
+            break;
+          case TrafficLightElement::RIGHT_ARROW:
+            arrow_angle = 0.0;
+            break;
+          case TrafficLightElement::UP_ARROW:
+            arrow_angle = -90.0;
+            break;
+          case TrafficLightElement::DOWN_ARROW:
+            arrow_angle = 90.0;
+            break;
+          case TrafficLightElement::DOWN_LEFT_ARROW:
+            arrow_angle = 135.0;
+            break;
+          case TrafficLightElement::DOWN_RIGHT_ARROW:
+            arrow_angle = 45.0;
+            break;
+          default:
+            break;
+        }
+      }
+    }
+
+    if (!has_circle && has_arrow) {
+      main_color = arrow_color;
     }
   }
 
-  // Scaling factor (e.g., 1.5 for 150% size)
+  painter.setBrush(QBrush(main_color));
+  painter.drawEllipse(circleRect);
+
+  if (has_circle && has_arrow) {
+    double scale = 0.5;
+    double w = circleRect.width() * scale;
+    double h = circleRect.height() * scale;
+
+    QRectF innerRect(0, 0, w, h);
+    innerRect.moveCenter(circleRect.center());
+
+    painter.setBrush(QBrush(arrow_color));
+    painter.drawEllipse(innerRect);
+  }
+
+  const QImage & imageToDraw = (has_arrow) ? traffic_light_arrow_image_ : traffic_light_image_;
+
   float scaleFactor = 0.75;
+  QSize scaledSize = imageToDraw.size() * scaleFactor;
 
-  // Calculate the scaled size
-  QSize scaledSize = traffic_light_image_.size() * scaleFactor;
-
-  // Ensure the scaled image is still within the circle bounds or adjust scaleFactor accordingly
-
-  // Calculate the centered rectangle for the scaled image
-  QRectF scaledImageRect(0, 0, scaledSize.width(), scaledSize.height());
-  scaledImageRect.moveCenter(circleRect.center());
-
-  // Scale the image to the new size
   QImage scaledTrafficImage =
-    traffic_light_image_.scaled(scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    imageToDraw.scaled(scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
-  // Draw the scaled and centered image
-  painter.drawImage(scaledImageRect.topLeft(), scaledTrafficImage);
+  painter.save();
+
+  painter.translate(circleRect.center());
+
+  if (has_arrow) {
+    painter.rotate(arrow_angle);
+  }
+
+  QRectF targetRect(
+    -scaledSize.width() / 2.0, -scaledSize.height() / 2.0, scaledSize.width(), scaledSize.height());
+
+  painter.drawImage(targetRect, scaledTrafficImage);
+
+  painter.restore();
 }
 
 QImage TrafficDisplay::coloredImage(const QImage & source, const QColor & color)

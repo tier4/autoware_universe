@@ -44,6 +44,7 @@ public:
 
 private:
   QImage traffic_light_image_;
+  QImage traffic_light_arrow_image_;
 
   const QColor tl_red_;
   const QColor tl_yellow_;
@@ -51,6 +52,8 @@ private:
   const QColor tl_gray_;
 
   QImage coloredImage(const QImage & source, const QColor & color);
+
+  QColor getColorById(uint8_t color_id) const;
 };
 
 }  // namespace autoware_overlay_rviz_plugin
