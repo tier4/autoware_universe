@@ -241,26 +241,31 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
   // Update ego history
-  ego_history_.push_back(kinematic_state);
-  if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
-    ego_history_.pop_front();
+  historical_data_.ego_history.push_back(kinematic_state);
+  if (historical_data_.ego_history.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
+    historical_data_.ego_history.pop_front();
   }
 
   // Update turn indicators history
-  turn_indicators_history_.push_back(*curr_msgs.turn_indicators.back());
-  if (turn_indicators_history_.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
-    turn_indicators_history_.pop_front();
+  historical_data_.turn_indicators_history.push_back(*curr_msgs.turn_indicators.back());
+  if (
+    historical_data_.turn_indicators_history.size() >
+    static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
+    historical_data_.turn_indicators_history.pop_front();
   }
 
   // Update neighbor agent data
-  agent_data_.update_histories(*curr_msgs.tracked_objects.back(), params_.ignore_unknown_neighbors);
+  historical_data_.agent_data.update_histories(
+    *curr_msgs.tracked_objects.back(), params_.ignore_unknown_neighbors);
   const auto processed_neighbor_histories =
-    agent_data_.transformed_and_trimmed_histories(map_to_ego_transform, NEIGHBOR_SHAPE[1]);
+    historical_data_.agent_data.transformed_and_trimmed_histories(
+      map_to_ego_transform, NEIGHBOR_SHAPE[1]);
 
   // Update traffic light map
   const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
   preprocess::process_traffic_signals(
-    curr_msgs.traffic_signals, traffic_light_id_map_, this->now(), traffic_light_msg_timeout_s);
+    curr_msgs.traffic_signals, historical_data_.traffic_light_id_map, this->now(),
+    traffic_light_msg_timeout_s);
 
   // Create frame context
   const rclcpp::Time frame_time(kinematic_state.header.stamp);
@@ -293,7 +298,8 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   // Ego history
   {
     const std::vector<float> single_ego_agent_past = preprocess::create_ego_agent_past(
-      ego_history_, EGO_HISTORY_SHAPE[1], map_to_ego_transform, frame_context.frame_time);
+      historical_data_.ego_history, EGO_HISTORY_SHAPE[1], map_to_ego_transform,
+      frame_context.frame_time);
     input_data_map["ego_agent_past"] = replicate_for_batch(single_ego_agent_past);
   }
   // Ego state
@@ -324,7 +330,8 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
     const std::vector<int64_t> segment_indices = lane_segment_context_->select_lane_segment_indices(
       map_to_ego_transform, pose_center.position, NUM_SEGMENTS_IN_LANE);
     const auto [lanes, lanes_speed_limit] = lane_segment_context_->create_tensor_data_from_indices(
-      map_to_ego_transform, traffic_light_id_map_, segment_indices, NUM_SEGMENTS_IN_LANE);
+      map_to_ego_transform, historical_data_.traffic_light_id_map, segment_indices,
+      NUM_SEGMENTS_IN_LANE);
     input_data_map["lanes"] = replicate_for_batch(lanes);
     input_data_map["lanes_speed_limit"] = replicate_for_batch(lanes_speed_limit);
   }
@@ -336,7 +343,8 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
         *route_ptr_, pose_center.position, NUM_SEGMENTS_IN_ROUTE);
     const auto [route_lanes, route_lanes_speed_limit] =
       lane_segment_context_->create_tensor_data_from_indices(
-        map_to_ego_transform, traffic_light_id_map_, segment_indices, NUM_SEGMENTS_IN_ROUTE);
+        map_to_ego_transform, historical_data_.traffic_light_id_map, segment_indices,
+        NUM_SEGMENTS_IN_ROUTE);
     input_data_map["route_lanes"] = replicate_for_batch(route_lanes);
     input_data_map["route_lanes_speed_limit"] = replicate_for_batch(route_lanes_speed_limit);
   }
@@ -394,8 +402,9 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
     std::vector<float> single_turn_indicators(INPUT_T + 1, 0.0f);
     for (int64_t t = 0; t < INPUT_T + 1; ++t) {
       const int64_t index = std::max(
-        static_cast<int64_t>(turn_indicators_history_.size()) - 1 - t, static_cast<int64_t>(0));
-      single_turn_indicators[INPUT_T - t] = turn_indicators_history_[index].report;
+        static_cast<int64_t>(historical_data_.turn_indicators_history.size()) - 1 - t,
+        static_cast<int64_t>(0));
+      single_turn_indicators[INPUT_T - t] = historical_data_.turn_indicators_history[index].report;
     }
     input_data_map["turn_indicators"] = replicate_for_batch(single_turn_indicators);
   }
@@ -594,9 +603,9 @@ void DiffusionPlanner::on_timer()
   publish_predictions(predictions, *frame_context, frame_time);
 
   // Publish turn indicators
-  const int64_t prev_report = turn_indicators_history_.empty()
+  const int64_t prev_report = historical_data_.turn_indicators_history.empty()
                                 ? TurnIndicatorsReport::DISABLE
-                                : turn_indicators_history_.back().report;
+                                : historical_data_.turn_indicators_history.back().report;
   const auto turn_indicator_command =
     turn_indicator_manager_.evaluate(turn_indicator_logit, frame_time, prev_report);
   pub_turn_indicators_->publish(turn_indicator_command);

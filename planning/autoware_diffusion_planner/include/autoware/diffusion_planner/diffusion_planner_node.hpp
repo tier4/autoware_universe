@@ -118,6 +118,14 @@ struct SensorMsgs
   std::vector<TurnIndicatorsReport::ConstSharedPtr> turn_indicators;
 };
 
+struct HistoricalData
+{
+  std::deque<nav_msgs::msg::Odometry> ego_history;
+  std::deque<TurnIndicatorsReport> turn_indicators_history;
+  AgentData agent_data;
+  std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map;
+};
+
 struct DiffusionPlannerParams
 {
   std::string model_path;
@@ -252,10 +260,7 @@ private:
   std::unique_ptr<TensorrtInference> tensorrt_inference_{nullptr};
 
   // history data
-  std::deque<nav_msgs::msg::Odometry> ego_history_;
-  std::deque<TurnIndicatorsReport> turn_indicators_history_;
-  AgentData agent_data_;
-  std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
+  HistoricalData historical_data_;
 
   // Node parameters
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
