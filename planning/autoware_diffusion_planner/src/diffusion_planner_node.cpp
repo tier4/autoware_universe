@@ -266,8 +266,8 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
   // Create frame context
   const rclcpp::Time frame_time(kinematic_state.header.stamp);
   const FrameContext frame_context{
-    kinematic_state, *(vec_ego_acceleration.back()), ego_to_map_transform,
-    processed_neighbor_histories, frame_time};
+    kinematic_state,      *(vec_ego_acceleration.back()), ego_to_map_transform,
+    map_to_ego_transform, processed_neighbor_histories,   frame_time};
 
   return frame_context;
 }
@@ -288,13 +288,8 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
     }
   }
 
-  const geometry_msgs::msg::Pose & pose_center =
-    params_.shift_x
-      ? utils::shift_x(
-          frame_context.ego_kinematic_state.pose.pose, vehicle_info_.wheel_base_m / 2.0)
-      : frame_context.ego_kinematic_state.pose.pose;
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_center);
-  const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
+  const geometry_msgs::msg::Pose & pose_center = frame_context.ego_kinematic_state.pose.pose;
+  const Eigen::Matrix4d & map_to_ego_transform = frame_context.map_to_ego_transform;
 
   // Ego history
   {
