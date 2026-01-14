@@ -40,16 +40,16 @@ TEST(PostprocessingUtilsTest, CreateTrajectoryAndMultipleTrajectories)
   for (size_t i = 0; i < data.size(); ++i) data[i] = static_cast<float>(i);
 
   std::vector<int64_t> shape{batch_size, agent_size, rows, cols};
-  Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+  const Eigen::Vector3d base_position = Eigen::Vector3d::Zero();
   rclcpp::Time stamp(123, 0);
 
   auto expected_points = prediction_shape[2];
   const int64_t velocity_smoothing_window = 8;
   const bool enable_force_stop = false;
   const double stopping_threshold = 0.0;
-  const auto agent_poses = postprocess::parse_predictions(data);
+  const auto agent_poses = postprocess::parse_predictions(data, Eigen::Matrix4d::Identity());
   auto traj = postprocess::create_ego_trajectory(
-    agent_poses, stamp, transform, 0, velocity_smoothing_window, enable_force_stop,
+    agent_poses, stamp, base_position, 0, velocity_smoothing_window, enable_force_stop,
     stopping_threshold);
   ASSERT_EQ(traj.points.size(), expected_points);
 }

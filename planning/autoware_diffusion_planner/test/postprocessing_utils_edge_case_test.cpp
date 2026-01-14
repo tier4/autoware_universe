@@ -70,14 +70,14 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_EmptyAgentData)
   AgentData agent_data;
   agent_data.update_histories(empty_objects, false);
   rclcpp::Time stamp(123, 0);
-  Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
 
-  const auto agent_poses = postprocess::parse_predictions(prediction);
+  const auto agent_poses =
+    postprocess::parse_predictions(prediction, Eigen::Matrix4d::Identity());
   constexpr int64_t batch_idx = 0;
   auto result = postprocess::create_predicted_objects(
     agent_poses,
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), NEIGHBOR_SHAPE[1]),
-    stamp, transform, batch_idx);
+    stamp, batch_idx);
 
   EXPECT_EQ(result.objects.size(), 0);
   EXPECT_EQ(result.header.frame_id, "map");
@@ -100,14 +100,14 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_MorePredictionsTh
   AgentData agent_data;
   agent_data.update_histories(objects, false);
   rclcpp::Time stamp(123, 0);
-  Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
 
-  const auto agent_poses = postprocess::parse_predictions(prediction);
+  const auto agent_poses =
+    postprocess::parse_predictions(prediction, Eigen::Matrix4d::Identity());
   constexpr int64_t batch_idx = 0;
   auto result = postprocess::create_predicted_objects(
     agent_poses,
     agent_data.transformed_and_trimmed_histories(Eigen::Matrix4d::Identity(), NEIGHBOR_SHAPE[1]),
-    stamp, transform, batch_idx);
+    stamp, batch_idx);
 
   EXPECT_EQ(result.objects.size(), 1);
 }

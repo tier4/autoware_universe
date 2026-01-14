@@ -62,7 +62,7 @@ Trajectory get_trajectory_from_poses(
 };  // namespace
 
 std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
-  const std::vector<float> & prediction)
+  const std::vector<float> & prediction, const Eigen::Matrix4d & transform_ego_to_map)
 {
   const int64_t batch_size = prediction.size() / (MAX_NUM_AGENTS * OUTPUT_T * POSE_DIM);
 
@@ -100,7 +100,7 @@ std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
         pose(0, 3) = x;
         pose(1, 3) = y;
 
-        parsed_predictions[batch_idx][agent_idx][time_idx] = pose;
+        parsed_predictions[batch_idx][agent_idx][time_idx] = transform_ego_to_map * pose;
       }
     }
   }
@@ -111,7 +111,7 @@ std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
 PredictedObjects create_predicted_objects(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
   const std::vector<AgentHistory> & ego_centric_histories, const rclcpp::Time & stamp,
-  const Eigen::Matrix4d & transform_ego_to_map, const int64_t batch_index)
+  const int64_t batch_index)
 {
   auto trajectory_path_to_pose_path = [](const Trajectory & trajectory, const double object_z)
     -> std::vector<geometry_msgs::msg::Pose> {
@@ -140,25 +140,22 @@ PredictedObjects create_predicted_objects(
     // Extract poses for this neighbor (neighbor_id + 1 because 0 is ego)
     std::vector<Eigen::Matrix4d> neighbor_poses;
     for (int64_t time_idx = 0; time_idx < OUTPUT_T; ++time_idx) {
-      // Transform to map frame
-      Eigen::Matrix4d pose_in_map =
-        transform_ego_to_map * agent_poses[batch_index][neighbor_id + 1][time_idx];
-      neighbor_poses.push_back(pose_in_map);
+      neighbor_poses.push_back(agent_poses[batch_index][neighbor_id + 1][time_idx]);
     }
 
-    const double base_x = ego_centric_histories.at(neighbor_id).get_latest_state().pose(0, 3);
-    const double base_y = ego_centric_histories.at(neighbor_id).get_latest_state().pose(1, 3);
-    const double base_z = ego_centric_histories.at(neighbor_id).get_latest_state().pose(2, 3);
     constexpr int64_t velocity_smoothing_window = 1;
     constexpr bool enable_force_stop = false;  // Don't force stop for neighbors
     constexpr double stopping_threshold = 0.0;
+    const TrackedObject & object_info =
+      ego_centric_histories.at(neighbor_id).get_latest_state().original_info;
+    const double base_x = object_info.kinematics.pose_with_covariance.pose.position.x;
+    const double base_y = object_info.kinematics.pose_with_covariance.pose.position.y;
+    const double base_z = object_info.kinematics.pose_with_covariance.pose.position.z;
     const Trajectory trajectory_points_in_map_reference = get_trajectory_from_poses(
       neighbor_poses, base_x, base_y, base_z, stamp, velocity_smoothing_window, enable_force_stop,
       stopping_threshold);
 
     PredictedObject object;
-    const TrackedObject & object_info =
-      ego_centric_histories.at(neighbor_id).get_latest_state().original_info;
     {  // Extract path from prediction
       PredictedPath predicted_path;
       const double object_pose_z = object_info.kinematics.pose_with_covariance.pose.position.z;
@@ -189,9 +186,9 @@ PredictedObjects create_predicted_objects(
 
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const Eigen::Matrix4d & transform_ego_to_map,
-  const int64_t batch_index, const int64_t velocity_smoothing_window, const bool enable_force_stop,
-  const double stopping_threshold)
+  const rclcpp::Time & stamp, const Eigen::Vector3d & base_position,
+  const int64_t batch_index, const int64_t velocity_smoothing_window,
+  const bool enable_force_stop, const double stopping_threshold)
 {
   const int64_t ego_index = 0;
 
@@ -206,15 +203,12 @@ Trajectory create_ego_trajectory(
   std::vector<Eigen::Matrix4d> ego_poses;
   ego_poses.reserve(OUTPUT_T);
   for (int64_t time_idx = 0; time_idx < OUTPUT_T; ++time_idx) {
-    // Transform to map frame
-    Eigen::Matrix4d pose_in_map =
-      transform_ego_to_map * agent_poses[batch_index][ego_index][time_idx];
-    ego_poses.push_back(pose_in_map);
+    ego_poses.push_back(agent_poses[batch_index][ego_index][time_idx]);
   }
 
-  const double base_x = transform_ego_to_map(0, 3);
-  const double base_y = transform_ego_to_map(1, 3);
-  const double base_z = transform_ego_to_map(2, 3);
+  const double base_x = base_position.x();
+  const double base_y = base_position.y();
+  const double base_z = base_position.z();
 
   return get_trajectory_from_poses(
     ego_poses, base_x, base_y, base_z, stamp, velocity_smoothing_window, enable_force_stop,
