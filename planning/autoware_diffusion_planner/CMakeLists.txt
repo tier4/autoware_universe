@@ -74,6 +74,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     src/conversion/lanelet.cpp
     src/conversion/agent.cpp
     src/conversion/ego.cpp
+    src/inference/tensorrt_inference.cpp
     src/postprocessing/postprocessing_utils.cpp
     src/preprocessing/lane_segments.cpp
     src/preprocessing/preprocessing_utils.cpp
