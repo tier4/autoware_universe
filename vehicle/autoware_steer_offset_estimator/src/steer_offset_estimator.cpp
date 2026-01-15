@@ -109,7 +109,9 @@ geometry_msgs::msg::Twist SteerOffsetEstimator::calculate_twist(
 void SteerOffsetEstimator::update_steering_buffer(const std::vector<SteeringReport> & steers)
 {
   for (const auto & steer : steers) {
-    if (rclcpp::Time(steer.stamp) < rclcpp::Time(steering_buffer_.back()->stamp)) {
+    if (
+      !steering_buffer_.empty() &&
+      rclcpp::Time(steer.stamp) < rclcpp::Time(steering_buffer_.back()->stamp)) {
       continue;
     }
     steering_buffer_.emplace_back(std::make_shared<SteeringReport>(steer));
