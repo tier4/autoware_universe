@@ -251,6 +251,13 @@ bool LaneChangeInterface::canTransitSuccessState()
     return true;
   }
 
+  if (
+    planner_data_ && planner_data_->operation_mode &&
+    planner_data_->operation_mode->mode != OperationModeState::AUTONOMOUS &&
+    module_type_->is_near_terminal_end()) {
+    return true;
+  }
+
   log_debug_throttled("Lane changing process is ongoing");
   return false;
 }
@@ -328,6 +335,12 @@ bool LaneChangeInterface::canTransitFailureState()
 
 std::pair<LaneChangeStates, std::string_view> LaneChangeInterface::check_transit_failure()
 {
+  if (
+    planner_data_ && planner_data_->operation_mode &&
+    planner_data_->operation_mode->mode != OperationModeState::AUTONOMOUS &&
+    module_type_->is_near_terminal_end()) {
+    return {LaneChangeStates::Cancel, "ManualModeNearTerminal"};
+  }
   if (module_type_->isAbortState()) {
     if (module_type_->hasFinishedAbort()) {
       return {LaneChangeStates::Cancel, "Aborted"};
@@ -350,6 +363,10 @@ std::pair<LaneChangeStates, std::string_view> LaneChangeInterface::check_transit
     return {LaneChangeStates::Cancel, "InvalidPath"};
   }
 
+  if (module_type_->is_near_terminal_end()) {
+    return {LaneChangeStates::Warning, "TooNearTerminal"};
+  }
+
   const auto is_preparing = module_type_->isEgoOnPreparePhase();
   const auto can_return_to_current = module_type_->isAbleToReturnCurrentLane();
 
@@ -370,10 +387,6 @@ std::pair<LaneChangeStates, std::string_view> LaneChangeInterface::check_transit
   // lane, for example, during an evasive maneuver around a static object.
   if (is_preparing && can_return_to_current) {
     return {LaneChangeStates::Cancel, "SafeToCancel"};
-  }
-
-  if (module_type_->is_near_terminal()) {
-    return {LaneChangeStates::Warning, "TooNearTerminal"};
   }
 
   if (!module_type_->isAbortEnabled()) {

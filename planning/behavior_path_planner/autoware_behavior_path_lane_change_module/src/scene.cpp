@@ -308,6 +308,13 @@ bool NormalLaneChange::isLaneChangeRequired()
     return false;
   }
 
+  if (
+    is_near_terminal_end() && planner_data_ && planner_data_->operation_mode &&
+    planner_data_->operation_mode->mode != OperationModeState::AUTONOMOUS) {
+    RCLCPP_WARN(logger_, "Ego is in MANUAL Mode and near terminal end, don't run LC module");
+    return false;
+  }
+
   return true;
 }
 
@@ -860,7 +867,7 @@ bool NormalLaneChange::isAbleToReturnCurrentLane() const
   return true;
 }
 
-bool NormalLaneChange::is_near_terminal() const
+bool NormalLaneChange::is_near_terminal_end() const
 {
   if (!common_data_ptr_ || !common_data_ptr_->is_data_available()) {
     return true;
