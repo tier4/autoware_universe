@@ -29,6 +29,7 @@ if(${CUDA_FOUND})
   )
 
   # cSpell: ignore expt gencode
+  list(APPEND CUDA_NVCC_FLAGS --default-stream per-thread)
   list(APPEND CUDA_NVCC_FLAGS --expt-relaxed-constexpr -diag-suppress 20012 --compiler-options -fPIC)
   list(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_75,code=sm_75)
   list(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_86,code=sm_86)
