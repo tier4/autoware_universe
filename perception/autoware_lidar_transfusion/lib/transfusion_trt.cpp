@@ -45,6 +45,8 @@ TransfusionTRT::TransfusionTRT(
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_, stream_);
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("processing/inner");
+
+  // These methods are asynchronous and executed in stream_.
   initPtr();
   initTrt(trt_config);
 }
@@ -151,6 +153,7 @@ bool TransfusionTRT::detect(
   std::unordered_map<std::string, double> & proc_timing)
 {
   stop_watch_ptr_->toc("processing/inner", true);
+  // Executed in stream_.
   if (!preprocess(msg_ptr, tf_buffer)) {
     RCLCPP_WARN_STREAM(
       rclcpp::get_logger("lidar_transfusion"), "Fail to preprocess and skip to detect.");
@@ -159,6 +162,8 @@ bool TransfusionTRT::detect(
   proc_timing.emplace(
     "debug/processing_time/preprocess_ms", stop_watch_ptr_->toc("processing/inner", true));
 
+  // Executed in stream_ and synchronized on return.
+  // Is it really necessary to synchronize it?
   if (!inference()) {
     RCLCPP_WARN_STREAM(
       rclcpp::get_logger("lidar_transfusion"), "Fail to inference and skip to detect.");
@@ -167,6 +172,8 @@ bool TransfusionTRT::detect(
   proc_timing.emplace(
     "debug/processing_time/inference_ms", stop_watch_ptr_->toc("processing/inner", true));
 
+  // Executed in stream_ and synchronized on return.
+  // Is it really necessary to synchronize it?
   if (!postprocess(det_boxes3d)) {
     RCLCPP_WARN_STREAM(
       rclcpp::get_logger("lidar_transfusion"), "Fail to postprocess and skip to detect.");
@@ -195,21 +202,26 @@ bool TransfusionTRT::preprocess(
   cuda::clear_async(params_input_d_.get(), 1, stream_);
   cuda::clear_async(
     points_aux_d_.get(), config_.cloud_capacity_ * config_.num_point_feature_size_, stream_);
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  // No synchronization needed.
+  // CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
+  // Executed in stream_.
   const auto count = vg_ptr_->generateSweepPoints(msg_ptr, points_aux_d_);
   RCLCPP_DEBUG_STREAM(rclcpp::get_logger("lidar_transfusion"), "Generated sweep points: " << count);
 
   const std::size_t random_offset = std::rand() % config_.cloud_capacity_;
+  // Executed in stream_.
   pre_ptr_->shufflePoints_launch(
     points_aux_d_.get(), shuffle_indices_d_.get(), points_d_.get(), count, config_.cloud_capacity_,
     random_offset);
 
+  // Executed in stream_.
   pre_ptr_->generateVoxels(
     points_d_.get(), config_.cloud_capacity_, params_input_d_.get(), voxel_features_d_.get(),
     voxel_num_d_.get(), voxel_idxs_d_.get());
   unsigned int params_input;
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  // No synchronization needed.
+  // CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     &params_input, params_input_d_.get(), sizeof(unsigned int), cudaMemcpyDeviceToHost, stream_));
@@ -263,6 +275,9 @@ bool TransfusionTRT::preprocess(
 bool TransfusionTRT::inference()
 {
   auto status = network_trt_ptr_->enqueueV3(stream_);
+  // To get the result from TensorRT,
+  // stream_ should be synchronized.
+  // Can it be synchronized later?
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   if (!status) {

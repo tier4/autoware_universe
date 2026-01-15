@@ -44,7 +44,8 @@ public:
 protected:
   std::unique_ptr<PointCloudDensification> pd_ptr_{nullptr};
   std::unique_ptr<PreprocessCuda> pre_ptr_{nullptr};
-  cuda::unique_ptr<float[]> affine_past2current_d_{nullptr};
+  // cuda::unique_ptr<float[]> affine_past2current_d_{nullptr};
+  cuda::async_unique_ptr<float[]> affine_past2current_d_{nullptr};
 
   CenterPointConfig config_;
   std::array<float, 6> range_;

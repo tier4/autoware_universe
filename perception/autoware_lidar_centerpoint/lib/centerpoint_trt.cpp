@@ -47,6 +47,7 @@ CenterPointTRT::CenterPointTRT(
   pre_proc_ptr_ = std::make_unique<PreprocessCuda>(config_, stream_);
   post_proc_ptr_ = std::make_unique<PostProcessCUDA>(config_, stream_);
 
+  // These procedures are asynchronous and executed in stream_.
   initPtr();
   initTrt(encoder_param, head_param);
 }
@@ -79,25 +80,25 @@ void CenterPointTRT::initPtr()
   points_.resize(config_.cloud_capacity_ * config_.point_feature_size_);
 
   // device
-  voxels_d_ = cuda::make_unique<float[]>(voxels_size_);
-  coordinates_d_ = cuda::make_unique<int[]>(coordinates_size_);
-  num_points_per_voxel_d_ = cuda::make_unique<float[]>(config_.max_voxel_size_);
-  encoder_in_features_d_ = cuda::make_unique<float[]>(encoder_in_feature_size_);
-  pillar_features_d_ = cuda::make_unique<float[]>(pillar_features_size);
-  spatial_features_d_ = cuda::make_unique<float[]>(spatial_features_size_);
-  head_out_heatmap_d_ = cuda::make_unique<float[]>(grid_xy_size * config_.class_size_);
-  head_out_offset_d_ = cuda::make_unique<float[]>(grid_xy_size * config_.head_out_offset_size_);
-  head_out_z_d_ = cuda::make_unique<float[]>(grid_xy_size * config_.head_out_z_size_);
-  head_out_dim_d_ = cuda::make_unique<float[]>(grid_xy_size * config_.head_out_dim_size_);
-  head_out_rot_d_ = cuda::make_unique<float[]>(grid_xy_size * config_.head_out_rot_size_);
-  head_out_vel_d_ = cuda::make_unique<float[]>(grid_xy_size * config_.head_out_vel_size_);
-  points_d_ = cuda::make_unique<float[]>(config_.cloud_capacity_ * config_.point_feature_size_);
-  voxels_buffer_d_ = cuda::make_unique<float[]>(voxels_buffer_size_);
-  mask_d_ = cuda::make_unique<unsigned int[]>(mask_size_);
-  num_voxels_d_ = cuda::make_unique<unsigned int[]>(1);
+  voxels_d_ = cuda::make_unique_async<float[]>(voxels_size_, stream_);
+  coordinates_d_ = cuda::make_unique_async<int[]>(coordinates_size_, stream_);
+  num_points_per_voxel_d_ = cuda::make_unique_async<float[]>(config_.max_voxel_size_, stream_);
+  encoder_in_features_d_ = cuda::make_unique_async<float[]>(encoder_in_feature_size_, stream_);
+  pillar_features_d_ = cuda::make_unique_async<float[]>(pillar_features_size, stream_);
+  spatial_features_d_ = cuda::make_unique_async<float[]>(spatial_features_size_, stream_);
+  head_out_heatmap_d_ = cuda::make_unique_async<float[]>(grid_xy_size * config_.class_size_, stream_);
+  head_out_offset_d_ = cuda::make_unique_async<float[]>(grid_xy_size * config_.head_out_offset_size_, stream_);
+  head_out_z_d_ = cuda::make_unique_async<float[]>(grid_xy_size * config_.head_out_z_size_, stream_);
+  head_out_dim_d_ = cuda::make_unique_async<float[]>(grid_xy_size * config_.head_out_dim_size_, stream_);
+  head_out_rot_d_ = cuda::make_unique_async<float[]>(grid_xy_size * config_.head_out_rot_size_, stream_);
+  head_out_vel_d_ = cuda::make_unique_async<float[]>(grid_xy_size * config_.head_out_vel_size_, stream_);
+  points_d_ = cuda::make_unique_async<float[]>(config_.cloud_capacity_ * config_.point_feature_size_, stream_);
+  voxels_buffer_d_ = cuda::make_unique_async<float[]>(voxels_buffer_size_, stream_);
+  mask_d_ = cuda::make_unique_async<unsigned int[]>(mask_size_, stream_);
+  num_voxels_d_ = cuda::make_unique_async<unsigned int[]>(1, stream_);
 
-  points_aux_d_ = cuda::make_unique<float[]>(config_.cloud_capacity_ * config_.point_feature_size_);
-  shuffle_indices_d_ = cuda::make_unique<unsigned int[]>(config_.cloud_capacity_);
+  points_aux_d_ = cuda::make_unique_async<float[]>(config_.cloud_capacity_ * config_.point_feature_size_, stream_);
+  shuffle_indices_d_ = cuda::make_unique_async<unsigned int[]>(config_.cloud_capacity_, stream_);
 
   std::vector<unsigned int> indexes(config_.cloud_capacity_);
   std::iota(indexes.begin(), indexes.end(), 0);
@@ -190,20 +191,33 @@ bool CenterPointTRT::detect(
   // spatial_features_d_ is referenced in inference().
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
+  // No need for synchronization here.
+
+  // Executed in stream_.
   if (!preprocess(input_pointcloud_msg_ptr, tf_buffer)) {
     RCLCPP_WARN(
       rclcpp::get_logger(config_.logger_name_.c_str()), "Fail to preprocess and skip to detect.");
     return false;
   }
 
+  // Executed in stream_ asynchronously.
   inference();
 
+  // No need for synchronization here.
+
+  // Executed in stream_ asynchronously.
   postProcess(det_boxes3d);
+
+  // Isn't it necessary to synchronize stream_ to get the value in num_voxels_d_?
 
   // Check the actual number of pillars after inference to avoid unnecessary synchronization.
   unsigned int num_pillars = 0;
+  // Avoid use of the default stream
   CHECK_CUDA_ERROR(
-    cudaMemcpy(&num_pillars, num_voxels_d_.get(), sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    cudaMemcpyAsync(&num_pillars, num_voxels_d_.get(), sizeof(unsigned int), cudaMemcpyDeviceToHost, stream_));
+
+  CHECK_CUDA_ERROR(
+    cudaStreamSynchronize(stream_));
 
   if (num_pillars >= config_.max_voxel_size_) {
     rclcpp::Clock clock{RCL_ROS_TIME};
@@ -235,27 +249,35 @@ bool CenterPointTRT::preprocess(
   clear_async(voxels_d_.get(), voxels_size_, stream_);
   clear_async(coordinates_d_.get(), coordinates_size_, stream_);
   clear_async(num_points_per_voxel_d_.get(), config_.max_voxel_size_, stream_);
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  // No synchronization needed.
+  // CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
+  // Executed in stream_
   const std::size_t count = vg_ptr_->generateSweepPoints(points_aux_d_.get());
   const std::size_t random_offset = std::rand() % config_.cloud_capacity_;
 
+  // Executed in stream_
   pre_proc_ptr_->shufflePoints_launch(
     points_aux_d_.get(), shuffle_indices_d_.get(), points_d_.get(), count, config_.cloud_capacity_,
     random_offset);
 
+  // Executed in stream_
   pre_proc_ptr_->generateVoxels_random_launch(
     points_d_.get(), config_.cloud_capacity_, mask_d_.get(), voxels_buffer_d_.get());
 
+  // Executed in stream_
   pre_proc_ptr_->generateBaseFeatures_launch(
     mask_d_.get(), voxels_buffer_d_.get(), num_voxels_d_.get(), voxels_d_.get(),
     num_points_per_voxel_d_.get(), coordinates_d_.get());
 
+  // Executed in stream_
   pre_proc_ptr_->generateFeatures_launch(
     voxels_d_.get(), num_points_per_voxel_d_.get(), coordinates_d_.get(), num_voxels_d_.get(),
     encoder_in_features_d_.get());
 
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  // Is this synchronization necessary?
+  // To detect possible errors?
+  // CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
   return true;
 }
 
@@ -282,6 +304,7 @@ void CenterPointTRT::inference()
                                       head_out_vel_d_.get()};
   head_trt_ptr_->setTensorsAddresses(head_tensors);
 
+  // Executed in stream_ asynchronously.
   head_trt_ptr_->enqueueV3(stream_);
 }
 

@@ -28,10 +28,11 @@ namespace autoware::lidar_centerpoint
 VoxelGeneratorTemplate::VoxelGeneratorTemplate(
   const DensificationParam & param, const CenterPointConfig & config, cudaStream_t & stream)
 : config_(config), stream_(stream)
+	// , affine_past2current_d_(cuda::make_unique_async<float[]>(AFF_MAT_SIZE, stream_));
 {
   pd_ptr_ = std::make_unique<PointCloudDensification>(param);
   pre_ptr_ = std::make_unique<PreprocessCuda>(config_, stream_);
-  affine_past2current_d_ = cuda::make_unique<float[]>(AFF_MAT_SIZE);
+  affine_past2current_d_ = cuda::make_unique_async<float[]>(AFF_MAT_SIZE, stream_);
   range_[0] = config.range_min_x_;
   range_[1] = config.range_min_y_;
   range_[2] = config.range_min_z_;
@@ -81,10 +82,11 @@ std::size_t VoxelGenerator::generateSweepPoints(float * points_d)
     CHECK_CUDA_ERROR(cudaMemcpyAsync(
       affine_past2current_d_.get(), affine_past2current.data(), AFF_MAT_SIZE * sizeof(float),
       cudaMemcpyHostToDevice, stream_));
-    // Explicit synchronization to wait for completion of cudaMemcpyAsync().
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+    // No need for synchronization
+    // because the next CUDA kernel will be launched on stream_.
+    // CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
-    // Executed on stream_.
+    // Executed in stream_
     pre_ptr_->generateSweepPoints_launch(
       reinterpret_cast<InputPointType *>(input_pointcloud_msg_ptr->data.get()), sweep_num_points,
       time_lag, affine_past2current_d_.get(), points_d + output_offset);

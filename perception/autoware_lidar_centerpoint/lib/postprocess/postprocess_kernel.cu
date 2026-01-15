@@ -141,7 +141,7 @@ PostProcessCUDA::PostProcessCUDA(const CenterPointConfig & config, cudaStream_t 
 : config_(config), stream_(stream)
 {
   // Allocate memory for score thresholds on device using cuda::make_unique
-  score_thresholds_d_ptr_ = cuda::make_unique<float[]>(config_.score_thresholds_.size());
+  score_thresholds_d_ptr_ = cuda::make_unique_async<float[]>(config_.score_thresholds_.size(), stream_);
 
   // Move from host to device
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
