@@ -16,6 +16,7 @@
 #include <autoware/tensorrt_classifier/tensorrt_classifier.hpp>
 
 #include <autoware/tensorrt_classifier/preprocess.h>
+#include <nvtx3/nvToolsExt.h>
 #include <omp.h>
 
 #include <algorithm>
@@ -217,6 +218,7 @@ TrtClassifier::~TrtClassifier()
 
 void TrtClassifier::initPreprocessBuffer(int width, int height)
 {
+  nvtxRangePushA("TrtClassifier::initPreprocessBuffer()");
   // if size of source input has been changed...
   if (src_width_ != -1 || src_height_ != -1) {
     if (width != src_width_ || height != src_height_) {
@@ -243,6 +245,7 @@ void TrtClassifier::initPreprocessBuffer(int width, int height)
     }
     if (!h_img_) {
       if (!trt_common_->setInputShape(0, input_dims)) {
+        nvtxRangePop();
         return;
       }
     }
@@ -255,6 +258,7 @@ void TrtClassifier::initPreprocessBuffer(int width, int height)
         sizeof(unsigned char) * width * height * 3 * batch_size_));
     }
   }
+  nvtxRangePop();
 }
 
 int TrtClassifier::getBatchSize() const
@@ -264,6 +268,7 @@ int TrtClassifier::getBatchSize() const
 
 void TrtClassifier::preprocessGpu(const std::vector<cv::Mat> & images)
 {
+  nvtxRangePushA("TrtClassifier::preprocessGpu()");
   const auto batch_size = images.size();
   auto input_dims = trt_common_->getTensorShape(0);
 
@@ -290,6 +295,7 @@ void TrtClassifier::preprocessGpu(const std::vector<cv::Mat> & images)
   }
   if (!h_img_) {
     if (!trt_common_->setInputShape(0, input_dims)) {
+      nvtxRangePop();
       return;
     }
   }
@@ -319,10 +325,12 @@ void TrtClassifier::preprocessGpu(const std::vector<cv::Mat> & images)
     batch_size, static_cast<float>(1.0), *stream_);
   // No Need for Sync and used for timer
   // CHECK_CUDA_ERROR(cudaStreamSynchronize(*stream_));
+  nvtxRangePop();
 }
 
 void TrtClassifier::preprocess_opt(const std::vector<cv::Mat> & images)
 {
+  nvtxRangePushA("TrtClassifier::preprocess_opt()");
   int batch_size = static_cast<int>(images.size());
   auto input_dims = trt_common_->getTensorShape(0);
   input_dims.d[0] = batch_size;
@@ -369,6 +377,7 @@ void TrtClassifier::preprocess_opt(const std::vector<cv::Mat> & images)
   CHECK_CUDA_ERROR(cudaMemcpy(
     input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice));
   // No Need for Sync
+  nvtxRangePop();
 }
 
 bool TrtClassifier::doInference(
@@ -392,6 +401,8 @@ bool TrtClassifier::feedforwardAndDecode(
   }
   trt_common_->enqueueV3(*stream_);
 
+  nvtxRangePushA("TrtClassifier::feedforwardAndDecode()");
+
   int batch_size = static_cast<int>(images.size());
 
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
@@ -412,6 +423,7 @@ bool TrtClassifier::feedforwardAndDecode(
     probabilities.push_back(max);
     results.push_back(index);
   }
+  nvtxRangePop();
   return true;
 }
 }  // namespace autoware::tensorrt_classifier
