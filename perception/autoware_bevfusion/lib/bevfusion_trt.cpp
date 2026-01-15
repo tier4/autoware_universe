@@ -43,11 +43,12 @@ BEVFusionTRT::BEVFusionTRT(
   const DensificationParam & densification_param, const BEVFusionConfig & config)
 : config_(config)
 {
-  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+  // streams should be created before being used.
+  CHECK_CUDA_ERROR(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
 
   camera_streams_.resize(config_.num_cameras_);
   for (std::int64_t i = 0; i < config_.num_cameras_; i++) {
-    CHECK_CUDA_ERROR(cudaStreamCreate(&camera_streams_[i]));
+    CHECK_CUDA_ERROR(cudaStreamCreateWithFlags(&camera_streams_[i], cudaStreamNonBlocking));
   }
 
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_, stream_);

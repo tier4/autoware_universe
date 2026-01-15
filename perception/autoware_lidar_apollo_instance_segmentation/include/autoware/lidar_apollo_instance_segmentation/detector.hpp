@@ -71,7 +71,7 @@ private:
   CudaUniquePtr<float[]> output_d_;
   CudaUniquePtrHost<float[]> output_h_;
 
-  StreamUniquePtr stream_{makeCudaStream()};
+  StreamUniquePtr stream_{makeCudaStream(cudaStreamNonBlocking)};
 };
 }  // namespace lidar_apollo_instance_segmentation
 }  // namespace autoware

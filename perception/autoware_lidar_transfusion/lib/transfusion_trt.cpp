@@ -39,7 +39,8 @@ TransfusionTRT::TransfusionTRT(
   const DensificationParam & densification_param, TransfusionConfig config)
 : config_(std::move(config))
 {
-  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+  // The stream should be created before being used.
+  CHECK_CUDA_ERROR(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
 
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_, stream_);
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();

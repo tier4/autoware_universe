@@ -40,7 +40,8 @@ CenterPointTRT::CenterPointTRT(
   const DensificationParam & densification_param, const CenterPointConfig & config)
 : config_(config)
 {
-  cudaStreamCreate(&stream_);
+  // The stream should be created before being used.
+  CHECK_CUDA_ERROR(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
 
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_, stream_);
   pre_proc_ptr_ = std::make_unique<PreprocessCuda>(config_, stream_);

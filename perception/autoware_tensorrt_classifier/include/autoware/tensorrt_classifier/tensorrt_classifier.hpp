@@ -114,7 +114,7 @@ private:
   size_t out_elem_num_per_batch_;
   CudaUniquePtr<float[]> out_prob_d_;
 
-  StreamUniquePtr stream_{makeCudaStream()};
+  StreamUniquePtr stream_{makeCudaStream(cudaStreamNonBlocking)};
   // mean for preprocessing
   std::vector<float> mean_;
   // std for preprocessing

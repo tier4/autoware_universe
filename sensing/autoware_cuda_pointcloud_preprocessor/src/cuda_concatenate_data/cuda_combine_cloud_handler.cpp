@@ -64,7 +64,7 @@ CombineCloudHandler<CudaPointCloud2Traits>::CombineCloudHandler(
 {
   for (const auto & topic : input_topics_) {
     CudaConcatStruct cuda_concat_struct;
-    cudaStreamCreate(&cuda_concat_struct.stream);
+    cudaStreamCreateWithFlags(&cuda_concat_struct.stream, cudaStreamNonBlocking);
     cuda_concat_struct_map_[topic] = std::move(cuda_concat_struct);
   }
 }

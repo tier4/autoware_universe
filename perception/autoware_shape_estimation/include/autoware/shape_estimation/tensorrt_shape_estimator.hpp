@@ -64,7 +64,7 @@ private:
 
   static double class2angle(int pred_cls, double residual, int num_class);
 
-  StreamUniquePtr stream_{makeCudaStream()};
+  StreamUniquePtr stream_{makeCudaStream(cudaStreamNonBlocking)};
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_;
 
   std::vector<float> input_pc_h_;
