@@ -124,6 +124,7 @@ struct DiffusionPlannerParams
   float turn_indicator_keep_offset;
   double turn_indicator_hold_duration;
   bool shift_x;
+  int64_t delay_step;
 };
 struct DiffusionPlannerDebugParams
 {
@@ -209,7 +210,7 @@ private:
    */
   void publish_predictions(
     const std::vector<float> & predictions, const FrameContext & frame_context,
-    const rclcpp::Time & timestamp) const;
+    const rclcpp::Time & timestamp);
 
   /**
    * @brief Callback for dynamic parameter updates.
@@ -247,6 +248,7 @@ private:
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
   AgentData agent_data_;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
+  std::vector<std::vector<std::vector<Eigen::Matrix4d>>> last_agent_poses_map_;
 
   // Node parameters
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;

@@ -44,10 +44,11 @@ using unique_identifier_msgs::msg::UUID;
  * @brief Parses raw prediction data into structured pose matrices.
  *
  * @param prediction The raw tensor prediction output (x, y, cos(yaw), sin(yaw) for each timestep).
+ * @param transform_ego_to_map The transformation matrix from ego to map coordinates.
  * @return A 3D vector structure: [batch][agent][timestep] -> Eigen::Matrix4d (4x4 pose matrix).
  */
 std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
-  const std::vector<float> & prediction);
+  const std::vector<float> & prediction, const Eigen::Matrix4d & transform_ego_to_map);
 
 /**
  * @brief Creates PredictedObjects message from parsed agent poses.
@@ -55,22 +56,23 @@ std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
  * @param agent_poses The parsed agent poses [batch][agent][timestep] -> pose matrix.
  * @param ego_centric_histories The agent histories in ego-centric coordinates.
  * @param stamp The ROS time stamp for the message.
- * @param transform_ego_to_map The transformation matrix from ego to map coordinates.
  * @param batch_index The batch index to use.
  * @return A PredictedObjects message containing predicted paths for each agent.
  */
 PredictedObjects create_predicted_objects(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
   const std::vector<AgentHistory> & ego_centric_histories, const rclcpp::Time & stamp,
-  const Eigen::Matrix4d & transform_ego_to_map, const int64_t batch_index);
+  const int64_t batch_index);
 
 /**
  * @brief Creates a Trajectory message from parsed agent poses for a specific batch and ego agent.
  *
  * @param agent_poses The parsed agent poses [batch][agent][timestep] -> pose matrix.
  * @param stamp The ROS time stamp for the message.
- * @param transform_ego_to_map The transformation matrix from ego to map coordinates.
  * @param batch_index The batch index to extract.
+ * @param base_x The current ego position x in map coordinates.
+ * @param base_y The current ego position y in map coordinates.
+ * @param base_z The current ego position z in map coordinates.
  * @param velocity_smoothing_window The window size for velocity smoothing.
  * @param enable_force_stop Whether to enable force stop logic.
  * @param stopping_threshold The threshold for keeping the stopping state [m/s].
@@ -78,9 +80,9 @@ PredictedObjects create_predicted_objects(
  */
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const Eigen::Matrix4d & transform_ego_to_map,
-  const int64_t batch_index, const int64_t velocity_smoothing_window, const bool enable_force_stop,
-  const double stopping_threshold);
+  const rclcpp::Time & stamp, const int64_t batch_index, const double base_x,
+  const double base_y, const double base_z, const int64_t velocity_smoothing_window,
+  const bool enable_force_stop, const double stopping_threshold);
 
 /**
  * @brief Counts valid elements in a tensor with shape (B, len, dim2, dim3).

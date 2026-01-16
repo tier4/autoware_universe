@@ -99,6 +99,12 @@
           "default": false,
           "description": "Whether to shift the ego center position by half the wheel base"
         },
+        "delay_step": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Input delay step for inference"
+        },
         "debug_params": {
           "type": "object",
           "properties": {

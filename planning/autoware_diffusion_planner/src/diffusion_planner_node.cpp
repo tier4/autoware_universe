@@ -134,6 +134,7 @@ void DiffusionPlanner::set_up_params()
   params_.turn_indicator_hold_duration =
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
+  params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
 
   // debug params
   debug_params_.publish_debug_map =
@@ -169,6 +170,7 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(
       parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
     update_param<bool>(parameters, "shift_x", temp_params.shift_x);
+    update_param<int64_t>(parameters, "delay_step", temp_params.delay_step);
     const bool model_path_changed = temp_params.model_path != previous_model_path;
     const bool batch_size_changed = temp_params.batch_size != previous_batch_size;
     params_ = temp_params;
@@ -286,17 +288,6 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   InputDataMap input_data_map;
 
-  // random sample trajectories
-  {
-    for (int64_t b = 0; b < params_.batch_size; b++) {
-      const std::vector<float> sampled_trajectories =
-        preprocess::create_sampled_trajectories(params_.temperature_list[b]);
-      input_data_map["sampled_trajectories"].insert(
-        input_data_map["sampled_trajectories"].end(), sampled_trajectories.begin(),
-        sampled_trajectories.end());
-    }
-  }
-
   const geometry_msgs::msg::Pose & pose_center =
     params_.shift_x
       ? utils::shift_x(
@@ -307,6 +298,44 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   const auto & center_x = static_cast<float>(pose_center.position.x);
   const auto & center_y = static_cast<float>(pose_center.position.y);
   const auto & center_z = static_cast<float>(pose_center.position.z);
+
+  // random sample trajectories
+  {
+    const int64_t delay_step = std::max<int64_t>(0, params_.delay_step);
+    const int64_t copy_steps = std::min<int64_t>(delay_step, OUTPUT_T - 1);
+    const bool has_previous_output =
+      (last_agent_poses_map_.size() == static_cast<size_t>(params_.batch_size)) &&
+      !last_agent_poses_map_.empty() &&
+      (last_agent_poses_map_.front().size() == static_cast<size_t>(MAX_NUM_AGENTS)) &&
+      (last_agent_poses_map_.front().front().size() == static_cast<size_t>(OUTPUT_T));
+
+    for (int64_t b = 0; b < params_.batch_size; b++) {
+      std::vector<float> sampled_trajectories =
+        preprocess::create_sampled_trajectories(params_.temperature_list[b]);
+
+      if ((copy_steps > 0) && has_previous_output) {
+        constexpr int64_t agent_idx = 0;
+        for (int64_t t = 0; t < copy_steps; ++t) {
+          const size_t dst_base = agent_idx * (OUTPUT_T + 1) * POSE_DIM + (t + 1) * POSE_DIM;
+          const Eigen::Matrix4d pose_ego =
+            map_to_ego_transform * last_agent_poses_map_[b][agent_idx][t + 1];
+          const float shifted_x = static_cast<float>(pose_ego(0, 3));
+          const float shifted_y = static_cast<float>(pose_ego(1, 3));
+          const auto [shifted_cos, shifted_sin] =
+            utils::rotation_matrix_to_cos_sin(pose_ego.block<3, 3>(0, 0));
+
+          sampled_trajectories[dst_base + 0] = shifted_x;
+          sampled_trajectories[dst_base + 1] = shifted_y;
+          sampled_trajectories[dst_base + 2] = shifted_cos;
+          sampled_trajectories[dst_base + 3] = shifted_sin;
+        }
+      }
+
+      input_data_map["sampled_trajectories"].insert(
+        input_data_map["sampled_trajectories"].end(), sampled_trajectories.begin(),
+        sampled_trajectories.end());
+    }
+  }
 
   // Ego history
   {
@@ -417,6 +446,13 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
     input_data_map["turn_indicators"] = replicate_for_batch(single_turn_indicators);
   }
 
+  // control delay
+  {
+    const int64_t delay_step = std::max<int64_t>(0, params_.delay_step);
+    std::vector<float> single_delay = {static_cast<float>(delay_step)};
+    input_data_map["delay"] = replicate_for_batch(single_delay);
+  }
+
   return input_data_map;
 }
 
@@ -462,7 +498,7 @@ void DiffusionPlanner::publish_debug_markers(
 
 void DiffusionPlanner::publish_predictions(
   const std::vector<float> & predictions, const FrameContext & frame_context,
-  const rclcpp::Time & timestamp) const
+  const rclcpp::Time & timestamp)
 {
   CandidateTrajectories candidate_trajectories;
 
@@ -470,12 +506,15 @@ void DiffusionPlanner::publish_predictions(
   const bool enable_force_stop =
     frame_context.ego_kinematic_state.twist.twist.linear.x > std::numeric_limits<double>::epsilon();
 
-  // Parse predictions once: [batch][agent][timestep] -> pose
-  const auto agent_poses = postprocess::parse_predictions(predictions);
+  // Parse predictions once: [batch][agent][timestep] -> pose (map frame)
+  const auto agent_poses_map =
+    postprocess::parse_predictions(predictions, frame_context.ego_to_map_transform);
+  last_agent_poses_map_ = agent_poses_map;
 
   for (int i = 0; i < params_.batch_size; i++) {
+    const auto & ego_pose = frame_context.ego_kinematic_state.pose.pose.position;
     Trajectory trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, frame_context.ego_to_map_transform, i,
+      agent_poses_map, timestamp, i, ego_pose.x, ego_pose.y, ego_pose.z,
       params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
     if (params_.shift_x) {
       // center to base_link
@@ -512,8 +551,7 @@ void DiffusionPlanner::publish_predictions(
     // Use batch 0 for neighbor predictions
     constexpr int64_t batch_idx = 0;
     auto predicted_objects = postprocess::create_predicted_objects(
-      agent_poses, frame_context.ego_centric_neighbor_histories, timestamp,
-      frame_context.ego_to_map_transform, batch_idx);
+      agent_poses_map, frame_context.ego_centric_neighbor_histories, timestamp, batch_idx);
     pub_objects_->publish(predicted_objects);
   }
 }
