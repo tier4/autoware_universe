@@ -335,8 +335,8 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
           std::cout << "Shifted pose at time " << t << ": x=" << shifted_x << ", y=" << shifted_y
                     << ", cos=" << shifted_cos << ", sin=" << shifted_sin << std::endl;
 
-          sampled_trajectories[dst_base + 0] = shifted_x;
-          sampled_trajectories[dst_base + 1] = shifted_y;
+          sampled_trajectories[dst_base + 0] = shifted_x / 20.0f - 10.0f;
+          sampled_trajectories[dst_base + 1] = shifted_y / 20.0f;
           sampled_trajectories[dst_base + 2] = shifted_cos;
           sampled_trajectories[dst_base + 3] = shifted_sin;
         }
