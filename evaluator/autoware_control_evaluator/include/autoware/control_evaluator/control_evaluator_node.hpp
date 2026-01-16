@@ -131,32 +131,31 @@ private:
   double distance_filter_thr_m_;
 
   // Metric
-  const std::vector<Metric> metrics_ = {
-    // collect all metrics
-    Metric::velocity,
-    Metric::acceleration,
-    Metric::lateral_acceleration_abs,
-    Metric::jerk,
-    Metric::lateral_deviation,
-    Metric::lateral_deviation_abs,
-    Metric::yaw_deviation,
-    Metric::yaw_deviation_abs,
-    Metric::goal_longitudinal_deviation,
-    Metric::goal_longitudinal_deviation_abs,
-    Metric::goal_lateral_deviation,
-    Metric::goal_lateral_deviation_abs,
-    Metric::goal_yaw_deviation,
-    Metric::goal_yaw_deviation_abs,
-    Metric::left_boundary_distance,
-    Metric::right_boundary_distance,
-    Metric::steering_angle,
-    Metric::steering_angle_abs,
-    Metric::steering_rate,
-    Metric::steering_acceleration,
-    Metric::stop_deviation,
-    Metric::stop_deviation_abs,
-    Metric::closest_object_distance,
-    Metric::longitudinal_velocity_deviation};
+  const std::vector<Metric> metrics_ = {// collect all metrics
+                                        Metric::velocity,
+                                        Metric::acceleration,
+                                        Metric::lateral_acceleration_abs,
+                                        Metric::jerk,
+                                        Metric::lateral_deviation,
+                                        Metric::lateral_deviation_abs,
+                                        Metric::yaw_deviation,
+                                        Metric::yaw_deviation_abs,
+                                        Metric::goal_longitudinal_deviation,
+                                        Metric::goal_longitudinal_deviation_abs,
+                                        Metric::goal_lateral_deviation,
+                                        Metric::goal_lateral_deviation_abs,
+                                        Metric::goal_yaw_deviation,
+                                        Metric::goal_yaw_deviation_abs,
+                                        Metric::left_boundary_distance,
+                                        Metric::right_boundary_distance,
+                                        Metric::steering_angle,
+                                        Metric::steering_angle_abs,
+                                        Metric::steering_rate,
+                                        Metric::steering_acceleration,
+                                        Metric::stop_deviation,
+                                        Metric::stop_deviation_abs,
+                                        Metric::closest_object_distance,
+                                        Metric::longitudinal_velocity_deviation};
 
   std::array<Accumulator<double>, static_cast<size_t>(Metric::SIZE)>
     metric_accumulators_;  // 3(min, max, mean) * metric_size

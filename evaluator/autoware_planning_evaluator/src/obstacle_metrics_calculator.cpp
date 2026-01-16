@@ -132,10 +132,9 @@ void ObstacleMetricsCalculator::PreprocessEgoTrajectory()
     // calculate new velocity if use ego trajectory velocity
     if (parameters.use_ego_traj_vel) {
       vel_curr = static_cast<double>(p_curr.longitudinal_velocity_mps);
-      const double vel_lower_bound = std::sqrt(
-        std::max(
-          0.0, trajectory_point_prev.velocity_mps * trajectory_point_prev.velocity_mps +
-                 2.0 * parameters.limit_min_accel * segment_dist));
+      const double vel_lower_bound = std::sqrt(std::max(
+        0.0, trajectory_point_prev.velocity_mps * trajectory_point_prev.velocity_mps +
+               2.0 * parameters.limit_min_accel * segment_dist));
       vel_curr = vel_curr < 0 ? vel_curr : std::max(vel_curr, vel_lower_bound);
 
       const double effective_velocity =
