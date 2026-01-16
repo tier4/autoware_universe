@@ -210,10 +210,10 @@ bool SpeedBumpModule::applySlowDownSpeed(
     debug_data_.slow_end_point = path.compute(slow_end_s).point.pose.position;
   }
 
-  // insert constant speed to path points that intersects with speed bump area
-  path.longitudinal_velocity_mps().range(slow_start_s, slow_end_s).set([&](const double & v) {
-    return std::min(v, speed_bump_slow_down_speed_);
-  });
+  // clamp speed at path points that intersects with speed bump area
+  path.longitudinal_velocity_mps()
+    .range(slow_start_s, slow_end_s)
+    .clamp(speed_bump_slow_down_speed_);
 
   return true;
 }
