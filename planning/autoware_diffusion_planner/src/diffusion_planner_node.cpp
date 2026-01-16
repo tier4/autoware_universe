@@ -303,11 +303,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   {
     const int64_t delay_step = std::max<int64_t>(0, params_.delay_step);
     const int64_t copy_steps = std::min<int64_t>(delay_step, OUTPUT_T - 1);
-    const bool has_previous_output =
-      (last_agent_poses_map_.size() == static_cast<size_t>(params_.batch_size)) &&
-      !last_agent_poses_map_.empty() &&
-      (last_agent_poses_map_.front().size() == static_cast<size_t>(MAX_NUM_AGENTS)) &&
-      (last_agent_poses_map_.front().front().size() == static_cast<size_t>(OUTPUT_T));
+    const bool has_previous_output = !last_agent_poses_map_.empty();
 
     for (int64_t b = 0; b < params_.batch_size; b++) {
       std::vector<float> sampled_trajectories =
