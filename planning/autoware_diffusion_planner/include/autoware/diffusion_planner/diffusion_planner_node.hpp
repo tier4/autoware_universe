@@ -97,6 +97,7 @@ using unique_identifier_msgs::msg::UUID;
 using utils::NormalizationMap;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
+
 struct FrameContext
 {
   nav_msgs::msg::Odometry ego_kinematic_state;

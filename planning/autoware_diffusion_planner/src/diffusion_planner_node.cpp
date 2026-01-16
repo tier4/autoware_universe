@@ -275,10 +275,16 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
     traffic_signals, traffic_light_id_map_, this->now(), traffic_light_msg_timeout_s);
 
   // Create frame context
-  const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
+  const rclcpp::Time frame_time(kinematic_state.header.stamp);
   const FrameContext frame_context{
-    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
+    kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
     frame_time};
+
+  // print kinematic state
+  std::cout << "Ego Kinematic State at time " << frame_time.seconds() << ":\n";
+  std::cout << "Position: (" << kinematic_state.pose.pose.position.x << ", "
+            << kinematic_state.pose.pose.position.y << ", " << kinematic_state.pose.pose.position.z
+            << ")\n";
 
   return frame_context;
 }
@@ -299,32 +305,42 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   const auto & center_y = static_cast<float>(pose_center.position.y);
   const auto & center_z = static_cast<float>(pose_center.position.z);
 
+  std::cout << "ego_to_map_transform:\n" << ego_to_map_transform << std::endl;
+  std::cout << "map_to_ego_transform:\n" << map_to_ego_transform << std::endl;
+
   // random sample trajectories
   {
     const int64_t delay_step = std::max<int64_t>(0, params_.delay_step);
-    const int64_t copy_steps = std::min<int64_t>(delay_step, OUTPUT_T - 1);
+    const int64_t copy_steps = std::min<int64_t>(delay_step, OUTPUT_T);
     const bool has_previous_output = !last_agent_poses_map_.empty();
 
     for (int64_t b = 0; b < params_.batch_size; b++) {
       std::vector<float> sampled_trajectories =
         preprocess::create_sampled_trajectories(params_.temperature_list[b]);
 
-      if ((copy_steps > 0) && has_previous_output) {
+      if (has_previous_output) {
         constexpr int64_t agent_idx = 0;
         for (int64_t t = 0; t < copy_steps; ++t) {
-          const size_t dst_base = agent_idx * (OUTPUT_T + 1) * POSE_DIM + (t + 1) * POSE_DIM;
+          const size_t dst_base = agent_idx * (OUTPUT_T + 1) * POSE_DIM + t * POSE_DIM;
           const Eigen::Matrix4d pose_ego =
-            map_to_ego_transform * last_agent_poses_map_[b][agent_idx][t + 1];
+            map_to_ego_transform * last_agent_poses_map_[b][agent_idx][t];
           const float shifted_x = static_cast<float>(pose_ego(0, 3));
           const float shifted_y = static_cast<float>(pose_ego(1, 3));
           const auto [shifted_cos, shifted_sin] =
             utils::rotation_matrix_to_cos_sin(pose_ego.block<3, 3>(0, 0));
+
+          std::cout << "before:" << last_agent_poses_map_[b][agent_idx][t + 1] << std::endl;
+
+          std::cout << "Shifted pose at time " << t << ": x=" << shifted_x << ", y=" << shifted_y
+                    << ", cos=" << shifted_cos << ", sin=" << shifted_sin << std::endl;
 
           sampled_trajectories[dst_base + 0] = shifted_x;
           sampled_trajectories[dst_base + 1] = shifted_y;
           sampled_trajectories[dst_base + 2] = shifted_cos;
           sampled_trajectories[dst_base + 3] = shifted_sin;
         }
+
+        std::exit(0);
       }
 
       input_data_map["sampled_trajectories"].insert(
@@ -502,13 +518,16 @@ void DiffusionPlanner::publish_predictions(
   const bool enable_force_stop =
     frame_context.ego_kinematic_state.twist.twist.linear.x > std::numeric_limits<double>::epsilon();
 
+  const geometry_msgs::msg::Pose & pose_center = frame_context.ego_kinematic_state.pose.pose;
+  const Eigen::Matrix4d ego_to_map_transform = frame_context.ego_to_map_transform;
+
   // Parse predictions once: [batch][agent][timestep] -> pose (map frame)
-  const auto agent_poses_map =
-    postprocess::parse_predictions(predictions, frame_context.ego_to_map_transform);
+  const auto agent_poses_map = postprocess::parse_predictions(predictions, ego_to_map_transform);
   last_agent_poses_map_ = agent_poses_map;
+  std::cout << "last_agent_poses_map_[0][0][0]=" << last_agent_poses_map_[0][0][0] << std::endl;
 
   for (int i = 0; i < params_.batch_size; i++) {
-    const auto & ego_pose = frame_context.ego_kinematic_state.pose.pose.position;
+    const auto & ego_pose = pose_center.position;
     Trajectory trajectory = postprocess::create_ego_trajectory(
       agent_poses_map, timestamp, i, ego_pose.x, ego_pose.y, ego_pose.z,
       params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
