@@ -309,9 +309,9 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   std::cout << "map_to_ego_transform:\n" << map_to_ego_transform << std::endl;
 
   // random sample trajectories
+  int64_t delay_step = 0;
   {
-    const int64_t delay_step = std::max<int64_t>(0, params_.delay_step);
-    const int64_t copy_steps = std::min<int64_t>(delay_step, OUTPUT_T);
+    const int64_t copy_steps = std::min<int64_t>(params_.delay_step, OUTPUT_T);
     const bool has_previous_output = !last_agent_poses_map_.empty();
 
     for (int64_t b = 0; b < params_.batch_size; b++) {
@@ -320,6 +320,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
 
       if (has_previous_output) {
         constexpr int64_t agent_idx = 0;
+        delay_step = params_.delay_step;
         for (int64_t t = 0; t < copy_steps; ++t) {
           const size_t dst_base = agent_idx * (OUTPUT_T + 1) * POSE_DIM + t * POSE_DIM;
           const Eigen::Matrix4d pose_ego =
@@ -339,8 +340,6 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
           sampled_trajectories[dst_base + 2] = shifted_cos;
           sampled_trajectories[dst_base + 3] = shifted_sin;
         }
-
-        std::exit(0);
       }
 
       input_data_map["sampled_trajectories"].insert(
@@ -460,7 +459,6 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
 
   // control delay
   {
-    const int64_t delay_step = std::max<int64_t>(0, params_.delay_step);
     std::vector<float> single_delay = {static_cast<float>(delay_step)};
     input_data_map["delay"] = replicate_for_batch(single_delay);
   }
