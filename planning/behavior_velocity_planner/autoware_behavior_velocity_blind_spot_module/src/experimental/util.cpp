@@ -23,6 +23,8 @@
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <range/v3/all.hpp>
 
+#include <lanelet2_core/geometry/Lanelet.h>
+
 #include <algorithm>
 #include <limits>
 #include <memory>
@@ -104,7 +106,7 @@ lanelet::ConstLineString3d generate_segment_beyond_linestring_end(
   const lanelet::ConstLineString3d & line, const lanelet::ConstLanelet & intersection_lanelet,
   const TurnDirection & turn_direction)
 {
-  const auto extend_length = lanelet::utils::getLaneletLength3d(intersection_lanelet);
+  const auto extend_length = lanelet::geometry::length3d(intersection_lanelet);
   const auto & p1 = line[line.size() - 2];
   const auto & p2 = line[line.size() - 1];
   const auto p3 = autoware::experimental::lanelet2_utils::extrapolate_point(p1, p2, extend_length);
@@ -366,7 +368,7 @@ generate_blind_side_lanelets_before_turning(
     const auto & previous_lane = *previous_lane_opt;
     road_lanelets.push_back(previous_lane);
     blind_side_lanelets.push_back(blind_side_getter_function(route_handler, previous_lane));
-    total_length += lanelet::utils::getLaneletLength3d(blind_side_lanelets.back());
+    total_length += lanelet::geometry::length3d(blind_side_lanelets.back());
   } else {
     return std::nullopt;
   }
@@ -381,7 +383,7 @@ generate_blind_side_lanelets_before_turning(
     road_lanelets.insert(road_lanelets.begin(), prev_lane);
     blind_side_lanelets.insert(
       blind_side_lanelets.begin(), blind_side_getter_function(route_handler, prev_lane));
-    total_length += lanelet::utils::getLaneletLength3d(blind_side_lanelets.back());
+    total_length += lanelet::geometry::length3d(blind_side_lanelets.back());
   }
   return std::make_pair(road_lanelets, blind_side_lanelets);
 }
@@ -420,7 +422,7 @@ std::optional<lanelet::ConstLineString3d> generate_virtual_ego_straight_path_aft
     return std::nullopt;
   }
 
-  const auto extend_length = lanelet::utils::getLaneletLength3d(intersection_lanelet);
+  const auto extend_length = lanelet::geometry::length3d(intersection_lanelet);
   const Eigen::Vector3d virtual_straight_path_end =
     virtual_straight_path_start->basicPoint() +
     linestring_normal_direction(entry_line, extend_length);
