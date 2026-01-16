@@ -226,7 +226,7 @@ generateOneNotableCollisionFromOcclusionSpot(
 void applyVelocityToPath(Trajectory & path, const double velocity)
 {
   constexpr auto min_velocity = 0.1;
-  path.longitudinal_velocity_mps().set(std::max(min_velocity, velocity));
+  path.longitudinal_velocity_mps() = std::max(min_velocity, velocity);
 }
 
 bool buildDetectionAreaPolygons(
@@ -402,9 +402,7 @@ void applySafeVelocityConsideringPossibleCollision(
 
     const auto s_decel = autoware::experimental::trajectory::find_nearest_index(
       path, possible_collision.collision_with_margin.pose.position);
-    path.longitudinal_velocity_mps().range(s_decel, path.length()).set([&](const float & current) {
-      return std::min<float>(current, safe_velocity);
-    });
+    path.longitudinal_velocity_mps().range(s_decel, path.length()).clamp(safe_velocity);
     debug_poses.push_back(path.compute(s_decel).point.pose);
   }
 }
