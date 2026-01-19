@@ -35,6 +35,8 @@ SteerOffsetEstimatorParameters load_parameters(rclcpp::Node * node)
     autoware::vehicle_info_utils::VehicleInfoUtils(*node).getVehicleInfo().wheel_base_m;
   parameters.min_velocity = node->declare_parameter<double>("min_velocity");
   parameters.max_steer = node->declare_parameter<double>("max_steer");
+  parameters.max_steer_rate = node->declare_parameter<double>("max_steer_rate");
+  parameters.max_ang_velocity = node->declare_parameter<double>("max_ang_velocity");
   parameters.process_noise_covariance = node->declare_parameter<double>("process_noise_covariance");
   parameters.measurement_noise_covariance =
     node->declare_parameter<double>("measurement_noise_covariance");
@@ -86,25 +88,7 @@ void SteerOffsetEstimatorNode::on_timer()
 
   auto result = estimator_.update(poses, steers);
   if (result) {
-    autoware_internal_debug_msgs::msg::Float32Stamped steer_offset;
-    steer_offset.stamp = this->now();
-    steer_offset.data = static_cast<float>(result.value().offset);
-    pub_steer_offset_->publish(steer_offset);
-    autoware_internal_debug_msgs::msg::Float32Stamped steer_offset_covariance;
-    steer_offset_covariance.stamp = this->now();
-    steer_offset_covariance.data = static_cast<float>(result.value().covariance);
-    pub_steer_offset_covariance_->publish(steer_offset_covariance);
-    autoware_internal_debug_msgs::msg::StringStamped debug_info;
-    debug_info.stamp = this->now();
-    debug_info.data = fmt::format(
-      "offset: {:.5f}, std_dev: {:.5f},\n"
-      "velocity: {:.5f}, angular_velocity: {:.5f},\n"
-      "steering_angle: {:.5f},\n"
-      "kalman_gain: {:.5f}, residual: {:.5f}",
-      result.value().offset, std::sqrt(result.value().covariance), result.value().velocity,
-      result.value().angular_velocity, result.value().steering_angle, result.value().kalman_gain,
-      result.value().residual);
-    pub_debug_info_->publish(debug_info);
+    publish_data(result.value());
   } else {
     RCLCPP_DEBUG(
       this->get_logger(), "Failed to update steer offset estimator: %s",
@@ -115,6 +99,30 @@ void SteerOffsetEstimatorNode::on_timer()
       fmt::format("Failed to update steer offset estimator:\n{}", result.error().reason);
     pub_debug_info_->publish(debug_info);
   }
+}
+
+void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated & result) const
+{
+  auto pub_float = [this](const auto & publisher, const double value) {
+    autoware_internal_debug_msgs::msg::Float32Stamped msg;
+    msg.stamp = this->now();
+    msg.data = static_cast<float>(value);
+    publisher->publish(msg);
+  };
+
+  pub_float(pub_steer_offset_, result.offset);
+  pub_float(pub_steer_offset_covariance_, result.covariance);
+
+  autoware_internal_debug_msgs::msg::StringStamped debug_info;
+  debug_info.stamp = this->now();
+  debug_info.data = fmt::format(
+    "offset: {:.5f}, std_dev: {:.5f},\n"
+    "velocity: {:.5f}, angular_velocity: {:.5f},\n"
+    "steering_angle: {:.5f},\n"
+    "kalman_gain: {:.5f}, residual: {:.5f}",
+    result.offset, std::sqrt(result.covariance), result.velocity, result.angular_velocity,
+    result.steering_angle, result.kalman_gain, result.residual);
+  pub_debug_info_->publish(debug_info);
 }
 
 }  // namespace autoware::steer_offset_estimator

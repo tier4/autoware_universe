@@ -62,16 +62,31 @@ SteerOffsetEstimator::update(
   const double angular_velocity = twist.angular.z;
 
   update_steering_buffer(steers);
-  const auto steering_angle = get_steering_at_timestamp(rclcpp::Time(previous_pose_->header.stamp));
+  const auto steering_info = get_steering_at_timestamp(rclcpp::Time(previous_pose_->header.stamp));
 
   // Validate input data quality
   if (velocity < params_.min_velocity) return unexpected("velocity is too low");
-  if (!steering_angle) return unexpected("steering angle is not available");
-  if (std::abs(steering_angle.value()) > params_.max_steer) {
-    unexpected("steering angle is too large");
+  if (std::abs(angular_velocity) > params_.max_ang_velocity)
+    return unexpected("angular velocity is too high");
+  if (!steering_info) return unexpected("steering angle is not available");
+
+  if (previous_steering_) {
+    const auto steering_dt =
+      rclcpp::Duration(steering_info->stamp - previous_steering_->stamp).seconds();
+    const auto steering_rate =
+      steering_dt > 1e-6
+        ? std::abs(steering_info->steering - previous_steering_->steering) / steering_dt
+        : 0.0;
+    if (steering_rate > params_.max_steer_rate) return unexpected("steering rate is too large");
   }
 
-  return estimate_offset(velocity, angular_velocity, steering_angle.value());
+  previous_steering_ = steering_info;
+
+  if (std::abs(steering_info.value().steering) > params_.max_steer) {
+    return unexpected("steering angle is too large");
+  }
+
+  return estimate_offset(velocity, angular_velocity, steering_info.value().steering);
 }
 
 geometry_msgs::msg::Twist SteerOffsetEstimator::calculate_twist(
@@ -125,7 +140,7 @@ void SteerOffsetEstimator::update_steering_buffer(const std::vector<SteeringRepo
   }
 }
 
-std::optional<double> SteerOffsetEstimator::get_steering_at_timestamp(
+std::optional<SteeringInfo> SteerOffsetEstimator::get_steering_at_timestamp(
   const rclcpp::Time & timestamp) const
 {
   if (steering_buffer_.empty()) return std::nullopt;
@@ -154,10 +169,15 @@ std::optional<double> SteerOffsetEstimator::get_steering_at_timestamp(
 
   if (count == 0) return std::nullopt;
 
+  SteeringInfo steering_info;
+
   double steering_sum = std::accumulate(start, finish, 0.0, [](double sum, const auto & steer_ptr) {
     return sum + steer_ptr->steering_tire_angle;
   });
-  return steering_sum / static_cast<double>(count);
+
+  steering_info.steering = steering_sum / static_cast<double>(count);
+  steering_info.stamp = pivot->get()->stamp;
+  return steering_info;
 }
 
 SteerOffsetEstimationUpdated SteerOffsetEstimator::estimate_offset(

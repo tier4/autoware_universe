@@ -105,6 +105,12 @@ private:
    * @brief Timer callback for processing pose and steering updates
    */
   void on_timer();
+
+  /**
+   * @brief Publish steering offset estimation results
+   * @param result steer offset estimation result
+   */
+  void publish_data(const SteerOffsetEstimationUpdated & result) const;
 };
 
 }  // namespace autoware::steer_offset_estimator

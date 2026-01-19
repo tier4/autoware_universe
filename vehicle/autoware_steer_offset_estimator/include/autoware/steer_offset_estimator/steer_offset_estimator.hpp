@@ -59,6 +59,12 @@ struct SteerOffsetEstimationNotUpdated
   std::string reason;
 };
 
+struct SteeringInfo
+{
+  rclcpp::Time stamp;
+  double steering;
+};
+
 /**
  * @brief Parameters for steer offset estimation
  */
@@ -69,6 +75,8 @@ struct SteerOffsetEstimatorParameters
   double wheel_base{0.0};                     ///< Vehicle wheelbase [m]
   double min_velocity{2.0};                   ///< Minimum valid velocity [m/s]
   double max_steer{0.5};                      ///< Maximum valid steering angle [rad]
+  double max_steer_rate{0.5};                 ///< Maximum valid steering angle rate [rad/s]
+  double max_ang_velocity{0.5};               ///< Maximum valid angular velocity [rad/s]
   double measurement_noise_covariance{0.01};  ///< Measurement noise covariance
   double process_noise_covariance{0.01};      ///< Process noise covariance
   double denominator_floor{1.0e-12};          ///< Denominator floor value
@@ -139,7 +147,7 @@ private:
               and applies a windowed average around it to compute reiable steering value
    * @param steers avg steering value at given timestamp, if not found will return a nullopt
    */
-  [[nodiscard]] std::optional<double> get_steering_at_timestamp(
+  [[nodiscard]] std::optional<SteeringInfo> get_steering_at_timestamp(
     const rclcpp::Time & timestamp) const;
 
   /**
@@ -156,6 +164,7 @@ private:
 
   std::optional<geometry_msgs::msg::PoseStamped> previous_pose_;
   std::deque<autoware_vehicle_msgs::msg::SteeringReport::SharedPtr> steering_buffer_;
+  std::optional<SteeringInfo> previous_steering_;
 
 #ifdef ENABLE_PLOTLY
   plotly::Figure figure_;
