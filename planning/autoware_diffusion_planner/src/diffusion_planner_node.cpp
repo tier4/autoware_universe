@@ -280,12 +280,6 @@ std::optional<FrameContext> DiffusionPlanner::create_frame_context()
     kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
     frame_time};
 
-  // print kinematic state
-  std::cout << "Ego Kinematic State at time " << frame_time.seconds() << ":\n";
-  std::cout << "Position: (" << kinematic_state.pose.pose.position.x << ", "
-            << kinematic_state.pose.pose.position.y << ", " << kinematic_state.pose.pose.position.z
-            << ")\n";
-
   return frame_context;
 }
 
@@ -304,9 +298,6 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   const auto & center_x = static_cast<float>(pose_center.position.x);
   const auto & center_y = static_cast<float>(pose_center.position.y);
   const auto & center_z = static_cast<float>(pose_center.position.z);
-
-  std::cout << "ego_to_map_transform:\n" << ego_to_map_transform << std::endl;
-  std::cout << "map_to_ego_transform:\n" << map_to_ego_transform << std::endl;
 
   // random sample trajectories
   int64_t delay_step = 0;
@@ -517,7 +508,6 @@ void DiffusionPlanner::publish_predictions(
   // Parse predictions once: [batch][agent][timestep] -> pose (map frame)
   const auto agent_poses_map = postprocess::parse_predictions(predictions, ego_to_map_transform);
   last_agent_poses_map_ = agent_poses_map;
-  std::cout << "last_agent_poses_map_[0][0][0]=" << last_agent_poses_map_[0][0][0] << std::endl;
 
   for (int i = 0; i < params_.batch_size; i++) {
     const auto & ego_pose = pose_center.position;
