@@ -5,6 +5,21 @@
   <arg name="mission_planner_param_path"/>
   <arg name="launch_remaining_distance_time_calculator" default="false"/>
 
+
+  <!--
+    The /awapi/awapi_awiv_adapter node tries to retrieve the parameter /max_velocity from the /planning/scenario_planning/velocity_smoother node.
+    https://github.com/tier4/tier4_ad_api_adaptor/blob/v0.48.0/awapi_awiv_adapter/src/awapi_awiv_adapter_core.cpp#L32-L39
+
+    So without a rule-based planner, the /awapi/awapi_awiv_adapter will wait for the planning node to launch without a timeout.
+    And some API topics will not be handled properly. To prevent this, we run the parameter_blackboard as a dummy node here.
+
+    The node and parameter names are defined in the launch file below.
+    https://github.com/tier4/tier4_ad_api_adaptor/blob/v0.48.0/awapi_awiv_adapter/launch/awapi_awiv_adapter.launch.xml#L66-L67
+  -->
+  <node pkg="demo_nodes_cpp" exec="parameter_blackboard" name="velocity_smoother" namespace="/planning/scenario_planning" output="screen">
+    <param name="max_velocity" value="16.6" />
+  </node>
+
   <group>
     <push-ros-namespace namespace="planning"/>
     <!-- mission planning module -->
