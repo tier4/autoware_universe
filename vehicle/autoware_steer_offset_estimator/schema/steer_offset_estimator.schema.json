@@ -54,8 +54,18 @@
         },
         "max_steer": {
           "type": "number",
-          "description": "steer above this value is not used",
+          "description": "offset estimation is skipped if steering is above this value",
           "default": "0.03"
+        },
+        "max_steer_rate": {
+          "type": "number",
+          "description": "offset estimation is skipped if steering rate is above this value",
+          "default": "0.02"
+        },
+        "max_ang_velocity": {
+          "type": "number",
+          "description": "offset estimation is skipped if angular velocity is above this value",
+          "default": "0.02"
         },
         "max_steer_buffer": {
           "type": "number",
@@ -78,6 +88,8 @@
         "covariance_floor",
         "min_velocity",
         "max_steer",
+        "max_steer_rate",
+        "max_ang_velocity",
         "max_steer_buffer",
         "max_pose_lag"
       ]
