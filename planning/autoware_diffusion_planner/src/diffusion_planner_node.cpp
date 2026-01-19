@@ -321,17 +321,14 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
       if (has_previous_output) {
         constexpr int64_t agent_idx = 0;
         delay_step = params_.delay_step;
-        for (int64_t t = 0; t < copy_steps; ++t) {
-          const size_t dst_base = agent_idx * (OUTPUT_T + 1) * POSE_DIM + (t) * POSE_DIM;
+        for (int64_t t = 0; t <= copy_steps; ++t) {
+          const size_t dst_base = agent_idx * (OUTPUT_T + 1) * POSE_DIM + (t)*POSE_DIM;
           const Eigen::Matrix4d pose_ego =
             map_to_ego_transform * last_agent_poses_map_[b][agent_idx][t];
           const float shifted_x = static_cast<float>(pose_ego(0, 3));
           const float shifted_y = static_cast<float>(pose_ego(1, 3));
           const auto [shifted_cos, shifted_sin] =
             utils::rotation_matrix_to_cos_sin(pose_ego.block<3, 3>(0, 0));
-
-          std::cout << "Shifted pose at time " << t << ": x=" << shifted_x << ", y=" << shifted_y
-                    << ", cos=" << shifted_cos << ", sin=" << shifted_sin << std::endl;
 
           sampled_trajectories[dst_base + 0] = (shifted_x - 10.0f) / 20.0f;
           sampled_trajectories[dst_base + 1] = shifted_y / 20.0f;
@@ -627,6 +624,18 @@ void DiffusionPlanner::on_timer()
     batch_idx);
   diagnostics_inference_->add_key_value("valid_neighbor_count", valid_neighbor_count);
 
+  // print sampled trajectories
+  std::cout << "Sampled trajectories (batch 0, agent 0): ";
+  for (int64_t t = 0; t < OUTPUT_T; ++t) {
+    const size_t base_idx = 0 * (OUTPUT_T + 1) * POSE_DIM + t * POSE_DIM;
+    const float x = input_data_map.at("sampled_trajectories")[base_idx + 0] * 20.0f + 10.0f;
+    const float y = input_data_map.at("sampled_trajectories")[base_idx + 1] * 20.0f;
+    const float cos_yaw = input_data_map.at("sampled_trajectories")[base_idx + 2];
+    const float sin_yaw = input_data_map.at("sampled_trajectories")[base_idx + 3];
+    std::cout << "[t=" << t << ": x=" << x << ", y=" << y << ", cos_yaw=" << cos_yaw
+              << ", sin_yaw=" << sin_yaw << "]" << std::endl;
+  }
+
   // normalization of data
   preprocess::normalize_input_data(input_data_map, normalization_map_);
   if (!utils::check_input_map(input_data_map)) {
@@ -652,6 +661,17 @@ void DiffusionPlanner::on_timer()
   }
   const auto & [predictions, turn_indicator_logit] = inference_result.outputs.value();
 
+  // print predictions
+  std::cout << "Predictions (batch 0, agent 0): ";
+  for (int64_t t = 0; t < OUTPUT_T; ++t) {
+    const size_t base_idx = 0 * (OUTPUT_T)*POSE_DIM + t * POSE_DIM;
+    const float x = predictions[base_idx + 0];
+    const float y = predictions[base_idx + 1];
+    const float cos_yaw = predictions[base_idx + 2];
+    const float sin_yaw = predictions[base_idx + 3];
+    std::cout << "[t=" << t << ": x=" << x << ", y=" << y << ", cos_yaw=" << cos_yaw
+              << ", sin_yaw=" << sin_yaw << "]" << std::endl;
+  }
   publish_predictions(predictions, *frame_context, frame_time);
 
   // Publish turn indicators
