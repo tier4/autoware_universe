@@ -168,15 +168,8 @@ InputDataMap create_input_data(
 
   // turn indicators
   {
-    // copy from back to front, and use the front value for padding if not enough history
-    std::vector<float> single_turn_indicators(INPUT_T + 1, 0.0f);
-    for (int64_t t = 0; t < INPUT_T + 1; ++t) {
-      const int64_t index = std::max(
-        static_cast<int64_t>(frame_context.historical_data.turn_indicators_history.size()) - 1 - t,
-        static_cast<int64_t>(0));
-      single_turn_indicators[INPUT_T - t] =
-        frame_context.historical_data.turn_indicators_history[index].report;
-    }
+    const std::vector<float> single_turn_indicators = preprocess::create_turn_indicators_past(
+      frame_context.historical_data.turn_indicators_history, INPUT_T + 1, frame_time);
     input_data_map["turn_indicators"] = single_turn_indicators;
   }
 

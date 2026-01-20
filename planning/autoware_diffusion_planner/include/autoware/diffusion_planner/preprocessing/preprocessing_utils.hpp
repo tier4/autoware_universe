@@ -22,6 +22,7 @@
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 
 #include <cassert>
 #include <deque>
@@ -36,6 +37,7 @@ namespace autoware::diffusion_planner::preprocess
 using InputDataMap = std::unordered_map<std::string, std::vector<float>>;
 using NormalizationMap =
   std::unordered_map<std::string, std::pair<std::vector<float>, std::vector<float>>>;
+using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 
 /**
  * @brief Normalizes the input data using the provided normalization map.
@@ -98,6 +100,21 @@ std::vector<float> create_ego_current_state(
  */
 std::vector<float> create_neighbor_agents_past(
   const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t num_timesteps,
+  const rclcpp::Time & frame_time);
+
+/**
+ * @brief Creates turn indicator history aligned to fixed timesteps.
+ *
+ * This function samples the turn indicator report nearest to each target timestep
+ * derived from the current frame time.
+ *
+ * @param[in] history          Deque of turn indicator reports
+ * @param[in] num_timesteps    Number of timesteps to process
+ * @param[in] frame_time       Reference time for the current frame
+ * @return Vector of floats containing the turn indicator report for each timestep
+ */
+std::vector<float> create_turn_indicators_past(
+  const std::deque<TurnIndicatorsReport> & history, size_t num_timesteps,
   const rclcpp::Time & frame_time);
 
 /**

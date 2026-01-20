@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <deque>
 #include <limits>
 #include <random>
@@ -271,6 +272,44 @@ std::vector<float> create_neighbor_agents_past(
   }
 
   return data;
+}
+
+std::vector<float> create_turn_indicators_past(
+  const std::deque<TurnIndicatorsReport> & history, size_t num_timesteps,
+  const rclcpp::Time & frame_time)
+{
+  std::vector<float> turn_indicators(num_timesteps, 0.0f);
+  if (history.empty()) {
+    return turn_indicators;
+  }
+
+  size_t history_index = 0;
+  for (size_t timestep_idx = 0; timestep_idx < num_timesteps; ++timestep_idx) {
+    const auto target_time = target_time_for_timestep(frame_time, timestep_idx, num_timesteps);
+
+    while (history_index + 1 < history.size()) {
+      const rclcpp::Time next_time(history[history_index + 1].stamp);
+      if (next_time <= target_time) {
+        ++history_index;
+      } else {
+        break;
+      }
+    }
+
+    size_t selected_index = history_index;
+    if (history_index + 1 < history.size()) {
+      const rclcpp::Time curr_time(history[history_index].stamp);
+      const rclcpp::Time next_time(history[history_index + 1].stamp);
+      const auto curr_diff_ns = std::llabs((target_time - curr_time).nanoseconds());
+      const auto next_diff_ns = std::llabs((target_time - next_time).nanoseconds());
+      if (next_diff_ns < curr_diff_ns) {
+        selected_index = history_index + 1;
+      }
+    }
+    turn_indicators[timestep_idx] = static_cast<float>(history[selected_index].report);
+  }
+
+  return turn_indicators;
 }
 
 std::vector<float> create_sampled_trajectories(const double temperature)
