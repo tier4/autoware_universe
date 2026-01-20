@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__DIMENSIONS_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__DIMENSIONS_HPP_
 
-#include "autoware/diffusion_planner/preprocessing/lanelet.hpp"
+#include "autoware/diffusion_planner/conversion/lanelet.hpp"
 
 #include <array>
 #include <cstdint>

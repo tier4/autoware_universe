@@ -14,7 +14,7 @@
 
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
-#include "autoware/diffusion_planner/preprocessing/lanelet.hpp"
+#include "autoware/diffusion_planner/conversion/lanelet.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>

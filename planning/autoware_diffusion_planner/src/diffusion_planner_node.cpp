@@ -18,7 +18,7 @@
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/inference/tensorrt_inference.hpp"
 #include "autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp"
-#include "autoware/diffusion_planner/preprocessing/agent.hpp"
+#include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/utils/marker_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"

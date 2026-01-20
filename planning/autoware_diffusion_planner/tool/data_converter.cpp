@@ -14,9 +14,9 @@
 
 #include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
-#include "autoware/diffusion_planner/preprocessing/agent.hpp"
+#include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
-#include "autoware/diffusion_planner/preprocessing/lanelet.hpp"
+#include "autoware/diffusion_planner/conversion/lanelet.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"

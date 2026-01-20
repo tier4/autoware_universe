@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__PREPROCESSING_UTILS_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__PREPROCESSING_UTILS_HPP_
 
-#include "autoware/diffusion_planner/preprocessing/agent.hpp"
+#include "autoware/diffusion_planner/conversion/agent.hpp"
 
 #include <Eigen/Core>
 #include <rclcpp/time.hpp>

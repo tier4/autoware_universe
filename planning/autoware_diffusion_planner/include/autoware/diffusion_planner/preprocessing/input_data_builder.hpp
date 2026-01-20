@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__INPUT_DATA_BUILDER_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__INPUT_DATA_BUILDER_HPP_
 
-#include "autoware/diffusion_planner/preprocessing/agent.hpp"
+#include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 

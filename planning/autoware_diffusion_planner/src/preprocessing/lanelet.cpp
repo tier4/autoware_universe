@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/diffusion_planner/preprocessing/lanelet.hpp"
+#include "autoware/diffusion_planner/conversion/lanelet.hpp"
 
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware_utils_math/unit_conversion.hpp"

@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__POSTPROCESSING__POSTPROCESSING_UTILS_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__POSTPROCESSING__POSTPROCESSING_UTILS_HPP_
 
-#include "autoware/diffusion_planner/preprocessing/agent.hpp"
+#include "autoware/diffusion_planner/conversion/agent.hpp"
 
 #include <Eigen/Dense>
 #include <rclcpp/rclcpp.hpp>

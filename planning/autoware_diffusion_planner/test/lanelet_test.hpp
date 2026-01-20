@@ -15,7 +15,7 @@
 #ifndef LANELET_TEST_HPP_
 #define LANELET_TEST_HPP_
 
-#include "autoware/diffusion_planner/preprocessing/lanelet.hpp"
+#include "autoware/diffusion_planner/conversion/lanelet.hpp"
 
 #include <geometry_msgs/msg/point.hpp>
 

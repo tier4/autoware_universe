@@ -14,7 +14,7 @@
 
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp"
-#include "autoware/diffusion_planner/preprocessing/agent.hpp"
+#include "autoware/diffusion_planner/conversion/agent.hpp"
 
 #include <Eigen/Dense>
 #include <autoware_utils/geometry/geometry.hpp>

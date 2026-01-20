@@ -15,7 +15,7 @@
 #ifndef AGENT_TEST_HPP_
 #define AGENT_TEST_HPP_
 
-#include "autoware/diffusion_planner/preprocessing/agent.hpp"
+#include "autoware/diffusion_planner/conversion/agent.hpp"
 
 #include <autoware_perception_msgs/msg/tracked_object.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
