@@ -53,6 +53,12 @@
           "exclusiveMinimum": 0,
           "description": "Timeout for traffic light group messages (seconds)"
         },
+        "max_msg_time_gap_seconds": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0,
+          "description": "Maximum allowed time gap between latest queued messages and current messages for ego, turn indicators, and neighbors (seconds). Set to 0 to disable."
+        },
         "build_only": {
           "type": "boolean",
           "default": false,
@@ -122,6 +128,7 @@
         "planning_frequency_hz",
         "predict_neighbor_trajectory",
         "traffic_light_group_msg_timeout_seconds",
+        "max_msg_time_gap_seconds",
         "batch_size",
         "temperature",
         "velocity_smoothing_window",

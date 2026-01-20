@@ -20,6 +20,7 @@
 #include <geometry_msgs/msg/point.hpp>
 
 #include <algorithm>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -87,9 +88,27 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
   };
 }
 
-void AgentData::update_histories(const TrackedObjects & objects, const bool ignore_unknown_agents)
+UpdateResult AgentData::update_histories(
+  const TrackedObjects & objects, const bool ignore_unknown_agents,
+  double max_msg_time_gap_seconds)
 {
   const rclcpp::Time objects_timestamp(objects.header.stamp);
+  std::string warning_msg;
+  if (!last_objects_timestamp_.has_value()) {
+    last_objects_timestamp_ = objects_timestamp;
+  } else {
+    const auto diff_ns = (objects_timestamp - *last_objects_timestamp_).nanoseconds();
+    const double diff_sec = static_cast<double>(diff_ns) * 1e-9;
+    if (diff_sec < 0.0) {
+      warning_msg =
+        "tracked_objects timestamp went backwards: " + std::to_string(diff_sec) + "s";
+    } else if (diff_sec > max_msg_time_gap_seconds) {
+      return {UpdateStatus::ERROR,
+              "tracked_objects time gap exceeds limit: " + std::to_string(diff_sec) + "s > " +
+                std::to_string(max_msg_time_gap_seconds) + "s"};
+    }
+  }
+
   std::vector<std::string> found_ids;
   for (const TrackedObject & object : objects.objects) {
     if (ignore_unknown_agents && is_unknown_object(object)) {
@@ -115,6 +134,11 @@ void AgentData::update_histories(const TrackedObjects & objects, const bool igno
       ++it;
     }
   }
+  last_objects_timestamp_ = objects_timestamp;
+  if (!warning_msg.empty()) {
+    return {UpdateStatus::WARN, warning_msg};
+  }
+  return {UpdateStatus::OK, ""};
 }
 
 std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(

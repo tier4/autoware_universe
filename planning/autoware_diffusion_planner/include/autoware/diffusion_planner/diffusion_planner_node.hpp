@@ -108,6 +108,7 @@ struct DiffusionPlannerParams
   bool ignore_unknown_neighbors;
   bool predict_neighbor_trajectory;
   double traffic_light_group_msg_timeout_seconds;
+  double max_msg_time_gap_seconds;
   int batch_size;
   std::vector<double> temperature_list;
   int64_t velocity_smoothing_window;

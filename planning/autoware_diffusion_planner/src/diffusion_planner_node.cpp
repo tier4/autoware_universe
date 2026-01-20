@@ -126,6 +126,8 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<bool>("predict_neighbor_trajectory", false);
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
+  params_.max_msg_time_gap_seconds =
+    this->declare_parameter<double>("max_msg_time_gap_seconds", 1.0);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
   params_.temperature_list = this->declare_parameter<std::vector<double>>("temperature", {0.0});
   params_.velocity_smoothing_window =
@@ -161,6 +163,8 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(
       parameters, "traffic_light_group_msg_timeout_seconds",
       temp_params.traffic_light_group_msg_timeout_seconds);
+    update_param<double>(
+      parameters, "max_msg_time_gap_seconds", temp_params.max_msg_time_gap_seconds);
     update_param<int>(parameters, "batch_size", temp_params.batch_size);
     update_param<std::vector<double>>(parameters, "temperature", temp_params.temperature_list);
     update_param<int64_t>(
@@ -354,7 +358,19 @@ void DiffusionPlanner::on_timer()
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
   // Update historical data
-  historical_data_.update_from_sensor_msgs(curr_msgs, kinematic_state.header.stamp);
+  const auto update_result = historical_data_.update_from_sensor_msgs(
+    curr_msgs, kinematic_state.header.stamp, params_.max_msg_time_gap_seconds);
+  if (update_result.status == UpdateStatus::ERROR) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS, "%s",
+      update_result.error_msg.c_str());
+    return;
+  }
+  if (update_result.status == UpdateStatus::WARN) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS, "%s",
+      update_result.error_msg.c_str());
+  }
 
   // Process neighbor histories
   const auto processed_neighbor_histories =

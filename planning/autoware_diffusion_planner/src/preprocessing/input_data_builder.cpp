@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 namespace autoware::diffusion_planner::preprocess
@@ -38,35 +39,87 @@ void HistoricalData::update_params(
   traffic_light_group_msg_timeout_seconds = traffic_light_group_msg_timeout_seconds_param;
 }
 
-void HistoricalData::update_from_sensor_msgs(
-  const SensorMsgs & sensor_msgs, const rclcpp::Time & now)
+UpdateResult HistoricalData::update_from_sensor_msgs(
+  const SensorMsgs & sensor_msgs, const rclcpp::Time & now, double max_msg_time_gap_seconds)
 {
+  std::string warning_msg;
+  const auto append_warning = [&warning_msg](const std::string & msg) {
+    if (msg.empty()) {
+      return;
+    }
+    if (!warning_msg.empty()) {
+      warning_msg += "; ";
+    }
+    warning_msg += msg;
+  };
+
+  // Ego history
   const auto & ego_state = *sensor_msgs.ego_kinematic_states.back();
-  if (
-    ego_history.empty() ||
-    rclcpp::Time(ego_history.back().header.stamp) <= rclcpp::Time(ego_state.header.stamp)) {
+  const rclcpp::Time ego_time(ego_state.header.stamp);
+  if (ego_history.empty()) {
     ego_history.push_back(ego_state);
-    if (ego_history.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
-      ego_history.pop_front();
+  } else {
+    const auto diff_ns = (ego_time - rclcpp::Time(ego_history.back().header.stamp)).nanoseconds();
+    const double diff_sec = static_cast<double>(diff_ns) * 1e-9;
+    if (diff_sec < 0.0) {
+      append_warning(
+        "ego_kinematic_states timestamp went backwards: " + std::to_string(diff_sec) + "s");
+    } else if (diff_sec > max_msg_time_gap_seconds) {
+      return {
+        UpdateStatus::ERROR,
+        "ego_kinematic_states time gap exceeds limit: " + std::to_string(diff_sec) + "s > " +
+          std::to_string(max_msg_time_gap_seconds) + "s"};
+    } else if (rclcpp::Time(ego_history.back().header.stamp) <= ego_time) {
+      ego_history.push_back(ego_state);
     }
   }
+  if (ego_history.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
+    ego_history.pop_front();
+  }
 
+  // Turn indicators history
   const auto & turn_indicator = *sensor_msgs.turn_indicators.back();
-  if (
-    turn_indicators_history.empty() ||
-    rclcpp::Time(turn_indicators_history.back().stamp) <=
-      rclcpp::Time(turn_indicator.stamp)) {
+  const rclcpp::Time turn_indicator_time(turn_indicator.stamp);
+  if (turn_indicators_history.empty()) {
     turn_indicators_history.push_back(turn_indicator);
-    if (turn_indicators_history.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
-      turn_indicators_history.pop_front();
+  } else {
+    const auto diff_ns =
+      (turn_indicator_time - rclcpp::Time(turn_indicators_history.back().stamp)).nanoseconds();
+    const double diff_sec = static_cast<double>(diff_ns) * 1e-9;
+    if (diff_sec < 0.0) {
+      append_warning("turn_indicators timestamp went backwards: " + std::to_string(diff_sec) + "s");
+    } else if (diff_sec > max_msg_time_gap_seconds) {
+      return {
+        UpdateStatus::ERROR, "turn_indicators time gap exceeds limit: " + std::to_string(diff_sec) +
+                               "s > " + std::to_string(max_msg_time_gap_seconds) + "s"};
+    } else if (rclcpp::Time(turn_indicators_history.back().stamp) <= turn_indicator_time) {
+      turn_indicators_history.push_back(turn_indicator);
     }
   }
+  if (turn_indicators_history.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
+    turn_indicators_history.pop_front();
+  }
 
-  agent_data.update_histories(*sensor_msgs.tracked_objects.back(), ignore_unknown_neighbors);
+  // Neighbor histories
+  const auto agent_update_result = agent_data.update_histories(
+    *sensor_msgs.tracked_objects.back(), ignore_unknown_neighbors, max_msg_time_gap_seconds);
+  if (agent_update_result.status == UpdateStatus::ERROR) {
+    return agent_update_result;
+  }
+  if (agent_update_result.status == UpdateStatus::WARN) {
+    append_warning(agent_update_result.error_msg);
+  }
 
+  // Traffic signals
   preprocess::process_traffic_signals(
     sensor_msgs.traffic_signals, traffic_light_id_map, now,
     traffic_light_group_msg_timeout_seconds);
+
+  // Return result
+  if (!warning_msg.empty()) {
+    return {UpdateStatus::WARN, warning_msg};
+  }
+  return {UpdateStatus::OK, ""};
 }
 
 InputDataMap create_input_data(

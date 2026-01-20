@@ -61,7 +61,9 @@ struct HistoricalData
 
   void update_params(bool ignore_unknown_neighbors, double traffic_light_group_msg_timeout_seconds);
 
-  void update_from_sensor_msgs(const SensorMsgs & sensor_msgs, const rclcpp::Time & now);
+  ::autoware::diffusion_planner::UpdateResult update_from_sensor_msgs(
+    const SensorMsgs & sensor_msgs, const rclcpp::Time & now,
+    double max_msg_time_gap_seconds);
 
   std::deque<nav_msgs::msg::Odometry> ego_history;
   std::deque<TurnIndicatorsReport> turn_indicators_history;

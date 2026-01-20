@@ -68,7 +68,8 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_EmptyAgentData)
   empty_objects.header.stamp = rclcpp::Time(0);
 
   AgentData agent_data;
-  agent_data.update_histories(empty_objects, false);
+  const auto empty_update_result = agent_data.update_histories(empty_objects, false, 0.0);
+  EXPECT_EQ(empty_update_result.status, UpdateStatus::OK);
   rclcpp::Time stamp(123, 0);
 
   const auto agent_poses = postprocess::parse_predictions(prediction, Eigen::Matrix4d::Identity());
@@ -97,7 +98,8 @@ TEST_F(PostprocessingUtilsEdgeCaseTest, CreatePredictedObjects_MorePredictionsTh
   objects.objects.push_back(tracked_object_);
 
   AgentData agent_data;
-  agent_data.update_histories(objects, false);
+  const auto update_result = agent_data.update_histories(objects, false, 0.0);
+  EXPECT_EQ(update_result.status, UpdateStatus::OK);
   rclcpp::Time stamp(123, 0);
 
   const auto agent_poses = postprocess::parse_predictions(prediction, Eigen::Matrix4d::Identity());

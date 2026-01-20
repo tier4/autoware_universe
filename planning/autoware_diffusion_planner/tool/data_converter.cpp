@@ -206,7 +206,8 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
     if (frame_idx >= static_cast<int64_t>(data_list.size())) {
       break;
     }
-    agent_data_past.update_histories(data_list[frame_idx].tracked_objects, ignore_unknown_agents);
+    agent_data_past.update_histories(
+      data_list[frame_idx].tracked_objects, ignore_unknown_agents, 1.0);
   }
   const auto transformed_histories =
     agent_data_past.transformed_and_trimmed_histories(map2bl_matrix, MAX_NUM_NEIGHBORS);
