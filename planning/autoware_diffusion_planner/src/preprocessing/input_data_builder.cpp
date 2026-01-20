@@ -41,14 +41,25 @@ void HistoricalData::update_params(
 void HistoricalData::update_from_sensor_msgs(
   const SensorMsgs & sensor_msgs, const rclcpp::Time & now)
 {
-  ego_history.push_back(*sensor_msgs.ego_kinematic_states.back());
-  if (ego_history.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
-    ego_history.pop_front();
+  const auto & ego_state = *sensor_msgs.ego_kinematic_states.back();
+  if (
+    ego_history.empty() ||
+    rclcpp::Time(ego_history.back().header.stamp) <= rclcpp::Time(ego_state.header.stamp)) {
+    ego_history.push_back(ego_state);
+    if (ego_history.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
+      ego_history.pop_front();
+    }
   }
 
-  turn_indicators_history.push_back(*sensor_msgs.turn_indicators.back());
-  if (turn_indicators_history.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
-    turn_indicators_history.pop_front();
+  const auto & turn_indicator = *sensor_msgs.turn_indicators.back();
+  if (
+    turn_indicators_history.empty() ||
+    rclcpp::Time(turn_indicators_history.back().stamp) <=
+      rclcpp::Time(turn_indicator.stamp)) {
+    turn_indicators_history.push_back(turn_indicator);
+    if (turn_indicators_history.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
+      turn_indicators_history.pop_front();
+    }
   }
 
   agent_data.update_histories(*sensor_msgs.tracked_objects.back(), ignore_unknown_neighbors);
