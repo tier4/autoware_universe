@@ -54,12 +54,16 @@ UpdateResult HistoricalData::update_from_sensor_msgs(
   };
 
   // Ego history
-  const auto & ego_state = *sensor_msgs.ego_kinematic_states.back();
-  const rclcpp::Time ego_time(ego_state.header.stamp);
-  if (ego_history.empty()) {
-    ego_history.push_back(ego_state);
-  } else {
-    const auto diff_ns = (ego_time - rclcpp::Time(ego_history.back().header.stamp)).nanoseconds();
+  for (const auto & ego_state_ptr : sensor_msgs.ego_kinematic_states) {
+    const auto & ego_state = *ego_state_ptr;
+    const rclcpp::Time ego_time(ego_state.header.stamp);
+    if (ego_history.empty()) {
+      ego_history.push_back(ego_state);
+      continue;
+    }
+
+    const auto diff_ns =
+      (ego_time - rclcpp::Time(ego_history.back().header.stamp)).nanoseconds();
     const double diff_sec = static_cast<double>(diff_ns) * 1e-9;
     if (diff_sec < 0.0) {
       append_warning(
@@ -73,16 +77,16 @@ UpdateResult HistoricalData::update_from_sensor_msgs(
       ego_history.push_back(ego_state);
     }
   }
-  if (ego_history.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
-    ego_history.pop_front();
-  }
 
   // Turn indicators history
-  const auto & turn_indicator = *sensor_msgs.turn_indicators.back();
-  const rclcpp::Time turn_indicator_time(turn_indicator.stamp);
-  if (turn_indicators_history.empty()) {
-    turn_indicators_history.push_back(turn_indicator);
-  } else {
+  for (const auto & turn_indicator_ptr : sensor_msgs.turn_indicators) {
+    const auto & turn_indicator = *turn_indicator_ptr;
+    const rclcpp::Time turn_indicator_time(turn_indicator.stamp);
+    if (turn_indicators_history.empty()) {
+      turn_indicators_history.push_back(turn_indicator);
+      continue;
+    }
+
     const auto diff_ns =
       (turn_indicator_time - rclcpp::Time(turn_indicators_history.back().stamp)).nanoseconds();
     const double diff_sec = static_cast<double>(diff_ns) * 1e-9;
@@ -96,18 +100,36 @@ UpdateResult HistoricalData::update_from_sensor_msgs(
       turn_indicators_history.push_back(turn_indicator);
     }
   }
-  if (turn_indicators_history.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
-    turn_indicators_history.pop_front();
-  }
 
   // Neighbor histories
-  const auto agent_update_result = agent_data.update_histories(
-    *sensor_msgs.tracked_objects.back(), ignore_unknown_neighbors, max_msg_time_gap_seconds);
-  if (agent_update_result.status == UpdateStatus::ERROR) {
-    return agent_update_result;
+  for (const auto & tracked_objects_ptr : sensor_msgs.tracked_objects) {
+    const auto agent_update_result = agent_data.update_histories(
+      *tracked_objects_ptr, ignore_unknown_neighbors, max_msg_time_gap_seconds);
+    if (agent_update_result.status == UpdateStatus::ERROR) {
+      return agent_update_result;
+    }
+    if (agent_update_result.status == UpdateStatus::WARN) {
+      append_warning(agent_update_result.error_msg);
+    }
   }
-  if (agent_update_result.status == UpdateStatus::WARN) {
-    append_warning(agent_update_result.error_msg);
+
+  const rclcpp::Time cutoff_time =
+    now - rclcpp::Duration::from_seconds(static_cast<double>(INPUT_T) / PLANNING_FREQUENCY);
+  while (ego_history.size() > 1) {
+    const rclcpp::Time second_time(ego_history[1].header.stamp);
+    if (second_time < cutoff_time) {
+      ego_history.pop_front();
+    } else {
+      break;
+    }
+  }
+  while (turn_indicators_history.size() > 1) {
+    const rclcpp::Time second_time(turn_indicators_history[1].stamp);
+    if (second_time < cutoff_time) {
+      turn_indicators_history.pop_front();
+    } else {
+      break;
+    }
   }
 
   // Traffic signals

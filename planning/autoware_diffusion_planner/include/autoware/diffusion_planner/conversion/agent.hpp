@@ -87,6 +87,10 @@ struct AgentHistory
 
   void fill(const AgentState & state)
   {
+    if (max_size_ == 0) {
+      push_back(state);
+      return;
+    }
     while (!full()) {
       push_back(state);
     }
@@ -126,6 +130,17 @@ struct AgentHistory
     }
   }
 
+  void trim_before(const rclcpp::Time & cutoff_time)
+  {
+    while (queue_.size() > 1) {
+      if (queue_[1].timestamp < cutoff_time) {
+        queue_.pop_front();
+      } else {
+        break;
+      }
+    }
+  }
+
 private:
   void push_back(const AgentState & state)
   {
@@ -135,7 +150,7 @@ private:
     queue_.push_back(state);
   }
 
-  bool full() const { return queue_.size() >= max_size_; }
+  bool full() const { return max_size_ > 0 && queue_.size() >= max_size_; }
 
   std::deque<AgentState> queue_;
   size_t max_size_{0};

@@ -121,7 +121,7 @@ UpdateResult AgentData::update_histories(
         it->second.update(object, objects_timestamp);
       }
     } else {
-      histories_map_.emplace(object_id, AgentHistory(INPUT_T_WITH_CURRENT));
+      histories_map_.emplace(object_id, AgentHistory(0));
       histories_map_.at(object_id).fill(AgentState(object, objects_timestamp));
     }
     found_ids.push_back(object_id);
@@ -133,6 +133,12 @@ UpdateResult AgentData::update_histories(
     } else {
       ++it;
     }
+  }
+  const rclcpp::Time cutoff_time =
+    objects_timestamp -
+    rclcpp::Duration::from_seconds(static_cast<double>(INPUT_T) / PLANNING_FREQUENCY);
+  for (auto & [_, history] : histories_map_) {
+    history.trim_before(cutoff_time);
   }
   last_objects_timestamp_ = objects_timestamp;
   if (!warning_msg.empty()) {
