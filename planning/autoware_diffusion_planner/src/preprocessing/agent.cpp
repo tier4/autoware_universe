@@ -98,7 +98,9 @@ void AgentData::update_histories(const TrackedObjects & objects, const bool igno
     const std::string object_id = autoware_utils_uuid::to_hex_string(object.object_id);
     auto it = histories_map_.find(object_id);
     if (it != histories_map_.end()) {
-      it->second.update(object, objects_timestamp);
+      if (it->second.get_latest_state().timestamp <= objects_timestamp) {
+        it->second.update(object, objects_timestamp);
+      }
     } else {
       histories_map_.emplace(object_id, AgentHistory(INPUT_T_WITH_CURRENT));
       histories_map_.at(object_id).fill(AgentState(object, objects_timestamp));
