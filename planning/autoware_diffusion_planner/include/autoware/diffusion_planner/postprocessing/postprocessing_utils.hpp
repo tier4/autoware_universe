@@ -25,6 +25,7 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <geometry_msgs/msg/point.hpp>
 
 #include <cassert>
 #include <string>
@@ -41,7 +42,7 @@ using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using unique_identifier_msgs::msg::UUID;
 
 /**
- * @brief Parses raw prediction data into structured pose matrices.
+ * @brief Parses raw prediction data into structured pose matrices in map coordinates.
  *
  * @param prediction The raw tensor prediction output (x, y, cos(yaw), sin(yaw) for each timestep).
  * @param transform_ego_to_map The transformation matrix from ego to map coordinates.
@@ -69,10 +70,8 @@ PredictedObjects create_predicted_objects(
  *
  * @param agent_poses The parsed agent poses [batch][agent][timestep] -> pose matrix.
  * @param stamp The ROS time stamp for the message.
+ * @param base_position The current ego position in map coordinates.
  * @param batch_index The batch index to extract.
- * @param base_x The current ego position x in map coordinates.
- * @param base_y The current ego position y in map coordinates.
- * @param base_z The current ego position z in map coordinates.
  * @param velocity_smoothing_window The window size for velocity smoothing.
  * @param enable_force_stop Whether to enable force stop logic.
  * @param stopping_threshold The threshold for keeping the stopping state [m/s].
@@ -80,9 +79,9 @@ PredictedObjects create_predicted_objects(
  */
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const int64_t batch_index, const double base_x,
-  const double base_y, const double base_z, const int64_t velocity_smoothing_window,
-  const bool enable_force_stop, const double stopping_threshold);
+  const rclcpp::Time & stamp, const geometry_msgs::msg::Point & base_position,
+  const int64_t batch_index, const int64_t velocity_smoothing_window, const bool enable_force_stop,
+  const double stopping_threshold);
 
 /**
  * @brief Counts valid elements in a tensor with shape (B, len, dim2, dim3).

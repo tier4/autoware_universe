@@ -510,10 +510,9 @@ void DiffusionPlanner::publish_predictions(
   last_agent_poses_map_ = agent_poses_map;
 
   for (int i = 0; i < params_.batch_size; i++) {
-    const auto & ego_pose = pose_center.position;
     Trajectory trajectory = postprocess::create_ego_trajectory(
-      agent_poses_map, timestamp, i, ego_pose.x, ego_pose.y, ego_pose.z,
-      params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
+      agent_poses_map, timestamp, pose_center.position, i, params_.velocity_smoothing_window,
+      enable_force_stop, params_.stopping_threshold);
     if (params_.shift_x) {
       // center to base_link
       for (auto & point : trajectory.points) {
