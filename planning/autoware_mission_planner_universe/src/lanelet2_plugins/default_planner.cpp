@@ -16,6 +16,8 @@
 
 #include "utility_functions.hpp"
 
+#include <autoware/lanelet2_utils/conversion.hpp>
+#include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
@@ -38,6 +40,7 @@
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <tf2/utils.h>
 
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -69,6 +72,17 @@ lanelet::ConstLanelets get_lanelets_to(
     backward ? lanelets.begin() : lanelets.end(), ahead_lanelets.begin(), ahead_lanelets.end());
 
   return lanelets;
+}
+
+/**
+ * @brief Check if a lanelet has the direction_change_area tag
+ * @param lanelet The lanelet to check
+ * @return true if the lanelet has the direction_change_area attribute with a non-"none" value
+ */
+bool hasDirectionChangeAreaTag(const lanelet::ConstLanelet & lanelet)
+{
+  const std::string direction_change_area = lanelet.attributeOr("direction_change_area", "none");
+  return direction_change_area != "none";
 }
 }  // namespace
 
@@ -228,44 +242,53 @@ bool DefaultPlanner::check_goal_footprint_inside_lanes(
 bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
 {
   const auto logger = node_->get_logger();
-
   const auto goal_lanelet_pt = lanelet::utils::conversion::toLaneletPoint(goal.position);
+  const auto goal_yaw = tf2::getYaw(goal.orientation);
+  const double standard_threshold = autoware_utils::deg2rad(param_.goal_angle_threshold_deg);
+  const double relaxed_threshold = autoware_utils::deg2rad(90.0);
 
-  // check if goal is in shoulder lanelet
+  // Check if goal is in shoulder lanelet
   lanelet::Lanelet closest_shoulder_lanelet;
   const auto shoulder_lanelets = route_handler_.getShoulderLaneletsAtPose(goal);
-  if (lanelet::utils::query::getClosestLanelet(
-        shoulder_lanelets, goal, &closest_shoulder_lanelet)) {
+  if (lanelet::utils::query::getClosestLanelet(shoulder_lanelets, goal, &closest_shoulder_lanelet)) {
     const auto lane_yaw = lanelet::utils::getLaneletAngle(closest_shoulder_lanelet, goal.position);
-    const auto goal_yaw = tf2::getYaw(goal.orientation);
     const auto angle_diff = autoware_utils::normalize_radian(lane_yaw - goal_yaw);
-    const double th_angle = autoware_utils::deg2rad(param_.goal_angle_threshold_deg);
+    const bool has_direction_change_tag = hasDirectionChangeAreaTag(closest_shoulder_lanelet);
+    const double th_angle = has_direction_change_tag ? relaxed_threshold : standard_threshold;
+
     if (std::abs(angle_diff) < th_angle) {
       return true;
     }
+    if (has_direction_change_tag) {
+      const double reversed_angle_diff = std::abs(autoware_utils::normalize_radian(angle_diff - M_PI));
+      if (reversed_angle_diff < th_angle) {
+        return true;
+      }
+    }
   }
+
+  // Find closest road lanelet to goal
   lanelet::ConstLanelet closest_lanelet_to_goal;
   const auto road_lanelets_at_goal = route_handler_.getRoadLaneletsAtPose(goal);
-  if (!lanelet::utils::query::getClosestLanelet(
-        road_lanelets_at_goal, goal, &closest_lanelet_to_goal)) {
-    // if no road lanelets directly at the goal, find the closest one
+  if (!lanelet::utils::query::getClosestLanelet(road_lanelets_at_goal, goal, &closest_lanelet_to_goal)) {
     const lanelet::BasicPoint2d goal_point{goal.position.x, goal.position.y};
     auto closest_dist = std::numeric_limits<double>::max();
     const auto closest_road_lanelet_found =
       route_handler_.getLaneletMapPtr()->laneletLayer.nearestUntil(
         goal_point, [&](const auto & bbox, const auto & ll) {
-          // this search is done by increasing distance between the bounding box and the goal
-          // we stop the search when the bounding box is further than the closest dist found
-          if (lanelet::geometry::distance2d(bbox, goal_point) > closest_dist)
-            return true;  // stop the search
+          if (lanelet::geometry::distance2d(bbox, goal_point) > closest_dist) {
+            return true;
+          }
           const auto dist = lanelet::geometry::distance2d(goal_point, ll.polygon2d());
           if (route_handler_.isRoadLanelet(ll) && dist < closest_dist) {
             closest_dist = dist;
             closest_lanelet_to_goal = ll;
           }
-          return false;  // continue the search
+          return false;
         });
-    if (!closest_road_lanelet_found) return false;
+    if (!closest_road_lanelet_found) {
+      return false;
+    }
   }
 
   // If the goal is at the very beginning or the end of closest_lanelet_to_goal, base link to rear
@@ -279,46 +302,55 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
     closest_lanelet_to_goal, vehicle_info_.max_longitudinal_offset_m, false, route_handler_);
   lanelets_near_goal.insert(lanelets_near_goal.end(), next_lanelets.begin(), next_lanelets.end());
 
-  const auto local_vehicle_footprint = vehicle_info_.createFootprint();
-  autoware_utils::LinearRing2d goal_footprint =
-    autoware_utils::transform_vector(local_vehicle_footprint, autoware_utils::pose2transform(goal));
-  pub_goal_footprint_marker_->publish(visualize_debug_footprint(goal_footprint));
-  const auto polygon_footprint = convert_linear_ring_to_polygon(goal_footprint);
+  // Check if goal footprint exceeds lane when the goal isn't in parking_lot
+  if (param_.check_footprint_inside_lanes) {
+    const auto local_vehicle_footprint = vehicle_info_.createFootprint();
+    autoware_utils::LinearRing2d goal_footprint =
+      autoware_utils::transform_vector(local_vehicle_footprint, autoware_utils::pose2transform(goal));
+    pub_goal_footprint_marker_->publish(visualize_debug_footprint(goal_footprint));
+    const auto polygon_footprint = convert_linear_ring_to_polygon(goal_footprint);
 
-  // check if goal footprint exceeds lane when the goal isn't in parking_lot
-  if (
-    param_.check_footprint_inside_lanes &&
-    !check_goal_footprint_inside_lanes(lanelets_near_goal, polygon_footprint) &&
-    !is_in_parking_lot(
-      lanelet::utils::query::getAllParkingLots(route_handler_.getLaneletMapPtr()),
-      lanelet::utils::conversion::toLaneletPoint(goal.position))) {
-    RCLCPP_WARN(logger, "Goal's footprint exceeds lane!");
-    return false;
-  }
-
-  if (is_in_lane(closest_lanelet_to_goal, goal_lanelet_pt)) {
-    const auto lane_yaw = lanelet::utils::getLaneletAngle(closest_lanelet_to_goal, goal.position);
-    const auto goal_yaw = tf2::getYaw(goal.orientation);
-    const auto angle_diff = autoware_utils::normalize_radian(lane_yaw - goal_yaw);
-
-    const double th_angle = autoware_utils::deg2rad(param_.goal_angle_threshold_deg);
-    if (std::abs(angle_diff) < th_angle) {
-      return true;
+    if (
+      !check_goal_footprint_inside_lanes(lanelets_near_goal, polygon_footprint) &&
+      !is_in_parking_lot(
+        lanelet::utils::query::getAllParkingLots(route_handler_.getLaneletMapPtr()),
+        lanelet::utils::conversion::toLaneletPoint(goal.position))) {
+      RCLCPP_WARN(logger, "Goal's footprint exceeds lane!");
+      return false;
     }
   }
 
-  // check if goal is in parking space
+  // Check orientation if goal is in lane
+  if (is_in_lane(closest_lanelet_to_goal, goal_lanelet_pt)) {
+    const auto lane_yaw = lanelet::utils::getLaneletAngle(closest_lanelet_to_goal, goal.position);
+    const auto angle_diff = autoware_utils::normalize_radian(lane_yaw - goal_yaw);
+    const bool has_direction_change_tag = hasDirectionChangeAreaTag(closest_lanelet_to_goal);
+    const double th_angle = has_direction_change_tag ? relaxed_threshold : standard_threshold;
+
+    if (std::abs(angle_diff) < th_angle) {
+      return true;
+    }
+    if (has_direction_change_tag) {
+      const double reversed_angle_diff = std::abs(autoware_utils::normalize_radian(angle_diff - M_PI));
+      if (reversed_angle_diff < th_angle) {
+        return true;
+      }
+    }
+  }
+
+  // Check if goal is in parking space
   const auto parking_spaces =
     lanelet::utils::query::getAllParkingSpaces(route_handler_.getLaneletMapPtr());
   if (is_in_parking_space(parking_spaces, goal_lanelet_pt)) {
     return true;
   }
 
-  // check if goal is in parking lot
+  // Check if goal is in parking lot
   const auto parking_lots =
     lanelet::utils::query::getAllParkingLots(route_handler_.getLaneletMapPtr());
   return is_in_parking_lot(parking_lots, goal_lanelet_pt);
 }
+
 
 PlannerPlugin::LaneletRoute DefaultPlanner::plan(const RoutePoints & points)
 {
@@ -362,7 +394,7 @@ PlannerPlugin::LaneletRoute DefaultPlanner::plan(const RoutePoints & points)
   }
 
   if (!is_goal_valid(goal_pose)) {
-    RCLCPP_WARN(logger, "Goal is not valid! Please check position and angle of goal_pose");
+    RCLCPP_WARN(logger, "Goal is not valid! [MY DEBUG] Please check position and angle of goal_pose");
     return route_msg;
   }
 
