@@ -15,10 +15,10 @@
 #include "autoware/diffusion_planner/diffusion_planner_node.hpp"
 
 #include "autoware/diffusion_planner/constants.hpp"
+#include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/inference/tensorrt_inference.hpp"
 #include "autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp"
-#include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/utils/marker_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
@@ -249,14 +249,11 @@ void DiffusionPlanner::publish_predictions(
   const auto agent_poses =
     postprocess::parse_predictions(predictions, frame_context.ego_to_map_transform);
 
-  const Eigen::Vector3d ego_base_position(
-    frame_context.ego_to_map_transform(0, 3), frame_context.ego_to_map_transform(1, 3),
-    frame_context.ego_to_map_transform(2, 3));
-
   for (int i = 0; i < params_.batch_size; i++) {
     Trajectory trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, ego_base_position, i, params_.velocity_smoothing_window,
-      enable_force_stop, params_.stopping_threshold);
+      agent_poses, timestamp,
+      frame_context.sensor_msgs.ego_kinematic_states.back()->pose.pose.position, i,
+      params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
     if (params_.shift_x) {
       // center to base_link
       for (auto & point : trajectory.points) {

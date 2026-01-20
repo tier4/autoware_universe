@@ -138,10 +138,7 @@ PredictedObjects create_predicted_objects(
     }
 
     // Extract poses for this neighbor (neighbor_id + 1 because 0 is ego)
-    std::vector<Eigen::Matrix4d> neighbor_poses;
-    for (int64_t time_idx = 0; time_idx < OUTPUT_T; ++time_idx) {
-      neighbor_poses.push_back(agent_poses[batch_index][neighbor_id + 1][time_idx]);
-    }
+    const auto & neighbor_poses = agent_poses[batch_index][neighbor_id + 1];
 
     constexpr int64_t velocity_smoothing_window = 1;
     constexpr bool enable_force_stop = false;  // Don't force stop for neighbors
@@ -186,8 +183,8 @@ PredictedObjects create_predicted_objects(
 
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const Eigen::Vector3d & base_position, const int64_t batch_index,
-  const int64_t velocity_smoothing_window, const bool enable_force_stop,
+  const rclcpp::Time & stamp, const geometry_msgs::msg::Point & base_position,
+  const int64_t batch_index, const int64_t velocity_smoothing_window, const bool enable_force_stop,
   const double stopping_threshold)
 {
   const int64_t ego_index = 0;
@@ -200,15 +197,11 @@ Trajectory create_ego_trajectory(
   }
 
   // Extract ego poses (ego_index = 0)
-  std::vector<Eigen::Matrix4d> ego_poses;
-  ego_poses.reserve(OUTPUT_T);
-  for (int64_t time_idx = 0; time_idx < OUTPUT_T; ++time_idx) {
-    ego_poses.push_back(agent_poses[batch_index][ego_index][time_idx]);
-  }
+  const auto & ego_poses = agent_poses[batch_index][ego_index];
 
-  const double base_x = base_position.x();
-  const double base_y = base_position.y();
-  const double base_z = base_position.z();
+  const double base_x = base_position.x;
+  const double base_y = base_position.y;
+  const double base_z = base_position.z;
 
   return get_trajectory_from_poses(
     ego_poses, base_x, base_y, base_z, stamp, velocity_smoothing_window, enable_force_stop,

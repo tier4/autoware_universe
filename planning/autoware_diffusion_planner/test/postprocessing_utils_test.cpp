@@ -18,6 +18,8 @@
 
 #include <Eigen/Dense>
 
+#include <geometry_msgs/msg/point.hpp>
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -40,7 +42,6 @@ TEST(PostprocessingUtilsTest, CreateTrajectoryAndMultipleTrajectories)
   for (size_t i = 0; i < data.size(); ++i) data[i] = static_cast<float>(i);
 
   std::vector<int64_t> shape{batch_size, agent_size, rows, cols};
-  const Eigen::Vector3d base_position = Eigen::Vector3d::Zero();
   rclcpp::Time stamp(123, 0);
 
   auto expected_points = prediction_shape[2];
@@ -48,6 +49,10 @@ TEST(PostprocessingUtilsTest, CreateTrajectoryAndMultipleTrajectories)
   const bool enable_force_stop = false;
   const double stopping_threshold = 0.0;
   const auto agent_poses = postprocess::parse_predictions(data, Eigen::Matrix4d::Identity());
+  geometry_msgs::msg::Point base_position;
+  base_position.x = 0.0;
+  base_position.y = 0.0;
+  base_position.z = 0.0;
   auto traj = postprocess::create_ego_trajectory(
     agent_poses, stamp, base_position, 0, velocity_smoothing_window, enable_force_stop,
     stopping_threshold);

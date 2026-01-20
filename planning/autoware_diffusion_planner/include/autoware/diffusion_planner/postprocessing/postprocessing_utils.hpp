@@ -25,6 +25,7 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <geometry_msgs/msg/point.hpp>
 
 #include <cassert>
 #include <string>
@@ -41,7 +42,7 @@ using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using unique_identifier_msgs::msg::UUID;
 
 /**
- * @brief Parses raw prediction data into structured pose matrices.
+ * @brief Parses raw prediction data into structured pose matrices in map coordinates.
  *
  * @param prediction The raw tensor prediction output (x, y, cos(yaw), sin(yaw) for each timestep).
  * @param transform_ego_to_map The transformation matrix from ego to map coordinates.
@@ -80,8 +81,8 @@ PredictedObjects create_predicted_objects(
  */
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const Eigen::Vector3d & base_position, const int64_t batch_index,
-  const int64_t velocity_smoothing_window, const bool enable_force_stop,
+  const rclcpp::Time & stamp, const geometry_msgs::msg::Point & base_position,
+  const int64_t batch_index, const int64_t velocity_smoothing_window, const bool enable_force_stop,
   const double stopping_threshold);
 
 /**
