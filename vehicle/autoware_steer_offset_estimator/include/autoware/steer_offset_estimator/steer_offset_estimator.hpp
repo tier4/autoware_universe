@@ -133,7 +133,7 @@ private:
    * @param poses vector containing ego pose data
    * @result twist information based on current and previous pose
    */
-  geometry_msgs::msg::Twist calculate_twist(const std::vector<PoseStamped> & poses);
+  std::optional<geometry_msgs::msg::Twist> calculate_twist(const std::vector<PoseStamped> & poses);
 
   /**
    * @brief Update steering data buffer from latest steering report
@@ -163,7 +163,7 @@ private:
     const double velocity, const double angular_velocity, const double steering_angle);
 
   std::optional<geometry_msgs::msg::PoseStamped> previous_pose_;
-  std::deque<autoware_vehicle_msgs::msg::SteeringReport::SharedPtr> steering_buffer_;
+  std::deque<autoware_vehicle_msgs::msg::SteeringReport> steering_buffer_;
   std::optional<SteeringInfo> previous_steering_;
 
 #ifdef ENABLE_PLOTLY

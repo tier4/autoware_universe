@@ -51,15 +51,11 @@ SteerOffsetEstimator::update(
 
   if (steers.empty()) return unexpected("steers is empty");
 
-  geometry_msgs::msg::Twist twist;
-  try {
-    twist = calculate_twist(poses);
-  } catch (const std::exception & e) {
-    return unexpected(e.what());
-  }
+  const auto twist = calculate_twist(poses);
+  if (!twist) return unexpected("failed to compute twist");
 
-  const double velocity = twist.linear.x;
-  const double angular_velocity = twist.angular.z;
+  const double velocity = twist->linear.x;
+  const double angular_velocity = twist->angular.z;
 
   update_steering_buffer(steers);
   const auto steering_info = get_steering_at_timestamp(rclcpp::Time(previous_pose_->header.stamp));
@@ -89,10 +85,10 @@ SteerOffsetEstimator::update(
   return estimate_offset(velocity, angular_velocity, steering_info.value().steering);
 }
 
-geometry_msgs::msg::Twist SteerOffsetEstimator::calculate_twist(
+std::optional<geometry_msgs::msg::Twist> SteerOffsetEstimator::calculate_twist(
   const std::vector<PoseStamped> & poses)
 {
-  geometry_msgs::msg::Twist twist;
+  std::optional<geometry_msgs::msg::Twist> twist;
 
   // if previous pose is too old, reset value
   const double dt =
@@ -112,7 +108,7 @@ geometry_msgs::msg::Twist SteerOffsetEstimator::calculate_twist(
   // First call - need at least 2 poses to calculate motion
   if (poses.size() < 2) {
     previous_pose_ = poses.back();
-    throw std::logic_error("previous_pose has not been set");
+    return std::nullopt;
   }
   // Use first pose as previous, last pose as current
   twist = utils::calc_twist_from_pose(poses[0], poses.back());
