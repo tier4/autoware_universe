@@ -55,36 +55,6 @@ protected:
   }
 };
 
-TEST_F(TestUtils, CalcAverageSteerEmpty)
-{
-  std::vector<autoware_vehicle_msgs::msg::SteeringReport> steers;
-  double result = calc_average_steer(steers);
-  EXPECT_EQ(result, 0.0);
-}
-
-TEST_F(TestUtils, CalcAverageSteerSingle)
-{
-  std::vector<autoware_vehicle_msgs::msg::SteeringReport> steers = {create_steering_report(0.5)};
-  double result = calc_average_steer(steers);
-  EXPECT_EQ(result, 0.5);
-}
-
-TEST_F(TestUtils, CalcAverageSteerMultiple)
-{
-  std::vector<autoware_vehicle_msgs::msg::SteeringReport> steers = {
-    create_steering_report(0.1), create_steering_report(0.3), create_steering_report(0.5)};
-  double result = calc_average_steer(steers);
-  EXPECT_NEAR(result, 0.3, 1e-6);  // (0.1 + 0.3 + 0.5) / 3 = 0.3
-}
-
-TEST_F(TestUtils, CalcAverageSteerNegative)
-{
-  std::vector<autoware_vehicle_msgs::msg::SteeringReport> steers = {
-    create_steering_report(-0.2), create_steering_report(-0.4), create_steering_report(-0.6)};
-  double result = calc_average_steer(steers);
-  EXPECT_NEAR(result, -0.4, 1e-6);  // (-0.2 + -0.4 + -0.6) / 3 = -0.4
-}
-
 TEST_F(TestUtils, ComputeRelativeRotationVectorIdentical)
 {
   tf2::Quaternion q1(0.0, 0.0, 0.0, 1.0);  // Identity quaternion

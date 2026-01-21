@@ -23,19 +23,6 @@
 namespace autoware::steer_offset_estimator::utils
 {
 
-double calc_average_steer(const std::vector<SteeringReport> & steers)
-{
-  if (steers.empty()) {
-    return 0.0;
-  }
-
-  double average_steer = 0.0;
-  for (const auto & steer : steers) {
-    average_steer += steer.steering_tire_angle;
-  }
-  return average_steer / static_cast<double>(steers.size());
-}
-
 geometry_msgs::msg::Vector3 compute_relative_rotation_vector(
   const tf2::Quaternion & q1, const tf2::Quaternion & q2)
 {
